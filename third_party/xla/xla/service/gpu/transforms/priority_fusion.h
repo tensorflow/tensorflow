@@ -33,8 +33,8 @@ limitations under the License.
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/instruction_fusion.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/tsl/platform/threadpool.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/threadpool.h"
 
 namespace xla {
 namespace gpu {
@@ -43,18 +43,15 @@ class PriorityFusion : public HloModulePass {
  public:
   PriorityFusion(tsl::thread::ThreadPool* thread_pool,
                  const se::DeviceDescription& device,
-                 GpuHloCostAnalysis::Options cost_analysis_options)
+                 GpuHloCostAnalysis::Options cost_analysis_options,
+                 mlir::MLIRContext* mlir_context)
       : thread_pool_(thread_pool),
         device_info_(device),
         cost_analysis_options_(std::move(cost_analysis_options)),
-        fusion_analysis_cache_(device_info_) {}
+        fusion_analysis_cache_(device_info_),
+        mlir_context_(mlir_context) {}
 
   absl::string_view name() const override { return "priority-fusion"; }
-
-  using HloPassInterface::Run;
-  absl::StatusOr<bool> Run(
-      HloModule* module,
-      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
  protected:
   HloInstruction::FusionKind ChooseKind(const HloInstruction* producer,
@@ -62,6 +59,10 @@ class PriorityFusion : public HloModulePass {
 
   HloInstruction* Fuse(HloInstruction* producer, HloInstruction* consumer,
                        bool use_multi_output_fusion = false);
+
+  absl::StatusOr<bool> RunImpl(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
  private:
   // Consumes a unit of compiler fuel and returns true if we should
@@ -84,7 +85,7 @@ class PriorityFusion : public HloModulePass {
 
   HloFusionAnalysisCache fusion_analysis_cache_;
 
-  mlir::MLIRContext mlir_context_;
+  mlir::MLIRContext* mlir_context_;
 };
 
 }  // namespace gpu

@@ -30,22 +30,25 @@
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/compiler.h"
 #include "xla/python/ifrt/device.h"
+#include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/executable.h"
-#include "xla/python/ifrt/future.h"
 #include "xla/python/ifrt/host_callback.h"
 #include "xla/python/ifrt/program.h"
 #include "xla/python/ifrt/serdes.h"
 #include "xla/python/ifrt/topology.h"
+#include "xla/python/ifrt/user_context_status_util.h"
 #include "xla/python/ifrt_proxy/client/executable.h"
 #include "xla/python/ifrt_proxy/client/rpc_helper.h"
 #include "xla/python/ifrt_proxy/common/ifrt_service.pb.h"
+#include "xla/python/ifrt_proxy/common/versions.h"
 #include "xla/python/ifrt_proxy/server/host_callback.h"
 #include "xla/python/pjrt_ifrt/pjrt_host_callback.h"
 #include "xla/python/pjrt_ifrt/xla_compiler.h"
+#include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/platform/errors.h"
-#include "tsl/platform/status_to_from_proto.h"
-#include "tsl/platform/statusor.h"
+#include "xla/tsl/platform/status_to_from_proto.h"
+#include "xla/tsl/platform/statusor.h"
 #include "tsl/profiler/lib/traceme.h"
 
 namespace xla {
@@ -62,8 +65,10 @@ absl::StatusOr<xla::ifrt::LoadedExecutableRef> Compiler::CompileAndLoad(
   auto request = std::make_unique<CompileRequest>();
   {
     tsl::profiler::TraceMe traceme("IfrtProxyProgramSerialize");
+    auto serialize_options = std::make_unique<xla::ifrt::SerializeOptions>(
+        rpc_helper_->ifrt_serdes_version());
     TF_ASSIGN_OR_RETURN(*request->mutable_program(),
-                        Serialize(*program, /*options=*/nullptr));
+                        Serialize(*program, std::move(serialize_options)));
   }
   tsl::profiler::TraceMe traceme_ifrt_entrypoint(
       [prog_size = request->program().data().size()]() {
@@ -118,8 +123,10 @@ absl::StatusOr<xla::ifrt::LoadedExecutableRef> Compiler::CompileAndLoad(
 #endif
   }
 
+  auto serialize_options = std::make_unique<xla::ifrt::SerializeOptions>(
+      rpc_helper_->ifrt_serdes_version());
   TF_ASSIGN_OR_RETURN(*request->mutable_compile_options(),
-                      Serialize(*options, /*options=*/nullptr));
+                      Serialize(*options, std::move(serialize_options)));
 
   // TODO(b/266635130): Avoid blocking the caller.
   TF_ASSIGN_OR_RETURN(std::shared_ptr<CompileResponse> response,
@@ -139,25 +146,45 @@ absl::StatusOr<xla::ifrt::LoadedExecutableRef> Compiler::CompileAndLoad(
       fingerprint = response->fingerprint_value();
       break;
     case CompileResponse::kFingerprintError:
-      fingerprint = tsl::StatusFromProto(response->fingerprint_error());
+      fingerprint = xla::ifrt::ReattachUserContextRefs(
+          tsl::StatusFromProto(response->fingerprint_error()));
       break;
     default:
       fingerprint = std::nullopt;
       break;
   }
 
-  Future<> ready_future =
+  tsl::Future<> ready_future =
       rpc_helper_->CheckFuture(response->ready_future_handle());
 
   std::vector<uint64_t> loaded_host_callback_handles(
       response->loaded_host_callback_handles().begin(),
       response->loaded_host_callback_handles().end());
 
+  std::vector<xla::ifrt::Device*> devices;
+  if (rpc_helper_->protocol_version() < protocol_version::kExecutableDevices) {
+    devices.reserve(response->addressable_device_ids_size());
+    for (const int32_t device_id : response->addressable_device_ids()) {
+      TF_ASSIGN_OR_RETURN(xla::ifrt::Device* const device,
+                          client_->LookupDevice(DeviceId(device_id)));
+      devices.push_back(device);
+    }
+  } else {
+    devices.reserve(response->device_ids_size());
+    for (const int32_t device_id : response->device_ids()) {
+      TF_ASSIGN_OR_RETURN(xla::ifrt::Device* const device,
+                          client_->LookupDevice(DeviceId(device_id)));
+      devices.push_back(device);
+    }
+  }
+  TF_ASSIGN_OR_RETURN(DeviceListRef device_list,
+                      client_->MakeDeviceList(devices));
+
   return std::make_unique<LoadedExecutable>(
       client_, rpc_helper_, response->loaded_executable_handle(),
-      response->name(), response->num_devices(), std::move(addressable_devices),
-      std::move(fingerprint), std::move(ready_future),
-      std::move(loaded_host_callbacks),
+      response->name(), response->num_devices(), device_list,
+      std::move(addressable_devices), std::move(fingerprint),
+      std::move(ready_future), std::move(loaded_host_callbacks),
       std::move(loaded_host_callback_handles));
 }
 

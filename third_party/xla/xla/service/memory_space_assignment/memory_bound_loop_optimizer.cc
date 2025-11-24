@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstdint>
-#include <functional>
 #include <iterator>
 #include <memory>
 #include <optional>
@@ -28,9 +27,11 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/base/nullability.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
+#include "absl/log/die_if_null.h"
 #include "absl/log/log.h"
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
@@ -56,8 +57,8 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
+#include "xla/tsl/platform/errors.h"
 #include "xla/util.h"
-#include "tsl/platform/errors.h"
 
 namespace xla {
 namespace memory_space_assignment {
@@ -350,7 +351,7 @@ MemoryBoundLoopOptimizer::Create(int loop_start, int loop_end,
       absl::WrapUnique(new MemoryBoundLoopOptimizer(
           loop_start, loop_end, options.max_size_in_bytes,
           options.memory_bound_loop_optimizer_options, hlo_live_range,
-          alias_analysis, *options.cost_analysis, options.size_fn,
+          alias_analysis, *options.cost_analysis, &options.size_fn,
           options.reserved_scoped_memory_fn, options.alignment_in_bytes));
   TF_RETURN_IF_ERROR(optimizer->Initialize());
   return std::move(optimizer);
@@ -361,7 +362,7 @@ MemoryBoundLoopOptimizer::MemoryBoundLoopOptimizer(
     const MemoryBoundLoopOptimizerOptions& options,
     const HloLiveRange& hlo_live_range, const HloAliasAnalysis& alias_analysis,
     const CostAnalysis& cost_analysis,
-    const BufferValue::SizeFunction& size_function,
+    const BufferValue::SizeFunction* absl_nonnull size_function,
     const ReservedScopedMemoryFunction& reserved_scoped_memory_fn,
     int64_t alignment_in_bytes)
     : loop_start_(loop_start),
@@ -372,7 +373,7 @@ MemoryBoundLoopOptimizer::MemoryBoundLoopOptimizer(
       hlo_live_range_(hlo_live_range),
       alias_analysis_(alias_analysis),
       cost_analysis_(cost_analysis),
-      size_function_(size_function),
+      size_function_(ABSL_DIE_IF_NULL(size_function)),
       reserved_scoped_memory_fn_(reserved_scoped_memory_fn),
       heap_(LoopOptimizerBestFitHeap(alternate_memory_size,
                                      /*loop_size=*/loop_end - loop_start,
@@ -541,7 +542,7 @@ void MemoryBoundLoopOptimizer::MaybeCreateLoopValue(
   // later, so we will add that one instead.
   if ((!loop_value.loop_positions.empty() || !loop_value.loop_uses.empty()) &&
       loop_value.prev_iteration_positions.empty()) {
-    loop_value.size = size_function_(**buffer.values().begin());
+    loop_value.size = (*size_function_)(**buffer.values().begin());
     VLOG(3) << "Size: " << loop_value.size;
     // Classify the type of allocation. See the comment in LoopValue definition.
     loop_value.allocation_type = LoopValue::AllocationType::kUnsupported;

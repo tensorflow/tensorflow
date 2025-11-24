@@ -32,12 +32,13 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/stream_executor/cuda/cubin_or_ptx_image.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/cuda/ptx_compiler.h"
 #include "xla/stream_executor/cuda/ptx_compiler_support.h"
 #include "xla/stream_executor/cuda/subprocess_compilation.h"
-#include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/gpu/gpu_asm_opts.h"
-#include "tsl/platform/logging.h"  // IWYU pragma: keep
+#include "xla/tsl/platform/logging.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace stream_executor {
 
@@ -51,13 +52,19 @@ absl::StatusOr<std::vector<uint8_t>> CompileGpuAsm(
     bool cancel_if_reg_spill) {
   if (IsLibNvPtxCompilerSupported()) {
     VLOG(3) << "Compiling GPU ASM with libnvptxcompiler";
-    return CompileGpuAsmUsingLibNvPtxCompiler(cc, ptx, options,
-                                              cancel_if_reg_spill);
+    TF_ASSIGN_OR_RETURN(auto assembly,
+                        CompileGpuAsmUsingLibNvPtxCompiler(
+                            cc, ptx, options, cancel_if_reg_spill,
+                            /*dump_compilation_log=*/false));
+    return std::move(assembly.cubin);
   }
 
   VLOG(3) << "Compiling GPU ASM with PTXAS. Libnvptxcompiler compilation "
              "not supported.";
-  return CompileGpuAsmUsingPtxAs(cc, ptx, options, cancel_if_reg_spill);
+  TF_ASSIGN_OR_RETURN(auto assembly, CompileGpuAsmUsingPtxAs(
+                                         cc, ptx, options, cancel_if_reg_spill,
+                                         /*dump_compilation_log=*/false));
+  return std::move(assembly.cubin);
 }
 
 absl::StatusOr<absl::Span<const uint8_t>> CompileGpuAsmOrGetCached(
@@ -70,7 +77,7 @@ absl::StatusOr<absl::Span<const uint8_t>> CompileGpuAsmOrGetCached(
   static auto& ptx_cache ABSL_GUARDED_BY(ptx_cache_mutex) =
       *new absl::flat_hash_map<PtxCacheKey, PtxCompilerResult>();
 
-  absl::MutexLock lock(&ptx_cache_mutex);
+  absl::MutexLock lock(ptx_cache_mutex);
   PtxCacheKey cache_key{cc, ptx, compilation_options.ToTuple()};
   auto it = ptx_cache.find(cache_key);
   if (it == ptx_cache.end()) {

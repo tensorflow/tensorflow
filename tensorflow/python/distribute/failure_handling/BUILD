@@ -45,7 +45,7 @@ py_strict_library(
     deps = [
         "//tensorflow/python/eager:context",
         "//tensorflow/python/platform:tf_logging",
-        "@pypi_requests//:pkg",
+        "@pypi//requests",
         "@six_archive//:six",
     ],
 )
@@ -69,6 +69,7 @@ tf_py_strict_test(
     srcs = ["failure_handler_test.py"],
     shard_count = 8,
     tags = [
+        "no_mac",
         "no_pip",  # TODO(b/266520226)
         "no_windows",  # TODO(b/197981388)
     ],
@@ -105,6 +106,7 @@ tf_py_strict_test(
     srcs = ["gce_failure_handler_test.py"],
     shard_count = 32,
     tags = [
+        "no_mac",  # Fails on CI but works fine locally.
         "no_pip",  # TODO(b/266520226)
         "noasan",  # TODO(b/226154233): Flaky test
     ],
@@ -131,7 +133,7 @@ tf_py_strict_test(
         "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/training:server_lib",
         "@absl_py//absl/testing:parameterized",
-        "@pypi_dill//:pkg",  # build_cleaner: keep
+        "@pypi//dill",  # build_cleaner: keep
     ],
 )
 

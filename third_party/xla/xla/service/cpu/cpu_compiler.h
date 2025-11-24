@@ -28,12 +28,12 @@ limitations under the License.
 #include "xla/backends/cpu/codegen/ir_compiler.h"
 #include "xla/backends/cpu/codegen/target_machine_features.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/hlo/ir/hlo_module_group.h"
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/compiler.h"
 #include "xla/service/cpu/cpu_aot_compilation_result.h"
 #include "xla/service/cpu/executable.pb.h"
+#include "xla/service/cpu/thunk_emitter.h"
 #include "xla/service/executable.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_cost_analysis.h"
@@ -61,8 +61,8 @@ class CpuCompiler : public LLVMCompiler {
   ~CpuCompiler() override = default;
 
   absl::StatusOr<std::vector<std::unique_ptr<Executable>>> Compile(
-      std::unique_ptr<HloModuleGroup> module_group,
-      std::vector<std::vector<se::StreamExecutor*>> stream_execs,
+      std::unique_ptr<HloModule> hlo_module,
+      std::vector<se::StreamExecutor*> stream_execs,
       const CompileOptions& options) override;
 
   absl::StatusOr<std::unique_ptr<HloModule>> RunHloPasses(
@@ -74,7 +74,7 @@ class CpuCompiler : public LLVMCompiler {
       const CompileOptions& options) override;
 
   absl::StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
-  CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
+  CompileAheadOfTime(std::unique_ptr<HloModule> hlo_module,
                      const AotCompilationOptions& options) override;
 
   se::Platform::Id PlatformId() const override;
@@ -117,15 +117,11 @@ class CpuCompiler : public LLVMCompiler {
       const CompileOptions& compile_options);
 
   absl::StatusOr<std::unique_ptr<CpuExecutable>> CompileCpuExecutable(
-      std::unique_ptr<HloModule> module);
-
-  absl::StatusOr<std::unique_ptr<AotCompilationResult>>
-  CompileAheadOfTimeLegacy(
       std::unique_ptr<HloModule> module,
-      IrCompiler::TargetMachineBuilder target_machine_builder,
-      const CpuAotCompilationOptions& aot_options, const llvm::Triple& triple,
-      const llvm::PICLevel::Level& pic_level,
-      const llvm::PIELevel::Level& pie_level);
+      const ThunkEmitter::Options& thunk_emitter_options,
+      std::unique_ptr<IrCompiler> ir_compiler,
+      const llvm::PICLevel::Level& pic_level = llvm::PICLevel::NotPIC,
+      const llvm::PIELevel::Level& pie_level = llvm::PIELevel::Default);
 
   absl::StatusOr<std::unique_ptr<AotCompilationResult>>
   CompileAheadOfTimeThunks(

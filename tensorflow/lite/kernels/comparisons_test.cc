@@ -15,6 +15,7 @@ limitations under the License.
 #include <stdint.h>
 
 #include <initializer_list>
+#include <limits>
 #include <string>
 #include <vector>
 
@@ -538,6 +539,19 @@ TEST(QuantizedComparisonsTest, EqualInt8Quantized) {
   EXPECT_THAT(model.GetOutput(), ElementsAre(false, false, true, false));
 }
 
+TEST(QuantizedComparisonsTest, EqualInt16Quantized) {
+  const float kMin = std::numeric_limits<int16_t>::min() + 1;
+  const float kMax = std::numeric_limits<int16_t>::max();
+  ComparisonOpModel model({TensorType_INT16, {1, 2, 2, 1}, kMin, kMax},
+                          {TensorType_INT16, {1, 2, 2, 1}, kMin, kMax},
+                          TensorType_INT16, BuiltinOperator_EQUAL);
+  model.QuantizeAndPopulate<int16_t>(model.input1(), {10, -90, 70, kMin});
+  model.QuantizeAndPopulate<int16_t>(model.input2(), {10, 20, 71, kMin});
+  model.Invoke();
+
+  EXPECT_THAT(model.GetOutput(), ElementsAre(true, false, false, true));
+}
+
 TEST(QuantizedComparisonsTest, NotEqualUInt8Quantized) {
   const float kMin = -1.f;
   const float kMax = 128.f;
@@ -562,6 +576,19 @@ TEST(QuantizedComparisonsTest, NotEqualInt8Quantized) {
   ASSERT_EQ(model.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(model.GetOutput(), ElementsAre(false, true, false, true));
+}
+
+TEST(QuantizedComparisonsTest, NotEqualInt16Quantized) {
+  const float kMin = std::numeric_limits<int16_t>::min() + 1;
+  const float kMax = std::numeric_limits<int16_t>::max();
+  ComparisonOpModel model({TensorType_INT16, {1, 2, 2, 1}, kMin, kMax},
+                          {TensorType_INT16, {1, 2, 2, 1}, kMin, kMax},
+                          TensorType_INT16, BuiltinOperator_NOT_EQUAL);
+  model.QuantizeAndPopulate<int16_t>(model.input1(), {10, -90, 70, kMin + 1});
+  model.QuantizeAndPopulate<int16_t>(model.input2(), {10, 20, 71, kMin + 2});
+  model.Invoke();
+
+  EXPECT_THAT(model.GetOutput(), ElementsAre(false, true, true, true));
 }
 
 TEST(ComparisonsTest, GreaterQuantized) {

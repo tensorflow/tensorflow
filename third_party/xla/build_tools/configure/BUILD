@@ -14,6 +14,7 @@
 # ============================================================================
 
 load("@local_config_cuda//cuda:build_defs.bzl", "cuda_library")
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("@rules_python//python:py_test.bzl", "py_test")
 load("//xla:pytype.bzl", "pytype_strict_library")
 
@@ -31,11 +32,13 @@ py_test(
     name = "configure_test",
     srcs = ["configure_test.py"],
     data = [
-        "testdata/clang.bazelrc",
+        "testdata/clang_local.bazelrc",
         "testdata/cuda_clang.bazelrc",
+        "testdata/cuda_clang_local.bazelrc",
         "testdata/default_cuda_clang.bazelrc",
         "testdata/gcc.bazelrc",
         "testdata/nvcc_clang.bazelrc",
+        "testdata/nvcc_clang_local.bazelrc",
         "testdata/nvcc_gcc.bazelrc",
     ],
     # After https://github.com/openxla/xla/commit/7d3043283, this test is no

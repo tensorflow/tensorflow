@@ -42,24 +42,28 @@ constexpr int64_t kDefaultThresholdInBytes = 16 * 1024 * 1024;  // 16MB
 class CollectiveBackendAssigner : public HloModulePass {
  public:
   explicit CollectiveBackendAssigner(
-      const se::GpuComputeCapability& gpu_version, int num_devices_per_host,
+      const se::GpuComputeCapability& gpu_version,
+      int num_visible_devices_per_process, int64_t slice_size = 0,
       int64_t threshold_in_bytes = kDefaultThresholdInBytes)
       : gpu_version_(gpu_version),
-        num_devices_per_host_(num_devices_per_host),
-        threshold_in_bytes_(threshold_in_bytes) {}
+        num_visible_devices_per_process_(num_visible_devices_per_process),
+        threshold_in_bytes_(threshold_in_bytes),
+        slice_size_(slice_size) {}
 
   absl::string_view name() const override {
     return "collective-backend-assigner";
   }
 
-  absl::StatusOr<bool> Run(
+ protected:
+  absl::StatusOr<bool> RunImpl(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
  private:
   se::GpuComputeCapability gpu_version_;
-  int num_devices_per_host_;
+  int num_visible_devices_per_process_;
   int64_t threshold_in_bytes_;
+  int64_t slice_size_;
 };
 
 }  // namespace gpu

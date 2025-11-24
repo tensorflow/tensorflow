@@ -1,3 +1,4 @@
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_test",
@@ -18,6 +19,7 @@ cc_library(
     srcs = ["mlir_to_bytecode.cc"],
     hdrs = ["mlir_to_bytecode.h"],
     deps = [
+        "//tensorflow/compiler/mlir/tfrt/ir/mlrt:mlrt_ops",
         "//tensorflow/core/tfrt/mlrt/bytecode",
         "//tensorflow/core/tfrt/mlrt/bytecode:executable",
         "//tensorflow/core/tfrt/mlrt/bytecode:function",
@@ -42,6 +44,7 @@ tf_cc_test(
     data = glob(["testdata/**"]),
     deps = [
         ":mlir_to_bytecode",
+        "//tensorflow/compiler/mlir/tfrt/ir/mlrt:mlrt_ops",
         "//tensorflow/core/tfrt/mlrt/bytecode",
         "//tensorflow/core/tfrt/mlrt/bytecode:executable",
         "//tensorflow/core/tfrt/mlrt/interpreter:attribute_span",

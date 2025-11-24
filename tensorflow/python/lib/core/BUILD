@@ -1,5 +1,6 @@
 # python/lib/core package
 
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable", "tf_external_workspace_visible", "tf_python_pybind_extension")
 
 visibility = [
@@ -95,6 +96,7 @@ cc_library(
     deps = [
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/common_runtime:core_cpu_headers_lib",
+        "@com_google_absl//absl/status",
         "@local_xla//third_party/python_runtime:headers",
         "@pybind11",
     ],
@@ -111,6 +113,7 @@ cc_library(
     deps = [
         ":pybind11_status_headers",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/status",
     ],
 )
 
@@ -153,6 +156,7 @@ cc_library(
     name = "py_func_lib",
     srcs = ["py_func.cc"],
     hdrs = ["py_func.h"],
+    visibility = ["//visibility:public"],
     deps = [
         ":ndarray_tensor",
         ":ndarray_tensor_bridge",

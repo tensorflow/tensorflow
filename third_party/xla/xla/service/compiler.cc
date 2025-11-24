@@ -21,16 +21,27 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/const_init.h"
+#include "absl/container/flat_hash_map.h"
+#include "absl/log/check.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "absl/synchronization/mutex.h"
+#include "xla/debug_options_flags.h"
+#include "xla/service/metrics_hook_interface.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/dnn.h"
+#include "xla/stream_executor/platform.h"
+#include "xla/stream_executor/semantic_version.h"
+#include "xla/stream_executor/stream_executor.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
-#include "tsl/platform/logging.h"
 
 namespace xla {
 
 /* static */ absl::Mutex Compiler::platform_compiler_mutex_(absl::kConstInit);
 
-Compiler::TargetConfig::TargetConfig(se::StreamExecutor* s)
+Compiler::GpuTargetConfig::GpuTargetConfig(se::StreamExecutor* s)
     : device_description(s->GetDeviceDescription()),
       platform_name(s->GetPlatform()->Name()),
       device_description_str(s->GetDeviceDescription().name()) {
@@ -43,18 +54,29 @@ Compiler::TargetConfig::TargetConfig(se::StreamExecutor* s)
   }
 }
 
-Compiler::TargetConfig::TargetConfig(const se::GpuTargetConfigProto& proto)
-    : device_description({proto.gpu_device_info()}),
-      platform_name(proto.platform_name()),
-      dnn_version_info(proto.dnn_version_info()),
-      device_description_str(proto.device_description_str()) {
+absl::StatusOr<Compiler::GpuTargetConfig> Compiler::GpuTargetConfig::FromProto(
+    const se::GpuTargetConfigProto& proto) {
+  GpuTargetConfig target_config;
+  TF_ASSIGN_OR_RETURN(
+      target_config.device_description,
+      stream_executor::DeviceDescription::FromProto(proto.gpu_device_info()));
+  target_config.platform_name = proto.platform_name();
+  target_config.dnn_version_info =
+      se::dnn::VersionInfo(proto.dnn_version_info());
+  target_config.device_description_str = proto.device_description_str();
   se::SemanticVersion runtime_version(proto.runtime_version().major(),
                                       proto.runtime_version().minor(),
                                       proto.runtime_version().patch());
-  device_description.set_runtime_version(runtime_version);
+  target_config.device_description.set_runtime_version(runtime_version);
+  se::SemanticVersion dnn_version(
+      static_cast<unsigned>(proto.dnn_version_info().major()),
+      static_cast<unsigned>(proto.dnn_version_info().minor()),
+      static_cast<unsigned>(proto.dnn_version_info().patch()));
+  target_config.device_description.set_dnn_version(dnn_version);
+  return target_config;
 }
 
-se::GpuTargetConfigProto Compiler::TargetConfig::ToProto() const {
+se::GpuTargetConfigProto Compiler::GpuTargetConfig::ToProto() const {
   stream_executor::GpuTargetConfigProto proto;
   *proto.mutable_gpu_device_info() = device_description.ToGpuProto();
   proto.set_platform_name(platform_name);
@@ -84,15 +106,14 @@ std::unique_ptr<tsl::protobuf::Message> Compiler::ComputeDefaultBackendConfig(
 // Define a default version where metadata is not used.
 absl::StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
 Compiler::CompileAheadOfTime(
-    std::unique_ptr<HloModuleGroup> module_group,
-    const AotCompilationOptions& options,
+    std::unique_ptr<HloModule> hlo_module, const AotCompilationOptions& options,
     std::unique_ptr<AotCompilationMetadata>* metadata) {
   if (metadata != nullptr) {
     return Unimplemented(
         "Populating AotCompilationMetadata is not implemented on this "
         "compiler.");
   }
-  return CompileAheadOfTime(std::move(module_group), options);
+  return CompileAheadOfTime(std::move(hlo_module), options);
 }
 
 /* static */ absl::flat_hash_map<se::Platform::Id, Compiler::CompilerFactory>*
@@ -112,7 +133,7 @@ Compiler::GetPlatformCompilers() {
 
 /* static */ void Compiler::RegisterCompilerFactory(
     se::Platform::Id platform_id, CompilerFactory compiler_factory) {
-  absl::MutexLock lock(&platform_compiler_mutex_);
+  absl::MutexLock lock(platform_compiler_mutex_);
   auto* factories = GetPlatformCompilerFactories();
   CHECK(factories->find(platform_id) == factories->end())
       << "Compiler factory already registered for platform";
@@ -121,7 +142,7 @@ Compiler::GetPlatformCompilers() {
 
 /* static */ absl::StatusOr<std::unique_ptr<Compiler>> Compiler::GetForPlatform(
     const se::Platform* platform) {
-  absl::MutexLock lock(&platform_compiler_mutex_);
+  absl::MutexLock lock(platform_compiler_mutex_);
 
   auto* factories = GetPlatformCompilerFactories();
   auto it = factories->find(platform->id());

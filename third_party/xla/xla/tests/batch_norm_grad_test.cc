@@ -66,10 +66,7 @@ TEST_F(BatchNormGradTest, CorrectComputation) {
 }
 
 TEST_F(BatchNormGradTest, ReturnsErrorWhenHloPassesDisabled) {
-  if (test::DeviceTypeIs(test::kTpu)) {
-    GTEST_SKIP();
-  }
-  if (test::DeviceIsOneOf({test::kGpu, test::kInterpreter})) {
+  if (test::DeviceTypeIsOneOf({test::kGpu, test::kInterpreter, test::kTpu})) {
     GTEST_SKIP();
   }
   TF_ASSERT_OK_AND_ASSIGN(auto module,

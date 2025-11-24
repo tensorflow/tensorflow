@@ -58,8 +58,8 @@ def unshuffle_from_sc_to_cpu(
   # checkpoints value to meet this requirement.
   if t.shape[0] % num_sparse_cores != 0:
     raise ValueError(
-        "The dim of table ({}) should be multiple of number of sparse cores"
-        " ({})".format(t.shape[1], num_sparse_cores)
+        "The first dim of the table ({}) should be multiple of number of sparse"
+        " cores ({})".format(t.shape[0], num_sparse_cores)
     )
   # get shards in the input t
   shards_t = array_ops.reshape(
@@ -223,3 +223,55 @@ class SparseCoreStackedTableTrackable(trackable_base.Trackable):
 
   def __repr__(self):
     return "SparseCoreStackedTableTrackable({})".format(self.vars.keys())
+
+
+def shard_table(
+    num_sparse_cores: int,
+    table: tensor.Tensor,
+) -> tensor.Tensor:
+  """Convert a table to the internal layout.
+
+  Args:
+    num_sparse_cores: The total number of sparse cores.
+    table: The full table, unsharded.
+
+  Returns:
+    A tensor containing the sharded value for this table.
+  """
+  assert table.shape[0] % num_sparse_cores == 0
+
+  # Do the sparse core rotation:
+  tmp = array_ops.reshape(
+      table,
+      [-1, num_sparse_cores, table.shape[1]],
+  )
+  # The mod sharding across sparse cores.
+  tmp = array_ops.transpose(tmp, [1, 0, 2])
+  return array_ops.reshape(tmp, [-1, table.shape[1]])
+
+
+def shard_initializer(strategy, initializer) -> tensor.Tensor:
+  """Wraps an initializer to convert a table to the internal layout."""
+
+  num_devices = strategy.extended._tpu_devices.size  # pylint: disable=protected-access
+  num_sc_per_chip = (
+      strategy.extended.tpu_hardware_feature.num_embedding_devices_per_chip
+  )
+  num_scs = num_devices * num_sc_per_chip
+
+  @functools.wraps(initializer)
+  def wrapper(shape, dtype, shard_info=None):
+    # Initializes the whole table.
+    table = initializer(shape, dtype)
+    if shard_info is None:
+      return table
+
+    # Convert the table to the internal layout.
+    table = shard_table(num_scs, table)
+    # Pull out the shard of interest.
+    return table[
+        shard_info.offset[0] : shard_info.offset[0] + shard_info.shape[0],
+        shard_info.offset[1] : shard_info.offset[1] + shard_info.shape[1],
+    ]
+
+  return wrapper

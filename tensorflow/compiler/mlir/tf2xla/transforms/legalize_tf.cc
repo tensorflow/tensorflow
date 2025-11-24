@@ -986,7 +986,7 @@ class ConvertConvDynamic : public OpRewritePattern<OpT> {
     switch (padding_type) {
       case tensorflow::Padding::VALID: {
         auto zero =
-            rewriter.create<arith::ConstantIntOp>(loc, 0, shape_scalar_type);
+            rewriter.create<arith::ConstantIntOp>(loc, shape_scalar_type, 0);
         *padding_low = *padding_high = zero;
         break;
       }
@@ -994,18 +994,18 @@ class ConvertConvDynamic : public OpRewritePattern<OpT> {
         break;
       case tensorflow::Padding::SAME: {
         auto zero =
-            rewriter.create<arith::ConstantIntOp>(loc, 0, shape_scalar_type);
+            rewriter.create<arith::ConstantIntOp>(loc, shape_scalar_type, 0);
         auto one =
-            rewriter.create<arith::ConstantIntOp>(loc, 1, shape_scalar_type);
+            rewriter.create<arith::ConstantIntOp>(loc, shape_scalar_type, 1);
         auto two =
-            rewriter.create<arith::ConstantIntOp>(loc, 2, shape_scalar_type);
+            rewriter.create<arith::ConstantIntOp>(loc, shape_scalar_type, 2);
         // See also the parallel implementation in
         // GetWindowedOutputSizeFromDimsV2. effective_filter_size = (filter_size
         // - 1) * dilation_rate + 1
         Value stride_value = rewriter.create<arith::ConstantIntOp>(
-            loc, stride, shape_scalar_type);
+            loc, shape_scalar_type, stride);
         Value dilation_rate_value = rewriter.create<arith::ConstantIntOp>(
-            loc, dilation_rate, shape_scalar_type);
+            loc, shape_scalar_type, dilation_rate);
         Value effective_filter_size_op = rewriter.create<arith::AddIOp>(
             loc, one,
             rewriter.create<arith::MulIOp>(
@@ -1086,8 +1086,8 @@ class ConvertConvDynamic : public OpRewritePattern<OpT> {
     auto shape_scalar_type = rewriter.getIntegerType(32);
 
     auto get_const = [&](int64_t val) {
-      return rewriter.create<mlir::arith::ConstantIntOp>(loc, val,
-                                                         shape_scalar_type);
+      return rewriter.create<mlir::arith::ConstantIntOp>(loc, shape_scalar_type,
+                                                         val);
     };
     auto get_dim_value = [&](Value val, int64_t dim) {
       Value dim_value = rewriter.create<tensor::DimOp>(loc, val, dim);
@@ -4864,7 +4864,7 @@ class ConvertConvBackpropInputOp : public OpRewritePattern<OpTy> {
         dilations_attr.template getValues<int64_t>().begin(),
         dilations_attr.template getValues<int64_t>().end()};
     auto strides_attr = GetI64ElementsAttr(op.getStrides());
-    std::vector<tensorflow::int32> strides{
+    std::vector<int32_t> strides{
         strides_attr.template getValues<int64_t>().begin(),
         strides_attr.template getValues<int64_t>().end()};
 
@@ -5064,7 +5064,7 @@ class ConvertConvBackpropFilterOp : public OpRewritePattern<OpTy> {
         dilations_attr.template getValues<int64_t>().begin(),
         dilations_attr.template getValues<int64_t>().end()};
     auto strides_attr = GetI64ElementsAttr(op.getStrides());
-    std::vector<tensorflow::int32> strides{
+    std::vector<int32_t> strides{
         strides_attr.template getValues<int64_t>().begin(),
         strides_attr.template getValues<int64_t>().end()};
 
@@ -5968,7 +5968,15 @@ class ConvertXlaShardingOp : public OpRewritePattern<TF::XlaShardingOp> {
                                 PatternRewriter &rewriter) const override {
     // TODO(b/148313088): define sharding attribute struct in MLIR intead of
     // using a string.
-    if (!op.get_XlaSharding().has_value()) return failure();
+    if (!op.get_XlaSharding().has_value() &&
+        !op.get_XlaShardingV2().has_value()) {
+      return failure();
+    }
+
+    auto sharding = tensorflow::GetXlaShardingAttrFromShardingOp(op);
+    if (!sharding.ok()) {
+      return failure();
+    }
 
     NamedAttribute call_target_name = rewriter.getNamedAttr(
         "call_target_name", rewriter.getStringAttr("Sharding"));
@@ -5976,9 +5984,8 @@ class ConvertXlaShardingOp : public OpRewritePattern<TF::XlaShardingOp> {
     auto custom_call = rewriter.create<stablehlo::CustomCallOp>(
         op.getLoc(), op.getType(), op.getInput(),
         ArrayRef<NamedAttribute>{call_target_name});
-    custom_call->setAttr(kShardingAttr, op.get_XlaShardingAttr());
+    custom_call->setAttr(kShardingAttr, *sharding);
     rewriter.replaceOp(op, custom_call.getResult(0));
-
     return success();
   }
 };

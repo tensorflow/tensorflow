@@ -81,10 +81,17 @@ message AutotuneResult {
     int64 num_stages = 5;
     int64 num_warps = 6;
     int64 num_ctas = 7;
+    bool is_tma_allowed = 8;
+    bool is_warp_specialization_allowed = 9;
   }
 
   message CustomKernelFusionKey {
     int64 kernel_index = 1;
+  }
+
+  message BackendConfigKey {
+    string name = 1;
+    google.protobuf.Any config = 2;
   }
 
   int64 scratch_bytes = 8;
@@ -99,6 +106,7 @@ message AutotuneResult {
     CudaConvPlanKey cuda_conv_plan = 15;
     CustomKernelFusionKey custom_kernel_fusion = 18;
     stream_executor.dnn.AlgorithmProto algorithm = 16;
+    BackendConfigKey other = 19;
   }
 }
 
@@ -120,5 +128,10 @@ message AutotuningLog {
 
   int64 fusion_count = 8;
 
-  // Next ID: 9
+  // String representation of the selected backend. For fusions that will be
+  // the GPU backend config type. For custom calls it is a target name of the
+  // custom call.
+  string selected_backend = 9;
+
+  // Next ID: 10
 }

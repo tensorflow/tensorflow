@@ -71,7 +71,7 @@ InfeedManager* GpuTransferManager::GetOrCreateInfeedManager(
   static auto* const infeed_managers =
       new absl::flat_hash_map<se::StreamExecutor*,
                               std::unique_ptr<InfeedManager>>();
-  absl::MutexLock lock(mutex);
+  absl::MutexLock lock(*mutex);
   if (!infeed_managers->contains(executor)) {
     infeed_managers->emplace(executor,
                              std::make_unique<InfeedManager>(executor));
@@ -85,7 +85,7 @@ OutfeedManager* GpuTransferManager::GetOrCreateOutfeedManager(
   static auto* const outfeed_managers =
       new absl::flat_hash_map<se::StreamExecutor*,
                               std::unique_ptr<OutfeedManager>>();
-  absl::MutexLock lock(mutex);
+  absl::MutexLock lock(*mutex);
   if (!outfeed_managers->contains(executor)) {
     outfeed_managers->emplace(executor, std::make_unique<OutfeedManager>());
   }
@@ -178,13 +178,13 @@ absl::Status GpuTransferManager::ReadDynamicShapes(
 
   // Return checked-out buffers at the end of this function.
   absl::Cleanup cleanup = [&] {
-    absl::MutexLock lock(&mu_);
+    absl::MutexLock lock(mu_);
     pinned_buffers_.insert(pinned_buffers_.end(), checked_out_buffers.begin(),
                            checked_out_buffers.end());
   };
 
   {
-    absl::MutexLock lock(&mu_);
+    absl::MutexLock lock(mu_);
     TF_RETURN_IF_ERROR(EnsurePinnedBuffersAllocated(stream->parent()));
 
     for (const auto& src_dst : copies) {
@@ -261,7 +261,7 @@ absl::Status GpuTransferManager::TransferBufferFromDevice(
   TF_ASSIGN_OR_RETURN(auto staging_buffer,
                       GetOrCreateStagingBuffer(stream->parent()));
 
-  absl::MutexLock lock(&staging_buffer->mutex);
+  absl::MutexLock lock(staging_buffer->mutex);
   void* staging = staging_buffer->allocation->opaque();
 
   // Transfer chunk of data from device to destination via staging buffer.
@@ -302,7 +302,7 @@ absl::Status GpuTransferManager::TransferBufferToDevice(
   TF_ASSIGN_OR_RETURN(auto staging_buffer,
                       GetOrCreateStagingBuffer(stream->parent()));
 
-  absl::MutexLock lock(&staging_buffer->mutex);
+  absl::MutexLock lock(staging_buffer->mutex);
   void* staging = staging_buffer->allocation->opaque();
 
   // Transfer chunk of data from device to destination.
@@ -334,7 +334,7 @@ GpuTransferManager::StagingBuffer::StagingBuffer(
 
 absl::StatusOr<GpuTransferManager::StagingBuffer*>
 GpuTransferManager::GetOrCreateStagingBuffer(se::StreamExecutor* executor) {
-  absl::MutexLock lock(&mutex_);
+  absl::MutexLock lock(mutex_);
   if (auto it = staging_buffers_.find(executor); it != staging_buffers_.end()) {
     return &it->second;
   }

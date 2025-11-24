@@ -65,7 +65,7 @@ class FakeHttpRequest : public CurlHttpRequest {
   ///  and capture the POST body.
   ///
   /// Post body is not expected to be a part of the 'request' parameter.
-  FakeHttpRequest(const string& request, const string& response,
+  FakeHttpRequest(const std::string& request, const string& response,
                   absl::Status response_status, string* captured_post_body,
                   const std::map<string, string>& response_headers,
                   uint64 response_code)
@@ -103,7 +103,7 @@ class FakeHttpRequest : public CurlHttpRequest {
       *captured_post_body_ = string(buffer, size);
     } else {
       actual_request_ +=
-          strings::StrCat("Post body: ", absl::string_view(buffer, size), "\n");
+          absl::StrCat("Post body: ", absl::string_view(buffer, size), "\n");
     }
   }
   void SetPutEmptyBody() override { actual_request_ += "Put: yes\n"; }

@@ -29,12 +29,12 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
-#include "xla/backends/gpu/collectives/gpu_collectives.h"
+#include "absl/types/span.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/backends/gpu/runtime/p2p_thunk_common.h"
+#include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/core/collectives/communicator.h"
 #include "xla/hlo/ir/hlo_instructions.h"
-#include "xla/service/collective_ops_utils.h"
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
@@ -49,13 +49,13 @@ class CollectivePermuteStartThunk : public CollectiveThunk {
  public:
   class RecvPtrMap {
    public:
-    bool IsInitialized(int64_t current_id) {
-      absl::MutexLock lock(&mutex_);
+    bool IsInitialized(int64_t current_id) const {
+      absl::MutexLock lock(mutex_);
       return recv_ptrs_.find(current_id) != recv_ptrs_.end();
     }
 
     absl::Status InitializeId(int64_t current_id) {
-      absl::MutexLock lock(&mutex_);
+      absl::MutexLock lock(mutex_);
       recv_ptrs_[current_id] =
           tsl::MakeUnconstructedAsyncValueRef<std::vector<void*>>();
       return absl::OkStatus();
@@ -67,7 +67,7 @@ class CollectivePermuteStartThunk : public CollectiveThunk {
         return absl::InternalError(absl::StrCat("Current ID ", current_id,
                                                 " has not been initialized!"));
       }
-      absl::MutexLock lock(&mutex_);
+      absl::MutexLock lock(mutex_);
       if (recv_ptrs_.at(current_id).IsUnavailable()) {
         VLOG(3) << "Putting pointers to current_id " << current_id;
         recv_ptrs_.at(current_id).emplace(ptrs);
@@ -76,17 +76,17 @@ class CollectivePermuteStartThunk : public CollectiveThunk {
     }
 
     absl::StatusOr<AsyncValueRef<std::vector<void*>>> GetRecvPtr(
-        int64_t target_id) {
+        int64_t target_id) const {
       if (!IsInitialized(target_id)) {
         return absl::InternalError(absl::StrCat("Target ID ", target_id,
                                                 " has not been initialized!"));
       }
-      absl::MutexLock lock(&mutex_);
-      return recv_ptrs_[target_id];
+      absl::MutexLock lock(mutex_);
+      return recv_ptrs_.at(target_id);
     }
 
    private:
-    absl::Mutex mutex_;
+    mutable absl::Mutex mutex_;
     absl::node_hash_map<int64_t, AsyncValueRef<std::vector<void*>>> recv_ptrs_
         ABSL_GUARDED_BY(mutex_);
   };
@@ -106,12 +106,18 @@ class CollectivePermuteStartThunk : public CollectiveThunk {
                               const std::vector<Buffer>& buffers,
                               bool p2p_memcpy_enabled,
                               AsyncStreamKind stream_kind);
+
   absl::Status Initialize(const InitializeParams& params) override;
 
   static const char* GetHloOpName() { return "collective-permute-start"; }
 
- protected:
   const CollectiveConfig& config() const override { return config_.config; }
+
+  absl::Span<const Buffer> buffers() const { return buffers_; }
+
+  const P2PConfig& p2p_config() const { return config_; }
+
+ protected:
   absl::StatusOr<bool> RunCollective(const ExecuteParams& params,
                                      se::Stream& stream,
                                      CommunicatorHandle comm_handle) override;
@@ -125,16 +131,17 @@ class CollectivePermuteStartThunk : public CollectiveThunk {
       receiver_barrier_events_;
   absl::flat_hash_map<int64_t, std::unique_ptr<se::Event>>
       sender_barrier_events_;
-
   bool p2p_memcpy_enabled_ = false;
-  int64_t device_count_;
+  int64_t device_count_ = 0;
 };
 
 absl::Status RunCollectivePermute(
     P2PConfig::SourceTargetMapEntry source_target,
-    std::vector<DeviceBufferPair>& buffers, se::Stream& stream,
+    const std::vector<DeviceBufferPair>& buffers, se::Stream& stream,
     Communicator* comm, absl::string_view device_string, int64_t current_id,
-    bool use_memcpy, CollectivePermuteStartThunk::RecvPtrMap& recv_ptr_map);
+    bool use_memcpy = false,
+    const CollectivePermuteStartThunk::RecvPtrMap* recv_ptr_map = nullptr,
+    bool use_symmetric_buffer = false);
 
 }  // namespace gpu
 }  // namespace xla

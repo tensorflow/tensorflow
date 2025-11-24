@@ -26,8 +26,8 @@ limitations under the License.
 #include <vector>
 
 #include <gtest/gtest.h>
+#include "absl/functional/overload.h"
 #include "absl/log/log.h"
-#include "xla/service/overload.h"
 
 namespace xla::gpu {
 namespace {
@@ -126,23 +126,24 @@ TEST_P(EuclideanNN2DInterpolatorTest, ReturnsNearestNeighbour) {
     std::array<int64_t, 2> plane_point = point.first;
     int val = point.second;
     std::visit(
-        Overload{[&](const std::unique_ptr<EuclideanNNInterpolator<int64_t, 2>>&
-                         nn) { return nn->Add(plane_point, val); },
-                 [&](const std::unique_ptr<
-                     EuclideanComplementInterpolator<int64_t, 2>>& comp) {
-                   return comp->Add(plane_point, val);
-                 }},
+        absl::Overload(
+            [&](const std::unique_ptr<EuclideanNNInterpolator<int64_t, 2>>&
+                    nn) { return nn->Add(plane_point, val); },
+            [&](const std::unique_ptr<
+                EuclideanComplementInterpolator<int64_t, 2>>& comp) {
+              return comp->Add(plane_point, val);
+            }),
         interpolator);
   }
   std::visit(
-      Overload{
+      absl::Overload(
           [&](const std::unique_ptr<EuclideanNNInterpolator<int64_t, 2>>& nn) {
             EXPECT_EQ(nn->Eval(param.eval_point), param.expected_value);
           },
           [&](const std::unique_ptr<
               EuclideanComplementInterpolator<int64_t, 2>>& comp) {
             EXPECT_EQ(comp->Eval(param.eval_point), param.expected_value);
-          }},
+          }),
       interpolator);
 }
 

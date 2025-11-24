@@ -1,6 +1,6 @@
-// RUN: fusion_to_mlir %s | emitters_opt -xla-gpu-test-optimize |\
+// RUN: fusion_to_mlir %s | emitters_opt -xla-test-optimize |\
 // RUN:   FileCheck %s
-// RUN: test_correctness %s
+// RUN: gpu_test_correctness %s
 
 fusion {
   %p0 = f32[20,160,170] parameter(0)
@@ -9,14 +9,13 @@ fusion {
   ROOT %abs = f32[20,170,160] abs(%transpose)
 }
 // CHECK-LABEL: func.func @main(
-// CHECK-SAME:   %[[INPUT:.*]]: tensor<20x160x170xf32> {
 // CHECK-SAME:   }, %[[OUT:.*]]: tensor<20x170x160xf32>
 
 // CHECK:      %[[SHMEM:.*]] = xla_gpu.allocate_shared : tensor<1x32x33xf32>
-// CHECK:      %[[MATERIALIZED:.*]] = xla_gpu.materialize
-// CHECK-SAME:   @fusion_exp(%[[INPUT]]) at #indexing_map
-// CHECK:      %[[SHMEM_WITH_VALS:.*]] = xla_gpu.insert %[[MATERIALIZED]]
-// CHECK-SAME:   into %[[SHMEM]] at #indexing_map
+// CHECK:      %[[SHMEM_WITH_VALS:.*]] = xla.loop
+// CHECK-SAME:     iter_args(%[[SHMEM_:.*]] = %[[SHMEM]])
+// CHECK:        %[[EXP:.*]] = xla.pure_call @fusion_exp
+// CHECK:        tensor.insert %[[EXP]] into %[[SHMEM_]]
 
 // CHECK:      %[[SYNC:.*]] = xla_gpu.sync_threads %[[SHMEM_WITH_VALS]]
 

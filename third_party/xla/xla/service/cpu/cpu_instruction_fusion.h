@@ -31,18 +31,9 @@ namespace cpu {
 
 class CpuInstructionFusion : public InstructionFusion {
  public:
-  CpuInstructionFusion()
-      : InstructionFusion(CpuInstructionFusion::IsExpensive) {}
+  explicit CpuInstructionFusion(bool may_duplicate = true)
+      : InstructionFusion(CpuInstructionFusion::IsExpensive, may_duplicate) {}
   ~CpuInstructionFusion() override = default;
-
-  using HloPassInterface::Run;
-  absl::StatusOr<bool> Run(HloModule* module,
-                           const absl::flat_hash_set<absl::string_view>&
-                               execution_threads) override {
-    fusion_node_evaluations_.clear();
-    ComputeInstructionsToSkip(module, execution_threads);
-    return InstructionFusion::Run(module, execution_threads);
-  }
 
   // Returns the threshold for a constant to be considered a large constant.
   static constexpr int64_t GetLargeConstantThresholdBytes() {
@@ -56,12 +47,17 @@ class CpuInstructionFusion : public InstructionFusion {
   HloInstruction::FusionKind ChooseKind(
       const HloInstruction* producer, const HloInstruction* consumer) override;
 
+  absl::StatusOr<bool> RunImpl(HloModule* module,
+                               const absl::flat_hash_set<absl::string_view>&
+                                   execution_threads) override {
+    fusion_node_evaluations_.clear();
+    ComputeInstructionsToSkip(module, execution_threads);
+    return InstructionFusion::RunImpl(module, execution_threads);
+  }
+
  private:
   HloInstruction* FuseInstruction(HloInstruction* fusion_instruction,
                                   HloInstruction* producer) override;
-
-  // Returns if a constant is large enough to be considered a large constant.
-  bool IsLargeConstant(const HloInstruction* constant) const;
 
   bool ShouldSkip(const HloInstruction* inst) const;
   void ComputeInstructionsToSkip(

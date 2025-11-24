@@ -40,6 +40,7 @@ from tensorflow.python.tpu import device_assignment as device_assignment_lib
 from tensorflow.python.tpu import tpu_embedding_for_serving
 from tensorflow.python.tpu import tpu_embedding_v2_utils
 from tensorflow.python.tpu import tpu_embedding_v3
+from tensorflow.python.tpu import tpu_embedding_v3_utils
 
 
 _TPU = flags.DEFINE_string('tpu', None, 'The TPU to use for TPUStrategy.')
@@ -47,6 +48,7 @@ _TPU = flags.DEFINE_string('tpu', None, 'The TPU to use for TPUStrategy.')
 
 
 RowIdInitializer = tpu_embedding_v2_utils.RowIdInitializer
+shard_initializer = tpu_embedding_v3_utils.shard_initializer
 
 
 def get_replica_values(per_replica_or_tensor):
@@ -75,21 +77,6 @@ class TPUEmbeddingLayerV2Test(parameterized.TestCase, test.TestCase):
     self.vocabulary_size = 128
     self.embedding_dim = 8
 
-    self.table_video = tpu_embedding_v2_utils.TableConfig(
-        vocabulary_size=self.vocabulary_size,
-        dim=self.embedding_dim,
-        initializer=RowIdInitializer(0),
-        combiner='sum',
-        name='video',
-    )
-    self.table_user = tpu_embedding_v2_utils.TableConfig(
-        vocabulary_size=self.vocabulary_size,
-        dim=self.embedding_dim,
-        initializer=RowIdInitializer(1000),
-        combiner='sum',
-        name='user',
-    )
-
     resolver = tpu_cluster_resolver.TPUClusterResolver(tpu=_TPU.value)
     if _TPU.value is None:
       remote.connect_to_cluster(resolver)
@@ -108,7 +95,28 @@ class TPUEmbeddingLayerV2Test(parameterized.TestCase, test.TestCase):
     )
 
     self.addCleanup(tpu_cluster_resolver.shutdown_tpu_system, resolver)
+    self.sharded_row_id_initializer = lambda offset: shard_initializer(
+        self._strategy, RowIdInitializer(offset)
+    )
 
+    self.sharded_pad_to_shape_initializer = lambda init_mat: shard_initializer(
+        self._strategy, pad_to_shape_initializer(init_mat)
+    )
+
+    self.table_video = tpu_embedding_v2_utils.TableConfig(
+        vocabulary_size=self.vocabulary_size,
+        dim=self.embedding_dim,
+        initializer=self.sharded_row_id_initializer(0),
+        combiner='sum',
+        name='video',
+    )
+    self.table_user = tpu_embedding_v2_utils.TableConfig(
+        vocabulary_size=self.vocabulary_size,
+        dim=self.embedding_dim,
+        initializer=self.sharded_row_id_initializer(1000),
+        combiner='sum',
+        name='user',
+    )
     self.feature_video = tpu_embedding_v2_utils.FeatureConfig(
         table=self.table_video,
         name='video',
@@ -222,7 +230,7 @@ class TPUEmbeddingLayerV2Test(parameterized.TestCase, test.TestCase):
     table1 = tpu_embedding_v2_utils.TableConfig(
         vocabulary_size=10,
         dim=2,
-        initializer=pad_to_shape_initializer(table1_initial_value),
+        initializer=self.sharded_pad_to_shape_initializer(table1_initial_value),
         combiner='sum',
         name='table1',
     )
@@ -232,7 +240,7 @@ class TPUEmbeddingLayerV2Test(parameterized.TestCase, test.TestCase):
     table2 = tpu_embedding_v2_utils.TableConfig(
         vocabulary_size=20,
         dim=2,
-        initializer=pad_to_shape_initializer(table2_initial_value),
+        initializer=self.sharded_pad_to_shape_initializer(table2_initial_value),
         combiner='sum',
         name='table2',
     )
@@ -261,7 +269,7 @@ class TPUEmbeddingLayerV2Test(parameterized.TestCase, test.TestCase):
     table1 = tpu_embedding_v2_utils.TableConfig(
         vocabulary_size=12,
         dim=2,
-        initializer=pad_to_shape_initializer(table1_initial_value),
+        initializer=self.sharded_pad_to_shape_initializer(table1_initial_value),
         combiner='sum',
         name='table1',
     )
@@ -271,7 +279,7 @@ class TPUEmbeddingLayerV2Test(parameterized.TestCase, test.TestCase):
     table2 = tpu_embedding_v2_utils.TableConfig(
         vocabulary_size=20,
         dim=9,  # to ensure stacking does not occur
-        initializer=pad_to_shape_initializer(table2_initial_value),
+        initializer=self.sharded_pad_to_shape_initializer(table2_initial_value),
         combiner='sum',
         name='table2',
     )
@@ -341,7 +349,7 @@ class TPUEmbeddingLayerV2Test(parameterized.TestCase, test.TestCase):
     table1 = tpu_embedding_v2_utils.TableConfig(
         vocabulary_size=12,
         dim=2,
-        initializer=pad_to_shape_initializer(table1_initial_value),
+        initializer=self.sharded_pad_to_shape_initializer(table1_initial_value),
         combiner='sum',
         name='table1',
     )
@@ -351,7 +359,7 @@ class TPUEmbeddingLayerV2Test(parameterized.TestCase, test.TestCase):
     table2 = tpu_embedding_v2_utils.TableConfig(
         vocabulary_size=20,
         dim=2,
-        initializer=pad_to_shape_initializer(table2_initial_value),
+        initializer=self.sharded_pad_to_shape_initializer(table2_initial_value),
         combiner='sum',
         name='table2',
     )
@@ -417,7 +425,7 @@ class TPUEmbeddingLayerV2Test(parameterized.TestCase, test.TestCase):
     table1 = tpu_embedding_v2_utils.TableConfig(
         vocabulary_size=25,
         dim=6,
-        initializer=RowIdInitializer(0),
+        initializer=self.sharded_row_id_initializer(0),
         combiner='sum',
         name='table1',
     )
@@ -454,7 +462,17 @@ class TPUEmbeddingLayerV2Test(parameterized.TestCase, test.TestCase):
     total_sc_shards = (
         replicas * cores_per_replica * mid_level_api._num_sc_per_chip
     )
-    padded_vocab = 8 * total_sc_shards
+    def get_padded_vocab_size(total_sc_shards, vocab_size):
+      # multiple of (8 * total_sc_shards) which is greater than or equal to
+      # vocab size
+      result = 0
+      while result < vocab_size:
+        result += 8 * total_sc_shards
+      return result
+
+    padded_vocab = get_padded_vocab_size(
+        total_sc_shards, table1.vocabulary_size
+    )
     unsharded_full_value = cpu_embedding._variables['table1']['parameters']
     shard_shape = [padded_vocab // total_sc_shards, 8]
     offset = 0

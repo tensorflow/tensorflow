@@ -19,16 +19,15 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "absl/strings/string_view.h"
-#include "xla/pjrt/pjrt_c_api_client.h"
+#include "xla/pjrt/c_api_client/pjrt_c_api_client.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/plugin/test/plugin_test_fixture.h"
-#include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/test.h"
 
 namespace {
 
-using ::tsl::testing::StatusIs;
 using ::xla::PluginTestFixture;
 
 TEST_F(PluginTestFixture, PluginReportsValidName) {
@@ -41,6 +40,7 @@ TEST(PluginRegistrationTest, InvalidPluginName) {
   absl::string_view invalid_plugin_name = "invalid_plugin";
   absl::StatusOr<std::unique_ptr<xla::PjRtClient>> client =
       xla::GetCApiClient(invalid_plugin_name, {}, nullptr);
-  ASSERT_THAT(client.status(), StatusIs(absl::StatusCode::kNotFound));
+  ASSERT_THAT(client.status(),
+              absl_testing::StatusIs(absl::StatusCode::kNotFound));
 }
 }  // namespace

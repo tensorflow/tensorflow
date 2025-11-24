@@ -2694,7 +2694,7 @@ py_strict_library(
         "//tensorflow/python/util:dispatch",
         "//tensorflow/python/util:tf_export",
         "//third_party/py/numpy",
-        "@pypi_opt_einsum//:pkg",
+        "@pypi//opt_einsum",
     ],
 )
 
@@ -3063,7 +3063,7 @@ py_strict_library(
         "//tensorflow/python/util:tf_should_use",
         "//tensorflow/python/util:traceback_utils",
         "@absl_py//absl/logging",
-        "@pypi_typing_extensions//:pkg",
+        "@pypi//typing_extensions",
     ],
 )
 
@@ -3557,7 +3557,7 @@ cuda_py_strict_test(
         "//tensorflow/python/platform:test",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
-        "@pypi_packaging//:pkg",
+        "@pypi//packaging",
     ],
 )
 
@@ -3785,7 +3785,7 @@ cuda_py_strict_test(
         "//tensorflow/python/platform:tf_logging",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
-        "@pypi_opt_einsum//:pkg",
+        "@pypi//opt_einsum",
     ],
 )
 

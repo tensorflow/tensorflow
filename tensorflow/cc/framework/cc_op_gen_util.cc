@@ -16,22 +16,36 @@ limitations under the License.
 #include "tensorflow/cc/framework/cc_op_gen_util.h"
 
 #include <cmath>
+#include <cstddef>
+#include <cstdint>
 #include <string>
 #include <unordered_map>
-#include <unordered_set>
 #include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/ascii.h"
 #include "absl/strings/escaping.h"
-#include "xla/tsl/platform/statusor.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
+#include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/framework/op.h"
+#include "tensorflow/core/framework/op_gen_lib.h"
+#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor.pb.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
-#include "tensorflow/core/lib/io/path.h"
-#include "tensorflow/core/platform/strcat.h"
+#include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/hash.h"
+#include "tensorflow/core/platform/numbers.h"
+#include "tensorflow/core/platform/path.h"
+#include "tensorflow/core/platform/str_util.h"
+#include "tensorflow/core/platform/tstring.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
@@ -93,10 +107,10 @@ string ToGuard(absl::string_view path) {
   string guard;
   guard.reserve(path.size() + 1);  // + 1 -> trailing _
   for (const char c : path) {
-    if (c >= 'A' && c <= 'Z') {
+    if (absl::ascii_isupper(c)) {
       guard += c;
-    } else if (c >= 'a' && c <= 'z') {
-      guard += c + 'A' - 'a';
+    } else if (absl::ascii_islower(c)) {
+      guard += absl::ascii_toupper(c);
     } else {
       guard += '_';
     }
@@ -124,10 +138,10 @@ string MakeComment(absl::string_view text, absl::string_view indent) {
       if (text[newline] != ' ') last_non_space = newline;
     }
     if (last_non_space == -1) {
-      strings::StrAppend(&ret, indent, "///\n");
+      absl::StrAppend(&ret, indent, "///\n");
     } else {
-      strings::StrAppend(&ret, indent, "/// ",
-                         text.substr(0, last_non_space + 1), "\n");
+      absl::StrAppend(&ret, indent, "/// ", text.substr(0, last_non_space + 1),
+                      "\n");
     }
     text.remove_prefix(newline + 1);
   }
@@ -135,7 +149,7 @@ string MakeComment(absl::string_view text, absl::string_view indent) {
 }
 
 string PrintString(absl::string_view str) {
-  return strings::StrCat("\"", absl::CEscape(str), "\"");
+  return absl::StrCat("\"", absl::CEscape(str), "\"");
 }
 
 string PrintTensorShape(const TensorShapeProto& shape_proto) {
@@ -145,10 +159,10 @@ string PrintTensorShape(const TensorShapeProto& shape_proto) {
   }
   string ret = "{";
   for (int d = 0; d < shape.dims(); ++d) {
-    if (d > 0) strings::StrAppend(&ret, ", ");
-    strings::StrAppend(&ret, shape.dim_size(d));
+    if (d > 0) absl::StrAppend(&ret, ", ");
+    absl::StrAppend(&ret, shape.dim_size(d));
   }
-  strings::StrAppend(&ret, "}");
+  absl::StrAppend(&ret, "}");
   return ret;
 }
 
@@ -182,8 +196,8 @@ string PrintTensor(const TensorProto& tensor_proto) {
     case DT_STRING: {
       string ret;
       for (int64_t i = 0; i < num_elts; ++i) {
-        if (i > 0) strings::StrAppend(&ret, " ");
-        strings::StrAppend(&ret, absl::CEscape(t.flat<tstring>()(i)));
+        if (i > 0) absl::StrAppend(&ret, " ");
+        absl::StrAppend(&ret, absl::CEscape(t.flat<tstring>()(i)));
       }
       return ret;
     }
@@ -195,9 +209,9 @@ string PrintTensor(const TensorProto& tensor_proto) {
 }
 
 string PrintTensorProto(const TensorProto& proto) {
-  return strings::StrCat("Input::Initializer(", "{", PrintTensor(proto), "}, ",
-                         PrintTensorShape(proto.tensor_shape()),
-                         ").AsTensorProto()");
+  return absl::StrCat("Input::Initializer(", "{", PrintTensor(proto), "}, ",
+                      PrintTensorShape(proto.tensor_shape()),
+                      ").AsTensorProto()");
 }
 
 string PrintAttrValue(const string& op, const AttrValue& attr_value) {
@@ -205,14 +219,15 @@ string PrintAttrValue(const string& op, const AttrValue& attr_value) {
     case AttrValue::kS:
       return PrintString(attr_value.s());
     case AttrValue::kI:
-      return strings::StrCat(attr_value.i());
+      return absl::StrCat(attr_value.i());
     case AttrValue::kF: {
       const float f = attr_value.f();
       if (std::isinf(f)) {
-        return strings::StrCat(f < 0.0f ? "-" : "+",
-                               "std::numeric_limits<float>::infinity()");
+        return absl::StrCat(f < 0.0f ? "-" : "+",
+                            "std::numeric_limits<float>::infinity()");
       } else {
-        return strings::StrCat(attr_value.f(), floorf(f) == f ? ".0" : "", "f");
+        return absl::StrCat(strings::LegacyPrecision(attr_value.f()),
+                            floorf(f) == f ? ".0" : "", "f");
       }
     }
     case AttrValue::kB:
@@ -227,44 +242,43 @@ string PrintAttrValue(const string& op, const AttrValue& attr_value) {
       string ret = "{";
       if (attr_value.list().s_size() > 0) {
         for (int i = 0; i < attr_value.list().s_size(); ++i) {
-          if (i > 0) strings::StrAppend(&ret, ", ");
-          strings::StrAppend(&ret, PrintString(attr_value.list().s(i)));
+          if (i > 0) absl::StrAppend(&ret, ", ");
+          absl::StrAppend(&ret, PrintString(attr_value.list().s(i)));
         }
       } else if (attr_value.list().i_size() > 0) {
         for (int i = 0; i < attr_value.list().i_size(); ++i) {
-          if (i > 0) strings::StrAppend(&ret, ", ");
-          strings::StrAppend(&ret, attr_value.list().i(i));
+          if (i > 0) absl::StrAppend(&ret, ", ");
+          absl::StrAppend(&ret, attr_value.list().i(i));
         }
       } else if (attr_value.list().f_size() > 0) {
         for (int i = 0; i < attr_value.list().f_size(); ++i) {
-          if (i > 0) strings::StrAppend(&ret, ", ");
+          if (i > 0) absl::StrAppend(&ret, ", ");
           const float f = attr_value.list().f(i);
-          strings::StrAppend(&ret, f, floorf(f) == f ? ".0" : "", "f");
+          absl::StrAppend(&ret, strings::LegacyPrecision(f),
+                          floorf(f) == f ? ".0" : "", "f");
         }
       } else if (attr_value.list().b_size() > 0) {
         for (int i = 0; i < attr_value.list().b_size(); ++i) {
-          if (i > 0) strings::StrAppend(&ret, ", ");
-          strings::StrAppend(&ret, attr_value.list().b(i) ? "true" : "false");
+          if (i > 0) absl::StrAppend(&ret, ", ");
+          absl::StrAppend(&ret, attr_value.list().b(i) ? "true" : "false");
         }
       } else if (attr_value.list().type_size() > 0) {
         for (int i = 0; i < attr_value.list().type_size(); ++i) {
-          if (i > 0) strings::StrAppend(&ret, ", ");
-          strings::StrAppend(&ret, DataType_Name(attr_value.list().type(i)));
+          if (i > 0) absl::StrAppend(&ret, ", ");
+          absl::StrAppend(&ret, DataType_Name(attr_value.list().type(i)));
         }
       } else if (attr_value.list().shape_size() > 0) {
         for (int i = 0; i < attr_value.list().shape_size(); ++i) {
-          if (i > 0) strings::StrAppend(&ret, ", ");
-          strings::StrAppend(&ret,
-                             PrintTensorShape(attr_value.list().shape(i)));
+          if (i > 0) absl::StrAppend(&ret, ", ");
+          absl::StrAppend(&ret, PrintTensorShape(attr_value.list().shape(i)));
         }
       } else if (attr_value.list().tensor_size() > 0) {
         for (int i = 0; i < attr_value.list().tensor_size(); ++i) {
-          if (i > 0) strings::StrAppend(&ret, ", ");
-          strings::StrAppend(&ret,
-                             PrintTensorProto(attr_value.list().tensor(i)));
+          if (i > 0) absl::StrAppend(&ret, ", ");
+          absl::StrAppend(&ret, PrintTensorProto(attr_value.list().tensor(i)));
         }
       }
-      strings::StrAppend(&ret, "}");
+      absl::StrAppend(&ret, "}");
       return ret;
     }
     default:
@@ -292,7 +306,7 @@ string ToCamelCase(absl::string_view str) {
     } else if (c == joiner) {
       cap = true;
     } else if (cap) {
-      result += toupper(c);
+      result += absl::ascii_toupper(c);
       cap = false;
     } else {
       result += c;
@@ -476,7 +490,7 @@ bool IsCPPKeyword(absl::string_view name) {
 
 string AvoidCPPKeywords(absl::string_view name) {
   if (IsCPPKeyword(name)) {
-    return strings::StrCat(name, "_");
+    return absl::StrCat(name, "_");
   }
   return string(name);
 }
@@ -531,36 +545,35 @@ OpInfo::OpInfo(const OpDef& graph_op_def, const ApiDef& api_def,
 
   if (graph_op_def.has_deprecation()) {
     if (!api_def.summary().empty()) {
-      comment = strings::StrCat(api_def.summary(), "\n");
+      comment = absl::StrCat(api_def.summary(), "\n");
     }
-    strings::StrAppend(&comment, "DEPRECATED at GraphDef version ",
-                       graph_op_def.deprecation().version(), ":\n",
-                       graph_op_def.deprecation().explanation(), ".\n");
+    absl::StrAppend(&comment, "DEPRECATED at GraphDef version ",
+                    graph_op_def.deprecation().version(), ":\n",
+                    graph_op_def.deprecation().explanation(), ".\n");
   } else if (api_def.summary().empty()) {
     comment = "TODO: add doc.\n";
   } else {
-    comment = strings::StrCat(api_def.summary(), "\n");
+    comment = absl::StrCat(api_def.summary(), "\n");
   }
   if (!api_def.description().empty()) {
-    strings::StrAppend(&comment, "\n", api_def.description(), "\n");
+    absl::StrAppend(&comment, "\n", api_def.description(), "\n");
   }
-  strings::StrAppend(&comment, "\nArgs:\n* scope: A Scope object\n");
+  absl::StrAppend(&comment, "\nArgs:\n* scope: A Scope object\n");
 
   // Process inputs
   for (int i = 0; i < api_def.arg_order_size(); ++i) {
     const auto& arg = *FindInputArg(api_def.arg_order(i), graph_op_def);
     const auto& api_def_arg = *FindInputArg(api_def.arg_order(i), api_def);
-    arg_types.push_back(strings::StrCat(
-        "::tensorflow::", ArgIsList(arg) ? "InputList" : "Input"));
+    arg_types.push_back(
+        absl::StrCat("::tensorflow::", ArgIsList(arg) ? "InputList" : "Input"));
     arg_names.push_back(AvoidCPPKeywords(api_def_arg.rename_to()));
 
     // TODO(keveman): Include input type information.
     absl::string_view description = api_def_arg.description();
     if (!description.empty()) {
       ConsumeEquals(&description);
-      strings::StrAppend(&comment, "* ",
-                         AvoidCPPKeywords(api_def_arg.rename_to()), ": ",
-                         api_def_arg.description(), "\n");
+      absl::StrAppend(&comment, "* ", AvoidCPPKeywords(api_def_arg.rename_to()),
+                      ": ", api_def_arg.description(), "\n");
     }
   }
 
@@ -585,24 +598,24 @@ OpInfo::OpInfo(const OpDef& graph_op_def, const ApiDef& api_def,
     if (!api_def_attr.description().empty()) {
       // TODO(keveman): Word wrap and indent this, to handle multi-line
       // descriptions.
-      strings::StrAppend(&attr_comment, "* ", attr_name, ": ",
-                         api_def_attr.description(), "\n");
+      absl::StrAppend(&attr_comment, "* ", attr_name, ": ",
+                      api_def_attr.description(), "\n");
     }
     if (api_def_attr.has_default_value()) {
-      strings::StrAppend(&optional_attrs_comment, attr_comment);
+      absl::StrAppend(&optional_attrs_comment, attr_comment);
     } else {
-      strings::StrAppend(&required_attrs_comment, attr_comment);
-      arg_types.push_back(strings::StrCat(
-          use_const ? "const " : "", attr_type_name, use_const ? "&" : ""));
+      absl::StrAppend(&required_attrs_comment, attr_comment);
+      arg_types.push_back(absl::StrCat(use_const ? "const " : "",
+                                       attr_type_name, use_const ? "&" : ""));
       arg_names.push_back(attr_name);
     }
   }
 
-  strings::StrAppend(&comment, required_attrs_comment);
+  absl::StrAppend(&comment, required_attrs_comment);
 
   if (!optional_attrs_comment.empty()) {
-    strings::StrAppend(&comment, "\nOptional attributes (see `Attrs`):\n");
-    strings::StrAppend(&comment, optional_attrs_comment);
+    absl::StrAppend(&comment, "\nOptional attributes (see `Attrs`):\n");
+    absl::StrAppend(&comment, optional_attrs_comment);
   }
 
   // Process outputs
@@ -615,49 +628,48 @@ OpInfo::OpInfo(const OpDef& graph_op_def, const ApiDef& api_def,
 
     bool is_list = ArgIsList(arg);
     output_types.push_back(
-        strings::StrCat("::tensorflow::", is_list ? "OutputList" : "Output"));
+        absl::StrCat("::tensorflow::", is_list ? "OutputList" : "Output"));
     output_names.push_back(AvoidCPPKeywords(api_def_arg.rename_to()));
     is_list_output.push_back(is_list);
   }
 
-  strings::StrAppend(&comment, "\nReturns:\n");
+  absl::StrAppend(&comment, "\nReturns:\n");
   if (graph_op_def.output_arg_size() == 0) {  // No outputs.
-    strings::StrAppend(&comment, "* the created `Operation`\n");
+    absl::StrAppend(&comment, "* the created `Operation`\n");
   } else if (graph_op_def.output_arg_size() == 1) {  // One output
     if (is_list_output[0]) {
-      strings::StrAppend(&comment, "* `OutputList`: ");
+      absl::StrAppend(&comment, "* `OutputList`: ");
     } else {
-      strings::StrAppend(&comment, "* `Output`: ");
+      absl::StrAppend(&comment, "* `Output`: ");
     }
     if (api_def.out_arg(0).description().empty()) {
-      strings::StrAppend(&comment, "The ", api_def.out_arg(0).name(),
-                         " tensor.\n");
+      absl::StrAppend(&comment, "The ", api_def.out_arg(0).name(),
+                      " tensor.\n");
     } else {
       // TODO(josh11b): Word wrap this.
-      strings::StrAppend(&comment, api_def.out_arg(0).description(), "\n");
+      absl::StrAppend(&comment, api_def.out_arg(0).description(), "\n");
     }
   } else {  // Multiple outputs.
     for (int i = 0; i < graph_op_def.output_arg_size(); ++i) {
       if (is_list_output[i]) {
-        strings::StrAppend(&comment, "* `OutputList`");
+        absl::StrAppend(&comment, "* `OutputList`");
       } else {
-        strings::StrAppend(&comment, "* `Output`");
+        absl::StrAppend(&comment, "* `Output`");
       }
-      strings::StrAppend(&comment, " ", output_names[i]);
+      absl::StrAppend(&comment, " ", output_names[i]);
       if (api_def.out_arg(i).description().empty()) {
-        strings::StrAppend(&comment, "\n");
+        absl::StrAppend(&comment, "\n");
       } else {
         // TODO(josh11b): Word wrap this.
-        strings::StrAppend(&comment, ": ", api_def.out_arg(i).description(),
-                           "\n");
+        absl::StrAppend(&comment, ": ", api_def.out_arg(i).description(), "\n");
       }
     }
   }
 
   if (!aliases.empty()) {
-    strings::StrAppend(&comment, "\nAliases:\n");
+    absl::StrAppend(&comment, "\nAliases:\n");
     for (const auto& alias : aliases) {
-      strings::StrAppend(&comment, "* ", alias, "\n");
+      absl::StrAppend(&comment, "* ", alias, "\n");
     }
   }
   comment = MakeComment(comment, "");
@@ -685,24 +697,24 @@ string OpInfo::GetOpAttrStruct() const {
     const string suffix =
         (camel_case_name == op_name || camel_case_name == "Attrs") ? "_" : "";
     const string attr_func_def =
-        strings::StrCat(camel_case_name, suffix, "(", use_const ? "const " : "",
-                        attr_type_name, use_const ? "&" : "");
+        absl::StrCat(camel_case_name, suffix, "(", use_const ? "const " : "",
+                     attr_type_name, use_const ? "&" : "");
 
     string attr_comment;
     if (!api_def_attr.description().empty()) {
-      strings::StrAppend(&attr_comment, api_def_attr.description(), "\n\n");
+      absl::StrAppend(&attr_comment, api_def_attr.description(), "\n\n");
     }
-    strings::StrAppend(&attr_comment, "Defaults to ",
-                       SummarizeAttrValue(api_def_attr.default_value()), "\n");
+    absl::StrAppend(&attr_comment, "Defaults to ",
+                    SummarizeAttrValue(api_def_attr.default_value()), "\n");
     attr_comment = MakeComment(attr_comment, "    ");
 
-    strings::StrAppend(&setters, attr_comment);
-    strings::StrAppend(&setters, "    TF_MUST_USE_RESULT Attrs ", attr_func_def,
-                       " x) {\n");
-    strings::StrAppend(&setters, "      Attrs ret = *this;\n");
-    strings::StrAppend(&setters, "      ret.", api_def_attr.rename_to(),
-                       "_ = x;\n");
-    strings::StrAppend(&setters, "      return ret;\n    }\n\n");
+    absl::StrAppend(&setters, attr_comment);
+    absl::StrAppend(&setters, "    TF_MUST_USE_RESULT Attrs ", attr_func_def,
+                    " x) {\n");
+    absl::StrAppend(&setters, "      Attrs ret = *this;\n");
+    absl::StrAppend(&setters, "      ret.", api_def_attr.rename_to(),
+                    "_ = x;\n");
+    absl::StrAppend(&setters, "      return ret;\n    }\n\n");
 
     string field_initiliazer;
     auto& default_value = api_def_attr.default_value();
@@ -710,26 +722,24 @@ string OpInfo::GetOpAttrStruct() const {
         !IsEmptyList(default_value.list())) {
       // Non-empty lists need static storage for their defaults. Define a
       // function with static local variable that stores the array.
-      strings::StrAppend(&defaults_static_storage, "    static ",
-                         attr_type_name, " Default_", api_def_attr.rename_to(),
-                         "() {\n");
-      strings::StrAppend(
+      absl::StrAppend(&defaults_static_storage, "    static ", attr_type_name,
+                      " Default_", api_def_attr.rename_to(), "() {\n");
+      absl::StrAppend(
           &defaults_static_storage, "      static const ",
           ListElementTypeName(attr.type()), " kStorage[] = ",
           PrintAttrValue(graph_op_def.name(), api_def_attr.default_value()),
           ";\n");
-      strings::StrAppend(&defaults_static_storage, "      return ",
-                         attr_type_name, "(kStorage);\n    }\n");
+      absl::StrAppend(&defaults_static_storage, "      return ", attr_type_name,
+                      "(kStorage);\n    }\n");
       // Set the field_initializer to call the defined function.
-      strings::StrAppend(&field_initiliazer, "Default_",
-                         api_def_attr.rename_to(), "()");
+      absl::StrAppend(&field_initiliazer, "Default_", api_def_attr.rename_to(),
+                      "()");
     } else {
       field_initiliazer =
           PrintAttrValue(graph_op_def.name(), api_def_attr.default_value());
     }
-    strings::StrAppend(&struct_fields, "    ", attr_type_name, " ",
-                       api_def_attr.rename_to(), "_ = ", field_initiliazer,
-                       ";\n");
+    absl::StrAppend(&struct_fields, "    ", attr_type_name, " ",
+                    api_def_attr.rename_to(), "_ = ", field_initiliazer, ";\n");
   }
 
   if (struct_fields.empty()) {
@@ -737,14 +747,14 @@ string OpInfo::GetOpAttrStruct() const {
   }
 
   string attrs_comment =
-      strings::StrCat("Optional attribute setters for ", op_name, "\n");
+      absl::StrCat("Optional attribute setters for ", op_name, "\n");
   string struct_decl = MakeComment(attrs_comment, "  ");
-  strings::StrAppend(&struct_decl, "  struct Attrs {\n");
-  strings::StrAppend(&struct_decl, setters, struct_fields);
+  absl::StrAppend(&struct_decl, "  struct Attrs {\n");
+  absl::StrAppend(&struct_decl, setters, struct_fields);
   if (!defaults_static_storage.empty()) {
-    strings::StrAppend(&struct_decl, "  private:\n", defaults_static_storage);
+    absl::StrAppend(&struct_decl, "  private:\n", defaults_static_storage);
   }
-  strings::StrAppend(&struct_decl, "  };\n");
+  absl::StrAppend(&struct_decl, "  };\n");
 
   return struct_decl;
 }

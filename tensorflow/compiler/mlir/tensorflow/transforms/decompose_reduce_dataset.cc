@@ -77,14 +77,14 @@ AnonymousIteratorV3Op CreateIterator(OpBuilder builder,
     type_attrs.push_back(TypeAttr::get(getElementTypeOrSelf(type)));
   }
 
-  auto anonymous_iterator = builder.create<AnonymousIteratorV3Op>(
-      reduce_dataset.getLoc(),
+  auto anonymous_iterator = AnonymousIteratorV3Op::create(
+      builder, reduce_dataset.getLoc(),
       RankedTensorType::get({}, builder.getType<ResourceType>()),
       /*output_types=*/builder.getArrayAttr(type_attrs),
       /*shape_types=*/builder.getArrayAttr(shape_attrs));
-  builder.create<MakeIteratorOp>(reduce_dataset.getLoc(),
-                                 reduce_dataset.getInputDataset(),
-                                 anonymous_iterator.getResult());
+  MakeIteratorOp::create(builder, reduce_dataset.getLoc(),
+                         reduce_dataset.getInputDataset(),
+                         anonymous_iterator.getResult());
   return anonymous_iterator;
 }
 
@@ -92,8 +92,8 @@ AnonymousIteratorV3Op CreateIterator(OpBuilder builder,
 // reduce_fn call.
 WhileRegionOp CreateDatasetWhile(OpBuilder builder,
                                  ReduceDatasetOp reduce_dataset) {
-  auto const_true = builder.create<TF::ConstOp>(
-      reduce_dataset.getLoc(),
+  auto const_true = TF::ConstOp::create(
+      builder, reduce_dataset.getLoc(),
       DenseIntElementsAttr::get(
           RankedTensorType::get(/*shape=*/{}, builder.getI1Type()), true));
 
@@ -106,10 +106,11 @@ WhileRegionOp CreateDatasetWhile(OpBuilder builder,
     while_input_types.push_back(reduce_dataset.getOperand(i).getType());
   }
 
-  auto dataset_while = builder.create<TF::WhileRegionOp>(
-      reduce_dataset.getLoc(), while_input_types, /*input=*/while_input_values,
-      /*parallel_iterations=*/10, false,
-      /*shape_invariant=*/false);
+  auto dataset_while =
+      TF::WhileRegionOp::create(builder, reduce_dataset.getLoc(),
+                                while_input_types, /*input=*/while_input_values,
+                                /*parallel_iterations=*/10, false,
+                                /*shape_invariant=*/false);
 
   // `_lower_using_switch_merge` is the default for While ops created
   // in TensorFlow and allows lowering to V1 control flow for loop
@@ -129,7 +130,7 @@ void PopulateDatasetWhileCond(OpBuilder builder, WhileRegionOp dataset_while,
   auto while_input_types = dataset_while.getOperandTypes();
   cond_block->addArguments(
       while_input_types, SmallVector<Location>(while_input_types.size(), loc));
-  builder.create<YieldOp>(loc, cond_block->getArgument(0));
+  YieldOp::create(builder, loc, cond_block->getArgument(0));
 }
 
 // Create an IfRegionOp with a predicate from `optional_has_value`.  If true, it
@@ -149,8 +150,8 @@ IfRegionOp CreateOptionalDatasetIf(
     if_return_types.push_back(reduce_dataset.getOperand(i).getType());
   }
 
-  auto dataset_if = builder.create<TF::IfRegionOp>(
-      loc, if_return_types, optional_has_value.getResult(), false,
+  auto dataset_if = TF::IfRegionOp::create(
+      builder, loc, if_return_types, optional_has_value.getResult(), false,
       /*_then_func_name=*/nullptr,
       /*_else_func_name=*/nullptr);
   // `_lower_using_switch_merge` allows lowering to V1 control flow for loop
@@ -165,16 +166,16 @@ IfRegionOp CreateOptionalDatasetIf(
   for (int i = 1; i < state_size + 1; i++) {
     else_returns.push_back(body_args[i]);
   }
-  builder.create<TF::YieldOp>(loc,
-                              /*operands=*/else_returns);
+  TF::YieldOp::create(builder, loc,
+                      /*operands=*/else_returns);
 
   // Then branch gets the data and calls the reduce_function.
   auto& then_branch = dataset_if.getThenBranch();
   then_branch.push_back(new Block);
   builder.setInsertionPointToEnd(&then_branch.front());
   // Add iterator operational data access inside if.
-  auto get_value = builder.create<TF::OptionalGetValueOp>(loc, dataset_types,
-                                                          get_next.getResult());
+  auto get_value = TF::OptionalGetValueOp::create(builder, loc, dataset_types,
+                                                  get_next.getResult());
   SmallVector<Value, 4> reduce_fn_args;
 
   // Function arguments are state values, dataset values, and then passthrough
@@ -192,7 +193,7 @@ IfRegionOp CreateOptionalDatasetIf(
   }
 
   auto reduce_call =
-      builder.create<mlir::func::CallOp>(loc, reduce_func, reduce_fn_args);
+      mlir::func::CallOp::create(builder, loc, reduce_func, reduce_fn_args);
 
   // Both the device attribute and compile_device_type attribute should be
   // propagated to the reduce function call.
@@ -204,8 +205,8 @@ IfRegionOp CreateOptionalDatasetIf(
 
   SmallVector<Value, 4> if_returns;
 
-  builder.create<TF::YieldOp>(loc,
-                              /*operands=*/reduce_call.getResults());
+  TF::YieldOp::create(builder, loc,
+                      /*operands=*/reduce_call.getResults());
   return dataset_if;
 }
 
@@ -221,12 +222,12 @@ void PopulateDatasetWhileBody(OpBuilder builder, ReduceDatasetOp reduce_dataset,
   Block* body_block = builder.createBlock(&body_region);
   auto body_arguments = body_block->addArguments(
       while_input_types, SmallVector<Location>(while_input_types.size(), loc));
-  auto get_next = builder.create<IteratorGetNextAsOptionalOp>(
-      loc, RankedTensorType::get({}, builder.getType<VariantType>()),
+  auto get_next = IteratorGetNextAsOptionalOp::create(
+      builder, loc, RankedTensorType::get({}, builder.getType<VariantType>()),
       anonymous_iterator.getResult(), anonymous_iterator.getOutputTypes(),
       anonymous_iterator.getOutputShapes());
-  auto optional_has_value = builder.create<OptionalHasValueOp>(
-      loc, RankedTensorType::get({}, builder.getI1Type()),
+  auto optional_has_value = OptionalHasValueOp::create(
+      builder, loc, RankedTensorType::get({}, builder.getI1Type()),
       get_next.getResult());
 
   SmallVector<Value, 4> body_args;
@@ -255,8 +256,8 @@ void PopulateDatasetWhileBody(OpBuilder builder, ReduceDatasetOp reduce_dataset,
   for (int i = state_size + 1; i < body_args.size(); ++i) {
     body_returns.push_back(body_args[i]);
   }
-  builder.create<TF::YieldOp>(loc,
-                              /*operands=*/body_returns);
+  TF::YieldOp::create(builder, loc,
+                      /*operands=*/body_returns);
 }
 
 // Decomposes any ReduceDatasetOps in `function` into a dataset iteration and a

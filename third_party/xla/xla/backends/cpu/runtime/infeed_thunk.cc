@@ -27,10 +27,10 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/types/span.h"
 #include "xla/backends/cpu/runtime/thunk.h"
+#include "xla/backends/cpu/runtime/xfeed_manager.h"
 #include "xla/runtime/buffer_use.h"
 #include "xla/runtime/resource_use.h"
 #include "xla/service/buffer_assignment.h"
-#include "xla/service/cpu/xfeed_manager.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/platform/statusor.h"
@@ -56,7 +56,7 @@ tsl::AsyncValueRef<Thunk::ExecuteEvent> InfeedThunk::Execute(
     const ExecuteParams& params) {
   VLOG(3) << absl::StreamFormat("Infeed %d buffers", infeed_buffers_.size());
 
-  runtime::XfeedManager* xfeed = params.xfeed;
+  XfeedManager* xfeed = params.xfeed;
   if (xfeed == nullptr) {
     return InvalidArgument("Xfeed must be not null to execute infeed thunk");
   }
@@ -74,7 +74,7 @@ tsl::AsyncValueRef<Thunk::ExecuteEvent> InfeedThunk::Execute(
                                   infeed_data.opaque());
 
     // Acquire infeed buffer from the runtime.
-    runtime::XfeedBuffer* buffer = xfeed->infeed()->BlockingDequeueBuffer();
+    XfeedBuffer* buffer = xfeed->infeed()->BlockingDequeueBuffer();
     if (buffer->length() != infeed_buffer.slice.size()) {
       return Internal(
           "XLA runtime-managed infeed buffer size %d did not match the "
@@ -99,7 +99,7 @@ tsl::AsyncValueRef<Thunk::ExecuteEvent> InfeedThunk::Execute(
 InfeedThunk::BufferUses InfeedThunk::buffer_uses() const {
   BufferUses buffer_uses;
   for (const InfeedBuffer& infeed_buffer : infeed_buffers_) {
-    buffer_uses.emplace_back(infeed_buffer.slice, BufferUse::kWrite);
+    buffer_uses.emplace_back(BufferUse::Write(infeed_buffer.slice));
   }
   return buffer_uses;
 }

@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -49,8 +50,8 @@ namespace {
 // The name of a stateful op is semantically meaningful because ops with the
 // same name will share the same kernel. We therefore form new op names using a
 // deterministic function (a fingerprint) of the old names.
-uint64 MergedOpFingerprint(absl::Span<Node* const> ops) {
-  std::vector<string> op_names;
+uint64_t MergedOpFingerprint(absl::Span<Node* const> ops) {
+  std::vector<std::string> op_names;
   op_names.reserve(ops.size());
   for (const Node* node : ops) {
     op_names.push_back(node->name());
@@ -58,13 +59,13 @@ uint64 MergedOpFingerprint(absl::Span<Node* const> ops) {
   return Fingerprint64(absl::StrJoin(op_names, ","));
 }
 
-absl::Status MergeVarHandleOps(const string& device,
+absl::Status MergeVarHandleOps(const std::string& device,
                                absl::Span<Node* const> nodes, Graph* graph) {
   int num_var_handles(nodes.size());
   if (num_var_handles <= 1) return absl::OkStatus();
 
-  std::vector<string> containers(num_var_handles);
-  std::vector<string> names(num_var_handles);
+  std::vector<std::string> containers(num_var_handles);
+  std::vector<std::string> names(num_var_handles);
   DataTypeVector dtypes(num_var_handles);
   std::vector<PartialTensorShape> shapes(num_var_handles);
   for (int i = 0; i < num_var_handles; ++i) {
@@ -75,9 +76,9 @@ absl::Status MergeVarHandleOps(const string& device,
     TF_RETURN_IF_ERROR(GetNodeAttr(nodes[i]->attrs(), "dtype", &dtypes[i]));
     TF_RETURN_IF_ERROR(GetNodeAttr(nodes[i]->attrs(), "shape", &shapes[i]));
   }
-  NodeDefBuilder builder(graph->NewName(strings::StrCat(
-                             "VarHandles_", MergedOpFingerprint(nodes))),
-                         "_VarHandlesOp");
+  NodeDefBuilder builder(
+      graph->NewName(absl::StrCat("VarHandles_", MergedOpFingerprint(nodes))),
+      "_VarHandlesOp");
   builder.Attr("N", num_var_handles);
   builder.Attr("containers", containers);
   builder.Attr("shared_names", names);
@@ -114,7 +115,7 @@ absl::Status MergeReadVariableOps(Node* handle_op, Node* control_node,
   }
   NodeDef node_def;
   node_def.set_name(graph->NewName(
-      strings::StrCat("ReadVariables_", MergedOpFingerprint(nodes))));
+      absl::StrCat("ReadVariables_", MergedOpFingerprint(nodes))));
   node_def.set_op("_ReadVariablesOp");
   AddNodeAttr("N", num_reads, &node_def);
   AddNodeAttr("dtypes", dtypes, &node_def);
@@ -149,7 +150,7 @@ absl::Status VariableMergerPass::Run(
 
   // Find VarHandleOps that are graph roots and group them by assigned device.
   // Also find any ReadVariableOps that are consumers of those handles.
-  absl::flat_hash_map<string, std::vector<Node*>> var_handle_ops_by_device;
+  absl::flat_hash_map<std::string, std::vector<Node*>> var_handle_ops_by_device;
   absl::flat_hash_set<Node*> read_variable_ops;
 
   for (Node* m : graph->source_node()->out_nodes()) {

@@ -34,7 +34,7 @@ limitations under the License.
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/stream_executor.h"
 
-namespace xla {
+namespace xla::legacy {
 
 // An executable capable of being fed to a TPU device.
 class TpuExecutableInterface : public Executable {
@@ -78,6 +78,6 @@ class TpuExecutableInterface : public Executable {
   virtual absl::string_view fingerprint() const = 0;
 };
 
-}  // namespace xla
+}  // namespace xla::legacy
 
 #endif  // XLA_STREAM_EXECUTOR_TPU_TPU_EXECUTABLE_INTERFACE_H_

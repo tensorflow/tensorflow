@@ -1,5 +1,6 @@
 """Definitions for rules to fuzz TensorFlow."""
 
+load("@rules_cc//cc:cc_test.bzl", "cc_test")
 load("@rules_python//python:py_test.bzl", "py_test")
 
 # TensorFlow fuzzing can be done in open source too, as it is in oss-fuzz.com
@@ -38,7 +39,7 @@ def tf_cc_fuzz_test(
     tags = tags + ["manual"]
 
     # Now, redirect to cc_test
-    native.cc_test(
+    cc_test(
         name = name,
         deps = deps + [
             "@com_google_fuzztest//fuzztest",

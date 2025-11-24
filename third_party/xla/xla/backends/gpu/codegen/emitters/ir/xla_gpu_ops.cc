@@ -82,84 +82,6 @@ void AllocateSharedOp::getAsmResultNames(
 }
 
 //===----------------------------------------------------------------------===//
-// MaterializeOp
-//===----------------------------------------------------------------------===//
-
-LogicalResult MaterializeOp::verify() {
-  IndexingMap map_in = getMap().getIndexingMap();
-  IndexingMap map_out =
-      getResult().getType().getIndexingMapAttr().getIndexingMap();
-  if (getIndices().size() != map_in.GetDimVarsCount()) {
-    return emitOpError() << "number of indices must match number of dimensions "
-                            "of indexing map";
-  }
-
-  // The thread dimension must have the same domain (range and constraints)
-  if (map_in.GetDimVarsCount() == 0 || map_out.GetDimVarsCount() == 0) {
-    return emitOpError()
-           << "must have thread_id dimension in both indexing maps";
-  }
-  if (map_in.GetDimVar(0).bounds != map_out.GetDimVar(0).bounds) {
-    return emitOpError() << "thread_id dimension must have the same bounds in "
-                            "both indexing maps";
-  }
-
-  auto variable_constraints_in = GetConstraintsForVariables(map_in);
-  auto variable_constraints_out = GetConstraintsForVariables(map_out);
-  if (variable_constraints_in.constraints_for_dims[0] !=
-      variable_constraints_out.constraints_for_dims[0]) {
-    return emitOpError() << "constraints of indexing maps must be equal for "
-                         << "the thread_id dimension";
-  }
-
-  // The two maps must have the same symbols and they must have the same domain
-  if (map_in.GetRangeVarsCount() != map_out.GetRangeVarsCount()) {
-    return emitOpError()
-           << "number of symbols in both indexing_maps must match";
-  }
-  for (auto const& [range_in, range_out] :
-       llvm::zip(map_in.GetRangeVars(), map_out.GetRangeVars())) {
-    if (range_in.bounds != range_out.bounds) {
-      return emitOpError() << "domain of symbols of indexing_maps must match";
-    }
-  }
-  if (variable_constraints_in.constraints_for_symbols !=
-      variable_constraints_out.constraints_for_symbols) {
-    return emitOpError()
-           << "constraints of indexing maps must be equal for all symbols";
-  }
-
-  // The vector mapping indices must not depend on the block ID
-  if (map_out.GetDimVarsCount() > 1) {
-    for (auto expr : map_out.GetAffineMap().getResults()) {
-      if (expr.isFunctionOfDim(1)) {
-        return emitOpError() << "vector mapping indices must not depend on the "
-                             << "block ID";
-      }
-    }
-  }
-  // If there are constraints on the block ID, they must be the same in both
-  // maps
-  if (map_in.GetDimVarsCount() > 1 && map_out.GetDimVarsCount() > 1) {
-    if (variable_constraints_in.constraints_for_dims[1] !=
-        variable_constraints_out.constraints_for_dims[1]) {
-      return emitOpError() << "constraints of indexing maps must be equal for "
-                           << "the block_id dimension";
-    }
-  } else if (map_in.GetDimVarsCount() > 1 &&
-             !variable_constraints_in.constraints_for_dims[1].empty()) {
-    return emitOpError() << "constraints of indexing maps must be equal for "
-                         << "the block_id dimension";
-  } else if (map_out.GetDimVarsCount() > 1 &&
-             !variable_constraints_out.constraints_for_dims[1].empty()) {
-    return emitOpError() << "constraints of indexing maps must be equal for "
-                         << "the block_id dimension";
-  }
-
-  return success();
-}
-
-//===----------------------------------------------------------------------===//
 // InsertOp
 //===----------------------------------------------------------------------===//
 
@@ -360,5 +282,6 @@ void SyncThreadsOp::getAsmResultNames(
 }  // namespace gpu
 }  // namespace xla
 
+using mlir::DenseI64ArrayAttr;
 #define GET_OP_CLASSES
 #include "xla/backends/gpu/codegen/emitters/ir/xla_gpu_ops.cc.inc"

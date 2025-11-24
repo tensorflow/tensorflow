@@ -262,7 +262,7 @@ def constant(
 
   Args:
     value: A constant value (or list) of output type `dtype`.
-    dtype: The type of the elements of the resulting tensor.
+    dtype: Optional type of the elements of the resulting tensor.
     shape: Optional dimensions of resulting tensor.
     name: Optional name for the tensor.
 

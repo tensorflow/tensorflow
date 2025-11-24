@@ -22,6 +22,7 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_sharding.h"
@@ -54,7 +55,6 @@ namespace ifrt_serving {
 namespace {
 
 using tensorflow::test::TensorEq;
-using tsl::testing::StatusIs;
 
 struct ReshardToTensorTestParam {
   // split tensors in natural device order.
@@ -667,9 +667,10 @@ TEST(ShardingUtilsTest, MismatchRank) {
 
   EXPECT_THAT(MakeArrayFromTensor(*client, input_tensor, device_list,
                                   std::move(sharding), thread_pool),
-              StatusIs(absl::StatusCode::kInvalidArgument,
-                       "shape must have 2 dimensions, but has 3 dimensions: "
-                       "shape=[2,1,2], sharding={devices=[2,1]<=[2]}"));
+              absl_testing::StatusIs(
+                  absl::StatusCode::kInvalidArgument,
+                  "shape must have 2 dimensions, but has 3 dimensions: "
+                  "shape=[2,1,2], sharding={devices=[2,1]<=[2]}"));
 }
 
 }  // namespace

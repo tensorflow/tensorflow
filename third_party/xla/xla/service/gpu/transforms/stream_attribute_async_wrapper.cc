@@ -16,17 +16,18 @@ limitations under the License.
 #include "xla/service/gpu/transforms/stream_attribute_async_wrapper.h"
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/log/log.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/gpu/backend_configs.pb.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/logging.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla::gpu {
 
@@ -54,11 +55,11 @@ static absl::StatusOr<bool> AsynchronizeInstruction(HloInstruction* instr) {
 }
 }  // namespace
 
-absl::StatusOr<bool> StreamAttributeAsyncWrapper::Run(
+absl::StatusOr<bool> StreamAttributeAsyncWrapper::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
-  XLA_VLOG_LINES(
-      2, "StreamAttributeAsyncWrapper::Run(), before:\n" + module->ToString());
+  XLA_VLOG_LINES(2, "StreamAttributeAsyncWrapper::RunImpl(), before:\n" +
+                        module->ToString());
   bool changed = false;
   for (const HloComputation* comp :
        module->MakeNonfusionComputations(execution_threads)) {
@@ -67,8 +68,8 @@ absl::StatusOr<bool> StreamAttributeAsyncWrapper::Run(
       changed |= result;
     }
   }
-  XLA_VLOG_LINES(
-      2, "StreamAttributeAsyncWrapper::Run(), after:\n" + module->ToString());
+  XLA_VLOG_LINES(2, "StreamAttributeAsyncWrapper::RunImpl(), after:\n" +
+                        module->ToString());
   return changed;
 }
 

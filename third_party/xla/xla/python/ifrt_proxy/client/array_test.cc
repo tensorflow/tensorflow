@@ -20,10 +20,12 @@
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
+#include "google/protobuf/text_format.h"
 #include "xla/layout_util.h"
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/array.h"
@@ -31,10 +33,10 @@
 #include "xla/python/ifrt/basic_device_list.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/dtype.h"
-#include "xla/python/ifrt/future.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/mock.h"
 #include "xla/python/ifrt/remap_plan.h"
+#include "xla/python/ifrt/serdes_version.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/ifrt/user_context.h"
@@ -47,9 +49,9 @@
 #include "xla/python/ifrt_proxy/common/test_utils.h"
 #include "xla/python/ifrt_proxy/common/types.h"
 #include "xla/python/ifrt_proxy/common/types.pb.h"
+#include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/statusor.h"
 #include "tsl/platform/protobuf.h"  // IWYU pragma: keep
 
@@ -57,7 +59,6 @@ using ::testing::_;
 using ::testing::ElementsAre;
 using ::testing::Return;
 using ::tsl::protobuf::TextFormat;
-using ::tsl::testing::IsOk;
 
 namespace xla {
 namespace ifrt {
@@ -67,6 +68,8 @@ namespace {
 IfrtProxyVersion Version() {
   IfrtProxyVersion version;
   version.set_protocol_version(kClientMaxVersion);
+  version.set_ifrt_serdes_version_number(
+      SerDesVersion::current().version_number().value());
   return version;
 }
 
@@ -89,10 +92,10 @@ class ArrayTest : public ::testing::Test {
     // Default handler that ignores all uninteresting requests, but still
     // invokes the callback in order to avoid hanging the caller forever.
     EXPECT_CALL(*session_, Enqueue(_))
-        .WillRepeatedly(Return(Future<ClientSession::Response>(
+        .WillRepeatedly(Return(tsl::Future<ClientSession::Response>(
             absl::InternalError("Request has no mock handlers"))));
     EXPECT_CALL(*host_buffer_store_, Store(_, testing::An<absl::string_view>()))
-        .WillRepeatedly(Return(Future<>(absl::OkStatus())));
+        .WillRepeatedly(Return(tsl::Future<>(absl::OkStatus())));
 
     ON_CALL(*mock_client_, MakeDeviceList(_))
         .WillByDefault([](absl::Span<xla::ifrt::Device* const> devices) {
@@ -121,7 +124,7 @@ TEST_F(ArrayTest, Destruction) {
   EXPECT_CALL(*session_,
               Enqueue(IfrtRequestOfType(IfrtRequest::kDestructArrayRequest)))
       .WillOnce(MockClientCaptureAndReturn(&requests_queue, IfrtResponse()));
-  ON_CALL(*mock_client_, GetDefaultLayout).WillByDefault(Return(kLayout1));
+  ON_CALL(*mock_client_, GetDefaultPjRtLayout).WillByDefault(Return(kLayout1));
 
   tsl::MakeRef<Array>(mock_client_.get(), rpc_helper_,
                       DType(DType::Kind::kBF16), Shape({}),
@@ -143,34 +146,33 @@ TEST_F(ArrayTest, FullyReplicatedShard) {
       *session_,
       Enqueue(IfrtRequestOfType(IfrtRequest::kFullyReplicatedShardRequest)))
       .WillOnce(MockClientCaptureAndReturn(&requests_queue, response));
-  ON_CALL(*mock_client_, GetDefaultLayout).WillByDefault(Return(kLayout1));
+  ON_CALL(*mock_client_, GetDefaultPjRtLayout).WillByDefault(Return(kLayout1));
 
   auto array = tsl::MakeRef<Array>(
       mock_client_.get(), rpc_helper_, DType(DType::Kind::kBF16), Shape({}),
       sharding_, ArrayHandle{1234}, /*layout=*/nullptr);
 
   EXPECT_THAT(array->FullyReplicatedShard(ArrayCopySemantics::kAlwaysCopy),
-              IsOk());
+              absl_testing::IsOk());
   auto req = requests_queue.Pop().fully_replicated_shard_request();
   EXPECT_EQ(req.array_handle(), 1234);
   EXPECT_EQ(req.result_handle(), 1);
 }
 
-TEST_F(ArrayTest, GetDefaultLayoutSuccess) {
-  ON_CALL(*mock_client_, GetDefaultLayout).WillByDefault(Return(kLayout1));
-
+TEST_F(ArrayTest, GetDefaultPjRtLayoutSuccess) {
   auto array = tsl::MakeRef<Array>(
       mock_client_.get(), rpc_helper_, DType(DType::Kind::kBF16), Shape({}),
       sharding_, ArrayHandle{1234}, /*layout=*/nullptr);
-  TF_ASSERT_OK_AND_ASSIGN(auto layout_1, array->layout());
-  EXPECT_EQ(*layout_1, *kLayout1);
+  TF_ASSERT_OK_AND_ASSIGN(auto layout_1, array->pjrt_layout());
+  EXPECT_EQ(layout_1, nullptr);
 }
 
 TEST_F(ArrayTest, GetCustomLayoutSuccess) {
   auto array = tsl::MakeRef<Array>(mock_client_.get(), rpc_helper_,
                                    DType(DType::Kind::kBF16), Shape({}),
                                    sharding_, ArrayHandle{1234}, kLayout1);
-  TF_ASSERT_OK_AND_ASSIGN(auto layout_1, array->layout());
+  TF_ASSERT_OK_AND_ASSIGN(auto layout_1, array->pjrt_layout());
+  ASSERT_NE(layout_1, nullptr);
   EXPECT_EQ(*layout_1, *kLayout1);
 }
 
@@ -211,12 +213,13 @@ TEST_F(ArrayTest, MakeArraysFromHostBufferShardsSuccess) {
 
   auto result = Array::MakeArraysFromHostBufferShards(
       mock_client_.get(), rpc_helper_, absl::MakeSpan(specs),
-      xla::ifrt::Client::HostBufferSemantics::kImmutableOnlyDuringCall,
-      /*user_context=*/tsl::RCReference<xla::ifrt::UserContext>());
+      xla::ifrt::Client::HostBufferSemantics::kImmutableOnlyDuringCall);
   TF_ASSERT_OK(result.status());
-  TF_ASSERT_OK_AND_ASSIGN(auto layout_1, result.value().at(0)->layout());
+  TF_ASSERT_OK_AND_ASSIGN(auto layout_1, result.value().at(0)->pjrt_layout());
+  ASSERT_NE(layout_1, nullptr);
   EXPECT_EQ(*layout_1, *kLayout1);
-  TF_ASSERT_OK_AND_ASSIGN(auto layout_2, result.value().at(1)->layout());
+  TF_ASSERT_OK_AND_ASSIGN(auto layout_2, result.value().at(1)->pjrt_layout());
+  ASSERT_NE(layout_2, nullptr);
   EXPECT_EQ(*layout_2, *kLayout2);
 }
 
@@ -233,12 +236,12 @@ TEST_F(ArrayTest, MakeErrorArraysSuccess) {
   specs.push_back(xla::ifrt::ArraySpec{DType(DType::Kind::kBF16), Shape({}),
                                        sharding_, kLayout1});
 
-  auto result = Array::MakeErrorArrays(
-      mock_client_.get(), rpc_helper_, absl::InternalError("test error"),
-      absl::MakeSpan(specs),
-      /*user_context=*/tsl::RCReference<xla::ifrt::UserContext>());
+  auto result = Array::MakeErrorArrays(mock_client_.get(), rpc_helper_,
+                                       absl::InternalError("test error"),
+                                       absl::MakeSpan(specs));
   TF_ASSERT_OK(result.status());
-  TF_ASSERT_OK_AND_ASSIGN(auto layout, result.value().at(0)->layout());
+  TF_ASSERT_OK_AND_ASSIGN(auto layout, result.value().at(0)->pjrt_layout());
+  ASSERT_NE(layout, nullptr);
   EXPECT_EQ(*layout, *kLayout1);
 }
 
@@ -267,11 +270,12 @@ TEST_F(ArrayTest, AssembleArrayFromSingleDeviceArraysSuccess) {
       sharding_, absl::MakeSpan(arrays), ArrayCopySemantics::kAlwaysCopy,
       SingleDeviceShardSemantics::kAllShards);
   TF_ASSERT_OK(result.status());
-  TF_ASSERT_OK_AND_ASSIGN(auto layout, result.value()->layout());
+  TF_ASSERT_OK_AND_ASSIGN(auto layout, result.value()->pjrt_layout());
+  ASSERT_NE(layout, nullptr);
   EXPECT_EQ(*layout, *kLayout1);
 }
 
-TEST_F(ArrayTest, AssembleArrayFromSingleDeviceArraysDefaultLayoutSuccess) {
+TEST_F(ArrayTest, AssembleArrayFromSingleDeviceArraysDefaultPjRtLayoutSuccess) {
   IfrtResponse response;
   ASSERT_TRUE(
       TextFormat::ParseFromString(
@@ -284,7 +288,7 @@ TEST_F(ArrayTest, AssembleArrayFromSingleDeviceArraysDefaultLayoutSuccess) {
               Enqueue(IfrtRequestOfType(
                   IfrtRequest::kAssembleArrayFromSingleDeviceArraysRequest)))
       .WillOnce(MockClientSessionReturnResponse(response));
-  ON_CALL(*mock_client_, GetDefaultLayout).WillByDefault(Return(kLayout1));
+  ON_CALL(*mock_client_, GetDefaultPjRtLayout).WillByDefault(Return(kLayout1));
 
   auto array = tsl::MakeRef<Array>(
       mock_client_.get(), rpc_helper_, DType(DType::Kind::kBF16), Shape({}),
@@ -297,8 +301,8 @@ TEST_F(ArrayTest, AssembleArrayFromSingleDeviceArraysDefaultLayoutSuccess) {
       sharding_, absl::MakeSpan(arrays), ArrayCopySemantics::kAlwaysCopy,
       SingleDeviceShardSemantics::kAllShards);
   TF_ASSERT_OK(result.status());
-  TF_ASSERT_OK_AND_ASSIGN(auto layout, result.value()->layout());
-  EXPECT_EQ(*layout, *kLayout1);
+  TF_ASSERT_OK_AND_ASSIGN(auto layout, result.value()->pjrt_layout());
+  EXPECT_EQ(layout, nullptr);
 }
 
 TEST_F(ArrayTest, RemapArraysSuccess) {
@@ -342,9 +346,11 @@ TEST_F(ArrayTest, RemapArraysSuccess) {
                          ArrayCopySemantics::kAlwaysCopy);
 
   TF_ASSERT_OK(result.status());
-  TF_ASSERT_OK_AND_ASSIGN(auto layout_1, result.value().at(0)->layout());
+  TF_ASSERT_OK_AND_ASSIGN(auto layout_1, result.value().at(0)->pjrt_layout());
+  ASSERT_NE(layout_1, nullptr);
   EXPECT_EQ(*layout_1, *kLayout2);
-  TF_ASSERT_OK_AND_ASSIGN(auto layout_2, result.value().at(1)->layout());
+  TF_ASSERT_OK_AND_ASSIGN(auto layout_2, result.value().at(1)->pjrt_layout());
+  ASSERT_NE(layout_2, nullptr);
   EXPECT_EQ(*layout_2, *kLayout1);
 }
 

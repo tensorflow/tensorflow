@@ -19,13 +19,18 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
+#include "llvm/ADT/SmallVector.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/OwningOpRef.h"
 #include "mlir/IR/Verifier.h"
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Support/LogicalResult.h"
+#include "shardy/dialect/sdy/transforms/export/passes.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/translate/stablehlo.h"
+#include "xla/mlir/utils/error_util.h"
 #include "xla/service/spmd/shardy/stablehlo_round_trip/stablehlo_export.h"
 #include "xla/service/spmd/shardy/stablehlo_round_trip/stablehlo_import.h"
 
@@ -36,12 +41,22 @@ absl::StatusOr<std::unique_ptr<xla::HloModule>> ConvertShardyToHlo(
   mlir::OwningOpRef<mlir::ModuleOp> shardy_stablehlo_module_copy(
       shardy_stablehlo_module.clone());
   mlir::PassManager pm(shardy_stablehlo_module_copy->getContext());
+
+  pm.addNestedPass<mlir::func::FuncOp>(
+      mlir::sdy::createSinkDataFlowEdgesPass());
   // TODO(hanruobing): This export pipeline replaces any sdy.sharding_constraint
   // with an mhlo.copy rather than a stablehlo.custom_call @Sharding, we may
   // need to add an option to to convert to custom call @Sharding.
-  xla::sdy::addStablehloExportPipeline(pm);
-  if (mlir::failed(pm.run(shardy_stablehlo_module_copy.get()))) {
-    return absl::InternalError("Failed to export to StableHLO.");
+  xla::sdy::StablehloExportPipelineOptions options;
+  options.keepHloShardingConstraints = true;
+  xla::sdy::addStablehloExportPipeline(pm, options);
+
+  mlir::BaseScopedDiagnosticHandler diagnostic_handler(
+      shardy_stablehlo_module_copy->getContext());
+  if (!mlir::succeeded(pm.run(shardy_stablehlo_module_copy.get()))) {
+    const absl::Status status = diagnostic_handler.ConsumeStatus();
+    return absl::InternalError(
+        absl::StrCat("Shardy export for HLO failed;\n", status.message()));
   }
   return xla::ConvertStablehloToHlo(shardy_stablehlo_module_copy.get());
 }
@@ -56,9 +71,11 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ConvertHloToShardyStablehlo(
         "Failed to verify transformed StableHLO module.");
   }
   mlir::PassManager pm(context);
-  xla::sdy::addStablehloImportPipeline(pm,
-                                       /*allowPropagationToArgs=*/false,
-                                       /*allowPropagationToResults=*/false);
+  llvm::SmallVector<bool> prop_args = {false};
+  llvm::SmallVector<bool> prop_results = {false};
+  xla::sdy::addStablehloImportPipeline(
+      pm, prop_args, prop_results,
+      /*enableStablehloCanonicalizeFromHloImport=*/false);
   // TODO(hanruobing): Explore reinserting the original mesh and calling
   // xla::sdy::createDedupMeshesPass
   if (mlir::failed(pm.run(stablehlo_module.get()))) {

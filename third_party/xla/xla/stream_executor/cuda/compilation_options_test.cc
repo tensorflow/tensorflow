@@ -18,7 +18,6 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/str_cat.h"
-#include "tsl/platform/test.h"
 
 namespace stream_executor::cuda {
 namespace {
@@ -47,9 +46,11 @@ TEST(CompilationOptionsTest, Stringify) {
   options.cancel_if_reg_spill = false;
   options.generate_line_info = true;
   options.generate_debug_info = false;
+  options.dump_compilation_log = true;
   EXPECT_EQ(absl::StrCat(options),
             "disable_optimizations: true, cancel_if_reg_spill: false, "
-            "generate_line_info: true, generate_debug_info: false");
+            "generate_line_info: true, generate_debug_info: false, "
+            "dump_compilation_log: true");
 }
 
 }  // namespace

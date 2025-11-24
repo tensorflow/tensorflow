@@ -14,6 +14,8 @@ tf_library(
 )
 """
 
+load("@rules_cc//cc:cc_binary.bzl", "cc_binary")
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load(
     "//tensorflow:tensorflow.bzl",
     "if_android",
@@ -30,8 +32,9 @@ def _tfcompile_model_library_rule_impl(ctx):
     header_file = ctx.outputs.header_out
     metadata_object_file = ctx.actions.declare_file("%s_tfcompile_metadata.o" % ctx.attr.model_name)
     function_object_file = ctx.actions.declare_file("%s_tfcompile_function.o" % ctx.attr.model_name)
+    constant_buffers_object_file = ctx.actions.declare_file("%s_tfcompile_constant_buffers.o" % ctx.attr.model_name)
     session_module_pb = ctx.actions.declare_file("%s_session_module.pb" % ctx.attr.model_name)
-    out_files = [header_file, metadata_object_file, function_object_file, session_module_pb]
+    out_files = [header_file, metadata_object_file, function_object_file, constant_buffers_object_file, session_module_pb]
     compiler_log_file = None
     if ctx.attr.gen_compiler_log:
         compiler_log_file = ctx.actions.declare_file("%s_compiler.log" % ctx.attr.model_name)
@@ -39,7 +42,7 @@ def _tfcompile_model_library_rule_impl(ctx):
 
     output_dict = {}
     output_dict["header_files"] = [header_file]
-    output_dict["object_files"] = [metadata_object_file, function_object_file]
+    output_dict["object_files"] = [metadata_object_file, function_object_file, constant_buffers_object_file]
     if compiler_log_file:
         output_dict["log_files"] = [compiler_log_file]
 
@@ -47,17 +50,11 @@ def _tfcompile_model_library_rule_impl(ctx):
         "--out_header=" + header_file.path,
         "--out_metadata_object=" + metadata_object_file.path,
         "--out_function_object=" + function_object_file.path,
+        "--out_constant_buffers_object=" + constant_buffers_object_file.path,
         "--out_session_module=" + session_module_pb.path,
     ]
 
     additional_xla_flags = ctx.attr.xla_flags
-
-    # TODO(basioli): Remove once thunk runtime is the only option.
-    if not "--xla_cpu_use_thunk_runtime=false" in additional_xla_flags:
-        constant_buffers_object_file = ctx.actions.declare_file("%s_tfcompile_constant_buffers.o" % ctx.attr.model_name)
-        output_flags.append("--out_constant_buffers_object=" + constant_buffers_object_file.path)
-        out_files.append(constant_buffers_object_file)
-        output_dict["object_files"].append(constant_buffers_object_file)
 
     tfcompile_env = {
         "XLA_FLAGS": ("--xla_cpu_enable_fast_math=true " +
@@ -66,6 +63,7 @@ def _tfcompile_model_library_rule_impl(ctx):
                       "--xla_cpu_fast_math_honor_functions=false " +
                       "--xla_cpu_fast_math_honor_division=false " +
                       "--xla_cpu_enable_fast_min_max=true " +
+                      "--xla_cpu_experimental_ynn_fusion_type= " +
                       additional_xla_flags + " " +
                       "$${XLA_FLAGS:-}' "),
         "CUDA_VISIBLE_DEVICES": "",
@@ -313,7 +311,7 @@ def _tf_library(
 
     # The cc_library rule packaging up the header and object file, and needed
     # kernel implementations.
-    native.cc_library(
+    cc_library(
         name = name,
         srcs = [tfcompile_gen_object_files],
         hdrs = [header_file],
@@ -324,10 +322,11 @@ def _tf_library(
             # include_standard_runtime_deps is False.  Without them, the
             # generated code will fail to compile.
             "//third_party/absl/log:check",
+            "//third_party/absl/synchronization",
+            "//tensorflow/core:framework_lite",
             "//tensorflow/compiler/tf2xla:xla_compiled_cpu_function",
             "@local_xla//xla:types",
             "@local_xla//xla/backends/cpu/runtime:kernel_c_api",
-            "//tensorflow/core:framework_lite",
             "@local_xla//xla/backends/cpu/runtime:rng_state_lib",
         ] + (need_xla_data_proto and [
             # If we're generating the program shape, we must depend on the
@@ -338,12 +337,11 @@ def _tf_library(
         ] or []) + (include_standard_runtime_deps and [
             # TODO(cwhipkey): only depend on kernel code that the model actually
             # needed.
-            "@local_xla//xla/service/cpu:runtime_conv2d",
-            "@local_xla//xla/service/cpu:runtime_custom_call_status",
-            "@local_xla//xla/service/cpu:runtime_key_value_sort",
+            "@local_xla//xla/backends/cpu/runtime:dot_lib",
+            "@local_xla//xla/backends/cpu/runtime:sort_lib",
+            "@local_xla//xla/backends/cpu/runtime:topk_lib",
+            "@local_xla//xla/backends/cpu/runtime:convolution_lib",
             "@local_xla//xla/service/cpu:runtime_matmul",
-            "@local_xla//xla/service/cpu:runtime_topk",
-            "@local_xla//xla/service/cpu:runtime_single_threaded_conv2d",
             "@local_xla//xla/service/cpu:runtime_single_threaded_matmul",
             "@eigen_archive//:eigen3",
         ] or []) + (use_xla_nanort_runtime and [
@@ -444,7 +442,7 @@ def _tf_library(
         #    --copt=-fvisibility=hidden
         #    --copt=-D_LIBCPP_TYPE_VIS=_LIBCPP_HIDDEN
         #    --copt=-D_LIBCPP_EXCEPTION_ABI=_LIBCPP_HIDDEN
-        native.cc_binary(
+        cc_binary(
             name = benchmark_name,
             srcs = [benchmark_file],
             testonly = testonly,

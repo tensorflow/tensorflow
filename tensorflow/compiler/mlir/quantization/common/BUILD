@@ -1,4 +1,5 @@
 load("@llvm-project//mlir:tblgen.bzl", "td_library")
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 
@@ -86,6 +87,7 @@ cc_library(
     srcs = ["func.cc"],
     hdrs = ["func.h"],
     compatible_with = get_compatible_with_portable(),
+    visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/cc/saved_model:signature_constants",
         "//tensorflow/compiler/mlir/tensorflow:import_model",
@@ -144,6 +146,7 @@ cc_library(
         "attrs_and_constraints.h",
     ],
     compatible_with = get_compatible_with_portable(),
+    visibility = ["//visibility:public"],
     deps = [
         ":tf_uniform_quantized_types",
         "//tensorflow/compiler/mlir/quantization/common/quantization_lib",
@@ -189,7 +192,6 @@ td_library(
     compatible_with = get_compatible_with_portable(),
     deps = [
         ":lift_as_function_call_td_files",
-        "//tensorflow/compiler/mlir/lite:tensorflow_lite_ops_td_files",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops_td_files",
         "@llvm-project//mlir:ArithOpsTdFiles",
         "@llvm-project//mlir:FuncTdFiles",
@@ -214,6 +216,7 @@ cc_library(
     srcs = ["uniform_quantized_types.cc"],
     hdrs = ["uniform_quantized_types.h"],
     compatible_with = get_compatible_with_portable(),
+    visibility = ["//visibility:public"],
     deps = [
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",

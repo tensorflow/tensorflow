@@ -124,7 +124,7 @@ class ModifyMlirModulePass : public MlirOptimizationPass {
 };
 
 FunctionDef XTimesTwo() {
-  const Tensor kTwo = test::AsScalar<int64>(2);
+  const Tensor kTwo = test::AsScalar<int64_t>(2);
   return FunctionDefHelper::Define(
       // Name
       "XTimesTwo",

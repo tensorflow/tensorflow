@@ -30,7 +30,6 @@ limitations under the License.
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/ImplicitLocOpBuilder.h"
-#include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
 #include "mlir/IR/Value.h"
 #include "mlir/IR/ValueRange.h"
@@ -39,6 +38,7 @@ limitations under the License.
 #include "xla/codegen/emitters/computation_partitioner.h"
 #include "xla/codegen/emitters/ir/xla_ops.h"
 #include "xla/hlo/analysis/indexing_map.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/mlir/tools/mlir_replay/public/compiler_trace.pb.h"
@@ -67,7 +67,7 @@ class EmitterBase : public KernelFusionInterface {
   // Visible for testing. `buffer_assignment` is optional for testing (assigns
   // a different buffer to each tensor).
   virtual absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CreateMLIRModule(
-      mlir::MLIRContext& context, const HloFusionInstruction& fusion,
+      mlir::MLIRContext& mlir_context, const HloFusionInstruction& fusion,
       const std::string& entry_function_name,
       const BufferAssignment* buffer_assignment) const;
 
@@ -97,16 +97,6 @@ class EmitterBase : public KernelFusionInterface {
       mlir::func::FuncOp entry_function,
       const HloFusionInstruction& fusion) const = 0;
 
-  // Evaluates the epilogue of the fusion. Returns the results for each epilogue
-  // root.
-  absl::flat_hash_map<const HloInstruction*, mlir::ValueRange> EmitEpilogue(
-      int epilogue_index, const emitters::PartitionedComputations& computations,
-      mlir::func::FuncOp entry_fn,
-      const absl::flat_hash_map<const HloInstruction*,
-                                llvm::SmallVector<mlir::Value>>& injected,
-      mlir::ValueRange output_indices,
-      mlir::ImplicitLocOpBuilder& builder) const;
-
   mlir::Value EmitWorkGroupId(mlir::ImplicitLocOpBuilder& builder,
                               WorkGroupDimension dim) const;
   mlir::Value EmitBlockId(mlir::ImplicitLocOpBuilder& builder, int dim) const;
@@ -120,11 +110,9 @@ class EmitterBase : public KernelFusionInterface {
   // The fuson outputs may only be used with `tensor.insert` ops.a
   absl::Status EmitMlir(mlir::ModuleOp module,
                         mlir::func::FuncOp entry_function,
-                        const HloFusionInstruction& fusion) const;
+                        const HloFusionInstruction& fusion,
+                        mlir::MLIRContext& mlir_context) const;
 };
-
-// Adds passes that simplify arithmetic operations and remove dead code.
-void AddXlaGpuOpsOptimizationPasses(mlir::OpPassManager& pm);
 
 // Adds passes that transform XLA_GPU and SCF loops, e.g. peel, pipeline,
 // vectorize.

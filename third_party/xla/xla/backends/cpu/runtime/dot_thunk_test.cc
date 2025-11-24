@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/backends/cpu/runtime/dot_thunk.h"
 
+#include <cstdint>
 #include <tuple>
 
 #include "absl/strings/str_cat.h"
@@ -101,6 +102,18 @@ TEST_P(DotThunkLayoutTest, SimpleDot) {
   }
 }
 
+INSTANTIATE_TEST_SUITE_P(
+    DotThunkLayoutTest, DotThunkLayoutTest,
+    testing::Combine(testing::Bool(), testing::Bool(), testing::Bool(),
+                     testing::Bool()),
+    [](const testing::TestParamInfo<DotThunkLayoutTest::ParamType>& info) {
+      return absl::StrCat(
+          std::get<0>(info.param) ? "col_major" : "lhs_row_major", "__",
+          std::get<1>(info.param) ? "rhs_col_major" : "rhs_row_major", "__",
+          std::get<2>(info.param) ? "out_col_major" : "out_row_major", "__",
+          std::get<3>(info.param) ? "canonical" : "non_canonical");
+    });
+
 TEST(DotThunkTest, ThreadedDot) {
   auto shape = ShapeUtil::MakeShape(F32, {1024, 1024});
   // These aren't very interesting literals, but they should be large enough to
@@ -143,17 +156,48 @@ TEST(DotThunkTest, ThreadedDot) {
   EXPECT_EQ(out, expected);
 }
 
-INSTANTIATE_TEST_SUITE_P(
-    DotThunkLayoutTest, DotThunkLayoutTest,
-    testing::Combine(testing::Bool(), testing::Bool(), testing::Bool(),
-                     testing::Bool()),
-    [](const testing::TestParamInfo<DotThunkLayoutTest::ParamType>& info) {
-      return absl::StrCat(
-          std::get<0>(info.param) ? "col_major" : "lhs_row_major", "__",
-          std::get<1>(info.param) ? "rhs_col_major" : "rhs_row_major", "__",
-          std::get<2>(info.param) ? "out_col_major" : "out_row_major", "__",
-          std::get<3>(info.param) ? "canonical" : "non_canonical");
-    });
+TEST(DotThunkTest, DotS8S8S32) {
+  // s8s8s32 dot only has a slow, naive implementation. So we use smaller
+  // matrices (256x256) to keep the test quick.
+  auto in_shape = ShapeUtil::MakeShape(S8, {256, 256});
+  auto out_shape = ShapeUtil::MakeShape(S32, {256, 256});
+  auto lhs = *LiteralUtil::CreateLiteralWithGenerator<S8, int8_t>(
+      in_shape, [](auto) { return static_cast<int8_t>(1); });
+  auto rhs = *LiteralUtil::CreateLiteralWithGenerator<S8, int8_t>(
+      in_shape, [](auto) { return static_cast<int8_t>(1); });
+  auto out = *LiteralUtil::CreateLiteralWithGenerator<S32, int32_t>(
+      out_shape, [](auto) { return 0; });
+
+  BufferAllocations allocations = CreateBufferAllocations(lhs, rhs, out);
+
+  auto [lhs_alloc, rhs_alloc, out_alloc] =
+      CreateBufferAllocation(lhs, rhs, out);
+  auto [lhs_slice, rhs_slice, out_slice] =
+      CreateBufferAllocationSlice(lhs_alloc, rhs_alloc, out_alloc);
+
+  DotDimensionNumbers dot_dimensions;
+  dot_dimensions.add_lhs_contracting_dimensions(1);
+  dot_dimensions.add_rhs_contracting_dimensions(0);
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto thunk, DotThunk::Create({"dot"}, dot_dimensions, lhs_slice, in_shape,
+                                   rhs_slice, in_shape, out_slice, out_shape));
+
+  tsl::thread::ThreadPool threads(tsl::Env::Default(), "test", 8);
+  Eigen::ThreadPoolDevice device(threads.AsEigenThreadPool(),
+                                 threads.NumThreads());
+  Thunk::ExecuteParams params;
+  params.buffer_allocations = &allocations;
+  params.intra_op_threadpool = &device;
+
+  auto execute_event = thunk->Execute(params);
+  tsl::BlockUntilReady(execute_event);
+  ASSERT_FALSE(execute_event.IsError()) << execute_event.GetError();
+
+  auto expected = *LiteralUtil::CreateLiteralWithGenerator<S32, int32_t>(
+      out_shape, [&](auto) { return out_shape.dimensions(0); });
+  EXPECT_EQ(out, expected);
+}
 
 }  // namespace
 }  // namespace xla::cpu

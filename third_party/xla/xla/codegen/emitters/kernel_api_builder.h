@@ -22,10 +22,10 @@ limitations under the License.
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/ImplicitLocOpBuilder.h"
-#include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Value.h"
 #include "xla/codegen/emitters/computation_partitioner.h"
 #include "xla/codegen/emitters/kernel_arguments.h"
+#include "xla/codegen/kernel_spec.h"
 #include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/runtime/work_dimensions.h"
@@ -46,13 +46,14 @@ absl::StatusOr<mlir::func::FuncOp> EmitKernelApi(
     absl::string_view entry_function_name);
 
 void SetIndexDataLayout(mlir::ModuleOp module,
-                        const HloInstruction& hlo_instruction);
+                        const HloInstruction& hlo_instruction,
+                        bool force_64_bit = false);
 
 // Get the default indexing map for the given work dimensions, unroll factor,
 // and output shape.
 IndexingMap GetDefaultWorkItemIndexingMap(const WorkDimensions& work_dimensions,
-                                          int unroll_factor, const Shape& shape,
-                                          mlir::MLIRContext* ctx);
+                                          const Shape& shape,
+                                          mlir::MLIRContext* mlir_context);
 
 // Emits the work group id ops annotated with the range of each dimension.
 llvm::SmallVector<mlir::Value> EmitWorkGroupIds(
@@ -60,6 +61,12 @@ llvm::SmallVector<mlir::Value> EmitWorkGroupIds(
 
 absl::StatusOr<CallTargetProvider> EmitPartitionedComputations(
     mlir::ModuleOp module, const PartitionedComputations& computations);
+
+absl::StatusOr<KernelSpec> GetKernelSpec(
+    absl::string_view entry_function_name,
+    const HloInstruction& hlo_instruction,
+    const BufferAssignment* buffer_assignment,
+    const WorkDimensions& work_dimensions);
 
 }  // namespace xla::emitters
 

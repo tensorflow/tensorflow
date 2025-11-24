@@ -28,11 +28,11 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <random>
+#include <tuple>
 #include <type_traits>
 #include <utility>
 #include <vector>
 
-#include "absl/algorithm/container.h"
 #include "absl/base/attributes.h"
 #include "absl/base/casts.h"
 #include "absl/log/check.h"
@@ -59,6 +59,7 @@ limitations under the License.
 #include "xla/types.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/protobuf.h"  // IWYU pragma: keep
 
 namespace xla {
 
@@ -236,6 +237,34 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
       return HandleAbs<complex128>(abs);
     }
     return HandleAbs<ElementwiseT>(abs);
+  }
+
+  absl::Status HandleAcos(const HloInstruction* acos) override {
+    TF_ASSIGN_OR_RETURN(Literal literal,
+                        ElementWiseUnaryOp(acos, [](ElementwiseT elem_operand) {
+                          return std::acos(elem_operand);
+                        }));
+    parent_->SetEvaluatedLiteralFor(acos, std::move(literal));
+    return absl::OkStatus();
+  }
+
+  absl::Status HandleAcosh(const HloInstruction* acosh) override {
+    TF_ASSIGN_OR_RETURN(
+        Literal literal,
+        ElementWiseUnaryOp(acosh, [](ElementwiseT elem_operand) {
+          return std::acosh(elem_operand);
+        }));
+    parent_->SetEvaluatedLiteralFor(acosh, std::move(literal));
+    return absl::OkStatus();
+  }
+
+  absl::Status HandleAsin(const HloInstruction* asin) override {
+    TF_ASSIGN_OR_RETURN(Literal literal,
+                        ElementWiseUnaryOp(asin, [](ElementwiseT elem_operand) {
+                          return std::asin(elem_operand);
+                        }));
+    parent_->SetEvaluatedLiteralFor(asin, std::move(literal));
+    return absl::OkStatus();
   }
 
   absl::Status HandleRound(const HloInstruction* round) override {
@@ -434,6 +463,16 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
     return absl::OkStatus();
   }
 
+  absl::Status HandleAsinh(const HloInstruction* asinh) override {
+    TF_ASSIGN_OR_RETURN(
+        Literal literal,
+        ElementWiseUnaryOp(asinh, [](ElementwiseT elem_operand) {
+          return std::asinh(elem_operand);
+        }));
+    parent_->SetEvaluatedLiteralFor(asinh, std::move(literal));
+    return absl::OkStatus();
+  }
+
   absl::Status HandleAtan2(const HloInstruction* atan2) override {
     if constexpr (std::is_floating_point_v<ElementwiseT>) {
       TF_ASSIGN_OR_RETURN(Literal literal,
@@ -456,6 +495,16 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
       return absl::OkStatus();
     }
     return UnsupportedTypeError(atan2);
+  }
+
+  absl::Status HandleAtanh(const HloInstruction* atanh) override {
+    TF_ASSIGN_OR_RETURN(
+        Literal literal,
+        ElementWiseUnaryOp(atanh, [](ElementwiseT elem_operand) {
+          return std::atanh(elem_operand);
+        }));
+    parent_->SetEvaluatedLiteralFor(atanh, std::move(literal));
+    return absl::OkStatus();
   }
 
   absl::Status HandleTanh(const HloInstruction* tanh) override {
@@ -1159,6 +1208,25 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
     return HandleDotSlowPath(dot);
   }
 
+  void IncrementContractingIndexes(
+      DimensionVector& contracting_indexes,
+      absl::Span<const int64_t> contracting_dims,
+      const DimensionVector& contracting_dim_sizes,
+      std::optional<int64_t> contracting_dim_to_skip = std::nullopt) {
+    for (int i = contracting_dim_sizes.size() - 1; i >= 0; --i) {
+      if (contracting_dim_to_skip.has_value() &&
+          contracting_dim_to_skip.value() == i) {
+        continue;
+      }
+      ++contracting_indexes[contracting_dims[i]];
+      if (contracting_indexes[contracting_dims[i]] !=
+          contracting_dim_sizes[i]) {
+        break;
+      }
+      contracting_indexes[contracting_dims[i]] = 0;
+    }
+  }
+
   absl::Status HandleDotSlowPathWithLiterals(const HloInstruction* dot,
                                              const Literal& lhs_literal,
                                              const Literal& rhs_literal) {
@@ -1241,20 +1309,10 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
                                           rhs_linear_index);
             }
 
-            // If there are no contracting dimensions, do not try to count down
-            // from -1 to 0; that's an infinite loop.
-            if (!contracting_dim_sizes.empty()) {
-              for (int64_t i = contracting_dim_sizes.size() - 1; i >= 0; --i) {
-                lhs_index[lhs_contracting_dims[i]]++;
-                rhs_index[rhs_contracting_dims[i]]++;
-                if (lhs_index[lhs_contracting_dims[i]] !=
-                    contracting_dim_sizes[i]) {
-                  break;
-                }
-                lhs_index[lhs_contracting_dims[i]] = 0;
-                rhs_index[rhs_contracting_dims[i]] = 0;
-              }
-            }
+            IncrementContractingIndexes(lhs_index, lhs_contracting_dims,
+                                        contracting_dim_sizes);
+            IncrementContractingIndexes(rhs_index, rhs_contracting_dims,
+                                        contracting_dim_sizes);
           }
 
           return static_cast<ReturnT>(result_val);
@@ -1294,6 +1352,607 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
         rhs_literal.Convert(dot->shape().element_type()).value());
   }
 
+  absl::Status HandleRaggedDotNonContractingWithLiterals(
+      const HloInstruction* dot, const Literal& lhs_literal,
+      const Literal& rhs_literal, const Literal& gs_literal) {
+    auto ragged_dims = dot->ragged_dot_dimension_numbers();
+    auto dot_dims = ragged_dims.dot_dimension_numbers();
+    // Shape inference should have checked that there is exactly one ragged dim.
+    int64_t lhs_ragged_dim = ragged_dims.lhs_ragged_dimensions(0);
+
+    int64_t lhs_rank = lhs_literal.shape().dimensions().size();
+    int64_t rhs_rank = rhs_literal.shape().dimensions().size();
+    int64_t gs_rank = gs_literal.shape().dimensions().size();
+    int64_t num_groups = gs_literal.shape().dimensions(gs_rank - 1);
+
+    auto lhs_contracting = dot_dims.lhs_contracting_dimensions();
+    auto lhs_non_contracting = GetNonContractingDims(
+        lhs_rank, lhs_contracting, dot_dims.lhs_batch_dimensions());
+
+    // Shape inference should have checked that this mode has a group dim.
+    int64_t rhs_group_dim = ragged_dims.rhs_group_dimensions(0);
+
+    auto rhs_contracting = dot_dims.rhs_contracting_dimensions();
+    // Group Dimension is also a contracting dimension.
+    rhs_contracting.Add(rhs_group_dim);
+    auto rhs_non_contracting = GetNonContractingDims(
+        rhs_rank, rhs_contracting, dot_dims.rhs_batch_dimensions());
+
+    DimensionVector contracting_dim_sizes;
+    contracting_dim_sizes.reserve(lhs_contracting.size());
+    for (int64_t i = 0; i < lhs_contracting.size(); ++i) {
+      int64_t dim_size = lhs_literal.shape().dimensions(lhs_contracting[i]);
+      contracting_dim_sizes.push_back(dim_size);
+    }
+    const int64_t total_contracting_size = Product(contracting_dim_sizes);
+
+    Shape dot_shape = GetShapeWithLayout(dot->shape());
+    Literal result(dot_shape);
+    TF_RETURN_IF_ERROR(result.PopulateParallel<ReturnT>(
+        [&](absl::Span<const int64_t> result_index, int /*thread_id*/) {
+          // Locations in each operand that we read from to calculate the result
+          // at result_index.
+          DimensionVector lhs_index(lhs_rank);
+          DimensionVector rhs_index(rhs_rank);
+          DimensionVector group_index(gs_rank);
+
+          // Batch dimensions will always be first in the final product.
+          int64_t idx = 0;
+          int64_t gs_idx = 0;
+          for (int64_t i = 0; i < dot_dims.lhs_batch_dimensions_size(); ++i) {
+            lhs_index[dot_dims.lhs_batch_dimensions(i)] = result_index[idx];
+            rhs_index[dot_dims.rhs_batch_dimensions(i)] = result_index[idx];
+            group_index[gs_idx++] = result_index[idx];
+            idx++;
+          }
+
+          // Non-contracting dimensions - lhs, then rhs.
+          for (int64_t i = 0; i < lhs_non_contracting.size(); ++i) {
+            // If there is a non-contracting lhs dimension that is not ragged,
+            // then there will also be a dimension for this in group_sizes.
+            if (lhs_ragged_dim != lhs_non_contracting[i]) {
+              group_index[gs_idx++] = result_index[idx];
+            }
+            lhs_index[lhs_non_contracting[i]] = result_index[idx++];
+          }
+          for (int64_t i = 0; i < rhs_non_contracting.size(); ++i) {
+            rhs_index[rhs_non_contracting[i]] = result_index[idx++];
+          }
+
+          // Calculate which group the current lhs-row belongs to.
+          int64_t lhs_ragged_index = lhs_index[lhs_ragged_dim];
+          int64_t group_row_end = 0;
+          for (int64_t i = 0; i < num_groups; ++i) {
+            group_index[gs_idx] = i;
+            group_row_end += gs_literal.Get<int64_t>(group_index);
+            if (lhs_ragged_index < group_row_end) {
+              break;
+            }
+          }
+          // If lhs_ragged_index > the sum(groups), then there is no
+          // corresponding rhs value, and there is no result.
+          if (lhs_ragged_index >= group_row_end) {
+            return static_cast<ReturnT>(0);
+          }
+          rhs_index[rhs_group_dim] = group_index[gs_idx];
+
+          // Accumulate resulting product along the contracting dimensions.
+          ElementwiseT result_val = static_cast<ElementwiseT>(0);
+          for (int64_t i = 0; i < total_contracting_size; ++i) {
+            const auto lhs =
+                static_cast<ElementwiseT>(lhs_literal.Get<ReturnT>(lhs_index));
+            const auto rhs =
+                static_cast<ElementwiseT>(rhs_literal.Get<ReturnT>(rhs_index));
+            result_val += ToArithmeticSafeType(lhs) * ToArithmeticSafeType(rhs);
+
+            IncrementContractingIndexes(lhs_index, lhs_contracting,
+                                        contracting_dim_sizes);
+            IncrementContractingIndexes(rhs_index, rhs_contracting,
+                                        contracting_dim_sizes);
+          }
+          return static_cast<ReturnT>(result_val);
+        }));
+
+    parent_->SetEvaluatedLiteralFor(dot, std::move(result));
+    return absl::OkStatus();
+  }
+
+  absl::Status HandleRaggedDotBatchModeWithLiterals(const HloInstruction* dot,
+                                                    const Literal& lhs_literal,
+                                                    const Literal& rhs_literal,
+                                                    const Literal& gs_literal) {
+    auto ragged_dims = dot->ragged_dot_dimension_numbers();
+    auto dot_dims = ragged_dims.dot_dimension_numbers();
+    int64_t lhs_rank = lhs_literal.shape().dimensions().size();
+    int64_t rhs_rank = rhs_literal.shape().dimensions().size();
+    int64_t gs_rank = gs_literal.shape().dimensions().size();
+
+    auto lhs_contracting = dot_dims.lhs_contracting_dimensions();
+    auto lhs_non_contracting = GetNonContractingDims(
+        lhs_rank, lhs_contracting, dot_dims.lhs_batch_dimensions());
+
+    auto rhs_contracting = dot_dims.rhs_contracting_dimensions();
+    auto rhs_non_contracting = GetNonContractingDims(
+        rhs_rank, rhs_contracting, dot_dims.rhs_batch_dimensions());
+
+    DimensionVector contracting_dim_sizes;
+    contracting_dim_sizes.reserve(lhs_contracting.size());
+    for (int64_t i = 0; i < lhs_contracting.size(); ++i) {
+      int64_t dim_size = lhs_literal.shape().dimensions(lhs_contracting[i]);
+      contracting_dim_sizes.push_back(dim_size);
+    }
+    const int64_t total_contracting_size = Product(contracting_dim_sizes);
+    const int64_t group_dim_index = gs_rank - 1;
+    const int64_t num_groups = gs_literal.shape().dimensions(group_dim_index);
+
+    Shape dot_shape = GetShapeWithLayout(dot->shape());
+    Literal result(dot_shape);
+    TF_RETURN_IF_ERROR(result.PopulateParallel<ReturnT>(
+        [&](absl::Span<const int64_t> result_index, int /*thread_id*/) {
+          // Locations in each operand that we read from to calculate the
+          // result at result_index.
+          DimensionVector lhs_index(lhs_rank);
+          DimensionVector rhs_index(rhs_rank);
+          DimensionVector group_index(gs_rank);
+
+          // The batch dimensions will always be first in the final product.
+          int64_t gs_idx = 0;
+          int64_t idx = 0;
+          for (int64_t i = 0; i < dot_dims.lhs_batch_dimensions_size(); ++i) {
+            lhs_index[dot_dims.lhs_batch_dimensions(i)] = result_index[idx];
+            rhs_index[dot_dims.rhs_batch_dimensions(i)] = result_index[idx];
+            // gs only contains the batch dimensions outer to the ragged dim.
+            if (gs_idx < group_dim_index) {
+              group_index[gs_idx++] = result_index[idx];
+            }
+            ++idx;
+          }
+
+          // Check whether this batch is handled by some group.
+          int64_t batches_handled = 0;
+          for (int i = 0; i < num_groups; ++i) {
+            group_index[group_dim_index] = i;
+            batches_handled += gs_literal.Get<int64_t>(group_index);
+          }
+          if (lhs_index[dot_dims.lhs_batch_dimensions(group_dim_index)] >=
+              batches_handled) {
+            return static_cast<ReturnT>(0);
+          }
+
+          // Non-contracting dimensions - lhs, then rhs.
+          for (int64_t i = 0; i < lhs_non_contracting.size(); ++i) {
+            lhs_index[lhs_non_contracting[i]] = result_index[idx++];
+          }
+          for (int64_t i = 0; i < rhs_non_contracting.size(); ++i) {
+            rhs_index[rhs_non_contracting[i]] = result_index[idx++];
+          }
+
+          // Accumulate resulting product along the contracting dimensions.
+          ElementwiseT result_val = static_cast<ElementwiseT>(0);
+          for (int64_t i = 0; i < total_contracting_size; ++i) {
+            const auto lhs =
+                static_cast<ElementwiseT>(lhs_literal.Get<ReturnT>(lhs_index));
+            const auto rhs =
+                static_cast<ElementwiseT>(rhs_literal.Get<ReturnT>(rhs_index));
+            result_val += ToArithmeticSafeType(lhs) * ToArithmeticSafeType(rhs);
+
+            IncrementContractingIndexes(lhs_index, lhs_contracting,
+                                        contracting_dim_sizes);
+            IncrementContractingIndexes(rhs_index, rhs_contracting,
+                                        contracting_dim_sizes);
+          }
+          return static_cast<ReturnT>(result_val);
+        }));
+
+    parent_->SetEvaluatedLiteralFor(dot, std::move(result));
+    return absl::OkStatus();
+  }
+
+  absl::Status HandleRaggedDotContractingWithLiterals(
+      const HloInstruction* dot, const Literal& lhs_literal,
+      const Literal& rhs_literal, const Literal& gs_literal) {
+    auto ragged_dims = dot->ragged_dot_dimension_numbers();
+    auto dot_dims = ragged_dims.dot_dimension_numbers();
+    // Shape inference should have checked that there is exactly one ragged dim.
+    int64_t lhs_ragged_dim = ragged_dims.lhs_ragged_dimensions(0);
+
+    int64_t lhs_rank = lhs_literal.shape().dimensions().size();
+    int64_t rhs_rank = rhs_literal.shape().dimensions().size();
+    int64_t gs_rank = gs_literal.shape().dimensions().size();
+
+    auto lhs_contracting = dot_dims.lhs_contracting_dimensions();
+    auto lhs_non_contracting = GetNonContractingDims(
+        lhs_rank, lhs_contracting, dot_dims.lhs_batch_dimensions());
+
+    auto rhs_contracting = dot_dims.rhs_contracting_dimensions();
+    auto rhs_non_contracting = GetNonContractingDims(
+        rhs_rank, rhs_contracting, dot_dims.rhs_batch_dimensions());
+
+    DimensionVector contracting_dim_sizes;
+    contracting_dim_sizes.reserve(lhs_contracting.size());
+    for (int64_t i = 0; i < lhs_contracting.size(); ++i) {
+      int64_t dim_size = lhs_literal.shape().dimensions(lhs_contracting[i]);
+      contracting_dim_sizes.push_back(dim_size);
+    }
+
+    // We must find a match because we are in contracting mode.
+    std::optional<int64_t> ragged_dim_as_contracting_dim;
+    for (int64_t i = 0; i < lhs_contracting.size(); ++i) {
+      if (lhs_ragged_dim == lhs_contracting[i]) {
+        ragged_dim_as_contracting_dim = i;
+        break;
+      }
+    }
+    const int64_t ragged_dim_size =
+        contracting_dim_sizes[ragged_dim_as_contracting_dim.value()];
+    const int64_t total_contracting_size_excluding_ragged_dim =
+        Product(contracting_dim_sizes) / ragged_dim_size;
+
+    Shape dot_shape = GetShapeWithLayout(dot->shape());
+    Literal result(dot_shape);
+    TF_RETURN_IF_ERROR(result.PopulateParallel<
+                       ReturnT>([&](absl::Span<const int64_t> result_index,
+                                    int /*thread_id*/) {
+      // Locations in each operand that we read from to calculate the
+      // result at result_index.
+      DimensionVector lhs_index(lhs_rank);
+      DimensionVector rhs_index(rhs_rank);
+      DimensionVector group_index(gs_rank);
+
+      // The group dimension will always be first in the final product. We
+      // handle it later since we need to fill in the batch dimensions first
+      // to look up the relevant group sizes.
+      int64_t gs_idx = 0;
+      int64_t idx = 1;
+      // Batch dimensions are next.
+      for (int64_t i = 0; i < dot_dims.lhs_batch_dimensions_size(); ++i) {
+        lhs_index[dot_dims.lhs_batch_dimensions(i)] = result_index[idx];
+        rhs_index[dot_dims.rhs_batch_dimensions(i)] = result_index[idx];
+        group_index[gs_idx++] = result_index[idx];
+        ++idx;
+      }
+
+      // We now go back handle the group dimension now that the batch has
+      // been filled in.
+      int64_t group_row_start = 0;  // inclusive
+      int64_t group_row_end = 0;    // exclusive
+      for (int i = 0; i <= result_index[0]; ++i) {
+        group_index[gs_idx] = i;
+        group_row_start = group_row_end;
+        group_row_end += gs_literal.Get<int64_t>(group_index);
+      }
+      // Clamp group row start and end to the range of the contracting dim.
+      group_row_start = std::max(group_row_start, INT64_C(0));
+      group_row_start = std::min(group_row_start, ragged_dim_size);
+      group_row_end = std::max(group_row_end, INT64_C(0));
+      group_row_end = std::min(group_row_end, ragged_dim_size);
+
+      // Non-contracting dimensions - lhs, then rhs.
+      for (int64_t i = 0; i < lhs_non_contracting.size(); ++i) {
+        lhs_index[lhs_non_contracting[i]] = result_index[idx++];
+      }
+      for (int64_t i = 0; i < rhs_non_contracting.size(); ++i) {
+        rhs_index[rhs_non_contracting[i]] = result_index[idx++];
+      }
+
+      // Accumulate resulting product along the contracting dimensions.
+      ElementwiseT result_val = static_cast<ElementwiseT>(0);
+      for (int64_t i = 0; i < total_contracting_size_excluding_ragged_dim;
+           ++i) {
+        for (int64_t j = group_row_start; j < group_row_end; ++j) {
+          lhs_index[lhs_contracting[ragged_dim_as_contracting_dim.value()]] = j;
+          rhs_index[rhs_contracting[ragged_dim_as_contracting_dim.value()]] = j;
+          const auto lhs =
+              static_cast<ElementwiseT>(lhs_literal.Get<ReturnT>(lhs_index));
+          const auto rhs =
+              static_cast<ElementwiseT>(rhs_literal.Get<ReturnT>(rhs_index));
+          result_val += ToArithmeticSafeType(lhs) * ToArithmeticSafeType(rhs);
+        }
+
+        IncrementContractingIndexes(lhs_index, lhs_contracting,
+                                    contracting_dim_sizes,
+                                    ragged_dim_as_contracting_dim);
+        IncrementContractingIndexes(rhs_index, rhs_contracting,
+                                    contracting_dim_sizes,
+                                    ragged_dim_as_contracting_dim);
+      }
+      return static_cast<ReturnT>(result_val);
+    }));
+
+    parent_->SetEvaluatedLiteralFor(dot, std::move(result));
+    return absl::OkStatus();
+  }
+
+  absl::Status HandleRaggedDotWithLiterals(const HloInstruction* dot,
+                                           const Literal& lhs_literal,
+                                           const Literal& rhs_literal,
+                                           const Literal& gs_literal) {
+    auto ragged_dims = dot->ragged_dot_dimension_numbers();
+    auto dot_dims = ragged_dims.dot_dimension_numbers();
+    // Shape inference should have checked that there is exactly one ragged dim.
+    int64_t lhs_ragged_dim = ragged_dims.lhs_ragged_dimensions(0);
+
+    if (std::find(dot_dims.lhs_contracting_dimensions().begin(),
+                  dot_dims.lhs_contracting_dimensions().end(),
+                  lhs_ragged_dim) !=
+        dot_dims.lhs_contracting_dimensions().end()) {
+      return HandleRaggedDotContractingWithLiterals(dot, lhs_literal,
+                                                    rhs_literal, gs_literal);
+    }
+    if (std::find(dot_dims.lhs_batch_dimensions().begin(),
+                  dot_dims.lhs_batch_dimensions().end(),
+                  lhs_ragged_dim) != dot_dims.lhs_batch_dimensions().end()) {
+      return HandleRaggedDotBatchModeWithLiterals(dot, lhs_literal, rhs_literal,
+                                                  gs_literal);
+    }
+    return HandleRaggedDotNonContractingWithLiterals(dot, lhs_literal,
+                                                     rhs_literal, gs_literal);
+  }
+
+  // This is currently only implemented for the ragged dimension being a
+  // non-batch dimension (i.e. it may be a contracting dimension or a
+  // non-batch, non-contracting dimension). For the batch mode, this will throw
+  // an unimplemented error.
+  absl::Status HandleRaggedDot(const HloInstruction* dot) override {
+    auto lhs = dot->operand(0);
+    auto rhs = dot->operand(1);
+    auto group_sizes = dot->operand(2);
+
+    CHECK(dot->shape().IsArray());
+    CHECK(lhs->shape().IsArray());
+    CHECK(rhs->shape().IsArray());
+    CHECK(group_sizes->shape().IsArray());
+
+    const Literal& lhs_literal = parent_->GetEvaluatedLiteralFor(lhs);
+    const Literal& rhs_literal = parent_->GetEvaluatedLiteralFor(rhs);
+    const Literal& gs_literal = parent_->GetEvaluatedLiteralFor(group_sizes);
+
+    // LHS and RHS may have a different initial precision than our output.
+    const bool lhs_same =
+        ShapeUtil::SameElementType(lhs->shape(), dot->shape());
+    const bool rhs_same =
+        ShapeUtil::SameElementType(rhs->shape(), dot->shape());
+    // Upcast group sizes to S64, since they could be e.g. S32.
+    const bool gs_same =
+        group_sizes->shape().element_type() == PrimitiveType::S64;
+
+    return HandleRaggedDotWithLiterals(
+        dot,
+        lhs_same
+            ? lhs_literal
+            : static_cast<const Literal&>(
+                  lhs_literal.Convert(dot->shape().element_type()).value()),
+        rhs_same
+            ? rhs_literal
+            : static_cast<const Literal&>(
+                  rhs_literal.Convert(dot->shape().element_type()).value()),
+        gs_same ? gs_literal
+                : static_cast<const Literal&>(
+                      gs_literal.Convert(PrimitiveType::S64).value()));
+  }
+
+  absl::Status HandleScaledDot(const HloInstruction* dot) override {
+    auto lhs = dot->operand(0);
+    auto rhs = dot->operand(1);
+    auto lhs_scale = dot->operand(2);
+    auto rhs_scale = dot->operand(3);
+    CHECK(dot->shape().IsArray());
+    CHECK(lhs->shape().IsArray());
+    CHECK(rhs->shape().IsArray());
+    CHECK(lhs_scale->shape().IsArray());
+    CHECK(rhs_scale->shape().IsArray());
+    CHECK(lhs_scale->shape().dimensions().size() == 0 ||
+          lhs_scale->shape().dimensions().size() ==
+              lhs->shape().dimensions().size());
+    CHECK(rhs_scale->shape().dimensions().size() == 0 ||
+          rhs_scale->shape().dimensions().size() ==
+              rhs->shape().dimensions().size());
+    TF_ASSIGN_OR_RETURN(const Literal lhs_literal,
+                        parent_->GetEvaluatedLiteralFor(lhs).Convert(
+                            dot->shape().element_type()));
+    TF_ASSIGN_OR_RETURN(const Literal rhs_literal,
+                        parent_->GetEvaluatedLiteralFor(rhs).Convert(
+                            dot->shape().element_type()));
+
+    // If the scale is a scalar, we can just use 1.0. Otherwise, we need to
+    // evaluate the scale.
+    auto evaluate_scale =
+        [&](const HloInstruction* operand,
+            const HloInstruction* scale) -> absl::StatusOr<Literal> {
+      if (scale->shape().IsArray() && scale->shape().dimensions().size() > 0) {
+        TF_ASSIGN_OR_RETURN(Literal scale_literal,
+                            parent_->GetEvaluatedLiteralFor(scale).Convert(
+                                dot->shape().element_type()));
+        return scale_literal;
+      }
+      std::vector<int64_t> ones(operand->shape().dimensions().size(), 1);
+      Shape scale_shape =
+          ShapeUtil::MakeShape(dot->shape().element_type(), ones);
+      Literal scale_literal = Literal::CreateFromShape(scale_shape);
+      scale_literal.PopulateWithValue(static_cast<ReturnT>(1.0f));
+      return scale_literal;
+    };
+    TF_ASSIGN_OR_RETURN(Literal lhs_scale_literal,
+                        evaluate_scale(lhs, lhs_scale));
+    TF_ASSIGN_OR_RETURN(Literal rhs_scale_literal,
+                        evaluate_scale(rhs, rhs_scale));
+    return HandleScaledDotSlowPathWithLiterals(
+        dot, lhs_literal, rhs_literal, lhs_scale_literal, rhs_scale_literal);
+  }
+
+ private:
+  struct ShapeInfo {
+    static std::pair<DimensionVector, DimensionVector> dims(
+        const DimensionVector& dim_indexes, const Shape& literal_shape,
+        const Shape& scale_shape) {
+      DimensionVector dim_sizes;
+      DimensionVector dim_scale_divisors;
+      for (int64_t i = 0; i < dim_indexes.size(); ++i) {
+        dim_sizes.push_back(literal_shape.dimensions(dim_indexes[i]));
+        dim_scale_divisors.push_back(literal_shape.dimensions(dim_indexes[i]) /
+                                     scale_shape.dimensions(dim_indexes[i]));
+      }
+      return {dim_sizes, dim_scale_divisors};
+    }
+
+    ShapeInfo(
+        const Literal& literal, const Literal& scale_literal,
+        const tsl::protobuf::RepeatedField<int64_t>& contracting_dims_field,
+        const tsl::protobuf::RepeatedField<int64_t>& batch_dims_field)
+        : rank(literal.shape().dimensions().size()) {
+      batch_dim_indexes =
+          DimensionVector(batch_dims_field.begin(), batch_dims_field.end());
+      std::tie(batch_dim_sizes, batch_dim_scale_divisors) =
+          dims(batch_dim_indexes, literal.shape(), scale_literal.shape());
+
+      non_contracting_dim_indexes =
+          GetNonContractingDims(rank, contracting_dims_field, batch_dims_field);
+      std::tie(non_contracting_dim_sizes, non_contracting_dim_scale_divisors) =
+          dims(non_contracting_dim_indexes, literal.shape(),
+               scale_literal.shape());
+
+      contracting_dim_indexes = DimensionVector(contracting_dims_field.begin(),
+                                                contracting_dims_field.end());
+      std::tie(contracting_dim_sizes, contracting_dim_scale_divisors) =
+          dims(contracting_dim_indexes, literal.shape(), scale_literal.shape());
+    }
+
+    const int64_t rank;
+    DimensionVector batch_dim_indexes;
+    DimensionVector batch_dim_sizes;
+    DimensionVector batch_dim_scale_divisors;
+
+    DimensionVector non_contracting_dim_indexes;
+    DimensionVector non_contracting_dim_sizes;
+    DimensionVector non_contracting_dim_scale_divisors;
+
+    DimensionVector contracting_dim_indexes;
+    DimensionVector contracting_dim_sizes;
+    DimensionVector contracting_dim_scale_divisors;
+  };
+
+  absl::Status HandleScaledDotSlowPathWithLiterals(
+      const HloInstruction* dot, const Literal& lhs_literal,
+      const Literal& rhs_literal, const Literal& lhs_scale_literal,
+      const Literal& rhs_scale_literal) {
+    const auto& dnums = dot->dot_dimension_numbers();
+    CHECK(ShapeUtil::SameElementType(lhs_literal.shape(), rhs_literal.shape()));
+    CHECK(ShapeUtil::SameElementType(lhs_literal.shape(), dot->shape()));
+
+    CHECK_EQ(dnums.lhs_batch_dimensions_size(),
+             dnums.rhs_batch_dimensions_size());
+
+    ShapeInfo lhs_info(lhs_literal, lhs_scale_literal,
+                       dnums.lhs_contracting_dimensions(),
+                       dnums.lhs_batch_dimensions());
+    ShapeInfo rhs_info(rhs_literal, rhs_scale_literal,
+                       dnums.rhs_contracting_dimensions(),
+                       dnums.rhs_batch_dimensions());
+    const int64_t total_contraction_size =
+        Product(lhs_info.contracting_dim_sizes);
+    Shape dot_shape = GetShapeWithLayout(dot->shape());
+
+    TF_ASSIGN_OR_RETURN(Literal result, Literal::Make(dot_shape));
+    TF_RETURN_IF_ERROR(result.PopulateParallel<ReturnT>(
+        [&](absl::Span<const int64_t> result_index, int /*thread_id*/) {
+          // Locations in LHS and RHS that we read from.
+          DimensionVector lhs_index(lhs_info.rank);
+          DimensionVector lhs_scale_index(lhs_info.rank);
+          DimensionVector rhs_index(rhs_info.rank);
+          DimensionVector rhs_scale_index(rhs_info.rank);
+
+          // First come the batch dimensions.
+          int64_t idx = 0;
+          for (int64_t i = 0; i < dnums.lhs_batch_dimensions_size(); i++) {
+            lhs_index[dnums.lhs_batch_dimensions(i)] = result_index[idx];
+            rhs_index[dnums.rhs_batch_dimensions(i)] = result_index[idx];
+            lhs_scale_index[dnums.lhs_batch_dimensions(i)] =
+                result_index[idx] / lhs_info.batch_dim_scale_divisors[i];
+            rhs_scale_index[dnums.rhs_batch_dimensions(i)] =
+                result_index[idx] / rhs_info.batch_dim_scale_divisors[i];
+            idx++;
+          }
+
+          // Next we have non-contracting dimensions, if any.
+          for (int64_t i = 0; i < lhs_info.non_contracting_dim_indexes.size();
+               i++) {
+            lhs_index[lhs_info.non_contracting_dim_indexes[i]] =
+                result_index[idx];
+            lhs_scale_index[lhs_info.non_contracting_dim_indexes[i]] =
+                result_index[idx] /
+                lhs_info.non_contracting_dim_scale_divisors[i];
+            idx++;
+          }
+          for (int64_t i = 0; i < rhs_info.non_contracting_dim_indexes.size();
+               i++) {
+            rhs_index[rhs_info.non_contracting_dim_indexes[i]] =
+                result_index[idx];
+            rhs_scale_index[rhs_info.non_contracting_dim_indexes[i]] =
+                result_index[idx] /
+                rhs_info.non_contracting_dim_scale_divisors[i];
+            idx++;
+          }
+
+          auto get_val = [](const Literal& literal,
+                            const DimensionVector& index) {
+            return ToArithmeticSafeType(
+                static_cast<ElementwiseT>(literal.Get<ReturnT>(index)));
+          };
+          // Accumulate resulting product along the contracting dimensions.
+          ElementwiseT result_val = static_cast<ElementwiseT>(0);
+          for (int64_t k = 0; k < total_contraction_size; k++) {
+            const auto lhs = get_val(lhs_literal, lhs_index);
+            const auto lhs_scale = get_val(lhs_scale_literal, lhs_scale_index);
+            const auto rhs = get_val(rhs_literal, rhs_index);
+            const auto rhs_scale = get_val(rhs_scale_literal, rhs_scale_index);
+            result_val += lhs * lhs_scale * rhs * rhs_scale;
+
+            if (parent_->trace_mac_handler_ != nullptr) {
+              const int64_t result_linear_index =
+                  IndexUtil::MultidimensionalIndexToLinearIndex(dot_shape,
+                                                                result_index);
+              const int64_t lhs_linear_index =
+                  IndexUtil::MultidimensionalIndexToLinearIndex(
+                      lhs_literal.shape(), lhs_index);
+              const int64_t rhs_linear_index =
+                  IndexUtil::MultidimensionalIndexToLinearIndex(
+                      rhs_literal.shape(), rhs_index);
+
+              parent_->trace_mac_handler_(result_linear_index, lhs_linear_index,
+                                          rhs_linear_index);
+            }
+
+            // If there are no contracting dimensions, do not try to count down
+            // from -1 to 0; that's an infinite loop.
+            if (!lhs_info.contracting_dim_sizes.empty()) {
+              for (int64_t i = lhs_info.contracting_dim_sizes.size() - 1;
+                   i >= 0; --i) {
+                lhs_index[lhs_info.contracting_dim_indexes[i]]++;
+                lhs_scale_index[lhs_info.contracting_dim_indexes[i]] =
+                    lhs_index[lhs_info.contracting_dim_indexes[i]] /
+                    lhs_info.contracting_dim_scale_divisors[i];
+                rhs_index[rhs_info.contracting_dim_indexes[i]]++;
+                rhs_scale_index[rhs_info.contracting_dim_indexes[i]] =
+                    rhs_index[rhs_info.contracting_dim_indexes[i]] /
+                    rhs_info.contracting_dim_scale_divisors[i];
+                if (lhs_index[lhs_info.contracting_dim_indexes[i]] !=
+                    lhs_info.contracting_dim_sizes[i]) {
+                  break;
+                }
+                lhs_index[lhs_info.contracting_dim_indexes[i]] = 0;
+                rhs_index[rhs_info.contracting_dim_indexes[i]] = 0;
+              }
+            }
+          }
+
+          return static_cast<ReturnT>(result_val);
+        }));
+
+    parent_->SetEvaluatedLiteralFor(dot, std::move(result));
+    return absl::OkStatus();
+  }
+
+ public:
   absl::Status HandlePad(const HloInstruction* pad) override {
     CHECK(pad->operand(0)->shape().IsArray());
     // Padding value must be scalar.
@@ -1407,44 +2066,48 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
   }
 
   absl::Status HandleSin(const HloInstruction* sin) override {
-    if constexpr (std::is_floating_point_v<ElementwiseT> ||
-                  is_complex_v<ElementwiseT>) {
-      TF_ASSIGN_OR_RETURN(
-          Literal literal,
-          ElementWiseUnaryOp(sin, [](ElementwiseT elem_operand) {
-            return std::sin(elem_operand);
-          }));
-      parent_->SetEvaluatedLiteralFor(sin, std::move(literal));
-      return absl::OkStatus();
-    }
-    return UnsupportedTypeError(sin);
+    TF_ASSIGN_OR_RETURN(Literal literal,
+                        ElementWiseUnaryOp(sin, [](ElementwiseT elem_operand) {
+                          return std::sin(elem_operand);
+                        }));
+    parent_->SetEvaluatedLiteralFor(sin, std::move(literal));
+    return absl::OkStatus();
+  }
+
+  absl::Status HandleSinh(const HloInstruction* sinh) override {
+    TF_ASSIGN_OR_RETURN(Literal literal,
+                        ElementWiseUnaryOp(sinh, [](ElementwiseT elem_operand) {
+                          return std::sinh(elem_operand);
+                        }));
+    parent_->SetEvaluatedLiteralFor(sinh, std::move(literal));
+    return absl::OkStatus();
   }
 
   absl::Status HandleCos(const HloInstruction* cos) override {
-    if constexpr (std::is_floating_point_v<ElementwiseT> ||
-                  is_complex_v<ElementwiseT>) {
-      TF_ASSIGN_OR_RETURN(
-          Literal literal,
-          ElementWiseUnaryOp(cos, [](ElementwiseT elem_operand) {
-            return std::cos(elem_operand);
-          }));
-      parent_->SetEvaluatedLiteralFor(cos, std::move(literal));
-      return absl::OkStatus();
-    }
-    return UnsupportedTypeError(cos);
+    TF_ASSIGN_OR_RETURN(Literal literal,
+                        ElementWiseUnaryOp(cos, [](ElementwiseT elem_operand) {
+                          return std::cos(elem_operand);
+                        }));
+    parent_->SetEvaluatedLiteralFor(cos, std::move(literal));
+    return absl::OkStatus();
+  }
+
+  absl::Status HandleCosh(const HloInstruction* cosh) override {
+    TF_ASSIGN_OR_RETURN(Literal literal,
+                        ElementWiseUnaryOp(cosh, [](ElementwiseT elem_operand) {
+                          return std::cosh(elem_operand);
+                        }));
+    parent_->SetEvaluatedLiteralFor(cosh, std::move(literal));
+    return absl::OkStatus();
   }
 
   absl::Status HandleTan(const HloInstruction* tan) override {
-    if constexpr (std::is_floating_point_v<ElementwiseT>) {
-      TF_ASSIGN_OR_RETURN(
-          Literal literal,
-          ElementWiseUnaryOp(tan, [](ElementwiseT elem_operand) {
-            return std::tan(elem_operand);
-          }));
-      parent_->SetEvaluatedLiteralFor(tan, std::move(literal));
-      return absl::OkStatus();
-    }
-    return UnsupportedTypeError(tan);
+    TF_ASSIGN_OR_RETURN(Literal literal,
+                        ElementWiseUnaryOp(tan, [](ElementwiseT elem_operand) {
+                          return std::tan(elem_operand);
+                        }));
+    parent_->SetEvaluatedLiteralFor(tan, std::move(literal));
+    return absl::OkStatus();
   }
 
   template <typename NativeT, typename std::enable_if_t<

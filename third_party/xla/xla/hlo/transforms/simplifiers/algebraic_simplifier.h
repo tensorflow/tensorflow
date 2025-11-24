@@ -355,6 +355,14 @@ class AlgebraicSimplifierOptions {
 
   void set_run_to_fixed_point(bool value) { run_to_fixed_point_ = value; }
 
+  bool rewrite_no_op_bitcast_convert_to_bitcast() const {
+    return rewrite_no_op_bitcast_convert_to_bitcast_;
+  }
+
+  void set_rewrite_no_op_bitcast_convert_to_bitcast(bool value) {
+    rewrite_no_op_bitcast_convert_to_bitcast_ = value;
+  }
+
  private:
   // Metadata struct can be used to store any metadata information encapsulated
   // with the AlgebraicSimplifierOptions that can be later used in an
@@ -401,6 +409,7 @@ class AlgebraicSimplifierOptions {
   bool enable_onednn_support_{false};
   bool rewrite_reshape_transpose_as_slice_concatenate_{true};
   bool run_to_fixed_point_{true};
+  bool rewrite_no_op_bitcast_convert_to_bitcast_{false};
   Metadata metadata_;
 };
 
@@ -414,13 +423,6 @@ class AlgebraicSimplifier : public HloModulePass {
   ~AlgebraicSimplifier() override = default;
   absl::string_view name() const override { return "algsimp"; }
 
-  // Run algebraic simplification on the given computation. Returns whether the
-  // computation was changed.
-  using HloPassInterface::Run;
-  absl::StatusOr<bool> Run(
-      HloModule* module,
-      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
-
   // Create constant from literal with tiles and element size updated in the
   // constant's layout.
   std::unique_ptr<HloInstruction> CreateConstantWithLayoutUpdated(
@@ -431,6 +433,12 @@ class AlgebraicSimplifier : public HloModulePass {
   }
 
  protected:
+  // Run algebraic simplification on the given computation. Returns whether the
+  // computation was changed.
+  absl::StatusOr<bool> RunImpl(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
+
   AlgebraicSimplifierOptions options_;
 };
 
@@ -589,6 +597,11 @@ class AlgebraicSimplifierVisitor : public DfsHloRewriteVisitor {
   virtual bool ShouldStrengthReduceDotToReduce(const HloInstruction* hlo) {
     return true;
   }
+
+ protected:
+  // Allow backend targets to amend user-guided fusion attributes based on
+  // various criteria.
+  virtual void AmendUserGuidedFusionAttr(HloInstruction* inst) {}
 
  protected:
   // The backend-specific options selected for the algebraic simplifier.
@@ -830,6 +843,11 @@ class AlgebraicSimplifierVisitor : public DfsHloRewriteVisitor {
   absl::Status ReplaceReduceWithReshape(const Shape& reduce_result_shape,
                                         bool multi_output_reduce,
                                         HloReduceInstruction* reduce);
+
+  // Detects a chain of transposes and reshapes that can be replaced with a
+  // nop.
+  absl::StatusOr<bool> TryRemovingReshapeTransposeChain(
+      HloInstruction* reshape);
 
   // Helper function for HandleReduce. Reorders reduce dot
   // to a dot reduce. reduce(dot(A, B)) to dot(A, reduce(B))

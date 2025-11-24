@@ -37,6 +37,7 @@ limitations under the License.
 #include "xla/literal_util.h"
 #include "xla/primitive_util.h"
 #include "xla/service/gpu/tests/gpu_codegen_test.h"
+#include "xla/service/gpu/transforms/sort_rewriter.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/platform/statusor.h"
@@ -60,11 +61,20 @@ ROOT lt = pred[] compare(p.0.lhs, p.0.rhs), direction=LT
 
 ENTRY test {
 p0 = $0[32]{0} parameter(0)
-ROOT sort = $0[32]{0} sort(p0), dimensions={0}, is_stable=true,
+ROOT sort = $0[32]{0} sort(p0), dimensions={0}, is_stable=false,
 to_apply=compare
 })";
+  // It's OK to set kAlways, because we want to check support, not heuristics.
+  // kAlways does not change what's supported, it only forces the rewrite to
+  // happen if it is supported.
+  SortRewriter::SetSortModeForTestingOnly(SortRewriter::Mode::kAlways);
   std::string hlo = absl::Substitute(
       kHloTemplate, primitive_util::LowercasePrimitiveTypeName(GetParam()));
+  // We expect that all types except PRED and F8 types are rewritten to a custom
+  // call.
+  bool rewrite = GetParam() != PRED && !primitive_util::IsF8Type(GetParam());
+  std::string check = rewrite ? "CHECK: custom-call" : "CHECK-NOT: custom-call";
+  MatchOptimizedHlo(hlo, check);
   EXPECT_TRUE(RunAndCompare(hlo, ErrorSpec{0, 0}));
 }
 
@@ -215,7 +225,7 @@ ENTRY %main {
 
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
   std::vector<Literal*> literals = {std::get<0>(GetParam()).get()};
-  auto result = ExecuteAndTransfer(std::move(module), literals);
+  TF_ASSERT_OK_AND_ASSIGN(Literal result, Execute(std::move(module), literals));
 
   bool has_diff = false;
   for (int i = 1; i < kRadixSortTestSize; ++i) {
@@ -265,8 +275,9 @@ ENTRY %main {
 
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
   std::vector<Literal*> literals = {std::get<0>(GetParam()).get()};
-  auto result_tuple = ExecuteAndTransfer(std::move(module), literals);
-  std::vector<Literal> result = result_tuple.DecomposeTuple();
+  TF_ASSERT_OK_AND_ASSIGN(Literal result_tuple,
+                          Execute(std::move(module), literals));
+  std::vector<Literal> result = std::move(result_tuple).DecomposeTuple();
 
   bool has_diff = false;
   for (int i = 1; i < kRadixSortTestSize; ++i) {

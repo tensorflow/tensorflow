@@ -42,7 +42,7 @@ class FakeEnv : public EnvWrapper {
 // A fake proxy that pretends to be libcurl.
 class FakeLibCurl : public LibCurl {
  public:
-  FakeLibCurl(const string& response_content, uint64 response_code)
+  FakeLibCurl(const std::string& response_content, uint64 response_code)
       : response_content_(response_content), response_code_(response_code) {}
   FakeLibCurl(const string& response_content, uint64 response_code,
               std::vector<std::tuple<uint64, curl_off_t>> progress_ticks,
@@ -153,8 +153,8 @@ class FakeLibCurl : public LibCurl {
       posted_content_ = "";
       do {
         bytes_read = read_callback_(buffer, 1, sizeof(buffer), read_data_);
-        posted_content_ = strings::StrCat(
-            posted_content_, absl::string_view(buffer, bytes_read));
+        posted_content_ = absl::StrCat(posted_content_,
+                                       absl::string_view(buffer, bytes_read));
       } while (bytes_read > 0);
     }
     if (write_data_ || write_callback_) {

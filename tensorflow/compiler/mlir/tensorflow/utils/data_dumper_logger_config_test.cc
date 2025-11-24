@@ -20,7 +20,7 @@ limitations under the License.
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
-#include "tensorflow/compiler/mlir/tensorflow/utils/serialize_mlir_module_utils.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/deserialize_mlir_module_utils.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
 
@@ -59,9 +59,9 @@ TEST(DataDumperLoggerConfig, TestPassFilter) {
          1);
   setenv("TF_DUMP_GRAPH_PREFIX", "sponge", 1);
 
-  const string kTestFilename = "test.txt";
+  const std::string kTestFilename = "test.txt";
   int print_callback_count = 0;
-  auto get_filename_fn = [](const string &filename, mlir::Operation *op) {
+  auto get_filename_fn = [](const std::string& filename, mlir::Operation* op) {
     return filename;
   };
   auto print_callback = [&](llvm::raw_ostream &out) {

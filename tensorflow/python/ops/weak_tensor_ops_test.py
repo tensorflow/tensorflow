@@ -748,7 +748,7 @@ class WeakTensorBinaryOpsTest(
       expected_val = a_tensor / b_tensor
       reverse_expected_val = b_tensor / a_tensor
       for x, y in zip(a_list, b_list):
-        # Truediv has a dtype conversion orthagonal to our change. Therefore,
+        # Truediv has a dtype conversion orthogonal to our change. Therefore,
         # we compare our result dtype to Tensor truediv.
         expected_result_dtype = expected_val.dtype
         self.match_expected(

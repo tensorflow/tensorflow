@@ -15,12 +15,13 @@ limitations under the License.
 
 #include <memory>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
+#include "xla/pjrt/c_api_client/pjrt_c_api_client.h"
 #include "xla/pjrt/mlir_to_hlo.h"
-#include "xla/pjrt/pjrt_c_api_client.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_executable.h"
@@ -52,10 +53,26 @@ TEST_F(PluginTestFixture, CompileWithSharedTopology) {
       xla::ParseMlirModuleString(kPassThroughStableHlo, context));
 
   xla::CompileOptions compile_options;
+  EXPECT_OK(compiler_client->Compile(compile_options, module.get(), *topology,
+                                     nullptr));
+}
+
+TEST_F(PluginTestFixture, CompileWithoutDeviceType) {
+  TF_ASSERT_OK_AND_ASSIGN(const xla::PjRtTopologyDescription* topology,
+                          client_->GetTopologyDescription());
+  ASSERT_NE(topology, nullptr);
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::PjRtCompiler> compiler_client,
+                          xla::GetCApiCompiler());
+
+  mlir::MLIRContext context;
   TF_ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<xla::PjRtExecutable> executable,
-      compiler_client->Compile(compile_options, module.get(), *topology,
-                               nullptr));
+      mlir::OwningOpRef<mlir::ModuleOp> module,
+      xla::ParseMlirModuleString(kPassThroughStableHlo, context));
+
+  xla::CompileOptions compile_options;
+  EXPECT_OK(compiler_client->Compile(compile_options, module.get(), *topology,
+                                     nullptr));
 }
 
 }  // namespace

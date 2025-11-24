@@ -19,15 +19,13 @@
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
-#include "xla/tsl/platform/status_matchers.h"
+#include "absl/status/status_matchers.h"
+#include "xla/python/ifrt/serdes_version.h"
 
 namespace xla {
 namespace ifrt {
 namespace proxy {
 namespace {
-
-using ::tsl::testing::IsOk;
-using ::tsl::testing::StatusIs;
 
 struct Param {
   int client_min_version;
@@ -38,11 +36,22 @@ struct Param {
 
 class CompatibleVersionTest : public ::testing::TestWithParam<Param> {};
 
-TEST_P(CompatibleVersionTest, Verify) {
+TEST_P(CompatibleVersionTest, VerifyProtocolVersion) {
   const Param& param = GetParam();
-  EXPECT_THAT(ChooseVersion(param.client_min_version, param.client_max_version,
+  EXPECT_THAT(
+      ChooseProtocolVersion(param.client_min_version, param.client_max_version,
                             param.server_min_version, param.server_max_version),
-              IsOk());
+      absl_testing::IsOk());
+}
+
+TEST_P(CompatibleVersionTest, VerifyIfrtSerdesVersionNumber) {
+  const Param& param = GetParam();
+  EXPECT_THAT(ChooseIfrtSerdesVersionNumber(
+                  SerDesVersionNumber(param.client_min_version),
+                  SerDesVersionNumber(param.client_max_version),
+                  SerDesVersionNumber(param.server_min_version),
+                  SerDesVersionNumber(param.server_max_version)),
+              absl_testing::IsOk());
 }
 
 INSTANTIATE_TEST_SUITE_P(CompatibleVersionTest, CompatibleVersionTest,
@@ -52,11 +61,22 @@ INSTANTIATE_TEST_SUITE_P(CompatibleVersionTest, CompatibleVersionTest,
 
 class IncompatibleVersionTest : public ::testing::TestWithParam<Param> {};
 
-TEST_P(IncompatibleVersionTest, Verify) {
+TEST_P(IncompatibleVersionTest, VerifyProtocolVersion) {
   const Param& param = GetParam();
-  EXPECT_THAT(ChooseVersion(param.client_min_version, param.client_max_version,
+  EXPECT_THAT(
+      ChooseProtocolVersion(param.client_min_version, param.client_max_version,
                             param.server_min_version, param.server_max_version),
-              StatusIs(absl::StatusCode::kInvalidArgument));
+      absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
+}
+
+TEST_P(IncompatibleVersionTest, VerifyIfrtSerdesVersionNumber) {
+  const Param& param = GetParam();
+  EXPECT_THAT(ChooseIfrtSerdesVersionNumber(
+                  SerDesVersionNumber(param.client_min_version),
+                  SerDesVersionNumber(param.client_max_version),
+                  SerDesVersionNumber(param.server_min_version),
+                  SerDesVersionNumber(param.server_max_version)),
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
 INSTANTIATE_TEST_SUITE_P(IncompatibleVersionTest, IncompatibleVersionTest,

@@ -24,16 +24,15 @@ import shlex
 
 # Template values set by rocm_configure.bzl.
 CPU_COMPILER = ('%{cpu_compiler}')
-USE_CLANG = ('%{compiler_is_clang}' == 'True')
 HOST_COMPILER_PATH = ('%{host_compiler_path}')
 
-HIPCC_PATH = '%{hipcc_path}'
-PREFIX_DIR = os.path.dirname(HOST_COMPILER_PATH)
+HIPCC_PATH = '%{rocm_root}/bin/hipcc'
 HIPCC_ENV = '%{hipcc_env}'
-HIP_RUNTIME_PATH = '%{hip_runtime_path}'
-HIP_RUNTIME_LIBRARY = '%{hip_runtime_library}'
-ROCR_RUNTIME_PATH = '%{rocr_runtime_path}'
+HIP_RUNTIME_PATH = '%{rocm_root}/lib'
+HIP_RUNTIME_LIBRARY = '%{rocm_root}/lib'
+ROCR_RUNTIME_PATH = '%{rocm_root}/lib'
 ROCR_RUNTIME_LIBRARY = '%{rocr_runtime_library}'
+TMPDIR= '%{tmpdir}'
 VERBOSE = '%{crosstool_verbose}'=='1'
 
 def Log(s):
@@ -77,7 +76,6 @@ def GetHostCompilerOptions(argv):
   parser.add_argument('-iquote', nargs='*', action='append')
   parser.add_argument('--sysroot', nargs=1)
   parser.add_argument('-g', nargs='*', action='append')
-  parser.add_argument('-fno-canonical-system-headers', action='store_true')
   parser.add_argument('-no-canonical-prefixes', action='store_true')
   parser.add_argument('--genco', action='store_true')
 
@@ -91,7 +89,7 @@ def GetHostCompilerOptions(argv):
     opts += ' -iquote ' + ' -iquote '.join(sum(args.iquote, []))
   if args.g:
     opts += ' -g' + ' -g'.join(sum(args.g, []))
-  if args.fno_canonical_system_headers or args.no_canonical_prefixes:
+  if args.no_canonical_prefixes:
     opts += ' -no-canonical-prefixes'
   if args.sysroot:
     opts += ' --sysroot ' + args.sysroot[0]
@@ -99,6 +97,27 @@ def GetHostCompilerOptions(argv):
     opts += ' --genco'
 
   return opts
+
+def GetHipccOptions(argv):
+  """Collect the -hipcc_options values from argv.
+  Args:
+    argv: A list of strings, possibly the argv passed to main().
+  Returns:
+    The string that can be passed directly to hipcc.
+  """
+
+  parser = ArgumentParser()
+  parser.add_argument('--offload-arch', nargs='*', action='append')
+  # TODO find a better place for this
+  parser.add_argument('-gline-tables-only', action='store_true')
+
+  args, _ = parser.parse_known_args(argv)
+
+  hipcc_opts = ' -gline-tables-only ' if args.gline_tables_only else ''
+  if args.offload_arch:
+    hipcc_opts = hipcc_opts + ' '.join(['--offload-arch=' + a for a in sum(args.offload_arch, [])])
+
+  return hipcc_opts
 
 def system(cmd):
   """Invokes cmd with os.system().
@@ -129,6 +148,7 @@ def InvokeHipcc(argv, log=False):
   """
 
   host_compiler_options = GetHostCompilerOptions(argv)
+  hipcc_compiler_options = GetHipccOptions(argv)
   opt_option = GetOptionValue(argv, 'O')
   m_options = GetOptionValue(argv, 'm')
   m_options = ''.join([' -m' + m for m in m_options if m in ['32', '64']])
@@ -167,7 +187,7 @@ def InvokeHipcc(argv, log=False):
   srcs = ' '.join(src_files)
   out = ' -o ' + out_file[0]
 
-  hipccopts = ' '
+  hipccopts = hipcc_compiler_options + ' '
   # In hip-clang environment, we need to make sure that hip header is included
   # before some standard math header like <complex> is included in any source.
   # Otherwise, we get build error.
@@ -186,7 +206,7 @@ def InvokeHipcc(argv, log=False):
   hipccopts += defines
   hipccopts += std_options
   hipccopts += m_options
-  hipccopts += ' --rocm-path="%{rocm_path}" '
+  hipccopts += ' --rocm-path="%{rocm_root}" '
 
   if depfiles:
     # Generate the dependency file
@@ -213,6 +233,8 @@ def InvokeHipcc(argv, log=False):
 
 
 def main():
+  if TMPDIR:
+    os.environ['TMPDIR'] = TMPDIR
   # ignore PWD env var
   os.environ['PWD']=''
 
@@ -263,9 +285,6 @@ def main():
     # this).
     cpu_compiler_flags = [flag for flag in sys.argv[1:]
                                if not flag.startswith(('--rocm_log'))]
-
-    if not USE_CLANG:
-      cpu_compiler_flags.append('-fno-canonical-system-headers')
 
     # XXX: SE codes need to be built with gcc, but need this macro defined
     cpu_compiler_flags.append("-D__HIP_PLATFORM_HCC__")

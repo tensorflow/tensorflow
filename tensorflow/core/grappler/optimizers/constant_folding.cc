@@ -17,7 +17,10 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/optimizers/constant_folding.h"
 
+#include <algorithm>
 #include <cmath>
+#include <limits>
+#include <utility>
 
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
@@ -1257,7 +1260,7 @@ absl::Status ConstantFolding::CreateNodeDef(const string& name,
 
   AttrValue attr_type;
   attr_type.set_type(tensor->dtype());
-  node->mutable_attr()->insert({"dtype", attr_type});
+  node->mutable_attr()->insert({"dtype", std::move(attr_type)});
 
   AttrValue attr_tensor;
   TensorProto* t = attr_tensor.mutable_tensor();
@@ -1266,28 +1269,28 @@ absl::Status ConstantFolding::CreateNodeDef(const string& name,
   // Use the packed representation whenever possible to avoid generating large
   // graphdefs. Moreover, avoid repeating the last values if they're equal.
   if (tensor->NumElements() > 4) {
-#define POPULATE_TENSOR_PROTO(tensor, t, TYPE, FIELDTYPE)         \
-  {                                                               \
-    const auto* val_ptr = tensor->flat<TYPE>().data();            \
-    auto last = *val_ptr;                                         \
-    int64_t last_index = 0;                                       \
-    for (int64_t i = 0; i < tensor->NumElements(); ++i) {         \
-      TYPE cur = *val_ptr++;                                      \
-      if (PackedValuesNotEqual(cur, last)) {                      \
-        last = cur;                                               \
-        last_index = i;                                           \
-      }                                                           \
-    }                                                             \
-    encoded_size = (last_index + 1) * sizeof(FIELDTYPE);          \
-    if (encoded_size < kint32max) {                               \
-      optimized = true;                                           \
-      t->mutable_##FIELDTYPE##_val()->Reserve(last_index + 1);    \
-      const auto* src_ptr = tensor->flat<TYPE>().data();          \
-      auto* dst_ptr = t->mutable_##FIELDTYPE##_val()              \
-                          -> AddNAlreadyReserved(last_index + 1); \
-      std::copy(src_ptr, src_ptr + last_index + 1, dst_ptr);      \
-    }                                                             \
-  }                                                               \
+#define POPULATE_TENSOR_PROTO(tensor, t, TYPE, FIELDTYPE)                      \
+  {                                                                            \
+    const auto* val_ptr = tensor->flat<TYPE>().data();                         \
+    auto last = *val_ptr;                                                      \
+    int64_t last_index = 0;                                                    \
+    for (int64_t i = 0; i < tensor->NumElements(); ++i) {                      \
+      TYPE cur = *val_ptr++;                                                   \
+      if (PackedValuesNotEqual(cur, last)) {                                   \
+        last = cur;                                                            \
+        last_index = i;                                                        \
+      }                                                                        \
+    }                                                                          \
+    encoded_size = (last_index + 1) * sizeof(FIELDTYPE);                       \
+    if (encoded_size < std::numeric_limits<int32_t>::max()) {                  \
+      optimized = true;                                                        \
+      t->mutable_##FIELDTYPE##_val()->Reserve(last_index + 1);                 \
+      const auto* src_ptr = tensor->flat<TYPE>().data();                       \
+      auto* dst_ptr =                                                          \
+          t->mutable_##FIELDTYPE##_val()->AddNAlreadyReserved(last_index + 1); \
+      std::copy(src_ptr, src_ptr + last_index + 1, dst_ptr);                   \
+    }                                                                          \
+  }                                                                            \
   break
 
     switch (tensor->dtype()) {
@@ -1328,7 +1331,7 @@ absl::Status ConstantFolding::CreateNodeDef(const string& name,
     tensor->AsProtoTensorContent(t);
     encoded_size = t->tensor_content().size();
   }
-  node->mutable_attr()->insert({"value", attr_tensor});
+  node->mutable_attr()->insert({"value", std::move(attr_tensor)});
 
   if (encoded_size > original_size && encoded_size >= kMaxConstantSize) {
     return absl::InvalidArgumentError(

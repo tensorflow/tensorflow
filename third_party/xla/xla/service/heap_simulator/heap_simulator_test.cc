@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/types/span.h"
 #include "xla/comparison_util.h"
+#include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/analysis/hlo_alias_analysis.h"
 #include "xla/hlo/analysis/hlo_dataflow_analysis.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -49,6 +50,7 @@ limitations under the License.
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
+#include "xla/tsl/platform/test_benchmark.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -59,7 +61,10 @@ using ::testing::ElementsAreArray;
 using ::testing::HasSubstr;
 using ::testing::StrEq;
 
-class MinimumMemoryForSequenceTest : public HloHardwareIndependentTestBase {};
+class MinimumMemoryForSequenceTest : public HloHardwareIndependentTestBase {
+ protected:
+  AliasInfo alias_info_;
+};
 
 TEST_F(MinimumMemoryForSequenceTest, MultiComputation) {
   auto module = CreateNewVerifiedModule();
@@ -105,7 +110,7 @@ TEST_F(MinimumMemoryForSequenceTest, MultiComputation) {
   HloComputation* entry_computation =
       module->AddEntryComputation(builder.Build());
 
-  auto size_fn = [](const BufferValue& buffer) {
+  BufferValue::SizeFunction size_fn = [](const BufferValue& buffer) {
     return ShapeUtil::ByteSizeOf(buffer.shape(), /*pointer_size=*/8);
   };
 
@@ -116,8 +121,11 @@ TEST_F(MinimumMemoryForSequenceTest, MultiComputation) {
   schedule.set_sequence(entry_computation, {iter, data, tuple, while_op});
   TF_ASSERT_OK(schedule.Verify());
 
-  EXPECT_EQ(25,
-            HeapSimulator::MinimumMemoryForModule(schedule, size_fn).value());
+  std::unique_ptr<HloAliasAnalysis> alias_analysis =
+      HloAliasAnalysis::Run(module.get(), &alias_info_).value();
+  EXPECT_EQ(25, HeapSimulator::MinimumMemoryForModule(schedule, *alias_analysis,
+                                                      &alias_info_, &size_fn)
+                    .value());
 }
 
 TEST_F(MinimumMemoryForSequenceTest, SubcomputationAccounting) {
@@ -222,18 +230,18 @@ TEST_F(MinimumMemoryForSequenceTest, SubcomputationAccounting) {
   schedule.set_sequence(body_computation, while_body_vec);
   schedule.set_sequence(entry_computation, entry_comp_vec);
 
-  auto size_fn = [](const BufferValue& buffer) {
+  BufferValue::SizeFunction size_fn = [](const BufferValue& buffer) {
     return ShapeUtil::ByteSizeOf(buffer.shape());
   };
 
   std::unique_ptr<HloAliasAnalysis> alias_analysis =
-      HloAliasAnalysis::Run(module.get()).value();
+      HloAliasAnalysis::Run(module.get(), &alias_info_).value();
 
   // HeapSimulator accounts for subcomputations. The output buffer is aliased,
   // so we don't double count.
   EXPECT_EQ(64, HeapSimulator::MinimumMemoryForComputation(
                     *entry_computation, schedule.sequence(entry_computation),
-                    *alias_analysis, size_fn)
+                    *alias_analysis, &alias_info_, &size_fn)
                     .value());
 }
 
@@ -294,9 +302,12 @@ class HeapSimulatorTracker {
       std::unique_ptr<HloModule> module,
       const std::vector<HloInstruction*>& instruction_sequence,
       const std::vector<HloInstruction*>& must_alias_set = {},
-      const HloDataflowAnalysis::CanShareBuffer& can_share_buffer = nullptr) {
+      const AliasInfo* alias_info = nullptr) {
     module_ = std::move(module);
-    Init(instruction_sequence, can_share_buffer);
+    if (alias_info == nullptr) {
+      alias_info = &alias_info_;
+    }
+    Init(instruction_sequence, alias_info);
   }
 
   // Constructor for testing a single entry computation.
@@ -305,11 +316,14 @@ class HeapSimulatorTracker {
       std::unique_ptr<HloComputation> entry_computation,
       const std::vector<HloInstruction*>& instruction_sequence,
       const std::vector<HloInstruction*>& must_alias_set = {},
-      const HloDataflowAnalysis::CanShareBuffer& can_share_buffer = nullptr) {
+      const AliasInfo* alias_info = nullptr) {
     HloModuleConfig config;
     module_ = std::make_unique<HloModule>(name, config);
     module_->AddEntryComputation(std::move(entry_computation));
-    Init(instruction_sequence, can_share_buffer);
+    if (alias_info == nullptr) {
+      alias_info = &alias_info_;
+    }
+    Init(instruction_sequence, alias_info);
   }
 
   explicit HeapSimulatorTracker(const std::string& name) {
@@ -321,7 +335,8 @@ class HeapSimulatorTracker {
   // simulation over the entire module.
   void RunWholeModule(
       const std::vector<HloInstruction*>& full_module_sequence) {
-    alias_analysis_ = HloAliasAnalysis::Run(module_.get()).value();
+    alias_analysis_ =
+        HloAliasAnalysis::Run(module_.get(), &alias_info_).value();
 
     // Construct the module sequence grouped by computation.
     HloSchedule schedule(module_.get());
@@ -337,12 +352,13 @@ class HeapSimulatorTracker {
     // the sequence. This lets us ensure the Alloc calls are in the sequence
     // order. The Free calls are sorted by BufferValue.id, which is at least
     // deterministic.
-    auto size_fn = [&reverse_position](const BufferValue& buffer) {
-      return reverse_position[buffer.instruction()];
-    };
+    BufferValue::SizeFunction size_fn =
+        [&reverse_position](const BufferValue& buffer) {
+          return reverse_position[buffer.instruction()];
+        };
     auto algorithm = std::make_unique<HeapCallRecorder>(&actual_calls_);
     result_ = HeapSimulator::Run(std::move(algorithm), *module_, schedule,
-                                 *alias_analysis_, size_fn)
+                                 *alias_analysis_, &alias_info_, &size_fn)
                   .value();
   }
 
@@ -396,28 +412,30 @@ class HeapSimulatorTracker {
 
  private:
   void Init(const std::vector<HloInstruction*>& instruction_sequence,
-            const HloDataflowAnalysis::CanShareBuffer& can_share_buffer) {
+            const AliasInfo* alias_info) {
     // Since we're only tracking the sequence of Alloc/Free calls, the actual
     // size of the buffers doesn't matter, so we always return 0.  We rely on
     // the secondary sorting criteria of DecreasingSizeRunsHeap to sort calls
     // by buffer id, for determinism in the tests.
-    auto zero_size = [](const BufferValue& buffer) { return 0; };
+    BufferValue::SizeFunction zero_size = [](const BufferValue& buffer) {
+      return 0;
+    };
     auto algorithm = std::make_unique<HeapCallRecorder>(&actual_calls_);
 
-    alias_analysis_ =
-        HloAliasAnalysis::Run(module_.get(), can_share_buffer).value();
+    alias_analysis_ = HloAliasAnalysis::Run(module_.get(), alias_info).value();
 
     HeapSimulator::Options options;
 
     result_ =
         HeapSimulator::Run(std::move(algorithm), *module_->entry_computation(),
                            HloInstructionSequence(instruction_sequence),
-                           *alias_analysis_, zero_size, options)
+                           *alias_analysis_, &alias_info_, &zero_size, options)
             .value();
   }
 
   std::unique_ptr<HloModule> module_;
   std::unique_ptr<HloAliasAnalysis> alias_analysis_;
+  AliasInfo alias_info_;
   CallSequence actual_calls_;
   HeapSimulator::Result<HloValue> result_;
 };
@@ -430,6 +448,7 @@ class HeapSimulatorTest : public HloHardwareIndependentTestBase {
   // Shapes for use in the examples.
   Shape f32scalar_ = ShapeUtil::MakeShape(xla::F32, {});
   Shape f32vec4_ = ShapeUtil::MakeShape(F32, {4});
+  AliasInfo alias_info_;
 };
 
 TEST_F(HeapSimulatorTest, ScalarConstant) {
@@ -514,17 +533,20 @@ TEST_F(HeapSimulatorTest, MultiplyAdd) {
   tracker.ExpectSharedBuffers(add, {}, mul, {});
 }
 
-TEST_F(HeapSimulatorTest, FusionOutputsOnlyShareOnce) {
-  // Test that only one output of a fusion node will be shared with its operand.
-  auto can_share_buffer =
-      [](const HloInstruction* instr, const HloInstruction* operand,
-         const ShapeIndex& user_index) -> std::optional<bool> {
+class CanShareWithSameShapeAliasInfo : public AliasInfo {
+ public:
+  std::optional<bool> MayAlias(const HloInstruction* operand, const ShapeIndex&,
+                               const HloInstruction* instr,
+                               const ShapeIndex& user_index) const override {
     return instr->opcode() == HloOpcode::kFusion &&
            operand->shape().IsArray() &&
            ShapeUtil::Equal(operand->shape(),
                             ShapeUtil::GetSubshape(instr->shape(), user_index));
-  };
+  }
+};
 
+TEST_F(HeapSimulatorTest, FusionOutputsOnlyShareOnce) {
+  // Test that only one output of a fusion node will be shared with its operand.
   HloModuleConfig config;
   auto module = std::make_unique<HloModule>(TestName(), config);
 
@@ -564,10 +586,11 @@ TEST_F(HeapSimulatorTest, FusionOutputsOnlyShareOnce) {
                                                       negate0, negate1));
 
   module->AddEntryComputation(builder.Build());
+  CanShareWithSameShapeAliasInfo alias_info;
   HeapSimulatorTracker tracker(
       std::move(module),
       {paramA, negate, fusion, element0, element1, negate0, negate1}, {},
-      can_share_buffer);
+      &alias_info);
   tracker.ExpectCallSequence({
       {kAlloc, tracker.BufferAt(paramA, {})},
       {kAlloc, tracker.BufferAt(negate, {})},
@@ -587,18 +610,18 @@ TEST_F(HeapSimulatorTest, FusionOutputsOnlyShareOnce) {
   });
 }
 
+class FusionCanAlwaysShareAliasInfo : public AliasInfo {
+ public:
+  std::optional<bool> MayAlias(const HloInstruction* operand, const ShapeIndex&,
+                               const HloInstruction* instr,
+                               const ShapeIndex& user_index) const override {
+    return instr->opcode() == HloOpcode::kFusion;
+  }
+};
+
 TEST_F(HeapSimulatorTest, FusionOutputsOnlyShareOnceOutputShortLived) {
   // Test that only one output of a fusion node will be shared with its operand.
   // This variant of the test has a fusion node that dies immediately.
-  auto can_share_buffer =
-      [](const HloInstruction* instr, const HloInstruction* operand,
-         const ShapeIndex& user_index) -> std::optional<bool> {
-    if (instr->opcode() == HloOpcode::kFusion) {
-      return true;
-    }
-    return false;
-  };
-
   HloModuleConfig config;
   auto module = std::make_unique<HloModule>(TestName(), config);
 
@@ -630,9 +653,10 @@ TEST_F(HeapSimulatorTest, FusionOutputsOnlyShareOnceOutputShortLived) {
       HloInstruction::CreateUnary(f32vec4_, HloOpcode::kNegate, element1));
 
   module->AddEntryComputation(builder.Build());
+  FusionCanAlwaysShareAliasInfo alias_info;
   HeapSimulatorTracker tracker(std::move(module),
                                {paramA, negate, fusion, element1, negate1}, {},
-                               can_share_buffer);
+                               &alias_info);
   tracker.ExpectCallSequence({
       {kAlloc, tracker.BufferAt(paramA, {})},
       {kAlloc, tracker.BufferAt(negate, {})},
@@ -976,8 +1000,8 @@ TEST_F(HeapSimulatorTest, AsyncCallImplicitSharding) {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnUnverifiedModule(hlo_string));
   TF_ASSERT_OK_AND_ASSIGN(auto alias_analysis,
-                          HloAliasAnalysis::Run(module.get()));
-  auto size_fn = [](const BufferValue& buffer) -> int64_t {
+                          HloAliasAnalysis::Run(module.get(), &alias_info_));
+  BufferValue::SizeFunction size_fn = [](const BufferValue& buffer) -> int64_t {
     const Shape& shape = buffer.shape();
     if (!shape.IsArray()) {
       return 0;
@@ -989,7 +1013,7 @@ TEST_F(HeapSimulatorTest, AsyncCallImplicitSharding) {
 
   HeapSimulator::Result<HloValue> result =
       HeapSimulator::Run(std::move(algorithm), *module, module->schedule(),
-                         *alias_analysis, size_fn)
+                         *alias_analysis, &alias_info_, &size_fn)
           .value();
   for (const auto& [value, chunk] : result.heap_results[0].chunk_map) {
     if (value->instruction()->name() == "dynamic-update-slice") {
@@ -1025,6 +1049,8 @@ class HeapAlgorithmTestBase : public ::testing::Test {
   const HloValue* buffer_i_;
 
  private:
+  friend class GlobalDecreasingSizeBestFitHeapBenchmark;
+
   // Create a dummy HloValue to pass to the heap algorithm.
   const HloValue* DummyBufferValue() {
     const HloValue::Id id = buffers_.size();
@@ -3803,6 +3829,51 @@ TEST_F(BreadthFirstMidpointIteratorTest, General1) {
 TEST_F(BreadthFirstMidpointIteratorTest, General2) {
   RunTest(0, 10, {5, 2, 8, 1, 4, 7, 10, 0, 3, 6, 9});
 }
+
+TEST_F(BreadthFirstMidpointIteratorTest, LargeValuesStackOverflow) {
+  // This test ensures that the iterator can be used with large values without
+  // overflowing the stack.
+  int start = 0;
+  int end = 1 << 12;
+  BreadthFirstMidpointIterator iterator(start, end);
+  for (; !iterator.End(); iterator.Next()) {
+    // No need to check values, just iterate.
+  }
+}
+
+class GlobalDecreasingSizeBestFitHeapBenchmark : public HeapAlgorithmTestBase {
+ public:
+  void TestBody() override {}
+
+  void RunBenchmark(::testing::benchmark::State& state) {
+    const int n = state.range(0);
+    int alignment = state.range(1);
+    std::vector<const HloValue*> buffers;
+    for (int i = 0; i < n; i++) {
+      buffers.push_back(DummyBufferValue());
+    }
+    for (auto s : state) {
+      benchmark::DoNotOptimize(alignment);
+      GlobalDecreasingSizeBestFitHeap<HloValue> heap(alignment);
+      for (int i = 0; i < n; i++) {
+        heap.Alloc(buffers[i], i * 20);
+      }
+      for (int i = 0; i < n; i++) {
+        heap.Free(buffers[i], i * 20);
+      }
+      TF_ASSERT_OK_AND_ASSIGN(const HeapSimulator::Result<HloValue> result,
+                              heap.Finish());
+    }
+  }
+};
+
+static void BM_GlobalDecreasingSizeBestFitHeap(
+    ::testing::benchmark::State& state) {
+  GlobalDecreasingSizeBestFitHeapBenchmark bm;
+  bm.RunBenchmark(state);
+}
+BENCHMARK(BM_GlobalDecreasingSizeBestFitHeap)
+    ->ArgsProduct({{1, 4, 16, 64}, {1, 1024}});
 
 }  // namespace
 }  // namespace xla

@@ -1363,6 +1363,12 @@ def argsort(a, axis=-1, kind='quicksort', order=None):  # pylint: disable=missin
 
   a = np_array_ops.array(a)
 
+  if a.dtype in (dtypes.complex64, dtypes.complex128):
+    raise TypeError(
+        'argsort does not support complex64/complex128 dtypes. '
+        f'Received dtype: {a.dtype}'
+    )
+
   def _argsort(a, axis, stable):
     if axis is None:
       a = array_ops.reshape(a, [-1])

@@ -372,13 +372,6 @@ def ExecuteOp : FallbackAsync_Op<"executeop",
     void getOpAttrs(SmallVectorImpl<std::pair<::llvm::StringRef, ::mlir::Attribute>>* op_attrs);
   }];
 
-  let builders = [
-    OpBuilder<(ins "ArrayRef<Type>":$results, "ValueRange":$args,
-      "StringRef":$device,
-      "::llvm::ArrayRef<std::pair<::llvm::StringRef, ::mlir::Attribute>>":$op_attrs,
-      "::llvm::ArrayRef<std::pair<::llvm::StringRef, ::mlir::Attribute>>":$op_func_attrs,
-      "int64_t":$op_key, "::llvm::StringRef":$op_name, "int64_t":$_tfrt_cost)>];
-
   let hasVerifier = 1;
   let hasCustomAssemblyFormat = 1;
 }

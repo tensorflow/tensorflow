@@ -30,6 +30,7 @@ limitations under the License.
 #include "xla/primitive_util.h"
 #include "xla/service/algorithm_util.h"
 #include "xla/stream_executor/blas.h"
+#include "xla/stream_executor/gpu/gpu_blas_lt.pb.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/platform/statusor.h"
@@ -287,7 +288,7 @@ DataType GetScaleType(DataType c_type, ComputationType computation_type) {
 
 absl::StatusOr<BlasLt::MatmulPlan*> BlasLt::GetOrCreateMatmulPlan(
     const std::string& key, PlanCreateFunc create) {
-  absl::MutexLock lock(&plan_cache_mu_);  // double mutex ???
+  absl::MutexLock lock(plan_cache_mu_);  // double mutex ???
   auto res = plan_cache_.emplace(key, MatmulPlanPtr{});
   // New entry inserted: always create a new matmul plan if key is empty,
   // this is used by command_buffer_thunk test.
@@ -300,12 +301,12 @@ absl::StatusOr<BlasLt::MatmulPlan*> BlasLt::GetOrCreateMatmulPlan(
 }
 
 void BlasLt::ClearMatmulPlanCache() {
-  absl::MutexLock lock(&plan_cache_mu_);
+  absl::MutexLock lock(plan_cache_mu_);
   plan_cache_.clear();
 }
 
 size_t BlasLt::GetMatmulPlanCacheSize() const {
-  absl::MutexLock lock(&plan_cache_mu_);
+  absl::MutexLock lock(plan_cache_mu_);
   return plan_cache_.size();
 }
 
@@ -356,6 +357,67 @@ xla::GemmConfigProto GemmConfig::ToProto() const {
     proto.set_compute_type(blas::ToProto(*compute_type));
   }
   return proto;
+}
+
+absl::StatusOr<BlasLt::Epilogue> BlasLt::EpilogueFromProto(
+    const xla::BlasLtEpilogueProto& proto) {
+  switch (proto) {
+    case xla::BlasLtEpilogueProto::EPILOGUE_DEFAULT:
+      return Epilogue::kDefault;
+    case xla::BlasLtEpilogueProto::EPILOGUE_RELU:
+      return Epilogue::kReLU;
+    case xla::BlasLtEpilogueProto::EPILOGUE_BIAS:
+      return Epilogue::kBias;
+    case xla::BlasLtEpilogueProto::EPILOGUE_BIAS_THEN_RELU:
+      return Epilogue::kBiasThenReLU;
+    case xla::BlasLtEpilogueProto::EPILOGUE_GELU:
+      return Epilogue::kGELU;
+    case xla::BlasLtEpilogueProto::EPILOGUE_SILU:
+      return Epilogue::kSILU;
+    case xla::BlasLtEpilogueProto::EPILOGUE_SILU_WITH_AUX:
+      return Epilogue::kSILUWithAux;
+    case xla::BlasLtEpilogueProto::EPILOGUE_GELU_WITH_AUX:
+      return Epilogue::kGELUWithAux;
+    case xla::BlasLtEpilogueProto::EPILOGUE_BIAS_THEN_GELU:
+      return Epilogue::kBiasThenGELU;
+    case xla::BlasLtEpilogueProto::EPILOGUE_BIAS_THEN_SILU:
+      return Epilogue::kBiasThenSILU;
+    case xla::BlasLtEpilogueProto::EPILOGUE_BIAS_THEN_GELU_WITH_AUX:
+      return Epilogue::kBiasThenGELUWithAux;
+    case xla::BlasLtEpilogueProto::EPILOGUE_BIAS_THEN_SILU_WITH_AUX:
+      return Epilogue::kBiasThenSILUWithAux;
+    default:
+      return absl::InvalidArgumentError("Unsupported epilogue type");
+  }
+}
+
+xla::BlasLtEpilogueProto BlasLt::EpilogueToProto(Epilogue epilogue) {
+  switch (epilogue) {
+    case Epilogue::kDefault:
+      return xla::BlasLtEpilogueProto::EPILOGUE_DEFAULT;
+    case Epilogue::kReLU:
+      return xla::BlasLtEpilogueProto::EPILOGUE_RELU;
+    case Epilogue::kBias:
+      return xla::BlasLtEpilogueProto::EPILOGUE_BIAS;
+    case Epilogue::kBiasThenReLU:
+      return xla::BlasLtEpilogueProto::EPILOGUE_BIAS_THEN_RELU;
+    case Epilogue::kGELU:
+      return xla::BlasLtEpilogueProto::EPILOGUE_GELU;
+    case Epilogue::kSILU:
+      return xla::BlasLtEpilogueProto::EPILOGUE_SILU;
+    case Epilogue::kSILUWithAux:
+      return xla::BlasLtEpilogueProto::EPILOGUE_SILU_WITH_AUX;
+    case Epilogue::kGELUWithAux:
+      return xla::BlasLtEpilogueProto::EPILOGUE_GELU_WITH_AUX;
+    case Epilogue::kBiasThenGELU:
+      return xla::BlasLtEpilogueProto::EPILOGUE_BIAS_THEN_GELU;
+    case Epilogue::kBiasThenSILU:
+      return xla::BlasLtEpilogueProto::EPILOGUE_BIAS_THEN_SILU;
+    case Epilogue::kBiasThenGELUWithAux:
+      return xla::BlasLtEpilogueProto::EPILOGUE_BIAS_THEN_GELU_WITH_AUX;
+    case Epilogue::kBiasThenSILUWithAux:
+      return xla::BlasLtEpilogueProto::EPILOGUE_BIAS_THEN_SILU_WITH_AUX;
+  }
 }
 
 }  // namespace gpu

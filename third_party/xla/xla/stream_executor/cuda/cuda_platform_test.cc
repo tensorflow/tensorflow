@@ -18,6 +18,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
+#include "third_party/gpus/cuda/nvml/include/nvml.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "tsl/platform/statusor.h"
@@ -43,6 +44,18 @@ TEST(CudaPlatformTest, FindExistingWorks) {
     TF_ASSERT_OK_AND_ASSIGN(auto executor, platform->FindExisting(i));
     EXPECT_EQ(executor, executors[i]);
   }
+}
+
+TEST(CudaPlatformTest, NVML) {
+  TF_ASSERT_OK_AND_ASSIGN(Platform * platform,
+                          PlatformManager::PlatformWithName("CUDA"));
+  CHECK_GT(platform->VisibleDeviceCount(), 0);
+
+  // After successful init, we try to use one of the
+  // nvml functions to see if the result is good.
+  nvmlDevice_t nvml_device;
+  nvmlReturn_t get_device_result = nvmlDeviceGetHandleByIndex(0, &nvml_device);
+  EXPECT_TRUE(get_device_result == NVML_SUCCESS);
 }
 
 }  // namespace

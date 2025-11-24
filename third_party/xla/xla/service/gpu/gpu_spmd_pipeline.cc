@@ -17,9 +17,12 @@ limitations under the License.
 
 #include <cstdint>
 #include <optional>
+#include <string>
 
+#include "absl/container/flat_hash_set.h"
 #include "absl/functional/function_ref.h"
 #include "absl/log/check.h"
+#include "absl/strings/match.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_schedule.h"
@@ -32,6 +35,8 @@ limitations under the License.
 #include "xla/hlo/transforms/simplifiers/reshape_mover.h"
 #include "xla/hlo/transforms/simplifiers/sort_simplifier.h"
 #include "xla/hlo/transforms/simplifiers/tuple_simplifier.h"
+#include "xla/service/call_graph.h"
+#include "xla/service/call_inliner.h"
 #include "xla/service/conditional_simplifier.h"
 #include "xla/service/gather_expander.h"
 #include "xla/service/gpu/transforms/algebraic_simplifier.h"
@@ -39,6 +44,7 @@ limitations under the License.
 #include "xla/service/scatter_expander.h"
 #include "xla/service/sharding_propagation.h"
 #include "xla/service/spmd/collective_permute_motion.h"
+#include "xla/service/spmd/shardy/constants.h"
 #include "xla/service/spmd/shardy/shardy_xla_pass.h"
 #include "xla/service/spmd/stateful_rng_spmd_partitioner.h"
 #include "xla/service/while_loop_constant_sinking.h"
@@ -54,7 +60,8 @@ void AddSPMDPasses(
     const se::GpuComputeCapability& compute_capability,
     HloPassPipeline& spmd_pipeline,
     std::optional<const absl::FunctionRef<void(HloPassPipeline&)>>
-        auto_sharding_func) {
+        auto_sharding_func,
+    int64_t max_windowed_einsum_iteration) {
   const int64_t num_partitions = hlo_module->config().num_partitions();
   CHECK_GE(num_partitions, 1);
 
@@ -90,6 +97,10 @@ void AddSPMDPasses(
   const HloModuleConfig& config = hlo_module->config();
 
   if (config.use_shardy_partitioner()) {
+    // This will make sure an auto partitioner is registered.
+    if (auto_sharding_func.has_value()) {
+      (*auto_sharding_func)(spmd_pipeline);
+    }
     spmd_pipeline.AddPass<sdy::ShardyXLA>();
   } else {
     spmd_pipeline.AddPass<HloConstantSplitter>();
@@ -121,7 +132,26 @@ void AddSPMDPasses(
           .xla_gpu_multi_streamed_windowed_einsum(),
       /*skip_checking_windowed_einsum_users=*/true,
       /*disable_ag_rewrite_for_multiple_consumers=*/true,
-      /*enable_partial_windowed_einsums=*/true, oper_size_threshold);
+      /*enable_partial_windowed_einsums=*/true, oper_size_threshold,
+      max_windowed_einsum_iteration);
+  // NOTE: even though the inliner is called in `RunPreSPMDPartitionerPasses`,
+  // it doesn't inline functions needed for ShardyXLA. ShardyXLA will also leave
+  // functions called `kInlineableManualComputationFuncName` not inlined, so
+  // we need to call the inliner again here.
+  spmd_pipeline.AddPass<xla::CallInliner>(
+      /*single_call_site=*/false,
+      /*update_domain=*/false,
+      /*composites_to_preserve=*/absl::flat_hash_set<std::string>{},
+      /*uniquify_channel_ids=*/false,
+      /*override_policy=*/
+      [](const xla::CallGraph& call_graph,
+         const xla::HloInstruction* instruction) {
+        if (absl::StrContains(instruction->to_apply()->name(),
+                              sdy::kInlineableManualComputationFuncName)) {
+          return xla::CallInliner::InlineOverridePolicy::kAllowInline;
+        }
+        return xla::CallInliner::InlineOverridePolicy::kProhibitInline;
+      });
   spmd_pipeline.AddPass<CollectivePermuteMotion>();
 }
 

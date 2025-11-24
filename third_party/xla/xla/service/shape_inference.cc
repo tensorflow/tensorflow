@@ -78,7 +78,7 @@ bool CompatibleDimensionSizes(int64_t size_a, int64_t size_b) {
 }
 
 absl::Status ExpectArray(const Shape& shape, absl::string_view op_type) {
-  if (!shape.IsArray()) {
+  if (!shape.IsArrayExcludingBuffer()) {
     return InvalidArgument("Expected array argument for %s, but got %s.",
                            std::string(op_type), ShapeUtil::HumanString(shape));
   }
@@ -98,7 +98,7 @@ absl::Status VerifyReducerShape(
 
   const Shape& accumulator_shape = reducer_shape.result();
   std::vector<const Shape*> accumulator_subshapes;
-  if (accumulator_shape.IsArray()) {
+  if (accumulator_shape.IsArrayExcludingBuffer()) {
     if (inputs != 1) {
       return InvalidArgument(
           "Reduction function must produce a tuple with %d elements, but "
@@ -361,7 +361,14 @@ absl::StatusOr<DimAndBound> InferMostSpecificDimAndBound(int64_t dim,
             HloOpcodeString(opcode), PrimitiveType_Name(shape.element_type()));
       }
       return shape;
+    case HloOpcode::kAsin:
+    case HloOpcode::kAsinh:
+    case HloOpcode::kAcos:
+    case HloOpcode::kAcosh:
+    case HloOpcode::kAtanh:
+    case HloOpcode::kCosh:
     case HloOpcode::kCos:
+    case HloOpcode::kSinh:
     case HloOpcode::kSin:
     case HloOpcode::kExp:
     case HloOpcode::kExpm1:
@@ -585,7 +592,7 @@ absl::StatusOr<DimAndBound> InferMostSpecificDimAndBound(int64_t dim,
 
 /* static */ absl::StatusOr<Shape> ShapeInference::InferConvertShape(
     const Shape& operand_shape, PrimitiveType new_element_type) {
-  if (!operand_shape.IsArray() ||
+  if (!operand_shape.IsArrayExcludingBuffer() ||
       !primitive_util::IsArrayType(new_element_type)) {
     // Note: we may want to support tuple conversions via this operation in the
     // future, by recursing into the tuple elements to check all sub-conversions
@@ -608,7 +615,7 @@ absl::StatusOr<DimAndBound> InferMostSpecificDimAndBound(int64_t dim,
                            ShapeUtil::HumanString(operand_shape),
                            PrimitiveType_Name(new_element_type));
   }
-  if (!operand_shape.IsArray() ||
+  if (!operand_shape.IsArrayExcludingBuffer() ||
       !primitive_util::IsArrayType(new_element_type)) {
     // Note: we may want to support tuple conversions via this operation in the
     // future, by recursing into the tuple elements to check all sub-conversions
@@ -725,7 +732,7 @@ absl::StatusOr<DimAndBound> InferMostSpecificDimAndBound(int64_t dim,
 /* static */ absl::StatusOr<Shape> ShapeInference::InferPadShape(
     const Shape& operand_shape, const Shape& padding_value_shape,
     const PaddingConfig& padding_config) {
-  if (!operand_shape.IsArray()) {
+  if (!operand_shape.IsArrayExcludingBuffer()) {
     return InvalidArgument(
         "Pad operation does not support tuple-shape operands.");
   }
@@ -846,11 +853,7 @@ absl::Status ValidateDotDimensionNumbers(
 
 absl::Status CheckDotDimensionConstraints(
     const Shape& lhs, const Shape& rhs,
-    const DotDimensionNumbers& dimension_numbers,
-    std::optional<std::array<std::pair<int, int>, HloDotInstruction::kOperands>>
-        sparsity_nm = std::nullopt,
-    std::optional<std::array<int, HloDotInstruction::kOperands>> sparsity_dim =
-        std::nullopt) {
+    const DotDimensionNumbers& dimension_numbers) {
   auto fail = [lhs, rhs](const std::string& addendum) -> absl::Status {
     std::string message =
         StrFormat("Cannot infer shape for dot operation: %s <dot> %s.",
@@ -875,26 +878,9 @@ absl::Status CheckDotDimensionConstraints(
         dimension_numbers.lhs_contracting_dimensions(i);
     const int64_t rhs_contracting_dimension =
         dimension_numbers.rhs_contracting_dimensions(i);
-    int64_t lhs_size = lhs.dimensions(lhs_contracting_dimension);
-    int64_t rhs_size = rhs.dimensions(rhs_contracting_dimension);
-    bool is_sparse = false;
-    if (sparsity_nm.has_value() && sparsity_dim.has_value()) {
-      if (lhs_contracting_dimension == sparsity_dim.value()[0]) {
-        lhs_size *= sparsity_nm.value()[0].second;
-        rhs_size *= sparsity_nm.value()[0].first;
-        is_sparse = true;
-      }
-      if (rhs_contracting_dimension == sparsity_dim.value()[1]) {
-        lhs_size *= sparsity_nm.value()[1].first;
-        rhs_size *= sparsity_nm.value()[1].second;
-        is_sparse = true;
-      }
-    }
-    if (!CompatibleDimensionSizes(lhs_size, rhs_size)) {
-      return fail(
-          !is_sparse
-              ? "Contracting dimension sizes are not compatible."
-              : "Sparse dimension size ratio doesn't match the descriptor.");
+    if (!CompatibleDimensionSizes(lhs.dimensions(lhs_contracting_dimension),
+                                  rhs.dimensions(rhs_contracting_dimension))) {
+      return fail("Contracting dimension sizes are not compatible.");
     }
   }
 
@@ -962,34 +948,15 @@ void GenerateDotResultDimensions(
 /* static */ absl::StatusOr<Shape> ShapeInference::InferDotOpShape(
     const Shape& lhs, const Shape& rhs,
     const DotDimensionNumbers& dimension_numbers,
-    std::optional<PrimitiveType> preferred_element_type,
-    absl::Span<const SparsityDescriptor> sparsity) {
+    std::optional<PrimitiveType> preferred_element_type) {
   TF_RETURN_IF_ERROR(ExpectArray(lhs, "lhs of dot"));
   TF_RETURN_IF_ERROR(ExpectArray(rhs, "rhs of dot"));
 
   // Validate basic properties of dot dimension numbers.
   TF_RETURN_IF_ERROR(ValidateDotDimensionNumbers(lhs, rhs, dimension_numbers));
 
-  // Sparsity is only supported for contracting dimensions.
-  // With N:M sparsity, the contracting dimension sizes have N/M ratio.
-  const int kSize = HloDotInstruction::kOperands;
-  std::array<std::pair<int, int>, kSize> sparsity_nm = {{{1, 1}, {1, 1}}};
-  std::array<int, kSize> sparsity_dim = {-1, -1};
-  for (const auto& descriptor : sparsity) {
-    TF_RET_CHECK(descriptor.index() == 0 || descriptor.index() == 1);
-    sparsity_dim[descriptor.index()] = descriptor.dimension();
-    switch (descriptor.type()) {
-      case SPARSITY_STRUCTURED_N_M:
-        sparsity_nm[descriptor.index()] = {descriptor.n(), descriptor.m()};
-        break;
-      default:
-        LOG(FATAL) << "Unsupported sparsity type: " << descriptor.type();
-    }
-  }
-
   // Check the number and sizes of batch and contracting dimensions.
-  TF_RETURN_IF_ERROR(CheckDotDimensionConstraints(lhs, rhs, dimension_numbers,
-                                                  sparsity_nm, sparsity_dim));
+  TF_RETURN_IF_ERROR(CheckDotDimensionConstraints(lhs, rhs, dimension_numbers));
 
   std::vector<int64_t> dimensions;
   std::vector<bool> is_dynamic;
@@ -1209,54 +1176,6 @@ void GenerateDotResultDimensions(
   TF_DCHECK_OK(ShapeUtil::ValidateShapeWithOptionalLayout(result));
   VLOG(2) << "inferred ragged dot shape: " << ShapeUtil::HumanString(result);
   return result;
-}
-
-/* static */ absl::StatusOr<Shape> ShapeInference::InferSparseDotMetadataShape(
-    const Shape& operand_shape, const DotDimensionNumbers& dimension_numbers,
-    const SparsityDescriptor& sparsity, PrimitiveType element_type) {
-  CHECK(primitive_util::IsUnsignedIntegralType(element_type));
-
-  // Metadata includes contracting and non-contracting dimensions
-  // (i.e. excludes batch) of the sparse operand shape. The sparse dimension
-  // must be contracting.
-  bool sparse_lhs = sparsity.index() == 0;
-  auto& contracting_dimensions =
-      sparse_lhs ? dimension_numbers.lhs_contracting_dimensions()
-                 : dimension_numbers.rhs_contracting_dimensions();
-  TF_RET_CHECK(
-      absl::c_linear_search(contracting_dimensions, sparsity.dimension()));
-
-  // Calculate the number of elements needed to encode the sparsity metadata
-  // in the sparse dimension.
-  int64_t metadata_dimension_size = 0;
-  switch (sparsity.type()) {
-    case SPARSITY_STRUCTURED_N_M: {
-      // For 2:4 sparsity, each group of 4 elements has 2 values defined.
-      // Each 16-bit metadata element contains the data for 4 groups.
-      int bits_per_value = Log2Ceiling(static_cast<uint32_t>(sparsity.m()));
-      int bits_per_group = sparsity.n() * bits_per_value;
-      int groups_per_element =
-          CeilOfRatio(primitive_util::BitWidth(element_type), bits_per_group);
-      int64_t group_count =
-          CeilOfRatio(operand_shape.dimensions(sparsity.dimension()),
-                      static_cast<int64_t>(sparsity.n()));
-      metadata_dimension_size =
-          CeilOfRatio(group_count, static_cast<int64_t>(groups_per_element));
-      break;
-    }
-    default:
-      LOG(FATAL) << "Unsupported sparsity type: " << sparsity.type();
-  }
-
-  // Build the resulting shape dimensions.
-  std::vector<int64_t> dimensions;
-  std::vector<bool> is_dynamic;
-  for (int64_t i = 0; i < operand_shape.dimensions().size(); ++i) {
-    dimensions.push_back(i != sparsity.dimension() ? operand_shape.dimensions(i)
-                                                   : metadata_dimension_size);
-    is_dynamic.push_back(operand_shape.is_dynamic_dimension(i));
-  }
-  return ShapeUtil::MakeShape(element_type, dimensions, is_dynamic);
 }
 
 /* static */ absl::StatusOr<Shape>
@@ -1516,7 +1435,7 @@ ShapeInference::InferScalarBroadcastShape(absl::Span<const Shape> shapes) {
   // function.
   std::optional<Shape> broadcasted_shape;
   for (const Shape& shape : shapes) {
-    if (!shape.IsArray() || shape.dimensions().empty()) {
+    if (!shape.IsArrayExcludingBuffer() || shape.dimensions().empty()) {
       continue;
     }
     if (!broadcasted_shape.has_value()) {
@@ -2499,14 +2418,14 @@ ShapeInference::InferScalarBroadcastShape(absl::Span<const Shape> shapes) {
       RET_CHECK_RANK(in);
       for (int i = 0; i < fft_rank; i++) {
         if (!IsUnboundedDynamicSize(
-                in.dimensions(in.dimensions_size() - fft_rank + i)) &&
-            in.dimensions(in.dimensions_size() - fft_rank + i) !=
+                in.dimensions(in.dimensions().size() - fft_rank + i)) &&
+            in.dimensions(in.dimensions().size() - fft_rank + i) !=
                 fft_length[i]) {
           return InvalidArgument(
               "RFFT requires innermost dimensions match fft_length but "
               "dimension %d is %d and should be %d.",
-              in.dimensions_size() - fft_rank + i,
-              in.dimensions(in.dimensions_size() - fft_rank + i),
+              in.dimensions().size() - fft_rank + i,
+              in.dimensions(in.dimensions().size() - fft_rank + i),
               fft_length[i]);
         }
       }
@@ -2530,25 +2449,26 @@ ShapeInference::InferScalarBroadcastShape(absl::Span<const Shape> shapes) {
       RET_CHECK_RANK(in);
       Shape result = ShapeUtil::ComplexComponentShape(in);
       for (int i = 0; i < fft_rank - 1; i++) {
-        if (in.dimensions(in.dimensions_size() - fft_rank + i) !=
+        if (in.dimensions(in.dimensions().size() - fft_rank + i) !=
             fft_length[i]) {
           return InvalidArgument(
               "IRFFT requires all but one innermost dimensions match "
               "fft_length, but dimension %d is %d and should be %d.",
-              in.dimensions_size() - fft_rank + i,
-              in.dimensions(in.dimensions_size() - fft_rank + i),
+              in.dimensions().size() - fft_rank + i,
+              in.dimensions(in.dimensions().size() - fft_rank + i),
               fft_length[i]);
         }
       }
       // The size of zero-sized dimensions is preserved.
-      int64_t last_in_dimension_size = in.dimensions(in.dimensions_size() - 1);
+      int64_t last_in_dimension_size =
+          in.dimensions(in.dimensions().size() - 1);
       if ((last_in_dimension_size != 0 || fft_length[fft_rank - 1] != 0) &&
           !IsUnboundedDynamicSize(last_in_dimension_size) &&
           last_in_dimension_size != fft_length[fft_rank - 1] / 2 + 1) {
         return InvalidArgument(
             "IRFFT requires innermost dimension matches fft_length/2+1, but "
             "dimension %d is %d and should be %d.",
-            in.dimensions_size() - 1, last_in_dimension_size,
+            in.dimensions().size() - 1, last_in_dimension_size,
             fft_length[fft_rank - 1] / 2 + 1);
       }
       const int dim = static_cast<int>(result.dimensions().size()) - 1;
@@ -2573,25 +2493,25 @@ ShapeInference::InferScalarBroadcastShape(absl::Span<const Shape> shapes) {
         PrimitiveType_Name(a.element_type()),
         PrimitiveType_Name(b.element_type()));
   }
-  if (a.dimensions_size() < 2) {
+  if (a.dimensions().size() < 2) {
     return InvalidArgument(
         "The 'a' argument to TriangularSolve must have rank >= 2, got shape %s",
         a.ToString());
   }
-  if (b.dimensions_size() != a.dimensions_size()) {
+  if (b.dimensions().size() != a.dimensions().size()) {
     return InvalidArgument(
         "Arguments to triangular solve must have equal rank; got %s and %s.",
         b.ToString(), a.ToString());
   }
-  if (!CompatibleDimensionSizes(a.dimensions(a.dimensions_size() - 2),
-                                a.dimensions(a.dimensions_size() - 1))) {
+  if (!CompatibleDimensionSizes(a.dimensions(a.dimensions().size() - 2),
+                                a.dimensions(a.dimensions().size() - 1))) {
     return InvalidArgument(
         "The two minor dimensions of 'a' must have equal size, got %s.",
         a.ToString());
   }
-  if (!CompatibleDimensionSizes(
-          a.dimensions(a.dimensions_size() - 1),
-          b.dimensions(b.dimensions_size() - (options.left_side() ? 2 : 1)))) {
+  if (!CompatibleDimensionSizes(a.dimensions(a.dimensions().size() - 1),
+                                b.dimensions(b.dimensions().size() -
+                                             (options.left_side() ? 2 : 1)))) {
     return InvalidArgument(
         "The shared dimension of 'a' and 'b' does not match, got shapes %s and "
         "%s",
@@ -2624,13 +2544,13 @@ ShapeInference::InferScalarBroadcastShape(absl::Span<const Shape> shapes) {
         "Cholesky; got %s.",
         PrimitiveType_Name(a.element_type()));
   }
-  if (a.dimensions_size() < 2) {
+  if (a.dimensions().size() < 2) {
     return InvalidArgument(
         "The 'a' argument to Cholesky must have rank >= 2, got shape %s",
         a.ToString());
   }
-  if (!CompatibleDimensionSizes(a.dimensions(a.dimensions_size() - 2),
-                                a.dimensions(a.dimensions_size() - 1))) {
+  if (!CompatibleDimensionSizes(a.dimensions(a.dimensions().size() - 2),
+                                a.dimensions(a.dimensions().size() - 1))) {
     return InvalidArgument(
         "The two minor dimensions of 'a' must have compatible size, got %s.",
         a.ToString());
@@ -2907,7 +2827,7 @@ ShapeInference::InferCollectivePermuteDoneShape(const Shape& operand_shape) {
   // doesn't matter which one we choose.
   const Shape& arg = *reduced_args[0];
   for (int64_t dimension : dimensions_to_reduce) {
-    if (dimension >= arg.dimensions_size() || dimension < 0) {
+    if (dimension >= arg.dimensions().size() || dimension < 0) {
       return InvalidArgument("Reducing out-of-bounds dimension %d in shape %s.",
                              dimension, ShapeUtil::HumanString(arg));
     }
@@ -2932,7 +2852,7 @@ ShapeInference::InferCollectivePermuteDoneShape(const Shape& operand_shape) {
 
   std::vector<int64_t> new_dimensions;
   std::vector<bool> new_is_dynamic;
-  for (int i = 0; i < arg.dimensions_size(); ++i) {
+  for (int i = 0; i < arg.dimensions().size(); ++i) {
     if (dimensions_to_reduce_set.find(i) == dimensions_to_reduce_set.end()) {
       new_dimensions.push_back(arg.dimensions(i));
       new_is_dynamic.push_back(arg.is_dynamic_dimension(i));
@@ -3204,10 +3124,10 @@ ShapeInference::InferCollectivePermuteDoneShape(const Shape& operand_shape) {
                            starts.size(), strides.size()));
   }
 
-  if (starts.size() != arg.dimensions_size()) {
+  if (starts.size() != arg.dimensions().size()) {
     return InvalidArgument(
         "Slice index count does not match argument rank: %u vs %d.",
-        starts.size(), arg.dimensions_size());
+        starts.size(), arg.dimensions().size());
   }
 
   std::vector<int64_t> sizes;
@@ -3242,8 +3162,8 @@ ShapeInference::InferCollectivePermuteDoneShape(const Shape& operand_shape) {
     sizes.push_back((limit_index - start_index + stride - 1) / stride);
   }
 
-  std::vector<bool> is_dynamic(arg.dimensions_size());
-  for (int64_t i = 0; i < arg.dimensions_size(); ++i) {
+  std::vector<bool> is_dynamic(arg.dimensions().size());
+  for (int64_t i = 0; i < arg.dimensions().size(); ++i) {
     // Slicing 1 out of a dynamic dimension eliminates the dynamic dimension.
     if (sizes[i] == 1) {
       continue;
@@ -3260,8 +3180,9 @@ ShapeInference::InferCollectivePermuteDoneShape(const Shape& operand_shape) {
   TF_RETURN_IF_ERROR(ExpectArray(operand_shape, "operand of dynamic slice"));
   auto number_of_indices = start_index_shapes.size();
   // TODO(b/118437727): Remove this path.
-  if (!allow_scalar_indices || (number_of_indices >= 1 &&
-                                start_index_shapes[0].dimensions_size() == 1)) {
+  if (!allow_scalar_indices ||
+      (number_of_indices >= 1 &&
+       start_index_shapes[0].dimensions().size() == 1)) {
     if (number_of_indices != 1) {
       return InvalidArgument(
           "Dynamic slice should have exactly 1 index operand, has %d.",
@@ -3380,8 +3301,9 @@ ShapeInference::InferCollectivePermuteDoneShape(const Shape& operand_shape) {
 
   auto number_of_indices = start_index_shapes.size();
   // TODO(b/118437727): Remove this path.
-  if (!allow_scalar_indices || (number_of_indices >= 1 &&
-                                start_index_shapes[0].dimensions_size() == 1)) {
+  if (!allow_scalar_indices ||
+      (number_of_indices >= 1 &&
+       start_index_shapes[0].dimensions().size() == 1)) {
     if (number_of_indices != 1) {
       return InvalidArgument(
           "Dynamic update slice should have exactly 1 index operand, has %d.",
@@ -3532,11 +3454,11 @@ ShapeInference::InferCollectivePermuteDoneShape(const Shape& operand_shape) {
         ShapeUtil::HumanString(arg));
   }
 
-  if (index < 0 || index >= arg.tuple_shapes_size()) {
+  if (index < 0 || index >= arg.tuple_shapes().size()) {
     return InvalidArgument(
         "Cannot infer shape: attempt to index out of tuple bounds: %d "
         ">= %d in shape %s.",
-        index, arg.tuple_shapes_size(), ShapeUtil::HumanString(arg));
+        index, arg.tuple_shapes().size(), ShapeUtil::HumanString(arg));
   }
 
   return arg.tuple_shapes(index);
@@ -3637,7 +3559,7 @@ ShapeInference::InferCollectivePermuteDoneShape(const Shape& operand_shape) {
   // Result is s32[<=4].
   ShapeUtil::ForEachMutableSubshape(
       &result, [&](Shape* subshape, const ShapeIndex& index) {
-        if (!subshape->IsArray()) {
+        if (!subshape->IsArrayExcludingBuffer()) {
           return;
         }
         for (int j = 0; j < branch_computations.size(); ++j) {
@@ -3669,7 +3591,7 @@ ShapeInference::InferCollectivePermuteDoneShape(const Shape& operand_shape) {
     }
   }
 
-  std::vector<int64_t> dimensions(operand.dimensions_size() +
+  std::vector<int64_t> dimensions(operand.dimensions().size() +
                                   broadcast_sizes.size());
   std::copy(broadcast_sizes.begin(), broadcast_sizes.end(), dimensions.begin());
   std::copy(operand.dimensions().begin(), operand.dimensions().end(),
@@ -3677,7 +3599,7 @@ ShapeInference::InferCollectivePermuteDoneShape(const Shape& operand_shape) {
 
   TF_ASSIGN_OR_RETURN(Shape result, ShapeUtil::MakeValidatedShape(
                                         operand.element_type(), dimensions));
-  for (int64_t i = 0; i < operand.dimensions_size(); ++i) {
+  for (int64_t i = 0; i < operand.dimensions().size(); ++i) {
     result.set_dynamic_dimension(broadcast_sizes.size() + i,
                                  operand.is_dynamic_dimension(i));
   }
@@ -3800,12 +3722,12 @@ ShapeInference::InferCollectivePermuteDoneShape(const Shape& operand_shape) {
         ShapeUtil::HumanString(inferred_shape));
   }
 
-  std::vector<int64_t> indices(operand.dimensions_size());
+  std::vector<int64_t> indices(operand.dimensions().size());
   std::iota(indices.begin(), indices.end(), 0);
 
   // Propagate dynamic dimension.
   auto common_factors = CommonFactors(operand.dimensions(), dimensions);
-  for (int64_t input_dim = 0; input_dim < operand.dimensions_size();
+  for (int64_t input_dim = 0; input_dim < operand.dimensions().size();
        ++input_dim) {
     if (!operand.is_dynamic_dimension(input_dim)) {
       continue;
@@ -3883,7 +3805,7 @@ ShapeInference::InferCollectivePermuteDoneShape(const Shape& operand_shape) {
       if (input_dim == 0) {
         output_dynamic_dimension = 0;
       }
-      if (input_dim == operand.dimensions_size() - 1) {
+      if (input_dim == operand.dimensions().size() - 1) {
         output_dynamic_dimension = dimensions.size() - 1;
       }
 
@@ -3930,7 +3852,7 @@ ShapeInference::InferCollectivePermuteDoneShape(const Shape& operand_shape) {
     const Shape& operand, absl::Span<const int64_t> dimensions) {
   TF_RETURN_IF_ERROR(ExpectArray(operand, "transpose"));
 
-  if (dimensions.size() != operand.dimensions_size() ||
+  if (dimensions.size() != operand.dimensions().size() ||
       !IsPermutation(dimensions)) {
     return InvalidArgument(
         "Transpose dimensions [%s] are not a permutation of the operand "
@@ -3938,9 +3860,6 @@ ShapeInference::InferCollectivePermuteDoneShape(const Shape& operand_shape) {
         StrJoin(dimensions, ","), ShapeUtil::HumanString(operand));
   }
 
-  // Permute(dimensions,input) computes output[dimensions[i]]=input[i]. However,
-  // we need output[i]=input[dimensions[i]] which is
-  // Permute(Inverse(dimensions),input).
   return ShapeUtil::PermuteDimensions(dimensions, operand);
 }
 

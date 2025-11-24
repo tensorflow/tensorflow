@@ -26,7 +26,7 @@ limitations under the License.
 namespace xla::gpu {
 class GpuAliasInfo : public AliasInfo {
  public:
-  explicit GpuAliasInfo(const se::DeviceDescription* device_description)
+  explicit GpuAliasInfo(const se::DeviceDescription& device_description)
       : device_description_(device_description) {}
 
   // Backend-specific may-alias hint. If an empty optional is returned, the
@@ -39,7 +39,7 @@ class GpuAliasInfo : public AliasInfo {
                                const ShapeIndex& user_index) const override;
 
  protected:
-  const se::DeviceDescription* device_description_;
+  se::DeviceDescription device_description_;
 };
 }  // namespace xla::gpu
 

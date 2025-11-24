@@ -131,12 +131,15 @@ tf_py_strict_test(
     shard_count = 16,
     deps = [
         ":test_base",
+        "//tensorflow/core/protobuf:for_core_protos_py_proto",
         "//tensorflow/python/data/experimental/ops:data_service_ops",
+        "//tensorflow/python/data/experimental/service:server_lib",
         "//tensorflow/python/data/kernel_tests:test_base",
         "//tensorflow/python/data/kernel_tests:tf_record_test_base",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/ops:readers",
         "//tensorflow/python/framework:combinations",
+        "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:errors",
         "//tensorflow/python/ops:math_ops",
         "//tensorflow/python/ops:random_ops",
@@ -160,7 +163,7 @@ tf_py_strict_test(
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/platform:client_testlib",
         "@absl_py//absl/testing:parameterized",
-        "@pypi_portpicker//:pkg",
+        "@pypi//portpicker",
     ],
 )
 
@@ -417,6 +420,9 @@ tf_py_strict_test(
     size = "medium",
     srcs = ["worker_tags_test.py"],
     shard_count = 32,
+    tags = [
+        "no_oss_py313",  # TODO(b/427743382): Fix the timeout in linux_x86_cpu_wheel_py313_np1
+    ],
     deps = [
         ":multi_process_cluster",
         ":test_base",

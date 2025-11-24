@@ -22,6 +22,7 @@ limitations under the License.
 #include <string>
 
 #include "absl/types/span.h"
+#include "Eigen/Core"  // from @eigen_archive
 #include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
@@ -152,6 +153,11 @@ InputTensorData CreateRandomTensorData(std::string name, TfLiteType type,
           num_elements,
           std::uniform_int_distribution<int16_t>(low_range, high_range));
     }
+    case kTfLiteUInt16: {
+      return CreateInputTensorData<uint16_t>(
+          num_elements,
+          std::uniform_int_distribution<uint16_t>(low_range, high_range));
+    }
     case kTfLiteUInt8: {
       // std::uniform_int_distribution is specified not to support char types.
       return CreateInputTensorData<uint8_t>(
@@ -174,6 +180,10 @@ InputTensorData CreateRandomTensorData(std::string name, TfLiteType type,
       // is not supported.
       return CreateInputTensorData<bool>(
           num_elements, std::uniform_int_distribution<uint32_t>(0, 1));
+    }
+    case kTfLiteBFloat16: {
+      return CreateInputTensorData<Eigen::bfloat16>(
+          num_elements, std::uniform_real_distribution<float>(-0.5f, 0.5f));
     }
     default: {
       TFLITE_LOG(FATAL) << "Don't know how to populate tensor " << name

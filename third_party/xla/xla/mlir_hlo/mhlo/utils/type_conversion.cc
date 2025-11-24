@@ -15,19 +15,26 @@ limitations under the License.
 
 #include "mhlo/utils/type_conversion.h"
 
-#include <optional>
+#include <cassert>
+#include <cstddef>
 
+#include "llvm/ADT/STLExtras.h"
 #include "mhlo/IR/hlo_ops.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Func/Transforms/FuncConversions.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/BuiltinTypeInterfaces.h"
 #include "mlir/IR/BuiltinTypes.h"
+#include "mlir/IR/Dialect.h"
+#include "mlir/IR/Location.h"
 #include "mlir/IR/TypeUtilities.h"
 #include "mlir/IR/Types.h"
 #include "mlir/IR/Value.h"
+#include "mlir/IR/ValueRange.h"
 #include "mlir/Support/LLVM.h"
+#include "mlir/Transforms/DialectConversion.h"
 #include "stablehlo/dialect/StablehloOps.h"
 
 namespace mlir {
@@ -58,7 +65,7 @@ Value materializeCastFromIllegal(OpBuilder& builder, Type type,
       !toType.isSignlessInteger())
     return Value();
   // Use unrealized conversion casts to do signful->signless conversions.
-  return builder.create<UnrealizedConversionCastOp>(loc, type, inputs[0])
+  return UnrealizedConversionCastOp::create(builder, loc, type, inputs[0])
       ->getResult(0);
 }
 
@@ -70,30 +77,58 @@ Value materializeCastToIllegal(OpBuilder& builder, Type type,
       (!toType.isSignedInteger() && !toType.isUnsignedInteger()))
     return Value();
   // Use unrealized conversion casts to do signless->signful conversions.
-  return builder.create<UnrealizedConversionCastOp>(loc, type, inputs[0])
+  return UnrealizedConversionCastOp::create(builder, loc, type, inputs[0])
       ->getResult(0);
 }
 
-Value scalarToTensor(OpBuilder& builder, Type type,
-                                    ValueRange inputs, Location loc) {
-  assert(inputs.size() == 1);
-  if (mlir::isa<ShapedType>(inputs.front().getType())) {
-    return Value();
-  }
-  Value result =
-      builder
-          .create<tensor::FromElementsOp>(
-              loc, RankedTensorType::get({}, inputs.front().getType()),
-              inputs.front())
-          .getResult();
-  // Convert to a signed integer if necessary.
-  Type elementType = mlir::getElementTypeOrSelf(type);
-  if (elementType.isInteger() && !elementType.isSignlessInteger()) {
-    result = builder.create<UnrealizedConversionCastOp>(loc, type, result)
-                 ->getResult(0);
-  }
+// Flatten the given value ranges into a single vector of values.
+SmallVector<Value> flattenValues(ArrayRef<ValueRange> values) {
+  SmallVector<Value> result;
+  for (const auto& vals : values) llvm::append_range(result, vals);
   return result;
 }
+
+// Exact same as `CallOpSignatureConversion`, except this one preserves
+// discardable attributes.
+struct CallOpSignatureConversion : public OpConversionPattern<func::CallOp> {
+  using OpConversionPattern<func::CallOp>::OpConversionPattern;
+
+  /// Hook for derived classes to implement combined matching and rewriting.
+  LogicalResult matchAndRewrite(
+      func::CallOp callOp, OneToNOpAdaptor adaptor,
+      ConversionPatternRewriter& rewriter) const override {
+    // Convert the original function results. Keep track of how many result
+    // types an original result type is converted into.
+    SmallVector<size_t> numResultsReplacements;
+    SmallVector<Type, 1> convertedResults;
+    size_t numFlattenedResults = 0;
+    for (auto [idx, type] : llvm::enumerate(callOp.getResultTypes())) {
+      if (failed(typeConverter->convertTypes(type, convertedResults)))
+        return failure();
+      numResultsReplacements.push_back(convertedResults.size() -
+                                       numFlattenedResults);
+      numFlattenedResults = convertedResults.size();
+    }
+
+    // Substitute with the new result types from the corresponding FuncType
+    // conversion.
+    auto newCallOp = func::CallOp::create(rewriter, callOp.getLoc(),
+                                          callOp.getCallee(), convertedResults,
+                                          flattenValues(adaptor.getOperands()));
+    newCallOp->setAttrs(callOp->getAttrs());
+    SmallVector<ValueRange> replacements;
+    size_t offset = 0;
+    for (int i = 0, e = callOp->getNumResults(); i < e; ++i) {
+      replacements.push_back(
+          newCallOp->getResults().slice(offset, numResultsReplacements[i]));
+      offset += numResultsReplacements[i];
+    }
+    assert(offset == convertedResults.size() &&
+           "expected that all converted results are used");
+    rewriter.replaceOpWithMultiple(callOp, replacements);
+    return success();
+  }
+};
 
 }  // namespace
 
@@ -105,11 +140,6 @@ RemoveSignTypeConverter::RemoveSignTypeConverter() {
 
   addSourceMaterialization(materializeCastToIllegal);
   addTargetMaterialization(materializeCastFromIllegal);
-}
-
-LinalgTypeConverter::LinalgTypeConverter() : RemoveSignTypeConverter() {
-  addSourceMaterialization(scalarToTensor);
-  addTargetMaterialization(scalarToTensor);
 }
 
 }  // namespace mhlo
@@ -146,15 +176,16 @@ HloTypeConverter::HloTypeConverter() {
     if (failed(convertTypes(type.getTypes(), convertedTypes))) return {};
     return TupleType::get(type.getContext(), convertedTypes);
   });
+  // Similar to tuple, replace contents with StableHLO/MHLO types.
+  addConversion([&](mhlo::AsyncBundleType bundle) -> Type {
+    SmallVector<Type> convertedTypes;
+    if (failed(convertTypes(bundle.getTypes(), convertedTypes))) return {};
+    return mhlo::AsyncBundleType::get(bundle.getContext(), convertedTypes);
+  });
 }
 
 HloToStablehloTypeConverter::HloToStablehloTypeConverter()
     : HloTypeConverter() {
-  // !mhlo.async_bundle is only used in mhlo.async_start, mhlo.async_update
-  // and mhlo.async_done which are private to XLA.
-  // This means that these ops are deliberately not part of StableHLO,
-  // and as a result this type is not part of StableHLO either.
-  addConversion([](mhlo::AsyncBundleType) -> Type { return {}; });
   addConversion([](mhlo::TokenType type) -> Type {
     return stablehlo::TokenType::get(type.getContext());
   });
@@ -233,7 +264,8 @@ void registerFuncOpsForTypeConversion(ConversionTarget& target,
   });
   populateFunctionOpInterfaceTypeConversionPattern<func::FuncOp>(patterns,
                                                                  converter);
-  populateCallOpTypeConversionPattern(patterns, converter);
+  patterns.add<mhlo::CallOpSignatureConversion>(converter,
+                                                patterns.getContext());
   populateReturnOpTypeConversionPattern(patterns, converter);
 }
 

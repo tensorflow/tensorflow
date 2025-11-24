@@ -36,6 +36,7 @@ limitations under the License.
 #include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/types.h"
 #include "tsl/platform/ml_dtypes.h"
@@ -49,18 +50,25 @@ using ConstantsTest = ClientLibraryTestRunnerMixin<
     HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>>;
 
 template <typename T>
-class ConstantsFloatTest : public ConstantsTest {};
+class ConstantsFloatTest : public ConstantsTest {
+ protected:
+  void SetUp() override {
+    if ((std::is_same_v<T, tsl::float4_e2m1fn> ||
+         std::is_same_v<T, tsl::float8_e8m0fnu>) &&
+        test::DeviceTypeIs(test::kTpu)) {
+      // TODO(b/385004399): Run tests on these types on TPU.
+      GTEST_SKIP();
+    }
+  }
+};
 
 using FloatTypes =
     ::testing::Types<float, half, tsl::float8_e3m4, tsl::float8_e4m3,
                      tsl::float8_e4m3fn, tsl::float8_e4m3b11fnuz,
                      tsl::float8_e4m3fnuz, tsl::float8_e5m2,
                      tsl::float8_e5m2fnuz
-#ifndef XLA_TEST_BACKEND_TPU
-                     // TODO(b/385004399): Run tests on these types on TPU.
                      ,
                      tsl::float4_e2m1fn, tsl::float8_e8m0fnu
-#endif
                      >;
 
 TYPED_TEST_SUITE(ConstantsFloatTest, FloatTypes);
@@ -101,7 +109,7 @@ TEST_F(ConstantsTest, OneCellU32) {
 }
 
 TEST_F(ConstantsTest, OneCellU4) {
-  if (test::DeviceIsOneOf({test::kCpu, test::kGpu})) {
+  if (test::DeviceTypeIsOneOf({test::kCpu, test::kGpu})) {
     GTEST_SKIP();
   }
   std::vector<u4> constant = {u4(2)};
@@ -115,7 +123,7 @@ TEST_F(ConstantsTest, OneCellU4) {
 }
 
 TEST_F(ConstantsTest, OneCellS4) {
-  if (test::DeviceIsOneOf({test::kCpu, test::kGpu})) {
+  if (test::DeviceTypeIsOneOf({test::kCpu, test::kGpu})) {
     GTEST_SKIP();
   }
   std::vector<s4> constant = {s4(-2)};
@@ -198,17 +206,25 @@ TEST_F(ConstantsTest, Small_3x2x1x1) {
   input_array.FillWithPZ(pz);
   Literal input_literal = LiteralUtil::CreateR4FromArray4D(input_array);
 
-  {
-    XlaBuilder builder(TestName());
-    ConstantLiteral(&builder, input_literal);
-    ComputeAndCompareR4<float>(&builder, input_array, {}, kErrorSpec);
-  }
+  XlaBuilder builder(TestName());
+  ConstantLiteral(&builder, input_literal);
+  ComputeAndCompareR4<float>(&builder, input_array, {}, kErrorSpec);
+}
 
-  {
-    XlaBuilder builder(TestName());
-    ConstantR4FromArray4D<float>(&builder, input_array);
-    ComputeAndCompareR4<float>(&builder, input_array, {}, kErrorSpec);
-  }
+TEST_F(ConstantsTest, Small_3x2x1x1_array4d) {
+  Array4D<float> input_array(3, 2, 1, 1);
+  Array2D<float> pz({
+      // z0 z1
+      {-1.0f, 4.1f},  // p0
+      {2.0f, 4.1f},   // p1
+      {5.0f, 4.4f},   // p2
+  });
+  input_array.FillWithPZ(pz);
+  Literal input_literal = LiteralUtil::CreateR4FromArray4D(input_array);
+
+  XlaBuilder builder(TestName());
+  ConstantR4FromArray4D<float>(&builder, input_array);
+  ComputeAndCompareR4<float>(&builder, input_array, {}, kErrorSpec);
 }
 
 // TODO(b/29263943): Support tuple constants.
@@ -261,7 +277,7 @@ using ConstantsHloTest = HloPjRtTestBase;
 
 // TODO(b/121147351): Fails on GPU. Not clear if this is expected behavior.
 TEST_F(ConstantsHloTest, BitcastOfConstant) {
-  if (test::DeviceIs(test::kGpu) || test::DeviceTypeIs(test::kTpu)) {
+  if (test::DeviceTypeIsOneOf({test::kGpu, test::kTpu})) {
     GTEST_SKIP();
   }
   const char* testcase = R"(
@@ -282,7 +298,8 @@ TEST_F(ConstantsHloTest, BitcastOfConstant) {
   )";
   auto module = ParseAndReturnVerifiedModule(testcase).value();
   auto param = LiteralUtil::CreateR0<int32_t>(1);
-  auto result = ExecuteNoHloPasses(std::move(module), {&param});
+  TF_ASSERT_OK_AND_ASSIGN(Literal result, Execute(std::move(module), {&param},
+                                                  /*run_hlo_passes=*/false));
   EXPECT_TRUE(LiteralTestUtil::Equal(param, result));
 }
 

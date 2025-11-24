@@ -178,7 +178,7 @@ string Match(InterPlanetaryFileSystem* ipfs, const string& suffix_pattern) {
     for (const string& result : results) {
       absl::string_view trimmed_result(result);
       EXPECT_TRUE(
-          absl::ConsumePrefix(&trimmed_result, strings::StrCat(kPrefix, "/")));
+          absl::ConsumePrefix(&trimmed_result, absl::StrCat(kPrefix, "/")));
       trimmed_results.push_back(trimmed_result);
     }
     return absl::StrJoin(trimmed_results, ",");
@@ -285,14 +285,6 @@ TEST(InterPlanetaryFileSystemTest, HasAtomicMove) {
   bool has_atomic_move;
   TF_EXPECT_OK(ipfs.HasAtomicMove(dirname, &has_atomic_move));
   EXPECT_EQ(has_atomic_move, true);
-}
-
-TEST(InterPlanetaryFileSystemTest, CanCreateTempFile) {
-  InterPlanetaryFileSystem ipfs;
-  const string dirname = io::JoinPath(kPrefix, "match-00/abc/00");
-  bool can_create_temp_file;
-  TF_EXPECT_OK(ipfs.CanCreateTempFile(dirname, &can_create_temp_file));
-  EXPECT_EQ(can_create_temp_file, true);
 }
 
 // A simple file system with a root directory and a single file underneath it.

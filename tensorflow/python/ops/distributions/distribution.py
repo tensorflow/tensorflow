@@ -193,14 +193,17 @@ class _DistributionMeta(abc.ABCMeta):
         continue
       class_attr_value = _copy_fn(base_attr_value)
       class_attr_docstring = tf_inspect.getdoc(base_attr_value)
-      if class_attr_docstring is None:
-        raise ValueError(
-            "Expected base class fn to contain a docstring: %s.%s"
-            % (base.__name__, attr))
-      class_attr_value.__doc__ = _update_docstring(
-          class_attr_value.__doc__,
-          ("Additional documentation from `%s`:\n\n%s"
-           % (classname, class_special_attr_docstring)))
+      if (
+          class_attr_docstring is not None
+          and class_attr_value.__doc__ is not None
+      ):
+        class_attr_value.__doc__ = _update_docstring(
+            class_attr_value.__doc__,
+            (
+                "Additional documentation from `%s`:\n\n%s"
+                % (classname, class_special_attr_docstring)
+            ),
+        )
       attrs[attr] = class_attr_value
 
     return abc.ABCMeta.__new__(mcs, classname, baseclasses, attrs)

@@ -438,6 +438,13 @@ TEST_F(LayoutUtilTest, MoveDimToMajor) {
   EXPECT_EQ(new_layout, LayoutUtil::MakeLayout({2, 0, 1}));
 }
 
+TEST_F(LayoutUtilTest, MoveDimToMinor) {
+  const Layout layout = LayoutUtil::MakeLayout({2, 0, 3, 1});
+  EXPECT_EQ(LayoutUtil::MoveDimToMinor(layout, 2), layout);
+  EXPECT_EQ(LayoutUtil::MoveDimToMinor(layout, 3),
+            LayoutUtil::MakeLayout({3, 2, 0, 1}));
+}
+
 TEST_F(LayoutUtilTest, StridesIsMajorToMinor) {
   std::vector<int64_t> byte_strides = {3960, 440, 44, 4};
   EXPECT_TRUE(LayoutUtil::ByteStridesIsMajorToMinor(
@@ -505,6 +512,26 @@ TEST_F(LayoutUtilTest, MaxElementsInPerSplit) {
                                 .add_split_configs(SplitConfig(1, {40, 130}));
   EXPECT_EQ(LayoutUtil::MaxElementsInPerSplit(shape), 150 * 90 * 70);
 }
+
+struct IsUntiledLayoutTestCase {
+  std::vector<int64_t> shape;
+  std::vector<Tile> tiles;
+  bool expected_result;
+};
+
+using IsUntiledLayoutTest = ::testing::TestWithParam<IsUntiledLayoutTestCase>;
+
+TEST_P(IsUntiledLayoutTest, IsUntiledLayout) {
+  IsUntiledLayoutTestCase params = GetParam();
+  EXPECT_EQ(LayoutUtil::IsUntiledLayout(params.tiles, params.shape),
+            params.expected_result);
+}
+
+INSTANTIATE_TEST_SUITE_P(IsUntiledLayoutTests, IsUntiledLayoutTest,
+                         ::testing::ValuesIn<IsUntiledLayoutTestCase>(
+                             {{{24, 128}, {Tile({8, 128})}, true},
+                              {{4, 256}, {Tile({1, 128})}, true},
+                              {{2, 3, 4}, {Tile({8, 128})}, false}}));
 
 }  // namespace
 }  // namespace xla

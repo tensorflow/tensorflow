@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/status_matchers.h"
 #include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/protobuf/error_codes.pb.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
@@ -30,7 +31,6 @@ namespace {
 
 using ::testing::HasSubstr;
 using ::tsl::error::UNAVAILABLE;
-using ::tsl::testing::StatusIs;
 
 class ExecutableManagerTest : public ::testing::Test {
  protected:
@@ -47,8 +47,9 @@ class ExecutableManagerTest : public ::testing::Test {
 TEST_F(ExecutableManagerTest, ShouldFoldInputUnavailable) {
   auto result =
       function_manager_->ShouldFoldInput(CreateTestDTensorOperation(), {}, 0);
-  EXPECT_THAT(result, StatusIs(UNAVAILABLE,
-                               HasSubstr("ExecutionFunctions manager can not "
+  EXPECT_THAT(result,
+              absl_testing::StatusIs(
+                  UNAVAILABLE, HasSubstr("ExecutionFunctions manager can not "
                                          "check if the input is foldable")));
 }
 
@@ -60,7 +61,7 @@ TEST_F(ExecutableManagerTest, GetCachedExecutableUnavailable) {
       doperation, func_attr,
       {nullptr},  // Dummy input to trigger ShouldFoldInput check.
       {});
-  EXPECT_THAT(result, StatusIs(UNAVAILABLE));
+  EXPECT_THAT(result, absl_testing::StatusIs(UNAVAILABLE));
 }
 
 }  // namespace

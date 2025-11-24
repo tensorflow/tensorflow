@@ -18,6 +18,8 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstdlib>
+#include <initializer_list>
+#include <iterator>
 #include <limits>
 #include <type_traits>
 #include <vector>
@@ -48,19 +50,36 @@ class PtrVec {
   PtrVec(PtrVec&& x);
   PtrVec& operator=(PtrVec&& x);
 
-  // Const iteration. Non-const iteration can be easily added if necessary.
+  // Construct from list of pointers.
+  PtrVec(std::initializer_list<T> list);
+
+  // Construct from [first,last)
+  template <typename InputIter>
+  PtrVec(InputIter first, InputIter last);
+
   using difference_type = std::ptrdiff_t;
   using value_type = T;
   using pointer = T*;
   using reference = T&;
   using const_reference = T const&;
+
+  using iterator = T*;
   using const_iterator = T const*;
+  using const_reverse_iterator = std::reverse_iterator<const_iterator>;
+
+  iterator begin();
+  iterator end();
   const_iterator begin() const;
   const_iterator end() const;
+  const_iterator cbegin() const;
+  const_iterator cend() const;
+  const_reverse_iterator rbegin() const;
+  const_reverse_iterator rend() const;
 
   // Subset of vector-like operations.
   size_t size() const;
   bool empty() const;
+  size_t capacity() const;
   T* data();
   T const* data() const;
   T& operator[](size_t i);
@@ -68,10 +87,16 @@ class PtrVec {
   T at(size_t i) const;
   T front() const;
   T back() const;
+  void resize(size_t new_len);
+  void resize(size_t new_len, T value);
+  void reserve(size_t new_capacity);
   void clear();
   void pop_back();
   void push_back(T x);
   void erase(const_iterator iter);
+
+  template <typename InputIter>
+  void assign(InputIter first, InputIter last);
 
   // For compatibility with existing code, allow conversion to vector.
   // NOLINTNEXTLINE(google-explicit-constructor)
@@ -97,13 +122,8 @@ class PtrVec {
   };
 
   inline static bool can_inline(T ptr) {
-    // If T has enough alignment, ptr bottom bit must be zero, so we can store
-    // it inline without ambiguity. Otherwise we do a dynamic check.
-    if constexpr (alignof(decltype(*ptr)) >= 2) {
-      DCHECK_EQ(reinterpret_cast<uintptr_t>(ptr) & 0x1, 0);
-      return true;
-    }
-    return ((reinterpret_cast<uintptr_t>(ptr) & 0x1) == 0);
+    // T must have enough alignment to allow us to steal its bottom bit.
+    return alignof(decltype(*ptr)) >= 2;
   }
 
   inline bool is_big() const { return (rep_ & kTagMask) == kBigTag; }
@@ -125,10 +145,10 @@ class PtrVec {
     return result;
   }
 
-  // MakeBig switches to an empty Big representation with at least the
+  // MakeEmptyBig switches to an empty Big representation with at least the
   // specified capacity. Caller is responsible for freeing any old Big
   // representation.
-  inline Big* MakeBig(size_t capacity) {
+  inline Big* MakeEmptyBig(size_t capacity) {
     Big* big = static_cast<Big*>(malloc(big_size(capacity)));
     big->size = 0;
     big->capacity = capacity;
@@ -137,6 +157,10 @@ class PtrVec {
   }
 
   inline static void FreeBig(Big* big) { free(big); }
+
+  // Create new big representation with the specified capacity and filled
+  // with the current elements.
+  void MakeBigFromCurrentState(size_t needed_capacity);
 
   uintptr_t rep_;
 };
@@ -181,7 +205,7 @@ inline PtrVec<T>& PtrVec<T>::operator=(const PtrVec& x) {
     }
 
     // Switch to big representation.
-    b = MakeBig(x.size());
+    b = MakeEmptyBig(x.size());
   } else {
     if (n == 0) {
       // Make empty() faster by always using a unique representation for empty
@@ -192,7 +216,7 @@ inline PtrVec<T>& PtrVec<T>::operator=(const PtrVec& x) {
     b = big();
     if (b->capacity < n) {
       FreeBig(b);
-      b = MakeBig(n);
+      b = MakeEmptyBig(n);
     }
   }
 
@@ -219,6 +243,16 @@ inline PtrVec<T>& PtrVec<T>::operator=(PtrVec&& x) {
 }
 
 template <class T>
+template <class InputIter>
+inline PtrVec<T>::PtrVec(InputIter first, InputIter last) : rep_(kEmptyTag) {
+  assign(first, last);
+}
+
+template <class T>
+inline PtrVec<T>::PtrVec(std::initializer_list<T> list)
+    : PtrVec(list.begin(), list.end()) {}
+
+template <class T>
 inline size_t PtrVec<T>::size() const {
   return is_big() ? big()->size : (rep_ != kEmptyTag ? 1 : 0);
 }
@@ -226,6 +260,12 @@ inline size_t PtrVec<T>::size() const {
 template <class T>
 inline bool PtrVec<T>::empty() const {
   return rep_ == kEmptyTag;
+}
+
+template <class T>
+inline size_t PtrVec<T>::capacity() const {
+  T an_element = nullptr;
+  return is_big() ? big()->capacity : (can_inline(an_element) ? 1 : 0);
 }
 
 template <class T>
@@ -267,6 +307,16 @@ inline T PtrVec<T>::back() const {
 }
 
 template <class T>
+inline typename PtrVec<T>::iterator PtrVec<T>::begin() {
+  return data();
+}
+
+template <class T>
+inline typename PtrVec<T>::iterator PtrVec<T>::end() {
+  return data() + size();
+}
+
+template <class T>
 inline typename PtrVec<T>::const_iterator PtrVec<T>::begin() const {
   return data();
 }
@@ -274,6 +324,26 @@ inline typename PtrVec<T>::const_iterator PtrVec<T>::begin() const {
 template <class T>
 inline typename PtrVec<T>::const_iterator PtrVec<T>::end() const {
   return data() + size();
+}
+
+template <class T>
+inline typename PtrVec<T>::const_iterator PtrVec<T>::cbegin() const {
+  return data();
+}
+
+template <class T>
+inline typename PtrVec<T>::const_iterator PtrVec<T>::cend() const {
+  return data() + size();
+}
+
+template <class T>
+inline typename PtrVec<T>::const_reverse_iterator PtrVec<T>::rbegin() const {
+  return const_reverse_iterator(data() + size());
+}
+
+template <class T>
+inline typename PtrVec<T>::const_reverse_iterator PtrVec<T>::rend() const {
+  return const_reverse_iterator(data());
 }
 
 template <class T>
@@ -309,14 +379,14 @@ inline void PtrVec<T>::push_back(T x) {
         DCHECK(!is_big());
       } else {
         // Avoid ambiguity by jumping from empty to big representation.
-        Big* b = MakeBig(1);
+        Big* b = MakeEmptyBig(1);
         b->size = 1;
         b->data[0] = x;
       }
     } else {
       // Switch from singleton to Big representation.
       T singleton = front();
-      Big* b = MakeBig(2);
+      Big* b = MakeEmptyBig(2);
       b->size = 2;
       b->data[0] = singleton;
       b->data[1] = x;
@@ -328,12 +398,78 @@ inline void PtrVec<T>::push_back(T x) {
     DCHECK_LE(n, b->capacity);
     if (n == b->capacity) {
       Big* old = b;
-      b = MakeBig(std::max<size_t>(2, 2 * old->capacity));
+      b = MakeEmptyBig(std::max<size_t>(2, 2 * old->capacity));
       memcpy(b->data, old->data, n * sizeof(T));
       FreeBig(old);
     }
     b->data[n] = x;
     b->size = n + 1;
+  }
+}
+
+template <class T>
+inline void PtrVec<T>::resize(size_t new_len) {
+  resize(new_len, nullptr);
+}
+
+template <class T>
+inline void PtrVec<T>::resize(size_t new_len, T value) {
+  const size_t old_size = size();
+  if (new_len <= old_size) {
+    // Shrink or stay at same size.
+    if (new_len == 0) {
+      clear();  // Switches to unique empty representation
+    } else if (is_big()) {
+      big()->size = new_len;
+    } else {
+      // size() must be <= 1 since !is_big()
+      // and we know that new_len != 0 && new_len <= size.
+      // So both new_new and size must be 1.
+      DCHECK_EQ(new_len, 1);
+      DCHECK_EQ(size(), 1);
+      // Nothing to do.
+    }
+  } else if (!is_big() && new_len == 1) {
+    // From empty to singleton
+    DCHECK(empty());
+    push_back(value);
+  } else {
+    // Need to grow to big representation.
+    MakeBigFromCurrentState(new_len);
+    DCHECK(is_big());
+    Big* b = big();
+    b->size = new_len;
+    for (size_t i = old_size; i < new_len; i++) {
+      b->data[i] = value;
+    }
+  }
+}
+
+template <class T>
+inline void PtrVec<T>::reserve(size_t new_capacity) {
+  if (new_capacity <= capacity()) {
+    // Already have enough space.
+  } else {
+    MakeBigFromCurrentState(new_capacity);
+  }
+}
+
+template <class T>
+inline void PtrVec<T>::MakeBigFromCurrentState(size_t needed_capacity) {
+  if (rep_ == kEmptyTag) {
+    Big* new_b = MakeEmptyBig(needed_capacity);
+    new_b->size = 0;
+  } else if (!is_big()) {
+    T f = front();
+    Big* new_b = MakeEmptyBig(needed_capacity);
+    new_b->data[0] = f;  // Move singleton (or nullptr if empty)
+    new_b->size = 1;
+  } else {
+    Big* existing = big();
+    Big* new_b = MakeEmptyBig(needed_capacity);
+    new_b->size = existing->size;
+    memcpy(new_b->data, existing->data, existing->size * sizeof(T));
+    FreeBig(existing);
   }
 }
 
@@ -354,6 +490,34 @@ inline void PtrVec<T>::erase(const_iterator iter) {
       // Revert to unique representation for empty vectors.
       clear();
     }
+  }
+}
+
+template <class T>
+template <typename InputIter>
+void PtrVec<T>::assign(InputIter first, InputIter last) {
+  // Could add fast path for pointer based iterators
+  // if (std::is_same_v<T*, InputIter> || std::is_same_v<const T*, InputIter>)
+  if (!empty()) {
+    // Instead of clear() to discard old contents, we overwrite them so that
+    // things work even if the input iterators point into *this.
+    const size_t init_size = size();
+    T* dst = data();
+    size_t i = 0;
+    for (; i < init_size && first != last; ++i) {
+      dst[i] = *first;
+      ++first;
+    }
+    // Discard any remaining data in *this in case input is shorter.
+    if (i < init_size) {
+      resize(i);
+      return;
+    }
+  }
+
+  // Copy rest of input.
+  for (; first != last; ++first) {
+    push_back(*first);
   }
 }
 

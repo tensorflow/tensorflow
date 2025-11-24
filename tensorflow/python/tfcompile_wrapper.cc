@@ -16,6 +16,7 @@ limitations under the License.
 #include <string>
 
 #ifdef __s390x__
+#include "llvm/ADT/StringRef.h"
 #include "llvm/TargetParser/Host.h"
 #endif
 #include "pybind11/cast.h"  // from @pybind11

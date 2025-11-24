@@ -3323,21 +3323,31 @@ def decode_image(contents,
   """
   with ops.name_scope(name, 'decode_image'):
     channels = 0 if channels is None else channels
+    original_dtype = dtype
     if dtype not in [dtypes.float32, dtypes.uint8, dtypes.uint16]:
-      dest_dtype = dtype
-      dtype = dtypes.uint16
-      return convert_image_dtype(
-          gen_image_ops.decode_image(
-              contents=contents,
-              channels=channels,
-              expand_animations=expand_animations,
-              dtype=dtype), dest_dtype)
+      dtype_for_decode = dtypes.uint16
     else:
-      return gen_image_ops.decode_image(
-          contents=contents,
-          channels=channels,
-          expand_animations=expand_animations,
-          dtype=dtype)
+      dtype_for_decode = dtype
+
+    image = gen_image_ops.decode_image(
+        contents=contents,
+        channels=channels,
+        expand_animations=expand_animations,
+        dtype=dtype_for_decode,
+    )
+
+    if dtype_for_decode != original_dtype:
+      image = convert_image_dtype(image, original_dtype)
+
+    if not expand_animations:
+      # If not expanding animations, the output is always 3D.
+      if channels != 0:
+        image.set_shape([None, None, channels])
+      else:
+        # We can still set the rank, which is what matters for the resize op.
+        image.set_shape([None, None, None])
+
+    return image
 
 
 @tf_export('image.total_variation')
@@ -5277,13 +5287,13 @@ def _self_suppression(iou, _, iou_sum, iou_threshold):
 
   Args:
     iou: a tensor of shape [batch_size, num_boxes_with_padding] representing
-    intersection over union.
+      intersection over union.
     iou_sum: a scalar tensor.
     iou_threshold: a scalar tensor.
 
   Returns:
     iou_suppressed: a tensor of shape [batch_size, num_boxes_with_padding].
-    iou_diff: a scalar tensor representing whether any box is supressed in
+    iou_diff: a scalar tensor representing whether any box is suppressed in
       this step.
     iou_sum_new: a scalar tensor of shape [batch_size] that represents
       the iou sum after suppression.
@@ -5314,8 +5324,8 @@ def _cross_suppression(boxes, box_slice, iou_threshold, inner_idx, tile_size):
     boxes: a tensor of shape [batch_size, num_boxes_with_padding, 4]
     box_slice: a tensor of shape [batch_size, tile_size, 4]
     iou_threshold: a scalar tensor
-    inner_idx: a scalar tensor representing the tile index of the tile
-      that is used to supress box_slice
+    inner_idx: a scalar tensor representing the tile index of the tile that is
+      used to suppress box_slice
     tile_size: an integer representing the number of boxes in a tile
 
   Returns:
@@ -5520,7 +5530,7 @@ def non_max_suppression_padded_v2(boxes,
   (i.e., lying in the interval `[0, 1]`) or absolute. The bounding box
   coordinates are cannonicalized to `[y_min, x_min, y_max, x_max]`,
   where `(y_min, x_min)` and `(y_max, x_mas)` are the coordinates of the lower
-  left and upper right corner. User may indiciate the input box coordinates are
+  left and upper right corner. User may indicate the input box coordinates are
   already canonicalized to eliminate redundant work by setting
   canonicalized_coordinates to `True`. Note that this algorithm is agnostic to
   where the origin is in the coordinate system. Note that this algorithm is
@@ -5581,9 +5591,8 @@ def non_max_suppression_padded_v2(boxes,
     boxes: a tensor of rank 2 or higher with a shape of [..., num_boxes, 4].
       Dimensions except the last two are batch dimensions. The last dimension
       represents box coordinates, given as [y_1, x_1, y_2, x_2]. The coordinates
-      on each dimension can be given in any order
-      (see also `canonicalized_coordinates`) but must describe a box with
-      a positive area.
+      on each dimension can be given in any order (see also
+      `canonicalized_coordinates`) but must describe a box with a positive area.
     scores: a tensor of rank 1 or higher with a shape of [..., num_boxes].
     max_output_size: a scalar integer `Tensor` representing the maximum number
       of boxes to be selected by non max suppression.
@@ -5591,15 +5600,16 @@ def non_max_suppression_padded_v2(boxes,
       overlap too much with respect to IoU (intersection over union).
     score_threshold: a float representing the threshold for box scores. Boxes
       with a score that is not larger than this threshold will be suppressed.
-    sorted_input: a boolean indicating whether the input boxes and scores
-      are sorted in descending order by the score.
-    canonicalized_coordinates: if box coordinates are given as
-    `[y_min, x_min, y_max, x_max]`, setting to True eliminate redundant
-     computation to canonicalize box coordinates.
-    tile_size: an integer representing the number of boxes in a tile, i.e.,
-      the maximum number of boxes per image that can be used to suppress other
-      boxes in parallel; larger tile_size means larger parallelism and
-      potentially more redundant work.
+    sorted_input: a boolean indicating whether the input boxes and scores are
+      sorted in descending order by the score.
+    canonicalized_coordinates: if box coordinates are given as `[y_min, x_min,
+      y_max, x_max]`, setting to True eliminate redundant computation to
+      canonicalize box coordinates.
+    tile_size: an integer representing the number of boxes in a tile, i.e., the
+      maximum number of boxes per image that can be used to suppress other boxes
+      in parallel; larger tile_size means larger parallelism and potentially
+      more redundant work.
+
   Returns:
     idx: a tensor with a shape of [..., num_boxes] representing the
       indices selected by non-max suppression. The leading dimensions
@@ -5666,7 +5676,7 @@ def non_max_suppression_padded_v2(boxes,
       boxes = array_ops.concat([y_min, x_min, y_max, x_max], axis=2)
   # TODO(@bhack): https://github.com/tensorflow/tensorflow/issues/56089
   # this will be required after deprecation
-  #else:
+  # else:
   #  y_1, x_1, y_2, x_2 = array_ops.split(
   #      value=boxes, num_or_size_splits=4, axis=2)
 

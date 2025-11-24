@@ -130,8 +130,9 @@ void TPUBridgeExecutorIslandOutlining::runOnOperation() {
     // Create the outlined function
     SmallString<32> name = kOutlinedFuncPrefix;
     name += llvm::Twine(prefix_id++).str();
-    auto outlined_func = OpBuilder(ctx).create<func::FuncOp>(island_op.getLoc(),
-                                                             name, func_type);
+    auto builder = OpBuilder(ctx);
+    auto outlined_func =
+        func::FuncOp::create(builder, island_op.getLoc(), name, func_type);
     outlined_symbol_table.insert(outlined_func);
     outlined_func.setNested();
 
@@ -144,8 +145,8 @@ void TPUBridgeExecutorIslandOutlining::runOnOperation() {
       // Replace the yield with a return
       OpBuilder replacer(yield_op);
       island_op.getBody().push_back(new Block);
-      replacer.create<mlir::func::ReturnOp>(yield_op.getLoc(),
-                                            yield_op.getOperands());
+      mlir::func::ReturnOp::create(replacer, yield_op.getLoc(),
+                                   yield_op.getOperands());
       yield_op.erase();
     }
 
@@ -162,9 +163,9 @@ void TPUBridgeExecutorIslandOutlining::runOnOperation() {
 
     // The function is in place in the nested module, create a call and yield in
     // the original island.
-    OpBuilder builder = OpBuilder::atBlockEnd(&island_op.GetBody());
-    auto call_op = builder.create<mlir::TF::PartitionedCallOp>(
-        island_op.getLoc(), func_result_types, operands.getArrayRef(),
+    builder.setInsertionPointToEnd(&island_op.GetBody());
+    auto call_op = mlir::TF::PartitionedCallOp::create(
+        builder, island_op.getLoc(), func_result_types, operands.getArrayRef(),
         /*args_attrs=*/nullptr, /*res_attrs=*/nullptr,
         SymbolRefAttr::get(
             builder.getContext(), kNestedModule,
@@ -173,7 +174,7 @@ void TPUBridgeExecutorIslandOutlining::runOnOperation() {
         /*config_proto=*/builder.getStringAttr(""),
         /*executor_type=*/builder.getStringAttr(""));
     SmallVector<Value, 16> yield_operands(call_op.getResults());
-    builder.create<YieldOp>(island_op.getLoc(), yield_operands);
+    YieldOp::create(builder, island_op.getLoc(), yield_operands);
   }
 
   // Outline all the transitively called functions by moving them in the

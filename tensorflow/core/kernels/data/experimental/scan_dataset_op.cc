@@ -94,7 +94,7 @@ class ScanDatasetOp : public UnaryDatasetOpKernel {
     std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
       return std::make_unique<Iterator>(
-          Iterator::Params{this, strings::StrCat(prefix, "::Scan")});
+          Iterator::Params{this, absl::StrCat(prefix, "::Scan")});
     }
 
     const DataTypeVector& output_dtypes() const override {
@@ -271,7 +271,7 @@ class ScanDatasetOp : public UnaryDatasetOpKernel {
             writer->WriteScalar(full_name("state_size"), state_.size()));
         for (int idx = 0; idx < state_.size(); idx++) {
           TF_RETURN_IF_ERROR(writer->WriteTensor(
-              full_name(strings::StrCat("state[", idx, "]")), state_[idx]));
+              full_name(absl::StrCat("state[", idx, "]")), state_[idx]));
         }
         return absl::OkStatus();
       }
@@ -285,7 +285,7 @@ class ScanDatasetOp : public UnaryDatasetOpKernel {
         state_.resize(size);
         for (int idx = 0; idx < size; idx++) {
           TF_RETURN_IF_ERROR(reader->ReadTensor(
-              ctx->flr(), full_name(strings::StrCat("state[", idx, "]")),
+              ctx->flr(), full_name(absl::StrCat("state[", idx, "]")),
               &state_[idx]));
         }
         return absl::OkStatus();

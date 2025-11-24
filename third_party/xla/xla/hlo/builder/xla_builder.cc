@@ -50,6 +50,7 @@ limitations under the License.
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/ir/hlo_original_value.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/layout.h"
 #include "xla/layout_util.h"
@@ -63,10 +64,10 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/sharding_op_util.h"
 #include "xla/status_macros.h"
+#include "xla/tsl/platform/errors.h"
 #include "xla/util.h"
 #include "xla/window_util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/errors.h"
 #include "tsl/platform/stacktrace.h"
 #include "tsl/platform/statusor.h"
 
@@ -447,6 +448,9 @@ absl::Status XlaBuilderFriend::SetParameterReplication(
   TF_ASSIGN_OR_RETURN(HloComputationProto * computation_proto,
                       builder->GetSubcomputation(computation));
   for (auto& instr : *computation_proto->mutable_instructions()) {
+    if (instr.opcode() != HloOpcodeString(HloOpcode::kParameter)) {
+      continue;
+    }
     auto it = replication.find(instr.parameter_number());
     if (it != replication.end()) {
       instr.mutable_parameter_replication()
@@ -542,7 +546,9 @@ absl::StatusOr<ProgramShape> XlaBuilder::GetSubcomputationShape(
   TF_RETURN_IF_ERROR(first_error_);
   TF_ASSIGN_OR_RETURN(const HloComputationProto* computation_proto,
                       GetSubcomputation(id));
-  return ProgramShape(computation_proto->program_shape());
+  return ProgramShape(
+      ProgramShape::FromProto(computation_proto->program_shape())
+          .value_or(ProgramShape()));
 }
 
 absl::Status XlaBuilder::AddCalledComputation(XlaComputationId computation,
@@ -864,8 +870,10 @@ absl::StatusOr<XlaComputation> XlaBuilder::Build(
   }
   if (!input_output_aliases_.empty() || !buffer_donors_.empty()) {
     TF_RETURN_IF_ERROR(PopulateInputOutputAliasAndBufferDonor(
-        module, ProgramShape(entry.program_shape()), input_output_aliases_,
-        buffer_donors_));
+        module,
+        ProgramShape(ProgramShape::FromProto(entry.program_shape())
+                         .value_or(ProgramShape())),
+        input_output_aliases_, buffer_donors_));
   }
   module->add_computations()->Swap(&entry);
   embedded_.clear();
@@ -884,7 +892,9 @@ absl::StatusOr<XlaComputation> XlaBuilder::Build(XlaComputationId entry_id) {
   if (!computation.input_output_aliases.empty() ||
       !computation.buffer_donors.empty()) {
     TF_RETURN_IF_ERROR(PopulateInputOutputAliasAndBufferDonor(
-        &module, ProgramShape(entry.program_shape()),
+        &module,
+        ProgramShape(ProgramShape::FromProto(entry.program_shape())
+                         .value_or(ProgramShape())),
         computation.input_output_aliases, computation.buffer_donors));
   }
   for (auto& e : embedded_) {
@@ -919,16 +929,18 @@ absl::Status XlaBuilder::BuildComputationProto(int64_t root_id,
           instruction_shapes_[index]->ToProto();
     }
   }
-
-  SetProtoIdAndName(&proto, name_, kNameSeparator, GetNextId());
+  int64_t computation_id = GetNextComputationId();
+  SetProtoIdAndName(&proto, name_, kNameSeparator, computation_id);
   TF_ASSIGN_OR_RETURN(ProgramShape program_shape, GetProgramShape(root_id));
   *proto.mutable_program_shape() = program_shape.ToProto();
-  proto.set_root_id(root_id);
+  proto.set_root_id(HloInstruction::CalculateUniqueId(computation_id, root_id));
 
   for (auto& instruction : instructions_) {
     // Ensures that the instruction names are unique among the whole graph.
-    instruction.set_name(
-        GetFullName(instruction.name(), kNameSeparator, instruction.id()));
+    instruction.set_name(UniquifyInstructionName(instruction.name()));
+    // Creates a unique ID for the instruction.
+    instruction.set_id(
+        HloInstruction::CalculateUniqueId(computation_id, instruction.id()));
     proto.add_instructions()->Swap(&instruction);
   }
 
@@ -1634,7 +1646,7 @@ XlaOp XlaBuilder::Parameter(
                              parameter_number);
     }
     instr.set_parameter_number(parameter_number);
-    instr.set_name(name);
+    instr.set_name(UniquifyInstructionName(name));
     *instr.mutable_shape() = shape.ToProto();
     if (!replicated_at_leaf_buffers.empty()) {
       auto replication = instr.mutable_parameter_replication();
@@ -2041,6 +2053,33 @@ absl::StatusOr<XlaOp> XlaBuilder::TupleInternal(
     const Shape& shape, absl::Span<const XlaOp> elements) {
   HloInstructionProto instr;
   *instr.mutable_shape() = shape.ToProto();
+  // Create a new original value for the tuple instruction. The original value
+  // for each element is copied to the corresponding position in the tuple
+  // original value.
+  std::shared_ptr<OriginalValue> original_value =
+      std::make_shared<OriginalValue>(shape);
+  bool has_original_value = false;
+  for (int64_t i = 0; i < elements.size(); ++i) {
+    HloInstructionProto* element_instr =
+        xla::internal::XlaBuilderFriend::GetInstruction(elements[i]);
+    if (element_instr->has_original_value()) {
+      has_original_value = true;
+      auto element_original_value =
+          xla::OriginalValue::FromProto(element_instr->original_value());
+      original_value->mutable_tree()
+          ->CopySubtreeFrom(/*other*/
+                            xla::OriginalValue::FromProto(
+                                element_instr->original_value())
+                                ->tree(),
+                            /*src_index=*/{}, /*dst_index=*/{i});
+    }
+  }
+  std::optional<OriginalValueProto> original_value_proto;
+  if (has_original_value) {
+    original_value_proto = original_value->ToProto();
+  }
+  xla::XlaScopedOriginalValueAssignment original_value_assignment(
+      this, original_value_proto);
   return AddInstruction(std::move(instr), HloOpcode::kTuple, elements);
 }
 
@@ -2069,6 +2108,21 @@ absl::StatusOr<XlaOp> XlaBuilder::GetTupleElementInternal(const Shape& shape,
   HloInstructionProto instr;
   *instr.mutable_shape() = shape.ToProto();
   instr.set_tuple_index(index);
+
+  std::optional<OriginalValueProto> original_value_proto = original_value();
+  if (original_value_proto.has_value()) {
+    auto original_value = xla::OriginalValue::FromProto(*original_value_proto);
+    auto subtree = original_value->tree().Subtree({index});
+    if (subtree.ok()) {
+      auto element_original_value =
+          std::make_shared<xla::OriginalValue>(subtree.value());
+      original_value_proto = element_original_value->ToProto();
+    }
+  }
+
+  XlaScopedOriginalValueAssignment original_value_assignment(
+      this, original_value_proto);
+
   return AddInstruction(std::move(instr), HloOpcode::kGetTupleElement,
                         {tuple_data});
 }
@@ -2104,6 +2158,30 @@ XlaOp XlaBuilder::DotGeneral(
   });
 }
 
+XlaOp XlaBuilder::ScaledDot(
+    XlaOp lhs, XlaOp rhs, XlaOp lhs_scale, XlaOp rhs_scale,
+    const DotDimensionNumbers& dimension_numbers,
+    const PrecisionConfig* precision_config,
+    std::optional<PrimitiveType> preferred_element_type) {
+  return ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
+    TF_ASSIGN_OR_RETURN(const Shape* lhs_shape, GetShapePtr(lhs));
+    TF_ASSIGN_OR_RETURN(const Shape* rhs_shape, GetShapePtr(rhs));
+    TF_ASSIGN_OR_RETURN(
+        Shape shape,
+        ShapeInference::InferDotOpShape(
+            *lhs_shape, *rhs_shape, dimension_numbers, preferred_element_type));
+
+    HloInstructionProto instr;
+    *instr.mutable_shape() = shape.ToProto();
+    *instr.mutable_dot_dimension_numbers() = dimension_numbers;
+    if (precision_config != nullptr) {
+      *instr.mutable_precision_config() = *precision_config;
+    }
+    return AddInstruction(std::move(instr), HloOpcode::kScaledDot,
+                          {lhs, rhs, lhs_scale, rhs_scale});
+  });
+}
+
 absl::StatusOr<XlaOp> XlaBuilder::DotGeneralInternal(
     const Shape& shape, XlaOp lhs, XlaOp rhs,
     const DotDimensionNumbers& dimension_numbers,
@@ -2117,33 +2195,14 @@ absl::StatusOr<XlaOp> XlaBuilder::DotGeneralInternal(
   return AddInstruction(std::move(instr), HloOpcode::kDot, {lhs, rhs});
 }
 
-XlaOp XlaBuilder::SparseDot(
-    XlaOp lhs, XlaOp rhs, absl::Span<const XlaOp> sparse_meta,
-    absl::Span<const SparsityDescriptor> sparsity,
-    const DotDimensionNumbers& dimension_numbers,
-    const PrecisionConfig* precision_config,
-    std::optional<PrimitiveType> preferred_element_type) {
-  return ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
-    TF_ASSIGN_OR_RETURN(const Shape* lhs_shape, GetShapePtr(lhs));
-    TF_ASSIGN_OR_RETURN(const Shape* rhs_shape, GetShapePtr(rhs));
-    TF_ASSIGN_OR_RETURN(Shape shape,
-                        ShapeInference::InferDotOpShape(
-                            *lhs_shape, *rhs_shape, dimension_numbers,
-                            preferred_element_type, sparsity));
-    std::vector<XlaOp> operands{lhs, rhs};
-    operands.insert(operands.end(), sparse_meta.begin(), sparse_meta.end());
-
-    HloInstructionProto instr;
-    *instr.mutable_shape() = shape.ToProto();
-    *instr.mutable_dot_dimension_numbers() = dimension_numbers;
-    if (precision_config != nullptr) {
-      *instr.mutable_precision_config() = *precision_config;
-    }
-    for (const SparsityDescriptor& descriptor : sparsity) {
-      *instr.add_dot_sparsity() = descriptor;
-    }
-    return AddInstruction(std::move(instr), HloOpcode::kDot, operands);
-  });
+XlaOp ScaledDot(const XlaOp lhs, const XlaOp rhs, const XlaOp lhs_scale,
+                const XlaOp rhs_scale,
+                const DotDimensionNumbers& dimension_numbers,
+                const PrecisionConfig* precision_config,
+                std::optional<PrimitiveType> preferred_element_type) {
+  return lhs.builder()->ScaledDot(lhs, rhs, lhs_scale, rhs_scale,
+                                  dimension_numbers, precision_config,
+                                  preferred_element_type);
 }
 
 XlaOp XlaBuilder::RaggedAllToAll(
@@ -4694,7 +4753,7 @@ absl::StatusOr<XlaComputation> XlaBuilder::BuildConstantSubGraph(
 
   HloComputationProto entry;
   SetProtoIdAndName(&entry, StrCat(name_, "_compute_constant"), kNameSeparator,
-                    GetNextId());
+                    GetNextComputationId());
   ProgramShapeProto* program_shape = entry.mutable_program_shape();
   *program_shape->mutable_result() = root->shape();
 
@@ -4767,7 +4826,7 @@ absl::StatusOr<XlaComputation> XlaBuilder::BuildConstantSubGraph(
       }
       *const_instr.mutable_opcode() =
           std::string(HloOpcodeString(HloOpcode::kConstant));
-      const_instr.set_id(handle);
+      const_instr.set_id(HloInstruction::CalculateUniqueId(entry.id(), handle));
       *const_instr.mutable_name() =
           GetFullName(const_instr.opcode(), kNameSeparator, const_instr.id());
       *entry.add_instructions() =
@@ -4804,7 +4863,7 @@ absl::StatusOr<XlaComputation> XlaBuilder::BuildConstantSubGraph(
     root_id = it->second;
     it = substitutions.find(root_id);
   }
-  entry.set_root_id(root_id);
+  entry.set_root_id(HloInstruction::CalculateUniqueId(entry.id(), root_id));
 
   // Add related ops to the computation.
   for (int64_t id : related_ops) {
@@ -4939,13 +4998,9 @@ absl::StatusOr<XlaOp> XlaBuilder::AddInstruction(
     HloInstructionProto&& instr, HloOpcode opcode,
     absl::Span<const XlaOp> operands) {
   TF_RETURN_IF_ERROR(first_error_);
-
-  const int64_t handle = GetNextId();
+  const int64_t handle = GetNextInstructionId();
   instr.set_id(handle);
   *instr.mutable_opcode() = std::string(HloOpcodeString(opcode));
-  if (instr.name().empty()) {
-    instr.set_name(instr.opcode());
-  }
   for (const auto& operand : operands) {
     if (operand.builder_ == nullptr) {
       return InvalidArgument("invalid XlaOp with handle %d", operand.handle());
@@ -4963,9 +5018,32 @@ absl::StatusOr<XlaOp> XlaBuilder::AddInstruction(
   } else {
     *instr.mutable_metadata() = metadata_;
   }
+
+  if (instr.name().empty()) {
+    if (!instr.metadata().op_name().empty()) {
+      // The op_name from metadata often includes a prefix, often having the
+      // form "stack_trace/opname" or "module_name/opname".
+      // We aim to extract the base operation name.
+      absl::string_view op_name = instr.metadata().op_name();
+      size_t last_slash_pos = op_name.find_last_of('/');
+      absl::string_view name = (last_slash_pos == absl::string_view::npos)
+                                   ? op_name
+                                   : op_name.substr(last_slash_pos + 1);
+      instr.set_name(UniquifyInstructionName(
+          xla::SanitizeOpName(std::string(name), kNameSeparator, "_")));
+    } else {
+      instr.set_name(UniquifyInstructionName(instr.opcode()));
+    }
+  }
+
   if (sharding_) {
     TF_RETURN_IF_ERROR(NormalizeAndAssignSharing(&instr, *sharding_));
   }
+
+  if (original_value_) {
+    *instr.mutable_original_value() = *original_value_;
+  }
+
   *instr.mutable_frontend_attributes() = frontend_attributes_;
 
   handle_to_index_[handle] = instructions_.size();
@@ -5006,32 +5084,38 @@ XlaComputationId XlaBuilder::AddSubComputation(
   // old->new mappings in remapped_ids.
   for (const HloComputationProto& e : computation.proto().computations()) {
     HloComputationProto new_computation(e);
-    int64_t computation_id = GetNextId();
+    int64_t computation_id = GetNextComputationId();
     remapped_ids[new_computation.id()] = computation_id;
     SetProtoIdAndName(&new_computation,
                       GetBaseName(new_computation.name(), kNameSeparator),
                       kNameSeparator, computation_id);
+    // No ID remapping needed for instructions just adding the computation
+    // prefix.
     for (auto& instruction : *new_computation.mutable_instructions()) {
-      int64_t instruction_id = GetNextId();
-      remapped_ids[instruction.id()] = instruction_id;
-      SetProtoIdAndName(&instruction,
-                        GetBaseName(instruction.name(), kNameSeparator),
-                        kNameSeparator, instruction_id);
+      instruction.set_name(UniquifyInstructionName(instruction.name()));
+      instruction.set_id(
+          HloInstruction::CalculateUniqueId(computation_id, instruction.id()));
     }
-    new_computation.set_root_id(remapped_ids.at(new_computation.root_id()));
+    new_computation.set_root_id(HloInstruction::CalculateUniqueId(
+        computation_id, new_computation.root_id()));
 
     imported_computations.push_back(std::move(new_computation));
   }
   // Once we have imported all the computations, and captured all the ID
   // mappings, we go back and fixup the IDs in the imported computations.
   for (auto& imported_computation : imported_computations) {
+    // No ID remapping needed for instructions only for called_computation_ids.
+    // Operands and control_predecessors need to have the new computation ID
+    // prepended.
     for (auto& instruction : *imported_computation.mutable_instructions()) {
       for (auto& operand_id : *instruction.mutable_operand_ids()) {
-        operand_id = remapped_ids.at(operand_id);
+        operand_id = HloInstruction::CalculateUniqueId(
+            imported_computation.id(), operand_id);
       }
       for (auto& control_predecessor_id :
            *instruction.mutable_control_predecessor_ids()) {
-        control_predecessor_id = remapped_ids.at(control_predecessor_id);
+        control_predecessor_id = HloInstruction::CalculateUniqueId(
+            imported_computation.id(), control_predecessor_id);
       }
       for (auto& called_computation_id :
            *instruction.mutable_called_computation_ids()) {
@@ -5314,17 +5398,6 @@ XlaOp DotGeneral(const XlaOp lhs, const XlaOp rhs,
                  std::optional<PrimitiveType> preferred_element_type) {
   return lhs.builder()->DotGeneral(lhs, rhs, dimension_numbers,
                                    precision_config, preferred_element_type);
-}
-
-XlaOp SparseDot(const XlaOp lhs, const XlaOp rhs,
-                absl::Span<const XlaOp> sparse_meta,
-                absl::Span<const SparsityDescriptor> sparsity,
-                const DotDimensionNumbers& dimension_numbers,
-                const PrecisionConfig* precision_config,
-                std::optional<PrimitiveType> preferred_element_type) {
-  return lhs.builder()->SparseDot(lhs, rhs, sparse_meta, sparsity,
-                                  dimension_numbers, precision_config,
-                                  preferred_element_type);
 }
 
 XlaOp RaggedAllToAll(const XlaOp input, const XlaOp input_offsets,

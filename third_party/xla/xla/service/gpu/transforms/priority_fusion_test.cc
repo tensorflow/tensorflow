@@ -24,8 +24,11 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/status_matchers.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
+#include "mlir/IR/MLIRContext.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
@@ -39,15 +42,13 @@ limitations under the License.
 #include "xla/service/pattern_matcher.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tsl/platform/env.h"
-#include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/threadpool.h"
+#include "xla/xla.pb.h"
 
 namespace m = ::xla::match;
 
 using ::testing::UnorderedElementsAre;
-using ::tsl::testing::IsOk;
-using ::tsl::testing::IsOkAndHolds;
 
 namespace xla {
 namespace gpu {
@@ -57,8 +58,9 @@ class PriorityFusionTest : public HloHardwareIndependentTestBase {
   std::vector<HloFusionAnalysis::EmitterFusionKind> RunAndGetFusionKinds(
       absl::string_view hlo) {
     auto module = ParseAndReturnVerifiedModule(hlo).value();
-    EXPECT_THAT(priority_fusion_.Run(module.get()), IsOkAndHolds(true));
-    EXPECT_THAT(module->RemoveUnusedComputations(), IsOk());
+    EXPECT_THAT(priority_fusion_.Run(module.get()),
+                absl_testing::IsOkAndHolds(true));
+    EXPECT_THAT(module->RemoveUnusedComputations(), absl_testing::IsOk());
     std::vector<HloFusionAnalysis::EmitterFusionKind> kinds;
     for (auto computation : module->computations()) {
       if (!computation->FusionInstruction()) {
@@ -67,15 +69,17 @@ class PriorityFusionTest : public HloHardwareIndependentTestBase {
 
       auto analysis = HloFusionAnalysis::Create(
           *computation->FusionInstruction(), device_info_);
-      kinds.push_back(analysis.GetEmitterFusionKind());
+      kinds.push_back(analysis.emitter_fusion_kind());
     }
     return kinds;
   }
 
   se::DeviceDescription device_info_ = TestGpuDeviceInfo::RTXA6000DeviceInfo();
+  mlir::MLIRContext mlir_context_;
   PriorityFusion priority_fusion_{
       /*thread_pool=*/nullptr, device_info_,
-      GpuHloCostAnalysis::Options{.count_multiple_input_accesses = true}};
+      GpuHloCostAnalysis::Options{.count_multiple_input_accesses = true},
+      &mlir_context_};
 };
 
 TEST_F(PriorityFusionTest, FuseWithSharedArgument) {
@@ -93,7 +97,8 @@ TEST_F(PriorityFusionTest, FuseWithSharedArgument) {
     })")
                     .value();
 
-  EXPECT_THAT(priority_fusion_.Run(module.get()), IsOkAndHolds(true));
+  EXPECT_THAT(priority_fusion_.Run(module.get()),
+              absl_testing::IsOkAndHolds(true));
 
   HloInstruction* root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, GmockMatch(m::Fusion()));
@@ -120,7 +125,8 @@ TEST_F(PriorityFusionTest, FusionOnStreamAnnotatedComputation) {
     })")
                     .value();
 
-  EXPECT_THAT(priority_fusion_.Run(module.get()), IsOkAndHolds(true));
+  EXPECT_THAT(priority_fusion_.Run(module.get()),
+              absl_testing::IsOkAndHolds(true));
 
   // The call should still be there.
   HloInstruction* root = module->entry_computation()->root_instruction();
@@ -208,6 +214,22 @@ CHECK-NEXT: %[[CONVERT_FUSION:.*]] = f32[512]{0} fusion(%[[PARAM]])
 CHECK-NEXT: %[[BITCAST:.*]] = s32[512]{0} bitcast(%[[CONVERT_FUSION]])
 CHECK-NEXT: ROOT %{{.*}} = (f32[512]{0}, s32[512]{0}) tuple(%[[FUSION_F32]], %[[BITCAST]])
   )");
+}
+
+TEST_F(PriorityFusionTest, DoNotFuseBitWidthChangingBitcast) {
+  // `neg` is the producer that could be fused with `bitcast` and `mul`, but
+  // since `bitcast` changes the bit width, we don't fuse it.
+  auto module = *ParseAndReturnVerifiedModule(R"(
+    ENTRY main {
+      p0 = s8[3,5,2]{2,1,0} parameter(0)
+      neg = s8[3,5,2]{2,1,0} negate(p0)
+      bitcast = s16[3,5]{1,0} bitcast(neg)
+      mul = s8[3,5,2]{2,1,0} add(neg, neg)
+      ROOT result = (s16[3,5]{1,0}, s8[3,5,2]{2,1,0}) tuple(bitcast, mul)
+    })");
+
+  EXPECT_THAT(priority_fusion_.Run(module.get()),
+              absl_testing::IsOkAndHolds(false));
 }
 
 TEST_F(PriorityFusionTest, FuseConvertIntoReduce) {
@@ -328,7 +350,8 @@ TEST_F(PriorityFusionTest, DoNotChangeReductionFusionToLoopFusion) {
       fusion = f32[16]{0} fusion(param0), kind=kLoop, calls=fused_computation
       ROOT slice = f32[8]{0} slice(fusion), slice={[0:8]}
     })");
-  EXPECT_THAT(priority_fusion_.Run(module.get()), IsOkAndHolds(false));
+  EXPECT_THAT(priority_fusion_.Run(module.get()),
+              absl_testing::IsOkAndHolds(false));
 }
 
 TEST_F(PriorityFusionTest, DoNotFuseTransposeIntoReduce) {
@@ -572,7 +595,8 @@ TEST_F(PriorityFusionTest, DontFuseIntoFirstOperandOfScatter) {
       ROOT add = s32[3,3] add(scatter, scatter)
     })");
 
-  EXPECT_THAT(priority_fusion_.Run(module.get()), IsOkAndHolds(true));
+  EXPECT_THAT(priority_fusion_.Run(module.get()),
+              absl_testing::IsOkAndHolds(true));
 
   HloInstruction* root = module->entry_computation()->root_instruction();
   const HloInstruction* fusion = nullptr;
@@ -608,7 +632,8 @@ TEST_F(PriorityFusionTest, DontFuseConstantIntoFirstOperandOfScatter) {
           index_vector_dim=1
     })");
 
-  EXPECT_THAT(priority_fusion_.Run(module.get()), IsOkAndHolds(true));
+  EXPECT_THAT(priority_fusion_.Run(module.get()),
+              absl_testing::IsOkAndHolds(true));
 
   HloInstruction* root = module->entry_computation()->root_instruction();
   ASSERT_THAT(root, GmockMatch(m::Fusion(m::Constant(), m::Parameter())));
@@ -736,7 +761,8 @@ TEST_F(PriorityFusionTest, EpilogueFusionFails) {
       ROOT fusion = f32[28672]{0} fusion(f,p1), kind=kLoop, calls=%fused_computation.2
     })");
 
-  EXPECT_THAT(priority_fusion_.Run(module.get()), IsOkAndHolds(false));
+  EXPECT_THAT(priority_fusion_.Run(module.get()),
+              absl_testing::IsOkAndHolds(false));
 }
 
 TEST_F(PriorityFusionTest, DoNotFuseIntoRoot) {
@@ -753,7 +779,8 @@ TEST_F(PriorityFusionTest, DoNotFuseIntoRoot) {
       %outfeed.6 = token[] outfeed((u32[2]{0}) %tuple.1, token[] %token.0), outfeed_shape=(u32[2]{0}), sharding={maximal device=0}
     })");
 
-  EXPECT_THAT(priority_fusion_.Run(module.get()), IsOkAndHolds(false));
+  EXPECT_THAT(priority_fusion_.Run(module.get()),
+              absl_testing::IsOkAndHolds(false));
 }
 
 TEST_F(PriorityFusionTest, DontFuseConcat) {
@@ -805,7 +832,8 @@ TEST_F(PriorityFusionTest, DontFuseConcat) {
     }
   )");
 
-  EXPECT_THAT(priority_fusion_.Run(module.get()), IsOkAndHolds(false));
+  EXPECT_THAT(priority_fusion_.Run(module.get()),
+              absl_testing::IsOkAndHolds(false));
 }
 
 TEST_F(PriorityFusionTest, FuseOnlySmallConstant) {
@@ -821,7 +849,8 @@ TEST_F(PriorityFusionTest, FuseOnlySmallConstant) {
       ROOT mul = f32[32,32]{1,0} multiply(c_2, add)
     }
   )");
-  EXPECT_THAT(priority_fusion_.Run(module.get()), IsOkAndHolds(true));
+  EXPECT_THAT(priority_fusion_.Run(module.get()),
+              absl_testing::IsOkAndHolds(true));
 
   HloInstruction* root = module->entry_computation()->root_instruction();
   ASSERT_THAT(root, GmockMatch(m::Fusion(m::Constant(), m::Parameter())));
@@ -852,7 +881,8 @@ ENTRY main {
   c_0 = f32[] constant(0)
   ROOT triton_softmax = f32[32] fusion(param_0, c_0), kind=kCustom, calls=triton_computation, backend_config={"fusion_backend_config": {"kind":"__triton","block_level_fusion_config":{"output_tiles":[{"sizes":["1"]}],"num_warps":"1"}}}
 })");
-  EXPECT_THAT(priority_fusion_.Run(module.get()), IsOkAndHolds(true));
+  EXPECT_THAT(priority_fusion_.Run(module.get()),
+              absl_testing::IsOkAndHolds(true));
 
   HloInstruction* root = module->entry_computation()->root_instruction();
   ASSERT_THAT(root, GmockMatch(m::Fusion(m::Parameter())));
@@ -908,7 +938,8 @@ TEST_F(PriorityFusionTest, FuseProducerConsumerMergedNotTooLarge) {
       ROOT fusion2 = pred[6]{0} fusion(fusion1), kind=kInput, calls=fused_computation.2
     }
   )");
-  EXPECT_THAT(priority_fusion_.Run(module.get()), IsOkAndHolds(true));
+  EXPECT_THAT(priority_fusion_.Run(module.get()),
+              absl_testing::IsOkAndHolds(true));
 }
 
 TEST_F(PriorityFusionTest, CanMergeTritonFusionWithBothProducerAndConsumer) {
@@ -1257,7 +1288,8 @@ TEST_F(PriorityFusionTest, DoNotFuseInsideReducer) {
       ROOT %reduce = f32[] fusion(p0, p1), kind=kInput, calls=fused_reduce
     }
   )");
-  EXPECT_THAT(priority_fusion_.Run(module.get()), IsOkAndHolds(false));
+  EXPECT_THAT(priority_fusion_.Run(module.get()),
+              absl_testing::IsOkAndHolds(false));
 }
 
 class PriorityFusionWithTritonEnabledTest : public PriorityFusionTest {
@@ -1281,7 +1313,8 @@ ENTRY main {
   add = f32[2048] add(p0, p1)
   ROOT mul = f32[2048] multiply(add, p0)
 })");
-  EXPECT_THAT(priority_fusion_.Run(module.get()), IsOkAndHolds(true));
+  EXPECT_THAT(priority_fusion_.Run(module.get()),
+              absl_testing::IsOkAndHolds(true));
   EXPECT_TRUE(verifier().Run(module.get()).status().ok());
 
   HloInstruction* root = module->entry_computation()->root_instruction();
@@ -1303,7 +1336,8 @@ TEST_F(PriorityFusionWithTritonEnabledTest, DoNotFuseIntoRoot) {
       %outfeed.6 = token[] outfeed((s32[2]{0}, s32[2]{0}) %tuple.1, token[] %token.0), outfeed_shape=(s32[2]{0}, s32[2]{0}), sharding={maximal device=0}
     })");
 
-  EXPECT_THAT(priority_fusion_.Run(module.get()), IsOkAndHolds(false));
+  EXPECT_THAT(priority_fusion_.Run(module.get()),
+              absl_testing::IsOkAndHolds(false));
 }
 
 TEST_F(PriorityFusionWithTritonEnabledTest, LimitNumberOfParameters) {
@@ -1317,7 +1351,8 @@ TEST_F(PriorityFusionWithTritonEnabledTest, LimitNumberOfParameters) {
   module_text += "}";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(module_text));
-  EXPECT_THAT(priority_fusion_.Run(module.get()), IsOkAndHolds(true));
+  EXPECT_THAT(priority_fusion_.Run(module.get()),
+              absl_testing::IsOkAndHolds(true));
   // Assert that there is not just a single fusion with all parameters as
   // operands.
   HloInstruction* root = module->entry_computation()->root_instruction();
@@ -1342,10 +1377,10 @@ TEST_F(PriorityFusionWithTritonEnabledTest,
   tsl::thread::ThreadPool pool(tsl::Env::Default(), "priority-fusion-test", 8);
   GpuHloCostAnalysis::Options options;
   options.count_multiple_input_accesses = true;
-  PriorityFusion priority_fusion_with_thread_pool{/*thread_pool=*/&pool,
-                                                  device_info_, options};
+  PriorityFusion priority_fusion_with_thread_pool{
+      /*thread_pool=*/&pool, device_info_, options, &mlir_context_};
   EXPECT_THAT(priority_fusion_with_thread_pool.Run(module.get()),
-              IsOkAndHolds(true));
+              absl_testing::IsOkAndHolds(true));
   HloInstruction* root = module->entry_computation()->root_instruction();
   HloInstruction* fusion;
   EXPECT_THAT(root, GmockMatch(m::Tuple(m::GetTupleElement(m::Fusion(&fusion)),

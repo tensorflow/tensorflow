@@ -32,6 +32,11 @@ class WithContext {
   ~WithContext() {}
 };
 
+template <typename Functor>
+Functor WithCurrentContext(Functor f) {
+  return f;
+}
+
 }  // namespace tsl
 
 #endif  // XLA_TSL_PLATFORM_DEFAULT_CONTEXT_H_

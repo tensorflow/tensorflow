@@ -24,7 +24,6 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/base/nullability.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
@@ -48,18 +47,22 @@ limitations under the License.
 #include "xla/python/ifrt/executable.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/program.h"
+#include "xla/python/ifrt/remap_plan.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/ifrt/topology.h"
+#include "xla/python/ifrt/tuple.h"
 #include "xla/python/ifrt/user_context.h"
 #include "xla/python/ifrt/value.h"
 #include "xla/python/pjrt_ifrt/pjrt_attribute_map_util.h"
 #include "xla/python/pjrt_ifrt/pjrt_dtype.h"
 #include "xla/python/pjrt_ifrt/pjrt_topology.h"
 #include "xla/service/computation_placer.h"
+#include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/concurrency/ref_count.h"
-#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/util.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 
@@ -168,6 +171,12 @@ class CompileOnlyIfrtCompiler final
     return Unimplemented("Compile not implemented.");
   }
 
+  absl::Status IsExecutableVersionCompatible(
+      const xla::ifrt::ExecutableVersion& executable_version,
+      const xla::ifrt::DeviceListRef& devices) const override {
+    return absl::UnimplementedError("Not implemented");
+  }
+
   absl::StatusOr<ifrt::LoadedExecutableRef> DeserializeLoadedExecutable(
       absl::string_view serialized,
       std::unique_ptr<ifrt::DeserializeExecutableOptions> options) override {
@@ -209,24 +218,22 @@ class CompileOnlyIfRtClient final
       const void* data, xla::ifrt::DType dtype, xla::ifrt::Shape shape,
       std::optional<absl::Span<const int64_t>> byte_strides,
       xla::ifrt::ShardingRef sharding, HostBufferSemantics semantics,
-      std::function<void()> on_done_with_host_buffer,
-      tsl::RCReference<xla::ifrt::UserContext> user_context) override {
+      std::function<void()> on_done_with_host_buffer) override {
     return Unimplemented(
         "MakeArrayFromHostBuffer not available with compile-only client.");
   }
 
   absl::StatusOr<std::vector<ifrt::ArrayRef>> MakeArraysFromHostBufferShards(
       absl::Span<MakeArraysFromHostBufferShardsSpec> specs,
-      HostBufferSemantics semantics,
-      tsl::RCReference<xla::ifrt::UserContext> user_context) override {
+      HostBufferSemantics semantics) override {
     return Unimplemented(
         "MakeArraysFromHostBufferShards not available with compile-only "
         "client.");
   }
 
   absl::StatusOr<std::vector<ifrt::ArrayRef>> MakeErrorArrays(
-      const absl::Status& error, absl::Span<const ifrt::ArraySpec> array_specs,
-      tsl::RCReference<ifrt::UserContext> user_context) override {
+      const absl::Status& error,
+      absl::Span<const ifrt::ArraySpec> array_specs) override {
     return Unimplemented(
         "MakeErrorArrays not available with compile-only client.");
   }
@@ -255,9 +262,17 @@ class CompileOnlyIfRtClient final
     return Unimplemented("RemapArrays not available with compile-only client.");
   }
 
-  ifrt::Future<> GetReadyFuture(
+  absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> ReshardArrays(
+      absl::Span<xla::ifrt::ArrayRef> arrays,
+      absl::Span<const xla::ifrt::ArraySpec> specs,
+      xla::ifrt::ArrayCopySemantics semantics) override {
+    return Unimplemented(
+        "ReshardArrays not available with compile-only client.");
+  }
+
+  tsl::Future<> GetReadyFuture(
       absl::Span<const ifrt::ValueRef> values) override {
-    return ifrt::Future<>(Unimplemented(
+    return tsl::Future<>(Unimplemented(
         "GetReadyFuture not available with compile-only client."));
   }
 
@@ -308,7 +323,7 @@ class CompileOnlyIfRtClient final
         "LookupAddressableDevice not available with compile-only client.");
   }
 
-  ifrt::DeviceListRef MakeDeviceList(
+  absl::StatusOr<ifrt::DeviceListRef> MakeDeviceList(
       absl::Span<ifrt::Device* const> devices) const override {
     return ifrt::BasicDeviceList::Create(devices);
   }
@@ -328,7 +343,7 @@ class CompileOnlyIfRtClient final
     return topology_;
   }
 
-  absl::StatusOr<std::shared_ptr<const PjRtLayout>> GetDefaultLayout(
+  absl::StatusOr<std::shared_ptr<const PjRtLayout>> GetDefaultPjRtLayout(
       ifrt::DType dtype, absl::Span<const int64_t> dims, ifrt::Device* device,
       ifrt::MemoryKind memory_kind) const override {
     if (memory_kind == ifrt::MemoryKind(UnpinnedHostMemorySpace::kKind)) {

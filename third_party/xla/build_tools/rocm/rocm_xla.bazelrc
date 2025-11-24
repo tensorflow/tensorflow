@@ -1,0 +1,80 @@
+# Test-related settings.
+
+build:rocm_dev --remote_upload_local_results=false
+build:rocm_dev --remote_cache="https://wardite.cluster.engflow.com"
+
+build:rocm_rbe --bes_backend="grpcs://wardite.cluster.engflow.com"
+build:rocm_rbe --bes_results_url="https://wardite.cluster.engflow.com/invocation/"
+build:rocm_rbe --host_platform="@local_config_rocm//rocm:linux_x64"
+build:rocm_rbe --extra_execution_platforms="@local_config_rocm//rocm:linux_x64"
+build:rocm_rbe --platforms="@local_config_rocm//rocm:linux_x64"
+build:rocm_rbe --bes_timeout=600s
+build:rocm_rbe --tls_client_certificate="/tf/certificates/ci-cert.crt"
+build:rocm_rbe --tls_client_key="/tf/certificates/ci-cert.key"
+build:rocm_rbe --spawn_strategy=remote,local
+build:rocm_rbe --grpc_keepalive_time=30s
+
+test:rocm_rbe --jobs=200
+test:rocm_rbe --remote_executor=grpcs://wardite.cluster.engflow.com
+test:rocm_rbe --remote_timeout=3600
+test:rocm_rbe --strategy=TestRunner=remote,local
+
+build:tsan --strip=never
+build:tsan --copt -fsanitize=thread
+build:tsan --copt -g
+build:tsan --copt -fno-omit-frame-pointer
+build:tsan --linkopt -fsanitize=thread
+build:tsan --linkopt -g
+build:tsan --//build_tools/rocm:sanitizer=tsan
+build:tsan --test_env=TSAN_OPTIONS=suppressions=build_tools/rocm/tsan_ignore_list.txt::history_size=7:ignore_noninstrumented_modules=1
+build:tsan --run_under=//build_tools/rocm:sanitizer_wrapper
+
+build:asan --test_env=ASAN_OPTIONS=suppressions=build_tools/rocm/asan_ignore_list.txt:use_sigaltstack=0
+build:asan --test_env=LSAN_OPTIONS=suppressions=build_tools/rocm/lsan_ignore_list.txt:use_sigaltstack=0
+build:asan --//build_tools/rocm:sanitizer=asan
+build:asan --run_under=//build_tools/rocm:sanitizer_wrapper
+
+test:xla_sgpu -- \
+//xla/... \
+-//xla/backends/gpu/collectives:gpu_clique_key_test \
+-//xla/backends/gpu/collectives:nccl_communicator_test \
+-//xla/service:collective_ops_utils_test \
+-//xla/service:collective_pipeliner_test \
+-//xla/service:collective_permute_cycle_test \
+-//xla/service:batched_gather_scatter_normalizer_test \
+-//xla/service:all_reduce_simplifier_test \
+-//xla/service:all_gather_simplifier_test \
+-//xla/service:reduce_scatter_decomposer_test \
+-//xla/service:reduce_scatter_reassociate_test \
+-//xla/service:reduce_scatter_combiner_test \
+-//xla/service:scatter_simplifier_test \
+-//xla/service:sharding_propagation_test \
+-//xla/service:sharding_remover_test \
+-//xla/service:p2p_schedule_preparation_test \
+-//xla/pjrt/distributed:topology_util_test \
+-//xla/pjrt/distributed:client_server_test
+
+test:xla_mgpu -- \
+//xla/tests:collective_ops_e2e_test \
+//xla/tests:collective_ops_test \
+//xla/tests:collective_pipeline_parallelism_test \
+//xla/tests:replicated_io_feed_test \
+//xla/backends/gpu/collectives:gpu_clique_key_test \
+//xla/backends/gpu/collectives:nccl_communicator_test \
+//xla/backends/gpu/runtime:all_reduce_test \
+//xla/service:collective_ops_utils_test \
+//xla/service:collective_pipeliner_test \
+//xla/service:collective_permute_cycle_test \
+//xla/service:batched_gather_scatter_normalizer_test \
+//xla/service:all_reduce_simplifier_test \
+//xla/service:all_gather_simplifier_test \
+//xla/service:reduce_scatter_decomposer_test \
+//xla/service:reduce_scatter_reassociate_test \
+//xla/service:reduce_scatter_combiner_test \
+//xla/service:scatter_simplifier_test \
+//xla/service:sharding_propagation_test \
+//xla/service:sharding_remover_test \
+//xla/service:p2p_schedule_preparation_test \
+//xla/tools/multihost_hlo_runner:functional_hlo_runner_test \
+//xla/pjrt/distributed:topology_util_test \
+//xla/pjrt/distributed:client_server_test 

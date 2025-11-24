@@ -21,6 +21,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/log/check.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
@@ -64,12 +65,16 @@ RunHandlerThreadWorkQueue::RunHandlerThreadWorkQueue(const Options& options)
 }
 
 absl::StatusOr<std::unique_ptr<tensorflow::tfrt_stub::WorkQueueInterface>>
-RunHandlerThreadWorkQueue::InitializeRequest(int64_t request_id) const {
+RunHandlerThreadWorkQueue::InitializeRequest(int64_t request_id,
+                                             int priority) const {
   RunHandlerOptions options;
+  if (options_.enable_priority_based_queuing) {
+    options.priority = priority;
+  }
   std::unique_ptr<RunHandler> handler =
       handler_pool_->Get(request_id, options_.init_timeout_ms, options);
   if (!handler) {
-    return tensorflow::errors::Internal(absl::StrCat(
+    return absl::DeadlineExceededError(absl::StrCat(
         "Could not obtain RunHandler for request after waiting for ",
         options_.init_timeout_ms, " ms."));
   }
@@ -130,7 +135,9 @@ std::ostream& operator<<(std::ostream& strm,
               << options.use_adaptive_waiting_time
               << ", wait_if_no_active_request = "
               << options.wait_if_no_active_request
-              << ", enable_wake_up = " << options.enable_wake_up << "}";
+              << ", enable_wake_up = " << options.enable_wake_up
+              << ", enable_priority_based_queuing = "
+              << options.enable_priority_based_queuing << " }";
 }
 
 }  // namespace tf

@@ -26,7 +26,7 @@ limitations under the License.
 
 namespace tsl {
 
-string AllocatorStats::DebugString() const {
+std::string AllocatorStats::DebugString() const {
   return strings::Printf(
       "Limit:            %20lld\n"
       "InUse:            %20lld\n"
@@ -56,7 +56,7 @@ static bool cpu_allocator_collect_full_stats = false;
 void EnableCPUAllocatorFullStats() { cpu_allocator_collect_full_stats = true; }
 bool CPUAllocatorFullStatsEnabled() { return cpu_allocator_collect_full_stats; }
 
-string AllocatorAttributes::DebugString() const {
+std::string AllocatorAttributes::DebugString() const {
   return strings::StrCat("AllocatorAttributes(on_host=", on_host(),
                          " nic_compatible=", nic_compatible(),
                          " gpu_compatible=", gpu_compatible(), ")");

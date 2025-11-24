@@ -16,13 +16,13 @@ limitations under the License.
 #ifndef XLA_FFI_EXECUTION_STATE_H_
 #define XLA_FFI_EXECUTION_STATE_H_
 
-#include <functional>
 #include <memory>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "xla/ffi/type_id_registry.h"
-#include "tsl/platform/statusor.h"
+#include "xla/ffi/type_registry.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/util/safe_reinterpret_cast.h"
 
 namespace xla::ffi {
 
@@ -41,10 +41,8 @@ namespace xla::ffi {
 //
 class ExecutionState {
  public:
-  using TypeId = TypeIdRegistry::TypeId;
-
-  template <typename T>
-  using Deleter = std::function<void(T*)>;
+  using TypeId = TypeRegistry::TypeId;
+  using TypeInfo = TypeRegistry::TypeInfo;
 
   ExecutionState();
   ~ExecutionState();
@@ -52,9 +50,9 @@ class ExecutionState {
   ExecutionState(const ExecutionState&) = delete;
   ExecutionState& operator=(const ExecutionState&) = delete;
 
-  // Sets opaque state with a given type id and deleter. Returns an error if
-  // state is already set.
-  absl::Status Set(TypeId type_id, void* state, Deleter<void> deleter);
+  // Sets opaque state with a given type id. Returns an error if state is
+  // already set, or if type id is not supported as a state.
+  absl::Status Set(TypeId type_id, void* state);
 
   // Returns opaque state of the given type id. If set state type id does not
   // match the requested one, returns an error.
@@ -73,21 +71,23 @@ class ExecutionState {
   bool IsSet() const;
 
  private:
+  absl::Status Set(TypeId type_id, TypeInfo type_info, void* state);
+
   TypeId type_id_;
+  TypeInfo type_info_;
   void* state_;
-  Deleter<void> deleter_;
 };
 
 template <typename T>
 absl::Status ExecutionState::Set(std::unique_ptr<T> state) {
-  return Set(TypeIdRegistry::GetTypeId<T>(), state.release(),
-             [](void* state) { delete reinterpret_cast<T*>(state); });
+  return Set(TypeRegistry::GetTypeId<T>(), TypeRegistry::GetTypeInfo<T>(),
+             state.release());
 }
 
 template <typename T>
 absl::StatusOr<T*> ExecutionState::Get() const {
-  TF_ASSIGN_OR_RETURN(void* state, Get(TypeIdRegistry::GetTypeId<T>()));
-  return reinterpret_cast<T*>(state);
+  TF_ASSIGN_OR_RETURN(void* state, Get(TypeRegistry::GetTypeId<T>()));
+  return tsl::safe_reinterpret_cast<T*>(state);
 }
 
 }  // namespace xla::ffi

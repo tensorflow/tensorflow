@@ -16,14 +16,36 @@ limitations under the License.
 #ifndef XLA_TSL_PLATFORM_LOGGING_H_
 #define XLA_TSL_PLATFORM_LOGGING_H_
 
-#include "tsl/platform/platform.h"
+#include "absl/log/absl_log.h"
+#include "absl/log/check.h"       // IWYU pragma: export
+#include "absl/log/log.h"         // IWYU pragma: export
+#include "absl/log/vlog_is_on.h"  // IWYU pragma: export
+#include "absl/strings/string_view.h"
 
-#if defined(PLATFORM_GOOGLE) || defined(PLATFORM_GOOGLE_ANDROID) || \
-    defined(PLATFORM_GOOGLE_IOS) || defined(GOOGLE_LOGGING) ||      \
-    defined(PLATFORM_PORTABLE_GOOGLE)
-#include "xla/tsl/platform/google/logging.h"  // IWYU pragma: export
-#else
-#include "xla/tsl/platform/default/logging.h"  // IWYU pragma: export
-#endif
+namespace tsl {
+namespace internal {
+
+#ifndef CHECK_NOTNULL
+template <typename T>
+T&& CheckNotNull(absl::string_view file, int line, absl::string_view exprtext,
+                 T&& t) {
+  if (t == nullptr) {
+    // Use ABSL_LOG instead of LOG to avoid conflicts if downstream
+    // projects (e.g. pytorch) define their own LOG macro.
+    ABSL_LOG(FATAL).AtLocation(file, line) << exprtext;
+  }
+  return std::forward<T>(t);
+}
+
+#define CHECK_NOTNULL(val)                          \
+  ::tsl::internal::CheckNotNull(__FILE__, __LINE__, \
+                                "'" #val "' Must be non NULL", (val))
+#endif  // CHECK_NOTNULL
+
+}  // namespace internal
+
+void UpdateLogVerbosityIfDefined(absl::string_view env_var);
+
+}  // namespace tsl
 
 #endif  // XLA_TSL_PLATFORM_LOGGING_H_

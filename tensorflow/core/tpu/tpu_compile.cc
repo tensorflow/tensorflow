@@ -82,7 +82,7 @@ static absl::flat_hash_set<std::string>* kBlockList =
     });
 
 std::string CoreDevice(int core) {
-  return strings::StrCat("/device:", DEVICE_TPU_REPLICATED_CORE, ":", core);
+  return absl::StrCat("/device:", DEVICE_TPU_REPLICATED_CORE, ":", core);
 }
 
 static constexpr char kArgOp[] = "_Arg";
@@ -148,7 +148,8 @@ absl::Status AssignDevicesToArgsAndRetvals(
   auto assign = [&](Node* node,
                     const xla::OpSharding& sharding) -> absl::Status {
     if (sharding.type() == xla::OpSharding::MAXIMAL) {
-      const string device = CoreDevice(sharding.tile_assignment_devices(0));
+      const std::string device =
+          CoreDevice(sharding.tile_assignment_devices(0));
       node->set_assigned_device_name(device);
       node->set_requested_device(device);
     } else {
@@ -180,16 +181,17 @@ absl::Status AssignDevicesToArgsAndRetvals(
 
 void ConvertGraphShapeInfoToShapeMap(
     const Graph& graph, const GraphShapeInfo& graph_shape_info,
-    std::unordered_map<string, std::vector<PartialTensorShape>>* shape_map) {
+    std::unordered_map<std::string, std::vector<PartialTensorShape>>*
+        shape_map) {
   // Builds a map from node name to Node* for `graph`.
-  std::unordered_map<string, Node*> index;
+  std::unordered_map<std::string, Node*> index;
   for (Node* node : graph.nodes()) {
     index[node->name()] = node;
   }
   // Discards the resource handle shape info while converting to the correct map
   // form.
   for (const auto& node_shape_info : graph_shape_info) {
-    const string& node_name = node_shape_info.first;
+    const std::string& node_name = node_shape_info.first;
     const std::vector<InferredShape>& output_shapes = node_shape_info.second;
     // Gets the vector of partial shapes, first converting node name to Node*
     // using index. graph is the subgraph of the original graph assigned to a
@@ -248,7 +250,7 @@ absl::Status OptimizeGraph(const tpu::TPUCompileMetadataProto& metadata,
         metadata, arg_shapes, graph->get(), flr, &shape_info));
     // Converts the GraphShapeInfo into the form needed by the constant-folding
     // pass of the optimizer.
-    std::unordered_map<string, std::vector<PartialTensorShape>> shape_map;
+    std::unordered_map<std::string, std::vector<PartialTensorShape>> shape_map;
     ConvertGraphShapeInfoToShapeMap(**graph, shape_info, &shape_map);
     optimizer_opts.shape_map = &shape_map;
     optimizer.Optimize(flr, flr->env(), flr->device(), graph, optimizer_opts);
@@ -259,7 +261,7 @@ absl::Status OptimizeGraph(const tpu::TPUCompileMetadataProto& metadata,
     GraphShapeInfo shape_info;
     TF_RETURN_IF_ERROR(internal::RunShapeInferenceOnComputation(
         metadata, arg_shapes, graph->get(), flr, &shape_info));
-    std::unordered_map<string, std::vector<PartialTensorShape>> shape_map;
+    std::unordered_map<std::string, std::vector<PartialTensorShape>> shape_map;
     ConvertGraphShapeInfoToShapeMap(**graph, shape_info, &shape_map);
     GraphOptimizer::Options optimizer_opts;
     optimizer_opts.shape_map = &shape_map;
@@ -468,6 +470,7 @@ absl::Status CompileTFFunctionToHlo(
   compiler_options.allow_cpu_custom_calls = false;
   compiler_options.graph_def_version = graph_def_version;
   compiler_options.shape_determination_fns = shape_determination_fns;
+  compiler_options.use_shardy_partitioner = metadata.use_shardy_partitioner();
 
   auto compiler = std::make_unique<XlaCompiler>(compiler_options);
 
@@ -486,7 +489,7 @@ absl::Status CompileTFFunctionToHlo(
   TF_RETURN_IF_ERROR(compiler->flib_runtime()->Instantiate(
       function.name(), AttrSlice(&function.attr()), &handle));
   const FunctionBody* fbody = compiler->flib_runtime()->GetFunctionBody(handle);
-  const string function_id =
+  const std::string function_id =
       Canonicalize(function.name(), AttrSlice(&function.attr()));
 
   std::unique_ptr<Graph> graph(new Graph(&flib_definition));

@@ -105,9 +105,9 @@ class Kernel {
   }
 
  private:
-  // A kernel parallel task that is used to parallelize host kernel execution.
+  // A kernel task that is used to parallelize host kernel execution.
   template <bool num_workgroups_x_only>
-  class ParallelTask;
+  class Task;
 
   std::unique_ptr<KernelFunction> function_;
   XLA_CPU_Kernel* kernel_;  // pointer to the kernel owned by `function_`

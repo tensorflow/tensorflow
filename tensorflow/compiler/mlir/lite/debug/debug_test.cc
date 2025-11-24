@@ -120,7 +120,7 @@ class InitPassManagerTest : public testing::Test {
   }
 
   absl::Status GetDumpDir(std::string* dump_dir) {
-    std::vector<string> files;
+    std::vector<std::string> files;
     if (auto status = tsl::Env::Default()->GetChildren(path_, &files);
         !status.ok()) {
       return status;

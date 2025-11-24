@@ -71,19 +71,21 @@ TEST_F(XlaCompileLibTest, CompilesForCpu) {
   CompilationResult result;
   EXPECT_THAT(CompileExecutable(std::move(module_), BackendType::kCpu,
                                 std::nullopt, result),
-              IsOkAndHolds(Not(IsEmpty())));
+              absl_testing::IsOkAndHolds(Not(IsEmpty())));
 }
 
 TEST_F(XlaCompileLibTest, ErrorsOnUnexpectedPlatform) {
   XlaCompileOptions options;
   options.platform = "tpu";
-  EXPECT_THAT(XlaCompileMain(options), StatusIs(tsl::error::UNIMPLEMENTED));
+  EXPECT_THAT(XlaCompileMain(options),
+              absl_testing::StatusIs(tsl::error::UNIMPLEMENTED));
 }
 
 TEST_F(XlaCompileLibTest, WriteResultFilePropagatesErrors) {
   TimerStats stats;
   CompilationResult result;
-  EXPECT_THAT(WriteResultFile("/does/not/exist", stats, result), Not(IsOk()));
+  EXPECT_THAT(WriteResultFile("/does/not/exist", stats, result),
+              Not(absl_testing::IsOk()));
 }
 
 TEST_F(XlaCompileLibTest, WriteResultFileWritesTheFile) {
@@ -92,7 +94,7 @@ TEST_F(XlaCompileLibTest, WriteResultFileWritesTheFile) {
 
   TimerStats stats;
   {
-    absl::MutexLock ml(&stats.stats_mutex);
+    absl::MutexLock ml(stats.stats_mutex);
     stats.cumulative_secs = 5.5;
     stats.max_secs = 5.5;
   }
@@ -120,14 +122,14 @@ TEST_F(XlaCompileLibTest, WriteResultFileWritesTheFile) {
 }
 
 TEST_F(XlaCompileLibTest, LoadModuleErrors) {
-  EXPECT_THAT(LoadModule("/does/not/exist"), Not(IsOk()));
+  EXPECT_THAT(LoadModule("/does/not/exist"), Not(absl_testing::IsOk()));
 }
 
 TEST_F(XlaCompileLibTest, ErrorsOnMissingOutputPaths) {
   XlaCompileOptions options;
   options.platform = "gpu";
   EXPECT_THAT(XlaCompileMain(options),
-              StatusIs(absl::StatusCode::kInvalidArgument));
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
 TEST_F(XlaCompileLibTest, LoadModuleLoadsTextFormat) {
@@ -136,7 +138,8 @@ TEST_F(XlaCompileLibTest, LoadModuleLoadsTextFormat) {
   TF_ASSERT_OK(tsl::WriteStringToFile(tsl::Env::Default(), module_file,
                                       module_->ToString()));
 
-  EXPECT_THAT(LoadModule(module_file), IsOkAndHolds(Not(IsNull())));
+  EXPECT_THAT(LoadModule(module_file),
+              absl_testing::IsOkAndHolds(Not(IsNull())));
 }
 
 TEST_F(XlaCompileLibTest, MainForCpu) {
@@ -168,7 +171,7 @@ TEST_F(XlaCompileLibTest, LoadAutotuneDataCpu) {
   mod.hlo_module = std::move(module_);
 
   EXPECT_THAT(internal::LoadAutotuneDataFromModule(&mod, BackendType::kCpu),
-              IsOkAndHolds(false));
+              absl_testing::IsOkAndHolds(false));
 }
 
 }  // namespace

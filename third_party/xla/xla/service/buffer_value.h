@@ -22,12 +22,13 @@ limitations under the License.
 #include <string>
 
 #include "absl/base/attributes.h"
+#include "absl/functional/any_invocable.h"
+#include "absl/log/check.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/logging.h"
 
 namespace xla {
 
@@ -92,7 +93,7 @@ class BufferValue {
   using Id = int64_t;
 
   // Functions which return the size and alignment of a logical buffer in bytes.
-  using SizeFunction = std::function<int64_t(const BufferValue&)>;
+  using SizeFunction = absl::AnyInvocable<int64_t(const BufferValue&) const>;
   using AlignmentFunction = std::function<int64_t(BufferValue::Color)>;
 
   // Prevent value being copied, allowing comparison by pointer,
@@ -144,7 +145,8 @@ class BufferValue {
   // Whether this buffer contains a tuple.
   bool IsTuple() const { return is_tuple_; }
 
-  // Whether this buffer contains an array.
+  // Whether this buffer contains an array, that is, has an array shape or a
+  // buffer shape.
   bool IsArray() const { return is_array_; }
 
   bool operator<(const BufferValue& other) const { return id_ < other.id_; }
@@ -173,6 +175,8 @@ class BufferValue {
   // delete LogicalBuffer and this class, we don't refactor all the shared
   // features from LogicalBuffer and HloValue into this class.
   Id id_ : 62;
+  // Whether the buffer corresponds to array storage, that is, the buffer
+  // has an array-shape or a buffer-shape.
   bool is_array_ : 1;
   bool is_tuple_ : 1;
   Color color_ = kInvalidColor;

@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
+#include "google/protobuf/message.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/util.h"
 #include "tsl/platform/human_readable_json.h"
@@ -61,7 +62,7 @@ absl::Status BackendConfigWrapper::GetProto(
     tsl::protobuf::Message* output_proto) const {
   output_proto->Clear();
 
-  absl::WriterMutexLock lock{&mutex_};
+  absl::WriterMutexLock lock{mutex_};
   if (proto_ != nullptr) {
     if (proto_->GetDescriptor() != output_proto->GetDescriptor()) {
       return Internal("Mismatched backend config descriptors.");
@@ -88,12 +89,12 @@ BackendConfigWrapper& BackendConfigWrapper::operator=(
 
   // Do not hold two mutexes at the same time to avoid deadlocks.
   {
-    absl::MutexLock other_lock{&other.mutex_};
+    absl::MutexLock other_lock{other.mutex_};
     temp_proto = std::move(other.proto_);
     temp_string = std::move(other.raw_string_);
   }
 
-  absl::MutexLock this_lock{&mutex_};
+  absl::MutexLock this_lock{mutex_};
 
   proto_ = std::move(temp_proto);
   raw_string_ = std::move(temp_string);
@@ -105,13 +106,13 @@ bool BackendConfigWrapper::operator==(const BackendConfigWrapper& other) const {
 
   // Do not hold two mutexes at the same time to avoid deadlocks.
   {
-    absl::MutexLock this_lock{&mutex_};
+    absl::MutexLock this_lock{mutex_};
     this_proto = proto_.get();
   }
 
   const std::string* other_raw_string = nullptr;
   {
-    absl::MutexLock other_lock{&other.mutex_};
+    absl::MutexLock other_lock{other.mutex_};
     if (this_proto != nullptr && other.proto_ != nullptr) {
       using ::tsl::protobuf::util::MessageDifferencer;
       return MessageDifferencer::Equals(*this_proto, *other.proto_);

@@ -17,14 +17,15 @@ limitations under the License.
 
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
 #include "xla/pjrt/pjrt_api.h"
 
-bool RegisterStaticPjrtPlugin(absl::string_view plugin_name,
-                              const PJRT_Api* plugin_api) {
-  auto status = pjrt::SetPjrtApi(plugin_name, plugin_api);
-  QCHECK(status.ok()) << "Failed to register PJRT plugin " << plugin_name
-                      << ": " << status;
-  return true;
+absl::Status RegisterStaticPjrtPlugin(absl::string_view plugin_name,
+                                      const PJRT_Api* plugin_api) {
+  if (plugin_api == nullptr) {
+    return absl::InvalidArgumentError("plugin_api is nullptr");
+  }
+  return pjrt::SetPjrtApi(plugin_name, plugin_api);
 }

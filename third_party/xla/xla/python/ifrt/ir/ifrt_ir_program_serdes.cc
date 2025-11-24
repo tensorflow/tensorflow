@@ -89,7 +89,7 @@ class IfrtIRProgramSerDes
         program.mlir_module->getContext());
 
     const auto* serialize_options =
-        llvm::cast_or_null<SerializeIfrtIRProgramOptions>(options.get());
+        llvm::dyn_cast_or_null<SerializeIfrtIRProgramOptions>(options.get());
     if (serialize_options == nullptr) {
       // Serialize to bytecode the whole program if no options are provided.
       // This is a fast path for the case where the user does not care about
@@ -113,7 +113,7 @@ class IfrtIRProgramSerDes
       }
       // Run the pipeline to convert IFRT IR program to a versioned artifact.
       mlir::PassManager pm(mlir_module->getContext());
-      CreateIfrtToVersionedPipeline(pm, serialize_options->ifrt_version,
+      createIfrtToVersionedPipeline(pm, serialize_options->ifrt_version,
                                     serialize_options->atom_program_version,
                                     program_proto);
       if (mlir::failed(pm.run(mlir_module))) {
@@ -194,7 +194,7 @@ class IfrtIRProgramSerDes
       // an IFRT IR program.
       mlir::BaseScopedDiagnosticHandler diagnostic_handler(context.get());
       mlir::PassManager pm(context.get());
-      CreateIfrtFromVersionedPipeline(pm, program_proto);
+      createIfrtFromVersionedPipeline(pm, program_proto);
       if (mlir::failed(pm.run(*module))) {
         return absl::InvalidArgumentError(absl::StrFormat(
             "Failed to deserialize versioned IFRT IR program: %s",

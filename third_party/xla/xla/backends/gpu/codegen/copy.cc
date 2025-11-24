@@ -89,7 +89,8 @@ absl::StatusOr<FusionEmissionResult> MemcpyFusion::Emit(
   for (int i = 0; i < src_buffers.size(); ++i) {
     if (src_buffers[i] != dst_buffers[i]) {
       result.thunks.emplace_back(std::make_unique<DeviceToDeviceCopyThunk>(
-          Thunk::ThunkInfo::WithProfileAnnotation(&fusion),
+          Thunk::ThunkInfo::WithProfileAnnotation(
+              &fusion, ir_emitter_context.GetNextThunkId()),
           /*source_buffer=*/src_buffers[i],
           /*destination_buffer=*/dst_buffers[i],
           /*mem_size=*/src_buffers[i].size()));
@@ -152,7 +153,8 @@ absl::StatusOr<FusionEmissionResult> DynamicMemcpyFusion::Emit(
                std::back_inserter(offsets.dst_offsets));
 
   result.thunks.emplace_back(std::make_unique<DynamicMemcpyThunk>(
-      Thunk::ThunkInfo::WithProfileAnnotation(&fusion),
+      Thunk::ThunkInfo::WithProfileAnnotation(
+          &fusion, ir_emitter_context.GetNextThunkId()),
       /*source_buffer=*/src_buffer,
       /*destination_buffer=*/dst_buffer,
       /*mem_size=*/ShapeUtil::ByteSizeOfElements(*copy_shape), offsets));

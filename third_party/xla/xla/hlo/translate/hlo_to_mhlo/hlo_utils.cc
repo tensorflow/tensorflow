@@ -20,6 +20,7 @@ limitations under the License.
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <vector>
 
 #include "absl/log/check.h"
@@ -60,11 +61,19 @@ using mlir::ShapedType;
 template <typename CppType>
 ::mlir::DenseElementsAttr CreateDenseAttrFromLiteral(
     const ShapedType& type, const LiteralBase& literal) {
+  std::unique_ptr<Literal> literal_lifespan;
+  auto data_span = literal.data<CppType>();
+  if (auto default_layout = LayoutUtil::GetDefaultLayoutForRank(type.getRank());
+      default_layout != literal.shape().layout()) {
+    literal_lifespan =
+        std::make_unique<Literal>(literal.Relayout(default_layout));
+    data_span = literal_lifespan->data<CppType>();
+  }
+
   if constexpr (is_intN_v<CppType>) {
     // DenseElementsAttr::get() does not support being passed an i4 array.
     // Instead, create buffer of padded, packed values and call
     // DenseElementsAttr::getFromRawBuffer()
-    auto data_span = literal.data<CppType>();
     std::vector<char> packed_padded_data;
     packed_padded_data.reserve(literal.element_count());
     for (size_t i = 0; i < literal.element_count(); i++) {
@@ -75,7 +84,6 @@ template <typename CppType>
   } else if constexpr (std::is_same_v<CppType, tsl::float4_e2m1fn>) {
     // DenseElementsAttr::get() does not support being passed an array of
     // tsl::float4_e2m1fn. So convert each element to APFloat first.
-    auto data_span = literal.data<CppType>();
     std::vector<llvm::APFloat> apfloats;
     apfloats.reserve(literal.element_count());
     for (size_t i = 0; i < literal.element_count(); i++) {
@@ -92,7 +100,6 @@ template <typename CppType>
     }
     return ::mlir::DenseElementsAttr::get(type, apfloats);
   } else {
-    auto data_span = literal.data<CppType>();
     return ::mlir::DenseElementsAttr::get(
         type, llvm::ArrayRef(data_span.data(), data_span.size()));
   }
@@ -132,13 +139,17 @@ absl::StatusOr<mlir::MemRefType> ConvertTensorShapeToMemRefType(
     const Shape& shape, mlir::Builder builder) {
   auto element_type_or =
       ConvertPrimitiveTypeToMlirType(shape.element_type(), builder);
-  if (!element_type_or.ok()) return element_type_or.status();
+  if (!element_type_or.ok()) {
+    return element_type_or.status();
+  }
 
   using mlir::MemRefType;
   auto dimensions = shape.dimensions();
   llvm::SmallVector<int64_t, 4> array(dimensions.begin(), dimensions.end());
   auto permutation_or = GetPermutationIfAvailable(shape, builder);
-  if (!permutation_or.ok()) return permutation_or.status();
+  if (!permutation_or.ok()) {
+    return permutation_or.status();
+  }
   return MemRefType::get(array, element_type_or.value(),
                          permutation_or.value());
 }
@@ -187,9 +198,10 @@ mlir::Value CreateTupleValue(mlir::OpBuilder* func_builder, mlir::Location loc,
   }
 
   llvm::SmallVector<mlir::Value> flatten_sub_values;
-  for (auto child_type : tuple_type.getTypes())
+  for (auto child_type : tuple_type.getTypes()) {
     flatten_sub_values.push_back(
         CreateTupleValue(func_builder, loc, flatten_values, child_type));
+  }
 
   return func_builder->create<mlir::stablehlo::TupleOp>(loc, flatten_sub_values)
       .getResult();
@@ -199,7 +211,9 @@ mlir::Operation* CreateTupleFromOpResults(mlir::OpBuilder* func_builder,
                                           mlir::Location loc,
                                           mlir::Operation* op,
                                           mlir::Type type) {
-  if (!mlir::isa<mlir::TupleType>(type)) return op;
+  if (!mlir::isa<mlir::TupleType>(type)) {
+    return op;
+  }
 
   mlir::ValueRange flattened_results_ref(op->getResults());
   auto result =

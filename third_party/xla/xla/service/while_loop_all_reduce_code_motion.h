@@ -16,7 +16,9 @@ limitations under the License.
 #ifndef XLA_SERVICE_WHILE_LOOP_ALL_REDUCE_CODE_MOTION_H_
 #define XLA_SERVICE_WHILE_LOOP_ALL_REDUCE_CODE_MOTION_H_
 
+#include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
 
@@ -42,6 +44,20 @@ namespace xla {
 //   d += b
 // e = all-reduce(d)
 // a += e
+//
+// Additionally sinks all-reduces that are scattered into the loop output,
+// without being used in the loop body.
+// Supported reduction operations: add, mul, min, max.
+//
+// Pattern before this pass:
+// a = while:
+//   b = dynamic-update-slice(output, all-reduce(...), loop_induction_variable)
+// c = get-tuple-element(a, tuple_index)
+//
+// Pattern after this pass:
+// a = while:
+//   b = dynamic-update-slice(output, ..., loop_induction_variable)
+// c = all-reduce(get-tuple-element(a, tuple_index))
 class WhileLoopAllReduceCodeMotion : public HloModulePass {
  public:
   explicit WhileLoopAllReduceCodeMotion(bool enable_reduce_scatter = false,
@@ -53,8 +69,9 @@ class WhileLoopAllReduceCodeMotion : public HloModulePass {
   static constexpr absl::string_view kName =
       "while-loop-all-reduce-code-motion";
   absl::string_view name() const override { return kName; }
-  using HloPassInterface::Run;
-  absl::StatusOr<bool> Run(
+
+ protected:
+  absl::StatusOr<bool> RunImpl(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 

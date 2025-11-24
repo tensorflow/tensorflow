@@ -30,7 +30,7 @@ UnboundedWorkQueue::UnboundedWorkQueue(Env* env, absl::string_view thread_name,
 
 UnboundedWorkQueue::~UnboundedWorkQueue() {
   {
-    absl::MutexLock l(&work_queue_mu_);
+    absl::MutexLock l(work_queue_mu_);
     // Wake up all `PooledThreadFunc` threads and cause them to terminate before
     // joining them when `threads_` is cleared.
     cancelled_ = true;
@@ -42,7 +42,7 @@ UnboundedWorkQueue::~UnboundedWorkQueue() {
   }
 
   {
-    absl::MutexLock l(&thread_pool_mu_);
+    absl::MutexLock l(thread_pool_mu_);
     // Clear the list of pooled threads, which will eventually terminate due to
     // the previous notification.
     //
@@ -56,7 +56,7 @@ UnboundedWorkQueue::~UnboundedWorkQueue() {
 void UnboundedWorkQueue::Schedule(WorkFunction fn) {
   // Enqueue a work item for the new thread's function, and wake up a
   // cached thread to process it.
-  absl::MutexLock l(&work_queue_mu_);
+  absl::MutexLock l(work_queue_mu_);
   work_queue_.push_back(std::move(fn));
   // NOTE: The queue may be non-empty, so we must account for queued work when
   // considering how many threads are free.
@@ -67,7 +67,7 @@ void UnboundedWorkQueue::Schedule(WorkFunction fn) {
     Thread* new_thread =
         env_->StartThread({}, thread_name_, [this]() { PooledThreadFunc(); });
 
-    absl::MutexLock l(&thread_pool_mu_);
+    absl::MutexLock l(thread_pool_mu_);
     thread_pool_.emplace_back(new_thread);
   }
 }
@@ -81,7 +81,7 @@ void UnboundedWorkQueue::PooledThreadFunc() {
   while (true) {
     WorkFunction fn;
     {
-      absl::MutexLock l(&work_queue_mu_);
+      absl::MutexLock l(work_queue_mu_);
       ++num_idle_threads_;
       // Wait for a new work function to be submitted, or the cache to be
       // destroyed.

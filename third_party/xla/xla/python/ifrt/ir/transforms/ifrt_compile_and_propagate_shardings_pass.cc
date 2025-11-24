@@ -565,8 +565,8 @@ IfrtCompileAndPropagateShardingsPass::PropagateShardings(
 
   if (replace_call_op) {
     builder.setInsertionPointAfter(call_op);
-    auto new_call_op = builder.create<CallOp>(
-        call_op.getLoc(), /*outputs=*/new_call_op_result_types,
+    auto new_call_op = CallOp::create(
+        builder, call_op.getLoc(), /*outputs=*/new_call_op_result_types,
         /*control_output=*/builder.getType<IfrtControlType>(),
         /*inputs=*/call_op.getInputs(),
         /*control_inputs=*/call_op.getControlInputs(),
@@ -602,10 +602,9 @@ IfrtCompileAndPropagateShardingsPass::GenerateLoadedExecutableOp(
     output_types.push_back(output.getType());
   }
   builder.setInsertionPointAfter(module_op);
-  builder.create<LoadedExecutableOp>(
-      module_op.getLoc(), symbol_name,
-      builder.getFunctionType(input_types, output_types),
-      call_op.getDevicesAttr());
+  LoadedExecutableOp::create(builder, module_op.getLoc(), symbol_name,
+                             builder.getFunctionType(input_types, output_types),
+                             call_op.getDevicesAttr());
   return mlir::SymbolRefAttr::get(&getContext(), symbol_name);
 }
 
@@ -613,8 +612,8 @@ void IfrtCompileAndPropagateShardingsPass::ReplaceCallOpWithCallLoadedOp(
     CallOp call_op, mlir::SymbolRefAttr loaded_exec_op_callee,
     mlir::OpBuilder& builder) {
   builder.setInsertionPointAfter(call_op);
-  auto call_loaded_op = builder.create<CallLoadedExecutableOp>(
-      call_op.getLoc(), call_op.getResultTypes(), call_op.getInputs(),
+  auto call_loaded_op = CallLoadedExecutableOp::create(
+      builder, call_op.getLoc(), call_op.getResultTypes(), call_op.getInputs(),
       call_op.getControlInputs(), call_op.getArgAttrsAttr(),
       call_op.getResAttrsAttr(), loaded_exec_op_callee, call_op.getIoAliases(),
       call_op.getDonatedInputIndices());
@@ -625,7 +624,7 @@ void IfrtCompileAndPropagateShardingsPass::ReplaceCallOpWithCallLoadedOp(
 }  // namespace
 
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
-CreateIfrtCompileAndPropagateShardingsPass(
+createIfrtCompileAndPropagateShardingsPass(
     std::shared_ptr<AtomProgramCompiler> compiler,
     std::shared_ptr<
         absl::flat_hash_map<std::string, std::unique_ptr<CompileOptions>>>
@@ -637,7 +636,7 @@ CreateIfrtCompileAndPropagateShardingsPass(
       std::move(atom_executable_map));
 }
 
-void RegisterIfrtCompileAndPropagateShardingsPass(
+void registerIfrtCompileAndPropagateShardingsPass(
     std::shared_ptr<AtomProgramCompiler> compiler,
     std::shared_ptr<
         absl::flat_hash_map<std::string, std::unique_ptr<CompileOptions>>>
@@ -648,7 +647,7 @@ void RegisterIfrtCompileAndPropagateShardingsPass(
        compile_options_overrides = std::move(compile_options_overrides),
        atom_executable_map =
            std::move(atom_executable_map)]() -> std::unique_ptr<mlir::Pass> {
-        return CreateIfrtCompileAndPropagateShardingsPass(
+        return createIfrtCompileAndPropagateShardingsPass(
             std::move(compiler), std::move(compile_options_overrides),
             std::move(atom_executable_map));
       });

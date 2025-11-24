@@ -21,6 +21,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "absl/strings/string_view.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/IR/Attributes.h"
@@ -33,9 +34,10 @@ limitations under the License.
 #include "xla/service/gpu/tests/gpu_codegen_test.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tests/hlo_test_base.h"
-#include "tsl/platform/status_matchers.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace gpu {
@@ -164,6 +166,43 @@ TEST_F(GpuIrEmitterUnnestedTest,
                      /*match_optimized_ir=*/false);
 }
 
+TEST_F(GpuIrEmitterUnnestedTest, EmitTritonCustomCallParseErrorHasEscapedIr) {
+  if (!GetCudaComputeCapability().IsAtLeastAmpere()) {
+    GTEST_SKIP() << "Triton support is only enabled for Ampere GPUs and up.";
+  }
+
+  // Tests that MLIR IR with invalid unicode characters is escaped correctly
+  // on error.
+  constexpr absl::string_view kMlirIrInvalidUnicode = "ML\xef";
+
+  HloComputation::Builder computation_builder(TestName());
+
+  // Create parameters and custom call in the computation builder.
+  Shape scalar_shape = xla::ShapeUtil::MakeShape(xla::F32, {});
+  Shape tuple_shape = ShapeUtil::MakeTupleShape({scalar_shape, scalar_shape});
+
+  HloInstruction* param_0 = computation_builder.AddInstruction(
+      HloInstruction::CreateParameter(0, scalar_shape, "arg_0"));
+
+  HloInstruction* param_1 = computation_builder.AddInstruction(
+      HloInstruction::CreateParameter(1, scalar_shape, "arg_1"));
+
+  computation_builder.AddInstruction(CreateTritonCustomCall(
+      tuple_shape, param_0, param_1, kMlirIrInvalidUnicode, kCallName));
+
+  auto module = CreateNewVerifiedModule();
+  module->AddEntryComputation(computation_builder.Build());
+
+  auto result =
+      CompileToExecutable(std::move(module), /*run_optimization_passes=*/true);
+  EXPECT_FALSE(result.ok());
+  EXPECT_THAT(result.status().message(),
+              HasSubstr("Failed to parse Triton module"));
+
+  // Verify that the error message contains the escaped IR.
+  EXPECT_THAT(result.status().message(), HasSubstr("input ir: \"ML\\xef\""));
+}
+
 TEST_F(GpuIrEmitterUnnestedTest,
        EmitTritonCustomCallWithCorrectKernelParamAttributes) {
   if (!GetCudaComputeCapability().IsAtLeastAmpere()) {
@@ -240,7 +279,7 @@ TEST_F(GpuIrEmitterUnnestedTest, CanNotEmitTritonCustomCallOnPreAmpereGpu) {
 
   EXPECT_THAT(
       CompileToExecutable(std::move(module), /*run_optimization_passes=*/false),
-      tsl::testing::StatusIs(
+      absl_testing::StatusIs(
           absl::StatusCode::kFailedPrecondition,
           ::testing::HasSubstr("Triton support is only enabled for Ampere GPUs "
                                "(compute capability 8.0) and up, but got")));

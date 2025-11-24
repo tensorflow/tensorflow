@@ -1016,18 +1016,17 @@ def split(value: ragged_tensor.Ragged,
 
   Args:
     value: The `RaggedTensor` to split.
-    num_or_size_splits: Either an `int` indicating the number of splits
-      along `axis` or a 1-D integer `Tensor` or Python list containing the sizes
-      of each output tensor along `axis`. If a Python int, then it must evenly
+    num_or_size_splits: Either an `int` indicating the number of splits along
+      `axis` or a 1-D integer `Tensor` or Python list containing the sizes of
+      each output tensor along `axis`. If a Python int, then it must evenly
       divide `value.shape[axis]`; otherwise the sum of sizes along the split
       axis must match that of the `value`.
-    axis: An `int` or scalar `int32` `Tensor`. The dimension along which
-      to split. Must be in the range `[-rank(value), rank(value))`. Defaults to
-      0.
+    axis: An `int` or scalar `int32` `Tensor`. The dimension along which to
+      split. Must be in the range `[-rank(value), rank(value))`. Defaults to 0.
     num: An `int` used to specify the number of outputs when
       `num_or_size_splits` is a 1-D list or `Tensor` and its length is
-      statically unknown, e.g., specifying `tf.TensorSepc(None)` with
-      the `input_signature` argument of `tf.function` (optional).
+      statically unknown, e.g., specifying `tf.TensorSepc(None)` with the
+      `input_signature` argument of `tf.function` (optional).
     name: A name for the operation (optional).
 
   Returns:
@@ -1044,7 +1043,7 @@ def split(value: ragged_tensor.Ragged,
     ValueError: If `num_or_size_splits` is an `int` and less than 1.
     TypeError: If `num_or_size_splits` is not an `int` or 1-D
       list or 1-D `Tensor`.
-    InvalidArgumentError: If the `axis` of `value` cannot be exactly splitted
+    InvalidArgumentError: If the `axis` of `value` cannot be exactly split
       by `num_or_size_splits`.
     InvalidArgumentError: If `num_or_size_splits` is contains negative integers.
     InvalidArgumentError: If `num_or_size_splits`'s static shape is unknown and

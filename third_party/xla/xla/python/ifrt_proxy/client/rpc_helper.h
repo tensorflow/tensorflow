@@ -25,11 +25,13 @@
 #include "absl/base/thread_annotations.h"
 #include "absl/log/check.h"
 #include "absl/synchronization/mutex.h"
-#include "xla/python/ifrt/future.h"
+#include "xla/python/ifrt/serdes_any_version_accessor.h"
+#include "xla/python/ifrt/serdes_version.h"
 #include "xla/python/ifrt_proxy/client/client_session.h"
 #include "xla/python/ifrt_proxy/client/host_buffer.h"
 #include "xla/python/ifrt_proxy/common/ifrt_service.pb.h"
 #include "xla/python/ifrt_proxy/common/types.h"
+#include "xla/tsl/concurrency/future.h"
 
 namespace xla {
 namespace ifrt {
@@ -52,7 +54,13 @@ class RpcHelper {
   ~RpcHelper();
 
   // IFRT Proxy version negotiated between the client and the server.
-  const IfrtProxyVersion& version() const { return version_; }
+  int32_t protocol_version() const { return version_.protocol_version(); }
+
+  // IFRT SerDes version number negotiated between the client and the server.
+  SerDesVersion ifrt_serdes_version() const {
+    return SerDesAnyVersionAccessor::Get(
+        SerDesVersionNumber(version_.ifrt_serdes_version_number()));
+  }
 
   // Initializes the host buffer store for this RpcHelper instance. This must be
   // called exactly once during initialization before `host_buffer_store()` is
@@ -68,7 +76,7 @@ class RpcHelper {
   }
 
   template <typename T>
-  using ResponseFuture = Future<std::shared_ptr<T>>;
+  using ResponseFuture = tsl::Future<std::shared_ptr<T>>;
 
   class Batcher;
   enum BatchOperation { kDeleteArray, kDestructArray, kSentinelDoNotUse };
@@ -130,6 +138,12 @@ class RpcHelper {
 
   ResponseFuture<LoadedExecutableMetadataResponse> LoadedExecutableMetadata(
       std::unique_ptr<LoadedExecutableMetadataRequest> req);
+  ResponseFuture<LoadedExecutableCostAnalysisResponse>
+  LoadedExecutableCostAnalysis(
+      std::unique_ptr<LoadedExecutableCostAnalysisRequest> req);
+  ResponseFuture<LoadedExecutableHumanReadableProgramTextResponse>
+  LoadedExecutableHumanReadableProgramText(
+      std::unique_ptr<LoadedExecutableHumanReadableProgramTextRequest> req);
   ResponseFuture<LoadedExecutableExecuteResponse> LoadedExecutableExecute(
       std::unique_ptr<LoadedExecutableExecuteRequest> req);
   ResponseFuture<LoadedExecutableDeleteResponse> LoadedExecutableDelete(
@@ -154,7 +168,7 @@ class RpcHelper {
   // generated at the server side by IfrtBackend.
   uint64_t NextHandle();
 
-  Future<> CheckFuture(uint64_t handle);
+  tsl::Future<> CheckFuture(uint64_t handle);
 
  private:
   const std::unique_ptr<Batcher> batcher_;

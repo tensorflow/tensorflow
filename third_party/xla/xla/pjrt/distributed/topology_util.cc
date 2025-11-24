@@ -15,13 +15,13 @@ limitations under the License.
 
 #include "xla/pjrt/distributed/topology_util.h"
 
-#include <algorithm>
 #include <fstream>
 #include <map>
 #include <set>
 #include <string>
 #include <vector>
 
+#include "absl/container/btree_map.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
@@ -39,14 +39,12 @@ limitations under the License.
 #include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/pjrt/distributed/protocol.pb.h"
 #include "xla/pjrt/gpu/gpu_topology.pb.h"
-#include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/utils.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/threadpool.h"
 #include "xla/util.h"
-#include "tsl/platform/env.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/logging.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/threadpool.h"
 
 namespace xla {
 
@@ -56,7 +54,7 @@ bool SameDevice(const DeviceProto& a, const DeviceProto& b) {
           a.local_device_ordinal() == b.local_device_ordinal() &&
           a.core_count() == b.core_count() &&
           a.device_kind() == b.device_kind() &&
-          a.slice_index() == b.slice_index() &&
+          a.partition_index() == b.partition_index() &&
           // Global device ID Might not be set for LocalTopologyProto, still
           // check it for default value.
           a.global_device_id() == b.global_device_id() &&
@@ -138,7 +136,7 @@ static absl::StatusOr<std::vector<LocalTopologyProto>> GetAllLocalTopologies(
       absl::StatusOr<std::string> local_topology_str =
           kv_store->Get(GetLocalTopologyKey(platform, i), timeout);
       {
-        absl::MutexLock lock(&mu);
+        absl::MutexLock lock(mu);
         local_topology_strs[i] = local_topology_str;
       }
       blocking_counter.DecrementCount();
@@ -176,56 +174,63 @@ absl::StatusOr<GlobalTopologyProto> BuildGlobalTopology(
     absl::Span<LocalTopologyProto> local_topologies,
     bool assign_global_device_ids) {
   CHECK(!local_topologies.empty());
-  bool explicit_slice_indices = local_topologies[0].has_slice_index();
-  if (explicit_slice_indices) {
-    // Every local topology explicitly declares its slice_index.
+  bool explicit_partition_indices = local_topologies[0].has_partition_index();
+  if (explicit_partition_indices) {
+    // Every local topology explicitly declares its partition_index.
     for (LocalTopologyProto& local : local_topologies) {
-      if (!local.has_slice_index()) {
+      if (!local.has_partition_index()) {
         return InvalidArgument(
             "Either all of or none of the local topologies "
-            "should explicitly set slice_index");
+            "should explicitly set partition_index");
       }
-      int slice_index = local.slice_index();
+      int partition_index = local.partition_index();
       for (DeviceProto& device : *local.mutable_devices()) {
-        device.set_slice_index(slice_index);
+        device.set_partition_index(partition_index);
       }
     }
   } else {
     // Assign local devices of the same fabric_uuid/boot_id to the same
-    // slice_index.
+    // partition_index.
     const bool has_fabric_uuid = HasFabricUuid(local_topologies);
-    absl::flat_hash_map<std::string, int> id_to_slice_index;
+    absl::flat_hash_map<std::string, int> id_to_partition_index;
     for (LocalTopologyProto& local : local_topologies) {
-      if (local.has_slice_index()) {
+      if (local.has_partition_index()) {
         return InvalidArgument(
             "Either all of or none of the local topologies "
-            "should explicitly set slice_index");
+            "should explicitly set partition_index");
       }
       for (DeviceProto& device : *local.mutable_devices()) {
-        // Each new fabric_uuid/boot_id seen is treated as a new slice.
-        auto [it, _] = id_to_slice_index.try_emplace(
+        // Each new fabric_uuid/boot_id seen is treated as a new partition.
+        auto [it, _] = id_to_partition_index.try_emplace(
             has_fabric_uuid ? device.fabric_uuid() : local.boot_id(),
-            id_to_slice_index.size());
-        device.set_slice_index(it->second);
+            id_to_partition_index.size());
+        device.set_partition_index(it->second);
       }
     }
     if (VLOG_IS_ON(10)) {
-      for (auto it = id_to_slice_index.begin(); it != id_to_slice_index.end();
-           ++it) {
-        LOG(INFO) << "BuildGlobalTopology id_to_slice_index " << it->first
+      for (auto it = id_to_partition_index.begin();
+           it != id_to_partition_index.end(); ++it) {
+        LOG(INFO) << "BuildGlobalTopology id_to_partition_index " << it->first
                   << "->" << it->second;
       }
     }
   }
 
-  GlobalTopologyProto global_topology;
-  int next_global_device_id = 0;
-  for (LocalTopologyProto& local : local_topologies) {
-    if (assign_global_device_ids) {
+  if (assign_global_device_ids) {
+    absl::btree_multimap<int, DeviceProto*> slice_id_to_devices;
+    for (LocalTopologyProto& local : local_topologies) {
       for (DeviceProto& device : *local.mutable_devices()) {
-        device.set_global_device_id(next_global_device_id++);
+        slice_id_to_devices.emplace(device.partition_index(), &device);
       }
     }
+    int next_global_device_id = 0;
+    for (auto& [_slice_id, device] : slice_id_to_devices) {
+      device->set_global_device_id(next_global_device_id++);
+    }
+  }
+
+  GlobalTopologyProto global_topology;
+  for (LocalTopologyProto& local : local_topologies) {
     global_topology.add_nodes()->Swap(&local);
   }
   return global_topology;
@@ -299,17 +304,17 @@ absl::Status ExchangeTopologies(absl::string_view platform, int node_id,
 }
 
 bool IsGpuTopologySymmetric(
-    const std::map<int, std::set<int>>& slice_id_to_node_ids,
+    const std::map<int, std::set<int>>& partition_id_to_node_ids,
     const std::map<int, int>& node_id_to_device_count) {
-  CHECK(!slice_id_to_node_ids.empty());
+  CHECK(!partition_id_to_node_ids.empty());
   CHECK(!node_id_to_device_count.empty());
 
-  int num_hosts_per_slice = slice_id_to_node_ids.begin()->second.size();
+  int num_hosts_per_partition = partition_id_to_node_ids.begin()->second.size();
   int num_devices_per_host = node_id_to_device_count.begin()->second;
-  for (const auto& [slice_id, node_ids] : slice_id_to_node_ids) {
-    if (node_ids.size() != num_hosts_per_slice) {
+  for (const auto& [partition_id, node_ids] : partition_id_to_node_ids) {
+    if (node_ids.size() != num_hosts_per_partition) {
       LOG(INFO) << "GpuTopology is asymmetric as it has different number "
-                   "of hosts per slice.";
+                   "of hosts per partition.";
       return false;
     }
   }
@@ -326,9 +331,8 @@ bool IsGpuTopologySymmetric(
 absl::StatusOr<GpuTopologyProto> BuildGpuTopology(
     const GlobalTopologyProto& global_topology) {
   GpuTopologyProto gpu_topology;
-  std::map<int, std::set<int>> slice_id_to_node_ids;
+  std::map<int, std::set<int>> partition_id_to_node_ids;
   std::map<int, int> node_id_to_device_count;
-  std::vector<int> device_ids;
   for (int i = 0; i < global_topology.nodes_size(); ++i) {
     const LocalTopologyProto& local_topology = global_topology.nodes(i);
 
@@ -338,27 +342,25 @@ absl::StatusOr<GpuTopologyProto> BuildGpuTopology(
       if (gpu_topology.platform_version().empty()) {
         gpu_topology.set_platform_version(device.name());
       }
-      slice_id_to_node_ids[device.slice_index()].insert(
+      partition_id_to_node_ids[device.partition_index()].insert(
           local_topology.node_id());
-      device_ids.push_back(device.global_device_id());
     }
   }
 
-  if (IsGpuTopologySymmetric(slice_id_to_node_ids, node_id_to_device_count)) {
-    gpu_topology.set_num_slices(slice_id_to_node_ids.size());
-    gpu_topology.set_num_hosts_per_slice(
-        slice_id_to_node_ids.begin()->second.size());
+  if (IsGpuTopologySymmetric(partition_id_to_node_ids,
+                             node_id_to_device_count)) {
+    gpu_topology.set_num_partitions(partition_id_to_node_ids.size());
+    gpu_topology.set_num_hosts_per_partition(
+        partition_id_to_node_ids.begin()->second.size());
     gpu_topology.set_num_devices_per_host(
         node_id_to_device_count.begin()->second);
   } else {
     // If gpu topology is not symmetric, then we don't need to populate
-    // the topology with the slice/host/device information.
-    gpu_topology.set_num_slices(-1);
-    gpu_topology.set_num_hosts_per_slice(-1);
+    // the topology with the partition/host/device information.
+    gpu_topology.set_num_partitions(-1);
+    gpu_topology.set_num_hosts_per_partition(-1);
     gpu_topology.set_num_devices_per_host(-1);
   }
-  std::sort(device_ids.begin(), device_ids.end());
-  gpu_topology.mutable_device_ids()->Add(device_ids.begin(), device_ids.end());
   return gpu_topology;
 }
 

@@ -64,13 +64,14 @@ class XStatVisitor {
 
   int64_t IntValue() const { return stat_->int64_value(); }
 
-  uint64 UintValue() const { return stat_->uint64_value(); }
+  uint64_t UintValue() const { return stat_->uint64_value(); }
 
   absl::string_view BytesValue() const { return stat_->bytes_value(); }
 
-  uint64 IntOrUintValue() const {
-    return ValueCase() == XStat::kUint64Value ? UintValue()
-                                              : static_cast<uint64>(IntValue());
+  uint64_t IntOrUintValue() const {
+    return ValueCase() == XStat::kUint64Value
+               ? UintValue()
+               : static_cast<uint64_t>(IntValue());
   }
 
   double DoubleValue() const { return stat_->double_value(); }

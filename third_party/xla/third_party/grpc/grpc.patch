@@ -1,0 +1,55 @@
+diff --git a/bazel/cc_grpc_library.bzl b/bazel/cc_grpc_library.bzl
+--- a/bazel/cc_grpc_library.bzl
++++ b/bazel/cc_grpc_library.bzl
+@@ -28,6 +28,7 @@ def cc_grpc_library(
+         allow_deprecated = False,
+         use_external = False,  # @unused
+         grpc_only = False,
++        plugin_flags = [],
+         **kwargs):
+     """Generates C++ grpc classes for services defined in a proto file.
+ 
+@@ -109,6 +110,7 @@ def cc_grpc_library(
+             well_known_protos = well_known_protos,
+             generate_mocks = generate_mocks,
+             allow_deprecated = allow_deprecated,
++            flags = plugin_flags,
+             **kwargs
+         )
+ 
+diff --git a/src/core/lib/promise/party.h b/src/core/lib/promise/party.h
+--- a/src/core/lib/promise/party.h
++++ b/src/core/lib/promise/party.h
+@@ -21,6 +21,7 @@
+ #include <stdint.h>
+ 
+ #include <atomic>
++#include <cinttypes>
+ #include <limits>
+ #include <string>
+ #include <utility>
+@@ -685,7 +686,7 @@ class Party : public Activity, private Wakeable {
+       DebugLocation loc = {}) {
+     GRPC_TRACE_LOG(party_state, INFO).AtLocation(loc.file(), loc.line())
+         << this << " " << op << " "
+-        << absl::StrFormat("%016" PRIx64 " -> %016" PRIx64, prev_state,
++        << absl::StrFormat("%016lx -> %016lx", prev_state,
+                            new_state);
+   }
+ 
+diff --git a/src/python/grpcio/grpc/BUILD.bazel b/src/python/grpcio/grpc/BUILD.bazel
+--- a/src/python/grpcio/grpc/BUILD.bazel
++++ b/src/python/grpcio/grpc/BUILD.bazel
+@@ -104,9 +104,9 @@ py_library(
+ py_library(
+     name = "grpcio",
+     srcs = ["__init__.py"],
+-    data = [
+-        "//:grpc",
+-    ],
++#    data = [
++#        "//:grpc",
++#    ],
+     imports = ["../"],
+     deps = [
+         ":_observability",

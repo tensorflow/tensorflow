@@ -27,6 +27,7 @@ limitations under the License.
 #include "shardy/dialect/sdy/ir/register.h"
 #include "shardy/dialect/sdy/ir/utils.h"
 #include "xla/hlo/ir/hlo_sharding.h"
+#include "xla/shape.h"
 
 namespace mlir::sdy {
 
@@ -174,6 +175,79 @@ TEST(StablehloImportTest, TransposedWithReplicatedRequiresSubAxes) {
       /*openDims=*/false);
   EXPECT_EQ(attributeToString(sharding),
             "#sdy.sharding<@mesh, [{\"y\":(2)2}, {\"x\"}]>");
+}
+
+TEST(StablehloImportTest, ConvertOpShardingReplicated) {
+  xla::OpSharding opSharding;
+  opSharding.set_type(xla::OpSharding::REPLICATED);
+  xla::Shape shape = xla::ShapeUtil::MakeShape(xla::F32, {2, 4});
+
+  EXPECT_EQ(
+      xla::sdy::convertToSdySharding(opSharding, shape, /*openDims=*/false,
+                                     /*inlineMesh=*/false),
+      "#sdy.sharding_per_value<[<@mesh, [{}, {}]>]>");
+  EXPECT_EQ(
+      xla::sdy::convertToSdySharding(opSharding, shape, /*openDims=*/false,
+                                     /*inlineMesh=*/true),
+      "#sdy.sharding_per_value<[<mesh<[]>, [{}, {}]>]>");
+  EXPECT_EQ(
+      xla::sdy::convertToSdySharding(opSharding, shape, /*openDims=*/false,
+                                     /*inlineMesh=*/true, /*isSingleArg=*/true),
+      "#sdy.sharding<mesh<[]>, [{}, {}]>");
+}
+
+TEST(StablehloImportTest, ConvertOpShardingTiled) {
+  xla::OpSharding opSharding;
+  opSharding.set_type(xla::OpSharding::OTHER);
+  opSharding.add_tile_assignment_dimensions(2);
+  opSharding.add_tile_assignment_dimensions(4);
+  opSharding.add_iota_reshape_dims(8);
+  opSharding.add_iota_transpose_perm(0);
+
+  xla::Shape shape = xla::ShapeUtil::MakeShape(xla::F32, {8, 16});
+
+  EXPECT_EQ(
+      xla::sdy::convertToSdySharding(opSharding, shape, /*openDims=*/false,
+                                     /*inlineMesh=*/true),
+      "#sdy.sharding_per_value<[<mesh<[\"_axis_0\"=2, \"_axis_1\"=4]>, "
+      "[{\"_axis_0\"}, {\"_axis_1\"}]>]>");
+}
+
+TEST(StablehloImportTest, ConvertOpShardingTuple) {
+  xla::OpSharding opSharding;
+  opSharding.set_type(xla::OpSharding::TUPLE);
+
+  xla::OpSharding* element1 = opSharding.add_tuple_shardings();
+  element1->set_type(xla::OpSharding::REPLICATED);
+
+  xla::OpSharding* element2 = opSharding.add_tuple_shardings();
+  element2->set_type(xla::OpSharding::OTHER);
+  element2->add_tile_assignment_dimensions(2);
+  element2->add_iota_reshape_dims(2);
+  element2->add_iota_transpose_perm(0);
+
+  xla::Shape shape = xla::ShapeUtil::MakeTupleShape(
+      {xla::ShapeUtil::MakeShape(xla::F32, {2, 4}),
+       xla::ShapeUtil::MakeShape(xla::S32, {8})});
+
+  EXPECT_EQ(
+      xla::sdy::convertToSdySharding(opSharding, shape, /*openDims=*/false,
+                                     /*inlineMesh=*/true),
+      "#sdy.sharding_per_value<[<mesh<[\"_axis_0\"=2]>, [{}, {}]>, "
+      "<mesh<[\"_axis_0\"=2]>, [{\"_axis_0\"}]>]>");
+}
+
+TEST(StablehloImportTest, ConvertOpShardingMaximal) {
+  xla::OpSharding opSharding;
+  opSharding.set_type(xla::OpSharding::MAXIMAL);
+  opSharding.add_tile_assignment_devices(42);
+
+  xla::Shape shape = xla::ShapeUtil::MakeShape(xla::F32, {2, 4});
+
+  EXPECT_EQ(
+      xla::sdy::convertToSdySharding(opSharding, shape, /*openDims=*/false,
+                                     /*inlineMesh=*/true),
+      "#sdy.sharding_per_value<[<mesh<[], device_ids=[42]>, []>]>");
 }
 
 }  // namespace

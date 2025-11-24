@@ -17,13 +17,14 @@ limitations under the License.
 #define XLA_SERVICE_HLO_RUNNER_PJRT_H_
 
 #include <cstdint>
-#include <functional>
 #include <memory>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include "absl/base/nullability.h"
+#include "absl/container/flat_hash_set.h"
+#include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
@@ -34,7 +35,6 @@ limitations under the License.
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/service/computation_placer.h"
-#include "xla/service/hlo_module_util.h"
 #include "xla/service/hlo_runner_interface.h"
 #include "xla/shape_layout.h"
 #include "xla/xla_data.pb.h"
@@ -47,10 +47,7 @@ namespace xla {
 // hlo proto file), or parsed from a hlo textual IR string.
 class HloRunnerPjRt : public HloRunnerInterface {
  public:
-  explicit HloRunnerPjRt(
-      std::unique_ptr<PjRtClient> pjrt_client,
-      DeviceShapeRepresentationFn device_shape_representation_fn,
-      DeviceShapeSizeFn device_shape_size_fn);
+  explicit HloRunnerPjRt(std::unique_ptr<PjRtClient> pjrt_client);
 
   // Transfers data between the host and device, using the given parameter
   // layouts.
@@ -69,8 +66,7 @@ class HloRunnerPjRt : public HloRunnerInterface {
   // result as a Literal.
   absl::StatusOr<Literal> Execute(std::unique_ptr<HloModule> module,
                                   absl::Span<const Literal* const> arguments,
-                                  bool run_hlo_passes,
-                                  ExecutionProfile* profile) override;
+                                  bool run_hlo_passes) override;
 
   // Like Execute(), but accepts and returns pjrt buffers instead of literals.
   absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
@@ -91,9 +87,9 @@ class HloRunnerPjRt : public HloRunnerInterface {
   absl::StatusOr<std::unique_ptr<OpaqueExecutable>> DeserializeExecutable(
       absl::string_view serialized) const override;
 
-  absl::StatusOr<Literal> ExecuteWithExecutable(
+  absl::StatusOr<std::vector<absl::StatusOr<Literal>>> ExecuteWithExecutable(
       OpaqueExecutable* executable, absl::Span<const Literal* const> arguments,
-      ExecutionProfile* profile) override;
+      int64_t num_repeats) override;
 
   absl::StatusOr<std::vector<Literal>> ExecuteReplicated(
       std::unique_ptr<HloModule> module,
@@ -106,31 +102,18 @@ class HloRunnerPjRt : public HloRunnerInterface {
       DeviceAssignment* device_assignment) override;
 
   absl::StatusOr<std::vector<Literal>> ExecuteReplicated(
-      std::function<OpaqueExecutable*(int64_t)> executable_provider,
-      std::function<int64_t(int64_t)> argument_count_provider,
-      std::function<const Literal*(int64_t, int64_t)> argument_provider,
+      absl::AnyInvocable<OpaqueExecutable*(int64_t)> executable_provider,
+      absl::AnyInvocable<int64_t(int64_t)> argument_count_provider,
+      absl::AnyInvocable<const Literal*(int64_t, int64_t)> argument_provider,
       const ReplicatedExecuteOptions& options,
       DeviceAssignment* device_assignment) override;
 
   absl::StatusOr<std::vector<Literal>> ExecuteReplicated(
       OpaqueExecutable* executable,
       const HloRunnerInterface::ReplicatedExecuteOptions& options,
-      DeviceAssignment* device_assignment, ExecutionProfile* profile = nullptr);
+      DeviceAssignment* device_assignment);
 
   absl::string_view Name() const override;
-
-  void UpdateEntryComputationLayout(HloModule* module) {
-    // TODO - b/391868033: Remove UpdateEntryComputationLayout from this class.
-    xla::UpdateEntryComputationLayout(module, device_shape_representation_fn_);
-  }
-
-  DeviceShapeRepresentationFn device_shape_representation_fn() const override {
-    return device_shape_representation_fn_;
-  }
-
-  DeviceShapeSizeFn device_shape_size_fn() const override {
-    return device_shape_size_fn_;
-  }
 
   int device_count() const override { return pjrt_client_->device_count(); }
 
@@ -146,17 +129,22 @@ class HloRunnerPjRt : public HloRunnerInterface {
       const OpaqueExecutable* absl_nonnull lhs,
       const OpaqueExecutable* absl_nonnull rhs) const override;
 
+  absl::StatusOr<DeviceAssignment> GetDefaultDeviceAssignment(
+      int num_replicas, int num_partitions) const override;
+
  private:
   absl::StatusOr<CompileOptions> GenerateDefaultCompileOptions(
       HloModule* module, bool run_hlo_passes);
 
   absl::StatusOr<std::vector<Literal>> ExecuteReplicatedImpl(
-      std::function<
+      absl::AnyInvocable<
           absl::StatusOr<std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>>(
-              absl::Span<const std::vector<PjRtBuffer*>>)>
+              absl::Span<const std::vector<PjRtBuffer*>>,
+              absl::AnyInvocable<OpaqueExecutable*(int64_t)>)>
           execution_helper,
-      std::function<int64_t(int64_t)> argument_count_provider,
-      std::function<const Literal*(int64_t, int64_t)> argument_provider,
+      absl::AnyInvocable<OpaqueExecutable*(int64_t)> executable_provider,
+      absl::AnyInvocable<int64_t(int64_t)> argument_count_provider,
+      absl::AnyInvocable<const Literal*(int64_t, int64_t)> argument_provider,
       const ReplicatedExecuteOptions& options,
       DeviceAssignment* device_assignment);
 
@@ -166,38 +154,31 @@ class HloRunnerPjRt : public HloRunnerInterface {
   absl::StatusOr<Literal> TransferLiteralFromDevice(PjRtBuffer& buffer);
 
   std::unique_ptr<PjRtClient> pjrt_client_;
-  DeviceShapeRepresentationFn device_shape_representation_fn_;
-  DeviceShapeSizeFn device_shape_size_fn_;
 };
 
 // This class works just like a HloRunnerPjRt, but it only runs compilation
 // (persisting the executable to disk) and does not run the executable.
 class CompilePhaseHloRunnerPjRt : public HloRunnerPjRt {
  public:
-  CompilePhaseHloRunnerPjRt(
-      std::unique_ptr<PjRtClient> pjrt_client,
-      DeviceShapeRepresentationFn device_shape_representation_fn,
-      DeviceShapeSizeFn device_shape_size_fn, absl::string_view artifact_dir)
-      : HloRunnerPjRt(std::move(pjrt_client),
-                      std::move(device_shape_representation_fn),
-                      std::move(device_shape_size_fn)),
-        artifact_dir_(artifact_dir) {}
+  CompilePhaseHloRunnerPjRt(std::unique_ptr<PjRtClient> pjrt_client,
+                            absl::string_view artifact_dir)
+      : HloRunnerPjRt(std::move(pjrt_client)), artifact_dir_(artifact_dir) {}
 
   absl::StatusOr<std::unique_ptr<OpaqueExecutable>> CreateExecutable(
       std::unique_ptr<HloModule> module, bool run_hlo_passes) override;
 
-  absl::StatusOr<Literal> ExecuteWithExecutable(
+  absl::StatusOr<std::vector<absl::StatusOr<Literal>>> ExecuteWithExecutable(
       OpaqueExecutable* executable, absl::Span<const Literal* const> arguments,
-      ExecutionProfile* profile) override {
+      int64_t num_repeats) override {
     return absl::UnimplementedError(
         "CompilePhaseHloRunnerPjRt does not support execution. This is "
         "expected.");
   }
 
   absl::StatusOr<std::vector<Literal>> ExecuteReplicated(
-      std::function<OpaqueExecutable*(int64_t)> executable_provider,
-      std::function<int64_t(int64_t)> argument_count_provider,
-      std::function<const Literal*(int64_t, int64_t)> argument_provider,
+      absl::AnyInvocable<OpaqueExecutable*(int64_t)> executable_provider,
+      absl::AnyInvocable<int64_t(int64_t)> argument_count_provider,
+      absl::AnyInvocable<const Literal*(int64_t, int64_t)> argument_provider,
       const ReplicatedExecuteOptions& options,
       DeviceAssignment* device_assignment) override {
     return absl::UnimplementedError(
@@ -210,22 +191,26 @@ class CompilePhaseHloRunnerPjRt : public HloRunnerPjRt {
 };
 
 // This class works just like a HloRunnerPjRt, but it only runs execution
-// (reading the executable from disk) and does not compile the executable.  If
-// `compile_if_not_found` is true, this class will attempt to compile the
+// (reading the executable from disk) and does not compile the executable.
+//
+// If `compile_if_not_found` is true, this class will attempt to compile the
 // executable if the serialized version from the compile phase could not be
 // found. This effectively makes this class equivalent to HloRunnerPjRt.
+//
+// If `fail_duplicate_loads` is true, calls to CreateExecutable will fail if the
+// executable was previously loaded using the same runner. Most tests do not
+// need to load an executable more than once and setting this can help catch
+// instances where e.g. fingerprints are colliding.
 class ExecutePhaseHloRunnerPjRt : public HloRunnerPjRt {
  public:
-  ExecutePhaseHloRunnerPjRt(
-      std::unique_ptr<PjRtClient> pjrt_client,
-      DeviceShapeRepresentationFn device_shape_representation_fn,
-      DeviceShapeSizeFn device_shape_size_fn, absl::string_view artifact_dir,
-      bool compile_if_not_found = true)
-      : HloRunnerPjRt(std::move(pjrt_client),
-                      std::move(device_shape_representation_fn),
-                      std::move(device_shape_size_fn)),
+  ExecutePhaseHloRunnerPjRt(std::unique_ptr<PjRtClient> pjrt_client,
+                            absl::string_view artifact_dir,
+                            bool compile_if_not_found = true,
+                            bool fail_duplicate_loads = true)
+      : HloRunnerPjRt(std::move(pjrt_client)),
         artifact_dir_(artifact_dir),
-        compile_if_not_found_(compile_if_not_found) {}
+        compile_if_not_found_(compile_if_not_found),
+        fail_duplicate_loads_(fail_duplicate_loads) {}
 
   absl::StatusOr<std::unique_ptr<OpaqueExecutable>> CreateExecutable(
       std::unique_ptr<HloModule> module, bool run_hlo_passes) override;
@@ -233,6 +218,9 @@ class ExecutePhaseHloRunnerPjRt : public HloRunnerPjRt {
  private:
   std::string artifact_dir_;
   bool compile_if_not_found_;
+  bool fail_duplicate_loads_;
+
+  absl::flat_hash_set<std::string> loaded_executable_paths_;
 };
 
 }  // namespace xla

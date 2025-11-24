@@ -38,8 +38,10 @@ class TargetMachineFeatures {
   explicit TargetMachineFeatures(llvm::TargetMachine* target_machine);
   virtual ~TargetMachineFeatures() = default;
 
-  TargetMachineFeatures(TargetMachineFeatures&&) = default;
-  TargetMachineFeatures& operator=(TargetMachineFeatures&&) = default;
+  TargetMachineFeatures(TargetMachineFeatures&&) = delete;
+  TargetMachineFeatures& operator=(TargetMachineFeatures&&) = delete;
+
+  const llvm::TargetMachine* target_machine() const;
 
   // Return the vectorization factor, which is the number of bytes of data
   // explicitly vectorized routines will try to process at once.
@@ -70,6 +72,7 @@ class TargetMachineFeatures {
   virtual std::string get_target_feature_string() const;
 
   virtual bool has_avx512bf16() const { return has_avx512bf16_; }
+  virtual bool has_avx512fp16() const { return has_avx512fp16_; }
 
  private:
   llvm::TargetTransformInfo* GetTargetTransformInfoFor(
@@ -83,6 +86,7 @@ class TargetMachineFeatures {
 
   // Store availability of popular features here for efficient checks.
   bool has_avx512bf16_ = false;
+  bool has_avx512fp16_ = false;
 };
 
 }  // namespace xla::cpu

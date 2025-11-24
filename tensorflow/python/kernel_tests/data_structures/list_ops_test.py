@@ -720,7 +720,11 @@ class ListOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     e0 = gen_list_ops.tensor_list_get_item(
         l, 0, element_shape=[], element_dtype=dtypes.float32)
     e1 = gen_list_ops.tensor_list_get_item(
-        l, 1, element_shape=[2, 3], element_dtype=dtypes.float32)
+        l,
+        1,
+        element_shape=constant_op.constant([2, 3], dtype=dtypes.int64),
+        element_dtype=dtypes.float32,
+    )
     self.assertEqual(e0.shape.as_list(), [])
     self.assertEqual(e1.shape.as_list(), [2, 3])
     self.assertEqual(self.evaluate(e0), 0.)

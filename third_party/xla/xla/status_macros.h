@@ -172,8 +172,7 @@ class MakeErrorStream {
   enum PriorMessageHandling { kAppendToPriorMessage, kPrependToPriorMessage };
 
   // Make an error with the given code.
-  template <typename ERROR_CODE_TYPE>
-  MakeErrorStream(const char* file, int line, ERROR_CODE_TYPE code);
+  MakeErrorStream(const char* file, int line, absl::StatusCode code);
 
   // Returns a MakeErrorStreamWithOutput as we don't require more calls to
   // operator<< on the result.
@@ -215,11 +214,8 @@ class MakeErrorStream {
  private:
   class Impl {
    public:
-    Impl(const char* file, int line, tsl::error::Code code,
-         MakeErrorStream* error_stream, bool is_logged_by_default = true);
-    Impl(const absl::Status& status,
-         PriorMessageHandling prior_message_handling, const char* file,
-         int line, MakeErrorStream* error_stream);
+    Impl(const char* file, int line, absl::StatusCode code,
+         MakeErrorStream* error_stream);
 
     ~Impl();
 
@@ -266,12 +262,6 @@ class MakeErrorStream {
   MakeErrorStream& operator=(const MakeErrorStream&) = delete;
 };
 
-template <typename ERROR_CODE_TYPE>
-TF_ATTRIBUTE_NOINLINE MakeErrorStream::MakeErrorStream(const char* file,
-                                                       int line,
-                                                       ERROR_CODE_TYPE code)
-    : impl_(new Impl(file, line, code, this, true)) {}
-
 // Provides a conversion to bool so that it can be used inside an if statement
 // that declares a variable.
 class StatusAdaptorForMacros {
@@ -296,18 +286,19 @@ class StatusAdaptorForMacros {
 // Returns a Status error if the condition is false. The condition text is
 // included in the error message. The caller can optionally stream more error
 // messages after the macro.
-#define TF_RET_CHECK(condition)                                      \
-  while (ABSL_PREDICT_FALSE(!(condition)))                           \
-  return xla::status_macros::MakeErrorStream(__FILE__, __LINE__,     \
-                                             ::tsl::error::INTERNAL) \
-      .with_log_stack_trace()                                        \
+#define TF_RET_CHECK(condition)                                           \
+  /* NOLINTNEXTLINE(readability-simplify-boolean-expr) */                 \
+  while (ABSL_PREDICT_FALSE(!(condition)))                                \
+  return xla::status_macros::MakeErrorStream(__FILE__, __LINE__,          \
+                                             absl::StatusCode::kInternal) \
+      .with_log_stack_trace()                                             \
       .add_ret_check_failure(#condition)
 
 // Returns a Status error. The caller must stream at least one error message
 // after the macro.
-#define XLA_RET_CHECK_FAIL()                                         \
-  return xla::status_macros::MakeErrorStream(__FILE__, __LINE__,     \
-                                             ::tsl::error::INTERNAL) \
+#define XLA_RET_CHECK_FAIL()                                              \
+  return xla::status_macros::MakeErrorStream(__FILE__, __LINE__,          \
+                                             absl::StatusCode::kInternal) \
       .with_log_stack_trace()
 
 #endif  // XLA_STATUS_MACROS_H_

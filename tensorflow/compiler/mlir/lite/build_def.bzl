@@ -1,7 +1,7 @@
 """Build macros for TF Lite."""
 
-load("//tensorflow:tensorflow.bzl", "clean_dep")
 load("//tensorflow/compiler/mlir/lite:special_rules.bzl", "tflite_copts_extra")
+load("//tensorflow/lite:build_def.bzl", "clean_dep")
 
 # LINT.IfChange(tflite_copts)
 def tflite_copts():

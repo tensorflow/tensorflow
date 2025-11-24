@@ -21,10 +21,11 @@ limitations under the License.
 #include <cstdlib>
 #include <optional>
 #include <stack>
+#include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
-#include "absl/container/inlined_vector.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/MathExtras.h"
@@ -33,24 +34,25 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/Support/LLVM.h"
 #include "xla/backends/gpu/codegen/fusion_emitter.h"
+#include "xla/backends/gpu/codegen/fusions.h"
+#include "xla/codegen/tiling/affine_map_evaluator.h"
+#include "xla/codegen/tiling/tiled_hlo_instruction.h"
 #include "xla/hlo/analysis/indexing_analysis.h"
 #include "xla/hlo/analysis/indexing_map.h"
+#include "xla/hlo/analysis/interval.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/layout.h"
 #include "xla/service/gpu/gpu_fusible.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
-#include "xla/service/gpu/model/affine_map_evaluator.h"
-#include "xla/service/gpu/model/tiled_hlo_instruction.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
-namespace xla {
-namespace gpu {
+namespace xla::gpu {
 
 // Returns true if all input reads are coalesced. If consumer is not nullptr,
 // producer and consumer are considered as one fusion, otherwise it's only the
@@ -219,120 +221,6 @@ bool EstimateCoalescingViaMemoryTransactionsCount(
          memory_transactions * kIsCoalescedThreshold;
 }
 
-// Returns a linearized shape, i.e. tensor<num_elements(input) x element_type>.
-Shape GetLinearizedShape(const Shape& shape) {
-  if (shape.dimensions().empty()) {
-    return shape;
-  }
-  std::vector<int64_t> dims{ShapeUtil::ElementsIn(shape)};
-  auto result = Shape(shape.element_type(), dims);
-  *result.mutable_layout() = xla::Layout({0});
-  return result;
-}
-
-// Returns thread ID to linearized physical layout indexing map for each operand
-// of the fusion.
-std::optional<GroupedByOpIndexingMap> GetThreadIdToInputMemoryLayoutsMaps(
-    const HloFusionAdaptor& fusion_adaptor,
-    absl::Span<const HloInstruction* const> operands,
-    const HloFusionAnalysis& fusion_analysis,
-    KernelFusionInterface* fusion_interface, MLIRContext* mlir_context) {
-  GroupedByOpIndexingMap result;
-  for (const auto& [root_index, hero] :
-       llvm::enumerate(fusion_analysis.fusion_heroes())) {
-    for (const auto& [hero_operand_index, hero_operand] :
-         llvm::enumerate(hero.GetOperands())) {
-      if (hero_operand.shape().dimensions().empty()) {
-        continue;
-      }
-      // Compute thread ID -> hero operand indexing map.
-      std::optional<IndexingMap> thread_id_to_hero_operand_map =
-          fusion_interface->ComputeThreadIdToInputIndexing(
-              root_index, hero_operand_index, mlir_context);
-      if (!thread_id_to_hero_operand_map.has_value()) {
-        return std::nullopt;
-      }
-      // Compute indexing from output to inputs for logical layout.
-      GroupedByOpIndexing instr_indexing_keyed_by_operands =
-          ComputeGroupedOutputToInputIndexing(fusion_adaptor, hero_operand,
-                                              mlir_context);
-      // For every operand compute thread ID -> physical layout of operand
-      // indexing map.
-      for (const HloInstruction* operand : operands) {
-        auto operand_indexing_maps_it =
-            instr_indexing_keyed_by_operands.find(operand);
-        if (operand_indexing_maps_it ==
-            instr_indexing_keyed_by_operands.end()) {
-          continue;
-        }
-        const Shape& operand_shape = operand->shape();
-
-        IndexingMap operand_logical_to_physical_map =
-            GetIndexingMapFromLogicalToPhysicalLayout(operand_shape,
-                                                      mlir_context);
-        IndexingMap operand_physical_to_linearized_shape = GetBitcastMap(
-            ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
-                operand_shape),
-            GetLinearizedShape(operand_shape), mlir_context);
-        IndexingMap operand_logical_to_linearized_physical_shape =
-            operand_logical_to_physical_map *
-            operand_physical_to_linearized_shape;
-        operand_logical_to_linearized_physical_shape.Simplify();
-
-        for (const OperandIndexing& operand_indexing :
-             operand_indexing_maps_it->second) {
-          const IndexingMap& operand_indexing_map = operand_indexing.map();
-          // If one of the indexing maps for the operand is undefined, we remove
-          // all indexing maps for it and store only the undefined one.
-          if (operand_indexing_map.IsUndefined()) {
-            result[operand] = {operand_indexing_map};
-            break;
-          }
-          IndexingMap logical_output_to_linearized_physical_input_map =
-              operand_indexing_map *
-              operand_logical_to_linearized_physical_shape;
-          IndexingMap thread_id_to_linearized_physical_input_map =
-              *thread_id_to_hero_operand_map *
-              logical_output_to_linearized_physical_input_map;
-          thread_id_to_linearized_physical_input_map.Simplify();
-          result[operand].insert(thread_id_to_linearized_physical_input_map);
-        }
-      }
-    }
-  }
-  return result;
-}
-
-// Replaces RTVars with the midpoints of the feasible intervals.
-void AssignValuesToRTVars(IndexingMap* indexing_map) {
-  // If RTVars are present, replace them with constants.
-  if (indexing_map->GetRTVarsCount() == 0) {
-    return;
-  }
-  MLIRContext* mlir_context = indexing_map->GetMLIRContext();
-  llvm::SmallVector<AffineExpr, 2> symbol_replacements;
-  for (int64_t symbol_id = 0; symbol_id < indexing_map->GetRangeVarsCount();
-       ++symbol_id) {
-    symbol_replacements.push_back(
-        mlir::getAffineSymbolExpr(symbol_id, mlir_context));
-  }
-  for (const IndexingMap::Variable& rt_var : indexing_map->GetRTVars()) {
-    // Take midpoint of the feasible interval for the RT variable.
-    symbol_replacements.push_back(getAffineConstantExpr(
-        (rt_var.bounds.lower + rt_var.bounds.upper) / 2, mlir_context));
-  }
-  AffineMap thread_x_to_input_no_dim_symbols =
-      indexing_map->GetAffineMap().replaceDimsAndSymbols(
-          {}, symbol_replacements, indexing_map->GetDimVarsCount(),
-          indexing_map->GetRangeVarsCount());
-  *indexing_map = IndexingMap{thread_x_to_input_no_dim_symbols,
-                              indexing_map->GetDimVars(),
-                              indexing_map->GetRangeVars(),
-                              {}};
-  indexing_map->Simplify();
-  indexing_map->RemoveUnusedSymbols();
-}
-
 // Replaces all but one RangeVars with the first elements in the range.
 // At the moment, we assume that the last RangeVar symbol corresponds to the
 // innermost loop induction variable.
@@ -459,7 +347,7 @@ std::vector<Interval> FindIntervals(
   FindAllIndices(expr, 0, 0, dimension_ranges, symbol_ranges, &dimensions,
                  &symbols, &linear_indices);
 
-  std::sort(linear_indices.begin(), linear_indices.end());
+  absl::c_sort(linear_indices);
   linear_indices.erase(
       std::unique(linear_indices.begin(), linear_indices.end()),
       linear_indices.end());
@@ -614,82 +502,102 @@ bool IsIndexingCoalesced(IndexingMap& thread_x_to_linearized_input,
       element_type);
 }
 
-}  // namespace
-
-CoalescingAnalysis::CoalescingAnalysis(
-    const HloInstruction* instr,
-    absl::Span<const HloInstruction* const> operands,
+std::optional<CoalescingMap> ComputeCoalescingForAllOperands(
     const HloFusionAnalysis& fusion_analysis,
-    KernelFusionInterface* fusion_interface, MLIRContext* mlir_context,
-    bool use_heuristic) {
-  auto fusion_adaptor = HloFusionAdaptor::ForInstruction(instr);
-  if (!use_heuristic && ComputeCoalescingForAllOperands(
-                            *fusion_adaptor, operands, fusion_analysis,
-                            fusion_interface, mlir_context)) {
-    return;
-  }
-  // If ComputeCoalescingForAllOperands fails, fallback to using the heuristic.
-  is_coalesced_computed_by_heuristic_ =
-      IsReadCoalescedHeuristic(fusion_analysis.GetEmitterFusionKind(),
-                               fusion_analysis.device_info(), instr);
-}
-
-CoalescingAnalysis::CoalescingAnalysis(
-    const HloInstruction* producer, const HloInstruction* consumer,
     absl::Span<const HloInstruction* const> operands,
-    const HloFusionAnalysis& fusion_analysis,
-    KernelFusionInterface* fusion_interface, MLIRContext* mlir_context,
-    bool use_heuristic) {
-  auto fusion_adaptor =
-      HloFusionAdaptor::ForProducerConsumer(producer, consumer);
-  if (!use_heuristic && ComputeCoalescingForAllOperands(
-                            *fusion_adaptor, operands, fusion_analysis,
-                            fusion_interface, mlir_context)) {
-    return;
-  }
-  // If ComputeCoalescingForAllOperands fails, fallback to using the heuristic.
-  is_coalesced_computed_by_heuristic_ = IsReadCoalescedHeuristic(
-      fusion_analysis.GetEmitterFusionKind(), fusion_analysis.device_info(),
-      producer, consumer);
-}
+    MLIRContext* mlir_context) {
+  auto emitter = GetFusionEmitter(
+      PreBufferAssignmentFusionInfo{fusion_analysis}, mlir_context);
+  const auto* fusion_interface =
+      dynamic_cast<const KernelFusionInterface*>(emitter.get());
 
-bool CoalescingAnalysis::ComputeCoalescingForAllOperands(
-    const HloFusionAdaptor& fusion_adaptor,
-    absl::Span<const HloInstruction* const> operands,
-    const HloFusionAnalysis& fusion_analysis,
-    KernelFusionInterface* fusion_interface, MLIRContext* mlir_context) {
-  std::optional<GroupedByOpIndexingMap> thread_id_to_input_memory_layouts =
-      GetThreadIdToInputMemoryLayoutsMaps(fusion_adaptor, operands,
-                                          fusion_analysis, fusion_interface,
-                                          mlir_context);
-  if (!thread_id_to_input_memory_layouts.has_value()) {
-    return false;
+  if (fusion_interface == nullptr) {
+    return std::nullopt;
   }
+  llvm::SmallVector<IndexingMap, 4>
+      operand_logical_to_linearized_physical_maps =
+          MapLogicalToLinearizedPhysicalShape(operands, mlir_context);
+  GroupedByOpIndexingMap thread_id_to_input_memory_layouts;
+  for (const auto& [root_index, hero] :
+       llvm::enumerate(fusion_analysis.fusion_heroes())) {
+    // Compute thread ID -> hero operand indexing maps.
+    std::optional<std::vector<IndexingMap>> hero_indexing_maps =
+        fusion_interface->ComputeThreadIdToInputIndexing(root_index,
+                                                         mlir_context);
+    if (!hero_indexing_maps.has_value()) {
+      return std::nullopt;
+    }
+    GetThreadIdToInputMemoryLayoutsMaps(
+        fusion_analysis.fusion(), *hero_indexing_maps,
+        fusion_analysis.fusion_hero(root_index), operands,
+        operand_logical_to_linearized_physical_maps, mlir_context,
+        thread_id_to_input_memory_layouts);
+  }
+
+  CoalescingMap coalescing_per_operand;
   for (const HloInstruction* operand : operands) {
     if (operand->shape().dimensions().empty()) {
-      coalescing_per_operand_.insert({operand, true});
+      coalescing_per_operand.insert({operand, true});
       continue;
     }
     auto operand_indexing_maps =
-        thread_id_to_input_memory_layouts->find(operand);
+        thread_id_to_input_memory_layouts.find(operand);
     // If there is no indexing map for the operand, it means that it is not used
     // in the fusion cluster.
-    if (operand_indexing_maps == thread_id_to_input_memory_layouts->end()) {
-      coalescing_per_operand_.insert({operand, true});
+    if (operand_indexing_maps == thread_id_to_input_memory_layouts.end()) {
+      coalescing_per_operand.insert({operand, true});
       continue;
     }
     for (IndexingMap operand_indexing_map : operand_indexing_maps->second) {
       bool is_coalesced = IsIndexingCoalesced(operand_indexing_map,
                                               operand->shape().element_type());
       auto [it, inserted] =
-          coalescing_per_operand_.insert({operand, is_coalesced});
+          coalescing_per_operand.insert({operand, is_coalesced});
       if (!inserted) {
         it->second &= is_coalesced;
       }
-      if (!is_coalesced) break;
+      if (!is_coalesced) {
+        break;
+      }
     }
   }
-  return true;
+  return coalescing_per_operand;
+}
+
+}  // namespace
+
+/*static*/
+CoalescingAnalysis CoalescingAnalysis::Create(
+    const HloInstruction* instr,
+    absl::Span<const HloInstruction* const> operands,
+    const HloFusionAnalysis& fusion_analysis, MLIRContext* mlir_context,
+    bool use_heuristic) {
+  return Create(/*producer=*/instr, /*consumer=*/nullptr, operands,
+                fusion_analysis, mlir_context, use_heuristic);
+}
+
+/*static*/
+CoalescingAnalysis CoalescingAnalysis::Create(
+    const HloInstruction* producer, const HloInstruction* consumer,
+    absl::Span<const HloInstruction* const> operands,
+    const HloFusionAnalysis& fusion_analysis, MLIRContext* mlir_context,
+    bool use_heuristic) {
+  std::optional<CoalescingMap> coalescing_per_operand;
+
+  if (!use_heuristic) {
+    coalescing_per_operand = ComputeCoalescingForAllOperands(
+        fusion_analysis, operands, mlir_context);
+  }
+
+  if (coalescing_per_operand.has_value()) {
+    return CoalescingAnalysis(std::move(*coalescing_per_operand));
+  }
+
+  bool is_coalesced_computed_by_heuristic = IsReadCoalescedHeuristic(
+      fusion_analysis.emitter_fusion_kind(), fusion_analysis.device_info(),
+      producer, consumer);
+
+  return CoalescingAnalysis(is_coalesced_computed_by_heuristic);
 }
 
 bool CoalescingAnalysis::IsReadCoalesced(const HloInstruction* operand) const {
@@ -700,5 +608,4 @@ bool CoalescingAnalysis::IsReadCoalesced(const HloInstruction* operand) const {
   return it->second;
 }
 
-}  // namespace gpu
-}  // namespace xla
+}  // namespace xla::gpu

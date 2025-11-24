@@ -39,12 +39,15 @@ limitations under the License.
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/Target/TargetOptions.h"
 #include "mlir/IR/MLIRContext.h"
+#include "xla/backends/cpu/alignment.h"
+#include "xla/backends/cpu/codegen/builtin_definition_generator.h"
 #include "xla/backends/cpu/codegen/cpu_features.h"
 #include "xla/backends/cpu/codegen/execution_engine.h"
 #include "xla/backends/cpu/codegen/ir_compiler.h"
 #include "xla/backends/cpu/codegen/jit_compiler.h"
 #include "xla/backends/cpu/codegen/target_machine_features.h"
-#include "xla/cpu_function_runtime.h"
+#include "xla/backends/cpu/target_machine_options.h"
+#include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/analysis/hlo_ordering.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -58,7 +61,6 @@ limitations under the License.
 #include "xla/service/cpu/cpu_executable.h"
 #include "xla/service/cpu/cpu_options.h"
 #include "xla/service/cpu/ir_function.h"
-#include "xla/service/cpu/runtime_symbol_generator.h"
 #include "xla/service/cpu/target_machine_features_stub.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/llvm_ir/llvm_util.h"
@@ -107,6 +109,7 @@ TEST_F(IrEmitterTest, ComputeFuncStack) {
   const HloInstruction* zero = FindInstruction(hlo.get(), "zero");
   ASSERT_NE(zero, nullptr);
 
+  AliasInfo alias_info;
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<BufferAssignment> buffer_assignment,
       BufferAssigner::Run(
@@ -114,7 +117,7 @@ TEST_F(IrEmitterTest, ComputeFuncStack) {
           [](const BufferValue& buffer) {
             return ShapeUtil::ByteSizeOf(buffer.shape(), sizeof(void*));
           },
-          [](LogicalBuffer::Color) { return /*alignment=*/1; }));
+          &alias_info, [](LogicalBuffer::Color) { return /*alignment=*/1; }));
 
   TargetMachineFeaturesStub target_machine([](int64_t size) { return 1; });
 
@@ -230,7 +233,8 @@ CreateIrEmitterForConstantEmissionTests(HloModule& module,
   IrCompiler::Options ir_compiler_options{
       /*optimization_level=*/llvm::CodeGenOptLevel::Default,
       /*optimize_for_size=*/options::OptimizeForSizeRequested(config),
-      /*max_cpu_isa=*/CpuFeatureFromString(debug_options.xla_cpu_max_isa()),
+      /*target_machine_options=*/
+      TargetMachineOptions(module.config().debug_options()),
       /*fast_math_flags=*/llvm_ir::GetCpuFastMathFlags(config),
       /*disable_expensive_passes=*/
       debug_options.xla_llvm_disable_expensive_passes(),
@@ -240,7 +244,7 @@ CreateIrEmitterForConstantEmissionTests(HloModule& module,
   // Definition generator to link with XLA:CPU host runtime symbols.
   ExecutionEngine::DefinitionGenerator definition_generator =
       [](const llvm::DataLayout& data_layout) {
-        return std::make_unique<RuntimeSymbolGenerator>(data_layout);
+        return std::make_unique<BuiltinDefinitionGenerator>(data_layout);
       };
 
   // Options for orchestrating the JIT compilation process.
@@ -271,26 +275,27 @@ CreateIrEmitterForConstantEmissionTests(HloModule& module,
   auto buffer_size_bytes_function = [](const BufferValue& buffer) {
     return CpuExecutable::ShapeSizeBytes(buffer.shape());
   };
+  AliasInfo alias_info;
   auto scheduler =
       debug_options.xla_cpu_enable_concurrency_optimized_scheduler()
           ? std::unique_ptr<ModuleSchedulerAlgorithm>(
-                std::make_unique<BFScheduler>(buffer_size_bytes_function))
-          : std::make_unique<DFSMemoryScheduler>(buffer_size_bytes_function);
+                std::make_unique<BFScheduler>(&alias_info,
+                                              buffer_size_bytes_function))
+          : std::make_unique<DFSMemoryScheduler>(&alias_info,
+                                                 buffer_size_bytes_function);
 
   TF_ASSIGN_OR_RETURN(HloSchedule schedule,
                       ScheduleModule(&module, *scheduler));
   TF_RETURN_IF_ERROR(module.set_schedule(schedule));
 
-  auto memory_alignment = [](LogicalBuffer::Color) {
-    return cpu_function_runtime::MinAlign();
-  };
+  auto memory_alignment = [](LogicalBuffer::Color) { return MinAlign(); };
   // Run buffer allocation on the HLO graph.
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<BufferAssignment> assignment,
-      BufferAssigner::Run(&module,
-                          std::make_unique<SequentialHloOrdering>(schedule),
-                          buffer_size_bytes_function, memory_alignment,
-                          /*allocate_buffers_for_constants=*/true));
+      BufferAssigner::Run(
+          &module, std::make_unique<SequentialHloOrdering>(schedule),
+          buffer_size_bytes_function, &alias_info, memory_alignment,
+          /*allocate_buffers_for_constants=*/true));
 
   auto target_machine_features =
       std::make_unique<TargetMachineFeatures>(jit_compiler.target_machine());

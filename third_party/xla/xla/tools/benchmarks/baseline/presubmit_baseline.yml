@@ -23,6 +23,10 @@
     "GPU_DEVICE_MEMCPY_TIME": {
       "baseline_ms": 0.3,
       "threshold": 0.30 # Allow 30% regression max
+    },
+    "PEAK_GPU_MEMORY" : {
+      "baseline_gb": 1.87,
+      "threshold": 0.10 # Allow 10% regression max
     }
   },
   "gemma3_1b_flax_call_x86_1h1d_presubmit": { # config_id
@@ -53,6 +57,10 @@
     "GPU_DEVICE_MEMCPY_TIME": {
       "baseline_ms": 0.05,
       "threshold": 0.30 # Allow 30% regression max
+    },
+    "PEAK_GPU_MEMORY" : {
+      "baseline_gb": 10.210,
+      "threshold": 0.10 # Allow 10% regression max
     }
   }
 }

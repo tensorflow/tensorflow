@@ -23,19 +23,23 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/base/thread_annotations.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/backends/gpu/collectives/gpu_communicator.h"
 #include "xla/core/collectives/communicator.h"
 #include "xla/core/collectives/rank_id.h"
+#include "xla/future.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/stream_executor/device_memory.h"
-#include "xla/tsl/concurrency/async_value.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
+#include "xla/tsl/concurrency/executor.h"
 #include "xla/tsl/platform/env.h"
 
 #if TENSORFLOW_USE_ROCM
@@ -65,7 +69,8 @@ class NcclCommunicator : public GpuCommunicator {
   // synchronously on the calling thread.
   static absl::StatusOr<std::unique_ptr<NcclCommunicator>> Create(
       absl::AnyInvocable<absl::StatusOr<ncclComm_t>()> make_comm,
-      bool is_async = false, tsl::Env& env = *tsl::Env::Default());
+      bool is_async = false, std::atomic_bool* cancel = nullptr,
+      tsl::Env& env = *tsl::Env::Default());
 
   ~NcclCommunicator() override;
 
@@ -79,62 +84,65 @@ class NcclCommunicator : public GpuCommunicator {
   absl::Status HealthCheck() const final;
   absl::StatusOr<size_t> NumRanks() const final;
 
-  absl::StatusOr<std::unique_ptr<RegisteredBufferHandle>> RegisterBuffer(
-      se::DeviceMemoryBase buffer) final;
+  // Since each XLA buffer is a slice into a larger BFCAllocator chunk, first
+  // get the base address of buffer. We will use the base address to keep track
+  // of which chunks we have registered.
+  absl::Status RegisterBufferOnce(se::DeviceMemoryBase buffer_range,
+                                  int device_ordinal,
+                                  bool use_symmetric_buffer) final;
 
-  tsl::AsyncValueRef<Communicator::Event> GroupExecute(
+  Future<> GroupExecute(
       absl::AnyInvocable<absl::Status(GpuCommunicator*)> f) final;
 
-  tsl::AsyncValueRef<Event> AllReduce(se::DeviceMemoryBase send_buffer,
-                                      se::DeviceMemoryBase recv_buffer,
-                                      PrimitiveType dtype, size_t count,
-                                      ReductionKind reduction_kind,
-                                      const Executor& executor) final;
+  Future<> AllReduce(se::DeviceMemoryBase send_buffer,
+                     se::DeviceMemoryBase recv_buffer, PrimitiveType dtype,
+                     size_t count, ReductionKind reduction_kind,
+                     const Executor& executor) final;
 
-  tsl::AsyncValueRef<Event> Broadcast(se::DeviceMemoryBase send_buffer,
-                                      se::DeviceMemoryBase recv_buffer,
-                                      PrimitiveType dtype, size_t count,
-                                      RankId root,
-                                      const Executor& executor) final;
+  Future<> Broadcast(se::DeviceMemoryBase send_buffer,
+                     se::DeviceMemoryBase recv_buffer, PrimitiveType dtype,
+                     size_t count, RankId root, const Executor& executor) final;
 
-  tsl::AsyncValueRef<Event> ReduceScatter(se::DeviceMemoryBase send_buffer,
-                                          se::DeviceMemoryBase recv_buffer,
-                                          PrimitiveType dtype, size_t count,
-                                          ReductionKind reduction_kind,
-                                          const Executor& executor) final;
+  Future<> ReduceScatter(se::DeviceMemoryBase send_buffer,
+                         se::DeviceMemoryBase recv_buffer, PrimitiveType dtype,
+                         size_t count, ReductionKind reduction_kind,
+                         const Executor& executor) final;
 
-  tsl::AsyncValueRef<Event> AllGather(se::DeviceMemoryBase send_buffer,
-                                      se::DeviceMemoryBase recv_buffer,
-                                      PrimitiveType dtype, size_t count,
-                                      const Executor& executor) final;
+  Future<> AllGather(se::DeviceMemoryBase send_buffer,
+                     se::DeviceMemoryBase recv_buffer, PrimitiveType dtype,
+                     size_t count, const Executor& executor) final;
 
-  tsl::AsyncValueRef<Event> AllToAll(
-      absl::InlinedVector<se::DeviceMemoryBase, 4> send_buffers,
-      absl::InlinedVector<se::DeviceMemoryBase, 4> recv_buffers,
-      PrimitiveType dtype, size_t count, const Executor& executor) final;
+  Future<> AllToAll(absl::InlinedVector<se::DeviceMemoryBase, 4> send_buffers,
+                    absl::InlinedVector<se::DeviceMemoryBase, 4> recv_buffers,
+                    PrimitiveType dtype, size_t count,
+                    const Executor& executor) final;
 
-  tsl::AsyncValueRef<Event> CollectivePermute(
-      se::DeviceMemoryBase send_buffer, se::DeviceMemoryBase recv_buffer,
-      PrimitiveType dtype, size_t count, std::optional<RankId> source_rank,
-      absl::Span<const RankId> target_ranks, const Executor& executor) final;
+  Future<> CollectivePermute(se::DeviceMemoryBase send_buffer,
+                             se::DeviceMemoryBase recv_buffer,
+                             PrimitiveType dtype, size_t count,
+                             std::optional<RankId> source_rank,
+                             absl::Span<const RankId> target_ranks,
+                             const Executor& executor) final;
 
-  tsl::AsyncValueRef<Event> Send(se::DeviceMemoryBase send_buffer,
-                                 PrimitiveType dtype, size_t count, RankId peer,
-                                 const Executor& executor) final;
+  Future<> Send(se::DeviceMemoryBase send_buffer, PrimitiveType dtype,
+                size_t count, RankId peer, const Executor& executor) final;
 
-  tsl::AsyncValueRef<Event> Recv(se::DeviceMemoryBase recv_buffer,
-                                 PrimitiveType dtype, size_t count, RankId peer,
-                                 const Executor& executor) final;
+  Future<> Recv(se::DeviceMemoryBase recv_buffer, PrimitiveType dtype,
+                size_t count, RankId peer, const Executor& executor) final;
 
   std::string ToString() const final;
 
   ncclComm_t comm() const { return comm_; }
 
  private:
+  absl::StatusOr<std::unique_ptr<RegisteredBufferHandle>> RegisterBuffer(
+      se::DeviceMemoryBase buffer, int device_ordinal,
+      bool use_symmetric_buffer);
+
   class NcclRegisteredBufferHandle;
 
   explicit NcclCommunicator(ncclComm_t comm,
-                            std::unique_ptr<tsl::AsyncValue::Executor> executor)
+                            std::unique_ptr<tsl::Executor> executor)
       : comm_(comm), executor_(std::move(executor)) {
     VLOG(1) << "Created " << *this;
   }
@@ -189,12 +197,21 @@ class NcclCommunicator : public GpuCommunicator {
   absl::Status PollUntilDone() const;
 
   // Executes f on executor_, or calls f directly if executor_ is null.
-  tsl::AsyncValueRef<Event> Execute(absl::AnyInvocable<absl::Status()> f) const;
+  Future<> Execute(absl::AnyInvocable<absl::Status() &&> f) const;
 
   // Executes f on executor_, or calls f directly if executor_ is null.
   template <typename T>
-  tsl::AsyncValueRef<T> Execute(
-      absl::AnyInvocable<absl::StatusOr<T>()> f) const;
+  Future<T> Execute(absl::AnyInvocable<absl::StatusOr<T>() &&> f) const;
+
+  absl::Status ExecuteAwait(absl::AnyInvocable<absl::Status() &&> f) const {
+    return Execute(std::move(f)).Await();
+  }
+
+  template <typename T>
+  absl::StatusOr<T> ExecuteAwait(
+      absl::AnyInvocable<absl::StatusOr<T>() &&> f) const {
+    return Execute<T>(std::move(f)).Await();
+  }
 
   // Underlying NCCL communicator.
   ncclComm_t comm_;
@@ -214,7 +231,7 @@ class NcclCommunicator : public GpuCommunicator {
   // ncclComm_t is accessed from multiple threads. Emperically, the lack of
   // thread safety only manifests as buggy behavior when using non-blocking
   // communicators.
-  std::unique_ptr<tsl::AsyncValue::Executor> executor_;
+  std::unique_ptr<tsl::Executor> executor_;
 
   // Should all pending collectives cancel?
   std::atomic_bool canceling_ = false;
@@ -224,6 +241,17 @@ class NcclCommunicator : public GpuCommunicator {
 
   // Nesting level of current NCCL group
   int group_nesting_level_ = 0;
+
+  // Keep track of which communicators we have registered for already.
+  // Each ncclMemAlloc'd buffer needs to be registered once per comm.
+  struct RegisteredBuffers {
+    absl::Mutex mu;
+    // Buffer range to the registered buffer handle.
+    absl::flat_hash_map<void*,
+                        std::unique_ptr<Communicator::RegisteredBufferHandle>>
+        range_to_handle ABSL_GUARDED_BY(mu);
+  };
+  RegisteredBuffers registered_buffers_;
 };
 
 }  // namespace xla::gpu

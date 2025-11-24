@@ -24,6 +24,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/status_matchers.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -32,17 +33,16 @@ limitations under the License.
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/pattern_matcher_gmock.h"
 #include "xla/service/computation_placer.h"
+#include "xla/service/hlo_module_config.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
-#include "tsl/platform/status_matchers.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
 
-using ::tsl::testing::IsOkAndHolds;
 namespace m = ::xla::match;
 
 using AllReduceBlueConnectTest = HloHardwareIndependentTestBase;
@@ -87,7 +87,7 @@ ENTRY %comp {
   SetModuleConfig(*module, /*replica_count=*/8);
 
   AllReduceBlueConnect pass(/*num_devices_per_host=*/4);
-  EXPECT_THAT(pass.Run(module.get()), IsOkAndHolds(true));
+  EXPECT_THAT(pass.Run(module.get()), absl_testing::IsOkAndHolds(true));
 
   // clang-format off
   std::vector<std::vector<int64_t>> scatter_gather_groups = {
@@ -132,7 +132,7 @@ ENTRY %comp {
   SetModuleConfig(*module, /*replica_count=*/16);
 
   AllReduceBlueConnect pass(/*num_devices_per_host=*/4);
-  EXPECT_THAT(pass.Run(module.get()), IsOkAndHolds(true));
+  EXPECT_THAT(pass.Run(module.get()), absl_testing::IsOkAndHolds(true));
 
   std::vector<std::vector<int64_t>> outer_scatter_gather_groups = {
       {0, 1, 2, 3}, {4, 5, 6, 7}, {8, 9, 10, 11}, {12, 13, 14, 15}};
@@ -183,7 +183,7 @@ ENTRY %comp {
   SetModuleConfig(*module, /*replica_count=*/8);
 
   AllReduceBlueConnect pass(/*num_devices_per_host=*/4);
-  EXPECT_THAT(pass.Run(module.get()), IsOkAndHolds(true));
+  EXPECT_THAT(pass.Run(module.get()), absl_testing::IsOkAndHolds(true));
 
   // clang-format off
   std::vector<std::vector<int64_t>> scatter_gather_groups = {
@@ -273,7 +273,7 @@ ENTRY %comp {
   SetModuleConfig(*module, /*replica_count=*/8);
 
   AllReduceBlueConnect pass(/*num_devices_per_host=*/4);
-  EXPECT_THAT(pass.Run(module.get()), IsOkAndHolds(false));
+  EXPECT_THAT(pass.Run(module.get()), absl_testing::IsOkAndHolds(false));
 }
 
 TEST_F(AllReduceBlueConnectTest, DifferentNumLocalDevicesAcrossReplicaGroups) {
@@ -296,7 +296,7 @@ ENTRY %comp {
   SetModuleConfig(*module, /*replica_count=*/16);
 
   AllReduceBlueConnect pass(/*num_devices_per_host=*/4);
-  EXPECT_THAT(pass.Run(module.get()), IsOkAndHolds(false));
+  EXPECT_THAT(pass.Run(module.get()), absl_testing::IsOkAndHolds(false));
 }
 
 TEST_F(AllReduceBlueConnectTest, OperandIndivisible) {
@@ -319,7 +319,7 @@ ENTRY %comp {
   SetModuleConfig(*module, /*replica_count=*/8);
 
   AllReduceBlueConnect pass(/*num_devices_per_host=*/4);
-  EXPECT_THAT(pass.Run(module.get()), IsOkAndHolds(false));
+  EXPECT_THAT(pass.Run(module.get()), absl_testing::IsOkAndHolds(false));
 }
 
 TEST_F(AllReduceBlueConnectTest, ControlDeps) {
@@ -350,7 +350,7 @@ ENTRY %comp {
   auto expected_succs = ar->control_successors();
 
   AllReduceBlueConnect pass(/*num_devices_per_host=*/4);
-  EXPECT_THAT(pass.Run(module.get()), IsOkAndHolds(true));
+  EXPECT_THAT(pass.Run(module.get()), absl_testing::IsOkAndHolds(true));
 
   // clang-format off
   std::vector<std::vector<int64_t>> scatter_gather_groups = {
@@ -407,7 +407,7 @@ ENTRY %comp {
   SetModuleConfig(*module, /*replica_count=*/8);
 
   AllReduceBlueConnect pass(/*num_devices_per_host=*/4);
-  EXPECT_THAT(pass.Run(module.get()), IsOkAndHolds(false));
+  EXPECT_THAT(pass.Run(module.get()), absl_testing::IsOkAndHolds(false));
 }
 
 }  // namespace

@@ -23,15 +23,16 @@ limitations under the License.
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/shape.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/fft.h"
-#include "xla/stream_executor/stream_executor.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -47,11 +48,13 @@ struct FftPlan {
 
 class FftPlanCache {
  public:
-  // Returnes Fft plan cached for the given device ordinal or creates a new one.
+  // Returns Fft plan cached for the given device ordinal or creates a new one.
   FftPlan* GetOrCreate(int device_ordinal) {
-    absl::MutexLock lock(&mu_);
+    absl::MutexLock lock(mu_);
     std::unique_ptr<FftPlan>& plan = fft_plans_[device_ordinal];
-    if (!plan) plan = std::make_unique<FftPlan>();
+    if (!plan) {
+      plan = std::make_unique<FftPlan>();
+    }
     return plan.get();
   }
 
@@ -80,6 +83,12 @@ class FftThunk : public Thunk {
 
   // Does the FFT for the thunk on "stream".
   absl::Status ExecuteOnStream(const ExecuteParams& params) override;
+
+  static absl::StatusOr<std::unique_ptr<FftThunk>> FromProto(
+      ThunkInfo thunk_info, const FftThunkProto& proto,
+      absl::Span<const BufferAllocation> buffer_allocations);
+
+  absl::StatusOr<ThunkProto> ToProto() const override;
 
  private:
   const se::fft::Type fft_type_;

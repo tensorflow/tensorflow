@@ -15,12 +15,17 @@ limitations under the License.
 
 #include "tensorflow/core/ir/utils/shape_inference_utils.h"
 
+#include <cassert>
+#include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/Sequence.h"
 #include "llvm/Support/Casting.h"

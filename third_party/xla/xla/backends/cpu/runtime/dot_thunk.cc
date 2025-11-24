@@ -24,6 +24,8 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
+#include "absl/strings/string_view.h"
+#include "xla/backends/cpu/runtime/dot_dims.h"
 #include "xla/backends/cpu/runtime/dot_lib.h"
 #include "xla/backends/cpu/runtime/thunk.h"
 #include "xla/primitive_util.h"
@@ -70,7 +72,6 @@ DotThunk::DotThunk(Info info, DotDimensionNumbers dot_dimensions,
 
 tsl::AsyncValueRef<DotThunk::ExecuteEvent> DotThunk::Execute(
     const ExecuteParams& params) {
-
   TF_ASSIGN_OR_RETURN(
       se::DeviceMemoryBase lhs_data,
       params.buffer_allocations->GetDeviceAddress(dot_slices_.lhs_buffer));
@@ -148,12 +149,17 @@ tsl::AsyncValueRef<DotThunk::ExecuteEvent> DotThunk::Execute(
     transpose_rhs = !transpose_rhs;
   }
 
-  PrimitiveType element_type = dot_shape_.lhs_matmul_shape.element_type();
-  int64_t byte_width = primitive_util::ByteWidth(element_type);
+  PrimitiveType lhs_dtype = dot_shape_.lhs_matmul_shape.element_type();
+  PrimitiveType rhs_dtype = dot_shape_.rhs_matmul_shape.element_type();
+  PrimitiveType out_dtype = dot_shape_.out_matmul_shape.element_type();
 
-  int64_t lhs_stride = m * k * byte_width;
-  int64_t rhs_stride = k * n * byte_width;
-  int64_t out_stride = m * n * byte_width;
+  int64_t lhs_dtype_byte_width = primitive_util::ByteWidth(lhs_dtype);
+  int64_t rhs_dtype_byte_width = primitive_util::ByteWidth(rhs_dtype);
+  int64_t out_dtype_byte_width = primitive_util::ByteWidth(out_dtype);
+
+  int64_t lhs_stride = m * k * lhs_dtype_byte_width;
+  int64_t rhs_stride = k * n * rhs_dtype_byte_width;
+  int64_t out_stride = m * n * out_dtype_byte_width;
 
   auto batch_ptr = [&](void* ptr, int64_t stride, int64_t index) -> void* {
     return static_cast<uint8_t*>(ptr) + stride * index;
@@ -161,9 +167,12 @@ tsl::AsyncValueRef<DotThunk::ExecuteEvent> DotThunk::Execute(
 
   tsl::CountDownAsyncValueRef<ExecuteEvent> state(dot_shape_.batch_size);
 
-  auto dispatch = [&](auto type_tag) {
+  auto dispatch = [&](auto lhs_type, auto rhs_type, auto out_type) {
     for (int64_t i = 0; i < dot_shape_.batch_size; ++i) {
-      TypedMatMul<decltype(type_tag)>(
+      using LhsType = decltype(lhs_type);
+      using RhsType = decltype(rhs_type);
+      using OutType = decltype(out_type);
+      internal::TypedMatMul<LhsType, RhsType, OutType>(
           params.intra_op_threadpool, batch_ptr(out, out_stride, i),
           batch_ptr(lhs, lhs_stride, i), batch_ptr(rhs, rhs_stride, i), m, n, k,
           transpose_lhs, transpose_rhs,
@@ -171,32 +180,47 @@ tsl::AsyncValueRef<DotThunk::ExecuteEvent> DotThunk::Execute(
     }
   };
 
-  switch (element_type) {
-    case BF16:
-      dispatch(bfloat16{});  // Enable Eigen BF16 kernel for fallback.
-      break;
-    case F16:
-      dispatch(half{});
-      break;
-    case F32:
-      dispatch(float{});
-      break;
-    case F64:
-      dispatch(double{});
-      break;
-    case S32:
-      dispatch(int32_t{});
-      break;
-    case C64:
-      dispatch(std::complex<float>{});
-      break;
-    case C128:
-      dispatch(std::complex<double>{});
-      break;
-    default:
-      return Unimplemented(
-          "Unsupported element type for DotThunk::Execute: %s",
-          primitive_util::LowercasePrimitiveTypeName(element_type));
+  auto dispatch_same_type = [&](auto type_tag) {
+    dispatch(type_tag, type_tag, type_tag);
+  };
+
+  bool is_same_type = (lhs_dtype == rhs_dtype && lhs_dtype == out_dtype);
+  if (is_same_type) {
+    switch (lhs_dtype) {
+      case BF16:
+        dispatch_same_type(bfloat16{});
+        break;
+      case F16:
+        dispatch_same_type(half{});
+        break;
+      case F32:
+        dispatch_same_type(float{});
+        break;
+      case F64:
+        dispatch_same_type(double{});
+        break;
+      case S32:
+        dispatch_same_type(int32_t{});
+        break;
+      case C64:
+        dispatch_same_type(std::complex<float>{});
+        break;
+      case C128:
+        dispatch_same_type(std::complex<double>{});
+        break;
+      default:
+        auto type_name = primitive_util::LowercasePrimitiveTypeName(lhs_dtype);
+        return Unimplemented(
+            "Unsupported element type for DotThunk::Execute: %s x %s = %s",
+            type_name, type_name, type_name);
+    }
+  } else if (lhs_dtype == S8 && rhs_dtype == S8 && out_dtype == S32) {
+    dispatch(int8_t{}, int8_t{}, int32_t{});
+  } else {
+    return Unimplemented(
+        "Unsupported element type for DotThunk::Execute: %s x %s = %s",
+        PrimitiveType_Name(lhs_dtype), PrimitiveType_Name(rhs_dtype),
+        PrimitiveType_Name(out_dtype));
   }
 
   return state.AsRef();

@@ -32,6 +32,7 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/analysis/hlo_alias_analysis.h"
 #include "xla/hlo/analysis/hlo_dataflow_analysis.h"
 #include "xla/hlo/analysis/hlo_ordering.h"
@@ -399,7 +400,7 @@ class CopyRemover {
   };
 
   CopyRemover(const HloModule& module, const HloAliasAnalysis& alias_analysis,
-              HloOrdering* ordering, bool check_live_range_ordering,
+              const AliasInfo* alias_info, HloOrdering* ordering,
               const absl::flat_hash_set<absl::string_view>& execution_threads);
 
   // Add a list containing the given values to CopyRemover. This
@@ -509,6 +510,8 @@ class CopyRemover {
 
  private:
   const HloDataflowAnalysis& dataflow_;
+  // Backend specific aliasing information.
+  const AliasInfo* alias_info_;
   HloOrdering* ordering_;
 
   // The heads of all the value lists. Each value list represents the HLO

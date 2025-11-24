@@ -115,11 +115,11 @@ Node::NodeClass Node::GetNodeClassForOp(const std::string& ts) {
 }
 
 std::string Node::DebugString() const {
-  std::string ret = strings::StrCat("{name:'", name(), "' id:", id_);
+  std::string ret = absl::StrCat("{name:'", name(), "' id:", id_);
   if (IsSource()) {
-    strings::StrAppend(&ret, " source}");
+    absl::StrAppend(&ret, " source}");
   } else if (IsSink()) {
-    strings::StrAppend(&ret, " sink}");
+    absl::StrAppend(&ret, " sink}");
   } else {
     strings::StrAppend(&ret, " op device:", "{requested: '", requested_device(),
                        "', assigned: '", assigned_device_name(), "'}", " def:{",
@@ -693,7 +693,7 @@ const Edge* Graph::AddControlEdge(Node* source, Node* dest,
   // Modify dest's NodeDef if necessary.
   if (!source->IsSource() && !dest->IsSink() && !allow_duplicates) {
     // Check if this input is already in dest's NodeDef.
-    const std::string new_input = strings::StrCat("^", source->name());
+    const std::string new_input = absl::StrCat("^", source->name());
     bool input_exists = false;
     for (const std::string& input : dest->props_->node_def.input()) {
       if (input == new_input) {
@@ -712,7 +712,7 @@ const Edge* Graph::AddControlEdge(Node* source, Node* dest,
 void Graph::RemoveControlEdge(const Edge* e) {
   if (!e->src_->IsSource() && !e->dst_->IsSink()) {
     e->dst_->MaybeCopyOnWrite();
-    std::string e_src_name = strings::StrCat("^", e->src_->name());
+    std::string e_src_name = absl::StrCat("^", e->src_->name());
     auto* inputs = e->dst_->props_->node_def.mutable_input();
     for (auto it = inputs->begin(); it != inputs->end(); ++it) {
       if (*it == e_src_name) {
@@ -746,17 +746,17 @@ absl::Status Graph::UpdateEdge(Node* new_src, int new_src_index, Node* dst,
   AddEdge(new_src, new_src_index, dst, dst_index);
   dst->MaybeCopyOnWrite();
   (*dst->props_->node_def.mutable_input())[dst_index] =
-      strings::StrCat(new_src->name(), ":", new_src_index);
+      absl::StrCat(new_src->name(), ":", new_src_index);
   return absl::OkStatus();
 }
 
 void Graph::AddInput(NodeDef* dst, absl::string_view src_name, int src_slot) {
   if (src_slot == Graph::kControlSlot) {
-    dst->add_input(strings::StrCat("^", src_name));
+    dst->add_input(absl::StrCat("^", src_name));
   } else if (src_slot == 0) {
     dst->add_input(src_name.data(), src_name.size());
   } else {
-    dst->add_input(strings::StrCat(src_name, ":", src_slot));
+    dst->add_input(absl::StrCat(src_name, ":", src_slot));
   }
 }
 
@@ -779,7 +779,7 @@ absl::Status Graph::AddWhileInputHack(Node* new_src, int new_src_index,
   AddEdge(new_src, new_src_index, dst, dst_index);
   dst->MaybeCopyOnWrite();
   dst->props_->node_def.add_input(
-      strings::StrCat(new_src->name(), ":", new_src_index));
+      absl::StrCat(new_src->name(), ":", new_src_index));
   return absl::OkStatus();
 }
 
@@ -912,7 +912,7 @@ void Graph::ToGraphDefSubRange(GraphDef* graph_def, int from_node_id,
 }
 
 std::string Graph::NewName(absl::string_view prefix) {
-  return strings::StrCat(prefix, "/_", name_counter_++);
+  return absl::StrCat(prefix, "/_", name_counter_++);
 }
 
 absl::Status Graph::IsValidNode(const Node* node) const {

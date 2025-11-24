@@ -64,7 +64,7 @@ absl::StatusOr<HloInstructionProfileList> CollectProfiles(
 
 }  // namespace
 
-absl::StatusOr<bool> CollectivePerfTableStatsCollection::Run(
+absl::StatusOr<bool> CollectivePerfTableStatsCollection::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   TF_ASSIGN_OR_RETURN(HloInstructionProfileList profiles,
@@ -84,8 +84,9 @@ absl::StatusOr<bool> CollectivePerfTableStatsCollection::Run(
         HloCollectiveInstruction* coll_instr =
             Cast<HloCollectiveInstruction>(instr);
         auto estimation = interpolator->EstimatedRuntime(*coll_instr);
-        if (!estimation.has_value()) {
-          LOG(WARNING) << "No estimation for: " << coll_instr->ToString();
+        if (!estimation.ok()) {
+          LOG(WARNING) << "No estimation for: " << coll_instr->ToString()
+                       << ". Reason: " << estimation.status();
           return;
         }
         absl::Duration exec_time = *estimation;

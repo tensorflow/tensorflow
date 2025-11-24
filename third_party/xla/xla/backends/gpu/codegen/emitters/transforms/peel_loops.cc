@@ -33,6 +33,7 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "xla/backends/gpu/codegen/emitters/ir/xla_gpu_ops.h"
+#include "xla/codegen/emitters/ir/xla_ops.h"
 #include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/analysis/indexing_map_serialization.h"
 
@@ -61,10 +62,7 @@ struct PeelLoop : public OpRewritePattern<LoopOp> {
     // Compute the list of indexing maps. The last element is the "peeled" or
     // "main" loop. Everything else is a "tail" loop.
     auto indexing_map = loop_op.getIndexingMap();
-    // TODO(b/358274367): Remove the simplify call once we have `is_simplified`
-    // field and a canonicalization pattern to simplify indexing map in
-    // xla_gpu.loop.
-    indexing_map.Simplify();
+
     SmallVector<IndexingMap> indexing_maps{indexing_map};
     for (int sym_index = indexing_map.GetSymbolCount() - 1;
          sym_index >= 0 && cumulative_loop_size < 64; --sym_index) {
@@ -81,7 +79,9 @@ struct PeelLoop : public OpRewritePattern<LoopOp> {
       peeled_map.Simplify();
 
       // If the symbol is still constrained, peeling does not help.
-      if (peeled_map.IsSymbolConstrained(sym_index)) continue;
+      if (peeled_map.IsSymbolConstrained(sym_index)) {
+        continue;
+      }
 
       // Create remainder indexing map.
       IndexingMap tail_map = indexing_map;
@@ -106,7 +106,9 @@ struct PeelLoop : public OpRewritePattern<LoopOp> {
     Location loc = loop_op.getLoc();
     SmallVector<Value, 4> inits = loop_op.getInits();
     for (const auto& indexing_map : llvm::reverse(indexing_maps)) {
-      if (indexing_map.IsKnownEmpty()) continue;
+      if (indexing_map.IsKnownEmpty()) {
+        continue;
+      }
       auto tail_loop = rewriter.create<LoopOp>(
           loc, indexing_map, loop_op.getDims(), inits,
           [&](OpBuilder& nested_b, Location nested_loc, ValueRange ivs,

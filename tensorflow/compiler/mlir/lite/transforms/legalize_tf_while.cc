@@ -52,8 +52,8 @@ void CreateRegionWithCall(func::FuncOp func, Region& region, Location loc) {
   SmallVector<Value, 4> new_operands;
   for (Type t : func.getFunctionType().getInputs())
     new_operands.push_back(block->addArgument(t, loc));
-  auto call = builder.create<func::CallOp>(loc, func, new_operands);
-  builder.create<YieldOp>(loc, call.getResults());
+  auto call = func::CallOp::create(builder, loc, func, new_operands);
+  YieldOp::create(builder, loc, call.getResults());
   // Mark old function as private so that it can be DCE'd if not called.
   func.setPrivate();
 }
@@ -61,9 +61,10 @@ void CreateRegionWithCall(func::FuncOp func, Region& region, Location loc) {
 void RunOnWhile(TF::WhileOp while_op) {
   Operation* op = while_op.getOperation();
   // Create new TFL While op that will be used to replace TF While op.
-  auto new_op = OpBuilder(op).create<TFL::WhileOp>(
-      op->getLoc(), op->getResultTypes(), op->getOperands(),
-      while_op.getIsStateless());
+  OpBuilder builder(op);
+  auto new_op =
+      TFL::WhileOp::create(builder, op->getLoc(), op->getResultTypes(),
+                           op->getOperands(), while_op.getIsStateless());
   Location loc = while_op->getLoc();
   CreateRegionWithCall(while_op.cond_function(), new_op.getCond(), loc);
   CreateRegionWithCall(while_op.body_function(), new_op.getBody(), loc);

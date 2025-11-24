@@ -86,14 +86,14 @@ class RepeatedStringSplitter : public ComposableSplitter {
   }
 };
 
-RepeatedString SetUpRepeatedString(std::vector<string> strings) {
+RepeatedString SetUpRepeatedString(std::vector<std::string> strings) {
   RepeatedString message;
   *message.mutable_strings() = {strings.begin(), strings.end()};
   return message;
 }
 
 TEST(RepeatedStringSplitterTest, TestSplitChunks) {
-  std::vector<string> strings = {"piece-1", "piece-2", "piece-3"};
+  std::vector<std::string> strings = {"piece-1", "piece-2", "piece-3"};
   auto message = SetUpRepeatedString(strings);
   RepeatedStringSplitter splitter = RepeatedStringSplitter(&message);
   TF_ASSERT_OK_AND_ASSIGN(auto ret, splitter.Split());
@@ -131,7 +131,7 @@ TEST(RepeatedStringSplitterTest, TestSplitChunks) {
 }
 
 static void CheckChunks(riegeli::RecordReaderBase& reader,
-                        std::vector<string>& strings) {
+                        std::vector<std::string>& strings) {
   ChunkMetadata chunk_metadata;
   reader.Seek(reader.Size().value());
   reader.SeekBack();
@@ -165,7 +165,7 @@ static void CheckChunks(riegeli::RecordReaderBase& reader,
 }
 
 TEST(RepeatedStringSplitterTest, TestWrite) {
-  std::vector<string> strings = {"piece-1", "piece-2", "piece-3"};
+  std::vector<std::string> strings = {"piece-1", "piece-2", "piece-3"};
   auto message = SetUpRepeatedString(strings);
   RepeatedStringSplitter splitter = RepeatedStringSplitter(&message);
 
@@ -185,7 +185,7 @@ TEST(RepeatedStringSplitterTest, TestWrite) {
 }
 
 TEST(RepeatedStringSplitterTest, TestWriteToString) {
-  std::vector<string> strings = {"piece-1", "piece-2", "piece-3"};
+  std::vector<std::string> strings = {"piece-1", "piece-2", "piece-3"};
   auto message = SetUpRepeatedString(strings);
   RepeatedStringSplitter splitter = RepeatedStringSplitter(&message);
   auto string_output_results = splitter.WriteToString();
@@ -202,7 +202,7 @@ TEST(RepeatedStringSplitterTest, TestWriteToString) {
 
 #if !IS_OSS
 TEST(RepeatedStringSplitterTest, TestWriteToCord) {
-  std::vector<string> strings = {"piece-1", "piece-2", "piece-3"};
+  std::vector<std::string> strings = {"piece-1", "piece-2", "piece-3"};
   auto message = SetUpRepeatedString(strings);
   RepeatedStringSplitter splitter = RepeatedStringSplitter(&message);
   auto cord_output_results = splitter.WriteToCord();
@@ -255,11 +255,11 @@ class RepeatedRepeatedStringSplitter : public ComposableSplitter {
 };
 
 TEST(ComposableTest, RepeatedRepeatedStringTest) {
-  std::vector<string> strings1 = {"piece-1", "piece-2", "piece-3"};
+  std::vector<std::string> strings1 = {"piece-1", "piece-2", "piece-3"};
   auto rs1 = SetUpRepeatedString(strings1);
-  std::vector<string> strings2 = {"new-strings-1"};
+  std::vector<std::string> strings2 = {"new-strings-1"};
   auto rs2 = SetUpRepeatedString(strings2);
-  std::vector<string> strings3 = {"foo-1", "foo-2"};
+  std::vector<std::string> strings3 = {"foo-1", "foo-2"};
   auto rs3 = SetUpRepeatedString(strings3);
 
   std::vector<RepeatedString> rs = {rs1, rs2, rs3};
@@ -275,8 +275,8 @@ TEST(ComposableTest, RepeatedRepeatedStringTest) {
   ChunkedMessage* chunked_message = ret.chunked_message;
   ASSERT_NE(chunked_message, nullptr);
 
-  std::vector<string> expected_chunks = {"piece-1",       "piece-2", "piece-3",
-                                         "new-strings-1", "foo-1",   "foo-2"};
+  std::vector<std::string> expected_chunks = {
+      "piece-1", "piece-2", "piece-3", "new-strings-1", "foo-1", "foo-2"};
 
   // RepeatedRepeatedStringSplitter sets the first chunk as the user-provided
   // message, so the expected size is 7.
@@ -300,12 +300,12 @@ TEST(ComposableTest, RepeatedRepeatedStringTest) {
 }
 
 TEST(ComposableTest, ChildSplitterTest) {
-  std::vector<string> strings1 = {"piece-1", "piece-2", "piece-3"};
+  std::vector<std::string> strings1 = {"piece-1", "piece-2", "piece-3"};
   auto message1 = SetUpRepeatedString(strings1);
   RepeatedStringSplitter splitter(&message1);
   std::vector<FieldType> fields = {};
 
-  std::vector<string> strings2 = {"s1", "s2"};
+  std::vector<std::string> strings2 = {"s1", "s2"};
   auto message2 = SetUpRepeatedString(strings2);
   RepeatedStringSplitter child(&message2, &splitter, &fields);
 
@@ -322,11 +322,12 @@ TEST(ComposableTest, ChildSplitterUnimplementedTest) {
   std::vector<FieldType> fields = {};
   RepeatedStringSplitter child(&message, &splitter, &fields);
 
-  EXPECT_THAT(child.Split(), StatusIs(absl::StatusCode::kUnimplemented,
-                                      HasSubstr("`Split` function behavior")));
+  EXPECT_THAT(child.Split(),
+              absl_testing::StatusIs(absl::StatusCode::kUnimplemented,
+                                     HasSubstr("`Split` function behavior")));
   EXPECT_THAT(child.Write("str"),
-              StatusIs(absl::StatusCode::kUnimplemented,
-                       HasSubstr("`Write` function behavior")));
+              absl_testing::StatusIs(absl::StatusCode::kUnimplemented,
+                                     HasSubstr("`Write` function behavior")));
 }
 
 class NoOpSplitter : public ComposableSplitter {
@@ -337,7 +338,7 @@ class NoOpSplitter : public ComposableSplitter {
 };
 
 TEST(NoOpSplitterTest, TestWrite) {
-  std::vector<string> strings = {"piece-1", "piece-2", "piece-3"};
+  std::vector<std::string> strings = {"piece-1", "piece-2", "piece-3"};
   auto message = SetUpRepeatedString(strings);
   NoOpSplitter splitter(&message);
 

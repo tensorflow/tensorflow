@@ -15,15 +15,18 @@ limitations under the License.
 
 #include "xla/shape.h"
 
+#include <cstdint>
 #include <vector>
 
 #include <gtest/gtest.h>
 #include "absl/hash/hash_testing.h"
+#include "absl/log/check.h"
 #include "absl/strings/str_cat.h"
 #include "xla/hlo/testlib/test.h"
 #include "xla/layout.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test_benchmark.h"
 #include "xla/xla_data.pb.h"
 
@@ -157,6 +160,9 @@ TEST_F(ShapeTest, EqualityTest) {
   EXPECT_FALSE(
       Shape::Equal()(ShapeUtil::MakeValidatedBufferShape(S32, {3, 4}).value(),
                      ShapeUtil::MakeShape(S32, {3, 4})));
+  EXPECT_TRUE(Shape::Equal().IgnoreBuffer().IgnoreLayout()(
+      ShapeUtil::MakeValidatedBufferShape(S32, {3, 4}).value(),
+      ShapeUtil::MakeShapeWithDenseLayout(S32, {3, 4}, {0, 1})));
 }
 
 TEST_F(ShapeTest, AreAllLeavesIntegers) {
@@ -329,6 +335,10 @@ TEST_F(ShapeTest, SupportsAbslHash) {
        matrix_buffer_, tuple_, nested_tuple_, dynamic_matrix_}));
 }
 
+//===----------------------------------------------------------------------===//
+// Performance benchmarks below.
+//===----------------------------------------------------------------------===//
+
 static const int kDistinctShapes = 4;
 
 static Shape MakeShapeHelper(int id) {
@@ -403,6 +413,29 @@ BENCHMARK(BM_ShapeCopy)
     ->ArgPair(1000, 1)
     ->ArgPair(100000, 0)
     ->ArgPair(100000, 1);
+
+void BM_ArrayShapeEqual(::testing::benchmark::State& state) {
+  auto a = ShapeUtil::MakeShape(F32, {1, 2, 3});
+  auto b = ShapeUtil::MakeShape(F32, {1, 2, 3});
+
+  for (auto s : state) {
+    benchmark::DoNotOptimize(xla::Shape::Equal()(a, b));
+  }
+}
+BENCHMARK(BM_ArrayShapeEqual);
+
+void BM_TupleShapeEqual(::testing::benchmark::State& state) {
+  auto s0 = ShapeUtil::MakeShape(F32, {1, 2, 3});
+  auto s1 = ShapeUtil::MakeShape(F32, {1, 2, 3});
+
+  auto a = ShapeUtil::MakeTupleShape({s0, s1});
+  auto b = ShapeUtil::MakeTupleShape({s1, s0});
+
+  for (auto s : state) {
+    benchmark::DoNotOptimize(xla::Shape::Equal()(a, b));
+  }
+}
+BENCHMARK(BM_TupleShapeEqual);
 
 }  // namespace
 }  // namespace xla

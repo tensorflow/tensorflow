@@ -49,6 +49,18 @@ PJRT_DEFINE_STRUCT_TRAITS(PJRT_RawBuffer_Destroy_Args, buffer);
 // Frees the PJRT_RawBuffer.
 typedef PJRT_Error* PJRT_RawBuffer_Destroy(PJRT_RawBuffer_Destroy_Args* args);
 
+struct PJRT_RawBuffer_GetHostPointer_Args {
+  size_t struct_size;
+  PJRT_Extension_Base* extension_start;
+  PJRT_RawBuffer* buffer;
+  void* host_pointer;  // out
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_RawBuffer_GetHostPointer_Args, host_pointer);
+
+// If visible to the host, returns the base pointer for direct access.
+typedef PJRT_Error* PJRT_RawBuffer_GetHostPointer(
+    PJRT_RawBuffer_GetHostPointer_Args* args);
+
 struct PJRT_RawBuffer_GetOnDeviceSizeInBytes_Args {
   size_t struct_size;
   PJRT_Extension_Base* extension_start;
@@ -106,7 +118,7 @@ typedef PJRT_Error* PJRT_RawBuffer_CopyRawHostToDevice(
 // alias PJRT_Buffers. The extension is both optional and experimental, meaning
 // ABI-breaking and other incompatible changes may be introduced at any time.
 
-#define PJRT_API_RAW_BUFFER_EXTENSION_VERSION 1
+#define PJRT_API_RAW_BUFFER_EXTENSION_VERSION 2
 #define _PJRT_API_STRUCT_FIELD(fn_type) fn_type* fn_type
 
 typedef struct PJRT_RawBuffer_Extension {
@@ -117,9 +129,10 @@ typedef struct PJRT_RawBuffer_Extension {
   _PJRT_API_STRUCT_FIELD(PJRT_RawBuffer_GetMemorySpace);
   _PJRT_API_STRUCT_FIELD(PJRT_RawBuffer_CopyRawHostToDevice);
   _PJRT_API_STRUCT_FIELD(PJRT_RawBuffer_CopyRawDeviceToHost);
+  _PJRT_API_STRUCT_FIELD(PJRT_RawBuffer_GetHostPointer);
 } PJRT_RawBuffer_Extension;
 PJRT_DEFINE_STRUCT_TRAITS(PJRT_RawBuffer_Extension,
-                          PJRT_RawBuffer_CopyRawDeviceToHost);
+                          PJRT_RawBuffer_GetHostPointer);
 
 #undef _PJRT_API_STRUCT_FIELD
 

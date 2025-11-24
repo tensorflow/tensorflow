@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/common_runtime/collective_executor_mgr.h"
 
+#include <cstddef>
+
 #include "absl/memory/memory.h"
 #include "tensorflow/core/common_runtime/base_collective_executor.h"
 #include "tensorflow/core/common_runtime/build_graph_options.h"
@@ -37,8 +39,12 @@ CollectiveExecutorMgr::CollectiveExecutorMgr(
       gpu_ring_order_(
           config.gpu_options().experimental().collective_ring_order()),
       nccl_communicator_(std::move(nccl_communicator)),
-      work_queue_(std::make_shared<UnboundedWorkQueue>(Env::Default(),
-                                                       "collective_ops")) {}
+      work_queue_(std::make_shared<UnboundedWorkQueue>(
+          Env::Default(), "collective_ops",
+          // Use a 8MB stack size for collective operations. The default stack
+          // size is 64KB in thread_manager.cc is not enough for NCCL
+          // operations, b/446237508.
+          ThreadOptions{.stack_size = 8 * 1024 * 1024})) {}
 
 CollectiveExecutorMgr::~CollectiveExecutorMgr() {
   for (auto iter : executor_table_) {

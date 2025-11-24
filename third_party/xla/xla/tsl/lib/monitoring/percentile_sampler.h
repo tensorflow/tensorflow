@@ -121,7 +121,7 @@ class PercentileSamplerCell {
   struct Sample {
     bool operator<(const Sample& rhs) const { return value < rhs.value; }
 
-    uint64 nstime = 0;
+    uint64_t nstime = 0;
     double value = NAN;
   };
 
@@ -195,7 +195,7 @@ class PercentileSampler {
         registration_handle_(CollectionRegistry::Default()->Register(
             &metric_def_, [&](MetricCollectorGetter getter) {
               auto metric_collector = getter.Get(&metric_def_);
-              absl::MutexLock l(&mu_);
+              absl::MutexLock l(mu_);
               for (const auto& cell : cells_) {
                 metric_collector.CollectValue(cell.first, cell.second.value());
               }
@@ -227,7 +227,7 @@ class PercentileSampler {
 
   absl::Status status_;
 
-  using LabelArray = std::array<string, NumLabels>;
+  using LabelArray = std::array<std::string, NumLabels>;
   // we need a container here that guarantees pointer stability of the value,
   // namely, the pointer of the value should remain valid even after more cells
   // are inserted.
@@ -274,7 +274,7 @@ PercentileSamplerCell* PercentileSampler<NumLabels>::GetCell(
       "provided in GetCell(...).");
 
   const LabelArray& label_array = {{labels...}};
-  absl::MutexLock l(&mu_);
+  absl::MutexLock l(mu_);
   const auto found_it = cells_.find(label_array);
   if (found_it != cells_.end()) {
     return &(found_it->second);

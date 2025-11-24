@@ -1,4 +1,3 @@
-#include "tsl/platform/status.h"
 /* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -29,6 +28,7 @@ limitations under the License.
 #include "tsl/platform/casts.h"
 #include "tsl/platform/platform.h"
 #include "tsl/platform/protobuf.h"
+#include "tsl/platform/status.h"
 
 namespace xla {
 
@@ -144,19 +144,24 @@ class CompilationEnvironments {
 template <typename T>
 T& CompilationEnvironments::GetMutableEnv() {
   auto descriptor = T::descriptor();
+  // Attempt to find by pointer if it exists.
   auto it = environments_.find(descriptor);
+
+  if (it == environments_.end()) {
+    // Attempt to find by name if direct pointer lookup failed. This can happen
+    // with dynamically-linked libraries if descriptor pointers differ.
+    it = absl::c_find_if(environments_, [&](const auto& entry) {
+      return entry.first->full_name() == descriptor->full_name();
+    });
+  }
+
   if (it == environments_.end()) {
     TF_CHECK_OK(AddEnvImpl(*descriptor, nullptr));
     DefaultEnvCreatedByCompilationEnvironments(descriptor->full_name());
     it = environments_.find(descriptor);
   }
 
-  // TODO(b/302086111): Remove after XLA has an updated protobuf version.
-#if TSL_IS_IN_OSS
-  return tensorflow::down_cast<T&>(*it->second);
-#else
   return tsl::protobuf::DownCastToGenerated<T>(*it->second);
-#endif
 }
 
 template <typename T>

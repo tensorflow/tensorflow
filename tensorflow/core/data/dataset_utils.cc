@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/strings/ascii.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
@@ -493,7 +494,7 @@ bool MatchesAnyVersion(absl::string_view op_prefix,
     return true;
   }
   size_t index = op_to_match.length() - 1;
-  while (isdigit(op_to_match[index])) {
+  while (absl::ascii_isdigit(op_to_match[index])) {
     index--;
   }
   return (op_to_match[index] == 'V') && (op_prefix.length() == index);
@@ -569,7 +570,7 @@ absl::flat_hash_set<string> GetExperiments(
   }
   // Stochastically include live experiments unless they are opted out.
   for (const auto& [experiment_name, experiment_selector] : live_experiments) {
-    uint64_t name_hash = hash_func(strings::StrCat(job_name, experiment_name));
+    uint64_t name_hash = hash_func(absl::StrCat(job_name, experiment_name));
     std::mt19937_64 rng{name_hash};
     std::bernoulli_distribution d{0.5};
     bool evens = d(rng);
@@ -669,15 +670,14 @@ absl::Status ReadBatch(IteratorContext* ctx, IteratorStateReader* reader,
                        const string& batch_prefix, std::vector<Tensor>* batch) {
   int64_t output_size;
   TF_RETURN_IF_ERROR(reader->ReadScalar(
-      FullName(iterator_prefix,
-               strings::StrCat(batch_prefix, "_", kOutputSize)),
+      FullName(iterator_prefix, absl::StrCat(batch_prefix, "_", kOutputSize)),
       &output_size));
   batch->reserve(output_size);
   for (int i = 0; i < output_size; i++) {
     Tensor t;
     TF_RETURN_IF_ERROR(
         reader->ReadTensor(ctx->flr(), FullName(iterator_prefix, batch_prefix),
-                           strings::StrCat(kOutput, "_", i), &t));
+                           absl::StrCat(kOutput, "_", i), &t));
     // If the batch was not full, we may have stored only the relevant slice.
     // Since tensors in `BatchResult.output` are expected to have the leading
     // dimension of size batch_size, we build a larger tensor and copy the slice
@@ -702,22 +702,20 @@ absl::Status WriteBatch(int64_t batch_size, int64_t num_elements,
                         const string& batch_prefix, IteratorStateWriter* writer,
                         std::vector<Tensor>* batch) {
   TF_RETURN_IF_ERROR(writer->WriteScalar(
-      FullName(iterator_prefix,
-               strings::StrCat(batch_prefix, "_", kOutputSize)),
+      FullName(iterator_prefix, absl::StrCat(batch_prefix, "_", kOutputSize)),
       batch->size()));
   for (int i = 0; i < batch->size(); i++) {
     // If the batch is not full, we only store the first `num_elements` values.
     // The rest of the batch tensor is *uninitialized* and accessing that will
     // raise msan errors.
     if (num_elements < batch_size) {
-      TF_RETURN_IF_ERROR(
-          writer->WriteTensor(FullName(iterator_prefix, batch_prefix),
-                              strings::StrCat(kOutput, "_", i),
-                              (*batch)[i].Slice(0, num_elements)));
+      TF_RETURN_IF_ERROR(writer->WriteTensor(
+          FullName(iterator_prefix, batch_prefix),
+          absl::StrCat(kOutput, "_", i), (*batch)[i].Slice(0, num_elements)));
     } else {
       TF_RETURN_IF_ERROR(
           writer->WriteTensor(FullName(iterator_prefix, batch_prefix),
-                              strings::StrCat(kOutput, "_", i), (*batch)[i]));
+                              absl::StrCat(kOutput, "_", i), (*batch)[i]));
     }
   }
   return absl::OkStatus();
@@ -727,14 +725,13 @@ absl::Status ReadStatus(const string& iterator_prefix, const string& prefix,
                         IteratorStateReader* reader, absl::Status* status) {
   int64_t code_int;
   TF_RETURN_IF_ERROR(reader->ReadScalar(
-      FullName(iterator_prefix, strings::StrCat(prefix, "_", kCode)),
-      &code_int));
+      FullName(iterator_prefix, absl::StrCat(prefix, "_", kCode)), &code_int));
   absl::StatusCode code = static_cast<absl::StatusCode>(code_int);
 
   if (code != absl::StatusCode::kOk) {
     tstring error_message;
     TF_RETURN_IF_ERROR(reader->ReadScalar(
-        FullName(iterator_prefix, strings::StrCat(prefix, "_", kMessage)),
+        FullName(iterator_prefix, absl::StrCat(prefix, "_", kMessage)),
         &error_message));
     *status = absl::Status(code, error_message);
   } else {
@@ -747,11 +744,11 @@ absl::Status WriteStatus(const string& iterator_prefix, const string& prefix,
                          const absl::Status& status,
                          IteratorStateWriter* writer) {
   TF_RETURN_IF_ERROR(writer->WriteScalar(
-      FullName(iterator_prefix, strings::StrCat(prefix, "_", kCode)),
+      FullName(iterator_prefix, absl::StrCat(prefix, "_", kCode)),
       static_cast<int64_t>(status.code())));
   if (!status.ok()) {
     TF_RETURN_IF_ERROR(writer->WriteScalar(
-        FullName(iterator_prefix, strings::StrCat(prefix, "_", kMessage)),
+        FullName(iterator_prefix, absl::StrCat(prefix, "_", kMessage)),
         std::string(status.message())));
   }
   return absl::OkStatus();

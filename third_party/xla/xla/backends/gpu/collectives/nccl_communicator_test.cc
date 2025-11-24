@@ -23,17 +23,16 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
 #include "xla/backends/gpu/collectives/nccl_errors.h"
-#include "xla/core/collectives/communicator.h"
 #include "xla/core/collectives/rank_id.h"
+#include "xla/future.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/stream_executor/device_memory.h"
-#include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/status_matchers.h"
 
 #if TENSORFLOW_USE_ROCM
 #include "rocm/rocm_config.h"
@@ -50,21 +49,18 @@ namespace xla::gpu {
 namespace {
 
 using ::testing::HasSubstr;
-using ::tsl::testing::IsOk;
-using ::tsl::testing::StatusIs;
 
 constexpr absl::string_view kCudaError = "unhandled cuda error";
 
 void AssertAborted(absl::Status s) {
-  ASSERT_THAT(
-      s, StatusIs(absl::StatusCode::kFailedPrecondition, HasSubstr("aborted")));
+  ASSERT_THAT(s, absl_testing::StatusIs(absl::StatusCode::kFailedPrecondition,
+                                        HasSubstr("aborted")));
 };
 
-void AssertEventAborted(tsl::AsyncValueRef<Communicator::Event> event) {
-  tsl::BlockUntilReady(event);
-  ASSERT_TRUE(event.IsError());
-  ASSERT_THAT(event.GetError(), StatusIs(absl::StatusCode::kFailedPrecondition,
-                                         HasSubstr("aborted")));
+void AssertEventAborted(Future<> future) {
+  ASSERT_THAT(future.Await(),
+              absl_testing::StatusIs(absl::StatusCode::kFailedPrecondition,
+                                     HasSubstr("aborted")));
 };
 
 // Creates a non-blocking NCCL communicator.
@@ -111,8 +107,8 @@ TEST(NcclCommunicator, AbortSucceeds) {
     if (comm.status().message() == kCudaError) {
       GTEST_SKIP() << "unhandled cuda error";
     }
-    ASSERT_THAT(comm, IsOk());
-    ASSERT_THAT((*comm)->Abort(), IsOk());
+    ASSERT_THAT(comm, absl_testing::IsOk());
+    ASSERT_THAT((*comm)->Abort(), absl_testing::IsOk());
   }
 }
 
@@ -123,11 +119,11 @@ TEST(NcclCommunicator, DoubleAbortFails) {
     if (comm.status().message() == kCudaError) {
       GTEST_SKIP() << "unhandled cuda error";
     }
-    ASSERT_THAT(comm.status(), IsOk());
-    ASSERT_THAT((*comm)->Abort(), IsOk());
-    ASSERT_THAT(
-        (*comm)->Abort(),
-        StatusIs(absl::StatusCode::kFailedPrecondition, HasSubstr("aborted")));
+    ASSERT_THAT(comm.status(), absl_testing::IsOk());
+    ASSERT_THAT((*comm)->Abort(), absl_testing::IsOk());
+    ASSERT_THAT((*comm)->Abort(),
+                absl_testing::StatusIs(absl::StatusCode::kFailedPrecondition,
+                                       HasSubstr("aborted")));
   }
 }
 
@@ -147,11 +143,11 @@ TEST(NcclCommunicator, OperationsFailAfterAbort) {
     if (comm.status().message() == kCudaError) {
       GTEST_SKIP() << "unhandled cuda error";
     }
-    ASSERT_THAT(comm.status(), IsOk());
-    ASSERT_THAT((*comm)->Abort(), IsOk());
+    ASSERT_THAT(comm.status(), absl_testing::IsOk());
+    ASSERT_THAT((*comm)->Abort(), absl_testing::IsOk());
     AssertAborted((*comm)->HealthCheck());
     AssertAborted((*comm)->NumRanks().status());
-    AssertAborted((*comm)->RegisterBuffer(buf).status());
+    AssertAborted((*comm)->RegisterBufferOnce(buf, 0, false));
     AssertEventAborted(
         (*comm)->AllReduce(buf, buf, dtype, count, rk, executor));
     AssertEventAborted(

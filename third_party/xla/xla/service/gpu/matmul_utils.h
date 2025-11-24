@@ -61,7 +61,14 @@ bool IsDotSupportedByClassicalEmitters(const HloInstruction& dot);
 
 // Returns the accumulator type for the given dot instruction (either extracted
 // from the dot algorithm or inferred from the output type).
-PrimitiveType GetGemmAccumulatorType(HloDotInstruction* dot);
+PrimitiveType GetGemmAccumulatorType(const HloDotInstruction* dot);
+
+// Makes algorithm specific set of instructions which would multiply lhs and rhs
+// like the dot with the given precision algorithm would. Useful e.g. rewriting
+// dot as multiply+reduce.
+absl::StatusOr<HloInstruction*> MakeMultiplyForDotPrecisionAlgorithm(
+    HloInstruction* lhs, HloInstruction* rhs,
+    const PrecisionConfig::Algorithm& algorithm);
 
 // extending plain MatrixLayout struct with creator functions
 struct MatrixLayout : public se::gpu::MatrixLayout {
@@ -171,14 +178,18 @@ absl::StatusOr<se::gpu::BlasLt::Epilogue> AsBlasLtEpilogue(
 struct TritonGemmConfig {
   constexpr TritonGemmConfig() = default;
   constexpr TritonGemmConfig(int block_m, int block_n, int block_k, int split_k,
-                             int num_stages, int num_warps, int num_ctas = 1)
+                             int num_stages, int num_warps, int num_ctas = 1,
+                             bool is_tma_allowed = false,
+                             bool is_warp_specialization_allowed = false)
       : block_m(block_m),
         block_n(block_n),
         block_k(block_k),
         split_k(split_k),
         num_stages(num_stages),
         num_warps(num_warps),
-        num_ctas(num_ctas) {}
+        num_ctas(num_ctas),
+        is_tma_allowed(is_tma_allowed),
+        is_warp_specialization_allowed(is_warp_specialization_allowed) {}
   int block_m = 0;
   int block_n = 0;
   int block_k = 0;
@@ -187,18 +198,23 @@ struct TritonGemmConfig {
   int num_warps = 0;
   // Number of blocks in a block cluster.
   int num_ctas = 0;
+  // Allow/disallow TMA usage for all arguments of the kernel (where possible).
+  bool is_tma_allowed = false;
+  // Allow/disallow automatic warp specialization.
+  bool is_warp_specialization_allowed = false;
 
   // When adding new members, please update all methods, such as ToTuple,
   // FromProto, ToProto, ToString, etc. Updating ToTuple is not enough.
   // Please also add new members to AutotuneResult::TritonGemmKey in
-  // autotuning.proto. Also kVersion has to be incremented in autotuner_util.cc
-  // and all the autotuning results stored in tests, repos, etc. will have to
-  // be updated.
+  // autotuning.proto. When the change is not backward compatible, kVersion has
+  // to be incremented in autotuner_util.cc and all the autotuning results
+  // stored in tests, repos, etc. will have to be updated.
 
  private:
   auto ToTuple() const {
     return std::make_tuple(block_m, block_n, block_k, split_k, num_stages,
-                           num_warps, num_ctas);
+                           num_warps, num_ctas, is_tma_allowed,
+                           is_warp_specialization_allowed);
   }
 
  public:

@@ -21,6 +21,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "tensorflow/lite/core/c/c_api_types.h"
 #include "tensorflow/lite/delegates/flex/delegate.h"
 #include "tensorflow/lite/delegates/flex/delegate_data.h"
 #include "tensorflow/lite/delegates/flex/test_util.h"
@@ -57,13 +58,13 @@ class KernelTest : public testing::FlexModelTest {
     interpreter_ = std::make_unique<Interpreter>(&error_reporter_);
   }
 
-  void ApplyFlexDelegate(std::unique_ptr<FlexDelegate> delegate = nullptr) {
+  TfLiteStatus ApplyFlexDelegate(
+      std::unique_ptr<FlexDelegate> delegate = nullptr) {
     auto flex_delegate = FlexDelegate::Create(std::move(delegate));
     delegate_data_ =
         reinterpret_cast<FlexDelegate*>(flex_delegate->data_)->mutable_data();
     CHECK_OK(delegate_data_->Prepare(tensorflow::SessionOptions{}));
-    CHECK(interpreter_->ModifyGraphWithDelegate(std::move(flex_delegate)) ==
-          kTfLiteOk);
+    return interpreter_->ModifyGraphWithDelegate(std::move(flex_delegate));
   }
 
   const std::map<int, int>& GetTensorReleaseMap(DelegateKernel* kernel) {
@@ -200,9 +201,10 @@ TEST_F(KernelTest, BadTensorFlowOp) {
   AddTensors(2, {0}, {1}, kTfLiteFloat32, {3});
   AddTfOp(testing::kNonExistent, {0}, {1});
 
-  ApplyFlexDelegate(std::unique_ptr<FlexDelegate>(new TestFlexDelegate()));
+  ASSERT_NE(
+      ApplyFlexDelegate(std::unique_ptr<FlexDelegate>(new TestFlexDelegate())),
+      kTfLiteOk);
 
-  ASSERT_NE(interpreter_->AllocateTensors(), kTfLiteOk);
   ASSERT_THAT(error_reporter().error_messages(),
               ContainsRegex("Op type not registered 'NonExistentOp'"));
 }
@@ -227,9 +229,8 @@ TEST_F(KernelTest, IncompatibleNodeDef) {
   // Cast is a TF op, but we don't add the proper nodedef to it in AddTfOp.
   AddTfOp(testing::kIncompatibleNodeDef, {0}, {1});
 
-  ApplyFlexDelegate();
+  ASSERT_NE(ApplyFlexDelegate(), kTfLiteOk);
 
-  ASSERT_NE(interpreter_->AllocateTensors(), kTfLiteOk);
   ASSERT_THAT(error_reporter().error_messages(),
               ContainsRegex("No attr named 'SrcT' in NodeDef"));
 }
@@ -242,9 +243,10 @@ TEST_F(KernelTest, WrongSetOfNodes) {
   // Specify that testing::kMul (#1) is supported when it actually isn't so that
   // we choose to use the TestFlexDelegate that supports every node regardless
   // whether it's actually supported or not.
-  ApplyFlexDelegate(std::unique_ptr<FlexDelegate>(new TestFlexDelegate()));
+  ASSERT_NE(
+      ApplyFlexDelegate(std::unique_ptr<FlexDelegate>(new TestFlexDelegate())),
+      kTfLiteOk);
 
-  ASSERT_NE(interpreter_->AllocateTensors(), kTfLiteOk);
   ASSERT_THAT(error_reporter().error_messages(),
               ContainsRegex("Cannot convert empty data into a valid NodeDef"));
 }
@@ -458,10 +460,10 @@ tensorflow::OpDef MakeOpDef(int num_inputs, int num_outputs) {
   tensorflow::OpRegistrationData op_reg_data;
   tensorflow::OpDefBuilder b("dummy");
   for (int i = 0; i < num_inputs; ++i) {
-    b.Input(tensorflow::strings::StrCat("i", i, ": float"));
+    b.Input(absl::StrCat("i", i, ": float"));
   }
   for (int i = 0; i < num_outputs; ++i) {
-    b.Output(tensorflow::strings::StrCat("o", i, ": float"));
+    b.Output(absl::StrCat("o", i, ": float"));
   }
   CHECK_OK(b.Attr("foo:string").Finalize(&op_reg_data));
   return op_reg_data.op_def;

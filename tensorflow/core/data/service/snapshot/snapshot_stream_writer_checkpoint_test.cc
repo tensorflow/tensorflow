@@ -19,6 +19,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/time/time.h"
 #include "xla/tsl/lib/core/status_test_util.h"
@@ -95,9 +96,10 @@ TEST_P(SnapshotStreamWriterParameterizedTest, SaveAndRestoreFromCheckpoint) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<StandaloneTaskIterator> iterator,
                           testing::TestIterator(dataset));
   SnapshotStreamWriter snapshot_writer(writer_params, std::move(iterator));
-  EXPECT_THAT(snapshot_writer.Wait(), IsOkAndHolds(true));
-  EXPECT_THAT(testing::ReadSnapshot<int64_t>(snapshot_path, compression),
-              IsOkAndHolds(UnorderedElementsAre(4, 5, 6, 7, 8, 9)));
+  EXPECT_THAT(snapshot_writer.Wait(), absl_testing::IsOkAndHolds(true));
+  EXPECT_THAT(
+      testing::ReadSnapshot<int64_t>(snapshot_path, compression),
+      absl_testing::IsOkAndHolds(UnorderedElementsAre(4, 5, 6, 7, 8, 9)));
 }
 
 TEST_P(SnapshotStreamWriterParameterizedTest,
@@ -124,12 +126,12 @@ TEST_P(SnapshotStreamWriterParameterizedTest,
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<StandaloneTaskIterator> iterator,
                           testing::TestIterator(dataset));
   SnapshotStreamWriter snapshot_writer(writer_params, std::move(iterator));
-  EXPECT_THAT(snapshot_writer.Wait(), IsOkAndHolds(true));
+  EXPECT_THAT(snapshot_writer.Wait(), absl_testing::IsOkAndHolds(true));
 
   // Since the end-of-sequence iterator is checkpointed, no more elements are
   // written here.
   EXPECT_THAT(testing::ReadSnapshot<int64_t>(snapshot_path, compression),
-              IsOkAndHolds(UnorderedElementsAre(9)));
+              absl_testing::IsOkAndHolds(UnorderedElementsAre(9)));
 }
 
 TEST_P(SnapshotStreamWriterParameterizedTest, VaryingCheckpointInterval) {
@@ -161,9 +163,10 @@ TEST_P(SnapshotStreamWriterParameterizedTest, VaryingCheckpointInterval) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<StandaloneTaskIterator> iterator,
                           testing::TestIterator(dataset));
   SnapshotStreamWriter snapshot_writer(writer_params, std::move(iterator));
-  EXPECT_THAT(snapshot_writer.Wait(), IsOkAndHolds(true));
+  EXPECT_THAT(snapshot_writer.Wait(), absl_testing::IsOkAndHolds(true));
   EXPECT_THAT(testing::ReadSnapshot<int64_t>(snapshot_path, compression),
-              IsOkAndHolds(UnorderedElementsAre(0, 1, 2, 3, 4, 5, 6, 7, 8, 9)));
+              absl_testing::IsOkAndHolds(
+                  UnorderedElementsAre(0, 1, 2, 3, 4, 5, 6, 7, 8, 9)));
 }
 
 INSTANTIATE_TEST_SUITE_P(Compression, SnapshotStreamWriterParameterizedTest,
@@ -187,11 +190,12 @@ TEST(SnapshotStreamWriterCheckpointTest, SingleCheckpoint) {
                                      /*checkpoint_interval=*/absl::Hours(1),
                                      /*test_only_keep_temp_files=*/true};
   SnapshotStreamWriter snapshot_writer(writer_params, std::move(iterator));
-  EXPECT_THAT(snapshot_writer.Wait(), IsOkAndHolds(true));
+  EXPECT_THAT(snapshot_writer.Wait(), absl_testing::IsOkAndHolds(true));
   EXPECT_THAT(testing::ReadSnapshot<int64_t>(snapshot_path, compression),
-              IsOkAndHolds(UnorderedElementsAre(0, 1, 2, 3, 4, 5, 6, 7, 8, 9)));
+              absl_testing::IsOkAndHolds(
+                  UnorderedElementsAre(0, 1, 2, 3, 4, 5, 6, 7, 8, 9)));
   EXPECT_THAT(NumCheckpoints(snapshot_path, /*stream_index=*/0),
-              IsOkAndHolds(1));
+              absl_testing::IsOkAndHolds(1));
 }
 
 TEST(SnapshotStreamWriterCheckpointTest, MultipleCheckpoints) {
@@ -210,13 +214,13 @@ TEST(SnapshotStreamWriterCheckpointTest, MultipleCheckpoints) {
       /*checkpoint_interval=*/absl::Microseconds(1),
       /*test_only_keep_temp_files=*/true};
   SnapshotStreamWriter snapshot_writer(writer_params, std::move(iterator));
-  EXPECT_THAT(snapshot_writer.Wait(), IsOkAndHolds(true));
+  EXPECT_THAT(snapshot_writer.Wait(), absl_testing::IsOkAndHolds(true));
   EXPECT_THAT(testing::ReadSnapshot<int64_t>(snapshot_path, compression),
-              IsOkAndHolds(UnorderedElementsAre(0, 1, 2, 3, 4)));
+              absl_testing::IsOkAndHolds(UnorderedElementsAre(0, 1, 2, 3, 4)));
 
   // Wrote one checkpoint for each element, and one for end_of_sequence.
   EXPECT_THAT(NumCheckpoints(snapshot_path, /*stream_index=*/0),
-              IsOkAndHolds(range + 1));
+              absl_testing::IsOkAndHolds(range + 1));
 }
 
 TEST(SnapshotStreamWriterCheckpointTest, CleanupCheckpoint) {
@@ -235,14 +239,14 @@ TEST(SnapshotStreamWriterCheckpointTest, CleanupCheckpoint) {
       /*checkpoint_interval=*/absl::Microseconds(1),
       /*test_only_keep_temp_files=*/false};
   SnapshotStreamWriter snapshot_writer(writer_params, std::move(iterator));
-  EXPECT_THAT(snapshot_writer.Wait(), IsOkAndHolds(true));
+  EXPECT_THAT(snapshot_writer.Wait(), absl_testing::IsOkAndHolds(true));
   EXPECT_THAT(testing::ReadSnapshot<int64_t>(snapshot_path, compression),
-              IsOkAndHolds(UnorderedElementsAre(0, 1, 2, 3, 4)));
+              absl_testing::IsOkAndHolds(UnorderedElementsAre(0, 1, 2, 3, 4)));
 
   // If test_only_keep_temp_files is false (default), the checkpoints should be
   // removed once the snapshot is complete.
   EXPECT_THAT(NumCheckpoints(snapshot_path, /*stream_index=*/0),
-              IsOkAndHolds(0));
+              absl_testing::IsOkAndHolds(0));
 }
 
 TEST(SnapshotStreamWriterCheckpointTest, SyncCheckpointsWithChunksByRenaming) {
@@ -267,9 +271,10 @@ TEST(SnapshotStreamWriterCheckpointTest, SyncCheckpointsWithChunksByRenaming) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<StandaloneTaskIterator> iterator,
                           testing::TestIterator(dataset));
   SnapshotStreamWriter writer(writer_params, std::move(iterator));
-  EXPECT_THAT(writer.Wait(), IsOkAndHolds(true));
+  EXPECT_THAT(writer.Wait(), absl_testing::IsOkAndHolds(true));
   EXPECT_THAT(testing::ReadSnapshot<int64_t>(snapshot_path, compression),
-              IsOkAndHolds(UnorderedElementsAre(0, 1, 2, 3, 4, 5, 6, 7, 8, 9)));
+              absl_testing::IsOkAndHolds(
+                  UnorderedElementsAre(0, 1, 2, 3, 4, 5, 6, 7, 8, 9)));
 }
 
 TEST(SnapshotStreamWriterCheckpointTest,
@@ -293,9 +298,10 @@ TEST(SnapshotStreamWriterCheckpointTest,
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<StandaloneTaskIterator> iterator,
                           testing::TestIterator(dataset));
   SnapshotStreamWriter writer(writer_params, std::move(iterator));
-  EXPECT_THAT(writer.Wait(), IsOkAndHolds(true));
+  EXPECT_THAT(writer.Wait(), absl_testing::IsOkAndHolds(true));
   EXPECT_THAT(testing::ReadSnapshot<int64_t>(snapshot_path, compression),
-              IsOkAndHolds(UnorderedElementsAre(0, 1, 2, 3, 4, 5, 6, 7, 8, 9)));
+              absl_testing::IsOkAndHolds(
+                  UnorderedElementsAre(0, 1, 2, 3, 4, 5, 6, 7, 8, 9)));
 }
 
 TEST(SnapshotStreamWriterCheckpointTest, SyncCheckpointsWithChunksByDeleting) {
@@ -323,9 +329,10 @@ TEST(SnapshotStreamWriterCheckpointTest, SyncCheckpointsWithChunksByDeleting) {
   SnapshotWriterParams writer_params{snapshot_path, stream_index, compression,
                                      Env::Default()};
   SnapshotStreamWriter writer(writer_params, std::move(iterator));
-  EXPECT_THAT(writer.Wait(), IsOkAndHolds(true));
-  EXPECT_THAT(testing::ReadSnapshot<int64_t>(snapshot_path, compression),
-              IsOkAndHolds(UnorderedElementsAre(4, 5, 6, 7, 8, 9)));
+  EXPECT_THAT(writer.Wait(), absl_testing::IsOkAndHolds(true));
+  EXPECT_THAT(
+      testing::ReadSnapshot<int64_t>(snapshot_path, compression),
+      absl_testing::IsOkAndHolds(UnorderedElementsAre(4, 5, 6, 7, 8, 9)));
 }
 
 TEST(SnapshotStreamWriterCheckpointTest, SyncCheckpointsWithChunks) {
@@ -354,9 +361,10 @@ TEST(SnapshotStreamWriterCheckpointTest, SyncCheckpointsWithChunks) {
   SnapshotWriterParams writer_params{snapshot_path, stream_index, compression,
                                      Env::Default()};
   SnapshotStreamWriter writer(writer_params, std::move(iterator));
-  EXPECT_THAT(writer.Wait(), IsOkAndHolds(true));
+  EXPECT_THAT(writer.Wait(), absl_testing::IsOkAndHolds(true));
   EXPECT_THAT(testing::ReadSnapshot<int64_t>(snapshot_path, compression),
-              IsOkAndHolds(UnorderedElementsAre(0, 1, 2, 3, 4, 5, 6, 7, 8, 9)));
+              absl_testing::IsOkAndHolds(
+                  UnorderedElementsAre(0, 1, 2, 3, 4, 5, 6, 7, 8, 9)));
 }
 
 TEST(SnapshotStreamWriterCheckpointTest, LostChunks) {
@@ -381,9 +389,9 @@ TEST(SnapshotStreamWriterCheckpointTest, LostChunks) {
   SnapshotWriterParams writer_params{snapshot_path, stream_index, compression,
                                      Env::Default()};
   SnapshotStreamWriter writer(writer_params, std::move(iterator));
-  EXPECT_THAT(writer.Wait(),
-              StatusIs(absl::StatusCode::kInternal,
-                       HasSubstr("Unable to find chunks [2, 5).")));
+  EXPECT_THAT(writer.Wait(), absl_testing::StatusIs(
+                                 absl::StatusCode::kInternal,
+                                 HasSubstr("Unable to find chunks [2, 5).")));
 }
 
 }  // namespace

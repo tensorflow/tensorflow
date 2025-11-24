@@ -15,38 +15,46 @@ limitations under the License.
 
 #include "xla/ffi/execution_state.h"
 
-#include <utility>
-
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "xla/ffi/type_id_registry.h"
+#include "xla/ffi/type_registry.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
-#include "tsl/platform/logging.h"
 
 namespace xla::ffi {
 
 ExecutionState::ExecutionState()
-    : type_id_(TypeIdRegistry::kUnknownTypeId),
-      state_(nullptr),
-      deleter_(nullptr) {}
+    : type_id_(TypeRegistry::kUnknownTypeId), state_(nullptr) {}
 
 ExecutionState::~ExecutionState() {
-  if (deleter_) deleter_(state_);
+  if (type_info_.deleter) {
+    type_info_.deleter(state_);
+  }
 }
 
-absl::Status ExecutionState::Set(TypeId type_id, void* state,
-                                 Deleter<void> deleter) {
-  DCHECK(state && deleter) << "State and deleter must not be null";
+absl::Status ExecutionState::Set(TypeId type_id, void* state) {
+  TF_ASSIGN_OR_RETURN(auto type_info, TypeRegistry::GetTypeInfo(type_id));
+  if (type_info.deleter == nullptr) {
+    return InvalidArgument(
+        "Type id %d does not have a registered type info with a deleter",
+        type_id.value());
+  }
+  return Set(type_id, type_info, state);
+}
 
-  if (type_id_ != TypeIdRegistry::kUnknownTypeId) {
+absl::Status ExecutionState::Set(TypeId type_id, TypeInfo type_info,
+                                 void* state) {
+  DCHECK(state && type_info.deleter) << "State and deleter must not be null";
+
+  if (type_id_ != TypeRegistry::kUnknownTypeId) {
     return FailedPrecondition("State is already set with a type id %d",
                               type_id_.value());
   }
 
   type_id_ = type_id;
+  type_info_ = type_info;
   state_ = state;
-  deleter_ = std::move(deleter);
 
   return absl::OkStatus();
 }
@@ -54,7 +62,7 @@ absl::Status ExecutionState::Set(TypeId type_id, void* state,
 // Returns opaque state of the given type id. If set state type id does not
 // match the requested one, returns an error.
 absl::StatusOr<void*> ExecutionState::Get(TypeId type_id) const {
-  if (type_id_ == TypeIdRegistry::kUnknownTypeId) {
+  if (type_id_ == TypeRegistry::kUnknownTypeId) {
     return NotFound("State is not set");
   }
 
@@ -68,7 +76,7 @@ absl::StatusOr<void*> ExecutionState::Get(TypeId type_id) const {
 }
 
 bool ExecutionState::IsSet() const {
-  return type_id_ != TypeIdRegistry::kUnknownTypeId;
+  return type_id_ != TypeRegistry::kUnknownTypeId;
 }
 
 }  // namespace xla::ffi

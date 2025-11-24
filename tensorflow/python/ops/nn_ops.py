@@ -1737,10 +1737,10 @@ def pool_v2(
       with "NC".  Pooling happens over the spatial dimensions only.
     window_shape: Sequence of N ints >= 1.
     pooling_type: Specifies pooling operation, must be "AVG" or "MAX".
-    strides: Optional. Sequence of N ints >= 1.  Defaults to `[1]*N`. If any value of
-      strides is > 1, then all values of dilation_rate must be 1.
-    padding: The padding algorithm, must be "SAME" or "VALID". Defaults to "SAME".
-      See
+    strides: Optional. Sequence of N ints >= 1.  Defaults to `[1]*N`. If any
+      value of strides is > 1, then all values of dilation_rate must be 1.
+    padding: The padding algorithm, must be "SAME" or "VALID". Defaults to
+      "SAME". See
       [here](https://www.tensorflow.org/api_docs/python/tf/nn#notes_on_padding_2)
       for more information.
     data_format: A string or None.  Specifies whether the channel dimension of
@@ -1751,7 +1751,7 @@ def pool_v2(
       N=3, the valid values are "NDHWC" (default) and "NCDHW".
     dilations: Optional.  Dilation rate.  List of N ints >= 1. Defaults to
       `[1]*N`.  If any value of dilation_rate is > 1, then all values of strides
-      must be 1.
+      must be 1, and padding should not be set to "SAME".
     name: Optional. Name of the op.
 
   Returns:
@@ -3797,7 +3797,7 @@ def _wrap_2d_function(inputs, compute_op, dim=-1, name=None):
     inputs: A non-empty `Tensor`. Must be one of the following types: `half`,
       `float32`, `float64`.
     compute_op: The function to wrap. Must accept the input tensor as its first
-      arugment, and a second keyword argument `name`.
+      argument, and a second keyword argument `name`.
     dim: The dimension softmax would be performed on. The default is -1 which
       indicates the last dimension.
     name: A name for the operation (optional).

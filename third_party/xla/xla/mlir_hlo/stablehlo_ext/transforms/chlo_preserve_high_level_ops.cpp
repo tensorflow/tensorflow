@@ -66,8 +66,8 @@ mlir::func::FuncOp buildFuncOpWrappingOperation(mlir::Operation* op,
   // SymbolTable will resolve all name conflicts.
   Location loc = op->getLoc();
   auto funcName = (op->getName().getStringRef() + ".impl").str();
-  mlir::func::FuncOp func = builder.create<mlir::func::FuncOp>(
-      loc, funcName,
+  mlir::func::FuncOp func = mlir::func::FuncOp::create(
+      builder, loc, funcName,
       builder.getFunctionType(op->getOperandTypes(), op->getResultTypes()));
   func.setPrivate();
   symbolTable.insert(func);
@@ -76,7 +76,7 @@ mlir::func::FuncOp buildFuncOpWrappingOperation(mlir::Operation* op,
   builder.setInsertionPointToStart(body);
   Operation* clonedOp = builder.clone(*op);
   clonedOp->setOperands(body->getArguments());
-  builder.create<mlir::func::ReturnOp>(loc, clonedOp->getResults());
+  mlir::func::ReturnOp::create(builder, loc, clonedOp->getResults());
 
   LLVM_DEBUG(llvm::dbgs() << "Created function " << func.getName() << "\n");
   return func;
@@ -92,9 +92,10 @@ stablehlo::CompositeOp wrapOperationInComposite(OpBuilder& builder,
   auto compositeAttributes = builder.getDictionaryAttr(attrs);
   auto compositeVersion = version;
   auto compositeDecomposition = decomposition.getSymName();
-  auto composite = builder.create<stablehlo::CompositeOp>(
-      op->getLoc(), op->getResultTypes(), op->getOperands(), compositeName,
-      compositeAttributes, compositeDecomposition, compositeVersion);
+  auto composite = stablehlo::CompositeOp::create(
+      builder, op->getLoc(), op->getResultTypes(), op->getOperands(),
+      compositeName, compositeAttributes, compositeDecomposition,
+      compositeVersion);
   return composite;
 }
 
@@ -229,6 +230,69 @@ struct ErfOpToCustomCallPattern : public OpRewritePattern<chlo::ErfOp> {
   }
 };
 
+struct AcoshOpToCustomCallPattern : public OpRewritePattern<chlo::AcoshOp> {
+  using OpRewritePattern::OpRewritePattern;
+  LogicalResult matchAndRewrite(chlo::AcoshOp op,
+                                PatternRewriter& rewriter) const override {
+    return wrapChloOperationInCustomCall(rewriter, op, "mhlo.acosh",
+                                         /*version=*/1);
+  }
+};
+
+struct AcosOpToCustomCallPattern : public OpRewritePattern<chlo::AcosOp> {
+  using OpRewritePattern::OpRewritePattern;
+  LogicalResult matchAndRewrite(chlo::AcosOp op,
+                                PatternRewriter& rewriter) const override {
+    return wrapChloOperationInCustomCall(rewriter, op, "mhlo.acos",
+                                         /*version=*/1);
+  }
+};
+
+struct AtanhOpToCustomCallPattern : public OpRewritePattern<chlo::AtanhOp> {
+  using OpRewritePattern::OpRewritePattern;
+  LogicalResult matchAndRewrite(chlo::AtanhOp op,
+                                PatternRewriter& rewriter) const override {
+    return wrapChloOperationInCustomCall(rewriter, op, "mhlo.atanh",
+                                         /*version=*/1);
+  }
+};
+
+struct CoshOpToCustomCallPattern : public OpRewritePattern<chlo::CoshOp> {
+  using OpRewritePattern::OpRewritePattern;
+  LogicalResult matchAndRewrite(chlo::CoshOp op,
+                                PatternRewriter& rewriter) const override {
+    return wrapChloOperationInCustomCall(rewriter, op, "mhlo.cosh",
+                                         /*version=*/1);
+  }
+};
+
+struct SinhOpToCustomCallPattern : public OpRewritePattern<chlo::SinhOp> {
+  using OpRewritePattern::OpRewritePattern;
+  LogicalResult matchAndRewrite(chlo::SinhOp op,
+                                PatternRewriter& rewriter) const override {
+    return wrapChloOperationInCustomCall(rewriter, op, "mhlo.sinh",
+                                         /*version=*/1);
+  }
+};
+
+struct AsinOpToCustomCallPattern : public OpRewritePattern<chlo::AsinOp> {
+  using OpRewritePattern::OpRewritePattern;
+  LogicalResult matchAndRewrite(chlo::AsinOp op,
+                                PatternRewriter& rewriter) const override {
+    return wrapChloOperationInCustomCall(rewriter, op, "mhlo.asin",
+                                         /*version=*/1);
+  }
+};
+
+struct AsinhOpToCustomCallPattern : public OpRewritePattern<chlo::AsinhOp> {
+  using OpRewritePattern::OpRewritePattern;
+  LogicalResult matchAndRewrite(chlo::AsinhOp op,
+                                PatternRewriter& rewriter) const override {
+    return wrapChloOperationInCustomCall(rewriter, op, "mhlo.asinh",
+                                         /*version=*/1);
+  }
+};
+
 ///////
 // CHLO to CompositeOp Patterns
 ///////
@@ -272,6 +336,62 @@ struct ErfOpToCompositePattern : public OpRewritePattern<chlo::ErfOp> {
   }
 };
 
+struct AcoshOpToCompositePattern : public OpRewritePattern<chlo::AcoshOp> {
+  using OpRewritePattern::OpRewritePattern;
+  LogicalResult matchAndRewrite(chlo::AcoshOp op,
+                                PatternRewriter& rewriter) const override {
+    return wrapChloOpInComposite(op, /*version=*/1, rewriter);
+  }
+};
+
+struct AcosOpToCompositePattern : public OpRewritePattern<chlo::AcosOp> {
+  using OpRewritePattern::OpRewritePattern;
+  LogicalResult matchAndRewrite(chlo::AcosOp op,
+                                PatternRewriter& rewriter) const override {
+    return wrapChloOpInComposite(op, /*version=*/1, rewriter);
+  }
+};
+
+struct AtanhOpToCompositePattern : public OpRewritePattern<chlo::AtanhOp> {
+  using OpRewritePattern::OpRewritePattern;
+  LogicalResult matchAndRewrite(chlo::AtanhOp op,
+                                PatternRewriter& rewriter) const override {
+    return wrapChloOpInComposite(op, /*version=*/1, rewriter);
+  }
+};
+
+struct CoshOpToCompositePattern : public OpRewritePattern<chlo::CoshOp> {
+  using OpRewritePattern::OpRewritePattern;
+  LogicalResult matchAndRewrite(chlo::CoshOp op,
+                                PatternRewriter& rewriter) const override {
+    return wrapChloOpInComposite(op, /*version=*/1, rewriter);
+  }
+};
+
+struct SinhOpToCompositePattern : public OpRewritePattern<chlo::SinhOp> {
+  using OpRewritePattern::OpRewritePattern;
+  LogicalResult matchAndRewrite(chlo::SinhOp op,
+                                PatternRewriter& rewriter) const override {
+    return wrapChloOpInComposite(op, /*version=*/1, rewriter);
+  }
+};
+
+struct AsinOpToCompositePattern : public OpRewritePattern<chlo::AsinOp> {
+  using OpRewritePattern::OpRewritePattern;
+  LogicalResult matchAndRewrite(chlo::AsinOp op,
+                                PatternRewriter& rewriter) const override {
+    return wrapChloOpInComposite(op, /*version=*/1, rewriter);
+  }
+};
+
+struct AsinhOpToCompositePattern : public OpRewritePattern<chlo::AsinhOp> {
+  using OpRewritePattern::OpRewritePattern;
+  LogicalResult matchAndRewrite(chlo::AsinhOp op,
+                                PatternRewriter& rewriter) const override {
+    return wrapChloOpInComposite(op, /*version=*/1, rewriter);
+  }
+};
+
 }  // namespace
 
 struct ChloPreserveHighLevelOpsPass
@@ -289,17 +409,36 @@ struct ChloPreserveHighLevelOpsPass
         .setMaxNumRewrites(GreedyRewriteConfig::kNoLimit)
         .setStrictness(GreedyRewriteStrictness::ExistingOps);
 
+    auto* ctx = &getContext();
     RewritePatternSet patterns(&getContext());
+    // clang-format off
     if (useDeprecatedCustomCallEncoding) {
       // Deprecated CustomCall encoding.
-      patterns.add<RaggedDotOpToCustomCallPattern>(patterns.getContext());
-      patterns.add<TopKOpToCustomCallPattern>(&getContext());
-      patterns.add<ErfOpToCustomCallPattern>(&getContext());
+      patterns.add<
+        AcosOpToCustomCallPattern,
+        AsinOpToCustomCallPattern,
+        AsinhOpToCustomCallPattern,
+        AcoshOpToCustomCallPattern,
+        AtanhOpToCustomCallPattern,
+        CoshOpToCustomCallPattern,
+        SinhOpToCustomCallPattern,
+        ErfOpToCustomCallPattern,
+        RaggedDotOpToCustomCallPattern,
+        TopKOpToCustomCallPattern>(ctx);
     } else {
-      patterns.add<RaggedDotOpToCompositePattern>(patterns.getContext());
-      patterns.add<TopKOpToCompositePattern>(&getContext());
-      patterns.add<ErfOpToCompositePattern>(&getContext());
+      patterns.add<
+        AcosOpToCompositePattern,
+        AsinOpToCompositePattern,
+        AsinhOpToCompositePattern,
+        AcoshOpToCompositePattern,
+        AtanhOpToCompositePattern,
+        CoshOpToCompositePattern,
+        SinhOpToCompositePattern,
+        ErfOpToCompositePattern,
+        RaggedDotOpToCompositePattern,
+        TopKOpToCompositePattern>(ctx);
     }
+    // clang-format on
 
     // Only apply to CustomCallOps
     auto moduleOp = getOperation();

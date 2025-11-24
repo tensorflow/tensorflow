@@ -46,7 +46,7 @@ const char* const kXlaHostTransferSequencerAttr =
     "_xla_host_transfer_sequencer";
 
 absl::Status AddGraphDefToFunctionLibrary(
-    const GraphDefBuilder& graphdef_builder, const string& name_suffix,
+    const GraphDefBuilder& graphdef_builder, const std::string& name_suffix,
     FunctionDefLibrary* library) {
   GraphDef graphdef;
   TF_RETURN_IF_ERROR(graphdef_builder.ToGraphDef(&graphdef));
@@ -64,13 +64,14 @@ absl::Status AddGraphDefToFunctionLibrary(
 }
 
 template <class Tkey, class Tvalue>
-bool EqualProtoMap(const ::tensorflow::protobuf::Map<Tkey, Tvalue>& a,
-                   const ::tensorflow::protobuf::Map<Tkey, Tvalue>& b,
-                   const std::function<string(const Tkey&)>& key_to_string,
-                   const std::function<string(const Tvalue&)>& value_to_string,
-                   const std::function<bool(const Tkey&, const Tvalue&,
-                                            const Tvalue&)>& compare,
-                   const string& map_name, string* diff) {
+bool EqualProtoMap(
+    const ::tensorflow::protobuf::Map<Tkey, Tvalue>& a,
+    const ::tensorflow::protobuf::Map<Tkey, Tvalue>& b,
+    const std::function<std::string(const Tkey&)>& key_to_string,
+    const std::function<std::string(const Tvalue&)>& value_to_string,
+    const std::function<bool(const Tkey&, const Tvalue&, const Tvalue&)>&
+        compare,
+    const std::string& map_name, std::string* diff) {
   for (const auto& elt_a : a) {
     const auto iter = b.find(elt_a.first);
     if (iter == b.end()) {
@@ -106,7 +107,7 @@ bool EqualProtoMap(const ::tensorflow::protobuf::Map<Tkey, Tvalue>& a,
 }
 
 bool EqualFunctionNodeDef(const NodeDef& a, const NodeDef& b,
-                          const string& diff_preamble, string* diff) {
+                          const std::string& diff_preamble, std::string* diff) {
   if (a.op() != b.op()) {
     if (diff) {
       *diff = absl::StrCat(diff_preamble, " mismatch for node ", a.name(),
@@ -131,8 +132,8 @@ bool EqualFunctionNodeDef(const NodeDef& a, const NodeDef& b,
     }
     return false;
   }
-  std::unordered_set<string> control_input_a;
-  std::unordered_set<string> control_input_b;
+  std::unordered_set<std::string> control_input_a;
+  std::unordered_set<std::string> control_input_b;
   for (int i = 0; i < a.input_size(); ++i) {
     if (absl::StartsWith(a.input(i), "^")) {
       if (!absl::StartsWith(b.input(i), "^")) {
@@ -164,17 +165,17 @@ bool EqualFunctionNodeDef(const NodeDef& a, const NodeDef& b,
     }
     return false;
   }
-  return EqualProtoMap<string, AttrValue>(
-      a.attr(), b.attr(), [](const string& s) { return s; },
+  return EqualProtoMap<std::string, AttrValue>(
+      a.attr(), b.attr(), [](const std::string& s) { return s; },
       [](const AttrValue& v) { return v.DebugString(); },
-      [](const string& key, const AttrValue& av, const AttrValue& bv) {
+      [](const std::string& key, const AttrValue& av, const AttrValue& bv) {
         if (key == "ancestors") {
           // The ancestors are added from a set so the order is unpredictable;
           // just compare set equality not list equality.
-          std::unordered_set<string> a_set(av.list().s().begin(),
-                                           av.list().s().end());
-          std::unordered_set<string> b_set(bv.list().s().begin(),
-                                           bv.list().s().end());
+          std::unordered_set<std::string> a_set(av.list().s().begin(),
+                                                av.list().s().end());
+          std::unordered_set<std::string> b_set(bv.list().s().begin(),
+                                                bv.list().s().end());
           return a_set == b_set;
         } else {
           return av.DebugString() == bv.DebugString();
@@ -184,7 +185,7 @@ bool EqualFunctionNodeDef(const NodeDef& a, const NodeDef& b,
 }
 
 bool EqualFunctionDef(const FunctionDef& a, const FunctionDef& b,
-                      string* diff) {
+                      std::string* diff) {
   if (a.signature().DebugString() != b.signature().DebugString()) {
     if (diff) {
       *diff =
@@ -194,22 +195,21 @@ bool EqualFunctionDef(const FunctionDef& a, const FunctionDef& b,
     }
     return false;
   }
-  if (!EqualProtoMap<string, AttrValue>(
-          a.attr(), b.attr(), [](const string& s) { return s; },
+  if (!EqualProtoMap<std::string, AttrValue>(
+          a.attr(), b.attr(), [](const std::string& s) { return s; },
           [](const AttrValue& v) { return v.DebugString(); },
-          [](const string& key, const AttrValue& av, const AttrValue& bv) {
+          [](const std::string& key, const AttrValue& av, const AttrValue& bv) {
             return av.DebugString() == bv.DebugString();
           },
           absl::StrCat("attr mismatch for function ", a.signature().name()),
           diff)) {
     return false;
   }
-  if (!EqualProtoMap<string, string>(
-          a.ret(), b.ret(), [](const string& s) { return s; },
-          [](const string& s) { return s; },
-          [](const string& key, const string& av, const string& bv) {
-            return av == bv;
-          },
+  if (!EqualProtoMap<std::string, std::string>(
+          a.ret(), b.ret(), [](const std::string& s) { return s; },
+          [](const std::string& s) { return s; },
+          [](const std::string& key, const std::string& av,
+             const std::string& bv) { return av == bv; },
           absl::StrCat("ret mismatch for function ", a.signature().name()),
           diff)) {
     return false;
@@ -257,8 +257,9 @@ bool EqualFunctionDef(const FunctionDef& a, const FunctionDef& b,
 }
 
 bool EqualFunctionDefLibrary(const FunctionDefLibrary& expected,
-                             const FunctionDefLibrary& actual, string* diff) {
-  std::unordered_map<string, const FunctionDef*> actual_index;
+                             const FunctionDefLibrary& actual,
+                             std::string* diff) {
+  std::unordered_map<std::string, const FunctionDef*> actual_index;
   for (const FunctionDef& function : actual.function()) {
     actual_index[function.signature().name()] = &function;
   }
@@ -343,7 +344,7 @@ REGISTER_OP("AddNLikeTest")
     .SetIsAggregate();
 
 Node* Sequencer(const GraphDefBuilder::Options& opts,
-                const string& call_node_name) {
+                const std::string& call_node_name) {
   if (opts.HaveError()) return nullptr;
   NodeBuilder node_builder(opts.GetNameForOp("NoOp"), "NoOp",
                            opts.op_registry());
@@ -383,7 +384,7 @@ Node* KeyPlaceholderShape(const GraphDefBuilder::Options& opts) {
   return KnownShapeBase(DT_STRING, {2}, opts);
 }
 
-Node* KeyPlaceholder(const string& call_node,
+Node* KeyPlaceholder(const std::string& call_node,
                      const GraphDefBuilder::Options& opts) {
   if (opts.HaveError()) return nullptr;
   NodeBuilder node_builder(absl::StrCat(call_node, "_key_placeholder"),
@@ -396,15 +397,16 @@ Node* KeyPlaceholder(const string& call_node,
       .FinalizeBuilder(&node_builder);
 }
 
-Node* RecvAtHost(ops::NodeOut key_input, const string& cluster,
-                 const string& new_func_name, const string& oc_cluster,
+Node* RecvAtHost(ops::NodeOut key_input, const std::string& cluster,
+                 const std::string& new_func_name,
+                 const std::string& oc_cluster,
                  absl::Span<const DataType> dtypes,
                  const GraphDefBuilder::Options& opts) {
   if (opts.HaveError()) return nullptr;
-  string key = absl::StrCat("host_compute_channel_", cluster, "_",
-                            new_func_name, "_", oc_cluster);
-  string name = absl::StrCat("outside_compilation_", cluster, "_",
-                             new_func_name, "_", oc_cluster, "_recv");
+  std::string key = absl::StrCat("host_compute_channel_", cluster, "_",
+                                 new_func_name, "_", oc_cluster);
+  std::string name = absl::StrCat("outside_compilation_", cluster, "_",
+                                  new_func_name, "_", oc_cluster, "_recv");
   NodeBuilder node_builder(opts.WithName(name).GetNameForOp("_XlaRecvAtHost"),
                            "_XlaRecvAtHost", opts.op_registry());
   node_builder.Input(std::move(key_input));
@@ -416,15 +418,16 @@ Node* RecvAtHost(ops::NodeOut key_input, const string& cluster,
       .FinalizeBuilder(&node_builder);
 }
 
-Node* SendFromHost(ops::NodeOut key_input, const string& cluster,
-                   const string& new_func_name, const string& oc_cluster,
+Node* SendFromHost(ops::NodeOut key_input, const std::string& cluster,
+                   const std::string& new_func_name,
+                   const std::string& oc_cluster,
                    const std::vector<ops::NodeOut>& inputs,
                    const GraphDefBuilder::Options& opts) {
   if (opts.HaveError()) return nullptr;
-  string key = absl::StrCat("host_compute_channel_", cluster, "_",
-                            new_func_name, "_", oc_cluster);
-  string name = absl::StrCat("outside_compilation_", cluster, "_",
-                             new_func_name, "_", oc_cluster, "_send");
+  std::string key = absl::StrCat("host_compute_channel_", cluster, "_",
+                                 new_func_name, "_", oc_cluster);
+  std::string name = absl::StrCat("outside_compilation_", cluster, "_",
+                                  new_func_name, "_", oc_cluster, "_send");
   NodeBuilder node_builder(opts.WithName(name).GetNameForOp("_XlaSendFromHost"),
                            "_XlaSendFromHost", opts.op_registry());
   node_builder.Input(inputs);
@@ -477,8 +480,9 @@ Node* RetOp(int index, ops::NodeOut a, const GraphDefBuilder::Options& opts) {
   return opts.FinalizeBuilder(&node_builder);
 }
 
-absl::Status Encapsulate(GraphDef* graphdef, FunctionDefLibrary* library,
-                         const std::vector<string>& encapsulated_functions) {
+absl::Status Encapsulate(
+    GraphDef* graphdef, FunctionDefLibrary* library,
+    const std::vector<std::string>& encapsulated_functions) {
   absl::Status s;
   // Convert the GraphDef to a Graph
   std::unique_ptr<FunctionLibraryDefinition> lib_def(
@@ -512,7 +516,7 @@ absl::Status Encapsulate(GraphDef* graphdef, FunctionDefLibrary* library,
                                       &graph_out, lib_def.get());
   if (!s.ok()) return s;
 
-  std::unordered_map<string, XlaClusterInfo> clusters;
+  std::unordered_map<std::string, XlaClusterInfo> clusters;
   for (const auto& func : encapsulated_functions) {
     Node* xla_computation_node;
     for (Node* n : graph_out->nodes()) {
@@ -527,7 +531,7 @@ absl::Status Encapsulate(GraphDef* graphdef, FunctionDefLibrary* library,
     func_name_attrs.set_name(func);
     clusters.emplace(func,
                      XlaClusterInfo{func, func_name_attrs, xla_computation_node,
-                                    std::map<string, int>{}});
+                                    std::map<std::string, int>{}});
   }
   bool modified;
   s = ExtractOutsideCompilation("_encapsulate", "_outside", clusters,
@@ -551,7 +555,7 @@ absl::Status Encapsulate(GraphDef* graphdef, FunctionDefLibrary* library,
 }
 
 absl::Status Encapsulate(GraphDef* graphdef, FunctionDefLibrary* library) {
-  std::vector<string> encapsulated_functions;
+  std::vector<std::string> encapsulated_functions;
   return Encapsulate(graphdef, library, encapsulated_functions);
 }
 
@@ -698,8 +702,8 @@ TEST(EncapsulateSubgraphsTest, TwoFunctions) {
 }
 
 // Returns a vector of node names in 'graph', sorted by name.
-std::vector<string> GraphNodes(const Graph& graph) {
-  std::vector<string> nodes;
+std::vector<std::string> GraphNodes(const Graph& graph) {
+  std::vector<std::string> nodes;
   for (const auto& node : graph.nodes()) {
     if (!node->IsSource() && !node->IsSink()) {
       nodes.push_back(node->name());
@@ -710,8 +714,9 @@ std::vector<string> GraphNodes(const Graph& graph) {
 }
 
 // Returns a sorted vector of (src, dst) edges in 'graph'.
-std::vector<std::pair<string, string>> GraphEdges(const Graph& graph) {
-  std::vector<std::pair<string, string>> edges;
+std::vector<std::pair<std::string, std::string>> GraphEdges(
+    const Graph& graph) {
+  std::vector<std::pair<std::string, std::string>> edges;
   for (const Edge* edge : graph.edges()) {
     if (edge->src()->IsSource() || edge->dst()->IsSink()) continue;
     edges.emplace_back(
@@ -742,10 +747,11 @@ TEST(EncapsulateSubgraphsTest, InputDeduplication) {
       /*rewrite_subgraph_fn=*/{},
       /*reuse_existing_functions=*/false, &graph, &library));
 
-  std::vector<string> expected_nodes = {"cluster1", "cluster2", "mul", "x"};
+  std::vector<std::string> expected_nodes = {"cluster1", "cluster2", "mul",
+                                             "x"};
   EXPECT_EQ(expected_nodes, GraphNodes(*graph));
 
-  std::vector<std::pair<string, string>> expected_edges = {
+  std::vector<std::pair<std::string, std::string>> expected_edges = {
       {"cluster1:0", "cluster2:0"},
       {"cluster1:0", "mul:0"},
       {"cluster2:0", "mul:1"},
@@ -753,7 +759,7 @@ TEST(EncapsulateSubgraphsTest, InputDeduplication) {
   EXPECT_EQ(expected_edges, GraphEdges(*graph));
 }
 
-const Node* FindNodeByName(const Graph& graph, const string& name) {
+const Node* FindNodeByName(const Graph& graph, const std::string& name) {
   for (const Node* node : graph.nodes()) {
     if (node->name() == name) return node;
   }
@@ -889,7 +895,7 @@ TEST(EncapsulateSubgraphsTest, OneFunctionOneOutside) {
     TF_EXPECT_OK(b1.ToGraphDef(&graphdef));
   }
 
-  std::vector<string> encapsulated_functions{"F1"};
+  std::vector<std::string> encapsulated_functions{"F1"};
   TF_EXPECT_OK(Encapsulate(&graphdef, &library, encapsulated_functions));
 
   FunctionDefLibrary library_expected;
@@ -931,7 +937,7 @@ TEST(EncapsulateSubgraphsTest, OneFunctionOneOutside) {
            {"C:o:0", "c:o:0"},
            {{"Tinputs", absl::Span<const DataType>({DT_FLOAT, DT_FLOAT})},
             {"Toutputs", absl::Span<const DataType>({DT_FLOAT})},
-            {"ancestors", absl::Span<const string>({})},
+            {"ancestors", absl::Span<const std::string>({})},
             {"key", "host_compute_channel_F1_F1_O1"},
             {"send_key", ""},
             {"recv_key", ""},
@@ -941,7 +947,7 @@ TEST(EncapsulateSubgraphsTest, OneFunctionOneOutside) {
             {"shapes", absl::Span<const DataType>({})},
             {"_outside_compilation_subgraph", "O1"},
             {"_xla_token_input_nodes",
-             absl::Span<const string>({"_xla_token_arg_node"})},
+             absl::Span<const std::string>({"_xla_token_arg_node"})},
             {"_xla_original_oc_node_name",
              "outside_compilation_O1_host_compute"}},
            {"c"}},
@@ -1025,7 +1031,7 @@ TEST(EncapsulateSubgraphsTest, OneFunctionTwoOutside) {
     TF_EXPECT_OK(b1.ToGraphDef(&graphdef));
   }
 
-  std::vector<string> encapsulated_functions{"F1"};
+  std::vector<std::string> encapsulated_functions{"F1"};
   TF_EXPECT_OK(Encapsulate(&graphdef, &library, encapsulated_functions));
 
   FunctionDefLibrary library_expected;
@@ -1102,7 +1108,7 @@ TEST(EncapsulateSubgraphsTest, OneFunctionTwoOutside) {
            {"F:o:0", "D:o:0"},
            {{"Tinputs", absl::Span<const DataType>({DT_FLOAT, DT_FLOAT})},
             {"Toutputs", absl::Span<const DataType>({DT_FLOAT, DT_FLOAT})},
-            {"ancestors", absl::Span<const string>({})},
+            {"ancestors", absl::Span<const std::string>({})},
             {"key", "host_compute_channel_F1_F1_O2"},
             {"send_key", ""},
             {"recv_key", ""},
@@ -1112,8 +1118,9 @@ TEST(EncapsulateSubgraphsTest, OneFunctionTwoOutside) {
             {"shapes", absl::Span<const DataType>({})},
             {"_outside_compilation_subgraph", "O2"},
             {"_xla_token_input_nodes",
-             absl::Span<const string>({"_xla_token_arg_node",
-                                       "outside_compilation_O1_host_compute"})},
+             absl::Span<const std::string>(
+                 {"_xla_token_arg_node",
+                  "outside_compilation_O1_host_compute"})},
             {"_xla_original_oc_node_name",
              "outside_compilation_O2_host_compute"}},
            {"F", "outside_compilation_O1_host_compute"}},
@@ -1122,7 +1129,7 @@ TEST(EncapsulateSubgraphsTest, OneFunctionTwoOutside) {
            {"C:o:0", "D:o:0"},
            {{"Tinputs", absl::Span<const DataType>({DT_FLOAT, DT_FLOAT})},
             {"Toutputs", absl::Span<const DataType>({DT_FLOAT})},
-            {"ancestors", absl::Span<const string>({})},
+            {"ancestors", absl::Span<const std::string>({})},
             {"key", "host_compute_channel_F1_F1_O1"},
             {"send_key", ""},
             {"recv_key", ""},
@@ -1132,7 +1139,7 @@ TEST(EncapsulateSubgraphsTest, OneFunctionTwoOutside) {
             {"shapes", absl::Span<const DataType>({})},
             {"_outside_compilation_subgraph", "O1"},
             {"_xla_token_input_nodes",
-             absl::Span<const string>({"_xla_token_arg_node"})},
+             absl::Span<const std::string>({"_xla_token_arg_node"})},
             {"_xla_original_oc_node_name",
              "outside_compilation_O1_host_compute"}},
            {"D"}},
@@ -1235,7 +1242,7 @@ TEST(EncapsulateSubgraphsTest, TwoFunctionsTwoOutside) {
     TF_EXPECT_OK(b1.ToGraphDef(&graphdef));
   }
 
-  std::vector<string> encapsulated_functions{"F1", "F2"};
+  std::vector<std::string> encapsulated_functions{"F1", "F2"};
   TF_EXPECT_OK(Encapsulate(&graphdef, &library, encapsulated_functions));
 
   FunctionDefLibrary library_expected;
@@ -1262,7 +1269,7 @@ TEST(EncapsulateSubgraphsTest, TwoFunctionsTwoOutside) {
            {"C:o:0", "D:o:0"},
            {{"Tinputs", absl::Span<const DataType>({DT_FLOAT, DT_FLOAT})},
             {"Toutputs", absl::Span<const DataType>({DT_FLOAT})},
-            {"ancestors", absl::Span<const string>({})},
+            {"ancestors", absl::Span<const std::string>({})},
             {"key", "host_compute_channel_F1_F1_O1"},
             {"send_key", ""},
             {"recv_key", ""},
@@ -1273,7 +1280,7 @@ TEST(EncapsulateSubgraphsTest, TwoFunctionsTwoOutside) {
              absl::Span<const TensorShapeProto>({shape_proto_expected})},
             {"_outside_compilation_subgraph", "O1"},
             {"_xla_token_input_nodes",
-             absl::Span<const string>({"_xla_token_arg_node"})},
+             absl::Span<const std::string>({"_xla_token_arg_node"})},
             {"_xla_original_oc_node_name",
              "outside_compilation_O1_host_compute"}},
            {"D"}},
@@ -1295,7 +1302,7 @@ TEST(EncapsulateSubgraphsTest, TwoFunctionsTwoOutside) {
            {"d_0_arg", "G:o:0"},
            {{"Tinputs", absl::Span<const DataType>({DT_FLOAT, DT_FLOAT})},
             {"Toutputs", absl::Span<const DataType>({DT_FLOAT})},
-            {"ancestors", absl::Span<const string>({})},
+            {"ancestors", absl::Span<const std::string>({})},
             {"key", "host_compute_channel_F2_F2_O1"},
             {"send_key", ""},
             {"recv_key", ""},
@@ -1306,7 +1313,7 @@ TEST(EncapsulateSubgraphsTest, TwoFunctionsTwoOutside) {
              absl::Span<const TensorShapeProto>({shape_proto_expected})},
             {"_outside_compilation_subgraph", "O1"},
             {"_xla_token_input_nodes",
-             absl::Span<const string>({"_xla_token_arg_node"})},
+             absl::Span<const std::string>({"_xla_token_arg_node"})},
             {"_xla_original_oc_node_name",
              "outside_compilation_O1_host_compute"}}},
       },
@@ -1409,7 +1416,7 @@ TEST(EncapsulateSubgraphsTest, TwoFunctionsTwoOutsideDependencyFromOutside) {
     TF_EXPECT_OK(b1.ToGraphDef(&graphdef));
   }
 
-  std::vector<string> encapsulated_functions{"F1", "F2"};
+  std::vector<std::string> encapsulated_functions{"F1", "F2"};
   TF_EXPECT_OK(Encapsulate(&graphdef, &library, encapsulated_functions));
 
   FunctionDefLibrary library_expected;
@@ -1432,7 +1439,7 @@ TEST(EncapsulateSubgraphsTest, TwoFunctionsTwoOutsideDependencyFromOutside) {
            {"C:o:0", "D:o:0"},
            {{"Tinputs", absl::Span<const DataType>({DT_FLOAT, DT_FLOAT})},
             {"Toutputs", absl::Span<const DataType>({DT_FLOAT})},
-            {"ancestors", absl::Span<const string>({})},
+            {"ancestors", absl::Span<const std::string>({})},
             {"key", "host_compute_channel_F1_F1_O1"},
             {"send_key", ""},
             {"recv_key", ""},
@@ -1443,7 +1450,7 @@ TEST(EncapsulateSubgraphsTest, TwoFunctionsTwoOutsideDependencyFromOutside) {
              absl::Span<const TensorShapeProto>({shape_proto_expected})},
             {"_outside_compilation_subgraph", "O1"},
             {"_xla_token_input_nodes",
-             absl::Span<const string>({"_xla_token_arg_node"})},
+             absl::Span<const std::string>({"_xla_token_arg_node"})},
             {"_xla_original_oc_node_name",
              "outside_compilation_O1_host_compute"}},
            {"D"}},
@@ -1462,7 +1469,7 @@ TEST(EncapsulateSubgraphsTest, TwoFunctionsTwoOutsideDependencyFromOutside) {
            {"G:o:0"},
            {{"Tinputs", absl::Span<const DataType>({DT_FLOAT})},
             {"Toutputs", absl::Span<const DataType>({DT_FLOAT})},
-            {"ancestors", absl::Span<const string>({})},
+            {"ancestors", absl::Span<const std::string>({})},
             {"key", "host_compute_channel_F2_F2_O1"},
             {"send_key", ""},
             {"recv_key", ""},
@@ -1473,7 +1480,7 @@ TEST(EncapsulateSubgraphsTest, TwoFunctionsTwoOutsideDependencyFromOutside) {
              absl::Span<const TensorShapeProto>({shape_proto_expected})},
             {"_outside_compilation_subgraph", "O1"},
             {"_xla_token_input_nodes",
-             absl::Span<const string>({"_xla_token_arg_node"})},
+             absl::Span<const std::string>({"_xla_token_arg_node"})},
             {"_xla_original_oc_node_name",
              "outside_compilation_O1_host_compute"}}},
       },
@@ -1556,7 +1563,7 @@ TEST(EncapsulateSubgraphsTest, OutsideCompilationNoInputs) {
     TF_EXPECT_OK(b1.ToGraphDef(&graphdef));
   }
 
-  std::vector<string> encapsulated_functions{"F1"};
+  std::vector<std::string> encapsulated_functions{"F1"};
   TF_EXPECT_OK(Encapsulate(&graphdef, &library, encapsulated_functions));
 
   FunctionDefLibrary library_expected;
@@ -1578,7 +1585,7 @@ TEST(EncapsulateSubgraphsTest, OutsideCompilationNoInputs) {
            {"a_0_arg"},
            {{"Tinputs", absl::Span<const DataType>({DT_FLOAT})},
             {"Toutputs", absl::Span<const DataType>({DT_FLOAT})},
-            {"ancestors", absl::Span<const string>({})},
+            {"ancestors", absl::Span<const std::string>({})},
             {"key", "host_compute_channel_F1_F1_O1"},
             {"send_key", ""},
             {"recv_key", ""},
@@ -1589,7 +1596,7 @@ TEST(EncapsulateSubgraphsTest, OutsideCompilationNoInputs) {
              absl::Span<const TensorShapeProto>({shape_proto_expected})},
             {"_outside_compilation_subgraph", "O1"},
             {"_xla_token_input_nodes",
-             absl::Span<const string>({"_xla_token_arg_node"})},
+             absl::Span<const std::string>({"_xla_token_arg_node"})},
             {"_xla_original_oc_node_name",
              "outside_compilation_O1_host_compute"}}},
       },
@@ -1652,7 +1659,7 @@ TEST(EncapsulateSubgraphsTest, OutsideCompilationControlInput) {
     TF_EXPECT_OK(b1.ToGraphDef(&graphdef));
   }
 
-  std::vector<string> encapsulated_functions{"F1"};
+  std::vector<std::string> encapsulated_functions{"F1"};
   TF_EXPECT_OK(Encapsulate(&graphdef, &library, encapsulated_functions));
 
   FunctionDefLibrary library_expected;
@@ -1674,7 +1681,7 @@ TEST(EncapsulateSubgraphsTest, OutsideCompilationControlInput) {
            {"a_0_arg"},
            {{"Tinputs", absl::Span<const DataType>({DT_FLOAT})},
             {"Toutputs", absl::Span<const DataType>({DT_FLOAT})},
-            {"ancestors", absl::Span<const string>({})},
+            {"ancestors", absl::Span<const std::string>({})},
             {"key", "host_compute_channel_F1_F1_O1"},
             {"send_key", ""},
             {"recv_key", ""},
@@ -1685,7 +1692,7 @@ TEST(EncapsulateSubgraphsTest, OutsideCompilationControlInput) {
              absl::Span<const TensorShapeProto>({shape_proto_expected})},
             {"_outside_compilation_subgraph", "O1"},
             {"_xla_token_input_nodes",
-             absl::Span<const string>({"_xla_token_arg_node"})},
+             absl::Span<const std::string>({"_xla_token_arg_node"})},
             {"_xla_original_oc_node_name",
              "outside_compilation_O1_host_compute"}},
            {"D"}},
@@ -1748,7 +1755,7 @@ TEST(EncapsulateSubgraphsTest, OutsideCompilationNoOutputs) {
     TF_EXPECT_OK(b1.ToGraphDef(&graphdef));
   }
 
-  std::vector<string> encapsulated_functions{"F1"};
+  std::vector<std::string> encapsulated_functions{"F1"};
   TF_EXPECT_OK(Encapsulate(&graphdef, &library, encapsulated_functions));
 
   FunctionDefLibrary library_expected;
@@ -1785,7 +1792,7 @@ TEST(EncapsulateSubgraphsTest, OutsideCompilationNoOutputs) {
            {"D:o:0"},
            {{"Tinputs", absl::Span<const DataType>({DT_FLOAT})},
             {"Toutputs", absl::Span<const DataType>({DT_FLOAT})},
-            {"ancestors", absl::Span<const string>({})},
+            {"ancestors", absl::Span<const std::string>({})},
             {"key", "host_compute_channel_F1_F1_O1"},
             {"send_key", ""},
             {"recv_key", ""},
@@ -1795,7 +1802,7 @@ TEST(EncapsulateSubgraphsTest, OutsideCompilationNoOutputs) {
             {"shapes", absl::Span<const TensorShapeProto>({})},
             {"_outside_compilation_subgraph", "O1"},
             {"_xla_token_input_nodes",
-             absl::Span<const string>({"_xla_token_arg_node"})},
+             absl::Span<const std::string>({"_xla_token_arg_node"})},
             {"_xla_original_oc_node_name",
              "outside_compilation_O1_host_compute"}}},
       },
@@ -1858,7 +1865,7 @@ TEST(EncapsulateSubgraphsTest, OutsideCompilationControlOutput) {
     TF_EXPECT_OK(b1.ToGraphDef(&graphdef));
   }
 
-  std::vector<string> encapsulated_functions{"F1"};
+  std::vector<std::string> encapsulated_functions{"F1"};
   TF_EXPECT_OK(Encapsulate(&graphdef, &library, encapsulated_functions));
 
   FunctionDefLibrary library_expected;
@@ -1899,7 +1906,7 @@ TEST(EncapsulateSubgraphsTest, OutsideCompilationControlOutput) {
            {"D:o:0"},
            {{"Tinputs", absl::Span<const DataType>({DT_FLOAT})},
             {"Toutputs", absl::Span<const DataType>({DT_FLOAT})},
-            {"ancestors", absl::Span<const string>({})},
+            {"ancestors", absl::Span<const std::string>({})},
             {"key", "host_compute_channel_F1_F1_O1"},
             {"send_key", ""},
             {"recv_key", ""},
@@ -1909,7 +1916,7 @@ TEST(EncapsulateSubgraphsTest, OutsideCompilationControlOutput) {
             {"shapes", absl::Span<const TensorShapeProto>({})},
             {"_outside_compilation_subgraph", "O1"},
             {"_xla_token_input_nodes",
-             absl::Span<const string>({"_xla_token_arg_node"})},
+             absl::Span<const std::string>({"_xla_token_arg_node"})},
             {"_xla_original_oc_node_name",
              "outside_compilation_O1_host_compute"}}},
       },
@@ -1978,7 +1985,7 @@ TEST(EncapsulateSubgraphsTest,
     TF_EXPECT_OK(b1.ToGraphDef(&graphdef));
   }
 
-  std::vector<string> encapsulated_functions{"F1"};
+  std::vector<std::string> encapsulated_functions{"F1"};
   TF_EXPECT_OK(Encapsulate(&graphdef, &library, encapsulated_functions));
 
   FunctionDefLibrary library_expected;
@@ -2037,7 +2044,7 @@ TEST(EncapsulateSubgraphsTest,
            {"a_0_arg"},
            {{"Tinputs", absl::Span<const DataType>({DT_FLOAT})},
             {"Toutputs", absl::Span<const DataType>({DT_FLOAT})},
-            {"ancestors", absl::Span<const string>({})},
+            {"ancestors", absl::Span<const std::string>({})},
             {"key", "host_compute_channel_F1_F1_O1"},
             {"send_key", ""},
             {"recv_key", ""},
@@ -2047,7 +2054,7 @@ TEST(EncapsulateSubgraphsTest,
             {"shapes", absl::Span<const TensorShapeProto>({})},
             {"_outside_compilation_subgraph", "O1"},
             {"_xla_token_input_nodes",
-             absl::Span<const string>({"_xla_token_arg_node"})},
+             absl::Span<const std::string>({"_xla_token_arg_node"})},
             {"_xla_original_oc_node_name",
              "outside_compilation_O1_host_compute"}}},
           {{"outside_compilation_O2_host_compute"},
@@ -2055,7 +2062,7 @@ TEST(EncapsulateSubgraphsTest,
            {"F:o:0"},
            {{"Tinputs", absl::Span<const DataType>({DT_FLOAT})},
             {"Toutputs", absl::Span<const DataType>({DT_FLOAT})},
-            {"ancestors", absl::Span<const string>({})},
+            {"ancestors", absl::Span<const std::string>({})},
             {"key", "host_compute_channel_F1_F1_O2"},
             {"send_key", ""},
             {"recv_key", ""},
@@ -2065,8 +2072,9 @@ TEST(EncapsulateSubgraphsTest,
             {"shapes", absl::Span<const TensorShapeProto>({})},
             {"_outside_compilation_subgraph", "O2"},
             {"_xla_token_input_nodes",
-             absl::Span<const string>({"_xla_token_arg_node",
-                                       "outside_compilation_O1_host_compute"})},
+             absl::Span<const std::string>(
+                 {"_xla_token_arg_node",
+                  "outside_compilation_O1_host_compute"})},
             {"_xla_original_oc_node_name",
              "outside_compilation_O2_host_compute"}},
            {"outside_compilation_O1_host_compute"}},
@@ -2149,7 +2157,7 @@ TEST(EncapsulateSubgraphsTest,
     TF_EXPECT_OK(b1.ToGraphDef(&graphdef));
   }
 
-  std::vector<string> encapsulated_functions{"F1"};
+  std::vector<std::string> encapsulated_functions{"F1"};
   TF_EXPECT_OK(Encapsulate(&graphdef, &library, encapsulated_functions));
 
   FunctionDefLibrary library_expected;
@@ -2189,7 +2197,7 @@ TEST(EncapsulateSubgraphsTest,
            {"a_0_arg"},
            {{"Tinputs", absl::Span<const DataType>({DT_FLOAT})},
             {"Toutputs", absl::Span<const DataType>({})},
-            {"ancestors", absl::Span<const string>({})},
+            {"ancestors", absl::Span<const std::string>({})},
             {"key", "host_compute_channel_F1_F1_O2"},
             {"send_key", ""},
             {"recv_key", ""},
@@ -2199,8 +2207,9 @@ TEST(EncapsulateSubgraphsTest,
             {"shapes", absl::Span<const TensorShapeProto>({})},
             {"_outside_compilation_subgraph", "O2"},
             {"_xla_token_input_nodes",
-             absl::Span<const string>({"_xla_token_arg_node",
-                                       "outside_compilation_O1_host_compute"})},
+             absl::Span<const std::string>(
+                 {"_xla_token_arg_node",
+                  "outside_compilation_O1_host_compute"})},
             {"_xla_original_oc_node_name",
              "outside_compilation_O2_host_compute"}},
            {"outside_compilation_O1_host_compute"}},
@@ -2209,7 +2218,7 @@ TEST(EncapsulateSubgraphsTest,
            {"D:o:0"},
            {{"Tinputs", absl::Span<const DataType>({DT_FLOAT})},
             {"Toutputs", absl::Span<const DataType>({DT_FLOAT})},
-            {"ancestors", absl::Span<const string>({})},
+            {"ancestors", absl::Span<const std::string>({})},
             {"key", "host_compute_channel_F1_F1_O1"},
             {"send_key", ""},
             {"recv_key", ""},
@@ -2219,7 +2228,7 @@ TEST(EncapsulateSubgraphsTest,
             {"shapes", absl::Span<const TensorShapeProto>({})},
             {"_outside_compilation_subgraph", "O1"},
             {"_xla_token_input_nodes",
-             absl::Span<const string>({"_xla_token_arg_node"})},
+             absl::Span<const std::string>({"_xla_token_arg_node"})},
             {"_xla_original_oc_node_name",
              "outside_compilation_O1_host_compute"}}},
       },
@@ -2303,7 +2312,7 @@ TEST(EncapsulateSubgraphsTest, OutsideCompilationClusterDependency) {
     TF_EXPECT_OK(b1.ToGraphDef(&graphdef));
   }
 
-  std::vector<string> encapsulated_functions{"F1"};
+  std::vector<std::string> encapsulated_functions{"F1"};
   TF_EXPECT_OK(Encapsulate(&graphdef, &library, encapsulated_functions));
 
   FunctionDefLibrary library_expected;
@@ -2340,7 +2349,7 @@ TEST(EncapsulateSubgraphsTest, OutsideCompilationClusterDependency) {
         {"D:o:0"},
         {{"Tinputs", absl::Span<const DataType>({DT_FLOAT})},
          {"Toutputs", absl::Span<const DataType>({DT_FLOAT})},
-         {"ancestors", absl::Span<const string>({})},
+         {"ancestors", absl::Span<const std::string>({})},
          {"key", "host_compute_channel_F1_F1_O1"},
          {"send_key", ""},
          {"recv_key", ""},
@@ -2350,7 +2359,7 @@ TEST(EncapsulateSubgraphsTest, OutsideCompilationClusterDependency) {
          {"shapes", absl::Span<const TensorShapeProto>({})},
          {"_outside_compilation_subgraph", "O1"},
          {"_xla_token_input_nodes",
-          absl::Span<const string>({"_xla_token_arg_node"})},
+          absl::Span<const std::string>({"_xla_token_arg_node"})},
          {"_xla_original_oc_node_name",
           "outside_compilation_O1_host_compute"}}},
        {{"outside_compilation_O2_host_compute"},
@@ -2358,7 +2367,7 @@ TEST(EncapsulateSubgraphsTest, OutsideCompilationClusterDependency) {
         {"D:o:0"},
         {{"Tinputs", absl::Span<const DataType>({DT_FLOAT})},
          {"Toutputs", absl::Span<const DataType>({})},
-         {"ancestors", absl::Span<const string>({})},
+         {"ancestors", absl::Span<const std::string>({})},
          {"key", "host_compute_channel_F1_F1_O2"},
          {"send_key", ""},
          {"recv_key", ""},
@@ -2368,7 +2377,7 @@ TEST(EncapsulateSubgraphsTest, OutsideCompilationClusterDependency) {
          {"shapes", absl::Span<const TensorShapeProto>({})},
          {"_outside_compilation_subgraph", "O2"},
          {"_xla_token_input_nodes",
-          absl::Span<const string>(
+          absl::Span<const std::string>(
               {"_xla_token_arg_node", "outside_compilation_O1_host_compute"})},
          {"_xla_original_oc_node_name", "outside_compilation_O2_host_compute"}},
         {"outside_compilation_O1_host_compute"}},
@@ -2377,7 +2386,7 @@ TEST(EncapsulateSubgraphsTest, OutsideCompilationClusterDependency) {
         {"D:o:0"},
         {{"Tinputs", absl::Span<const DataType>({DT_FLOAT})},
          {"Toutputs", absl::Span<const DataType>({})},
-         {"ancestors", absl::Span<const string>({})},
+         {"ancestors", absl::Span<const std::string>({})},
          {"key", "host_compute_channel_F1_F1_O3"},
          {"send_key", ""},
          {"recv_key", ""},
@@ -2387,9 +2396,9 @@ TEST(EncapsulateSubgraphsTest, OutsideCompilationClusterDependency) {
          {"shapes", absl::Span<const TensorShapeProto>({})},
          {"_outside_compilation_subgraph", "O3"},
          {"_xla_token_input_nodes",
-          absl::Span<const string>({"_xla_token_arg_node",
-                                    "outside_compilation_O1_host_compute",
-                                    "outside_compilation_O2_host_compute"})},
+          absl::Span<const std::string>(
+              {"_xla_token_arg_node", "outside_compilation_O1_host_compute",
+               "outside_compilation_O2_host_compute"})},
          {"_xla_original_oc_node_name", "outside_compilation_O3_host_compute"}},
         {"outside_compilation_O1_host_compute",
          "outside_compilation_O2_host_compute"}}},
@@ -2470,7 +2479,7 @@ TEST(EncapsulateSubgraphsTest, OutsideCompilationNoInputsOrOutputs) {
     TF_EXPECT_OK(b1.ToGraphDef(&graphdef));
   }
 
-  std::vector<string> encapsulated_functions{"F1"};
+  std::vector<std::string> encapsulated_functions{"F1"};
   TF_EXPECT_OK(Encapsulate(&graphdef, &library, encapsulated_functions));
 
   FunctionDefLibrary library_expected;
@@ -2507,7 +2516,7 @@ TEST(EncapsulateSubgraphsTest, OutsideCompilationNoInputsOrOutputs) {
            {"a_0_arg"},
            {{"Tinputs", absl::Span<const DataType>({DT_FLOAT})},
             {"Toutputs", absl::Span<const DataType>({DT_FLOAT})},
-            {"ancestors", absl::Span<const string>({})},
+            {"ancestors", absl::Span<const std::string>({})},
             {"key", "host_compute_channel_F1_F1_O1"},
             {"send_key", ""},
             {"recv_key", ""},
@@ -2517,7 +2526,7 @@ TEST(EncapsulateSubgraphsTest, OutsideCompilationNoInputsOrOutputs) {
             {"shapes", absl::Span<const TensorShapeProto>({})},
             {"_outside_compilation_subgraph", "O1"},
             {"_xla_token_input_nodes",
-             absl::Span<const string>({"_xla_token_arg_node"})},
+             absl::Span<const std::string>({"_xla_token_arg_node"})},
             {"_xla_original_oc_node_name",
              "outside_compilation_O1_host_compute"}}},
       },
@@ -2586,7 +2595,7 @@ TEST(EncapsulateSubgraphsTest, OutsideCompilationShapeInference) {
     TF_EXPECT_OK(b1.ToGraphDef(&graphdef));
   }
 
-  std::vector<string> encapsulated_functions{"F1"};
+  std::vector<std::string> encapsulated_functions{"F1"};
   TF_EXPECT_OK(Encapsulate(&graphdef, &library, encapsulated_functions));
 
   FunctionDefLibrary library_expected;
@@ -2627,7 +2636,7 @@ TEST(EncapsulateSubgraphsTest, OutsideCompilationShapeInference) {
            {"c_0_arg", "c:o:0"},
            {{"Tinputs", absl::Span<const DataType>({DT_FLOAT, DT_FLOAT})},
             {"Toutputs", absl::Span<const DataType>({DT_FLOAT})},
-            {"ancestors", absl::Span<const string>({})},
+            {"ancestors", absl::Span<const std::string>({})},
             {"key", "host_compute_channel_F1_F1_O1"},
             {"send_key", ""},
             {"recv_key", ""},
@@ -2637,7 +2646,7 @@ TEST(EncapsulateSubgraphsTest, OutsideCompilationShapeInference) {
             {"shapes", absl::Span<const DataType>({})},
             {"_outside_compilation_subgraph", "O1"},
             {"_xla_token_input_nodes",
-             absl::Span<const string>({"_xla_token_arg_node"})},
+             absl::Span<const std::string>({"_xla_token_arg_node"})},
             {"_xla_original_oc_node_name",
              "outside_compilation_O1_host_compute"}},
            {"c"}},

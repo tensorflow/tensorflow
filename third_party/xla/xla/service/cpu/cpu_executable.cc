@@ -15,22 +15,22 @@ limitations under the License.
 
 #include "xla/service/cpu/cpu_executable.h"
 
-#define EIGEN_USE_THREADS
-
 #include <stdint.h>
 
 #include <algorithm>
+#include <cfenv>
 #include <cstring>
 #include <memory>
 #include <optional>
 #include <string>
 #include <type_traits>
 #include <utility>
-#include <variant>
 #include <vector>
 
 #include "absl/base/dynamic_annotations.h"
 #include "absl/base/optimization.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
@@ -38,19 +38,20 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "unsupported/Eigen/CXX11/Tensor"
+#include "xla/backends/cpu/constant_allocation.h"
 #include "xla/backends/cpu/runtime/buffer_allocations.h"
 #include "xla/backends/cpu/runtime/function_library.h"
 #include "xla/backends/cpu/runtime/thread_pool_task_runner.h"
 #include "xla/backends/cpu/runtime/thunk.h"
 #include "xla/backends/cpu/runtime/thunk_executor.h"
+#include "xla/backends/cpu/runtime/xfeed_manager.h"
+#include "xla/backends/cpu/target_machine_options.h"
 #include "xla/executable_run_options.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/literal.h"
+#include "xla/hlo/ir/hlo_module_metadata.h"
 #include "xla/service/buffer_assignment.h"
-#include "xla/service/cpu/cpu_runtime.h"
 #include "xla/service/custom_call_status.h"
 #include "xla/service/custom_call_status_internal.h"
 #include "xla/service/executable.h"
@@ -66,55 +67,37 @@ limitations under the License.
 #include "xla/status_macros.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/device_memory_allocator.h"
-#include "xla/stream_executor/host/host_stream.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/denormal.h"
+#include "tsl/platform/setround.h"
+#include "tsl/profiler/lib/traceme.h"
+
+#define EIGEN_USE_THREADS
+#include "unsupported/Eigen/CXX11/Tensor"
 
 namespace xla {
 namespace cpu {
 
 absl::StatusOr<std::unique_ptr<CpuExecutable>> CpuExecutable::Create(
     std::unique_ptr<FunctionLibrary> function_library,
-    std::unique_ptr<const BufferAssignment> assignment,
-    std::unique_ptr<HloModule> hlo_module,
-    const std::string& entry_function_name,
-    std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data,
-    std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map) {
-  VLOG(2) << "Create CpuExecutable from a jit compiled function: "
-          << entry_function_name << ", module=" << hlo_module->name();
-
-  std::unique_ptr<CpuExecutable> executable(new CpuExecutable(
-      std::move(hlo_module), std::move(hlo_profile_printer_data),
-      std::move(hlo_profile_index_map), std::move(assignment)));
-  executable->function_library_ = std::move(function_library);
-  executable->module_name_ = entry_function_name;
-
-  TF_ASSIGN_OR_RETURN(
-      executable->compute_function_,
-      executable->function_library_
-          ->ResolveFunction<std::remove_pointer_t<ComputeFunctionType>>(
-              entry_function_name));
-
-  VLOG(1) << "compute_function_ at address "
-          << reinterpret_cast<void*>(executable->compute_function_);
-
-  return executable;
-}
-
-absl::StatusOr<std::unique_ptr<CpuExecutable>> CpuExecutable::Create(
-    std::unique_ptr<FunctionLibrary> function_library,
-    std::unique_ptr<const BufferAssignment> assignment,
+    std::unique_ptr<BufferAssignment> assignment,
     std::unique_ptr<HloModule> hlo_module, ThunkSequence thunks,
     std::vector<ConstantAllocation> constants,
     std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data,
-    std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map) {
+    std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map,
+    TargetMachineOptions target_machine_options) {
   VLOG(2) << "Create CpuExecutable from a thunk sequence; module="
           << hlo_module->name() << ", constants=" << constants.size();
 
   std::unique_ptr<CpuExecutable> executable(new CpuExecutable(
       std::move(hlo_module), std::move(hlo_profile_printer_data),
-      std::move(hlo_profile_index_map), std::move(assignment)));
+      std::move(hlo_profile_index_map), std::move(assignment),
+      std::move(target_machine_options)));
   executable->function_library_ = std::move(function_library);
 
   ThunkExecutor::Options thunk_executor_options;
@@ -122,6 +105,18 @@ absl::StatusOr<std::unique_ptr<CpuExecutable>> CpuExecutable::Create(
   TF_ASSIGN_OR_RETURN(
       executable->thunks_,
       ThunkExecutor::Create(std::move(thunks), thunk_executor_options));
+
+  // Find if the thunk sequence contains any XNN fusion thunks. If we do have
+  // any, we will prepare the XNNPACK thread pool for them at run time.
+  executable->thunks_->thunk_sequence().ForEach([&](const Thunk& thunk) {
+    executable->has_xnn_fusions_ |= thunk.kind() == Thunk::Kind::kXnnFusion;
+  });
+
+  // Find if the thunk sequence contains any YNN fusion thunks. If we do have
+  // any, we will prepare the YNNPACK thread pool for them at run time.
+  executable->thunks_->thunk_sequence().ForEach([&](const Thunk& thunk) {
+    executable->has_ynn_fusions_ |= thunk.kind() == Thunk::Kind::kYnnFusion;
+  });
 
   // Re-index constants by their allocation index to allow efficient lookup.
   for (auto& constant : constants) {
@@ -138,13 +133,27 @@ CpuExecutable::CpuExecutable(
     std::unique_ptr<HloModule> hlo_module,
     std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data,
     std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map,
-    std::unique_ptr<const BufferAssignment> assignment)
+    std::unique_ptr<BufferAssignment> assignment,
+    TargetMachineOptions target_machine_options)
     : Executable(std::move(hlo_module), std::move(hlo_profile_printer_data),
                  std::move(hlo_profile_index_map)),
-      assignment_(std::move(assignment)) {
+      assignment_(std::move(assignment)),
+      target_machine_options_(std::move(target_machine_options)) {
   if (assignment_ && has_module()) {
-    XlaDebugInfoManager::Get()->RegisterModule(shared_module(),
-                                               assignment_->ToProto());
+    XlaDebugInfoManager::Get()->RegisterModule(shared_module(), assignment_);
+  }
+
+  if (assignment_) {
+    alloc_ptrs_.reserve(assignment_->Allocations().size());
+    for (const BufferAllocation& alloc : assignment_->Allocations()) {
+      alloc_ptrs_.push_back(&alloc);
+    }
+  }
+
+  // Once we compiled HLO module to CPU executable, we don't need to keep the
+  // HLO module metadata around.
+  if (has_module()) {
+    *shared_module()->metadata() = HloModuleMetadata(tsl::Env::Default());
   }
 }
 
@@ -219,58 +228,14 @@ CpuExecutable::CreateBufferTable(se::DeviceMemoryAllocator* memory_allocator,
   return std::move(buffers);
 }
 
-absl::Status CpuExecutable::ExecuteComputeFunction(
-    const ExecutableRunOptions* run_options,
-    absl::Span<MaybeOwningDeviceMemory const> buffers) {
-  uint64_t start_micros = tsl::Env::Default()->NowMicros();
-
-  size_t profile_counters_size = 0;
-  int64_t* profile_counters = nullptr;
-
-  // Call the computation function following the calling convention. See the
-  // definition of 'ComputeFunctionType' for the details of the calling
-  // convention of JITed functions.
-  std::vector<void*> buffer_pointers;
-  for (auto& buffer : buffers) {
-    buffer_pointers.push_back(
-        const_cast<void*>(buffer.AsDeviceMemoryBase().opaque()));
+static int32_t GetDeviceOrdinal(const ExecutableRunOptions* run_options) {
+  if (!run_options) {
+    return 0;
   }
-
-  VLOG(3) << "Executing compute function:";
-  VLOG(3) << absl::StrFormat("  Number of buffer table entries: %u",
-                             buffer_pointers.size());
-  auto ptr_printer = [](std::string* out, const void* p) {
-    absl::StrAppend(out, absl::StrFormat("%p", p));
-  };
-  VLOG(3) << absl::StrFormat("  Buffer table: [%s]",
-                             absl::StrJoin(buffer_pointers, ", ", ptr_printer));
-  VLOG(3) << absl::StrFormat("  Number of profile counters: %u",
-                             profile_counters_size);
-  VLOG(3) << absl::StrFormat("  Profile counters: %p", profile_counters);
-
-  auto record_profile = [&]() {
-    uint64_t end_micros = tsl::Env::Default()->NowMicros();
-    if (run_options->execution_profile()) {
-      const double nanoseconds = (end_micros - start_micros) * 1000.0;
-      run_options->execution_profile()->set_compute_time_ns(
-          std::max(nanoseconds, 1.0));
-    }
-  };
-
-  XlaCustomCallStatus status;
-  // For the entry computation (like all global computations), all inputs and
-  // outputs are in the buffer table, and both the result pointer and args
-  // array pointers are unused (so we set them to 'nullptr').
-  compute_function_(nullptr, run_options, nullptr, buffer_pointers.data(),
-                    &status, profile_counters);
-  record_profile();
-  std::optional<absl::string_view> error_message =
-      CustomCallStatusGetMessage(&status);
-  if (error_message) {
-    return Internal("CustomCall failed: %s", *error_message);
+  if (run_options->device_ordinal() != -1) {
+    return run_options->device_ordinal();
   }
-
-  return absl::OkStatus();
+  return run_options->stream()->parent()->device_ordinal();
 }
 
 absl::Status CpuExecutable::ExecuteThunks(
@@ -304,6 +269,18 @@ absl::Status CpuExecutable::ExecuteThunks(
   TF_ASSIGN_OR_RETURN(Thunk::CustomCallExecuteParams custom_call_execute_params,
                       Thunk::CustomCallExecuteParams::Create(run_options));
 
+  // Prepare for executing XNNPACK fusions.
+  std::optional<Thunk::XnnParams> xnn_params;
+  if (has_xnn_fusions()) {
+    TF_ASSIGN_OR_RETURN(xnn_params, Thunk::XnnParams::Create(run_options));
+  }
+
+  // Prepare for executing YNNPACK fusions.
+  std::optional<Thunk::YnnParams> ynn_params;
+  if (has_ynn_fusions()) {
+    TF_ASSIGN_OR_RETURN(ynn_params, Thunk::YnnParams::Create(run_options));
+  }
+
   // Use the intra-op thread pool to offload thunk executor tasks.
   auto* intra_op_thread_pool = run_options->intra_op_thread_pool();
   ThreadPoolTaskRunner task_runner(
@@ -312,13 +289,17 @@ absl::Status CpuExecutable::ExecuteThunks(
   Thunk::ExecuteParams execute_params = {
       &*function_library_,
       &allocations,
-      runtime::GetXfeedManager(runtime::GetDeviceOrdinal(run_options)),
+      GetXfeedManager(GetDeviceOrdinal(run_options)),
       intra_op_thread_pool,
       &task_runner,
       &collective_execute_params,
-      &custom_call_execute_params};
+      &custom_call_execute_params,
+      xnn_params ? &*xnn_params : nullptr,
+      ynn_params ? &*ynn_params : nullptr};
 
   auto executed_event = thunks_->Execute(execute_params);
+
+  tsl::profiler::TraceMe trace("BlockUntilReady");
   tsl::BlockUntilReady(executed_event);
 
   if (run_options->execution_profile()) {
@@ -435,6 +416,11 @@ absl::StatusOr<ExecutionOutput> CpuExecutable::CreateResultShapedBuffer(
 absl::StatusOr<ExecutionOutput> CpuExecutable::ExecuteAsyncOnStream(
     const ServiceExecutableRunOptions* run_options,
     std::vector<ExecutionInput> arguments) {
+  tsl::profiler::TraceMe trace([&] {
+    return tsl::profiler::TraceMeEncode("CpuExecutable::ExecuteAsyncOnStream",
+                                        {{"module_name", module_name_}});
+  });
+
   if (GetRootValueSet().IsAmbiguous()) {
     return Unimplemented("Points-to set of root instruction is ambiguous");
   }
@@ -455,8 +441,6 @@ absl::StatusOr<ExecutionOutput> CpuExecutable::ExecuteAsyncOnStream(
     }
   }
 
-  auto* host_stream =
-      dynamic_cast<se::host::HostStream*>(run_options->stream());
   se::Stream* stream = run_options->stream();
   se::DeviceMemoryAllocator* memory_allocator = run_options->allocator();
   TF_ASSIGN_OR_RETURN(
@@ -469,29 +453,32 @@ absl::StatusOr<ExecutionOutput> CpuExecutable::ExecuteAsyncOnStream(
       CreateResultShapedBuffer(run_options, absl::MakeSpan(buffers),
                                absl::MakeSpan(arguments)));
 
-  // We need to change the types of some of the variables we capture:
-  // - store run_options by value instead of pointer; and
-  // - take ownership of buffers.
-  //  We use a struct instead of a lambda to make this explicit.
-  struct AsyncRunTask {
-    CpuExecutable* executable;
-    ServiceExecutableRunOptions run_options;
-    std::vector<MaybeOwningDeviceMemory> task_buffers;
+  // IMPORTANT: State of the world as of June 2025 by ezhulenev@.
+  //
+  // Although the function is called ExecuteAsyncOnStream, we invoke compiled
+  // executable on the caller thread, because the concept of device stream and
+  // implicit ordering of operations does not make much sense on CPU. We use
+  // stream semantics on GPU because host can run ahead of the device (which is
+  // impossible on CPU because host and device are the same), and because of
+  // stream-ordered memory allocation via BFC allocator (on the host we use
+  // regular host allocator).
+  //
+  // Furthermore, this execution path is deprecated, and nearly all users
+  // (certainly all important ones) go via the PjRtCpuClient route, which is not
+  // affected by this code. This code is used mostly in legacy tests (not yet
+  // migrated to PjRt) and in Tensorflow/XLA integration.
+  //
+  // By using the caller thread to kick off the execution, we avoid the
+  // overhead of thread hopping for small executables, and it allows Tensorflow
+  // to execute multiple XLA executable in parallel.
 
-    absl::Status operator()() {
-      if (executable->has_compute_function()) {
-        return executable->ExecuteComputeFunction(&run_options.run_options(),
-                                                  task_buffers);
-      } else if (executable->has_thunks()) {
-        return executable->ExecuteThunks(&run_options.run_options(),
-                                         task_buffers);
-      } else {
-        return Internal("No compute function or thunks found.");
-      }
-    }
-  };
-  host_stream->EnqueueTaskWithStatus(
-      AsyncRunTask{this, *run_options, std::move(buffers)});
+  // Because we do not control the caller thread, we need to explicitly set
+  // flags to be consistent with compute thread pools used by TF and XLA.
+  tsl::port::ScopedFlushDenormal flush;
+  tsl::port::ScopedSetRound round(FE_TONEAREST);
+
+  DCHECK(has_thunks());
+  TF_RETURN_IF_ERROR(ExecuteThunks(&run_options->run_options(), buffers));
 
   MarkToBeReleasedArguments(absl::MakeSpan(arguments), result);
   return std::move(result);
@@ -518,6 +505,13 @@ const InstructionValueSet& CpuExecutable::GetRootValueSet() const {
 int64_t CpuExecutable::SizeOfGeneratedCodeInBytes() const {
   // TODO(ezhulenev): Delete this function, it's not really used anywhere.
   return 0;
+}
+
+void CpuExecutable::Finalize() {
+  if (has_module()) {
+    shared_module()->Finalize();
+  }
+  assignment_->Finalize();
 }
 
 }  // namespace cpu

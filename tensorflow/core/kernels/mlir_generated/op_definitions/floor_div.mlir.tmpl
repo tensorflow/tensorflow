@@ -15,11 +15,12 @@ func.func @FloorDiv_platform_elem_type_output_type(%arg0: tensor<*xelem_type>, %
   %8 = shape.shape_of %arg0 : tensor<*xelem_type> -> tensor<?xindex>
   %9 = shape.num_elements %7 : tensor<?xindex> -> index
   %10 = arith.cmpi eq, %9, %c1 : index
+  %c_empty = arith.constant dense<> : tensor<0xindex>
   %11 = scf.if %10 -> (tensor<*xelem_type>) {
     %16 = shape.num_elements %8 : tensor<?xindex> -> index
     %from_elements = tensor.from_elements %16 : tensor<1xindex>
-    %17 = mhlo.reshape %arg1 : (tensor<*xelem_type>) -> tensor<elem_type>
-    %18 = mhlo.dynamic_reshape %arg0, %from_elements : (tensor<*xelem_type>, tensor<1xindex>) -> tensor<?xelem_type>
+    %17 = tensor.reshape %arg1(%c_empty) : (tensor<*xelem_type>, tensor<0xindex>) -> tensor<elem_type>
+    %18 = tensor.reshape %arg0(%from_elements) : (tensor<*xelem_type>, tensor<1xindex>) -> tensor<?xelem_type>
     %19 = chlo.broadcast_divide %18, %17 : (tensor<?xelem_type>, tensor<elem_type>) -> tensor<?xelem_type>
     %20 = chlo.broadcast_multiply %19, %17 : (tensor<?xelem_type>, tensor<elem_type>) -> tensor<?xelem_type>
     %21 = chlo.broadcast_compare %20, %18 {comparison_direction = #chlo<comparison_direction NE>} : (tensor<?xelem_type>, tensor<?xelem_type>) -> tensor<?xi1>
@@ -37,8 +38,8 @@ func.func @FloorDiv_platform_elem_type_output_type(%arg0: tensor<*xelem_type>, %
     %18 = scf.if %17 -> (tensor<*xelem_type>) {
       %19 = shape.num_elements %7 : tensor<?xindex> -> index
       %from_elements = tensor.from_elements %19 : tensor<1xindex>
-      %20 = mhlo.dynamic_reshape %arg1, %from_elements : (tensor<*xelem_type>, tensor<1xindex>) -> tensor<?xelem_type>
-      %21 = mhlo.reshape %arg0 : (tensor<*xelem_type>) -> tensor<elem_type>
+      %20 = tensor.reshape %arg1(%from_elements) : (tensor<*xelem_type>, tensor<1xindex>) -> tensor<?xelem_type>
+      %21 = tensor.reshape %arg0(%c_empty) : (tensor<*xelem_type>, tensor<0xindex>) -> tensor<elem_type>
       %22 = chlo.broadcast_divide %21, %20 : (tensor<elem_type>, tensor<?xelem_type>) -> tensor<?xelem_type>
       %23 = chlo.broadcast_multiply %22, %20 : (tensor<?xelem_type>, tensor<?xelem_type>) -> tensor<?xelem_type>
       %24 = chlo.broadcast_compare %23, %21 {comparison_direction = #chlo<comparison_direction NE>} : (tensor<?xelem_type>, tensor<elem_type>) -> tensor<?xi1>
@@ -56,8 +57,8 @@ func.func @FloorDiv_platform_elem_type_output_type(%arg0: tensor<*xelem_type>, %
         %21 = shape.any %7, %8 : tensor<?xindex>, tensor<?xindex> -> tensor<?xindex>
         %22 = shape.num_elements %21 : tensor<?xindex> -> index
         %from_elements = tensor.from_elements %22 : tensor<1xindex>
-        %23 = mhlo.dynamic_reshape %arg1, %from_elements : (tensor<*xelem_type>, tensor<1xindex>) -> tensor<?xelem_type>
-        %24 = mhlo.dynamic_reshape %arg0, %from_elements : (tensor<*xelem_type>, tensor<1xindex>) -> tensor<?xelem_type>
+        %23 = tensor.reshape %arg1(%from_elements) : (tensor<*xelem_type>, tensor<1xindex>) -> tensor<?xelem_type>
+        %24 = tensor.reshape %arg0(%from_elements) : (tensor<*xelem_type>, tensor<1xindex>) -> tensor<?xelem_type>
         %25 = chlo.broadcast_divide %24, %23 : (tensor<?xelem_type>, tensor<?xelem_type>) -> tensor<?xelem_type>
         %26 = chlo.broadcast_multiply %25, %23 : (tensor<?xelem_type>, tensor<?xelem_type>) -> tensor<?xelem_type>
         %27 = chlo.broadcast_compare %26, %24 {comparison_direction = #chlo<comparison_direction NE>} : (tensor<?xelem_type>, tensor<?xelem_type>) -> tensor<?xi1>
@@ -79,10 +80,10 @@ func.func @FloorDiv_platform_elem_type_output_type(%arg0: tensor<*xelem_type>, %
         %27 = scf.if %26 -> (tensor<*xelem_type>) {
           %28 = shape.broadcast %21#0, %4 : tensor<?xindex>, tensor<1xindex> -> tensor<?xindex>
           %cast = tensor.cast %28 : tensor<?xindex> to tensor<1xindex>
-          %29 = mhlo.dynamic_reshape %arg1, %cast : (tensor<*xelem_type>, tensor<1xindex>) -> tensor<?xelem_type>
+          %29 = tensor.reshape %arg1(%cast) : (tensor<*xelem_type>, tensor<1xindex>) -> tensor<?xelem_type>
           %30 = shape.broadcast %21#1, %4 : tensor<?xindex>, tensor<1xindex> -> tensor<?xindex>
           %cast_0 = tensor.cast %30 : tensor<?xindex> to tensor<1xindex>
-          %31 = mhlo.dynamic_reshape %arg0, %cast_0 : (tensor<*xelem_type>, tensor<1xindex>) -> tensor<?xelem_type>
+          %31 = tensor.reshape %arg0(%cast_0) : (tensor<*xelem_type>, tensor<1xindex>) -> tensor<?xelem_type>
           %32 = chlo.broadcast_divide %31, %29 : (tensor<?xelem_type>, tensor<?xelem_type>) -> tensor<?xelem_type>
           %33 = chlo.broadcast_multiply %32, %29 : (tensor<?xelem_type>, tensor<?xelem_type>) -> tensor<?xelem_type>
           %34 = chlo.broadcast_compare %33, %31 {comparison_direction = #chlo<comparison_direction NE>} : (tensor<?xelem_type>, tensor<?xelem_type>) -> tensor<?xi1>
@@ -99,10 +100,10 @@ func.func @FloorDiv_platform_elem_type_output_type(%arg0: tensor<*xelem_type>, %
           %29 = scf.if %28 -> (tensor<*xelem_type>) {
             %30 = shape.broadcast %21#0, %3 : tensor<?xindex>, tensor<2xindex> -> tensor<?xindex>
             %cast = tensor.cast %30 : tensor<?xindex> to tensor<2xindex>
-            %31 = mhlo.dynamic_reshape %arg1, %cast : (tensor<*xelem_type>, tensor<2xindex>) -> tensor<?x?xelem_type>
+            %31 = tensor.reshape %arg1(%cast) : (tensor<*xelem_type>, tensor<2xindex>) -> tensor<?x?xelem_type>
             %32 = shape.broadcast %21#1, %3 : tensor<?xindex>, tensor<2xindex> -> tensor<?xindex>
             %cast_0 = tensor.cast %32 : tensor<?xindex> to tensor<2xindex>
-            %33 = mhlo.dynamic_reshape %arg0, %cast_0 : (tensor<*xelem_type>, tensor<2xindex>) -> tensor<?x?xelem_type>
+            %33 = tensor.reshape %arg0(%cast_0) : (tensor<*xelem_type>, tensor<2xindex>) -> tensor<?x?xelem_type>
             %34 = chlo.broadcast_divide %33, %31 : (tensor<?x?xelem_type>, tensor<?x?xelem_type>) -> tensor<?x?xelem_type>
             %35 = chlo.broadcast_multiply %34, %31 : (tensor<?x?xelem_type>, tensor<?x?xelem_type>) -> tensor<?x?xelem_type>
             %36 = chlo.broadcast_compare %35, %33 {comparison_direction = #chlo<comparison_direction NE>} : (tensor<?x?xelem_type>, tensor<?x?xelem_type>) -> tensor<?x?xi1>
@@ -119,10 +120,10 @@ func.func @FloorDiv_platform_elem_type_output_type(%arg0: tensor<*xelem_type>, %
             %31 = scf.if %30 -> (tensor<*xelem_type>) {
               %32 = shape.broadcast %21#0, %2 : tensor<?xindex>, tensor<3xindex> -> tensor<?xindex>
               %cast = tensor.cast %32 : tensor<?xindex> to tensor<3xindex>
-              %33 = mhlo.dynamic_reshape %arg1, %cast : (tensor<*xelem_type>, tensor<3xindex>) -> tensor<?x?x?xelem_type>
+              %33 = tensor.reshape %arg1(%cast) : (tensor<*xelem_type>, tensor<3xindex>) -> tensor<?x?x?xelem_type>
               %34 = shape.broadcast %21#1, %2 : tensor<?xindex>, tensor<3xindex> -> tensor<?xindex>
               %cast_0 = tensor.cast %34 : tensor<?xindex> to tensor<3xindex>
-              %35 = mhlo.dynamic_reshape %arg0, %cast_0 : (tensor<*xelem_type>, tensor<3xindex>) -> tensor<?x?x?xelem_type>
+              %35 = tensor.reshape %arg0(%cast_0) : (tensor<*xelem_type>, tensor<3xindex>) -> tensor<?x?x?xelem_type>
               %36 = chlo.broadcast_divide %35, %33 : (tensor<?x?x?xelem_type>, tensor<?x?x?xelem_type>) -> tensor<?x?x?xelem_type>
               %37 = chlo.broadcast_multiply %36, %33 : (tensor<?x?x?xelem_type>, tensor<?x?x?xelem_type>) -> tensor<?x?x?xelem_type>
               %38 = chlo.broadcast_compare %37, %35 {comparison_direction = #chlo<comparison_direction NE>} : (tensor<?x?x?xelem_type>, tensor<?x?x?xelem_type>) -> tensor<?x?x?xi1>
@@ -139,10 +140,10 @@ func.func @FloorDiv_platform_elem_type_output_type(%arg0: tensor<*xelem_type>, %
               %33 = scf.if %32 -> (tensor<*xelem_type>) {
                 %34 = shape.broadcast %21#0, %1 : tensor<?xindex>, tensor<4xindex> -> tensor<?xindex>
                 %cast = tensor.cast %34 : tensor<?xindex> to tensor<4xindex>
-                %35 = mhlo.dynamic_reshape %arg1, %cast : (tensor<*xelem_type>, tensor<4xindex>) -> tensor<?x?x?x?xelem_type>
+                %35 = tensor.reshape %arg1(%cast) : (tensor<*xelem_type>, tensor<4xindex>) -> tensor<?x?x?x?xelem_type>
                 %36 = shape.broadcast %21#1, %1 : tensor<?xindex>, tensor<4xindex> -> tensor<?xindex>
                 %cast_0 = tensor.cast %36 : tensor<?xindex> to tensor<4xindex>
-                %37 = mhlo.dynamic_reshape %arg0, %cast_0 : (tensor<*xelem_type>, tensor<4xindex>) -> tensor<?x?x?x?xelem_type>
+                %37 = tensor.reshape %arg0(%cast_0) : (tensor<*xelem_type>, tensor<4xindex>) -> tensor<?x?x?x?xelem_type>
                 %38 = chlo.broadcast_divide %37, %35 : (tensor<?x?x?x?xelem_type>, tensor<?x?x?x?xelem_type>) -> tensor<?x?x?x?xelem_type>
                 %39 = chlo.broadcast_multiply %38, %35 : (tensor<?x?x?x?xelem_type>, tensor<?x?x?x?xelem_type>) -> tensor<?x?x?x?xelem_type>
                 %40 = chlo.broadcast_compare %39, %37 {comparison_direction = #chlo<comparison_direction NE>} : (tensor<?x?x?x?xelem_type>, tensor<?x?x?x?xelem_type>) -> tensor<?x?x?x?xi1>
@@ -159,10 +160,10 @@ func.func @FloorDiv_platform_elem_type_output_type(%arg0: tensor<*xelem_type>, %
                 cf.assert %34, "Input for dynamic binary or n-ary op lowering was of a rank greater than 5"
                 %35 = shape.broadcast %21#0, %0 : tensor<?xindex>, tensor<5xindex> -> tensor<?xindex>
                 %cast = tensor.cast %35 : tensor<?xindex> to tensor<5xindex>
-                %36 = mhlo.dynamic_reshape %arg1, %cast : (tensor<*xelem_type>, tensor<5xindex>) -> tensor<?x?x?x?x?xelem_type>
+                %36 = tensor.reshape %arg1(%cast) : (tensor<*xelem_type>, tensor<5xindex>) -> tensor<?x?x?x?x?xelem_type>
                 %37 = shape.broadcast %21#1, %0 : tensor<?xindex>, tensor<5xindex> -> tensor<?xindex>
                 %cast_0 = tensor.cast %37 : tensor<?xindex> to tensor<5xindex>
-                %38 = mhlo.dynamic_reshape %arg0, %cast_0 : (tensor<*xelem_type>, tensor<5xindex>) -> tensor<?x?x?x?x?xelem_type>
+                %38 = tensor.reshape %arg0(%cast_0) : (tensor<*xelem_type>, tensor<5xindex>) -> tensor<?x?x?x?x?xelem_type>
                 %39 = chlo.broadcast_divide %38, %36 : (tensor<?x?x?x?x?xelem_type>, tensor<?x?x?x?x?xelem_type>) -> tensor<?x?x?x?x?xelem_type>
                 %40 = chlo.broadcast_multiply %39, %36 : (tensor<?x?x?x?x?xelem_type>, tensor<?x?x?x?x?xelem_type>) -> tensor<?x?x?x?x?xelem_type>
                 %41 = chlo.broadcast_compare %40, %38 {comparison_direction = #chlo<comparison_direction NE>} : (tensor<?x?x?x?x?xelem_type>, tensor<?x?x?x?x?xelem_type>) -> tensor<?x?x?x?x?xi1>
@@ -190,6 +191,6 @@ func.func @FloorDiv_platform_elem_type_output_type(%arg0: tensor<*xelem_type>, %
   %12 = shape.shape_of %arg0 : tensor<*xelem_type> -> tensor<?xindex>
   %13 = shape.shape_of %arg1 : tensor<*xelem_type> -> tensor<?xindex>
   %14 = shape.broadcast %12, %13 : tensor<?xindex>, tensor<?xindex> -> tensor<?xindex>
-  %15 = mhlo.dynamic_reshape %11, %14 : (tensor<*xelem_type>, tensor<?xindex>) -> tensor<*xelem_type>
+  %15 = tensor.reshape %11(%14) : (tensor<*xelem_type>, tensor<?xindex>) -> tensor<*xelem_type>
   return %15 : tensor<*xelem_type>
 }

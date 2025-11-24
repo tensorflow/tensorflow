@@ -12,7 +12,12 @@ data. During deserialization, the format version is read to select the
 corresponding parsing logic.
 
 The most recent version is available via `SerDesVersion::current()` and should
-be used by default for most serialization tasks.
+be used by default for most serialization tasks. In the implementation of
+serialization, this default version is always obtained by using
+`SerDesDefaultVersionAccessor::Get()` instead of directly using
+`SerDesVersion::current()`. This indirection helps develop serialization logic
+that normally should handle non-default versions (e.g., IFRT Proxy) -- see the
+`Nested serialization` subsection.
 
 In some cases, data serialized by a newer version of IFRT needs to be read by an
 older version. For these scenarios, an older serialization version must be used.
@@ -60,3 +65,22 @@ old format.
 * `SerDesVersion::minimum()` must be updated to point to a
 version number newer than the one for the removed format. This prevents
 deserialization of the old format.
+
+## Nested serialization
+
+A serialization logic may invoke another serialization (`ToProto()` or
+`SerDes::Serialize()`). The outer serialization is expected to use the requested
+version for the inner serialization(s), rather than using the outer
+serialization's own format version.
+
+Correctly propagating the version across serialization can be often tricky to
+debug because `ToProto()` and `SerializeOptions` allow omitting the requested
+version, which would default to the current version, and most serialization
+logics work fine with this requested version.
+
+For debugging incorrect version propagation,
+`IFRT_TESTING_BAD_DEFAULT_SERDES_VERSION` macro may be used. When the macro is
+defined, `SerDesDefaultVersionAccessor::Get()` would immediately fail instead of
+returning `SerDesVersion::current()`. This would detect any serialization
+attempt that did not have a version explicitly.
+

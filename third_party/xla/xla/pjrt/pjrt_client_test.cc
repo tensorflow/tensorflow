@@ -26,16 +26,18 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/synchronization/blocking_counter.h"
 #include "absl/types/span.h"
-#include "xla/cpu_function_runtime.h"
+#include "xla/backends/cpu/alignment.h"
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/testlib/test.h"
+#include "xla/literal.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tests/literal_test_util.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/statusor.h"
 
@@ -46,13 +48,13 @@ class TestClientFactory {
  public:
   void Register(
       std::function<absl::StatusOr<std::unique_ptr<PjRtClient>>()> factory) {
-    absl::MutexLock lock(&mu_);
+    absl::MutexLock lock(mu_);
     CHECK(!factory_);
     factory_ = std::move(factory);
   }
 
   std::function<absl::StatusOr<std::unique_ptr<PjRtClient>>()> Get() const {
-    absl::MutexLock lock(&mu_);
+    absl::MutexLock lock(mu_);
     return factory_;
   }
 
@@ -463,7 +465,7 @@ TEST(PjRtClientTest, CopyToDeviceAsyncExternalCpuOnly) {
     GTEST_SKIP() << "This test is for CPU only.";
   }
 
-  alignas(cpu_function_runtime::MinAlign()) std::array<int32_t, 4> data;
+  alignas(cpu::MinAlign()) std::array<int32_t, 4> data;
   data.fill(0);
   auto* data_ptr = data.data();
   Shape shape = ShapeUtil::MakeShape(S32, {4});
@@ -510,7 +512,7 @@ TEST(PjRtClientTest, CreateViewOfUnalignedBufferReturnsErrorCpuOnly) {
     GTEST_SKIP() << "This test is for CPU only.";
   }
 
-  alignas(cpu_function_runtime::MinAlign()) std::array<int32_t, 5> data;
+  alignas(cpu::MinAlign()) std::array<int32_t, 5> data;
   auto* data_ptr = data.data();
 
   // Pointer to the second element is always unaligned, because it's shifted by
@@ -529,6 +531,35 @@ TEST(PjRtClientTest, CreateViewOfUnalignedBufferReturnsErrorCpuOnly) {
   ASSERT_FALSE(result.ok());
   EXPECT_THAT(result.status().message(),
               ::testing::HasSubstr("unaligned data"));
+}
+
+TEST(PjRtClientTest, FulfillAliasBuffer) {
+  TF_ASSERT_OK_AND_ASSIGN(auto client, GetClient());
+
+  std::vector<int32_t> data{1, 2, 3, 4, 5, 6};
+  Shape shape = ShapeUtil::MakeShape(S32, {2, 3});
+  TF_ASSERT_OK_AND_ASSIGN(
+      *shape.mutable_layout(),
+      client->GetDefaultLayout(shape.element_type(), shape.dimensions()));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto alias_buffer,
+      client->CreateAliasBuffer(shape, client->memory_spaces()[0]));
+  auto future = alias_buffer.first->ToLiteral();
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto param,
+      client->BufferFromHostBuffer(
+          data.data(), shape.element_type(), shape.dimensions(),
+          /*byte_strides=*/std::nullopt,
+          PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall, nullptr,
+          client->memory_spaces()[0], /*device_layout=*/nullptr));
+
+  ASSERT_NE(alias_buffer.second, nullptr);
+  TF_ASSERT_OK(std::move(alias_buffer.second)(param.get()));
+  TF_ASSERT_OK_AND_ASSIGN(auto shared_literal, future.Await());
+
+  std::vector<int32_t> expected = {1, 2, 3, 4, 5, 6};
+  EXPECT_EQ(shared_literal->data<int32_t>(), expected);
 }
 
 absl::StatusOr<std::unique_ptr<PjRtBuffer>> MakeFloatBuffer(
@@ -571,7 +602,6 @@ ENTRY DuplicateDonationError() -> (f32[2, 2], f32[2, 2]) {
                           MakeFloatBuffer(client.get(), data, {2, 2}));
 
   xla::ExecuteOptions options;
-  options.untuple_result = true;
   {
     auto result = pjrt_executable->Execute(/*argument_handles=*/{{
                                                buffer0.get(),

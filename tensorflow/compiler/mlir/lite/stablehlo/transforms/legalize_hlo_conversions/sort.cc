@@ -127,7 +127,7 @@ LogicalResult LegalizeSortOp::matchAndRewrite(
   const int32_t k = indices_type.getShape().back();
   auto k_cst_attr = DenseIntElementsAttr::get(
       RankedTensorType::get({}, rewriter.getI32Type()), k);
-  auto k_cst = rewriter.create<arith::ConstantOp>(op->getLoc(), k_cst_attr);
+  auto k_cst = arith::ConstantOp::create(rewriter, op->getLoc(), k_cst_attr);
 
   rewriter.replaceOpWithNewOp<TFL::TopKV2Op>(op, keys.getType(),
                                              indices.getType(), keys, k_cst);

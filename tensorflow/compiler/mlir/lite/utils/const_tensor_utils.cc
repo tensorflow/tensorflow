@@ -67,14 +67,14 @@ template <typename T>
 llvm::SmallVector<mlir::APInt> ReadAsHostEndian(ArrayRef<uint8_t> bytes) {
   llvm::SmallVector<mlir::APInt> ret;
   size_t read_size = sizeof(T);
-  int bytes_len = bytes.size();
+  size_t bytes_len = bytes.size();
   assert(bytes_len % read_size == 0);
 
-  int elem_count = bytes_len / read_size;
+  size_t elem_count = bytes_len / read_size;
   ret.reserve(elem_count);
 
   const char* data_ptr = reinterpret_cast<const char*>(bytes.data());
-  for (int i = 0; i < elem_count; i++) {
+  for (size_t i = 0; i < elem_count; i++) {
     T val = llvm::support::endian::readNext<T, llvm::endianness::native,
                                             llvm::support::unaligned>(data_ptr);
     ret.push_back(mlir::APInt(sizeof(T) * 8, val));
@@ -301,9 +301,17 @@ StatusOr<mlir::ElementsAttr> ConvertIntBuffer(
       return mlir::ElementsAttr(
           DenseElementsAttr::get(shaped_type, ArrayRef<bool>(boolValues)));
     }
+    case 2: {
+      auto i2Values = tflite::UnpackDenseLowBitIntoInt8(
+          buffer, shaped_type.getNumElements(), /*bit_width=*/2);
+      // Use `getFromRawBuffer()` instead of `get()` to bypass a templated size
+      // check which doesn't work with int2 because int2_t doesn't exist.
+      return mlir::ElementsAttr(DenseElementsAttr::getFromRawBuffer(
+          shaped_type, ArrayRef<char>(i2Values)));
+    }
     case 4: {
-      auto i4Values =
-          tflite::UnpackDenseInt4IntoInt8(buffer, shaped_type.getNumElements());
+      auto i4Values = tflite::UnpackDenseLowBitIntoInt8(
+          buffer, shaped_type.getNumElements(), /*bit_width=*/4);
       // Use `getFromRawBuffer()` instead of `get()` to bypass a templated size
       // check which doesn't work with int4 because int4_t doesn't exist.
       return mlir::ElementsAttr(DenseElementsAttr::getFromRawBuffer(
@@ -354,7 +362,7 @@ StatusOr<mlir::ElementsAttr> ConvertFloatBuffer(
       assert(bytes_len % 2 == 0);
       // Supports both BF16 and F16.
       assert(elem_type.isF16() || elem_type.isBF16());
-      int elem_count = bytes_len / 2;
+      size_t elem_count = bytes_len / 2;
 
       if (elem_type.isF16()) {
         std::vector<Eigen::half> values;
@@ -362,7 +370,7 @@ StatusOr<mlir::ElementsAttr> ConvertFloatBuffer(
 
         const char* data = reinterpret_cast<const char*>(buffer.data());
 
-        for (int i = 0; i < elem_count; i++) {
+        for (size_t i = 0; i < elem_count; i++) {
           uint16_t bit_repr = llvm::support::endian::readNext<
               uint16_t, llvm::endianness::native, llvm::support::unaligned>(
               data);
@@ -377,7 +385,7 @@ StatusOr<mlir::ElementsAttr> ConvertFloatBuffer(
 
         const char* data = reinterpret_cast<const char*>(buffer.data());
 
-        for (int i = 0; i < elem_count; i++) {
+        for (size_t i = 0; i < elem_count; i++) {
           uint16_t bit_repr = llvm::support::endian::readNext<
               uint16_t, llvm::endianness::native, llvm::support::unaligned>(
               data);
@@ -390,13 +398,13 @@ StatusOr<mlir::ElementsAttr> ConvertFloatBuffer(
     }
     case 32: {
       assert(bytes_len % 4 == 0);
-      int elem_count = bytes_len / 4;
+      size_t elem_count = bytes_len / 4;
       std::vector<float> values;
       values.reserve(elem_count);
 
       const char* data = reinterpret_cast<const char*>(buffer.data());
 
-      for (int i = 0; i < elem_count; i++) {
+      for (size_t i = 0; i < elem_count; i++) {
         uint32_t bit_repr =
             llvm::support::endian::readNext<uint32_t, llvm::endianness::native,
                                             llvm::support::unaligned>(data);
@@ -407,13 +415,13 @@ StatusOr<mlir::ElementsAttr> ConvertFloatBuffer(
     }
     case 64: {
       assert(bytes_len % 8 == 0);
-      int elem_count = bytes_len / 8;
+      size_t elem_count = bytes_len / 8;
       std::vector<double> values;
       values.reserve(elem_count);
 
       const char* data = reinterpret_cast<const char*>(buffer.data());
 
-      for (int i = 0; i < elem_count; i++) {
+      for (size_t i = 0; i < elem_count; i++) {
         uint64_t bit_repr =
             llvm::support::endian::readNext<uint64_t, llvm::endianness::native,
                                             llvm::support::unaligned>(data);

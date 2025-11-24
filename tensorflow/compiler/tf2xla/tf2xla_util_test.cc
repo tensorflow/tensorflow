@@ -157,7 +157,7 @@ TEST(ValidateConfig, ConflictingFetchName) {
   ExpectErrorContains(ValidateConfig(config), "conflicting fetch name");
 }
 
-static tf2xla::Config FetchesConfig(std::vector<string> fetches) {
+static tf2xla::Config FetchesConfig(std::vector<std::string> fetches) {
   tf2xla::Config config;
   for (const auto& fetch_node_name : fetches) {
     auto* fetch = config.add_fetch();
@@ -409,7 +409,7 @@ TEST(PropagateConstIntoFunctionalNodes, CopiedConstNodeHasUniqueName) {
   TF_ASSERT_OK(GetNodeAttr(while_node->def(), "body", &body_fn));
   const FunctionDef* rewritten_body_fn = fld.Find(body_fn.name());
   ASSERT_NE(rewritten_body_fn, nullptr);
-  std::unordered_map<string, NodeDef> nodes;
+  std::unordered_map<std::string, NodeDef> nodes;
   for (const NodeDef& node_def : rewritten_body_fn->node_def()) {
     nodes[node_def.name()] = node_def;
   }

@@ -20,8 +20,8 @@ limitations under the License.
 #include "mlir/Transforms/Passes.h"
 #include "xla/mlir_hlo/stablehlo_ext/transforms/passes.h"
 #include "xla/service/spmd/shardy/round_trip_common/import_constants.h"
+#include "xla/service/spmd/shardy/round_trip_common/import_func_calls.h"
 #include "xla/service/spmd/shardy/round_trip_common/import_sdy_custom_calls.h"
-#include "xla/service/spmd/shardy/round_trip_common/import_uninlineable_func_calls.h"
 #include "xla/service/spmd/shardy/round_trip_common/open_while_free_vars_sharding.h"
 
 namespace xla {
@@ -30,7 +30,8 @@ namespace sdy {
 using ::mlir::func::FuncOp;
 
 void addCommonPreImportPasses(mlir::OpPassManager& pm,
-                              bool enableConstantImport) {
+                              bool enableConstantImport,
+                              bool enableStablehloCanonicalizeFromHloImport) {
   pm.addPass(mlir::createSymbolDCEPass());
   // TODO(b/333505182): remove when partitioning is done in SDY.
   // We call prepare-for-export pass before SDY propagation, so that all IR
@@ -47,14 +48,18 @@ void addCommonPreImportPasses(mlir::OpPassManager& pm,
   if (enableConstantImport) {
     pm.addNestedPass<FuncOp>(createImportConstantsPass());
   }
-  pm.addNestedPass<FuncOp>(
-      mlir::stablehlo_ext::createStablehloCanonicalizeFromHloImportPass());
+  if (enableStablehloCanonicalizeFromHloImport) {
+    pm.addNestedPass<FuncOp>(
+        mlir::stablehlo_ext::createStablehloCanonicalizeFromHloImportPass());
+  }
 }
 
-void addCommonPostImportPasses(mlir::OpPassManager& pm) {
+void addCommonPostImportPasses(mlir::OpPassManager& pm, bool importFuncCalls) {
   pm.addPass(createImportSdyCustomCallsPass());
   pm.addNestedPass<FuncOp>(createOpenWhileFreeVarsShardingPass());
-  pm.addPass(createImportUninlineableFuncCallsPass());
+  if (importFuncCalls) {
+    pm.addPass(createImportFuncCallsPass());
+  }
 }
 
 }  // namespace sdy

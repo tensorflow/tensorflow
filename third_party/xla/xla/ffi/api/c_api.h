@@ -61,6 +61,15 @@ XLA_FFI_DEFINE_STRUCT_TRAITS(XLA_FFI_Extension_Base, next);
 // Version
 //===----------------------------------------------------------------------===//
 
+// XLA FFI provides a stable binary API for registering custom calls with
+// XLA runtime. XLA runtime guarantees that old API version are supported for
+// at least 12 months, after that point FFI library has to be recompiled with
+// latest XLA FFI headers to support new features. We don't plan to break ABI
+// compatibility, unless it's absolutely necessary to enable new features that
+// can't be implemented in a backward compatible way.
+//
+// The range of supported API versions is defined in `xla/ffi/ffi_api.cc`.
+
 // Incremented when an ABI-incompatible change is made to the interface.
 //
 // Major changes include:
@@ -82,7 +91,7 @@ XLA_FFI_DEFINE_STRUCT_TRAITS(XLA_FFI_Extension_Base, next);
 // Minor changes include:
 // * Adding a new field to the XLA_FFI_Api or argument structs
 // * Renaming a method or argument (doesn't affect ABI)
-#define XLA_FFI_API_MINOR 1
+#define XLA_FFI_API_MINOR 2
 
 struct XLA_FFI_Api_Version {
   size_t struct_size;
@@ -262,11 +271,6 @@ typedef struct XLA_FFI_ExecutionContext XLA_FFI_ExecutionContext;
 // Primitives
 //===----------------------------------------------------------------------===//
 
-// TypeId uniquely identifies a user-defined type in a given XLA FFI instance.
-typedef struct XLA_FFI_TypeId {
-  int64_t type_id;
-} XLA_FFI_TypeId;
-
 // We use byte spans to pass strings to handlers because strings might not be
 // null terminated, and even if they are, looking for a null terminator can
 // become very expensive in tight loops.
@@ -287,6 +291,26 @@ typedef struct XLA_FFI_Array {
   size_t size;
   void* data;
 } XLA_FFI_Array;
+
+//===----------------------------------------------------------------------===//
+// Type registry
+//===----------------------------------------------------------------------===//
+
+// TypeId uniquely identifies a user-defined type in a given XLA FFI instance.
+typedef struct XLA_FFI_TypeId {
+  int64_t type_id;
+} XLA_FFI_TypeId;
+
+// TypeInfo contains function pointers required by XLA runtime to manipulate
+// user-defined types. For example stateful handlers must tell XLA runtime how
+// to destroy their state when executable is being destroyed.
+typedef struct XLA_FFI_TypeInfo {
+  size_t struct_size;
+  XLA_FFI_Extension_Base* extension_start;
+  void (*deleter)(void* object);
+} XLA_FFI_TypeInfo;
+
+XLA_FFI_DEFINE_STRUCT_TRAITS(XLA_FFI_TypeInfo, deleter);
 
 //===----------------------------------------------------------------------===//
 // Future
@@ -476,22 +500,22 @@ typedef XLA_FFI_Error* XLA_FFI_Handler_Register(
 
 #define XLA_FFI_UNKNOWN_TYPE_ID XLA_FFI_TypeId{0}
 
-struct XLA_FFI_TypeId_Register_Args {
+struct XLA_FFI_Type_Register_Args {
   size_t struct_size;
   XLA_FFI_Extension_Base* extension_start;
 
   XLA_FFI_ByteSpan name;
   XLA_FFI_TypeId* type_id;  // in-out
+  const XLA_FFI_TypeInfo* type_info;
 };
 
-XLA_FFI_DEFINE_STRUCT_TRAITS(XLA_FFI_TypeId_Register_Args, type_id);
+XLA_FFI_DEFINE_STRUCT_TRAITS(XLA_FFI_Type_Register_Args, type_id);
 
 // Registers user type `name` with XLA. If type id is `XLA_FFI_UNKNOWN_TYPE_ID`,
 // XLA will assign a unique type id and return it in `type_id` out argument,
 // otherwise XLA will verify that type id is unique and matches the type id of
 // the type registered with the same `name` earlier.
-typedef XLA_FFI_Error* XLA_FFI_TypeId_Register(
-    XLA_FFI_TypeId_Register_Args* args);
+typedef XLA_FFI_Error* XLA_FFI_Type_Register(XLA_FFI_Type_Register_Args* args);
 
 //===----------------------------------------------------------------------===//
 // ExecutionContext
@@ -523,10 +547,9 @@ struct XLA_FFI_State_Set_Args {
   XLA_FFI_ExecutionContext* ctx;
   XLA_FFI_TypeId* type_id;
   void* state;
-  void (*deleter)(void* state);
 };
 
-XLA_FFI_DEFINE_STRUCT_TRAITS(XLA_FFI_State_Set_Args, deleter);
+XLA_FFI_DEFINE_STRUCT_TRAITS(XLA_FFI_State_Set_Args, state);
 
 // Sets execution state to the `state` of type `type_id`. Returns an error if
 // state already set.
@@ -694,10 +717,18 @@ typedef XLA_FFI_Error* XLA_FFI_DeviceOrdinal_Get(
 // Metadata extension
 //===----------------------------------------------------------------------===//
 
+// XLA FFI handler metadata allows the XLA runtime to query handler properties
+// during XLA compilation and execution. We use a metadata extension to verify
+// that XLA is compatible with the FFI version used to compile the handler.
 struct XLA_FFI_Metadata {
   size_t struct_size;
+
   XLA_FFI_Api_Version api_version;
   XLA_FFI_Handler_Traits traits;
+
+  // For stateful handlers, the type id of the state type. Otherwise, the type
+  // id is `XLA_FFI_UNKNOWN_TYPE_ID`.
+  XLA_FFI_TypeId state_type_id;
 };
 
 XLA_FFI_DEFINE_STRUCT_TRAITS(XLA_FFI_Metadata, traits);
@@ -727,7 +758,7 @@ struct XLA_FFI_Api {
   _XLA_FFI_API_STRUCT_FIELD(XLA_FFI_Error_Destroy);
   _XLA_FFI_API_STRUCT_FIELD(XLA_FFI_Handler_Register);
   _XLA_FFI_API_STRUCT_FIELD(XLA_FFI_Stream_Get);
-  _XLA_FFI_API_STRUCT_FIELD(XLA_FFI_TypeId_Register);
+  _XLA_FFI_API_STRUCT_FIELD(XLA_FFI_Type_Register);
   _XLA_FFI_API_STRUCT_FIELD(XLA_FFI_ExecutionContext_Get);
   _XLA_FFI_API_STRUCT_FIELD(XLA_FFI_State_Set);
   _XLA_FFI_API_STRUCT_FIELD(XLA_FFI_State_Get);

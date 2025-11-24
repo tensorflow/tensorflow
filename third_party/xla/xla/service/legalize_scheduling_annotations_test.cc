@@ -23,6 +23,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/status/status_matchers.h"
 #include "absl/strings/match.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -35,7 +36,6 @@ limitations under the License.
 #include "xla/side_effect_util.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
-#include "tsl/platform/status_matchers.h"
 
 namespace xla {
 namespace {
@@ -43,7 +43,6 @@ namespace {
 using LegalizeSchedulingAnnotationsTest = HloHardwareIndependentTestBase;
 using SchedulingAnnotationPropagationTest = HloHardwareIndependentTestBase;
 using RemoveLoopIterationAnnotationTest = HloHardwareIndependentTestBase;
-using ::tsl::testing::IsOkAndHolds;
 
 TEST_F(LegalizeSchedulingAnnotationsTest, NonIntegerAnnotation) {
   constexpr absl::string_view hlo_string = R"(
@@ -462,7 +461,7 @@ TEST_F(LegalizeSchedulingAnnotationsTest, ProgagateAnnotationToGap) {
   LegalizeSchedulingAnnotations::Config config;
   config.propagate_annotation = true;
   EXPECT_THAT(LegalizeSchedulingAnnotations(config).Run(hlo_module.get()),
-              IsOkAndHolds(true));
+              absl_testing::IsOkAndHolds(true));
   VLOG(1) << "module after: " << hlo_module->ToString();
   HloInstruction* slice =
       hlo_module->entry_computation()->GetInstructionWithName("slice");
@@ -493,7 +492,7 @@ TEST_F(SchedulingAnnotationPropagationTest, NothingToPropagate) {
   LegalizeSchedulingAnnotations::Config config;
   config.propagate_annotation = true;
   EXPECT_THAT(LegalizeSchedulingAnnotations(config).Run(hlo_module.get()),
-              IsOkAndHolds(false));
+              absl_testing::IsOkAndHolds(false));
 }
 
 TEST_F(SchedulingAnnotationPropagationTest, NoDataDependentGap) {
@@ -517,7 +516,7 @@ TEST_F(SchedulingAnnotationPropagationTest, NoDataDependentGap) {
   LegalizeSchedulingAnnotations::Config config;
   config.propagate_annotation = true;
   EXPECT_THAT(LegalizeSchedulingAnnotations(config).Run(hlo_module.get()),
-              IsOkAndHolds(false));
+              absl_testing::IsOkAndHolds(false));
 }
 
 TEST_F(SchedulingAnnotationPropagationTest, GapDueToControlDependency) {
@@ -541,7 +540,7 @@ TEST_F(SchedulingAnnotationPropagationTest, GapDueToControlDependency) {
   LegalizeSchedulingAnnotations::Config config;
   config.propagate_annotation = true;
   EXPECT_THAT(LegalizeSchedulingAnnotations(config).Run(hlo_module.get()),
-              IsOkAndHolds(true));
+              absl_testing::IsOkAndHolds(true));
   VLOG(1) << "module after: " << hlo_module->ToString();
   HloInstruction* c0 =
       hlo_module->entry_computation()->GetInstructionWithName("c0");
@@ -582,7 +581,7 @@ TEST_F(SchedulingAnnotationPropagationTest, GapDueToControlDependency2) {
   LegalizeSchedulingAnnotations::Config config;
   config.propagate_annotation = true;
   EXPECT_THAT(LegalizeSchedulingAnnotations(config).Run(hlo_module.get()),
-              IsOkAndHolds(true));
+              absl_testing::IsOkAndHolds(true));
   VLOG(1) << "module after: " << hlo_module->ToString();
   HloInstruction* slice =
       hlo_module->entry_computation()->GetInstructionWithName("slice");
@@ -625,7 +624,7 @@ TEST_F(SchedulingAnnotationPropagationTest, TwoGroups) {
   LegalizeSchedulingAnnotations::Config config;
   config.propagate_annotation = true;
   EXPECT_THAT(LegalizeSchedulingAnnotations(config).Run(hlo_module.get()),
-              IsOkAndHolds(true));
+              absl_testing::IsOkAndHolds(true));
   VLOG(1) << "module after: " << hlo_module->ToString();
   HloInstruction* slice =
       hlo_module->entry_computation()->GetInstructionWithName("slice");
@@ -676,7 +675,7 @@ TEST_F(SchedulingAnnotationPropagationTest, CrossComputationAnnotation) {
   LegalizeSchedulingAnnotations::Config config;
   config.propagate_annotation = true;
   EXPECT_THAT(LegalizeSchedulingAnnotations(config).Run(hlo_module.get()),
-              IsOkAndHolds(true));
+              absl_testing::IsOkAndHolds(true));
   VLOG(1) << "module after: " << hlo_module->ToString();
   HloInstruction* slice = hlo_module->GetComputationWithName("while_body")
                               ->GetInstructionWithName("slice");
@@ -830,7 +829,7 @@ ENTRY %entry (p0: bf16[5,8,128], p1: bf16[5,1,2,128]) -> bf16[5,8,128] {
   EXPECT_FALSE(annotation->iteration_id);
 }
 
-TEST_F(SchedulingAnnotationPropagationTest, VerifyCycle) {
+TEST_F(SchedulingAnnotationPropagationTest, VerifyNoCycle) {
   absl::string_view hlo_string = R"(
 HloModule module, is_scheduled=true
 
@@ -842,6 +841,31 @@ ENTRY entry {
   a2 = f32[16]{0} add(a1, p1), frontend_attributes={_scheduling_group_id="3"}
   a3 = f32[16]{0} add(a2, p1), frontend_attributes={_scheduling_group_id="2"}
   a4 = f32[16]{0} add(p1, a3), frontend_attributes={_scheduling_group_id="1"}
+  ROOT tuple = (f32[16]{0}, f32[16]{0}) tuple(a3, a4)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  LegalizeSchedulingAnnotations::Config config;
+  config.run_verification = true;
+  config.keep_sync_annotation = HloPredicateFalse;
+
+  auto result = LegalizeSchedulingAnnotations(config).Run(hlo_module.get());
+  EXPECT_IS_OK(result);
+}
+
+TEST_F(SchedulingAnnotationPropagationTest, VerifyCycle) {
+  absl::string_view hlo_string = R"(
+HloModule module, is_scheduled=true
+
+ENTRY entry {
+  p0 = f32[16]{0} parameter(0)
+  p1 = f32[16]{0} parameter(1)
+  a0 = f32[16]{0} collective-permute(p0), source_target_pairs={{0,1},{1,2},{2,3},{3,0}}, frontend_attributes={_scheduling_group_id="1"}
+  a1 = f32[16]{0} collective-permute(a0), source_target_pairs={{0,1},{1,2},{2,3},{3,0}}, frontend_attributes={_scheduling_group_id="2"}
+  a2 = f32[16]{0} collective-permute(a1), source_target_pairs={{0,1},{1,2},{2,3},{3,0}}, frontend_attributes={_scheduling_group_id="3"}
+  a3 = f32[16]{0} collective-permute(a2), source_target_pairs={{0,1},{1,2},{2,3},{3,0}}, frontend_attributes={_scheduling_group_id="2"}
+  a4 = f32[16]{0} collective-permute(a3), source_target_pairs={{0,1},{1,2},{2,3},{3,0}}, frontend_attributes={_scheduling_group_id="1"}
   ROOT tuple = (f32[16]{0}, f32[16]{0}) tuple(a3, a4)
 }
 )";

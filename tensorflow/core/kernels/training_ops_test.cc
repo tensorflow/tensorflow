@@ -75,7 +75,7 @@ static Node* Random(Graph* g, int m, int n) {
 
 static Node* Iota(Graph* g, int n) {
   Tensor data(DT_INT32, TensorShape({n}));
-  int32* base = data.flat<int32>().data();
+  int32_t* base = data.flat<int32_t>().data();
   for (int i = 0; i < n; ++i) base[i] = i;
   return test::graph::Constant(g, data);
 }

@@ -24,11 +24,13 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/no_destructor.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/tsl/concurrency/async_value.h"
+#include "xla/tsl/concurrency/executor.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/tsl/platform/test_benchmark.h"
@@ -180,12 +182,15 @@ TEST(AsyncValueRefTest, AndThen) {
 
   EXPECT_FALSE(ref.IsConcrete());
   EXPECT_FALSE(ref.IsAvailable());
+  EXPECT_FALSE(ref.HasWaiter());
 
   bool executed = false;
   ref.AndThen([&]() { executed = true; });
+  EXPECT_TRUE(ref.HasWaiter());
 
   ref.emplace(42);
   EXPECT_TRUE(executed);
+  EXPECT_FALSE(ref.HasWaiter());
 }
 
 TEST(AsyncValueRefTest, AndThenError) {
@@ -403,7 +408,7 @@ TEST(AsyncValueRefTest, FlatMapUnavailableError) {
   EXPECT_EQ(fmapped_to_float.GetError(), absl::InternalError("error"));
 }
 
-struct DeferredExecutor : public AsyncValue::Executor {
+struct DeferredExecutor : public Executor {
   void Execute(Task task) final { tasks.push_back(std::move(task)); }
 
   size_t Quiesce() {
@@ -411,7 +416,7 @@ struct DeferredExecutor : public AsyncValue::Executor {
     while (!tasks.empty()) {
       Task task = std::move(tasks.back());
       tasks.pop_back();
-      task();
+      std::move(task)();
       ++n;
     }
     return n;
@@ -949,6 +954,72 @@ TEST(AsyncValueRefTest, CountDownError) {
   EXPECT_TRUE(count_down_ref_copy.CountDown(1));
   EXPECT_TRUE(ref.IsError());
   EXPECT_EQ(ref.GetError(), absl::InternalError("error"));
+}
+
+TEST(AsyncValueRefTest, UnconstructedScopedAsyncValue) {
+  ScopedAsyncValue<int32_t> scoped_value;
+
+  AsyncValueRef<int32_t> ref = scoped_value.AsRef();
+  EXPECT_FALSE(ref.IsAvailable());
+
+  ref.emplace(42);
+  EXPECT_TRUE(ref.IsAvailable());
+  EXPECT_EQ(*ref, 42);
+}
+
+TEST(AsyncValueRefTest, ConstructedScopedAsyncValue) {
+  ScopedAsyncValue<int32_t> scoped_value(
+      ScopedAsyncValue<int32_t>::ConstructedTag{}, 42);
+
+  AsyncValueRef<int32_t> ref = scoped_value.AsRef();
+  EXPECT_FALSE(ref.IsAvailable());
+
+  ref.SetStateConcrete();
+  EXPECT_TRUE(ref.IsAvailable());
+  EXPECT_EQ(*ref, 42);
+}
+
+TEST(AsyncValueRefTest, AvailableScopedAsyncValue) {
+  ScopedAsyncValue<int32_t> scoped_value(
+      ScopedAsyncValue<int32_t>::AvailableTag{}, 42);
+
+  AsyncValueRef<int32_t> ref = scoped_value.AsRef();
+  EXPECT_TRUE(ref.IsAvailable());
+  EXPECT_EQ(*ref, 42);
+}
+
+TEST(AsyncValueRefTest, ErrorScopedAsyncValue) {
+  ScopedAsyncValue<int32_t> scoped_value(ScopedAsyncValue<int32_t>::ErrorTag{},
+                                         absl::InternalError("test"));
+
+  AsyncValueRef<int32_t> ref = scoped_value.AsRef();
+  EXPECT_TRUE(ref.IsError());
+  EXPECT_EQ(ref.GetError(), absl::InternalError("test"));
+}
+
+TEST(AsyncValueRefTest, StaticScopedAsyncValue) {
+  static absl::NoDestructor<ScopedAsyncValue<int32_t>> scoped_value(
+      ScopedAsyncValue<int32_t>::AvailableTag{}, 42);
+
+  AsyncValueRef<int32_t> ref = scoped_value->AsRef();
+  EXPECT_TRUE(ref.IsAvailable());
+  EXPECT_EQ(*ref, 42);
+}
+
+TEST(AsyncValueRefTest, ScopedAsyncValueDestroyed) {
+  static std::atomic<int32_t> foo_counter{0};
+
+  struct Foo {
+    Foo() { foo_counter++; }
+    ~Foo() { foo_counter--; }
+  };
+
+  {
+    ScopedAsyncValue<Foo> scoped_value(ScopedAsyncValue<Foo>::ConstructedTag{});
+    EXPECT_EQ(foo_counter, 1);
+  }
+
+  EXPECT_EQ(foo_counter, 0);
 }
 
 //===----------------------------------------------------------------------===//

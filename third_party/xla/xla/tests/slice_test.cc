@@ -37,13 +37,15 @@ limitations under the License.
 #include "xla/literal_util.h"
 #include "xla/reference_util.h"
 #include "xla/tests/client_library_test_runner_mixin.h"
-#include "xla/tests/hlo_test_base.h"
+#include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
+#include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/tsl/platform/test.h"
 
 namespace xla {
 namespace {
 
-using SliceTest = ClientLibraryTestRunnerMixin<HloTestBase>;
+using SliceTest = ClientLibraryTestRunnerMixin<
+    HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>>;
 
 TEST_F(SliceTest, Slice3x3x3_To_3x3x1_F32) {
   Array3D<float> values(3, 3, 3);
@@ -216,7 +218,8 @@ struct R1Spec {
 
 // Parameterized test that generates R1 values, slices them according
 // to the R1Spec, and compares the result with a computed version.
-class SliceR1Test : public ClientLibraryTestRunnerMixin<HloTestBase>,
+class SliceR1Test : public ClientLibraryTestRunnerMixin<
+                        HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>>,
                     public ::testing::WithParamInterface<R1Spec> {
  protected:
   template <typename NativeT>
@@ -270,42 +273,42 @@ TEST_P(SliceR1Test, DoIt_S64) { Run<int64_t>(GetParam()); }
 // TODO(b/69425338): The following tests are disable on GPU because they use
 // too much GPU memory.
 TEST_P(SliceR1LargeTest, DoIt_F32) {
-  if (test::DeviceIs(test::kGpu)) {
+  if (test::DeviceTypeIs(test::kGpu)) {
     GTEST_SKIP();
   }
   Run<float>(GetParam());
 }
 
 TEST_P(SliceR1LargeTest, DoIt_F64) {
-  if (test::DeviceIs(test::kGpu)) {
+  if (test::DeviceTypeIs(test::kGpu)) {
     GTEST_SKIP();
   }
   Run<double>(GetParam());
 }
 
 TEST_P(SliceR1LargeTest, DoIt_U32) {
-  if (test::DeviceIs(test::kGpu)) {
+  if (test::DeviceTypeIs(test::kGpu)) {
     GTEST_SKIP();
   }
   Run<uint32_t>(GetParam());
 }
 
 TEST_P(SliceR1LargeTest, DoIt_S32) {
-  if (test::DeviceIs(test::kGpu)) {
+  if (test::DeviceTypeIs(test::kGpu)) {
     GTEST_SKIP();
   }
   Run<int32_t>(GetParam());
 }
 
 TEST_P(SliceR1LargeTest, DoIt_U64) {
-  if (test::DeviceIs(test::kGpu)) {
+  if (test::DeviceTypeIs(test::kGpu)) {
     GTEST_SKIP();
   }
   Run<uint64_t>(GetParam());
 }
 
 TEST_P(SliceR1LargeTest, DoIt_S64) {
-  if (test::DeviceIs(test::kGpu)) {
+  if (test::DeviceTypeIs(test::kGpu)) {
     GTEST_SKIP();
   }
   Run<int64_t>(GetParam());
@@ -385,9 +388,7 @@ INSTANTIATE_TEST_CASE_P(
         R1Spec{2047, 1, 2046, 3 * 128},
         R1Spec{4096, 1024 + 3, 4095, 500},
         R1Spec{8192, 0, 8192, 1024 * 3 + 400},
-        #ifndef XLA_TEST_BACKEND_GRM
         R1Spec{1024 * 1024, 0, 1024 * 1024, 2},
-        #endif
         R1Spec{1024 * 1024, 0, 1024 * 1024, 8},
         R1Spec{1024 * 1024, 0, 1024 * 1024, 7},
         R1Spec{1024 * 1024, 0, 1024 * 1024, 125},
@@ -423,7 +424,8 @@ struct R2Spec {
 
 // Parameterized test that generates patterned R2 values, slices them according
 // to the R2Spec, and compares the results with the ReferenceUtil version.
-class SliceR2Test : public ClientLibraryTestRunnerMixin<HloTestBase>,
+class SliceR2Test : public ClientLibraryTestRunnerMixin<
+                        HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>>,
                     public ::testing::WithParamInterface<R2Spec> {};
 
 TEST_P(SliceR2Test, DoIt) {
@@ -512,7 +514,8 @@ std::string R4SpecToString(const ::testing::TestParamInfo<R4Spec>& data) {
                       "__strides_", absl::StrJoin(spec.slice_strides, "x"));
 }
 
-class SliceR4Test : public ClientLibraryTestRunnerMixin<HloTestBase>,
+class SliceR4Test : public ClientLibraryTestRunnerMixin<
+                        HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>>,
                     public ::testing::WithParamInterface<R4Spec> {
  protected:
   void Run(const R4Spec& spec) {

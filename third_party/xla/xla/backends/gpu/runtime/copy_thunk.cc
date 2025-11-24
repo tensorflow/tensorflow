@@ -17,8 +17,10 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <utility>
 
+#include "absl/base/casts.h"
 #include "absl/container/node_hash_map.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -59,7 +61,8 @@ absl::Status DeviceToDeviceCopyThunk::ExecuteOnStream(
 }
 
 absl::StatusOr<ThunkProto> DeviceToDeviceCopyThunk::ToProto() const {
-  TF_ASSIGN_OR_RETURN(ThunkProto proto, Thunk::ToProto());
+  ThunkProto proto;
+  *proto.mutable_thunk_info() = thunk_info().ToProto();
   DeviceToDeviceCopyThunkProto* d2d_copy_thunk_proto =
       proto.mutable_device_to_device_copy_thunk();
   CopyThunkProto* copy_thunk_proto = d2d_copy_thunk_proto->mutable_copy_thunk();
@@ -115,7 +118,7 @@ absl::Status CopyThunk::AsyncEvents::Emplace(se::StreamExecutor* executor,
                                              const HloInstruction* instr,
                                              std::unique_ptr<se::Event> event) {
   Key key = {executor, instr};
-  absl::MutexLock lock(&mutex_);
+  absl::MutexLock lock(mutex_);
   VLOG(3) << "Emplace event " << event.get();
   if (auto [it, inserted] = events_.try_emplace(key, std::move(event));
       inserted) {
@@ -129,7 +132,7 @@ absl::Status CopyThunk::AsyncEvents::Emplace(se::StreamExecutor* executor,
 absl::StatusOr<std::unique_ptr<se::Event>> CopyThunk::AsyncEvents::Extract(
     se::StreamExecutor* executor, const HloInstruction* instr) {
   Key key = {executor, instr};
-  absl::MutexLock lock(&mutex_);
+  absl::MutexLock lock(mutex_);
   if (auto event = events_.extract(key)) {
     VLOG(3) << "Extract event " << event.mapped().get();
     return std::move(event.mapped());
@@ -138,7 +141,9 @@ absl::StatusOr<std::unique_ptr<se::Event>> CopyThunk::AsyncEvents::Extract(
 }
 
 absl::StatusOr<ThunkProto> CopyThunk::ToProto() const {
-  TF_ASSIGN_OR_RETURN(ThunkProto proto, Thunk::ToProto());
+  ThunkProto proto;
+  *proto.mutable_thunk_info() = thunk_info().ToProto();
+
   CopyThunkProto* copy_thunk_proto = proto.mutable_copy_thunk();
   TF_ASSIGN_OR_RETURN(*copy_thunk_proto->mutable_source_buffer(),
                       source().ToProto());
@@ -201,7 +206,9 @@ absl::Status DeviceToHostCopyThunk::ExecuteOnStream(
 }
 
 absl::StatusOr<ThunkProto> DeviceToHostCopyThunk::ToProto() const {
-  TF_ASSIGN_OR_RETURN(ThunkProto proto, Thunk::ToProto());
+  ThunkProto proto;
+  *proto.mutable_thunk_info() = thunk_info().ToProto();
+
   DeviceToHostCopyThunkProto* d2h_copy_thunk_proto =
       proto.mutable_device_to_host_copy_thunk();
   CopyThunkProto* copy_thunk_proto = d2h_copy_thunk_proto->mutable_copy_thunk();
@@ -230,6 +237,15 @@ DeviceToHostCopyThunk::FromProto(
       thunk_proto.copy_thunk().mem_size(),
       /*events=*/nullptr,
       /*instr=*/nullptr);
+}
+
+std::optional<AsyncEventsUniqueId>
+DeviceToHostCopyThunk::GetAsyncEventsUniqueId() const {
+  if (!async_events_) {
+    return std::nullopt;
+  }
+  // We rely on the fact that the pointer to async_events_ is unique.
+  return absl::bit_cast<AsyncEventsUniqueId>(async_events_.get());
 }
 
 //===----------------------------------------------------------------------===//
@@ -271,7 +287,9 @@ absl::Status HostToDeviceCopyThunk::ExecuteOnStream(
 }
 
 absl::StatusOr<ThunkProto> HostToDeviceCopyThunk::ToProto() const {
-  TF_ASSIGN_OR_RETURN(ThunkProto proto, Thunk::ToProto());
+  ThunkProto proto;
+  *proto.mutable_thunk_info() = thunk_info().ToProto();
+
   HostToDeviceCopyThunkProto* h2d_copy_thunk_proto =
       proto.mutable_host_to_device_copy_thunk();
   CopyThunkProto* copy_thunk_proto = h2d_copy_thunk_proto->mutable_copy_thunk();
@@ -302,6 +320,15 @@ HostToDeviceCopyThunk::FromProto(
       /*instr=*/nullptr);
 }
 
+std::optional<AsyncEventsUniqueId>
+HostToDeviceCopyThunk::GetAsyncEventsUniqueId() const {
+  if (!async_events_) {
+    return std::nullopt;
+  }
+  // We rely on the fact that the pointer to async_events_ is unique.
+  return absl::bit_cast<AsyncEventsUniqueId>(async_events_.get());
+}
+
 //===----------------------------------------------------------------------===//
 // CopyDoneThunk
 //===----------------------------------------------------------------------===//
@@ -321,6 +348,15 @@ absl::Status CopyDoneThunk::ExecuteOnStream(const ExecuteParams& params) {
   TF_ASSIGN_OR_RETURN(std::unique_ptr<se::Event> event,
                       async_events_->Extract(executor, copy_start_instr_));
   return params.stream->WaitFor(event.get());
+}
+
+std::optional<AsyncEventsUniqueId> CopyDoneThunk::GetAsyncEventsUniqueId()
+    const {
+  if (!async_events_) {
+    return std::nullopt;
+  }
+  // We rely on the fact that the pointer to async_events_ is unique.
+  return absl::bit_cast<AsyncEventsUniqueId>(async_events_.get());
 }
 
 //===----------------------------------------------------------------------===//

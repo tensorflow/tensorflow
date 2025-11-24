@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/log.h"
 #include "absl/strings/string_view.h"
+#include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/analysis/hlo_ordering.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -56,9 +57,7 @@ class HloAliasAnalysisTest : public HloHardwareIndependentTestBase {
   // Run alias analysis on the member module. For convenience returns a
   // reference to the generated analysis stored in analysis_.
   HloAliasAnalysis& RunAnalysis() {
-    analysis_ = HloAliasAnalysis::Run(module_.get(),
-                                      /*can_share_buffer=*/nullptr)
-                    .value();
+    analysis_ = HloAliasAnalysis::Run(module_.get(), &alias_info_).value();
     return *analysis_;
   }
 
@@ -98,7 +97,8 @@ class HloAliasAnalysisTest : public HloHardwareIndependentTestBase {
         for (const HloValue* value_b : buffer.values()) {
           if (*value_a != *value_b &&
               ordering.MayInterfere(*value_a, *value_b,
-                                    analysis_->dataflow_analysis())) {
+                                    analysis_->dataflow_analysis(),
+                                    &alias_info_)) {
             VLOG(1) << *value_a << " interferes with " << *value_b
                     << " in buffer: " << buffer;
             return true;
@@ -152,6 +152,7 @@ class HloAliasAnalysisTest : public HloHardwareIndependentTestBase {
 
   std::unique_ptr<HloModule> module_;
   std::unique_ptr<HloAliasAnalysis> analysis_;
+  AliasInfo alias_info_;
 
   const Shape scalar_shape_ = ShapeUtil::MakeShape(F32, {});
 };

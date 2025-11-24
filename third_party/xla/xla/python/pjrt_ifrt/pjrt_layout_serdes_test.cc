@@ -44,8 +44,7 @@ TEST_P(PjRtLayoutSerDesTest, PjRtLayoutRoundTrip) {
   auto layout = PjRtLayout::Create(std::make_unique<xla::PjRtLayout>(
       xla::LayoutUtil::MakeDescendingLayout(1)));
 
-  auto options = std::make_unique<SerializeOptions>();
-  options->version = version();
+  auto options = std::make_unique<SerializeOptions>(version());
   TF_ASSERT_OK_AND_ASSIGN(auto serialized,
                           Serialize(*layout, std::move(options)));
 

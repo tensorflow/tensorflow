@@ -57,6 +57,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tfrt/translate/tfrt_compile_options.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "xla/tsl/framework/device_type.h"
+#include "xla/tsl/platform/errors.h"
 #include "tensorflow/core/common_runtime/function_def_utils.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/status.h"
@@ -154,19 +155,13 @@ absl::Status ConvertTfMlirToRuntimeExecutable(
     tfrt_stub::FallbackState* fallback_state,
     std::vector<std::string>* added_xla_function_names) {
   mlir::StatusScopedDiagnosticHandler diag_handler(module.getContext());
-  absl::string_view checkpoint_path = model_context.checkpoint_path();
-  if (!checkpoint_path.empty()) {
-    TF_RETURN_IF_ERROR(
-        mlir::tf_saved_model::AddSessionInitializerAndInlineCheckpoint(
-            module, checkpoint_path));
-  }
   {
     mlir::PassManager pm(module.getContext());
     pm.addNestedPass<mlir::func::FuncOp>(
         mlir::tf_executor::CreateTFExecutorGraphPruningPass());
     pm.addNestedPass<mlir::func::FuncOp>(
         mlir::CreateExecutorDialectToFunctionalConversionPass());
-    if (!options.saved_model_dir.empty() || !checkpoint_path.empty()) {
+    if (!options.saved_model_dir.empty()) {
       pm.addPass(mlir::tf_saved_model::CreateAssetSinkingPass(
           options.saved_model_dir));
     }
@@ -285,8 +280,7 @@ absl::Status ConvertTfMlirToBef(
       [bef_buffer](mlir::PassManager& pm, mlir::ModuleOp module,
                    const tensorflow::TfrtPipelineOptions& options) {
         mlir::StatusScopedDiagnosticHandler diag_handler(module.getContext());
-        tensorflow::CreateTFExecutorToTFInvariantOptimizationPipelineHelper(
-            pm, options);
+        tensorflow::CreateTFInvariantOptimizationPipelineHelper(pm, options);
         tensorflow::CreateTfToTfrtPipeline(pm, options);
 
         if (mlir::failed(pm.run(module))) {
@@ -345,6 +339,8 @@ std::unique_ptr<tensorflow::TfrtPipelineOptions> GetTfrtPipelineOptions(
   pipeline_options->cost_threshold = options.cost_threshold;
   pipeline_options->min_num_batch_threads = options.min_num_batch_threads;
   pipeline_options->min_max_enqueued_batches = options.min_max_enqueued_batches;
+  pipeline_options->batch_queue_global_prioritization_num_threads =
+      options.batch_queue_global_prioritization_num_threads;
   pipeline_options->batch_padding_policy = options.batch_padding_policy;
   pipeline_options->num_batch_threads =
       options.batch_options.num_batch_threads();

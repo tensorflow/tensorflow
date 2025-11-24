@@ -382,6 +382,29 @@ class IfrtRestoreVariableOpConversion
   }
 };
 
+class IfrtResourceDeserializeOpConversion
+    : public mlir::OpConversionPattern<mlir::TF::IfrtResourceDeserializeOp> {
+ public:
+  using OpConversionPattern::OpConversionPattern;
+
+  mlir::LogicalResult matchAndRewrite(
+      mlir::TF::IfrtResourceDeserializeOp op, OpAdaptor adaptor,
+      mlir::ConversionPatternRewriter& rewriter) const override {
+    // Transfer the tensor_name attribute; drop the unused require_matching_crc.
+    auto tensor_name_attr = op->getAttr("tensor_name");
+    if (!tensor_name_attr) {
+      return op.emitError("tensor_name attribute not found");
+    }
+
+    auto new_op = rewriter.create<tf_mlrt::MlrtIfrtResourceDeserializeOp>(
+        op.getLoc(), adaptor.getResourceVar(), adaptor.getInputDir(),
+        llvm::cast<mlir::StringAttr>(tensor_name_attr));
+    rewriter.replaceOp(op, new_op);
+
+    return mlir::success();
+  }
+};
+
 std::optional<std::string> DecodeLongName(mlir::Location loc) {
   if (auto name_loc = mlir::dyn_cast<mlir::NameLoc>(loc)) {
     return name_loc.getName().str();
@@ -883,10 +906,6 @@ void CreateFallbackInitializationFunction(
       builder.create<tf_mlrt::CreateOp>(
           func_op.getLoc(), /*resultTypes=*/mlir::TypeRange{},
           /*operands=*/mlir::ValueRange{}, op->getAttrs());
-    } else {
-      // TODO: b/381849919 - Remove this log once the bug is fixed.
-      LOG_FIRST_N(WARNING, 100)
-          << "Skip creation of fallback kernel for op index " << op_index;
     }
   }
 
@@ -995,7 +1014,9 @@ class TfToMlrtPreParallelizationConversionPass
     mlir::func::FuncOp batched = llvm::dyn_cast<mlir::func::FuncOp>(
         symbol_table.lookupSymbolIn(module, batch_op.getF()));
     int used_by_tpu = 0;
+    int num_in_tensors = batch_op.getInTensors().size();
     for (auto arg : batched.getArguments()) {
+      if (arg.getArgNumber() >= num_in_tensors) continue;
       for (auto user : arg.getUsers()) {
         if (llvm::isa<mlir::TF::TPUCompileMlirAndExecuteOp>(user)) {
           used_by_tpu++;
@@ -1004,7 +1025,7 @@ class TfToMlrtPreParallelizationConversionPass
       }
     }
 
-    if (used_by_tpu == batched.getArguments().size()) {
+    if (used_by_tpu == num_in_tensors) {
       mlir::OpBuilder builder(module);
       batch_op->setAttr(kTfMlrtCustomDevice,
                         builder.getStringAttr(kTpuHostDevice));
@@ -1014,7 +1035,7 @@ class TfToMlrtPreParallelizationConversionPass
   void runOnOperation() override {
     auto module = getOperation();
     mlir::SymbolTable symbol_table(module);
-    if (use_tpu_host_allocator_for_inputs_) {
+    if (options_.use_tpu_host_allocator_for_inputs) {
       module.walk([&](mlir::TF::BatchFunctionOp batch_op) {
         maySetTpuHostAllocatorForBatch(batch_op, module, symbol_table);
       });
@@ -1276,7 +1297,8 @@ class TfToMlrtConversionPass
     patterns.add<WhileOpConversion>(&context, &type_converter_, &symbol_table);
     patterns.add<AsyncOpConversion, GetResourceOpConversion,
                  SetResourceOpConversion, IfrtRestoreVariableOpConversion,
-                 TFAwaitOpConversion, TFPromiseOpConversion>(&context);
+                 TFAwaitOpConversion, TFPromiseOpConversion,
+                 IfrtResourceDeserializeOpConversion>(&context);
     patterns.add<BatchFunctionOpConversion, CaseOpConversion, CondOpConversion,
                  TFAsyncWhileOpConversion, TFMapFnOpConversion>(type_converter_,
                                                                 &context);

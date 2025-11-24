@@ -68,6 +68,14 @@ absl::Status ResourceRequests::AddClique(const GpuCliqueKey& clique_key) {
   return absl::OkStatus();
 }
 
+std::vector<GpuCliqueKey> ResourceRequests::CliqueKeys() const {
+  std::vector<GpuCliqueKey> clique_keys;
+  for (const auto& [key, unused] : cliques_) {
+    clique_keys.push_back(key);
+  }
+  return clique_keys;
+}
+
 absl::StatusOr<Thunk::CollectiveCliques>
 ResourceRequests::AcquireCollectiveCliques(
     const Thunk::CollectiveExecuteParams& params, bool use_persistent_cliques) {
@@ -116,14 +124,13 @@ ResourceRequests::AcquireCollectiveCliques(
                         params.collectives->GetCliqueIdCallback(
                             params.nccl_clique_id_callback, r.key.is_local()));
 
-    int64_t max_channels = r.key.stream_kind() == AsyncStreamKind::kCollective
-                               ? params.collective_max_nchannels
-                               : params.p2p_max_nchannels;
+    int64_t max_channels = r.key.is_p2p() ? params.p2p_max_nchannels
+                                          : params.collective_max_nchannels;
 
     // Check if we have a persistent clique for this key.
     if (use_persistent_cliques) {
       auto& pc = GetPersistentCliquesMap();
-      absl::MutexLock lock(&pc.mutex);
+      absl::MutexLock lock(pc.mutex);
 
       if (auto it = pc.cliques_map.find(r.key); it != pc.cliques_map.end()) {
         VLOG(2) << "Found persistent clique for key " << r.key.ToString();
@@ -152,7 +159,7 @@ ResourceRequests::AcquireCollectiveCliques(
     // it, it's 100% their fault and they will suffer.
     if (use_persistent_cliques) {
       auto& pc = GetPersistentCliquesMap();
-      absl::MutexLock lock(&pc.mutex);
+      absl::MutexLock lock(pc.mutex);
       pc.cliques_map[r.key] = clique;
     }
 
@@ -181,10 +188,6 @@ ResourceRequests::GetOrderedCliqueRequests() {
     // Acquire larger cliques first to be able to split them later.
     if (a.key.devices().size() > b.key.devices().size()) return true;
     if (b.key.devices().size() > a.key.devices().size()) return false;
-
-    // If cliques have the same size prefer cliques with smaller stream id.
-    if (a.key.stream_id().value() < b.key.stream_id().value()) return true;
-    if (b.key.stream_id().value() < a.key.stream_id().value()) return false;
 
     // Prefer cliques with smaller id (comes earlier in execution order).
     return a.id < b.id;

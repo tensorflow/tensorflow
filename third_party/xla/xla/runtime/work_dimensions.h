@@ -1,4 +1,3 @@
-
 /* Copyright 2025 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -21,6 +20,7 @@ limitations under the License.
 #include "xla/runtime/work_cluster.h"
 #include "xla/runtime/work_group.h"
 #include "xla/runtime/work_item.h"
+#include "xla/runtime/work_tile_size.h"
 
 namespace xla {
 
@@ -30,18 +30,20 @@ struct WorkDimensions {
   bool operator==(const WorkDimensions& other) const {
     return num_work_clusters == other.num_work_clusters &&
            num_work_groups == other.num_work_groups &&
-           num_work_items == other.num_work_items;
+           num_work_items == other.num_work_items &&
+           work_tile_size == other.work_tile_size;
   }
 
   template <typename Sink>
   friend void AbslStringify(Sink& sink, const WorkDimensions& d) {
-    absl::Format(&sink, "WorkDimensions{%v, %v, %v}", d.num_work_clusters,
-                 d.num_work_groups, d.num_work_items);
+    absl::Format(&sink, "WorkDimensions{%v, %v, %v, %v}", d.num_work_clusters,
+                 d.num_work_groups, d.num_work_items, d.work_tile_size);
   }
 
   NumWorkClusters num_work_clusters;
   NumWorkGroups num_work_groups;
   NumWorkItems num_work_items;
+  WorkTileSize work_tile_size;
 };
 
 }  // namespace xla

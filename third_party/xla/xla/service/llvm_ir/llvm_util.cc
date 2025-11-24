@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/service/llvm_ir/llvm_util.h"
 
 #include <algorithm>
+#include <cstddef>
 #include <cstdint>
 #include <iterator>
 #include <limits>
@@ -30,11 +31,14 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/ascii.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/FloatingPointMode.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/SmallVector.h"
@@ -56,6 +60,7 @@ limitations under the License.
 #include "llvm/Support/Alignment.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/CodeGen.h"
+#include "llvm/Support/TypeSize.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/TargetParser/Triple.h"
 #include "llvm/Transforms/Utils/Cloning.h"
@@ -84,18 +89,6 @@ namespace xla {
 namespace llvm_ir {
 
 namespace {
-
-// This works for most llvm / mlir types. This also accepts a const pointer to
-// objects which have a const print() method.
-template <typename T>
-std::string DumpToStringTempl(T* entity) {
-  CHECK_NE(entity, nullptr);
-
-  std::string s;
-  llvm::raw_string_ostream ostream(s);
-  ostream << *entity;
-  return s;
-}
 
 // Note, this function is only useful in an insertion context; in a global
 // (e.g. constants) context it will CHECK fail.
@@ -149,28 +142,6 @@ std::optional<PrimitiveType> PrimitiveComplexTypeFromIrStructType(
 }
 
 }  // namespace
-
-std::string DumpToString(const llvm::Module* module) {
-  return DumpToStringTempl(module);
-}
-
-std::string DumpToString(const llvm::Type* type) {
-  return DumpToStringTempl(type);
-}
-
-std::string DumpToString(const llvm::Value* value) {
-  return DumpToStringTempl(value);
-}
-
-std::string DumpToString(mlir::Operation* operation) {
-  return DumpToStringTempl(operation);
-}
-
-std::string DumpToString(mlir::Type type) { return DumpToStringTempl(&type); }
-
-std::string DumpToString(mlir::Value value) {
-  return DumpToStringTempl(&value);
-}
 
 llvm::CallInst* EmitCallToIntrinsic(
     llvm::Intrinsic::ID intrinsic_id, absl::Span<llvm::Value* const> operands,
@@ -656,14 +627,12 @@ std::string SanitizeFunctionName(std::string function_name) {
   // are illegal.
 
   // Sanitize chars in function_name.
-  std::transform(function_name.begin(), function_name.end(),
-                 function_name.begin(), [](char c) {
-                   if (('a' <= c && c <= 'z') || ('A' <= c && c <= 'Z') ||
-                       ('0' <= c && c <= '9') || c == '_' || c == '$') {
-                     return c;
-                   }
-                   return '_';
-                 });
+  absl::c_transform(function_name, function_name.begin(), [](char c) {
+    if (absl::ascii_isalnum(c) || c == '_' || c == '$') {
+      return c;
+    }
+    return '_';
+  });
 
   // Ensure the name isn't empty.
   if (function_name.empty()) {
@@ -671,8 +640,7 @@ std::string SanitizeFunctionName(std::string function_name) {
   }
 
   // Ensure the name doesn't start with a number.
-  if (!function_name.empty() && function_name[0] >= '0' &&
-      function_name[0] <= '9') {
+  if (!function_name.empty() && absl::ascii_isdigit(function_name[0])) {
     function_name.insert(function_name.begin(), '_');
   }
 
@@ -896,6 +864,253 @@ void EmitEarlyReturn(llvm::Value* condition, llvm::IRBuilderBase* b,
 
   b->CreateCondBr(condition, continued, return_block);
   b->SetInsertPoint(continued, continued->getFirstInsertionPt());
+}
+
+absl::StatusOr<llvm::Value*> EmitReducePrecisionIR(
+    PrimitiveType src_ty, llvm::Value* x, int64_t dest_exponent_bits,
+    int64_t dest_mantissa_bits, bool quiet_nans, llvm::IRBuilderBase* b) {
+  using llvm::APInt;
+
+  if (!primitive_util::IsFloatingPointType(src_ty)) {
+    return Unimplemented(
+        "ReducePrecision cannot accept non-floating-point type %s.",
+        PrimitiveType_Name(src_ty));
+  }
+
+  // Integer and float types for casting and constant generation.
+  llvm::Type* const value_type = x->getType();
+  llvm::Type* const float_scalar_type = value_type->getScalarType();
+  const int nbits = float_scalar_type->getPrimitiveSizeInBits();
+  llvm::Type* int_work_type = b->getIntNTy(nbits);
+  unsigned width = 1;
+  if (auto* vec_ty = llvm::dyn_cast<llvm::FixedVectorType>(value_type)) {
+    width = vec_ty->getNumElements();
+    int_work_type = llvm::VectorType::get(int_work_type,
+                                          llvm::ElementCount::getFixed(width));
+  }
+
+  // Helper to create a splatted vector constant. If the input is scalar, this
+  // will just produce a scalar ConstantInt.
+  auto int_const = [&](const APInt& val) -> llvm::Constant* {
+    return llvm::ConstantInt::get(int_work_type, val);
+  };
+
+  // SignificandWidth includes the implicit extra bit.
+  int src_mantissa_bits = primitive_util::SignificandWidth(src_ty) - 1;
+  int src_exponent_bits = nbits - 1 - src_mantissa_bits;
+
+  // Cast the input value to an integer for bitwise manipulation.
+  llvm::Value* x_as_int = b->CreateBitCast(x, int_work_type);
+
+  // Clear the sign bit, it does not participate in rounding and we will restore
+  // it later.
+  APInt sign_bit_mask(nbits, 1);
+  sign_bit_mask <<= nbits - 1;
+  llvm::Value* x_abs_bits = b->CreateAnd(x_as_int, int_const(~sign_bit_mask));
+
+  APInt exp_bits_mask(nbits, 1);
+  exp_bits_mask = ((exp_bits_mask << src_exponent_bits) - 1)
+                  << src_mantissa_bits;
+  auto x_is_nan = b->CreateICmpUGT(x_abs_bits, int_const(exp_bits_mask));
+
+  if (dest_mantissa_bits < src_mantissa_bits) {
+    // Last remaining mantissa bit.
+    APInt last_mantissa_bit_mask(nbits, 1);
+    last_mantissa_bit_mask <<= src_mantissa_bits - dest_mantissa_bits;
+
+    // Compute rounding bias for round-to-nearest with ties to even.  This is
+    // equal to a base value of 0111... plus one bit if the last remaining
+    // mantissa bit is 1.
+    APInt base_rounding_bias = last_mantissa_bit_mask.lshr(1) - 1;
+    llvm::Value* x_last_mantissa_bit =
+        b->CreateLShr(b->CreateAnd(x_as_int, int_const(last_mantissa_bit_mask)),
+                      (src_mantissa_bits - dest_mantissa_bits));
+    llvm::Value* x_rounding_bias =
+        b->CreateAdd(x_last_mantissa_bit, int_const(base_rounding_bias));
+
+    // Add rounding bias, and mask out truncated bits.  Note that the case
+    // where adding the rounding bias overflows into the exponent bits is
+    // correct; the non-masked mantissa bits will all be zero, and the
+    // exponent will be incremented by one.
+    APInt truncation_mask = ~(last_mantissa_bit_mask - 1);
+    llvm::Value* x_rounded = b->CreateAdd(x_as_int, x_rounding_bias);
+    x_rounded = b->CreateAnd(x_rounded, int_const(truncation_mask));
+    if (quiet_nans) {
+      x_as_int = b->CreateSelect(x_is_nan, x_as_int, x_rounded);
+    } else {
+      x_as_int = x_rounded;
+    }
+  }
+
+  if (dest_exponent_bits < src_exponent_bits) {
+    // An exponent of 2^(n-1)-1 -- that is, 0111... with the zero in the most-
+    // significant bit -- is equal to 1.0f for all exponent sizes.  Adding
+    // 2^(n-1)-1 to this gives us the highest non-infinite exponent for a bit-
+    // size of n, and subtracting 2^(n-1)-1 from this gives us the lowest'
+    // exponent (corresponding to 0.0f).
+    //
+    // Thus, the f32 exponent corresponding to the highest non-infinite
+    // exponent for a bit size of n is (2^7-1) + 2^(n-1)-1, and the f32
+    // exponent corresponding to the lowest exponent for a bit size of n is
+    // (2^7-1) - 2^(n-1)-1.
+    //
+    // Note that we have already checked that exponents_bits >= 1.
+    APInt exponent_bias(nbits, 1);
+    exponent_bias = (exponent_bias << (src_exponent_bits - 1)) - 1;
+
+    APInt reduced_exponent_bias(nbits, 1);
+    reduced_exponent_bias =
+        (reduced_exponent_bias << (dest_exponent_bits - 1)) - 1;
+
+    APInt reduced_max_exponent = exponent_bias + reduced_exponent_bias;
+    APInt reduced_min_exponent = exponent_bias - reduced_exponent_bias;
+
+    // Do we overflow or underflow?
+    llvm::Value* x_exponent = b->CreateAnd(x_as_int, int_const(exp_bits_mask));
+    llvm::Value* x_overflows = b->CreateICmpUGT(
+        x_exponent, int_const(reduced_max_exponent << src_mantissa_bits));
+    llvm::Value* x_underflows = b->CreateICmpULE(
+        x_exponent, int_const(reduced_min_exponent << src_mantissa_bits));
+
+    // Compute appropriately-signed values of zero and infinity.
+    llvm::Value* x_signed_zero =
+        b->CreateAnd(x_as_int, int_const(sign_bit_mask));
+    llvm::Value* x_signed_inf =
+        b->CreateOr(x_signed_zero, int_const(exp_bits_mask));
+
+    // Force to zero or infinity if overflow or underflow.  (Note that this
+    // truncates all denormal values to zero, rather than rounding them.)
+    x_as_int = b->CreateSelect(x_overflows, x_signed_inf, x_as_int);
+    x_as_int = b->CreateSelect(x_underflows, x_signed_zero, x_as_int);
+  }
+
+  // Cast the result back to a floating-point type.
+  llvm::Value* result = b->CreateBitCast(x_as_int, value_type);
+
+  // Correct result for NaN inputs.
+  //
+  // The exponent handling will "normalize" NaN values to infinities, which is
+  // undesirable (except in the case with no mantissa bits, in which case it
+  // is mandatory).  This logic also handles cases where mantissa-rounding
+  // causes a NaN's mantissa to overflow into the exponent bits, which would
+  // otherwise create an erroneous zero value.
+
+  if (dest_mantissa_bits > 0) {
+    if (quiet_nans) {
+      APInt qnan_mask(nbits, 1);
+      qnan_mask <<= src_mantissa_bits - 1;
+      llvm::Value* x_with_qnan_bit_set =
+          b->CreateOr(x_as_int, int_const(qnan_mask));
+      x_with_qnan_bit_set = b->CreateBitCast(x_with_qnan_bit_set, value_type);
+      result = b->CreateSelect(x_is_nan, x_with_qnan_bit_set, result);
+    } else {
+      result = b->CreateSelect(x_is_nan, x, result);
+    }
+  } else {
+    result = b->CreateSelect(x_is_nan,
+                             llvm::ConstantFP::getInfinity(value_type), result);
+  }
+
+  return result;
+}
+
+llvm::Value* HandleHalfwayPointsFxToF8(
+    PrimitiveType fx_type, int f8_exponent_bits, int f8_mantissa_bits,
+    int f8_bias, llvm::Value* fx_abs_bits, llvm::Value* f8_bits,
+    std::optional<size_t> vector_width, llvm::IRBuilderBase* b) {
+  using llvm::APFloat;
+  using llvm::APInt;
+  using llvm::Value;
+  CHECK(fx_type == F16 || fx_type == F32 || fx_type == F64);
+
+  const llvm::fltSemantics* fx_semantics;
+  llvm::Type* fx_float_type = PrimitiveTypeToIrType(fx_type, b->getContext());
+  llvm::Type* scale_factor_type = fx_float_type;
+
+  if (fx_type == F16) {
+    // Scale factor can be > 2^17, which overflows F16.
+    fx_semantics = &llvm::APFloat::IEEEsingle();
+    scale_factor_type = b->getFloatTy();
+  } else if (fx_type == F32) {
+    fx_semantics = &llvm::APFloat::IEEEsingle();
+  } else if (fx_type == F64) {
+    fx_semantics = &llvm::APFloat::IEEEdouble();
+  } else {
+    LOG(FATAL) << "Unsupported FX type: " << fx_type;
+  }
+
+  // Get the input/output types, accounting for vectors.
+  llvm::Type* ix_type = fx_abs_bits->getType();
+  llvm::Type* i8_type = f8_bits->getType();
+
+  if (vector_width.has_value()) {
+    auto vec_width = llvm::ElementCount::getFixed(*vector_width);
+    fx_float_type = llvm::VectorType::get(fx_float_type, vec_width);
+    scale_factor_type = llvm::VectorType::get(scale_factor_type, vec_width);
+  }
+  llvm::RoundingMode rm = llvm::RoundingMode::NearestTiesToEven;
+
+  auto fp_const = [&](APFloat val) {
+    bool losesInfo;
+    val.convert(*fx_semantics, rm, &losesInfo);
+    return llvm::ConstantFP::get(scale_factor_type, val);
+  };
+
+  const int num_subnormal_steps = 1 << f8_mantissa_bits;
+  const int smallest_normal_exp = 1 - f8_bias;
+  const int quantum_exponent = smallest_normal_exp - f8_mantissa_bits;
+
+  // Create the scaling factor constant: 2^(-quantum_exponent)
+  // e.g., for B11 (quantum_exp = -13), this is 2^13, or 8192.0.
+  APFloat scale_apfloat = scalbn(APFloat(1.0), -quantum_exponent, rm);
+
+  // Create the upper boundary constant: (num_steps - 0.5) * quantum
+  // This is the halfway point for the *largest* subnormal step (e.g., 7.5 *
+  // q).
+  APFloat quantum = scalbn(APFloat(1.0), quantum_exponent, rm);
+
+  APFloat num_steps_apfloat(static_cast<double>(num_subnormal_steps));
+  APFloat half_apfloat(0.5);
+
+  APFloat upper_bound_apfloat = num_steps_apfloat;
+  upper_bound_apfloat.subtract(half_apfloat, rm);
+  upper_bound_apfloat.multiply(quantum, rm);
+
+  Value* scale_factor = fp_const(scale_apfloat);
+  Value* upper_bound_constant = fp_const(upper_bound_apfloat);
+  Value* input_float = b->CreateBitCast(fx_abs_bits, fx_float_type);
+  input_float = b->CreateFPExt(input_float, scale_factor_type);
+
+  // Check if the input is below the subnormal range boundary.
+  // Anything >= 7.5q (for an M3 format) is a normal number and should
+  // use the default 'f8_bits' value passed into this function.
+  Value* is_subnormal_candidate =
+      b->CreateFCmpOLT(input_float, upper_bound_constant);
+
+  // --- Subnormal Path ---
+  // Apply the rounding formula: i = round_to_even(input_float * scale_factor)
+  Value* scaled = b->CreateFMul(input_float, scale_factor);
+
+  // Use llvm.nearbyint, which rounds to the nearest integer using
+  // ties-to-even.
+  llvm::Module* module = b->GetInsertBlock()->getModule();
+  llvm::Function* nearbyint = llvm::Intrinsic::getOrInsertDeclaration(
+      module, llvm::Intrinsic::nearbyint, {scaled->getType()});
+  Value* rounded = b->CreateCall(nearbyint, scaled);
+
+  // Convert the rounded float result to its integer bucket index.
+  Value* int_bucket = b->CreateFPToUI(rounded, ix_type);
+
+  // Truncate the index (which is i32 or i64) down to our final i8 value.
+  Value* subnormal_result = b->CreateTrunc(int_bucket, i8_type);
+
+  // --- Final Select ---
+  // If it was a subnormal candidate, use our calculated result.
+  // Otherwise, use the original 'f8_bits' value (the default normal/inf/nan).
+  Value* final_result =
+      b->CreateSelect(is_subnormal_candidate, subnormal_result, f8_bits);
+
+  return final_result;
 }
 
 }  // namespace llvm_ir

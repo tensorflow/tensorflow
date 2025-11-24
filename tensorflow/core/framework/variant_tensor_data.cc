@@ -71,36 +71,36 @@ bool VariantTensorData::FromConstProto(const VariantTensorDataProto& proto) {
   return true;
 }
 
-string VariantTensorData::SerializeAsString() const {
+std::string VariantTensorData::SerializeAsString() const {
   VariantTensorDataProto proto;
   ToProto(&proto);
   return proto.SerializeAsString();
 }
 
-bool VariantTensorData::SerializeToString(string* buf) {
+bool VariantTensorData::SerializeToString(std::string* buf) {
   VariantTensorDataProto proto;
   ToProto(&proto);
   return proto.SerializeToString(buf);
 }
 
-bool VariantTensorData::ParseFromString(string s) {
+bool VariantTensorData::ParseFromString(std::string s) {
   VariantTensorDataProto proto;
   const bool status = proto.ParseFromString(s);
   if (status) FromProto(std::move(proto));
   return status;
 }
 
-string VariantTensorData::DebugString() const {
-  string repeated_field = "";
+std::string VariantTensorData::DebugString() const {
+  std::string repeated_field = "";
   for (const auto& t : tensors_) {
     repeated_field =
-        strings::StrCat(repeated_field, " tensors: ", t.DebugString());
+        absl::StrCat(repeated_field, " tensors: ", t.DebugString());
   }
   return strings::StrCat("type_name: ", type_name(), " metadata: ", metadata_,
                          repeated_field);
 }
 
-string ProtoDebugString(const VariantTensorData& object) {
+std::string ProtoDebugString(const VariantTensorData& object) {
   return object.DebugString();
 }
 

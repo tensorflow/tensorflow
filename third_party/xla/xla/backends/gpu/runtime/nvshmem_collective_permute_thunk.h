@@ -22,12 +22,10 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
-#include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/backends/gpu/runtime/nvshmem_collective_thunk.h"
-#include "xla/backends/gpu/runtime/nvshmem_p2p_thunk_common.h"
+#include "xla/backends/gpu/runtime/p2p_thunk_common.h"
 #include "xla/hlo/ir/hlo_instructions.h"
-#include "xla/service/collective_ops_utils.h"
 #include "xla/stream_executor/stream.h"
 
 namespace xla {
@@ -41,7 +39,8 @@ class NvshmemCollectivePermuteStartThunk : public NvshmemCollectiveThunk {
       int64_t replica_count, int64_t partition_count,
       const std::vector<CollectiveThunk::Buffer>& buffers,
       bool p2p_memcpy_enabled = false,
-      AsyncStreamKind stream_kind = AsyncStreamKind::kCollective);
+      AsyncStreamKind stream_kind =
+          AsyncStreamKind::ASYNC_STREAM_KIND_COLLECTIVE);
 
   static const char* GetHloOpName() { return "collective-permute-start"; }
 
@@ -52,7 +51,7 @@ class NvshmemCollectivePermuteStartThunk : public NvshmemCollectiveThunk {
   static CollectiveOpGroupMode GetGroupMode(
       const HloCollectivePermuteInstruction* instr);
 
-  static NvshmemP2PConfig GetNvshmemP2PConfig(
+  static P2PConfig GetNvshmemP2PConfig(
       const HloCollectivePermuteInstruction* instr, int64_t replica_count,
       int64_t partition_count);
 
@@ -64,7 +63,7 @@ class NvshmemCollectivePermuteStartThunk : public NvshmemCollectiveThunk {
                                     se::Stream& stream) override;
 
  private:
-  const NvshmemP2PConfig config_;
+  const P2PConfig config_;
   const std::vector<CollectiveThunk::Buffer> buffers_;
   const bool p2p_memcpy_enabled_ = false;
 };
@@ -80,10 +79,11 @@ class NvshmemCollectivePermuteDoneThunk : public NvshmemCollectiveDoneThunk {
   absl::Status ExecuteOnStream(const ExecuteParams& params) override;
 };
 
-absl::Status RunCollectivePermute(
-    NvshmemP2PConfig::SourceTargetMapEntry source_target,
-    std::vector<DeviceBufferPair>& buffers, se::Stream& stream,
-    absl::string_view device_string, int64_t current_id);
+absl::Status RunCollectivePermute(P2PConfig::SourceTargetMapEntry source_target,
+                                  std::vector<DeviceBufferPair>& buffers,
+                                  se::Stream& stream,
+                                  absl::string_view device_string,
+                                  int64_t current_id);
 
 }  // namespace gpu
 }  // namespace xla

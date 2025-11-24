@@ -41,6 +41,7 @@ limitations under the License.
 #include "xla/layout.h"
 #include "xla/layout_util.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
+#include "xla/mlir_hlo/utils/unregistered_attributes.h"
 #include "xla/service/computation_layout.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/shape.h"
@@ -52,23 +53,8 @@ limitations under the License.
 namespace xla {
 namespace {
 
-constexpr char kCrossProgramPrefetches[] = "mhlo.cross_program_prefetches";
-constexpr char kEntryComputationParameterLayouts[] =
-    "mhlo.xla_entry_computation_parameter_layouts";
-constexpr char kEntryComputationParameterTiles[] =
-    "mhlo.xla_entry_computation_parameter_tiles";
-constexpr char kEntryComputationResultLayout[] =
-    "mhlo.xla_entry_computation_result_layout";
-constexpr char kEntryComputationResultTiles[] =
-    "mhlo.xla_entry_computation_result_tiles";
-constexpr char kFrontendAttributes[] = "mhlo.frontend_attributes";
-constexpr char kInputOutputAlias[] = "mhlo.input_output_alias";
-constexpr char kIsDynamic[] = "mhlo.is_dynamic";
-constexpr char kNumPartitions[] = "mhlo.num_partitions";
-constexpr char kNumReplicas[] = "mhlo.num_replicas";
-constexpr char kSpmdOutputSharding[] = "mhlo.spmd_output_sharding";
-constexpr char kSpmdParametersShardings[] = "mhlo.spmd_parameters_shardings";
-constexpr char kUseAutoSpmdPartitioning[] = "mhlo.use_auto_spmd_partitioning";
+// All constants must be registered in:
+//   xla/mlir_hlo/utils/unregistered_attributes.h
 
 mlir::ArrayAttr ConvertCrossProgramPrefetches(
     const absl::Span<const HloModule::CrossProgramPrefetchInfo> prefetches,
@@ -89,17 +75,19 @@ mlir::ArrayAttr ConvertCrossProgramPrefetches(
                                     param_map[index] = arg_index++;
                                   });
     }
-    for (const auto& [parameter, index, alt_memory_offset] : prefetches)
+    for (const auto& [parameter, index, alt_memory_offset] : prefetches) {
       shapes.push_back(mlir::mhlo::CrossProgramPrefetchAttr::get(
           builder->getContext(),
           original_param_index_to_flattened_arg_index[parameter][index],
           /*indices=*/{}, alt_memory_offset));
+    }
   } else {
-    for (const auto& [parameter, index, alt_memory_offset] : prefetches)
+    for (const auto& [parameter, index, alt_memory_offset] : prefetches) {
       shapes.push_back(mlir::mhlo::CrossProgramPrefetchAttr::get(
           builder->getContext(), parameter,
           llvm::ArrayRef<int64_t>(index.data(), index.size()),
           alt_memory_offset));
+    }
   }
 
   return mlir::ArrayAttr::get(builder->getContext(), shapes);
@@ -122,9 +110,9 @@ void ImportEntryComputationParameterLayoutAndTiles(
             parameter_tiles.push_back(layout_attrs.second);
           });
     }
-    module->setAttr(kEntryComputationParameterLayouts,
+    module->setAttr(xla::kMhloXlaEntryComputationParameterLayouts,
                     builder.getArrayAttr({parameter_layouts}));
-    module->setAttr(kEntryComputationParameterTiles,
+    module->setAttr(xla::kMhloXlaEntryComputationParameterTiles,
                     builder.getArrayAttr({parameter_tiles}));
     return;
   }
@@ -151,9 +139,9 @@ void ImportEntryComputationParameterLayoutAndTiles(
       parameter_tiles.push_back(layout_attrs.second);
     }
   }
-  module->setAttr(kEntryComputationParameterLayouts,
+  module->setAttr(xla::kMhloXlaEntryComputationParameterLayouts,
                   builder.getArrayAttr({parameter_layouts}));
-  module->setAttr(kEntryComputationParameterTiles,
+  module->setAttr(xla::kMhloXlaEntryComputationParameterTiles,
                   builder.getArrayAttr({parameter_tiles}));
 }
 
@@ -172,6 +160,10 @@ void ImportEntryComputationResultLayoutAndTiles(
           result_layouts.push_back(layout_attrs.first);
           result_tiles.push_back(layout_attrs.second);
         });
+    module->setAttr(xla::kMhloXlaEntryComputationResultLayout,
+                    builder.getArrayAttr(result_layouts));
+    module->setAttr(xla::kMhloXlaEntryComputationResultTiles,
+                    builder.getArrayAttr(result_tiles));
     return;
   }
 
@@ -184,9 +176,9 @@ void ImportEntryComputationResultLayoutAndTiles(
       result_tiles.push_back(layout_attrs.second);
     }
     module->setAttr(
-        kEntryComputationResultLayout,
+        xla::kMhloXlaEntryComputationResultLayout,
         builder.getArrayAttr({builder.getArrayAttr(result_layouts)}));
-    module->setAttr(kEntryComputationResultTiles,
+    module->setAttr(xla::kMhloXlaEntryComputationResultTiles,
                     builder.getArrayAttr({builder.getArrayAttr(result_tiles)}));
     return;
   }
@@ -194,9 +186,9 @@ void ImportEntryComputationResultLayoutAndTiles(
   std::pair<mlir::Attribute, mlir::ArrayAttr> layout_attrs =
       GetLayoutAttribute(builder, computation_layout.result_layout().shape(),
                          computation_layout.result_layout().layout());
-  module->setAttr(kEntryComputationResultLayout,
+  module->setAttr(xla::kMhloXlaEntryComputationResultLayout,
                   builder.getArrayAttr({layout_attrs.first}));
-  module->setAttr(kEntryComputationResultTiles,
+  module->setAttr(xla::kMhloXlaEntryComputationResultTiles,
                   builder.getArrayAttr({layout_attrs.second}));
 }
 
@@ -207,7 +199,7 @@ void ImportCrossProgramPrefetches(const HloModule& hlo_module,
                                   bool flatten_computation_args_result,
                                   mlir::Builder builder) {
   module->setAttr(
-      kCrossProgramPrefetches,
+      xla::kMhloCrossProgramPrefetches,
       ConvertCrossProgramPrefetches(hlo_module.CrossProgramPrefetches(),
                                     *hlo_module.entry_computation(), &builder,
                                     flatten_computation_args_result));
@@ -218,7 +210,11 @@ void ImportEntryComputationLayoutAndTiles(const HloModule& hlo_module,
                                           bool flatten_computation_args_result,
                                           mlir::Builder builder) {
   const auto& computation_layout = hlo_module.entry_computation_layout();
-  if (!computation_layout.LayoutIsSet()) return;
+  // need to check any layout is set, otherwise LayoutIsSet() will check
+  // that layout is set for every leaf of input and output.
+  if (!computation_layout.AnyLayoutSet()) {
+    return;
+  }
 
   // The MLIR CPU pipeline assumes default layouts throughout the program. At
   // the boundaries, this may not be the case, so layout information needs to
@@ -242,33 +238,36 @@ void ImportFrontendAttributes(const HloModule& hlo_module,
                               mlir::ModuleOp module, mlir::Builder builder) {
   if (!hlo_module.frontend_attributes().map().empty()) {
     llvm::SmallVector<mlir::NamedAttribute, 4> frontend_attributes;
-    for (const auto& [k, v] : hlo_module.frontend_attributes().map())
+    for (const auto& [k, v] : hlo_module.frontend_attributes().map()) {
       frontend_attributes.push_back(
           builder.getNamedAttr(k, builder.getStringAttr(v)));
-    if (!frontend_attributes.empty())
-      module->setAttr(kFrontendAttributes,
+    }
+    if (!frontend_attributes.empty()) {
+      module->setAttr(xla::kMhloFrontendAttributes,
                       builder.getDictionaryAttr(frontend_attributes));
+    }
   }
 }
 
 void ImportInputOutputAlias(const xla::HloModule& hlo_module,
                             mlir::ModuleOp module, mlir::Builder builder) {
-  module->setAttr(kInputOutputAlias,
+  module->setAttr(xla::kMhloInputOutputAlias,
                   ConvertInputOutputAlias(
                       hlo_module.input_output_alias_config(), &builder));
 }
 
 void ImportIsDynamic(const xla::HloModule& hlo_module, mlir::ModuleOp module,
                      mlir::Builder builder) {
-  module->setAttr(kIsDynamic, mlir::BoolAttr::get(builder.getContext(),
-                                                  hlo_module.is_dynamic()));
+  module->setAttr(
+      xla::kMhloIsDynamic,
+      mlir::BoolAttr::get(builder.getContext(), hlo_module.is_dynamic()));
 }
 
 void ImportNumPartitions(const xla::HloModule& hlo_module,
                          mlir::ModuleOp module, mlir::Builder builder) {
   const auto& config = hlo_module.config();
   if (config.num_partitions() != 1) {
-    module->setAttr(kNumPartitions,
+    module->setAttr(xla::kMhloNumPartitions,
                     builder.getI32IntegerAttr(config.num_partitions()));
   }
 }
@@ -277,17 +276,18 @@ void ImportNumReplicas(const HloModule& hlo_module, mlir::ModuleOp module,
                        mlir::Builder builder) {
   const auto& config = hlo_module.config();
   if (config.replica_count() != 1) {
-    module->setAttr(kNumReplicas,
+    module->setAttr(xla::kMhloNumReplicas,
                     builder.getI32IntegerAttr(config.replica_count()));
   }
 }
 
 void ImportSpmdOutputSharding(const xla::HloModule& hlo_module,
                               mlir::ModuleOp module, mlir::Builder builder) {
-  if (hlo_module.has_spmd_output_sharding())
+  if (hlo_module.has_spmd_output_sharding()) {
     module->setAttr(
-        kSpmdOutputSharding,
+        xla::kMhloSpmdOutputSharding,
         ConvertSharding(hlo_module.spmd_output_sharding(), &builder));
+  }
 }
 
 void ImportSpmdParametersShardings(const HloModule& hlo_module,
@@ -299,12 +299,14 @@ void ImportSpmdParametersShardings(const HloModule& hlo_module,
     parameter_shardings.reserve(hlo_module.spmd_parameters_shardings().size());
     for (const auto& root_sharding : hlo_module.spmd_parameters_shardings()) {
       llvm::ArrayRef<HloSharding> shardings = root_sharding;
-      if (root_sharding.IsTuple() && flatten_computation_args_result)
+      if (root_sharding.IsTuple() && flatten_computation_args_result) {
         shardings = root_sharding.tuple_elements();
-      for (const auto& sharding : shardings)
+      }
+      for (const auto& sharding : shardings) {
         parameter_shardings.push_back(ConvertSharding(sharding, &builder));
+      }
     }
-    module->setAttr(kSpmdParametersShardings,
+    module->setAttr(xla::kMhloSpmdParametersShardings,
                     builder.getArrayAttr(parameter_shardings));
   }
 }
@@ -312,7 +314,7 @@ void ImportSpmdParametersShardings(const HloModule& hlo_module,
 void ImportUseAutoSpmdPartitioning(const HloModule& hlo_module,
                                    mlir::ModuleOp module,
                                    mlir::Builder builder) {
-  module->setAttr(kUseAutoSpmdPartitioning,
+  module->setAttr(xla::kMhloUseAutoSpmdPartitioning,
                   mlir::BoolAttr::get(builder.getContext(),
                                       hlo_module.use_auto_spmd_partitioning()));
 }
@@ -321,15 +323,16 @@ namespace {
 
 mlir::DictionaryAttr AppendAutoLayoutModeAttribute(mlir::Builder builder,
                                                    mlir::DictionaryAttr dict) {
-  constexpr llvm::StringRef kLayoutMode = "mhlo.layout_mode";
   llvm::SmallVector<mlir::NamedAttribute> attrs;
   if (dict) {
     for (auto attr : dict.getValue()) {
-      if (attr.getName() != kLayoutMode) attrs.push_back(attr);
+      if (attr.getName() != xla::kMhloLayoutMode) {
+        attrs.push_back(attr);
+      }
     }
   }
-  attrs.push_back(
-      builder.getNamedAttr(kLayoutMode, builder.getStringAttr("auto")));
+  attrs.push_back(builder.getNamedAttr(xla::kMhloLayoutMode,
+                                       builder.getStringAttr("auto")));
   return builder.getDictionaryAttr(attrs);
 }
 
@@ -348,9 +351,12 @@ void ImportParameterLayoutModes(mlir::func::FuncOp main,
   CHECK_EQ(parameter_shapes.size(), main.getNumArguments());
   for (size_t i = 0; i < main.getNumArguments(); ++i) {
     const Shape& shape = *parameter_shapes[i];
-    if (shape.IsTuple() || (shape.IsArray() && shape.dimensions().size() == 0))
+    if (shape.IsTuple() || (shape.IsArray() && shape.dimensions().empty())) {
       continue;
-    if (LayoutUtil::HasAnyLayout(*parameter_shapes[i])) continue;
+    }
+    if (LayoutUtil::HasAnyLayout(*parameter_shapes[i])) {
+      continue;
+    }
     main.setArgAttrs(
         i, AppendAutoLayoutModeAttribute(builder, main.getArgAttrDict(i)));
   }
@@ -368,9 +374,12 @@ void ImportResultLayoutModes(mlir::func::FuncOp main,
   CHECK_EQ(result_shapes.size(), main.getNumResults());
   for (size_t i = 0; i < main.getNumResults(); ++i) {
     const Shape& shape = *result_shapes[i];
-    if (shape.IsTuple() || (shape.IsArray() && shape.dimensions().size() == 0))
+    if (shape.IsTuple() || (shape.IsArray() && shape.dimensions().empty())) {
       continue;
-    if (LayoutUtil::HasAnyLayout(shape)) continue;
+    }
+    if (LayoutUtil::HasAnyLayout(shape)) {
+      continue;
+    }
     main.setResultAttrs(
         i, AppendAutoLayoutModeAttribute(builder, main.getResultAttrDict(i)));
   }

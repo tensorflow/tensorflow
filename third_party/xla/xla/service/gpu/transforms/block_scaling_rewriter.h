@@ -19,9 +19,14 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/transforms/expanders/op_expander_pass.h"
+#include "xla/stream_executor/dnn.h"
 
 namespace xla::gpu {
+
+const se::dnn::VersionInfo kCudnnSupportsBlockScaledDot(9, 7);
+const se::dnn::VersionInfo kCudnnSupportsBlockScaledDotWithGlobalScale(9, 13);
 
 // This pass converts the block quantize/dequantize operations (represented as
 // custom calls) to XLA graphs or library calls, if available (e.g. cuDNN).
@@ -62,10 +67,14 @@ namespace xla::gpu {
 //               lhs_batch_dims={0}, lhs_contracting_dims={2},
 //               rhs_batch_dims={0}, rhs_contracting_dims={2}
 //
+//    Note: the scale tensor may be padded; with cuDNN lowering, the underlying
+//    kernel will handle this correctly, with default lowering the extra values
+//    will be ignored. An explicit block size must be passed in the backend
+//    config if the block scaled dimension is padded.
 class BlockScalingRewriter : public OpExpanderPass {
  public:
-  explicit BlockScalingRewriter(bool allow_cudnn)
-      : allow_cudnn_(allow_cudnn) {};
+  explicit BlockScalingRewriter(se::dnn::VersionInfo cudnn_version)
+      : cudnn_version_(cudnn_version) {};
 
   absl::string_view name() const override { return "block-scaling-rewriter"; }
 
@@ -87,7 +96,19 @@ class BlockScalingRewriter : public OpExpanderPass {
   static constexpr int kBlockSizeNVFP4 = 16;
 
  private:
-  bool allow_cudnn_;
+  se::dnn::VersionInfo cudnn_version_;
+};
+
+// Helper class for building cuDNN scaled dot operations.
+class CudnnScaledDotHelper {
+ public:
+  // Check if the scaled dot fusion is supported by cuDNN.
+  static bool IsSupported(const HloScaledDotInstruction* scaled_dot);
+
+  // Extract scale tensor swizzling from the block scaled dot fusion into
+  // separate computations.
+  static absl::StatusOr<HloInstruction*> AddScaleSwizzle(
+      HloFusionInstruction* fusion);
 };
 
 }  // namespace xla::gpu

@@ -17,6 +17,8 @@ limitations under the License.
 
 #include <optional>
 #include <string>
+#include <unordered_set>
+#include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
@@ -26,7 +28,6 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/util/device_name_utils.h"
-#include "tensorflow/core/common_runtime/function_utils.h"
 #include "tensorflow/core/common_runtime/optimization_registry.h"
 #include "tensorflow/core/config/flag_defs.h"
 #include "tensorflow/core/config/flags.h"
@@ -36,6 +37,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/graph_def_builder.h"
 #include "tensorflow/core/platform/bfloat16.h"
@@ -107,12 +109,12 @@ void RedirectEdge(Graph* graph, Node* old_src_node, Node* dst_node,
 }
 
 // Find the corresponding host device name from the TPU device name.
-string GetHostDeviceName(Node* tpu_node) {
+std::string GetHostDeviceName(Node* tpu_node) {
   auto device_name = tpu_node->requested_device();
   if (device_name.empty()) device_name = tpu_node->assigned_device_name();
   DeviceNameUtils::ParsedName parsed_device_name;
   DeviceNameUtils::ParseFullName(device_name, &parsed_device_name);
-  string host_device_name = DeviceNameUtils::FullName(
+  std::string host_device_name = DeviceNameUtils::FullName(
       parsed_device_name.job, parsed_device_name.replica,
       parsed_device_name.task, /*type=*/"CPU", /*id=*/0);
   return host_device_name;
@@ -141,7 +143,8 @@ int GetTPUTaskId(Node* tpu_node) {
 // Build the fill op. Its value is 0 and the fill op is put on the host device
 // with the same task id as the TPUExecute node.
 Node* BuildFillOp(GraphDefBuilder::Options& bopts, Node* tpu_node,
-                  Node* in_node, int input_index, string host_device_name) {
+                  Node* in_node, int input_index,
+                  std::string host_device_name) {
   // Find the output_shape vector
   auto output_shape_vec = GetOutputShapeVec(in_node);
   if (!output_shape_vec.has_value()) return nullptr;
@@ -189,7 +192,7 @@ absl::Status ReplaceIciDummyVariables(Graph* graph, int input_index,
       continue;
     }
 
-    string host_device_name = GetHostDeviceName(tpu_node);
+    std::string host_device_name = GetHostDeviceName(tpu_node);
 
     // If the node corresponding to host_device_name is already in the graph,
     // replace the edge from in_node to tpu_node with the edge from
@@ -226,6 +229,20 @@ bool ShouldRunPass(const GraphOptimizationPassOptions& options) {
     return false;
   }
   return true;
+}
+
+// Remove the dead nodes from the graph. This specifically avoids leaving behind
+// isolated stateful TPUDummyInput nodes. Such nodes can cause host OOMs on
+// coordinator tasks when training large models.
+bool RemoveDeadNodesAfterSimplify(Graph* g) {
+  std::unordered_set<const Node*> nodes;
+  for (auto n : g->nodes()) {
+    if (n->IsSource() || n->IsSink() || n->IsControlFlow() ||
+        (n->op_def().is_stateful() && n->type_string() != "TPUDummyInput")) {
+      nodes.insert(n);
+    }
+  }
+  return PruneForReverseReachability(g, std::move(nodes));
 }
 
 absl::Status SimplifyIciDummyVariablesPass::Run(
@@ -270,7 +287,7 @@ absl::Status SimplifyIciDummyVariablesPass::Run(
   }
 
   // Remove the dead nodes that previously connected to the TPUExecute node.
-  RemoveDeadNodes(graph);
+  RemoveDeadNodesAfterSimplify(graph);
 
   VLOG(1) << DumpGraphToFile("after_simplify_ici_dummy_variables_pass", *graph,
                              options.flib_def);

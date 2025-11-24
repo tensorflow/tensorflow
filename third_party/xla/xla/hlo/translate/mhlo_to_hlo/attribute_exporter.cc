@@ -16,27 +16,72 @@ limitations under the License.
 #include "xla/hlo/translate/mhlo_to_hlo/attribute_exporter.h"
 
 #include <cstdint>
+#include <functional>
+#include <memory>
 #include <optional>
 #include <utility>
 #include <vector>
 
+#include "absl/log/check.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/LogicalResult.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/Support/LLVM.h"
+#include "shardy/dialect/sdy/ir/dialect.h"
+#include "shardy/dialect/sdy/ir/utils.h"
 #include "stablehlo/dialect/Base.h"
 #include "stablehlo/dialect/StablehloOps.h"
+#include "xla/hlo/ir/hlo_original_value.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/parser/hlo_parser.h"
+#include "xla/hlo/translate/hlo_to_mhlo/hlo_utils.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/service/hlo.pb.h"
+#include "xla/service/spmd/shardy/constants.h"
+#include "xla/service/spmd/shardy/stablehlo_round_trip/export_shardings.h"
+#include "xla/service/spmd/shardy/utils.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
+namespace {
+
+using ::mlir::sdy::MeshAttr;
+
+MeshAttr getSdyMeshAttr(mlir::sdy::TensorShardingAttr sharding,
+                        std::optional<mlir::DictionaryAttr> sdy_meshes) {
+  mlir::Attribute mesh_or_ref = sharding.getMeshOrRef();
+  if (auto mesh = mlir::dyn_cast<MeshAttr>(mesh_or_ref); mesh != nullptr) {
+    return mesh;
+  }
+  if (sdy_meshes.has_value()) {
+    auto mesh_ref = mlir::cast<mlir::FlatSymbolRefAttr>(mesh_or_ref);
+    return mlir::cast<MeshAttr>(sdy_meshes->get(mesh_ref.getValue()));
+  }
+
+  CHECK(false) << "Mesh not found with name: "
+               << mlir::sdy::attributeToString(mesh_or_ref);
+}
+
+OpSharding CreateOpShardingFromSdySharding(
+    mlir::sdy::TensorShardingAttr sdy_sharding,
+    std::optional<mlir::DictionaryAttr> sdy_meshes,
+    mlir::DictionaryAttr frontend_attrs) {
+  std::function<MeshAttr(mlir::sdy::TensorShardingAttr)> get_mesh_attr =
+      [&](mlir::sdy::TensorShardingAttr sharding) {
+        return getSdyMeshAttr(sharding, sdy_meshes);
+      };
+
+  return xla::sdy::convertToHloSharding(sdy_sharding, get_mesh_attr).ToProto();
+}
+}  // namespace
 
 ConvolutionDimensionNumbers ConvertConvDimensionNumbers(
     mlir::mhlo::ConvDimensionNumbersAttr input) {
@@ -300,21 +345,6 @@ absl::StatusOr<xla::CustomCallApiVersion> ConvertCustomCallApiVersion(
   }
 }
 
-absl::StatusOr<
-    std::vector<std::pair<ShapeIndex, std::pair<int64_t, ShapeIndex>>>>
-ConvertOutputOperandAliasing(mlir::ArrayAttr aliasArrayAttr) {
-  std::vector<std::pair<ShapeIndex, std::pair<int64_t, ShapeIndex>>> aliasInfo;
-  for (auto attr : aliasArrayAttr.getValue()) {
-    auto alias = mlir::cast<mlir::mhlo::OutputOperandAliasAttr>(attr);
-    ShapeIndex outputShapeIndex(alias.getOutputTupleIndices());
-    ShapeIndex operandShapeIndex(alias.getOperandTupleIndices());
-    aliasInfo.push_back(std::make_pair(
-        outputShapeIndex,
-        std::make_pair(alias.getOperandIndex(), operandShapeIndex)));
-  }
-  return aliasInfo;
-}
-
 std::optional<xla::OpSharding> ConvertSharding(llvm::StringRef sharding) {
   xla::OpSharding sharding_proto;
   if (sharding_proto.ParseFromString(sharding.str())) return sharding_proto;
@@ -322,6 +352,17 @@ std::optional<xla::OpSharding> ConvertSharding(llvm::StringRef sharding) {
       xla::ParseSharding(sharding.str());
   if (sharding_cpp.ok()) return sharding_cpp->ToProto();
   return std::nullopt;
+}
+
+std::optional<xla::OriginalValueProto> ConvertOriginalValue(
+    llvm::StringRef original_value) {
+  absl::StatusOr<std::shared_ptr<xla::OriginalValue>> hlo_original_value =
+      xla::ParseOriginalValue(
+          absl::string_view(original_value.data(), original_value.size()));
+  if (!hlo_original_value.ok()) {
+    return std::nullopt;
+  }
+  return hlo_original_value.value()->ToProto();
 }
 
 std::optional<xla::HloInputOutputAliasProto> ConvertInputOutputAlias(
@@ -419,4 +460,56 @@ absl::StatusOr<std::vector<int64_t>> ConvertMlirArrayAttrToInt64Array(
   }
   return converted_array;
 }
+
+std::optional<xla::OpSharding> ExtractShardyArgShardingFromFrontendAttrs(
+    mlir::func::FuncOp function, int64_t arg_num,
+    std::optional<mlir::DictionaryAttr> sdy_meshes) {
+  if (mlir::DictionaryAttr arg_frontend_attrs =
+          xla::sdy::getFuncArgFrontendAttrs(function, arg_num);
+      arg_frontend_attrs != nullptr) {
+    auto sdy_sharding =
+        xla::sdy::parseStringAttr<mlir::sdy::TensorShardingAttr>(
+            arg_frontend_attrs,
+            xla::ToStringRef(HloSharding::kShardingFrontendAttrName));
+    if (sdy_sharding != nullptr) {
+      return CreateOpShardingFromSdySharding(sdy_sharding, sdy_meshes,
+                                             arg_frontend_attrs);
+    }
+  }
+
+  return std::nullopt;
+}
+
+std::optional<xla::OpSharding> ExtractShardyResultShardingFromFrontendAttrs(
+    mlir::func::FuncOp function, int64_t res_num,
+    std::optional<mlir::DictionaryAttr> sdy_meshes) {
+  // If the result has a sharding, then the result will come from a custom call
+  // that has the sharding attached.
+  mlir::Operation* defining_op =
+      mlir::sdy::getBodyTerminatorOperand(function, res_num).getDefiningOp();
+  auto custom_call_op =
+      mlir::dyn_cast_or_null<mlir::mhlo::CustomCallOp>(defining_op);
+
+  if (custom_call_op == nullptr ||
+      custom_call_op.getCallTargetName() !=
+          xla::sdy::kFuncResultShardingTargetName) {
+    return std::nullopt;
+  }
+
+  mlir::DictionaryAttr op_frontend_attrs =
+      xla::sdy::getFrontendAttrs(custom_call_op);
+  CHECK(op_frontend_attrs != nullptr)
+      << "xla.sdy.FuncResultSharding custom call should have frontend attrs";
+  auto sharding_per_value_attr =
+      xla::sdy::parseStringAttr<mlir::sdy::TensorShardingPerValueAttr>(
+          op_frontend_attrs,
+          xla::ToStringRef(HloSharding::kShardingFrontendAttrName));
+  CHECK(sharding_per_value_attr != nullptr)
+      << "Failed to parse sharding from frontend attrs";
+  CHECK_EQ(sharding_per_value_attr.size(), 1)
+      << "Expected exactly one sharding per FuncResultSharding";
+  return CreateOpShardingFromSdySharding(sharding_per_value_attr.getSharding(0),
+                                         sdy_meshes, op_frontend_attrs);
+}
+
 }  // namespace xla

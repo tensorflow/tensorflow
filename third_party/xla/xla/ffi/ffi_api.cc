@@ -43,7 +43,7 @@ limitations under the License.
 #include "xla/ffi/call_frame.h"
 #include "xla/ffi/execution_context.h"
 #include "xla/ffi/execution_state.h"
-#include "xla/ffi/type_id_registry.h"
+#include "xla/ffi/type_registry.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/service/platform_util.h"
 #include "xla/stream_executor/device_memory.h"
@@ -97,8 +97,27 @@ struct XLA_FFI_ExecutionContext {
 
 namespace xla::ffi {
 
-bool IsCommandBufferCompatible(XLA_FFI_Handler_Traits traits) {
-  return traits & XLA_FFI_HANDLER_TRAITS_COMMAND_BUFFER_COMPATIBLE;
+// The minimum XLA:FFI API version that XLA runtime supports.
+static constexpr std::pair<int32_t, int32_t> kMinSupportedApiVersion = {
+    /*major=*/0,
+    /*minor=*/1,
+};
+
+// The maximum XLA:FFI API version that XLA runtime supports.
+static constexpr std::pair<int32_t, int32_t> kMaxSupportedApiVersion = {
+    XLA_FFI_API_MAJOR,
+    XLA_FFI_API_MINOR,
+};
+
+static bool IsSupportedApiVersion(const XLA_FFI_Api_Version& api_version) {
+  std::pair<int32_t, int32_t> version = {api_version.major_version,
+                                         api_version.minor_version};
+  return version >= kMinSupportedApiVersion &&
+         version <= kMaxSupportedApiVersion;
+}
+
+bool IsCommandBufferCompatible(const XLA_FFI_Metadata& metadata) {
+  return metadata.traits & XLA_FFI_HANDLER_TRAITS_COMMAND_BUFFER_COMPATIBLE;
 }
 
 static XLA_FFI_ExecutionContext CreateExecutionContext(
@@ -136,7 +155,9 @@ static XLA_FFI_ExecutionContext CreateExecutionContext(
 //===----------------------------------------------------------------------===//
 
 absl::Status TakeStatus(XLA_FFI_Error* error) {
-  if (ABSL_PREDICT_TRUE(error == nullptr)) return absl::OkStatus();
+  if (ABSL_PREDICT_TRUE(error == nullptr)) {
+    return absl::OkStatus();
+  }
   absl::Status status = std::move(error->status);
   delete error;
   return status;
@@ -150,18 +171,20 @@ tsl::AsyncValueRef<tsl::Chain> TakeFuture(XLA_FFI_Future* future) {
         tsl::MakeAvailableAsyncValueRef<tsl::Chain>(*storage));
   }();
 
-  if (ABSL_PREDICT_TRUE(future == nullptr)) return chain->AsRef();
+  if (ABSL_PREDICT_TRUE(future == nullptr)) {
+    return chain->AsRef();
+  }
 
-  // If the future is already completed, immediately return the underlying async
-  // value and delete the XLA_FFI_Future.
+  // If the future is already completed, immediately return the underlying
+  // async value and delete the XLA_FFI_Future.
   if (ABSL_PREDICT_TRUE(future->async_value.IsAvailable())) {
     tsl::AsyncValueRef<tsl::Chain> async_value = std::move(future->async_value);
     delete future;
     return async_value;
   }
 
-  // If the future is not completed, return a copy of the underlying async value
-  // and keep XLA_FFI_Future alive until it is completed.
+  // If the future is not completed, return a copy of the underlying async
+  // value and keep XLA_FFI_Future alive until it is completed.
   tsl::AsyncValueRef<tsl::Chain> async_value = future->async_value;
   async_value.AndThen([future] { delete future; });
   return async_value;
@@ -204,7 +227,9 @@ static absl::StatusOr<XLA_FFI_Future*> Call(Handler& handler,
 }
 
 static absl::Status BlockUntilReady(XLA_FFI_Future* future) {
-  if (ABSL_PREDICT_TRUE(future == nullptr)) return absl::OkStatus();
+  if (ABSL_PREDICT_TRUE(future == nullptr)) {
+    return absl::OkStatus();
+  }
 
   tsl::AsyncValueRef<tsl::Chain> av = TakeFuture(future);
   tsl::BlockUntilReady(av);
@@ -246,12 +271,12 @@ tsl::AsyncValueRef<tsl::Chain> CallAsync(XLA_FFI_Handler* handler,
   return TakeFuture(future);
 }
 
-static XLA_FFI_Metadata BuildMetadata() {
+static XLA_FFI_Metadata PrepareMetadata() {
   return XLA_FFI_Metadata{XLA_FFI_Metadata_STRUCT_SIZE,
                           XLA_FFI_Api_Version{XLA_FFI_Api_Version_STRUCT_SIZE}};
 }
 
-static XLA_FFI_Metadata_Extension BuildMetadataExtension(
+static XLA_FFI_Metadata_Extension PrepareMetadataExtension(
     XLA_FFI_Metadata* metadata) {
   return XLA_FFI_Metadata_Extension{
       XLA_FFI_Extension_Base{XLA_FFI_Metadata_Extension_STRUCT_SIZE,
@@ -259,12 +284,12 @@ static XLA_FFI_Metadata_Extension BuildMetadataExtension(
       metadata};
 }
 
-static XLA_FFI_CallFrame BuildMetadataCallFrame(
+static XLA_FFI_CallFrame PrepareMetadataCallFrame(
     XLA_FFI_Metadata_Extension* extension) {
   return XLA_FFI_CallFrame{
       XLA_FFI_CallFrame_STRUCT_SIZE,
       &extension->extension_base,
-      /*api=*/nullptr,
+      /*api=*/GetXlaFfiApi(),
       /*context=*/nullptr,
       /*stage=*/XLA_FFI_ExecutionStage_EXECUTE,
       /*args=*/XLA_FFI_Args{XLA_FFI_Args_STRUCT_SIZE},
@@ -274,9 +299,9 @@ static XLA_FFI_CallFrame BuildMetadataCallFrame(
 }
 
 absl::StatusOr<XLA_FFI_Metadata> GetMetadata(Ffi& handler) {
-  XLA_FFI_Metadata metadata = BuildMetadata();
-  XLA_FFI_Metadata_Extension extension = BuildMetadataExtension(&metadata);
-  XLA_FFI_CallFrame call_frame = BuildMetadataCallFrame(&extension);
+  XLA_FFI_Metadata metadata = PrepareMetadata();
+  XLA_FFI_Metadata_Extension extension = PrepareMetadataExtension(&metadata);
+  XLA_FFI_CallFrame call_frame = PrepareMetadataCallFrame(&extension);
   XLA_FFI_Error* error = nullptr;
   try {
     error = handler.Call(&call_frame);
@@ -290,9 +315,9 @@ absl::StatusOr<XLA_FFI_Metadata> GetMetadata(Ffi& handler) {
 }
 
 absl::StatusOr<XLA_FFI_Metadata> GetMetadata(XLA_FFI_Handler* handler) {
-  XLA_FFI_Metadata metadata = BuildMetadata();
-  XLA_FFI_Metadata_Extension extension = BuildMetadataExtension(&metadata);
-  XLA_FFI_CallFrame call_frame = BuildMetadataCallFrame(&extension);
+  XLA_FFI_Metadata metadata = PrepareMetadata();
+  XLA_FFI_Metadata_Extension extension = PrepareMetadataExtension(&metadata);
+  XLA_FFI_CallFrame call_frame = PrepareMetadataCallFrame(&extension);
   XLA_FFI_Error* error = nullptr;
   try {
     error = (*handler)(&call_frame);
@@ -346,10 +371,18 @@ static HandlerRegistry& GetHandlerRegistry() {
 static std::vector<std::string> GetHandlerStages(
     const XLA_FFI_Handler_Bundle& bundle) {
   std::vector<std::string> stages;
-  if (bundle.instantiate != nullptr) stages.push_back("instantiate");
-  if (bundle.prepare != nullptr) stages.push_back("prepare");
-  if (bundle.initialize != nullptr) stages.push_back("initialize");
-  if (bundle.execute != nullptr) stages.push_back("execute");
+  if (bundle.instantiate != nullptr) {
+    stages.push_back("instantiate");
+  }
+  if (bundle.prepare != nullptr) {
+    stages.push_back("prepare");
+  }
+  if (bundle.initialize != nullptr) {
+    stages.push_back("initialize");
+  }
+  if (bundle.execute != nullptr) {
+    stages.push_back("execute");
+  }
   return stages;
 }
 
@@ -367,49 +400,61 @@ static absl::Status RegisterHandler(absl::string_view name,
         name, platform);
   }
 
-  // Check the API versions.
-  TF_ASSIGN_OR_RETURN(auto metadata, GetMetadata(bundle.execute));
-  const XLA_FFI_Api_Version& api_version = metadata.api_version;
-  if (api_version.major_version != XLA_FFI_API_MAJOR ||
-      api_version.minor_version != XLA_FFI_API_MINOR) {
+  // Check the API version that FFI handler was compiled with is supported.
+  TF_ASSIGN_OR_RETURN(XLA_FFI_Metadata metadata, GetMetadata(bundle.execute));
+  if (!IsSupportedApiVersion(metadata.api_version)) {
     return InvalidArgument(
-        "FFI handler registration for %s on platform %s (canonical %s) failed "
-        "because the handler's API version (%d.%d) is incompatible with the "
-        "framework's API version (%d.%d)",
-        name, platform, canonical_platform, api_version.major_version,
-        api_version.minor_version, XLA_FFI_API_MAJOR, XLA_FFI_API_MINOR);
+        "XLA FFI handler registration for %s on platform %s (canonical %s) "
+        "failed because the handler's API version (%d.%d) is incompatible "
+        "with "
+        "the framework's API version (%d.%d). Minimum supported API version "
+        "is "
+        "(%d.%d).",
+        name, platform, canonical_platform, metadata.api_version.major_version,
+        metadata.api_version.minor_version, kMaxSupportedApiVersion.first,
+        kMaxSupportedApiVersion.second, kMinSupportedApiVersion.first,
+        kMinSupportedApiVersion.second);
   }
 
-  // Incorporate handler traits.
-  traits |= metadata.traits;
+  // Incorporate handler traits passed explicitly via handler registration API.
+  metadata.traits |= traits;
+
+  // Incorporate state type id from the instantiate implementation if present.
+  if (bundle.instantiate) {
+    TF_ASSIGN_OR_RETURN(XLA_FFI_Metadata instantiate_metadata,
+                        GetMetadata(bundle.instantiate));
+    metadata.state_type_id = instantiate_metadata.state_type_id;
+  }
 
   VLOG(2) << absl::StreamFormat(
       "Register XLA FFI handler for '%s'; platform=%s (canonical=%s), "
-      "stages=[%s], command_buffer_compatible=%v",
+      "stages=[%s], metadata=%v",
       name, platform, canonical_platform,
-      absl::StrJoin(GetHandlerStages(bundle), ", "),
-      IsCommandBufferCompatible(traits));
+      absl::StrJoin(GetHandlerStages(bundle), ", "), metadata);
 
-  auto emplaced =
-      GetHandlerRegistry().try_emplace(MakeHandlerKey(name, canonical_platform),
-                                       HandlerRegistration{bundle, traits});
-  if (!emplaced.second) {
-    auto existing = emplaced.first->second;
-    if (existing.traits != traits) {
+  HandlerRegistration registration{metadata, bundle};
+  auto [it, emplaced] = GetHandlerRegistry().try_emplace(
+      MakeHandlerKey(name, canonical_platform), registration);
+
+  // We might accidentally link the same FFI library multiple times (because
+  // linking shared libraries is hard), and we choose to ignore this problem as
+  // long as we register exactly the same handler.
+  if (!emplaced) {
+    const HandlerRegistration& existing = it->second;
+    if (existing.metadata != metadata) {
       return InvalidArgument(
           "Duplicate FFI handler registration for %s on platform %s "
-          "(canonical %s) with different traits",
-          name, platform, canonical_platform);
+          "(canonical %s) with different metadata: %v vs %v",
+          name, platform, canonical_platform, existing.metadata, metadata);
     }
-    if (existing.bundle.prepare != bundle.prepare ||
-        existing.bundle.initialize != bundle.initialize ||
-        existing.bundle.execute != bundle.execute) {
+    if (existing.bundle != bundle) {
       return InvalidArgument(
           "Duplicate FFI handler registration for %s on platform %s "
           "(canonical %s) with different bundle addresses",
           name, platform, canonical_platform);
     }
   }
+
   return absl::OkStatus();
 }
 
@@ -638,19 +683,20 @@ static XLA_FFI_Error* XLA_FFI_DeviceOrdinal_Get(
   return nullptr;
 }
 
-static XLA_FFI_Error* XLA_FFI_TypeId_Register(
-    XLA_FFI_TypeId_Register_Args* args) {
+static XLA_FFI_Error* XLA_FFI_Type_Register(XLA_FFI_Type_Register_Args* args) {
   XLA_FFI_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
       "XLA_FFI_ExecutionContext_Get_Args",
       XLA_FFI_ExecutionContext_Get_Args_STRUCT_SIZE, args->struct_size));
 
   absl::string_view type_name(args->name.ptr, args->name.len);
-  TypeIdRegistry::TypeId type_id(args->type_id->type_id);
+  TypeRegistry::TypeId type_id(args->type_id->type_id);
+  TypeRegistry::TypeInfo type_info = {args->type_info->deleter};
 
-  // If type_id is unknown, we are registering a new type and XLA will assign a
-  // unique type id to it.
-  if (type_id == TypeIdRegistry::kUnknownTypeId) {
-    auto assigned_type_id = TypeIdRegistry::AssignExternalTypeId(type_name);
+  // If type_id is unknown, we are registering a new type and XLA will assign
+  // a unique type id to it.
+  if (type_id == TypeRegistry::kUnknownTypeId) {
+    auto assigned_type_id =
+        TypeRegistry::AssignExternalTypeId(type_name, type_info);
     if (!assigned_type_id.ok()) {
       return new XLA_FFI_Error{std::move(assigned_type_id).status()};
     }
@@ -660,9 +706,10 @@ static XLA_FFI_Error* XLA_FFI_TypeId_Register(
   }
 
   // If type_id is set, we are relying on the caller-provided unique type id.
-  if (auto status = TypeIdRegistry::RegisterExternalTypeId(type_name, type_id);
-      !status.ok()) {
-    return new XLA_FFI_Error{std::move(status)};
+  auto registered_type_id =
+      TypeRegistry::RegisterExternalTypeId(type_name, type_id, type_info);
+  if (!registered_type_id.ok()) {
+    return new XLA_FFI_Error{std::move(registered_type_id)};
   }
 
   return nullptr;
@@ -676,7 +723,7 @@ static XLA_FFI_Error* XLA_FFI_ExecutionContext_Get(
 
   DCHECK(args->ctx->execution_context) << "ExecutionContext must be set";
   auto user_data = args->ctx->execution_context->Lookup(
-      TypeIdRegistry::TypeId(args->type_id->type_id));
+      TypeRegistry::TypeId(args->type_id->type_id));
   if (!user_data.ok()) {
     return new XLA_FFI_Error{std::move(user_data).status()};
   }
@@ -691,10 +738,9 @@ static XLA_FFI_Error* XLA_FFI_State_Set(XLA_FFI_State_Set_Args* args) {
       args->struct_size));
 
   DCHECK(args->ctx->execution_state) << "ExecutionState must be set";
-  absl::Status status = args->ctx->execution_state->Set(
-      TypeIdRegistry::TypeId(args->type_id->type_id), args->state,
-      [deleter = args->deleter](void* state) { deleter(state); });
 
+  absl::Status status = args->ctx->execution_state->Set(
+      TypeRegistry::TypeId(args->type_id->type_id), args->state);
   if (!status.ok()) {
     return new XLA_FFI_Error{std::move(status)};
   }
@@ -709,7 +755,7 @@ static XLA_FFI_Error* XLA_FFI_State_Get(XLA_FFI_State_Get_Args* args) {
 
   DCHECK(args->ctx->execution_state) << "ExecutionState must be set";
   absl::StatusOr<void*> state = args->ctx->execution_state->Get(
-      TypeIdRegistry::TypeId(args->type_id->type_id));
+      TypeRegistry::TypeId(args->type_id->type_id));
   if (!state.ok()) {
     return new XLA_FFI_Error{std::move(state).status()};
   }
@@ -954,7 +1000,7 @@ static XLA_FFI_Api api = {
     XLA_FFI_Error_Destroy,
     XLA_FFI_Handler_Register,
     XLA_FFI_Stream_Get,
-    XLA_FFI_TypeId_Register,
+    XLA_FFI_Type_Register,
     XLA_FFI_ExecutionContext_Get,
     XLA_FFI_State_Set,
     XLA_FFI_State_Get,

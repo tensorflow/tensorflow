@@ -57,7 +57,7 @@ struct HloModuleAndMetadata {
   virtual ~HloModuleAndMetadata() = default;
 
   std::unique_ptr<HloModule> hlo_module;
-  std::unique_ptr<Compiler::TargetConfig> target_config;
+  std::unique_ptr<Compiler::GpuTargetConfig> target_config;
   // Use static_cast to cast this to a concrete type.
   std::unique_ptr<BackendSpecificData> backend_specific_data;
 };
@@ -76,13 +76,13 @@ class SymbolRepositoryRegistry {
  public:
   void Register(const std::string& name,
                 std::unique_ptr<SymbolRepository> repo) {
-    absl::MutexLock lock(&mu_);
+    absl::MutexLock lock(mu_);
     VLOG(1) << "Registering SymbolRepository " << name;
     repo_[name] = std::move(repo);
   }
 
   SymbolRepository* repo(absl::string_view name) {
-    absl::MutexLock lock(&mu_);
+    absl::MutexLock lock(mu_);
     const auto it = repo_.find(name);
     if (it == repo_.end()) {
       return nullptr;

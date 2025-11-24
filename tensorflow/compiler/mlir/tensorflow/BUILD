@@ -334,7 +334,7 @@ cc_library(
     ] + ["ir/tf_" + target["name"] + ".h.inc" for target in tf_ops_category_list],
     deps = [
         ":attribute_utils",
-        ":serialize_mlir_module_utils",
+        ":deserialize_mlir_module_utils",
         ":side_effect_analysis_util",
         ":tensorflow_attributes",
         ":tensorflow_op_interfaces",
@@ -669,6 +669,7 @@ cc_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:casts",
         "@com_google_absl//absl/strings",
+        "@com_google_protobuf//:protobuf",
     ],
 )
 
@@ -898,7 +899,7 @@ cc_library(
     name = "error_util",
     srcs = ["utils/error_util.cc"],
     hdrs = ["utils/error_util.h"],
-    visibility = ["//tensorflow:__subpackages__"],
+    visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:status",
@@ -956,18 +957,60 @@ tf_cc_test(
 )
 
 cc_library(
+    name = "deserialize_mlir_module_utils",
+    srcs = ["utils/deserialize_mlir_module_utils.cc"],
+    hdrs = ["utils/deserialize_mlir_module_utils.h"],
+    deps = [
+        ":error_util",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_headers_for_pybind",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Parser",
+        "@local_xla//xla:status_macros",
+        "@local_xla//xla/tsl/lib/io:inputstream_interface",
+        "@local_xla//xla/tsl/lib/io:zlib_compression_options",
+        "@local_xla//xla/tsl/lib/io:zlib_inputstream",
+    ],
+)
+
+cc_library(
     name = "serialize_mlir_module_utils",
     srcs = ["utils/serialize_mlir_module_utils.cc"],
     hdrs = ["utils/serialize_mlir_module_utils.h"],
     deps = [
-        ":error_util",
-        "//tensorflow/core/platform:errors",
-        "//tensorflow/core/platform:status",
+        "//tensorflow/compiler/jit:flags_headers",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
         "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:BytecodeWriter",
         "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Parser",
-        "@local_xla//xla:status_macros",
+        "@llvm-project//mlir:Support",
+        "@local_xla//xla/tsl/lib/io:zlib_compression_options",
+        "@local_xla//xla/tsl/lib/io:zlib_outputbuffer",
+        "@local_xla//xla/tsl/platform:env",
+        "@local_xla//xla/tsl/platform:errors",
+    ],
+)
+
+tf_cc_test(
+    name = "serialize_mlir_module_utils_test",
+    srcs = ["utils/serialize_mlir_module_utils_test.cc"],
+    deps = [
+        ":deserialize_mlir_module_utils",
+        ":serialize_mlir_module_utils",
+        "//tensorflow/compiler/jit:flags",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//mlir:IR",
     ],
 )
 
@@ -976,6 +1019,7 @@ cc_library(
     testonly = True,  # Ensure alwayslink does not leak in the codebase.
     srcs = ["utils/tf_xla_mlir_translate.cc"],
     deps = [
+        ":deserialize_mlir_module_utils",
         ":mlir_roundtrip_flags",
         ":serialize_mlir_module_utils",
         ":tensorflow",
@@ -1086,7 +1130,7 @@ tf_cc_test(
     srcs = ["utils/cluster_util_test.cc"],
     deps = [
         ":cluster_util",
-        ":serialize_mlir_module_utils",
+        ":deserialize_mlir_module_utils",
         ":tensorflow",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
@@ -1128,8 +1172,8 @@ tf_cc_test(
     size = "small",
     srcs = ["utils/tpu_rewrite_device_util_test.cc"],
     deps = [
+        ":deserialize_mlir_module_utils",
         ":device_util",
-        ":serialize_mlir_module_utils",
         ":tensorflow",
         ":tpu_rewrite_device_util",
         "//tensorflow/compiler/jit:flags",
@@ -1222,6 +1266,8 @@ tf_cc_test(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:MlirOptLib",
         "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:RegisterAllDialects",
+        "@llvm-project//mlir:RegisterAllPasses",
         "@llvm-project//mlir:Support",
     ],
 )
@@ -1270,7 +1316,7 @@ tf_cc_test(
     srcs = ["utils/bridge_logger_test.cc"],
     deps = [
         ":bridge_logger",
-        ":serialize_mlir_module_utils",
+        ":deserialize_mlir_module_utils",
         ":tensorflow",
         "//tensorflow/compiler/mlir/tensorflow/transforms:tensorflow_passes",
         "//tensorflow/core:lib",
@@ -1291,7 +1337,7 @@ tf_cc_test(
     srcs = ["utils/data_dumper_logger_config_test.cc"],
     deps = [
         ":bridge_logger",
-        ":serialize_mlir_module_utils",
+        ":deserialize_mlir_module_utils",
         ":tensorflow",
         "//tensorflow/compiler/mlir/tensorflow/transforms:tensorflow_passes",
         "//tensorflow/core:test",
@@ -1383,7 +1429,9 @@ cc_library(
         "@llvm-project//mlir:Support",
         "@local_xla//xla:xla_data_proto_cc",
         "@local_xla//xla/hlo/ir:hlo",
+        "@local_xla//xla/hlo/ir:tile_assignment",
         "@local_xla//xla/hlo/parser:hlo_parser",
+        "@local_xla//xla/hlo/utils:hlo_sharding_util",
         "@local_xla//xla/tsl/lib/math:math_util",
     ],
 )
@@ -1392,7 +1440,7 @@ tf_cc_test(
     name = "utils/xla_sharding_util_test",
     srcs = ["utils/xla_sharding_util_test.cc"],
     deps = [
-        ":serialize_mlir_module_utils",
+        ":deserialize_mlir_module_utils",
         ":tensorflow",
         ":xla_sharding_util",
         "//tensorflow/core:test",
@@ -1610,8 +1658,8 @@ tf_cc_test(
     size = "small",
     srcs = ["utils/xla_rewrite_util_test.cc"],
     deps = [
+        ":deserialize_mlir_module_utils",
         ":device_util",
-        ":serialize_mlir_module_utils",
         ":tensorflow",
         ":tpu_rewrite_device_util",
         ":xla_rewrite_util",

@@ -152,7 +152,7 @@ class ResizeAreaOpTest : public OpsTestBase {
                      int target_width, int channels) {
     const Tensor* input =
         SetRandomImageInput(TensorShape({1, in_height, in_width, channels}));
-    AddInputFromArray<int32>(TensorShape({2}), {target_height, target_width});
+    AddInputFromArray<int32_t>(TensorShape({2}), {target_height, target_width});
 
     TF_ASSERT_OK(RunOpKernel());
     std::unique_ptr<Tensor> expected(

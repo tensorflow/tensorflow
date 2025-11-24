@@ -13,7 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <memory>
 #include <utility>
 
 #include "llvm/ADT/ArrayRef.h"
@@ -30,8 +29,8 @@ limitations under the License.
 #include "mlir/IR/OperationSupport.h"
 #include "mlir/IR/SymbolTable.h"
 #include "mlir/IR/Visitors.h"
-#include "mlir/Pass/Pass.h"
 #include "mlir/Support/LLVM.h"
+#include "mlir/Support/WalkResult.h"
 #include "xla/python/ifrt/ir/constants.h"
 #include "xla/python/ifrt/ir/ifrt_dialect.h"
 #include "xla/python/ifrt/ir/ifrt_ops.h"
@@ -41,10 +40,10 @@ limitations under the License.
 namespace xla {
 namespace ifrt {
 
-namespace {
-
 #define GEN_PASS_DEF_IFRTPOPULATEATOMPROGRAMMETADATAPASS
 #include "xla/python/ifrt/ir/transforms/passes.h.inc"
+
+namespace {
 
 // Populates the metadata on the atom program ModuleOp and `main` FuncOp.
 mlir::LogicalResult PopulateMetadata(CallOp call_op, mlir::ModuleOp module_op,
@@ -52,6 +51,15 @@ mlir::LogicalResult PopulateMetadata(CallOp call_op, mlir::ModuleOp module_op,
                                      mlir::OpBuilder& builder) {
   module_op->setAttr(kIfrtNumDevicesAttrName,
                      builder.getI32IntegerAttr(call_op.getDevices().size()));
+  // Copy `ifrt.sdy_partitioned` attribute if it exists.
+  if (call_op->hasAttr(kIsSdyPartitioned)) {
+    module_op->setAttr(kIsSdyPartitioned, builder.getUnitAttr());
+  }
+  // Copy ifrt.compile_options_key if it exists.
+  if (call_op->hasAttr(kIfrtCompileOptionsKey)) {
+    module_op->setAttr(kIfrtCompileOptionsKey,
+                       call_op->getAttr(kIfrtCompileOptionsKey));
+  }
   // Copy `ifrt.local_view` attribute if it exists.
   if (call_op->hasAttrOfType<mlir::UnitAttr>(kIfrtLocalViewAttrName)) {
     module_op->setAttr(kIfrtLocalViewAttrName,
@@ -211,11 +219,5 @@ void IfrtPopulateAtomProgramMetadataPass::runOnOperation() {
 }
 
 }  // namespace
-
-std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
-CreateIfrtPopulateAtomProgramMetadataPass() {
-  return std::make_unique<IfrtPopulateAtomProgramMetadataPass>();
-}
-
 }  // namespace ifrt
 }  // namespace xla

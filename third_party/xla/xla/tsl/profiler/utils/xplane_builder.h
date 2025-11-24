@@ -83,7 +83,7 @@ class XStatsBuilder {
   void ParseAndAddStatValue(const XStatMetadata& metadata,
                             absl::string_view value) {
     int64_t int_value;
-    uint64 uint_value;
+    uint64_t uint_value;
     double double_value;
     if (absl::SimpleAtoi(value, &int_value)) {
       AddStatValue(metadata, int_value);
@@ -116,7 +116,7 @@ class XStatsBuilder {
     return nullptr;
   }
 
-  static uint64 IntOrUintValue(const XStat& stat) {
+  static uint64_t IntOrUintValue(const XStat& stat) {
     return stat.value_case() == XStat::kUint64Value ? stat.uint64_value()
                                                     : stat.int64_value();
   }
@@ -228,6 +228,10 @@ class XEventBuilder : public XStatsBuilder<XEvent> {
   int64_t DurationPs() const { return event_->duration_ps(); }
   int64_t MetadataId() const { return event_->metadata_id(); }
 
+  void SetMetadataId(int64_t metadata_id) {
+    event_->set_metadata_id(metadata_id);
+  }
+
   void SetOffsetPs(int64_t offset_ps) { event_->set_offset_ps(offset_ps); }
 
   void SetOffsetNs(int64_t offset_ns) { SetOffsetPs(NanoToPico(offset_ns)); }
@@ -284,6 +288,9 @@ class XLineBuilder {
 
   int64_t Id() const { return line_->id(); }
   void SetId(int64_t id) { line_->set_id(id); }
+
+  int64_t DisplayId() const { return line_->display_id(); }
+  void SetDisplayId(int64_t display_id) { line_->set_display_id(display_id); }
 
   int64_t NumEvents() const { return line_->events_size(); }
 

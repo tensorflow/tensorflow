@@ -31,6 +31,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/host_memory_pool.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/stream_executor/stream_executor.h"
@@ -86,11 +87,17 @@ class WhileThunk : public Thunk {
   //
   // Implementation relies on thread local storage, be careful when call it from
   // code running on multiple threads.
+  static bool RunningWhileThunkLoop();
   static absl::StatusOr<int64_t> CurrentLoopIteration(int64_t depth = 0);
   static absl::StatusOr<int64_t> CurrentLoopIteration(
       const HloInstruction* while_instr);
 
   void ForAllThunks(absl::FunctionRef<void(const Thunk*)> fn) const override;
+  void ForAllThunksMutable(absl::FunctionRef<void(Thunk*)> fn) override;
+  absl::Status TransformAllNestedThunks(
+      absl::FunctionRef<
+          absl::StatusOr<std::unique_ptr<Thunk>>(std::unique_ptr<Thunk>)>
+          fn) override;
 
   std::string ToString(int indent) const override;
 

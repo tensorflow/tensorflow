@@ -1,6 +1,7 @@
 # Distributed snapshot library.
 
 load("@local_xla//xla/tsl:tsl.default.bzl", "get_compatible_with_portable")
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load("//tensorflow:tensorflow.default.bzl", "tf_grpc_cc_dependencies", "tf_kernel_library")
 load("//tensorflow/core/platform:build_config.bzl", "tf_protos_profiler_service")
@@ -32,6 +33,7 @@ tf_cc_test(
         "//tensorflow/core/data/service:test_util",
         "//tensorflow/core/framework:tensor_proto_cc",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/time",
         "@local_tsl//tsl/platform:path",
@@ -78,6 +80,7 @@ tf_cc_test(
         "//tensorflow/core/data/service:common_proto_cc",
         "//tensorflow/core/data/service:test_util",
         "//tensorflow/core/framework:types_proto_cc",
+        "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/status:statusor",
         "@local_tsl//tsl/platform:path",
         "@local_xla//xla/tsl/platform:env",
@@ -153,6 +156,7 @@ tf_cc_test(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@local_tsl//tsl/platform:path",
@@ -185,6 +189,7 @@ tf_cc_test(
         ":path_utils",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "@com_google_absl//absl/status:status_matchers",
         "@local_xla//xla/tsl/platform:status_matchers",
         "@local_xla//xla/tsl/protobuf:protos_all_cc",
     ],
@@ -228,6 +233,7 @@ tf_cc_test(
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
@@ -286,6 +292,7 @@ tf_cc_test(
         "//tensorflow/core/data/service:test_util",
         "//tensorflow/core/framework:tensor_testutil",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/time",
         "@local_tsl//tsl/platform:path",
@@ -345,6 +352,7 @@ tf_cc_test(
         "//tensorflow/core/data/service:dispatcher_proto_cc",
         "//tensorflow/core/data/service:test_util",
         "//tensorflow/core/framework:tensor_proto_cc",
+        "@com_google_absl//absl/status:status_matchers",
         "@local_xla//xla/tsl/platform:env",
         "@local_xla//xla/tsl/platform:status",
         "@local_xla//xla/tsl/platform:status_matchers",
@@ -419,6 +427,7 @@ tf_cc_test(
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
@@ -485,6 +494,7 @@ tf_cc_test(
         "//tensorflow/core/data/service:task_runner",
         "//tensorflow/core/data/service:test_util",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/time",
         "@local_tsl//tsl/platform:random",
@@ -514,6 +524,7 @@ tf_cc_test(
         "//tensorflow/core/data/service:test_util",
         "//tensorflow/core/framework:types_proto_cc",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@local_tsl//tsl/platform:path",

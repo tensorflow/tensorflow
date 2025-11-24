@@ -1,4 +1,4 @@
-# Placeholder: load py_proto_library
+load("@rules_python//python:proto.bzl", "py_proto_library")
 load("//tensorflow/core/platform:build_config.bzl", "tf_proto_library")
 
 package(
@@ -230,7 +230,7 @@ tf_proto_library(
     name = "tfstreamz_proto",
     srcs = ["tfstreamz.proto"],
     protodeps = ["@org_xprof//plugin/xprof/protobuf:tfstreamz_proto"],
-    visibility = [":friends"],
+    visibility = ["//visibility:private"],
     exports = [
         "@org_xprof//plugin/xprof/protobuf:tfstreamz_proto",
     ],

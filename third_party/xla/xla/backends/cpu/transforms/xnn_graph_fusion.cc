@@ -15,21 +15,39 @@ limitations under the License.
 
 #include "xla/backends/cpu/transforms/xnn_graph_fusion.h"
 
+#include <algorithm>
 #include <cstdint>
+#include <memory>
 #include <string>
+#include <vector>
 
+#include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
-#include "xla/backends/cpu/xnn_fusion.h"
+#include "absl/strings/string_view.h"
+#include "xla/backends/cpu/runtime/xnnpack/xnn_interop.h"
+#include "xla/backends/cpu/xnn_support.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/primitive_util.h"
+#include "xla/service/call_graph.h"
 #include "xla/service/cpu/backend_config.pb.h"
 #include "xla/service/instruction_fusion.h"
 #include "xla/tsl/platform/status.h"
+#include "xla/xla.pb.h"
 
-namespace xla {
-namespace cpu {
+namespace xla::cpu {
+
+namespace {
+
+bool IsWideningConvert(const HloInstruction* instr) {
+  return instr->opcode() == HloOpcode::kConvert &&
+         primitive_util::BitWidth(instr->operand(0)->shape().element_type()) <
+             primitive_util::BitWidth(instr->shape().element_type());
+}
+
+}  // namespace
 
 FusionDecision XnnGraphFusion::ShouldFuse(HloInstruction* consumer,
                                           int64_t operand_index) {
@@ -37,11 +55,24 @@ FusionDecision XnnGraphFusion::ShouldFuse(HloInstruction* consumer,
     return FusionDecision::Forbid("Unsupported consumer");
   }
 
+  if (consumer->opcode() == HloOpcode::kBroadcast) {
+    return FusionDecision::Forbid(
+        "Do not start growing fusions from broadcasts");
+  }
+
+  if (IsWideningConvert(consumer)) {
+    // We don't want to start a fusion with a widening convert, because that
+    // makes the buffer the fusion writes to bigger, and it would be better to
+    // fuse the convert into the consumer of the convert.
+    return FusionDecision::Forbid(
+        "Do not start growing fusions from widening converts");
+  }
+
   HloInstruction* producer = consumer->mutable_operand(operand_index);
   if (!(producer->opcode() == HloOpcode::kParameter ||
-        producer->opcode() == HloOpcode::kConstant || IsOpSupported(producer)))
+        IsOpSupported(producer))) {
     return FusionDecision::Forbid("Unsupported producer");
-
+  }
   return FusionDecision::Allow();
 }
 
@@ -58,32 +89,58 @@ HloInstruction* XnnGraphFusion::Fuse(HloInstruction* producer,
 
   BackendConfig backend_config;
   FusionBackendConfig* fusion_config = backend_config.mutable_fusion_config();
-  fusion_config->set_kind(std::string{kXnnFusionKind});
+  fusion_config->set_kind(kXnnFusionKind);
   CHECK(backend_config.has_fusion_config());
   TF_CHECK_OK(fusion->set_backend_config(backend_config));
   return fusion;
 }
 
-bool XnnGraphFusion::IsOpSupported(const HloInstruction* instr) const {
+std::vector<HloComputation*> XnnGraphFusion::GetNonFusionComputations(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
+  std::vector<HloComputation*> non_fusion_computations =
+      InstructionFusion::GetNonFusionComputations(module, execution_threads);
+  std::unique_ptr<CallGraph> call_graph =
+      CallGraph::Build(module, execution_threads);
+  auto SkipComputation = [&](HloComputation* c) {
+    auto callers = call_graph->GetComputationCallers(c);
+    return std::any_of(
+        callers.begin(), callers.end(),
+        [&](HloInstruction* caller) { return caller->has_to_apply(); });
+  };
+  auto it = std::remove_if(non_fusion_computations.begin(),
+                           non_fusion_computations.end(), SkipComputation);
+  non_fusion_computations.erase(it, non_fusion_computations.end());
+  return non_fusion_computations;
+}
+
+bool XnnGraphFusion::IsOpSupported(const HloInstruction* instr) {
+  if (!IsLayoutSupportedByXnn(instr->shape())) {
+    return false;
+  }
   if (!XnnDatatype(instr->shape().element_type()).ok()) {
     return false;
   }
-
+  if (instr->IsConstant()) {
+    return IsConstantSupportedByXnn(instr);
+  }
   if (instr->IsElementwise()) {
-    switch (instr->operand_count()) {
-      case 1:
-        return XnnUnaryOperator(instr->opcode()).ok();
-      case 2:
-        return XnnBinaryOperator(instr->opcode()).ok();
-      default:
-        return false;
-    }
+    return IsElementwiseOpSupportedByXnn(instr);
   }
 
-  return false;
+  switch (instr->opcode()) {
+    case HloOpcode::kBitcast:
+      return IsBitcastOpSupportedByXnn(instr);
+    case HloOpcode::kBroadcast:
+      return IsBroadcastOpSupportedByXnn(instr);
+    case HloOpcode::kReduce:
+      return IsReduceOpSupportedByXnn(instr);
+    default:
+      return false;
+  }
 }
 
-bool XnnGraphFusion::IsXnnGraphFusion(const HloInstruction* instr) const {
+bool XnnGraphFusion::IsXnnGraphFusion(const HloInstruction* instr) {
   if (instr->opcode() != HloOpcode::kFusion) {
     return false;
   }
@@ -97,5 +154,5 @@ bool XnnGraphFusion::IsXnnGraphFusion(const HloInstruction* instr) const {
   }
   return backend_config->fusion_config().kind() == kXnnFusionKind;
 }
-}  // namespace cpu
-}  // namespace xla
+
+}  // namespace xla::cpu

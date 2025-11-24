@@ -23,6 +23,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
@@ -37,6 +38,8 @@ limitations under the License.
 #include "xla/literal.h"
 #include "xla/service/slow_operation_alarm.h"
 #include "xla/shape_util.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "tsl/platform/errors.h"
 
 namespace xla {
@@ -139,7 +142,148 @@ absl::Status RecursivelyRemoveDeadInstructionAndDeadOperands(
   return absl::OkStatus();
 }
 
-absl::StatusOr<bool> HloConstantFolding::Run(
+namespace {
+
+bool IsFoldable(
+    const HloInstruction* instruction, HloConstantFolding::Level level,
+    absl::flat_hash_map<HloComputation*, bool>& is_foldable_computation) {
+  // Broadcasts dramatically increase the size of constants, which is often
+  // detrimental to performance and memory capacity, so do not fold
+  // broadcasts.
+  if (instruction->opcode() == HloOpcode::kBroadcast ||
+      instruction->opcode() == HloOpcode::kIota) {
+    return false;
+  }
+
+  // Do not fold FFT. Evaluating it may significantly increase compile time.
+  if (instruction->opcode() == HloOpcode::kFft) {
+    return false;
+  }
+
+  // Skip while loops as they can significantly increase compile times.
+  if (level == HloConstantFolding::Level::kDefault &&
+      instruction->opcode() == HloOpcode::kWhile) {
+    return false;
+  }
+
+  // Don't fold across async execution thread if it's not supposed to be
+  // changed by this pass.
+  if (instruction->IsAsynchronous() &&
+      instruction->async_execution_thread() !=
+          instruction->parent()->execution_thread()) {
+    return false;
+  }
+
+  // Don't fold if any of the subcomputations are not foldable. Note that this
+  // will recurse into deeper called computations.
+  for (HloComputation* subcomputation : instruction->called_computations()) {
+    auto iter = is_foldable_computation.find(subcomputation);
+    if (iter == is_foldable_computation.end()) {
+      for (auto* sub_instruction : subcomputation->MakeInstructionPostOrder()) {
+        if (!IsFoldable(sub_instruction, level, is_foldable_computation)) {
+          is_foldable_computation[subcomputation] = false;
+          return false;
+        }
+      }
+      is_foldable_computation[subcomputation] = true;
+    } else if (!iter->second) {
+      return false;
+    }
+  }
+
+  // Check for instructions that we can't fold even if they appear inside of
+  // a subcomputation (e.g. a kCall).
+  if (IsOrContainsIllegalInstr(instruction)) {
+    return false;
+  }
+
+  // Don't constant-fold side-effecting instructions or instructions which
+  // contain side-effecting instructions.
+  if (instruction->HasSideEffect()) {
+    return false;
+  }
+
+  // Skip constant folding for instructions that have control dependencies.
+  if (instruction->HasControlDependencies()) {
+    return false;
+  }
+
+  // Reduce the compile time by skipping the constant folding of pad
+  // instruction with broadcast operand. With 45m shape limit the compile
+  // time could be more than 30 seconds. According to the current
+  // benchmarks it does not affect the performance.
+  if (instruction->opcode() == HloOpcode::kPad &&
+      instruction->operand(0)->opcode() == HloOpcode::kBroadcast &&
+      instruction->operand(1)->opcode() == HloOpcode::kConstant) {
+    return false;
+  }
+
+  // Don't constant fold unless output and operand sizes are small.
+  if (level == HloConstantFolding::Level::kDefault &&
+      instruction->shape().IsArray()) {
+    int64_t elements_in_operands = 0;
+    for (HloInstruction* operand : instruction->operands()) {
+      if (operand->shape().IsArray()) {
+        elements_in_operands += ShapeUtil::ElementsIn(operand->shape());
+      }
+    }
+    int64_t elements_in_constant = ShapeUtil::ElementsIn(instruction->shape());
+
+    static const int64_t kMaximumConstantSizeElements = 45 * 1000 * 1000;
+    if (std::max(elements_in_constant, elements_in_operands) >
+        kMaximumConstantSizeElements) {
+      VLOG(2) << "Ignore constant folding: result shape size is "
+              << elements_in_constant << " total size of arguments is "
+              << elements_in_operands;
+      return false;
+    }
+  }
+  return true;
+}
+
+absl::StatusOr<bool> PropagateIdenticalConstantArguments(
+    HloComputation* computation) {
+  // For each parameter, figure out if all the arguments passed to that
+  // parameter in the various call sites are identical constants.
+  std::vector<bool> identical_constant_parameters(computation->num_parameters(),
+                                                  true);
+  for (int i = 0; i < computation->num_parameters(); ++i) {
+    for (HloInstruction* call_site : computation->caller_instructions()) {
+      if (call_site->operand(i)->opcode() != HloOpcode::kConstant ||
+          (call_site->operand(i)->literal() !=
+           computation->caller_instructions()[0]->operand(i)->literal())) {
+        identical_constant_parameters[i] = false;
+        break;
+      }
+    }
+  }
+  // If *all* parameters are identical constants, we can let the regular
+  // constant-folding path handle it.
+  if (absl::c_all_of(identical_constant_parameters, [](bool b) { return b; })) {
+    return false;
+  }
+
+  bool changed = false;
+  for (int i = 0; i < computation->num_parameters(); ++i) {
+    if (identical_constant_parameters[i]) {
+      HloInstruction* parameter = computation->parameter_instruction(i);
+      if (parameter->IsDead()) {
+        continue;
+      }
+      const HloInstruction* constant =
+          computation->caller_instructions()[0]->operand(i);
+      TF_RETURN_IF_ERROR(parameter->ReplaceAllUsesWith(
+          computation->AddInstruction(constant->Clone())));
+      changed = true;
+    }
+  }
+
+  return changed;
+}
+
+}  // namespace
+
+absl::StatusOr<bool> HloConstantFolding::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   // Limit the constant folding to 0 iterations to skip folding loops in the
@@ -152,8 +296,29 @@ absl::StatusOr<bool> HloConstantFolding::Run(
 
   bool changed = false;
 
-  for (auto* computation :
-       module->MakeNonfusionComputations(execution_threads)) {
+  // For each computation, cache whether we can fold all the instructions in it.
+  absl::flat_hash_map<HloComputation*, bool> is_foldable_computation;
+
+  std::vector<HloComputation*> computations =
+      module->MakeNonfusionComputations(execution_threads);
+
+  // Visit computations in reverse post-order, so that we can propagate constant
+  // arguments from callers to callees.
+  for (auto it = computations.rbegin(); it != computations.rend(); ++it) {
+    HloComputation* computation = *it;
+    // If the computation is only used by call instructions, check whether for
+    // any of the parameters of the computation, the argument passed by the
+    // call-sites is always the same constant. In that case, we can sink the
+    // parameter into the computation before we perform constant folding on its
+    // body.
+    if (absl::c_all_of(computation->caller_instructions(),
+                       [](HloInstruction* instruction) {
+                         return instruction->opcode() == HloOpcode::kCall;
+                       })) {
+      TF_ASSIGN_OR_RETURN(bool did_change,
+                          PropagateIdenticalConstantArguments(computation));
+      changed |= did_change;
+    }
     for (auto* instruction : computation->MakeInstructionPostOrder()) {
       // Skip dead code.
       if (instruction->IsDead()) {
@@ -179,7 +344,8 @@ absl::StatusOr<bool> HloConstantFolding::Run(
       //  - So the only remaining case is where some but not all operands are
       //    broadcasts of constants, e.g. op(constant, broadcast(constant)).
       //
-      if (level_ == Level::kDefault && !AnyOperandsConstant(instruction)) {
+      if (level_ == HloConstantFolding::Level::kDefault &&
+          !AnyOperandsConstant(instruction)) {
         continue;
       }
       if (!AllOperandsConstantOrBroadcastConstant(instruction)) {
@@ -198,104 +364,29 @@ absl::StatusOr<bool> HloConstantFolding::Run(
         continue;
       }
 
-      // Broadcasts dramatically increase the size of constants, which is often
-      // detrimental to performance and memory capacity, so do not fold
-      // broadcasts.
-      if (instruction->opcode() == HloOpcode::kBroadcast ||
-          instruction->opcode() == HloOpcode::kIota) {
+      if (!IsFoldable(instruction, level_, is_foldable_computation)) {
         continue;
       }
-
-      // Don't fold across async execution thread if it's not supposed to be
-      // changed by this pass.
-      if (instruction->IsAsynchronous() &&
-          instruction->async_execution_thread() !=
-              instruction->parent()->execution_thread()) {
-        continue;
-      }
-
-      // Do not fold FFT. Evaluating it may significantly increase compile time.
-      if (instruction->opcode() == HloOpcode::kFft) {
-        continue;
-      }
-
-      // Skip while loops as they can significantly increase compile times.
-      if (level_ == Level::kDefault &&
-          instruction->opcode() == HloOpcode::kWhile) {
-        continue;
-      }
-
-      // Check for instructions that we can't fold even if they appear inside of
-      // a subcomputation (e.g. a kCall).
-      if (IsOrContainsIllegalInstr(instruction)) {
-        continue;
-      }
-
-      // Don't constant-fold side-effecting instructions or instructions which
-      // contain side-effecting instructions.
-      if (instruction->HasSideEffect()) {
-        continue;
-      }
-
-      // Skip constant folding for instructions that cannot be safely removed.
-      if (!computation->IsSafelyRemovable(instruction)) {
-        continue;
-      }
-
-      if (instruction->opcode() == HloOpcode::kPad &&
-          instruction->operand(0)->opcode() == HloOpcode::kBroadcast &&
-          instruction->operand(1)->opcode() == HloOpcode::kConstant) {
-        // Reduce the compile time by skipping the constant folding of pad
-        // instruction with broadcast operand. With 45m shape limit the compile
-        // time could be more than 30 seconds. According to the current
-        // benchmarks it does not affect the performance.
-        continue;
-      }
-
-      // Don't constant fold unless output and operand sizes are small.
-      if (level_ == Level::kDefault && instruction->shape().IsArray()) {
-        int64_t elements_in_operands = 0;
-        for (HloInstruction* operand : instruction->operands()) {
-          if (operand->shape().IsArray()) {
-            elements_in_operands += ShapeUtil::ElementsIn(operand->shape());
-          }
-        }
-        int64_t elements_in_constant =
-            ShapeUtil::ElementsIn(instruction->shape());
-
-        static const int64_t kMaximumConstantSizeElements = 45 * 1000 * 1000;
-        if (std::max(elements_in_constant, elements_in_operands) >
-            kMaximumConstantSizeElements) {
-          VLOG(2) << "Ignore constant folding: result shape size is "
-                  << elements_in_constant << " total size of arguments is "
-                  << elements_in_operands;
-          continue;
-        }
-      }
-
       VLOG(5) << "Constant folding: " << instruction->ToString();
 
       absl::Duration slow_timeout =
           absl::Seconds(uint64_t{1} << slow_op_counter_.load());
       SlowOperationAlarm slow_alarm(slow_timeout, [instruction, slow_timeout] {
-        const bool ndebug =
 #if NDEBUG
-            true;
-#else
-            false;
-#endif
         absl::string_view explanation_msg =
-            ndebug
-                ? "This isn't necessarily a bug; constant-folding is "
-                  "inherently a trade-off between compilation time and speed "
-                  "at runtime. XLA has some guards that attempt to keep "
-                  "constant folding from taking too long, but fundamentally "
-                  "you'll always be able to come up with an input program that "
-                  "takes a long time.\n\n"
-                  "If you'd like to file a bug, run with envvar "
-                  "XLA_FLAGS=--xla_dump_to=/tmp/foo and attach the results."
-                : "XLA was built without compiler optimizations, which can be "
-                  "slow. Try rebuilding with -c opt.";
+            "This isn't necessarily a bug; constant-folding is "
+            "inherently a trade-off between compilation time and speed "
+            "at runtime. XLA has some guards that attempt to keep "
+            "constant folding from taking too long, but fundamentally "
+            "you'll always be able to come up with an input program that "
+            "takes a long time.\n\n"
+            "If you'd like to file a bug, run with envvar "
+            "XLA_FLAGS=--xla_dump_to=/tmp/foo and attach the results.";
+#else
+        absl::string_view explanation_msg =
+            "XLA was built without compiler optimizations, which can be "
+            "slow. Try rebuilding with -c opt.";
+#endif
         return absl::StrFormat(
             "Constant folding an instruction is taking > %s:\n\n"
             "  %s\n\n"  // instruction->name() or instruction->ToString()

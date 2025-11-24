@@ -27,6 +27,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/synchronization/notification.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/rendezvous_mgr.h"
@@ -252,7 +253,7 @@ class EagerExecutor {
 
   // thread_exited_notification_ is notified by the `thread_` right before it
   // exits.
-  Notification thread_exited_notification_;
+  absl::Notification thread_exited_notification_;
 
   // When state_ is set to kShutDown, it indicates that `thread_` should stop as
   // soon as it is done executing the current EagerNode.

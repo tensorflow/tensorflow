@@ -1424,30 +1424,30 @@ string ColocationGraph::DebugInfo(const int node_root) const {
         .IgnoreError();
     string devices_registered;
     for (const auto& device_type : supported_types) {
-      strings::StrAppend(&devices_registered,
-                         DeviceTypeString(device_type.first), " ");
+      absl::StrAppend(&devices_registered, DeviceTypeString(device_type.first),
+                      " ");
     }
 
     const string& op_type = node->type_string();
     type_to_devices[op_type] = std::move(devices_registered);
   }
-  strings::StrAppend(&text, "\nRoot ", members_[node_root].DebugString());
+  absl::StrAppend(&text, "\nRoot ", members_[node_root].DebugString());
 
   for (const auto& td : type_to_devices) {
-    strings::StrAppend(&text, "\n", td.first, ": ", td.second);
+    absl::StrAppend(&text, "\n", td.first, ": ", td.second);
   }
-  strings::StrAppend(&text,
-                     "\n\nColocation members, user-requested devices, and "
-                     "framework assigned devices, if any:");
+  absl::StrAppend(&text,
+                  "\n\nColocation members, user-requested devices, and "
+                  "framework assigned devices, if any:");
   for (const Node* node : colocation_nodes) {
     strings::StrAppend(&text, "\n  ", node->name(), " (", node->type_string(),
                        ") ", node->requested_device());
     if (node->has_assigned_device_name()) {
-      strings::StrAppend(
+      absl::StrAppend(
           &text, " framework assigned device=", node->assigned_device_name());
     }
   }
-  strings::StrAppend(&text, "\n");
+  absl::StrAppend(&text, "\n");
 
   if (num_nodes_found <= 0) {
     text.clear();

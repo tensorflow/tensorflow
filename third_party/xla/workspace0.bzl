@@ -5,8 +5,8 @@ load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
 load("@build_bazel_apple_support//lib:repositories.bzl", "apple_support_dependencies")
 load("@build_bazel_rules_apple//apple:repositories.bzl", "apple_rules_dependencies")
 load("@build_bazel_rules_swift//swift:repositories.bzl", "swift_rules_dependencies")
+load("@com_github_grpc_grpc//bazel:grpc_extra_deps.bzl", "grpc_extra_deps")
 load("@com_google_benchmark//:bazel/benchmark_deps.bzl", "benchmark_deps")
-load("//:tsl_workspace0.bzl", "tsl_workspace0")
 
 def _tf_bind():
     """Bind targets for some external repositories"""
@@ -50,8 +50,6 @@ def _tf_bind():
     )
 
 def workspace():
-    tsl_workspace0()
-
     http_archive(
         name = "inception_v1",
         build_file = "//:models.BUILD",
@@ -121,6 +119,13 @@ def workspace():
         ],
     )
 
+    http_archive(
+        name = "rules_shell",
+        sha256 = "bc61ef94facc78e20a645726f64756e5e285a045037c7a61f65af2941f4c25e1",
+        strip_prefix = "rules_shell-0.4.1",
+        url = "https://github.com/bazelbuild/rules_shell/releases/download/v0.4.1/rules_shell-v0.4.1.tar.gz",
+    )
+
     # Now, finally use the rules
     apple_rules_dependencies()
     swift_rules_dependencies()
@@ -129,20 +134,24 @@ def workspace():
     # We only need `benchmark_deps` to be able to have bazel query to work and not complain about missing `@libpfm`.
     benchmark_deps()
 
+    # TODO(yuriit): Remove this once the rules_ml_toolchain is added to WORKSPACE files of all ML projects.
     # Toolchains for ML projects hermetic builds.
     # Details: https://github.com/google-ml-infra/rules_ml_toolchain
-    http_archive(
-        name = "rules_ml_toolchain",
-        sha256 = "368dbe2aecf6872c9e05bbee0e47b56f5b0d65827b76ed2219dd2bac2f170f93",
-        strip_prefix = "rules_ml_toolchain-25a2bd8b442e82543f223d507d3391d46ee99284",
-        urls = [
-            "https://github.com/google-ml-infra/rules_ml_toolchain/archive/25a2bd8b442e82543f223d507d3391d46ee99284.tar.gz",
-        ],
-    )
+    if "rules_ml_toolchain" not in native.existing_rules():
+        http_archive(
+            name = "rules_ml_toolchain",
+            sha256 = "5f17275397752b666adbf8f0a81a3ebfb1e26a970b459cac33a06a8f03caa537",
+            strip_prefix = "rules_ml_toolchain-a2626615e1277a635b43dd268e1d4bc892afea10",
+            urls = [
+                "https://github.com/google-ml-infra/rules_ml_toolchain/archive/a2626615e1277a635b43dd268e1d4bc892afea10.tar.gz",
+            ],
+        )
 
     # If a target is bound twice, the later one wins, so we have to do tf bindings
     # at the end of the WORKSPACE file.
     _tf_bind()
+
+    grpc_extra_deps()
 
 # Alias so it can be loaded without assigning to a different symbol to prevent
 # shadowing previous loads and trigger a buildifier warning.

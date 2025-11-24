@@ -23,6 +23,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/synchronization/mutex.h"
+#include "json/json.h"
 #include "xla/tsl/platform/cloud/auth_provider.h"
 #include "xla/tsl/platform/cloud/compute_engine_metadata_client.h"
 #include "xla/tsl/platform/cloud/compute_engine_zone_provider.h"
@@ -196,11 +197,13 @@ class GcsFileSystem : public FileSystem {
   absl::Status CreateDir(const string& dirname,
                          TransactionToken* token) override;
 
-  absl::Status DeleteDir(const string& dirname,
+  absl::Status DeleteDir(const std::string& dirname,
                          TransactionToken* token) override;
 
   absl::Status GetFileSize(const string& fname, TransactionToken* token,
                            uint64* file_size) override;
+
+  absl::Status IsBucketHnsEnabled(const string& bucket, bool* is_hns);
 
   absl::Status RenameFile(const string& src, const string& target,
                           TransactionToken* token) override;
@@ -223,15 +226,15 @@ class GcsFileSystem : public FileSystem {
   /// These accessors are mainly for testing purposes, to verify that the
   /// environment variables that control these parameters are handled correctly.
   size_t block_size() {
-    absl::ReaderMutexLock l(&block_cache_lock_);
+    absl::ReaderMutexLock l(block_cache_lock_);
     return file_block_cache_->block_size();
   }
   size_t max_bytes() {
-    absl::ReaderMutexLock l(&block_cache_lock_);
+    absl::ReaderMutexLock l(block_cache_lock_);
     return file_block_cache_->max_bytes();
   }
   uint64 max_staleness() {
-    absl::ReaderMutexLock l(&block_cache_lock_);
+    absl::ReaderMutexLock l(block_cache_lock_);
     return file_block_cache_->max_staleness();
   }
   TimeoutConfig timeouts() const { return timeouts_; }
@@ -398,6 +401,20 @@ class GcsFileSystem : public FileSystem {
   absl::Status GetBucketMetadata(const string& bucket,
                                  std::vector<char>* result_buffer);
 
+  /// \brief Retrieves the `storageLayout` metadata for a given GCS bucket.
+  /// The raw JSON response is stored in `result_buffer`.
+  absl::Status GetStorageLayout(const string& bucket,
+                                std::vector<char>* result_buffer);
+
+  /// \brief Parses the `storageLayout` JSON to determine if HNS is enabled.
+  /// Sets the `is_hns` output parameter to the result.
+  absl::Status ParseIsHnsEnabled(const Json::Value& storage_layout_json,
+                                 bool* is_hns);
+
+  /// \brief Renames a folder on an HNS-enabled bucket using a fast, server-side
+  /// GCS API. This function polls the long-running operation for completion.
+  absl::Status RenameFolderHns(const string& src, const string& target);
+
   /// \brief Checks if the object exists. Returns OK if the check succeeded.
   ///
   /// 'result' is set if the function returns OK. 'result' cannot be nullptr.
@@ -460,6 +477,10 @@ class GcsFileSystem : public FileSystem {
 
   using BucketLocationCache = ExpiringLRUCache<string>;
   std::unique_ptr<BucketLocationCache> bucket_location_cache_;
+
+  using StorageLayoutCache = ExpiringLRUCache<Json::Value>;
+  std::unique_ptr<StorageLayoutCache> storage_layout_cache_;
+
   std::unordered_set<string> allowed_locations_;
   bool compose_append_;
 

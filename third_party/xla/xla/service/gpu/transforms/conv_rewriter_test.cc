@@ -18,8 +18,10 @@ limitations under the License.
 #include <optional>
 #include <string>
 
+#include <gtest/gtest.h>
 #include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_replace.h"
 #include "absl/strings/string_view.h"
@@ -35,13 +37,12 @@ limitations under the License.
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/shape_inference.h"
 #include "xla/shape_util.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tests/hlo_test_base.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/status_matchers.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/test.h"
 
 namespace xla {
 namespace gpu {
@@ -753,6 +754,27 @@ TEST_F(ConvRewriterTest, TestConv1dBackwardInputPatternMatch) {
                   0)));
 }
 
+TEST_F(ConvRewriterTest, ForwardConvolutionWithWindowDilation) {
+  // Forward convolution with window dilation should be preserved and not
+  // misclassified as backward filter convolution.
+  const std::string module_str = absl::StrFormat(R"(
+    HloModule Test
+
+    ENTRY Test {
+      input = f32[8,128,32,32] parameter(0)
+      filter = f32[3,3,128,128] parameter(1)
+      ROOT conv = f32[8,128,32,32] convolution(input, filter), window={size=3x3 pad=2_2x2_2 rhs_dilate=2x2}, dim_labels=bf01_01io->bf01
+    })");
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
+
+  EXPECT_TRUE(RunPass(m.get()));
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::GetTupleElement(
+                  m::CustomCall({kCudnnConvForwardCallTarget}, m::Parameter(0),
+                                m::Parameter(1)),
+                  0)));
+}
+
 TEST_F(ConvRewriterTest, TestInvalidTypes) {
   const std::string module_str = absl::StrFormat(R"(
     HloModule Test
@@ -772,7 +794,7 @@ TEST_F(ConvRewriterTest, TestInvalidTypes) {
 
     absl::Status s = ConvRewriter(GetComputeCapability()).Run(m.get()).status();
     EXPECT_THAT(
-        s, tsl::testing::StatusIs(
+        s, absl_testing::StatusIs(
                absl::StatusCode::kUnimplemented,
                ::testing::HasSubstr("Convolutions must have floating-point or "
                                     "integral operands/outputs")));
@@ -785,13 +807,16 @@ TEST_F(ConvRewriterTest, TestInvalidTypes) {
                           ParseAndReturnVerifiedModule(module_with_type));
   absl::Status s =
       ConvRewriter(se::CudaComputeCapability::Ampere()).Run(m.get()).status();
-  EXPECT_THAT(s, tsl::testing::StatusIs(
+  EXPECT_THAT(s, absl_testing::StatusIs(
                      absl::StatusCode::kUnimplemented,
                      ::testing::HasSubstr(
                          "FP8 convolutions are only supported on CUDA "
                          "GPUs with compute capability at least 9.0")));
-  s = ConvRewriter(se::RocmComputeCapability{"gfx942"}).Run(m.get()).status();
-  EXPECT_THAT(s, tsl::testing::StatusIs(
+  s = ConvRewriter(
+          se::GpuComputeCapability{se::RocmComputeCapability{"gfx942"}})
+          .Run(m.get())
+          .status();
+  EXPECT_THAT(s, absl_testing::StatusIs(
                      absl::StatusCode::kUnimplemented,
                      ::testing::HasSubstr(
                          "FP8 convolutions are only supported on CUDA GPUs")));
@@ -801,7 +826,7 @@ TEST_F(ConvRewriterTest, TestInvalidTypes) {
   TF_ASSERT_OK_AND_ASSIGN(m, ParseAndReturnVerifiedModule(module_with_type));
   s = ConvRewriter(GetComputeCapability()).Run(m.get()).status();
   EXPECT_THAT(s,
-              tsl::testing::StatusIs(
+              absl_testing::StatusIs(
                   absl::StatusCode::kUnimplemented,
                   ::testing::HasSubstr("The only FP8 types supported in "
                                        "convolutions are f8e5m2 and f8e4m3")));

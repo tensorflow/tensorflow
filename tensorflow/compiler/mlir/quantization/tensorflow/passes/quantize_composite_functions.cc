@@ -187,12 +187,12 @@ LogicalResult CreateUniformQuantizedTypeParams(UniformQuantizedType qtype,
                                                Value& zero_point) {
   TensorType scale_type = RankedTensorType::get({}, rewriter.getF32Type());
   TensorType zero_point_type = scale_type.clone(rewriter.getI32Type());
-  scale = rewriter.create<TF::ConstOp>(
-      loc, scale_type,
+  scale = TF::ConstOp::create(
+      rewriter, loc, scale_type,
       DenseFPElementsAttr::get(scale_type,
                                {static_cast<float>(qtype.getScale())}));
-  zero_point = rewriter.create<TF::ConstOp>(
-      loc, zero_point_type,
+  zero_point = TF::ConstOp::create(
+      rewriter, loc, zero_point_type,
       DenseIntElementsAttr::get(zero_point_type,
                                 {static_cast<int32_t>(qtype.getZeroPoint())}));
   return success(scale && zero_point);
@@ -218,10 +218,11 @@ LogicalResult CreateUniformQuantizedPerAxisTypeParams(
     float_scales.push_back(scales[i]);
     int32_zero_points.push_back(zero_points[i]);
   }
-  scale = rewriter.create<TF::ConstOp>(
-      loc, scale_type, DenseFPElementsAttr::get(scale_type, float_scales));
-  zero_point = rewriter.create<TF::ConstOp>(
-      loc, zero_point_type,
+  scale =
+      TF::ConstOp::create(rewriter, loc, scale_type,
+                          DenseFPElementsAttr::get(scale_type, float_scales));
+  zero_point = TF::ConstOp::create(
+      rewriter, loc, zero_point_type,
       DenseIntElementsAttr::get(zero_point_type, int32_zero_points));
   return success(scale && zero_point);
 }
@@ -324,12 +325,12 @@ class ReplaceQuantizePattern
     FlatSymbolRefAttr func_name =
         FlatSymbolRefAttr::get(rewriter.getStringAttr(kQuantizeFuncName));
 
-    auto quantize_call = rewriter.create<TF::PartitionedCallOp>(
-        loc, output_types, args, /*args_attrs=*/nullptr,
+    auto quantize_call = TF::PartitionedCallOp::create(
+        rewriter, loc, output_types, args, /*args_attrs=*/nullptr,
         /*res_attrs=*/nullptr, func_name,
         /*config=*/"", /*config_proto=*/"", /*executor_type=*/"");
-    auto scast_op = rewriter.create<StorageCastOp>(loc, output_type,
-                                                   quantize_call->getResult(0));
+    auto scast_op = StorageCastOp::create(rewriter, loc, output_type,
+                                          quantize_call->getResult(0));
     q_op->replaceAllUsesWith(scast_op);
     return success();
   }
@@ -371,13 +372,14 @@ class ReplaceDequantizePattern
     }
 
     auto scast_op =
-        rewriter.create<StorageCastOp>(loc, output_type, dq_op.getArg());
+        StorageCastOp::create(rewriter, loc, output_type, dq_op.getArg());
 
     FlatSymbolRefAttr func_name =
         FlatSymbolRefAttr::get(rewriter.getStringAttr(kDequantizeFuncName));
     SmallVector<Value> args = {scast_op->getResult(0), scale, zero_point};
-    auto dequantize_call = rewriter.create<TF::PartitionedCallOp>(
-        loc, dq_op.getResult().getType(), args, /*args_attrs=*/nullptr,
+    auto dequantize_call = TF::PartitionedCallOp::create(
+        rewriter, loc, dq_op.getResult().getType(), args,
+        /*args_attrs=*/nullptr,
         /*res_attrs=*/nullptr, func_name,
         /*config=*/"", /*config_proto=*/"", /*executor_type=*/"");
     dq_op->replaceAllUsesWith(dequantize_call);
@@ -760,11 +762,12 @@ class QuantizeFunctionPattern
               "Failed to convert the type to the corresponding qtype.");
           return failure();
         }
-        scast_op = rewriter.create<StorageCastOp>(
-            arg.getLoc(), mlir::cast<TensorType>(new_arg_type), arg);
+        scast_op = StorageCastOp::create(
+            rewriter, arg.getLoc(), mlir::cast<TensorType>(new_arg_type), arg);
       } else {
-        scast_op = rewriter.create<StorageCastOp>(
-            arg.getLoc(), arg_type.clone(qtype.getStorageType()), arg);
+        scast_op =
+            StorageCastOp::create(rewriter, arg.getLoc(),
+                                  arg_type.clone(qtype.getStorageType()), arg);
       }
       args.push_back(scast_op.getResult());
     }
@@ -802,8 +805,8 @@ class QuantizeFunctionPattern
       } else {
         result_types.push_back(result_type.clone(qtype.getStorageType()));
       }
-      auto scast_op =
-          rewriter.create<StorageCastOp>(call_op.getLoc(), result_type, result);
+      auto scast_op = StorageCastOp::create(rewriter, call_op.getLoc(),
+                                            result_type, result);
       replace_map.insert(std::make_pair(result, scast_op));
     }
 
@@ -958,9 +961,10 @@ class QuantizeFunctionPattern
     rewriter.setInsertionPoint(call_op);
     const StringAttr new_quant_func_name =
         symbol_table.insert(new_quantized_func);
-    auto quantized_call_op = rewriter.create<TF::PartitionedCallOp>(
-        call_op.getLoc(), result_types, args, call_op.getArgAttrsAttr(),
-        call_op.getResAttrsAttr(), FlatSymbolRefAttr::get(new_quant_func_name));
+    auto quantized_call_op = TF::PartitionedCallOp::create(
+        rewriter, call_op.getLoc(), result_types, args,
+        call_op.getArgAttrsAttr(), call_op.getResAttrsAttr(),
+        FlatSymbolRefAttr::get(new_quant_func_name));
 
     for (int result_idx : llvm::seq<int>(0, call_op->getNumResults())) {
       Value result = call_op->getResult(result_idx);
@@ -1029,11 +1033,11 @@ class QuantizeConstPattern : public OpRewritePattern<QuantizeCastOp> {
           new_type, tensorflow::mangling_util::MangleTensor(tensor_proto)));
     }
     auto const_op =
-        rewriter.create<TF::ConstOp>(loc, new_type, tensor_proto_attr);
+        TF::ConstOp::create(rewriter, loc, new_type, tensor_proto_attr);
     // Add scast op to match quantize -> composition pattern. The added scast
     // is then removed by canonicalization. ([scast - scast] -> [])
-    auto scast_op =
-        rewriter.create<StorageCastOp>(loc, tensor_qtype, const_op.getOutput());
+    auto scast_op = StorageCastOp::create(rewriter, loc, tensor_qtype,
+                                          const_op.getOutput());
     q_op->replaceAllUsesWith(scast_op);
     return success();
   }
@@ -1084,11 +1088,11 @@ class RestoreWeightShapePattern
     auto new_shape_const_attr =
         DenseElementsAttr::get(shape_spec_type, new_shape.getShape());
     rewriter.setInsertionPointAfter(weight_op);
-    auto new_shape_const = rewriter.create<TF::ConstOp>(
-        weight_op->getLoc(), shape_spec_type, new_shape_const_attr);
-    auto reshape_op = rewriter.create<TF::ReshapeOp>(
-        weight_op->getLoc(), new_shape, weight_op->getResult(0),
-        new_shape_const);
+    auto new_shape_const = TF::ConstOp::create(
+        rewriter, weight_op->getLoc(), shape_spec_type, new_shape_const_attr);
+    auto reshape_op =
+        TF::ReshapeOp::create(rewriter, weight_op->getLoc(), new_shape,
+                              weight_op->getResult(0), new_shape_const);
     op->setOperand(weight_operand_idx, reshape_op);
 
     return success();
@@ -1215,8 +1219,8 @@ class QuantizationSummary {
     builder.setInsertionPointToEnd(&module_.getBodyRegion().back());
     const auto func_type =
         builder.getFunctionType(/*inputs=*/{}, /*results=*/{});
-    auto summary_func = builder.create<func::FuncOp>(
-        builder.getUnknownLoc(), /*sym_name=*/"summary", func_type);
+    auto summary_func = func::FuncOp::create(builder, builder.getUnknownLoc(),
+                                             /*sym_name=*/"summary", func_type);
     summary_func.setPrivate();
     summary_func->setAttr("quantization_summary",
                           builder.getStringAttr(log_message));

@@ -47,12 +47,24 @@ class SequentialThunk : public Thunk {
   absl::Status ExecuteOnStream(const ExecuteParams& params) override;
 
   void ForAllThunks(absl::FunctionRef<void(const Thunk*)> fn) const override;
+  void ForAllThunksMutable(absl::FunctionRef<void(Thunk*)> fn) override;
+  absl::Status TransformAllNestedThunks(
+      absl::FunctionRef<
+          absl::StatusOr<std::unique_ptr<Thunk>>(std::unique_ptr<Thunk>)>
+          fn) override;
 
   absl::StatusOr<ThunkProto> ToProto() const override;
 
   static absl::StatusOr<std::unique_ptr<SequentialThunk>> FromProto(
       ThunkInfo thunk_info, const SequentialThunkProto& thunk_proto,
       const Deserializer& deserializer);
+
+  // Converts a Thunk into a SequentialThunk. If the input is already a
+  // SequentialThunk, the returned value is the downcasted input.
+  //
+  // The new thunk, if created, will use a default-initialized ThunkInfo.
+  static std::unique_ptr<SequentialThunk> FromThunk(
+      std::unique_ptr<Thunk> thunk);
 
  private:
   // The list of sub-thunks.

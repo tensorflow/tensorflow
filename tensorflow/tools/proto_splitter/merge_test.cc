@@ -22,6 +22,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/env.h"
@@ -286,6 +287,29 @@ TEST(MergeTest, TestReadChunkedFromString) {
       tsl::Env::Default(), absl::StrCat(path, ".pbtxt"), &test_saved_model));
 
   ASSERT_THAT(merged_saved_model, EqualsProto(test_saved_model));
+}
+
+TEST(MergeTest, TestProcessFieldReturnsErrorOnInvalidFieldNumber) {
+  ::tensorflow::proto_splitter::ChunkedMessage chunked_message;
+
+  auto* chunk_field = chunked_message.add_chunked_fields();
+
+  auto* tag = chunk_field->add_field_tag();
+  tag->set_field(99999);
+
+  chunk_field->mutable_message()->set_chunk_index(0);
+
+  std::vector<std::unique_ptr<tsl::protobuf::Message>> chunks;
+  chunks.push_back(
+      std::make_unique<::tensorflow::proto_splitter_testdata::ManyFields>());
+
+  ::tensorflow::proto_splitter_testdata::ManyFields merged;
+  absl::Status status = Merger::Merge(chunks, chunked_message, &merged);
+
+  EXPECT_FALSE(status.ok());
+  EXPECT_EQ(status.code(), absl::StatusCode::kFailedPrecondition);
+  EXPECT_THAT(std::string(status.message()),
+              ::testing::HasSubstr("not found in message descriptor"));
 }
 
 }  // namespace

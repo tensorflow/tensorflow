@@ -19,11 +19,14 @@ cc_library(
     srcs = ["xnn_interop.cc"],
     hdrs = ["xnn_interop.h"],
     deps = [
+        "//xla:shape_util",
         "//xla:util",
         "//xla/tsl/platform:logging",
         "@XNNPACK",
         "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/functional:function_ref",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
     ],
 )
 
@@ -31,45 +34,12 @@ cc_library(
     name = "xnn_threadpool",
     srcs = ["xnn_threadpool.cc"],
     hdrs = ["xnn_threadpool.h"],
-    # copybara:uncomment_begin(google-only)
-    # local_defines = select({
-    # "//xla/tsl:linux_any": [
-    # "XLA_CPU_USE_CUSTOM_PTHREADPOOL",
-    # ],
-    # "//conditions:default": [],
-    # }),
-    # copybara:uncomment_end
     deps = [
-        "//xla/backends/cpu/runtime:parallel_loop_runner",
-        "//xla/tsl/concurrency:async_value",
-        "//xla/tsl/platform:env",
-        "//xla/tsl/platform:logging",
-        "@com_google_absl//absl/base",
-        "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/log",
-        "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/strings:str_format",
-        "@eigen_archive//:eigen3",
-        "@local_tsl//tsl/platform:platform_port",
-        "@pthreadpool",
-    ],
-)
-
-xla_cc_test(
-    name = "xnn_threadpool_test",
-    srcs = ["xnn_threadpool_test.cc"],
-    linkstatic = True,  # required to override pthreadpool symbols
-    deps = [
-        ":xnn_threadpool",
-        "//xla/backends/cpu/runtime:parallel_loop_runner",
-        "//xla/tsl/concurrency:async_value",
-        "//xla/tsl/platform:env",
-        "//xla/tsl/platform:test",
-        "//xla/tsl/platform:test_main",
+        ":xnn_interop",
         "@XNNPACK",
-        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/status:statusor",
         "@eigen_archive//:eigen3",
-        "@pthreadpool",
     ],
 )
 
@@ -83,7 +53,7 @@ cc_library(
         "//xla:shape_util",
         "//xla:util",
         "//xla:xla_data_proto_cc",
-        "//xla/backends/cpu/runtime:convolution_lib",
+        "//xla/backends/cpu/runtime:convolution_dims",
         "//xla/backends/cpu/runtime:thunk",
         "//xla/service:buffer_assignment",
         "//xla/stream_executor:device_memory",
@@ -102,9 +72,10 @@ cc_library(
 xla_cc_test(
     name = "xnn_convolution_thunk_test",
     srcs = ["xnn_convolution_thunk_test.cc"],
-    linkstatic = True,  # required to override pthreadpool symbols
     deps = [
         ":xnn_convolution_thunk",
+        ":xnn_interop",
+        ":xnn_threadpool",
         "//xla:error_spec",
         "//xla:literal",
         "//xla:literal_util",
@@ -141,7 +112,7 @@ cc_library(
         "//xla:shape_util",
         "//xla:util",
         "//xla:xla_data_proto_cc",
-        "//xla/backends/cpu/runtime:dot_lib",
+        "//xla/backends/cpu/runtime:dot_dims",
         "//xla/backends/cpu/runtime:thunk",
         "//xla/service:buffer_assignment",
         "//xla/stream_executor:device_memory",
@@ -161,9 +132,10 @@ cc_library(
 xla_cc_test(
     name = "xnn_dot_thunk_test",
     srcs = ["xnn_dot_thunk_test.cc"],
-    linkstatic = True,  # required to override pthreadpool symbols
     deps = [
         ":xnn_dot_thunk",
+        ":xnn_interop",
+        ":xnn_threadpool",
         "//xla:literal_util",
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
@@ -187,9 +159,8 @@ cc_library(
     hdrs = ["xnn_fusion_thunk.h"],
     deps = [
         ":xnn_interop",
-        ":xnn_threadpool",
         "//xla:shape_util",
-        "//xla/backends/cpu/runtime:parallel_loop_runner",
+        "//xla:util",
         "//xla/backends/cpu/runtime:thunk",
         "//xla/runtime:buffer_use",
         "//xla/runtime:object_pool",
@@ -202,7 +173,7 @@ cc_library(
         "@XNNPACK",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/base:no_destructor",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/functional:bind_front",
@@ -214,17 +185,16 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:span",
-        "@pthreadpool",
     ],
 )
 
 xla_cc_test(
     name = "xnn_fusion_thunk_test",
     srcs = ["xnn_fusion_thunk_test.cc"],
-    linkstatic = True,  # required to override pthreadpool symbols
     deps = [
         ":xnn_fusion_thunk",
         ":xnn_interop",
+        ":xnn_threadpool",
         "//xla:literal_util",
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
@@ -237,6 +207,7 @@ xla_cc_test(
         "//xla/tsl/platform:test",
         "@XNNPACK",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
         "@eigen_archive//:eigen3",

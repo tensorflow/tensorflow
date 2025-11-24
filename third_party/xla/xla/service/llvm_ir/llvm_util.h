@@ -16,16 +16,21 @@ limitations under the License.
 #ifndef XLA_SERVICE_LLVM_IR_LLVM_UTIL_H_
 #define XLA_SERVICE_LLVM_IR_LLVM_UTIL_H_
 
+#include <cstddef>
 #include <cstdint>
 #include <map>
 #include <optional>
 #include <string>
 #include <utility>
 
+#include "absl/log/check.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "llvm/ADT/APFloat.h"
+#include "llvm/ADT/FloatingPointMode.h"
 #include "llvm/IR/BasicBlock.h"
+#include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/FPEnv.h"
 #include "llvm/IR/GlobalVariable.h"
 #include "llvm/IR/IRBuilder.h"
@@ -34,6 +39,8 @@ limitations under the License.
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Value.h"
+#include "llvm/Support/TypeSize.h"
+#include "llvm/Support/raw_ostream.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/Location.h"
 #include "mlir/IR/Operation.h"
@@ -54,24 +61,42 @@ class TargetOptions;
 namespace xla {
 namespace llvm_ir {
 
-// We have different DumpToString functions for each type for findability. We
-// use pointers / values based on the usual semantics of the parameter type.
+// Overload for pointer types that allows to pass additional arguments to the
+// print method.
+template <typename T, typename... ARGS>
+inline std::string DumpToString(T* entity, ARGS... args) {
+  std::string s;
+  llvm::raw_string_ostream ostream(s);
+  entity->print(ostream, args...);
+  return s;
+}
 
-std::string DumpToString(const llvm::Module* module);
-std::string DumpToString(const llvm::Type* type);
-std::string DumpToString(const llvm::Value* value);
+// Overload for pointer types.
+template <typename T>
+inline std::string DumpToString(T* entity) {
+  std::string s;
+  llvm::raw_string_ostream ostream(s);
+  ostream << *entity;
+  return s;
+}
 
-// This also works for mlir::Op<...> descendants, such as mlir::ModuleOp.
-//
-// For findability:
-//   std::string DumpToString(mlir::Op<...>& op);
-//   std::string DumpToString(mlir::ModuleOp& module_op);
-//
-// The `operation` parameter is not const, because the used print() method is
-// not const.
-std::string DumpToString(mlir::Operation* operation);
-std::string DumpToString(mlir::Type type);
-std::string DumpToString(mlir::Value value);
+// Overload for non-pointer types. Allows to pass additional arguments to the
+// print method.
+template <typename T, typename... ARGS>
+inline std::string DumpToString(const T& entity, ARGS... args) {
+  std::string s;
+  llvm::raw_string_ostream ostream(s);
+  entity.print(ostream, args...);
+  return s;
+}
+
+template <typename T>
+inline std::string DumpToString(const T& entity) {
+  std::string s;
+  llvm::raw_string_ostream ostream(s);
+  ostream << entity;
+  return s;
+}
 
 // Constructs a human-friendly name from the given inputs.  The result is
 // suitable for use as an llvm::Value's name.
@@ -339,6 +364,15 @@ llvm::BasicBlock* EmitReturnBlock(llvm::IRBuilderBase* b);
 // Can either use a supplied `return_block`, or generate a new one.
 void EmitEarlyReturn(llvm::Value* condition, llvm::IRBuilderBase* b,
                      llvm::BasicBlock* return_block = nullptr);
+
+absl::StatusOr<llvm::Value*> EmitReducePrecisionIR(
+    PrimitiveType src_ty, llvm::Value* x, int64_t dest_exponent_bits,
+    int64_t dest_mantissa_bits, bool quiet_nans, llvm::IRBuilderBase* b);
+
+llvm::Value* HandleHalfwayPointsFxToF8(
+    PrimitiveType fx_type, int f8_exponent_bits, int f8_mantissa_bits,
+    int f8_bias, llvm::Value* fx_abs_bits, llvm::Value* f8_bits,
+    std::optional<size_t> vector_width, llvm::IRBuilderBase* b);
 
 }  // namespace llvm_ir
 }  // namespace xla

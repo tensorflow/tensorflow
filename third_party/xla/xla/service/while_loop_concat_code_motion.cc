@@ -15,15 +15,21 @@ limitations under the License.
 
 #include "xla/service/while_loop_concat_code_motion.h"
 
+#include <cstdint>
 #include <map>
 #include <optional>
+#include <set>
+#include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -955,6 +961,13 @@ absl::Status RewriteLoopWithConcatGroups(
 absl::StatusOr<bool> RunOnLoop(HloInstruction* loop,
                                int64_t min_operand_count_to_optimize) {
   auto body = loop->while_body();
+  // TODO(b/260601110) : Bail if the body computations of the while_op is
+  // used by anything else.  In theory, we could handle this case more
+  // cleanly, but that'd require restructuring the pass, and there's no need
+  // to do it right now, so just add a bail-out to be conservative.
+  if (body->caller_instructions().size() > 1) {
+    return false;
+  }
   auto param = body->parameter_instruction(0);
   auto root = body->root_instruction();
   if (!param->shape().IsTuple() || root->opcode() != HloOpcode::kTuple) {
@@ -1027,7 +1040,7 @@ absl::StatusOr<bool> RunOnLoop(HloInstruction* loop,
 
 }  // namespace
 
-absl::StatusOr<bool> WhileLoopConcatCodeMotion::Run(
+absl::StatusOr<bool> WhileLoopConcatCodeMotion::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;

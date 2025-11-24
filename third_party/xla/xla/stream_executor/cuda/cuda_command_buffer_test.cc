@@ -20,6 +20,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/status_matchers.h"
 #include "absl/strings/ascii.h"
 #include "absl/types/span.h"
 #include "third_party/cudnn_frontend/include/cudnn_frontend.h"  // IWYU pragma: keep - cudnn frontend headers are not hermetic
@@ -32,20 +33,18 @@ limitations under the License.
 #include "xla/stream_executor/cuda/cuda_dnn.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/dnn.h"
-#include "xla/stream_executor/numeric_options.h"
+#include "xla/stream_executor/engine_options.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/statusor.h"
 
 namespace stream_executor::cuda {
 namespace {
 
 using ::testing::Each;
-using ::tsl::testing::IsOkAndHolds;
 
 static Platform* CudaPlatform() {
   auto name = absl::AsciiStrToUpper(
@@ -67,8 +66,9 @@ TEST(CudaCommandBufferTest, CuDnnExplicitConstructionAndUpdateWork) {
     GTEST_SKIP() << "Requires cuDNN 9.7.0 or later.";
   }
 
-  if (executor->GetDeviceDescription().cuda_compute_capability() <
-      CudaComputeCapability::Ampere()) {
+  if (!executor->GetDeviceDescription()
+           .cuda_compute_capability()
+           .IsAtLeastAmpere()) {
     GTEST_SKIP() << "Requires at least an Ampere GPU.";
   }
 
@@ -93,10 +93,13 @@ TEST(CudaCommandBufferTest, CuDnnExplicitConstructionAndUpdateWork) {
         .set_uid(3);
     return graph;
   }());
-  TF_ASSERT_OK(graph.Prepare(dnn_support, NumericOptions{}));
+  TF_ASSERT_OK(graph.Prepare(dnn_support,
+                             EngineOptions{/*require_determinism=*/false,
+                                           /*allow_tf32=*/true,
+                                           /*require_command_buffer=*/true}));
   TF_ASSERT_OK(graph.Build(dnn_support, /*plan_id=*/std::nullopt));
   EXPECT_THAT(graph.SupportsExplicitCommandBufferConstruction(),
-              IsOkAndHolds(true));
+              absl_testing::IsOkAndHolds(true));
 
   DeviceMemory<int8_t> input = executor->AllocateArray<int8_t>(kTotalElements);
   TF_ASSERT_OK(stream->MemZero(&input, input.size()));

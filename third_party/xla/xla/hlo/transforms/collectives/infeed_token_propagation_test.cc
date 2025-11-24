@@ -20,6 +20,8 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/analysis/hlo_ordering.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -1084,5 +1086,72 @@ ENTRY main {
   EXPECT_EQ(cond_arg->sharding().tuple_elements().size(), 2);
   EXPECT_TRUE(cond_arg->sharding().tuple_elements()[0].IsReplicated());
 }
+
+TEST_F(InfeedTokenPropagationTest, NonFlatGraph) {
+  constexpr absl::string_view kHlo = R"(
+HloModule main
+
+body {
+  ROOT arg.0 = s32[] parameter(0), sharding={replicated}
+  token.0 = after-all()
+  outfeed.0 = token[] outfeed(arg.0, token.0), outfeed_shape=s32[]
+}
+
+cond {
+  arg.0 = s32[] parameter(0), sharding={replicated}
+  ROOT true.0 = pred[] constant(true)
+}
+
+ENTRY main {
+  arg.0 = s32[] parameter(0)
+  while.0 = s32[] while(arg.0), condition=cond, body=body
+  ROOT while.1 = s32[] while(while.0), condition=cond, body=body
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(kHlo));
+  InfeedTokenPropagation itp;
+  EXPECT_THAT(itp.Run(module.get()),
+              absl_testing::StatusIs(absl::StatusCode::kFailedPrecondition));
+}
+
+TEST_F(InfeedTokenPropagationTest, UnrelatedNonFlatGraph) {
+  constexpr absl::string_view kHlo = R"(
+HloModule main
+
+call_body {
+  ROOT param.0 = s32[] parameter(0)
+}
+
+body {
+  ROOT arg.0 = s32[] parameter(0), sharding={replicated}
+  token.0 = after-all()
+  outfeed.0 = token[] outfeed(arg.0, token.0), outfeed_shape=s32[]
+}
+
+cond {
+  arg.0 = s32[] parameter(0), sharding={replicated}
+  ROOT true.0 = pred[] constant(true)
+}
+
+ENTRY main {
+  arg.0 = s32[] parameter(0)
+  call.0 = s32[] call(arg.0), to_apply=call_body
+  call.1 = s32[] call(call.0), to_apply=call_body
+  ROOT while.0 = s32[] while(call.1), condition=cond, body=body
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(kHlo));
+  InfeedTokenPropagation itp;
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, itp.Run(module.get()));
+  EXPECT_TRUE(changed);
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      op::GetTupleElement(op::While(op::Tuple(op::Call(), op::AfterAll())), 0));
+}
+
 }  // namespace
 }  // namespace xla

@@ -189,7 +189,7 @@ class CSVDatasetOp : public DatasetOpKernel {
     std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
       return std::make_unique<Iterator>(
-          Iterator::Params{this, strings::StrCat(prefix, "::CSV")});
+          Iterator::Params{this, absl::StrCat(prefix, "::CSV")});
     }
 
     const DataTypeVector& output_dtypes() const override { return out_type_; }

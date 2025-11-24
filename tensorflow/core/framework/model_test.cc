@@ -54,7 +54,7 @@ std::function<int64_t(int64_t)> RamBudgetFunc(int64_t budget) {
   return [budget](int64_t) { return budget; };
 }
 
-int64_t CountParametersOnNode(const string& node_name,
+int64_t CountParametersOnNode(const std::string& node_name,
                               const Model::ModelParameters& parameters) {
   int64_t cnt = 0;
   for (const auto& pair : parameters) {
@@ -865,10 +865,11 @@ TEST(AsyncInterleaveManyGradientTest, Model) {
       (new_output_time - output_time) / kParameterStep, kComparisonPrecision);
 }
 
-class AsyncKnownRatioGradientTest : public ::testing::TestWithParam<string> {};
+class AsyncKnownRatioGradientTest
+    : public ::testing::TestWithParam<std::string> {};
 
 TEST_P(AsyncKnownRatioGradientTest, Model) {
-  const string parameter_name = GetParam();
+  const std::string parameter_name = GetParam();
   const double input_time = 100;
   const int64_t num_inputs_per_output = 2;
 
@@ -1165,7 +1166,7 @@ TEST(SaveModelTest, Model) {
 
   // Make Save->Load roundtrip.
   Env* env = Env::Default();
-  string tmpFile;
+  std::string tmpFile;
   EXPECT_TRUE(env->LocalTempFilename(&tmpFile));
   tmpFile += "_autotune_model_test";
 
@@ -1401,7 +1402,7 @@ TEST(ModelTest, ModelMetrics) {
   std::shared_ptr<Node> root = model::MakeUnknownNode({0, "unknown0", nullptr});
   model.AddNode([&root](model::Node::Args args) { return root; }, root->name(),
                 nullptr, &root);
-  std::string model_id = strings::StrCat(reinterpret_cast<uintptr_t>(&model));
+  std::string model_id = absl::StrCat(reinterpret_cast<uintptr_t>(&model));
   EXPECT_THAT(cell_reader.Read(model_id),
               AllOf(HasSubstr("key: 0"), HasSubstr("name: \"unknown0\""),
                     HasSubstr("autotune: true")));
@@ -1416,7 +1417,7 @@ TEST(ModelTest, ModelCollectOptimizationMetrics) {
   model.output()->record_element();
   model.output()->record_start(100);
   model.output()->record_stop(200);
-  std::string model_id = strings::StrCat(reinterpret_cast<uintptr_t>(&model));
+  std::string model_id = absl::StrCat(reinterpret_cast<uintptr_t>(&model));
   // Before optimization, whatever metrics collected are returned.
   EXPECT_THAT(cell_reader.Read(model_id),
               AllOf(HasSubstr("key: 0"), HasSubstr("name: \"unknown0\""),
@@ -1460,7 +1461,7 @@ TEST(ModelTest, ModelCollectOptimizationMetrics) {
 TEST(ModelTest, ModelCollectAndDestroyRaceCondition) {
   CellReader<std::string> cell_reader("/tensorflow/data/model");
   auto* model = new model::Model();
-  std::string model_id = strings::StrCat(reinterpret_cast<uintptr_t>(model));
+  std::string model_id = absl::StrCat(reinterpret_cast<uintptr_t>(model));
   thread::ThreadPool threads(Env::Default(), "collect_and_destroy_race", 2);
   threads.Schedule([&]() { cell_reader.Read(model_id); });
   threads.Schedule([&]() { delete model; });

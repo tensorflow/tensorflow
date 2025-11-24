@@ -17,10 +17,12 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/concat_lib_cpu.h"
 
+#include <cstddef>
 #include <vector>
 
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/kernels/concat_lib.h"
+#include "tensorflow/core/platform/tstring.h"
 
 namespace tensorflow {
 
@@ -28,7 +30,7 @@ namespace {
 template <typename T>
 struct MemCpyCopier {
   inline void Copy(T* dst, const T* src, int input_index, size_t n) {
-    if (DataTypeCanUseMemcpy(DataTypeToEnum<T>::v())) {
+    if constexpr (DataTypeCanUseMemcpy(DataTypeToEnum<T>::v())) {
       memcpy(dst, src, n * sizeof(T));
     } else {
       for (size_t k = 0; k < n; ++k) {
@@ -37,6 +39,29 @@ struct MemCpyCopier {
     }
   }
 };
+
+// Specializes `tstring` copy is required here because `tstring` can be of
+// view-type. This means that the underlying `tstring` lifetime cannot be
+// controlled by this operation.
+// For example, if `*src` is a view from a `Tensor` and we invoke
+// the default copy constructor here to shallow copy `*src` to `*dst`, but later
+// `Tensor` that owns `*src` is freed, we will be in use-after-free trouble.
+// Therefore, we should always copy `tstring` here to avoid use-after-free
+// due to `tstring` view type. This also matches the semantic of `MemCpyCopier`
+// to always copy data from upstream.
+template <>
+struct MemCpyCopier<tstring> {
+  inline void Copy(tstring* dst, const tstring* src, int input_index,
+                   size_t n) {
+    for (size_t k = 0; k < n; ++k) {
+      // Copies `src` to `cpy` to decouple the lifetime from the original
+      // `src` string which can be potentially a `view`.
+      (*dst++).assign(src->data(), src->size());
+      src++;
+    }
+  }
+};
+
 template <>
 struct MemCpyCopier<ResourceHandle> {
   inline void Copy(ResourceHandle* dst, const ResourceHandle* src,

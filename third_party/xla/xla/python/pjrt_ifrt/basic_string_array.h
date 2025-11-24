@@ -36,10 +36,11 @@ limitations under the License.
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/dtype.h"
-#include "xla/python/ifrt/future.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
+#include "xla/python/ifrt/user_context.h"
+#include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/concurrency/ref_count.h"
 
 namespace xla {
@@ -70,7 +71,7 @@ class BasicStringArray final
   // in `sharding`.
   static absl::StatusOr<tsl::RCReference<BasicStringArray>> Create(
       Client* client, Shape shape, ShardingRef sharding,
-      Future<Buffers> buffers, OnDoneWithBuffer on_done_with_buffer);
+      tsl::Future<Buffers> buffers, OnDoneWithBuffer on_done_with_buffer);
 
   ~BasicStringArray() override;
 
@@ -104,15 +105,17 @@ class BasicStringArray final
     return sharding_;
   }
 
-  absl::StatusOr<std::shared_ptr<const xla::PjRtLayout>> layout()
+  absl::StatusOr<std::shared_ptr<const xla::PjRtLayout>> pjrt_layout()
       const override;
+
+  UserContextRef user_context() const override { return user_context_; }
 
   absl::StatusOr<std::vector<ArrayRef>> DisassembleIntoSingleDeviceArrays(
       ArrayCopySemantics array_copy_semantics,
       SingleDeviceShardSemantics single_device_shard_semantics) override;
 
   ABSL_MUST_USE_RESULT
-  Future<> CopyToHostBuffer(
+  tsl::Future<> CopyToHostBuffer(
       void* data, std::optional<absl::Span<const int64_t>> byte_strides,
       ArrayCopySemantics semantics) override;
 
@@ -121,9 +124,9 @@ class BasicStringArray final
       std::optional<xla::ifrt::MemoryKind> memory_kind,
       ArrayCopySemantics semantics);
 
-  Future<> GetReadyFuture() const override;
+  tsl::Future<> GetReadyFuture() const override;
 
-  Future<> Delete() override;
+  tsl::Future<> Delete() override;
   bool IsDeleted() const override;
 
   std::string DebugString() const override;
@@ -132,7 +135,7 @@ class BasicStringArray final
 
   // Returns a future holding the string buffers underlying this array. Valid
   // only while this Array object is alive.
-  Future<Buffers> buffers() const {
+  tsl::Future<Buffers> buffers() const {
     return buffers_;  // Future copying is not considered expensive.
   }
 
@@ -143,7 +146,7 @@ class BasicStringArray final
   friend tsl::RCReference<T> tsl::MakeRef(Args&&... args);
 
   BasicStringArray(Client* client, Shape shape, ShardingRef sharding,
-                   Future<Buffers> buffers, Future<> ready_future,
+                   tsl::Future<Buffers> buffers, tsl::Future<> ready_future,
                    OnDoneWithBuffer on_done_with_buffer);
 
   // Internal implementation of delete.
@@ -152,8 +155,9 @@ class BasicStringArray final
   Client* client_;
   Shape shape_;
   ShardingRef sharding_;
-  Future<Buffers> buffers_;
-  Future<> ready_future_;
+  const UserContextRef user_context_;
+  tsl::Future<Buffers> buffers_;
+  tsl::Future<> ready_future_;
 
   mutable absl::Mutex mu_;
   OnDoneWithBuffer on_done_with_buffer_ ABSL_GUARDED_BY(mu_);

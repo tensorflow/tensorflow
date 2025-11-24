@@ -21,18 +21,19 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "xla/autotuning.pb.h"
 #include "xla/backends/autotuner/codegen_backend.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/testlib/filecheck.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
+#include "xla/service/compiler.h"
 #include "xla/service/gpu/nvptx_compiler.h"
 #include "xla/service/platform_util.h"
 #include "xla/stream_executor/device_description.pb.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
 #include "xla/xla.pb.h"
@@ -43,9 +44,6 @@ namespace gpu {
 using CustomKernelBackendConfig = AutotuneResult::CustomKernelFusionKey;
 
 using ::tsl::proto_testing::EqualsProto;
-using tsl::testing::IsOk;
-using tsl::testing::IsOkAndHolds;
-using tsl::testing::StatusIs;
 
 const char kCustomKernelFusionHlo[] = R"(
 HloModule extracted
@@ -101,14 +99,18 @@ class CustomKernelBackendTest : public HloHardwareIndependentTestBase {
  protected:
   DebugOptions debug_options_;
   NVPTXCompiler compiler_;
+  se::StreamExecutor* stream_executor_;
+  Compiler::GpuTargetConfig target_config_;
   CustomKernelBackend backend_;
 
   CustomKernelBackendTest()
-      : backend_(PlatformUtil::GetDefaultPlatform()
-                     .value()
-                     ->ExecutorForDevice(0)
-                     .value(),
-                 &debug_options_, &compiler_) {}
+      : stream_executor_(PlatformUtil::GetDefaultPlatform()
+                             .value()
+                             ->ExecutorForDevice(0)
+                             .value()),
+        target_config_(stream_executor_),
+        backend_(stream_executor_, &debug_options_, &compiler_,
+                 &target_config_) {}
 
   CustomKernelBackendConfig ExpectedDefaultAlgorithm() {
     auto config = AutotuneResult::CustomKernelFusionKey();
@@ -127,7 +129,8 @@ TEST_F(CustomKernelBackendTest, GetSupportedConfigsFromCustomKernelFusion) {
   absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>> configs =
       backend_.GetSupportedConfigs(
           (*module->entry_computation()->root_instruction()));
-  EXPECT_THAT(configs, IsOkAndHolds(testing::SizeIs(testing::Gt(0))));
+  EXPECT_THAT(configs,
+              absl_testing::IsOkAndHolds(testing::SizeIs(testing::Gt(0))));
 }
 
 TEST_F(CustomKernelBackendTest,
@@ -137,7 +140,7 @@ TEST_F(CustomKernelBackendTest,
   absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>> configs =
       backend_.GetSupportedConfigs(
           (*module->entry_computation()->root_instruction()));
-  EXPECT_THAT(configs, IsOkAndHolds(testing::SizeIs(0)));
+  EXPECT_THAT(configs, absl_testing::IsOkAndHolds(testing::SizeIs(0)));
 }
 
 TEST_F(CustomKernelBackendTest, ReturnsDefaultConfig) {
@@ -147,9 +150,10 @@ TEST_F(CustomKernelBackendTest, ReturnsDefaultConfig) {
   absl::StatusOr<std::unique_ptr<BackendConfig>> config =
       backend_.GetDefaultConfig(
           (*module->entry_computation()->root_instruction()));
-  EXPECT_THAT(config, IsOk());
-  EXPECT_THAT(static_cast<const CustomKernelBackendConfig&>(*config.value()),
-              EqualsProto(ExpectedDefaultAlgorithm()));
+  EXPECT_THAT(config, absl_testing::IsOk());
+  CustomKernelBackendConfig config_proto;
+  ASSERT_TRUE(config.value()->UnpackTo(&config_proto));
+  EXPECT_THAT(config_proto, EqualsProto(ExpectedDefaultAlgorithm()));
 }
 
 TEST_F(CustomKernelBackendTest,
@@ -160,7 +164,8 @@ TEST_F(CustomKernelBackendTest,
   absl::StatusOr<std::unique_ptr<BackendConfig>> config =
       backend_.GetDefaultConfig(
           (*module->entry_computation()->root_instruction()));
-  EXPECT_THAT(config, StatusIs(absl::StatusCode::kInvalidArgument));
+  EXPECT_THAT(config,
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
 TEST_F(CustomKernelBackendTest, ApplyConfig) {
@@ -168,10 +173,12 @@ TEST_F(CustomKernelBackendTest, ApplyConfig) {
                           ParseAndReturnVerifiedModule(kCustomKernelFusionHlo));
   CustomKernelBackendConfig config;
   config.set_kernel_index(2);
+  google::protobuf::Any any;
+  any.PackFrom(config);
   TF_EXPECT_OK(backend_.ApplyConfig(
-      *hlo_module->entry_computation()->root_instruction(), config));
+      *hlo_module->entry_computation()->root_instruction(), any));
   EXPECT_THAT(RunFileCheck(hlo_module->ToString(), "CHECK: \"kernel_index\":2"),
-              IsOkAndHolds(true));
+              absl_testing::IsOkAndHolds(true));
 }
 
 }  // namespace gpu

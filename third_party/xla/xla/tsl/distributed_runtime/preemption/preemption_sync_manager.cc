@@ -92,7 +92,7 @@ absl::Status PreemptionSyncManager::Initialize(
     CoordinationServiceAgent* agent,
     std::unique_ptr<PreemptionNotifier> notifier) {
   {
-    absl::MutexLock l(&mu_);
+    absl::MutexLock l(mu_);
     CHECK(!shut_down_);
   }
 
@@ -179,7 +179,7 @@ absl::Status PreemptionSyncManager::Initialize(
 
         // Trigger protocol in a separate thread: compute max call counter.
         {
-          absl::MutexLock l(&mu_);
+          absl::MutexLock l(mu_);
           if (shut_down_) {
             return;
           }
@@ -194,7 +194,7 @@ absl::Status PreemptionSyncManager::Initialize(
 }
 
 void PreemptionSyncManager::Shutdown() {
-  absl::MutexLock l(&mu_);
+  absl::MutexLock l(mu_);
   if (shut_down_) {
     LOG(INFO) << "PreemptionSyncManager already shut down";
     return;
@@ -234,7 +234,7 @@ void PreemptionSyncManager::ComputeSyncCallCounter(absl::Time death_time) {
   // function exits, implying that we have decided on a new
   // `preemption_sync_counter_` or the protocol failed. This ensures correctness
   // of the preemption sync protocol.
-  absl::MutexLock l(&mu_);
+  absl::MutexLock l(mu_);
   const absl::Status notified_status = agent_->InsertKeyValue(
       current_call_counter_key_, std::to_string(call_counter_));
   if (!notified_status.ok()) {
@@ -306,7 +306,7 @@ bool PreemptionSyncManager::ReachedSyncPoint(int step_counter) {
   // is ongoing , this method will be blocked until it acquires the lock. This
   // prevents updates to `call_counter_` while `preemption_sync_counter_` is
   // being computed, which ensures correctness of the preemption sync protocol.
-  absl::MutexLock l(&mu_);
+  absl::MutexLock l(mu_);
   CHECK(!shut_down_);
   // Track current call.
   call_counter_ = step_counter;

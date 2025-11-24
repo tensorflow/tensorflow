@@ -20,6 +20,8 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/log/log.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/types/span.h"
 #include "xla/client/executable_build_options.h"
@@ -27,6 +29,7 @@ limitations under the License.
 #include "xla/service/backend.h"
 #include "xla/service/compiler.h"
 #include "xla/service/computation_layout.h"
+#include "xla/service/computation_placer.h"
 #include "xla/service/executable.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/local_service_utils.h"
@@ -36,6 +39,7 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/logging.h"
@@ -92,9 +96,11 @@ LocalService::CompileExecutables(
       build_options.compile_thread_pool(),
       build_options.layout_canonicalization_callback(),
       false,
-      {},
+      /*gpu_target_config=*/{},
+      /*cpu_target_config=*/{},
       {build_options.key_value_store(), build_options.process_index(),
-       build_options.process_count()}};
+       build_options.process_count()},
+      build_options.slice_size()};
   if (build_options.num_partitions() == 1) {
     TF_ASSIGN_OR_RETURN(
         std::unique_ptr<Executable> executable,
@@ -105,15 +111,12 @@ LocalService::CompileExecutables(
     executables.push_back(std::move(executable));
     return executables;
   } else {
-    std::vector<std::unique_ptr<HloModuleConfig>> module_configs;
-    module_configs.push_back(std::move(module_config));
     // BuildExecutables uses the executors length to determine the number of
     // cores per module, but otherwise only uses the first executor.
     std::vector<se::StreamExecutor*> executors(build_options.num_partitions(),
                                                executor);
-
     return BuildExecutables(
-        /*module_protos=*/{&computation.proto()}, std::move(module_configs),
+        /*module_proto=*/&computation.proto(), std::move(module_config),
         execute_backend_.get(), {executors}, compile_options,
         build_options.run_backend_only());
   }
@@ -133,16 +136,14 @@ LocalService::CompileAotResults(
       se::StreamExecutor * executor,
       execute_backend_->stream_executor(build_options.device_ordinal()));
 
-  std::vector<std::unique_ptr<HloModuleConfig>> module_configs;
-  module_configs.push_back(std::move(module_config));
   // BuildAotResults uses the executors length to determine the number of
   // cores per module, but otherwise only uses the first executor.
   std::vector<se::StreamExecutor*> executors(build_options.num_partitions(),
                                              executor);
 
   return BuildAotResults(
-      /*module_protos=*/{&computation.proto()}, std::move(module_configs),
-      execute_backend_.get(), {executors},
+      &computation.proto(), std::move(module_config), execute_backend_.get(),
+      {executors},
       Compiler::CompileOptions{build_options.device_allocator(),
                                build_options.compile_thread_pool()},
       build_options.run_backend_only());
@@ -150,9 +151,11 @@ LocalService::CompileAotResults(
 
 absl::StatusOr<int> LocalService::ReplicaNumberToDeviceOrdinal(
     int replica_number) {
-  return backend().computation_placer()->DeviceId(
-      replica_number, /*computation=*/0, options_.number_of_replicas(),
-      /*computation_count=*/1);
+  TF_ASSIGN_OR_RETURN(
+      DeviceAssignment da,
+      backend().computation_placer()->AssignDevices(
+          options_.number_of_replicas(), /*computation_count=*/1));
+  return da.DeviceId(replica_number, /*computation=*/0);
 }
 
 absl::StatusOr<const ShapedBuffer*> LocalService::GlobalDataToShapedBuffer(

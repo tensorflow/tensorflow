@@ -58,7 +58,7 @@ constexpr char kUninitialized[] = "uninitialized";
 constexpr int64_t kKnownRatio = 1;
 
 std::string nested_prefix(const std::string& prefix, int64_t epoch) {
-  return strings::StrCat(prefix, "[", epoch, "]");
+  return absl::StrCat(prefix, "[", epoch, "]");
 }
 
 // Returns whether `dataset` has an input dataset of the given type. This check

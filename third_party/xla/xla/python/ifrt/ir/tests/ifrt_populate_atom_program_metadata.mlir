@@ -29,6 +29,62 @@ module @populate_arg_metadata {
 
 // -----
 
+!array = !ifrt.array<tensor<2x2xi32>,
+                     #ifrt.sharding_param<2x1 to [0] on 2>, [0,1]>
+// CHECK-LABEL: @populate_sdy_partitioned_attr
+module @populate_sdy_partitioned_attr {
+  func.func @main(%arg0: !array) attributes {ifrt.function} {
+    // CHECK: ifrt.Call @[[CALLEE:.+]]::@main(%arg0)
+    %ctrl_0 = ifrt.Call @callee::@main(%arg0) on devices [0,1] {ifrt.is_sdy_partitioned} : (!array) -> ()
+    return
+  }
+
+  // CHECK: module @[[CALLEE]]
+  // CHECK-SAME: attributes {
+  // CHECK-DAG:    ifrt.is_sdy_partitioned
+  // CHECK-DAG:    ifrt.num_devices = 2
+  // CHECK-DAG:    sym_visibility = "private"
+  // CHECK-SAME: }
+  // CHECK: func.func private @main
+  // CHECK-DAG: ifrt.sharding = #ifrt.sharding_param<2x1 to [0] on 2>
+  // CHECK-NOT: ifrt
+  module @callee attributes {sym_visibility = "private"} {
+    func.func private @main(%arg0: tensor<2x2xi32>) {
+      return
+    }
+  }
+}
+
+// -----
+
+!array = !ifrt.array<tensor<2x2xi32>,
+                     #ifrt.sharding_param<2x1 to [0] on 2>, [0,1]>
+// CHECK-LABEL: @populate_compile_options_key_attr
+module @populate_compile_options_key_attr {
+  func.func @main(%arg0: !array) attributes {ifrt.function} {
+    // CHECK: ifrt.Call @[[CALLEE:.+]]::@main(%arg0)
+    %ctrl_0 = ifrt.Call @callee::@main(%arg0) on devices [0,1] {ifrt.compile_options_key = "foo"} : (!array) -> ()
+    return
+  }
+
+  // CHECK: module @[[CALLEE]]
+  // CHECK-SAME: attributes {
+  // CHECK-DAG:    ifrt.compile_options_key = "foo"
+  // CHECK-DAG:    ifrt.num_devices = 2
+  // CHECK-DAG:    sym_visibility = "private"
+  // CHECK-SAME: }
+  // CHECK: func.func private @main
+  // CHECK-DAG: ifrt.sharding = #ifrt.sharding_param<2x1 to [0] on 2>
+  // CHECK-NOT: ifrt
+  module @callee attributes {sym_visibility = "private"} {
+    func.func private @main(%arg0: tensor<2x2xi32>) {
+      return
+    }
+  }
+}
+
+// -----
+
 // CHECK-LABEL: @populate_result_metadata
 module @populate_result_metadata {
   func.func @main() attributes {ifrt.function} {

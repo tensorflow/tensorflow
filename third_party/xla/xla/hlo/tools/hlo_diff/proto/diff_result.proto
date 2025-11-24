@@ -15,3 +15,51 @@ message DiffResultProto {
   repeated MatchedInstructionPairProto unchanged_instructions = 3;
   repeated MatchedInstructionPairProto changed_instructions = 4;
 }
+
+message RenderDiffResultsProto {
+  message MeJsonPaths {
+    string me_json_path = 1;
+    string sync_nav_path = 2;
+    string node_data_path = 3;
+  }
+
+  string text_output_path = 1;
+  MeJsonPaths me_json_paths = 2;
+  string me_url = 3;
+  string html_output_path = 4;
+}
+
+// Represents details about a computation, including its name and instructions.
+message ComputationDetailsProto {
+  string name = 1;
+  repeated string instructions = 2;
+}
+
+// Represents a group of matched computations from the left and right modules.
+message ComputationGroupProto {
+  repeated ComputationDetailsProto left_computations = 1;
+  repeated ComputationDetailsProto right_computations = 2;
+}
+
+message ComputationDiffPatternProto {
+  // The fingerprint of the computation group.
+  uint64 fingerprint = 1;
+  repeated ComputationGroupProto computation_group = 2;
+  uint64 changed_instruction_count = 3;
+  uint64 left_unmatched_instruction_count = 4;
+  uint64 right_unmatched_instruction_count = 5;
+}
+
+// Represents the summary of the diff between two HLO modules.
+message DiffSummaryProto {
+  repeated ComputationDiffPatternProto computation_diff_patterns = 1;
+}
+
+// Represents the result or error of computing the diff between two HLO modules.
+message RunDiffResultOrErrorProto {
+  DiffResultProto diff_result = 1;
+  int32 status = 2;
+  string error = 3;
+  DiffSummaryProto diff_summary = 4;
+  RenderDiffResultsProto render_diff_results = 5;
+}

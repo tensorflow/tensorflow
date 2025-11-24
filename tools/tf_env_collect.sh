@@ -59,18 +59,12 @@ echo > "$OUTPUT_FILE"
   "${PYTHON_BIN_PATH}" <<EOF
 import platform
 
-print("""python version: %s
-python branch: %s
-python build version: %s
-python compiler version: %s
-python implementation: %s
-""" % (
-platform.python_version(),
-platform.python_branch(),
-platform.python_build(),
-platform.python_compiler(),
-platform.python_implementation(),
-))
+print(f"""python version: {platform.python_version()}
+python branch: {platform.python_branch()}
+python build version: {platform.python_build()}
+python compiler version: {platform.python_compiler()}
+python implementation: {platform.python_implementation()}
+""")
 EOF
 
   print_header "check os platform"

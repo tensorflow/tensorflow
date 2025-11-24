@@ -1,3 +1,4 @@
+#include "xla/stream_executor/kernel.h"
 /* Copyright 2015 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -45,19 +46,26 @@ limitations under the License.
 #include <string>
 #include <utility>
 #include <variant>
+#include <vector>
 
+#include "absl/functional/function_ref.h"
 #include "absl/log/check.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/stream_executor/kernel.h"
+#include "xla/stream_executor/kernel_args.h"
+#include "xla/stream_executor/kernel_argument_packing_spec.h"
+#include "xla/stream_executor/kernel_spec.pb.h"
 
 namespace stream_executor {
 
 // Loads kernel from in process symbol pointer (e.g. pointer to C++ device
 // function).
 struct InProcessSymbol {
-  void *symbol;
+  void* symbol;
+  // If not empty, this symbol can be looked up by this name in the kernel
+  // symbol registry.
+  std::string persistent_name;
 };
 
 // Kernel loader specification for PTX text that resides in memory.
@@ -65,9 +73,19 @@ struct CudaPtxInMemory {
   absl::string_view ptx;
 };
 
+// Like CudaPtxInMemory but the PTX is owned by the loader spec.
+struct OwningCudaPtxInMemory {
+  std::string ptx;
+};
+
 // Kernel loader specification for a CUBIN blob that resides in memory.
 struct CudaCubinInMemory {
   absl::Span<const uint8_t> cubin_bytes;
+};
+
+// Like CudaCubinInMemory but the CUBIN data is owned by the loader spec.
+struct OwningCudaCubinInMemory {
+  std::vector<uint8_t> cubin_bytes;
 };
 
 // Describes how to load a kernel on any subset of a number of target platforms.
@@ -77,9 +95,15 @@ class KernelLoaderSpec {
   // that can be directly passed to a device kernel. This indirection allows
   // registering custom CUDA C++ kernels with non-trivial C++ API with a
   // StreamExecutor as a generic `Kernel`.
-  using KernelArgsPacking =
+  using KernelArgsPackingFunc =
       std::function<absl::StatusOr<std::unique_ptr<KernelArgsPackedArrayBase>>(
-          const Kernel &kernel, const KernelArgs &args)>;
+          const Kernel& kernel, const KernelArgs& args)>;
+
+  // Kernel arguments packing can be either a function or a specification.
+  // The specification has the advantage that it can be serialized and is
+  // therefore a requirement for AOT compilation.
+  using KernelArgsPacking =
+      std::variant<KernelArgsPackingFunc, KernelArgumentsPackingSpec>;
 
   // Returns the number of arguments that this kernel accepts.
   size_t arity() const { return arity_; }
@@ -90,10 +114,12 @@ class KernelLoaderSpec {
     return std::holds_alternative<InProcessSymbol>(payload_);
   }
   bool has_cuda_cubin_in_memory() const {
-    return std::holds_alternative<CudaCubinInMemory>(payload_);
+    return std::holds_alternative<CudaCubinInMemory>(payload_) ||
+           std::holds_alternative<OwningCudaCubinInMemory>(payload_);
   }
   bool has_cuda_ptx_in_memory() const {
-    return std::holds_alternative<CudaPtxInMemory>(payload_);
+    return std::holds_alternative<CudaPtxInMemory>(payload_) ||
+           std::holds_alternative<OwningCudaPtxInMemory>(payload_);
   }
 
   // Accessors for platform variant kernel load specifications.
@@ -105,17 +131,24 @@ class KernelLoaderSpec {
   }
 
   std::optional<CudaCubinInMemory> cuda_cubin_in_memory() const {
-    if (!has_cuda_cubin_in_memory()) {
-      return std::nullopt;
+    if (std::holds_alternative<CudaCubinInMemory>(payload_)) {
+      return std::get<CudaCubinInMemory>(payload_);
     }
-    return std::get<CudaCubinInMemory>(payload_);
+    if (std::holds_alternative<OwningCudaCubinInMemory>(payload_)) {
+      return CudaCubinInMemory{
+          std::get<OwningCudaCubinInMemory>(payload_).cubin_bytes};
+    }
+    return std::nullopt;
   }
 
   std::optional<CudaPtxInMemory> cuda_ptx_in_memory() const {
-    if (!has_cuda_ptx_in_memory()) {
-      return std::nullopt;
+    if (std::holds_alternative<CudaPtxInMemory>(payload_)) {
+      return std::get<CudaPtxInMemory>(payload_);
     }
-    return std::get<CudaPtxInMemory>(payload_);
+    if (std::holds_alternative<OwningCudaPtxInMemory>(payload_)) {
+      return CudaPtxInMemory{std::get<OwningCudaPtxInMemory>(payload_).ptx};
+    }
+    return std::nullopt;
   }
 
   // Use these factory functions to create a spec of any supported type.
@@ -124,32 +157,52 @@ class KernelLoaderSpec {
   // the PTX being loaded. Also be aware that in CUDA C++ the kernel name may be
   // mangled by the compiler if it is not declared in an extern "C" scope.
   static KernelLoaderSpec CreateInProcessSymbolSpec(
-      void *symbol, std::string kernel_name, size_t arity,
+      void* symbol, std::string kernel_name, size_t arity,
       KernelArgsPacking kernel_args_packing = nullptr);
+  static KernelLoaderSpec CreateSerializableInProcessSymbolSpec(
+      std::string persistent_kernel_name, void* symbol, std::string kernel_name,
+      size_t arity, KernelArgsPacking kernel_args_packing = nullptr);
   static KernelLoaderSpec CreateCudaCubinInMemorySpec(
       absl::Span<const uint8_t> cubin_bytes, std::string kernel_name,
-      size_t arity, KernelArgsPacking kernel_args_packing = nullptr);
+      size_t arity,
+      KernelArgsPacking kernel_args_packing = KernelArgsPackingFunc{});
+  static KernelLoaderSpec CreateOwningCudaCubinInMemorySpec(
+      std::vector<uint8_t> cubin_bytes, std::string kernel_name, size_t arity,
+      KernelArgsPacking kernel_args_packing = KernelArgsPackingFunc{});
   static KernelLoaderSpec CreateCudaPtxInMemorySpec(
       absl::string_view ptx, std::string kernel_name, size_t arity,
-      KernelArgsPacking kernel_args_packing = nullptr);
+      KernelArgsPacking kernel_args_packing = KernelArgsPackingFunc{});
+  static KernelLoaderSpec CreateOwningCudaPtxInMemorySpec(
+      std::string ptx, std::string kernel_name, size_t arity,
+      KernelArgsPacking kernel_args_packing = KernelArgsPackingFunc{});
 
   void set_kernel_args_packing(KernelArgsPacking kernel_args_packing) {
     kernel_args_packing_ = std::move(kernel_args_packing);
   }
 
-  const KernelArgsPacking &kernel_args_packing() const {
+  const KernelArgsPacking& kernel_args_packing() const {
     return kernel_args_packing_;
   }
 
-  const std::string &kernel_name() const { return kernel_name_; }
+  const std::string& kernel_name() const { return kernel_name_; }
+
+  absl::StatusOr<KernelLoaderSpecProto> ToProto() const;
+
+  using SymbolResolver =
+      absl::FunctionRef<absl::StatusOr<void*>(absl::string_view)>;
+
+  static absl::StatusOr<KernelLoaderSpec> FromProto(
+      const KernelLoaderSpecProto& proto,
+      std::optional<SymbolResolver> symbol_resolver = std::nullopt);
 
  private:
   using Payload =
-      std::variant<InProcessSymbol, CudaCubinInMemory, CudaPtxInMemory>;
+      std::variant<InProcessSymbol, CudaCubinInMemory, CudaPtxInMemory,
+                   OwningCudaCubinInMemory, OwningCudaPtxInMemory>;
 
-  explicit KernelLoaderSpec(Payload payload, std::string kernel_name,
-                            size_t arity,
-                            KernelArgsPacking kernel_args_packing = nullptr)
+  explicit KernelLoaderSpec(
+      Payload payload, std::string kernel_name, size_t arity,
+      KernelArgsPacking kernel_args_packing = KernelArgsPackingFunc{})
       : payload_(std::move(payload)),
         kernel_name_(std::move(kernel_name)),
         arity_(arity),

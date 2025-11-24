@@ -139,6 +139,11 @@ absl::StatusOr<cublasLtEpilogue_t> AsCublasLtEpilogue(
     case gpu::BlasLt::Epilogue::kBiasThenGELUWithAux:
       return absl::InternalError("GELU epilogues require cublasLt >= 11.4");
 #endif
+    case gpu::BlasLt::Epilogue::kSILU:
+    case gpu::BlasLt::Epilogue::kSILUWithAux:
+    case gpu::BlasLt::Epilogue::kBiasThenSILU:
+    case gpu::BlasLt::Epilogue::kBiasThenSILUWithAux:
+      return absl::InternalError("SILU epilogues are not supported.");
   }
 }
 
@@ -147,7 +152,7 @@ absl::StatusOr<cublasLtEpilogue_t> AsCublasLtEpilogue(
 absl::Status BlasLt::Init() {
   cublasLtHandle_t blas_lt;
   SE_CUBLAS_RETURN_IF_ERROR(cublasLtCreate(&blas_lt));
-  absl::MutexLock lock(&mu_);
+  absl::MutexLock lock(mu_);
   blas_lt_.reset(blas_lt);
   return absl::OkStatus();
 }
@@ -242,7 +247,7 @@ auto BlasLt::MatmulPlan::GetAlgorithms(const Stream* stream,
   std::vector<cublasLtMatmulHeuristicResult_t> results(max_algorithm_count);
   {
     auto blas_lt = static_cast<BlasLt*>(gpu::BlasLt::Get(stream));
-    absl::MutexLock lock(&blas_lt->mu_);
+    absl::MutexLock lock(blas_lt->mu_);
     TF_RET_CHECK(blas_lt->blas_lt_ != nullptr);
 
     cublasLtMatmulPreference_t cu_preference;
@@ -383,7 +388,7 @@ absl::Status BlasLt::MatmulPlan::DoMatmul(
 
   auto palgo = std::any_cast<cublasLtMatmulAlgo_t>(&algorithm_->opaque_algo);
   {
-    absl::MutexLock lock(&blas_lt->mu_);
+    absl::MutexLock lock(blas_lt->mu_);
     TF_RET_CHECK(blas_lt->blas_lt_ != nullptr);
     // We must set the bias and aux pointers while holding the mutex, to avoid a
     // potential race condition from multiple threads sharing the same plan.

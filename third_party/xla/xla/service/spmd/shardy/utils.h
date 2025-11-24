@@ -17,18 +17,19 @@ limitations under the License.
 #define XLA_SERVICE_SPMD_SHARDY_UTILS_H_
 
 #include <cstdint>
-#include <functional>
 #include <optional>
 #include <string>
 
 #include "absl/log/check.h"
 #include "absl/strings/escaping.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "mlir/AsmParser/AsmParser.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributes.h"
+#include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/TypeRange.h"
@@ -78,6 +79,19 @@ bool hasFrontendAttr(mlir::Operation* op, mlir::StringRef key);
 bool hasKey(mlir::DictionaryAttr dictAttr, mlir::StringRef key);
 
 void loadAllRequiredDialects(mlir::MLIRContext* context);
+
+// Adjusts the input sharding based on allowSpmdShardingPropagationToParameters
+// flag.
+void adjustInputSharding(
+    mlir::func::FuncOp func, int idx, mlir::sdy::TensorShardingAttr sharding,
+    int64_t rank,
+    absl::Span<const bool> allowSpmdShardingPropagationToParameters);
+
+// Adjusts the output sharding based on allowSpmdShardingPropagationToOutput
+// flag.
+void adjustOutputSharding(
+    mlir::func::FuncOp func, int idx, mlir::sdy::TensorShardingAttr sharding,
+    int64_t rank, absl::Span<const bool> allowSpmdShardingPropagationToOutput);
 
 // Parses `escapedValue` to an attribute of type `AttrTy`.
 template <typename AttrTy>
@@ -133,11 +147,30 @@ std::string duplicateShardingsAtIndices(
     const llvm::BitVector& indicesToDuplicate);
 
 // Return all axes or sub-axes in the `mesh`, such that sub-axes are derived
-// from `shardingOrAxisList` and sorted by their order in the mesh. For example,
-// given mesh <"x"=2, "y"=16, "z"=4> and axis refs [{"x"}, {"y":2(2)}], we
-// would return ["x", "y":1(2), "y":2(2), "y":4(4), "z"].
+// from `shardingOrAxisList` (including unreduced axes but not replicated)
+// and sorted by their order in the mesh. For example, given mesh <"x"=2,
+// "y"=16, "z"=4> and axis refs [{"x"}, {"y":2(2)}], we would return ["x",
+// "y":1(2), "y":2(2), "y":4(4), "z"].
 mlir::SmallVector<mlir::sdy::AxisRefAttr> getOrderedAxisRefs(
     mlir::Attribute shardingOrAxisList, mlir::sdy::MeshAttr mesh);
+
+// Returns true if the module has at least one GSPMD attribute or op, like an
+// `mhlo.sharding` attribute or `Sharding` custom call.
+// TODO(b/420837831): delete this once we don't fall back to GSPMD.
+bool hasGspmdAttrsOrOps(mlir::ModuleOp module);
+
+// Check if the module has any sort of Shardy mesh:
+// - `mesh`
+// - `maximal_mesh_{X}`
+// - `empty_mesh`
+// TODO(b/420837831): delete this once we don't fall back to GSPMD.
+bool hasShardyMesh(mlir::ModuleOp module);
+
+// Returns the func result shardings of `funcOp`, with fully-replicated
+// shardings for empty shardings on `funcOp`, by using the ranks from `callOp`.
+mlir::sdy::TensorShardingPerValueAttr getFuncResultShardings(
+    mlir::func::CallOp callOp, mlir::func::FuncOp funcOp,
+    const mlir::SymbolTable& symbolTable);
 
 }  // namespace sdy
 }  // namespace xla

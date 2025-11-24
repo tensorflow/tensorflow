@@ -19,8 +19,10 @@ cc_library(
     srcs = ["buffer_use.cc"],
     hdrs = ["buffer_use.h"],
     deps = [
+        "//xla:shape_util",
         "//xla/service:buffer_assignment",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/types:span",
     ],
@@ -31,10 +33,11 @@ xla_cc_test(
     srcs = ["buffer_use_test.cc"],
     deps = [
         ":buffer_use",
+        "//xla:shape_util",
         "//xla/service:buffer_assignment",
+        "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest",
         "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/platform:test",
     ],
 )
 
@@ -47,6 +50,7 @@ cc_library(
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
     ],
 )
@@ -90,6 +94,7 @@ xla_cc_test(
         ":buffer_use",
         ":execution_graph",
         ":resource_use",
+        "//xla:shape_util",
         "//xla/service:buffer_assignment",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",
@@ -130,11 +135,6 @@ xla_cc_test(
 )
 
 cc_library(
-    name = "thunk",
-    hdrs = ["thunk.h"],
-)
-
-cc_library(
     name = "work_cluster",
     hdrs = ["work_cluster.h"],
     deps = [
@@ -154,6 +154,7 @@ cc_library(
     name = "work_item",
     hdrs = ["work_item.h"],
     deps = [
+        "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/strings:str_format",
     ],
 )
@@ -173,6 +174,18 @@ cc_library(
         ":work_cluster",
         ":work_group",
         ":work_item",
+        ":work_tile_size",
+        "@com_google_absl//absl/strings:str_format",
+    ],
+)
+
+cc_library(
+    name = "work_tile_size",
+    hdrs = ["work_tile_size.h"],
+    deps = [
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
     ],
 )

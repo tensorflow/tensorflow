@@ -22,7 +22,7 @@
 #include "absl/status/statusor.h"
 #include "absl/strings/cord.h"
 #include "absl/strings/string_view.h"
-#include "xla/python/ifrt/future.h"
+#include "xla/tsl/concurrency/future.h"
 
 namespace xla {
 namespace ifrt {
@@ -34,20 +34,20 @@ class ClientHostBufferStore {
 
   // Stores the data associated with the given handle. Returns an error if the
   // handle already exists.
-  virtual Future<> Store(uint64_t handle, absl::string_view data) = 0;
+  virtual tsl::Future<> Store(uint64_t handle, absl::string_view data) = 0;
 
   // Stores the data associated with the given handle. Returns an error if the
   // handle already exists.
   // TODO(b/315023499) Find a way to increase the chunk size
-  virtual Future<> Store(uint64_t handle, const absl::Cord& data) = 0;
+  virtual tsl::Future<> Store(uint64_t handle, const absl::Cord& data) = 0;
 
   // Retrieves the data associated with the handle. Returns an error if the
   // handle does not exist.
-  virtual Future<absl::Cord> Lookup(uint64_t handle) = 0;
+  virtual tsl::Future<absl::Cord> Lookup(uint64_t handle) = 0;
 
   // Deletes the host buffer associated with the handle. Returns an error if the
   // handle does not exist.
-  virtual Future<> Delete(uint64_t handle) = 0;
+  virtual tsl::Future<> Delete(uint64_t handle) = 0;
 };
 
 }  // namespace proxy

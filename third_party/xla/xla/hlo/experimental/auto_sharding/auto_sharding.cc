@@ -16,7 +16,6 @@ limitations under the License.
 #include "xla/hlo/experimental/auto_sharding/auto_sharding.h"
 
 #include <algorithm>
-#include <climits>
 #include <cstddef>
 #include <cstdint>
 #include <cstdlib>
@@ -48,7 +47,9 @@ limitations under the License.
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
+#include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/analysis/hlo_alias_analysis.h"
+#include "xla/hlo/experimental/auto_sharding/auto_sharding.pb.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_cost_graph.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_device_mesh.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_iopddl.h"
@@ -3510,8 +3511,8 @@ absl::flat_hash_set<const HloInstruction*> ComputeInstructionsToShard(
 }
 
 AutoShardingImplementation::AutoShardingImplementation(
-    const AutoShardingOption& option)
-    : option_(option) {}
+    const AutoShardingOption& option, const AliasInfo* alias_info)
+    : option_(option), alias_info_(alias_info) {}
 
 std::pair<int64_t, int64_t> ReduceMemoryTerms(
     int64_t num_primitives,
@@ -3558,13 +3559,14 @@ absl::StatusOr<bool> AutoShardingImplementation::RunAutoSharding(
   TF_ASSIGN_OR_RETURN(
       bool changed,
       ProcessShardingInstruction(
-          module, execution_threads, /*replace_sharding_with_copy=*/true,
+          module, execution_threads,
+          /*replace_sharding_with_copy=*/option_.replace_sharding_with_copy,
           &unspecified_dims, /*saved_root_shardings=*/nullptr,
           /*saved_parameter_shardings=*/nullptr,
           /*instruction_to_shard_group_id=*/nullptr,
           /*shard_group_id_to_shard_as_group=*/nullptr,
           /*shard_group_id_to_shard_like_group=*/nullptr,
-          /*allow_spmd_sharding_propagation_to_parameters_vector=*/nullptr,
+          /*allow_spmd_sharding_propagation_to_parameters_vector=*/{},
           /*remove_unknown_shardings=*/true));
 
   DumpHloModuleIfEnabled(*module, "after_spmd_calls");
@@ -3583,10 +3585,11 @@ absl::StatusOr<bool> AutoShardingImplementation::RunAutoSharding(
   };
   TF_ASSIGN_OR_RETURN(
       HloSchedule schedule,
-      ScheduleModule(module, DFSMemoryScheduler(size_fn), execution_threads));
+      ScheduleModule(module, DFSMemoryScheduler(alias_info_, size_fn),
+                     execution_threads));
   const HloComputation* entry_computation = module->entry_computation();
   std::unique_ptr<HloAliasAnalysis> alias_analysis =
-      HloAliasAnalysis::Run(module).value();
+      HloAliasAnalysis::Run(module, alias_info_).value();
 
   // Handle donated args by resolving them into input-output aliases. While we
   // want to perform this resolution, we do not want to modify the module, which
@@ -3822,7 +3825,8 @@ absl::StatusOr<bool> AutoShardingImplementation::RunAutoSharding(
       CHECK(instruction->has_sharding());
       CHECK(instruction->sharding().IsManual());
       CHECK(instruction->operand(0)->has_sharding());
-      CHECK(!instruction->operand(0)->sharding().IsManual());
+      CHECK(spmd::IsShardingCustomCall(instruction->operand(0)) ||
+            !instruction->operand(0)->sharding().IsManual());
     } else if (spmd::IsSPMDShardToFullShapeCustomCall(instruction)) {
       CHECK(instruction->has_sharding());
       CHECK(!instruction->sharding().IsManual());
@@ -3907,8 +3911,9 @@ absl::Status MoveComputationsFromModuleToModule(HloModule* from_module,
   return absl::OkStatus();
 }
 
-AutoSharding::AutoSharding(const AutoShardingOption& option)
-    : option_(option) {}
+AutoSharding::AutoSharding(const AutoShardingOption& option,
+                           const AliasInfo* alias_info)
+    : option_(option), alias_info_(alias_info) {}
 
 absl::Time DumpModuleAndRecordPassStart(const HloModule* module) {
   XLA_VLOG_LINES(6,
@@ -3951,7 +3956,7 @@ std::vector<int> FindAllIndices(std::vector<int64_t> vec, int64_t element) {
   return result;
 }
 
-absl::StatusOr<bool> AutoSharding::Run(
+absl::StatusOr<bool> AutoSharding::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   if (!option_.enable) {
@@ -4120,7 +4125,8 @@ absl::StatusOr<bool> AutoSharding::Run(
       }
     }
 
-    auto pass = std::make_unique<AutoShardingImplementation>(this_option);
+    auto pass =
+        std::make_unique<AutoShardingImplementation>(this_option, alias_info_);
     std::unique_ptr<HloModule> module_clone = CloneModule(module);
     absl::StatusOr<bool> pass_result =
         pass->RunAutoSharding(module_clone.get(), replicated_small_tensors,

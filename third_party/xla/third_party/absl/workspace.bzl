@@ -7,46 +7,25 @@ def repo():
 
     # Attention: tools parse and update these lines.
     # LINT.IfChange
-    ABSL_COMMIT = "fb3621f4f897824c0dbe0615fa94543df6192f30"
-    ABSL_SHA256 = "0320586856674d16b0b7a4d4afb22151bdc798490bb7f295eddd8f6a62b46fea"
+    ABSL_COMMIT = "987c57f325f7fa8472fa84e1f885f7534d391b0d"  # LTS 20250814.0
+    ABSL_SHA256 = "f56086f4cdb0ab9b7c3ac46831b1faba3753248d0f06f8bca4c917a1de2a560a"
     # LINT.ThenChange(//tensorflow/lite/tools/cmake/modules/abseil-cpp.cmake)
-
-    SYS_DIRS = [
-        "algorithm",
-        "base",
-        "cleanup",
-        "container",
-        "debugging",
-        "flags",
-        "functional",
-        "hash",
-        "memory",
-        "meta",
-        "numeric",
-        "random",
-        "status",
-        "strings",
-        "synchronization",
-        "time",
-        "types",
-        "utility",
-    ]
-    SYS_LINKS = {
-        "//third_party/absl:system.absl.{name}.BUILD".format(name = n): "absl/{name}/BUILD.bazel".format(name = n)
-        for n in SYS_DIRS
-    }
 
     tf_http_archive(
         name = "com_google_absl",
         sha256 = ABSL_SHA256,
-        build_file = "//third_party/absl:com_google_absl.BUILD",
-        system_build_file = "//third_party/absl:system.BUILD",
-        system_link_files = SYS_LINKS,
         strip_prefix = "abseil-cpp-{commit}".format(commit = ABSL_COMMIT),
         urls = tf_mirror_urls("https://github.com/abseil/abseil-cpp/archive/{commit}.tar.gz".format(commit = ABSL_COMMIT)),
         patch_file = [
-            "//third_party/absl:nvidia_jetson.patch",
+            "//third_party/absl:btree.patch",
             "//third_party/absl:build_dll.patch",
-            "//third_party/absl:nullability_macros.patch",
+            "//third_party/absl:endian.patch",
+            "//third_party/absl:rules_cc.patch",
+            "//third_party/absl:check_op.patch",
+            "//third_party/absl:check_op_2.patch",
         ],
+        repo_mapping = {
+            "@google_benchmark": "@com_google_benchmark",
+            "@googletest": "@com_google_googletest",
+        },
     )

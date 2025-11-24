@@ -54,7 +54,7 @@ void BM_ParseTensorName(::testing::benchmark::State& state) {
           name += rnd.OneIn(4) ? '0' : 'a';
         }
         if (rnd.OneIn(3)) {
-          strings::StrAppend(&name, ":", rnd.Uniform(12));
+          absl::StrAppend(&name, ":", rnd.Uniform(12));
         }
         break;
       }

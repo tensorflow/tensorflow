@@ -16,20 +16,17 @@ limitations under the License.
 #ifndef XLA_BACKENDS_GPU_CODEGEN_TRITON_COMPILATION_PIPELINE_H_
 #define XLA_BACKENDS_GPU_CODEGEN_TRITON_COMPILATION_PIPELINE_H_
 
-#include <string>
-
-#include "absl/status/status.h"
 #include "mlir/Pass/PassManager.h"
+#include "xla/stream_executor/device_description.h"
+#include "triton/Dialect/TritonNvidiaGPU/Transforms/Passes.h"
 
-namespace mlir::triton::nvidia_gpu {
+namespace xla::gpu {
 
-// Forward declaration to avoid including a GPU-only header.
-struct ClusterInfo;
-
-}  // namespace mlir::triton::nvidia_gpu
-
-namespace xla {
-namespace gpu {
+// Adds TritonXLA passes to the pipeline.
+void CreateTritonXlaPipeline(
+    mlir::OpPassManager* pm,
+    const stream_executor::GpuComputeCapability& gpu_cc, bool rewrite_int4,
+    bool allow_tma, int num_stages);
 
 // Creates a Triton compilation pipeline.
 //
@@ -40,12 +37,12 @@ namespace gpu {
 // are some signs that show that this was intended to be used as an in-out
 // parameter which would give a hint to Triton which cluster dims we prefer to
 // use, but that's not the case currently.
-absl::Status CreateTritonPipeline(
-    mlir::OpPassManager* pm, std::string arch_name, int num_warps, int num_ctas,
-    int num_stages, mlir::triton::nvidia_gpu::ClusterInfo& out_cluster_info,
-    bool is_xla_fusion);
+void CreateTritonPipeline(
+    mlir::OpPassManager* pm,
+    const stream_executor::GpuComputeCapability& gpu_cc, int num_warps,
+    int num_ctas, int num_stages,
+    mlir::triton::nvidia_gpu::ClusterInfo& out_cluster_info);
 
-}  // namespace gpu
-}  // namespace xla
+}  // namespace xla::gpu
 
 #endif  // XLA_BACKENDS_GPU_CODEGEN_TRITON_COMPILATION_PIPELINE_H_

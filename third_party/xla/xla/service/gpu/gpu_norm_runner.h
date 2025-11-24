@@ -23,17 +23,19 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/cublas_cudnn.h"
+#include "xla/service/gpu/gpu_norm_runner.pb.h"
 #include "xla/service/gpu/stream_executor_util.h"
 #include "xla/shape.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/lazy_op_runner.h"
-#include "xla/stream_executor/stream_executor.h"
+#include "xla/stream_executor/stream.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -65,6 +67,11 @@ struct GpuNormDescriptor {
   std::optional<Shape> dscale_shape;
   std::optional<Shape> dbias_shape;
   size_t scratch_size;
+
+  static absl::StatusOr<GpuNormDescriptor> FromProto(
+      const GpuNormDescriptorProto& proto);
+
+  GpuNormDescriptorProto ToProto() const;
 };
 
 // Structure to describe static properties of a fused norm op.

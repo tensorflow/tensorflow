@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
 
 #include <cstddef>
+#include <memory>
 #include <optional>
 #include <string>
 #include <vector>
@@ -52,14 +53,6 @@ void RecordPassStartMetadata(HloModule& module, const std::string& pass_name,
   TF_CHECK_OK(module.metadata()->set_current_pass_pipeline_name(pipeline_name));
 }
 
-void RecordPassStartMetadata(HloModuleGroup& module_group,
-                             const std::string& pass_name,
-                             const std::string& pipeline_name) {
-  for (HloModule* module : module_group.modules()) {
-    RecordPassStartMetadata(*module, pass_name, pipeline_name);
-  }
-}
-
 absl::Status AttemptRecordPassEndMetadata(HloModule& module,
                                           const std::string& pass_name,
                                           bool module_changed) {
@@ -81,42 +74,17 @@ void RecordPassEndMetadata(HloModule& module, const std::string& pass_name,
     LOG(FATAL) << status;
   }
 }
-
-absl::Status AttemptRecordPassEndMetadata(HloModuleGroup& module_group,
-                                          const std::string& pass_name,
-                                          bool module_changed) {
-  for (HloModule* module : module_group.modules()) {
-    for (HloModule* other_module : module_group.modules()) {
-      TF_RETURN_IF_ERROR(
-          module->metadata()->add_current_pass_module_group_module_id(
-              other_module->unique_id()));
-    }
-    TF_RETURN_IF_ERROR(
-        AttemptRecordPassEndMetadata(*module, pass_name, module_changed));
-  }
-  return absl::OkStatus();
-}
-
-void RecordPassEndMetadata(HloModuleGroup& module_group,
-                           const std::string& pass_name, bool module_changed) {
-  absl::Status status =
-      AttemptRecordPassEndMetadata(module_group, pass_name, module_changed);
-  if (!status.ok()) {
-    LOG(FATAL) << status;
-  }
-}
-
 }  // namespace
 
 template <typename HloT>
 absl::Status HloPassPipeline::RunInvariantCheckers(
-    HloT* hlo, absl::string_view after_pass_name,
+    HloT hlo, absl::string_view after_pass_name,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   tsl::profiler::TraceMe traceme("RunInvariantCheckers");
   for (auto& invariant_checker : invariant_checkers_) {
     VLOG(1) << "    Invariant checker " << invariant_checker->name();
     absl::StatusOr<bool> changed_status =
-        RunHelper(invariant_checker.get(), hlo, execution_threads);
+        RunHelper<HloT>(invariant_checker.get(), hlo, execution_threads);
     VLOG(1) << "    Invariant checker done " << invariant_checker->name();
     if (!changed_status.ok()) {
       VLOG(2) << "Failed invariant check:";
@@ -136,20 +104,14 @@ namespace {
 std::string UniqueId(const HloModule& mod) {
   return std::to_string(mod.unique_id());
 }
-std::string UniqueId(const HloModuleGroup& group) {
-  return absl::StrJoin(group.modules(), "-",
-                       [](std::string* out, const HloModule* mod) {
-                         out->append(std::to_string(mod->unique_id()));
-                       });
-}
 
 template <typename HloT>
-static void VerifyPassChangedReport(const HloT* hlo, bool pass_changed,
+static void VerifyPassChangedReport(const HloT hlo, bool pass_changed,
                                     const DebugOptions& debug_options,
                                     absl::string_view pass_name,
                                     absl::string_view pipeline_name,
                                     size_t hash_before) {
-  size_t hash_after = absl::HashOf(hlo);
+  size_t hash_after = absl::HashOf(*hlo);
   // Fail if pass changed HLO but has reported that it didn't.
   if (!pass_changed && hash_after != hash_before &&
       debug_options.xla_unsupported_crash_on_hlo_pass_silent_hlo_change()) {
@@ -173,7 +135,7 @@ static void VerifyPassChangedReport(const HloT* hlo, bool pass_changed,
 
 template <typename HloT>
 absl::StatusOr<bool> HloPassPipeline::RunPassesInternal(
-    HloT* hlo, const DebugOptions& debug_options,
+    HloT hlo, const DebugOptions& debug_options,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   auto passes = GetEnabledPasses(debug_options);
   // Copy string by value since debug options could get clobbered in an hlo
@@ -188,7 +150,7 @@ absl::StatusOr<bool> HloPassPipeline::RunPassesInternal(
   }};
 
   TF_RETURN_IF_ERROR(
-      RunInvariantCheckers(hlo, kPipelineStart, execution_threads));
+      RunInvariantCheckers<HloT>(hlo, kPipelineStart, execution_threads));
 
   RecordPassStartMetadata(*hlo, std::string(kPipelineStart), pipeline_name);
   MaybeDumpHloAndSaveFilenames(*hlo,
@@ -217,20 +179,21 @@ absl::StatusOr<bool> HloPassPipeline::RunPassesInternal(
       hash_before = absl::HashOf(*hlo);
       VLOG(2) << "  Module hash " << hash_before.value();
     }
+    VLOG(2) << "  Number of instructions: " << hlo->instruction_count();
     tsl::profiler::TraceMe traceme(pass->name());
     if (!pass->IsPassPipeline()) {
       compilation_stats_->StartPass(pass_name);
     }
     RecordPassStartMetadata(*hlo, pass_name, pipeline_name);
-    auto status_or_changed = RunHelper(pass, hlo, execution_threads);
+    auto status_or_changed = RunHelper<HloT>(pass, hlo, execution_threads);
     if (auto status = status_or_changed.status(); !status.ok()) {
       compilation_stats_->RecordPassError(
           pass_name, absl::StatusCodeToString(status.code()));
     }
     TF_ASSIGN_OR_RETURN(bool pass_changed, status_or_changed);
     if (verify_pass_changed_report) {
-      VerifyPassChangedReport(hlo, pass_changed, debug_options, pass_name,
-                              pipeline_name, hash_before.value());
+      VerifyPassChangedReport<HloT>(hlo, pass_changed, debug_options, pass_name,
+                                    pipeline_name, hash_before.value());
     }
     if (!dump_regex.empty() && (pass_changed || dump_regex != ".*")) {
       MaybeDumpHloAndSaveFilenames(*hlo,
@@ -243,7 +206,8 @@ absl::StatusOr<bool> HloPassPipeline::RunPassesInternal(
     changed |= pass_changed;
     if (pass_changed) {
       VLOG(3) << "  Pass caused changes " << pass_name;
-      auto status = RunInvariantCheckers(hlo, pass_name, execution_threads);
+      auto status =
+          RunInvariantCheckers<HloT>(hlo, pass_name, execution_threads);
       if (!status.ok()) {
         compilation_stats_->RecordPassError(
             pass_name, absl::StatusCodeToString(status.code()));
@@ -326,15 +290,7 @@ void HloPassPipeline::MaybeDumpHloAndSaveFilenames(
   }
 }
 
-void HloPassPipeline::MaybeDumpHloAndSaveFilenames(
-    HloModuleGroup& module_group, absl::string_view after_pass_name,
-    absl::string_view before_pass_name) {
-  for (HloModule* module : module_group.modules()) {
-    MaybeDumpHloAndSaveFilenames(*module, after_pass_name, before_pass_name);
-  }
-}
-
-absl::StatusOr<bool> HloPassPipeline::Run(
+absl::StatusOr<bool> HloPassPipeline::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   run_called_ = true;
@@ -348,22 +304,19 @@ absl::StatusOr<bool> HloPassPipeline::Run(
   return RunPassesInternal(module, debug_options, execution_threads);
 }
 
-absl::StatusOr<bool> HloPassPipeline::RunOnModuleGroup(
-    HloModuleGroup* module_group,
+absl::StatusOr<bool> HloPassPipeline::RunImpl(
+    std::unique_ptr<HloModule>& module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   run_called_ = true;
 
-  VLOG(1) << "Running HLO pass pipeline on module group "
-          << module_group->name() << ": " << name();
+  VLOG(1) << "Running HLO pass pipeline on module " << module->name() << ": "
+          << name();
 
-  if (module_group->modules().empty()) {
-    VLOG(1) << "Module group is empty. Nothing to do.";
-    return false;
-  }
-
+  tsl::profiler::TraceMe traceme(name());
   // Copy debug options by value as passes may modify module config.
-  DebugOptions debug_options = module_group->module(0).config().debug_options();
-  return RunPassesInternal(module_group, debug_options, execution_threads);
+  DebugOptions debug_options = module->config().debug_options();
+  return RunPassesInternal<std::unique_ptr<HloModule>&>(module, debug_options,
+                                                        execution_threads);
 }
 
 }  // namespace xla

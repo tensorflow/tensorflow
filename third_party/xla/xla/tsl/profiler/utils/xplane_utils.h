@@ -153,8 +153,12 @@ std::vector<Event> GetSortedEvents(Plane& plane,
 }
 
 // Normalize timestamps by time-shifting to start_time_ns_ as origin.
-void NormalizeTimestamps(XPlane* plane, uint64 start_time_ns);
-void NormalizeTimestamps(XSpace* space, uint64 start_time_ns);
+void NormalizeTimestamps(XPlane* plane, uint64_t start_time_ns);
+void NormalizeTimestamps(XSpace* space, uint64_t start_time_ns);
+
+// Denormalize timestamps by time-shifting to 0 as origin.
+void DenormalizeTimestamps(XPlane* plane, uint64_t start_time_ns);
+void DenormalizeTimestamps(XSpace* space, uint64_t start_time_ns);
 
 // Merges src_plane into dst_plane. Both plane level stats, lines, events and
 // event level stats are merged. If src_plane and dst_plane both have the same
@@ -255,6 +259,8 @@ class AncestorStack {
       stack_.pop_back();
     }
   }
+
+  const AncestorType& Peek() const { return stack_.back(); }
 
  private:
   const PopFn pop_fn_;

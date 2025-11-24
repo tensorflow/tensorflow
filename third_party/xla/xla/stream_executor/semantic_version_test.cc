@@ -23,10 +23,10 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/hash/hash_testing.h"
 #include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
-#include "tsl/platform/status_matchers.h"
 #include "tsl/platform/test.h"
 
 namespace stream_executor {
@@ -60,7 +60,7 @@ TEST(SemanticVersion, Mutation) {
 TEST(SemanticVersion, ParseFromStringSuccess) {
   absl::StatusOr<SemanticVersion> version =
       SemanticVersion::ParseFromString("1.2.3");
-  ASSERT_THAT(version, tsl::testing::IsOk());
+  ASSERT_THAT(version, absl_testing::IsOk());
   EXPECT_EQ(version->major(), 1);
   EXPECT_EQ(version->minor(), 2);
   EXPECT_EQ(version->patch(), 3);
@@ -71,7 +71,7 @@ TEST(SemanticVersion, ParseFromStringInvalid) {
     absl::StatusOr<SemanticVersion> version =
         SemanticVersion::ParseFromString(str);
     EXPECT_THAT(version,
-                tsl::testing::StatusIs(absl::StatusCode::kInvalidArgument));
+                absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
   };
 
   test("1.2");

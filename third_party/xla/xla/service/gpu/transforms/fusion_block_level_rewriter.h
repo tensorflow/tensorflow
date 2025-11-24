@@ -16,13 +16,10 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_TRANSFORMS_FUSION_BLOCK_LEVEL_REWRITER_H_
 #define XLA_SERVICE_GPU_TRANSFORMS_FUSION_BLOCK_LEVEL_REWRITER_H_
 
-#include <utility>
-
 #include "absl/container/flat_hash_set.h"
-#include "absl/functional/any_invocable.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "xla/hlo/ir/hlo_instructions.h"
+#include "mlir/IR/MLIRContext.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
 #include "xla/service/hlo_cost_analysis.h"
@@ -36,26 +33,24 @@ class FusionBlockLevelRewriter : public HloModulePass {
   explicit FusionBlockLevelRewriter(
       const se::DeviceDescription& device_info,
       HloCostAnalysis::ShapeSizeFunction shape_size,
-      absl::AnyInvocable<absl::StatusOr<bool>(const HloFusionInstruction*)>
-          should_try_rewrite_if)
+      mlir::MLIRContext* mlir_context)
       : device_info_(device_info),
         shape_size_(shape_size),
-        should_try_rewrite_if_(std::move(should_try_rewrite_if)) {}
+        mlir_context_(mlir_context) {}
 
   absl::string_view name() const override {
     return "fusion-block-level-rewriter";
   }
 
-  using HloPassInterface::Run;
-  absl::StatusOr<bool> Run(
+ protected:
+  absl::StatusOr<bool> RunImpl(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
  private:
   const se::DeviceDescription& device_info_;
   HloCostAnalysis::ShapeSizeFunction shape_size_;
-  absl::AnyInvocable<absl::StatusOr<bool>(const HloFusionInstruction*)>
-      should_try_rewrite_if_;
+  mlir::MLIRContext* mlir_context_;
 };
 
 }  // namespace gpu

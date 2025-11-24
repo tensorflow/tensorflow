@@ -40,6 +40,7 @@ enum class InputFormat {
                                     // format. Can be dumped by TensorFlow by
                                     // setting the flag xla_dump_hlo_snapshots
                                     // in conjunction with xla_dump_as_text.
+  kSerializedPjRtExecutable,        // Serialized PJRT executable.
 };
 
 bool AbslParseFlag(absl::string_view text, InputFormat* input_format,

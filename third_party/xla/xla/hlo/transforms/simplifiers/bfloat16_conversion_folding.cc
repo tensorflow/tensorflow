@@ -177,6 +177,7 @@ absl::Status BFloat16ConversionFoldingVisitor::DefaultAction(
       hlo->opcode() == HloOpcode::kConstant ||                          //
       hlo->opcode() == HloOpcode::kParameter ||                         //
       hlo->opcode() == HloOpcode::kFusion ||                            //
+      hlo->opcode() == HloOpcode::kBitcast ||                           //
       hlo->opcode() == HloOpcode::kBitcastConvert ||                    //
       hlo->opcode() == HloOpcode::kConvert ||                           //
       hlo->opcode() == HloOpcode::kCall ||                              //
@@ -185,6 +186,7 @@ absl::Status BFloat16ConversionFoldingVisitor::DefaultAction(
       hlo->opcode() == HloOpcode::kConditional ||                       //
       hlo->opcode() == HloOpcode::kAsyncStart ||                        //
       hlo->opcode() == HloOpcode::kAsyncDone ||                         //
+      hlo->opcode() == HloOpcode::kOptimizationBarrier ||               //
       !HloDataflowAnalysis::GetInPlaceInputOutputPairs(hlo).empty() ||  //
       hlo->HasSideEffectNoRecurse()) {
     return absl::OkStatus();
@@ -266,11 +268,11 @@ absl::Status BFloat16ConversionFoldingVisitor::HandleAllReduce(
   return absl::OkStatus();
 }
 
-absl::StatusOr<bool> BFloat16ConversionFolding::Run(
+absl::StatusOr<bool> BFloat16ConversionFolding::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
-  XLA_VLOG_LINES(
-      2, "BFloat16ConversionFolding::Run(), before:\n" + module->ToString());
+  XLA_VLOG_LINES(2, "BFloat16ConversionFolding::RunImpl(), before:\n" +
+                        module->ToString());
   bool changed = false;
   for (auto* comp : module->MakeNonfusionComputations(execution_threads)) {
     if (BFloat16ConversionFoldingVisitor::Run(comp, bfloat16_support_, this)) {
@@ -278,7 +280,7 @@ absl::StatusOr<bool> BFloat16ConversionFolding::Run(
     }
   }
   XLA_VLOG_LINES(
-      2, "BFloat16ConversionFolding::Run(), after:\n" + module->ToString());
+      2, "BFloat16ConversionFolding::RunImpl(), after:\n" + module->ToString());
   return changed;
 }
 

@@ -56,7 +56,7 @@ Registry* registry() {
 
 void RegisterClientFactory(absl::string_view transport_name,
                            FactoryFn factory) {
-  absl::MutexLock l(&registry()->mu);
+  absl::MutexLock l(registry()->mu);
   const bool inserted =
       registry()
           ->factories.insert({std::string(transport_name), factory})
@@ -85,7 +85,7 @@ absl::StatusOr<std::unique_ptr<xla::ifrt::Client>> CreateClient(
 
   FactoryFn factory;
   {
-    absl::MutexLock l(&registry()->mu);
+    absl::MutexLock l(registry()->mu);
     const auto it = registry()->factories.find(transport_name);
     if (it == registry()->factories.end()) {
       return absl::NotFoundError(

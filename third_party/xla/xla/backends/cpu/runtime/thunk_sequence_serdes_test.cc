@@ -80,6 +80,10 @@ limitations under the License.
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/casts.h"
 
+#ifdef XLA_YNNPACK
+#include "xla/backends/cpu/runtime/ynnpack/ynn_fusion_thunk.h"
+#endif  // XLA_YNNPACK
+
 namespace xla::cpu {
 namespace {
 
@@ -215,8 +219,8 @@ class ThunkSequenceSerdesTest : public ::testing::Test {
 
  public:
   void SetUp() override {
-    thunk_sequence_serdes_ =
-        std::make_unique<T>(&buffer_allocations_.GetUnderlyingVector());
+    thunk_sequence_serdes_ = std::make_unique<T>(
+        nullptr, &buffer_allocations_.GetUnderlyingVector());
   }
 
  protected:
@@ -226,6 +230,13 @@ class ThunkSequenceSerdesTest : public ::testing::Test {
       TF_RETURN_IF_ERROR(buffer_allocations_.push_back(CreateBufferAllocation(
           buffer_allocations_.size(), literals_.back())));
     }
+
+    return absl::OkStatus();
+  }
+  absl::Status AddPredBufferAllocation() {
+    literals_.push_back(LiteralUtil::CreateFull<bool>({1}, false));
+    TF_RETURN_IF_ERROR(buffer_allocations_.push_back(
+        CreateBufferAllocation(buffer_allocations_.size(), literals_.back())));
 
     return absl::OkStatus();
   }
@@ -420,7 +431,7 @@ class ThunkSequenceSerdesTest : public ::testing::Test {
       branch_sequences.push_back(std::move(called_sequence));
     }
 
-    TF_RETURN_IF_ERROR(AddBufferAllocations(1));
+    TF_RETURN_IF_ERROR(AddPredBufferAllocation());
 
     return ConditionalThunk::Create(
         Thunk::Info(),
@@ -431,7 +442,8 @@ class ThunkSequenceSerdesTest : public ::testing::Test {
   }
 
   absl::StatusOr<std::unique_ptr<Thunk>> CreateCustomCallThunk() {
-    TF_RETURN_IF_ERROR(AddBufferAllocations(2));
+    TF_RETURN_IF_ERROR(AddPredBufferAllocation());
+    TF_RETURN_IF_ERROR(AddBufferAllocations(1));
 
     return CustomCallThunk::Create(
         Thunk::Info(), "no_op",
@@ -571,7 +583,6 @@ class ThunkSequenceSerdesTest : public ::testing::Test {
         /*batch_size=*/1,
         /*input_size=*/1,
         /*k=*/2
-
     );
   }
 
@@ -584,7 +595,7 @@ class ThunkSequenceSerdesTest : public ::testing::Test {
     TF_ASSIGN_OR_RETURN(body_sequence.emplace_back(), CreateAllReduceThunk());
     TF_ASSIGN_OR_RETURN(body_sequence.emplace_back(), CreateAllToAllThunk());
 
-    TF_RETURN_IF_ERROR(AddBufferAllocations(1));
+    TF_RETURN_IF_ERROR(AddPredBufferAllocation());
     return WhileThunk::Create(
         Thunk::Info(),
         /*cond_buffer=*/
@@ -1103,6 +1114,15 @@ class ThunkSequenceSerdesTest : public ::testing::Test {
     return false;
   }
 
+#ifdef XLA_YNNPACK
+  bool VerifyYnnFusionThunkEquality(const YnnFusionThunk& thunk_1,
+                                    const YnnFusionThunk& thunk_2) {
+    // TODO(ashaposhnikov) assume this is always false until we implement
+    // serialization of YnnFusionThunk.
+    return false;
+  }
+#endif  // XLA_YNNPACK
+
   bool VerifyXnnDotThunkEquality(const XnnDotThunk& thunk_1,
                                  const XnnDotThunk& thunk_2) {
     const bool are_dot_dimensions_equal =
@@ -1411,6 +1431,24 @@ class ThunkSequenceSerdesTest : public ::testing::Test {
                 tsl::down_cast<const XnnConvolutionThunk&>(thunk_1),
                 tsl::down_cast<const XnnConvolutionThunk&>(thunk_2));
         }
+      }
+      case Thunk::Kind::kYnnFusion: {
+#ifdef XLA_YNNPACK
+        const YnnFusionThunk& ynn_fusion_thunk_1 =
+            tsl::down_cast<const YnnFusionThunk&>(thunk_1);
+        const YnnFusionThunk& ynn_fusion_thunk_2 =
+            tsl::down_cast<const YnnFusionThunk&>(thunk_2);
+        if (ynn_fusion_thunk_1.ynn_fusion_kind() !=
+            ynn_fusion_thunk_2.ynn_fusion_kind()) {
+          return false;
+        }
+        return VerifyYnnFusionThunkEquality(
+            tsl::down_cast<const YnnFusionThunk&>(thunk_1),
+            tsl::down_cast<const YnnFusionThunk&>(thunk_2));
+#else
+        CHECK(false) << "Unsupported YNN fusion thunk type";
+        return false;
+#endif  // XLA_YNNPACK
       }
       case Thunk::Kind::kKernel:
         return VerifyKernelThunkEquality(

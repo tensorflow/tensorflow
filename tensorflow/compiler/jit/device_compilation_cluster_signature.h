@@ -16,18 +16,37 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_JIT_DEVICE_COMPILATION_CLUSTER_SIGNATURE_H_
 #define TENSORFLOW_COMPILER_JIT_DEVICE_COMPILATION_CLUSTER_SIGNATURE_H_
 
+#include <cstdint>
+#include <string>
 #include <utility>
 #include <variant>
 
+#include "absl/container/inlined_vector.h"
+#include "absl/status/statusor.h"
+#include "absl/types/span.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
+#include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/node_def_util.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
+
+// Pre-computed device compilation canonical function.
+struct DeviceCompilationCanonicalFunction {
+  std::string canonical;
+};
+
+inline DeviceCompilationCanonicalFunction Canonicalize(
+    const NameAttrList& function) {
+  return {Canonicalize(function.name(), AttrSlice(&function.attr()))};
+}
 
 // Describes the types, shapes and any compile-time constant arguments
 // to a kernel. Key that uniquely identifies a compilation output.
 struct DeviceCompilationClusterSignature {
   // Name of the cluster, built from the function name and it's attributes.
-  string name;
+  std::string name;
 
   // List of args (either as a TensorTypeAndShape or as a Tensor value)
   // for compile-time constant arguments to the compilation, ordered by
@@ -39,15 +58,20 @@ struct DeviceCompilationClusterSignature {
   bool operator==(const DeviceCompilationClusterSignature& other) const;
 
   struct Hash {
-    uint64 operator()(const DeviceCompilationClusterSignature& signature) const;
+    uint64_t operator()(
+        const DeviceCompilationClusterSignature& signature) const;
   };
 
   // Returns a human-readable description of the signature.
-  string HumanString() const;
+  std::string HumanString() const;
 
   // Builds the signature for a compilation.
   static absl::StatusOr<DeviceCompilationClusterSignature> Build(
       const NameAttrList& function,
+      absl::Span<const XlaCompiler::Argument> args);
+
+  static absl::StatusOr<DeviceCompilationClusterSignature> Build(
+      const DeviceCompilationCanonicalFunction& canonical_function,
       absl::Span<const XlaCompiler::Argument> args);
 };
 

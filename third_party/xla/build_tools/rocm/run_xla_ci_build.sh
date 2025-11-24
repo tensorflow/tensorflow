@@ -18,29 +18,22 @@
 set -e
 set -x
 
-CONFIG=$1
-DISK_CACHE_PATH=$2
+SCRIPT_DIR=$(realpath $(dirname $0))
+TAG_FILTERS=$($SCRIPT_DIR/rocm_tag_filters.sh),gpu,-multi_gpu,-multi_gpu_h100,requires-gpu-amd,,-skip_rocprofiler_sdk,-no_oss,-oss_excluded,-oss_serial
 
-ASAN_ARGS=()
-if [[ $CONFIG == "rocm_ci_hermetic" ]]; then
-	ASAN_ARGS+=("--test_env=ASAN_OPTIONS=suppressions=$(realpath $(dirname $0))/asan_ignore_list.txt")
-	ASAN_ARGS+=("--test_env=LSAN_OPTIONS=suppressions=$(realpath $(dirname $0))/lsan_ignore_list.txt")
-	ASAN_ARGS+=("--config=asan")
+if [ ! -d /tf/pkg ]; then
+	mkdir -p /tf/pkg
 fi
 
-bazel --bazelrc=/usertools/rocm.bazelrc test \
-	--config=${CONFIG} \
-	--config=xla_cpp \
-	--disk_cache=${DISK_CACHE_PATH} \
-	--test_tag_filters=gpu,requires-gpu-amd,-requires-gpu-nvidia,-no_oss,-oss_excluded,-oss_serial,-no_gpu,-no_rocm,-requires-gpu-sm60,-requires-gpu-sm60-only,-requires-gpu-sm70,-requires-gpu-sm70-only,-requires-gpu-sm80,-requires-gpu-sm80-only,-requires-gpu-sm86,-requires-gpu-sm86-only,-requires-gpu-sm89,-requires-gpu-sm89-only,-requires-gpu-sm90,-requires-gpu-sm90-only \
-	--build_tag_filters=gpu,requires-gpu-amd,-requires-gpu-nvidia,-no_oss,-oss_excluded,-oss_serial,-no_gpu,-no_rocm,-requires-gpu-sm60,-requires-gpu-sm60-only,-requires-gpu-sm70,-requires-gpu-sm70-only,-requires-gpu-sm80,-requires-gpu-sm80-only,-requires-gpu-sm86,-requires-gpu-sm86-only,-requires-gpu-sm89,-requires-gpu-sm89-only,-requires-gpu-sm90,-requires-gpu-sm90-only \
+SCRIPT_DIR=$(dirname $0)
+bazel --bazelrc="$SCRIPT_DIR/rocm_xla_ci.bazelrc" test \
+	--build_tag_filters=$TAG_FILTERS \
+    --test_tag_filters=$TAG_FILTERS \
 	--profile=/tf/pkg/profile.json.gz \
 	--keep_going \
 	--test_env=TF_TESTS_PER_GPU=1 \
-	--test_env=TF_GPU_COUNT=2 \
-	--action_env=XLA_FLAGS=--xla_gpu_force_compilation_parallelism=16 \
-	--action_env=XLA_FLAGS=--xla_gpu_enable_llvm_module_compilation_parallelism=true \
+	--action_env=XLA_FLAGS="--xla_gpu_enable_llvm_module_compilation_parallelism=true --xla_gpu_force_compilation_parallelism=16" \
 	--test_output=errors \
 	--local_test_jobs=2 \
-	--run_under=//tools/ci_build/gpu_build:parallel_gpu_execute \
-	"${ASAN_ARGS[@]}"
+	--run_under=//build_tools/rocm:parallel_gpu_execute \
+	"$@"

@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "xla/service/gpu/model/experimental/symbolic_tile.h"
 
+#include <cstdint>
+
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "mlir/IR/AffineExpr.h"
@@ -22,14 +24,26 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"
 #include "xla/hlo/analysis/indexing_test_utils.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
+#include "xla/service/gpu/model/experimental/tiling_space.h"
 
-namespace xla::gpu {
+namespace xla::gpu::experimental {
 namespace {
 
 using ::mlir::AffineExpr;
-using ::mlir::AffineMap;
 
 using SymbolicTileTest = HloHardwareIndependentTestBase;
+
+TilingSpace GetFakeTilingSpace(int64_t num_dims, int64_t num_rt_vars) {
+  TilingSpace tiling_space;
+  for (int64_t i = 0; i < num_dims; ++i) {
+    tiling_space.AppendDimension(nullptr, i, 1,
+                                 TilingSpace::DimensionSemantics::kParallel);
+  }
+  for (int64_t i = 0; i < num_rt_vars; ++i) {
+    tiling_space.AppendRTVar(nullptr, i, nullptr, 1);
+  }
+  return tiling_space;
+}
 
 TEST_F(SymbolicTileTest, StringFormat) {
   mlir::MLIRContext mlir_context;
@@ -37,19 +51,23 @@ TEST_F(SymbolicTileTest, StringFormat) {
   mlir::bindDims(&mlir_context, tid0, tid1);
   mlir::bindSymbols(&mlir_context, ts0, ts1, rt);
   auto c1 = mlir::getAffineConstantExpr(1, &mlir_context);
+  auto c16 = mlir::getAffineConstantExpr(16, &mlir_context);
+  auto c32 = mlir::getAffineConstantExpr(32, &mlir_context);
 
-  auto map = AffineMap::get(
-      2, 3, {tid0 * ts0, rt + tid1 * ts1, ts0, ts1, c1, c1}, &mlir_context);
-  ExperimentalSymbolicTile tile{map, {nullptr}};
+  TilingSpace tiling_space =
+      GetFakeTilingSpace(/*num_dims=*/2, /*num_rt_vars=*/1);
+  SymbolicTile tile{tiling_space,
+                    {DimTile{tid0 * ts0, ts0, c1, c16},
+                     DimTile{rt + tid1 * ts1, ts1, c1, c32}}};
 
   EXPECT_THAT(tile.ToString(), MatchIndexingString(R"(
     (tid_0, tid_1)[ts_0, ts_1]{rt_0} ->
-      [tid_0 * ts_0, tid_1 * ts_1 + rt_0]
-      [ts_0, ts_1]
-      [1, 1]
-      rt_0: nullptr
+      offsets [tid_0 * ts_0, tid_1 * ts_1 + rt_0]
+      sizes [ts_0, ts_1]
+      strides [1, 1]
+      upper bounds [16, 32]
   )"));
 }
 
 }  // namespace
-}  // namespace xla::gpu
+}  // namespace xla::gpu::experimental

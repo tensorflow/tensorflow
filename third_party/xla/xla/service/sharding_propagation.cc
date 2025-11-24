@@ -16,14 +16,13 @@ limitations under the License.
 #include "xla/service/sharding_propagation.h"
 
 #include <algorithm>
+#include <array>
 #include <cstdint>
 #include <functional>
 #include <iterator>
-#include <list>
 #include <map>
 #include <memory>
 #include <optional>
-#include <string>
 #include <tuple>
 #include <utility>
 #include <vector>
@@ -34,6 +33,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -57,11 +57,10 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/sharding_op_util.h"
 #include "xla/status_macros.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/logging.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -216,9 +215,14 @@ const HloInstruction* PickRepresentativeOperand(
       }
       return nullptr;
     case HloOpcode::kAbs:
+    case HloOpcode::kAsin:
+    case HloOpcode::kAsinh:
+    case HloOpcode::kAcos:
+    case HloOpcode::kAcosh:
     case HloOpcode::kAdd:
     case HloOpcode::kAnd:
     case HloOpcode::kAtan2:
+    case HloOpcode::kAtanh:
     case HloOpcode::kBitcastConvert:
     case HloOpcode::kCeil:
     case HloOpcode::kClamp:
@@ -229,6 +233,7 @@ const HloInstruction* PickRepresentativeOperand(
     case HloOpcode::kConvert:
     case HloOpcode::kCopy:
     case HloOpcode::kCos:
+    case HloOpcode::kCosh:
     case HloOpcode::kAllGather:
     case HloOpcode::kAllReduce:
     case HloOpcode::kReduceScatter:
@@ -261,6 +266,7 @@ const HloInstruction* PickRepresentativeOperand(
     case HloOpcode::kSelect:
     case HloOpcode::kSign:
     case HloOpcode::kSin:
+    case HloOpcode::kSinh:
     case HloOpcode::kTopK:
     case HloOpcode::kSort:
     case HloOpcode::kSqrt:
@@ -338,6 +344,7 @@ const HloInstruction* PickRepresentativeOperand(
     case HloOpcode::kRng:
     case HloOpcode::kRngGetAndUpdateState:
     case HloOpcode::kRngBitGenerator:
+    case HloOpcode::kScaledDot:
     case HloOpcode::kScatter:
     case HloOpcode::kSelectAndScatter:
     case HloOpcode::kSend:
@@ -1308,7 +1315,7 @@ bool InferReduceShardingFromOperand(HloInstruction* instruction,
     if (instruction->shape().IsArray()) {
       return sharding;
     }
-    std::vector<HloSharding> tuple(instruction->shape().tuple_shapes_size(),
+    std::vector<HloSharding> tuple(instruction->shape().tuple_shapes().size(),
                                    std::move(sharding));
     return HloSharding::Tuple(instruction->shape(), tuple);
   };
@@ -1386,8 +1393,7 @@ absl::StatusOr<bool> ProcessShardingInstruction(
         shard_group_id_to_shard_as_group,
     absl::flat_hash_map<int64_t, std::vector<HloInstruction*>>*
         shard_group_id_to_shard_like_group,
-    const std::vector<bool>*
-        allow_spmd_sharding_propagation_to_parameters_vector,
+    absl::Span<const bool> allow_spmd_sharding_propagation_to_parameters_vector,
     bool remove_unknown_shardings) {
   bool changed = false;
 
@@ -1405,11 +1411,10 @@ absl::StatusOr<bool> ProcessShardingInstruction(
           instruction->sharding().IsShardGroup()) {
         if (instruction->IsCustomCall("Sharding")) {
           CHECK(instruction->operand(0)->opcode() != HloOpcode::kParameter ||
-                (allow_spmd_sharding_propagation_to_parameters_vector &&
-                 allow_spmd_sharding_propagation_to_parameters_vector->size() ==
+                (allow_spmd_sharding_propagation_to_parameters_vector.size() ==
                      module->entry_computation()->num_parameters() &&
-                 allow_spmd_sharding_propagation_to_parameters_vector->at(
-                     instruction->operand(0)->parameter_number())));
+                 allow_spmd_sharding_propagation_to_parameters_vector
+                     [instruction->operand(0)->parameter_number()]));
         }
         if (instruction->IsCustomCall("Sharding") && !replaced_with_copy) {
           // Pass shard group to operand sharding custom-call if it's not
@@ -1740,7 +1745,7 @@ std::optional<HloSharding> ShardingPropagation::GetShardingFromUser(
           user.shape(), {user.operand_index(&instruction)});
       // In case the instruction is used as the operands multiple times within
       // this tuple, we will return the most specific sharding and propagate up.
-      for (int64_t i = 0; i < user.shape().tuple_shapes_size(); ++i) {
+      for (int64_t i = 0; i < user.shape().tuple_shapes().size(); ++i) {
         if (user.operand(i) == &instruction) {
           // Only evaluate GetSubSharding if this operand is of interest,
           // as it is relatively expensive.
@@ -1756,7 +1761,7 @@ std::optional<HloSharding> ShardingPropagation::GetShardingFromUser(
     }
     case HloOpcode::kGetTupleElement: {
       int64_t sharding_index = 0;
-      for (int i = 0; i < instruction.shape().tuple_shapes_size(); ++i) {
+      for (int i = 0; i < instruction.shape().tuple_shapes().size(); ++i) {
         if (i == user.tuple_index()) {
           break;
         }
@@ -2164,7 +2169,7 @@ bool ShardingPropagation::InferShardingFromOperands(
     if (instruction->shape().IsArray()) {
       return sharding;
     }
-    std::vector<HloSharding> tuple(instruction->shape().tuple_shapes_size(),
+    std::vector<HloSharding> tuple(instruction->shape().tuple_shapes().size(),
                                    std::move(sharding));
     return HloSharding::Tuple(instruction->shape(), tuple);
   };
@@ -3114,9 +3119,13 @@ std::vector<HloInstruction*> ShardingPropagation::GetRelatedInstructions(
   }
 };
 
-absl::StatusOr<bool> ShardingPropagation::Run(
+absl::StatusOr<bool> ShardingPropagation::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
+  LOG(WARNING) << "GSPMD sharding propagation is going to be deprecated and "
+                  "not supported in the future. Please consider migrating to "
+                  "Shardy (https://openxla.org/shardy). For reference, Shardy "
+                  "is already the default partitioner in JAX.";
   // Register custom-call partitioner for SharBarrierFrom and ShardBarrierTo.
   ABSL_CONST_INIT static absl::once_flag did_registration;
   absl::call_once(did_registration, [] {
@@ -3179,7 +3188,7 @@ absl::StatusOr<bool> ShardingPropagation::Run(
               : nullptr,
           &instruction_to_shard_group_id, &shard_group_id_to_shard_as_group,
           &shard_group_id_to_shard_like_group,
-          &allow_spmd_sharding_propagation_to_parameters_vector_));
+          allow_spmd_sharding_propagation_to_parameters_vector_));
   any_changed |= changed;
 
   for (const auto& [shard_group_id, shard_as_group] :
@@ -3220,7 +3229,7 @@ absl::StatusOr<bool> ShardingPropagation::Run(
       HloInstruction* param =
           module->entry_computation()->parameter_instruction(0);
       return param->shape().IsTuple() &&
-             size == param->shape().tuple_shapes_size();
+             size == param->shape().tuple_shapes().size();
     };
     auto size = allow_spmd_sharding_propagation_to_parameters_vector_.size();
     CHECK(size == 1 || size == module->entry_computation()->num_parameters() ||
@@ -3511,12 +3520,12 @@ absl::StatusOr<bool> ShardingPropagation::Run(
       }
     } else if (params.size() == 1 && saved_parameter_shardings.size() == 1 &&
                params[0]->shape().IsTuple() &&
-               params[0]->shape().tuple_shapes_size() ==
+               params[0]->shape().tuple_shapes().size() ==
                    allow_spmd_sharding_propagation_to_parameters_vector_
                        .size()) {
       // There is a single parameter which is a tuple with many elements.
       HloSharding param_sharding = params[0]->sharding();
-      for (int64_t i = 0; i < params[0]->shape().tuple_shapes_size(); ++i) {
+      for (int64_t i = 0; i < params[0]->shape().tuple_shapes().size(); ++i) {
         HloSharding saved_subsharding =
             saved_parameter_shardings.at(0).GetSubSharding(params[0]->shape(),
                                                            {i});
@@ -3558,11 +3567,11 @@ absl::StatusOr<bool> ShardingPropagation::Run(
       root_instruction->has_sharding()) {
     if (root_instruction->shape().IsTuple() &&
         allow_spmd_sharding_propagation_to_output_vector_.size() ==
-            root_instruction->shape().tuple_shapes_size()) {
+            root_instruction->shape().tuple_shapes().size()) {
       // The output shape is a tuple and sharding propagation is allowed for at
       // least one of its elements.
       HloSharding root_sharding = root_instruction->sharding();
-      for (int64_t i = 0; i < root_instruction->shape().tuple_shapes_size();
+      for (int64_t i = 0; i < root_instruction->shape().tuple_shapes().size();
            ++i) {
         if (allow_spmd_sharding_propagation_to_output_vector_[i] &&
             !evenly_partitions(root_instruction->shape().tuple_shapes(i),
@@ -3592,11 +3601,11 @@ absl::StatusOr<bool> ShardingPropagation::Run(
       }
     } else if (params.size() == 1 && params[0]->shape().IsTuple() &&
                params[0]->has_sharding() &&
-               params[0]->shape().tuple_shapes_size() ==
+               params[0]->shape().tuple_shapes().size() ==
                    allow_spmd_sharding_propagation_to_parameters_vector_
                        .size()) {
       HloSharding param_sharding = params[0]->sharding();
-      for (int64_t i = 0; i < params[0]->shape().tuple_shapes_size(); ++i) {
+      for (int64_t i = 0; i < params[0]->shape().tuple_shapes().size(); ++i) {
         if (allow_spmd_sharding_propagation_to_parameters_vector_[i] &&
             !evenly_partitions(params[0]->shape().tuple_shapes(i),
                                params[0]->sharding().GetSubSharding(

@@ -31,10 +31,10 @@ limitations under the License.
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/buffer_value.h"
 #include "xla/service/gpu/alias_info.h"
-#include "xla/service/gpu/executable.pb.h"
 #include "xla/service/gpu/execution_stream_assignment.h"
 #include "xla/service/gpu/gpu_executable.h"
 #include "xla/service/gpu/ir_emitter_context.h"
+#include "xla/service/gpu/kernel_reuse_cache.pb.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -72,7 +72,7 @@ absl::StatusOr<CompileModuleResults> CompileModuleToLlvmIr(
     const std::string& target_triple, const std::string& data_layout,
     const se::Platform* platform, const se::DeviceDescription& device_desc,
     const GpuAliasInfo* alias_info,
-    const BufferValue::SizeFunction& buffer_size_bytes_function,
+    BufferValue::SizeFunction buffer_size_bytes_function,
     bool split_constants_module = false);
 
 }  // namespace gpu

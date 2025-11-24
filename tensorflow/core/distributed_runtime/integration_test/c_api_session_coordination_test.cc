@@ -65,7 +65,7 @@ TEST_P(SingleClientTest, SetGetConfigInOpTest) {
   const char task1_name[] = "/job:worker/replica:0/task:1/device:CPU:0";
   const char task2_name[] = "/job:worker/replica:0/task:2/device:CPU:0";
   const std::string& master =
-      strings::StrCat("grpc://", server_def.cluster().job(0).tasks().at(0));
+      absl::StrCat("grpc://", server_def.cluster().job(0).tasks().at(0));
 
   EnableCoordinationService(&server_def);
   server_def.mutable_default_session_config()

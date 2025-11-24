@@ -17,6 +17,7 @@ limitations under the License.
 #include <cstddef>
 #include <memory>
 #include <set>
+#include <string>
 #include <unordered_set>
 #include <vector>
 
@@ -70,11 +71,11 @@ TEST(Grappler, SuccessfulRegistration) {
 
   TF_ASSERT_OK(InitGraphPlugin(plugin_init));
   ASSERT_EQ(PluginGraphOptimizerRegistry::CreateOptimizers(
-                std::set<string>{"Success"})
+                std::set<std::string>{"Success"})
                 .size(),
             1);
   ConfigList config = PluginGraphOptimizerRegistry::GetPluginConfigs(
-      true, std::set<string>{"Success"});
+      true, std::set<std::string>{"Success"});
   ASSERT_EQ(config.toggle_config["remapping"], RewriterConfig::OFF);
 }
 
@@ -95,7 +96,7 @@ TEST(Grappler, MultiplePluginRegistration) {
   TF_ASSERT_OK(InitGraphPlugin(plugin_init_0));
   TF_ASSERT_OK(InitGraphPlugin(plugin_init_1));
   ASSERT_EQ(PluginGraphOptimizerRegistry::CreateOptimizers(
-                std::set<string>{"Device0", "Device1"})
+                std::set<std::string>{"Device0", "Device1"})
                 .size(),
             2);
 }
@@ -132,12 +133,12 @@ TEST(Grappler, OptimizeFuncNotSet) {
 
 TEST(TF_GrapplerItem, NodesToPreserve) {
   GrapplerItem item;
-  item.fetch = std::vector<string>{"Conv", "BiasAdd"};
-  std::unordered_set<string> nodes_preserved = item.NodesToPreserve();
+  item.fetch = std::vector<std::string>{"Conv", "BiasAdd"};
+  std::unordered_set<std::string> nodes_preserved = item.NodesToPreserve();
   TF_GrapplerItem* c_item = reinterpret_cast<TF_GrapplerItem*>(&item);
 
   int list_total_size = 0;
-  for (const string& s : nodes_preserved) {
+  for (const std::string& s : nodes_preserved) {
     list_total_size += s.size();
   }
 
@@ -158,20 +159,21 @@ TEST(TF_GrapplerItem, NodesToPreserve) {
   EXPECT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
 
   for (size_t i = 0; i < nodes_preserved.size(); ++i) {
-    EXPECT_EQ(nodes_preserved.find(string(static_cast<const char*>(values[i]),
-                                          lens[i])) != nodes_preserved.end(),
-              true);
+    EXPECT_EQ(
+        nodes_preserved.find(std::string(static_cast<const char*>(values[i]),
+                                         lens[i])) != nodes_preserved.end(),
+        true);
   }
   TF_DeleteStatus(status);
 }
 
 TEST(TF_GrapplerItem, FetchNodes) {
   GrapplerItem item;
-  item.fetch = std::vector<string>{"Conv", "BiasAdd"};
+  item.fetch = std::vector<std::string>{"Conv", "BiasAdd"};
   TF_GrapplerItem* c_item = reinterpret_cast<TF_GrapplerItem*>(&item);
 
   int list_total_size = 0;
-  for (const string& s : item.fetch) {
+  for (const std::string& s : item.fetch) {
     list_total_size += s.size();
   }
 
@@ -193,7 +195,7 @@ TEST(TF_GrapplerItem, FetchNodes) {
   for (size_t i = 0; i < item.fetch.size(); ++i) {
     EXPECT_EQ(item.fetch[i].size(), lens[i]) << i;
     EXPECT_EQ(item.fetch[i],
-              string(static_cast<const char*>(values[i]), lens[i]))
+              std::string(static_cast<const char*>(values[i]), lens[i]))
         << i;
   }
   TF_DeleteStatus(status);
@@ -307,13 +309,13 @@ TEST(TF_FunctionLibraryDefinition, LookUpOpDef) {
       TF_NewFunctionLibraryDefinition(g_buf, status);
 
   TF_LookUpOpDef(func, "Add", op_buf, status);
-  string actual_string(reinterpret_cast<const char*>(op_buf->data),
-                       op_buf->length);
+  std::string actual_string(reinterpret_cast<const char*>(op_buf->data),
+                            op_buf->length);
   ASSERT_EQ(TF_OK, TF_GetCode(status));
 
   const OpDef* expected_op_def;
   TF_ASSERT_OK(OpRegistry::Global()->LookUpOpDef("Add", &expected_op_def));
-  string expected_serialized;
+  std::string expected_serialized;
   expected_op_def->SerializeToString(&expected_serialized);
   EXPECT_EQ(expected_serialized, actual_string);
   TF_DeleteBuffer(g_buf);

@@ -102,6 +102,10 @@ class TestCoordinationClient : public CoordinationClient {
               (const TryGetKeyValueRequest*, TryGetKeyValueResponse*,
                StatusCallback),
               (override));
+  MOCK_METHOD(void, IncrementKeyValueAsync,
+              (const IncrementKeyValueRequest*, IncrementKeyValueResponse*,
+               StatusCallback),
+              (override));
   MOCK_METHOD(void, InsertKeyValueAsync,
               (const InsertKeyValueRequest*, InsertKeyValueResponse*,
                StatusCallback),
@@ -137,10 +141,11 @@ class TestCoordinationClient : public CoordinationClient {
                          StatusCallback done) override {
     done(absl::UnimplementedError("GetTaskStateAsync"));
   }
-  void GetJobStateAsync(const tsl::GetJobStateRequest* request,
-                        tsl::GetJobStateResponse* response,
-                        StatusCallback done) override {
-    done(absl::UnimplementedError("GetJobStateAsync"));
+  void WatchJobStateAsync(tsl::CallOptions*,
+                          const tsl::WatchJobStateRequest* request,
+                          tsl::WatchJobStateResponse* response,
+                          StatusCallback done) override {
+    done(absl::UnimplementedError("WatchJobStateAsync"));
   }
   void WaitForAllTasksAsync(const tsl::WaitForAllTasksRequest* request,
                             tsl::WaitForAllTasksResponse* response,

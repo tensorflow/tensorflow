@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/hlo/transforms/simplifiers/hlo_dce.h"
 
 #include <cstdint>
+#include <functional>
 #include <iterator>
 #include <memory>
 #include <optional>
@@ -29,6 +30,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
@@ -49,6 +51,9 @@ namespace xla {
 
 namespace {
 
+const absl::string_view kDceSideEffectFrontendAttribute =
+    "xla_allow_dce_side_effecting_op";
+
 // Checks if the instruction is a removable while given
 // remove_cross_partition_collective_ops
 bool IsRemovableWhile(const HloInstruction* instruction,
@@ -68,6 +73,32 @@ bool IsRemovableWhile(const HloInstruction* instruction,
     }
   }
   return true;
+}
+
+// Updates the users of the fusion instruction.
+absl::Status UpdateFusionUsers(HloInstruction* fusion_instruction,
+                               const std::set<int64_t>& used_tuple_elements,
+                               const std::vector<Shape>& tuple_shapes) {
+  if (tuple_shapes.size() > 1) {
+    for (HloInstruction* gte : fusion_instruction->users()) {
+      auto it = used_tuple_elements.lower_bound(gte->tuple_index());
+      int64_t new_tuple_index = std::distance(used_tuple_elements.begin(), it);
+      gte->set_tuple_index(new_tuple_index);
+    }
+  } else {
+    // Since we iterate over users while removing them .. make a local copy
+    // first.
+    std::vector<HloInstruction*> users(fusion_instruction->users());
+    for (HloInstruction* gte : users) {
+      // Replace and change control successors to be dependent on the fusion
+      // instruction itself.
+      TF_ASSIGN_OR_RETURN(std::ignore, gte->parent()->ReplaceInstruction(
+                                           gte, fusion_instruction,
+                                           /*preserve_sharding=*/true,
+                                           /*relay_control_dependency=*/true));
+    }
+  }
+  return absl::OkStatus();
 }
 
 // Returns true if it found and removed unused outputs.
@@ -121,25 +152,8 @@ absl::StatusOr<bool> RemoveMultiOutputFusionsUnusedOutputs(
   *fusion_instruction->mutable_shape() = std::move(new_shape);
 
   // Update the users of the old fusion instruction.
-  if (tuple_shapes.size() > 1) {
-    for (HloInstruction* gte : fusion_instruction->users()) {
-      auto it = used_tuple_elements.lower_bound(gte->tuple_index());
-      int64_t new_tuple_index = std::distance(used_tuple_elements.begin(), it);
-      gte->set_tuple_index(new_tuple_index);
-    }
-  } else {
-    // Since we iterate over users while removing them .. make a local copy
-    // first.
-    std::vector<HloInstruction*> users(fusion_instruction->users());
-    for (HloInstruction* gte : users) {
-      // Replace and change control successors to be dependent on the fusion
-      // instruction itself.
-      TF_ASSIGN_OR_RETURN(std::ignore, gte->parent()->ReplaceInstruction(
-                                           gte, fusion_instruction,
-                                           /*preserve_sharding=*/true,
-                                           /*relay_control_dependency=*/true));
-    }
-  }
+  TF_RETURN_IF_ERROR(
+      UpdateFusionUsers(fusion_instruction, used_tuple_elements, tuple_shapes));
 
   // Update the root of the fusion computation.
   if (tuple_shapes.size() > 1) {
@@ -164,61 +178,62 @@ absl::StatusOr<bool> RemoveMultiOutputFusionsUnusedOutputs(
   return true;
 }
 
-}  // namespace
-
-/*static*/ absl::StatusOr<bool> HloDCE::RunOnComputation(
-    HloComputation* computation, bool remove_cross_partition_collective_ops,
-    CallGraph* call_graph) {
-  // We do this first, because it may create dead roots which we can clean up
-  // next.
-  TF_ASSIGN_OR_RETURN(bool changed,
-                      RemoveMultiOutputFusionsUnusedOutputs(computation));
-
-  auto computation_callers =
-      [call_graph](
-          const HloComputation* computation) -> std::vector<HloInstruction*> {
-    if (call_graph == nullptr) {
-      return {};
+bool CanRemoveInstruction(
+    const HloInstruction* instruction,
+    bool remove_cross_partition_collective_ops,
+    const std::function<std::vector<HloInstruction*>(const HloComputation*)>&
+        computation_callers) {
+  if (!instruction->IsDead()) {
+    return false;
+  }
+  if (!instruction->parent()->IsSafelyRemovable(
+          instruction,
+          /*ignore_control_dependency=*/false,
+          /*computation_callers=*/computation_callers)) {
+    return false;
+  }
+  // We cannot remove a parameter directly, because it may cause a
+  // renumbering of other parameters which may invalidate some of the
+  // pointers in the worklist.
+  if (instruction->opcode() == HloOpcode::kParameter) {
+    return false;
+  }
+  if (instruction->IsCustomCall("Sharding") &&
+      (instruction->operand(0)->IsRoot() ||
+       instruction->operand(0)->opcode() == HloOpcode::kParameter ||
+       instruction->operand(0)->user_count() != 1)) {
+    return false;
+  }
+  if (instruction->HasSideEffect()) {
+    auto maybe_collective_op = DynCast<HloCollectiveInstruction>(instruction);
+    bool allow_collective = remove_cross_partition_collective_ops &&
+                            maybe_collective_op &&
+                            !maybe_collective_op->constrain_layout();
+    bool allow_while =
+        IsRemovableWhile(instruction, remove_cross_partition_collective_ops);
+    bool allow_custom_call = instruction->IsCustomCall("tpu_custom_call") &&
+                             instruction->frontend_attributes().map().contains(
+                                 kDceSideEffectFrontendAttribute) &&
+                             instruction->frontend_attributes().map().at(
+                                 kDceSideEffectFrontendAttribute) == "true";
+    if (!allow_collective && !allow_while && !allow_custom_call) {
+      return false;
     }
-    return call_graph->GetComputationCallers(computation);
-  };
+  }
+  return true;
+}
 
-  // Remove any dead roots and their dead transitive operands. Collect
-  // them into a separate list first to avoid problems with iterating through
-  // the computation's instruction while simultaneously removing instructions.
+absl::StatusOr<bool> RemoveDeadRoots(
+    HloComputation* computation, bool remove_cross_partition_collective_ops,
+    const std::function<std::vector<HloInstruction*>(const HloComputation*)>&
+        computation_callers) {
+  bool changed = false;
   std::vector<HloInstruction*> dead_roots;
   for (auto* instruction : computation->instructions()) {
-    if (!instruction->IsDead()) {
+    if (!CanRemoveInstruction(instruction,
+                              remove_cross_partition_collective_ops,
+                              computation_callers)) {
       continue;
-    }
-    if (!computation->IsSafelyRemovable(
-            instruction,
-            /*ignore_control_dependency=*/false,
-            /*computation_callers=*/computation_callers)) {
-      continue;
-    }
-    // We cannot remove a parameter directly, because it may cause a
-    // renumbering of other parameters which may invalidate some of the
-    // pointers in the worklist.
-    if (instruction->opcode() == HloOpcode::kParameter) {
-      continue;
-    }
-    if (instruction->IsCustomCall("Sharding") &&
-        (instruction->operand(0)->IsRoot() ||
-         instruction->operand(0)->opcode() == HloOpcode::kParameter ||
-         instruction->operand(0)->user_count() != 1)) {
-      continue;
-    }
-    if (instruction->HasSideEffect()) {
-      auto maybe_collective_op = DynCast<HloCollectiveInstruction>(instruction);
-      bool allow_collective = remove_cross_partition_collective_ops &&
-                              maybe_collective_op &&
-                              !maybe_collective_op->constrain_layout();
-      bool allow_while =
-          IsRemovableWhile(instruction, remove_cross_partition_collective_ops);
-      if (!allow_collective && !allow_while) {
-        continue;
-      }
     }
     dead_roots.push_back(instruction);
   }
@@ -232,7 +247,14 @@ absl::StatusOr<bool> RemoveMultiOutputFusionsUnusedOutputs(
         /*computation_callers=*/computation_callers));
     changed = true;
   }
+  return changed;
+}
 
+absl::StatusOr<bool> RemoveDeadParameters(
+    HloComputation* computation,
+    const std::function<std::vector<HloInstruction*>(const HloComputation*)>&
+        computation_callers) {
+  bool changed = false;
   auto parameters = computation->parameter_instructions();
   // Sort into decreasing order by parameter number, otherwise the renumbering
   // of parameters when one parameter is deleted will cause issues.
@@ -252,38 +274,31 @@ absl::StatusOr<bool> RemoveMultiOutputFusionsUnusedOutputs(
       changed = true;
     }
   }
-
   return changed;
 }
 
-absl::StatusOr<bool> HloDCE::Run(
-    HloModule* module,
-    const absl::flat_hash_set<absl::string_view>& execution_threads) {
-  bool changed = false;
-
-  VLOG(2) << "Before dce; threads: " << absl::StrJoin(execution_threads, ",");
-  XLA_VLOG_LINES(2, module->ToString());
-
-  std::unique_ptr<CallGraph> call_graph;
-  if (use_call_analysis_) {
-    call_graph = CallGraph::Build(module);
-  }
-
-  // Run DCE on each computation. Visit callers before callees so that we
-  // cleanup dead get-tuple-element users of MultiOutput fusions before cleaning
-  // up the fusion computation. If the same callee is referred to by multiple
-  // callers we'll only visit the first caller before visiting the callee, but
-  // that's ok for the use case of fusion computations that should have a unique
-  // calling instruction anyway.
-  absl::flat_hash_set<HloComputation*> to_remove;
+void PopulateAgenda(HloModule* module, std::stack<HloComputation*>& agenda,
+                    absl::flat_hash_set<HloComputation*>& to_remove) {
   // Use computations from all execution threads when determining reachability.
   for (HloComputation* computation : module->computations()) {
     to_remove.insert(computation);
   }
-
-  std::stack<HloComputation*> agenda;
   agenda.push(module->entry_computation());
   to_remove.erase(module->entry_computation());
+}
+
+// Run DCE on each computation. Visit callers before callees so that we
+// cleanup dead get-tuple-element users of MultiOutput fusions before cleaning
+// up the fusion computation. If the same callee is referred to by multiple
+// callers we'll only visit the first caller before visiting the callee, but
+// that's ok for the use case of fusion computations that should have a unique
+// calling instruction anyway.
+absl::StatusOr<bool> ProcessAgenda(
+    HloModule* module, std::stack<HloComputation*>& agenda,
+    absl::flat_hash_set<HloComputation*>& to_remove,
+    const absl::flat_hash_set<absl::string_view>& execution_threads,
+    bool remove_cross_partition_collective_ops, CallGraph* call_graph) {
+  bool changed = false;
   while (!agenda.empty()) {
     HloComputation* computation = agenda.top();
     agenda.pop();
@@ -292,8 +307,8 @@ absl::StatusOr<bool> HloDCE::Run(
         execution_threads.contains(computation->execution_thread())) {
       TF_ASSIGN_OR_RETURN(
           bool computation_changed,
-          RunOnComputation(computation, remove_cross_partition_collective_ops_,
-                           call_graph.get()));
+          xla::HloDCE::RunOnComputation(
+              computation, remove_cross_partition_collective_ops, call_graph));
       changed |= computation_changed;
     }
 
@@ -306,9 +321,17 @@ absl::StatusOr<bool> HloDCE::Run(
       }
     }
   }
+  return changed;
+}
+
+absl::StatusOr<bool> RemoveDanglingComputations(
+    HloModule* module, absl::flat_hash_set<HloComputation*>& to_remove,
+    const absl::flat_hash_set<absl::string_view>& execution_threads,
+    const bool use_call_analysis, std::unique_ptr<CallGraph>& call_graph) {
+  bool changed = false;
   // Some computations might have been left dangling due to being detached
   // indirectly. We need to rebuild the call graph to find these.
-  if (use_call_analysis_) {
+  if (use_call_analysis) {
     call_graph = CallGraph::Build(module);
     for (HloComputation* computation :
          module->computations(execution_threads)) {
@@ -318,14 +341,82 @@ absl::StatusOr<bool> HloDCE::Run(
       }
     }
   }
-  for (auto computation : to_remove) {
+  for (auto iterator = module->computations().begin();
+       iterator != module->computations().end(); ++iterator) {
     // Only remove computations from the specified execution threads.
-    if (execution_threads.empty() ||
-        execution_threads.contains(computation->execution_thread())) {
-      TF_RETURN_IF_ERROR(module->RemoveEmbeddedComputation(computation));
+    auto computation = *iterator;
+    if (to_remove.contains(computation)) {
+      if (execution_threads.empty() ||
+          execution_threads.contains(computation->execution_thread())) {
+        TF_RETURN_IF_ERROR(module->RemoveEmbeddedComputation(
+            iterator.underlying_iterator().underlying_iterator()));
+        changed = true;
+      }
     }
   }
-  changed |= !to_remove.empty();
+  return changed;
+}
+
+}  // namespace
+
+/*static*/ absl::StatusOr<bool> HloDCE::RunOnComputation(
+    HloComputation* computation, bool remove_cross_partition_collective_ops,
+    CallGraph* call_graph) {
+  auto computation_callers =
+      [call_graph](
+          const HloComputation* computation) -> std::vector<HloInstruction*> {
+    if (call_graph == nullptr) {
+      return {};
+    }
+    return call_graph->GetComputationCallers(computation);
+  };
+
+  bool changed = false;
+  TF_ASSIGN_OR_RETURN(bool fusion_changed,
+                      RemoveMultiOutputFusionsUnusedOutputs(computation));
+  changed |= fusion_changed;
+
+  TF_ASSIGN_OR_RETURN(
+      bool dead_roots_changed,
+      RemoveDeadRoots(computation, remove_cross_partition_collective_ops,
+                      computation_callers));
+  changed |= dead_roots_changed;
+
+  TF_ASSIGN_OR_RETURN(bool dead_parameters_changed,
+                      RemoveDeadParameters(computation, computation_callers));
+  changed |= dead_parameters_changed;
+
+  return changed;
+}
+
+absl::StatusOr<bool> HloDCE::RunImpl(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
+  VLOG(2) << "Before dce; threads: " << absl::StrJoin(execution_threads, ",");
+  XLA_VLOG_LINES(2, module->ToString());
+
+  std::unique_ptr<CallGraph> call_graph;
+  if (use_call_analysis_) {
+    call_graph = CallGraph::Build(module);
+  }
+
+  bool changed = false;
+
+  std::stack<HloComputation*> agenda;
+  absl::flat_hash_set<HloComputation*> to_remove;
+  PopulateAgenda(module, agenda, to_remove);
+
+  TF_ASSIGN_OR_RETURN(
+      bool agenda_changed,
+      ProcessAgenda(module, agenda, to_remove, execution_threads,
+                    remove_cross_partition_collective_ops_, call_graph.get()));
+  changed |= agenda_changed;
+
+  TF_ASSIGN_OR_RETURN(
+      bool dangling_computations_removed,
+      RemoveDanglingComputations(module, to_remove, execution_threads,
+                                 use_call_analysis_, call_graph));
+  changed |= dangling_computations_removed;
 
   if (changed) {
     VLOG(2) << "After dce:";

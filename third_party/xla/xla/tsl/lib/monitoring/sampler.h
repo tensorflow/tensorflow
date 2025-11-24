@@ -246,7 +246,7 @@ class Sampler {
             &metric_def_, [&](MetricCollectorGetter getter) {
               auto metric_collector = getter.Get(&metric_def_);
 
-              absl::ReaderMutexLock l(&mu_);
+              absl::ReaderMutexLock l(mu_);
               for (const auto& cell : cells_) {
                 metric_collector.CollectValue(cell.first, cell.second.value());
               }
@@ -264,7 +264,7 @@ class Sampler {
 
   absl::Status status_;
 
-  using LabelArray = std::array<string, NumLabels>;
+  using LabelArray = std::array<std::string, NumLabels>;
   // we need a container here that guarantees pointer stability of the value,
   // namely, the pointer of the value should remain valid even after more cells
   // are inserted.
@@ -317,13 +317,13 @@ SamplerCell* Sampler<NumLabels>::GetCell(const Labels&... labels)
 
   const LabelArray& label_array = {{labels...}};
   {
-    absl::ReaderMutexLock l(&mu_);
+    absl::ReaderMutexLock l(mu_);
     const auto found_it = cells_.find(label_array);
     if (found_it != cells_.end()) {
       return &(found_it->second);
     }
   }
-  absl::MutexLock l(&mu_);
+  absl::MutexLock l(mu_);
   return &(cells_
                .emplace(std::piecewise_construct,
                         std::forward_as_tuple(label_array),

@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/service/gpu/llvm_gpu_backend/nvptx_backend.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -23,10 +24,11 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/call_once.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
-#include "absl/strings/string_view.h"
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "llvm/Analysis/CGSCCPassManager.h"
 #include "llvm/Analysis/LazyCallGraph.h"
@@ -58,17 +60,17 @@ limitations under the License.
 #include "xla/service/gpu/llvm_gpu_backend/gpu_backend_lib.h"
 #include "xla/service/gpu/llvm_gpu_backend/load_ir_module.h"
 #include "xla/service/gpu/llvm_gpu_backend/nvptx_libdevice_path.h"
+#include "xla/service/gpu/llvm_gpu_backend/ptx_version_util.h"
 #include "xla/service/gpu/metrics.h"
 #include "xla/service/llvm_ir/llvm_command_line_options.h"
-#include "xla/stream_executor/cuda/ptx_compiler_helpers.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/cuda/subprocess_compilation.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/semantic_version.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/errors.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
-#include "tsl/platform/env.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/logging.h"
 #include "tsl/profiler/lib/scoped_annotation.h"
 #include "tsl/profiler/lib/traceme.h"
 
@@ -233,39 +235,65 @@ std::vector<std::string> GetNVPTXBackendOptions(
 }
 
 std::string GetSmName(se::CudaComputeCapability compute_capability) {
-  int compute_capability_version =
-      compute_capability.major * 10 + compute_capability.minor;
-  int sm_version = 30;
+  using CudaComputeCapabilities =
+      se::CudaComputeCapability::CudaComputeCapabilities;
+
+  auto gpu_compute_capability = compute_capability;
+  gpu_compute_capability.feature_extension =
+      se::CudaComputeCapability::FeatureExtension::kNone;
   // If the current compute capability isn't known, fallback to the
   // most recent version before it.
-  int supported_versions[] = {121, 120, 103, 101, 100, 90, 89, 87,
-                              86,  80,  75,  72,  70,  62, 61, 60,
-                              53,  52,  50,  37,  35,  32, 30};
-  for (int v : supported_versions) {
-    if (v <= compute_capability_version) {
-      sm_version = v;
+  constexpr stream_executor::CudaComputeCapability kSupportedVersions[] = {
+      {12, 1}, {12, 0}, {11, 0}, {10, 3}, {10, 0}, {9, 0}, {8, 9}, {8, 7},
+      {8, 6},  {8, 0},  {7, 5},  {7, 2},  {7, 0},  {6, 2}, {6, 1}, {6, 0},
+      {5, 3},  {5, 2},  {5, 0},  {3, 7},  {3, 5},  {3, 2}, {3, 0}};
+  // Initialize to the least supported version, which acts as a safe fallback
+  auto target_compute_capability =
+      kSupportedVersions[std::size(kSupportedVersions) - 1];
+
+  for (const auto& v : kSupportedVersions) {
+    if (gpu_compute_capability.SupportsAllFeaturesOf(v)) {
+      // Found the most advanced supported capability
+      target_compute_capability = v;
       break;
     }
+  }
+
+  if (target_compute_capability.major == gpu_compute_capability.major &&
+      target_compute_capability.minor == gpu_compute_capability.minor) {
+    // If we support the requested compute capability, then we can also enable
+    // the requested feature extension.
+    target_compute_capability.feature_extension =
+        compute_capability.feature_extension;
+  } else if (target_compute_capability.major >=
+                 CudaComputeCapabilities::kBlackwell &&
+             target_compute_capability.major <= kSupportedVersions[0].major &&
+             target_compute_capability.major == compute_capability.major &&
+             target_compute_capability.minor <= gpu_compute_capability.minor) {
+    // If we don't support the requested compute capability, but an
+    // earlier one with the same major version, then we can enable
+    // the forward compatible feature extension - if the particular
+    // major version supports the forward compatible feature
+    // extension.
+    target_compute_capability.feature_extension =
+        se::CudaComputeCapability::FeatureExtension::kFamilyCompatibleFeatures;
   }
 
   // If the current CC isn't supported by LLVM and it is newer then
   // the max supported LLVM version, do not warn about it. The end
   // user can't do anything about this. E.g., PTX compiled for SM75 will
   // run on SM80 too.
-  if (sm_version != compute_capability_version &&
-      compute_capability_version < supported_versions[0]) {
-    LOG(WARNING) << "Unknown compute capability "
-                 << compute_capability.ToString()
-                 << ". Defaulting to telling LLVM that we're compiling for sm_"
-                 << sm_version;
+  if (target_compute_capability != compute_capability &&
+      target_compute_capability.major != kSupportedVersions[0].major &&
+      target_compute_capability.minor != kSupportedVersions[0].minor) {
+    LOG(WARNING)
+        << "Unknown compute capability " << compute_capability.ToString()
+        << ". Defaulting to telling LLVM that we're compiling for "
+        << target_compute_capability.GetPtxAsTargetName(
+               stream_executor::CudaComputeCapability::CompileMode::kSass);
   }
-  // On Hopper, default to sm_90a so that all instructions can be used. But
-  // only sm_90 is forward compatible, so don't use sm_90a with newer hardware:
-  // https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#ptx-compatibility
-  // Similarly for sm_10#a and sm_12#a (Blackwell).
-  absl::string_view extension =
-      stream_executor::ShouldUsePtxExtension(compute_capability) ? "a" : "";
-  return absl::StrCat("sm_", sm_version, extension);
+  return target_compute_capability.GetPtxAsTargetName(
+      stream_executor::CudaComputeCapability::CompileMode::kSass);
 }
 
 absl::StatusOr<std::string> CompileToPtx(
@@ -293,8 +321,7 @@ absl::StatusOr<std::string> CompileToPtx(
       return std::string();
     }
 
-    auto compute_capability =
-        std::get_if<se::CudaComputeCapability>(&gpu_version);
+    auto compute_capability = gpu_version.cuda_compute_capability();
     if (!compute_capability) {
       return xla::Internal("Incompatible compute capability was specified.");
     }

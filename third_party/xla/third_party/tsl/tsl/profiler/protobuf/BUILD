@@ -44,6 +44,7 @@ tf_proto_library(
     protodeps = [
         ":profiler_options_proto",
         ":profiler_service_monitor_result_proto",
+        ":xplane_proto",
     ],
     use_grpc_namespace = True,
     visibility = ["//visibility:public"],
@@ -89,7 +90,7 @@ tf_proto_library(
     name = "profile_proto",
     srcs = ["profile.proto"],
     visibility = internal_visibility([
-        "@local_xla//xla/python:__pkg__",
+        ":friends",
         "@local_xla//xla/tsl/profiler:internal",
     ]),
 )

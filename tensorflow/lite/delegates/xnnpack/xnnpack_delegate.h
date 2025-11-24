@@ -48,14 +48,17 @@ extern "C" {
 // Enable XNNPack subgraph reshaping. This means that models with dynamic
 // tensors are supported and that inputs may be efficiently resized.
 #define TFLITE_XNNPACK_DELEGATE_FLAG_ENABLE_SUBGRAPH_RESHAPING 0x00000080
-// If XNNPACK has been built with Slinky, enable Slinky usage.
-// (Ignored if XNNPACK is built without Slinky.)
-#define TFLITE_XNNPACK_DELEGATE_FLAG_ENABLE_SLINKY 0x00000100
 // This flag indicates that XNNPACK should attempt to produce numerically
 // consistent results from a specific build of XNNPACK. This causes XNNPACK
 // to avoid using faster codepaths that are numerically inconsistent with any
 // other codepath that could be used in the same compiled delegate.
 #define TFLITE_XNNPACK_DELEGATE_FLAG_SLOW_CONSISTENT_ARITHMETIC 0x00000200
+// Disable XNNPack subgraph reshaping. This means that models with dynamic
+// tensors are not supported.
+#define TFLITE_XNNPACK_DELEGATE_FLAG_DISABLE_SUBGRAPH_RESHAPING 0x00000400
+// Disable delegation of dynamically quantized ops.
+#define TFLITE_XNNPACK_DELEGATE_FLAG_DISABLE_DYNAMICALLY_QUANTIZED_OPS \
+  0x00000800
 
 struct TfLiteXNNPackDelegateWeightsCache;
 
@@ -74,6 +77,8 @@ typedef struct {
   // - TFLITE_XNNPACK_DELEGATE_FLAG_TRANSIENT_INDIRECTION_BUFFER
   // - TFLITE_XNNPACK_DELEGATE_FLAG_ENABLE_LATEST_OPERATORS
   // - TFLITE_XNNPACK_DELEGATE_FLAG_ENABLE_SUBGRAPH_RESHAPING
+  // - TFLITE_XNNPACK_DELEGATE_FLAG_DISABLE_DYNAMICALLY_QUANTIZED_OPS
+  // - TFLITE_XNNPACK_DELEGATE_FLAG_DISABLE_SUBGRAPH_RESHAPING
   // - TFLITE_XNNPACK_DELEGATE_FLAG_SLOW_CONSISTENT_ARITHMETIC
   uint32_t flags;
   // Cache for packed weights, can be shared between multiple instances of

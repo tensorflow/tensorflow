@@ -83,13 +83,13 @@ LogicalResult LegalizeIota::matchAndRewrite(
   auto [start, limit, delta] =
       BuildRangeParams(e_type, iota_dim_size, rewriter);
 
-  auto start_op = rewriter.create<arith::ConstantOp>(op->getLoc(), start);
-  auto limit_op = rewriter.create<arith::ConstantOp>(op->getLoc(), limit);
-  auto delta_op = rewriter.create<arith::ConstantOp>(op->getLoc(), delta);
+  auto start_op = arith::ConstantOp::create(rewriter, op->getLoc(), start);
+  auto limit_op = arith::ConstantOp::create(rewriter, op->getLoc(), limit);
+  auto delta_op = arith::ConstantOp::create(rewriter, op->getLoc(), delta);
 
   auto range_type = RankedTensorType::get({iota_dim_size}, e_type);
-  auto range_op = rewriter.create<TFL::RangeOp>(op->getLoc(), range_type,
-                                                start_op, limit_op, delta_op);
+  auto range_op = TFL::RangeOp::create(rewriter, op->getLoc(), range_type,
+                                       start_op, limit_op, delta_op);
 
   if (type.getRank() == 1) {
     rewriter.replaceOp(op, range_op);
@@ -101,20 +101,20 @@ LogicalResult LegalizeIota::matchAndRewrite(
 
   llvm::SmallVector<int64_t> reshape_shape(type.getRank(), 1);
   reshape_shape[op.getIotaDimension()] = iota_dim_size;
-  Value reshape_shape_cst = rewriter.create<arith::ConstantOp>(
-      op->getLoc(), rewriter.getI64TensorAttr(reshape_shape));
-  reshape_shape_cst = rewriter.create<TFL::CastOp>(
-      op->getLoc(),
-      llvm::cast<ShapedType>(reshape_shape_cst.getType())
-          .clone(rewriter.getI32Type()),
-      reshape_shape_cst);
+  Value reshape_shape_cst = arith::ConstantOp::create(
+      rewriter, op->getLoc(), rewriter.getI64TensorAttr(reshape_shape));
+  reshape_shape_cst =
+      TFL::CastOp::create(rewriter, op->getLoc(),
+                          llvm::cast<ShapedType>(reshape_shape_cst.getType())
+                              .clone(rewriter.getI32Type()),
+                          reshape_shape_cst);
 
   auto reshape_type = RankedTensorType::get(reshape_shape, e_type);
-  auto reshape_op = rewriter.create<TFL::ReshapeOp>(
-      op->getLoc(), reshape_type, range_op, reshape_shape_cst);
+  auto reshape_op = TFL::ReshapeOp::create(rewriter, op->getLoc(), reshape_type,
+                                           range_op, reshape_shape_cst);
 
-  auto broad_cast_shape_cst = rewriter.create<arith::ConstantOp>(
-      op->getLoc(), rewriter.getI64TensorAttr(type.getShape()));
+  auto broad_cast_shape_cst = arith::ConstantOp::create(
+      rewriter, op->getLoc(), rewriter.getI64TensorAttr(type.getShape()));
 
   rewriter.replaceOpWithNewOp<TFL::BroadcastToOp>(op, type, reshape_op,
                                                   broad_cast_shape_cst);
@@ -156,25 +156,25 @@ LogicalResult LegalizeDynamicIotaOp::matchAndRewrite(
   auto [start, unused_limit, delta] =
       BuildRangeParams(element_type, /*iota_dim_size*/ 0, rewriter);
 
-  auto start_op = rewriter.create<arith::ConstantOp>(op.getLoc(), start);
-  auto delta_op = rewriter.create<arith::ConstantOp>(op.getLoc(), delta);
+  auto start_op = arith::ConstantOp::create(rewriter, op.getLoc(), start);
+  auto delta_op = arith::ConstantOp::create(rewriter, op.getLoc(), delta);
 
   auto output_shape = op.getOperand();
   if (mlir::isa<FloatType>(element_type)) {
     auto cast_type =
         mlir::cast<ShapedType>(output_shape.getType()).clone(element_type);
     output_shape =
-        rewriter.create<TFL::CastOp>(op.getLoc(), cast_type, output_shape);
+        TFL::CastOp::create(rewriter, op.getLoc(), cast_type, output_shape);
   }
 
   DenseIntElementsAttr scalar_attr = DenseIntElementsAttr::get(
       RankedTensorType::get({0}, rewriter.getI32Type()),
       llvm::ArrayRef<int32_t>({}));
   auto scalar_shape =
-      rewriter.create<arith::ConstantOp>(op.getLoc(), scalar_attr);
-  auto limit_scalar = rewriter.create<TFL::ReshapeOp>(
-      op.getLoc(), RankedTensorType::get({}, element_type), output_shape,
-      scalar_shape);
+      arith::ConstantOp::create(rewriter, op.getLoc(), scalar_attr);
+  auto limit_scalar = TFL::ReshapeOp::create(
+      rewriter, op.getLoc(), RankedTensorType::get({}, element_type),
+      output_shape, scalar_shape);
 
   const uint64_t dimension = op.getIotaDimension();
   auto range_type =

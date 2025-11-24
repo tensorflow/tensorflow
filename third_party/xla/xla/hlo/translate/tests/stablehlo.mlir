@@ -8,7 +8,7 @@
 
 // CHECK: %[[ARG0:.*]] = f32[4] parameter(0)
 // CHECK: %[[ARG1:.*]] = f32[4] parameter(1)
-// CHECK: ROOT %add.3 = f32[4] add(%[[ARG0]], %[[ARG1]])
+// CHECK: ROOT %add.1 = f32[4] add(%[[ARG0]], %[[ARG1]])
 func.func @main(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> tensor<4xf32> {
   %0 = stablehlo.add %arg0, %arg1 : tensor<4xf32>  func.return %0 : tensor<4xf32>
 }
@@ -163,7 +163,7 @@ func.func @main(%arg0: tensor<2x2xf32>, %arg1: tensor<2x2xf32>) -> tensor<2x2xf3
 // CHECK:       ENTRY %[[$main_3:[^ ]+]]
 // CHECK-NEXT:  %[[Arg_0_1:[^ ]+]] = f32[128,32] parameter(0)
 // CHECK-NEXT:  ROOT %[[all_gather_2:[^ ]+]] = f32[128,128] all-gather(%[[Arg_0_1]]), channel_id=1,
-// CHECK-SAME{{LITERAL}}: replica_groups={{0,2,4,6},{1,3,5,7}},
+// CHECK-SAME{LITERAL}: replica_groups={{0,2,4,6},{1,3,5,7}},
 // CHECK-SAME: dimensions={1},
 func.func @main(%arg0: tensor<128x32xf32>) -> tensor<128x128xf32> {
 %0 = "stablehlo.all_gather"(%arg0) <{all_gather_dim = 1 : i64, channel_handle = #stablehlo.channel_handle<handle = 1, type = 0>, replica_groups = dense<[[0, 2, 4, 6], [1, 3, 5, 7]]> : tensor<2x4xi64>}> {shard_count = 4 : i64} : (tensor<128x32xf32>) -> tensor<128x128xf32>
@@ -178,7 +178,7 @@ return %0 : tensor<128x128xf32>
 // CHECK:       ENTRY %[[$main_3:[^ ]+]]
 // CHECK-NEXT:  %[[Arg_0_1:[^ ]+]] = f32[128,32] parameter(0)
 // CHECK-NEXT:  ROOT %[[all_gather_2:[^ ]+]] = f32[128,128] all-gather(%[[Arg_0_1]]), channel_id=1,
-// CHECK-SAME{{LITERAL}}: replica_groups={{0,2,4,6},{1,3,5,7}},
+// CHECK-SAME{LITERAL}: replica_groups={{0,2,4,6},{1,3,5,7}},
 // CHECK-SAME: dimensions={1}, use_global_device_ids=true,
 func.func @main(%arg0: tensor<128x32xf32>) -> tensor<128x128xf32> {
   %0 = "stablehlo.all_gather"(%arg0) <{all_gather_dim = 1 : i64, channel_handle = #stablehlo.channel_handle<handle = 1, type = 0>, replica_groups = dense<[[0, 2, 4, 6], [1, 3, 5, 7]]> : tensor<2x4xi64>, use_global_device_ids}> {shard_count = 4 : i64} : (tensor<128x32xf32>) -> tensor<128x128xf32>
@@ -197,7 +197,7 @@ func.func @main(%arg0: tensor<128x32xf32>) -> tensor<128x128xf32> {
 // CHECK-NEXT:  %[[get_tuple_element_4:[^ ]+]] = f32[8,2] get-tuple-element(%[[tuple_3]]), index=0,
 // CHECK-NEXT:  %[[get_tuple_element_5:[^ ]+]] = f32[8,4] get-tuple-element(%[[tuple_3]]), index=1,
 // CHECK-NEXT:  %[[all_gather_6:[^ ]+]] = (f32[8,8], f32[8,16]) all-gather(%[[get_tuple_element_4]], %[[get_tuple_element_5]]), channel_id=1,
-// CHECK-SAME{{LITERAL}}: replica_groups={{0,2,4,6},{1,3,5,7}},
+// CHECK-SAME{LITERAL}: replica_groups={{0,2,4,6},{1,3,5,7}},
 // CHECK-SAME:  dimensions={1}, use_global_device_ids=true,
 // CHECK-NEXT:  %[[get_tuple_element_7:[^ ]+]] = f32[8,8] get-tuple-element(%[[all_gather_6]]), index=0,
 // CHECK-NEXT:  %[[get_tuple_element_8:[^ ]+]] = f32[8,16] get-tuple-element(%[[all_gather_6]]), index=1,
@@ -263,7 +263,7 @@ func.func @main(%arg0: tensor<3x3xf32>) -> tensor<3x3xf32> {
 // CHECK:       ENTRY %[[$main_3:[^ ]+]]
 // CHECK-NEXT:  %[[Arg_0_1:[^ ]+]] = f32[16,8] parameter(0)
 // CHECK-NEXT:  ROOT %[[collective_permute_2:[^ ]+]] = f32[16,8] collective-permute(%[[Arg_0_1]]),
-// CHECK-SAME{{LITERAL}}: source_target_pairs={{0,1},{1,2},{2,3}},
+// CHECK-SAME{LITERAL}: source_target_pairs={{0,1},{1,2},{2,3}},
 func.func @main(%arg0: tensor<16x8xf32>) -> tensor<16x8xf32> {
   %0 = "stablehlo.collective_permute"(%arg0) {
   source_target_pairs = dense<[[0, 1], [1, 2], [2, 3]]> : tensor<3x2xi64>,
@@ -302,7 +302,7 @@ func.func @main(%arg0: tensor<8xf32>, %arg1: tensor<8xf32>) -> tensor<16xf32> {
 // CHECK:       ENTRY %[[$main_7:[^ ]+]]
 // CHECK-NEXT:  %[[Arg_0_1:[^ ]+]] = f32[] parameter(0)
 // CHECK-NEXT:  ROOT %[[all_reduce_6:[^ ]+]] = f32[] all-reduce(%[[Arg_0_1]]),
-// CHECK-SAME{{LITERAL}}: replica_groups={{0},{1}},
+// CHECK-SAME{LITERAL}: replica_groups={{0},{1}},
 // CHECK-SAME: to_apply=%[[$sum_2]],
 func.func @main(%arg0: tensor<f32>) -> tensor<f32> {
   %0 = "stablehlo.cross-replica-sum"(%arg0) {
@@ -611,6 +611,28 @@ func.func @main(%arg0: tensor<f32>, %arg1: tensor<i32>) -> tuple<tensor<f32>, te
 // CHECK:       ENTRY %[[$main_5:[^ ]+]]
 // CHECK-NEXT:  %[[Arg_0_1:[^ ]+]] = f32[] parameter(0)
 // CHECK-NEXT:  %[[Arg_1_2:[^ ]+]] = token[] parameter(1)
+// CHECK-NEXT:  %[[send_3:[^ ]+]] = (f32[], u32[], token[]) send(%[[Arg_0_1]], %[[Arg_1_2]]), frontend_attributes=
+// CHECK-SAME{LITERAL}: _xla_send_recv_source_target_pairs={{0,1},{1,2}}}
+// CHECK-NEXT: ROOT
+// CHECK-SAME: send-done
+
+func.func @main(%arg0: tensor<f32>, %arg1: !stablehlo.token) -> !stablehlo.token {
+  %0 = "stablehlo.send"(%arg0, %arg1) {
+  channel_handle = #stablehlo.channel_handle<handle = 0, type = 1>,
+  is_host_transfer = false,
+  source_target_pairs = dense<[[0,1],[1,2]]> : tensor<2x2xi64>
+  } : (tensor<f32>, !stablehlo.token) -> !stablehlo.token
+  func.return %0 : !stablehlo.token
+}
+// CHECK-DIRECT: stablehlo.send
+
+// -----
+
+// CHECK-LABEL: HloModule main, entry_computation_layout={(f32[], token[])->token[]}
+
+// CHECK:       ENTRY %[[$main_5:[^ ]+]]
+// CHECK-NEXT:  %[[Arg_0_1:[^ ]+]] = f32[] parameter(0)
+// CHECK-NEXT:  %[[Arg_1_2:[^ ]+]] = token[] parameter(1)
 // CHECK-NEXT:  %[[send_3:[^ ]+]] = (f32[], u32[], token[]) send(%[[Arg_0_1]], %[[Arg_1_2]]), is_host_transfer=true, metadata
 // CHECK-NEXT:  ROOT %[[send_done_4:[^ ]+]] = token[] send-done(%[[send_3]]), is_host_transfer=true, metadata=
 
@@ -639,6 +661,26 @@ func.func @main(%arg0: !stablehlo.token) -> (tensor<f32>, !stablehlo.token) {
   %0:2 = "stablehlo.recv"(%arg0) {
   channel_handle = #stablehlo.channel_handle<handle = 0, type = 3>,
   is_host_transfer = true
+  } : (!stablehlo.token) -> (tensor<f32>, !stablehlo.token)
+  func.return %0#0, %0#1 : tensor<f32>, !stablehlo.token
+}
+// CHECK-DIRECT: stablehlo.recv
+
+// -----
+
+// CHECK-LABEL: HloModule main, entry_computation_layout={(token[])->(f32[], token[])}
+
+// CHECK:       ENTRY %[[$main_7:[^ ]+]]
+// CHECK-NEXT:  %[[Arg_0_1:[^ ]+]] = token[] parameter(0)
+// CHECK-NEXT:  %[[recv_2:[^ ]+]] = (f32[], u32[], token[]) recv(%[[Arg_0_1]]), frontend_attributes=
+// CHECK-SAME{LITERAL}: _xla_send_recv_source_target_pairs={{0,1},{1,2}}}
+// CHECK-NEXT: recv-done
+
+func.func @main(%arg0: !stablehlo.token) -> (tensor<f32>, !stablehlo.token) {
+  %0:2 = "stablehlo.recv"(%arg0) {
+  channel_handle = #stablehlo.channel_handle<handle = 0, type = 1>,
+  is_host_transfer = false,
+  source_target_pairs = dense<[[0,1],[1,2]]> : tensor<2x2xi64>
   } : (!stablehlo.token) -> (tensor<f32>, !stablehlo.token)
   func.return %0#0, %0#1 : tensor<f32>, !stablehlo.token
 }
@@ -739,10 +781,11 @@ func.func @main(%arg0: tensor<3xi32>, %arg1: !stablehlo.token) -> !stablehlo.tok
 // CHECK-NEXT:  %[[Arg_0_1:[^ ]+]] = s32[3,2] parameter(0)
 // CHECK-NEXT:  %[[custom_call_3:[^ ]+]] = s32[3,2] custom-call(%[[Arg_0_1]]), custom_call_target="Sharding", sharding={devices=[1,2]0,1}, metadata=
 // CHECK-NEXT:  %[[custom_call_4:[^ ]+]] = s32[6,2] custom-call(%[[custom_call_3]]), custom_call_target="SPMDShardToFullShape", sharding={devices=[1,2]0,1}, metadata=
-// CHECK-NEXT:  %[[tuple_5:[^ ]+]] = (s32[6,2]) tuple(%[[custom_call_4]]), metadata=
+// CHECK-NEXT:  %[[tuple_5:[^ ]+]] = (s32[6,2]) tuple(%[[custom_call_4]]),
+// CHECK-SAME{LITERAL}: sharding={{devices=[1,2]0,1}}, metadata=
 // CHECK-NEXT:  %[[Arg_1_2:[^ ]+]] = token[] parameter(1)
 // CHECK-NEXT:  ROOT %[[outfeed_6:[^ ]+]] = token[] outfeed(%[[tuple_5]], %[[Arg_1_2]]), outfeed_shape=(s32[6,2]{1,0}), outfeed_config="foobar",
-// CHECK-SAME{{LITERAL}} : sharding={{devices=[2,1]0,1}, {maximal device=0}},
+// CHECK-SAME{LITERAL}: sharding={{devices=[2,1]0,1}, {maximal device=0}},
 func.func @main(%arg0: tensor<3x2xi32>, %arg1: !stablehlo.token) -> !stablehlo.token {
   %0 = stablehlo.custom_call @Sharding(%arg0) {backend_config = "", mhlo.sharding = "\08\03\1A\02\01\02\22\02\00\01"} : (tensor<3x2xi32>) -> tensor<3x2xi32>
   %1 = stablehlo.custom_call @SPMDShardToFullShape(%0) {backend_config = "", mhlo.sharding = "\08\03\1A\02\01\02\22\02\00\01"} : (tensor<3x2xi32>) -> tensor<6x2xi32>
@@ -871,7 +914,8 @@ func.func @main(%arg0: tensor<i32>, %arg1: tensor<f32>) -> tensor<f32> {
 // CHECK:       ENTRY %[[$main_7:[^ ]+]]
 // CHECK-NEXT:  %[[Arg_0_1:[^ ]+]] = f32[10] parameter(0)
 // CHECK-NEXT:  ROOT %[[all_reduce_6:[^ ]+]] = f32[10] all-reduce(%[[Arg_0_1]]), channel_id=5,
-// CHECK-SAME{{LITERAL}}:  replica_groups={{0,2,4,6},{1,3,5,7}}, to_apply=%[[$region_0_2]], metadata=
+// CHECK-SAME{LITERAL}: replica_groups={{0,2,4,6},{1,3,5,7}},
+// CHECK-SAME:  to_apply=%[[$region_0_2]], metadata=
 
 module {
   func.func @main(%arg0: tensor<10xf32>) -> tensor<10xf32> {
@@ -897,7 +941,8 @@ module {
 // CHECK:       ENTRY %[[$main_7:[^ ]+]]
 // CHECK-NEXT:  %[[Arg_0_1:[^ ]+]] = f32[10] parameter(0)
 // CHECK-NEXT:  ROOT %[[all_reduce_6:[^ ]+]] = f32[10] all-reduce(%[[Arg_0_1]]), channel_id=5,
-// CHECK-SAME{{LITERAL}}:  replica_groups={{0,2,4},{1,3,5,6}}, to_apply=%[[$region_0_2]], metadata=
+// CHECK-SAME{LITERAL}: replica_groups={{0,2,4},{1,3,5,6}},
+// CHECK-SAME:  to_apply=%[[$region_0_2]], metadata=
 
 module {
   func.func @main(%arg0: tensor<10xf32>) -> tensor<10xf32> {
@@ -923,7 +968,8 @@ module {
 // CHECK:       ENTRY %[[$main_7:[^ ]+]]
 // CHECK-NEXT:  %[[Arg_0_1:[^ ]+]] = f32[10] parameter(0)
 // CHECK-NEXT:  ROOT %[[all_reduce_6:[^ ]+]] = f32[10] all-reduce(%[[Arg_0_1]]), channel_id=5,
-// CHECK-SAME{{LITERAL}}:  replica_groups={{0,2,4,6},{1,3,5,7}}, use_global_device_ids=true, to_apply=%[[$region_0_2]], metadata=
+// CHECK-SAME{LITERAL}: replica_groups={{0,2,4,6},{1,3,5,7}}, use_global_device_ids=true,
+// CHECK-SAME:  to_apply=%[[$region_0_2]], metadata=
 
 module {
   func.func @main(%arg0: tensor<10xf32>) -> tensor<10xf32> {
@@ -1036,7 +1082,7 @@ module {
 // CHECK:       ENTRY %[[$main_3:[^ ]+]]
 // CHECK-NEXT:  %[[Arg_0_1:[^ ]+]] = s32[2,2] parameter(0)
 // CHECK-NEXT:  ROOT %[[all_to_all_2:[^ ]+]] = s32[2,2] all-to-all(%[[Arg_0_1]]), channel_id=1,
-// CHECK-SAME{{LITERAL}}:  replica_groups={{1,2},{0,3}}, dimensions={1}, metadata=
+// CHECK-SAME{LITERAL}: replica_groups={{1,2},{0,3}}, dimensions={1}, metadata=
 
 func.func @main(%arg0: tensor<2x2xi32>) -> tensor<2x2xi32> {
   %0 = "stablehlo.all_to_all"(%arg0) <{channel_handle = #stablehlo.channel_handle<handle = 1, type = 1>, concat_dimension = 1 : i64, replica_groups = dense<[[1, 2], [0, 3]]> : tensor<2x2xi64>, split_count = 2 : i64, split_dimension = 1 : i64}> : (tensor<2x2xi32>) -> tensor<2x2xi32>
@@ -1125,7 +1171,7 @@ func.func @main(%arg0: tensor<f32>, %arg1: tensor<f32>, %arg2: tensor<f32>) -> t
 // CHECK:       ENTRY %[[$main_3:[^ ]+]]
 // CHECK-NEXT:  %[[Arg_0_1:[^ ]+]] = f32[128,32] parameter(0)
 // CHECK-NEXT:  ROOT %[[collective_broadcast_2:[^ ]+]] = f32[128,32] collective-broadcast(%[[Arg_0_1]]), channel_id=1,
-// CHECK-SAME{{LITERAL}} : replica_groups={{0,1},{2,3}}, metadata=
+// CHECK-SAME{LITERAL}: replica_groups={{0,1},{2,3}}, metadata=
 
 func.func @main(%arg0: tensor<128x32xf32>) -> tensor<128x32xf32> {
   %0 = "stablehlo.collective_broadcast"(%arg0) <{channel_handle = #stablehlo.channel_handle<handle = 1, type = 0>, replica_groups = dense<[[0, 1], [2, 3]]> : tensor<2x2xi64>}> : (tensor<128x32xf32>) -> tensor<128x32xf32>
@@ -1586,7 +1632,8 @@ module {
 // CHECK:       ENTRY %[[$main_7:[^ ]+]]
 // CHECK-NEXT:  %[[Arg_0_1:[^ ]+]] = f32[10] parameter(0)
 // CHECK-NEXT:  ROOT %[[reduce_scatter_6:[^ ]+]] = f32[5] reduce-scatter(%[[Arg_0_1]]), channel_id=5,
-// CHECK-SAME{{LITERAL}} : replica_groups={{0,2},{1,3}}, dimensions={0}, to_apply=%[[$region_0_2]], metadata=
+// CHECK-SAME{LITERAL}: replica_groups={{0,2},{1,3}}, dimensions={0},
+// CHECK-SAME:  to_apply=%[[$region_0_2]], metadata=
 
 module {
   func.func @main(%arg0: tensor<10xf32>) -> tensor<5xf32> {
@@ -1612,7 +1659,8 @@ module {
 // CHECK:       ENTRY %[[$main_7:[^ ]+]]
 // CHECK-NEXT:  %[[Arg_0_1:[^ ]+]] = f32[10] parameter(0)
 // CHECK-NEXT:  ROOT %[[reduce_scatter_6:[^ ]+]] = f32[5] reduce-scatter(%[[Arg_0_1]]), channel_id=5,
-// CHECK-SAME{{LITERAL}} : replica_groups={{0,2},{1,3}}, dimensions={0}, to_apply=%[[$region_0_2]], metadata=
+// CHECK-SAME{LITERAL}: replica_groups={{0,2},{1,3}}, dimensions={0},
+// CHECK-SAME:  to_apply=%[[$region_0_2]], metadata=
 
 module {
   func.func @main(%arg0: tensor<10xf32>) -> tensor<5xf32> {
@@ -1638,7 +1686,8 @@ module {
 // CHECK:       ENTRY %[[$main_7:[^ ]+]]
 // CHECK-NEXT:  %[[Arg_0_1:[^ ]+]] = f32[10] parameter(0)
 // CHECK-NEXT:  ROOT %[[reduce_scatter_6:[^ ]+]] = f32[5] reduce-scatter(%[[Arg_0_1]]), channel_id=5,
-// CHECK-SAME{{LITERAL}} : replica_groups={{0,2},{1,3}}, use_global_device_ids=true, dimensions={0}, to_apply=%[[$region_0_2]], metadata=
+// CHECK-SAME{LITERAL}: replica_groups={{0,2},{1,3}}, use_global_device_ids=true, dimensions={0},
+// CHECK-SAME: to_apply=%[[$region_0_2]], metadata=
 
 module {
   func.func @main(%arg0: tensor<10xf32>) -> tensor<5xf32> {
@@ -1663,7 +1712,8 @@ module {
 // CHECK:       ENTRY %[[$main_6:[^ ]+]]
 // CHECK:  %[[Arg_0_1:[^ ]+]] = f32[4,16] parameter(0)
 // CHECK-NEXT:  ROOT %[[reduce_scatter_5:[^ ]+]] = f32[4,4] reduce-scatter(%[[Arg_0_1]]), channel_id=1,
-// CHECK-SAME{{LITERAL}} : replica_groups={{0,1,2,3}}, use_global_device_ids=true, dimensions={1}, to_apply=%[[$region_0_2]], metadata=
+// CHECK-SAME{LITERAL}: replica_groups={{0,1,2,3}}, use_global_device_ids=true, dimensions={1},
+// CHECK-SAME:  to_apply=%[[$region_0_2]], metadata=
 
 module {
   func.func @main(%arg0: tensor<4x16xf32>) -> tensor<4x4xf32> {
@@ -1897,3 +1947,271 @@ module {
   }
 }
 // CHECK-DIRECT: stablehlo.set_dimension_size
+
+// -----
+
+// CHECK-LABEL: HloModule main
+// CHECK: ENTRY
+// CHECK-LITERAL:: f32[192] parameter(0), origin={{"a"}}
+
+module {
+  func.func @main(%arg0: tensor<192xf32> {mhlo.original_value = "{{\22a\22}}"}) -> tensor<192xf32> {
+    return %arg0 : tensor<192xf32>
+  }
+}
+
+// -----
+
+// CHECK-LABEL: HloModule main
+// CHECK: ENTRY
+// CHECK-LITERAL: ROOT %constant.1 = s32[] constant(0), origin={{"constant.5"}}
+
+module {
+  func.func @main() -> tensor<i32> {
+    %0 = stablehlo.constant {mhlo.original_value = "{{\22constant.5\22}}"} dense<0> : tensor<i32>
+    return %0 : tensor<i32>
+  }
+}
+
+// -----
+
+// CHECK-LABEL: HloModule main
+// CHECK: ENTRY
+// CHECK: %[[ARG0:.*]] = f32[192] parameter(0)
+// CHECK-LITERAL: ROOT %[[RESULT:.*]] = f32[1,17,17,192] broadcast(%[[ARG0]]), dimensions={3}, origin={{"broadcast.2342"}}
+
+module {
+  func.func @main(%arg0: tensor<192xf32>) -> tensor<1x17x17x192xf32> {
+    %0 = stablehlo.broadcast_in_dim %arg0, dims = [3] {mhlo.original_value = "{{\22broadcast.2342\22}}"} : (tensor<192xf32>) -> tensor<1x17x17x192xf32>
+    return %0 : tensor<1x17x17x192xf32>
+  }
+}
+
+// -----
+
+// CHECK-LABEL: HloModule main
+// CHECK: ENTRY
+// CHECK:  %[[ARG0:.*]] = f32[10] parameter(0)
+// CHECK-LITERAL:  %[[TOPK:.*]] = (f32[8], s32[8]) topk(%[[ARG0]]), k=8, largest=true, origin={({"t" {0}}, {"t" {1}})}
+// CHECK-LITERAL:  ROOT %[[GTE0:.*]] = f32[8] get-tuple-element(%[[TOPK]]), index=0, origin={{"t" {0}}}
+// CHECK-LITERAL:  %[[GTE1:.*]] = s32[8] get-tuple-element(%[[TOPK]]), index=1, origin={{"t" {1}}}
+func.func @main(%arg0: tensor<10xf32>) -> tensor<8xf32> {
+  %0:2 = mhlo.topk(%arg0, k=8, largest=true) {mhlo.original_value="{({\22t\22 {0}}, {\22t\22 {1}})}"} : tensor<10xf32> -> (tensor<8xf32>, tensor<8xi32>)
+  return %0#0 : tensor<8xf32>
+}
+
+// -----
+// CHECK-LABEL: HloModule main
+// CHECK: ENTRY
+// CHECK-LITERAL:  %[[CONSTANT:.*]] = s32[] constant(0), origin={{"c"}}
+// CHECK-LITERAL:  %[[ARG0:.*]] = s32[] parameter(0), origin={{"a"}}
+// CHECK-LITERAL:  %[[ARG1:.*]] = s32[] parameter(1), origin={{"b"}}
+// CHECK-LITERAL:  tuple(%[[CONSTANT]], %[[ARG0]], %[[ARG1]]), origin={({"c"}, {"a"}, {"b"})}
+func.func @main(%arg0: tensor<i32> {mhlo.original_value = "{{\22a\22}}"}, %arg1: tensor<i32> {mhlo.original_value = "{{\22b\22}}"}) -> (tensor<i32>) {
+  %c = stablehlo.constant {mhlo.original_value = "{{\22c\22}}"} dense<0> : tensor<i32>
+  %0:2 = stablehlo.while(%iterArg = %c, %iterArg_0 = %arg0) : tensor<i32>, tensor<i32> attributes {mhlo.original_value = "{({\22while\22 {0}}, {\22while\22 {1}}, {\22while\22 {2}})}"}
+  cond {
+    %1 = stablehlo.compare  LT, %iterArg, %arg1 : (tensor<i32>, tensor<i32>) -> tensor<i1>
+    stablehlo.return %1 : tensor<i1>
+  } do {
+    %1 = stablehlo.add %iterArg, %iterArg_0 : tensor<i32>
+    stablehlo.return %1, %1: tensor<i32>, tensor<i32>
+  }
+  return %0#1 : tensor<i32>
+}
+
+// -----
+
+// CHECK-LABEL: HloModule main
+// CHECK: ENTRY
+func.func @main() -> tensor<128x2048xf32> {
+  // CHECK-NEXT: %after-all.1 = token[] after-all(), sharding={manual}
+  // CHECK-NEXT: %infeed.1 = ((f32[2048,128]), token[]) infeed(%after-all.1), sharding={{[{][{]manual}, {manual[}][}]}}
+  // CHECK-NEXT: %get-tuple-element.5 = token[] get-tuple-element(%infeed.1), index=1, sharding={manual}
+  // CHECK-NEXT: %get-tuple-element.3 = (f32[2048,128]) get-tuple-element(%infeed.1), index=0, sharding={{[{][{]manual[}][}]}}
+  // CHECK-NEXT: %get-tuple-element.4 = f32[2048,128] get-tuple-element(%get-tuple-element.3), index=0, sharding={manual}
+  // CHECK-NEXT: ROOT %transpose.1 = f32[128,2048] transpose(%get-tuple-element.4), dimensions={1,0}, sharding={manual}
+  %0 = stablehlo.create_token {mhlo.sharding = "{manual}", xla_shape = "token[]"} : !stablehlo.token
+  %1:2 = "stablehlo.infeed"(%0) <{infeed_config = "", layout = [[1, 0]]}> {mhlo.sharding = "{{manual}, {manual}}"} : (!stablehlo.token) -> (tensor<2048x128xf32>, !stablehlo.token)
+  %2 = stablehlo.transpose %1#0, dims = [1, 0] {mhlo.sharding = "{manual}", result_layout = dense<[0, 1]> : tensor<2xindex>, xla_shape = "f32[128,2048]{0,1}"} : (tensor<2048x128xf32>) -> tensor<128x2048xf32>
+  return %2 : tensor<128x2048xf32>
+}
+
+// -----
+
+// CHECK-LABEL: HloModule main
+//       CHECK: ENTRY
+func.func @main(%arg0: tensor<2x4xf32>) -> tensor<2x4xf32> {
+  //               CHECK: custom-call({{.*}}), custom_call_target="foo",
+  // CHECK-SAME{LITERAL}: output_to_operand_aliasing={{}: (0, {})}
+  %0 = "stablehlo.custom_call"(%arg0) {
+    call_target_name = "foo",
+    api_version = 4 : i32,
+    output_operand_aliases = [
+      #stablehlo.output_operand_alias<output_tuple_indices = [],
+        operand_index = 0,
+        operand_tuple_indices = []>]
+  } : (tensor<2x4xf32>) -> tensor<2x4xf32>
+  func.return %0 : tensor<2x4xf32>
+}
+
+// -----
+
+// CHECK-LABEL: HloModule main, entry_computation_layout
+//       CHECK: ENTRY
+func.func @main() -> memref<2xf32> {
+  // CHECK: custom-call(), custom_call_target="CreateBuffer"
+  %0 = "stablehlo.custom_call"() {
+    call_target_name = "CreateBuffer",
+    api_version = 4 : i32
+  } : () -> memref<2xf32>
+  func.return %0 : memref<2xf32>
+}
+
+// -----
+
+// CHECK-LABEL: HloModule main, entry_computation_layout
+//       CHECK: ENTRY
+func.func @main(%arg0: tensor<2xf32>) -> memref<2xf32> {
+  //               CHECK: custom-call({{.*}}), custom_call_target="Pin",
+  // CHECK-SAME{LITERAL}: output_to_operand_aliasing={{}: (0, {})}
+  %0 = "stablehlo.custom_call"(%arg0) {
+    call_target_name = "Pin",
+    api_version = 4 : i32
+  } : (tensor<2xf32>) -> memref<2xf32>
+  func.return %0 : memref<2xf32>
+}
+
+// -----
+
+// CHECK-LABEL: HloModule main, entry_computation_layout
+//       CHECK: ENTRY
+func.func @main(%arg0: memref<2xf32>) -> tensor<2xf32> {
+  //               CHECK: custom-call({{.*}}), custom_call_target="Unpin",
+  // CHECK-SAME{LITERAL}: output_to_operand_aliasing={{}: (0, {})}
+  %0 = "stablehlo.custom_call"(%arg0) {
+    call_target_name = "Unpin",
+    api_version = 4 : i32
+  } : (memref<2xf32>) -> tensor<2xf32>
+  func.return %0 : tensor<2xf32>
+}
+
+// -----
+
+// CHECK-LABEL: HloModule main, entry_computation_layout
+//       CHECK: ENTRY
+func.func @main(%arg0: memref<2x4xf32>) -> memref<2x4xf32> {
+  //               CHECK: custom-call({{.*}}), custom_call_target="foo",
+  // CHECK-SAME{LITERAL}: output_to_operand_aliasing={{}: (0, {})}
+  %0 = "stablehlo.custom_call"(%arg0) {
+    call_target_name = "foo",
+    api_version = 4 : i32,
+    output_operand_aliases = [
+      #stablehlo.output_operand_alias<output_tuple_indices = [],
+        operand_index = 0,
+        operand_tuple_indices = []>]
+  } : (memref<2x4xf32>) -> memref<2x4xf32>
+  func.return %0 : memref<2x4xf32>
+}
+
+// -----
+
+// CHECK-LABEL: HloModule main, entry_computation_layout
+//       CHECK: ENTRY
+func.func @main(%arg0: tensor<2xf32>, %arg1: memref<2xf32>) -> tuple<tensor<2xf32>, memref<2xf32>> {
+  // CHECK: %{{.*}} = (f32[2], b(f32[2])) tuple(%{{.*}}, %{{.*}}),
+  %0 = "stablehlo.tuple"(%arg0, %arg1) : (tensor<2xf32>, memref<2xf32>) -> tuple<tensor<2xf32>, memref<2xf32>>
+  func.return %0 : tuple<tensor<2xf32>, memref<2xf32>>
+}
+
+// -----
+
+// CHECK-LABEL: HloModule main, entry_computation_layout
+//       CHECK: ENTRY
+func.func @main(%arg0: tuple<tensor<2xf32>, memref<2xf32>>) -> memref<2xf32> {
+  // CHECK: %{{.*}} = b(f32[2]) get-tuple-element(%{{.*}})
+  %0 = "stablehlo.get_tuple_element"(%arg0) {
+    index = 1 : i32
+  } : (tuple<tensor<2xf32>, memref<2xf32>>) -> memref<2xf32>
+  func.return %0 : memref<2xf32>
+}
+
+// -----
+
+// CHECK-LABEL: HloModule main, entry_computation_layout
+//       CHECK: ENTRY
+func.func @main(%arg0: tensor<i1>, %arg1: memref<2xf32>) -> memref<2xf32> {
+  // CHECK: %{{.*}} = (pred[], b(f32[2])) while(%{{.*}}), condition=%{{.*}}, body=%{{.*}}
+  %0:2 = stablehlo.while(%iterArg0 = %arg0, %iterArg1 = %arg1) : tensor<i1>, memref<2xf32>
+    cond {
+      stablehlo.return %iterArg0 : tensor<i1>
+    } do {
+      %1 = "stablehlo.custom_call"(%iterArg1) {
+        call_target_name = "foo",
+        api_version = 4 : i32,
+        output_operand_aliases = [
+          #stablehlo.output_operand_alias<output_tuple_indices = [],
+            operand_index = 0,
+            operand_tuple_indices = []>]
+      } : (memref<2xf32>) -> memref<2xf32>
+      stablehlo.return %iterArg0, %1 : tensor<i1>, memref<2xf32>
+    }
+  func.return %0#1: memref<2xf32>
+}
+
+// -----
+
+// CHECK-LABEL: HloModule main
+// CHECK: set-dimension-size
+// CHECK-NOT: cast
+func.func @main(%arg0: tensor<4xf32>, %arg1: tensor<i32>) -> tensor<?xf32> {
+  %0 = stablehlo.set_dimension_size %arg0, %arg1, dim = 0 : (tensor<4xf32>, tensor<i32>) -> tensor<?xf32, #stablehlo.bounds<4>>
+  %cast = tensor.cast %0 : tensor<?xf32, #stablehlo.bounds<4>> to tensor<?xf32>
+  return %cast : tensor<?xf32>
+}
+
+// -----
+
+// CHECK: HloModule
+// CHECK: ENTRY
+func.func @main(%arg0: tensor<8x8xf32>) -> tensor<8x6xf32> {
+  // CHECK: [[RES:%custom.*]] = (f32[8,6]) custom-call(%{{.*}}), custom_call_target="SparseActivationsUnstackInterleaved"
+  // CHECK-NEXT: ROOT %[[ROOT:.*]] = f32[8,6] get-tuple-element([[RES]]), index=0
+  %0 = "stablehlo.custom_call"(%arg0) {call_target_name = "SparseActivationsUnstackInterleaved", backend_config = "", operand_layouts = [dense<[1, 0]> : tensor<2xindex>], result_layout = [dense<[0, 1]> : tensor<2xindex>], result_layouts = [dense<[0, 1]> : tensor<2xindex>], xla_shape = "(f32[8,6]{0,1})"} : (tensor<8x8xf32>) -> tensor<8x6xf32>
+  func.return %0: tensor<8x6xf32>
+}
+
+// -----
+
+// CHECK: HloModule
+// CHECK: ENTRY
+func.func @main(%arg0: tensor<8x8xf32>) -> tensor<8x6xf32> {
+  // CHECK: [[RES:%custom.*]] = (f32[8,6]) custom-call(%{{.*}}), custom_call_target="SparseActivationsUnstack"
+  // CHECK-NEXT: ROOT %[[ROOT:.*]] = f32[8,6] get-tuple-element([[RES]]), index=0
+  %0 = "stablehlo.custom_call"(%arg0) {call_target_name = "SparseActivationsUnstack", backend_config = "", operand_layouts = [dense<[1, 0]> : tensor<2xindex>], result_layout = [dense<[0, 1]> : tensor<2xindex>], result_layouts = [dense<[0, 1]> : tensor<2xindex>], xla_shape = "(f32[8,6]{0,1})"} : (tensor<8x8xf32>) -> tensor<8x6xf32>
+  func.return %0: tensor<8x6xf32>
+}
+
+// -----
+
+// CHECK: HloModule
+// CHECK: ENTRY
+func.func @main(%arg0: tensor<8x8xf32>) -> tensor<8x6xf32> {
+  // CHECK: [[RES:%custom.*]] = (f32[8,6]) custom-call(%{{.*}}), custom_call_target="SparseActivationsUnstack"
+  // CHECK-NEXT: ROOT %[[ROOT:.*]] = f32[8,6] get-tuple-element([[RES]]), index=0
+  %0 = "stablehlo.custom_call"(%arg0) {call_target_name = "SparseActivationsUnstack", backend_config = "", operand_layouts = [dense<[1, 0]> : tensor<2xindex>], result_layout = [dense<[0, 1]> : tensor<2xindex>], result_layouts = [dense<[0, 1]> : tensor<2xindex>], xla_shape = "(f32[8,6]{0,1})"} : (tensor<8x8xf32>) -> tuple<tensor<8x6xf32>>
+  %1 = stablehlo.get_tuple_element %0[0] : (tuple<tensor<8x6xf32>>) -> tensor<8x6xf32>
+  func.return %1: tensor<8x6xf32>
+}
+
+// -----
+
+// CHECK: HloModule
+// CHECK: ENTRY
+func.func @main(%arg0: tensor<8x8xf32>) -> tensor<8x6xf32> {
+  // CHECK: [[RES:%custom.*]] = (f32[8,6], f32[8,6]) custom-call(%{{.*}}), custom_call_target="SparseActivationsUnstack"
+  // CHECK-NEXT: ROOT %[[ROOT:.*]] = f32[8,6] get-tuple-element([[RES]]), index=0
+  %0 = "stablehlo.custom_call"(%arg0, %arg0) {call_target_name = "SparseActivationsUnstack", backend_config = "", xla_shape = "(f32[8,6]{0,1}, f32[8,6]{0,1})"} : (tensor<8x8xf32>, tensor<8x8xf32>) -> tuple<tensor<8x6xf32>, tensor<8x6xf32>>
+  %1 = stablehlo.get_tuple_element %0[0] : (tuple<tensor<8x6xf32>, tensor<8x6xf32>>) -> tensor<8x6xf32>
+  func.return %1: tensor<8x6xf32>
+}

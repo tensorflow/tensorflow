@@ -32,6 +32,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "third_party/gpus/cudnn/cudnn_version.h"
+#include "xla/codegen/emitters/computation_fingerprint.h"
 #include "xla/comparison_util.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -47,10 +48,10 @@ limitations under the License.
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/cudnn_support_utils.h"
 #include "xla/service/gpu/ir_emission_utils.h"
-#include "xla/service/gpu/kernel_reuse_cache.h"
-#include "xla/service/gpu/matmul_indexing_utils.h"
 #include "xla/service/gpu/stream_executor_util.h"
+#include "xla/service/gpu/transforms/block_scaling_rewriter.h"
 #include "xla/service/gpu/triton_fusion_analysis.h"
+#include "xla/service/matmul_indexing_utils.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/cuda/cuda_dnn.h"
 #include "xla/stream_executor/cuda/cudnn_frontend_helpers.h"
@@ -149,6 +150,8 @@ inline std::optional<fe::DataType_t> ToCudnnDataType(const PrimitiveType type) {
       return t::BFLOAT16;
     case PrimitiveType::S32:
       return t::INT32;
+    case PrimitiveType::S4:
+      return t::INT4;
     case PrimitiveType::S8:
       return t::INT8;
     case PrimitiveType::PRED:
@@ -157,6 +160,10 @@ inline std::optional<fe::DataType_t> ToCudnnDataType(const PrimitiveType type) {
       return t::FP8_E5M2;
     case PrimitiveType::F8E4M3FN:
       return t::FP8_E4M3;
+    case PrimitiveType::F8E8M0FNU:
+      return t::FP8_E8M0;
+    case PrimitiveType::F4E2M1FN:
+      return t::FP4_E2M1;
     default:
       return std::nullopt;
   }
@@ -178,24 +185,33 @@ inline std::optional<fe::DataType_t> GetComputeDataType(
 
 // Extracts dimensions and strides from HLO tensors in the format expected by
 // cuDNN.
+struct Result {
+  std::vector<int64_t> sizes;
+  std::vector<int64_t> strides;
+  std::optional<std::vector<std::pair<int64_t, int64_t>>> slices;
+};
+
 class GemmDimensionAdapter {
-  explicit GemmDimensionAdapter(const HloDotInstruction& dot,
+  explicit GemmDimensionAdapter(const HloInstruction& dot,
                                 TritonFusionAnalysis analysis)
-      : analysis_(std::move(analysis)), dot_(dot) {};
+      : analysis_(std::move(analysis)), dot_(dot) {}
 
  public:
   const TritonFusionAnalysis analysis_;
 
   static absl::StatusOr<std::optional<GemmDimensionAdapter>> Create(
       const HloComputation& computation) {
+    const HloInstruction* maybe_scaled_dot =
+        hlo_query::GetFirstInstructionWithOpcode(computation,
+                                                 HloOpcode::kScaledDot);
     const HloInstruction* maybe_dot =
         hlo_query::GetFirstInstructionWithOpcode(computation, HloOpcode::kDot);
-    if (maybe_dot == nullptr) {
+    if (maybe_scaled_dot == nullptr && maybe_dot == nullptr) {
       VLOG(3) << "Not a GEMM fusion.";
       return std::nullopt;
     }
-    const HloDotInstruction* dot = DynCast<HloDotInstruction>(
-        hlo_query::GetFirstInstructionWithOpcode(computation, HloOpcode::kDot));
+    const HloInstruction* dot =
+        maybe_dot != nullptr ? maybe_dot : maybe_scaled_dot;
     if (absl::c_any_of(dot->precision_config().operand_precision(),
                        [](int x) { return x != PrecisionConfig::DEFAULT; })) {
       VLOG(3) << "Non-default precision is not supported.";
@@ -205,12 +221,6 @@ class GemmDimensionAdapter {
                         TritonFusionAnalysis::Execute(computation));
     return GemmDimensionAdapter{*dot, std::move(analysis)};
   }
-
-  struct Result {
-    std::vector<int64_t> sizes;
-    std::vector<int64_t> strides;
-    std::optional<std::vector<std::pair<int64_t, int64_t>>> slices;
-  };
 
   std::optional<Result> DimensionsAndStrides(
       const HloInstruction& hlo, const TritonFusionAnalysis::Scope scope) {
@@ -222,6 +232,7 @@ class GemmDimensionAdapter {
     int lhs_noncontracting_index = -1;
     switch (scope) {
       case TritonFusionAnalysis::Scope::LHS:
+      case TritonFusionAnalysis::Scope::LHS_SCALE:
         lhs_noncontracting_index =
             GetNonContractingDims(dot_.operand(0)->shape(),
                                   dims.lhs_batch_dimensions(),
@@ -233,6 +244,7 @@ class GemmDimensionAdapter {
             lhs_noncontracting_index, dims.lhs_contracting_dimensions(0)};
         break;
       case TritonFusionAnalysis::Scope::RHS:
+      case TritonFusionAnalysis::Scope::RHS_SCALE:
         dim_indices = {dims.rhs_batch_dimensions().empty()
                            ? -1
                            : dims.rhs_batch_dimensions(0),
@@ -248,8 +260,6 @@ class GemmDimensionAdapter {
                        lhs_noncontracting_index,
                        dot_.shape().dimensions_size() - 1};
         break;
-      case TritonFusionAnalysis::Scope::META:
-        LOG(FATAL) << "Unsupported scope.";
     }
 
     Result result;
@@ -349,7 +359,114 @@ class GemmDimensionAdapter {
 
  private:
   int64_t lhs_noncontracting_split_ = 1;
-  const HloDotInstruction& dot_;
+  const HloInstruction& dot_;
+};
+
+class ConvDimensionAdapter {
+  explicit ConvDimensionAdapter(const HloInstruction& conv,
+                                CuDnnFusionConfig_Kind conv_kind,
+                                ConvolutionDimensionNumbers dums)
+      : conv_(conv), conv_kind_(conv_kind), dums_(dums) {}
+
+ public:
+  const HloInstruction& conv_;
+  CuDnnFusionConfig_Kind conv_kind_;
+
+  static absl::StatusOr<std::optional<ConvDimensionAdapter>> Create(
+      const HloFusionInstruction& fusion, const HloComputation& computation) {
+    const HloInstruction* maybe_conv = hlo_query::GetFirstInstructionWithOpcode(
+        computation, HloOpcode::kConvolution);
+    if (maybe_conv == nullptr) {
+      VLOG(3) << "Not a Conv fusion.";
+      return std::nullopt;
+    }
+
+    // get conv type from backend config
+    TF_ASSIGN_OR_RETURN(auto gpu_config,
+                        fusion.backend_config<GpuBackendConfig>());
+    const FusionBackendConfig& fusion_backend_config =
+        gpu_config.fusion_backend_config();
+    if (!fusion_backend_config.has_cudnn_fusion_config() ||
+        !fusion_backend_config.cudnn_fusion_config().has_kind()) {
+      VLOG(3) << "Can't find cudnn fusion config or conv kind for cudnn conv "
+                 "fusion.";
+      return std::nullopt;
+    }
+    CuDnnFusionConfig_Kind conv_kind =
+        fusion_backend_config.cudnn_fusion_config().kind();
+
+    const ConvolutionDimensionNumbers& dnums =
+        DynCast<HloConvolutionInstruction>(maybe_conv)
+            ->convolution_dimension_numbers();
+    // for fprop, we do nothing, copy directly
+    ConvolutionDimensionNumbers dnums_for_layout = dnums;
+    if (conv_kind == CuDnnFusionConfig::CONV_WGRAD) {
+      dnums_for_layout.set_input_batch_dimension(
+          dnums.input_feature_dimension());
+      dnums_for_layout.set_input_feature_dimension(
+          dnums.input_batch_dimension());
+      dnums_for_layout.set_output_batch_dimension(
+          dnums.output_feature_dimension());
+      dnums_for_layout.set_output_feature_dimension(
+          dnums.output_batch_dimension());
+      dnums_for_layout.set_kernel_input_feature_dimension(
+          dnums.kernel_output_feature_dimension());
+      dnums_for_layout.set_kernel_output_feature_dimension(
+          dnums.kernel_input_feature_dimension());
+    } else if (conv_kind == CuDnnFusionConfig::CONV_DGRAD) {
+      dnums_for_layout.set_kernel_input_feature_dimension(
+          dnums.kernel_output_feature_dimension());
+      dnums_for_layout.set_kernel_output_feature_dimension(
+          dnums.kernel_input_feature_dimension());
+    }
+
+    // make sure input/kernel/output has the same layout
+    TF_RET_CHECK(dnums_for_layout.input_batch_dimension() ==
+                     dnums_for_layout.kernel_output_feature_dimension() &&
+                 dnums_for_layout.kernel_output_feature_dimension() ==
+                     dnums_for_layout.output_batch_dimension());
+    TF_RET_CHECK(dnums_for_layout.input_feature_dimension() ==
+                     dnums_for_layout.kernel_input_feature_dimension() &&
+                 dnums_for_layout.kernel_input_feature_dimension() ==
+                     dnums_for_layout.output_feature_dimension());
+    for (auto i = 0; i < dnums_for_layout.input_spatial_dimensions_size();
+         ++i) {
+      TF_RET_CHECK(dnums_for_layout.input_spatial_dimensions(i) ==
+                       dnums_for_layout.kernel_spatial_dimensions(i) &&
+                   dnums_for_layout.kernel_spatial_dimensions(i) ==
+                       dnums_for_layout.output_spatial_dimensions(i));
+    }
+    return ConvDimensionAdapter{*maybe_conv, conv_kind, dnums_for_layout};
+  }
+
+  std::optional<Result> DimensionsAndStrides(const HloInstruction& hlo) {
+    // placeholder FP32 data type here, it is not used
+    auto desc = se::dnn::TensorDescriptor::For(
+        se::dnn::DataType::kFloat, hlo.shape().dimensions(),
+        hlo.shape().layout().minor_to_major());
+    // logical layout and physical layout should be the same after layout
+    // assignment.
+    std::vector<int64_t> logical_dims = desc.dimensions();
+    std::vector<int64_t> logical_strides = desc.GetLogicalStrides();
+    // cuDNN conv frontend requires logical layout to be NCHW. return logical
+    // NCHW layout. we shouldn't need to know if this hlo is LHS, RHS or Output,
+    // they should have same layout after layout assignment. Use input dums
+    // here.
+    Result result;
+    result.sizes.push_back(logical_dims[dums_.input_batch_dimension()]);
+    result.sizes.push_back(logical_dims[dums_.input_feature_dimension()]);
+    result.strides.push_back(logical_strides[dums_.input_batch_dimension()]);
+    result.strides.push_back(logical_strides[dums_.input_feature_dimension()]);
+    for (auto i = 0; i < dums_.input_spatial_dimensions_size(); ++i) {
+      result.sizes.push_back(logical_dims[dums_.input_spatial_dimensions(i)]);
+      result.strides.push_back(
+          logical_strides[dums_.input_spatial_dimensions(i)]);
+    }
+    return result;
+  }
+
+ private:
+  ConvolutionDimensionNumbers dums_;
 };
 
 template <PrimitiveType XlaT, typename T>
@@ -419,18 +536,25 @@ absl::StatusOr<std::optional<se::gpu::CudnnGraph>> HloFusionToCuDnnGraph(
   VLOG(5) << fusion.ToString();
   VLOG(5) << computation.ToString();
   graph::Graph graph;
+  // Intermediate data type is needed for `block_scale_dequantize` graph nodes.
+  graph.set_intermediate_data_type(cudnn_frontend::DataType_t::FLOAT);
+
   std::vector<HloInstruction*> instructions =
       computation.MakeInstructionPostOrder();
   absl::flat_hash_map<const HloInstruction*,
                       std::shared_ptr<graph::Tensor_attributes>>
       hlo_to_cudnn;
-  TF_ASSIGN_OR_RETURN(std::optional<GemmDimensionAdapter> adapter,
+  TF_ASSIGN_OR_RETURN(std::optional<GemmDimensionAdapter> gemm_adapter,
                       GemmDimensionAdapter::Create(computation));
-  if (!adapter.has_value()) {
+  TF_ASSIGN_OR_RETURN(std::optional<ConvDimensionAdapter> conv_adapter,
+                      ConvDimensionAdapter::Create(fusion, computation));
+  if (!gemm_adapter.has_value() && !conv_adapter.has_value()) {
+    VLOG(3) << "No dot or conv found inside cudnn fusion.";
     return std::nullopt;
   }
+
   auto add_parameter = [&](const HloInstruction& parameter,
-                           const GemmDimensionAdapter::Result& dims) {
+                           const Result& dims) {
     const std::optional<fe::DataType_t> data_type =
         ToCudnnDataType(parameter.shape().element_type());
     if (!data_type.has_value()) {
@@ -451,19 +575,54 @@ absl::StatusOr<std::optional<se::gpu::CudnnGraph>> HloFusionToCuDnnGraph(
     }
     return true;
   };
-  for (const TritonFusionAnalysis::Scope scope :
-       {TritonFusionAnalysis::Scope::LHS, TritonFusionAnalysis::Scope::RHS,
-        TritonFusionAnalysis::Scope::OUTPUT}) {
+
+  if (conv_adapter.has_value()) {
+    for (const HloInstruction* operand : conv_adapter->conv_.operands()) {
+      if (!HloPredicateIsOp<HloOpcode::kParameter>(operand)) {
+        VLOG(3) << "Conv operands are expected to be parameters.";
+        return std::nullopt;
+      }
+    }
     for (const HloInstruction* parameter :
-         adapter->analysis_.ScopeParameters(scope)) {
-      const std::optional<GemmDimensionAdapter::Result> dims =
-          adapter->DimensionsAndStrides(*parameter, scope);
+         computation.parameter_instructions()) {
+      // for now, we assume all parameters have same layout even if they are not
+      // inputs to conv, for example, bias add after conv.
+      const std::optional<Result> dims =
+          conv_adapter->DimensionsAndStrides(*parameter);
+      VLOG(3) << "parameter: " << parameter->ToString() << "\n";
       if (!dims.has_value()) {
         VLOG(3) << "Unsupported dimensions.";
         return std::nullopt;
       }
       if (!add_parameter(*parameter, *dims)) {
         return std::nullopt;
+      }
+    }
+  } else {
+    // dot and scale dot
+    for (const TritonFusionAnalysis::Scope scope :
+         {TritonFusionAnalysis::Scope::LHS,
+          TritonFusionAnalysis::Scope::LHS_SCALE,
+          TritonFusionAnalysis::Scope::RHS,
+          TritonFusionAnalysis::Scope::RHS_SCALE,
+          TritonFusionAnalysis::Scope::OUTPUT}) {
+      if (!gemm_adapter->analysis_.is_scaled_dot() &&
+          (scope == TritonFusionAnalysis::Scope::LHS_SCALE ||
+           scope == TritonFusionAnalysis::Scope::RHS_SCALE)) {
+        continue;
+      }
+      for (const HloInstruction* parameter :
+           gemm_adapter->analysis_.ScopeParameters(scope)) {
+        const std::optional<Result> dims =
+            gemm_adapter->DimensionsAndStrides(*parameter, scope);
+        VLOG(3) << "parameter: " << parameter->ToString() << "\n";
+        if (!dims.has_value()) {
+          VLOG(3) << "Unsupported dimensions.";
+          return std::nullopt;
+        }
+        if (!add_parameter(*parameter, *dims)) {
+          return std::nullopt;
+        }
       }
     }
   }
@@ -535,13 +694,13 @@ absl::StatusOr<std::optional<se::gpu::CudnnGraph>> HloFusionToCuDnnGraph(
           // the cuDNN graph.
           if (hlo->operand(0)->opcode() == HloOpcode::kBroadcast) {
             const std::optional<TritonFusionAnalysis::Scope> scope =
-                adapter->analysis_.QueryInstructionScope(*hlo);
+                gemm_adapter->analysis_.QueryInstructionScope(*hlo);
             if (!scope.has_value()) {
               LOG(FATAL) << "No scope for instruction: "
                          << hlo->ToShortString();
             }
-            const std::optional<GemmDimensionAdapter::Result> dims =
-                adapter->DimensionsAndStrides(*hlo, *scope);
+            const std::optional<Result> dims =
+                gemm_adapter->DimensionsAndStrides(*hlo, *scope);
             if (!dims.has_value()) {
               VLOG(3) << "Unsupported hlo for querying dimensions: "
                       << hlo->ToShortString();
@@ -574,6 +733,80 @@ absl::StatusOr<std::optional<se::gpu::CudnnGraph>> HloFusionToCuDnnGraph(
           graph.matmul(operand(0), operand(1),
                        graph::Matmul_attributes().set_compute_data_type(
                            compute_dtype.value()));
+    } else if (HloPredicateIsOp<HloOpcode::kScaledDot>(hlo)) {
+      const auto compute_dtype =
+          GetComputeDataType(hlo->shape().element_type());
+      if (!compute_dtype.has_value()) {
+        return std::nullopt;
+      }
+      std::array<std::shared_ptr<graph::Tensor_attributes>, 2> dot_operands;
+      for (int i = 0; i < 2; ++i) {
+        const Shape& scale_shape = hlo->operand(i + 2)->shape();
+        int block_size = scale_shape.element_type() == F8E8M0FNU
+                             ? BlockScalingRewriter::kBlockSizeMXFP8
+                             : BlockScalingRewriter::kBlockSizeNVFP4;
+        auto scale = operand(i + 2);
+        scale->set_reordering_type(fe::TensorReordering_t::F8_128x4);
+        auto dq_attrs = graph::Block_scale_dequantize_attributes()
+                            .set_block_size(block_size)
+                            .set_compute_data_type(*compute_dtype);
+        dot_operands[i] =
+            graph.block_scale_dequantize(operand(i), scale, dq_attrs);
+        dot_operands[i]->set_name(
+            absl::StrCat(hlo->name(), i == 0 ? "_lhs" : "_rhs", "_dq"));
+      }
+      hlo_to_cudnn[hlo] = graph.matmul(
+          dot_operands[0], dot_operands[1],
+          graph::Matmul_attributes().set_compute_data_type(*compute_dtype));
+    } else if (HloPredicateIsOp<HloOpcode::kConvolution>(hlo)) {
+      // translate conv windows to cudnn conv attr
+      const Window& window = DynCast<HloConvolutionInstruction>(hlo)->window();
+      std::vector<int64_t> pre_padding, post_padding, stride, dilation;
+      for (int64_t i = 0; i < window.dimensions_size(); ++i) {
+        const auto& dim = window.dimensions(i);
+        pre_padding.push_back(dim.padding_low());
+        post_padding.push_back(dim.padding_high());
+        stride.push_back(dim.stride());
+        dilation.push_back(dim.window_dilation());
+      }
+      const auto compute_dtype =
+          GetComputeDataType(hlo->shape().element_type());
+      if (!compute_dtype.has_value()) {
+        return std::nullopt;
+      }
+
+      // lower to different conv based on conv_kind set in cudnn fusion backend
+      // config
+      auto set_conv_attr = [&](auto conv_attr) {
+        return conv_attr.set_pre_padding(pre_padding)
+            .set_post_padding(post_padding)
+            .set_stride(stride)
+            .set_dilation(dilation)
+            .set_compute_data_type(compute_dtype.value());
+      };
+      if (conv_adapter->conv_kind_ == CuDnnFusionConfig::CONV_FPROP) {
+        hlo_to_cudnn[hlo] =
+            graph.conv_fprop(operand(0), operand(1),
+                             set_conv_attr(graph::Conv_fprop_attributes()));
+      } else if (conv_adapter->conv_kind_ == CuDnnFusionConfig::CONV_DGRAD) {
+        hlo_to_cudnn[hlo] =
+            graph.conv_dgrad(operand(0), operand(1),
+                             set_conv_attr(graph::Conv_dgrad_attributes()));
+      } else if (conv_adapter->conv_kind_ == CuDnnFusionConfig::CONV_WGRAD) {
+        // cudnn frontend accepts operand in the order of dout, input, but xla
+        // uses reverse order
+        hlo_to_cudnn[hlo] =
+            graph.conv_wgrad(operand(1), operand(0),
+                             set_conv_attr(graph::Conv_wgrad_attributes()));
+      } else {
+        VLOG(3) << "Unimplemented conv type.";
+        return std::nullopt;
+      }
+      // cuDNN requires output dims to be set for conv dgrad and wgrad, it is
+      // not required for fprop but we do it anyway for simplicity
+      const std::optional<Result> dims =
+          conv_adapter->DimensionsAndStrides(*hlo);
+      hlo_to_cudnn[hlo]->set_dim(dims->sizes);
     } else {
       VLOG(3) << "Unimplemented operation.";
       return std::nullopt;
@@ -597,9 +830,12 @@ absl::StatusOr<std::optional<se::gpu::CudnnGraph>> HloFusionToCuDnnGraph(
   if (instructions.back()->shape().IsTuple()) {
     output = instructions.back()->operand(0);
   }
-  const std::optional<GemmDimensionAdapter::Result> dims =
-      adapter->DimensionsAndStrides(*output,
-                                    TritonFusionAnalysis::Scope::OUTPUT);
+
+  const std::optional<Result> dims =
+      conv_adapter.has_value()
+          ? conv_adapter->DimensionsAndStrides(*output)
+          : gemm_adapter->DimensionsAndStrides(
+                *output, TritonFusionAnalysis::Scope::OUTPUT);
   if (!dims.has_value()) {
     VLOG(3) << "Unsupported dimensions.";
     return std::nullopt;
@@ -632,9 +868,9 @@ absl::StatusOr<se::gpu::CudnnGraph> PrepareGraph(
     return absl::InternalError("Construction of cuDNN graph failed.");
   }
   TF_RETURN_IF_ERROR(graph->Prepare(
-      dnn_support,
-      se::NumericOptions{RequireDeterminism(hlo.GetModule()->config()),
-                         /*allow_tf32=*/true}));
+      dnn_support, se::EngineOptions{
+                       RequireDeterminism(hlo.GetModule()->config()),
+                       /*allow_tf32=*/true, /*require_command_buffer=*/false}));
   return *graph;
 }
 
@@ -723,8 +959,8 @@ class CuDnnFusionVisitor : public DfsHloRewriteVisitor {
 
     if (IsWorkspaceAllocationRoot(*hlo->fused_expression_root())) {
       // The graph already has a workspace.
-      const std::string fingerprint =
-          GetComputationFingerprint(hlo->fused_instructions_computation(), {});
+      const std::string fingerprint = emitters::GetComputationFingerprint(
+          hlo->fused_instructions_computation(), {});
       if (auto it = compilation_results_.find(fingerprint);
           it == compilation_results_.cend()) {
         TF_ASSIGN_OR_RETURN(const se::gpu::CudnnGraph graph, compile_graph());
@@ -744,7 +980,8 @@ class CuDnnFusionVisitor : public DfsHloRewriteVisitor {
     };
 
     const std::string fingerprint_without_workspace =
-        GetComputationFingerprint(hlo->fused_instructions_computation(), {});
+        emitters::GetComputationFingerprint(
+            hlo->fused_instructions_computation(), {});
 
     auto workspace_size_it =
         workspace_sizes_.find(fingerprint_without_workspace);
@@ -755,7 +992,7 @@ class CuDnnFusionVisitor : public DfsHloRewriteVisitor {
                               {fingerprint_without_workspace, workspace_size});
       TF_RETURN_IF_ERROR(add_workspace(workspace_size));
       TF_ASSIGN_OR_RETURN(const std::string serialized, serialize_graph(graph));
-      compilation_results_[GetComputationFingerprint(
+      compilation_results_[emitters::GetComputationFingerprint(
           hlo->fused_instructions_computation(), {})] = serialized;
     } else {
       VLOG(4) << "Cache hit.";
@@ -775,7 +1012,7 @@ class CuDnnFusionVisitor : public DfsHloRewriteVisitor {
 
 }  // namespace
 
-absl::StatusOr<bool> CuDnnFusionCompiler::Run(
+absl::StatusOr<bool> CuDnnFusionCompiler::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   XLA_SCOPED_LOGGING_TIMER("cuDNN fusion compiler");

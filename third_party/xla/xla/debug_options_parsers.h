@@ -16,11 +16,14 @@ limitations under the License.
 #ifndef XLA_DEBUG_OPTIONS_PARSERS_H_
 #define XLA_DEBUG_OPTIONS_PARSERS_H_
 
+#include <cstddef>
+#include <ostream>
 #include <string>
 #include <vector>
 
-#include "absl/strings/numbers.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_split.h"
+#include "absl/strings/string_view.h"
 #include "xla/xla.pb.h"
 
 namespace xla {
@@ -46,6 +49,70 @@ void parse_xla_backend_extra_options(T* extra_options_map,
     }
   }
 }
+
+namespace details {
+
+struct RepeatedFlagModifier {
+  enum class Op {
+    kAdd = 0,
+    kRemove = 1,
+    kClear = 2,
+  };
+
+  friend std::ostream& operator<<(std::ostream& os, Op op) {
+    switch (op) {
+      case Op::kAdd:
+        return os << "add";
+      case Op::kRemove:
+        return os << "remove";
+      case Op::kClear:
+        return os << "clear";
+    }
+  }
+
+  Op op;
+  std::string value;
+
+  bool operator==(const RepeatedFlagModifier& other) const {
+    return op == other.op && value == other.value;
+  }
+
+  friend std::ostream& operator<<(std::ostream& os,
+                                  const RepeatedFlagModifier& modifier) {
+    return os << "(" << modifier.op << ", " << modifier.value << ")";
+  }
+};
+
+// Parses a comma-separated list of a repeated flag modifiers.
+//
+// The sequence should either be a list of values, that will replace the
+// existing values, or a list of modifiers, that will be applied to the existing
+// values.
+//
+// Uppercases the values and optionally prefixes them.
+//
+// For example:
+// parseRepeatedEnumModifiers("a,pre_b", "pre_")
+//   -> [(clear), (add "PRE_A"), (add "PRE_B")]
+//
+// parseRepeatedEnumModifiers("+a,-b,+c", "")
+//   -> [(add, "A"), (remove, "B"), (add, "C")]
+absl::StatusOr<std::vector<RepeatedFlagModifier>> ParseRepeatedEnumModifiers(
+    absl::string_view flag_value, absl::string_view add_prefix = "");
+
+// Parses a string representation of an inclusive range into `range`.
+//
+// The string representation can be either:
+// - a single integer x,
+// - a range min:max,
+// - a half-open range min: or :max.
+// The range is inclusive on both ends.
+//
+// Returns true if the string is a valid range representation.
+bool ParseIntRangeInclusive(absl::string_view string_value,
+                            IntRangeInclusive& range);
+
+}  // namespace details
 
 }  // namespace xla
 

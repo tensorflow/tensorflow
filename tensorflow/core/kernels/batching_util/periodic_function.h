@@ -57,7 +57,7 @@ limitations under the License.
 #include <string>
 
 #include "absl/functional/any_invocable.h"
-#include "tensorflow/core/lib/core/notification.h"
+#include "absl/synchronization/notification.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
@@ -82,7 +82,7 @@ class PeriodicFunction {
 
     // Specifies the thread name prefix (see the description in class
     // Thread).
-    string thread_name_prefix = "periodic_function";
+    std::string thread_name_prefix = "periodic_function";
 
     // The environment to use. Does not take ownership, but must remain alive
     // for as long as the PeriodicFunction exists.
@@ -115,7 +115,7 @@ class PeriodicFunction {
   const Options options_;
 
   // Used to notify the thread to stop.
-  Notification stop_thread_;
+  absl::Notification stop_thread_;
 
   // Thread for running "function_"
   std::unique_ptr<Thread> thread_ = nullptr;

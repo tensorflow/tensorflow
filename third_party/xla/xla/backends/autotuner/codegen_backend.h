@@ -19,16 +19,16 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "google/protobuf/any.pb.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/executable.h"
-#include "tsl/platform/protobuf.h"
 
 namespace xla {
 
-using BackendConfig = tsl::protobuf::Message;
+using BackendConfig = google::protobuf::Any;
 
 // Interface for a codegen backend which can compile HLO instructions with
 // different configurations. This can be used to get the supported configs, and
@@ -55,8 +55,14 @@ class CodegenBackend {
       const HloInstruction& instr, const BackendConfig& config) = 0;
 
   // Apply config to the given HLO instruction.
+  // This can rarely lead to the instruction being replaced by new ones in the
+  // parent computation. Please check the documentation of the specific backend
+  // to understand if this is the case.
   virtual absl::Status ApplyConfig(HloInstruction& instr,
                                    const BackendConfig& config) = 0;
+
+  // Returns true if the backend can produce numerically wrong results.
+  virtual bool CanProduceWrongResults() const = 0;
 };
 
 }  // namespace xla

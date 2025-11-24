@@ -18,43 +18,85 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "llvm/Support/raw_ostream.h"
+#include "mlir/Bytecode/BytecodeWriter.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
-#include "mlir/Parser/Parser.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
-#include "xla/status_macros.h"
-#include "tensorflow/core/platform/errors.h"
+#include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "tensorflow/compiler/jit/flags.h"
+#include "xla/tsl/lib/io/zlib_compression_options.h"
+#include "xla/tsl/lib/io/zlib_outputbuffer.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/file_system.h"
 
 namespace tensorflow {
+namespace {
+class WritableStringFile : public tsl::WritableFile {
+ public:
+  explicit WritableStringFile(std::string* data) : data_(data) {};
+  ~WritableStringFile() override = default;
+
+  absl::Status Append(absl::string_view data) override {
+    absl::StrAppend(data_, data);
+    return absl::OkStatus();
+  }
+
+  absl::Status Close() override { return absl::OkStatus(); }
+  absl::Status Flush() override { return absl::OkStatus(); }
+  absl::Status Sync() override { return absl::OkStatus(); }
+
+ private:
+  std::string* data_;
+};
+}  // namespace
+
+absl::StatusOr<std::string> SerializeMlirModuleToCompressedBytecode(
+    mlir::ModuleOp module_op) {
+  std::string bytecode;
+  llvm::raw_string_ostream os(bytecode);
+  mlir::BytecodeWriterConfig config;
+  if (mlir::failed(mlir::writeBytecodeToFile(module_op, os, config))) {
+    return absl::InternalError("Failed to serialize MLIR module to bytecode.");
+  }
+  std::string compressed_bytecode;
+  WritableStringFile f(&compressed_bytecode);
+
+  tsl::io::ZlibCompressionOptions options =
+      tsl::io::ZlibCompressionOptions::GZIP();
+  tsl::io::ZlibOutputBuffer buffer(&f, options.input_buffer_size,
+                                   options.output_buffer_size, options);
+  TF_RETURN_IF_ERROR(buffer.Init());
+  TF_RETURN_IF_ERROR(buffer.Append(bytecode));
+  TF_RETURN_IF_ERROR(buffer.Close());
+  return compressed_bytecode;
+}
 
 std::string SerializeMlirModule(mlir::ModuleOp module_op) {
+  if (GetMlirCommonFlags()->tf_serialize_mlir_to_compressed_bytecode) {
+    auto compressed_bytecode =
+        SerializeMlirModuleToCompressedBytecode(module_op);
+    if (compressed_bytecode.ok()) {
+      return compressed_bytecode.value();
+    }
+    LOG_IF(ERROR, !compressed_bytecode.ok())
+        << "Failed to serialize MLIR module to "
+           "compressed bytecode."
+        << compressed_bytecode.status();
+    return "";
+  }
   std::string serialized_mlir_module;
   llvm::raw_string_ostream os(serialized_mlir_module);
   mlir::OpPrintingFlags print_flags;
-  print_flags.enableDebugInfo();
+  if (GetMlirCommonFlags()->tf_mlir_enable_debug_info_serialization) {
+    print_flags.enableDebugInfo();
+  }
   module_op.print(os, print_flags);
   return std::move(os.str());
-}
-
-absl::Status DeserializeMlirModule(
-    llvm::StringRef serialized_mlir_module, mlir::MLIRContext* mlir_context,
-    mlir::OwningOpRef<mlir::ModuleOp>* mlir_module) {
-  TF_RET_CHECK(!serialized_mlir_module.empty())
-      << "unexpected empty serialized MLIR module string";
-  TF_RET_CHECK(mlir_module) << "unexpected null MLIR module pointer";
-
-  // Make sure we catch any error reported by MLIR and forward it to the TF
-  // error reporting system.
-  mlir::StatusScopedDiagnosticHandler error_handler(mlir_context);
-
-  // Parse the module.
-  *mlir_module = mlir::parseSourceString<mlir::ModuleOp>(serialized_mlir_module,
-                                                         mlir_context);
-  if (!*mlir_module)
-    return error_handler.Combine(
-        errors::InvalidArgument("could not parse MLIR module"));
-
-  return absl::OkStatus();
 }
 
 }  // namespace tensorflow

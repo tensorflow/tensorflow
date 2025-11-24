@@ -235,6 +235,10 @@ class LayoutUtil {
   // layout `layout` as the most major dimension.
   static Layout MoveDimToMajor(const Layout& layout, int64_t dim);
 
+  // Constructs a new layout by making the given dimension in the given
+  // layout the minor most.
+  static Layout MoveDimToMinor(const Layout& layout, int64_t dim);
+
   // Returns the linearized index of the cell at the given indices. The unit
   // of the offset is in elements of the shape.
   //
@@ -269,6 +273,13 @@ class LayoutUtil {
 
   // Returns a shape's split config if present.
   static std::optional<SplitConfig> GetSplitConfig(const Shape& shape);
+
+  // Returns true if the layout tiling is equivalent to having no tiles at all.
+  // This is not a complete check and may return false for some unusual tilings
+  // even if they _are_ effectively untiled.
+  // The tiling should be valid for the provided shape.
+  static bool IsUntiledLayout(absl::Span<const Tile> tiles,
+                              absl::Span<const int64_t> shape);
 };
 
 }  // namespace xla

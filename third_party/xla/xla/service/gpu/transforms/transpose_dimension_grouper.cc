@@ -35,8 +35,8 @@ limitations under the License.
 #include "xla/permutation_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -139,8 +139,8 @@ absl::InlinedVector<int64_t, 3> GetNormalizedLogicalTransposeShape(
   // Drop degenerate dimensions.
   absl::InlinedVector<int64_t, 3> delta(output_shape.dimensions().size() + 1,
                                         0);
-  auto input_dimensions = ComposePermutations(output_shape.dimensions(),
-                                              InversePermutation(dimensions));
+  auto input_dimensions =
+      Permute(output_shape.dimensions(), InversePermutation(dimensions));
   for (int i = 0; i < output_shape.dimensions().size(); ++i) {
     delta[i + 1] = delta[i];
     if (input_dimensions[i] == static_cast<int64_t>(1)) {
@@ -181,7 +181,7 @@ class TransposeDimensionGroupVisitor : public DfsHloRewriteVisitor {
       return absl::OkStatus();
     }
     auto normalized_operand_dims =
-        ComposePermutations(normalized_dims, InversePermutation(permutation));
+        Permute(normalized_dims, InversePermutation(permutation));
     Shape grouped_operand_shape = ShapeUtil::MakeShapeWithDescendingLayout(
         transpose->shape().element_type(), normalized_operand_dims);
     auto new_operand = transpose->AddInstruction(HloInstruction::CreateBitcast(
@@ -199,9 +199,9 @@ class TransposeDimensionGroupVisitor : public DfsHloRewriteVisitor {
 };
 }  // namespace
 
-absl::StatusOr<bool> TransposeDimensionGrouper::Run(
-    HloModule *module,
-    const absl::flat_hash_set<absl::string_view> &execution_threads) {
+absl::StatusOr<bool> TransposeDimensionGrouper::RunImpl(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   TF_ASSIGN_OR_RETURN(
       bool changed,
       TransposeDimensionGroupVisitor().RunOnModule(module, execution_threads));

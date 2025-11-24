@@ -20,8 +20,10 @@ Usage:
 """
 
 import os
+import shutil
 import subprocess
 import sys
+from pathlib import Path
 
 
 def get_sys_path():
@@ -63,30 +65,35 @@ def create_systemd_service_file(service_content, service_name):
 
 
 def move_file_to_systemd(service_name):
-  if not os.path.exists("~/.config/systemd/user/"):
-    mkdir_command = "mkdir -p ~/.config/systemd/user"
-    subprocess.run(mkdir_command, shell=True, check=True)
-    print("Created directory ~/.config/systemd/user/")
-  command = f"mv {service_name} ~/.config/systemd/user/{service_name}"
-  subprocess.run(command, shell=True, check=True)
-  print(f"Service file moved to ~/.config/systemd/user/{service_name}")
+  user_systemd_dir = Path.home() / ".config" / "systemd" / "user"
+  if not user_systemd_dir.exists():
+    user_systemd_dir.mkdir(parents=True, exist_ok=True)
+    print(f"Created directory {user_systemd_dir}")
+
+  source_file = Path(service_name)
+  dest_file = user_systemd_dir / service_name
+  shutil.move(str(source_file), str(dest_file))
+  print(f"Service file moved to {dest_file}")
 
 
 def enable_start_service(service_name):
   commands = [
-      "systemctl --user import-environment",
-      "systemctl --user daemon-reload",
-      f"systemctl --user enable {service_name}",
-      f"systemctl --user start {service_name}",
+      ["systemctl", "--user", "import-environment"],
+      ["systemctl", "--user", "daemon-reload"],
+      ["systemctl", "--user", "enable", service_name],
+      ["systemctl", "--user", "start", service_name],
   ]
   for command in commands:
-    subprocess.run(command, shell=True, check=True)
-    print(f"Executed: {command}")
+    subprocess.run(command, check=True)
+    print(f"Executed: {' '.join(command)}")
 
 
 def run():
-  if os.path.exists(f"~/.config/systemd/user/{SERVICE_NAME}"):
-    print(f"Service file ~/.config/systemd/user/{SERVICE_NAME} already exists")
+  service_file_path = (
+      Path.home() / ".config" / "systemd" / "user" / SERVICE_NAME
+  )
+  if service_file_path.exists():
+    print(f"Service file {service_file_path} already exists")
     sys.exit(1)
   else:
     create_systemd_service_file(SERVICE_FILE_CONTENT, SERVICE_NAME)

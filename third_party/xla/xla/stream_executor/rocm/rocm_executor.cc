@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <unistd.h>
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -61,6 +62,9 @@ limitations under the License.
 #include "xla/stream_executor/gpu/read_numa_node.h"
 #include "xla/stream_executor/gpu/scoped_activate_context.h"
 #include "xla/stream_executor/kernel.h"
+#include "xla/stream_executor/kernel_args.h"
+#include "xla/stream_executor/kernel_argument_packing_spec.h"
+#include "xla/stream_executor/kernel_metadata.h"
 #include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/memory_allocation.h"
@@ -87,8 +91,8 @@ limitations under the License.
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/threadpool.h"
-#include "tsl/platform/casts.h"
 #include "tsl/platform/fingerprint.h"
+#include "tsl/platform/numa.h"
 #include "tsl/platform/numbers.h"
 
 namespace stream_executor {
@@ -312,6 +316,11 @@ absl::Status GetGridLimits(int* x, int* y, int* z, hipDevice_t device) {
   return absl::OkStatus();
 }
 
+absl::StatusOr<int64_t> GetMaxRegistersPerMultiprocessor(hipDevice_t device) {
+  return GetSimpleAttribute<int64_t>(
+      device, hipDeviceAttributeMaxRegistersPerMultiprocessor);
+}
+
 // Returns the device associated with the given device_ordinal.
 absl::StatusOr<hipDevice_t> GetDevice(int device_ordinal) {
   hipDevice_t device;
@@ -372,13 +381,19 @@ absl::Status EnablePeerAccess(Context* from, Context* to) {
   }
 
   ScopedActivateContext activated(from);
-  hipError_t result = wrap::hipCtxEnablePeerAccess(
-      tensorflow::down_cast<RocmContext*>(to)->context(), 0 /* = flags */);
-  if (result != hipSuccess && result != hipErrorPeerAccessAlreadyEnabled) {
+  hipError_t result =
+      wrap::hipDeviceEnablePeerAccess(to->device_ordinal(), 0 /* = flags */);
+
+  if (result == hipErrorPeerAccessAlreadyEnabled) {
+    // hipGetLastError is used to reset per thread error state,
+    // as hipGetLastError would get the recent error code since rocm7 even the
+    // last call is successful.
+    (void)wrap::hipGetLastError();
+  } else if (result != hipSuccess) {
     return absl::InternalError(
         absl::StrFormat("failed to enable peer access from %d to %d: %s",
                         from->device_ordinal(), to->device_ordinal(),
-                        ToString(result).c_str()));
+                        wrap::hipGetErrorString(result)));
   }
 
   return absl::OkStatus();
@@ -399,6 +414,14 @@ std::string GetPCIBusID(hipDevice_t device) {
   return pci_bus_id;
 }
 
+absl::StatusOr<bool> IsEccEnabled(hipDevice_t device) {
+  int value = 0;
+  TF_RETURN_IF_ERROR(ToStatus(
+      wrap::hipDeviceGetAttribute(&value, hipDeviceAttributeEccEnabled, device),
+      "hipDeviceGetAttribute(hipDeviceAttributeEccEnabled) failed"));
+  return value != 0;
+}
+
 bool GetDeviceProperties(hipDeviceProp_t* device_properties,
                          int device_ordinal) {
   hipError_t res =
@@ -412,14 +435,25 @@ bool GetDeviceProperties(hipDeviceProp_t* device_properties,
 }
 
 // Allocates memory on the GPU device.
-void* DeviceAllocate(Context* context, uint64_t bytes) {
+void* DeviceAllocate(Context* context, uint64_t bytes,
+                     bool is_fine_grained = false) {
   if (bytes == 0) {
     return nullptr;
   }
 
   ScopedActivateContext activated(context);
-  hipDeviceptr_t result = 0;
-  hipError_t res = wrap::hipMalloc(&result, bytes);
+  hipDeviceptr_t device_mem = nullptr;
+  hipError_t res;
+  if (is_fine_grained) {
+    // Fine-grained memory, which has better coherence during the kernel
+    // execution. This type of memory is only used in P2P communication to solve
+    // the cache coherence issue for some archs (e.g., MI200); most of the time,
+    // you don't have to use it.
+    res = wrap::hipExtMallocWithFlags(&device_mem, bytes,
+                                      hipDeviceMallocFinegrained);
+  } else {
+    res = wrap::hipMalloc(&device_mem, bytes);
+  }
   if (res != hipSuccess) {
     // LOG(INFO) because this isn't always important to users (e.g. BFCAllocator
     // implements a retry if the first allocation fails).
@@ -428,7 +462,7 @@ void* DeviceAllocate(Context* context, uint64_t bytes) {
               << " bytes) from device: " << ToString(res);
     return nullptr;
   }
-  void* ptr = reinterpret_cast<void*>(result);
+  void* ptr = reinterpret_cast<void*>(device_mem);
   VLOG(2) << "allocated " << ptr << " for device " << context->device_ordinal()
           << " of " << bytes << " bytes";
   return ptr;
@@ -492,12 +526,12 @@ std::unique_ptr<ActivateContext> RocmExecutor::Activate() {
 }
 
 bool RocmExecutor::UnloadModule(ModuleHandle module_handle) {
-  absl::MutexLock lock{&in_memory_modules_mu_};
+  absl::MutexLock lock{in_memory_modules_mu_};
   return UnloadGpuBinary(module_handle);
 }
 
 absl::StatusOr<DeviceMemoryBase> RocmExecutor::GetMemoryRange(
-    const DeviceMemoryBase& location) {
+    const DeviceMemoryBase& location) const {
   hipDeviceptr_t device_pointer;
   size_t size;
   hipError_t result = wrap::hipMemGetAddressRange(
@@ -521,7 +555,7 @@ absl::StatusOr<DeviceMemoryBase> RocmExecutor::GetMemoryRange(
 absl::StatusOr<std::shared_ptr<DeviceMemoryBase>>
 RocmExecutor::CreateOrShareConstant(Stream* stream,
                                     absl::Span<const uint8_t> content) {
-  absl::MutexLock lock{&shared_constants_mu_};
+  absl::MutexLock lock{shared_constants_mu_};
   // We assume all constants are uniquely identified by this hash. In the
   // (highly unlikely) event of a hash collision, the program will likely crash
   // (because the cached constant that will be returned by mistake is unlikely
@@ -603,7 +637,7 @@ bool RocmExecutor::UnloadGpuBinary(ModuleHandle module_handle) {
 void RocmExecutor::UnloadKernel(const Kernel* kernel) {
   VLOG(3) << "Unloading kernel " << kernel << " : " << kernel->name();
 
-  absl::MutexLock lock{&in_memory_modules_mu_};
+  absl::MutexLock lock{in_memory_modules_mu_};
   loaded_kernels_.erase(kernel);
   auto gpu_binary_it = kernel_to_gpu_binary_.find(kernel);
   if (kernel_to_gpu_binary_.end() == gpu_binary_it) {
@@ -639,7 +673,7 @@ absl::StatusOr<std::unique_ptr<Kernel>> RocmExecutor::LoadKernel(
   if (spec.has_cuda_cubin_in_memory()) {
     const char* hsaco = reinterpret_cast<const char*>(
         spec.cuda_cubin_in_memory()->cubin_bytes.data());
-    absl::MutexLock lock{&in_memory_modules_mu_};
+    absl::MutexLock lock{in_memory_modules_mu_};
     ModuleHandle module_handle{hsaco};
     hipModule_t& module = in_memory_modules_[module_handle];
 
@@ -674,7 +708,7 @@ absl::StatusOr<std::unique_ptr<Kernel>> RocmExecutor::LoadKernel(
     return absl::InternalError("No method of loading ROCM kernel provided");
   }
 
-  absl::MutexLock lock{&in_memory_modules_mu_};
+  absl::MutexLock lock{in_memory_modules_mu_};
   loaded_kernels_.insert(rocm_kernel.get());
 
   // We have to trust the kernel loader spec arity because there doesn't appear
@@ -688,7 +722,23 @@ absl::StatusOr<std::unique_ptr<Kernel>> RocmExecutor::LoadKernel(
     rocm_kernel->set_metadata(kernel_metadata);
   }
   rocm_kernel->set_name(kernel_name);
-  rocm_kernel->set_args_packing(spec.kernel_args_packing());
+  if (std::holds_alternative<KernelLoaderSpec::KernelArgsPackingFunc>(
+          spec.kernel_args_packing())) {
+    rocm_kernel->set_args_packing(
+        std::get<KernelLoaderSpec::KernelArgsPackingFunc>(
+            spec.kernel_args_packing()));
+  } else {
+    const auto& packing_spec =
+        std::get<KernelArgumentsPackingSpec>(spec.kernel_args_packing());
+    rocm_kernel->set_args_packing([packing_spec](const Kernel& kernel,
+                                                 const KernelArgs& args) {
+      const auto& mem_args =
+          stream_executor::Cast<stream_executor::KernelArgsDeviceMemoryArray>(
+              &args);
+      return packing_spec.BuildArguments(mem_args->device_memory_args(),
+                                         args.number_of_shared_bytes());
+    });
+  }
   return std::move(rocm_kernel);
 }
 
@@ -698,7 +748,7 @@ absl::StatusOr<ModuleHandle> RocmExecutor::LoadModule(
 
   // TODO(ROCm): Need  generic term instead of cubin/cuda/ptx
   if (spec.has_cuda_cubin_in_memory()) {
-    absl::MutexLock lock{&in_memory_modules_mu_};
+    absl::MutexLock lock{in_memory_modules_mu_};
     return LoadModuleFromHsaco(
         reinterpret_cast<const char*>(spec.cuda_cubin_in_memory().data()));
   } else {
@@ -732,7 +782,16 @@ DeviceMemoryBase RocmExecutor::Allocate(uint64_t size, int64_t memory_space) {
   switch (static_cast<MemoryType>(memory_space)) {
     case MemoryType::kCollective:
     case MemoryType::kDevice:
-      return DeviceMemoryBase(DeviceAllocate(rocm_context_, size), size);
+      return DeviceMemoryBase(
+          DeviceAllocate(rocm_context_, size, /*is_fine_grained*/ false), size);
+    case MemoryType::kP2P:
+      // On the ROCm platform, differences in cache design (e.g., coherence
+      // protocol) can cause cache coherence issues for some archs (e.g., MI200)
+      // when using normal device memory. To avoid these problems, we use
+      // fine-grained memory in P2P communication for all archs to make sure of
+      // the correctness.
+      return DeviceMemoryBase(
+          DeviceAllocate(rocm_context_, size, /*is_fine_grained*/ true), size);
     case MemoryType::kHost:
       if (auto result = HostAllocate(rocm_context_, size); result.ok()) {
         return DeviceMemoryBase(*result, size);
@@ -897,18 +956,18 @@ absl::Status RocmExecutor::SynchronousMemcpy(void* host_dst,
 
 void RocmExecutor::DeallocateStream(Stream* stream) {
   {
-    absl::MutexLock lock(&mu_);
+    absl::MutexLock lock(mu_);
     if (dnn_ != nullptr) {
       dnn_->NotifyStreamDestroyed(stream);
     }
   }
   RocmStream* rocm_stream = static_cast<RocmStream*>(stream);
-  absl::MutexLock l(&alive_gpu_streams_mu_);
+  absl::MutexLock l(alive_gpu_streams_mu_);
   alive_gpu_streams_.erase(rocm_stream->stream_handle());
 }
 
 absl::Status RocmExecutor::InitBlas() {
-  absl::MutexLock lock(&mu_);
+  absl::MutexLock lock(mu_);
   PluginRegistry* registry = PluginRegistry::Instance();
   TF_ASSIGN_OR_RETURN(
       auto factory,
@@ -918,12 +977,12 @@ absl::Status RocmExecutor::InitBlas() {
 }
 
 blas::BlasSupport* RocmExecutor::AsBlas() {
-  absl::MutexLock lock(&mu_);
+  absl::MutexLock lock(mu_);
   return blas_.get();
 }
 
 dnn::DnnSupport* RocmExecutor::AsDnn() {
-  absl::MutexLock lock(&mu_);
+  absl::MutexLock lock(mu_);
   if (dnn_ != nullptr) {
     return dnn_.get();
   }
@@ -944,7 +1003,7 @@ dnn::DnnSupport* RocmExecutor::AsDnn() {
 }
 
 fft::FftSupport* RocmExecutor::AsFft() {
-  absl::MutexLock lock(&mu_);
+  absl::MutexLock lock(mu_);
   if (fft_ != nullptr) {
     return fft_.get();
   }
@@ -982,7 +1041,7 @@ absl::StatusOr<DeviceMemoryBase> RocmExecutor::GetSymbol(
   void* mem = nullptr;
   size_t bytes = 0;
 
-  absl::MutexLock lock{&in_memory_modules_mu_};
+  absl::MutexLock lock{in_memory_modules_mu_};
   if (static_cast<bool>(module_handle)) {
     auto it = gpu_binary_to_module_.find(module_handle);
     CHECK(it != gpu_binary_to_module_.end());
@@ -1031,7 +1090,7 @@ absl::StatusOr<std::unique_ptr<Event>> RocmExecutor::CreateEvent() {
 absl::StatusOr<std::unique_ptr<Stream>> RocmExecutor::CreateStream(
     std::optional<std::variant<StreamPriority, int>> priority) {
   TF_ASSIGN_OR_RETURN(auto stream, RocmStream::Create(this, priority));
-  absl::MutexLock l(&alive_gpu_streams_mu_);
+  absl::MutexLock l(alive_gpu_streams_mu_);
   alive_gpu_streams_[stream->stream_handle()] = stream.get();
   return std::move(stream);
 }
@@ -1040,6 +1099,20 @@ absl::StatusOr<std::unique_ptr<CommandBuffer>>
 RocmExecutor::CreateCommandBuffer(CommandBuffer::Mode mode) {
   VLOG(2) << "Create ROCm command buffer (ROCm graph)";
   return RocmCommandBuffer::Create(mode, this);
+}
+
+int RocmExecutor::GetGpuStreamPriority(StreamPriority priority) {
+  if (priority == StreamPriority::Default) {
+    return 0;
+  }
+  std::unique_ptr<ActivateContext> activation = Activate();
+  int lowest, highest;
+  auto status = wrap::hipDeviceGetStreamPriorityRange(&lowest, &highest);
+  if (status != hipSuccess) {
+    LOG(ERROR) << "Failed to get stream priority range: " << ToString(status);
+    return 0;
+  }
+  return priority == StreamPriority::Highest ? highest : lowest;
 }
 
 absl::StatusOr<std::unique_ptr<DeviceDescription>>
@@ -1087,8 +1160,18 @@ RocmExecutor::CreateDeviceDescription(int device_ordinal) {
     desc.set_l2_cache_size(prop.l2CacheSize);
   }
 
-  // No way to query ECC status from the API.
-  desc.set_ecc_enabled(false);
+  // PCIe bandwidth for PCI Gen4 x16 (approximate)
+  desc.set_pcie_bandwidth(32LL * 1024 * 1024 * 1024);
+
+  {
+    auto ecc_enabled_or = IsEccEnabled(device);
+    if (!ecc_enabled_or.ok()) {
+      LOG(ERROR) << "Device " << device_ordinal
+                 << ": ECC status query failed: " << ecc_enabled_or.status();
+      return ecc_enabled_or.status();
+    }
+    desc.set_ecc_enabled(*ecc_enabled_or);
+  }
 
   uint64_t device_memory_size = -1;
   (void)RocmContext::GetDeviceTotalMemory(device, &device_memory_size);
@@ -1126,7 +1209,11 @@ RocmExecutor::CreateDeviceDescription(int device_ordinal) {
       GetMaxThreadsPerMultiprocessor(device).value());
   desc.set_registers_per_block_limit(GetMaxRegistersPerBlock(device).value());
   desc.set_threads_per_warp(GetThreadsPerWarp(device).value());
-  desc.set_registers_per_core_limit(64 * 1024);
+  {
+    TF_ASSIGN_OR_RETURN(int64_t regs_per_mp,
+                        GetMaxRegistersPerMultiprocessor(device));
+    desc.set_registers_per_core_limit(regs_per_mp);
+  }
   desc.set_compile_time_toolkit_version(
       SemanticVersion{HIP_VERSION_MAJOR, HIP_VERSION_MINOR, HIP_VERSION_PATCH});
   int32_t runtime_version;
@@ -1180,7 +1267,7 @@ absl::StatusOr<MemoryType> RocmExecutor::GetPointerMemorySpace(
 
 absl::StatusOr<const RocmKernel*> RocmExecutor::GetRocmKernel(
     const Kernel* kernel) {
-  absl::MutexLock lock{&in_memory_modules_mu_};
+  absl::MutexLock lock{in_memory_modules_mu_};
   auto it = loaded_kernels_.find(kernel);
   if (it == loaded_kernels_.end()) {
     return absl::NotFoundError("Kernel not loaded in this executor.");

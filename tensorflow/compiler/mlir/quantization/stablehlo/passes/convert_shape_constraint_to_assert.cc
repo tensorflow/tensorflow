@@ -78,7 +78,7 @@ Value castToI32(PatternRewriter& rewriter, Location loc, Value value) {
   }
   if (!resultType) return {};
   auto cast =
-      rewriter.create<UnrealizedConversionCastOp>(loc, resultType, value);
+      UnrealizedConversionCastOp::create(rewriter, loc, resultType, value);
   return cast.getResult(0);
 }
 
@@ -87,17 +87,18 @@ Value castToI32(PatternRewriter& rewriter, Location loc, Value value) {
 // elements are ones.
 Value padFromLeft(PatternRewriter& rewriter, Location loc, Value input,
                   int64_t pad) {
-  Value padI32 = rewriter.create<ConstantOp>(
-      loc, DenseIntElementsAttr::get<int32_t>(
-               RankedTensorType::get({pad}, rewriter.getI32Type()), 1));
-  return rewriter.create<ConcatenateOp>(loc, ValueRange{padI32, input},
-                                        /*dimension=*/0);
+  Value padI32 = ConstantOp::create(
+      rewriter, loc,
+      DenseIntElementsAttr::get<int32_t>(
+          RankedTensorType::get({pad}, rewriter.getI32Type()), 1));
+  return ConcatenateOp::create(rewriter, loc, ValueRange{padI32, input},
+                               /*dimension=*/0);
 }
 
 void insertShapeAssertionCustomCall(OpBuilder builder, Location loc,
                                     Value assert) {
   auto customCall =
-      builder.create<CustomCallOp>(loc, TypeRange{}, ValueRange{assert});
+      CustomCallOp::create(builder, loc, TypeRange{}, ValueRange{assert});
   customCall.setCallTargetName("shape_assertion");
   customCall.setHasSideEffect(true);
   customCall->setAttr("error_message",
@@ -136,35 +137,37 @@ struct ConvertCstrBroadcastableOp
 
     // Compute if each dim is broadcastable. A dim is broadcastable iff
     // dimSize1 == dimSize2 or dimSize1 == 1 or dimSize2 == 1
-    auto allOne = rewriter.create<ConstantOp>(
-        op.getLoc(), DenseIntElementsAttr::get<int32_t>(
-                         RankedTensorType::get({rank}, rewriter.getI32Type()),
-                         static_cast<int32_t>(1)));
-    Value dimSize1Is1 = rewriter.create<CompareOp>(op.getLoc(), shape1, allOne,
-                                                   ComparisonDirection::EQ);
-    Value dimSize2Is1 = rewriter.create<CompareOp>(op.getLoc(), shape2, allOne,
-                                                   ComparisonDirection::EQ);
+    auto allOne = ConstantOp::create(
+        rewriter, op.getLoc(),
+        DenseIntElementsAttr::get<int32_t>(
+            RankedTensorType::get({rank}, rewriter.getI32Type()),
+            static_cast<int32_t>(1)));
+    Value dimSize1Is1 = CompareOp::create(rewriter, op.getLoc(), shape1, allOne,
+                                          ComparisonDirection::EQ);
+    Value dimSize2Is1 = CompareOp::create(rewriter, op.getLoc(), shape2, allOne,
+                                          ComparisonDirection::EQ);
     Value eitherDimSizeIs1 =
-        rewriter.create<OrOp>(op.getLoc(), dimSize1Is1, dimSize2Is1);
-    Value dimSizeEq = rewriter.create<CompareOp>(op.getLoc(), shape1, shape2,
-                                                 ComparisonDirection::EQ);
+        OrOp::create(rewriter, op.getLoc(), dimSize1Is1, dimSize2Is1);
+    Value dimSizeEq = CompareOp::create(rewriter, op.getLoc(), shape1, shape2,
+                                        ComparisonDirection::EQ);
     Value dimBroadcastable =
-        rewriter.create<OrOp>(op.getLoc(), eitherDimSizeIs1, dimSizeEq);
+        OrOp::create(rewriter, op.getLoc(), eitherDimSizeIs1, dimSizeEq);
 
     // Iterate over each dim to check that all dims are broadcastable.
     auto boolType = RankedTensorType::get({1}, rewriter.getI1Type());
-    Value allBroadcastable = rewriter.create<ConstantOp>(
-        op.getLoc(), DenseIntElementsAttr::get<bool>(boolType, true));
+    Value allBroadcastable = ConstantOp::create(
+        rewriter, op.getLoc(), DenseIntElementsAttr::get<bool>(boolType, true));
     for (auto i = 0; i < rank; ++i) {
-      Value broadcastable = rewriter.create<SliceOp>(
-          op.getLoc(), dimBroadcastable, rewriter.getDenseI64ArrayAttr(i),
-          rewriter.getDenseI64ArrayAttr(i + 1),
-          rewriter.getDenseI64ArrayAttr(1));
+      Value broadcastable =
+          SliceOp::create(rewriter, op.getLoc(), dimBroadcastable,
+                          rewriter.getDenseI64ArrayAttr(i),
+                          rewriter.getDenseI64ArrayAttr(i + 1),
+                          rewriter.getDenseI64ArrayAttr(1));
       allBroadcastable =
-          rewriter.create<AndOp>(op.getLoc(), allBroadcastable, broadcastable);
+          AndOp::create(rewriter, op.getLoc(), allBroadcastable, broadcastable);
     }
-    Value allBroadcastableScalar = rewriter.create<ReshapeOp>(
-        op.getLoc(), RankedTensorType::get({}, rewriter.getI1Type()),
+    Value allBroadcastableScalar = ReshapeOp::create(
+        rewriter, op.getLoc(), RankedTensorType::get({}, rewriter.getI1Type()),
         allBroadcastable);
 
     // Add CustomCallOp and replace Cstr op with const witness, which is useful

@@ -186,7 +186,7 @@ absl::StatusOr<FunctionDef> TFRDecomposeContext::ExpandNode(
   op_state.addTypes(output_tys);
   op_state.addAttributes(attrs);
   mlir::Operation* tf_op = op_builder.create(op_state);
-  op_builder.create<mlir::func::ReturnOp>(loc, tf_op->getResults());
+  mlir::func::ReturnOp::create(op_builder, loc, tf_op->getResults());
 
   // Run the decompose passes on the module
   TF_RETURN_IF_ERROR(DecomposeGraph(module));

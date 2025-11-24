@@ -24,12 +24,13 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/status/status_matchers.h"
 #include "absl/strings/string_view.h"
-#include "xla/hlo/ir/collective_device_list.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/ir/replica_group.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/literal_util.h"
@@ -120,7 +121,7 @@ TEST_F(AllReduceCombinerTest, CombineAllReduces) {
   // Run the AllReduce combiner optimization pass.
   AllReduceCombiner combine(10 * 1024 * 1024, kMaxCombineCount);
   ASSERT_EQ(AllReduceCount(*module), inputs.size());
-  EXPECT_THAT(combine.Run(module.get()), IsOkAndHolds(true));
+  EXPECT_THAT(combine.Run(module.get()), absl_testing::IsOkAndHolds(true));
   ASSERT_EQ(AllReduceCount(*module), 1);
 
   ASSERT_EQ(root, computation->root_instruction());
@@ -167,7 +168,7 @@ TEST_F(AllReduceCombinerTest, CombineCrossReplicaReductionsInGroups) {
   // Run the AllReduce combiner optimization pass.
   AllReduceCombiner combine(10 * 1024 * 1024, kMaxCombineCount);
   ASSERT_EQ(AllReduceCount(*module), inputs.size());
-  EXPECT_THAT(combine.Run(module.get()), IsOkAndHolds(true));
+  EXPECT_THAT(combine.Run(module.get()), absl_testing::IsOkAndHolds(true));
   ASSERT_EQ(AllReduceCount(*module), 3)
       << "expects 3 groups for 3 reduction types.";
 }
@@ -188,7 +189,7 @@ TEST_F(AllReduceCombinerTest, RespectThreshold) {
   {
     AllReduceCombiner combine((8 + 4) * 1024 - 1, kMaxCombineCount);
     ASSERT_EQ(AllReduceCount(*module), inputs.size());
-    EXPECT_THAT(combine.Run(module.get()), IsOkAndHolds(false));
+    EXPECT_THAT(combine.Run(module.get()), absl_testing::IsOkAndHolds(false));
     EXPECT_EQ(AllReduceCount(*module), inputs.size());
   }
 
@@ -197,7 +198,7 @@ TEST_F(AllReduceCombinerTest, RespectThreshold) {
   {
     AllReduceCombiner combine((8 + 4) * 1024, kMaxCombineCount);
     ASSERT_EQ(AllReduceCount(*module), inputs.size());
-    EXPECT_THAT(combine.Run(module.get()), IsOkAndHolds(true));
+    EXPECT_THAT(combine.Run(module.get()), absl_testing::IsOkAndHolds(true));
     EXPECT_EQ(AllReduceCount(*module), 1);
   }
 }
@@ -224,7 +225,7 @@ TEST_F(AllReduceCombinerTest, NoDependentCombination) {
 
   AllReduceCombiner combine(1024 * 1024, kMaxCombineCount);
   ASSERT_EQ(AllReduceCount(*module), 2);
-  EXPECT_THAT(combine.Run(module.get()), IsOkAndHolds(false));
+  EXPECT_THAT(combine.Run(module.get()), absl_testing::IsOkAndHolds(false));
   EXPECT_EQ(AllReduceCount(*module), 2);
 }
 
@@ -252,7 +253,7 @@ TEST_F(AllReduceCombinerTest, GroupAllReduce) {
 
   AllReduceCombiner combine(1024 * 1024, kMaxCombineCount);
   ASSERT_EQ(AllReduceCount(*module), 2);
-  EXPECT_THAT(combine.Run(module.get()), IsOkAndHolds(false));
+  EXPECT_THAT(combine.Run(module.get()), absl_testing::IsOkAndHolds(false));
   EXPECT_EQ(AllReduceCount(*module), 2);
 }
 
@@ -289,7 +290,7 @@ ENTRY entry {
 
   AllReduceCombiner combine(1024 * 1024, kMaxCombineCount);
   ASSERT_EQ(AllReduceCount(*module), 2);
-  EXPECT_THAT(combine.Run(module.get()), IsOkAndHolds(false));
+  EXPECT_THAT(combine.Run(module.get()), absl_testing::IsOkAndHolds(false));
   EXPECT_EQ(AllReduceCount(*module), 2);
 }
 
@@ -333,7 +334,7 @@ ENTRY entry {
 
   AllReduceCombiner combine(1024 * 1024, kMaxCombineCount);
   ASSERT_EQ(AllReduceCount(*module), 3);
-  EXPECT_THAT(combine.Run(module.get()), IsOkAndHolds(true));
+  EXPECT_THAT(combine.Run(module.get()), absl_testing::IsOkAndHolds(true));
   EXPECT_EQ(AllReduceCount(*module), 2);
 
   // Verify that the sharding is combined correctly.
@@ -371,7 +372,7 @@ ENTRY entry {
 
   AllReduceCombiner combine(1024 * 1024, kMaxCombineCount);
   ASSERT_EQ(AllReduceCount(*module), 2);
-  EXPECT_THAT(combine.Run(module.get()), IsOkAndHolds(false));
+  EXPECT_THAT(combine.Run(module.get()), absl_testing::IsOkAndHolds(false));
   EXPECT_EQ(AllReduceCount(*module), 2);
 }
 
@@ -409,7 +410,7 @@ ENTRY entry {
 
   AllReduceCombiner combine(1024 * 1024, kMaxCombineCount);
   ASSERT_EQ(AllReduceCount(*module), 3);
-  ASSERT_THAT(combine.Run(module.get()), IsOkAndHolds(false));
+  ASSERT_THAT(combine.Run(module.get()), absl_testing::IsOkAndHolds(false));
   EXPECT_EQ(AllReduceCount(*module), 3);
 }
 
@@ -448,7 +449,7 @@ ENTRY entry {
 
   AllReduceCombiner combine(1024 * 1024, kMaxCombineCount);
   ASSERT_EQ(AllReduceCount(*module), 4);
-  EXPECT_THAT(combine.Run(module.get()), IsOkAndHolds(true));
+  EXPECT_THAT(combine.Run(module.get()), absl_testing::IsOkAndHolds(true));
   EXPECT_EQ(AllReduceCount(*module), 2);
 
   EXPECT_THAT(module->entry_computation()->root_instruction(),
@@ -495,7 +496,7 @@ ENTRY %comp {
 
   AllReduceCombiner combine(1024 * 1024, kMaxCombineCount);
   ASSERT_EQ(AllReduceCount(*module), 6);
-  EXPECT_THAT(combine.Run(module.get()), IsOkAndHolds(true));
+  EXPECT_THAT(combine.Run(module.get()), absl_testing::IsOkAndHolds(true));
   EXPECT_EQ(AllReduceCount(*module), 4);
 
   auto crs0 = op::AllReduce(op::Parameter(0), op::AllReduce(op::Parameter(1)));
@@ -530,7 +531,7 @@ TEST_F(AllReduceCombinerTest, PreservesMetadata) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(hlo_text));
   AllReduceCombiner combine(1024 * 1024, kMaxCombineCount);
-  EXPECT_THAT(combine.Run(module.get()), IsOkAndHolds(true));
+  EXPECT_THAT(combine.Run(module.get()), absl_testing::IsOkAndHolds(true));
   OpMetadata metadata;
   metadata.set_op_type("test_type0");
   metadata.set_op_name("test_name0");

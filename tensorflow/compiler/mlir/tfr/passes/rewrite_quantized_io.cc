@@ -88,8 +88,8 @@ void RewriteQuantizedIOPass::runOnOperation() {
         auto new_type = returned_type.clone(
             llvm::cast<quant::QuantizedType>(returned_type.getElementType())
                 .getStorageType());
-        auto new_op = builder.create<TFR::CastOp>(
-            returned_op->getLoc(), new_type, returned_op.getArg());
+        auto new_op = TFR::CastOp::create(builder, returned_op->getLoc(),
+                                          new_type, returned_op.getArg());
         returned_value.set(new_op.getResult());
         if (returned_op.use_empty()) {
           returned_op.erase();

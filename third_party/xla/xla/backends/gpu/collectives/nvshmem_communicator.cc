@@ -16,24 +16,26 @@ limitations under the License.
 #include <cstdint>
 #include <string>
 
+#include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "third_party/gpus/cuda/include/cuda_bf16.h"
 #include "third_party/gpus/cuda/include/cuda_fp16.h"
-#include "third_party/nvshmem/nvshmemx.h"
+#include "third_party/nvshmem/nvshmem.h"   // IWYU pragma: keep
+#include "third_party/nvshmem/nvshmemx.h"  // IWYU pragma: keep
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
 #include "xla/backends/gpu/collectives/nvshmem_collectives.h"
 #include "xla/core/collectives/communicator.h"
 #include "xla/core/collectives/rank_id.h"
+#include "xla/future.h"
 #include "xla/primitive_util.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/gpu/gpu_stream.h"
 #include "xla/stream_executor/stream.h"
-#include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
@@ -112,17 +114,17 @@ size_t ToRealCount(PrimitiveType dtype, size_t count) {
   }
 
 #define CALL_NVSHMEM_REDUCTION_DATATYPE(TYPENAME, TYPE, team, gpu_stream,     \
-                                        reduction_kind, dest_ptr, source_ptr, \
+                                        reduction_kind, source_ptr, dest_ptr, \
                                         count)                                \
-  NVSHMEM_REDUCTION_DATATYPE(reduce, TYPENAME, TYPE, NVSHMEM_TEAM_WORLD,      \
-                             (TYPE*)source_ptr, (TYPE*)dest_ptr, count,       \
-                             gpu_stream, reduction_kind);
-#define CALL_NVSHMEM_BITWISE_REDUCTION_DATATYPE(TYPENAME, TYPE, team,        \
-                                                gpu_stream, reduction_kind,  \
-                                                dest_ptr, source_ptr, count) \
-  NVSHMEM_BITWISE_REDUCTION_BITWISE_DATATYPE(                                \
-      reduce, TYPENAME, TYPE, NVSHMEM_TEAM_WORLD, (TYPE*)source_ptr,         \
-      (TYPE*)dest_ptr, count, gpu_stream, reduction_kind);
+  NVSHMEM_REDUCTION_DATATYPE(reduce, TYPENAME, TYPE, team, (TYPE*)source_ptr, \
+                             (TYPE*)dest_ptr, count, gpu_stream,              \
+                             reduction_kind);
+#define CALL_NVSHMEM_BITWISE_REDUCTION_DATATYPE(TYPENAME, TYPE, team,          \
+                                                gpu_stream, reduction_kind,    \
+                                                source_ptr, dest_ptr, count)   \
+  NVSHMEM_BITWISE_REDUCTION_BITWISE_DATATYPE(                                  \
+      reduce, TYPENAME, TYPE, team, (TYPE*)source_ptr, (TYPE*)dest_ptr, count, \
+      gpu_stream, reduction_kind);
 
 #define CALL_NVSHMEM_P2P(op, TYPENAME, TYPE, pe, source_ptr, dest_ptr,    \
                          num_elements, stream)                            \
@@ -169,7 +171,7 @@ absl::Status NvshmemCommunicator::Barrier(
 
   auto gpu_stream = se::gpu::AsGpuStreamValue(stream);
 
-  if (nvshmemx_barrier_on_stream(NVSHMEMX_TEAM_NODE, gpu_stream) != 0) {
+  if (nvshmemx_barrier_on_stream(NVSHMEM_TEAM_SHARED, gpu_stream) != 0) {
     return absl::InternalError("Nvshmem team barrier failed.");
   }
   return absl::OkStatus();
@@ -184,7 +186,7 @@ absl::StatusOr<size_t> NvshmemCommunicator::NumRanks() const {
   }
 
   int32_t count = 0;
-  count = nvshmem_team_n_pes(NVSHMEMX_TEAM_NODE);
+  count = nvshmem_team_n_pes(NVSHMEM_TEAM_SHARED);
   if (count < 0) {
     return absl::InvalidArgumentError(
         "NvshmemCommunicator::NumRanks invalid team.");
@@ -202,7 +204,7 @@ absl::StatusOr<size_t> NvshmemCommunicator::CurrentRank() {
   }
 
   int32_t rank = 0;
-  rank = nvshmem_team_my_pe(NVSHMEMX_TEAM_NODE);
+  rank = nvshmem_team_my_pe(NVSHMEM_TEAM_SHARED);
   if (rank < 0) {
     return absl::InvalidArgumentError(
         "NvshmemCommunicator::NumRanks invalid team.");
@@ -210,7 +212,7 @@ absl::StatusOr<size_t> NvshmemCommunicator::CurrentRank() {
   return rank;
 }
 
-tsl::AsyncValueRef<NvshmemCommunicator::Event> NvshmemCommunicator::AllReduce(
+Future<> NvshmemCommunicator::AllReduce(
     se::DeviceMemoryBase send_buffer, se::DeviceMemoryBase recv_buffer,
     PrimitiveType dtype, size_t count, ReductionKind reduction_kind,
     const Communicator::Executor& executor) {
@@ -223,79 +225,97 @@ tsl::AsyncValueRef<NvshmemCommunicator::Event> NvshmemCommunicator::AllReduce(
 
   TF_ASSIGN_OR_RETURN(se::Stream * stream, ToStream(executor));
 
-  void* dest_ptr = send_buffer.opaque();
-  void* source_ptr = recv_buffer.opaque();
+  void* source_ptr = send_buffer.opaque();
+  void* dest_ptr = recv_buffer.opaque();
   count = ToRealCount(dtype, count);
   VLOG(3) << absl::StreamFormat(
       "Launch NVSHMEM AllReduce operation on device #%d; send_buffer=%p; "
       "recv_buffer=%p; dtype=%s; count=%d; reduction_kind=%s; comm=node; "
       "team=%d;"
       "stream=%p",
-      nvshmem_team_my_pe(NVSHMEMX_TEAM_NODE), send_buffer.opaque(),
+      nvshmem_team_my_pe(NVSHMEM_TEAM_SHARED), send_buffer.opaque(),
       recv_buffer.opaque(), primitive_util::LowercasePrimitiveTypeName(dtype),
-      count, ReductionKindToString(reduction_kind), NVSHMEMX_TEAM_NODE, stream);
+      count, ReductionKindToString(reduction_kind), NVSHMEM_TEAM_SHARED,
+      stream);
 
   switch (dtype) {
     case PrimitiveType::F64: {
-      CALL_NVSHMEM_REDUCTION_DATATYPE(
-          double, double, NVSHMEMX_TEAM_NODE, se::gpu::AsGpuStreamValue(stream),
-          reduction_kind, dest_ptr, source_ptr, count);
+      CALL_NVSHMEM_REDUCTION_DATATYPE(double, double, NVSHMEM_TEAM_SHARED,
+                                      se::gpu::AsGpuStreamValue(stream),
+                                      reduction_kind, source_ptr, dest_ptr,
+                                      count);
       break;
     }
     case PrimitiveType::F16: {
       CALL_NVSHMEM_REDUCTION_DATATYPE(
-          half, __half, NVSHMEMX_TEAM_NODE, se::gpu::AsGpuStreamValue(stream),
-          reduction_kind, dest_ptr, source_ptr, count);
+          half, __half, NVSHMEM_TEAM_SHARED, se::gpu::AsGpuStreamValue(stream),
+          reduction_kind, source_ptr, dest_ptr, count);
       break;
     }
     case PrimitiveType::F32: {
       CALL_NVSHMEM_REDUCTION_DATATYPE(
-          float, float, NVSHMEMX_TEAM_NODE, se::gpu::AsGpuStreamValue(stream),
-          reduction_kind, dest_ptr, source_ptr, count);
+          float, float, NVSHMEM_TEAM_SHARED, se::gpu::AsGpuStreamValue(stream),
+          reduction_kind, source_ptr, dest_ptr, count);
       break;
     }
     case PrimitiveType::BF16: {
       CALL_NVSHMEM_REDUCTION_DATATYPE(
-          bfloat16, __nv_bfloat16, NVSHMEMX_TEAM_NODE,
-          se::gpu::AsGpuStreamValue(stream), reduction_kind, dest_ptr,
-          source_ptr, count);
+          bfloat16, __nv_bfloat16, NVSHMEM_TEAM_SHARED,
+          se::gpu::AsGpuStreamValue(stream), reduction_kind, source_ptr,
+          dest_ptr, count);
       break;
     }
     case PrimitiveType::S32: {
       CALL_NVSHMEM_BITWISE_REDUCTION_DATATYPE(
-          int32, int32_t, NVSHMEMX_TEAM_NODE, se::gpu::AsGpuStreamValue(stream),
-          reduction_kind, dest_ptr, source_ptr, count);
+          int32, int32_t, NVSHMEM_TEAM_SHARED,
+          se::gpu::AsGpuStreamValue(stream), reduction_kind, source_ptr,
+          dest_ptr, count);
       break;
     }
     case PrimitiveType::S64: {
       CALL_NVSHMEM_BITWISE_REDUCTION_DATATYPE(
-          int64, int64_t, NVSHMEMX_TEAM_NODE, se::gpu::AsGpuStreamValue(stream),
-          reduction_kind, dest_ptr, source_ptr, count);
+          int64, int64_t, NVSHMEM_TEAM_SHARED,
+          se::gpu::AsGpuStreamValue(stream), reduction_kind, source_ptr,
+          dest_ptr, count);
       break;
     }
     case PrimitiveType::U32: {
       CALL_NVSHMEM_BITWISE_REDUCTION_DATATYPE(
-          uint32, uint32_t, NVSHMEMX_TEAM_NODE,
-          se::gpu::AsGpuStreamValue(stream), reduction_kind, dest_ptr,
-          source_ptr, count);
+          uint32, uint32_t, NVSHMEM_TEAM_SHARED,
+          se::gpu::AsGpuStreamValue(stream), reduction_kind, source_ptr,
+          dest_ptr, count);
       break;
     }
     case PrimitiveType::U64: {
       CALL_NVSHMEM_BITWISE_REDUCTION_DATATYPE(
-          uint64, uint64_t, NVSHMEMX_TEAM_NODE,
-          se::gpu::AsGpuStreamValue(stream), reduction_kind, dest_ptr,
-          source_ptr, count);
+          uint64, uint64_t, NVSHMEM_TEAM_SHARED,
+          se::gpu::AsGpuStreamValue(stream), reduction_kind, source_ptr,
+          dest_ptr, count);
+      break;
+    }
+    case PrimitiveType::PRED:
+    case PrimitiveType::U8: {
+      CALL_NVSHMEM_BITWISE_REDUCTION_DATATYPE(
+          uint8, uint8_t, NVSHMEM_TEAM_SHARED,
+          se::gpu::AsGpuStreamValue(stream), reduction_kind, source_ptr,
+          dest_ptr, count);
+      break;
+    }
+    case PrimitiveType::S8: {
+      CALL_NVSHMEM_BITWISE_REDUCTION_DATATYPE(
+          int8, int8_t, NVSHMEM_TEAM_SHARED, se::gpu::AsGpuStreamValue(stream),
+          reduction_kind, source_ptr, dest_ptr, count);
       break;
     }
     default:
       return absl::InternalError("Invalid Nvshmem reduction type.");
   }
-  return OkEvent();
+  return absl::OkStatus();
 }
 
 std::string NvshmemCommunicator::ToString() const {
   return absl::StrFormat("NvshmemCommunicator(nvshmem_team_t=%d)",
-                         NVSHMEMX_TEAM_NODE);
+                         NVSHMEM_TEAM_SHARED);
 }
 
 absl::StatusOr<se::Stream*> NvshmemCommunicator::ToStream(
@@ -338,7 +358,7 @@ absl::Status NvshmemCommunicator::P2P(absl::string_view op_name,
                                       se::DeviceMemoryBase send_buffer,
                                       size_t count, RankId peer,
                                       const Executor& executor) {
-  if (!op_name.empty() && op_name != "put" && op_name != "get") {
+  if (!op_name.empty() && op_name != "send" && op_name != "recv") {
     return absl::InternalError(
         absl::StrFormat("Unsupported NVSHMEM operation: %s", op_name));
   }
@@ -346,17 +366,11 @@ absl::Status NvshmemCommunicator::P2P(absl::string_view op_name,
   void* source_ptr = send_buffer.opaque();
   void* dest_ptr = recv_buffer.opaque();
 
-  // Register the source buffer since it's allocated in device memory (not with
-  // nvshmem_malloc). This is required for NVSHMEM to access the buffer during
-  // P2P operations.
-  TF_RETURN_IF_ERROR(
-      RegisterBuffer(source_ptr, count * GetPrimitiveTypeSize(type)));
-
   TF_ASSIGN_OR_RETURN(se::Stream * stream, ToStream(executor));
 
   switch (type) {
     case PrimitiveType::F64:
-      if (op_name == "put") {
+      if (op_name == "send") {
         CALL_NVSHMEM_P2P(put, double, double, peer, source_ptr, dest_ptr, count,
                          stream);
       } else {
@@ -365,7 +379,7 @@ absl::Status NvshmemCommunicator::P2P(absl::string_view op_name,
       }
       break;
     case PrimitiveType::F32:
-      if (op_name == "put") {
+      if (op_name == "send") {
         CALL_NVSHMEM_P2P(put, float, float, peer, source_ptr, dest_ptr, count,
                          stream);
       } else {
@@ -374,7 +388,7 @@ absl::Status NvshmemCommunicator::P2P(absl::string_view op_name,
       }
       break;
     case PrimitiveType::F16:
-      if (op_name == "put") {
+      if (op_name == "send") {
         CALL_NVSHMEM_P2P(put, half, __half, peer, source_ptr, dest_ptr, count,
                          stream);
       } else {
@@ -383,7 +397,7 @@ absl::Status NvshmemCommunicator::P2P(absl::string_view op_name,
       }
       break;
     case PrimitiveType::BF16:
-      if (op_name == "put") {
+      if (op_name == "send") {
         CALL_NVSHMEM_P2P(put, bfloat16, __nv_bfloat16, peer, source_ptr,
                          dest_ptr, count, stream);
       } else {
@@ -392,7 +406,7 @@ absl::Status NvshmemCommunicator::P2P(absl::string_view op_name,
       }
       break;
     case PrimitiveType::S32:
-      if (op_name == "put") {
+      if (op_name == "send") {
         CALL_NVSHMEM_P2P(put, int32, int32_t, peer, source_ptr, dest_ptr, count,
                          stream);
       } else {
@@ -401,7 +415,7 @@ absl::Status NvshmemCommunicator::P2P(absl::string_view op_name,
       }
       break;
     case PrimitiveType::S64:
-      if (op_name == "put") {
+      if (op_name == "send") {
         CALL_NVSHMEM_P2P(put, int64, int64_t, peer, source_ptr, dest_ptr, count,
                          stream);
       } else {
@@ -410,7 +424,7 @@ absl::Status NvshmemCommunicator::P2P(absl::string_view op_name,
       }
       break;
     case PrimitiveType::U32:
-      if (op_name == "put") {
+      if (op_name == "send") {
         CALL_NVSHMEM_P2P(put, uint32, uint32_t, peer, source_ptr, dest_ptr,
                          count, stream);
       } else {
@@ -419,7 +433,7 @@ absl::Status NvshmemCommunicator::P2P(absl::string_view op_name,
       }
       break;
     case PrimitiveType::U64:
-      if (op_name == "put") {
+      if (op_name == "send") {
         CALL_NVSHMEM_P2P(put, uint64, uint64_t, peer, source_ptr, dest_ptr,
                          count, stream);
       } else {
@@ -434,23 +448,10 @@ absl::Status NvshmemCommunicator::P2P(absl::string_view op_name,
   return absl::OkStatus();
 }
 
-absl::Status NvshmemCommunicator::RegisterBuffer(void* addr, size_t length) {
-  VLOG(3) << absl::StreamFormat("Registering NVSHMEM buffer: %p, length: %zu",
-                                addr, length);
-
-  if (nvshmemx_buffer_register(addr, length) != 0) {
-    LOG(ERROR) << absl::StrFormat(
-        "Failed to register NVSHMEM buffer at %p with length %zu", addr,
-        length);
-    return absl::InternalError("Failed to register NVSHMEM buffer");
-  }
-
-  return absl::OkStatus();
-}
-
-tsl::AsyncValueRef<NvshmemCommunicator::Event> NvshmemCommunicator::Send(
-    se::DeviceMemoryBase recv_buffer, se::DeviceMemoryBase send_buffer,
-    PrimitiveType dtype, size_t count, RankId peer, const Executor& executor) {
+Future<> NvshmemCommunicator::Send(se::DeviceMemoryBase recv_buffer,
+                                   se::DeviceMemoryBase send_buffer,
+                                   PrimitiveType dtype, size_t count,
+                                   RankId peer, const Executor& executor) {
   VLOG(1) << "Send NVSHMEM communicator: " << ToString();
   if (aborted_) {
     return absl::FailedPreconditionError("NvshmemCommunicator aborted");
@@ -461,13 +462,14 @@ tsl::AsyncValueRef<NvshmemCommunicator::Event> NvshmemCommunicator::Send(
 
   count = ToRealCount(dtype, count);
   TF_RETURN_IF_ERROR(
-      P2P("put", dtype, recv_buffer, send_buffer, count, peer, executor));
-  return tsl::MakeAvailableAsyncValueRef<Event>();
+      P2P("send", dtype, recv_buffer, send_buffer, count, peer, executor));
+  return absl::OkStatus();
 }
 
-tsl::AsyncValueRef<NvshmemCommunicator::Event> NvshmemCommunicator::Recv(
-    se::DeviceMemoryBase recv_buffer, se::DeviceMemoryBase send_buffer,
-    PrimitiveType dtype, size_t count, RankId peer, const Executor& executor) {
+Future<> NvshmemCommunicator::Recv(se::DeviceMemoryBase recv_buffer,
+                                   se::DeviceMemoryBase send_buffer,
+                                   PrimitiveType dtype, size_t count,
+                                   RankId peer, const Executor& executor) {
   VLOG(1) << "Recv NVSHMEM communicator: " << ToString();
   if (aborted_) {
     return absl::FailedPreconditionError("NvshmemCommunicator aborted");
@@ -478,8 +480,8 @@ tsl::AsyncValueRef<NvshmemCommunicator::Event> NvshmemCommunicator::Recv(
 
   count = ToRealCount(dtype, count);
   TF_RETURN_IF_ERROR(
-      P2P("get", dtype, recv_buffer, send_buffer, count, peer, executor));
-  return tsl::MakeAvailableAsyncValueRef<Event>();
+      P2P("recv", dtype, recv_buffer, send_buffer, count, peer, executor));
+  return absl::OkStatus();
 }
 
 absl::Status NvshmemCommunicator::Quiet(const Executor& executor) {

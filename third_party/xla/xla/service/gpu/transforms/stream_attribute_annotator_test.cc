@@ -22,22 +22,26 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "absl/algorithm/container.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/hlo/testlib/filecheck.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/stream_executor/device_description.h"
-#include "tsl/platform/statusor.h"
+#include "xla/stream_executor/device_description.pb.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace xla::gpu {
 namespace {
 
-auto MakeDeviceDescription() {
-  stream_executor::DeviceDescription device_description{
-      stream_executor::GpuDeviceInfoProto{}};
+absl::StatusOr<se::DeviceDescription> MakeDeviceDescription() {
+  TF_ASSIGN_OR_RETURN(stream_executor::DeviceDescription device_description,
+                      stream_executor::DeviceDescription::FromProto(
+                          stream_executor::GpuDeviceInfoProto{}));
   device_description.set_threads_per_warp(32);
   return device_description;
 }
@@ -49,7 +53,11 @@ class StreamAttributeAnnotatorTest : public HloHardwareIndependentTestBase {
   }
 
  private:
-  const se::DeviceDescription device_description_{MakeDeviceDescription()};
+  void SetUp() override {
+    TF_ASSERT_OK_AND_ASSIGN(device_description_, MakeDeviceDescription());
+  }
+
+  se::DeviceDescription device_description_;
 };
 
 TEST_F(StreamAttributeAnnotatorTest, AllUsersAreAnnotated) {
@@ -149,6 +157,28 @@ TEST_F(StreamAttributeAnnotatorTest, GTEUserIsAnnotated) {
   TF_ASSERT_OK_AND_ASSIGN(GpuBackendConfig gpu_config,
                           exp->backend_config<GpuBackendConfig>());
   EXPECT_EQ(gpu_config.wait_on_operation_queues()[0], 1);
+}
+
+TEST_F(StreamAttributeAnnotatorTest, GTENoUserIsHandled) {
+  constexpr absl::string_view kHloString = R"(
+  HloModule ModuleWithAsync
+
+  ENTRY entry {
+    p1_32 = f32[16,32] parameter(0)
+    p2_32 = f32[32,16] parameter(1)
+
+    custom-call.3 = (f32[16,16], s8[1028]{0}) custom-call(p1_32, p2_32), custom_call_target="__cublas$gemm", backend_config={"operation_queue_id":"1","wait_on_operation_queues":[],"gemm_backend_config":{"alpha_real":1,"alpha_imag":0,"beta":0,"dot_dimension_numbers":{"lhs_contracting_dimensions":["1"],"rhs_contracting_dimensions":["0"],"lhs_batch_dimensions":[],"rhs_batch_dimensions":[]},"precision_config":{"operand_precision":["DEFAULT","DEFAULT"]},"epilogue":"DEFAULT","grad_x":false,"grad_y":false}}
+    ROOT get-tuple-element.24 = f32[16,16] get-tuple-element(custom-call.3), index=0
+  }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(kHloString));
+
+  StreamAttributeAnnotator attr_annotator{device_description()};
+  bool changed;
+  TF_ASSERT_OK_AND_ASSIGN(changed, attr_annotator.Run(module.get()));
+  EXPECT_FALSE(changed);
 }
 
 TEST_F(StreamAttributeAnnotatorTest, FusionIsAnnotated) {

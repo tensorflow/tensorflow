@@ -58,7 +58,6 @@ void AddClusterToIfrtRuntimeOpsPassPipeline(OpPassManager& pm,
   pm.addNestedPass<mlir::func::FuncOp>(mlir::createCanonicalizerPass());
   pm.addNestedPass<mlir::func::FuncOp>(CreateTfRestorePruningPass());
   pm.addNestedPass<mlir::func::FuncOp>(CreateTfRestoreMergingPass());
-
   // Convert reference variable to resource variable since
   // LowerToIfrtRestoreVariablePass does not support reference variable.
   pm.addPass(CreateConvertReferenceVariableToResourceVariablePass());
@@ -79,7 +78,12 @@ void AddClusterToIfrtRuntimeOpsPassPipeline(OpPassManager& pm,
   // TODO(b/319045348): the bridge before this pipeline already does some
   // inlining. Consider removing this inliner.
   pm.addPass(mlir::createInlinerPass());
+  // Convert the region control flow to functional control flow so that the
+  // invariant sinking pass can work correctly.
+  pm.addPass(mlir::TF::CreateTFRegionControlFlowToFunctional());
   pm.addPass(::tensorflow::CreateSinkInInvariantOpsPass());
+  pm.addPass(mlir::TF::CreateTFFunctionalControlFlowToRegions());
+  pm.addPass(mlir::createInlinerPass());
 
   // Decompose resource ops as resource variables are loaded by ReadVariableOp
   // and can be lowered to IfrtLoadVariableOp in the subsequent

@@ -20,18 +20,21 @@ limitations under the License.
 
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "xla/pjrt/pjrt_api.h"
 
-bool RegisterDynamicPjrtPlugin(absl::string_view plugin_name,
-                               absl::string_view library_env_name) {
-  char* library_path = std::getenv(library_env_name.data());
-  QCHECK(library_path != nullptr)
-      << "Environment variable " << library_env_name
-      << " is not set. Can't load PJRT plugin " << plugin_name << ".";
+absl::Status RegisterDynamicPjrtPlugin(absl::string_view plugin_name,
+                                       absl::string_view library_env_name) {
+  std::string library_env_name_str(library_env_name);
+  char* library_path = std::getenv(library_env_name_str.c_str());
+  if (library_path == nullptr) {
+    return absl::NotFoundError(
+        absl::StrCat("Environment variable ", library_env_name,
+                     " is not set. Can't load PJRT plugin ", plugin_name, "."));
+  }
   std::string library_path_str(library_path);
   auto status = pjrt::LoadPjrtPlugin(plugin_name, library_path);
-  QCHECK(status.ok()) << "Failed to load PJRT plugin " << plugin_name << ": "
-                      << status.status();
-  return true;
+  return status.status();
 }

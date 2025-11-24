@@ -21,6 +21,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include "absl/cleanup/cleanup.h"
 #include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
@@ -46,7 +47,6 @@ using ::tensorflow::test::ExpectEqual;
 using ::testing::IsEmpty;
 using ::testing::Not;
 using ::testing::UnorderedElementsAre;
-using ::tsl::testing::IsOk;
 
 // This fixture simply wraps the Env and MLIRContext.
 class SaveVariablesToCheckpointTest : public ::testing::Test {
@@ -196,7 +196,7 @@ TEST_F(SaveVariablesToCheckpointTest,
 
   // Verify that the checkpoint doesn't exist.
   BundleReader bundle_reader(env_, *checkpoint_prefix);
-  EXPECT_THAT(bundle_reader.status(), Not(IsOk()));
+  EXPECT_THAT(bundle_reader.status(), Not(absl_testing::IsOk()));
 }
 
 TEST_F(SaveVariablesToCheckpointTest,
@@ -226,7 +226,7 @@ TEST_F(SaveVariablesToCheckpointTest,
 
   // Verify that the checkpoint doesn't exist.
   BundleReader bundle_reader(env_, *checkpoint_prefix);
-  EXPECT_THAT(bundle_reader.status(), Not(IsOk()));
+  EXPECT_THAT(bundle_reader.status(), Not(absl_testing::IsOk()));
 }
 
 TEST_F(SaveVariablesToCheckpointTest,
@@ -263,7 +263,7 @@ TEST_F(SaveVariablesToCheckpointTest,
 
   // Verify that the checkpoint doesn't exist.
   BundleReader bundle_reader(env_, *checkpoint_prefix);
-  EXPECT_THAT(bundle_reader.status(), Not(IsOk()));
+  EXPECT_THAT(bundle_reader.status(), Not(absl_testing::IsOk()));
 }
 
 TEST_F(SaveVariablesToCheckpointTest, MutableVariablesNotSaved) {
@@ -302,7 +302,7 @@ TEST_F(SaveVariablesToCheckpointTest, MutableVariablesNotSaved) {
   EXPECT_THAT(*variable_shared_names, IsEmpty());
 
   BundleReader bundle_reader(env_, *checkpoint_prefix);
-  EXPECT_THAT(bundle_reader.status(), Not(IsOk()));
+  EXPECT_THAT(bundle_reader.status(), Not(absl_testing::IsOk()));
 }
 
 TEST_F(SaveVariablesToCheckpointTest,
@@ -339,7 +339,7 @@ TEST_F(SaveVariablesToCheckpointTest,
   EXPECT_THAT(*variable_shared_names, IsEmpty());
 
   BundleReader bundle_reader(env_, *checkpoint_prefix);
-  EXPECT_THAT(bundle_reader.status(), Not(IsOk()));
+  EXPECT_THAT(bundle_reader.status(), Not(absl_testing::IsOk()));
 }
 
 TEST_F(SaveVariablesToCheckpointTest, FailsWhenDuplicateSharedName) {

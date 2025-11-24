@@ -22,6 +22,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "xla/python/ifrt/attribute_map.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/mock.h"
@@ -35,7 +36,6 @@ namespace {
 using ::testing::ElementsAre;
 using ::testing::Return;
 using ::testing::ReturnRef;
-using ::tsl::testing::StatusIs;
 
 static constexpr int kNumReplicas = 1;
 static constexpr int kNumCoresPerReplica = 2;
@@ -122,7 +122,8 @@ TEST_F(IfrtDeviceUtilsTest, EmptyDeviceAssignmentShallReturnDefault) {
 TEST_F(IfrtDeviceUtilsTest, MismatchCoordinatesShallFail) {
   std::vector<int> device_assignment_attr = {1, 0, 0, 1, 3, 0, 0, 0};
   auto status = GetAssignedIfrtDevices(client_, 1, 2, device_assignment_attr);
-  EXPECT_THAT(status, StatusIs(absl::StatusCode::kFailedPrecondition));
+  EXPECT_THAT(status,
+              absl_testing::StatusIs(absl::StatusCode::kFailedPrecondition));
 }
 
 }  // namespace

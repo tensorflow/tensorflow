@@ -21,6 +21,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/layout.h"
@@ -31,7 +32,6 @@ limitations under the License.
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/mock.h"
 #include "xla/python/ifrt/shape.h"
-#include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 
@@ -41,7 +41,6 @@ namespace {
 
 using ::testing::Optional;
 using ::testing::Return;
-using ::tsl::testing::IsOkAndHolds;
 
 TEST(PjRtLayoutTest, Create) {
   EXPECT_EQ(PjRtLayout::Create(std::make_unique<xla::PjRtLayout>(
@@ -55,20 +54,20 @@ TEST(PjRtLayoutTest, ByteSize) {
   EXPECT_THAT(
       PjRtLayout::Create(std::make_unique<xla::PjRtLayout>(xla::Layout()))
           ->ByteSize(DType(DType::kToken), Shape({})),
-      IsOkAndHolds(std::nullopt));
+      absl_testing::IsOkAndHolds(std::nullopt));
   EXPECT_THAT(
       PjRtLayout::Create(std::make_unique<xla::PjRtLayout>(xla::Layout()))
           ->ByteSize(DType(DType::kOpaque), Shape({})),
-      IsOkAndHolds(std::nullopt));
+      absl_testing::IsOkAndHolds(std::nullopt));
 
   EXPECT_THAT(PjRtLayout::Create(std::make_unique<xla::PjRtLayout>(
                                      xla::LayoutUtil::MakeDescendingLayout(0)))
                   ->ByteSize(DType(DType::kS32), Shape({})),
-              IsOkAndHolds(Optional(4)));
+              absl_testing::IsOkAndHolds(Optional(4)));
   EXPECT_THAT(PjRtLayout::Create(std::make_unique<xla::PjRtLayout>(
                                      xla::LayoutUtil::MakeDescendingLayout(2)))
                   ->ByteSize(DType(DType::kS32), Shape({3, 2})),
-              IsOkAndHolds(Optional(24)));
+              absl_testing::IsOkAndHolds(Optional(24)));
   EXPECT_THAT(
       PjRtLayout::Create(std::make_unique<xla::PjRtLayout>(xla::Layout(
                              /*minor_to_major=*/{1, 0},
@@ -78,7 +77,7 @@ TEST(PjRtLayoutTest, ByteSize) {
                              /*tail_padding_alignment_in_elements=*/1,
                              /*element_size_in_bits=*/32)))
           ->ByteSize(DType(DType::kS32), Shape({1, 127})),
-      IsOkAndHolds(Optional(4 * (2 * 128))));
+      absl_testing::IsOkAndHolds(Optional(4 * (2 * 128))));
   EXPECT_THAT(
       PjRtLayout::Create(std::make_unique<xla::PjRtLayout>(xla::Layout(
                              /*minor_to_major=*/{1, 0},
@@ -88,7 +87,7 @@ TEST(PjRtLayoutTest, ByteSize) {
                              /*tail_padding_alignment_in_elements=*/1,
                              /*element_size_in_bits=*/4)))
           ->ByteSize(DType(DType::kS4), Shape({1, 1023})),
-      IsOkAndHolds(Optional((2 * 1024) / 2)));
+      absl_testing::IsOkAndHolds(Optional(2 * 1024 / 2)));
 }
 
 TEST(PjRtLayoutTest, ToPjRtLayout) {
@@ -112,7 +111,7 @@ TEST(PjRtLayoutTest, ToPjRtLayout) {
     auto device = std::make_unique<MockDevice>();
     Shape shape({3, 2});
     ON_CALL(*device, client).WillByDefault(Return(client.get()));
-    EXPECT_CALL(*client, GetDefaultLayout)
+    EXPECT_CALL(*client, GetDefaultPjRtLayout)
         .With(std::make_tuple(DType(DType::kS32), shape.dims(),
                               static_cast<Device*>(device.get()), MemoryKind()))
         .WillOnce(Return(absl::StatusOr<std::shared_ptr<const xla::PjRtLayout>>(

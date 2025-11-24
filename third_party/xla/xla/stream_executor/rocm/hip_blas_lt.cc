@@ -132,6 +132,12 @@ static absl::StatusOr<hipblasLtEpilogue_t> AsHipblasLtEpilogue(
     case gpu::BlasLt::Epilogue::kBiasThenGELUWithAux:
       return HIPBLASLT_EPILOGUE_GELU_AUX_BIAS;
 #endif
+#if TF_ROCM_VERSION >= 70000
+    case gpu::BlasLt::Epilogue::kSILU:
+      return HIPBLASLT_EPILOGUE_SWISH_EXT;
+    case gpu::BlasLt::Epilogue::kBiasThenSILU:
+      return HIPBLASLT_EPILOGUE_SWISH_BIAS_EXT;
+#endif
     default:
       return absl::InternalError("Unsupported epilogue: " +
                                  std::to_string((int)epilogue));
@@ -143,7 +149,7 @@ static absl::StatusOr<hipblasLtEpilogue_t> AsHipblasLtEpilogue(
 absl::Status BlasLt::Init() {
   hipblasLtHandle_t blas_lt;
   SE_HIPBLAS_RETURN_IF_ERROR(wrap::hipblasLtCreate(&blas_lt));
-  absl::MutexLock lock(&mu_);
+  absl::MutexLock lock(mu_);
   blas_lt_.reset(blas_lt);
   return absl::OkStatus();
 }
@@ -217,7 +223,7 @@ auto BlasLt::MatmulPlan::GetAlgorithms(const Stream* stream,
   std::vector<hipblasLtMatmulHeuristicResult_t> results(max_algorithm_count);
   {
     auto blas_lt = static_cast<BlasLt*>(gpu::BlasLt::Get(stream));
-    absl::MutexLock lock(&blas_lt->mu_);
+    absl::MutexLock lock(blas_lt->mu_);
     TF_RET_CHECK(blas_lt->blas_lt_ != nullptr);
 
     hipblasLtMatmulPreference_t hip_preference;
@@ -420,7 +426,7 @@ absl::Status BlasLt::MatmulPlan::DoMatmul(
 
   auto palgo = std::any_cast<hipblasLtMatmulAlgo_t>(&algorithm_->opaque_algo);
   {
-    absl::MutexLock lock(&blas_lt->mu_);
+    absl::MutexLock lock(blas_lt->mu_);
     TF_RET_CHECK(blas_lt->blas_lt_ != nullptr);
     // We must set the bias and aux pointers while holding the mutex, to avoid a
     // potential race condition from multiple threads sharing the same plan.

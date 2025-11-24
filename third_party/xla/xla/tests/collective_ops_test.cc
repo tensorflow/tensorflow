@@ -414,7 +414,7 @@ TEST_F(CollectiveOpsTest, AllReduce_AllCombinations) {
 // http://b/259130904 [XLA:GPU] AllReduce_ManyConcurrentAllReduces subtest fails
 //                     with async all-reduce enables
 TEST_F(CollectiveOpsTest, AllReduce_ManyConcurrentAllReduces) {
-  if (test::DeviceIs(test::kGpu)) {
+  if (test::DeviceTypeIs(test::kGpu)) {
     GTEST_SKIP();
   }
   const int64_t kNumElems = 1024;
@@ -2665,17 +2665,13 @@ class Fp8CollectiveOpsTest : public CollectiveOpsTest {
  public:
   Fp8CollectiveOpsTest() {
     replacements_[kF8E4M3DatatypePlaceholder] =
-        IsCuda() ? "f8e4m3fn" : "f8e4m3fnuz";
+        Capability().IsCuda() ? "f8e4m3fn" : "f8e4m3fnuz";
     replacements_[kF8E5M2DatatypePlaceholder] =
-        IsCuda() ? "f8e5m2" : "f8e5m2fnuz";
+        Capability().IsCuda() ? "f8e5m2" : "f8e5m2fnuz";
     replacements_[kF8E8M0DatatypePlaceholder] = "f8e8m0fnu";
   }
 
  protected:
-  bool IsCuda() {
-    return std::holds_alternative<se::CudaComputeCapability>(Capability());
-  }
-
   const se::GpuComputeCapability& Capability() {
     return backend()
         .default_stream_executor()

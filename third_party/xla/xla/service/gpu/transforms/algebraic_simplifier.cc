@@ -15,22 +15,19 @@ limitations under the License.
 
 #include "xla/service/gpu/transforms/algebraic_simplifier.h"
 
+#include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
-#include "xla/backends/gpu/codegen/triton/support_legacy.h"
-#include "xla/hlo/ir/hlo_casting_utils.h"
+#include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/transforms/simplifiers/algebraic_simplifier.h"
 #include "xla/service/gpu/matmul_utils.h"
-#include "xla/service/gpu/transforms/dot_algorithm_rewriter.h"
-#include "xla/service/hlo_creation_utils.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/shape_util.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla::gpu {
 
@@ -100,65 +97,25 @@ bool GpuAlgebraicSimplifierVisitor::SupportedDotPrecisionConfig(
 absl::StatusOr<HloInstruction*>
 GpuAlgebraicSimplifierVisitor::MakeMultiplyForPrecisionAlgorithm(
     HloInstruction* dot, HloInstruction* lhs, HloInstruction* rhs) {
-  const auto algorithm = dot->precision_config().algorithm();
-  switch (algorithm) {
-    case PrecisionConfig::ALG_DOT_BF16_BF16_F32:
-      return DotAlgorithmRewriter::MakeMultiplyForBF16BF16F32(lhs, rhs);
-    case PrecisionConfig::ALG_DOT_BF16_BF16_F32_X3:
-      return DotAlgorithmRewriter::MakeMultiplyForBF16BF16F32X3(lhs, rhs);
-    case PrecisionConfig::ALG_DOT_BF16_BF16_F32_X6:
-      return DotAlgorithmRewriter::MakeMultiplyForBF16BF16F32X6(lhs, rhs);
-    case PrecisionConfig::ALG_DOT_BF16_BF16_F32_X9:
-      return DotAlgorithmRewriter::MakeMultiplyForBF16BF16F32X9(lhs, rhs);
-    case PrecisionConfig::ALG_DOT_TF32_TF32_F32:
-      return DotAlgorithmRewriter::MakeMultiplyForTF32TF32F32(lhs, rhs);
-    case PrecisionConfig::ALG_DOT_TF32_TF32_F32_X3:
-      return DotAlgorithmRewriter::MakeMultiplyForTF32TF32F32X3(lhs, rhs);
-    case PrecisionConfig::ALG_DOT_F32_F32_F32:
-      return MakeBinaryHlo(HloOpcode::kMultiply, lhs, rhs);
-    case PrecisionConfig::ALG_UNSET:
-      return MakeBinaryHlo(HloOpcode::kMultiply, lhs, rhs);
-    default:
-      CHECK(false) << "Unsupported dot precision algorithm: " << algorithm;
-  }
+  return MakeMultiplyForDotPrecisionAlgorithm(
+      lhs, rhs, dot->precision_config().algorithm());
 }
 
-bool GpuAlgebraicSimplifierVisitor::ShouldStrengthReduceDotToReduce(
-    const HloInstruction* hlo) {
-  if (!options_.enable_dot_strength_reduction()) {
-    return false;
+absl::StatusOr<bool> GpuAlgebraicSimplifier::RunImpl(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
+  XLA_VLOG_LINES(
+      2, "GpuAlgebraicSimplifier::RunImpl(), before:\n" + module->ToString());
+  bool changed = false;
+  GpuAlgebraicSimplifierVisitor visitor(options_, compute_capability_, this);
+  for (auto* comp : module->MakeNonfusionComputations(execution_threads)) {
+    if (visitor.Run(comp, options_, this)) {
+      changed = true;
+    }
   }
-
-  const HloDotInstruction* dot = DynCast<HloDotInstruction>(hlo);
-  if (dot == nullptr) {
-    return false;
-  }
-
-  const HloInstruction* lhs = dot->operand(0);
-  const HloInstruction* rhs = dot->operand(1);
-  DotDimensionNumbers dnums = dot->dot_dimension_numbers();
-  bool lhs_is_vector = (dnums.lhs_batch_dimensions_size() +
-                            dnums.lhs_contracting_dimensions_size() ==
-                        lhs->shape().dimensions().size());
-  bool rhs_is_vector = (dnums.rhs_batch_dimensions_size() +
-                            dnums.rhs_contracting_dimensions_size() ==
-                        rhs->shape().dimensions().size());
-  // Strength-reduce vector-vector dots since they are not supported by
-  // GemmFusion.
-  if (lhs_is_vector && rhs_is_vector) {
-    return true;
-  }
-
-  absl::StatusOr<bool> is_too_small =
-      IsMatrixMultiplicationTooSmallForRewriting(*hlo, /*threshold=*/10000000);
-  CHECK_OK(is_too_small.status());
-  if (is_too_small.value()) {
-    return true;
-  }
-
-  // If GemmFusion cannot handle this dot, we should strength-reduce it so that
-  // it can be handled by the fusion pipeline.
-  return !legacy_triton::CanTritonHandleGEMM(*dot, compute_capability_);
+  XLA_VLOG_LINES(
+      2, "GpuAlgebraicSimplifier::RunImpl(), after:\n" + module->ToString());
+  return changed;
 }
 
 }  // namespace xla::gpu

@@ -22,11 +22,11 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "xla/stream_executor/cuda/compilation_options.h"
 #include "xla/stream_executor/cuda/compilation_provider.h"
 #include "xla/stream_executor/cuda/mock_compilation_provider.h"
 #include "xla/stream_executor/device_description.h"
-#include "tsl/platform/status_matchers.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
 
@@ -36,12 +36,10 @@ namespace {
 
 using ::testing::HasSubstr;
 using ::testing::Return;
-using ::tsl::testing::IsOk;
-using ::tsl::testing::StatusIs;
 
 TEST(CompositeCompilationProviderTest, CreateFailsWithNoProviders) {
   EXPECT_THAT(CompositeCompilationProvider::Create({}),
-              StatusIs(absl::StatusCode::kInvalidArgument));
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
 TEST(CompositeCompilationProviderTest, Name) {
@@ -128,7 +126,7 @@ TEST(CompositeCompilationProviderTest, Compile) {
       CompositeCompilationProvider::Create(std::move(providers)));
   EXPECT_THAT(combining_provider->Compile(CudaComputeCapability{10, 0}, "ptx",
                                           CompilationOptions{}),
-              IsOk());
+              absl_testing::IsOk());
 }
 
 TEST(CompositeCompilationProviderTest, CompileToRelocatableModule) {
@@ -162,7 +160,7 @@ TEST(CompositeCompilationProviderTest, CompileToRelocatableModule) {
       CompositeCompilationProvider::Create(std::move(providers)));
   EXPECT_THAT(combining_provider->CompileToRelocatableModule(
                   CudaComputeCapability{10, 0}, "ptx", CompilationOptions{}),
-              IsOk());
+              absl_testing::IsOk());
 }
 
 TEST(CompositeCompilationProviderTest, CompileAndLink) {
@@ -194,7 +192,7 @@ TEST(CompositeCompilationProviderTest, CompileAndLink) {
   EXPECT_THAT(
       combining_provider->CompileAndLink(CudaComputeCapability{10, 0},
                                          {Ptx{"ptx"}}, CompilationOptions{}),
-      IsOk());
+      absl_testing::IsOk());
 }
 
 }  // namespace

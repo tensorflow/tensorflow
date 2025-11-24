@@ -65,8 +65,7 @@ TEST_P(ShardingSerDesTest, SingleDeviceShardingRoundTrip) {
   auto sharding = SingleDeviceSharding::Create(
       GetDevices({0})->devices().front(), MemoryKind("abc"));
 
-  auto options = std::make_unique<SerializeOptions>();
-  options->version = version();
+  auto options = std::make_unique<SerializeOptions>(version());
   TF_ASSERT_OK_AND_ASSIGN(auto serialized,
                           Serialize(*sharding, std::move(options)));
 
@@ -82,8 +81,7 @@ TEST_P(ShardingSerDesTest, SingleDeviceShardingRoundTrip) {
 TEST_P(ShardingSerDesTest, OpaqueShardingRoundTrip) {
   auto sharding = OpaqueSharding::Create(GetDevices({0, 1}), MemoryKind("abc"));
 
-  auto options = std::make_unique<SerializeOptions>();
-  options->version = version();
+  auto options = std::make_unique<SerializeOptions>(version());
   TF_ASSERT_OK_AND_ASSIGN(auto serialized,
                           Serialize(*sharding, std::move(options)));
 
@@ -102,8 +100,7 @@ TEST_P(ShardingSerDesTest, ConcreteShardingRoundTrip) {
       /*shape=*/Shape({10, 20}),
       /*shard_shapes=*/{Shape({3, 20}), Shape({7, 20})});
 
-  auto options = std::make_unique<SerializeOptions>();
-  options->version = version();
+  auto options = std::make_unique<SerializeOptions>(version());
   TF_ASSERT_OK_AND_ASSIGN(auto serialized,
                           Serialize(*sharding, std::move(options)));
 
@@ -137,8 +134,7 @@ TEST_P(ShardingSerDesTest, ConcreteShardingWithDynamicShapeRoundTrip) {
       /*dynamic_shape=*/dynamic_shape,
       /*shard_dynamic_shapes=*/{shard_dynamic_shape1, shard_dynamic_shape2});
 
-  auto options = std::make_unique<SerializeOptions>();
-  options->version = version();
+  auto options = std::make_unique<SerializeOptions>(version());
   TF_ASSERT_OK_AND_ASSIGN(Serialized serialized,
                           Serialize(*sharding, std::move(options)));
 
@@ -160,8 +156,7 @@ TEST_P(ShardingSerDesTest, ConcreteEvenShardingRoundTrip) {
       /*shape=*/Shape({10, 20}),
       /*shard_shape=*/Shape({5, 20}), /*is_fully_replicated=*/true);
 
-  auto options = std::make_unique<SerializeOptions>();
-  options->version = version();
+  auto options = std::make_unique<SerializeOptions>(version());
   TF_ASSERT_OK_AND_ASSIGN(auto serialized,
                           Serialize(*sharding, std::move(options)));
 
@@ -183,8 +178,7 @@ TEST_P(ShardingSerDesTest, ShardingParamShardingRoundTrip) {
       ShardingParamSharding::Create(ShardingParam({2, 1}, {{0}, {2}}),
                                     GetDevices({0, 1}), MemoryKind("abc")));
 
-  auto options = std::make_unique<SerializeOptions>();
-  options->version = version();
+  auto options = std::make_unique<SerializeOptions>(version());
   TF_ASSERT_OK_AND_ASSIGN(auto serialized,
                           Serialize(*sharding, std::move(options)));
   TF_ASSERT_OK_AND_ASSIGN(

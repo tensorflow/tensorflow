@@ -18,30 +18,79 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/base/no_destructor.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/backends/cpu/codegen/target_machine_features.h"
 #include "xla/backends/cpu/transforms/library_matcher.h"
-#include "xla/backends/cpu/xnn_fusion.h"
+#include "xla/backends/cpu/xnn_support.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "tsl/platform/protobuf.h"
 
 namespace xla::cpu {
 
 class XnnMatcher : public LibraryMatcher {
  public:
-  explicit XnnMatcher(const TargetMachineFeatures* target_machine_features)
-      : LibraryMatcher(target_machine_features) {}
+  explicit XnnMatcher(const TargetMachineFeatures* target_machine_features,
+                      const tsl::protobuf::RepeatedField<int>* fusion_types)
+      : LibraryMatcher(target_machine_features, fusion_types) {}
   ~XnnMatcher() override = default;
+
+  // Returns the set of supported HLO instructions.
+  absl::flat_hash_set<HloOpcode> SupportedOps() const override {
+    static const absl::NoDestructor<absl::flat_hash_set<HloOpcode>>
+        kSupportedOps{[]() {
+          absl::flat_hash_set<HloOpcode> supported_ops{
+              HloOpcode::kDot, HloOpcode::kReduce, HloOpcode::kConstant};
+          for (const auto& [op, _] : GetXnnUnaryOpMap()) {
+            supported_ops.insert(op);
+          }
+          for (const auto& [op, _] : GetXnnBinaryOpMap()) {
+            supported_ops.insert(op);
+          }
+          return supported_ops;
+        }()};
+    return *kSupportedOps;
+  }
 
   // Returns true if the HLO instruction is supported by the library.
   absl::StatusOr<bool> IsOpSupported(const HloInstruction* instr) override {
-    if (instr->opcode() != HloOpcode::kDot) {
+    if (instr->opcode() == HloOpcode::kDot) {
+      return IsDotSupportedByXnn(
+          instr->dot_dimension_numbers(), instr->operand(0)->shape(),
+          instr->operand(1)->shape(), instr->shape(), target_machine_features_);
+    }
+    if (instr->opcode() == HloOpcode::kReduce) {
+      return IsReduceOpSupportedByXnn(instr);
+    }
+    if (instr->IsConstant()) {
+      return IsConstantSupportedByXnn(instr);
+    }
+    // TODO(b/441837668): Need to get the reduction performance/cost model
+    // right before enabling fusions. Fusions make performance analysis quite
+    // challenging.
+    if (fuse_reduce_) {
       return false;
     }
-    return IsXnnDotSupported(
-        instr->dot_dimension_numbers(), instr->operand(0)->shape(),
-        instr->operand(1)->shape(), instr->shape(), target_machine_features_);
+    if (instr->IsElementwise()) {
+      return IsElementwiseOpSupportedByXnn(instr);
+    }
+    return false;
+  }
+
+  // Returns true if we should start a new fusion containing just the given HLO
+  // instruction. We control the instructions that can start a fusion with the
+  // `--xla_cpu_experimental_xnn_fusion_type` flag.
+  bool ShouldCreateFusion(const HloInstruction* instr) override {
+    if (fuse_dot_ && instr->opcode() == HloOpcode::kDot) {
+      return true;
+    }
+    if (fuse_reduce_ && instr->opcode() == HloOpcode::kReduce) {
+      return true;
+    }
+    return fuse_eltwise_ && instr->IsElementwise();
   }
 
   // Returns the output type of the XNN op, so we can insert a convert node if
@@ -59,6 +108,9 @@ class XnnMatcher : public LibraryMatcher {
 
   // Returns a string for FusionBackendConfig's fusion kind.
   absl::string_view fusion_kind() const override { return kXnnFusionKind; }
+
+ private:
+  absl::flat_hash_set<DebugOptions::LibraryFusionType> fusion_types_;
 };
 
 }  // namespace xla::cpu

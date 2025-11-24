@@ -81,12 +81,12 @@ class HloProgramSerDes : public llvm::RTTIExtends<HloProgramSerDes, SerDes> {
     // converts the module into StableHLO and use its portable serialization.
 
     const auto& program = llvm::cast<HloProgram>(serializable);
-    if (program.mlir_module == nullptr) {
+    if (program.mlir_module() == nullptr) {
       return absl::InvalidArgumentError("Unable to serialize null MLIR module");
     }
 
     mlir::OwningOpRef<mlir::ModuleOp> module(
-        llvm::cast<mlir::ModuleOp>(program.mlir_module->clone()));
+        llvm::cast<mlir::ModuleOp>(program.mlir_module()->clone()));
 
     // Serialize portable artifact.
     return xla::SerializeUsingVersionedStablehlo(

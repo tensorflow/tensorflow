@@ -45,8 +45,8 @@ struct TensorId : public std::pair<absl::string_view, int> {
   int index() const { return second; }
 
   string ToString() const {
-    if (second == Graph::kControlSlot) return strings::StrCat("^", first);
-    return strings::StrCat(first, ":", second);
+    if (second == Graph::kControlSlot) return absl::StrCat("^", first);
+    return absl::StrCat(first, ":", second);
   }
 
   struct Hasher {
@@ -57,7 +57,6 @@ struct TensorId : public std::pair<absl::string_view, int> {
   };
 };
 
-TensorId ParseTensorName(const string& name);
 TensorId ParseTensorName(absl::string_view name);
 
 bool IsTensorIdControl(const TensorId& tensor_id);
@@ -77,8 +76,8 @@ struct SafeTensorId : public std::pair<string, int> {
   int index() const { return second; }
 
   string ToString() const {
-    if (second == Graph::kControlSlot) return strings::StrCat("^", first);
-    return strings::StrCat(first, ":", second);
+    if (second == Graph::kControlSlot) return absl::StrCat("^", first);
+    return absl::StrCat(first, ":", second);
   }
 
   struct Hasher {

@@ -215,6 +215,10 @@ class RocmCompiler(ArgparseableEnum):
   HIPCC = enum.auto()
 
 
+class SyclCompiler(ArgparseableEnum):
+  ICPX = enum.auto()
+
+
 class OS(ArgparseableEnum):
   """Modeled after the values returned by `platform.system()`."""
   LINUX = enum.auto()
@@ -258,16 +262,24 @@ class DiscoverablePathsAndVersions:
       self.ld_library_path = os.environ.get("LD_LIBRARY_PATH", None)
 
     if config.host_compiler == HostCompiler.CLANG:
-      self.clang_path = _find_executable_or_die("clang", self.clang_path)
-      self.clang_major_version = (
-          self.clang_major_version or _get_clang_major_version(self.clang_path)
-      )
+      if self.clang_path or not is_hermetic_build(config.backend, config.os):
+        self.clang_path = _find_executable_or_die("clang", self.clang_path)
+        self.clang_major_version = (
+            self.clang_major_version
+            or _get_clang_major_version(self.clang_path)
+        )
 
-      # Notably, we don't use `_find_executable_or_die` for lld, as it changes
-      # which commands it accepts based on its name! ld.lld is symlinked to a
-      # different executable just called lld, which should not be invoked
-      # directly.
-      self.lld_path = self.lld_path or shutil.which("ld.lld")
+        # Notably, we don't use `_find_executable_or_die` for lld, as it changes
+        # which commands it accepts based on its name! ld.lld is symlinked to a
+        # different executable just called lld, which should not be invoked
+        # directly.
+        self.lld_path = self.lld_path or shutil.which("ld.lld")
+      else:
+        # TODO: b/443091874 - set the version of Clang when it will be
+        # available outside of rules_ml_toolchain. Current hermetic Clang
+        # version is 18
+        self.clang_major_version = 18   # Hermetic toolchain
+
     elif config.host_compiler == HostCompiler.GCC:
       self.gcc_path = _find_executable_or_die("gcc", self.gcc_path)
       self.gcc_major_version = self.gcc_major_version or _get_gcc_major_version(
@@ -275,7 +287,9 @@ class DiscoverablePathsAndVersions:
       )
 
     if config.backend == Backend.CUDA:
-      if config.cuda_compiler == CudaCompiler.CLANG:
+      if config.cuda_compiler == CudaCompiler.CLANG and (
+          self.clang_path or not is_hermetic_build(config.backend, config.os)
+      ):
         self.clang_path = _find_executable_or_die("clang", self.clang_path)
 
       if not self.cuda_compute_capabilities:
@@ -298,6 +312,9 @@ class XLAConfigOptions:
 
   # ROCM specific
   rocm_compiler: RocmCompiler
+
+  # SYCL specific
+  sycl_compiler: SyclCompiler
 
   def to_bazelrc_lines(
       self,
@@ -327,9 +344,11 @@ class XLAConfigOptions:
     if self.host_compiler == HostCompiler.GCC:
       rc.append(f"build --action_env GCC_HOST_COMPILER_PATH={dpav.gcc_path}")
     elif self.host_compiler == HostCompiler.CLANG:
-      rc.append(f"build --action_env CLANG_COMPILER_PATH={dpav.clang_path}")
-      rc.append(f"build --repo_env CC={dpav.clang_path}")
-      rc.append(f"build --repo_env BAZEL_COMPILER={dpav.clang_path}")
+      if dpav.clang_path:
+        rc.append("build --config clang_local")
+        rc.append(f"build --action_env CLANG_COMPILER_PATH={dpav.clang_path}")
+        rc.append(f"build --repo_env CC={dpav.clang_path}")
+        rc.append(f"build --repo_env BAZEL_COMPILER={dpav.clang_path}")
       self.compiler_options.append("-Wno-error=unused-command-line-argument")
       if dpav.lld_path:
         rc.append(f"build --linkopt --ld-path={dpav.lld_path}")
@@ -339,21 +358,27 @@ class XLAConfigOptions:
 
     elif self.backend == Backend.CUDA:
       build_and_test_tag_filters.append("-rocm-only")
-      build_and_test_tag_filters.append("-sycl-only")
+      build_and_test_tag_filters.append("-oneapi-only")
 
       compiler_pair = self.cuda_compiler, self.host_compiler
 
       if compiler_pair == (CudaCompiler.CLANG, HostCompiler.CLANG):
-        rc.append("build --config cuda_clang")
-        rc.append(
-            f"build --action_env CLANG_CUDA_COMPILER_PATH={dpav.clang_path}"
-        )
+        if not dpav.clang_path:
+          rc.append("build --config cuda_clang")
+        else:
+          rc.append("build --config cuda_clang_local")
+          rc.append(
+              f"build --action_env CLANG_CUDA_COMPILER_PATH={dpav.clang_path}"
+          )
       elif compiler_pair == (CudaCompiler.NVCC, HostCompiler.CLANG):
-        rc.append("build --config cuda_nvcc")
-        # This is demanded by cuda_configure.bzl
-        rc.append(
-            f"build --action_env CLANG_CUDA_COMPILER_PATH={dpav.clang_path}"
-        )
+        if not dpav.clang_path:
+          rc.append("build --config cuda_nvcc")
+        else:
+          rc.append("build --config cuda_nvcc_clang_local")
+          # This is demanded by cuda_configure.bzl
+          rc.append(
+              f"build --action_env CLANG_CUDA_COMPILER_PATH={dpav.clang_path}"
+          )
       elif compiler_pair == (CudaCompiler.NVCC, HostCompiler.GCC):
         rc.append("build --config cuda")
       else:
@@ -390,7 +415,7 @@ class XLAConfigOptions:
         rc.append("build --config nonccl")
     elif self.backend == Backend.ROCM:
       build_and_test_tag_filters.append("-cuda-only")
-      build_and_test_tag_filters.append("-sycl-only")
+      build_and_test_tag_filters.append("-oneapi-only")
 
       compiler_pair = self.rocm_compiler, self.host_compiler
 
@@ -405,9 +430,15 @@ class XLAConfigOptions:
     elif self.backend == Backend.SYCL:
       build_and_test_tag_filters.append("-cuda-only")
       build_and_test_tag_filters.append("-rocm-only")
-      build_and_test_tag_filters.append("-no-sycl")
+      build_and_test_tag_filters.append("-no-oneapi")
 
-      rc.append("build --config sycl")
+      compiler_pair = self.sycl_compiler, self.host_compiler
+
+      if compiler_pair == (SyclCompiler.ICPX, HostCompiler.CLANG):
+        rc.append("build --config sycl")
+        rc.append("build --config icpx_clang")
+      else:
+        raise NotImplementedError(" Sycl with host compiler not supported")
 
     # Lines that are added for every backend
     if dpav.ld_library_path:
@@ -487,6 +518,12 @@ def _parse_args():
       default="hipcc",
   )
   parser.add_argument(
+      "--sycl_compiler",
+      type=SyclCompiler.from_str,
+      choices=list(SyclCompiler),
+      default="icpx",
+  )
+  parser.add_argument(
       "--cuda_compute_capabilities",
       type=comma_separated_list,
       default=None,
@@ -562,6 +599,7 @@ def main():
       compiler_options=args.compiler_options,
       using_nccl=args.nccl,
       rocm_compiler=args.rocm_compiler,
+      sycl_compiler=args.sycl_compiler,
   )
 
   bazelrc_lines = config.to_bazelrc_lines(
@@ -585,6 +623,14 @@ def main():
   with (bazelrc_path).open("w") as f:
     logging.info("Writing bazelrc to %s...", bazelrc_path)
     f.write(bazelrc_contents)
+
+
+def is_hermetic_build(backend: Backend, os_host: OS):
+  return (
+      backend != Backend.ROCM
+      and os_host == OS.LINUX
+  )
+
 
 if __name__ == "__main__":
   raise SystemExit(main())

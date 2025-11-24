@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <type_traits>
 
 #include "absl/container/flat_hash_set.h"
@@ -35,7 +36,7 @@ limitations under the License.
 namespace xla {
 
 // Do an HLO pass to a fix point.
-template <typename Pass, int kIterationLimit = 25>
+template <typename Pass>
 class HloPassFix : public Pass {
  public:
   static_assert(std::is_base_of<HloPassInterface, Pass>::value,
@@ -43,6 +44,13 @@ class HloPassFix : public Pass {
   using RunState = HloPassInterface::RunState;
   template <typename... Args>
   explicit HloPassFix(Args&&... args) : Pass(args...) {}
+  template <typename... Args>
+  static std::unique_ptr<HloPassFix> Create(int iteration_limit,
+                                            Args&&... args) {
+    auto pass = std::make_unique<HloPassFix>(args...);
+    pass->iteration_limit_ = iteration_limit;
+    return pass;
+  }
 
   absl::Status RunOnChangedComputations(
       HloModule* module, RunState* outer_run_state,
@@ -56,47 +64,13 @@ class HloPassFix : public Pass {
     return absl::OkStatus();
   }
 
-  using HloPassInterface::Run;
-  absl::StatusOr<bool> Run(HloModule* module,
-                           const absl::flat_hash_set<absl::string_view>&
-                               execution_threads) override {
+ protected:
+  absl::StatusOr<bool> RunImpl(HloModule* module,
+                               const absl::flat_hash_set<absl::string_view>&
+                                   execution_threads) override {
     RunState run_state(module);
     TF_RETURN_IF_ERROR(RunToFixPoint(module, &run_state, execution_threads));
     return !run_state.changed.empty();
-  }
-
-  using HloPassInterface::RunOnModuleGroup;
-  absl::StatusOr<bool> RunOnModuleGroup(
-      HloModuleGroup* module_group,
-      const absl::flat_hash_set<absl::string_view>& execution_threads)
-      override {
-    bool changed = false;
-    bool changed_this_iteration = true;
-    int64_t iteration_count = 0;
-    VLOG(3) << "Running HloPassFix.";
-    while (changed_this_iteration) {
-      TF_ASSIGN_OR_RETURN(
-          changed_this_iteration,
-          Pass::RunOnModuleGroup(module_group, execution_threads));
-      changed |= changed_this_iteration;
-      VLOG(3) << "changed_this_iteration: " << changed_this_iteration;
-      ++iteration_count;
-      if (iteration_count == kIterationLimit) {
-        if (module_group->module(0)
-                .config()
-                .debug_options()
-                .xla_unsupported_crash_on_hlo_pass_fix_max_iterations()) {
-          LOG(FATAL) << "Unexpectedly high number of iterations "
-                     << iteration_count << " in HLO pass '" << Pass::name()
-                     << "' for module group '" << module_group->name() << "'";
-        }
-        VLOG(1) << "Unexpectedly high number of iterations in HLO passes, "
-                   "exiting fixed point loop.";
-        // Return false in case this is fixed point is nested.
-        return false;
-      }
-    }
-    return changed;
   }
 
  private:
@@ -125,19 +99,24 @@ class HloPassFix : public Pass {
               << " changed_this_iteration: "
               << !run_state->changed_this_iteration.empty();
       run_state->IncrementIteration();
-      if (run_state->iteration == kIterationLimit) {
-        if (module->config()
-                .debug_options()
+      if (run_state->iteration == iteration_limit_) {
+        const DebugOptions& debug_options = module->config().debug_options();
+        if (debug_options
                 .xla_unsupported_crash_on_hlo_pass_fix_max_iterations()) {
           LOG(FATAL) << "Unexpectedly high number of iterations "
-                     << kIterationLimit << " in HLO pass '" << Pass::name()
+                     << iteration_limit_ << " in HLO pass '" << Pass::name()
                      << "' for module '" << module->name() << "'";
         }
         VLOG(1) << "Unexpectedly high number of iterations in HLO passes '"
                 << Pass::name() << "' for module '" << module->name()
                 << "'. Exiting fixed point loop.";
-        // Clear changed and abort in case this is fixed point is nested.
-        run_state->changed.clear();
+        // When crash on silent HLO changes is enabled, we can't lie about not
+        // changing the module, as that will lead to an immediate crash.
+        if (!debug_options
+                 .xla_unsupported_crash_on_hlo_pass_silent_hlo_change()) {
+          // Clear changed and abort in case this is fixed point is nested.
+          run_state->changed.clear();
+        }
         break;
       }
     }
@@ -156,8 +135,8 @@ class HloPassFix : public Pass {
     }
     // If Pass does not override the default
     // HloPassInterface::RunOnChangedComputations that calls into
-    // HloPassFix<Pass>::Run, avoid infinite recursion.
-    TF_ASSIGN_OR_RETURN(bool changed, Pass::Run(module, execution_threads));
+    // HloPassFix<Pass>::RunImpl, avoid infinite recursion.
+    TF_ASSIGN_OR_RETURN(bool changed, Pass::RunImpl(module, execution_threads));
     if (changed) {
       auto computations = module->computations(execution_threads);
       run_state->changed_this_iteration.insert(computations.begin(),
@@ -165,6 +144,9 @@ class HloPassFix : public Pass {
     }
     return absl::OkStatus();
   }
+
+  static constexpr int kDefaultIterationLimit = 25;
+  int iteration_limit_ = kDefaultIterationLimit;
 };
 
 }  // namespace xla

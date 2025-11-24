@@ -12,6 +12,8 @@ toc:
     path: /xla/architecture
   - title: XLA terminology
     path: /xla/terminology
+  - title: HLO to Thunks
+    path: /xla/hlo_to_thunks
 - title: Developer details
   # These should be in alphabetical order unless otherwise noted.
   section:
@@ -27,16 +29,24 @@ toc:
     path: /xla/determinism
   - title: Emitters
     path: /xla/emitters
+  - title: Error Codes
+    path: /xla/error_codes
+  - title: Errors Overview
+    path: /xla/errors_overview
   - title: Hermetic CUDA overview
     path: /xla/hermetic_cuda
   - title: Indexing Analysis
     path: /xla/indexing
+  - title: LHS Cost Model
+    path: /xla/lhs_cost_model
   - title: Multi-host HLO runner
     path: /xla/tools_multihost_hlo_runner
   - title: Persisted autotuning
     path: /xla/persisted_autotuning
   - title: Shapes and layout
     path: /xla/shapes
+  - title: SparseCore
+    path: /xla/sparsecore
   - title: Testing HLO passes
     path: /xla/test_hlo_passes
   - title: Tiled layout
@@ -45,8 +55,17 @@ toc:
     path: /xla/lsp
   - title: Writing custom calls
     path: /xla/custom_call
+  - title: XLA Flags guidance
+    path: /xla/flags_guidance
   - title: XLA Tooling
     path: /xla/tools
+  - title: XLA:GPU optimization levels
+    path: /xla/gpu_optimization_levels
+- title: Debugging
+  section:
+  # This is the default tab for the Debugging section.
+  - title: Dump HLO Computations
+    path: /xla/hlo_dumps
 - title: Contributing
   # These should be in alphabetical order unless otherwise noted.
   section:

@@ -14,6 +14,9 @@ limitations under the License.
 ==============================================================================*/
 #include "xla/python/refine_polymorphic_shapes.h"
 
+#include <algorithm>
+#include <cctype>
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <string>
@@ -25,7 +28,6 @@ limitations under the License.
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/LogicalResult.h"
-#include "llvm/Support/Regex.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Bytecode/BytecodeWriter.h"
 #include "mlir/Dialect/Func/Extensions/AllExtensions.h"
@@ -54,6 +56,7 @@ limitations under the License.
 #include "xla/mlir_hlo/stablehlo_ext/transforms/passes.h"
 #include "xla/service/spmd/shardy/round_trip_common/import_constants.h"
 #include "xla/service/spmd/shardy/sdy_round_trip/pipelines.h"
+#include "xla/service/spmd/shardy/utils.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"
 
@@ -184,23 +187,31 @@ struct CheckShapeAssertionsPass
       return op.emitError() << "expects an error_message attribute";
 
     // error_message contains valid format specifiers.
-    std::string errorMessage = getErrorMessage(op).data();
+    llvm::StringRef errorMessage = getErrorMessage(op);
+
     // format specs: "{" index ["," layout] [":" format] "}"
-    llvm::Regex formatSpecifierRE = llvm::Regex("{([0-9]+)[,:}]");
-    do {
-      mlir::SmallVector<llvm::StringRef> formatSpec;
-      if (!formatSpecifierRE.match(errorMessage, &formatSpec)) {
-        break;
-      }
-      int index = std::stoi(formatSpec[1].data());
-      if (!(0 <= index && index < nrErrorMessageInputs)) {
+    size_t spec_begin = errorMessage.find_first_of('{');
+    size_t spec_end = errorMessage.find_first_of(",:}", spec_begin);
+
+    // Check that all specs reference valid input indices.
+    while (spec_begin != llvm::StringRef::npos &&
+           spec_end != llvm::StringRef::npos) {
+      llvm::StringRef index_str =
+          errorMessage.substr(spec_begin + 1, spec_end - spec_begin - 1);
+
+      int32_t index;
+      if (!index_str.getAsInteger(10, index) &&
+          !(0 <= index && index < nrErrorMessageInputs)) {
         return op.emitError()
                << "expects error_message to contain format specifiers with "
                << "error_message_input index less than " << nrErrorMessageInputs
-               << ". Found specifier " << formatSpec[0];
+               << ". Found specifier "
+               << errorMessage.substr(spec_begin, spec_end - spec_begin + 1);
       }
-      errorMessage = formatSpecifierRE.sub("", errorMessage);
-    } while (true);
+
+      spec_begin = errorMessage.find_first_of('{', spec_begin + 1);
+      spec_end = errorMessage.find_first_of(",:}", spec_begin);
+    }
 
     return mlir::success();
   }
@@ -309,7 +320,12 @@ absl::Status RefinePolymorphicShapes(llvm::StringRef module_str,
   if (!module) {
     return absl::InvalidArgumentError("Cannot parse module.");
   }
-  if (enable_shardy) {
+  // TODO(b/420837831): Remove this once we don't need to fall back to GSPMD.
+  // Don't run the Shardy round trip import pipeline if the module has
+  // GSPMD attrs or ops. This is because the loaded checkpoint targets GSPMD,
+  // And so there are no Shardy ops to import. This may happen when loading an
+  // old GSPMD checkpoint in JAX, with Shardy enabled.
+  if (enable_shardy && !xla::sdy::hasGspmdAttrsOrOps(*module)) {
     mlir::PassManager pm(module.get()->getName(),
                          mlir::OpPassManager::Nesting::Implicit);
     // TODO(b/422690222): Remove `addSdyRoundTripImportPipeline` after 6 months.

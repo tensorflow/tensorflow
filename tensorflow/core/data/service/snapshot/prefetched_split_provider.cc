@@ -52,7 +52,7 @@ PrefetchedSplitProvider::PrefetchedSplitProvider(
     UpdateStatus(std::move(status));
     return;
   }
-  absl::MutexLock l(&mu_);
+  absl::MutexLock l(mu_);
   thread_pool_ = RunPrefetchThreads();
 }
 
@@ -60,7 +60,7 @@ PrefetchedSplitProvider::~PrefetchedSplitProvider() { Cancel(); }
 
 absl::StatusOr<std::optional<Tensor>> PrefetchedSplitProvider::GetNext(
     const std::string& split_path) ABSL_LOCKS_EXCLUDED(mu_) {
-  absl::MutexLock l(&mu_);
+  absl::MutexLock l(mu_);
   while (status_.ok() &&
          (buffer_.empty() || buffer_.begin()->index != split_index_to_read_) &&
          (finished_threads_ < num_write_threads_ || reset_)) {
@@ -109,7 +109,7 @@ void PrefetchedSplitProvider::PrefetchLoop() ABSL_LOCKS_EXCLUDED(mu_) {
     }
   }
 
-  absl::MutexLock l(&mu_);
+  absl::MutexLock l(mu_);
   if (++finished_threads_ >= num_write_threads_) {
     ready_to_pop_.SignalAll();
   }
@@ -117,7 +117,7 @@ void PrefetchedSplitProvider::PrefetchLoop() ABSL_LOCKS_EXCLUDED(mu_) {
 
 bool PrefetchedSplitProvider::ShouldPrefetchSplit() const
     ABSL_LOCKS_EXCLUDED(mu_) {
-  absl::MutexLock l(&mu_);
+  absl::MutexLock l(mu_);
   return status_.ok() && !reset_;
 }
 
@@ -134,7 +134,7 @@ absl::StatusOr<bool> PrefetchedSplitProvider::PrefetchSplit()
       AtomicallyWriteTFRecords(split->SplitPath(directory_), {split->split},
                                tsl::io::compression::kNone, env_));
 
-  absl::MutexLock l(&mu_);
+  absl::MutexLock l(mu_);
   buffer_.insert(std::move(*split));
   ready_to_pop_.Signal();
   return true;
@@ -142,7 +142,7 @@ absl::StatusOr<bool> PrefetchedSplitProvider::PrefetchSplit()
 
 absl::StatusOr<std::optional<PrefetchedSplitProvider::SplitAndIndex>>
 PrefetchedSplitProvider::GetSplitFromProvider() ABSL_LOCKS_EXCLUDED(mu_) {
-  absl::MutexLock l(&mu_);
+  absl::MutexLock l(mu_);
   while (status_.ok() && buffer_.size() >= buffer_size_ && !reset_) {
     ready_to_push_.Wait(&mu_);
   }
@@ -163,7 +163,7 @@ PrefetchedSplitProvider::GetSplitFromProvider() ABSL_LOCKS_EXCLUDED(mu_) {
 absl::Status PrefetchedSplitProvider::Reset() ABSL_LOCKS_EXCLUDED(mu_) {
   std::unique_ptr<tsl::thread::ThreadPool> thread_pool;
   {
-    absl::MutexLock l(&mu_);
+    absl::MutexLock l(mu_);
     reset_ = true;
     ready_to_push_.SignalAll();
     ready_to_pop_.SignalAll();
@@ -172,7 +172,7 @@ absl::Status PrefetchedSplitProvider::Reset() ABSL_LOCKS_EXCLUDED(mu_) {
   thread_pool.reset();
   TF_RETURN_IF_ERROR(split_provider_->Reset());
 
-  absl::MutexLock l(&mu_);
+  absl::MutexLock l(mu_);
   TF_RETURN_IF_ERROR(status_);
   reset_ = false;
   split_index_to_read_ = 0;
@@ -190,7 +190,7 @@ void PrefetchedSplitProvider::Cancel() {
   // Finishes the in-flight threads.
   std::unique_ptr<tsl::thread::ThreadPool> thread_pool;
   {
-    absl::MutexLock l(&mu_);
+    absl::MutexLock l(mu_);
     thread_pool = std::move(thread_pool_);
   }
 }
@@ -209,7 +209,7 @@ void PrefetchedSplitProvider::UpdateStatus(absl::Status status)
   if (status.ok()) {
     return;
   }
-  absl::MutexLock l(&mu_);
+  absl::MutexLock l(mu_);
   status_.Update(std::move(status));
   ready_to_push_.SignalAll();
   ready_to_pop_.SignalAll();

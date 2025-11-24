@@ -25,6 +25,73 @@ bool FusionWrapper::MustWrapInstruction(HloOpcode opcode) {
   switch (opcode) {
     case HloOpcode::kScatter:
       return true;
+    case HloOpcode::kAbs:
+    case HloOpcode::kAdd:
+    case HloOpcode::kAnd:
+    case HloOpcode::kAtan2:
+    case HloOpcode::kBitcastConvert:
+    case HloOpcode::kBroadcast:
+    case HloOpcode::kCbrt:
+    case HloOpcode::kCeil:
+    case HloOpcode::kClamp:
+    case HloOpcode::kClz:
+    case HloOpcode::kCompare:
+    case HloOpcode::kComplex:
+    case HloOpcode::kConvert:
+    case HloOpcode::kCos:
+    case HloOpcode::kDivide:
+    case HloOpcode::kDynamicSlice:
+    case HloOpcode::kErf:
+    case HloOpcode::kExp:
+    case HloOpcode::kExpm1:
+    case HloOpcode::kFloor:
+    case HloOpcode::kGather:
+    case HloOpcode::kImag:
+    case HloOpcode::kIota:
+    case HloOpcode::kIsFinite:
+    case HloOpcode::kLog:
+    case HloOpcode::kLog1p:
+    case HloOpcode::kMap:
+    case HloOpcode::kMaximum:
+    case HloOpcode::kMinimum:
+    case HloOpcode::kMultiply:
+    case HloOpcode::kNegate:
+    case HloOpcode::kNot:
+    case HloOpcode::kOr:
+    case HloOpcode::kPad:
+    case HloOpcode::kPopulationCount:
+    case HloOpcode::kPower:
+    case HloOpcode::kReal:
+    case HloOpcode::kReduce:
+    case HloOpcode::kReducePrecision:
+    case HloOpcode::kReduceWindow:
+    case HloOpcode::kRemainder:
+    case HloOpcode::kReshape:
+    case HloOpcode::kReverse:
+    case HloOpcode::kRoundNearestAfz:
+    case HloOpcode::kRoundNearestEven:
+    case HloOpcode::kRsqrt:
+    case HloOpcode::kSelect:
+    case HloOpcode::kShiftLeft:
+    case HloOpcode::kShiftRightArithmetic:
+    case HloOpcode::kShiftRightLogical:
+    case HloOpcode::kSign:
+    case HloOpcode::kSin:
+    case HloOpcode::kSlice:
+    case HloOpcode::kSqrt:
+    case HloOpcode::kSubtract:
+    case HloOpcode::kTan:
+    case HloOpcode::kTanh:
+    case HloOpcode::kXor:
+      return using_new_fusion_emitter_;
+    // The following ops are supported but the performance is not as good as the
+    // non-fusion path.
+    // TODO(willfroom): Remove this once the performance is improved.
+    case HloOpcode::kConcatenate:
+    case HloOpcode::kDynamicUpdateSlice:
+    case HloOpcode::kTranspose:
+    case HloOpcode::kDot:
+      return false;
     default:
       return false;
   }

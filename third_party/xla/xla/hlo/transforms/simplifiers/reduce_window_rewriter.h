@@ -17,14 +17,17 @@ limitations under the License.
 #define XLA_HLO_TRANSFORMS_SIMPLIFIERS_REDUCE_WINDOW_REWRITER_H_
 
 #include <cstdint>
+#include <vector>
 
 #include "absl/container/flat_hash_set.h"
-#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/hlo/ir/hlo_computation.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
+#include "xla/shape.h"
 
 namespace xla {
 
@@ -52,14 +55,48 @@ class ReduceWindowRewriter : public HloModulePass {
 
   absl::string_view name() const override { return "reduce-window-rewriter"; }
 
-  using HloPassInterface::Run;
-  absl::StatusOr<bool> Run(
+ protected:
+  absl::StatusOr<bool> RunImpl(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
  private:
-  absl::Status ReplaceReduceWindowWithReshape(
-      HloReduceWindowInstruction* reduce_window);
+  // Helper methods to optimize ReduceWindow ops.
+
+  // Transposes the inputs if the scan dimension is not the last dimension.
+  // Returns the permutation of the dimensions.
+  std::vector<int64_t> GetTransposedInputs(HloComputation* hlo_computation,
+                                           std::vector<HloInstruction*>& inputs,
+                                           int64_t rank, int64_t scan_dim,
+                                           int64_t last_dim);
+
+  // Adds padding (if necessary) to enable further rewrites working properly.
+  int64_t PreparePaddingForRewrite(HloReduceWindowInstruction* reduce_window,
+                                   std::vector<HloInstruction*>& inputs,
+                                   int64_t scan_length, int64_t last_dim);
+
+  // [x, y] -> [x, y/base, base]
+  int64_t ExpandToNewMajorDimension(HloComputation* hlo_computation,
+                                    std::vector<HloInstruction*>& inputs,
+                                    std::vector<HloInstruction*>& tiled_inputs,
+                                    std::vector<Shape>& tiled_shapes,
+                                    int64_t padded_length, int64_t last_dim);
+
+  // reduce_window ( [x, y/base, base] window [1, 1, base] )
+  HloInstruction* GenerateNewReduceWindowWithTiledInputs(
+      HloReduceWindowInstruction* reduce_window,
+      std::vector<HloInstruction*>& tiled_inputs,
+      std::vector<Shape>& tiled_shapes, bool forward_scan);
+
+  // Slice out the last (first if reverse scan) column.
+  // slices [x, y/base, base] -> [x, y/base, 1] slice {x, y/base}
+  // reshape [x, y/base, 1] -> [x, y/base]
+  void SliceOutLastColumn(HloComputation* hlo_computation,
+                          const Shape& subshape, HloInstruction* outer_shape,
+                          int64_t rank, int64_t last_dim, bool forward_scan,
+                          int64_t num_columns,
+                          std::vector<Shape>& column_shapes,
+                          std::vector<HloInstruction*>& last_cols);
 
   absl::StatusOr<bool> TryOptimizeCumSumOrProd(
       HloReduceWindowInstruction* reduce_window);

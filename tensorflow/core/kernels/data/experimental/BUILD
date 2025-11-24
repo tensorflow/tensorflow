@@ -179,6 +179,7 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "@com_google_absl//absl/synchronization",
     ],
 )
 
@@ -548,6 +549,8 @@ tf_kernel_library(
         "//tensorflow/core/kernels:function_ops",
         "//tensorflow/core/kernels:initializable_lookup_table",
         "//tensorflow/core/kernels:lookup_util",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@eigen_archive//:eigen3",
     ],
@@ -663,6 +666,7 @@ tf_kernel_library(
         "//tensorflow/core/kernels/data:parallel_map_dataset_op",
         "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/core/profiler/lib:traceme_encode",
+        "@com_google_absl//absl/synchronization",
     ],
 )
 
@@ -871,6 +875,7 @@ tf_kernel_library(
         "//tensorflow/core/kernels/data/experimental/sql",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -884,6 +889,7 @@ tf_kernel_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/kernels:summary_interface",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
     ],
 )
@@ -898,6 +904,7 @@ tf_kernel_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -932,6 +939,7 @@ tf_kernel_library(
         "//tensorflow/core/framework:dataset_options_proto_cc",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
         "@eigen_archive//:eigen3",
     ],
 )
@@ -984,6 +992,7 @@ tf_kernel_library(
         "//tensorflow/core/framework:types_proto_cc",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
         "@eigen_archive//:eigen3",
     ],
 )

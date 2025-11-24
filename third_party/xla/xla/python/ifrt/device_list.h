@@ -27,6 +27,7 @@ limitations under the License.
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device.pb.h"
 #include "xla/python/ifrt/ref_wrapper.h"
+#include "xla/python/ifrt/serdes_default_version_accessor.h"
 #include "xla/python/ifrt/serdes_version.h"
 #include "xla/tsl/concurrency/ref_count.h"
 
@@ -52,7 +53,7 @@ class DeviceList : public tsl::ReferenceCounted<DeviceList>,
 
   // Returns a `DeviceListProto` representation.
   DeviceListProto ToProto(
-      SerDesVersion version = SerDesVersion::current()) const;
+      SerDesVersion version = SerDesDefaultVersionAccessor::Get()) const;
 
   // Returns the number of devices.
   // TODO(hyeontaek): Make this a virtual method and make it possible for a
@@ -92,6 +93,10 @@ class DeviceList : public tsl::ReferenceCounted<DeviceList>,
 
   // Returns the hash of devices. This hash is stable only within the process.
   virtual uint64_t hash() const = 0;
+
+  // Returns the fingerprint of devices. This fingerprint is stable within the
+  // process and across processes.
+  virtual uint64_t fingerprint() const;
 
   // TODO(hyeontaek): Remove this method in favor of AbslStringify.
   std::string DebugString() const { return ToString(); }

@@ -44,6 +44,7 @@ limitations under the License.
 #include "xla/pjrt/c/pjrt_c_api_triton_extension.h"
 #include "xla/pjrt/c/pjrt_c_api_triton_internal.h"
 #include "xla/pjrt/c/pjrt_c_api_wrapper_impl.h"
+#include "xla/pjrt/extensions/cross_host_transfers/pjrt_c_api_cross_host_transfers_extension.h"
 #include "xla/pjrt/gpu/gpu_helpers.h"
 #include "xla/pjrt/gpu/gpu_topology.h"
 #include "xla/pjrt/gpu/se_gpu_pjrt_client.h"
@@ -52,6 +53,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_device_description.h"
 #include "xla/pjrt/pjrt_executable.h"
+#include "xla/pjrt/plugin/xla_gpu/xla_gpu_pjrt_client.h"
 #include "xla/python/custom_call_batch_partitioner.h"
 #include "xla/python/custom_partition_callback.h"
 #include "xla/service/compiler.h"
@@ -87,9 +89,12 @@ PJRT_Error* PJRT_Client_Create(PJRT_Client_Create_Args* args) {
           {"num_nodes", PJRT_NamedValue_Type::PJRT_NamedValue_kInt64},
           {"should_stage_host_to_device_transfers",
            PJRT_NamedValue_Type::PJRT_NamedValue_kBool},
+          {"abort_collectives_on_failure",
+           PJRT_NamedValue_Type::PJRT_NamedValue_kBool},
+          {"use_tfrt_gpu_client", PJRT_NamedValue_Type::PJRT_NamedValue_kBool},
           {"enable_mock_nccl", PJRT_NamedValue_Type::PJRT_NamedValue_kBool},
           {"mock_gpu_topology", PJRT_NamedValue_Type::PJRT_NamedValue_kString},
-          {"slice_index", PJRT_NamedValue_Type::PJRT_NamedValue_kInt64},
+          {"partition_index", PJRT_NamedValue_Type::PJRT_NamedValue_kInt64},
       });
   PJRT_RETURN_IF_ERROR(
       ValidateCreateOptions(create_options, kExpectedOptionNameAndTypes));
@@ -149,6 +154,16 @@ PJRT_Error* PJRT_Client_Create(PJRT_Client_Create_Args* args) {
       it != create_options.end()) {
     should_stage_host_to_device_transfers = std::get<bool>(it->second);
   }
+  bool abort_collectives_on_failure = false;
+  if (auto it = create_options.find("abort_collectives_on_failure");
+      it != create_options.end()) {
+    abort_collectives_on_failure = std::get<bool>(it->second);
+  }
+  bool use_tfrt_gpu_client = false;
+  if (auto it = create_options.find("use_tfrt_gpu_client");
+      it != create_options.end()) {
+    use_tfrt_gpu_client = std::get<bool>(it->second);
+  }
   bool enable_mock_nccl = false;
   if (auto it = create_options.find("enable_mock_nccl");
       it != create_options.end()) {
@@ -159,10 +174,10 @@ PJRT_Error* PJRT_Client_Create(PJRT_Client_Create_Args* args) {
       it != create_options.end()) {
     mock_gpu_topology = std::get<std::string>(it->second);
   }
-  std::optional<int64_t> slice_index;
-  if (auto it = create_options.find("slice_index");
+  std::optional<int64_t> partition_index;
+  if (auto it = create_options.find("partition_index");
       it != create_options.end()) {
-    slice_index = std::get<int64_t>(it->second);
+    partition_index = std::get<int64_t>(it->second);
   }
 
   xla::GpuClientOptions options;
@@ -176,11 +191,13 @@ PJRT_Error* PJRT_Client_Create(PJRT_Client_Create_Args* args) {
       args->kv_try_get_user_arg, args->kv_put_callback, args->kv_put_user_arg);
   options.should_stage_host_to_device_transfers =
       should_stage_host_to_device_transfers;
+  options.abort_collectives_on_failure = abort_collectives_on_failure;
+  options.use_tfrt_gpu_client = use_tfrt_gpu_client;
   options.enable_mock_nccl = enable_mock_nccl;
   options.mock_gpu_topology = mock_gpu_topology;
-  options.slice_index = slice_index;
+  options.partition_index = partition_index;
   PJRT_ASSIGN_OR_RETURN(std::unique_ptr<xla::PjRtClient> client,
-                        xla::GetStreamExecutorGpuClient(options));
+                        xla::GetXlaPjrtGpuClient(options));
   args->client = pjrt::CreateWrapperClient(std::move(client));
   return nullptr;
 }
@@ -231,7 +248,7 @@ absl::StatusOr<TargetConfigAndDevices> GetTargetConfigFromOptions(
        xla_client->backend().stream_executors()) {
     device_ids.push_back(executor->device_ordinal());
   }
-  auto gpu_target_config = xla::Compiler::TargetConfig(executor);
+  auto gpu_target_config = xla::Compiler::GpuTargetConfig(executor);
   return {{gpu_target_config.ToProto(), device_ids}};
 }
 
@@ -286,8 +303,8 @@ PJRT_Error* PJRT_GpuDeviceTopology_Create(
   }
 
   auto gpu_topology = std::make_shared<const xla::GpuTopology>(
-      device_ids, target_config_proto.device_description_str(),
-      sizes.num_slices, sizes.num_hosts_per_slice, sizes.num_devices_per_host);
+      target_config_proto.device_description_str(), sizes.num_partitions,
+      sizes.num_hosts_per_partition, sizes.num_devices_per_host);
 
   std::string target_config_attr;
   if (!tsl::protobuf::TextFormat::PrintToString(target_config_proto,
@@ -445,11 +462,14 @@ const PJRT_Api* GetGpuPjrtApi() {
   static PJRT_Triton_Extension triton_extension =
       pjrt::CreateTritonExtension(&memory_descriptions_extension.base);
 
+  static PJRT_CrossHostTransfers_Extension cross_host_transfers_extension =
+      pjrt::CreateCrossHostTransfersExtension(&triton_extension.base);
+
   static const PJRT_Api pjrt_api = pjrt::CreatePjrtApi(
       pjrt::gpu_plugin::PJRT_Client_Create,
       pjrt::gpu_plugin::PJRT_ExecuteContext_Create,
       pjrt::gpu_plugin::PJRT_GpuDeviceTopology_Create,
-      pjrt::PJRT_Plugin_Initialize_NoOp, &triton_extension.base,
+      pjrt::PJRT_Plugin_Initialize_NoOp, &cross_host_transfers_extension.base,
       pjrt::PJRT_Plugin_Attributes_Xla);
 
   return &pjrt_api;

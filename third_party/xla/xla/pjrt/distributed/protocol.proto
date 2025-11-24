@@ -57,10 +57,10 @@ message DeviceProto {
   // determines the global device IDs during EnumerateDevices().
   int32 global_device_id = 4;  // Globally unique ID number.
 
-  // Devices with the same slice_index are connected by fast network, e.g.
+  // Devices with the same partition_index are connected by fast network, e.g.
   // NVLink on GPUs. Note that fast-interconnect can be cross-host, i.e. a
-  // slice may include multiple hosts.
-  int32 slice_index = 5;
+  // partition may include multiple hosts.
+  int32 partition_index = 5;
 
   // Store vendor-specific compute capability.
   string compute_capability = 6;
@@ -80,6 +80,20 @@ message DeviceProto {
   // for SM100 (Blackwell) and onwards.
   // fabric_uuid is constructed in the format of "clusterUuid/cliqueId".
   string fabric_uuid = 12;
+
+  // Maximum amount of shared memory per block that can possibly be configured
+  // for a kernel on this device. The name of this attribute mirrors the CUDA
+  // driver enum member CU_DEVICE_ATTRIBUTE_MAX_SHARED_MEMORY_PER_BLOCK_OPTIN:
+  // https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__DEVICE.html#:~:text=CU_DEVICE_ATTRIBUTE_MAX_SHARED_MEMORY_PER_BLOCK_OPTIN
+  // The _OPTIN suffix indicates that this is the maximum amount configurable on
+  // an opt-in basis (a property of the device), as opposed to
+  // CU_DEVICE_ATTRIBUTE_MAX_SHARED_MEMORY_PER_BLOCK, which is the amount of
+  // shared memory that is actually made available to kernels through software
+  // configuration.
+  // For CUDA, shared_memory_per_block_optin also corresponds to the "Maximum
+  // amount of shared memory per thread block" row of this table:
+  // https://docs.nvidia.com/cuda/cuda-c-programming-guide/#id401:~:text=100%20KB-,Maximum%20amount%20of%20shared%20memory%20per%20thread%20block,-35
+  int32 shared_memory_per_block_optin = 13;
 }
 
 message LocalTopologyProto {
@@ -89,8 +103,8 @@ message LocalTopologyProto {
   string boot_id = 2;
   repeated DeviceProto devices = 3;
 
-  // Explicit slice index; derived from boot_id if absent
-  optional int32 slice_index = 4;
+  // Explicit partition index; derived from boot_id if absent
+  optional int32 partition_index = 4;
 }
 
 message GlobalTopologyProto {

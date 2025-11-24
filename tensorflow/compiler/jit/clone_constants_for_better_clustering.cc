@@ -36,19 +36,21 @@ class CloneConstantsForBetterClusteringPassImpl {
 
  private:
   absl::Status CloneSmallConstantInputs(
-      const absl::flat_hash_set<string>& name_set, Node* n);
-  string GenerateUniqueName(const absl::flat_hash_set<string>& name_set,
-                            absl::string_view prefix);
-  absl::StatusOr<Node*> CloneNode(const absl::flat_hash_set<string>& name_set,
-                                  Node* n);
+      const absl::flat_hash_set<std::string>& name_set, Node* n);
+  std::string GenerateUniqueName(
+      const absl::flat_hash_set<std::string>& name_set,
+      absl::string_view prefix);
+  absl::StatusOr<Node*> CloneNode(
+      const absl::flat_hash_set<std::string>& name_set, Node* n);
 
   Graph* graph_;
   int unique_name_counter_;
 };
 
-string CloneConstantsForBetterClusteringPassImpl::GenerateUniqueName(
-    const absl::flat_hash_set<string>& name_set, absl::string_view prefix) {
-  string candidate;
+std::string CloneConstantsForBetterClusteringPassImpl::GenerateUniqueName(
+    const absl::flat_hash_set<std::string>& name_set,
+    absl::string_view prefix) {
+  std::string candidate;
   do {
     candidate = absl::StrCat(prefix, "/clone_", unique_name_counter_++);
   } while (name_set.contains(candidate));
@@ -56,7 +58,7 @@ string CloneConstantsForBetterClusteringPassImpl::GenerateUniqueName(
 }
 
 absl::StatusOr<Node*> CloneConstantsForBetterClusteringPassImpl::CloneNode(
-    const absl::flat_hash_set<string>& name_set, Node* n) {
+    const absl::flat_hash_set<std::string>& name_set, Node* n) {
   NodeDef new_in_def = n->def();
   new_in_def.clear_input();
   new_in_def.set_name(GenerateUniqueName(name_set, new_in_def.name()));
@@ -112,7 +114,7 @@ bool IsInPlaceOp(absl::string_view op_name) {
 
 absl::Status
 CloneConstantsForBetterClusteringPassImpl::CloneSmallConstantInputs(
-    const absl::flat_hash_set<string>& name_set, Node* n) {
+    const absl::flat_hash_set<std::string>& name_set, Node* n) {
   std::vector<const Edge*> in_edges;
   // Get the edges and sort them so we clone in a deterministic order.
   absl::c_copy(n->in_edges(), std::back_inserter(in_edges));
@@ -142,7 +144,7 @@ CloneConstantsForBetterClusteringPassImpl::CloneSmallConstantInputs(
 }
 
 absl::Status CloneConstantsForBetterClusteringPassImpl::Run() {
-  absl::flat_hash_set<string> name_set;
+  absl::flat_hash_set<std::string> name_set;
   absl::c_transform(graph_->nodes(), std::inserter(name_set, name_set.begin()),
                     [](Node* n) { return n->name(); });
   std::vector<Node*> nodes;

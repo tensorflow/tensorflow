@@ -22,39 +22,53 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/status/statusor.h"
 #include "xla/pjrt/pjrt_client.h"
-#include "xla/service/hlo_runner_interface.h"
 #include "xla/tests/hlo_runner_agnostic_test_base.h"
-#include "xla/tests/hlo_runner_pjrt_test_utils.h"
 #include "xla/tests/pjrt_client_registry.h"
+#include "xla/tests/split_phase_utils.h"
 
 namespace xla {
 namespace {
-
-std::unique_ptr<HloRunnerInterface> GetHloRunnerForTest() {
+std::unique_ptr<PjRtClient> GetPjRtClientForTest() {
   CHECK(ShouldUsePjRt())
       << "PjRt is required for tests extending HloPjRtTestBase.";
-
-  PjRtClientTestFactoryRegistry& pjrt_registry =
-      GetGlobalPjRtClientTestFactory();
-  absl::StatusOr<std::unique_ptr<PjRtClient>> client = pjrt_registry.Get()();
+  absl::StatusOr<std::unique_ptr<PjRtClient>> client =
+      GetGlobalPjRtClientTestFactory().Get()();
   CHECK_OK(client.status())
-      << "Failed to create PjRt client for test. " << client.status();
-  PjRtClientTestFactoryRegistry::DeviceShapeRepresentationFn
-      device_shape_representation_fn =
-          pjrt_registry.GetDeviceShapeRepresentationFn(client->get());
-  PjRtClientTestFactoryRegistry::DeviceShapeSizeFn device_shape_size_fn =
-      pjrt_registry.GetDeviceShapeSizeFn(client->get());
-
-  return MakeHloRunnerPjRtSplitPhaseAware(
-      *std::move(client), device_shape_representation_fn, device_shape_size_fn);
+      << "Failed to create PjRt client. " << client.status();
+  return *std::move(client);
 }
 
+HloRunnerAgnosticTestBaseOptions BuildOptions(HloPjRtTestBaseOptions options) {
+  HloRunnerAgnosticTestBaseOptions new_options;
+  new_options.verifier_layout_sensitive = options.verifier_layout_sensitive;
+  new_options.allow_mixed_precision_in_hlo_verifier =
+      options.allow_mixed_precision_in_hlo_verifier;
+  new_options.instruction_can_change_layout_func =
+      std::move(options.instruction_can_change_layout_func);
+  new_options.swallow_execution_errors =
+      HasPjRtSplitPhaseAwareSwallowExecutionErrors();
+  return new_options;
+}
 }  // namespace
 
 HloPjRtTestBase::HloPjRtTestBase(HloPjRtTestBaseOptions options)
-    : HloRunnerAgnosticTestBase(GetHloRunnerForTest(),
-                                options.verifier_layout_sensitive,
-                                options.allow_mixed_precision_in_hlo_verifier,
-                                options.instruction_can_change_layout_func) {}
+    : HloPjRtTestBase(GetPjRtClientForTest(), std::move(options)) {}
+
+HloPjRtTestBase::HloPjRtTestBase(std::unique_ptr<PjRtClient> client,
+                                 HloPjRtTestBaseOptions options)
+    : HloPjRtTestBase(
+          GetGlobalPjRtClientTestFactory().GetDeviceShapeRepresentationFn(
+              client.get()),
+          GetGlobalPjRtClientTestFactory().GetDeviceShapeSizeFn(client.get()),
+          std::move(client), std::move(options)) {}
+
+HloPjRtTestBase::HloPjRtTestBase(
+    DeviceShapeRepresentationFn device_shape_representation_fn,
+    DeviceShapeSizeFn device_shape_size_fn, std::unique_ptr<PjRtClient> client,
+    HloPjRtTestBaseOptions options)
+    : HloRunnerAgnosticTestBase(
+          MakeHloRunnerPjRtSplitPhaseAware(std::move(client)),
+          std::move(device_shape_representation_fn),
+          std::move(device_shape_size_fn), BuildOptions(std::move(options))) {}
 
 }  // namespace xla

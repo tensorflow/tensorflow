@@ -25,20 +25,12 @@ limitations under the License.
 namespace tensorflow {
 namespace strings {
 // NOLINTBEGIN(misc-unused-using-decls)
-using tsl::strings::DoubleToBuffer;
-using tsl::strings::FastInt32ToBufferLeft;
-using tsl::strings::FastInt64ToBufferLeft;
-using tsl::strings::FastUInt32ToBufferLeft;
-using tsl::strings::FastUInt64ToBufferLeft;
-using tsl::strings::FloatToBuffer;
 using tsl::strings::FpToString;
 using tsl::strings::HexStringToUint64;
 using tsl::strings::HumanReadableElapsedTime;
 using tsl::strings::HumanReadableNum;
 using tsl::strings::HumanReadableNumBytes;
-using tsl::strings::kFastToBufferSize;
 using tsl::strings::LegacyPrecision;
-using tsl::strings::ProtoParseNumeric;
 using tsl::strings::safe_strto32;
 using tsl::strings::safe_strto64;
 using tsl::strings::safe_strtod;

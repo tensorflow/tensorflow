@@ -46,7 +46,7 @@ tsl_pybind_extension(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
         "@nanobind",
-        "@local_config_python//:python_headers",  # buildcleaner: keep
+        "@rules_python//python/cc:current_py_cc_headers",  # buildcleaner: keep
         "//xla:comparison_util",
         "//xla:debug_options_flags",
         "//xla:literal",
@@ -57,11 +57,7 @@ tsl_pybind_extension(
         "//xla/codegen:kernel_emitter",
         "//xla/codegen:kernel_source",
         "//xla/codegen:kernel_spec",
-        "//xla/codegen:llvm_ir_kernel_source",
-        "//xla/codegen:llvm_kernel_definition",
-        "//xla/codegen:llvm_kernel_emitter",
-        "//xla/codegen:mlir_kernel_definition",
-        "//xla/codegen:mlir_kernel_emitter",
+        "//xla/codegen:llvm_kernel_source",
         "//xla/codegen:mlir_kernel_source",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/parser:hlo_parser",

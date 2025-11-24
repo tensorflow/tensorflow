@@ -18,6 +18,7 @@ limitations under the License.
 #include <memory>
 
 #include "google/protobuf/any.pb.h"
+#include "absl/synchronization/notification.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
 #include "tensorflow/core/common_runtime/process_util.h"
@@ -248,7 +249,7 @@ class CollRMADistTest
     string device_type = "CPU";
     string dev0_worker_name;
     for (int w = 0; w < num_workers; ++w) {
-      string name = strings::StrCat("/job:worker/replica:0/task:", w);
+      string name = absl::StrCat("/job:worker/replica:0/task:", w);
       if (w == 0) {
         dev0_worker_name = name;
       }
@@ -373,8 +374,8 @@ class CollRMADistTest
 
 TEST_P(CollRMADistTest, ProdFirstOK) {
   ResolveDeviceAttributes();
-  Notification consumer_note;
-  Notification producer_note;
+  absl::Notification consumer_note;
+  absl::Notification producer_note;
   absl::Status consumer_status;
   absl::Status producer_status;
   FakeWorker* wi = workers_[1];
@@ -412,8 +413,8 @@ TEST_P(CollRMADistTest, ProdFirstOK) {
 
 TEST_P(CollRMADistTest, ConsFirstOK) {
   ResolveDeviceAttributes();
-  Notification consumer_note;
-  Notification producer_note;
+  absl::Notification consumer_note;
+  absl::Notification producer_note;
   absl::Status consumer_status;
   absl::Status producer_status;
   FakeWorker* wi = workers_[1];
@@ -451,7 +452,7 @@ TEST_P(CollRMADistTest, ConsFirstOK) {
 
 TEST_P(CollRMADistTest, ConsFirstAbort) {
   ResolveDeviceAttributes();
-  Notification consumer_note;
+  absl::Notification consumer_note;
   absl::Status consumer_status;
   const string kBufKey = "fake_buf_key";
   Device* dst_device = nullptr;
@@ -477,8 +478,8 @@ TEST_P(CollRMADistTest, ConsFirstAbort) {
 
 TEST_P(CollRMADistTest, ResponseTooLarge) {
   ResolveDeviceAttributes();
-  Notification consumer_note;
-  Notification producer_note;
+  absl::Notification consumer_note;
+  absl::Notification producer_note;
   absl::Status consumer_status;
   absl::Status producer_status;
   FakeWorker* wi = workers_[1];
@@ -517,8 +518,8 @@ TEST_P(CollRMADistTest, ResponseTooLarge) {
 
 TEST_P(CollRMADistTest, WorkerRestart) {
   ResolveDeviceAttributes();
-  Notification consumer_note;
-  Notification producer_note;
+  absl::Notification consumer_note;
+  absl::Notification producer_note;
   absl::Status consumer_status;
   absl::Status producer_status;
   FakeWorker* wi = workers_[1];
@@ -555,7 +556,7 @@ TEST_P(CollRMADistTest, WorkerRestart) {
 
   // Restart task 1 and check that recv from task 1 to task 0 fails.
   RestartWorker("/job:worker/replica:0/task:1", "CPU", /*num_devices*/ 1);
-  Notification post_restart_note;
+  absl::Notification post_restart_note;
   rma_->RecvFromPeer(
       "/job:worker/replica:0/task:1/device:" + dev_name,  // peer_dev
       "/job:worker/replica:0/task:1",                     // peer_task
@@ -574,7 +575,7 @@ TEST_P(CollRMADistTest, WorkerRestart) {
 TEST_P(CollRMADistTest, CheckHealthOKWithCachedAttr) {
   ResolveDeviceAttributes();
   absl::Status check_health_status;
-  Notification check_health_done;
+  absl::Notification check_health_done;
   rma_->CheckPeerHealth(
       "/job:worker/replica:0/task:1", /*timeout_in_ms=*/0,
       [&check_health_status, &check_health_done](const absl::Status s) {
@@ -587,7 +588,7 @@ TEST_P(CollRMADistTest, CheckHealthOKWithCachedAttr) {
 
 TEST_P(CollRMADistTest, CheckHealthOKWithoutCachedAttr) {
   absl::Status check_health_status;
-  Notification check_health_done;
+  absl::Notification check_health_done;
   rma_->CheckPeerHealth(
       "/job:worker/replica:0/task:1", /*timeout_in_ms=*/0,
       [&check_health_status, &check_health_done](const absl::Status s) {
@@ -603,7 +604,7 @@ TEST_P(CollRMADistTest, CheckHealthRestarted) {
   RestartWorker("/job:worker/replica:0/task:1", "CPU", /*num_devices*/ 1);
 
   absl::Status check_health_status;
-  Notification check_health_done;
+  absl::Notification check_health_done;
   rma_->CheckPeerHealth(
       "/job:worker/replica:0/task:1", /*timeout_in_ms=*/0,
       [&check_health_status, &check_health_done](const absl::Status s) {
@@ -620,7 +621,7 @@ TEST_P(CollRMADistTest, CheckHealthFailedPeer) {
                 /*is_failed*/ true);
 
   absl::Status check_health_status;
-  Notification check_health_done;
+  absl::Notification check_health_done;
   rma_->CheckPeerHealth(
       "/job:worker/replica:0/task:1", /*timeout_in_ms=*/0,
       [&check_health_status, &check_health_done](const absl::Status s) {
@@ -635,7 +636,7 @@ TEST_P(CollRMADistTest, CheckHealthRestartedWithDifferentDevices) {
   ResolveDeviceAttributes();
   RestartWorker("/job:worker/replica:0/task:1", "GPU", /*num_devices*/ 1);
   absl::Status check_health_status;
-  Notification check_health_done;
+  absl::Notification check_health_done;
   rma_->CheckPeerHealth(
       "/job:worker/replica:0/task:1", /*timeout_in_ms=*/0,
       [&check_health_status, &check_health_done](const absl::Status s) {

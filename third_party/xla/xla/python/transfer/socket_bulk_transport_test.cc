@@ -22,6 +22,7 @@ limitations under the License.
 #include <cstring>
 #include <deque>
 #include <memory>
+#include <optional>
 #include <string>
 #include <tuple>
 #include <utility>
@@ -68,6 +69,13 @@ absl::Status SetupSocketPairUsingEventLoop(int& send_fd, int& recv_fd) {
   return absl::OkStatus();
 }
 
+std::shared_ptr<int> WrapSocket(int fd) {
+  return std::shared_ptr<int>(new int{fd}, [](int* fd_ptr) {
+    close(*fd_ptr);
+    delete fd_ptr;
+  });
+};
+
 TEST(SendQueue, TestZeroCopyQueueCleanRemoteShutdown) {
   int send_fd, recv_fd;
   auto status = SetupSocketPairUsingEventLoop(send_fd, recv_fd);
@@ -76,15 +84,15 @@ TEST(SendQueue, TestZeroCopyQueueCleanRemoteShutdown) {
   auto work_queue = SharedSendWorkQueue::Start();
   auto msg_queue = std::make_shared<SharedSendMsgQueue>();
 
-  SharedSendMsgQueue::StartSubConnectionSender(send_fd, 0, msg_queue,
-                                               work_queue);
+  SharedSendMsgQueue::StartSubConnectionSender(WrapSocket(send_fd), 0,
+                                               msg_queue, work_queue);
 
   std::string txt_msg("hello world");
   absl::Notification notify;
   BulkTransportInterface::SendMessage msg;
   msg.data = txt_msg.data();
   msg.size = txt_msg.size();
-  msg.on_send = [](int id, size_t size) {};
+  msg.on_send = [](absl::StatusOr<int> id, size_t size) {};
   msg.on_done = [&notify]() { notify.Notify(); };
   msg_queue->ScheduleSendWork(std::move(msg));
   notify.WaitForNotification();
@@ -100,15 +108,16 @@ TEST(SendQueue, SendAndRecvQueuesArtificialLimit) {
                            packet_size);
   auto recv_thread = RecvThreadState::Create(allocator, uallocator);
 
-  int send_fd, recv_fd;
-  auto status = SetupSocketPairUsingEventLoop(send_fd, recv_fd);
+  int send_fd, raw_recv_fd;
+  auto status = SetupSocketPairUsingEventLoop(send_fd, raw_recv_fd);
   ASSERT_TRUE(status.ok()) << status;
+  auto recv_fd = WrapSocket(raw_recv_fd);
 
   auto work_queue = SharedSendWorkQueue::Start();
   auto msg_queue = std::make_shared<SharedSendMsgQueue>();
 
-  SharedSendMsgQueue::StartSubConnectionSender(send_fd, 0, msg_queue,
-                                               work_queue, 64);
+  SharedSendMsgQueue::StartSubConnectionSender(WrapSocket(send_fd), 0,
+                                               msg_queue, work_queue, 64);
 
   std::string txt_msg;
 
@@ -123,9 +132,9 @@ TEST(SendQueue, SendAndRecvQueuesArtificialLimit) {
     BulkTransportInterface::SendMessage msg;
     msg.data = txt_msg.data();
     msg.size = txt_msg.size();
-    msg.on_send = [](int id, size_t size) {};
+    msg.on_send = [](absl::StatusOr<int> id, size_t size) {};
     msg.on_done = [&mu, &send_count]() {
-      absl::MutexLock l(&mu);
+      absl::MutexLock l(mu);
       --send_count;
     };
     msg_queue->ScheduleSendWork(std::move(msg));
@@ -149,7 +158,78 @@ TEST(SendQueue, SendAndRecvQueuesArtificialLimit) {
     std::move(recv_msg->on_done)();
   }
   {
-    absl::MutexLock l(&mu);
+    absl::MutexLock l(mu);
+    auto cond = [&]() { return send_count == 0; };
+    mu.Await(absl::Condition(&cond));
+  }
+}
+
+TEST(SendQueue, SendAndRecvQueuesEarlyClose) {
+  size_t packet_size = 1024 * 8;
+  SlabAllocator uallocator(AllocateAlignedMemory(packet_size * 4).value(),
+                           packet_size);
+  auto recv_thread = RecvThreadState::Create(std::nullopt, uallocator);
+
+  int send_fd, raw_recv_fd;
+  auto status = SetupSocketPairUsingEventLoop(send_fd, raw_recv_fd);
+  ASSERT_TRUE(status.ok()) << status;
+  auto recv_fd = WrapSocket(raw_recv_fd);
+
+  close(send_fd);
+
+  for (size_t i = 0; i < 2; ++i) {
+    absl::Notification recv_notify;
+    absl::StatusOr<aux::BulkTransportInterface::Message> recv_msg;
+    recv_thread->ScheduleRecvWork(
+        packet_size, recv_fd,
+        [&](absl::StatusOr<aux::BulkTransportInterface::Message> msg) {
+          recv_msg = std::move(msg);
+          recv_notify.Notify();
+        });
+    recv_notify.WaitForNotification();
+    ASSERT_FALSE(recv_msg.ok());
+  }
+}
+
+TEST(SendQueue, SendAndRecvQueuesRecvEarlyClose) {
+  size_t packet_size = 1024 * 8;
+  SlabAllocator uallocator(AllocateAlignedMemory(packet_size * 4).value(),
+                           packet_size);
+  auto recv_thread = RecvThreadState::Create(std::nullopt, uallocator);
+
+  int send_fd, recv_fd;
+  auto status = SetupSocketPairUsingEventLoop(send_fd, recv_fd);
+  ASSERT_TRUE(status.ok()) << status;
+
+  close(recv_fd);
+  auto work_queue = SharedSendWorkQueue::Start();
+  auto msg_queue = std::make_shared<SharedSendMsgQueue>();
+
+  SharedSendMsgQueue::StartSubConnectionSender(WrapSocket(send_fd), 0,
+                                               msg_queue, work_queue, 64);
+
+  std::string txt_msg;
+
+  while (txt_msg.size() < packet_size) {
+    txt_msg += "hello world";
+  }
+  absl::Mutex mu;
+  size_t send_count = 10;
+
+  for (size_t i = 0; i < 10; ++i) {
+    txt_msg.resize(packet_size);
+    BulkTransportInterface::SendMessage msg;
+    msg.data = txt_msg.data();
+    msg.size = txt_msg.size();
+    msg.on_send = [](absl::StatusOr<int> id, size_t size) {};
+    msg.on_done = [&mu, &send_count]() {
+      absl::MutexLock l(mu);
+      --send_count;
+    };
+    msg_queue->ScheduleSendWork(std::move(msg));
+  }
+  {
+    absl::MutexLock l(mu);
     auto cond = [&]() { return send_count == 0; };
     mu.Await(absl::Condition(&cond));
   }
@@ -203,12 +283,12 @@ TEST(SocketBulkTransportFactoryTest, SendAndRecvWithFactory) {
     BulkTransportInterface::SendMessage msg;
     msg.data = txt_msgs[i].data();
     msg.size = txt_msgs[i].size();
-    msg.on_send = [&, i](int id, size_t size) {
-      absl::MutexLock l(&mu);
-      send_queue.push_back({i, id});
+    msg.on_send = [&, i](absl::StatusOr<int> id, size_t size) {
+      absl::MutexLock l(mu);
+      send_queue.push_back({i, id.value()});
     };
     msg.on_done = [&mu, &send_count]() {
-      absl::MutexLock l(&mu);
+      absl::MutexLock l(mu);
       --send_count;
     };
     bulk_transporta->Send(std::move(msg));
@@ -220,7 +300,7 @@ TEST(SocketBulkTransportFactoryTest, SendAndRecvWithFactory) {
     int bond_id = -1;
     int msg_id = -1;
     {
-      absl::MutexLock l(&mu);
+      absl::MutexLock l(mu);
       auto cond = [&]() { return !send_queue.empty(); };
       mu.Await(absl::Condition(&cond));
       std::tie(msg_id, bond_id) = send_queue.front();
@@ -241,7 +321,7 @@ TEST(SocketBulkTransportFactoryTest, SendAndRecvWithFactory) {
     std::move(recv_msg->on_done)();
   }
   {
-    absl::MutexLock l(&mu);
+    absl::MutexLock l(mu);
     auto cond = [&]() { return send_count == 0; };
     mu.Await(absl::Condition(&cond));
   }

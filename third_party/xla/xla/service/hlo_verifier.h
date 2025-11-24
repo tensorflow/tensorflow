@@ -28,7 +28,10 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
+#include "xla/shape.h"
+#include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -93,10 +96,6 @@ struct HloVerifierOpts {
     return std::move(*this);
   }
 
-  HloVerifierOpts&& WithVerifyS4U4Usage(bool verify) {
-    return std::move(*this);
-  }
-
   HloVerifierOpts&& WithAllowUnboundedDynamism(bool allow) {
     allow_unbounded_dynamism = allow;
     return std::move(*this);
@@ -112,7 +111,22 @@ struct HloVerifierOpts {
     return std::move(*this);
   }
 
+  HloVerifierOpts&& WithVerifyNoCollectiveDeadlocks(
+      bool verify_no_collective_deadlocks_p) {
+    verify_no_collective_deadlocks = verify_no_collective_deadlocks_p;
+    return std::move(*this);
+  }
+
+  HloVerifierOpts&& WithCheckReplicaGroups(bool check_replica_groups_p) {
+    check_replica_groups = check_replica_groups_p;
+    return std::move(*this);
+  }
+
   bool IsLayoutSensitive() const { return layout_sensitive; }
+
+  bool CheckForCollectiveDeadlocks() const {
+    return verify_no_collective_deadlocks;
+  }
 
   bool AllowMixedPrecision() const { return allow_mixed_precision; }
 
@@ -126,6 +140,8 @@ struct HloVerifierOpts {
   }
 
   int64_t ShapeSize(const Shape& shape) const { return shape_size(shape); }
+
+  bool ShouldCheckReplicaGroups() const { return check_replica_groups; }
 
   // If the verifier is layout-sensitive, shapes must be equal to what's
   // expected.  Otherwise, the shapes must simply be compatible.
@@ -159,11 +175,15 @@ struct HloVerifierOpts {
   // cloned (".clone" suffix) or rematted (".remat");
   bool verify_instruction_name_unchanged = false;
 
-  // Check if channel instructions all have unique channel ids.
-  bool verify_unique_channel_ids = true;
-
   // Check if a shape has a host memory space color
   bool verify_no_host_memory_space = false;
+
+  // Check if collectives in the given module will result in a deadlock.
+  bool verify_no_collective_deadlocks = false;
+
+  // Check if replica groups in collectives are consistent with replica count
+  // and partition count.
+  bool check_replica_groups = true;
 
   HloPredicate instruction_can_change_layout;
 
@@ -214,6 +234,7 @@ class ShapeVerifier : public DfsHloVisitor {
   absl::Status HandleCollectivePermuteDone(HloInstruction* hlo) override;
   absl::Status HandlePartitionId(HloInstruction* hlo) override;
   absl::Status HandleRaggedDot(HloInstruction* ragged_dot) override;
+  absl::Status HandleScaledDot(HloInstruction* scaled_dot) override;
   absl::Status HandleReplicaId(HloInstruction* hlo) override;
   absl::Status HandleReducePrecision(HloInstruction* reduce_precision) override;
   absl::Status HandleInfeed(HloInstruction*) override;
@@ -338,6 +359,63 @@ class ShapeVerifier : public DfsHloVisitor {
   const HloVerifierOpts& opts_;
 };
 
+// Visitor which verifies various fields on the HLO instruction. This class does
+// not check result shape as that is checked in the ShapeVerifier.
+class InstructionVerifier : public DfsHloVisitorWithDefault {
+ public:
+  explicit InstructionVerifier(const HloModule* module,
+                               const HloVerifierOpts& opts)
+      : opts_(opts) {
+    // TODO(b/258285553): Eliminate this check when all paths that enable SPMD
+    // partitioning also set the num_partitions correctly.
+    const int64_t num_partitions = module->config().num_partitions();
+    if (module->config().use_spmd_partitioning() &&
+        opts.verify_sharding_device_numbers && num_partitions > 1) {
+      num_devices_ = module->config().num_partitions();
+    }
+  }
+
+  absl::Status DefaultAction(HloInstruction*) override;
+  absl::Status HandleFusion(HloInstruction* fusion) override;
+  absl::Status HandleBroadcast(HloInstruction* broadcast) override;
+  absl::Status HandleBitcastConvert(HloInstruction* c) override;
+  absl::Status HandleWhile(HloInstruction* xla_while) override;
+  absl::Status HandleCall(HloInstruction* call) override;
+  absl::Status HandleConditional(HloInstruction* conditional) override;
+  absl::Status HandleElementwiseUnary(HloInstruction* instruction) override;
+  absl::Status HandleElementwiseBinary(HloInstruction* instruction) override;
+  absl::Status HandleGetTupleElement(HloInstruction* gte) override;
+  absl::Status HandleTranspose(HloInstruction* transpose) override;
+  absl::Status HandleAllReduce(HloInstruction* crs) override;
+  absl::Status HandleReshape(HloInstruction* hlo) override;
+  absl::Status HandleCustomCall(HloInstruction* hlo) override;
+  absl::Status HandleScatter(HloInstruction* scatter) override;
+  absl::Status Preprocess(HloInstruction* instruction) override;
+  absl::Status Postprocess(HloInstruction* instruction) override;
+
+ private:
+  static absl::Status VerifyConsistentSharding(
+      const HloInstruction* parent,
+      absl::Span<const HloInstruction* const> instructions);
+
+  // Verifies whether a given `instruction` is permitted to change the layout
+  // memory space from `operand_memory_space` to `result_memory_space`.
+  // Returns absl::OkStatus() if the instruction's layout changes are valid;
+  // otherwise, returns an appropriate error status.
+  static absl::Status HostOffloadInstructionCanChangeMemorySpace(
+      const HloInstruction* instruction, int64_t operand_memory_space,
+      int64_t result_memory_space);
+
+  // Returns an error status if an instruction or any operand contains host
+  // memory space.
+  static absl::Status VerifyNoHostMemorySpace(
+      const HloInstruction* instruction);
+
+  absl::flat_hash_map<std::string, const HloInstruction*> instructions_by_name_;
+  const HloVerifierOpts& opts_;
+  std::optional<int64_t> num_devices_;
+};
+
 // An interface used to encapsulate target-specific verification quirks.
 class TargetVerifierMetadata {
  public:
@@ -384,13 +462,16 @@ class HloVerifier : public HloModulePass {
       bool layout_sensitive, bool allow_mixed_precision,
       HloPredicate instruction_can_change_layout_func = {},
       std::function<int64_t(const Shape&)> shape_size_func =
-          [](const Shape& shape) { return ShapeUtil::ByteSizeOf(shape); })
+          [](const Shape& shape) { return ShapeUtil::ByteSizeOf(shape); },
+      bool verify_no_collective_deadlocks = false)
       : HloVerifier(HloVerifierOpts{}
                         .WithLayoutSensitive(layout_sensitive)
                         .WithAllowMixedPrecision(allow_mixed_precision)
                         .WithInstructionCanChangeLayout(
                             instruction_can_change_layout_func)
-                        .WithCustomShapeSize(shape_size_func)) {}
+                        .WithCustomShapeSize(shape_size_func)
+                        .WithVerifyNoCollectiveDeadlocks(
+                            verify_no_collective_deadlocks)) {}
 
   explicit HloVerifier(HloVerifierOpts&& opts)
       : target_metadata_(
@@ -406,9 +487,8 @@ class HloVerifier : public HloModulePass {
   absl::string_view name() const override { return "hlo-verifier"; }
 
   // Never returns true; no instructions are ever modified by this pass.
-  using HloPassInterface::Run;
-  using HloPassInterface::RunOnModuleGroup;
-  absl::StatusOr<bool> Run(
+ protected:
+  absl::StatusOr<bool> RunImpl(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 

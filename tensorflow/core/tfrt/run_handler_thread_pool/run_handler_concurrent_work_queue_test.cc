@@ -19,6 +19,8 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "absl/strings/match.h"
 #include "xla/tsl/protobuf/error_codes.pb.h"
 #include "tensorflow/core/platform/errors.h"
@@ -60,7 +62,7 @@ class RunHandlerThreadWorkQueueTest : public ::testing::Test {
                                           std::move(work_queue));
     RequestContextBuilder req_ctx_builder{host_.get(),
                                           /*resource_context=*/nullptr};
-    auto queue = pool_->InitializeRequest(/*request_id=*/100);
+    auto queue = pool_->InitializeRequest(/*request_id=*/100, /*priority=*/0);
     TF_CHECK_OK(queue.status());
     queue_ = std::move(*queue);
     auto req_ctx = std::move(req_ctx_builder).build();
@@ -182,9 +184,9 @@ TEST_F(RunHandlerThreadWorkQueueTest, NoHandlerReturnsError) {
   auto queue = std::make_unique<RunHandlerThreadWorkQueue>(options);
   tfrt::RequestContextBuilder ctx_builder(nullptr, nullptr);
   EXPECT_THAT(
-      queue->InitializeRequest(/*request_id=*/100),
-      tensorflow::testing::StatusIs(
-          tensorflow::error::INTERNAL,
+      queue->InitializeRequest(/*request_id=*/100, /*priority=*/0),
+      absl_testing::StatusIs(
+          absl::StatusCode::kDeadlineExceeded,
           "Could not obtain RunHandler for request after waiting for 1 ms."));
 }
 

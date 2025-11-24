@@ -303,11 +303,11 @@ class RaggedGatherOpTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       indices: The `indices` that should be passed to `gather`.
       expected_out: The expected value of `gather(params, indices)`.
         `expected_out.shape = indices.shape + params.shape[1:]`.
-      out_grad: The value that should be fed in as the gradient for `out`
-        when testing the gradient of `ragged_gather`.  Must have the same
-        shape as `expected_out`.
+      out_grad: The value that should be fed in as the gradient for `out` when
+        testing the gradient of `ragged_gather`.  Must have the same shape as
+        `expected_out`.
       expected_grad: The expected gradient for that should be returned for
-        `params`.  Must have hte same shape as `params`.
+        `params`.  Must have the same shape as `params`.
       params_ragged_rank: The ragged_rank of `params`.
     """
     if context.executing_eagerly():

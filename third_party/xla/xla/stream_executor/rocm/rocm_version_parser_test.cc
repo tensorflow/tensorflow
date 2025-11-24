@@ -18,31 +18,29 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "rocm/include/hip/hip_version.h"
 #include "xla/stream_executor/semantic_version.h"
-#include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/test.h"
 
 namespace stream_executor {
 
 namespace {
-using tsl::testing::IsOkAndHolds;
-using tsl::testing::StatusIs;
 
 TEST(ParseRocmVersionTest, Simple) {
   EXPECT_THAT(stream_executor::ParseRocmVersion(60'100'002),
-              IsOkAndHolds(SemanticVersion(6, 1, 2)));
+              absl_testing::IsOkAndHolds(SemanticVersion(6, 1, 2)));
 }
 
 TEST(RocmVersionParserTest, NegativeIntegerIsNotAValidVersion) {
   EXPECT_THAT(ParseRocmVersion(-42),
-              StatusIs(absl::StatusCode::kInvalidArgument));
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
 TEST(RocmVersionParserTest, AlignsWithHIPVersion) {
   EXPECT_THAT(ParseRocmVersion(HIP_VERSION),
-              IsOkAndHolds(SemanticVersion{HIP_VERSION_MAJOR, HIP_VERSION_MINOR,
-                                           HIP_VERSION_PATCH}));
+              absl_testing::IsOkAndHolds(SemanticVersion{
+                  HIP_VERSION_MAJOR, HIP_VERSION_MINOR, HIP_VERSION_PATCH}));
 }
 
 }  // namespace

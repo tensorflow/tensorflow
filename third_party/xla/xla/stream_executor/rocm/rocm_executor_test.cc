@@ -21,6 +21,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/gpu/gpu_test_kernels.h"
 #include "xla/stream_executor/kernel.h"
@@ -32,16 +33,12 @@ limitations under the License.
 #include "xla/stream_executor/rocm/rocm_platform_id.h"
 #include "xla/stream_executor/semantic_version.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/statusor.h"
 
 namespace stream_executor::gpu {
 namespace {
 using testing::IsEmpty;
 using testing::Not;
-using ::tsl::testing::IsOk;
-using ::tsl::testing::IsOkAndHolds;
-using ::tsl::testing::StatusIs;
 
 TEST(RocmExecutorTest, CreateDeviceDescription) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<DeviceDescription> result,
@@ -57,10 +54,10 @@ TEST(RocmExecutorTest, CreateDeviceDescription) {
   EXPECT_THAT(result->model_str(), Not(IsEmpty()));
   EXPECT_THAT(result->device_vendor(), "Advanced Micro Devices, Inc");
 
-  EXPECT_THAT(
-      std::get_if<RocmComputeCapability>(&result->gpu_compute_capability())
-          ->gcn_arch_name(),
-      Not(IsEmpty()));
+  EXPECT_THAT(result->gpu_compute_capability()
+                  .rocm_compute_capability()
+                  ->gcn_arch_name(),
+              Not(IsEmpty()));
 }
 
 TEST(RocmExecutorTest, GetRocmKernel) {
@@ -76,14 +73,14 @@ TEST(RocmExecutorTest, GetRocmKernel) {
   auto rocm_executor = dynamic_cast<RocmExecutor*>(executor);
   ASSERT_NE(rocm_executor, nullptr);
   EXPECT_THAT(rocm_executor->GetRocmKernel(kernel.get()),
-              IsOkAndHolds(kernel.get()));
+              absl_testing::IsOkAndHolds(kernel.get()));
 
   rocm_executor->UnloadKernel(kernel.get());
   EXPECT_THAT(rocm_executor->GetRocmKernel(kernel.get()),
-              StatusIs(absl::StatusCode::kNotFound));
+              absl_testing::StatusIs(absl::StatusCode::kNotFound));
 
   EXPECT_THAT(rocm_executor->GetRocmKernel(nullptr),
-              StatusIs(absl::StatusCode::kNotFound));
+              absl_testing::StatusIs(absl::StatusCode::kNotFound));
 }
 
 TEST(RocmExecutorTest, CreateUnifiedMemoryAllocatorWorks) {
@@ -136,7 +133,7 @@ TEST(RocmExecutorTest, CreateUnsupportedMemoryAllocatorsFail) {
   TF_ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,
                           platform->ExecutorForDevice(0));
   EXPECT_THAT(executor->CreateMemoryAllocator(MemoryType::kDevice),
-              Not(IsOk()));
+              Not(absl_testing::IsOk()));
 }
 
 }  // namespace

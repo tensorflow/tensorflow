@@ -14,8 +14,19 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/compiler/tf2xla/sharding_util.h"
 
+#include <optional>
+#include <string>
+
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/match.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/xla_sharding_util.h"
+#include "xla/hlo/builder/xla_builder.h"
+#include "xla/hlo/ir/hlo_sharding.h"
+#include "xla/service/spmd/shardy/stablehlo_round_trip/stablehlo_import.h"
+#include "xla/shape.h"
+#include "xla/tsl/platform/statusor.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/util/device_name_utils.h"
@@ -24,6 +35,8 @@ namespace tensorflow {
 namespace {
 const char kDeviceSuffixReplicatedCore[] = "REPLICATED_CORE";
 const char kShardingAttribute[] = "_XlaSharding";
+const char kShardingAttributeV2[] = "_XlaShardingV2";
+const char kXlaShardingOp[] = "XlaSharding";
 const char kShardingOpAttribute[] = "sharding";
 }  // namespace
 
@@ -37,7 +50,8 @@ xla::OpMetadata CreateOpMetadata(const std::string& op_type,
 }
 
 void AssignOpMetadataToSharding(xla::OpSharding& sharding,
-                                const string& op_type, const string& op_name) {
+                                const std::string& op_type,
+                                const std::string& op_name) {
   auto metadata = CreateOpMetadata(op_type, op_name);
   if (sharding.type() == xla::OpSharding::TUPLE) {
     for (auto& sharding_element : *sharding.mutable_tuple_shardings()) {
@@ -56,7 +70,7 @@ absl::Status CoreOutOfRangeError(int core, int num_cores_per_replica) {
 }  // namespace
 
 absl::StatusOr<std::optional<xla::OpSharding>> ParseShardingFromDevice(
-    const string& device_name, int num_cores_per_replica,
+    const std::string& device_name, int num_cores_per_replica,
     std::optional<xla::OpSharding> explicit_sharding,
     std::optional<xla::OpMetadata> metadata) {
   if (device_name.empty()) {
@@ -89,7 +103,7 @@ absl::StatusOr<std::optional<xla::OpSharding>> ParseShardingFromDevice(
 
 absl::StatusOr<std::optional<xla::OpSharding>> ParseShardingFromDevice(
     const NodeDef& node_def, int num_cores_per_replica, bool add_metadata) {
-  const string& device_name = node_def.device();
+  const std::string& device_name = node_def.device();
   TF_ASSIGN_OR_RETURN(std::optional<xla::OpSharding> sharding,
                       GetShardingFromNodeDef(node_def, add_metadata));
   return ParseShardingFromDevice(
@@ -101,7 +115,7 @@ absl::StatusOr<std::optional<xla::OpSharding>> ParseShardingFromDevice(
 
 absl::StatusOr<std::optional<xla::OpSharding>> ParseShardingFromDevice(
     const Node& node, int num_cores_per_replica, bool add_metadata) {
-  string device_name = node.assigned_device_name();
+  std::string device_name = node.assigned_device_name();
   if (device_name.empty()) {
     device_name = node.requested_device();
   }
@@ -139,7 +153,7 @@ absl::StatusOr<std::optional<xla::OpSharding>> ParseShardingFromEdgeSource(
 }
 
 void SetShardingDeviceAssignmentFromNode(const Node& src, Node* dst) {
-  string device_name = src.assigned_device_name();
+  std::string device_name = src.assigned_device_name();
   if (device_name.empty()) {
     device_name = src.requested_device();
   }
@@ -156,7 +170,7 @@ absl::StatusOr<std::optional<xla::OpSharding>> GetShardingFromNodeDefInternal(
   if (!HasNodeAttr(node_def, attribute)) {
     return std::optional<xla::OpSharding>();
   }
-  string value;
+  std::string value;
   xla::OpSharding sharding;
   TF_RETURN_IF_ERROR(GetNodeAttr(node_def, attribute, &value));
   if (tensorflow::DecodeShardingAttribute(value, sharding).failed()) {
@@ -175,16 +189,58 @@ absl::StatusOr<std::optional<xla::OpSharding>> GetShardingFromNodeDefInternal(
 
 absl::StatusOr<std::optional<xla::OpSharding>> GetShardingFromNodeDef(
     const NodeDef& node_def, bool add_metadata) {
-  if (node_def.op() == "XlaSharding") {
-    TF_ASSIGN_OR_RETURN(auto sharding,
+  TF_ASSIGN_OR_RETURN(auto sharding_attribute,
+                      GetShardingFromNodeDefInternal(node_def, add_metadata,
+                                                     kShardingAttribute));
+
+  // kShardingOpAttribute is only defined for 'XlaSharding' op
+  xla::OpSharding primary_sharding;
+  if (node_def.op() == kXlaShardingOp) {
+    TF_ASSIGN_OR_RETURN(auto sharding_op_attribute,
                         GetShardingFromNodeDefInternal(node_def, add_metadata,
                                                        kShardingOpAttribute));
-    if (sharding.has_value()) {
-      return sharding;
+    if (!sharding_op_attribute.has_value()) {
+      return sharding_attribute;
     }
+    primary_sharding = sharding_op_attribute.value();
+  } else {
+    if (!sharding_attribute.has_value()) {
+      return std::optional<xla::OpSharding>();
+    }
+    primary_sharding = sharding_attribute.value();
   }
-  return GetShardingFromNodeDefInternal(node_def, add_metadata,
-                                        kShardingAttribute);
+
+  TF_ASSIGN_OR_RETURN(auto shardingv2,
+                      GetShardingFromNodeDefInternal(node_def, add_metadata,
+                                                     kShardingAttributeV2));
+
+  if (!shardingv2.has_value()) {
+    return primary_sharding;
+  }
+
+  if (tensorflow::VerifyShardingEquivalent(primary_sharding, shardingv2.value())
+          .failed()) {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "XlaSharding attribute was not equivalent to XlaShardingV2 "
+        "attribute: ",
+        primary_sharding.DebugString(), " vs ",
+        shardingv2.value().DebugString()));
+  }
+  return shardingv2;
+}
+
+absl::Status addSdyShardingFrontendAttribute(xla::XlaBuilder* builder,
+                                             xla::XlaOp op, xla::Shape shape,
+                                             bool is_single_arg) {
+  if (!builder->sharding().has_value()) {
+    return absl::OkStatus();
+  }
+
+  return builder->SetInstructionFrontendAttribute(
+      op, std::string(xla::HloSharding::kShardingFrontendAttrName),
+      xla::sdy::convertToSdySharding(builder->sharding().value(), shape,
+                                     /*openDims=*/false,
+                                     /*inlineMesh=*/true, is_single_arg));
 }
 
 }  // namespace tensorflow

@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <variant>
@@ -36,15 +37,15 @@ limitations under the License.
 #include "xla/stream_executor/activate_context.h"
 #include "xla/stream_executor/cuda/compilation_options.h"
 #include "xla/stream_executor/cuda/compilation_provider.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
 #include "xla/stream_executor/cuda/cuda_status.h"
 #include "xla/stream_executor/cuda/ptx_compiler_helpers.h"
-#include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/statusor.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace stream_executor::cuda {
 absl::StatusOr<Assembly> DriverCompilationProvider::Compile(
@@ -86,11 +87,19 @@ absl::StatusOr<Assembly> DriverCompilationProvider::CompileAndLink(
 #if CUDA_VERSION >= 12000
   // Even though CUDA 11.8 has Hopper support, SM 9.0a and most Hopper features
   // (WGMMA, TMA, and more) are only supported in CUDA 12+.
-  if (cc.major == 9 && cc.minor == 0) {
+  if (cc.feature_extension ==
+      CudaComputeCapability::FeatureExtension::kAcceleratedFeatures) {
     target =
         static_cast<CUjit_target>(target + CU_COMPUTE_ACCELERATED_TARGET_BASE);
   }
 #endif
+
+  if (cc.feature_extension ==
+      CudaComputeCapability::FeatureExtension::kFamilyCompatibleFeatures) {
+    return absl::UnimplementedError(
+        "Compiling forward compatible kernels is not implemented yet.");
+  }
+
   constexpr size_t kErrorLogBufferSize = 512 * 1024;  // 4 KiB
   std::string error_log_buffer(kErrorLogBufferSize, '\0');
 
@@ -165,8 +174,8 @@ absl::StatusOr<Assembly> DriverCompilationProvider::CompileAndLink(
   CHECK(info_log_buffer_size() <= kInfoLogBufferSize);
   info_log_buffer.resize(info_log_buffer_size());
 
-  absl::string_view extension = ShouldUsePtxExtension(cc) ? "a" : "";
-  std::string architecture = absl::StrCat("sm_", cc.major, cc.minor, extension);
+  std::string architecture =
+      cc.GetPtxAsTargetName(CudaComputeCapability::CompileMode::kSass);
 
   if (result != CUDA_SUCCESS) {
     VLOG(3) << "Driver compilation error log output: " << error_log_buffer;
@@ -182,7 +191,18 @@ absl::StatusOr<Assembly> DriverCompilationProvider::CompileAndLink(
 
   std::vector<uint8_t> cubin(static_cast<uint8_t*>(cubin_out),
                              static_cast<uint8_t*>(cubin_out) + cubin_size);
-  return Assembly{std::move(cubin)};
+
+  std::optional<std::string> maybe_compilation_log;
+  if (options.dump_compilation_log) {
+    maybe_compilation_log =
+        absl::StrCat(error_log_buffer, "\n", error_log_buffer);
+  }
+  return Assembly{std::move(cubin), std::move(maybe_compilation_log)};
+}
+
+absl::StatusOr<int> DriverCompilationProvider::GetLatestPtxIsaVersion() const {
+  return absl::UnimplementedError(
+      "GetLatestPtxIsaVersion is not implemented for " + name() + ".");
 }
 
 }  // namespace stream_executor::cuda

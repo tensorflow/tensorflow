@@ -65,8 +65,7 @@ TEST_P(XlaShardingSerDesTest, HloShardingRoundTrip) {
   auto sharding = HloSharding::Create(device_list, MemoryKind("abc"),
                                       /*xla_hlo_sharding=*/xla_hlo_sharding);
 
-  auto options = std::make_unique<SerializeOptions>();
-  options->version = version();
+  auto options = std::make_unique<SerializeOptions>(version());
   TF_ASSERT_OK_AND_ASSIGN(auto serialized,
                           Serialize(*sharding, std::move(options)));
 

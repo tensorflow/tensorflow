@@ -18,6 +18,8 @@ limitations under the License.
 #include <string>
 
 #include "xla/hlo/builder/sharding_builder.h"
+#include "xla/hlo/builder/xla_builder.h"
+#include "xla/shape.h"
 #include "xla/status_macros.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -34,7 +36,7 @@ namespace tensorflow {
 // - a non-value if there is no assigned core or
 // - a sharding set as per xla::sharding_builder::AssignDevice.
 absl::StatusOr<std::optional<xla::OpSharding>> ParseShardingFromDevice(
-    const string& device_name, int num_cores_per_replica,
+    const std::string& device_name, int num_cores_per_replica,
     std::optional<xla::OpSharding> explicit_sharding = std::nullopt,
     std::optional<xla::OpMetadata> metadata = std::nullopt);
 
@@ -53,6 +55,15 @@ void SetShardingDeviceAssignmentFromNode(const Node& src, Node* dst);
 absl::StatusOr<std::optional<xla::OpSharding>> GetShardingFromNodeDef(
     const NodeDef& node_def, bool add_metadata);
 
+// Add shardy shardings in the frontend attributes of the op by converting
+// existing hlo shardings set in the builder.
+//
+// Note: The mesh is inlined within sharding attribute instead of being stored
+// separately, because shardings are generated per op and stored in their
+// frontend attributes.
+absl::Status addSdyShardingFrontendAttribute(xla::XlaBuilder* builder,
+                                             xla::XlaOp op, xla::Shape shape,
+                                             bool is_single_arg = false);
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_COMPILER_TF2XLA_SHARDING_UTIL_H_

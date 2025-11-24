@@ -2729,3 +2729,41 @@ func.func @sigmoid_grad_dynamic(%arg0: tensor<?xf32>, %arg1: tensor<?xf32>) -> t
   func.return %0 : tensor<?xf32>
 }
 
+// -----
+
+// CHECK-LABEL: @func_xla_sharding_without_sharding_attribute
+func.func @func_xla_sharding_without_sharding_attribute(%arg0: tensor<*xi32>) -> (tensor<*xi32>) {
+  // Not legalized due to missing sharding attribute.
+  // CHECK: tf.XlaSharding
+  %0 = "tf.XlaSharding"(%arg0) : (tensor<*xi32>) -> tensor<*xi32>
+  %1 = "tf.A"(%0) : (tensor<*xi32>) -> (tensor<*xi32>)
+  func.return %1 : tensor<*xi32>
+}
+
+// -----
+
+// CHECK-LABEL: @func_xla_sharding_inconsistent
+func.func @func_xla_sharding_inconsistent(%arg0: tensor<*xi32>) -> (tensor<*xi32>) {
+  // Not legalized due to inconsistent sharding attributes.
+  // CHECK: tf.XlaSharding
+  // We can't use the OpSharding proto binary string because the ending 0 in the string is dropped by C++.
+  // _XlaSharding={devices=[2,1]1,0} binary "\010\003\032\002\002\001\"\002\001\000"
+  // _XlaShardingV2={devices=[2,1]<=[2]} binary "\010\003\032\002\002\001J\001\002R\001\000"
+  %0 = "tf.XlaSharding"(%arg0) { _XlaSharding = "{devices=[2,1]1,0}", _XlaShardingV2 = "{devices=[2,1]<=[2]}"} : (tensor<*xi32>) -> tensor<*xi32>
+  %1 = "tf.A"(%0) : (tensor<*xi32>) -> (tensor<*xi32>)
+  func.return %1 : tensor<*xi32>
+}
+
+// -----
+
+// CHECK-LABEL: @func_xla_sharding_consistent
+func.func @func_xla_sharding_consistent(%arg0: tensor<4x8xi32>) -> (tensor<4x8xi32>) {
+  // Legalized.
+  // CHECK: mhlo.custom_call @Sharding(%arg0) {mhlo.sharding = "{devices=[2,1]<=[2]}"}
+  // _XlaSharding={devices=[2,1]0,1}  binary "\010\003\032\002\002\001\"\002\000\001"
+  // _XlaShardingV2={devices=[2,1]<=[2]} binary "\010\003\032\002\002\001J\001\002R\001\000"
+  %0 = "tf.XlaSharding"(%arg0) { _XlaSharding = "{devices=[2,1]0,1}", _XlaShardingV2 = "{devices=[2,1]<=[2]}"} : (tensor<4x8xi32>) -> tensor<4x8xi32>
+  %1 = "tf.A"(%0) : (tensor<4x8xi32>) -> (tensor<4x8xi32>)
+  func.return %1 : tensor<4x8xi32>
+}
+

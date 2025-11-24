@@ -252,7 +252,7 @@ TEST_F(ClientServerTest, ConnectAndShutdownAreBarriers) {
       return connect_count == node_id;
     };
     {
-      absl::MutexLock lock(&mu);
+      absl::MutexLock lock(mu);
       mu.Await(absl::Condition(&my_connect_turn));
       ++connect_count;
     }
@@ -260,7 +260,7 @@ TEST_F(ClientServerTest, ConnectAndShutdownAreBarriers) {
     // Verify that all of the threads have called Connect() by the time we get
     // here.
     {
-      absl::MutexLock lock(&mu);
+      absl::MutexLock lock(mu);
       if (connect_count != num_nodes) {
         return absl::InternalError(absl::StrCat(
             "Connect count is ", connect_count, " but expected ", num_nodes));
@@ -273,13 +273,13 @@ TEST_F(ClientServerTest, ConnectAndShutdownAreBarriers) {
       return shutdown_count == node_id;
     };
     {
-      absl::MutexLock lock(&mu);
+      absl::MutexLock lock(mu);
       mu.Await(absl::Condition(&my_shutdown_turn));
       ++shutdown_count;
     }
     TF_RETURN_IF_ERROR(client->Shutdown());
     {
-      absl::MutexLock lock(&mu);
+      absl::MutexLock lock(mu);
       if (shutdown_count != num_nodes) {
         return absl::InternalError(absl::StrCat(
             "Shutdown count is ", shutdown_count, " but expected ", num_nodes));
@@ -336,14 +336,15 @@ TEST_F(ClientServerTest, ClientsTerminateShutdownIfAnyClientGoesAway) {
         statuses[i],
         AnyOf(
             // Shutdown barrier took too long and failed.
-            StatusIs(absl::StatusCode::kInternal, HasSubstr("timed out")),
+            absl_testing::StatusIs(absl::StatusCode::kInternal,
+                                   HasSubstr("timed out")),
             // Heartbeat timeout sets node into error state, failing shutdown
             // barrier.
-            StatusIs(absl::StatusCode::kInternal,
-                     HasSubstr("heartbeat timeout")),
+            absl_testing::StatusIs(absl::StatusCode::kInternal,
+                                   HasSubstr("heartbeat timeout")),
             // Agent polled error first, and so Shutdown()
             // fails because agent is already in error.
-            StatusIs(absl::StatusCode::kFailedPrecondition)));
+            absl_testing::StatusIs(absl::StatusCode::kFailedPrecondition)));
   }
 }
 
@@ -447,8 +448,8 @@ TEST_F(ClientServerTest, ShutdownErrorIsPropagatedToClients) {
       thread_pool.Schedule([&, i]() { thread_fn(i); });
     }
   }
-  EXPECT_THAT(statuses[0], StatusIs(absl::StatusCode::kInternal));
-  EXPECT_THAT(statuses[1], StatusIs(absl::StatusCode::kInternal));
+  EXPECT_THAT(statuses[0], absl_testing::StatusIs(absl::StatusCode::kInternal));
+  EXPECT_THAT(statuses[1], absl_testing::StatusIs(absl::StatusCode::kInternal));
 }
 
 TEST_F(ClientServerTest, ClientsTerminateIfServiceGoesAway) {
@@ -595,10 +596,12 @@ TEST_F(ClientServerTest, ClientRestart_AfterConnect_Fails) {
   // Errors should have been propagated to the clients, and thus the shutdown
   // call will fail with `FailedPrecondition` since the tasks are already in
   // error.
-  EXPECT_THAT(statuses[0], StatusIs(absl::StatusCode::kFailedPrecondition));
-  EXPECT_THAT(statuses[1], StatusIs(absl::StatusCode::kFailedPrecondition));
+  EXPECT_THAT(statuses[0],
+              absl_testing::StatusIs(absl::StatusCode::kFailedPrecondition));
+  EXPECT_THAT(statuses[1],
+              absl_testing::StatusIs(absl::StatusCode::kFailedPrecondition));
   // This client was restarted, so its connection attempt will be aborted.
-  EXPECT_THAT(statuses[2], StatusIs(absl::StatusCode::kAborted));
+  EXPECT_THAT(statuses[2], absl_testing::StatusIs(absl::StatusCode::kAborted));
 }
 
 // If a client restarts during init, it can silently reconnect because no
@@ -655,12 +658,13 @@ TEST_F(ClientServerTest, ClientRestart_DuringConnect_Succeeds) {
       thread_pool.Schedule([&, i]() { statuses[i] = thread_fn(i); });
     }
   }
-  EXPECT_THAT(statuses[0], StatusIs(absl::StatusCode::kOk));
-  EXPECT_THAT(statuses[1], StatusIs(absl::StatusCode::kOk));
+  EXPECT_THAT(statuses[0], absl_testing::StatusIs(absl::StatusCode::kOk));
+  EXPECT_THAT(statuses[1], absl_testing::StatusIs(absl::StatusCode::kOk));
   // This was the initial connection attempt that should be aborted.
-  EXPECT_THAT(statuses[2], StatusIs(absl::StatusCode::kAlreadyExists));
+  EXPECT_THAT(statuses[2],
+              absl_testing::StatusIs(absl::StatusCode::kAlreadyExists));
   // This was the restarted client which should silently reconnect.
-  EXPECT_THAT(statuses[3], StatusIs(absl::StatusCode::kOk));
+  EXPECT_THAT(statuses[3], absl_testing::StatusIs(absl::StatusCode::kOk));
 }
 
 TEST_F(ClientServerTest, WaitAtBarrier_Succeed) {
@@ -836,7 +840,8 @@ TEST_F(ClientServerTest, WaitAtBarrier_RestartAndBarrierAgain_Fails) {
     }
   }
   EXPECT_THAT(barrier_status,
-              StatusIs(absl::StatusCode::kInternal, HasSubstr("restarted")));
+              absl_testing::StatusIs(absl::StatusCode::kInternal,
+                                     HasSubstr("restarted")));
 }
 
 TEST_F(ClientServerTest,
@@ -869,8 +874,10 @@ TEST_F(ClientServerTest,
     }
   }
   // Both nodes should get the same error.
-  EXPECT_THAT(status_0, StatusIs(absl::StatusCode::kDeadlineExceeded));
-  EXPECT_THAT(status_1, StatusIs(absl::StatusCode::kDeadlineExceeded));
+  EXPECT_THAT(status_0,
+              absl_testing::StatusIs(absl::StatusCode::kDeadlineExceeded));
+  EXPECT_THAT(status_1,
+              absl_testing::StatusIs(absl::StatusCode::kDeadlineExceeded));
   // Next barrier call is okay.
   TF_EXPECT_OK(status_0_new);
   TF_EXPECT_OK(status_1_new);
@@ -907,11 +914,13 @@ TEST_F(ClientServerTest,
     }
   }
   // Both barriers from node 0 should time out.
-  EXPECT_THAT(status_0, StatusIs(absl::StatusCode::kDeadlineExceeded));
-  EXPECT_THAT(status_0_new, StatusIs(absl::StatusCode::kDeadlineExceeded));
+  EXPECT_THAT(status_0,
+              absl_testing::StatusIs(absl::StatusCode::kDeadlineExceeded));
+  EXPECT_THAT(status_0_new,
+              absl_testing::StatusIs(absl::StatusCode::kDeadlineExceeded));
   // Next barrier call from node 1 gets barrier counter mismatch error.
-  EXPECT_THAT(status_1, StatusIs(absl::StatusCode::kInternal,
-                                 HasSubstr("too quick / slow")));
+  EXPECT_THAT(status_1, absl_testing::StatusIs(absl::StatusCode::kInternal,
+                                               HasSubstr("too quick / slow")));
 }
 
 TEST_F(ClientServerTest, WaitAtBarrierSubset_Succeeds) {
@@ -976,8 +985,9 @@ TEST_F(ClientServerTest, WaitAtBarrier_DifferentSubset_Fails) {
   // First barrier call succeeds.
   TF_EXPECT_OK(status_0);
   // Second barrier call with different task args fails.
-  EXPECT_THAT(status_1, StatusIs(absl::StatusCode::kInvalidArgument,
-                                 HasSubstr("Conflicting tasks specified")));
+  EXPECT_THAT(status_1,
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument,
+                                     HasSubstr("Conflicting tasks specified")));
 }
 
 TEST_F(ClientServerTest, CancelNonExistentBarrier_Fails) {
@@ -987,7 +997,7 @@ TEST_F(ClientServerTest, CancelNonExistentBarrier_Fails) {
   TF_ASSERT_OK(client->Connect());
 
   EXPECT_THAT(client->CancelBarrier("non_existent_barrier"),
-              StatusIs(absl::StatusCode::kFailedPrecondition));
+              absl_testing::StatusIs(absl::StatusCode::kFailedPrecondition));
 }
 
 TEST_F(ClientServerTest,
@@ -1052,100 +1062,12 @@ TEST_F(ClientServerTest, GetAliveTasks_Succeed) {
   auto thread_fn = [&](int node_id) -> absl::Status {
     auto client = GetClient(node_id);
     TF_RETURN_IF_ERROR(client->Connect());
-    absl::StatusOr<std::vector<tensorflow::CoordinatedTask>> alive_tasks =
-        client->GetAliveTasks({GetTask(0), GetTask(1)});
+    absl::StatusOr<std::vector<CoordinationServiceAgent::AliveTask>>
+        alive_tasks = client->GetAliveTasks({GetTask(0), GetTask(1)});
     if (!alive_tasks.ok()) {
       return alive_tasks.status();
     }
     TF_RETURN_IF_ERROR(client->Shutdown());
-    return absl::OkStatus();
-  };
-
-  std::vector<absl::Status> statuses(num_nodes);
-  {
-    tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), "test_threads",
-                                        num_nodes);
-    for (int i = 0; i < num_nodes; ++i) {
-      thread_pool.Schedule([&, i]() { statuses[i] = thread_fn(i); });
-    }
-  }
-  for (int i = 0; i < num_nodes; ++i) {
-    TF_EXPECT_OK(statuses[i]);
-  }
-}
-
-TEST_F(ClientServerTest, GetJobState) {
-  // This test registers a JobStateCallback with the first client. It also fails
-  // the second client after a brief delay. The JobStateCallback should be
-  // called twice. The first time, all tasks should be healthy. The second time,
-  // the second task should be unhealthy.
-  const int num_nodes = 2;
-  StartService(num_nodes);
-
-  absl::Notification done;
-  auto thread_fn = [&](int node_id) -> absl::Status {
-    auto client =
-        GetClient(node_id,
-                  /*init_and_shutdown_timeout=*/absl::Seconds(3),
-                  /*shutdown_on_destruction=*/true, /*recoverable=*/true);
-    TF_RETURN_IF_ERROR(client->Connect());
-
-    if (node_id != 0) {
-      // Sleep for a while, before shutting down.
-      absl::SleepFor(absl::Seconds(3));
-      return absl::OkStatus();
-    }
-
-    int num_updates = 0;
-    client->AddJobStateCallback(
-        [&](const CoordinationServiceAgent::JobStateUpdate& update) {
-          num_updates++;
-
-          // Sort the task states by task id.
-          using Info = tensorflow::CoordinatedTaskStateInfo;
-          auto less = [](const Info& x, const Info& y) -> bool {
-            return x.task().task_id() < y.task().task_id();
-          };
-          std::vector<Info> previous(update.previous_state.begin(),
-                                     update.previous_state.end());
-          std::vector<Info> current(update.current_state.begin(),
-                                    update.current_state.end());
-          std::sort(previous.begin(), previous.end(), less);
-          std::sort(current.begin(), current.end(), less);
-
-          if (num_updates == 1) {
-            // The first update should have no previous state and should have
-            // all tasks healthy in the current state.
-            ASSERT_TRUE(previous.empty());
-            ASSERT_EQ(current[0].task().task_id(), 0);
-            ASSERT_EQ(current[0].state(),
-                      tensorflow::CoordinatedTaskState::TASKSTATE_CONNECTED);
-            ASSERT_EQ(current[1].task().task_id(), 1);
-            ASSERT_EQ(current[1].state(),
-                      tensorflow::CoordinatedTaskState::TASKSTATE_CONNECTED);
-          }
-
-          if (num_updates == 2) {
-            // The second update should have the second task unhealthy in the
-            // current state.
-            ASSERT_EQ(previous[0].task().task_id(), 0);
-            ASSERT_EQ(previous[0].state(),
-                      tensorflow::CoordinatedTaskState::TASKSTATE_CONNECTED);
-            ASSERT_EQ(previous[1].task().task_id(), 1);
-            ASSERT_EQ(previous[1].state(),
-                      tensorflow::CoordinatedTaskState::TASKSTATE_CONNECTED);
-
-            ASSERT_EQ(current[0].task().task_id(), 0);
-            ASSERT_EQ(current[0].state(),
-                      tensorflow::CoordinatedTaskState::TASKSTATE_CONNECTED);
-            ASSERT_EQ(current[1].task().task_id(), 1);
-            ASSERT_EQ(current[1].state(),
-                      tensorflow::CoordinatedTaskState::TASKSTATE_DISCONNECTED);
-
-            done.Notify();
-          }
-        });
-    done.WaitForNotification();
     return absl::OkStatus();
   };
 
@@ -1254,7 +1176,8 @@ TEST_F(ClientServerTest, BarrierTimeout_ManyLateTasks_ReturnsCorrectError) {
   auto status =
       client->WaitAtBarrier("test_barrier", absl::Milliseconds(100), {});
 
-  EXPECT_THAT(status, StatusIs(absl::StatusCode::kDeadlineExceeded));
+  EXPECT_THAT(status,
+              absl_testing::StatusIs(absl::StatusCode::kDeadlineExceeded));
 }
 
 TEST_F(ClientServerTest, Dtor_CancelsOngoingGetKeyValueAndBarrier) {
@@ -1325,8 +1248,9 @@ TEST_F(ClientServerTest, RecoverableClientNeverJoins_InitialConnectFails) {
     // 3) The failed barrier sets the entire cluster to an error state.
     // Subsequent connect attempts will return `Aborted` error due to this error
     // state.
-    EXPECT_THAT(statuses[i], StatusIs(AnyOf(absl::StatusCode::kDeadlineExceeded,
-                                            absl::StatusCode::kAborted)))
+    EXPECT_THAT(statuses[i], absl_testing::StatusIs(
+                                 AnyOf(absl::StatusCode::kDeadlineExceeded,
+                                       absl::StatusCode::kAborted)))
         << i;
   }
 }
@@ -1366,10 +1290,10 @@ TEST_F(ClientServerTest, NonrecoverableClientDies_ErrorPropagated) {
   EXPECT_THAT(statuses,
               ElementsAre(
                   // Node 0 died unexpectedly, so no error function invoked.
-                  StatusIs(absl::StatusCode::kOk),
+                  absl_testing::StatusIs(absl::StatusCode::kOk),
                   // Node 1, 2 get error notification that node 0 died.
-                  StatusIs(absl::StatusCode::kUnavailable),
-                  StatusIs(absl::StatusCode::kUnavailable)));
+                  absl_testing::StatusIs(absl::StatusCode::kUnavailable),
+                  absl_testing::StatusIs(absl::StatusCode::kUnavailable)));
 }
 
 TEST_F(ClientServerTest, RecoverableClientDies_NoErrorPropagated) {
@@ -1651,7 +1575,8 @@ TEST_P(RecoverableTest,
   }
   // If node 0 restarts before joining the barrier, the barrier should be
   // cancelled.
-  EXPECT_THAT(status_0_before_restart, StatusIs(absl::StatusCode::kCancelled));
+  EXPECT_THAT(status_0_before_restart,
+              absl_testing::StatusIs(absl::StatusCode::kCancelled));
   TF_EXPECT_OK(status_0_after_restart);
   TF_EXPECT_OK(status_0_shutdown);
   TF_EXPECT_OK(status_1);

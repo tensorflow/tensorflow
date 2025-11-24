@@ -25,7 +25,6 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
-#include "absl/strings/string_view.h"
 #include "absl/time/time.h"
 #include "xla/hlo/analysis/hlo_dataflow_analysis.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -35,6 +34,7 @@ limitations under the License.
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/gpu/backend_configs.pb.h"
+#include "xla/service/gpu/flag_utils.h"
 #include "xla/service/gpu/model/collective_interpolator.h"
 #include "xla/service/gpu/model/gpu_hlo_cost_analysis.h"
 #include "xla/service/gpu/model/gpu_performance_model.h"
@@ -54,8 +54,36 @@ limitations under the License.
 
 namespace xla {
 namespace gpu {
-
 namespace {
+
+using ::mlir::MLIRContext;
+
+bool IsSupportedCollectiveOp(const HloInstruction& instr) {
+  return HloPredicateIsOp<HloOpcode::kAllReduceStart, HloOpcode::kAllReduce,
+                          HloOpcode::kReduceScatter, HloOpcode::kAllGatherStart,
+                          HloOpcode::kAllGather>(&instr);
+}
+
+bool IsHostOffloaded(const HloInstruction& instr) {
+  auto backend_config = instr.backend_config<GpuBackendConfig>();
+  return backend_config.ok() &&
+         backend_config->device_type() == DEVICE_TYPE_HOST;
+}
+
+bool HasOnlySupportedCollectives(const HloModule& module) {
+  for (const HloComputation* comp : module.computations()) {
+    for (const HloInstruction* instr : comp->instructions()) {
+      if (IsHostOffloaded(*instr)) {
+        return false;
+      }
+      if (hlo_query::IsCollectiveCommunicationOp(instr->opcode()) &&
+          !IsSupportedCollectiveOp(*instr)) {
+        return false;
+      }
+    }
+  }
+  return true;
+}
 
 absl::StatusOr<HloInstructionProfileList> ReadProfiles(
     const std::string& perf_table_path,
@@ -74,11 +102,11 @@ absl::StatusOr<HloInstructionProfileList> ReadProfiles(
   return profile.entries().at(key);
 }
 
-std::optional<absl::Duration> DCNCollectiveDuration(
-    int num_participating_hosts, absl::string_view mask,
+absl::StatusOr<absl::Duration> DCNCollectiveDuration(
+    int num_participating_hosts, int num_communicators,
     const HloInstruction& instr, const se::DeviceDescription& gpu_device_info,
     const SolGPUCostModel::Config& sol_flags,
-    const GpuHloCostAnalysis& analysis) {
+    const GpuHloCostAnalysis& analysis, MLIRContext* mlir_context) {
   SolGPUCostModel sol_model(sol_flags);
   const int64_t msg_size = analysis.BytesTransferred(instr);
 
@@ -86,51 +114,67 @@ std::optional<absl::Duration> DCNCollectiveDuration(
   // (more granularly) model bytes accessed (input + output) for collectives.
   absl::Duration result = absl::Seconds(1.0f * analysis.bytes_accessed(instr) /
                                         gpu_device_info.memory_bandwidth());
-  GpuPerformanceModelOwning gpu_performance_model{gpu_device_info};
+  GpuPerformanceModelOwning gpu_performance_model{gpu_device_info,
+                                                  mlir_context};
   switch (instr.opcode()) {
     case HloOpcode::kAllGather:
     case HloOpcode::kAllGatherStart: {
-      result += sol_model.RingLatency(
-          msg_size, num_participating_hosts,
-          SolGPUCostModel::CollectiveType::kAllGather, mask);
+      TF_ASSIGN_OR_RETURN(
+          absl::Duration runtime,
+          sol_model.RingLatency(msg_size, num_participating_hosts,
+                                SolGPUCostModel::CollectiveType::kAllGather,
+                                num_communicators));
+      result += runtime;
       break;
     }
     case HloOpcode::kAllReduce:
     case HloOpcode::kAllReduceStart: {
-      result +=
-          gpu_performance_model.EstimateRunTimeForInstruction(&instr, &analysis)
-              .compute_time;
-      result += sol_model.RingLatency(
-          msg_size, num_participating_hosts,
-          SolGPUCostModel::CollectiveType::kAllReduce, mask);
+      result += gpu_performance_model.Get()
+                    .EstimateRunTimeForInstruction(&instr, &analysis)
+                    .compute_time;
+      TF_ASSIGN_OR_RETURN(
+          absl::Duration runtime,
+          sol_model.RingLatency(msg_size, num_participating_hosts,
+                                SolGPUCostModel::CollectiveType::kAllReduce,
+                                num_communicators));
+      result += runtime;
       break;
     }
     case HloOpcode::kReduceScatter: {
-      result +=
-          gpu_performance_model.EstimateRunTimeForInstruction(&instr, &analysis)
-              .compute_time;
-      result += sol_model.RingLatency(
-          msg_size, num_participating_hosts,
-          SolGPUCostModel::CollectiveType::kReduceScatter, mask);
+      result += gpu_performance_model.Get()
+                    .EstimateRunTimeForInstruction(&instr, &analysis)
+                    .compute_time;
+      TF_ASSIGN_OR_RETURN(
+          absl::Duration runtime,
+          sol_model.RingLatency(msg_size, num_participating_hosts,
+                                SolGPUCostModel::CollectiveType::kReduceScatter,
+                                num_communicators));
+      result += runtime;
       break;
     }
     case HloOpcode::kAsyncStart: {
       if (instr.async_wrapped_opcode() == HloOpcode::kReduceScatter) {
-        result += gpu_performance_model
+        result += gpu_performance_model.Get()
                       .EstimateRunTimeForInstruction(
                           instr.async_wrapped_instruction(), &analysis)
                       .compute_time;
-        result += sol_model.RingLatency(
-            msg_size, num_participating_hosts,
-            SolGPUCostModel::CollectiveType::kReduceScatter, mask);
+        TF_ASSIGN_OR_RETURN(absl::Duration runtime,
+                            sol_model.RingLatency(
+                                msg_size, num_participating_hosts,
+                                SolGPUCostModel::CollectiveType::kReduceScatter,
+                                num_communicators));
+        result += runtime;
       }
       break;
     }
     case HloOpcode::kRecv:
     case HloOpcode::kSend: {
-      result += sol_model.RingLatency(
-          msg_size, num_participating_hosts,
-          SolGPUCostModel::CollectiveType::kSendRecv, mask);
+      TF_ASSIGN_OR_RETURN(
+          absl::Duration runtime,
+          sol_model.RingLatency(msg_size, num_participating_hosts,
+                                SolGPUCostModel::CollectiveType::kSendRecv,
+                                num_communicators));
+      result += runtime;
       break;
     }
     // note: AllToAll is not yet supported in XLA
@@ -144,50 +188,55 @@ std::optional<absl::Duration> DCNCollectiveDuration(
   return result;
 }
 
-std::optional<absl::Duration> DispatchEstimation(
+int64_t GetPartitionSize(const HloInstruction& instr,
+                         const SolGPUCostModel::Config& sol_flags) {
+  if (sol_flags.partition_size > 0) {
+    return sol_flags.partition_size;
+  }
+  if (instr.GetModule()->config().partition_size() > 0) {
+    return instr.GetModule()->config().partition_size();
+  }
+  return sol_flags.gpus_per_node;
+}
+
+absl::StatusOr<absl::Duration> DispatchEstimation(
     const absl::StatusOr<GPUCommunicationType>& communication_type,
     const HloCollectiveInstruction& instr,
     const se::DeviceDescription& gpu_device_info,
     const SolGPUCostModel::Config& sol_flags,
     const GpuHloCostAnalysis& analysis,
-    const CollectiveInterpolator* collective_interpolator) {
-  if (!communication_type.ok()) {
-    VLOG(1) << "Failed to determine communication type: "
-            << communication_type.status();
-    return std::nullopt;
-  }
+    const CollectiveInterpolator* collective_interpolator,
+    MLIRContext* mlir_context) {
+  TF_RETURN_IF_ERROR(communication_type.status());
 
   GPUCommunicationType comm = *communication_type;
-  auto num_groups_and_devices = GetReplicaGroupCountAndSize(&instr);
-  if (!num_groups_and_devices.ok()) {
-    VLOG(1) << "Failed to determine a number of devices participating in "
-               "the collective: "
-            << instr.ToString();
-    return std::nullopt;
-  }
+  TF_ASSIGN_OR_RETURN(auto num_groups_and_devices,
+                      GetReplicaGroupCountAndSize(&instr));
+  int64_t partition_size = GetPartitionSize(instr, sol_flags);
 
   switch (comm) {
-    case GPUCommunicationType::RAIL_ALIGNED: {
+    case GPUCommunicationType::MULTI_HOST_WORLD_LEVEL: {
       return DCNCollectiveDuration(
-          (*num_groups_and_devices)->second / sol_flags.gpus_per_node,
-          SolGPUCostModel::kSplitMaskWorldLevel, instr, gpu_device_info,
-          sol_flags, analysis);
+          num_groups_and_devices->second / partition_size,
+          /*num_communicators=*/num_groups_and_devices->first, instr,
+          gpu_device_info, sol_flags, analysis, mlir_context);
     }
-    case GPUCommunicationType::NON_RAIL_ALIGNED: {
-      return DCNCollectiveDuration((*num_groups_and_devices)->second,
-                                   SolGPUCostModel::kSplitMaskNonRailAligned,
-                                   instr, gpu_device_info, sol_flags, analysis);
+    case GPUCommunicationType::MULTI_HOST_NON_WORLD_LEVEL: {
+      return DCNCollectiveDuration(
+          num_groups_and_devices->second,
+          /*num_communicators=*/num_groups_and_devices->first, instr,
+          gpu_device_info, sol_flags, analysis, mlir_context);
     }
-    case GPUCommunicationType::SINGLE_HOST: {
+    case GPUCommunicationType::SINGLE_PARTITION: {
       if (collective_interpolator == nullptr) {
-        return GpuPerformanceModelBase::kNcclKernelLaunchOverhead;
+        return absl::InvalidArgumentError(
+            "Collective interpolator is required for single partition "
+            "collectives");
       }
       return collective_interpolator->EstimatedRuntime(instr);
     }
     case xla::gpu::GPUCommunicationType::UNDEFINED:
-      LOG(WARNING) << "Cannot determine communication type: "
-                   << instr.ToString();
-      return std::nullopt;
+      return absl::InvalidArgumentError("Cannot determine communication type");
   }
 }
 
@@ -225,10 +274,11 @@ absl::StatusOr<std::unique_ptr<MatmulInterpolator>> CreateMatmulInterpolator(
 
 }  // namespace
 
-/*static*/ absl::Duration SolLatencyEstimator::ComputeCollectiveTime(
+/*static*/ absl::StatusOr<absl::Duration>
+SolLatencyEstimator::ComputeCollectiveTime(
     const HloInstruction& instr, const se::DeviceDescription& gpu_device_info,
     HloCostAnalysis::ShapeSizeFunction shape_size_fn,
-    const SolGPUCostModel::Config& sol_flags,
+    const SolGPUCostModel::Config& sol_flags, MLIRContext* mlir_context,
     const CollectiveInterpolator* collective_interpolator) {
   GpuHloCostAnalysis analysis(
       GpuHloCostAnalysis::Options{shape_size_fn,
@@ -244,34 +294,42 @@ absl::StatusOr<std::unique_ptr<MatmulInterpolator>> CreateMatmulInterpolator(
   }
 
   return SolLatencyEstimator::ComputeCollectiveTime(
-      instr, gpu_device_info, shape_size_fn, sol_flags, analysis,
+      instr, gpu_device_info, shape_size_fn, sol_flags, analysis, mlir_context,
       collective_interpolator);
 }
 
-/*static*/ absl::Duration SolLatencyEstimator::ComputeCollectiveTime(
+/*static*/ absl::StatusOr<absl::Duration>
+SolLatencyEstimator::ComputeCollectiveTime(
     const HloInstruction& instr, const se::DeviceDescription& gpu_device_info,
     HloCostAnalysis::ShapeSizeFunction shape_size_fn,
     const SolGPUCostModel::Config& sol_flags,
-    const GpuHloCostAnalysis& analysis,
+    const GpuHloCostAnalysis& analysis, MLIRContext* mlir_context,
     const CollectiveInterpolator* collective_interpolator) {
   if (HloDataflowAnalysis::IsAsynchronousOperationDone(instr.opcode())) {
     VLOG(8) << "Returning 0 cost for async done op " << instr.name();
     return absl::ZeroDuration();
   }
 
-  if (auto* collective_instr = DynCast<HloCollectiveInstruction>(
+  const HloCollectiveInstruction* collective_instr =
+      DynCast<HloCollectiveInstruction>(
           instr.IsAsynchronous() ? instr.async_wrapped_instruction() : &instr);
-      collective_instr != nullptr) {
-    absl::StatusOr<GPUCommunicationType> communication_type =
-        CommunicationType(sol_flags.gpus_per_node, *collective_instr,
-                          gpu_device_info.gpu_compute_capability());
-    return DispatchEstimation(communication_type, *collective_instr,
-                              gpu_device_info, sol_flags, analysis,
-                              collective_interpolator)
-        .value_or(absl::ZeroDuration());
+
+  if (collective_instr == nullptr) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("Unsupported collective instruction: ", instr.ToString()));
   }
 
-  return absl::ZeroDuration();
+  int64_t partition_size = GetPartitionSize(*collective_instr, sol_flags);
+  TF_ASSIGN_OR_RETURN(
+      GPUCommunicationType communication_type,
+      CommunicationType(partition_size, *collective_instr,
+                        gpu_device_info.gpu_compute_capability()));
+  TF_ASSIGN_OR_RETURN(
+      absl::Duration result,
+      DispatchEstimation(communication_type, *collective_instr, gpu_device_info,
+                         sol_flags, analysis, collective_interpolator,
+                         mlir_context));
+  return result;
 }
 
 /*static*/ absl::StatusOr<std::unique_ptr<SolLatencyEstimator>>
@@ -280,7 +338,7 @@ SolLatencyEstimator::Create(
     std::unique_ptr<LatencyEstimator> latency_estimator,
     const se::DeviceDescription& gpu_info,
     HloCostAnalysis::ShapeSizeFunction shape_size_function,
-    const HloComputation* computation,
+    const HloComputation* computation, MLIRContext* mlir_context,
     std::unique_ptr<GpuHloCostAnalysis> cost_analysis) {
   if (cost_analysis == nullptr) {
     cost_analysis =
@@ -305,7 +363,29 @@ SolLatencyEstimator::Create(
   return std::unique_ptr<SolLatencyEstimator>(new SolLatencyEstimator(
       config, std::move(latency_estimator), gpu_info, std::move(cost_analysis),
       shape_size_function, sol_config, std::move(collective_interpolator),
-      std::move(matmul_interpolator)));
+      std::move(matmul_interpolator), mlir_context));
+}
+
+/*static*/ bool SolLatencyEstimator::IsSupportedForModule(
+    const HloModule& module, const se::DeviceDescription& gpu_device_info) {
+  bool is_supported_device =
+      gpu_device_info.cuda_compute_capability().IsHopper() ||
+      gpu_device_info.cuda_compute_capability().IsBlackwell();
+  if (IsPassEnabledAtOptimizationEffort<LatencyHidingScheduler>(module)) {
+    // If the user enabled opt effort we turn the estimator on if we're
+    // compiling for Hopper/Blackwell.
+    return is_supported_device;
+  }
+  // If this flag is on by default then we provide users an escape hatch in case
+  // they find the new cost model less profitable than T-shirt sizes.
+  if (!module.config()
+           .debug_options()
+           .xla_gpu_enable_analytical_sol_latency_estimator()) {
+    return false;
+  }
+  // Otherwise we are more conservative and we turn it on only for
+  // Hopper/Blackwell and if `module` contains only supported collectives.
+  return is_supported_device && HasOnlySupportedCollectives(module);
 }
 
 LatencyEstimator::TimeCost SolLatencyEstimator::GetLatencyBetween(
@@ -313,44 +393,72 @@ LatencyEstimator::TimeCost SolLatencyEstimator::GetLatencyBetween(
   const HloOpcode from_op = from.GetInstr().opcode();
   if (!config_.schedule_send_recvs &&
       (from_op == HloOpcode::kSend || from_op == HloOpcode::kRecv)) {
+    VLOG(10) << "GetLatencyBetween: Returning kLowLatency for Send/Recv op "
+             << from.GetInstr().name();
     return kLowLatency;
   }
 
-  if (IsAsyncPair(from, target)) {
-    double coll_time = absl::ToDoubleMicroseconds(ComputeCollectiveTime(
-        from.GetInstr(), gpu_info_, shape_size_function_, sol_flags_,
-        *cost_analysis_, collective_interpolator_.get()));
-    VLOG(10) << "[SoL] Analytical estimator calculated latency between "
-             << from.GetInstr().name() << " and " << target.GetInstr().name()
-             << " to be: " << coll_time << " us.";
-    return coll_time;
+  if (!IsAsyncPair(from, target) && !IsSupportedCollectiveOp(from.GetInstr())) {
+    TimeCost latency = latency_estimator_->GetLatencyBetween(from, target);
+    VLOG(10)
+        << "GetLatencyBetween: Not an async pair or unsupported collective "
+        << from.GetInstr().name() << ", returning latency from wrapped "
+        << "estimator: " << latency;
+    return latency;
   }
-  return latency_estimator_->GetLatencyBetween(from, target);
+
+  absl::StatusOr<absl::Duration> coll_time = ComputeCollectiveTime(
+      from.GetInstr(), gpu_info_, shape_size_function_, sol_flags_,
+      *cost_analysis_, mlir_context_, collective_interpolator_.get());
+  if (!coll_time.ok()) {
+    VLOG(1) << "Failed to compute collective time: " << coll_time.status()
+            << " for " << from.GetInstr().name();
+    TimeCost latency = latency_estimator_->GetLatencyBetween(from, target);
+    VLOG(10) << "GetLatencyBetween: Fallback to wrapped estimator due to "
+                "ComputeCollectiveTime failure for "
+             << from.GetInstr().name() << ", returning latency: " << latency;
+    return latency;
+  }
+  TimeCost latency = absl::ToDoubleMicroseconds(*coll_time);
+  VLOG(10) << "GetLatencyBetween: Computed collective time for "
+           << from.GetInstr().name() << ": " << latency << " us";
+  return latency;
 }
 
 LatencyEstimator::TimeCost SolLatencyEstimator::NodeCost(
     const HloInstruction* instr) const {
   if (hlo_query::IsAsyncCollectiveStartOp(instr, /*include_send_recv=*/true) ||
       hlo_query::IsAsyncCollectiveDoneOp(instr, /*include_send_recv=*/true)) {
+    VLOG(10) << "NodeCost: Returning kLowCost for async start/done op "
+             << instr->name();
     return kLowCost;
   }
 
   if (std::optional<absl::Duration> matmul_duration =
           matmul_interpolator_->EstimatedRuntime(*instr);
       matmul_duration.has_value()) {
-    return absl::ToDoubleMicroseconds(*matmul_duration);
+    TimeCost cost = absl::ToDoubleMicroseconds(*matmul_duration);
+    VLOG(10) << "NodeCost: Matmul cost from matmul_interpolator for "
+             << instr->name() << ": " << cost << " us";
+    return cost;
   }
 
   LatencyEstimator::TimeCost cost_in_us;
-  if (instr->opcode() == HloOpcode::kFusion &&
-      (instr->IsLoopFusion() || instr->IsInputFusion())) {
+  // Custom fusion ops are hard to estimate, so we only use the performance
+  // model for loop and input fusions. Otherwise we return a small cost to make
+  // sure we can achieve overlap (even at the cost of overextension).
+  if (instr->IsLoopFusion() || instr->IsInputFusion()) {
     absl::Duration total_estimated_time =
-        gpu_performance_model_
+        gpu_performance_model_.Get()
             .EstimateRunTimeForInstruction(instr, &*cost_analysis_)
             .exec_time;
     cost_in_us = absl::ToDoubleMicroseconds(total_estimated_time);
+    VLOG(10) << "NodeCost: Fusion cost from gpu_performance_model for "
+             << instr->name() << ": " << cost_in_us << " us";
   } else {
-    cost_in_us = 0.01 * kLowCost;
+    cost_in_us = 0.01 * latency_estimator_->NodeCost(instr);
+    VLOG(10) << "NodeCost: Fallback cost for " << instr->name() << ": "
+             << cost_in_us << " us";
   }
   VLOG(10) << "Analytical estimator calculated cost for: " << instr->name()
            << ". Cost: " << cost_in_us;
@@ -365,16 +473,18 @@ SolLatencyEstimator::SolLatencyEstimator(
     const HloCostAnalysis::ShapeSizeFunction shape_size_function,
     const SolGPUCostModel::Config sol_flags,
     std::unique_ptr<CollectiveInterpolator> collective_interpolator,
-    std::unique_ptr<MatmulInterpolator> matmul_interpolator)
+    std::unique_ptr<MatmulInterpolator> matmul_interpolator,
+    MLIRContext* mlir_context)
     : config_(config),
       gpu_info_(gpu_info),
-      gpu_performance_model_(gpu_info),
+      gpu_performance_model_(gpu_info, mlir_context),
       cost_analysis_(std::move(cost_analysis)),
       latency_estimator_(std::move(latency_estimator)),
       shape_size_function_(shape_size_function),
       sol_flags_(sol_flags),
       collective_interpolator_(std::move(collective_interpolator)),
-      matmul_interpolator_(std::move(matmul_interpolator)) {}
+      matmul_interpolator_(std::move(matmul_interpolator)),
+      mlir_context_(mlir_context) {}
 
 }  // namespace gpu
 }  // namespace xla

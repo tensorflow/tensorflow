@@ -36,7 +36,6 @@ limitations under the License.
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
-#include "xla/hlo/analysis/indexed_array_analysis.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
@@ -76,7 +75,6 @@ limitations under the License.
 #include "xla/hlo/transforms/expanders/stable_sort_expander.h"
 #include "xla/hlo/transforms/expanders/stochastic_convert_decomposer.h"
 #include "xla/hlo/transforms/host_offload_legalize.h"
-#include "xla/hlo/transforms/host_offloader.h"
 #include "xla/hlo/transforms/host_offloading_prepare.h"
 #include "xla/hlo/transforms/literal_canonicalizer.h"
 #include "xla/hlo/transforms/memory_space_propagation.h"
@@ -144,7 +142,7 @@ static ProviderMap& GetProviderMap() {
 
 /*static*/ void OptProvider::RegisterForPlatform(
     std::string platform, std::unique_ptr<OptProvider> translate_provider) {
-  absl::MutexLock l(&provider_mu);
+  absl::MutexLock l(provider_mu);
   CHECK(!GetProviderMap().contains(platform));
   absl::StatusOr<std::string> canonical_name =
       xla::PlatformUtil::CanonicalPlatformName(platform);
@@ -154,7 +152,7 @@ static ProviderMap& GetProviderMap() {
 
 /*static*/ absl::StatusOr<OptProvider*> OptProvider::GetProviderForPlatform(
     std::string platform) {
-  absl::MutexLock l(&provider_mu);
+  absl::MutexLock l(provider_mu);
 
   TF_ASSIGN_OR_RETURN(std::string canonical_name,
                       xla::PlatformUtil::CanonicalPlatformName(platform));
@@ -227,9 +225,6 @@ std::string OptProvider::GetRegisteredPassNamesHelper(
 void OptProvider::RegisterAllHardwareIndependentPasses() {
   // Dummy pass configs necessary for pass registration.
   FloatSupport* bfloat16_support = new FloatSupport(BF16, F32);
-  auto size_fn = [](const BufferValue& buffer) {
-    return ShapeUtil::ByteSizeOf(buffer.shape(), /*pointer_size=*/8);
-  };
   LiteralPool* literal_pool = new LiteralPool();
 
   // Hardware-independent HLO passes
@@ -294,14 +289,11 @@ void OptProvider::RegisterAllHardwareIndependentPasses() {
   RegisterPass<HloDescheduler>();
   RegisterPass<HloElementTypeConverter>(/*eliminate_type=*/BF16,
                                         /*replace_with_type=*/F32);
-  RegisterPass<HloMemoryScheduler>(/*size_fn*/ size_fn);
   RegisterPass<HloTrivialScheduler>();
   RegisterPass<HostMemoryTransferAsyncifier>(/*host_memory_space_color=*/5);
   RegisterPass<HostOffloadLegalize>();
-  RegisterPass<HostOffloader>();
   RegisterPass<HostOffloadingPrepare>(
       /*rewrite=*/HostOffloadingPrepare::Rewrite::kElideMoveToHost);
-  RegisterPass<IndexedArrayAnalysisPrinterPass>();
   RegisterPass<InfeedTokenPropagation>();
   RegisterPass<InstructionHoister>();
   RegisterPass<LiteralCanonicalizer>(

@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "absl/types/span.h"
 #include "xla/runtime/device_id.h"
+#include "xla/tsl/distributed_runtime/coordination/coordination_service.h"
 
 namespace xla {
 
@@ -28,6 +29,8 @@ using GlobalDeviceId = GlobalDeviceId;
 
 // Returns a comma-separated string of global device IDs.
 std::string GlobalDeviceIdsToString(absl::Span<GlobalDeviceId const> ids);
+
+using ::tsl::IncarnationId;  // NOLINT(misc-unused-using-decls)
 
 }  // namespace xla
 

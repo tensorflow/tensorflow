@@ -24,6 +24,13 @@ message RocmComputeCapabilityProto {
   string gcn_arch_name = 1;
 }
 
+message GpuComputeCapabilityProto {
+  oneof compute_capability {
+    CudaComputeCapabilityProto cuda_compute_capability = 1;
+    RocmComputeCapabilityProto rocm_compute_capability = 2;
+  }
+}
+
 message GpuDeviceInfoProto {
   int32 threads_per_block_limit = 1;
   int32 threads_per_warp = 2;

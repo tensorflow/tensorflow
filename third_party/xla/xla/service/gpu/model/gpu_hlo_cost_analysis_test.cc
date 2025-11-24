@@ -297,6 +297,34 @@ ENTRY e {
   EXPECT_EQ(analysis_.IrSize(*root), 4);
 }
 
+TEST_F(GpuHloCostAnalysisTest, ElementwiseBitcast) {
+  absl::string_view hlo_string = R"(
+HloModule m
+
+f {
+  p0 = s8[10] parameter(0)
+  negate = s8[10] negate(p0)
+  bitcast = u8[10] bitcast(p0)
+  ROOT result = (s8[10], u8[10]) tuple(negate, bitcast)
+}
+
+ENTRY e {
+  param0 = s8[10] parameter(0)
+  ROOT fusion = (s8[10], u8[10]) fusion(param0), kind=kLoop, calls=f
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  ASSERT_IS_OK(module->entry_computation()->Accept(&analysis_));
+
+  // There are 2 element-wise accesses from the root. One of them is a
+  // elementwise bitcast, which needs to be detected separately as in general
+  // bitcasts are not elementwise.
+  EXPECT_EQ(analysis_.IrSize(*root->fused_parameter(0)), 1);
+  EXPECT_EQ(analysis_.IrSize(*root), 4);
+}
+
 TEST_F(GpuHloCostAnalysisTest, MixedUsers) {
   absl::string_view hlo_string = R"(
 HloModule m
@@ -639,6 +667,40 @@ ENTRY entry_computation {
                                                    2 * init_bytes_accessed +
                                                    output_bytes_accessed);
   EXPECT_EQ(analysis_.flop_count(*reduce), 32 * 39 * 6);
+}
+
+TEST_F(GpuHloCostAnalysisTest, CollectivePermute) {
+  absl::string_view hlo_string = R"(
+HloModule m, num_partitions=2
+
+ENTRY entry {
+  p0 = f32[4096] parameter(0)
+  ROOT cp = f32[4096] collective-permute(p0), source_target_pairs={{0,1},{1,0}}
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_IS_OK(module->entry_computation()->Accept(&analysis_));
+  const HloInstruction* cp = module->entry_computation()->root_instruction();
+  EXPECT_EQ(analysis_.BytesTransferred(*cp), 4096 * 4);
+}
+
+TEST_F(GpuHloCostAnalysisTest, CollectivePermuteStart) {
+  absl::string_view hlo_string = R"(
+HloModule m, num_partitions=2
+
+ENTRY entry {
+  p0 = f32[4096] parameter(0)
+  cps = (f32[4096], f32[4096]) collective-permute-start(p0), source_target_pairs={{0,1},{1,0}}
+  ROOT r = f32[4096] collective-permute-done(cps)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_IS_OK(module->entry_computation()->Accept(&analysis_));
+  const HloInstruction* cps =
+      module->entry_computation()->root_instruction()->operand(0);
+  EXPECT_EQ(analysis_.BytesTransferred(*cps), 4096 * 4);
 }
 
 TEST_F(GpuHloCostAnalysisTest, AsyncAllReduce) {

@@ -54,29 +54,28 @@ constexpr const char VARIABLES_MODULE[] =
     "tensorflow.python.ops.variables";
 constexpr const char CORE_TYPES_MODULE[] =
     "tensorflow.python.types.core";
-string PyObjectToString(PyObject* o);
+std::string PyObjectToString(PyObject* o);
 }  // namespace
 
-std::unordered_map<string, PyObject*>* RegisteredPyObjectMap() {
-  static auto* m = new std::unordered_map<string, PyObject*>();
+std::unordered_map<std::string, PyObject*>* RegisteredPyObjectMap() {
+  static auto* m = new std::unordered_map<std::string, PyObject*>();
   return m;
 }
 
-PyObject* GetRegisteredPyObject(const string& name) {
+PyObject* GetRegisteredPyObject(const std::string& name) {
   const auto* m = RegisteredPyObjectMap();
   auto it = m->find(name);
   if (it == m->end()) {
-    PyErr_SetString(PyExc_TypeError,
-                    tensorflow::strings::StrCat("No object with name ", name,
-                                                " has been registered.")
-                        .c_str());
+    PyErr_SetString(PyExc_TypeError, absl::StrCat("No object with name ", name,
+                                                  " has been registered.")
+                                         .c_str());
     return nullptr;
   }
   return it->second;
 }
 
 PyObject* RegisterPyObject(PyObject* name, PyObject* value) {
-  string key;
+  std::string key;
   if (PyBytes_Check(name)) {
     key = PyBytes_AsString(name);
 #if PY_MAJOR_VERSION >= 3
@@ -84,18 +83,17 @@ PyObject* RegisterPyObject(PyObject* name, PyObject* value) {
     key = PyUnicode_AsUTF8(name);
 #endif
   } else {
-    PyErr_SetString(PyExc_TypeError, tensorflow::strings::StrCat(
-                                         "Expected name to be a str, got",
-                                         PyObjectToString(name))
-                                         .c_str());
+    PyErr_SetString(
+        PyExc_TypeError,
+        absl::StrCat("Expected name to be a str, got", PyObjectToString(name))
+            .c_str());
     return nullptr;
   }
 
   auto* m = RegisteredPyObjectMap();
   if (m->find(key) != m->end()) {
-    PyErr_SetString(PyExc_TypeError, tensorflow::strings::StrCat(
-                                         "Value already registered for ", key)
-                                         .c_str());
+    PyErr_SetString(PyExc_TypeError,
+                    absl::StrCat("Value already registered for ", key).c_str());
     return nullptr;
   }
 
@@ -138,7 +136,7 @@ absl::string_view GetClassName(PyObject* o) {
   return name;
 }
 
-string PyObjectToString(PyObject* o) {
+std::string PyObjectToString(PyObject* o) {
   if (o == nullptr) {
     return "<null object>";
   }
@@ -147,10 +145,10 @@ string PyObjectToString(PyObject* o) {
 #if PY_MAJOR_VERSION < 3
     string s(PyString_AS_STRING(str));
 #else
-    string s(PyUnicode_AsUTF8(str));
+    std::string s(PyUnicode_AsUTF8(str));
 #endif
     Py_DECREF(str);
-    return tensorflow::strings::StrCat("type=", GetClassName(o), " str=", s);
+    return absl::StrCat("type=", GetClassName(o), " str=", s);
   } else {
     return "<failed to execute str() on object>";
   }
@@ -789,8 +787,8 @@ bool FlattenHelper(
 
 // Sets error using keys of 'dict1' and 'dict2'.
 // 'dict1' and 'dict2' are assumed to be Python dictionaries.
-void SetDifferentKeysError(PyObject* dict1, PyObject* dict2, string* error_msg,
-                           bool* is_type_error) {
+void SetDifferentKeysError(PyObject* dict1, PyObject* dict2,
+                           std::string* error_msg, bool* is_type_error) {
   Safe_PyObjectPtr k1(MappingKeys(dict1));
   if (PyErr_Occurred() || k1.get() == nullptr) {
     *error_msg =
@@ -806,7 +804,7 @@ void SetDifferentKeysError(PyObject* dict1, PyObject* dict2, string* error_msg,
     return;
   }
   *is_type_error = false;
-  *error_msg = tensorflow::strings::StrCat(
+  *error_msg = absl::StrCat(
       "The two dictionaries don't have the same set of keys. "
       "First structure has keys ",
       PyObjectToString(k1.get()), ", while second structure has keys ",
@@ -824,7 +822,7 @@ void SetDifferentKeysError(PyObject* dict1, PyObject* dict2, string* error_msg,
 // with appropriate error and sets `is_type_error` to true iff
 // the error to be raised should be TypeError.
 bool AssertSameStructureHelper(
-    PyObject* o1, PyObject* o2, bool check_types, string* error_msg,
+    PyObject* o1, PyObject* o2, bool check_types, std::string* error_msg,
     bool* is_type_error, const std::function<int(PyObject*)>& is_nested_helper,
     const std::function<ValueIteratorPtr(PyObject*)>& value_iterator_getter,
     bool check_composite_tensor_type_spec) {
@@ -834,8 +832,9 @@ bool AssertSameStructureHelper(
   const bool is_nested2 = is_nested_helper(o2);
   if (PyErr_Occurred()) return false;
   if (is_nested1 != is_nested2) {
-    string seq_str = is_nested1 ? PyObjectToString(o1) : PyObjectToString(o2);
-    string non_seq_str =
+    std::string seq_str =
+        is_nested1 ? PyObjectToString(o1) : PyObjectToString(o2);
+    std::string non_seq_str =
         is_nested1 ? PyObjectToString(o2) : PyObjectToString(o1);
     *is_type_error = false;
     *error_msg = tensorflow::strings::StrCat(
@@ -987,10 +986,9 @@ bool AssertSameStructureHelper(
     }
     if (struct_compatible.get() == Py_None) {
       *is_type_error = false;
-      *error_msg = tensorflow::strings::StrCat(
-          "Incompatible CompositeTensor TypeSpecs: ",
-          PyObjectToString(type_spec_1), " vs. ",
-          PyObjectToString(type_spec_2));
+      *error_msg = absl::StrCat("Incompatible CompositeTensor TypeSpecs: ",
+                                PyObjectToString(type_spec_1), " vs. ",
+                                PyObjectToString(type_spec_2));
       return true;
     }
   }
@@ -1203,7 +1201,7 @@ PyObject* AssertSameStructure(PyObject* o1, PyObject* o2, bool check_types,
   const std::function<ValueIteratorPtr(PyObject*)>& get_value_iterator =
       expand_composites ? GetValueIteratorForComposite : GetValueIterator;
   const bool check_composite_tensor_type_spec = expand_composites;
-  string error_msg;
+  std::string error_msg;
   bool is_type_error = false;
   AssertSameStructureHelper(o1, o2, check_types, &error_msg, &is_type_error,
                             is_nested_helper, get_value_iterator,
@@ -1228,7 +1226,7 @@ PyObject* AssertSameStructure(PyObject* o1, PyObject* o2, bool check_types,
 
 PyObject* AssertSameStructureForData(PyObject* o1, PyObject* o2,
                                      bool check_types) {
-  string error_msg;
+  std::string error_msg;
   bool is_type_error = false;
   AssertSameStructureHelper(o1, o2, check_types, &error_msg, &is_type_error,
                             IsNestedForDataHelper, GetValueIterator, false);

@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 
 #include <cstdint>
-#include <memory>
 #include <optional>
 #include <string>
 
@@ -32,7 +31,6 @@ limitations under the License.
 #include "mlir/IR/TypeUtilities.h"
 #include "mlir/IR/Value.h"
 #include "mlir/IR/Visitors.h"
-#include "mlir/Pass/Pass.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/LogicalResult.h"
 #include "xla/python/ifrt/ir/constants.h"
@@ -41,10 +39,10 @@ limitations under the License.
 
 namespace xla::ifrt {
 
-namespace {
-
 #define GEN_PASS_DEF_SPMDEXPANSIONPASS
 #include "xla/python/ifrt/ir/transforms/passes.h.inc"
+
+namespace {
 
 // Returns FuncOps called by `op`.
 std::optional<llvm::SmallVector<mlir::func::FuncOp>> MaybeFindFunctions(
@@ -107,11 +105,15 @@ TopologicalIterator::TopologicalIterator(mlir::func::FuncOp main_func)
 }
 
 mlir::Operation* TopologicalIterator::next() {
-  if (!hasNext()) return nullptr;
+  if (!hasNext()) {
+    return nullptr;
+  }
 
   auto* op = ops_to_visit_.pop_back_val();
   auto* next_op = op->getNextNode();
-  if (next_op) ops_to_visit_.push_back(next_op);
+  if (next_op) {
+    ops_to_visit_.push_back(next_op);
+  }
 
   // If this is a function call op, push the first op of the function body so
   // that the function body is converted before the call site.
@@ -130,9 +132,11 @@ mlir::Operation* TopologicalIterator::next() {
 
   // If we have reached the end of a function body, remove the function from
   // our active set.
-  if (!next_op && !funcs_visited_in_call_stack_.empty())
-    if (auto func = op->getParentOfType<mlir::func::FuncOp>())
+  if (!next_op && !funcs_visited_in_call_stack_.empty()) {
+    if (auto func = op->getParentOfType<mlir::func::FuncOp>()) {
       funcs_visited_in_call_stack_.erase(func.getName());
+    }
+  }
 
   // If the op contains regions, push the first op of the region to stack.
   for (auto& region : op->getRegions()) {
@@ -218,7 +222,9 @@ mlir::LogicalResult UpdateFunctionWithLocalInputShapes(
     const int index = operand.getOperandNumber();
     auto arg_type =
         mlir::dyn_cast<mlir::RankedTensorType>(operand.get().getType());
-    if (!arg_type) continue;
+    if (!arg_type) {
+      continue;
+    }
 
     llvm::ArrayRef<int64_t> arg_local_shape = arg_type.getShape();
     mlir::RankedTensorType new_arg_type =
@@ -240,9 +246,10 @@ mlir::LogicalResult SpmdExpansionPass::spmdExpand(mlir::func::FuncOp func_op) {
         MaybeFindFunctions(op);
     if (funcs.has_value()) {
       for (auto& func : *funcs) {
-        if (mlir::failed(
-                UpdateFunctionWithLocalInputShapes(op->getOpOperands(), func)))
+        if (mlir::failed(UpdateFunctionWithLocalInputShapes(op->getOpOperands(),
+                                                            func))) {
           return mlir::failure();
+        }
       }
     }
 
@@ -302,9 +309,4 @@ void SpmdExpansionPass::runOnOperation() {
 }
 
 }  // namespace
-
-std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>> CreateSpmdExpansionPass() {
-  return std::make_unique<SpmdExpansionPass>();
-}
-
 }  // namespace xla::ifrt

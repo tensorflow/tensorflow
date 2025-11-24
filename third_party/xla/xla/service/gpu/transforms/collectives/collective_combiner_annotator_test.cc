@@ -15,33 +15,42 @@ limitations under the License.
 
 #include "xla/service/gpu/transforms/collectives/collective_combiner_annotator.h"
 
+#include <cstdint>
 #include <utility>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "mlir/IR/MLIRContext.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
+#include "xla/service/gpu/alias_info.h"
+#include "xla/service/hlo_module_config.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/statusor.h"
 
 namespace xla::gpu {
 namespace {
 
-using ::tsl::testing::IsOkAndHolds;
+using ::testing::Optional;
 
 class CollectiveCombinerAnnotatorTest : public HloHardwareIndependentTestBase {
  protected:
-  absl::StatusOr<bool> RunCollectiveCombinerAnnotator(HloModule* module) {
+  absl::StatusOr<bool> RunCollectiveCombinerAnnotator(
+      HloModule* module, int64_t device_memory_size = 2000000000) {
     int pointer_size = 4;
     stream_executor::DeviceDescription device_info;
-    device_info.set_device_memory_size(20000);
+    device_info.set_device_memory_size(device_memory_size);
+    GpuAliasInfo alias_info(device_info);
     return RunHloPass(
-        CollectiveCombinerAnnotator(std::move(device_info), pointer_size),
+        CollectiveCombinerAnnotator(std::move(device_info), &alias_info,
+                                    pointer_size, &mlir_context_),
         module);
   }
+  mlir::MLIRContext mlir_context_;
 };
 
 TEST_F(CollectiveCombinerAnnotatorTest, SynchronousCollectivesNoOverlap) {
@@ -64,7 +73,8 @@ TEST_F(CollectiveCombinerAnnotatorTest, SynchronousCollectivesNoOverlap) {
   )";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
-  EXPECT_THAT(RunCollectiveCombinerAnnotator(module.get()), IsOkAndHolds(true));
+  EXPECT_THAT(RunCollectiveCombinerAnnotator(module.get()),
+              absl_testing::IsOkAndHolds(true));
   const HloInstruction* ar0 =
       module->entry_computation()->root_instruction()->operand(0);
   EXPECT_TRUE(IsCombinableSyncCollective(*ar0));
@@ -103,7 +113,8 @@ TEST_F(CollectiveCombinerAnnotatorTest, SynchronousCollectivesWithOverlap) {
   )";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
-  EXPECT_THAT(RunCollectiveCombinerAnnotator(module.get()), IsOkAndHolds(true));
+  EXPECT_THAT(RunCollectiveCombinerAnnotator(module.get()),
+              absl_testing::IsOkAndHolds(true));
   const HloInstruction* ar0 =
       module->entry_computation()->root_instruction()->operand(0);
   EXPECT_FALSE(IsCombinableSyncCollective(*ar0));
@@ -153,6 +164,60 @@ TEST_F(CollectiveCombinerAnnotatorTest,
 
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
   EXPECT_TRUE(ContainsCombinableSyncCollective(*module));
+}
+
+TEST_F(CollectiveCombinerAnnotatorTest,
+       SuggestedCombinerThresholddFromDeviceInfo) {
+  absl::string_view kHloText = R"(
+    HloModule m
+
+    ENTRY ar {
+      p0 = f32[32,32] parameter(0)
+      p1 = f32[32,32] parameter(1)
+
+      ROOT _ = f32[32,32]{1,0} custom-call(p0, p1),
+        custom_call_target="__cublas$gemm"
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
+
+  // device size = 20000 bytes
+  // slop factor = 0.95
+  // peak memory = parameters + output = (2*32*32 + 32*32) * 4 bytes = 12288
+  // suggested thresholds = device size * slop factor - peak memory
+  EXPECT_THAT(RunCollectiveCombinerAnnotator(module.get(),
+                                             /*device_memory_size=*/20000),
+              absl_testing::IsOkAndHolds(true));
+  EXPECT_THAT(SuggestedCombinerThreshold(*module), Optional(6712L));
+}
+
+TEST_F(CollectiveCombinerAnnotatorTest,
+       SuggestedCombinerThresholddFromModuleConfig) {
+  absl::string_view kHloText = R"(
+    HloModule m
+
+    ENTRY ar {
+      p0 = f32[32,32] parameter(0)
+      p1 = f32[32,32] parameter(1)
+
+      ROOT _ = f32[32,32]{1,0} custom-call(p0, p1),
+        custom_call_target="__cublas$gemm"
+    }
+  )";
+
+  HloModuleConfig config = GetModuleConfigForTest();
+  config.set_device_memory_size(20000);
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kHloText, config));
+
+  // device size = 20000 bytes
+  // slop factor = 0.95
+  // peak memory = parameters + output = (2*32*32 + 32*32) * 4 bytes = 12288
+  // suggested thresholds = device size * slop factor - peak memory
+  EXPECT_THAT(RunCollectiveCombinerAnnotator(module.get()),
+              absl_testing::IsOkAndHolds(true));
+  EXPECT_THAT(SuggestedCombinerThreshold(*module), Optional(6712L));
 }
 
 }  // namespace

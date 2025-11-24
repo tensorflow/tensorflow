@@ -263,7 +263,6 @@ using tsl::internal::CachedDsoLoader::GetRocblasDsoHandle;
   __macro(rocblas_gemm_batched_ex_get_solutions_by_type) \
   __macro(rocblas_gemm_strided_batched_ex_get_solutions) \
   __macro(rocblas_is_managing_device_memory)             \
-  __macro(rocblas_is_user_managing_device_memory)        \
   __macro(rocblas_set_workspace)                         \
   __macro(rocblas_strsm_batched)                         \
   __macro(rocblas_dtrsm_batched)                         \

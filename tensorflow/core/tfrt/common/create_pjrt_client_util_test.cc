@@ -26,14 +26,13 @@ namespace tensorflow {
 namespace {
 
 using ::testing::HasSubstr;
-using ::tsl::testing::StatusIs;
 
 TEST(CreatePjRtClientTest, GetNotExistPjRtClientNotImplemented) {
-  EXPECT_THAT(
-      GetOrCreatePjRtClient(DEVICE_CPU),
-      StatusIs(error::NOT_FOUND,
-               HasSubstr(absl::StrCat("The PJRT client factory of `",
-                                      DEVICE_CPU, "` is not registered"))));
+  EXPECT_THAT(GetOrCreatePjRtClient(DEVICE_CPU),
+              absl_testing::StatusIs(
+                  error::NOT_FOUND,
+                  HasSubstr(absl::StrCat("The PJRT client factory of `",
+                                         DEVICE_CPU, "` is not registered"))));
 }
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM

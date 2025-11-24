@@ -35,9 +35,9 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/service/gpu/cudnn_support_utils.h"
-#include "xla/service/gpu/matmul_indexing_utils.h"
 #include "xla/service/gpu/triton_tiling_propagation.h"
 #include "xla/service/instruction_fusion.h"
+#include "xla/service/matmul_indexing_utils.h"
 #include "xla/status_macros.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
@@ -186,7 +186,43 @@ absl::Status FusionContext::PropagateDimensionOrdersToParameters(
   return absl::OkStatus();
 }
 
+absl::StatusOr<std::optional<int64_t>> GetBlockSize(
+    const HloInstruction& dot, TritonFusionAnalysis::Scope scope) {
+  CHECK(dot.opcode() == HloOpcode::kScaledDot);
+  CHECK(scope == TritonFusionAnalysis::Scope::LHS ||
+        scope == TritonFusionAnalysis::Scope::RHS);
+  int operand_number = scope == TritonFusionAnalysis::Scope::LHS ? 0 : 1;
+  const Shape& input = dot.operand(operand_number)->shape();
+  const Shape& scale = dot.operand(operand_number + 2)->shape();
+
+  if (!ShapeUtil::IsScalar(scale)) {
+    TF_ASSIGN_OR_RETURN(int dim_idx,
+                        ContractingDimensionIndex(dot, operand_number));
+    return input.dimensions(dim_idx) / scale.dimensions(dim_idx);
+  }
+  return std::nullopt;
+}
+
 }  // namespace triton_fusion
+
+namespace {
+
+int ScopeToScaledDotOperandIdx(TritonFusionAnalysis::Scope scope) {
+  switch (scope) {
+    case TritonFusionAnalysis::Scope::LHS:
+      return 0;
+    case TritonFusionAnalysis::Scope::RHS:
+      return 1;
+    case TritonFusionAnalysis::Scope::LHS_SCALE:
+      return 2;
+    case TritonFusionAnalysis::Scope::RHS_SCALE:
+      return 3;
+    default:
+      LOG(FATAL) << "Unsupported scope.";
+  }
+}
+
+}  // namespace
 
 absl::StatusOr<TritonFusionAnalysis> TritonFusionAnalysis::Execute(
     const HloComputation& computation, const int split_k) {
@@ -194,13 +230,17 @@ absl::StatusOr<TritonFusionAnalysis> TritonFusionAnalysis::Execute(
   TritonFusionAnalysis analysis;
   const HloInstruction* dot =
       hlo_query::GetFirstInstructionWithOpcode(computation, HloOpcode::kDot);
+  if (dot == nullptr) {
+    dot = hlo_query::GetFirstInstructionWithOpcode(computation,
+                                                   HloOpcode::kScaledDot);
+  }
   TF_RET_CHECK(dot != nullptr);
   TF_RETURN_IF_ERROR(analysis.ExecuteForDotFusion(*dot, split_k));
   return analysis;
 }
 
 absl::StatusOr<TritonFusionAnalysis> TritonFusionAnalysis::Execute(
-    const HloDotInstruction& dot, int split_k) {
+    const HloInstruction& dot, int split_k) {
   TritonFusionAnalysis analysis;
   TF_RETURN_IF_ERROR(analysis.ExecuteForDotFusion(dot, split_k));
   return analysis;
@@ -233,11 +273,29 @@ bool TritonFusionAnalysis::IsBatchDimMinorForInt4Parameter(
 
 absl::Status TritonFusionAnalysis::ExecuteForDotFusion(
     const HloInstruction& dot, const int split_k) {
+  is_scaled_dot_ = dot.opcode() == HloOpcode::kScaledDot;
+  if (is_scaled_dot_) {
+    TF_ASSIGN_OR_RETURN(lhs_scale_block_size_,
+                        triton_fusion::GetBlockSize(dot, Scope::LHS));
+    TF_ASSIGN_OR_RETURN(rhs_scale_block_size_,
+                        triton_fusion::GetBlockSize(dot, Scope::RHS));
+  }
+
   DotRequirements lhs_requirements(kNoSplitRequirement);
-  for (const Scope scope : {Scope::LHS, Scope::RHS, Scope::META}) {
-    const int operand_number = static_cast<int>(scope);
-    if (dot.operand_count() < operand_number + 1) {
-      continue;  // Meta scope is optional.
+  for (const Scope scope :
+       {Scope::LHS, Scope::RHS, Scope::LHS_SCALE, Scope::RHS_SCALE}) {
+    int operand_number = static_cast<int>(scope);
+    if (operand_number >= dot.operand_count()) {
+      continue;  // Scale operands are optional.
+    }
+    if (is_scaled_dot_) {
+      // Operands for scaled dot: (lhs, rhs, lhs_scale, rhs_scale)
+      operand_number = ScopeToScaledDotOperandIdx(scope);
+      // Scalar scales are skipped.
+      if ((scope == Scope::LHS_SCALE || scope == Scope::RHS_SCALE) &&
+          ShapeUtil::IsScalar(dot.operand(operand_number)->shape())) {
+        continue;
+      }
     }
     TF_ASSIGN_OR_RETURN(auto context, FusionContext::FromDotOperand(
                                           dot, operand_number, split_k));
@@ -300,8 +358,10 @@ absl::Status TritonFusionAnalysis::ExecuteForDotFusion(
 
 std::optional<TritonFusionAnalysis::Scope>
 TritonFusionAnalysis::QueryInstructionScope(const HloInstruction& hlo) const {
-  for (const Scope& scope : {Scope::LHS, Scope::RHS, Scope::OUTPUT}) {
-    if (iter_specs_.at(scope).count(&hlo) > 0) {
+  for (const Scope& scope : {Scope::LHS, Scope::RHS, Scope::OUTPUT,
+                             Scope::LHS_SCALE, Scope::RHS_SCALE}) {
+    auto it = iter_specs_.find(scope);
+    if (it != iter_specs_.end() && it->second.count(&hlo) > 0) {
       return scope;
     }
   }
@@ -339,8 +399,10 @@ std::string ScopeToString(TritonFusionAnalysis::Scope s) {
       return "LHS";
     case TritonFusionAnalysis::Scope::RHS:
       return "RHS";
-    case TritonFusionAnalysis::Scope::META:
-      return "META";
+    case TritonFusionAnalysis::Scope::LHS_SCALE:
+      return "LHS_SCALE";
+    case TritonFusionAnalysis::Scope::RHS_SCALE:
+      return "RHS_SCALE";
     case TritonFusionAnalysis::Scope::OUTPUT:
       return "OUTPUT";
   }

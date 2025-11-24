@@ -46,6 +46,9 @@ def I32ElementsVal : Constraint<CPred<
   "llvm::cast<TensorType>($0.getType()).getElementType().isInteger(32)">,
   "32 bit integer tensor">;
 
+class NegatedCompositeBoolAttribute<string attr_name>: NativeCodeCall<
+  "BoolAttr::get($_builder.getContext(), !llvm::cast<BoolAttr>($0.get(\"" # attr_name # "\")).getValue())">;
+
 // TODO(b/343278954): Move the creation of transposes to a separate prepare pass
 // to avoid creating multiple pattern-rewrite rules for the same composite op.
 def LegalizeTorchUpsampleBlinear2dComposite: Pat<
@@ -59,7 +62,7 @@ def LegalizeTorchUpsampleBlinear2dComposite: Pat<
             ConstantAttr<RankedI32ElementsAttr<[4]>,"{0, 2, 3, 1}">)),
         (Arith_ConstantOp:$output_size (GetI32DenseAttr (GetAsVectorAttr<"size"> $attrs))),
         (GetCompositeAttributeAs<"align_corners", "BoolAttr"> $attrs),
-        ConstBoolAttrTrue,
+        (/*half_pixel_centers=*/NegatedCompositeBoolAttribute<"align_corners"> $attrs),
         (returnType (GetNhwcReturnTypeFromNchw $old_val))),
       (Arith_ConstantOp
         ConstantAttr<RankedI32ElementsAttr<[4]>,"{0, 3, 1, 2}">)),
@@ -75,7 +78,7 @@ def LegalizeNhwcResizeBilinear2dComposite: Pat<
       $input,
       (Arith_ConstantOp:$output_size (GetI32DenseAttr (GetAsVectorAttr<"size"> $attrs))),
       (GetCompositeAttributeAs<"align_corners", "BoolAttr"> $attrs),
-      ConstBoolAttrTrue),
+      (/*half_pixel_centers=*/NegatedCompositeBoolAttribute<"align_corners"> $attrs)),
     [(IsNhwcLayoutOp $attrs)]>;
 
 // pattern to lower a stablehlo.composite of `jax` and `pytorch` image resize fuctions
@@ -87,8 +90,8 @@ def LegalizeNhwcResizeNearestNeighbor2dComposite: Pat<
     (TFL_ResizeNearestNeighborOp
       $input,
       (Arith_ConstantOp:$output_size (GetI32DenseAttr (GetAsVectorAttr<"size"> $attrs))),
-      ConstBoolAttrFalse,
-      ConstBoolAttrTrue),
+      /*align_corners=*/ConstBoolAttrFalse,
+      /*half_pixel_centers=*/ConstBoolAttrTrue),
     [(IsNhwcLayoutOp $attrs)]>;
 
 // pattern to lower a stablehlo.composite of `jax` and `pytorch` image resize fuctions
@@ -105,8 +108,8 @@ def LegalizeNchwResizeNearestNeighbor2dComposite: Pat<
           (Arith_ConstantOp
             ConstantAttr<RankedI32ElementsAttr<[4]>,"{0, 2, 3, 1}">)),
         (Arith_ConstantOp:$output_size (GetI32DenseAttr (GetAsVectorAttr<"size"> $attrs))),
-        ConstBoolAttrFalse,
-        ConstBoolAttrTrue,
+        /*align_corners=*/ConstBoolAttrFalse,
+        /*half_pixel_centers=*/ConstBoolAttrTrue,
         (returnType (GetNhwcReturnTypeFromNchw $old_val))),
       (Arith_ConstantOp
         ConstantAttr<RankedI32ElementsAttr<[4]>,"{0, 3, 1, 2}">)),
@@ -214,6 +217,14 @@ def LegalizeCompositeUnpack : Pat<
           (GetCompositeAttributeAs<"num", "IntegerAttr"> $attrs),
           (GetCompositeAttributeAs<"axis", "IntegerAttr"> $attrs))>;
 
+def LegalizeCompositeUnpack1 : Pat<
+        (MHLO_CompositeOp:$composite
+          (variadic $_, $inputs),
+          ConstantStrAttr<StrAttr, "tfl.unpack">, $attrs, $_, $_),
+        (TFL_UnpackOp $inputs,
+          (GetCompositeAttributeAs<"num", "IntegerAttr"> $attrs),
+          (GetCompositeAttributeAs<"axis", "IntegerAttr"> $attrs))>;
+
 def LegalizeCompositePack4Elements : Pat<
         (MHLO_CompositeOp:$composite
           // TD not able to represent variadic of variadic now.
@@ -223,3 +234,40 @@ def LegalizeCompositePack4Elements : Pat<
         (TFL_PackOp (variadic $i0, $i1, $i2, $i3),
           (GetCompositeAttributeAs<"values_count", "IntegerAttr"> $attrs),
           (GetCompositeAttributeAs<"axis", "IntegerAttr"> $attrs))>;
+
+def LegalizeCompositePack4Elements1 : Pat<
+        (MHLO_CompositeOp:$composite
+          // TD not able to represent variadic of variadic now.
+          // Move to C++ matcher to support more cases.
+          (variadic $_, $i0, $i1, $i2, $i3),
+          ConstantStrAttr<StrAttr, "tfl.pack">, $attrs, $_, $_),
+        (TFL_PackOp (variadic $i0, $i1, $i2, $i3),
+          (GetCompositeAttributeAs<"values_count", "IntegerAttr"> $attrs),
+          (GetCompositeAttributeAs<"axis", "IntegerAttr"> $attrs))>;
+
+def LegalizeDynamicSlice : Pat<
+        (MHLO_CompositeOp:$composite
+          (variadic $input, $begin, $size),
+          ConstantStrAttr<StrAttr, "tfl.slice">, $attrs, $_, $_),
+        (TFL_SliceOp $input, $begin, $size)>;
+
+def LegalizeDynamicSlice_1 : Pat<
+        (MHLO_CompositeOp:$composite
+          (variadic $_, $input, $begin, $size),
+          ConstantStrAttr<StrAttr, "tfl.slice">, $attrs, $_, $_),
+        (TFL_SliceOp $input, $begin, $size)>;
+
+def LegalizeBMM4dAdjY : Pat<
+        (MHLO_CompositeOp:$composite
+          (variadic $lhs, $rhs),
+          ConstantStrAttr<StrAttr, "tfl.bmm_4d_adj_y">, $attrs, $_, $_),
+        (TFL_BatchMatMulOp $lhs, $rhs, ConstBoolAttrFalse, ConstBoolAttrTrue,
+                     ConstBoolAttrFalse)>;
+
+// For dynamic shaped lhs and rhs.
+def LegalizeBMM4dAdjY_1 : Pat<
+        (MHLO_CompositeOp:$composite
+          (variadic $_, $lhs, $rhs),
+          ConstantStrAttr<StrAttr, "tfl.bmm_4d_adj_y">, $attrs, $_, $_),
+        (TFL_BatchMatMulOp $lhs, $rhs, ConstBoolAttrFalse, ConstBoolAttrTrue,
+                     ConstBoolAttrFalse)>;

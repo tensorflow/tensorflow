@@ -104,29 +104,29 @@ std::optional<NodeDef> ExtractSmallTensorValue(TFE_Context* context,
 
   TensorProto tensor_proto;
   tensor_proto.set_dtype(datatype);
+
+  void* raw_data = TF_TensorData(value_tensor.get());
+  if (!raw_data) {
+    TF_SetStatus(status, TF_INTERNAL, "TF_TensorData returned nullptr.");
+    return std::nullopt;
+  }
+
   switch (dtype) {
     case TF_INT32:
-      AppendIntValues(num_elements,
-                      static_cast<int*>(TF_TensorData(value_tensor.get())),
+      AppendIntValues(num_elements, static_cast<const int*>(raw_data),
                       &tensor_proto);
       break;
     case TF_INT64:
-      AppendInt64Values(
-          num_elements,
-          static_cast<const int64_t*>(TF_TensorData(value_tensor.get())),
-          &tensor_proto);
+      AppendInt64Values(num_elements, static_cast<const int64_t*>(raw_data),
+                        &tensor_proto);
       break;
     case TF_STRING:
-      AppendStringValues(
-          num_elements,
-          static_cast<const TF_TString*>(TF_TensorData(value_tensor.get())),
-          &tensor_proto);
+      AppendStringValues(num_elements, static_cast<const TF_TString*>(raw_data),
+                         &tensor_proto);
       break;
     case TF_FLOAT:
-      AppendFloatValues(
-          num_elements,
-          static_cast<const float*>(TF_TensorData(value_tensor.get())),
-          &tensor_proto);
+      AppendFloatValues(num_elements, static_cast<const float*>(raw_data),
+                        &tensor_proto);
       break;
     default:
       TF_SetStatus(status, TF_INTERNAL,

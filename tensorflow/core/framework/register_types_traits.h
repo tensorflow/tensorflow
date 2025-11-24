@@ -44,15 +44,15 @@ struct proxy_type_pod<CPUDevice, 8> {
 };
 template <>
 struct proxy_type_pod<CPUDevice, 4> {
-  typedef ::tensorflow::int32 type;
+  typedef int32_t type;
 };
 template <>
 struct proxy_type_pod<CPUDevice, 2> {
-  typedef ::tensorflow::int16 type;
+  typedef int16_t type;
 };
 template <>
 struct proxy_type_pod<CPUDevice, 1> {
-  typedef ::tensorflow::int8 type;
+  typedef int8_t type;
 };
 template <>
 struct proxy_type_pod<GPUDevice, 8> {
@@ -68,7 +68,7 @@ struct proxy_type_pod<GPUDevice, 2> {
 };
 template <>
 struct proxy_type_pod<GPUDevice, 1> {
-  typedef ::tensorflow::int8 type;
+  typedef int8_t type;
 };
 
 

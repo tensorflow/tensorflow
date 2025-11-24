@@ -16,10 +16,10 @@ limitations under the License.
 #include "xla/service/spmd/shardy/shardy_xla_pass.h"
 
 #include <memory>
+#include <string>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "absl/log/log.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -28,7 +28,9 @@ limitations under the License.
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/hlo/utils/hlo_matchers.h"
+#include "xla/service/computation_layout.h"
 #include "xla/service/spmd/shardy/constants.h"
+#include "xla/shape.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 
@@ -44,19 +46,13 @@ using ShardyXLATest = HloHardwareIndependentTestBase;
 void runShardy(VerifiedHloModule* module, bool stablehloImport,
                bool runSdyShardingPropagation = true,
                bool expectChanged = true) {
-  FrontendAttributes attrs;
   if (stablehloImport) {
-    attrs.mutable_map()->try_emplace(xla::sdy::kImportMhloShardings, "t");
+    module->add_frontend_attribute(std::string(xla::sdy::kImportMhloShardings),
+                                   "t");
   }
-  module->add_frontend_attributes(attrs);
   TF_ASSERT_OK_AND_ASSIGN(bool changed,
                           ShardyXLA(runSdyShardingPropagation).Run(module));
-  VLOG(1) << module->ToString();
-  if (expectChanged) {
-    EXPECT_TRUE(changed);
-  } else {
-    EXPECT_FALSE(changed);
-  }
+  EXPECT_EQ(changed, expectChanged);
 }
 
 void runShardyWithStablehloImport(VerifiedHloModule* module,
@@ -128,6 +124,154 @@ TEST_F(ShardyXLATest, ElementWise) {
 
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               op::Sharding("{devices=[2,1]<=[2]}"));
+}
+
+TEST_F(ShardyXLATest, NonFlatGraph) {
+  const char* const hloString = R"(
+    HloModule module
+
+    %bar {
+      %arg = f32[6,3] parameter(0)
+      %multiply = f32[6,3] multiply(arg, arg)
+      ROOT result = f32[6,3] copy(%multiply)
+    }
+
+    %foo {
+      %arg = f32[6,3] parameter(0)
+      %multiply = f32[6,3] call(%arg), to_apply=%bar
+      %add = f32[6,3] add(multiply, multiply)
+      ROOT result = f32[6,3] copy(%add)
+    }
+
+    ENTRY %entry {
+      %p0 = f32[6,3] parameter(0), sharding={devices=[2,1]<=[2]}
+      %foores = f32[6,3] call(%p0), to_apply=%foo
+      %barres = f32[6,3] call(%foores), to_apply=%bar
+      ROOT result = f32[6,3] copy(%barres)
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hloString));
+  runShardyWithStablehloImport(module.get());
+  // Computations refer to: %foo, %bar (x1), %entry.
+  EXPECT_EQ(module->computation_count(), 3);
+}
+
+TEST_F(ShardyXLATest, NonFlatGraphForcedDifferentShardingsOnSharedFunc) {
+  const char* const hloString = R"(
+    HloModule module
+
+    %bar {
+      %arg = f32[6,4] parameter(0)
+      %multiply = f32[6,4] multiply(arg, arg)
+      ROOT result = f32[6,4] copy(%multiply)
+    }
+
+    %foo {
+      %arg = f32[6,4] parameter(0)
+      %multiply = f32[6,4] call(%arg), to_apply=%bar
+      %add = f32[6,4] add(multiply, multiply)
+      ROOT result = f32[6,4] copy(%add)
+    }
+
+    ENTRY %entry {
+      %p0 = f32[6,4] parameter(0), sharding={devices=[2,1]<=[2]}
+      %foores = f32[6,4] call(%p0), to_apply=%foo
+      %absres = abs(%foores), sharding={devices=[1,2]<=[2]}
+      %barres = f32[6,4] call(%absres), to_apply=%bar
+      ROOT result = f32[6,4] copy(%barres)
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hloString));
+  runShardyWithStablehloImport(module.get());
+  // Computations refer to: %foo, %bar (x2), %entry.
+  EXPECT_EQ(module->computation_count(), 4);
+}
+
+TEST_F(ShardyXLATest, NonFlatWhileComputation) {
+  const char* const hloString = R"(
+    HloModule module
+
+    %foo {
+      %arg = f32[6,3] parameter(0)
+      %multiply = f32[6,3] multiply(arg, arg)
+      ROOT result = f32[6,3] copy(%multiply)
+    }
+
+    %cond1 {
+      %arg = f32[6,3] parameter(0)
+      %dot = f32[] dot(%arg, %arg),
+        lhs_contracting_dims={0,1}, rhs_contracting_dims={0,1}
+      ROOT %compare = pred[] compare(%dot, %dot), direction=LT
+    }
+
+    %cond2 {
+      %arg = f32[6,3] parameter(0)
+      %dot = f32[] dot(%arg, %arg),
+        lhs_contracting_dims={0,1}, rhs_contracting_dims={0,1}
+      ROOT %compare = pred[] compare(%dot, %dot), direction=LT
+    }
+
+    %loop1 {
+      %arg = f32[6,3] parameter(0)
+      %multiply = f32[6,3] call(%arg), to_apply=%foo
+      %add = f32[6,3] add(multiply, multiply)
+      ROOT result = f32[6,3] copy(%add)
+    }
+
+    %loop2 {
+      %arg = f32[6,3] parameter(0)
+      %multiply = f32[6,3] call(%arg), to_apply=%foo
+      %negate = f32[6,3] negate(multiply)
+      ROOT result = f32[6,3] copy(%negate)
+    }
+
+    ENTRY %entry {
+      %p0 = f32[6,3] parameter(0), sharding={devices=[2,1]<=[2]}
+      %foores = f32[6,3] call(%p0), to_apply=%foo
+      %while.1 = f32[6,3] while(%foores), body=%loop1, condition=%cond1
+      ROOT %while.2 = f32[6,3] while(%while.1), body=%loop2, condition=%cond2
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hloString));
+  runShardyWithStablehloImport(module.get());
+  // Computations refer to: %foo (x1), %cond1, %cond2, %loop1, %loop2, %entry.
+  EXPECT_EQ(module->computation_count(), 6);
+}
+
+TEST_F(ShardyXLATest, SharedWhileComputation) {
+  const char* const hloString = R"(
+    HloModule module
+
+    %foo {
+      %arg = f32[6,3] parameter(0)
+      %multiply = f32[6,3] multiply(arg, arg)
+      ROOT result = f32[6,3] copy(%multiply)
+    }
+
+    %cond {
+      %arg = f32[6,3] parameter(0)
+      %dot = f32[] dot(%arg, %arg),
+        lhs_contracting_dims={0,1}, rhs_contracting_dims={0,1}
+      ROOT %compare = pred[] compare(%dot, %dot), direction=LT
+    }
+
+    %loop {
+      %arg = f32[6,3] parameter(0)
+      %multiply = f32[6,3] call(%arg), to_apply=%foo
+      %add = f32[6,3] add(multiply, multiply)
+      ROOT result = f32[6,3] copy(%add)
+    }
+
+    ENTRY %entry {
+      %p0 = f32[6,3] parameter(0), sharding={devices=[2,1]<=[2]}
+      %while.1 = f32[6,3] while(%p0), body=%loop, condition=%cond
+      ROOT %while.2 = f32[6,3] while(%while.1), body=%loop, condition=%cond
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hloString));
+  runShardyWithStablehloImport(module.get());
+  // Computations refer to: %foo (x1), %cond (x2), %loop (x2), %entry.
+  EXPECT_EQ(module->computation_count(), 6);
 }
 
 TEST_F(ShardyXLATest, CostantSplitter) {
@@ -558,13 +702,13 @@ TEST_F(ShardyXLATest, WhileWithFreeVariables) {
       ROOT %compare.24 = pred[] compare(s32[] %get-tuple-element.20, s32[] %get-tuple-element.21), direction=LT
     }
 
-    ENTRY %main.30 (Arg_0.1: f32[32,96], Arg_1.2: f32[32,96]) -> f32[32,96] {
+    ENTRY %main.30 (Arg_0.1: f32[32,96], Arg_1.1: f32[32,96]) -> f32[32,96] {
       %Arg_0.1 = f32[32,96]{1,0} parameter(0), sharding={devices=[2,2]<=[4]}
       %constant.3 = s32[] constant(0)
       %constant.5 = s32[] constant(32)
       %constant.4 = s32[] constant(1)
-      %Arg_1.2 = f32[32,96]{1,0} parameter(1), sharding={devices=[2,1,2]<=[4] last_tile_dim_replicate}
-      %tuple.6 = (f32[32,96]{1,0}, s32[], s32[], s32[], f32[32,96]{1,0}) tuple(f32[32,96]{1,0} %Arg_0.1, s32[] %constant.3, s32[] %constant.5, s32[] %constant.4, f32[32,96]{1,0} %Arg_1.2)
+      %Arg_1.1 = f32[32,96]{1,0} parameter(1), sharding={devices=[2,1,2]<=[4] last_tile_dim_replicate}
+      %tuple.6 = (f32[32,96]{1,0}, s32[], s32[], s32[], f32[32,96]{1,0}) tuple(f32[32,96]{1,0} %Arg_0.1, s32[] %constant.3, s32[] %constant.5, s32[] %constant.4, f32[32,96]{1,0} %Arg_1.1)
       %while.25 = (f32[32,96]{1,0}, s32[], s32[], s32[], f32[32,96]{1,0}) while((f32[32,96]{1,0}, s32[], s32[], s32[], f32[32,96]{1,0}) %tuple.6), condition=%region_1.17, body=%region_0.7
       %get-tuple-element.27 = s32[] get-tuple-element((f32[32,96]{1,0}, s32[], s32[], s32[], f32[32,96]{1,0}) %while.25), index=1
       %get-tuple-element.26 = f32[32,96]{1,0} get-tuple-element((f32[32,96]{1,0}, s32[], s32[], s32[], f32[32,96]{1,0}) %while.25), index=0
@@ -620,10 +764,10 @@ TEST_F(ShardyXLATest, ShardMap) {
                           ParseAndReturnVerifiedModule(hloString));
   runShardyWithStablehloImport(module.get());
 
-  // The entry computation and the region_add for the all-reduce. shmap_body is
-  // inlined.
-  EXPECT_EQ(module->computation_count(), 2);
-  EXPECT_EQ(FindInstruction(module.get(), xla::HloOpcode::kCall), nullptr);
+  // The entry computation, the region_add for the all-reduce, and the
+  // shmap_body.
+  EXPECT_EQ(module->computation_count(), 3);
+  EXPECT_TRUE(FindInstruction(module.get(), xla::HloOpcode::kCall));
 
   auto* dot = FindInstruction(module.get(), xla::HloOpcode::kDot);
   EXPECT_NE(dot, nullptr);
@@ -631,8 +775,7 @@ TEST_F(ShardyXLATest, ShardMap) {
   EXPECT_TRUE(dot->sharding().IsManual());
 
   const HloInstruction* root = module->entry_computation()->root_instruction();
-  EXPECT_EQ(root->opcode(), xla::HloOpcode::kCustomCall);
-  EXPECT_EQ(root->custom_call_target(), "SPMDShardToFullShape");
+  EXPECT_TRUE(root->IsCustomCall("SPMDShardToFullShape"));
   EXPECT_THAT(root,
               op::Sharding("{devices=[4,1,2]<=[8] last_tile_dim_replicate}"));
 }
@@ -663,10 +806,10 @@ TEST_F(ShardyXLATest, TestUseTuplesTrue) {
   const char* const hloString = R"(
     HloModule pjit_f, buffer_donor={ (1, {}) }, input_output_alias={ {}: (2, {}, must-alias) }, entry_computation_layout={(f32[8,16]{1,0:T(8,128)}, f32[16,32]{1,0:T(8,128)}, f32[8,32]{1,0:T(8,128)})->f32[8,32]{1,0:T(8,128)}}, allow_spmd_sharding_propagation_to_parameters={false,false,false}, num_partitions=8, frontend_attributes={xla.sdy.use_tuple_args="t"}
 
-    ENTRY %main.7 (Arg_0.1: f32[8,16], Arg_1.2: f32[16,32], Arg_2.3: f32[8,32]) -> f32[8,32] {
+    ENTRY %main.7 (Arg_0.1: f32[8,16], Arg_1.1: f32[16,32], Arg_2.3: f32[8,32]) -> f32[8,32] {
       %Arg_0.1 = f32[8,16]{1,0} parameter(0)
-      %Arg_1.2 = f32[16,32]{1,0} parameter(1)
-      %dot.4 = f32[8,32]{1,0} dot(f32[8,16]{1,0} %Arg_0.1, f32[16,32]{1,0} %Arg_1.2), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+      %Arg_1.1 = f32[16,32]{1,0} parameter(1)
+      %dot.4 = f32[8,32]{1,0} dot(f32[8,16]{1,0} %Arg_0.1, f32[16,32]{1,0} %Arg_1.1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
       %Arg_2.3 = f32[8,32]{1,0} parameter(2)
       ROOT %add.5 = f32[8,32]{1,0} add(f32[8,32]{1,0} %dot.4, f32[8,32]{1,0} %Arg_2.3)
     })";
@@ -683,14 +826,48 @@ TEST_F(ShardyXLATest, TestUseTuplesTrue) {
             "f32[8,32]{1,0:T(8,128)}))->f32[8,32]{1,0:T(8,128)}");
 }
 
+// Even with no layout set (just the shapes specified with no layout), we should
+// still wrap the entry computation layout into a tuple.
+TEST_F(ShardyXLATest, TestUseTuplesTrueNoSetLayout) {
+  const char* const hloString = R"(
+    HloModule pjit_f, allow_spmd_sharding_propagation_to_parameters={false,false,false}, num_partitions=8, frontend_attributes={xla.sdy.use_tuple_args="t"}
+
+    ENTRY %main.7 (Arg_0.1: f32[8,16], Arg_1.1: f32[16,32], Arg_2.3: f32[8,32]) -> f32[8,32] {
+      %Arg_0.1 = f32[8,16] parameter(0)
+      %Arg_1.1 = f32[16,32] parameter(1)
+      %dot.4 = f32[8,32] dot(f32[8,16]{1,0} %Arg_0.1, f32[16,32]{1,0} %Arg_1.1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+      %Arg_2.3 = f32[8,32] parameter(2)
+      ROOT %add.5 = f32[8,32] add(f32[8,32] %dot.4, f32[8,32] %Arg_2.3)
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hloString));
+
+  // Parser sets a default layout, so we need to clear it.
+  ProgramShape shape = module->entry_computation_layout().ComputeProgramShape();
+  for (int i = 0; i < shape.parameters_size(); ++i) {
+    shape.mutable_parameters(i)->clear_layout();
+  }
+  shape.mutable_result()->clear_layout();
+  *module->mutable_entry_computation_layout() =
+      ComputationLayout(shape, /*ignore_layouts=*/false);
+  ASSERT_FALSE(module->entry_computation_layout().AnyLayoutSet());
+
+  runShardyWithStablehloImport(module.get());
+
+  EXPECT_EQ(module->entry_computation()->parameter_instructions().size(), 1);
+  EXPECT_FALSE(module->entry_computation_layout().AnyLayoutSet());
+  EXPECT_EQ(module->entry_computation_layout().ToString(),
+            "((f32[8,16], f32[16,32], f32[8,32]))->f32[8,32]");
+}
+
 TEST_F(ShardyXLATest, TestRunShardingPropagationFalseUseTuplesFalse) {
   const char* const hloString = R"(
     HloModule pjit_f, buffer_donor={ (1, {}) }, input_output_alias={ {}: (2, {}, must-alias) }, entry_computation_layout={(f32[8,16]{1,0:T(8,128)}, f32[16,32]{1,0:T(8,128)}, f32[8,32]{1,0:T(8,128)})->f32[8,32]{1,0:T(8,128)}}, allow_spmd_sharding_propagation_to_parameters={false,false,false}, num_partitions=8
 
-    ENTRY %main.7 (Arg_0.1: f32[8,16], Arg_1.2: f32[16,32], Arg_2.3: f32[8,32]) -> f32[8,32] {
+    ENTRY %main.7 (Arg_0.1: f32[8,16], Arg_1.1: f32[16,32], Arg_2.3: f32[8,32]) -> f32[8,32] {
       %Arg_0.1 = f32[8,16]{1,0} parameter(0)
-      %Arg_1.2 = f32[16,32]{1,0} parameter(1)
-      %dot.4 = f32[8,32]{1,0} dot(f32[8,16]{1,0} %Arg_0.1, f32[16,32]{1,0} %Arg_1.2), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+      %Arg_1.1 = f32[16,32]{1,0} parameter(1)
+      %dot.4 = f32[8,32]{1,0} dot(f32[8,16]{1,0} %Arg_0.1, f32[16,32]{1,0} %Arg_1.1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
       %Arg_2.3 = f32[8,32]{1,0} parameter(2)
       ROOT %add.5 = f32[8,32]{1,0} add(f32[8,32]{1,0} %dot.4, f32[8,32]{1,0} %Arg_2.3)
     })";
@@ -714,10 +891,10 @@ TEST_F(ShardyXLATest, TestRunShardingPropagationFalseUseTuplesTrue) {
   const char* const hloString = R"(
     HloModule pjit_f, buffer_donor={ (1, {}) }, input_output_alias={ {}: (2, {}, must-alias) }, entry_computation_layout={(f32[8,16]{1,0:T(8,128)}, f32[16,32]{1,0:T(8,128)}, f32[8,32]{1,0:T(8,128)})->f32[8,32]{1,0:T(8,128)}}, allow_spmd_sharding_propagation_to_parameters={false,false,false}, num_partitions=8, frontend_attributes={xla.sdy.use_tuple_args="t"}
 
-    ENTRY %main.7 (Arg_0.1: f32[8,16], Arg_1.2: f32[16,32], Arg_2.3: f32[8,32]) -> f32[8,32] {
+    ENTRY %main.7 (Arg_0.1: f32[8,16], Arg_1.1: f32[16,32], Arg_2.3: f32[8,32]) -> f32[8,32] {
       %Arg_0.1 = f32[8,16]{1,0} parameter(0)
-      %Arg_1.2 = f32[16,32]{1,0} parameter(1)
-      %dot.4 = f32[8,32]{1,0} dot(f32[8,16]{1,0} %Arg_0.1, f32[16,32]{1,0} %Arg_1.2), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+      %Arg_1.1 = f32[16,32]{1,0} parameter(1)
+      %dot.4 = f32[8,32]{1,0} dot(f32[8,16]{1,0} %Arg_0.1, f32[16,32]{1,0} %Arg_1.1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
       %Arg_2.3 = f32[8,32]{1,0} parameter(2)
       ROOT %add.5 = f32[8,32]{1,0} add(f32[8,32]{1,0} %dot.4, f32[8,32]{1,0} %Arg_2.3)
     })";
@@ -728,21 +905,19 @@ TEST_F(ShardyXLATest, TestRunShardingPropagationFalseUseTuplesTrue) {
   // CHECK-SAME:    entry_computation_layout={((f32[8,16]{1,0:T(8,128)}, f32[16,32]{1,0:T(8,128)}, f32[8,32]{1,0:T(8,128)}))->f32[8,32]{1,0:T(8,128)}},
   // CHECK-SAME:    allow_spmd_sharding_propagation_to_parameters={false,false,false}, num_partitions=8
   //
-  // CHECK:       ENTRY %main.0 (arg_tuple.1: (f32[8,16], f32[16,32], f32[8,32])) -> f32[8,32] {
+  // CHECK:       ENTRY %main.1 (arg_tuple.1: (f32[8,16], f32[16,32], f32[8,32])) -> f32[8,32] {
   // CHECK-NEXT:    %arg_tuple.1 = (f32[8,16], f32[16,32], f32[8,32]) parameter(0)
-  // CHECK-NEXT:    %get-tuple-element.2 = f32[8,16] get-tuple-element(%arg_tuple.1), index=0
-  // CHECK-NEXT:    %get-tuple-element.3 = f32[16,32] get-tuple-element(%arg_tuple.1), index=1
-  // CHECK-NEXT:    %dot.5 = f32[8,32] dot(%get-tuple-element.2, %get-tuple-element.3), lhs_contracting_dims={1}, rhs_contracting_dims={0}
-  // CHECK-NEXT:    %get-tuple-element.4 = f32[8,32] get-tuple-element(%arg_tuple.1), index=2
-  // CHECK-NEXT:    ROOT %add.6 = f32[8,32] add(%dot.5, %get-tuple-element.4)
+  // CHECK-NEXT:    %get-tuple-element.3 = f32[8,16] get-tuple-element(%arg_tuple.1), index=0
+  // CHECK-NEXT:    %get-tuple-element.4 = f32[16,32] get-tuple-element(%arg_tuple.1), index=1
+  // CHECK-NEXT:    %dot.1 = f32[8,32] dot(%get-tuple-element.3, %get-tuple-element.4), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  // CHECK-NEXT:    %get-tuple-element.5 = f32[8,32] get-tuple-element(%arg_tuple.1), index=2
+  // CHECK-NEXT:    ROOT %add.1 = f32[8,32] add(%dot.1, %get-tuple-element.5)
 )";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hloString));
   runShardyWithStablehloImport(module.get(),
                                /*runSdyShardingPropagation=*/false);
-  LOG(INFO) << module->ToString(
-      HloPrintOptions{}.set_include_layout_in_shapes(false));
   EXPECT_TRUE(*RunFileCheck(
       module->ToString(HloPrintOptions{}.set_include_layout_in_shapes(false)),
       expected));
@@ -762,9 +937,9 @@ ENTRY %main.0 (Arg_0.0: s64[2]) -> s64[2] {
 }
 )";
   const char* const expected = R"(
-  // CHECK:               ENTRY %main.3 (Arg_0.1: s64[2]) -> s64[2] {
+  // CHECK:               ENTRY %main.1 (Arg_0.1: s64[2]) -> s64[2] {
   // CHECK-NEXT:            ROOT %Arg_0.1 = s64[2] parameter(0)
-  // CHECK-NEXT{LITERAL}:   %custom-call.2 = () custom-call(%Arg_0.1), custom_call_target="xla_ffi_python_cpu_callback",
+  // CHECK-NEXT{LITERAL}:   %custom-call.1 = () custom-call(%Arg_0.1), custom_call_target="xla_ffi_python_cpu_callback",
   // CHECK-SAME{LITERAL}:   operand_layout_constraints={s64[2]{0}}, custom_call_has_side_effect=true, api_version=API_VERSION_TYPED_FFI,
   // CHECK-SAME{LITERAL}:   sharding={{maximal device=0}}
 )";
@@ -772,8 +947,6 @@ ENTRY %main.0 (Arg_0.0: s64[2]) -> s64[2] {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hloString));
   runShardyWithSdyImport(module.get());
-  LOG(INFO) << module->ToString(
-      HloPrintOptions{}.set_include_layout_in_shapes(false));
   EXPECT_TRUE(*RunFileCheck(
       module->ToString(HloPrintOptions{}.set_include_layout_in_shapes(false)),
       expected));
@@ -806,11 +979,11 @@ TEST_F(ShardyXLATest, WhileShardingOnlyOnFreeVariables) {
       ROOT %compare.24 = pred[] compare(s32[] %get-tuple-element.21, s32[] %constant.23), direction=LT
     }
 
-    ENTRY %main.28 (Arg_0.1: f32[32,96], Arg_1.2: f32[32,96]) -> f32[32,96] {
+    ENTRY %main.28 (Arg_0.1: f32[32,96], Arg_1.1: f32[32,96]) -> f32[32,96] {
       %Arg_0.1 = f32[32,96]{1,0} parameter(0)
       %constant.3 = s32[] constant(0)
-      %Arg_1.2 = f32[32,96]{1,0} parameter(1), sharding={devices=[4,1]<=[4]}, frontend_attributes={xla.sdy.sharding="#sdy.sharding<@mesh, [{\"x\", ?}, {?}]>"}
-      %custom-call.4 = f32[32,96]{1,0} custom-call(f32[32,96]{1,0} %Arg_1.2), custom_call_target="Sharding", sharding={replicated}, frontend_attributes={xla.sdy.sharding="#sdy.sharding_per_value<[<@mesh, [{?}, {?}]>]>"}
+      %Arg_1.1 = f32[32,96]{1,0} parameter(1), sharding={devices=[4,1]<=[4]}, frontend_attributes={xla.sdy.sharding="#sdy.sharding<@mesh, [{\"x\", ?}, {?}]>"}
+      %custom-call.4 = f32[32,96]{1,0} custom-call(f32[32,96]{1,0} %Arg_1.1), custom_call_target="Sharding", sharding={replicated}, frontend_attributes={xla.sdy.sharding="#sdy.sharding_per_value<[<@mesh, [{?}, {?}]>]>"}
       %tuple.5 = (f32[32,96]{1,0}, s32[], f32[32,96]{1,0}) tuple(f32[32,96]{1,0} %Arg_0.1, s32[] %constant.3, f32[32,96]{1,0} %custom-call.4)
       %while.25 = (f32[32,96]{1,0}, s32[], f32[32,96]{1,0}) while((f32[32,96]{1,0}, s32[], f32[32,96]{1,0}) %tuple.5), condition=%region_1.18, body=%region_0.6
       ROOT %get-tuple-element.26 = f32[32,96]{1,0} get-tuple-element((f32[32,96]{1,0}, s32[], f32[32,96]{1,0}) %while.25), index=0
@@ -882,6 +1055,94 @@ TEST_F(ShardyXLATest, RaggedDotMode1) {
               op::Sharding("{devices=[2,1,4]<=[8] last_tile_dim_replicate}"));
   EXPECT_THAT(entry->root_instruction(),
               op::Sharding("{devices=[2,2,1,2]<=[8] last_tile_dim_replicate}"));
+}
+
+TEST_F(ShardyXLATest, PreserveOriginalValueRecoveryTable) {
+  const char* const hloString = R"(
+  HloModule test, entry_computation_layout={(f32[6,3], f32[6,3])->f32[6,3]}, origin_recovery_table={
+    {"reshape.2341"} : {"placeholder_reshape.201"},
+    "
+      ENTRY %recovery_computation.1 (p.1: f32[192]) -> f32[1,192] {
+      %p.1 = f32[192]{0} parameter(0)
+      ROOT %reshape.2 = f32[1,192]{1,0} reshape(%p.1)
+    }
+    "
+  }
+
+  ENTRY %entry {
+    p0 = f32[6,3] parameter(0)
+    p1 = f32[6,3] parameter(1)
+    copy.p0 = f32[6,3] copy(p0)
+    copy.p1 = f32[6,3] copy(p1)
+    add = f32[6,3] add(copy.p0, copy.p1), sharding={devices=[2,1]<=[2]}
+    ROOT result = f32[6,3] copy(add)
+  }
+  )";
+
+  const char* const expected = R"(
+  // CHECK:       {"reshape.2341"} : {"placeholder_reshape.201"},
+  // CHECK-NEXT:  "
+  // CHECK:       ENTRY %recovery_computation.1 (p.1: f32[192]) -> f32[1,192] {
+  // CHECK-NEXT:      %p.1 = f32[192]{0} parameter(0)
+  // CHECK-NEXT:      ROOT %reshape.2 = f32[1,192]{1,0} reshape(%p.1)
+  // CHECK-NEXT:    }
+  // CHECK:       "
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hloString));
+  runShardyWithSdyImport(module.get());
+  EXPECT_TRUE(*RunFileCheck(module->original_value_recovery_table().ToString(),
+                            expected));
+}
+
+TEST_F(ShardyXLATest, UpdateInlineableAttr) {
+  const char* const hloString = R"(
+    HloModule module
+
+    xla.sdy.manual_computation_body {
+      constant.0 = f32[1] constant({0})
+      ROOT tuple.1 = () tuple()
+    }
+
+    ENTRY entry {
+      ROOT call.2 = () call(), to_apply=xla.sdy.manual_computation_body, frontend_attributes={inlineable="false"}
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hloString));
+  runShardy(module.get(), /*stablehloImport=*/false,
+            /*runSdyShardingPropagation=*/false);
+
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_EQ(root->opcode(), HloOpcode::kCall);
+  EXPECT_FALSE(root->has_frontend_attributes());
+  EXPECT_EQ(root->to_apply()->name(), "inlineable_callee");
+}
+
+TEST_F(ShardyXLATest, ManualComputationCallOpWithToken) {
+  const char* const hloString = R"(
+    HloModule main, entry_computation_layout={(token[])->token[]}, frontend_attributes={xla.sdy.meshes={mesh = #sdy.mesh<["x"=2]>}}
+
+    %xla.sdy.manual_computation_body.4 (Arg_0.3: token[]) -> token[] {
+      ROOT %Arg_0.3 = token[] parameter(0)
+    }
+
+    ENTRY %main.7 (Arg_0.1: token[]) -> token[] {
+      %Arg_0.1 = token[] parameter(0)
+      %custom-call.2 = token[] custom-call(%Arg_0.1), custom_call_target="xla.sdy.GlobalToLocalShape", custom_call_has_side_effect=true, frontend_attributes={xla.sdy.in_shardings="#sdy.sharding_per_value<[<@mesh, []>]>",xla.sdy.manual_axes="#sdy<manual_axes{\"x\"}>"}
+      %call.5 = token[] call(%custom-call.2), to_apply=%xla.sdy.manual_computation_body.4, frontend_attributes={inlineable="false"}
+      ROOT %custom-call.6 = token[] custom-call(%call.5), custom_call_target="xla.sdy.LocalToGlobalShape", custom_call_has_side_effect=true, frontend_attributes={xla.sdy.manual_axes="#sdy<manual_axes{\"x\"}>",xla.sdy.out_shardings="#sdy.sharding_per_value<[<@mesh, []>]>"}
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hloString));
+  runShardyWithSdyImport(module.get());
+  HloInstruction* callInst =
+      FindInstruction(module.get(), xla::HloOpcode::kCall);
+  EXPECT_TRUE(callInst);
+  // StableHLO->HLO conversion used to discard the sharding attribute, due to
+  // MLIR TypeConversion on CallOps not preserving them. This test ensures that
+  // the sharding attribute is preserved.
+  EXPECT_EQ(callInst->sharding().ToString(), "{manual}");
 }
 
 }  // namespace sdy

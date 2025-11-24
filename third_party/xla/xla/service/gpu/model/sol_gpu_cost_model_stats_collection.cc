@@ -19,13 +19,18 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/backends/gpu/codegen/triton/support.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/utils/hlo_query.h"
 #include "xla/service/gpu/backend_configs.pb.h"
+#include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/gpu/gpu_hlo_schedule.h"
 #include "xla/service/gpu/gpu_latency_hiding_scheduler.h"
 #include "xla/service/gpu/model/gpu_hlo_cost_analysis.h"
@@ -37,6 +42,17 @@ namespace xla::gpu {
 
 namespace {
 
+bool IsTritonGemm(const HloInstruction& instr) {
+  if (instr.called_computations().size() != 1) {
+    return false;
+  }
+  if (!IsTritonFusedComputation(*instr.called_computations()[0])) {
+    return false;
+  }
+  auto fused_range = instr.fused_instructions();
+  return absl::c_count_if(fused_range, HloPredicateIsOp<HloOpcode::kDot>) == 1;
+}
+
 // Returns true if successfully set the reification cost.
 bool SetReificationCost(HloInstruction* instr, double cost_us) {
   auto gpu_config = instr->backend_config<GpuBackendConfig>();
@@ -44,8 +60,18 @@ bool SetReificationCost(HloInstruction* instr, double cost_us) {
     return false;
   }
   auto reification_cost = gpu_config->add_reification_cost();
+  VLOG(3) << "Setting exec_time_us=" << cost_us << " for " << instr->name()
+          << " in SolGpuCostModelStatsCollection";
   reification_cost->set_exec_time_us(cost_us);
   reification_cost->set_name("sol");
+  if (instr->opcode() == HloOpcode::kAsyncStart &&
+      instr->async_wrapped_instruction() != nullptr) {
+    VLOG(9) << "AsyncStart: Setting reification cost for async start "
+            << instr->ToString() << " computation:"
+            << instr->async_wrapped_computation()->ToString();
+    return SetReificationCost(
+        instr->async_wrapped_computation()->root_instruction(), cost_us);
+  }
   return instr->set_backend_config(*gpu_config).ok();
 }
 
@@ -56,15 +82,19 @@ bool RecordReificationCost(HloInstruction& instr,
     HloGraphNode from(&instr, /*original_position=*/-1);
     HloGraphNode to(instr.users()[0], /*original_position=*/-1);
     if (estimator.IsAsyncPair(from, to)) {
+      VLOG(10) << "Recording reification cost for async pair from: "
+               << instr.ToString() << " to: " << instr.users()[0]->ToString();
       return SetReificationCost(&instr, estimator.GetLatencyBetween(from, to));
     }
   }
+  VLOG(10) << "Recording reification cost for single node: "
+           << instr.ToString();
   return SetReificationCost(&instr, estimator.NodeCost(&instr));
 }
 
 }  // namespace
 
-absl::StatusOr<bool> SolGpuCostModelStatsCollection::Run(
+absl::StatusOr<bool> SolGpuCostModelStatsCollection::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   auto cost_analysis =
@@ -88,11 +118,16 @@ absl::StatusOr<bool> SolGpuCostModelStatsCollection::Run(
       SolLatencyEstimator::Create(
           scheduler_config,
           std::make_unique<GpuLatencyEstimator>(pointer_size_), device_info_,
-          shape_size_in_bytes_fn_, module->entry_computation(),
+          shape_size_in_bytes_fn_, module->entry_computation(), mlir_context_,
           std::move(cost_analysis)));
 
-  for (HloComputation* comp : module->computations()) {
+  for (HloComputation* comp : module->MakeComputationPostOrder()) {
     for (HloInstruction* instr : comp->MakeInstructionPostOrder()) {
+      if (instr->opcode() != HloOpcode::kFusion &&
+          !hlo_query::IsAsyncCollectiveStartOp(instr) &&
+          !IsCublasGemm(*instr) && !IsTritonGemm(*instr)) {
+        continue;
+      }
       if (!RecordReificationCost(*instr, *estimator)) {
         VLOG(2) << "Cannot record reification cost for: " << instr->ToString();
       }

@@ -59,11 +59,46 @@ struct InPlaceFusionOptions {
 class FusionDecision {
  public:
   static FusionDecision Allow() { return FusionDecision(); }
-  static FusionDecision Forbid(absl::string_view explanation) {
-    return FusionDecision(explanation);
-  }
   FusionDecision(const FusionDecision& decision) = default;
 
+#if defined(PLATFORM_GOOGLE)
+  static std::string LocToString(absl::SourceLocation source_location) {
+    return absl::StrCat(" at: ", source_location.file_name(), ":",
+                        source_location.line());
+  }
+  static FusionDecision Forbid(
+      absl::string_view explanation,
+      absl::SourceLocation source_location = absl::SourceLocation::current()) {
+    return FusionDecision(
+        absl::StrCat(explanation, LocToString(source_location)));
+  }
+
+  // If condition is `true` means that we CAN fuse. In that case, explanation is
+  // discarded.
+  FusionDecision(
+      bool condition, absl::string_view explanation,
+      absl::SourceLocation source_location = absl::SourceLocation::current()) {
+    if (!condition) {
+      explanation_ = absl::StrCat(explanation, LocToString(source_location));
+    }
+  }
+
+  explicit FusionDecision(
+      absl::Status status,
+      absl::SourceLocation source_location = absl::SourceLocation::current()) {
+    if (!status.ok()) {
+      explanation_ =
+          absl::StrCat(status.message(), LocToString(source_location));
+    }
+  }
+
+  // We can fuse iff. the decision is `true`. The source location indicates
+  // where an instance was created, making debugging easier without a need to
+  // provide explicit explanation.
+  FusionDecision(  // NOLINT
+      bool decision,
+      absl::SourceLocation source_location = absl::SourceLocation::current());
+#else
   // If condition is `true` means that we CAN fuse. In that case, explanation is
   // discarded.
   FusionDecision(bool condition, absl::string_view explanation) {
@@ -71,20 +106,15 @@ class FusionDecision {
       explanation_ = std::string(explanation);
     }
   }
-
+  static FusionDecision Forbid(absl::string_view explanation) {
+    return FusionDecision(explanation);
+  }
   explicit FusionDecision(absl::Status status) {
     if (!status.ok()) {
       explanation_ = status.message();
     }
   }
 
-#if defined(PLATFORM_GOOGLE)
-  // We can fuse iff. the decision is `true`. The source location indicates
-  // where an instance was created, making debugging easier without a need to
-  // provide explicit explanation.
-  FusionDecision(  // NOLINT
-      bool decision,
-      absl::SourceLocation source_location = absl::SourceLocation::current());
 #endif  // PLATFORM_GOOGLE
 
   // Returns whether it can be fused.
@@ -172,13 +202,6 @@ class InstructionFusion : public HloModulePass {
   ~InstructionFusion() override = default;
   absl::string_view name() const override { return "fusion"; }
 
-  // Run instruction fusion on the given computation. Returns whether the
-  // computation was changed (instructions were fused).
-  using HloPassInterface::Run;
-  absl::StatusOr<bool> Run(
-      HloModule* module,
-      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
-
   // Returns true if the computation of the given instruction is significantly
   // more expensive than just writing all the values of the instructions' result
   // array. Expensive operations will not be duplicated.
@@ -223,12 +246,16 @@ class InstructionFusion : public HloModulePass {
   // Returns whether a 'producer' at given operand index can be fused into the
   // consumer. It uses the provided function to check the legality of a possible
   // fusion when either the producer or the consumer contains an operation which
-  // updates an operand in place.
+  // updates an operand in place. If legality_check_only is true, only strict
+  // legality check is performed and factors such as operand duplication and
+  // profitability are not taken into account. Legality checks ensure that
+  // fusions formed are semantically correct and they are lowerable.
   virtual FusionDecision ShouldFuse(
       HloInstruction* consumer, int64_t operand_index,
       std::function<FusionDecision(const HloInstruction*, const HloInstruction*,
                                    std::optional<const InPlaceFusionOptions>)>
-          inplace_op_fusion_decider);
+          inplace_op_fusion_decider,
+      bool legality_check_only = false);
 
   // Returns whether multi-output fusion can be applied to fuse `producer` into
   // `consumer`. In contrast to "regular" fusion, the `producer` is not
@@ -303,6 +330,14 @@ class InstructionFusion : public HloModulePass {
   virtual HloInstructionSet ComputeGloballyUnfusible(
       absl::Span<HloInstruction* const> post_order,
       const HloReachabilityMap& reachability);
+
+  bool may_duplicate() const { return may_duplicate_; }
+
+  // Run instruction fusion on the given computation. Returns whether the
+  // computation was changed (instructions were fused).
+  absl::StatusOr<bool> RunImpl(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
  private:
   // Returns the reused operands of `instruction` from reused_fusion_operands_,

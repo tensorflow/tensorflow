@@ -15,11 +15,11 @@ limitations under the License.
 
 #include "xla/service/scatter_determinism_expander.h"
 
-#include <algorithm>
 #include <cstdint>
 #include <optional>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/strings/str_format.h"
@@ -38,10 +38,9 @@ limitations under the License.
 #include "xla/service/scatter_utils.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/logging.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 
@@ -311,7 +310,7 @@ static std::vector<HloInstruction*> SortIndicesAndUpdates(
 //   input for the next iteration.
 static absl::StatusOr<HloInstruction*> CreateScanWithIndices(
     HloComputation* parent, HloInstruction* updates, HloInstruction* indices,
-    HloComputation* to_apply) {
+    HloComputation* to_apply, absl::Span<const int64_t> operand_dims) {
   const Shape& updates_shape = updates->shape();
   const Shape& indices_shape = indices->shape();
   // Get the length of the input array
@@ -351,11 +350,19 @@ static absl::StatusOr<HloInstruction*> CreateScanWithIndices(
 
     auto* shifted_indices = parent->AddInstruction(HloInstruction::CreateSlice(
         shifted_indices_shape, indices, start_indices, end_indices, strides));
+    // Use the total size of the operand tensor as out-of-bounds value
+    // This matches how FlattenIndices works - it uses the total tensor size
+    int64_t total_size = 1;
+    for (int64_t dim : operand_dims) {
+      total_size *= dim;
+    }
+    int64_t out_of_bounds_value = total_size;
     auto* padding_indices =
         parent->AddInstruction(HloInstruction::CreateBroadcast(
             padding_indices_shape,
-            parent->AddInstruction(HloInstruction::CreateConstant(
-                LiteralUtil::CreateR0(indices_shape.element_type(), 0))),
+            parent->AddInstruction(
+                HloInstruction::CreateConstant(LiteralUtil::CreateR0(
+                    indices_shape.element_type(), out_of_bounds_value))),
             {}));
 
     auto* concatenated_updates =
@@ -382,16 +389,17 @@ static absl::StatusOr<HloInstruction*> CreateScanWithIndices(
 absl::StatusOr<std::vector<HloInstruction*>> ComputePrefixScan(
     const std::vector<HloInstruction*>& sorted_updates,
     HloInstruction* sorted_scalar_indices, HloScatterInstruction* scatter,
-    HloComputation* parent) {
+    HloComputation* parent, absl::Span<const int64_t> operand_dims) {
   std::vector<HloInstruction*> prefix_scans(sorted_updates.size());
   HloInstruction* prefix_scan_update = nullptr;
   for (int i = 0; i < sorted_updates.size(); i++) {
     TF_ASSIGN_OR_RETURN(
         HloComputation * to_apply,
         CallComputationAndGetIthOutputWithBinaryParams(scatter->to_apply(), i));
-    TF_ASSIGN_OR_RETURN(prefix_scan_update,
-                        CreateScanWithIndices(parent, sorted_updates[i],
-                                              sorted_scalar_indices, to_apply));
+    TF_ASSIGN_OR_RETURN(
+        prefix_scan_update,
+        CreateScanWithIndices(parent, sorted_updates[i], sorted_scalar_indices,
+                              to_apply, operand_dims));
     CHECK(prefix_scan_update != nullptr) << i << "th update is nullptr";
     prefix_scans[i] = prefix_scan_update;
   }
@@ -727,9 +735,8 @@ absl::StatusOr<HloInstruction*> ScatterDeterminismExpander::ExpandInstruction(
     std::vector<int64_t> actual_update_window_dims(num_operand_dims);
     int update_dim_index = 0;
     for (int i = 0; i < num_operand_dims; ++i) {
-      if (std::find(dim_numbers.inserted_window_dims().begin(),
-                    dim_numbers.inserted_window_dims().end(),
-                    i) != dim_numbers.inserted_window_dims().end()) {
+      if (absl::c_find(dim_numbers.inserted_window_dims(), i) !=
+          dim_numbers.inserted_window_dims().end()) {
         actual_update_window_dims[i] = 1;
       } else {
         actual_update_window_dims[i] =
@@ -833,9 +840,10 @@ absl::StatusOr<HloInstruction*> ScatterDeterminismExpander::ExpandInstruction(
     sorted_indices = sorted_tensors[sorted_tensors.size() - 1];
   }
 
-  TF_ASSIGN_OR_RETURN(std::vector<HloInstruction*> prefix_scan_updates,
-                      ComputePrefixScan(sorted_updates, sorted_scalar_indices,
-                                        scatter, parent));
+  TF_ASSIGN_OR_RETURN(
+      std::vector<HloInstruction*> prefix_scan_updates,
+      ComputePrefixScan(sorted_updates, sorted_scalar_indices, scatter, parent,
+                        scatter_operands[0]->shape().dimensions()));
   if (non_scalar_update) {
     // As the indices are expanded, we need to recompute out-of-bound tensor
     // with the same shape
@@ -904,6 +912,10 @@ bool CheckOutputDependency(HloComputation* to_apply, int operand_size) {
   return true;
 }
 
+bool IsSupportedIndicesType(PrimitiveType primitive_type) {
+  return primitive_type == S32 || primitive_type == S64;
+}
+
 }  // namespace
 
 bool ScatterDeterminismExpander::InstructionMatchesPattern(
@@ -911,6 +923,9 @@ bool ScatterDeterminismExpander::InstructionMatchesPattern(
   auto* scatter = DynCast<HloScatterInstruction>(inst);
 
   return (scatter != nullptr) && !IsScatterDeterministic(scatter) &&
+         scatter->scatter_operand_count() == 1 &&
+         IsSupportedIndicesType(
+             scatter->scatter_indices()->shape().element_type()) &&
          CheckOutputDependency(scatter->to_apply(),
                                scatter->scatter_operands().size());
 }

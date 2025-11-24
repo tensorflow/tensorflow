@@ -23,3 +23,11 @@ func.func @forall_op(%input: tensor<1024x32x2xf32>) -> (tensor<1024x32x2xf32>) {
 // CHECK: [[FOR_ALL_1:%.*]] = scf.for [[IV_1:%.*]] = [[CONST_0]] to [[CONST_32]] step [[CONST_1]]
 // CHECK: [[FOR_ALL_2:%.*]] = scf.for [[IV_2:%.*]] = [[CONST_0]] to [[CONST_1024]] step [[CONST_1]]
 // CHECK: tensor.extract {{%.*\[}}[[IV_2]], [[IV_1]], [[IV_0]]{{\]}}
+// CHECK: scf.yield
+// CHECK-NEXT: }
+// CHECK-NOT: loop_annotation
+// CHECK: scf.yield
+// CHECK-NEXT: }
+// CHECK: scf.yield
+// CHECK-NEXT: }
+

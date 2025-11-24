@@ -336,7 +336,7 @@ class Parser(ast.NodeVisitor):
             f'{self._api_name}.{v}' for v in self._literal_value(kw.value)
         )
       elif kw.arg == 'allow_multiple_exports':
-        # no-op kept for backward comapatibility of `tf-keras` with TF 2.13
+        # no-op kept for backward compatibility of `tf-keras` with TF 2.13
         pass
       else:
         raise BadExportError(

@@ -20,8 +20,9 @@ limitations under the License.
 #include <string>
 
 #include "absl/status/statusor.h"
-#include "xla/backends/cpu/runtime/convolution_lib.h"
+#include "xla/backends/cpu/runtime/convolution_dims.h"
 #include "xla/backends/cpu/runtime/thunk.pb.h"
+#include "xla/debug_options_flags.h"
 #include "xla/service/cpu/executable.pb.h"
 #include "xla/xla_data.pb.h"
 
@@ -32,6 +33,10 @@ namespace tfcompile {
 // that is used to codegen the `Run` method of the tfcompiled models.
 class ThunkProtoExecutionDeserializer {
  public:
+  explicit ThunkProtoExecutionDeserializer()
+      : xla_cpu_multi_thread_eigen_(
+            xla::GetDebugOptionsFromFlags().xla_cpu_multi_thread_eigen()) {}
+
   absl::StatusOr<std::string> GetThunkSpecificRunImpl(
       const xla::cpu::CompilationResultProto& proto) &&;
 
@@ -39,14 +44,13 @@ class ThunkProtoExecutionDeserializer {
       const xla::cpu::ThunkSequenceProto& thunk_sequence_proto);
 
  protected:
-  absl::StatusOr<std::string> GetMatmulFunction(xla::PrimitiveType xla_type,
-                                                bool is_single_threaded);
+  absl::StatusOr<std::string> GetMatmulFunction(xla::PrimitiveType xla_type);
 
   absl::StatusOr<std::string> GetDotThunkRunImpl(
       const xla::cpu::ThunkProto& thunk);
 
   absl::StatusOr<std::string> GetConvolutionFunction(
-      xla::PrimitiveType xla_type, bool is_single_threaded);
+      xla::PrimitiveType xla_type);
 
   absl::StatusOr<std::string> GetConvolution2DRunImpl(
       const xla::cpu::ConvolutionThunkProto& convolution_thunk,
@@ -73,10 +77,16 @@ class ThunkProtoExecutionDeserializer {
   absl::StatusOr<std::string> GetForLoopThunkRunImpl(
       const xla::cpu::WhileThunkProto& while_thunk);
 
+  absl::StatusOr<std::string> GetWhileLoopThunkRunImpl(
+      const xla::cpu::WhileThunkProto& while_thunk);
+
   absl::StatusOr<std::string> GetWhileThunkRunImpl(
       const xla::cpu::ThunkProto& thunk);
 
   absl::StatusOr<std::string> GetSortThunkRunImpl(
+      const xla::cpu::ThunkProto& thunk);
+
+  absl::StatusOr<std::string> GetTopKThunkRunImpl(
       const xla::cpu::ThunkProto& thunk);
 
   absl::StatusOr<std::string> CppDataTypeFromXlaType(
@@ -86,6 +96,8 @@ class ThunkProtoExecutionDeserializer {
   // The index of the next rng state to use when deserializing the rng state
   // from the ThunkProto.
   int64_t rng_state_index_ = 0;
+
+  bool xla_cpu_multi_thread_eigen_;
 };
 
 }  // namespace tfcompile

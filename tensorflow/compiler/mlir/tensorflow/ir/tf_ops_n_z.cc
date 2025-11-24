@@ -443,7 +443,7 @@ struct ConvertPackToReshape : public OpRewritePattern<PackOp> {
       shape_attr = DenseIntElementsAttr::get(output_int_type, output_shape);
     }
 
-    auto shape = rewriter.create<ConstOp>(pack_op.getLoc(), shape_attr);
+    auto shape = ConstOp::create(rewriter, pack_op.getLoc(), shape_attr);
 
     // TODO(b/173622615): Remove after fixed.
     ReplaceTfOpWithNewOp<ReshapeOp>(rewriter, pack_op, output_ty,
@@ -488,7 +488,7 @@ LogicalResult PadOp::FoldOperandsPermutation(ArrayRef<int64_t> permutation) {
   auto type = tensorflow::GetTypeFromTFTensorShape(
       paddings_value.getType().getShape(), builder.getIntegerType(32));
   auto values = mlir::DenseIntElementsAttr::get(type, shuffled_paddings);
-  auto shuffled_paddings_op = builder.create<TF::ConstOp>(getLoc(), values);
+  auto shuffled_paddings_op = TF::ConstOp::create(builder, getLoc(), values);
 
   // Use new paddings.
   setOperand(1, shuffled_paddings_op);
@@ -1279,7 +1279,7 @@ class ShapeNPartialStaticInputShape : public OpRewritePattern<ShapeNOp> {
     SmallVector<Type, 4> result_types;
     for (const auto &e : llvm::enumerate(op.getOperands())) {
       if (Attribute result = ConvertShapeToAttr(e.value().getType(), width)) {
-        results[e.index()] = rewriter.create<TF::ConstOp>(op.getLoc(), result);
+        results[e.index()] = TF::ConstOp::create(rewriter, op.getLoc(), result);
       } else {
         dynamic_indices.push_back(e.index());
         dynamic_inputs.push_back(e.value());
@@ -1294,8 +1294,8 @@ class ShapeNPartialStaticInputShape : public OpRewritePattern<ShapeNOp> {
 
     // Create a ShapeNOp for all dynamic inputs.
     if (!dynamic_inputs.empty()) {
-      auto dynamic_shape_n = rewriter.create<TF::ShapeNOp>(
-          op.getLoc(), result_types, dynamic_inputs);
+      auto dynamic_shape_n = TF::ShapeNOp::create(rewriter, op.getLoc(),
+                                                  result_types, dynamic_inputs);
       for (auto index_result :
            llvm::zip(dynamic_indices, dynamic_shape_n.getResults())) {
         results[std::get<0>(index_result)] = std::get<1>(index_result);
@@ -1315,8 +1315,8 @@ class ShapeNToShape : public OpRewritePattern<ShapeNOp> {
     if (op.getNumOperands() != 1) {
       return failure();
     }
-    auto shape = rewriter.create<TF::ShapeOp>(op.getLoc(), op.getType(0),
-                                              op.getOperand(0));
+    auto shape = TF::ShapeOp::create(rewriter, op.getLoc(), op.getType(0),
+                                     op.getOperand(0));
     rewriter.replaceOp(op, shape);
     return success();
   }
@@ -2865,7 +2865,7 @@ class ToBoolOfRankedTensor : public OpRewritePattern<ToBoolOp> {
 
       if (!zero_attr) return failure();
 
-      auto zero_const = rewriter.create<TF::ConstOp>(op.getLoc(), zero_attr);
+      auto zero_const = TF::ConstOp::create(rewriter, op.getLoc(), zero_attr);
       ReplaceTfOpWithNewOp<TF::NotEqualOp>(rewriter, op, result_type,
                                            op.getOperand(), zero_const, false);
     } else {
@@ -3611,8 +3611,8 @@ SmallVector<Region *> WhileRegionOp::getLoopRegions() { return {&getBody()}; }
 //===----------------------------------------------------------------------===//
 
 OperandRange WhileRegionOp::getEntrySuccessorOperands(
-    RegionBranchPoint point) {
-  if (point.isParent()) {
+    RegionSuccessor successor) {
+  if (successor.isParent()) {
     // WhileRegionOp branches to the condition, which branches to the body. But
     // the op itself doesn't branch back to itself. So this range is empty.
     auto end = this->getOperation()->operand_end();
@@ -3628,21 +3628,28 @@ OperandRange WhileRegionOp::getEntrySuccessorOperands(
 
 void WhileRegionOp::getSuccessorRegions(
     RegionBranchPoint point, SmallVectorImpl<RegionSuccessor> &regions) {
-  if (!point.isParent() && point == (*this)->getRegion(0)) {
+  if (!point.isParent() &&
+      (point.getTerminatorPredecessorOrNull() &&
+       point.getTerminatorPredecessorOrNull()->getParentRegion() ==
+           &(*this)->getRegion(0))) {
     // 'cond' branches to the body or returns.
     Operation *yield = getCond().front().getTerminator();
     if (yield->getOperands().size() ==
         1 + this->getOperation()->getOperands().size()) {
       regions.push_back(
           RegionSuccessor(&getBody(), getBody().front().getArguments()));
-      regions.push_back(getResults());
+      regions.push_back(RegionSuccessor(getOperation(), getResults()));
     } else {
       // For compatibility with older code, we allow the "yield" in a condition
       // to only yield a single boolean. In that case we can't forward any args.
       regions.push_back(RegionSuccessor(&getBody()));
-      regions.push_back(RegionSuccessor());  // branch back to parent, no args
+      regions.push_back(
+          RegionSuccessor(getOperation(), getResults().take_front(0)));
     }
-  } else if (!point.isParent() && point == (*this)->getRegion(1)) {
+  } else if (!point.isParent() &&
+             (point.getTerminatorPredecessorOrNull() &&
+              point.getTerminatorPredecessorOrNull()->getParentRegion() ==
+                  &(*this)->getRegion(1))) {
     // 'body' branches back to 'cond'.
     regions.push_back(
         RegionSuccessor(&getCond(), getCond().front().getArguments()));
@@ -3696,8 +3703,8 @@ struct WhileRegionExplicitCast : public OpRewritePattern<WhileRegionOp> {
           body_arg.getType() != while_operand.getType()) {
         changed = true;
         rewriter.setInsertionPoint(while_op);
-        auto cast_op = rewriter.create<CastOp>(
-            while_op.getLoc(), body_arg.getType(), while_operand);
+        auto cast_op = CastOp::create(rewriter, while_op.getLoc(),
+                                      body_arg.getType(), while_operand);
         while_op.setOperand(op_idx, cast_op);
       }
     }
@@ -3782,9 +3789,9 @@ struct WhileRegionEliminatePassThrough
     }
 
     // Create the new while operation.
-    auto new_while_op = rewriter.create<WhileRegionOp>(
-        while_op.getLoc(), new_result_types, new_while_operands,
-        while_op->getAttrs());
+    auto new_while_op =
+        WhileRegionOp::create(rewriter, while_op.getLoc(), new_result_types,
+                              new_while_operands, while_op->getAttrs());
 
     // Move region bodies to the new while.
     rewriter.inlineRegionBefore(while_op.getCond(), new_while_op.getCond(),
@@ -4510,7 +4517,7 @@ LogicalResult UniformQuantizedClipByValueOp::verify() {
 //===----------------------------------------------------------------------===//
 
 MutableOperandRange YieldOp::getMutableSuccessorOperands(
-    RegionBranchPoint point) {
+    RegionSuccessor successor) {
   if (auto whileOp =
           llvm::dyn_cast<WhileRegionOp>(this->getOperation()->getParentOp())) {
     if (&whileOp.getCond() == this->getOperation()->getParentRegion()) {
@@ -4537,6 +4544,8 @@ MutableOperandRange YieldOp::getMutableSuccessorOperands(
 //===----------------------------------------------------------------------===//
 // TableGen'd op method definitions
 //===----------------------------------------------------------------------===//
+
+using namespace mlir;  // NOLINT
 
 #define GET_OP_CLASSES
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_n_z.cc.inc"

@@ -16,13 +16,13 @@ limitations under the License.
 #include "xla/service/xla_debug_info_manager.h"
 
 #include <memory>
-#include <string>
 #include <utility>
 #include <vector>
 
 #include "absl/log/check.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/service/buffer_assignment.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_proto_util.h"
 
@@ -30,9 +30,9 @@ namespace xla {
 
 void XlaDebugInfoManager::RegisterModule(
     std::shared_ptr<const HloModule> hlo_module,
-    BufferAssignmentProto buffer_assignment) {
+    std::shared_ptr<const BufferAssignment> buffer_assignment) {
   CHECK(hlo_module != nullptr);
-  absl::MutexLock lock(&mutex_);
+  absl::MutexLock lock(mutex_);
   auto result = modules_.try_emplace(hlo_module->unique_id());
   CHECK(result.second);
   XlaModuleEntry& m = result.first->second;
@@ -45,7 +45,7 @@ void XlaDebugInfoManager::RegisterModule(
 // module id is out of scope, we remove it from our database.
 // However during tracing, we will defer the cleanup after serialization.
 void XlaDebugInfoManager::UnregisterModule(ModuleIdentifier module_id) {
-  absl::MutexLock lock(&mutex_);
+  absl::MutexLock lock(mutex_);
   auto it = modules_.find(module_id);
   CHECK(it != modules_.end());
   if (!tracing_active_) {
@@ -57,7 +57,7 @@ void XlaDebugInfoManager::UnregisterModule(ModuleIdentifier module_id) {
 }
 
 void XlaDebugInfoManager::StartTracing() {
-  absl::MutexLock lock(&mutex_);
+  absl::MutexLock lock(mutex_);
   tracing_active_ = true;
 }
 
@@ -65,7 +65,7 @@ void XlaDebugInfoManager::StopTracing(
     std::vector<std::unique_ptr<HloProto>>* module_debug_info) {
   std::vector<XlaModuleEntry> modules_to_serialize;
   {
-    absl::MutexLock lock(&mutex_);
+    absl::MutexLock lock(mutex_);
     if (!tracing_active_) return;
     tracing_active_ = false;
 
@@ -88,14 +88,17 @@ void XlaDebugInfoManager::StopTracing(
     module_debug_info->clear();
     for (const auto& m : modules_to_serialize) {
       auto hlo_proto = std::make_unique<HloProto>(MakeHloProto(*m.hlo_module));
-      *hlo_proto->mutable_buffer_assignment() = m.buffer_assignment;
+      if (m.buffer_assignment != nullptr) {
+        *hlo_proto->mutable_buffer_assignment() =
+            m.buffer_assignment->ToProto();
+      }
       module_debug_info->emplace_back(std::move(hlo_proto));
     }
   }
 }
 
 bool XlaDebugInfoManager::TracksModule(ModuleIdentifier module_id) const {
-  absl::MutexLock lock(&mutex_);
+  absl::MutexLock lock(mutex_);
   return modules_.find(module_id) != modules_.end();
 }
 

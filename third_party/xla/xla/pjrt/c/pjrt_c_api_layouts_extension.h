@@ -26,8 +26,9 @@ extern "C" {
 #endif
 
 // This extension provides capabilities around custom on-device memory layouts
-// for PJRT_Buffers. The extension is both optional and experimental, meaning
-// ABI-breaking and other incompatible changes may be introduced at any time.
+// for PJRT_Buffers and PJRT_Executables. The extension is both optional and
+// experimental, meaning ABI-breaking and other incompatible changes may be
+// introduced at any time.
 //
 // If this extension is provided, JAX and possibly other frameworks will assume
 // that the compiler MLIR input can contain "mhlo.layout_mode" attributes on
@@ -36,7 +37,7 @@ extern "C" {
 // https://github.com/openxla/xla/blob/main/xla/pjrt/layout_mode.h for more
 // details.
 
-#define PJRT_API_LAYOUTS_EXTENSION_VERSION 1
+#define PJRT_API_LAYOUTS_EXTENSION_VERSION 3
 
 // -------------------------------- Data types ---------------------------------
 
@@ -108,6 +109,39 @@ PJRT_DEFINE_STRUCT_TRAITS(PJRT_Layouts_PJRT_Client_GetDefaultLayout_Args,
 typedef PJRT_Error* PJRT_Layouts_PJRT_Client_GetDefaultLayout(
     PJRT_Layouts_PJRT_Client_GetDefaultLayout_Args* args);
 
+struct PJRT_Layouts_PJRT_Topology_GetDefaultLayout_Args {
+  size_t struct_size;
+  PJRT_Extension_Base* extension_start;
+  PJRT_TopologyDescription* topology_description;
+  PJRT_Buffer_Type type;
+  const int64_t* dims;
+  size_t num_dims;
+  PJRT_Layouts_MemoryLayout* layout;  // out
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Layouts_PJRT_Topology_GetDefaultLayout_Args,
+                          layout);
+
+// Returns the default memory layout for a topology.
+typedef PJRT_Error* PJRT_Layouts_PJRT_Topology_GetDefaultLayout(
+    PJRT_Layouts_PJRT_Topology_GetDefaultLayout_Args* args);
+
+// Returns output layouts for an executable.
+struct PJRT_Layouts_PJRT_Executable_GetOutputLayouts_Args {
+  size_t struct_size;
+  PJRT_Extension_Base* extension_start;
+  PJRT_Executable* executable;
+  size_t num_outputs;  // out
+  // Layout data is owned by and has the lifetime of `executable`.
+  // Has length `num_outputs`.
+  PJRT_Layouts_MemoryLayout** layouts;  // out
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Layouts_PJRT_Executable_GetOutputLayouts_Args,
+                          layouts);
+
+// Returns a list of layouts for executable outputs. Each output has a layout.
+typedef PJRT_Error* PJRT_Layouts_PJRT_Executable_GetOutputLayouts(
+    PJRT_Layouts_PJRT_Executable_GetOutputLayouts_Args* args);
+
 // --------------------------- Extension entrypoint ----------------------------
 
 typedef struct PJRT_Layouts_Extension {
@@ -115,14 +149,16 @@ typedef struct PJRT_Layouts_Extension {
 
   PJRT_Layouts_MemoryLayout_Destroy* PJRT_Layouts_MemoryLayout_Destroy;
   PJRT_Layouts_MemoryLayout_Serialize* PJRT_Layouts_MemoryLayout_Serialize;
-
   PJRT_Layouts_PJRT_Client_GetDefaultLayout*
       PJRT_Layouts_PJRT_Client_GetDefaultLayout;
-
   PJRT_Layouts_PJRT_Buffer_MemoryLayout* PJRT_Layouts_PJRT_Buffer_MemoryLayout;
+  PJRT_Layouts_PJRT_Topology_GetDefaultLayout*
+      PJRT_Layouts_PJRT_Topology_GetDefaultLayout;
+  PJRT_Layouts_PJRT_Executable_GetOutputLayouts*
+      PJRT_Layouts_PJRT_Executable_GetOutputLayouts;
 } PJRT_Layouts_Extension;
 PJRT_DEFINE_STRUCT_TRAITS(PJRT_Layouts_Extension,
-                          PJRT_Layouts_PJRT_Buffer_MemoryLayout);
+                          PJRT_Layouts_PJRT_Executable_GetOutputLayouts);
 
 #ifdef __cplusplus
 }

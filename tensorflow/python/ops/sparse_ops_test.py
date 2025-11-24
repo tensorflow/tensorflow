@@ -108,6 +108,36 @@ class SparseOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       (math_ops.negative, [1.0, -1.0, 3.0, -4.0], [-1.0, 1.0, -3.0, 4.0]),
       (math_ops.sign, [3.0, -2.0, 0.0, -4.0], [1.0, -1.0, 0.0, -1.0]),
       (math_ops.square, [1.0, -1.0, 3.0, -4.0], [1.0, 1.0, 9.0, 16.0]),
+      (
+          math_ops.asinh,
+          [1.0, -1.0, 3.0, -4.0],
+          [0.8813736, -0.8813736, 1.8184465, -2.0947125],
+      ),
+      (
+          math_ops.sin,
+          [1.0, -1.0, 3.0, -4.0],
+          [0.84147096, -0.84147096, 0.14112, 0.7568025],
+      ),
+      (
+          math_ops.asin,
+          [1.0, -1.0, 0.4, -0.5],
+          [1.5707964, -1.5707964, 0.41151685, -0.5235988],
+      ),
+      (
+          math_ops.tan,
+          [1.0, -1.0, 0.4, -0.5],
+          [1.5574077, -1.5574077, 0.42279324, -0.5463025],
+      ),
+      (
+          math_ops.atan,
+          [0.4, -0.4, 1.0, 0.5],
+          [0.3805064, -0.3805064, 0.7853982, 0.4636476],
+      ),
+      (
+          math_ops.atanh,
+          [0.4, -0.4, -0.5, 0.5],
+          [0.42364895, -0.42364895, -0.54930615, 0.54930615],
+      ),
   ])
   def testUnarySparseDispatch(self, op, values, expected):
     st = sparse_tensor.SparseTensor(
@@ -117,7 +147,7 @@ class SparseOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     result = op(st)
     result_value = self.evaluate(result)
     self.assertAllEqual(result_value.indices, st.indices)
-    self.assertAllEqual(result_value.values, expected)
+    self.assertAllClose(result_value.values, expected)
     self.assertAllEqual(result_value.dense_shape, st.dense_shape)
 
   def testSparseToDenseGradient(self):

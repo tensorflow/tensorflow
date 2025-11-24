@@ -22,17 +22,17 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/attributes.h"
-#include "absl/base/macros.h"
-#include "absl/base/nullability.h"
+#include "absl/log/check.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/dtype.h"
-#include "xla/python/ifrt/future.h"
+#include "xla/python/ifrt/layout.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/ifrt/value.h"
+#include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/concurrency/ref_count.h"
 
 namespace xla {
@@ -77,10 +77,16 @@ class Array : public llvm::RTTIExtends<Array, Value> {
   virtual const Sharding& sharding() const = 0;
   virtual ShardingRef shared_ptr_sharding() const = 0;
   // The device memory layout for each shard of the Array. All shards are
-  // assumed to have the same layout. Cannot be nullptr; implementations should
-  // return UNIMPLEMENTED instead.
-  virtual absl::StatusOr<std::shared_ptr<const xla::PjRtLayout>> layout()
+  // assumed to have the same layout. `nullptr` indicates a default layout; the
+  // user can obtain a concrete layout by calling
+  // `Client::GetDefaultPjRtLayout()`.
+  virtual absl::StatusOr<std::shared_ptr<const xla::PjRtLayout>> pjrt_layout()
       const = 0;
+  virtual CustomLayoutRef layout() const {
+    // TODO(hyeontaek): Change to a pure virtual method once all implementations
+    // override this method.
+    CHECK(false) << "Placeholder; do not use yet";
+  }
 
   // Breaks an array up into per-device arrays. This is the elimination
   // counterpart of `Client::AssembleArrayFromSingleDeviceArrays()`.
@@ -88,15 +94,6 @@ class Array : public llvm::RTTIExtends<Array, Value> {
   DisassembleIntoSingleDeviceArrays(
       ArrayCopySemantics array_copy_semantics,
       SingleDeviceShardSemantics single_device_shard_semantics) = 0;
-
-  // TODO(hyeontaek): Replace this API with the version that takes
-  // `SingleDeviceShardSemantics`.
-  ABSL_DEPRECATE_AND_INLINE()
-  absl::StatusOr<std::vector<ArrayRef>> DisassembleIntoSingleDeviceArrays(
-      ArrayCopySemantics semantics) {
-    return DisassembleIntoSingleDeviceArrays(
-        semantics, SingleDeviceShardSemantics::kAddressableShards);
-  }
 
   // Returns a shard of an Array which is fully replicated. This is an
   // optimization so that instead of disassembling into all the shards when
@@ -133,7 +130,7 @@ class Array : public llvm::RTTIExtends<Array, Value> {
   // an API that lets users query the alignment requirement of the specific
   // implementation.
   ABSL_MUST_USE_RESULT
-  virtual Future<> CopyToHostBuffer(
+  virtual tsl::Future<> CopyToHostBuffer(
       void* data, std::optional<absl::Span<const int64_t>> byte_strides,
       ArrayCopySemantics semantics) = 0;
 

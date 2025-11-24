@@ -34,6 +34,7 @@ limitations under the License.
 #include "llvm/Analysis/CGSCCPassManager.h"
 #include "llvm/Analysis/LazyCallGraph.h"
 #include "llvm/Analysis/LoopAnalysisManager.h"
+#include "llvm/Analysis/TargetLibraryInfo.h"
 #include "llvm/Analysis/TargetTransformInfo.h"
 #include "llvm/Bitcode/BitcodeReader.h"
 #include "llvm/Bitcode/BitcodeWriter.h"
@@ -57,9 +58,14 @@ limitations under the License.
 #include "llvm/Transforms/IPO/AlwaysInliner.h"
 #include "llvm/Transforms/IPO/Internalize.h"
 #include "llvm/Transforms/Scalar.h"
+#include "xla/codegen/intrinsic/intrinsic.h"
+#include "xla/codegen/intrinsic/intrinsic_compiler_lib.h"
+#include "xla/codegen/intrinsic_lib.h"
 #include "xla/service/gpu/llvm_gpu_backend/load_ir_module.h"
 #include "xla/service/gpu/llvm_gpu_backend/utils.h"
 #include "xla/service/llvm_ir/llvm_type_conversion_util.h"
+#include "xla/service/llvm_ir/llvm_util.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
@@ -125,9 +131,8 @@ std::unique_ptr<llvm::TargetMachine> GetTargetMachine(
       codegen_opt_level = llvm::CodeGenOptLevel::None;
   }
   return absl::WrapUnique(target->createTargetMachine(
-      triple.str(), llvm_ir::AsStringRef(cpu_name),
-      llvm_ir::AsStringRef(feature_str), target_options,
-      llvm::codegen::getExplicitRelocModel(),
+      triple, llvm_ir::AsStringRef(cpu_name), llvm_ir::AsStringRef(feature_str),
+      target_options, llvm::codegen::getExplicitRelocModel(),
       llvm::codegen::getExplicitCodeModel(), codegen_opt_level));
 }
 
@@ -233,7 +238,7 @@ auto DumpCallbackForModule(std::string module_identifier,
 
     const std::string basename = ReplaceFilenameExtension(
         absl::string_view(tsl::io::Basename(module_identifier)),
-        absl::StrFormat("pass-%02d.before.%s.ll", i++,
+        absl::StrFormat("pass-%03d.before.%s.ll", i++,
                         absl::string_view(pass.str())));
     DumpModule(tsl::io::JoinPath(outputs_dir, basename), module);
   };
@@ -258,8 +263,32 @@ absl::Status LinkAndOptimizeModule(
   llvm::CGSCCAnalysisManager cgam;
   llvm::ModuleAnalysisManager mam;
 
+  xla::codegen::intrinsics::DeviceType device_type;
+  if (gpu_version.IsCuda()) {
+    device_type = xla::codegen::intrinsics::DeviceType::kNvidiaGpu;
+  } else if (gpu_version.IsRocm()) {
+    device_type = xla::codegen::intrinsics::DeviceType::kAmdGpu;
+  } else {
+    LOG(FATAL) << "Unsupported GPU type";
+  }
+
+  codegen::IntrinsicFunctionLib intrinsic_lib(
+      {target_machine ? target_machine->getTargetFeatureString().str() : "",
+       device_type,
+       /*disable_platform_dependent_math=*/true});
+
   if (target_machine) {
     fam.registerPass([&] { return target_machine->getTargetIRAnalysis(); });
+    {
+      auto target_library_info_impl =
+          std::make_unique<llvm::TargetLibraryInfoImpl>(
+              target_machine->getTargetTriple());
+      target_library_info_impl->addVectorizableFunctions(
+          intrinsic_lib.Vectorizations());
+      fam.registerPass([&] {
+        return llvm::TargetLibraryAnalysis(*target_library_info_impl);
+      });
+    }
   }
 
   llvm::PipelineTuningOptions pto;
@@ -319,6 +348,13 @@ absl::Status LinkAndOptimizeModule(
   mpm.addPass(llvm::VerifierPass());
 
   mpm.run(*module, mam);
+
+  auto replaced_functions = intrinsic_lib.DefineIntrinsicFunctions(*module);
+  if (!replaced_functions.empty()) {
+    codegen::intrinsic::RemoveFromCompilerUsed(
+        *module, [&](auto n) { return intrinsic_lib.IsIntrinsicFunction(n); });
+    codegen::intrinsic::RunInlineAndOptPasses(*module);
+  }
 
   return absl::OkStatus();
 }

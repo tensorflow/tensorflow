@@ -33,6 +33,8 @@ const char kXlaComputeTypeDense[] = "dense";
 
 const char kXlaComputeTypeHost[] = "host";
 
+const char kXlaComputeTypeSparseOffload[] = "sparseoffload";
+
 const char kXlaMaxIdsPerPartitionAttr[] = "_xla_max_ids_per_partition";
 
 const char kXlaMaxUniqueIdsPerPartitionAttr[] =
@@ -86,4 +88,10 @@ const char kFuseLimitAttr[] = "FUSE_LIMIT";
 const char kMaximalFuseAttr[] = "MAXIMAL_FUSE";
 
 const char kCollectivesGroupAttr[] = "_collectives_group";
+
+const char kNumSlotVariables[] = "_num_slot_variables";
+
+const char kNumHyperparameters[] = "_num_hyperparameters";
+
+const char kLogTag[] = "_xla_log_tag";
 }  // namespace xla

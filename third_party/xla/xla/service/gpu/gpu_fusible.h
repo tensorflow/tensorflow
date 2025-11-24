@@ -228,9 +228,10 @@ std::vector<const HloInstruction*> GetFusionRoots(
 // Whether the instruction is a generic Triton fusion.
 bool IsGenericTritonFusion(const HloInstruction& instr);
 
-// Whether the fusion will likely behave poorly with vectorization due to the
-// instructions it contains.
-bool MayPreventVectorization(const HloFusionAdaptor& fusion);
+// Whether there is an expected performance drop when unrolling due to the
+// instructions contained in the fusion, e.g. potential register spilling or not
+// enough parallelism.
+bool MayCausePerformanceDropIfUnrolled(const HloFusionAdaptor& fusion);
 
 // Returns the max loop unroll factor.
 inline constexpr int64_t MaxUnrollFactor() { return 4; }

@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/strings/ascii.h"
 #include "absl/strings/match.h"
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/STLExtras.h"
@@ -128,7 +129,7 @@ static Type GetDataTypeFromOp(OpBuilder &builder, Operation *op) {
 static FailureOr<TFOp> CreateConstantTensorOp(
     OpBuilder &builder, Location loc, StringRef name_prefix, Type type,
     ValueRange control_operands, TypedAttr tensor_value,
-    ArrayRef<NamedAttribute> other_attrs = std::nullopt) {
+    ArrayRef<NamedAttribute> other_attrs = {}) {
   if (mlir::isa<VariantType>(type)) return failure();
   // TODO(chiahungduan): Reuse ConstOp Like
   // OperationFolder::tryGetOrCreateConstant.
@@ -228,7 +229,7 @@ static void AddControlOperand(Operation *op, Value control,
 
 static FailureOr<TFOp> ReplaceOpWithConstantTensor(
     OpBuilder &builder, TFOp op, ElementsAttr value,
-    ArrayRef<StringRef> exclude_attrs = std::nullopt) {
+    ArrayRef<StringRef> exclude_attrs = {}) {
   // New const op has the control dependency with op's non-control operands.
   SmallVector<Value> operands_controls;
   llvm::append_range(operands_controls,
@@ -448,9 +449,7 @@ bool OpPropertyHelper::ModifiesInputsInPlace(TFOp op) {
     return false;
   }
 
-  std::string lower_op_name = op_name.str();
-  std::transform(lower_op_name.begin(), lower_op_name.end(),
-                 lower_op_name.begin(), ::tolower);
+  std::string lower_op_name = absl::AsciiStrToLower(op_name.str());
   if (absl::StrContains(lower_op_name, "inplace")) return true;
 
   return op->hasAttr("in_place") || op->hasAttr("inplace");
@@ -1344,8 +1343,7 @@ class MergeNodeFoldingBase : public PropagationPatternBase<ConcreteType> {
   MergeNodeFoldingBase(StringRef op_name, OpPropertyHelper &helper)
       : PropagationPatternBase<ConcreteType>(op_name, helper),
         zero_dim_i32_tensor_type_(RankedTensorType::get(
-            std::nullopt,
-            IntegerType::get(helper.getDialect()->getContext(), 32))) {}
+            {}, IntegerType::get(helper.getDialect()->getContext(), 32))) {}
 
   LogicalResult matchAndRewrite(Operation *op,
                                 PatternRewriter &rewriter) const override {
@@ -1997,8 +1995,7 @@ class SimplifySwitchOp : public PropagationPatternBase<SimplifySwitchOp> {
         return;
 
       FailureOr<TFOp> failure_or_const_op = CreateConstantTensorOp(
-          rewriter, op->getLoc(), TFOp(op).name(), result.getType(),
-          std::nullopt,
+          rewriter, op->getLoc(), TFOp(op).name(), result.getType(), {},
           DenseElementsAttr::get(zero_dim_i1_tensor_type_, const_value));
       if (failed(failure_or_const_op)) return;
       TFOp const_op = *failure_or_const_op;

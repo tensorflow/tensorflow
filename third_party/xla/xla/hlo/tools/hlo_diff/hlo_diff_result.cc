@@ -14,8 +14,8 @@
 
 #include "xla/hlo/tools/hlo_diff/hlo_diff_result.h"
 
-#include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -42,10 +42,42 @@ bool IsChangedInstruction(const HloInstructionNode* left_node,
 
 }  // namespace
 
+void DiffResult::AddUnchangedInstruction(const HloInstruction* left,
+                                         const HloInstruction* right) {
+  unchanged_instructions[left] = right;
+  left_diff_codes[left] = DiffType::kUnchanged;
+  right_diff_codes[right] = DiffType::kUnchanged;
+}
+
+void DiffResult::AddChangedInstruction(const HloInstruction* left,
+                                       const HloInstruction* right) {
+  changed_instructions[left] = right;
+  left_diff_codes[left] = DiffType::kChanged;
+  right_diff_codes[right] = DiffType::kChanged;
+}
+
+void DiffResult::AddMovedInstruction(const HloInstruction* left,
+                                     const HloInstruction* right) {
+  moved_instructions[left] = right;
+  left_diff_codes[left] = DiffType::kUnchanged;
+  right_diff_codes[right] = DiffType::kUnchanged;
+}
+
+void DiffResult::AddUnmatchedInstruction(const HloInstruction* left,
+                                         const HloInstruction* right) {
+  if (left != nullptr) {
+    left_module_unmatched_instructions.insert(left);
+    left_diff_codes[left] = DiffType::kUnmatched;
+  }
+  if (right != nullptr) {
+    right_module_unmatched_instructions.insert(right);
+    right_diff_codes[right] = DiffType::kUnmatched;
+  }
+}
+
 std::unique_ptr<const DiffResult> ConstructDiffResult(
     const HloGumgraph& left_graph, const HloGumgraph& right_graph,
     const HloGumgraphMappings& mappings) {
-  LOG(INFO) << "Constructing diff result";
   const std::vector<const HloInstructionNode*> left_all_nodes =
       GetAllNodesInBfsOrder(left_graph.GetRoot(),
                             BfsTraversalDirection::kForward,
@@ -65,39 +97,38 @@ std::unique_ptr<const DiffResult> ConstructDiffResult(
 
     // The node is unmatched
     if (!mappings.InstructionMapContainsLeft(left_node)) {
-      diff_result->left_module_unmatched_instructions.insert(
-          left_node->instruction);
+      diff_result->AddUnmatchedInstruction(left_node->instruction, nullptr);
       continue;
     }
 
     // The node is matched
     const HloInstructionNode* right_node =
-        mappings.left_to_right_instruction_map.left.find(left_node)->second;
-    const HloInstructionNodeMappingProps& mapping_props =
-        mappings.left_to_right_instruction_map.left.find(left_node)->info;
+        *mappings.left_to_right_instruction_map.GetRight(left_node);
+    const std::optional<HloInstructionNodeMappingProps> mapping_props =
+        mappings.left_to_right_instruction_map.GetPropsByLeft(left_node);
 
     // Fill in matcher debug info.
     diff_result->map_by[std::make_pair(left_node->instruction,
                                        right_node->instruction)] =
-        mapping_props.matcher_type;
+        mapping_props->matcher_type;
     diff_result->matcher_debug_info[std::make_pair(left_node->instruction,
                                                    right_node->instruction)] =
-        mapping_props.matcher_debug_info;
+        mapping_props->matcher_debug_info;
 
     if (IsChangedInstruction(left_node, right_node)) {
-      diff_result->changed_instructions[left_node->instruction] =
-          right_node->instruction;
+      diff_result->AddChangedInstruction(left_node->instruction,
+                                         right_node->instruction);
       continue;
     }
     // If node position is unchanged, add to unchanged instructions.
-    if (mapping_props.unchanged) {
-      diff_result->unchanged_instructions[left_node->instruction] =
-          right_node->instruction;
+    if (mapping_props->unchanged) {
+      diff_result->AddUnchangedInstruction(left_node->instruction,
+                                           right_node->instruction);
       continue;
     }
     // TODO(b/369851244): Add moved instructions to diff result.
-    diff_result->unchanged_instructions[left_node->instruction] =
-        right_node->instruction;
+    diff_result->AddUnchangedInstruction(left_node->instruction,
+                                         right_node->instruction);
   }
 
   for (const HloInstructionNode* right_node : right_all_nodes) {
@@ -107,8 +138,7 @@ std::unique_ptr<const DiffResult> ConstructDiffResult(
     diff_result->node_props_right.insert(
         {right_node->instruction, right_node->props});
     if (!mappings.InstructionMapContainsRight(right_node)) {
-      diff_result->right_module_unmatched_instructions.insert(
-          right_node->instruction);
+      diff_result->AddUnmatchedInstruction(nullptr, right_node->instruction);
     }
   }
 
@@ -120,14 +150,14 @@ DiffResultProto DiffResult::ToProto() const {
   for (const auto& [left_instruction, right_instruction] :
        unchanged_instructions) {
     MatchedInstructionPairProto* pair = proto.add_unchanged_instructions();
-    pair->set_left(std::string(left_instruction->name()));
-    pair->set_right(std::string(right_instruction->name()));
+    pair->set_left(left_instruction->name());
+    pair->set_right(right_instruction->name());
   }
   for (const auto& [left_instruction, right_instruction] :
        changed_instructions) {
     MatchedInstructionPairProto* pair = proto.add_changed_instructions();
-    pair->set_left(std::string(left_instruction->name()));
-    pair->set_right(std::string(right_instruction->name()));
+    pair->set_left(left_instruction->name());
+    pair->set_right(right_instruction->name());
   }
   for (const HloInstruction* instruction : left_module_unmatched_instructions) {
     proto.add_left_unmatched_instructions(std::string(instruction->name()));
@@ -161,20 +191,21 @@ DiffResult DiffResult::FromProto(const DiffResultProto& proto,
   DiffResult diff_result;
   for (const MatchedInstructionPairProto& pair :
        proto.unchanged_instructions()) {
-    diff_result.unchanged_instructions[left_instructions_by_name[pair.left()]] =
-        right_instructions_by_name[pair.right()];
+    diff_result.AddUnchangedInstruction(
+        left_instructions_by_name[pair.left()],
+        right_instructions_by_name[pair.right()]);
   }
   for (const MatchedInstructionPairProto& pair : proto.changed_instructions()) {
-    diff_result.changed_instructions[left_instructions_by_name[pair.left()]] =
-        right_instructions_by_name[pair.right()];
+    diff_result.AddChangedInstruction(left_instructions_by_name[pair.left()],
+                                      right_instructions_by_name[pair.right()]);
   }
   for (const std::string& name : proto.left_unmatched_instructions()) {
-    diff_result.left_module_unmatched_instructions.insert(
-        left_instructions_by_name[name]);
+    diff_result.AddUnmatchedInstruction(left_instructions_by_name[name],
+                                        nullptr);
   }
   for (const std::string& name : proto.right_unmatched_instructions()) {
-    diff_result.right_module_unmatched_instructions.insert(
-        right_instructions_by_name[name]);
+    diff_result.AddUnmatchedInstruction(nullptr,
+                                        right_instructions_by_name[name]);
   }
 
   return diff_result;
@@ -187,7 +218,6 @@ void LogDiffResult(const DiffResult& diff_result) {
             << diff_result.right_module_unmatched_instructions.size();
   LOG(INFO) << "Changed instructions: "
             << diff_result.changed_instructions.size();
-  LOG(INFO) << "Moved instructions: " << diff_result.moved_instructions.size();
   LOG(INFO) << "Unchanged instructions: "
             << diff_result.unchanged_instructions.size();
 }

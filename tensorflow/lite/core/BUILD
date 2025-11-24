@@ -1,4 +1,6 @@
 load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
+load("@rules_cc//cc:cc_test.bzl", "cc_test")
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 load("//tensorflow/lite:build_def.bzl", "tflite_copts", "tflite_copts_warnings", "tflite_self_contained_libs_test_suite")
 load("//tensorflow/lite:special_rules.bzl", "internal_visibility_allowlist", "tflite_portable_test_suite")
@@ -178,8 +180,10 @@ cc_library(
     ],
     compatible_with = get_compatible_with_portable(),
     visibility = [
+        "//third_party/deepmind/lyria_live/internal/odml:__subpackages__",
+        # copybara:uncomment "//third_party/odml/litert/litert:__subpackages__",
+        # "//third_party/odml/litert:__subpackages__",  # copybara:uncomment
         "//tensorflow/lite:__subpackages__",
-        "//third_party/odml/litert/litert:__subpackages__",
     ] + core_cc_api_stable_visibility_allowlist(),
     deps = [
         ":model_builder",
@@ -338,6 +342,8 @@ cc_test(
     srcs = ["signature_runner_test.cc"],
     data = [
         "//tensorflow/lite:testdata/multi_signatures.bin",
+        "//tensorflow/lite:testdata/no_signatures.bin",
+        "//tensorflow/lite:testdata/no_signatures_no_tensor_names.bin",
         "//tensorflow/lite:testdata/reverse_signature_model.bin",
     ],
     deps = [

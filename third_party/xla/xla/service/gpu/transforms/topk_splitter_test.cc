@@ -23,6 +23,9 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
+#include "absl/status/status_matchers.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -32,9 +35,7 @@ limitations under the License.
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/topk_rewriter.h"
 #include "xla/tests/hlo_test_base.h"
-#include "tsl/platform/status_matchers.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/test.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace m = ::xla::match;
 
@@ -42,8 +43,6 @@ namespace xla {
 namespace gpu {
 namespace {
 
-using ::tsl::testing::IsOk;
-using ::tsl::testing::IsOkAndHolds;
 using TopkSplitterTest = HloTestBase;
 
 constexpr absl::string_view kComparator = R"(
@@ -69,7 +68,8 @@ ENTRY cluster {
                                                   kComparator);
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
-  EXPECT_THAT(RunHloPass(TopKSplitter(), module.get()), IsOkAndHolds(true));
+  EXPECT_THAT(RunHloPass(TopKSplitter(), module.get()),
+              absl_testing::IsOkAndHolds(true));
   auto first_topk = m::CustomCall(m::Reshape(m::Parameter(0)));
   auto slice_result = [&](auto input, size_t i) {
     return m::Reshape(m::Slice(m::GetTupleElement(input, i)));
@@ -95,7 +95,8 @@ ENTRY cluster {
                                                   kComparator);
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
-  EXPECT_THAT(RunHloPass(TopKSplitter(), module.get()), IsOkAndHolds(true));
+  EXPECT_THAT(RunHloPass(TopKSplitter(), module.get()),
+              absl_testing::IsOkAndHolds(true));
   auto first_topk = m::CustomCall(m::Reshape(m::Parameter(0)));
   auto slice_result = [&](auto input, size_t i) {
     return m::Reshape(m::Slice(m::GetTupleElement(input, i)));
@@ -123,7 +124,7 @@ ENTRY cluster {
                           ParseAndReturnVerifiedModule(hlo_string));
   EXPECT_THAT(
       RunHloPass(TopKSplitter(/*split_threshold=*/1048576), module.get()),
-      IsOkAndHolds(false));
+      absl_testing::IsOkAndHolds(false));
 }
 
 TEST_F(TopkSplitterTest, SplitFailsUnaligned) {
@@ -138,7 +139,7 @@ ENTRY cluster {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
   EXPECT_THAT(RunHloPass(TopKSplitter(/*split_threshold=*/1024), module.get()),
-              IsOkAndHolds(false));
+              absl_testing::IsOkAndHolds(false));
 }
 
 TEST_F(TopkSplitterTest, SplitFailsLargeK) {
@@ -153,7 +154,7 @@ ENTRY cluster {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
   EXPECT_THAT(RunHloPass(TopKSplitter(/*split_threshold=*/1024), module.get()),
-              IsOkAndHolds(false));
+              absl_testing::IsOkAndHolds(false));
 }
 
 TEST_F(TopkSplitterTest, Equivalent) {
@@ -167,14 +168,16 @@ ENTRY cluster {
                                                   kComparator);
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
-  EXPECT_THAT(TopkDecomposer().Run(module.get()), IsOkAndHolds(true));
+  EXPECT_THAT(TopkDecomposer().Run(module.get()),
+              absl_testing::IsOkAndHolds(true));
   auto round_trip = [](HloModule* module) {
     EXPECT_THAT(TopkRewriter([](const HloSortInstruction*, int64_t) {
                   return true;
                 }).Run(module),
-                IsOkAndHolds(true));
-    EXPECT_THAT(TopKSplitter(1024).Run(module), IsOkAndHolds(true));
-    EXPECT_THAT(TopkDecomposer().Run(module), IsOkAndHolds(true));
+                absl_testing::IsOkAndHolds(true));
+    EXPECT_THAT(TopKSplitter(1024).Run(module),
+                absl_testing::IsOkAndHolds(true));
+    EXPECT_THAT(TopkDecomposer().Run(module), absl_testing::IsOkAndHolds(true));
     EXPECT_TRUE(HloDCE().Run(module).status().ok());
   };
   EXPECT_TRUE(RunAndCompare(std::move(module), std::nullopt, round_trip));
@@ -192,14 +195,16 @@ ENTRY cluster {
                                                   kComparator);
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
-  EXPECT_THAT(TopkDecomposer().Run(module.get()), IsOkAndHolds(true));
+  EXPECT_THAT(TopkDecomposer().Run(module.get()),
+              absl_testing::IsOkAndHolds(true));
   auto round_trip = [](HloModule* module) {
     EXPECT_THAT(TopkRewriter([](const HloSortInstruction*, int64_t) {
                   return true;
                 }).Run(module),
-                IsOkAndHolds(true));
-    EXPECT_THAT(TopKSplitter(1024).Run(module), IsOkAndHolds(true));
-    EXPECT_THAT(TopkDecomposer().Run(module), IsOkAndHolds(true));
+                absl_testing::IsOkAndHolds(true));
+    EXPECT_THAT(TopKSplitter(1024).Run(module),
+                absl_testing::IsOkAndHolds(true));
+    EXPECT_THAT(TopkDecomposer().Run(module), absl_testing::IsOkAndHolds(true));
     EXPECT_TRUE(HloDCE().Run(module).status().ok());
   };
   EXPECT_TRUE(RunAndCompare(std::move(module), std::nullopt, round_trip));
@@ -219,10 +224,11 @@ ENTRY cluster {
                                                   kComparator);
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
-  EXPECT_THAT(RunHloPass(TopKSplitter(1024), module.get()), IsOk());
+  EXPECT_THAT(RunHloPass(TopKSplitter(1024), module.get()),
+              absl_testing::IsOk());
   // We expect idempotency - No change on the second run.
   EXPECT_THAT(RunHloPass(TopKSplitter(1024), module.get()),
-              IsOkAndHolds(false));
+              absl_testing::IsOkAndHolds(false));
 }
 
 }  // namespace

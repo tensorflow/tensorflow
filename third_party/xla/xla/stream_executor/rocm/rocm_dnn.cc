@@ -52,11 +52,10 @@ limitations under the License.
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/dnn.h"
+#include "xla/stream_executor/engine_options.h"
 #include "xla/stream_executor/event_based_timer.h"
-#include "xla/stream_executor/numeric_options.h"
 #include "xla/stream_executor/platform/initialize.h"
 #include "xla/stream_executor/plugin_registry.h"
-#include "xla/stream_executor/rocm/rocm_diagnostics.h"
 #include "xla/stream_executor/rocm/rocm_platform_id.h"
 #include "xla/stream_executor/scratch_allocator.h"
 #include "xla/stream_executor/stream.h"
@@ -628,7 +627,7 @@ class CachedFusionPlans {
                            miopenFusionPlanDescriptor_t* fusion_plan,
                            miopenFusionDirection_t fusion_direction,
                            miopenTensorDescriptor_t input_descriptor) {
-    absl::MutexLock lock{&cached_plans_mutex};
+    absl::MutexLock lock{cached_plans_mutex};
 
     bool found_cached_plan = false;
 
@@ -654,7 +653,7 @@ class CachedFusionPlans {
 
   // Need to figure out the right place to call this routine
   static void Clear() {
-    absl::MutexLock lock{&cached_plans_mutex};
+    absl::MutexLock lock{cached_plans_mutex};
 
     for (auto it : cached_plans) {
       auto status = wrap::miopenDestroyFusionPlan(it.second);
@@ -671,13 +670,13 @@ class CachedFusionPlans {
 
   // Is the Fusion plan corresponding to this hash unsupported
   static bool IsUnsupportedFusionPlan(uint64_t hash) {
-    absl::MutexLock lock{&cached_plans_mutex};
+    absl::MutexLock lock{cached_plans_mutex};
     return unsupported_plans.count(hash) > 0;
   }
 
   // Mark the given hash value as corresponding to an unsupported fusion plan
   static void MarkFusionPlanUnsupported(uint64_t hash) {
-    absl::MutexLock lock{&cached_plans_mutex};
+    absl::MutexLock lock{cached_plans_mutex};
     unsupported_plans.insert(hash);
   }
 
@@ -747,7 +746,7 @@ class MIOpenAccess {
   explicit MIOpenAccess(miopenHandle_t handle) : handle_(handle) {}
 
   ~MIOpenAccess() {
-    absl::MutexLock lock(&mutex_);
+    absl::MutexLock lock(mutex_);
     wrap::miopenDestroy(handle_);
   }
 
@@ -811,26 +810,14 @@ absl::Status MIOpenSupport::Init() {
   std::unique_ptr<ActivateContext> context = parent_->Activate();
   miopenHandle_t miopen_handle = nullptr;
   auto status = wrap::miopenCreateWithStream(
-      reinterpret_cast<miopenHandle_t*>(&miopen_handle), (hipStream_t)(0));
+      reinterpret_cast<miopenHandle_t*>(&miopen_handle), (hipStream_t) nullptr);
   if (status == miopenStatusSuccess) {
-    miopen_.reset(new MIOpenAccess(miopen_handle));
+    miopen_ = std::make_unique<MIOpenAccess>(miopen_handle);
     return absl::OkStatus();
   }
 
   CHECK_EQ(miopen_handle, nullptr);
   LOG(ERROR) << "could not create miopen handle: " << ToString(status);
-  if (status == miopenStatusNotInitialized) {
-    auto result = rocm::Diagnostician::FindKernelDriverVersion();
-    if (!result.ok()) {
-      LOG(ERROR) << "error retrieving driver version: "
-                 << rocm::DriverVersionStatusToString(result);
-    } else {
-      const auto& version = result.value();
-      LOG(INFO) << "possibly insufficient driver version: "
-                << rocm::DriverVersionToString(version);
-    }
-  }
-
   return absl::Status{absl::StatusCode::kInternal,
                       absl::StrCat("miopen library could not create a handle: ",
                                    ToString(status))};
@@ -1042,10 +1029,6 @@ absl::StatusOr<ScopedConvolutionDescriptor> scope(
   }
   const auto& strides64 = convolution_descriptor.strides();
   const auto& padding64 = convolution_descriptor.padding();
-  if (convolution_descriptor.pad_alignment() ==
-      dnn::PadAlignment::kTensorFlowPadding) {
-    LOG(ERROR) << "TensorFlow padding alignment is not supported.";
-  }
 
   // MIOpen requires arrays of ints.
   std::vector<int> strides(convolution_descriptor.ndims());
@@ -2146,8 +2129,8 @@ class MIOpenRnnDescriptor : public MIOpenDescriptorCommon<dnn::RnnDescriptor> {
         data_type_(data_type),
         algorithm_config_(algorithm_config) {
     // Create the dropout handle
-    miopen_dropout_desc_.reset(new MIOpenDropoutDescriptor(
-        miopen_handle, dropout, seed, state_allocator));
+    miopen_dropout_desc_ = std::make_unique<MIOpenDropoutDescriptor>(
+        miopen_handle, dropout, seed, state_allocator);
     // Create the RNN handle
     auto status = wrap::miopenCreateRNNDescriptor(&rnn_desc_);
     RETURN_IF_MIOPEN_ERROR(status, "Unable to create RNN descriptor");
@@ -2160,8 +2143,8 @@ class MIOpenRnnDescriptor : public MIOpenDescriptorCommon<dnn::RnnDescriptor> {
         miopenRNNdefault /*algo*/, data_type /*dataType*/);
     RETURN_IF_MIOPEN_ERROR(status, "Unable to update RNN descriptor");
     // Create the params handle.
-    miopen_params_desc_.reset(
-        new MIOpenRnnParamsDescriptor(miopen_handle, *this));
+    miopen_params_desc_ =
+        std::make_unique<MIOpenRnnParamsDescriptor>(miopen_handle, *this);
     if (!miopen_params_desc_->ok()) {
       SetFailure(miopen_params_desc_->Status());
       return;
@@ -2817,7 +2800,7 @@ absl::Status MIOpenSupport::DoPrepareForCtcLoss(
     absl::Span<const int> labels_data,
     absl::Span<const int> labels_lengths_data,
     absl::Span<const int> input_lengths_data,
-    const NumericOptions& numeric_options, ScratchAllocator* scratch_allocator,
+    const EngineOptions& engine_options, ScratchAllocator* scratch_allocator,
     DeviceMemory<uint8_t>* scratch_memory, int* ctc_loss_algo_id) {
   auto miopen = miopen_->GetHandle(parent_, stream);
 
@@ -2939,7 +2922,7 @@ MIOpenSupport::CreateRnnDescriptor(
     int batch_size, dnn::RnnInputMode input_mode,
     dnn::RnnDirectionMode direction_mode, dnn::RnnMode rnn_mode,
     dnn::DataType data_type, const dnn::AlgorithmConfig& algorithm_config,
-    const NumericOptions& numeric_options, float dropout, uint64_t seed,
+    const EngineOptions& engine_options, float dropout, uint64_t seed,
     ScratchAllocator* state_allocator, bool use_padded_io) {
   // ROCM TODO: batch_size is used in dynamic persistent RNN algorithm and is
   // not supported by MIOpen now.
@@ -3505,7 +3488,7 @@ absl::Status MIOpenSupport::GetConvolveRunners(
     DeviceMemoryBase filter_data, const dnn::BatchDescriptor& output_descriptor,
     DeviceMemoryBase output_data,
     const dnn::ConvolutionDescriptor& convolution_descriptor, bool use_fallback,
-    ScratchAllocator* scratch_allocator, const NumericOptions& numeric_options,
+    ScratchAllocator* scratch_allocator, const EngineOptions& engine_options,
     std::vector<std::unique_ptr<const dnn::ConvRunner>>* out_runners) {
   if (input_type != output_type) {
     return absl::UnimplementedError(
@@ -4287,7 +4270,7 @@ absl::Status ROCmFusedMatmulRunner::gemm(Stream* stream,
                               static_cast<DeviceMemory<T>>(b_data), _ldb,
                               static_cast<DeviceMemory<T>>(a_data), _lda,
                               static_cast<DeviceMemory<T>*>(&c_data), _ldc,
-                              NumericOptions{}, blas::CallContext::kNone);
+                              EngineOptions{}, blas::CallContext::kNone);
 }
 
 template <typename T, typename Tbias = T>
@@ -4365,7 +4348,7 @@ absl::Status MIOpenSupport::GetFusedMatmulRunners(
     dnn::DataType output_type, Stream* stream, bool trans_a, bool trans_b,
     uint64_t m, uint64_t n, uint64_t k, int64_t lda, int64_t ldb, int64_t ldc,
     dnn::ActivationMode activation_mode, bool use_fallback,
-    const NumericOptions& numeric_options,
+    const EngineOptions& engine_options,
     std::vector<std::unique_ptr<const dnn::FusedMatmulRunner>>*
         out_exec_plans) {
   out_exec_plans->clear();
@@ -4452,7 +4435,7 @@ absl::Status MIOpenSupport::DoPoolForward(
           ToString(status)));
     }
     if (workspace_size != 0) {
-      PoolingWorkspaceDescriptor* pdesc = 0;
+      PoolingWorkspaceDescriptor* pdesc = nullptr;
       bool cache_hit =
           m_pooling_cache_allowed &&
           m_pooling_cache.find(input_data.opaque(), input_dimensions,
@@ -4501,7 +4484,7 @@ bool PoolingWorkspaceCache::find(
     const dnn::BatchDescriptor& output_dimensions,
     const dnn::PoolingDescriptor& pooling_dimensions, int _type,
     PoolingWorkspaceDescriptor*& pdesc) {
-  pdesc = 0;
+  pdesc = nullptr;
   auto it = cache.find(p);
   if (it == cache.end()) {
     return false;
@@ -4520,7 +4503,7 @@ void PoolingWorkspaceCache::insert(
     const dnn::PoolingDescriptor& pooling_dimensions, int _type,
     ScopedDeviceMemory<uint8_t>& workspace, size_t wsp_size,
     hipStream_t hip_stream) {
-  PoolingWorkspaceDescriptor* desc = 0;
+  PoolingWorkspaceDescriptor* desc = nullptr;
   auto it = cache.find(p);
   if (it != cache.end()) {
     // replacing an entry with the same pointer but different attributes
@@ -4594,9 +4577,9 @@ absl::Status MIOpenSupport::DoPoolBackward(
   TF_ASSIGN_OR_RETURN(auto dest_desc, scope(output_dimensions, miopen_dtype));
   TF_ASSIGN_OR_RETURN(auto pooling_desc, scope(pooling_dimensions));
 
-  uint8_t* workspace_ptr = 0;
+  uint8_t* workspace_ptr = nullptr;
   DeviceMemory<uint8_t> workspace;
-  PoolingWorkspaceDescriptor* pdesc = 0;
+  PoolingWorkspaceDescriptor* pdesc = nullptr;
 
   size_t workspace_size_in_bytes = 0;
   auto status = wrap::miopenPoolingGetWorkSpaceSizeV2(
@@ -4614,7 +4597,7 @@ absl::Status MIOpenSupport::DoPoolBackward(
                                           output_dimensions, pooling_dimensions,
                                           miopen_dtype, pdesc);
     if (cache_hit) {
-      assert(pdesc != 0);
+      assert(pdesc != nullptr);
       workspace_ptr =
           reinterpret_cast<uint8_t*>(pdesc->workspace.ptr()->opaque());
       VLOG(1) << "Pooling cache hit";
@@ -5184,7 +5167,7 @@ absl::Status MIOpenSupport::GetFusedConvolveRunners(
     const dnn::BatchDescriptor& bias_descriptor,
     const dnn::BatchDescriptor& output_descriptor,
     const dnn::ConvolutionDescriptor& convolution_descriptor, bool use_fallback,
-    dnn::ActivationMode activation_mode, const NumericOptions& numeric_options,
+    dnn::ActivationMode activation_mode, const EngineOptions& engine_options,
     std::vector<std::unique_ptr<const dnn::FusedConvRunner>>* out_exec_plans) {
   VLOG(2) << "MIOpenSupport::GetFusedConvolveRunners";
   VLOG(2) << "filter_descriptor " << filter_descriptor.ndims();

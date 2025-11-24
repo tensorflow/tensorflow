@@ -89,7 +89,7 @@ class AdaptiveSharedBatchScheduler
 
   struct Options {
     // The name to use for the pool of batch threads.
-    string thread_pool_name = {"batch_threads"};
+    std::string thread_pool_name = {"batch_threads"};
     // Number of batch processing threads - the maximum value of
     // in_flight_batches_limit_.  It is recommended that this value be set by
     // running the system under load, observing the learned value for
@@ -329,7 +329,7 @@ class ASBSQueue : public BatchScheduler<TaskType> {
 
   // Returns uint64 one greater than was returned by the previous call.
   // Context id is reused after std::numeric_limits<uint64>::max is exhausted.
-  static uint64 NewTraceMeContextIdForBatch();
+  static uint64_t NewTraceMeContextIdForBatch();
 
   std::shared_ptr<AdaptiveSharedBatchScheduler<TaskType>> scheduler_;
   const QueueOptions options_;
@@ -347,7 +347,7 @@ template <typename TaskType>
 class ASBSBatch : public Batch<TaskType> {
  public:
   ASBSBatch(ASBSQueue<TaskType>* queue, int64_t creation_time_micros,
-            int64_t batch_timeout_micros, uint64 traceme_context_id)
+            int64_t batch_timeout_micros, uint64_t traceme_context_id)
       : queue_(queue),
         creation_time_micros_(creation_time_micros),
         schedulable_time_micros_(creation_time_micros + batch_timeout_micros),
@@ -361,13 +361,13 @@ class ASBSBatch : public Batch<TaskType> {
 
   int64_t schedulable_time_micros() const { return schedulable_time_micros_; }
 
-  uint64 traceme_context_id() const { return traceme_context_id_; }
+  uint64_t traceme_context_id() const { return traceme_context_id_; }
 
  private:
   ASBSQueue<TaskType>* queue_;
   const int64_t creation_time_micros_;
   const int64_t schedulable_time_micros_;
-  const uint64 traceme_context_id_;
+  const uint64_t traceme_context_id_;
   ASBSBatch(const ASBSBatch&) = delete;
   void operator=(const ASBSBatch&) = delete;
 };
@@ -860,8 +860,8 @@ size_t ASBSQueue<TaskType>::SchedulingCapacityLocked() const {
 
 template <typename TaskType>
 // static
-uint64 ASBSQueue<TaskType>::NewTraceMeContextIdForBatch() {
-  static std::atomic<uint64> traceme_context_id(0);
+uint64_t ASBSQueue<TaskType>::NewTraceMeContextIdForBatch() {
+  static std::atomic<uint64_t> traceme_context_id(0);
   return traceme_context_id.fetch_add(1, std::memory_order_relaxed);
 }
 }  // namespace internal

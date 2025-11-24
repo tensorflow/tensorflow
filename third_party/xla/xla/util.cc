@@ -45,6 +45,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
+#include "absl/strings/str_replace.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
@@ -58,29 +59,6 @@ limitations under the License.
 #include "tsl/platform/stacktrace.h"
 
 namespace xla {
-
-std::vector<int64_t> ToMixedRadix(const int64_t n,
-                                  absl::Span<const int64_t> bounds) {
-  if (bounds.empty()) {
-    return {};
-  }
-
-  std::vector<int64_t> digits;
-  digits.reserve(bounds.size());
-  int64_t divisor = Product(bounds);
-  CHECK_GT(divisor, 0);
-  int64_t remainder = n % divisor;
-  for (const int64_t radix : bounds) {
-    CHECK_GT(radix, 0);
-    divisor /= radix;
-    CHECK_GT(divisor, 0);
-
-    // The divisor is always 1 for the last iteration.
-    digits.push_back(remainder / divisor);
-    remainder = remainder % divisor;
-  }
-  return digits;
-}
 
 absl::Status WithLogBacktrace(const absl::Status& status) {
   CHECK(!status.ok());
@@ -109,7 +87,7 @@ void ScopedLoggingTimer::StopAndLog() {
     double secs = elapsed_micros / 1000000.0;
 
     TimerStats& stats = *timer_stats_;
-    absl::MutexLock lock(&stats.stats_mutex);
+    absl::MutexLock lock(stats.stats_mutex);
     stats.cumulative_secs += secs;
     if (secs > stats.max_secs) {
       stats.max_secs = secs;
@@ -308,9 +286,15 @@ std::string HumanReadableNumOps(double flops, double nanoseconds,
       absl::EndsWith(sp, "b")) {
     *throughput.rbegin() = 'G';
   }
-  throughput += absl::StrCat(op_prefix, "OP/s");
+  absl::StrAppend(&throughput, op_prefix, "OP/s");
   return throughput;
 }
+
+void LogString(absl::string_view fname, int line, absl::LogSeverity severity,
+               absl::string_view message) {
+  LOG(LEVEL(severity)).AtLocation(fname, line) << message;
+}
+
 }  // namespace
 
 std::string HumanReadableNumFlops(double flops, double nanoseconds) {
@@ -332,7 +316,7 @@ void LogLines(absl::LogSeverity sev, absl::string_view text, const char* fname,
   // Protect calls with a mutex so we don't interleave calls to LogLines from
   // multiple threads.
   static absl::Mutex log_lines_mu(absl::kConstInit);
-  absl::MutexLock lock(&log_lines_mu);
+  absl::MutexLock lock(log_lines_mu);
 
   size_t cur = 0;
   while (cur < text.size()) {
@@ -341,20 +325,13 @@ void LogLines(absl::LogSeverity sev, absl::string_view text, const char* fname,
       eol = text.size();
     }
     auto msg = text.substr(cur, eol - cur);
-    tsl::internal::LogString(fname, lineno, sev,
-                             std::string(msg.data(), msg.size()));
+    LogString(fname, lineno, sev, msg);
     cur = eol + 1;
   }
 
   if (orig_sev == absl::LogSeverity::kFatal) {
-    tsl::internal::LogString(fname, lineno, orig_sev,
-                             "Aborting due to errors.");
+    LogString(fname, lineno, orig_sev, "Aborting due to errors.");
   }
-}
-
-int64_t Product(absl::Span<const int64_t> xs) {
-  return absl::c_accumulate(xs, static_cast<int64_t>(1),
-                            std::multiplies<int64_t>());
 }
 
 std::vector<int64_t> ElemwiseProduct(absl::Span<const int64_t> a,
@@ -516,6 +493,19 @@ std::string SanitizeFileName(std::string file_name) {
   return file_name;
 }
 
+std::string SanitizeOpName(std::string op_name, char separator,
+                           const std::string& replace_with) {
+  auto pos = op_name.rfind(separator);
+  if (pos > 0 && pos != std::string::npos) {
+    std::string suffix = op_name.substr(pos + 1);
+    if (std::all_of(suffix.begin(), suffix.end(), absl::ascii_isdigit)) {
+      op_name = op_name.substr(0, pos);
+    }
+  }
+  return absl::StrReplaceAll(op_name,
+                             {{std::string(1, separator), replace_with}});
+}
+
 bool DistinctNumbersAreConsecutiveIfSorted(absl::Span<const int64_t> seq) {
   return *absl::c_max_element(seq) - *absl::c_min_element(seq) ==
          seq.size() - 1;
@@ -548,25 +538,5 @@ std::string PrintAllFields(const tsl::protobuf::Message& message) {
   return result.str();
 }
 
-std::unique_ptr<void, FreeDeleter> AlignedAlloc(std::size_t alignment,
-                                                std::size_t size) {
-  CHECK_GT(alignment, 0) << "alignment must be positive";
-  CHECK(IsPowerOf2(alignment))
-      << "alignment must be a power of 2, but got " << alignment;
-  CHECK_GT(size, 0) << "size must be positive";
-#ifdef _WIN32
-  void* raw_ptr = _aligned_malloc(size, alignment);  // Note argument order
-#elif defined(__ANDROID__) && __ANDROID_API__ < 28
-  // Use posix_memalign as a fallback for older Android APIs
-  void* raw_ptr;
-  int result = posix_memalign(&raw_ptr, alignment, size);
-  CHECK_EQ(result, 0) << "posix_memalign failed with error code: " << result;
-#else
-  void* raw_ptr = std::aligned_alloc(alignment, size);
-#endif
-  CHECK_NE(raw_ptr, nullptr) << "aligned_alloc failed";
-  // Return unique_ptr managing the memory.
-  return std::unique_ptr<void, FreeDeleter>(raw_ptr, FreeDeleter());
-}
-
+int64_t Product(absl::Span<const int64_t> xs) { return Product<int64_t>(xs); }
 }  // namespace xla

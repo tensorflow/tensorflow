@@ -18,14 +18,11 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "absl/strings/string_view.h"
-#include "tsl/platform/status_matchers.h"
-#include "tsl/platform/test.h"
 
 namespace stream_executor {
 namespace {
-using ::tsl::testing::IsOk;
-using ::tsl::testing::StatusIs;
 
 // When the compilation succeeds, then the error log is empty.
 constexpr absl::string_view kPtxasLogSuccessfulCompilation = R"(
@@ -67,7 +64,7 @@ TEST(PtxCompilerHelpersTest, CreateErrorFromPTXASLogNoError) {
   EXPECT_THAT(CreateErrorFromPTXASLog(kPtxasLogSuccessfulCompilation,
                                       kDefaultArchitecture,
                                       /*cancel_if_reg_spill=*/true),
-              IsOk());
+              absl_testing::IsOk());
 }
 
 TEST(PtxCompilerHelpersTest,
@@ -75,14 +72,14 @@ TEST(PtxCompilerHelpersTest,
   EXPECT_THAT(CreateErrorFromPTXASLog(kPtxasLogRegisterAllocationError,
                                       kDefaultArchitecture,
                                       /*cancel_if_reg_spill=*/true),
-              StatusIs(absl::StatusCode::kResourceExhausted));
+              absl_testing::StatusIs(absl::StatusCode::kResourceExhausted));
 }
 
 TEST(PtxCompilerHelpersTest, CreateErrorFromPTXASLogDetectsPtxAsTooOldError) {
   EXPECT_THAT(
       CreateErrorFromPTXASLog(kPtxasLogTooOldError, kDefaultArchitecture,
                               /*cancel_if_reg_spill=*/true),
-      StatusIs(absl::StatusCode::kUnimplemented));
+      absl_testing::StatusIs(absl::StatusCode::kUnimplemented));
 }
 
 TEST(PtxCompilerHelpersTest,
@@ -90,7 +87,7 @@ TEST(PtxCompilerHelpersTest,
   EXPECT_THAT(CreateErrorFromPTXASLog(kPtxasLogRegisterSpillWarning,
                                       kDefaultArchitecture,
                                       /*cancel_if_reg_spill=*/true),
-              StatusIs(absl::StatusCode::kCancelled));
+              absl_testing::StatusIs(absl::StatusCode::kCancelled));
 }
 
 TEST(PtxCompilerHelpersTest,
@@ -98,7 +95,7 @@ TEST(PtxCompilerHelpersTest,
   EXPECT_THAT(CreateErrorFromPTXASLog(kPtxasLogRegisterSpillWarning,
                                       kDefaultArchitecture,
                                       /*cancel_if_reg_spill=*/false),
-              IsOk());
+              absl_testing::IsOk());
 }
 
 TEST(PtxCompilerHelpersTest, IsPtxRegisterAllocationErrorStatus) {

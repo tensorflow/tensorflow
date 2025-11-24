@@ -243,6 +243,8 @@ class LiteralUtil {
   // If the given literal's data type is <SrcType>, converts it to a <DstType>
   // literal; otherwise, returns a copy of it. If the literal is a tuple,
   // recursively converts its elements.
+  static Literal ConvertF8E4M3FNToF32(const LiteralSlice& f8e4m3fn_literal);
+  static Literal ConvertF8E5M2ToF32(const LiteralSlice& f8e5m2_literal);
   static Literal ConvertS8ToF32(const LiteralSlice& s8_literal);
   static Literal ConvertBF16ToF32(const LiteralSlice& bf16_literal);
   static Literal ConvertBF16ToF64(const LiteralSlice& bf16_literal);
@@ -651,7 +653,7 @@ absl::StatusOr<Literal> MakeFakeLiteral(const Shape& shape,
 // 'use_large_range' indicates the sampled data is from the full range of the
 // floating point format. (floating point format only)
 // 'max_bits_of_precision' sets the data to have the given number of bits or
-// less (integer or floating point formats only).
+// less and are not NaNs (integer or floating point formats only).
 absl::StatusOr<Literal> MakeFakeLiteral(
     const Shape& shape, std::minstd_rand0* engine,
     std::optional<std::pair<int64_t, int64_t>> limit, bool is_sorted,

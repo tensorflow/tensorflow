@@ -21,6 +21,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_replace.h"
 #include "absl/strings/string_view.h"
+#include "xla/backends/cpu/xnn_gemm_config.h"
 #include "xla/error_spec.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/platform/test.h"
@@ -46,6 +47,13 @@ class XnnFusionTest
   }
 
  protected:
+  XnnFusionTest() {
+    // Override XnnGemmConfig.
+    GetXnnGemmConfig().SetTestFilter([](const XnnGemm&) { return true; });
+  }
+
+  ~XnnFusionTest() override { GetXnnGemmConfig().SetTestFilter(nullptr); }
+
   void RunTest(absl::string_view hlo_template, absl::string_view check_str) {
     XnnFusionTestParams params = GetParam();
     std::string hlo_text =
@@ -330,25 +338,50 @@ TEST_F(XnnFusionTest, UnsupportedDot) {
               HasSubstr("Unsupported XNNPACK Dot op variation"));
 }
 
-TEST_F(XnnFusionTest, UnsupportedOp) {
+TEST_F(XnnFusionTest, UnsupportedBatchDot) {
   constexpr absl::string_view kModuleStr = R"(
-    HloModule unsupported_sqrt
+    HloModule unsupported_dot
 
     xnn_fusion {
-      %x = f32[10] parameter(0)
-      ROOT %sqrt = f32[10] sqrt(%x)
+      %lhs = f32[64,64] parameter(0)
+      %rhs = f32[64,64] parameter(1)
+      ROOT %dot = f32[64]{0} dot(%lhs, %rhs),
+        lhs_batch_dims={0}, lhs_contracting_dims={1}, rhs_batch_dims={0}, rhs_contracting_dims={1}
     }
 
     ENTRY entry {
-      %x = f32[10] parameter(0)
-      ROOT %sqrt = f32[10] fusion(%x), kind=kCustom, calls=xnn_fusion,
+      %lhs = f32[64,64] parameter(0)
+      %rhs = f32[64,64] parameter(1)
+      ROOT %fusion = f32[64] fusion(%lhs, %rhs),
+        kind=kCustom, calls=xnn_fusion,
         backend_config={"fusion_config": {kind: "__xnn_fusion"}}
     })";
 
   auto status = RunAndCompare(kModuleStr, ErrorSpec{0.0});
   EXPECT_FALSE(status);
   EXPECT_THAT(status.message(),
-              HasSubstr("Unsupported XNNPACK fusion instruction"));
+              HasSubstr("Unsupported XNNPACK Dot op variation"));
+}
+
+TEST_F(XnnFusionTest, UnsupportedOp) {
+  constexpr absl::string_view kModuleStr = R"(
+    HloModule unsupported_sqrt
+
+    xnn_fusion {
+      %x = f32[10] parameter(0)
+      ROOT %e = f32[10] erf(%x)
+    }
+
+    ENTRY entry {
+      %x = f32[10] parameter(0)
+      ROOT %e = f32[10] fusion(%x), kind=kCustom, calls=xnn_fusion,
+        backend_config={"fusion_config": {kind: "__xnn_fusion"}}
+    })";
+
+  auto status = RunAndCompare(kModuleStr, ErrorSpec{0.0});
+  EXPECT_FALSE(status);
+  EXPECT_THAT(status.message(),
+              HasSubstr("Unsupported elementwise instruction in XNN fusion"));
 }
 
 }  // namespace

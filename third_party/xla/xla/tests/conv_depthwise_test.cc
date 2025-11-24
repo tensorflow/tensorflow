@@ -13,23 +13,28 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstdint>
 #include <optional>
+#include <string>
+#include <vector>
 
-#include "xla/execution_options_util.h"
-#include "xla/hlo/builder/xla_computation.h"
+#include "absl/status/status.h"
+#include "xla/error_spec.h"
+#include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/testlib/test.h"
 #include "xla/hlo/transforms/despecializer.h"
 #include "xla/hlo/transforms/simplifiers/float_normalization.h"
-#include "xla/status_macros.h"
-#include "xla/tests/client_library_test_base.h"
 #include "xla/tests/conv_depthwise_common.h"
-#include "xla/tests/hlo_test_base.h"
+#include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
+#include "xla/tests/hlo_pjrt_test_base.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/test.h"
 
 namespace xla {
 namespace {
 
 class DepthwiseConvolution2DTest
-    : public HloTestBase,
+    : public HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>,
       public ::testing::WithParamInterface<
           ::testing::tuple<DepthwiseConvolution2DSpec, bool>> {};
 
@@ -86,11 +91,6 @@ TEST_P(DepthwiseConvolution2DTest, DoIt) {
   const DepthwiseConvolution2DSpec& spec = ::testing::get<0>(GetParam());
   bool use_bfloat16 = ::testing::get<1>(GetParam());
 
-#ifdef XLA_BACKEND_DOES_NOT_SUPPORT_BFLOAT16
-  if (use_bfloat16) {
-    return;
-  }
-#endif
 
   const std::string hlo_text =
       BuildHloTextDepthwiseConvolution2D(spec, use_bfloat16);

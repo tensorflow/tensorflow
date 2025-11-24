@@ -31,14 +31,14 @@ enum CaseFormatType {
   UPPER_SNAKE,
 };
 
-string FormatStringCase(const string &str, CaseFormatType to,
-                        const char delimiter = '_') {
+std::string FormatStringCase(const std::string& str, CaseFormatType to,
+                             const char delimiter = '_') {
   const bool from_snake = (str == absl::AsciiStrToUpper(str)) ||
                           (str == absl::AsciiStrToLower(str));
   const bool toUpper = (to == UPPER_CAMEL || to == UPPER_SNAKE);
   const bool toSnake = (to == LOWER_SNAKE || to == UPPER_SNAKE);
 
-  string result;
+  std::string result;
 
   bool inputStart = true;
   bool wordStart = true;
@@ -52,7 +52,7 @@ string FormatStringCase(const string &str, CaseFormatType to,
       wordStart = true;
       continue;
     }
-    if (!from_snake && isupper(c)) {
+    if (!from_snake && absl::ascii_isupper(c)) {
       wordStart = true;
     }
 
@@ -65,9 +65,9 @@ string FormatStringCase(const string &str, CaseFormatType to,
     const bool shouldCapIfSnake = toUpper;
     const bool shouldCapIfCamel = wordStart && (toUpper || !inputStart);
     if ((toSnake && shouldCapIfSnake) || (!toSnake && shouldCapIfCamel)) {
-      result += toupper(c);
+      result += absl::ascii_toupper(c);
     } else {
-      result += tolower(c);
+      result += absl::ascii_tolower(c);
     }
 
     // at this point we are no longer at the start of a word:
@@ -90,16 +90,16 @@ string FormatStringCase(const string &str, CaseFormatType to,
 // Public interface
 //
 
-string toLowerCamel(const string &s, const char delimiter) {
+std::string toLowerCamel(const std::string& s, const char delimiter) {
   return FormatStringCase(s, LOWER_CAMEL, delimiter);
 }
-string toLowerSnake(const string &s, const char delimiter) {
+std::string toLowerSnake(const std::string& s, const char delimiter) {
   return FormatStringCase(s, LOWER_SNAKE, delimiter);
 }
-string toUpperCamel(const string &s, const char delimiter) {
+std::string toUpperCamel(const std::string& s, const char delimiter) {
   return FormatStringCase(s, UPPER_CAMEL, delimiter);
 }
-string toUpperSnake(const string &s, const char delimiter) {
+std::string toUpperSnake(const std::string& s, const char delimiter) {
   return FormatStringCase(s, UPPER_SNAKE, delimiter);
 }
 

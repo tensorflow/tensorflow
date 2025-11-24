@@ -27,9 +27,12 @@ limitations under the License.
 namespace xla::gpu {
 
 struct ExecutionStreamAssignmentOptions {
-  // The `ExecutionStreamAssignment` will round-robin across this many
-  // `ExecutionStreams`.
-  int number_of_execution_streams = 4;
+  // The `ExecutionStreamAssignment` will round-robin compute thunks across this
+  // many `ExecutionStreams`.
+  int number_of_compute_execution_streams = 4;
+  // The `ExecutionStreamAssignment` will round-robin collective thunks
+  // across this many `ExecutionStreams`.
+  int number_of_collective_execution_streams = 1;
 };
 
 // `ExecutionStreamAssignments` represent a mapping from `HloInstructions` to

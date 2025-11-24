@@ -63,7 +63,7 @@ class CpuVectorizationTest
     auto spec = info.param;
 
     std::string opcode(HloOpcodeString(spec.opcode));
-    opcode[0] = toupper(opcode[0]);
+    opcode[0] = absl::ascii_toupper(opcode[0]);
 
     std::string triple{spec.triple.data(), spec.triple.size()};
     if (triple == kTriple_x86_64) {
@@ -123,10 +123,6 @@ TEST_P(CpuVectorizationTest, DoIt) {
   hlo_module->AddEntryComputation(std::move(computation));
 
   std::string check_lines{spec.check_lines.data(), spec.check_lines.size()};
-
-  hlo_module->mutable_config()
-      .mutable_debug_options()
-      .set_xla_cpu_use_thunk_runtime(false);
 
   CompileAheadOfTimeAndVerifyIr(std::move(hlo_module), options, check_lines,
                                 /*match_optimized_ir=*/true);
@@ -260,7 +256,7 @@ class JitVectorizationTest
   static std::string Name(
       const ::testing::TestParamInfo<JitVectorizationTestSpec>& info) {
     std::string op_name(HloOpcodeString(info.param.opcode));
-    op_name[0] = toupper(op_name[0]);
+    op_name[0] = absl::ascii_toupper(op_name[0]);
     return absl::StrCat(op_name, "_max_", info.param.max_isa);
   }
 

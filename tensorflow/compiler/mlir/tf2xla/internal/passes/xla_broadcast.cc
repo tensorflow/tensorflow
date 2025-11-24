@@ -124,7 +124,7 @@ bool GetDummyParams(OpBuilder& builder, Value val_bcast, Type& zero_type,
 Value CreateZeroInput(Location loc, OpBuilder& builder, Type zero_type,
                       ShapeAttr shape_attr) {
   TPUDummyInputOp tpu_dummy_input =
-      builder.create<TPUDummyInputOp>(loc, zero_type, shape_attr);
+      TPUDummyInputOp::create(builder, loc, zero_type, shape_attr);
   tpu_dummy_input->setAttr(kICIWeightDistributionMlirBridgeMarker,
                            builder.getBoolAttr(true));
   return tpu_dummy_input;
@@ -161,17 +161,17 @@ Value CreateAllReduce(ReplicateOp replicate, OpBuilder& builder,
   uint32_t num_replicas = replicate.getN();
   llvm::SmallVector<int32_t, 4> group_assignment_val;
   for (int i = 0; i < num_replicas; ++i) group_assignment_val.push_back(i);
-  Value group_assignment = builder.create<ConstOp>(
-      block_arg.getLoc(),
+  Value group_assignment = ConstOp::create(
+      builder, block_arg.getLoc(),
       DenseIntElementsAttr::get(
           RankedTensorType::get({1, num_replicas}, builder.getIntegerType(32)),
           group_assignment_val));
 
   StringAttr reduce_op = builder.getStringAttr("Add");
   StringAttr mode = builder.getStringAttr("CrossReplica");
-  return builder.create<XlaAllReduceOp>(block_arg.getLoc(), block_arg.getType(),
-                                        block_arg, group_assignment, reduce_op,
-                                        mode);
+  return XlaAllReduceOp::create(builder, block_arg.getLoc(),
+                                block_arg.getType(), block_arg,
+                                group_assignment, reduce_op, mode);
 }
 
 // Creates a missing attribute error message.
@@ -266,8 +266,9 @@ LogicalResult MoveBroadcastToCluster(OpBuilder& builder,
   }
 
   OpBuilder before_cluster_builder(cluster);
-  IdentityOp assigned_id = before_cluster_builder.create<IdentityOp>(
-      val_bcast.getLoc(), block_arg.getType(), block_arg);
+  IdentityOp assigned_id =
+      IdentityOp::create(before_cluster_builder, val_bcast.getLoc(),
+                         block_arg.getType(), block_arg);
   assigned_id->setAttr(kICIWeightDistributionMlirBridgeMarker,
                        before_cluster_builder.getBoolAttr(true));
   std::string device = tensorflow::GetDeviceAliasForHostOfLogicalCore(0);

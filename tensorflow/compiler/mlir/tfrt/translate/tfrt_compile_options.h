@@ -150,6 +150,10 @@ struct TfrtCompileOptions {
   // resources.
   int64_t min_max_enqueued_batches = 1;
 
+  // If non-zero, all models on this server are switched to use a prioritized
+  // batching function using this number of global threads.
+  int64_t batch_queue_global_prioritization_num_threads = 0;
+
   // The policy used by a BatchScheduler to pad (or split) batches.
   std::string batch_padding_policy;
 

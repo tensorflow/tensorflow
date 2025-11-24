@@ -81,7 +81,6 @@
 // CHECK-NEXT:       parameter_names: "a"
 // CHECK-NEXT:       parameter_names: "b"
 // CHECK-NEXT:     }
-// CHECK-NEXT:     id: 2
 // CHECK-NEXT:     root_id: 2
 // CHECK-NEXT:   }
 // CHECK-NEXT:   host_program_shape {
@@ -106,7 +105,6 @@
 // CHECK-NEXT:     parameter_names: "p0"
 // CHECK-NEXT:     parameter_names: "p1"
 // CHECK-NEXT:   }
-// CHECK-NEXT:   entry_computation_id: 2
 // CHECK-NEXT:   input_output_alias {
 // CHECK-NEXT:   }
 // CHECK-NEXT:   buffer_donor {

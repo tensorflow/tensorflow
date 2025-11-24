@@ -138,16 +138,20 @@ void MapCalledComputations(const HloInstruction* left_instruction,
 void ProcessCallGraphNode(const CallGraphNode& left_computation,
                           const HloGumgraph& left, const HloGumgraph& right,
                           HloGumgraphMappings& mappings) {
-  // Only match called computations if current computation is already matched.
-  auto it = mappings.left_to_right_computation_map.left.find(&left_computation);
-  if (it == mappings.left_to_right_computation_map.left.end() ||
-      left_computation.callees().empty()) {
+  if (left_computation.callees().empty()) {
     return;
   }
 
-  const CallGraphNode* right_computation = it->second;
+  // Only match called computations if current computation is already matched.
+  auto right_computation =
+      mappings.left_to_right_computation_map.GetRight(&left_computation);
+  if (!right_computation.has_value()) {
+    return;
+  }
+
   HloComputation::CachingPostOrder left_cpo(left_computation.computation());
-  HloComputation::CachingPostOrder right_cpo(right_computation->computation());
+  HloComputation::CachingPostOrder right_cpo(
+      (*right_computation)->computation());
 
   // Phase 1: Match called computations to computations with matching
   // computation fingerprints, i.e. exact matches.
@@ -158,7 +162,7 @@ void ProcessCallGraphNode(const CallGraphNode& left_computation,
     left_callees_by_fingerprint[left_props.fingerprint].insert(
         left_props.call_graph_node);
   }
-  for (const HloComputation* callee : right_computation->callees()) {
+  for (const HloComputation* callee : (*right_computation)->callees()) {
     CallGraphNodeProps right_props = right.AllComputationProps().at(callee);
     right_callees_by_fingerprint[right_props.fingerprint].insert(
         right_props.call_graph_node);
@@ -185,9 +189,8 @@ void ProcessCallGraphNode(const CallGraphNode& left_computation,
   for (const HloInstruction* instruction : left_cpo.PostOrder()) {
     bool all_called_computations_matched = true;
     for (const HloComputation* callee : instruction->called_computations()) {
-      if (auto left_it = mappings.left_to_right_computation_map.left.find(
-              &left.GetCallGraph().GetNode(callee));
-          left_it == mappings.left_to_right_computation_map.left.end()) {
+      if (!mappings.left_to_right_computation_map.ContainsLeft(
+              &left.GetCallGraph().GetNode(callee))) {
         all_called_computations_matched = false;
         break;
       }
@@ -203,9 +206,8 @@ void ProcessCallGraphNode(const CallGraphNode& left_computation,
   for (const HloInstruction* instruction : right_cpo.PostOrder()) {
     bool all_called_computations_matched = true;
     for (const HloComputation* callee : instruction->called_computations()) {
-      if (auto right_it = mappings.left_to_right_computation_map.right.find(
-              &right.GetCallGraph().GetNode(callee));
-          right_it == mappings.left_to_right_computation_map.right.end()) {
+      if (!mappings.left_to_right_computation_map.ContainsRight(
+              &right.GetCallGraph().GetNode(callee))) {
         all_called_computations_matched = false;
         break;
       }
@@ -258,9 +260,8 @@ void ProcessCallGraphNode(const CallGraphNode& left_computation,
   absl::flat_hash_map<std::string, absl::flat_hash_set<const CallGraphNode*>>
       unmatched_left_callees, unmatched_right_callees;
   for (const HloComputation* callee : left_computation.callees()) {
-    if (auto left_it = mappings.left_to_right_computation_map.left.find(
-            &left.GetCallGraph().GetNode(callee));
-        left_it == mappings.left_to_right_computation_map.left.end()) {
+    if (!mappings.left_to_right_computation_map.ContainsLeft(
+            &left.GetCallGraph().GetNode(callee))) {
       const CallGraphNode& callee_node = left.GetCallGraph().GetNode(callee);
       std::string opcode_and_name;
       if (!callee_node.caller_callsites().empty()) {
@@ -279,10 +280,9 @@ void ProcessCallGraphNode(const CallGraphNode& left_computation,
       unmatched_left_callees[opcode_name_shape].insert(&callee_node);
     }
   }
-  for (const HloComputation* callee : right_computation->callees()) {
-    if (auto right_it = mappings.left_to_right_computation_map.right.find(
-            &right.GetCallGraph().GetNode(callee));
-        right_it == mappings.left_to_right_computation_map.right.end()) {
+  for (const HloComputation* callee : (*right_computation)->callees()) {
+    if (!mappings.left_to_right_computation_map.ContainsRight(
+            &right.GetCallGraph().GetNode(callee))) {
       const CallGraphNode& callee_node = right.GetCallGraph().GetNode(callee);
       std::string opcode_and_name;
       if (callee_node.caller_callsites().size() == 1) {
@@ -368,9 +368,9 @@ void MatchCallGraphs(const HloGumgraph& left, const HloGumgraph& right,
       });
 
   int signature_match_count = 0, exact_match_count = 0;
-  for (auto it = mappings.left_to_right_computation_map.left.begin();
-       it != mappings.left_to_right_computation_map.left.end(); ++it) {
-    if (it->info.computation_match_type == ComputationMatchType::kSignature) {
+  for (const auto& [left, right] : mappings.left_to_right_computation_map) {
+    auto props = mappings.left_to_right_computation_map.GetPropsByLeft(left);
+    if (props->computation_match_type == ComputationMatchType::kSignature) {
       ++signature_match_count;
     } else {
       ++exact_match_count;

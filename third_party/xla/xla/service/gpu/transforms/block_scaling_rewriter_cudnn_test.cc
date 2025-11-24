@@ -15,20 +15,25 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/status_matchers.h"
 #include "absl/strings/string_view.h"
+#include "third_party/gpus/cudnn/cudnn_version.h"
 #include "xla/error_spec.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/gpu/transforms/block_scaling_rewriter.h"
 #include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
 #include "xla/tests/hlo_pjrt_test_base.h"
-#include "xla/tsl/platform/status_matchers.h"
 
 namespace xla::gpu {
 namespace {
 
-using ::tsl::testing::IsOkAndHolds;
 using BlockScalingRewriterCudnnTest =
     HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>;
+
+const se::dnn::VersionInfo kCudnnDisabled;
+const se::dnn::VersionInfo kCudnnVersion(CUDNN_VERSION / 10000,
+                                         CUDNN_VERSION % 10000 / 100,
+                                         CUDNN_VERSION % 100);
 
 TEST_F(BlockScalingRewriterCudnnTest, Mxfp8) {
   constexpr absl::string_view hlo_string = R"(
@@ -47,18 +52,20 @@ ENTRY main {
       hlo_string, ErrorSpec(/*aabs=*/1e-4, /*arel=*/1e-5),
       /*reference_preprocessor=*/
       [](HloModule* reference_module) {
-        BlockScalingRewriter pass(/*allow_cudnn=*/false);
-        EXPECT_THAT(RunHloPass(&pass, reference_module), IsOkAndHolds(true));
+        BlockScalingRewriter pass(kCudnnDisabled);
+        EXPECT_THAT(RunHloPass(&pass, reference_module),
+                    absl_testing::IsOkAndHolds(true));
       },
       /*test_preprocessor=*/
       [](HloModule* test_module) {
-        BlockScalingRewriter pass(/*allow_cudnn=*/true);
-        EXPECT_THAT(RunHloPass(&pass, test_module), IsOkAndHolds(true));
+        BlockScalingRewriter pass(kCudnnVersion);
+        EXPECT_THAT(RunHloPass(&pass, test_module),
+                    absl_testing::IsOkAndHolds(true));
       }));
 
-  RunAndFilecheckHloRewrite(hlo_string, BlockScalingRewriter(false),
+  RunAndFilecheckHloRewrite(hlo_string, BlockScalingRewriter(kCudnnDisabled),
                             "CHECK-NOT: __cudnn$blockScaledDot");
-  RunAndFilecheckHloRewrite(hlo_string, BlockScalingRewriter(true),
+  RunAndFilecheckHloRewrite(hlo_string, BlockScalingRewriter(kCudnnVersion),
                             "CHECK: __cudnn$blockScaledDot");
 }
 
@@ -79,18 +86,58 @@ ENTRY main {
       hlo_string, ErrorSpec(/*aabs=*/1e-4, /*arel=*/1e-5),
       /*reference_preprocessor=*/
       [](HloModule* reference_module) {
-        BlockScalingRewriter pass(/*allow_cudnn=*/false);
-        EXPECT_THAT(RunHloPass(&pass, reference_module), IsOkAndHolds(true));
+        BlockScalingRewriter pass(kCudnnDisabled);
+        EXPECT_THAT(RunHloPass(&pass, reference_module),
+                    absl_testing::IsOkAndHolds(true));
       },
       /*test_preprocessor=*/
       [](HloModule* test_module) {
-        BlockScalingRewriter pass(/*allow_cudnn=*/true);
-        EXPECT_THAT(RunHloPass(&pass, test_module), IsOkAndHolds(true));
+        BlockScalingRewriter pass(kCudnnVersion);
+        EXPECT_THAT(RunHloPass(&pass, test_module),
+                    absl_testing::IsOkAndHolds(true));
       }));
 
-  RunAndFilecheckHloRewrite(hlo_string, BlockScalingRewriter(false),
+  RunAndFilecheckHloRewrite(hlo_string, BlockScalingRewriter(kCudnnDisabled),
                             "CHECK-NOT: __cudnn$blockScaledDot");
-  RunAndFilecheckHloRewrite(hlo_string, BlockScalingRewriter(true),
+  RunAndFilecheckHloRewrite(hlo_string, BlockScalingRewriter(kCudnnVersion),
+                            "CHECK: __cudnn$blockScaledDot");
+}
+
+TEST_F(BlockScalingRewriterCudnnTest, Mxfp8_PaddedScales) {
+  constexpr absl::string_view hlo_string = R"(
+HloModule test
+
+ENTRY main {
+  %lhs = f8e4m3fn[250,224] parameter(0)
+  %rhs = f8e4m3fn[250,224] parameter(1)
+  %lhs_scale = f8e8m0fnu[250,7] parameter(2)
+  %rhs_scale = f8e8m0fnu[250,7] parameter(3)
+  %min_scale = f8e8m0fnu[] constant(5.87747e-39)
+  %lhs_scale_padded = f8e8m0fnu[256,8] pad(%lhs_scale, %min_scale), padding=0_6x0_1
+  %rhs_scale_padded = f8e8m0fnu[256,8] pad(%rhs_scale, %min_scale), padding=0_6x0_1
+  ROOT %result = f32[250,250] custom-call(%lhs, %rhs, %lhs_scale_padded, %rhs_scale_padded),
+      custom_call_target="__op$block_scaled_dot",
+      backend_config={"block_scaled_dot_backend_config":{block_size:32}}
+})";
+
+  EXPECT_TRUE(RunAndCompare(
+      hlo_string, ErrorSpec(/*aabs=*/1e-4, /*arel=*/1e-5),
+      /*reference_preprocessor=*/
+      [](HloModule* reference_module) {
+        BlockScalingRewriter pass(kCudnnDisabled);
+        EXPECT_THAT(RunHloPass(&pass, reference_module),
+                    absl_testing::IsOkAndHolds(true));
+      },
+      /*test_preprocessor=*/
+      [](HloModule* test_module) {
+        BlockScalingRewriter pass(kCudnnVersion);
+        EXPECT_THAT(RunHloPass(&pass, test_module),
+                    absl_testing::IsOkAndHolds(true));
+      }));
+
+  RunAndFilecheckHloRewrite(hlo_string, BlockScalingRewriter(kCudnnDisabled),
+                            "CHECK-NOT: __cudnn$blockScaledDot");
+  RunAndFilecheckHloRewrite(hlo_string, BlockScalingRewriter(kCudnnVersion),
                             "CHECK: __cudnn$blockScaledDot");
 }
 
@@ -121,18 +168,61 @@ ENTRY main {
       hlo_string, ErrorSpec(/*aabs=*/1e-4, /*arel=*/1e-5),
       /*reference_preprocessor=*/
       [](HloModule* reference_module) {
-        BlockScalingRewriter pass(/*allow_cudnn=*/false);
-        EXPECT_THAT(RunHloPass(&pass, reference_module), IsOkAndHolds(true));
+        BlockScalingRewriter pass(kCudnnDisabled);
+        EXPECT_THAT(RunHloPass(&pass, reference_module),
+                    absl_testing::IsOkAndHolds(true));
       },
       /*test_preprocessor=*/
       [](HloModule* test_module) {
-        BlockScalingRewriter pass(/*allow_cudnn=*/true);
-        EXPECT_THAT(RunHloPass(&pass, test_module), IsOkAndHolds(true));
+        BlockScalingRewriter pass(kCudnnVersion);
+        EXPECT_THAT(RunHloPass(&pass, test_module),
+                    absl_testing::IsOkAndHolds(true));
       }));
 
-  RunAndFilecheckHloRewrite(hlo_string, BlockScalingRewriter(false),
+  RunAndFilecheckHloRewrite(hlo_string, BlockScalingRewriter(kCudnnDisabled),
                             "CHECK-NOT: __cudnn$blockScaledDot");
-  RunAndFilecheckHloRewrite(hlo_string, BlockScalingRewriter(true),
+  RunAndFilecheckHloRewrite(hlo_string, BlockScalingRewriter(kCudnnVersion),
+                            "CHECK: __cudnn$blockScaledDot");
+}
+
+TEST_F(BlockScalingRewriterCudnnTest, Nvfp4_GlobalScale) {
+  constexpr absl::string_view hlo_string = R"(
+HloModule test
+
+ENTRY main {
+  %mult_scalar = f16[] constant(6)
+  %mult = f16[256,256] broadcast(%mult_scalar), dimensions={}
+  %p0 = f16[256,256] parameter(0)
+  %p1 = f16[256,256] parameter(1)
+  %lhs = f4e2m1fn[256,256] convert(f16[256,256] multiply(%p0, %mult))
+  %rhs = f4e2m1fn[256,256] convert(f16[256,256] multiply(%p1, %mult))
+  %p2 = f8e4m3fn[256,16] parameter(2)
+  %p3 = f8e4m3fn[256,16] parameter(3)
+  %lhs_scale = f8e4m3fn[256,16] abs(%p2)
+  %rhs_scale = f8e4m3fn[256,16] abs(%p3)
+  %global_scale = f32[] parameter(4)
+  ROOT %result = f32[256,256] custom-call(%lhs, %rhs, %lhs_scale, %rhs_scale, %global_scale),
+      custom_call_target="__op$block_scaled_dot"
+})";
+
+  EXPECT_TRUE(RunAndCompare(
+      hlo_string, ErrorSpec(/*aabs=*/1e-4, /*arel=*/1e-5),
+      /*reference_preprocessor=*/
+      [](HloModule* reference_module) {
+        BlockScalingRewriter pass(kCudnnDisabled);
+        EXPECT_THAT(RunHloPass(&pass, reference_module),
+                    absl_testing::IsOkAndHolds(true));
+      },
+      /*test_preprocessor=*/
+      [](HloModule* test_module) {
+        BlockScalingRewriter pass(kCudnnVersion);
+        EXPECT_THAT(RunHloPass(&pass, test_module),
+                    absl_testing::IsOkAndHolds(true));
+      }));
+
+  RunAndFilecheckHloRewrite(hlo_string, BlockScalingRewriter(kCudnnDisabled),
+                            "CHECK-NOT: __cudnn$blockScaledDot");
+  RunAndFilecheckHloRewrite(hlo_string, BlockScalingRewriter(kCudnnVersion),
                             "CHECK: __cudnn$blockScaledDot");
 }
 

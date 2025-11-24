@@ -30,12 +30,12 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
-#include "xla/hlo/ir/collective_device_list.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/ir/replica_group.h"
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/service/collective_opt_utils.h"
 #include "xla/service/hlo_module_config.h"
@@ -415,7 +415,7 @@ static absl::StatusOr<bool> SplitAllReduce(const HloModule& module,
                         computation);  // changed
 }
 
-absl::StatusOr<bool> AllReduceSplitter::Run(
+absl::StatusOr<bool> AllReduceSplitter::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;

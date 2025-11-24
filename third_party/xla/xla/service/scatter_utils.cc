@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/service/scatter_utils.h"
 
 #include <cstdint>
+#include <memory>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -27,12 +28,13 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/ir/hlo_original_value.h"
 #include "xla/service/call_inliner.h"
 #include "xla/service/hlo_creation_utils.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/statusor.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 
@@ -144,6 +146,8 @@ absl::StatusOr<HloComputation*> CallAndGetOutput(HloComputation* original,
   HloInstruction* call_original = new_comp->AddInstruction(
       HloInstruction::CreateCall(original_root->shape(),
                                  new_comp->parameter_instructions(), original));
+  call_original->set_original_value(
+      std::make_shared<OriginalValue>(OriginalValue::SyntheticCall()));
   new_comp->set_root_instruction(
       new_comp->AddInstruction(
           HloInstruction::CreateGetTupleElement(call_original, output_index)),
@@ -159,7 +163,7 @@ absl::StatusOr<HloComputation*> CallComputationAndGetIthOutputWithBinaryParams(
     return original;
   }
   int64_t num_params = original->num_parameters();
-  int64_t num_outputs = original_root->shape().tuple_shapes_size();
+  int64_t num_outputs = original_root->shape().tuple_shapes().size();
 
   CHECK_EQ(num_params / 2, num_outputs);
   HloComputation* new_comp = [&] {
@@ -186,6 +190,8 @@ absl::StatusOr<HloComputation*> CallComputationAndGetIthOutputWithBinaryParams(
 
   HloInstruction* call_original = new_comp->AddInstruction(
       HloInstruction::CreateCall(original_root->shape(), operands, original));
+  call_original->set_original_value(
+      std::make_shared<OriginalValue>(OriginalValue::SyntheticCall()));
   new_comp->set_root_instruction(
       new_comp->AddInstruction(
           HloInstruction::CreateGetTupleElement(call_original, output_index)),

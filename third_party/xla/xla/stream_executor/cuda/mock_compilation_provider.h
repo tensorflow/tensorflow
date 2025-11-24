@@ -33,6 +33,8 @@ class MockCompilationProvider : public CompilationProvider {
   MOCK_METHOD(bool, SupportsCompileToRelocatableModule, (), (const, override));
   MOCK_METHOD(bool, SupportsCompileAndLink, (), (const, override));
   MOCK_METHOD(std::string, name, (), (const, override));
+  MOCK_METHOD(absl::StatusOr<int>, GetLatestPtxIsaVersion, (),
+              (const, override));
   MOCK_METHOD(absl::StatusOr<Assembly>, Compile,
               (const CudaComputeCapability& cc, absl::string_view ptx,
                const CompilationOptions& options),

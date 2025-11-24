@@ -20,6 +20,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/status_matchers.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -30,20 +31,20 @@ limitations under the License.
 #include "xla/literal_util.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tests/literal_test_util.h"
-#include "tsl/platform/status_matchers.h"
-#include "tsl/platform/statusor.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace xla::gpu {
 namespace {
 
-using ::tsl::testing::IsOkAndHolds;
 
 class AsyncWrapperTest : public HloTestBase {};
 
 int CountAsyncInstructions(HloComputation* computation) {
   int count = 0;
   for (const HloInstruction* instruction : computation->instructions()) {
-    if (instruction->IsAsynchronous()) ++count;
+    if (instruction->IsAsynchronous()) {
+      ++count;
+    }
   }
   return count;
 }
@@ -73,13 +74,16 @@ TEST_F(AsyncWrapperTest, BasicFusion) {
       ParseAndReturnVerifiedModule(hlo_text).value();
 
   AsyncWrapper wrapper(HloPredicateIsOp<HloOpcode::kFusion>);
-  EXPECT_THAT(wrapper.HloModulePass::Run(module.get()), IsOkAndHolds(true));
+  EXPECT_THAT(wrapper.HloModulePass::Run(module.get()),
+              absl_testing::IsOkAndHolds(true));
   EXPECT_EQ(CountAsyncInstructions(module->entry_computation()), 4);
 
   Literal argument = LiteralUtil::CreateR1<float>({1.0});
   Literal expected = LiteralUtil::CreateR1<float>({4.0});
 
-  Literal result = ExecuteNoHloPasses(std::move(module), {&argument});
+  TF_ASSERT_OK_AND_ASSIGN(
+      Literal result,
+      Execute(std::move(module), {&argument}, /*run_hlo_passes=*/false));
   EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
 }
 

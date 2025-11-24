@@ -84,19 +84,7 @@ class ExtractionVisitor : public ConstDfsHloVisitorWithDefault {
         clone_context_(module_.get()),
         boundary_(boundary),
         extract_selector_(extract_selector),
-        replace_type_selector_(replace_type_selector) {
-    // Initialize the computation builder for every computations.
-    for (auto computation : old_module_->computations()) {
-      old_computations_to_builders_.insert(
-          {computation,
-           std::make_unique<HloComputation::Builder>(computation->name())});
-    }
-
-    // Initialize the parameter counter for every computations.
-    for (auto computation : old_module_->computations()) {
-      parameter_numbers_[computation] = 0;
-    }
-  }
+        replace_type_selector_(replace_type_selector) {}
 
   absl::Status HandleParameter(const HloInstruction* parameter) override {
     // Entry parameters need renumbering.
@@ -140,9 +128,7 @@ class ExtractionVisitor : public ConstDfsHloVisitorWithDefault {
     auto instruction =
         hlo->CloneWithNewOperands(hlo->shape(), new_operands, &clone_context_);
 
-    auto it = old_computations_to_builders_.find(hlo->parent());
-    CHECK(it != old_computations_to_builders_.end());
-    auto builder = it->second.get();
+    HloComputation::Builder* builder = GetComputationBuilder(hlo->parent());
     builder->AddInstruction(std::move(instruction));
 
     // If the visiting `hlo` is the root instruction of a computation (except
@@ -161,7 +147,7 @@ class ExtractionVisitor : public ConstDfsHloVisitorWithDefault {
   absl::Status FinishVisit(const HloInstruction* /*root*/) override {
     // Create the entry computation for the extracted module.
     auto new_entry_computation = module_->AddEntryComputation(
-        old_computations_to_builders_.at(root_instruction_->parent())->Build());
+        GetComputationBuilder(root_instruction_->parent())->Build());
     clone_context_.MapComputation(root_instruction_->parent(),
                                   new_entry_computation);
 
@@ -196,21 +182,17 @@ class ExtractionVisitor : public ConstDfsHloVisitorWithDefault {
     auto new_const =
         HloInstruction::CreateConstant(std::move(literal_status.value()));
     clone_context_.MapInstruction(hlo, new_const.get());
-    auto it = old_computations_to_builders_.find(hlo->parent());
-    CHECK(it != old_computations_to_builders_.end());
-    auto builder = it->second.get();
+    HloComputation::Builder* builder = GetComputationBuilder(hlo->parent());
     builder->AddInstruction(std::move(new_const));
     return absl::OkStatus();
   }
 
   // Replace the `hlo` with Parameter of the same shape.
   absl::Status ReplaceWithParameter(const HloInstruction* hlo) {
-    CHECK(parameter_numbers_.contains(hlo->parent()));
     auto new_parameter = HloInstruction::CreateParameter(
-        parameter_numbers_.at(hlo->parent())++, hlo->shape(), hlo->name());
+        parameter_numbers_[hlo->parent()]++, hlo->shape(), hlo->name());
     clone_context_.MapInstruction(hlo, new_parameter.get());
-    CHECK(old_computations_to_builders_.contains(hlo->parent()));
-    auto builder = old_computations_to_builders_[hlo->parent()].get();
+    HloComputation::Builder* builder = GetComputationBuilder(hlo->parent());
     builder->AddInstruction(std::move(new_parameter));
     return absl::OkStatus();
   }
@@ -274,12 +256,19 @@ class ExtractionVisitor : public ConstDfsHloVisitorWithDefault {
                                             ReplaceType replace_type) {
     CHECK(replace_type == ReplaceType::kReplaceZeroBroadcast ||
           replace_type == ReplaceType::kReplaceRandomBroadcast);
-    CHECK(old_computations_to_builders_.contains(hlo->parent()));
-    auto builder = old_computations_to_builders_[hlo->parent()].get();
+    HloComputation::Builder* builder = GetComputationBuilder(hlo->parent());
     HloInstruction* zero_broadcast =
         ReplaceWithConstantBroadcastHelper(hlo->shape(), builder, replace_type);
     clone_context_.MapInstruction(hlo, zero_broadcast);
     return absl::OkStatus();
+  }
+
+  HloComputation::Builder* GetComputationBuilder(
+      const HloComputation* computation) {
+    return (old_computations_to_builders_.try_emplace(
+                computation,
+                std::make_unique<HloComputation::Builder>(computation->name())))
+        .first->second.get();
   }
 
   const HloInstruction* root_instruction_;

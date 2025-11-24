@@ -16,13 +16,21 @@ limitations under the License.
 #ifndef XLA_BACKENDS_CPU_RUNTIME_XNNPACK_XNN_INTEROP_H_
 #define XLA_BACKENDS_CPU_RUNTIME_XNNPACK_XNN_INTEROP_H_
 
+#include <memory>
+
+#include "experimental.h"  // xnnpack
 #include "xnnpack.h"
 #include "absl/base/optimization.h"
+#include "absl/functional/function_ref.h"
 #include "absl/status/status.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/util.h"
 
 namespace xla::cpu {
+
+//===----------------------------------------------------------------------===//
+// XNNPACK status to ABSL status conversion macros.
+//===----------------------------------------------------------------------===//
 
 #define XNN_RETURN_IF_ERROR(expr)             \
   do {                                        \
@@ -74,6 +82,43 @@ inline absl::Status XnnStatusToStatus(xnn_status status) {
 
   return Internal("XNNPACK operation failed: %s", error_message(status));
 }
+
+//===----------------------------------------------------------------------===//
+// XLA to XNNPACK type conversions.
+//===----------------------------------------------------------------------===//
+
+absl::StatusOr<xnn_datatype> XnnDatatype(const PrimitiveType& type);
+
+//===----------------------------------------------------------------------===//
+// RAII wrappers for XNNPACK types.
+//===----------------------------------------------------------------------===//
+
+namespace internal {
+struct XnnDeleter {
+  void operator()(xnn_subgraph* subgraph) {
+    XNN_LOG_IF_ERROR(xnn_delete_subgraph(subgraph));
+  }
+  void operator()(xnn_runtime* runtime) {
+    XNN_LOG_IF_ERROR(xnn_delete_runtime(runtime));
+  }
+  void operator()(xnn_threadpool* threadpool) {
+    XNN_LOG_IF_ERROR(xnn_delete_threadpool(threadpool));
+  }
+};
+}  // namespace internal
+
+using XnnSubgraph = std::unique_ptr<xnn_subgraph, internal::XnnDeleter>;
+using XnnRuntime = std::unique_ptr<xnn_runtime, internal::XnnDeleter>;
+using XnnThreadpool = std::unique_ptr<xnn_threadpool, internal::XnnDeleter>;
+
+absl::StatusOr<XnnSubgraph> CreateXnnSubgraph(
+    absl::FunctionRef<xnn_status(xnn_subgraph_t*)> builder);
+
+absl::StatusOr<XnnRuntime> CreateXnnRuntime(
+    absl::FunctionRef<xnn_status(xnn_runtime_t*)> builder);
+
+absl::StatusOr<XnnThreadpool> CreateXnnThreadpool(
+    absl::FunctionRef<xnn_status(xnn_threadpool_t*)> builder);
 
 }  // namespace xla::cpu
 

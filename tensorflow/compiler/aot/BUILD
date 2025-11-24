@@ -40,17 +40,19 @@ cc_library(
     name = "thunk_proto_execution_deserializer",
     srcs = ["thunk_proto_execution_deserializer.cc"],
     hdrs = ["thunk_proto_execution_deserializer.h"],
+    visibility = ["//visibility:public"],
     deps = [
         "@com_google_absl//absl/numeric:int128",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
+        "@local_xla//xla:debug_options_flags",
         "@local_xla//xla:shape_util",
         "@local_xla//xla:status_macros",
         "@local_xla//xla:util",
         "@local_xla//xla:xla_data_proto_cc",
-        "@local_xla//xla/backends/cpu/runtime:convolution_lib",
-        "@local_xla//xla/backends/cpu/runtime:dot_lib",
+        "@local_xla//xla/backends/cpu/runtime:convolution_dims",
+        "@local_xla//xla/backends/cpu/runtime:dot_dims",
         "@local_xla//xla/backends/cpu/runtime:thunk_proto_cc",
         "@local_xla//xla/service/cpu:executable_proto_cc",
         "@local_xla//xla/tsl/platform:statusor",
@@ -93,6 +95,8 @@ cc_library(
         ":llvm_targets",  # fixdeps: keep
         ":thunk_proto_execution_deserializer",
         "//tensorflow/compiler/tf2xla",
+        "//tensorflow/compiler/tf2xla:allocator",
+        "//tensorflow/compiler/tf2xla:encoded_buffer_allocation_info",
         "//tensorflow/compiler/tf2xla:mlir_tf2xla",  # fixdeps: keep
         "//tensorflow/compiler/tf2xla:tf2xla_proto_cc",
         "//tensorflow/compiler/tf2xla:tf2xla_util",
@@ -116,11 +120,13 @@ cc_library(
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
         "@llvm-project//llvm:Target",
-        "@local_xla//xla:cpu_function_runtime",
+        "@local_xla//xla:debug_options_flags",
         "@local_xla//xla:shape_util",
         "@local_xla//xla:status_macros",
         "@local_xla//xla:util",
         "@local_xla//xla:xla_data_proto_cc",
+        "@local_xla//xla/backends/cpu:buffer_allocation_info",
+        "@local_xla//xla/backends/cpu:buffer_allocation_info_util",
         "@local_xla//xla/backends/cpu/codegen:symbol_name_util",
         "@local_xla//xla/backends/cpu/runtime:thunk_proto_cc",
         "@local_xla//xla/backends/cpu/runtime:thunk_proto_serdes",
@@ -128,7 +134,6 @@ cc_library(
         "@local_xla//xla/client:compile_only_client",
         "@local_xla//xla/hlo/builder:xla_computation",
         "@local_xla//xla/service:compiler",
-        "@local_xla//xla/service/cpu:buffer_info_util",
         "@local_xla//xla/service/cpu:cpu_aot_compilation_result",
         "@local_xla//xla/service/cpu:cpu_compiler",
         "@local_xla//xla/service/cpu:cpu_executable",
@@ -140,10 +145,6 @@ cc_library(
 tf_cc_test(
     name = "codegen_test",
     srcs = ["codegen_test.cc"],
-    data = [
-        "codegen_test_h.golden",
-        "codegen_test_o.golden",
-    ],
     defines = if_llvm_x86_available(["TF_LLVM_X86_AVAILABLE=1"]),
     deps = [
         ":tfcompile_lib",
@@ -155,7 +156,6 @@ tf_cc_test(
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",  # fixdeps: keep
-        "@local_xla//xla:cpu_function_runtime",
         "@local_xla//xla:shape_util",
         "@local_xla//xla/service/cpu:cpu_aot_compilation_result",
     ] + if_llvm_x86_available([
@@ -353,6 +353,7 @@ cc_library(
     name = "embedded_protocol_buffers",
     srcs = ["embedded_protocol_buffers.cc"],
     hdrs = ["embedded_protocol_buffers.h"],
+    visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core:lib",
         "@com_google_absl//absl/memory",
@@ -372,6 +373,7 @@ cc_library(
     name = "embedded_constant_buffers",
     srcs = ["embedded_constant_buffers.cc"],
     hdrs = ["embedded_constant_buffers.h"],
+    visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core:lib",
         "@com_google_absl//absl/memory",
@@ -386,6 +388,7 @@ cc_library(
         "@llvm-project//llvm:Target",
         "@llvm-project//llvm:TargetParser",
         "@local_xla//xla:util",
+        "@local_xla//xla/backends/cpu:alignment",
         "@local_xla//xla/service/llvm_ir:llvm_type_conversion_util",
     ],
 )

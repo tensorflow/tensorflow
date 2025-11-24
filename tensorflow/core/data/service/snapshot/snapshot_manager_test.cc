@@ -18,6 +18,7 @@ limitations under the License.
 #include <memory>
 #include <string>
 
+#include "absl/status/status_matchers.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/status.h"
@@ -243,7 +244,7 @@ TEST(SnapshotManagerTest, SnapshotStreamError) {
   TF_ASSERT_OK(ReadTextProto(
       Env::Default(), SnapshotErrorFilePath(snapshot_path), &status_proto));
   EXPECT_THAT(tsl::StatusFromProto(status_proto),
-              StatusIs(error::NOT_FOUND, "Not found"));
+              absl_testing::StatusIs(error::NOT_FOUND, "Not found"));
 }
 
 TEST(SnapshotManagerTest, ResumeFromError) {
@@ -305,7 +306,7 @@ TEST(SnapshotAssignmentManagerTest, LoadBalanceSnapshots) {
   // Worker 2: N/A
   EXPECT_THAT(snapshot_assignment_manager.TryAddAssignment(
                   "snapshot_3", "worker_1", /*stream_index=*/0),
-              IsOkAndHolds(true));
+              absl_testing::IsOkAndHolds(true));
   EXPECT_THAT(snapshot_assignment_manager.LoadBalanceSnapshots("worker_1"),
               ElementsAre("snapshot_3", _));
   ASSERT_THAT(snapshot_assignment_manager.LoadBalanceSnapshots("worker_2"),
@@ -315,7 +316,7 @@ TEST(SnapshotAssignmentManagerTest, LoadBalanceSnapshots) {
   // Worker 2: N/A
   EXPECT_THAT(snapshot_assignment_manager.TryAddAssignment(
                   "snapshot_2", "worker_1", /*stream_index=*/0),
-              IsOkAndHolds(true));
+              absl_testing::IsOkAndHolds(true));
   ASSERT_THAT(snapshot_assignment_manager.LoadBalanceSnapshots("worker_1"),
               UnorderedElementsAre("snapshot_2", "snapshot_3"));
   EXPECT_THAT(snapshot_assignment_manager.LoadBalanceSnapshots("worker_2"),
@@ -325,10 +326,10 @@ TEST(SnapshotAssignmentManagerTest, LoadBalanceSnapshots) {
   // Worker 2: snapshot 2
   EXPECT_THAT(snapshot_assignment_manager.TryAddAssignment(
                   "snapshot_1", "worker_1", /*stream_index=*/0),
-              IsOkAndHolds(false));
+              absl_testing::IsOkAndHolds(false));
   EXPECT_THAT(snapshot_assignment_manager.TryAddAssignment(
                   "snapshot_2", "worker_2", /*stream_index=*/0),
-              IsOkAndHolds(true));
+              absl_testing::IsOkAndHolds(true));
   ASSERT_THAT(snapshot_assignment_manager.LoadBalanceSnapshots("worker_1"),
               UnorderedElementsAre("snapshot_2", "snapshot_3"));
   EXPECT_THAT(snapshot_assignment_manager.LoadBalanceSnapshots("worker_2"),

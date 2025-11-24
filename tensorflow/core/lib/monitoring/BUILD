@@ -263,7 +263,6 @@ filegroup(
 # "/tensorflow/test/sampler_without_labels").
 exports_files(
     [
-        "cell_reader_test.cc",
         "collection_registry_test.cc",
         "counter_test.cc",
         "gauge_test.cc",

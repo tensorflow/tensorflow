@@ -20,8 +20,9 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/stream_executor/stream.h"
-#include "tsl/platform/statusor.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace xla::gpu {
 
@@ -38,7 +39,9 @@ absl::Status WaitForStreamsThunk::ExecuteOnStream(const ExecuteParams& params) {
 }
 
 absl::StatusOr<ThunkProto> WaitForStreamsThunk::ToProto() const {
-  TF_ASSIGN_OR_RETURN(ThunkProto proto, Thunk::ToProto());
+  ThunkProto proto;
+  *proto.mutable_thunk_info() = thunk_info().ToProto();
+
   WaitForStreamsThunkProto* wait_for_streams_thunk_proto =
       proto.mutable_wait_for_streams_thunk();
   wait_for_streams_thunk_proto->set_stream_id(stream_id_.value());

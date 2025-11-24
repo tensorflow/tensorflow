@@ -20,7 +20,7 @@ limitations under the License.
 #include <memory>
 
 #include "absl/status/statusor.h"
-#include "xla/backends/cpu/runtime/convolution_lib.h"
+#include "xla/backends/cpu/runtime/convolution_dims.h"
 #include "xla/backends/cpu/runtime/thunk.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/shape.h"
@@ -33,8 +33,9 @@ namespace xla::cpu {
 // Performs 1D, 2D or 3D convolution.
 class ConvolutionThunk final : public Thunk {
  public:
+  // TODO(ezhulenev): Remove this struct as we always use thread pool.
   struct Options {
-    bool multi_threaded = false;
+    bool multi_threaded = true;
   };
 
   static absl::StatusOr<std::unique_ptr<ConvolutionThunk>> Create(

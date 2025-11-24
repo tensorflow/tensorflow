@@ -45,6 +45,7 @@ limitations under the License.
 #include "xla/service/hlo_module_config.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
@@ -95,14 +96,14 @@ int64_t CountControlEdges(const HloModule& module) {
 class CopyInsertionTest : public HloHardwareIndependentTestBase {
  protected:
   void InsertCopies(HloModule* module) {
-    CopyInsertion copy_insertion;
+    CopyInsertion copy_insertion(&alias_info_);
     VLOG(3) << "Before copy inser: " << module->ToString();
     ASSERT_IS_OK(copy_insertion.Run(module).status());
     VLOG(2) << "After copy inser: " << module->ToString();
   }
 
   const Shape scalar_shape_ = ShapeUtil::MakeShape(F32, {});
-  const AliasInfo alias_info_;
+  AliasInfo alias_info_;
 };
 
 TEST_F(CopyInsertionTest, SingleParameter) {
@@ -1999,7 +2000,8 @@ void BM_SequentialWhiles(::testing::benchmark::State& state) {
     }
     module.AddEntryComputation(builder.Build());
 
-    CopyInsertion copy_insertion;
+    AliasInfo alias_info;
+    CopyInsertion copy_insertion(&alias_info);
 
     state.ResumeTiming();
     ASSERT_IS_OK(copy_insertion.Run(&module).status());
@@ -2053,7 +2055,8 @@ void BM_ParallelWhiles(::testing::benchmark::State& state) {
     }
     module.AddEntryComputation(builder.Build());
 
-    CopyInsertion copy_insertion;
+    AliasInfo alias_info;
+    CopyInsertion copy_insertion(&alias_info);
 
     state.ResumeTiming();
     ASSERT_IS_OK(copy_insertion.Run(&module).status());
@@ -2086,7 +2089,8 @@ void BM_ManyElementTuple(::testing::benchmark::State& state) {
   const int num_tuple_inputs = state.range(0);
   HloModuleConfig config;
   config.set_debug_options(GetDebugOptionsFromFlags());
-  CopyInsertion copy_insertion;
+  AliasInfo alias_info;
+  CopyInsertion copy_insertion(&alias_info);
   const Shape element_shape = ShapeUtil::MakeShape(F32, {});
   std::vector<HloInstruction*> tuple_params(num_tuple_inputs);
   for (auto s : state) {
@@ -2876,54 +2880,47 @@ ENTRY main {
               op::Scatter(op::Copy(op::Iota()), op::Fusion(), op::Iota()));
 }
 
-TEST_F(CopyInsertionTest, HorizontalLoopFusionNoCopy) {
-  const std::string& hlo_string = R"(
-    HloModule test
+TEST_F(CopyInsertionTest, VariadicScatterSharedOperand) {
+  // If an in-place op has additional operand(s) that have the same value as the
+  // in-place buffer, a copy needs to be inserted.
+  absl::string_view hlo_string = R"(
+HloModule Module
 
-    fused_computation {
-      p0 = f32[10,20] parameter(0)
-      p1 = f32[10,20] parameter(1)
-      p2 = f32[10,10] parameter(2)
-      p3 = f32[10,10] parameter(3)
-      add0 = f32[10, 20] add(p0, p1)
-      sub0 = f32[10, 10] subtract(p2, p3)
-      reshape0 = f32[200] reshape(add0)
-      reshape1 = f32[100] reshape(sub0)
-      concat0 = f32[300] concatenate(reshape0, reshape1), dimensions={0}
-      slice0 = f32[200] slice(concat0), slice={[0:200]}
-      slice1 = f32[100] slice(concat0), slice={[200:300]}
-      ROOT tuple = (f32[200], f32[100]) tuple(slice0, slice1)
-    }
+update_s32 {
+  operand_0 = s32[] parameter(0)
+  operand_1 = s32[] parameter(1)
+  operand_2 = s32[] parameter(2)
+  update_0 = s32[] parameter(3)
+  update_1 = s32[] parameter(4)
+  update_2 = s32[] parameter(5)
+  ROOT tuple = (s32[], s32[], s32[]) tuple(update_0, update_1, update_2)
+}
 
-    ENTRY test {
-      p0 = f32[10,20] parameter(0)
-      p1 = f32[10,20] parameter(1)
-      p2 = f32[10,10] parameter(2)
-      p3 = f32[10,10] parameter(3)
-      fusion = (f32[200], f32[100]) fusion(p0, p1, p2, p3), kind=kInput, calls=fused_computation
-      gte0 = f32[200] get-tuple-element(fusion), index=0
-      gte1 = f32[100] get-tuple-element(fusion), index=1
-      bitcast0 = f32[10,20] bitcast(gte0)
-      bitcast1 = f32[10,10] bitcast(gte1)
-      ROOT tuple = (f32[10,20], f32[10,10]) tuple(bitcast0, bitcast1)
-    }
-  )";
+fused_computation {
+  iota.1 = s32[73729]{0} iota(), iota_dimension=0
+  ROOT indices.1 = s32[73729]{0} reverse(iota.1), dimensions={0}
+}
 
+ENTRY main {
+  zero = s32[] constant(0)
+  data = s32[73729]{0} iota(), iota_dimension=0
+  iota.2 = s32[73729]{0} iota(), iota_dimension=0
+  fusion = s32[73729]{0} fusion(), kind=kLoop, calls=fused_computation
+  ROOT scatter = (s32[73729]{0}, s32[73729]{0}, s32[73729]{0}) scatter(data, data, data, fusion, iota.2, iota.2, iota.2), update_window_dims={}, inserted_window_dims={0}, scatter_dims_to_operand_dims={0}, index_vector_dim=1, to_apply=update_s32
+}
+)";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(hlo_string));
-  ASSERT_IS_OK(module->input_output_alias_config().SetUpAlias(
-      /*output_index=*/{0},
-      /*param_number=*/0,
-      /*param_index=*/{}));
-  ASSERT_IS_OK(module->input_output_alias_config().SetUpAlias(
-      /*output_index=*/{1},
-      /*param_number=*/3,
-      /*param_index=*/{}));
-
-  InsertCopies(module.get());
-
-  // There should be no copies inserted.
-  EXPECT_EQ(CountCopies(*module), 0);
+  CopyInsertion copy_insertion(&alias_info_,
+                               /*use_region_based_live_range_analysis=*/-1);
+  ASSERT_IS_OK(copy_insertion.Run(module.get()));
+  ASSERT_IS_OK(copy_insertion.RemoveUnnecessaryCopies(module.get()));
+  VLOG(2) << module->ToString();
+  EXPECT_EQ(CountCopies(*module), 2);
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      op::Scatter(op::Iota(), op::Copy(op::Iota()), op::Copy(op::Iota()),
+                  op::Fusion(), op::Iota(), op::Iota(), op::Iota()));
 }
 
 TEST_F(CopyInsertionTest, NestedWhileAndConditional3) {
@@ -3814,7 +3811,7 @@ ENTRY %main {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
                           ParseAndReturnVerifiedModule(kModuleString));
 
-  CopyInsertion copy_insertion;
+  CopyInsertion copy_insertion(&alias_info_);
   ASSERT_IS_OK(copy_insertion.Run(module.get()).status());
   LOG(INFO) << module->ToString();
 
@@ -4489,9 +4486,9 @@ TEST_F(CopyInsertionTest, NonCopyableChainPipelinedSeparatedParts) {
     HloModule test
 
     while_body {
-      param = (b(f32[16]), f32[16]) parameter(0)
-      noncopyable0-w = b(f32[16]) get-tuple-element(param), index=0
-      pw1 = f32[16] get-tuple-element(param), index=1
+      param = (f32[16], b(f32[16])) parameter(0)
+      noncopyable0-w = b(f32[16]) get-tuple-element(param), index=1
+      pw1 = f32[16] get-tuple-element(param), index=0
       dw0 = f32[16] add(pw1, pw1)
       call0-w = (b(f32[16]), f32[16], token[])
         custom-call(noncopyable0-w, dw0), custom_call_target="update0",
@@ -4511,12 +4508,12 @@ TEST_F(CopyInsertionTest, NonCopyableChainPipelinedSeparatedParts) {
         custom_call_target="Unpin", output_to_operand_aliasing={{}:(0, {})}
       add = f32[16] add(dw4, unpin-noncopyable1-w) // keep noncopyable1-w alive.
       dw5 = f32[16] add(add, dw3) // Keep dw3 alive.
-      ROOT tuple = (b(f32[16]), f32[16]) tuple(noncopyable2-w, dw5)
+      ROOT tuple = (f32[16], b(f32[16])) tuple(dw5, noncopyable2-w)
     }
 
     // Infinite loop to keep IR small.
     while_condition {
-      pc = (b(f32[16]), f32[16]) parameter(0)
+      pc = (f32[16], b(f32[16])) parameter(0)
       ROOT infinite_loop = pred[] constant(true)
     }
 
@@ -4532,11 +4529,11 @@ TEST_F(CopyInsertionTest, NonCopyableChainPipelinedSeparatedParts) {
         output_to_operand_aliasing={{0}:(0, {})}
       noncopyable0 = b(f32[16]) get-tuple-element(call0), index=0
       d2 = f32[16] get-tuple-element(call0), index=1
-      init = (b(f32[16]), f32[16]) tuple(noncopyable0, d2)
-      while = (b(f32[16]), f32[16]) while(init), condition=while_condition,
+      init = (f32[16], b(f32[16])) tuple(d2, noncopyable0)
+      while = (f32[16], b(f32[16])) while(init), condition=while_condition,
         body=while_body
-      noncopyable1 = b(f32[16]) get-tuple-element(while), index=0
-      d3 = f32[16] get-tuple-element(while), index=1
+      noncopyable1 = b(f32[16]) get-tuple-element(while), index=1
+      d3 = f32[16] get-tuple-element(while), index=0
       call1 = (b(f32[16]), f32[16], token[])
         custom-call(noncopyable1), custom_call_target="update1",
         output_to_operand_aliasing={{0}:(0, {})}

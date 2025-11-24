@@ -136,7 +136,7 @@ struct ContextGroup {
 
 using ContextGroupMap = absl::flat_hash_map<
     int /*context_type*/,
-    absl::flat_hash_map<uint64 /*context_id*/, ContextGroup>>;
+    absl::flat_hash_map<uint64_t /*context_id*/, ContextGroup>>;
 
 // EventForest augments the input XSpace with the trace context. The trace
 // context is created by stitching XEvents (1) using the nesting relationship
@@ -212,7 +212,7 @@ class EventForest {
   //     - The node's event type in event_node_map_ is event_type.
   void FindEventNodeAndApply(
       int64_t event_type, const std::vector<int64_t>& stat_types,
-      const std::function<void(EventNode&, const std::vector<uint64>&)>& cb);
+      const std::function<void(EventNode&, const std::vector<uint64_t>&)>& cb);
 
   EventNodeMap event_node_map_;
   std::vector<XPlaneVisitor> visitors_;

@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_split.h"
+#include "absl/synchronization/notification.h"
 #include "tensorflow/cc/ops/array_ops_internal.h"
 #include "tensorflow/cc/ops/function_ops.h"
 #include "tensorflow/cc/ops/functional_ops.h"
@@ -73,7 +74,7 @@ using ::tsl::testing::StatusIs;
 using FDH = ::tensorflow::FunctionDefHelper;
 using OutputControlSrc = InlineFunctionBodyOptions::OutputControlSource;
 
-absl::Status GetOpSig(const string& op, const OpDef** sig) {
+absl::Status GetOpSig(const std::string& op, const OpDef** sig) {
   return OpRegistry::Global()->LookUpOpDef(op, sig);
 }
 
@@ -201,7 +202,7 @@ class FunctionLibraryRuntimeTest : public ::testing::Test {
           test::function::FunctionTestSchedClosure(fn);
         };
     opts.runner = &runner;
-    Notification done;
+    absl::Notification done;
     std::vector<Tensor> out;
     absl::Status status;
     flr->Run(opts, handle, args, &out, [&status, &done](const absl::Status& s) {
@@ -219,14 +220,14 @@ class FunctionLibraryRuntimeTest : public ::testing::Test {
     return absl::OkStatus();
   }
 
-  absl::Status Instantiate(FunctionLibraryRuntime* flr, const string& name,
+  absl::Status Instantiate(FunctionLibraryRuntime* flr, const std::string& name,
                            test::function::Attrs attrs,
                            FunctionLibraryRuntime::Handle* handle) {
     return flr->Instantiate(name, attrs, handle);
   }
 
   absl::Status Instantiate(
-      FunctionLibraryRuntime* flr, const string& name,
+      FunctionLibraryRuntime* flr, const std::string& name,
       test::function::Attrs attrs,
       const FunctionLibraryRuntime::InstantiateOptions& options,
       FunctionLibraryRuntime::Handle* handle) {
@@ -234,7 +235,7 @@ class FunctionLibraryRuntimeTest : public ::testing::Test {
   }
 
   absl::Status InstantiateAndRun(FunctionLibraryRuntime* flr,
-                                 const string& name,
+                                 const std::string& name,
                                  test::function::Attrs attrs,
                                  const std::vector<Tensor>& args,
                                  std::vector<Tensor*> rets) {
@@ -244,7 +245,7 @@ class FunctionLibraryRuntimeTest : public ::testing::Test {
   }
 
   absl::Status InstantiateAndRun(
-      FunctionLibraryRuntime* flr, const string& name,
+      FunctionLibraryRuntime* flr, const std::string& name,
       test::function::Attrs attrs,
       const FunctionLibraryRuntime::InstantiateOptions& options,
       const std::vector<Tensor>& args, std::vector<Tensor*> rets) {
@@ -279,7 +280,7 @@ class FunctionLibraryRuntimeTest : public ::testing::Test {
           test::function::FunctionTestSchedClosure(fn);
         };
     opts.runner = &runner;
-    Notification done;
+    absl::Notification done;
     absl::Status status;
     flr->Run(opts, handle, frame, [&status, &done](const absl::Status& s) {
       status = s;
@@ -294,7 +295,7 @@ class FunctionLibraryRuntimeTest : public ::testing::Test {
   }
 
   absl::Status InstantiateAndRunViaCallFrameInterface(
-      FunctionLibraryRuntime* flr, const string& name,
+      FunctionLibraryRuntime* flr, const std::string& name,
       test::function::Attrs attrs, const std::vector<Tensor>& args,
       std::vector<Tensor*> rets) {
     FunctionLibraryRuntime::Handle handle;
@@ -330,7 +331,7 @@ class FunctionLibraryRuntimeTest : public ::testing::Test {
   }
 
   std::unique_ptr<Graph> GetFuncBody(FunctionLibraryRuntime* flr,
-                                     const string& name,
+                                     const std::string& name,
                                      test::function::Attrs attrs) {
     FunctionLibraryRuntime::Handle handle;
     absl::Status status = flr->Instantiate(name, attrs, &handle);
@@ -346,7 +347,7 @@ class FunctionLibraryRuntimeTest : public ::testing::Test {
   }
 
   std::unique_ptr<Graph> GetGradBody(FunctionLibraryRuntime* flr,
-                                     const string& func,
+                                     const std::string& func,
                                      test::function::Attrs attrs) {
     FunctionLibraryRuntime::Handle handle;
     absl::Status status = flr->Instantiate(func, attrs, &handle);
@@ -645,9 +646,9 @@ TEST_F(FunctionLibraryRuntimeTest, StateHandle) {
       // Attrs
       {},
       // Nodes
-      {FDH::Const<int32>("shape", absl::Span<const int32>({1})),
-       FDH::Const<int32>("minval", 0),
-       FDH::Const<int32>("maxval", 10),
+      {FDH::Const<int32_t>("shape", absl::Span<const int32_t>({1})),
+       FDH::Const<int32_t>("minval", 0),
+       FDH::Const<int32_t>("maxval", 10),
        // A stateful node.
        {{"y"},
         "RandomUniformInt",
@@ -664,7 +665,7 @@ TEST_F(FunctionLibraryRuntimeTest, StateHandle) {
     // Simple case: instantiating with no state_handle.
     for (int32_t expected : {6, 4}) {
       TF_CHECK_OK(Run(flr0_, handle, opts, {}, {&y}));
-      test::ExpectTensorEqual<int>(y, test::AsTensor<int32>({expected}));
+      test::ExpectTensorEqual<int>(y, test::AsTensor<int32_t>({expected}));
     }
   }
 
@@ -677,7 +678,7 @@ TEST_F(FunctionLibraryRuntimeTest, StateHandle) {
     EXPECT_EQ(handle, handle_non_isolated);
     for (int32_t expected : {0, 1}) {
       TF_CHECK_OK(Run(flr0_, handle_non_isolated, opts, {}, {&y}));
-      test::ExpectTensorEqual<int>(y, test::AsTensor<int32>({expected}));
+      test::ExpectTensorEqual<int>(y, test::AsTensor<int32_t>({expected}));
     }
   }
 
@@ -692,7 +693,7 @@ TEST_F(FunctionLibraryRuntimeTest, StateHandle) {
     EXPECT_NE(handle, handle_isolated);
     for (int32_t expected : {6, 4, 0, 1}) {
       TF_CHECK_OK(Run(flr0_, handle_isolated, opts, {}, {&y}));
-      test::ExpectTensorEqual<int>(y, test::AsTensor<int32>({expected}));
+      test::ExpectTensorEqual<int>(y, test::AsTensor<int32_t>({expected}));
     }
   }
 
@@ -707,7 +708,7 @@ TEST_F(FunctionLibraryRuntimeTest, StateHandle) {
     EXPECT_NE(handle, handle_isolated);
     for (int32_t expected : {6, 4, 0, 1}) {
       TF_CHECK_OK(Run(flr0_, handle_isolated, opts, {}, {&y}));
-      test::ExpectTensorEqual<int>(y, test::AsTensor<int32>({expected}));
+      test::ExpectTensorEqual<int>(y, test::AsTensor<int32_t>({expected}));
     }
   }
 
@@ -724,7 +725,7 @@ TEST_F(FunctionLibraryRuntimeTest, StateHandle) {
       EXPECT_NE(handle, handle_isolated);
       for (int32_t expected : {6, 4, 0, 1}) {
         TF_CHECK_OK(Run(flr0_, handle_isolated, opts, {}, {&y}));
-        test::ExpectTensorEqual<int>(y, test::AsTensor<int32>({expected}));
+        test::ExpectTensorEqual<int>(y, test::AsTensor<int32_t>({expected}));
       }
       TF_CHECK_OK(flr0_->ReleaseHandle(handle_isolated));
     }
@@ -785,9 +786,10 @@ TEST_F(FunctionLibraryRuntimeTest,
   TF_CHECK_OK(flr0_->Finalize());
   FunctionLibraryRuntime::Handle handle;
   EXPECT_THAT(Instantiate(flr0_, "XTimesTwo", {{"T", DT_FLOAT}}, &handle),
-              StatusIs(absl::StatusCode::kFailedPrecondition,
-                       HasSubstr("FunctionLibraryRuntimeImpl is finalized and "
-                                 "cannot instantiate a new function handle.")));
+              absl_testing::StatusIs(
+                  absl::StatusCode::kFailedPrecondition,
+                  HasSubstr("FunctionLibraryRuntimeImpl is finalized and "
+                            "cannot instantiate a new function handle.")));
 }
 
 namespace {
@@ -1126,9 +1128,9 @@ TEST_F(FunctionLibraryRuntimeTest,
   std::unique_ptr<Graph> g;
   ExpandInlineFunctionsOptions opts;
 
-  const string input_node = "Func/b/input/_0";
-  const string output_node = "Func/b/output/_1";
-  const string output_control_node = "Func/b/output_control_node/_2";
+  const std::string input_node = "Func/b/input/_0";
+  const std::string output_node = "Func/b/output/_1";
+  const std::string output_control_node = "Func/b/output_control_node/_2";
 
   // Use data outputs as output control source.
   opts.native_options.output_control_src = OutputControlSrc::kDataOutputs;
@@ -1201,9 +1203,9 @@ TEST_F(FunctionLibraryRuntimeTest, ExpandInlineFunctionsAndKeepCallerNode) {
     return absl::OkStatus();
   };
 
-  const string input_node = "Func/b/input/_0";
-  const string output_node = "Func/b/output/_1";
-  const string output_control_node = "Func/b/output_control_node/_2";
+  const std::string input_node = "Func/b/input/_0";
+  const std::string output_node = "Func/b/output/_1";
+  const std::string output_control_node = "Func/b/output_control_node/_2";
 
   // Construct expected graph after function inlining.
   auto expected_graph = [&](const NodeDef& caller) -> GraphDef {
@@ -1264,9 +1266,9 @@ TEST_F(FunctionLibraryRuntimeTest, ExpandInlineFunctionsAndPlaceInlinedNodes) {
   using test::function::NDef;
   using KeepCallerNode = InlineFunctionBodyOptions::KeepCallerNode;
 
-  const string arg_device = "/job:arg/replica:0/task:0/device:GPU";
-  const string call_device = "/job:call/replica:0/task:1/device:GPU";
-  const string body_device = "/job:body/replica:0/task:1/device:CPU";
+  const std::string arg_device = "/job:arg/replica:0/task:0/device:GPU";
+  const std::string call_device = "/job:call/replica:0/task:1/device:GPU";
+  const std::string body_device = "/job:body/replica:0/task:1/device:CPU";
 
   const FunctionDef func = FDH::Create(
       "AddFunc", {"i: float"}, {"o: float"}, {},
@@ -1289,12 +1291,13 @@ TEST_F(FunctionLibraryRuntimeTest, ExpandInlineFunctionsAndPlaceInlinedNodes) {
     return absl::OkStatus();
   };
 
-  const string input_node = "Func/b/input/_0";
-  const string output_node = "Func/b/output/_1";
-  const string output_control_node = "Func/b/output_control_node/_2";
+  const std::string input_node = "Func/b/input/_0";
+  const std::string output_node = "Func/b/output/_1";
+  const std::string output_control_node = "Func/b/output_control_node/_2";
 
   // Construct expected graph after function inlining.
-  auto expected_graph = [&](const std::vector<string>& placed) -> GraphDef {
+  auto expected_graph =
+      [&](const std::vector<std::string>& placed) -> GraphDef {
     return test::function::GDef(
         {
             NDef("a", "_Arg", {}, {{"T", DT_FLOAT}, {"index", 0}}, placed[0]),
@@ -1362,7 +1365,7 @@ TEST_F(FunctionLibraryRuntimeTest, ExpandInlineFunctionsAndPlaceInlinedNodes) {
     auto g = std::make_unique<Graph>(OpRegistry::Global());
     TF_ASSERT_OK(construct_graph(&g));
 
-    const string merged_device = "/job:body/replica:0/task:1/device:CPU:*";
+    const std::string merged_device = "/job:body/replica:0/task:1/device:CPU:*";
 
     ExpandInlineFunctions(flr0_, g.get(), opts);
     GraphDef expected = expected_graph({/*a*/ arg_device,                //
@@ -1398,7 +1401,7 @@ TEST_F(FunctionLibraryRuntimeTest, PruneBody) {
        {{"x1"}, "Add", {"o", "o"}, {{"T", T}}},
        {{"x2"}, "Mul", {"a", "x1"}, {{"T", T}}},
        {{"x3"}, "Mul", {"x1", "x2"}, {{"T", T}}},
-       FDH::Const<int32>("shape", {1, 2}),
+       FDH::Const<int32_t>("shape", {1, 2}),
        // A stateful node.
        {{"keep_me"},
         "RandomUniform",
@@ -1408,7 +1411,7 @@ TEST_F(FunctionLibraryRuntimeTest, PruneBody) {
        {{"z"}, "Add", {"a", "o"}, {{"T", T}}}});
   Init({stateful_func});
 
-  auto x = test::AsTensor<int32>({1, 2, 3, 4});
+  auto x = test::AsTensor<int32_t>({1, 2, 3, 4});
   auto y = test::AsTensor<float>({1.0, 2.0, 3.0, 4.0});
   Tensor z;
 
@@ -1425,15 +1428,15 @@ TEST_F(FunctionLibraryRuntimeTest, PruneBody) {
 
   TF_CHECK_OK(InstantiateAndRun(flr0_, "SquareAndAddOneWithStatefulNodes", {},
                                 {x, y}, {&z}));
-  test::ExpectTensorEqual<int>(z, test::AsTensor<int32>({2, 5, 10, 17}));
+  test::ExpectTensorEqual<int>(z, test::AsTensor<int32_t>({2, 5, 10, 17}));
 
   stats_collector.FinalizeAndSwap(&stats);
 
   // Note that we do not expect the nodes named "y", "x1", "x2", or "x3" to
   // execute.
-  std::set<string> expected_node_names(
+  std::set<std::string> expected_node_names(
       {"_SOURCE", "shape", "x", "o", "a", "keep_me", "z", "z_RetVal"});
-  std::set<string> executed_node_names;
+  std::set<std::string> executed_node_names;
   for (const auto& node_stats : stats.dev_stats()[0].node_stats()) {
     executed_node_names.insert(node_stats.node_name());
   }
@@ -1473,9 +1476,9 @@ TEST_F(FunctionLibraryRuntimeTest, DoNotPruneControlOutputsFromBody) {
 
   stats_collector.FinalizeAndSwap(&stats);
 
-  std::set<string> expected_node_names(
+  std::set<std::string> expected_node_names(
       {"_SOURCE", "i", "add", "ret", "o_RetVal"});
-  std::set<string> executed_node_names;
+  std::set<std::string> executed_node_names;
   for (const auto& node_stats : stats.dev_stats()[0].node_stats()) {
     executed_node_names.insert(node_stats.node_name());
   }
@@ -1643,7 +1646,7 @@ TEST_F(FunctionLibraryRuntimeTest, Error_InstantiationError) {
 
 TEST_F(FunctionLibraryRuntimeTest, Error_BadControlFlow) {
   Init({test::function::InvalidControlFlow()});
-  auto x = test::AsTensor<int32>({0});
+  auto x = test::AsTensor<int32_t>({0});
   DCHECK_EQ(x.dtype(), DT_INT32);
   Tensor y;
   HasError(InstantiateAndRun(flr0_, "InvalidControlFlow", {}, {x}, {&y}),
@@ -2115,7 +2118,7 @@ TEST_F(FunctionLibraryRuntimeTest, FullTypeForInt32) {
        {{"z"}, "Add", {"x", "x"}, {{"T", T}}}});
   Init({int32_func});
 
-  auto x = test::AsTensor<int32>({1, 2, 3, 4});
+  auto x = test::AsTensor<int32_t>({1, 2, 3, 4});
   auto y = test::AsTensor<float>({1.0, 2.0, 3.0, 4.0});
   Tensor z;
 

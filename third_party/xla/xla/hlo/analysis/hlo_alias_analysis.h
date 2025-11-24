@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/analysis/hlo_dataflow_analysis.h"
 #include "xla/hlo/analysis/hlo_ordering.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -42,8 +43,7 @@ class HloAliasAnalysis {
   // The callgraph of the given HloModule must be flattened
   // (xla::FlattenCallGraph) prior to running the analysis.
   static absl::StatusOr<std::unique_ptr<HloAliasAnalysis>> Run(
-      const HloModule* module,
-      const HloDataflowAnalysis::CanShareBuffer& can_share_buffer = nullptr);
+      const HloModule* module, const AliasInfo* alias_info);
 
   std::string ToString() const;
 
@@ -51,15 +51,9 @@ class HloAliasAnalysis {
   const HloBuffer& GetBufferContainingValue(const HloValue& value) const {
     return *value_to_buffer_.at(&value);
   }
-  HloBuffer& GetBufferContainingValue(const HloValue& value) {
-    return *value_to_buffer_.at(&value);
-  }
 
   // Return the HloBuffer with the given ID.
   const HloBuffer& GetBuffer(HloBuffer::Id buffer_id) const {
-    return buffers_.at(buffer_id);
-  }
-  HloBuffer& GetBuffer(HloBuffer::Id buffer_id) {
     return buffers_.at(buffer_id);
   }
 
@@ -67,8 +61,6 @@ class HloAliasAnalysis {
   // set at that position does not contain exactly one buffer.
   const HloBuffer& GetUniqueBufferAt(const HloInstruction* instruction,
                                      const ShapeIndex& index = {}) const;
-  HloBuffer& GetUniqueBufferAt(const HloInstruction* instruction,
-                               const ShapeIndex& index = {});
 
   // Compute the set of buffers at the given instruction and index and return as
   // a vector. This set is exactly the union of the buffers containing the

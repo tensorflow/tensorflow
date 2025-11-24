@@ -228,8 +228,9 @@ TEST_F(WorkerClientTest, LocalRead) {
   // local server, this should cause the request to fail.
   LocalWorkers::Remove(GetWorkerAddress());
   EXPECT_THAT(GetElement(*client, task_id),
-              StatusIs(error::CANCELLED,
-                       MatchesRegex("Local worker.*is no longer available.*")));
+              absl_testing::StatusIs(
+                  error::CANCELLED,
+                  MatchesRegex("Local worker.*is no longer available.*")));
 }
 
 TEST_F(WorkerClientTest, LocalReadEmptyDataset) {
@@ -249,8 +250,9 @@ TEST_F(WorkerClientTest, LocalReadEmptyDataset) {
   // local server, this should cause the request to fail.
   LocalWorkers::Remove(GetWorkerAddress());
   EXPECT_THAT(GetElement(*client, task_id),
-              StatusIs(error::CANCELLED,
-                       MatchesRegex("Local worker.*is no longer available.*")));
+              absl_testing::StatusIs(
+                  error::CANCELLED,
+                  MatchesRegex("Local worker.*is no longer available.*")));
 }
 
 TEST_P(DataTransferProtocolWorkerClientTest, NetworkRead) {
@@ -296,8 +298,9 @@ TEST_F(WorkerClientTest, LocalServerShutsDown) {
   // Stopping a worker causes local reads to return Cancelled status.
   test_cluster_->StopWorkers();
   EXPECT_THAT(GetElement(*client, task_id),
-              StatusIs(error::CANCELLED,
-                       MatchesRegex("Local worker.*is no longer available.*")));
+              absl_testing::StatusIs(
+                  error::CANCELLED,
+                  MatchesRegex("Local worker.*is no longer available.*")));
 }
 
 TEST_F(WorkerClientTest, CancelClient) {
@@ -312,8 +315,9 @@ TEST_F(WorkerClientTest, CancelClient) {
 
   client->TryCancel();
   EXPECT_THAT(GetElement(*client, task_id),
-              StatusIs(error::CANCELLED,
-                       MatchesRegex("Client for worker.*has been cancelled.")));
+              absl_testing::StatusIs(
+                  error::CANCELLED,
+                  MatchesRegex("Client for worker.*has been cancelled.")));
 }
 
 }  // namespace

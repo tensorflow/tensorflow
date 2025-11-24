@@ -18,6 +18,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/lib/io/compression.h"
@@ -119,18 +120,18 @@ TEST(FileUtilsTest, GetChildren) {
   std::string tmp_file = tsl::io::JoinPath(directory, "test_file.tmp");
   TF_ASSERT_OK(AtomicallyWriteStringToFile(tmp_file, "", tsl::Env::Default()));
   EXPECT_THAT(GetChildren(directory, tsl::Env::Default()),
-              IsOkAndHolds(ElementsAre("test_file")));
+              absl_testing::IsOkAndHolds(ElementsAre("test_file")));
 }
 
 TEST(FileUtilsTest, GetChildrenEmptyDirectory) {
   TF_ASSERT_OK_AND_ASSIGN(std::string empty_directory, CreateTestDirectory());
   EXPECT_THAT(GetChildren(empty_directory, tsl::Env::Default()),
-              IsOkAndHolds(IsEmpty()));
+              absl_testing::IsOkAndHolds(IsEmpty()));
 }
 
 TEST(FileUtilsTest, GetChildrenDirectoryNotFound) {
   EXPECT_THAT(GetChildren("Not exist", tsl::Env::Default()),
-              StatusIs(tsl::error::NOT_FOUND));
+              absl_testing::StatusIs(tsl::error::NOT_FOUND));
 }
 
 TEST(FileUtilsTest, IsTemporaryFile) {

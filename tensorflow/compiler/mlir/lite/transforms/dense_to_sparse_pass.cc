@@ -347,8 +347,8 @@ void DenseToSparsePass::runOnOperation() {
               builder.getF32Type());
           auto new_value = DenseElementsAttr::get<float>(compressed_data_type,
                                                          compressed_data);
-          auto s_const = builder.create<SparseConstOp>(
-              op->getLoc(), cst.getValue(), s_param, new_value);
+          auto s_const = SparseConstOp::create(
+              builder, op->getLoc(), cst.getValue(), s_param, new_value);
           value.replaceAllUsesWith(s_const.getResult());
           cst.erase();
         } else if (type.getElementType().isF16()) {
@@ -369,8 +369,8 @@ void DenseToSparsePass::runOnOperation() {
               type.getElementType());
           auto new_value =
               DenseElementsAttr::get(compressed_data_type, apfloat_data);
-          auto s_const = builder.create<SparseConstOp>(
-              op->getLoc(), cst.getValue(), s_param, new_value);
+          auto s_const = SparseConstOp::create(
+              builder, op->getLoc(), cst.getValue(), s_param, new_value);
           value.replaceAllUsesWith(s_const.getResult());
           cst.erase();
         }
@@ -391,8 +391,8 @@ void DenseToSparsePass::runOnOperation() {
         auto new_value = DenseElementsAttr::get<int8_t>(compressed_data_type,
                                                         compressed_data);
         auto s_qconst =
-            builder.create<SparseQConstOp>(op->getLoc(), cst.getQtypeAttr(),
-                                           cst.getValue(), s_param, new_value);
+            SparseQConstOp::create(builder, op->getLoc(), cst.getQtypeAttr(),
+                                   cst.getValue(), s_param, new_value);
         value.replaceAllUsesWith(s_qconst.getResult());
         cst.erase();
       }
@@ -400,7 +400,7 @@ void DenseToSparsePass::runOnOperation() {
       if (result.needs_densify) {
         auto value = op->getOperand(operand);
         auto densify =
-            builder.create<DensifyOp>(op->getLoc(), value.getType(), value);
+            DensifyOp::create(builder, op->getLoc(), value.getType(), value);
         value.replaceAllUsesWith(densify);
         densify.setOperand(value);
       }

@@ -3,6 +3,7 @@
 load("@build_bazel_rules_apple//apple:apple.bzl", "apple_static_xcframework")
 load("@build_bazel_rules_apple//apple:ios.bzl", "ios_static_framework", "ios_unit_test")
 load("@build_bazel_rules_swift//swift:swift.bzl", "swift_library")
+load("@rules_cc//cc:objc_library.bzl", "objc_library")
 load("//tensorflow/lite:special_rules.bzl", "ios_visibility_allowlist", "tflite_ios_lab_runner")
 load("//tensorflow/lite/ios:ios.bzl", "TFL_DEFAULT_TAGS", "TFL_DISABLED_SANITIZER_TAGS", "TFL_MINIMUM_OS_VERSION")
 
@@ -89,6 +90,30 @@ swift_library(
         "//tensorflow/lite/delegates/coreml:coreml_delegate",
         "//tensorflow/lite/delegates/gpu:metal_delegate",
         "//tensorflow/lite/ios:tensorflow_lite_c",
+    ],
+)
+
+swift_library(
+    name = "TensorFlowLiteMetalDelegate",
+    testonly = 1,
+    srcs = glob(
+        [
+            "Sources/*.swift",
+        ],
+        exclude = [
+            "Sources/CoreMLDelegate.swift",
+        ],
+    ),
+    linkopts = [
+        "-Wl,-weak_framework,Metal",
+    ],
+    module_name = "TensorFlowLite",
+    tags = TFL_DEFAULT_TAGS + ["builder_default_ios_arm64"],
+    deps = [
+        "//tensorflow/lite/delegates/gpu:metal_delegate",
+        "//tensorflow/lite/ios:tensorflow_lite_c",
+        "//third_party/apple_frameworks:Darwin",
+        "//third_party/apple_frameworks:Foundation",
     ],
 )
 

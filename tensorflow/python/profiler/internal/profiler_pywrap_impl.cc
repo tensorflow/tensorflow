@@ -33,19 +33,19 @@ namespace tensorflow {
 namespace profiler {
 namespace pywrap {
 
-using tsl::profiler::GetRemoteSessionManagerOptionsLockedWithBoolOpts;
+using tsl::profiler::GetRemoteSessionManagerOptionsLocked;
 
 absl::Status ProfilerSessionWrapper::Start(
     const char* logdir,
     const absl::flat_hash_map<std::string,
                               std::variant<bool, int, std::string>>& options) {
-  auto opts = GetRemoteSessionManagerOptionsLockedWithBoolOpts(logdir, options);
+  auto opts = GetRemoteSessionManagerOptionsLocked(logdir, options);
   session_ = tsl::ProfilerSession::Create(opts.profiler_options());
   logdir_ = logdir;
   return session_->Status();
 }
 
-absl::Status ProfilerSessionWrapper::Stop(tensorflow::string* result) {
+absl::Status ProfilerSessionWrapper::Stop(std::string* result) {
   if (session_ != nullptr) {
     tensorflow::profiler::XSpace xspace;
     absl::Status status = session_->CollectData(&xspace);

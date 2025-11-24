@@ -32,7 +32,7 @@ limitations under the License.
 
 // The AlphaNum type was designed to be used as the parameter type for StrCat().
 // Any routine accepting either a string or a number may accept it.
-// The basic idea is that by accepting a "const AlphaNum &" as an argument
+// The basic idea is that by accepting a "const absl::AlphaNum& " as an argument
 // to your function, your callers will automatically convert bools, integers,
 // and floating point values to strings for you.
 //
@@ -79,60 +79,7 @@ using absl::kZeroPad7;
 using absl::kZeroPad8;
 using absl::kZeroPad9;
 using Hex ABSL_DEPRECATE_AND_INLINE() = absl::Hex;
-
-class AlphaNum {
-  // NOLINTBEGIN(google-explicit-constructor)
- public:
-  // No bool ctor -- bools convert to an integral type.
-  // A bool ctor would also convert incoming pointers (bletch).
-  AlphaNum(int i32)  // NOLINT(runtime/explicit)
-      : piece_(digits_, FastInt32ToBufferLeft(i32, digits_)) {}
-  AlphaNum(unsigned int u32)  // NOLINT(runtime/explicit)
-      : piece_(digits_, FastUInt32ToBufferLeft(u32, digits_)) {}
-  AlphaNum(long x)  // NOLINT(runtime/explicit)
-      : piece_(digits_, FastInt64ToBufferLeft(x, digits_)) {}
-  AlphaNum(unsigned long x)  // NOLINT(runtime/explicit)
-      : piece_(digits_, FastUInt64ToBufferLeft(x, digits_)) {}
-  AlphaNum(long long int i64)  // NOLINT(runtime/explicit)
-      : piece_(digits_, FastInt64ToBufferLeft(i64, digits_)) {}
-  AlphaNum(unsigned long long int u64)  // NOLINT(runtime/explicit)
-      : piece_(digits_, FastUInt64ToBufferLeft(u64, digits_)) {}
-
-  AlphaNum(float f)  // NOLINT(runtime/explicit)
-      : piece_(digits_, FloatToBuffer(f, digits_)) {}
-  AlphaNum(double f)  // NOLINT(runtime/explicit)
-      : piece_(digits_, DoubleToBuffer(f, digits_)) {}
-  AlphaNum(bfloat16 bf)  // NOLINT(runtime/explicit)
-      : piece_(digits_, FloatToBuffer(static_cast<float>(bf), digits_)) {}
-
-  AlphaNum(Hex hex);  // NOLINT(runtime/explicit)
-
-  AlphaNum(const char *c_str) : piece_(c_str) {}  // NOLINT(runtime/explicit)
-  AlphaNum(const absl::string_view &pc)
-      : piece_(pc) {}               // NOLINT(runtime/explicit)
-  AlphaNum(const std::string &str)  // NOLINT(runtime/explicit)
-      : piece_(str) {}
-  AlphaNum(const tstring &str)  // NOLINT(runtime/explicit)
-      : piece_(str) {}
-  template <typename A>
-  AlphaNum(const std::basic_string<char, std::char_traits<char>, A> &str)
-      : piece_(str) {}  // NOLINT(runtime/explicit)
-
-  absl::string_view::size_type size() const { return piece_.size(); }
-  const char *data() const { return piece_.data(); }
-  absl::string_view Piece() const { return piece_; }
-
- private:
-  absl::string_view piece_;
-  char digits_[kFastToBufferSize];
-
-  // Use ":" not ':'
-  AlphaNum(char c);  // NOLINT(runtime/explicit)
-
-  // NOLINTEND(google-explicit-constructor)
-  AlphaNum(const AlphaNum &) = delete;
-  void operator=(const AlphaNum &) = delete;
-};
+using AlphaNum ABSL_DEPRECATE_AND_INLINE() = absl::AlphaNum;
 
 // ----------------------------------------------------------------------
 // StrCat()
@@ -158,40 +105,30 @@ class AlphaNum {
 // ----------------------------------------------------------------------
 
 // For performance reasons, we have specializations for <= 4 args.
-ABSL_DEPRECATED("Use absl::StrCat() instead.")
-std::string StrCat(const AlphaNum &a) TF_MUST_USE_RESULT;
-ABSL_DEPRECATED("Use absl::StrCat() instead.")
-std::string StrCat(const AlphaNum &a, const AlphaNum &b) TF_MUST_USE_RESULT;
-ABSL_DEPRECATED("Use absl::StrCat() instead.")
-std::string StrCat(const AlphaNum &a, const AlphaNum &b,
-                   const AlphaNum &c) TF_MUST_USE_RESULT;
-ABSL_DEPRECATED("Use absl::StrCat() instead.")
-std::string StrCat(const AlphaNum &a, const AlphaNum &b, const AlphaNum &c,
-                   const AlphaNum &d) TF_MUST_USE_RESULT;
-
-namespace internal {
-
-// Do not call directly - this is not part of the public API.
-std::string CatPieces(std::initializer_list<absl::string_view> pieces);
-void AppendPieces(std::string *dest,
-                  std::initializer_list<absl::string_view> pieces);
-
-}  // namespace internal
+ABSL_DEPRECATE_AND_INLINE()
+inline std::string StrCat(const absl::AlphaNum& a) { return absl::StrCat(a); }
+ABSL_DEPRECATE_AND_INLINE()
+inline std::string StrCat(const absl::AlphaNum& a, const absl::AlphaNum& b) {
+  return absl::StrCat(a, b);
+}
+ABSL_DEPRECATE_AND_INLINE()
+inline std::string StrCat(const absl::AlphaNum& a, const absl::AlphaNum& b,
+                          const absl::AlphaNum& c) {
+  return absl::StrCat(a, b, c);
+}
+ABSL_DEPRECATE_AND_INLINE()
+inline std::string StrCat(const absl::AlphaNum& a, const absl::AlphaNum& b,
+                          const absl::AlphaNum& c, const absl::AlphaNum& d) {
+  return absl::StrCat(a, b, c, d);
+}
 
 // Support 5 or more arguments
 template <typename... AV>
 ABSL_DEPRECATED("Use absl::StrCat() instead.")
-std::string StrCat(const AlphaNum &a, const AlphaNum &b, const AlphaNum &c,
-                   const AlphaNum &d, const AlphaNum &e,
-                   const AV &...args) TF_MUST_USE_RESULT;
-
-template <typename... AV>
-ABSL_DEPRECATED("Use absl::StrCat() instead.")
-std::string StrCat(const AlphaNum &a, const AlphaNum &b, const AlphaNum &c,
-                   const AlphaNum &d, const AlphaNum &e, const AV &...args) {
-  return internal::CatPieces({a.Piece(), b.Piece(), c.Piece(), d.Piece(),
-                              e.Piece(),
-                              static_cast<const AlphaNum &>(args).Piece()...});
+std::string StrCat(const absl::AlphaNum& a, const absl::AlphaNum& b,
+                   const absl::AlphaNum& c, const absl::AlphaNum& d,
+                   const absl::AlphaNum& e, const AV&... args) {
+  return absl::StrCat(a, b, c, d, e, args...);
 }
 
 // ----------------------------------------------------------------------
@@ -215,26 +152,35 @@ std::string StrCat(const AlphaNum &a, const AlphaNum &b, const AlphaNum &c,
 //    worked around as consecutive calls to StrAppend are quite efficient.
 // ----------------------------------------------------------------------
 
-ABSL_DEPRECATED("Use absl::StrAppend() instead.")
-void StrAppend(std::string *dest, const AlphaNum &a);
-ABSL_DEPRECATED("Use absl::StrAppend() instead.")
-void StrAppend(std::string *dest, const AlphaNum &a, const AlphaNum &b);
-ABSL_DEPRECATED("Use absl::StrAppend() instead.")
-void StrAppend(std::string *dest, const AlphaNum &a, const AlphaNum &b,
-               const AlphaNum &c);
-ABSL_DEPRECATED("Use absl::StrAppend() instead.")
-void StrAppend(std::string *dest, const AlphaNum &a, const AlphaNum &b,
-               const AlphaNum &c, const AlphaNum &d);
+ABSL_DEPRECATE_AND_INLINE()
+inline void StrAppend(std::string* dest, const absl::AlphaNum& a) {
+  absl::StrAppend(dest, a);
+}
+ABSL_DEPRECATE_AND_INLINE()
+inline void StrAppend(std::string* dest, const absl::AlphaNum& a,
+                      const absl::AlphaNum& b) {
+  absl::StrAppend(dest, a, b);
+}
+ABSL_DEPRECATE_AND_INLINE()
+inline void StrAppend(std::string* dest, const absl::AlphaNum& a,
+                      const absl::AlphaNum& b, const absl::AlphaNum& c) {
+  absl::StrAppend(dest, a, b, c);
+}
+ABSL_DEPRECATE_AND_INLINE()
+inline void StrAppend(std::string* dest, const absl::AlphaNum& a,
+                      const absl::AlphaNum& b, const absl::AlphaNum& c,
+                      const absl::AlphaNum& d) {
+  absl::StrAppend(dest, a, b, c, d);
+}
 
 // Support 5 or more arguments
 template <typename... AV>
 ABSL_DEPRECATED("Use absl::StrAppend() instead.")
-inline void StrAppend(std::string *dest, const AlphaNum &a, const AlphaNum &b,
-                      const AlphaNum &c, const AlphaNum &d, const AlphaNum &e,
-                      const AV &...args) {
-  internal::AppendPieces(dest,
-                         {a.Piece(), b.Piece(), c.Piece(), d.Piece(), e.Piece(),
-                          static_cast<const AlphaNum &>(args).Piece()...});
+inline void StrAppend(std::string* dest, const absl::AlphaNum& a,
+                      const absl::AlphaNum& b, const absl::AlphaNum& c,
+                      const absl::AlphaNum& d, const absl::AlphaNum& e,
+                      const AV&... args) {
+  absl::StrAppend(dest, a, b, c, d, e, args...);
 }
 
 }  // namespace strings

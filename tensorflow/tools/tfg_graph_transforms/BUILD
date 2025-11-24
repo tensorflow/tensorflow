@@ -1,6 +1,7 @@
 # Description:
 #   Utilities to perform MLIR TFG graph transformations.
 
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_binary",
@@ -28,6 +29,7 @@ cc_library(
         "//tensorflow/core/protobuf:for_core_protos_cc",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings:string_view",
     ],
 )
 

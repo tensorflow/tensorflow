@@ -44,7 +44,7 @@ void DeviceSet::UnionWith(const DeviceSet& other) {
 }
 
 bool DeviceSet::IsEmpty() const {
-  return absl::c_all_of(storage_, [&](uint64 val) { return val == 0; });
+  return absl::c_all_of(storage_, [&](uint64_t val) { return val == 0; });
 }
 
 absl::StatusOr<DeviceId> DeviceInfoCache::GetIdFor(absl::string_view name) {
@@ -56,7 +56,7 @@ absl::StatusOr<DeviceId> DeviceInfoCache::GetIdFor(absl::string_view name) {
   }
 
   int new_id = names_.size();
-  names_.push_back(string(name));
+  names_.push_back(std::string(name));
   id_to_device_type_.push_back(std::make_unique<DeviceType>(""));
   DeviceType* device_type = id_to_device_type_.back().get();
   TF_RETURN_IF_ERROR(DeviceNameToDeviceType(names_.back(), device_type));
@@ -64,7 +64,7 @@ absl::StatusOr<DeviceId> DeviceInfoCache::GetIdFor(absl::string_view name) {
   is_cpu_.push_back(device_type->type_string() == DEVICE_CPU);
   is_gpu_.push_back(device_type->type_string() == DEVICE_GPU);
 
-  name_to_id_.emplace(string(name), DeviceId(new_id));
+  name_to_id_.emplace(std::string(name), DeviceId(new_id));
 
   const XlaOpRegistry::DeviceRegistration* compilation_device;
   if (!XlaOpRegistry::GetCompilationDevice(device_type->type(),
@@ -76,10 +76,10 @@ absl::StatusOr<DeviceId> DeviceInfoCache::GetIdFor(absl::string_view name) {
   return DeviceId(new_id);
 }
 
-string DeviceInfoCache::DebugString(const DeviceSet& device_set) const {
-  std::vector<string> names;
+std::string DeviceInfoCache::DebugString(const DeviceSet& device_set) const {
+  std::vector<std::string> names;
   device_set.ForEach([&](DeviceId device_id) {
-    names.push_back(string(GetNameFor(device_id)));
+    names.push_back(std::string(GetNameFor(device_id)));
     return true;
   });
 
@@ -87,7 +87,7 @@ string DeviceInfoCache::DebugString(const DeviceSet& device_set) const {
 }
 }  // namespace jit
 
-absl::Status DeviceNameToDeviceType(const string& device,
+absl::Status DeviceNameToDeviceType(const std::string& device,
                                     DeviceType* device_type) {
   DeviceNameUtils::ParsedName parsed;
   if (!DeviceNameUtils::ParseFullName(device, &parsed)) {

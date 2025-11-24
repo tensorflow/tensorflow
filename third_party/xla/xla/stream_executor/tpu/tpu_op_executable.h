@@ -34,7 +34,7 @@ limitations under the License.
 namespace tensorflow {
 
 // An executable capable of being fed to a TPU device via TpuExecutor.
-class TpuOpExecutable : public xla::TpuExecutableInterface {
+class TpuOpExecutable : public xla::legacy::TpuExecutableInterface {
  public:
   // Constructs an executable that holds a non-owning reference to an
   // XLA_TpuProgram.

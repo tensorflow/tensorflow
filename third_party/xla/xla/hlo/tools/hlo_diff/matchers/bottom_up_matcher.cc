@@ -18,22 +18,22 @@
 #include <iomanip>
 #include <iostream>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/base/nullability.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/log.h"
+#include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/tools/hlo_diff/graph/hlo_gumgraph.h"
 #include "xla/hlo/tools/hlo_diff/graph/hlo_gumgraph_node.h"
 #include "xla/hlo/tools/hlo_diff/graph/utils/hlo_gumgraph_bfs.h"
 #include "xla/hlo/tools/hlo_diff/graph/utils/hlo_gumgraph_dfs.h"
 #include "xla/hlo/tools/hlo_diff/hlo_gumgraph_mappings.h"
 #include "xla/hlo/tools/hlo_diff/matchers/similarity.h"
-#include "xla/service/hlo_value.h"
 
 namespace xla::hlo_diff {
 
@@ -54,74 +54,65 @@ void PrintProgress(int percentage) {
             << std::string(rpad, kProgressBarEmpty) << "]" << std::flush;
 }
 
+absl::flat_hash_set<const HloInstructionNode*> GetSubgraphForDiceSim(
+    const HloInstructionNode* start_node, int graph_size, int max_subgraph_size,
+    int min_bfs_distance) {
+  absl::flat_hash_set<const HloInstructionNode*> nodes;
+  nodes.reserve(max_subgraph_size);
+  HloGumgraphBfs(
+      *start_node,
+      [&](const HloInstructionNode& node, int distance) {
+        nodes.insert(&node);
+        return distance <= min_bfs_distance || nodes.size() < max_subgraph_size;
+      },
+      BfsTraversalDirection::kForward, graph_size);
+  return nodes;
+}
+
 // DiceSim similarity score between two subgraphs. Subgraphs are limited to
 // first max_subgraph_size nodes of BFS starting from the given nodes.
-double DiceSimLimitedSubgraph(const HloInstructionNode* absl_nonnull left,
-                              const HloInstructionNode* absl_nonnull right,
-                              HloGumgraphMappings& mappings,
-                              int max_subgraph_size, int min_bfs_distance,
-                              int left_graph_size, int right_graph_size) {
-  absl::flat_hash_set<const HloInstructionNode*> left_nodes;
-  absl::flat_hash_set<const HloInstructionNode*> right_nodes;
-  HloGumgraphBfs(
-      *left,
-      [&](const HloInstructionNode& node, int distance) {
-        left_nodes.insert(&node);
-        return distance <= min_bfs_distance ||
-               left_nodes.size() < max_subgraph_size;
-      },
-      BfsTraversalDirection::kForward, left_graph_size);
-  HloGumgraphBfs(
-      *right,
-      [&](const HloInstructionNode& node, int distance) {
-        right_nodes.insert(&node);
-        return distance <= min_bfs_distance ||
-               right_nodes.size() < max_subgraph_size;
-      },
-      BfsTraversalDirection::kForward, right_graph_size);
+double DiceSimLimitedSubgraph(
+    const HloInstructionNode* absl_nonnull left,
+    const HloInstructionNode* absl_nonnull right, HloGumgraphMappings& mappings,
+    int max_subgraph_size, int min_bfs_distance, int right_graph_size,
+    absl::flat_hash_set<const HloInstructionNode*>& left_nodes,
+    absl::flat_hash_map<const HloInstructionNode*,
+                        absl::flat_hash_set<const HloInstructionNode*>>&
+        right_bfs_set_cache) {
+  auto get_right_subgraph_set = [&](const HloInstructionNode* start_node,
+                                    int graph_size)
+      -> const absl::flat_hash_set<const HloInstructionNode*>& {
+    if (right_bfs_set_cache.contains(start_node)) {
+      return right_bfs_set_cache.at(start_node);
+    }
+
+    absl::flat_hash_set<const HloInstructionNode*> nodes =
+        GetSubgraphForDiceSim(start_node, graph_size, max_subgraph_size,
+                              min_bfs_distance);
+    auto [it, inserted] =
+        right_bfs_set_cache.try_emplace(start_node, std::move(nodes));
+    return it->second;
+  };
+
+  const absl::flat_hash_set<const HloInstructionNode*>& right_nodes_set =
+      get_right_subgraph_set(right, right_graph_size);
+
   int common = 0;
   for (const HloInstructionNode* left_node : left_nodes) {
-    if (auto it = mappings.left_to_right_instruction_map.left.find(left_node);
-        it != mappings.left_to_right_instruction_map.left.end() &&
-        right_nodes.contains(it->second)) {
+    if (auto right_node =
+            mappings.left_to_right_instruction_map.GetRight(left_node);
+        right_node.has_value() && right_nodes_set.contains(*right_node)) {
       ++common;
     }
   }
 
-  return 2 * static_cast<double>(common) /
-         static_cast<double>((left_nodes.size() + right_nodes.size()));
-}
-
-// Returns all HloValues used by the given instruction.
-std::vector<const HloValue*> GetAllValuesUsedByInstruction(
-    const HloInstruction* instruction, const HloGumgraph& gumgraph) {
-  if (instruction->opcode() == HloOpcode::kParameter) {
-    if (instruction->parent()->IsEntryComputation() ||
-        gumgraph.GetHloValueTracing().ValueIsDefinedAt(instruction)) {
-      return std::vector<const HloValue*>();
-    }
-
-    return gumgraph.GetHloValueTracing()
-        .GetFlattenedValueSet(instruction)
-        .values();
+  double denominator =
+      static_cast<double>(left_nodes.size() + right_nodes_set.size());
+  if (denominator == 0) {
+    return 0.0;
   }
 
-  std::vector<const HloValue*> values_used_by_instruction;
-  for (const HloInstruction* operand : instruction->operands()) {
-    const HloValueSet operand_value_set =
-        gumgraph.GetHloValueTracing().GetFlattenedValueSet(operand);
-    for (const HloValue* value : operand_value_set.values()) {
-      absl::Span<const HloUse> uses = value->GetUses();
-      for (const HloUse& use : uses) {
-        if (use.instruction == instruction) {
-          values_used_by_instruction.push_back(value);
-          break;
-        }
-      }
-    }
-  }
-
-  return values_used_by_instruction;
+  return 2.0 * static_cast<double>(common) / denominator;
 }
 
 // Returns true if all HloValues used by the left and right nodes have their
@@ -129,24 +120,9 @@ std::vector<const HloValue*> GetAllValuesUsedByInstruction(
 double AllOperandHloValuesMatchedScore(
     const HloInstructionNode* left_node, const HloInstructionNode* right_node,
     const HloGumgraph& left, const HloGumgraph& right,
-    absl::flat_hash_map<const HloInstruction*,
-                        const std::vector<const HloValue*>>&
-        instruction_used_values_cache,
     HloGumgraphMappings& mappings) {
-  if (!instruction_used_values_cache.contains(left_node->instruction)) {
-    instruction_used_values_cache.emplace(
-        left_node->instruction,
-        GetAllValuesUsedByInstruction(left_node->instruction, left));
-  }
-  if (!instruction_used_values_cache.contains(right_node->instruction)) {
-    instruction_used_values_cache.emplace(
-        right_node->instruction,
-        GetAllValuesUsedByInstruction(right_node->instruction, right));
-  }
-  auto& left_hlo_values = instruction_used_values_cache[left_node->instruction];
-  auto& right_hlo_values =
-      instruction_used_values_cache[right_node->instruction];
-
+  const auto& left_hlo_values = left_node->used_values;
+  const auto& right_hlo_values = right_node->used_values;
   if (left_hlo_values.empty() || right_hlo_values.empty() ||
       (left_hlo_values.size() != right_hlo_values.size())) {
     return 0.0;
@@ -164,10 +140,9 @@ double AllOperandHloValuesMatchedScore(
         left.GetNode(left_hlo_values[i]->defining_instruction());
     HloInstructionNode* right_hlo_value_node =
         right.GetNode(right_hlo_values[i]->defining_instruction());
-    if (auto it = mappings.left_to_right_instruction_map.left.find(
+    if (auto right_node = mappings.left_to_right_instruction_map.GetRight(
             left_hlo_value_node);
-        it == mappings.left_to_right_instruction_map.left.end() ||
-        it->second != right_hlo_value_node) {
+        right_node != right_hlo_value_node) {
       mappings_matched = false;
     }
     if (left_hlo_value_node->props.fingerprint !=
@@ -191,8 +166,10 @@ void GreedyLimitedCandidatesBottomUpMatcher::Match(
     HloGumgraphMappings& mappings) const {
   LOG(INFO) << "Running GreedyLimitedCandidatesBottomUpMatcher: matching "
                "subgraphs that match based on Dice similarity";
-  absl::flat_hash_map<const HloInstruction*, const std::vector<const HloValue*>>
-      instruction_used_values_cache;
+  absl::flat_hash_map<const HloInstructionNode*,
+                      absl::flat_hash_set<const HloInstructionNode*>>
+      right_bfs_set_cache;
+
   int current_mapping_count = mappings.left_to_right_instruction_map.size();
   std::vector<const HloInstructionNode*> left_postorder = GetAllNodesInDfsOrder(
       left_.GetRoot(), DfsTraversalOrder::kPostOrder, left_.GetNodeCount());
@@ -211,14 +188,20 @@ void GreedyLimitedCandidatesBottomUpMatcher::Match(
       continue;
     }
 
+    // Pre-compute the left_node's subgraph once for this iteration.
+    absl::flat_hash_set<const HloInstructionNode*> left_nodes_for_dice_sim =
+        GetSubgraphForDiceSim(left_node, left_.GetNodeCount(),
+                              max_dice_subgraph_size_, min_bfs_distance_);
+
     std::vector<const HloInstructionNode*> right_seeds;
     int count = 0;
     HloGumgraphBfs(
         *left_node,
         [&](const HloInstructionNode& node, int distance) {
-          if (auto it = mappings.left_to_right_instruction_map.left.find(&node);
-              it != mappings.left_to_right_instruction_map.left.end()) {
-            right_seeds.push_back(it->second);
+          if (auto right_node =
+                  mappings.left_to_right_instruction_map.GetRight(&node);
+              right_node.has_value()) {
+            right_seeds.push_back(*right_node);
           }
           // Don't pursue subgraphs with too many childrens. Allows us to visit
           // deeper subgraphs without getting stuck on a single node with a
@@ -235,6 +218,13 @@ void GreedyLimitedCandidatesBottomUpMatcher::Match(
     double max_similarity = 0;
     const HloInstructionNode* right_candidate = nullptr;
     count = 0;
+    std::string debug_string;
+    if (debug_mode_) {
+      for (const HloInstructionNode* right_seed : right_seeds) {
+        absl::StrAppend(&debug_string,
+                        "seed: ", right_seed->instruction->name(), "\n");
+      }
+    }
     HloGumgraphBfs(
         right_seeds,
         [&](const HloInstructionNode& node, int distance) {
@@ -242,24 +232,33 @@ void GreedyLimitedCandidatesBottomUpMatcher::Match(
               node.instruction->opcode() == left_node->instruction->opcode()) {
             // Found candidate. Calculate similarity.
             double operands_match_similarity = AllOperandHloValuesMatchedScore(
-                left_node, &node, left_, right_, instruction_used_values_cache,
-                mappings);
+                left_node, &node, left_, right_, mappings);
             double dice_sim = DiceSimLimitedSubgraph(
                 left_node, &node, mappings, max_dice_subgraph_size_,
-                min_bfs_distance_, left_.GetNodeCount(), right_.GetNodeCount());
-            double node_attributes_similarity =
-                NodeAttributesSimilarity(left_node, &node);
-            double ancestor_similarity = AncestorSubGraphSimilarity(
+                min_bfs_distance_, right_.GetNodeCount(),
+                left_nodes_for_dice_sim, right_bfs_set_cache);
+            double node_property_similarity =
+                NodePropertySimilarity(left_node, &node);
+            double ancestor_similarity = AncestorSubGraphLcsSimilarity(
                 left_node, &node, max_ancestors_to_consider_, min_bfs_distance_,
                 left_.GetNodeCount(), right_.GetNodeCount());
             // We give ancestor similarity a lower weight as its lower signal
             // in comparison to dice similarity and node attributes similarity.
             double similarity = operands_match_similarity +
-                                node_attributes_similarity + dice_sim +
-                                ancestor_similarity / 2;
+                                node_property_similarity + dice_sim +
+                                ancestor_similarity;
             if (similarity > max_similarity) {
               max_similarity = similarity;
               right_candidate = &node;
+            }
+            if (debug_mode_) {
+              absl::StrAppend(
+                  &debug_string, "Similarity(", left_node->instruction->name(),
+                  ", ", node.instruction->name(), "): ", similarity,
+                  " (operands_match_similarity: ", operands_match_similarity,
+                  ", node_property_similarity: ", node_property_similarity,
+                  ", dice_sim: ", dice_sim,
+                  ", ancestor_similarity: ", ancestor_similarity, ")\n");
             }
           }
           return distance <= min_bfs_distance_ ||
@@ -267,9 +266,11 @@ void GreedyLimitedCandidatesBottomUpMatcher::Match(
         },
         BfsTraversalDirection::kReverse, right_.GetNodeCount());
     if (max_similarity > min_similarity_) {
-      mappings.MapInstructionsIfAbsent(left_node, right_candidate, type_);
+      mappings.MapInstructionsIfAbsent(left_node, right_candidate, type_,
+                                       debug_string);
     }
   }
+  PrintProgress(100);
   LOG(INFO) << "Finished GreedyLimitedCandidatesBottomUpMatcher. Total left to "
                "right mappings: "
             << mappings.left_to_right_instruction_map.size() -

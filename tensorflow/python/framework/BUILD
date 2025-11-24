@@ -1,9 +1,9 @@
 # python/framework package
 
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
+load("@rules_python//python:proto.bzl", "py_proto_library")
 load("//tensorflow:pytype.default.bzl", "pytype_strict_library")
 load("//tensorflow:strict.default.bzl", "py_strict_library", "py_strict_test")
-
-# Placeholder: load py_proto_library
 load(
     "//tensorflow:tensorflow.bzl",
     "if_cuda_tools",
@@ -111,6 +111,7 @@ cc_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:op_gen_lib",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/platform:numbers",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/platform:protobuf",
@@ -302,7 +303,7 @@ py_strict_library(
         "//tensorflow/python/eager:execute",
         "//tensorflow/security/fuzzing/py:annotation_types",
         "//tensorflow/tools/docs:doc_controls",
-        "@pypi_typing_extensions//:pkg",
+        "@pypi//typing_extensions",
     ],
 )
 
@@ -417,7 +418,7 @@ py_strict_library(
     srcs = ["dtypes.py"],
     # copybara:uncomment_begin(google-only)
     # visibility = visibility + [
-    # "//ads/adsml/ab:__subpackages__",
+    # "//ads/adsml/ab:atls_configs",
     # "//smartass:__subpackages__",
     # "//third_party/cloud_tpu/convergence_tools:__subpackages__",
     # "//third_party/mlperf:__subpackages__",
@@ -1727,6 +1728,7 @@ py_strict_library(
         ":composite_tensor",
         ":type_spec",
         ":type_spec_registry",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 
@@ -1756,7 +1758,7 @@ py_strict_library(
     deps = [
         ":composite_tensor",
         "//tensorflow/python/util:nest",
-        "@pypi_typing_extensions//:pkg",
+        "@pypi//typing_extensions",
     ],
 )
 
@@ -1784,7 +1786,7 @@ py_strict_library(
         "//tensorflow/python/util:tf_decorator_py",
         "//tensorflow/python/util:tf_export",
         "//tensorflow/python/util:tf_inspect",
-        "@pypi_typing_extensions//:pkg",
+        "@pypi//typing_extensions",
     ],
 )
 
@@ -1927,7 +1929,7 @@ pytype_strict_library(
         "//tensorflow/python/lib/io:file_io",
         "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/util:compat",
-        "@pypi_packaging//:pkg",
+        "@pypi//packaging",
     ],
 )
 
@@ -2211,7 +2213,7 @@ pytype_strict_library(
         "//tensorflow/python/util/protobuf",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
-        "@pypi_portpicker//:pkg",
+        "@pypi//portpicker",
     ],
 )
 
@@ -2779,7 +2781,7 @@ tf_py_strict_test(
         "//tensorflow/python/util:nest",
         "//tensorflow/python/util:tf_inspect",
         "@absl_py//absl/testing:parameterized",
-        "@pypi_typing_extensions//:pkg",
+        "@pypi//typing_extensions",
     ],
 )
 
@@ -3246,7 +3248,6 @@ tf_python_pybind_extension(
 pyx_library(
     name = "fast_tensor_util",
     srcs = ["fast_tensor_util.pyx"],
-    cc_deps = ["//third_party/py/numpy:headers"],
     py_deps = ["//tensorflow/python/util:compat"],
 )
 

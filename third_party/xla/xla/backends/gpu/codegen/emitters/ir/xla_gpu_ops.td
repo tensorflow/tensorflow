@@ -127,40 +127,6 @@ def XLAGPU_ShuffleReduceOp : XLAGPU_Op<"shuffle_reduce",
   let hasCustomAssemblyFormat = 1;
 }
 
-def XLAGPU_MaterializeOp : XLAGPU_Op<"materialize",
-    [AttrSizedOperandSegments, CallOpInterface]> {
-  let summary = "Reads a tensor into registers";
-  let arguments = (ins Variadic<AnyType>:$input,
-                       Variadic<Index>:$indices,
-                       FlatSymbolRefAttr:$callee,
-                       XLA_IndexingMapAttr:$map);
-  let results = (outs XLAGPU_IndexedVectorType:$result);
-  let hasVerifier = 1;
-  let assemblyFormat = [{
-    $callee `(` $input `)` `at` $map `(` $indices `)` attr-dict `:` functional-type($input, results)
-  }];
-  let extraClassDeclaration = [{
-    mlir::CallInterfaceCallable getCallableForCallee() {
-      return (*this)->getAttrOfType<mlir::SymbolRefAttr>("callee");
-    }
-    operand_range getArgOperands() {
-      return getInput();
-    }
-    mlir::MutableOperandRange getArgOperandsMutable() {
-      return getInputMutable();
-    }
-    void setCalleeFromCallable(mlir::CallInterfaceCallable callee) {
-      (*this)->setAttr("callee", callee.get<mlir::SymbolRefAttr>());
-    }
-    mlir::Attribute removeArgAttrsAttr() { return nullptr; }
-    mlir::Attribute removeResAttrsAttr() { return nullptr; }
-    mlir::ArrayAttr getArgAttrsAttr() { return nullptr; }
-    mlir::ArrayAttr getResAttrsAttr() { return nullptr; }
-    void setArgAttrsAttr(mlir::ArrayAttr) { return; }
-    void setResAttrsAttr(mlir::ArrayAttr) { return; }
-  }];
-}
-
 def XLAGPU_InsertOp : XLAGPU_Op<"insert", [TypesMatchWith<
                    "expected result type to match dest type",
                    "result", "dest", "$_self">]> {

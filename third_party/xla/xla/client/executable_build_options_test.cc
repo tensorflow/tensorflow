@@ -22,6 +22,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "xla/pjrt/proto/compile_options.pb.h"
 #include "xla/service/computation_placer.h"
@@ -89,6 +90,7 @@ TEST(ExecutableBuildOptionsTest, ProtoRoundTripWorks) {
   p.set_use_shardy_partitioner(true);
   p.set_process_index(13);
   p.set_process_count(14);
+  p.set_slice_size(15);
 
   TF_ASSERT_OK_AND_ASSIGN(const ExecutableBuildOptions options,
                           ExecutableBuildOptionsFromProto(p));
@@ -104,7 +106,7 @@ TEST(ExecutableBuildOptionsTest, SerializationFailsOnNonSerializableFields) {
                                  1};
     options.set_compile_thread_pool(&pool);
     EXPECT_THAT(options.ToProto(),
-                tsl::testing::StatusIs(absl::StatusCode::kInvalidArgument));
+                absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
   }
   {
     ExecutableBuildOptions options;
@@ -114,7 +116,7 @@ TEST(ExecutableBuildOptionsTest, SerializationFailsOnNonSerializableFields) {
           return std::make_pair(std::vector<Shape>(), Shape());
         });
     EXPECT_THAT(options.ToProto(),
-                tsl::testing::StatusIs(absl::StatusCode::kInvalidArgument));
+                absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
   }
 }
 

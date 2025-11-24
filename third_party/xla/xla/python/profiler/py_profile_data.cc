@@ -1,4 +1,4 @@
-/* Copyright 2024 The OpenXLA Authors.
+/* Copyright 2025 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,13 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <nanobind/make_iterator.h>  // For automatic conversion of std::iterator to Python iterable.
-#include <nanobind/stl/string.h>  // For automatic conversion of std::string to Python string.
-
 #include <memory>
 #include <string>
 
-#include "xla/python/profiler/profile_data.h"
+#include "nanobind/make_iterator.h"  // IWYU pragma: keep
+#include "nanobind/stl/string.h"  // IWYU pragma: keep
+#include "google/protobuf/text_format.h"
+#include "xla/python/profiler/profile_data_lib.h"
 #include "tsl/platform/protobuf.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
 
@@ -71,11 +71,13 @@ NB_MODULE(profile_data, m) {
           nb::keep_alive<0, 1>());
   nb::class_<ProfileData>(m, "ProfileData")
       .def_static("from_raw_cpp_ptr", &ProfileData::from_raw_cpp_ptr,
-                  "capsule"_a)
-      .def_static("from_file", &ProfileData::from_file, "proto_file_path"_a,
+                  nb::arg("capsule"))
+      .def_static("from_file", &ProfileData::from_file,
+                  nb::arg("proto_file_path"),
                   "Creates a ProfileData from a serialized XSpace proto file.")
       .def_static("from_serialized_xspace",
-                  &ProfileData::from_serialized_xspace, "serialized_xspace"_a)
+                  &ProfileData::from_serialized_xspace,
+                  nb::arg("serialized_xspace"))
       .def_static("from_text_proto",
                   [](const std::string& text_proto) {
                     auto xspace =
@@ -93,8 +95,8 @@ NB_MODULE(profile_data, m) {
                     return nb::bytes(serialized.data(), serialized.size());
                   })
       .def(nb::init<const nb::bytes&>())
-      .def("find_plane_with_name", &ProfileData::find_plane_with_name, "name"_a,
-           nb::keep_alive<0, 1>())
+      .def("find_plane_with_name", &ProfileData::find_plane_with_name,
+           nb::arg("name"), nb::keep_alive<0, 1>())
       .def_prop_ro(
           "planes",
           [](ProfileData&& s) {

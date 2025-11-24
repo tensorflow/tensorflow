@@ -18,7 +18,10 @@ limitations under the License.
 #include <cstdint>
 #include <utility>
 
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
@@ -101,7 +104,7 @@ absl::StatusOr<Stream*> StreamExecutorMemoryAllocator::GetStream(
       << "The logic below only works for synchronous allocators";
   TF_ASSIGN_OR_RETURN(StreamExecutor * executor,
                       GetStreamExecutor(device_ordinal));
-  absl::MutexLock lock(&mutex_);
+  absl::MutexLock lock(mutex_);
   if (!streams_.count(device_ordinal)) {
     TF_ASSIGN_OR_RETURN(auto stream, executor->CreateStream());
     auto stream_ptr = stream.get();

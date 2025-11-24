@@ -176,6 +176,57 @@ class RemoveUnusedFQ : public OpRewritePattern<stablehlo::CompositeOp> {
   }
 };
 
+// Pushes a drq fake quant op forward through a pad op.
+// This is to allow DRQ FQ to be fused into the DRQ op.
+// drq_fake_quant(input) -> pad -> output
+// becomes
+// input -> pad -> drq_fake_quant -> output
+class PushForwardDrqFQ : public OpRewritePattern<stablehlo::CompositeOp> {
+ public:
+  using OpRewritePattern<stablehlo::CompositeOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(stablehlo::CompositeOp drq_fq_op,
+                                PatternRewriter& rewriter) const final {
+    if (!IsDrqFakeQuant(drq_fq_op)) {
+      return rewriter.notifyMatchFailure(drq_fq_op,
+                                         "is not a drq fake quant op.");
+    }
+
+    if (!drq_fq_op.getResult(0).hasOneUse()) {
+      return rewriter.notifyMatchFailure(
+          drq_fq_op, "drq fake quant op does not have one use.");
+    }
+    auto pad_op =
+        llvm::dyn_cast<TFL::PadOp>(*drq_fq_op.getResult(0).user_begin());
+    if (!pad_op) {
+      return rewriter.notifyMatchFailure(drq_fq_op,
+                                         "user is not a tfl.pad op.");
+    }
+
+    // The input to the new pad op is the float input to the drq fake quant op.
+    Value float_input = drq_fq_op.getOperand(drq_fq_op.getNumOperands() - 1);
+
+    // Create a new pad op.
+    auto new_pad_op = rewriter.create<TFL::PadOp>(
+        pad_op.getLoc(), pad_op.getType(), float_input, pad_op.getPadding());
+
+    // Create a new drq fake quant op.
+    // Operands are the same, except for the last one.
+    SmallVector<Value> new_drq_operands;
+    for (Value operand : drq_fq_op.getOperands().drop_back()) {
+      new_drq_operands.push_back(operand);
+    }
+    new_drq_operands.push_back(new_pad_op.getResult());
+
+    auto new_drq_fq_op = rewriter.create<stablehlo::CompositeOp>(
+        drq_fq_op.getLoc(), pad_op.getType(), new_drq_operands,
+        drq_fq_op->getAttrs());
+
+    rewriter.replaceOp(pad_op, new_drq_fq_op.getResult(0));
+    return success();
+  }
+};
+
 class StrictQuantizationPattern : public RewritePattern {
  public:
   using BaseType = StrictQuantizationPattern;
@@ -244,7 +295,6 @@ class StrictQuantizationPattern : public RewritePattern {
       }
 
       auto op_quant_type = GetOpQuantizationType(quantizing_op);
-
       if (op_quant_type == OpQuantizationType::kWeightOnly) {
         return rewriter.notifyMatchFailure(
             quantizing_op,
@@ -280,7 +330,7 @@ class StrictQuantizationPattern : public RewritePattern {
           inputs.push_back(fq_input);
         } else if (auto ele_type = getElementTypeOrSelf(operand_type);
                    ele_type.isF32() || ele_type.isInteger(32) ||
-                   ele_type.isInteger(1)) {
+                   ele_type.isInteger(64) || ele_type.isInteger(1)) {
           // If it's F32 (non-weight-only and non-drq) or I32 or bool, just
           // directly add the input.
           inputs.push_back(operand);
@@ -385,8 +435,8 @@ class StrictQuantizationPattern : public RewritePattern {
             if (!matchPattern(q.getOperand(), m_Constant(&attr))) {
               continue;
             }
-            auto cst = rewriter.create<arith::ConstantOp>(
-                quantized_op->getLoc(), attr);
+            auto cst = arith::ConstantOp::create(rewriter,
+                                                 quantized_op->getLoc(), attr);
             quantizing_op->setOperand(i, cst.getResult());
           }
         }
@@ -606,7 +656,7 @@ class QuantizeConstPattern : public OpRewritePattern<QuantizeOp> {
       }
       if (quantized_attr) {
         auto qconst_op =
-            rewriter.create<QConstOp>(op.getLoc(), qtype, quantized_attr);
+            QConstOp::create(rewriter, op.getLoc(), qtype, quantized_attr);
         if (auto volatile_attr = op->getAttr(kVolatileOpAttrName)) {
           qconst_op->setAttr(kVolatileOpAttrName, volatile_attr);
         }
@@ -694,7 +744,8 @@ void QuantizePass::runOnOperation() {
 
   if (quant_specs.qdq_conversion_mode == QDQConversionMode::kQDQStrict) {
     patterns.add<StrictQuantizationPattern>(ctx, quant_params);
-    patterns.add<RemoveUnusedFQ, SquashDqQ, FuseDqQToRequant>(ctx);
+    patterns.add<RemoveUnusedFQ, SquashDqQ, FuseDqQToRequant, PushForwardDrqFQ>(
+        ctx);
   } else if (quant_specs.weight_quantization ||
              quant_specs.use_fake_quant_num_bits ||
              quant_specs.qdq_conversion_mode ==

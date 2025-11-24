@@ -17,15 +17,49 @@ limitations under the License.
 
 #include <memory>
 #include <optional>
+#include <utility>
 
+#include "absl/memory/memory.h"
 #include "absl/status/status.h"
-#include "xla/stream_executor/stream_executor.h"
+#include "absl/status/statusor.h"
+#include "absl/synchronization/mutex.h"
+#include "absl/types/span.h"
+#include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/service/buffer_assignment.h"
+#include "xla/service/gpu/gpu_norm_runner.h"
+#include "xla/service/gpu/gpu_norm_runner.pb.h"
+#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/lazy_op_runner.h"
+#include "xla/stream_executor/stream.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 
 namespace xla {
 namespace gpu {
 
+absl::StatusOr<std::unique_ptr<NormThunk>> NormThunk::Create(
+    ThunkInfo thunk_info, GpuNormDescriptor descriptor,
+    BufferAllocation::Slice x_slice, BufferAllocation::Slice scale_slice,
+    BufferAllocation::Slice y_or_dx_slice,
+    std::optional<BufferAllocation::Slice> bias_slice,
+    std::optional<BufferAllocation::Slice> expectation_slice,
+    std::optional<BufferAllocation::Slice> norm_factor_slice,
+    std::optional<BufferAllocation::Slice> dy_slice,
+    std::optional<BufferAllocation::Slice> dscale_slice,
+    std::optional<BufferAllocation::Slice> dbias_slice,
+    BufferAllocation::Slice scratch_slice) {
+  TF_ASSIGN_OR_RETURN(GpuNormConfig config, GpuNormConfig::For(descriptor));
+
+  // Can't use make_unique because the constructor is private. go/totw/134
+  return absl::WrapUnique(new NormThunk(
+      thunk_info, std::move(config), std::move(descriptor), x_slice,
+      scale_slice, y_or_dx_slice, bias_slice, expectation_slice,
+      norm_factor_slice, dy_slice, dscale_slice, dbias_slice, scratch_slice));
+}
+
 NormThunk::NormThunk(ThunkInfo thunk_info, GpuNormConfig config,
+                     GpuNormDescriptor descriptor,
                      BufferAllocation::Slice x_slice,
                      BufferAllocation::Slice scale_slice,
                      BufferAllocation::Slice y_or_dx_slice,
@@ -47,11 +81,12 @@ NormThunk::NormThunk(ThunkInfo thunk_info, GpuNormConfig config,
       dscale_buffer_(dscale_slice),
       dbias_buffer_(dbias_slice),
       scratch_buffer_(scratch_slice),
+      descriptor_(descriptor),
       config_(config) {}
 
 NormRunner& NormThunk::GetOrCreateRunner(
     const stream_executor::Stream* stream) {
-  absl::MutexLock lock(&mu_);
+  absl::MutexLock lock(mu_);
   auto it = runner_cache_.find(stream);
   if (it == runner_cache_.end()) {
     it = runner_cache_.insert({stream, std::make_unique<NormRunner>(config_)})
@@ -113,6 +148,95 @@ absl::Status NormThunk::Initialize(const InitializeParams& params) {
       GetOrCreateRunner(params.stream).AsNormRunner();
   TF_ASSIGN_OR_RETURN(auto ln_config, config_.AsDnnNormOpConfig());
   return lazy_runner->GetOrCreateRunner(ln_config, params.stream).status();
+}
+
+absl::StatusOr<std::unique_ptr<NormThunk>> NormThunk::FromProto(
+    ThunkInfo thunk_info, const NormThunkProto& proto,
+    absl::Span<const BufferAllocation> buffer_allocations) {
+  TF_ASSIGN_OR_RETURN(GpuNormDescriptor descriptor,
+                      GpuNormDescriptor::FromProto(proto.norm_descriptor()));
+
+  TF_ASSIGN_OR_RETURN(auto x, BufferAllocation::Slice::FromProto(
+                                  proto.x(), buffer_allocations));
+  TF_ASSIGN_OR_RETURN(auto scale, BufferAllocation::Slice::FromProto(
+                                      proto.scale(), buffer_allocations));
+  TF_ASSIGN_OR_RETURN(auto y_or_dx, BufferAllocation::Slice::FromProto(
+                                        proto.y_or_dx(), buffer_allocations));
+  std::optional<BufferAllocation::Slice> bias;
+  if (proto.has_bias()) {
+    TF_ASSIGN_OR_RETURN(bias, BufferAllocation::Slice::FromProto(
+                                  proto.bias(), buffer_allocations));
+  }
+  std::optional<BufferAllocation::Slice> expectation;
+  if (proto.has_expectation()) {
+    TF_ASSIGN_OR_RETURN(expectation,
+                        BufferAllocation::Slice::FromProto(proto.expectation(),
+                                                           buffer_allocations));
+  }
+  std::optional<BufferAllocation::Slice> norm_factor;
+  if (proto.has_norm_factor()) {
+    TF_ASSIGN_OR_RETURN(norm_factor,
+                        BufferAllocation::Slice::FromProto(proto.norm_factor(),
+                                                           buffer_allocations));
+  }
+  std::optional<BufferAllocation::Slice> dy;
+  if (proto.has_dy()) {
+    TF_ASSIGN_OR_RETURN(
+        dy, BufferAllocation::Slice::FromProto(proto.dy(), buffer_allocations));
+  }
+  std::optional<BufferAllocation::Slice> dscale;
+  if (proto.has_dscale()) {
+    TF_ASSIGN_OR_RETURN(dscale, BufferAllocation::Slice::FromProto(
+                                    proto.dscale(), buffer_allocations));
+  }
+  std::optional<BufferAllocation::Slice> dbias;
+  if (proto.has_dbias()) {
+    TF_ASSIGN_OR_RETURN(dbias, BufferAllocation::Slice::FromProto(
+                                   proto.dbias(), buffer_allocations));
+  }
+  TF_ASSIGN_OR_RETURN(auto scratch, BufferAllocation::Slice::FromProto(
+                                        proto.scratch(), buffer_allocations));
+
+  return Create(std::move(thunk_info), descriptor, x, scale, y_or_dx, bias,
+                expectation, norm_factor, dy, dscale, dbias, scratch);
+}
+
+absl::StatusOr<ThunkProto> NormThunk::ToProto() const {
+  ThunkProto proto;
+  *proto.mutable_thunk_info() = thunk_info().ToProto();
+
+  NormThunkProto* norm_proto = proto.mutable_norm_thunk();
+  *norm_proto->mutable_norm_descriptor() = descriptor_.ToProto();
+
+  TF_ASSIGN_OR_RETURN(*norm_proto->mutable_x(), x_buffer_.ToProto());
+  TF_ASSIGN_OR_RETURN(*norm_proto->mutable_scale(), scale_buffer_.ToProto());
+  TF_ASSIGN_OR_RETURN(*norm_proto->mutable_y_or_dx(),
+                      y_or_dx_buffer_.ToProto());
+  if (bias_buffer_.has_value()) {
+    TF_ASSIGN_OR_RETURN(*norm_proto->mutable_bias(), bias_buffer_->ToProto());
+  }
+  if (expectation_buffer_.has_value()) {
+    TF_ASSIGN_OR_RETURN(*norm_proto->mutable_expectation(),
+                        expectation_buffer_->ToProto());
+  }
+  if (norm_factor_buffer_.has_value()) {
+    TF_ASSIGN_OR_RETURN(*norm_proto->mutable_norm_factor(),
+                        norm_factor_buffer_->ToProto());
+  }
+  if (dy_buffer_.has_value()) {
+    TF_ASSIGN_OR_RETURN(*norm_proto->mutable_dy(), dy_buffer_->ToProto());
+  }
+  if (dscale_buffer_.has_value()) {
+    TF_ASSIGN_OR_RETURN(*norm_proto->mutable_dscale(),
+                        dscale_buffer_->ToProto());
+  }
+  if (dbias_buffer_.has_value()) {
+    TF_ASSIGN_OR_RETURN(*norm_proto->mutable_dbias(), dbias_buffer_->ToProto());
+  }
+  TF_ASSIGN_OR_RETURN(*norm_proto->mutable_scratch(),
+                      scratch_buffer_.ToProto());
+
+  return proto;
 }
 
 }  // namespace gpu

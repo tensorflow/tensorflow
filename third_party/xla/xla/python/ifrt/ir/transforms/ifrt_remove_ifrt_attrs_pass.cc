@@ -13,25 +13,22 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <memory>
-
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/Operation.h"
 #include "mlir/IR/OperationSupport.h"
 #include "mlir/IR/Value.h"
 #include "mlir/IR/Visitors.h"
-#include "mlir/Pass/Pass.h"
 #include "xla/python/ifrt/ir/constants.h"
 #include "xla/python/ifrt/ir/transforms/passes.h"
 
 namespace xla {
 namespace ifrt {
 
-namespace {
-
 #define GEN_PASS_DEF_IFRTREMOVEIFRTATTRSPASS
 #include "xla/python/ifrt/ir/transforms/passes.h.inc"
+
+namespace {
 
 class IfrtRemoveIfrtAttrsPass
     : public impl::IfrtRemoveIfrtAttrsPassBase<IfrtRemoveIfrtAttrsPass> {
@@ -43,6 +40,8 @@ void IfrtRemoveIfrtAttrsPass::runOnOperation() {
   mlir::ModuleOp module_op = getOperation();
   module_op->removeAttr(kIfrtNumDevicesAttrName);
   module_op->removeAttr(kIfrtLocalViewAttrName);
+  module_op->removeAttr(kIfrtCompileOptionsKey);
+  module_op->removeAttr(kIsSdyPartitioned);
   module_op.walk([&](mlir::func::FuncOp func_op) {
     // Remove from function attributes.
     for (auto attribute_name : {kIfrtDevicesAttrName, kIfrtMemoryKindAttrName,
@@ -70,12 +69,7 @@ void IfrtRemoveIfrtAttrsPass::runOnOperation() {
     }
   });
 }
+
 }  // namespace
-
-std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
-CreateIfrtRemoveIfrtAttrsPass() {
-  return std::make_unique<IfrtRemoveIfrtAttrsPass>();
-}
-
 }  // namespace ifrt
 }  // namespace xla

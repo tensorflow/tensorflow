@@ -125,6 +125,8 @@ py_strict_library(
     deps = [
         ":debug_graphs",
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/core/framework:graph_proto_py_proto",
+        "//tensorflow/core/util:event_proto_py_proto",
         "//tensorflow/python/framework:tensor_util",
         "//tensorflow/python/platform:gfile",
         "//tensorflow/python/platform:tf_logging",
@@ -280,6 +282,7 @@ py_strict_test(
     deps = [
         ":debug_data",
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/core/framework:graph_proto_py_proto",
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/lib/io:file_io",
         "//tensorflow/python/platform:client_testlib",
@@ -554,7 +557,7 @@ py_strict_library(
         "//tensorflow/python/lib/io:file_io",
         "//tensorflow/python/ops:variables",
         "//tensorflow/python/util:compat",
-        "@pypi_portpicker//:pkg",
+        "@pypi//portpicker",
     ],
 )
 

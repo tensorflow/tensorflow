@@ -44,6 +44,7 @@ limitations under the License.
 #include "xla/hlo/translate/hlo_to_mhlo/attribute_importer.h"
 #include "xla/hlo/translate/hlo_to_mhlo/hlo_utils.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
+#include "xla/mlir_hlo/utils/unregistered_attributes.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
@@ -51,9 +52,6 @@ limitations under the License.
 namespace xla {
 
 namespace {
-
-constexpr char kFrontendAttributesAttr[] = "mhlo.frontend_attributes";
-constexpr char kShardingAttr[] = "mhlo.sharding";
 
 // ============
 // Imports an old-style async start op. E.g. an HLO all-gather-start
@@ -103,8 +101,8 @@ absl::StatusOr<mlir::Operation*> ImportOldStyleAsyncStart(
   async_attributes.push_back(builder->getNamedAttr(
       "called_computation",
       mlir::FlatSymbolRefAttr::get(builder->getContext(), function.getName())));
-  async_attributes.push_back(builder->getNamedAttr(
-      "execution_thread", builder->getStringAttr("main")));
+  async_attributes.push_back(
+      builder->getNamedAttr(kExecutionThread, builder->getStringAttr("main")));
 
   // Attach the frontend_attributes and sharding attributes to the async op
   // instead of the sync op. First, semantically sharding attributes cannot be
@@ -114,8 +112,8 @@ absl::StatusOr<mlir::Operation*> ImportOldStyleAsyncStart(
   // the `mhlo.async_start` ops, so attaching them to the sync op will make them
   // disappear during StableHLO/MHLO to HLO lowering.
   for (auto it = attributes.begin(); it != attributes.end();) {
-    if (it->getName() == kShardingAttr ||
-        it->getName() == kFrontendAttributesAttr) {
+    if (it->getName() == xla::kMhloSharding ||
+        it->getName() == xla::kMhloFrontendAttributes) {
       async_attributes.push_back(*it);
       it = attributes.erase(it);
     } else {
@@ -134,7 +132,7 @@ absl::StatusOr<mlir::Operation*> ImportOldStyleAsyncStart(
   async_builder.create<mlir::func::ReturnOp>(loc, sync_operation->getResults());
   TF_RETURN_IF_ERROR(mutate_op(sync_operation));
 
-  function->setAttr("execution_thread", builder->getStringAttr("main"));
+  function->setAttr(kExecutionThread, builder->getStringAttr("main"));
 
   auto bundle_result_type =
       mlir::mhlo::AsyncBundleType::get(context, result_types);
@@ -152,7 +150,9 @@ absl::StatusOr<mlir::Operation*> ImportOldStyleAsyncDone(
   assert(operands.size() == 1 &&
          "*-done ops must take only a single async_bundle operand");
   auto async_start = operands[0].getDefiningOp<mlir::mhlo::AsyncStartOp>();
-  if (!async_start) return InvalidArgument("*-start requires *-done as input");
+  if (!async_start) {
+    return InvalidArgument("*-start requires *-done as input");
+  }
   attributes.push_back(builder->getNamedAttr(
       "called_computation",
       mlir::FlatSymbolRefAttr::get(builder->getContext(),
@@ -169,13 +169,11 @@ absl::StatusOr<mlir::Operation*> ImportOldStyleAsyncDone(
     auto op = builder->create<mlir::mhlo::AsyncDoneOp>(loc, result_type,
                                                        operands, attributes);
     return {op};
-  } else {
-    if (useBundleResult) result_type = async_bundle.getTypes()[1];
-    auto op = builder->create<mlir::mhlo::AsyncDoneOp>(
-        loc, Untuple(result_type), operands, attributes);
-    return CreateTupleFromOpResults(builder, loc, op.getOperation(),
-                                    result_type);
   }
+  if (useBundleResult) result_type = async_bundle.getTypes()[1];
+  auto op = builder->create<mlir::mhlo::AsyncDoneOp>(loc, Untuple(result_type),
+                                                     operands, attributes);
+  return CreateTupleFromOpResults(builder, loc, op.getOperation(), result_type);
 }
 
 }  // namespace
@@ -215,8 +213,9 @@ absl::StatusOr<mlir::Operation*> ImportSend(
     // `send-done` ops to use the new-style async API, we need to reorder the
     // arguments to be in (args, token, sync flag) order.
     auto result_types = mlir::cast<mlir::TupleType>(result_type).getTypes();
-    if (result_types.size() != 3)
+    if (result_types.size() != 3) {
       return InvalidArgument("send should return a 3-tuple");
+    }
     auto async_arg_type = mlir::TupleType::get(
         builder->getContext(), {result_types[0], result_types[2]});
     auto async_bundled_tuple = mlir::TupleType::get(
@@ -245,7 +244,7 @@ absl::StatusOr<mlir::Operation*> ImportSend(
       // to grab a slice of the sharding. All shardings are maximal, so we
       // just need 1 of them.
       send->setAttr(
-          kShardingAttr,
+          xla::kMhloSharding,
           mlir::StringAttr::get(
               builder->getContext(),
               HloSharding::FromProto(sharding.ToProto().tuple_shardings()[0])
@@ -278,8 +277,9 @@ absl::StatusOr<mlir::Operation*> ImportRecv(
   // Currently only consolidates async recv with result, 0-result recv uses old
   // style, unclear if this support is needed.
   auto result_types = llvm::cast<mlir::TupleType>(result_type).getTypes();
-  if (result_types.size() != 3)
+  if (result_types.size() != 3) {
     return InvalidArgument("recv should return a 3-tuple");
+  }
 
   bool isPipelined =
       instruction->users().front()->opcode() != HloOpcode::kRecvDone;
@@ -317,7 +317,7 @@ absl::StatusOr<mlir::Operation*> ImportRecv(
         OpSharding sharding_proto = sharding.ToProto();
         auto* tuple_shardings = sharding_proto.mutable_tuple_shardings();
         tuple_shardings->DeleteSubrange(1, 1);
-        recv->setAttr(kShardingAttr,
+        recv->setAttr(xla::kMhloSharding,
                       mlir::StringAttr::get(
                           builder->getContext(),
                           HloSharding::FromProto(sharding_proto)->ToString()));
@@ -353,14 +353,17 @@ absl::StatusOr<mlir::Operation*> ImportAllGatherStart(
       builder->getI64IntegerAttr(all_gather_start->all_gather_dimension())));
   attributes.push_back(
       ConvertReplicaGroups(all_gather_start->replica_groups(), builder));
-  if (all_gather_start->channel_id().has_value())
+  if (all_gather_start->channel_id().has_value()) {
     attributes.push_back(stablehlo::ConvertChannelHandle(
         all_gather_start->channel_id().value(), builder));
-  if (all_gather_start->use_global_device_ids())
+  }
+  if (all_gather_start->use_global_device_ids()) {
     attributes.push_back(ConvertUseGlobalDeviceIds(builder));
-  if (all_gather_start->operands().size() > 1)
+  }
+  if (all_gather_start->operands().size() > 1) {
     return InvalidArgument(
         "Async tuple all-gather is not supported in StableHLO");
+  }
 
   if (!llvm::isa<mlir::TupleType>(result_type)) {
     // Async AllGather's output type is bundle<input_type,output_type>
@@ -386,14 +389,17 @@ absl::StatusOr<mlir::Operation*> ImportAllReduceStart(
   auto all_reduce_start = Cast<HloAllReduceInstruction>(instruction);
   attributes.push_back(
       ConvertReplicaGroups(all_reduce_start->replica_groups(), builder));
-  if (all_reduce_start->channel_id().has_value())
+  if (all_reduce_start->channel_id().has_value()) {
     attributes.push_back(stablehlo::ConvertChannelHandle(
         all_reduce_start->channel_id().value(), builder));
-  if (all_reduce_start->use_global_device_ids())
+  }
+  if (all_reduce_start->use_global_device_ids()) {
     attributes.push_back(ConvertUseGlobalDeviceIds(builder));
-  if (all_reduce_start->operands().size() > 1)
+  }
+  if (all_reduce_start->operands().size() > 1) {
     return InvalidArgument(
         "Async tuple all-reduce is not supported in StableHLO");
+  }
 
   if (!llvm::isa<mlir::TupleType>(result_type)) {
     // Async AllReduce's output type is bundle<input_type,output_type>

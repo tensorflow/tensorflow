@@ -50,6 +50,35 @@ EIGEN_DONT_INLINE void general_matrix_vector_product<
   }
 }
 
+template <typename Index, typename LhsMapper, bool ConjugateLhs,
+          typename RhsMapper, bool ConjugateRhs, int Version>
+struct general_matrix_vector_product<Index, int8_t, LhsMapper, ColMajor,
+                                     ConjugateLhs, int8_t, RhsMapper,
+                                     ConjugateRhs, Version> {
+  EIGEN_DONT_INLINE static void run(Index rows, Index cols,
+                                    const LhsMapper& lhs, const RhsMapper& rhs,
+                                    int32_t* res, Index resIncr, int8_t alpha);
+};
+
+template <typename Index, typename LhsMapper, bool ConjugateLhs,
+          typename RhsMapper, bool ConjugateRhs, int Version>
+EIGEN_DONT_INLINE void general_matrix_vector_product<
+    Index, int8_t, LhsMapper, ColMajor, ConjugateLhs, int8_t, RhsMapper,
+    ConjugateRhs, Version>::run(Index rows, Index cols, const LhsMapper& lhs,
+                                const RhsMapper& rhs, int32_t* res,
+                                Index resIncr, int8_t alpha) {
+  eigen_assert(alpha == 1);
+  eigen_assert(resIncr == 1);
+  eigen_assert(rows > 0);
+  eigen_assert(cols > 0);
+
+  for (Index i = 0; i < rows; ++i) {
+    for (Index j = 0; j < cols; ++j) {
+      res[i] += lhs(i, j) * rhs(j, 0);
+    }
+  }
+}
+
 // Mat-Vec product
 // Both lhs and rhs are encoded as 16bit signed integers
 template <typename Index, typename LhsMapper, bool ConjugateLhs,

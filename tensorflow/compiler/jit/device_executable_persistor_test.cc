@@ -222,7 +222,7 @@ absl::StatusOr<XlaSerializedCacheEntry> ReadCacheEntryFromFile(
 }
 
 XlaSerializedCacheKey CreateCacheKey(
-    uint64 signature_hash,
+    uint64_t signature_hash,
     const XlaCompiler::CompilationResult& compilation_result,
     const DeviceType& device_type, const std::string& persistence_prefix,
     bool compiled_using_pjrt = false) {
@@ -349,7 +349,7 @@ TEST_F(DeviceExecutionPersistorTest, PersistSerializeExecutableError) {
       persistor.TryToPersistExecutable(
           /*signature_hash=*/123, "signature_string", DefaultXlaOptions(),
           compilation_result_add_, *executable, &mock_client),
-      testing::StatusIs(error::INVALID_ARGUMENT));
+      absl_testing::StatusIs(error::INVALID_ARGUMENT));
 }
 
 TEST_F(DeviceExecutionPersistorTest, PersistExecutableEmpty) {
@@ -372,7 +372,7 @@ TEST_F(DeviceExecutionPersistorTest, PersistExecutableEmpty) {
       persistor.TryToPersistExecutable(
           /*signature_hash=*/123, "signature_string", DefaultXlaOptions(),
           compilation_result_add_, empty_executable, &mock_client),
-      testing::StatusIs(error::FAILED_PRECONDITION));
+      absl_testing::StatusIs(error::FAILED_PRECONDITION));
 }
 
 TEST_F(DeviceExecutionPersistorTest, LoadCacheDirNotSet) {
@@ -459,7 +459,7 @@ TEST_F(DeviceExecutionPersistorTest, LoadSerializedKeyMismatch) {
   EXPECT_TRUE(loaded_executable.has_value());
   EXPECT_FALSE(loaded_executable->ok());
   EXPECT_THAT(loaded_executable.value(),
-              testing::StatusIs(error::INVALID_ARGUMENT));
+              absl_testing::StatusIs(error::INVALID_ARGUMENT));
 }
 
 TEST_F(DeviceExecutionPersistorTest, LoadSerializedHloMismatch) {
@@ -502,7 +502,7 @@ TEST_F(DeviceExecutionPersistorTest, LoadSerializedHloMismatch) {
   EXPECT_TRUE(loaded_executable.has_value());
   EXPECT_FALSE(loaded_executable->ok());
   EXPECT_THAT(loaded_executable.value(),
-              testing::StatusIs(error::INVALID_ARGUMENT));
+              absl_testing::StatusIs(error::INVALID_ARGUMENT));
 }
 
 TEST_F(DeviceExecutionPersistorTest, LoadStrictChecksDisabled) {
@@ -579,7 +579,7 @@ TEST_F(DeviceExecutionPersistorTest, LoadSerializedExecutableEmpty) {
   EXPECT_TRUE(loaded_executable.has_value());
   EXPECT_FALSE(loaded_executable->ok());
   EXPECT_THAT(loaded_executable.value(),
-              testing::StatusIs(error::INVALID_ARGUMENT));
+              absl_testing::StatusIs(error::INVALID_ARGUMENT));
 }
 
 TEST_F(DeviceExecutionPersistorTest, PersistPjRtAndXlaExecutables) {

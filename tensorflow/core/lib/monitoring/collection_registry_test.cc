@@ -93,8 +93,8 @@ TEST(CollectMetricsTest, Counter) {
   counter_without_labels->GetCell()->IncrementBy(7);
 
   for (const bool collect_metric_descriptors : {true, false}) {
-    SCOPED_TRACE(strings::StrCat("collect_metric_descriptors: ",
-                                 collect_metric_descriptors));
+    SCOPED_TRACE(absl::StrCat("collect_metric_descriptors: ",
+                              collect_metric_descriptors));
 
     auto* collection_registry = CollectionRegistry::Default();
     CollectionRegistry::CollectMetricsOptions options;
@@ -171,7 +171,7 @@ TEST(CollectMetricsTest, Counter) {
 
 TEST(CollectMetricsTest, Gauge) {
   auto string_gauge_with_labels =
-      std::unique_ptr<Gauge<string, 2>>(Gauge<string, 2>::New(
+      std::unique_ptr<Gauge<std::string, 2>>(Gauge<std::string, 2>::New(
           "/tensorflow/test/string_gauge_with_labels",
           "String gauge with labels.", "MyLabel0", "MyLabel1"));
   auto inteter_gauge_without_labels = std::unique_ptr<Gauge<int64_t, 0>>(
@@ -183,8 +183,8 @@ TEST(CollectMetricsTest, Gauge) {
   inteter_gauge_without_labels->GetCell()->Set(7);
 
   for (const bool collect_metric_descriptors : {true, false}) {
-    SCOPED_TRACE(strings::StrCat("collect_metric_descriptors: ",
-                                 collect_metric_descriptors));
+    SCOPED_TRACE(absl::StrCat("collect_metric_descriptors: ",
+                              collect_metric_descriptors));
 
     auto* collection_registry = CollectionRegistry::Default();
     CollectionRegistry::CollectMetricsOptions options;
@@ -289,8 +289,8 @@ TEST(CollectMetricsTest, Sampler) {
   without_labels.Add(0.5);
 
   for (const bool collect_metric_descriptors : {true, false}) {
-    SCOPED_TRACE(strings::StrCat("collect_metric_descriptors: ",
-                                 collect_metric_descriptors));
+    SCOPED_TRACE(absl::StrCat("collect_metric_descriptors: ",
+                              collect_metric_descriptors));
 
     auto* collection_registry = CollectionRegistry::Default();
     CollectionRegistry::CollectMetricsOptions options;
@@ -383,8 +383,8 @@ TEST(CollectMetricsTest, PercentileSampler) {
   sampler_without_labels->GetCell()->Add(0.5);
 
   for (const bool collect_metric_descriptors : {true, false}) {
-    SCOPED_TRACE(strings::StrCat("collect_metric_descriptors: ",
-                                 collect_metric_descriptors));
+    SCOPED_TRACE(absl::StrCat("collect_metric_descriptors: ",
+                              collect_metric_descriptors));
 
     auto* collection_registry = CollectionRegistry::Default();
     CollectionRegistry::CollectMetricsOptions options;
@@ -463,13 +463,13 @@ class FakeClockEnv : public EnvWrapper {
   FakeClockEnv() : EnvWrapper(Env::Default()), current_millis_(0) {}
 
   // Manually advance the current time by 'millis' milliseconds.
-  void AdvanceByMillis(const uint64 millis) { current_millis_ += millis; }
+  void AdvanceByMillis(const uint64_t millis) { current_millis_ += millis; }
 
   // Method that this environment specifically overrides.
-  uint64 NowMicros() const override { return current_millis_ * 1000; }
+  uint64_t NowMicros() const override { return current_millis_ * 1000; }
 
  private:
-  uint64 current_millis_;
+  uint64_t current_millis_;
 };
 
 TEST(CollectionRegistryTest, WriteTimestamps) {

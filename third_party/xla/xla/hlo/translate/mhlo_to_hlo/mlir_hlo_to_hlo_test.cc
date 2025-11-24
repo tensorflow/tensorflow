@@ -17,13 +17,12 @@ limitations under the License.
 
 #include <string>
 
-#include "mlir/Dialect/Func/IR/FuncOps.h"
-#include "mlir/Dialect/Shape/IR/Shape.h"
+#include "absl/status/status_matchers.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
 #include "mlir/Parser/Parser.h"
-#include "stablehlo/dialect/Register.h"
+#include "xla/hlo/translate/register.h"
 #include "xla/mlir/utils/error_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/status_matchers.h"
@@ -50,8 +49,7 @@ func.func @main(%arg0: tensor<?xf32>, %arg1: tensor<1xindex>, %arg2: tensor<1xin
 )mlir";
 
   mlir::DialectRegistry registry;
-  registry.insert<mlir::func::FuncDialect, mlir::shape::ShapeDialect>();
-  mlir::stablehlo::registerAllDialects(registry);
+  xla::RegisterMlirToHloDependentDialects(registry);
   mlir::MLIRContext context(registry);
   mlir::OwningOpRef<mlir::ModuleOp> module;
   {
@@ -61,9 +59,50 @@ func.func @main(%arg0: tensor<?xf32>, %arg1: tensor<1xindex>, %arg2: tensor<1xin
   }
 
   ASSERT_THAT(ConvertMlirHloToHloModule(*module),
-              StatusIs(_, AllOf(HasSubstr("Unable to prepare for XLA export"),
-                                HasSubstr("real_dynamic_slice"))));
+              absl_testing::StatusIs(
+                  _, AllOf(HasSubstr("Unable to prepare for XLA export"),
+                           HasSubstr("real_dynamic_slice"))));
 }
 
+TEST(ConvertMlirHloToHloModuleTest, ConvertsDotGeneralPrecisionConfig) {
+  const std::string mlir_source = R"mlir(
+func.func @main(%arg0: tensor<5x10xbf16>, %arg1: tensor<10x5xbf16>) -> tensor<5x5xbf16> {
+  %0 = stablehlo.dot_general %arg0, %arg1, contracting_dims = [1] x [0], precision = [HIGHEST, HIGHEST] : (tensor<5x10xbf16>, tensor<10x5xbf16>) -> tensor<5x5xbf16>
+  return %0 : tensor<5x5xbf16>
+}
+)mlir";
+
+  mlir::DialectRegistry registry;
+  xla::RegisterMlirToHloDependentDialects(registry);
+  mlir::MLIRContext context(registry);
+  mlir::OwningOpRef<mlir::ModuleOp> module;
+  {
+    mlir::BaseScopedDiagnosticHandler handler(&context);
+    module = mlir::parseSourceString<mlir::ModuleOp>(mlir_source, &context);
+    TF_ASSERT_OK(handler.ConsumeStatus());
+  }
+
+  TF_ASSERT_OK(ConvertMlirHloToHloModule(*module));
+}
+TEST(ConvertMlirHloToHloModuleTest, ConvertsConvolutionPrecisionConfig) {
+  const std::string mlir_source = R"mlir(
+func.func @main(%arg0: tensor<3x3x3x3xf32>, %arg1: tensor<3x3x3x3xf32>) -> tensor<3x3x3x3xf32> {
+  %0 = stablehlo.convolution(%arg0, %arg1) dim_numbers = [b, f, 0, 1]x[o, i, 0, 1]->[b, f, 0, 1], window = {pad = [[1, 1], [1, 1]]} {batch_group_count = 1 : i64, feature_group_count = 1 : i64, precision_config = [#stablehlo<precision HIGHEST>, #stablehlo<precision HIGHEST>]} : (tensor<3x3x3x3xf32>, tensor<3x3x3x3xf32>) -> tensor<3x3x3x3xf32>
+  return %0 : tensor<3x3x3x3xf32>
+}
+)mlir";
+
+  mlir::DialectRegistry registry;
+  xla::RegisterMlirToHloDependentDialects(registry);
+  mlir::MLIRContext context(registry);
+  mlir::OwningOpRef<mlir::ModuleOp> module;
+  {
+    mlir::BaseScopedDiagnosticHandler handler(&context);
+    module = mlir::parseSourceString<mlir::ModuleOp>(mlir_source, &context);
+    TF_ASSERT_OK(handler.ConsumeStatus());
+  }
+
+  TF_ASSERT_OK(ConvertMlirHloToHloModule(*module));
+}
 }  // namespace
 }  // namespace mlir

@@ -23,28 +23,30 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/stream_executor/cuda/compilation_provider.h"
 #include "xla/stream_executor/cuda/cubin_or_ptx_image.h"
-#include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/gpu/gpu_asm_opts.h"
 #include "xla/stream_executor/semantic_version.h"
 
 namespace stream_executor {
 // Compiles the given PTX string using ptxas and returns the resulting machine
-// code (i.e. a cubin) as a byte array. The generated cubin matches the compute
+// code (i.e. a CUBIN) as a byte array. The generated CUBIN matches the compute
 // capabilities provided by `cc`.
 //
 // 'options' is used to query for the CUDA location in case it is
 // customized in a passed flag, and for controlling ptxas optimizations.
-absl::StatusOr<std::vector<uint8_t>> CompileGpuAsmUsingPtxAs(
+absl::StatusOr<cuda::Assembly> CompileGpuAsmUsingPtxAs(
     const CudaComputeCapability& cc, absl::string_view ptx_contents,
-    GpuAsmOpts options, bool cancel_if_reg_spill = false);
+    GpuAsmOpts options, bool cancel_if_reg_spill = false,
+    bool dump_compilation_log = false);
 
 // Like the above, but uses the ptxas_binary from `ptxas_path` instead of
 // using `FindCudaExecutable` to find it.
-absl::StatusOr<std::vector<uint8_t>> CompileGpuAsmUsingPtxAs(
+absl::StatusOr<cuda::Assembly> CompileGpuAsmUsingPtxAs(
     absl::string_view ptxas_path, const CudaComputeCapability& cc,
     absl::string_view ptx_contents, GpuAsmOpts options,
-    bool cancel_if_reg_spill = false);
+    bool cancel_if_reg_spill = false, bool dump_compilation_log = false);
 
 // Finds the CUDA executable with the given binary_name
 // The path <preferred_cuda_dir>/bin is checked first, afterwards some other
@@ -99,6 +101,15 @@ absl::StatusOr<std::vector<uint8_t>> LinkUsingNvlink(
 absl::StatusOr<std::vector<uint8_t>> LinkUsingNvlink(
     absl::string_view nvlink_path, stream_executor::CudaComputeCapability cc,
     absl::Span<const std::vector<uint8_t>> images);
+
+// Returns the path to the first found nvdisasm binary that fulfills our version
+// requirements.
+absl::StatusOr<std::string> FindNvdisasmExecutable(
+    absl::string_view preferred_cuda_dir);
+
+// On NVIDIA GPUs, returns the version of the nvdisasm command line tool.
+absl::StatusOr<SemanticVersion> GetNvdisasmVersion(
+    absl::string_view preferred_cuda_dir);
 }  // namespace stream_executor
 
 #endif  // XLA_STREAM_EXECUTOR_CUDA_SUBPROCESS_COMPILATION_H_

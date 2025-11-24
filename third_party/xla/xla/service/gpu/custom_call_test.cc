@@ -18,9 +18,12 @@ limitations under the License.
 #include <memory>
 #include <sstream>
 #include <string>
+#include <utility>
 #include <vector>
 
-#include "xla/shape.h"
+#include "absl/base/no_destructor.h"
+#include "absl/container/flat_hash_map.h"
+#include "xla/literal_util.h"
 
 #if GOOGLE_CUDA
 #include "third_party/gpus/cuda/include/cuda.h"  // IWYU pragma: keep
@@ -33,6 +36,7 @@ limitations under the License.
 #endif
 
 #include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
@@ -46,8 +50,12 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/hlo/parser/hlo_parser.h"
+#include "xla/literal.h"
 #include "xla/service/custom_call_status.h"
 #include "xla/service/custom_call_target_registry.h"
+#include "xla/service/hlo_module_config.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/gpu/gpu_types.h"
@@ -92,6 +100,8 @@ XLA_FFI_REGISTER_STRUCT_ATTR_DECODING(::xla::Range, StructMember<int64_t>("lo"),
 
 namespace xla {
 namespace {
+using ::absl_testing::StatusIs;
+using ::testing::HasSubstr;
 
 using CustomCallTest = ClientLibraryTestRunnerMixin<HloTestBase>;
 
@@ -361,9 +371,12 @@ TEST_F(CustomCallTest, ExportedFfiUnknownTarget) {
              /*schedule=*/CustomCallSchedule::SCHEDULE_NONE,
              /*api_version=*/CustomCallApiVersion::API_VERSION_TYPED_FFI);
   auto status = ExecuteAndTransfer(&b, {}).status();
-  EXPECT_EQ(status.code(), absl::StatusCode::kUnimplemented);
-  EXPECT_THAT(status.message(),
-              ::testing::HasSubstr("No registered implementation"));
+  EXPECT_THAT(
+      status,
+      StatusIs(
+          absl::StatusCode::kNotFound,
+          HasSubstr(
+              "No FFI handler registered for __xla_test$$unknown_target")));
 }
 
 // Memcpy and SubBuffers tests are already ported in
@@ -767,6 +780,209 @@ TEST_F(CustomCallTest, FfiExecutionState) {
              /*api_version=*/CustomCallApiVersion::API_VERSION_TYPED_FFI);
 
   TF_ASSERT_OK(ExecuteAndTransfer(&b, {}).status());
+}
+
+//===----------------------------------------------------------------------===//
+// Asynchronous custom calls example.
+//===----------------------------------------------------------------------===//
+
+// This is an example of how to implement an asynchronous custom call:
+//
+//   1. Start custom call initiates async operations and extends the lifetime of
+//      the input buffer by aliasing it with the output.
+//   2. Done custom call waits for the async operations to complete and returns
+//      the result.
+//
+// Because HLO type system doesn't allow to express arbitrary values passed
+// between operations, we rely on a "side channel" to communicate between
+// start and done custom calls. In this example, this side channel is
+// implemented as a global static map.
+static absl::NoDestructor<absl::flat_hash_map<int32_t, void*>> async_work_map;
+
+static absl::Status AsyncStartCustomCall(ffi::AnyBuffer arg,
+                                         ffi::Result<ffi::AnyBuffer> ret,
+                                         int32_t channel) {
+  // Inside that start custom call we alias input with output and by doing that
+  // extend the lifetime of the input buffer until the linked done custom call.
+  EXPECT_EQ(arg.untyped_data(), ret->untyped_data());
+  EXPECT_EQ(arg.element_type(), F32);
+  EXPECT_EQ(ret->element_type(), F32);
+
+  EXPECT_TRUE(async_work_map->empty());
+  async_work_map->insert({channel, arg.untyped_data()});
+
+  return absl::OkStatus();
+}
+
+static absl::Status AsyncDoneCustomCall(ffi::AnyBuffer arg,
+                                        ffi::Result<ffi::AnyBuffer> ret,
+                                        int32_t channel) {
+  // In done custom call we "allocate" real result buffer.
+  EXPECT_NE(arg.untyped_data(), ret->untyped_data());
+  EXPECT_EQ(arg.element_type(), F32);
+
+  // Chat that argument is the same as the one we put into a map earlier.
+  EXPECT_EQ(async_work_map->at(channel), arg.untyped_data());
+
+  return absl::OkStatus();
+}
+
+XLA_FFI_DEFINE_HANDLER(
+    kAsyncStartCustomCall, AsyncStartCustomCall,
+    ffi::Ffi::Bind().Arg<ffi::AnyBuffer>().Ret<ffi::AnyBuffer>().Attr<int32_t>(
+        "channel"));
+XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "xla.gpu.async_start_custom_call",
+                         PLATFORM, kAsyncStartCustomCall);
+
+XLA_FFI_DEFINE_HANDLER(
+    kAsyncDoneCustomCall, AsyncDoneCustomCall,
+    ffi::Ffi::Bind().Arg<ffi::AnyBuffer>().Ret<ffi::AnyBuffer>().Attr<int32_t>(
+        "channel"));
+XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "xla.gpu.async_done_custom_call",
+                         PLATFORM, kAsyncDoneCustomCall);
+
+TEST_F(CustomCallTest, AsyncCustomCalls) {
+  auto shape = ShapeUtil::MakeShape(F32, {});
+
+  XlaBuilder b(TestName());
+  auto p0 = Parameter(&b, 0, shape, "p0");
+
+  auto start = CustomCall(
+      &b, "xla.gpu.async_start_custom_call",
+      /*operands=*/{Copy(p0)}, ShapeUtil::MakeShape(F32, {}),
+      /*opaque=*/"{channel = 0 : i32}",
+      /*has_side_effect=*/false,
+      /*output_operand_aliasing=*/{{{}, {0, {}}}}, /*literal=*/nullptr,
+      /*schedule=*/CustomCallSchedule::SCHEDULE_NONE,
+      /*api_version=*/CustomCallApiVersion::API_VERSION_TYPED_FFI);
+
+  CustomCall(&b, "xla.gpu.async_done_custom_call",
+             /*operands=*/{start}, ShapeUtil::MakeShape(F32, {}),
+             /*opaque=*/"{channel = 0 : i32}",
+             /*has_side_effect=*/false,
+             /*output_operand_aliasing=*/{}, /*literal=*/nullptr,
+             /*schedule=*/CustomCallSchedule::SCHEDULE_NONE,
+             /*api_version=*/CustomCallApiVersion::API_VERSION_TYPED_FFI);
+
+  Literal literal = LiteralUtil::CreateR0<float>(42.0f);
+  TF_ASSERT_OK(ExecuteAndTransfer(&b, {&literal}).status());
+}
+
+//===----------------------------------------------------------------------===//
+// Testing the use of buffers in custom calls.
+//===----------------------------------------------------------------------===//
+
+class CustomCallHloTest : public HloTestBase {};
+
+void CallBack_AddOne(se::gpu::GpuStreamHandle stream, void** buffers,
+                     const char* /*opaque*/, size_t /*opaque_len*/) {
+  // Expect that the input and output buffers are the same.
+  if (buffers[0] != buffers[1]) {
+    return;
+  }
+  int32_t dst[2];
+  auto err = gpuMemcpy(dst, buffers[0], /*count=*/sizeof(int32_t) * 2,
+                       gpuMemcpyDeviceToHost);
+  ASSERT_EQ(err, gpuSuccess);
+  dst[0] += 1;
+  dst[1] += 1;
+  err = gpuMemcpy(buffers[1], dst, /*count=*/sizeof(int32_t) * 2,
+                  gpuMemcpyHostToDevice);
+}
+XLA_REGISTER_CUSTOM_CALL_TARGET(CallBack_AddOne, PLATFORM);
+
+TEST_F(CustomCallHloTest, HloBufferStraightLine) {
+  const char* const kModuleStr = R"(
+
+  HloModule test
+  ENTRY test_computation {
+    c1 = s32[] constant(1)
+    init = s32[2] broadcast(c1), dimensions={}
+    b0 = b(s32[2]) custom-call(init), custom_call_target="Pin",
+      output_to_operand_aliasing={{}: (0, {})}
+    b1 = b(s32[2]) custom-call(b0), custom_call_target="CallBack_AddOne",
+      output_to_operand_aliasing={{}: (0, {})},
+      api_version=API_VERSION_STATUS_RETURNING
+    b2 = b(s32[2]) custom-call(b1), custom_call_target="CallBack_AddOne",
+      output_to_operand_aliasing={{}: (0, {})},
+      api_version=API_VERSION_STATUS_RETURNING
+    ROOT v = s32[2] custom-call(b2), custom_call_target="Unpin",
+      output_to_operand_aliasing={{}: (0, {})}
+  })";
+
+  const int64_t kNumReplicas = 1;
+  HloModuleConfig config =
+      GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
+  auto module = ParseAndReturnUnverifiedModule(kModuleStr, config);
+  EXPECT_TRUE(module.ok());
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::vector<Literal> results,
+      ExecuteReplicated(std::move(module.value()), absl::Span<Literal* const>{},
+                        kNumReplicas,
+                        /*use_threads=*/true, /*run_hlo_passes=*/true));
+  ASSERT_EQ(results.size(), kNumReplicas);
+  EXPECT_THAT(results[0].data<int32_t>(), ::testing::Each(3));
+}
+
+TEST_F(CustomCallHloTest, HloBufferRotated) {
+  const char* const kModuleStr = R"(
+
+  HloModule test
+  cond {
+    param = (s32[], b(s32[2])) parameter(0)
+    count = get-tuple-element(%param), index=0
+    ub = s32[] constant(2)
+    ROOT compare = pred[] compare(count, ub), direction=LT
+  }
+
+  body {
+    param = (s32[], b(s32[2])) parameter(0)
+    count = get-tuple-element(%param), index=0
+    b3 = get-tuple-element(%param), index=1
+
+    c1 = s32[] constant(1)
+    new_count = s32[] add(count, c1)
+    b4 = b(s32[2]) custom-call(b3), custom_call_target="CallBack_AddOne",
+      output_to_operand_aliasing={{}: (0, {})},
+      api_version=API_VERSION_STATUS_RETURNING
+    b5 = b(s32[2]) custom-call(b4), custom_call_target="CallBack_AddOne",
+      output_to_operand_aliasing={{}: (0, {})},
+      api_version=API_VERSION_STATUS_RETURNING
+    v0 = s32[2] custom-call(b5), custom_call_target="Unpin",
+      output_to_operand_aliasing={{}: (0, {})}
+    c1_broadcast = s32[2] broadcast(c1), dimensions={}
+    v1 = s32[2] add(c1_broadcast, v0)
+
+    b6 = b(s32[2]) custom-call(v1), custom_call_target="Pin",
+      output_to_operand_aliasing={{}: (0, {})}
+    ROOT result = (s32[], b(s32[2])) tuple(new_count, b6)
+  }
+
+  ENTRY test_computation {
+    c0 = s32[] constant(0)
+    c1 = s32[] constant(1)
+    init = s32[2] broadcast(c1), dimensions={}
+    b0 = b(s32[2]) custom-call(init), custom_call_target="Pin",
+      output_to_operand_aliasing={{}: (0, {})}
+    while_init = (s32[], b(s32[2])) tuple(c0, b0)
+    while_result = (s32[], b(s32[2])) while(while_init), body=body, condition=cond
+    b1 = b(s32[2]) get-tuple-element(while_result), index=1
+    ROOT v = s32[2] custom-call(b1), custom_call_target="Unpin",
+      output_to_operand_aliasing={{}: (0, {})}
+  })";
+
+  const int64_t kNumReplicas = 1;
+  HloModuleConfig config =
+      GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
+  auto module = ParseAndReturnUnverifiedModule(kModuleStr, config);
+  EXPECT_TRUE(module.ok());
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::vector<Literal> results,
+      ExecuteReplicated(std::move(module.value()), absl::Span<Literal* const>{},
+                        kNumReplicas,
+                        /*use_threads=*/true, /*run_hlo_passes=*/true));
+  ASSERT_EQ(results.size(), kNumReplicas);
+  EXPECT_THAT(results[0].data<int32_t>(), ::testing::Each(7));
 }
 
 }  // anonymous namespace

@@ -7,6 +7,7 @@ load(
     "@local_xla//xla/tsl/platform/default:cuda_build_defs.bzl",
     "if_cuda_is_configured",
 )
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 
 package(
@@ -185,6 +186,7 @@ cc_library(
         "embed_tf_framework_pass.cc",
         "func_to_jit_invocations.cc",
         "fuse_inner_parallel_loops_pass.cc",
+        "legalize_tensor_reshape_pass.cc",
         "merge_assuming_ops_pass.cc",
         "parallel_loops_to_sequential.cc",
         "rewrite_tf_framework_assert.cc",

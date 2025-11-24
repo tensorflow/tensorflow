@@ -2,19 +2,19 @@ path: "tensorflow.profiler"
 tf_module {
   member {
     name: "AdviceProto"
-    mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
+    mtype: "<class \'google._upb._message.MessageMeta\'>"
   }
   member {
     name: "GraphNodeProto"
-    mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
+    mtype: "<class \'google._upb._message.MessageMeta\'>"
   }
   member {
     name: "MultiGraphNodeProto"
-    mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
+    mtype: "<class \'google._upb._message.MessageMeta\'>"
   }
   member {
     name: "OpLogProto"
-    mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
+    mtype: "<class \'google._upb._message.MessageMeta\'>"
   }
   member {
     name: "ProfileOptionBuilder"

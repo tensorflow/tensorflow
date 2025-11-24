@@ -18,11 +18,14 @@ limitations under the License.
 #include <cfenv>  // NOLINT
 #include <cstdint>
 #include <functional>
+#include <memory>
 #include <optional>
 #include <string>
 #include <utility>
 
+#include "absl/base/nullability.h"
 #include "absl/base/optimization.h"
+#include "xla/tsl/concurrency/executor.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/threadpool_interface.h"
@@ -119,7 +122,8 @@ ThreadPool::ThreadPool(Env* env, const ThreadOptions& thread_options,
 
 ThreadPool::ThreadPool(Env* env, const ThreadOptions& thread_options,
                        const std::string& name, int num_threads,
-                       bool low_latency_hint, Eigen::Allocator* allocator) {
+                       bool low_latency_hint, Eigen::Allocator* allocator)
+    : executor_(this) {
   CHECK_GE(num_threads, 1);
 
 #ifdef DNNL_AARCH64_USE_ACL
@@ -136,18 +140,20 @@ ThreadPool::ThreadPool(Env* env, const ThreadOptions& thread_options,
   if (num_threads < 1) num_threads = 1;
 #endif  // TENSORFLOW_THREADSCALING_EXPERIMENTAL
 
-  eigen_threadpool_.reset(new Eigen::ThreadPoolTempl<EigenEnvironment>(
-      num_threads, low_latency_hint,
-      EigenEnvironment(env, thread_options, "tf_" + name)));
+  eigen_threadpool_ =
+      std::make_unique<Eigen::ThreadPoolTempl<EigenEnvironment>>(
+          num_threads, low_latency_hint,
+          EigenEnvironment(env, thread_options, "tf_" + name));
   underlying_threadpool_ = eigen_threadpool_.get();
-  threadpool_device_.reset(new Eigen::ThreadPoolDevice(underlying_threadpool_,
-                                                       num_threads, allocator));
+  threadpool_device_ = std::make_unique<Eigen::ThreadPoolDevice>(
+      underlying_threadpool_, num_threads, allocator);
 }
 
-ThreadPool::ThreadPool(thread::ThreadPoolInterface* user_threadpool) {
+ThreadPool::ThreadPool(thread::ThreadPoolInterface* user_threadpool)
+    : executor_(this) {
   underlying_threadpool_ = user_threadpool;
-  threadpool_device_.reset(new Eigen::ThreadPoolDevice(
-      underlying_threadpool_, underlying_threadpool_->NumThreads(), nullptr));
+  threadpool_device_ = std::make_unique<Eigen::ThreadPoolDevice>(
+      underlying_threadpool_, underlying_threadpool_->NumThreads(), nullptr);
 }
 
 ThreadPool::~ThreadPool() {}
@@ -277,6 +283,19 @@ void ThreadPool::ScheduleWithHint(std::function<void()> fn, int start,
 Eigen::ThreadPoolInterface* ThreadPool::AsEigenThreadPool() const {
   DCHECK(underlying_threadpool_ != nullptr);
   return underlying_threadpool_;
+}
+
+tsl::Executor* absl_nonnull ThreadPool::AsExecutor() { return &executor_; }
+
+ThreadPool::ThreadPoolExecutor::ThreadPoolExecutor(ThreadPool* thread_pool)
+    : thread_pool_(thread_pool) {}
+
+void ThreadPool::ThreadPoolExecutor::Execute(Task task) {
+  auto* task_ptr = new Task(std::move(task));
+  thread_pool_->Schedule([task_ptr] {
+    std::move((*task_ptr))();
+    delete task_ptr;
+  });
 }
 
 }  // namespace tsl::thread

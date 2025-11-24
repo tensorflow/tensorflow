@@ -22,6 +22,10 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/strings/match.h"
+#include "absl/strings/numbers.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
 #include "xla/tsl/platform/errors.h"
@@ -78,6 +82,8 @@ void UpdateMaxSessionDuration(RemoteProfilerSessionManagerOptions& options) {
 
 // Receives a comma delimited list of service_addresses and adds them to
 // RemoteProfilerSessionManagerOptions::service_addresses.
+// If override_hostnames is also specified, the order of hosts in
+// service_addresses and override_hostnames must match.
 void AddServiceAddresses(absl::string_view service_addresses,
                          RemoteProfilerSessionManagerOptions* options) {
   for (absl::string_view server : absl::StrSplit(service_addresses, ',')) {
@@ -86,10 +92,8 @@ void AddServiceAddresses(absl::string_view service_addresses,
 }
 
 }  // namespace
-// Takes profiler options in absl::flat_hash_map and returns a
-// RemoteProfilerSessionManagerOptions.
-RemoteProfilerSessionManagerOptions
-GetRemoteSessionManagerOptionsLockedWithBoolOpts(
+
+RemoteProfilerSessionManagerOptions GetRemoteSessionManagerOptionsLocked(
     absl::string_view logdir,
     const absl::flat_hash_map<std::string,
                               std::variant<bool, int, std::string>>& opts) {
@@ -138,6 +142,25 @@ GetRemoteSessionManagerOptionsLockedWithBoolOpts(
             options.set_delay_ms(value);
           },
           nullptr);
+    } else if (key == "session_id") {
+      SetOption<std::string>(
+          key, kw.second,
+          [&options](tensorflow::ProfileOptions*, std::string value) {
+            options.mutable_profiler_options()->set_session_id(value);
+          },
+          nullptr);
+    } else if (key == "override_hostnames") {
+      // A comma-separated list of hostnames that should be used to save the
+      // profile results. The order of these hostnames must match the order of
+      // service_addresses.
+      SetOption<std::string>(
+          key, kw.second,
+          [&options](tensorflow::ProfileOptions*, std::string value) {
+            (*options.mutable_profiler_options()
+                  ->mutable_advanced_configuration())["override_hostnames"]
+                .set_string_value(value);
+          },
+          nullptr);
     } else {
       LOG(WARNING) << "Unrecognised key: " << key;
     }
@@ -146,15 +169,14 @@ GetRemoteSessionManagerOptionsLockedWithBoolOpts(
   return options;
 }
 
-RemoteProfilerSessionManagerOptions
-GetRemoteSessionManagerOptionsLockedWithBoolOpts(
+RemoteProfilerSessionManagerOptions GetRemoteSessionManagerOptionsLocked(
     absl::string_view service_addresses, absl::string_view logdir,
     absl::string_view worker_list, bool include_dataset_ops,
     int32_t duration_ms,
     const absl::flat_hash_map<std::string,
                               std::variant<bool, int, std::string>>& opts,
     bool* is_cloud_tpu_session) {
-  auto options = GetRemoteSessionManagerOptionsLockedWithBoolOpts(logdir, opts);
+  auto options = GetRemoteSessionManagerOptionsLocked(logdir, opts);
 
   // Remote profiling does not support any use cases where the following options
   // are set by `opts`. e.g. `opts['service_addrs']` will not happen.
@@ -190,49 +212,14 @@ GetRemoteSessionManagerOptionsLockedWithBoolOpts(
   return options;
 }
 
-RemoteProfilerSessionManagerOptions GetRemoteSessionManagerOptionsLocked(
-    absl::string_view logdir,
-    const absl::flat_hash_map<std::string, std::variant<int, std::string>>&
-        opts) {
-  absl::flat_hash_map<std::string, std::variant<bool, int, std::string>>
-      converted_opts;
-  for (const auto& [key, value] : opts) {
-    converted_opts[key] = std::visit(
-        [](auto&& arg) -> std::variant<bool, int, std::string> { return arg; },
-        value);
-  }
-  return GetRemoteSessionManagerOptionsLockedWithBoolOpts(logdir,
-                                                          converted_opts);
-}
-
-RemoteProfilerSessionManagerOptions GetRemoteSessionManagerOptionsLocked(
-    absl::string_view service_addresses, absl::string_view logdir,
-    absl::string_view worker_list, bool include_dataset_ops,
-    int32_t duration_ms,
-    const absl::flat_hash_map<std::string, std::variant<int, std::string>>&
-        options,
-    bool* is_cloud_tpu_session) {
-  absl::flat_hash_map<std::string, std::variant<bool, int, std::string>>
-      converted_options;
-  for (const auto& [key, value] : options) {
-    converted_options[key] = std::visit(
-        [](auto&& arg) -> std::variant<bool, int, std::string> { return arg; },
-        value);
-  }
-  return GetRemoteSessionManagerOptionsLockedWithBoolOpts(
-      service_addresses, logdir, worker_list, include_dataset_ops, duration_ms,
-      converted_options, is_cloud_tpu_session);
-}
-
 absl::Status ValidateRemoteProfilerSessionManagerOptions(
     const RemoteProfilerSessionManagerOptions& options) {
   if (options.service_addresses().empty()) {
-    return tsl::errors::InvalidArgument("No service address provided.");
+    return absl::InvalidArgumentError("No service address provided.");
   }
 
   if (options.profiler_options().duration_ms() == 0) {
-    return tsl::errors::InvalidArgument(
-        "duration_ms must be greater than zero.");
+    return absl::InvalidArgumentError("duration_ms must be greater than zero.");
   }
 
   for (absl::string_view host_port : options.service_addresses()) {
@@ -241,7 +228,7 @@ absl::Status ValidateRemoteProfilerSessionManagerOptions(
 
   if (options.max_session_duration_ms() <
       options.profiler_options().duration_ms()) {
-    return tsl::errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "The maximum profiling session duration must be greater than or equal "
         "to the local profiler duration.");
   }
@@ -250,14 +237,14 @@ absl::Status ValidateRemoteProfilerSessionManagerOptions(
 }
 
 absl::Status ValidateHostPortPair(absl::string_view host_port) {
-  tsl::uint32 port;
+  uint32_t port;
   std::vector<absl::string_view> parts = absl::StrSplit(host_port, ':');
   // Must be host:port, port must be a number, host must not contain a '/',
   // host also must not be empty.
   if (parts.size() != 2 || !absl::SimpleAtoi(parts[1], &port) ||
       absl::StrContains(parts[0], "/") || parts[0].empty()) {
-    return tsl::errors::InvalidArgument("Could not interpret \"", host_port,
-                                        "\" as a host-port pair.");
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Could not interpret \"", host_port, "\" as a host-port pair."));
   }
   return absl::OkStatus();
 }

@@ -57,20 +57,26 @@ class StdThread : public Thread {
  public:
   // thread_options is ignored.
   StdThread(const ThreadOptions& thread_options, const string& name,
-            absl::AnyInvocable<void()> fn)
-      : thread_(std::move(fn)) {
+            absl::AnyInvocable<void()> fn, bool detached = false)
+      : detached_(detached), thread_(std::move(fn)) {
+    if (detached) {
+      thread_.detach();
+    }
     mutex_lock l(name_mutex);
     GetThreadNameRegistry().emplace(thread_.get_id(), name);
   }
 
   ~StdThread() override {
     std::thread::id thread_id = thread_.get_id();
-    thread_.join();
+    if (!detached_) {
+      thread_.join();
+    }
     mutex_lock l(name_mutex);
     GetThreadNameRegistry().erase(thread_id);
   }
 
  private:
+  bool detached_;
   std::thread thread_;
 };
 
@@ -104,6 +110,13 @@ class WindowsEnv : public Env {
   Thread* StartThread(const ThreadOptions& thread_options, const string& name,
                       absl::AnyInvocable<void()> fn) override {
     return new StdThread(thread_options, name, std::move(fn));
+  }
+
+  void StartDetachedThread(const ThreadOptions& thread_options,
+                           const string& name,
+                           absl::AnyInvocable<void()> fn) override {
+    StdThread detached_thread(thread_options, name, std::move(fn),
+                              /*detached=*/true);
   }
 
   int64_t GetCurrentThreadId() override {

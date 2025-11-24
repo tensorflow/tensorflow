@@ -17,13 +17,13 @@ limitations under the License.
 #define XLA_SERVICE_HLO_RUNNER_H_
 
 #include <cstdint>
-#include <functional>
 #include <memory>
 #include <vector>
 
 #include "absl/base/nullability.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/functional/any_invocable.h"
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
@@ -34,13 +34,13 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/literal.h"
 #include "xla/service/backend.h"
-#include "xla/service/compiler.h"
 #include "xla/service/computation_layout.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/executable.h"
 #include "xla/service/hlo_runner_interface.h"
 #include "xla/service/service_executable_run_options.h"
 #include "xla/service/shaped_buffer.h"
+#include "xla/service/transfer_manager.h"
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/util.h"
@@ -50,19 +50,22 @@ namespace xla {
 
 class BufferAssignmentProto;
 
-// A base class for running an HloModule. This executes the given HloModule on a
-// certain backend directly without using the client interface. HloModule can be
-// explicitly built, or loaded from a serialization file (e.g., hlo proto
+// A base class for running an `HloModule`. This executes the given `HloModule`
+// on a certain backend directly without using the client interface. `HloModule`
+// can be explicitly built, or loaded from a serialization file (e.g., hlo proto
 // file), or parsed from a hlo textual IR string.
 class HloRunner : public HloRunnerInterface {
  public:
-  // intra_op_parallelism_threads: For the CPU backend only. It is the thread
+  // `intra_op_parallelism_threads`: For the CPU backend only. It is the thread
   // pool size for parallel execution of an individual operator. The default
   // value of -1 will result in initializing the thread pool with the number of
   // threads equal to the number of
   // cores in the system.
-  explicit HloRunner(se::Platform* platform,
-                     int intra_op_parallelism_threads = -1);
+  // allocator: If non-null, a custom device memory allocator to use instead of
+  // the backend allocator.
+  explicit HloRunner(
+      se::Platform* platform, int intra_op_parallelism_threads = -1,
+      std::unique_ptr<se::DeviceMemoryAllocator> allocator = nullptr);
 
   ~HloRunner() override;
 
@@ -74,31 +77,33 @@ class HloRunner : public HloRunnerInterface {
   // Executes the given module with given literals as input and returns the
   // result as a Literal.
   //
-  // If run_hlo_passes is false, the module will be executed without Hlo
+  // If `run_hlo_passes` is false, the module will be executed without Hlo
   // optimization.
 
   using HloRunnerInterface::Execute;
 
   absl::StatusOr<Literal> Execute(std::unique_ptr<HloModule> module,
                                   absl::Span<const Literal* const> arguments,
-                                  bool run_hlo_passes,
-                                  ExecutionProfile* profile) override;
+                                  bool run_hlo_passes) override;
 
   using HloRunnerInterface::ExecuteWithBufferAssignment;
 
   absl::StatusOr<Literal> ExecuteWithBufferAssignment(
       std::unique_ptr<HloModule> module,
       const BufferAssignmentProto* buffer_assignment_proto,
-      absl::Span<const Literal* const> arguments, bool run_hlo_passes,
-      ExecutionProfile* profile) override;
+      absl::Span<const Literal* const> arguments, bool run_hlo_passes) override;
 
   using HloRunnerInterface::ExecuteWithExecutable;
 
-  absl::StatusOr<Literal> ExecuteWithExecutable(
+  absl::StatusOr<std::vector<absl::StatusOr<Literal>>> ExecuteWithExecutable(
       OpaqueExecutable* executable, absl::Span<const Literal* const> arguments,
-      ExecutionProfile* profile) override;
+      int64_t num_repeats) override;
 
-  // As Execute(), but accepts and returns device buffers instead of host
+  absl::StatusOr<Literal> ExecuteWithExecutableAndProfile(
+      OpaqueExecutable* executable, absl::Span<const Literal* const> arguments,
+      ExecutionProfile* profile);
+
+  // As `Execute()`, but accepts and returns device buffers instead of host
   // buffers.
   //
   // ExecuteWithMovedDeviceBuffers is more memory-safe, but it consumes the
@@ -108,36 +113,36 @@ class HloRunner : public HloRunnerInterface {
   // aliasing.
   absl::StatusOr<ExecutionOutput> ExecuteWithDeviceBuffers(
       std::unique_ptr<HloModule> module,
-      absl::Span<ScopedShapedBuffer const> arguments,
-      bool run_hlo_passes = true, ExecutionProfile* profile = nullptr);
+      absl::Span<ScopedShapedBuffer const> arguments, bool run_hlo_passes,
+      ExecutionProfile* profile);
 
   absl::StatusOr<ExecutionOutput> ExecuteWithDeviceBuffers(
       OpaqueExecutable* executable,
       absl::Span<ScopedShapedBuffer const> arguments,
-      ExecutionProfile* profile = nullptr);
+      ExecutionProfile* profile);
 
-  // As Execute(), but accepts and returns device buffers instead of host
+  // As `Execute()`, but accepts and returns device buffers instead of host
   // buffers.
   //
-  // This is a memory-safer version of ExecuteWithDeviceBuffers, but it consumes
-  // the arguments.
+  // This is a memory-safer version of `ExecuteWithDeviceBuffers`, but it
+  // consumes the arguments.
   absl::StatusOr<ExecutionOutput> ExecuteWithMovedDeviceBuffers(
       std::unique_ptr<HloModule> module,
-      std::vector<ScopedShapedBuffer> arguments, bool run_hlo_passes = true,
-      ExecutionProfile* profile = nullptr);
+      std::vector<ScopedShapedBuffer> arguments, bool run_hlo_passes,
+      ExecutionProfile* profile);
 
   absl::StatusOr<ExecutionOutput>
   ExecuteWithMovedDeviceBuffersAndBufferAssignment(
       std::unique_ptr<HloModule> module,
       const BufferAssignmentProto* buffer_assignment_proto,
-      std::vector<ScopedShapedBuffer> arguments, bool run_hlo_passes = true,
-      ExecutionProfile* profile = nullptr);
+      std::vector<ScopedShapedBuffer> arguments, bool run_hlo_passes,
+      ExecutionProfile* profile);
 
   absl::StatusOr<ExecutionOutput> ExecuteWithMovedDeviceBuffers(
       Executable* executable, std::vector<ScopedShapedBuffer> arguments,
-      ExecutionProfile* profile = nullptr);
+      ExecutionProfile* profile);
 
-  // Creates an executable object given an HLO module. If run_hlo_passes is
+  // Creates an executable object given an HLO module. If `run_hlo_passes` is
   // true, the HLO passes will be run as part of compilation.
   absl::StatusOr<std::unique_ptr<OpaqueExecutable>> CreateExecutable(
       std::unique_ptr<HloModule> module, bool run_hlo_passes) override;
@@ -171,21 +176,21 @@ class HloRunner : public HloRunnerInterface {
   // Same as above, but with a reusable Executable.  This may update the profile
   // information in *executable.
   //
-  // Note that this call ignores ReplicatedExecutionOptions::run_hlo_passes,
+  // Note that this call ignores `ReplicatedExecutionOptions::run_hlo_passes`,
   // since we've already compiled the Executable.
   absl::StatusOr<std::vector<Literal>> ExecuteReplicated(
       OpaqueExecutable* executable, const ReplicatedExecuteOptions& options,
-      DeviceAssignment* device_assignment, ExecutionProfile* profile = nullptr);
+      DeviceAssignment* device_assignment, ExecutionProfile* profile);
 
   // Same as above, but with different reusable Executables. This may update the
   // profile information in *executables.
   //
-  // Note that this call ignores ReplicatedExecutionOptions::run_hlo_passes,
-  // since we've already compiled the Executable.
+  // Note that this call ignores `ReplicatedExecutionOptions::run_hlo_passes`,
+  // since we've already compiled the `Executable`.
   absl::StatusOr<std::vector<Literal>> ExecuteReplicated(
-      std::function<OpaqueExecutable*(int64_t)> executable_provider,
-      std::function<int64_t(int64_t)> argument_count_provider,
-      std::function<const Literal*(int64_t, int64_t)> argument_provider,
+      absl::AnyInvocable<OpaqueExecutable*(int64_t)> executable_provider,
+      absl::AnyInvocable<int64_t(int64_t)> argument_count_provider,
+      absl::AnyInvocable<const Literal*(int64_t, int64_t)> argument_provider,
       const ReplicatedExecuteOptions& options,
       DeviceAssignment* device_assignment) override;
 
@@ -193,19 +198,11 @@ class HloRunner : public HloRunnerInterface {
   // default backend. If creation fails, crashes the program.
   //
   // This creates the backend lazily so it's possible to instantiate an
-  // HloRunner in a program without any backends linked in.
+  // `HloRunner` in a program without any backends linked in.
   Backend& backend();
   const Backend& backend() const;
 
   absl::string_view Name() const override;
-
-  DeviceShapeRepresentationFn device_shape_representation_fn() const override {
-    return device_shape_representation_fn_;
-  }
-
-  DeviceShapeSizeFn device_shape_size_fn() const override {
-    return backend().compiler()->ShapeSizeBytesFunction();
-  }
 
   int device_count() const override { return backend().device_count(); }
 
@@ -220,11 +217,11 @@ class HloRunner : public HloRunnerInterface {
       std::unique_ptr<Executable> executable) const;
   absl::StatusOr<const HloModule* absl_nonnull> HloModuleFromWrapped(
       const OpaqueExecutable* wrapped) const override;
-  // Returns the HloProto of the Executable wrapped by the given
+  // Returns the `HloProto` of the `Executable` wrapped by the given
   // OpaqueExecutable. This is a temporary API to help move to OpaqueExecutable.
   // We need to come up with a better way to obtain this information and
   // evaluate whether we need to do this at all. A drop-in migration to
-  // HloRunnerPjRt (via HloRunnerInterface) won't be possible because this
+  // `HloRunnerPjRt` (via `HloRunnerInterface`) won't be possible because this
   // information is not available from a PjRt(Loaded)Executable.
   //
   // TODO: b/393183864 - Remove this API.
@@ -241,6 +238,9 @@ class HloRunner : public HloRunnerInterface {
     return false;
   }
 
+  absl::StatusOr<DeviceAssignment> GetDefaultDeviceAssignment(
+      int num_replicas, int num_partitions) const override;
+
  private:
   absl::StatusOr<ScopedShapedBuffer> TransferLiteralToDevice(
       const Literal& literal,
@@ -254,44 +254,44 @@ class HloRunner : public HloRunnerInterface {
       Executable* executable, std::vector<ExecutionInput> arguments,
       ExecutionProfile* profile);
 
-  // Creates a ServiceExecutableRunOptions object to configure a run on device,
-  // using the provided stream object. If device_assignment is not nullptr, it
-  // will be used to configure the replication parameters. Replicated executions
-  // should pass the device_assignment parameter.
+  // Creates a `ServiceExecutableRunOptions` object to configure a run on
+  // device, using the provided stream object. If device_assignment is not
+  // nullptr, it will be used to configure the replication parameters.
+  // Replicated executions should pass the device_assignment parameter.
   ServiceExecutableRunOptions GetServiceRunOptionsForDevice(
       int64_t device, se::Stream* stream, DeviceAssignment* device_assignment,
       RunId run_id, int local_device_count);
 
   // Common implementation code for ExecuteReplicated() above.
   absl::StatusOr<std::vector<Literal>> ExecuteReplicatedImpl(
-      std::function<absl::StatusOr<std::vector<ScopedShapedBuffer>>(
+      absl::AnyInvocable<absl::StatusOr<std::vector<ScopedShapedBuffer>>(
           const std::vector<ServiceExecutableRunOptions>&,
           const std::vector<absl::Span<const ShapedBuffer* const>>&)>
           execution_helper,
-      std::function<int64_t(int64_t)> argument_count_provider,
-      std::function<const Literal*(int64_t, int64_t)> argument_provider,
+      absl::AnyInvocable<int64_t(int64_t)> argument_count_provider,
+      absl::AnyInvocable<const Literal*(int64_t, int64_t)> argument_provider,
       const ReplicatedExecuteOptions& options,
       DeviceAssignment* device_assignment);
 
-  // Gets or creates the DeviceMemoryAllocator.
-  se::DeviceMemoryAllocator* GetAllocator() ABSL_LOCKS_EXCLUDED(mu_);
+  // Gets or creates the `DeviceMemoryAllocator`.
+  se::DeviceMemoryAllocator* GetAllocator();
 
-  // Calls UpdateEntryComputationLayout if HloRunner has not called it on the
+  // Calls `UpdateEntryComputationLayout` if HloRunner has not called it on the
   // module before. This method is called before the module is executed. The
-  // reason UpdateEntryComputationLayout is only called once instead of every
+  // reason `UpdateEntryComputationLayout` is only called once instead of every
   // time is to avoid one thread updating the layout while another thread is
   // reading it during execution.
   void MaybeUpdateEntryComputationLayout(HloModule* module)
       ABSL_LOCKS_EXCLUDED(mu_);
 
   std::unique_ptr<Backend> backend_;
-  DeviceShapeRepresentationFn device_shape_representation_fn_;
+  TransferManager::DeviceShapeRepresentationFn device_shape_representation_fn_;
+
+  std::unique_ptr<se::DeviceMemoryAllocator> allocator_;
 
   absl::Mutex mu_;
-  std::unique_ptr<se::DeviceMemoryAllocator> allocator_ ABSL_GUARDED_BY(mu_);
-
   // Set of module unique_ids that we already called
-  // UpdateEntryComputationLayout() on
+  // `UpdateEntryComputationLayout() on
   absl::flat_hash_set<int> module_ids_with_updated_layouts_
       ABSL_GUARDED_BY(mu_);
 };

@@ -1,3 +1,4 @@
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("//tensorflow:tensorflow.default.bzl", "pybind_extension")
 
 package(
@@ -11,10 +12,15 @@ pybind_extension(
     srcs = [
         "analyzer_wrapper.cc",
     ],
+    common_lib_packages = [
+        "litert/python",
+        "tensorflow/lite/python",
+    ],
     enable_stub_generation = True,
     pytype_srcs = [
         "_pywrap_analyzer_wrapper.pyi",
     ],
+    wrap_py_init = True,
     deps = [
         ":model_analyzer",
         "@pybind11",

@@ -169,7 +169,7 @@ class DynamicDimensionInference {
              lhs.dim == rhs.dim;
     }
 
-    std::tuple<int, int, std::string, int64_t> ToTuple() const {
+    std::tuple<int, int64_t, std::string, int64_t> ToTuple() const {
       return std::make_tuple(
           inst && inst->GetModule() ? inst->GetModule()->unique_id() : -1,
           inst ? inst->unique_id() : -1, index.ToString(), dim);

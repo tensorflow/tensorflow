@@ -21,6 +21,7 @@ limitations under the License.
 #include "absl/strings/str_replace.h"
 #include "absl/strings/string_view.h"
 #include "xla/service/gpu/tests/gpu_codegen_test.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/semantic_version.h"
 #include "xla/xla.pb.h"
@@ -49,19 +50,13 @@ stream_executor::SemanticVersion GemmRewriteTestBase::GetToolkitVersion()
       .runtime_version();
 }
 
-bool GemmRewriteTestBase::IsCuda() const {
-  return std::holds_alternative<stream_executor::CudaComputeCapability>(
-      Capability());
-}
+bool GemmRewriteTestBase::IsCuda() const { return Capability().IsCuda(); }
 
-bool GemmRewriteTestBase::IsRocm() const {
-  return std::holds_alternative<stream_executor::RocmComputeCapability>(
-      Capability());
-}
+bool GemmRewriteTestBase::IsRocm() const { return Capability().IsRocm(); }
 
 bool GemmRewriteTestBase::IsBlackwell() const {
   if (IsCuda()) {
-    return std::get<se::CudaComputeCapability>(Capability()).IsBlackwell();
+    return Capability().cuda_compute_capability()->IsBlackwell();
   }
   return false;
 }
@@ -70,9 +65,9 @@ stream_executor::GpuComputeCapability
 GemmRewriteTestBase::CudaHopperOrRocmCapability() {
   if (IsCuda()) {
     return se::CudaComputeCapability::Hopper();
-  } else {
-    return std::get<se::RocmComputeCapability>(Capability());
   }
+  return stream_executor::GpuComputeCapability{
+      *Capability().rocm_compute_capability()};
 }
 
 DebugOptions GemmRewriteTestBase::GetDebugOptionsForTest() const {
@@ -86,22 +81,21 @@ DebugOptions GemmRewriteTestBase::GetDebugOptionsForTest() const {
 
 bool GemmRewriteTestBase::SkipGpuBlasLtTest() {
   return !IsCuda() &&
-         !std::get<stream_executor::RocmComputeCapability>(Capability())
-              .has_hipblaslt() &&
+         !Capability().rocm_compute_capability()->has_hipblaslt() &&
          GetDebugOptionsForTest().xla_gpu_enable_cublaslt();
 }
 
 bool GemmRewriteTestBase::HasFp8Support() const {
   if (IsCuda()) {
-    return std::get<se::CudaComputeCapability>(Capability()).IsAtLeast(8, 9);
+    return Capability().cuda_compute_capability()->IsAtLeast(8, 9);
   }
-  return std::get<se::RocmComputeCapability>(Capability()).has_fp8_support();
+  return Capability().rocm_compute_capability()->has_fp8_support();
 }
 
 bool GemmRewriteTestBase::HasCudaComputeCapability(
     const stream_executor::CudaComputeCapability& cc) const {
   return IsCuda() &&
-         std::get<se::CudaComputeCapability>(Capability()).IsAtLeast(cc);
+         Capability().cuda_compute_capability()->SupportsAllFeaturesOf(cc);
 }
 
 ParameterizedGemmRewriteTestBase::ParameterizedGemmRewriteTestBase() {

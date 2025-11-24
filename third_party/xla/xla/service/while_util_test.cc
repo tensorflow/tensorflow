@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
@@ -28,8 +29,8 @@ limitations under the License.
 #include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -138,6 +139,53 @@ TEST_F(WhileUtilTest, MakeTwoInstructionsLive) {
                         op::GetTupleElement(first_half_param_reconstructed, 1),
                         op::GetTupleElement(op::Parameter(0), 2),
                         op::GetTupleElement(op::Parameter(0), 3)));
+}
+
+TEST_F(WhileUtilTest, MakeInstructionLiveInWithOriginalValue) {
+  const char* const hlo_string = R"(
+HloModule ModuleWithWhile
+
+while_body {
+  ROOT p_body = (s32[], s32[]) parameter(0)
+}
+
+while_condition {
+  p_cond = (s32[], s32[]) parameter(0)
+  ROOT result = pred[] constant(true)
+}
+
+ENTRY entry {
+  p_entry_0 = s32[] parameter(0), origin={{"p0"}}
+  p_entry_1 = s32[] parameter(1), origin={{"p1"}}
+  live_in_1 = f32[] parameter(2), origin={{"live_in_1"}}
+  live_in_2 = f32[] parameter(3)
+  live_tuple = (s32[], s32[]) tuple(p_entry_0, p_entry_1), origin={({"tuple_1"}, {"tuple_2"})}
+  while_init = (s32[], s32[]) tuple(p_entry_0, p_entry_1)
+  ROOT while0 = (s32[], s32[]) while(while_init), condition=while_condition, body=while_body, origin={({"p0_while"},{"p1_while"})}
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  HloComputation* entry_computation = module->entry_computation();
+  HloInstruction* while_instr = entry_computation->root_instruction();
+  ASSERT_EQ(while_instr->opcode(), HloOpcode::kWhile);
+  HloInstruction* live_in_1 = entry_computation->parameter_instruction(2);
+  HloInstruction* live_in_2 = entry_computation->parameter_instruction(3);
+  HloInstruction* live_tuple =
+      entry_computation->GetInstructionWithName("live_tuple");
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      WhileUtil::MakeInstructionsLiveInResult make_live_in_result,
+      WhileUtil::MakeInstructionsLiveIn(
+          while_instr,
+          /*instructions=*/{live_in_1, live_in_2, live_tuple}));
+
+  HloInstruction* new_while_instr = make_live_in_result.new_while_instr;
+  ASSERT_NE(new_while_instr->original_value(), nullptr);
+  EXPECT_EQ(new_while_instr->original_value()->ToString(),
+            "({\"p0_while\"}, {\"p1_while\"}, {\"live_in_1\"}, {}, "
+            "({\"tuple_1\"}, {\"tuple_2\"}))");
 }
 
 TEST_F(WhileUtilTest, GetInvariantGTEsForWhileBody) {

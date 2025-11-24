@@ -884,6 +884,37 @@ TEST(XplaneUtilsTest, XPlaneGroupingPropagatesGroupId) {
   });
 }
 
+TEST(XplaneUtilsTest, TestNormalizeTimestamps) {
+  XSpace xspace;
+  XPlaneBuilder host(xspace.add_planes());
+  host.SetName("/host:CPU");
+  auto l1 = CreateXLine(&host, "l1", "d1", 1, 100);
+  auto e1 = CreateXEvent(&host, l1, "event1", "display1", 1, 2);
+  CreateXStats(&host, &e1, "non_group_id", 2.0);
+  auto l2 = CreateXLine(&host, "l2", "d2", 1, 100);
+  auto e2 = CreateXEvent(&host, l2, "event2", "display2", 1, 2);
+  CreateXStats(&host, &e2, "non_group_id", 2.0);
+  NormalizeTimestamps(&xspace, 90);
+  EXPECT_EQ(l1.TimestampNs(), 10);
+  EXPECT_EQ(l2.TimestampNs(), 10);
+}
+
+TEST(XplaneUtilsTest, TestDenormalizeTimestamps) {
+  XSpace xspace;
+  XPlaneBuilder host(xspace.add_planes());
+  host.SetName("/host:CPU");
+  auto l1 = CreateXLine(&host, "l1", "d1", 1, 100);
+  auto e1 = CreateXEvent(&host, l1, "event1", "display1", 1, 2);
+  CreateXStats(&host, &e1, "non_group_id", 2.0);
+  auto l2 = CreateXLine(&host, "l2", "d2", 1, 100);
+  auto e2 = CreateXEvent(&host, l2, "event2", "display2", 1, 2);
+  CreateXStats(&host, &e2, "non_group_id", 2.0);
+  NormalizeTimestamps(&xspace, 90);
+  DenormalizeTimestamps(&xspace, 90);
+  EXPECT_EQ(l1.TimestampNs(), 100);
+  EXPECT_EQ(l2.TimestampNs(), 100);
+}
+
 }  // namespace
 }  // namespace profiler
 }  // namespace tsl

@@ -54,7 +54,6 @@ cc_library(
         "//xla/hlo/tools/hlo_diff/graph:hlo_gumgraph",
         "//xla/hlo/tools/hlo_diff/graph:hlo_gumgraph_node",
         "//xla/service:call_graph",
-        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log",
     ],
 )
@@ -119,8 +118,6 @@ cc_library(
         "//xla/hlo/ir:hlo",
         "//xla/hlo/tools/hlo_diff/graph:hlo_gumgraph_node",
         "//xla/hlo/tools/hlo_diff/graph/utils:hlo_gumgraph_bfs",
-        "@com_google_absl//absl/base:nullability",
-        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/functional:function_ref",
     ],
@@ -147,12 +144,12 @@ cc_library(
         "//xla/hlo/tools/hlo_diff/graph:hlo_gumgraph_node",
         "//xla/hlo/tools/hlo_diff/graph/utils:hlo_gumgraph_bfs",
         "//xla/hlo/tools/hlo_diff/graph/utils:hlo_gumgraph_dfs",
-        "//xla/service:hlo_value",
         "@com_google_absl//absl/base:nullability",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:die_if_null",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
     ],
 )
@@ -177,11 +174,13 @@ cc_library(
     srcs = ["top_down_matcher.cc"],
     hdrs = ["top_down_matcher.h"],
     deps = [
+        ":bipartite_matching",
         ":gumgraph_matcher",
         "//xla/hlo/tools/hlo_diff:hlo_gumgraph_mappings",
         "//xla/hlo/tools/hlo_diff/graph:hlo_gumgraph",
         "//xla/hlo/tools/hlo_diff/graph:hlo_gumgraph_node",
         "//xla/hlo/tools/hlo_diff/graph/utils:hlo_gumgraph_dfs",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:die_if_null",
     ],
@@ -192,6 +191,36 @@ xla_cc_test(
     srcs = ["top_down_matcher_test.cc"],
     deps = [
         ":top_down_matcher",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/hlo/testlib:verified_hlo_module",
+        "//xla/hlo/tools/hlo_diff:hlo_gumgraph_mappings",
+        "//xla/hlo/tools/hlo_diff/graph:hlo_gumgraph",
+        "//xla/hlo/tools/hlo_diff/utils:test_util",
+        "//xla/tsl/platform:statusor",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "manual_matcher",
+    srcs = ["manual_matcher.cc"],
+    hdrs = ["manual_matcher.h"],
+    deps = [
+        ":gumgraph_matcher",
+        "//xla/hlo/tools/hlo_diff:hlo_gumgraph_mappings",
+        "//xla/hlo/tools/hlo_diff/graph:hlo_gumgraph",
+        "//xla/hlo/tools/hlo_diff/graph:hlo_gumgraph_node",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:die_if_null",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+xla_cc_test(
+    name = "manual_matcher_test",
+    srcs = ["manual_matcher_test.cc"],
+    deps = [
+        ":manual_matcher",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/hlo/testlib:verified_hlo_module",
         "//xla/hlo/tools/hlo_diff:hlo_gumgraph_mappings",

@@ -277,16 +277,16 @@ class SimpleHashTableResource : public ::tensorflow::ResourceBase {
     mutex_lock l(mu_);
     for (const auto& pair : table_) {
       if (count >= num_pairs) {
-        strings::StrAppend(&rval, "...");
+        absl::StrAppend(&rval, "...");
         break;
       }
-      std::string kv_str = strings::StrCat(pair.first, ": ", pair.second);
-      strings::StrAppend(&rval, kv_str.substr(0, max_kv_str_len));
-      if (kv_str.length() > max_kv_str_len) strings::StrAppend(&rval, " ...");
-      strings::StrAppend(&rval, ", ");
+      std::string kv_str = absl::StrCat(pair.first, ": ", pair.second);
+      absl::StrAppend(&rval, kv_str.substr(0, max_kv_str_len));
+      if (kv_str.length() > max_kv_str_len) absl::StrAppend(&rval, " ...");
+      absl::StrAppend(&rval, ", ");
       count += 1;
     }
-    strings::StrAppend(&rval, "}");
+    absl::StrAppend(&rval, "}");
     return rval;
   }
 

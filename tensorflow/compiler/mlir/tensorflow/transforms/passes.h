@@ -182,6 +182,11 @@ struct StandardPipelineOptions
       llvm::cl::desc(
           "Enable StableHLO shape propagation in the TF shape inference pass."),
       llvm::cl::init(false)};
+  ListOption<std::string> ops_to_preserve{
+      *this, "ops-to-preserve",
+      llvm::cl::desc(
+          "list of ops to preserve during graph pruning. This is "
+          "useful for keeping ops with side effects, e.g. DebugIdentityOp.")};
 };
 
 // Propagates the pass manager with the passes involved in transforming or
@@ -280,6 +285,9 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateConstantOpDeviceAssignmentPass();
 // tf_executor.graph and each tf_executor.island in tf_executor.graph only has a
 // single op.
 std::unique_ptr<OperationPass<ModuleOp>> CreateVerifySuitableForExportPass();
+
+// Creates an op ordering favorable for the EmbeddingProgramKey pass.
+std::unique_ptr<OperationPass<ModuleOp>> CreateOrderForProgramKeyPass();
 
 // Returns pass that prepares TPU computation to be legal for export to
 // TensorFlow.

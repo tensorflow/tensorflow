@@ -110,8 +110,10 @@ class IotaTileAssignment {
   std::optional<IotaTileAssignment> Transpose(absl::Span<const int> perm) const;
 
   void Print(Printer* printer) const;
+  void PrintArray(Printer* printer) const;
 
   std::string ToString() const;
+  std::string ArrayToString() const;
 
   // Materializes array representation of IotaTileAssignment.
   Array<int64_t> ToArray() const;
@@ -147,24 +149,17 @@ class IotaTileAssignment {
   int size_bytes() const {
     return ndims_ * kPerDimBytes + reshape_ndims_ * kPerReshapeDimBytes;
   }
-
-  bool next_index(absl::Span<int64_t> index) const {
-    DCHECK_EQ(index.size(), ndims_);
-    for (int64_t i = ndims_ - 1; i >= 0; --i) {
-      index[i]++;
-      if (index[i] < dims_ptr()[i]) {
-        return true;
-      }
-      index[i] = 0;
-    }
-    return false;
-  }
   int32_t ndims_;
   int32_t reshape_ndims_;
   // Contiguous buffer storing `int64_t dims[]`, `int64_t reshape_dims[]`,
   // `int transpose_perm[]` in order.
   std::unique_ptr<char[]> storage_;
 };
+
+// Materializes array representation of IotaTileAssignment.
+Array<int64_t> ToArray(absl::Span<const int64_t> reshape_dims,
+                       absl::Span<const int> transpose_perm,
+                       absl::Span<const int64_t> dims);
 
 // Internal class that represents how an ordered list of device IDs are sharded
 // along different dimensions. It manages full or compact representation of the
@@ -176,14 +171,14 @@ class IotaTileAssignment {
 class TileAssignment {
  public:
   TileAssignment() : array_(ReplicatedArray()) {}
+
   explicit TileAssignment(std::shared_ptr<const Array<int64_t>> array)
       : shared_array_(std::move(array)), array_(shared_array_.get()) {}
   explicit TileAssignment(int64_t device_id)
       : TileAssignment(std::make_shared<const Array<int64_t>>(
             std::initializer_list<int64_t>{1}, device_id)) {}
+
   explicit TileAssignment(IotaTileAssignment iota) : iota_(std::move(iota)) {}
-  explicit TileAssignment(std::initializer_list<int64_t> dims)
-      : iota_(IotaTileAssignment::Create(dims)) {}
   explicit TileAssignment(absl::Span<const int64_t> dims)
       : iota_(IotaTileAssignment::Create(dims)) {}
   explicit TileAssignment(absl::Span<const int64_t> dims,
@@ -244,8 +239,10 @@ class TileAssignment {
   [[nodiscard]] TileAssignment Transpose(absl::Span<const int> perm) const;
 
   void Print(Printer* printer) const;
+  void PrintArray(Printer* printer) const;
 
   std::string ToString() const;
+  std::string ArrayToString() const;
 
   bool UsesDevice(int64_t device) const;
 
@@ -271,13 +268,6 @@ class TileAssignment {
 
  private:
   friend class HloSharding;
-  // TODO(b/281892190): Consider changing int64_t to int32_t since it's unlikely
-  // to have so many devices to overflow int32_t in practice.
-  explicit TileAssignment(IotaTileAssignment iota,
-                          std::shared_ptr<const Array<int64_t>> shared_array)
-      : iota_(std::move(iota)),
-        shared_array_(std::move(shared_array)),
-        array_(shared_array_.get()) {}
 
   void MaybeMaterializeFullArray() const ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 

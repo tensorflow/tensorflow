@@ -22,10 +22,14 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/flags/declare.h"
+#include "absl/flags/flag.h"
 #include "absl/strings/string_view.h"
 #include "xla/backends/cpu/benchmarks/aot_benchmark_helper.h"
 #include "xla/backends/cpu/benchmarks/hlo_benchmark_runner.h"
 #include "xla/tsl/platform/test_benchmark.h"
+
+ABSL_DECLARE_FLAG(bool, xla_cpu_benchmark_aot);
 
 namespace xla::cpu {
 
@@ -253,23 +257,32 @@ class MultiBenchmarkConfig {
 
 // Benchmarks 'fn' in JIT and AOT modes. The JIT benchmark
 // keeps the given 'name'; AOT is suffixed with '_Aot'.
-inline MultiBenchmarkConfig* RegisterJitAndAotBenchmarks(
-    absl::string_view name, void(fn)(benchmark::State&, HloBenchmarkOptions)) {
+template <typename Func, typename... Arg>
+inline MultiBenchmarkConfig* RegisterJitAndAotBenchmarks(absl::string_view name,
+                                                         Func&& fn,
+                                                         Arg&&... arg) {
   std::string jit_name(name);
-  std::string aot_name = jit_name + "_Aot";
-  auto jit_fn = [fn](benchmark::State& state) {
+  auto jit_fn = [fn, arg...](benchmark::State& state) {
     HloBenchmarkOptions options;
-    fn(state, std::move(options));
+    fn(state, std::move(options), arg...);
   };
-  auto aot_fn = [fn](benchmark::State& state) {
-    HloBenchmarkOptions options;
-    options.aot_options = GetAotCompilationOptions();
-    fn(state, std::move(options));
-  };
+
   benchmark::internal::Benchmark* jit =
       benchmark::RegisterBenchmark(jit_name, jit_fn);
+
+  if (!absl::GetFlag(FLAGS_xla_cpu_benchmark_aot)) {
+    return new MultiBenchmarkConfig({jit});
+  }
+
+  std::string aot_name = jit_name + "_Aot";
+  auto aot_fn = [fn, arg...](benchmark::State& state) {
+    HloBenchmarkOptions options;
+    options.aot_options = GetAotCompilationOptions();
+    fn(state, std::move(options), arg...);
+  };
   benchmark::internal::Benchmark* aot =
       benchmark::RegisterBenchmark(aot_name, aot_fn);
+
   return new MultiBenchmarkConfig({jit, aot});
 };
 

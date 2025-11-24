@@ -40,7 +40,7 @@ func.func @main(%arg0: !mhlo.token) -> !mhlo.token {
 }
 
 // CHECK: after-all
-// CHECK-SAME: metadata={source_file="file_name" source_line=2}
+// CHECK-SAME: metadata={source_file="file_name" source_line=2 source_end_line=2 source_column=8 source_end_column=8}
 
 // -----
 
@@ -62,7 +62,7 @@ func.func @main(%arg0: !mhlo.token) -> !mhlo.token {
 }
 
 // CHECK: after-all
-// CHECK-SAME: metadata={op_name="name(anothername)" source_file="file_name" source_line=2}
+// CHECK-SAME: metadata={op_name="name(anothername)" source_file="file_name" source_line=2 source_end_line=2 source_column=8 source_end_column=8}
 
 // -----
 
@@ -73,7 +73,7 @@ func.func @main(%arg0: !mhlo.token) -> !mhlo.token {
 }
 
 // CHECK: after-all
-// CHECK-SAME: metadata={op_name="fused/location/file" source_file="source.txt" source_line=42}
+// CHECK-SAME: metadata={op_name="fused/location/file" source_file="source.txt" source_line=42 source_end_line=42 source_column=5 source_end_column=5}
 
 // -----
 
@@ -84,7 +84,7 @@ func.func @main(%arg0: !mhlo.token) -> !mhlo.token {
 }
 
 // CHECK: after-all
-// CHECK-SAME: metadata={op_name="name1;name2" source_file="nested_fusion" source_line=5}
+// CHECK-SAME: metadata={op_name="name1;name2" source_file="nested_fusion" source_line=5 source_end_line=5 source_column=42 source_end_column=42}
 
 // -----
 
@@ -95,7 +95,7 @@ func.func @main(%arg0: !mhlo.token) -> !mhlo.token {
 }
 
 // CHECK: after-all
-// CHECK-SAME: metadata={op_name="multiple_sources" source_file="source2" source_line=3}
+// CHECK-SAME: metadata={op_name="multiple_sources" source_file="source2" source_line=3 source_end_line=3 source_column=4 source_end_column=4}
 
 // -----
 
@@ -109,3 +109,62 @@ func.func @main(%arg0: tensor<4xf32> loc("x"), %arg1: tensor<4xf32> loc("y")) ->
 // CHECK-SAME: metadata={op_name="x"}
 // CHECK: parameter(1)
 // CHECK-SAME: metadata={op_name="y"}
+
+// -----
+
+// CHECK-LABEL: %main
+func.func @main(%arg0: !mhlo.token) -> !mhlo.token {
+  %0 = "mhlo.after_all"(%arg0) : (!mhlo.token) -> !mhlo.token loc(#type_loc)
+  func.return %0 : !mhlo.token
+}
+#name_loc = loc("aname")
+#type_loc = loc("atype:"(#name_loc))
+
+// CHECK: after-all
+// CHECK-SAME: metadata={op_type="atype" op_name="aname"}
+
+// -----
+
+// CHECK-LABEL: %main
+module @m {
+  func.func public @main(%arg0: tensor<f64>) -> (tensor<f64>) {
+    %0 = call @foo(%arg0) : (tensor<f64>) -> tensor<f64> loc("x")
+    return %0 : tensor<f64>
+  }
+  func.func private @foo(%arg0: tensor<f64>) -> tensor<f64> {
+    %0 = mhlo.cosine %arg0 : tensor<f64>
+    return %0 : tensor<f64>
+  }
+}
+
+// CHECK: call({{.*}}), to_apply=%foo.{{[0-9.]+}}, metadata={op_name="x"}
+
+// -----
+
+// CHECK-LABEL: %main
+func.func @main(%arg0: tensor<1x2xf32>, %arg1: tensor<1x2xf32>) -> tensor<1x2xf32> {
+  %0 = "mhlo.add"(%arg0, %arg1) : (tensor<1x2xf32>, tensor<1x2xf32>) -> tensor<1x2xf32> loc("my_add")
+  func.return %0 : tensor<1x2xf32>
+}
+
+// CHECK: my_add{{.*}}, metadata={op_name="my_add"}
+
+// -----
+
+// CHECK-LABEL: %main
+func.func @main(%arg0: tensor<2xf32> loc("inputs.x"), %arg1: tensor<2xf32> loc("inputs.y")) -> tensor<2xf32> {
+  %0 = "mhlo.add"(%arg0, %arg1) : (tensor<2xf32>, tensor<2xf32>) -> tensor<2xf32> loc("my_add")
+  func.return %0 : tensor<2xf32>
+}
+
+// CHECK: inputs_x{{.*}}, metadata={op_name="inputs.x"}
+
+// -----
+
+// CHECK-LABEL: %main
+func.func @main(%arg0: tensor<2xf32> loc("Arg_0.1"), %arg1: tensor<2xf32> loc("Arg_1.1")) -> tensor<2xf32> {
+  %0 = "mhlo.add"(%arg0, %arg1) : (tensor<2xf32>, tensor<2xf32>) -> tensor<2xf32> loc("my_add")
+  func.return %0 : tensor<2xf32>
+}
+
+// CHECK: Arg_0{{.*}}, metadata={op_name="Arg_0.1"}

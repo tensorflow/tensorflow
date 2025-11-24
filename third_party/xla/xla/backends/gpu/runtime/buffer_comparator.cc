@@ -21,6 +21,8 @@ limitations under the License.
 #include <type_traits>
 #include <vector>
 
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
@@ -35,7 +37,10 @@ limitations under the License.
 #include "xla/stream_executor/gpu/gpu_kernel_registry.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace gpu {
@@ -206,6 +211,10 @@ BufferComparator::BufferComparator(const Shape& shape, double tolerance,
   // Normalize complex shapes: since we treat the passed array as a contiguous
   // storage it does not matter which dimension are we doubling.
   auto double_dim_size = [&]() {
+    // A 0D tensor is equal to a 1D tensor of size 1 in a buffer.
+    if (shape_.dimensions().empty()) {
+      shape_.add_dimensions(1);
+    }
     int64_t prev_zero_dim_size = shape_.dimensions(0);
     shape_.set_dimensions(0, prev_zero_dim_size * 2);
   };

@@ -65,3 +65,30 @@ cc_library(
         "@com_google_googletest//:gtest_for_library",
     ],
 )
+
+cc_library(
+    name = "bidirectional_map",
+    hdrs = ["bidirectional_map.h"],
+    deps = ["@com_google_absl//absl/container:flat_hash_map"],
+)
+
+cc_library(
+    name = "text_diff",
+    srcs = ["text_diff.cc"],
+    hdrs = ["text_diff.h"],
+    deps = [
+        "@com_google_absl//absl/base:no_destructor",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/strings:string_view",
+    ],
+)
+
+xla_cc_test(
+    name = "text_diff_test",
+    srcs = ["text_diff_test.cc"],
+    deps = [
+        ":text_diff",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
+    ],
+)

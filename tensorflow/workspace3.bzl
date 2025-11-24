@@ -2,12 +2,11 @@
 
 load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
 load("//third_party:repo.bzl", "tf_vendored")
-load("//third_party/llvm:workspace.bzl", llvm = "repo")
 load("//third_party/tf_runtime:workspace.bzl", tf_runtime = "repo")
 
 def workspace():
-    tf_vendored(name = "local_xla", relpath = "third_party/xla")
-    tf_vendored(name = "local_tsl", relpath = "third_party/xla/third_party/tsl")
+    tf_vendored(name = "local_xla", path = "third_party/xla")
+    tf_vendored(name = "local_tsl", path = "third_party/xla/third_party/tsl")
 
     http_archive(
         name = "io_bazel_rules_closure",
@@ -24,10 +23,10 @@ def workspace():
     # https://github.com/bazelbuild/bazel-skylib/releases
     http_archive(
         name = "bazel_skylib",
-        sha256 = "74d544d96f4a5bb630d465ca8bbcfe231e3594e5aae57e1edbf17a6eb3ca2506",
+        sha256 = "bc283cdfcd526a52c3201279cda4bc298652efa898b10b4db0837dc51652756f",
         urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/bazelbuild/bazel-skylib/releases/download/1.3.0/bazel-skylib-1.3.0.tar.gz",
-            "https://github.com/bazelbuild/bazel-skylib/releases/download/1.3.0/bazel-skylib-1.3.0.tar.gz",
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/bazelbuild/bazel-skylib/releases/download/1.7.1/bazel-skylib-1.7.1.tar.gz",
+            "https://github.com/bazelbuild/bazel-skylib/releases/download/1.7.1/bazel-skylib-1.7.1.tar.gz",
         ],
     )
 
@@ -59,16 +58,6 @@ def workspace():
         ],
     )
 
-    # Platforms
-    http_archive(
-        name = "platforms",
-        sha256 = "29742e87275809b5e598dc2f04d86960cc7a55b3067d97221c9abbc9926bff0f",
-        urls = [
-            "https://mirror.bazel.build/github.com/bazelbuild/platforms/releases/download/0.0.11/platforms-0.0.11.tar.gz",
-            "https://github.com/bazelbuild/platforms/releases/download/0.0.11/platforms-0.0.11.tar.gz",
-        ],
-    )
-
     # Maven dependencies.
     RULES_JVM_EXTERNAL_TAG = "4.3"
     http_archive(
@@ -87,10 +76,6 @@ def workspace():
             "https://github.com/bazelbuild/platforms/releases/download/0.0.11/platforms-0.0.11.tar.gz",
         ],
     )
-
-    # Load the raw llvm-project.  llvm does not have build rules set up by default,
-    # but provides a script for setting up build rules via overlays.
-    llvm("llvm-raw")
 
 # Alias so it can be loaded without assigning to a different symbol to prevent
 # shadowing previous loads and trigger a buildifier warning.

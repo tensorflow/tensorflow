@@ -104,7 +104,6 @@ INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(LocalResponseNormalizationOp);
 INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(NegOp);
 INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(RoundOp);
 INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(SinOp);
-INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(SqrtOp);
 INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(SquareOp);
 // go/keep-sorted end
 
@@ -252,8 +251,8 @@ bool ShouldFoldOperation(Operation* inst) {
   int64_t operands_size = get_size(inst->getOperandTypes());
 
   constexpr int kSizeFactor = 2;
-  constexpr int64_t kResultsSizeThreshold = (1 << 16);   // 64 Kib =   8 KiB
-  constexpr int64_t kOperandsSizeThreshold = (1 << 30);  //  1 Gib = 128 MiB
+  constexpr int64_t kResultsSizeThreshold = (1 << 19);                // 64 KiB
+  constexpr int64_t kOperandsSizeThreshold = 200L * 1024 * 1024 * 8;  // 200 MiB
 
   return (operands_size <= kOperandsSizeThreshold) &&
          ((results_size <= kResultsSizeThreshold) ||
@@ -991,6 +990,26 @@ int64_t AddOp::GetArithmeticCount(Operation* op) {
 }
 
 //===----------------------------------------------------------------------===//
+// CeilOp
+//===----------------------------------------------------------------------===//
+
+OpFoldResult CeilOp::fold(FoldAdaptor adaptor) {
+  if (!ShouldFoldOperation(this->getOperation())) return {};
+
+  auto operands = adaptor.getOperands();
+  auto result_type = getType();
+  if (!IsF32ShapedType(result_type)) return {};
+
+  auto compute = [](APFloat value) -> APFloat {
+    float f = value.convertToFloat();
+    float result = std::ceil(f);
+    return APFloat(result);
+  };
+
+  return ConstFoldUnaryOp(result_type, operands[0], compute);
+}
+
+//===----------------------------------------------------------------------===//
 // FloorOp
 //===----------------------------------------------------------------------===//
 
@@ -1334,6 +1353,13 @@ LogicalResult GatherOp::verify() {
 }
 
 OpFoldResult GatherOp::fold(GatherOp::FoldAdaptor adaptor) {
+  // Don't fold when the tensor we gather from (params) has non-int/float/index
+  // type. E.g. in case of quantized type, casting to DenseElementsAttr will
+  // strip the quantization information and cause type mismatch problems.
+  if (!getType().getElementType().isIntOrIndexOrFloat()) {
+    return {};
+  }
+
   // Get the params tensor type/shape/data
   auto params = mlir::dyn_cast_or_null<DenseElementsAttr>(adaptor.getParams());
   if (!params) {
@@ -1445,6 +1471,82 @@ OpFoldResult GatherOp::fold(GatherOp::FoldAdaptor adaptor) {
     }
   }
   return DenseElementsAttr::get(result_type, result_values);
+}
+
+//===----------------------------------------------------------------------===//
+// GatherNd op
+//===----------------------------------------------------------------------===//
+
+OpFoldResult GatherNdOp::fold(GatherNdOp::FoldAdaptor adaptor) {
+  auto params = mlir::dyn_cast_or_null<DenseElementsAttr>(adaptor.getParams());
+  auto indices =
+      mlir::dyn_cast_or_null<DenseIntElementsAttr>(adaptor.getIndices());
+
+  if (!params || !indices) {
+    return nullptr;
+  }
+
+  auto params_type = params.getType();
+  auto indices_type = indices.getType();
+  auto params_shape = params_type.getShape();
+  auto indices_shape = indices_type.getShape();
+
+  // The last dimension of 'indices' is the coordinate depth.
+  if (indices_shape.empty()) {
+    return nullptr;  // Invalid indices shape.
+  }
+  int64_t index_depth = indices_shape.back();
+
+  // The index depth cannot exceed the rank of the params tensor.
+  assert(index_depth <= params_shape.size() &&
+         "Index depth cannot be greater than params rank.");
+
+  // Calculate the output shape.
+  // output_shape = indices_shape[:-1] + params_shape[index_depth:]
+  llvm::SmallVector<int64_t> output_shape;
+  output_shape.append(indices_shape.begin(), indices_shape.end() - 1);
+  output_shape.append(params_shape.begin() + index_depth, params_shape.end());
+
+  auto output_type = params_type.clone(output_shape);
+
+  // Calculate the size of each slice we will gather.
+  int64_t slice_size = 1;
+  for (int64_t i = index_depth; i < params_shape.size(); ++i) {
+    slice_size *= params_shape[i];
+  }
+
+  // Prepare for the gathering logic.
+  auto params_values = params.getValues<mlir::Attribute>();
+  auto indices_values_it = indices.getValues<mlir::APInt>().begin();
+  std::vector<mlir::Attribute> result_values;
+  result_values.reserve(output_type.getNumElements());
+
+  const int64_t num_indices = indices.getNumElements() / index_depth;
+
+  // Implement the core gathering logic.
+  for (int64_t i = 0; i < num_indices; ++i) {
+    // For each output element, first find the N-d coordinate from 'indices'.
+    uint64_t linear_index = 0;
+    for (int64_t j = 0; j < index_depth; ++j) {
+      // Read the coordinate value and advance the iterator.
+      uint64_t coord = (*indices_values_it++).getZExtValue();
+
+      // Convert the N-d coordinate into a linear index for the slice.
+      // This is equivalent to: linear_index = (linear_index * params_shape[0] +
+      // c_0) * params_shape[1] + c_1 ...
+      linear_index = linear_index * params_shape[j] + coord;
+    }
+
+    // The start of the slice in the flattened 'params' buffer.
+    uint64_t slice_start_offset = linear_index * slice_size;
+
+    // Copy the entire slice into the result vector.
+    for (int64_t j = 0; j < slice_size; ++j) {
+      result_values.push_back(params_values[slice_start_offset + j]);
+    }
+  }
+
+  return mlir::DenseElementsAttr::get(output_type, result_values);
 }
 
 //===----------------------------------------------------------------------===//
@@ -1628,11 +1730,20 @@ LogicalResult FullyConnectedOp::fold(FoldAdaptor adaptor,
       !(!getBias() || mlir::isa<NoneType>(getBias().getType()));
 
   // Get the tensors.
-  DenseElementsAttr input_tensor, weights_tensor, bias_tensor;
-  if (!matchPattern(getInput(), m_Constant(&input_tensor)) ||
-      !matchPattern(getFilter(), m_Constant(&weights_tensor)) ||
-      (has_bias && !matchPattern(getBias(), m_Constant(&bias_tensor)))) {
+  auto operands = adaptor.getOperands();
+  DenseElementsAttr input_tensor =
+      dyn_cast_or_null<DenseElementsAttr>(operands[0]);
+  DenseElementsAttr weights_tensor =
+      dyn_cast_or_null<DenseElementsAttr>(operands[1]);
+  DenseElementsAttr bias_tensor;
+
+  if (!input_tensor || !weights_tensor) {
     return failure();
+  }
+
+  if (has_bias) {
+    bias_tensor = dyn_cast_or_null<DenseElementsAttr>(operands[2]);
+    if (!bias_tensor) return failure();
   }
 
   // Get the tensor types.
@@ -1657,58 +1768,60 @@ LogicalResult FullyConnectedOp::fold(FoldAdaptor adaptor,
     return failure();
   }
 
-  auto is_foldable = [](llvm::ArrayRef<int64_t> shape) {
-    return shape.size() == 1 || (shape.size() == 2 && shape.front() == 1);
-  };
-
-  const bool weights_foldable = weights_type.getShape().size() == 2;
-  const bool bias_foldable = !has_bias || is_foldable(bias_type.getShape());
-
-  // Folding only implemented for 1D input, 2D weights and 1D bias
-  if (!is_foldable(input_type.getShape()) || !bias_foldable ||
-      !weights_foldable) {
+  if (weights_type.getRank() != 2) {
     return failure();
   }
 
-  // Get the sizes
-  const auto input_size = input_type.getNumElements();
-  const auto output_size = output_type.getNumElements();
+  const int64_t in_dim = weights_type.getDimSize(1);
+  const int64_t out_dim = weights_type.getDimSize(0);
 
-  // Get iterators to the tensors.
-  const auto input_values_it = input_tensor.getValues<float>().begin();
-  const auto weights_values_ptr = weights_tensor.getValues<float>().begin();
-  auto weights_row_it = weights_values_ptr;
-  // The 'else' case could be nullptr, but the types don't match.
-  auto bias_values_it =
-      has_bias ? bias_tensor.getValues<float>().begin() : input_values_it;
+  if (has_bias) {
+    if (bias_type.getRank() > 2 ||
+        (bias_type.getRank() == 2 && bias_type.getDimSize(0) != 1) ||
+        bias_type.getNumElements() != out_dim) {
+      return failure();
+    }
+  }
+
+  const int64_t batch_size = input_type.getNumElements() / in_dim;
+
+  if (output_type.getNumElements() != batch_size * out_dim) {
+    return failure();
+  }
+
+  auto input_values_range = input_tensor.getValues<float>();
+  auto weights_values_range = weights_tensor.getValues<float>();
+  std::optional<decltype(input_values_range)> bias_values_range;
+  if (has_bias) bias_values_range = bias_tensor.getValues<float>();
 
   // Do the actual folding, one output at a time.
   std::vector<float> result_values;
-  result_values.reserve(output_size);
+  result_values.reserve(batch_size * out_dim);
 
-  for (int i = 0; i < output_size; ++i) {
-    // Dot product with Kahan/Neumaier summation to minimize numeric errors.
-    float sum = has_bias ? *bias_values_it : 0.0f;
-    float compensation = 0.0f;
-    for (int j = 0; j < input_size; ++j) {
-      const float addend = input_values_it[j] * weights_row_it[j];
-      const float new_sum = sum + addend;
-      // DO NOT enable -funsafe-math-optimizations here.
-      // There is a test detecting unsafe optimizations.
-      // Unsafe math optimizations can reorder float formulas, and set the
-      // compensation to constant 0. The formula must be evaluated as written
-      // for the algorithm to work.
-      // (Note: -ffast-math is a superset of -funsafe-math-optimizations.)
-      if (std::abs(sum) >= std::abs(addend)) {
-        compensation += (sum - new_sum) + addend;
-      } else {
-        compensation += (addend - new_sum) + sum;
+  for (int b = 0; b < batch_size; ++b) {
+    for (int o = 0; o < out_dim; ++o) {
+      // Dot product with Kahan/Neumaier summation to minimize numeric errors.
+      float sum = has_bias ? (*bias_values_range)[o] : 0.0f;
+      float compensation = 0.0f;
+      for (int i = 0; i < in_dim; ++i) {
+        const float addend = input_values_range[b * in_dim + i] *
+                             weights_values_range[o * in_dim + i];
+        const float new_sum = sum + addend;
+        // DO NOT enable -funsafe-math-optimizations here.
+        // There is a test detecting unsafe optimizations.
+        // Unsafe math optimizations can reorder float formulas, and set the
+        // compensation to constant 0. The formula must be evaluated as written
+        // for the algorithm to work.
+        // (Note: -ffast-math is a superset of -funsafe-math-optimizations.)
+        if (std::abs(sum) >= std::abs(addend)) {
+          compensation += (sum - new_sum) + addend;
+        } else {
+          compensation += (addend - new_sum) + sum;
+        }
+        sum = new_sum;
       }
-      sum = new_sum;
+      result_values.push_back(sum + compensation);
     }
-    result_values.push_back(sum + compensation);
-    weights_row_it += input_size;
-    bias_values_it++;
   }
 
   // Set result tensor
@@ -4509,7 +4622,7 @@ bool VerifyStridedSliceOpInputRankConstraints(StridedSliceOp op) {
   const int num_input_dims = ranked_input_type.getRank();
 
   // The kernel will reshape the input tensor with new axis, it only supports
-  // this reshaped tensor up to 5D.
+  // this reshaped tensor up to 6D.
   const uint32_t ellipsis_mask = op.getEllipsisMask();
   const uint32_t new_axis_mask = op.getNewAxisMask();
   int num_added_axis = 0;
@@ -4518,7 +4631,7 @@ bool VerifyStridedSliceOpInputRankConstraints(StridedSliceOp op) {
       num_added_axis++;
     }
   }
-  return (num_input_dims + num_added_axis <= 5);
+  return (num_input_dims + num_added_axis <= 6);
 }
 
 LogicalResult StridedSliceOp::verify() {
@@ -4849,7 +4962,7 @@ void IfOp::getSuccessorRegions(RegionBranchPoint point,
                                SmallVectorImpl<RegionSuccessor>& regions) {
   // The `then` and the `else` region branch back to the parent operation.
   if (!point.isParent()) {
-    regions.push_back(RegionSuccessor(getResults()));
+    regions.push_back(RegionSuccessor(getOperation(), getResults()));
     return;
   }
 
@@ -5119,6 +5232,22 @@ int64_t SoftmaxOp::GetArithmeticCount(Operation* op) {
 //===----------------------------------------------------------------------===//
 // TanhOp
 //===----------------------------------------------------------------------===//
+
+OpFoldResult TanhOp::fold(FoldAdaptor adaptor) {
+  if (!ShouldFoldOperation(this->getOperation())) return {};
+
+  auto operands = adaptor.getOperands();
+  Type result_type = getType();
+  // Only constant fold for tensor of f32 is implemented.
+  if (!IsF32ShapedType(result_type)) return nullptr;
+
+  auto compute = [](APFloat value) -> APFloat {
+    float f = value.convertToFloat();
+    float result = std::tanh(f);
+    return APFloat(result);
+  };
+  return ConstFoldUnaryOp(result_type, operands[0], compute);
+}
 
 int64_t TanhOp::GetArithmeticCount(Operation* op) {
   int64_t count;
@@ -5605,6 +5734,10 @@ static FailureOr<SmallVector<int32_t>> parseI32Array(AsmParser& parser) {
 
 }  // namespace TFL
 }  // namespace mlir
+
+using namespace mlir;  // NOLINT
+using mlir::TFL::ControlType;
+using mlir::TFL::LSTMKernelTypeAttr;
 
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops_dialect.cc.inc"
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops_enums.cc.inc"

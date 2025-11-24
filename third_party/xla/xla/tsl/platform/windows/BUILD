@@ -45,6 +45,7 @@ cc_library(
     deps = [
         ":error_windows",
         ":wide_char",
+        "//xla/tsl/concurrency:executor",
         "//xla/tsl/platform:env_time",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:file_statistics",
@@ -55,7 +56,9 @@ cc_library(
         "//xla/tsl/platform:threadpool_interface",
         "//xla/tsl/platform:types",
         "//xla/tsl/protobuf:error_codes_proto_impl_cc",
+        "@com_google_absl//absl/base:nullability",
         "@com_google_absl//absl/functional:any_invocable",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/time",
         "@eigen_archive//:eigen3",
         "@local_tsl//tsl/platform",
@@ -172,6 +175,7 @@ cc_library(
     name = "platform_port",
     srcs = [
         "port.cc",
+        "//xla/tsl/platform:numa_noop.cc",
         "@local_tsl//tsl/platform:cpu_info.cc",
     ],
     hdrs = [
@@ -195,6 +199,7 @@ cc_library(
         "//xla/tsl/platform:dynamic_annotations",
         "//xla/tsl/platform:logging",
         "//xla/tsl/platform:types",
+        "@com_google_absl//absl/base:core_headers",
         "@local_tsl//tsl/platform",
         "@snappy",
     ],

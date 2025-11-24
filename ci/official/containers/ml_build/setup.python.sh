@@ -24,7 +24,7 @@ VERSION=$1
 REQUIREMENTS=$2
 
 # Install Python packages for this container's version
-if [[ ${VERSION} == "python3.13-nogil" ]]; then
+if [[ ${VERSION} == "python3.13-nogil" || ${VERSION} == "python3.14-nogil" ]]; then
   cat >pythons.txt <<EOF
 $VERSION
 EOF
@@ -43,34 +43,7 @@ $VERSION-distutils
 EOF
 fi
 
-if [[ ${VERSION} == "python3.14" ]]; then
-  # Build python 3.14.0b1 from source now. This is a temporary solution until
-  # the apt-get install python3.14 installation is stable to use.
-  # TODO(kanglan): Remove this once official python 3.14 is available in astral
-  # python standalone build repo and the rules_python patch is updated.
-  apt update && apt install -y libssl-dev zlib1g-dev libbz2-dev libreadline-dev libncurses5-dev libffi-dev liblzma-dev
-  wget https://www.python.org/ftp/python/3.14.0/Python-3.14.0b1.tar.xz
-  tar -xf Python-3.14.0b1.tar.xz
-  pushd Python-3.14.0b1
-  mkdir -p /python314-0b1
-  CC=clang-18 CXX=clang++-18 ./configure --prefix /python314-0b1 --with-ensurepip=install
-  make -j$(nproc)
-  make install -j$(nproc)
-  ln -s /python314-0b1/bin/python3 /usr/bin/python3.14
-  popd
-else
-  /setup.packages.sh pythons.txt
-fi
-
-# Re-link pyconfig.h from x86_64-linux-gnu into the devtoolset directory
-# for any Python version present
-pushd /usr/include/x86_64-linux-gnu
-for f in $(ls | grep python); do
-  # set up symlink for devtoolset-9
-  rm -f /dt9/usr/include/x86_64-linux-gnu/$f
-  ln -s /usr/include/x86_64-linux-gnu/$f /dt9/usr/include/x86_64-linux-gnu/$f
-done
-popd
+/setup.packages.sh pythons.txt
 
 # Python 3.10 include headers fix:
 # sysconfig.get_path('include') incorrectly points to /usr/local/include/python
@@ -89,8 +62,8 @@ wget --retry-connrefused --waitretry=1 --read-timeout=20 --timeout=15 --tries=5 
 # For Python 3.13t, do not install twine as it does not have pre-built wheels
 # for this Python version and building it from source fails. We only need twine
 # to be present on the system Python which in this case is 3.12.
-# Same reason for Python 3.140a7.
-if [[ ${VERSION} == "python3.13-nogil" || ${VERSION} == "python3.14" ]]; then
+# Same reason for Python 3.14.
+if [[ ${VERSION} == "python3.13-nogil" || ${VERSION} == "python3.14" || ${VERSION} == "python3.14-nogil" ]]; then
   grep -v "twine" $REQUIREMENTS > requirements_without_twine.txt
   REQUIREMENTS=requirements_without_twine.txt
 fi

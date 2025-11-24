@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
+#include "absl/synchronization/notification.h"
 #include "absl/time/time.h"
 #include "absl/types/optional.h"
 #include "xla/tsl/platform/errors.h"
@@ -106,7 +107,7 @@ absl::Status NewThreadPoolFromThreadPoolOptions(
     VLOG(1) << "Direct session inter op parallelism threads for pool "
             << pool_number << ": " << num_threads;
     *pool = new thread::ThreadPool(
-        options.env, ThreadOptions(), strings::StrCat("Compute", pool_number),
+        options.env, ThreadOptions(), absl::StrCat("Compute", pool_number),
         num_threads, !options.config.experimental().disable_thread_spinning(),
         /*allocator=*/nullptr);
     *owned = true;
@@ -123,7 +124,7 @@ absl::Status NewThreadPoolFromThreadPoolOptions(
   if (mvalue->second == nullptr) {
     mvalue->first = thread_pool_options.num_threads();
     mvalue->second = new thread::ThreadPool(
-        options.env, ThreadOptions(), strings::StrCat("Compute", pool_number),
+        options.env, ThreadOptions(), absl::StrCat("Compute", pool_number),
         num_threads, !options.config.experimental().disable_thread_spinning(),
         /*allocator=*/nullptr);
   } else {
@@ -368,14 +369,14 @@ DirectSession::DirectSession(const SessionOptions& options,
     LOG(ERROR) << status.message();
   }
   session_handle_ =
-      strings::StrCat("direct", strings::FpToString(random::New64()));
+      absl::StrCat("direct", strings::FpToString(random::New64()));
   if (options.config.log_device_placement()) {
     const string mapping_str = device_mgr_->DeviceMappingString();
     string msg;
     if (mapping_str.empty()) {
       msg = "Device mapping: no known devices.";
     } else {
-      msg = strings::StrCat("Device mapping:\n", mapping_str);
+      msg = absl::StrCat("Device mapping:\n", mapping_str);
     }
     if (!logging::LogToListeners(msg)) {
       LOG(INFO) << msg;
@@ -526,8 +527,8 @@ absl::Status DirectSession::RunInternal(
         if (options_.config.experimental().has_session_metadata()) {
           const auto& model_metadata =
               options_.config.experimental().session_metadata();
-          string model_id = strings::StrCat(model_metadata.name(), ":",
-                                            model_metadata.version());
+          string model_id = absl::StrCat(model_metadata.name(), ":",
+                                         model_metadata.version());
           return tsl::profiler::TraceMeEncode("SessionRun",
                                               {{"id", step_id},
                                                {"_r", 1} /*root_event*/,
@@ -751,7 +752,7 @@ absl::Status DirectSession::RunInternal(
     args.rendezvous = rendezvous.get();
 
     // `barrier` will delete itself after the final executor finishes.
-    Notification executors_done;
+    absl::Notification executors_done;
     ExecutorBarrier* barrier = new ExecutorBarrier(
         num_executors, rendezvous.get(),
         [&run_state, &executors_done](const absl::Status& ret) {
@@ -1149,7 +1150,7 @@ absl::Status DirectSession::PRun(const string& handle,
 absl::Status DirectSession::ResourceHandleToInputTensor(
     const Tensor& resource_tensor, Tensor* retrieved_tensor) {
   if (resource_tensor.dtype() != DT_RESOURCE) {
-    return errors::InvalidArgument(strings::StrCat(
+    return errors::InvalidArgument(absl::StrCat(
         "ResourceHandleToInputTensor() received non-DT_RESOURCE Tensor: ",
         resource_tensor.dtype()));
   }
@@ -1513,8 +1514,7 @@ absl::Status DirectSession::GetOrCreateExecutors(
       "/", debug_tensor_watches_summary);
   // Set the handle, if it's needed to log memory or for partial run.
   if (handle_name_counter_value >= 0) {
-    run_state_args->handle =
-        strings::StrCat(key, ";", handle_name_counter_value);
+    run_state_args->handle = absl::StrCat(key, ";", handle_name_counter_value);
   }
 
   // See if we already have the executors for this run.
@@ -1547,7 +1547,7 @@ absl::Status DirectSession::GetOrCreateExecutors(
   // Set the handle, if its needed to log memory or for partial run.
   if (handle_name_counter_value >= 0) {
     run_state_args->handle =
-        strings::StrCat(sorted_key, ";", handle_name_counter_value);
+        absl::StrCat(sorted_key, ";", handle_name_counter_value);
   }
 
   // See if we already have the executors for this run.
@@ -1689,7 +1689,7 @@ absl::Status DirectSession::CreateGraphs(
     return node->assigned_device_name();
   };
   popts.new_name = [this](const string& prefix) {
-    return strings::StrCat(prefix, "/_", edge_name_counter_.fetch_add(1));
+    return absl::StrCat(prefix, "/_", edge_name_counter_.fetch_add(1));
   };
   popts.get_incarnation = [](const string& name) {
     // The direct session does not have changing incarnation numbers.
@@ -1836,7 +1836,8 @@ bool DirectSession::PartialRunState::PendingDone() const {
   return true;
 }
 
-void DirectSession::WaitForNotification(Notification* n, RunState* run_state,
+void DirectSession::WaitForNotification(absl::Notification* n,
+                                        RunState* run_state,
                                         CancellationManager* cm,
                                         int64_t timeout_in_ms) {
   const absl::Status status = WaitForNotification(n, timeout_in_ms);
@@ -1853,8 +1854,8 @@ void DirectSession::WaitForNotification(Notification* n, RunState* run_state,
   }
 }
 
-absl::Status DirectSession::WaitForNotification(Notification* notification,
-                                                int64_t timeout_in_ms) {
+absl::Status DirectSession::WaitForNotification(
+    absl::Notification* notification, int64_t timeout_in_ms) {
   if (timeout_in_ms > 0) {
     const bool notified = notification->WaitForNotificationWithTimeout(
         absl::Milliseconds(timeout_in_ms));

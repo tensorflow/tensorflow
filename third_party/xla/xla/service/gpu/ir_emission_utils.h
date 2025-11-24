@@ -86,6 +86,10 @@ inline constexpr absl::string_view kCustomFusionKind = "__custom_fusion";
 // kTritonGemmFusionKind.
 inline constexpr absl::string_view kTritonFusionKind = "__triton";
 
+// Used for fusions that codegen a collective.
+inline constexpr absl::string_view kTritonCollectiveFusionKind =
+    "__triton_collective";
+
 // Fusions that use Triton have FusionBackendConfig.kind equal to this string.
 inline constexpr absl::string_view kTritonGemmFusionKind = "__triton_gemm";
 
@@ -93,6 +97,11 @@ inline constexpr absl::string_view kTritonGemmFusionKind = "__triton_gemm";
 // string. Used for fusions that implement a dot expressed as nested fusions.
 inline constexpr absl::string_view kTritonNestedGemmFusionKind =
     "__triton_nested_gemm_fusion";
+
+// Fusions that use Triton have FusionBackendConfig.kind equal to this string.
+// Used for fusions that implement a scaled dot.
+inline constexpr absl::string_view kTritonScaledDotFusionKind =
+    "__triton_scaled_dot_fusion";
 
 inline constexpr absl::string_view kCuDnnFusionKind = "__cudnn$fusion";
 
@@ -135,29 +144,15 @@ std::optional<std::string> GetCustomFusionConfigName(
 // fusion. This is determined by checking the name of custom fusion config.
 bool IsDynamicSliceFusion(const HloInstruction* instr);
 
-// Returns true if the given instruction is a dynamic memcpy fusion. This
-// function only checks the fusion kind, which is populated by the
-// FusionDispatch pipeline.
-bool IsDynamicMemcpyFusion(const HloInstruction* instr);
-
-// Returns true if `hlo` will be implemented as a call to a cuSolver routine.
-//
-// This returns true if `hlo` is a CustomCall HLO with a call target equal to
-// one of the kCusolver... constants, but returns *false* for HLOs with
-// say, a kCholesky opcode.
-bool IsCustomCallToCusolver(const HloInstruction& hlo);
-
 // Returns true if `hlo` will be implemented as a call to a TopK routine.
 bool IsCustomCallToTopK(const HloInstruction& hlo);
 
-// Cholesky decomposition. Takes a (batched) matrix as input, and returns a
-// tuple of (result, workspace, info), where result is the result of the
-// Cholesky decomposition, workspace is scratch space for cuSolver, and info
-// is a success/failure code per batch element.
-extern const char* const kCusolverCholeskyCallTarget;
+// Returns true if `hlo` will be implmented as a call to a custom PTX kernel
+// implementation.
+bool IsCustomCallToPtxKernel(const HloInstruction& hlo);
 
-// Returns true if `instr` is a non-strided slice.
-bool IsSliceWithUnitStrides(const HloInstruction* instr);
+// Returns true if instruction is a Mosaic GPU collective instruction.
+bool IsCollectiveMosaicGpuInstruction(const HloInstruction& hlo);
 
 // Returns true if `instr` is a slice (or dynamic slice) instruction and
 // operates on a contiguous slice of the input buffer.
@@ -170,27 +165,6 @@ llvm::Value* IsBlock0Thread0(llvm::IRBuilderBase* b);
 absl::StatusOr<BufferAllocation::Slice> GetAllocationSlice(
     const BufferAssignment& buffer_assignment, const HloInstruction* instr,
     const ShapeIndex& index);
-
-// Returns whether the fusion represented by 'fusion_adaptor' can be emitted
-// with the dynamic update slice in-place emitter. If 'fusion_adaptor'
-// represents a single fusion computation, 'fusion' should provide the fusion
-// instruction corresponding to that fusion computation. 'get_allocation_slice'
-// is a callback for getting the allocated buffer slice, given an instruction
-// and a shape index. This is ignored in case 'fusion' is a nullptr.
-absl::StatusOr<bool> CanEmitFusedDynamicUpdateSliceInPlaceForGpu(
-    const HloFusionAdaptor& fusion_adaptor,
-    std::function<absl::StatusOr<BufferAllocation::Slice>(
-        const HloInstruction* instr, const ShapeIndex& index)>
-        get_allocation_slice,
-    const HloInstruction* fusion = nullptr);
-
-// Returns the dynamic-update-slice instructions defining the results of a
-// fusion node. A dynamic slice update is said to be "defining" of a result if
-// that result is the output of a dynamic slice update, or if that result is the
-// output of a bitcast of a dynamic slice update---since such bitcast may be
-// handled as a no-op.
-std::vector<HloInstructionAdaptor> GetOutputDefiningDynamicUpdateSlices(
-    absl::Span<HloInstructionAdaptor const> roots);
 
 // Returns the first hero instruction reachable from `instr` as root. Hero
 // instruction can be in a different computation if the parent HloFusionAdaptor
@@ -260,12 +234,6 @@ TransposeSpec GetTransposeSpec(const HloTransposeInstruction* transpose);
 // Returns the default tile sizes for the packed transpose emitter.
 absl::StatusOr<absl::InlinedVector<int64_t, 3>> GetPackedTransposeTileSizes(
     const TransposeSpec& spec);
-
-// Checks if the instruction is elementwise.
-bool IsIntermediate(const HloInstruction* instr, int allowed_operand_count = 1);
-
-// Log the given module if the VLOG level is >= level.
-void VLogModule(int level, const llvm::Module& module);
 
 // Verify the given module, and crash if it failed.
 void VerifyModule(const llvm::Module& module);

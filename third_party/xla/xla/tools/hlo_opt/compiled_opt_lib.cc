@@ -34,13 +34,13 @@ limitations under the License.
 #include "xla/service/compiler.h"
 #include "xla/service/conditional_simplifier.h"
 #include "xla/service/conditional_to_select.h"
-#include "xla/service/copy_insertion.h"
 #include "xla/service/executable.h"
 #include "xla/service/gather_expander.h"
 #include "xla/service/gpu/transforms/collectives/all_gather_dynamic_slice_simplifier.h"
 #include "xla/service/gpu/transforms/collectives/all_reduce_splitter.h"
 #include "xla/service/gpu/transforms/scatter_expander.h"
 #include "xla/service/gpu/transforms/scatter_slice_simplifier.h"
+#include "xla/service/hlo_graph_dumper.h"
 #include "xla/service/map_inliner.h"
 #include "xla/service/platform_util.h"
 #include "xla/service/reduce_scatter_reassociate.h"
@@ -159,7 +159,6 @@ void CompiledOptProvider::RegisterSharedHardwareSpecificPasses() {
   RegisterPass<CallInliner>();
   RegisterPass<ConditionalSimplifier>();
   RegisterPass<ConditionalToSelect>();
-  RegisterPass<CopyInsertion>();
   RegisterPass<GatherExpander>(GatherExpander::kEliminateSimpleGathers);
   RegisterPass<GpuScatterExpander>();
   RegisterPass<MapInliner>();

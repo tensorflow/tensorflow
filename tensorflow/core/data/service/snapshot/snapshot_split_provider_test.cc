@@ -21,6 +21,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/time/time.h"
 #include "xla/tsl/lib/core/status_test_util.h"
@@ -187,8 +188,9 @@ TEST(SnapshotSplitProviderTest, SplitNotFound) {
   Tensor result;
   bool end_of_splits = false;
   EXPECT_THAT(split_provider.GetNext(&result, &end_of_splits),
-              StatusIs(absl::StatusCode::kInternal,
-                       HasSubstr("not all splits between [0, 10] are found")));
+              absl_testing::StatusIs(
+                  absl::StatusCode::kInternal,
+                  HasSubstr("not all splits between [0, 10] are found")));
 }
 
 std::string full_name(const std::string& name) {

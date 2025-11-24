@@ -61,6 +61,18 @@ struct type_caster<xla::OpMetadata> {
     if (!source_line.is_none()) {
       value.set_source_line(cast<int32_t>(source_line));
     }
+    handle source_end_line = getattr(h, "source_end_line");
+    if (!source_end_line.is_none()) {
+      value.set_source_end_line(cast<int32_t>(source_end_line));
+    }
+    handle source_column = getattr(h, "source_column");
+    if (!source_column.is_none()) {
+      value.set_source_column(cast<int32_t>(source_column));
+    }
+    handle source_end_column = getattr(h, "source_end_column");
+    if (!source_end_column.is_none()) {
+      value.set_source_end_column(cast<int32_t>(source_end_column));
+    }
     return true;
   }
 };
@@ -84,7 +96,7 @@ Uniquer* GetUniquer() {
 
 static std::string UniquifyName(const std::string& name) {
   Uniquer* uniquer = GetUniquer();
-  absl::MutexLock lock(&uniquer->mu);
+  absl::MutexLock lock(uniquer->mu);
   return uniquer->name_uniquer.GetUniqueName(name);
 }
 

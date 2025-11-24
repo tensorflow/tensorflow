@@ -23,12 +23,13 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/log/check.h"
+#include "absl/status/status_matchers.h"
 #include "absl/strings/str_cat.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
 #include "xla/pjrt/c/pjrt_c_api_cpu.h"
 #include "xla/pjrt/c/pjrt_c_api_wrapper_impl.h"
+#include "xla/pjrt/c_api_client/pjrt_c_api_client.h"
 #include "xla/pjrt/pjrt_api.h"
-#include "xla/pjrt/pjrt_c_api_client.h"
 #include "xla/pjrt/plugin/xla_cpu/cpu_client_options.h"
 #include "xla/pjrt/plugin/xla_cpu/xla_cpu_pjrt_client.h"
 #include "xla/shape.h"
@@ -79,8 +80,9 @@ TEST(TensorPjRtBufferUtilTest, GetPjRtCBufferFromTensorNoBuffer) {
 
   EXPECT_THAT(
       GetPjRtCBufferFromTensor(&tensor),
-      StatusIs(error::INTERNAL, HasSubstr(absl::StrCat(
-                                    "Input tensor does not have PjRtBuffer"))));
+      absl_testing::StatusIs(
+          error::INTERNAL,
+          HasSubstr(absl::StrCat("Input tensor does not have PjRtBuffer"))));
 }
 
 TEST(TensorPjRtBufferUtilTest, GetPjRtCBufferFromTensorIncoorectType) {
@@ -106,7 +108,7 @@ TEST(TensorPjRtBufferUtilTest, GetPjRtCBufferFromTensorIncoorectType) {
 
   EXPECT_THAT(
       GetPjRtCBufferFromTensor(&tensor),
-      StatusIs(
+      absl_testing::StatusIs(
           error::INTERNAL,
           HasSubstr(absl::StrCat(
               "The PjRtBuffer in the tensor is not type PjRtCApiBuffer"))));
@@ -158,11 +160,11 @@ TEST(TensorPjRtBufferUtilTest, SetPjRtCBufferToTensorSuccess) {
 }
 
 TEST(TensorPjRtBufferUtilTest, GetPjRtCApiClientNotFound) {
-  EXPECT_THAT(
-      GetPjRtCApiClient(tensorflow::DeviceType(DEVICE_CPU)),
-      StatusIs(error::NOT_FOUND,
-               HasSubstr(absl::StrCat("PjRt client not found for device type ",
-                                      DEVICE_CPU))));
+  EXPECT_THAT(GetPjRtCApiClient(tensorflow::DeviceType(DEVICE_CPU)),
+              absl_testing::StatusIs(
+                  error::NOT_FOUND,
+                  HasSubstr(absl::StrCat(
+                      "PjRt client not found for device type ", DEVICE_CPU))));
 }
 
 TEST(TensorPjRtBufferUtilTest, GetPjRtCApiClientIncorrectType) {
@@ -175,9 +177,10 @@ TEST(TensorPjRtBufferUtilTest, GetPjRtCApiClientIncorrectType) {
                                                       std::move(pjrt_client)));
 
   EXPECT_THAT(GetPjRtCApiClient(tensorflow::DeviceType(DEVICE_CPU)),
-              StatusIs(error::INTERNAL,
-                       HasSubstr(absl::StrCat("PjRtClient for ", DEVICE_CPU,
-                                              " is not type PjRtCApiClient"))));
+              absl_testing::StatusIs(
+                  error::INTERNAL,
+                  HasSubstr(absl::StrCat("PjRtClient for ", DEVICE_CPU,
+                                         " is not type PjRtCApiClient"))));
 }
 
 TEST(TensorPjRtBufferUtilTest, GetPjRtCApiClientSuccess) {

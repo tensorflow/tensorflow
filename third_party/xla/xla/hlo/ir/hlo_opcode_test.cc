@@ -57,6 +57,44 @@ TEST_P(HloOpcodeTestP, OpcodePropertiesNew) {
   }
 }
 
+TEST_F(HloOpcodeTestP, ControlFlowCallContext) {
+  EXPECT_EQ(CallContext::kControlFlow,
+            GetInstructionCallContext(HloOpcode::kCall));
+  EXPECT_EQ(CallContext::kControlFlow,
+            GetInstructionCallContext(HloOpcode::kConditional));
+  EXPECT_EQ(CallContext::kControlFlow,
+            GetInstructionCallContext(HloOpcode::kWhile));
+  EXPECT_EQ(CallContext::kControlFlow,
+            GetInstructionCallContext(HloOpcode::kAsyncStart));
+  EXPECT_EQ(CallContext::kControlFlow,
+            GetInstructionCallContext(HloOpcode::kAsyncUpdate));
+  EXPECT_EQ(CallContext::kControlFlow,
+            GetInstructionCallContext(HloOpcode::kAsyncDone));
+}
+
+TEST_F(HloOpcodeTestP, EmbeddedCallContext) {
+  EXPECT_EQ(CallContext::kEmbedded,
+            GetInstructionCallContext(HloOpcode::kAllReduce));
+  EXPECT_EQ(CallContext::kEmbedded,
+            GetInstructionCallContext(HloOpcode::kReduceScatter));
+  EXPECT_EQ(CallContext::kEmbedded,
+            GetInstructionCallContext(HloOpcode::kAllReduceStart));
+  EXPECT_EQ(CallContext::kEmbedded, GetInstructionCallContext(HloOpcode::kMap));
+  EXPECT_EQ(CallContext::kEmbedded,
+            GetInstructionCallContext(HloOpcode::kReduce));
+  EXPECT_EQ(CallContext::kEmbedded,
+            GetInstructionCallContext(HloOpcode::kReduceWindow));
+  EXPECT_EQ(CallContext::kEmbedded,
+            GetInstructionCallContext(HloOpcode::kScatter));
+  EXPECT_EQ(CallContext::kEmbedded,
+            GetInstructionCallContext(HloOpcode::kSelectAndScatter));
+  EXPECT_EQ(CallContext::kEmbedded,
+            GetInstructionCallContext(HloOpcode::kSort));
+  EXPECT_EQ(CallContext::kEmbedded,
+            GetInstructionCallContext(HloOpcode::kFusion));
+  EXPECT_EQ(CallContext::kEmbedded,
+            GetInstructionCallContext(HloOpcode::kCustomCall));
+}
 INSTANTIATE_TEST_SUITE_P(HloOpcodeTestSuite, HloOpcodeTestP,
                          testing::ValuesIn(GetAllCodes()));
 

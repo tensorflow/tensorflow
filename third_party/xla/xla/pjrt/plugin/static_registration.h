@@ -16,12 +16,14 @@ limitations under the License.
 #ifndef XLA_PJRT_PLUGIN_STATIC_REGISTRATION_H_
 #define XLA_PJRT_PLUGIN_STATIC_REGISTRATION_H_
 
+#include "absl/log/check.h"
+#include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
 #include "xla/pjrt/pjrt_api.h"  // IWYU pragma: keep
 
-bool RegisterStaticPjrtPlugin(absl::string_view plugin_name,
-                              const PJRT_Api* plugin_api);
+absl::Status RegisterStaticPjrtPlugin(absl::string_view plugin_name,
+                                      const PJRT_Api* plugin_api);
 
 // Registers a static PJRT plugin.
 //
@@ -36,7 +38,8 @@ bool RegisterStaticPjrtPlugin(absl::string_view plugin_name,
 #define REGISTER_PJRT_PLUGIN(plugin_name, get_plugin_fn)          \
   [[maybe_unused]] static bool already_registered_##plugin_name = \
       [](auto plugin_name, const PJRT_Api* plugin_api) -> bool {  \
-    return RegisterStaticPjrtPlugin(plugin_name, plugin_api);     \
+    QCHECK_OK(RegisterStaticPjrtPlugin(plugin_name, plugin_api)); \
+    return true;                                                  \
   }(plugin_name, get_plugin_fn);
 
 #endif  // XLA_PJRT_PLUGIN_STATIC_REGISTRATION_H_

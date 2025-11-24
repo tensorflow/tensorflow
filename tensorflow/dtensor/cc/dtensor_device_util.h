@@ -26,6 +26,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/memory/memory.h"
+#include "absl/status/status.h"
 #include "llvm/Support/ExtensibleRTTI.h"
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/OwningOpRef.h"  // from @llvm-project
@@ -69,7 +70,7 @@ using TensorHandlePtr = tensorflow::Safe_TFE_TensorHandlePtr;
     if (!return_if_not_ok_status.ok()) {                                  \
       RETURN_STATUS((c_status),                                           \
                     static_cast<TF_Code>(return_if_not_ok_status.code()), \
-                    tsl::NullTerminatedMessage(return_if_not_ok_status)); \
+                    absl::StatusMessageAsCStr(return_if_not_ok_status));  \
     }                                                                     \
   }
 

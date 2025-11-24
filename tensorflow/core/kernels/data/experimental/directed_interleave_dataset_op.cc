@@ -175,8 +175,8 @@ class DirectedInterleaveDatasetOp::Dataset : public DatasetBase {
       for (size_t i = 0; i < data_input_impls_.size(); ++i) {
         const DatasetBase* data_input = dataset()->data_inputs_[i];
         TF_RETURN_IF_ERROR(data_input->MakeIterator(
-            &input_contexts_[i + 1], this,
-            strings::StrCat(prefix(), "[", i, "]"), &data_input_impls_[i]));
+            &input_contexts_[i + 1], this, absl::StrCat(prefix(), "[", i, "]"),
+            &data_input_impls_[i]));
         ctx->MergeCheckpoint(input_contexts_[i + 1].checkpoint());
       }
       return absl::OkStatus();
@@ -264,7 +264,7 @@ class DirectedInterleaveDatasetOp::Dataset : public DatasetBase {
       for (size_t i = 0; i < data_input_impls_.size(); ++i) {
         const auto& data_input_impl = data_input_impls_[i];
         TF_RETURN_IF_ERROR(writer->WriteScalar(
-            full_name(strings::StrCat(kDataInputImplEmpty, "[", i, "]")),
+            full_name(absl::StrCat(kDataInputImplEmpty, "[", i, "]")),
             static_cast<int64_t>(!data_input_impl)));
         if (data_input_impl) {
           TF_RETURN_IF_ERROR(SaveInput(ctx, writer, data_input_impl));
@@ -286,7 +286,7 @@ class DirectedInterleaveDatasetOp::Dataset : public DatasetBase {
       }
       for (size_t i = 0; i < data_input_impls_.size(); ++i) {
         TF_RETURN_IF_ERROR(reader->ReadScalar(
-            full_name(strings::StrCat(kDataInputImplEmpty, "[", i, "]")),
+            full_name(absl::StrCat(kDataInputImplEmpty, "[", i, "]")),
             &input_empty));
         if (!static_cast<bool>(input_empty)) {
           TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, data_input_impls_[i]));

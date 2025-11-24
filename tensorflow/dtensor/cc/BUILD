@@ -1,6 +1,7 @@
 #include "third_party/absl/strings/str_cat.h"
 #DTensor C++ runtime and libraries.
 
+load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load("//tensorflow:tensorflow.default.bzl", "tf_kernel_library")
 load(
     "//tensorflow/core/platform:build_config.bzl",
@@ -281,6 +282,7 @@ cc_library(
         "@llvm-project//mlir:AllExtensions",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:RegisterAllExtensions",
         "@llvm-project//mlir:Support",
         "@local_xla//xla:status_macros",
         "@local_xla//xla/tsl/platform:status",
@@ -311,7 +313,7 @@ cc_library(
         "//tensorflow/c/eager:c_api_internal",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
-        "@local_xla//xla/pjrt:pjrt_future",
+        "@local_xla//xla:future",
     ],
 )
 
@@ -409,5 +411,20 @@ cc_library(
         ":tensor_layout",
         "//tensorflow/core:lib",
         "@llvm-project//mlir:IR",
+    ],
+)
+
+tf_cc_test(
+    name = "small_constant_optimization_test",
+    srcs = ["small_constant_optimization_test.cc"],
+    deps = [
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/dtensor/cc:small_constant_optimization",
+        "//tensorflow/dtensor/cc:tensor_layout",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
     ],
 )

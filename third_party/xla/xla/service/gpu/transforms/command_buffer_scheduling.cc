@@ -22,15 +22,17 @@ limitations under the License.
 #include <memory>
 #include <string>
 #include <utility>
-#include <variant>
 #include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/ffi/ffi_api.h"
@@ -41,24 +43,27 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
+#include "xla/hlo/transforms/simplifiers/computation_canonicalizers.h"
+#include "xla/hlo/utils/hlo_longest_prefix.h"
+#include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/ir_emission_utils.h"
-#include "xla/service/overload.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/rocm/rocm_compute_capability.h"
 #include "xla/stream_executor/semantic_version.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/logging.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla::gpu {
 
 using CommandBuffer = CommandBufferScheduling::CommandBuffer;
 using CommandBufferConfig = CommandBufferScheduling::CommandBufferConfig;
+using ::xla::hlo_longest_prefix::GetLongestOpNamePrefix;
 
 // Returns true if HLO computation can be executed as a command buffer.
 static bool IsCommand(const HloComputation* computation,
@@ -78,10 +83,6 @@ static bool IsConstant(const HloInstruction* hlo) {
 
 static bool IsParameter(const HloInstruction* hlo) {
   return HloPredicateIsOp<HloOpcode::kParameter>(hlo);
-}
-
-static bool IsGetTupleElement(const HloInstruction* hlo) {
-  return HloPredicateIsOp<HloOpcode::kGetTupleElement>(hlo);
 }
 
 // Returns true if instruction is no-op at run time and doesn't have a
@@ -113,8 +114,10 @@ static bool AsyncStartOrDoneCommandIsSupported(
 
   if (hlo->async_wrapped_opcode() == HloOpcode::kFusion) {
     // We don't currently support dynamic memcpy fusions in command buffers.
-    if (IsDynamicMemcpyFusion(hlo->async_wrapped_instruction())) {
-      return false;
+    if (IsGpuFusionKind(*hlo->async_wrapped_instruction(),
+                        kDynamicMemcpyFusionKind)) {
+      return config.enabled_commands.contains(
+          DebugOptions::DYNAMIC_SLICE_COPY_FUSION);
     }
 
     // We currently only support static address computations in command
@@ -176,7 +179,8 @@ static HloInstruction* FindAsyncDoneCommand(const HloInstruction* start) {
           start)) {
     CHECK(start->users().size() == 1);  // NOLINT, checked by HLO verifier
     return start->users().front();
-  } else if (HloPredicateIsOp<HloOpcode::kAsyncStart>(start)) {
+  }
+  if (HloPredicateIsOp<HloOpcode::kAsyncStart>(start)) {
     return start->async_chain_done();
   }
 
@@ -230,28 +234,32 @@ static bool IsCommand(const HloCustomCallInstruction* hlo,
     return true;
   }
 
-  if (config.enabled_commands.contains(DebugOptions::CUDNN) &&
-      IsCustomCallTofMHA(*hlo)) {
-    VLOG(3) << "Recording FusedMHA, target " << hlo->custom_call_target()
-            << " into command buffer.";
-    return true;
+  if (config.enabled_commands.contains(DebugOptions::CUDNN)) {
+    if (IsCustomCallToBlockScaledDot(*hlo)) {
+      VLOG(3) << "Recording BlockScaledDot, target "
+              << hlo->custom_call_target() << " into command buffer.";
+      return true;
+    }
+    if (IsCustomCallTofMHA(*hlo)) {
+      VLOG(3) << "Recording FusedMHA, target " << hlo->custom_call_target()
+              << " into command buffer.";
+      return true;
+    }
+    if (IsCustomCallToDnnConvolution(*hlo)) {
+      VLOG(3) << "Recording convolution, target " << hlo->custom_call_target()
+              << " into command buffer.";
+      return true;
+    }
   }
 
   if (!config.enabled_commands.contains(DebugOptions::CUSTOM_CALL)) {
     return false;
   }
 
-  if (config.enabled_legacy_custom_call_targets.contains(
-          hlo->custom_call_target())) {
-    VLOG(3) << "Recording legacy custom call target "
-            << hlo->custom_call_target() << " into command buffer.";
-    return true;
-  }
-
   // Check if FFI handler is compatible with command buffers.
   auto registration = ffi::FindHandler(hlo->custom_call_target(), "gpu");
   return registration.ok()
-             ? ffi::IsCommandBufferCompatible(registration->traits)
+             ? ffi::IsCommandBufferCompatible(registration->metadata)
              : false;
 }
 
@@ -264,9 +272,9 @@ static bool IsCommand(const HloInstruction* hlo,
     if (backend_config.kind() == kCuDnnFusionKind) {
       return config.enabled_commands.contains(DebugOptions::CUDNN);
     }
-    if (IsDynamicMemcpyFusion(fusion)) {
-      // Dynamic memcpy fusions do not yet have a command implementation.
-      return false;
+    if (IsGpuFusionKind(*fusion, kDynamicMemcpyFusionKind)) {
+      return config.enabled_commands.contains(
+          DebugOptions::DYNAMIC_SLICE_COPY_FUSION);
     }
     if (IsDynamicSliceFusion(fusion)) {
       auto fusion_analysis =
@@ -284,14 +292,13 @@ static bool IsCommand(const HloInstruction* hlo,
       if (config_name ==
           kDynamicSliceFusionWithStaticAddressComputationConfigName) {
         return IsCommand(hero, config) || IsAsyncStartCommand(hero, config);
-      } else {
-        // DynamicSliceFusionRewriter currently only rewrites for dynamic slice
-        // fusion with constant or loop iteration offset values, which are all
-        // supported by command buffer.
-        return (config.enabled_commands.contains(
-                    DebugOptions::DYNAMIC_SLICE_FUSION) &&
-                (IsCommand(hero, config) || IsAsyncStartCommand(hero, config)));
       }
+      // DynamicSliceFusionRewriter currently only rewrites for dynamic slice
+      // fusion with constant or loop iteration offset values, which are all
+      // supported by command buffer.
+      return (config.enabled_commands.contains(
+                  DebugOptions::DYNAMIC_SLICE_FUSION) &&
+              (IsCommand(hero, config) || IsAsyncStartCommand(hero, config)));
     }
 
     // Cuda has a bug that when the cuda kernel's parameter size is larger than
@@ -316,24 +323,29 @@ static bool IsCommand(const HloInstruction* hlo,
     return config.enabled_commands.contains(DebugOptions::FUSION);
   }
 
-  if (auto* sort = DynCast<HloSortInstruction>(hlo))
+  if (DynCast<HloSortInstruction>(hlo)) {
     return config.enabled_commands.contains(DebugOptions::FUSION);
+  }
 
-  if (HloPredicateIsOp<HloOpcode::kCopy>(hlo))
+  if (HloPredicateIsOp<HloOpcode::kCopy>(hlo)) {
     return config.enabled_commands.contains(DebugOptions::FUSION);
+  }
 
   if (HloPredicateIsOp<HloOpcode::kPartitionId, HloOpcode::kReplicaId>(hlo)) {
     return config.enabled_commands.contains(DebugOptions::FUSION);
   }
 
-  if (auto* custom_call = DynCast<HloCustomCallInstruction>(hlo))
+  if (auto* custom_call = DynCast<HloCustomCallInstruction>(hlo)) {
     return IsCommand(custom_call, config);
+  }
 
-  if (HloPredicateIsOp<HloOpcode::kWhile>(hlo))
+  if (HloPredicateIsOp<HloOpcode::kWhile>(hlo)) {
     return IsCommand<HloOpcode::kWhile>(hlo, config);
+  }
 
-  if (HloPredicateIsOp<HloOpcode::kConditional>(hlo))
+  if (HloPredicateIsOp<HloOpcode::kConditional>(hlo)) {
     return IsCommand<HloOpcode::kConditional>(hlo, config);
+  }
 
   return false;
 }
@@ -366,73 +378,6 @@ static void RemoveTrailingNoOps(HloInstructionSequence& seq) {
   }
 }
 
-// Moves GetTupleElement instructions to right after the instruction that
-// produces the tuple. Returns whether the computation was changed. This is run
-// before command buffer scheduling.
-//
-// The motivation is to ensure the live range of large elements in the tuple are
-// not extended due to the creation of command buffers. For example, consider
-// the following input HLO to this pass.
-//
-//     x = f32[] parameter(0)
-//     t = (f32[], f32[10000]) custom-call()
-//     ... # Many instructions, none which use t
-//     x_squared = f32[] multiply(x, x)
-//     t0 = f32[] get-tuple-element(t), index=0
-//     y = f32[] add(x_squared, t0)
-//
-// The 10000-element buffer can immediately be freed after the custom-call, as
-// it is unused. However, if `t0` is not moved right after `t`, then the
-// scheudling of command buffers might turn the HLO into the following,
-// extending the live range of the 10000-element buffer as 't' is passed to the
-// command buffer:
-//
-//     command_buffer {
-//       t = (f32[], f32[10000]) paramter(0)
-//       x_squared = f32[] multiply(x, x)
-//       t0 = f32[] get-tuple-element(t), index=0
-//       ROOT y = f32[] add(x_squared, t0)
-//     }
-//
-//     main {
-//       x = f32[] parameter(0)
-//       t = (f32[], f32[10000]) custom-call()
-//       ... # Many instructions, none which use t
-//       ROOT y = f32[] call(t), to_apply=command_buffer
-//     }
-//
-// Moving the GTE right after `t` solves this, as command-buffers never start
-// with a GTE, so it's impossible for a command buffer to contain the GTE but
-// not the custom-call itself.
-static absl::StatusOr<bool> MoveGTEsRightAfterTupleDefinition(
-    HloComputation* computation) {
-  HloInstructionSequence new_sequence;
-  HloSchedule& schedule = computation->parent()->schedule();
-  const HloInstructionSequence sequence =
-      schedule.GetOrCreateSequence(computation);
-
-  absl::flat_hash_set<HloInstruction*> moved_gtes;
-
-  for (HloInstruction* inst : sequence.instructions()) {
-    if (!moved_gtes.contains(inst)) {
-      new_sequence.push_back(inst);
-    }
-    if (!inst->shape().IsTuple()) {
-      continue;
-    }
-    for (HloInstruction* user : inst->users()) {
-      if (IsGetTupleElement(user) && !user->HasControlDependencies()) {
-        new_sequence.push_back(user);
-        moved_gtes.insert(user);
-      }
-    }
-  }
-
-  bool changed = new_sequence != sequence;
-  schedule.set_sequence(computation, std::move(new_sequence));
-  return changed;
-}
-
 //===----------------------------------------------------------------------===//
 // Discovering sequences of compatible Hlo instructions
 //===----------------------------------------------------------------------===//
@@ -449,7 +394,9 @@ CommandBufferScheduling::CollectCommandBufferSequences(
   int64_t num_commands_in_current_seq = 0;
 
   // Adds `current_seq` to `sequences` if it has enough commands in it.
-  auto collect_current_seq = [&]() {
+  auto collect_current_seq = [&](HloInstruction* instr) {
+    VLOG(1) << "Stopped at: " << (instr ? instr->ToString() : "<end>")
+            << " #commands: " << num_commands_in_current_seq;
     if (num_commands_in_current_seq >= std::max(1, min_num_commands)) {
       RemoveTrailingNoOps(current_seq);
       sequences.push_back(std::move(current_seq));
@@ -466,25 +413,31 @@ CommandBufferScheduling::CollectCommandBufferSequences(
   auto check_dynamic_slice_operand_not_from_seq =
       [&](const HloInstructionSequence& seq, const HloInstruction* inst) {
         if (!config.enabled_commands.contains(
-                DebugOptions::DYNAMIC_SLICE_FUSION))
+                DebugOptions::DYNAMIC_SLICE_FUSION)) {
           return true;
+        }
         const auto* fusion = DynCast<HloFusionInstruction>(inst);
-        if (!fusion) return true;
+        if (!fusion) {
+          return true;
+        }
 
         auto gpu_config = fusion->backend_config<GpuBackendConfig>();
         const FusionBackendConfig& backend_config =
             gpu_config->fusion_backend_config();
         const auto& custom_config = backend_config.custom_fusion_config();
         if (custom_config.name() !=
-            kDynamicSliceFusionWithDynamicAddressComputationConfigName)
+            kDynamicSliceFusionWithDynamicAddressComputationConfigName) {
           return true;
+        }
 
         auto* fused_computation = fusion->called_computation();
         return !absl::c_any_of(
             fused_computation->instructions(), [&](const HloInstruction* inst) {
               const auto* dynamic_inst =
                   DynCast<HloDynamicIndexInstruction>(inst);
-              if (!dynamic_inst) return false;
+              if (!dynamic_inst) {
+                return false;
+              }
               for (auto* operand : dynamic_inst->index_operands()) {
                 const auto* param = DynCast<HloParameterInstruction>(operand);
                 const auto* fusion_operand =
@@ -512,7 +465,7 @@ CommandBufferScheduling::CollectCommandBufferSequences(
   // are captured by the same command buffer.
   auto collect_async_region = [&](const HloInstruction* start) {
     auto get_index = [&](const HloInstruction* inst) -> size_t {
-      auto it = std::find(instructions.begin(), instructions.end(), inst);
+      auto it = absl::c_find(instructions, inst);
       return std::distance(instructions.begin(), it);
     };
 
@@ -594,55 +547,12 @@ CommandBufferScheduling::CollectCommandBufferSequences(
 
     // If we didn't find the next command, collect the current sequence and
     // start a new one.
-    collect_current_seq();
+    collect_current_seq(inst);
   }
 
   // Don't forget to collect the final command sequence.
-  collect_current_seq();
+  collect_current_seq(nullptr);
   return sequences;
-}
-
-// This function moves kParameter and kConstant instructions in a computation to
-// the beginning of the computation. This simplifies the construction of command
-// buffer computations because we don't need to deal with parameters and
-// constants that have users outside of a command buffer.
-// Returns true if there is a change in the order of instructions, false
-// otherwise.
-absl::StatusOr<bool> CommandBufferScheduling::MoveParametersAndConstantsToFront(
-    HloComputation* computation) {
-  HloInstructionSequence new_sequence;
-  HloSchedule& schedule = computation->parent()->schedule();
-  HloInstructionSequence& sequence = schedule.GetOrCreateSequence(computation);
-
-  for (HloInstruction* inst : sequence.instructions()) {
-    if (IsParameter(inst) || IsConstant(inst)) {
-      new_sequence.push_back(inst);
-
-      // Because we move instruction to the front of the computation we can't
-      // have any control predecessors, however silently dropping them is unsafe
-      // as we can have transitive dependencies that define schedule order, so
-      // we forward control predecessors to all users.
-      for (HloInstruction* control_predecessor : inst->control_predecessors()) {
-        for (HloInstruction* user : inst->users()) {
-          TF_RETURN_IF_ERROR(control_predecessor->AddControlDependencyTo(user));
-        }
-      }
-      TF_RETURN_IF_ERROR(inst->DropAllControlDeps());
-    }
-  }
-
-  for (HloInstruction* inst : sequence.instructions()) {
-    if (!IsParameter(inst) && !IsConstant(inst)) {
-      new_sequence.push_back(inst);
-    }
-  }
-
-  schedule.set_sequence(computation, new_sequence);
-  for (auto [old_i, new_i] :
-       llvm::zip(sequence.instructions(), new_sequence.instructions())) {
-    if (old_i != new_i) return true;
-  }
-  return false;
 }
 
 //===----------------------------------------------------------------------===//
@@ -675,8 +585,9 @@ absl::StatusOr<CommandBuffer> CommandBufferScheduling::PrepareCommandBuffer(
   auto mapped_operands = [&](HloInstruction* instr) {
     absl::InlinedVector<HloInstruction*, 4> operands;
     for (HloInstruction* operand : instr->operands()) {
-      if (auto it = inst_mapping.find(operand); it != inst_mapping.end())
+      if (auto it = inst_mapping.find(operand); it != inst_mapping.end()) {
         operands.push_back(it->second);
+      }
     }
     return operands;
   };
@@ -685,10 +596,14 @@ absl::StatusOr<CommandBuffer> CommandBufferScheduling::PrepareCommandBuffer(
   for (HloInstruction* inst : instructions) {
     for (HloInstruction* operand : inst->operands()) {
       // We already mapped instruction to a parameter.
-      if (parameters.contains(operand)) continue;
+      if (parameters.contains(operand)) {
+        continue;
+      }
 
       // Operand instruction is a part of the command buffer.
-      if (in_command_buffer.contains(operand)) continue;
+      if (in_command_buffer.contains(operand)) {
+        continue;
+      }
 
       // Create a new parameter for value defined outside of a command buffer.
       int64_t parameter_id = parameters.size();
@@ -696,8 +611,6 @@ absl::StatusOr<CommandBuffer> CommandBufferScheduling::PrepareCommandBuffer(
           builder.AddInstruction(HloInstruction::CreateParameter(
               parameter_id, operand->shape(), "p")));
 
-      parameter->UniquifyName(module);
-      parameter->UniquifyId(module);
       inst_mapping[operand] = parameters[operand] = parameter;
     }
   }
@@ -713,7 +626,6 @@ absl::StatusOr<CommandBuffer> CommandBufferScheduling::PrepareCommandBuffer(
     }
     inst_mapping[inst] = builder.AddInstruction(
         inst->CloneWithNewOperands(inst->shape(), mapped_operands(inst), &ctx));
-    inst_mapping[inst]->UniquifyId(module);
 
     // Clear the called computations of the old instruction, because it is
     // typically not legal for one computation to have more than one caller.
@@ -746,15 +658,10 @@ absl::StatusOr<CommandBuffer> CommandBufferScheduling::PrepareCommandBuffer(
 
   // If we return multiple results wrap them into tuple.
   if (returned.size() > 1) {
-    HloInstruction* inst =
-        builder.AddInstruction(HloInstruction::CreateTuple(returned));
-    inst->UniquifyName(module);
-    inst->UniquifyId(module);
+    builder.AddInstruction(HloInstruction::CreateTuple(returned));
   }
 
   std::unique_ptr<HloComputation> comp = builder.Build();
-  comp->UniquifyName(module);
-  comp->SetUniqueId(comp->root_instruction()->unique_id());
 
   return CommandBuffer{std::move(arguments), std::move(results),
                        std::move(comp), std::move(inst_mapping)};
@@ -767,8 +674,9 @@ absl::StatusOr<CommandBuffer> CommandBufferScheduling::PrepareCommandBuffer(
 absl::StatusOr<HloComputation*> CommandBufferScheduling::RewriteCommandBuffer(
     HloComputation* parent, const HloInstructionSequence& seq,
     CommandBuffer command_buffer) {
-  if (command_buffer.results.empty())
+  if (command_buffer.results.empty()) {
     return absl::InternalError("command buffer results must not be empty");
+  }
 
   // If we have more than one result we return them as tuple, and get individual
   // values using `get-tuple-element` instructions. Otherwise we simply return
@@ -781,13 +689,16 @@ absl::StatusOr<HloComputation*> CommandBufferScheduling::RewriteCommandBuffer(
   } else {
     absl::InlinedVector<Shape, 4> shapes;
     shapes.reserve(command_buffer.results.size());
-    for (auto* res : command_buffer.results) shapes.push_back(res->shape());
+    for (auto* res : command_buffer.results) {
+      shapes.push_back(res->shape());
+    }
     cmd_buffer_result_shape = ShapeUtil::MakeTupleShape(shapes);
   }
 
   HloComputation* computation =
-      parent->parent()->AddComputation(std::move(command_buffer.computation),
-                                       /*is_entry=*/false);
+      parent->parent()->AddComputationAndUnifyNamesAndIds(
+          std::move(command_buffer.computation),
+          /*is_entry=*/false);
 
   HloInstruction* call = parent->AddInstruction(HloInstruction::CreateCall(
       cmd_buffer_result_shape, command_buffer.arguments, computation));
@@ -870,6 +781,13 @@ absl::StatusOr<HloComputation*> CommandBufferScheduling::RewriteCommandBuffer(
     TF_RETURN_IF_ERROR(parent->RemoveInstruction(seq.instructions()[i]));
   }
 
+  absl::string_view call_prefix =
+      GetLongestOpNamePrefix(*call, /*ignore_malformed_op_names=*/true);
+  std::string call_op_name = (call_prefix.empty())
+                                 ? (std::string)call->name()
+                                 : absl::StrCat(call_prefix, "/", call->name());
+  call->set_metadata_op_name(call_op_name);
+
   return computation;
 }
 
@@ -879,7 +797,7 @@ CommandBufferScheduling::CommandBufferScheduling(
     const se::DeviceDescription& device_description)
     : device_description_(device_description) {}
 
-absl::StatusOr<bool> CommandBufferScheduling::Run(
+absl::StatusOr<bool> CommandBufferScheduling::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   // We run command buffer scheduling after a regular scheduling to guarantee
@@ -887,7 +805,9 @@ absl::StatusOr<bool> CommandBufferScheduling::Run(
   // compared to a regular execution. Some operations (i.e. async collectives)
   // can't be captured into command buffers, and forming too large command
   // buffers too early can impact async operations scheduling.
-  if (!module->has_schedule()) return Internal("module is not scheduled");
+  if (!module->has_schedule()) {
+    return Internal("module is not scheduled");
+  }
 
   const DebugOptions& debug_options = module->config().debug_options();
 
@@ -896,15 +816,7 @@ absl::StatusOr<bool> CommandBufferScheduling::Run(
     commands.insert(static_cast<DebugOptions::CommandBufferCmdType>(cmd_type));
   }
 
-  absl::flat_hash_set<std::string> legacy_custom_call_targets;
-  for (const auto& target :
-       debug_options.legacy_command_buffer_custom_call_targets()) {
-    legacy_custom_call_targets.insert(target);
-  }
-
-  CommandBufferConfig config{std::move(commands),
-                             std::move(legacy_custom_call_targets),
-                             device_description_};
+  CommandBufferConfig config{std::move(commands), device_description_};
 
   // Erase command buffer cmd types that are not supported by the gpu runtime.
   static constexpr auto kRequireConditionals = {DebugOptions::CONDITIONAL,
@@ -935,38 +847,77 @@ absl::StatusOr<bool> CommandBufferScheduling::Run(
   };
 
   // Check if CUDA/ROCM driver supports required features.
-  auto erase_cuda = [&](const se::CudaComputeCapability& cuda_comp) {
+  if (auto* cuda_comp = device_description_.gpu_compute_capability()
+                            .cuda_compute_capability()) {
     if (std::min(device_description_.runtime_version(),
                  device_description_.driver_version()) <
         se::SemanticVersion{12, 3, 0}) {
       erase(kRequireTracing);       // cuStreamBeginCaptureToGraph
       erase(kRequireConditionals);  // on-device control flow
     }
-  };
-  auto erase_rocm = [&](const se::RocmComputeCapability& rocm_comp) {
+  } else if (const se::RocmComputeCapability* rocm_comp =
+                 device_description_.gpu_compute_capability()
+                     .rocm_compute_capability()) {
     erase(kRequireConditionals);  // on-device control flow
-  };
-
-  std::visit(Overload{erase_cuda, erase_rocm},
-             device_description_.gpu_compute_capability());
+  }
 
   auto order = module->MakeComputationPostOrder();
   std::reverse(order.begin(), order.end());
   absl::flat_hash_set<HloComputation*> processed_command_buffers;
+  std::vector<HloComputation*> command_buffer_computations;
 
   auto changed = false;
   for (HloComputation* comp : order) {
     // Skip special computations that do not have lowering to thunks.
     if (comp->IsFusionComputation() || comp->IsAsyncComputation() ||
-        !comp->caller_instructions(HloOpcode::kCustomCall).empty())
+        !comp->caller_instructions(HloOpcode::kCustomCall).empty()) {
       continue;
+    }
 
     // Skip computations that already part of command buffers.
-    if (processed_command_buffers.contains(comp)) continue;
+    if (processed_command_buffers.contains(comp)) {
+      continue;
+    }
 
-    TF_ASSIGN_OR_RETURN(bool changed_, MoveParametersAndConstantsToFront(comp));
+    TF_ASSIGN_OR_RETURN(bool changed_,
+                        MoveParametersAndConstantsToFront(*comp));
     changed |= changed_;
-    TF_ASSIGN_OR_RETURN(changed_, MoveGTEsRightAfterTupleDefinition(comp));
+    // The motivation for MoveGTEsRightAfterTupleDefinition is to ensure the
+    // live range of large elements in the tuple are not extended due to the
+    // creation of command buffers. For example, consider the following input
+    // HLO to this pass.
+    //
+    //     x = f32[] parameter(0)
+    //     t = (f32[], f32[10000]) custom-call()
+    //     ... # Many instructions, none which use t
+    //     x_squared = f32[] multiply(x, x)
+    //     t0 = f32[] get-tuple-element(t), index=0
+    //     y = f32[] add(x_squared, t0)
+    //
+    // The 10000-element buffer can immediately be freed after the custom-call,
+    // as it is unused. However, if `t0` is not moved right after `t`, then the
+    // scheudling of command buffers might turn the HLO into the following,
+    // extending the live range of the 10000-element buffer as 't' is passed to
+    // the command buffer:
+    //
+    //     command_buffer {
+    //       t = (f32[], f32[10000]) paramter(0)
+    //       x_squared = f32[] multiply(x, x)
+    //       t0 = f32[] get-tuple-element(t), index=0
+    //       ROOT y = f32[] add(x_squared, t0)
+    //     }
+    //
+    //     main {
+    //       x = f32[] parameter(0)
+    //       t = (f32[], f32[10000]) custom-call()
+    //       ... # Many instructions, none which use t
+    //       ROOT y = f32[] call(t), to_apply=command_buffer
+    //     }
+    //
+    // Moving the GTE right after `t` solves this, as command-buffers never
+    // start with a GTE, so it's impossible for a command buffer to contain the
+    // GTE but not the custom-call itself.
+    TF_ASSIGN_OR_RETURN(changed_, MoveGTEsRightAfterTupleDefinition(*comp));
     changed |= changed_;
 
     std::vector<HloInstructionSequence> sequences =
@@ -982,6 +933,9 @@ absl::StatusOr<bool> CommandBufferScheduling::Run(
           RewriteCommandBuffer(comp, seq, std::move(command_buffer)));
       changed = true;
 
+      // Track created command buffer computations for diagnostics.
+      command_buffer_computations.push_back(command_buffer_computation);
+
       // All computations reachable from a command buffer computation are nested
       // command buffers (i.e. body computations attached to a while operation).
       for (HloComputation* called :
@@ -991,6 +945,59 @@ absl::StatusOr<bool> CommandBufferScheduling::Run(
     }
   }
   TF_RETURN_IF_ERROR(module->schedule().Update());
+
+  if (VLOG_IS_ON(3)) {
+    // Collect all instructions that are part of any created command buffer
+    // computations (including their embedded computations).
+    absl::flat_hash_set<const HloInstruction*> in_command_buffers;
+    for (HloComputation* cb_comp : command_buffer_computations) {
+      for (HloInstruction* inst : cb_comp->instructions()) {
+        if (inst != nullptr && !IsNoOp(inst)) in_command_buffers.insert(inst);
+      }
+      for (HloComputation* embedded : cb_comp->MakeEmbeddedComputationsList()) {
+        for (HloInstruction* inst : embedded->instructions()) {
+          if (inst != nullptr && !IsNoOp(inst)) in_command_buffers.insert(inst);
+        }
+      }
+    }
+
+    // Build a set of command buffer computations to identify their call sites.
+    absl::flat_hash_set<HloComputation*> cb_comps(
+        command_buffer_computations.begin(), command_buffer_computations.end());
+
+    // Compute coverage and log instructions not captured by any command buffer.
+    int64_t total_insts = 0;
+    int64_t not_in_cb_count = 0;
+    for (HloComputation* comp_all : module->computations()) {
+      for (HloInstruction* inst : comp_all->instructions()) {
+        if (inst == nullptr) continue;
+        // Skip no-op instructions from coverage and diagnostics.
+        if (IsNoOp(inst)) continue;
+        // Ignore the kCall that invokes a command buffer computation.
+        if (inst->opcode() == HloOpcode::kCall) {
+          bool is_cb_call = false;
+          for (HloComputation* called : inst->called_computations()) {
+            if (cb_comps.contains(called)) {
+              is_cb_call = true;
+              break;
+            }
+          }
+          if (is_cb_call) continue;
+        }
+        total_insts++;
+        if (!in_command_buffers.contains(inst)) {
+          not_in_cb_count++;
+          VLOG(3) << "Not in command buffer: module=" << module->name()
+                  << " computation=" << comp_all->name()
+                  << " instruction:" << inst->ToString();
+        }
+      }
+    }
+
+    VLOG(3) << "Command buffer coverage: " << (total_insts - not_in_cb_count)
+            << "/" << total_insts << " instructions captured; "
+            << not_in_cb_count << " not captured.";
+  }
 
   return changed;
 }

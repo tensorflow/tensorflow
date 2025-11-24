@@ -19,9 +19,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/kernels/internal/runtime_shape.h"
 
 #include <cstdint>
-#include <functional>
 #include <initializer_list>
-#include <numeric>
 #include <vector>
 
 #include <gmock/gmock.h>
@@ -239,8 +237,10 @@ TEST(RuntimeShapeTest, TestExtendedShapeSmallToBig) {
 TEST_P(RuntimeShapeTest, TestFlatSize) {
   const std::vector<int32_t> src = IotaVector(kSmallSize);
   const RuntimeShape shape(src.size(), src.data());
-  EXPECT_EQ(shape.FlatSize(),
-            std::reduce(src.begin(), src.end(), 1, std::multiplies<int>{}));
+  int32_t flat_size = 1;
+  for (std::vector<int>::const_iterator it = src.begin(); it != src.end(); ++it)
+    flat_size *= *it;
+  EXPECT_EQ(shape.FlatSize(), flat_size);
 }
 
 INSTANTIATE_TEST_SUITE_P(BigSmall, RuntimeShapeTest,

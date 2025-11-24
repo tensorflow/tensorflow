@@ -16,12 +16,15 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_TRANSFORMS_COPY_FUSION_H_
 #define XLA_SERVICE_GPU_TRANSFORMS_COPY_FUSION_H_
 
+#include <memory>
+
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
+#include "xla/service/call_graph.h"
 #include "xla/stream_executor/device_description.h"
 
 namespace xla {
@@ -36,13 +39,14 @@ class CopyFusion : public HloModulePass {
 
   absl::string_view name() const override { return "copy_fusion"; }
 
-  using HloPassInterface::Run;
-  absl::StatusOr<bool> Run(
+ protected:
+  absl::StatusOr<bool> RunImpl(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
  private:
-  absl::StatusOr<bool> DoCopyFusion(HloComputation* computation);
+  absl::StatusOr<bool> DoCopyFusion(HloComputation* computation,
+                                    std::unique_ptr<CallGraph> call_graph);
 
   const se::DeviceDescription& device_description_;
 };

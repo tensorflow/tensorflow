@@ -989,6 +989,37 @@ TEST_F(PadV2OpTest, Int16PaddingSimpleConstBFloat16) {
 }
 
 template <typename padding_integer_type>
+void SimpleConstBoolValuedTest() {
+  PadV2OpConstModel<bool, padding_integer_type> m(
+      {TensorType_BOOL, {1, 2, 2, 1}}, {4, 2},
+      {false, false, true, true, true, true, false, false}, true,
+      {TensorType_BOOL});
+  m.SetInput({true, true, false, false});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(
+      m.GetOutput(),
+      ElementsAreArray({true, true, true, true, true, true, true, true, true,
+                        false, false, true, true, true, true, true}));
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 4, 4, 1}));
+}
+
+TEST_F(PadV2OpTest, Int32PaddingSimpleConstBool) {
+  SimpleConstBoolValuedTest<int32_t>();
+}
+
+TEST_F(PadV2OpTest, Int64PaddingSimpleConstBool) {
+  SimpleConstBoolValuedTest<int64_t>();
+}
+
+TEST_F(PadV2OpTest, Int8PaddingSimpleConstBool) {
+  SimpleConstBoolValuedTest<int8_t>();
+}
+
+TEST_F(PadV2OpTest, Int16PaddingSimpleConstBool) {
+  SimpleConstBoolValuedTest<int16_t>();
+}
+
+template <typename padding_integer_type>
 void Simple4DConstFloat32ValuedTest() {
   // Padding is represented as four 2-D lists representing above padding and
   // below padding (i.e. {{0, 0}, {1, 1}, {1, 1}, {0, 0}}).
@@ -1192,6 +1223,36 @@ TEST_F(PadV2OpTest, Int8PaddingSimpleDynamicTestBFloat16) {
 
 TEST_F(PadV2OpTest, Int16PaddingSimpleDynamicTestBFloat16) {
   SimpleDynamicTestV2BFloat16<int16_t>();
+}
+
+template <typename padding_integer_type>
+void SimpleDynamicTestBoolV2() {
+  PadV2OpDynamicModel<bool, padding_integer_type> m(
+      {TensorType_BOOL, {1, 2, 2, 1}}, {4, 2}, false, {TensorType_BOOL});
+  m.SetInput({true, false, true, false});
+  m.SetPaddings({0, 0, 1, 1, 1, 1, 0, 0});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutput(),
+              ElementsAreArray({false, false, false, false, false, true, false,
+                                false, false, true, false, false, false, false,
+                                false, false}));
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 4, 4, 1}));
+}
+
+TEST_F(PadV2OpTest, Int32PaddingSimpleDynamicTestBoolV2) {
+  SimpleDynamicTestBoolV2<int32_t>();
+}
+
+TEST_F(PadV2OpTest, Int64PaddingSimpleDynamicTestBoolV2) {
+  SimpleDynamicTestBoolV2<int64_t>();
+}
+
+TEST_F(PadV2OpTest, Int8PaddingSimpleDynamicTestBoolV2) {
+  SimpleDynamicTestBoolV2<int8_t>();
+}
+
+TEST_F(PadV2OpTest, Int16PaddingSimpleDynamicTestBoolV2) {
+  SimpleDynamicTestBoolV2<int16_t>();
 }
 
 template <typename padding_integer_type>

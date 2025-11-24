@@ -30,7 +30,6 @@ limitations under the License.
 #include "llvm/IR/Function.h"
 #include "llvm/IR/IRBuilder.h"
 #include "mlir/IR/AffineMap.h"
-#include "mlir/IR/MLIRContext.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/codegen/emitters/kernel_arguments.h"
 #include "xla/hlo/analysis/indexing_analysis.h"
@@ -80,12 +79,12 @@ class KernelFusionInterface : public FusionInterface {
   virtual std::optional<IndexingMap> ComputeThreadIdToOutputIndexing(
       int64_t root_index, mlir::MLIRContext* ctx) const = 0;
 
-  // Computes an indexing map from thread to input element(s) of the root's
+  // Computes indexing maps from thread id to input elements of the root's
   // **hero**. Note that in many cases this is not computable from the output
   // indexing. The indexing may only be known for some operands of the hero.
-  virtual std::optional<IndexingMap> ComputeThreadIdToInputIndexing(
-      int64_t root_index, int64_t hero_operand_index,
-      mlir::MLIRContext* ctx) const = 0;
+  virtual std::optional<std::vector<IndexingMap>>
+  ComputeThreadIdToInputIndexing(int64_t root_index,
+                                 mlir::MLIRContext* ctx) const = 0;
 
   static constexpr std::array<int, 3> kIndexingMapThreadIdxDims = {0, 1, 2};
   static constexpr std::array<int, 3> kIndexingMapBlockIdxDims = {3, 4, 5};
@@ -100,23 +99,16 @@ class KernelFusionInterface : public FusionInterface {
       const Shape& shape, mlir::MLIRContext* ctx);
 };
 
-absl::StatusOr<
-    std::tuple<llvm::Function*, std::vector<llvm_ir::IrArray /*inputs*/>,
-               std::vector<llvm_ir::IrArray> /*outputs*/>>
-BuildKernelPrototype(IrEmitterContext& ir_emitter_context,
-                     const std::string& impl_fn_name,
-                     const std::string& suggested_name,
-                     absl::Span<const emitters::KernelArgument> arguments,
-                     size_t num_inputs,
-                     const LaunchDimensions& launch_dimensions,
-                     llvm::IRBuilderBase* builder);
-absl::StatusOr<
-    std::tuple<llvm::Function*, std::vector<llvm_ir::IrArray /*inputs*/>,
-               std::vector<llvm_ir::IrArray> /*outputs*/>>
-BuildKernelPrototypeFromUniqueName(
+absl::StatusOr<llvm::Function*> BuildKernelPrototype(
     IrEmitterContext& ir_emitter_context, const std::string& impl_fn_name,
-    const std::string& unique_name,
-    absl::Span<const emitters::KernelArgument> arguments, size_t num_inputs,
+    const std::string& suggested_name,
+    const emitters::KernelArguments& arguments,
+    const LaunchDimensions& launch_dimensions, llvm::IRBuilderBase* builder);
+
+absl::StatusOr<llvm::Function*> BuildKernelPrototypeFromUniqueName(
+    IrEmitterContext& ir_emitter_context, const std::string& impl_fn_name,
+    const std::string& unique_kernel_name,
+    const emitters::KernelArguments& arguments,
     const LaunchDimensions& launch_dimensions, llvm::IRBuilderBase* builder);
 
 // Compute the kernel name. The opcode string may contain "-" which cannot be

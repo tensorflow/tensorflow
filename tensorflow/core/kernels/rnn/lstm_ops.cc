@@ -809,7 +809,7 @@ class SliceHelper {
 
   // Slice through an input tensor. This may copy unaligned slices, but no
   // copying back will be done at the end.
-  const Tensor InputSlice(const Tensor& t, int pos, const string& name) {
+  Tensor InputSlice(const Tensor& t, int pos, const string& name) {
     Tensor res = UnalignedSlice(t, pos);
     if (res.IsAligned()) {
       return res;

@@ -26,6 +26,7 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/base/nullability.h"
+#include "absl/functional/any_invocable.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -34,6 +35,8 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "llvm/ADT/STLExtras.h"
 #include "xla/error_spec.h"
+#include "xla/hlo/builder/xla_builder.h"
+#include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
@@ -58,21 +61,40 @@ namespace xla {
 
 HloRunnerAgnosticTestBase::HloRunnerAgnosticTestBase(
     absl_nonnull std::unique_ptr<HloRunnerInterface> test_runner,
+    DeviceShapeRepresentationFn device_shape_representation_fn,
+    DeviceShapeSizeFn device_shape_size_fn,
+    HloRunnerAgnosticTestBaseOptions options)
+    : HloHardwareIndependentTestBase(
+          options.verifier_layout_sensitive,
+          options.allow_mixed_precision_in_hlo_verifier,
+          std::move(options.instruction_can_change_layout_func)),
+      test_runner_(std::move(test_runner)),
+      device_shape_representation_fn_(
+          std::move(device_shape_representation_fn)),
+      device_shape_size_fn_(std::move(device_shape_size_fn)),
+      swallow_execution_errors_(options.swallow_execution_errors) {}
+
+HloRunnerAgnosticTestBase::HloRunnerAgnosticTestBase(
+    absl_nonnull std::unique_ptr<HloRunnerInterface> test_runner,
+    DeviceShapeRepresentationFn device_shape_representation_fn,
+    DeviceShapeSizeFn device_shape_size_fn,
     const bool verifier_layout_sensitive,
     const bool allow_mixed_precision_in_hlo_verifier,
     const HloPredicate instruction_can_change_layout_func)
     : HloHardwareIndependentTestBase(verifier_layout_sensitive,
                                      allow_mixed_precision_in_hlo_verifier,
                                      instruction_can_change_layout_func),
-      test_runner_(std::move(test_runner)) {}
+      test_runner_(std::move(test_runner)),
+      device_shape_representation_fn_(
+          std::move(device_shape_representation_fn)),
+      device_shape_size_fn_(std::move(device_shape_size_fn)) {}
 
 std::unique_ptr<VerifiedHloModule>
 HloRunnerAgnosticTestBase::CreateNewVerifiedModule(
     const std::string& name, const int64_t replica_count) {
   return std::make_unique<VerifiedHloModule>(
       name, GetModuleConfigForTest(replica_count), verifier_layout_sensitive(),
-      allow_mixed_precision_in_hlo_verifier(),
-      test_runner_->device_shape_size_fn(),
+      allow_mixed_precision_in_hlo_verifier(), device_shape_size_fn_,
       instruction_can_change_layout_func());
 }
 
@@ -81,7 +103,23 @@ HloRunnerAgnosticTestBase::ParseAndReturnVerifiedModule(
     absl::string_view hlo_text, const HloModuleConfig& config,
     const HloParserOptions& parser_options) const {
   return HloHardwareIndependentTestBase::ParseAndReturnVerifiedModule(
-      hlo_text, config, parser_options, test_runner_->device_shape_size_fn());
+      hlo_text, config, parser_options, device_shape_size_fn_);
+}
+
+absl::StatusOr<std::unique_ptr<HloModule>>
+HloRunnerAgnosticTestBase::HloModuleFromXlaBuilder(
+    XlaBuilder* builder, const ExecutionOptions& execution_options) const {
+  TF_ASSIGN_OR_RETURN(XlaComputation computation, builder->Build());
+  TF_ASSIGN_OR_RETURN(
+      HloModuleConfig module_config,
+      HloModule::CreateModuleConfigFromProto(computation.proto(),
+                                             execution_options.debug_options(),
+                                             &execution_options));
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<HloModule> module,
+      HloModule::CreateFromProto(computation.proto(), module_config));
+  TF_RETURN_IF_ERROR(verifier().Run(module.get()).status());
+  return module;
 }
 
 HloComputation*
@@ -96,8 +134,7 @@ HloRunnerAgnosticTestBase::AddEntryComputationAndUpdateEntryComputationLayout(
 void HloRunnerAgnosticTestBase::UpdateEntryComputationLayout(
     HloModule* const module) const {
   // TODO - b/391868033: Remove UpdateEntryComputationLayout from this class.
-  xla::UpdateEntryComputationLayout(
-      module, test_runner_->device_shape_representation_fn());
+  xla::UpdateEntryComputationLayout(module, device_shape_representation_fn_);
 }
 
 absl::StatusOr<Literal> HloRunnerAgnosticTestBase::Execute(
@@ -105,25 +142,6 @@ absl::StatusOr<Literal> HloRunnerAgnosticTestBase::Execute(
     absl::Span<const Literal* const> arguments, bool run_hlo_passes) {
   TF_RETURN_IF_ERROR(PreprocessModuleForTestRunner(module.get()));
   return test_runner_->Execute(std::move(module), arguments, run_hlo_passes);
-}
-
-Literal HloRunnerAgnosticTestBase::ExecuteNoHloPasses(
-    std::unique_ptr<HloModule> module,
-    absl::Span<const Literal* const> arguments) {
-  absl::StatusOr<Literal> result = Execute(std::move(module), arguments,
-                                           /*run_hlo_passes=*/false);
-  CHECK_OK(result.status());
-  return *std::move(result);
-}
-
-Literal HloRunnerAgnosticTestBase::ExecuteAndTransfer(
-    std::unique_ptr<HloModule> module,
-    absl::Span<const Literal* const> arguments) {
-  CHECK_OK(PreprocessModuleForTestRunner(module.get()));
-  absl::StatusOr<Literal> result =
-      test_runner_->Execute(std::move(module), arguments, true, nullptr);
-  CHECK_OK(result.status());
-  return *std::move(result);
 }
 
 absl::StatusOr<std::vector<Literal>>
@@ -159,9 +177,9 @@ HloRunnerAgnosticTestBase::ExecuteReplicated(
 
 absl::StatusOr<std::vector<Literal>>
 HloRunnerAgnosticTestBase::ExecuteReplicated(
-    const std::function<OpaqueExecutable*(int64_t)> executable_provider,
-    const std::function<int64_t(int64_t)> argument_count_provider,
-    const std::function<const Literal*(int64_t, int64_t)> argument_provider,
+    absl::AnyInvocable<OpaqueExecutable*(int64_t)> executable_provider,
+    absl::AnyInvocable<int64_t(int64_t)> argument_count_provider,
+    absl::AnyInvocable<const Literal*(int64_t, int64_t)> argument_provider,
     const int64_t num_replicas, const bool run_hlo_passes,
     DeviceAssignment* const device_assignment) {
   HloRunnerInterface::ReplicatedExecuteOptions options;
@@ -169,8 +187,8 @@ HloRunnerAgnosticTestBase::ExecuteReplicated(
   options.run_hlo_passes = run_hlo_passes;
   options.use_threads = true;
   return test_runner_->ExecuteReplicated(
-      executable_provider, argument_count_provider, argument_provider,
-      std::move(options), device_assignment);
+      std::move(executable_provider), std::move(argument_count_provider),
+      std::move(argument_provider), std::move(options), device_assignment);
 }
 
 absl::StatusOr<std::vector<Literal>>
@@ -217,7 +235,7 @@ HloRunnerAgnosticTestBase::ExecuteReplicated(
 
   const absl::StatusOr<Literal> output =
       test_runner_->Execute(std::move(module), fake_arguments, run_hlo_passes);
-  return output.ok()
+  return swallow_execution_errors_ || output.ok()
              ? ::testing::AssertionSuccess()
              : ::testing::AssertionFailure() << output.status().message();
 }
@@ -273,7 +291,9 @@ HloRunnerAgnosticTestBase::RunAndCompareTwoModulesReplicated(
       /*use_large_range=*/false,
       /*treat_gte_as_data_formatting=*/false,
       /*max_bits_of_precision=*/std::nullopt);
-  CHECK_OK(fake_arguments);
+  if (!fake_arguments.ok()) {
+    return ::testing::AssertionFailure() << fake_arguments.status();
+  }
 
   return RunAndCompareTwoModulesReplicated(std::move(module_0),
                                            std::move(module_1), *fake_arguments,
@@ -350,7 +370,9 @@ HloRunnerAgnosticTestBase::RunAndCompareTwoModulesReplicated(
   const absl::StatusOr<std::vector<Literal>> fake_arguments = MakeFakeArguments(
       module_0.get(), /*pseudo_random=*/true, /*use_large_range=*/false,
       /*treat_gte_as_data_formatting=*/false, args_max_bits_of_precision);
-  CHECK_OK(fake_arguments);
+  if (!fake_arguments.ok()) {
+    return ::testing::AssertionFailure() << fake_arguments.status();
+  }
 
   std::vector<Literal*> fake_argument_ptrs;
   absl::c_transform(
@@ -437,7 +459,6 @@ HloRunnerAgnosticTestBase::RunAndCompareTwoModulesReplicated(
 
 ::testing::AssertionResult HloRunnerAgnosticTestBase::Run(
     const absl::string_view hlo_string, const bool run_hlo_passes,
-    ExecutionProfile* const profile,
     const tsl::protobuf::Message* backend_config, const bool use_random_data) {
   absl::StatusOr<std::unique_ptr<VerifiedHloModule>> module =
       ParseAndReturnVerifiedModule(hlo_string);
@@ -453,16 +474,6 @@ HloRunnerAgnosticTestBase::RunAndCompareTwoModulesReplicated(
       fake_arguments, std::back_inserter(fake_argument_ptrs),
       [](const Literal& literal) { return const_cast<Literal*>(&literal); });
 
-  if (profile != nullptr) {
-    // We have to enable HLO profiling since otherwise currently the
-    // ExecutionProfile is not correct.
-    HloModuleConfig config = (*module)->config();
-    DebugOptions debug_options = config.debug_options();
-    debug_options.set_xla_hlo_profile(true);
-    config.set_debug_options(debug_options);
-    (*module)->set_config(config);
-  }
-
   if (backend_config) {
     // Set backend configuration if it is given.
     HloInstruction* instruction =
@@ -477,11 +488,11 @@ HloRunnerAgnosticTestBase::RunAndCompareTwoModulesReplicated(
     return ::testing::AssertionFailure()
            << "Error while preprocessing module: " << status;
   }
-  auto output = test_runner_->Execute(*std::move(module), fake_argument_ptrs,
-                                      /*run_hlo_passes=*/run_hlo_passes,
-                                      /*profile=*/profile);
 
-  return output.ok()
+  const absl::StatusOr<Literal> output =
+      test_runner_->Execute(*std::move(module), fake_argument_ptrs,
+                            /*run_hlo_passes=*/run_hlo_passes);
+  return swallow_execution_errors_ || output.ok()
              ? ::testing::AssertionSuccess()
              : ::testing::AssertionFailure() << output.status().message();
 }
@@ -527,7 +538,7 @@ HloRunnerAgnosticTestBase::RunAndCompareTwoModulesReplicated(
   }
   const absl::StatusOr<std::vector<Literal>> output =
       test_runner_->ExecuteReplicated(*std::move(module), std::move(options));
-  if (output.ok()) {
+  if (swallow_execution_errors_ || output.ok()) {
     return ::testing::AssertionSuccess();
   }
   return ::testing::AssertionFailure() << output.status().message();
@@ -535,15 +546,13 @@ HloRunnerAgnosticTestBase::RunAndCompareTwoModulesReplicated(
 
 ::testing::AssertionResult HloRunnerAgnosticTestBase::RunMultipleTimes(
     const absl::string_view hlo_string, const bool run_hlo_passes,
-    std::vector<ExecutionProfile>* const profiles,
-    const tsl::protobuf::Message* const backend_config,
+    const int64_t num_runs, const tsl::protobuf::Message* const backend_config,
     const bool assert_determinism) {
-  const int n = profiles->size();
-  std::vector<std::vector<Literal*>> fake_argument_ptrs(n);
-  std::vector<std::vector<Literal>> fake_arguments(n);
-  std::vector<std::unique_ptr<OpaqueExecutable>> executables(n);
+  std::vector<std::vector<Literal*>> fake_argument_ptrs(num_runs);
+  std::vector<std::vector<Literal>> fake_arguments(num_runs);
+  std::vector<std::unique_ptr<OpaqueExecutable>> executables(num_runs);
 
-  for (int i = 0; i < n; ++i) {
+  for (int i = 0; i < num_runs; ++i) {
     absl::StatusOr<std::unique_ptr<VerifiedHloModule>> module =
         ParseAndReturnVerifiedModule(hlo_string);
     if (!module.ok()) {
@@ -553,16 +562,6 @@ HloRunnerAgnosticTestBase::RunAndCompareTwoModulesReplicated(
     }
 
     fake_arguments[i] = MakeFakeArguments(module->get()).value();
-
-    if (profiles != nullptr) {
-      // We have to enable HLO profiling since otherwise currently the
-      // ExecutionProfile is not correct.
-      HloModuleConfig config = (*module)->config();
-      DebugOptions debug_options = config.debug_options();
-      debug_options.set_xla_hlo_profile(true);
-      config.set_debug_options(debug_options);
-      (*module)->set_config(config);
-    }
 
     if (backend_config) {
       // Set backend configuration if it is given.
@@ -588,15 +587,15 @@ HloRunnerAgnosticTestBase::RunAndCompareTwoModulesReplicated(
   }
 
   std::optional<Literal> canonical_output;
-  for (int i = 0; i < n; ++i) {
+  for (int i = 0; i < num_runs; ++i) {
     absl::StatusOr<Literal> output = test_runner_->ExecuteWithExecutable(
-        executables[i].get(), fake_arguments[i],
-        /*profile=*/&((*profiles)[i]));
-    if (!output.ok()) {
+        executables[i].get(), fake_arguments[i]);
+    if (!swallow_execution_errors_ && !output.ok()) {
       return ::testing::AssertionFailure() << output.status().message();
     }
 
-    if (assert_determinism) {
+    // Swallowing errors implies determinism.
+    if (assert_determinism && !swallow_execution_errors_) {
       if (!canonical_output.has_value()) {
         canonical_output = *std::move(output);
       } else {
@@ -623,14 +622,25 @@ HloRunnerAgnosticTestBase::RunAndCompareTwoModulesInternalReplicated(
   TF_RETURN_IF_ERROR(verifier().Run(module_1.get()).status());
 
   // Execute the two modules.
-  TF_ASSIGN_OR_RETURN(
-      const std::vector<Literal> test_0,
-      test_runner_->ExecuteReplicated(std::move(module_0), options));
-  TF_ASSIGN_OR_RETURN(
-      const std::vector<Literal> test_1,
-      test_runner_->ExecuteReplicated(std::move(module_1), options));
+  const absl::StatusOr<std::vector<Literal>> test_0 =
+      test_runner_->ExecuteReplicated(std::move(module_0), options);
+  if (!swallow_execution_errors_ && !test_0.ok()) {
+    // Exit early if we aren't swallowing errors.
+    return test_0.status();
+  }
+  const absl::StatusOr<std::vector<Literal>> test_1 =
+      test_runner_->ExecuteReplicated(std::move(module_1), options);
+  if (swallow_execution_errors_ && !test_0.ok()) {
+    return ::testing::AssertionSuccess();
+  }
+  if (!test_1.ok()) {
+    if (swallow_execution_errors_) {
+      return ::testing::AssertionSuccess();
+    }
+    return test_1.status();
+  }
 
-  for (const auto& [expected, actual] : llvm::zip_equal(test_0, test_1)) {
+  for (const auto& [expected, actual] : llvm::zip_equal(*test_0, *test_1)) {
     if (::testing::AssertionResult result =
             LiteralTestUtil::NearOrEqual(expected, actual, error);
         !result) {
@@ -650,15 +660,34 @@ HloRunnerAgnosticTestBase::RunAndCompareTwoModulesInternal(
   TF_RETURN_IF_ERROR(verifier().Run(module_0.get()).status());
   TF_RETURN_IF_ERROR(verifier().Run(module_1.get()).status());
 
-  // Execute the two modules.
+  // Compile and execute the two modules. We compile both before running either
+  // to allow caching to work better.
   TF_ASSIGN_OR_RETURN(
-      const Literal test_0,
-      test_runner_->Execute(std::move(module_0), arguments, run_hlo_passes));
+      const std::unique_ptr<OpaqueExecutable> executable_0,
+      test_runner_->CreateExecutable(std::move(module_0), run_hlo_passes));
   TF_ASSIGN_OR_RETURN(
-      const Literal test_1,
-      test_runner_->Execute(std::move(module_1), arguments, run_hlo_passes));
+      const std::unique_ptr<OpaqueExecutable> executable_1,
+      test_runner_->CreateExecutable(std::move(module_1), run_hlo_passes));
 
-  return LiteralTestUtil::NearOrEqual(/*expected=*/test_0, /*actual=*/test_1,
+  const absl::StatusOr<Literal> test_0 =
+      test_runner_->ExecuteWithExecutable(executable_0.get(), arguments);
+  if (!swallow_execution_errors_ && !test_0.ok()) {
+    // Exit early if we aren't swallowing errors.
+    return test_0.status();
+  }
+  const absl::StatusOr<Literal> test_1 =
+      test_runner_->ExecuteWithExecutable(executable_1.get(), arguments);
+  if (swallow_execution_errors_ && !test_0.ok()) {
+    return ::testing::AssertionSuccess();
+  }
+  if (!test_1.ok()) {
+    if (swallow_execution_errors_) {
+      return ::testing::AssertionSuccess();
+    }
+    return test_1.status();
+  }
+
+  return LiteralTestUtil::NearOrEqual(/*expected=*/*test_0, /*actual=*/*test_1,
                                       error);
 }
 

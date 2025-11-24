@@ -40,7 +40,7 @@ namespace xla {
 // This is the expected entry point to the compilation functionality.
 absl::StatusOr<std::string> CompileExecutable(
     std::unique_ptr<HloModule> hlo_module, BackendType backend,
-    std::optional<Compiler::TargetConfig> target_config,
+    std::optional<Compiler::GpuTargetConfig> target_config,
     CompilationResult& result);
 
 // Merges the measured duration into compilation_result and writes

@@ -29,7 +29,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/codegen/emitters/kernel_arguments.h"
 #include "xla/hlo/ir/hlo_computation.h"
-#include "xla/service/gpu/executable.pb.h"
+#include "xla/service/gpu/kernel_reuse_cache.pb.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/stream_executor/gpu/tma_metadata.h"
 #include "xla/stream_executor/launch_dim.h"
@@ -47,7 +47,7 @@ class KernelReuseCache {
     std::optional<se::ClusterDim> cluster_dim;
     int64_t shmem_bytes = 0;
     std::string binary;
-    std::optional<stream_executor::gpu::TmaMetadata> tma_metadata;
+    stream_executor::gpu::TmaMetadata tma_metadata;
   };
   struct NamedBinary {
     std::string name;
@@ -103,19 +103,6 @@ absl::Status UpdateDiskKernelCache(
     absl::string_view path, bool do_append,
     const CompilationCacheProto& current_cache,
     absl::Span<const KernelReuseCache::NamedBinary> binaries_to_cache);
-
-// Calculates the fingerprint of a (fused_computation, kernel_arguments,
-// discriminator) tuple.
-//
-// If a given fusion is implemented using multiple kernels, then for each
-// kernel we should provide a discriminator, such as "init" and "impl".
-//
-// If the same fingerprint is returned twice, then we can reuse the kernel
-// generated for the first computation.
-std::string GetComputationFingerprint(
-    const HloComputation* fused_computation,
-    absl::Span<const emitters::KernelArgument> kernel_arguments,
-    absl::string_view discriminator = "");
 
 }  // namespace gpu
 }  // namespace xla

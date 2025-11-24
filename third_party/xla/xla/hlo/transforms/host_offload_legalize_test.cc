@@ -98,6 +98,31 @@ ENTRY main {
   XLA_VLOG_LINES(1, module->ToString());
 }
 
+TEST_F(HostOffloadLegalizeTest, TestWithAsyncCallNoMove) {
+  const std::string& hlo_string = R"(
+HloModule jit_update, entry_computation_layout={(f32[20,3,256,133]{2,3,1,0:T(8,128)S(5)})->(f32[20,3,256,133]{2,1,0,3:T(4,128)}, f32[4096]{0:T(1024)})}
+
+%async_computation {
+  %param_0 = f32[20,3,256,133] parameter(0)
+  ROOT %offloaded-custom-call = f32[4096] custom-call(%param_0), custom_call_target="HostExecute"
+}, execution_thread="host"
+
+ENTRY main {
+  %param.246 = f32[20,3,256,133] parameter(0)
+  %copy.1 = f32[20,3,256,133]{2,1,0,3:T(4,128)} copy(param.246)
+  %async-start = ((f32[20,3,256,133]), f32[4096], u32[]) async-start(%copy.1), async_execution_thread="host", calls=%async_computation
+  %async-done = f32[4096] custom-call-done(%async-start)
+  custom-call.7832 = f32[20,3,256,133]{2,1,0,3:T(4,128)} custom-call(copy.1), custom_call_target="MoveToDevice"
+  ROOT tuple.16745 = (f32[20,3,256,133]{2,1,0,3:T(4,128)}, f32[4096]{0:T(1024)}) tuple(custom-call.7832, %async-done)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloadLegalize(module.get()));
+  EXPECT_FALSE(changed);
+}
+
 TEST_F(HostOffloadLegalizeTest, NoCopyWithOptBarrierMoreElaborate) {
   const std::string& hlo_string = R"(
 HloModule jit_f, entry_computation_layout={(f32[16,256]{0,1})->f32[16,256]{1,0}}
@@ -632,6 +657,37 @@ ENTRY main {
   TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloadLegalize(module.get()));
 
   ASSERT_FALSE(changed);
+}
+
+TEST_F(HostOffloadLegalizeTest, MoveCopyOverTransposingBitcast) {
+  const std::string& hlo_string = R"(
+HloModule jit_f, entry_computation_layout={(bf16[1,1,16384,8,256]{4,3,2,1,0:T(4,128)(2,1)S(5)})->bf16[1,1,16384,8,256]{4,3,2,1,0:T(8,128)(2,1)}}
+
+ENTRY main {
+  param = bf16[1,1,16384,8,256]{4,3,2,1,0:T(4,128)(2,1)} parameter(0)
+  copy = bf16[1,1,16384,8,256]{4,2,3,1,0:T(8,128)(2,1)} copy(param)
+  bitcast = bf16[1,1,16384,8,256]{4,3,2,1,0:T(8,128)(2,1)} bitcast(copy)
+  custom-call = bf16[1,1,16384,8,256]{4,3,2,1,0:T(8,128)(2,1)} custom-call(bitcast), custom_call_target="MoveToDevice"
+  ROOT add = bf16[1,1,16384,8,256]{4,3,2,1,0:T(8,128)(2,1)} add(custom-call, custom-call)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloadLegalize(module.get()));
+
+  EXPECT_TRUE(changed);
+  XLA_VLOG_LINES(1, module->ToString());
+  HloInstruction* custom_call = FindInstruction(module.get(), "custom-call");
+  EXPECT_EQ(
+      custom_call->shape().layout(),
+      LayoutUtil::MakeLayout({4, 2, 3, 1, 0}, {Tile{{4, 128}}, Tile{{2, 1}}}));
+  HloInstruction* copy = custom_call->users()[0];
+  EXPECT_EQ(copy->opcode(), HloOpcode::kCopy);
+  EXPECT_EQ(
+      copy->shape().layout(),
+      LayoutUtil::MakeLayout({4, 3, 2, 1, 0}, {Tile{{8, 128}}, Tile{{2, 1}}}));
 }
 
 }  // namespace

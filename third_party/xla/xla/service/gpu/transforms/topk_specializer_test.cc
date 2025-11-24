@@ -19,7 +19,6 @@ limitations under the License.
 
 #include <memory>
 #include <optional>
-#include <string>
 #include <tuple>
 #include <utility>
 
@@ -39,8 +38,9 @@ limitations under the License.
 #include "xla/service/platform_util.h"
 #include "xla/service/topk_rewriter.h"
 #include "xla/shape_util.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/tests/hlo_test_base.h"
-#include "tsl/platform/statusor.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -117,10 +117,10 @@ class GeneralizeTopk : public HloModulePass {
  public:
   absl::string_view name() const override { return "generalized-topk"; }
 
-  using HloPassInterface::Run;
-  absl::StatusOr<bool> Run(HloModule* module,
-                           const absl::flat_hash_set<absl::string_view>&
-                               execution_threads) override {
+ protected:
+  absl::StatusOr<bool> RunImpl(HloModule* module,
+                               const absl::flat_hash_set<absl::string_view>&
+                                   execution_threads) override {
     return GeneralizeTopkVisitor().RunOnModule(module, execution_threads);
   }
 };
@@ -136,8 +136,12 @@ TEST_P(TopkTest, ProducesCorrectResult) {
   const auto [n_kb, k, batch_size, dtype] = GetParam();
   const size_t n = n_kb * 1024;
   TF_ASSERT_OK_AND_ASSIGN(auto topk_module, TopkHlo(n, k, batch_size, dtype));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          gpu::TopkSpecializer().Run(topk_module.get()));
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<xla::se::DeviceDescription> device_desc,
+      GetTestPlatform()->DescriptionForDevice(0));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed, gpu::TopkSpecializer(device_desc->gpu_compute_capability())
+                        .Run(topk_module.get()));
   ASSERT_TRUE(changed);
   EXPECT_TRUE(
       RunAndCompare(std::move(topk_module), std::nullopt, ToSortAndSlice));

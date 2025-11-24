@@ -1,6 +1,11 @@
 load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
+load("@bazel_skylib//lib:selects.bzl", "selects")
 load("@bazel_skylib//rules:common_settings.bzl", "bool_flag")
 load("//xla/tsl:tsl.default.bzl", "get_compatible_with_portable")
+load(
+    "//xla/tsl/platform:build_config.bzl",
+    "tsl_cc_test",
+)
 load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
@@ -30,7 +35,10 @@ config_setting(
 bzl_library(
     name = "build_defs",
     srcs = ["build_defs.bzl"],
-    deps = ["//xla/tsl:package_groups_bzl"],
+    deps = [
+        # copybara:uncomment "@rules_cc//cc:core_rules",
+        "//xla/tsl:package_groups_bzl",
+    ],
 )
 
 # Add
@@ -43,8 +51,17 @@ bool_flag(
 )
 
 config_setting(
-    name = "disable_onednn_contraction_kernel_config",
+    name = "disable_onednn_contraction_kernel_flag_set",
     flag_values = {":disable_onednn_contraction_kernel": "True"},
+)
+
+selects.config_setting_group(
+    name = "disable_onednn_contraction_kernel_config",
+    match_any = [
+        ":disable_onednn_contraction_kernel_flag_set",
+        # copybara:uncomment "//xla/tsl/onednn:no_onednn",
+    ],
+    visibility = ["//visibility:public"],
 )
 
 # Depending on a build configuration this target provides custom kernel for Eigen
@@ -96,6 +113,7 @@ cc_library(
         "//xla/tsl:fuchsia_x86_64": [],
         "//xla/tsl:ios": [],
         "//xla/tsl:linux_ppc64le": [],
+        "//xla/tsl:linux_riscv64": [],
         "//xla/tsl:linux_s390x": [],
         "//xla/tsl:macos_arm64": [],
         "//conditions:default": [
@@ -115,9 +133,10 @@ cc_library(
         "//xla/tsl:fuchsia_x86_64": [],
         "//xla/tsl:ios": [],
         "//xla/tsl:linux_ppc64le": [],
+        "//xla/tsl:linux_riscv64": [],
         "//xla/tsl:linux_s390x": [],
         "//xla/tsl:macos_arm64": [],
-        "//conditions:default": ["@onednn//:mkl_dnn"],
+        "//conditions:default": ["//xla/tsl/mkl:onednn"],
     }),
 )
 
@@ -144,6 +163,17 @@ cc_library(
         "//xla/tsl/framework/fixedpoint",
         "//xla/tsl/platform:dynamic_annotations",
         "@com_google_absl//absl/base",
+        "@eigen_archive//:eigen3",
+    ],
+)
+
+tsl_cc_test(
+    name = "eigen_contraction_kernel_test",
+    srcs = ["eigen_contraction_kernel_test.cc"],
+    deps = [
+        ":eigen_contraction_kernel",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest_main",
         "@eigen_archive//:eigen3",
     ],
 )

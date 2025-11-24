@@ -51,14 +51,14 @@ namespace {
 
 // Prepend the current test case's working temporary directory to <prefix>
 string Prefix(const string& prefix) {
-  return strings::StrCat(testing::TmpDir(), "/", prefix);
+  return absl::StrCat(testing::TmpDir(), "/", prefix);
 }
 
 // Construct a data input directory by prepending the test data root
 // directory to <prefix>
 string TestdataPrefix(const string& prefix) {
-  return strings::StrCat(testing::TensorFlowSrcRoot(),
-                         "/core/util/tensor_bundle/testdata/", prefix);
+  return absl::StrCat(testing::TensorFlowSrcRoot(),
+                      "/core/util/tensor_bundle/testdata/", prefix);
 }
 
 template <typename T>
@@ -764,7 +764,7 @@ TEST(TensorBundleTest, StringTensors) {
     // Requires a 64-bit length.
     tstring* backing_string = long_string_tensor.flat<tstring>().data();
     backing_string->resize_uninitialized(kLongLength);
-    std::char_traits<char>::assign(backing_string->data(), kLongLength, 'd');
+    memset(backing_string->data(), 'd', kLongLength);
     TF_EXPECT_OK(writer.Add("long_scalar", long_string_tensor));
 
     // Mixes in some floats.
@@ -802,7 +802,7 @@ TEST(TensorBundleTest, StringTensors) {
     // of 4GB, therefore it is not ideal to free the buffer right now.
     // The rationale is to make allocation/free close to each other.
     tstring* backing_string = long_string_tensor.flat<tstring>().data();
-    std::char_traits<char>::assign(backing_string->data(), kLongLength, 'e');
+    memset(backing_string->data(), 'e', kLongLength);
 
     // Read long_scalar and check it contains kLongLength 'd's.
     TF_ASSERT_OK(reader.Lookup("long_scalar", &long_string_tensor));
@@ -879,7 +879,7 @@ TEST(TensorBundleTest, DirectoryStructure) {
   for (int i = 0; i < 2; ++i) {
     BundleWriter writer(env, kBundlePrefixes[i]);
     TF_EXPECT_OK(
-        writer.Add(strings::StrCat("tensor", i), Constant_2x3<float>(0.)));
+        writer.Add(absl::StrCat("tensor", i), Constant_2x3<float>(0.)));
     TF_ASSERT_OK(writer.Finish());
   }
 
@@ -924,14 +924,14 @@ TEST(TensorBundleTest, SortForSequentialAccess) {
   BundleWriter writer0(env, kBundlePrefixes[0]);
   for (int i = 0; i < 3; ++i) {
     TF_EXPECT_OK(
-        writer0.Add(strings::StrCat("tensor-0-", i), Constant_2x3<float>(0.)));
+        writer0.Add(absl::StrCat("tensor-0-", i), Constant_2x3<float>(0.)));
   }
   TF_ASSERT_OK(writer0.Finish());
 
   BundleWriter writer1(env, kBundlePrefixes[1]);
   for (int i = 2; i >= 0; --i) {
     TF_EXPECT_OK(
-        writer1.Add(strings::StrCat("tensor-1-", i), Constant_2x3<float>(0.)));
+        writer1.Add(absl::StrCat("tensor-1-", i), Constant_2x3<float>(0.)));
   }
   TF_ASSERT_OK(writer1.Finish());
 
@@ -1122,7 +1122,7 @@ TEST(TensorBundleTest, VersionTest) {
     versions.add_bad_consumers(kTensorBundleVersion);
     VersionTest(
         versions,
-        strings::StrCat(
+        absl::StrCat(
             "Checkpoint disallows consumer version ", kTensorBundleVersion,
             ".  Please upgrade TensorFlow: this version is likely buggy."));
   }
@@ -1302,7 +1302,7 @@ static void BM_BundleWriterSmallTensor(::testing::benchmark::State& state) {
   BundleWriter writer(Env::Default(), Prefix("foo"));
   int suffix = 0;
   for (auto s : state) {
-    TF_CHECK_OK(writer.Add(strings::StrCat("small", suffix++), t));
+    TF_CHECK_OK(writer.Add(absl::StrCat("small", suffix++), t));
   }
 }
 

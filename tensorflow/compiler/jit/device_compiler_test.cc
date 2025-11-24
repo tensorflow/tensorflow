@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/jit/device_compiler.h"
 
 #include <iostream>
+#include <iterator>
 #include <memory>
 #include <optional>
 #include <string>
@@ -24,12 +25,20 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/algorithm/container.h"
+#include "absl/log/check.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
+#include "absl/synchronization/notification.h"
+#include "absl/time/clock.h"
+#include "absl/time/time.h"
 #include "tensorflow/cc/framework/scope.h"
 #include "tensorflow/cc/ops/function_ops.h"
 #include "tensorflow/cc/ops/math_ops.h"
 #include "tensorflow/compiler/jit/device_compilation_cluster_signature.h"
 #include "tensorflow/compiler/jit/device_compiler_client.h"
 #include "tensorflow/compiler/jit/tests/device_compiler_test_helper.h"
+#include "tensorflow/compiler/jit/tf_graph_to_hlo_compiler.pb.h"
 #include "tensorflow/compiler/jit/xla_compile_util.h"
 #include "tensorflow/compiler/jit/xla_device_compiler_client.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
@@ -38,6 +47,7 @@ limitations under the License.
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/lib/strings/proto_serialization.h"
 #include "tensorflow/core/framework/fake_input.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/graph_to_functiondef.h"
@@ -45,16 +55,28 @@ limitations under the License.
 #include "tensorflow/core/framework/resource_base.h"
 #include "tensorflow/core/kernels/ops_testutil.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/notification.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/status_matchers.h"
 #include "tensorflow/core/platform/statusor.h"
+#include "tensorflow/core/platform/test.h"
+#include "tsl/platform/path.h"
 
 namespace tensorflow {
 namespace {
 using ::testing::_;
+using ::testing::ElementsAreArray;
+using ::testing::EndsWith;
+using ::testing::Eq;
+using ::testing::EqualsProto;
+using ::testing::IsTrue;
+using ::testing::NotNull;
 using ::testing::Return;
+using ::testing::SizeIs;
+using ::testing::StrEq;
+using ::testing::UnorderedElementsAre;
+using ::testing::status::IsOk;
 
 using XlaDeviceCompiler =
     DeviceCompiler<xla::LocalExecutable, xla::LocalClient>;
@@ -117,7 +139,7 @@ class MockXlaDeviceExecutablePersistor
             Config{testing::TmpDir(), false, "xla"},
             DeviceType(DEVICE_CPU_XLA_JIT)) {}
   MOCK_METHOD(absl::Status, TryToPersistExecutable,
-              (uint64, const std::string&, const XlaCompiler::Options&,
+              (uint64_t, const std::string&, const XlaCompiler::Options&,
                const XlaCompiler::CompilationResult&,
                const xla::LocalExecutable&,
                (DeviceCompilerClient<xla::LocalExecutable, xla::LocalClient>*)),
@@ -285,7 +307,7 @@ TEST_F(DeviceCompilerTest, CompileAsyncSuccess) {
   // `RegisterCompilation` is the last call that happens just before the async
   // compilation completes. We use the completion of this call to determine when
   // the compilation finshes to verify expected behavior.
-  Notification done;
+  absl::Notification done;
   EXPECT_CALL(*mock_profiler_,
               ShouldCompileCluster(_, DeviceCompileMode::kAsync, 1))
       .WillOnce(Return(true));
@@ -403,7 +425,7 @@ TEST_F(DeviceCompilerTest, CompileFailedToLoadFromPersistentCache) {
       &xla_executable));
 
   // Corrupt the file which contains the serialized executable.
-  std::vector<string> files;
+  std::vector<std::string> files;
   TF_ASSERT_OK(Env::Default()->GetChildren(testing::TmpDir(), &files));
   std::string const* serialized_executable_filename = nullptr;
   for (const auto& file : files) {
@@ -470,11 +492,106 @@ TEST_F(DeviceCompilerTest, CompileStrictPersistentCacheFailedToPersist) {
                   options, fn, args, XlaCompiler::CompileOptions{},
                   DeviceCompileMode::kStrict, profiler_, &compilation_result,
                   &xla_executable),
-              testing::StatusIs(error::FAILED_PRECONDITION,
-                                ::testing::HasSubstr("Random error.")));
+              absl_testing::StatusIs(error::FAILED_PRECONDITION,
+                                     ::testing::HasSubstr("Random error.")));
 
   EXPECT_TRUE(compilation_result == nullptr);
   EXPECT_TRUE(xla_executable == nullptr);
+}
+
+class DeviceCompilerTestWithDump : public DeviceCompilerTest {
+ protected:
+  explicit DeviceCompilerTestWithDump() {
+    dump_dir_ = tsl::io::JoinPath(
+        testing::TmpDir(),
+        absl::StrCat("dump_test_", absl::ToUnixNanos(absl::Now())));
+    CHECK_OK(Env::Default()->RecursivelyCreateDir(dump_dir_));
+    setenv("TF_GRAPH_TO_HLO_COMPILER_DUMP_DIR", dump_dir_.c_str(), 1);
+  }
+  ~DeviceCompilerTestWithDump() override {
+    unsetenv("TF_GRAPH_TO_HLO_COMPILER_DUMP_DIR");
+  }
+
+  std::string dump_dir_;
+};
+
+TEST_F(DeviceCompilerTestWithDump, CompileStrictDebugInformationDumpWorks) {
+  // We create a new XlaDeviceCompiler here so that we ensure that the cached
+  // result is not used and `CompileStrict` is called.
+  auto xla_device_compiler =
+      CreateXlaDeviceCompiler(/*enable_persistence=*/false);
+  ASSERT_THAT(xla_device_compiler, NotNull());
+  core::ScopedUnref xla_device_compiler_ref(xla_device_compiler);
+
+  // Now we run the compilation. We only care that `CompileStrict` has been
+  // actually called, and we don't care about whether it succeeded.
+  const XlaCompiler::CompilationResult* compilation_result = nullptr;
+  xla::LocalExecutable* xla_executable = nullptr;
+  XlaCompiler::Options options = GetDefaultXlaOptions();
+  XlaCompiler::CompileOptions compile_options;
+  NameAttrList fn;
+  fn.set_name("foo");
+  xla_device_compiler
+      ->CompileIfNeeded(options, fn, SampleArgsForAddXY(), compile_options,
+                        DeviceCompileMode::kStrict, profiler_,
+                        &compilation_result, &xla_executable)
+      .IgnoreError();
+
+  // Check the directory structure.
+  std::vector<std::string> dump_dir_files;
+  EXPECT_THAT(Env::Default()->GetChildren(dump_dir_, &dump_dir_files), IsOk());
+  EXPECT_THAT(dump_dir_files, SizeIs(1));
+  absl::string_view dump_subdir = dump_dir_files[0];
+  std::vector<std::string> dump_subdir_files;
+  EXPECT_THAT(
+      Env::Default()->GetChildren(tsl::io::JoinPath(dump_dir_, dump_subdir),
+                                  &dump_subdir_files),
+      IsOk());
+  // `options.pb` and one pb for the compile call arguments.
+  EXPECT_THAT(dump_subdir_files,
+              UnorderedElementsAre("options.pb", EndsWith(".pb")));
+
+  // First check the options file.
+  std::string options_file =
+      tsl::io::JoinPath(dump_dir_, dump_subdir, "options.pb");
+  std::string options_contents;
+  EXPECT_THAT(ReadFileToString(Env::Default(), options_file, &options_contents),
+              IsOk());
+  TfGraphToHloCompilerOptions options_proto;
+  EXPECT_THAT(options_proto.ParseFromString(options_contents), IsTrue());
+  EXPECT_THAT(absl::StrCat(tsl::DeterministicProtoHash64(options_proto)),
+              StrEq(dump_subdir));
+  EXPECT_THAT(options_proto.device_type(),
+              StrEq(options.device_type.type_string()));
+  EXPECT_THAT(options_proto.flib_def(),
+              EqualsProto(options.flib_def->ToProto()));
+  EXPECT_THAT(options_proto.graph_def_version(), Eq(options.graph_def_version));
+
+  // Now check the compile call arguments file.
+  absl::string_view compile_call_args_file_name =
+      (dump_subdir_files[0] == "options.pb" ? dump_subdir_files[1]
+                                            : dump_subdir_files[0]);
+  std::string compile_call_args_file =
+      tsl::io::JoinPath(dump_dir_, dump_subdir, compile_call_args_file_name);
+  std::string compile_call_args_contents;
+  EXPECT_THAT(ReadFileToString(Env::Default(), compile_call_args_file,
+                               &compile_call_args_contents),
+              IsOk());
+  TfGraphToHloCompilerCompileCallArgs compile_call_args_proto;
+  EXPECT_THAT(
+      compile_call_args_proto.ParseFromString(compile_call_args_contents),
+      IsTrue());
+  EXPECT_THAT(compile_call_args_proto.compile_options(),
+              StrEq(compile_options.DebugString()));
+  EXPECT_THAT(compile_call_args_proto.function(), EqualsProto(fn));
+  std::vector<std::string> xla_arguments_human_strings;
+  absl::c_transform(SampleArgsForAddXY(),
+                    std::back_inserter(xla_arguments_human_strings),
+                    [](const XlaCompiler::Argument& xla_argument) {
+                      return xla_argument.HumanString();
+                    });
+  EXPECT_THAT(compile_call_args_proto.xla_arguments(),
+              ElementsAreArray(xla_arguments_human_strings));
 }
 
 TEST_F(OpsTestBase, CompileSingleOpSuccess) {
@@ -536,10 +653,6 @@ TEST_F(DeviceCompilerTest, Finalize) {
       &xla_executable));
 
   ASSERT_TRUE(compilation_result != nullptr);
-  ASSERT_TRUE(compilation_result->computation != nullptr);
-
-  const std::shared_ptr<xla::XlaComputation> computation =
-      compilation_result->computation;
 
   // Cast to `ResourceBase` to verify that the `Finalize` implementation
   // overrides the base class's.
@@ -551,9 +664,6 @@ TEST_F(DeviceCompilerTest, Finalize) {
       &xla_executable));
 
   ASSERT_TRUE(compilation_result != nullptr);
-
-  EXPECT_TRUE(compilation_result->computation == nullptr);
-  EXPECT_EQ(computation.use_count(), 1);
 }
 
 }  // namespace

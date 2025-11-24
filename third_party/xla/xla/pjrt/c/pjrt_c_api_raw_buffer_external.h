@@ -17,9 +17,10 @@ limitations under the License.
 #define XLA_PJRT_C_PJRT_C_API_RAW_BUFFER_EXTERNAL_H_
 
 #include "absl/status/statusor.h"
+#include "xla/future.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
 #include "xla/pjrt/c/pjrt_c_api_raw_buffer_extension.h"
-#include "xla/pjrt/pjrt_c_api_client.h"
+#include "xla/pjrt/c_api_client/pjrt_c_api_client.h"
 #include "xla/pjrt/raw_buffer.h"
 
 namespace pjrt {
@@ -32,16 +33,19 @@ PJRT_Memory* PjRtCApiRawBuffer_GetMemorySpace(
     const PJRT_Api* c_api, const PJRT_RawBuffer_Extension* extension,
     PJRT_RawBuffer* buffer);
 
+void* PjRtCApiRawBuffer_GetHostPointer(
+    PJRT_RawBuffer_GetHostPointer_Args* args);
+
 size_t PjRtCApiRawBuffer_GetOnDeviceSizeInBytes(
     const PJRT_Api* c_api, const PJRT_RawBuffer_Extension* extension,
     PJRT_RawBuffer* buffer);
 
-xla::PjRtFuture<> PjRtCApiRawBuffer_CopyRawHostToDevice(
+xla::Future<> PjRtCApiRawBuffer_CopyRawHostToDevice(
     const PJRT_Api* c_api, const PJRT_RawBuffer_Extension* extension,
     PJRT_RawBuffer* buffer, const void* src, int64_t offset,
     int64_t transfer_size);
 
-xla::PjRtFuture<> PjRtCApiRawBuffer_CopyRawDeviceToHost(
+xla::Future<> PjRtCApiRawBuffer_CopyRawDeviceToHost(
     const PJRT_Api* c_api, const PJRT_RawBuffer_Extension* extension,
     PJRT_RawBuffer* buffer, void* dst, int64_t offset, int64_t transfer_size);
 
@@ -65,11 +69,12 @@ class PjRtCApiRawBuffer : public PjRtRawBuffer {
   ~PjRtCApiRawBuffer() override;
 
   PjRtMemorySpace* memory_space() const override;
+  void* GetHostPointer() const override;
   size_t GetOnDeviceSizeInBytes() const override;
-  PjRtFuture<> CopyRawHostToDevice(const void* src, int64_t offset,
-                                   int64_t transfer_size) override;
-  PjRtFuture<> CopyRawDeviceToHost(void* dst, int64_t offset,
-                                   int64_t transfer_size) override;
+  Future<> CopyRawHostToDevice(const void* src, int64_t offset,
+                               int64_t transfer_size) override;
+  Future<> CopyRawDeviceToHost(void* dst, int64_t offset,
+                               int64_t transfer_size) override;
 
  private:
   PJRT_RawBuffer* c_buffer_;

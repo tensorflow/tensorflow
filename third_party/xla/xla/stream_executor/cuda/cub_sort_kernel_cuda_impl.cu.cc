@@ -124,108 +124,108 @@ cudaError_t CubSortPairs(void* d_temp_storage, size_t& temp_bytes,
                    /*end_bit=*/sizeof(KeyT) * 8, stream);
 }
 
-#define XLA_CUB_DEFINE_SORT_KEYS(suffix, type)                               \
+#define XLA_CUB_DEFINE_SORT_KEYS(type)                                       \
   template cudaError_t CubSortKeys<type>(void*, size_t&, const void*, void*, \
                                          size_t, bool, size_t, CUstream);
 
-#define XLA_CUB_DEFINE_SORT_PAIRS(suffix, type1, type2)                     \
+#define XLA_CUB_DEFINE_SORT_PAIRS(type1, type2)                             \
   template cudaError_t CubSortPairs<type1, type2>(                          \
       void*, size_t&, const void*, void*, const void*, void*, size_t, bool, \
       size_t, CUstream);
 
 // Floating point types.
 #ifdef CUB_TYPE_BF16
-XLA_CUB_DEFINE_SORT_KEYS(bf16, __nv_bfloat16)
+XLA_CUB_DEFINE_SORT_KEYS(__nv_bfloat16)
 #endif
 #ifdef CUB_TYPE_F16
-XLA_CUB_DEFINE_SORT_KEYS(f16, __half)
+XLA_CUB_DEFINE_SORT_KEYS(__half)
 #endif
 #ifdef CUB_TYPE_F32
-XLA_CUB_DEFINE_SORT_KEYS(f32, float)
+XLA_CUB_DEFINE_SORT_KEYS(float)
 #endif
 #ifdef CUB_TYPE_F64
-XLA_CUB_DEFINE_SORT_KEYS(f64, double)
+XLA_CUB_DEFINE_SORT_KEYS(double)
 #endif
 
 // Signed integer types.
 #ifdef CUB_TYPE_S8
-XLA_CUB_DEFINE_SORT_KEYS(s8, int8_t)
+XLA_CUB_DEFINE_SORT_KEYS(int8_t)
 #endif
 #ifdef CUB_TYPE_S16
-XLA_CUB_DEFINE_SORT_KEYS(s16, int16_t)
+XLA_CUB_DEFINE_SORT_KEYS(int16_t)
 #endif
 #ifdef CUB_TYPE_S32
-XLA_CUB_DEFINE_SORT_KEYS(s32, int32_t)
+XLA_CUB_DEFINE_SORT_KEYS(int32_t)
 #endif
 #ifdef CUB_TYPE_S64
-XLA_CUB_DEFINE_SORT_KEYS(s64, int64_t)
+XLA_CUB_DEFINE_SORT_KEYS(int64_t)
 #endif
 
 // Unsigned integer types.
 #ifdef CUB_TYPE_U8
-XLA_CUB_DEFINE_SORT_KEYS(u8, uint8_t)
+XLA_CUB_DEFINE_SORT_KEYS(uint8_t)
 #endif
 #ifdef CUB_TYPE_U16
-XLA_CUB_DEFINE_SORT_KEYS(u16, uint16_t)
+XLA_CUB_DEFINE_SORT_KEYS(uint16_t)
 #endif
 #ifdef CUB_TYPE_U32
-XLA_CUB_DEFINE_SORT_KEYS(u32, uint32_t)
+XLA_CUB_DEFINE_SORT_KEYS(uint32_t)
 #endif
 #ifdef CUB_TYPE_U64
-XLA_CUB_DEFINE_SORT_KEYS(u64, uint64_t)
+XLA_CUB_DEFINE_SORT_KEYS(uint64_t)
 #endif
 
 // Pairs with 8-bit key.
 #ifdef CUB_TYPE_U8_B16
-XLA_CUB_DEFINE_SORT_PAIRS(u8_b16, uint8_t, uint16_t)
+XLA_CUB_DEFINE_SORT_PAIRS(uint8_t, uint16_t)
 #endif
 #ifdef CUB_TYPE_U8_B32
-XLA_CUB_DEFINE_SORT_PAIRS(u8_b32, uint8_t, uint32_t)
+XLA_CUB_DEFINE_SORT_PAIRS(uint8_t, uint32_t)
 #endif
 #ifdef CUB_TYPE_U8_B64
-XLA_CUB_DEFINE_SORT_PAIRS(u8_b64, uint8_t, uint64_t)
+XLA_CUB_DEFINE_SORT_PAIRS(uint8_t, uint64_t)
 #endif
 
 // Pairs with 16-bit key.
 #ifdef CUB_TYPE_U16_B16
-XLA_CUB_DEFINE_SORT_PAIRS(u16_b16, uint16_t, uint16_t)
+XLA_CUB_DEFINE_SORT_PAIRS(uint16_t, uint16_t)
 #endif
 #ifdef CUB_TYPE_U16_B32
-XLA_CUB_DEFINE_SORT_PAIRS(u16_b32, uint16_t, uint32_t)
+XLA_CUB_DEFINE_SORT_PAIRS(uint16_t, uint32_t)
 #endif
 #ifdef CUB_TYPE_U16_B64
-XLA_CUB_DEFINE_SORT_PAIRS(u16_b64, uint16_t, uint64_t)
+XLA_CUB_DEFINE_SORT_PAIRS(uint16_t, uint64_t)
 #endif
 
 // Pairs with 32-bit key.
 #ifdef CUB_TYPE_U32_B16
-XLA_CUB_DEFINE_SORT_PAIRS(u32_b16, uint32_t, uint16_t)
+XLA_CUB_DEFINE_SORT_PAIRS(uint32_t, uint16_t)
 #endif
 #ifdef CUB_TYPE_U32_B32
-XLA_CUB_DEFINE_SORT_PAIRS(u32_b32, uint32_t, uint32_t)
+XLA_CUB_DEFINE_SORT_PAIRS(uint32_t, uint32_t)
 #endif
 #ifdef CUB_TYPE_U32_B64
-XLA_CUB_DEFINE_SORT_PAIRS(u32_b64, uint32_t, uint64_t)
+XLA_CUB_DEFINE_SORT_PAIRS(uint32_t, uint64_t)
 #endif
 #ifdef CUB_TYPE_F32_B16
-XLA_CUB_DEFINE_SORT_PAIRS(f32_b16, float, uint16_t)
+XLA_CUB_DEFINE_SORT_PAIRS(float, uint16_t)
 #endif
 #ifdef CUB_TYPE_F32_B32
-XLA_CUB_DEFINE_SORT_PAIRS(f32_b32, float, uint32_t)
+XLA_CUB_DEFINE_SORT_PAIRS(float, uint32_t)
 #endif
 #ifdef CUB_TYPE_F32_B64
-XLA_CUB_DEFINE_SORT_PAIRS(f32_b64, float, uint64_t)
+XLA_CUB_DEFINE_SORT_PAIRS(float, uint64_t)
 #endif
 
 // Pairs with 64-bit key.
 #ifdef CUB_TYPE_U64_B16
-XLA_CUB_DEFINE_SORT_PAIRS(u64_b16, uint64_t, uint16_t)
+XLA_CUB_DEFINE_SORT_PAIRS(uint64_t, uint16_t)
 #endif
 #ifdef CUB_TYPE_U64_B32
-XLA_CUB_DEFINE_SORT_PAIRS(u64_b32, uint64_t, uint32_t)
+XLA_CUB_DEFINE_SORT_PAIRS(uint64_t, uint32_t)
 #endif
 #ifdef CUB_TYPE_U64_B64
-XLA_CUB_DEFINE_SORT_PAIRS(u64_b64, uint64_t, uint64_t)
+XLA_CUB_DEFINE_SORT_PAIRS(uint64_t, uint64_t)
 #endif
 
 }  // namespace cuda

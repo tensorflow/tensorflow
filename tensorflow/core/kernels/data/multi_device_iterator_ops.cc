@@ -19,6 +19,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/strings/str_cat.h"
+#include "absl/synchronization/notification.h"
 #include "absl/time/time.h"
 #include "tensorflow/core/common_runtime/input_colocation_exemption_registry.h"
 #include "tensorflow/core/common_runtime/process_function_library_runtime.h"
@@ -104,8 +105,8 @@ class MultiDeviceIterator : public ResourceBase {
   }
 
   string DebugString() const override {
-    return strings::StrCat("MultiDeviceIterator for ", devices_.size(),
-                           " devices");
+    return absl::StrCat("MultiDeviceIterator for ", devices_.size(),
+                        " devices");
   }
 
   absl::Status Init(std::unique_ptr<IteratorBase> iterator,
@@ -531,8 +532,8 @@ class MultiDeviceIteratorHandleOp : public OpKernel {
         MultiDeviceIterator* resource;
 
         if (name_ == ResourceHandle::ANONYMOUS_NAME) {
-          unique_name = strings::StrCat("_AnonymousMultiDeviceIterator",
-                                        current_id_.fetch_add(1));
+          unique_name = absl::StrCat("_AnonymousMultiDeviceIterator",
+                                     current_id_.fetch_add(1));
           container_name = kAnonymousMultiDeviceIterator;
           resource = new MultiDeviceIterator(
               context->env(), output_types_, output_shapes_, devices_,
@@ -717,7 +718,7 @@ class MultiDeviceIteratorGetNextFromShardOp : public AsyncOpKernel {
 
     background_worker_.Schedule(std::bind(
         [ctx, iterator, shard_num, incarnation_id](DoneCallback done) {
-          Notification n;
+          absl::Notification n;
           absl::Time start_time = iterator->metrics_collector().RecordStart();
           MultiDeviceIteratorCallback callback = std::bind(
               [ctx, iterator, start_time, &n](const HostBufferElement& elem) {

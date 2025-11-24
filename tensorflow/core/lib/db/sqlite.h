@@ -81,7 +81,7 @@ class TF_LOCKABLE Sqlite : public core::RefCounted {
   ///
   /// This function sets PRAGMA values from TF_SQLITE_* environment
   /// variables. See sqlite.cc to learn more.
-  static absl::Status Open(const string& path, int flags, Sqlite** db);
+  static absl::Status Open(const std::string& path, int flags, Sqlite** db);
 
   /// \brief Creates SQLite statement.
   ///
@@ -165,7 +165,7 @@ class SqliteStatement {
   const char* sql() const { return sqlite3_sql(stmt_); }
 
   /// \brief Number of bytes bound since last *Reset().
-  uint64 size() { return size_; }
+  uint64_t size() { return size_; }
 
   /// \brief Executes query for fetching arbitrary rows.
   ///
@@ -302,7 +302,7 @@ class SqliteStatement {
   ///
   /// NULL values are returned as empty string. This method should be
   /// used for both BLOB and TEXT columns. See also: ColumnType().
-  string ColumnString(int column) const TF_MUST_USE_RESULT {
+  std::string ColumnString(int column) const TF_MUST_USE_RESULT {
     auto data = sqlite3_column_blob(stmt_, column);
     if (data == nullptr) return "";
     return {static_cast<const char*>(data),
@@ -377,7 +377,7 @@ class SqliteStatement {
   sqlite3_stmt* stmt_ = nullptr;
   int bind_error_ = SQLITE_OK;
   int bind_error_parameter_ = 0;
-  uint64 size_ = 0;
+  uint64_t size_ = 0;
 
   SqliteStatement(const SqliteStatement&) = delete;
   void operator=(const SqliteStatement&) = delete;

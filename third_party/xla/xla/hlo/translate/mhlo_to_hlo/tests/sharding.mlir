@@ -1,8 +1,8 @@
 // RUN: xla-translate -split-input-file -mlir-hlo-to-hlo-text %s | FileCheck %s
 
-// CHECK-LABEL: ENTRY %main.{{.*}} (Arg_0.1: f32[], Arg_1.2: f32[4]) -> f32[4,4]
+// CHECK-LABEL: ENTRY %main.{{.*}} (Arg_0.1: f32[], Arg_1.1: f32[4]) -> f32[4,4]
 func.func public @main(%arg0: tensor<f32> {mhlo.sharding = ""}, %arg1: tensor<4xf32> {mhlo.sharding = "\08\03\1A\01\02\22\02\00\01"}) -> (tensor<4x4xf32> {mhlo.sharding = "\08\03\1A\02\02\01\22\02\00\01"}) {
-  // CHECK-NEXT: %Arg_1.2 = f32[4] parameter(1), sharding={devices=[2]0,1}
+  // CHECK-NEXT: %Arg_1.1 = f32[4] parameter(1), sharding={devices=[2]0,1}
   // CHECK-NEXT: %Arg_0.1 = f32[] parameter(0), sharding={replicated}
   %0 = "mhlo.broadcast_in_dim"(%arg0) <{broadcast_dimensions = dense<> : tensor<0xi64>}> : (tensor<f32>) -> tensor<4xf32>
   %1 = mhlo.multiply %arg1, %0 : tensor<4xf32>
@@ -16,9 +16,10 @@ func.func public @main(%arg0: tensor<f32> {mhlo.sharding = ""}, %arg1: tensor<4x
 // CHECK-LABEL: ENTRY %main.{{.*}} ({{[^,]*}}: f32[5,8,128]) -> f32[5,8,128]
 func.func @main(%arg0: tensor<5x8x128xf32> {mhlo.sharding = "\08\03\1A\03\01\02\01\22\02\00\01"}) -> (tensor<5x8x128xf32> {mhlo.sharding = "\08\03\1A\03\01\02\01\22\02\00\01"}) {
   // CHECK-NEXT: %Arg_0.1 = f32[5,8,128] parameter(0), sharding={devices=[1,2,1]0,1}
-  // CHECK-NEXT: %custom-call.2 = f32[5,8,128] custom-call(%Arg_0.1), custom_call_target="Sharding", sharding={devices=[1,2,1]0,1}
-  // CHECK-NEXT: %tuple.3 = (f32[5,8,128]) tuple(%custom-call.2)
-  // CHECK-NEXT: ROOT %get-tuple-element.4 = f32[5,8,128] get-tuple-element(%tuple.3), index=0
+  // CHECK-NEXT: %custom-call.1 = f32[5,8,128] custom-call(%Arg_0.1), custom_call_target="Sharding", sharding={devices=[1,2,1]0,1}
+  // CHECK-NEXT: %tuple.1 = (f32[5,8,128]) tuple(%custom-call.1)
+  // CHECK-SAME: sharding={{\{}}{devices=[1,2,1]0,1}}
+  // CHECK-NEXT: ROOT %get-tuple-element.1 = f32[5,8,128] get-tuple-element(%tuple.1), index=0
   // CHECK-SAME: sharding={devices=[1,2,1]0,1}
   %0 = "mhlo.custom_call"(%arg0) {call_target_name = "Sharding",
 				  mhlo.sharding = "\08\03\1A\03\01\02\01\22\02\00\01"
@@ -44,8 +45,8 @@ func.func @main(%arg0: tensor<4x4xf32>) -> (tensor<4x4xf32> {mhlo.sharding = "\0
 // CHECK-LABEL: ENTRY %main.{{.*}} () -> f32[4]
 func.func @main() -> (tensor<4xf32>) {
   // CHECK-NEXT: %constant.1 = f32[] constant(3.1415925)
-  // CHECK-NEXT: %broadcast.2 = f32[4] broadcast(%constant.1), dimensions={}, sharding={devices=[2]0,1}
-  // CHECK-NEXT: ROOT %add.3 = f32[4] add(%broadcast.2, %broadcast.2)
+  // CHECK-NEXT: %broadcast.1 = f32[4] broadcast(%constant.1), dimensions={}, sharding={devices=[2]0,1}
+  // CHECK-NEXT: ROOT %add.1 = f32[4] add(%broadcast.1, %broadcast.1)
   %0 = mhlo.constant {mhlo.sharding = "{devices=[2]0,1}"} dense<3.1415926> : tensor<4xf32>
   %1 = mhlo.add %0, %0 : tensor<4xf32>
   return %1 : tensor<4xf32>
@@ -56,8 +57,8 @@ func.func @main() -> (tensor<4xf32>) {
 // CHECK-LABEL: ENTRY %main.{{.*}} () -> f32[12,24,36]
 func.func @main() -> (tensor<12x24x36xf32>) {
   // CHECK-NEXT: %constant.1 = f32[] constant(3.1415925)
-  // CHECK-NEXT: %broadcast.2 = f32[12,24,36] broadcast(%constant.1), dimensions={}, sharding={devices=[1,2,1]0,1}
-  // CHECK-NEXT: ROOT %add.3 = f32[12,24,36] add(%broadcast.2, %broadcast.2)
+  // CHECK-NEXT: %broadcast.1 = f32[12,24,36] broadcast(%constant.1), dimensions={}, sharding={devices=[1,2,1]0,1}
+  // CHECK-NEXT: ROOT %add.1 = f32[12,24,36] add(%broadcast.1, %broadcast.1)
   %0 = mhlo.constant {mhlo.sharding = "{devices=[1,2,1]0,1}"} dense<3.1415926> : tensor<12x24x36xf32>
   %1 = mhlo.add %0, %0 : tensor<12x24x36xf32>
   return %1 : tensor<12x24x36xf32>
@@ -68,13 +69,13 @@ func.func @main() -> (tensor<12x24x36xf32>) {
 // CHECK-LABEL: ENTRY %main.{{.*}} (Arg_0.1: u64[2]) -> (u64[2], u32[512,4])
 func.func @main(%arg0: tensor<2xui64>) -> (tensor<2xui64> {mhlo.sharding = "{devices=[2,16]<=[32] last_tile_dim_replicate}"}, tensor<512x4xui32> {mhlo.sharding = "{devices=[4,8]<=[32]}"}) {
   // CHECK-NEXT: %Arg_0.1 = u64[2] parameter(0)
-  // CHECK-NEXT: %rng-bit-generator.2 = (u64[2], u32[512,4]) rng-bit-generator(%Arg_0.1), algorithm=rng_default, sharding={{\{}}{replicated}, {devices=[8,4]<=[32]}}
-  // CHECK-NEXT: %get-tuple-element.3 = u64[2] get-tuple-element(%rng-bit-generator.2), index=0, sharding={replicated}
-  // CHECK-NEXT: %add.5 = u64[2] add(%get-tuple-element.3, %get-tuple-element.3)
-  // CHECK-NEXT: %reshape.6 = u64[2] reshape(%add.5)
-  // CHECK-NEXT: %get-tuple-element.4 = u32[512,4] get-tuple-element(%rng-bit-generator.2), index=1, sharding={devices=[8,4]<=[32]}
-  // CHECK-NEXT: %reshape.7 = u32[512,4] reshape(%get-tuple-element.4)
-  // CHECK-NEXT: ROOT %tuple.8 = (u64[2], u32[512,4]) tuple(%add.5, %get-tuple-element.4), sharding={{\{}}{devices=[2,16]<=[32] last_tile_dim_replicate}, {devices=[4,8]<=[32]}}
+  // CHECK-NEXT: %rng-bit-generator.1 = (u64[2], u32[512,4]) rng-bit-generator(%Arg_0.1), algorithm=rng_default, sharding={{\{}}{replicated}, {devices=[8,4]<=[32]}}
+  // CHECK-NEXT: %get-tuple-element.2 = u64[2] get-tuple-element(%rng-bit-generator.1), index=0, sharding={replicated}
+  // CHECK-NEXT: %add.1 = u64[2] add(%get-tuple-element.2, %get-tuple-element.2)
+  // CHECK-NEXT: %reshape.2 = u64[2] reshape(%add.1)
+  // CHECK-NEXT: %get-tuple-element.3 = u32[512,4] get-tuple-element(%rng-bit-generator.1), index=1, sharding={devices=[8,4]<=[32]}
+  // CHECK-NEXT: %reshape.3 = u32[512,4] reshape(%get-tuple-element.3)
+  // CHECK-NEXT: ROOT %tuple.1 = (u64[2], u32[512,4]) tuple(%add.1, %get-tuple-element.3), sharding={{\{}}{devices=[2,16]<=[32] last_tile_dim_replicate}, {devices=[4,8]<=[32]}}
   %output_state, %output = "mhlo.rng_bit_generator"(%arg0) <{rng_algorithm = #mhlo.rng_algorithm<DEFAULT>}> {mhlo.sharding = "{{replicated}, {devices=[8,4]<=[32]}}"} : (tensor<2xui64>) -> (tensor<2xui64>, tensor<512x4xui32>)
   %0 = mhlo.add %output_state, %output_state : tensor<2xui64>
   return %0, %output : tensor<2xui64>, tensor<512x4xui32>
@@ -85,11 +86,11 @@ func.func @main(%arg0: tensor<2xui64>) -> (tensor<2xui64> {mhlo.sharding = "{dev
 // CHECK-LABEL: ENTRY %main.{{.*}} (Arg_0.1: u64[2]) -> (u64[2], u32[512,4])
 func.func @main(%arg0: tensor<2xui64>) -> (tensor<2xui64>, tensor<512x4xui32>) {
   // CHECK-NEXT: %Arg_0.1 = u64[2] parameter(0)
-  // CHECK-NEXT: %rng-bit-generator.2 = (u64[2], u32[512,4]) rng-bit-generator(%Arg_0.1), algorithm=rng_default, sharding={{\{}}{replicated}, {replicated}}
-  // CHECK-NEXT: %get-tuple-element.3 = u64[2] get-tuple-element(%rng-bit-generator.2), index=0, sharding={replicated}
-  // CHECK-NEXT: %add.5 = u64[2] add(%get-tuple-element.3, %get-tuple-element.3)
-  // CHECK-NEXT: %get-tuple-element.4 = u32[512,4] get-tuple-element(%rng-bit-generator.2), index=1, sharding={replicated}
-  // CHECK-NEXT: ROOT %tuple.6 = (u64[2], u32[512,4]) tuple(%add.5, %get-tuple-element.4)
+  // CHECK-NEXT: %rng-bit-generator.1 = (u64[2], u32[512,4]) rng-bit-generator(%Arg_0.1), algorithm=rng_default, sharding={{\{}}{replicated}, {replicated}}
+  // CHECK-NEXT: %get-tuple-element.2 = u64[2] get-tuple-element(%rng-bit-generator.1), index=0, sharding={replicated}
+  // CHECK-NEXT: %add.1 = u64[2] add(%get-tuple-element.2, %get-tuple-element.2)
+  // CHECK-NEXT: %get-tuple-element.3 = u32[512,4] get-tuple-element(%rng-bit-generator.1), index=1, sharding={replicated}
+  // CHECK-NEXT: ROOT %tuple.1 = (u64[2], u32[512,4]) tuple(%add.1, %get-tuple-element.3)
   %output_state, %output = "mhlo.rng_bit_generator"(%arg0) <{rng_algorithm = #mhlo.rng_algorithm<DEFAULT>}> {mhlo.sharding = "{replicated}"} : (tensor<2xui64>) -> (tensor<2xui64>, tensor<512x4xui32>)
   %0 = mhlo.add %output_state, %output_state : tensor<2xui64>
   return %0, %output : tensor<2xui64>, tensor<512x4xui32>
@@ -111,7 +112,7 @@ func.func @main(%arg0: tensor<2xui64>) -> (tensor<2xui64>, tensor<512x4xui32>) {
 
 // CHECK:      ENTRY %main.{{[0-9]+}} ([[ARG:Arg_0.[0-9]+]]: s32[]) -> s32[] {
 // CHECK-NEXT:   %[[ARG]] = s32[] parameter(0)
-// CHECK-NEXT:   ROOT %while.10 = s32[] while(%[[ARG]]), condition=%[[COND]], body=%[[BODY]], sharding={replicated}
+// CHECK-NEXT:   ROOT %while.1 = s32[] while(%[[ARG]]), condition=%[[COND]], body=%[[BODY]], sharding={replicated}
 
 func.func @main(%arg0: tensor<i32>) -> tensor<i32> {
   %0 = mhlo.while(%iterArg = %arg0) : tensor<i32> attributes {mhlo.sharding = "{replicated}"}
@@ -363,10 +364,10 @@ func.func @main(%arg0: tensor<i32>,
 // CHECK-NEXT:   %[[ARG3]] = f32[4] parameter(3), sharding={replicated}
 // CHECK-NEXT:   %[[ARG4]] = f32[4] parameter(4), sharding={devices=[4]<=[4]}
 // CHECK-NEXT:   %[[TUPLE7:tuple.*]] = (f32[4], f32[4]) tuple(%[[ARG3]], %[[ARG4]]), sharding={{\{}}{replicated}, {devices=[4]<=[4]}}
-// CHECK-NEXT:   %conditional.18 = (f32[4], f32[4]) conditional(%[[ARG0]], %[[TUPLE6]], %[[TUPLE7]]), true_computation=%[[BRANCH0]], false_computation=%[[BRANCH1]],
+// CHECK-NEXT:   %conditional.1 = (f32[4], f32[4]) conditional(%[[ARG0]], %[[TUPLE6]], %[[TUPLE7]]), true_computation=%[[BRANCH0]], false_computation=%[[BRANCH1]],
 // CHECK-SAME:     sharding={{\{}}{replicated}, {devices=[4]<=[4]}}
-// CHECK-NEXT:   %[[GTE19:get-tuple-element.*]] = f32[4] get-tuple-element(%conditional.18), index=0, sharding={replicated}
-// CHECK-NEXT:   %[[GTE20:get-tuple-element.*]] = f32[4] get-tuple-element(%conditional.18), index=1, sharding={devices=[4]<=[4]}
+// CHECK-NEXT:   %[[GTE19:get-tuple-element.*]] = f32[4] get-tuple-element(%conditional.1), index=0, sharding={replicated}
+// CHECK-NEXT:   %[[GTE20:get-tuple-element.*]] = f32[4] get-tuple-element(%conditional.1), index=1, sharding={devices=[4]<=[4]}
 // CHECK-NEXT:   ROOT %tuple.{{.*}} = (f32[4], f32[4]) tuple(%[[GTE19]], %[[GTE20]])
 
 func.func @main(%arg0: tensor<i1>,
@@ -407,4 +408,62 @@ func.func @main(%arg0: tensor<i1>,
     mhlo.return %arg2 : tensor<4xf32>
   }) : (tensor<i1>) -> tensor<4xf32>
   func.return %0 : tensor<4xf32>
+}
+
+// -----
+
+// CHECK-LABEL: ENTRY %main.{{.*}} ({{[^,]*}}: f32[5,8,128]) -> (f32[5,8,128], f32[5,8,128])
+func.func @main(%arg0: tensor<5x8x128xf32> {mhlo.sharding = "{devices=[1,2,1]0,1}"}) -> (tuple<tensor<5x8x128xf32>, tensor<5x8x128xf32>> {mhlo.sharding = "{{devices=[1,2,1]0,1}, {replicated}}"}) {
+  // CHECK-NEXT: %Arg_0.1 = f32[5,8,128] parameter(0), sharding={devices=[1,2,1]0,1}
+  // CHECK-NEXT: %custom-call.1 = (f32[5,8,128], f32[5,8,128]) custom-call(%Arg_0.1), custom_call_target="Sharding", sharding={{\{}}{devices=[1,2,1]0,1}, {replicated}}
+  // CHECK-NEXT: %tuple.1 = ((f32[5,8,128], f32[5,8,128])) tuple(%custom-call.1)
+  // CHECK-SAME: sharding={{\{}}{devices=[1,2,1]0,1}, {replicated}}
+  // CHECK-NEXT: ROOT %get-tuple-element.1 = (f32[5,8,128], f32[5,8,128]) get-tuple-element(%tuple.1), index=0
+  // CHECK-SAME: sharding={{\{}}{devices=[1,2,1]0,1}, {replicated}}
+  %0 = "mhlo.custom_call"(%arg0) {call_target_name = "Sharding",
+				  mhlo.sharding = "{{devices=[1,2,1]0,1}, {replicated}}"
+				 } : (tensor<5x8x128xf32>) -> (tuple<tensor<5x8x128xf32>, tensor<5x8x128xf32>>)
+  func.return %0 : tuple<tensor<5x8x128xf32>, tensor<5x8x128xf32>>
+}
+
+// -----
+
+// CHECK-LABEL: ENTRY %main.{{.*}} ({{[^,]*}}: f32[5,8,128]) -> f32[5,8,128]
+func.func @main(%arg0: tensor<5x8x128xf32> {mhlo.sharding = "{devices=[1,2,1]0,1}"}) -> (tensor<5x8x128xf32> {mhlo.sharding = "{devices=[2,1,1]0,1}"}) {
+  // CHECK-NEXT: %Arg_0.1 = f32[5,8,128] parameter(0), sharding={devices=[1,2,1]0,1}
+  // CHECK-NEXT: %tuple.1 = (f32[5,8,128]) tuple(%Arg_0.1)
+  // CHECK-SAME: sharding={{\{}}{devices=[1,2,1]0,1}}
+  // CHECK-NEXT: ROOT %get-tuple-element.1 = f32[5,8,128] get-tuple-element(%tuple.1), index=0
+  // CHECK-SAME: sharding={devices=[2,1,1]0,1}
+  func.return %arg0 : tensor<5x8x128xf32>
+}
+
+// -----
+// CHECK: HloModule
+// CHECK: ENTRY
+// CHECK-NOT: manual
+func.func @main() -> tensor<2048x128xf32> {
+  // CHECK-NEXT: %after-all.1 = token[] after-all(), sharding={manual}
+  // CHECK-NEXT: %infeed.1 = ((f32[2048,128]), token[]) infeed(%after-all.1), sharding={{[{][{]manual}, {manual[}][}]}}
+  // CHECK-NEXT: %get-tuple-element.3 = (f32[2048,128]) get-tuple-element(%infeed.1), index=0, sharding={{[{][{]manual[}][}]}}
+  // CHECK-NEXT: ROOT %get-tuple-element.4 = f32[2048,128] get-tuple-element(%get-tuple-element.3), index=0, sharding={manual}
+  // CHECK-NEXT: %get-tuple-element.5 = token[] get-tuple-element(%infeed.1), index=1, sharding={manual}
+  %0 = mhlo.create_token {mhlo.sharding = "{manual}", xla_shape = "token[]"} : !mhlo.token
+  %1:2 = "mhlo.infeed"(%0) <{infeed_config = "", layout = [[1, 0]]}> {mhlo.sharding = "{{manual}, {manual}}"} : (!mhlo.token) -> (tensor<2048x128xf32>, !mhlo.token)
+  return %1#0 : tensor<2048x128xf32>
+}
+
+// -----
+// CHECK: HloModule
+// CHECK: ENTRY
+func.func @main(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> () {
+  // CHECK: %tuple.2 = (f32[4], f32[4]) tuple(%add.2, %add.3), sharding={{[{][{]manual}, {manual[}][}]}}
+  // CHECK-NEXT: %after-all.1 = token[] after-all(), sharding={manual}
+  // CHECK-NEXT:  %outfeed.1 = token[] outfeed(%tuple.2, %after-all.1), outfeed_shape=(f32[4]{0}, f32[4]{0}), sharding={manual}
+  // CHECK-NEXT: ROOT %tuple.3 = () tuple()
+  %0 = "mhlo.add"(%arg0, %arg1) {mhlo.sharding = "{manual}"} : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xf32>
+  %1 = "mhlo.add"(%arg1, %arg0) {mhlo.sharding = "{manual}"} : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xf32>
+  %2 = mhlo.create_token {mhlo.sharding = "{manual}", xla_shape = "token[]"} : !mhlo.token
+  %3 = "mhlo.outfeed"(%0, %1, %2) <{infeed_config = "", layout = [[1, 0]]}> {mhlo.sharding = "{manual}"} : (tensor<4xf32>, tensor<4xf32>, !mhlo.token) -> !mhlo.token
+  return
 }

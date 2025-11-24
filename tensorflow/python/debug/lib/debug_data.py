@@ -785,6 +785,12 @@ class DebugDumpDir:
                                                   device_name))
 
     for partition_graph, maybe_device_name in partition_graphs_and_device_names:
+      # Normalize all node names and their input references directly in the
+      # GraphDef protobuf before any other processing. b/429335661
+      for node in partition_graph.node:
+        node.name = re.sub(r"/+", "/", node.name)
+        for i, inp in enumerate(node.input):
+          node.input[i] = re.sub(r"/+", "/", inp)
       debug_graph = debug_graphs.DebugGraph(partition_graph,
                                             device_name=maybe_device_name)
       self._debug_graphs[debug_graph.device_name] = debug_graph

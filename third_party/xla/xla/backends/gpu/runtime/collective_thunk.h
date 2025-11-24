@@ -1,3 +1,4 @@
+#include "xla/backends/gpu/runtime/thunk.pb.h"
 /* Copyright 2019 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -29,17 +30,13 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
-#include "mlir/IR/BuiltinAttributes.h"
-#include "mlir/IR/BuiltinOps.h"
-#include "mlir/IR/Value.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/core/collectives/communicator.h"
+#include "xla/hlo/ir/collective_op_group_mode.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
-#include "xla/hlo/translate/mhlo_to_hlo/attribute_exporter.h"
-#include "xla/runtime/device_id.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/gpu/buffer_allocations.h"
@@ -60,48 +57,15 @@ struct CollectiveConfig {
   RendezvousKey::CollectiveOpKind collective_op_kind;
   int64_t op_id;
   CollectiveOpGroupMode group_mode;
+  bool use_symmetric_buffer;
 
-  template <typename OpT>
-  void SetCollectiveOpKindAndID(OpT op);
   void SetCollectiveOpKindAndID(const HloCollectivePermuteInstruction* instr);
   void SetCollectiveOpKindAndID(const HloSendRecvInstruction* instr);
   bool IsDegenerate(int64_t replica_count, int64_t partition_count) const;
 };
 
-template <typename OpT>
-void CollectiveConfig::SetCollectiveOpKindAndID(OpT op) {
-  if (op.getChannelId()) {
-    collective_op_kind = RendezvousKey::kCrossModule;
-    op_id = static_cast<int64_t>(op.getChannelId()->getHandle());
-  } else {
-    collective_op_kind = RendezvousKey::kCrossReplica;
-    mlir::ModuleOp parent = op->template getParentOfType<mlir::ModuleOp>();
-    mlir::IntegerAttr unique_id =
-        parent->getAttrOfType<mlir::IntegerAttr>("hlo.unique_id");
-    op_id = static_cast<int64_t>(unique_id.getInt());
-  }
-}
-
 CollectiveConfig GetCollectiveConfig(const HloInstruction* hlo,
                                      std::optional<bool> use_global_device_ids);
-
-template <typename OpT>
-CollectiveConfig GetCollectiveConfigForMlir(
-    OpT op, std::optional<bool> use_global_device_ids) {
-  CollectiveConfig config;
-  config.operand_count = op.getInputs().size();
-  config.operand_element_type.reserve(config.operand_count);
-  for (int i = 0; i < config.operand_count; i++) {
-    const Shape shape = GetShape(op.getInputs()[i]);
-    config.operand_element_type.push_back(shape.element_type());
-  }
-  config.replica_groups = ConvertReplicaGroups(op.getReplicaGroups()).value();
-  config.SetCollectiveOpKindAndID(op);
-  config.group_mode = GetCollectiveOpGroupMode(op.getChannelId().has_value(),
-                                               use_global_device_ids)
-                          .value();
-  return config;
-}
 
 // Handle to a communicator object with corresponding clique key.
 struct CommunicatorHandle {
@@ -146,8 +110,6 @@ class CollectiveThunk : public Thunk {
     BufferAllocation::Slice destination_buffer;
     int64_t source_memory_space;
     int64_t destination_memory_space;
-    mlir::Value source_value;
-    mlir::Value destination_value;
   };
 
   // Completion events for asynchronous collective operations (operations
@@ -181,6 +143,10 @@ class CollectiveThunk : public Thunk {
 
   absl::Status ExecuteOnStream(const ExecuteParams& params) override;
 
+  std::optional<AsyncEventsUniqueId> GetAsyncEventsUniqueId() const override;
+
+  bool IsAsyncStart() const override { return async_events_ != nullptr; }
+
   absl::StatusOr<std::vector<Communicator*>> GetCommunicators(
       const ExecuteParams& params) const override;
 
@@ -190,7 +156,8 @@ class CollectiveThunk : public Thunk {
   }
 
   CollectiveStreamId nccl_stream_id() const {
-    return xla::gpu::GetCollectiveStreamId(IsAsync(), GetAsyncStreamKind());
+    return xla::gpu::GetCollectiveStreamId(IsAsync(), GetAsyncStreamId(),
+                                           GetAsyncStreamKind());
   }
 
   ExecutionStreamId nccl_execution_stream_id() const {
@@ -214,10 +181,13 @@ class CollectiveThunk : public Thunk {
                                              CommunicatorHandle comm) = 0;
   virtual const CollectiveConfig& config() const = 0;
   virtual AsyncStreamKind GetAsyncStreamKind() const { return stream_kind_; }
+  virtual CollectiveStreamId GetAsyncStreamId() const { return stream_id_; }
   bool IsAsync() const { return async_events_ != nullptr; }
 
  private:
   const AsyncStreamKind stream_kind_;
+  // NCCL stream id assigned by execution stream assignment.
+  CollectiveStreamId stream_id_ = CollectiveStreamId(0);
 
   std::shared_ptr<AsyncEvents> async_events_;
 
@@ -250,17 +220,26 @@ class CollectiveDoneThunk : public Thunk {
   ExecutionStreamId nccl_execution_stream_id() const {
     return ExecutionStreamId(
         execution_stream_id().value() +
-        xla::gpu::GetCollectiveStreamId(true, async_stream_kind_).value());
+        xla::gpu::GetCollectiveStreamId(true, stream_id_, stream_kind_)
+            .value());
+  }
+
+  std::optional<AsyncEventsUniqueId> GetAsyncEventsUniqueId() const override;
+
+  bool IsAsyncDone() const override { return async_events_ != nullptr; }
+
+  std::shared_ptr<CollectiveThunk::AsyncEvents> async_events() const {
+    return async_events_;
   }
 
  private:
   std::shared_ptr<CollectiveThunk::AsyncEvents> async_events_;
-  AsyncStreamKind async_stream_kind_ = AsyncStreamKind::kCollective;
+  AsyncStreamKind stream_kind_ = AsyncStreamKind::ASYNC_STREAM_KIND_COLLECTIVE;
+  // NCCL stream id assigned by execution stream assignment.
+  CollectiveStreamId stream_id_ = CollectiveStreamId(1);
 };
 
 //===----------------------------------------------------------------------===//
-
-absl::Status IsValidOperand(mlir::Value operand, Thunk::Kind reduction_op);
 
 absl::Status IsValidOperand(Shape shape, Thunk::Kind reduction_op);
 
@@ -339,11 +318,8 @@ absl::StatusOr<std::vector<DeviceBufferPair>> ConvertToDeviceBuffers(
 // https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/usage/bufferreg.html
 absl::Status MaybeRegisterBuffers(se::StreamExecutor* executor,
                                   const std::vector<DeviceBufferPair>& buffers,
-                                  Communicator* comm);
-
-absl::StatusOr<int64_t> GetNumLocalParticipants(
-    const Thunk::CollectiveExecuteParams& params,
-    const std::vector<GlobalDeviceId>& participants);
+                                  Communicator* comm,
+                                  bool use_symmetric_buffer = false);
 }  // namespace xla::gpu
 
 #endif  // XLA_BACKENDS_GPU_RUNTIME_COLLECTIVE_THUNK_H_

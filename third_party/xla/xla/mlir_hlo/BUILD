@@ -1,5 +1,6 @@
 load("@bazel_skylib//rules:build_test.bzl", "build_test")
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "gentbl_filegroup", "td_library")
+load("@rules_cc//cc:cc_binary.bzl", "cc_binary")
 load("//xla/tsl:tsl.bzl", "internal_visibility")
 load("//xla/tsl:tsl.default.bzl", "get_compatible_with_portable")
 load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
@@ -31,7 +32,6 @@ td_library(
     deps = [
         "@llvm-project//mlir:BuiltinDialectTdFiles",
         "@llvm-project//mlir:ControlFlowInterfacesTdFiles",
-        "@llvm-project//mlir:CopyOpInterfaceTdFiles",
         "@llvm-project//mlir:InferTypeOpInterfaceTdFiles",
         "@llvm-project//mlir:LoopLikeInterfaceTdFiles",
         "@llvm-project//mlir:MemRefOpsTdFiles",
@@ -272,6 +272,7 @@ cc_library(
         ":hlo_ops_inc_gen",
         ":hlo_ops_pattern_inc_gen",
         ":hlo_ops_typedefs_inc_gen",
+        ":unregistered_attributes",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:Analysis",
         "@llvm-project//mlir:ArithDialect",
@@ -303,6 +304,14 @@ cc_library(
 )
 
 cc_library(
+    name = "unregistered_attributes",
+    srcs = ["utils/unregistered_attributes.cc"],
+    hdrs = ["utils/unregistered_attributes.h"],
+    strip_include_prefix = ".",
+    deps = [],
+)
+
+cc_library(
     name = "hlo_dialect_registration",
     srcs = ["mhlo/IR/init.cc"],
     hdrs = ["mhlo/IR/register.h"],
@@ -321,14 +330,11 @@ cc_library(
     srcs = [
         "mhlo/transforms/chlo_legalize_to_hlo/chlo_legalize_to_hlo_pass.cc",
         "mhlo/transforms/collapse_elementwise_map/collapse_elementwise_map.cc",
-        "mhlo/transforms/convert_to_signless/convert_to_signless_pass.cc",
         "mhlo/transforms/expand_hlo_tuples/expand_hlo_tuples.cc",
-        "mhlo/transforms/hlo_legalize_to_arithmetic/hlo_legalize_to_arithmetic.cc",
         "mhlo/transforms/hlo_legalize_to_memref/hlo_legalize_to_memref.cc",
         "mhlo/transforms/hlo_legalize_to_stablehlo/hlo_legalize_to_stablehlo_pass.cc",
         "mhlo/transforms/legalize_dot_to_dot_general/legalize_dot_to_dot_general.cc",
         "mhlo/transforms/legalize_einsum_to_dot_general/legalize_einsum_to_dot_general.cc",
-        "mhlo/transforms/legalize_to_linalg/legalize_to_linalg.cc",
         "mhlo/transforms/legalize_torch_index_select_to_gather/legalize_torch_index_select_to_gather.cc",
         "mhlo/transforms/legalize_trigonometric_to_approximation/legalize_trigonometric_to_approximation.cc",
         "mhlo/transforms/materialize_broadcasts/materialize_broadcasts.cc",
@@ -346,19 +352,14 @@ cc_library(
         "mhlo/interfaces/bufferizable_op_interface_impl.h",
         "mhlo/transforms/passes.h",
         "mhlo/transforms/rewriters.h",
-        "mhlo/utils/legalize_to_linalg_utils.h",
-        "mhlo/utils/mhlo_rng_utils.h",
     ],
     strip_include_prefix = ".",
     deps = [
         ":chlo_legalize_to_hlo_inc_gen",
         ":hlo_legalize_to_stablehlo",
-        ":legalize_to_linalg_utils",
         ":map_chlo_to_hlo_op",
         ":map_mhlo_to_scalar_op",
         ":mhlo_pass_inc_gen",
-        ":mhlo_rng_utils",
-        ":mhlo_scatter_gather_utils",
         ":mlir_hlo",
         ":shape_component_analysis",
         ":stablehlo_legalize_to_hlo",
@@ -409,6 +410,7 @@ cc_library(
     strip_include_prefix = ".",
     deps = [
         ":mlir_hlo",
+        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:FuncTransforms",
         "@llvm-project//mlir:IR",
@@ -492,66 +494,6 @@ cc_library(
     hdrs = ["utils/placement_utils.h"],
     strip_include_prefix = ".",
     deps = ["@llvm-project//llvm:Support"],
-)
-
-cc_library(
-    name = "legalize_to_linalg_utils",
-    srcs = ["mhlo/utils/legalize_to_linalg_utils.cc"],
-    hdrs = ["mhlo/utils/legalize_to_linalg_utils.h"],
-    strip_include_prefix = ".",
-    deps = [
-        ":map_mhlo_to_scalar_op",
-        ":mlir_hlo",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:AffineDialect",
-        "@llvm-project//mlir:BufferizationDialect",
-        "@llvm-project//mlir:ComplexDialect",
-        "@llvm-project//mlir:FuncDialect",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:LinalgDialect",
-        "@llvm-project//mlir:LinalgUtils",
-        "@llvm-project//mlir:MathDialect",
-        "@llvm-project//mlir:ShapeDialect",
-        "@llvm-project//mlir:SparseTensorDialect",
-        "@llvm-project//mlir:Support",
-        "@llvm-project//mlir:TensorDialect",
-        "@llvm-project//mlir:TensorUtils",
-        "@llvm-project//mlir:TransformUtils",
-        "@llvm-project//mlir:Transforms",
-        "@stablehlo//:chlo_ops",
-    ],
-)
-
-cc_library(
-    name = "mhlo_rng_utils",
-    srcs = ["mhlo/utils/mhlo_rng_utils.cc"],
-    hdrs = ["mhlo/utils/mhlo_rng_utils.h"],
-    strip_include_prefix = ".",
-    deps = [
-        ":mlir_hlo",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:ArithDialect",
-        "@llvm-project//mlir:DialectUtils",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:LinalgDialect",
-        "@llvm-project//mlir:MathDialect",
-        "@llvm-project//mlir:Support",
-        "@llvm-project//mlir:TensorDialect",
-        "@llvm-project//mlir:Transforms",
-    ],
-)
-
-cc_library(
-    name = "mhlo_scatter_gather_utils",
-    srcs = ["mhlo/utils/mhlo_scatter_gather_utils.cc"],
-    hdrs = ["mhlo/utils/mhlo_scatter_gather_utils.h"],
-    strip_include_prefix = ".",
-    deps = [
-        ":mlir_hlo",
-        "@llvm-project//mlir:DialectUtils",
-        "@llvm-project//mlir:Support",
-        "@llvm-project//mlir:TensorDialect",
-    ],
 )
 
 cc_library(
@@ -696,7 +638,6 @@ cc_library(
         "@llvm-project//mlir:ComplexToLLVM",
         "@llvm-project//mlir:ControlFlowDialect",
         "@llvm-project//mlir:ControlFlowToLLVM",
-        "@llvm-project//mlir:CopyOpInterface",
         "@llvm-project//mlir:DialectUtils",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:FuncToLLVM",
@@ -782,7 +723,6 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:LLVMCommonConversion",
         "@llvm-project//mlir:LLVMDialect",
-        "@llvm-project//mlir:LinalgTransforms",
         "@llvm-project//mlir:MathToLLVM",
         "@llvm-project//mlir:MemRefDialect",
         "@llvm-project//mlir:MemRefToLLVM",
@@ -917,9 +857,15 @@ cc_binary(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:MlirOptLib",
         "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:RegisterAllDialects",
+        "@llvm-project//mlir:RegisterAllExtensions",
+        "@llvm-project//mlir:RegisterAllPasses",
         "@llvm-project//mlir:Support",
         "@shardy//shardy/dialect/sdy/ir:dialect",
+        "@stablehlo//:linalg_passes",
         "@stablehlo//:register",
+        "@stablehlo//:stablehlo_passes",
+        "@stablehlo//:stablehlo_passes_optimization",
     ],
 )
 
@@ -1024,6 +970,7 @@ cc_library(
         "stablehlo_ext/transforms/stablehlo_legalize_quant_composite.cpp",
         "stablehlo_ext/transforms/stablehlo_prepare_for_hlo_export.cpp",
         "stablehlo_ext/transforms/stablehlo_refine_shapes.cpp",
+        "stablehlo_ext/transforms/stablehlo_sanitize_unregistered_attributes.cpp",
         "stablehlo_ext/transforms/symbolic_shape_optimization.cpp",
     ],
     hdrs = [
@@ -1038,6 +985,7 @@ cc_library(
         ":stablehlo_extension_base",
         ":stablehlo_extension_ops",
         ":stablehlo_extension_pass_inc_gen",
+        ":unregistered_attributes",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ArithDialect",
         "@llvm-project//mlir:AsmParser",

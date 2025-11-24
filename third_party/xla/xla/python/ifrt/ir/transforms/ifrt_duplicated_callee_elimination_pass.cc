@@ -13,8 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <memory>
-
 #include "llvm/ADT/Hashing.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/Attributes.h"
@@ -23,7 +21,6 @@ limitations under the License.
 #include "mlir/IR/OpDefinition.h"
 #include "mlir/IR/OperationSupport.h"
 #include "mlir/IR/SymbolTable.h"
-#include "mlir/Pass/Pass.h"
 #include "mlir/Support/LLVM.h"
 #include "xla/python/ifrt/ir/ifrt_ops.h"
 #include "xla/python/ifrt/ir/transforms/passes.h"
@@ -31,10 +28,10 @@ limitations under the License.
 namespace xla {
 namespace ifrt {
 
-namespace {
-
 #define GEN_PASS_DEF_IFRTDUPLICATEDCALLEEELIMINATIONPASS
 #include "xla/python/ifrt/ir/transforms/passes.h.inc"
+
+namespace {
 
 // Compares FuncOps except symbol name.
 struct FuncInfo : llvm::DenseMapInfo<mlir::func::FuncOp> {
@@ -103,11 +100,5 @@ void IfrtDuplicatedCalleeEliminationPass::runOnOperation() {
 }
 
 }  // namespace
-
-std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
-CreateIfrtDuplicatedCalleeEliminationPass() {
-  return std::make_unique<IfrtDuplicatedCalleeEliminationPass>();
-}
-
 }  // namespace ifrt
 }  // namespace xla

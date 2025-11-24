@@ -26,7 +26,7 @@ limitations under the License.
 namespace xla::gpu {
 class NVPTXAliasInfo : public GpuAliasInfo {
  public:
-  explicit NVPTXAliasInfo(const se::DeviceDescription* device_description)
+  explicit NVPTXAliasInfo(const se::DeviceDescription& device_description)
       : GpuAliasInfo(device_description) {}
 
   // Backend-specific may-alias hint. If an empty optional is returned, the

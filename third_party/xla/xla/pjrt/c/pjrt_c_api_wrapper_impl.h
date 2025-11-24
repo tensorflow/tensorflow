@@ -21,14 +21,17 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
+#include "xla/future.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
 #include "xla/pjrt/c/pjrt_c_api_helpers.h"
 #include "xla/pjrt/c/pjrt_c_api_layouts_extension.h"
@@ -38,7 +41,6 @@ limitations under the License.
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_device_description.h"
 #include "xla/pjrt/pjrt_executable.h"
-#include "xla/pjrt/pjrt_future.h"
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/shape.h"
 
@@ -156,6 +158,10 @@ struct PJRT_Executable {
   std::vector<int64_t> out_dimensions;
   std::vector<size_t> out_dimension_sizes;
 
+  bool out_layouts_ran ABSL_GUARDED_BY(mutex) = false;
+  std::vector<PJRT_Layouts_MemoryLayout> out_layouts;
+  std::vector<PJRT_Layouts_MemoryLayout*> out_layouts_pointers;
+
   explicit PJRT_Executable(std::shared_ptr<xla::PjRtExecutable> executable);
   explicit PJRT_Executable(xla::PjRtExecutable* executable);
 
@@ -196,11 +202,19 @@ struct PJRT_Buffer {
       external_references;
 };
 
+struct PJRT_FulfillAliasBufferCallback {
+  xla::PjRtFulfillAliasBufferCallback fulfill_alias_buffer_cb;
+};
+
 struct PJRT_Event {
-  xla::PjRtFuture<> future;
+  xla::Future<> future;
 };
 
 struct PJRT_SerializedExecutable {
+  std::string serialized;
+};
+
+struct PJRT_DeviceAssignmentSerialized {
   std::string serialized;
 };
 
@@ -225,6 +239,24 @@ struct PJRT_Layouts_MemoryLayout {
 
 struct PJRT_Layouts_SerializedLayout {
   std::string serialized;
+};
+
+// This struct is used to pass a `xla::PjRtPhaseCompiler` through the C API.
+// These objects are created by the plugin developer. A plugin developer can
+// pass either an owning or a non-owning pointer of `xla::PjRtPhaseCompiler`. If
+// an owning pointer is provided, the underlying `xla::PjRtPhaseCompiler` object
+// will be deleted when this `PJRT_PhaseCompiler` object is destroyed.
+// Otherwise, the caller is responsible for deleting the underlying
+// `xla::PjRtPhaseCompiler` object.
+struct PJRT_PhaseCompiler {
+  xla::PjRtPhaseCompiler* compiler;
+  std::unique_ptr<xla::PjRtPhaseCompiler> owned_compiler;
+  explicit PJRT_PhaseCompiler(
+      std::unique_ptr<xla::PjRtPhaseCompiler> phase_compiler)
+      : compiler(phase_compiler.get()),
+        owned_compiler(std::move(phase_compiler)) {}
+  explicit PJRT_PhaseCompiler(xla::PjRtPhaseCompiler* phase_compiler)
+      : compiler(phase_compiler), owned_compiler(nullptr) {}
 };
 
 namespace pjrt {
@@ -255,6 +287,8 @@ PJRT_Error* PJRT_Client_AddressableDevices(
 PJRT_Error* PJRT_Client_LookupDevice(PJRT_Client_LookupDevice_Args* args);
 PJRT_Error* PJRT_Client_LookupAddressableDevice(
     PJRT_Client_LookupAddressableDevice_Args* args);
+PJRT_Error* PJRT_Client_UpdateGlobalProcessInfo(
+    PJRT_Client_UpdateGlobalProcessInfo_Args* args);
 PJRT_Error* PJRT_Client_AddressableMemories(
     PJRT_Client_AddressableMemories_Args* args);
 PJRT_Error* PJRT_Client_Compile(PJRT_Client_Compile_Args* args);
@@ -262,6 +296,10 @@ PJRT_Error* PJRT_Client_DefaultDeviceAssignment(
     PJRT_Client_DefaultDeviceAssignment_Args* args);
 PJRT_Error* PJRT_Client_CreateUninitializedBuffer(
     PJRT_Client_CreateUninitializedBuffer_Args* args);
+PJRT_Error* PJRT_Client_CreateAliasBuffer(
+    PJRT_Client_CreateAliasBuffer_Args* args);
+PJRT_Error* PJRT_Client_FulfillAliasBuffer(
+    PJRT_Client_FulfillAliasBuffer_Args* args);
 PJRT_Error* PJRT_Client_BufferFromHostBuffer(
     PJRT_Client_BufferFromHostBuffer_Args* args);
 PJRT_Error* PJRT_Client_CreateViewOfDeviceBuffer(
@@ -354,6 +392,8 @@ PJRT_Error* PJRT_LoadedExecutable_GetExecutable(
 // until the next major version upgrade.
 PJRT_Error* PJRT_LoadedExecutable_Fingerprint(
     PJRT_LoadedExecutable_Fingerprint_Args* args);
+PJRT_Error* PJRT_LoadedExecutable_GetDeviceAssignment(
+    PJRT_LoadedExecutable_GetDeviceAssignment_Args* args);
 
 PJRT_Error* PJRT_Buffer_Destroy(PJRT_Buffer_Destroy_Args* args);
 PJRT_Error* PJRT_Buffer_ElementType(PJRT_Buffer_ElementType_Args* args);
@@ -408,6 +448,8 @@ PJRT_Error* PJRT_TopologyDescription_Attributes(
     PJRT_TopologyDescription_Attributes_Args* args);
 
 PJRT_Error* PJRT_Compile(PJRT_Compile_Args* args);
+PJRT_Error* PJRT_TopologyDescription_Deserialize(
+    PJRT_TopologyDescription_Deserialize_Args* args);
 
 PJRT_Error* PJRT_Layouts_MemoryLayout_Destroy(
     PJRT_Layouts_MemoryLayout_Destroy_Args* args);

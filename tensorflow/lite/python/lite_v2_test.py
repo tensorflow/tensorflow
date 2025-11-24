@@ -435,7 +435,7 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
       ('DisableMlirQuantizer', False),
   )  # disable mlir quantizer
   def testQuantizationRemovesQDQsForFloatIO(self, mlir_quantizer):
-    func, calibration_gen = self._getSqrtModel()
+    func, calibration_gen = self._getCeilModel()
     converter = lite.TFLiteConverterV2.from_concrete_functions(
         [func.get_concrete_function()]
     )
@@ -454,7 +454,7 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
     # The model should have only one sqrt op.
     op_details = interp._get_ops_details()
     self.assertLen(op_details, 1)
-    self.assertEqual(op_details[0]['op_name'], 'SQRT')
+    self.assertEqual(op_details[0]['op_name'], 'CEIL')
 
   @parameterized.named_parameters(
       ('_Default', False, False, dtypes.float32),
@@ -1356,7 +1356,7 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
       disable_per_channel=False,
       enable_mlir_quantizer=False,
   ):
-    k_conv_name = 'tfl.pseudo_qconst' if enable_mlir_quantizer else 'Conv2D'
+    k_conv_name = 'Conv2D'
     # Dynamic range quant requires total num elements of filters > 1024.
     k_num_filters = 38
     root, func, calib_gen = self._getIntegerQuantizeModel(k_num_filters)
@@ -1425,7 +1425,7 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
       enable_mlir_quantizer=False,
       representative_dataset=False,
   ):
-    k_dense_name = 'tfl.pseudo_qconst' if representative_dataset else 'MatMul'
+    k_dense_name = 'MatMul'
     # Dynamic range quant requires total num elements of filters > 1024.
     k_num_filters = 64
     root, func, calib_gen = self._getIntegerQuantizeDenseModel(k_num_filters)
@@ -1564,7 +1564,7 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
     self.assertIsNone(metadata)
 
   def testConversionMetadataForDynamicRange(self):
-    func, _ = self._getSqrtModel()
+    func, _ = self._getCeilModel()
     converter = lite.TFLiteConverterV2.from_concrete_functions(
         [func.get_concrete_function()]
     )
@@ -2923,11 +2923,7 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
     model.build(input_shape=(1, 5, 5, 3))
     saved_model_dir = os.path.join(self.get_temp_dir(), 'conv_saved_model')
     save.save(model, saved_model_dir)
-    k_conv_name = (
-        'tfl.pseudo_qconst'
-        if enable_mlir_quantizer
-        else 'sequential/conv2d/Conv2D'
-    )
+    k_conv_name = 'sequential/conv2d/Conv2D'
     quantized_converter = lite.TFLiteConverterV2.from_saved_model(
         saved_model_dir
     )
@@ -2989,11 +2985,7 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
     ])
     saved_model_dir = os.path.join(self.get_temp_dir(), 'dense_saved_model')
     save.save(model, saved_model_dir)
-    k_dense_bias_name = (
-        'sequential/dense/BiasAdd/ReadVariableOp'
-        if is_int16_quantize
-        else 'tfl.pseudo_qconst'
-    )
+    k_dense_bias_name = 'sequential/dense/BiasAdd'
     quantized_converter = lite.TFLiteConverterV2.from_saved_model(
         saved_model_dir
     )
@@ -3645,7 +3637,7 @@ class FromKerasModelTest(lite_v2_test_util.ModelTest):
       enable_mlir_quantizer=False,
       representative_dataset=False,
   ):
-    k_dense_name = 'tfl.pseudo_qconst' if representative_dataset else 'MatMul'
+    k_dense_name = 'MatMul'
     # Dynamic range quant requires total num elements of filters > 1024.
     k_num_filters = 64
     model = tf.keras.models.Sequential([

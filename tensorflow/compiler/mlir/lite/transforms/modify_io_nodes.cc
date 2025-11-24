@@ -42,7 +42,7 @@ struct ModifyIONodesPass
  public:
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(ModifyIONodesPass)
 
-  explicit ModifyIONodesPass() {}
+  explicit ModifyIONodesPass() = default;
   explicit ModifyIONodesPass(mlir::Type input_type, mlir::Type output_type) {
     this->input_type = input_type;
     this->output_type = output_type;
@@ -177,8 +177,9 @@ LogicalResult ModifyIONodesPass::ModifyOutputNodes(
             dequantize_input.getType(), dequantize_op.getLoc());
         // replace the dequantize op by a quantize op
         TypeAttr type_attr = TypeAttr::get(returned_type);
-        auto quantize_op = builder.create<QuantizeOp>(
-            dequantize_op.getLoc(), returned_type, dequantize_input, type_attr);
+        auto quantize_op =
+            QuantizeOp::create(builder, dequantize_op.getLoc(), returned_type,
+                               dequantize_input, type_attr);
         returned_value = quantize_op.getOutput();
       } else {
         output_type.print(llvm::errs() << "Requested output type ");

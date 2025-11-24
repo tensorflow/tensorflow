@@ -30,7 +30,7 @@ class FilterParallelization : public TFDataOptimizerBase {
   FilterParallelization() = default;
   ~FilterParallelization() override = default;
 
-  string name() const override { return "filter_parallelization"; };
+  std::string name() const override { return "filter_parallelization"; };
 
   bool UsesFunctionLibrary() const override { return false; }
 
@@ -38,7 +38,7 @@ class FilterParallelization : public TFDataOptimizerBase {
       const tensorflow::RewriterConfig_CustomGraphOptimizer* config) override {
     if (!config) return absl::OkStatus();
 
-    const string& autotune = config->parameter_map().at(kAutotune).s();
+    const std::string& autotune = config->parameter_map().at(kAutotune).s();
     if (autotune == "true") {
       autotune_ = true;
     } else if (autotune == "false") {

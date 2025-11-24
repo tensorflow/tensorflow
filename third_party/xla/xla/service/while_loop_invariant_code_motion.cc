@@ -17,13 +17,13 @@ limitations under the License.
 
 #include <cstdint>
 #include <iterator>
+#include <optional>
 #include <string>
 #include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
-#include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/strings/string_view.h"
@@ -31,90 +31,23 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/hlo/transforms/simplifiers/hlo_dce.h"
 #include "xla/hlo/transforms/simplifiers/tuple_simplifier.h"
 #include "xla/map_util.h"
 #include "xla/service/compile_time_cap.h"
+#include "xla/service/memory_annotations.h"
 #include "xla/service/while_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 
 using absl::flat_hash_map;
 using absl::flat_hash_set;
-using absl::InlinedVector;
-
-// Copies `to_hoist` to the computation containing `while_instr`, hoisting its
-// operands as needed.  All of its transitive operands are expected to be either
-// in `hoisted_instructions` or `unhoisted_invariant_instructions`.  This
-// function hoists the operands in `unhoisted_invariant_instructions` and moves
-// them into `hoisted_instructions`.
-static void CreateLoopInvariantCopy(
-    flat_hash_map<HloInstruction*, HloInstruction*>* hoisted_instructions,
-    flat_hash_set<HloInstruction*>* unhoisted_invariant_instructions,
-    HloInstruction* while_instr, HloInstruction* to_hoist) {
-  HloComputation* parent_of_while = while_instr->parent();
-  HloComputation* while_body = while_instr->while_body();
-
-  struct DFSFrame {
-    HloInstruction* instruction;
-    int64_t operand_index;
-  };
-
-  InlinedVector<DFSFrame, 8> dfs_stack;
-  dfs_stack.push_back({to_hoist, 0});
-
-  HloInstruction* while_body_param = while_body->parameter_instruction(0);
-  HloInstruction* while_operand = while_instr->mutable_operand(0);
-
-  do {
-    DFSFrame* frame = &dfs_stack.back();
-    if (frame->operand_index == frame->instruction->operand_count()) {
-      HloInstruction* old_instruction = frame->instruction;
-
-      // All of the operands for old_instruction have been cloned, so it is
-      // time to clone old_instruction itself.
-
-      auto get_new_operand = [&](HloInstruction* old_operand) {
-        return old_operand == while_body_param
-                   ? while_operand
-                   : FindOrDie(*hoisted_instructions, old_operand);
-      };
-
-      InlinedVector<HloInstruction*, 4> new_operands;
-      absl::c_transform(old_instruction->operands(),
-                        std::back_inserter(new_operands), get_new_operand);
-
-      HloInstruction* new_instruction =
-          parent_of_while->AddInstruction(old_instruction->CloneWithNewOperands(
-              old_instruction->shape(), new_operands));
-
-      InsertOrDie(hoisted_instructions, old_instruction, new_instruction);
-
-      // Approximately half of the instructions that would normally be present
-      // in unhoisted_invariant_instructions are constants.  We save a bit of
-      // compile time by not putting these in the hashtable.
-      CHECK_EQ(unhoisted_invariant_instructions->erase(old_instruction),
-               to_hoist != old_instruction &&
-                   old_instruction->opcode() != HloOpcode::kConstant);
-      dfs_stack.pop_back();
-      continue;
-    }
-
-    HloInstruction* next_operand =
-        frame->instruction->mutable_operand(frame->operand_index++);
-    if (hoisted_instructions->contains(next_operand) ||
-        next_operand == while_body_param) {
-      continue;
-    }
-
-    dfs_stack.push_back({next_operand, 0});
-  } while (!dfs_stack.empty());
-}
 
 // Returns true if `instruction` is worth hoisting only if it lets us hoist some
 // instruction using it. The rationale is that hoisting these instructions will
@@ -212,11 +145,18 @@ WhileLoopInvariantCodeMotion::TryHoistingInvariantInstructionsFromWhileBody(
     return false;
   }
 
-  // LICM in the presence of domain instructions is complex, bail.
   for (auto* instruction : while_body->MakeInstructionPostOrder()) {
+    // LICM in the presence of domain instructions is complex, bail.
     if (instruction->opcode() == HloOpcode::kDomain ||
         instruction->IsCustomCall("SPMDFullToShardShape") ||
         instruction->IsCustomCall("SPMDShardShapeToFull")) {
+      return false;
+    }
+
+    // Host offloading annotation should stay in its original position.
+    if (instruction->IsCustomCall(std::vector<absl::string_view>{
+            memory_annotations::kMoveToDeviceCustomCallTarget,
+            memory_annotations::kMoveToHostCustomCallTarget})) {
       return false;
     }
   }
@@ -303,9 +243,22 @@ WhileLoopInvariantCodeMotion::TryHoistingInvariantInstructionsFromWhileBody(
 
     VLOG(2) << "Hoisting " << instruction->ToString(print_no_metadata);
 
-    CreateLoopInvariantCopy(&hoisted_instructions,
-                            &unhoisted_invariant_instructions, while_instr,
-                            instruction);
+    HloInstruction* to_hoist = instruction;
+    auto is_hoisted = [&](HloInstruction* instr) {
+      return hoisted_instructions.count(instr);
+    };
+    auto get_hoisted = [&](HloInstruction* instr) {
+      return FindOrDie(hoisted_instructions, instr);
+    };
+    auto set_hoisted = [&](HloInstruction* old_instr,
+                           HloInstruction* new_instr) {
+      InsertOrDie(&hoisted_instructions, old_instr, new_instr);
+      CHECK_EQ(
+          unhoisted_invariant_instructions.erase(old_instr),
+          to_hoist != old_instr && old_instr->opcode() != HloOpcode::kConstant);
+    };
+    WhileUtil::CreateLoopInvariantCopy(to_hoist, while_instr, is_hoisted,
+                                       get_hoisted, set_hoisted);
 
     instructions_to_replace.push_back(instruction);
     replacement_instructions.push_back(
@@ -338,11 +291,11 @@ WhileLoopInvariantCodeMotion::TryHoistingInvariantInstructionsFromWhileBody(
   return true;
 }
 
-absl::StatusOr<bool> WhileLoopInvariantCodeMotion::Run(
+absl::StatusOr<bool> WhileLoopInvariantCodeMotion::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
-  VLOG(2) << "HLO module before WhileLoopInvariantCodeMotion:";
-  XLA_VLOG_LINES(2, module->ToString());
+  VLOG(3) << "HLO module before WhileLoopInvariantCodeMotion:";
+  XLA_VLOG_LINES(3, module->ToString());
 
   bool changed = false;
   std::vector<HloInstruction*> while_instrs;
@@ -352,6 +305,11 @@ absl::StatusOr<bool> WhileLoopInvariantCodeMotion::Run(
   }
   BoundNonLinearCompilerAnalysis allowance(module, name(), 10);
 
+  // Currently, if a loop body that is used by multiple while
+  // ops contains an op that can be hoisted, we will make a new computation for
+  // each of the while ops, instead of using one shared new computation. This is
+  // probably fine, but we may want to improve it in the future if we decide to
+  // double-down on shared while bodies.
   for (HloInstruction* while_instr : while_instrs) {
     // Right now we only hoist computations from the while body, but
     // TryHoistingInvariantInstructionsFromWhileBody can be generalized to
@@ -368,6 +326,18 @@ absl::StatusOr<bool> WhileLoopInvariantCodeMotion::Run(
     if (!allowance.ContinueAnalysis()) {
       break;
     }
+
+    if (while_instr->frontend_attributes().map().contains(
+            "_xla_disable_loop_instr_hoisting")) {
+      // If this frontend attr is present, we have knowledge from the framework
+      // to disable hoisting from this loop.
+      auto print_no_metadata = HloPrintOptions{}.set_print_metadata(false);
+      std::string while_instr_name = while_instr->ToString(print_no_metadata);
+      VLOG(2) << "Skipping hoisting from: " << while_instr_name
+              << " because it is disabled via xla metadata.";
+      continue;
+    }
+
     TF_ASSIGN_OR_RETURN(
         bool result,
         TryHoistingInvariantInstructionsFromWhileBody(while_instr, &allowance));
@@ -387,10 +357,10 @@ absl::StatusOr<bool> WhileLoopInvariantCodeMotion::Run(
   }
 
   if (changed) {
-    VLOG(2) << "HLO module after WhileLoopInvariantCodeMotion:";
-    XLA_VLOG_LINES(2, module->ToString());
+    VLOG(3) << "HLO module after WhileLoopInvariantCodeMotion:";
+    XLA_VLOG_LINES(3, module->ToString());
   } else {
-    VLOG(2) << "HLO module unchanged after WhileLoopInvariantCodeMotion";
+    VLOG(3) << "HLO module unchanged after WhileLoopInvariantCodeMotion";
   }
 
   return changed;

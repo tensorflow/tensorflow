@@ -133,8 +133,8 @@ class LookupInterface : public ResourceBase {
   absl::Status CheckFindArguments(const Tensor& keys,
                                   const Tensor& default_value);
 
-  string DebugString() const override {
-    return strings::StrCat("A lookup table of size: ", size());
+  std::string DebugString() const override {
+    return absl::StrCat("A lookup table of size: ", size());
   }
 
   // Returns an InitializableLookupTable, a subclass of LookupInterface, if the

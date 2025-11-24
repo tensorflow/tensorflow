@@ -1,8 +1,3 @@
-#include <optional>
-
-#include "absl/status/statusor.h"
-#include "xla/python/ifrt/device_list.h"
-#include "xla/tsl/lib/core/status_test_util.h"
 /* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -21,19 +16,27 @@ limitations under the License.
 #ifndef XLA_PYTHON_IFRT_TEST_UTIL_H_
 #define XLA_PYTHON_IFRT_TEST_UTIL_H_
 
+#include <cstdint>
 #include <functional>
 #include <memory>
+#include <optional>
+#include <string>
 #include <vector>
 
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/device.h"
+#include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/shape.h"
+#include "xla/python/ifrt/sharding.h"
+#include "xla/python/ifrt/user_context.h"
 #include "xla/tsl/concurrency/ref_count.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 
@@ -66,7 +69,7 @@ void AssertPerShardData(
               testing::ElementsAreArray(GetDeviceIds(expected_device_list)));
   TF_ASSERT_OK_AND_ASSIGN(auto actual_per_shard_arrays,
                           actual->DisassembleIntoSingleDeviceArrays(
-                              ArrayCopySemantics::kAlwaysCopy,
+                              ArrayCopySemantics::kReuseInput,
                               SingleDeviceShardSemantics::kAddressableShards));
   ASSERT_EQ(actual_per_shard_arrays.size(), expected_per_shard_data.size());
   for (int i = 0; i < actual_per_shard_arrays.size(); ++i) {
@@ -93,6 +96,13 @@ absl::StatusOr<DeviceListRef> GetDevices(Client* client,
 // indexes (not ids) within `client.addressable_devices()`.
 absl::StatusOr<DeviceListRef> GetAddressableDevices(
     Client* client, absl::Span<const int> device_indices);
+
+// Returns a new `UserContext` for testing. The created `UserContext` has an
+// ID equal to `id`. `debug_string` defaults to `TestUserContext(id)`. This can
+// be overridden with a custom debug string for the tests that must use
+// multiple `UserContext`s with the same debug string.
+UserContextRef MakeUserContext(
+    uint64_t id, std::optional<std::string> debug_string = std::nullopt);
 
 }  // namespace test_util
 }  // namespace ifrt

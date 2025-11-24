@@ -22,6 +22,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gtest/gtest.h>
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_replace.h"
@@ -40,13 +41,14 @@ limitations under the License.
 #include "xla/service/gpu/transforms/gemm_rewriter_test_lib.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/pattern_matcher.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/semantic_version.h"
 #include "xla/stream_executor/stream_executor_memory_allocator.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/xla.pb.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -120,15 +122,6 @@ ENTRY AddDotsFunc {
 }
 )";
 
-  ErrorSpec error_spec = [&] {
-    DebugOptions debug_options = GetDebugOptionsForTest();
-    if (debug_options.xla_gpu_enable_cublaslt()) {
-      return ErrorSpec{1e-3, 1e-3};
-    } else {
-      return ErrorSpec{1e-3, 1e-3};
-    }
-  }();
-
   auto get_module = [&]() {
     HloModuleConfig config;
     DebugOptions debug_options = GetDebugOptionsForTest();
@@ -151,7 +144,7 @@ ENTRY AddDotsFunc {
     )");
   TF_ASSERT_OK(filecheck_result.status());
   EXPECT_TRUE(filecheck_result.value());
-  EXPECT_TRUE(RunAndCompare(*get_module(), error_spec));
+  EXPECT_TRUE(RunAndCompare(*get_module(), ErrorSpec{1e-3, 1e-3}));
 }
 
 TEST_F(GemmRewriteTest, BF16GemmCodeGen) {
@@ -986,8 +979,13 @@ ENTRY bf16gemm {
   )";
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
 
-  if (!IsCuda() ||
-      HasCudaComputeCapability(se::CudaComputeCapability::Ampere())) {
+  if (!IsCuda()) {
+    MatchOptimizedHlo(hlo_text,
+                      R"(
+; CHECK: {{.*}} custom-call(bf16[12,4]{1,0} {{.*}}, bf16[4,8]{1,0} {{.*}}), custom_call_target="<<CUBLAS_CUSTOM_CALL_TARGET_PLACEHOLDER>>"
+  )",
+                      /*print_operand_shape=*/true);
+  } else if (HasCudaComputeCapability(se::CudaComputeCapability::Ampere())) {
     MatchOptimizedHlo(hlo_text,
                       R"(
 ; CHECK: {{.*}} custom-call(bf16[16,8]{1,0} {{.*}}, bf16[8,8]{1,0} {{.*}}), custom_call_target="<<CUBLAS_CUSTOM_CALL_TARGET_PLACEHOLDER>>"
@@ -1011,8 +1009,13 @@ ENTRY bf16gemm {
   )";
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
 
-  if (!IsCuda() ||
-      HasCudaComputeCapability(se::CudaComputeCapability::Ampere())) {
+  if (!IsCuda()) {
+    MatchOptimizedHlo(hlo_text,
+                      R"(
+    ; CHECK: {{.*}} custom-call(bf16[3,3,4]{2,1,0} {{.*}}, bf16[3,3,2]{2,1,0} {{.*}}), custom_call_target="<<CUBLAS_CUSTOM_CALL_TARGET_PLACEHOLDER>>"
+    )",
+                      /*print_operand_shape=*/true);
+  } else if (HasCudaComputeCapability(se::CudaComputeCapability::Ampere())) {
     MatchOptimizedHlo(hlo_text,
                       R"(
     ; CHECK: {{.*}} custom-call(bf16[3,8,8]{2,1,0} {{.*}}, bf16[3,8,8]{2,1,0} {{.*}}), custom_call_target="<<CUBLAS_CUSTOM_CALL_TARGET_PLACEHOLDER>>"
@@ -1481,9 +1484,8 @@ class GemmRewriteAllocationTest : public GpuCodegenTest {
                                          allocator_.get()));
     GpuExecutable* gpu_executable =
         static_cast<GpuExecutable*>(executable.get());
-    absl::Span<const BufferAllocation> allocations =
-        gpu_executable->GetAllocations();
-    ASSERT_EQ(allocations.size(), expected_number_of_allocations);
+    ASSERT_EQ(gpu_executable->GetAllocations().size(),
+              expected_number_of_allocations);
   }
 
   DebugOptions GetDebugOptionsForTest() const override {
@@ -1590,7 +1592,7 @@ TEST_F(SmallDotGemmRewriteTest, RewriteForALG_BF16_BF16_F32) {
                     R"(
 ; CHECK-LABEL: ENTRY %DotFunc ({{.*}}: f32[1024,1024], {{.*}}: f32[1024,1024]) -> f32[1024,1024] {
 ; CHECK-NEXT:    [[P0:%[^ ]+]] = f32[1024,1024]{1,0} parameter(0)
-; CHECK-NEXT:    [[P1:%[^ ]+]] = f32[1024,1024]{1,0} parameter(1)
+; CHECK:         [[P1:%[^ ]+]] = f32[1024,1024]{1,0} parameter(1)
 ; CHECK:        [[GEMM:%[^ ]+]] = {{.*}} custom-call({{.*}}), custom_call_target="__cublas$gemm", {{.*}},"algorithm":"ALG_UNSET"
 )");
 }

@@ -27,12 +27,12 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/hlo/ir/collective_device_list.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/ir/replica_group.h"
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/service/all_reduce_key.h"
 #include "xla/xla_data.pb.h"
@@ -148,9 +148,9 @@ std::optional<std::vector<ReplicaGroup>> FoldReplicaGroups(
 
 }  // namespace
 
-absl::StatusOr<bool> AllReduceFolder::Run(
-    HloModule *module,
-    const absl::flat_hash_set<absl::string_view> &execution_threads) {
+absl::StatusOr<bool> AllReduceFolder::RunImpl(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   if (hlo_query::ContainsLayoutConstrainedAllReduce(*module)) {
     VLOG(1) << "Skip AllReduceFolder because the module contains all-reduce "
                "with constrained layouts";

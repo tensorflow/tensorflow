@@ -29,7 +29,7 @@ namespace tsl {
 namespace io {
 
 RecordReaderOptions RecordReaderOptions::CreateRecordReaderOptions(
-    const string& compression_type) {
+    const std::string& compression_type) {
   RecordReaderOptions options;
 
 #if defined(IS_SLIM_BUILD)
@@ -86,7 +86,7 @@ RecordReader::RecordReader(RandomAccessFile* file,
 }
 
 namespace {
-inline const char* GetChecksumErrorSuffix(uint64 offset) {
+inline const char* GetChecksumErrorSuffix(uint64_t offset) {
   if (offset == 0) {
     return " (Is this even a TFRecord file?)";
   }
@@ -101,14 +101,14 @@ inline const char* GetChecksumErrorSuffix(uint64 offset) {
 // and is used only in error messages. For failures at offset 0,
 // a reminder about the file format is added, because TFRecord files
 // contain no explicit format marker.
-absl::Status RecordReader::ReadChecksummed(uint64 offset, size_t n,
+absl::Status RecordReader::ReadChecksummed(uint64_t offset, size_t n,
                                            tstring* result) {
-  if (n >= SIZE_MAX - sizeof(uint32)) {
+  if (n >= SIZE_MAX - sizeof(uint32_t)) {
     return errors::DataLoss("record size too large",
                             GetChecksumErrorSuffix(offset));
   }
 
-  const size_t expected = n + sizeof(uint32);
+  const size_t expected = n + sizeof(uint32_t);
   TF_RETURN_IF_ERROR(input_stream_->ReadNBytes(expected, result));
 
   if (result->size() != expected) {
@@ -120,7 +120,7 @@ absl::Status RecordReader::ReadChecksummed(uint64 offset, size_t n,
     }
   }
 
-  const uint32 masked_crc = core::DecodeFixed32(result->data() + n);
+  const uint32_t masked_crc = core::DecodeFixed32(result->data() + n);
   if (crc32c::Unmask(masked_crc) != crc32c::Value(result->data(), n)) {
     return errors::DataLoss("corrupted record at ", offset,
                             GetChecksumErrorSuffix(offset));
@@ -145,11 +145,11 @@ absl::Status RecordReader::GetMetadata(Metadata* md) {
     // Within the loop, we always increment offset positively, so this
     // loop should be guaranteed to either return after reaching EOF
     // or encountering an error.
-    uint64 offset = 0;
+    uint64_t offset = 0;
     tstring record;
     while (true) {
       // Read header, containing size of data.
-      absl::Status s = ReadChecksummed(offset, sizeof(uint64), &record);
+      absl::Status s = ReadChecksummed(offset, sizeof(uint64_t), &record);
       if (!s.ok()) {
         if (absl::IsOutOfRange(s)) {
           // We should reach out of range when the record file is complete.
@@ -159,7 +159,7 @@ absl::Status RecordReader::GetMetadata(Metadata* md) {
       }
 
       // Read the length of the data.
-      const uint64 length = core::DecodeFixed64(record.data());
+      const uint64_t length = core::DecodeFixed64(record.data());
 
       // Skip reading the actual data since we just want the number
       // of records and the size of the data.
@@ -182,7 +182,7 @@ absl::Status RecordReader::GetMetadata(Metadata* md) {
   return absl::OkStatus();
 }
 
-absl::Status RecordReader::PositionInputStream(uint64 offset) {
+absl::Status RecordReader::PositionInputStream(uint64_t offset) {
   int64_t curr_pos = input_stream_->Tell();
   int64_t desired_pos = static_cast<int64_t>(offset);
   if (curr_pos > desired_pos || curr_pos < 0 /* EOF */ ||
@@ -197,16 +197,16 @@ absl::Status RecordReader::PositionInputStream(uint64 offset) {
   return absl::OkStatus();
 }
 
-absl::Status RecordReader::ReadRecord(uint64* offset, tstring* record) {
+absl::Status RecordReader::ReadRecord(uint64_t* offset, tstring* record) {
   TF_RETURN_IF_ERROR(PositionInputStream(*offset));
 
   // Read header data.
-  absl::Status s = ReadChecksummed(*offset, sizeof(uint64), record);
+  absl::Status s = ReadChecksummed(*offset, sizeof(uint64_t), record);
   if (!s.ok()) {
     last_read_failed_ = true;
     return s;
   }
-  const uint64 length = core::DecodeFixed64(record->data());
+  const uint64_t length = core::DecodeFixed64(record->data());
 
   // Read data
   s = ReadChecksummed(*offset + kHeaderSize, length, record);
@@ -224,7 +224,7 @@ absl::Status RecordReader::ReadRecord(uint64* offset, tstring* record) {
   return absl::OkStatus();
 }
 
-absl::Status RecordReader::SkipRecords(uint64* offset, int num_to_skip,
+absl::Status RecordReader::SkipRecords(uint64_t* offset, int num_to_skip,
                                        int* num_skipped) {
   TF_RETURN_IF_ERROR(PositionInputStream(*offset));
 
@@ -232,12 +232,12 @@ absl::Status RecordReader::SkipRecords(uint64* offset, int num_to_skip,
   tstring record;
   *num_skipped = 0;
   for (int i = 0; i < num_to_skip; ++i) {
-    s = ReadChecksummed(*offset, sizeof(uint64), &record);
+    s = ReadChecksummed(*offset, sizeof(uint64_t), &record);
     if (!s.ok()) {
       last_read_failed_ = true;
       return s;
     }
-    const uint64 length = core::DecodeFixed64(record.data());
+    const uint64_t length = core::DecodeFixed64(record.data());
 
     // Skip data
     s = input_stream_->SkipNBytes(length + kFooterSize);

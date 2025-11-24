@@ -19,6 +19,9 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "llvm/ADT/StringRef.h"
+#include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "xla/xla_data.pb.h"
 
@@ -46,6 +49,26 @@ TEST(DecodeShardingAttributeTest, CheckMaximalShardString) {
       DecodeShardingAttribute("{maximal device=0}", sharding).succeeded());
   EXPECT_TRUE(sharding.type() == sharding.MAXIMAL);
   EXPECT_EQ(1, sharding.tile_assignment_devices_size());
+}
+
+TEST(ShardingEquivalenceTest, CheckOpShardingEquivalent) {
+  xla::OpSharding sharding1;
+  EXPECT_TRUE(
+      DecodeShardingAttribute("{devices=[2,1]0,1}", sharding1).succeeded());
+  xla::OpSharding sharding2;
+  EXPECT_TRUE(
+      DecodeShardingAttribute("{devices=[2,1]<=[2]}", sharding2).succeeded());
+  EXPECT_TRUE(VerifyShardingEquivalent(sharding1, sharding2).succeeded());
+}
+
+TEST(ShardingEquivalenceTest, CheckOpShardingNotEquivalent) {
+  xla::OpSharding sharding1;
+  EXPECT_TRUE(
+      DecodeShardingAttribute("{devices=[2,1]1,0}", sharding1).succeeded());
+  xla::OpSharding sharding2;
+  EXPECT_TRUE(
+      DecodeShardingAttribute("{devices=[2,1]<=[2]}", sharding2).succeeded());
+  EXPECT_FALSE(VerifyShardingEquivalent(sharding1, sharding2).succeeded());
 }
 }  // namespace
 

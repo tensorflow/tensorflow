@@ -28,7 +28,8 @@ void registerSdyRoundTripExportShardyAttrsPass();
 
 // Creates the pass to convert SDY attributes to frontend attributes:
 //
-// - Converts shardings from `kShardingAttr` to `kShardingRoundTripAttr`
+// - Converts shardings from `kShardingAttr` to
+// `HloSharding::kShardingFrontendAttrName`
 // - Converts sharding rules from `kShardingRuleAttr` to
 //   `kShardingRuleRoundTripAttr`
 // - Saves the mesh symbols as `kMeshesRoundTripAttr`

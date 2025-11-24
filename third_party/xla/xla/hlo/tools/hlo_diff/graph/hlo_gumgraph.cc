@@ -28,6 +28,7 @@
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
+#include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -39,6 +40,7 @@
 #include "xla/hlo/tools/hlo_diff/graph/utils/hlo_gumgraph_dfs.h"
 #include "xla/hlo/tools/hlo_diff/utils/hlo_diff_util.h"
 #include "xla/service/call_graph.h"
+#include "xla/service/hlo_value.h"
 #include "xla/status_macros.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
@@ -50,7 +52,9 @@ namespace {
 
 // Adds an edge between the given parent and child nodes.
 void AddEdge(HloInstructionNode* parent, HloInstructionNode* child) {
+  parent->i_th_parents.push_back(parent->children.size());
   parent->children.push_back(child);
+  child->i_th_children.push_back(child->parents.size());
   child->parents.push_back(parent);
 }
 
@@ -59,10 +63,10 @@ HloPrintOptions CreateHloPrintOptions(
     const HloGumgraphFingerprintOptions& fingerprint_options) {
   HloPrintOptions hlo_print_options =
       HloPrintOptions::Fingerprint()
-          .set_include_layout_in_shapes(false)
           .set_print_subcomputation_mode(
               HloPrintOptions::PrintSubcomputationMode::kOff)
-          .set_print_parameter_number(false);
+          .set_print_parameter_number(false)
+          .set_print_only_essential_constants(false);
   if (fingerprint_options.ignore_shape) {
     hlo_print_options.set_print_operand_shape(false);
     hlo_print_options.set_print_result_shape(false);
@@ -113,8 +117,8 @@ std::pair<HloInstructionNode*, bool> HloGumgraph::AddNode(
     const HloInstruction& instruction, int unique_node_index) {
   auto node = std::make_unique<HloInstructionNode>(HloInstructionNode{
       .instruction = &instruction, .unique_node_index = unique_node_index});
-  auto [new_node_it, inserted] =
-      instruction_to_node_.try_emplace(&instruction, std::move(node));
+  auto [new_node_it, inserted] = instruction_name_to_node_.try_emplace(
+      instruction.name(), std::move(node));
   return {new_node_it->second.get(), inserted};
 }
 
@@ -132,9 +136,10 @@ absl::Status HloGumgraph::ConstructGraph(const HloModule& hlo_module) {
 
       HloInstructionNode* node = node_and_inserted.first;
       node->props.fingerprint = GetHloInstructionFingerprint(
-          instruction, CreateHloPrintOptions(fingerprint_options_));
+          instruction, CreateHloPrintOptions(fingerprint_options_)
+                           .set_include_layout_in_shapes(false));
       node->props.canonical_fingerprint = GetHloInstructionFingerprint(
-          instruction, HloPrintOptions::Fingerprint());
+          instruction, CreateHloPrintOptions(fingerprint_options_));
 
       bool inline_called_computations = false;
       switch (instruction->opcode()) {
@@ -212,7 +217,7 @@ HloGumgraph::PrecomputeGenerations() {
   LOG(INFO) << "Precomputing generations";
   std::vector<HloInstructionNode*> zero_indegrees;
   absl::flat_hash_map<const HloInstructionNode*, int> indegrees;
-  for (const auto& [_, node] : instruction_to_node_) {
+  for (const auto& [_, node] : instruction_name_to_node_) {
     if (node->parents.empty()) {
       zero_indegrees.push_back(node.get());
       continue;
@@ -237,8 +242,6 @@ HloGumgraph::PrecomputeGenerations() {
 
     for (int i = 0; i < current_generation_nodes.size(); ++i) {
       current_generation_nodes[i]->props.generation = current_generation;
-      current_generation_nodes[i]->props.sibling_position = {
-          i, static_cast<int64_t>(current_generation_nodes.size())};
       for (HloInstructionNode* child : current_generation_nodes[i]->children) {
         auto it = indegrees.find(child);
         if (it == indegrees.end()) {
@@ -313,18 +316,45 @@ absl::Status HloGumgraph::PrecomputeComputationFingerprint() {
   return absl::OkStatus();
 }
 
-void HloGumgraph::PrecomputeDfsPosition() {
-  LOG(INFO) << "Precomputing DFS position";
-  std::vector<const HloInstructionNode*> pre_order_nodes =
-      GetAllNodesInDfsOrder(root_, DfsTraversalOrder::kPreOrder,
-                            GetNodeCount());
-  for (int i = 0; i < pre_order_nodes.size(); ++i) {
-    if (pre_order_nodes[i]->is_root) {
-      continue;
+void HloGumgraph::PrecomputeInstructionDependencies() {
+  LOG(INFO) << "Precomputing instruction dependencies";
+  for (auto* computation : hlo_module_.MakeComputationPostOrder()) {
+    for (auto* instruction : computation->MakeInstructionPostOrder()) {
+      HloInstructionNode* node = GetNode(instruction);
+      CHECK(node != nullptr);
+
+      // Cache all HloValues used by the instruction.
+      if (instruction->opcode() == HloOpcode::kParameter) {
+        if (!instruction->parent()->IsEntryComputation() &&
+            !hlo_value_tracing_->ValueIsDefinedAt(instruction)) {
+          node->used_values =
+              hlo_value_tracing_->GetFlattenedValueSet(instruction).values();
+        }
+      } else {
+        for (const HloInstruction* operand : instruction->operands()) {
+          const HloValueSet& operand_value_set =
+              hlo_value_tracing_->GetFlattenedValueSet(operand);
+          for (const HloValue* value : operand_value_set.values()) {
+            absl::Span<const HloUse> uses = value->GetUses();
+            for (const HloUse& use : uses) {
+              if (use.instruction == instruction) {
+                node->used_values.push_back(value);
+                break;
+              }
+            }
+          }
+        }
+      }
+
+      // Cache all uses of HloValues present at the instruction's output.
+      const HloValueSet& value_set =
+          hlo_value_tracing_->GetFlattenedValueSet(instruction);
+      for (const HloValue* value : value_set.values()) {
+        node->value_uses.insert(node->value_uses.end(),
+                                value->GetUses().begin(),
+                                value->GetUses().end());
+      }
     }
-    instruction_to_node_[pre_order_nodes[i]->instruction]
-        ->props.pre_order_graph_position = {
-        i, static_cast<int64_t>(pre_order_nodes.size())};
   }
 }
 
@@ -350,7 +380,7 @@ absl::StatusOr<std::unique_ptr<const HloGumgraph>> HloGumgraph::Create(
   }
   graph->PrecomputeSizeAndHeight();
   TF_RETURN_IF_ERROR(graph->PrecomputeComputationFingerprint());
-  graph->PrecomputeDfsPosition();
+  graph->PrecomputeInstructionDependencies();
 
   return graph;
 };

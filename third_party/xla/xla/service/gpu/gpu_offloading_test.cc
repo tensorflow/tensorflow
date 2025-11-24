@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/autotune_results.pb.h"
 #include "xla/error_spec.h"
+#include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/transforms/simplifiers/hlo_memory_scheduler.h"
@@ -55,7 +56,7 @@ class GpuOffloadingTest : public HloTestBase {
                                                int64_t min_remat_size = 0) {
     TF_EXPECT_OK(verifier().Run(module).status());
     if (!module->has_schedule()) {
-      HloMemoryScheduler scheduler([](const BufferValue& buffer) {
+      HloMemoryScheduler scheduler(&alias_info_, [](const BufferValue& buffer) {
         return ::xla::ShapeUtil::ByteSizeOf(buffer.shape());
       });
       TF_EXPECT_OK(scheduler.Run(module).status());
@@ -97,6 +98,7 @@ class GpuOffloadingTest : public HloTestBase {
   float copy_from_host_speed_{1.0f};
   float flops_per_second_{1.0f};
   float transcendentals_per_second_{1.0f};
+  AliasInfo alias_info_;
 };
 
 TEST_F(GpuOffloadingTest, CopyStartDoneHloStringTest) {

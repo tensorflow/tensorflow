@@ -22,6 +22,7 @@ limitations under the License.
 #include <random>
 #include <vector>
 
+#include <gtest/gtest.h>
 #include "absl/algorithm/container.h"
 #include "xla/array.h"
 #include "xla/array2d.h"

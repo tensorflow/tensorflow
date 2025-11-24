@@ -13,19 +13,26 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstdint>
 #include <memory>
+#include <numeric>
 #include <utility>
+#include <vector>
 
+#include "absl/log/log.h"
+#include "xla/array2d.h"
 #include "xla/array3d.h"
 #include "xla/array4d.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/shape_util.h"
 #include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/tests/literal_test_util.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/test.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/test.h"
 
 namespace xla {
 namespace {
@@ -43,7 +50,7 @@ TEST_F(BroadcastTest, BroadcastScalarToScalar) {
   // Create HLO module, compile, and execute.
   auto hlo_module = CreateNewVerifiedModule();
   hlo_module->AddEntryComputation(builder.Build());
-  auto result = ExecuteAndTransfer(std::move(hlo_module), {});
+  TF_ASSERT_OK_AND_ASSIGN(Literal result, Execute(std::move(hlo_module), {}));
 
   EXPECT_TRUE(LiteralTestUtil::Near(LiteralUtil::CreateR0<float>(42.0), result,
                                     kDefaultErrorSpec));
@@ -59,7 +66,7 @@ TEST_F(BroadcastTest, BroadcastScalarTo2D) {
   // Create HLO module, compile, and execute.
   auto hlo_module = CreateNewVerifiedModule();
   hlo_module->AddEntryComputation(builder.Build());
-  auto result = ExecuteAndTransfer(std::move(hlo_module), {});
+  TF_ASSERT_OK_AND_ASSIGN(Literal result, Execute(std::move(hlo_module), {}));
 
   EXPECT_TRUE(LiteralTestUtil::Near(
       LiteralUtil::CreateR2<float>({{42.0, 42.0}, {42.0, 42.0}}), result,
@@ -82,7 +89,7 @@ TEST_F(BroadcastTest, BroadcastVectorTo2D) {
   // Create HLO module, compile, and execute.
   auto hlo_module = CreateNewVerifiedModule();
   hlo_module->AddEntryComputation(builder.Build());
-  auto result = ExecuteAndTransfer(std::move(hlo_module), {});
+  TF_ASSERT_OK_AND_ASSIGN(Literal result, Execute(std::move(hlo_module), {}));
 
   EXPECT_TRUE(LiteralTestUtil::Near(
       LiteralUtil::CreateR2<float>({{1.0, 1.0}, {2.0, 2.0}, {3.0, 3.0}}),
@@ -103,7 +110,7 @@ TEST_F(BroadcastTest, Broadcast2DTo2D) {
   // Create HLO module, compile, and execute.
   auto hlo_module = CreateNewVerifiedModule();
   hlo_module->AddEntryComputation(builder.Build());
-  auto result = ExecuteAndTransfer(std::move(hlo_module), {});
+  TF_ASSERT_OK_AND_ASSIGN(Literal result, Execute(std::move(hlo_module), {}));
 
   EXPECT_TRUE(LiteralTestUtil::Near(
       LiteralUtil::CreateR2<float>({{1.0, 2.0}, {3.0, 4.0}}), result,
@@ -122,7 +129,7 @@ TEST_F(BroadcastTest, Broadcast2DTo2DTranspose) {
   // Create HLO module, compile, and execute.
   auto hlo_module = CreateNewVerifiedModule();
   hlo_module->AddEntryComputation(builder.Build());
-  auto result = ExecuteAndTransfer(std::move(hlo_module), {});
+  TF_ASSERT_OK_AND_ASSIGN(Literal result, Execute(std::move(hlo_module), {}));
 
   EXPECT_TRUE(LiteralTestUtil::Near(
       LiteralUtil::CreateR2<float>({{1.0, 3.0}, {2.0, 4.0}}), result,
@@ -139,7 +146,7 @@ TEST_F(BroadcastTest, Broadcast2DTo3D) {
   // Create HLO module, compile, and execute.
   auto hlo_module = CreateNewVerifiedModule();
   hlo_module->AddEntryComputation(builder.Build());
-  auto result = ExecuteAndTransfer(std::move(hlo_module), {});
+  TF_ASSERT_OK_AND_ASSIGN(Literal result, Execute(std::move(hlo_module), {}));
 
   EXPECT_TRUE(LiteralTestUtil::Near(
       LiteralUtil::CreateR3<float>({{{1.0, 2.0}, {1.0, 2.0}, {1.0, 2.0}},
@@ -159,7 +166,7 @@ TEST_F(BroadcastTest, Broadcast_R1_2_To_R4_2x2x3x3) {
   // Create HLO module, compile, and execute.
   auto hlo_module = CreateNewVerifiedModule();
   hlo_module->AddEntryComputation(builder.Build());
-  auto result = ExecuteAndTransfer(std::move(hlo_module), {});
+  TF_ASSERT_OK_AND_ASSIGN(Literal result, Execute(std::move(hlo_module), {}));
 
   Array4D<float> expected(2, 2, 3, 3);
   Array2D<float> pz({{1, 2}, {1, 2}});
@@ -185,7 +192,7 @@ TEST_F(BroadcastTest, Broadcast_R1_1025_To_R4_3x3x3x1025) {
   // Create HLO module, compile, and execute.
   auto hlo_module = CreateNewVerifiedModule();
   hlo_module->AddEntryComputation(builder.Build());
-  auto result = ExecuteAndTransfer(std::move(hlo_module), {});
+  TF_ASSERT_OK_AND_ASSIGN(Literal result, Execute(std::move(hlo_module), {}));
 
   Array4D<float> expected(3, 3, 3, 1025);
   Array2D<float> yx(3, r1_size);
@@ -217,7 +224,7 @@ TEST_F(BroadcastTest, Broadcast_R1_64_To_R4_32x64x7x7) {
   // Create HLO module, compile, and execute.
   auto hlo_module = CreateNewVerifiedModule();
   hlo_module->AddEntryComputation(builder.Build());
-  auto result = ExecuteAndTransfer(std::move(hlo_module), {});
+  TF_ASSERT_OK_AND_ASSIGN(Literal result, Execute(std::move(hlo_module), {}));
 
   EXPECT_TRUE(LiteralTestUtil::Near(LiteralUtil::CreateR4FromArray4D(r4_array),
                                     result, kDefaultErrorSpec));
@@ -234,7 +241,7 @@ TEST_F(BroadcastTest, Broadcast_R0_to_R4_64x64x3x3) {
   auto hlo_module = CreateNewVerifiedModule();
   hlo_module->AddEntryComputation(builder.Build());
   LOG(INFO) << hlo_module->ToString();
-  auto result = ExecuteAndTransfer(std::move(hlo_module), {});
+  TF_ASSERT_OK_AND_ASSIGN(Literal result, Execute(std::move(hlo_module), {}));
 
   Array4D<float> expected(64, 64, 3, 3);
   expected.Fill(1.0f);
@@ -257,7 +264,7 @@ TEST_F(BroadcastTest, Broadcast_R2_2x2_To_R4_3x3x2x2) {
   // Create HLO module, compile, and execute.
   auto hlo_module = CreateNewVerifiedModule();
   hlo_module->AddEntryComputation(builder.Build());
-  auto result = ExecuteAndTransfer(std::move(hlo_module), {});
+  TF_ASSERT_OK_AND_ASSIGN(Literal result, Execute(std::move(hlo_module), {}));
 
   Array4D<float> expected(3, 3, 2, 2);
   expected.FillWithYX(to_broadcast);
@@ -292,7 +299,7 @@ TEST_F(BroadcastTest, Broadcast_R3_2x3x4_to_R4_2x3x4x5) {
   // Create HLO module, compile, and execute.
   auto hlo_module = CreateNewVerifiedModule();
   hlo_module->AddEntryComputation(builder.Build());
-  auto result = ExecuteAndTransfer(std::move(hlo_module), {});
+  TF_ASSERT_OK_AND_ASSIGN(Literal result, Execute(std::move(hlo_module), {}));
 
   EXPECT_TRUE(
       LiteralTestUtil::Near(LiteralUtil::CreateR4FromArray4D<float>(expected),

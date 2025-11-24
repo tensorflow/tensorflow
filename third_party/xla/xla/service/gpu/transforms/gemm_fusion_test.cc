@@ -21,6 +21,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "absl/strings/string_view.h"
 #include "xla/autotuning.pb.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -39,8 +40,6 @@ limitations under the License.
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/status_matchers.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -145,9 +144,10 @@ ENTRY e {
   r1 = s8[8,32,8] reshape(p0)
   t1 = s8[32,8,8] transpose(r1), dimensions={1,0,2}
   r0 = s8[32,64] reshape(t1)
+  c1 = f16[32,64] convert(r0)
   p1 = s8[32,32] parameter(1)
   c0 = f16[32,32] convert(p1)
-  ROOT d = f16[64,32] dot(r0, c0),
+  ROOT d = f16[64,32] dot(c1, c0),
     lhs_contracting_dims={0}, rhs_contracting_dims={1}
 })")
                     .value();
@@ -204,8 +204,10 @@ ENTRY e {
   EXPECT_TRUE(CublasRequiresPadding(
       *xla::Cast<HloDotInstruction>(
           module->entry_computation()->root_instruction()),
-      cc));
-  EXPECT_TRUE(GemmFusion(cc).Run(module.get()).value());
+      stream_executor::GpuComputeCapability{cc}));
+  EXPECT_TRUE(GemmFusion(stream_executor::GpuComputeCapability{cc})
+                  .Run(module.get())
+                  .value());
 }
 
 TEST_F(GemmFusionTest, FuseSliceOfParameterWithOtherUsers) {
@@ -262,7 +264,8 @@ ENTRY e {
   EXPECT_FALSE(GemmFusion(cc).Run(module.get()).value());
 }
 
-TEST_F(GemmFusionTest, DynamicSliceIsFused) {
+// TODO(b/417172838): support dynamic slice op.
+TEST_F(GemmFusionTest, DISABLED_DynamicSliceIsFused) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(R"(
 ENTRY e {
@@ -286,7 +289,8 @@ ENTRY e {
                                     m::Parameter(), m::Constant()))));
 }
 
-TEST_F(GemmFusionTest, DynamicSlicesAreFusedEvenIfTheyShareIndices) {
+// TODO(b/417172838): support dynamic slice op.
+TEST_F(GemmFusionTest, DISABLED_DynamicSlicesAreFusedEvenIfTheyShareIndices) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(R"(
 ENTRY e {
@@ -317,7 +321,8 @@ ENTRY e {
                             m::Parameter(), m::Parameter()))));
 }
 
-TEST_F(GemmFusionTest, DoNotFuseDynamicSliceOfNonMajorFragments) {
+// TODO(b/417172838): support dynamic slice op.
+TEST_F(GemmFusionTest, DISABLED_DoNotFuseDynamicSliceOfNonMajorFragments) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(R"(
 ENTRY e {
@@ -336,7 +341,9 @@ ENTRY e {
   EXPECT_FALSE(GemmFusion(cc).Run(module.get()).value());
 }
 
-TEST_F(GemmFusionTest, CanFuseDynamicSliceOfContractingDimIfItIsMajor) {
+// TODO(b/417172838): support dynamic slice op.
+TEST_F(GemmFusionTest,
+       DISABLED_CanFuseDynamicSliceOfContractingDimIfItIsMajor) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(R"(
 ENTRY e {
@@ -886,7 +893,7 @@ ENTRY e {
       GemmFusion(
           se::CudaComputeCapability{se::CudaComputeCapability::kVolta, 0})
           .Run(module.get()),
-      tsl::testing::StatusIs(
+      absl_testing::StatusIs(
           absl::StatusCode::kFailedPrecondition,
           ::testing::HasSubstr("Triton support is only enabled for Ampere GPUs "
                                "(compute capability 8.0) and up, but got")));
@@ -903,7 +910,9 @@ ENTRY e {
   ROOT dot = f32[2,2] dot(p0e, p1c),
     lhs_contracting_dims={1}, rhs_contracting_dims={0}
 })"));
-  EXPECT_TRUE(GemmFusion(se::RocmComputeCapability{}).Run(module.get()).ok());
+  EXPECT_TRUE(GemmFusion(se::GpuComputeCapability{se::RocmComputeCapability{}})
+                  .Run(module.get())
+                  .ok());
 }
 
 TEST_F(GemmFusionTest, ParameterUsedElementwiseTwiceIsFused) {
@@ -1276,6 +1285,65 @@ ENTRY e {
   EXPECT_FALSE(GemmFusion(gpu_version_).Run(module.get()).value());
 }
 
+TEST_F(GemmFusionTest, FusionShouldNotDuplicatePowerOp) {
+  // Elementwise operations with broadcast operands are usually fused, however
+  // with multiple users it can result in executing the op twice.
+  auto module = ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+ENTRY e {
+  p0 = f16[124,1024] parameter(0)
+  constant1 = f16[] constant(2)
+  broadcast1 = f16[124,1024] broadcast(constant1)
+  pow = f16[124,1024] power(p0, broadcast1)
+
+  p1 = f16[1024,124] parameter(1)
+  dot1 = f16[124,124] dot(pow, p1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+
+  ROOT d = (f16[124,1024],f16[124,124]) tuple(pow, dot1)
+})")
+                    .value();
+  ASSERT_TRUE(GemmFusion(gpu_version_).Run(module.get()).value());
+  MatchHloModule(*module, R"(
+; CHECK: power(
+; CHECK-NOT: power(
+)");
+}
+
+TEST_F(GemmFusionTest, RaggedDotBecomesFusion) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+ENTRY main {
+  p0 = f32[16,8]{1,0} parameter(0)
+  p1 = f32[4,8,8]{2,1,0} parameter(1)
+  p2 = s64[4]{0} parameter(2)
+  ROOT ragged-dot = f32[16,8]{1,0} ragged-dot(p0, p1, p2),
+                      lhs_contracting_dims={1}, rhs_contracting_dims={1},
+                      lhs_ragged_dims={0}, rhs_group_dims={0}
+}
+)")
+                    .value();
+  EXPECT_TRUE(GemmFusion(gpu_version_).Run(module.get()).value());
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      GmockMatch(m::Fusion(m::Parameter(), m::Parameter(), m::Parameter())));
+  MatchHloModule(*module, R"(
+; CHECK-DAG: %[[LHS:.*]] = f32[16,8]{1,0} parameter(0)
+; CHECK-DAG: %[[RHS:.*]] = f32[4,8,8]{2,1,0} parameter(1)
+; CHECK-DAG: %[[GS:.*]] = s64[4]{0} parameter(2)
+; CHECK: ROOT {{.*}} = f32[16,8]{1,0} ragged-dot(%[[LHS]], %[[RHS]], %[[GS]])
+; CHECK: ENTRY
+; CHECK-DAG: %[[LHS_F:.*]] = f32[16,8]{1,0} parameter(0)
+; CHECK-DAG: %[[RHS_F:.*]] = f32[4,8,8]{2,1,0} parameter(1)
+; CHECK-DAG: %[[GS_F:.*]] = s64[4]{0} parameter(2)
+; CHECK: ROOT {{.*}} = f32[16,8]{1,0} fusion(%[[LHS_F]], %[[RHS_F]], %[[GS_F]])
+; CHECK-SAME: kind=kCustom
+; CHECK-SAME: "__triton_ragged_dot"
+)");
+}
+
 // A test fixture class for testing the threshold for small matrices.
 class SmallDotGemmFusionTest : public GemmFusionTest {
  public:
@@ -1336,7 +1404,7 @@ ENTRY e {
 TEST_F(SmallDotGemmFusionTest, Int4DotIsRewritten) {
   constexpr auto kInt4Dot = R"(
     ENTRY e {
-      p0 = s8[16,16] parameter(0)
+      p0 = bf16[16,16] parameter(0)
       p1 = s4[16,16] parameter(1)
       p1c = bf16[16,16] convert(p1)
       ROOT dot = bf16[16,16] dot(p0, p1c),
@@ -1419,6 +1487,48 @@ TEST_F(SmallDotGemmFusionTest, Int4WithMinorBatchDimIsNotRewritten) {
   TF_ASSERT_OK_AND_ASSIGN(auto result,
                           GemmFusion(gpu_version_).Run(module.get()));
   EXPECT_FALSE(result);
+}
+
+TEST_F(GemmFusionTest, ScaledDotIsFused) {
+  constexpr absl::string_view kHloText = R"(
+    HloModule ScaledDotIsFused
+
+    ENTRY entry {
+     lhs = bf16[4,4] parameter(0)
+     rhs = bf16[4,4] parameter(1)
+     lhs_scale = bf16[1,1] parameter(2)
+     rhs_scale = bf16[1,1] parameter(3)
+     ROOT dot = bf16[4,4] scaled-dot(lhs, rhs, lhs_scale, rhs_scale),
+         lhs_contracting_dims={1},
+         rhs_contracting_dims={1},
+         metadata={op_name="foo"}
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
+  TF_ASSERT_OK_AND_ASSIGN(auto result,
+                          GemmFusion(gpu_version_).Run(module.get()));
+  EXPECT_TRUE(result);
+
+  constexpr absl::string_view kExpectedHloText = R"(
+    CHECK: %[[FUSION_DOT:.*]] (
+    CHECK:   %[[LHS:.*]] = bf16[4,4]{1,0} parameter(0)
+    CHECK:   %[[RHS:.*]] = bf16[4,4]{1,0} parameter(1)
+    CHECK:   %[[LHS_SCALE:.*]] = bf16[1,1]{1,0} parameter(2)
+    CHECK:   %[[RHS_SCALE:.*]] = bf16[1,1]{1,0} parameter(3)
+    CHECK:   ROOT %dot.1 = bf16[4,4]{1,0} scaled-dot(
+    CHECK:       %[[LHS]], %[[RHS]], %[[LHS_SCALE]], %[[RHS_SCALE]]),
+    CHECK:     lhs_contracting_dims={1},
+    CHECK:     rhs_contracting_dims={1},
+    CHECK:     metadata={op_name="foo"}
+    CHECK: }
+    CHECK: ENTRY
+    CHECK:   ROOT %[[FUSION:.*]] = bf16[4,4]{1,0} fusion(
+    CHECK:     kind=kCustom,
+    CHECK:     calls=%[[FUSION_DOT]]
+    CHECK:     {"kind":"__triton_scaled_dot_fusion"}
+  )";
+  MatchHloModule(*module, kExpectedHloText);
 }
 
 }  // namespace

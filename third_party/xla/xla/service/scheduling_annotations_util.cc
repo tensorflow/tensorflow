@@ -44,6 +44,9 @@ constexpr absl::string_view delimiter = ":";
 
 absl::Status VerifyAnnotation(const HloInstruction* instr,
                               absl::string_view annotation) {
+  if (annotation == kXlaNoOpSchedulingGroup) {
+    return absl::OkStatus();
+  }
   auto verify_integer_or_empty =
       [instr, annotation](
           absl::string_view str, absl::string_view field_name,
@@ -90,6 +93,9 @@ absl::StatusOr<std::optional<Annotation>> ParseAnnotation(
   absl::string_view annotation_str = attrs.at(kXlaSchedulingGroupIdAttr);
   VLOG(2) << "Annotated instruction: " << instr->name() << " "
           << annotation_str;
+  if (annotation_str == kXlaNoOpSchedulingGroup) {
+    return std::nullopt;
+  }
   TF_RETURN_IF_ERROR(VerifyAnnotation(instr, annotation_str));
   std::vector<absl::string_view> annotation_fields =
       absl::StrSplit(annotation_str, delimiter);

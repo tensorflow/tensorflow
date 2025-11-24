@@ -33,20 +33,26 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/debug_options_flags.h"
+#include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
-#include "xla/hlo/testlib/test_helpers.h"
+#include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/hlo/transforms/collectives/async_collective_creator.h"
+#include "xla/service/computation_placer.h"
 #include "xla/service/hlo_cost_analysis.h"
+#include "xla/service/hlo_module_config.h"
 #include "xla/service/legalize_scheduling_annotations.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/test_benchmark.h"
 #include "xla/util.h"
 
 namespace xla {
@@ -57,7 +63,7 @@ constexpr int kMaxConcurrentAsyncCollectivePermutes = 5;
 
 int PositionInVector(absl::Span<HloInstruction* const> vec,
                      const HloInstruction* element) {
-  return std::distance(vec.begin(), std::find(vec.begin(), vec.end(), element));
+  return std::distance(vec.begin(), absl::c_find(vec, element));
 }
 
 bool MaxConcurrentCollectivePermutesBelowThreshold(
@@ -147,17 +153,27 @@ absl::StatusOr<bool> RunScheduler(
     HloModule* module, SchedulerConfig sched_config = GetDefaultSchedConfig(),
     std::unique_ptr<LatencyEstimator> latency_estimator =
         std::make_unique<ApproximateLatencyEstimator>(),
-    std::unique_ptr<AsyncTracker> async_tracker = nullptr) {
+    std::unique_ptr<AsyncTracker> async_tracker = nullptr,
+    std::unique_ptr<LegalizeSchedulingAnnotations::Config> legalizer_config =
+        nullptr,
+    bool skip_async_collective_creator = false) {
   AsyncCollectiveCreator::CollectiveCreatorConfig config{
       /*convert_all_reduce=*/HloPredicateTrue,
       /*convert_all_gather=*/HloPredicateTrue,
       /*convert_collective_broadcast=*/HloPredicateTrue,
       /*convert_collective_permute=*/HloPredicateTrue};
-  TF_ASSIGN_OR_RETURN(bool value,
-                      AsyncCollectiveCreator(std::move(config)).Run(module));
-  TF_ASSIGN_OR_RETURN(value, LegalizeSchedulingAnnotations(
-                                 LegalizeSchedulingAnnotations::Config())
-                                 .Run(module));
+  bool value = false;
+  if (!skip_async_collective_creator) {
+    TF_ASSIGN_OR_RETURN(value,
+                        AsyncCollectiveCreator(std::move(config)).Run(module));
+  }
+  if (!legalizer_config) {
+    legalizer_config =
+        std::make_unique<LegalizeSchedulingAnnotations::Config>();
+  }
+  TF_ASSIGN_OR_RETURN(
+      value,
+      LegalizeSchedulingAnnotations(std::move(*legalizer_config)).Run(module));
   HloCostAnalysis::ShapeSizeFunction shape_size_bytes =
       [&shape_size_bytes](const Shape& shape) -> int64_t {
     int64_t shape_size = 0;
@@ -175,10 +191,11 @@ absl::StatusOr<bool> RunScheduler(
   if (!async_tracker) {
     async_tracker = std::make_unique<AsyncTracker>(sched_config);
   }
+  AliasInfo alias_info;
   std::shared_ptr<const SchedulingContext> scheduling_context =
       std::make_shared<const SchedulingContext>(
           module, std::move(latency_estimator), std::move(async_tracker),
-          shape_size_bytes);
+          &alias_info, shape_size_bytes);
   auto scheduler_core =
       std::make_unique<DefaultSchedulerCore>(scheduling_context, sched_config);
   TF_ASSIGN_OR_RETURN(value, LatencyHidingScheduler(scheduling_context,
@@ -188,7 +205,19 @@ absl::StatusOr<bool> RunScheduler(
   return value;
 }
 
-}  // namespace
+int64_t ShapeSizeBytes(const Shape& shape) {
+  int64_t shape_size = 0;
+  if (shape.IsToken()) {
+    return 0;
+  }
+  if (shape.IsTuple()) {
+    for (auto& sub_shape : shape.tuple_shapes()) {
+      shape_size += ShapeSizeBytes(sub_shape);
+    }
+    return shape_size;
+  }
+  return ShapeUtil::ByteSizeOfElements(shape);
+}
 
 class LatencyHidingSchedulerTest : public HloHardwareIndependentTestBase {
  public:
@@ -196,6 +225,37 @@ class LatencyHidingSchedulerTest : public HloHardwareIndependentTestBase {
       absl::string_view hlo_string) {
     return ParseAndReturnVerifiedModule(hlo_string, GetModuleConfigForTest());
   }
+
+ protected:
+  absl::StatusOr<std::unique_ptr<LatencyHidingScheduler>> SetupScheduler(
+      HloModule* module, SchedulerConfig sched_config = GetDefaultSchedConfig(),
+      std::unique_ptr<LatencyEstimator> latency_estimator =
+          std::make_unique<ApproximateLatencyEstimator>(),
+      std::unique_ptr<AsyncTracker> async_tracker = nullptr) {
+    AsyncCollectiveCreator::CollectiveCreatorConfig config{
+        /*convert_all_reduce=*/HloPredicateTrue,
+        /*convert_all_gather=*/HloPredicateTrue,
+        /*convert_collective_broadcast=*/HloPredicateTrue,
+        /*convert_collective_permute=*/HloPredicateTrue};
+    TF_ASSIGN_OR_RETURN(bool value,
+                        AsyncCollectiveCreator(std::move(config)).Run(module));
+    TF_ASSIGN_OR_RETURN(value, LegalizeSchedulingAnnotations(
+                                   LegalizeSchedulingAnnotations::Config())
+                                   .Run(module));
+
+    if (!async_tracker) {
+      async_tracker = std::make_unique<AsyncTracker>(sched_config);
+    }
+    std::shared_ptr<const SchedulingContext> scheduling_context =
+        std::make_shared<const SchedulingContext>(
+            module, std::move(latency_estimator), std::move(async_tracker),
+            &alias_info_, ShapeSizeBytes);
+    auto scheduler_core = std::make_unique<DefaultSchedulerCore>(
+        scheduling_context, sched_config);
+    return std::make_unique<LatencyHidingScheduler>(scheduling_context,
+                                                    std::move(scheduler_core));
+  }
+  AliasInfo alias_info_;
 };
 
 TEST_F(LatencyHidingSchedulerTest, AllGatherAsyncSimple) {
@@ -731,6 +791,25 @@ ENTRY entry {
   EXPECT_EQ(cp_start->opcode(), HloOpcode::kCollectivePermuteStart);
   EXPECT_LT(GetIndex(new_instruction_sequence, "add0"),
             GetIndex(new_instruction_sequence, cp_start->name()));
+}
+
+TEST_F(LatencyHidingSchedulerTest, ForceDelayCustomCall) {
+  absl::string_view hlo_string = R"(
+HloModule module, is_scheduled=true
+
+ENTRY %module {
+  %p0 = f32[100] parameter(0)
+  %custom-call = f32[100] custom-call(%p0), custom_call_target="foo", frontend_attributes={scheduler_hint="force_delay"}
+  ROOT %copy = f32[100] copy(%custom-call)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
+  // We expect RunScheduler to return true because of the force_delay attribute,
+  // even though there are no async collectives.
+  auto result = RunScheduler(hlo_module.get());
+  TF_ASSERT_OK(result);
+  EXPECT_TRUE(result.value());
 }
 
 TEST_F(LatencyHidingSchedulerTest, WhileLoopAliasingBug2) {
@@ -3691,6 +3770,63 @@ ENTRY entry {
             GetIndex(new_instruction_sequence, "cp2d"));
 }
 
+TEST_F(LatencyHidingSchedulerTest, DeannotateUnsupportedGroups) {
+  absl::string_view hlo_string = R"(
+HloModule module, is_scheduled=true
+
+ENTRY entry {
+  p0 = f32[16,64,256]{2,1,0} parameter(0)
+  p1 = f32[128,2048,2048]{2,1,0} parameter(1)
+  p2 = f32[512,2048,2048]{2,1,0} parameter(2)
+  cp1s = (f32[512,2048,2048]{2,1,0}, f32[512,2048,2048]{2,1,0}, u32[], u32[]) collective-permute-start(p2), source_target_pairs={{1,0},{0,3},{3,2}}, frontend_attributes={_scheduling_group_id="0"}
+  cp1d = f32[512,2048,2048]{2,1,0} collective-permute-done(cp1s), frontend_attributes={_scheduling_group_id="0"}
+  cp2s = (f32[128,2048,2048]{2,1,0}, f32[128,2048,2048]{2,1,0}, u32[], u32[]) collective-permute-start(p1), source_target_pairs={{1,0},{0,3},{3,2}}, frontend_attributes={_scheduling_group_id="1"}
+  cp2d = f32[128,2048,2048]{2,1,0} collective-permute-done(cp2s), frontend_attributes={_scheduling_group_id="1"}
+  cp3s = (f32[128,2048,2048]{2,1,0}, f32[128,2048,2048]{2,1,0}, u32[], u32[]) collective-permute-start(cp2d), source_target_pairs={{1,0},{0,3},{3,2}}, frontend_attributes={_scheduling_group_id="0"}
+  cp3d = f32[128,2048,2048]{2,1,0} collective-permute-done(cp3s), frontend_attributes={_scheduling_group_id="0"}
+  p0_x1 = f32[16,64,256]{2,1,0} copy(p0), frontend_attributes={_scheduling_group_id="1"}
+  cp1d_x1 = f32[16,64,256]{2,1,0} slice(cp1d), slice={[0:16], [0:64], [0:256]}, frontend_attributes={_scheduling_group_id="1"}
+  p0_x2 = f32[16,64,256]{2,1,0} add(p0_x1, cp1d_x1), frontend_attributes={_scheduling_group_id="1"}
+  c0 = f32[16,256,256]{2,1,0} convolution(p0, p0_x2),
+    window={size=16 stride=15 lhs_dilate=16}, dim_labels=0fb_0io->0fb, frontend_attributes={_scheduling_group_id="0"}
+  ROOT tuple.2 = (f32[16,256,256]{2,1,0}, f32[512,2048,2048]{2,1,0}, f32[128,2048,2048]{2,1,0}) tuple(c0, cp1d, cp3d)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
+  HloSchedule& module_schedule = hlo_module->schedule();
+  EXPECT_TRUE(hlo_module->has_entry_computation());
+  auto sched_config = GetDefaultSchedConfig();
+  sched_config.aggressive_scheduling_policies = true;
+  auto legalizer_config =
+      std::make_unique<LegalizeSchedulingAnnotations::Config>();
+  legalizer_config->deannotate_unsupported_groups = true;
+  TF_EXPECT_OK(RunScheduler(
+      hlo_module.get(), sched_config, std::make_unique<TestLatencyEstimator>(),
+      /*async_tracker=*/nullptr, std::move(legalizer_config)));
+  EXPECT_TRUE(hlo_module->has_entry_computation());
+
+  std::vector<HloInstruction*> new_instruction_sequence =
+      module_schedule.sequence(hlo_module->entry_computation()).instructions();
+  if (VLOG_IS_ON(1)) {
+    for (auto* new_i : new_instruction_sequence) {
+      VLOG(1) << new_i->ToString();
+    }
+  }
+
+  // Check that scheduling group 0 has been de-annotated because it
+  // contain gaps, but group 1 is still annotated.
+  const HloInstruction* cp1s = FindInstruction(hlo_module.get(), "cp1s");
+  const HloInstruction* cp2s = FindInstruction(hlo_module.get(), "cp2s");
+  const HloInstruction* cp3s = FindInstruction(hlo_module.get(), "cp3s");
+  EXPECT_FALSE(
+      cp1s->frontend_attributes().map().contains("_scheduling_group_id"));
+  EXPECT_TRUE(
+      cp2s->frontend_attributes().map().contains("_scheduling_group_id"));
+  EXPECT_FALSE(
+      cp3s->frontend_attributes().map().contains("_scheduling_group_id"));
+}
+
 TEST_F(LatencyHidingSchedulerTest, SchedulingAnnotationMakesAnotherGroupReady) {
   absl::string_view hlo_string = R"(
 HloModule module, is_scheduled=true
@@ -4450,49 +4586,6 @@ ENTRY entry {
             GetIndex(new_instruction_sequence, "cp2d"));
 }
 
-int64_t ShapeSizeBytes(const Shape& shape) {
-  int64_t shape_size = 0;
-  if (shape.IsToken()) {
-    return 0;
-  }
-  if (shape.IsTuple()) {
-    for (auto& sub_shape : shape.tuple_shapes()) {
-      shape_size += ShapeSizeBytes(sub_shape);
-    }
-    return shape_size;
-  }
-  return ShapeUtil::ByteSizeOfElements(shape);
-}
-
-absl::StatusOr<std::unique_ptr<LatencyHidingScheduler>> SetupScheduler(
-    HloModule* module, SchedulerConfig sched_config = GetDefaultSchedConfig(),
-    std::unique_ptr<LatencyEstimator> latency_estimator =
-        std::make_unique<ApproximateLatencyEstimator>(),
-    std::unique_ptr<AsyncTracker> async_tracker = nullptr) {
-  AsyncCollectiveCreator::CollectiveCreatorConfig config{
-      /*convert_all_reduce=*/HloPredicateTrue,
-      /*convert_all_gather=*/HloPredicateTrue,
-      /*convert_collective_broadcast=*/HloPredicateTrue,
-      /*convert_collective_permute=*/HloPredicateTrue};
-  TF_ASSIGN_OR_RETURN(bool value,
-                      AsyncCollectiveCreator(std::move(config)).Run(module));
-  TF_ASSIGN_OR_RETURN(value, LegalizeSchedulingAnnotations(
-                                 LegalizeSchedulingAnnotations::Config())
-                                 .Run(module));
-
-  if (!async_tracker) {
-    async_tracker = std::make_unique<AsyncTracker>(sched_config);
-  }
-  std::shared_ptr<const SchedulingContext> scheduling_context =
-      std::make_shared<const SchedulingContext>(
-          module, std::move(latency_estimator), std::move(async_tracker),
-          ShapeSizeBytes);
-  auto scheduler_core =
-      std::make_unique<DefaultSchedulerCore>(scheduling_context, sched_config);
-  return std::make_unique<LatencyHidingScheduler>(scheduling_context,
-                                                  std::move(scheduler_core));
-}
-
 TEST_F(LatencyHidingSchedulerTest, ValidScheduleWithRandomPreferences) {
   constexpr absl::string_view hlo_string = R"(
     HloModule module, is_scheduled=true
@@ -4613,4 +4706,322 @@ ENTRY entry {
             GetIndex(new_instruction_sequence, "cp2d"));
 }
 
+TEST_F(LatencyHidingSchedulerTest,
+       FlexibleAggressiveSchedulingAnnotationScheduling) {
+  absl::string_view hlo_string = R"(
+HloModule module, is_scheduled=true
+
+ENTRY entry {
+p0 = f32[16,512,2048]{2,1,0} parameter(0)
+p1 = f32[8,128,128]{2,1,0} parameter(1)
+p2 = f32[8,128,128]{2,1,0} parameter(2)
+p3 = f32[16,2048,2048]{2,1,0} parameter(3)
+cp0s = (f32[8,128,128]{2,1,0}, f32[8,128,128]{2,1,0}, u32[], u32[]) collective-permute-start(p2), source_target_pairs={{1,0},{0,3},{3,2}}
+cp0d = f32[8,128,128]{2,1,0} collective-permute-done(cp0s)
+c0 = f32[16,2048,2048]{2,1,0} convolution(p0, p0),
+window={size=16 stride=15 lhs_dilate=16}, dim_labels=0fb_0io->0fb, frontend_attributes={_scheduling_group_id="0"}
+c1 = f32[16,2048,2048]{2,1,0} convolution(p3, p3),
+window={size=16 stride=15 lhs_dilate=16}, dim_labels=0fb_0io->0fb
+cp1s = (f32[8,128,128]{2,1,0}, f32[8,128,128]{2,1,0}, u32[], u32[]) collective-permute-start(cp0d), source_target_pairs={{1,0},{0,3},{3,2}}, frontend_attributes={_scheduling_group_id="0"}
+cp1d = f32[8,128,128]{2,1,0} collective-permute-done(cp1s), frontend_attributes={_scheduling_group_id="0"}
+ROOT tuple.2 = (f32[16,2048,2048]{2,1,0}, f32[8,128,128]{2,1,0}, f32[16,2048,2048]{2,1,0}) tuple(c0, cp1d, c1)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
+  HloSchedule& module_schedule = hlo_module->schedule();
+  EXPECT_TRUE(hlo_module->has_entry_computation());
+  auto sched_config = GetDefaultSchedConfig();
+  sched_config.flexible_scheduling_annotation_scheduling = true;
+  sched_config.aggressive_flexible_annotation_scheduling = true;
+  sched_config.aggressive_scheduling_policies = true;
+  TF_EXPECT_OK(RunScheduler(hlo_module.get(), sched_config,
+                            std::make_unique<TestLatencyEstimator>()));
+  EXPECT_TRUE(hlo_module->has_entry_computation());
+
+  std::vector<HloInstruction*> new_instruction_sequence =
+      module_schedule.sequence(hlo_module->entry_computation()).instructions();
+  if (VLOG_IS_ON(1)) {
+    for (auto* new_i : new_instruction_sequence) {
+      VLOG(1) << new_i->ToString();
+    }
+  }
+
+  // Check that the original sequence order is kept in the annotation group.
+  EXPECT_LT(GetIndex(new_instruction_sequence, "cp1s"),
+            GetIndex(new_instruction_sequence, "c1"));
+  EXPECT_LT(GetIndex(new_instruction_sequence, "c1"),
+            GetIndex(new_instruction_sequence, "c0"));
+  EXPECT_LT(GetIndex(new_instruction_sequence, "cp1s"),
+            GetIndex(new_instruction_sequence, "cp1d"));
+  EXPECT_LT(GetIndex(new_instruction_sequence, "c0"),
+            GetIndex(new_instruction_sequence, "cp1d"));
+}
+
+TEST_F(LatencyHidingSchedulerTest, SyncAllGatherResource) {
+  absl::string_view hlo_string = R"(
+HloModule module, is_scheduled=true
+
+ENTRY entry {
+  p0 = bf16[4]{0} parameter(0)
+  all-gather.2 = bf16[8]{0} all-gather(p0), replica_groups={{0,1},{2,3}}, dimensions={0}, channel_id=2
+  all-gather-start.1 = (bf16[4]{0}, bf16[8]{0}) all-gather-start(p0), replica_groups={{0,1},{2,3}}, dimensions={0}
+  all-gather-done.1 = bf16[8]{0} all-gather-done(all-gather-start.1)
+  ROOT tuple.2 = (bf16[8]{0}, bf16[8]{0}) tuple(all-gather-done.1, all-gather.2)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
+  HloSchedule& module_schedule = hlo_module->schedule();
+  EXPECT_TRUE(hlo_module->has_entry_computation());
+  auto sched_config = GetDefaultSchedConfig();
+  sched_config.track_sync_op_resource_usage = true;
+  TF_EXPECT_OK(RunScheduler(hlo_module.get(), sched_config,
+                            std::make_unique<ApproximateLatencyEstimator>(),
+                            /*async_tracker=*/nullptr,
+                            /*legalizer_config=*/nullptr,
+                            /*skip_async_collective_creator=*/true));
+  EXPECT_TRUE(hlo_module->has_entry_computation());
+  VLOG(1) << "module after: ";
+  XLA_VLOG_LINES(1, hlo_module->ToString());
+
+  std::vector<HloInstruction*> new_instruction_sequence =
+      module_schedule.sequence(hlo_module->entry_computation()).instructions();
+  if (VLOG_IS_ON(1)) {
+    for (auto* new_i : new_instruction_sequence) {
+      VLOG(1) << new_i->ToString();
+    }
+  }
+  // Check that the sync AG does not overlap with the async AG due to resource
+  // constraint of 1 for kAllGather
+  auto sync_ag_index = GetIndex(new_instruction_sequence, "all-gather.2");
+  auto async_ag_start_index =
+      GetIndex(new_instruction_sequence, "all-gather-start.1");
+  auto async_ag_done_index =
+      GetIndex(new_instruction_sequence, "all-gather-done.1");
+  EXPECT_TRUE(sync_ag_index < async_ag_start_index ||
+              sync_ag_index > async_ag_done_index);
+}
+
+TEST_F(LatencyHidingSchedulerTest, SyncAllGatherResourceLimitOfTwo) {
+  absl::string_view hlo_string = R"(
+HloModule module, is_scheduled=true
+
+ENTRY entry {
+  p0 = bf16[4]{0} parameter(0)
+  all-gather.2 = bf16[8]{0} all-gather(p0), replica_groups={{0,1},{2,3}}, dimensions={0}, channel_id=2
+  all-gather-start.1 = (bf16[4]{0}, bf16[8]{0}) all-gather-start(p0), replica_groups={{0,1},{2,3}}, dimensions={0}
+  all-gather-done.1 = bf16[8]{0} all-gather-done(all-gather-start.1)
+  ROOT tuple.2 = (bf16[8]{0}, bf16[8]{0}) tuple(all-gather-done.1, all-gather.2)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
+  HloSchedule& module_schedule = hlo_module->schedule();
+  EXPECT_TRUE(hlo_module->has_entry_computation());
+  auto sched_config = GetDefaultSchedConfig();
+  sched_config.track_sync_op_resource_usage = true;
+  sched_config.all_gather_overlap_limit = 2;
+  TF_EXPECT_OK(RunScheduler(hlo_module.get(), sched_config,
+                            std::make_unique<ApproximateLatencyEstimator>(),
+                            /*async_tracker=*/nullptr,
+                            /*legalizer_config=*/nullptr,
+                            /*skip_async_collective_creator=*/true));
+  EXPECT_TRUE(hlo_module->has_entry_computation());
+  VLOG(1) << "module after: ";
+  XLA_VLOG_LINES(1, hlo_module->ToString());
+
+  std::vector<HloInstruction*> new_instruction_sequence =
+      module_schedule.sequence(hlo_module->entry_computation()).instructions();
+  if (VLOG_IS_ON(1)) {
+    for (auto* new_i : new_instruction_sequence) {
+      VLOG(1) << new_i->ToString();
+    }
+  }
+  // Check that the sync AG does not overlap with the async AG due to resource
+  // constraint of 1 for kAllGather
+  auto sync_ag_index = GetIndex(new_instruction_sequence, "all-gather.2");
+  auto async_ag_start_index =
+      GetIndex(new_instruction_sequence, "all-gather-start.1");
+  auto async_ag_done_index =
+      GetIndex(new_instruction_sequence, "all-gather-done.1");
+  EXPECT_TRUE(sync_ag_index > async_ag_start_index &&
+              sync_ag_index < async_ag_done_index);
+}
+
+TEST_F(LatencyHidingSchedulerTest, SyncAllGatherResourceAnnotationGroup) {
+  absl::string_view hlo_string = R"(
+HloModule module, is_scheduled=true
+
+ENTRY entry {
+  p0 = bf16[4]{0} parameter(0)
+  all-gather.2 = bf16[8]{0} all-gather(p0), replica_groups={{0,1},{2,3}}, dimensions={0}, channel_id=2, frontend_attributes={_scheduling_group_id="0"}
+  all-gather-start.1 = (bf16[4]{0}, bf16[8]{0}) all-gather-start(p0), replica_groups={{0,1},{2,3}}, dimensions={0}, frontend_attributes={_scheduling_group_id="0"}
+  all-gather-done.1 = bf16[8]{0} all-gather-done(all-gather-start.1), frontend_attributes={_scheduling_group_id="0"}
+  ROOT tuple.2 = (bf16[8]{0}, bf16[8]{0}) tuple(all-gather-done.1, all-gather.2)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
+  HloSchedule& module_schedule = hlo_module->schedule();
+  EXPECT_TRUE(hlo_module->has_entry_computation());
+  auto sched_config = GetDefaultSchedConfig();
+  sched_config.track_sync_op_resource_usage = true;
+  TF_EXPECT_OK(RunScheduler(hlo_module.get(), sched_config,
+                            std::make_unique<ApproximateLatencyEstimator>(),
+                            /*async_tracker=*/nullptr,
+                            /*legalizer_config=*/nullptr,
+                            /*skip_async_collective_creator=*/true));
+  EXPECT_TRUE(hlo_module->has_entry_computation());
+  VLOG(1) << "module after: ";
+  XLA_VLOG_LINES(1, hlo_module->ToString());
+
+  std::vector<HloInstruction*> new_instruction_sequence =
+      module_schedule.sequence(hlo_module->entry_computation()).instructions();
+  if (VLOG_IS_ON(1)) {
+    for (auto* new_i : new_instruction_sequence) {
+      VLOG(1) << new_i->ToString();
+    }
+  }
+  // Check that the sync AG does not overlap with the async AG due to resource
+  // constraint of 1 for kAllGather
+  auto sync_ag_index = GetIndex(new_instruction_sequence, "all-gather.2");
+  auto async_ag_start_index =
+      GetIndex(new_instruction_sequence, "all-gather-start.1");
+  auto async_ag_done_index =
+      GetIndex(new_instruction_sequence, "all-gather-done.1");
+  EXPECT_TRUE(sync_ag_index < async_ag_start_index ||
+              sync_ag_index > async_ag_done_index);
+}
+
+TEST_F(LatencyHidingSchedulerTest,
+       SyncAllGatherResourceLimitOfTwoAnnotationGroup) {
+  absl::string_view hlo_string = R"(
+HloModule module, is_scheduled=true
+
+ENTRY entry {
+  p0 = bf16[4]{0} parameter(0)
+  all-gather.2 = bf16[8]{0} all-gather(p0), replica_groups={{0,1},{2,3}}, dimensions={0}, channel_id=2, frontend_attributes={_scheduling_group_id="0"}
+  all-gather-start.1 = (bf16[4]{0}, bf16[8]{0}) all-gather-start(p0), replica_groups={{0,1},{2,3}}, dimensions={0}, frontend_attributes={_scheduling_group_id="0"}
+  all-gather-done.1 = bf16[8]{0} all-gather-done(all-gather-start.1), frontend_attributes={_scheduling_group_id="0"}
+  ROOT tuple.2 = (bf16[8]{0}, bf16[8]{0}) tuple(all-gather-done.1, all-gather.2)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
+  HloSchedule& module_schedule = hlo_module->schedule();
+  EXPECT_TRUE(hlo_module->has_entry_computation());
+  auto sched_config = GetDefaultSchedConfig();
+  sched_config.track_sync_op_resource_usage = true;
+  sched_config.all_gather_overlap_limit = 2;
+  TF_EXPECT_OK(RunScheduler(hlo_module.get(), sched_config,
+                            std::make_unique<ApproximateLatencyEstimator>(),
+                            /*async_tracker=*/nullptr,
+                            /*legalizer_config=*/nullptr,
+                            /*skip_async_collective_creator=*/true));
+  EXPECT_TRUE(hlo_module->has_entry_computation());
+  VLOG(1) << "module after: ";
+  XLA_VLOG_LINES(1, hlo_module->ToString());
+
+  std::vector<HloInstruction*> new_instruction_sequence =
+      module_schedule.sequence(hlo_module->entry_computation()).instructions();
+  if (VLOG_IS_ON(1)) {
+    for (auto* new_i : new_instruction_sequence) {
+      VLOG(1) << new_i->ToString();
+    }
+  }
+  // Check that the sync AG does not overlap with the async AG due to resource
+  // constraint of 1 for kAllGather
+  auto sync_ag_index = GetIndex(new_instruction_sequence, "all-gather.2");
+  auto async_ag_start_index =
+      GetIndex(new_instruction_sequence, "all-gather-start.1");
+  auto async_ag_done_index =
+      GetIndex(new_instruction_sequence, "all-gather-done.1");
+  EXPECT_TRUE(sync_ag_index > async_ag_start_index &&
+              sync_ag_index < async_ag_done_index);
+}
+
+class LatencyHidingSchedulerBenchmark : public LatencyHidingSchedulerTest {
+ public:
+  void TestBody() override {}
+};
+
+class BMHelper : public HloHardwareIndependentTestBase {
+ public:
+  void TestBody() override {}
+  absl::StatusOr<std::unique_ptr<VerifiedHloModule>> ParseForBM(
+      absl::string_view hlo, const HloModuleConfig& config) {
+    return ParseAndReturnVerifiedModule(hlo, config);
+  }
+};
+
+static void BM_FindAndExtractBestNodeAvailable(
+    ::testing::benchmark::State& state) {
+  // This benchmark takes a parameter, and we make an HLO graph with
+  // approximately this many independent instructions that are all
+  // schedulable simultaneously.  This exercises the scheduling code
+  // with a large number of candidates in the ready set, which is not
+  // uncommon when compiling large Hlo programs.
+  std::string hlo = R"(
+    HloModule serial_collective_permute_test, is_scheduled=true
+    ENTRY after_optimizations_test {
+    %parameter.1 = bf16[8]{0} parameter(0)
+    after-all = token[] after-all()
+    send = (bf16[1,1,4096,1344]{2,3,1,0:T(8,128)(2,1)}, u32[], token[]) send(%parameter.1, after-all), channel_id=1246
+    recv = (bf16[1,1,4096,1344]{2,3,1,0:T(8,128)(2,1)}, u32[], token[]) recv(after-all), channel_id=1247
+    recv-done = (bf16[1,1,4096,1344]{2,3,1,0:T(8,128)(2,1)}, token[]) recv-done(recv), channel_id=1247
+    get-tuple-element = bf16[1,1,4096,1344]{2,3,1,0:T(8,128)(2,1)} get-tuple-element(recv-done), index=0
+    send-done = token[] send-done(send), channel_id=1246, control-predecessors={recv-done}
+)";
+  for (int i = 0; i < state.range(0); i++) {
+    absl::StrAppend(&hlo, "%add.", i + 2,
+                    " = bf16[8]{0} add(%parameter.1, %parameter.1)\n");
+  }
+  hlo +=
+      "ROOT %collective-permute.1 = bf16[8]{0} collective-permute(bf16[8]{0} "
+      "parameter.1), source_target_pairs={{0,1},{1,2},{2,3}}, channel_id=1\n";
+  hlo += "}\n";
+
+  const int replica_count = 1;
+  const int num_partitions = 1;
+
+  auto debug_options = GetDebugOptionsFromFlags();
+  // TODO(b/38354253): Change tests to use Parameters instead of Constants.
+  debug_options.add_xla_disable_hlo_passes("constant_folding");
+  debug_options.set_xla_hlo_evaluator_use_fast_path(true);
+  debug_options.set_xla_cpu_emitter_verification_level(1);
+
+  DeviceAssignment device_assignment(replica_count, num_partitions);
+  device_assignment.FillIota(0);
+
+  HloModuleConfig config;
+  config.set_debug_options(debug_options);
+  config.set_replica_count(replica_count);
+  config.set_num_partitions(num_partitions);
+  std::unique_ptr<DeviceAssignment> default_device_assignment =
+      std::make_unique<DeviceAssignment>(device_assignment);
+  config.set_static_device_assignment(*default_device_assignment);
+  LOG_FIRST_N(INFO, 1) << "sizeof(HloGraphNode) " << sizeof(HloGraphNode)
+                       << " sizeof(HloEdge) " << sizeof(HloEdge);
+
+  BMHelper bm;
+  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module, bm.ParseForBM(hlo, config));
+  EXPECT_TRUE(hlo_module->has_entry_computation());
+  for (auto s : state) {
+    auto sched_config = GetDefaultSchedConfig();
+    sched_config.flexible_scheduling_annotation_scheduling = true;
+    sched_config.aggressive_scheduling_policies = true;
+    TF_EXPECT_OK(RunScheduler(hlo_module.get(), sched_config,
+                              std::make_unique<TestLatencyEstimator>()));
+    EXPECT_TRUE(hlo_module->has_entry_computation());
+  }
+}
+BENCHMARK(BM_FindAndExtractBestNodeAvailable)
+    ->Arg(1)
+    ->Arg(100)
+    ->Arg(1000)
+    ->Arg(10000)
+    ->Arg(40000);
+
+}  // namespace
 }  // namespace xla

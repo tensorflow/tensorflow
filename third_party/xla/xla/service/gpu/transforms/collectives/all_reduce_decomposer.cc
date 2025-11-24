@@ -138,7 +138,7 @@ static absl::StatusOr<bool> DecomposeAllReduce(HloInstruction* hlo,
   return true;
 }
 
-absl::StatusOr<bool> AllReduceDecomposer::Run(
+absl::StatusOr<bool> AllReduceDecomposer::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;

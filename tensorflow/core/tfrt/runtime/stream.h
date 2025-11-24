@@ -106,23 +106,23 @@ class StreamInterfaceFactory {
       absl::AnyInvocable<
           absl::StatusOr<std::unique_ptr<StreamControllerInterface>>() const>
           interface_factory) {
-    absl::MutexLock lock(&mu_);
+    absl::MutexLock lock(mu_);
     controller_interface_factory_ = std::move(interface_factory);
   }
 
   absl::StatusOr<std::unique_ptr<StreamControllerInterface>>
   CreateControllerStreamInterface() const {
-    absl::MutexLock lock(&mu_);
+    absl::MutexLock lock(mu_);
     return controller_interface_factory_();
   }
 
   void RegisterWorker(CreateWorkerStreamInterfaceFn interface_factory) {
-    absl::MutexLock lock(&mu_);
+    absl::MutexLock lock(mu_);
     worker_interface_factory_ = std::move(interface_factory);
   }
 
   CreateWorkerStreamInterfaceFn CreateWorkerStreamInterface() const {
-    absl::MutexLock lock(&mu_);
+    absl::MutexLock lock(mu_);
     return worker_interface_factory_;
   }
 

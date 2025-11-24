@@ -17,6 +17,8 @@ limitations under the License.
 #define XLA_TSL_PROFILER_UTILS_TIMESTAMP_UTILS_H_
 
 #include <cstdint>
+#include <optional>
+#include <utility>
 
 #include "tsl/profiler/protobuf/xplane.pb.h"
 
@@ -27,6 +29,12 @@ namespace profiler {
 // This function won't have an effect if either of the timestamps is zero.
 void SetSessionTimestamps(uint64_t start_walltime_ns, uint64_t stop_walltime_ns,
                           tensorflow::profiler::XSpace& space);
+
+// Get the session timestamps from the task env plane. Returns nullopt if the
+// timestamps are not found.
+std::optional<std::pair<uint64_t, uint64_t>> GetSessionTimestamps(
+    const tensorflow::profiler::XSpace& space);
+
 }  // namespace profiler
 }  // namespace tsl
 

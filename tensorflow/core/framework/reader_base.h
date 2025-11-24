@@ -31,7 +31,7 @@ class ReaderBase : public ReaderInterface {
  public:
   // name: For use in error messages, should mention both the name of
   // the op and the node.
-  explicit ReaderBase(const string& name);
+  explicit ReaderBase(const std::string& name);
 
   // Note that methods with names ending in "Locked" are called while
   // the ReaderBase's mutex is held.
@@ -87,7 +87,7 @@ class ReaderBase : public ReaderInterface {
   const tstring& current_work() const { return work_; }
 
   // What was passed to the constructor.
-  const string& name() const { return name_; }
+  const std::string& name() const { return name_; }
 
   // Produce the key name (from current_work and the actual key).
   tstring KeyName(const tstring& key) const;
@@ -106,8 +106,8 @@ class ReaderBase : public ReaderInterface {
   // For descendants that wish to obtain the next work item in a different way.
   // For implementing Read().  Dequeues the next work item from
   // *queue, and if successful returns "work" (a string). May block.
-  virtual string GetNextWorkLocked(QueueInterface* queue,
-                                   OpKernelContext* context) const;
+  virtual std::string GetNextWorkLocked(QueueInterface* queue,
+                                        OpKernelContext* context) const;
 
   // Implementations of ReaderInterface methods.  These ensure thread-safety
   // and call the methods above to do the work.
@@ -127,7 +127,7 @@ class ReaderBase : public ReaderInterface {
   absl::Status RestoreState(const tstring& state) override;
 
   mutable mutex mu_;
-  const string name_;
+  const std::string name_;
   int64_t work_started_ = 0;
   int64_t work_finished_ = 0;
   int64_t num_records_produced_ = 0;

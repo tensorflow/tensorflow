@@ -15,15 +15,23 @@ limitations under the License.
 
 #include "xla/stream_executor/stream_executor.h"
 
+#include <cstdint>
 #include <memory>
 
+#include <gtest/gtest.h>
 #include "absl/status/statusor.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/test.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/test.h"
 
 namespace stream_executor {
+
+struct TestResource : public StreamExecutor::Resource {
+  TestResource() = default;
+  explicit TestResource(int32_t value) : value(value) {}
+  int32_t value = 0;
+};
 
 static absl::StatusOr<StreamExecutor*> NewStreamExecutor() {
   TF_ASSIGN_OR_RETURN(auto platform, PlatformManager::PlatformWithName("Host"));
@@ -36,6 +44,19 @@ TEST(StreamExecutorTest, HostMemoryAllocate) {
   TF_ASSERT_OK_AND_ASSIGN(auto allocation, executor->HostMemoryAllocate(1024));
   EXPECT_NE(allocation->opaque(), nullptr);
   EXPECT_EQ(allocation->size(), 1024);
+}
+
+TEST(StreamExecutorTest, GetOrCreateResource) {
+  TF_ASSERT_OK_AND_ASSIGN(auto executor, NewStreamExecutor());
+
+  EXPECT_EQ(executor->GetOrNullResource<TestResource>(), nullptr);
+
+  TestResource* resource = executor->GetOrCreateResource<TestResource>(
+      [] { return std::make_unique<TestResource>(42); });
+  EXPECT_NE(resource, nullptr);
+  EXPECT_EQ(resource->value, 42);
+
+  EXPECT_EQ(executor->GetOrNullResource<TestResource>(), resource);
 }
 
 }  // namespace stream_executor

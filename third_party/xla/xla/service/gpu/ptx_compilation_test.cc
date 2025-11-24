@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/container/btree_map.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
@@ -41,6 +42,7 @@ limitations under the License.
 #include "xla/service/gpu/gpu_executable.h"
 #include "xla/service/gpu/nvptx_compiler.h"
 #include "xla/service/hlo_module_config.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/cuda/nvjitlink_support.h"
 #include "xla/stream_executor/cuda/ptx_compilation_method.h"
 #include "xla/stream_executor/cuda/ptx_compiler_support.h"
@@ -48,7 +50,6 @@ limitations under the License.
 #include "xla/stream_executor/device_description.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/platform/env.h"
-#include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla.pb.h"
 #include "tsl/platform/path.h"
@@ -80,11 +81,25 @@ ENTRY main {
 )";
 
 constexpr absl::string_view kSM90AHlo = R"(
+lhs {
+  ROOT p0 = f16[64,1024]{1,0} parameter(0)
+}
+rhs {
+  p0 = f16[1024,32,32]{2,1,0} parameter(0)
+  ROOT bitcast = f16[1024,1024]{0,1} bitcast(p0)
+}
 gemm_fusion_dot {
-  %p0 = f16[64,1024]{1,0} parameter(0)
-  %p1 = f16[1024,32,32]{2,1,0} parameter(1)
-  %bitcast.74246 = f16[1024,1024]{0,1} bitcast(f16[1024,32,32]{2,1,0} %p1)
-  ROOT %dot.1302 = f16[64,1024]{1,0} dot(f16[64,1024]{1,0} %p0, f16[1024,1024]{0,1} %bitcast.74246), lhs_contracting_dims={1}, rhs_contracting_dims={0}, frontend_attributes={grad_x="false",grad_y="false"}
+  p0 = f16[64,1024]{1,0} parameter(0)
+  p1 = f16[1024,32,32]{2,1,0} parameter(1)
+  lhs = f16[64,1024]{1,0} fusion(p0), kind=kCustom, calls=lhs,
+    backend_config={fusion_backend_config:{kind:"__triton_nested_gemm_fusion",
+      block_level_fusion_config:{output_tiles:[{sizes:[64,32]}]}}}
+  rhs = f16[1024,1024]{0,1} fusion(p1), kind=kCustom, calls=rhs,
+    backend_config={fusion_backend_config:{kind:"__triton_nested_gemm_fusion",
+      block_level_fusion_config:{output_tiles:[{sizes:[32,32]}]}}}
+  ROOT dot = f16[64,1024]{1,0} dot(lhs, rhs),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0},
+    frontend_attributes={grad_x="false",grad_y="false"}
 }
 
 ENTRY e {
@@ -94,11 +109,8 @@ ENTRY e {
   // whether we properly enable SM 9.0A in all compilation and linking paths.
   ROOT triton_gemm_fusion_dot = f16[64,1024]{1,0} fusion(p0, p1), kind=kCustom,
     calls=gemm_fusion_dot,
-    backend_config={"fusion_backend_config": {kind: "__triton_gemm",
-      triton_gemm_config:
-        {"block_m":64,"block_n":32,"block_k":32,
-         "split_k":1,"num_stages":1,"num_warps":4,
-         "num_ctas":1}}}
+    backend_config={fusion_backend_config:{kind:"__triton_nested_gemm_fusion",
+      block_level_fusion_config:{output_tiles:[{sizes:[64,32]}],num_stages:1,num_warps:4,num_ctas:1}}}
 })";
 
 constexpr absl::string_view kResultsInNoPtxHlo = R"(
@@ -148,12 +160,13 @@ class NVPTXCompilationTests
                              PtxCompilationMethod compilation_method,
                              PtxLinkingMethod linking_method) {
     using CudaComputeCapability = stream_executor::CudaComputeCapability;
-    if (!::testing::Value(backend()
-                              .default_stream_executor()
-                              ->GetDeviceDescription()
-                              .gpu_compute_capability(),
-                          ::testing::VariantWith<CudaComputeCapability>(
-                              CudaComputeCapability{9, 0})) &&
+    auto cc = backend()
+                  .default_stream_executor()
+                  ->GetDeviceDescription()
+                  .gpu_compute_capability();
+    if ((cc.cuda_compute_capability()->major < 9 ||
+         cc.cuda_compute_capability()->feature_extension !=
+             CudaComputeCapability::FeatureExtension::kAcceleratedFeatures) &&
         name == "requires_sm90a") {
       GTEST_SKIP() << "This test requires SM 9.0a";
     }
@@ -260,7 +273,7 @@ TEST_P(NVPTXCompilationTests, CompileProgram) {
   module->set_config(hlo_module_config);
 
   EXPECT_THAT(CompileExecutable(std::move(module)),
-              tsl::testing::IsOkAndHolds(::testing::NotNull()));
+              absl_testing::IsOkAndHolds(::testing::NotNull()));
 }
 
 MATCHER(MatchesSectionNameAndBinarySize, "") {
@@ -301,8 +314,8 @@ TEST_P(NVPTXCompilationTests, CompareBinaryOutput) {
   absl::StatusOr<std::unique_ptr<Executable>> reference =
       compile(PtxCompilationMethod::kPtxas, reference_linking_method);
 
-  ASSERT_THAT(executable, tsl::testing::IsOkAndHolds(::testing::NotNull()));
-  ASSERT_THAT(reference, tsl::testing::IsOkAndHolds(::testing::NotNull()));
+  ASSERT_THAT(executable, absl_testing::IsOkAndHolds(::testing::NotNull()));
+  ASSERT_THAT(reference, absl_testing::IsOkAndHolds(::testing::NotNull()));
 
   absl::Span<const uint8_t> executable_binary =
       static_cast<GpuExecutable*>(executable.value().get())->binary();

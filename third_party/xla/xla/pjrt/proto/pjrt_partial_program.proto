@@ -1,0 +1,35 @@
+syntax = "proto3";
+
+package xla;
+
+// A partial program represents a program that is not yet fully compiled.
+// It is used to store and transfer intermediate compilation states
+// between different compilation phases within the PJRT infrastructure.
+// This structure is crucial for enabling phased compilation, allowing for
+// optimizations like caching and improved debugging capabilities.
+message PjRtPartialProgramProto {
+  // The serialized program data. This field holds the actual program content
+  // in a specific format (e.g., StableHLO bytecode, HLOProto).
+  bytes program = 1;
+  // A string identifying the format of the `program` data.
+  // This format is interpreted by the plugin. It assists in plugin-specific
+  // validation to ensure a phase consumes compatible inputs. It can be used
+  // along with `program_name` to identify the program.
+  string program_format = 2;
+  // The name of the compilation phase that produced this partial program
+  // artifact.
+  string producer_phase = 3;
+  // A list of phase names that are capable of consuming this
+  // partial program artifact as their input.  This metadata is
+  // used for plugin-agnostic validation to ensure phases are executed
+  // in the intended sequence ("phase ordering").
+  repeated string consumer_phases = 4;
+  // The version of the program format. This can be used for compatibility
+  // checks if program formats evolve over time.
+  string version = 5;
+  // Optional. if it is set, it must be set for all output programs of that
+  // phase, and {`program_name`, `program_format`} must be unique.
+  // Example use case: `program_name` can be used to tie together two programs
+  // with different `program_format` during the next phase compilation.
+  string program_name = 6;
+}

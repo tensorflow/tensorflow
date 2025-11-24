@@ -56,6 +56,7 @@ class Int8UniformQuantizedType<int zero_pt, int smantissa, int sexp>
 
 // General uniform quantized types. The definitions can be used to specify
 // operand's tensor types.
+def QI2 : QuantizedType<"Uniform", [2], 1>;
 def QI4 : QuantizedType<"Uniform", [4], 1>;
 def QUI8 : QuantizedType<"Uniform", [8], 0>;
 def QI8 : QuantizedType<"Uniform", [8], 1>;
@@ -137,9 +138,28 @@ def SameOperandsAndResultsScale : OpInterface<"SameScalesOpInterface"> {
   ];
 
   let verify = [{
-    return TFL::VerifySameScales($_op);
+    return mlir::TFL::VerifySameScales($_op);
   }];
 }
+
+def RequiresQuantizedBiasInterface : OpInterface<"RequiresQuantizedBiasInterface"> {
+  let description = [{
+    Interface for ops that require the converter to quantize their bias based on
+    the scales of the other operands.
+  }];
+
+  let methods = [
+    InterfaceMethod<
+      [{Returns the bias operand index.}],
+      "int", "GetBiasOperandIndex",
+      (ins), [{}], [{return -1;}]>,
+    InterfaceMethod<
+      [{Returns the non-bias operand indices.}],
+      "std::vector<int>", "GetNonBiasOperandIndices",
+      (ins), [{}], [{return {};}]>,
+  ];
+}
+
 
 def DynamicRangeQuantizedOpInterface : OpInterface<
   "DynamicRangeQuantizedOpInterface"> {

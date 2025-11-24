@@ -54,7 +54,7 @@ namespace {
 class DefaultQuantParamsPass
     : public impl::DefaultQuantParamsPassBase<DefaultQuantParamsPass> {
  public:
-  DefaultQuantParamsPass() {}
+  DefaultQuantParamsPass() = default;
 
   explicit DefaultQuantParamsPass(double default_min, double default_max,
                                   bool is_signed) {
@@ -190,10 +190,10 @@ void DefaultQuantParamsPass::QuantizeValue(OpBuilder builder, Value value,
     builder.setInsertionPointToStart(&block);
   }
   TypeAttr type_attr = TypeAttr::get(new_type);
-  auto quantize = builder.create<TFL::QuantizeOp>(value.getLoc(), new_type,
-                                                  value, type_attr);
-  auto dequantize = builder.create<TFL::DequantizeOp>(
-      value.getLoc(), expressed_type, quantize.getOutput());
+  auto quantize = TFL::QuantizeOp::create(builder, value.getLoc(), new_type,
+                                          value, type_attr);
+  auto dequantize = TFL::DequantizeOp::create(
+      builder, value.getLoc(), expressed_type, quantize.getOutput());
   value.replaceAllUsesWith(dequantize);
 
   // `quantize` is using `dequantize` now, so we should set its operand to

@@ -12,6 +12,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/data/experimental/unique_dataset_op.h"
 
 #include <cstdint>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -44,7 +45,8 @@ class UniqueDatasetParams : public DatasetParams {
 
   std::vector<Tensor> GetInputTensors() const override { return {}; }
 
-  absl::Status GetInputNames(std::vector<string>* input_names) const override {
+  absl::Status GetInputNames(
+      std::vector<std::string>* input_names) const override {
     input_names->clear();
     input_names->emplace_back(UniqueDatasetOp::kInputDataset);
     return absl::OkStatus();
@@ -57,7 +59,9 @@ class UniqueDatasetParams : public DatasetParams {
     return absl::OkStatus();
   }
 
-  string dataset_type() const override { return UniqueDatasetOp::kDatasetType; }
+  std::string dataset_type() const override {
+    return UniqueDatasetOp::kDatasetType;
+  }
 };
 
 class UniqueDatasetOpTest : public DatasetOpsTestBase {};

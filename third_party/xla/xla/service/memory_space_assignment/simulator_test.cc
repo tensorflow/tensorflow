@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
+#include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/analysis/hlo_alias_analysis.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -101,11 +102,13 @@ class MemorySpaceAssignmentSimulatorTest
     cost_analysis_options.alternate_mem_write_bandwidth_bytes_per_second = 2;
     cost_analysis_options.default_mem_bandwidth_bytes_per_second = 1.0;
 
-    TF_ASSIGN_OR_RETURN(cost_analysis_,
-                        CostAnalysis::Create(*op_cost_manager_,
-                                             cost_analysis_options, *module_));
+    TF_ASSIGN_OR_RETURN(
+        cost_analysis_,
+        CostAnalysis::Create(*op_cost_manager_, cost_analysis_options,
+                             &alias_info_, *module_));
 
-    TF_ASSIGN_OR_RETURN(alias_analysis_, HloAliasAnalysis::Run(module_.get()));
+    TF_ASSIGN_OR_RETURN(alias_analysis_,
+                        HloAliasAnalysis::Run(module_.get(), &alias_info_));
     TF_ASSIGN_OR_RETURN(hlo_live_range_,
                         HloLiveRange::Run(module_->schedule(), *alias_analysis_,
                                           module_->entry_computation()));
@@ -124,6 +127,7 @@ class MemorySpaceAssignmentSimulatorTest
   memory_space_assignment::AllocationSequence allocations_;
   std::unique_ptr<RuntimeSimulator> runtime_simulator_;
   std::unique_ptr<HloModule> module_;
+  AliasInfo alias_info_;
 };
 
 TEST_F(MemorySpaceAssignmentSimulatorTest, SingleLayerLoop) {
@@ -162,9 +166,9 @@ TEST_F(MemorySpaceAssignmentSimulatorTest, SingleLayerLoop) {
   EXPECT_EQ(runtime_simulator_->SimulateElapsedTimeWithoutAsyncCopyLikes(
                 *hlo_live_range_, allocations_),
             1226);
-  EXPECT_EQ(
-      runtime_simulator_->SimulateElapsedTime(module_.get(), allocations_),
-      1226);
+  EXPECT_EQ(runtime_simulator_->SimulateElapsedTime(
+                module_.get(), *alias_analysis_, allocations_),
+            1226);
 }
 
 TEST_F(MemorySpaceAssignmentSimulatorTest, NestedLayerLoop) {
@@ -218,9 +222,9 @@ TEST_F(MemorySpaceAssignmentSimulatorTest, NestedLayerLoop) {
   EXPECT_EQ(runtime_simulator_->SimulateElapsedTimeWithoutAsyncCopyLikes(
                 *hlo_live_range_, allocations_),
             33893);
-  EXPECT_EQ(
-      runtime_simulator_->SimulateElapsedTime(module_.get(), allocations_),
-      33893);
+  EXPECT_EQ(runtime_simulator_->SimulateElapsedTime(
+                module_.get(), *alias_analysis_, allocations_),
+            33893);
 }
 
 TEST_F(MemorySpaceAssignmentSimulatorTest, SingleAsyncCopyOverhead) {
@@ -244,9 +248,9 @@ TEST_F(MemorySpaceAssignmentSimulatorTest, SingleAsyncCopyOverhead) {
                 *hlo_live_range_, allocations_),
             0);
   // The expected elapsed time is 1024 * 2048 * 4 / 1 = 8388608.
-  EXPECT_EQ(
-      runtime_simulator_->SimulateElapsedTime(module_.get(), allocations_),
-      8388608);
+  EXPECT_EQ(runtime_simulator_->SimulateElapsedTime(
+                module_.get(), *alias_analysis_, allocations_),
+            8388608);
 }
 
 TEST_F(MemorySpaceAssignmentSimulatorTest, AsyncCopyWithComputationOverhead) {
@@ -270,8 +274,9 @@ TEST_F(MemorySpaceAssignmentSimulatorTest, AsyncCopyWithComputationOverhead) {
   // neg_compute: | 16 sec (memory-bound)  |
   // copy-done.1: |                        | read 32 bytes  |
   // time:        |     16 sec             |      32 sec    |
-  EXPECT_EQ(
-      runtime_simulator_->SimulateElapsedTime(module_.get(), allocations_), 48);
+  EXPECT_EQ(runtime_simulator_->SimulateElapsedTime(
+                module_.get(), *alias_analysis_, allocations_),
+            48);
 }
 
 TEST_F(MemorySpaceAssignmentSimulatorTest, SingleAsyncSliceCopyOverhead) {
@@ -289,9 +294,9 @@ TEST_F(MemorySpaceAssignmentSimulatorTest, SingleAsyncSliceCopyOverhead) {
   // The expected elapsed time is 768 * 2048 * 4 / 1 = 6291456.
   float expected_elapsed_time = 6291456;
 
-  EXPECT_EQ(
-      runtime_simulator_->SimulateElapsedTime(module_.get(), allocations_),
-      expected_elapsed_time);
+  EXPECT_EQ(runtime_simulator_->SimulateElapsedTime(
+                module_.get(), *alias_analysis_, allocations_),
+            expected_elapsed_time);
 }
 
 TEST_F(MemorySpaceAssignmentSimulatorTest,
@@ -320,9 +325,9 @@ TEST_F(MemorySpaceAssignmentSimulatorTest,
   // Since add does not access default memory, we can use process 384 bytes in
   // copy-start-overlap.
   // copy-done-overlap: (128 * 4 - 384) / 1 = 128 sec (default memory access)
-  EXPECT_EQ(
-      runtime_simulator_->SimulateElapsedTime(module_.get(), allocations_),
-      1024);
+  EXPECT_EQ(runtime_simulator_->SimulateElapsedTime(
+                module_.get(), *alias_analysis_, allocations_),
+            1024);
 }
 
 class SimulateAsyncCopyLikeDoneTest

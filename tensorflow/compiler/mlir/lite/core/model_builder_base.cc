@@ -28,11 +28,13 @@ namespace tflite {
 #ifndef TFLITE_MCU
 // Loads a model from `filename`. If `mmap_file` is true then use mmap,
 // otherwise make a copy of the model in a buffer.
-std::unique_ptr<Allocation> GetAllocationFromFile(
-    const char* filename, ErrorReporter* error_reporter) {
+std::unique_ptr<Allocation> GetAllocationFromFile(const char* filename,
+                                                  ErrorReporter* error_reporter,
+                                                  bool allow_modifications) {
   std::unique_ptr<Allocation> allocation;
   if (MMAPAllocation::IsSupported()) {
-    allocation = std::make_unique<MMAPAllocation>(filename, error_reporter);
+    allocation = std::make_unique<MMAPAllocation>(filename, error_reporter,
+                                                  allow_modifications);
   } else {
     allocation = std::make_unique<FileCopyAllocation>(filename, error_reporter);
   }
@@ -41,11 +43,13 @@ std::unique_ptr<Allocation> GetAllocationFromFile(
 
 // Loads a model from `fd`. If `mmap_file` is true then use mmap,
 // otherwise make a copy of the model in a buffer.
-std::unique_ptr<Allocation> GetAllocationFromFile(
-    int fd, ErrorReporter* error_reporter) {
+std::unique_ptr<Allocation> GetAllocationFromFile(int fd,
+                                                  ErrorReporter* error_reporter,
+                                                  bool allow_modifications) {
   std::unique_ptr<Allocation> allocation;
   if (MMAPAllocation::IsSupported()) {
-    allocation = std::make_unique<MMAPAllocation>(fd, error_reporter);
+    allocation = std::make_unique<MMAPAllocation>(fd, error_reporter,
+                                                  allow_modifications);
   } else {
     allocation = std::make_unique<FileCopyAllocation>(
         absl::StrCat("/proc/self/fd/", fd).c_str(), error_reporter);

@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/synchronization/mutex.h"
@@ -156,8 +157,9 @@ TEST_P(PrefetchedSplitProviderParamTest, GetSplits) {
   PrefetchedSplitProvider prefetched_split_provider(
       std::move(split_provider), test_dirs[0], tsl::Env::Default(),
       NumWriteThreads(), BufferSizePerThread());
-  EXPECT_THAT(GetSplits<int64_t>(prefetched_split_provider, test_dirs[1]),
-              IsOkAndHolds(ElementsAreArray(Range(NumElements()))));
+  EXPECT_THAT(
+      GetSplits<int64_t>(prefetched_split_provider, test_dirs[1]),
+      absl_testing::IsOkAndHolds(ElementsAreArray(Range(NumElements()))));
 }
 
 TEST_P(PrefetchedSplitProviderParamTest, ConcurrentGetSplits) {
@@ -180,7 +182,7 @@ TEST_P(PrefetchedSplitProviderParamTest, ConcurrentGetSplits) {
               std::vector<int64_t> splits_per_thread,
               GetSplits<int64_t>(prefetched_split_provider, test_dirs[1 + i]));
           EXPECT_TRUE(absl::c_is_sorted(splits_per_thread));
-          absl::MutexLock l(&mu);
+          absl::MutexLock l(mu);
           absl::c_move(splits_per_thread, std::back_inserter(splits));
         })));
   }
@@ -200,8 +202,9 @@ TEST_P(PrefetchedSplitProviderParamTest, Reset) {
 
   // The split provider produces elements from the beginning after being reset.
   for (int i = 0; i < 3; ++i) {
-    EXPECT_THAT(GetSplits<int64_t>(prefetched_split_provider, test_dirs[1]),
-                IsOkAndHolds(ElementsAreArray(Range(NumElements()))));
+    EXPECT_THAT(
+        GetSplits<int64_t>(prefetched_split_provider, test_dirs[1]),
+        absl_testing::IsOkAndHolds(ElementsAreArray(Range(NumElements()))));
     TF_EXPECT_OK(prefetched_split_provider.Reset());
   }
 }
@@ -225,7 +228,7 @@ TEST_P(PrefetchedSplitProviderParamTest, ConcurrentGetSplitsAndReset) {
           TF_ASSERT_OK_AND_ASSIGN(
               std::vector<int64_t> splits_per_thread,
               GetSplits<int64_t>(prefetched_split_provider, test_dirs[1 + i]));
-          absl::MutexLock l(&mu);
+          absl::MutexLock l(mu);
           absl::c_move(splits_per_thread, std::back_inserter(splits));
         })));
   }
@@ -260,7 +263,7 @@ TEST(PrefetchedSplitProviderTest, Cancellation) {
           [&prefetched_split_provider, &test_dirs]() {
             EXPECT_THAT(
                 GetSplits<int64_t>(prefetched_split_provider, test_dirs[1]),
-                StatusIs(absl::StatusCode::kCancelled));
+                absl_testing::StatusIs(absl::StatusCode::kCancelled));
           }));
 
   prefetched_split_provider.Cancel();

@@ -24,6 +24,7 @@ namespace xla::hlo_diff {
 // Options allowing configuration of the instruction matching algorithm.
 struct MatchOptions {
   bool use_top_down_matcher = true;
+  bool debug_mode = false;
 };
 
 // Base class for all node matchers. Each matcher implements a unique algorithm
@@ -36,8 +37,10 @@ class HloGumgraphMatcher {
   virtual void Match(HloGumgraphMappings& mappings) const = 0;
 
  protected:
-  explicit HloGumgraphMatcher(MatcherType type) : type_(type) {}
+  HloGumgraphMatcher(MatcherType type, bool debug_mode)
+      : type_(type), debug_mode_(debug_mode) {}
   const MatcherType type_;
+  const bool debug_mode_;
 };
 
 }  // namespace xla::hlo_diff

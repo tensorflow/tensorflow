@@ -43,11 +43,7 @@ limitations under the License.
 namespace xla {
 namespace {
 
-#ifdef XLA_BACKEND_DOES_NOT_SUPPORT_FLOAT16
-using TypesF16F32 = ::testing::Types<float>;
-#else
 using TypesF16F32 = ::testing::Types<Eigen::half, float>;
-#endif
 
 class MatOpsSimpleTest : public ClientLibraryTestBase {};
 
@@ -163,9 +159,7 @@ std::string PrintTestLinspaceMaxParam(
   return absl::StrCat(param.rows, "r", param.cols, "c");
 }
 
-#ifndef XLA_BACKEND_DOES_NOT_SUPPORT_FLOAT16
 TEST_P(TestLinspaceMaxParametric, TestF16) { TestImpl<Eigen::half>(); }
-#endif
 TEST_P(TestLinspaceMaxParametric, TestF32) { TestImpl<float>(); }
 
 INSTANTIATE_TEST_CASE_P(
@@ -187,10 +181,7 @@ class MatOpsDotAddTest
     auto stream_executor = client_->platform()->ExecutorForDevice(0).value();
     auto gpu_compute_capability =
         stream_executor->GetDeviceDescription().gpu_compute_capability();
-    if ((std::holds_alternative<stream_executor::CudaComputeCapability>(
-            gpu_compute_capability)) ||
-        std::holds_alternative<stream_executor::RocmComputeCapability>(
-            gpu_compute_capability)) {
+    if (gpu_compute_capability.IsCuda() || gpu_compute_capability.IsRocm()) {
       return true;
     }
     return false;
@@ -430,7 +421,6 @@ class MatOpsDotAddTest
 };
 
 TEST_P(MatOpsDotAddTest, Dot_Add_2x2_2x2BF16) { TestImpl<bfloat16>(); }
-#ifndef XLA_BACKEND_DOES_NOT_SUPPORT_FLOAT16
 TEST_P(MatOpsDotAddTest, Dot_Add_2x2_2x2F16) { TestImpl<Eigen::half>(); }
 TEST_P(MatOpsDotAddTest, Dot_BiasAdd_2x2_2x2F16) {
   TestImplBiasAddEpilogueFusion<Eigen::half>();
@@ -441,7 +431,6 @@ TEST_P(MatOpsDotAddTest, Dot_ReluActivation_2x2_2x2F16) {
 TEST_P(MatOpsDotAddTest, Dot_BiasAddReluActivation_2x2_2x2F16) {
   TestImplBiasAddReluActivationEpilogueFusion<Eigen::half>();
 }
-#endif
 
 TEST_P(MatOpsDotAddTest, Dot_Add_2x2_2x2F32) { TestImpl<float>(); }
 TEST_P(MatOpsDotAddTest, Dot_BiasAdd_2x2_2x2F32) {

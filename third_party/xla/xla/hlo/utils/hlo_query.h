@@ -191,6 +191,10 @@ bool HasX64TransformedHostTransfer(const HloModule& module);
 HloInstruction* GetUniqueGteInstruction(const HloInstruction* operand,
                                         int64_t index);
 
+// Returns the number of GTE instructions with the given index.
+int64_t CountGteInstructionsWithIndex(const HloComputation* computation,
+                                      int64_t index);
+
 // Gets the computation from the given module with the given name.
 HloComputation* FindComputation(HloModule* module, absl::string_view name);
 

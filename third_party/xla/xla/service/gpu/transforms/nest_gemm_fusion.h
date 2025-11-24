@@ -19,18 +19,17 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "mlir/IR/MLIRContext.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
 #include "xla/service/gpu/matmul_utils.h"
-#include "xla/service/gpu/model/tiled_hlo_computation.h"
+#include "xla/service/gpu/model/block_level_parameters.h"
 #include "xla/stream_executor/device_description.h"
 
 namespace xla::gpu {
 
-// Rewrites Triton GEMM fusions to generic Triton fusions. Any other fusions are
-// left unchanged.
+// Rewrites supported Triton GEMM fusions to generic Triton fusions.
 //
 // Fusions with kind kCustom and fusion_backend_config.kind "__triton_gemm" are
 // rewritten to fusion_backend_config.kind
@@ -47,18 +46,23 @@ namespace xla::gpu {
 // nested fusions, each with their own BlockLevelFusionConfig.
 class NestGemmFusion : public HloModulePass {
  public:
-  explicit NestGemmFusion(const se::GpuComputeCapability& compute_capability)
-      : compute_capability_(compute_capability) {}
+  explicit NestGemmFusion(const se::DeviceDescription& device_description,
+                          mlir::MLIRContext* mlir_context)
+      : device_description_(device_description), mlir_context_(mlir_context) {}
 
   absl::string_view name() const override { return "nest_gemm_fusion"; }
 
-  using HloPassInterface::Run;
-  absl::StatusOr<bool> Run(
+ protected:
+  absl::StatusOr<bool> RunImpl(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
  private:
-  const se::GpuComputeCapability compute_capability_;
+  const se::DeviceDescription device_description_;
+  mlir::MLIRContext* mlir_context_;
+  absl::StatusOr<bool> RunOnModule(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads);
 };
 
 namespace detail {
@@ -73,8 +77,9 @@ namespace detail {
 // function can be removed once `GpuDotFusionCostModel::EstimateRunTimeForDotOp`
 // is implemented.
 absl::StatusOr<BlockLevelParameters> FindBlockLevelParameters(
-    HloDotInstruction* dot, const TritonGemmConfig& config,
-    mlir::MLIRContext* ctx);
+    HloInstruction* dot, const TritonGemmConfig& config,
+    mlir::MLIRContext* mlir_context,
+    const se::DeviceDescription& device_description);
 
 }  // namespace detail
 

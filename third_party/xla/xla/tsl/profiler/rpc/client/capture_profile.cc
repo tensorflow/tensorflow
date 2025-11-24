@@ -56,7 +56,7 @@ using tensorflow::ProfileResponse;
 using tensorflow::RemoteProfilerSessionManagerOptions;
 using tensorflow::profiler::XSpace;
 
-constexpr uint64 kMaxEvents = 1000000;
+constexpr uint64_t kMaxEvents = 1000000;
 const absl::string_view kXPlanePb = "xplane.pb";
 
 MonitorRequest PopulateMonitorRequest(int duration_ms, int monitoring_level,
@@ -199,8 +199,10 @@ absl::Status CaptureRemoteTrace(const std::string& logdir,
   DCHECK_GT(opts.profiler_options().duration_ms(), 0);
   DCHECK(!opts.service_addresses().empty());
 
-  // Use the current timestamp as the run name.
-  std::string session_id = GetCurrentTimeStampAsString();
+  // Sets the session ID if provided, otherwise uses the current timestamp.
+  std::string session_id = opts.profiler_options().session_id().empty()
+                               ? GetCurrentTimeStampAsString()
+                               : opts.profiler_options().session_id();
   std::string repository_root = GetTensorBoardProfilePluginDir(logdir);
   auto duration_ms = opts.profiler_options().duration_ms();
 
@@ -270,7 +272,7 @@ absl::Status ExportToTensorBoard(const XSpace& xspace,
   return absl::OkStatus();
 }
 
-absl::Status CaptureRemoteTraceWithBoolOpts(
+absl::Status CaptureRemoteTrace(
     const char* service_addr, const char* logdir, const char* worker_list,
     bool include_dataset_ops, int duration_ms, int num_tracing_attempts,
     const absl::flat_hash_map<std::string,
@@ -278,9 +280,9 @@ absl::Status CaptureRemoteTraceWithBoolOpts(
   // TPU capture is true if the user sets worker_list.
   bool is_cloud_tpu_session = false;
   RemoteProfilerSessionManagerOptions opts =
-      GetRemoteSessionManagerOptionsLockedWithBoolOpts(
-          service_addr, logdir, worker_list, include_dataset_ops, duration_ms,
-          options, &is_cloud_tpu_session);
+      GetRemoteSessionManagerOptionsLocked(service_addr, logdir, worker_list,
+                                           include_dataset_ops, duration_ms,
+                                           options, &is_cloud_tpu_session);
   TF_RETURN_IF_ERROR(ValidateRemoteProfilerSessionManagerOptions(opts));
 
   {
@@ -288,24 +290,6 @@ absl::Status CaptureRemoteTraceWithBoolOpts(
                                           is_cloud_tpu_session));
   }
   return absl::OkStatus();
-}
-
-absl::Status CaptureRemoteTrace(
-    const char* service_addr, const char* logdir, const char* worker_list,
-    bool include_dataset_ops, int duration_ms, int num_tracing_attempts,
-    const absl::flat_hash_map<std::string, std::variant<int, std::string>>&
-        options) {
-  absl::flat_hash_map<std::string, std::variant<bool, int, std::string>>
-      converted_options;
-  for (const auto& [key, value] : options) {
-    converted_options[key] = std::visit(
-        [](auto&& arg) -> std::variant<bool, int, std::string> { return arg; },
-        value);
-  }
-
-  return CaptureRemoteTraceWithBoolOpts(
-      service_addr, logdir, worker_list, include_dataset_ops, duration_ms,
-      num_tracing_attempts, converted_options);
 }
 
 }  // namespace profiler

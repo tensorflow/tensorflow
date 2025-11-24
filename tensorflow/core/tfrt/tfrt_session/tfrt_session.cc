@@ -80,6 +80,9 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
+using CostAnalysisOptions =
+    tensorflow::tfrt_stub::GraphExecutionOptions::CostAnalysisOptions;
+
 // Wraps an `Eigen::ThreadPoolInterface` as a
 // `tensorflow::thread::ThreadPoolInterface`.
 class ThreadPoolInterfaceWrapper : public thread::ThreadPoolInterface {
@@ -244,7 +247,7 @@ class TfrtSession : public tensorflow::Session {
     optimization_options.session_options = &options_;
     FunctionLibraryDefinition flib_def = fallback_state->func_lib_def();
     optimization_options.flib_def = &flib_def;
-    std::unordered_map<string, std::unique_ptr<Graph>> partition_graphs;
+    std::unordered_map<std::string, std::unique_ptr<Graph>> partition_graphs;
     auto initial_graph =
         std::make_unique<tensorflow::Graph>(tensorflow::OpRegistry::Global());
     tensorflow::GraphConstructorOptions opts;
@@ -504,7 +507,12 @@ class TfrtSession : public tensorflow::Session {
     compile_options.tpu_fuse_ops = tpu_use_tpu_runner_;
     compile_options.hoist_invariant_ops = true;
     compile_options.sink_in_invariant_ops = true;
+
     compile_options.cost_threshold = 1024;
+    if (options_.config.experimental().stream_merge_threshold() > 0) {
+      compile_options.cost_threshold =
+          options_.config.experimental().stream_merge_threshold();
+    }
 
     if (use_gpu_) {
       options.enable_tfrt_gpu = true;
@@ -518,6 +526,10 @@ class TfrtSession : public tensorflow::Session {
 
     options.model_metadata = options_.config.experimental().session_metadata();
     options.enable_mlrt = enable_mlrt_;
+    if (options_.config.experimental().online_cost_analysis()) {
+      options.cost_analysis_options.version =
+          CostAnalysisOptions::CostAnalysisVersion::kOnce;
+    }
 
     return options;
   }
@@ -800,7 +812,8 @@ absl::Status TfrtSessionFactory::InitializeLocked(
     runtime_ = options.runtime;
   } else if (runtime_ == nullptr) {
     owned_runtime_ = tensorflow::tfrt_stub::Runtime::Create(
-        CreateRunHandlerWorkQueue(options.threadpool_options));
+        CreateRunHandlerWorkQueue(options.threadpool_options),
+        options.diag_handler);
     runtime_ = owned_runtime_.get();
   }
   enable_mlrt_ = options.enable_mlrt;

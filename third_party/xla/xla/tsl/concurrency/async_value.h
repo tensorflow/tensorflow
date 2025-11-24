@@ -31,8 +31,10 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/types/span.h"
 #include "xla/tsl/concurrency/concurrent_vector.h"
+#include "xla/tsl/concurrency/executor.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/platform/logging.h"
+#include "xla/tsl/util/safe_reinterpret_cast.h"
 #include "tsl/platform/context.h"
 
 namespace tsl {
@@ -58,8 +60,6 @@ constexpr bool kMaybeBase = std::is_class<T>::value && !std::is_final<T>::value;
 // data and the payload data in consecutive memory locations.
 class AsyncValue {
  public:
-  class Executor;
-
   ~AsyncValue();
 
   // Return true if state is kUnconstructed.
@@ -88,7 +88,12 @@ class AsyncValue {
   // Return reference count. This should be used for testing and debugging only.
   uint32_t NumRef() const { return refcount_.load(std::memory_order_acquire); }
 
-  // Return true if reference count is 1.
+  // Return true if this async value is a unique reference to the underlying
+  // payload. For concrete async values, this is equivalent to `NumRef() == 1`.
+  // For indirect async values it means that the whole chain of indirect async
+  // values has a reference count of 1. For unavailable indirect async values we
+  // conservatively return false as we don't know to what async value it will be
+  // forwarded.
   bool IsUnique() const;
 
   // Add a new reference to this object.
@@ -144,6 +149,10 @@ class AsyncValue {
   void emplace(Args&&... args);
 
   void SetError(absl::Status status);
+
+  // Returns true if and only if there are any waiters waiting for this value to
+  // become available.
+  bool HasWaiter() const;
 
   // If the value is available or becomes available, this invokes the waiter
   // immediately. Otherwise, adds the waiter to the waiter list and calls it
@@ -250,24 +259,6 @@ class AsyncValue {
     return waiters_and_state_.load(std::memory_order_acquire).state();
   }
 
-  // AsyncValue executor allows to customize where the waiter callback is
-  // executed. By default the waiter callback is executed on the caller thread
-  // if async value is already available, or on a thread that sets async value
-  // available (emplacing a value or setting an error), which can accidentally
-  // lead to executing a very expensive computations on a low-latency thread.
-  //
-  // IMPORTANT: It's the caller responsibility to ensure that executor passed to
-  // all `AndThen` or `Map` function calls stay alive while async values have
-  // unresolved waiters waiting to be invoked.
-  class Executor {
-   public:
-    using Task = absl::AnyInvocable<void()>;
-
-    virtual ~Executor() = default;
-
-    virtual void Execute(Task task) = 0;
-  };
-
  protected:
   friend class IndirectAsyncValue;
 
@@ -307,8 +298,16 @@ class AsyncValue {
   AsyncValue(const AsyncValue&) = delete;
   AsyncValue& operator=(const AsyncValue&) = delete;
 
-  void NotifyAvailable(State available_state);
   void Destroy();
+
+  // This is called when the value is set into the ConcreteAsyncValue buffer, or
+  // when the IndirectAsyncValue is forwarded to an available AsyncValue, and we
+  // need to change our state and clear out the notifications. The current state
+  // must be unavailable (i.e. kUnconstructed or kConstructed).
+  void NotifyAvailable(State available_state);
+
+  // Executes all the waiters waiting for the value to become available,
+  // starting for the head of the linked list.
   void RunWaiters(WaiterListNode* list);
 
   // IsTypeIdCompatible returns true if the type value stored in this AsyncValue
@@ -335,7 +334,8 @@ class AsyncValue {
   // 2^16-1 are not allowed to be used as type IDs.
   template <typename T>
   static uint16_t GetTypeId() {
-    return internal::ConcreteAsyncValue<T>::concrete_type_id_;
+    static uint16_t type_id = CreateTypeInfoAndReturnTypeId<T>();
+    return type_id;
   }
 
   // Creates a AsyncValue::TypeInfo object for `T` and store it in the global
@@ -343,7 +343,7 @@ class AsyncValue {
   // be one plus the index of this TypeInfo object in the TypeInfo table.
   //
   // This should only be called from the initializer for the static
-  // ConcreteAsyncValue concrete_type_id_ field.
+  // type id in GetTypeId() defined above.
   template <typename T>
   static uint16_t CreateTypeInfoAndReturnTypeId() {
     return CreateTypeInfoAndReturnTypeIdImpl(
@@ -372,9 +372,10 @@ class AsyncValue {
   // callbacks are informed.
   struct WaiterListNode {
     virtual ~WaiterListNode() = default;
-    virtual void operator()() = 0;
+    virtual void RunWaiterAndDeleteWaiterNode() = 0;
 
     WaiterListNode* next = nullptr;
+    Context context{ContextKind::kThread};
   };
 
   // The waiter list and the state are compacted into one single atomic word as
@@ -436,7 +437,11 @@ class AsyncValue {
     DestructorFn destructor;
     GetErrorFn get_error;
     SetErrorFn set_error;
+#ifndef NDEBUG
+    // This function is only used in debug builds, so it can be omitted from the
+    // type info in optimized builds for better data locality of other members.
     HasDataFn has_data;
+#endif
   };
 
   template <typename Derived>
@@ -452,9 +457,11 @@ class AsyncValue {
         [](AsyncValue* v, absl::Status status) {
           static_cast<Derived*>(v)->SetError(std::move(status));
         },
+#ifndef NDEBUG
         [](const AsyncValue* v) {
           return static_cast<const Derived*>(v)->HasData();
         },
+#endif
     };
   }
 
@@ -465,13 +472,13 @@ class AsyncValue {
 
   // Returns the TypeInfoTable instance (there is one per process).
   using TypeInfoTable = internal::ConcurrentVector<TypeInfo>;
-  static TypeInfoTable* GetTypeInfoTableSingleton();
+  static TypeInfoTable& GetTypeInfoTableSingleton();
 
   // Get the TypeInfo instance for this AsyncValue.
   const TypeInfo& GetTypeInfo() const {
-    TypeInfoTable* type_info_table = AsyncValue::GetTypeInfoTableSingleton();
+    TypeInfoTable& type_info_table = AsyncValue::GetTypeInfoTableSingleton();
     DCHECK_NE(type_id_, 0) << "TypeId must be set";
-    return (*type_info_table)[type_id_ - 1];
+    return type_info_table[type_id_ - 1];
   }
 
   // Adds a waiter list node to the waiter linked list. If the value is
@@ -486,13 +493,17 @@ class AsyncValue {
     static_assert(std::is_invocable_v<Waiter>, "Waiter must be invocable");
 
     struct Node final : public WaiterListNode {
-      explicit Node(Waiter waiter)
-          : context(ContextKind::kThread), waiter(std::move(waiter)) {}
-      void operator()() final {
-        WithContext wc(context);
+      explicit Node(Waiter waiter) : waiter(std::move(waiter)) {}
+
+      // Waiter destruction may perform work that needs to run in the same
+      // context as the waiter itself, so we choose to destroy the waiter
+      // immediately after running it (by deleting `this` linked list node).
+      void RunWaiterAndDeleteWaiterNode() final {
+        WithContext wc(std::move(context));
         std::move(waiter)();
+        delete this;
       }
-      Context context;
+
       Waiter waiter;
     };
 
@@ -745,19 +756,19 @@ class ConcreteAsyncValue : public AsyncValue {
   void Destroy() { data_store_.Destroy(state()); }
   bool HasData() const { return data_store_.HasData(state()); }
 
-  static void VerifyOffsets() {
-    static_assert(offsetof(ConcreteAsyncValue<T>, data_store_.data_) ==
-                      AsyncValue::kDataOffset,
-                  "Offset of ConcreteAsyncValue data payload is assumed to be "
-                  "AsyncValue::kDataOffset == 64");
+  void VerifyOffsets() {
+    // ConcreteAsyncValue<T> is not a standard layout type, so we can't rely
+    // on `offsetof` to verify data offset at compile time without compile time
+    // warnings, so we do it at run time. If this property doesn't hold, any use
+    // of async value will lead to undefined behavior.
+    uintptr_t self = tsl::safe_reinterpret_cast<uintptr_t>(this);
+    uintptr_t data = tsl::safe_reinterpret_cast<uintptr_t>(&data_store_.data_);
+    DCHECK(data - self == AsyncValue::kDataOffset)
+        << "Offset of ConcreteAsyncValue data payload must be equal to "
+           "AsyncValue::kDataOffset";
   }
-
-  static const uint16_t concrete_type_id_;
 };
 
-template <typename T>
-const uint16_t ConcreteAsyncValue<T>::concrete_type_id_ =
-    AsyncValue::CreateTypeInfoAndReturnTypeId<T>();
 }  // namespace internal
 
 struct DummyValueForErrorAsyncValue {};
@@ -800,10 +811,9 @@ class IndirectAsyncValue : public AsyncValue {
 
   bool IsUnique() const {
     // In addition to checking the refcount of this IndirectAsyncValue, we also
-    // need to check the refcount of the underlying value. If the underlying
-    // value is not available, we conservatively return false.
-    return (refcount_.load(std::memory_order_acquire) == 1) && IsAvailable() &&
-           value_->IsUnique();
+    // need to check the refcount of the underlying value. If indirect async
+    // value value is not forwarded, we conservatively return false.
+    return (NumRef() == 1) && value_ && value_->IsUnique();
   }
 
  protected:
@@ -882,17 +892,23 @@ inline AsyncValue* AsyncValue::AddRef(uint32_t count) {
   // async values is "ref count correct". In optimized builds the async value
   // owner is responsible for destructing the non-reference-counted async value.
 #if defined(NDEBUG)
-  if (!is_refcounted_) return this;
+  // We try hard to make the fast path for non-refcounted async values to be
+  // as fast as possible. It's ok if we mispredict this branch, because atomic
+  // operations below are order of magnitude more expensive.
+  if (ABSL_PREDICT_TRUE(!is_refcounted_)) return this;
 #endif
 
-  if (count > 0) {
-    DCHECK_GT(refcount_.load(std::memory_order_relaxed), 0);
-    // Increasing the reference counter can always be done with
-    // memory_order_relaxed: New references to an object can only be formed from
-    // an existing reference, and passing an existing reference from one thread
-    // to another must already provide any required synchronization.
-    refcount_.fetch_add(count, std::memory_order_relaxed);
+  if (ABSL_PREDICT_FALSE(count == 0)) {
+    return this;
   }
+
+  DCHECK_GT(refcount_.load(std::memory_order_relaxed), 0);
+  // Increasing the reference counter can always be done with
+  // memory_order_relaxed: New references to an object can only be formed from
+  // an existing reference, and passing an existing reference from one thread
+  // to another must already provide any required synchronization.
+  refcount_.fetch_add(count, std::memory_order_relaxed);
+
   return this;
 }
 
@@ -901,8 +917,15 @@ inline void AsyncValue::DropRef(uint32_t count) {
   // async values is "ref count correct". In optimized builds the async value
   // owner is responsible for destructing the non-reference-counted async value.
 #if defined(NDEBUG)
-  if (!is_refcounted_) return;
+  // We try hard to make the fast path for non-refcounted async values to be
+  // as fast as possible. It's ok if we mispredict this branch, because atomic
+  // operations below are order of magnitude more expensive.
+  if (ABSL_PREDICT_TRUE(!is_refcounted_)) return;
 #endif
+
+  if (ABSL_PREDICT_FALSE(count == 0)) {
+    return;
+  }
 
   DCHECK_GT(refcount_.load(std::memory_order_relaxed), 0);
   // We expect that `count` argument will often equal the actual reference count
@@ -1007,6 +1030,10 @@ inline const absl::Status& AsyncValue::GetError() const {
   return *result;
 }
 
+inline bool AsyncValue::HasWaiter() const {
+  return waiters_and_state_.load(std::memory_order_acquire).waiter() != nullptr;
+}
+
 template <typename Waiter>
 void AsyncValue::AndThen(Waiter&& waiter) {
   // Clients generally want to use AndThen without them each having to check
@@ -1025,6 +1052,34 @@ void AsyncValue::AndThen(Waiter&& waiter) {
 
 template <typename Waiter>
 void AsyncValue::AndThen(Executor& executor, Waiter&& waiter) {
+  // We don't know when the `executor` will run the `waiter`, so we need to add
+  // a reference to the AsyncValue to keep they underlying value alive for as
+  // long as the waiter is waiting to be executed.
+  struct SafeWaiter {
+    SafeWaiter(AsyncValue* value, Waiter waiter)
+        : value(value), waiter(std::move(waiter)) {
+      value->AddRef();
+    }
+
+    SafeWaiter(SafeWaiter&& other) noexcept
+        : value(other.value), waiter(std::move(other.waiter)) {
+      other.value = nullptr;
+    }
+
+    SafeWaiter& operator=(SafeWaiter&& other) = delete;
+
+    ~SafeWaiter() {
+      if (value) {
+        value->DropRef();
+      }
+    }
+
+    void operator()() { std::move(waiter)(); }
+
+    AsyncValue* value;
+    Waiter waiter;
+  };
+
   // Clients generally want to use AndThen without them each having to check
   // to see if the value is present. Check for them, and immediately run the
   // waiter if it is already here.
@@ -1032,15 +1087,41 @@ void AsyncValue::AndThen(Executor& executor, Waiter&& waiter) {
   if (waiters_and_state.state() == State::kConcrete ||
       waiters_and_state.state() == State::kError) {
     DCHECK_EQ(waiters_and_state.waiter(), nullptr);
-    executor.Execute(std::forward<Waiter>(waiter));
+    executor.Execute(SafeWaiter(this, std::forward<Waiter>(waiter)));
     return;
   }
 
   EnqueueWaiter(
-      [&executor, waiter = std::forward<Waiter>(waiter)] {
+      [&executor,
+       waiter = SafeWaiter(this, std::forward<Waiter>(waiter))]() mutable {
         executor.Execute(std::move(waiter));
       },
       waiters_and_state);
+}
+
+inline void AsyncValue::NotifyAvailable(State available_state) {
+  DCHECK((kind() == Kind::kConcrete || kind() == Kind::kIndirect))
+      << "Should only be used by ConcreteAsyncValue or IndirectAsyncValue";
+
+  DCHECK(available_state == State::kConcrete ||
+         available_state == State::kError);
+
+  // Mark the value as available, ensuring that new queries for the state see
+  // the value that got filled in.
+  auto waiters_and_state = waiters_and_state_.exchange(
+      WaitersAndState(nullptr, available_state), std::memory_order_acq_rel);
+  DCHECK(waiters_and_state.state() == State::kUnconstructed ||
+         waiters_and_state.state() == State::kConstructed);
+
+  RunWaiters(waiters_and_state.waiter());
+}
+
+inline void AsyncValue::RunWaiters(WaiterListNode* list) {
+  while (ABSL_PREDICT_FALSE(list)) {
+    WaiterListNode* node = list;
+    list = node->next;
+    node->RunWaiterAndDeleteWaiterNode();
+  }
 }
 
 inline void AsyncValue::Destroy() {
@@ -1075,7 +1156,7 @@ inline void AsyncValue::Destroy() {
 
 inline bool AsyncValue::IsUnique() const {
   if (kind() != Kind::kIndirect) {
-    return refcount_.load(std::memory_order_acquire) == 1;
+    return NumRef() == 1;
   }
 
   // If it is an IndirectAsyncValue, we also need to check the refcount of the

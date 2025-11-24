@@ -1,4 +1,6 @@
 load("@bazel_skylib//lib:selects.bzl", "selects")
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
+load("@rules_cc//cc:cc_test.bzl", "cc_test")
 load("//tensorflow:tensorflow.bzl", "transitive_hdrs")
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 load("//tensorflow/lite:build_def.bzl", "tflite_copts")
@@ -188,7 +190,6 @@ cc_library(
 cc_library(
     name = "optimized_base",
     hdrs = [
-        "optimized/batch_matmul.h",
         "optimized/depthwiseconv_3x3_filter_common.h",
         "optimized/depthwiseconv_float.h",
         "optimized/depthwiseconv_multithread.h",
@@ -817,7 +818,7 @@ cc_library(
         ":common",
         ":compatibility",
         ":cppmath",
-        "@gemmlowp",
+        "@gemmlowp//:fixedpoint",
     ],
 )
 

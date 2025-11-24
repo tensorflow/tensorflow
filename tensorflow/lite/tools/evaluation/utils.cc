@@ -237,9 +237,6 @@ TfLiteDelegatePtr CreateXNNPACKDelegate(
   if (xnnpack_options->flags & TFLITE_XNNPACK_DELEGATE_FLAG_FORCE_FP16) {
     TFLITE_LOG(INFO) << "XNNPack FP16 inference enabled.";
   }
-  if (xnnpack_options->flags & TFLITE_XNNPACK_DELEGATE_FLAG_ENABLE_SLINKY) {
-    TFLITE_LOG(INFO) << "XNNPack Slinky enabled.";
-  }
   xnnpack_settings_builder.fbb_.AddElement<int32_t>(
       XNNPackSettings::VT_FLAGS, static_cast<int32_t>(xnnpack_options->flags),
       0);

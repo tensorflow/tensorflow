@@ -432,16 +432,16 @@ TEST_F(HloDomainTest, CheckNoDomainAddedOnPureIOComputation) {
 HloModule Module
 
 ENTRY entry {
-  token0 = token[] after-all(), sharding={maximal device=-1}
+  token0 = token[] after-all(), sharding={maximal device=1}
   a = (f32[4], u32[], token[]) recv(token0), channel_id=1,
-        sharding={{maximal device=-1},{maximal device=-1},{maximal device=-1}}
+        sharding={{maximal device=1},{maximal device=1},{maximal device=1}}
   b = (f32[4], token[]) recv-done(a), channel_id=1,
-        sharding={{maximal device=-1},{maximal device=-1}}
-  b_element = f32[4] get-tuple-element(b), index=0, sharding={maximal device=-1}
-  c = f32[4] add(b_element, b_element), sharding={maximal device=-1}
+        sharding={{maximal device=1},{maximal device=1}}
+  b_element = f32[4] get-tuple-element(b), index=0, sharding={maximal device=1}
+  c = f32[4] add(b_element, b_element), sharding={maximal device=1}
   d = (f32[4], u32[], token[]) send(c, token0), channel_id=2,
-        sharding={{maximal device=-1},{maximal device=-1},{maximal device=-1}}
-  ROOT e = token[] send-done(d), channel_id=2, sharding={maximal device=-1}
+        sharding={{maximal device=1},{maximal device=1},{maximal device=1}}
+  ROOT e = token[] send-done(d), channel_id=2, sharding={maximal device=1}
 }
 )";
 

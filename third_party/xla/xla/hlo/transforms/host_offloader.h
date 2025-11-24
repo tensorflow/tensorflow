@@ -16,8 +16,6 @@
 #define XLA_HLO_TRANSFORMS_HOST_OFFLOADER_H_
 
 #include <cstdint>
-#include <memory>
-#include <string>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
@@ -25,10 +23,9 @@
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "xla/hlo/analysis/hlo_alias_analysis.h"
+#include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
-#include "xla/service/hlo_buffer.h"
 #include "xla/service/host_offload_utils.h"
 
 namespace xla {
@@ -59,13 +56,17 @@ class HloCostAnalysis;
 // pass.
 class HostOffloader : public HloModulePass {
  public:
-  HostOffloader() = default;
+  explicit HostOffloader(const AliasInfo* alias_info)
+      : alias_info_(alias_info) {}
   ~HostOffloader() override = default;
 
   absl::string_view name() const override { return "host-offloader"; }
 
-  using HloPassInterface::Run;
-  absl::StatusOr<bool> Run(
+ protected:
+  virtual absl::StatusOr<std::vector<int64_t>>
+  GetPallasCustomCallOutputMemorySpaces(HloInstruction* instruction) const;
+
+  absl::StatusOr<bool> RunImpl(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
@@ -83,6 +84,7 @@ class HostOffloader : public HloModulePass {
   absl::flat_hash_set<HloInstruction*> move_to_device_custom_calls_to_remove_;
   absl::flat_hash_set<host_offload_utils::InstructionAndShapeIndex>
       already_inserted_copy_before_;
+  const AliasInfo* alias_info_;
 
   // DynamicUpdateSlices are a bit special because they are the only op which
   // has multiple operands that host memory offloading supports. As a result,
@@ -118,6 +120,14 @@ class HostOffloader : public HloModulePass {
   // Walks down the graph and does "host memory offloading" starting from every
   // host memory parameter in the entry computation.
   absl::StatusOr<bool> HandleInputStreaming(HloComputation* entry_computation);
+
+  // If a Pallas kernel has an output in host memory space, we will set the
+  // output to host memory space and walk down the graph setting all users to
+  // host memory space. Returns true if the module was changed.
+  absl::StatusOr<bool> HandlePallasKernels(HloModule* module);
+
+  // Handles a single Pallas kernel.
+  absl::StatusOr<bool> HandlePallasKernel(HloInstruction* instruction);
 
   // Walks down the graph and does "host memory offloading" starting from every
   // MoveToHost custom call.

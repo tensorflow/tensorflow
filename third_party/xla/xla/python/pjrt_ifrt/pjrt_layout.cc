@@ -101,8 +101,8 @@ absl::StatusOr<absl_nonnull std::shared_ptr<const xla::PjRtLayout>>
 ToPjRtLayout(DType dtype, const Shape& shard_shape, Device* device,
              MemoryKind memory_kind, const LayoutRef& layout) {
   if (layout == nullptr) {
-    return device->client()->GetDefaultLayout(dtype, shard_shape.dims(), device,
-                                              memory_kind);
+    return device->client()->GetDefaultPjRtLayout(dtype, shard_shape.dims(),
+                                                  device, memory_kind);
   }
   return ToPjRtLayout(dtype, shard_shape, layout);
 }

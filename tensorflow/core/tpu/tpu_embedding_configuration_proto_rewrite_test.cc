@@ -174,7 +174,7 @@ TEST(TPUEmbeddingConfigurationProtoRewriteTest, InvalidBatchSizeOrNumFeatures) {
     invalid_config.clear_batch_size_per_tensor_core();
     EXPECT_THAT(
         PopulateMissingFieldsInTPUEmbeddingConfig(&invalid_config),
-        tensorflow::testing::StatusIs(
+        absl_testing::StatusIs(
             absl::StatusCode::kInvalidArgument,
             ::testing::HasSubstr("Invalid batch_size_per_tensor_core")));
   }
@@ -182,16 +182,16 @@ TEST(TPUEmbeddingConfigurationProtoRewriteTest, InvalidBatchSizeOrNumFeatures) {
     tpu::TPUEmbeddingConfiguration invalid_config = tpu_embedding_config;
     invalid_config.clear_feature_descriptor();
     invalid_config.mutable_table_descriptor(0)->clear_num_features();
-    EXPECT_THAT(PopulateMissingFieldsInTPUEmbeddingConfig(&invalid_config),
-                tensorflow::testing::StatusIs(
-                    absl::StatusCode::kInvalidArgument,
-                    ::testing::HasSubstr("Invalid num_features")));
+    EXPECT_THAT(
+        PopulateMissingFieldsInTPUEmbeddingConfig(&invalid_config),
+        absl_testing::StatusIs(absl::StatusCode::kInvalidArgument,
+                               ::testing::HasSubstr("Invalid num_features")));
   }
   {
     tpu::TPUEmbeddingConfiguration invalid_config = tpu_embedding_config;
     EXPECT_THAT(
         PopulateMissingFieldsInTPUEmbeddingConfig(&invalid_config),
-        tensorflow::testing::StatusIs(
+        absl_testing::StatusIs(
             absl::StatusCode::kInvalidArgument,
             ::testing::HasSubstr(
                 "The batch_size_per_tensor_core field must NOT be populated")));
@@ -200,7 +200,7 @@ TEST(TPUEmbeddingConfigurationProtoRewriteTest, InvalidBatchSizeOrNumFeatures) {
     tpu::TPUEmbeddingConfiguration invalid_config = tpu_embedding_config;
     invalid_config.clear_batch_size_per_tensor_core();
     EXPECT_THAT(PopulateMissingFieldsInTPUEmbeddingConfig(&invalid_config),
-                tensorflow::testing::StatusIs(
+                absl_testing::StatusIs(
                     absl::StatusCode::kInvalidArgument,
                     ::testing::HasSubstr("The TableDescriptor.num_features "
                                          "field must NOT be populated")));
@@ -247,17 +247,17 @@ TEST(TPUEmbeddingConfigurationProtoRewriteTest, InvalidFeatureDescriptor) {
   {
     tpu::TPUEmbeddingConfiguration invalid_config = tpu_embedding_config;
     invalid_config.mutable_feature_descriptor(0)->set_table_id(2);
-    EXPECT_THAT(PopulateMissingFieldsInTPUEmbeddingConfig(&invalid_config),
-                tensorflow::testing::StatusIs(
-                    absl::StatusCode::kInvalidArgument,
-                    ::testing::HasSubstr("Invalid table_id")));
+    EXPECT_THAT(
+        PopulateMissingFieldsInTPUEmbeddingConfig(&invalid_config),
+        absl_testing::StatusIs(absl::StatusCode::kInvalidArgument,
+                               ::testing::HasSubstr("Invalid table_id")));
   }
   {
     tpu::TPUEmbeddingConfiguration invalid_config = tpu_embedding_config;
     invalid_config.mutable_feature_descriptor(0)->clear_input_shape();
     EXPECT_THAT(
         PopulateMissingFieldsInTPUEmbeddingConfig(&invalid_config),
-        tensorflow::testing::StatusIs(
+        absl_testing::StatusIs(
             absl::StatusCode::kInvalidArgument,
             ::testing::HasSubstr("The input_shape field cannot be empty")));
   }
@@ -266,7 +266,7 @@ TEST(TPUEmbeddingConfigurationProtoRewriteTest, InvalidFeatureDescriptor) {
     invalid_config.mutable_feature_descriptor(0)->set_input_shape(0, -5);
     EXPECT_THAT(
         PopulateMissingFieldsInTPUEmbeddingConfig(&invalid_config),
-        tensorflow::testing::StatusIs(
+        absl_testing::StatusIs(
             absl::StatusCode::kInvalidArgument,
             ::testing::HasSubstr("The input_shape dimension sizes must all")));
   }
@@ -274,7 +274,7 @@ TEST(TPUEmbeddingConfigurationProtoRewriteTest, InvalidFeatureDescriptor) {
     tpu::TPUEmbeddingConfiguration invalid_config = tpu_embedding_config;
     invalid_config.mutable_feature_descriptor(1)->set_table_id(0);
     EXPECT_THAT(PopulateMissingFieldsInTPUEmbeddingConfig(&invalid_config),
-                tensorflow::testing::StatusIs(
+                absl_testing::StatusIs(
                     absl::StatusCode::kInvalidArgument,
                     ::testing::HasSubstr(
                         "No feature_descriptor fields found for table: T1")));

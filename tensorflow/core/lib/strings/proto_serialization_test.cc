@@ -15,9 +15,9 @@ limitations under the License.
 
 #include "tensorflow/core/lib/strings/proto_serialization.h"
 
+#include <cstddef>
 #include <string>
 
-#include "absl/memory/memory.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
@@ -32,8 +32,8 @@ GraphDef MakeGraphDef(int num_nodes) {
   GraphDef graph_def;
   for (int i = 0; i < num_nodes; ++i) {
     NodeDef* node = graph_def.add_node();
-    node->set_name(strings::StrCat("node", i));
-    node->set_op(strings::StrCat("op", i % 10));
+    node->set_name(absl::StrCat("node", i));
+    node->set_op(absl::StrCat("op", i % 10));
     (*node->mutable_attr())["foo"].set_f(3.14f);
     (*node->mutable_attr())["bar"].set_s("baz");
   }

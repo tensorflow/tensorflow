@@ -18,6 +18,8 @@ limitations under the License.
 
 #include <algorithm>  // NOLINT
 
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -1256,7 +1258,7 @@ class SparseApplyAdadeltaOp : public OpKernel {
 
     for (int d = 1; d < var.dims(); d++) {
       OP_REQUIRES(ctx, var.dim_size(d) == grad.dim_size(d),
-                  errors::InvalidArgument(strings::StrCat(
+                  errors::InvalidArgument(absl::StrCat(
                       "var and grad must match in dimension ", d)));
     }
     const Tindex N = indices.dim_size(0);
@@ -1465,7 +1467,7 @@ class SparseApplyProximalGradientDescentOp : public OpKernel {
     int64_t inner_dim = 1;
     for (int d = 1; d < var.dims(); d++) {
       OP_REQUIRES(ctx, var.dim_size(d) == grad.dim_size(d),
-                  errors::InvalidArgument(strings::StrCat(
+                  errors::InvalidArgument(absl::StrCat(
                       "var and grad must match in dimension ", d)));
       inner_dim *= grad.dim_size(d);
     }
@@ -1564,9 +1566,9 @@ class SparseApplyProximalGradientDescentOp : public OpKernel {
                               .TypeConstraint<Tindices>("Tindices"),          \
                           SparseApplyProximalGradientDescentOp<T, Tindices>);
 
-REGISTER_KERNELS(float, int32);
+REGISTER_KERNELS(float, int32_t);
 REGISTER_KERNELS(float, int64_t);
-REGISTER_KERNELS(double, int32);
+REGISTER_KERNELS(double, int32_t);
 REGISTER_KERNELS(double, int64_t);
 #undef REGISTER_KERNELS
 
@@ -1925,7 +1927,7 @@ class SparseApplyAdagradOp : public OpKernel {
     int64_t inner_dim = 1;
     for (int d = 1; d < var.dims(); d++) {
       OP_REQUIRES(ctx, var.dim_size(d) == grad.dim_size(d),
-                  errors::InvalidArgument(strings::StrCat(
+                  errors::InvalidArgument(absl::StrCat(
                       "var and grad must match in dimension ", d)));
       inner_dim *= grad.dim_size(d);
     }
@@ -2059,7 +2061,7 @@ class SparseApplyAdagradV2Op : public OpKernel {
     int64_t inner_dim = 1;
     for (int d = 1; d < var.dims(); d++) {
       OP_REQUIRES(ctx, var.dim_size(d) == grad.dim_size(d),
-                  errors::InvalidArgument(strings::StrCat(
+                  errors::InvalidArgument(absl::StrCat(
                       "var and grad must match in dimension ", d)));
       inner_dim *= grad.dim_size(d);
     }
@@ -2208,7 +2210,7 @@ class SparseApplyProximalAdagradOp : public OpKernel {
     int64_t inner_dim = 1;
     for (int d = 1; d < var.dims(); d++) {
       OP_REQUIRES(ctx, var.dim_size(d) == grad.dim_size(d),
-                  errors::InvalidArgument(strings::StrCat(
+                  errors::InvalidArgument(absl::StrCat(
                       "var and grad must match in dimension ", d)));
       inner_dim *= grad.dim_size(d);
     }
@@ -2250,9 +2252,9 @@ class SparseApplyProximalAdagradOp : public OpKernel {
           .TypeConstraint<Tindices>("Tindices"),             \
       SparseApplyProximalAdagradOp<D##Device, T, Tindices>);
 
-REGISTER_KERNELS(CPU, float, int32);
+REGISTER_KERNELS(CPU, float, int32_t);
 REGISTER_KERNELS(CPU, float, int64_t);
-REGISTER_KERNELS(CPU, double, int32);
+REGISTER_KERNELS(CPU, double, int32_t);
 REGISTER_KERNELS(CPU, double, int64_t);
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
@@ -2465,7 +2467,7 @@ class SparseApplyAdagradDAOp : public OpKernel {
     int64_t inner_dim = 1;
     for (int d = 1; d < var.dims(); d++) {
       OP_REQUIRES(ctx, var.dim_size(d) == grad.dim_size(d),
-                  errors::InvalidArgument(strings::StrCat(
+                  errors::InvalidArgument(absl::StrCat(
                       "var and grad must match in dimension ", d)));
       inner_dim *= grad.dim_size(d);
     }
@@ -2580,9 +2582,9 @@ class SparseApplyAdagradDAOp : public OpKernel {
                               .TypeConstraint<Tindices>("Tindices"),      \
                           SparseApplyAdagradDAOp<T, Tindices>);
 
-REGISTER_KERNELS(float, int32);
+REGISTER_KERNELS(float, int32_t);
 REGISTER_KERNELS(float, int64_t);
-REGISTER_KERNELS(double, int32);
+REGISTER_KERNELS(double, int32_t);
 REGISTER_KERNELS(double, int64_t);
 #undef REGISTER_KERNELS
 
@@ -2891,7 +2893,7 @@ class SparseApplyFtrlOp : public OpKernel {
     int64_t inner_dim = 1;
     for (int d = 1; d < var.dims(); d++) {
       OP_REQUIRES(ctx, var.dim_size(d) == grad.dim_size(d),
-                  errors::InvalidArgument(strings::StrCat(
+                  errors::InvalidArgument(absl::StrCat(
                       "var and grad must match in dimension ", d)));
       inner_dim *= grad.dim_size(d);
     }
@@ -3209,7 +3211,7 @@ class SparseApplyMomentumOp : public OpKernel {
 
     for (int d = 1; d < var.dims(); d++) {
       OP_REQUIRES(ctx, var.dim_size(d) == grad.dim_size(d),
-                  errors::InvalidArgument(strings::StrCat(
+                  errors::InvalidArgument(absl::StrCat(
                       "var and grad must match in dimension ", d)));
     }
     const Tindex N = indices.dim_size(0);
@@ -3428,7 +3430,7 @@ class SparseApplyKerasMomentumOp : public OpKernel {
 
     for (int d = 1; d < var.dims(); d++) {
       OP_REQUIRES(ctx, var.dim_size(d) == grad.dim_size(d),
-                  errors::InvalidArgument(strings::StrCat(
+                  errors::InvalidArgument(absl::StrCat(
                       "var and grad must match in dimension ", d)));
     }
     const Tindex N = indices.dim_size(0);
@@ -3450,9 +3452,9 @@ class SparseApplyKerasMomentumOp : public OpKernel {
         momentum.scalar<T>(), use_nesterov_);
     OP_REQUIRES(
         ctx, bad_i < 0,
-        errors::InvalidArgument(
+        absl::InvalidArgumentError(absl::StrCat(
             "indices", SliceDebugString(indices.shape(), bad_i), " = ",
-            indices_flat(bad_i), " is not in [0, ", var.dim_size(0), ")"));
+            indices_flat(bad_i), " is not in [0, ", var.dim_size(0), ")")));
 
     MaybeForwardRefInputToRefOutput(ctx, 0, 0);
   }
@@ -4463,15 +4465,15 @@ class SparseApplyCenteredRMSPropOp : public OpKernel {
                               .TypeConstraint<Tindices>("Tindices"),  \
                           SparseApplyCenteredRMSPropOp<T, Tindices>);
 
-REGISTER_KERNELS(Eigen::half, int32);
+REGISTER_KERNELS(Eigen::half, int32_t);
 REGISTER_KERNELS(Eigen::half, int64_t);
-REGISTER_KERNELS(float, int32);
+REGISTER_KERNELS(float, int32_t);
 REGISTER_KERNELS(float, int64_t);
-REGISTER_KERNELS(double, int32);
+REGISTER_KERNELS(double, int32_t);
 REGISTER_KERNELS(double, int64_t);
-REGISTER_KERNELS(complex64, int32);
+REGISTER_KERNELS(complex64, int32_t);
 REGISTER_KERNELS(complex64, int64_t);
-REGISTER_KERNELS(complex128, int32);
+REGISTER_KERNELS(complex128, int32_t);
 REGISTER_KERNELS(complex128, int64_t);
 
 #undef REGISTER_KERNELS

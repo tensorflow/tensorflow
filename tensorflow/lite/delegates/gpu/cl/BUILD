@@ -1,4 +1,6 @@
 load("@flatbuffers//:build_defs.bzl", "flatbuffer_cc_library")
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
+load("@rules_cc//cc:cc_test.bzl", "cc_test")
 load("//tensorflow:tensorflow.bzl", "if_google", "workspace_root")
 load(
     "//tensorflow/core/platform:build_config_root.bzl",
@@ -482,8 +484,9 @@ cc_library(
     hdrs = ["opencl_wrapper.h"],
     linkopts = select({
         "//tensorflow:android": ["-lm"],
-        "//conditions:default": [],
-    }) + ["-ldl"],  # opencl_wrapper calls dlopen()
+        "//tensorflow:windows": [],  # Windows does not support dlopen().
+        "//conditions:default": ["-ldl"],  # opencl_wrapper calls dlopen()
+    }),
     local_defines = select({
         # copybara:uncomment_begin(google-only)
         # "//tools/cc_target_os:linux-google": ["__LINUX_GOOGLE__"],

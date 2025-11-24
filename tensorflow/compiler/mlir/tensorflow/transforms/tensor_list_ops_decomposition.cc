@@ -137,8 +137,8 @@ AddTensorListSizesToTerminator(
                                        it->getSecond().fixed);
     new_outputs.push_back(it->getSecond().size);
   }
-  OpBuilder(old_terminator)
-      .create<TerminatorOp>(old_terminator->getLoc(), new_outputs);
+  OpBuilder builder(old_terminator);
+  TerminatorOp::create(builder, old_terminator->getLoc(), new_outputs);
   old_terminator->erase();
   return output_buffer_to_size;
 }
@@ -202,9 +202,9 @@ LogicalResult HandleWhileOp(
     if (it == buffer_to_size->end()) continue;
     new_while_operands.push_back(it->getSecond().size);
   }
-  auto new_while = builder.create<TF::WhileOp>(
-      while_op.getLoc(), body.getFunctionType().getInputs(), new_while_operands,
-      while_op->getAttrs());
+  auto new_while = TF::WhileOp::create(
+      builder, while_op.getLoc(), body.getFunctionType().getInputs(),
+      new_while_operands, while_op->getAttrs());
   for (const auto& entry : output_buffer_to_size) {
     (*buffer_to_size)[new_while.getResult(std::get<0>(entry))] = {
         new_while.getResult(std::get<1>(entry)), std::get<2>(entry)};
@@ -262,9 +262,10 @@ LogicalResult HandleCaseOrIfOp(
     new_operands.push_back(it->getSecond().size);
   }
   func::FuncOp first_branch = branches.front();
-  auto new_op = OpBuilder(op).create<CaseOrIfOp>(
-      op.getLoc(), first_branch.getFunctionType().getResults(), new_operands,
-      op->getAttrs());
+  builder.setInsertionPoint(op);
+  auto new_op = CaseOrIfOp::create(builder, op.getLoc(),
+                                   first_branch.getFunctionType().getResults(),
+                                   new_operands, op->getAttrs());
   for (const auto& entry : output_buffer_to_size) {
     (*buffer_to_size)[new_op.getResult(std::get<0>(entry))] = {
         new_op.getResult(std::get<1>(entry)), std::get<2>(entry)};
@@ -324,8 +325,9 @@ LogicalResult HandleWhileRegionOp(
     if (it == buffer_to_size->end()) continue;
     new_while_operands.push_back(it->getSecond().size);
   }
-  auto new_while = builder.create<TF::WhileRegionOp>(
-      while_op.getLoc(), body_region.front().getTerminator()->getOperandTypes(),
+  auto new_while = TF::WhileRegionOp::create(
+      builder, while_op.getLoc(),
+      body_region.front().getTerminator()->getOperandTypes(),
       new_while_operands, while_op->getAttrs());
   new_while.getBody().takeBody(body_region);
   new_while.getCond().takeBody(cond_region);
@@ -364,8 +366,10 @@ LogicalResult HandleIfRegionOp(
   if (output_buffer_to_size.empty()) return success();
 
   // Recreate the op.
-  auto new_op = OpBuilder(if_op).create<TF::IfRegionOp>(
-      if_op.getLoc(), then_branch.front().getTerminator()->getOperandTypes(),
+  OpBuilder builder(if_op);
+  auto new_op = TF::IfRegionOp::create(
+      builder, if_op.getLoc(),
+      then_branch.front().getTerminator()->getOperandTypes(),
       if_op.getOperand(), if_op->getAttrs());
   for (const auto& entry : output_buffer_to_size) {
     (*buffer_to_size)[new_op.getResult(std::get<0>(entry))] = {
@@ -409,8 +413,9 @@ LogicalResult HandleCaseRegionOp(
   if (output_buffer_to_size.empty()) return success();
 
   // Recreate the op.
-  auto new_op = OpBuilder(case_op).create<TF::CaseRegionOp>(
-      case_op.getLoc(),
+  OpBuilder builder(case_op);
+  auto new_op = TF::CaseRegionOp::create(
+      builder, case_op.getLoc(),
       first_branch->front().getTerminator()->getOperandTypes(),
       case_op.getOperand(), case_op->getAttrs(), case_op.getNumRegions());
   for (const auto& entry : output_buffer_to_size) {
@@ -451,9 +456,10 @@ LogicalResult HandlePartitionedCallOp(
       new_operands.push_back(it->getSecond().size);
     }
     OpBuilder builder(call);
-    auto new_call = builder.create<CallOp>(
-        call.getLoc(), info.decomposed_callee.getFunctionType().getResults(),
-        new_operands, call->getAttrs());
+    auto new_call =
+        CallOp::create(builder, call.getLoc(),
+                       info.decomposed_callee.getFunctionType().getResults(),
+                       new_operands, call->getAttrs());
     new_call->setAttr(
         "f", SymbolRefAttr::get(
                  builder.getContext(),
@@ -619,8 +625,8 @@ LogicalResult HandleTensorListFromTensorOp(
     TF::TensorListFromTensorOp list,
     llvm::SmallDenseMap<Value, SizeInfo>* buffer_to_size) {
   OpBuilder builder(list);
-  Value buffer = builder.create<TF::IdentityOp>(
-      list.getLoc(), ArrayRef<Type>{list.getTensor().getType()},
+  Value buffer = TF::IdentityOp::create(
+      builder, list.getLoc(), ArrayRef<Type>{list.getTensor().getType()},
       ArrayRef<Value>{list.getTensor()});
   auto type = mlir::cast<TensorType>(buffer.getType());
   if (!type.hasStaticShape()) {
@@ -649,8 +655,8 @@ LogicalResult HandleTensorListPushBackOp(
   OpBuilder builder(push);
   auto new_buffer =
       cutil::SetElement(size, buffer, push.getTensor(), builder, push.getLoc());
-  auto new_size = builder.create<TF::AddV2Op>(
-      push.getLoc(), ArrayRef<Type>{size.getType()},
+  auto new_size = TF::AddV2Op::create(
+      builder, push.getLoc(), ArrayRef<Type>{size.getType()},
       ArrayRef<Value>{size, cutil::GetR1Const({1LL}, builder, push.getLoc())});
   push.getOutputHandle().replaceAllUsesWith(new_buffer);
   (*buffer_to_size)[new_buffer] = {new_size, /*fixed=*/false};
@@ -672,10 +678,11 @@ LogicalResult HandleTensorListPopBackOp(
   }
   auto size = it->getSecond().size;
   OpBuilder builder(pop);
-  auto new_buffer = builder.create<TF::IdentityOp>(
-      pop.getLoc(), ArrayRef<Type>{buffer.getType()}, ArrayRef<Value>{buffer});
-  auto new_size = builder.create<TF::SubOp>(
-      pop.getLoc(), ArrayRef<Type>{size.getType()},
+  auto new_buffer = TF::IdentityOp::create(builder, pop.getLoc(),
+                                           ArrayRef<Type>{buffer.getType()},
+                                           ArrayRef<Value>{buffer});
+  auto new_size = TF::SubOp::create(
+      builder, pop.getLoc(), ArrayRef<Type>{size.getType()},
       ArrayRef<Value>{size, cutil::GetR1Const({1LL}, builder, pop.getLoc())});
   auto element = cutil::GetElement(new_size, new_buffer, builder, pop.getLoc());
   pop.getOutputHandle().replaceAllUsesWith(new_buffer);
@@ -743,8 +750,8 @@ LogicalResult HandleTensorListLengthOp(
   } else {
     auto current_size = it->getSecond().size;
     // Reshapes the R1 length to a scalar.
-    auto reshape = builder.create<TF::ReshapeOp>(
-        length.getLoc(),
+    auto reshape = TF::ReshapeOp::create(
+        builder, length.getLoc(),
         ArrayRef<Type>{RankedTensorType::get(
             {}, getElementTypeOrSelf(current_size.getType()))},
         ArrayRef<Value>{current_size,
@@ -799,14 +806,14 @@ LogicalResult HandleTensorListScatterIntoExistingListOp(
       mlir::cast<RankedTensorType>(scatter.getIndices().getType());
   if (!indices_type) return scatter.emitOpError("unranked indices shape");
   auto shape_type = RankedTensorType::get({2}, builder.getIntegerType(32));
-  auto shape = builder.create<TF::ConstOp>(
-      scatter.getLoc(),
+  auto shape = TF::ConstOp::create(
+      builder, scatter.getLoc(),
       DenseElementsAttr::get(
           shape_type, {static_cast<int>(indices_type.getDimSize(0)), 1}));
-  auto indices = builder.create<TF::ReshapeOp>(scatter.getLoc(),
-                                               scatter.getIndices(), shape);
-  Value tensor_scatter_update = builder.create<TF::TensorScatterUpdateOp>(
-      scatter.getLoc(), buffer, indices, scatter.getTensor());
+  auto indices = TF::ReshapeOp::create(builder, scatter.getLoc(),
+                                       scatter.getIndices(), shape);
+  Value tensor_scatter_update = TF::TensorScatterUpdateOp::create(
+      builder, scatter.getLoc(), buffer, indices, scatter.getTensor());
   scatter.getOutputHandle().replaceAllUsesWith(tensor_scatter_update);
   scatter.erase();
   auto size = it->getSecond();

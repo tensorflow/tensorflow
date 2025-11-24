@@ -37,8 +37,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/ifrt/ifrt_types.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
-#include "xla/pjrt/gpu/se_gpu_pjrt_client.h"
-#include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/plugin/xla_cpu/cpu_topology_description.h"
 #include "xla/python/ifrt/client.h"
@@ -47,6 +45,7 @@ limitations under the License.
 #include "xla/python/pjrt_ifrt/pjrt_topology.h"
 #include "xla/service/computation_placer.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/statusor.h"
 #include "tensorflow/core/platform/resource_loader.h"
 #include "tensorflow/core/platform/test.h"
 #include "tsl/platform/protobuf.h"
@@ -57,7 +56,6 @@ namespace {
 using ::testing::Eq;
 using ::testing::HasSubstr;
 using ::testing::Ne;
-using tsl::testing::StatusIs;
 
 // TODO(b/229726259): Make EqualsProto available in OSS
 class ProtoStringMatcher {
@@ -192,13 +190,24 @@ TEST_F(Tf2HloTest, Tuple) {
   TF_ASSERT_OK(result.status());
 }
 
+struct SpmdTestCase {
+  std::string test_name;
+  std::string mlir_file;
+  std::string expected_metadata;
+};
+
 // Spmd and device assignment is given
-TEST_F(Tf2HloTest, Spmd) {
+class Tf2HloSpmdTest : public Tf2HloTest,
+                       public ::testing::WithParamInterface<SpmdTestCase> {};
+
+TEST_P(Tf2HloSpmdTest, SpmdTest) {
+  const SpmdTestCase& test_case = GetParam();
+
   // Create test input module
   constexpr absl::string_view kDataDirectory =
       "tensorflow/compiler/mlir/tfrt/transforms/ifrt/testdata";
   std::string mlir_module_path = tensorflow::GetDataDependencyFilepath(
-      absl::StrCat(kDataDirectory, "/tf2hlo_spmd_with_device_assignment.mlir"));
+      absl::StrCat(kDataDirectory, "/", test_case.mlir_file));
 
   mlir::OwningOpRef<mlir::ModuleOp> mlir_module =
       mlir::parseSourceFile<mlir::ModuleOp>(mlir_module_path, context_.get());
@@ -243,39 +252,78 @@ TEST_F(Tf2HloTest, Spmd) {
 
   tensorflow::tpu::TPUCompileMetadataProto expected_compile_metadata;
   ASSERT_TRUE(tsl::protobuf::TextFormat::ParseFromString(
-      R"pb(
-        args {
-          dtype: DT_FLOAT
-          shape {
-            dim { size: 4 }
-            dim { size: 64 }
-          }
-          kind: PARAMETER
-          sharding {
-            type: OTHER
-            tile_assignment_dimensions: 2
-            tile_assignment_dimensions: 1
-            tile_assignment_devices: 0
-            tile_assignment_devices: 1
-          }
-          is_bounded_dynamic_dim: false
-        }
-        retvals { sharding {} }
-        num_replicas: 1
-        num_cores_per_replica: 2
-        device_assignment {
-          replica_count: 1
-          computation_count: 2
-          computation_devices { replica_device_ids: 0 }
-          computation_devices { replica_device_ids: 1 }
-        }
-        use_spmd_for_xla_partitioning: true
-        compile_options {}
-      )pb",
-      &expected_compile_metadata));
+      test_case.expected_metadata, &expected_compile_metadata));
 
   EXPECT_THAT(result->compile_metadata, EqualsProto(expected_compile_metadata));
 }
+INSTANTIATE_TEST_SUITE_P(
+    SpmdTests, Tf2HloSpmdTest,
+    ::testing::ValuesIn<SpmdTestCase>({
+        {"SpmdWithDeviceAssignment", "tf2hlo_spmd_with_device_assignment.mlir",
+         R"pb(
+           args {
+             dtype: DT_FLOAT
+             shape {
+               dim { size: 4 }
+               dim { size: 64 }
+             }
+             kind: PARAMETER
+             sharding {
+               type: OTHER
+               tile_assignment_dimensions: 2
+               tile_assignment_dimensions: 1
+               tile_assignment_devices: 0
+               tile_assignment_devices: 1
+             }
+             is_bounded_dynamic_dim: false
+           }
+           retvals { sharding {} }
+           num_replicas: 1
+           num_cores_per_replica: 2
+           device_assignment {
+             replica_count: 1
+             computation_count: 2
+             computation_devices { replica_device_ids: 0 }
+             computation_devices { replica_device_ids: 1 }
+           }
+           use_spmd_for_xla_partitioning: true
+           compile_options {}
+         )pb"},
+        {"SpmdShardy", "tf2hlo_spmd_shardy.mlir",
+         R"pb(
+           args {
+             dtype: DT_FLOAT
+             shape {
+               dim { size: 4 }
+               dim { size: 64 }
+             }
+             kind: PARAMETER
+             sharding {
+               type: OTHER
+               tile_assignment_dimensions: 2
+               tile_assignment_dimensions: 1
+               iota_reshape_dims: 2
+               iota_transpose_perm: 0
+             }
+             is_bounded_dynamic_dim: false
+           }
+           retvals { sharding {} }
+           num_replicas: 1
+           num_cores_per_replica: 2
+           device_assignment {
+             replica_count: 1
+             computation_count: 2
+             computation_devices { replica_device_ids: 0 }
+             computation_devices { replica_device_ids: 1 }
+           }
+           use_spmd_for_xla_partitioning: true
+           use_shardy_partitioner: true
+           compile_options {}
+         )pb"},
+    }),
+    [](const ::testing::TestParamInfo<Tf2HloSpmdTest::ParamType>& info) {
+      return info.param.test_name;
+    });
 
 // Spmd and use default device assignment b/c no device assignment is given
 TEST_F(Tf2HloTest, UsingDefaultDeviceAssignment) {
@@ -483,9 +531,7 @@ TEST_F(Tf2HloTest, GpuCompile) {
       .entry_function_name = "main",
       .compile_metadata = compile_metadata,
       .shape_representation_fn = tensorflow::IdentityShapeRepresentationFn(),
-      .topology = std::make_shared<xla::ifrt::PjRtTopology>(
-          std::make_shared<xla::StreamExecutorGpuTopologyDescription>(
-              xla::CudaId(), xla::CudaName(), /*gpu_topology=*/nullptr)),
+      .topology = nullptr,
       .platform_name = xla::CudaName(),
   };
 
@@ -495,8 +541,9 @@ TEST_F(Tf2HloTest, GpuCompile) {
   EXPECT_OK(result);
 #else
   LOG(INFO) << "Non-GPU compile failure";
-  EXPECT_THAT(result, StatusIs(absl::StatusCode::kUnimplemented,
-                               HasSubstr("CUDA or ROCM build required")));
+  EXPECT_THAT(result,
+              absl_testing::StatusIs(absl::StatusCode::kUnimplemented,
+                                     HasSubstr("CUDA or ROCM build required")));
 #endif
 }
 

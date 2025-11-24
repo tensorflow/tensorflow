@@ -17,6 +17,7 @@ limitations under the License.
 #include <optional>
 #include <vector>
 
+#include "tensorflow/compiler/tf2xla/sharding_util.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "xla/hlo/builder/xla_builder.h"
@@ -51,12 +52,16 @@ class ShardingOp : public XlaOpKernel {
     auto shape_or = ctx->builder()->GetShape(input);
     OP_REQUIRES_OK(ctx, shape_or.status());
 
-    ctx->SetOutput(
-        0, xla::CustomCall(
-               ctx->builder(), /*call_target_name=*/"Sharding", {input},
-               shape_or.value(),
-               /*opaque=*/
-               xla::sharding_op_util::EncodeAttributes(unspecified_dims_)));
+    xla::XlaOp output = xla::CustomCall(
+        ctx->builder(), /*call_target_name=*/"Sharding", {input},
+        shape_or.value(),
+        /*opaque=*/
+        xla::sharding_op_util::EncodeAttributes(unspecified_dims_));
+    if (ctx->compiler()->options().use_shardy_partitioner) {
+      OP_REQUIRES_OK(ctx, addSdyShardingFrontendAttribute(
+                              ctx->builder(), output, shape_or.value()));
+    }
+    ctx->SetOutput(0, output);
   }
 
  private:

@@ -82,7 +82,10 @@ class HloHardwareIndependentTestBase : public ::testing::Test {
   explicit HloHardwareIndependentTestBase(
       bool verifier_layout_sensitive = false,
       bool allow_mixed_precision_in_hlo_verifier = true,
-      HloPredicate instruction_can_change_layout_func = {});
+      HloPredicate instruction_can_change_layout_func = {},
+      bool verify_no_collective_deadlocks = false);
+
+  explicit HloHardwareIndependentTestBase(HloVerifierOpts&& verifier_opts);
 
   // Creates a new HLO module for a test. The module created will have
   // TestName() for its name; it will also automatically populate its debug
@@ -141,13 +144,6 @@ class HloHardwareIndependentTestBase : public ::testing::Test {
     return RunHloPass(&hlo_pass, module);
   }
 
-  // Runs the hlo_pass with the provided module group and returns the result.
-  // This method runs the input HLO module group pass for a `HloModuleGroup` and
-  // it also verifies the module group remains unchanged when hlo_pass returns
-  // false as the absl::StatusOr value.
-  static absl::StatusOr<bool> RunHloPass(HloPassInterface&& hlo_pass,
-                                         HloModuleGroup* module_group);
-
   // Sets most fath math options to be enabled to model the fast math flags
   // generally used for CPU:AOT compilation.
   static void SetAotFastMathDebugOptions(DebugOptions* options);
@@ -172,13 +168,6 @@ class HloHardwareIndependentTestBase : public ::testing::Test {
       std::optional<absl::string_view> expected,
       std::function<void(HloModule*)> after_pass_checks = nullptr,
       const HloModuleConfig* config = nullptr) const;
-
-  // Runs pass `hlo_pass` on a group of input HLO modules `hlo_module_strs`,
-  // and FileChecks the result against `expected`.
-  void RunAndFilecheckHloModuleGroupRewrite(
-      absl::Span<const absl::string_view> hlo_module_strs,
-      HloPassInterface&& hlo_pass,
-      std::optional<absl::Span<const absl::string_view>> expected) const;
 
   using FixedMapping =
       std::initializer_list<std::pair<absl::string_view, absl::string_view>>;
@@ -211,7 +200,7 @@ class HloHardwareIndependentTestBase : public ::testing::Test {
   virtual DebugOptions GetDebugOptionsForTest() const;
 
   void TearDown() override {
-    absl::MutexLock ml(&device_assignment_mu_);
+    absl::MutexLock ml(device_assignment_mu_);
     default_device_assignment_.reset();
   }
   // Gets an HloModuleConfig with options appropriate for tests.
@@ -225,7 +214,7 @@ class HloHardwareIndependentTestBase : public ::testing::Test {
     if (device_assignment.has_value()) {
       config.set_static_device_assignment(*device_assignment);
     } else {
-      absl::MutexLock ml(&device_assignment_mu_);
+      absl::MutexLock ml(device_assignment_mu_);
       default_device_assignment_ = std::make_unique<DeviceAssignment>(
           GetDefaultDeviceAssignment(replica_count, num_partitions));
       config.set_static_device_assignment(*default_device_assignment_);
@@ -268,7 +257,6 @@ class HloHardwareIndependentTestBase : public ::testing::Test {
         ->Clear();
   }
 
-
   bool verifier_layout_sensitive() const { return verifier_layout_sensitive_; }
   void set_verifier_layout_sensitive(bool verifier_layout_sensitive) {
     verifier_layout_sensitive_ = verifier_layout_sensitive;
@@ -291,7 +279,8 @@ class HloHardwareIndependentTestBase : public ::testing::Test {
   }
 
   static std::string TestName() {
-    return ::testing::UnitTest::GetInstance()->current_test_info()->name();
+    auto* test_info = ::testing::UnitTest::GetInstance()->current_test_info();
+    return test_info ? test_info->name() : std::string("unknown_test_name");
   }
 
   // Updates the entry computation layout to match the program shape. Useful

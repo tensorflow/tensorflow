@@ -118,6 +118,7 @@ INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(CoshOp);
 INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(CrossOp);
 INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(DataFormatDimMapOp);
 INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(DataFormatVecPermuteOp);
+INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(DebugIdentityOp);
 INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(DigammaOp);
 INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(EluOp);
 INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(EluGradOp);
@@ -1359,7 +1360,7 @@ LogicalResult HoistCwiseBinaryOutOfConcat::matchAndRewrite(
       return failure();
 
     // All checks are passes, and we now prepare for rewrite.
-    auto identity_const = rewriter.create<TF::ConstOp>(loc, const_attr);
+    auto identity_const = TF::ConstOp::create(rewriter, loc, const_attr);
     for (const auto& kv : exceptions) {
       assert(!hoist_params->lhs_args[kv.second]);
       assert(!hoist_params->rhs_args[kv.second]);
@@ -1396,7 +1397,7 @@ LogicalResult HoistCwiseBinaryOutOfConcat::matchAndRewrite(
       assert(axis_type.getElementType().isInteger(64));
       attr = DenseIntElementsAttr::get(axis_type, axis);
     }
-    auto axis_const = rewriter.create<TF::ConstOp>(loc, attr);
+    auto axis_const = TF::ConstOp::create(rewriter, loc, attr);
 
     auto concat =
         CreateTfOp<ConcatV2Op>(rewriter, op, result_type, args, axis_const);
@@ -2060,8 +2061,8 @@ LogicalResult Conv2DBackpropFilterOp::UpdateDataFormat(StringRef data_format) {
 
   // Permute filter sizes operand.
   OpBuilder builder(getOperation());
-  auto filter_sizes_permuted = builder.create<TF::DataFormatVecPermuteOp>(
-      getLoc(), getFilterSizes(),
+  auto filter_sizes_permuted = TF::DataFormatVecPermuteOp::create(
+      builder, getLoc(), getFilterSizes(),
       StringAttr::get(getContext(), src_data_format),
       StringAttr::get(getContext(), data_format));
   setOperand(1, filter_sizes_permuted);
@@ -2135,8 +2136,9 @@ LogicalResult Conv2DBackpropInputOp::UpdateDataFormat(StringRef data_format) {
 
   // Permute input sizes operand.
   OpBuilder builder(getOperation());
-  auto input_sizes_permuted = builder.create<TF::DataFormatVecPermuteOp>(
-      getLoc(), getInputSizes(), StringAttr::get(getContext(), src_data_format),
+  auto input_sizes_permuted = TF::DataFormatVecPermuteOp::create(
+      builder, getLoc(), getInputSizes(),
+      StringAttr::get(getContext(), src_data_format),
       StringAttr::get(getContext(), data_format));
   setOperand(0, input_sizes_permuted);
 
@@ -3001,14 +3003,14 @@ void GeneratorDatasetRegionOp::getRegionInvocationBounds(
 }
 
 OperandRange GeneratorDatasetRegionOp::getEntrySuccessorOperands(
-    RegionBranchPoint point) {
+    RegionSuccessor successor) {
   auto end = this->getOperation()->operand_end();
-  if (point.isParent()) {
+  if (successor.isParent()) {
     // The op itself doesn't branch back to itself.
     return ::mlir::OperandRange(end, end);
-  } else if (point.getRegionOrNull() == &getInit()) {
+  } else if (successor.getSuccessor() == &getInit()) {
     return getInitFuncOtherArgs();
-  } else if (point.getRegionOrNull() == &getNext()) {
+  } else if (successor.getSuccessor() == &getNext()) {
     return getNextFuncOtherArgs();
   } else /* finalize region */ {
     return getFinalizeFuncOtherArgs();
@@ -3022,13 +3024,15 @@ void GeneratorDatasetRegionOp::getSuccessorRegions(
     // The op itself branches to `init` first.
     regions.push_back(
         RegionSuccessor(&getInit(), getInit().front().getArguments()));
-  } else if (point.getRegionOrNull() == &getInit()) {
+  } else if (point.getTerminatorPredecessorOrNull()->getParentRegion() ==
+             &getInit()) {
     // `init` branches to `next`, passing along the arguments given to `init`'s
     // yield. Said arguments precede the "other args".
     n = getInitFuncOtherArgs().size();
     regions.push_back(RegionSuccessor(
         &getNext(), getNext().front().getArguments().drop_back(n)));
-  } else if (point.getRegionOrNull() == &getNext()) {
+  } else if (point.getTerminatorPredecessorOrNull()->getParentRegion() ==
+             &getNext()) {
     // `next` branches to itself, or to `finalize`, passing all arguments given
     // to `next`s yield.
 
@@ -3043,7 +3047,8 @@ void GeneratorDatasetRegionOp::getSuccessorRegions(
         &getFinalize(), getFinalize().front().getArguments().slice(0, num)));
   } else {
     // `finalize` branches back to the op itself, not passing any arguments.
-    regions.push_back(RegionSuccessor());
+    regions.push_back(RegionSuccessor(
+        point.getTerminatorPredecessorOrNull()->getParentRegion()));
   }
 }
 
@@ -3229,8 +3234,8 @@ LogicalResult FoldConstantIfRegionOp::matchAndRewrite(
     Type result_type = std::get<0>(it);
     if (result_type != updated_result.getType()) {
       updated_result =
-          rewriter.create<TF::CastOp>(op.getLoc(), result_type, updated_result,
-                                      /*Truncate=*/rewriter.getBoolAttr(false));
+          TF::CastOp::create(rewriter, op.getLoc(), result_type, updated_result,
+                             /*Truncate=*/rewriter.getBoolAttr(false));
     }
   }
   // Inline the region into the block containing the IfRegion.
@@ -3259,11 +3264,12 @@ void IfRegionOp::getRegionInvocationBounds(
   invocationBounds.assign(2, {0, 1});
 }
 
-OperandRange IfRegionOp::getEntrySuccessorOperands(RegionBranchPoint point) {
+OperandRange IfRegionOp::getEntrySuccessorOperands(RegionSuccessor successor) {
   // IfRegionOp currently only allows one op (the condition), so there are no
   // remaining operands for the successor.
-  assert((point.isParent() ||
-          (point == (*this)->getRegion(0) || point == (*this)->getRegion(1))) &&
+  assert((successor.isParent() ||
+          (successor.getSuccessor() == &(*this)->getRegion(0) ||
+           successor.getSuccessor() == &(*this)->getRegion(1))) &&
          "Invalid IfRegionOp region index.");
   auto end = this->getOperation()->operand_end();
   return ::mlir::OperandRange(end, end);
@@ -3273,16 +3279,20 @@ void IfRegionOp::getSuccessorRegions(
     RegionBranchPoint point, SmallVectorImpl<RegionSuccessor>& regions) {
   if (!point.isParent()) {
     // The `then` and the `else` region branch back to the parent operation.
-    regions.push_back(RegionSuccessor(getResults()));
+    regions.push_back(
+        RegionSuccessor(point.getTerminatorPredecessorOrNull(), getResults()));
     return;
   } else {
     // The parent can branch to either `then` or `else`.
-    regions.push_back(RegionSuccessor(&getThenBranch()));
+    regions.push_back(
+        RegionSuccessor(&getThenBranch(), getThenBranch().getArguments()));
     Region* elseRegion = &this->getElseBranch();
     if (!elseRegion->empty())
-      regions.push_back(RegionSuccessor(elseRegion));
+      regions.push_back(
+          RegionSuccessor(elseRegion, elseRegion->getArguments()));
     else
-      regions.push_back(RegionSuccessor());
+      regions.push_back(RegionSuccessor(
+          point.getTerminatorPredecessorOrNull()->getParentRegion()));
   }
 }
 
@@ -3568,7 +3578,7 @@ LogicalResult MeanOp::FoldOperandsPermutation(ArrayRef<int64_t> permutation) {
       {static_cast<int64_t>(shuffled_reduction.size())},
       builder.getIntegerType(32));
   auto values = mlir::DenseIntElementsAttr::get(type, shuffled_reduction);
-  auto shuffled_reduction_op = builder.create<TF::ConstOp>(getLoc(), values);
+  auto shuffled_reduction_op = TF::ConstOp::create(builder, getLoc(), values);
 
   // Use new reduction indices.
   setOperand(1, shuffled_reduction_op);
@@ -3724,6 +3734,8 @@ LogicalResult BitcastOp::verify() {
 //===----------------------------------------------------------------------===//
 // TableGen'd op method definitions
 //===----------------------------------------------------------------------===//
+
+using namespace mlir;  // NOLINT
 
 #define GET_OP_CLASSES
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_a_m.cc.inc"

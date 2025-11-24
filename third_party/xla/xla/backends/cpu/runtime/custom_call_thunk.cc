@@ -60,7 +60,7 @@ limitations under the License.
 
 namespace xla::cpu {
 
-using AttributesMap = ffi::CallFrameBuilder::AttributesMap;
+using AttributesMap = ffi::AttributesMap;
 
 static absl::StatusOr<AttributesMap> ParseAttributes(
     absl::string_view backend_config) {
@@ -178,13 +178,18 @@ static absl::StatusOr<CustomCallThunk::CustomCallTarget> ToCustomCallTarget(
   switch (api_version) {
     case CustomCallApiVersion::API_VERSION_ORIGINAL:
 #ifdef PLATFORM_GOOGLE
-      LOG(FATAL)
+      return InvalidArgument(
+          "Custom call API version `API_VERSION_ORIGINAL` is not supported "
+          "by XLA:CPU. Prefer https://docs.jax.dev/en/latest/ffi.html. It "
+          "will be fully removed in November 2025. Custom call target: %s",
+          target_name);
 #else
       LOG(ERROR)
-#endif
           << "Custom call API version `API_VERSION_ORIGINAL` is not supported "
              "by XLA:CPU. Prefer https://docs.jax.dev/en/latest/ffi.html. It "
-             "will be fully removed in November 2025.";
+             "will be fully removed in November 2025. Custom call target: "
+          << target_name;
+#endif
 
       using v1_signature = void (*)(void* /*out*/, const void** /*in*/);
       return [target](void* out, const void** in, const char* opaque,
@@ -193,6 +198,22 @@ static absl::StatusOr<CustomCallThunk::CustomCallTarget> ToCustomCallTarget(
         fn(out, in);
       };
     case CustomCallApiVersion::API_VERSION_STATUS_RETURNING:
+#ifdef PLATFORM_GOOGLE
+      return InvalidArgument(
+          "Custom call API version `API_VERSION_STATUS_RETURNING` is not "
+          "supported by XLA:CPU. Prefer "
+          "https://docs.jax.dev/en/latest/ffi.html. It will be fully removed "
+          "in November 2025. Custom call target: %s",
+          target_name);
+#else
+      LOG(ERROR)
+          << "Custom call API version `API_VERSION_STATUS_RETURNING` is not "
+             "supported by XLA:CPU. Prefer "
+             "https://docs.jax.dev/en/latest/ffi.html. It will be fully "
+             "removed in November 2025. Custom call target: "
+          << target_name;
+#endif
+
       using v2_signature = void (*)(void* /*out*/, const void** /*in*/,
                                     XlaCustomCallStatus* /*status*/);
       return [target](void* out, const void** in, const char* opaque,
@@ -375,11 +396,13 @@ tsl::AsyncValueRef<Thunk::ExecuteEvent> CustomCallThunk::CallUntypedAPI(
 
 CustomCallThunk::BufferUses CustomCallThunk::buffer_uses() const {
   BufferUses buffer_uses;
-  for (const auto& argument : op_buffers_.arguments_buffers) {
-    buffer_uses.emplace_back(argument, BufferUse::kRead);
+  for (int i = 0; i < op_buffers_.arguments_buffers.size(); i++) {
+    buffer_uses.emplace_back(BufferUse::Read(op_buffers_.arguments_buffers[i],
+                                             op_buffers_.arguments_shapes[i]));
   }
-  for (const auto& result : op_buffers_.results_buffers) {
-    buffer_uses.emplace_back(result, BufferUse::kWrite);
+  for (int i = 0; i < op_buffers_.results_buffers.size(); i++) {
+    buffer_uses.emplace_back(BufferUse::Write(op_buffers_.results_buffers[i],
+                                              op_buffers_.results_shapes[i]));
   }
   return buffer_uses;
 }

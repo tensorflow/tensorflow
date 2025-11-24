@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "absl/status/statusor.h"
 #include "xla/backends/cpu/nanort/nanort_executable.h"
+#include "xla/client/executable_build_options.h"
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -42,7 +43,8 @@ using ::tsl::profiler::TraceMe;
 using ::tsl::profiler::TraceMeEncode;
 
 absl::StatusOr<std::unique_ptr<NanoRtExecutable>> NanoRtClient::Compile(
-    const XlaComputation& computation) {
+    const XlaComputation& computation,
+    const ExecutableBuildOptions& executable_build_options) {
   TraceMe trace([&] {
     return TraceMeEncode("NanoRtClient::Compile",
                          {{"computation", computation.name()}});
@@ -51,7 +53,7 @@ absl::StatusOr<std::unique_ptr<NanoRtExecutable>> NanoRtClient::Compile(
   TF_ASSIGN_OR_RETURN(ProgramShape program_shape,
                       computation.GetProgramShape());
 
-  HloModuleConfig hlo_module_config(program_shape);
+  HloModuleConfig hlo_module_config(program_shape, /*ignore_layouts=*/false);
   hlo_module_config.set_debug_options(GetDebugOptionsFromFlags());
 
   TF_ASSIGN_OR_RETURN(
@@ -61,14 +63,19 @@ absl::StatusOr<std::unique_ptr<NanoRtExecutable>> NanoRtClient::Compile(
   static constexpr char kBeforeOptimizationsDumpName[] = "before_optimizations";
   DumpHloModuleIfEnabled(*hlo_module, kBeforeOptimizationsDumpName);
 
-  // Use default XLA compiler options.
   Compiler::CompileOptions compile_options;
 
   // Run high-level XLA CPU compiler passes.
   cpu::CpuCompiler compiler;
-  TF_ASSIGN_OR_RETURN(hlo_module, compiler.RunHloPasses(std::move(hlo_module),
-                                                        /*stream_exec=*/nullptr,
-                                                        compile_options));
+  if (!executable_build_options.run_backend_only()) {
+    TF_ASSIGN_OR_RETURN(
+        hlo_module,
+        compiler.RunHloPasses(std::move(hlo_module),
+                              /*stream_exec=*/nullptr, compile_options));
+  }
+
+  auto optimized_hlo_program_shape =
+      hlo_module->entry_computation_layout().ComputeProgramShape();
 
   // Compile optimized HLO module to CPU executable.
   TF_ASSIGN_OR_RETURN(
@@ -76,7 +83,14 @@ absl::StatusOr<std::unique_ptr<NanoRtExecutable>> NanoRtClient::Compile(
       compiler.RunBackend(std::move(hlo_module), /*stream_exec=*/nullptr,
                           compile_options));
 
-  return NanoRtExecutable::Create(std::move(executable));
+  return NanoRtExecutable::Create(std::move(executable),
+                                  optimized_hlo_program_shape);
+}
+
+absl::StatusOr<std::unique_ptr<AotCompilationResult>> NanoRtClient::Export(
+    NanoRtExecutable* executable) {
+  cpu::CpuCompiler compiler;
+  return compiler.Export(executable->executable());
 }
 
 }  // namespace xla::cpu

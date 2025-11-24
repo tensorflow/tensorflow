@@ -404,3 +404,34 @@ module {
 // CHECK-SAME: xla.range = [0 : index, 5 : index]
 // CHECK-NEXT: arith.index_cast
 // CHECK-SAME: xla.range = [0 : index, 5 : index]
+
+// -----
+
+module {
+  func.func @maximumf(%arg0: f32, %arg1: f32) -> f32 {
+    %max = arith.maximumf %arg0, %arg1 : f32
+    return %max : f32
+  }
+}
+
+// COM: Check unchanged (fast_min_max default false)
+// CHECK-LABEL: @maximumf
+// CHECK-SAME: (%[[ARG0:.*]]: f32, %[[ARG1:.*]]: f32)
+// CHECK-NEXT: %[[MAX:.*]] = arith.maximumf %[[ARG0]], %[[ARG1]] : f32
+// CHECK-NEXT: return %[[MAX]] : f32
+
+// -----
+
+module {
+  func.func @minimumf(%arg0: f32, %arg1: f32) -> f32 {
+    %min = arith.minimumf %arg0, %arg1 : f32
+    return %min : f32
+  }
+}
+
+// COM: Check unchanged (fast_min_max default false)
+// CHECK-LABEL: @minimumf
+// CHECK-SAME: (%[[ARG0:.*]]: f32, %[[ARG1:.*]]: f32)
+// CHECK-NEXT: %[[MAX:.*]] = arith.minimumf %[[ARG0]], %[[ARG1]] : f32
+// CHECK-NEXT: return %[[MAX]] : f32
+

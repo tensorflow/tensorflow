@@ -15,6 +15,7 @@ limitations under the License.
 #include <string>
 
 #include "fuzztest/fuzztest.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/platform/str_util.h"
 #include "tensorflow/core/platform/stringpiece.h"
 

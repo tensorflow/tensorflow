@@ -14,26 +14,40 @@ limitations under the License.
 ==============================================================================*/
 
 #include <cassert>
-#include <cstdint>
+#include <cstddef>
 #include <memory>
 #include <optional>
+#include <string>
+#include <tuple>
 #include <utility>
 
-#include "llvm/ADT/APFloat.h"
+#include "absl/log/check.h"
+#include "absl/status/statusor.h"
+#include "llvm/ADT/STLExtras.h"
+#include "llvm/Support/Casting.h"
+#include "llvm/Support/MathExtras.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
+#include "mlir/Dialect/LLVMIR/LLVMAttrs.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
-#include "mlir/Dialect/LLVMIR/LLVMTypes.h"
-#include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/Vector/IR/VectorOps.h"
+#include "mlir/IR/Attributes.h"
+#include "mlir/IR/Builders.h"
+#include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/BuiltinTypeInterfaces.h"
 #include "mlir/IR/BuiltinTypes.h"
-#include "mlir/IR/ImplicitLocOpBuilder.h"
+#include "mlir/IR/Matchers.h"
 #include "mlir/IR/PatternMatch.h"
+#include "mlir/IR/Types.h"
 #include "mlir/IR/Value.h"
+#include "mlir/IR/ValueRange.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
+#include "google/protobuf/text_format.h"
 #include "xla/backends/gpu/codegen/emitters/transforms/passes.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/device_description.pb.h"
+#include "xla/tsl/platform/status.h"
 
 namespace xla {
 namespace gpu {
@@ -204,7 +218,8 @@ struct RewriteFp8TruncFPattern : public Fp8OpRewritePattern<arith::TruncFOp> {
     llvm::transform(inputs, inputs.begin(), [&](mlir::Value v) -> mlir::Value {
       if (v.getType().getIntOrFloatBitWidth() < f32_ty.getWidth()) {
         return b.create<arith::ExtFOp>(f32_ty, v);
-      } else if (v.getType() != f32_ty) {
+      }
+      if (v.getType() != f32_ty) {
         return b.create<arith::TruncFOp>(f32_ty, v);
       } else {
         return v;
@@ -544,7 +559,10 @@ class ConvertFloatAMDPass
       se::GpuDeviceInfoProto device_info;
       CHECK(tsl::protobuf::TextFormat::ParseFromString(gpu_device_info_,
                                                        &device_info));
-      cc_ = se::DeviceDescription(device_info).rocm_compute_capability();
+      absl::StatusOr<se::DeviceDescription> device_description =
+          se::DeviceDescription::FromProto(device_info);
+      TF_CHECK_OK(device_description.status());
+      cc_ = device_description->rocm_compute_capability();
     }
     mlir::RewritePatternSet patterns(&getContext());
     bool nativeNanooFp8 = cc_.has_nanoo_fp8_support();

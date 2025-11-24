@@ -17,14 +17,18 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
+#include <vector>
 
-#include "oneapi/dnnl/dnnl_common.hpp"
-#include "oneapi/dnnl/dnnl_graph.hpp"
+#include "absl/container/flat_hash_map.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
+#include "oneapi/dnnl/dnnl_common.hpp"
+#include "oneapi/dnnl/dnnl_graph.hpp"  // NOLINT
 #include "xla/backends/cpu/onednn_fusion.h"
+#include "xla/backends/cpu/onednn_support.h"
+#include "xla/backends/cpu/runtime/dot_dims.h"
 #include "xla/backends/cpu/runtime/onednn/onednn_interop.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -49,6 +53,12 @@ static absl::StatusOr<dnnl::graph::logical_tensor::data_type> OneDnnDatatype(
   switch (type) {
     case F32:
       return dnnl::graph::logical_tensor::data_type::f32;
+    case F16:
+      return dnnl::graph::logical_tensor::data_type::f16;
+    case BF16:
+      return dnnl::graph::logical_tensor::data_type::bf16;
+    case PRED:
+      return dnnl::graph::logical_tensor::data_type::boolean;
     default:
       return InvalidArgument("Unsupported oneDNN data type: %s",
                              primitive_util::LowercasePrimitiveTypeName(type));
@@ -90,7 +100,7 @@ static dnnl::graph::logical_tensor::dims OneDnnDimensions(const Shape& shape) {
 }
 
 static dnnl::graph::logical_tensor::dims OneDnnStrides(const Shape& shape) {
-  dnnl::graph::logical_tensor::dims strides(shape.dimensions_size());
+  dnnl::graph::logical_tensor::dims strides(shape.dimensions().size());
   int64_t stride = 1;
   for (int i : shape.layout().minor_to_major()) {
     strides.at(i) = stride;
@@ -123,11 +133,11 @@ static absl::StatusOr<dnnl::graph::logical_tensor> CreateLogicalTensor(
 }
 
 static absl::StatusOr<dnnl::graph::logical_tensor> DefineParameter(
-    const HloInstruction* param) {
+    LogicalTensorMap& logical_tensors, const HloInstruction* param) {
   VLOG(3) << absl::StreamFormat("Define logical tensor for parameter: %s",
                                 param->ToString());
-
-  return CreateLogicalTensor(param->parameter_number(), param->shape());
+  size_t id = logical_tensors.size();
+  return CreateLogicalTensor(id, param->shape());
 }
 
 static absl::StatusOr<dnnl::graph::logical_tensor> DefineUnaryOp(
@@ -183,7 +193,7 @@ static absl::StatusOr<dnnl::graph::logical_tensor> DefineBinaryOp(
 static absl::StatusOr<dnnl::graph::logical_tensor> DefineMatMul(
     dnnl::graph::graph& graph, size_t op_id, LogicalTensorMap& logical_tensors,
     const HloInstruction* instr) {
-  // Verify that this Dot is supported by XNNPACK.
+  // Verify that this Dot is supported by oneDNN.
   const DotDimensionNumbers& dnums = instr->dot_dimension_numbers();
   const Shape& lhs_shape = instr->operand(0)->shape();
   const Shape& rhs_shape = instr->operand(1)->shape();
@@ -213,6 +223,19 @@ static absl::StatusOr<dnnl::graph::logical_tensor> DefineMatMul(
                                 lhs.get_id(), rhs.get_id(), output.get_id());
 
   dnnl::graph::op op(op_id, matmul_op, {lhs, rhs}, {output});
+
+  TF_ASSIGN_OR_RETURN(DotShape dot_shape,
+                      GetDotShape(dnums, lhs_shape, rhs_shape, instr->shape()));
+  TF_ASSIGN_OR_RETURN(DotCanonicalDims dot_canonical_dims,
+                      GetDotCanonicalDims(dnums, dot_shape));
+
+  if (!dot_canonical_dims.lhs_canonical) {
+    op.set_attr<bool>(dnnl::graph::op::attr::transpose_a, true);
+  }
+  if (!dot_canonical_dims.rhs_canonical) {
+    op.set_attr<bool>(dnnl::graph::op::attr::transpose_b, true);
+  }
+
   ONEDNN_RETURN_IF_ERROR(graph.add_op(op));
 
   return output;
@@ -238,7 +261,8 @@ static absl::StatusOr<OneDnnFusion> EmitOneDnnFusion(
   for (const HloInstruction* instr : instructions) {
     switch (instr->opcode()) {
       case HloOpcode::kParameter: {
-        TF_ASSIGN_OR_RETURN(logical_tensors[instr], DefineParameter(instr));
+        TF_ASSIGN_OR_RETURN(logical_tensors[instr],
+                            DefineParameter(logical_tensors, instr));
       } break;
 
       // Unary elementwise ops.

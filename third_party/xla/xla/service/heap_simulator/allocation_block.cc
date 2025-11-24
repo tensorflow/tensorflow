@@ -86,8 +86,8 @@ std::string AllocationBlock::ToString() const {
     repacked_slicing_str = absl::StrCat("; repacked_slice_data: ",
                                         repacked_slice_data->ToString());
   }
-  return absl::StrCat("[", inclusive_start_time, ", ", end_time,
-                      "]; size: ", size, "; offset: ", offset,
+  return absl::StrCat("id: ", id, "; time interval: [", inclusive_start_time,
+                      ", ", end_time, "]; size: ", size, "; offset: ", offset,
                       "; initial offset: ", initial_offset,
                       "; # colocations: ", GetColocationsCount(),
                       original_slicing_str, repacked_slicing_str);

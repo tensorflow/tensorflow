@@ -22,13 +22,14 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
-#include "absl/numeric/bits.h"
+#include "absl/status/status.h"
 #include "absl/strings/numbers.h"
-#include "absl/strings/string_view.h"
+#include "absl/strings/str_cat.h"
 #include "absl/time/time.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/collective_utils.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/xla.pb.h"
 
 namespace xla {
@@ -57,12 +58,27 @@ static auto& device_to_cfg =
             },
         },
         {
+            "NVIDIA B200",
+            {
+                /*nccl_op_launch_time=*/absl::Microseconds(
+                    100.0f * kDefaultNcclCostModelCoeff),
+                /*nic_speed_gbps=*/
+                111.12f * kDefaultNcclCostModelCoeff,
+                /*chunk_prep_time=*/
+                absl::Microseconds(4.45f * kDefaultNcclCostModelCoeff),
+                /*rtt=*/
+                absl::Microseconds(46.67f * kDefaultNcclCostModelCoeff),
+                /*gpus_per_node=*/8,
+                /*chunk_size_bytes=*/kDefaultNcclCostModelChunkSizeBytes,
+            },
+        },
+        {
             kUnknownKey,
             {
                 /*nccl_op_launch_time=*/absl::Microseconds(
                     100.0f * kDefaultNcclCostModelCoeff),
                 /*nic_speed_gbps=*/
-                55.56f * kDefaultNcclCostModelCoeff,
+                111.12f * kDefaultNcclCostModelCoeff,
                 /*chunk_prep_time=*/
                 absl::Microseconds(13.34f * kDefaultNcclCostModelCoeff),
                 /*rtt=*/
@@ -72,16 +88,6 @@ static auto& device_to_cfg =
             },
         },
     }));
-
-// Returns the number of communicators in the mask.
-// For example, if the mask is 0x0, this function returns 1. If the mask is 0x7,
-// this function returns 8.
-int NumCommunicators(const absl::string_view mask) {
-  // Assuming the mask is a hexadecimal number
-  uint64_t mask_value = std::stoul(std::string(mask), nullptr, 16);
-  int bit_count = absl::popcount(mask_value);  // Count set bits
-  return static_cast<int>(std::pow(2, bit_count));
-}
 
 // Returns the number of rounds for the given collective type.
 int NumRounds(const SolGPUCostModel::CollectiveType& coll_type) {
@@ -93,8 +99,11 @@ SolGPUCostModel::Config GetPlatformConfig(
     const se::DeviceDescription& device_info) {
   std::string key = device_info.name();
   if (!device_to_cfg.contains(key)) {
+    VLOG(1) << "No SoL config found for device: " << device_info.name()
+            << ". Using default config.";
     return device_to_cfg[kUnknownKey];
   }
+  VLOG(2) << "[SoL] Using config for device: " << device_info.name();
   return device_to_cfg[key];
 }
 
@@ -129,6 +138,9 @@ SolGPUCostModel::Config GetPlatformConfig(
     } else if (option_name == kSolChunkSizeBytes &&
                absl::SimpleAtoi(option_value, &value) && value > 0) {
       config.chunk_size_bytes = value;
+    } else if (option_name == kSolPartitionSize &&
+               absl::SimpleAtoi(option_value, &value) && value > 0) {
+      config.partition_size = value;
     }
   }
   return config;
@@ -164,10 +176,11 @@ absl::Duration SolGPUCostModel::TransferDuration(
   return absl::Microseconds(ret * (1 + kHeaderOverhead));
 }
 
-absl::Duration SolGPUCostModel::RingLatency(
+absl::StatusOr<absl::Duration> SolGPUCostModel::RingLatency(
     const int64_t buff_size_bytes, const int num_nodes,
-    const CollectiveType& coll_type, const absl::string_view mask) const {
-  const int num_gpus = NumGpusPerComm(num_nodes, coll_type, mask);
+    const CollectiveType& coll_type, const int num_communicators) const {
+  TF_ASSIGN_OR_RETURN(int num_gpus,
+                      NumGpusPerComm(num_nodes, coll_type, num_communicators));
 
   int64_t per_gpu_msg_size_bytes;
   if (coll_type == CollectiveType::kSendRecv) {
@@ -212,21 +225,19 @@ absl::Duration SolGPUCostModel::RingLatency(
 }
 
 // Helper functions
-int SolGPUCostModel::NumGpusPerComm(int num_nodes,
-                                    const CollectiveType& coll_type,
-                                    const absl::string_view mask) const {
+absl::StatusOr<int> SolGPUCostModel::NumGpusPerComm(
+    int num_nodes, const CollectiveType& coll_type,
+    const int num_communicators) const {
   if (coll_type == CollectiveType::kSendRecv) {
     return 2;
   }
-  int num_comms = NumCommunicators(mask);
-  CHECK_EQ(xla_flag_config_.gpus_per_node % num_comms, 0)
-      << "GPU_PER_NODE must be divisible by the number of communicators. "
-         "GPU_PER_NODE: "
-      << xla_flag_config_.gpus_per_node
-      << " Number of communicators: " << num_comms
-      << ". Adjust the number of GPUs per node with the flag "
-         "gpus_per_node in xla_gpu_analytical_latency_estimator_options.";
-  return num_nodes * xla_flag_config_.gpus_per_node / num_comms;
+  if (xla_flag_config_.gpus_per_node % num_communicators != 0) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("Unexpected number of communicators: ", num_communicators,
+                     ". Does not divide gpus_per_node w/o a remainder: ",
+                     xla_flag_config_.gpus_per_node));
+  }
+  return num_nodes * xla_flag_config_.gpus_per_node / num_communicators;
 }
 
 }  // namespace gpu

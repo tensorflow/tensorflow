@@ -84,9 +84,9 @@ mlir::Value ConvertCoreRTTensorHandleToFallbackTensor(
     rewriter.setInsertionPointToStart(value.getParentBlock());
   }
 
-  return rewriter
-      .create<tfrt::fallback_async::CoreRTTensorHandleToFallbackTensorOp>(
-          loc, rewriter.getType<tfrt::fallback::TFTensorType>(), value, device)
+  return tfrt::fallback_async::CoreRTTensorHandleToFallbackTensorOp::create(
+             rewriter, loc, rewriter.getType<tfrt::fallback::TFTensorType>(),
+             value, device)
       .getResult(0);
 }
 
@@ -112,10 +112,9 @@ mlir::Value ConvertFallbackTensorToCoreRTTensorHandle(
     }
   }
 
-  return rewriter
-      .create<tfrt::fallback_async::FallbackTensorToCoreRTTensorHandleOp>(
-          loc, rewriter.getType<tfrt::corert::TensorHandleType>(), value,
-          device)
+  return tfrt::fallback_async::FallbackTensorToCoreRTTensorHandleOp::create(
+             rewriter, loc, rewriter.getType<tfrt::corert::TensorHandleType>(),
+             value, device)
       .getResult(0);
 }
 

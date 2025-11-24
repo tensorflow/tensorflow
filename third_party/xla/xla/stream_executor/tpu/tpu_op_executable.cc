@@ -42,6 +42,8 @@ limitations under the License.
 
 namespace tensorflow {
 
+using ::xla::legacy::TpuExecutableInterface;
+
 TpuOpExecutable::TpuOpExecutable(
     const XLA_TpuProgram* core_program,
     std::unique_ptr<xla::HloModule> hlo_module,

@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "xla/hlo/ir/ptrvec.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <initializer_list>
 #include <memory>
@@ -63,6 +64,7 @@ std::vector<std::vector<int>> TestCases() {
       {100},
       {200, 300},
       {1, 2, 3, 4, 5, 6, 7, 8, 9, 10},
+      {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16},
   };
 }
 
@@ -80,15 +82,51 @@ TEST_F(PtrVecTest, Accessors) {
   }
 }
 
-TEST_F(PtrVecTest, Iteration) {
+TEST_F(PtrVecTest, ConstIteration) {
   for (const auto& c : TestCases()) {
     SCOPED_TRACE(c.size());
     PtrVec<int*> v;
     Fill(v, c);
     int i = 0;
-    for (auto ptr : v) {
+    const PtrVec<int*>& const_v = v;
+    for (int* ptr : const_v) {
       ASSERT_EQ(*ptr, c[i]);
       i++;
+    }
+  }
+}
+
+TEST_F(PtrVecTest, NonConstIteration) {
+  int other_value = -1;
+  int* other_ptr = &other_value;
+  for (const auto& c : TestCases()) {
+    SCOPED_TRACE(c.size());
+    PtrVec<int*> v;
+    Fill(v, c);
+    int i = 0;
+    for (int*& slot : v) {
+      ASSERT_EQ(*slot, c[i]);
+      slot = other_ptr;
+      i++;
+    }
+
+    for (int* ptr : v) {
+      ASSERT_EQ(ptr, other_ptr);
+      ASSERT_EQ(*ptr, other_value);
+    }
+  }
+}
+
+TEST_F(PtrVecTest, ReverseIteration) {
+  for (const auto& c : TestCases()) {
+    SCOPED_TRACE(c.size());
+    PtrVec<int*> v;
+    Fill(v, c);
+    int i = c.size();
+    for (auto it = v.rbegin(); it != v.rend(); ++it) {
+      i--;
+      int* ptr = *it;
+      ASSERT_EQ(*ptr, c[i]);
     }
   }
 }
@@ -170,7 +208,20 @@ TEST_F(PtrVecTest, Erase) {
   }
 }
 
-TEST_F(PtrVecTest, Assign) {
+TEST_F(PtrVecTest, EraseToEmpty) {
+  for (const auto& c : TestCases()) {
+    SCOPED_TRACE(c.size());
+    PtrVec<int*> v;
+    Fill(v, c);
+    for (int i = 0; i < c.size(); i++) {
+      v.erase(v.begin());
+    }
+    EXPECT_TRUE(v.empty());
+    EXPECT_EQ(v.size(), 0);
+  }
+}
+
+TEST_F(PtrVecTest, MoveAndCopy) {
   const auto cases = TestCases();
   for (const auto& x : cases) {
     for (const auto& y : cases) {
@@ -220,6 +271,152 @@ TEST_F(PtrVecTest, Assign) {
   }
 }
 
+TEST_F(PtrVecTest, SelfAssign) {
+  for (const auto& c : TestCases()) {
+    SCOPED_TRACE(c.size());
+    PtrVec<int*> a;
+    Fill(a, c);
+    a = a;
+    ASSERT_EQ(Pointees(a), c);
+  }
+}
+
+TEST_F(PtrVecTest, InitializerList) {
+  PtrVec<int*> src;
+  Fill(src, {0, 1});
+
+  EXPECT_EQ(Pointees(PtrVec<int*>({})), std::vector<int>({}));
+  EXPECT_EQ(Pointees(PtrVec<int*>({src[0]})), std::vector<int>({0}));
+  EXPECT_EQ(Pointees(PtrVec<int*>({src[0], src[1]})), std::vector<int>({0, 1}));
+}
+
+TEST_F(PtrVecTest, IterConstruct) {
+  for (const auto& c : TestCases()) {
+    SCOPED_TRACE(c.size());
+    PtrVec<int*> a;
+    Fill(a, c);
+    PtrVec<int*> b(a.begin(), a.end());
+    EXPECT_EQ(Pointees(b), c);
+  }
+}
+
+TEST_F(PtrVecTest, IterAssign) {
+  for (const auto& x : TestCases()) {
+    for (const auto& y : TestCases()) {
+      SCOPED_TRACE(absl::StrFormat("from %d to %d", x.size(), y.size()));
+      PtrVec<int*> a;
+      Fill(a, x);
+      PtrVec<int*> b;
+      Fill(b, y);
+
+      b.assign(a.begin(), a.end());
+      EXPECT_EQ(Pointees(b), x);
+    }
+  }
+}
+
+TEST_F(PtrVecTest, Capacity) {
+  const auto cases = TestCases();
+  for (const auto& c : cases) {
+    SCOPED_TRACE(c.size());
+    PtrVec<int*> v;
+    Fill(v, c);
+    ASSERT_GE(v.capacity(), v.size());
+
+    // Must have inlined rep for 0 or 1
+    if (c.size() <= 1) {
+      ASSERT_EQ(v.capacity(), 1);
+    }
+  }
+}
+
+TEST_F(PtrVecTest, Reserve) {
+  const auto cases = TestCases();
+  for (const auto& c : cases) {
+    SCOPED_TRACE(c.size());
+    PtrVec<int*> v;
+    Fill(v, c);
+
+    // Growing within current capacity should leave data() unchanged.
+    const auto* data = v.data();
+    for (size_t new_capacity = 0; new_capacity <= v.capacity();
+         new_capacity++) {
+      v.reserve(new_capacity);
+      ASSERT_EQ(data, v.data()) << new_capacity;
+    }
+
+    // Now try growing over existing capacity.
+    for (size_t increment : std::vector<size_t>({1, 100})) {
+      v.reserve(v.capacity() + increment);
+      ASSERT_NE(data, v.data()) << increment;
+      data = v.data();
+    }
+
+    // Check that contents are unchanged.
+    int i = 0;
+    for (int* ptr : v) {
+      ASSERT_EQ(*ptr, c[i]);
+      i++;
+    }
+  }
+}
+
+TEST_F(PtrVecTest, ShrinkToEmpty) {
+  const auto cases = TestCases();
+  for (const auto& c : cases) {
+    SCOPED_TRACE(c.size());
+    PtrVec<int*> v;
+    Fill(v, c);
+    v.resize(0);
+    EXPECT_EQ(Pointees(v), std::vector<int>{});
+  }
+}
+
+TEST_F(PtrVecTest, ShrinkViaResize) {
+  const auto cases = TestCases();
+  for (const auto& c : cases) {
+    SCOPED_TRACE(c.size());
+    PtrVec<int*> v;
+    Fill(v, c);
+
+    if (v.empty()) {
+      continue;  // Cannot shrink empty vector
+    }
+
+    v.resize(v.size() - 1);
+    EXPECT_EQ(v.size(), c.size() - 1);
+
+    auto model = c;
+    model.pop_back();
+    EXPECT_EQ(Pointees(v), model);
+  }
+}
+
+TEST_F(PtrVecTest, Grow) {
+  int other_value = -1;
+  int* other_ptr = &other_value;
+
+  const auto cases = TestCases();
+  for (const auto& c : cases) {
+    for (size_t growth : std::vector<size_t>({0, 1, 100, c.size() * 2})) {
+      SCOPED_TRACE(absl::StrFormat("grow from %d by %d", c.size(), growth));
+      PtrVec<int*> v;
+      Fill(v, c);
+
+      v.resize(v.size() + growth, other_ptr);
+      ASSERT_EQ(v.size(), c.size() + growth);
+
+      // Should have old values up to original size and other_ptr afterwards.
+      for (size_t i = 0; i < c.size(); i++) {
+        EXPECT_EQ(*v[i], c[i]);
+      }
+      for (size_t i = 0; i < growth; i++) {
+        EXPECT_EQ(*v[c.size() + i], other_value);
+      }
+    }
+  }
+}
+
 TEST_F(PtrVecTest, ReducedAlignment) {
   const char* str = "hello world";
   for (int i = 0; i < 11; i++) {
@@ -232,6 +429,26 @@ TEST_F(PtrVecTest, ReducedAlignment) {
     copy = vec;
     EXPECT_EQ(copy.size(), 1);
     EXPECT_EQ(copy[0], &str[i]);
+  }
+}
+
+TEST_F(PtrVecTest, ReducedAlignmentOverwrite) {
+  // Get a char pointer with bottom two bits zero.
+  char buf[100];
+  char* ptr = buf;
+  while ((reinterpret_cast<uintptr_t>(ptr) & 0x3) != 0) {
+    ptr++;
+  }
+
+  PtrVec<char*> vec;
+  vec.push_back(ptr);
+  EXPECT_EQ(vec.size(), 1);
+
+  // Try overwriting with differently aligned pointers.
+  for (int addition = 0; addition <= 3; addition++) {
+    vec[0] = ptr + addition;
+    EXPECT_EQ(vec.size(), 1);
+    EXPECT_EQ(vec[0], ptr + addition);
   }
 }
 

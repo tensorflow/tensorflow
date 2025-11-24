@@ -15,21 +15,41 @@ limitations under the License.
 
 #include "tensorflow/core/framework/attr_value_util.h"
 
+#include <algorithm>
+#include <cstdint>
+#include <functional>
+#include <initializer_list>
+#include <map>
 #include <string>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
+#include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/strings/escaping.h"
+#include "absl/strings/match.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
+#include "absl/strings/strip.h"
+#include "absl/types/span.h"
 #include "tensorflow/core/framework/attr_value.pb_text.h"
-#include "tensorflow/core/framework/tensor.pb_text.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor.pb.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb_text.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
+#include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/lib/strings/proto_serialization.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/fingerprint.h"
+#include "tensorflow/core/platform/hash.h"
+#include "tensorflow/core/platform/numbers.h"
+#include "tensorflow/core/platform/tstring.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/overflow.h"
 
 namespace tensorflow {
@@ -76,7 +96,7 @@ constexpr int kMaxTensorNestDepth = 100;
 // to serialize, compute hash based on TensorProto string representation.
 // This approach may result different hash codes with identical Tensors if they
 // are defined with different TensorProto representations.
-uint64 TensorProtoHash(const TensorProto& tp) {
+uint64_t TensorProtoHash(const TensorProto& tp) {
   Tensor tensor(tp.dtype());
   bool success = tensor.FromProto(tp);
   if (success) {
@@ -92,7 +112,7 @@ uint64 TensorProtoHash(const TensorProto& tp) {
 // string representation. Tensors with identical content potentially can have a
 // different hash code if they are defined with different TensorProto
 // representations.
-uint64 FastTensorProtoHash(const TensorProto& tp) {
+uint64_t FastTensorProtoHash(const TensorProto& tp) {
   if (attr_value_util_internal::TensorByteSize(tp) >
       kMaxAttrValueTensorByteSize) {
     return DeterministicProtoHash64(tp);
@@ -160,15 +180,17 @@ bool AreTensorProtosEqual(const TensorProto& lhs, const TensorProto& rhs,
   return AreSerializedProtosEqual(lhs_tp, rhs_tp);
 }
 
-using TensorProtoHasher = std::function<uint64(const TensorProto&)>;
+using TensorProtoHasher = std::function<uint64_t(const TensorProto&)>;
 
-uint64 AttrValueHash(const AttrValue& a, const TensorProtoHasher& tensor_hash) {
+uint64_t AttrValueHash(const AttrValue& a,
+                       const TensorProtoHasher& tensor_hash) {
   if (a.has_tensor()) return tensor_hash(a.tensor());
 
   if (a.has_func()) {
     const NameAttrList& func = a.func();
-    uint64 h = Hash64(func.name());
-    std::map<string, AttrValue> map(func.attr().begin(), func.attr().end());
+    uint64_t h = Hash64(func.name());
+    std::map<std::string, AttrValue> map(func.attr().begin(),
+                                         func.attr().end());
     for (const auto& pair : map) {
       h = Hash64(pair.first.data(), pair.first.size(), h);
       h = Hash64Combine(AttrValueHash(pair.second, tensor_hash), h);
@@ -180,8 +202,8 @@ uint64 AttrValueHash(const AttrValue& a, const TensorProtoHasher& tensor_hash) {
   return DeterministicProtoHash64(a);
 }
 
-string SummarizeString(const string& str) {
-  string escaped = absl::CEscape(str);
+std::string SummarizeString(const std::string& str) {
+  std::string escaped = absl::CEscape(str);
 
   // If the string is long, replace the middle with ellipses.
   constexpr int kMaxStringSummarySize = 80;
@@ -190,13 +212,13 @@ string SummarizeString(const string& str) {
     absl::string_view suffix = prefix;
     prefix.remove_suffix(escaped.size() - 10);
     suffix.remove_prefix(escaped.size() - 10);
-    return strings::StrCat("\"", prefix, "...", suffix, "\"");
+    return absl::StrCat("\"", prefix, "...", suffix, "\"");
   } else {
-    return strings::StrCat("\"", escaped, "\"");
+    return absl::StrCat("\"", escaped, "\"");
   }
 }
 
-string SummarizeTensor(const TensorProto& tensor_proto) {
+std::string SummarizeTensor(const TensorProto& tensor_proto) {
   Tensor t;
   int64_t tensor_byte_size =
       attr_value_util_internal::TensorByteSize(tensor_proto);
@@ -205,26 +227,25 @@ string SummarizeTensor(const TensorProto& tensor_proto) {
   ) {
     // Do not load large or unknown-shape Tensor to compute detailed
     // DebugString()
-    return strings::StrCat("<TensorProto: ", tensor_proto.ShortDebugString(),
-                           ">");
+    return absl::StrCat("<TensorProto: ", tensor_proto.ShortDebugString(), ">");
   } else if (!t.FromProto(tensor_proto)) {
-    return strings::StrCat(
+    return absl::StrCat(
         "<Invalid TensorProto: ", tensor_proto.ShortDebugString(), ">");
   }
   return t.DebugString();
 }
 
-string SummarizeFunc(const NameAttrList& func) {
-  std::vector<string> entries;
+std::string SummarizeFunc(const NameAttrList& func) {
+  std::vector<std::string> entries;
   for (const auto& p : func.attr()) {
-    entries.push_back(
-        strings::StrCat(p.first, "=", SummarizeAttrValue(p.second)));
+    entries.push_back(absl::StrCat(p.first, "=", SummarizeAttrValue(p.second)));
   }
   std::sort(entries.begin(), entries.end());
-  return strings::StrCat(func.name(), "[", absl::StrJoin(entries, ", "), "]");
+  return absl::StrCat(func.name(), "[", absl::StrJoin(entries, ", "), "]");
 }
 
-bool ParseAttrValueHelper_TensorNestsUnderLimit(int limit, string to_parse) {
+bool ParseAttrValueHelper_TensorNestsUnderLimit(int limit,
+                                                std::string to_parse) {
   int nests = 0;
   int maxed_out = to_parse.length();
   int open_curly = to_parse.find('{');
@@ -274,14 +295,14 @@ bool ParseAttrValueHelper_TensorNestsUnderLimit(int limit, string to_parse) {
 
 }  // namespace
 
-string SummarizeAttrValue(const AttrValue& attr_value) {
+std::string SummarizeAttrValue(const AttrValue& attr_value) {
   switch (attr_value.value_case()) {
     case AttrValue::kS:
       return SummarizeString(attr_value.s());
     case AttrValue::kI:
-      return strings::StrCat(attr_value.i());
+      return absl::StrCat(attr_value.i());
     case AttrValue::kF:
-      return strings::StrCat(attr_value.f());
+      return absl::StrCat(strings::LegacyPrecision(attr_value.f()));
     case AttrValue::kB:
       return attr_value.b() ? "true" : "false";
     case AttrValue::kType:
@@ -291,18 +312,19 @@ string SummarizeAttrValue(const AttrValue& attr_value) {
     case AttrValue::kTensor:
       return SummarizeTensor(attr_value.tensor());
     case AttrValue::kList: {
-      std::vector<string> pieces;
+      std::vector<std::string> pieces;
       if (attr_value.list().s_size() > 0) {
         for (int i = 0; i < attr_value.list().s_size(); ++i) {
           pieces.push_back(SummarizeString(attr_value.list().s(i)));
         }
       } else if (attr_value.list().i_size() > 0) {
         for (int i = 0; i < attr_value.list().i_size(); ++i) {
-          pieces.push_back(strings::StrCat(attr_value.list().i(i)));
+          pieces.push_back(absl::StrCat(attr_value.list().i(i)));
         }
       } else if (attr_value.list().f_size() > 0) {
         for (int i = 0; i < attr_value.list().f_size(); ++i) {
-          pieces.push_back(strings::StrCat(attr_value.list().f(i)));
+          pieces.push_back(
+              absl::StrCat(strings::LegacyPrecision(attr_value.list().f(i))));
         }
       } else if (attr_value.list().b_size() > 0) {
         for (int i = 0; i < attr_value.list().b_size(); ++i) {
@@ -334,17 +356,17 @@ string SummarizeAttrValue(const AttrValue& attr_value) {
             Fingerprint64(absl::StrJoin(pieces.begin(), pieces.end(), ","));
         pieces.erase(pieces.begin() + 5, pieces.end() - 6);
         pieces[5] = "...";
-        return strings::StrCat("[", absl::StrJoin(pieces, ", "),
-                               "]{attr_hash=", fingerprint, "}");
+        return absl::StrCat("[", absl::StrJoin(pieces, ", "),
+                            "]{attr_hash=", fingerprint, "}");
       } else {
-        return strings::StrCat("[", absl::StrJoin(pieces, ", "), "]");
+        return absl::StrCat("[", absl::StrJoin(pieces, ", "), "]");
       }
     }
     case AttrValue::kFunc: {
       return SummarizeFunc(attr_value.func());
     }
     case AttrValue::kPlaceholder:
-      return strings::StrCat("$", attr_value.placeholder());
+      return absl::StrCat("$", attr_value.placeholder());
     case AttrValue::VALUE_NOT_SET:
       return "<Unknown AttrValue type>";
   }
@@ -453,7 +475,7 @@ absl::Status AttrValueHasType(const AttrValue& attr_value,
 bool ParseAttrValue(absl::string_view type, absl::string_view text,
                     AttrValue* out) {
   // Parse type.
-  string field_name;
+  std::string field_name;
   bool is_list = absl::ConsumePrefix(&type, "list(");
   if (absl::ConsumePrefix(&type, "string")) {
     field_name = "s";
@@ -481,7 +503,7 @@ bool ParseAttrValue(absl::string_view type, absl::string_view text,
   }
 
   // Construct a valid text proto message to parse.
-  string to_parse;
+  std::string to_parse;
   if (is_list) {
     // TextFormat parser considers "i: 7" to be the same as "i: [7]",
     // but we only want to allow list values with [].
@@ -501,9 +523,9 @@ bool ParseAttrValue(absl::string_view type, absl::string_view text,
       out->mutable_list();
       return true;
     }
-    to_parse = strings::StrCat("list { ", field_name, ": ", text, " }");
+    to_parse = absl::StrCat("list { ", field_name, ": ", text, " }");
   } else {
-    to_parse = strings::StrCat(field_name, ": ", text);
+    to_parse = absl::StrCat(field_name, ": ", text);
   }
   if (field_name == "tensor") {
     if (!ParseAttrValueHelper_TensorNestsUnderLimit(kMaxTensorNestDepth,
@@ -531,8 +553,8 @@ void SetAttrValue(const AttrValue& value, AttrValue* out) { *out = value; }
   DEFINE_SET_ATTR_VALUE_ONE(ARG_TYPE, FIELD)        \
   DEFINE_SET_ATTR_VALUE_LIST(gtl::ArraySlice<ARG_TYPE>, FIELD)
 
-DEFINE_SET_ATTR_VALUE_ONE(const string&, s)
-DEFINE_SET_ATTR_VALUE_LIST(absl::Span<const string>, s)
+DEFINE_SET_ATTR_VALUE_ONE(const std::string&, s)
+DEFINE_SET_ATTR_VALUE_LIST(absl::Span<const std::string>, s)
 DEFINE_SET_ATTR_VALUE_BOTH(const char*, s)
 DEFINE_SET_ATTR_VALUE_BOTH(int64_t, i)
 DEFINE_SET_ATTR_VALUE_BOTH(int32_t, i)
@@ -566,7 +588,7 @@ void SetAttrValue(const absl::Span<const absl::string_view> value,
   }
 }
 
-void MoveAttrValue(std::vector<string>&& value, AttrValue* out) {
+void MoveAttrValue(std::vector<std::string>&& value, AttrValue* out) {
   out->mutable_list()->Clear();  // Create list() even if value empty.
   for (auto& v : value) {
     out->mutable_list()->add_s(std::move(v));
@@ -670,8 +692,8 @@ bool AreAttrValuesEqual(const AttrValue& a, const AttrValue& b,
     const NameAttrList& af = a.func();
     const NameAttrList& bf = b.func();
     if (af.name() != bf.name()) return false;
-    std::unordered_map<string, AttrValue> am(af.attr().begin(),
-                                             af.attr().end());
+    std::unordered_map<std::string, AttrValue> am(af.attr().begin(),
+                                                  af.attr().end());
     for (const auto& bm_pair : bf.attr()) {
       const auto& iter = am.find(bm_pair.first);
       if (iter == am.end()) return false;
@@ -689,11 +711,11 @@ bool AreAttrValuesEqual(const AttrValue& a, const AttrValue& b,
   return AreSerializedProtosEqual(a, b);
 }
 
-uint64 AttrValueHash(const AttrValue& a) {
+uint64_t AttrValueHash(const AttrValue& a) {
   return AttrValueHash(a, TensorProtoHash);
 }
 
-uint64 FastAttrValueHash(const AttrValue& a) {
+uint64_t FastAttrValueHash(const AttrValue& a) {
   return AttrValueHash(a, FastTensorProtoHash);
 }
 

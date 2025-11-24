@@ -29,7 +29,7 @@ namespace {
 
 TEST(BufferedInputStream, Tell) {
   Env* env = Env::Default();
-  string fname;
+  std::string fname;
   ASSERT_TRUE(env->LocalTempFilename(&fname));
   std::unique_ptr<WritableFile> write_file;
   TF_ASSERT_OK(env->NewWritableFile(fname, &write_file));

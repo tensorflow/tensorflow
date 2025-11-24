@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstddef>
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <string>
@@ -35,29 +36,70 @@ limitations under the License.
 #include "llvm/ExecutionEngine/Orc/Core.h"
 #include "llvm/ExecutionEngine/Orc/CoreContainers.h"
 #include "llvm/ExecutionEngine/Orc/ExecutorProcessControl.h"
+#include "llvm/ExecutionEngine/Orc/InProcessMemoryAccess.h"
 #include "llvm/ExecutionEngine/Orc/RTDyldObjectLinkingLayer.h"
 #include "llvm/ExecutionEngine/Orc/Shared/ExecutorAddress.h"
 #include "llvm/ExecutionEngine/Orc/Shared/ExecutorSymbolDef.h"
+#include "llvm/ExecutionEngine/Orc/SymbolStringPool.h"
+#include "llvm/ExecutionEngine/Orc/TaskDispatch.h"
 #include "llvm/IR/DataLayout.h"
 #include "llvm/IR/Mangler.h"
 #include "llvm/Support/Error.h"
+#include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include "xla/backends/cpu/codegen/compiled_function_library.h"
-#include "xla/backends/cpu/codegen/contiguous_section_memory_manager.h"
 #include "xla/backends/cpu/codegen/execution_engine.h"
 #include "xla/backends/cpu/runtime/function_library.h"
-#include "xla/service/cpu/orc_jit_memory_mapper.h"
 #include "xla/tsl/platform/statusor.h"
 
 namespace xla::cpu {
+
+namespace {
+// TODO: move to ExecutorProcessControl-based APIs.
+class UnsupportedExecutorProcessControl
+    : public llvm::orc::ExecutorProcessControl,
+      private llvm::orc::InProcessMemoryAccess {
+ public:
+  UnsupportedExecutorProcessControl()
+      : ExecutorProcessControl(
+            std::make_shared<llvm::orc::SymbolStringPool>(),
+            std::make_unique<llvm::orc::InPlaceTaskDispatcher>()),
+        InProcessMemoryAccess(llvm::Triple("").isArch64Bit()) {
+    this->TargetTriple = llvm::Triple("");
+    this->MemAccess = this;
+  }
+
+  llvm::Expected<int32_t> runAsMain(llvm::orc::ExecutorAddr MainFnAddr,
+                                    llvm::ArrayRef<std::string> Args) override {
+    llvm_unreachable("Unsupported");
+  }
+
+  llvm::Expected<int32_t> runAsVoidFunction(
+      llvm::orc::ExecutorAddr VoidFnAddr) override {
+    llvm_unreachable("Unsupported");
+  }
+
+  llvm::Expected<int32_t> runAsIntFunction(llvm::orc::ExecutorAddr IntFnAddr,
+                                           int Arg) override {
+    llvm_unreachable("Unsupported");
+  }
+
+  void callWrapperAsync(llvm::orc::ExecutorAddr WrapperFnAddr,
+                        IncomingWFRHandler OnComplete,
+                        llvm::ArrayRef<char> ArgBuffer) override {
+    llvm_unreachable("Unsupported");
+  }
+
+  llvm::Error disconnect() override { return llvm::Error::success(); }
+};
+}  // namespace
 
 static std::unique_ptr<ExecutionEngine> CreateExecutionEngine(
     const llvm::DataLayout& data_layout,
     ExecutionEngine::DefinitionGenerator definition_generator) {
   return std::make_unique<ExecutionEngine>(
       std::make_unique<llvm::orc::ExecutionSession>(
-          std::make_unique<llvm::orc::UnsupportedExecutorProcessControl>(
-              /*SSP=*/nullptr, /*D=*/nullptr)),
+          std::make_unique<UnsupportedExecutorProcessControl>()),
       data_layout, definition_generator);
 }
 

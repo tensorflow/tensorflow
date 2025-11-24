@@ -97,8 +97,8 @@ std::vector<std::unique_ptr<Device>> CreateCPUDevices(
   std::vector<std::unique_ptr<Device>> devices;
   for (int wi = 0; wi < num_workers; ++wi) {
     for (int di = 0; di < num_devices_per_worker; ++di) {
-      string dev_name = strings::StrCat("/job:worker/replica:0/task:", wi,
-                                        "/device:CPU:", di);
+      string dev_name =
+          absl::StrCat("/job:worker/replica:0/task:", wi, "/device:CPU:", di);
       devices.push_back(std::make_unique<ThreadPoolDevice>(
           sess_opts, dev_name, mem_limit, dev_locality, cpu_allocator()));
     }
@@ -211,7 +211,7 @@ core::RefCountPtr<CollectiveParams> CreateCollectiveParams(
                    local_ring_order.begin() + other);
   }
   string lro_buf;
-  for (auto d : local_ring_order) strings::StrAppend(&lro_buf, d, ", ");
+  for (auto d : local_ring_order) absl::StrAppend(&lro_buf, d, ", ");
   VLOG(1) << "local_ring_order " << lro_buf;
 
   // Set up group parameters.
@@ -221,7 +221,7 @@ core::RefCountPtr<CollectiveParams> CreateCollectiveParams(
   col_params->group.num_tasks = test_env.num_workers;
   col_params->group.device_type = test_env.device_type;
   for (int wi = 0; wi < test_env.num_workers; ++wi) {
-    string task_name = strings::StrCat("/job:worker/replica:0/task:", wi);
+    string task_name = absl::StrCat("/job:worker/replica:0/task:", wi);
     col_params->group.num_devices_per_task[task_name] =
         test_env.num_devices_per_worker;
     for (int di = 0; di < test_env.num_devices_per_worker; ++di) {
@@ -356,7 +356,7 @@ absl::Status RunCollective(CollectiveTestEnv* test_env,
   core::ScopedUnref unref_collective_impl(collective_impl);
   TF_RETURN_IF_ERROR(collective_impl->InitializeCollectiveParams(col_params));
 
-  string exec_key = strings::StrCat(col_params->instance.instance_key, ":0:0");
+  string exec_key = absl::StrCat(col_params->instance.instance_key, ":0:0");
   auto col_ctx = std::make_shared<CollectiveContext>(
       test_env->col_exec.get(), test_env->nccl_communicator.get(),
       test_env->device_mgr.get(), &ctx, &op_params, col_params, exec_key,
@@ -365,7 +365,7 @@ absl::Status RunCollective(CollectiveTestEnv* test_env,
 
   // Run the collective.
   absl::Status status;
-  Notification n;
+  absl::Notification n;
   collective_impl->Run([&status, &n](absl::Status s) {
     status = s;
     n.Notify();

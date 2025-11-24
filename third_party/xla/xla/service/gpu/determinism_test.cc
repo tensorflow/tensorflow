@@ -52,6 +52,11 @@ class DeterminismTest : public GpuCodegenTest {
     debug_options_.set_xla_gpu_exclude_nondeterministic_ops(true);
   }
 
+  se::CudaComputeCapability get_cuda_cc() const {
+    se::StreamExecutor* executor = backend().default_stream_executor();
+    return executor->GetDeviceDescription().cuda_compute_capability();
+  }
+
   // Runs the HLO several times with the same random inputs, and asserts the
   // outputs are bitwise identical.
   void AssertDeterminism(absl::string_view hlo_string, int num_runs = 10) {
@@ -141,20 +146,14 @@ class DeterminismTest : public GpuCodegenTest {
     EXPECT_TRUE(filecheck_result.value());
   }
 
-  bool IsAmpereOrLater() const {
+  bool IsAmpereOrLater() const { return get_cuda_cc().IsAtLeastAmpere(); }
+
+  bool IsRocm() const {
     return backend()
         .default_stream_executor()
         ->GetDeviceDescription()
-        .cuda_compute_capability()
-        .IsAtLeastAmpere();
-  }
-
-  bool IsRocm() const {
-    return std::holds_alternative<stream_executor::RocmComputeCapability>(
-        backend()
-            .default_stream_executor()
-            ->GetDeviceDescription()
-            .gpu_compute_capability());
+        .gpu_compute_capability()
+        .IsRocm();
   }
 
   bool HasHipblasLt() const {
@@ -197,6 +196,10 @@ TEST_F(DeterminismTest, DeterministicTritonGemmUsesDefaultConfig) {
     GTEST_SKIP() << "Triton is not supported on non-NVIDIA and "
                     "pre-Ampere NVIDIA GPUs.";
   }
+  if (get_cuda_cc().IsAtLeastBlackwell()) {
+    // TODO(b/445172709): Re-enable once fixed.
+    GTEST_SKIP();
+  }
 
   constexpr absl::string_view kHloText = R"(
 ENTRY e {
@@ -215,8 +218,10 @@ ENTRY e {
   // autotuner.
   AutotunerUtil::ClearAutotuneResults();
   MatchOptimizedHlo(kHloText, R"(
-    CHECK: __triton_gemm
-    CHECK: {"block_m":"16","block_n":"16","block_k":"64","split_k":"1","num_stages":"4","num_warps":"2","num_ctas":"1"
+    CHECK: ENTRY
+    CHECK: __triton_nested_gemm_fusion
+    CHECK-SAME: "num_warps":"2","output_tiles":[{"sizes":["16","16"]}]
+    CHECK-SAME: "num_ctas":1,"num_stages":4,"is_tma_allowed":false
   )",
                     TimerCreation::kForbidden);
   AssertDeterminism(kHloText, /*num_runs=*/3);
@@ -234,6 +239,9 @@ TEST_F(DeterminismTest, ExcludingNonDeterministicOpsDoesNotDisableAutotuning) {
   ASSERT_FALSE(debug_options_.xla_gpu_deterministic_ops());
   AutotunerUtil::ClearAutotuneResults();
   // The default config is not used when autotuning is on.
+  // TODO(b/431794189): it's not very clear why test considers (32, 32) tiling
+  // to be the default. It seems to pick (16, 16) and it does not change
+  // when changing the flags above.
   MatchOptimizedHlo(R"(
 ENTRY e {
   p0 = bf16[128,128] parameter(0)
@@ -242,8 +250,9 @@ ENTRY e {
   ROOT d = f32[128,128] dot(p0_convert, p1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
 })",
                     R"(
-    CHECK: __triton_gemm
-    CHECK-NOT: {"block_m":"32","block_n":"32","block_k":"32","split_k":"1","num_stages":"1","num_warps":"4","num_ctas":"1"}
+    CHECK: ENTRY
+    CHECK: __triton_nested_gemm_fusion
+    CHECK-NOT: "output_tiles":[{"sizes":["32","32"]}]
   )",
                     TimerCreation::kAllowed);
 }

@@ -550,6 +550,9 @@ message EdgeTpuSettings {
   }
   optional UseLayerIrTgcBackend use_layer_ir_tgc_backend = 10
       [default = USE_LAYER_IR_TGC_BACKEND_UNSPECIFIED];
+
+  // Whether to use TPU server for the inference.
+  optional bool use_tpu_server = 11 [default = false];
 }
 
 // Google EdgeTPU delegate settings.

@@ -280,12 +280,12 @@ class SaturateCastTest(test.TestCase):
         # enable proper type promotion.
         lo = (
             out_type.min
-            if out_type.min > (in_type.min + 1)
+            if float(out_type.min) > (in_type.min + 1)
             else (in_type.min + 1)
         )
         hi = (
             out_type.max
-            if out_type.max < (in_type.max - 1)
+            if float(out_type.max) < (in_type.max - 1)
             else (in_type.max - 1)
         )
         x = constant_op.constant(

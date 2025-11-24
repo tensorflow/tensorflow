@@ -17,12 +17,17 @@ limitations under the License.
 
 #include <netinet/in.h>
 #include <poll.h>
+#include <sys/socket.h>
 
+#include <deque>
 #include <memory>
+#include <string>
 
 #include "absl/functional/any_invocable.h"
+#include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "absl/time/time.h"
 
 // socket.h in conda sysroot include directory does not define
@@ -87,26 +92,38 @@ class SocketAddress {
   SocketAddress();
   explicit SocketAddress(const sockaddr_in& saddr);
   explicit SocketAddress(const sockaddr_in6& saddr);
+  explicit SocketAddress(const sockaddr_storage& saddr);
 
   // Fetch address.
-  const sockaddr& address() const { return saddr_; }
-  const sockaddr_in6& address_ipv6() const { return saddr6_; }
-  const sockaddr_in& address_ipv4() const { return saddr4_; }
+  const sockaddr& address() const {
+    // NOLINTNEXTLINE
+    return *reinterpret_cast<const sockaddr*>(&storage_);
+  }
+  sockaddr& mutable_address() {
+    // NOLINTNEXTLINE
+    return *reinterpret_cast<sockaddr*>(&storage_);
+  }
+  const sockaddr_in6& address_ipv6() const {
+    CHECK_EQ(storage_.ss_family, AF_INET6);
+    // NOLINTNEXTLINE
+    return *reinterpret_cast<const sockaddr_in6*>(&storage_);
+  }
+  const sockaddr_in& address_ipv4() const {
+    CHECK_EQ(storage_.ss_family, AF_INET);
+    // NOLINTNEXTLINE
+    return *reinterpret_cast<const sockaddr_in*>(&storage_);
+  }
+
+  socklen_t len() const;
 
   // To String (parsable with Parse).
   std::string ToString() const;
 
   // Inverse of ToString().
-  static absl::StatusOr<SocketAddress> Parse(const std::string& addr);
+  static absl::StatusOr<SocketAddress> Parse(absl::string_view addr);
 
  private:
-  static int Parse(const std::string& addr, SocketAddress& out);
-
-  union {
-    sockaddr saddr_;
-    sockaddr_in saddr4_;
-    sockaddr_in6 saddr6_;
-  };
+  sockaddr_storage storage_;
 };
 
 // Calls accept() on sockets.
@@ -129,6 +146,52 @@ class SocketListener {
   SocketAddress addr_;
   bool started_ = false;
   Handler* handler_ = nullptr;
+};
+
+class SocketFdPacketState : public PollEventLoop::Handler {
+ public:
+  // Must be closed and cleared properly before destruction.
+  ~SocketFdPacketState() override;
+
+  // Subclasses must handle the incoming packet entirely during this call
+  // (or else copy).
+  virtual void HandlePacket(absl::string_view packet) = 0;
+
+  // All of these may destroy the handler if both directions are closed.
+  virtual void ConnectFailed() = 0;
+  // Clean half close.
+  virtual void RecvClosed(absl::Status error) = 0;
+  // Clean half close
+  virtual void SendClosed(absl::Status error) = 0;
+
+  // Schedules the frame (returns false if send is closed).
+  bool SendRawFrame(std::string opacket);
+
+  // Starts listening for fd.
+  // ConnectFailed() only called if start_connected=false.
+  void RegisterFd(int fd, bool start_connected);
+
+  // Calls shutdown on the fd.
+  void Shutdown(int how);
+
+ private:
+  void PopulatePollInfo(pollfd& events) override;
+
+  bool HandleEvents(const pollfd& events) override;
+
+  bool CloseIfNeeded() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
+
+  absl::Mutex mu_;
+  int fd_ = -1;
+  bool can_send_ = false;
+  bool is_connected_ = false;
+  bool read_closed_ = false;
+  bool write_closed_ = false;
+  size_t write_offset_ = 0;
+  size_t recv_count_ = 0;
+  std::unique_ptr<char[]> network_buffer_ =
+      std::unique_ptr<char[]>(new char[4096]);
+  std::deque<std::string> frames_ ABSL_GUARDED_BY(mu_);
 };
 
 }  // namespace aux

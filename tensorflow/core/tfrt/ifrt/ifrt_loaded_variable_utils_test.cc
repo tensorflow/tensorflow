@@ -22,13 +22,14 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/device.h"
-#include "xla/python/ifrt/future.h"
 #include "xla/python/ifrt/test_util.h"
+#include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/env.h"
@@ -53,7 +54,6 @@ namespace ifrt_serving {
 namespace {
 
 using tensorflow::test::TensorEq;
-using tsl::testing::StatusIs;
 
 TEST(ShardingUtilsTest, ShardTensorToIfrtLoadedVariableNotFoundWrongName) {
   auto input_tensor =
@@ -83,8 +83,7 @@ TEST(ShardingUtilsTest, ShardTensorToIfrtLoadedVariableNotFoundWrongName) {
       .hlo_sharding = xla::HloSharding::Replicate(),
   };
 
-  auto promise = xla::ifrt::Future<tensorflow::Tensor>::CreatePromise();
-  auto future = xla::ifrt::Future<tensorflow::Tensor>(promise);
+  auto [promise, future] = tsl::Future<tensorflow::Tensor>::MakePromise();
 
   IfrtRestoreTensorRegistry::RestoredTensorInfo restored_tensor_info = {
       false,
@@ -97,7 +96,7 @@ TEST(ShardingUtilsTest, ShardTensorToIfrtLoadedVariableNotFoundWrongName) {
       AsyncLoadRestoredTensorAsIfrtLoadedVariable(
           "var_x", client, thread_pool, restored_tensor_registry,
           loaded_variable_registry, restore_work_queue.get(), sharding_config),
-      StatusIs(absl::StatusCode::kNotFound));
+      absl_testing::StatusIs(absl::StatusCode::kNotFound));
 }
 
 TEST(ShardingUtilsTest, ShardTensorToIfrtLoadedVariableSucceed) {
@@ -128,8 +127,7 @@ TEST(ShardingUtilsTest, ShardTensorToIfrtLoadedVariableSucceed) {
       .hlo_sharding = xla::HloSharding::Replicate(),
   };
 
-  auto promise = xla::ifrt::Future<tensorflow::Tensor>::CreatePromise();
-  auto future = xla::ifrt::Future<tensorflow::Tensor>(promise);
+  auto [promise, future] = tsl::Future<tensorflow::Tensor>::MakePromise();
 
   IfrtRestoreTensorRegistry::RestoredTensorInfo restored_tensor_info = {
       false,

@@ -50,7 +50,6 @@ using ::testing::IsEmpty;
 using ::testing::IsNull;
 using ::testing::NotNull;
 using ::testing::Optional;
-using ::tsl::testing::StatusIs;
 
 using AttrsAndConstraintsTest = ::mlir::quant::QuantizationTestBase;
 
@@ -488,9 +487,9 @@ constexpr absl::string_view kModuleDotGeneralBatchMatmul = R"mlir(
 
 TEST_F(AttrsAndConstraintsTest, IsDotGeneralFullyConnectedReturnsError) {
   DotGeneralOp dot_general_op = nullptr;
-  StatusIs(absl::StatusCode::kInvalidArgument,
-           "Given dot_general op cannot be null when checking "
-           "`IsDotGeneralBatchMatmul`");
+  absl_testing::StatusIs(absl::StatusCode::kInvalidArgument,
+                         "Given dot_general op cannot be null when checking "
+                         "`IsDotGeneralBatchMatmul`");
 }
 
 TEST_F(AttrsAndConstraintsTest, IsDotGeneralFullyConnectedReturnsTrue) {

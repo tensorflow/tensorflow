@@ -38,6 +38,7 @@ limitations under the License.
 #include "tensorflow/core/tfrt/runtime/work_queue_interface.h"
 #include "tsl/platform/errors.h"
 #include "tfrt/core_runtime/core_runtime.h"  // from @tf_runtime
+#include "tfrt/host_context/diagnostic.h"  // from @tf_runtime
 #include "tfrt/host_context/resource_context.h"  // from @tf_runtime
 
 namespace tensorflow {
@@ -130,6 +131,9 @@ class ModelRuntimeContext {
 // tensorflow::experimental::cc::Runtime when it lands.
 class Runtime {
  public:
+  // The default diagnostic handler. Simply logs all errors.
+  static void LogOnError(const tfrt::DecodedDiagnostic&);
+
   // Creates a runtime instance with specified threading configuration. Returns
   // null upon creation error.
   static std::unique_ptr<Runtime> Create(int num_inter_op_threads,
@@ -138,7 +142,9 @@ class Runtime {
   // Creates a runtime instance with the specified work_queue. Returns null upon
   // creation error.
   static std::unique_ptr<Runtime> Create(
-      std::unique_ptr<WorkQueueInterface> work_queue);
+      std::unique_ptr<WorkQueueInterface> work_queue,
+      std::function<void(const tfrt::DecodedDiagnostic&)> diag_handler =
+          LogOnError);
 
   ~Runtime();
   Runtime(Runtime&&) = default;
@@ -212,12 +218,12 @@ class Runtime {
 
   // Creates a work queue for a request.
   absl::StatusOr<std::unique_ptr<WorkQueueInterface>> CreateRequestQueue(
-      int64_t request_id) const {
+      int64_t request_id, int priority) const {
     if (create_request_queue_fn_) {
       return create_request_queue_fn_(request_id);
     }
 
-    return work_queue_->InitializeRequest(request_id);
+    return work_queue_->InitializeRequest(request_id, priority);
   }
 
  private:

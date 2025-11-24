@@ -117,6 +117,7 @@ absl::StatusOr<ExecutionGraph> ExecutionGraph::Create(
   // most recent updates that touch the whole buffer slice.
 
   for (NodeId i = 0; i < operations.size(); ++i) {
+    VLOG(2) << "Processing operation " << i << " " << operations[i]->ToString();
     builders[i].id = i;
 
     const Operation* op = operations[i];
@@ -136,6 +137,7 @@ absl::StatusOr<ExecutionGraph> ExecutionGraph::Create(
         auto kind = EdgeKind(resource_rwsets[j].Conflicts(resource_rwsets[i]));
         builders[j].out_edges.push_back(NodeEdge{kind, i});
         builders[i].in_edges.push_back(NodeEdge{kind, j});
+        VLOG(2) << "Added edge " << j << " -> " << i << " " << kind;
       }
     }
   }
@@ -270,6 +272,35 @@ int64_t ExecutionGraph::EraseEdge(NodeDefBuilder& from, NodeDefBuilder& to,
   return 1;
 }
 
+std::string ExecutionGraph::ToString() const {
+  auto edges_to_string = [](absl::Span<const NodeEdge> edges) {
+    std::string s;
+    bool first = true;
+    for (const NodeEdge& e : edges) {
+      if (!first) absl::StrAppend(&s, ", ");
+      first = false;
+      absl::StrAppendFormat(&s, "%v", e);
+    }
+    return s;
+  };
+
+  std::string out;
+  absl::StrAppendFormat(&out,
+                        "ExecutionGraph: %d nodes, #source_nodes=%d "
+                        "#sink_nodes=%d, is_sequential=%v\n",
+                        nodes_defs_.size(), source_.size(), sink_.size(),
+                        is_sequential_);
+
+  for (NodeId i = 0; i < nodes_defs_.size(); ++i) {
+    const NodeDef& def = nodes_defs_[i];
+    absl::StrAppendFormat(&out, "node %d (priority=%d): in=[%s] out=[%s]\n", i,
+                          def.priority, edges_to_string(def.in_edges),
+                          edges_to_string(def.out_edges));
+  }
+
+  return out;
+}
+
 namespace {
 
 // A state of a DFS traversal for transitive reduction.
@@ -380,13 +411,13 @@ absl::Mutex renderer_mu(absl::kConstInit);
 ExecutionGraph::Renderer* graph_renderer ABSL_GUARDED_BY(renderer_mu) = nullptr;
 
 ExecutionGraph::Renderer* ExecutionGraph::GetRenderer() {
-  absl::MutexLock lock(&renderer_mu);
+  absl::MutexLock lock(renderer_mu);
   return graph_renderer;
 }
 
 void ExecutionGraph::RegisterRenderer(
     std::unique_ptr<ExecutionGraph::Renderer> renderer) {
-  absl::MutexLock lock(&renderer_mu);
+  absl::MutexLock lock(renderer_mu);
   if (graph_renderer != nullptr) {
     LOG(WARNING) << "Multiple calls to RegisterRenderer. Last "
                     "call wins, but because order of initialization in C++ is "

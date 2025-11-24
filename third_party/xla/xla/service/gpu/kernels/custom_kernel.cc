@@ -20,10 +20,12 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/launch_dim.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace xla::gpu {
 
@@ -67,10 +69,51 @@ size_t CustomKernel::shared_memory_bytes() const {
 }
 
 std::string CustomKernel::ToString() const {
+  std::string cluster_dims_str =
+      cluster_dims_.has_value()
+          ? absl::StrFormat("cluster: [%d, %d, %d]", cluster_dims_->x,
+                            cluster_dims_->y, cluster_dims_->z)
+          : "";
   return absl::StrFormat(
-      "%s grid: [%d, %d, %d] threads: [%d, %d, %d] shared_memory: %d bytes",
+      "%s grid: [%d, %d, %d] threads: [%d, %d, %d] %s "
+      "shared_memory: %d bytes",
       name_, block_dims_.x, block_dims_.y, block_dims_.z, thread_dims_.x,
-      thread_dims_.y, thread_dims_.z, shared_memory_bytes_);
+      thread_dims_.y, thread_dims_.z, cluster_dims_str, shared_memory_bytes_);
+}
+
+absl::StatusOr<CustomKernelProto> CustomKernel::ToProto() const {
+  CustomKernelProto proto;
+  proto.set_name(name_);
+  TF_ASSIGN_OR_RETURN(*proto.mutable_kernel_spec(), kernel_spec_.ToProto());
+  *proto.mutable_block_dims() = block_dims_.ToProto();
+  *proto.mutable_thread_dims() = thread_dims_.ToProto();
+  if (cluster_dims_.has_value()) {
+    *proto.mutable_cluster_dim() = cluster_dims_->ToProto();
+  }
+  proto.set_shared_memory_bytes(shared_memory_bytes_);
+  return proto;
+}
+
+absl::StatusOr<CustomKernel> CustomKernel::FromProto(
+    const CustomKernelProto& proto,
+    const std::optional<se::KernelLoaderSpec::SymbolResolver>&
+        symbol_resolver) {
+  TF_ASSIGN_OR_RETURN(
+      se::KernelLoaderSpec kernel_spec,
+      se::KernelLoaderSpec::FromProto(proto.kernel_spec(), symbol_resolver));
+  TF_ASSIGN_OR_RETURN(se::BlockDim block_dims,
+                      se::BlockDim::FromProto(proto.block_dims()));
+  TF_ASSIGN_OR_RETURN(se::ThreadDim thread_dims,
+                      se::ThreadDim::FromProto(proto.thread_dims()));
+  if (proto.has_cluster_dim()) {
+    TF_ASSIGN_OR_RETURN(se::ClusterDim cluster_dims,
+                        se::ClusterDim::FromProto(proto.cluster_dim()));
+    return CustomKernel(proto.name(), std::move(kernel_spec), block_dims,
+                        thread_dims, cluster_dims, proto.shared_memory_bytes());
+  }
+
+  return CustomKernel(proto.name(), std::move(kernel_spec), block_dims,
+                      thread_dims, proto.shared_memory_bytes());
 }
 
 }  // namespace xla::gpu

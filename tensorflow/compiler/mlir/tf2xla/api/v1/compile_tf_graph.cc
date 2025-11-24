@@ -40,9 +40,9 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/set_tpu_infeed_layout.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/deserialize_mlir_module_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
-#include "tensorflow/compiler/mlir/tensorflow/utils/serialize_mlir_module_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/translate_utils.h"
 #include "tensorflow/compiler/mlir/tf2xla/api/v2/tf_executor_to_graph.h"
 #include "tensorflow/compiler/mlir/tf2xla/internal/logging_hooks.h"
@@ -106,9 +106,9 @@ namespace {
 
 // Time the execution of kernels (in CPU cycles). Meant to be used as RAII.
 struct CompilationTimer {
-  uint64 start_cycles = profile_utils::CpuUtils::GetCurrentClockCycle();
+  uint64_t start_cycles = profile_utils::CpuUtils::GetCurrentClockCycle();
 
-  uint64 ElapsedCycles() {
+  uint64_t ElapsedCycles() {
     return profile_utils::CpuUtils::GetCurrentClockCycle() - start_cycles;
   }
 

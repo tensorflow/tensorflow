@@ -20,6 +20,7 @@ limitations under the License.
 #include <functional>
 #include <utility>
 
+#include "absl/synchronization/notification.h"
 #include "tensorflow/core/common_runtime/collective_rma_local.h"
 #include "tensorflow/core/common_runtime/collective_util.h"
 #include "tensorflow/core/common_runtime/copy_tensor.h"
@@ -33,7 +34,6 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/core/notification.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
@@ -67,7 +67,7 @@ void RingReducer::Run(StatusCallback done) {
   CHECK_GT(num_subdivs_, 0);
 
   if (VLOG_IS_ON(1)) {
-    string buf;
+    std::string buf;
     for (int r = 0; r < col_params_->group.members.size(); ++r) {
       strings::StrAppend(&buf, "dev ", r, " : ",
                          col_params_->group.members[r].device.name(), "\n");
@@ -75,10 +75,10 @@ void RingReducer::Run(StatusCallback done) {
     for (int sd = 0;
          sd < col_params_->instance.impl_details.subdiv_permutations.size();
          ++sd) {
-      strings::StrAppend(&buf, "\nsubdiv ", sd, " perm: ");
+      absl::StrAppend(&buf, "\nsubdiv ", sd, " perm: ");
       for (auto x :
            col_params_->instance.impl_details.subdiv_permutations[sd]) {
-        strings::StrAppend(&buf, x, ", ");
+        absl::StrAppend(&buf, x, ", ");
       }
     }
     VLOG(1) << "RingReducer::Run for device " << col_ctx_->device_name
@@ -92,7 +92,7 @@ void RingReducer::Run(StatusCallback done) {
       (DMAHelper::base(col_ctx_->input) != DMAHelper::base(col_ctx_->output))) {
     // We are running in a blockable thread and the callback can't block so
     // just wait here on the copy.
-    Notification note;
+    absl::Notification note;
     absl::Status status;
     tsl::profiler::TraceMe activity("MemCpyAsync",
                                     tsl::profiler::TraceMeLevel::kInfo);
@@ -129,9 +129,9 @@ void RingReducer::ContinueAfterInputCopy() {
     // can be provided to the kernel in host memory?
     Tensor group_size_val = ca_->Scalar(group_size_);
     if (col_params_->group.device_type != "CPU") {
-      uint64 safe_alloc_frontier = col_ctx_->device->SafeAllocFrontier(0);
+      uint64_t safe_alloc_frontier = col_ctx_->device->SafeAllocFrontier(0);
       AllocationAttributes aa;
-      std::function<uint64()> freed_by_func = [this, &safe_alloc_frontier]() {
+      std::function<uint64_t()> freed_by_func = [this, &safe_alloc_frontier]() {
         safe_alloc_frontier =
             col_ctx_->device->SafeAllocFrontier(safe_alloc_frontier);
         return safe_alloc_frontier;
@@ -198,7 +198,7 @@ bool RingReducer::RunAsyncParts() {
     // write) unless we do.
     tsl::profiler::TraceMe activity("WaitForQueuedEvents",
                                     tsl::profiler::TraceMeLevel::kInfo);
-    Notification note;
+    absl::Notification note;
     absl::Status s = gpu_info->default_context->ThenExecute(
         col_ctx_->device, gpu_info->stream, [&note]() { note.Notify(); });
     if (s.ok()) {

@@ -389,8 +389,8 @@ mlir::tf_device::ClusterOp CreateClusterOp(
 
   llvm::SmallVector<Type, 8> result_types;
   for (Value result : results) result_types.push_back(result.getType());
-  auto cluster = builder.create<mlir::tf_device::ClusterOp>(
-      last_cluster_op->getLoc(), result_types);
+  auto cluster = mlir::tf_device::ClusterOp::create(
+      builder, last_cluster_op->getLoc(), result_types);
 
   Block* body = new Block;
   cluster.getBody().push_back(body);
@@ -421,7 +421,8 @@ mlir::tf_device::ClusterOp CreateClusterOp(
 
   // Add terminator.
   builder.setInsertionPointToEnd(body);
-  builder.create<mlir::tf_device::ReturnOp>(last_cluster_op->getLoc(), results);
+  mlir::tf_device::ReturnOp::create(builder, last_cluster_op->getLoc(),
+                                    results);
 
   // Replaces uses of cluster ops results outside of cluster with the associated
   // `tf_device.cluster` results.
@@ -538,17 +539,18 @@ Operation* BuildPartitionedOutputs(
     mlir::TF::TPUPartitionedOutputV2Op first_op = *(ops.begin());
     mlir::ArrayAttr dims = first_op.getPartitionDimsAttr();
     StringAttr sharding = first_op.get_XlaShardingAttr();
+    StringAttr sharding_v2 = first_op.get_XlaShardingV2Attr();
     Operation::result_type_range output_types = first_op.getResultTypes();
-    result_op = builder.create<mlir::TF::TPUPartitionedOutputV2Op>(
-        replicate_op.getLoc(), output_types, cluster.getResult(result_id), dims,
-        sharding);
+    result_op = mlir::TF::TPUPartitionedOutputV2Op::create(
+        builder, replicate_op.getLoc(), output_types,
+        cluster.getResult(result_id), dims, sharding, sharding_v2);
 
     results.insert(results.end(), result_op->getResults().begin(),
                    result_op->getResults().end());
   }
 
   // Once we've accumulated all the cluster's results, build a return op.
-  builder.create<mlir::tf_device::ReturnOp>(result_op->getLoc(), results);
+  mlir::tf_device::ReturnOp::create(builder, result_op->getLoc(), results);
 
   // Then erase all the identity and partitioned output ops.
   for (const auto& [_, ops] : partitioned_outputs) {
@@ -715,8 +717,8 @@ LogicalResult ReplicateCluster(mlir::tf_device::ClusterOp cluster,
 
   // Create replicate op.
   auto result_types = GetClusterResultTypes(cluster, partitioned_outputs);
-  auto replicate_op = builder.create<mlir::tf_device::ReplicateOp>(
-      cluster.getLoc(), num_replicas,
+  auto replicate_op = mlir::tf_device::ReplicateOp::create(
+      builder, cluster.getLoc(), num_replicas,
       llvm::SmallDenseMap<llvm::StringRef,
                           llvm::SmallVector<llvm::StringRef, 4>>(),
       replicated_inputs, packed_inputs, result_types);
@@ -788,8 +790,8 @@ LogicalResult ReplicateCluster(mlir::tf_device::ClusterOp cluster,
                                         partitioned_outputs, erase_list,
                                         result_types, num_replicas);
   } else {
-    result_op = builder.create<mlir::tf_device::ReturnOp>(replicate_op.getLoc(),
-                                                          cluster.getResults());
+    result_op = mlir::tf_device::ReturnOp::create(
+        builder, replicate_op.getLoc(), cluster.getResults());
   }
 
   for (auto pi : partitioned_inputs) pi->moveBefore(result_op);

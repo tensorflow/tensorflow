@@ -225,7 +225,7 @@ Node* AddNodeFromNodeDef(Graph& graph, const string& name,
                          const string& node_type, int num_inputs) {
   auto builder = NodeDefBuilder(name, node_type);
   for (int i = 0; i < num_inputs; ++i) {
-    builder = builder.Input(strings::StrCat("node_", i), i, DT_FLOAT);
+    builder = builder.Input(absl::StrCat("node_", i), i, DT_FLOAT);
   }
 
   NodeDef node_def;
@@ -249,7 +249,7 @@ TEST(ValidateGraphHasNoCycleTest, CycleFails) {
 
   EXPECT_THAT(
       graph::ValidateGraphHasNoCycle(graph),
-      tsl::testing::StatusIs(
+      absl_testing::StatusIs(
           tsl::error::Code::INVALID_ARGUMENT,
           ::testing::ContainsRegex("Graph is invalid, contains a cycle")));
 }

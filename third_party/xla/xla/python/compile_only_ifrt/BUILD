@@ -1,3 +1,4 @@
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("//xla/tsl:tsl.bzl", "internal_visibility")
 
 package(
@@ -14,6 +15,8 @@ cc_library(
     hdrs = ["client.h"],
     deps = [
         "//xla:shape_util",
+        "//xla:util",
+        "//xla:xla_data_proto_cc",
         "//xla/pjrt:host_memory_spaces",
         "//xla/pjrt:pjrt_device_description",
         "//xla/pjrt:pjrt_layout",
@@ -25,10 +28,9 @@ cc_library(
         "//xla/python/pjrt_ifrt:pjrt_attribute_map_util",
         "//xla/python/pjrt_ifrt:pjrt_dtype",
         "//xla/service:computation_placer_hdr",
+        "//xla/tsl/concurrency:future",
         "//xla/tsl/concurrency:ref_count",
-        "//xla/tsl/platform:errors",
         "//xla/tsl/platform:statusor",
-        "@com_google_absl//absl/base:nullability",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:str_format",

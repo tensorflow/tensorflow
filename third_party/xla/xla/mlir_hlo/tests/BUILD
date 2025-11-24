@@ -1,6 +1,7 @@
 load("@bazel_skylib//rules:build_test.bzl", "build_test")
 load("@bazel_skylib//rules:expand_template.bzl", "expand_template")
 load("@llvm-project//llvm:lit_test.bzl", "lit_test", "package_path")
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -26,8 +27,8 @@ package(
         tags = [
             "nomsan",  # The execution engine doesn't work with msan, see b/248097619.
         ],
-        deps = ["@pypi_lit//:pkg"],
-        deps = ["@pypi_lit//:pkg"],  # copybara:comment
+        deps = ["@pypi//lit"],
+        deps = ["@pypi//lit"],  # copybara:comment
     )
     for src in glob(["**/*.mlir"])
 ]

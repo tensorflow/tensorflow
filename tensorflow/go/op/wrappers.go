@@ -1317,6 +1317,7 @@ func AsStringPrecision(value int64) AsStringAttr {
 // AsStringScientific sets the optional scientific attribute to value.
 //
 // value: Use scientific notation for floating point numbers.
+// Can't be specified to `True` when `shortest` is set to `True`.
 // If not specified, defaults to false
 func AsStringScientific(value bool) AsStringAttr {
 	return func(m optionalAttr) {
@@ -1328,6 +1329,7 @@ func AsStringScientific(value bool) AsStringAttr {
 //
 // value: Use shortest representation (either scientific or standard) for
 // floating point numbers.
+// Can't be specified to `True` when `scientific` is set to `True`.
 // If not specified, defaults to false
 func AsStringShortest(value bool) AsStringAttr {
 	return func(m optionalAttr) {
@@ -6509,6 +6511,9 @@ func Complex(scope *Scope, real tf.Output, imag tf.Output, optional ...ComplexAt
 type ComplexAbsAttr func(optionalAttr)
 
 // ComplexAbsTout sets the optional Tout attribute to value.
+//
+// value: Need to be `tf.float32` when the type of `x` is `tf.complex64`.
+// Need to be `tf.float64` when the type of `x` is `tf.complex128`.
 // If not specified, defaults to DT_FLOAT
 func ComplexAbsTout(value tf.DataType) ComplexAbsAttr {
 	return func(m optionalAttr) {
@@ -11735,6 +11740,10 @@ func DecodeCSVNaValue(value string) DecodeCSVAttr {
 }
 
 // DecodeCSVSelectCols sets the optional select_cols attribute to value.
+//
+// value: Optional sorted list of column indices to select. If specified,
+// only this subset of columns will be parsed and returned.
+// It only works on `records` except for `record_defaults`.
 // If not specified, defaults to {}
 func DecodeCSVSelectCols(value []int64) DecodeCSVAttr {
 	return func(m optionalAttr) {
@@ -12611,7 +12620,9 @@ type DenseBincountAttr func(optionalAttr)
 
 // DenseBincountBinaryOutput sets the optional binary_output attribute to value.
 //
-// value: bool; Whether the kernel should count the appearance or number of occurrences.
+// value: Whether the kernel should count the appearance or number of occurrences.
+// Will raise `UnimplementedError` when `binary_output` is specified to `True`
+// and the size of `weights` is not 0.
 // If not specified, defaults to false
 func DenseBincountBinaryOutput(value bool) DenseBincountAttr {
 	return func(m optionalAttr) {
@@ -12633,10 +12644,10 @@ func DenseBincountBinaryOutput(value bool) DenseBincountAttr {
 //
 //	input: 1D or 2D int `Tensor`.
 //	size: non-negative int scalar `Tensor`.
-//	weights: is an int32, int64, float32, or float64 `Tensor` with the same
+//	weights: `Tensor` with the same shape as `arr`, or a length-0 `Tensor`,
 //
-// shape as `arr`, or a length-0 `Tensor`, in which case it acts as all weights
-// equal to 1.
+// in which case it acts as all weights equal to 1.
+// Not supported by the GPU implementation of Bincount.
 //
 // Returns 1D `Tensor` with length equal to `size` or 2D `Tensor` with [batch_size, `size`].
 // The counts or summed weights for each value in the range [0, size).
@@ -16490,6 +16501,9 @@ func ExperimentalThreadPoolHandleMaxIntraOpParallelism(value int64) Experimental
 }
 
 // ExperimentalThreadPoolHandleContainer sets the optional container attribute to value.
+//
+// value: The name of `container` should start with `'.'` or `letter` or `digit`,
+// with ['-', '.', '/'] or `letter` or `digit` follows several times.
 // If not specified, defaults to ""
 func ExperimentalThreadPoolHandleContainer(value string) ExperimentalThreadPoolHandleAttr {
 	return func(m optionalAttr) {
@@ -16513,10 +16527,6 @@ func ExperimentalThreadPoolHandleSharedName(value string) ExperimentalThreadPool
 //	display_name: A human-readable name for the threads that may be visible in some
 //
 // visualizations.
-// threadpool.
-//
-// Returns A resource that can be consumed by one or more ExperimentalThreadPoolDataset
-// ops.
 func ExperimentalThreadPoolHandle(scope *Scope, num_threads int64, display_name string, optional ...ExperimentalThreadPoolHandleAttr) (handle tf.Output) {
 	if scope.Err() != nil {
 		return
@@ -16627,6 +16637,7 @@ func ExtractGlimpseNormalized(value bool) ExtractGlimpseAttr {
 //
 // value: indicates if the noise should be generated using a
 // uniform distribution or a Gaussian distribution.
+// It should not be `True` when `noise` is not `uniform`.
 // If not specified, defaults to true
 func ExtractGlimpseUniformNoise(value bool) ExtractGlimpseAttr {
 	return func(m optionalAttr) {
@@ -16733,6 +16744,7 @@ func ExtractGlimpseV2Normalized(value bool) ExtractGlimpseV2Attr {
 //
 // value: indicates if the noise should be generated using a
 // uniform distribution or a Gaussian distribution.
+// It should not be `True` when `noise` is not `uniform`.
 // If not specified, defaults to true
 func ExtractGlimpseV2UniformNoise(value bool) ExtractGlimpseV2Attr {
 	return func(m optionalAttr) {
@@ -20896,6 +20908,9 @@ func IgnoreErrorsDataset(scope *Scope, input_dataset tf.Output, output_types []t
 type ImagAttr func(optionalAttr)
 
 // ImagTout sets the optional Tout attribute to value.
+//
+// value: Need to be `tf.float32` when the type of `x` is `tf.complex64`.
+// Need to be `tf.float64` when the type of `x` is `tf.complex128`.
 // If not specified, defaults to DT_FLOAT
 func ImagTout(value tf.DataType) ImagAttr {
 	return func(m optionalAttr) {
@@ -21901,7 +21916,15 @@ type IsotonicRegressionAttr func(optionalAttr)
 
 // IsotonicRegressionOutputDtype sets the optional output_dtype attribute to value.
 //
-// value: Dtype of output.
+// value: Dtype of the output tensor.
+//
+// Note on supported input-output type combinations:
+// * For floating-point types, the output has the same dtype as the input.
+// * For 8-bit and 16-bit integer inputs, the output is a 32-bit float.
+// * For 32-bit and 64-bit integer inputs, the output is a 64-bit float.
+//
+// Using unsupported dtype pairs (for example, input=float64 with output=float32)
+// will result in a "Could not find device for node" error.
 // If not specified, defaults to DT_FLOAT
 func IsotonicRegressionOutputDtype(value tf.DataType) IsotonicRegressionAttr {
 	return func(m optionalAttr) {
@@ -33156,6 +33179,16 @@ func QuantizeAndDequantizeV4GradAxis(value int64) QuantizeAndDequantizeV4GradAtt
 //
 // Returns a gradient of 1 for inputs that are within the quantization range,
 // or 0 otherwise.
+//
+// Arguments:
+//
+//	input_min: If `axis` is specified, the shape of the minimum input tensor
+//
+// must be rank 1.
+//
+//	input_max: If `axis` is specified, the shape of the maximum input tensor
+//
+// must be rank 1.
 func QuantizeAndDequantizeV4Grad(scope *Scope, gradients tf.Output, input tf.Output, input_min tf.Output, input_max tf.Output, optional ...QuantizeAndDequantizeV4GradAttr) (input_backprop tf.Output, input_min_backprop tf.Output, input_max_backprop tf.Output) {
 	if scope.Err() != nil {
 		return
@@ -33239,6 +33272,8 @@ func QuantizeV2Mode(value string) QuantizeV2Attr {
 }
 
 // QuantizeV2RoundMode sets the optional round_mode attribute to value.
+//
+// value: `round_mode='HALF_TO_EVEN'` only supported for mode 'SCALED'.
 // If not specified, defaults to "HALF_AWAY_FROM_ZERO"
 func QuantizeV2RoundMode(value string) QuantizeV2Attr {
 	return func(m optionalAttr) {
@@ -52564,6 +52599,14 @@ func TPUReplicateMetadataUseSpmdForXlaPartitioning(value bool) TPUReplicateMetad
 	}
 }
 
+// TPUReplicateMetadataUseShardyPartitioner sets the optional use_shardy_partitioner attribute to value.
+// If not specified, defaults to false
+func TPUReplicateMetadataUseShardyPartitioner(value bool) TPUReplicateMetadataAttr {
+	return func(m optionalAttr) {
+		m["use_shardy_partitioner"] = value
+	}
+}
+
 // TPUReplicateMetadataTpuCompileOptionsProto sets the optional tpu_compile_options_proto attribute to value.
 // If not specified, defaults to ""
 func TPUReplicateMetadataTpuCompileOptionsProto(value string) TPUReplicateMetadataAttr {
@@ -54948,6 +54991,9 @@ func ThreadPoolHandleMaxIntraOpParallelism(value int64) ThreadPoolHandleAttr {
 }
 
 // ThreadPoolHandleContainer sets the optional container attribute to value.
+//
+// value: The name of `container` should start with `'.'` or `letter` or `digit`,
+// with ['-', '.', '/'] or `letter` or `digit` follows several times.
 // If not specified, defaults to ""
 func ThreadPoolHandleContainer(value string) ThreadPoolHandleAttr {
 	return func(m optionalAttr) {
@@ -54971,10 +55017,6 @@ func ThreadPoolHandleSharedName(value string) ThreadPoolHandleAttr {
 //	display_name: A human-readable name for the threads that may be visible in some
 //
 // visualizations.
-// threadpool.
-//
-// Returns A resource that can be consumed by one or more ExperimentalThreadPoolDataset
-// ops.
 func ThreadPoolHandle(scope *Scope, num_threads int64, display_name string, optional ...ThreadPoolHandleAttr) (handle tf.Output) {
 	if scope.Err() != nil {
 		return

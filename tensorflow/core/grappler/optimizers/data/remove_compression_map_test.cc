@@ -153,9 +153,10 @@ TEST(RemoveCompressionMap, FailureNoMap) {
 
   RemoveCompressionMap optimizer;
   GraphDef output;
-  ASSERT_THAT(optimizer.Optimize(nullptr, item, &output),
-              testing::StatusIs(error::INTERNAL,
-                                HasSubstr("Compression function not found.")));
+  ASSERT_THAT(
+      optimizer.Optimize(nullptr, item, &output),
+      absl_testing::StatusIs(error::INTERNAL,
+                             HasSubstr("Compression function not found.")));
 }
 
 }  // namespace

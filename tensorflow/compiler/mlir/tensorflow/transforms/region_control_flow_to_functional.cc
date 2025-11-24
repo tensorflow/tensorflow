@@ -206,7 +206,7 @@ StringRef ExtractSingleBlockRegion(
   auto type = FunctionType::get(region.getContext(), input_types, return_types);
 
   // Create new function and extract region body into the function.
-  auto outlined_func = builder.create<func::FuncOp>(loc, name, type);
+  auto outlined_func = func::FuncOp::create(builder, loc, name, type);
   Region& func_region = outlined_func.getBody();
   func_region.takeBody(region);
   Block& first_block = func_region.front();
@@ -231,7 +231,7 @@ StringRef ExtractSingleBlockRegion(
   // Replace the existing terminator with a return.
   terminator = first_block.getTerminator();
   builder.setInsertionPoint(terminator);
-  builder.create<func::ReturnOp>(terminator->getLoc(), return_values);
+  func::ReturnOp::create(builder, terminator->getLoc(), return_values);
   terminator->erase();
 
   outlined_func.setPrivate();
@@ -447,9 +447,9 @@ LogicalResult RegionControlFlowToFunctional::ConvertIfOp(
   // existing ones), replace the region based op with a functional control flow
   // op.
   OpBuilder builder(if_region);
-  auto if_op = builder.create<IfOp>(
-      if_region.getLoc(), if_region.getResultTypes(), cond, extern_values,
-      then_name, else_name, if_region.getIsStateless());
+  auto if_op = IfOp::create(builder, if_region.getLoc(),
+                            if_region.getResultTypes(), cond, extern_values,
+                            then_name, else_name, if_region.getIsStateless());
   CopyAndOverrideAttributes(if_region, if_op, &builder);
 
   if_region.replaceAllUsesWith(if_op.getResults());
@@ -485,8 +485,8 @@ LogicalResult RegionControlFlowToFunctional::ConvertCaseOp(
   // Once we have the branch functions ready, replace the region based op with a
   // functional op.
   OpBuilder builder(case_region);
-  auto case_op = builder.create<CaseOp>(
-      case_region.getLoc(), case_region.getResultTypes(),
+  auto case_op = CaseOp::create(
+      builder, case_region.getLoc(), case_region.getResultTypes(),
       case_region.getBranchIndex(), extern_values,
       builder.getArrayAttr(branch_symbols), case_region.getIsStateless());
   CopyAndOverrideAttributes(case_region, case_op, &builder);
@@ -569,10 +569,10 @@ LogicalResult RegionControlFlowToFunctional::ConvertWhileOp(
   // Once we have the `cond` and `body` functions ready (either outlined or
   // existing ones), replace the region based op with a functional op.
   OpBuilder builder(while_region);
-  auto while_op = builder.create<WhileOp>(
-      while_region.getLoc(), new_result_types, new_inputs, cond_name, body_name,
-      while_region.getParallelIterations(), while_region.getIsStateless(),
-      while_region.getShapeInvariant());
+  auto while_op = WhileOp::create(
+      builder, while_region.getLoc(), new_result_types, new_inputs, cond_name,
+      body_name, while_region.getParallelIterations(),
+      while_region.getIsStateless(), while_region.getShapeInvariant());
   CopyAndOverrideAttributes(while_region, while_op, &builder);
 
   // Redirect old results to new results.
@@ -618,8 +618,9 @@ LogicalResult RegionControlFlowToFunctional::ConvertGeneratorDatasetOp(
                                /*only_one_return_value=*/false,
                                /*allow_return_of_existing=*/true);
 
-  auto new_op = OpBuilder(regional).create<TF::GeneratorDatasetOp>(
-      regional.getLoc(), regional->getResultTypes(),
+  OpBuilder builder(regional);
+  auto new_op = TF::GeneratorDatasetOp::create(
+      builder, regional.getLoc(), regional->getResultTypes(),
       regional.getInitFuncOtherArgs(), regional.getNextFuncOtherArgs(),
       regional.getFinalizeFuncOtherArgs(), SymbolRefAttr::get(ctx, init_name),
       SymbolRefAttr::get(ctx, next_name),

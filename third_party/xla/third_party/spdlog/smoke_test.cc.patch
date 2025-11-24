@@ -1,0 +1,30 @@
+--- /dev/null
++++ b/smoke_test.cc
+@@ -0,0 +1,27 @@
++#include "spdlog/spdlog.h"
++#include "spdlog/sinks/basic_file_sink.h"
++#include <iostream>
++
++int main() {
++  try {
++    // Log to stdout
++    spdlog::info("Hello from spdlog smoke test!");
++
++    // Log with formatting
++    int answer = 42;
++    spdlog::warn("The answer is {}", answer);
++
++    // Create a file logger
++    auto file_logger = spdlog::basic_logger_mt("file_logger", "smoke_test.log");
++    file_logger->info("Logging to a file from smoke test");
++
++    // Flush and shutdown
++    spdlog::shutdown();
++
++    std::cout << "spdlog smoke test passed." << std::endl;
++    return 0;  // success
++  } catch (const spdlog::spdlog_ex& ex) {
++    std::cerr << "spdlog smoke test failed: " << ex.what() << std::endl;
++    return 1;  // failure
++  }
++}

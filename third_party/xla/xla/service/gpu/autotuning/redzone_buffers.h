@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_clone_context.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/shape.h"
@@ -63,6 +64,18 @@ class RedzoneBuffers {
       bool should_init_buffers, bool should_check_correctness,
       int redzone_padding_bytes);
 
+  static absl::StatusOr<RedzoneBuffers> FromComputation(
+      const HloComputation& computation, se::DeviceMemoryAllocator* allocator,
+      se::Stream* stream, BuffersToCreate buffers_to_create,
+      bool should_init_buffers, bool should_check_correctness,
+      int redzone_padding_bytes);
+
+  static absl::StatusOr<RedzoneBuffers> FromProgramShape(
+      const ProgramShape& program_shape, BuffersToCreate buffers_to_create,
+      bool should_init_buffers, bool should_check_correctness,
+      int redzone_padding_bytes, se::DeviceMemoryAllocator* allocator,
+      se::Stream* stream);
+
   const std::vector<se::DeviceMemoryBase>& input_buffers() const {
     return input_buffers_;
   }
@@ -77,10 +90,10 @@ class RedzoneBuffers {
   se::RedzoneAllocator& RedzoneAllocator() const { return *redzone_allocator_; }
 
  private:
-  absl::Status CreateInputs(const HloInstruction& instruction,
+  absl::Status CreateInputs(absl::Span<const Shape> input_shapes,
                             bool should_init_buffers, int64_t& rng_state);
 
-  absl::Status CreateOutputs(const HloInstruction& instruction,
+  absl::Status CreateOutputs(const Shape& output_shape,
                              BuffersToCreate buffers_to_create,
                              bool should_init_buffers, int64_t& rng_state);
 

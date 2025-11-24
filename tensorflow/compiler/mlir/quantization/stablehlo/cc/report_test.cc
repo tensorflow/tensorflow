@@ -20,6 +20,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
@@ -45,7 +46,6 @@ using ::testing::SizeIs;
 using ::testing::StrEq;
 using ::testing::TempDir;
 using ::tsl::protobuf::TextFormat;
-using ::tsl::testing::IsOk;
 
 using QuantizationReportTest = ::mlir::quant::QuantizationTestBase;
 
@@ -305,10 +305,10 @@ TEST_F(QuantizationReportTest, Save) {
   const std::string dst_file_path =
       absl::StrCat(TempDir(), "/quantization_report.txtpb");
   const absl::Status save_status = report.Save(dst_file_path);
-  ASSERT_THAT(save_status, IsOk());
+  ASSERT_THAT(save_status, absl_testing::IsOk());
 
   const absl::StatusOr<std::string> file_data = ReadFileToString(dst_file_path);
-  ASSERT_THAT(file_data, IsOk());
+  ASSERT_THAT(file_data, absl_testing::IsOk());
 
   // Test that the file data can be parsed as `QuantizationResults`.
   QuantizationResults results{};

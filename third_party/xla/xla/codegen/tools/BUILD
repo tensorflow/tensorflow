@@ -1,3 +1,4 @@
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("//xla:xla.default.bzl", "xla_cc_binary")
 
 package(
@@ -15,22 +16,31 @@ xla_cc_binary(
     visibility = [
         "//xla/backends/cpu/codegen:__subpackages__",
         "//xla/backends/gpu/codegen:__subpackages__",
+        "//xla/codegen:__subpackages__",
         "//xla/codegen/emitters/ir/tests:__subpackages__",
+        "//xla/codegen/emitters/tests:__pkg__",
         "//xla/codegen/emitters/transforms/tests:__subpackages__",
+        "//xla/codegen/xtile/ir/tests:__pkg__",
     ],
     deps = [
         "//xla/backends/cpu/codegen/emitters/ir:xla_cpu",
         "//xla/backends/cpu/codegen/emitters/transforms:passes",
+        "//xla/backends/cpu/codegen/tiled/transforms:passes",
         "//xla/backends/gpu/codegen/emitters:emitter_base",
         "//xla/backends/gpu/codegen/emitters/ir:xla_gpu",
         "//xla/backends/gpu/codegen/emitters/transforms:passes",
         "//xla/codegen/emitters/ir:xla",
+        "//xla/codegen/emitters/transforms:pass_pipelines",
         "//xla/codegen/emitters/transforms:passes",
+        "//xla/codegen/xtile/ir:xtile",
+        "//xla/codegen/xtile/ir/transforms:passes",
         "//xla/mlir_hlo",
         "//xla/service/gpu:gpu_device_info_for_tests",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:AffineDialect",
         "@llvm-project//mlir:ArithDialect",
+        "@llvm-project//mlir:ArithTransforms",
+        "@llvm-project//mlir:BufferizationTransforms",
         "@llvm-project//mlir:ComplexDialect",
         "@llvm-project//mlir:DLTIDialect",
         "@llvm-project//mlir:FuncDialect",
@@ -45,7 +55,28 @@ xla_cc_binary(
         "@llvm-project//mlir:SCFDialect",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TensorDialect",
+        "@llvm-project//mlir:TensorTransforms",
         "@llvm-project//mlir:Transforms",
         "@llvm-project//mlir:VectorDialect",
+        "@stablehlo//:stablehlo_ops",
+    ],
+)
+
+cc_library(
+    name = "test_lib",
+    testonly = True,
+    srcs = ["test_lib.cc"],
+    hdrs = ["test_lib.h"],
+    visibility = [
+        "//xla/backends/cpu/codegen/tools:__subpackages__",
+        "//xla/backends/gpu/codegen/tools:__subpackages__",
+    ],
+    deps = [
+        "//xla:status_macros",
+        "//xla/hlo/ir:hlo",
+        "//xla/tools:hlo_module_loader",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
     ],
 )

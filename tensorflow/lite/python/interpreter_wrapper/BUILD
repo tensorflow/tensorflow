@@ -1,3 +1,4 @@
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable", "pybind_extension")
 
 package(
@@ -86,12 +87,17 @@ pybind_extension(
     additional_stubgen_deps = [
         "//third_party/py/numpy:numpy",
     ],
+    common_lib_packages = [
+        "litert/python",
+        "tensorflow/lite/python",
+    ],
     compatible_with = get_compatible_with_portable(),
     enable_stub_generation = True,
     link_in_framework = True,
     pytype_srcs = [
         "_pywrap_tensorflow_interpreter_wrapper.pyi",
     ],
+    wrap_py_init = True,
     deps = [
         ":interpreter_wrapper_lib",
         "//tensorflow/lite:framework",

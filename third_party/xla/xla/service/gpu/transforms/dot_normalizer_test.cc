@@ -17,14 +17,13 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/status_matchers.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/pattern_matcher_gmock.h"
 #include "xla/service/pattern_matcher.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/status_matchers.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/test.h"
 
 namespace xla::gpu {
 namespace {
@@ -32,7 +31,6 @@ namespace {
 namespace m = ::xla::match;
 
 using DotNormalizerTest = HloHardwareIndependentTestBase;
-using ::tsl::testing::IsOkAndHolds;
 
 TEST_F(DotNormalizerTest, DotWithoutContractingDims) {
   constexpr char kHlo[] = R"(
@@ -46,7 +44,7 @@ TEST_F(DotNormalizerTest, DotWithoutContractingDims) {
     }
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kHlo));
-  EXPECT_THAT(DotNormalizer().Run(m.get()), IsOkAndHolds(true));
+  EXPECT_THAT(DotNormalizer().Run(m.get()), absl_testing::IsOkAndHolds(true));
   EXPECT_THAT(
       m->entry_computation()->root_instruction(),
       GmockMatch(
@@ -68,7 +66,7 @@ TEST_F(DotNormalizerTest, DotWithContractingDims) {
     }
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kHlo));
-  EXPECT_THAT(DotNormalizer().Run(m.get()), IsOkAndHolds(false));
+  EXPECT_THAT(DotNormalizer().Run(m.get()), absl_testing::IsOkAndHolds(false));
 }
 
 }  // namespace

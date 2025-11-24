@@ -20,17 +20,24 @@ limitations under the License.
 namespace tflite {
 
 MMAPAllocation::MMAPAllocation(const char* filename,
-                               ErrorReporter* error_reporter)
-    : MMAPAllocation(error_reporter, -1) {}
+                               ErrorReporter* error_reporter, bool map_private)
+    : MMAPAllocation(error_reporter, -1, map_private) {}
 
-MMAPAllocation::MMAPAllocation(int fd, ErrorReporter* error_reporter)
-    : MMAPAllocation(error_reporter, -1) {}
+MMAPAllocation::MMAPAllocation(int fd, ErrorReporter* error_reporter,
+                               bool map_private)
+    : MMAPAllocation(error_reporter, -1, map_private) {}
 
 MMAPAllocation::MMAPAllocation(int fd, size_t offset, size_t length,
-                               ErrorReporter* error_reporter)
-    : MMAPAllocation(error_reporter, -1) {}
+                               ErrorReporter* error_reporter, bool map_private)
+    : MMAPAllocation(error_reporter, -1, map_private) {}
 
-MMAPAllocation::MMAPAllocation(ErrorReporter* error_reporter, int owned_fd)
+MMAPAllocation::MMAPAllocation(const char* filename, size_t offset,
+                               size_t length, ErrorReporter* error_reporter,
+                               bool map_private)
+    : MMAPAllocation(error_reporter, -1, map_private) {}
+
+MMAPAllocation::MMAPAllocation(ErrorReporter* error_reporter, int owned_fd,
+                               bool map_private)
     : Allocation(error_reporter, Allocation::Type::kMMap),
       mmapped_buffer_(nullptr) {
   // The disabled variant should never be created.

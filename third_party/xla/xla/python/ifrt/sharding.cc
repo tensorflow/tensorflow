@@ -194,11 +194,7 @@ absl::StatusOr<ShardingProto> Sharding::ToProto(SerDesVersion version) const {
   ShardingProto sharding_proto;
   // `ShardingProto` does not store its own version. It delegates the details to
   // SerDes of the `Sharding` subclasses.
-  std::unique_ptr<SerializeOptions> options;
-  if (version != SerDesVersion::current()) {
-    options = std::make_unique<SerializeOptions>();
-    options->version = version;
-  }
+  auto options = std::make_unique<SerializeOptions>(version);
   TF_ASSIGN_OR_RETURN(*sharding_proto.mutable_serialized_sharding(),
                       Serialize(*this, std::move(options)));
   return sharding_proto;
@@ -211,15 +207,18 @@ std::ostream& operator<<(std::ostream& os, const Sharding& sharding) {
 std::unique_ptr<SingleDeviceSharding> SingleDeviceSharding::Create(
     Device* device, MemoryKind memory_kind) {
   CHECK(device != nullptr);
+  absl::StatusOr<DeviceListRef> device_list =
+      device->client()->MakeDeviceList({device});
+  CHECK_OK(device_list);
   memory_kind = CanonicalizeMemoryKind(memory_kind, device);
   return std::unique_ptr<SingleDeviceSharding>(
-      new SingleDeviceSharding(device, memory_kind));
+      new SingleDeviceSharding(*std::move(device_list), memory_kind));
 }
 
-SingleDeviceSharding::SingleDeviceSharding(Device* device,
+SingleDeviceSharding::SingleDeviceSharding(DeviceListRef device_list,
                                            MemoryKind memory_kind)
     : llvm::RTTIExtends<SingleDeviceSharding, Sharding>(
-          device->client()->MakeDeviceList({device}), memory_kind,
+          std::move(device_list), memory_kind,
           /*is_fully_replicated=*/true) {}
 
 absl::StatusOr<Shape> SingleDeviceSharding::GetShardShape(

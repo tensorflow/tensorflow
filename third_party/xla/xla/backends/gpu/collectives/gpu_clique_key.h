@@ -25,24 +25,14 @@ limitations under the License.
 #include "xla/core/collectives/clique_key.h"
 #include "xla/service/global_device_id.h"
 #include "xla/tsl/lib/gtl/int_type.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla::gpu {
 
-// In XLA:GPU we use different streams for different kinds of collective
-// operations, and include the async stream kind into the GPU clique key.
-//
-// We carefully isolate different kinds of collectives using separate
-// communicators and guarantee that all collective operations have a total order
-// that will not create a deadlock.
-enum class AsyncStreamKind : int64_t {
-  kCollective = 0,  // Stream for asynchronous collective ops.
-  kP2P0 = 1,        // One Stream for P2P Send and Recv ops.
-  kP2P1 = 2,        // Another Stream for P2P Send and Recv ops.
-  kMemCpyP2P = 3,   // Stream for MemCpyP2P
-};
+bool IsP2PStreamKind(AsyncStreamKind stream_kind);
 
 inline constexpr int64_t kAsyncStreamTotal =
-    static_cast<int64_t>(AsyncStreamKind::kMemCpyP2P) + 1;
+    static_cast<int64_t>(AsyncStreamKind::ASYNC_STREAM_KIND_MEMCPYP2P) + 1;
 
 // Strongly-typed wrapper to represent collective stream ID.
 TSL_LIB_GTL_DEFINE_INT_TYPE(CollectiveStreamId, uint64_t);
@@ -50,18 +40,19 @@ TSL_LIB_GTL_DEFINE_INT_TYPE(CollectiveStreamId, uint64_t);
 // Assigns a unique ID to a stream for asynchronous or synchronous execution.
 // These IDs can be used, for example, to look up the NCCL communicator.
 CollectiveStreamId GetCollectiveStreamId(
-    bool is_async, AsyncStreamKind stream_kind = AsyncStreamKind::kCollective);
+    bool is_async, CollectiveStreamId stream_id = CollectiveStreamId(1),
+    AsyncStreamKind stream_kind =
+        AsyncStreamKind::ASYNC_STREAM_KIND_COLLECTIVE);
 
 // Clique key for identifying a particular collectives clique on a GPU backend.
 class GpuCliqueKey : public CliqueKey {
  public:
   explicit GpuCliqueKey(
       std::vector<GlobalDeviceId> devices, int64_t num_local_participants,
-      CollectiveStreamId stream_id = CollectiveStreamId(0),
-      AsyncStreamKind stream_kind = AsyncStreamKind::kCollective,
+      bool is_p2p = false,
       std::vector<std::vector<GlobalDeviceId>> participant_groups = {},
       GlobalDeviceId root_device = GlobalDeviceId(-1),
-      std::vector<uint64_t> incarnations = {});
+      std::vector<IncarnationId> incarnations = {});
 
   GpuCliqueKey(const GpuCliqueKey&) = default;
   GpuCliqueKey& operator=(const GpuCliqueKey&) = default;
@@ -78,15 +69,14 @@ class GpuCliqueKey : public CliqueKey {
   // same `stream_id` and all clique devices are part of `other` clique.
   bool IsSubsetOf(const CliqueKey& other) const final;
 
+  // Returns true if this clique will be used with p2p communicators.
+  bool is_p2p() const;
+
   // For multi-root initialization, generate `nroots` copies (subkeys) of the
   // key each with a different root device. Root devices are distributed evenly
   // across the ranks. The subkeys are used to exchange the CliqueIds during
   // clique initialization.
   std::vector<GpuCliqueKey> GetSubKeys(int64_t nroots) const;
-
-  // Returns the stream kind for this clique key, stream kind will be used to
-  // specify what configuration to pass for each type of operation.
-  AsyncStreamKind stream_kind() const { return stream_kind_; }
 
   // The number of participant devices that are local to the current process (in
   // multi-host environments this likely to be all devices on the same host).
@@ -99,7 +89,7 @@ class GpuCliqueKey : public CliqueKey {
   bool is_local() const { return num_local_participants_ == devices().size(); }
 
   // Returns the incarnation ids of the participating processes.
-  absl::Span<const uint64_t> incarnations() const { return incarnations_; }
+  absl::Span<const IncarnationId> incarnations() const { return incarnations_; }
 
   std::string ToString() const final;
 
@@ -114,9 +104,7 @@ class GpuCliqueKey : public CliqueKey {
 
   // See comment on `num_local_participants()`.
   int64_t num_local_participants_;
-
-  CollectiveStreamId stream_id_;
-  AsyncStreamKind stream_kind_;
+  bool is_p2p_;
 
   // The full list of groups across all devices which this clique is a part of.
   //
@@ -136,7 +124,7 @@ class GpuCliqueKey : public CliqueKey {
 
   GlobalDeviceId root_device_;
 
-  std::vector<uint64_t> incarnations_;
+  std::vector<IncarnationId> incarnations_;
 };
 
 }  // namespace xla::gpu

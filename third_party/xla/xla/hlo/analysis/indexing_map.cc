@@ -18,11 +18,9 @@ limitations under the License.
 #include <algorithm>
 #include <cassert>
 #include <cstdint>
-#include <limits>
 #include <numeric>
 #include <optional>
 #include <ostream>
-#include <sstream>
 #include <string>
 #include <tuple>
 #include <utility>
@@ -30,13 +28,12 @@ limitations under the License.
 
 #include "absl/log/check.h"
 #include "absl/log/log.h"
-#include "absl/numeric/int128.h"
 #include "absl/strings/str_cat.h"
-#include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/DenseSet.h"
+#include "llvm/ADT/MapVector.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallBitVector.h"
 #include "llvm/ADT/SmallVector.h"
@@ -47,6 +44,7 @@ limitations under the License.
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/Support/LLVM.h"
+#include "xla/hlo/analysis/interval.h"
 #include "tsl/platform/logging.h"  // IWYU pragma: keep
 
 namespace xla {
@@ -866,142 +864,6 @@ std::ostream& operator<<(std::ostream& out, VariableKind var_type) {
   return out;
 }
 
-std::ostream& operator<<(std::ostream& out, const Interval& interval) {
-  out << absl::StrFormat("[%d, %d]", interval.lower, interval.upper);
-  return out;
-}
-
-std::string Interval::ToString() const {
-  std::stringstream ss;
-  ss << *this;
-  return ss.str();
-}
-
-inline llvm::raw_ostream& operator<<(llvm::raw_ostream& os,
-                                     const Interval& interval) {
-  os << absl::StrFormat("[%d, %d]", interval.lower, interval.upper);
-  return os;
-}
-
-int64_t Interval::GetLoopTripCount() const {
-  if (!IsFeasible()) {
-    return 0;
-  }
-  DCHECK((static_cast<absl::int128>(upper) - lower + 1) <=
-         std::numeric_limits<int64_t>::max());
-  return upper - lower + 1;
-}
-
-Interval::ComparisonResult Interval::Gt(const Interval& b) const {
-  if (!IsFeasible() || !b.IsFeasible()) {
-    return {std::nullopt};
-  }
-  if (lower > b.upper) {
-    return {true};
-  }
-  if (upper <= b.lower) {
-    return {false};
-  }
-  return {std::nullopt};
-}
-
-Interval::ComparisonResult Interval::Eq(const Interval& b) const {
-  Interval intersection = Intersect(b);
-  if (!intersection.IsFeasible()) {
-    return {false};
-  }
-  if (intersection.IsPoint() && IsPoint() && b.IsPoint()) {
-    return {true};
-  }
-  return {std::nullopt};
-}
-
-Interval Interval::operator+(const Interval& rhs) const {
-  int64_t out_lower;
-  int64_t out_upper;
-
-  constexpr int64_t kMin = std::numeric_limits<int64_t>::min();
-  constexpr int64_t kMax = std::numeric_limits<int64_t>::max();
-
-  bool lower_overflow = llvm::AddOverflow(lower, rhs.lower, out_lower);
-  bool upper_overflow = llvm::AddOverflow(upper, rhs.upper, out_upper);
-
-  if (lower_overflow || lower == kMin || rhs.lower == kMin) {
-    if (lower < 0 || rhs.lower < 0) {
-      out_lower = kMin;
-    } else {
-      out_lower = kMax;
-      out_upper = kMax;
-    }
-  }
-
-  if (upper_overflow || upper == kMax || rhs.upper == kMax) {
-    if (upper > 0 || rhs.upper > 0) {
-      out_upper = kMax;
-    } else {
-      out_upper = kMin;
-      out_lower = kMin;
-    }
-  }
-
-  return {out_lower, out_upper};
-}
-
-Interval Interval::operator*(const Interval& rhs) const {
-  constexpr int64_t kMin = std::numeric_limits<int64_t>::min();
-  constexpr int64_t kMax = std::numeric_limits<int64_t>::max();
-
-  auto mul = [&](int64_t p) {
-    int64_t l = lower;
-    int64_t u = upper;
-    if (p < 0) {
-      std::swap(l, u);
-    }
-    int64_t out_lower;
-    int64_t out_upper;
-    if (llvm::MulOverflow(l, p, out_lower) ||
-        // -1 * max is min + 1, and doesn't overflow. We consider max a
-        // special sentinel value, so the result should be min (= saturated).
-        (p == -1 && l == kMax)) {
-      out_lower = kMin;
-    }
-    if (llvm::MulOverflow(u, p, out_upper)) {
-      out_upper = kMax;
-    }
-    return Interval{out_lower, out_upper};
-  };
-
-  return mul(rhs.lower).Union(mul(rhs.upper));
-}
-
-Interval Interval::operator-() const {
-  int64_t ub = lower == std::numeric_limits<int64_t>::min()
-                   ? std::numeric_limits<int64_t>::max()
-                   : -lower;
-  int64_t lb = upper == std::numeric_limits<int64_t>::max()
-                   ? std::numeric_limits<int64_t>::min()
-                   : -upper;
-  return Interval{lb, ub};
-}
-
-Interval Interval::FloorDiv(int64_t rhs) const {
-  auto saturate_div = [](int64_t lhs, int64_t rhs) {
-    constexpr int64_t kMin = std::numeric_limits<int64_t>::min();
-    constexpr int64_t kMax = std::numeric_limits<int64_t>::max();
-    if (lhs == kMin) {
-      return rhs > 0 ? kMin : kMax;
-    }
-    if (lhs == kMax) {
-      return rhs > 0 ? kMax : kMin;
-    }
-    return llvm::divideFloorSigned(lhs, rhs);
-  };
-
-  int64_t a = saturate_div(lower, rhs);
-  int64_t b = saturate_div(upper, rhs);
-  return {std::min(a, b), std::max(a, b)};
-}
-
 bool operator==(const IndexingMap::Variable& lhs,
                 const IndexingMap::Variable& rhs) {
   return lhs.bounds == rhs.bounds;
@@ -1058,7 +920,7 @@ IndexingMap::IndexingMap(
     AffineMap affine_map, std::vector<IndexingMap::Variable> dimensions,
     std::vector<IndexingMap::Variable> range_vars,
     std::vector<IndexingMap::Variable> rt_vars,
-    const llvm::DenseMap<AffineExpr, Interval>& constraints)
+    const llvm::MapVector<AffineExpr, Interval>& constraints)
     : affine_map_(affine_map),
       dim_vars_(std::move(dimensions)),
       range_vars_(std::move(range_vars)),
@@ -1293,8 +1155,9 @@ Interval RangeEvaluator::ComputeExpressionRange(AffineExpr expr) {
   }
 
   if (use_constraints_) {
-    auto constraint = indexing_map_.GetConstraints().find(expr);
-    if (constraint != indexing_map_.GetConstraints().end()) {
+    auto constraints_map = indexing_map_.GetConstraints();
+    auto constraint = constraints_map.find(expr);
+    if (constraint != constraints_map.end()) {
       return result.Intersect(constraint->second);
     }
   }
@@ -1305,12 +1168,30 @@ MLIRContext* IndexingMap::GetMLIRContext() const {
   return IsUndefined() ? nullptr : affine_map_.getContext();
 }
 
+namespace {
+bool EqualConstraints(const llvm::MapVector<mlir::AffineExpr, Interval>& lhs,
+                      const llvm::MapVector<mlir::AffineExpr, Interval>& rhs) {
+  if (lhs.size() != rhs.size()) {
+    return false;
+  }
+
+  for (const auto& [key, value] : lhs) {
+    auto it = rhs.find(key);
+    if (it == rhs.end() || it->second != value) {
+      return false;
+    }
+  }
+
+  return true;
+}
+}  // namespace
+
 bool operator==(const IndexingMap& lhs, const IndexingMap& rhs) {
   return lhs.GetAffineMap() == rhs.GetAffineMap() &&
          lhs.GetDimVars() == rhs.GetDimVars() &&
          lhs.GetRangeVars() == rhs.GetRangeVars() &&
          lhs.GetRTVars() == rhs.GetRTVars() &&
-         lhs.GetConstraints() == rhs.GetConstraints();
+         EqualConstraints(lhs.GetConstraints(), rhs.GetConstraints());
 }
 
 IndexingMap operator*(const IndexingMap& lhs, const IndexingMap& rhs) {
@@ -1742,7 +1623,7 @@ bool IndexingMap::MergeModConstraints() {
   bool did_simplify = false;
 
   // Group constraints by LHS.
-  llvm::DenseMap<AffineExpr, llvm::SmallVector<AffineBinaryOpExpr, 2>>
+  llvm::MapVector<AffineExpr, llvm::SmallVector<AffineBinaryOpExpr, 2>>
       grouped_constraints;
   for (const auto& [expr, _] : constraints_) {
     if (expr.getKind() != AffineExprKind::Mod) continue;
@@ -1753,7 +1634,7 @@ bool IndexingMap::MergeModConstraints() {
   // Merge constraints of type MOD.
   // (X mod 3 == 0) & (X mod 2 == 0) => (X mod 6 == 0)
   for (const auto& [lhs, binops] : grouped_constraints) {
-    llvm::DenseMap<int64_t, llvm::SmallVector<AffineBinaryOpExpr, 2>>
+    llvm::MapVector<int64_t, llvm::SmallVector<AffineBinaryOpExpr, 2>>
         mod_groups;
     for (const auto& binop : binops) {
       Interval mod_result = constraints_[binop];
@@ -1949,7 +1830,7 @@ bool IndexingMap::RescaleSymbols() {
     symbol_range.upper = (symbol_range.upper - shift_value) / scaling_factor;
   }
 
-  llvm::DenseMap<mlir::AffineExpr, Interval> new_constraints;
+  llvm::MapVector<mlir::AffineExpr, Interval> new_constraints;
   for (const auto& [expr, range] : constraints_) {
     if (!to_delete.contains(expr)) {
       new_constraints[expr.replace(to_replace)] = range;

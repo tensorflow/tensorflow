@@ -16,10 +16,15 @@ limitations under the License.
 #ifndef XLA_BACKENDS_GPU_RUNTIME_INFEED_THUNK_H_
 #define XLA_BACKENDS_GPU_RUNTIME_INFEED_THUNK_H_
 
+#include <memory>
 #include <vector>
 
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/types/span.h"
+#include "xla/backends/gpu/runtime/shaped_slice.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/service/buffer_assignment.h"
 
 namespace xla {
 namespace gpu {
@@ -37,6 +42,12 @@ class InfeedThunk : public Thunk {
   InfeedThunk& operator=(const InfeedThunk&) = delete;
 
   absl::Status ExecuteOnStream(const ExecuteParams& params) override;
+
+  static absl::StatusOr<std::unique_ptr<InfeedThunk>> FromProto(
+      ThunkInfo thunk_info, const InfeedThunkProto& thunk_proto,
+      absl::Span<const BufferAllocation> buffer_allocations);
+
+  absl::StatusOr<ThunkProto> ToProto() const override;
 
  private:
   const std::vector<ShapedSlice> dest_slices_;

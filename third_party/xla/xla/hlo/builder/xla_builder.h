@@ -51,6 +51,7 @@ limitations under the License.
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/service/hlo.pb.h"
+#include "xla/service/name_uniquer.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/lib/core/bitmap.h"
@@ -324,6 +325,12 @@ class XlaBuilder {
   // Sets an OpSharding that will be attached to all instructions until cleared.
   void SetSharding(const OpSharding& sharding) { sharding_ = sharding; }
 
+  // Sets an OriginalValueProto that will be attached to all instructions until
+  // cleared.
+  void SetOriginalValue(const OriginalValueProto& original_value) {
+    original_value_ = original_value;
+  }
+
   // Sets the FrontendAttributes that will be added to all instructions until
   // cleared.
   //
@@ -358,8 +365,16 @@ class XlaBuilder {
   // policy.
   void ClearSharding() { sharding_ = std::nullopt; }
 
+  // Clears the original value.
+  void ClearOriginalValue() { original_value_ = std::nullopt; }
+
   // Returns the OpSharding that will be attached to all instructions.
   const std::optional<OpSharding>& sharding() const { return sharding_; }
+
+  // Returns the OriginalValueProto that will be attached to all instructions.
+  const std::optional<OriginalValueProto>& original_value() const {
+    return original_value_;
+  }
 
   // Sets the builder to a mode where it will die immediately when an error is
   // encountered, rather than producing it in a deferred fashion when Build() is
@@ -681,13 +696,6 @@ class XlaBuilder {
       const PrecisionConfig* precision_config = nullptr,
       std::optional<PrimitiveType> preferred_element_type = std::nullopt);
 
-  XlaOp SparseDot(
-      XlaOp lhs, XlaOp rhs, absl::Span<const XlaOp> sparse_meta,
-      absl::Span<const SparsityDescriptor> sparsity,
-      const DotDimensionNumbers& dimension_numbers,
-      const PrecisionConfig* precision_config = nullptr,
-      std::optional<PrimitiveType> preferred_element_type = std::nullopt);
-
   XlaOp RaggedAllToAll(
       XlaOp input, XlaOp input_offsets, XlaOp send_sizes, XlaOp output,
       XlaOp output_offsets, XlaOp recv_sizes,
@@ -697,6 +705,12 @@ class XlaBuilder {
   XlaOp RaggedDot(
       XlaOp lhs, XlaOp rhs, XlaOp group_sizes,
       const RaggedDotDimensionNumbers& dimension_numbers,
+      const PrecisionConfig* precision_config = nullptr,
+      std::optional<PrimitiveType> preferred_element_type = std::nullopt);
+
+  XlaOp ScaledDot(
+      XlaOp lhs, XlaOp rhs, XlaOp lhs_scale, XlaOp rhs_scale,
+      const DotDimensionNumbers& dimension_number,
       const PrecisionConfig* precision_config = nullptr,
       std::optional<PrimitiveType> preferred_element_type = std::nullopt);
 
@@ -1216,8 +1230,19 @@ class XlaBuilder {
       const Shape& lhs_shape, const Shape& rhs_shape,
       const ConvolutionDimensionNumbers& dimension_numbers) const;
 
-  int64_t GetNextId() {
-    return parent_builder_ ? parent_builder_->GetNextId() : ++next_id_;
+  int64_t GetNextInstructionId() {
+    // Instruction Ids exist within the context of its parent computation. No
+    // need to uniquify across computations.
+    return ++next_instruction_id_;
+  }
+
+  int64_t GetNextComputationId() {
+    // Computation Ids exist within the context of its parent module. No need to
+    // uniquify across modules.
+    if (parent_builder_ == nullptr) {
+      return ++next_computation_id_;
+    }
+    return parent_builder_->GetNextComputationId();
   }
 
   // Populates the module with the input/output alias information stored within
@@ -1230,9 +1255,27 @@ class XlaBuilder {
 
   std::string name_;  // Name to use for the built computation.
 
-  // The next sequential ID for every instruction/computation contained within
+  // The next sequential ID for every instruction contained within
   // this computation. Unused if this builder has a parent.
-  int64_t next_id_ = 0;
+  int64_t next_instruction_id_ = 0;
+
+  // The next sequential ID for every computation contained within
+  // this module.
+  int64_t next_computation_id_ = 0;
+
+  // For uniquifying instruction names within this computation / module.
+  NameUniquer instruction_name_uniquer_ = NameUniquer(".");
+
+  // Uniquifies the names of instructions within this computation / module,
+  // using always the highest available parent builder.
+  std::string UniquifyInstructionName(absl::string_view name) {
+    XlaBuilder* highest_parent_builder = this;
+    while (highest_parent_builder->parent_builder_ != nullptr) {
+      highest_parent_builder = highest_parent_builder->parent_builder_;
+    }
+    return highest_parent_builder->instruction_name_uniquer_.GetUniqueName(
+        name);
+  }
 
   // The first error encountered while building the computation.
   // This is OK until the first error is encountered.
@@ -1304,6 +1347,9 @@ class XlaBuilder {
   // Sharding for this operator. This is structured as a "model"-like operation,
   // in order to simplify client code, similar to metadata_.
   std::optional<OpSharding> sharding_;
+
+  // The original value for this operator.
+  std::optional<OriginalValueProto> original_value_;
 
   // Mode bit that indicates whether to die when a first error is encountered.
   bool die_immediately_on_error_ = false;
@@ -1395,16 +1441,18 @@ class XlaBuilder {
                           const DotDimensionNumbers& dimension_number,
                           const PrecisionConfig* precision_config,
                           std::optional<PrimitiveType> preferred_element_type);
+  friend XlaOp RaggedDot(XlaOp lhs, XlaOp rhs, XlaOp group_sizes,
+                         const RaggedDotDimensionNumbers& dimension_numbers,
+                         const PrecisionConfig* precision_config,
+                         std::optional<PrimitiveType> preferred_element_type);
+  friend XlaOp ScaledDot(XlaOp lhs, XlaOp rhs, XlaOp lhs_scale, XlaOp rhs_scale,
+                         const DotDimensionNumbers& dimension_number,
+                         const PrecisionConfig* precision_config,
+                         std::optional<PrimitiveType> preferred_element_type);
   virtual absl::StatusOr<XlaOp> DotGeneralInternal(
       const Shape& shape, XlaOp lhs, XlaOp rhs,
       const DotDimensionNumbers& dimension_number,
       const PrecisionConfig* precision_config);
-  friend XlaOp SparseDot(XlaOp lhs, XlaOp rhs,
-                         absl::Span<const XlaOp> sparse_meta,
-                         absl::Span<const SparsityDescriptor> sparsity,
-                         const DotDimensionNumbers& dimension_number,
-                         const PrecisionConfig* precision_config,
-                         std::optional<PrimitiveType> preferred_element_type);
   friend XlaOp RaggedAllToAll(XlaOp input, XlaOp input_offsets,
                               XlaOp send_sizes, XlaOp output,
                               XlaOp output_offsets, XlaOp recv_sizes,
@@ -1688,8 +1736,23 @@ class XlaBuilder {
       absl::Span<const std::pair<int64_t, int64_t>> padding, XlaOp source,
       XlaOp init_value, XlaComputationId scatter);
   friend XlaOp Abs(XlaOp operand);
+  friend XlaOp Acos(XlaOp x,
+                    const std::optional<ResultAccuracy>& result_accuracy,
+                    bool expand);
+  friend XlaOp Acosh(XlaOp x,
+                     const std::optional<ResultAccuracy>& result_accuracy,
+                     bool expand);
+  friend XlaOp Asin(XlaOp x,
+                    const std::optional<ResultAccuracy>& result_accuracy,
+                    bool expand);
+  friend XlaOp Asinh(XlaOp x,
+                     const std::optional<ResultAccuracy>& result_accuracy,
+                     bool expand);
   friend XlaOp Atan2(XlaOp y, XlaOp x,
                      absl::Span<const int64_t> broadcast_dimensions);
+  friend XlaOp Atanh(XlaOp x,
+                     const std::optional<ResultAccuracy>& result_accuracy,
+                     bool expand);
   friend XlaOp Erf(XlaOp operand,
                    const std::optional<ResultAccuracy>& result_accuracy);
   friend XlaOp Exp(XlaOp operand,
@@ -1710,8 +1773,14 @@ class XlaBuilder {
   friend XlaOp Clz(XlaOp operand);
   friend XlaOp Cos(XlaOp operand,
                    const std::optional<ResultAccuracy>& result_accuracy);
+  friend XlaOp Cosh(XlaOp x,
+                    const std::optional<ResultAccuracy>& result_accuracy,
+                    bool expand);
   friend XlaOp Sin(XlaOp operand,
                    const std::optional<ResultAccuracy>& result_accuracy);
+  friend XlaOp Sinh(XlaOp x,
+                    const std::optional<ResultAccuracy>& result_accuracy,
+                    bool expand);
   friend XlaOp Tan(XlaOp operand,
                    const std::optional<ResultAccuracy>& result_accuracy);
   friend XlaOp Tanh(XlaOp operand,
@@ -1927,6 +1996,40 @@ class XlaScopedShardingAssignment {
 
   xla::XlaBuilder* const builder_;
   std::optional<OpSharding> prev_sharding_;
+};
+
+// RAII-style object: sets the current original value assignment in builder on
+// construction, and resets on destruction.
+class XlaScopedOriginalValueAssignment {
+ public:
+  XlaScopedOriginalValueAssignment(
+      xla::XlaBuilder* builder,
+      std::optional<OriginalValueProto> original_value_proto)
+      : builder_(builder), prev_original_value_(builder->original_value()) {
+    SetOriginalValue(original_value_proto);
+  }
+
+  XlaScopedOriginalValueAssignment(const XlaScopedOriginalValueAssignment&) =
+      delete;
+  XlaScopedOriginalValueAssignment& operator=(
+      const XlaScopedOriginalValueAssignment&) = delete;
+
+  ~XlaScopedOriginalValueAssignment() {
+    SetOriginalValue(prev_original_value_);
+  }
+
+ private:
+  void SetOriginalValue(
+      const std::optional<OriginalValueProto>& original_value_proto) {
+    if (original_value_proto.has_value()) {
+      builder_->SetOriginalValue(original_value_proto.value());
+    } else {
+      builder_->ClearOriginalValue();
+    }
+  }
+
+  xla::XlaBuilder* const builder_;
+  std::optional<OriginalValueProto> prev_original_value_;
 };
 
 // RAII-style object: save the current builder's frontend attributes, and merge
@@ -2293,14 +2396,6 @@ XlaOp Dot(XlaOp lhs, XlaOp rhs,
 // Enqueues a general dot instruction onto the computation.
 XlaOp DotGeneral(
     XlaOp lhs, XlaOp rhs, const DotDimensionNumbers& dimension_numbers,
-    const PrecisionConfig* precision_config = nullptr,
-    std::optional<PrimitiveType> preferred_element_type = std::nullopt);
-
-// Enqueues a sparse dot instruction onto the computation.
-XlaOp SparseDot(
-    XlaOp lhs, XlaOp rhs, absl::Span<const XlaOp> sparse_meta,
-    absl::Span<const SparsityDescriptor> sparsity,
-    const DotDimensionNumbers& dimension_numbers,
     const PrecisionConfig* precision_config = nullptr,
     std::optional<PrimitiveType> preferred_element_type = std::nullopt);
 

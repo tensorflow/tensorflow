@@ -22,12 +22,14 @@ limitations under the License.
 #include <string.h>
 
 #include <algorithm>
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <ostream>
-#include <string>
 #include <utility>
 
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "jpeglib.h"  // from @libjpeg_turbo
 #include "tensorflow/core/lib/jpeg/jpeg_handle.h"
 #include "tensorflow/core/platform/dynamic_annotations.h"

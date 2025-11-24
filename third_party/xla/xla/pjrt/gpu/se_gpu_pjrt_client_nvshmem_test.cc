@@ -155,6 +155,7 @@ TEST(StreamExecutorGpuClientTest, NvshmemMemoryTest) {
       std::vector<std::vector<std::unique_ptr<PjRtBuffer>>> result,
       executable->Execute({{input.get()}}, ExecuteOptions()));
   std::vector<std::unique_ptr<xla::PjRtBuffer>>& result_buffers = result[0];
+  TF_ASSERT_OK(result_buffers[0]->GetReadyFuture().Await());
   EXPECT_EQ(result_buffers[0]->memory_space()->kind(), "device");
   Shape result_shape = result_buffers[0]->on_device_shape();
   int64_t memory_space = result_shape.layout().memory_space();

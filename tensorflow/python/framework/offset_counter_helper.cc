@@ -32,8 +32,8 @@ absl::Status FindOpRegistationFromFile(absl::string_view filename,
       R"regex((REGISTER_OP)\("([\w>]+)"\))regex"};
   std::ifstream f(std::string{filename});
   if (f.bad()) {
-    return tsl::errors::IOError(
-        tsl::strings::StrCat("Cannot open file: ", filename), errno);
+    return tsl::errors::IOError(absl::StrCat("Cannot open file: ", filename),
+                                errno);
   }
   std::string line;
   absl::string_view reg_keyword, op_name;

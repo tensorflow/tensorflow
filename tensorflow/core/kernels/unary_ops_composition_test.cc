@@ -33,7 +33,8 @@ namespace {
 class UnaryOpsCompositionTest : public OpsTestBase {
  protected:
   template <typename T>
-  void RunComposedOp(const std::vector<string> op_names, T input, T expected) {
+  void RunComposedOp(const std::vector<std::string> op_names, T input,
+                     T expected) {
     TF_ASSERT_OK(NodeDefBuilder("unary_op_composition", "_UnaryOpsComposition")
                      .Input(FakeInput(DataTypeToEnum<T>::v()))
                      .Attr("T", DataTypeToEnum<T>::v())
@@ -82,8 +83,9 @@ TEST_F(UnaryOpsCompositionTest, Compose_Tanh_Relu6_F) {
 
 // Performance benchmarks below.
 
-string Function(int i) {
-  std::vector<string> ops = {"Tanh", "Relu", "Sigmoid", "Sqrt", "Log", "Exp"};
+std::string Function(int i) {
+  std::vector<std::string> ops = {"Tanh", "Relu", "Sigmoid",
+                                  "Sqrt", "Log",  "Exp"};
   return ops[i % ops.size()];
 }
 
@@ -127,7 +129,7 @@ static Graph* UnaryOpsCompo(int tensor_size, int repeat_graph,
   Tensor t(DT_FLOAT, TensorShape({tensor_size}));
   t.flat<float>() = t.flat<float>().setRandom();
 
-  std::vector<string> functions;
+  std::vector<std::string> functions;
   for (int j = 0; j < num_functions; ++j) {
     functions.push_back(Function(j));
   }

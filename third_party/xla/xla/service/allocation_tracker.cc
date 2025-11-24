@@ -40,7 +40,7 @@ namespace xla {
 
 absl::StatusOr<GlobalDataHandle> AllocationTracker::Register(
     ScopedShapedBuffer shaped_buffer, const std::string& tag) {
-  absl::MutexLock lock(&mutex_);
+  absl::MutexLock lock(mutex_);
   VLOG(2) << "Register";
   std::vector<ScopedShapedBuffer> replicated_buffers;
   replicated_buffers.emplace_back(std::move(shaped_buffer));
@@ -50,7 +50,7 @@ absl::StatusOr<GlobalDataHandle> AllocationTracker::Register(
 absl::StatusOr<GlobalDataHandle> AllocationTracker::RegisterReplicatedBuffers(
     std::vector<ScopedShapedBuffer> replicated_buffers,
     const std::string& tag) {
-  absl::MutexLock lock(&mutex_);
+  absl::MutexLock lock(mutex_);
   VLOG(2) << "RegisterReplicatedBuffers";
   return RegisterInternal(std::move(replicated_buffers), tag);
 }
@@ -102,7 +102,7 @@ absl::StatusOr<GlobalDataHandle> AllocationTracker::RegisterInternal(
 }
 
 absl::Status AllocationTracker::Unregister(const GlobalDataHandle& data) {
-  absl::MutexLock lock(&mutex_);
+  absl::MutexLock lock(mutex_);
   VLOG(2) << "Unregister("
           << "handle: " << data.handle() << ")";
   TF_ASSIGN_OR_RETURN(std::vector<const ShapedBuffer*> replicated_buffers,
@@ -135,7 +135,7 @@ absl::Status AllocationTracker::Unregister(const GlobalDataHandle& data) {
 
 absl::StatusOr<std::vector<GlobalDataHandle>>
 AllocationTracker::DeconstructTuple(const GlobalDataHandle& data) {
-  absl::MutexLock lock(&mutex_);
+  absl::MutexLock lock(mutex_);
 
   TF_ASSIGN_OR_RETURN(std::vector<const ShapedBuffer*> replicated_buffers,
                       ResolveInternal(data));
@@ -173,13 +173,13 @@ AllocationTracker::DeconstructTuple(const GlobalDataHandle& data) {
 
 absl::StatusOr<std::vector<const ShapedBuffer*>> AllocationTracker::Resolve(
     const GlobalDataHandle& data) const {
-  absl::MutexLock lock(&mutex_);
+  absl::MutexLock lock(mutex_);
   return AllocationTracker::ResolveInternal(data);
 }
 
 absl::StatusOr<const ShapedBuffer*> AllocationTracker::ResolveForReplica(
     const GlobalDataHandle& data, int replica_id) const {
-  absl::MutexLock lock(&mutex_);
+  absl::MutexLock lock(mutex_);
   TF_ASSIGN_OR_RETURN(std::vector<const ShapedBuffer*> replicated_buffers,
                       ResolveInternal(data));
   if (replica_id >= replicated_buffers.size()) {

@@ -112,6 +112,7 @@ class TFL_VariadicTensorOf<list<Type> allowedRuntimeTypes,
   Variadic<TensorOf<allowedOpTypes>>,
   TFL_RuntimeType<Variadic<TensorOf<allowedRuntimeTypes>>>;
 
+def TFL_I2 : I<2>;
 def TFL_I4 : I<4>;
 def TFL_Int32Or64 : SignlessIntOfWidths<[32, 64]>;
 
@@ -683,7 +684,8 @@ def TFL_TransposeConvOp: TFL_Op<"transpose_conv", [
     QuantizableResult,
     TFL_SparseOp,
     DeclareOpInterfaceMethods<TFL_ArithmeticCount>,
-    DynamicRangeQuantizedOpInterface]> {
+    DynamicRangeQuantizedOpInterface,
+    RequiresQuantizedBiasInterface]> {
   let summary = "Transpose convolution operator";
 
   let description = [{
@@ -717,6 +719,9 @@ def TFL_TransposeConvOp: TFL_Op<"transpose_conv", [
     std::vector<std::vector<int>> GetQuantizedBlockSize() { return {}; }
     // DynamicRangeQuantizedOpInterface:
     std::vector<int> GetQuantizableOperandIndices() { return {1}; }
+    // RequiresQuantizedBiasInterface
+    int GetBiasOperandIndex() { return 3; }
+    std::vector<int> GetNonBiasOperandIndices() { return {1, 2}; }
   }];
 }
 
@@ -823,6 +828,8 @@ def TFL_CeilOp: TFL_Op<"ceil", [
   let arguments = (ins TFL_FpTensor:$x);
 
   let results = (outs TFL_FpTensor:$y);
+
+  let hasFolder = 1;
 
   let extraClassDeclaration = [{
     // Returns whether the return types are compatible.
@@ -956,7 +963,9 @@ def TFL_ExternalConstOp : Op<TFL_Dialect, "external_const", [
 def TFL_Conv2DOp : TFL_ConvOp<"conv_2d", "Convolution", 0,
       [DeclareOpInterfaceMethods<InferTypeOpInterface>,
        DeclareOpInterfaceMethods<TFL_ArithmeticCount>,
-       DynamicRangeQuantizedOpInterface]> {
+       DeclareOpInterfaceMethods<RequiresQuantizedBiasInterface>,
+       DynamicRangeQuantizedOpInterface,
+       RequiresQuantizedBiasInterface]> {
   let arguments = (
     ins TFL_TensorOf<[F32, QI8, QUI8, QI16]>:$input,
     TFL_TensorOf<[F32, QI4, QI8, QUI8]>:$filter,
@@ -979,6 +988,10 @@ def TFL_Conv2DOp : TFL_ConvOp<"conv_2d", "Convolution", 0,
     std::vector<int> GetSparseOperands() { return {1}; }
     std::vector<std::vector<int>> GetFloatBlockSize() { return {}; }
     std::vector<std::vector<int>> GetQuantizedBlockSize() { return {}; }
+    // RequiresQuantizedBiasInterface
+    int GetBiasOperandIndex() { return 2; }
+    std::vector<int> GetNonBiasOperandIndices() { return {0, 1}; }
+
 
     // Returns whether the return types are compatible.
     static bool isCompatibleReturnTypes(TypeRange l, TypeRange r);
@@ -1039,7 +1052,8 @@ def TFL_CumsumOp: TFL_Op<"cumsum", [
 def TFL_DepthwiseConv2DOp :
     TFL_ConvOp<"depthwise_conv_2d", "Depthwise-separable convolution", 3,
                 [DeclareOpInterfaceMethods<TFL_ArithmeticCount>,
-                 DynamicRangeQuantizedOpInterface]> {
+                 DynamicRangeQuantizedOpInterface,
+                 RequiresQuantizedBiasInterface]> {
   let arguments = (
     ins TFL_TensorOf<[F32, QI8, QUI8, QI16]>:$input,
     TFL_TensorOf<[F32, QI4, QI8, QUI8]>:$filter,
@@ -1066,6 +1080,9 @@ def TFL_DepthwiseConv2DOp :
     // DynamicRangeQuantizedOpInterface:
     bool GetDynamicRangeQuantKernelSupport() { return true; }
     std::vector<int> GetQuantizableOperandIndices() { return {1}; }
+    // RequiresQuantizedBiasInterface
+    int GetBiasOperandIndex() { return 2; }
+    std::vector<int> GetNonBiasOperandIndices() { return {0, 1}; }
   }];
 }
 
@@ -1077,12 +1094,13 @@ def TFL_FullyConnectedOp : TFL_Op<"fully_connected", [
     TFL_SparseOp,
     DeclareOpInterfaceMethods<TFL_ArithmeticCount>,
     QuantizableResult,
-    DynamicRangeQuantizedOpInterface]> {
+    DynamicRangeQuantizedOpInterface,
+    RequiresQuantizedBiasInterface]> {
   let summary = "Fully connected op";
 
   let arguments = (ins
     TFL_TensorOf<[F32, QI8, QUI8, QI16, QUI16]>:$input,
-    TFL_TensorOf<[F32, QI4, QI8, QUI8, QI16]>:$filter,
+    TFL_TensorOf<[F32, QI2, QI4, QI8, QUI8, QI16]>:$filter,
     TFL_TensorOfOrNone<[F32, QI32, QUI32]>:$bias,
 
     TFL_AFAttr:$fused_activation_function,
@@ -1118,6 +1136,9 @@ def TFL_FullyConnectedOp : TFL_Op<"fully_connected", [
     bool RequireAsymmetricQuantizeInputsAttr() { return true; }
     bool GetDynamicRangeQuantKernelSupport() { return true; }
     std::vector<int> GetQuantizableOperandIndices() { return {1}; }
+    // RequiresQuantizedBiasInterface
+    int GetBiasOperandIndex() { return 2; }
+    std::vector<int> GetNonBiasOperandIndices() { return {0, 1}; }
   }];
 }
 
@@ -1240,6 +1261,8 @@ def TFL_GatherNdOp : TFL_Op<"gather_nd", [
   let results = (outs
     TFL_TensorOf<[F32, I1, I8, I16, I64, I32, UI8, QI8, TFL_Str]>:$output
   );
+
+  let hasFolder = 1;
 }
 
 def TFL_ScatterNdOp : TFL_Op<"scatter_nd", [
@@ -1567,8 +1590,8 @@ def TFL_NotEqualOp : TFL_Op<"not_equal", [
   }];
 
   let arguments = (
-      ins TFL_TensorOf<[I1, F32, I32, I64, QUI8, QI8, TFL_Quint8, TFL_Str]>:$lhs,
-      TFL_TensorOf<[I1, F32, I32, I64, QUI8, QI8, TFL_Quint8, TFL_Str]>:$rhs);
+      ins TFL_TensorOf<[I1, F32, I32, I64, QUI8, QI8, QI16, TFL_Quint8, TFL_Str]>:$lhs,
+      TFL_TensorOf<[I1, F32, I32, I64, QUI8, QI8, QI16, TFL_Quint8, TFL_Str]>:$rhs);
 
   let results = (outs TFL_BoolTensor:$output);
 
@@ -1598,7 +1621,7 @@ def TFL_DivOp : TFL_Op<"div", [
     // TODO(fengliuai): NoQuantizableResult is only correct for int8
     // quantization. update to handle Uint8 quantization.
     BinaryOpSameElementTypeConstraint,
-    TFL_OperandsHaveSameShapesOrBroadcastableShape<[0, 1], 5>,
+    TFL_OperandsHaveSameShapesOrBroadcastableShape<[0, 1], 6>,
     ResultsBroadcastableShape,
     Pure,
     QuantizableResult,
@@ -1610,11 +1633,11 @@ def TFL_DivOp : TFL_Op<"div", [
   }];
 
   let arguments = (
-      ins TFL_TensorOf<[F32, I32, QUI8, QI8]>:$lhs,
-      TFL_TensorOf<[F32, I32, QUI8, QI8]>:$rhs,
+      ins TFL_TensorOf<[F32, I32, QUI8, QI8, QI16]>:$lhs,
+      TFL_TensorOf<[F32, I32, QUI8, QI8, QI16]>:$rhs,
       TFL_AFAttr:$fused_activation_function);
 
-  let results = (outs TFL_TensorOf<[F32, I32, QUI8, QI8]>:$output);
+  let results = (outs TFL_TensorOf<[F32, I32, QUI8, QI8, QI16]>:$output);
 
   let builders = [TFL_FusedBroadcastableBinaryBuilder];
 
@@ -1707,8 +1730,8 @@ def TFL_EqualOp: TFL_Op<"equal", [
 
   let arguments = (
     ins
-    TFL_TensorOf<[I1, F32, I16, I32, I64, QI8, QUI8, UI8, TFL_Str]>:$x,
-    TFL_TensorOf<[I1, F32, I16, I32, I64, QI8, QUI8, UI8, TFL_Str]>:$y
+    TFL_TensorOf<[I1, F32, I16, I32, I64, QI8, QUI8, QI16, UI8, TFL_Str]>:$x,
+    TFL_TensorOf<[I1, F32, I16, I32, I64, QI8, QUI8, QI16, UI8, TFL_Str]>:$y
   );
 
   let results = (outs TFL_BoolTensor:$output);
@@ -2433,8 +2456,8 @@ def TFL_SliceOp : TFL_Op<"slice", [
       TFL_TCresVTEtIsSameAsOp<0, 0>>,
     Pure,
     SameOperandsAndResultsScale,
-    TFL_RuntimePredOpTrait<"input must have rank at most 5",
-      TFL_OperandHasRankAtMostPred<0, 5>>,
+    TFL_RuntimePredOpTrait<"input must have rank at most 6",
+      TFL_OperandHasRankAtMostPred<0, 6>>,
     TFL_OperandHasRankAtMost<1, 1>,
     TFL_OperandHasRankAtMost<2, 1>]> {
   let summary = "Return a slice from 'input'.";
@@ -2454,13 +2477,13 @@ equivalent to setting:
   }];
 
   let arguments = (ins
-    TFL_TensorOf<[F32, I32, I64, I8, UI8, UI32, I1, TFL_Str, QI8, QUI8, TFL_Quint8, QI16]>:$input,
+    TFL_TensorOf<[F32, I32, I64, QI4, I8, UI8, UI32, I1, TFL_Str, QI8, QUI8, TFL_Quint8, QI16]>:$input,
     TFL_I32OrI64Tensor:$begin,
     TFL_I32OrI64Tensor:$size
   );
 
   let results = (outs
-    TFL_TensorOf<[F32, I32, I64, I8, UI8, UI32, I1, TFL_Str, QI8, QUI8, TFL_Quint8, QI16]>:$output
+    TFL_TensorOf<[F32, I32, I64, QI4, I8, UI8, UI32, I1, TFL_Str, QI8, QUI8, TFL_Quint8, QI16]>:$output
   );
 
   let hasVerifier = 1;
@@ -2771,10 +2794,10 @@ def TFL_PadOp : TFL_Op<"pad", [
     ```
   }];
 
-  let arguments = (ins TFL_TensorOf<[F32, I32, I64, QI8, QUI8, TFL_Quint8, QI16]>:$input,
+  let arguments = (ins TFL_TensorOf<[F32, I1, I32, I64, QI8, QUI8, TFL_Quint8, QI16]>:$input,
     TFL_I32OrI64Tensor:$padding);
 
-  let results = (outs TFL_TensorOf<[F32, I32, I64, QI8, QUI8, TFL_Quint8, QI16]>:$output);
+  let results = (outs TFL_TensorOf<[F32, I1, I32, I64, QI8, QUI8, TFL_Quint8, QI16]>:$output);
 
   let hasOptions = 1;
 
@@ -2828,11 +2851,11 @@ def TFL_PadV2Op : TFL_Op<"padv2", [
   }];
 
   let arguments = (
-    ins TFL_TensorOf<[F32, I32, I64, UI8, QI8, QUI8, TFL_Quint8]>:$input,
+    ins TFL_TensorOf<[F32, I1, I32, I64, UI8, QI8, QUI8, TFL_Quint8]>:$input,
     TFL_I32OrI64Tensor:$padding,
-    TFL_TensorOf<[F32, I32, I64, UI8, QI8, QUI8, TFL_Quint8]>:$constant_values);
+    TFL_TensorOf<[F32, I1, I32, I64, UI8, QI8, QUI8, TFL_Quint8]>:$constant_values);
 
-  let results = (outs TFL_TensorOf<[F32, I32, I64, UI8, QI8, QUI8, TFL_Quint8]>:$output);
+  let results = (outs TFL_TensorOf<[F32, I1, I32, I64, UI8, QI8, QUI8, TFL_Quint8]>:$output);
 
   let hasOptions = 1;
 
@@ -3383,18 +3406,28 @@ def TFL_SoftmaxOp : TFL_Op<"softmax", [
 
 def TFL_SqrtOp: TFL_Op<"sqrt", [
     Pure,
-    TF_SameOperandsAndResultTypeResolveRef]> {
+    QuantizableResult,
+    TFL_SameFirstOperandAndFirstResultElementType,
+    SameOperandsAndResultShape]> {
   let summary = "Square root operator";
 
   let description = [{
     Computes element-wise Square root of input
   }];
 
-  let arguments = (ins TFL_FpTensor:$x);
+  let arguments = (ins TFL_TensorOf<[F32, QI8, QI16]>:$x);
 
-  let results = (outs TFL_FpTensor:$y);
+  let results = (outs TFL_TensorOf<[F32, QI8, QI16]>:$y);
 
   let hasFolder = 1;
+
+  let builders = [
+    OpBuilder<(ins "Value":$input),
+    [{
+      $_state.addOperands({input});
+      $_state.addTypes(input.getType());
+    }]>
+  ];
 
   let extraClassDeclaration = [{
     // Returns whether the return types are compatible.
@@ -3542,6 +3575,8 @@ def TFL_TanhOp: TFL_Op<"tanh", [
         /*scale=*/1.0 / (1<<(bit_width-1)), /*zero_point=*/0);
   }
   }];
+
+  let hasFolder = 1;
 }
 
 def TFL_TileOp: TFL_Op<"tile", [
@@ -3988,7 +4023,7 @@ def TFL_StridedSliceOp: TFL_Op<"strided_slice", [
     PredOpTrait<"input and output must have same element type",
       TFL_TCresVTEtIsSameAsOp<0, 0>>,
     SameOperandsAndResultsScale,
-    TFL_RuntimePredOpTrait<"input (with new_axis) must have rank at most 5",
+    TFL_RuntimePredOpTrait<"input (with new_axis) must have rank at most 6",
       CPred<"TFL::VerifyStridedSliceOpInputRankConstraints(llvm::cast<StridedSliceOp>($_op))">>,
     TFL_OperandHasRank<1, 1>,
     TFL_OperandHasRank<2, 1>,
@@ -4040,13 +4075,10 @@ def TFL_CastOp : TFL_Op<"cast", [
   }];
 
   let arguments = (ins
-    TFL_TensorOf<[F16, BF16, F32, F64, I1, TFL_I4, I16, UI16, I32, UI32, I64, TFL_Quint8, UI8, I8, Complex<F<32>>]>:$input
+    TFL_TensorOf<[F16, BF16, F32, F64, I1, TFL_I2, TFL_I4, I16, UI16, I32, UI32, I64, TFL_Quint8, UI8, I8, Complex<F<32>>]>:$input
   );
 
-  // TODO(b/393644251): Temporary support for INT4 TFL_CastOp. Runtime
-  // probably already supports INT4. We should remove the INT4 support here or
-  // make sure the runtime supports is there, as part of closing the bug.
-  let results = (outs TFL_TensorOf<[F16, BF16, F32, F64, I1, TFL_I4, I16, UI16, I32, UI32, I64, TFL_Quint8, UI8, I8, Complex<F<32>>]>:$output);
+  let results = (outs TFL_TensorOf<[F16, BF16, F32, F64, I1, TFL_I2, TFL_I4, I16, UI16, I32, UI32, I64, TFL_Quint8, UI8, I8, Complex<F<32>>]>:$output);
 
   // TFLite's cast op does not utilize CastOptions, instead derives types
   // from the TfLiteTensors.
@@ -4249,7 +4281,7 @@ def TFL_DequantizeOp: TFL_Op<"dequantize", [NoMemoryEffect]> {
     quantization parameters.
   }];
 
-  let arguments = (ins TFL_TensorOf<[QI4, QI8, QUI8, QI16, F16]>:$input);
+  let arguments = (ins TFL_TensorOf<[QI2, QI4, QI8, QUI8, QI16, F16]>:$input);
 
   let results = (outs TFL_FpTensor:$output);
 
@@ -5084,7 +5116,8 @@ def TFL_SVDFOp :
     TFL_StatefulOp,
     AccumulatorUniformScale<3, 2, 4>,
     QuantizableResult,
-    DynamicRangeQuantizedOpInterface]> {
+    DynamicRangeQuantizedOpInterface,
+    RequiresQuantizedBiasInterface]> {
 
   let summary = "Single value decomposition filter operator";
 
@@ -5134,6 +5167,9 @@ def TFL_SVDFOp :
     std::vector<int> GetQuantizableOperandIndices() {
       return {1, 2};
     }
+    // RequiresQuantizedBiasInterface
+    int GetBiasOperandIndex() { return 3; }
+    std::vector<int> GetNonBiasOperandIndices() { return {2, 4}; }
   }];
 }
 
@@ -5494,6 +5530,7 @@ def TFL_BroadcastToOp : TFL_Op<"broadcast_to", [
     PredOpTrait<"input and output must have same element type",
       TFL_TCresVTEtIsSameAsOp<0, 0>>,
     TFL_OperandHasRankAtMost<0, 8>,
+    SameOperandsAndResultsScale,
     TFL_OperandHasRank<1, 1>,
     PredOpTrait<"output dimension count must be at most 8",
       Or<[TFL_OperandIsUnrankedPred<1>,
@@ -5540,6 +5577,11 @@ subsequent operation and then be optimized away, however.)
   let results = (outs
     TFL_TensorOf<[F32, I32, I1, TFL_I4, I8, QI8, UI8, UI32, QUI8, I16, QI16, I64, Complex<F<32>>]>:$output
   );
+
+  let extraClassDeclaration = [{
+    // Quantized axes are verified in the Verify function.
+    bool RequiredSameQuantizedAxes() { return false; }
+  }];
 
   let hasCanonicalizer = 1;
 }
@@ -5636,7 +5678,8 @@ def TFL_Conv3DOp : TFL_Op<"conv_3d", [
     PredOpTrait<"bias must has num of elements equals to 4th dim of filter",
       Or<[
         TFL_OperandIsNoneType<2>,
-        TFL_NumElementsEqualsDim<2, 1, 4>]>>]> {
+        TFL_NumElementsEqualsDim<2, 1, 4>]>>,
+    RequiresQuantizedBiasInterface]> {
   let summary = "Convolution 3D operator";
 
   let description = [{
@@ -5666,6 +5709,12 @@ def TFL_Conv3DOp : TFL_Op<"conv_3d", [
   let hasOptions = 1;
 
   let customOption = "Conv3DOptions";
+
+  let extraClassDeclaration = [{
+    // RequiresQuantizedBiasInterface
+    int GetBiasOperandIndex() { return 2; }
+    std::vector<int> GetNonBiasOperandIndices() { return {0, 1}; }
+  }];
 }
 
 def TFL_Conv3DTransposeOp : TFL_Op<"conv_3d_transpose", [
@@ -5686,7 +5735,8 @@ def TFL_Conv3DTransposeOp : TFL_Op<"conv_3d_transpose", [
     PredOpTrait<"bias must has num of elements equals to 4th dim of filter",
       Or<[
         TFL_OperandIsNoneType<3>,
-        TFL_NumElementsEqualsDim<3, 1, 4>]>>]> {
+        TFL_NumElementsEqualsDim<3, 1, 4>]>>,
+    RequiresQuantizedBiasInterface]> {
   let summary = "Transposed Convolution 3D operator";
 
   let description = [{
@@ -5718,6 +5768,12 @@ def TFL_Conv3DTransposeOp : TFL_Op<"conv_3d_transpose", [
   let hasOptions = 1;
 
   let customOption = "Conv3DOptions";
+
+  let extraClassDeclaration = [{
+    // RequiresQuantizedBiasInterface
+    int GetBiasOperandIndex() { return 2; }
+    std::vector<int> GetNonBiasOperandIndices() { return {0, 1}; }
+  }];
 }
 
 def TFL_ComplexAbsOp : TFL_Op<"complex_abs", [
@@ -6052,4 +6108,4 @@ def TFL_ControlNodeOp : Op<TFL_Dialect, "control_node",
 #endif // TFL_OPS
 
 // LINT.ThenChange()
-// LINT.ThenChange(//tensorflow/lite/tools/versioning/op_version.cc)
+// LINT.ThenChange(//tensorflow/compiler/mlir/lite/tools/versioning/op_version.cc)

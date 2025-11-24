@@ -52,7 +52,8 @@ TEST_F(TfThreadpoolWorkQueueTest, GetNameOk) {
 TEST_F(TfThreadpoolWorkQueueTest, InitializeRequestOk) {
   tfrt::RequestContextBuilder ctx_builder(/*host=*/nullptr,
                                           /*resource_context=*/nullptr);
-  auto queue = tf_threadpool_cwq_->InitializeRequest(/*request_id=*/0);
+  auto queue =
+      tf_threadpool_cwq_->InitializeRequest(/*request_id=*/0, /*priority=*/0);
   TF_ASSERT_OK(queue.status());
   EXPECT_NE(*queue, nullptr);
   EXPECT_NE((*queue)->GetIntraOpThreadPool(), nullptr);

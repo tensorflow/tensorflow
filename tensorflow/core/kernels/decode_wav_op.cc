@@ -54,6 +54,12 @@ class DecodeWavOp : public OpKernel {
                        wav_string, &decoded_samples, &decoded_sample_count,
                        &decoded_channel_count, &decoded_sample_rate));
 
+    OP_REQUIRES(context, desired_channels_ >= -1,
+                errors::InvalidArgument("desired_channels must be >= -1, got ",
+                                        desired_channels_));
+    OP_REQUIRES(context, desired_samples_ >= -1,
+                errors::InvalidArgument("desired_samples must be >= -1, got ",
+                                        desired_samples_));
     int32_t output_sample_count;
     if (desired_samples_ == -1) {
       output_sample_count = decoded_sample_count;
@@ -67,6 +73,14 @@ class DecodeWavOp : public OpKernel {
       output_channel_count = desired_channels_;
     }
 
+    OP_REQUIRES(
+        context, output_sample_count >= 0,
+        errors::InvalidArgument("Output sample count must be >= 0, got ",
+                                output_sample_count));
+    OP_REQUIRES(
+        context, output_channel_count >= 0,
+        errors::InvalidArgument("Output channel count must be >= 0, got ",
+                                output_channel_count));
     Tensor* output = nullptr;
     OP_REQUIRES_OK(
         context,

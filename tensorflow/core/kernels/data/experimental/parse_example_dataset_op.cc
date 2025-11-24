@@ -21,6 +21,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/synchronization/notification.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/data/dataset_utils.h"
 #include "tensorflow/core/data/name_utils.h"
@@ -447,7 +448,7 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
         }
         TF_RETURN_IF_ERROR(SaveInput(ctx, writer, input_impl_));
         TF_RETURN_IF_ERROR(writer->WriteScalar(
-            full_name(strings::StrCat(kInvocationResults, kSizeSuffix)),
+            full_name(absl::StrCat(kInvocationResults, kSizeSuffix)),
             invocation_results_.size()));
         for (size_t i = 0; i < invocation_results_.size(); i++) {
           const auto& result = *(invocation_results_[i]);
@@ -478,7 +479,7 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
         TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
         int64_t invocation_results_size;
         TF_RETURN_IF_ERROR(reader->ReadScalar(
-            full_name(strings::StrCat(kInvocationResults, kSizeSuffix)),
+            full_name(absl::StrCat(kInvocationResults, kSizeSuffix)),
             &invocation_results_size));
         if (!invocation_results_.empty()) invocation_results_.clear();
         for (size_t i = 0; i < invocation_results_size; i++) {
@@ -494,7 +495,7 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
                 &size));
             num_return_values = static_cast<size_t>(size);
             if (num_return_values != size) {
-              return errors::InvalidArgument(strings::StrCat(
+              return errors::InvalidArgument(absl::StrCat(
                   full_name(strings::StrCat(kInvocationResults, "[", i, "]",
                                             kSizeSuffix)),
                   ": ", size, " is not a valid value of type size_t."));
@@ -543,7 +544,7 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
         InvocationResult() = default;
         explicit InvocationResult(int64_t id) : id(id) {}
 
-        Notification notification;
+        absl::Notification notification;
         absl::Status status;
         std::vector<Tensor> return_values;
         bool end_of_input = false;

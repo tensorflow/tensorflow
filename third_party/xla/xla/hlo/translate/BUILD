@@ -1,4 +1,5 @@
 load("@bazel_skylib//rules:build_test.bzl", "build_test")
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("//xla:xla.default.bzl", "xla_cc_binary")
 load("//xla/tsl:tsl.bzl", "internal_visibility")
 load("//xla/tsl:tsl.default.bzl", "get_compatible_with_portable")
@@ -18,18 +19,16 @@ cc_library(
     hdrs = ["portable_api.h"],
     compatible_with = get_compatible_with_portable(),
     deps = [
+        ":register",
         ":stablehlo",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/translate/hlo_to_mhlo:hlo_to_mlir_hlo",
-        "//xla/mlir_hlo:hlo_dialect_registration",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:BytecodeWriter",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
-        "@local_tsl//tsl/platform:statusor",
-        "@stablehlo//:register",
     ],
 )
 
@@ -71,14 +70,33 @@ xla_cc_binary(
     testonly = True,
     srcs = ["xla_translate_opt_main.cc"],
     deps = [
+        ":register",
         "//xla/mlir/framework/ir:xla_framework",
         "//xla/mlir/framework/transforms:passes",
-        "//xla/mlir_hlo:hlo_dialect_registration",
         "//xla/service:cpu_plugin",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:AllPassesAndDialects",
         "@llvm-project//mlir:MlirOptLib",
+        "@llvm-project//mlir:RegisterAllDialects",
+        "@llvm-project//mlir:RegisterAllPasses",
         "@local_tsl//tsl/platform:platform_port",
+    ],
+)
+
+cc_library(
+    name = "register",
+    srcs = ["register.cc"],
+    hdrs = ["register.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        "//xla/mlir_hlo:hlo_dialect_registration",
+        "@llvm-project//mlir:ArithDialect",
+        "@llvm-project//mlir:FuncExtensions",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:ShapeDialect",
+        "@llvm-project//mlir:TensorDialect",
+        "@llvm-project//mlir:UBDialect",
+        "@shardy//shardy/dialect/sdy/ir:register",
         "@stablehlo//:register",
     ],
 )
@@ -95,7 +113,6 @@ cc_library(
         "//xla/hlo/translate/mhlo_to_hlo:mlir_hlo_to_hlo",
         "//xla/hlo/translate/mhlo_to_hlo:module_attributes_exporter",
         "//xla/mlir/utils:error_util",
-        "//xla/mlir_hlo:hlo_dialect_registration",
         "//xla/mlir_hlo:mhlo_passes",
         "//xla/mlir_hlo:stablehlo_extension_passes",
         "//xla/service:hlo_proto_cc",
@@ -112,7 +129,8 @@ cc_library(
         "@llvm-project//mlir:ShapeDialect",
         "@llvm-project//mlir:TensorDialect",
         "@llvm-project//mlir:Transforms",
-        "@stablehlo//:register",
+        "@llvm-project//mlir:UBDialect",
         "@stablehlo//:stablehlo_passes",
+        "@stablehlo//:stablehlo_passes_optimization",
     ],
 )

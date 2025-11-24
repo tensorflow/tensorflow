@@ -19,6 +19,8 @@ cc_library(
     srcs = ["export_shardy_attrs.cc"],
     hdrs = ["export_shardy_attrs.h"],
     deps = [
+        "//xla/hlo/ir:hlo_sharding",
+        "//xla/hlo/translate/hlo_to_mhlo:hlo_utils",
         "//xla/service/spmd/shardy:constants",
         "//xla/service/spmd/shardy:utils",
         "@llvm-project//llvm:Support",
@@ -55,8 +57,11 @@ cc_library(
     hdrs = ["import_shardy_attrs.h"],
     visibility = internal_visibility([":friends"]),
     deps = [
+        "//xla/hlo/ir:hlo_sharding",
+        "//xla/hlo/translate/hlo_to_mhlo:hlo_utils",
         "//xla/service/spmd/shardy:constants",
         "//xla/service/spmd/shardy:utils",
+        "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@llvm-project//llvm:Support",
@@ -99,6 +104,7 @@ cc_library(
         "//xla/service/spmd/shardy:utils",
         "@com_google_absl//absl/log:check",
         "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:Analysis",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
@@ -106,22 +112,6 @@ cc_library(
         "@llvm-project//mlir:TransformUtils",
         "@shardy//shardy/dialect/sdy/ir:dialect",
         "@stablehlo//:stablehlo_ops",
-    ],
-)
-
-cc_library(
-    name = "remove_size_one_axes",
-    srcs = ["remove_size_one_axes.cc"],
-    hdrs = ["remove_size_one_axes.h"],
-    deps = [
-        "@com_google_absl//absl/log",
-        "@com_google_absl//absl/log:check",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Pass",
-        "@llvm-project//mlir:Support",
-        "@shardy//shardy/dialect/sdy/ir:dialect",
-        "@shardy//shardy/dialect/sdy/transforms/common:sharding_walker",
     ],
 )
 
@@ -150,15 +140,14 @@ cc_library(
         ":export_ops",
         ":export_shardy_attrs",
         ":import_shardy_attrs",
-        ":remove_size_one_axes",
         ":shard_map_export",
         ":shard_map_import",
         "//xla/service:hlo_proto_cc",
-        "//xla/service/spmd/shardy/round_trip_common:export_named_computations",
         "//xla/service/spmd/shardy/round_trip_common:pipeline_passes",
         "//xla/service/spmd/shardy/stablehlo_round_trip:export_shardings",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
+        "@shardy//shardy/dialect/sdy/transforms/import:passes",
     ],
 )

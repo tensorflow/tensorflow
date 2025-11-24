@@ -230,18 +230,30 @@ class HloRunnerAgnosticReferenceMixin : public T {
       test_preprocessor(module.get());
     }
     // Execute on two backends.
-    TF_ASSIGN_OR_RETURN(const Literal test,
-                        this->test_runner().Execute(std::move(module),
-                                                    arguments, run_hlo_passes));
-    TF_ASSIGN_OR_RETURN(const Literal reference,
-                        reference_runner_->Execute(std::move(reference_module),
-                                                   arguments, run_hlo_passes));
-    if (reference.IsAll(0)) {
+    const absl::StatusOr<Literal> test = this->test_runner().Execute(
+        std::move(module), arguments, run_hlo_passes);
+    if (!this->swallow_execution_errors() && !test.ok()) {
+      // Exit early if we aren't swallowing errors.
+      return test.status();
+    }
+    const absl::StatusOr<Literal> reference = reference_runner_->Execute(
+        std::move(reference_module), arguments, run_hlo_passes);
+    if (this->swallow_execution_errors() && !test.ok()) {
+      return ::testing::AssertionSuccess();
+    }
+    if (!reference.ok()) {
+      if (this->swallow_execution_errors()) {
+        return ::testing::AssertionSuccess();
+      }
+      return reference.status();
+    }
+
+    if (reference->IsAll(0)) {
       LOG(WARNING) << "Reference value is only zeros.";
     }
 
-    return LiteralTestUtil::NearOrEqual(/*expected=*/reference, /*actual=*/test,
-                                        error);
+    return LiteralTestUtil::NearOrEqual(/*expected=*/*reference,
+                                        /*actual=*/*test, error);
   }
 
   std::unique_ptr<HloRunnerInterface> reference_runner_;

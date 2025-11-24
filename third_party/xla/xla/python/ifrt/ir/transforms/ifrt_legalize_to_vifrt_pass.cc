@@ -304,16 +304,19 @@ mlir::LogicalResult addDefaultAttrs(
                        builder.getDenseI32ArrayAttr({}));
     }
   } else if constexpr (std::is_same<IfrtOpTy, mlir::func::FuncOp>::value) {
-    if (!ifrt_op.getSymVisibilityAttr())
+    if (!ifrt_op.getSymVisibilityAttr()) {
       add_default_attr(
           "sym_visibility",
           mlir::StringAttr::get(pattern.getContext(), kVifrtDefaultString));
-    if (!ifrt_op.getArgAttrsAttr())
+    }
+    if (!ifrt_op.getArgAttrsAttr()) {
       add_default_attr("arg_attrs",
                        mlir::ArrayAttr::get(pattern.getContext(), {}));
-    if (!ifrt_op.getResAttrsAttr())
+    }
+    if (!ifrt_op.getResAttrsAttr()) {
       add_default_attr("res_attrs",
                        mlir::ArrayAttr::get(pattern.getContext(), {}));
+    }
   }
   return mlir::success();
 }

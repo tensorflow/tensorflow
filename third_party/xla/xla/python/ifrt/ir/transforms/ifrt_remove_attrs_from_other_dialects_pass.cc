@@ -35,10 +35,10 @@ limitations under the License.
 namespace xla {
 namespace ifrt {
 
-namespace {
-
 #define GEN_PASS_DEF_IFRTREMOVEATTRSFROMOTHERDIALECTSPASS
 #include "xla/python/ifrt/ir/transforms/passes.h.inc"
+
+namespace {
 
 class IfrtRemoveAttrsFromOtherDialectsPass
     : public impl::IfrtRemoveAttrsFromOtherDialectsPassBase<
@@ -94,7 +94,8 @@ mlir::FailureOr<mlir::Attribute> removeAttrsFromOtherDialects(
     }
     auto res = mlir::ArrayAttr::get(attr.getContext(), elements);
     return res;
-  } else if (auto dict_attr = llvm::dyn_cast<mlir::DictionaryAttr>(attr)) {
+  }
+  if (auto dict_attr = llvm::dyn_cast<mlir::DictionaryAttr>(attr)) {
     llvm::SmallVector<mlir::NamedAttribute> kept_attrs;
     for (auto named_attr : dict_attr.getValue()) {
       if (isBuiltinOrIfrtAttr(named_attr)) {

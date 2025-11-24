@@ -1109,23 +1109,6 @@ ENTRY %main.4 (Arg_0.1: s8[2,2,2], Arg_1.2: s8[2,2,3]) -> s32[2,2,3] {
 // -----
 
 // CHECK-LABEL: module @main attributes {mhlo.cross_program_prefetches = [], mhlo.input_output_alias = [], mhlo.is_dynamic = false, mhlo.use_auto_spmd_partitioning = false} {
-// CHECK:         func.func @main(%[[VAL_0:.*]]: tensor<10x16xbf16>, %[[VAL_1:.*]]: tensor<32x20xbf16>, %[[VAL_2:.*]]: tensor<10x2xui16>) -> tensor<10x20xf32> {
-// CHECK:           %[[VAL_3:.*]] = "mhlo.sparse_dot"(%[[VAL_0]], %[[VAL_1]], %[[VAL_2]]) <{dot_dimension_numbers = #mhlo.dot<lhs_contracting_dimensions = [1], rhs_contracting_dimensions = [0]>, lhs_sparsity = #mhlo.sparsity<dimension = 1, n = 2, m = 4>, precision_config = [#mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>]}> : (tensor<10x16xbf16>, tensor<32x20xbf16>, tensor<10x2xui16>) -> tensor<10x20xf32>
-// CHECK:           return %[[VAL_3]] : tensor<10x20xf32>
-// CHECK:         }
-// CHECK:       }
-HloModule main, entry_computation_layout={(bf16[10,16]{1,0}, bf16[32,20]{1,0}, u16[10,2]{1,0})->f32[10,20]{1,0}}
-
-ENTRY %main.5 (Arg_0.1: bf16[10,16], Arg_1.2: bf16[32,20], Arg_2.3: u16[10,2]) -> f32[10,20] {
-  %Arg_0.1 = bf16[10,16] parameter(0)
-  %Arg_1.2 = bf16[32,20] parameter(1)
-  %Arg_2.3 = u16[10,2] parameter(2)
-  ROOT %dot.4 = f32[10,20] dot(%Arg_0.1, %Arg_1.2, %Arg_2.3), lhs_contracting_dims={1}, rhs_contracting_dims={0}, sparsity=L.1@2:4
-}
-
-// -----
-
-// CHECK-LABEL: module @main attributes {mhlo.cross_program_prefetches = [], mhlo.input_output_alias = [], mhlo.is_dynamic = false, mhlo.use_auto_spmd_partitioning = false} {
 // CHECK:         func.func @main(%[[VAL_0:.*]]: tensor<3x4xi32>, %[[VAL_1:.*]]: tensor<4x5xi32>) -> tensor<3x5xi32> {
 // CHECK:           %[[VAL_2:.*]] = stablehlo.dot %[[VAL_0]], %[[VAL_1]], precision = [DEFAULT, DEFAULT] {mhlo.frontend_attributes = {grad_x = "false", grad_y = "false"}} : (tensor<3x4xi32>, tensor<4x5xi32>) -> tensor<3x5xi32>
 // CHECK:           %[[VAL_3:.*]] = stablehlo.transpose %[[VAL_2]], dims = [0, 1] : (tensor<3x5xi32>) -> tensor<3x5xi32>
@@ -2259,7 +2242,7 @@ ENTRY %main.3 (Arg_0.1: f32[3,4]) -> f32[3,4,1] {
 
 // CHECK-LABEL: module @main attributes {mhlo.cross_program_prefetches = [], mhlo.input_output_alias = [], mhlo.is_dynamic = false, mhlo.use_auto_spmd_partitioning = false} {
 // CHECK:         func.func @main(%[[VAL_0:.*]]: tensor<4x4xf32>, %[[VAL_1:.*]]: tensor<3x4xf32>) -> tuple<tensor<4x4xf32>, tensor<3x4xf32>> {
-// CHECK:           %[[VAL_2:.*]]:2 = stablehlo.optimization_barrier %[[VAL_0]], %[[VAL_1]] : tensor<4x4xf32>, tensor<3x4xf32>
+// CHECK:           %[[VAL_2:.*]]:2 = stablehlo.optimization_barrier {mhlo.sharding = "{{\{\{}}replicated}, {devices=[1,2]<=[2]}}"} %[[VAL_0]], %[[VAL_1]] : tensor<4x4xf32>, tensor<3x4xf32>
 // CHECK:           %[[VAL_3:.*]] = stablehlo.tuple %[[VAL_2]]#0, %[[VAL_2]]#1 {xla_shape = "(f32[4,4]{1,0}, f32[3,4]{1,0})"} : tuple<tensor<4x4xf32>, tensor<3x4xf32>>
 // CHECK:           return %[[VAL_3]] : tuple<tensor<4x4xf32>, tensor<3x4xf32>>
 // CHECK:         }

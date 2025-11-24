@@ -15,8 +15,10 @@ limitations under the License.
 #ifndef XLA_FP_UTIL_H_
 #define XLA_FP_UTIL_H_
 
-#include <algorithm>
+// This must preceed all other headers, otherwise during Windows cross
+// compilation, M_LN2 will not be defined.
 #define _USE_MATH_DEFINES
+#include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <cstdlib>

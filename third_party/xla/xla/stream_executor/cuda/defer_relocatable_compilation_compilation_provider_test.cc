@@ -22,14 +22,13 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "absl/strings/string_view.h"
 #include "xla/stream_executor/cuda/compilation_options.h"
 #include "xla/stream_executor/cuda/compilation_provider.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/cuda/mock_compilation_provider.h"
-#include "xla/stream_executor/device_description.h"
-#include "tsl/platform/status_matchers.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/test.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace stream_executor::cuda {
 namespace {
@@ -40,8 +39,6 @@ using ::testing::Field;
 using ::testing::FieldsAre;
 using ::testing::Return;
 using ::testing::VariantWith;
-using ::tsl::testing::IsOk;
-using ::tsl::testing::StatusIs;
 
 TEST(DeferRelocatableCompilationCompilationProviderTest,
      CreateFailsIfDelegateDoesNotSupportCompileAndLink) {
@@ -52,7 +49,7 @@ TEST(DeferRelocatableCompilationCompilationProviderTest,
       .WillByDefault(Return(false));
   EXPECT_THAT(DeferRelocatableCompilationCompilationProvider::Create(
                   std::move(mock_compilation_provider)),
-              StatusIs(absl::StatusCode::kInvalidArgument));
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
 TEST(DeferRelocatableCompilationCompilationProviderTest,
@@ -64,7 +61,7 @@ TEST(DeferRelocatableCompilationCompilationProviderTest,
       .WillByDefault(Return(true));
   EXPECT_THAT(DeferRelocatableCompilationCompilationProvider::Create(
                   std::move(mock_compilation_provider)),
-              StatusIs(absl::StatusCode::kInvalidArgument));
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
 constexpr absl::string_view kSomePtxString = "some ptx string";
@@ -89,7 +86,7 @@ TEST(DeferRelocatableCompilationCompilationProviderTest,
   EXPECT_THAT(compilation_provider->CompileToRelocatableModule(
                   kDefaultComputeCapability, kSomePtxString,
                   kDefaultCompilationOptions),
-              IsOk());
+              absl_testing::IsOk());
 }
 
 TEST(DeferRelocatableCompilationCompilationProviderTest,
@@ -132,7 +129,7 @@ TEST(DeferRelocatableCompilationCompilationProviderTest,
                    Ptx{std::string(kSomeOtherPtxString)},
                    some_actual_relocatable_module},
                   kDefaultCompilationOptions),
-              IsOk());
+              absl_testing::IsOk());
 }
 
 TEST(DeferRelocatableCompilationCompilationProviderTest,
@@ -155,7 +152,7 @@ TEST(DeferRelocatableCompilationCompilationProviderTest,
   EXPECT_THAT(
       compilation_provider->Compile(kDefaultComputeCapability, kSomePtxString,
                                     kDefaultCompilationOptions),
-      IsOk());
+      absl_testing::IsOk());
 }
 
 }  // namespace

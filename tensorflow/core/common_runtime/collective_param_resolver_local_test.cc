@@ -17,6 +17,7 @@ limitations under the License.
 #include <atomic>
 
 #include "absl/strings/str_join.h"
+#include "absl/synchronization/notification.h"
 #include "tensorflow/core/common_runtime/collective_executor_mgr.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
@@ -25,7 +26,6 @@ limitations under the License.
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/collective.h"
 #include "tensorflow/core/framework/device_attributes.pb.h"
-#include "tensorflow/core/lib/core/notification.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/blocking_counter.h"
@@ -99,8 +99,8 @@ TEST_F(CollectiveParamResolverLocalTest, CompleteDefaultRanking) {
   for (int gpu_idx = 0; gpu_idx < kNumGpus; ++gpu_idx) {
     CollGroupMember member;
     member.task = "/job:localhost/replica:0/task:0";
-    member.device.set_name(strings::StrCat(
-        "/job:localhost/replica:0/task:0/device:GPU:", gpu_idx));
+    member.device.set_name(
+        absl::StrCat("/job:localhost/replica:0/task:0/device:GPU:", gpu_idx));
     // Build localities so that 0,1,6,7 and 2,3,4,5 form 2 strongly connected
     // components.  Across components, connect 3 and 7.
     for (int link_idx = 0; link_idx < kNumGpus; ++link_idx) {
@@ -163,7 +163,7 @@ TEST_F(CollectiveParamResolverLocalTest, CompleteDefaultRanking) {
 TEST_F(CollectiveParamResolverLocalTest, CompleteParamsReduction1Task) {
   CollectiveParams* cps[NUM_DEVS];
   absl::Status statuses[NUM_DEVS];
-  Notification note[NUM_DEVS];
+  absl::Notification note[NUM_DEVS];
   for (int i = 0; i < NUM_DEVS; ++i) {
     cps[i] = new CollectiveParams();
     CollectiveParams* cp = cps[i];
@@ -179,7 +179,7 @@ TEST_F(CollectiveParamResolverLocalTest, CompleteParamsReduction1Task) {
     cp->is_source = false;
     Env::Default()->SchedClosure([this, i, cp, &note, &statuses]() {
       string device =
-          strings::StrCat("/job:localhost/replica:0/task:0/device:CPU:", i);
+          absl::StrCat("/job:localhost/replica:0/task:0/device:CPU:", i);
       prl_->CompleteParamsAsync(GetDeviceAttributes(device), cp,
                                 nullptr /*CancellationManager*/,
                                 [&statuses, &note, i](const absl::Status& s) {
@@ -195,9 +195,8 @@ TEST_F(CollectiveParamResolverLocalTest, CompleteParamsReduction1Task) {
     TF_ASSERT_OK(statuses[i]);
     ASSERT_EQ(cps[i]->group.members.size(), 3);
     for (int j = 0; j < NUM_DEVS; ++j) {
-      EXPECT_EQ(
-          strings::StrCat("/job:localhost/replica:0/task:0/device:CPU:", j),
-          cps[i]->group.members[j].device.name());
+      EXPECT_EQ(absl::StrCat("/job:localhost/replica:0/task:0/device:CPU:", j),
+                cps[i]->group.members[j].device.name());
       EXPECT_TRUE(cps[i]->group.members[j].is_local);
     }
     EXPECT_EQ(cps[i]->instance.impl_details.subdiv_source_rank.size(), 0);
@@ -227,14 +226,14 @@ TEST_F(CollectiveParamResolverLocalTest, CompleteParamsBroadcast1Task) {
   constexpr int kInstanceKey = 5;
   CollectiveParams* cps[NUM_DEVS];
   absl::Status statuses[NUM_DEVS];
-  Notification note[NUM_DEVS];
+  absl::Notification note[NUM_DEVS];
   for (int i = 0; i < NUM_DEVS; ++i) {
     cps[i] = new CollectiveParams();
     CollectiveParams* cp = cps[i];
     InitializeCollectiveParamsForBroadcast(kInstanceKey, i, i == 1, cp);
     Env::Default()->SchedClosure([this, i, cp, &note, &statuses]() {
       string device =
-          strings::StrCat("/job:localhost/replica:0/task:0/device:CPU:", i);
+          absl::StrCat("/job:localhost/replica:0/task:0/device:CPU:", i);
       prl_->CompleteParamsAsync(GetDeviceAttributes(device), cp,
                                 nullptr /*CancellationManager*/,
                                 [&statuses, &note, i](const absl::Status& s) {
@@ -250,9 +249,8 @@ TEST_F(CollectiveParamResolverLocalTest, CompleteParamsBroadcast1Task) {
     TF_ASSERT_OK(statuses[i]);
     ASSERT_EQ(cps[i]->group.members.size(), 3);
     for (int j = 0; j < NUM_DEVS; ++j) {
-      EXPECT_EQ(
-          strings::StrCat("/job:localhost/replica:0/task:0/device:CPU:", j),
-          cps[i]->group.members[j].device.name());
+      EXPECT_EQ(absl::StrCat("/job:localhost/replica:0/task:0/device:CPU:", j),
+                cps[i]->group.members[j].device.name());
       EXPECT_TRUE(cps[i]->group.members[j].is_local);
     }
     EXPECT_EQ(cps[i]->is_source, (i == 1));
@@ -269,14 +267,14 @@ TEST_F(CollectiveParamResolverLocalTest, CompleteParamsBroadcastForgotSender) {
   constexpr int kInstanceKey = 8;
   CollectiveParams* cps[NUM_DEVS];
   absl::Status statuses[NUM_DEVS];
-  Notification note[NUM_DEVS];
+  absl::Notification note[NUM_DEVS];
   for (int i = 0; i < NUM_DEVS; ++i) {
     cps[i] = new CollectiveParams();
     CollectiveParams* cp = cps[i];
     InitializeCollectiveParamsForBroadcast(kInstanceKey, i, false, cp);
     Env::Default()->SchedClosure([this, i, cp, &note, &statuses]() {
       string device =
-          strings::StrCat("/job:localhost/replica:0/task:0/device:CPU:", i);
+          absl::StrCat("/job:localhost/replica:0/task:0/device:CPU:", i);
       prl_->CompleteParamsAsync(GetDeviceAttributes(device), cp,
                                 nullptr /*CancellationManager*/,
                                 [&statuses, &note, i](const absl::Status& s) {
@@ -323,7 +321,7 @@ TEST_F(CollectiveParamResolverLocalTest, AbortPendingGroup) {
   for (int i = 0; i < NUM_DEVS - 1; ++i) {
     Env::Default()->SchedClosure([this, i, &cancel_mgr, &cp, &start, &done] {
       string device =
-          strings::StrCat("/job:localhost/replica:0/task:0/device:CPU:", i);
+          absl::StrCat("/job:localhost/replica:0/task:0/device:CPU:", i);
       cp[i] = MakeCollectiveParams(/*group_key*/ 100, /*instance_key*/ 100,
                                    /*is_source*/ i == 0);
       prl_->CompleteParamsAsync(GetDeviceAttributes(device), cp[i], &cancel_mgr,
@@ -354,7 +352,7 @@ TEST_F(CollectiveParamResolverLocalTest, AbortPendingInstance) {
       Env::Default()->SchedClosure([this, group_key, instance_key, i,
                                     &cancel_mgr, &cp, &done] {
         string device =
-            strings::StrCat("/job:localhost/replica:0/task:0/device:CPU:", i);
+            absl::StrCat("/job:localhost/replica:0/task:0/device:CPU:", i);
         cp[i] = MakeCollectiveParams(group_key, instance_key,
                                      /*is_source*/ i == 0);
         prl_->CompleteParamsAsync(GetDeviceAttributes(device), cp[i],
@@ -374,7 +372,7 @@ TEST_F(CollectiveParamResolverLocalTest, AbortPendingInstance) {
     Env::Default()->SchedClosure([this, group_key, instance_key, i, &cancel_mgr,
                                   &cp, &start, &done] {
       string device =
-          strings::StrCat("/job:localhost/replica:0/task:0/device:CPU:", i);
+          absl::StrCat("/job:localhost/replica:0/task:0/device:CPU:", i);
       cp[i] = MakeCollectiveParams(group_key, instance_key + 1,
                                    /*is_source*/ i == 0);
       prl_->CompleteParamsAsync(GetDeviceAttributes(device), cp[i], &cancel_mgr,
@@ -405,7 +403,7 @@ TEST_F(CollectiveParamResolverLocalTest, CompleteParamsAfterAbortion) {
       Env::Default()->SchedClosure([this, group_key, instance_key, i,
                                     &cancel_mgr, &cp, &done] {
         string device =
-            strings::StrCat("/job:localhost/replica:0/task:0/device:CPU:", i);
+            absl::StrCat("/job:localhost/replica:0/task:0/device:CPU:", i);
         cp[i] = MakeCollectiveParams(group_key, instance_key,
                                      /*is_source*/ i == 0);
         prl_->CompleteParamsAsync(GetDeviceAttributes(device), cp[i],
@@ -423,7 +421,7 @@ TEST_F(CollectiveParamResolverLocalTest, CompleteParamsAfterAbortion) {
 
   auto complete_params = [this, &cancel_mgr](int group_key, int instance_key) {
     string device = "/job:localhost/replica:0/task:0/device:CPU:0";
-    Notification done;
+    absl::Notification done;
     auto* cp = MakeCollectiveParams(group_key, instance_key,
                                     /*is_source*/ true);
     core::ScopedUnref unref(cp);
@@ -456,13 +454,13 @@ TEST_F(CollectiveParamResolverLocalTest, AbortNormalCompleteParamsAsync) {
     BlockingCounter done(NUM_DEVS);
     for (int i = 0; i < NUM_DEVS; ++i) {
       string device =
-          strings::StrCat("/job:localhost/replica:0/task:0/device:CPU:", i);
+          absl::StrCat("/job:localhost/replica:0/task:0/device:CPU:", i);
       Env::Default()->SchedClosure(
           [this, i, device, &num_ok, &cancel_mgr, &done] {
             int key = 100;
             while (true) {
               absl::Status status;
-              Notification n;
+              absl::Notification n;
               auto* cp =
                   MakeCollectiveParams(/* group_key*/ key, /*instance_key*/ key,
                                        /*is_source*/ i == 0);

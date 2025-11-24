@@ -19,6 +19,8 @@ limitations under the License.
 #define EIGEN_USE_THREADS
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -114,9 +116,9 @@ class DenseCount : public OpKernel {
     OP_REQUIRES(context,
                 TensorShapeUtils::IsVector(data.shape()) ||
                     TensorShapeUtils::IsMatrix(data.shape()),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "Input must be a 1 or 2-dimensional tensor. Got: ",
-                    data.shape().DebugString()));
+                    data.shape().DebugString())));
 
     // Ensure all values are non-negative.
     const auto data_values = data.flat<T>();
@@ -125,15 +127,15 @@ class DenseCount : public OpKernel {
         (data_values >= static_cast<T>(0)).all();
     OP_REQUIRES(
         context, nonnegative(),
-        errors::InvalidArgument("Input values must all be non-negative"));
+        absl::InvalidArgumentError("Input values must all be non-negative"));
 
     if (use_weights) {
       OP_REQUIRES(
           context, weights.shape() == data.shape(),
-          errors::InvalidArgument(
+          absl::InvalidArgumentError(absl::StrCat(
               "Weights and data must have the same shape. Weight shape: ",
               weights.shape().DebugString(),
-              "; data shape: ", data.shape().DebugString()));
+              "; data shape: ", data.shape().DebugString())));
     }
 
     bool is_1d = TensorShapeUtils::IsVector(data.shape());
@@ -143,7 +145,7 @@ class DenseCount : public OpKernel {
     int num_batch_elements = 1;
     for (int i = 0; i < num_batch_dimensions; ++i) {
       OP_REQUIRES(context, data.shape().dim_size(i) != 0,
-                  errors::InvalidArgument(
+                  absl::InvalidArgumentError(
                       "Invalid input: Shapes dimension cannot be 0."));
       num_batch_elements *= data.shape().dim_size(i);
     }
@@ -202,29 +204,31 @@ class SparseCount : public OpKernel {
     bool use_weights = weights.NumElements() > 0;
 
     OP_REQUIRES(context, TensorShapeUtils::IsMatrix(indices.shape()),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "Input indices must be a 2-dimensional tensor. Got: ",
-                    indices.shape().DebugString()));
+                    indices.shape().DebugString())));
     OP_REQUIRES(context, TensorShapeUtils::IsVector(values.shape()),
-                errors::InvalidArgument("Input values must be a vector. Got: ",
-                                        values.shape().DebugString()));
+                absl::InvalidArgumentError(
+                    absl::StrCat("Input values must be a vector. Got: ",
+                                 values.shape().DebugString())));
     OP_REQUIRES(context, TensorShapeUtils::IsVector(shape.shape()),
-                errors::InvalidArgument("Input shape must be a vector. Got: ",
-                                        shape.shape().DebugString()));
-    OP_REQUIRES(context,
-                values.shape().dim_size(0) == indices.shape().dim_size(0),
-                errors::InvalidArgument(
-                    "Number of values must match first dimension of indices.",
-                    "Got ", values.shape().dim_size(0),
-                    " values, indices shape: ", indices.shape().DebugString()));
+                absl::InvalidArgumentError(
+                    absl::StrCat("Input shape must be a vector. Got: ",
+                                 shape.shape().DebugString())));
+    OP_REQUIRES(
+        context, values.shape().dim_size(0) == indices.shape().dim_size(0),
+        absl::InvalidArgumentError(absl::StrCat(
+            "Number of values must match first dimension of indices.", "Got ",
+            values.shape().dim_size(0),
+            " values, indices shape: ", indices.shape().DebugString())));
     OP_REQUIRES(
         context, shape.shape().dim_size(0) == indices.shape().dim_size(1),
-        errors::InvalidArgument(
+        absl::InvalidArgumentError(absl::StrCat(
             "Number of dimensions must match second dimension of indices.",
             "Got ", shape.shape().dim_size(0),
-            " dimensions, indices shape: ", indices.shape().DebugString()));
+            " dimensions, indices shape: ", indices.shape().DebugString())));
     OP_REQUIRES(context, shape.NumElements() > 0,
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(
                     "The shape argument requires at least one element."));
     // Validate indices: each index must be valid for the corresponding
     // dimension. This could be possibly done better.
@@ -237,10 +241,10 @@ class SparseCount : public OpKernel {
         OP_REQUIRES(
             context,
             indices_values(i, j) >= 0 && indices_values(i, j) < shape_vector(j),
-            errors::InvalidArgument(
+            absl::InvalidArgumentError(absl::StrCat(
                 "Invalid index value at ", i, ": dimension ", j, " has value ",
                 indices_values(i, j), " which is not in [0, ", shape_vector(j),
-                ") (as given by dense shape ", shape.DebugString()));
+                ") (as given by dense shape ", shape.DebugString())));
       }
     }
 
@@ -251,23 +255,23 @@ class SparseCount : public OpKernel {
         (values_values >= static_cast<T>(0)).all();
     OP_REQUIRES(
         context, nonnegative(),
-        errors::InvalidArgument("Input values must all be non-negative"));
+        absl::InvalidArgumentError("Input values must all be non-negative"));
 
     if (use_weights) {
       OP_REQUIRES(
           context, weights.shape() == values.shape(),
-          errors::InvalidArgument(
+          absl::InvalidArgumentError(absl::StrCat(
               "Weights and values must have the same shape. Weight shape: ",
               weights.shape().DebugString(),
-              "; values shape: ", values.shape().DebugString()));
+              "; values shape: ", values.shape().DebugString())));
     }
 
     bool is_1d = shape.NumElements() == 1;
     int num_batches = is_1d ? 1 : shape_vector(0);
-    OP_REQUIRES(
-        context, 0 < num_batches && num_batches < kMaxBatches,
-        errors::InvalidArgument("Cannot allocate ", num_batches,
-                                " batches, is the dense shape too wide?"));
+    OP_REQUIRES(context, 0 < num_batches && num_batches < kMaxBatches,
+                absl::InvalidArgumentError(
+                    absl::StrCat("Cannot allocate ", num_batches,
+                                 " batches, is the dense shape too wide?")));
 
     const auto weight_values = weights.flat<W>();
 
@@ -279,11 +283,11 @@ class SparseCount : public OpKernel {
       int batch = is_1d ? 0 : indices_values(idx, 0);
       if (batch >= num_batches) {
         OP_REQUIRES(context, batch < num_batches,
-                    errors::InvalidArgument(
+                    absl::InvalidArgumentError(absl::StrCat(
                         "Indices value along the first dimension must be ",
                         "lower than the first index of the shape.", "Got ",
                         batch, " as batch and ", num_batches,
-                        " as the first dimension of the shape."));
+                        " as the first dimension of the shape.")));
       }
       const auto& value = values_values(idx);
       if (maxlength_ < 0 || value < maxlength_) {
@@ -332,10 +336,10 @@ class RaggedCount : public OpKernel {
     if (use_weights) {
       OP_REQUIRES(
           context, weights.shape() == values.shape(),
-          errors::InvalidArgument(
+          absl::InvalidArgumentError(absl::StrCat(
               "Weights and values must have the same shape. Weight shape: ",
               weights.shape().DebugString(),
-              "; values shape: ", values.shape().DebugString()));
+              "; values shape: ", values.shape().DebugString())));
     }
 
     const auto splits_values = splits.flat<int64_t>();
@@ -346,15 +350,15 @@ class RaggedCount : public OpKernel {
 
     OP_REQUIRES(
         context, num_batches > 0,
-        errors::InvalidArgument(
+        absl::InvalidArgumentError(
             "Must provide at least 2 elements for the splits argument"));
     OP_REQUIRES(context, splits_values(0) == 0,
-                errors::InvalidArgument("Splits must start with 0, not with ",
-                                        splits_values(0)));
+                absl::InvalidArgumentError(absl::StrCat(
+                    "Splits must start with 0, not with ", splits_values(0))));
     OP_REQUIRES(context, splits_values(num_batches) == num_values,
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "Splits must end with the number of values, got ",
-                    splits_values(num_batches), " instead of ", num_values));
+                    splits_values(num_batches), " instead of ", num_values)));
 
     // Ensure all values are non-negative.
     Eigen::TensorFixedSize<bool, Eigen::Sizes<>, Eigen::RowMajor> nonnegative;
@@ -362,7 +366,7 @@ class RaggedCount : public OpKernel {
         (values_values >= static_cast<T>(0)).all();
     OP_REQUIRES(
         context, nonnegative(),
-        errors::InvalidArgument("Input values must all be non-negative"));
+        absl::InvalidArgumentError("Input values must all be non-negative"));
 
     auto per_batch_counts = BatchedMap<W>(num_batches);
     T max_value = 0;

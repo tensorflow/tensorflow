@@ -34,14 +34,13 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/ir/hlo_original_value.h"
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/while_util.h"
 #include "xla/shape_util.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 
@@ -122,6 +121,9 @@ absl::StatusOr<HloInstruction*> AppendToWhileState(
   TF_RETURN_IF_ERROR(
       UpdateWhileUsesWithTuple(while_instr, while_input->operand_count() - 1));
   *while_instr->mutable_shape() = while_input->shape();
+  // The new body root tuple element has the same value as the new operand.
+  AppendToWhileLoopOriginalValue(while_instr, {new_operand});
+
   return new_gte;
 }
 
@@ -459,6 +461,7 @@ absl::StatusOr<bool> WhileLoopFusibleSinking::TrySinkingFusiblesIntoWhileLoop(
     HloInstruction* parameter = while_body->parameter_instruction(0);
     int64_t next_index = init_value->operand_count();
     new_operands.resize(fusion->operand_count());
+
     for (int64_t i = 0; i < fusion->operand_count(); ++i) {
       init_value->AppendOperand(fusion->mutable_operand(i));
       parameter->mutable_shape()->mutable_tuple_shapes()->push_back(
@@ -469,9 +472,14 @@ absl::StatusOr<bool> WhileLoopFusibleSinking::TrySinkingFusiblesIntoWhileLoop(
     }
     *(init_value->mutable_shape()) = parameter->shape();
     *(while_instr->mutable_shape()) = parameter->shape();
+    //
+    // The new body root tuple elements have the same value as the fusion
+    // operands.
+    AppendToWhileLoopOriginalValue(while_instr, fusion->operands());
     *(while_cond->parameter_instruction(0)->mutable_shape()) =
         parameter->shape();
     *(root->mutable_shape()) = parameter->shape();
+
     auto cloned_fusion = while_body->AddInstruction(
         fusion->CloneWithNewOperands(fusion->shape(), new_operands));
     TF_RETURN_IF_ERROR(fusion->parent()->RemoveInstruction(fusion));
@@ -482,7 +490,7 @@ absl::StatusOr<bool> WhileLoopFusibleSinking::TrySinkingFusiblesIntoWhileLoop(
   return changed;
 }
 
-absl::StatusOr<bool> WhileLoopFusibleSinking::Run(
+absl::StatusOr<bool> WhileLoopFusibleSinking::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   VLOG(5) << "Before WhileLoopFusibleSinking " << module->unique_id();
@@ -539,6 +547,7 @@ absl::StatusOr<bool> WhileLoopFusibleSinking::Run(
       }
     }
   }
+
   return changed;
 }
 }  // namespace xla

@@ -201,8 +201,10 @@ TEST(GpuCommandBufferTest, LaunchNestedCommandBuffer) {
                           executor->CreateCommandBuffer(nested));
   TF_ASSERT_OK(
       nested_cmd->CreateLaunch(add, ThreadDim(), BlockDim(4), {}, a, b, c));
-  TF_ASSERT_OK_AND_ASSIGN(auto* nested_command,
-                          primary_cmd->CreateNestedCommand(*nested_cmd, {}));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto* nested_command,
+      primary_cmd->CreateChildCommand(CommandBuffer::ChildCommandType::kCloned,
+                                      *nested_cmd, {}));
   TF_ASSERT_OK(primary_cmd->Finalize());
 
   TF_ASSERT_OK(primary_cmd->Submit(stream.get()));
@@ -224,7 +226,8 @@ TEST(GpuCommandBufferTest, LaunchNestedCommandBuffer) {
   TF_ASSERT_OK(
       nested_cmd->CreateLaunch(add, ThreadDim(), BlockDim(4), {}, a, b, d));
   TF_ASSERT_OK(primary_cmd->Update());
-  TF_ASSERT_OK(primary_cmd->UpdateNestedCommand(nested_command, *nested_cmd));
+  TF_ASSERT_OK(primary_cmd->UpdateChildCommand(
+      CommandBuffer::ChildCommandType::kCloned, nested_command, *nested_cmd));
   TF_ASSERT_OK(primary_cmd->Finalize());
 
   TF_ASSERT_OK(primary_cmd->Submit(stream.get()));
@@ -716,7 +719,8 @@ TEST(GpuCommandBufferTest, DISABLED_WhileNestedConditional) {
 
   CommandBuffer::CreateCommands create_body = [&](CommandBuffer* body_cmd,
                                                   auto deps) {
-    return Wrap(body_cmd->CreateNestedCommand(*nested_cmd, deps));
+    return Wrap(body_cmd->CreateChildCommand(
+        CommandBuffer::ChildCommandType::kCloned, *nested_cmd, deps));
   };
 
   // Create a command buffer with a single conditional operation.

@@ -44,7 +44,6 @@ limitations under the License.
 #include "xla/shape_util.pb.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"  // IWYU pragma: keep
-#include "xla/tsl/platform/macros.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -76,8 +75,8 @@ using ShapeIndexView = absl::Span<const int64_t>;
 // For indexing into array shapes, the index is always trivially empty, ie {}.
 struct ShapeIndex : public absl::InlinedVector<int64_t, 2> {
   using InlinedVector::InlinedVector;
-  TF_ATTRIBUTE_NOINLINE ShapeIndex() = default;
 
+  ShapeIndex() = default;
   explicit ShapeIndex(ShapeIndexView view)
       : ShapeIndex(view.begin(), view.end()) {}
 
@@ -280,7 +279,8 @@ class ShapeUtil {
   // Returns true if the tuple tree shapes and leaf ranks are identical.
   // Leaf dimensions, element type, and layout are ignored. Tuple elements are
   // compared recursively for compatibility.
-  static bool CompatibleKind(const Shape& lhs, const Shape& rhs);
+  static bool CompatibleKind(const Shape& lhs, const Shape& rhs,
+                             bool ignore_buffer = false);
 
   // As Compatible, but allow one of lhs and rhs to be BF16 while the other
   // being F32. Tuple elements are compared recursively for compatibility.
@@ -350,12 +350,13 @@ class ShapeUtil {
 
   // Returns a shape with the same dimensions as the original, but with the
   // element type changed to type.
-  static Shape ChangeElementType(const Shape& original, PrimitiveType type);
+  [[nodiscard]] static Shape ChangeElementType(const Shape& original,
+                                               PrimitiveType type);
 
   // Returns a shape with same dimensions but with all dimensions set to static.
   // If the shape has a layout, its dynamic_shape_metadata_prefix_bytes will be
   // set to zero.
-  static Shape MakeStaticShape(const Shape& original);
+  [[nodiscard]] static Shape MakeStaticShape(const Shape& original);
 
   // Creates a tuple shape from a slice of element shapes within the tuple.
   // Crashes if the result is invalid.
@@ -405,10 +406,25 @@ class ShapeUtil {
   static void AppendMajorDimension(int bound, Shape* shape);
 
   // Prepends a major dimension sized `bound` to the shape.
-  static Shape PrependMajorDimension(int64_t bound, Shape shape);
+  [[nodiscard]] static Shape PrependMajorDimension(int64_t bound, Shape shape);
 
   // Appends a minor dimension to the shape with the given bound.
   static void AppendMinorDimension(int bound, Shape* shape);
+
+  // Inserts a dimension at dim_idx. In the layout, the new dimension is
+  // next-major to the existing dimension at that index, or minor if it's
+  // inserted at the end (i.e. with the normalized layout it's inserted at the
+  // "natural" position).
+  [[nodiscard]] static Shape InsertDimensionAtIndex(Shape shape,
+                                                    int64_t dim_idx,
+                                                    int64_t bound);
+
+  // Inserts a list of dimensions at dim_idx. In the layout, the new dimensions
+  // are next-major to the existing dimension at that index, or minor if it's
+  // inserted at the end (i.e. with the normalized layout it's inserted at the
+  // "natural" position).
+  [[nodiscard]] static Shape InsertDimensionsAtIndex(
+      Shape shape, int64_t dim_idx, absl::Span<const int64_t> bounds);
 
   // Copy the dynamic dimensions property from one shape to another.
   static void CopyDynamicDimensions(Shape* to, const Shape& from);
@@ -527,7 +543,7 @@ class ShapeUtil {
   static Shape MoveDimToMajor(const Shape& shape, int64_t dim);
 
   // Returns the same shape except with all dimensions set to be static.
-  static Shape MakeShapeWithStaticDimensions(const Shape& shape);
+  [[nodiscard]] static Shape MakeShapeWithStaticDimensions(const Shape& shape);
 
   // Constructs a new shape with major-first layout (i.e. {n, n-1, ..., 0}).
   // Crashes if the result is invalid.
@@ -662,19 +678,16 @@ class ShapeUtil {
   //   void fn(Shape* subshape, const ShapeIndex& index) (mutable version)
   template <typename Fn>
   static void ForEachSubshape(const Shape& shape, Fn&& fn) {
-    ForEachSubshapeWithStatus(shape, [&](const Shape& subshape,
-                                         const ShapeIndex& index) {
-      fn(subshape, index);
-      return absl::OkStatus();
-    }).IgnoreError();
+    return ForEachMutableSubshape(
+        const_cast<Shape*>(&shape),
+        [&](Shape* subshape, const ShapeIndex& index) {
+          fn(*const_cast<const Shape*>(subshape), index);
+        });
   }
   template <typename Fn>
   static void ForEachMutableSubshape(Shape* shape, Fn&& fn) {
-    ForEachMutableSubshapeWithStatus(shape, [&](Shape* subshape,
-                                                const ShapeIndex& index) {
-      fn(subshape, index);
-      return absl::OkStatus();
-    }).IgnoreError();
+    ShapeIndex index;
+    ForEachMutableSubshapeHelper(shape, std::forward<Fn>(fn), &index);
   }
 
   // Calls the given visitor function for each leaf subshape of the given shape.
@@ -750,7 +763,8 @@ class ShapeUtil {
   template <typename Fn>
   static absl::Status ForEachMutableSubshapeWithStatus(Shape* shape, Fn&& fn) {
     ShapeIndex index;
-    return ForEachMutableSubshapeWithStatusHelper(shape, fn, &index);
+    return ForEachMutableSubshapeWithStatusHelper(shape, std::forward<Fn>(fn),
+                                                  &index);
   }
 
   // Calls the given visitor function for each subshape of the given shape.
@@ -763,21 +777,16 @@ class ShapeUtil {
   //   void fn(Shape* subshape, const ShapeIndex& index) (mutable version)
   template <typename Fn>
   static void ForEachSubshapePostOrder(const Shape& shape, Fn&& fn) {
-    ForEachSubshapePostOrderWithStatus(shape, [&](const Shape& subshape,
-                                                  const ShapeIndex& index) {
-      fn(subshape, index);
-      return absl::OkStatus();
-    }).IgnoreError();
+    ForEachMutableSubshapePostOrder(
+        const_cast<Shape*>(&shape),
+        [&](Shape* subshape, const ShapeIndex& index) {
+          fn(*const_cast<const Shape*>(subshape), index);
+        });
   }
   template <typename Fn>
   static void ForEachMutableSubshapePostOrder(Shape* shape, Fn&& fn) {
-    ForEachMutableSubshapePostOrderWithStatus(
-        shape,
-        [&](Shape* subshape, const ShapeIndex& index) {
-          fn(subshape, index);
-          return absl::OkStatus();
-        })
-        .IgnoreError();
+    ShapeIndex index;
+    ForEachMutableSubshapePostOrderHelper(shape, std::forward<Fn>(fn), &index);
   }
 
   // Variants of ForEach(Mutable)SubshapePostOrder which propagate absl::Status
@@ -802,7 +811,8 @@ class ShapeUtil {
   static absl::Status ForEachMutableSubshapePostOrderWithStatus(Shape* shape,
                                                                 Fn&& fn) {
     ShapeIndex index;
-    return ForEachMutableSubshapePostOrderWithStatusHelper(shape, fn, &index);
+    return ForEachMutableSubshapePostOrderWithStatusHelper(
+        shape, std::forward<Fn>(fn), &index);
   }
 
   // Returns true if `shape` (which must be an array) with degenerate dimensions
@@ -915,6 +925,9 @@ class ShapeUtil {
   DeduceTransposeDimensionsForBitcast(const Shape& input_shape,
                                       const Shape& output_shape);
 
+  static bool IsDecomposableBitcast(const Shape& input_shape,
+                                    const Shape& output_shape);
+
   // This means that the bitcast can be decomposed to a single reshape.
   struct BitcastDecompositionReshape {};
 
@@ -923,7 +936,8 @@ class ShapeUtil {
     std::vector<int64_t> transpose_dims;
   };
 
-  // Every bitcast from A to B can be represented as a sequence of:
+  // Every bitcast from A to B of same bitwidth can be represented as a sequence
+  // of:
   // 1) Transpose to a normalized layout of A
   // 2) Reshape to a normalized layout of B
   // 3) Transpose from (2) to B
@@ -946,14 +960,14 @@ class ShapeUtil {
   };
 
   // A variant type holding one of the possible bitcast decompositions.
-  using BitcastDecomposition =
+  using BitcastDecomposition = std::optional<
       std::variant<BitcastDecompositionReshape, BitcastDecompositionTranspose,
-                   BitcastDecompositionTrt>;
+                   BitcastDecompositionTrt>>;
 
   // Decomposes a bitcast to a sequence of transpose, reshape, transpose.
   //
   // See the comment on BitcastDecompositionTrt.
-  static BitcastDecompositionTrt DecomposeBitcastToTrt(
+  static std::optional<BitcastDecompositionTrt> DecomposeBitcastToTrt(
       const Shape& input_shape, const Shape& output_shape);
 
   // Decomposes a bitcast to one of the possible decompositions.
@@ -1104,6 +1118,10 @@ class ShapeUtil {
       const Shape& shape,
       const ForEachParallelVisitorFunction& visitor_function);
 
+  // Returns true if the shape doesn't have any device-specific information,
+  // namely tiling and memory-space information.
+  static bool DeviceShapeIsHostShape(const Shape& shape);
+
   // Strips device-specific information, namely tiling and memory-space
   // information, from a shape.
   static Shape DeviceShapeToHostShape(Shape s);
@@ -1114,10 +1132,17 @@ class ShapeUtil {
 
   // Computes byte strides of an array shape `shape`. `shape` must have a
   // layout. Ignores tiling. `strides` must have size equal to the number of
-  // dimensions of `shape`.
+  // dimensions of `shape`. Ignores element_size_in_bits - uses its default
+  // value, ByteSizeOfPrimitiveType - therefore `unpacked`.
+  static absl::Status UnpackedByteStrides(const Shape& shape,
+                                          absl::Span<int64_t> strides);
+  ABSL_DEPRECATE_AND_INLINE()
   static absl::Status ByteStrides(const Shape& shape,
                                   absl::Span<int64_t> strides);
   // Same as above but returns the stride array, or std::nullopt if error.
+  static std::optional<absl::InlinedVector<int64_t, 4>> UnpackedByteStrides(
+      const Shape& shape);
+  // Same as above but returns std::nullopt if elements are not byte-aligned.
   static std::optional<absl::InlinedVector<int64_t, 4>> ByteStrides(
       const Shape& shape);
 
@@ -1145,36 +1170,86 @@ class ShapeUtil {
                                 std::vector<const Shape*>& flattened);
   static std::vector<const Shape*> FlattenTupleShape(const Shape& shape);
 
+  static inline bool LastDimIsMinorMost(const Shape& shape) {
+    if (!shape.has_layout()) {
+      return true;
+    }
+    return LayoutUtil::Minor(shape.layout(), 0) ==
+           shape.dimensions().size() - 1;
+  };
+
  private:
   // Helper for ForEachSubshape which visits the subshapes of the given shape in
   // DFS pre-order starting with the index.
   template <typename Fn>
+  static void ForEachMutableSubshapeHelper(Shape* shape, Fn&& fn,
+                                           ShapeIndex* index) {
+    fn(shape, *index);
+    if (Shape::TupleState* tuple = shape->if_tuple_state()) {
+      Shape* tuple_shape = tuple->tuple_shapes.data();
+      int64_t tuple_count = tuple->tuple_shapes.size();
+      index->push_back(0);
+      for (int64_t i = 0; i < tuple_count;
+           ++i, ++tuple_shape, ++index->back()) {
+        ForEachMutableSubshapeHelper(tuple_shape, fn, index);
+      }
+      index->pop_back();
+    }
+  }
+
+  // Helper for ForEachSubshapeWithStatus which visits the subshapes of the
+  // given shape in DFS pre-order starting with the index.
+  template <typename Fn>
   static absl::Status ForEachMutableSubshapeWithStatusHelper(
       Shape* shape, Fn&& fn, ShapeIndex* index) {
     TF_RETURN_IF_ERROR(fn(shape, *index));
-    if (shape->IsTuple()) {
-      for (int64_t i = 0; i < ShapeUtil::TupleElementCount(*shape); ++i) {
-        index->push_back(i);
-        TF_RETURN_IF_ERROR(ForEachMutableSubshapeWithStatusHelper(
-            shape->mutable_tuple_shapes(i), fn, index));
-        index->pop_back();
+    if (Shape::TupleState* tuple = shape->if_tuple_state()) {
+      Shape* tuple_shape = tuple->tuple_shapes.data();
+      int64_t tuple_count = tuple->tuple_shapes.size();
+      index->push_back(0);
+      for (int64_t i = 0; i < tuple_count;
+           ++i, ++tuple_shape, ++index->back()) {
+        TF_RETURN_IF_ERROR(
+            ForEachMutableSubshapeWithStatusHelper(tuple_shape, fn, index));
       }
+      index->pop_back();
     }
     return absl::OkStatus();
   }
 
-  // Helper for ForEachSubshapePost which visits the subshapes of the given
+  // Helper for ForEachSubshapePostOrder which visits the subshapes of the given
   // shape in DFS post-order.
+  template <typename Fn>
+  static void ForEachMutableSubshapePostOrderHelper(Shape* shape, Fn&& fn,
+                                                    ShapeIndex* index) {
+    if (Shape::TupleState* tuple = shape->if_tuple_state()) {
+      Shape* tuple_shape = tuple->tuple_shapes.data();
+      int64_t tuple_count = tuple->tuple_shapes.size();
+      index->push_back(0);
+      for (int64_t i = 0; i < tuple_count;
+           ++i, ++tuple_shape, ++index->back()) {
+        ForEachMutableSubshapePostOrderHelper(tuple_shape, fn, index);
+      }
+      index->pop_back();
+    }
+    fn(shape, *index);
+  }
+
+  // Helper for ForEachSubshapePostOrderWithStatus which visits the subshapes of
+  // the given shape in DFS post-order.
   template <typename Fn>
   static absl::Status ForEachMutableSubshapePostOrderWithStatusHelper(
       Shape* shape, Fn&& fn, ShapeIndex* index) {
-    if (shape->IsTuple()) {
-      for (int64_t i = 0; i < ShapeUtil::TupleElementCount(*shape); ++i) {
-        index->push_back(i);
+    if (Shape::TupleState* tuple = shape->if_tuple_state()) {
+      Shape* tuple_shape = tuple->tuple_shapes.data();
+      int64_t tuple_count = tuple->tuple_shapes.size();
+      index->push_back(0);
+      for (int64_t i = 0; i < tuple_count;
+           ++i, ++tuple_shape, ++index->back()) {
         TF_RETURN_IF_ERROR(ForEachMutableSubshapePostOrderWithStatusHelper(
-            shape->mutable_tuple_shapes(i), fn, index));
-        index->pop_back();
+            tuple_shape, fn, index));
       }
+      index->pop_back();
     }
     TF_RETURN_IF_ERROR(fn(shape, *index));
     return absl::OkStatus();

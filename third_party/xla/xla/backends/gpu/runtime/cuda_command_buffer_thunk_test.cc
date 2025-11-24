@@ -22,6 +22,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/ascii.h"
 #include "absl/types/span.h"
@@ -45,14 +46,13 @@ limitations under the License.
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/dnn.h"
+#include "xla/stream_executor/engine_options.h"
 #include "xla/stream_executor/kernel_spec.h"
-#include "xla/stream_executor/numeric_options.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/stream_executor_memory_allocator.h"
 #include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/types.h"  // IWYU pragma: keep
 #include "xla/xla_data.pb.h"
@@ -71,9 +71,6 @@ se::StreamExecutor* GpuExecutor() {
   return platform->ExecutorForDevice(0).value();
 }
 
-// Give a short aliases to execution threads.
-constexpr auto s0 = ExecutionStreamId(0);
-
 // Give a short alias to synchronization mode.
 static constexpr auto serialize =
     CommandBufferCmdExecutor::SynchronizationMode::kSerialize;
@@ -90,8 +87,9 @@ TEST(CommandBufferThunkTest, CuDnnCmd) {
     GTEST_SKIP() << "Requires cuDNN 9.7.0 or later.";
   }
 
-  if (stream_executor->GetDeviceDescription().cuda_compute_capability() <
-      stream_executor::CudaComputeCapability::Ampere()) {
+  if (!stream_executor->GetDeviceDescription()
+           .cuda_compute_capability()
+           .IsAtLeastAmpere()) {
     GTEST_SKIP() << "Requires at least an Ampere GPU.";
   }
 
@@ -117,10 +115,13 @@ TEST(CommandBufferThunkTest, CuDnnCmd) {
     return graph;
   }());
   int64_t workspace_size = graph.Graph().get_workspace_size();
-  TF_ASSERT_OK(graph.Prepare(dnn_support, se::NumericOptions{}));
+  TF_ASSERT_OK(graph.Prepare(
+      dnn_support, se::EngineOptions{/*require_determinism=*/false,
+                                     /*allow_tf32=*/true,
+                                     /*require_command_buffer=*/true}));
   TF_ASSERT_OK(graph.Build(dnn_support, /*plan_id=*/std::nullopt));
   EXPECT_THAT(graph.SupportsExplicitCommandBufferConstruction(),
-              tsl::testing::IsOkAndHolds(true));
+              absl_testing::IsOkAndHolds(true));
 
   std::vector<BufferAllocation::Slice> args;
   BufferAllocation alloc_input(/*index=*/0, kTotalElements, /*color=*/0);
@@ -147,7 +148,7 @@ TEST(CommandBufferThunkTest, CuDnnCmd) {
   auto dnn_graph = std::make_unique<se::gpu::CudnnGraph>(std::move(graph));
   CommandBufferCmdSequence commands;
   commands.Emplace<CuDnnCmd>(
-      s0, args, std::make_shared<se::dnn::LazyDnnGraph>(std::move(dnn_graph)));
+      args, std::make_shared<se::dnn::LazyDnnGraph>(std::move(dnn_graph)));
   TF_ASSERT_OK_AND_ASSIGN(
       CommandBufferCmdExecutor executor,
       CommandBufferCmdExecutor::Create(std::move(commands), serialize));

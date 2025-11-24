@@ -574,8 +574,8 @@ Shape TileLeafShape(const HloSharding& sharding, const Shape& shape);
 // DetermineArgumentLayoutsFromCompileOptions() in
 // tensorflow/compiler/xla/pjrt/utils.h.
 absl::Status CanonicalizeLayoutAfterShardingPropagation(
-    HloModule* module, const std::vector<bool>& update_output_layout,
-    const std::vector<bool>& update_parameters_layout);
+    HloModule* module, absl::Span<const bool> update_output_layout,
+    absl::Span<const bool> update_parameters_layout);
 
 // Returns true iff the specified hlo or sharding has a spatially partitioned
 // sharding (tiled or replicated) that can be propagated by sharding
@@ -613,6 +613,11 @@ HloSharding InferDotOperandSharding(
     int64_t operand_index,
     const dot_as_convolution_util::DotConvolutionDimsInfo& dnums,
     bool consider_other_operand, bool may_combine_partial_sharding);
+
+// If the sharding is a V2 sharding (using iota_reshape_dims and
+// iota_transpose_perm) and its type is OTHER, converts it to a V1 sharding
+// (using tile_assignment_devices). Otherwise, does nothing.
+void ConvertV2ToV1Sharding(OpSharding& sharding);
 
 }  // namespace hlo_sharding_util
 }  // namespace xla

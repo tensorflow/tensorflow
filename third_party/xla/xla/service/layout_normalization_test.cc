@@ -601,6 +601,17 @@ ENTRY main {
   )");
 }
 
+TEST_F(LayoutNormalizationTest, ZeroSizedConstant) {
+  const char* hlo = R"(
+  HloModule zero_sized_constant, entry_computation_layout={()->s32[0,179]{0,1}}
+  ENTRY main() -> s32[0,179] {
+    ROOT %constant = s32[0,179]{1,0} constant({  })
+  })";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  TF_ASSERT_OK_AND_ASSIGN(auto status, LayoutNormalization().Run(module.get()));
+  EXPECT_FALSE(status);
+}
+
 TEST_F(LayoutNormalizationTest, ConstantAvoidRevisitOfUser) {
   const char* hlo = R"(
 HloModule module
@@ -801,35 +812,49 @@ ENTRY main {
 )");
 }
 
-TEST_F(LayoutNormalizationTest, BitcastConvertToBiggerType) {
-  const char* hlo = R"(
-HloModule m
-
-ENTRY main {
-  p0 = u32[4,2]{0,1} parameter(0)
-  ROOT out = u64[4]{0} bitcast-convert(u32[4,2]{0,1} p0), metadata={op_name="test"}
-}
-)";
-
-  CheckLayoutNormalization(hlo, R"(
-// CHECK: bitcast-convert({{.*}}), metadata={op_name="test"}
+TEST_F(LayoutNormalizationTest,
+       BitcastConvertToWiderTypeGetsDefaultOutputLayout) {
+  CheckLayoutNormalization(R"(
+e {
+  a = u32[3,5,2]{2,0,1} parameter(0)
+  b = u64[3,5]{0,1} bitcast-convert(a)
+})",
+                           R"(
+CHECK: u32[3,5,2]{2,0,1} parameter(0)
+CHECK-NEXT: u32[5,3,2]{2,1,0} bitcast
+CHECK-NEXT: u64[5,3]{1,0} bitcast-convert
+CHECK-NEXT: u64[3,5]{0,1} bitcast
 )");
 }
 
-TEST_F(LayoutNormalizationTest, BitcastConvertToSmallerType) {
-  const char* hlo = R"(
-HloModule m
-
-ENTRY main {
-  p0 = u64[3,4]{0,1} parameter(0)
-  bc_convert = u32[3,4,2]{1,0,2} bitcast-convert(p0), metadata={op_name="test"}
-  ROOT out = u32[3,4,2]{1,0,2} reverse(bc_convert), dimensions={0}
+TEST_F(LayoutNormalizationTest,
+       BitcastConvertToNarrowerTypeGetsDefaultOutputLayout) {
+  CheckLayoutNormalization(R"(
+e {
+  a = u64[3,5]{0,1} parameter(0)
+  b = u32[3,5,2]{2,0,1} bitcast-convert(a)
+})",
+                           R"(
+CHECK: u64[3,5]{0,1} parameter(0)
+CHECK-NEXT: u64[5,3]{1,0} bitcast
+CHECK-NEXT: u32[5,3,2]{2,1,0} bitcast-convert
+CHECK-NEXT: u32[3,5,2]{2,0,1} bitcast
+)");
 }
-)";
 
-  CheckLayoutNormalization(hlo, R"(
-// CHECK: bitcast-convert({{.*}}), metadata={op_name="test"}
-  )");
+TEST_F(LayoutNormalizationTest,
+       BitcastConvertFromNonContiguousDimensionIsNotNormalized) {
+  CheckLayoutNormalization(R"(
+e {
+a = u32[3,5,2]{0,2,1} parameter(0)
+b = u64[3,5]{0,1} bitcast-convert(a)
+})",
+                           R"(
+CHECK: u32[3,5,2]{0,2,1} parameter(0)
+CHECK-NEXT: u32[5,2,3]{2,1,0} bitcast
+CHECK-NEXT: u32[3,5,2]{0,2,1} bitcast
+CHECK-NEXT: u64[3,5]{0,1} bitcast-convert
+)");
 }
 
 TEST_F(LayoutNormalizationTest, Scatter) {

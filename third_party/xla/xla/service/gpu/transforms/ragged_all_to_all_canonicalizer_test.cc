@@ -17,25 +17,20 @@ limitations under the License.
 
 #include <memory>
 
+#include <gtest/gtest.h>
 #include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/service/hlo_runner.h"
-#include "xla/service/platform_util.h"
-#include "xla/tests/hlo_runner_agnostic_test_base.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/tests/test_utils.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace gpu {
 namespace {
 
-class RaggedAllToAllCanonicalizerTest : public HloRunnerAgnosticTestBase {
- public:
-  RaggedAllToAllCanonicalizerTest()
-      : HloRunnerAgnosticTestBase(std::make_unique<HloRunner>(
-            PlatformUtil::GetDefaultPlatform().value())) {}
-};
+using RaggedAllToAllCanonicalizerTest = HloHardwareIndependentTestBase;
 
 TEST_F(RaggedAllToAllCanonicalizerTest, SimpleRaggedAllToAllIsCanonicalized) {
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
@@ -49,7 +44,7 @@ ENTRY main {
   output_offsets = s32[2] parameter(4)
   recv_sizes = s32[2] parameter(5)
   ROOT ra2a = bf16[16] ragged-all-to-all(input, output, input_offsets,
-    send_sizes, output_offsets, recv_sizes), replica_groups={{0,1}}
+    send_sizes, output_offsets, recv_sizes), replica_groups={{0,1}}, frontend_attributes={_scheduling_group_id="0",latency_metadata="150000",sync_collective="false"}
 }
 )"));
 
@@ -65,6 +60,8 @@ ENTRY main {
   EXPECT_EQ(ragged_all_to_all->operand(3)->shape().element_type(), S64);
   EXPECT_EQ(ragged_all_to_all->operand(4)->shape().element_type(), S64);
   EXPECT_EQ(ragged_all_to_all->operand(5)->shape().element_type(), S64);
+  EXPECT_TRUE(ragged_all_to_all->has_frontend_attributes());
+  EXPECT_EQ(ragged_all_to_all->frontend_attributes().map().size(), 3);
 }
 
 TEST_F(RaggedAllToAllCanonicalizerTest, CanonicalRaggedAllToAllIsNotChanged) {

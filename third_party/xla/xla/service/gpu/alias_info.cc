@@ -22,7 +22,6 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
-#include "absl/log/check.h"
 #include "llvm/ADT/STLExtras.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -72,10 +71,8 @@ std::optional<bool> FusionCanShareBufferHint(
   // This only works for the reduction emitter, as it calculates the reduction
   // first, i.e. before processing other outputs (that may overwrite the input).
   auto analysis = HloFusionAnalysis::Create(*user, device_description);
-  bool is_reduction_emitter = analysis.GetEmitterFusionKind() ==
-                              HloFusionAnalysis::EmitterFusionKind::kReduction;
-  const HloInstruction* reduction_hero =
-      is_reduction_emitter ? analysis.FindHeroReduction() : nullptr;
+  // Can be nullptr if the fusion is not using the reduction emitter.
+  const HloInstruction* reduction_hero = analysis.FindHeroReduction();
 
   // We need to make sure that the fusion parameter is accessed in the same
   // iteration order as the fusion output. Also, there should not be any other
@@ -89,11 +86,12 @@ std::optional<bool> FusionCanShareBufferHint(
   HloInstruction* fusion_param =
       user->fused_parameter(user->operand_index(operand));
   HloInstruction* output = user->fused_expression_root();
-  if (output->opcode() == HloOpcode::kTuple) {
-    CHECK(!user_index.empty());
-    output = output->mutable_operand(user_index[0]);
+  for (int64_t index : user_index) {
+    if (output->opcode() != HloOpcode::kTuple) {
+      break;
+    }
+    output = output->mutable_operand(index);
   }
-  CHECK_NE(output->opcode(), HloOpcode::kTuple);
   const HloInstruction* non_bitcast_root = output;
   if (non_bitcast_root->opcode() == HloOpcode::kBitcast) {
     non_bitcast_root = non_bitcast_root->operand(0);
@@ -218,7 +216,7 @@ std::optional<bool> GpuAliasInfo::MayAlias(const HloInstruction* operand,
   const HloFusionInstruction* fusion = DynCast<HloFusionInstruction>(user);
   if (fusion != nullptr) {
     return FusionCanShareBufferHint(operand, fusion, user_index,
-                                    *device_description_);
+                                    device_description_);
   }
   return std::nullopt;
 }

@@ -64,6 +64,9 @@ TEST_F(MultithreadedCompilation, EightModuleCompilation) {
   for (int i = 0; i < num_threads; i++) {
     TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                             ParseAndReturnVerifiedModule(hlo_text, config));
+    module->mutable_config()
+        .mutable_debug_options()
+        .set_xla_embed_ir_in_executable(true);
     modules[i] = std::move(module);
   }
 
@@ -72,7 +75,7 @@ TEST_F(MultithreadedCompilation, EightModuleCompilation) {
   auto do_compilation = [&](int iteration) {
     TF_ASSIGN_OR_RETURN(std::unique_ptr<OpaqueExecutable> executable,
                         CreateExecutable(std::move(modules[iteration]), true));
-    absl::MutexLock lock(&mu);
+    absl::MutexLock lock(mu);
     executables.push_back(std::move(executable));
     VLOG(2) << "Adding executable obtained from thread: " << iteration;
     return absl::OkStatus();

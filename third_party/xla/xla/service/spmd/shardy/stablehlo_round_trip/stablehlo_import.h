@@ -17,6 +17,7 @@ limitations under the License.
 #define XLA_SERVICE_SPMD_SHARDY_STABLEHLO_ROUND_TRIP_STABLEHLO_IMPORT_H_
 
 #include <cstdint>
+#include <string>
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMap.h"
@@ -26,6 +27,7 @@ limitations under the License.
 #include "shardy/dialect/sdy/ir/dialect.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/ir/tile_assignment.h"
+#include "xla/shape.h"
 
 namespace xla {
 namespace sdy {
@@ -42,7 +44,14 @@ mlir::sdy::TensorShardingAttr convertToSdySharding(
     const xla::HloSharding& hloSharding, mlir::sdy::MeshAttr globalMesh,
     const llvm::SmallDenseMap<int64_t, mlir::StringRef>&
         deviceIdToMaximalMeshName,
-    int64_t rank, bool openDims = false);
+    int64_t rank, bool openDims = false, bool inlineMesh = false);
+// Same as above, but takes an `xla::OpSharding` proto and uses fake mesh from
+// given `opSharding`. Returns a string representation of `TensorShardingAttr`
+// if `isSingleArg` is true, otherwise `TensorShardingPerValueAttr` to handle
+// tuples arguments, ops, or results.
+std::string convertToSdySharding(const xla::OpSharding& opSharding,
+                                 xla::Shape shape, bool openDims,
+                                 bool inlineMesh, bool isSingleArg = false);
 
 // Returns the axis sizes from the tile assignment. For example, given the input
 // {devices=[6,35]<=[7,10,3]T(2,1,0)}, the function returns [7, 2, 5, 3].
@@ -55,8 +64,7 @@ void registerStablehloImportShardingsPass();
 void registerStablehloImportPipeline();
 
 // Add the xla-sdy-stablehlo-import-pipeline in `pm`. The pipeline, including a
-// sequence of passes, imports a StableHLO module into the SDY (Shardonnay)
-// dialect.
+// sequence of passes, imports a StableHLO module into the SDY (Shardy) dialect.
 //
 // `allowPropagationToArgs` and `allowPropagationToResults` indicate for each
 // argument and result of the main function respectively, whether their existing
@@ -65,15 +73,17 @@ void registerStablehloImportPipeline();
 // - be empty, in which case the default is false for all args/results.
 // - have a single element, in which case the value applies to all args/results.
 // - have the same number of elements as the number of args/results.
-void addStablehloImportPipeline(mlir::OpPassManager& pm,
-                                mlir::ArrayRef<bool> allowPropagationToArgs,
-                                mlir::ArrayRef<bool> allowPropagationToResults);
+void addStablehloImportPipeline(
+    mlir::OpPassManager& pm, mlir::ArrayRef<bool> allowPropagationToArgs,
+    mlir::ArrayRef<bool> allowPropagationToResults,
+    bool enableStablehloCanonicalizeFromHloImport = true);
 
 // Creates ImportShardingsPass that converts `mhlo.sharding` to `mesh` and
 // `sdy.sharding`.
 std::unique_ptr<mlir::Pass> createImportShardingsPass(
     mlir::ArrayRef<bool> allowPropagationToArgs,
-    mlir::ArrayRef<bool> allowPropagationToResults);
+    mlir::ArrayRef<bool> allowPropagationToResults, bool inlineMesh = false);
+
 }  // namespace sdy
 }  // namespace xla
 

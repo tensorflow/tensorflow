@@ -22,19 +22,20 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "xla/autotuning.pb.h"
 #include "xla/backends/autotuner/codegen_backend.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/testlib/filecheck.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
+#include "xla/service/compiler.h"
 #include "xla/service/gpu/nvptx_compiler.h"
 #include "xla/service/platform_util.h"
 #include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/device_description.pb.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla.pb.h"
 
@@ -42,9 +43,6 @@ namespace xla {
 namespace gpu {
 
 using CublasLtBackendConfig = AutotuneResult::GemmKey;
-using ::tsl::testing::IsOk;
-using ::tsl::testing::IsOkAndHolds;
-using ::tsl::testing::StatusIs;
 
 const char kCublasLtCustomCallHlo[] = R"(
 HloModule module
@@ -105,14 +103,18 @@ class CublasLtBackendTest : public HloHardwareIndependentTestBase {
  protected:
   DebugOptions debug_options_;
   NVPTXCompiler compiler_;
+  se::StreamExecutor* stream_executor_;
+  Compiler::GpuTargetConfig target_config_;
   CublasLtBackend backend_;
 
   CublasLtBackendTest()
-      : backend_(PlatformUtil::GetDefaultPlatform()
-                     .value()
-                     ->ExecutorForDevice(0)
-                     .value(),
-                 &debug_options_, &compiler_) {}
+      : stream_executor_(PlatformUtil::GetDefaultPlatform()
+                             .value()
+                             ->ExecutorForDevice(0)
+                             .value()),
+        target_config_(stream_executor_),
+        backend_(stream_executor_, &debug_options_, &compiler_,
+                 &target_config_) {}
 
   CublasLtBackendConfig ExpectedDefaultAlgorithm() {
     auto config = AutotuneResult::GemmKey();
@@ -132,7 +134,8 @@ TEST_F(CublasLtBackendTest, GetSupportedConfigs) {
   absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>> configs =
       backend_.GetSupportedConfigs(
           *hlo_module->entry_computation()->root_instruction()->operand(0));
-  EXPECT_THAT(configs, IsOkAndHolds(testing::SizeIs(testing::Gt(0))));
+  EXPECT_THAT(configs,
+              absl_testing::IsOkAndHolds(testing::SizeIs(testing::Gt(0))));
 }
 
 TEST_F(CublasLtBackendTest,
@@ -143,7 +146,7 @@ TEST_F(CublasLtBackendTest,
   absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>> configs =
       backend_.GetSupportedConfigs(
           *hlo_module->entry_computation()->root_instruction());
-  EXPECT_THAT(configs, IsOkAndHolds(testing::SizeIs(0)));
+  EXPECT_THAT(configs, absl_testing::IsOkAndHolds(testing::SizeIs(0)));
 }
 
 TEST_F(CublasLtBackendTest, GetDefaultConfig) {
@@ -153,7 +156,7 @@ TEST_F(CublasLtBackendTest, GetDefaultConfig) {
   absl::StatusOr<std::unique_ptr<BackendConfig>> config =
       backend_.GetDefaultConfig(
           (*module->entry_computation()->root_instruction()->operand(0)));
-  EXPECT_THAT(config, IsOk());
+  EXPECT_THAT(config, absl_testing::IsOk());
 }
 
 TEST_F(CublasLtBackendTest, GetDefaultConfigFailsWithoutACublasLtCustomCall) {
@@ -172,7 +175,8 @@ TEST_F(CublasLtBackendTest, GetDefaultConfigFailsWithoutACublasLtCustomCall) {
   absl::StatusOr<std::unique_ptr<BackendConfig>> config =
       backend_.GetDefaultConfig(
           (*module->entry_computation()->root_instruction()));
-  EXPECT_THAT(config, StatusIs(absl::StatusCode::kInvalidArgument));
+  EXPECT_THAT(config,
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
 TEST_F(CublasLtBackendTest, ApplyConfig) {
@@ -180,14 +184,16 @@ TEST_F(CublasLtBackendTest, ApplyConfig) {
                           ParseAndReturnVerifiedModule(kCublasLtCustomCallHlo));
   CublasLtBackendConfig config;
   config.set_algorithm(2);
+  google::protobuf::Any any;
+  any.PackFrom(config);
   TF_EXPECT_OK(backend_.ApplyConfig(*hlo_module->entry_computation()
                                          ->root_instruction()
                                          ->mutable_operands()
                                          .at(0),
-                                    config));
+                                    any));
   EXPECT_THAT(RunFileCheck(hlo_module->ToString(),
                            "CHECK: \"selected_algorithm\":\"2\""),
-              IsOkAndHolds(true));
+              absl_testing::IsOkAndHolds(true));
 }
 
 }  // namespace gpu

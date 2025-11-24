@@ -158,7 +158,7 @@ class Shape {
   Shape(const std::vector<DimensionHandle>& dims);
   ~Shape() {}
 
-  const int32 rank_;
+  const int32_t rank_;
   const std::vector<DimensionHandle> dims_;
 
   friend class InferenceContext;
@@ -430,7 +430,7 @@ class InferenceContext {
     return s->dims_[idx];
   }
 
-  static int32 Rank(ShapeHandle s) {
+  static int32_t Rank(ShapeHandle s) {
     return s.IsSet() ? s->rank_ : kUnknownRank;
   }
   static bool RankKnown(ShapeHandle s) {

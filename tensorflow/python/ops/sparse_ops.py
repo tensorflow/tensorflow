@@ -3660,6 +3660,8 @@ class _UnaryMapValueDispatcher(dispatch.OpDispatcher):
     func_name = get_canonical_name_for_symbol(original_func)
     arg_names = tf_inspect.getfullargspec(original_func)[0]
     self._x = arg_names[0]
+    if original_func.__doc__ is None:
+      return
     original_func.__doc__ = (
         original_func.__doc__.rstrip() + "\n\n" +
         ("    If `{x}` is a `SparseTensor`, returns\n"
@@ -3685,6 +3687,12 @@ _UNARY_OPS = [
     # TODO(b/120307967) Add dispatchers for additional TensorFlow ops.
     math_ops.abs,
     math_ops.negative,
+    math_ops.asinh,
+    math_ops.sin,
+    math_ops.tan,
+    math_ops.atan,
+    math_ops.asin,
+    math_ops.atanh,
     math_ops.sign,
     math_ops.square,
     math_ops.sqrt,

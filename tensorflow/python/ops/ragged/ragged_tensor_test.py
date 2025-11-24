@@ -64,9 +64,9 @@ def int32array(values):
 class RaggedTensorTest(test_util.TensorFlowTestCase, parameterized.TestCase):
   longMessage = True  # Property in unittest.Testcase. pylint: disable=invalid-name
 
-  #=============================================================================
+  # =============================================================================
   # RaggedTensor class docstring examples
-  #=============================================================================
+  # =============================================================================
 
   def testClassDocStringExamples(self):
     # From section: "Component Tensors"
@@ -112,9 +112,9 @@ class RaggedTensorTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     self.assertEqual(rt.shape.as_list(), [2, None, 3])
     del rt
 
-  #=============================================================================
+  # =============================================================================
   # RaggedTensorValue Constructor
-  #=============================================================================
+  # =============================================================================
 
   def testRaggedTensorValueConstruction(self):
     values = np.array(b'a b c d e f g'.split())
@@ -145,9 +145,9 @@ class RaggedTensorTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     self.assertAllEqual(values, rt_value.values.values)
     self.assertAllEqual(values, rt_value.flat_values)
 
-  #=============================================================================
+  # =============================================================================
   # RaggedTensor Constructor (private)
-  #=============================================================================
+  # =============================================================================
 
   def testRaggedTensorConstruction(self):
     values = constant_op.constant(['a', 'b', 'c', 'd', 'e', 'f', 'g'])
@@ -176,9 +176,9 @@ class RaggedTensorTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       RaggedTensor(
           values=values, row_partition=[0, 2, 2, 5, 6, 7], internal=True)
 
-  #=============================================================================
+  # =============================================================================
   # RaggedTensor Factory Ops
-  #=============================================================================
+  # =============================================================================
 
   def testFromValueRowIdsWithDerivedNRows(self):
     # nrows is known at graph creation time.
@@ -675,9 +675,9 @@ class RaggedTensorTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     with self.assertRaisesRegex(ValueError, 'must be greater than 1'):
       RaggedTensor.from_tensor(tensor)
 
-  #=============================================================================
+  # =============================================================================
   # Ragged Value & Row-Partitioning Tensor Accessors
-  #=============================================================================
+  # =============================================================================
 
   def testRaggedTensorAccessors_2d(self):
     values = constant_op.constant(['a', 'b', 'c', 'd', 'e', 'f', 'g'])
@@ -769,9 +769,9 @@ class RaggedTensorTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       self.assertAllEqual(rt.nested_value_rowids()[0], [0, 0, 1, 3, 3])
       self.assertAllEqual(rt.nested_value_rowids()[1], [0, 0, 2, 2, 2, 3, 4])
 
-  #=============================================================================
+  # =============================================================================
   # RaggedTensor.shape
-  #=============================================================================
+  # =============================================================================
 
   def testShape(self):
     """Tests for RaggedTensor.shape."""
@@ -805,9 +805,9 @@ class RaggedTensorTest(test_util.TensorFlowTestCase, parameterized.TestCase):
                                       [0, 2, 5, 6, 6, 7])
     self.assertEqual(rt.shape.as_list(), rt.get_shape().as_list())
 
-  #=============================================================================
+  # =============================================================================
   # RaggedTensor.__str__
-  #=============================================================================
+  # =============================================================================
   def testRaggedTensorStr(self):
     values = [b'a', b'b', b'c', b'd', b'e', b'f', b'g']
     row_splits = [0, 2, 5, 6, 6, 7]
@@ -848,9 +848,9 @@ class RaggedTensorTest(test_util.TensorFlowTestCase, parameterized.TestCase):
           '<tf.RaggedTensor [[[], [], [], []], [[], [], []], [[], []]]>')
       self.assertEqual(' '.join(repr(rt).split()), expected_repr)
 
-  #=============================================================================
+  # =============================================================================
   # RaggedTensor.with_values() and RaggedTensor.with_flat_values().
-  #=============================================================================
+  # =============================================================================
 
   def testWithValues(self):
     rt1 = ragged_factory_ops.constant([[1, 2], [3, 4, 5], [6], [], [7]])
@@ -867,9 +867,9 @@ class RaggedTensorTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     self.assertAllEqual(rt1_expanded,
                         [[[1], [2]], [[3], [4], [5]], [[6]], [], [[7]]])
 
-  #=============================================================================
+  # =============================================================================
   # Session.run
-  #=============================================================================
+  # =============================================================================
   def testSessionRun(self):
     if context.executing_eagerly():
       return
@@ -1060,204 +1060,199 @@ class RaggedTensorTest(test_util.TensorFlowTestCase, parameterized.TestCase):
           'factory': RaggedTensor.from_value_rowids,
           'values': [[1, 2], [3, 4]],
           'value_rowids': [[1, 2], [3, 4]],
-          'nrows': 10
+          'nrows': 10,
       },
       {
           'descr': 'bad rank for nrows',
           'factory': RaggedTensor.from_value_rowids,
           'values': [1, 2, 3, 4],
           'value_rowids': [1, 2, 3, 4],
-          'nrows': [10]
+          'nrows': [10],
       },
       {
           'descr': 'len(values) != len(value_rowids)',
           'factory': RaggedTensor.from_value_rowids,
           'values': [1, 2, 3, 4],
           'value_rowids': [1, 2, 3, 4, 5],
-          'nrows': 10
+          'nrows': 10,
       },
       {
           'descr': 'negative value_rowid',
           'factory': RaggedTensor.from_value_rowids,
           'values': [1, 2, 3, 4],
           'value_rowids': [-5, 2, 3, 4],
-          'nrows': 10
+          'nrows': 10,
       },
       {
           'descr': 'non-monotonic-increasing value_rowid',
           'factory': RaggedTensor.from_value_rowids,
           'values': [1, 2, 3, 4],
           'value_rowids': [4, 3, 2, 1],
-          'nrows': 10
+          'nrows': 10,
       },
       {
           'descr': 'value_rowid > nrows',
           'factory': RaggedTensor.from_value_rowids,
           'values': [1, 2, 3, 4],
           'value_rowids': [1, 2, 3, 4],
-          'nrows': 2
+          'nrows': 2,
       },
       {
           'descr': 'bad rank for values',
           'factory': RaggedTensor.from_value_rowids,
           'values': 10,
           'value_rowids': [1, 2, 3, 4],
-          'nrows': 10
+          'nrows': 10,
       },
-
       # from_row_splits
       {
           'descr': 'bad rank for row_splits',
           'factory': RaggedTensor.from_row_splits,
           'values': [[1, 2], [3, 4]],
-          'row_splits': [[1, 2], [3, 4]]
+          'row_splits': [[1, 2], [3, 4]],
       },
       {
           'descr': 'row_splits[0] != 0',
           'factory': RaggedTensor.from_row_splits,
           'values': [1, 2, 3, 4],
-          'row_splits': [2, 3, 4]
+          'row_splits': [2, 3, 4],
       },
       {
           'descr': 'non-monotonic-increasing row_splits',
           'factory': RaggedTensor.from_row_splits,
           'values': [1, 2, 3, 4],
-          'row_splits': [0, 3, 2, 4]
+          'row_splits': [0, 3, 2, 4],
       },
       {
           'descr': 'row_splits[0] != nvals',
           'factory': RaggedTensor.from_row_splits,
           'values': [1, 2, 3, 4],
-          'row_splits': [0, 2, 3, 5]
+          'row_splits': [0, 2, 3, 5],
       },
       {
           'descr': 'bad rank for values',
           'factory': RaggedTensor.from_row_splits,
           'values': 10,
-          'row_splits': [0, 1]
+          'row_splits': [0, 1],
       },
-
       # from_row_lengths
       {
           'descr': 'bad rank for row_lengths',
           'factory': RaggedTensor.from_row_lengths,
           'values': [1, 2, 3, 4],
-          'row_lengths': [[1, 2], [1, 0]]
+          'row_lengths': [[1, 2], [1, 0]],
       },
       {
-          'descr': 'negatve row_lengths',
+          'descr': 'negative row_lengths',
           'factory': RaggedTensor.from_row_lengths,
           'values': [1, 2, 3, 4],
-          'row_lengths': [3, -1, 2]
+          'row_lengths': [3, -1, 2],
       },
       {
           'descr': 'sum(row_lengths) != nvals',
           'factory': RaggedTensor.from_row_lengths,
           'values': [1, 2, 3, 4],
-          'row_lengths': [2, 4, 2, 8]
+          'row_lengths': [2, 4, 2, 8],
       },
       {
           'descr': 'bad rank for values',
           'factory': RaggedTensor.from_row_lengths,
           'values': 10,
-          'row_lengths': [0, 1]
+          'row_lengths': [0, 1],
       },
-
       # from_row_starts
       {
           'descr': 'bad rank for row_starts',
           'factory': RaggedTensor.from_row_starts,
           'values': [[1, 2], [3, 4]],
-          'row_starts': [[1, 2], [3, 4]]
+          'row_starts': [[1, 2], [3, 4]],
       },
       {
           'descr': 'row_starts[0] != 0',
           'factory': RaggedTensor.from_row_starts,
           'values': [1, 2, 3, 4],
-          'row_starts': [2, 3, 4]
+          'row_starts': [2, 3, 4],
       },
       {
           'descr': 'non-monotonic-increasing row_starts',
           'factory': RaggedTensor.from_row_starts,
           'values': [1, 2, 3, 4],
-          'row_starts': [0, 3, 2, 4]
+          'row_starts': [0, 3, 2, 4],
       },
       {
           'descr': 'row_starts[0] > nvals',
           'factory': RaggedTensor.from_row_starts,
           'values': [1, 2, 3, 4],
-          'row_starts': [0, 2, 3, 5]
+          'row_starts': [0, 2, 3, 5],
       },
       {
           'descr': 'bad rank for values',
           'factory': RaggedTensor.from_row_starts,
           'values': 10,
-          'row_starts': [0, 1]
+          'row_starts': [0, 1],
       },
-
       # from_row_limits
       {
           'descr': 'bad rank for row_limits',
           'factory': RaggedTensor.from_row_limits,
           'values': [[1, 2], [3, 4]],
-          'row_limits': [[1, 2], [3, 4]]
+          'row_limits': [[1, 2], [3, 4]],
       },
       {
           'descr': 'row_limits[0] < 0',
           'factory': RaggedTensor.from_row_limits,
           'values': [1, 2, 3, 4],
-          'row_limits': [-1, 3, 4]
+          'row_limits': [-1, 3, 4],
       },
       {
           'descr': 'non-monotonic-increasing row_limits',
           'factory': RaggedTensor.from_row_limits,
           'values': [1, 2, 3, 4],
-          'row_limits': [0, 3, 2, 4]
+          'row_limits': [0, 3, 2, 4],
       },
       {
           'descr': 'row_limits[0] != nvals',
           'factory': RaggedTensor.from_row_limits,
           'values': [1, 2, 3, 4],
-          'row_limits': [0, 2, 3, 5]
+          'row_limits': [0, 2, 3, 5],
       },
       {
           'descr': 'bad rank for values',
           'factory': RaggedTensor.from_row_limits,
           'values': 10,
-          'row_limits': [0, 1]
+          'row_limits': [0, 1],
       },
-
       # from_uniform_row_length
       {
           'descr': 'rowlen * nrows != nvals (1)',
           'factory': RaggedTensor.from_uniform_row_length,
           'values': [1, 2, 3, 4, 5],
-          'uniform_row_length': 3
+          'uniform_row_length': 3,
       },
       {
           'descr': 'rowlen * nrows != nvals (2)',
           'factory': RaggedTensor.from_uniform_row_length,
           'values': [1, 2, 3, 4, 5],
-          'uniform_row_length': 6
+          'uniform_row_length': 6,
       },
       {
           'descr': 'rowlen * nrows != nvals (3)',
           'factory': RaggedTensor.from_uniform_row_length,
           'values': [1, 2, 3, 4, 5, 6],
           'uniform_row_length': 3,
-          'nrows': 3
+          'nrows': 3,
       },
       {
           'descr': 'rowlen must be a scalar',
           'factory': RaggedTensor.from_uniform_row_length,
           'values': [1, 2, 3, 4],
-          'uniform_row_length': [2]
+          'uniform_row_length': [2],
       },
       {
           'descr': 'rowlen must be nonnegative',
           'factory': RaggedTensor.from_uniform_row_length,
           'values': [1, 2, 3, 4],
-          'uniform_row_length': -1
+          'uniform_row_length': -1,
       },
   ])
   def testFactoryValidation(self, descr, factory, **kwargs):
@@ -1280,9 +1275,9 @@ class RaggedTensorTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       with self.assertRaises(errors.InvalidArgumentError):
         self.evaluate(factory(**kwargs))
 
-  #=============================================================================
+  # =============================================================================
   # RaggedTensor Variant conversion
-  #=============================================================================
+  # =============================================================================
 
   @parameterized.named_parameters(
       {

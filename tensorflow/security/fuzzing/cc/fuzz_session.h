@@ -142,13 +142,13 @@ class FuzzSession {
   // any returned output.
   // Note: We are ignoring Status from Run here since fuzzers don't need to
   // check it (as that will slow them down and printing/logging is useless).
-  void RunInputs(const std::vector<std::pair<string, Tensor> >& inputs) {
+  void RunInputs(const std::vector<std::pair<std::string, Tensor>>& inputs) {
     RunInputsWithStatus(inputs).IgnoreError();
   }
 
   // Same as RunInputs but don't ignore status
   absl::Status RunInputsWithStatus(
-      const std::vector<std::pair<string, Tensor>>& inputs) {
+      const std::vector<std::pair<std::string, Tensor>>& inputs) {
     return session_->Run(inputs, {}, {"output"}, nullptr);
   }
 

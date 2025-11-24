@@ -20,6 +20,7 @@ limitations under the License.
 #include <memory>
 #include <queue>
 
+#include "absl/base/thread_annotations.h"
 #include "absl/log/check.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/primitive_util.h"
@@ -88,7 +89,7 @@ class HostMemoryPool {
                  PrimitiveType type);
 
   void Release(void* ptr) {
-    absl::MutexLock lock(&mutex_);
+    absl::MutexLock lock(mutex_);
     free_list_.push(ptr);
   }
 

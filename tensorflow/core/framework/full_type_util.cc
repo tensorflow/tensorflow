@@ -39,10 +39,7 @@ OpTypeConstructor NoOp() {
 }
 
 OpTypeConstructor NoOutputs() {
-  return [](OpDef* op_def) {
-    op_def->mutable_output_arg();
-    return absl::OkStatus();
-  };
+  return [](OpDef* op_def) { return absl::OkStatus(); };
 }
 
 OpTypeConstructor Nullary(FullTypeId t) {
@@ -54,7 +51,7 @@ OpTypeConstructor Nullary(FullTypeId t) {
   };
 }
 
-OpTypeConstructor Unary(FullTypeId t, const string& var_name) {
+OpTypeConstructor Unary(FullTypeId t, const std::string& var_name) {
   return [t, var_name](OpDef* op_def) {
     FullTypeDef* tdef =
         op_def->mutable_output_arg(0)->mutable_experimental_full_type();
@@ -96,7 +93,8 @@ OpTypeConstructor UnaryTensorContainer(FullTypeId t, FullTypeId dtype) {
   };
 }
 
-OpTypeConstructor UnaryTensorContainer(FullTypeId t, const string& var_name) {
+OpTypeConstructor UnaryTensorContainer(FullTypeId t,
+                                       const std::string& var_name) {
   return [t, var_name](OpDef* op_def) {
     FullTypeDef* tdef =
         op_def->mutable_output_arg(0)->mutable_experimental_full_type();
@@ -113,7 +111,7 @@ OpTypeConstructor UnaryTensorContainer(FullTypeId t, const string& var_name) {
 }
 
 OpTypeConstructor VariadicTensorContainer(FullTypeId t,
-                                          const string& var_name) {
+                                          const std::string& var_name) {
   return [t, var_name](OpDef* op_def) {
     FullTypeDef* tdef =
         op_def->mutable_output_arg(0)->mutable_experimental_full_type();

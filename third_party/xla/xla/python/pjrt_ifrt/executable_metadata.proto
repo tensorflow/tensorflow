@@ -1,0 +1,111 @@
+/* Copyright 2025 The OpenXLA Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+==============================================================================*/
+
+syntax = "proto3";
+
+package xla.ifrt;
+
+import "xla/python/ifrt/dtype.proto";
+import "xla/python/ifrt/layout.proto";
+import "xla/python/ifrt/shape.proto";
+import "xla/xla_data.proto";
+
+// Proto equivalent of C++ `XlaExecutableVersion`.
+message SerializedXlaExecutableVersion {
+  // Serialization and deserialization version.
+  int32 version_number = 1;
+  // ID that identifies the platform (CPU/GPU/TPU). This corresponds to
+  // xla::PjRtPlatformId.
+  fixed64 platform_id = 2;
+  // Opaque string that identifies the runtime ABI version.
+  bytes runtime_abi_version = 3;
+}
+
+// This is the definition of a standard format for serializing XLA executables
+// in IFRT in a way that is portable across IFRT runtimes that support XLA.
+//
+// The ifrt::LoadedExecutable::Serialize API implemented for an XLA loaded
+// executable must return a string that is in the following format:
+// <SerializedXlaExecutableMetadata> (size delimited serialized proto)
+// <Opaque string containing the serialized PjRt executable>
+//
+// SerializedXlaExecutableMetadata proto defines metadata about the XLA
+// executable and its parameter/output specifications that are needed by IFRT
+// runtimes to be able to construct an IFRT executable without a local
+// PjRtClient. The underlying XLA executable can be loaded asynchronously.
+//
+// Version number of IFRT itself, the runtime type and the platform ID
+// are encoded in the metadata. These must be validated for compatibility
+// before IFRT runtimes attempt to deserialize the executable.
+//
+// Serialized executables in this format can be loaded into an IFRT runtime
+// using the ifrt::LoadedExecutable::Deserialize API.
+//
+// The format and roundtrip compatibility of the executable for supported
+// runtimes are validated in
+// tensorflow/compiler/xla/python/pjrt_ifrt/xla_executable_impl_test_lib.cc.
+message SerializedXlaExecutableMetadata {
+  reserved 3, 4;
+
+  // IFRT version
+  int32 ifrt_version_number = 1;
+
+  // The runtime ABI version at the time this executable was created.
+  SerializedXlaExecutableVersion executable_version = 9;
+
+  // IFRT runtime that created this executable. Loading executables across
+  // runtimes are supported.
+  string runtime_name = 2;
+
+  // Name of the computation that this executable represents. This is not a
+  // unique identifier of the computation. Only to be used for debugging and
+  // logging purposes.
+  string computation_name = 7;
+
+  // Whether the executable is compiled to be portable.
+  bool portable = 8;
+
+  // Below fields are artifacts gathered from the compiled executable required
+  // for the IFRT runtimes to be able to construct an IFRT executable without a
+  // local PjRtClient such that executions can be dispatched asynchronously.
+  //
+  // Debug APIs that use information from (unloaded) PjRtExecutable will block
+  // until the executable is loaded on a PjRtClient - HloModules, CostAnalysis
+  // and MemoryAnalysis. Primarily because it is expensive to store HloModule in
+  // serialized executable and the APIs are debug only.
+
+  message OutputSpec {
+    ifrt.ShapeProto shard_shape = 1;
+    ifrt.ShapeProto shape = 6;
+    ifrt.DTypeProto dtype = 2;
+    // Layout can be absent when the output uses the default layout.
+    ifrt.LayoutProto layout = 3;
+    string memory_kind = 4;
+    xla.OpSharding op_sharding = 5;
+  }
+
+  repeated OutputSpec output_specs = 5;
+
+  message ParameterSpec {
+    ifrt.ShapeProto shape = 4;
+    ifrt.DTypeProto dtype = 5;
+    // Layout can be absent when the parameter uses the default layout.
+    ifrt.LayoutProto layout = 1;
+    xla.OpSharding op_sharding = 2;
+    bool donated_input = 3;
+  }
+
+  repeated ParameterSpec parameter_specs = 6;
+}

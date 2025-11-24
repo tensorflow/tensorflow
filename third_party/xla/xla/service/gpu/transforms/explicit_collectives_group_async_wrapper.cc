@@ -26,6 +26,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/gpu/backend_configs.pb.h"
+#include "xla/shape.h"
 #include "xla/side_effect_util.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
@@ -58,7 +59,7 @@ absl::StatusOr<bool> CreateCollectivesGroupAsyncPair(HloInstruction* instr) {
   HloInstruction* async_start =
       computation->AddInstruction(HloInstruction::CreateAsyncStart(
           ShapeUtil::MakeTupleShape(start_shapes), instr->operands(),
-          new_computation, "explicit"));
+          new_computation, "main"));
   HloInstruction* async_done = computation->AddInstruction(
       HloInstruction::CreateAsyncDone(instr->shape(), async_start));
   // Forward frontend attributes to both async instructions.
@@ -69,7 +70,7 @@ absl::StatusOr<bool> CreateCollectivesGroupAsyncPair(HloInstruction* instr) {
 }
 }  // namespace
 
-absl::StatusOr<bool> ExplicitCollectivesGroupAsyncWrapper::Run(
+absl::StatusOr<bool> ExplicitCollectivesGroupAsyncWrapper::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;

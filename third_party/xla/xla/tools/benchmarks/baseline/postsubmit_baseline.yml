@@ -64,5 +64,15 @@
       "baseline_ms": 0.05,
       "threshold": 0.30 # Allow 30% regression max
     }
+  },
+  "nv_maxtext_1n1g_jit_train_step_before_optimization_b200_1h1d_postsubmit": {
+    "GPU_DEVICE_TIME": {
+      "baseline_ms": 302.173,
+      "threshold": 0.30 # Allow 30% regression max
+    },
+    "GPU_DEVICE_MEMCPY_TIME": {
+      "baseline_ms": 142.109,
+      "threshold": 0.30 # Allow 30% regression max
+    }
   }
 }

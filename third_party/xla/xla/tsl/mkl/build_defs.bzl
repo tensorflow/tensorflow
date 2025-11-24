@@ -6,8 +6,8 @@ if_mkl_ml_only is a conditional to check for MKL-ML-only (no MKL-DNN) mode.
 if_mkl_lnx_x64 is a conditional to check for MKL
 if_enable_mkl is a conditional to check if building with MKL and MKL is enabled.
 if_mkldnn_openmp checks if we are building x86 backend with OpenMP.
+if_onednn_async checks if we are building x86 backend (only Intel) with experimental async runtime support.
 if_mkldnn_aarch64_acl checks if we are building with Arm Compute Library.
-if_mkldnn_aarch64_acl_openmp checks if we are building ACL with OpenMP.
 
 mkl_repository is a repository rule for creating MKL repository rule that can
 be pointed to either a local folder, or download it from the internet.
@@ -35,11 +35,15 @@ def if_mkl(if_true, if_false = []):
       may need it. It may be deleted in future with refactoring.
     """
     return select({
-        "@local_xla//xla/tsl/mkl:build_with_mkl_aarch64": if_true,
-        "@local_xla//xla/tsl:linux_x86_64": if_true,
-        "@local_xla//xla/tsl:windows": if_true,
+        Label("//xla/tsl/mkl:build_with_mkl_aarch64"): if_true,
+        Label("//xla/tsl:linux_x86_64"): if_true,
+        Label("//xla/tsl:windows"): if_true,
         "//conditions:default": if_false,
     })
+
+# Use `if_onednn` for XLA code to allow different configurations between TF and
+# XLA in the future.
+if_onednn = if_mkl
 
 def if_mkl_ml(if_true, if_false = []):
     """Shorthand for select()'ing on whether we're building with MKL-ML.
@@ -53,8 +57,8 @@ def if_mkl_ml(if_true, if_false = []):
       a select evaluating to either if_true or if_false as appropriate.
     """
     return select({
-        "@local_xla//xla/tsl/mkl:build_with_mkl_opensource": if_false,
-        "@local_xla//xla/tsl/mkl:build_with_mkl": if_true,
+        Label("//xla/tsl/mkl:build_with_mkl_opensource"): if_false,
+        Label("//xla/tsl/mkl:build_with_mkl"): if_true,
         "//conditions:default": if_false,
     })
 
@@ -71,7 +75,7 @@ def if_mkl_lnx_x64(if_true, if_false = []):
       a select evaluating to either if_true or if_false as appropriate.
     """
     return select({
-        "@local_xla//xla/tsl/mkl:build_with_mkl_lnx_x64": if_true,
+        Label("//xla/tsl/mkl:build_with_mkl_lnx_x64"): if_true,
         "//conditions:default": if_false,
     })
 
@@ -88,7 +92,7 @@ def if_enable_mkl(if_true, if_false = []):
       A select evaluating to either if_true or if_false as appropriate.
     """
     return select({
-        "@local_xla//xla/tsl/mkl:enable_mkl": if_true,
+        Label("//xla/tsl/mkl:enable_mkl"): if_true,
         "//conditions:default": if_false,
     })
 
@@ -104,10 +108,24 @@ def mkl_deps():
       inclusion in the deps attribute of rules.
     """
     return select({
-        "@local_xla//xla/tsl/mkl:build_with_mkl_aarch64": ["@mkl_dnn_acl_compatible//:mkl_dnn_acl"],
-        "@local_xla//xla/tsl:linux_x86_64": ["@onednn//:mkl_dnn"],
-        "@local_xla//xla/tsl:windows": ["@onednn//:mkl_dnn"],
+        Label("//xla/tsl/mkl:build_with_mkl_aarch64"): ["@mkl_dnn_acl_compatible//:mkl_dnn_acl"],
+        Label("//xla/tsl:linux_x86_64_with_onednn_async"): ["@onednn_async//:mkl_dnn"],
+        Label("//xla/tsl:linux_x86_64"): ["@onednn//:mkl_dnn"],
+        Label("//xla/tsl:windows"): ["@onednn//:mkl_dnn"],
         "//conditions:default": [],
+    })
+
+def if_onednn_async(if_true, if_false = []):
+    """Returns `if_true` if building oneDNN with async runtime support.
+
+    Returns:
+      A select statement which evaluates to if_true if we're building oneDNN
+      with the async runtime experimental support.
+      Otherwise, the select statement evaluates to if_false.
+    """
+    return select({
+        Label("//xla/tsl:linux_x86_64_with_onednn_async"): if_true,
+        "//conditions:default": if_false,
     })
 
 def onednn_v3_define():
@@ -118,9 +136,9 @@ def onednn_v3_define():
       An empty list of all other cases (include ARM builds).
     """
     return select({
-        "@local_xla//xla/tsl/mkl:build_with_mkl_aarch64": ["-DENABLE_ONEDNN_V3"],
-        "@local_xla//xla/tsl:linux_x86_64": ["-DENABLE_ONEDNN_V3"],
-        "@local_xla//xla/tsl:windows": ["-DENABLE_ONEDNN_V3"],
+        Label("//xla/tsl/mkl:build_with_mkl_aarch64"): ["-DENABLE_ONEDNN_V3"],
+        Label("//xla/tsl:linux_x86_64"): ["-DENABLE_ONEDNN_V3"],
+        Label("//xla/tsl:windows"): ["-DENABLE_ONEDNN_V3"],
         "//conditions:default": [],
     })
 
@@ -136,28 +154,22 @@ def if_mkldnn_openmp(if_true, if_false = []):
 
     """
     return select({
-        "@local_xla//xla/tsl/mkl:build_with_mkldnn_openmp": if_true,
+        Label("//xla/tsl/mkl:build_with_mkldnn_openmp"): if_true,
         "//conditions:default": if_false,
     })
 
 def if_mkldnn_aarch64_acl(if_true, if_false = []):
     return select({
-        "@local_xla//xla/tsl/mkl:build_with_mkl_aarch64": if_true,
+        Label("//xla/tsl/mkl:build_with_mkl_aarch64"): if_true,
         "//conditions:default": if_false,
     })
 
-def if_mkldnn_aarch64_acl_openmp(if_true, if_false = []):
-    return select({
-        "@local_xla//xla/tsl/mkl:build_with_mkl_aarch64_openmp": if_true,
-        "//conditions:default": if_false,
-    })
-
-# Temporarily disable Graph API on aarch64 until we change the aarch64 BUILD
-# file to support Graph API.
+# Enable Graph API on linux x86_64 and aarch64 platform with mkl builds
 def if_graph_api(if_true, if_false = []):
     """Returns `if_true` if Graph API is used with oneDNN."""
     return select({
-        "@local_xla//xla/tsl:linux_x86_64": if_true,
+        Label("//xla/tsl:linux_x86_64"): if_true,
+        Label("//xla/tsl/mkl:build_with_mkl_aarch64"): if_true,
         "//conditions:default": if_false,
     })
 

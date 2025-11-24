@@ -23,6 +23,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/log/check.h"
+#include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -37,8 +38,8 @@ limitations under the License.
 #include "xla/literal_util.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
 #include "xla/pjrt/c/pjrt_c_api_cpu.h"
+#include "xla/pjrt/c_api_client/pjrt_c_api_client.h"
 #include "xla/pjrt/pjrt_api.h"
-#include "xla/pjrt/pjrt_c_api_client.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/plugin/xla_cpu/cpu_client_options.h"
@@ -104,15 +105,15 @@ TEST_F(StableHloAxpyTest, UsePjrtCppWrapper) {
 
 TEST_F(StableHloAxpyTest, RegisterAPIAndRetrieve) {
   const char* device = "MyFancyCPUDevice";
-  EXPECT_THAT(GetCApiClient(device), ::testing::Not(::tsl::testing::IsOk()));
-  EXPECT_THAT(pjrt::PjrtApi(device), ::testing::Not(::tsl::testing::IsOk()));
+  EXPECT_THAT(GetCApiClient(device), ::testing::Not(absl_testing::IsOk()));
+  EXPECT_THAT(pjrt::PjrtApi(device), ::testing::Not(absl_testing::IsOk()));
 
   const PJRT_Api* c_api = GetPjrtApi();
   EXPECT_THAT(c_api, NotNull());
   TF_EXPECT_OK(pjrt::SetPjrtApi(device, c_api));
 
-  EXPECT_THAT(GetCApiClient(device), ::tsl::testing::IsOk());
-  EXPECT_THAT(pjrt::PjrtApi(device), ::tsl::testing::IsOk());
+  EXPECT_THAT(GetCApiClient(device), absl_testing::IsOk());
+  EXPECT_THAT(pjrt::PjrtApi(device), absl_testing::IsOk());
 }
 
 TEST_F(StableHloAxpyTest, CompileCPUTestProgram) {

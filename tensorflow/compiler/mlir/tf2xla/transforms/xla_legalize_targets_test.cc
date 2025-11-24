@@ -64,7 +64,7 @@ class XlaLegalizeTargetsTest : public testing::Test {
 
 TEST_F(XlaLegalizeTargetsTest, CreatesConversionTargets) {
   auto const_int = builder_.create<mlir::arith::ConstantIntOp>(
-      builder_.getUnknownLoc(), /*value=*/10, builder_.getI32Type());
+      builder_.getUnknownLoc(), builder_.getI32Type(), /*value=*/10);
 
   ConversionTarget target =
       GetDefaultLegalConversionTargets(context_, /*legalize_chlo=*/false);

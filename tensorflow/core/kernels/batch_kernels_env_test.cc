@@ -33,9 +33,9 @@ TEST_P(BatchFunctionKernelEnvTest, Basic) {
   const bool adaptive_scheduler_enabled = GetParam();
   absl::Status status = Init(adaptive_scheduler_enabled);
   if (adaptive_scheduler_enabled) {
-    EXPECT_THAT(status, tensorflow::testing::StatusIs(
-                            error::FAILED_PRECONDITION,
-                            "Failed to create batch threads pool"));
+    EXPECT_THAT(status,
+                absl_testing::StatusIs(error::FAILED_PRECONDITION,
+                                       "Failed to create batch threads pool"));
   } else {
     // Initialization is ok since batch kernel doesn't use adaptive
     // scheduler.

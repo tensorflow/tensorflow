@@ -13,7 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <memory>
 #include <string>
 
 #include "absl/container/flat_hash_set.h"
@@ -27,6 +26,7 @@ limitations under the License.
 #include "mlir/IR/SymbolTable.h"
 #include "mlir/IR/Visitors.h"
 #include "mlir/Pass/Pass.h"
+#include "mlir/Support/WalkResult.h"
 #include "xla/python/ifrt/ir/ifrt_ops.h"
 #include "xla/python/ifrt/ir/transforms/passes.h"
 #include "xla/python/ifrt/ir/transforms/utils.h"
@@ -36,10 +36,10 @@ limitations under the License.
 namespace xla {
 namespace ifrt {
 
-namespace {
-
 #define GEN_PASS_DEF_IFRTDUMPATOMPROGRAMSPASS
 #include "xla/python/ifrt/ir/transforms/passes.h.inc"
+
+namespace {
 
 absl::Status DumpOperation(mlir::Operation* op, std::string dump_dir,
                            std::string filename) {
@@ -107,11 +107,5 @@ class IfrtDumpAtomProgramsPass
 };
 
 }  // namespace
-
-std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
-CreateIfrtDumpAtomProgramsPass(IfrtDumpAtomProgramsPassOptions options) {
-  return std::make_unique<IfrtDumpAtomProgramsPass>(options);
-}
-
 }  // namespace ifrt
 }  // namespace xla

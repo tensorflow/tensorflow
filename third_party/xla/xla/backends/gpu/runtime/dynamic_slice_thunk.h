@@ -19,17 +19,21 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <optional>
+#include <string>
+#include <utility>
 #include <variant>
 #include <vector>
 
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/functional/function_ref.h"
+#include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/synchronization/mutex.h"
+#include "absl/types/span.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
-#include "xla/literal.h"
+#include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -100,12 +104,17 @@ class DynamicSliceThunk : public Thunk {
           << "Induction variable update module expected with signature "
              "`(integer[]) -> integer[]`.";
     }
+
+    absl::StatusOr<OffsetAsFunctionOfIndvarModulesMetadataProto> ToProto()
+        const;
+    static absl::StatusOr<OffsetAsFunctionOfIndvarModulesMetadata> FromProto(
+        const OffsetAsFunctionOfIndvarModulesMetadataProto& proto);
   };
 
   DynamicSliceThunk(
       ThunkInfo thunk_info, std::unique_ptr<ThunkSequence> embedded_thunk,
       std::vector<std::optional<BufferAllocation::Slice>> arguments,
-      std::vector<std::unique_ptr<BufferAllocation>> fake_allocations,
+      std::vector<BufferAllocation> fake_allocations,
       std::vector<std::optional<std::vector<Offset>>> offsets,
       std::vector<std::optional<Shape>> orig_shapes,
       std::vector<std::optional<Shape>> sliced_shapes,
@@ -130,6 +139,7 @@ class DynamicSliceThunk : public Thunk {
     std::optional<Shape> orig_shape;
     std::optional<Shape> sliced_shape;
     std::optional<uint64_t> offset_byte_size;
+    std::string ToString() const;
   };
 
   const SequentialThunk* get_embedded_thunk() const {
@@ -140,8 +150,7 @@ class DynamicSliceThunk : public Thunk {
     return arguments_;
   }
 
-  const std::vector<std::unique_ptr<BufferAllocation>>& get_fake_allocations()
-      const {
+  const std::vector<BufferAllocation>& get_fake_allocations() const {
     return fake_allocations_;
   }
 
@@ -162,11 +171,36 @@ class DynamicSliceThunk : public Thunk {
   }
 
   void ForAllThunks(absl::FunctionRef<void(const Thunk*)> fn) const override;
+  void ForAllThunksMutable(absl::FunctionRef<void(Thunk*)> fn) override;
+  absl::Status TransformAllNestedThunks(
+      absl::FunctionRef<
+          absl::StatusOr<std::unique_ptr<Thunk>>(std::unique_ptr<Thunk>)>
+          fn) override;
+
+  absl::StatusOr<ThunkProto> ToProto() const override;
+
+  // `buffer_allocations`: the actual buffer allocations; required to parse the
+  // `arguments` (BufferAllocation::Slice) -- the tensors that we are later
+  // slicing from.
+  // `deserializer`: The deserializer is used to deserialize the embedded thunk.
+  static absl::StatusOr<std::unique_ptr<DynamicSliceThunk>> FromProto(
+      ThunkInfo thunk_info, const DynamicSliceThunkProto& proto,
+      absl::Span<const BufferAllocation> buffer_allocations,
+      const DeserializerWithCustomAllocations& deserializer);
+
+  std::optional<const OffsetAsFunctionOfIndvarModulesMetadata*>
+  get_offset_function() const {
+    if (offset_as_function_of_indvar_metadata_.has_value()) {
+      return &offset_as_function_of_indvar_metadata_.value();
+    } else {
+      return std::nullopt;
+    }
+  }
 
  private:
   std::unique_ptr<SequentialThunk> embedded_thunk_;
   std::vector<std::optional<BufferAllocation::Slice>> arguments_;
-  std::vector<std::unique_ptr<BufferAllocation>> fake_allocations_;
+  std::vector<BufferAllocation> fake_allocations_;
   std::vector<std::optional<std::vector<Offset>>> offsets_;
   std::vector<std::optional<Shape>> orig_shapes_;
   std::vector<std::optional<Shape>> sliced_shapes_;
@@ -193,6 +227,20 @@ class DynamicSliceThunk : public Thunk {
       offset_as_function_of_indvar_metadata_;
 };
 
+absl::StatusOr<OptionalDynamicSliceOffsetsProto>
+SerializeOptionalDynamicSliceOffsetsToProto(
+    const std::optional<std::vector<DynamicSliceThunk::Offset>>& offsets_item,
+    const std::optional<
+        DynamicSliceThunk::OffsetAsFunctionOfIndvarModulesMetadata>&
+        offset_as_function_of_indvar_metadata);
+
+absl::StatusOr<std::optional<std::vector<DynamicSliceThunk::Offset>>>
+DeserializeOptionalDynamicSliceOffsetsFromProto(
+    const OptionalDynamicSliceOffsetsProto& proto,
+    absl::Span<const BufferAllocation> buffer_allocations,
+    const std::optional<
+        DynamicSliceThunk::OffsetAsFunctionOfIndvarModulesMetadata>&
+        offset_as_function_of_indvar_metadata);
 }  // namespace gpu
 }  // namespace xla
 

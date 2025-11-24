@@ -16,27 +16,41 @@ limitations under the License.
 #ifndef XLA_BACKENDS_GPU_RUNTIME_OUTFEED_THUNK_H_
 #define XLA_BACKENDS_GPU_RUNTIME_OUTFEED_THUNK_H_
 
+#include <memory>
 #include <vector>
 
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/types/span.h"
+#include "xla/backends/gpu/runtime/shaped_slice.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/service/buffer_assignment.h"
 
 namespace xla {
 namespace gpu {
 
 // A thunk that outfeeds data. Data must be already resident on the host. This
-// thunk performs a device to host copy from the buffer allocated for the
-// outfeed op to the host location.
+// thunk performs a device to host copy, from the buffer allocated for the
+// outfeed op, to the host location.
 class OutfeedThunk : public Thunk {
  public:
   // Constructs a OutfeedThunk that copies data to the host-side
-  // outfeed queue from the buffers in the given shape tree.
+  // outfeed queue, from the buffers in the given shape tree.
   OutfeedThunk(ThunkInfo thunk_info, std::vector<ShapedSlice> source_slices);
 
   OutfeedThunk(const OutfeedThunk&) = delete;
   OutfeedThunk& operator=(const OutfeedThunk&) = delete;
 
   absl::Status ExecuteOnStream(const ExecuteParams& params) override;
+
+  // Deserializes an `OutfeedThunk` that will copy the data from the given
+  // `source_allocations` to the host-side outfeed queue.
+  // The `source_allocations` must outlive the returned `OutfeedThunk`.
+  static absl::StatusOr<std::unique_ptr<OutfeedThunk>> FromProto(
+      ThunkInfo thunk_info, const OutfeedThunkProto& proto,
+      absl::Span<const BufferAllocation> source_allocations);
+
+  absl::StatusOr<ThunkProto> ToProto() const override;
 
  private:
   const std::vector<ShapedSlice> source_slices_;

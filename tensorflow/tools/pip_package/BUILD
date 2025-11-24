@@ -1,6 +1,7 @@
 # Description:
 #  Tools for building the TensorFlow pip package.
 
+load("@cuda_cudart//:version.bzl", _cudart_version = "VERSION")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load("@local_config_syslibs//:build_defs.bzl", "if_not_system_lib")
 load(
@@ -13,6 +14,8 @@ load(
 )
 load("@local_xla//third_party/py:python_wheel.bzl", "collect_data_files", "transitive_py_deps")
 load("@local_xla//xla/tsl/mkl:build_defs.bzl", "if_enable_mkl", "if_mkl", "if_mkl_ml")
+load("@nvidia_wheel_versions//:versions.bzl", "NVIDIA_WHEEL_VERSIONS")
+load("//tensorflow:py.default.bzl", "py_binary", "py_test")
 load("//tensorflow:tensorflow.bzl", "if_wheel_dependency", "if_with_tpu_support", "transitive_hdrs")
 load("//tensorflow:tf_version.bzl", "TF_SEMANTIC_VERSION_SUFFIX", "TF_VERSION")
 load(
@@ -268,15 +271,33 @@ transitive_py_deps(
     deps = COMMON_PIP_DEPS,
 )
 
+py_binary(
+    name = "modify_setup_py_binary",
+    srcs = [
+        "modify_setup_py.py",
+    ],
+    main = "modify_setup_py.py",
+    deps = ["@local_xla//third_party/py:setup_py_nvidia_dependencies_util"],
+)
+
 genrule(
     name = "setup_py",
     srcs = ["setup.py.tpl"],
     outs = ["setup.py"],
-    cmd = """sed -E "s/_VERSION = '0.0.0'/_VERSION = '{wheel_version}{wheel_version_suffix}'/" \
-$(location setup.py.tpl) > $@;""".format(
+    cmd = """
+      $(location :modify_setup_py_binary) \\
+          --template_file $(location setup.py.tpl) \\
+          --output_file $(OUTS) \\
+          --nvidia_wheel_versions_data '{nvidia_wheel_versions}' \\
+          --tf_version "{wheel_version}{wheel_version_suffix}" \\
+          --cuda_version {cuda_version}
+    """.format(
+        cuda_version = _cudart_version or "12",
+        nvidia_wheel_versions = NVIDIA_WHEEL_VERSIONS,
         wheel_version = TF_VERSION,
         wheel_version_suffix = TF_SEMANTIC_VERSION_SUFFIX,
     ),
+    tools = [":modify_setup_py_binary"],
 )
 
 py_binary(
@@ -426,24 +447,26 @@ verify_manylinux_compliance_test(
         "manual",
     ],
     wheel = ":wheel",
-    x86_64_compliance_tag = "manylinux_2_17_x86_64",
+    x86_64_compliance_tag = "manylinux_2_27_x86_64",
 )
 
 py_import(
     name = "tf_py_import",
     wheel = ":wheel",
     wheel_deps = if_cuda([
-        "@pypi_nvidia_cublas_cu12//:whl",
-        "@pypi_nvidia_cuda_cupti_cu12//:whl",
-        "@pypi_nvidia_cuda_nvrtc_cu12//:whl",
-        "@pypi_nvidia_cuda_runtime_cu12//:whl",
-        "@pypi_nvidia_cudnn_cu12//:whl",
-        "@pypi_nvidia_cufft_cu12//:whl",
-        "@pypi_nvidia_curand_cu12//:whl",
-        "@pypi_nvidia_cusolver_cu12//:whl",
-        "@pypi_nvidia_cusparse_cu12//:whl",
-        "@pypi_nvidia_nccl_cu12//:whl",
-        "@pypi_nvidia_nvjitlink_cu12//:whl",
+        "@pypi_nvidia_cublas_cu12//:pkg",
+        "@pypi_nvidia_cuda_cupti_cu12//:pkg",
+        "@pypi_nvidia_cuda_nvcc_cu12//:pkg",
+        "@pypi_nvidia_cuda_nvrtc_cu12//:pkg",
+        "@pypi_nvidia_cuda_runtime_cu12//:pkg",
+        "@pypi_nvidia_cudnn_cu12//:pkg",
+        "@pypi_nvidia_cufft_cu12//:pkg",
+        "@pypi_nvidia_curand_cu12//:pkg",
+        "@pypi_nvidia_cusolver_cu12//:pkg",
+        "@pypi_nvidia_cusparse_cu12//:pkg",
+        "@pypi_nvidia_nccl_cu12//:pkg",
+        "@pypi_nvidia_nvjitlink_cu12//:pkg",
+        "@pypi_nvidia_nvshmem_cu12//:pkg",
     ]),
     deps = [
         "@pypi_absl_py//:pkg",

@@ -33,15 +33,15 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
+#include "xla/hlo/analysis/logical_buffer_analysis.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
-#include "xla/map_util.h"
+#include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/service/logical_buffer.h"
 #include "xla/shape_util.h"
-#include "xla/types.h"
+#include "xla/tsl/platform/logging.h"
 #include "xla/util.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/logging.h"
 
 namespace xla {
 
@@ -769,7 +769,8 @@ bool TuplePointsToAnalysis::DoesNotUseOperandBuffer(
     // GetTupleElement instructions only access the top-level buffer of their
     // operand.
     return true;
-  } else if (user->IsLoopFusion()) {
+  }
+  if (user->IsLoopFusion()) {
     // Find fusion parameter associated with 'operand'.
     auto it = absl::c_find_if(
         user->fused_parameters(), [&](HloInstruction* fused_param) {
@@ -796,63 +797,4 @@ bool TuplePointsToAnalysis::DoesNotUseOperandBuffer(
   return false;
 }
 
-// Returns all uses of all aliases of 'instruction' at 'index' in 'uses'.
-// Each use in 'uses' is a pair (HloInstruction* user, int64_t operand_index)
-// where 'user' is a user of an alias of 'instruction' at 'index', and
-// 'operand_index' is the operand index at which the alias appears in the
-// operand list of 'user'.
-std::vector<std::pair<HloInstruction*, int64_t>>
-TuplePointsToAnalysis::GetAllUsesOfInstructionAtIndex(
-    HloInstruction* instruction, const ShapeIndex& index) const {
-  std::vector<std::pair<HloInstruction*, int64_t>> uses;
-  const PointsToSet::BufferList& points_to =
-      GetPointsToSet(instruction).element(index);
-  for (const LogicalBuffer* buffer : points_to) {
-    for (const BufferAlias& alias : GetBufferAliases(*buffer)) {
-      for (HloInstruction* alias_user : alias.instruction()->users()) {
-        if (DoesNotUseOperandBuffer(alias.instruction(), alias.index(),
-                                    alias_user)) {
-          continue;
-        }
-        for (int64_t op_idx : alias_user->OperandIndices(alias.instruction())) {
-          uses.emplace_back(alias_user, op_idx);
-        }
-      }
-    }
-  }
-  return uses;
-}
-
-// Returns true if there is exactly one use of 'operand' at 'operand_index'
-// in 'fusion.fused_instructions', where the singleton use is the fused
-// root at operand index 'use_operand_index'. Returns false otherwise.
-//
-// REQUIRES: 'fusion' opcode is a kFusion instruction.
-bool TuplePointsToAnalysis::HasUniqueFusedUseOfOperandAt(
-    HloInstruction* operand, const ShapeIndex& operand_index,
-    HloInstruction* fusion, const int64_t use_operand_index) const {
-  CHECK_EQ(HloOpcode::kFusion, fusion->opcode());
-  // Check that 'operand' is unique in the operand list of 'fusion'.
-  if (fusion->OperandIndices(operand).size() > 1) {
-    return false;
-  }
-  // Find fusion parameter associated with 'operand'.
-  const auto& fused_params = fusion->fused_parameters();
-  auto fused_param_it =
-      absl::c_find_if(fused_params, [&](HloInstruction* fused_param) {
-        return fusion->operand(fused_param->parameter_number()) == operand;
-      });
-  if (fused_param_it == fused_params.end()) {
-    return false;
-  }
-  auto* fused_param = *fused_param_it;
-  // Get all uses of 'operand' at 'index' from 'fusion.fused_instructions'.
-  auto fused_param_uses =
-      GetAllUsesOfInstructionAtIndex(fused_param, operand_index);
-  // Return true iff there is exactly one use of 'operand' at 'index', and
-  // this singleton use is the fused root (at index in 'use_operand_indices').
-  return fused_param_uses.size() == 1 &&
-         fused_param_uses[0].first == fusion->fused_expression_root() &&
-         fused_param_uses[0].second == use_operand_index;
-}
 }  // namespace xla

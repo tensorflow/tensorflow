@@ -17,6 +17,7 @@ limitations under the License.
 #include <memory>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
@@ -24,6 +25,7 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
+#include "xla/service/buffer_assignment.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_module_config.h"
 
@@ -31,8 +33,9 @@ namespace xla {
 
 class XlaDebugInfoManagerTestPeer {
  public:
-  void RegisterModule(std::shared_ptr<const HloModule> hlo_module,
-                      BufferAssignmentProto buffer_assignment) {
+  void RegisterModule(
+      std::shared_ptr<const HloModule> hlo_module,
+      std::shared_ptr<const BufferAssignment> buffer_assignment) {
     return xla_debug_info_manager_.RegisterModule(hlo_module,
                                                   std::move(buffer_assignment));
   }
@@ -55,7 +58,7 @@ class XlaDebugInfoManagerTestPeer {
 
   absl::flat_hash_set<ModuleIdentifier> GetModuleIds() {
     absl::flat_hash_set<ModuleIdentifier> module_ids;
-    absl::MutexLock lock(&xla_debug_info_manager_.mutex_);
+    absl::MutexLock lock(xla_debug_info_manager_.mutex_);
     for (const auto& it : xla_debug_info_manager_.modules_) {
       module_ids.insert(it.first);
     }
@@ -87,8 +90,7 @@ class XlaDebugInfoManagerTest : public HloHardwareIndependentTestBase {
     debug_info.module = std::make_shared<HloModule>(module_name, config);
     ModuleIdentifier unique_id = debug_info.module->unique_id();
     debug_info.unique_id = unique_id;
-    xla_debug_info_manager_.RegisterModule(debug_info.module,
-                                           BufferAssignmentProto());
+    xla_debug_info_manager_.RegisterModule(debug_info.module, nullptr);
     external_references_.push_back(std::move(debug_info));
     return unique_id;
   }

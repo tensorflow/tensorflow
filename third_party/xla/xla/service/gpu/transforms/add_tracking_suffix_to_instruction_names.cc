@@ -26,7 +26,7 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-absl::StatusOr<bool> AddTrackingSuffixToInstructionNames::Run(
+absl::StatusOr<bool> AddTrackingSuffixToInstructionNames::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;
@@ -40,8 +40,9 @@ absl::StatusOr<bool> AddTrackingSuffixToInstructionNames::Run(
       if (instruction->opcode() == HloOpcode::kParameter ||
           instruction->opcode() == HloOpcode::kCustomCall ||
           instruction->opcode() == HloOpcode::kFusion ||
-          !instruction->IsFusible())
+          !instruction->IsFusible()) {
         continue;
+      }
 
       auto new_name = absl::StrCat(instruction->name(), ".0");
       module->SetAndUniquifyInstrName(instruction, new_name);

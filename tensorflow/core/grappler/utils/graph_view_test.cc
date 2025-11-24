@@ -2012,7 +2012,7 @@ class TopologicalSortTest : public CompareGraphTest {
 
   void CompareGraphNodePrecedences(
       const MutableGraphView& graph_view,
-      absl::Span<const std::pair<string, string>> node_precedences) {
+      absl::Span<const std::pair<string, std::string>> node_precedences) {
     for (const auto& node_precedence : node_precedences) {
       auto* parent_node = graph_view.GetNode(node_precedence.first);
       ASSERT_NE(parent_node, nullptr);

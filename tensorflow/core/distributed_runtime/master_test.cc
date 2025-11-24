@@ -19,6 +19,7 @@ limitations under the License.
 #include <memory>
 
 #include "grpcpp/grpcpp.h"
+#include "absl/synchronization/notification.h"
 #include "Eigen/Core"  // from @eigen_archive
 #include "tensorflow/core/distributed_runtime/rpc/grpc_channel.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_master_service_impl.h"
@@ -29,7 +30,6 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/graph/testlib.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/core/notification.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
@@ -263,7 +263,7 @@ TEST_F(MasterTest, ConcurrentExtendOnlyOneSucceeds) {
   GraphDef def_1;
   test::graph::ToGraphDef(&graph_1, &def_1);
 
-  Notification n;
+  absl::Notification n;
   mutex mu;
   int succeeded = 0;
   int failed = 0;
@@ -317,8 +317,8 @@ TEST_F(MasterTest, ConcurrentExtendAndRun) {
   GraphDef def_1;
   test::graph::ToGraphDef(&graph_1, &def_1);
 
-  Notification extend_done;
-  Notification extend_can_start;
+  absl::Notification extend_done;
+  absl::Notification extend_can_start;
 
   auto get_a_fn = [this, handle, &extend_done]() {
     Tensor A(DT_FLOAT, TensorShape({2, 2}));

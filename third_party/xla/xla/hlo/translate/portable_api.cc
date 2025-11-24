@@ -25,12 +25,10 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OperationSupport.h"
 #include "mlir/Support/LLVM.h"
-#include "stablehlo/dialect/Register.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/translate/hlo_to_mhlo/hlo_to_mlir_hlo.h"
+#include "xla/hlo/translate/register.h"
 #include "xla/hlo/translate/stablehlo.h"
-#include "xla/mlir_hlo/mhlo/IR/register.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 
@@ -45,8 +43,7 @@ std::string PrintModule(mlir::ModuleOp module) {
 
 void LoadHloDialects(mlir::MLIRContext& context) {
   mlir::DialectRegistry registry;
-  mlir::stablehlo::registerAllDialects(registry);
-  mlir::mhlo::registerAllMhloDialects(registry);
+  xla::RegisterMlirToHloDependentDialects(registry);
   context.appendDialectRegistry(registry);
 }
 

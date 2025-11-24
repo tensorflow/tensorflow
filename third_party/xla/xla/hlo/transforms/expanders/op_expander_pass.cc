@@ -29,7 +29,7 @@ limitations under the License.
 
 namespace xla {
 
-absl::StatusOr<bool> OpExpanderPass::Run(
+absl::StatusOr<bool> OpExpanderPass::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   std::vector<HloInstruction*> matching_instructions;

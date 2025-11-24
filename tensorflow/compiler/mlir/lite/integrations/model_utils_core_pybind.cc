@@ -21,9 +21,10 @@ limitations under the License.
 
 #include "mlir/Support/LLVM.h"
 #include "mlir/Tools/mlir-opt/MlirOptMain.h"
+#include "absl/strings/string_view.h"
 #include "llvm/Support/Casting.h"
 #include "mlir-c/IR.h"  // from @llvm-project
-#include "mlir/Bindings/Python/PybindAdaptors.h"  // from @llvm-project  // IWYU pragma: keep
+#include "mlir/Bindings/Python/NanobindAdaptors.h"  // from @llvm-project  // IWYU pragma: keep
 #include "mlir/CAPI/IR.h"  // from @llvm-project
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/Extensions/AllExtensions.h"  // from @llvm-project
@@ -38,10 +39,12 @@ limitations under the License.
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/InitAllDialects.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Pass/PassRegistry.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
-#include "pybind11/cast.h"  // from @pybind11
-#include "pybind11/pybind11.h"  // from @pybind11
-#include "pybind11/pytypes.h"  // from @pybind11
+#include "nanobind/nanobind.h"  // from @nanobind
+#include "nanobind/stl/string.h"  // from @nanobind
+#include "nanobind/stl/string_view.h"  // from @nanobind
+#include "nanobind/stl/vector.h"  // from @nanobind
 #include "stablehlo/dialect/Register.h"  // from @stablehlo
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
 #include "stablehlo/dialect/VhloOps.h"  // from @stablehlo
@@ -51,10 +54,12 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/stablehlo_passes.h"
+#include "tensorflow/compiler/mlir/lite/transforms/optimize_pass.h"
+#include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
 #include "tensorflow/python/lib/core/ndarray_tensor.h"
 
-namespace py = pybind11;
+namespace nb = nanobind;
 
 // -----------------------------------------------------------------------------
 // Module initialization.
@@ -67,7 +72,7 @@ class MlirPythonPass
                                mlir::OperationPass<mlir::ModuleOp>> {
  public:
   explicit MlirPythonPass(std::string name, std::string description,
-                          py::object pyfunc)
+                          nb::object pyfunc)
       : name_(name), description_(description), pyfunc_(pyfunc) {
     pyfunc.inc_ref();
   }
@@ -82,8 +87,8 @@ class MlirPythonPass
     auto module_clone = getOperation().clone();
     MlirModule c_module = wrap(module_clone);
 
-    auto py_module = py::cast(c_module);
-    auto py_args = py::make_tuple(py_module);
+    auto py_module = nb::cast(c_module);
+    auto py_args = nb::make_tuple(py_module);
     PyObject* py_pass_ret = PyObject_CallObject(pyfunc_.ptr(), py_args.ptr());
 
     if (py_pass_ret == nullptr || PyErr_Occurred()) {
@@ -92,8 +97,8 @@ class MlirPythonPass
       signalPassFailure();
       return;
     }
-    auto py_new_module_op = py::cast<py::object>(py_pass_ret);
-    auto c_new_module_op = py::cast<MlirOperation>(py_new_module_op);
+    auto py_new_module_op = nb::steal<nb::object>(py_pass_ret);
+    auto c_new_module_op = nb::cast<MlirOperation>(py_new_module_op);
     mlir::Operation* new_module_op = unwrap(c_new_module_op);
 
     // TODO: Copy attributes from new_module
@@ -105,7 +110,7 @@ class MlirPythonPass
  private:
   std::string name_;
   std::string description_;
-  py::object pyfunc_;
+  nb::object pyfunc_;
 };
 
 inline void RegisterDialects(mlir::DialectRegistry& registry) {
@@ -119,19 +124,27 @@ inline void RegisterDialects(mlir::DialectRegistry& registry) {
                   mlir::stablehlo::StablehloDialect, mlir::vhlo::VhloDialect>();
 }
 
-PYBIND11_MODULE(model_utils_core_pybind, m) {
-  Py_Initialize();
-
-  m.doc() = "LiteRT ModelUtils Core Pybinds";
-  // Register passes on load.
+inline void RegisterPasses() {
   mlir::registerTransformsPasses();
   mlir::func::registerFuncPasses();
   mlir::odml::registerLegalizeStablehloToVhloPass();
 
+  mlir::PassRegistration<mlir::TFL::OptimizePass>(
+      []() { return mlir::TFL::CreateOptimizePass(); });
+}
+
+NB_MODULE(model_utils_core_pybind, m) {
+  Py_Initialize();
+
+  m.doc() = "LiteRT ModelUtils Core Pybinds";
+
+  // Register passes on load.
+  RegisterPasses();
+
   m.def("mlir_opt_main", [](std::vector<std::string> argv,
                             std::vector<std::string> pass_names,
                             std::vector<std::string> pass_descriptions,
-                            std::vector<py::object> pass_fns) {
+                            std::vector<nb::object> pass_fns) {
     std::vector<char*> c_argv_vec;
     c_argv_vec.reserve(argv.size());
     for (size_t i = 0; i < argv.size(); ++i)
@@ -167,14 +180,15 @@ PYBIND11_MODULE(model_utils_core_pybind, m) {
   });
 
   m.def("flatbuffer_to_mlir",
-        [](py::bytes buffer, MlirContext context) -> MlirModule {
+        [](nb::bytes buffer, MlirContext context) -> MlirModule {
           mlir::DialectRegistry registry;
           RegisterDialects(registry);
           unwrap(context)->appendDialectRegistry(registry);
           unwrap(context)->loadAllAvailableDialects();
 
           auto module_op = tflite::FlatBufferToMlir(
-              buffer, unwrap(context), mlir::UnknownLoc::get(unwrap(context)));
+              absl::string_view(buffer.c_str(), buffer.size()), unwrap(context),
+              mlir::UnknownLoc::get(unwrap(context)));
           return wrap(module_op.release());
         });
 
@@ -186,7 +200,7 @@ PYBIND11_MODULE(model_utils_core_pybind, m) {
     std::string result;
     tflite::MlirToFlatBufferTranslateFunction(module_op, options, &result,
                                               true);
-    return py::bytes(result);
+    return nb::bytes(result.data(), result.size());
   });
 
   m.def("get_operation_attribute_names", [](MlirOperation c_op) {
@@ -216,7 +230,7 @@ PYBIND11_MODULE(model_utils_core_pybind, m) {
     PyObject* np_array = Py_None;
     status = tensorflow::TensorToNdarray(tensor, &np_array);
 
-    return py::reinterpret_steal<py::object>(np_array);
+    return nb::steal<nb::object>(np_array);
   });
 }
 

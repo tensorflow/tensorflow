@@ -33,17 +33,21 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/base/nullability.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/any_invocable.h"
+#include "absl/functional/function_ref.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/numeric/bits.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
 #include "xla/comparison_util.h"
+#include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/analysis/hlo_alias_analysis.h"
 #include "xla/hlo/analysis/hlo_dataflow_analysis.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -204,15 +208,13 @@ std::ostream& operator<<(std::ostream& stream,
 
 /*static*/
 absl::StatusOr<int64_t> HeapSimulator::MinimumMemoryForModule(
-    const HloSchedule& schedule,
-    const LogicalBuffer::SizeFunction& size_function) {
+    const HloSchedule& schedule, const HloAliasAnalysis& alias_analysis,
+    const AliasInfo* alias_info,
+    const LogicalBuffer::SizeFunction* absl_nonnull size_function) {
   if (schedule.empty()) {
     return 0;
   }
   const HloModule* module = schedule.module();
-
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
-                      HloAliasAnalysis::Run(module));
 
   // The absolute minimum memory required for a given sequence of instructions
   // is determined by the sequence of Alloc and Free calls on a simulated heap,
@@ -222,33 +224,21 @@ absl::StatusOr<int64_t> HeapSimulator::MinimumMemoryForModule(
   TF_ASSIGN_OR_RETURN(
       HeapSimulator::Result<HloValue> result,
       HeapSimulator::Run(std::make_unique<NoFragmentationStatsHeap<HloValue>>(),
-                         *module, schedule, *alias_analysis, size_function));
+                         *module, schedule, alias_analysis, alias_info,
+                         size_function));
   return result.heap_size;
 }
 
 /*static*/
 absl::StatusOr<int64_t> HeapSimulator::MinimumMemoryForComputation(
     const HloComputation& computation, const HloInstructionSequence& sequence,
-    const HloAliasAnalysis& alias_analysis,
-    const LogicalBuffer::SizeFunction& size_function) {
+    const HloAliasAnalysis& alias_analysis, const AliasInfo* alias_info,
+    const LogicalBuffer::SizeFunction* absl_nonnull size_function) {
   TF_ASSIGN_OR_RETURN(
       HeapSimulator::Result<HloValue> result,
       HeapSimulator::Run(std::make_unique<NoFragmentationStatsHeap<HloValue>>(),
-                         computation, sequence, alias_analysis, size_function,
-                         HeapSimulator::Options()));
-  return result.heap_size;
-}
-
-absl::StatusOr<int64_t> HeapSimulator::MinimumMemoryForComputation(
-    const HloComputation& computation, const HloInstructionSequence& sequence,
-    const HloAliasAnalysis& alias_analysis,
-    const LogicalBuffer::SizeFunction& size_function,
-    const HloSchedule* schedule) {
-  TF_ASSIGN_OR_RETURN(
-      HeapSimulator::Result<HloValue> result,
-      HeapSimulator::Run(std::make_unique<NoFragmentationStatsHeap<HloValue>>(),
-                         computation, sequence, alias_analysis, size_function,
-                         schedule, HeapSimulator::Options()));
+                         computation, sequence, alias_analysis, alias_info,
+                         size_function, HeapSimulator::Options()));
   return result.heap_size;
 }
 
@@ -256,7 +246,9 @@ absl::StatusOr<int64_t> HeapSimulator::MinimumMemoryForComputation(
 absl::StatusOr<HeapSimulator::Result<HloValue>> HeapSimulator::Run(
     std::unique_ptr<HeapAlgorithm<HloValue>> algorithm, const HloModule& module,
     const HloSchedule& schedule, const HloAliasAnalysis& alias_analysis,
-    const BufferValue::SizeFunction& size_fn, const Options& options) {
+    const AliasInfo* alias_info,
+    const BufferValue::SizeFunction* absl_nonnull size_fn,
+    const Options& options) {
   HeapSimulator heap(std::move(algorithm), size_fn, options, &schedule);
   const HloComputation* entry_computation = module.entry_computation();
   const HloInstructionSequence& instruction_sequence =
@@ -266,6 +258,27 @@ absl::StatusOr<HeapSimulator::Result<HloValue>> HeapSimulator::Run(
       HloLiveRange::Run(schedule, alias_analysis, entry_computation));
   TF_RETURN_IF_ERROR(heap.RunComputation(*entry_computation,
                                          instruction_sequence, alias_analysis,
+                                         alias_info, hlo_live_range.get()));
+  return heap.Finish();
+}
+
+/*static*/
+absl::StatusOr<HeapSimulator::Result<HloValue>> HeapSimulator::Run(
+    std::unique_ptr<HeapAlgorithm<HloValue>> algorithm,
+    const HloComputation& computation,
+    const HloInstructionSequence& instruction_sequence,
+    const HloAliasAnalysis& alias_analysis, const AliasInfo* alias_info,
+    const BufferValue::SizeFunction* absl_nonnull size_fn,
+    const Options& options) {
+  HeapSimulator heap(std::move(algorithm), size_fn, options,
+                     /*schedule=*/nullptr);
+  HloSchedule schedule(computation.parent());
+  schedule.set_sequence(&computation, instruction_sequence);
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloLiveRange> hlo_live_range,
+                      HloLiveRange::Run(schedule, alias_analysis, &computation,
+                                        /*module_scoped_analysis=*/false));
+  TF_RETURN_IF_ERROR(heap.RunComputation(computation, instruction_sequence,
+                                         alias_analysis, alias_info,
                                          hlo_live_range.get()));
   return heap.Finish();
 }
@@ -275,35 +288,17 @@ absl::StatusOr<HeapSimulator::Result<HloValue>> HeapSimulator::Run(
     std::unique_ptr<HeapAlgorithm<HloValue>> algorithm,
     const HloComputation& computation,
     const HloInstructionSequence& instruction_sequence,
-    const HloAliasAnalysis& alias_analysis,
-    const BufferValue::SizeFunction& size_fn, const Options& options) {
-  HeapSimulator heap(std::move(algorithm), size_fn, options,
-                     /*schedule=*/nullptr);
-  HloSchedule schedule(computation.parent());
-  schedule.set_sequence(&computation, instruction_sequence);
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloLiveRange> hlo_live_range,
-                      HloLiveRange::Run(schedule, alias_analysis, &computation,
-                                        /*module_scoped_analysis=*/false));
-  TF_RETURN_IF_ERROR(heap.RunComputation(computation, instruction_sequence,
-                                         alias_analysis, hlo_live_range.get()));
-  return heap.Finish();
-}
-
-/*static*/
-absl::StatusOr<HeapSimulator::Result<HloValue>> HeapSimulator::Run(
-    std::unique_ptr<HeapAlgorithm<HloValue>> algorithm,
-    const HloComputation& computation,
-    const HloInstructionSequence& instruction_sequence,
-    const HloAliasAnalysis& alias_analysis,
-    const BufferValue::SizeFunction& size_fn, const HloSchedule* schedule,
-    const Options& options) {
+    const HloAliasAnalysis& alias_analysis, const AliasInfo* alias_info,
+    const BufferValue::SizeFunction* absl_nonnull size_fn,
+    const HloSchedule* schedule, const Options& options) {
   HeapSimulator heap(std::move(algorithm), size_fn, options,
                      /*schedule=*/schedule);
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<HloLiveRange> hlo_live_range,
       HloLiveRange::Run(*schedule, alias_analysis, &computation));
   TF_RETURN_IF_ERROR(heap.RunComputation(computation, instruction_sequence,
-                                         alias_analysis, hlo_live_range.get()));
+                                         alias_analysis, alias_info,
+                                         hlo_live_range.get()));
   return heap.Finish();
 }
 
@@ -312,7 +307,8 @@ absl::StatusOr<HeapSimulator::Result<HloValue>> HeapSimulator::Run(
 absl::Status HeapSimulator::RunComputation(
     const HloComputation& computation,
     const HloInstructionSequence& instruction_sequence,
-    const HloAliasAnalysis& alias_analysis, HloLiveRange* hlo_live_range) {
+    const HloAliasAnalysis& alias_analysis, const AliasInfo* alias_info,
+    HloLiveRange* hlo_live_range) {
   XLA_VLOG_LINES(1, computation.parent()->ToString());
   XLA_VLOG_LINES(2, computation.ToString());
 
@@ -383,7 +379,7 @@ absl::Status HeapSimulator::RunComputation(
   for (const HloBuffer& buffer : alias_analysis.buffers()) {
     int64_t size = 0;
     for (const HloValue* value : buffer.values()) {
-      size = std::max(size, size_fn_(*value));
+      size = std::max(size, (*size_fn_)(*value));
     }
     for (const HloValue* value : buffer.values()) {
       buffer_sizes_[value] = size;
@@ -416,7 +412,7 @@ absl::Status HeapSimulator::RunComputation(
         // We don't support sharing an aliased buffer
         // (hlo_buffer->values().size() > 1) with its operand.
         for (const HloInstruction* operand : value->instruction()->operands()) {
-          const HloValueSet operand_value_set =
+          const HloValueSet& operand_value_set =
               dataflow_analysis.GetValueSet(operand);
           for (const HloValue* operand_value : operand_value_set.values()) {
             const HloBuffer* operand_buffer =
@@ -457,7 +453,7 @@ absl::Status HeapSimulator::RunComputation(
                 value->instruction()->opcode() != HloOpcode::kCopy &&
                 dataflow_analysis.CanShareOperandBufferWithUser(
                     operand_value->instruction(), operand_value->index(),
-                    value->instruction(), value->index())) {
+                    value->instruction(), value->index(), alias_info)) {
               // Remove the operand buffer right before sharing (allocating) a
               // new one.
               Free(operand_value, operand_value->instruction());
@@ -471,7 +467,7 @@ absl::Status HeapSimulator::RunComputation(
               operand_live_range.end = user_live_range.end;
               VLOG(1) << "Sharing " << value->ToShortString() << " with "
                       << operand_value->ToShortString()
-                      << ", size:" << size_fn_(*value);
+                      << ", size:" << (*size_fn_)(*value);
               shared = true;
               break;
             }
@@ -499,10 +495,10 @@ absl::Status HeapSimulator::RunComputation(
   return absl::OkStatus();
 }
 
-HeapSimulator::HeapSimulator(std::unique_ptr<HeapAlgorithm<HloValue>> algorithm,
-                             const BufferValue::SizeFunction& size_fn,
-                             const Options& options,
-                             const HloSchedule* schedule)
+HeapSimulator::HeapSimulator(
+    std::unique_ptr<HeapAlgorithm<HloValue>> algorithm,
+    const BufferValue::SizeFunction* absl_nonnull size_fn,
+    const Options& options, const HloSchedule* schedule)
     : no_fragmentation_stats_(
           std::make_unique<NoFragmentationStatsHeap<HloValue>>()),
       algorithm_(std::move(algorithm)),
@@ -672,6 +668,7 @@ GlobalDecreasingSizeBestFitHeap<BufferType>::GlobalDecreasingSizeBestFitHeap(
     : alignment_(alignment),
       slice_time_permutation_iteration_type_(
           slice_time_permutation_iterator_type) {
+  CHECK_GT(alignment, 0) << "Alignment (" << alignment << ") must be positive.";
   if (type == kTemporal) {
     buffer_interval_compare_ = GetTemporalBufferIntervalCompare();
     CHECK(buffer_interval_compare == nullptr);
@@ -763,6 +760,22 @@ GlobalDecreasingSizeBestFitHeap<BufferType>::GetTransitiveColocations(
   }
 
   return result;
+}
+
+template <typename BufferType>
+int64_t GlobalDecreasingSizeBestFitHeap<BufferType>::ComputeAlignedChunkEnd(
+    int64_t chunk_end) const {
+  int64_t chunk_end_aligned = chunk_end;
+  if (alignment_ != 1) {
+    if (absl::has_single_bit(static_cast<uint64_t>(alignment_))) {
+      // Alignment is 2^n, add 2^n-1 and then zero the last n bits.
+      chunk_end_aligned =
+          (chunk_end_aligned + alignment_ - 1) & ~(alignment_ - 1);
+    } else {
+      chunk_end_aligned = RoundUpTo(chunk_end, alignment_);
+    }
+  }
+  return chunk_end_aligned;
 }
 
 template <typename BufferType>
@@ -944,11 +957,11 @@ bool BufferIntervalTree::Remove(int64_t start, int64_t end,
   return true;
 }
 
-int BufferIntervalTree::NumChunksOverlappingInTime(int64_t start,
-                                                   int64_t end) const {
-  int result = 0;
+void BufferIntervalTree::ApplyToNodesOverlappingInTime(
+    int64_t start, int64_t end,
+    absl::FunctionRef<void(const BufferIntervalTreeNode*)> fn) const {
   if (root_ == nullptr) {
-    return result;
+    return;
   }
   std::vector<const BufferIntervalTreeNode*> visiting_stack;
   visiting_stack.push_back(root_);
@@ -958,59 +971,103 @@ int BufferIntervalTree::NumChunksOverlappingInTime(int64_t start,
     if (start > top->subtree_end) {
       continue;
     }
-    if (top->left != nullptr) {
-      visiting_stack.push_back(top->left);
+    if (const BufferIntervalTreeNode* left = top->left; left != nullptr) {
+      visiting_stack.push_back(left);
     }
-    if (top->start <= end && top->end >= start) {
-      ++result;
+    const int64_t top_start = top->start;
+    if (top_start <= end && top->end >= start) {
+      fn(top);
     }
-    if (end < top->start) {
+    if (end < top_start) {
       continue;
     }
-    if (top->right != nullptr) {
-      visiting_stack.push_back(top->right);
+    if (const BufferIntervalTreeNode* right = top->right; right != nullptr) {
+      visiting_stack.push_back(right);
     }
   }
+}
+
+void BufferIntervalTree::ApplyToSortedNodesOverlapping(
+    int64_t start, int64_t end,
+    absl::FunctionRef<bool(const BufferIntervalTreeNode*)> fn) const {
+  if (root_ == nullptr) {
+    return;
+  }
+  // We do an inorder traversal of the binary tree, keeping in the visiting
+  // stack whether we have visited the left subtree of the current node.
+  struct NodeInfo {
+    const BufferIntervalTreeNode* node;
+    bool have_visited_left_subtree;
+
+    NodeInfo(const BufferIntervalTreeNode* node, bool have_visited_left_subtree)
+        : node(node), have_visited_left_subtree(have_visited_left_subtree) {}
+  };
+  std::vector<NodeInfo> visiting_stack;
+  visiting_stack.emplace_back(root_, false);
+  int64_t prev_start = -1;
+  while (!visiting_stack.empty()) {
+    auto top = visiting_stack.back();
+    // Skip the subtree if there is no overlap with the given interval.
+    if (start > top.node->subtree_end) {
+      visiting_stack.pop_back();
+      continue;
+    }
+    // Ensure that we have first visited the left child.
+    const BufferIntervalTreeNode* left = top.node->left;
+    if (!top.have_visited_left_subtree && left != nullptr) {
+      visiting_stack.back().have_visited_left_subtree = true;
+      visiting_stack.emplace_back(left, false);
+      continue;
+    }
+    // Visit current node.
+    const int64_t top_start = top.node->start;
+    if (top_start <= end && top.node->end >= start) {
+      // Ensure that this is indeed an inorder traversal.
+      CHECK_LE(prev_start, top_start);
+      prev_start = top_start;
+      // If the callback signals, then we terminate the traversal early.
+      if (fn(top.node)) {
+        break;
+      }
+    }
+    visiting_stack.pop_back();
+    // Skip the right subtree if there is no overlap.
+    if (end < top_start) {
+      continue;
+    }
+    // Finally, visit the right child.
+    if (const BufferIntervalTreeNode* right = top.node->right;
+        right != nullptr) {
+      visiting_stack.emplace_back(right, false);
+    }
+  }
+}
+
+int BufferIntervalTree::NumChunksOverlappingInTime(int64_t start,
+                                                   int64_t end) const {
+  int result = 0;
+  ApplyToNodesOverlappingInTime(
+      start, end, [&result](const BufferIntervalTreeNode* node) { ++result; });
   return result;
 }
 
 std::vector<Chunk> BufferIntervalTree::ChunksOverlappingInTime(
     int64_t start, int64_t end) const {
   std::vector<Chunk> result;
-  for (const BufferIntervalTreeNode* node :
-       NodesOverlappingInTime(start, end)) {
-    result.push_back(node->chunk);
-  }
+  ApplyToNodesOverlappingInTime(start, end,
+                                [&result](const BufferIntervalTreeNode* node) {
+                                  result.push_back(node->chunk);
+                                });
   return result;
 }
 
 std::vector<const BufferIntervalTreeNode*>
 BufferIntervalTree::NodesOverlappingInTime(int64_t start, int64_t end) const {
   std::vector<const BufferIntervalTreeNode*> result;
-  if (root_ == nullptr) {
-    return result;
-  }
-  std::vector<const BufferIntervalTreeNode*> visiting_stack;
-  visiting_stack.push_back(root_);
-  while (!visiting_stack.empty()) {
-    const BufferIntervalTreeNode* top = visiting_stack.back();
-    visiting_stack.pop_back();
-    if (start > top->subtree_end) {
-      continue;
-    }
-    if (top->left != nullptr) {
-      visiting_stack.push_back(top->left);
-    }
-    if (top->start <= end && top->end >= start) {
-      result.push_back(top);
-    }
-    if (end < top->start) {
-      continue;
-    }
-    if (top->right != nullptr) {
-      visiting_stack.push_back(top->right);
-    }
-  }
+  ApplyToNodesOverlappingInTime(start, end,
+                                [&result](const BufferIntervalTreeNode* node) {
+                                  result.push_back(node);
+                                });
   return result;
 }
 
@@ -1349,7 +1406,7 @@ class ObservedPermutationManager {
     }
 
     return observed_inclusive_start_time_permutation_
-        .insert(permutation_inclusive_start_times)
+        .insert(std::move(permutation_inclusive_start_times))
         .second;
   }
 
@@ -2080,6 +2137,7 @@ GlobalDecreasingSizeBestFitHeap<BufferType>::SlicedAllocationFinder::Find()
 
   // Find the smallest overall chunk that fits the allocation request
   std::vector<const FreeChunkRoot*> root_heap;
+  root_heap.reserve(free_chunks_.size());
   for (auto it = free_chunks_.rbegin(); it != free_chunks_.rend(); ++it) {
     root_heap.push_back(&it->second);
   }
@@ -2383,42 +2441,43 @@ GlobalDecreasingSizeBestFitHeap<BufferType>::MakeFreeChunks(
       {0, INT64_MAX}};  // Initialize with "infinite" free memory.
 
   // Subtract chunks that are in use from the free chunks.
-  auto subtract_used_chunks = [&](const std::vector<Chunk>& used_chunks) {
-    for (const Chunk& used_chunk : used_chunks) {
-      // Find the free chunks containing the start and end of the used chunk.
-      auto it_end = free_chunks.lower_bound(used_chunk.chunk_end());
-      if (it_end == free_chunks.end()) continue;
-      auto it_start = free_chunks.lower_bound(used_chunk.offset);
+  auto subtract_used_chunk = [&](const BufferIntervalTreeNode* node) {
+    const Chunk& used_chunk = node->chunk;
+    // Find the free chunks containing the start and end of the used chunk.
+    auto it_end = free_chunks.lower_bound(used_chunk.chunk_end());
+    if (it_end == free_chunks.end()) {
+      return;
+    }
+    auto it_start = free_chunks.lower_bound(used_chunk.offset);
 
-      // Store original free chunk end, in case `it_start == it_end`.
-      int64_t free_chunk_end = it_end->second;
+    // Store original free chunk end, in case `it_start == it_end`.
+    int64_t free_chunk_end = it_end->second;
 
-      // Subtract from free chunk containing start of used range, removing if it
-      // becomes too small for the buffer.
-      if (it_start != free_chunks.end()) {
-        if (used_chunk.offset - it_start->first >= buffer_interval.size) {
-          it_start->second = std::min(it_start->second, used_chunk.offset);
-        } else {
-          ++it_start;  // Increment iterator so that this entry is erased
-                       // below.
-        }
+    // Subtract from free chunk containing start of used range, removing if it
+    // becomes too small for the buffer.
+    if (it_start != free_chunks.end()) {
+      if (used_chunk.offset - it_start->first >= buffer_interval.size) {
+        it_start->second = std::min(it_start->second, used_chunk.offset);
+      } else {
+        ++it_start;  // Increment iterator so that this entry is erased
+                     // below.
       }
+    }
 
-      // Erase from the start chunk (possibly inclusive) to the end chunk
-      // (always inclusive). We iterate from end to start, as the map is in
-      // reverse order.
-      free_chunks.erase(it_end, it_start);
+    // Erase from the start chunk (possibly inclusive) to the end chunk
+    // (always inclusive). We iterate from end to start, as the map is in
+    // reverse order.
+    free_chunks.erase(it_end, it_start);
 
-      // Create a new free chunk after the used chunk, if it is large enough.
-      int64_t chunk_end_aligned = RoundUpTo(used_chunk.chunk_end(), alignment_);
-      if (free_chunk_end - chunk_end_aligned >= max_colocation_size) {
-        CHECK(free_chunks.insert({chunk_end_aligned, free_chunk_end}).second);
-      }
+    // Create a new free chunk after the used chunk, if it is large enough.
+    int64_t chunk_end_aligned = ComputeAlignedChunkEnd(used_chunk.chunk_end());
+    if (free_chunk_end - chunk_end_aligned >= max_colocation_size) {
+      CHECK(free_chunks.insert({chunk_end_aligned, free_chunk_end}).second);
     }
   };
 
-  subtract_used_chunks(interval_tree_.ChunksOverlappingInTime(
-      buffer_interval.start, buffer_interval.end));
+  interval_tree_.ApplyToNodesOverlappingInTime(
+      buffer_interval.start, buffer_interval.end, subtract_used_chunk);
 
   for (const BufferType* colocation :
        GetTransitiveColocations(buffer_interval)) {
@@ -2426,11 +2485,38 @@ GlobalDecreasingSizeBestFitHeap<BufferType>::MakeFreeChunks(
     VLOG(1) << "  Alias size " << interval.size << ", start " << interval.start
             << ", end " << interval.end << " " << interval.buffer->ToString();
 
-    subtract_used_chunks(
-        interval_tree_.ChunksOverlappingInTime(interval.start, interval.end));
+    interval_tree_.ApplyToNodesOverlappingInTime(interval.start, interval.end,
+                                                 subtract_used_chunk);
   }
 
   return free_chunks;
+}
+
+template <typename BufferType>
+int64_t GlobalDecreasingSizeBestFitHeap<BufferType>::
+    FindLatestEndWithFreeChunkAtPreferredOffset(
+        const BufferInterval& buffer_interval, int64_t preferred_offset) const {
+  CHECK_GE(preferred_offset, 0);
+  int64_t latest_end_with_free_chunk_at_preferred_offset = buffer_interval.end;
+
+  interval_tree_.ApplyToSortedNodesOverlapping(
+      buffer_interval.start, buffer_interval.end,
+      [&](const BufferIntervalTreeNode* node) {
+        const Chunk& used_chunk = node->chunk;
+        if ((used_chunk.offset < preferred_offset &&
+             preferred_offset <
+                 ComputeAlignedChunkEnd(used_chunk.chunk_end())) ||
+            (preferred_offset <= used_chunk.offset &&
+             used_chunk.offset < preferred_offset + buffer_interval.size)) {
+          // There is a chunk that intersects with the preferred location, then
+          // stop the search.
+          latest_end_with_free_chunk_at_preferred_offset = node->start - 1;
+          return true;
+        }
+        return false;
+      });
+
+  return latest_end_with_free_chunk_at_preferred_offset;
 }
 
 template <typename BufferType>
@@ -2646,13 +2732,17 @@ void BreadthFirstMidpointIterator::Next() {
   WorkItem work_item = work_items_.front();
   work_items_.pop_front();
   if (work_item.start > work_item.end) {
-    Next();
+    value_ = std::nullopt;
     return;
   }
   int midpoint = CeilOfRatio(work_item.start + work_item.end, 2);
   value_ = midpoint;
-  work_items_.push_back({work_item.start, midpoint - 1});
-  work_items_.push_back({midpoint + 1, work_item.end});
+  if (work_item.start < midpoint) {
+    work_items_.push_back({work_item.start, midpoint - 1});
+  }
+  if (work_item.end > midpoint) {
+    work_items_.push_back({midpoint + 1, work_item.end});
+  }
 }
 
 template class GlobalDecreasingSizeBestFitHeap<HloValue>;

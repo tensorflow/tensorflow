@@ -15,10 +15,14 @@ limitations under the License.
 
 #include "xla/tsl/profiler/rpc/profiler_service_impl.h"
 
+#include <cstdint>
 #include <memory>
+#include <optional>
+#include <string>
+#include <variant>
 
 #include "absl/container/flat_hash_map.h"
-#include "absl/strings/str_replace.h"
+#include "absl/status/status.h"
 #include "absl/synchronization/mutex.h"
 #include "grpcpp/support/status.h"
 #include "xla/tsl/platform/env.h"
@@ -26,10 +30,9 @@ limitations under the License.
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/macros.h"
-#include "xla/tsl/platform/status.h"
 #include "xla/tsl/profiler/rpc/client/save_profile.h"
-#include "xla/tsl/profiler/utils/file_system_utils.h"
 #include "xla/tsl/profiler/utils/math_utils.h"
+#include "xla/tsl/profiler/utils/profiler_options_util.h"
 #include "xla/tsl/profiler/utils/time_utils.h"
 #include "xla/tsl/profiler/utils/xplane_utils.h"
 #include "tsl/profiler/lib/profiler_session.h"
@@ -48,20 +51,40 @@ using tensorflow::ProfileResponse;
 using tensorflow::TerminateRequest;
 using tensorflow::TerminateResponse;
 
+std::string GetHostname(const ProfileRequest& request) {
+  std::optional<std::variant<std::string, bool, int64_t>> hostname_override =
+      GetConfigValue(request.opts(), "override_hostname");
+  if (!hostname_override.has_value()) {
+    return request.host_name();
+  }
+  const std::string* hostname_str =
+      std::get_if<std::string>(&*hostname_override);
+  if (hostname_str != nullptr && !hostname_str->empty()) {
+    return *hostname_str;
+  }
+  return request.host_name();
+}
+
 // Collects data in XSpace format. The data is saved to a repository
 // unconditionally.
-absl::Status CollectDataToRepository(const ProfileRequest& request,
-                                     ProfilerSession* profiler,
-                                     ProfileResponse* response) {
+absl::Status CollectData(const ProfileRequest& request,
+                         ProfilerSession* profiler, ProfileResponse* response) {
   response->set_empty_trace(true);
   // Read the profile data into xspace.
-  XSpace xspace;
-  TF_RETURN_IF_ERROR(profiler->CollectData(&xspace));
-  VLOG(3) << "Collected XSpace to repository.";
-  response->set_empty_trace(IsEmpty(xspace));
+  tensorflow::profiler::XSpace xspace;
+  tensorflow::profiler::XSpace* xspace_ptr =
+      request.emit_xspace() ? response->mutable_xspace() : &xspace;
+  TF_RETURN_IF_ERROR(profiler->CollectData(xspace_ptr));
+  VLOG(3) << "Collected XSpace to "
+          << (request.emit_xspace() ? "response" : "repository") << ".";
+  response->set_empty_trace(IsEmpty(*xspace_ptr));
+
+  if (request.emit_xspace()) {
+    return absl::OkStatus();
+  }
 
   return SaveXSpace(request.repository_root(), request.session_id(),
-                    request.host_name(), xspace);
+                    GetHostname(request), xspace);
 }
 
 class ProfilerServiceImpl : public tensorflow::grpc::ProfilerService::Service {
@@ -83,21 +106,23 @@ class ProfilerServiceImpl : public tensorflow::grpc::ProfilerService::Service {
     }
 
     Env* env = Env::Default();
-    uint64 duration_ns = MilliToNano(req->opts().duration_ms());
-    uint64 deadline = GetCurrentTimeNanos() + duration_ns;
-    while (GetCurrentTimeNanos() < deadline) {
+    int64_t start_time_ns = GetCurrentTimeNanos();
+    // TODO(b/416884677): Handle server shutdown gracefully by surfacing a
+    // shutdown signal here and responding with what has been profiled so far.
+    while (NanoToMilli(GetCurrentTimeNanos() - start_time_ns) <
+           req->opts().duration_ms()) {
       env->SleepForMicroseconds(EnvTime::kMillisToMicros);
       if (ctx->IsCancelled()) {
         return ::grpc::Status::CANCELLED;
       }
       if (TF_PREDICT_FALSE(IsStopped(req->session_id()))) {
-        absl::MutexLock lock(&mutex_);
+        absl::MutexLock lock(mutex_);
         stop_signals_per_session_.erase(req->session_id());
         break;
       }
     }
 
-    status = CollectDataToRepository(*req, profiler.get(), response);
+    status = CollectData(*req, profiler.get(), response);
     if (!status.ok()) {
       return ::grpc::Status(::grpc::StatusCode::INTERNAL,
                             std::string(status.message()));
@@ -109,14 +134,14 @@ class ProfilerServiceImpl : public tensorflow::grpc::ProfilerService::Service {
   ::grpc::Status Terminate(::grpc::ServerContext* ctx,
                            const TerminateRequest* req,
                            TerminateResponse* response) override {
-    absl::MutexLock lock(&mutex_);
+    absl::MutexLock lock(mutex_);
     stop_signals_per_session_[req->session_id()] = true;
     return ::grpc::Status::OK;
   }
 
  private:
   bool IsStopped(const std::string& session_id) {
-    absl::MutexLock lock(&mutex_);
+    absl::MutexLock lock(mutex_);
     auto it = stop_signals_per_session_.find(session_id);
     return it != stop_signals_per_session_.end() && it->second;
   }

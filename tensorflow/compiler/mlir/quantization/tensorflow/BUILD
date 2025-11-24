@@ -1,7 +1,7 @@
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "td_library")
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
+load("@rules_python//python:proto.bzl", "py_proto_library")
 load("//tensorflow:strict.default.bzl", "py_strict_binary")
-
-# Placeholder: load py_proto_library
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 load("//tensorflow/compiler/mlir/quantization/tensorflow:internal_visibility_allowlist.bzl", "internal_visibility_allowlist")
@@ -233,6 +233,7 @@ cc_library(
     ],
     hdrs = ["passes/tf_quant_ops.h"],
     compatible_with = get_compatible_with_portable(),
+    visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_attributes",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_op_interfaces",
@@ -409,6 +410,7 @@ cc_library(
         "quantize_preprocess.h",
     ],
     compatible_with = get_compatible_with_portable(),
+    visibility = ["//visibility:public"],
     deps = [
         ":passes",
         "//tensorflow/compiler/mlir/quantization/stablehlo:bridge_passes",
@@ -444,6 +446,7 @@ cc_library(
     srcs = ["quantize_passes.cc"],
     hdrs = ["quantize_passes.h"],
     compatible_with = get_compatible_with_portable(),
+    visibility = ["//visibility:public"],
     deps = [
         ":passes",
         ":quantization_options_proto_cc",
@@ -527,6 +530,7 @@ tf_cc_binary(
         "@llvm-project//mlir:FuncExtensions",
         "@llvm-project//mlir:MlirOptLib",
         "@llvm-project//mlir:QuantOps",
+        "@llvm-project//mlir:RegisterAllPasses",
         "@llvm-project//mlir:SCFDialect",
         "@llvm-project//mlir:ShapeDialect",
         "@stablehlo//:stablehlo_ops",

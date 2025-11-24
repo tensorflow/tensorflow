@@ -36,7 +36,6 @@ limitations under the License.
 #include "mlir/IR/BuiltinTypes.h"
 #include "stablehlo/dialect/StablehloOps.h"
 #include "xla/layout.h"
-#include "xla/layout_util.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/shape.h"
@@ -99,7 +98,9 @@ mlir::NamedAttribute ConvertChannelHandle(const ChannelHandle& channel,
 mlir::NamedAttribute ConvertChannelHandle(std::optional<int64_t> channel_id,
                                           mlir::Builder* builder) {
   ChannelHandle channel_handle;
-  if (channel_id) channel_handle.set_handle(*channel_id);
+  if (channel_id) {
+    channel_handle.set_handle(*channel_id);
+  }
   return stablehlo::ConvertChannelHandle(channel_handle, builder);
 }
 
@@ -198,6 +199,12 @@ mlir::stablehlo::DotAlgorithmAttr ConvertDotAlgorithm(
       numPrimitiveOperations = 6;
       break;
     }
+    case PrecisionConfig::ALG_DOT_BF16_BF16_F32_X9: {
+      lhs = rhs = builder->getBF16Type();
+      accum = builder->getF32Type();
+      numPrimitiveOperations = 9;
+      break;
+    }
     case PrecisionConfig::ALG_DOT_TF32_TF32_F32: {
       lhs = rhs = builder->getTF32Type();
       accum = builder->getF32Type();
@@ -257,7 +264,9 @@ mlir::ArrayAttr ConvertOutputOperandAliasing(
 
 mlir::ArrayAttr ConvertPrecisionConfig(const PrecisionConfig* config,
                                        mlir::Builder* builder) {
-  if (!config) return {};
+  if (!config) {
+    return {};
+  }
 
   // TODO(b/129709049) The HLO text format elides this in the all DEFAULT
   // case and the parser sticks it in. Maybe we should too.
@@ -298,7 +307,9 @@ mlir::stablehlo::ResultAccuracyAttr ConvertResultAccuracy(
 
 mlir::ArrayAttr ConvertPrecisionConfig(const PrecisionConfig* config,
                                        mlir::Builder* builder) {
-  if (!config) return {};
+  if (!config) {
+    return {};
+  }
 
   // TODO(b/129709049) The HLO text format elides this in the all DEFAULT
   // case and the parser sticks it in. Maybe we should too.
@@ -420,27 +431,16 @@ mlir::ArrayAttr ConvertOutputOperandAliasing(
   return builder->getArrayAttr(attrs);
 }
 
-absl::StatusOr<mlir::mhlo::SparsityDescriptorAttr> ConvertSparsityDescriptor(
-    xla::SparsityDescriptor sparsity_descriptor, mlir::Builder* builder) {
-  switch (sparsity_descriptor.type()) {
-    case SPARSITY_STRUCTURED_N_M:
-      return mlir::mhlo::SparsityDescriptorAttr::get(
-          builder->getContext(), sparsity_descriptor.dimension(),
-          sparsity_descriptor.n(), sparsity_descriptor.m());
-    default:
-      return InvalidArgument("Unknown sparsity descriptor type");
-  }
-}
-
 absl::StatusOr<mlir::mhlo::CustomCallApiVersion> ConvertCustomCallApiVersion(
     xla::CustomCallApiVersion api_version) {
   TF_ASSIGN_OR_RETURN(auto stablehlo_api_version,
                       stablehlo::ConvertCustomCallApiVersion(api_version));
   auto mhlo_api_version = mlir::mhlo::symbolizeCustomCallApiVersion(
       mlir::stablehlo::stringifyCustomCallApiVersion(stablehlo_api_version));
-  if (!mhlo_api_version.has_value())
+  if (!mhlo_api_version.has_value()) {
     return InvalidArgument("Unknown CustomCallApiVersion enum value #%d",
                            api_version);
+  }
   return mhlo_api_version.value();
 }
 
@@ -455,7 +455,9 @@ mlir::NamedAttribute ConvertChannelHandle(const ChannelHandle& channel,
 mlir::NamedAttribute ConvertChannelHandle(std::optional<int64_t> channel_id,
                                           mlir::Builder* builder) {
   ChannelHandle channel_handle;
-  if (channel_id) channel_handle.set_handle(*channel_id);
+  if (channel_id) {
+    channel_handle.set_handle(*channel_id);
+  }
   return ConvertChannelHandle(channel_handle, builder);
 }
 
@@ -474,8 +476,9 @@ mlir::NamedAttribute ConvertReplicaGroups(
   std::vector<int64_t> attr(num_groups * group_size, -1);
   for (int i = 0; i < num_groups; ++i) {
     int index = i * group_size;
-    for (const int64_t& id : replica_groups[i].replica_ids())
+    for (const int64_t& id : replica_groups[i].replica_ids()) {
       attr[index++] = id;
+    }
   }
   auto type = mlir::RankedTensorType::get({num_groups, group_size},
                                           builder->getIntegerType(64));
@@ -505,9 +508,10 @@ absl::StatusOr<mlir::ArrayAttr> ExtractLayoutsFromShapes(
     const absl::Span<const Shape> shapes_with_layouts, mlir::Builder* builder) {
   std::vector<mlir::Attribute> layouts;
   for (auto& shape_and_layout : shapes_with_layouts) {
-    if (shape_and_layout.IsTuple())
+    if (shape_and_layout.IsTuple()) {
       return Unimplemented(
           "Layout support for nested tuples is not implemented.");
+    }
     // XLA can have invalid layout for certain values (such as token types).
     // These are imported as empty layout in MHLO.
     if (!shape_and_layout.IsArray()) {
@@ -519,20 +523,23 @@ absl::StatusOr<mlir::ArrayAttr> ExtractLayoutsFromShapes(
     // currently. The layout has to be dense, and only specify the order of
     // dimensions. Sparse, tiled layout or non-default memory space fields
     // cannot be expressed in MHLO layout yet.
-    if (!xla::LayoutUtil::IsDenseArray(shape_and_layout)) {
+    if (!shape_and_layout.IsArray()) {
       return Unimplemented("Only dense arrays are supported.");
     }
 
     const xla::Layout& xla_layout = shape_and_layout.layout();
-    if (!xla_layout.tiles().empty())
+    if (!xla_layout.tiles().empty()) {
       return Unimplemented("Tiled layout is not supported yet");
-    if (xla_layout.memory_space() != xla::Layout::kDefaultMemorySpace)
+    }
+    if (xla_layout.memory_space() != xla::Layout::kDefaultMemorySpace) {
       return Unimplemented(
           "Layout support for non-default memory space is not yet implemented");
+    }
 
     llvm::SmallVector<int64_t> layout;
-    for (int64_t dim_index : xla_layout.minor_to_major())
+    for (int64_t dim_index : xla_layout.minor_to_major()) {
       layout.push_back(dim_index);
+    }
     layouts.push_back(builder->getIndexTensorAttr(layout));
   }
   return builder->getArrayAttr(layouts);
@@ -540,7 +547,9 @@ absl::StatusOr<mlir::ArrayAttr> ExtractLayoutsFromShapes(
 
 absl::StatusOr<mlir::ArrayAttr> ExtractLayoutsFromTuple(
     const Shape shape, mlir::Builder* builder) {
-  if (!shape.IsTuple()) return InvalidArgument("Expected shape to be Tuple");
+  if (!shape.IsTuple()) {
+    return InvalidArgument("Expected shape to be Tuple");
+  }
   return ExtractLayoutsFromShapes(shape.tuple_shapes(), builder);
 }
 

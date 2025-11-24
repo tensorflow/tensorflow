@@ -18,7 +18,6 @@ limitations under the License.
 #include <cstdint>
 
 #include <gtest/gtest.h>
-#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -30,7 +29,9 @@ limitations under the License.
 #include "xla/service/collective_pipeliner.h"
 #include "xla/service/collective_pipeliner_utils.h"
 #include "xla/service/gpu/backend_configs.pb.h"
+#include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/hlo_module_config.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
@@ -39,64 +40,6 @@ namespace xla::gpu {
 namespace {
 
 using CollectiveCombinerUtilsTest = HloHardwareIndependentTestBase;
-
-TEST_F(CollectiveCombinerUtilsTest,
-       ComputeSuggestedCombinerThresholdReturnsMemoryThresholdForDeviceInfo) {
-  absl::string_view kHloText = R"(
-  HloModule m
-
-  ENTRY ar {
-    p0 = f32[32,32] parameter(0)
-    p1 = f32[32,32] parameter(1)
-
-    ROOT _ = f32[32,32]{1,0} custom-call(p0, p1),
-      custom_call_target="__cublas$gemm"
-  })";
-
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
-  int pointer_size = 4;
-  stream_executor::DeviceDescription device_info;
-  device_info.set_device_memory_size(20000);
-
-  int64_t suggested_threshold = ComputeSuggestedCombinerThreshold(
-      *module, device_info, HloOpcode::kAllReduce, pointer_size);
-
-  // device size = 20000 bytes
-  // slop factor = 0.95
-  // peak memory = parameters + output = (2*32*32 + 32*32) * 4 bytes = 12288
-  // suggested thresholds = device size * slop factor - peak memory
-  EXPECT_EQ(suggested_threshold, 6712);
-}
-
-TEST_F(CollectiveCombinerUtilsTest,
-       ComputeSuggestedCombinerThresholdReturnsMemoryThresholdForModuleConfig) {
-  absl::string_view kHloText = R"(
-  HloModule m
-
-  ENTRY ar {
-    p0 = f32[32,32] parameter(0)
-    p1 = f32[32,32] parameter(1)
-
-    ROOT _ = f32[32,32]{1,0} custom-call(p0, p1),
-      custom_call_target="__cublas$gemm"
-  })";
-
-  HloModuleConfig config = GetModuleConfigForTest();
-  config.set_device_memory_size(20000);
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kHloText, config));
-  int pointer_size = 4;
-  stream_executor::DeviceDescription device_info;
-
-  int64_t suggested_threshold = ComputeSuggestedCombinerThreshold(
-      *module, device_info, HloOpcode::kAllReduce, pointer_size);
-
-  // device size = 20000 bytes
-  // slop factor = 0.95
-  // peak memory = parameters + output = (2*32*32 + 32*32) * 4 bytes = 12288
-  // suggested thresholds = device size * slop factor - peak memory
-  EXPECT_EQ(suggested_threshold, 6712);
-}
 
 TEST_F(CollectiveCombinerUtilsTest,
        AppendPipelinedInstructionAppendsPipelinedInstructionInfoForward) {
@@ -511,6 +454,134 @@ TEST_F(CollectiveCombinerUtilsTest,
 
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
   EXPECT_FALSE(ContainsPipelinedInstruction(*module));
+}
+
+bool EnableHeuristicCollectiveCombining(
+    se::CudaComputeCapability compute_capability, int num_partitions,
+    int replica_count, int64_t nvlink_slice_size) {
+  HloModuleConfig config;
+  config.mutable_debug_options()
+      .set_xla_gpu_experimental_enable_heuristic_collective_combining(true);
+  config.set_num_partitions(num_partitions);
+  config.set_replica_count(replica_count);
+  se::DeviceDescription device_description =
+      TestGpuDeviceInfo::RTXA6000DeviceInfo(compute_capability);
+  return xla::gpu::EnableHeuristicCollectiveCombining(
+      config, device_description, nvlink_slice_size);
+}
+
+TEST(EnableHeuristicCollectiveCombiningTest, SingleHostSingleDevice) {
+  // B200
+  EXPECT_FALSE(
+      EnableHeuristicCollectiveCombining(se::CudaComputeCapability::Blackwell(),
+                                         /*num_partitions=*/1,
+                                         /*replica_count=*/1,
+                                         /*nvlink_slice_size=*/8));
+  // H100
+  EXPECT_FALSE(
+      EnableHeuristicCollectiveCombining(se::CudaComputeCapability::Hopper(),
+                                         /*num_partitions=*/1,
+                                         /*replica_count=*/1,
+                                         /*nvlink_slice_size=*/8));
+  // A100
+  EXPECT_FALSE(
+      EnableHeuristicCollectiveCombining(se::CudaComputeCapability::Ampere(),
+                                         /*num_partitions=*/1,
+                                         /*replica_count=*/1,
+                                         /*nvlink_slice_size=*/16));
+}
+
+TEST(EnableHeuristicCollectiveCombiningTest, SingleHostMultiDevices) {
+  // B200
+  EXPECT_FALSE(
+      EnableHeuristicCollectiveCombining(se::CudaComputeCapability::Blackwell(),
+                                         /*num_partitions=*/8,
+                                         /*replica_count=*/1,
+                                         /*nvlink_slice_size=*/8));
+  EXPECT_FALSE(
+      EnableHeuristicCollectiveCombining(se::CudaComputeCapability::Blackwell(),
+                                         /*num_partitions=*/1,
+                                         /*replica_count=*/8,
+                                         /*nvlink_slice_size=*/8));
+  // H100
+  EXPECT_FALSE(
+      EnableHeuristicCollectiveCombining(se::CudaComputeCapability::Hopper(),
+                                         /*num_partitions=*/8,
+                                         /*replica_count=*/1,
+                                         /*nvlink_slice_size=*/8));
+  EXPECT_FALSE(
+      EnableHeuristicCollectiveCombining(se::CudaComputeCapability::Hopper(),
+                                         /*num_partitions=*/1,
+                                         /*replica_count=*/8,
+                                         /*nvlink_slice_size=*/8));
+  // A100
+  EXPECT_FALSE(
+      EnableHeuristicCollectiveCombining(se::CudaComputeCapability::Ampere(),
+                                         /*num_partitions=*/1,
+                                         /*replica_count=*/16,
+                                         /*nvlink_slice_size=*/16));
+  EXPECT_FALSE(
+      EnableHeuristicCollectiveCombining(se::CudaComputeCapability::Ampere(),
+                                         /*num_partitions=*/16,
+                                         /*replica_count=*/1,
+                                         /*nvlink_slice_size=*/16));
+}
+
+TEST(EnableHeuristicCollectiveCombiningTest, MultiHosts) {
+  // B200
+  EXPECT_TRUE(
+      EnableHeuristicCollectiveCombining(se::CudaComputeCapability::Blackwell(),
+                                         /*num_partitions=*/16,
+                                         /*replica_count=*/1,
+                                         /*nvlink_slice_size=*/8));
+  EXPECT_TRUE(
+      EnableHeuristicCollectiveCombining(se::CudaComputeCapability::Blackwell(),
+                                         /*num_partitions=*/1,
+                                         /*replica_count=*/16,
+                                         /*nvlink_slice_size=*/8));
+  // H100
+  EXPECT_TRUE(
+      EnableHeuristicCollectiveCombining(se::CudaComputeCapability::Hopper(),
+                                         /*num_partitions=*/16,
+                                         /*replica_count=*/1,
+                                         /*nvlink_slice_size=*/8));
+  EXPECT_TRUE(
+      EnableHeuristicCollectiveCombining(se::CudaComputeCapability::Hopper(),
+                                         /*num_partitions=*/1,
+                                         /*replica_count=*/16,
+                                         /*nvlink_slice_size=*/8));
+  // A100
+  EXPECT_TRUE(
+      EnableHeuristicCollectiveCombining(se::CudaComputeCapability::Ampere(),
+                                         /*num_partitions=*/1,
+                                         /*replica_count=*/32,
+                                         /*nvlink_slice_size=*/16));
+  EXPECT_TRUE(
+      EnableHeuristicCollectiveCombining(se::CudaComputeCapability::Ampere(),
+                                         /*num_partitions=*/32,
+                                         /*replica_count=*/1,
+                                         /*nvlink_slice_size=*/16));
+}
+
+TEST(EnableHeuristicCollectiveCombiningTest, UnsupportedGPU) {
+  EXPECT_FALSE(
+      EnableHeuristicCollectiveCombining(se::CudaComputeCapability::Volta(),
+                                         /*num_partitions=*/1,
+                                         /*replica_count=*/1,
+                                         /*nvlink_slice_size=*/8));
+}
+
+TEST(EnableHeuristicCollectiveCombiningTest, DisabledByFlag) {
+  HloModuleConfig config;
+  config.mutable_debug_options()
+      .set_xla_gpu_experimental_enable_heuristic_collective_combining(false);
+  config.set_num_partitions(16);
+  config.set_replica_count(1);
+  se::DeviceDescription device_description =
+      TestGpuDeviceInfo::RTXA6000DeviceInfo(
+          se::CudaComputeCapability::Blackwell());
+  EXPECT_FALSE(xla::gpu::EnableHeuristicCollectiveCombining(
+      config, device_description, /*nvlink_slice_size=*/8));
 }
 
 }  // namespace

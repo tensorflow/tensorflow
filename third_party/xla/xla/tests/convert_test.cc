@@ -60,19 +60,23 @@ template <typename T>
 class ConvertTestT : public ConvertTest {
  public:
   using ConvertTest::ConvertTest;
+
+ protected:
+  void SetUp() override {
+    if ((std::is_same_v<T, tsl::float4_e2m1fn> ||
+         std::is_same_v<T, tsl::float8_e8m0fnu>) &&
+        test::DeviceTypeIs(test::kTpu)) {
+      // TODO(b/385004399): Run tests on these types on TPU.
+      GTEST_SKIP();
+    }
+  }
 };
 using FloatingPointTypeList =
     ::testing::Types<tsl::float8_e3m4, tsl::float8_e4m3, tsl::float8_e4m3fn,
                      tsl::float8_e4m3fnuz, tsl::float8_e4m3b11fnuz,
                      tsl::float8_e5m2, tsl::float8_e5m2fnuz, Eigen::half,
-                     bfloat16, float,
-                     double
-#ifndef XLA_TEST_BACKEND_TPU
-                     // TODO(b/385004399): Run tests on these types on TPU.
-                     ,
-                     tsl::float4_e2m1fn, tsl::float8_e8m0fnu
-#endif
-                     >;
+                     bfloat16, float, double, tsl::float4_e2m1fn,
+                     tsl::float8_e8m0fnu>;
 TYPED_TEST_SUITE(ConvertTestT, FloatingPointTypeList);
 
 template <typename T>
@@ -556,6 +560,10 @@ TEST_F(ConvertTest, ConvertR1S4ToR1S8) {
 }
 
 TEST_F(ConvertTest, ConvertR1S4ParameterToR1S8) {
+  if (test::DeviceTypeIs(test::kGpu) && !test::UsingStreamExecutorGpuClient()) {
+    // TODO: b/443805514 - Enable this test for the TFRT GPU client.
+    GTEST_SKIP() << "The TFRT GPU client does not support packed formats.";
+  }
   XlaBuilder builder(TestName());
   Literal arg_literal =
       LiteralUtil::CreateR1<s4>({s4(0), s4(1), s4(2), s4(-8)});
@@ -577,6 +585,10 @@ TEST_F(ConvertTest, ConvertR1U4ToR1U8) {
 }
 
 TEST_F(ConvertTest, ConvertR1U4ParameterToR1U8) {
+  if (test::DeviceTypeIs(test::kGpu) && !test::UsingStreamExecutorGpuClient()) {
+    // TODO: b/443805514 - Enable this test for the TFRT GPU client.
+    GTEST_SKIP() << "The TFRT GPU client does not support packed formats.";
+  }
   XlaBuilder builder(TestName());
   Literal arg_literal =
       LiteralUtil::CreateR1<u4>({u4(0), u4(1), u4(2), u4(15)});

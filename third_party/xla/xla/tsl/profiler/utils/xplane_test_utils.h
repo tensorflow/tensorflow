@@ -28,7 +28,7 @@ limitations under the License.
 namespace tsl {
 namespace profiler {
 
-using XStatValue = std::variant<int64_t, uint64, absl::string_view>;
+using XStatValue = std::variant<int64_t, uint64_t, absl::string_view>;
 
 XPlane* GetOrCreateHostXPlane(XSpace* space);
 
@@ -47,6 +47,10 @@ void CreateXEvent(
 void CreateXEvent(
     XPlaneBuilder* plane_builder, XLineBuilder* line_builder,
     HostEventType event_type, int64_t offset_ps, int64_t duration_ps,
+    std::initializer_list<std::pair<StatType, XStatValue>> stats = {});
+
+void CreateXEventMetadata(
+    XPlaneBuilder* plane_builder, absl::string_view event_name,
     std::initializer_list<std::pair<StatType, XStatValue>> stats = {});
 
 void CreateTfFunctionCallEvent(XPlaneBuilder* plane_builder,

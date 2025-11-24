@@ -13,19 +13,21 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <gtest/gtest.h>
-
-#if GOOGLE_CUDA
+#include "xla/backends/profiler/gpu/cupti_collector.h"
 
 #include <cstdint>
+#include <limits>
+#include <memory>
 #include <string>
 
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
-#include "xla/backends/profiler/gpu/cupti_collector.h"
+#include "absl/strings/string_view.h"
+#include "xla/backends/profiler/gpu/cupti_buffer_events.h"
 #include "xla/tsl/profiler/utils/xplane_builder.h"
 #include "xla/tsl/profiler/utils/xplane_schema.h"
-#include "tsl/platform/test.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
 
 namespace xla {
@@ -36,17 +38,19 @@ using ::testing::Pair;
 using ::testing::UnorderedElementsAre;
 
 TEST(CuptiCollectorTest, TestPmSamplingDataToCounterLine) {
-  PmSamples pm_samples({"metric1", "metric2"}, {{.range_index = 0,
-                                                 .start_timestamp_ns = 100,
-                                                 .end_timestamp_ns = 200,
-                                                 .metric_values = {1.0, 2.0}},
-                                                {.range_index = 1,
-                                                 .start_timestamp_ns = 200,
-                                                 .end_timestamp_ns = 300,
-                                                 .metric_values = {3.0, 4.0}}});
+  PmSamples pm_samples({"metric1", "metric2"},
+                       {{/*range_index=*/0,
+                         /*start_timestamp_ns=*/100,
+                         /*end_timestamp_ns=*/200,
+                         /*metric_values=*/{1.0, 2.0}},
+                        {/*range_index=*/1,
+                         /*start_timestamp_ns=*/200,
+                         /*end_timestamp_ns=*/300,
+                         /*metric_values=*/{3.0, 4.0}}},
+                       0);
   tensorflow::profiler::XPlane plane;
   tsl::profiler::XPlaneBuilder plane_builder(&plane);
-  pm_samples.PopulateCounterLine(&plane_builder);
+  pm_samples.PopulateCounterLine(&plane_builder, 0);
 
   EXPECT_EQ(plane.lines_size(), 1);
   EXPECT_EQ(plane.lines(0).events_size(), 4);
@@ -75,51 +79,51 @@ TEST(CuptiCollectorTest, ExportCallbackActivityAndNvtxEvents) {
       CreateCuptiCollector(options, 0, 0);
 
   collector->AddEvent(CuptiTracerEvent{
-      .type = CuptiTracerEventType::CudaGraph,
-      .source = CuptiTracerEventSource::Activity,
-      .name = "CudaGraphExec:2",
-      .annotation = "annotation",
-      .nvtx_range = "",
-      .start_time_ns = 100,
-      .end_time_ns = 200,
-      .device_id = 0,
-      .correlation_id = 8,
-      .thread_id = 100,
-      .context_id = 1,
-      .stream_id = 2,
-      .graph_id = 5,
+      /*type=*/CuptiTracerEventType::CudaGraph,
+      /*source=*/CuptiTracerEventSource::Activity,
+      /*name=*/"CudaGraphExec:2",
+      /*annotation=*/"annotation",
+      /*nvtx_range=*/"",
+      /*start_time_ns=*/100,
+      /*end_time_ns=*/200,
+      /*device_id=*/0,
+      /*correlation_id=*/8,
+      /*thread_id=*/100,
+      /*context_id=*/1,
+      /*stream_id=*/2,
+      /*graph_id=*/5,
   });
 
   collector->AddEvent(CuptiTracerEvent{
-      .type = CuptiTracerEventType::Generic,
-      .source = CuptiTracerEventSource::DriverCallback,
-      .name = "cudaGraphLaunch",
-      .annotation = "annotation",
-      .nvtx_range = "",
-      .start_time_ns = 90,
-      .end_time_ns = 120,
-      .device_id = 0,
-      .correlation_id = 8,
-      .thread_id = 100,
-      .context_id = 1,
-      .stream_id = 2,
-      .graph_id = 5,
+      /*type=*/CuptiTracerEventType::Generic,
+      /*source=*/CuptiTracerEventSource::DriverCallback,
+      /*name=*/"cudaGraphLaunch",
+      /*annotation=*/"annotation",
+      /*nvtx_range=*/"",
+      /*start_time_ns=*/90,
+      /*end_time_ns=*/120,
+      /*device_id=*/0,
+      /*correlation_id=*/8,
+      /*thread_id=*/100,
+      /*context_id=*/1,
+      /*stream_id=*/2,
+      /*graph_id=*/5,
   });
 
   collector->AddEvent(CuptiTracerEvent{
-      .type = CuptiTracerEventType::ThreadMarkerRange,
-      .source = CuptiTracerEventSource::Activity,
-      .name = "NVTX::MarkCudaGraphLaunch",
-      .annotation = "annotation",
-      .nvtx_range = "",
-      .start_time_ns = 85,
-      .end_time_ns = 125,
-      .device_id = 0,
-      .correlation_id = 0,
-      .thread_id = 100,
-      .context_id = 1,
-      .stream_id = 2,
-      .graph_id = 5,
+      /*type=*/CuptiTracerEventType::ThreadMarkerRange,
+      /*source=*/CuptiTracerEventSource::Activity,
+      /*name=*/"NVTX::MarkCudaGraphLaunch",
+      /*annotation=*/"annotation",
+      /*nvtx_range=*/"",
+      /*start_time_ns=*/85,
+      /*end_time_ns=*/125,
+      /*device_id=*/0,
+      /*correlation_id=*/0,
+      /*thread_id=*/100,
+      /*context_id=*/1,
+      /*stream_id=*/2,
+      /*graph_id=*/5,
   });
 
   ::tensorflow::profiler::XSpace space;
@@ -148,8 +152,32 @@ TEST(CuptiCollectorTest, ExportCallbackActivityAndNvtxEvents) {
   }
 }
 
+TEST(PmSamplesTest, PopulateCounterLineSkipsNan) {
+  tensorflow::profiler::XSpace space;
+  tsl::profiler::XPlaneBuilder plane_builder(space.add_planes());
+  PmSamples pm_samples({"metric1", "metric2"},
+                       {{/*range_index=*/0,
+                         /*start_timestamp_ns=*/100,
+                         /*end_timestamp_ns=*/200,
+                         {123.0, std::numeric_limits<double>::quiet_NaN()}}},
+                       /*device_id=*/0);
+
+  uint64_t start_gpu_time_ns = 50;
+  pm_samples.PopulateCounterLine(&plane_builder, start_gpu_time_ns);
+
+  const auto& plane = space.planes(0);
+  ASSERT_EQ(plane.lines_size(), 1);
+  const auto& line = plane.lines(0);
+
+  ASSERT_EQ(line.events_size(), 1);
+  const auto& event = line.events(0);
+  // metric2 is skipped because it's NaN.
+  ASSERT_EQ(event.stats_size(), 1);
+  const auto& stat = event.stats(0);
+  EXPECT_EQ(plane.stat_metadata().at(stat.metadata_id()).name(), "metric1");
+  EXPECT_EQ(stat.double_value(), 123.0);
+}
+
 }  // namespace
 }  // namespace profiler
 }  // namespace xla
-
-#endif  // GOOGLE_CUDA

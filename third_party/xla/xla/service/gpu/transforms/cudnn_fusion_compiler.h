@@ -40,13 +40,13 @@ class CuDnnFusionCompiler : public HloModulePass {
 
   absl::string_view name() const override { return "cudnn-fusion-compiler"; }
 
-  using HloPassInterface::Run;
-  absl::StatusOr<bool> Run(
-      HloModule* module,
-      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
-
   static int GetAvailablePlanCount(se::StreamExecutor& stream_exec,
                                    const HloFusionInstruction& hlo);
+
+ protected:
+  absl::StatusOr<bool> RunImpl(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
  private:
   se::dnn::DnnSupport& dnn_support_;

@@ -321,6 +321,18 @@ tf_proto {
         label: LABEL_OPTIONAL
         type: TYPE_BOOL
       }
+      field {
+        name: "tf2xla_dump_dir"
+        number: 35
+        label: LABEL_OPTIONAL
+        type: TYPE_STRING
+      }
+      field {
+        name: "online_cost_analysis"
+        number: 36
+        label: LABEL_OPTIONAL
+        type: TYPE_BOOL
+      }
       enum_type {
         name: "MlirBridgeRollout"
         value {

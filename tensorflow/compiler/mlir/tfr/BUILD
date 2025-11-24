@@ -39,12 +39,12 @@ td_library(
     ],
     compatible_with = get_compatible_with_portable(),
     deps = [
-        "//tensorflow/compiler/mlir/lite/quantization/ir:QuantizationOpsTdFiles",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops_td_files",
         "@llvm-project//mlir:CallInterfacesTdFiles",
         "@llvm-project//mlir:ControlFlowInterfacesTdFiles",
         "@llvm-project//mlir:FunctionInterfacesTdFiles",
         "@llvm-project//mlir:OpBaseTdFiles",
+        "@llvm-project//mlir:QuantizationOpsTdFiles",
         "@llvm-project//mlir:ShapeOpsTdFiles",
         "@llvm-project//mlir:SideEffectInterfacesTdFiles",
     ],
@@ -179,6 +179,7 @@ tf_cc_binary(
         "@llvm-project//mlir:FuncExtensions",
         "@llvm-project//mlir:MlirOptLib",
         "@llvm-project//mlir:QuantOps",
+        "@llvm-project//mlir:RegisterAllPasses",
         "@llvm-project//mlir:SCFDialect",
         "@llvm-project//mlir:ShapeDialect",
     ],
@@ -307,7 +308,7 @@ py_strict_library(
         "//tensorflow/python/framework:op_def_registry",
         "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/util:tf_inspect",
-        "@pypi_gast//:pkg",
+        "@pypi//gast",
     ],
 )
 
@@ -338,7 +339,7 @@ py_strict_library(
         "//tensorflow/python/autograph/pyct:transpiler",
         "//tensorflow/python/framework:op_def_registry",
         "//tensorflow/python/util:tf_inspect",
-        "@pypi_gast//:pkg",
+        "@pypi//gast",
     ],
 )
 

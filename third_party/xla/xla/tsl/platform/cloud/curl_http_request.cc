@@ -173,7 +173,7 @@ CurlHttpRequest::~CurlHttpRequest() {
   }
 }
 
-string CurlHttpRequest::EscapeString(const string& str) {
+string CurlHttpRequest::EscapeString(const std::string& str) {
   char* out_char_str = libcurl_->curl_easy_escape(curl_, str.c_str(), 0);
   string out_str(out_char_str);
   libcurl_->curl_free(out_char_str);
@@ -190,13 +190,13 @@ void CurlHttpRequest::SetUri(const string& uri) {
 void CurlHttpRequest::SetRange(uint64 start, uint64 end) {
   CheckNotSent();
   CHECK_CURL_OK(libcurl_->curl_easy_setopt(
-      curl_, CURLOPT_RANGE, strings::StrCat(start, "-", end).c_str()));
+      curl_, CURLOPT_RANGE, absl::StrCat(start, "-", end).c_str()));
 }
 
 void CurlHttpRequest::AddHeader(const string& name, const string& value) {
   CheckNotSent();
   curl_headers_ = libcurl_->curl_slist_append(
-      curl_headers_, strings::StrCat(name, ": ", value).c_str());
+      curl_headers_, absl::StrCat(name, ": ", value).c_str());
 }
 
 void CurlHttpRequest::AddResolveOverride(const string& hostname, int64_t port,
@@ -211,7 +211,7 @@ void CurlHttpRequest::AddResolveOverride(const string& hostname, int64_t port,
 void CurlHttpRequest::AddAuthBearerHeader(const string& auth_token) {
   CheckNotSent();
   if (!auth_token.empty()) {
-    AddHeader("Authorization", strings::StrCat("Bearer ", auth_token));
+    AddHeader("Authorization", absl::StrCat("Bearer ", auth_token));
   }
 }
 
@@ -251,7 +251,7 @@ absl::Status CurlHttpRequest::SetPutFromFile(const string& body_filepath,
   fseek(put_body_, offset, SEEK_SET);
 
   curl_headers_ = libcurl_->curl_slist_append(
-      curl_headers_, strings::StrCat("Content-Length: ", size).c_str());
+      curl_headers_, absl::StrCat("Content-Length: ", size).c_str());
   CHECK_CURL_OK(libcurl_->curl_easy_setopt(curl_, CURLOPT_PUT, 1));
   CHECK_CURL_OK(libcurl_->curl_easy_setopt(curl_, CURLOPT_READDATA,
                                            reinterpret_cast<void*>(put_body_)));
@@ -280,7 +280,7 @@ void CurlHttpRequest::SetPostFromBuffer(const char* buffer, size_t size) {
   is_method_set_ = true;
   method_ = RequestMethod::kPost;
   curl_headers_ = libcurl_->curl_slist_append(
-      curl_headers_, strings::StrCat("Content-Length: ", size).c_str());
+      curl_headers_, absl::StrCat("Content-Length: ", size).c_str());
   CHECK_CURL_OK(libcurl_->curl_easy_setopt(curl_, CURLOPT_POST, 1));
   CHECK_CURL_OK(libcurl_->curl_easy_setopt(curl_, CURLOPT_READDATA,
                                            reinterpret_cast<void*>(this)));
@@ -455,11 +455,11 @@ absl::Status CurlHttpRequest::Send() {
                                             &response_code_));
 
   auto get_error_message = [this]() -> string {
-    string error_message = strings::StrCat(
+    string error_message = absl::StrCat(
         "Error executing an HTTP request: HTTP response code ", response_code_);
     absl::string_view body = GetResponse();
     if (!body.empty()) {
-      return strings::StrCat(
+      return absl::StrCat(
           error_message, " with body '",
           body.substr(0, std::min(body.size(), response_to_error_limit_)), "'");
     }
@@ -652,19 +652,19 @@ absl::Status CurlHttpRequest::CURLcodeToStatus(CURLcode code,
       return absl::OkStatus();
     }
     return errors::FailedPrecondition(
-        strings::StrCat(error_message, overflow_message));
+        absl::StrCat(error_message, overflow_message));
   }
   // Domain resolution errors and certificate problems aren't going to improve
   // on retry, so we return a FailedPrecondition (as the caller must take action
   // before this can succeed).
   if (code == CURLE_COULDNT_RESOLVE_HOST || code == CURLE_SSL_CACERT_BADFILE) {
     return errors::FailedPrecondition(
-        strings::StrCat(error_message, error_buffer));
+        absl::StrCat(error_message, error_buffer));
   }
   // Return Unavailable to retry by default. There may be other permanent
   // failures that should be distinguished.
   return errors::Unavailable(
-      strings::StrCat(error_message, *error_buffer ? error_buffer : "(none)"));
+      absl::StrCat(error_message, *error_buffer ? error_buffer : "(none)"));
 }
 
 }  // namespace tsl

@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
+#include "google/protobuf/text_format.h"
 #include "re2/re2.h"
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -77,7 +78,7 @@ std::string StripLogHeaders(absl::string_view hlo_string) {
 }
 
 absl::StatusOr<std::unique_ptr<HloModule>> LoadModuleFromData(
-    const std::string& data, absl::string_view format,
+    absl::string_view data, absl::string_view format,
     const hlo_module_loader_details::Config& ovr_config,
     const std::function<void(HloModuleConfig*)>& config_modifier_hook,
     BufferAssignmentProto* buffer_assignment_proto, bool fill_missing_layouts) {
@@ -153,7 +154,7 @@ absl::StatusOr<std::unique_ptr<HloModule>> LoadModuleFromFile(
 }
 
 absl::StatusOr<std::unique_ptr<RunHloModuleIterationLiterals>>
-LoadInputFromData(const std::string& data, absl::string_view format) {
+LoadInputFromData(absl::string_view data, absl::string_view format) {
   HloSnapshot proto;
   if (format == "pb") {
     if (!proto.ParseFromString(data) &&

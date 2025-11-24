@@ -49,12 +49,19 @@ struct float_bit_mask<tsl::bfloat16> {
   static constexpr uint16_t mantissa = 0x007F;
   using bit_type = uint16_t;
 };
+
+template <>
+struct radix_key_codec_base<Eigen::half>
+    : radix_key_codec_floating<Eigen::half, uint16_t> {};
+template <>
+struct radix_key_codec_base<tsl::bfloat16>
+    : radix_key_codec_floating<tsl::bfloat16, uint16_t> {};
 }  // namespace detail
 #else   // TF_ROCM_VERSION >= 70000
 namespace traits {
 
 template <>
-struct rocprim::traits::define<Eigen::half> {
+struct define<Eigen::half> {
   using float_bit_mask =
       rocprim::traits::float_bit_mask::values<uint16_t, 0x8000, 0x7C00, 0x03FF>;
   using is_arithmetic = rocprim::traits::is_arithmetic::values<true>;
@@ -63,7 +70,7 @@ struct rocprim::traits::define<Eigen::half> {
 };
 
 template <>
-struct rocprim::traits::define<tsl::bfloat16> {
+struct define<tsl::bfloat16> {
   using float_bit_mask =
       rocprim::traits::float_bit_mask::values<uint16_t, 0x8000, 0x7F80, 0x007F>;
   using is_arithmetic = rocprim::traits::is_arithmetic::values<true>;
@@ -74,14 +81,6 @@ struct rocprim::traits::define<tsl::bfloat16> {
 }  // namespace traits
 #endif  // TF_ROCM_VERSION >= 50200 && TF_ROCM_VERSION < 70000
 
-namespace detail {
-template <>
-struct radix_key_codec_base<Eigen::half>
-    : radix_key_codec_floating<Eigen::half, uint16_t> {};
-template <>
-struct radix_key_codec_base<tsl::bfloat16>
-    : radix_key_codec_floating<tsl::bfloat16, uint16_t> {};
-};  // namespace detail
 };  // namespace rocprim
 
 namespace stream_executor {
@@ -285,7 +284,7 @@ static absl::Status CubSortPairsGetScratchSize(size_t* temp_bytes,
 
 // Floating point types.
 #ifdef CUB_TYPE_BF16
-XLA_CUB_DEFINE_SORT_KEYS(bf16, __nv_bfloat16)
+XLA_CUB_DEFINE_SORT_KEYS(bf16, hip_bfloat16)
 #endif
 #ifdef CUB_TYPE_F16
 XLA_CUB_DEFINE_SORT_KEYS(f16, __half)

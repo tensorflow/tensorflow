@@ -1,3 +1,4 @@
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load(
     "//tensorflow:tensorflow.bzl",
     "if_android",
@@ -269,6 +270,7 @@ cc_library(
     name = "subgraph_resource",
     hdrs = ["subgraph_resource.h"],
     compatible_with = get_compatible_with_portable(),
+    copts = if_android(["-Wno-private-header"]),
     features = tf_features_nolayering_check_if_ios(),
     deps = [
         "//tensorflow/core/platform:mutex",
@@ -297,6 +299,7 @@ tf_cc_test(
         ":test_util",
         "//tensorflow/core/platform:status",
         "//tensorflow/core/tfrt/fallback:op_kernel_runner",
+        "//tensorflow/lite/core/c:c_api_types",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/delegates/utils:simple_delegate",
         "//tensorflow/lite/kernels:kernel_util",
@@ -379,6 +382,7 @@ tf_cc_test(
     srcs = [
         "allowlisted_flex_ops_test.cc",
     ],
+    extra_copts = if_android(["-Wno-private-header"]),
     features = tf_features_nolayering_check_if_ios(),
     deps = [
         ":delegate",

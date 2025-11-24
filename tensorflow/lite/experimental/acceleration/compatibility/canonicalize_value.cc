@@ -47,11 +47,11 @@ std::string CanonicalizeValueWithKey(absl::string_view key,
                                      absl::string_view value) {
   std::string output = CanonicalizeValue(value);
   std::string gpu_output;
+
+  static constexpr LazyRE2 kAngleOnVulkan = {
+      R"(^(angle_\(samsung_xclipse_[0-9]*\)_on_vulkan))"};
   return key == kGPUModel &&
-                 RE2::FullMatch(
-                     output,
-                     R"((angle_\(samsung_xclipse_[0-9]*\)_on_vulkan).*$)",
-                     &gpu_output)
+                 RE2::PartialMatch(output, *kAngleOnVulkan, &gpu_output)
              ? gpu_output
              : output;
 }

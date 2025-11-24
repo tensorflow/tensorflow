@@ -381,8 +381,8 @@ message HloInstructionProto {
   // Used to be wait_on_operation_queues.
   reserved 84;
 
-  // Sparsity descriptor for dot operation.
-  repeated xla.SparsityDescriptor dot_sparsity = 86;
+  // Used to be dot_sparsity.
+  reserved 86;
 
   // Represents the list of devices that participate in a collective operation.
   xla.CollectiveDeviceListProto collective_device_list = 87;
@@ -523,8 +523,12 @@ message StackFrameIndexProto {
     int32 function_name_id = 2;
     // Line number.
     int32 line = 3;
+    // End line number.
+    int32 end_line = 5;
     // Column number.
     int32 column = 4;
+    // End column number.
+    int32 end_column = 6;
   }
 
   // Serialization of frame.
@@ -593,13 +597,7 @@ message HloModuleProto {
     SHARDING = 6;
     SCHEDULE = 7;
   }
-  // The type of profile generation strategy used to generate the profile.
-  enum ProfileGenerationStrategy {
-    PROFILE_GENERATION_STRATEGY_UNKNOWN = 0;
-    PROFILE_GENERATION_STRATEGY_GA = 1;
-    PROFILE_GENERATION_STRATEGY_FANTA = 2;
-    PROFILE_GENERATION_STRATEGY_CFO = 3;
-  }
+
   // Information about the optimization profile that this module contains.
   message ProfileInfo {
     // The optimization profiles that this module contains.
@@ -614,7 +612,7 @@ message HloModuleProto {
     // in the profile table.
     string fingerprint = 5;
     // The type of profile generation strategy used to generate the profile.
-    ProfileGenerationStrategy profile_generation_strategy = 6;
+    xla.ProfileGenerationStrategy profile_generation_strategy = 6;
     // The original changelist the profile was generated at.
     int64 original_changelist = 7;
     // The changelist this profile was last updated at.
@@ -632,6 +630,8 @@ message HloModuleProto {
 
   // Frontend attributes to pass to the XLA backend.
   xla.FrontendAttributes frontend_attributes = 19;
+
+  xla.OriginalValueRecoveryTableProto original_value_recovery_table = 20;
 
   reserved 9;
   reserved "dynamic_parameter_binding";
@@ -667,6 +667,7 @@ message BufferAllocationProto {
     int64 logical_buffer_id = 1;
     int64 offset = 2;
     int64 size = 3;
+    xla.PrimitiveType element_type = 4;
   }
 
   int64 index = 1;
@@ -859,4 +860,13 @@ message HloPassMetadata {
 
   // Used to log any number of key, value pair stats per pass.
   repeated KeyValueMetric kv_metrics = 11;
+}
+
+message OriginalValueRecoveryTableProto {
+  message Entry {
+    OriginalArrayProto old_original_array = 1;
+    OriginalArrayProto new_original_array = 2;
+    HloModuleProto recovery_module = 3;
+  }
+  repeated Entry entries = 1;
 }

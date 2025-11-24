@@ -10,6 +10,7 @@ load(
     "@local_xla//xla/tsl/platform/default:cuda_build_defs.bzl",
     "if_cuda_is_configured",
 )
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load(
     "//tensorflow:tensorflow.bzl",
     "check_deps",
@@ -98,6 +99,8 @@ cc_library(
         "@local_xla//xla/mlir_hlo:transforms_gpu_passes",
         "@local_xla//xla/mlir_hlo:transforms_passes",
         "@stablehlo//:chlo_ops",
+        "@stablehlo//:linalg_passes",
+        "@stablehlo//:stablehlo_passes",
     ],
 )
 
@@ -164,6 +167,8 @@ tf_cc_binary(
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:AllPassesAndDialects",
         "@llvm-project//mlir:MlirOptLib",
+        "@llvm-project//mlir:RegisterAllDialects",
+        "@llvm-project//mlir:RegisterAllPasses",
         "@local_xla//xla/mlir_hlo:all_passes",
         "@local_xla//xla/mlir_hlo:hlo_dialect_registration",
         "@stablehlo//:register",

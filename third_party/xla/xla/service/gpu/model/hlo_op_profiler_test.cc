@@ -15,13 +15,15 @@ limitations under the License.
 
 #include "xla/service/gpu/model/hlo_op_profiler.h"
 
+#include <unordered_set>
+
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/tests/hlo_test_base.h"
+#include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/errors.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/status_matchers.h"
 
 namespace xla {
 namespace gpu {
@@ -57,7 +59,52 @@ TEST_F(HloOpProfilerTest, BasicMeasurementsAreCorrect) {
 TEST_F(HloOpProfilerTest, UnsupportedCombinationsDoNotCrash) {
   HloOpProfiler profiler(test_runner_as_hlo_runner());
   EXPECT_THAT(profiler.MeasureClockCyclesPerOp(HloOpcode::kCbrt, S8),
-              tsl::testing::StatusIs(tsl::error::INVALID_ARGUMENT));
+              absl_testing::StatusIs(tsl::error::INVALID_ARGUMENT));
+}
+
+TEST_F(HloOpProfilerTest, AllSupportedCombinationsAreMeasurable) {
+  std::unordered_set<HloOpcode> FloatTypes = {
+      // go/keep-sorted start
+      HloOpcode::kAtan2,
+      HloOpcode::kCbrt,
+      HloOpcode::kCeil,
+      HloOpcode::kCos,
+      HloOpcode::kErf,
+      HloOpcode::kExp,
+      HloOpcode::kExpm1,
+      HloOpcode::kFloor,
+      HloOpcode::kImag,
+      HloOpcode::kIsFinite,
+      HloOpcode::kLog,
+      HloOpcode::kLog1p,
+      HloOpcode::kLogistic,
+      HloOpcode::kReal,
+      HloOpcode::kRoundNearestAfz,
+      HloOpcode::kRoundNearestEven,
+      HloOpcode::kRsqrt,
+      HloOpcode::kSin,
+      HloOpcode::kSqrt,
+      HloOpcode::kTan,
+      HloOpcode::kTanh
+      // go/keep-sorted end
+  };
+  std::unordered_set<HloOpcode> MeasurebleInFloat = {
+      // go/keep-sorted start
+      HloOpcode::kAdd,
+      HloOpcode::kMultiply,
+      HloOpcode::kSubtract,
+      // go/keep-sorted end
+  };
+
+  FloatTypes.insert(MeasurebleInFloat.begin(), MeasurebleInFloat.end());
+  HloOpProfiler profiler(test_runner_as_hlo_runner());
+  for (const HloOpcode op : HloOpProfiler::AllSupportedOps()) {
+    if (!HloOpProfiler::TooFastToMeasure().count(op) &&
+        !HloOpProfiler::Unsupported().count(op)) {
+      auto Type = FloatTypes.count(op) ? F32 : S32;
+      TF_EXPECT_OK(profiler.MeasureClockCyclesPerOp(op, Type));
+    }
+  }
 }
 
 }  // namespace

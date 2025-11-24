@@ -19,7 +19,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "shardy/dialect/sdy/transforms/propagation/passes.h"
+#include "shardy/dialect/sdy/transforms/common/propagation_options.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
 
@@ -34,24 +34,27 @@ class ShardyXLA : public xla::HloModulePass {
  public:
   explicit ShardyXLA(bool runSdyShardingPropagation = true,
                      mlir::sdy::PropagationOptions defaultOptions =
-                         mlir::sdy::PropagationOptions{})
+                         mlir::sdy::PropagationOptions{},
+                     bool dedupFunctionsFully = false)
       : runSdyShardingPropagation(runSdyShardingPropagation),
-        defaultOptions(defaultOptions) {}
+        defaultOptions(defaultOptions),
+        dedupFunctionsFully(dedupFunctionsFully) {}
 
   absl::string_view name() const override { return "shardy-xla"; }
 
-  using HloPassInterface::Run;
-  absl::StatusOr<bool> Run(
+ protected:
+  absl::StatusOr<bool> RunImpl(
       xla::HloModule* hloModule,
       const absl::flat_hash_set<absl::string_view>& executionThreads) override;
-
-  void setRunSdyShardingPropagation(bool runSdyShardingPropagation) {
-    this->runSdyShardingPropagation = runSdyShardingPropagation;
-  }
 
  private:
   bool runSdyShardingPropagation;
   mlir::sdy::PropagationOptions defaultOptions;
+  // Whether to deduplicate functions fully, regardless of the input and output
+  // shardings of functions, and it keeps one callee function for each caller
+  // function. The default is false, meaning it will deduplicate only if the
+  // input and output shardings are the same.
+  bool dedupFunctionsFully;
   // TODO. Run other SDY passes with flags.
 };
 

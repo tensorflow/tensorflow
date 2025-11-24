@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <memory>
 #include <utility>
 
 #include "absl/status/status.h"
@@ -26,12 +27,13 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/test.h"
 
 namespace xla {
 namespace {
 
-static absl::Status HostIOCallback(ffi::Token, ffi::Result<ffi::Token>,
-                                   ffi::Result<ffi::AnyBuffer>) {
+absl::Status HostIOCallback(ffi::Token, ffi::Result<ffi::Token>,
+                            ffi::Result<ffi::AnyBuffer>) {
   return absl::OkStatus();
 }
 
@@ -42,23 +44,17 @@ XLA_FFI_DEFINE_HANDLER(
 XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test$$io_callback", "Host",
                          kIOCallback);
 
-class CpuFFITest : public HloPjRtTestBase,
-                   public ::testing::WithParamInterface<bool> {
+class CpuFFITest : public HloPjRtTestBase {
  protected:
-  bool thunk_rt_val_;
-
-  CpuFFITest() { thunk_rt_val_ = GetParam(); }
-
   DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options = GetDebugOptionsFromFlags();
-    debug_options.set_xla_cpu_use_thunk_runtime(thunk_rt_val_);
     return debug_options;
   }
 };
 
-TEST_P(CpuFFITest, EmulateImpureCallbackWithTokens) {
-  auto module = CreateNewVerifiedModule();
-  auto builder = HloComputation::Builder(TestName());
+TEST_F(CpuFFITest, EmulateImpureCallbackWithTokens) {
+  std::unique_ptr<HloModule> module = CreateNewVerifiedModule();
+  HloComputation::Builder builder(TestName());
 
   HloInstruction* p0 = builder.AddInstruction(HloInstruction::CreateToken());
   auto instr = Cast<HloCustomCallInstruction>(
@@ -71,14 +67,8 @@ TEST_P(CpuFFITest, EmulateImpureCallbackWithTokens) {
   instr->set_custom_call_has_side_effect(true);
   module->AddEntryComputation(builder.Build());
 
-  TF_EXPECT_OK(Execute(std::move(module), {}).status());
+  TF_EXPECT_OK(Execute(std::move(module), {}));
 }
-
-INSTANTIATE_TEST_SUITE_P(
-    FFITest, CpuFFITest, ::testing::Values(true, false),
-    [](const ::testing::TestParamInfo<CpuFFITest::ParamType>& info) {
-      return info.param ? "ThunkRuntime" : "LegacyRuntime";
-    });
 
 }  // namespace
 }  // namespace xla

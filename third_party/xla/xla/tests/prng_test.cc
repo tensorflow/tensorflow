@@ -95,7 +95,7 @@ class ScalarBF16Test
       public ::testing::WithParamInterface<ScalarBF16TestCase> {};
 
 TEST_P(ScalarBF16Test, DoIt) {
-  if (test::DeviceIsOneOf({test::kCpu, test::kGpu, test::kInterpreter})) {
+  if (test::DeviceTypeIsOneOf({test::kCpu, test::kGpu, test::kInterpreter})) {
     GTEST_SKIP();
   }
   auto test_params = GetParam();
@@ -123,7 +123,7 @@ INSTANTIATE_TEST_SUITE_P(
 // TODO(b/71543667): Fix Rng ops on LLVM backends.
 // TODO(b/122047800): Interpreter does not support BF16 for RNG ops.
 TEST_F(PrngTest, ScalarBF16CountTests) {
-  if (test::DeviceIsOneOf({test::kCpu, test::kGpu, test::kInterpreter})) {
+  if (test::DeviceTypeIsOneOf({test::kCpu, test::kGpu, test::kInterpreter})) {
     GTEST_SKIP();
   }
   // There are 3 BF16 values in the range of [32.25, 33): 32.25, 32.5, 32.75,
@@ -235,7 +235,7 @@ TEST_F(PrngTest, Uniformity256) { UniformChiSquared(256, 256); }
 // TODO(b/134770669): May remove this test if we decide not to support map
 //                    computations with kRng instructions.
 TEST_F(PrngTest, MapUsingRng) {
-  if (test::DeviceIsOneOf({test::kCpu, test::kGpu})) {
+  if (test::DeviceTypeIsOneOf({test::kCpu, test::kGpu})) {
     GTEST_SKIP();
   }
   // Build a x -> (x + U[0,1)) computation.

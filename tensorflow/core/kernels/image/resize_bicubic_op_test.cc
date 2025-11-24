@@ -173,7 +173,7 @@ class ResizeBicubicOpTest : public OpsTestBase {
               << "x" << channels;
     const Tensor* input = SetRandomImageInput(
         TensorShape({batch_size, in_height, in_width, channels}));
-    AddInputFromArray<int32>(TensorShape({2}), {target_height, target_width});
+    AddInputFromArray<int32_t>(TensorShape({2}), {target_height, target_width});
 
     TF_ASSERT_OK(RunOpKernel());
 
@@ -213,7 +213,7 @@ TEST_F(ResizeBicubicOpTest, TestBicubic2x2To1x1) {
   // 1, 2
   // 3, 4
   AddInputFromArray<float>(TensorShape({1, 2, 2, 1}), {1, 2, 3, 4});
-  AddInputFromArray<int32>(TensorShape({2}), {1, 1});
+  AddInputFromArray<int32_t>(TensorShape({2}), {1, 1});
   TF_ASSERT_OK(RunOpKernel());
 
   // When scaling down, we have to arbitrarily pick a pixel from the
@@ -225,7 +225,7 @@ TEST_F(ResizeBicubicOpTest, TestBicubic2x2To1x1) {
 
 TEST_F(ResizeBicubicOpTest, TestBicubic2x2To0x0) {
   AddInputFromArray<float>(TensorShape({1, 2, 2, 1}), {1, 2, 3, 4});
-  AddInputFromArray<int32>(TensorShape({2}), {0, 0});
+  AddInputFromArray<int32_t>(TensorShape({2}), {0, 0});
 
   absl::Status s = RunOpKernel();
   EXPECT_EQ(s.code(), error::INVALID_ARGUMENT);
@@ -267,7 +267,7 @@ static Graph* ResizeBicubic(int batch_size, int size, int channels,
   Tensor input(DT_FLOAT, TensorShape({batch_size, size, size, channels}));
   input.flat<float>().setRandom();
   Tensor shape(DT_INT32, TensorShape({2}));
-  auto shape_t = shape.flat<int32>();
+  auto shape_t = shape.flat<int32_t>();
   shape_t(0) = scale_y * size;
   shape_t(1) = scale_x * size;
   test::graph::Binary(g, "ResizeBicubic", test::graph::Constant(g, input),

@@ -19,8 +19,10 @@ limitations under the License.
 #include <memory>
 #include <optional>
 
+#include <gtest/gtest.h>
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/log.h"
+#include "absl/status/status_matchers.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -35,14 +37,11 @@ limitations under the License.
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/status_matchers.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
 namespace {
 
-using ::tsl::testing::IsOkAndHolds;
 
 int64_t CountInstructions(HloComputation& computation, HloOpcode opcode) {
   int64_t count = 0;
@@ -396,8 +395,9 @@ ENTRY main {
                           ParseAndReturnVerifiedModule(kModuleString));
   DoubleBufferLoopUnrolling double_buffer;
   TupleSimplifier tuple_simp;
-  EXPECT_THAT(double_buffer.Run(module.get()), IsOkAndHolds(true));
-  EXPECT_THAT(tuple_simp.Run(module.get()), IsOkAndHolds(true));
+  EXPECT_THAT(double_buffer.Run(module.get()),
+              absl_testing::IsOkAndHolds(true));
+  EXPECT_THAT(tuple_simp.Run(module.get()), absl_testing::IsOkAndHolds(true));
 
   // We expect that for the while loop, no further copy needs to be added to the
   // module.
@@ -457,8 +457,9 @@ ENTRY main {
                           ParseAndReturnVerifiedModule(kModuleString));
   DoubleBufferLoopUnrolling double_buffer;
   TupleSimplifier tuple_simp;
-  EXPECT_THAT(double_buffer.Run(module.get()), IsOkAndHolds(true));
-  EXPECT_THAT(tuple_simp.Run(module.get()), IsOkAndHolds(true));
+  EXPECT_THAT(double_buffer.Run(module.get()),
+              absl_testing::IsOkAndHolds(true));
+  EXPECT_THAT(tuple_simp.Run(module.get()), absl_testing::IsOkAndHolds(true));
 
   HloInstruction* while_instruction = hlo_query::GetFirstInstructionWithOpcode(
       *module->entry_computation(), HloOpcode::kWhile);
@@ -525,8 +526,9 @@ ENTRY main {
                           ParseAndReturnVerifiedModule(kModuleString));
   DoubleBufferLoopUnrolling double_buffer;
   TupleSimplifier tuple_simp;
-  EXPECT_THAT(double_buffer.Run(module.get()), IsOkAndHolds(true));
-  EXPECT_THAT(tuple_simp.Run(module.get()), IsOkAndHolds(true));
+  EXPECT_THAT(double_buffer.Run(module.get()),
+              absl_testing::IsOkAndHolds(true));
+  EXPECT_THAT(tuple_simp.Run(module.get()), absl_testing::IsOkAndHolds(true));
 
   HloInstruction* while_instruction = hlo_query::GetFirstInstructionWithOpcode(
       *module->entry_computation(), HloOpcode::kWhile);
@@ -595,8 +597,9 @@ ENTRY main {
   DoubleBufferLoopUnrolling double_buffer(
       DoubleBufferLoopUnrolling::UnrollStrategy::kFullUnroll);
   TupleSimplifier tuple_simp;
-  EXPECT_THAT(double_buffer.Run(module.get()), IsOkAndHolds(true));
-  EXPECT_THAT(tuple_simp.Run(module.get()), IsOkAndHolds(true));
+  EXPECT_THAT(double_buffer.Run(module.get()),
+              absl_testing::IsOkAndHolds(true));
+  EXPECT_THAT(tuple_simp.Run(module.get()), absl_testing::IsOkAndHolds(true));
 
   HloInstruction* while_instruction = hlo_query::GetFirstInstructionWithOpcode(
       *module->entry_computation(), HloOpcode::kWhile);
@@ -655,7 +658,8 @@ ENTRY main {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
                           ParseAndReturnVerifiedModule(kModuleString));
   DoubleBufferLoopUnrolling double_buffer;
-  EXPECT_THAT(double_buffer.Run(module.get()), IsOkAndHolds(true));
+  EXPECT_THAT(double_buffer.Run(module.get()),
+              absl_testing::IsOkAndHolds(true));
 
   HloInstruction* while_instruction = hlo_query::GetFirstInstructionWithOpcode(
       *module->entry_computation(), HloOpcode::kWhile);
@@ -734,7 +738,8 @@ ENTRY main {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
                           ParseAndReturnVerifiedModule(kModuleString));
   DoubleBufferLoopUnrolling double_buffer;
-  EXPECT_THAT(double_buffer.Run(module.get()), IsOkAndHolds(true));
+  EXPECT_THAT(double_buffer.Run(module.get()),
+              absl_testing::IsOkAndHolds(true));
 
   absl::flat_hash_set<const HloComputation*> while_loops_callees;
 
@@ -791,7 +796,8 @@ ENTRY main {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
                           ParseAndReturnVerifiedModule(kModuleString));
   DoubleBufferLoopUnrolling double_buffer;
-  EXPECT_THAT(double_buffer.Run(module.get()), IsOkAndHolds(true));
+  EXPECT_THAT(double_buffer.Run(module.get()),
+              absl_testing::IsOkAndHolds(true));
 
   absl::flat_hash_set<const HloComputation*> while_loops_callees;
 
@@ -849,7 +855,8 @@ ENTRY main {
                           ParseAndReturnVerifiedModule(kModuleString));
   DoubleBufferLoopUnrolling double_buffer(
       DoubleBufferLoopUnrolling::UnrollStrategy::kFullUnroll);
-  EXPECT_THAT(double_buffer.Run(module.get()), IsOkAndHolds(true));
+  EXPECT_THAT(double_buffer.Run(module.get()),
+              absl_testing::IsOkAndHolds(true));
 
   absl::flat_hash_set<const HloComputation*> while_loops_callees;
 
@@ -912,7 +919,8 @@ ENTRY main {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
                           ParseAndReturnVerifiedModule(kModuleString));
   DoubleBufferLoopUnrolling double_buffer;
-  EXPECT_THAT(double_buffer.Run(module.get()), IsOkAndHolds(true));
+  EXPECT_THAT(double_buffer.Run(module.get()),
+              absl_testing::IsOkAndHolds(true));
 
   int64_t num_whiles = 0;
   hlo_query::ForEachInstructionWithOpcode(
@@ -962,7 +970,8 @@ ENTRY main {
                           ParseAndReturnVerifiedModule(kModuleString));
   DoubleBufferLoopUnrolling double_buffer(
       DoubleBufferLoopUnrolling::UnrollStrategy::kFullUnroll);
-  EXPECT_THAT(double_buffer.Run(module.get()), IsOkAndHolds(true));
+  EXPECT_THAT(double_buffer.Run(module.get()),
+              absl_testing::IsOkAndHolds(true));
 
   int64_t num_whiles = 0;
   hlo_query::ForEachInstructionWithOpcode(
@@ -1012,7 +1021,8 @@ ENTRY main {
                           ParseAndReturnVerifiedModule(kModuleString));
   DoubleBufferLoopUnrolling double_buffer(
       DoubleBufferLoopUnrolling::UnrollStrategy::kDoubleBuffer);
-  EXPECT_THAT(double_buffer.Run(module.get()), IsOkAndHolds(true));
+  EXPECT_THAT(double_buffer.Run(module.get()),
+              absl_testing::IsOkAndHolds(true));
   VLOG(1) << module->ToString();
   EXPECT_TRUE(*RunFileCheck(module->ToString(), R"(
     // CHECK: %body {{.+}} {
@@ -1065,7 +1075,8 @@ ENTRY main {
                           ParseAndReturnVerifiedModule(kModuleString));
   DoubleBufferLoopUnrolling double_buffer(
       DoubleBufferLoopUnrolling::UnrollStrategy::kDoubleBuffer);
-  EXPECT_THAT(double_buffer.Run(module.get()), IsOkAndHolds(true));
+  EXPECT_THAT(double_buffer.Run(module.get()),
+              absl_testing::IsOkAndHolds(true));
   VLOG(1) << module->ToString();
   EXPECT_TRUE(*RunFileCheck(module->ToString(), R"(
     // CHECK: %body
@@ -1119,7 +1130,8 @@ ENTRY main {
                           ParseAndReturnVerifiedModule(kModuleString));
   DoubleBufferLoopUnrolling double_buffer(
       DoubleBufferLoopUnrolling::UnrollStrategy::kDoubleBuffer);
-  EXPECT_THAT(double_buffer.Run(module.get()), IsOkAndHolds(true));
+  EXPECT_THAT(double_buffer.Run(module.get()),
+              absl_testing::IsOkAndHolds(true));
 
   EXPECT_TRUE(*RunFileCheck(module->ToString(), R"(
     // CHECK: %body
@@ -1171,7 +1183,8 @@ ENTRY main {
                           ParseAndReturnVerifiedModule(kModuleString));
   DoubleBufferLoopUnrolling double_buffer(
       DoubleBufferLoopUnrolling::UnrollStrategy::kDoubleBuffer);
-  EXPECT_THAT(double_buffer.Run(module.get()), IsOkAndHolds(true));
+  EXPECT_THAT(double_buffer.Run(module.get()),
+              absl_testing::IsOkAndHolds(true));
 
   EXPECT_TRUE(*RunFileCheck(module->ToString(), R"(
     // CHECK: %body
@@ -1227,7 +1240,8 @@ ENTRY main {
                           ParseAndReturnVerifiedModule(kModuleString));
   DoubleBufferLoopUnrolling double_buffer(
       DoubleBufferLoopUnrolling::UnrollStrategy::kDoubleBuffer);
-  EXPECT_THAT(double_buffer.Run(module.get()), IsOkAndHolds(true));
+  EXPECT_THAT(double_buffer.Run(module.get()),
+              absl_testing::IsOkAndHolds(true));
 
   EXPECT_TRUE(*RunFileCheck(module->ToString(), R"(
     // CHECK: %body
@@ -1291,7 +1305,8 @@ ENTRY main {
                           ParseAndReturnVerifiedModule(kModuleString));
   DoubleBufferLoopUnrolling double_buffer(
       DoubleBufferLoopUnrolling::UnrollStrategy::kDoubleBuffer);
-  EXPECT_THAT(double_buffer.Run(module.get()), IsOkAndHolds(true));
+  EXPECT_THAT(double_buffer.Run(module.get()),
+              absl_testing::IsOkAndHolds(true));
 
   EXPECT_TRUE(*RunFileCheck(module->ToString(), R"(
     // CHECK: %body
@@ -1348,7 +1363,8 @@ ENTRY main {
                           ParseAndReturnVerifiedModule(kModuleString));
   DoubleBufferLoopUnrolling double_buffer(
       DoubleBufferLoopUnrolling::UnrollStrategy::kDoubleBuffer);
-  EXPECT_THAT(double_buffer.Run(module.get()), IsOkAndHolds(true));
+  EXPECT_THAT(double_buffer.Run(module.get()),
+              absl_testing::IsOkAndHolds(true));
 
   EXPECT_TRUE(*RunFileCheck(module->ToString(), R"(
     // CHECK: %body
@@ -1397,7 +1413,8 @@ ENTRY main {
   DoubleBufferLoopUnrolling double_buffer(
       DoubleBufferLoopUnrolling::UnrollStrategy::kFullUnroll);
   // The processing of the loop should be completely skipped.
-  EXPECT_THAT(double_buffer.Run(module.get()), IsOkAndHolds(false));
+  EXPECT_THAT(double_buffer.Run(module.get()),
+              absl_testing::IsOkAndHolds(false));
 }
 
 TEST_F(GpuLoopDoubleBufferTransformerTest, UpdateInitStepOddTripCount) {

@@ -439,9 +439,9 @@ BundleWriter::BundleWriter(Env* env, absl::string_view prefix,
   data_path_ = DataFilename(prefix_, 0, 1);
   metadata_path_ = MetaFilename(prefix_);
   if (use_temp_file_) {
-    data_path_ = strings::StrCat(data_path_, ".tempstate", random::New64());
+    data_path_ = absl::StrCat(data_path_, ".tempstate", random::New64());
     metadata_path_ =
-        strings::StrCat(metadata_path_, ".tempstate", random::New64());
+        absl::StrCat(metadata_path_, ".tempstate", random::New64());
   }
 
   status_ = env_->CreateDir(string(io::Dirname(prefix_)));
@@ -935,7 +935,7 @@ absl::Status BundleReader::GetValue(const BundleEntryProto& entry,
       if (!enable_multi_threading_for_testing_ &&
           entry.size() < kLargeTensorThreshold) {
         TF_RETURN_IF_ERROR(buffered_file->file()->Read(
-            entry.offset(), entry.size(), &sp, backing_buffer));
+            entry.offset(), sp, absl::MakeSpan(backing_buffer, entry.size())));
         if (sp.data() != backing_buffer) {
           memmove(backing_buffer, sp.data(), entry.size());
         }
@@ -970,8 +970,9 @@ absl::Status BundleReader::GetValue(const BundleEntryProto& entry,
             }
 
             auto backing_buffer_current_pos = backing_buffer + offset;
-            auto status = section_reader->Read(entry.offset() + offset, size,
-                                               &sp, backing_buffer_current_pos);
+            auto status = section_reader->Read(
+                entry.offset() + offset, sp,
+                absl::MakeSpan(backing_buffer_current_pos, size));
             if (sp.data() != backing_buffer_current_pos) {
               memmove(backing_buffer_current_pos, sp.data(), size);
             }
@@ -1229,7 +1230,7 @@ string BundleReader::DebugString() {
 
     strings::StrAppend(&shape_str, key(), " (", DataType_Name(entry.dtype()),
                        ") ", TensorShape(entry.shape()).DebugString());
-    strings::StrAppend(&shape_str, "\n");
+    absl::StrAppend(&shape_str, "\n");
   }
   return shape_str;
 }

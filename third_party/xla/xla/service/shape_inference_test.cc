@@ -26,6 +26,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/status/status_matchers.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
@@ -40,7 +41,6 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
-#include "tsl/platform/status_matchers.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {
@@ -357,7 +357,7 @@ TEST_F(ShapeInferenceTest, Atan2FailsWithIntegerInput) {
       ShapeInference::InferBinaryOpShape(HloOpcode::kAtan2, input, input, {});
   EXPECT_THAT(
       inferred_shape.status(),
-      tsl::testing::StatusIs(tsl::error::INVALID_ARGUMENT,
+      absl_testing::StatusIs(tsl::error::INVALID_ARGUMENT,
                              HasSubstr("Expected input element type to be "
                                        "floating or complex for atan2")));
 }
@@ -409,7 +409,7 @@ TEST_F(ShapeInferenceTest, ComplexCbrtIsNotSupported) {
       ShapeInference::InferUnaryOpShape(HloOpcode::kCbrt, input);
   EXPECT_THAT(
       inferred_shape.status(),
-      tsl::testing::StatusIs(tsl::error::INVALID_ARGUMENT,
+      absl_testing::StatusIs(tsl::error::INVALID_ARGUMENT,
                              HasSubstr("Expected element type in shape to be "
                                        "floating for cbrt operation")));
 }
@@ -2060,116 +2060,6 @@ TEST_F(ShapeInferenceTest, DotWithNarrowerPreferredElementType) {
                               /*preferred_element_type=*/S8));
   EXPECT_TRUE(
       ShapeUtil::Equal(inferred_shape, ShapeUtil::MakeShape(S8, {32, 32})));
-}
-
-TEST_F(ShapeInferenceTest, DotWithSparseLhs) {
-  DotDimensionNumbers dot_dnums;
-  dot_dnums.add_lhs_contracting_dimensions(1);
-  dot_dnums.add_rhs_contracting_dimensions(0);
-  SparsityDescriptor sparsity_descriptor;
-  sparsity_descriptor.set_type(SparsityType::SPARSITY_STRUCTURED_N_M);
-  sparsity_descriptor.set_n(2);
-  sparsity_descriptor.set_m(4);
-  sparsity_descriptor.set_index(0);
-  sparsity_descriptor.set_dimension(1);
-
-  std::vector<SparsityDescriptor> sparsity = {sparsity_descriptor};
-  TF_ASSERT_OK_AND_ASSIGN(
-      const Shape inferred_shape,
-      ShapeInference::InferDotOpShape(
-          ShapeUtil::MakeShape(F32, {10, 16}),
-          ShapeUtil::MakeShape(F32, {32, 20}), dot_dnums,
-          /*preferred_element_type=*/std::nullopt, absl::MakeSpan(sparsity)));
-  EXPECT_TRUE(
-      ShapeUtil::Equal(inferred_shape, ShapeUtil::MakeShape(F32, {10, 20})));
-}
-
-TEST_F(ShapeInferenceTest, DotWithSparseRhs) {
-  DotDimensionNumbers dot_dnums;
-  dot_dnums.add_lhs_contracting_dimensions(1);
-  dot_dnums.add_rhs_contracting_dimensions(0);
-  SparsityDescriptor sparsity_descriptor;
-  sparsity_descriptor.set_type(SparsityType::SPARSITY_STRUCTURED_N_M);
-  sparsity_descriptor.set_n(2);
-  sparsity_descriptor.set_m(4);
-  sparsity_descriptor.set_index(1);
-  sparsity_descriptor.set_dimension(0);
-
-  std::vector<SparsityDescriptor> sparsity = {sparsity_descriptor};
-  TF_ASSERT_OK_AND_ASSIGN(
-      const Shape inferred_shape,
-      ShapeInference::InferDotOpShape(
-          ShapeUtil::MakeShape(F32, {10, 32}),
-          ShapeUtil::MakeShape(F32, {16, 20}), dot_dnums,
-          /*preferred_element_type=*/std::nullopt, absl::MakeSpan(sparsity)));
-  EXPECT_TRUE(
-      ShapeUtil::Equal(inferred_shape, ShapeUtil::MakeShape(F32, {10, 20})));
-}
-
-TEST_F(ShapeInferenceTest, DotWithSparseBothOperands) {
-  DotDimensionNumbers dot_dnums;
-  dot_dnums.add_lhs_contracting_dimensions(1);
-  dot_dnums.add_rhs_contracting_dimensions(0);
-  SparsityDescriptor sparsity_lhs;
-  sparsity_lhs.set_type(SparsityType::SPARSITY_STRUCTURED_N_M);
-  sparsity_lhs.set_n(2);
-  sparsity_lhs.set_m(4);
-  sparsity_lhs.set_index(0);
-  sparsity_lhs.set_dimension(1);
-  SparsityDescriptor sparsity_rhs = sparsity_lhs;
-  sparsity_rhs.set_index(1);
-  sparsity_rhs.set_dimension(0);
-
-  std::vector<SparsityDescriptor> sparsity = {sparsity_lhs, sparsity_rhs};
-  TF_ASSERT_OK_AND_ASSIGN(
-      const Shape inferred_shape,
-      ShapeInference::InferDotOpShape(
-          ShapeUtil::MakeShape(F32, {10, 16}),
-          ShapeUtil::MakeShape(F32, {16, 20}), dot_dnums,
-          /*preferred_element_type=*/std::nullopt, absl::MakeSpan(sparsity)));
-  EXPECT_TRUE(
-      ShapeUtil::Equal(inferred_shape, ShapeUtil::MakeShape(F32, {10, 20})));
-}
-
-TEST_F(ShapeInferenceTest, DotWithIncorrectSparseDimensionSizeRatio) {
-  DotDimensionNumbers dot_dnums;
-  dot_dnums.add_lhs_contracting_dimensions(1);
-  dot_dnums.add_rhs_contracting_dimensions(0);
-  SparsityDescriptor sparsity_descriptor;
-  sparsity_descriptor.set_type(SparsityType::SPARSITY_STRUCTURED_N_M);
-  sparsity_descriptor.set_n(2);
-  sparsity_descriptor.set_m(4);
-  sparsity_descriptor.set_index(0);
-  sparsity_descriptor.set_dimension(1);
-
-  std::vector<SparsityDescriptor> sparsity = {sparsity_descriptor};
-  const absl::StatusOr<Shape> inferred_shape = ShapeInference::InferDotOpShape(
-      ShapeUtil::MakeShape(F32, {10, 32}), ShapeUtil::MakeShape(F32, {32, 20}),
-      dot_dnums, /*preferred_element_type=*/std::nullopt,
-      absl::MakeSpan(sparsity));
-  ASSERT_FALSE(inferred_shape.ok());
-  ASSERT_THAT(
-      inferred_shape.status().message(),
-      HasSubstr("Sparse dimension size ratio doesn't match the descriptor"));
-}
-
-TEST_F(ShapeInferenceTest, SparseDotMetadata) {
-  DotDimensionNumbers dot_dnums;
-  dot_dnums.add_lhs_batch_dimensions(0);
-  dot_dnums.add_lhs_contracting_dimensions(2);
-  SparsityDescriptor sparsity_descriptor;
-  sparsity_descriptor.set_type(SparsityType::SPARSITY_STRUCTURED_N_M);
-  sparsity_descriptor.set_n(2);
-  sparsity_descriptor.set_m(4);
-  sparsity_descriptor.set_index(0);
-  sparsity_descriptor.set_dimension(2);
-
-  TF_ASSERT_OK_AND_ASSIGN(const Shape inferred_shape,
-                          ShapeInference::InferSparseDotMetadataShape(
-                              ShapeUtil::MakeShape(F32, {5, 10, 16}), dot_dnums,
-                              sparsity_descriptor));
-  EXPECT_TRUE(
-      ShapeUtil::Equal(inferred_shape, ShapeUtil::MakeShape(U16, {5, 10, 2})));
 }
 
 // <ragged-dot> mode 1 : [m,k], [g,k,n], [g] -> [m,n]
@@ -6124,10 +6014,16 @@ INSTANTIATE_TEST_SUITE_P(
 INSTANTIATE_TEST_SUITE_P(UnboundedDynamism, UnboundedUnaryOpShapeInferenceTest,
                          ::testing::ValuesIn<UnaryOpTestCase>(
                              {{"f32[?]", "f32[?]", HloOpcode::kAbs},
+                              {"f32[?]", "f32[?]", HloOpcode::kAcos},
+                              {"f32[?]", "f32[?]", HloOpcode::kAcosh},
+                              {"f32[?]", "f32[?]", HloOpcode::kAsin},
+                              {"f32[?]", "f32[?]", HloOpcode::kAsinh},
+                              {"f32[?]", "f32[?]", HloOpcode::kAtanh},
                               {"f32[?]", "f32[?]", HloOpcode::kCbrt},
                               {"f32[?]", "f32[?]", HloOpcode::kCeil},
                               {"u32[?]", "u32[?]", HloOpcode::kClz},
                               {"f32[?]", "f32[?]", HloOpcode::kCos},
+                              {"f32[?]", "f32[?]", HloOpcode::kCosh},
                               {"f32[?]", "f32[?]", HloOpcode::kErf},
                               {"f32[?]", "f32[?]", HloOpcode::kExp},
                               {"f32[?]", "f32[?]", HloOpcode::kExpm1},
@@ -6147,8 +6043,8 @@ INSTANTIATE_TEST_SUITE_P(UnboundedDynamism, UnboundedUnaryOpShapeInferenceTest,
                               {"f32[?]", "f32[?]", HloOpcode::kRsqrt},
                               {"f32[?]", "f32[?]", HloOpcode::kSign},
                               {"f32[?]", "f32[?]", HloOpcode::kSin},
+                              {"f32[?]", "f32[?]", HloOpcode::kSinh},
                               {"f32[?]", "f32[?]", HloOpcode::kSqrt},
                               {"f32[?]", "f32[?]", HloOpcode::kTanh}}));
-
 }  // namespace
 }  // namespace xla

@@ -1,3 +1,5 @@
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
+load("@rules_cc//cc:cc_test.bzl", "cc_test")
 load("//tensorflow:strict.default.bzl", "py_strict_binary", "py_strict_library")
 load(
     "//tensorflow:tensorflow.bzl",
@@ -196,7 +198,9 @@ py_strict_binary(
         ":generate_examples_lib",
         ":mlir_convert",
         "//tensorflow:tensorflow_py",
-    ],
+    ] + if_pywrap(
+        if_true = ["//tensorflow/python:_pywrap_tensorflow"],
+    ),
 )
 
 py_strict_library(
@@ -402,10 +406,10 @@ cc_library(
     name = "util",
     hdrs = ["util.h"],
     deps = [
-        "//tensorflow/lite:error_reporter",
         "//tensorflow/lite:string",
         "//tensorflow/lite/core/api",
-        "@local_tsl//tsl/platform:logging",
+        "@com_google_absl//absl/flags:flag",
+        "@com_google_absl//absl/log:flags",
     ],
 )
 
@@ -706,13 +710,15 @@ pybind_extension(
         "//third_party/py/numpy:numpy",
     ],
     common_lib_packages = [
-        "third_party/tensorflow/lite/python",
+        "litert/python",
+        "tensorflow/lite/python",
     ],
     enable_stub_generation = True,
     features = ["-use_header_modules"],
     pytype_srcs = [
         "_pywrap_string_util.pyi",
     ],
+    wrap_py_init = True,
     deps = [
         ":string_util_lib",
         "//tensorflow/lite/python/interpreter_wrapper:numpy",

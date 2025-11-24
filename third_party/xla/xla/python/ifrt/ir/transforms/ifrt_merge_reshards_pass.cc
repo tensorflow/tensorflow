@@ -13,7 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <memory>
 #include <tuple>
 #include <vector>
 
@@ -29,7 +28,6 @@ limitations under the License.
 #include "mlir/IR/Value.h"
 #include "mlir/IR/ValueRange.h"
 #include "mlir/IR/Visitors.h"
-#include "mlir/Pass/Pass.h"
 #include "mlir/Support/LLVM.h"
 #include "xla/python/ifrt/ir/constants.h"
 #include "xla/python/ifrt/ir/ifrt_dialect.h"
@@ -39,10 +37,10 @@ limitations under the License.
 namespace xla {
 namespace ifrt {
 
-namespace {
-
 #define GEN_PASS_DEF_IFRTMERGERESHARDSPASS
 #include "xla/python/ifrt/ir/transforms/passes.h.inc"
+
+namespace {
 
 class IfrtMergeReshardsPass
     : public impl::IfrtMergeReshardsPassBase<IfrtMergeReshardsPass> {
@@ -212,11 +210,5 @@ void IfrtMergeReshardsPass::runOnOperation() {
 }
 
 }  // namespace
-
-std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
-CreateIfrtMergeReshardsPass() {
-  return std::make_unique<IfrtMergeReshardsPass>();
-}
-
 }  // namespace ifrt
 }  // namespace xla

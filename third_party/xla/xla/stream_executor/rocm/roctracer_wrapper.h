@@ -1,3 +1,4 @@
+
 /* Copyright 2021 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -20,92 +21,14 @@ limitations under the License.
 #ifndef XLA_STREAM_EXECUTOR_ROCM_ROCTRACER_WRAPPER_H_
 #define XLA_STREAM_EXECUTOR_ROCM_ROCTRACER_WRAPPER_H_
 
-#include "rocm/include/roctracer/roctracer.h"
-#include "rocm/include/roctracer/roctracer_hip.h"
-#include "rocm/rocm_config.h"
-#if TF_ROCM_VERSION >= 50300
-#include "rocm/include/roctracer/roctracer_roctx.h"
-#else
-#include "rocm/include/roctracer/roctracer_hcc.h"
-#endif
-#include "xla/tsl/platform/env.h"
-#include "tsl/platform/dso_loader.h"
-#include "tsl/platform/platform.h"
-
-namespace stream_executor {
-namespace wrap {
-
-#ifdef PLATFORM_GOOGLE
-
-#define ROCTRACER_API_WRAPPER(API_NAME)                            \
-  template <typename... Args>                                      \
-  auto API_NAME(Args... args) -> decltype((::API_NAME)(args...)) { \
-    return (::API_NAME)(args...);                                  \
-  }
-
-#else
-
-#define ROCTRACER_API_WRAPPER(API_NAME)                                    \
-  template <typename... Args>                                              \
-  auto API_NAME(Args... args) -> decltype(::API_NAME(args...)) {           \
-    using FuncPtrT = std::add_pointer<decltype(::API_NAME)>::type;         \
-    static FuncPtrT loaded = []() -> FuncPtrT {                            \
-      static const char* kName = #API_NAME;                                \
-      void* f;                                                             \
-      auto s = tsl::Env::Default()->GetSymbolFromLibrary(                  \
-          tsl::internal::CachedDsoLoader::GetRoctracerDsoHandle().value(), \
-          kName, &f);                                                      \
-      CHECK(s.ok()) << "could not find " << kName                          \
-                    << " in roctracer DSO; dlerror: " << s.message();      \
-      return reinterpret_cast<FuncPtrT>(f);                                \
-    }();                                                                   \
-    return loaded(args...);                                                \
-  }
-
-#endif  // PLATFORM_GOOGLE
-
-#if TF_ROCM_VERSION >= 50300
-#define FOREACH_ROCTRACER_API(DO_FUNC)           \
-  DO_FUNC(roctracer_default_pool_expl)           \
-  DO_FUNC(roctracer_disable_domain_activity)     \
-  DO_FUNC(roctracer_disable_domain_callback)     \
-  DO_FUNC(roctracer_disable_op_activity)         \
-  DO_FUNC(roctracer_disable_op_callback)         \
-  DO_FUNC(roctracer_enable_domain_activity_expl) \
-  DO_FUNC(roctracer_enable_domain_callback)      \
-  DO_FUNC(roctracer_enable_op_activity_expl)     \
-  DO_FUNC(roctracer_enable_op_callback)          \
-  DO_FUNC(roctracer_error_string)                \
-  DO_FUNC(roctracer_flush_activity_expl)         \
-  DO_FUNC(roctracer_get_timestamp)               \
-  DO_FUNC(roctracer_op_string)                   \
-  DO_FUNC(roctracer_open_pool_expl)              \
-  DO_FUNC(roctracer_set_properties)              \
-  DO_FUNC(roctracer_next_record)
-#else
-#define FOREACH_ROCTRACER_API(DO_FUNC)           \
-  DO_FUNC(roctracer_default_pool_expl)           \
-  DO_FUNC(roctracer_disable_domain_activity)     \
-  DO_FUNC(roctracer_disable_domain_callback)     \
-  DO_FUNC(roctracer_disable_op_activity)         \
-  DO_FUNC(roctracer_disable_op_callback)         \
-  DO_FUNC(roctracer_enable_domain_activity_expl) \
-  DO_FUNC(roctracer_enable_domain_callback)      \
-  DO_FUNC(roctracer_enable_op_activity_expl)     \
-  DO_FUNC(roctracer_enable_op_callback)          \
-  DO_FUNC(roctracer_error_string)                \
-  DO_FUNC(roctracer_flush_activity_expl)         \
-  DO_FUNC(roctracer_get_timestamp)               \
-  DO_FUNC(roctracer_op_string)                   \
-  DO_FUNC(roctracer_open_pool_expl)              \
-  DO_FUNC(roctracer_set_properties)
-#endif
-FOREACH_ROCTRACER_API(ROCTRACER_API_WRAPPER)
-
-#undef FOREACH_ROCTRACER_API
-#undef ROCTRACER_API_WRAPPER
-
-}  // namespace wrap
-}  // namespace stream_executor
+#include "rocm/include/rocprofiler-sdk/buffer.h"  // IWYU pragma: export
+#include "rocm/include/rocprofiler-sdk/buffer_tracing.h"  // IWYU pragma: export
+#include "rocm/include/rocprofiler-sdk/callback_tracing.h"  // IWYU pragma: export
+#include "rocm/include/rocprofiler-sdk/cxx/name_info.hpp"  // IWYU pragma: export
+#include "rocm/include/rocprofiler-sdk/external_correlation.h"  // IWYU pragma: export
+#include "rocm/include/rocprofiler-sdk/fwd.h"  // IWYU pragma: export
+#include "rocm/include/rocprofiler-sdk/internal_threading.h"  // IWYU pragma: export
+#include "rocm/include/rocprofiler-sdk/registration.h"  // IWYU pragma: export
+#include "rocm/include/rocprofiler-sdk/rocprofiler.h"  // IWYU pragma: export
 
 #endif  // XLA_STREAM_EXECUTOR_ROCM_ROCTRACER_WRAPPER_H_

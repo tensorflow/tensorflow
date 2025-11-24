@@ -64,20 +64,22 @@ absl::Status RequestGpuInfo(GpuInfo* gpu_info) {
     info.opengl_info.extensions[i] = std::string(
         reinterpret_cast<const char*>(glGetStringi(GL_EXTENSIONS, i)));
   }
-  glGetIntegerv(GL_MAX_COMPUTE_SHADER_STORAGE_BLOCKS,
-                &info.opengl_info.max_ssbo_bindings);
-  glGetIntegerv(GL_MAX_COMPUTE_IMAGE_UNIFORMS,
-                &info.opengl_info.max_image_bindings);
-  glGetIntegeri_v(GL_MAX_COMPUTE_WORK_GROUP_SIZE, 0,
-                  &info.opengl_info.max_compute_work_group_size_x);
-  glGetIntegeri_v(GL_MAX_COMPUTE_WORK_GROUP_SIZE, 1,
-                  &info.opengl_info.max_compute_work_group_size_y);
-  glGetIntegeri_v(GL_MAX_COMPUTE_WORK_GROUP_SIZE, 2,
-                  &info.opengl_info.max_compute_work_group_size_z);
-  glGetIntegerv(GL_MAX_COMPUTE_WORK_GROUP_INVOCATIONS,
-                &info.opengl_info.max_work_group_invocations);
+  if (info.opengl_info.IsApiOpenGl31OrAbove()) {
+    glGetIntegerv(GL_MAX_COMPUTE_SHADER_STORAGE_BLOCKS,
+                  &info.opengl_info.max_ssbo_bindings);
+    glGetIntegerv(GL_MAX_COMPUTE_IMAGE_UNIFORMS,
+                  &info.opengl_info.max_image_bindings);
+    glGetIntegeri_v(GL_MAX_COMPUTE_WORK_GROUP_SIZE, 0,
+                    &info.opengl_info.max_compute_work_group_size_x);
+    glGetIntegeri_v(GL_MAX_COMPUTE_WORK_GROUP_SIZE, 1,
+                    &info.opengl_info.max_compute_work_group_size_y);
+    glGetIntegeri_v(GL_MAX_COMPUTE_WORK_GROUP_SIZE, 2,
+                    &info.opengl_info.max_compute_work_group_size_z);
+    glGetIntegerv(GL_MAX_COMPUTE_WORK_GROUP_INVOCATIONS,
+                  &info.opengl_info.max_work_group_invocations);
+    glGetIntegerv(GL_MAX_IMAGE_UNITS, &info.opengl_info.max_image_units);
+  }
   glGetIntegerv(GL_MAX_TEXTURE_SIZE, &info.opengl_info.max_texture_size);
-  glGetIntegerv(GL_MAX_IMAGE_UNITS, &info.opengl_info.max_image_units);
   glGetIntegerv(GL_MAX_ARRAY_TEXTURE_LAYERS,
                 &info.opengl_info.max_array_texture_layers);
   glGetIntegerv(GL_MAX_TEXTURE_IMAGE_UNITS,

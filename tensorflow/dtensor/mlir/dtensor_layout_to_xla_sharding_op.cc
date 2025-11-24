@@ -108,11 +108,16 @@ void DTensorLayoutToXlaShardingOpPass::runOnOperation() {
         mlir::OpBuilder builder(layout_op);
         auto sharding_attr =
             builder.getStringAttr(sharding->SerializeAsString());
+        // TODO(b/414807890): It seems that the dtensor path later on clear up
+        // the V1 sharding attr, so set V2 sharding to "" here. It may be better
+        // to set the V2 sharding attr here and then removed it when V1 is
+        // removed.
         auto sharding_op = builder.create<mlir::TF::XlaShardingOp>(
             layout_op.getLoc(), layout_op.getOutput().getType(),
             layout_op.getInput(),
             /*sharding=*/builder.getStringAttr(""),  // Not used by tf2xla.
-            /*_xlaSharding=*/sharding_attr);
+            /*_xlaSharding=*/sharding_attr,
+            /*_xla_sharding_v2=*/builder.getStringAttr(""));
         layout_op.getOutput().replaceAllUsesWith(sharding_op);
         layout_op.erase();
         return mlir::WalkResult::advance();

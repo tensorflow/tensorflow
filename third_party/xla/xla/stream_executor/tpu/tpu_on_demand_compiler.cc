@@ -108,76 +108,68 @@ class TpuCompiler : public Compiler {
     }
 
     std::unique_ptr<Executable> exec =
-        std::make_unique<TpuExecutable>(result, std::move(module));
+        std::make_unique<legacy::TpuExecutable>(result, std::move(module));
     return exec;
   }
 
   absl::StatusOr<std::vector<std::unique_ptr<Executable>>> Compile(
-      std::unique_ptr<HloModuleGroup> module_group,
-      std::vector<std::vector<stream_executor::StreamExecutor*>> stream_exec,
+      std::unique_ptr<HloModule> hlo_module,
+      std::vector<stream_executor::StreamExecutor*> stream_exec,
       const CompileOptions& options) override {
+    HloModuleGroup module_group(std::move(hlo_module));
     XLA_HloModuleGroup se_module_group;
     se_module_group.proto =
-        stream_executor::tpu::SerializeProto(module_group->ToProto());
-    se_module_group.module_config =
-        new XLA_HloModuleConfig[module_group->size()];
-    int module_group_size = module_group->size();
-    auto cleanup_config =
-        absl::MakeCleanup([&se_module_group, module_group_size]() {
-          for (auto i = 0; i < module_group_size; ++i) {
-            ApiConverter::Destroy(&se_module_group.module_config[i]);
-          }
-          delete[] se_module_group.module_config;
-        });
-    for (int i = 0; i < module_group->size(); ++i) {
-      const auto& config = module_group->module(i).config();
-      se_module_group.module_config[i] = ApiConverter::ToC(config);
-    }
-    std::vector<SE_StreamExecutorList> se_lists(stream_exec.size());
-    std::vector<std::vector<SE_StreamExecutor*>> se_lists_storage;
-    for (int i = 0; i < stream_exec.size(); ++i) {
-      se_lists[i].count = stream_exec[i].size();
-      se_lists_storage.emplace_back(stream_exec[i].size());
-      se_lists[i].exec = se_lists_storage.back().data();
-      for (int j = 0; j < stream_exec[i].size(); ++j) {
-        se_lists[i].exec[j] =
-            static_cast<stream_executor::tpu::TpuExecutor*>(stream_exec[i][j])
-                ->se_executor();
-      }
+        stream_executor::tpu::SerializeProto(module_group.ToProto());
+    se_module_group.module_config = new XLA_HloModuleConfig[1];
+    se_module_group.module_config[0] =
+        ApiConverter::ToC(module_group.module(0).config());
+
+    auto cleanup_config = absl::MakeCleanup([&se_module_group]() {
+      ApiConverter::Destroy(&se_module_group.module_config[0]);
+      delete[] se_module_group.module_config;
+    });
+
+    SE_StreamExecutorList se_list;
+
+    std::vector<SE_StreamExecutor*> se_lists_storage(stream_exec.size());
+    se_list.count = stream_exec.size();
+    se_list.exec = se_lists_storage.data();
+    for (int j = 0; j < stream_exec.size(); ++j) {
+      se_list.exec[j] =
+          static_cast<stream_executor::tpu::TpuExecutor*>(stream_exec[j])
+              ->se_executor();
     }
 
     SE_DeviceMemoryAllocator allocator =
         ApiConverter::ToC(options.device_allocator);
 
-    SE_Executable** se_executables = new SE_Executable*[module_group->size()];
+    SE_Executable** se_executables = new SE_Executable*[1];
 
     StatusHelper status;
 
     ExecutorApiFn()->TpuCompiler_CompileFn(
-        compiler_, &se_module_group, se_lists.data(), stream_exec.size(),
-        &allocator, se_executables, status.c_status);
+        compiler_, &se_module_group, &se_list, /*num_lists=*/1, &allocator,
+        se_executables, status.c_status);
 
     if (!status.ok()) {
       return status.status();
     }
 
     std::vector<std::unique_ptr<Executable>> executables;
-    for (int i = 0; i < module_group->size(); ++i) {
-      // We get the HloModule from the compiled executable, rather than reusing
-      // the input module from 'module_group', in case the module changed in
-      // some way. For example, if the computation is automatically partitioned
-      // via XLA, the executable's module may have different input/output shapes
-      // than the input module.
-      XLA_HloModule c_module =
-          ExecutorApiFn()->TpuExecutable_HloModuleFn(se_executables[i]);
-      auto cleanup_c_module = absl::MakeCleanup(
-          [&c_module]() { ApiConverter::Destroy(&c_module); });
-      TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
-                          ApiConverter::FromC(c_module));
-      std::shared_ptr<HloModule> module_shared(module.release());
-      executables.emplace_back(std::make_unique<TpuExecutable>(
-          se_executables[i], std::move(module_shared)));
-    }
+    // We get the HloModule from the compiled executable, rather than reusing
+    // the input module in case the module changed in some way. For example,
+    // if the computation is automatically partitioned via XLA, the
+    // executable's module may have different input/output shapes than the
+    // input module.
+    XLA_HloModule c_module =
+        ExecutorApiFn()->TpuExecutable_HloModuleFn(se_executables[0]);
+    auto cleanup_c_module =
+        absl::MakeCleanup([&c_module]() { ApiConverter::Destroy(&c_module); });
+    TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
+                        ApiConverter::FromC(c_module));
+    std::shared_ptr<HloModule> module_shared(module.release());
+    executables.emplace_back(std::make_unique<legacy::TpuExecutable>(
+        se_executables[0], std::move(module_shared)));
 
     stream_executor::tpu::SerializedProto_Free(se_module_group.proto);
     delete[] se_executables;
@@ -188,7 +180,7 @@ class TpuCompiler : public Compiler {
   // Compiles the HLO module group for ahead-of-time execution.  This is
   // intended for use in static compilation.
   absl::StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
-  CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
+  CompileAheadOfTime(std::unique_ptr<HloModule> hlo_module,
                      const AotCompilationOptions& options) override {
     return Unimplemented("This compiler does not support CompileAheadOfTime.");
   }

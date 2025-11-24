@@ -14,9 +14,9 @@
 # ============================================================================
 from absl.testing import absltest
 
-from xla.build_tools import test_utils
-from xla.build_tools.lint import check_contents
-from xla.build_tools.lint import diff_parser
+from build_tools import test_utils
+from build_tools.lint import check_contents
+from build_tools.lint import diff_parser
 
 
 class CheckDiffsTest(absltest.TestCase):

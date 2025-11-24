@@ -657,7 +657,7 @@ std::optional<Value> convertMultiplyOp(PatternRewriter& rewriter, Operation* op,
         rewriter, op, rescale_type, op1_rescale_lhs, op2_rescale_rhs);
     return buildRescale(rewriter, op, output_type, op3_mul_op1_op2.getResult(),
                         output_rescale_scale, 0, output_qtype.getZeroPoint(),
-                        "DOUBLE_ROUND", scale32);
+                        tosa::RoundingMode::DOUBLE_ROUND, scale32);
   }
 
   return CreateMulOpAndInfer(rewriter, op, output_type, input_lhs_val,
@@ -833,7 +833,7 @@ std::optional<Value> convertConcatV2Op(PatternRewriter& rewriter, Operation* op,
             operand_type.getShape(), result_quant_type);
         Value rescale_op = buildRescale(
             rewriter, op, rescale_type, v, operand_scale / result_scale,
-            operand_zeropoint, result_zeropoint, "SINGLE_ROUND", true);
+            operand_zeropoint, result_zeropoint, tosa::RoundingMode::SINGLE_ROUND, true);
         values_rescaled.push_back(rescale_op);
       } else {
         values_rescaled.push_back(v);
@@ -1611,6 +1611,9 @@ std::optional<Value> convertSoftmaxOp(PatternRewriter& rewriter, Operation* op,
   int32_t input_rank = input_type.getRank();
   ArrayRef<int64_t> logits_shape = output_type.getShape();
 
+  const auto propagate_attr = tosa::NanPropagationModeAttr::get(
+    rewriter.getContext(), tosa::NanPropagationMode::PROPAGATE);
+
   if (mlir::isa<mlir::quant::QuantizedType>(input_type.getElementType()) &&
       mlir::isa<mlir::quant::QuantizedType>(output_type.getElementType())) {
     SmallVector<int64_t> rsum_shape_v(input_type.getShape().begin(),
@@ -1641,12 +1644,12 @@ std::optional<Value> convertSoftmaxOp(PatternRewriter& rewriter, Operation* op,
       // Step 1. get x - max(x)
       Value op1_rescale_in =
           buildRescale(rewriter, op, int32_logits_type, logits_value, 1.0f,
-                       in_quant_type.getZeroPoint(), 0, "SINGLE_ROUND", true);
+                       in_quant_type.getZeroPoint(), 0, tosa::RoundingMode::SINGLE_ROUND, true);
 
       auto op2_reducemax_op1 = CreateOpAndInfer<tosa::ReduceMaxOp>(
           rewriter, op->getLoc(), int32_rsum_type, op1_rescale_in,
           rewriter.getI32IntegerAttr(input_rank - 1),
-          rewriter.getStringAttr("PROPAGATE"));
+          propagate_attr);
 
       auto op3_sub_op1_op2 = CreateOpAndInfer<tosa::SubOp>(
           rewriter, op->getLoc(), int32_logits_type, op1_rescale_in,
@@ -1666,7 +1669,7 @@ std::optional<Value> convertSoftmaxOp(PatternRewriter& rewriter, Operation* op,
 
       Value op4_rescale_op3 =
           buildRescale(rewriter, op, int16_logits_type,
-                       op3_sub_op1_op2.getResult(), 128.0, 0, 0, "SINGLE_ROUND", true);
+                       op3_sub_op1_op2.getResult(), 128.0, 0, 0, tosa::RoundingMode::SINGLE_ROUND, true);
 
       // Input is 9.7, where lower 7 bits are all zeros.
       // Output is 23 bits, where lower 7 bits should be all zeros as well,
@@ -1834,18 +1837,18 @@ std::optional<Value> convertSoftmaxOp(PatternRewriter& rewriter, Operation* op,
 
       return buildRescale(rewriter, op, output_type,
                           op28_rshift_op26_op27.getResult(), 1.0, 0,
-                          out_quant_type.getZeroPoint(), "SINGLE_ROUND", true);
+                          out_quant_type.getZeroPoint(), tosa::RoundingMode::SINGLE_ROUND, true);
 
     } else if (in_quant_type.getStorageTypeIntegralWidth() == 16) {
       // Step 1. get x - max(x)
       Value op1_rescale_in =
           buildRescale(rewriter, op, int32_logits_type, logits_value, 1.0f,
-                       in_quant_type.getZeroPoint(), 0, "SINGLE_ROUND", true);
+                       in_quant_type.getZeroPoint(), 0, tosa::RoundingMode::SINGLE_ROUND, true);
 
       auto op2_reducemax_op1 = CreateOpAndInfer<tosa::ReduceMaxOp>(
           rewriter, op->getLoc(), int32_rsum_type, op1_rescale_in,
           rewriter.getI32IntegerAttr(input_rank - 1),
-          rewriter.getStringAttr("PROPAGATE"));
+          propagate_attr);
 
       // output range is [-65535, 0]
       auto op3_sub_op1_op2 = CreateOpAndInfer<tosa::SubOp>(
@@ -1864,7 +1867,7 @@ std::optional<Value> convertSoftmaxOp(PatternRewriter& rewriter, Operation* op,
       Value op4_rescale_op3 = buildRescale(
           rewriter, op, int32_logits_type, op3_sub_op1_op2.getResult(),
           /*scale=*/input_diff_scale, /*input_zp=*/0, /*output_zp=*/0,
-          /*rounding_mode=*/"DOUBLE_ROUND", /*scale32=*/true);
+          /*rounding_mode=*/tosa::RoundingMode::DOUBLE_ROUND, /*scale32=*/true);
       auto op5_add_op4 = CreateOpAndInfer<tosa::AddOp>(
           rewriter, op->getLoc(), int32_logits_type, op4_rescale_op3,
           getTosaConstTensorSingleI32(rewriter, op, 32767, input_rank));
@@ -1963,7 +1966,7 @@ std::optional<Value> convertSoftmaxOp(PatternRewriter& rewriter, Operation* op,
       return buildRescale(rewriter, op, output_type,
                           op21_rshift_op19_op20.getResult(),
                           (1.0 / out_quant_type.getScale()) * (1.0 / 32768.0),
-                          0, out_quant_type.getZeroPoint(), "SINGLE_ROUND", true);
+                          0, out_quant_type.getZeroPoint(), tosa::RoundingMode::SINGLE_ROUND, true);
     } else {
       (void)rewriter.notifyMatchFailure(op, "unknown quantization bitwidth");
       return std::nullopt;
@@ -1991,7 +1994,7 @@ std::optional<Value> convertSoftmaxOp(PatternRewriter& rewriter, Operation* op,
     auto max_logits = CreateOpAndInfer<tosa::ReduceMaxOp>(
         rewriter, op->getLoc(), rsum_type, logits_value,
         rewriter.getI32IntegerAttr(input_rank - 1),
-        rewriter.getStringAttr("PROPAGATE"));
+        propagate_attr);
     auto normalized_logits =
         CreateOpAndInfer<tosa::SubOp>(rewriter, op->getLoc(), logits_type,
                                       logits_value, max_logits.getResult());
@@ -3040,7 +3043,7 @@ std::optional<Value> convertReduceOpCommon(
     bool is_quantized, int32_t input_scale_multiplier,
     int32_t input_scale_shift, int64_t input_zp,
     int32_t output_scale_multiplier, int32_t output_scale_shift,
-    int64_t output_zp, bool keep_dims, StringRef nan_mode = "") {
+    int64_t output_zp, bool keep_dims, std::optional<tosa::NanPropagationMode> nan_mode = std::nullopt) {
   RankedTensorType input_type =
       dyn_cast<RankedTensorType>(input_value.getType());
   if (!input_type) return std::nullopt;
@@ -3087,13 +3090,15 @@ std::optional<Value> convertReduceOpCommon(
 
     if constexpr (std::is_same_v<tosa::ReduceMaxOp, T> ||
                   std::is_same_v<tosa::ReduceMinOp, T>) {
-      if (nan_mode != "PROPAGATE" && nan_mode != "IGNORE") {
+      if (!nan_mode) {
         (void)rewriter.notifyMatchFailure(
             op, "invalid NaN mode: must be either 'PROPAGATE' or 'IGNORE'");
         return std::nullopt;
       }
+      const auto nan_mode_attr = tosa::NanPropagationModeAttr::get(
+          rewriter.getContext(), *nan_mode);
       val = CreateOpAndInfer<T>(rewriter, op->getLoc(), reduce_type, val,
-                                axis_attr, rewriter.getStringAttr(nan_mode))
+                                axis_attr, nan_mode_attr)
                 .getResult();
     } else {
       val = CreateOpAndInfer<T>(rewriter, op->getLoc(), reduce_type, val,
@@ -3103,7 +3108,8 @@ std::optional<Value> convertReduceOpCommon(
   }
 
   if (is_quantized) {
-    std::string rounding_mode = IsTFLDoubleRoundingMode() ? "DOUBLE_ROUND" : "SINGLE_ROUND";
+    const tosa::RoundingMode rounding_mode = IsTFLDoubleRoundingMode() ?
+        tosa::RoundingMode::DOUBLE_ROUND : tosa::RoundingMode::SINGLE_ROUND;
     UnrankedTensorType output_rescale_type =
         UnrankedTensorType::get(output_type.getElementType());
     val = buildRescale(rewriter, op, output_rescale_type, val,
@@ -3150,7 +3156,7 @@ std::optional<Value> convertReduceOpCommon(
     PatternRewriter& rewriter, Operation* op, RankedTensorType output_type,
     Value input_value, ElementsAttr axes_elems, Type reduce_element_type,
     bool is_quantized, double input_scale, int64_t input_zp,
-    double output_scale, int64_t output_zp, bool keep_dims, StringRef nan_mode = "") {
+    double output_scale, int64_t output_zp, bool keep_dims, std::optional<tosa::NanPropagationMode> nan_mode = std::nullopt) {
   const int32_t scale_width = 32;
 
   int32_t input_scale_multiplier;
@@ -3208,7 +3214,7 @@ std::optional<Value> convertReduceMinOp(PatternRewriter& rewriter,
                                         Value input_value,
                                         ElementsAttr axes_elems,
                                         bool keep_dims,
-                                        StringRef nan_mode) {
+                                        std::optional<tosa::NanPropagationMode> nan_mode) {
   RankedTensorType input_type =
       dyn_cast<RankedTensorType>(input_value.getType());
   if (!input_type) return std::nullopt;
@@ -3225,7 +3231,7 @@ std::optional<Value> convertReduceMaxOp(PatternRewriter& rewriter,
                                         Value input_value,
                                         ElementsAttr axes_elems,
                                         bool keep_dims,
-                                        StringRef nan_mode) {
+                                        std::optional<tosa::NanPropagationMode> nan_mode) {
   RankedTensorType input_type =
       dyn_cast<RankedTensorType>(input_value.getType());
   if (!input_type) return std::nullopt;
@@ -3432,11 +3438,11 @@ std::optional<Value> convertReduceMeanOp(PatternRewriter& rewriter,
 // Lowers ResizeBilinear and ResizeNearestNeighbor to TOSA resize.
 std::optional<Value> convertResizeOp(PatternRewriter& rewriter, Operation* op,
                                      RankedTensorType output_type,
-                                     Value input_value, StringRef mode,
+                                     Value input_value, tosa::ResizeMode mode,
                                      bool align_corners,
                                      bool half_pixel_centers) {
-  const bool is_bilinear = mode == "BILINEAR";
-  const bool is_nearest = mode == "NEAREST_NEIGHBOR";
+  const bool is_bilinear = mode == tosa::ResizeMode::BILINEAR;
+  const bool is_nearest = mode == tosa::ResizeMode::NEAREST_NEIGHBOR;
   RankedTensorType input_type =
       dyn_cast<RankedTensorType>(input_value.getType());
   if (!input_type) return std::nullopt;
@@ -3553,7 +3559,9 @@ std::optional<Value> convertResizeOp(PatternRewriter& rewriter, Operation* op,
   auto offset = getTosaConstShape(rewriter, op->getLoc(), {offset_y, offset_x});
   auto border = getTosaConstShape(rewriter, op->getLoc(), {border_y, border_x});
 
-  StringAttr resize_mode = rewriter.getStringAttr(mode);
+
+  const auto resize_mode_attr = tosa::ResizeModeAttr::get(
+      rewriter.getContext(), mode);
 
   auto isInt16Range = [](int x) {
     return (x <= std::numeric_limits<int16_t>::max()) &&
@@ -3598,7 +3606,7 @@ std::optional<Value> convertResizeOp(PatternRewriter& rewriter, Operation* op,
 
       auto resize_op = CreateOpAndInfer<tosa::ResizeOp>(
           rewriter, op->getLoc(), output_acc_type, input_value, scale, offset,
-          border, resize_mode);
+          border, resize_mode_attr);
 
 #ifdef RESIZE_BILINEAR_LOWER_SYMMETRIC_ROUNDING
       // TFLite resize_bilinear always assume input and output tensors have
@@ -3641,14 +3649,14 @@ std::optional<Value> convertResizeOp(PatternRewriter& rewriter, Operation* op,
       // This should be the expected lowering, but is +-1 within compared to
       // TFLite reference.
       return buildRescale(rewriter, op, output_type, resize_op.getResult(),
-                          1.0 / (scale_y_n * scale_x_n), 0, 0, "SINGLE_ROUND",
+                          1.0 / (scale_y_n * scale_x_n), 0, 0, tosa::RoundingMode::SINGLE_ROUND,
                           is_scale32);
 #endif
 
     } else if (is_nearest) {
       auto resize_op = CreateOpAndInfer<tosa::ResizeOp>(
           rewriter, op->getLoc(), output_type, input_value, scale, offset,
-          border, resize_mode);
+          border, resize_mode_attr);
       return resize_op.getResult();
     } else {
       (void)rewriter.notifyMatchFailure(
@@ -3658,7 +3666,7 @@ std::optional<Value> convertResizeOp(PatternRewriter& rewriter, Operation* op,
   } else {
     auto resize_op = CreateOpAndInfer<tosa::ResizeOp>(
         rewriter, op->getLoc(), output_type, input_value, scale, offset, border,
-        resize_mode);
+        resize_mode_attr);
 
     return resize_op.getResult();
   }

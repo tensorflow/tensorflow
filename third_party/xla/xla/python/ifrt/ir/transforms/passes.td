@@ -19,6 +19,12 @@ limitations under the License.
 
 include "mlir/Pass/PassBase.td"
 
+def IfrtIRCompileOptions :
+    Option<"compile_options", "compile_options",
+           "std::shared_ptr<xla::ifrt::IfrtIRCompileOptions>",
+           "std::make_shared<xla::ifrt::IfrtIRCompileOptions>()",
+           "The IFRT IR compile options used for compilation.">;
+
 def SpmdExpandableInterfaceVerificationPass
     : Pass<"spmd-expandable-interface-verification", "mlir::ModuleOp"> {
   let summary = "Verify all ops have IFRT SpmdExpandableInterface implemented";
@@ -33,8 +39,6 @@ This pass will fail if it encounters any op without the implementation.
 When the atom program is invoked on 1 device, the verification is skipped as
 no expansion is needed.
   }];
-
-  let constructor = "CreateSpmdExpandableInterfaceVerificationPass()";
 
   let options = [
     ListOption<"excluded_dialects_", "excluded-dialects", "std::string",
@@ -91,8 +95,6 @@ module attributes {ifrt.devices = #device} {
 }
 ```
   }];
-
-  let constructor = "CreateSpmdExpansionPass()";
 }
 
 def IfrtOutlineAtomProgramToModulePass :
@@ -132,8 +134,6 @@ module @callee attributes {sym_visibility = "private"} {
 }
 ```
   }];
-
-  let constructor = "CreateIfrtOutlineAtomProgramToModulePass()";
 }
 
 def IfrtDuplicatedCalleeEliminationPass
@@ -144,8 +144,6 @@ Deduplicate `ifrt.CallOp` callee `FuncOp`s that are the same except their
 symbol names. The callee attrs of `ifrt.CallOp`s will be merged to one of
 them. The duplicated callee `FuncOp` will not be removed.
   }];
-
-  let constructor = "CreateIfrtDuplicatedCalleeEliminationPass()";
 }
 
 def IfrtMergeReshardsPass :
@@ -176,8 +174,6 @@ Currently this handles the case where the source is the Func BlockArgs or
 the outputs of a ifrt.Call, ifrt.CallLoadedExecutable, ifrt.Reshard,
 ifrt.CopyArrays, and ifrt.RemapArrays.
   }];
-
-  let constructor = "CreateIfrtMergeReshardsPass()";
 }
 
 def IfrtVerifyDonationPass :
@@ -188,8 +184,6 @@ Verifiy that no `!ifrt.array` is donated more than once, and that all
 `ifrt.array`s that are donated and arguments of the main func have
 `ifrt.donated` attribute.
   }];
-
-  let constructor = "CreateIfrtVerifyDonationPass()";
 }
 
 def IfrtVerifyShardingSpecifiedPass :
@@ -199,8 +193,6 @@ def IfrtVerifyShardingSpecifiedPass :
 Verify that each `!ifrt.array` has sharding attribute that is not of type
 `!ifrt.sharding_unspecified`.
   }];
-
-  let constructor = "CreateIfrtVerifyShardingSpecifiedPass()";
 }
 
 def IfrtPopulateAtomProgramMetadataPass :
@@ -264,8 +256,6 @@ module @new_callee attributes {ifrt.num_devices = 2} {
 }
 ```
   }];
-
-  let constructor = "CreateIfrtPopulateAtomProgramMetadataPass()";
 }
 
 def IfrtReshardToCopyArraysPass :
@@ -304,16 +294,14 @@ func.func @main(%arg0: !array0, %arg1: !array1) -> (!array1, !array2)
 }
 ```
   }];
-
-  let constructor = "CreateIfrtReshardToCopyArraysPass()";
 }
 
 def IfrtLowerAtomProgramMetadataToXlaPass :
     Pass<"ifrt-lower-atom-program-metadata-to-xla", "mlir::ModuleOp"> {
   let summary = "Converts IFRT metadata to XLA-compatible attributes";
   let description = [{
-Replaces `ifrt.sharding` attr by `mhlo.sharding` attr, and `ifrt.memory_kind`
-by `mhlo.memory_kind`.
+Replaces `ifrt.sharding` attr by `mhlo.sharding` attr (if Shardy is disabled)
+and `ifrt.memory_kind` by `mhlo.memory_kind`.
 
 For example, the following code
 
@@ -338,7 +326,9 @@ module attributes {
 ```
   }];
 
-  let constructor = "CreateIfrtLowerAtomProgramMetadataToXlaPass()";
+  let options = [
+    IfrtIRCompileOptions
+  ];
 }
 
 def IfrtRemoveIfrtAttrsPass :
@@ -370,8 +360,6 @@ module {
 }
 ```
   }];
-
-  let constructor = "CreateIfrtRemoveIfrtAttrsPass()";
 }
 
 def IfrtRemoveAttrsFromOtherDialectsPass :
@@ -381,7 +369,6 @@ def IfrtRemoveAttrsFromOtherDialectsPass :
 Remove attributes that are not from IFRT or Builtin dialect from IFRT functions.
 Does not modify atom programs.
   }];
-  let constructor = "CreateIfrtRemoveAttrsFromOtherDialectsPass()";
 }
 
 def IfrtLowerMpmdReshardToCallPass :
@@ -428,8 +415,6 @@ module @reshard attributes {
 }
 ```
   }];
-
-  let constructor = "CreateIfrtLowerMpmdReshardToCallPass()";
 }
 
 def IfrtPrecompileAtomProgramPreprocessingPass :
@@ -445,10 +430,10 @@ This passes visits each CallOp and does the following:
 ```
   }];
 
-  let constructor = "CreateIfrtPrecompileAtomProgramPreprocessingPass()";
   let options = [
     ListOption<"platform_names", "platform_names", "std::string",
-               "The mapping from logical device ID to platform name (e.g., tpu, cuda) corresponding to the logical device ID.">
+               "The mapping from logical device ID to platform name (e.g., tpu, cuda) corresponding to the logical device ID.">,
+    IfrtIRCompileOptions,
   ];
 }
 
@@ -467,7 +452,6 @@ This pass fails if
  each other.
   }];
 
-  let constructor = "CreateIfrtVerifyDeviceTypeConsistencyPass()";
   let options = [
     ListOption<"platform_names", "platform_names", "std::string",
                "The mapping from logical device ID to platform name (e.g., tpu, cuda) corresponding to the logical device ID.">
@@ -477,10 +461,37 @@ This pass fails if
 def IfrtDumpAtomProgramsPass
     : Pass<"ifrt-dump-atom-programs", "mlir::ModuleOp"> {
   let summary = "Extracts atom programs from module and dumps them to files.";
-  let constructor = "CreateIfrtDumpAtomProgramsPass()";
   let options = [
     Option<"dump_dir", "dump_dir", "std::string", "",
            "The directory to dump the atom programs and the main function to.">,
+  ];
+}
+
+def IfrtToDotPass :
+   Pass<"ifrt-to-dot", "mlir::ModuleOp"> {
+  let summary = "Extracts a dot graph representation of an IFRT IR program.";
+  let description = [{
+    The pass dumps a dot graph graph of a module. `ifrt.LoadedExecutableOp`s are
+    represented as nodes. An edge is added between a source and destination node
+    if the destination node has a control dependency to execute after the source
+    node or uses an output of the source node directly, or indirectly via a
+    `ifrt.CopyArraysOp`.
+  }];
+  let options = [
+    Option<"dot_graph_dump_to", "dot_graph_dump_to", "std::string", "",
+           "The directory to dump the dot graph to.">,
+    Option<"dot_graph_min_executable_peak_memory_bytes",
+           "dot_graph_min_executable_peak_memory_bytes", "int64_t", "0",
+           "The minimum peak memory (in bytes) an executable node must have to "
+           "be included in the dot graph.">,
+    Option<"dot_graph_min_executable_flops", "dot_graph_min_executable_flops",
+           "float", "0.0",
+           "The minimum flops an executable node must have to be included in the "
+           "dot graph.">,
+    Option<"dot_graph_min_per_device_transfer_size_bytes",
+           "dot_graph_min_per_device_transfer_size_bytes", "int64_t", "0",
+           "The minimum per device transfer size (in bytes) an edge between "
+           "executables must have to be included in the dot graph.">,
   ];
 }
 
@@ -500,7 +511,6 @@ def VifrtToVersionPass : Pass<"vifrt-to-version", "mlir::ModuleOp"> {
     Option<"target_version", "target_version", "std::string", "",
            "The VIFRT target version. Must be a version of the form #.#.#.">,
   ];
-  let constructor = "CreateVifrtToVersionPass()";
   let dependentDialects = ["xla::ifrt::VifrtDialect"];
 }
 

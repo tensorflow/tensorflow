@@ -97,10 +97,10 @@ TEST_F(SparseFillEmptyRowsTest, IndicesValuesUnmatch) {
   // default_value
   AddInputFromArray<float>(TensorShape({}), {4});
 
-  EXPECT_THAT(RunOpKernel(),
-              testing::StatusIs(error::INVALID_ARGUMENT,
-                                "The length of `values` (3) must match the "
-                                "first dimension of `indices` (4)."));
+  EXPECT_THAT(RunOpKernel(), absl_testing::StatusIs(
+                                 error::INVALID_ARGUMENT,
+                                 "The length of `values` (3) must match the "
+                                 "first dimension of `indices` (4)."));
 }
 
 TEST_F(SparseFillEmptyRowsTest, IndicesDenseShapeUnmatch) {
@@ -115,10 +115,10 @@ TEST_F(SparseFillEmptyRowsTest, IndicesDenseShapeUnmatch) {
   // default_value
   AddInputFromArray<float>(TensorShape({}), {4});
 
-  EXPECT_THAT(RunOpKernel(),
-              testing::StatusIs(error::INVALID_ARGUMENT,
-                                "The length of `dense_shape` (2) must match "
-                                "the second dimension of `indices` (0)."));
+  EXPECT_THAT(RunOpKernel(), absl_testing::StatusIs(
+                                 error::INVALID_ARGUMENT,
+                                 "The length of `dense_shape` (2) must match "
+                                 "the second dimension of `indices` (0)."));
 }
 
 }  // namespace

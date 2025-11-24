@@ -19,22 +19,23 @@ limitations under the License.
 #include <utility>
 
 #include <gmock/gmock.h>
+#include <gtest/gtest.h>
+#include "absl/status/status_matchers.h"
 #include "absl/strings/string_view.h"
 #include "xla/error_spec.h"
-#include "xla/tests/hlo_test_base.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/status_matchers.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/test.h"
+#include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
+#include "xla/tests/hlo_pjrt_test_base.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
 namespace {
 
 using ::testing::HasSubstr;
-using ::tsl::testing::StatusIs;
 
-class ReductionLayoutNormalizerTest : public HloTestBase {
+class ReductionLayoutNormalizerTest
+    : public HloPjRtInterpreterReferenceMixin<HloPjRtTestBase> {
  public:
   void CheckReductionLayoutNormalizer(
       absl::string_view hlo, std::optional<absl::string_view> expected) {
@@ -159,8 +160,8 @@ ENTRY main {
   auto cloned_module = module->Clone();
   ReductionLayoutNormalizer normalizer;
   EXPECT_THAT(normalizer.Run(module.get()),
-              StatusIs(tsl::error::FAILED_PRECONDITION,
-                       HasSubstr("Layout assignment")));
+              absl_testing::StatusIs(tsl::error::FAILED_PRECONDITION,
+                                     HasSubstr("Layout assignment")));
   EXPECT_TRUE(RunAndCompare(std::move(cloned_module), ErrorSpec{1e-5, 1e-5}));
 }
 

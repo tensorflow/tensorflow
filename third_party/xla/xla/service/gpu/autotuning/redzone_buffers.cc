@@ -19,6 +19,7 @@ limitations under the License.
 #include <iterator>
 #include <limits>
 #include <memory>
+#include <string>
 #include <vector>
 
 #include "absl/log/check.h"
@@ -26,6 +27,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/executable_run_options.h"
 #include "xla/hlo/ir/hlo_clone_context.h"
+#include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -48,6 +50,31 @@ absl::StatusOr<RedzoneBuffers> RedzoneBuffers::FromInstruction(
     se::Stream* stream, BuffersToCreate buffers_to_create,
     bool should_init_buffers, bool should_check_correctness,
     int redzone_padding_bytes) {
+  ProgramShape program_shape;
+  for (const HloInstruction* operand : instruction.operands()) {
+    program_shape.AddParameter(operand->shape(), std::string(operand->name()));
+  }
+  *program_shape.mutable_result() = instruction.shape();
+  return FromProgramShape(program_shape, buffers_to_create, should_init_buffers,
+                          should_check_correctness, redzone_padding_bytes,
+                          allocator, stream);
+}
+
+absl::StatusOr<RedzoneBuffers> RedzoneBuffers::FromComputation(
+    const HloComputation& computation, se::DeviceMemoryAllocator* allocator,
+    se::Stream* stream, BuffersToCreate buffers_to_create,
+    bool should_init_buffers, bool should_check_correctness,
+    int redzone_padding_bytes) {
+  return FromProgramShape(computation.ComputeProgramShape(), buffers_to_create,
+                          should_init_buffers, should_check_correctness,
+                          redzone_padding_bytes, allocator, stream);
+}
+
+absl::StatusOr<RedzoneBuffers> RedzoneBuffers::FromProgramShape(
+    const ProgramShape& program_shape, BuffersToCreate buffers_to_create,
+    bool should_init_buffers, bool should_check_correctness,
+    int redzone_padding_bytes, se::DeviceMemoryAllocator* allocator,
+    se::Stream* stream) {
   tsl::profiler::TraceMe traceme("create redzone buffers");
   RedzoneBuffers buffers;
   buffers.redzone_allocator_ = std::make_unique<se::RedzoneAllocator>(
@@ -57,51 +84,50 @@ absl::StatusOr<RedzoneBuffers> RedzoneBuffers::FromInstruction(
 
   int64_t rng_state = 0;
 
-  TF_RETURN_IF_ERROR(
-      buffers.CreateInputs(instruction, should_init_buffers, rng_state));
+  TF_RETURN_IF_ERROR(buffers.CreateInputs(program_shape.parameters(),
+                                          should_init_buffers, rng_state));
 
   if (buffers_to_create == BuffersToCreate::kAllInputsAllOutputs ||
       buffers_to_create == BuffersToCreate::kAllInputsOutputsNoScratch) {
-    TF_RETURN_IF_ERROR(buffers.CreateOutputs(instruction, buffers_to_create,
+    TF_RETURN_IF_ERROR(buffers.CreateOutputs(program_shape.result(),
+                                             buffers_to_create,
                                              should_init_buffers, rng_state));
   }
-
   return buffers;
 }
 
-absl::Status RedzoneBuffers::CreateInputs(const HloInstruction& instruction,
+absl::Status RedzoneBuffers::CreateInputs(absl::Span<const Shape> input_shapes,
                                           bool should_init_buffers,
                                           int64_t& rng_state) {
   tsl::profiler::TraceMe traceme("create inputs");
-  for (const auto* operand : instruction.operands()) {
+  for (const auto& input_shape : input_shapes) {
     TF_ASSIGN_OR_RETURN(se::DeviceMemoryBase buf,
                         redzone_allocator_->CreateBuffer(
-                            operand->shape(), should_init_buffers, rng_state));
+                            input_shape, should_init_buffers, rng_state));
     input_buffers_.push_back(buf);
-    input_shapes_.push_back(operand->shape());
+    input_shapes_.push_back(input_shape);
   }
   return absl::OkStatus();
 }
 
-absl::Status RedzoneBuffers::CreateOutputs(const HloInstruction& instruction,
+absl::Status RedzoneBuffers::CreateOutputs(const Shape& output_shape,
                                            BuffersToCreate buffers_to_create,
                                            bool should_init_buffers,
                                            int64_t& rng_state) {
   tsl::profiler::TraceMe traceme("create outputs");
-  if (!instruction.shape().IsTuple()) {
-    TF_ASSIGN_OR_RETURN(
-        se::DeviceMemoryBase buf,
-        redzone_allocator_->CreateBuffer(instruction.shape(),
-                                         should_init_buffers, rng_state));
+  if (!output_shape.IsTuple()) {
+    TF_ASSIGN_OR_RETURN(se::DeviceMemoryBase buf,
+                        redzone_allocator_->CreateBuffer(
+                            output_shape, should_init_buffers, rng_state));
     output_buffers_.push_back(buf);
-    output_shape_ = instruction.shape();
+    output_shape_ = output_shape;
     return absl::OkStatus();
   }
 
   // The output is a tuple.
 
-  auto current_shape_it = instruction.shape().tuple_shapes().begin();
-  auto end = instruction.shape().tuple_shapes().end();
+  auto current_shape_it = output_shape.tuple_shapes().begin();
+  auto end = output_shape.tuple_shapes().end();
   end -= buffers_to_create == kAllInputsAllOutputs ? 0 : 1;
 
   output_shape_ = std::distance(current_shape_it, end) == 1

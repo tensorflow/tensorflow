@@ -83,6 +83,7 @@ struct ReconfigBatchOpPassOptions {
   int64_t batch_timeout_micros = 0;
   llvm::ArrayRef<int64_t> allowed_batch_sizes = {};
   int64_t max_enqueued_batches = 0;
+  int64_t batch_queue_global_prioritization_num_threads = 0;
 };
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>> CreateReconfigBatchOpPass(
     ReconfigBatchOpPassOptions options);
@@ -159,7 +160,7 @@ absl::Status CreateTFExecutorToTFPipeline(mlir::PassManager& pm,
 // TODO(deqiangc): refactor below helpers once mlrt is OSSed.
 void CreateTFExecutorToTFPreInvariantOptimizationPipelineHelper(
     mlir::OpPassManager& pm, const TfrtPipelineOptions& options);
-void CreateTFExecutorToTFInvariantOptimizationPipelineHelper(
+void CreateTFInvariantOptimizationPipelineHelper(
     mlir::OpPassManager& pm, const TfrtPipelineOptions& options);
 
 absl::Status CreateTFExecutorToTFPreInvariantOptimizationPipeline(

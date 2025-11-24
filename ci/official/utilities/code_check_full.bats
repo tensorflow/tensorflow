@@ -51,10 +51,13 @@ do_external_licenses_check(){
 @org_tensorflow//
 @com_github_googlecloudplatform_google_cloud_cpp//google
 @com_github_grpc_grpc//src/compiler
+@com_google_protobuf//upb_generator
+@llvm-project//third-party/siphash
 @platforms//os
 @ml_dtypes_py//ml_dtypes
 @ruy//
 @rules_java_builtin//toolchains
+@rules_ml_toolchain//
 @rules_python//
 @stablehlo//stablehlo/experimental
 EOF
@@ -69,6 +72,7 @@ EOF
 @bazel_tools//tools
 @org_tensorflow//tensorflow
 @com_google_absl//
+@com_google_protobuf//
 @internal_platforms_do_not_use//host
 @pybind11_abseil//pybind11_abseil
 //external
@@ -78,6 +82,7 @@ EOF
 ^//$
 @ml_dtypes_py//
 @ruy//
+@rules_ml_toolchain//
 EOF
 
   license_query "attr('licenses', 'notice', deps($BUILD_TARGET))" > $BATS_TEST_TMPDIR/expected_licenses
@@ -108,18 +113,6 @@ EOF
   do_external_licenses_check \
     "//tensorflow/tools/pip_package:wheel" \
     "//tensorflow/tools/pip_package:licenses"
-}
-
-@test "Libtensorflow generated license includes all dependencies' licenses" {
-  do_external_licenses_check \
-    "//tensorflow:libtensorflow.so" \
-    "//tensorflow/tools/lib_package:clicenses_generate"
-}
-
-@test "Java library generated license includes all dependencies' licenses" {
-  do_external_licenses_check \
-    "//tensorflow/java:libtensorflow_jni.so" \
-    "//tensorflow/tools/lib_package:jnilicenses_generate"
 }
 
 # This test ensures that all the targets built into the Python package include

@@ -292,7 +292,19 @@ TEST_P(OpsTest, RunZipTests) {
   bool result = tflite::testing::ParseAndRunTests(&tflite_stream, &test_driver);
   string message = test_driver.GetErrorMessage();
 
-  if (!fully_quantize) {
+  if (fully_quantize) {
+    if (!result) {
+      string bug_number;
+      // See if the tests are potential quantize failures.
+      for (const auto& p : quantize_broken_tests) {
+        if (RE2::PartialMatch(test_name, p.first)) {
+          bug_number = p.second;
+          break;
+        }
+      }
+      EXPECT_FALSE(bug_number.empty());
+    }
+  } else {
     string bug_number;
     bool always_ignore;
     for (const auto& p : broken_tests) {
@@ -316,18 +328,6 @@ TEST_P(OpsTest, RunZipTests) {
         EXPECT_TRUE(result || always_ignore)
             << message << ": Possibly due to http://b/" << bug_number;
       }
-    }
-  } else {
-    if (!result) {
-      string bug_number;
-      // See if the tests are potential quantize failures.
-      for (const auto& p : quantize_broken_tests) {
-        if (RE2::PartialMatch(test_name, p.first)) {
-          bug_number = p.second;
-          break;
-        }
-      }
-      EXPECT_FALSE(bug_number.empty());
     }
   }
 }

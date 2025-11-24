@@ -19,17 +19,20 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Casting.h"
+#include "llvm/Support/Debug.h"
 #include "mhlo/IR/hlo_ops.h"
 #include "mhlo/transforms/passes.h"
 #include "mhlo/transforms/rewriters.h"
 #include "mhlo/utils/type_conversion.h"
 #include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/DialectRegistry.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/LogicalResult.h"
 #include "mlir/Support/TypeID.h"
+#include "mlir/Support/WalkResult.h"
 #include "mlir/Transforms/DialectConversion.h"
 #include "stablehlo/dialect/StablehloOps.h"
 
@@ -41,44 +44,27 @@ namespace mhlo {
 
 namespace {
 
-// AddDependencyOp is the only op that doesn't exist in StableHLO but uses
-// token types. This led to two options (1) support either token type in
-// AddDependencyOp or (2) Design a token conversion (or unrealized cast) between
-// MHLO and StableHLO. Option (1) seems safer, and we can hopefully obsolete
-// mhlo::TokenType all together and just use StableHLO tokens everywhere.
-//
-// Note: Only the second argument needs to be converted. All token creation and
-// propagation is already handled by existing conversions.
-struct AddDependencyOpToStablehloTokenConverter
-    : public OpConversionPattern<mhlo::AddDependencyOp> {
-  using OpConversionPattern::OpConversionPattern;
-  LogicalResult matchAndRewrite(
-      mhlo::AddDependencyOp op, mhlo::AddDependencyOpAdaptor adaptor,
-      ConversionPatternRewriter& rewriter) const override {
-    // Only convert if input token type is MHLO token
-    if (!llvm::isa<stablehlo::TokenType>(adaptor.getToken().getType()))
-      return rewriter.notifyMatchFailure(op, "nothing to convert");
-    rewriter.replaceOpWithNewOp<mhlo::AddDependencyOp>(op, adaptor.getOperand(),
-                                                       adaptor.getToken());
-    return success();
+bool hasMhloTypes(TypeRange types) {
+  bool hasMhloType = false;
+  for (Type type : types) {
+    type.walk([&](Type t) {
+      if (auto tuple = dyn_cast<TupleType>(t)) {
+        hasMhloType = hasMhloType || hasMhloTypes(tuple.getTypes());
+      } else if (auto bundle = dyn_cast<mhlo::AsyncBundleType>(t)) {
+        hasMhloType = hasMhloType || hasMhloTypes(bundle.getTypes());
+      } else if (auto rankedTensor = dyn_cast<RankedTensorType>(t)) {
+        hasMhloType =
+            hasMhloType || llvm::isa_and_nonnull<mhlo::TypeExtensionsAttr>(
+                               rankedTensor.getEncoding());
+      } else if (llvm::isa<mhlo::MhloDialect>(t.getDialect())) {
+        hasMhloType = true;
+      }
+      if (hasMhloType) return WalkResult::interrupt();
+      return WalkResult::advance();
+    });
   }
-};
-
-bool hasMhloOperand(Operation* op) {
-  return llvm::any_of(op->getOperandTypes(), [](Type type) {
-    // Check for !stablehlo.token
-    if (llvm::isa<mhlo::MhloDialect>(type.getDialect())) return true;
-
-    // Check for tensor<X, #stablehlo.bounds<...>>
-    if (auto rankedType = dyn_cast<RankedTensorType>(type)) {
-      return llvm::isa_and_nonnull<mhlo::TypeExtensionsAttr>(
-          rankedType.getEncoding());
-    }
-    // Not StableHLO
-    return false;
-  });
+  return hasMhloType;
 }
-
 struct UpdateOperandsInUnknownOp : public ConversionPattern {
   UpdateOperandsInUnknownOp(TypeConverter& converter, MLIRContext* context)
       : ConversionPattern(converter, MatchAnyOpTypeTag(), /*benefit=*/1,
@@ -91,7 +77,7 @@ struct UpdateOperandsInUnknownOp : public ConversionPattern {
             op->getDialect()))
       return rewriter.notifyMatchFailure(op, "op is not an unknown op");
 
-    if (!hasMhloOperand(op))
+    if (!hasMhloTypes(op->getOperandTypes()))
       return rewriter.notifyMatchFailure(op, "op has no mhlo operands");
 
     rewriter.modifyOpInPlace(op, [&]() { op->setOperands(operands); });
@@ -115,25 +101,45 @@ struct HloLegalizeToStablehloPass
     stablehlo::HloToStablehloTypeConverter converter;
     RewritePatternSet patterns(&getContext());
     stablehlo::populateHloToStablehloPatterns(
-        &patterns, &converter, &getContext(), allow_experimental_features_);
+        &patterns, &converter, &getContext(), allow_experimental_features_,
+        allow_xla_features_);
     stablehlo::registerFuncOpsForTypeConversion(target, patterns, converter);
 
     if (allow_xla_features_) {
       // These ops do not exist in StableHLO.
-      target.addLegalOp<
-          mhlo::AsyncDoneOp, mhlo::AsyncStartOp, mhlo::AsyncUpdateOp,
-          mhlo::BitcastOp, mhlo::CopyOp, mhlo::DomainOp, mhlo::ErfOp,
-          mhlo::FusionOp, mhlo::MinimumBroadcastShapesOp, mhlo::RaggedDotOp,
-          mhlo::SparseDotOp, mhlo::StochasticConvertOp, mhlo::TopKOp,
-          mhlo::TraceOp, mhlo::XlaRngGetAndUpdateStateOp>();
+      target.addLegalOp<mhlo::AsyncDoneOp, mhlo::AsyncStartOp,
+                        mhlo::AsyncUpdateOp, mhlo::BitcastOp, mhlo::CopyOp,
+                        mhlo::DomainOp, mhlo::ErfOp, mhlo::FusionOp,
+                        mhlo::MinimumBroadcastShapesOp, mhlo::RaggedDotOp,
+                        mhlo::StochasticConvertOp, mhlo::TopKOp, mhlo::TraceOp,
+                        mhlo::XlaRngGetAndUpdateStateOp>();
       target.addDynamicallyLegalOp<mhlo::AddDependencyOp>(
-          [](mhlo::AddDependencyOp op) { return !hasMhloOperand(op); });
-      patterns.add<AddDependencyOpToStablehloTokenConverter>(&getContext());
+          [](mhlo::AddDependencyOp op) {
+            return !hasMhloTypes(op->getOperandTypes());
+          });
+      target.addDynamicallyLegalOp<mhlo::AsyncStartOp>(
+          [](mhlo::AsyncStartOp op) {
+            return !hasMhloTypes(op->getResultTypes());
+          });
+      target.addDynamicallyLegalOp<mhlo::AsyncUpdateOp>(
+          [](mhlo::AsyncUpdateOp op) {
+            return !hasMhloTypes(op->getResultTypes());
+          });
+      target.addDynamicallyLegalOp<mhlo::AsyncDoneOp>([](mhlo::AsyncDoneOp op) {
+        return !hasMhloTypes(op->getResultTypes());
+      });
+      target.addDynamicallyLegalOp<mhlo::CustomCallOp>(
+          [](mhlo::CustomCallOp op) {
+            return !!op.getCustomCallScheduleAttr();
+          });
+      // TODO: StableHLO AllToAll has different semantics than MHLO AllToAll.
+      target.addDynamicallyLegalOp<mhlo::AllToAllOp>(
+          [](mhlo::AllToAllOp op) { return op.getNumOperands() > 1; });
     }
 
     // Handle non-MHLO ops that may have bounded dynamism or token types.
     target.markUnknownOpDynamicallyLegal(
-        [](Operation* op) { return !hasMhloOperand(op); });
+        [](Operation* op) { return !hasMhloTypes(op->getOperandTypes()); });
     patterns.add<UpdateOperandsInUnknownOp>(converter, &getContext());
 
     if (failed(applyPartialConversion(getOperation(), target,

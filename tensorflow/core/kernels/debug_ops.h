@@ -34,11 +34,11 @@ limitations under the License.
 #include "tensorflow/core/platform/rocm.h"
 #endif
 
+#include "absl/synchronization/notification.h"
 #include "tensorflow/core/debug/debug_io_utils.h"
 #include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_util.h"
-#include "tensorflow/core/lib/core/notification.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/util/debug_events_writer.h"
 
@@ -66,7 +66,7 @@ class CopyOp : public OpKernel {
               "Unexpected number of semicolons in debug_ops_spec element: ",
               debug_op_spec));
       debug_op_and_url_specs_.push_back(
-          DebugWatchAndURLSpec(strings::StrCat(tensor_name_, ":", items[0]),
+          DebugWatchAndURLSpec(absl::StrCat(tensor_name_, ":", items[0]),
                                items[1], items[2] == "1"));
     }
   }
@@ -91,7 +91,7 @@ class CopyOp : public OpKernel {
       if (off_host_input) {
         DeviceContext* device_ctxt = context->op_device_context();
         // Input is not on host: deep-copy it from GPU to the same GPU.
-        Notification done_copy;
+        absl::Notification done_copy;
         GPUUtil::CopyGPUTensorToSameGPU(
             device, device_ctxt, &src_tensor, copied_tensor,
             [&done_copy](const Status& s) { done_copy.Notify(); });

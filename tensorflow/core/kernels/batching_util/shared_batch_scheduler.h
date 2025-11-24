@@ -33,6 +33,7 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/strings/str_format.h"
+#include "absl/synchronization/notification.h"
 #include "absl/time/clock.h"
 #include "xla/tsl/platform/criticality.h"
 #include "tensorflow/core/kernels/batching_util/batch_input_task.h"
@@ -132,7 +133,7 @@ class SharedBatchScheduler
   // TODO(b/25089730): Tune defaults based on best practices as they develop.
   struct Options {
     // The name to use for the pool of batch threads.
-    string thread_pool_name = {"batch_threads"};
+    std::string thread_pool_name = {"batch_threads"};
 
     // The number of threads to use to process batches.
     // Must be >= 1, and should be tuned carefully.
@@ -232,7 +233,7 @@ class SharedBatchScheduler
     size_t max_execution_batch_size = 1000;
 
     // If non-empty, contains configured batch sizes.
-    std::vector<int32> allowed_batch_sizes;
+    std::vector<int32_t> allowed_batch_sizes;
 
     // If true, the padding will not be appended.
     bool disable_padding = false;
@@ -240,7 +241,7 @@ class SharedBatchScheduler
     // The padding policy to use.
     //
     // See the documentation for kPadUpPolicy for details.
-    string batch_padding_policy = string(kPadUpPolicy);
+    std::string batch_padding_policy = std::string(kPadUpPolicy);
 
     // A pointer to a ModelBatchStats instance for this model. To be used for
     // cost-based padding policy selection.
@@ -265,7 +266,7 @@ class SharedBatchScheduler
       // See QueueOptions.max_enqueued_batches
       size_t max_enqueued_batches = 0;
       // See QueueOptions.allowed_batch_sizes
-      std::vector<int32> allowed_batch_sizes;
+      std::vector<int32_t> allowed_batch_sizes;
     };
     // A subset of queue options for high priority input. These options are
     // currently not being used in favor of the equivalents options at the
@@ -515,7 +516,7 @@ class Queue {
   size_t tail_batch_task_size() const TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   // Returns the number of enqueued batches.
-  int64 num_enqueued_batches() const TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  int64_t num_enqueued_batches() const TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   // Gets the appropriate batches.
   std::deque<std::unique_ptr<Batch<TaskType>>>& GetBatches()
@@ -572,7 +573,7 @@ class Queue {
       TF_GUARDED_BY(mu_);
 
   // The counter of the TraceMe context ids.
-  uint64 traceme_context_id_counter_ TF_GUARDED_BY(mu_) = 0;
+  uint64_t traceme_context_id_counter_ TF_GUARDED_BY(mu_) = 0;
 
   // The time at which the first task was added to the open (back-most) batch
   // in 'high_priority_batches_'. Valid iff that batch contains at least one
@@ -580,7 +581,7 @@ class Queue {
   //
   // Note that when using a batch padding policy other than PAD_UP, this field
   // might contain an approximate value.
-  uint64 open_batch_start_time_micros_ TF_GUARDED_BY(mu_);
+  uint64_t open_batch_start_time_micros_ TF_GUARDED_BY(mu_);
 
   // Whether this queue contains a batch that is eligible to be scheduled.
   // Used to keep track of when to call 'schedulable_batch_callback_'.
@@ -595,7 +596,7 @@ class Queue {
   // starts. When ProcessBatch() dequeues the last batch and makes the queue
   // empty, if 'empty_notification_' is non-null it calls
   // 'empty_notification_->Notify()'.
-  Notification* empty_notification_ TF_GUARDED_BY(mu_) = nullptr;
+  absl::Notification* empty_notification_ TF_GUARDED_BY(mu_) = nullptr;
 
   Queue(const Queue&) = delete;
   void operator=(const Queue&) = delete;
@@ -979,7 +980,7 @@ void Queue<TaskType>::PadOpenBatchWithLowPriorityTasks() {
       return;
     }
 
-    uint64 task_time = low_priority_tasks_.EarliestTaskStartTime().value();
+    uint64_t task_time = low_priority_tasks_.EarliestTaskStartTime().value();
     std::unique_ptr<TaskType> task = low_priority_tasks_.RemoveTask();
 
     const int64_t input_task_size = task->size();
@@ -1023,7 +1024,7 @@ void Queue<TaskType>::PadOpenBatchWithLowPriorityTasks() {
           tsl::profiler::ContextType::kSharedBatchScheduler,
           batches.back()->traceme_context_id());
 
-      batches.back()->AddTask(std::move(output_tasks[i]));
+      batches.back()->AddTask(std::move(output_tasks[i]), task_time);
     }
   }
 }
@@ -1088,11 +1089,11 @@ size_t Queue<TaskType>::SchedulingCapacity() const {
 
 template <typename TaskType>
 size_t Queue<TaskType>::SchedulingCapacityInternal() const {
-  const int64 num_new_batches_schedulable =
+  const int64_t num_new_batches_schedulable =
       static_cast<int64_t>(options_.max_enqueued_batches) -
       this->num_enqueued_batches();
-  const int64 execution_batch_size_limit = max_execution_batch_size();
-  const int64 open_batch_capacity =
+  const int64_t execution_batch_size_limit = max_execution_batch_size();
+  const int64_t open_batch_capacity =
       execution_batch_size_limit - this->tail_batch_task_size();
   // Note the returned value is guaranteed to be not negative, since
   // enqueue operation could only happen if queue has enough capacity.
@@ -1199,42 +1200,45 @@ Queue<TaskType>::ScheduleBatch() {
       // starting a new batch because starting a new batch will close the old
       // batch, making it read-only.
       Batch<TaskType>& old_batch = *batches[0];
-      uint64 old_batch_time = old_batch.EarliestTaskStartTime().value();
-      std::vector<std::unique_ptr<TaskType>> trimmed_tasks;
-      MaybeBatchDown(
-          /* batch= */ old_batch,
-          /* allowed_batch_sizes= */ options_.allowed_batch_sizes,
-          /* disable_padding= */ options_.disable_padding,
-          /* batch_padding_policy= */ options_.batch_padding_policy,
-          /* model_batch_stats= */ options_.model_batch_stats,
-          /* out_trimmed_tasks= */ trimmed_tasks);
+      if (!old_batch.empty()) {
+        uint64_t old_batch_time = old_batch.EarliestTaskStartTime().value();
+        std::vector<std::unique_ptr<TaskType>> trimmed_tasks;
+        MaybeBatchDown(
+            /* batch= */ old_batch,
+            /* allowed_batch_sizes= */ options_.allowed_batch_sizes,
+            /* disable_padding= */ options_.disable_padding,
+            /* batch_padding_policy= */ options_.batch_padding_policy,
+            /* model_batch_stats= */ options_.model_batch_stats,
+            /* out_trimmed_tasks= */ trimmed_tasks);
 
-      StartNewBatch();
+        StartNewBatch();
 
-      // Move the trimmed tasks, if any, into the new batch.
-      Batch<TaskType>& new_batch = *batches[1];
-      for (std::unique_ptr<TaskType>& task : trimmed_tasks) {
-        new_batch.AddTask(std::move(task), old_batch_time);
-      }
-      if (!new_batch.empty()) {
-        // TODO - b/325954758: Reconsider the starting time of a trimmed batch.
-        //
-        // Ideally, we'd set open_batch_start_time_micros_ to time we received
-        // the first task in the open batch, but we don't have this information
-        // here. For now, we're trying as alternative solution that doesn't
-        // require adding time to each task: assume that requests arrived at a
-        // steady rate and therefore use a point between the old value of
-        // open_batch_start_time_micros_ and NOW.
-        //
-        // Let's say that originally, the batch had 10 requests, and we want to
-        // schedule a batch of size 8 and leave 2 requests in the open batch
-        // (new_batch). Then, variable `position` is 0.8, which means we have to
-        // set open_batch_start_time_micros_ to be at a position of 80% between
-        // open_batch_start_time_micros_ and now.
-        double position = static_cast<double>(old_batch.size()) /
-                          (old_batch.size() + new_batch.size());
-        open_batch_start_time_micros_ +=
-            (env_->NowMicros() - open_batch_start_time_micros_) * position;
+        // Move the trimmed tasks, if any, into the new batch.
+        Batch<TaskType>& new_batch = *batches[1];
+        for (std::unique_ptr<TaskType>& task : trimmed_tasks) {
+          new_batch.AddTask(std::move(task), old_batch_time);
+        }
+        if (!new_batch.empty()) {
+          // TODO - b/325954758: Reconsider the starting time of a trimmed
+          // batch.
+          //
+          // Ideally, we'd set open_batch_start_time_micros_ to time we received
+          // the first task in the open batch, but we don't have this
+          // information here. For now, we're trying as alternative solution
+          // that doesn't require adding time to each task: assume that requests
+          // arrived at a steady rate and therefore use a point between the old
+          // value of open_batch_start_time_micros_ and NOW.
+          //
+          // Let's say that originally, the batch had 10 requests, and we want
+          // to schedule a batch of size 8 and leave 2 requests in the open
+          // batch (new_batch). Then, variable `position` is 0.8, which means we
+          // have to set open_batch_start_time_micros_ to be at a position of
+          // 80% between open_batch_start_time_micros_ and now.
+          double position = static_cast<double>(old_batch.size()) /
+                            (old_batch.size() + new_batch.size());
+          open_batch_start_time_micros_ +=
+              (env_->NowMicros() - open_batch_start_time_micros_) * position;
+        }
       }
     }
 
@@ -1341,7 +1345,7 @@ bool Queue<TaskType>::IsEmpty() const {
 
 template <typename TaskType>
 void Queue<TaskType>::CloseAndWaitUntilEmpty() {
-  Notification empty;
+  absl::Notification empty;
   {
     mutex_lock l(mu_);
     closed_ = true;
@@ -1411,7 +1415,7 @@ Queue<TaskType>::PeekBatchPriorityImpl() const {
   Batch<TaskType>* open_batch = batches.back().get();
 
   size_t effective_batch_size = open_batch->size();
-  uint64 effective_start_time_micros = open_batch_start_time_micros_;
+  uint64_t effective_start_time_micros = open_batch_start_time_micros_;
   int64_t effective_batch_timeout_micros = options_.batch_timeout_micros;
   if (effective_batch_size == 0) {
     // open_batch_start_time_micros_ is not valid for an empty batch.
@@ -1494,7 +1498,7 @@ size_t Queue<TaskType>::tail_batch_task_size() const {
 }
 
 template <typename TaskType>
-int64 Queue<TaskType>::num_enqueued_batches() const {
+int64_t Queue<TaskType>::num_enqueued_batches() const {
   return GetBatches().size();
 }
 

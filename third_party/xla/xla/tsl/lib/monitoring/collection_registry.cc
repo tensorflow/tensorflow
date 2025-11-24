@@ -39,22 +39,22 @@ void Collector::CollectMetricValues(
 }
 
 std::unique_ptr<CollectedMetrics> Collector::ConsumeCollectedMetrics() {
-  absl::MutexLock l(&mu_);
+  absl::MutexLock l(mu_);
   return std::move(collected_metrics_);
 }
 
 void Collector::CollectMetricDescriptor(
     const AbstractMetricDef* const metric_def) {
   auto* const metric_descriptor = [&]() {
-    absl::MutexLock l(&mu_);
+    absl::MutexLock l(mu_);
     return collected_metrics_->metric_descriptor_map
         .insert(std::make_pair(
-            string(metric_def->name()),
+            std::string(metric_def->name()),
             std::unique_ptr<MetricDescriptor>(new MetricDescriptor())))
         .first->second.get();
   }();
-  metric_descriptor->name = string(metric_def->name());
-  metric_descriptor->description = string(metric_def->description());
+  metric_descriptor->name = std::string(metric_def->name());
+  metric_descriptor->description = std::string(metric_def->description());
 
   for (const absl::string_view label_name : metric_def->label_descriptions()) {
     metric_descriptor->label_names.emplace_back(label_name);
@@ -81,7 +81,7 @@ CollectionRegistry::Register(const AbstractMetricDef* const metric_def,
   CHECK(collection_function)
       << "Requires collection_function to contain an implementation.";
 
-  absl::MutexLock l(&mu_);
+  absl::MutexLock l(mu_);
 
   const auto found_it = registry_.find(metric_def->name());
   if (found_it != registry_.end()) {
@@ -103,7 +103,7 @@ CollectionRegistry::Register(const AbstractMetricDef* const metric_def,
 }
 
 void CollectionRegistry::Unregister(const AbstractMetricDef* const metric_def) {
-  absl::MutexLock l(&mu_);
+  absl::MutexLock l(mu_);
   registry_.erase(metric_def->name());
 }
 
@@ -111,7 +111,7 @@ std::unique_ptr<CollectedMetrics> CollectionRegistry::CollectMetrics(
     const CollectMetricsOptions& options) const {
   internal::Collector collector(env_->NowMicros() / 1000);
 
-  absl::MutexLock l(&mu_);
+  absl::MutexLock l(mu_);
   for (const auto& registration : registry_) {
     if (options.collect_metric_descriptors) {
       collector.CollectMetricDescriptor(registration.second.metric_def);

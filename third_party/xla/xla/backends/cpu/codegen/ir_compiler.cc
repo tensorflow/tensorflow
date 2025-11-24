@@ -21,12 +21,14 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/base/call_once.h"
 #include "absl/base/nullability.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/str_split.h"
@@ -60,17 +62,19 @@ limitations under the License.
 #include "llvm/TargetParser/Triple.h"
 #include "llvm/Transforms/IPO/AlwaysInliner.h"
 #include "llvm/Transforms/Instrumentation/DataFlowSanitizer.h"
-#include "xla/backends/cpu/codegen/cpu_features.h"
 #include "xla/backends/cpu/codegen/kernel_api_ir_builder.h"
 #include "xla/backends/cpu/codegen/polynomial_approximations.h"
-#include "xla/codegen/math/math_compiler_lib.h"
-#include "xla/codegen/math_lib.h"
+#include "xla/backends/cpu/target_machine_options.h"
+#include "xla/codegen/intrinsic/intrinsic.h"
+#include "xla/codegen/intrinsic/intrinsic_compiler_lib.h"
+#include "xla/codegen/intrinsic_lib.h"
+#include "xla/service/cpu/backend_config.pb.h"
 #include "xla/service/cpu/cpu_options.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/llvm_ir/llvm_util.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
-#include "tsl/platform/cpu_info.h"
 
 namespace xla::cpu {
 
@@ -85,6 +89,9 @@ void SetXlaCpuBackendOptions(llvm::Module& llvm_module,
   }
   if (options.slp_vectorizer_disabled()) {
     llvm_kernel_options.emplace_back(options::kDisableSlpVectorizer);
+  }
+  if (options.disable_platform_dependent_math()) {
+    llvm_kernel_options.emplace_back(options::kDisablePlatformDependentMath);
   }
 
   llvm::MDString* options_mdstring = llvm::MDString::get(
@@ -175,13 +182,17 @@ static llvm::PipelineTuningOptions GetPipelineTuningOptions(
   return pto_from_options(with_overrides);
 }
 
+static bool FunctionHasInternalLinkage(const llvm::Function& function) {
+  return function.hasInternalLinkage();
+}
+
 std::unique_ptr<IrCompiler> IrCompiler::Create(
     llvm::TargetOptions target_options, Options options,
     CompilationHooks hooks) {
   TargetMachineBuilder target_machine_builder =
       IrCompiler::InferTargetMachineBuilder(std::move(target_options),
                                             options.opt_level,
-                                            options.max_cpu_feature);
+                                            options.target_machine_options);
 
   return std::make_unique<IrCompiler>(target_machine_builder,
                                       std::move(options), std::move(hooks));
@@ -205,18 +216,9 @@ absl::once_flag initialize_llvm_flag;
 absl::StatusOr<std::unique_ptr<llvm::TargetMachine>>
 IrCompiler::InferTargetMachine(
     const llvm::TargetOptions& target_options, llvm::CodeGenOptLevel opt_level,
-    std::optional<tsl::port::CPUFeature> max_cpu_feature) {
-  // Detect machine attributes for the target CPU.
-  auto result = DetectMachineAttributes(max_cpu_feature);
-  llvm::SmallVector<std::string> attrs(result.features.begin(),
-                                       result.features.end());
-
-  // If `max_cpu_feature` is newer than the host CPU, we should keep the host
-  // CPU name, e.g., we don't want to set the target CPU to Skylake when we are
-  // on a Broadwell host.
-  absl::string_view cpu = result.num_filtered_features
-                              ? CpuTargetFromMaxFeature(*max_cpu_feature)
-                              : absl::string_view(llvm::sys::getHostCPUName());
+    const TargetMachineOptions& target_machine_options) {
+  auto attrs_vec = target_machine_options.GetTargetMachineFeaturesVector();
+  llvm::SmallVector<std::string> attrs(attrs_vec.begin(), attrs_vec.end());
 
   absl::call_once(initialize_llvm_flag, InitializeLLVMTarget);
   std::unique_ptr<llvm::TargetMachine> target_machine(
@@ -224,12 +226,14 @@ IrCompiler::InferTargetMachine(
           .setTargetOptions(target_options)
           .setOptLevel(opt_level)
           .selectTarget(
-              /*TargetTriple=*/llvm::Triple(), /*MArch=*/"",
-              /*MCPU=*/cpu,
+              /*TargetTriple=*/llvm::Triple(target_machine_options.triple()),
+              /*MArch=*/"",
+              /*MCPU=*/target_machine_options.cpu(),
               /*MAttrs=*/attrs));
 
   if (target_machine == nullptr) {
-    return Internal("Failed to create target machine for CPU %s", cpu);
+    return Internal("Failed to create target machine for CPU %s",
+                    target_machine_options.cpu());
   }
 
   return std::move(target_machine);
@@ -237,16 +241,21 @@ IrCompiler::InferTargetMachine(
 
 IrCompiler::TargetMachineBuilder IrCompiler::InferTargetMachineBuilder(
     const llvm::TargetOptions& target_options, llvm::CodeGenOptLevel opt_level,
-    std::optional<tsl::port::CPUFeature> max_cpu_feature) {
-  return [target_options, opt_level, max_cpu_feature] {
-    return InferTargetMachine(target_options, opt_level, max_cpu_feature);
+    const TargetMachineOptions& target_machine_options) {
+  return [target_options, opt_level, target_machine_options] {
+    return InferTargetMachine(target_options, opt_level,
+                              target_machine_options);
   };
 }
 
 llvm::Expected<std::unique_ptr<llvm::MemoryBuffer>> IrCompiler::operator()(
     llvm::Module& module) {
-  VLOG(2) << "IR before optimizations";
-  XLA_VLOG_LINES(2, llvm_ir::DumpToString(&module));
+  absl::string_view module_name = module.getName();
+  XLA_SCOPED_LOGGING_TIMER_LEVEL(
+      absl::StrCat("Compiled LLVM module: ", module_name), 1);
+
+  VLOG(3) << "IR before optimizations";
+  XLA_VLOG_LINES(3, llvm_ir::DumpToString(&module));
 
   // Get a target machine for compilation. If compilations run concurrently on
   // multiple threads, `IrCompiler` user (in most cases `SimpleOrcJIT`)
@@ -264,7 +273,7 @@ llvm::Expected<std::unique_ptr<llvm::MemoryBuffer>> IrCompiler::operator()(
   }
 
   {  // Synchronize access to user-defined hooks.
-    absl::MutexLock lock(&mutex_);
+    absl::MutexLock lock(mutex_);
     if (hooks_.pre_optimization) {
       hooks_.pre_optimization(module);
     }
@@ -275,11 +284,11 @@ llvm::Expected<std::unique_ptr<llvm::MemoryBuffer>> IrCompiler::operator()(
     return ir_passes_error;
   }
 
-  VLOG(2) << "IR after optimizations";
-  XLA_VLOG_LINES(2, llvm_ir::DumpToString(&module));
+  VLOG(3) << "IR after optimizations";
+  XLA_VLOG_LINES(3, llvm_ir::DumpToString(&module));
 
   {  // Synchronize access to user-defined hooks.
-    absl::MutexLock lock(&mutex_);
+    absl::MutexLock lock(mutex_);
     if (hooks_.post_optimization) {
       hooks_.post_optimization(module);
     }
@@ -289,7 +298,7 @@ llvm::Expected<std::unique_ptr<llvm::MemoryBuffer>> IrCompiler::operator()(
       EmitMachineCode(module, target_machine->get());
 
   {  // Synchronize access to user-defined hooks.
-    absl::MutexLock lock(&mutex_);
+    absl::MutexLock lock(mutex_);
     if (hooks_.post_codegen) {
       llvm::Expected<std::unique_ptr<llvm::object::ObjectFile>> obj_file =
           llvm::object::ObjectFile::createObjectFile(*mc_memory_buffer);
@@ -306,6 +315,10 @@ llvm::Expected<std::unique_ptr<llvm::MemoryBuffer>> IrCompiler::operator()(
 
 llvm::Error IrCompiler::RunIrPasses(llvm::Module& module,
                                     llvm::TargetMachine* target_machine) const {
+  if (absl::c_any_of(module.getFunctionList(), FunctionHasInternalLinkage)) {
+    codegen::intrinsic::RunInlineAndOptPasses(module);
+  }
+
   llvm::PipelineTuningOptions pto =
       GetPipelineTuningOptions(module, options_, target_machine);
   llvm::LoopAnalysisManager lam;
@@ -325,8 +338,32 @@ llvm::Error IrCompiler::RunIrPasses(llvm::Module& module,
       std::make_unique<llvm::TargetLibraryInfoImpl>(target_triple);
   target_library_info_impl->addVectorizableFunctions(
       PolynomialApproximationsVectorization());
-  codegen::MathFunctionLib math_lib;
-  target_library_info_impl->addVectorizableFunctions(math_lib.Vectorizations());
+
+  xla::codegen::intrinsics::DeviceType device_type;
+  if (target_triple.isX86()) {
+    // As a heuristic, we check for SSE4a to determine if we are on AMD.
+    // This feature was added in 2007 and is set on all AMD CPUs since then, and
+    // no intel cpus. This is a bit of a hack though, as there is no strict link
+    // between increased precision and SSE4a; Intel could decide to add it in
+    // the future but they are very unlikely to do so as they haven't in the
+    // past 18 years.
+    if (target_machine->getTargetFeatureString().contains("+sse4a")) {
+      device_type = xla::codegen::intrinsics::DeviceType::kAmdCpu;
+    } else {
+      device_type = xla::codegen::intrinsics::DeviceType::kIntelCpu;
+    }
+  } else if (target_triple.isAArch64() || target_triple.isARM()) {
+    device_type = xla::codegen::intrinsics::DeviceType::kArmCpu;
+  } else {
+    LOG(FATAL) << "Unsupported CPU type: " << target_triple.str();
+  }
+
+  codegen::IntrinsicFunctionLib intrinsic_lib(
+      {target_machine->getTargetFeatureString().str(), device_type,
+       /*disable_platform_dependent_math=*/
+       options_.disable_platform_dependent_math});
+  target_library_info_impl->addVectorizableFunctions(
+      intrinsic_lib.Vectorizations());
 
   fam.registerPass(
       [&] { return llvm::TargetLibraryAnalysis(*target_library_info_impl); });
@@ -374,11 +411,12 @@ llvm::Error IrCompiler::RunIrPasses(llvm::Module& module,
     }
   }
 
-  auto replaced_functions = math_lib.RewriteMathFunctions(module);
+  auto replaced_functions = intrinsic_lib.DefineIntrinsicFunctions(module);
   RewriteToPolynomialApproximations(&module, options_.fast_math_flags);
   if (!replaced_functions.empty()) {
-    codegen::math::RemoveFromCompilerUsed(module, replaced_functions);
-    codegen::math::RunInlineAndOptPasses(module);
+    codegen::intrinsic::RemoveFromCompilerUsed(
+        module, [&](auto n) { return intrinsic_lib.IsIntrinsicFunction(n); });
+    codegen::intrinsic::RunInlineAndOptPasses(module);
   }
 
   return llvm::Error::success();
@@ -424,6 +462,11 @@ llvm::CodeGenOptLevel IrCompiler::GetCodeGenOptLevel(
     default:
       return llvm::CodeGenOptLevel::None;
   }
+}
+
+absl::StatusOr<std::unique_ptr<llvm::TargetMachine>>
+IrCompiler::build_target_machine() const {
+  return target_machine_builder_();
 }
 
 }  // namespace xla::cpu

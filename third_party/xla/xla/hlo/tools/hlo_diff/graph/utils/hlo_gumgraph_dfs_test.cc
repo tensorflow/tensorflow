@@ -64,7 +64,7 @@ ENTRY entry {
       DfsTraversalOrder::kPreOrder, graph->GetNodeCount());
 
   EXPECT_THAT(visited_nodes,
-              ElementsAre("root", "add_0", "baz", "add_1", "bar", "foo"));
+              ElementsAre("root", "add_0", "add_1", "foo", "bar", "baz"));
 }
 
 TEST_F(HloGumgraphDfsTest, DfsPostOrderWorks) {
@@ -97,7 +97,7 @@ ENTRY entry {
       DfsTraversalOrder::kPostOrder, graph->GetNodeCount());
 
   EXPECT_THAT(visited_nodes,
-              ElementsAre("baz", "bar", "foo", "add_1", "add_0", "root"));
+              ElementsAre("foo", "bar", "add_1", "baz", "add_0", "root"));
 }
 
 TEST_F(HloGumgraphDfsTest, DfsPostOrderWorksForMultiplePathsFromRoot) {
@@ -159,7 +159,7 @@ ENTRY entry {
   }
 
   EXPECT_THAT(string_views,
-              ElementsAre("root", "add_0", "baz", "add_1", "bar", "foo"));
+              ElementsAre("root", "add_0", "add_1", "foo", "bar", "baz"));
 }
 
 TEST_F(HloGumgraphDfsTest, DfsPreOrderStopExpandingWorks) {
@@ -192,7 +192,7 @@ ENTRY entry {
       DfsTraversalOrder::kPreOrder, 6,
       [](const HloInstructionNode& node) { return node.GetName() != "add_1"; });
 
-  EXPECT_THAT(visited_nodes, ElementsAre("root", "add_0", "baz", "add_1"));
+  EXPECT_THAT(visited_nodes, ElementsAre("root", "add_0", "add_1", "baz"));
 }
 
 TEST_F(HloGumgraphDfsTest, DfsPostOrderStopExpandingWorks) {
@@ -225,7 +225,7 @@ ENTRY entry {
       DfsTraversalOrder::kPostOrder, 6,
       [](const HloInstructionNode& node) { return node.GetName() != "add_1"; });
 
-  EXPECT_THAT(visited_nodes, ElementsAre("baz", "add_1", "add_0", "root"));
+  EXPECT_THAT(visited_nodes, ElementsAre("add_1", "baz", "add_0", "root"));
 }
 
 }  // namespace

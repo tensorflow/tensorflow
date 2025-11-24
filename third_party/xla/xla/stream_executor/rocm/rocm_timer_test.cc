@@ -22,6 +22,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "absl/time/time.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/gpu/gpu_test_kernels.h"
@@ -32,14 +33,12 @@ limitations under the License.
 #include "xla/stream_executor/rocm/rocm_executor.h"
 #include "xla/stream_executor/rocm/rocm_platform_id.h"
 #include "xla/stream_executor/stream.h"
-#include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 
 namespace stream_executor::gpu {
 namespace {
 using ::testing::Gt;
-using ::tsl::testing::IsOk;
 
 class RocmTimerTest : public ::testing::Test {
  public:
@@ -54,9 +53,10 @@ class RocmTimerTest : public ::testing::Test {
     DeviceMemory<int32_t> b = executor->AllocateArray<int32_t>(length, 0);
     DeviceMemory<int32_t> c = executor->AllocateArray<int32_t>(length, 0);
 
-    ASSERT_THAT(stream->Memset32(&a, 1, byte_length), IsOk());
-    ASSERT_THAT(stream->Memset32(&b, 2, byte_length), IsOk());
-    ASSERT_THAT(add.Launch(ThreadDim(), BlockDim(4), stream, a, b, c), IsOk());
+    ASSERT_THAT(stream->Memset32(&a, 1, byte_length), absl_testing::IsOk());
+    ASSERT_THAT(stream->Memset32(&b, 2, byte_length), absl_testing::IsOk());
+    ASSERT_THAT(add.Launch(ThreadDim(), BlockDim(4), stream, a, b, c),
+                absl_testing::IsOk());
   }
 
   RocmExecutor* executor_;
@@ -86,7 +86,7 @@ TEST_F(RocmTimerTest, Create) {
                           timer.GetElapsedDuration());
   EXPECT_THAT(timer_result, Gt(absl::ZeroDuration()));
   EXPECT_THAT(timer.GetElapsedDuration(),
-              tsl::testing::StatusIs(absl::StatusCode::kFailedPrecondition));
+              absl_testing::StatusIs(absl::StatusCode::kFailedPrecondition));
 }
 
 }  // namespace

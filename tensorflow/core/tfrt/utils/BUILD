@@ -14,11 +14,12 @@ package_group(
         "//learning/brain/google/xla/kernels/...",
         # copybara:uncomment "//learning/brain/research/pjrt/...",
         # copybara:uncomment "//learning/brain/tfrt/...",
-        # copybara:uncomment "//learning/pathways/serving/...",
+        "//learning/pathways/serving/...",
         "//learning/serving/...",
         "//quality/webanswers/...",
         "//smartass/brain/inference/...",
         # copybara:uncomment "//smartass/brain/ops/...",
+        # copybara:uncomment "//third_party/pathways/serving/...",
         "//tensorflow/c/eager/...",
         "//tensorflow/compiler/mlir/tfrt/...",
         "//tensorflow/core/runtime_fallback/...",
@@ -274,6 +275,7 @@ cc_library(
     deps = [
         "//tensorflow/core/common_runtime:dma_helper",
         "//tensorflow/core/framework:tensor",
+        "@com_google_absl//absl/log:check",
         "@local_tsl//tsl/profiler/lib:traceme",
     ],
 )

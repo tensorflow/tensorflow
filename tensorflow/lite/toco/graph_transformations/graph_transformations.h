@@ -22,6 +22,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/log/check.h"
+#include "absl/strings/str_format.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/lite/toco/model.h"
 #include "tensorflow/lite/toco/toco_port.h"
@@ -43,7 +44,8 @@ class GraphTransformation {
   // Adds a message; normally only called by the graph transformation
   // itself during its run (this function could be protected).
   template <typename... Args>
-  void AddMessageF(const char* format, const Args&... args) {
+  void AddMessageF(const absl::FormatSpec<Args...>& format,
+                   const Args&... args) {
     return messages_.push_back(toco::port::StringF(format, args...));
   }
 

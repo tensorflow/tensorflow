@@ -27,11 +27,10 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/str_cat.h"
-#include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_module.h"
 #include "xla/layout.h"
 #include "xla/service/buffer_value.h"
 #include "xla/service/hlo_value.h"
@@ -62,8 +61,6 @@ using ReservedScopedMemoryFunction = std::function<int64_t(
     const absl::flat_hash_set<ShapeIndex>& /*outputs_in_alternate_memory*/)>;
 using PositionRequiresContiguousAllocationFunction =
     std::function<bool(const HloPosition&)>;
-using WindowPrefetchDetailFunction =
-    std::function<WindowPrefetchDetail(const HloInstruction*)>;
 using WindowPrefetchNotifyOperandAppendedFunction =
     std::function<void(HloInstruction*, int64_t, int64_t)>;
 using IsAsyncSliceImplementedFunction =
@@ -78,7 +75,12 @@ using DetermineSplitDimensionFunction =
 using BitcastSplitFn = std::function<absl::StatusOr<int64_t>(
     const HloInstruction* instruction, int64_t split_dim)>;
 using ShapeSizeFn = std::function<int64_t(const Shape&)>;
+using AsyncInstructionBwAdjustmentFactorFn =
+    std::function<std::optional<float>(const HloInstruction*)>;
 using HloPositionOrUse = std::variant<HloPosition, HloUse>;
+using OpSpanSizeFn = std::function<int64_t(
+    HloInstruction* original_hlo, HloInstruction* hlo_with_memory_spaces,
+    int64_t operand_index)>;
 
 // MSA allows for custom post-allocation transformations. When a post-allocation
 // transformation is performed on an instruction, this result is returned. It
@@ -109,6 +111,17 @@ enum class WindowPrefetchMode {
 struct BufferColoring {
   HloPositionOrUse buffer_position_or_use;  // Buffer position or use to color.
   int64_t memory_space;                     // How to color the buffer.
+};
+
+// A struct to hold the details of a custom call prefetch.
+struct CustomCallPrefetchDetails {
+  // Async custom call prefetch start instruction.
+  HloInstruction* prefetch_start;
+  // Async custom call prefetch done instruction.
+  HloInstruction* prefetch_done;
+  // Intermediate instructions associated with the prefetch like
+  // get-tuple-element etc.
+  std::vector<HloInstruction*> intermediate_instructions;
 };
 
 // The different options to be passed to the Run() API.
@@ -171,9 +184,19 @@ struct Options {
       position_requires_contiguous_allocation_fn =
           [](const HloPosition&) { return false; };
 
-  // This function is called to get details about window prefetches.
-  WindowPrefetchDetailFunction window_prefetch_detail_fn =
-      [](const HloInstruction*) { return WindowPrefetchDetail(); };
+  // This function is used to determine the size of the span buffer for a given
+  // operand. The size should be the total size required by the operand. If
+  // pipelining is disabled, this is one iteration worth of data; if pipelining
+  // is enabled and double buffering is used, this is two iterations worth of
+  // data.
+  //
+  // `hlo_with_memory_spaces` is a clone of `original_hlo` but with the memory
+  // space assignment propagated within its computation. It is used to determine
+  // the operand span size of the operand. `operand_index` is the index of the
+  // operand which is being considered.
+  OpSpanSizeFn op_span_size_fn = [](HloInstruction* original_hlo,
+                                    HloInstruction* hlo_with_memory_spaces,
+                                    int64_t operand_index) { return 0; };
 
   // This function is called to notify that an operand has been appended as a
   // window prefetch buffer.
@@ -393,6 +416,34 @@ struct Options {
   // If set, this is the size of scoped alternate memory that we require MSA to
   // allocate for post-module operations.
   uint64_t post_module_scoped_alternate_memory_size_in_bytes = 0;
+
+  // This is the maximum number of concurrent block prefetches allowed.
+  int64_t max_outstanding_block_prefetches = 0;
+
+  // This is the size of alternate memory that available for block prefetches.
+  uint64_t reserved_bytes_for_block_prefetches = 0;
+
+  // List of hlo positions for block prefetches.
+  absl::flat_hash_set<HloPosition> block_prefetched_positions;
+
+  // Determines the bandwidth adjustment factor for an async start instruction.
+  // The available bandwidth for instructions between this and the async done
+  // instruction will be multiplied by the factor returned by this function. A
+  // factor of 1.0 means that the full bandwidth is available. A factor of 0.5
+  // means that only half the bandwidth is available.
+  AsyncInstructionBwAdjustmentFactorFn
+      async_instruction_bw_adjustment_factor_fn =
+          [](const HloInstruction*) { return std::nullopt; };
+
+  // One HloPosition can have multiple custom call prefetches associated with
+  // it. For every custom-call prefetched HloPosition, this map stores the
+  // details of all the custom-call prefetches associated with it. This is used
+  // to schedule the custom-call prefetches as part of the memory space
+  // assignment algorithm.
+  absl::flat_hash_map<HloPosition, std::vector<CustomCallPrefetchDetails>>
+      hlo_position_to_custom_call_prefetch_details;
+
+  std::string ToString() const;
 };
 
 }  // namespace memory_space_assignment

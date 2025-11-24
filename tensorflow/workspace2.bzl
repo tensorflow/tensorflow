@@ -1,12 +1,9 @@
 """TensorFlow workspace initialization. Consult the WORKSPACE on how to use it."""
 
-# Import third party config rules.
 load("@bazel_features//:deps.bzl", "bazel_features_deps")
-load("@bazel_skylib//:workspace.bzl", "bazel_skylib_workspace")
 load("@bazel_skylib//lib:versions.bzl", "versions")
-
-# Import external repository rules.
 load("@bazel_tools//tools/build_defs/repo:java.bzl", "java_import_external")
+load("@bazel_tools//tools/build_defs/repo:utils.bzl", "maybe")
 load("@local_xla//third_party/absl:workspace.bzl", absl = "repo")
 load("@local_xla//third_party/benchmark:workspace.bzl", benchmark = "repo")
 load("@local_xla//third_party/clang_toolchain:cc_configure_clang.bzl", "cc_download_clang_toolchain")
@@ -14,59 +11,63 @@ load("@local_xla//third_party/dlpack:workspace.bzl", dlpack = "repo")
 load("@local_xla//third_party/ducc:workspace.bzl", ducc = "repo")
 load("@local_xla//third_party/eigen3:workspace.bzl", eigen3 = "repo")
 load("@local_xla//third_party/farmhash:workspace.bzl", farmhash = "repo")
-
-# Import third party repository rules. See go/tfbr-thirdparty.
+load("@local_xla//third_party/fmt:workspace.bzl", fmt = "repo")
 load("@local_xla//third_party/FP16:workspace.bzl", FP16 = "repo")
 load("@local_xla//third_party/gemmlowp:workspace.bzl", gemmlowp = "repo")
 load("@local_xla//third_party/git:git_configure.bzl", "git_configure")
 load("@local_xla//third_party/gpus:rocm_configure.bzl", "rocm_configure")
 load("@local_xla//third_party/gpus:sycl_configure.bzl", "sycl_configure")
+load("@local_xla//third_party/highwayhash:workspace.bzl", highwayhash = "repo")
 load("@local_xla//third_party/hwloc:workspace.bzl", hwloc = "repo")
 load("@local_xla//third_party/implib_so:workspace.bzl", implib_so = "repo")
+load("@local_xla//third_party/llvm:workspace.bzl", llvm = "repo")
 load("@local_xla//third_party/nanobind:workspace.bzl", nanobind = "repo")
 load("@local_xla//third_party/nasm:workspace.bzl", nasm = "repo")
 load("@local_xla//third_party/nvshmem:workspace.bzl", nvshmem = "repo")
 load("@local_xla//third_party/pybind11_abseil:workspace.bzl", pybind11_abseil = "repo")
 load("@local_xla//third_party/pybind11_bazel:workspace.bzl", pybind11_bazel = "repo")
+load("@local_xla//third_party/raft:workspace.bzl", raft = "repo")
+load("@local_xla//third_party/rapids_logger:workspace.bzl", rapids_logger = "repo")
+load("@local_xla//third_party/rmm:workspace.bzl", rmm = "repo")
 load("@local_xla//third_party/robin_map:workspace.bzl", robin_map = "repo")
+load("@local_xla//third_party/rocm_device_libs:workspace.bzl", rocm_device_libs = "repo")
+load("@local_xla//third_party/shardy:workspace.bzl", shardy = "repo")
+load("@local_xla//third_party/slinky:workspace.bzl", slinky = "repo")
+load("@local_xla//third_party/spdlog:workspace.bzl", spdlog = "repo")
+load("@local_xla//third_party/stablehlo:workspace.bzl", stablehlo = "repo")
+load("@local_xla//third_party/tensorrt:tensorrt_configure.bzl", "tensorrt_configure")
+load("@local_xla//third_party/tensorrt:workspace.bzl", tensorrt = "repo")
+load("@local_xla//third_party/triton:workspace.bzl", triton = "repo")
+load("@local_xla//tools/def_file_filter:def_file_filter_configure.bzl", "def_file_filter_configure")
+load("@local_xla//tools/toolchains:cpus/aarch64/aarch64_compiler_configure.bzl", "aarch64_compiler_configure")
+load("@local_xla//tools/toolchains:cpus/arm/arm_compiler_configure.bzl", "arm_compiler_configure")
+load("@local_xla//tools/toolchains/clang6:repo.bzl", "clang6_configure")
+load("@local_xla//tools/toolchains/embedded/arm-linux:arm_linux_toolchain_configure.bzl", "arm_linux_toolchain_configure")
+load("@local_xla//tools/toolchains/remote:configure.bzl", "remote_execution_configure")
+load("@local_xla//tools/toolchains/remote_config:configs.bzl", "initialize_rbe_configs")
 load("@rules_jvm_external//:defs.bzl", "maven_install")
 load("@tf_runtime//:dependencies.bzl", "tfrt_dependencies")
-load("//tensorflow/tools/def_file_filter:def_file_filter_configure.bzl", "def_file_filter_configure")
-load("//tensorflow/tools/toolchains:cpus/aarch64/aarch64_compiler_configure.bzl", "aarch64_compiler_configure")
-load("//tensorflow/tools/toolchains:cpus/arm/arm_compiler_configure.bzl", "arm_compiler_configure")
-load("//tensorflow/tools/toolchains/clang6:repo.bzl", "clang6_configure")
-load("//tensorflow/tools/toolchains/embedded/arm-linux:arm_linux_toolchain_configure.bzl", "arm_linux_toolchain_configure")
-load("//tensorflow/tools/toolchains/remote:configure.bzl", "remote_execution_configure")
-load("//tensorflow/tools/toolchains/remote_config:configs.bzl", "initialize_rbe_configs")
 load("//third_party:repo.bzl", "tf_http_archive", "tf_mirror_urls")
 load("//third_party/flatbuffers:workspace.bzl", flatbuffers = "repo")
 load("//third_party/hexagon:workspace.bzl", hexagon_nn = "repo")
-load("//third_party/highwayhash:workspace.bzl", highwayhash = "repo")
 load("//third_party/icu:workspace.bzl", icu = "repo")
 load("//third_party/jpeg:workspace.bzl", jpeg = "repo")
 load("//third_party/kissfft:workspace.bzl", kissfft = "repo")
 load("//third_party/libprotobuf_mutator:workspace.bzl", libprotobuf_mutator = "repo")
 load("//third_party/libwebp:workspace.bzl", libwebp = "repo")
-load("//third_party/llvm:setup.bzl", "llvm_setup")
 load("//third_party/opencl_headers:workspace.bzl", opencl_headers = "repo")
 load("//third_party/pasta:workspace.bzl", pasta = "repo")
 load("//third_party/py:python_configure.bzl", "python_configure")
 load("//third_party/py/ml_dtypes:workspace.bzl", ml_dtypes = "repo")
 load("//third_party/ruy:workspace.bzl", ruy = "repo")
-load("//third_party/shardy:workspace.bzl", shardy = "repo")
 load("//third_party/sobol_data:workspace.bzl", sobol_data = "repo")
-load("//third_party/stablehlo:workspace.bzl", stablehlo = "repo")
 load("//third_party/systemlibs:syslibs_configure.bzl", "syslibs_configure")
-load("//third_party/tensorrt:tensorrt_configure.bzl", "tensorrt_configure")
-load("//third_party/tensorrt:workspace.bzl", tensorrt = "repo")
-load("//third_party/triton:workspace.bzl", triton = "repo")
 load("//third_party/vulkan_headers:workspace.bzl", vulkan_headers = "repo")
 
 def _initialize_third_party():
     """ Load third party repositories.  See above load() statements. """
     FP16()
     absl()
-    bazel_skylib_workspace()
     bazel_features_deps()
     benchmark()
     ducc()
@@ -74,6 +75,7 @@ def _initialize_third_party():
     eigen3()
     farmhash()
     flatbuffers()
+    fmt()
     gemmlowp()
     hexagon_nn()
     highwayhash()
@@ -91,9 +93,15 @@ def _initialize_third_party():
     pasta()
     pybind11_abseil()
     pybind11_bazel()
+    raft()
+    rapids_logger()
+    rmm()
     robin_map()
+    rocm_device_libs()
     ruy()
     shardy()
+    slinky()
+    spdlog()
     sobol_data()
     stablehlo()
     vulkan_headers()
@@ -129,7 +137,7 @@ def _tf_toolchains():
     # Point //external/local_config_arm_compiler to //external/arm_compiler
     arm_compiler_configure(
         name = "local_config_arm_compiler",
-        build_file = "//tensorflow/tools/toolchains/cpus/arm:template.BUILD",
+        build_file = "@local_xla//tools/toolchains/cpus/arm:template.BUILD",
         remote_config_repo_arm = "../arm_compiler",
         remote_config_repo_aarch64 = "../aarch64_compiler",
     )
@@ -140,7 +148,7 @@ def _tf_toolchains():
     # TFLite crossbuild toolchain for embeddeds Linux
     arm_linux_toolchain_configure(
         name = "local_config_embedded_arm",
-        build_file = "//tensorflow/tools/toolchains/embedded/arm-linux:template.BUILD",
+        build_file = "@local_xla//tools/toolchains/embedded/arm-linux:template.BUILD",
         aarch64_repo = "../aarch64_linux_toolchain",
         armhf_repo = "../armhf_linux_toolchain",
     )
@@ -160,18 +168,18 @@ def _tf_repositories():
     # LINT.IfChange(xnnpack)
     tf_http_archive(
         name = "XNNPACK",
-        sha256 = "1c532db6db8a3511a812f509643cee0193e8434bfd1a0c83143f3329395688ca",
-        strip_prefix = "XNNPACK-8b3d5687eb8e4a266731ad8a288de6c813c2959b",
-        urls = tf_mirror_urls("https://github.com/google/XNNPACK/archive/8b3d5687eb8e4a266731ad8a288de6c813c2959b.zip"),
+        sha256 = "a633a48ba393211771204d25ebc5f35359b71bfbefaa6e955aa92570caede727",
+        strip_prefix = "XNNPACK-fa0fd6471a39a5d66a59d4cd8f8cc4a93a4bd470",
+        urls = tf_mirror_urls("https://github.com/google/XNNPACK/archive/fa0fd6471a39a5d66a59d4cd8f8cc4a93a4bd470.zip"),
     )
     # LINT.ThenChange(//tensorflow/lite/tools/cmake/modules/xnnpack.cmake)
 
     # XNNPack dependency.
     tf_http_archive(
         name = "KleidiAI",
-        sha256 = "ad04cc186b12810ecde9d75911c76a0113d3c055773c700377de302eef6c4419",
-        strip_prefix = "kleidiai-247088200c679f30b1b4a680bd12fee18457a100",
-        urls = tf_mirror_urls("https://github.com/ARM-software/kleidiai/archive/247088200c679f30b1b4a680bd12fee18457a100.zip"),
+        sha256 = "fb4f8180171d035a08432b086194121f627d00a76d58cebaad57d7a87ad40dbd",
+        strip_prefix = "kleidiai-7a3a609a3278106df7157bdd27b8f0e75ab00b60",
+        urls = tf_mirror_urls("https://github.com/ARM-software/kleidiai/archive/7a3a609a3278106df7157bdd27b8f0e75ab00b60.zip"),
     )
 
     tf_http_archive(
@@ -184,27 +192,27 @@ def _tf_repositories():
     # LINT.IfChange(pthreadpool)
     tf_http_archive(
         name = "pthreadpool",
-        sha256 = "b193fcb18abf0d5bdb989968ccd8e274ae0ce8d89b0f1a61763582fb716b259c",
-        strip_prefix = "pthreadpool-dcc9f28589066af0dbd4555579281230abbf74dd",
-        urls = tf_mirror_urls("https://github.com/google/pthreadpool/archive/dcc9f28589066af0dbd4555579281230abbf74dd.zip"),
+        sha256 = "f602ab141bdc5d5872a79d6551e9063b5bfa7ad6ad60cceaa641de5c45c86d70",
+        strip_prefix = "pthreadpool-0e6ca13779b57d397a5ba6bfdcaa8a275bc8ea2e",
+        urls = tf_mirror_urls("https://github.com/google/pthreadpool/archive/0e6ca13779b57d397a5ba6bfdcaa8a275bc8ea2e.zip"),
     )
     # LINT.ThenChange(//tensorflow/lite/cmake/DownloadPThreadPool.cmake)
 
     tf_http_archive(
         name = "cpuinfo",
-        sha256 = "ae356c4c0c841e20711b5e111a1ccdec9c2f3c1dd7bde7cfba1bed18d6d02459",
-        strip_prefix = "cpuinfo-de0ce7c7251372892e53ce9bc891750d2c9a4fd8",
+        sha256 = "c0254ce97f7abc778dd2df0aaca1e0506dba1cd514fdb9fe88c07849393f8ef4",
+        strip_prefix = "cpuinfo-8a9210069b5a37dd89ed118a783945502a30a4ae",
         patch_file = ["//third_party/cpuinfo:cpuinfo_ppc64le_support.patch"],
-        urls = tf_mirror_urls("https://github.com/pytorch/cpuinfo/archive/de0ce7c7251372892e53ce9bc891750d2c9a4fd8.zip"),
+        urls = tf_mirror_urls("https://github.com/pytorch/cpuinfo/archive/8a9210069b5a37dd89ed118a783945502a30a4ae.zip"),
     )
 
     tf_http_archive(
         name = "cudnn_frontend_archive",
         build_file = "@local_xla//third_party:cudnn_frontend.BUILD",
         patch_file = ["@local_xla//third_party:cudnn_frontend_header_fix.patch"],
-        sha256 = "34dfe01057e43e799af207522aa0c863ad3177f8c1568b6e7a7e4ccf1cbff769",
-        strip_prefix = "cudnn-frontend-1.11.0",
-        urls = tf_mirror_urls("https://github.com/NVIDIA/cudnn-frontend/archive/refs/tags/v1.11.0.zip"),
+        sha256 = "257b3b7f8a99abc096094abc9e5011659117b647d55293bcd2c5659f9181b99e",
+        strip_prefix = "cudnn-frontend-1.13.0",
+        urls = tf_mirror_urls("https://github.com/NVIDIA/cudnn-frontend/archive/refs/tags/v1.13.0.zip"),
     )
 
     tf_http_archive(
@@ -213,14 +221,6 @@ def _tf_repositories():
         sha256 = "a7739ca3dc74e3a5cb57f93fc95224c5e2a3c2dff2c16bb09a5e459463604c08",
         strip_prefix = "cutlass-3.8.0",
         urls = tf_mirror_urls("https://github.com/NVIDIA/cutlass/archive/refs/tags/v3.8.0.zip"),
-    )
-
-    tf_http_archive(
-        name = "mkl_dnn_v1",
-        build_file = "@local_xla//third_party/mkl_dnn:mkldnn_v1.BUILD",
-        sha256 = "a50993aa6265b799b040fe745e0010502f9f7103cc53a9525d59646aef006633",
-        strip_prefix = "oneDNN-2.7.3",
-        urls = tf_mirror_urls("https://github.com/oneapi-src/oneDNN/archive/refs/tags/v2.7.3.tar.gz"),
     )
 
     tf_http_archive(
@@ -233,36 +233,38 @@ def _tf_repositories():
     )
 
     tf_http_archive(
+        name = "onednn_async",
+        build_file = "@local_xla//third_party/mkl_dnn:mkldnn_v1.BUILD",
+        patch_file = ["@local_xla//third_party/mkl_dnn:setting_init.patch"],
+        sha256 = "1cfa18fad65b4c3b46ef701a83c64b87411d63e79c8549cdb37f8c1fc10e2398",
+        strip_prefix = "oneDNN-dev-v3.7-thunk-preview",
+        urls = tf_mirror_urls("https://github.com/oneapi-src/oneDNN/archive/refs/heads/dev-v3.7-thunk-preview.tar.gz"),
+    )
+
+    tf_http_archive(
         name = "mkl_dnn_acl_compatible",
         build_file = "@local_xla//third_party/mkl_dnn:mkldnn_acl.BUILD",
         patch_file = [
-            "@local_xla//third_party/mkl_dnn:onednn_acl_threadcap.patch",
-            "@local_xla//third_party/mkl_dnn:onednn_acl_reorder.patch",
-            "@local_xla//third_party/mkl_dnn:onednn_acl_thread_local_scheduler.patch",
-            "@local_xla//third_party/mkl_dnn:onednn_acl_fp32_bf16_reorder.patch",
-            "@local_xla//third_party/mkl_dnn:onednn_acl_bf16_capability_detection_for_ubuntu20.04.patch",
-            "@local_xla//third_party/mkl_dnn:onednn_acl_indirect_conv.patch",
-            "@local_xla//third_party/mkl_dnn:onednn_acl_allow_blocked_weight_format_for_matmul_primitive.patch",
-            "@local_xla//third_party/mkl_dnn:onednn_acl_fix_segfault_during_postop_execute.patch",
-            "@local_xla//third_party/mkl_dnn:onednn_acl_add_bf16_platform_support_check.patch",
-            "@local_xla//third_party/mkl_dnn:onednn_acl_add_sbgemm_matmul_primitive_definition.patch",
+            "@local_xla//third_party/mkl_dnn:onednn_acl_lock_fixed_format_matmul.patch",
+            "@local_xla//third_party/mkl_dnn:onednn_acl_threadpool_default_max.patch",
         ],
-        sha256 = "2f76b407ef8893cca71340f88cd800019a1f14f8ac1bbdbb89a84be1370b52e3",
-        strip_prefix = "oneDNN-3.2.1",
-        urls = tf_mirror_urls("https://github.com/oneapi-src/oneDNN/archive/refs/tags/v3.2.1.tar.gz"),
+        sha256 = "5792cbc07764c6e25c459ff68efb5cfcd7f4a0ba66dca6a4a2c681cd7a644596",
+        strip_prefix = "oneDNN-3.7",
+        urls = tf_mirror_urls("https://github.com/oneapi-src/oneDNN/archive/refs/tags/v3.7.zip"),
     )
 
     tf_http_archive(
         name = "compute_library",
         patch_file = [
+            "@local_xla//third_party/compute_library:acl_gemm_scheduling_heuristic.patch",
+            "@local_xla//third_party/compute_library:acl_stateless_gemm_workspace.patch",
             "@local_xla//third_party/compute_library:compute_library.patch",
-            "@local_xla//third_party/compute_library:acl_thread_local_scheduler.patch",
             "@local_xla//third_party/compute_library:exclude_omp_scheduler.patch",
             "@local_xla//third_party/compute_library:include_string.patch",
         ],
-        sha256 = "c4ca329a78da380163b2d86e91ba728349b6f0ee97d66e260a694ef37f0b0d93",
-        strip_prefix = "ComputeLibrary-23.05.1",
-        urls = tf_mirror_urls("https://github.com/ARM-software/ComputeLibrary/archive/v23.05.1.tar.gz"),
+        sha256 = "8273f68cd0bb17e9231a11a6618d245eb6d623884ae681c00e7a4eabca2dad42",
+        strip_prefix = "ComputeLibrary-24.12",
+        urls = tf_mirror_urls("https://github.com/ARM-software/ComputeLibrary/archive/refs/tags/v24.12.tar.gz"),
     )
 
     tf_http_archive(
@@ -286,7 +288,7 @@ def _tf_repositories():
 
     tf_http_archive(
         name = "aarch64_linux_toolchain",
-        build_file = "//tensorflow/tools/toolchains/embedded/arm-linux:aarch64-linux-toolchain.BUILD",
+        build_file = "@local_xla//tools/toolchains/embedded/arm-linux:aarch64-linux-toolchain.BUILD",
         sha256 = "50cdef6c5baddaa00f60502cc8b59cc11065306ae575ad2f51e412a9b2a90364",
         strip_prefix = "arm-gnu-toolchain-11.3.rel1-x86_64-aarch64-none-linux-gnu",
         urls = tf_mirror_urls("https://developer.arm.com/-/media/Files/downloads/gnu/11.3.rel1/binrel/arm-gnu-toolchain-11.3.rel1-x86_64-aarch64-none-linux-gnu.tar.xz"),
@@ -294,7 +296,7 @@ def _tf_repositories():
 
     tf_http_archive(
         name = "armhf_linux_toolchain",
-        build_file = "//tensorflow/tools/toolchains/embedded/arm-linux:armhf-linux-toolchain.BUILD",
+        build_file = "@local_xla//tools/toolchains/embedded/arm-linux:armhf-linux-toolchain.BUILD",
         sha256 = "3f76650b1d048036473b16b647b8fd005ffccd1a2869c10994967e0e49f26ac2",
         strip_prefix = "arm-gnu-toolchain-11.3.rel1-x86_64-arm-none-linux-gnueabihf",
         urls = tf_mirror_urls("https://developer.arm.com/-/media/Files/downloads/gnu/11.3.rel1/binrel/arm-gnu-toolchain-11.3.rel1-x86_64-arm-none-linux-gnueabihf.tar.xz"),
@@ -359,10 +361,10 @@ def _tf_repositories():
     tf_http_archive(
         name = "org_sqlite",
         build_file = "//third_party:sqlite.BUILD",
-        sha256 = "bb5849ae4d7129c09d20596379a0b3f7b1ac59cf9998eba5ef283ea9b6c000a5",
-        strip_prefix = "sqlite-amalgamation-3430000",
+        sha256 = "9ad6d16cbc1df7cd55c8b55127c82a9bca5e9f287818de6dc87e04e73599d754",
+        strip_prefix = "sqlite-amalgamation-3500300",
         system_build_file = "//third_party/systemlibs:sqlite.BUILD",
-        urls = tf_mirror_urls("https://www.sqlite.org/2023/sqlite-amalgamation-3430000.zip"),
+        urls = tf_mirror_urls("https://www.sqlite.org/2025/sqlite-amalgamation-3500300.zip"),
     )
 
     tf_http_archive(
@@ -389,29 +391,22 @@ def _tf_repositories():
 
     tf_http_archive(
         name = "absl_py",
-        sha256 = "a7c51b2a0aa6357a9cbb2d9437e8cd787200531867dc02565218930b6a32166e",
-        strip_prefix = "abseil-py-1.0.0",
-        system_build_file = "//third_party/systemlibs:absl_py.BUILD",
-        system_link_files = {
-            "//third_party/systemlibs:absl_py.absl.BUILD": "absl/BUILD",
-            "//third_party/systemlibs:absl_py.absl.flags.BUILD": "absl/flags/BUILD",
-            "//third_party/systemlibs:absl_py.absl.testing.BUILD": "absl/testing/BUILD",
-            "//third_party/systemlibs:absl_py.absl.logging.BUILD": "absl/logging/BUILD",
-        },
-        urls = tf_mirror_urls("https://github.com/abseil/abseil-py/archive/refs/tags/v1.0.0.tar.gz"),
+        sha256 = "8a3d0830e4eb4f66c4fa907c06edf6ce1c719ced811a12e26d9d3162f8471758",
+        strip_prefix = "abseil-py-2.1.0",
+        urls = tf_mirror_urls("https://github.com/abseil/abseil-py/archive/refs/tags/v2.1.0.tar.gz"),
     )
 
-    tf_http_archive(
+    maybe(
+        tf_http_archive,
         name = "com_google_protobuf",
         patch_file = ["@local_xla//third_party/protobuf:protobuf.patch"],
-        sha256 = "f66073dee0bc159157b0bd7f502d7d1ee0bc76b3c1eac9836927511bdc4b3fc1",
-        strip_prefix = "protobuf-3.21.9",
-        system_build_file = "//third_party/systemlibs:protobuf.BUILD",
-        system_link_files = {
-            "//third_party/systemlibs:protobuf.bzl": "protobuf.bzl",
-            "//third_party/systemlibs:protobuf_deps.bzl": "protobuf_deps.bzl",
+        sha256 = "6e09bbc950ba60c3a7b30280210cd285af8d7d8ed5e0a6ed101c72aff22e8d88",
+        strip_prefix = "protobuf-6.31.1",
+        urls = tf_mirror_urls("https://github.com/protocolbuffers/protobuf/archive/refs/tags/v6.31.1.zip"),
+        repo_mapping = {
+            "@abseil-cpp": "@com_google_absl",
+            "@protobuf_pip_deps": "@pypi",
         },
-        urls = tf_mirror_urls("https://github.com/protocolbuffers/protobuf/archive/v3.21.9.zip"),
     )
 
     tf_http_archive(
@@ -463,26 +458,15 @@ def _tf_repositories():
         urls = tf_mirror_urls("https://curl.se/download/curl-8.11.0.tar.gz"),
     )
 
-    # WARNING: make sure ncteisen@ and vpai@ are cc-ed on any CL to change the below rule
     tf_http_archive(
         name = "com_github_grpc_grpc",
-        sha256 = "b956598d8cbe168b5ee717b5dafa56563eb5201a947856a6688bbeac9cac4e1f",
-        strip_prefix = "grpc-b54a5b338637f92bfcf4b0bc05e0f57a5fd8fadd",
+        sha256 = "dd6a2fa311ba8441bbefd2764c55b99136ff10f7ea42954be96006a2723d33fc",
+        strip_prefix = "grpc-1.74.0",
         system_build_file = "//third_party/systemlibs:grpc.BUILD",
         patch_file = [
-            "@local_xla//third_party/grpc:generate_cc_env_fix.patch",
-            "@local_xla//third_party/grpc:register_go_toolchain.patch",
+            "@local_xla//third_party/grpc:grpc.patch",
         ],
-        system_link_files = {
-            "//third_party/systemlibs:BUILD.bazel": "bazel/BUILD",
-            "//third_party/systemlibs:grpc.BUILD": "src/compiler/BUILD",
-            "//third_party/systemlibs:grpc.bazel.grpc_deps.bzl": "bazel/grpc_deps.bzl",
-            "//third_party/systemlibs:grpc.bazel.grpc_extra_deps.bzl": "bazel/grpc_extra_deps.bzl",
-            "//third_party/systemlibs:grpc.bazel.cc_grpc_library.bzl": "bazel/cc_grpc_library.bzl",
-            "//third_party/systemlibs:grpc.bazel.generate_cc.bzl": "bazel/generate_cc.bzl",
-            "//third_party/systemlibs:grpc.bazel.protobuf.bzl": "bazel/protobuf.bzl",
-        },
-        urls = tf_mirror_urls("https://github.com/grpc/grpc/archive/b54a5b338637f92bfcf4b0bc05e0f57a5fd8fadd.tar.gz"),
+        urls = tf_mirror_urls("https://github.com/grpc/grpc/archive/refs/tags/v1.74.0.tar.gz"),
     )
 
     tf_http_archive(
@@ -493,7 +477,9 @@ def _tf_repositories():
         urls = tf_mirror_urls("https://github.com/antirez/linenoise/archive/4ce393a66b10903a0ef52edf9775ed526a17395f.tar.gz"),
     )
 
-    llvm_setup(name = "llvm-project")
+    # Load the raw llvm-project.  llvm does not have build rules set up by default,
+    # but provides a script for setting up build rules via overlays.
+    llvm("llvm-raw")
 
     # Intel openMP that is part of LLVM sources.
     tf_http_archive(
@@ -552,19 +538,19 @@ def _tf_repositories():
 
     tf_http_archive(
         name = "nccl_archive",
-        build_file = "@local_xla//third_party:nccl/archive.BUILD",
+        build_file = "@local_xla//third_party/nccl:archive.BUILD",
         patch_file = ["@local_xla//third_party/nccl:archive.patch"],
-        sha256 = "7b154ad1f8ccafa795ed6696507d402b1b4ccac944c5fceb7f4e29b19a39cc47",
-        strip_prefix = "nccl-2.25.1-1",
-        urls = tf_mirror_urls("https://github.com/nvidia/nccl/archive/v2.25.1-1.tar.gz"),
+        sha256 = "98e6262bd55932c51e7c8ffc50cc764f019e4b94a8fd6694d839ae828ec8d128",
+        strip_prefix = "nccl-2.27.7-1",
+        urls = tf_mirror_urls("https://github.com/NVIDIA/nccl/archive/refs/tags/v2.27.7-1.tar.gz"),
     )
 
     tf_http_archive(
         name = "nvtx_archive",
         build_file = "@local_xla//third_party:nvtx/BUILD.bazel",
-        sha256 = "e4438f921fb88a564b0b92791c1c1fdd0f388901213e6a31fdd0dc3803fb9764",
-        strip_prefix = "NVTX-bf31d7859ab3130cbf1ef77c33d18d0ebb8c8d08/c/include",
-        urls = tf_mirror_urls("https://github.com/NVIDIA/NVTX/archive/bf31d7859ab3130cbf1ef77c33d18d0ebb8c8d08.tar.gz"),
+        sha256 = "5a581c3234c5a6b2fd94363e3fdd5a4f5d2a3d9c53c4b9442b0784e6cdfe722c",
+        strip_prefix = "NVTX-2942f167cc30c5e3a44a2aecd5b0d9c07ff61a07/c/include",
+        urls = tf_mirror_urls("https://github.com/NVIDIA/NVTX/archive/2942f167cc30c5e3a44a2aecd5b0d9c07ff61a07.tar.gz"),
     )
 
     java_import_external(
@@ -647,10 +633,10 @@ def _tf_repositories():
     tf_http_archive(
         name = "cython",
         build_file = "@local_xla//third_party:cython.BUILD",
-        sha256 = "0c2eae8a4ceab7955be1e11a4ddc5dcc3aa06ce22ad594262f1555b9d10667f0",
-        strip_prefix = "cython-3.0.3",
+        sha256 = "da72f94262c8948e04784c3e6b2d14417643703af6b7bd27d6c96ae7f02835f1",
+        strip_prefix = "cython-3.1.2",
         system_build_file = "//third_party/systemlibs:cython.BUILD",
-        urls = tf_mirror_urls("https://github.com/cython/cython/archive/3.0.3.tar.gz"),
+        urls = tf_mirror_urls("https://github.com/cython/cython/archive/3.1.2.tar.gz"),
     )
 
     # LINT.IfChange
@@ -796,29 +782,26 @@ def _tf_repositories():
 
     tf_http_archive(
         name = "pybind11",
-        urls = tf_mirror_urls("https://github.com/pybind/pybind11/archive/v2.13.4.tar.gz"),
-        sha256 = "efc901aa0aab439a3fea6efeaf930b5a349fb06394bf845c64ce15a9cf8f0240",
-        strip_prefix = "pybind11-2.13.4",
+        urls = tf_mirror_urls("https://github.com/pybind/pybind11/archive/v2.13.6.tar.gz"),
+        sha256 = "e08cb87f4773da97fa7b5f035de8763abc656d87d5773e62f6da0587d1f0ec20",
+        strip_prefix = "pybind11-2.13.6",
         build_file = "@local_xla//third_party:pybind11.BUILD",
         system_build_file = "//third_party/systemlibs:pybind11.BUILD",
     )
 
     tf_http_archive(
         name = "pybind11_protobuf",
-        urls = tf_mirror_urls("https://github.com/pybind/pybind11_protobuf/archive/80f3440cd8fee124e077e2e47a8a17b78b451363.zip"),
-        sha256 = "c7ab64b1ccf9a678694a89035a8c865a693e4e872803778f91f0965c2f281d78",
-        strip_prefix = "pybind11_protobuf-80f3440cd8fee124e077e2e47a8a17b78b451363",
-        patch_file = [
-            "//third_party/pybind11_protobuf:remove_license.patch",
-        ],
+        urls = tf_mirror_urls("https://github.com/pybind/pybind11_protobuf/archive/f02a2b7653bc50eb5119d125842a3870db95d251.zip"),
+        sha256 = "3cf7bf0f23954c5ce6c37f0a215f506efa3035ca06e3b390d67f4cbe684dce23",
+        strip_prefix = "pybind11_protobuf-f02a2b7653bc50eb5119d125842a3870db95d251",
     )
 
     tf_http_archive(
         name = "coremltools",
-        sha256 = "89bb0bd2c16e19932670838dd5a8b239cd5c0a42338c72239d2446168c467a08",
-        strip_prefix = "coremltools-5.2",
+        sha256 = "37d4d141718c70102f763363a8b018191882a179f4ce5291168d066a84d01c9d",
+        strip_prefix = "coremltools-8.0",
         build_file = "//third_party:coremltools.BUILD",
-        urls = tf_mirror_urls("https://github.com/apple/coremltools/archive/5.2.tar.gz"),
+        urls = tf_mirror_urls("https://github.com/apple/coremltools/archive/8.0.tar.gz"),
     )
 
     # Dependencies required by grpc
@@ -861,10 +844,10 @@ def _tf_repositories():
 
     tf_http_archive(
         name = "com_google_ortools",
-        sha256 = "bc4b07dc9c23f0cca43b1f5c889f08a59c8f2515836b03d4cc7e0f8f2c879234",
-        strip_prefix = "or-tools-9.6",
-        patch_file = ["//third_party/ortools:ortools.patch"],
-        urls = tf_mirror_urls("https://github.com/google/or-tools/archive/v9.6.tar.gz"),
+        sha256 = "f6a0bd5b9f3058aa1a814b798db5d393c31ec9cbb6103486728997b49ab127bc",
+        strip_prefix = "or-tools-9.11",
+        patch_file = ["@local_xla//third_party/ortools:ortools.patch"],
+        urls = tf_mirror_urls("https://github.com/google/or-tools/archive/v9.11.tar.gz"),
         repo_mapping = {
             "@com_google_protobuf_cc": "@com_google_protobuf",
             "@eigen": "@eigen_archive",
@@ -883,11 +866,11 @@ def _tf_repositories():
 
     tf_http_archive(
         name = "scip",
-        sha256 = "fe7636f8165a8c9298ff55ed3220d084d4ea31ba9b69d2733beec53e0e4335d6",
-        strip_prefix = "scip-803",
-        build_file = "//third_party/ortools:scip.BUILD",
-        patch_file = ["//third_party/ortools:scip.patch"],
-        urls = tf_mirror_urls("https://github.com/scipopt/scip/archive/refs/tags/v803.tar.gz"),
+        sha256 = "ee221bd13a6b24738f2e74321e2efdebd6d7c603574ca6f6cb9d4472ead2c22f",
+        strip_prefix = "scip-900",
+        build_file = "@com_google_ortools//bazel:scip.BUILD.bazel",
+        patch_file = ["@com_google_ortools//bazel:scip-v900.patch"],
+        urls = tf_mirror_urls("https://github.com/scipopt/scip/archive/refs/tags/v900.tar.gz"),
     )
 
     tf_http_archive(
@@ -902,17 +885,16 @@ def _tf_repositories():
     # third_party/py/riegeli) that are used in TF.
     tf_http_archive(
         name = "riegeli",
-        sha256 = "1d216d5c97fa60632143d209a1bb48c2a83788efdb876902e7bbc06396d5ee1f",
-        strip_prefix = "riegeli-5d75119232cd4f6db8dfa69a1503289f050e9643",
-        urls = tf_mirror_urls("https://github.com/google/riegeli/archive/5d75119232cd4f6db8dfa69a1503289f050e9643.zip"),
+        sha256 = "590ec559107fc7082e1a7d70e9c9bfb8624c79dabca0a05fe1bcba1d7a591ec8",
+        strip_prefix = "riegeli-a37c3dbdd5d2a15113d363c7a7c41c30453e482f",
+        urls = tf_mirror_urls("https://github.com/google/riegeli/archive/a37c3dbdd5d2a15113d363c7a7c41c30453e482f.zip"),
     )
 
     tf_http_archive(
         name = "riegeli_py",
-        sha256 = "1d216d5c97fa60632143d209a1bb48c2a83788efdb876902e7bbc06396d5ee1f",
-        patch_file = ["//third_party:riegeli_fix.patch"],
-        strip_prefix = "riegeli-5d75119232cd4f6db8dfa69a1503289f050e9643",
-        urls = tf_mirror_urls("https://github.com/google/riegeli/archive/5d75119232cd4f6db8dfa69a1503289f050e9643.zip"),
+        sha256 = "590ec559107fc7082e1a7d70e9c9bfb8624c79dabca0a05fe1bcba1d7a591ec8",
+        strip_prefix = "riegeli-a37c3dbdd5d2a15113d363c7a7c41c30453e482f",
+        urls = tf_mirror_urls("https://github.com/google/riegeli/archive/a37c3dbdd5d2a15113d363c7a7c41c30453e482f.zip"),
     )
 
     # Required by riegeli.
@@ -943,6 +925,7 @@ def _tf_repositories():
         name = "org_xprof",
         sha256 = "d27bcd502a0843e463fc4eb7d3532d0d720ddd6af6e39942846f1aa769352625",
         strip_prefix = "xprof-c695e43eba127a74a67263775ab611bded7fba34",
+        patch_file = ["//third_party/xprof:xprof.patch"],
         urls = tf_mirror_urls("https://github.com/openxla/xprof/archive/c695e43eba127a74a67263775ab611bded7fba34.zip"),
         repo_mapping = {
             "@xla": "@local_xla",

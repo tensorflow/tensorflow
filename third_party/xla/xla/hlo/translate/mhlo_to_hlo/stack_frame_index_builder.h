@@ -35,6 +35,9 @@ class StackFrameIndexBuilder {
     int last_frame_id;
     std::string last_frame_file;
     int last_frame_line;
+    int last_frame_end_line;
+    int last_frame_column;
+    int last_frame_end_column;
   };
 
   AddStackFrameResult AddCallStackAndGetFirstFrameId(

@@ -57,11 +57,7 @@ absl::StatusOr<LayoutProto> Layout::ToProto(SerDesVersion version) const {
   LayoutProto layout_proto;
   // `LayoutProto` does not store its own version. It delegates the details to
   // SerDes of the `Layout` subclasses.
-  std::unique_ptr<SerializeOptions> options;
-  if (version != SerDesVersion::current()) {
-    options = std::make_unique<SerializeOptions>();
-    options->version = version;
-  }
+  auto options = std::make_unique<SerializeOptions>(version);
   TF_ASSIGN_OR_RETURN(*layout_proto.mutable_serialized_layout(),
                       Serialize(*this, std::move(options)));
   return layout_proto;
@@ -152,15 +148,15 @@ absl::StatusOr<bool> EquivalentLayouts(DType dtype1, const Shape& shape1,
       return true;
     }
     // TODO(hyeontaek): Change to IFRT `Layout` comparison once
-    // `Client::GetDefaultLayout()` returns a `CustomLayoutRef`.
+    // we add `Client::GetDefaultLayout()` that returns a `CustomLayoutRef`.
     TF_ASSIGN_OR_RETURN(
         std::shared_ptr<const xla::PjRtLayout> pjrt_layout1,
-        device1->client()->GetDefaultLayout(dtype1, shape1.dims(), device1,
-                                            sharding1->memory_kind()));
+        device1->client()->GetDefaultPjRtLayout(dtype1, shape1.dims(), device1,
+                                                sharding1->memory_kind()));
     TF_ASSIGN_OR_RETURN(
         std::shared_ptr<const xla::PjRtLayout> pjrt_layout2,
-        device2->client()->GetDefaultLayout(dtype2, shape2.dims(), device2,
-                                            sharding2->memory_kind()));
+        device2->client()->GetDefaultPjRtLayout(dtype2, shape2.dims(), device2,
+                                                sharding2->memory_kind()));
     return *pjrt_layout1 == *pjrt_layout2;
   }
   if (layout1 != nullptr && layout2 != nullptr) {

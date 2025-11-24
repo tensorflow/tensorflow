@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_DELEGATES_XNNPACK_WEIGHT_CACHE_H_
 #define TENSORFLOW_LITE_DELEGATES_XNNPACK_WEIGHT_CACHE_H_
 
+#include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
@@ -22,11 +23,11 @@ limitations under the License.
 #include <memory>
 #include <string>
 #include <unordered_map>
-#include <vector>
 
 #include "xnnpack.h"  // from @XNNPACK
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/delegates/xnnpack/file_util.h"
+#include "tensorflow/lite/delegates/xnnpack/mmap_handle.h"
 #include "tensorflow/lite/delegates/xnnpack/weight_cache_schema_generated.h"
 
 // WARNING: the interface in this file is still under experimentation and WILL
@@ -42,7 +43,7 @@ namespace xnnpack {
 //
 // This is useful when disk space is not available or when having to manage the
 // cache file freshness is too complicated and still provides the deduplication
-// mechanism for constant buffers that are reused accross graph signatures.
+// mechanism for constant buffers that are reused across graph signatures.
 inline constexpr char kInMemoryCachePath[] = ":memory";
 
 // This structure is written at the start of every cache file.
@@ -96,76 +97,6 @@ struct BufferLocation {
   }
 };
 
-// Handles MMap allocations lifetime.
-//
-// When mapped, provides a view over the allocation for convenience.
-//
-// WARNING: the interface in this file is still under experimentation and WILL
-// CHANGE. Do not rely on it.
-class MMapHandle {
- public:
-  using value_type = uint8_t;
-
-  MMapHandle() = default;
-  ~MMapHandle();
-  MMapHandle(const MMapHandle&) = delete;
-  MMapHandle& operator=(const MMapHandle&) = delete;
-  MMapHandle(MMapHandle&&);
-  MMapHandle& operator=(MMapHandle&&);
-
-  // Maps the file at the given path.
-  [[nodiscard /*Mapping a file can fail.*/]]
-  bool Map(const char* path, size_t offset = 0);
-
-  // Maps the fd associated to the file descriptor.
-  //
-  // The debug_path is printed along the error messages.
-  [[nodiscard /*Mapping a file can fail.*/]]
-  bool Map(const FileDescriptor& fd, size_t offset = 0,
-           const char* debug_path = "unspecified");
-
-  // Tries to resize the current mapping.
-  //
-  // Only succeeds if the mapping could be resized without being moved.
-  //
-  // WARNING: expects `IsMapped()` to be true.
-  [[nodiscard /*Resizing a file can fail.*/]]
-  bool Resize(size_t new_size);
-
-  // Unmaps an existing mapping.
-  void UnMap();
-
-  // Returns true if a mapping exists.
-  bool IsMapped() const { return data_ != nullptr; }
-
-  // Returns the mapping buffer.
-  uint8_t* data() { return data_ + offset_page_adjustment_; }
-
-  // Returns the mapping buffer.
-  const uint8_t* data() const { return data_ + offset_page_adjustment_; }
-
-  // Returns the mapping size in bytes.
-  size_t size() const { return size_; }
-
-  size_t offset() const { return offset_; }
-
-  uint8_t* begin() { return data(); }
-
-  const uint8_t* begin() const { return data(); }
-
-  uint8_t* end() { return data() + size(); }
-
-  const uint8_t* end() const { return data() + size(); }
-
-  friend void swap(MMapHandle& a, MMapHandle& b);
-
- private:
-  size_t size_ = 0;
-  size_t offset_ = 0;
-  size_t offset_page_adjustment_ = 0;
-  uint8_t* data_ = nullptr;
-};
-
 // Provides storage to write the packed buffers to and saves those to disk.
 //
 // WARNING: the interface in this file is still under experimentation and WILL
@@ -184,11 +115,16 @@ class WeightCacheBuilder {
   WeightCacheBuilder& operator=(WeightCacheBuilder&&);
 
   [[nodiscard /*Starting the builder may fail.*/]]
-  bool Start(const char* path, FileDescriptor fd);
+  bool Start(const char* path, const FileDescriptor& fd);
 
   [[nodiscard]]
   bool IsStarted() const {
     return fd_.IsValid();
+  }
+
+  [[nodiscard]]
+  bool IsBuilding() const {
+    return is_build_step_;
   }
 
   // Reopens the given file to add data to it.
@@ -238,7 +174,7 @@ class WeightCacheBuilder {
   }
 
   // Returns the file descriptor.
-  const FileDescriptor& GetFileDescriptor() const { return fd_; }
+  FileDescriptorView GetFileDescriptor() const { return fd_; }
 
   // Returns the capacity of the underlying reserved buffer.
   //
@@ -266,11 +202,11 @@ class WeightCacheBuilder {
   // cache. To ensure a smooth reloading, we need to ensure that the file header
   // is correct. This flag lets us know if that has happened.
   bool first_write_done_ = false;
-  // Temporary file descriptor to write the weights to disk immediately.
-  FileDescriptor fd_;
+  // File descriptor view.
+  FileDescriptorView fd_;
   std::string file_path_;
 
-  bool is_build_step_ = false;
+  std::atomic<bool> is_build_step_ = false;
 };
 
 // Allows XNNPack to directly load packed weights from disk instead of having to
@@ -312,6 +248,11 @@ class MMapWeightCacheProvider {
 
   [[nodiscard /*Starting to build a cache file may fail.*/]]
   bool StartBuild(const char* file_path, FileDescriptor fd = FileDescriptor());
+
+  // If the cache is still being built, this signals that all of the building
+  // operations are done and that `CanStartBuildStep()` should now return
+  // `false`.
+  void StopBuild() { building_run_ = false; }
 
   // Sets the weight file path and loads it.
   [[nodiscard /*Loading a cache file may fail.*/]]
@@ -381,7 +322,7 @@ class MMapWeightCacheProvider {
   // Returns true if any weights have been added to the underlying builder.
   [[nodiscard]]
   bool IsBuilding() const {
-    return is_build_step_;
+    return builder_.IsBuilding();
   };
 
   // Returns true if a file is mapped or a file path is set.
@@ -462,12 +403,6 @@ class MMapWeightCacheProvider {
   // fully done. To detect misuse, we still want to raise an error when XNNPack
   // tries to append data to an existing file (i.e. when this is `false`).
   bool building_run_ = false;
-
-  // True between StartBuildStep and StopBuildStep.
-  //
-  // This is used to check whether the builder is active, which means that some
-  // of the buffers are not available/can't be retrieved.
-  bool is_build_step_ = false;
 
   // Stores the loaded buffer addresses corresponding to the given offset in the
   // cache file.

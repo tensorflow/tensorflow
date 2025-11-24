@@ -61,6 +61,15 @@ bool DeviceTypeIs(absl::string_view device) {
   return device == GetXlaTestDeviceType();
 }
 
+bool DeviceTypeIsOneOf(absl::Span<const absl::string_view> devices) {
+  for (const absl::string_view device : devices) {
+    if (DeviceTypeIs(device)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 bool HasModifiers(absl::Span<const absl::string_view> modifiers) {
   std::vector<absl::string_view> set_modifiers = GetXlaTestModifiers();
   for (const absl::string_view m : modifiers) {
@@ -99,6 +108,13 @@ bool BackendIsStrict(absl::string_view device) {
       modifiers.size() == 1 && (modifiers[0] == kHardware ||
                                 modifiers[0] == kIss || modifiers[0] == kGrm);
   return device_matches && modifiers_match;
+}
+
+bool BackendSupportsFloat64() { return !DeviceTypeIs(kTpu); }
+bool BackendSupportsComplex128() { return !DeviceTypeIs(kTpu); }
+
+bool UsingStreamExecutorGpuClient() {
+  return std::getenv("XLA_TEST_USE_STREAM_EXECUTOR_GPU_CLIENT") != nullptr;
 }
 
 }  // namespace xla::test

@@ -44,6 +44,7 @@ limitations under the License.
 #include "xla/backends/cpu/collectives/cpu_cliques.h"
 #include "xla/backends/cpu/collectives/cpu_collectives.h"
 #include "xla/backends/cpu/collectives/in_process_collectives.h"
+#include "xla/backends/cpu/runtime/xfeed_manager.h"
 #include "xla/core/collectives/communicator.h"
 #include "xla/core/collectives/rank_id.h"
 #include "xla/executable_run_options.h"
@@ -53,7 +54,6 @@ limitations under the License.
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/cpu/cpu_executable_run_options.h"
-#include "xla/service/cpu/xfeed_manager.h"
 #include "xla/service/global_device_id.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_memory.h"
@@ -70,29 +70,6 @@ limitations under the License.
 namespace xla {
 namespace cpu {
 namespace runtime {
-
-XfeedManager* GetXfeedManager(int device_ordinal) {
-  static auto* const managers = new absl::flat_hash_map<int, XfeedManager*>();
-  static absl::Mutex* const mutex = new absl::Mutex();
-
-  absl::MutexLock lock(mutex);
-  auto it = managers->find(device_ordinal);
-  if (it == managers->end()) {
-    it = managers->emplace(device_ordinal, new XfeedManager()).first;
-  }
-  return it->second;
-}
-
-// TODO(zhangqiaorjc): Prefer to make callers set and use device_ordinal
-// directly since callers may not have a Stream*.
-int GetDeviceOrdinal(const xla::ExecutableRunOptions* run_options) {
-  if (!run_options) {
-    return 0;
-  } else if (run_options->device_ordinal() != -1) {
-    return run_options->device_ordinal();
-  }
-  return run_options->stream()->parent()->device_ordinal();
-}
 
 extern const char* const kEigenMatMulF16SymbolName =
     "__xla_cpu_runtime_EigenMatMulF16";
@@ -122,11 +99,6 @@ extern const char* const kEigenConv3DF16SymbolName =
     "__xla_cpu_runtime_EigenConv3DF16";
 extern const char* const kEigenConv3DF32SymbolName =
     "__xla_cpu_runtime_EigenConv3DF32";
-extern const char* const kLegacyDuccFftSymbolName =
-    "__xla_cpu_runtime_LegacyDuccFft";
-extern const char* const kDuccFftSymbolName = "__xla_cpu_runtime_DuccFft";
-extern const char* const kDuccSingleThreadedFftSymbolName =
-    "__xla_cpu_runtime_DuccSingleThreadedFft";
 extern const char* const kEigenSingleThreadedMatMulF8E4M3FNSymbolName =
     "__xla_cpu_runtime_EigenSingleThreadedMatMulF8E4M3FN";
 extern const char* const kEigenSingleThreadedMatMulF8E5M2SymbolName =
@@ -186,237 +158,11 @@ extern const char* const kPartitionIdSymbolName =
 extern const char* const kReplicaIdSymbolName = "__xla_cpu_runtime_ReplicaId";
 extern const char* const kOneDnnMatMulSymbolName =
     "__xla_cpu_runtime_OneDnnMatMul";
-extern const char* const kOneDnnSoftmaxSymbolName =
-    "__xla_cpu_runtime_OneDnnSoftmax";
-extern const char* const kOneDnnLayerNormSymbolName =
-    "__xla_cpu_runtime_OneDnnLayerNorm";
-extern const char* const kOneDnnConvolutionSymbolName =
-    "__xla_cpu_runtime_OneDnnConvolution";
 extern const char* const kOneDnnMatMulReorderSymbolName =
     "__xla_cpu_runtime_OneDnnMatMulReorder";
 extern const char* const kHandleFfiCallSymbolName =
     "__xla_cpu_runtime_HandleFfiCall";
 
-namespace {
-
-// Inverses the encoding of a Shape protobuf into an LLVM global variable.
-absl::StatusOr<Shape> DecodeSelfDescribingShapeConstant(const void* shape_ptr,
-                                                        int32_t size_bytes) {
-  ShapeProto shape_proto;
-  if (!shape_proto.ParseFromArray(shape_ptr, size_bytes)) {
-    return absl::InternalError("Failed parsing the shape proto");
-  }
-  TF_ASSIGN_OR_RETURN(Shape shape, Shape::FromProto(shape_proto));
-  auto status = ShapeUtil::ValidateShape(shape);
-  if (!status.ok()) {
-    return status;
-  }
-  return std::move(shape);
-}
-
-std::string ShapeString(const void* shape_ptr, int32_t shape_length) {
-  absl::StatusOr<Shape> shape =
-      DecodeSelfDescribingShapeConstant(shape_ptr, shape_length);
-  if (shape.ok()) {
-    return ShapeUtil::HumanStringWithLayout(shape.value());
-  }
-  return "<invalid shape>";
-}
-
-ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY
-void* AcquireInfeedBufferForDequeueImpl(const ExecutableRunOptions* run_options,
-                                        int32_t buffer_length,
-                                        const void* shape,
-                                        int32_t shape_length) {
-  int device_ordinal = GetDeviceOrdinal(run_options);
-
-  VLOG(2) << "AcquireInfeedBufferForDequeue: "
-          << ShapeString(shape, shape_length) << " on stream executor "
-          << device_ordinal;
-
-  XfeedManager* xfeed = GetXfeedManager(device_ordinal);
-  // Wait until there's a buffer to dequeue.
-  XfeedBuffer* buffer = xfeed->infeed()->BlockingDequeueBuffer();
-  CHECK_EQ(buffer->length(), buffer_length)
-      << "XLA program infeed request buffer size " << buffer_length
-      << " did not match the runtime's infed buffer length " << buffer->length()
-      << "; program reports desired shape: "
-      << ShapeString(shape, shape_length);
-  return buffer->data();
-}
-
-ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY
-void ReleaseInfeedBufferAfterDequeueImpl(
-    const ExecutableRunOptions* run_options, int32_t buffer_length,
-    void* buffer_ptr, const void* shape_ptr, int32_t shape_length) {
-  int device_ordinal = GetDeviceOrdinal(run_options);
-
-  VLOG(2) << "ReleaseInfeedBufferAfterDeque: "
-          << ShapeString(shape_ptr, shape_length) << " on stream executor "
-          << device_ordinal;
-
-  XfeedManager* xfeed = GetXfeedManager(device_ordinal);
-  absl::StatusOr<Shape> shape =
-      DecodeSelfDescribingShapeConstant(shape_ptr, shape_length);
-  xfeed->infeed()->ReleaseCurrentBuffer(buffer_length, buffer_ptr,
-                                        std::move(shape));
-}
-
-ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY
-void* AcquireOutfeedBufferForPopulationImpl(
-    const ExecutableRunOptions* run_options, int32_t buffer_length,
-    const void* shape_ptr, int32_t shape_length) {
-  int device_ordinal = GetDeviceOrdinal(run_options);
-
-  VLOG(2) << "AcquireOutfeedBufferForPopulation: "
-          << ShapeString(shape_ptr, shape_length) << " on stream executor "
-          << device_ordinal;
-
-  XfeedManager* xfeed = GetXfeedManager(device_ordinal);
-  // Wait until there's a buffer to dequeue.
-  XfeedBuffer* buffer = xfeed->outfeed()->BlockingDequeueBuffer();
-  CHECK_EQ(buffer->length(), buffer_length)
-      << "XLA program outfeed request buffer size " << buffer_length
-      << " did not match the runtime's outfeed buffer length "
-      << buffer->length() << "; program reports outfed shape: "
-      << ShapeString(shape_ptr, shape_length);
-  return buffer->data();
-}
-
-ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY
-void ReleaseOutfeedBufferAfterPopulationImpl(
-    const ExecutableRunOptions* run_options, int32_t buffer_length,
-    void* buffer_ptr, const void* shape_ptr, int32_t shape_length) {
-  int device_ordinal = GetDeviceOrdinal(run_options);
-
-  VLOG(2) << "ReleaseOutfeedBufferAfterPopulation: "
-          << ShapeString(shape_ptr, shape_length) << " on stream executor "
-          << device_ordinal;
-
-  XfeedManager* xfeed = GetXfeedManager(device_ordinal);
-  absl::StatusOr<Shape> shape =
-      DecodeSelfDescribingShapeConstant(shape_ptr, shape_length);
-  xfeed->outfeed()->ReleaseCurrentBuffer(buffer_length, buffer_ptr,
-                                         std::move(shape));
-}
-
-}  // namespace
 }  // namespace runtime
 }  // namespace cpu
 }  // namespace xla
-
-extern "C" {
-
-ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY int __xla_cpu_runtime_PrintfToStderr(
-    const char* format, ...) {
-  VLOG(3) << "__xla_cpu_runtime_PrintfToStderr " << format;
-  va_list args;
-  va_start(args, format);
-  int result = vfprintf(stderr, format, args);
-  va_end(args);
-  return result;
-}
-
-ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY int64_t __xla_cpu_runtime_TracingStart(
-    const void* /* ExecutableRunOptions*  run_options_ptr*/, const char* name,
-    const char* hlo_module, int64_t program_id) {
-  VLOG(3) << "TracingStart " << name;
-  auto trace_in =
-      tsl::profiler::TraceMeEncode(name, {{"hlo_op", name},
-                                          {"hlo_module", hlo_module},
-                                          {"program_id", program_id}});
-  return tsl::profiler::TraceMe::ActivityStart(trace_in);
-}
-
-ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_TracingEnd(
-    const void* /* ExecutableRunOptions*  run_options_ptr*/, int64_t id) {
-  VLOG(3) << "TracingEnd " << id;
-  tsl::profiler::TraceMe::ActivityEnd(id);
-}
-
-void* __xla_cpu_runtime_AcquireInfeedBufferForDequeue(
-    const xla::ExecutableRunOptions* run_options, int32_t buffer_length,
-    const void* shape, int32_t shape_length) {
-  return xla::cpu::runtime::AcquireInfeedBufferForDequeueImpl(
-      run_options, buffer_length, shape, shape_length);
-}
-
-void __xla_cpu_runtime_ReleaseInfeedBufferAfterDequeue(
-    const xla::ExecutableRunOptions* run_options, int32_t buffer_length,
-    void* buffer_ptr, const void* shape_ptr, int32_t shape_length) {
-  return xla::cpu::runtime::ReleaseInfeedBufferAfterDequeueImpl(
-      run_options, buffer_length, buffer_ptr, shape_ptr, shape_length);
-}
-
-void* __xla_cpu_runtime_AcquireOutfeedBufferForPopulation(
-    const xla::ExecutableRunOptions* run_options, int32_t buffer_length,
-    const void* shape_ptr, int32_t shape_length) {
-  return xla::cpu::runtime::AcquireOutfeedBufferForPopulationImpl(
-      run_options, buffer_length, shape_ptr, shape_length);
-}
-
-void __xla_cpu_runtime_ReleaseOutfeedBufferAfterPopulation(
-    const xla::ExecutableRunOptions* run_options, int32_t buffer_length,
-    void* buffer_ptr, const void* shape_ptr, int32_t shape_length) {
-  return xla::cpu::runtime::ReleaseOutfeedBufferAfterPopulationImpl(
-      run_options, buffer_length, buffer_ptr, shape_ptr, shape_length);
-}
-
-void __xla_cpu_runtime_AllToAll(const xla::ExecutableRunOptions* run_options,
-                                int32_t channel_id_present, int64_t op_id,
-                                const void* replica_groups_str,
-                                int32_t replica_groups_str_size,
-                                int32_t num_buffers, int64_t buffer_size,
-                                void** source_buffers,
-                                void** destination_buffers) {
-  LOG(FATAL) << "Legacy XLA:CPU runtime does not support collective execution";
-}
-
-void __xla_cpu_runtime_AllGather(const xla::ExecutableRunOptions* run_options,
-                                 int32_t channel_id_present,
-                                 int32_t use_global_device_ids, int64_t op_id,
-                                 const void* replica_groups_str,
-                                 int32_t replica_groups_str_size,
-                                 int64_t buffer_size, void* source_buffer,
-                                 void* destination_buffer) {
-  LOG(FATAL) << "Legacy XLA:CPU runtime does not support collective execution";
-}
-
-void __xla_cpu_runtime_ReduceScatter(
-    const xla::ExecutableRunOptions* run_options,
-    const void* replica_groups_str, int32_t replica_groups_str_size,
-    int32_t channel_id_present, int32_t use_global_device_ids, int64_t op_id,
-    int32_t reduction_kind, int32_t element_type, int64_t chunk_elems,
-    void* input_buffer, void* output_buffer) {
-  LOG(FATAL) << "Legacy XLA:CPU runtime does not support collective execution";
-}
-
-void __xla_cpu_runtime_AllReduce(const xla::ExecutableRunOptions* run_options,
-                                 const void* replica_groups_str,
-                                 int32_t replica_groups_str_size,
-                                 int32_t channel_id_present,
-                                 int32_t use_global_device_ids, int64_t op_id,
-                                 int32_t reduction_kind, const void* shape_ptr,
-                                 int32_t shape_length, int32_t num_buffers,
-                                 void** input_buffers, void** output_buffers) {
-  LOG(FATAL) << "Legacy XLA:CPU runtime does not support collective execution";
-}
-
-void __xla_cpu_runtime_ReplicaId(const xla::ExecutableRunOptions* run_options,
-                                 void* output_buffer) {
-  LOG(FATAL) << "Legacy XLA:CPU runtime does not support collective execution";
-}
-
-void __xla_cpu_runtime_PartitionId(const xla::ExecutableRunOptions* run_options,
-                                   void* output_buffer) {
-  LOG(FATAL) << "Legacy XLA:CPU runtime does not support collective execution";
-}
-
-void __xla_cpu_runtime_CollectivePermute(
-    const xla::ExecutableRunOptions* run_options, int32_t channel_id_present,
-    int64_t op_id, int32_t byte_size, void* input_buffer, void* output_buffer,
-    const void* source_target_pairs, int32_t source_target_pairs_size) {
-  LOG(FATAL) << "Legacy XLA:CPU runtime does not support collective execution";
-}
-
-}  // extern "C"

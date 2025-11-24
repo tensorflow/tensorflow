@@ -17,13 +17,12 @@ limitations under the License.
 #define XLA_BACKENDS_GPU_RUNTIME_ALL_REDUCE_THUNK_H_
 
 #include <cstdint>
+#include <memory>
 #include <vector>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
-#include "xla/backends/gpu/collectives/gpu_clique_key.h"
-#include "xla/backends/gpu/collectives/gpu_collectives.h"
 #include "xla/backends/gpu/runtime/collective_kernel_thunk.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/core/collectives/communicator.h"
@@ -38,6 +37,8 @@ struct AllReduceConfig {
   CollectiveConfig config;
   ReductionKind reduction_kind;
 };
+
+AllReduceConfig GetAllReduceConfigInst(const HloAllReduceInstructionBase* inst);
 
 // Thunk that performs a NCCL-based All-Reduce or Reduce-Scatter among CUDA
 // GPU-based replicas.
@@ -63,9 +64,11 @@ class AllReduceReduceScatterThunkBase : public CollectiveThunk {
 
 class AllReduceStartThunk : public AllReduceReduceScatterThunkBase {
  public:
-  AllReduceStartThunk(ThunkInfo thunk_info, const HloAllReduceInstruction* inst,
-                      std::vector<Buffer> buffers,
-                      bool p2p_memcpy_enabled = false);
+  AllReduceStartThunk(
+      ThunkInfo thunk_info, const HloAllReduceInstruction* inst,
+      std::vector<Buffer> buffers,
+      std::unique_ptr<CollectiveKernelThunk> collective_kernel_thunk,
+      bool p2p_memcpy_enabled = false);
 
   static const char* GetHloOpName() { return "all-reduce-start"; }
 
@@ -75,10 +78,6 @@ class AllReduceStartThunk : public AllReduceReduceScatterThunkBase {
 
   static CollectiveOpGroupMode GetGroupMode(
       const HloAllReduceInstruction* inst);
-
-  absl::StatusOr<bool> ShouldUseOneShotAllReduceKernel(
-      const GpuCliqueKey& clique_key,
-      const CollectiveCliques* collective_cliques);
 
   absl::Status Prepare(const PrepareParams& params,
                        ResourceRequestsInterface& resource_requests) override;
@@ -90,8 +89,7 @@ class AllReduceStartThunk : public AllReduceReduceScatterThunkBase {
                                      CommunicatorHandle comm) override;
 
  private:
-  bool one_shot_kernel_enabled_ = false;
-  CollectiveKernelThunk collective_kernel_thunk_;
+  std::unique_ptr<CollectiveKernelThunk> collective_kernel_thunk_;
 };
 
 // -----------------------------------------------------------------------------
@@ -124,11 +122,13 @@ class ReduceScatterStartThunk : public AllReduceReduceScatterThunkBase {
 
 absl::Status RunAllReduce(ReductionKind reduction_kind,
                           std::vector<DeviceBufferPair>& buffers,
-                          se::Stream& stream, Communicator* comm);
+                          se::Stream& stream, Communicator* comm,
+                          bool use_symmetric_buffer = false);
 
 absl::Status RunReduceScatter(ReductionKind reduction_kind,
                               std::vector<DeviceBufferPair>& buffers,
-                              se::Stream& stream, Communicator* comm);
+                              se::Stream& stream, Communicator* comm,
+                              bool use_symmetric_buffer = false);
 
 }  // namespace gpu
 }  // namespace xla

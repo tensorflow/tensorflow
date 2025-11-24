@@ -772,6 +772,8 @@ message ConfigProto {
     // aims to negate its value.
     bool disable_optimize_for_static_graph = 24;
 
+    reserved 25;
+
     // Whether eager remote execution will stream all the function calls or
     // allow them to happen in parallel. When true, streaming execution is
     // disabled, and parallel execution is allowed.
@@ -785,9 +787,18 @@ message ConfigProto {
     // is finalized.
     bool finalize_resource_manager = 34;
 
-    reserved 25;
+    // If set, TF2XLA will dump compilation call arguments to the specified
+    // directory.
+    string tf2xla_dump_dir = 35;
 
-    // Next: 35
+    // When set to true, the online op cost analysis will be enabled. This
+    // will run the cost analysis once for the first model execution and
+    // use the obtained cost to optimize subsequent executions.
+    // Typically `stream_merge_threshold` should be tuned to set to a non-zero
+    // value when this option is enabled.
+    bool online_cost_analysis = 36;
+
+    // Next: 37
   }
 
   Experimental experimental = 16;

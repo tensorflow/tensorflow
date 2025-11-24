@@ -32,6 +32,13 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/base/casts.h"
+#include "absl/base/const_init.h"
+#include "absl/base/no_destructor.h"
+#include "absl/base/thread_annotations.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
+#include "absl/strings/str_replace.h"
+#include "absl/synchronization/mutex.h"
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "tensorflow/lite/core/api/op_resolver.h"
 #include "tensorflow/lite/core/c/common.h"
@@ -50,6 +57,7 @@ limitations under the License.
 #include "tensorflow/lite/string_type.h"
 #include "tensorflow/lite/string_util.h"
 #include "tensorflow/lite/tools/logging.h"
+#include "tensorflow/lite/tools/serialization/writer_lib.h"
 #include "tensorflow/lite/tools/versioning/op_version.h"
 #include "tensorflow/lite/version.h"
 #include "tsl/platform/logging.h"
@@ -134,6 +142,42 @@ MATCHER(Fp16Eq, "") {
   return AlmostEquals(actual, expected, fp16_ulps_in_fp32);
 }
 
+// Returns the name of the dumped model. The name is in the format of
+// DTS-<test_suite_name>-<test_name>-<model_serial>.tflite. The model serial
+// number is used to distinguish different models dumped in the same test.
+// Returns empty string when there is no test info.
+std::string GetDumpedModelName() {
+  // The mutex is used to ensure thread safety for mutil-threaded tests. Notice
+  // that it doesn't work for running tests in parallel, which users should
+  // avoid when dumping models.
+  static absl::Mutex mutex(absl::kConstInit);
+  static absl::NoDestructor<std::string> previous_test_name ABSL_GUARDED_BY(
+      mutex);
+  static int model_serial ABSL_GUARDED_BY(mutex) = 0;
+  absl::MutexLock lock(mutex);
+
+  const testing::TestInfo* test_info =
+      ::testing::UnitTest::GetInstance()->current_test_info();
+  if (test_info == nullptr) {
+    return "";
+  }
+  std::string current_test_name =
+      absl::StrFormat("%s-%s", test_info->test_suite_name(), test_info->name());
+  // Reset serial number when running a new test.
+  if (*previous_test_name != current_test_name) {
+    *previous_test_name = current_test_name;
+    model_serial = 0;
+  }
+  model_serial++;
+
+  std::string raw_output_file_name =
+      absl::StrFormat("DTS-%s-%d.tflite", current_test_name, model_serial);
+  // Unix file name should not contain "/".
+  std::string output_file_name =
+      absl::StrReplaceAll(raw_output_file_name, {{"/", "_"}});
+  return output_file_name;
+}
+
 }  // namespace
 
 bool AllowFp16PrecisionForFp32() {
@@ -192,7 +236,9 @@ std::vector<Matcher<std::complex<float>>> ArrayComplex64Near(
 
 int SingleOpModel::AddInput(const TensorData& t) {
   int id = 0;
-  if (t.per_channel_quantization) {
+  if (t.per_block_quantization != 0) {
+    id = AddTensorPerBlockQuant(t);
+  } else if (t.per_channel_quantization) {
     id = AddTensorPerChannelQuant(t);
   } else {
     id = AddTensor<float>(t, nullptr, 0);
@@ -563,7 +609,40 @@ int SingleOpModel::CountNumberOfDelegatedPartitions() const {
   return CountPartitionsDelegatedTo(interpreter_.get(), delegate_);
 }
 
-SingleOpModel::~SingleOpModel() { ValidateAcceleration(); }
+void SingleOpModel::MaybeDumpModel() {
+  std::string dump_directory(
+      tflite::KernelTestDelegateProviders::Get()
+          ->ConstParams()
+          .Get<std::string>(
+              tflite::KernelTestDelegateProviders::kDumpTFLiteModelDir));
+  // If no path provided, we don't need to dump the model.
+  if (dump_directory.empty()) {
+    return;
+  }
+
+  // If the interpreter is not initialized, there is no model to be dumped.
+  if (interpreter_ == nullptr) {
+    TFLITE_LOG(INFO) << "Interpreter is not initialized, skipping model dump.";
+    return;
+  }
+
+  std::string output_file_name = GetDumpedModelName();
+  if (output_file_name.empty()) {
+    return;
+  }
+  // Save the model to file
+  std::string output_file_path =
+      absl::StrCat(dump_directory, "/", output_file_name);
+  TFLITE_LOG(INFO) << "Saving model to " << output_file_path;
+  if (ModelWriter(interpreter_.get()).Write(output_file_path) != kTfLiteOk) {
+    TFLITE_LOG(ERROR) << "Failed to save model to " << output_file_path;
+  }
+}
+
+SingleOpModel::~SingleOpModel() {
+  MaybeDumpModel();
+  ValidateAcceleration();
+}
 
 void MultiOpModel::AddBuiltinOp(
     BuiltinOperator type, BuiltinOptions builtin_options_type,

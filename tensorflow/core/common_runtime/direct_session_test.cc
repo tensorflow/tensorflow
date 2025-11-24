@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_format.h"
+#include "absl/synchronization/notification.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/status_matchers.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
@@ -395,7 +396,7 @@ TEST_F(DirectSessionMinusAXTest,
   Session::CallableHandle handle;
   EXPECT_THAT(
       session->MakeCallable(MakeCallableOptions({}, {y_ + ":0"}, {}), &handle),
-      ::tsl::testing::StatusIs(
+      absl_testing::StatusIs(
           absl::StatusCode::kFailedPrecondition,
           ::testing::HasSubstr("Session has been finalized.")));
 }
@@ -433,7 +434,7 @@ TEST_F(DirectSessionMinusAXTest, RunSimpleNetwork_ResourceMgrFinalized) {
   TestResource* test_resource = new TestResource();
   EXPECT_THAT(
       rm->Create("", "", test_resource),
-      tsl::testing::StatusIs(absl::StatusCode::kFailedPrecondition,
+      absl_testing::StatusIs(absl::StatusCode::kFailedPrecondition,
                              ::testing::HasSubstr("ResourceMgr is finalized")));
   test_resource->Unref();
 }
@@ -2056,9 +2057,9 @@ class CancellationMgrPollingOp : public OpKernel {
     }
     notification.Notify();
   }
-  static Notification notification;
+  static absl::Notification notification;
 };
-Notification CancellationMgrPollingOp::notification;
+absl::Notification CancellationMgrPollingOp::notification;
 
 REGISTER_KERNEL_BUILDER(Name("CancellationMgrPollingOp").Device(DEVICE_CPU),
                         CancellationMgrPollingOp);
@@ -2291,7 +2292,7 @@ TEST(DirectSessionTest, TestSessionInterOpThreadsInvalidOptions) {
       EXPECT_EQ(s.code(), error::INVALID_ARGUMENT);
       EXPECT_TRUE(absl::StrContains(
           s.message(),
-          strings::StrCat("Invalid inter_op_thread_pool: ", pool_num)));
+          absl::StrCat("Invalid inter_op_thread_pool: ", pool_num)));
     }
   }
 
@@ -3000,7 +3001,7 @@ class DirectSessionCollectiveTest : public ::testing::Test {
     AttrValue dtype_attr;
     SetAttrValue(DT_FLOAT, &dtype_attr);
     NodeDef input;
-    input.set_name(strings::StrCat("input", id));
+    input.set_name(absl::StrCat("input", id));
     input.set_op("Placeholder");
     input.mutable_attr()->insert({"dtype", dtype_attr});
     return input;
@@ -3008,11 +3009,11 @@ class DirectSessionCollectiveTest : public ::testing::Test {
 
   NodeDef CollectiveCall(const string& op, const string& input, int cpu_id) {
     NodeDef collective_call;
-    collective_call.set_name(strings::StrCat("collective_call", cpu_id));
+    collective_call.set_name(absl::StrCat("collective_call", cpu_id));
     collective_call.set_op(op);
     collective_call.add_input(input);
     collective_call.set_device(
-        strings::StrCat("/job:localhost/replica:0/task:0/device:CPU:", cpu_id));
+        absl::StrCat("/job:localhost/replica:0/task:0/device:CPU:", cpu_id));
     return collective_call;
   }
 
@@ -3102,7 +3103,7 @@ TEST(DirectSessionTest, TestStatefulOutputRequiredOp) {
     std::vector<string> fetch_tensor_names;
     fetch_tensor_names.reserve(num_outputs_required);
     for (int output_idx = 0; output_idx < num_outputs_required; ++output_idx) {
-      fetch_tensor_names.push_back(strings::StrCat("n:", output_idx));
+      fetch_tensor_names.push_back(absl::StrCat("n:", output_idx));
     }
     std::vector<Tensor> fetch_tensors;
     TF_ASSERT_OK(session->Run({}, fetch_tensor_names, {}, &fetch_tensors));

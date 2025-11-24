@@ -15,6 +15,8 @@ limitations under the License.
 #ifndef XLA_PYTHON_PROFILER_INTERNAL_PYTHON_HOOKS_H_
 #define XLA_PYTHON_PROFILER_INTERNAL_PYTHON_HOOKS_H_
 
+#include <array>
+#include <cstddef>
 #include <cstdint>
 #include <deque>
 #include <memory>
@@ -22,7 +24,6 @@ limitations under the License.
 #include <stack>
 #include <string>
 #include <utility>
-#include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/memory/memory.h"
@@ -30,8 +31,11 @@ limitations under the License.
 #include "pybind11/pybind11.h"
 #include "pybind11/pytypes.h"
 #include "xla/tsl/platform/macros.h"
-#include "xla/tsl/platform/types.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
+
+#ifdef Py_GIL_DISABLED
+#include "absl/synchronization/mutex.h"
+#endif  // Py_GIL_DISABLED
 
 namespace xla {
 namespace profiler {
@@ -114,6 +118,8 @@ struct PythonTraceEntry {
 struct PerThreadEvents {
   std::deque<PythonTraceEntry> completed;
   std::stack<PythonTraceEntry> active;
+  // Track C Functions call in its own stack.
+  std::stack<PythonTraceEntry> active_c;
 };
 
 class PythonHooks;
@@ -139,7 +145,21 @@ class PythonHookContext {
 
   // The thread id to entries map, Note: by convention the thread id is
   // int64_t to be consistent with cpu tracer when serialize to Xspace.
-  absl::flat_hash_map<int64_t, PerThreadEvents> entries_;
+  struct EntryShard {
+    // If the GIL is enabled, this data structure is protected by the GIL.
+    // Otherwise, it is protected by mu.
+#ifdef Py_GIL_DISABLED
+    absl::Mutex mu;
+#endif  // Py_GIL_DISABLED
+    absl::flat_hash_map<int64_t, PerThreadEvents> entries;
+  };
+
+#ifdef Py_GIL_DISABLED
+  static constexpr size_t kNumEntryShards = 16;
+#else   // Py_GIL_DISABLED
+  static constexpr size_t kNumEntryShards = 1;
+#endif  // Py_GIL_DISABLED
+  std::array<EntryShard, kNumEntryShards> entry_shards_;
   uint64_t start_timestamp_ns_;
   PythonHooksOptions options_;
   // In end to end mode, Python get uninitialized before Stop()/Finalize(), we
@@ -153,7 +173,9 @@ class PythonHooks {
   static PythonHooks* GetSingleton();
 
   void Start(const PythonHooksOptions& option) {
-    if (active_context_) return;
+    if (active_context_) {
+      return;
+    }
     active_context_ = std::make_unique<PythonHookContext>();
     active_context_->Start(option);
   }
@@ -165,7 +187,9 @@ class PythonHooks {
       return absl::WrapUnique(e2e_context);
     }
 
-    if (!active_context_) return nullptr;
+    if (!active_context_) {
+      return nullptr;
+    }
     active_context_->Stop();
     std::unique_ptr<PythonHookContext> output = std::move(active_context_);
     active_context_.reset();

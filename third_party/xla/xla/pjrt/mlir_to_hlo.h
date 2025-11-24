@@ -27,7 +27,10 @@ limitations under the License.
 #include "mlir/IR/DialectRegistry.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
+#include "mlir/Support/LLVM.h"
+#include "xla/client/executable_build_options.h"
 #include "xla/hlo/builder/xla_computation.h"
+#include "xla/mlir_hlo/mhlo/transforms/passes.h"
 
 namespace xla {
 
@@ -41,10 +44,11 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ParseMlirModuleString(
 // Converts an CHLO/MHLO module to XLA HLO.
 // TODO(b/345414638): Delete `use_shardy` when we move Shardy as the first pass
 // in the XLA pipeline.
-absl::Status MlirToXlaComputation(mlir::ModuleOp module,
-                                  XlaComputation& xla_computation,
-                                  bool use_tuple_args, bool return_tuple,
-                                  bool use_shardy);
+absl::Status MlirToXlaComputation(
+    mlir::ModuleOp module, XlaComputation& xla_computation, bool use_tuple_args,
+    bool return_tuple, ExecutableBuildOptions* exec_build_options,
+    const mlir::mhlo::ChloLegalizeToHighLevelMhloPassOptions& chlo_opts =
+        mlir::mhlo::getDefaultChloToHighLevelMhloOptions());
 
 // Converts an MHLO/CHLO module string to an XLA computation.
 absl::Status ParseMlirModuleStringAndConvertToXlaComputation(
@@ -64,26 +68,22 @@ absl::Status ExportShardyForHloRoundTrip(mlir::ModuleOp module);
 // TODO(b/420837831): delete this once we don't fall back to GSPMD.
 absl::Status ExportShardyForGSPMD(mlir::ModuleOp module);
 
+// If `module` contains any dialect other than StableHLO or Shardy, returns that
+// dialect name as it is not approved for serialization to VHLO. Otherwise,
+// returns std::nullopt.
+std::optional<mlir::StringRef> FindPotentiallyUnstableDialects(
+    mlir::ModuleOp module);
+
 // Returns a version of StableHLO ~12w old, for forward compatibility with PJRT
 // plugins on a quarterly update cycle.
-std::string GetDefaultStablehloVersion(
-    std::optional<int64_t> plugin_version = std::nullopt);
+std::string GetDefaultStablehloVersion();
 
-// Serialize using MLIR Bytecode Format which does not guarantee forward or
-// backward compatiblity of the dialects used. If passing StableHLO with forward
-// or backward compatibility requirements, use SerializeUsingVersionedStablehlo.
-//
-// If `plugin_version >= 70`, the serialization will be done using the versioned
-// StableHLO bytecode format as long as the module doesn't contain any unknown
-// dialects (see implementation for details). Else, native MLIR bytecode format
-// will be used.
-//
-// VHLO support was added in PJRT plugin version 41.
-//   For plugin_version < 41, returns `SerializeUsingNativeBytecode`.
-//   For plugin_version >= 41, returns `SerializeUsingVersionedStablehlo`.
+// Serialize using MLIR Bytecode Format. This is as stable as the dialects used
+// in the module. I.e. if only StableHLO & SDY are used, will serialize them
+// using VHLO & SDY. If compatibility must be guaranteed for all dialects, use
+// SerializeUsingVersionedStablehlo and FindPotentiallyUnstableDialects.
 absl::StatusOr<std::string> Serialize(mlir::ModuleOp mlir_module,
                                       absl::string_view target,
-                                      std::optional<int64_t> plugin_version,
                                       bool inplace = false);
 
 // Serializes an MLIR module to a portable artifact with forward and backward
@@ -95,9 +95,9 @@ absl::StatusOr<std::string> Serialize(mlir::ModuleOp mlir_module,
 //   `mlir::stablehlo::getCurrentVersion()` for backward compat but not forward.
 //   `mlir::stablehlo::getMinimumVersion()` for maximum forward compatibility.
 //
-// In PJRT, the `requested_target` should be the current version of the PJRT
-// plugin. Serialize will use `min(framework_version, plugin_version)` to
-// serialize. If program contains dialects that aren't supported in StableHLO
+// In PJRT, the `requested_target` should be the current StableHLO version of
+// the PJRT plugin. Serialize will use `min(framework_version, plugin_version)`
+// to serialize. If program contains dialects that aren't supported in StableHLO
 // portable artifacts, use SerializeUsingNativeBytecode.
 //
 // If `allow_mixed_serialization` is true, the serialization will be done

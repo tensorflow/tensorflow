@@ -1347,7 +1347,7 @@ class CustomGradientTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       with variable_scope.variable_scope("f", use_resource=True) as vs:
         a = array_ops.ones((2, 4))
 
-        # Variabes in these layers shouldn't be picked up by the decorator.
+        # Variables in these layers shouldn't be picked up by the decorator.
         b = core_layers.dense(a, 3, use_bias=False)
         c = core_layers.dense(b, 3, use_bias=False)
         x = core_layers.dense(b, 3, use_bias=False) + c

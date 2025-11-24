@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/hlo/transforms/simplifiers/hlo_dce.h"
 
 #include <memory>
+#include <string>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
@@ -26,20 +27,16 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
-#include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/pattern_matcher_gmock.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
-#include "xla/layout_util.h"
 #include "xla/literal_util.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/shape_util.h"
-#include "xla/tests/literal_test_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/statusor.h"
-#include "xla/types.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -752,7 +749,7 @@ TEST_F(
   HloInstruction* fusion = FindInstruction(module.get(), "fusion");
   ASSERT_NE(fusion, nullptr);
   EXPECT_TRUE(fusion->shape().IsTuple());
-  EXPECT_EQ(fusion->shape().tuple_shapes_size(), 2);
+  EXPECT_EQ(fusion->shape().tuple_shapes().size(), 2);
 
   HloInstruction* root = module->entry_computation()->root_instruction();
   EXPECT_EQ(root->opcode(), HloOpcode::kTuple);
@@ -849,8 +846,7 @@ ENTRY main {
     arg.1 = s32[] parameter(1)
     ROOT tuple.0 = tuple(arg.0)
   }
-}
-  )";
+})";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(kHlo));
@@ -885,8 +881,7 @@ ENTRY main {
     ROOT tuple.0 = tuple(arg.0)
   }, async_execution_thread="thread"
   ROOT call-done.0 = (s32[]) call-done(call-start.0)
-}
-  )";
+})";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(kHlo));
@@ -930,8 +925,7 @@ ENTRY main {
     zero.0 = s32[] constant(0)
     ROOT tuple.0 = tuple(zero.0)
   }
-}
-  )";
+})";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(kHlo));
@@ -950,5 +944,40 @@ ENTRY main {
   ASSERT_EQ(call1->opcode(), HloOpcode::kCall);
   EXPECT_EQ(call1->operand_count(), 0);
 }
+
+TEST_F(HloDceTest, DanglingComputationNotRemovedDueToExecutionThread) {
+  const char* const hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  param0 = s32[] parameter(0)
+  param1 = s32[] parameter(1)
+  ROOT add = s32[] add(param0, param1)
+}
+
+dangling_computation {
+  param0 = s32[] parameter(0)
+  param1 = s32[] parameter(1)
+  ROOT add = s32[] add(param0, param1)
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  HloDCE dce;
+  // Remove dangling computation on a different execution thread.
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      dce.Run(module.get(),
+              /*execution_threads=*/{std::string("other_thread")}));
+  EXPECT_FALSE(changed);
+  EXPECT_NE(module->GetComputationWithName("dangling_computation"), nullptr);
+
+  // Remove dangling computation on all execution threads.
+  TF_ASSERT_OK_AND_ASSIGN(changed, dce.Run(module.get(),
+                                           /*execution_threads=*/{}));
+  EXPECT_TRUE(changed);
+  EXPECT_EQ(module->GetComputationWithName("dangling_computation"), nullptr);
+}
+
 }  // namespace
 }  // namespace xla

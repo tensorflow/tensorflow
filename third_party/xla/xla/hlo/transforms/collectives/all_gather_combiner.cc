@@ -269,7 +269,7 @@ absl::StatusOr<bool> AllGatherCombiner::RunWithKeyCombiner(
   return changed;
 }
 
-absl::StatusOr<bool> AllGatherCombiner::Run(
+absl::StatusOr<bool> AllGatherCombiner::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   TF_ASSIGN_OR_RETURN(

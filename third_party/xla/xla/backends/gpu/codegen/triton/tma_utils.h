@@ -25,12 +25,11 @@ limitations under the License.
 
 namespace xla::gpu {
 
-// Returns a TmaDescriptor for a 2D tensor to be emitted in Triton.
-absl::StatusOr<stream_executor::gpu::TmaDescriptor> Create2DTmaDescriptor(
+// Returns a TmaDescriptor for a tensor to be emitted in Triton.
+absl::StatusOr<stream_executor::gpu::TmaDescriptor> CreateTmaDescriptor(
     llvm::ArrayRef<int64_t> global_shape, llvm::ArrayRef<int64_t> tile_shape,
     llvm::ArrayRef<int64_t> tile_strides, llvm::ArrayRef<int64_t> layout,
     int element_byte_size, mlir::triton::xla::SwizzleMode swizzle_mode);
-
 }  // namespace xla::gpu
 
 #endif  // XLA_BACKENDS_GPU_CODEGEN_TRITON_TMA_UTILS_H_

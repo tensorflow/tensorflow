@@ -139,23 +139,23 @@ LogicalResult LegalizeGatherToSlice::matchAndRewrite(
   auto min_start_indices = BuildIntArrayConstOp<arith::ConstantOp>(
       builder, rewriter, llvm::SmallVector<int64_t>({0, 0}),
       start_indices_type.getElementType());
-  auto start_indices_max_op = rewriter.create<TFL::MaximumOp>(
-      gather_op.getLoc(), start_indices, min_start_indices);
-  auto clamped_start_indices_op = rewriter.create<TFL::MinimumOp>(
-      gather_op.getLoc(), start_indices_max_op, max_start_indices);
+  auto start_indices_max_op = TFL::MaximumOp::create(
+      rewriter, gather_op.getLoc(), start_indices, min_start_indices);
+  auto clamped_start_indices_op = TFL::MinimumOp::create(
+      rewriter, gather_op.getLoc(), start_indices_max_op, max_start_indices);
 
   int64_t batch_size = start_indices_type.getDimSize(batch_dim);
   auto slice_size = BuildIntArrayConstOp<arith::ConstantOp>(
       builder, rewriter, slice_sizes_vector, rewriter.getI32Type());
   if (batch_size == 1) {
-    auto squeeze_op = rewriter.create<TFL::SqueezeOp>(
-        gather_op.getLoc(),
+    auto squeeze_op = TFL::SqueezeOp::create(
+        rewriter, gather_op.getLoc(),
         RankedTensorType::get({rank_two}, start_indices_type.getElementType()),
         clamped_start_indices_op,
         rewriter.getI64ArrayAttr(llvm::ArrayRef<int64_t>({batch_dim})));
     auto slice_op =
-        rewriter.create<TFL::SliceOp>(gather_op.getLoc(), gather_op.getType(),
-                                      operand, squeeze_op, slice_size);
+        TFL::SliceOp::create(rewriter, gather_op.getLoc(), gather_op.getType(),
+                             operand, squeeze_op, slice_size);
     rewriter.replaceOp(gather_op, slice_op);
     return mlir::success();
   }
@@ -170,25 +170,24 @@ LogicalResult LegalizeGatherToSlice::matchAndRewrite(
         builder, rewriter, llvm::SmallVector<int64_t>({1, 2}),
         rewriter.getI32Type());
     // TODO maybe cast to i32 here
-    auto begin = rewriter.create<TFL::SliceOp>(
-        gather_op.getLoc(),
+    auto begin = TFL::SliceOp::create(
+        rewriter, gather_op.getLoc(),
         RankedTensorType::get({1, 2}, start_indices_type.getElementType()),
         clamped_start_indices_op, zero, two);
     // TODO maybe cast to i32 here
-    auto squeeze_op = rewriter.create<TFL::SqueezeOp>(
-        gather_op.getLoc(),
+    auto squeeze_op = TFL::SqueezeOp::create(
+        rewriter, gather_op.getLoc(),
         RankedTensorType::get({rank_two}, start_indices_type.getElementType()),
         begin, rewriter.getI64ArrayAttr(llvm::ArrayRef<int64_t>({batch_dim})));
-    auto slice_op = rewriter.create<TFL::SliceOp>(
-        gather_op.getLoc(),
+    auto slice_op = TFL::SliceOp::create(
+        rewriter, gather_op.getLoc(),
         RankedTensorType::get({1, slice_sizes_vector[1]},
                               operand_type.getElementType()),
         operand, squeeze_op, slice_size);
     slices.push_back(slice_op);
   }
-  auto concat_op = rewriter.create<TFL::ConcatenationOp>(
-      gather_op.getLoc(), result_type, slices, 0,
-      rewriter.getStringAttr("NONE"));
+  auto concat_op = TFL::ConcatenationOp::create(rewriter, gather_op.getLoc(),
+                                                result_type, slices, 0, "NONE");
   rewriter.replaceOp(gather_op, concat_op);
   return mlir::success();
 }
@@ -290,12 +289,13 @@ Value UncanonicalizeResult(mhlo::GatherOp gather_op, Value canonical_result,
   if (canonical_result_type.hasStaticShape()) {
     auto unflattened_result_type = RankedTensorType::get(
         unflattened_shape, original_result_type.getElementType());
-    canonical_result = rewriter.create<mhlo::ReshapeOp>(
-        gather_op.getLoc(), unflattened_result_type, canonical_result);
+    canonical_result =
+        mhlo::ReshapeOp::create(rewriter, gather_op.getLoc(),
+                                unflattened_result_type, canonical_result);
   }
   // Transpose back to the original result shape.
-  return rewriter.create<mhlo::TransposeOp>(
-      gather_op.getLoc(), original_result_type, canonical_result,
+  return mhlo::TransposeOp::create(
+      rewriter, gather_op.getLoc(), original_result_type, canonical_result,
       rewriter.getI64TensorAttr(
           GetInversePermutationArray(permutation_to_canonical)));
 }
@@ -342,13 +342,13 @@ Value CanonicalizeOperand(mhlo::GatherOp gather_op, Value operand,
   // Transpose the dimensions and flatten the batching dimensions.
   RankedTensorType transposed_type =
       RankedTensorType::get(transposed_shape, operand_type.getElementType());
-  auto transposed_operand = rewriter.create<mhlo::TransposeOp>(
-      gather_op.getLoc(), transposed_type, operand,
+  auto transposed_operand = mhlo::TransposeOp::create(
+      rewriter, gather_op.getLoc(), transposed_type, operand,
       rewriter.getI64TensorAttr(permutation));
   auto flattened_type =
       RankedTensorType::get(flattened_shape, operand_type.getElementType());
-  auto flattened_operand = rewriter.create<mhlo::ReshapeOp>(
-      gather_op.getLoc(), flattened_type, transposed_operand);
+  auto flattened_operand = mhlo::ReshapeOp::create(
+      rewriter, gather_op.getLoc(), flattened_type, transposed_operand);
   return flattened_operand;
 }
 
@@ -407,13 +407,13 @@ Value CanonicalizeStartIndices(mhlo::GatherOp gather_op, Value start_indices,
   reshaped_shape.push_back(index_vector_size);
 
   // Transpose the dimensions and flatten the batching dimensions.
-  auto transposed_start_indices = rewriter.create<mhlo::TransposeOp>(
-      gather_op.getLoc(),
+  auto transposed_start_indices = mhlo::TransposeOp::create(
+      rewriter, gather_op.getLoc(),
       RankedTensorType::get(transposed_shape,
                             start_indices_type.getElementType()),
       start_indices, rewriter.getI64TensorAttr(permutation));
-  start_indices = rewriter.create<mhlo::ReshapeOp>(
-      gather_op.getLoc(),
+  start_indices = mhlo::ReshapeOp::create(
+      rewriter, gather_op.getLoc(),
       RankedTensorType::get(reshaped_shape,
                             start_indices_type.getElementType()),
       transposed_start_indices);
@@ -449,33 +449,34 @@ Value CanonicalizeStartIndices(mhlo::GatherOp gather_op, Value start_indices,
     llvm::SmallVector<int64_t> offsets_shape(start_indices_shape.size(), 1);
     offsets_shape[non_trivial_sliced_dim] = slice_sizes[operand_dim];
     start_indices_shape[non_trivial_sliced_dim] = slice_sizes[operand_dim];
-    auto offsets = rewriter.create<mhlo::IotaOp>(
-        gather_op.getLoc(),
+    auto offsets = mhlo::IotaOp::create(
+        rewriter, gather_op.getLoc(),
         RankedTensorType::get(offsets_shape,
                               start_indices_type.getElementType()),
         rewriter.getI64IntegerAttr(non_trivial_sliced_dim));
     non_trivial_sliced_dim++;
 
     // Pad with 0s on the other operand dimensions.
-    Value zero = rewriter.create<arith::ConstantOp>(
-        gather_op.getLoc(), rewriter.getZeroAttr(RankedTensorType::get(
-                                {}, start_indices_type.getElementType())));
+    Value zero = arith::ConstantOp::create(
+        rewriter, gather_op.getLoc(),
+        rewriter.getZeroAttr(
+            RankedTensorType::get({}, start_indices_type.getElementType())));
     int rank = offsets_shape.size();
     llvm::SmallVector<int64_t> padding_low(rank, 0);
     llvm::SmallVector<int64_t> padding_high(rank, 0);
     llvm::SmallVector<int64_t> padding_interior(rank, 0);
     padding_low.back() = i;
     padding_high.back() = start_indices_shape.back() - i - 1;
-    auto padded_offsets = rewriter.create<mhlo::PadOp>(
-        gather_op.getLoc(), offsets, zero,
-        GetI64ElementsAttr(padding_low, &rewriter),
-        GetI64ElementsAttr(padding_high, &rewriter),
-        GetI64ElementsAttr(padding_interior, &rewriter));
+    auto padded_offsets =
+        mhlo::PadOp::create(rewriter, gather_op.getLoc(), offsets, zero,
+                            GetI64ElementsAttr(padding_low, &rewriter),
+                            GetI64ElementsAttr(padding_high, &rewriter),
+                            GetI64ElementsAttr(padding_interior, &rewriter));
 
     // Add the padded offsets to the start indices (with broadcasting).
-    start_indices = rewriter.create<TFL::AddOp>(
-        gather_op.getLoc(), start_indices, padded_offsets,
-        /*fused_activation_function=*/
+    start_indices = TFL::AddOp::create(
+        rewriter, gather_op.getLoc(), start_indices, padded_offsets,
+        /*fusedActivationFunction=*/
         mlir::StringAttr::get(rewriter.getContext(), "NONE"));
   }
 
@@ -484,15 +485,15 @@ Value CanonicalizeStartIndices(mhlo::GatherOp gather_op, Value start_indices,
     // operand.
     llvm::SmallVector<int64_t> offsets_shape = start_indices_shape;
     offsets_shape.back() = 1;
-    auto offsets = rewriter.create<mhlo::IotaOp>(
-        gather_op.getLoc(),
+    auto offsets = mhlo::IotaOp::create(
+        rewriter, gather_op.getLoc(),
         RankedTensorType::get(offsets_shape,
                               start_indices_type.getElementType()),
         rewriter.getI64IntegerAttr(0));
 
     start_indices_shape.back()++;
-    start_indices = rewriter.create<mhlo::ConcatenateOp>(
-        gather_op.getLoc(),
+    start_indices = mhlo::ConcatenateOp::create(
+        rewriter, gather_op.getLoc(),
         RankedTensorType::get(start_indices_shape,
                               start_indices_type.getElementType()),
         ValueRange{offsets, start_indices},
@@ -642,8 +643,8 @@ LogicalResult LegalizeGatherToGatherND::matchAndRewrite(
 
   TFL::CastOp cast_op = nullptr;
   if (canonical_start_indices_type.getElementType().isUnsignedInteger(32)) {
-    cast_op = rewriter.create<TFL::CastOp>(
-        gather_op->getLoc(),
+    cast_op = TFL::CastOp::create(
+        rewriter, gather_op->getLoc(),
         RankedTensorType::get(canonical_start_indices_type.getShape(),
                               rewriter.getI64Type()),
         canonical_start_indices);
@@ -662,8 +663,8 @@ LogicalResult LegalizeGatherToGatherND::matchAndRewrite(
 
   auto canonical_result_type = RankedTensorType::get(
       canonical_result_shape, result_type.getElementType());
-  auto canonical_result = rewriter.create<TFL::GatherNdOp>(
-      gather_op->getLoc(), canonical_result_type, canonical_operand,
+  auto canonical_result = TFL::GatherNdOp::create(
+      rewriter, gather_op->getLoc(), canonical_result_type, canonical_operand,
       cast_op ? cast_op.getResult() : canonical_start_indices);
 
   auto offset_dims = gather_op.getDimensionNumbers().getOffsetDims();

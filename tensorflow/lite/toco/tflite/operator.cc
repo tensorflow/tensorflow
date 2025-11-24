@@ -2091,7 +2091,7 @@ std::vector<std::unique_ptr<BaseOperator>> BuildOperatorList(
 }
 }  // namespace
 
-// LINT.ThenChange(//tensorflow/lite/tools/versioning/op_version.cc)
+// LINT.ThenChange(//tensorflow/compiler/mlir/lite/tools/versioning/op_version.cc)
 
 std::map<OperatorType, std::unique_ptr<BaseOperator>> BuildOperatorByTypeMap(
     bool enable_select_tf_ops) {

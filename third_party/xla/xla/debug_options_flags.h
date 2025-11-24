@@ -54,6 +54,36 @@ bool ParseFlagsFromDebugOptionsFile(absl::string_view filename);
 // Reset the flag values to default debug options ignoring flags.
 void ResetFlagValues();
 
+enum class FlagStatus {
+  kStable,        // Can be changed/removed with 6 months deprecation notice.
+  kDeprecated,    // Will stop working after 6 months of being deprecated.
+  kExperimental,  // no guarantees, can be changed or removed without notice.
+};
+// All flags are considered experimental by default, which comes with no
+// guarantees about backward compatibility.
+//
+// Policy for stable flags.
+// 1. Should affect compilation results.
+// 2. Should provide 6 months of deprecation notice before they stop working.
+// 3. Should be used only for feature flags and not debugging flags.
+//
+// How to mark a flag stable:
+// 1. Mark it as stable in the flag description, by prefixing it with
+//    "[Stable]".
+// 2. Add the flag name to the kStableFlags list in `GetFlagStatus` in
+//    `debug_options_flags.cc`.
+//
+// How to deprecate a stable flag:
+// 1. Mark it as deprecated in xla.proto.
+// 2. Explain the reason and alternative in the flag description, and add prefix
+//    "[Deprecated]" to the flag description.
+// 3. Move it to the kDeprecatedFlags list in `GetFlagStatus` in
+//    `debug_options_flags.cc`
+// 4. After 6 months, the flag can be removed or disabled.
+//
+// Returns the status of the flag.
+FlagStatus GetFlagStatus(absl::string_view flag_name);
+
 // Fetches a DebugOptions proto message from flags provided to the program.
 // Flags must be registered with the flags parser using AppendDebugOptionsFlags
 // first.

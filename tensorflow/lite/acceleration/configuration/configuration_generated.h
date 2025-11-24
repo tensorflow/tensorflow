@@ -22,9 +22,9 @@ limitations under the License.
 
 // Ensure the included flatbuffers.h is the same version as when this file was
 // generated, otherwise it may not be compatible.
-static_assert(FLATBUFFERS_VERSION_MAJOR == 24 &&
-              FLATBUFFERS_VERSION_MINOR == 3 &&
-              FLATBUFFERS_VERSION_REVISION == 25,
+static_assert(FLATBUFFERS_VERSION_MAJOR == 25 &&
+              FLATBUFFERS_VERSION_MINOR == 9 &&
+              FLATBUFFERS_VERSION_REVISION == 23,
              "Non-compatible flatbuffers version included");
 
 namespace tflite {
@@ -2213,6 +2213,7 @@ struct EdgeTpuSettingsT : public ::flatbuffers::NativeTable {
   std::vector<int32_t> hardware_cluster_ids{};
   std::string public_model_id{};
   tflite::EdgeTpuSettings_::UseLayerIrTgcBackend use_layer_ir_tgc_backend = tflite::EdgeTpuSettings_::UseLayerIrTgcBackend_USE_LAYER_IR_TGC_BACKEND_UNSPECIFIED;
+  bool use_tpu_server = false;
   EdgeTpuSettingsT() = default;
   EdgeTpuSettingsT(const EdgeTpuSettingsT &o);
   EdgeTpuSettingsT(EdgeTpuSettingsT&&) FLATBUFFERS_NOEXCEPT = default;
@@ -2232,7 +2233,8 @@ struct EdgeTpuSettings FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
     VT_QOS_CLASS = 16,
     VT_HARDWARE_CLUSTER_IDS = 18,
     VT_PUBLIC_MODEL_ID = 20,
-    VT_USE_LAYER_IR_TGC_BACKEND = 22
+    VT_USE_LAYER_IR_TGC_BACKEND = 22,
+    VT_USE_TPU_SERVER = 24
   };
   tflite::EdgeTpuPowerState inference_power_state() const {
     return static_cast<tflite::EdgeTpuPowerState>(GetField<int32_t>(VT_INFERENCE_POWER_STATE, 0));
@@ -2264,6 +2266,9 @@ struct EdgeTpuSettings FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
   tflite::EdgeTpuSettings_::UseLayerIrTgcBackend use_layer_ir_tgc_backend() const {
     return static_cast<tflite::EdgeTpuSettings_::UseLayerIrTgcBackend>(GetField<int32_t>(VT_USE_LAYER_IR_TGC_BACKEND, 0));
   }
+  bool use_tpu_server() const {
+    return GetField<uint8_t>(VT_USE_TPU_SERVER, 0) != 0;
+  }
   bool Verify(::flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
            VerifyField<int32_t>(verifier, VT_INFERENCE_POWER_STATE, 4) &&
@@ -2282,6 +2287,7 @@ struct EdgeTpuSettings FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
            VerifyOffset(verifier, VT_PUBLIC_MODEL_ID) &&
            verifier.VerifyString(public_model_id()) &&
            VerifyField<int32_t>(verifier, VT_USE_LAYER_IR_TGC_BACKEND, 4) &&
+           VerifyField<uint8_t>(verifier, VT_USE_TPU_SERVER, 1) &&
            verifier.EndTable();
   }
   EdgeTpuSettingsT *UnPack(const ::flatbuffers::resolver_function_t *_resolver = nullptr) const;
@@ -2323,6 +2329,9 @@ struct EdgeTpuSettingsBuilder {
   void add_use_layer_ir_tgc_backend(tflite::EdgeTpuSettings_::UseLayerIrTgcBackend use_layer_ir_tgc_backend) {
     fbb_.AddElement<int32_t>(EdgeTpuSettings::VT_USE_LAYER_IR_TGC_BACKEND, static_cast<int32_t>(use_layer_ir_tgc_backend), 0);
   }
+  void add_use_tpu_server(bool use_tpu_server) {
+    fbb_.AddElement<uint8_t>(EdgeTpuSettings::VT_USE_TPU_SERVER, static_cast<uint8_t>(use_tpu_server), 0);
+  }
   explicit EdgeTpuSettingsBuilder(::flatbuffers::FlatBufferBuilder &_fbb)
         : fbb_(_fbb) {
     start_ = fbb_.StartTable();
@@ -2345,7 +2354,8 @@ inline ::flatbuffers::Offset<EdgeTpuSettings> CreateEdgeTpuSettings(
     tflite::EdgeTpuSettings_::QosClass qos_class = tflite::EdgeTpuSettings_::QosClass_QOS_UNDEFINED,
     ::flatbuffers::Offset<::flatbuffers::Vector<int32_t>> hardware_cluster_ids = 0,
     ::flatbuffers::Offset<::flatbuffers::String> public_model_id = 0,
-    tflite::EdgeTpuSettings_::UseLayerIrTgcBackend use_layer_ir_tgc_backend = tflite::EdgeTpuSettings_::UseLayerIrTgcBackend_USE_LAYER_IR_TGC_BACKEND_UNSPECIFIED) {
+    tflite::EdgeTpuSettings_::UseLayerIrTgcBackend use_layer_ir_tgc_backend = tflite::EdgeTpuSettings_::UseLayerIrTgcBackend_USE_LAYER_IR_TGC_BACKEND_UNSPECIFIED,
+    bool use_tpu_server = false) {
   EdgeTpuSettingsBuilder builder_(_fbb);
   builder_.add_use_layer_ir_tgc_backend(use_layer_ir_tgc_backend);
   builder_.add_public_model_id(public_model_id);
@@ -2357,6 +2367,7 @@ inline ::flatbuffers::Offset<EdgeTpuSettings> CreateEdgeTpuSettings(
   builder_.add_inference_priority(inference_priority);
   builder_.add_inactive_power_configs(inactive_power_configs);
   builder_.add_inference_power_state(inference_power_state);
+  builder_.add_use_tpu_server(use_tpu_server);
   return builder_.Finish();
 }
 
@@ -2371,7 +2382,8 @@ inline ::flatbuffers::Offset<EdgeTpuSettings> CreateEdgeTpuSettingsDirect(
     tflite::EdgeTpuSettings_::QosClass qos_class = tflite::EdgeTpuSettings_::QosClass_QOS_UNDEFINED,
     const std::vector<int32_t> *hardware_cluster_ids = nullptr,
     const char *public_model_id = nullptr,
-    tflite::EdgeTpuSettings_::UseLayerIrTgcBackend use_layer_ir_tgc_backend = tflite::EdgeTpuSettings_::UseLayerIrTgcBackend_USE_LAYER_IR_TGC_BACKEND_UNSPECIFIED) {
+    tflite::EdgeTpuSettings_::UseLayerIrTgcBackend use_layer_ir_tgc_backend = tflite::EdgeTpuSettings_::UseLayerIrTgcBackend_USE_LAYER_IR_TGC_BACKEND_UNSPECIFIED,
+    bool use_tpu_server = false) {
   auto inactive_power_configs__ = inactive_power_configs ? _fbb.CreateVector<::flatbuffers::Offset<tflite::EdgeTpuInactivePowerConfig>>(*inactive_power_configs) : 0;
   auto model_token__ = model_token ? _fbb.CreateString(model_token) : 0;
   auto hardware_cluster_ids__ = hardware_cluster_ids ? _fbb.CreateVector<int32_t>(*hardware_cluster_ids) : 0;
@@ -2387,7 +2399,8 @@ inline ::flatbuffers::Offset<EdgeTpuSettings> CreateEdgeTpuSettingsDirect(
       qos_class,
       hardware_cluster_ids__,
       public_model_id__,
-      use_layer_ir_tgc_backend);
+      use_layer_ir_tgc_backend,
+      use_tpu_server);
 }
 
 ::flatbuffers::Offset<EdgeTpuSettings> CreateEdgeTpuSettings(::flatbuffers::FlatBufferBuilder &_fbb, const EdgeTpuSettingsT *_o, const ::flatbuffers::rehasher_function_t *_rehasher = nullptr);
@@ -5261,7 +5274,8 @@ inline bool operator==(const EdgeTpuSettingsT &lhs, const EdgeTpuSettingsT &rhs)
       (lhs.qos_class == rhs.qos_class) &&
       (lhs.hardware_cluster_ids == rhs.hardware_cluster_ids) &&
       (lhs.public_model_id == rhs.public_model_id) &&
-      (lhs.use_layer_ir_tgc_backend == rhs.use_layer_ir_tgc_backend);
+      (lhs.use_layer_ir_tgc_backend == rhs.use_layer_ir_tgc_backend) &&
+      (lhs.use_tpu_server == rhs.use_tpu_server);
 }
 
 inline bool operator!=(const EdgeTpuSettingsT &lhs, const EdgeTpuSettingsT &rhs) {
@@ -5278,7 +5292,8 @@ inline EdgeTpuSettingsT::EdgeTpuSettingsT(const EdgeTpuSettingsT &o)
         qos_class(o.qos_class),
         hardware_cluster_ids(o.hardware_cluster_ids),
         public_model_id(o.public_model_id),
-        use_layer_ir_tgc_backend(o.use_layer_ir_tgc_backend) {
+        use_layer_ir_tgc_backend(o.use_layer_ir_tgc_backend),
+        use_tpu_server(o.use_tpu_server) {
   inactive_power_configs.reserve(o.inactive_power_configs.size());
   for (const auto &inactive_power_configs_ : o.inactive_power_configs) { inactive_power_configs.emplace_back((inactive_power_configs_) ? new tflite::EdgeTpuInactivePowerConfigT(*inactive_power_configs_) : nullptr); }
 }
@@ -5294,6 +5309,7 @@ inline EdgeTpuSettingsT &EdgeTpuSettingsT::operator=(EdgeTpuSettingsT o) FLATBUF
   std::swap(hardware_cluster_ids, o.hardware_cluster_ids);
   std::swap(public_model_id, o.public_model_id);
   std::swap(use_layer_ir_tgc_backend, o.use_layer_ir_tgc_backend);
+  std::swap(use_tpu_server, o.use_tpu_server);
   return *this;
 }
 
@@ -5316,6 +5332,7 @@ inline void EdgeTpuSettings::UnPackTo(EdgeTpuSettingsT *_o, const ::flatbuffers:
   { auto _e = hardware_cluster_ids(); if (_e) { _o->hardware_cluster_ids.resize(_e->size()); for (::flatbuffers::uoffset_t _i = 0; _i < _e->size(); _i++) { _o->hardware_cluster_ids[_i] = _e->Get(_i); } } else { _o->hardware_cluster_ids.resize(0); } }
   { auto _e = public_model_id(); if (_e) _o->public_model_id = _e->str(); }
   { auto _e = use_layer_ir_tgc_backend(); _o->use_layer_ir_tgc_backend = _e; }
+  { auto _e = use_tpu_server(); _o->use_tpu_server = _e; }
 }
 
 inline ::flatbuffers::Offset<EdgeTpuSettings> EdgeTpuSettings::Pack(::flatbuffers::FlatBufferBuilder &_fbb, const EdgeTpuSettingsT* _o, const ::flatbuffers::rehasher_function_t *_rehasher) {
@@ -5336,6 +5353,7 @@ inline ::flatbuffers::Offset<EdgeTpuSettings> CreateEdgeTpuSettings(::flatbuffer
   auto _hardware_cluster_ids = _o->hardware_cluster_ids.size() ? _fbb.CreateVector(_o->hardware_cluster_ids) : 0;
   auto _public_model_id = _o->public_model_id.empty() ? 0 : _fbb.CreateString(_o->public_model_id);
   auto _use_layer_ir_tgc_backend = _o->use_layer_ir_tgc_backend;
+  auto _use_tpu_server = _o->use_tpu_server;
   return tflite::CreateEdgeTpuSettings(
       _fbb,
       _inference_power_state,
@@ -5347,7 +5365,8 @@ inline ::flatbuffers::Offset<EdgeTpuSettings> CreateEdgeTpuSettings(::flatbuffer
       _qos_class,
       _hardware_cluster_ids,
       _public_model_id,
-      _use_layer_ir_tgc_backend);
+      _use_layer_ir_tgc_backend,
+      _use_tpu_server);
 }
 
 

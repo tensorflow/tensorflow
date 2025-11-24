@@ -26,15 +26,13 @@ limitations under the License.
 #include "xla/backends/cpu/codegen/kernel_api_ir_builder.h"
 #include "xla/backends/cpu/codegen/target_machine_features.h"
 #include "xla/codegen/kernel_spec.h"
-#include "xla/codegen/llvm_ir_kernel_source.h"
-#include "xla/codegen/llvm_kernel_definition.h"
+#include "xla/codegen/llvm_kernel_source.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/runtime/work_group.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/cpu/dot_op_emitter.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/llvm_ir/ir_array.h"
-#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 
@@ -58,7 +56,8 @@ DotKernelEmitter::DotKernelEmitter(const HloInstruction* instr,
       buffer_assignment_(buffer_assignment),
       target_machine_(target_machine) {}
 
-absl::StatusOr<LlvmKernelDefinition> DotKernelEmitter::EmitKernelDefinition() {
+absl::StatusOr<DotKernelEmitter::KernelDefinition>
+DotKernelEmitter::EmitKernelDefinition() {
   const HloModuleConfig& config = instr_->GetModule()->config();
 
   DotImplementationStrategy strategy = GetDotImplementationStrategy(
@@ -95,20 +94,25 @@ absl::StatusOr<LlvmKernelDefinition> DotKernelEmitter::EmitKernelDefinition() {
   llvm_ir::IrArray rhs_array = kernel_prototype.arguments[1];
   llvm_ir::IrArray target_array = kernel_prototype.results[0];
 
-  TF_RETURN_IF_ERROR(EmitDotOperation(
-      *instr_, target_array, lhs_array, rhs_array,
-      /*addend_array=*/nullptr, /*executable_run_options_value=*/nullptr,
-      &builder, config, *target_machine_,
-      /*allow_runtime_calls=*/false));
+  TF_ASSIGN_OR_RETURN(
+      DotOpWorkGroupDim num_workgroups,
+      EmitDotOperation(
+          *instr_, target_array, lhs_array, rhs_array,
+          /*addend_array=*/nullptr,
+          {kernel_prototype.workgroup_id.x, kernel_prototype.workgroup_id.y},
+          /*executable_run_options_value=*/nullptr, &builder, config,
+          *target_machine_,
+          /*allow_runtime_calls=*/false));
 
-  LlvmIrKernelSource source(std::move(ctx), std::move(llvm_module));
+  LlvmKernelSource source(std::move(ctx), std::move(llvm_module));
 
-  KernelSpec spec(kernel_prototype.function->getName(), NumWorkGroups(),
+  KernelSpec spec(kernel_prototype.function->getName(),
+                  NumWorkGroups{num_workgroups.x, num_workgroups.y},
                   std::move(kernel_prototype.argument_buffers),
                   std::move(kernel_prototype.result_buffers),
                   std::move(kernel_prototype.invariant_arguments));
 
-  return LlvmKernelDefinition(std::move(spec), std::move(source));
+  return KernelDefinition(std::move(spec), std::move(source));
 }
 
 }  // namespace xla::cpu

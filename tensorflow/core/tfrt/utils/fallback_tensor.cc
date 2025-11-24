@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/tfrt/utils/fallback_tensor.h"
 
+#include <cstddef>
 #include <utility>
 
 #include "tensorflow/core/common_runtime/dma_helper.h"
@@ -72,7 +73,7 @@ ImmutableTensor ImmutableTensor::Create(tensorflow::Tensor tensor) {
   auto shape = tensor.shape();
   auto immutable_buffer = ImmutableTensorBuffer::Create(std::move(tensor));
   return ImmutableTensor(
-      tensorflow::Tensor(dtype, shape, std::move(immutable_buffer)));
+      tensorflow::Tensor(dtype, std::move(shape), std::move(immutable_buffer)));
 }
 
 }  // namespace tfrt_stub

@@ -84,3 +84,35 @@
 *   Added date: 2025-03-12
 *   Changes:
     *   Added support for `Client::MakeArraysFromHostBufferShards()`.
+
+## Version kSerDesVersioning,
+
+*   Added date: 2025-06-25
+*   Changes:
+    *   Uses IFRT SerDes versioning to all IFRT type serialization and
+    deserialization in addition to existing IFRT Proxy protocol versioning.
+
+## Version kExecutableDevices
+
+*   Added date: 2025-07-18
+*   Changes:
+    *   Added support for `LoadedExecutable::devices()`.
+
+## Version kGrpcAllowLargeTransferOptimizationViaSharedDirectory
+
+*   Added date: 2025-09-22
+*   Changes:
+    *   Optimize large transfers with the proxy-server and client in the same
+    machine to by using the file system.
+
+## Version kLoadedExecutableGetCostAnalysis
+
+*   Added date: 2025-10-01
+*   Changes:
+    *   Added support for `LoadedExecutable::GetCostAnalysis()`.
+
+## Version kLoadedExecutableGetHumanReadableProgramText
+
+*   Added date: 2025-10-01
+*   Changes:
+    *   Added support for `LoadedExecutable::GetHumanReadableProgramText()`.

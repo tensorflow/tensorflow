@@ -30,6 +30,8 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/ascii.h"
+#include "absl/strings/str_cat.h"
+#include "absl/synchronization/notification.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/platform/errors.h"
 #include "tensorflow/core/common_runtime/device/device_event_mgr.h"
@@ -107,7 +109,6 @@ class PluggableDevice::StreamGroupFactory {
                    << " with status: " << stream_or_status.status();
         return group;
       }
-      group->compute = stream_or_status->get();
       group->host_to_device = stream_or_status->get();
       allocated_streams_.emplace_back(std::move(stream_or_status.value()));
       VLOG(2) << "Created host_to_device_stream[" << stream_group_within_device
@@ -120,7 +121,6 @@ class PluggableDevice::StreamGroupFactory {
                    << " with status: " << stream_or_status.status();
         return group;
       }
-      group->compute = stream_or_status->get();
       group->device_to_host = stream_or_status->get();
       allocated_streams_.emplace_back(std::move(stream_or_status.value()));
       VLOG(2) << "Created device_to_host_stream[" << stream_group_within_device
@@ -143,7 +143,6 @@ class PluggableDevice::StreamGroupFactory {
                      << " with status: " << stream_or_status.status();
           return group;
         }
-        group->compute = stream_or_status->get();
         group->device_to_device.push_back(stream_or_status->get());
         allocated_streams_.emplace_back(std::move(stream_or_status.value()));
         VLOG(2) << "Created device_to_device_stream["
@@ -243,7 +242,7 @@ absl::Status PluggableDevice::Init(const SessionOptions& options) {
   // callback instead of GPU environment variables: TF_GPU_THREAD_MODE,
   // TF_GPU_THREAD_COUNT, TF_FORCE_GPU_ALLOC_GROWTH,
   // TF_ENABLE_GPU_GARBAGE_COLLECTION, and TF_GPU_HOST_MEM_LIMIT_IN_MB.
-  string device_thread_mode;
+  std::string device_thread_mode;
   TF_RETURN_IF_ERROR(ReadStringFromEnvVar("TF_GPU_THREAD_MODE", "global",
                                           &device_thread_mode));
   device_thread_mode = absl::AsciiStrToLower(device_thread_mode);
@@ -256,21 +255,21 @@ absl::Status PluggableDevice::Init(const SessionOptions& options) {
     if (device_thread_mode == "gpu_private") {
       thread_pool_ = std::make_unique<thread::ThreadPool>(
           options.env, ThreadOptions(),
-          strings::StrCat("gpu_private_", tf_device_id_.value()),
-          static_cast<int32>(device_thread_count),
+          absl::StrCat("gpu_private_", tf_device_id_.value()),
+          static_cast<int32_t>(device_thread_count),
           !options.config.experimental().disable_thread_spinning(),
           /*allocator=*/nullptr);
       set_tensorflow_device_thread_pool(thread_pool_.get());
     } else if (device_thread_mode == "gpu_shared") {
       static thread::ThreadPool* thread_pool = new thread::ThreadPool(
           options.env, ThreadOptions(), "gpu_shared",
-          static_cast<int32>(device_thread_count),
+          static_cast<int32_t>(device_thread_count),
           !options.config.experimental().disable_thread_spinning(),
           /*allocator=*/nullptr);
       set_tensorflow_device_thread_pool(thread_pool);
     } else {
-      string error_message =
-          strings::StrCat("Invalid gpu_thread_mode: ", device_thread_mode);
+      std::string error_message =
+          absl::StrCat("Invalid gpu_thread_mode: ", device_thread_mode);
       LOG(WARNING) << error_message;
       return errors::InvalidArgument(error_message);
     }
@@ -294,8 +293,8 @@ Allocator* PluggableDevice::GetAllocator(AllocatorAttributes attr) {
   }
 }
 
-string PluggableDevice::ComputeOpKernelDebugString(const OpKernel& op_kernel,
-                                                   const int stream_id) {
+std::string PluggableDevice::ComputeOpKernelDebugString(
+    const OpKernel& op_kernel, const int stream_id) {
   return strings::StrCat(op_kernel.name(), " op ", op_kernel.type_string(),
                          " on ", platform_name_, tf_device_id_.value(),
                          " stream[", stream_id, "]");
@@ -421,14 +420,14 @@ absl::Status PluggableDevice::MakeTensorFromProto(
     Tensor copy(cpu_allocator(numa_node), DT_VARIANT, parsed.shape());
     Variant* copy_variant = copy.flat<Variant>().data();
 
-    std::list<Notification> notifications;
+    std::list<absl::Notification> notifications;
     absl::Status copy_status;
     auto copier = [this, &alloc_attrs, &notifications, &copy_status](
                       const Tensor& from, Tensor* to) {
       // Copier isn't run in a multithreaded environment, so we don't
       // have to worry about the notifications list being modified in parallel.
       notifications.emplace_back();
-      Notification& n = *notifications.rbegin();
+      absl::Notification& n = *notifications.rbegin();
       return MaybeCopyTensorToPluggableDevice(
           alloc_attrs, from, to, [&n, &copy_status](const absl::Status& s) {
             if (copy_status.ok()) {
@@ -454,7 +453,7 @@ absl::Status PluggableDevice::MakeTensorFromProto(
     *tensor = std::move(copy);
     return copy_status;
   } else {
-    Notification n;
+    absl::Notification n;
     absl::Status status;
     TF_RETURN_IF_ERROR(MaybeCopyTensorToPluggableDevice(
         alloc_attrs, parsed, tensor, [&n, &status](const absl::Status& s) {

@@ -48,6 +48,8 @@ class CachingCompilationProvider : public CompilationProvider {
 
   std::string name() const override;
 
+  absl::StatusOr<int> GetLatestPtxIsaVersion() const override;
+
   bool SupportsCompileToRelocatableModule() const override;
   bool SupportsCompileAndLink() const override;
 

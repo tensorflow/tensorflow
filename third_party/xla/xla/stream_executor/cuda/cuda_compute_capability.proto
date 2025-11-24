@@ -20,4 +20,16 @@ package stream_executor;
 message CudaComputeCapabilityProto {
   int32 major = 1;
   int32 minor = 2;
+
+  enum FeatureExtension {
+    // UNSPECIFIED is only needed because when this field is not set
+    // it defaults to 0, but on Hopper and Blackwell we want to detect that
+    // and default to ACCELERATED_FEATURES, not to NONE.
+    UNSPECIFIED = 0;
+    NONE = 1;
+    ACCELERATED_FEATURES = 2;
+    FAMILY_COMPATIBLE_FEATURES = 3;
+  }
+
+  FeatureExtension feature_extension = 3;
 }

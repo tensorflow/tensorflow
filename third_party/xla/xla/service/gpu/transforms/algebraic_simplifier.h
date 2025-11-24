@@ -27,6 +27,7 @@ limitations under the License.
 #include "xla/hlo/transforms/simplifiers/algebraic_simplifier.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/util.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla::gpu {
 
@@ -40,8 +41,6 @@ class GpuAlgebraicSimplifierVisitor : public AlgebraicSimplifierVisitor {
         compute_capability_(std::move(compute_capability)) {}
 
   absl::Status HandleAdd(HloInstruction* add) override;
-
-  bool ShouldStrengthReduceDotToReduce(const HloInstruction* hlo) override;
 
  private:
   // Returns true if the dot precision config is supported by simplifier.
@@ -74,23 +73,10 @@ class GpuAlgebraicSimplifier : public AlgebraicSimplifier {
       : AlgebraicSimplifier(options),
         compute_capability_(std::move(compute_capability)) {}
 
-  using HloPassInterface::Run;
-  absl::StatusOr<bool> Run(HloModule* module,
-                           const absl::flat_hash_set<absl::string_view>&
-                               execution_threads) override {
-    XLA_VLOG_LINES(
-        2, "GpuAlgebraicSimplifier::Run(), before:\n" + module->ToString());
-    bool changed = false;
-    GpuAlgebraicSimplifierVisitor visitor(options_, compute_capability_, this);
-    for (auto* comp : module->MakeNonfusionComputations(execution_threads)) {
-      if (visitor.Run(comp, options_, this)) {
-        changed = true;
-      }
-    }
-    XLA_VLOG_LINES(
-        2, "GpuAlgebraicSimplifier::Run(), after:\n" + module->ToString());
-    return changed;
-  }
+ protected:
+  absl::StatusOr<bool> RunImpl(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
  private:
   se::GpuComputeCapability compute_capability_;

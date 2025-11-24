@@ -88,10 +88,10 @@ absl::Status OpenTableTensorSliceReader(const string& fname,
         return absl::OkStatus();
       } else {
         s = errors::CreateWithUpdatedMessage(
-            s, strings::StrCat(s.message(),
-                               ": perhaps your file is in a different "
-                               "file format and you need to use a "
-                               "different restore operator?"));
+            s, absl::StrCat(s.message(),
+                            ": perhaps your file is in a different "
+                            "file format and you need to use a "
+                            "different restore operator?"));
       }
     }
   }
@@ -330,9 +330,9 @@ const string TensorSliceReader::DebugString() const {
       // Indicates if a tensor has more than 1 slice (i.e., it's partitioned).
       const int num_slices = e.second->Slices().size();
       if (num_slices > 1) {
-        strings::StrAppend(&shape_str, ", ", num_slices, " slices");
+        absl::StrAppend(&shape_str, ", ", num_slices, " slices");
       }
-      strings::StrAppend(&shape_str, "\n");
+      absl::StrAppend(&shape_str, "\n");
     }
   }
   return shape_str;

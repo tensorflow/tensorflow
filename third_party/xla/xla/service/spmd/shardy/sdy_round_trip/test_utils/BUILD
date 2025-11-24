@@ -20,6 +20,7 @@ cc_library(
     hdrs = ["stablehlo_to_hlo_to_stablehlo.h"],
     deps = [
         "//xla/hlo/ir:hlo",
+        "//xla/hlo/translate:register",
         "//xla/hlo/translate:stablehlo",
         "//xla/service:hlo_module_config",
         "//xla/service:hlo_proto_cc",

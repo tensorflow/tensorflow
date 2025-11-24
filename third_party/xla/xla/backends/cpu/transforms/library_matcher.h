@@ -18,23 +18,55 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/container/flat_hash_set.h"
+#include "absl/log/log.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/backends/cpu/codegen/target_machine_features.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/xla.pb.h"
+#include "tsl/platform/protobuf.h"
 
 namespace xla::cpu {
 
 class LibraryMatcher {
  public:
-  explicit LibraryMatcher(const TargetMachineFeatures* target_machine_features)
-      : target_machine_features_(target_machine_features) {}
+  explicit LibraryMatcher(const TargetMachineFeatures* target_machine_features,
+                          const tsl::protobuf::RepeatedField<int>* fusion_types)
+      : target_machine_features_(target_machine_features) {
+    for (auto it = fusion_types->begin(); it != fusion_types->end(); ++it) {
+      switch (*it) {
+        case DebugOptions::LIBRARY_FUSION_TYPE_DOT:
+          fuse_dot_ = true;
+          break;
+        case DebugOptions::LIBRARY_FUSION_TYPE_ELTWISE:
+          fuse_eltwise_ = true;
+          break;
+        // Not intended to be used by LibraryMatcher.
+        case DebugOptions::LIBRARY_FUSION_TYPE_INDIVIDUAL_DOT:
+          break;
+        case DebugOptions::LIBRARY_FUSION_TYPE_REDUCE:
+          fuse_reduce_ = true;
+          break;
+        default:
+          LOG(ERROR) << "Unsupported fusion type: " << *it;
+      }
+    }
+  }
   virtual ~LibraryMatcher() = default;
+
+  // Returns the set of supported HLO instructions.
+  virtual absl::flat_hash_set<HloOpcode> SupportedOps() const = 0;
 
   // Returns true if the HLO instruction is supported by the library.
   virtual absl::StatusOr<bool> IsOpSupported(const HloInstruction* instr) {
     return false;
   }
+
+  // Returns true if we should start a new fusion containing just the given HLO
+  // instruction.
+  virtual bool ShouldCreateFusion(const HloInstruction* instr) { return false; }
 
   // Returns the output type of the library op, so we can insert a convert node
   // if the op does not support the original HLO output type.
@@ -48,7 +80,19 @@ class LibraryMatcher {
   // Returns a string for FusionBackendConfig's fusion kind.
   virtual absl::string_view fusion_kind() const { return ""; }
 
+  // Returns whether `dot` ops can start a fusion.
+  bool fuse_dot() const { return fuse_dot_; }
+
+  // Returns whether elementwise ops can start a fusion.
+  bool fuse_eltwise() const { return fuse_eltwise_; }
+
+  // Returns whether reduce ops can start a fusion.
+  bool fuse_reduce() const { return fuse_reduce_; }
+
  protected:
+  bool fuse_dot_ = false;
+  bool fuse_eltwise_ = false;
+  bool fuse_reduce_ = false;
   const TargetMachineFeatures* target_machine_features_;
 };
 

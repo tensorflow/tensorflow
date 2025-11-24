@@ -116,10 +116,11 @@ LogicalResult ConvertTflFusableOp(
     return failure();
   }
 
-  auto tfl_fusable_op = builder.create<TFL::CustomOp>(
-      func->getLoc(), func.getFunctionType().getResults(), func.getArguments(),
-      custom_op_name, CustomOption(&builder, custom_option_buffer));
-  builder.create<func::ReturnOp>(func->getLoc(), tfl_fusable_op.getResults());
+  auto tfl_fusable_op = TFL::CustomOp::create(
+      builder, func->getLoc(), func.getFunctionType().getResults(),
+      func.getArguments(), custom_op_name,
+      CustomOption(&builder, custom_option_buffer));
+  func::ReturnOp::create(builder, func->getLoc(), tfl_fusable_op.getResults());
   return success();
 }
 
@@ -136,10 +137,10 @@ class ConvertEmbeddedLookupFunc {
     auto output_type = func_.getFunctionType().getResult(0);
 
     OpBuilder builder(func_.getBody());
-    auto op = builder.create<mlir::TFL::EmbeddingLookupOp>(
-        func_.getLoc(), output_type, lookup, value);
+    auto op = mlir::TFL::EmbeddingLookupOp::create(builder, func_.getLoc(),
+                                                   output_type, lookup, value);
 
-    builder.create<mlir::func::ReturnOp>(func_.getLoc(), op.getResult());
+    mlir::func::ReturnOp::create(builder, func_.getLoc(), op.getResult());
   }
 
   LogicalResult VerifySignature() {
@@ -169,7 +170,7 @@ class PrepareCompositeFunctionsPass
  public:
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(PrepareCompositeFunctionsPass)
 
-  explicit PrepareCompositeFunctionsPass() {}
+  explicit PrepareCompositeFunctionsPass() = default;
 
  private:
   // TODO(b/160915525): Consolidate FuncAttr and StringAttr into one.

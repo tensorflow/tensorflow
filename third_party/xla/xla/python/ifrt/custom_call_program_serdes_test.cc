@@ -20,6 +20,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "absl/strings/cord.h"
 #include "absl/types/span.h"
 #include "llvm/Support/Casting.h"
@@ -37,7 +38,6 @@ limitations under the License.
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
 #include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 
@@ -47,7 +47,6 @@ namespace {
 
 using ::testing::MatchesRegex;
 using ::testing::SizeIs;
-using ::tsl::testing::StatusIs;
 
 using CustomCallProgramSerDesTestParam =
     std::tuple<SerDesVersion, test_util::DeviceTestParam>;
@@ -102,8 +101,7 @@ TEST_P(CustomCallProgramSerDesTest, RoundTrip) {
                     /*sharding=*/sharding1},
       });
 
-  auto serialize_options = std::make_unique<SerializeOptions>();
-  serialize_options->version = version();
+  auto serialize_options = std::make_unique<SerializeOptions>(version());
   TF_ASSERT_OK_AND_ASSIGN(Serialized serialized,
                           Serialize(orig, std::move(serialize_options)));
   TF_ASSERT_OK_AND_ASSIGN(
@@ -161,8 +159,7 @@ class CustomCallCompileOptionsSerDesTest
 
 TEST_P(CustomCallCompileOptionsSerDesTest, RoundTrip) {
   CustomCallCompileOptions orig;
-  auto serialize_options = std::make_unique<SerializeOptions>();
-  serialize_options->version = version();
+  auto serialize_options = std::make_unique<SerializeOptions>(version());
   TF_ASSERT_OK_AND_ASSIGN(Serialized serialized,
                           Serialize(orig, std::move(serialize_options)));
   TF_EXPECT_OK(
@@ -172,15 +169,15 @@ TEST_P(CustomCallCompileOptionsSerDesTest, RoundTrip) {
 
 TEST_P(CustomCallCompileOptionsSerDesTest, InvalidSerialized) {
   CustomCallCompileOptions orig;
-  auto serialize_options = std::make_unique<SerializeOptions>();
-  serialize_options->version = version();
+  auto serialize_options = std::make_unique<SerializeOptions>(version());
   TF_ASSERT_OK_AND_ASSIGN(Serialized serialized,
                           Serialize(orig, std::move(serialize_options)));
   serialized.set_data("abc");
   EXPECT_THAT(
       Deserialize<CustomCallCompileOptions>(serialized, /*options=*/nullptr),
-      StatusIs(absl::StatusCode::kInvalidArgument,
-               MatchesRegex("Invalid serialized CustomCallCompileOptions.*")));
+      absl_testing::StatusIs(
+          absl::StatusCode::kInvalidArgument,
+          MatchesRegex("Invalid serialized CustomCallCompileOptions.*")));
 }
 
 INSTANTIATE_TEST_SUITE_P(

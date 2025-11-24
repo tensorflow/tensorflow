@@ -186,6 +186,38 @@ class RaggedFeature(
   _PARTITION_TYPES = (RowSplits, RowLengths, RowStarts, RowLimits, ValueRowIds,
                       UniformRowLength)
 
+  @classmethod
+  def _validate_and_recreate_partition(cls, partition, partition_types):
+    """Validates and recreates a partition object using the provided types.
+
+    Args:
+      partition: The partition object to validate and recreate.
+      partition_types: A tuple of valid partition types.
+
+    Returns:
+      A new partition object of the correct type, or raises a TypeError.
+
+    Raises:
+      TypeError: If `partition` cannot be cast to any of the types in
+        `partition_types`. This happens when the input `partition` object
+        is not an instance of any of the expected partition types, and
+        cannot be recreated using the provided `partition_types`.
+    """
+
+    if isinstance(partition, partition_types):
+      return partition
+    for partition_type in partition_types:
+      if str(type(partition)) == str(partition_type):
+        if partition_type == cls.UniformRowLength:
+          return partition_type(partition.length)
+        else:
+          return partition_type(partition.key)
+    raise TypeError(
+        "Argument `partitions` cannot be cast to any of the partition "
+        f"types in {partition_types}; got: {partition!r} with type "
+        f"{type(partition)}"
+    )
+
   def __new__(cls,
               dtype,
               value_key=None,
@@ -210,14 +242,25 @@ class RaggedFeature(
       raise TypeError("Argument `partitions` must be a list or tuple. Received"
                       f"partitions={partitions} of type "
                       f"{type(partitions).__name__}.")
+    # When partitioning objects pickled on one machine and then unpickled on
+    # another machine using CloudPickle, the partition type checking does not
+    # work. This applies to any class defined within another class.
+    new_partitions = []
+    for partition in partitions:
+      new_partition = RaggedFeature._validate_and_recreate_partition(
+          partition, cls._PARTITION_TYPES
+      )
+      new_partitions.append(new_partition)
+    partitions = tuple(new_partitions)
     for partition in partitions:
       if not isinstance(partition, cls._PARTITION_TYPES):
         raise TypeError("Argument `partitions` must be a list of partition "
                         f"objects {cls._PARTITION_TYPES}; got: {partition!r}")
     if not isinstance(validate, bool):
       raise TypeError(f"Argument `validate` must be a bool; got {validate!r}")
-    return super(RaggedFeature, cls).__new__(cls, dtype, value_key, partitions,
-                                             row_splits_dtype, validate)
+    return super().__new__(
+        cls, dtype, value_key, partitions, row_splits_dtype, validate
+    )
 
 
 @tf_export("io.SparseFeature", v1=["io.SparseFeature", "SparseFeature"])
@@ -562,7 +605,16 @@ class _ParseOpParams:
     self._add_sparse_key(feature.value_key, feature.dtype)
 
   def _add_fixed_len_feature(self, key, feature):
-    """Adds a FixedLenFeature."""
+    """Adds a FixedLenFeature.
+
+    Args:
+      key: The key for the feature.
+      feature: The FixedLenFeature to add.
+
+    Raises:
+      ValueError: If `feature.dtype` is missing, if `feature.shape` is missing,
+        if the first dimension of `feature.shape` is unknown, or if not all
+    """
     if not feature.dtype:
       raise ValueError(f"Missing type for feature {key}. Received feature="
                        f"{feature}.")
@@ -586,7 +638,16 @@ class _ParseOpParams:
       self.dense_defaults[key] = feature.default_value
 
   def _add_fixed_len_sequence_feature(self, key, feature):
-    """Adds a FixedLenSequenceFeature."""
+    """Adds a FixedLenSequenceFeature.
+
+    Args:
+      key: The key for the feature.
+      feature: The FixedLenSequenceFeature to add.
+
+    Raises:
+      ValueError: If `feature.dtype` is missing or if `feature.shape` is
+      missing.
+    """
     if not feature.dtype:
       raise ValueError(f"Missing type for feature {key}. Received feature="
                        f"{feature}.")
@@ -602,7 +663,17 @@ class _ParseOpParams:
       self.dense_defaults[key] = feature.default_value
 
   def _add_ragged_key(self, key, value_type, split_type):
-    """Adds a ragged key & dtype, checking for duplicates."""
+    """Adds a ragged key & dtype, checking for duplicates.
+
+    Args:
+      key: The key for the ragged feature.
+      value_type: The dtype of the ragged feature's values.
+      split_type: The dtype of the ragged feature's row splits.
+
+    Raises:
+      ValueError: If a key is already present with a different `value_type` or
+        `split_type`.
+    """
     if key in self.ragged_keys:
       original_value_type = self.ragged_value_types[self.ragged_keys.index(key)]
       original_split_type = self.ragged_split_types[self.ragged_keys.index(key)]
@@ -618,7 +689,16 @@ class _ParseOpParams:
       self.ragged_split_types.append(split_type)
 
   def _add_ragged_feature(self, key, feature):
-    """Adds a RaggedFeature."""
+    """Adds a RaggedFeature.
+
+    Args:
+      key: The key for the feature.
+      feature: The RaggedFeature to add.
+
+    Raises:
+      ValueError: If a value or partition key is already present with a
+        different value or split type.
+    """
     value_key = key if feature.value_key is None else feature.value_key
     self._add_ragged_key(value_key, feature.dtype, feature.row_splits_dtype)
     for partition in feature.partitions:
@@ -627,7 +707,15 @@ class _ParseOpParams:
                              feature.row_splits_dtype)
 
   def _validate(self):
-    """Validates the features in this ParseOpParams."""
+    """Validates the features in this ParseOpParams.
+
+    Raises:
+      ValueError: If the lengths of `dense_shapes`, `dense_keys`,
+        `dense_types`, `sparse_types`, `sparse_keys`, `ragged_value_types` or
+        `ragged_split_types` do not match their corresponding keys, or if
+        dense and sparse keys, dense and ragged keys, or ragged and sparse keys
+        intersect.
+    """
     if len(self.dense_shapes) != len(self.dense_keys):
       raise ValueError("len(self.dense_shapes) != len(self.dense_keys): "
                        f"{len(self.dense_shapes)} vs {len(self.dense_keys)}.")
@@ -888,7 +976,31 @@ def _build_ragged_tensors(serialized_shape,
                           ragged_values,
                           ragged_row_splits,
                           ragged_inner_splits=None):
-  """Builds RaggedTensors from the outputs of a parse op."""
+  """Builds RaggedTensors from the outputs of a parse op.
+
+  This function takes the results of parsing a serialized batch of
+  examples, and constructs `RaggedTensor`s from the parsed values and
+  row-partitioning tensors.
+
+  Args:
+    serialized_shape: The shape of the input tensor that was parsed. This
+      is used to determine whether the input was a single example or a
+      batch of examples.
+    ragged_values: A list of `Tensor`s containing the values for the
+      `RaggedTensor`s to be constructed.
+    ragged_row_splits: A list of `Tensor`s containing the row-splits for
+      the outer dimension of the `RaggedTensor`s to be constructed.
+    ragged_inner_splits: Optional list of `Tensor`s containing the row-splits
+      for an inner dimension of the `RaggedTensor`s to be constructed.
+      This is used when parsing `SequenceExample`s.
+
+  Returns:
+    A list of `RaggedTensor`s. The number of `RaggedTensor`s in the
+    returned list is equal to the number of elements in `ragged_values`.
+    If `serialized_shape` corresponds to a single example, then the
+    returned `RaggedTensor`s will have one less dimension than if
+    `serialized_shape` corresponds to a batch of examples.
+  """
   if ragged_inner_splits is not None:
     ragged_values = [
         ragged_tensor.RaggedTensor.from_row_splits(val, split, validate=False)

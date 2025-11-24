@@ -41,8 +41,8 @@ TEST(IsPotentialUnsupportedOp, ClusterOpReturnsFalse) {
   mlir::OpBuilder builder(module_ref->getBodyRegion());
 
   llvm::SmallVector<mlir::Type, 8> result_types;
-  auto cluster = builder.create<mlir::tf_device::ClusterOp>(
-      mlir::UnknownLoc::get(&context), result_types);
+  auto cluster = mlir::tf_device::ClusterOp::create(
+      builder, mlir::UnknownLoc::get(&context), result_types);
   cluster->dump();
   EXPECT_FALSE(IsPotentialUnsupportedOp(cluster));
 }
@@ -58,8 +58,9 @@ TEST(IsPotentialUnsupportedOp, InfeedDequeueTupleOpReturnsTrue) {
   mlir::StringAttr _XlaSharding = mlir::StringAttr::get(&context, "");
   mlir::ArrayAttr layouts = mlir::ArrayAttr::get(&context, {});
 
-  auto infeed_dequeue_tuple = builder.create<InfeedDequeueTupleOp>(
-      mlir::UnknownLoc::get(&context), result_types, _XlaSharding, layouts);
+  auto infeed_dequeue_tuple =
+      InfeedDequeueTupleOp::create(builder, mlir::UnknownLoc::get(&context),
+                                   result_types, _XlaSharding, layouts);
 
   infeed_dequeue_tuple->setAttr(
       kDeviceAttr, mlir::StringAttr::get(&context, kTpuReplicatedCoreZeroAttr));

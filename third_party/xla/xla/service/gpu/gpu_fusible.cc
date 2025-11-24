@@ -31,8 +31,11 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/hlo/analysis/hlo_dataflow_analysis.h"
+#include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instruction_utils.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/permutation_util.h"
@@ -70,8 +73,8 @@ const Shape& GetElementShape(const HloFusionAnalysis& analysis) {
 }
 
 // Computes the maximum valid unroll factor for a given instruction.
-int ComputeMaxUnrollFactor(int64_t num_elements) {
-  for (int i = MaxUnrollFactor(); i > 1; i /= 2) {
+int ComputeMaxUnrollFactor(int64_t num_elements, int64_t max_unroll) {
+  for (int i = max_unroll; i > 1; i /= 2) {
     if (num_elements % i == 0) {
       return i;
     }
@@ -232,10 +235,14 @@ FusionDecision FusionHeroesAreCompatible(
       IsReductionFromOrToContiguousDimensions(*hero1, device_info);
   auto tiled_transpose_hero1 = GetDescriptionForTiledTransposeEmitter(*hero1);
   bool hero1_is_unnested_transpose = tiled_transpose_hero1.has_value();
+  bool hero1_is_nested_transpose =
+      hero1->opcode() == HloOpcode::kTranspose && !hero1_is_unnested_transpose;
   bool hero2_is_unnested_reduce =
       IsReductionFromOrToContiguousDimensions(*hero2, device_info);
   auto tiled_transpose_hero2 = GetDescriptionForTiledTransposeEmitter(*hero2);
   bool hero2_is_unnested_transpose = tiled_transpose_hero2.has_value();
+  bool hero2_is_nested_transpose =
+      hero2->opcode() == HloOpcode::kTranspose && !hero2_is_unnested_transpose;
 
   if (hero1_is_unnested_reduce && hero2_is_unnested_reduce &&
       !AreReductionsMultiOutputFusionCompatible(hero2, hero1)) {
@@ -245,9 +252,23 @@ FusionDecision FusionHeroesAreCompatible(
              // same shape and permute the same dimensions.
              !tiled_transpose_hero1->IsEquivalent(*tiled_transpose_hero2)) {
     return FusionDecision::Forbid("tiled transposes with different shapes");
+  } else if (((hero1_is_unnested_transpose || hero1_is_unnested_reduce) &&
+              hero2_is_nested_transpose) ||
+             (hero1_is_nested_transpose &&
+              (hero2_is_unnested_transpose || hero2_is_unnested_reduce))) {
+    // A elemental (aka nested) transpose has a different read pattern than an
+    // unnested transpose or reduction, because the emitters for tiled
+    // transposes and parallel reductions ensure uniform read patterns.
+    // A multi-output fusion with roots that have different read patterns is
+    // generally not profitable. Input data will be read multiple times by
+    // different threads, which defeats the purpose of multi-output fusion.
+    // What is worse, increased register pressure can impact performance.
+    return FusionDecision::Forbid(
+        "multi-output fusion of a nested transpose with an unnested hero op");
   } else if ((hero1_is_unnested_transpose && hero2_is_unnested_reduce) ||
              (hero1_is_unnested_reduce && hero2_is_unnested_transpose)) {
-    return FusionDecision::Forbid("MOF-fusion of a transpose and a reduction");
+    return FusionDecision::Forbid(
+        "multi-output fusion of a transpose and a reduction");
   }
   // If we are dealing with unnested transpose, make sure that we can still
   // treat them as unnested transpose after the sibling fusion.
@@ -373,6 +394,7 @@ bool IsUniversallyLoopFusible(const HloInstruction& instr) {
       return instr.fusion_kind() == HloInstruction::FusionKind::kLoop;
 
     case HloOpcode::kBitcast:
+      return hlo_instruction_utils::KeepsBitwidth(instr);
     case HloOpcode::kBroadcast:
     case HloOpcode::kConcatenate:
     case HloOpcode::kDynamicSlice:
@@ -405,18 +427,6 @@ bool IsLoopFusibleAsProducer(const HloInstruction& instr) {
     default:
       return IsUniversallyLoopFusible(instr);
   }
-}
-
-static bool AllSatisfy(const HloInstruction& instr,
-                       const HloPredicate& predicate) {
-  if (instr.opcode() != HloOpcode::kFusion) {
-    return predicate(&instr);
-  }
-
-  return absl::c_all_of(
-      instr.fused_instructions(), [&](const HloInstruction* i) {
-        return i->opcode() == HloOpcode::kParameter || predicate(i);
-      });
 }
 
 FusionDecision CanEmitInputFusedScatter(const HloInstruction& producer,
@@ -541,7 +551,7 @@ static int64_t SharedMemoryUsageNoCache(
 
 int64_t FusionInfoCache::GetSharedMemoryUsage(const HloInstruction& instr) {
   {
-    absl::MutexLock lock(&mutex_);
+    absl::MutexLock lock(mutex_);
     auto it = shared_memory_usage_.find(&instr);
     if (it != shared_memory_usage_.end()) {
       return it->second;
@@ -554,7 +564,7 @@ int64_t FusionInfoCache::GetSharedMemoryUsage(const HloInstruction& instr) {
   // SharedMemoryUsageNoCache and use the cache *within* the fusion.
   int64_t shared_memory_usage = SharedMemoryUsageNoCache(instr, device_info_);
 
-  absl::MutexLock lock(&mutex_);
+  absl::MutexLock lock(mutex_);
   shared_memory_usage_.emplace(&instr, shared_memory_usage);
   return shared_memory_usage;
 }
@@ -591,7 +601,7 @@ static int64_t NumUnnestedReductionsNoCache(
 
 int64_t FusionInfoCache::GetNumUnnestedReductions(const HloInstruction& instr) {
   {
-    absl::MutexLock lock(&mutex_);
+    absl::MutexLock lock(mutex_);
     auto it = num_unnested_reductions_.find(&instr);
     if (it != num_unnested_reductions_.end()) {
       return it->second;
@@ -605,7 +615,7 @@ int64_t FusionInfoCache::GetNumUnnestedReductions(const HloInstruction& instr) {
   int64_t num_unnested_reductions =
       NumUnnestedReductionsNoCache(instr, device_info_);
 
-  absl::MutexLock lock(&mutex_);
+  absl::MutexLock lock(mutex_);
   num_unnested_reductions_.emplace(&instr, num_unnested_reductions);
   return num_unnested_reductions;
 }
@@ -842,13 +852,27 @@ bool IsGenericTritonFusion(const HloInstruction& instr) {
                  .kind() == kTritonFusionKind;
 }
 
-bool MayPreventVectorization(const HloFusionAdaptor& fusion) {
+bool MayCausePerformanceDropIfUnrolled(const HloFusionAdaptor& fusion) {
   // An empirically chosen constant: unrolling concat with a large amount of
   // arguments causes excessive register spilling.
   static constexpr int kMaxConcatArgumentsForUnrolling = 10;
+  // An empirically chosen constant: One thread handles a full window of
+  // ReduceWindow, so if we unroll it might make parallelism even worse. For
+  // small window sizes this is still ok.
+  static constexpr int kMaxReduceWindowSize = 8;
   return HloAnyOf(fusion, [&](auto node) {
     switch (node.opcode()) {
-      case HloOpcode::kReduceWindow:
+      case HloOpcode::kReduceWindow: {
+        auto window_dims = Cast<HloReduceWindowInstruction>(&node.instruction())
+                               ->window()
+                               .dimensions();
+        std::vector<int64_t> window_sizes;
+        window_sizes.reserve(window_dims.size());
+        for (const auto& window_dim : window_dims) {
+          window_sizes.push_back(window_dim.size());
+        }
+        return Product(window_sizes) > kMaxReduceWindowSize;
+      }
       case HloOpcode::kSort:
       case HloOpcode::kDot:
         return true;
@@ -906,6 +930,21 @@ LaunchDimensionsConfig ComputeLoopFusionConfig(
   return ComputeLoopFusionConfig(analysis, GetElementShape(analysis));
 }
 
+namespace {
+bool ContainsTransposeWithSmallMostMinorDim(const HloFusionAdaptor& fusion,
+                                            int64_t unroll_factor) {
+  return HloAnyOf(fusion, [unroll_factor](HloInstructionAdaptor instr) {
+    if (instr.opcode() != HloOpcode::kTranspose) {
+      return false;
+    }
+    const HloInstruction& transpose = instr.instruction();
+    // We can assume that TransposeDimensionGrouper pass has run, so no need
+    // to try to combine adjacent dimensions.
+    return transpose.shape().dimensions().back() < unroll_factor;
+  });
+}
+}  // namespace
+
 LaunchDimensionsConfig ComputeLoopFusionConfig(
     const HloFusionAnalysis& analysis, const Shape& element_shape) {
   int unroll_factor = 1;
@@ -919,8 +958,57 @@ LaunchDimensionsConfig ComputeLoopFusionConfig(
   int64_t n_threads_max = analysis.device_info().threads_per_core_limit() *
                           analysis.device_info().core_count();
   if (num_elements >= n_threads_max &&
-      !MayPreventVectorization(analysis.fusion())) {
-    unroll_factor = ComputeMaxUnrollFactor(num_elements);
+      !MayCausePerformanceDropIfUnrolled(analysis.fusion())) {
+    int64_t max_unroll = MaxUnrollFactor();
+    // On Blackwell we would like to increase the maximum unroll factor to 8, as
+    // we need more vectorization for full performance.
+    // However we need to check additional conditions:
+    //   - Unrolling is potentially bad for fusions with reductions, where one
+    //     thread will handle the full reduction dimension, so more unrolling
+    //     can hurt parallelism.
+    //   - Unrolling is potentially bad for fusions with many outputs, as that
+    //     might increase register pressure. A thread needs to compute all the
+    //     outputs first before it can write them due to potential in-place
+    //     buffers. More unrolling will increase the number of values that need
+    //     to be computed before writing.
+    //   - Unrolling is potentially bad for transposes if the most minor
+    //     dimension of transpose is smaller than the unroll factor. This could
+    //     potentially be checked with indexing analysis as well, but it is
+    //     tricky to get the conditions right when bad or unknown indexing
+    //     should block more unrolling or not. For now, let's keep it simple and
+    //     only check for transpose.
+
+    // For now, don't allow any multi-output fusions. However register pressure
+    // also does not only depend on the number of outputs, so we might hit it
+    // also for single fusions, or there could be multi-output fusions that
+    // don't face register pressure. This part of the heuristic may need
+    // improvements.
+    constexpr int kMaxNumOutputsForFullUnrolling = 1;
+    // On PTX level, we can vectorize with v4.b32, but not with v8.b32. So
+    // higher unroll factor does not make sense with 32 bit or more.
+    constexpr int kMaxBitsToVectorizeWithVectorSize4 = 32;
+    if (analysis.device_info().cuda_compute_capability().IsBlackwell() &&
+        analysis.emitter_fusion_kind() ==
+            HloFusionAnalysis::EmitterFusionKind::kLoop &&
+        analysis.input_output_info().smallest_output_dtype_bits <
+            kMaxBitsToVectorizeWithVectorSize4 &&
+        analysis.fusion_root_count() <= kMaxNumOutputsForFullUnrolling &&
+        analysis.fusion_root(0)
+            .instruction()
+            .GetModule()
+            ->config()
+            .debug_options()
+            .xla_gpu_experimental_allow_unroll_factor_eight() &&
+        !HloAnyOf(
+            analysis.fusion(),
+            [](HloInstructionAdaptor node) {
+              return node.opcode() == HloOpcode::kReduce;
+            }) &&
+        !ContainsTransposeWithSmallMostMinorDim(analysis.fusion(),
+                                                max_unroll * 2)) {
+      max_unroll *= 2;
+    }
+    unroll_factor = ComputeMaxUnrollFactor(num_elements, max_unroll);
   }
   // CHECK that unroll_factor is a power-of-2, as needed by the logic below.
   CHECK(absl::has_single_bit(static_cast<uint64_t>(unroll_factor)));
@@ -929,9 +1017,9 @@ LaunchDimensionsConfig ComputeLoopFusionConfig(
   // safe even if the new unroll_factor doesn't divide the number of elements,
   // as the parallel loop emitter will insert a bounds check in this case to
   // ensure the out-of-bounds element is not computed and written. Setting
-  // unroll_factor is safe even if MayPreventVectorization returns false, as
-  // the MayPreventVectorization check is an optimization, not a correctness
-  // requirement.
+  // unroll_factor is safe even if MayCausePerformanceDropIfUnrolled returns
+  // true, as the MayCausePerformanceDropIfUnrolled check is an optimization,
+  // not a correctness requirement.
   unroll_factor = std::max(
       unroll_factor,
       CeilOfRatio(8, analysis.input_output_info().smallest_output_dtype_bits));

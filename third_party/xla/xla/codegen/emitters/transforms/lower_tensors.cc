@@ -23,9 +23,11 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/log/check.h"
+#include "absl/numeric/bits.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SmallBitVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/LogicalResult.h"
 #include "mlir/Conversion/LLVMCommon/TypeConverter.h"
@@ -47,7 +49,6 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/BuiltinTypeInterfaces.h"
 #include "mlir/IR/BuiltinTypes.h"
-#include "mlir/IR/ImplicitLocOpBuilder.h"
 #include "mlir/IR/Location.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Matchers.h"
@@ -63,10 +64,13 @@ limitations under the License.
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "xla/backends/gpu/codegen/emitters/ir/xla_gpu_ops.h"
 #include "xla/codegen/device_spec.h"
+#include "xla/codegen/emitters/ir/xla_ops.h"
 #include "xla/codegen/emitters/transforms/atomic_rmw_utils.h"
 #include "xla/codegen/emitters/transforms/passes.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_description.pb.h"
+#include "xla/tsl/platform/status.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/protobuf.h"  // IWYU pragma: keep
@@ -117,7 +121,7 @@ Value GetDestinationBuffer(Value dest) {
       break;
     } else if (auto transfer_write =
                    dest.getDefiningOp<vector::TransferWriteOp>()) {
-      dest = transfer_write.getSource();
+      dest = transfer_write.getBase();
     } else {
       dest.getDefiningOp()->emitOpError("unsupported dest type");
       return nullptr;
@@ -320,31 +324,64 @@ Value GetLinearIndex(ValueRange indices, mlir::ImplicitLocOpBuilder& b) {
   return b.create<mlir::arith::IndexCastUIOp>(index_ty, index);
 }
 
-std::tuple<Value, Value> GetI4IndexAndNibble(Value linear_index,
-                                             mlir::ImplicitLocOpBuilder& b) {
-  Value zero = b.create<mlir::arith::ConstantIntOp>(0, linear_index.getType());
-  Value one = b.create<mlir::arith::ConstantIntOp>(1, linear_index.getType());
-  Value is_low_nibble = b.create<mlir::arith::CmpIOp>(
-      mlir::arith::CmpIPredicate::eq, zero,
-      b.create<mlir::arith::AndIOp>(linear_index, one));
-  Value i8_index = b.create<mlir::arith::ShRUIOp>(linear_index, one);
-  return {i8_index, is_low_nibble};
+// If the provided type is a sub-byte type get its bit-width, else nullopt.
+std::optional<int> GetSubByteBitWidth(Type element_type) {
+  if (element_type.isIntOrFloat()) {
+    int bit_width = element_type.getIntOrFloatBitWidth();
+    if (bit_width == 4 || bit_width == 2) {
+      return bit_width;
+    }
+  }
+  return std::nullopt;
+}
+
+// Get the number of bits used to index into a sub-byte type.
+int SubByteIndexingBits(int bit_width) {
+  CHECK_LT(bit_width, 8) << "Passed width is not a sub-byte";
+  return absl::bit_width<unsigned int>(8 / bit_width) - 1;
+}
+
+std::tuple<Value, Value> GetSubByteIndex(Value linear_index, int bit_width,
+                                         mlir::ImplicitLocOpBuilder& b) {
+  CHECK_LT(bit_width, 8) << "Passed width is not a sub-byte";
+  int sub_byte_indexing_bits = SubByteIndexingBits(bit_width);
+  // Get the sub-byte index by just masking out the high bits.
+  Value sub_byte_index = b.create<mlir::arith::TruncIOp>(
+      b.getI8Type(), b.create<mlir::arith::AndIOp>(
+                         linear_index, b.create<mlir::arith::ConstantIntOp>(
+                                           linear_index.getType(),
+                                           (1 << sub_byte_indexing_bits) - 1)));
+  //  Calculate the bit shift (assume little-endianness).
+  Value sub_byte_shift = b.create<mlir::arith::MulIOp>(
+      b.create<mlir::arith::ConstantIntOp>(b.getI8Type(), bit_width),
+      sub_byte_index);
+  Value byte_shift = b.create<mlir::arith::ConstantIntOp>(
+      linear_index.getType(), sub_byte_indexing_bits);
+  Value i8_index = b.create<mlir::arith::ShRUIOp>(linear_index, byte_shift);
+  return {i8_index, sub_byte_shift};
 }
 
 ml::GEPOp CreateGep(TypedValue<mlir::RankedTensorType> tensor,
                     Value linear_index, mlir::ImplicitLocOpBuilder& b) {
-  Type element_type = tensor.getType().getElementType();
-  if (element_type.isIntOrFloat() &&
-      element_type.getIntOrFloatBitWidth() == 4) {
+  mlir::RankedTensorType tensor_type = tensor.getType();
+  Type element_type = tensor_type.getElementType();
+  int64_t num_elements = tensor_type.getNumElements();
+  std::optional<int> sub_byte_width = GetSubByteBitWidth(element_type);
+  if (sub_byte_width) {
     element_type = b.getI8Type();
+    // Elements are packed.
+    num_elements = CeilOfRatio<int64_t>(num_elements, 8 / *sub_byte_width);
   }
   auto ptr = ml::LLVMPointerType::get(b.getContext());
   auto tensor_ptr =
       b.create<UnrealizedConversionCastOp>(ptr, tensor).getResult(0);
   mlir::LLVMTypeConverter converter(b.getContext());
   auto llvm_element_type = converter.convertType(element_type);
-  auto gep =
-      b.create<ml::GEPOp>(ptr, llvm_element_type, tensor_ptr, linear_index);
+  auto array_type =
+      b.getType<ml::LLVMArrayType>(llvm_element_type, num_elements);
+  auto gep = b.create<ml::GEPOp>(
+      ptr, array_type, tensor_ptr,
+      llvm::SmallVector<mlir::LLVM::GEPArg>{0, linear_index});
   gep.setNoWrapFlags(mlir::LLVM::GEPNoWrapFlags::inbounds);
   return gep;
 }
@@ -363,24 +400,27 @@ struct RewriteTensorExtract : OpRewritePattern<mlir::tensor::ExtractOp> {
     mlir::ImplicitLocOpBuilder b(op.getLoc(), rewriter);
     auto linear_index = GetLinearIndex(op.getIndices(), b);
     Type element_type = op.getTensor().getType().getElementType();
-    Value is_low_nibble = nullptr;
-    if (element_type.isIntOrFloat() &&
-        element_type.getIntOrFloatBitWidth() == 4) {
-      std::tie(linear_index, is_low_nibble) =
-          GetI4IndexAndNibble(linear_index, b);
+    Value sub_byte_shift = nullptr;
+    std::optional<int> sub_byte_width = GetSubByteBitWidth(element_type);
+    if (sub_byte_width) {
+      std::tie(linear_index, sub_byte_shift) =
+          GetSubByteIndex(linear_index, *sub_byte_width, b);
     }
 
     auto gep = CreateGep(op.getTensor(), linear_index, b);
-    auto load =
-        rewriter.create<ml::LoadOp>(gep.getLoc(), gep.getElemType(), gep)
-            .getResult();
+    Type llvm_type =
+        mlir::dyn_cast<ml::LLVMArrayType>(gep.getElemType()).getElementType();
+    auto load_op = rewriter.create<ml::LoadOp>(gep.getLoc(), llvm_type, gep);
+    if (auto no_alias_attr = op->getAttrOfType<mlir::ArrayAttr>(
+            ml::LLVMDialect::getNoAliasAttrName())) {
+      load_op.setNoaliasScopesAttr(no_alias_attr);
+    }
+    auto load = load_op.getResult();
 
-    if (is_low_nibble) {
-      auto high_value = b.create<mlir::arith::ShRUIOp>(
-          load, b.create<mlir::arith::ConstantIntOp>(4, load.getType()));
+    if (sub_byte_shift) {
       load = b.create<mlir::arith::TruncIOp>(
-          rewriter.getI4Type(),
-          b.create<mlir::arith::SelectOp>(is_low_nibble, load, high_value));
+          b.getIntegerType(*sub_byte_width),
+          b.create<mlir::arith::ShRUIOp>(load, sub_byte_shift));
     }
 
     if (op.getType().isIntOrFloat()) {
@@ -401,8 +441,8 @@ struct RewriteTransferRead : OpRewritePattern<vector::TransferReadOp> {
       mlir::PatternRewriter& rewriter) const override {
     assert(IsSupportedTransfer(op));
 
-    auto source = mlir::dyn_cast<mlir::TypedValue<mlir::RankedTensorType>>(
-        op.getSource());
+    auto source =
+        mlir::dyn_cast<mlir::TypedValue<mlir::RankedTensorType>>(op.getBase());
     mlir::Type source_element_type = source.getType().getElementType();
 
     mlir::ImplicitLocOpBuilder b(op.getLoc(), rewriter);
@@ -413,19 +453,27 @@ struct RewriteTransferRead : OpRewritePattern<vector::TransferReadOp> {
       vector_type = vector_type.cloneWith(std::nullopt, b.getI8Type());
     }
     mlir::Type gep_element_type = vector_type.getElementType();
-    if (gep_element_type.isIntOrFloat() &&
-        gep_element_type.getIntOrFloatBitWidth() == 4) {
+    std::optional<int> sub_byte_width = GetSubByteBitWidth(gep_element_type);
+    if (sub_byte_width) {
       linear_index = b.create<arith::ShRUIOp>(
           linear_index,
-          b.create<arith::ConstantIntOp>(1, linear_index.getType()));
+          b.create<arith::ConstantIntOp>(linear_index.getType(),
+                                         SubByteIndexingBits(*sub_byte_width)));
     }
     auto gep = CreateGep(source, linear_index, b);
 
     mlir::LLVMTypeConverter converter(b.getContext());
     auto llvm_vector_type = converter.convertType(vector_type);
     auto load = b.create<ml::LoadOp>(llvm_vector_type, gep);
-    if (auto alignment = GetAlignmentFromArg(op.getSource(), op.getIndices())) {
+    if (auto alignment = GetAlignmentFromArg(op.getBase(), op.getIndices())) {
       load.setAlignment(*alignment);
+    } else {
+      auto data_layout = mlir::DataLayout::closest(op);
+      // TODO(willfroom): We should really just use getTypeABIAlignment here,
+      // but this requires passing through the full data layout for the target
+      // machine.
+      load.setAlignment(
+          data_layout.getTypePreferredAlignment(gep_element_type));
     }
     auto loaded = load.getResult();
 
@@ -458,14 +506,16 @@ struct RewriteTensorInsert : OpRewritePattern<mlir::tensor::InsertOp> {
     auto scalar_value = op.getScalar();
 
     // For i4 we store 2 values into one byte. This needs special handling here.
-    if (tensor_dest.getType().getElementType().isIntOrFloat() &&
-        tensor_dest.getType().getElementType().getIntOrFloatBitWidth() == 4) {
+    Type element_type = tensor_dest.getType().getElementType();
+    std::optional<int> sub_byte_width = GetSubByteBitWidth(element_type);
+    if (sub_byte_width) {
       // We need to use directly op.getDest() as input, otherwise the following
       // rewrite might remove the only user of it.
       tensor_dest = op.getDest();
-      Value is_low_nibble;
-      std::tie(linear_index, is_low_nibble) =
-          GetI4IndexAndNibble(linear_index, b);
+      // Value is_low_nibble;
+      Value sub_byte_shift = nullptr;
+      std::tie(linear_index, sub_byte_shift) =
+          GetSubByteIndex(linear_index, *sub_byte_width, b);
 
       // Technically we should half the number of elements when going to i8
       // element type, but it doesn't really matter because we only actually use
@@ -477,11 +527,22 @@ struct RewriteTensorInsert : OpRewritePattern<mlir::tensor::InsertOp> {
       auto tensor_dest_i8 =
           b.create<UnrealizedConversionCastOp>(tensor_ty, tensor_dest)
               .getResult(0);
-      if (scalar_value.getType() != rewriter.getI4Type()) {
-        scalar_value =
-            b.create<arith::BitcastOp>(rewriter.getI4Type(), scalar_value);
+      if (scalar_value.getType() != b.getIntegerType(*sub_byte_width)) {
+        scalar_value = b.create<arith::BitcastOp>(
+            b.getIntegerType(*sub_byte_width), scalar_value);
       }
       scalar_value = b.create<mlir::arith::ExtUIOp>(ty, scalar_value);
+
+      // Mask of 1s in the sub-byte position & 0s elsewhere.
+      Value mask = b.create<mlir::arith::ShLIOp>(
+          b.create<mlir::arith::ConstantIntOp>(ty, (1 << *sub_byte_width) - 1),
+          sub_byte_shift);
+      // Mask of 0s in the sub-byte position & 1s elsewhere.
+      Value inverse_mask = b.create<mlir::arith::XOrIOp>(
+          b.create<mlir::arith::ConstantIntOp>(ty, 0xff), mask);
+
+      Value shifted_value =
+          b.create<mlir::arith::ShLIOp>(scalar_value, sub_byte_shift);
 
       // We need AtomicRMWOp because it can happen that different threads try to
       // access the same memory location.
@@ -489,22 +550,10 @@ struct RewriteTensorInsert : OpRewritePattern<mlir::tensor::InsertOp> {
       mlir::ImplicitLocOpBuilder body_builder(atomic_rmw.getLoc(),
                                               atomic_rmw.getBodyBuilder());
       Value current_value = atomic_rmw.getCurrentValue();
-      Value low_updated = body_builder.create<mlir::arith::OrIOp>(
-          body_builder.create<mlir::arith::AndIOp>(
-              current_value,
-              body_builder.create<mlir::arith::ConstantIntOp>(0xf0, ty)),
-          body_builder.create<mlir::arith::AndIOp>(
-              scalar_value,
-              body_builder.create<mlir::arith::ConstantIntOp>(0x0f, ty)));
-      Value high_updated = body_builder.create<mlir::arith::OrIOp>(
-          body_builder.create<mlir::arith::AndIOp>(
-              current_value,
-              body_builder.create<mlir::arith::ConstantIntOp>(0x0f, ty)),
-          body_builder.create<mlir::arith::ShLIOp>(
-              scalar_value,
-              body_builder.create<mlir::arith::ConstantIntOp>(4, ty)));
-      Value new_value = body_builder.create<mlir::arith::SelectOp>(
-          is_low_nibble, low_updated, high_updated);
+      Value masked_out_current_value =
+          body_builder.create<mlir::arith::AndIOp>(current_value, inverse_mask);
+      Value new_value = body_builder.create<mlir::arith::OrIOp>(
+          masked_out_current_value, shifted_value);
       body_builder.create<scf::YieldOp>(new_value);
       Value casted_result = b.create<UnrealizedConversionCastOp>(
                                  tensor_dest.getType(), atomic_rmw.getResult())
@@ -519,7 +568,15 @@ struct RewriteTensorInsert : OpRewritePattern<mlir::tensor::InsertOp> {
               ? b.create<arith::BitcastOp>(llvm_type, scalar_value)
               : b.create<UnrealizedConversionCastOp>(llvm_type, scalar_value)
                     .getResult(0);
-      b.create<ml::StoreOp>(scalar_value, gep);
+      auto store_op = b.create<ml::StoreOp>(scalar_value, gep);
+      if (auto alias_scope_attr = op->getAttrOfType<mlir::ArrayAttr>(
+              ml::LLVMDialect::getAliasScopesAttrName())) {
+        store_op.setAliasScopesAttr(alias_scope_attr);
+      }
+      if (auto no_alias_attr = op->getAttrOfType<mlir::ArrayAttr>(
+              ml::LLVMDialect::getNoAliasAttrName())) {
+        store_op.setNoaliasScopesAttr(no_alias_attr);
+      }
       op.replaceAllUsesWith(op.getDest());
     }
 
@@ -535,7 +592,7 @@ struct RewriteTransferWrite : OpRewritePattern<vector::TransferWriteOp> {
       vector::TransferWriteOp op,
       mlir::PatternRewriter& rewriter) const override {
     assert(IsSupportedTransfer(op));
-    Value dest = GetDestinationBuffer(op.getSource());
+    Value dest = GetDestinationBuffer(op.getBase());
 
     mlir::ImplicitLocOpBuilder b(op.getLoc(), rewriter);
     auto tensor_dest = mlir::cast<TypedValue<mlir::RankedTensorType>>(dest);
@@ -548,11 +605,12 @@ struct RewriteTransferWrite : OpRewritePattern<vector::TransferWriteOp> {
           op.getVectorType().cloneWith(std::nullopt, b.getI8Type()),
           vector_value);
     }
-    if (vector_element_type.isIntOrFloat() &&
-        vector_element_type.getIntOrFloatBitWidth() == 4) {
+    std::optional<int> sub_byte_width = GetSubByteBitWidth(vector_element_type);
+    if (sub_byte_width) {
       linear_index = b.create<arith::ShRUIOp>(
           linear_index,
-          b.create<arith::ConstantIntOp>(1, linear_index.getType()));
+          b.create<arith::ConstantIntOp>(linear_index.getType(),
+                                         SubByteIndexingBits(*sub_byte_width)));
     }
     auto gep = CreateGep(tensor_dest, linear_index, b);
 
@@ -560,9 +618,19 @@ struct RewriteTransferWrite : OpRewritePattern<vector::TransferWriteOp> {
     auto llvm_type = converter.convertType(vector_value.getType());
     vector_value = b.create<UnrealizedConversionCastOp>(llvm_type, vector_value)
                        .getResult(0);
-    b.create<ml::StoreOp>(vector_value, gep);
+    auto store = b.create<ml::StoreOp>(vector_value, gep);
+    if (auto alignment = GetAlignmentFromArg(op.getBase(), op.getIndices())) {
+      store.setAlignment(*alignment);
+    } else {
+      auto data_layout = mlir::DataLayout::closest(op);
+      // TODO(willfroom): We should really just use getTypeABIAlignment here,
+      // but this requires passing through the full data layout for the target
+      // machine.
+      store.setAlignment(
+          data_layout.getTypePreferredAlignment(vector_element_type));
+    }
 
-    rewriter.replaceOp(op, mlir::ValueRange{op.getSource()});
+    rewriter.replaceOp(op, mlir::ValueRange{op.getBase()});
     return success();
   }
 };
@@ -1153,13 +1221,12 @@ class RewriteAtomicRMW : public OpRewritePattern<AtomicRMWOp> {
     // Calculate load address for the input.
     mlir::ImplicitLocOpBuilder b(op.getLoc(), rewriter);
     Value linear_index = GetLinearIndex(op.getIndices(), b);
-    Value is_low_nibble;
+    Value sub_byte_shift;
 
-    bool is_4_bit_wide =
-        result_ty.isIntOrFloat() && result_ty.getIntOrFloatBitWidth() == 4;
-    if (is_4_bit_wide) {
-      std::tie(linear_index, is_low_nibble) =
-          GetI4IndexAndNibble(linear_index, b);
+    std::optional<int> sub_byte_bit_width = GetSubByteBitWidth(result_ty);
+    if (sub_byte_bit_width) {
+      std::tie(linear_index, sub_byte_shift) =
+          GetSubByteIndex(linear_index, *sub_byte_bit_width, b);
     }
     Value addr = CreateGep(input, linear_index, b);
     Value shift, mask;
@@ -1178,17 +1245,14 @@ class RewriteAtomicRMW : public OpRewritePattern<AtomicRMWOp> {
                                         rewriter.getI8Type(), addr, index,
                                         mlir::LLVM::GEPNoWrapFlags::inbounds);
 
-      // Calculate the bit shift (assume little-endianness).
       Value offset = rewriter.create<ml::TruncOp>(loc, atomic_ty, addr_offset);
       shift = rewriter.create<ml::MulOp>(
           loc, offset,
           rewriter.create<ml::ConstantOp>(loc, offset.getType(), 8));
-      if (is_4_bit_wide) {
-        auto c0 = rewriter.create<ml::ConstantOp>(loc, shift.getType(), 0);
-        auto c4 = rewriter.create<ml::ConstantOp>(loc, shift.getType(), 4);
-        auto subshift =
-            rewriter.create<ml::SelectOp>(loc, is_low_nibble, c0, c4);
-        shift = rewriter.create<ml::AddOp>(loc, shift, subshift);
+      if (sub_byte_bit_width) {
+        sub_byte_shift =
+            rewriter.create<ml::ZExtOp>(loc, shift.getType(), sub_byte_shift);
+        shift = rewriter.create<ml::AddOp>(loc, shift, sub_byte_shift);
       }
 
       // Compose the update mask.
@@ -1274,7 +1338,10 @@ class LowerTensorsPass : public impl::LowerTensorsPassBase<LowerTensorsPass> {
       se::GpuDeviceInfoProto device_info;
       CHECK(tsl::protobuf::TextFormat::ParseFromString(gpu_device_info_,
                                                        &device_info));
-      *device_spec_.mutable_type() = se::DeviceDescription(device_info);
+      absl::StatusOr<se::DeviceDescription> device_description =
+          se::DeviceDescription::FromProto(device_info);
+      TF_CHECK_OK(device_description.status());
+      *device_spec_.mutable_type() = *device_description;
     } else if (target_type_ == "cpu") {
       CHECK(gpu_device_info_.empty());
       *device_spec_.mutable_type() = CpuDeviceSpec{};

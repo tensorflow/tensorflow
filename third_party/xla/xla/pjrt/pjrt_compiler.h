@@ -17,18 +17,27 @@ limitations under the License.
 #define XLA_PJRT_PJRT_COMPILER_H_
 
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "xla/hlo/builder/xla_computation.h"
+#include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_device_description.h"
+#include "xla/pjrt/pjrt_device_dimensions.h"
 #include "xla/pjrt/pjrt_executable.h"
+#include "xla/pjrt/proto/pjrt_partial_program.pb.h"
+#include "xla/pjrt/proto/topology_description.pb.h"
+#include "xla/tsl/platform/statusor.h"
 #include "tsl/platform/fingerprint.h"
 
 namespace xla {
@@ -77,6 +86,9 @@ inline PjRtPlatformId TpuId() {
 }
 
 class PjRtCompiler;
+// Thread-safe. Returns a pointer to the registered compiler for the given
+// platform.
+absl::StatusOr<PjRtCompiler*> GetPjRtCompiler(absl::string_view platform_name);
 class PjRtClient;
 
 // Abstract interface to represent device topology that is used by the compiler.
@@ -110,27 +122,138 @@ class PjRtTopologyDescription {
     return absl::UnimplementedError("ProcessCount is unsupported.");
   }
 
+  // Returns the number of chips per process.
+  virtual absl::StatusOr<int> ChipsPerProcess() const {
+    return absl::UnimplementedError("ChipsPerProcess is unsupported.");
+  }
+
+  // Returns the number of chips.
+  virtual absl::StatusOr<int> ChipCount() const {
+    TF_ASSIGN_OR_RETURN(int process_count, ProcessCount());
+    TF_ASSIGN_OR_RETURN(int chips_per_process, ChipsPerProcess());
+    return process_count * chips_per_process;
+  }
+
   // Returns the total number of cores of the default type.
   virtual absl::StatusOr<int> CoreCountOfDefaultType() const {
-    return absl::UnimplementedError("CoreCountOfDefaultType is unsupported.");
+    TF_ASSIGN_OR_RETURN(int process_count, ProcessCount());
+    TF_ASSIGN_OR_RETURN(int cores_per_process,
+                        CoreCountOfDefaultTypePerProcess());
+    return process_count * cores_per_process;
+  }
+
+  // As above, but returns the number of logical devices per host.
+  virtual absl::StatusOr<int> LogicalDeviceCountOfDefaultTypePerProcess()
+      const {
+    TF_ASSIGN_OR_RETURN(int logical_devices_per_chip,
+                        LogicalDeviceCountOfDefaultTypePerChip());
+    TF_ASSIGN_OR_RETURN(int chips_per_process, ChipsPerProcess());
+    return chips_per_process * logical_devices_per_chip;
   }
 
   // Returns the total number of logical devices of the default type.
   virtual absl::StatusOr<int> LogicalDeviceCountOfDefaultType() const {
+    TF_ASSIGN_OR_RETURN(int process_count, ProcessCount());
+    TF_ASSIGN_OR_RETURN(int logical_devices_per_process,
+                        LogicalDeviceCountOfDefaultTypePerProcess());
+    return process_count * logical_devices_per_process;
+  }
+
+  // Returns the number of logical devices of the default type per chip.
+  virtual absl::StatusOr<int> LogicalDeviceCountOfDefaultTypePerChip() const {
     return absl::UnimplementedError(
-        "LogicalDeviceCountOfDefaultType is unsupported.");
+        "LogicalDeviceCountOfDefaultTypePerChip is unsupported.");
   }
 
   // Returns the number of cores of the default type per process.
   virtual absl::StatusOr<int> CoreCountOfDefaultTypePerProcess() const {
-    return absl::UnimplementedError(
-        "CoreCountOfDefaultTypePerProcess is unsupported.");
+    TF_ASSIGN_OR_RETURN(int cores_per_chip, CoreCountOfDefaultTypePerChip());
+    TF_ASSIGN_OR_RETURN(int chips_per_process, ChipsPerProcess());
+    return cores_per_chip * chips_per_process;
   }
 
   // Returns the number of cores per chip for the default type.
   virtual absl::StatusOr<int> CoreCountOfDefaultTypePerChip() const {
     return absl::UnimplementedError(
         "CoreCountOfDefaultTypePerChip is unsupported.");
+  }
+
+  // Returns the ids for all processes.
+  virtual absl::StatusOr<PjRtIdContainer<PjRtProcessId>> ProcessIds() const {
+    return absl::UnimplementedError("ProcessIds is unsupported.");
+  }
+
+  // Returns the ids for all the logical devices on a specific process.
+  virtual absl::StatusOr<PjRtIdContainer<PjRtGlobalDeviceId>>
+  LogicalDeviceOfDefaultTypeIdsOnProcess(PjRtProcessId process_id) const {
+    return absl::UnimplementedError(
+        "LogicalDeviceOfDefaultTypeIdsOnProcess is unsupported.");
+  }
+
+  // Returns the process ID and the index of the chip within that process for a
+  // given chip.
+  virtual absl::StatusOr<std::pair<PjRtProcessId, int>>
+  ProcessIdAndIndexOnProcessForChip(PjRtGlobalChipId chip_id) const {
+    return absl::UnimplementedError(
+        "ProcessIdAndIndexOnProcessForChip is unsupported.");
+  }
+
+  // Returns the process ID and the index on process for a logical device.
+  virtual absl::StatusOr<std::pair<PjRtProcessId, int>>
+  ProcessIdAndIndexOnProcessForLogicalDeviceOfDefaultType(
+      xla::PjRtGlobalDeviceId device_id) const {
+    return absl::UnimplementedError(
+        "ProcessIdAndIndexOnProcessForLogicalDeviceOfDefaultType is "
+        "unsupported.");
+  }
+
+  // Returns the coordinates of a process given its ID.
+  virtual absl::StatusOr<PjRtDeviceDimensions> ProcessCoordFromId(
+      PjRtProcessId process_id) const {
+    return absl::UnimplementedError("ProcessCoordForId is unsupported.");
+  }
+
+  // Returns the chip ID for a given chip coordinate.
+  virtual absl::StatusOr<PjRtGlobalChipId> ChipIdFromCoord(
+      const PjRtDeviceDimensions& chip) const {
+    return absl::UnimplementedError("IdForChip is unsupported.");
+  }
+
+  // Returns a unique integer ID for the logical device of the default type on
+  // the chip at the given coordinates and with the given core index.
+  virtual absl::StatusOr<xla::PjRtGlobalDeviceId>
+  LogicalDeviceOfDefaultTypeIdFromChipCoordAndCoreIndex(
+      const PjRtDeviceDimensions& chip, int core_index) const {
+    return absl::UnimplementedError(
+        "LogicalDeviceOfDefaultTypeIdFromChipCoordAndCoreIndex is "
+        "unsupported.");
+  }
+
+  // Returns the chip coordinates and core index of the logical device of the
+  // default type for the given unique device ID.
+  virtual absl::StatusOr<std::pair<PjRtDeviceDimensions, int32_t>>
+  ChipCoordAndCoreIndexForLogicalDeviceOfDefaultType(
+      xla::PjRtGlobalDeviceId device_id) const {
+    return absl::UnimplementedError(
+        "LogicalDeviceCoordsOfDefaultTypeForId is unsupported.");
+  }
+
+  // Returns the bounds of the chips within a single host.
+  // The product of all dimensions should equal to ChipsPerProcess().
+  virtual absl::StatusOr<PjRtDeviceDimensions> ChipsPerProcessBounds() const {
+    return absl::UnimplementedError("GetChipsPerProcessBounds is unsupported.");
+  }
+
+  // Returns the total bounds of all chips in the topology.
+  // The product of all dimensions should equal to ChipCount().
+  virtual absl::StatusOr<PjRtDeviceDimensions> ChipBounds() const {
+    return absl::UnimplementedError("ChipBounds is unsupported.");
+  }
+
+  // Returns the total bounds of all hosts in the topology.
+  // The product of all dimensions should equal to ProcessCount().
+  virtual absl::StatusOr<PjRtDeviceDimensions> ProcessBounds() const {
+    return absl::UnimplementedError("ProcessBounds is unsupported.");
   }
 
   // Serializes the topology for use in cache keys. (No guarantees on
@@ -149,7 +272,34 @@ class PjRtTopologyDescription {
   // "mhlo.layout_mode" attribute.
   virtual absl::StatusOr<Layout> GetDefaultLayout(
       PrimitiveType element_type, absl::Span<const int64_t> dims) const = 0;
+
+  virtual absl::StatusOr<PjRtTopologyDescriptionProto> ToProto() const {
+    return absl::UnimplementedError("ToProto is unsupported.");
+  }
+
+  // Returns a new `PjRtTopologyDescription` representing a subslice of the
+  // current topology, defined by `chips_per_host_bounds` and `host_bounds`.
+  virtual absl::StatusOr<std::unique_ptr<PjRtTopologyDescription>> Subslice(
+      const PjRtDeviceDimensions& chips_per_host_bounds,
+      const PjRtDeviceDimensions& host_bounds) const {
+    return absl::UnimplementedError("Subslice is not supported.");
+  }
 };
+
+// Returns true if it's TPU id.
+inline bool IsTpuId(PjRtPlatformId platform_id) {
+  return platform_id == xla::TpuId();
+}
+
+// Returns true if it's GPU id.
+inline bool IsGpuId(PjRtPlatformId platform_id) {
+  return platform_id == xla::CudaId() || platform_id == xla::RocmId();
+}
+
+// Returns true if it's CPU id.
+inline bool IsCpuId(PjRtPlatformId platform_id) {
+  return platform_id == xla::CpuId();
+}
 
 // Abstract interface that all registered compilers must implement.
 class PjRtCompiler {
@@ -166,6 +316,12 @@ class PjRtCompiler {
   virtual absl::StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
       CompileOptions options, mlir::ModuleOp module,
       const PjRtTopologyDescription& topology, PjRtClient* client) = 0;
+
+  virtual absl::StatusOr<std::unique_ptr<PjRtTopologyDescription>>
+  DeserializePjRtTopologyDescription(const std::string& serialized_topology) {
+    return absl::UnimplementedError(
+        "DeserializePjRtTopologyDescription is not implemented.");
+  }
 };
 
 // Registers a compiler to compile programs for 'platform_name'.
@@ -192,6 +348,93 @@ absl::StatusOr<std::unique_ptr<PjRtExecutable>> PjRtCompile(
 absl::StatusOr<std::unique_ptr<PjRtExecutable>> PjRtCompile(
     CompileOptions options, mlir::ModuleOp module,
     const PjRtTopologyDescription& topology, PjRtClient* client = nullptr);
+
+// Stores a compilation phase's compiler and validator functions.
+// This struct bundles the essential functional components required to define
+// a single phase within a multi-phase compilation pipeline. It is used by
+// PJRT plugins to register their custom compilation stages with the
+// `PjRtPhaseCompiler`.
+struct CompilationPhaseFunctions {
+  // `compiler`: A function that performs the core logic of a compilation phase.
+  // It accepts the global compilation `options`, a vector of
+  // `PjRtPartialProgramProto` representing input programs, and a
+  // `PjRtTopologyDescription` describing the target hardware. It transforms the
+  // input programs based on the phase's logic and returns a vector of
+  // `PjRtPartialProgramProto` or an error status if compilation fails.
+  std::function<absl::StatusOr<std::vector<PjRtPartialProgramProto>>(
+      CompileOptions, const std::vector<PjRtPartialProgramProto>&,
+      const PjRtTopologyDescription&)>
+      compiler;
+
+  // `validator`: A function that performs plugin-specific validation of the
+  // input programs for a given compilation phase. It takes a `std::vector` of
+  // `PjRtPartialProgramProto` as input and returns `absl::OkStatus()` if
+  // validation is successful; otherwise, it returns an `absl::Status`
+  // indicating the reason for failure (e.g., incompatible `program_format`).
+  std::function<absl::Status(const std::vector<PjRtPartialProgramProto>&)>
+      validator;
+};
+
+// PjRtPhaseCompiler is a specialized PjRtCompiler that supports multi-stage,
+// "phased" compilation. It allows plugins to register individual compilation
+// phases (PhaseCompiler and PhaseValidator functions) and manages their
+// execution.
+class PjRtPhaseCompiler : public PjRtCompiler {
+ public:
+  ~PjRtPhaseCompiler() override = default;
+
+  // Returns a vector of strings containing the names of all registered phases
+  // in the order they were registered.
+  virtual absl::StatusOr<std::vector<std::string>> GetPhaseNames();
+
+  // Compiles a set of input programs by running them through a specified
+  // sequence of compilation phases. This function internally calls
+  // `ValidatePhase` to trigger plugin-specific validation of input
+  // compatibility before invoking the appropriate phase compilers. The output
+  // of one phase is passed as input to the next. Returns the vector of
+  // `PjRtPartialProgramProto` objects resulting from the last executed phase,
+  // or an error status if any validation or compilation step fails.
+  virtual absl::StatusOr<std::vector<PjRtPartialProgramProto>> RunPhases(
+      CompileOptions options,
+      const std::vector<PjRtPartialProgramProto>& input_programs,
+      const PjRtTopologyDescription& topology,
+      const std::vector<std::string>& phases_to_run);
+
+  // Registers all compilation phases supported by this `PjRtPhaseCompiler`
+  // instance. Derived classes must override this method to register their
+  // supported compilation phases. This method is expected to be called during
+  // the initialization of the `PjRtPhaseCompiler` instance.
+  //
+  // Implementations of this method typically consist of a series of calls
+  // to the `RegisterPhase` method, where each call registers a specific
+  // compilation stage with its corresponding `compiler` and `validator`
+  // functions.
+  virtual absl::Status RegisterAllPhases() = 0;
+
+  // PhaseCompiler does not support topology deserialization for now.
+  absl::StatusOr<std::unique_ptr<PjRtTopologyDescription>>
+  DeserializePjRtTopologyDescription(
+      const std::string& serialized_topology) override {
+    return absl::UnimplementedError(
+        "DeserializePjRtTopologyDescription is not implemented.");
+  }
+
+ protected:
+  // Registers a new compilation phase with its corresponding compiler and
+  // validator functions encapsulated in a CompilationPhaseFunctions struct.
+  // The `phase_name` must be unique. The `compiler` and `validator` functions
+  // within the struct must not be null. The order of registered phase names is
+  // maintained.
+  absl::Status RegisterPhase(const std::string& phase_name,
+                             CompilationPhaseFunctions phase_functions);
+
+ private:
+  // Maps phase names to their corresponding compiler and validator functions.
+  absl::flat_hash_map<std::string, CompilationPhaseFunctions> phase_map_;
+
+  // The names of all registered phases in the order they were registered.
+  std::vector<std::string> phase_names_;
+};
 
 }  // namespace xla
 

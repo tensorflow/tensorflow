@@ -971,7 +971,7 @@ class ConvertConvDynamic : public OpRewritePattern<OpT> {
     switch (padding_type) {
       case tensorflow::Padding::VALID: {
         auto zero =
-            rewriter.create<arith::ConstantIntOp>(loc, 0, shape_scalar_type);
+            rewriter.create<arith::ConstantIntOp>(loc, shape_scalar_type, 0);
         *padding_low = *padding_high = zero;
         break;
       }
@@ -979,18 +979,18 @@ class ConvertConvDynamic : public OpRewritePattern<OpT> {
         break;
       case tensorflow::Padding::SAME: {
         auto zero =
-            rewriter.create<arith::ConstantIntOp>(loc, 0, shape_scalar_type);
+            rewriter.create<arith::ConstantIntOp>(loc, shape_scalar_type, 0);
         auto one =
-            rewriter.create<arith::ConstantIntOp>(loc, 1, shape_scalar_type);
+            rewriter.create<arith::ConstantIntOp>(loc, shape_scalar_type, 1);
         auto two =
-            rewriter.create<arith::ConstantIntOp>(loc, 2, shape_scalar_type);
+            rewriter.create<arith::ConstantIntOp>(loc, shape_scalar_type, 2);
         // See also the parallel implementation in
         // GetWindowedOutputSizeFromDimsV2. effective_filter_size = (filter_size
         // - 1) * dilation_rate + 1
         Value stride_value = rewriter.create<arith::ConstantIntOp>(
-            loc, stride, shape_scalar_type);
+            loc, shape_scalar_type, stride);
         Value dilation_rate_value = rewriter.create<arith::ConstantIntOp>(
-            loc, dilation_rate, shape_scalar_type);
+            loc, shape_scalar_type, dilation_rate);
         Value effective_filter_size_op = rewriter.create<arith::AddIOp>(
             loc, one,
             rewriter.create<arith::MulIOp>(
@@ -1071,8 +1071,8 @@ class ConvertConvDynamic : public OpRewritePattern<OpT> {
     auto shape_scalar_type = rewriter.getIntegerType(32);
 
     auto get_const = [&](int64_t val) {
-      return rewriter.create<mlir::arith::ConstantIntOp>(loc, val,
-                                                         shape_scalar_type);
+      return rewriter.create<mlir::arith::ConstantIntOp>(loc, shape_scalar_type,
+                                                         val);
     };
     auto get_dim_value = [&](Value val, int64_t dim) {
       Value dim_value = rewriter.create<tensor::DimOp>(loc, val, dim);
@@ -4822,7 +4822,7 @@ class ConvertConvBackpropInputOp : public OpRewritePattern<OpTy> {
         dilations_attr.template getValues<int64_t>().begin(),
         dilations_attr.template getValues<int64_t>().end()};
     auto strides_attr = GetI64ElementsAttr(op.getStrides());
-    std::vector<tensorflow::int32> strides{
+    std::vector<int32_t> strides{
         strides_attr.template getValues<int64_t>().begin(),
         strides_attr.template getValues<int64_t>().end()};
 
@@ -5022,7 +5022,7 @@ class ConvertConvBackpropFilterOp : public OpRewritePattern<OpTy> {
         dilations_attr.template getValues<int64_t>().begin(),
         dilations_attr.template getValues<int64_t>().end()};
     auto strides_attr = GetI64ElementsAttr(op.getStrides());
-    std::vector<tensorflow::int32> strides{
+    std::vector<int32_t> strides{
         strides_attr.template getValues<int64_t>().begin(),
         strides_attr.template getValues<int64_t>().end()};
 

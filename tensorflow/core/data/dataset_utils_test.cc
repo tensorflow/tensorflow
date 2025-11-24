@@ -24,6 +24,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "absl/strings/str_join.h"
 #include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/protobuf/error_codes.pb.h"
@@ -717,8 +718,6 @@ INSTANTIATE_TEST_SUITE_P(Test, GetOptimizationsTest,
                                            GetOptimizationTestCase4()));
 
 TEST(DeterministicOpsTest, GetOptimizations) {
-  // TODO(b/259305727): Re-enable for MacOS when the bug is fixed.
-#if !defined(__APPLE__)
   tsl::test::DeterministicOpsScope det_scope;
   Options options;
   // options.deterministic should be ignored when deterministic ops are enabled.
@@ -728,7 +727,6 @@ TEST(DeterministicOpsTest, GetOptimizations) {
   EXPECT_THAT(std::vector<string>(actual_enabled.begin(), actual_enabled.end()),
               ::testing::UnorderedElementsAreArray({"make_deterministic"}));
   EXPECT_EQ(actual_disabled.size(), 0);
-#endif
 }
 
 REGISTER_DATASET_EXPERIMENT("test_only_experiment",
@@ -762,17 +760,20 @@ TEST_F(DatasetOpsTestBase, TestVariantEqualityChecking) {
 
   Tensor scalar_1{DT_VARIANT, TensorShape({})};
   scalar_1.scalar<Variant>()() = TestVariant({CreateTensor<int64_t>({}, {1})});
-  EXPECT_THAT(ExpectEqual(scalar_0, scalar_1),
-              StatusIs(tsl::error::INTERNAL, HasSubstr("aren't equal")));
+  EXPECT_THAT(
+      ExpectEqual(scalar_0, scalar_1),
+      absl_testing::StatusIs(tsl::error::INTERNAL, HasSubstr("aren't equal")));
 
   Tensor nonscalar{DT_VARIANT, TensorShape({2})};
   EXPECT_THAT(ExpectEqual(nonscalar, nonscalar),
-              StatusIs(tsl::error::INTERNAL, HasSubstr("must be scalars")));
+              absl_testing::StatusIs(tsl::error::INTERNAL,
+                                     HasSubstr("must be scalars")));
 
   Tensor unsupported{DT_VARIANT, TensorShape({})};
   unsupported.scalar<Variant>()() = 0;
-  EXPECT_THAT(ExpectEqual(unsupported, unsupported),
-              StatusIs(tsl::error::INTERNAL, HasSubstr("types must be")));
+  EXPECT_THAT(
+      ExpectEqual(unsupported, unsupported),
+      absl_testing::StatusIs(tsl::error::INTERNAL, HasSubstr("types must be")));
 }
 
 }  // namespace

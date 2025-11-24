@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/base/call_once.h"
 #include "absl/container/fixed_array.h"
 #include "absl/status/status.h"
+#include "absl/synchronization/notification.h"
 #include "absl/time/time.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/criticality.h"
@@ -129,7 +130,8 @@ absl::Status ScheduleTaskWithoutCriticality(
 // 'env' in a loop until 'stop' is notified. Useful for allowing objects that
 // use the clock to be destroyed.
 std::unique_ptr<Thread> CreateFakeClockAdvancerThread(
-    test_util::FakeClockEnv* env, Notification* start, Notification* stop) {
+    test_util::FakeClockEnv* env, absl::Notification* start,
+    absl::Notification* stop) {
   return std::unique_ptr<Thread>(Env::Default()->StartThread(
       {}, "FakeClockAdvancerThread", [env, start, stop] {
         start->WaitForNotification();
@@ -502,13 +504,13 @@ TEST_P(
 TEST_P(SharedBatchSchedulerTest, ObeyBatchSizeConstraint) {
   // Set up a fake clock, which only advances when we explicitly tell it to.
   test_util::FakeClockEnv env(Env::Default());
-  Notification start_teardown, stop_teardown;
+  absl::Notification start_teardown, stop_teardown;
   std::unique_ptr<Thread> teardown_thread =
       CreateFakeClockAdvancerThread(&env, &start_teardown, &stop_teardown);
   // Set up a callback that captures the batches' task sizes.
   mutex mu;
   std::vector<std::vector<size_t>> callback_data;
-  Notification all_batches_processed;
+  absl::Notification all_batches_processed;
   auto callback = [&mu, &callback_data, &all_batches_processed](
                       std::unique_ptr<Batch<FakeTask>> batch) {
     ASSERT_TRUE(batch->IsClosed());
@@ -585,12 +587,12 @@ TEST_P(SharedBatchSchedulerTest, ObeyBatchSizeConstraint) {
 TEST_P(SharedBatchSchedulerTest, ObeysTimeout) {
   // Set up a fake clock, which only advances when we explicitly tell it to.
   test_util::FakeClockEnv env(Env::Default());
-  Notification start_teardown, stop_teardown;
+  absl::Notification start_teardown, stop_teardown;
   std::unique_ptr<Thread> teardown_thread =
       CreateFakeClockAdvancerThread(&env, &start_teardown, &stop_teardown);
 
   {
-    Notification first_batch_processed, second_batch_processed,
+    absl::Notification first_batch_processed, second_batch_processed,
         third_batch_processed;
     bool notify_first_batch = false, notify_second_batch = false,
          notify_third_batch = false;
@@ -657,7 +659,7 @@ TEST_P(SharedBatchSchedulerTest, ObeysTimeout) {
 }
 
 TEST_P(SharedBatchSchedulerTest, ObeysTimeoutWithRealClock) {
-  Notification first_batch_processed, second_batch_processed;
+  absl::Notification first_batch_processed, second_batch_processed;
   auto callback = [&first_batch_processed, &second_batch_processed](
                       std::unique_ptr<Batch<FakeTask>> batch) {
     ASSERT_TRUE(batch->IsClosed());
@@ -695,12 +697,12 @@ TEST_P(SharedBatchSchedulerTest,
        WithZeroTimeoutBatchesScheduledAsSoonAsThreadIsAvailable) {
   // Set up a fake clock, and never advance the time.
   test_util::FakeClockEnv env(Env::Default());
-  Notification start_teardown, stop_teardown;
+  absl::Notification start_teardown, stop_teardown;
   std::unique_ptr<Thread> teardown_thread =
       CreateFakeClockAdvancerThread(&env, &start_teardown, &stop_teardown);
 
   {
-    Notification first_batch_processed, second_batch_processed;
+    absl::Notification first_batch_processed, second_batch_processed;
     auto callback = [&first_batch_processed, &second_batch_processed](
                         std::unique_ptr<Batch<FakeTask>> batch) {
       ASSERT_TRUE(batch->IsClosed());
@@ -739,13 +741,13 @@ TEST_P(SharedBatchSchedulerTest,
 
 TEST_P(SharedBatchSchedulerTest, Fairness) {
   test_util::FakeClockEnv env(Env::Default());
-  Notification start_teardown, stop_teardown;
+  absl::Notification start_teardown, stop_teardown;
   std::unique_ptr<Thread> teardown_thread =
       CreateFakeClockAdvancerThread(&env, &start_teardown, &stop_teardown);
 
   {
-    Notification queue_0_first_batch_scheduled, queue_0_first_batch_proceed,
-        queue_0_second_batch_scheduled;
+    absl::Notification queue_0_first_batch_scheduled,
+        queue_0_first_batch_proceed, queue_0_second_batch_scheduled;
     auto queue_0_callback = [&queue_0_first_batch_scheduled,
                              &queue_0_first_batch_proceed,
                              &queue_0_second_batch_scheduled](
@@ -758,7 +760,8 @@ TEST_P(SharedBatchSchedulerTest, Fairness) {
       }
     };
 
-    Notification queue_1_first_batch_scheduled, queue_1_first_batch_proceed;
+    absl::Notification queue_1_first_batch_scheduled,
+        queue_1_first_batch_proceed;
     auto queue_1_callback =
         [&queue_1_first_batch_scheduled,
          &queue_1_first_batch_proceed](std::unique_ptr<Batch<FakeTask>> batch) {
@@ -806,7 +809,7 @@ TEST_P(SharedBatchSchedulerTest, Fairness) {
 
 TEST_P(SharedBatchSchedulerTest, ConstMethods) {
   for (const int max_enqueued_batches : {1, 2, 5}) {
-    Notification processing, proceed;
+    absl::Notification processing, proceed;
     auto callback = [&processing,
                      &proceed](std::unique_ptr<Batch<FakeTask>> batch) {
       if (!processing.HasBeenNotified()) {
@@ -850,11 +853,11 @@ TEST_P(SharedBatchSchedulerTest, ConstMethods) {
     EXPECT_EQ(0, queue->SchedulingCapacity());
 
     // Attempting to enqueue one more task should yield an UNAVAILABLE error.
-    EXPECT_THAT(
-        ScheduleTask(1, queue.get()),
-        testing::StatusIs(error::UNAVAILABLE,
-                          HasSubstr("The batch scheduling queue to which this "
-                                    "task was submitted is full")));
+    EXPECT_THAT(ScheduleTask(1, queue.get()),
+                absl_testing::StatusIs(
+                    error::UNAVAILABLE,
+                    HasSubstr("The batch scheduling queue to which this "
+                              "task was submitted is full")));
 
     EXPECT_EQ(max_enqueued_batches * 2, queue->NumEnqueuedTasks());
     EXPECT_EQ(0, queue->SchedulingCapacity());
@@ -864,7 +867,7 @@ TEST_P(SharedBatchSchedulerTest, ConstMethods) {
 }
 
 TEST_P(SharedBatchSchedulerTest, OneFullQueueDoesntBlockOtherQueues) {
-  Notification queue_0_processing, queue_0_proceed;
+  absl::Notification queue_0_processing, queue_0_proceed;
   auto queue_0_callback = [&queue_0_processing, &queue_0_proceed](
                               std::unique_ptr<Batch<FakeTask>> batch) {
     if (!queue_0_processing.HasBeenNotified()) {
@@ -873,8 +876,8 @@ TEST_P(SharedBatchSchedulerTest, OneFullQueueDoesntBlockOtherQueues) {
     }
   };
 
-  Notification queue_1_first_batch_processed, queue_1_second_batch_processed,
-      queue_1_third_batch_processed;
+  absl::Notification queue_1_first_batch_processed,
+      queue_1_second_batch_processed, queue_1_third_batch_processed;
   auto queue_1_callback =
       [&queue_1_first_batch_processed, &queue_1_second_batch_processed,
        &queue_1_third_batch_processed](std::unique_ptr<Batch<FakeTask>> batch) {
@@ -926,15 +929,15 @@ TEST_P(SharedBatchSchedulerTest, OneFullQueueDoesntBlockOtherQueues) {
 
 TEST_P(SharedBatchSchedulerTest, QueueDestructorBlocksUntilAllTasksProcessed) {
   test_util::FakeClockEnv env(Env::Default());
-  Notification start_teardown, stop_teardown;
+  absl::Notification start_teardown, stop_teardown;
   std::unique_ptr<Thread> teardown_thread =
       CreateFakeClockAdvancerThread(&env, &start_teardown, &stop_teardown);
 
   {
     int current_batch = 0;
-    Notification first_callback_started;
+    absl::Notification first_callback_started;
     const int kMaxEnqueuedBatches = 3;
-    std::vector<Notification> callback_proceed(kMaxEnqueuedBatches);
+    std::vector<absl::Notification> callback_proceed(kMaxEnqueuedBatches);
     auto callback =
         [&current_batch, &first_callback_started,
          &callback_proceed](std::unique_ptr<Batch<FakeTask>> batch) {
@@ -970,7 +973,7 @@ TEST_P(SharedBatchSchedulerTest, QueueDestructorBlocksUntilAllTasksProcessed) {
 
     // Destroy the queue. The destructor should block until all tasks have been
     // processed.
-    Notification destroy_queue_thread_started, queue_destroyed;
+    absl::Notification destroy_queue_thread_started, queue_destroyed;
     std::unique_ptr<Thread> destroy_queue_thread(Env::Default()->StartThread(
         {}, "DestroyQueueThread",
         [&queue, &destroy_queue_thread_started, &queue_destroyed] {
@@ -1012,8 +1015,8 @@ TEST_P(SharedBatchSchedulerTest, ZeroQueueRewrittenToOneQueue) {
                                 batch_timeout_micros, max_enqueued_batches,
                                 enable_input_batch_split(), get_split_func()),
                             callback, &queue),
-        testing::StatusIs(error::INVALID_ARGUMENT,
-                          "max_enqueued_batches must be positive; was 0"));
+        absl_testing::StatusIs(error::INVALID_ARGUMENT,
+                               "max_enqueued_batches must be positive; was 0"));
   } else {
     TF_ASSERT_OK(
         scheduler->AddQueue(tensorflow::serving::CreateQueueOptions(
@@ -1028,13 +1031,13 @@ TEST_P(SharedBatchSchedulerTest, ZeroQueueRewrittenToOneQueue) {
 TEST_P(SharedBatchSchedulerTest, BatchPaddingPolicyBatchDown) {
   // Set up a fake clock, which only advances when we explicitly tell it to.
   test_util::FakeClockEnv env(Env::Default());
-  Notification start_teardown, stop_teardown;
+  absl::Notification start_teardown, stop_teardown;
   std::unique_ptr<Thread> teardown_thread =
       CreateFakeClockAdvancerThread(&env, &start_teardown, &stop_teardown);
 
   {
-    Notification first_batch_processed;
-    Notification second_batch_processed;
+    absl::Notification first_batch_processed;
+    absl::Notification second_batch_processed;
     auto callback = [&](std::unique_ptr<Batch<FakeTask>> batch) {
       if (!first_batch_processed.HasBeenNotified()) {
         // This is the main expectation of the test.
@@ -1143,7 +1146,7 @@ TEST_P(SharedBatchSchedulerPriorityTest,
     EXPECT_THAT(
         ScheduleTask(10, queue.get(),
                      tsl::criticality::Criticality::kSheddablePlus),
-        testing::StatusIs(
+        absl_testing::StatusIs(
             absl::StatusCode::kUnavailable,
             HasSubstr(
                 "The low priority task queue to which this task was submitted "
@@ -1154,7 +1157,7 @@ TEST_P(SharedBatchSchedulerPriorityTest,
 
 TEST_P(SharedBatchSchedulerPriorityTest,
        InvalidLowPriorityTaskWithQueueFullWithPriorityQueueEnabledNew) {
-  Notification processing, proceed;
+  absl::Notification processing, proceed;
   auto queue_callback = [&processing, &proceed](
                             std::unique_ptr<Batch<FakeTask>> batch,
                             std::vector<std::unique_ptr<FakeTask>> tasks) {
@@ -1199,7 +1202,7 @@ TEST_P(SharedBatchSchedulerPriorityTest,
   EXPECT_THAT(
       ScheduleTask(1, queue.get(),
                    tsl::criticality::Criticality::kSheddablePlus),
-      testing::StatusIs(
+      absl_testing::StatusIs(
           absl::StatusCode::kUnavailable,
           HasSubstr("The low priority task queue to which this task was "
                     "submitted does not have the capacity to handle this task; "
@@ -1640,11 +1643,11 @@ TEST_P(SharedBatchSchedulerPriorityPolicyTest,
   // scheduled after the timeout has elapsed.
 
   test_util::FakeClockEnv env(Env::Default());
-  Notification start_teardown, stop_teardown;
+  absl::Notification start_teardown, stop_teardown;
   std::unique_ptr<Thread> teardown_thread =
       CreateFakeClockAdvancerThread(&env, &start_teardown, &stop_teardown);
 
-  Notification first_batch_processed;
+  absl::Notification first_batch_processed;
   int queue_callback_counter = 0;
   auto queue_callback = [&queue_callback_counter, &first_batch_processed](
                             std::unique_ptr<Batch<FakeTask>> batch,
@@ -1698,11 +1701,11 @@ TEST_P(SharedBatchSchedulerPriorityPolicyTest,
   // scheduled after the timeout has elapsed.
 
   test_util::FakeClockEnv env(Env::Default());
-  Notification start_teardown, stop_teardown;
+  absl::Notification start_teardown, stop_teardown;
   std::unique_ptr<Thread> teardown_thread =
       CreateFakeClockAdvancerThread(&env, &start_teardown, &stop_teardown);
 
-  Notification first_batch_processed;
+  absl::Notification first_batch_processed;
   int queue_callback_counter = 0;
   auto queue_callback = [&queue_callback_counter, &first_batch_processed](
                             std::unique_ptr<Batch<FakeTask>> batch,
@@ -1756,11 +1759,11 @@ TEST_P(SharedBatchSchedulerPriorityPolicyTest,
   // scheduled immediately if the max_execution_batch_size is hit.
 
   test_util::FakeClockEnv env(Env::Default());
-  Notification start_teardown, stop_teardown;
+  absl::Notification start_teardown, stop_teardown;
   std::unique_ptr<Thread> teardown_thread =
       CreateFakeClockAdvancerThread(&env, &start_teardown, &stop_teardown);
 
-  Notification first_batch_processed;
+  absl::Notification first_batch_processed;
   auto queue_callback = [&first_batch_processed](
                             std::unique_ptr<Batch<FakeTask>> batch,
                             std::vector<std::unique_ptr<FakeTask>> tasks) {
@@ -1808,11 +1811,11 @@ TEST_P(SharedBatchSchedulerPriorityPolicyTest,
   // scheduled immediately if the max_execution_batch_size is hit.
 
   test_util::FakeClockEnv env(Env::Default());
-  Notification start_teardown, stop_teardown;
+  absl::Notification start_teardown, stop_teardown;
   std::unique_ptr<Thread> teardown_thread =
       CreateFakeClockAdvancerThread(&env, &start_teardown, &stop_teardown);
 
-  Notification first_batch_processed;
+  absl::Notification first_batch_processed;
   auto queue_callback = [&first_batch_processed](
                             std::unique_ptr<Batch<FakeTask>> batch,
                             std::vector<std::unique_ptr<FakeTask>> tasks) {
@@ -1862,11 +1865,11 @@ TEST_P(SharedBatchSchedulerPriorityPolicyTest,
   // will be concatenated together.
 
   test_util::FakeClockEnv env(Env::Default());
-  Notification start_teardown, stop_teardown;
+  absl::Notification start_teardown, stop_teardown;
   std::unique_ptr<Thread> teardown_thread =
       CreateFakeClockAdvancerThread(&env, &start_teardown, &stop_teardown);
 
-  Notification first_batch_processed;
+  absl::Notification first_batch_processed;
   int queue_callback_counter = 0;
   auto queue_callback = [&queue_callback_counter, &first_batch_processed](
                             std::unique_ptr<Batch<FakeTask>> batch,
@@ -1926,11 +1929,11 @@ TEST_P(SharedBatchSchedulerPriorityPolicyTest,
   // will be concatenated together.
 
   test_util::FakeClockEnv env(Env::Default());
-  Notification start_teardown, stop_teardown;
+  absl::Notification start_teardown, stop_teardown;
   std::unique_ptr<Thread> teardown_thread =
       CreateFakeClockAdvancerThread(&env, &start_teardown, &stop_teardown);
 
-  Notification first_batch_processed;
+  absl::Notification first_batch_processed;
   int queue_callback_counter = 0;
   auto queue_callback = [&queue_callback_counter, &first_batch_processed](
                             std::unique_ptr<Batch<FakeTask>> batch,
@@ -1988,11 +1991,11 @@ TEST_P(SharedBatchSchedulerPriorityPolicyTest,
   // priority inputs to form a complete batch, it will be scheduled immediately.
 
   test_util::FakeClockEnv env(Env::Default());
-  Notification start_teardown, stop_teardown;
+  absl::Notification start_teardown, stop_teardown;
   std::unique_ptr<Thread> teardown_thread =
       CreateFakeClockAdvancerThread(&env, &start_teardown, &stop_teardown);
 
-  Notification first_batch_processed;
+  absl::Notification first_batch_processed;
   auto queue_callback = [&first_batch_processed](
                             std::unique_ptr<Batch<FakeTask>> batch,
                             std::vector<std::unique_ptr<FakeTask>> tasks) {
@@ -2049,11 +2052,11 @@ TEST_P(SharedBatchSchedulerPriorityPolicyTest,
   // max execution batch size will be scheduled later.
 
   test_util::FakeClockEnv env(Env::Default());
-  Notification start_teardown, stop_teardown;
+  absl::Notification start_teardown, stop_teardown;
   std::unique_ptr<Thread> teardown_thread =
       CreateFakeClockAdvancerThread(&env, &start_teardown, &stop_teardown);
 
-  Notification first_batch_processed, second_batch_processed;
+  absl::Notification first_batch_processed, second_batch_processed;
   int queue_callback_counter = 0;
   auto queue_callback = [this, &queue_callback_counter, &first_batch_processed,
                          &second_batch_processed](
@@ -2136,7 +2139,7 @@ TEST_P(SharedBatchSchedulerPriorityPolicyTest,
   // order the processing of batches.
 
   test_util::FakeClockEnv env(Env::Default());
-  Notification start_teardown, stop_teardown;
+  absl::Notification start_teardown, stop_teardown;
   std::unique_ptr<Thread> teardown_thread =
       CreateFakeClockAdvancerThread(&env, &start_teardown, &stop_teardown);
 
@@ -2147,7 +2150,7 @@ TEST_P(SharedBatchSchedulerPriorityPolicyTest,
   - Queue 2 (low pri, time = 1)
   - Queue 1 (low pri, time = 2)
   */
-  Notification last_batch_processed;
+  absl::Notification last_batch_processed;
   int queue_callback_counter = 0;
   auto queue_callback1 = [&queue_callback_counter, &last_batch_processed](
                              std::unique_ptr<Batch<FakeTask>> batch,
@@ -2263,11 +2266,11 @@ TEST_P(SharedBatchSchedulerPriorityPolicyTest, PriorityMergedRankingFullBatch) {
   // full one).
 
   test_util::FakeClockEnv env(Env::Default());
-  Notification start_teardown, stop_teardown;
+  absl::Notification start_teardown, stop_teardown;
   std::unique_ptr<Thread> teardown_thread =
       CreateFakeClockAdvancerThread(&env, &start_teardown, &stop_teardown);
 
-  Notification first_batch_processed;
+  absl::Notification first_batch_processed;
   int queue_callback_counter = 0;
   auto queue_callback1 = [&queue_callback_counter, &first_batch_processed](
                              std::unique_ptr<Batch<FakeTask>> batch,
@@ -2387,7 +2390,7 @@ void CreateQueues() {
          std::vector<std::unique_ptr<FakeTask>>* output_tasks) -> absl::Status {
     output_tasks->push_back(std::move(*input_task));
 
-    Notification notify;
+    absl::Notification notify;
     std::thread busy_waiter([&] {
       while (!notify.HasBeenNotified()) {
       }
@@ -2439,8 +2442,8 @@ void BM_QueueSchedule(::testing::benchmark::State& state) {
   const int queue_index = state.range(1);
   Queue* queue = (*queues)[queue_index].get();
 
-  const string label = strings::StrCat(state.threads(), "-Threads",
-                                       (*queue_labels)[queue_index]);
+  const std::string label =
+      absl::StrCat(state.threads(), "-Threads", (*queue_labels)[queue_index]);
   state.SetLabel(label);
   for (auto s : state) {
     for (int i = 0; i < state.range(0); i++) {

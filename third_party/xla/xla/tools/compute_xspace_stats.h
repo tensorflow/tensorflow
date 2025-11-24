@@ -31,6 +31,7 @@ struct GpuDeviceStats {
   double device_time_us = 0.0;
   double device_memcpy_time_us = 0.0;
   double wall_time_us = 0.0;
+  int64_t peak_memory_usage_bytes = 0;
 };
 
 struct CpuStats {

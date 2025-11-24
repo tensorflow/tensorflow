@@ -157,6 +157,63 @@ enum PrimitiveType {
 //   https://www.tensorflow.org/code/tensorflow/compiler/xla/tools/driver.cc
 // )
 
+// In XLA:GPU we use different streams for different kinds of collective
+// operations, and include the async stream kind into the GPU clique key.
+//
+// We carefully isolate different kinds of collectives using separate
+// communicators and guarantee that all collective operations have a total order
+// that will not create a deadlock.
+enum AsyncStreamKind {
+  // Stream for asynchronous collective ops.
+  ASYNC_STREAM_KIND_COLLECTIVE = 0;
+  // One Stream for P2P Send and Recv ops.
+  ASYNC_STREAM_KIND_P2P0 = 1;
+  // Another Stream for P2P Send and Recv ops.
+  ASYNC_STREAM_KIND_P2P1 = 2;
+  // Stream for MemCpyP2P
+  ASYNC_STREAM_KIND_MEMCPYP2P = 3;
+}
+
+// There are broadly 4 modes that collective communication ops use to describe
+// which sets of devices are participating with a given device in the operation.
+// These modes are determined by the values of channel_id (optional) and
+// use_global_device_ids (optional). The modes are as follows:
+//
+// kCrossReplica:
+//    implied by: no channel id, use_global_device_ids = false, or
+//                no channel_id, no use_global_device_ids:
+//    replica_groups contain replica_id, group contains all replicas for the
+//    current partition
+//
+// kCrossPartition:
+//    implied by: channel_id is set, no use_global_device_ids:
+//    replica_groups contain partition_id, group contains all partitions for the
+//    current replica.
+//
+// kCrossReplicaAndPartition:
+//    implied by: channel_id is set, use_global_device_ids = false:
+//    replica_groups contain replica_id, group contains all replicas for all
+//    partitions (as opposed to just current partition).
+//
+// kFlattenedID:
+//    implied by: channel_id is set, use_global_device_ids = true:
+//    replica_groups contain flattened-ids, group contains devices that are
+//    listed in the flattened-id list.
+//
+// Rest of the combinations are invalid.
+//
+// Since the actual value of channel_id does not matter, we use a bool argument
+// `has_channel_id`, and optional<bool> for use_global_device_ids.
+// Note that use_global_device_ids true requires channel_id to be set as well.
+// Additionally, if use_global_device_ids = true, replica groups cannot be
+// empty (verified in the HLO verifier).
+enum CollectiveOpGroupMode {
+  COLLECTIVE_OP_GROUP_MODE_CROSS_REPLICA = 0;
+  COLLECTIVE_OP_GROUP_MODE_CROSS_PARTITION = 1;
+  COLLECTIVE_OP_GROUP_MODE_CROSS_REPLICA_AND_PARTITION = 2;
+  COLLECTIVE_OP_GROUP_MODE_FLATTENED_ID = 3;
+}
+
 // Describes the padding configuration for Pad operation. The padding amount on
 // both edges as well as between the elements are specified for each dimension.
 message PaddingConfig {
@@ -407,6 +464,22 @@ enum CompilationEvent {
   COMPILATION_EVENT_RECOMPILATION = 2;
 }
 
+// The type of profile generation strategy used to generate the profile.
+enum ProfileGenerationStrategy {
+  PROFILE_GENERATION_STRATEGY_UNKNOWN = 0;
+  PROFILE_GENERATION_STRATEGY_GA = 1;
+  PROFILE_GENERATION_STRATEGY_FANTA = 2;
+  PROFILE_GENERATION_STRATEGY_CFO = 3;
+  // The profile was generated using exhaustive search.
+  PROFILE_GENERATION_STRATEGY_EXHAUSTIVE = 4;
+  // The profile was generated using a learned cost model with a GNN
+  // architecture.
+  PROFILE_GENERATION_STRATEGY_LCM_GNN = 5;
+  // The profile was generated using a learned cost model with a MOE
+  // architecture.
+  PROFILE_GENERATION_STRATEGY_LCM_MOE = 6;
+}
+
 // Symbolization metadata for HLO Instructions.
 //
 // This metadata is used for debugging XLA code generation, as well as
@@ -430,6 +503,9 @@ message OpMetadata {
   // e.g. it could be the file and line of user code that generated the op.
   string source_file = 3;
   int32 source_line = 4;
+  int32 source_end_line = 17;
+  int32 source_column = 18;
+  int32 source_end_column = 19;
 
   // Deprecated, use [ProfileInfo][profile_type] instead.
   repeated ProfileType profile_type = 5 [deprecated = true];
@@ -457,6 +533,8 @@ message OpMetadata {
     ProfileSource profile_source = 3;
     // The compilation event that triggered the use of the profiles.
     CompilationEvent compilation_event = 4;
+    // The type of profile generation strategy used to generate the profile.
+    ProfileGenerationStrategy profile_generation_strategy = 5;
   }
 
   // Profile information for the Op.
@@ -806,36 +884,6 @@ message RaggedDotDimensionNumbers {
   repeated int64 rhs_group_dimensions = 3;
 }
 
-enum SparsityType {
-  SPARSITY_INVALID = 0;
-
-  // Structured N:M sparsity.
-  SPARSITY_STRUCTURED_N_M = 1;
-
-  // Next: 2
-}
-
-// Contains sparsity metadata for a sparse dot operation.
-// The only supported type atm is structured 2:4 sparsity, which is natively
-// supported on NVidia GPUs.
-// Restrictions:
-// - only one operand of the dot operation may be sparse;
-// - only the contracting dimension may be sparse.
-message SparsityDescriptor {
-  SparsityType type = 1;
-
-  // Sparse operand index (0 or 1).
-  int32 index = 2;
-  // Sparse dimension number.
-  int32 dimension = 3;
-
-  // Structured N:M sparsity (N < M).
-  int32 n = 4;
-  int32 m = 5;
-
-  // Next: 6
-}
-
 enum RandomDistribution {
   RNG_INVALID = 0;
 
@@ -911,6 +959,124 @@ message StatisticsViz {
   repeated Statistic statistics = 2;
 }
 
+// A mesh is a list of axes and an optional list of device IDs specifying the
+// device ordering.
+
+// If the list of axes is empty
+//   - If the `device_ids` is not provided, it is an empty mesh.
+//   - If the `device_ids` is provided, it must be a single non-negative
+//     integer, we call it a **maximal-sharding mesh**.
+
+// If the list of axes is provided
+//   - If a device ID list is specified, the product of the axis sizes should
+//     match the number of devices.
+//   - If a device ID list is not specified, the implicit device ID list is
+//     iota(product(axes)). For simplicity, we also disallow specifying a
+//     device ID list that is the same as iota(product(axes)); in this case, a
+//     device ID list shouldn't be specified.
+//   - It is not a maximal-sharding mesh even if the total size of axes is 1.
+
+// Here are some examples of meshes:
+
+// - An empty mesh represents a placeholder mesh that can be replaced during
+//   propagation: <[]>
+// - A mesh without axes list and a single non-negative device ID, which is a
+//   maximal-sharding mesh: <[], device_ids=[3]>
+// - A mesh with two axes and implicit device IDs iota(6): <["a"=2, "b"=3]>
+// - A mesh with two axes and explicit device IDs specifying the device
+//   ordering: <["a"=3, "b"=2], device_ids=[0, 2, 4, 1, 3, 5]>
+
+// **Constraints:**
+// - Elements in `device_ids` should be non-negative.
+// - If `axes` is empty, the size of `device_ids` can be 0 (empty mesh) or 1
+//   (maximal-sharding mesh).
+// - If `axes` is not empty,
+//     - Elements in `axes` must not have duplicate names.
+//     - If `device_ids` is specified, the original `device_ids` is not
+//       `iota(product(axis_sizes))` and the sorted `device_ids` is
+//       `iota(product(axis_sizes))`.
+message MeshProto {
+  message MeshAxis {
+    string name = 1;
+    int64 size = 2;
+  }
+
+  repeated MeshAxis axes = 1;
+  repeated int64 device_ids = 2;
+}
+
+// Reference to either a full axis via index into Mesh axes or a split
+// sub-axis. Axis index is used to reference the axis in the mesh instead of
+// axis name to reduce proto size.
+//
+// Constraints:
+// - `mesh_axis_index` is a valid index into `mesh.axes`.
+message AxisRefProto {
+  // When splitting a full axis into n sub-axes, the axis is reshaped into
+  // [k_1,...,k_n], and the ith sub-axis can be expressed by the product of
+  // all axis sizes to its left `m=prod(k_1,...,k_(i-1))` (aka pre-size) and
+  // size k_i. Therefore, the sub-axis-info attribute holds those two numbers
+  // and is denoted as follows: `(m)k` for pre-size m and size k.
+  //
+  // Constraints:
+  // - `pre-size` is at least 1.
+  // - `size` is greater than 1.
+  // - `pre-size` must divide the size of the full axis, i.e., both `pre-size`
+  //    and `size` divide the size of the full axis, and the sub-axis doesn't
+  //    go beyond the full axis.
+  // - The size of the sub-axis isn't equal to the size of the corresponding
+  //   full axis, in which case the full axis should be used instead.
+  message SubAxis {
+    int64 pre_size = 1;
+    int64 size = 2;
+  }
+
+  int64 mesh_axis_index = 1;
+  optional SubAxis sub_axis_info = 2;
+}
+
+// A NamedSharding is bound to a specific mesh, and can only reference axis
+// names from that mesh. The dimension shardings tell us for each dimension of
+// the tensor, along which axes it is sharded from major to minor. All other
+// axes that don’t shard a dimension are either implicitly or explicitly (if
+// they appear in the list of replicated axes) replicated. A sharding can have
+// unreduced axes (specified by `unreduced_axes`), meaning the tensor is
+// unreduced along these axes. Note that no sharding attribute on a tensor is
+// equivalent to a fully open sharding.
+// This is corresponding to mlir sharding representation `Sdy_TensorSharding`
+// (https://github.com/openxla/shardy/blob/main/shardy/dialect/sdy/ir/attrs.td)
+// used in Shardy.
+message NamedShardingProto {
+  // Describes how a tensor dimension is sharded using indices into
+  // mesh.axes, from major to minor, and a boolean indicating whether
+  // the dimension can be further sharded.
+  message DimensionSharding {
+    // List of axes to shard a tensor dimension on from major to minor. The
+    // dimension should have at least one axis if it is closed.
+    repeated AxisRefProto axes = 1;
+    // If true, this dimension is "closed" and can't be further sharded.
+    bool is_closed = 2;
+  }
+
+  MeshProto mesh = 2;
+  // The dimension shardings tell us for each dimension of the tensor, along
+  // which axes it is sharded from major to minor.
+  repeated DimensionSharding dim_shardings = 3;
+  // All axes in this list are explicitly replicated.
+  repeated AxisRefProto replicated_axes = 4;
+  // A sharding can have unreduced axes, meaning the tensor is unreduced
+  // along these axes.
+  repeated AxisRefProto unreduced_axes = 5;
+
+  // This field is used to track the source of this sharding, usually derived
+  // from instructions. Multple metadata may be populated if sharding is
+  // combined with other shardings. Metadata should be set on individual tuple
+  // elements and not tuple_sharding.
+  repeated OpMetadata metadata = 6;
+
+  reserved 1;
+}
+
 // LINT.IfChange
 message OpSharding {
   enum Type {
@@ -929,6 +1095,8 @@ message OpSharding {
     // This sharding is a placeholder sharding with lowest precedence, it can be
     // overwriten by any other shardings.
     UNKNOWN = 5;
+    // This op is unreduced: its outputs will not be combined via an all-reduce.
+    UNREDUCED = 6;
   }
   Type type = 1;
   // The shape of the sharded tile.
@@ -996,6 +1164,23 @@ message OpSharding {
   }
 
   ShardGroupType shard_group_type = 13;
+
+  // Optional field to migrate OpSharding to new NamedSharding representation.
+  // If this field is populated, all other fields in OpSharding should be empty
+  // or else are ignored. This is to facilitate migration from the old sharding
+  // format.
+  //
+  // Note that for tuple NamedShardings, we reuse HloSharding's tuple_elements_
+  // field. If named sharding format is enabled each element in tuple_elements_
+  // will be an HloSharding, which itself can be a tuple or should only have
+  // named_sharding_ populated. This approach is taken to maintain backward
+  // compatibility with the existing `tuple_elements()` method, which provides a
+  // modifiable reference to a `std::vector<HloSharding>`.
+  //
+  // Note that instead of reusing OpSharding's fields like metadata, we have
+  // separate fields in NamedSharding to treat it as a standalone message which
+  // is more clear and will help in future cleanup.
+  optional NamedShardingProto named_sharding = 14;
 }
 // LINT.ThenChange()
 
@@ -1005,6 +1190,19 @@ message ReplicaGroup {
   // The ids of the replicas that belongs to the same group. The ordering of the
   // ids matters in some ops (e.g., all-to-all).
   repeated int64 replica_ids = 1;
+}
+
+// Represents a list of replica groups (a list of list of devices) via a mesh
+// and list of axes. The replica groups correspond to the partitions of the
+// device ids which would arise if a collective operation was performed over the
+// specified axes.
+message MeshAxesReplicaGroupListProto {
+  // The mesh used to define the full set of axes and devices ids.
+  MeshProto mesh = 1;
+  // The axes defining the replica groups. These groups are implicitly defined
+  // by the device ids which would communicate together if a collective
+  // operation is performed over these axes.
+  repeated AxisRefProto axes = 2;
 }
 
 // Represents a list of replica groups (a list of list of devices) with
@@ -1195,15 +1393,21 @@ message OutputOperandAliasing {
   repeated int64 operand_shape_index = 3;
 }
 
-message OriginalTensorProto {
-  repeated int64 leaf_shape_index = 1;
-  string instruction_name = 2;
-  repeated int64 shape_index = 3;
+message OriginalArrayProto {
+  string instruction_name = 1;
+  repeated int64 shape_index = 2;
+}
+
+message OriginalValueElementProto {
+  repeated int64 shape_index = 1;
+  OriginalArrayProto original_array = 2;
 }
 
 message OriginalValueProto {
-  ShapeProto shape = 1;
-  repeated OriginalTensorProto leaves = 2;
+  repeated OriginalValueElementProto elements = 1;
+  // If true, the annotated instruction is a synthetic call and elements should
+  // be ignored.
+  bool is_synthetic_call = 2;
 }
 
 message GemmPerfTableEntry {

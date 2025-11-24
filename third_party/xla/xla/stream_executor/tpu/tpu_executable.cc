@@ -83,7 +83,7 @@ static SE_ExecutableRunOptions ToC(
 
 }  // namespace ApiConverter
 
-namespace xla {
+namespace xla::legacy {
 
 using ::stream_executor::tpu::ExecutorApiFn;
 
@@ -227,4 +227,4 @@ absl::StatusOr<std::unique_ptr<TpuExecutable>> TpuExecutable::Deserialize(
   return std::make_unique<TpuExecutable>(se_executable, std::move(hlo_module));
 }
 
-}  // namespace xla
+}  // namespace xla::legacy

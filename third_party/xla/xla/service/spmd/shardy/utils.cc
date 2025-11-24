@@ -19,10 +19,13 @@ limitations under the License.
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 
+#include "mhlo/IR/register.h"
 #include "absl/log/check.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/MapVector.h"
 #include "llvm/ADT/STLExtras.h"
@@ -33,16 +36,23 @@ limitations under the License.
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributes.h"
+#include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Operation.h"
 #include "mlir/IR/PatternMatch.h"
+#include "mlir/IR/SymbolTable.h"
 #include "mlir/IR/TypeRange.h"
+#include "mlir/IR/Visitors.h"
 #include "mlir/Support/LLVM.h"
+#include "mlir/Support/WalkResult.h"
+#include "shardy/dialect/sdy/ir/constants.h"
 #include "shardy/dialect/sdy/ir/dialect.h"
 #include "shardy/dialect/sdy/ir/register.h"
 #include "shardy/dialect/sdy/ir/utils.h"
 #include "stablehlo/dialect/StablehloOps.h"
-#include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
+#include "xla/hlo/ir/hlo_sharding.h"
+#include "xla/hlo/translate/hlo_to_mhlo/hlo_utils.h"
+#include "xla/mlir_hlo/mhlo/IR/register.h"
 #include "xla/service/spmd/shardy/constants.h"
 #include "xla/service/spmd/shardy/extensions/mhlo_extensions.h"
 
@@ -149,6 +159,31 @@ void setFuncArgFrontendAttrs(FuncOp funcOp, unsigned int index,
                     DictionaryAttr::get(funcOp.getContext(), frontendAttrs));
 }
 
+std::optional<TensorShardingAttr> adjustShardingInternal(
+    mlir::MLIRContext* context, int idx, TensorShardingAttr sharding,
+    int64_t rank, absl::Span<const bool> allowSpmdShardingPropagation) {
+  bool allowPropagation = false;
+  if (!allowSpmdShardingPropagation.empty()) {
+    allowPropagation = allowSpmdShardingPropagation.size() == 1
+                           ? allowSpmdShardingPropagation[0]
+                           : allowSpmdShardingPropagation[idx];
+  }
+
+  if (allowPropagation) {
+    return std::nullopt;
+  }
+
+  // Close all dimensions if sharding propagation is not allowed.
+  if (sharding) {
+    sharding = sharding.getClosedLike(sharding);
+  } else {
+    sharding = TensorShardingAttr::getFullyClosed(context, rank,
+                                                  MeshAttr::get(context, {}));
+  }
+
+  return sharding;
+}
+
 }  // namespace
 
 void setFrontendAttribute(Operation* op, StringRef name, Attribute value) {
@@ -195,11 +230,31 @@ bool hasKey(mlir::DictionaryAttr dictAttr, mlir::StringRef key) {
 void loadAllRequiredDialects(mlir::MLIRContext* context) {
   mlir::DialectRegistry registry;
   mlir::func::registerAllExtensions(registry);
-  registry.insert<mlir::mhlo::MhloDialect>();
+  mlir::mhlo::registerAllMhloDialects(registry);
   registerMhloExtensions(registry);
   mlir::sdy::registerAllDialects(registry);
   context->appendDialectRegistry(registry);
   context->loadAllAvailableDialects();
+}
+
+void adjustInputSharding(
+    FuncOp func, int idx, TensorShardingAttr sharding, int64_t rank,
+    absl::Span<const bool> allowSpmdShardingPropagationToParameters) {
+  if (std::optional<TensorShardingAttr> adjustedSharding =
+          adjustShardingInternal(func.getContext(), idx, sharding, rank,
+                                 allowSpmdShardingPropagationToParameters)) {
+    mlir::sdy::setSharding(func.getArgument(idx), *adjustedSharding);
+  }
+}
+
+void adjustOutputSharding(
+    FuncOp func, int idx, TensorShardingAttr sharding, int64_t rank,
+    absl::Span<const bool> allowSpmdShardingPropagationToOutput) {
+  if (std::optional<TensorShardingAttr> adjustedSharding =
+          adjustShardingInternal(func.getContext(), idx, sharding, rank,
+                                 allowSpmdShardingPropagationToOutput)) {
+    setFuncResultSharding(func, idx, *adjustedSharding);
+  }
 }
 
 CustomCallOp cloneCustomCallWithNewResultTypes(CustomCallOp op,
@@ -272,6 +327,7 @@ SmallVector<AxisRefAttr> getOrderedAxisRefs(Attribute shardingOrAxisList,
     for (DimensionShardingAttr dimSharding : sharding.getDimShardings()) {
       consumeAxisRefList(dimSharding.getAxes());
     }
+    consumeAxisRefList(sharding.getUnreducedAxes());
   } else {
     consumeAxisRefList(
         mlir::cast<AxisRefListAttr>(shardingOrAxisList).getValue());
@@ -297,6 +353,133 @@ SmallVector<AxisRefAttr> getOrderedAxisRefs(Attribute shardingOrAxisList,
   }
 
   return axisRefs;
+}
+
+namespace {
+
+// Check if the func result is meant for Shardy.
+bool isFuncResultForShardy(FuncOp func, int64_t resultIndex) {
+  if (func.getResultAttr(resultIndex, mlir::sdy::kShardingAttr)) {
+    return true;
+  }
+  Operation* definingOp =
+      mlir::sdy::getBodyTerminatorOperand(func, resultIndex).getDefiningOp();
+  if (!definingOp) {
+    return false;
+  }
+  auto customCall = mlir::dyn_cast<CustomCallOp>(definingOp);
+  if (!customCall) {
+    return false;
+  }
+  return customCall.getCallTargetName() == sdy::kFuncResultShardingTargetName;
+}
+
+// Check if the func result shardings are all mhlo shardings for GSPMD.
+bool areFuncResultShardingsForGspmd(FuncOp func) {
+  for (int64_t resultIndex = 0; resultIndex < func.getNumResults();
+       ++resultIndex) {
+    if (func.getResultAttr(resultIndex, sdy::kXlaShardingAttr) &&
+        !isFuncResultForShardy(func, resultIndex)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+}  // namespace
+
+bool hasGspmdAttrsOrOps(mlir::ModuleOp module) {
+  for (auto func : module.getOps<mlir::func::FuncOp>()) {
+    // If Shardy is enabled, we will have added `sdy.sharding`s, on the inputs
+    // and outputs of the main function, so no point of checking it. Could
+    // even get false positives as we've previously seen where IFRT was once
+    // adding replicated `mhlo.sharding`s on all the inputs/outputs.
+    if (func.getSymName() != "main") {
+      for (int64_t argIndex = 0; argIndex < func.getNumArguments();
+           ++argIndex) {
+        if (func.getArgAttr(argIndex, sdy::kXlaShardingAttr) &&
+            !func.getArgAttr(argIndex, mlir::sdy::kShardingAttr) &&
+            !hasKey(sdy::getFuncArgFrontendAttrs(func, argIndex),
+                    xla::ToStringRef(HloSharding::kShardingFrontendAttrName))) {
+          return true;
+        }
+      }
+    }
+    // We check for the module level kOutTupleShardings attribute because there
+    // are cases where Shardy shardings are not added to the results of
+    // XlaCallModule function. This is likely acceptable as these functions are
+    // intended to be inlined. If kOutTupleShardings is set, it indicates that
+    // we have added support for Shardy shardings on the wrapper main in tf2xla.
+    if (!hasKey(sdy::getFrontendAttrs(module), sdy::kOutTupleShardings) &&
+        areFuncResultShardingsForGspmd(func)) {
+      return true;
+    }
+    bool hasGspmd = false;
+    // Check the func for a `Sharding` custom call.
+    func->walk([&hasGspmd](mlir::stablehlo::CustomCallOp customCall) {
+      if (customCall.getCallTargetName() ==
+              sdy::kShardingCustomCallTargetName &&
+          customCall->hasAttr(sdy::kXlaShardingAttr) &&
+          !customCall->hasAttr(mlir::sdy::kShardingAttr) &&
+          !hasFrontendAttr(
+              customCall,
+              xla::ToStringRef(HloSharding::kShardingFrontendAttrName))) {
+        hasGspmd = true;
+        return mlir::WalkResult::interrupt();
+      }
+      return mlir::WalkResult::advance();
+    });
+    if (hasGspmd) {
+      return true;
+    }
+  }
+  return false;
+}
+
+bool hasShardyMesh(mlir::ModuleOp module) {
+  return !module.getOps<mlir::sdy::MeshOp>().empty();
+}
+
+namespace {
+// Returns the first non-maximal mesh on the result shardings, if there is
+// one. Otherwise returns `std::nullopt`.
+// TODO(enver): Use a common helper that takes an std::function to get the
+// sharding given an index.
+std::optional<Attribute> getMeshOrRefOnResults(
+    mlir::func::FuncOp funcOp, const mlir::SymbolTable& symbolTable) {
+  for (int64_t resultNum = 0; resultNum < funcOp.getNumResults(); ++resultNum) {
+    if (mlir::sdy::TensorShardingAttr sdySharding =
+            mlir::sdy::getFuncResultSharding(funcOp, resultNum);
+        sdySharding && !sdySharding.getMesh(symbolTable).isMaximal()) {
+      return std::make_optional(sdySharding.getMeshOrRef());
+    }
+  }
+  return std::nullopt;
+}
+}  // namespace
+
+mlir::sdy::TensorShardingPerValueAttr getFuncResultShardings(
+    mlir::func::CallOp callOp, mlir::func::FuncOp funcOp,
+    const mlir::SymbolTable& symbolTable) {
+  std::optional<mlir::Attribute> meshOrRef =
+      getMeshOrRefOnResults(funcOp, symbolTable);
+  if (!meshOrRef) {
+    return nullptr;
+  }
+  SmallVector<mlir::sdy::TensorShardingAttr> resultShardings;
+  resultShardings.reserve(funcOp.getNumResults());
+  for (int64_t resultNum = 0; resultNum < funcOp.getNumResults(); ++resultNum) {
+    mlir::sdy::TensorShardingAttr sdySharding =
+        mlir::sdy::getFuncResultSharding(funcOp, resultNum);
+    resultShardings.push_back(
+        sdySharding ? sdySharding
+                    : mlir::sdy::TensorShardingAttr::getFullyOpen(
+                          funcOp.getContext(),
+                          mlir::sdy::getTensorRank(callOp.getResult(resultNum)),
+                          *meshOrRef));
+  }
+  return mlir::sdy::TensorShardingPerValueAttr::get(funcOp.getContext(),
+                                                    resultShardings);
 }
 
 }  // namespace sdy

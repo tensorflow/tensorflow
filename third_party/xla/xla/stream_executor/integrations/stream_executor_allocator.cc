@@ -20,6 +20,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/log/log.h"
+#include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/stream_executor/memory_allocation.h"
 #include "xla/stream_executor/memory_allocator.h"
@@ -72,7 +73,7 @@ void* StreamExecutorAllocator::Alloc(size_t alignment, size_t num_bytes,
     ptr = (*allocation)->opaque();
     VisitAlloc(ptr, index_, num_bytes);
 
-    absl::MutexLock lock(&mutex_);
+    absl::MutexLock lock(mutex_);
     allocations_[ptr] = std::move(*allocation);
   }
 
@@ -86,7 +87,7 @@ void StreamExecutorAllocator::Free(void* ptr, size_t num_bytes) {
 
   if (ptr != nullptr) {
     VisitFree(ptr, index_, num_bytes);
-    absl::MutexLock lock(&mutex_);
+    absl::MutexLock lock(mutex_);
     allocations_.erase(ptr);
   }
 }

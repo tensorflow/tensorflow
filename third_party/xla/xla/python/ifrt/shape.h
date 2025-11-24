@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
 #include "absl/types/span.h"
+#include "xla/python/ifrt/serdes_default_version_accessor.h"
 #include "xla/python/ifrt/serdes_version.h"
 #include "xla/python/ifrt/shape.pb.h"
 
@@ -55,7 +56,8 @@ class Shape {
   static absl::StatusOr<Shape> FromProto(const ShapeProto& proto);
 
   // Returns a `ShapeProto` representation.
-  ShapeProto ToProto(SerDesVersion version = SerDesVersion::current()) const;
+  ShapeProto ToProto(
+      SerDesVersion version = SerDesDefaultVersionAccessor::Get()) const;
 
   absl::Span<const int64_t> dims() const { return dims_; }
 
@@ -129,7 +131,7 @@ class BoundedDynamicShapeTag {
 
   // Returns a `BoundedDynamicShapeTagProto` representation.
   BoundedDynamicShapeTagProto ToProto(
-      SerDesVersion version = SerDesVersion::current()) const;
+      SerDesVersion version = SerDesDefaultVersionAccessor::Get()) const;
 
  private:
   // This vector is the same size as `Shape`'s 'dims()' and indicates whether
@@ -181,7 +183,7 @@ class DynamicShape {
 
   // Returns a `DynamicShapeProto` representation.
   DynamicShapeProto ToProto(
-      SerDesVersion version = SerDesVersion::current()) const;
+      SerDesVersion version = SerDesDefaultVersionAccessor::Get()) const;
 
   std::string DebugString() const;
 

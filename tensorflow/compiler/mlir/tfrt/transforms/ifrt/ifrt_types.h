@@ -25,6 +25,10 @@ namespace ifrt_serving {
 struct DtypeAndShape {
   tensorflow::DataType dtype;
   tensorflow::TensorShape shape;
+
+  bool operator==(const DtypeAndShape& other) const {
+    return dtype == other.dtype && shape == other.shape;
+  }
 };
 
 }  // namespace ifrt_serving

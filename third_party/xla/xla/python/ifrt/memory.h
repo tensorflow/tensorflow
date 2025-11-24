@@ -82,7 +82,7 @@ class MemoryKind {
 // TODO(b/356623715): Harden `MemoryKind` creation paths so that every
 // `MemoryKind` is canonicalized and does not require on-demand
 // canonicalization.
-MemoryKind CanonicalizeMemoryKind(MemoryKind memory_kind, Device* device);
+MemoryKind CanonicalizeMemoryKind(MemoryKind memory_kind, const Device* device);
 
 TSL_LIB_GTL_DEFINE_INT_TYPE(MemoryId, int32_t);
 

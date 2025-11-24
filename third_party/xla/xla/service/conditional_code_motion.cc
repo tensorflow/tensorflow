@@ -30,10 +30,14 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_split.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
+#include "xla/hlo/ir/hlo_clone_context.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -1039,9 +1043,7 @@ class MoveOperandIntoBranch {
         VLOG(1) << "matching_tuple_indices: "
                 << matching_tuple_indices[matching_index][0] << "\n";
         if (matching_tuple_indices[matching_index].end() ==
-            std::find(matching_tuple_indices[matching_index].begin(),
-                      matching_tuple_indices[matching_index].end(),
-                      tuple_index)) {
+            absl::c_find(matching_tuple_indices[matching_index], tuple_index)) {
           continue;
         }
         for (HloInstruction* param_user : param_users) {
@@ -1111,8 +1113,7 @@ class MoveOperandIntoBranch {
       }
       while (repl_count < new_operands.size()) {
         HloInstruction* new_input = new_operands[repl_count++];
-        auto new_input_in_user = std::find(user->operands().begin(),
-                                           user->operands().end(), new_input);
+        auto new_input_in_user = absl::c_find(user->operands(), new_input);
         int64_t opd_index = (new_input_in_user == user->operands().end())
                                 ? user->operand_count()
                                 : new_input_in_user - user->operands().begin();
@@ -1939,16 +1940,15 @@ ConditionalCodeMotion::Decision ConditionalCodeMotion::ConsiderCodeMotion(
                           ? Decision::Direction::kMoveOutOfBranch
                           : Decision::Direction::kMoveIntoBranch,
                       benefit);
-    } else {
-      connect.clear_recently_visited();
     }
+    connect.clear_recently_visited();
   } else {
     connect.AddNewBoundaries(new_boundaries);
   }
   return Decision(Decision::Direction::kNoChange, 0);
 }
 
-absl::StatusOr<bool> ConditionalCodeMotion::Run(
+absl::StatusOr<bool> ConditionalCodeMotion::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   VLOG(2) << "Begin a new pass of conditional code motion optimization.\n";

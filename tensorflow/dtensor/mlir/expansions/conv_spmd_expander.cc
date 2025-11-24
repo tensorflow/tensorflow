@@ -144,11 +144,11 @@ mlir::Value PadInputOnUnshardedDim(mlir::OpBuilder& builder,
   mlir::Value paddings_flat = Int64Const(builder, location, paddings_flat_vec);
   mlir::RankedTensorType paddings_type = mlir::RankedTensorType::get(
       paddings_shape, input_tensor_type.getElementType());
-  mlir::Value paddings = builder.create<mlir::TF::ReshapeOp>(
-      location, paddings_flat,
+  mlir::Value paddings = mlir::TF::ReshapeOp::create(
+      builder, location, paddings_flat,
       Int64Const(builder, location, {input_tensor_type.getRank(), 2}));
-  return builder.create<mlir::TF::PadOp>(location, paddings_type, input_tensor,
-                                         paddings);
+  return mlir::TF::PadOp::create(builder, location, paddings_type, input_tensor,
+                                 paddings);
 }
 
 template <typename ConvOp>
@@ -275,27 +275,27 @@ StatusOr<mlir::Operation*> HandleConv(ConvOp conv_op) {
       mlir::Value halo_increments_const =
           IntConst(builder, location, halo_increments);
 
-      mlir::Value offset = builder.create<mlir::TF::MulOp>(
-          location, halo_increments_const.getType(), scalar_mesh_coordinate,
-          halo_increments_const);
+      mlir::Value offset = mlir::TF::MulOp::create(
+          builder, location, halo_increments_const.getType(),
+          scalar_mesh_coordinate, halo_increments_const);
       mlir::Value slice_begin =
-          builder.create<mlir::TF::SubOp>(location, halo_sizes_const, offset);
+          mlir::TF::SubOp::create(builder, location, halo_sizes_const, offset);
 
       llvm::SmallVector<int64_t, 4> slice_size(input_shape.begin(),
                                                input_shape.end());
       slice_size[curr_input_dim] += halo_size;
       mlir::Value slice_size_const = Int64Const(builder, location, slice_size);
       // slice_size_const and slize_begin_int64 has to be same type.
-      mlir::Value slice_begin_int64 = builder.create<mlir::TF::CastOp>(
-          location,
+      mlir::Value slice_begin_int64 = mlir::TF::CastOp::create(
+          builder, location,
           mlir::RankedTensorType::get({input_layout.rank()},
                                       builder.getI64Type()),
           slice_begin);
 
       mlir::RankedTensorType sliced_input_type =
           mlir::RankedTensorType::get(slice_size, input_type.getElementType());
-      mlir::Value sliced_input = builder.create<mlir::TF::SliceOp>(
-          location, sliced_input_type, /*input=*/halo_exchanged_input,
+      mlir::Value sliced_input = mlir::TF::SliceOp::create(
+          builder, location, sliced_input_type, /*input=*/halo_exchanged_input,
           /*begin=*/slice_begin_int64, /*size=*/slice_size_const);
       conv_op->setOperand(0, sliced_input);
     }
@@ -425,15 +425,15 @@ StatusOr<mlir::Operation*> HandleConvBackpropInputTensor(
       builder.getContext(),
       mlir::cast<mlir::TensorType>(global_input_shape.getType()));
   mlir::TF::DTensorLayout global_input_shape_with_layout =
-      builder.create<mlir::TF::DTensorLayout>(
-          conv_op->getLoc(), global_input_shape,
+      mlir::TF::DTensorLayout::create(
+          builder, conv_op->getLoc(), global_input_shape,
           mlir::dtensor::LayoutAttr::get(
               builder.getContext(),
               Layout::ReplicatedOnMesh(input_layout.mesh(), 1)),
           global_input_shape_shape);
 
-  To new_conv = builder.create<To>(
-      conv_op->getLoc(), conv_op->getResultTypes(),
+  To new_conv = To::create(
+      builder, conv_op->getLoc(), conv_op->getResultTypes(),
       mlir::ValueRange({global_input_shape_with_layout, conv_op.getFilter(),
                         conv_op.getOutBackprop()}),
       conv_op->getAttrs());
@@ -551,15 +551,15 @@ StatusOr<mlir::Operation*> HandleConvBackpropFilterTensor(
       builder.getContext(),
       mlir::cast<mlir::TensorType>(global_filter_shape_const.getType()));
   mlir::TF::DTensorLayout global_filter_shape_with_layout =
-      builder.create<mlir::TF::DTensorLayout>(
-          conv_op->getLoc(), global_filter_shape_const,
+      mlir::TF::DTensorLayout::create(
+          builder, conv_op->getLoc(), global_filter_shape_const,
           mlir::dtensor::LayoutAttr::get(
               builder.getContext(),
               Layout::ReplicatedOnMesh(filter_layout.mesh(), 1)),
           global_filter_shape_shape);
 
-  To new_conv = builder.create<To>(
-      conv_op->getLoc(), conv_op->getResultTypes(),
+  To new_conv = To::create(
+      builder, conv_op->getLoc(), conv_op->getResultTypes(),
       mlir::ValueRange({conv_op.getInput(), global_filter_shape_with_layout,
                         conv_op.getOutBackprop()}),
       conv_op->getAttrs());

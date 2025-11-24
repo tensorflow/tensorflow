@@ -76,6 +76,7 @@ cc_library(
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/time",
     ] + if_not_mobile([
@@ -119,6 +120,7 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "@com_google_absl//absl/status:status_matchers",
         "@com_google_googletest//:gtest",
         "@local_xla//xla/tsl/platform:status_matchers",
         "@local_xla//xla/tsl/protobuf:error_codes_proto_impl_cc",
@@ -197,6 +199,7 @@ tf_cc_test(
         "//tensorflow/core/platform:str_util",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
         "@local_xla//xla/tsl/platform:status_matchers",
@@ -296,6 +299,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":tfdataz_metrics",
+        "//tensorflow/core/framework:model_proto_cc",
         "//tensorflow/core/platform:env",
         "//tensorflow/core/platform:numbers",
         "//tensorflow/core/platform:status",
@@ -526,6 +530,7 @@ tf_cc_test(
         "//tensorflow/core/platform:str_util",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
         "@local_xla//xla/tsl/platform:statusor",
         "@local_xla//xla/tsl/protobuf:error_codes_proto_impl_cc",
     ],
@@ -708,6 +713,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/synchronization",
     ],
 )
 
@@ -735,6 +741,7 @@ tf_cc_test(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "@com_google_absl//absl/synchronization",
     ],
 )
 

@@ -28,14 +28,14 @@ class NowSecondsEnv : public EnvWrapper {
   NowSecondsEnv() : EnvWrapper(Env::Default()) {}
 
   /// The current (fake) timestamp.
-  uint64 NowSeconds() const override {
-    absl::MutexLock lock(&mu_);
+  uint64_t NowSeconds() const override {
+    absl::MutexLock lock(mu_);
     return now_;
   }
 
   /// Set the current (fake) timestamp.
-  void SetNowSeconds(uint64 now) {
-    absl::MutexLock lock(&mu_);
+  void SetNowSeconds(uint64_t now) {
+    absl::MutexLock lock(mu_);
     now_ = now;
   }
 
@@ -43,7 +43,7 @@ class NowSecondsEnv : public EnvWrapper {
   mutable absl::Mutex mu_;
 
   /// The NowSeconds() value that this Env will return.
-  uint64 now_ = 1;
+  uint64_t now_ = 1;
 };
 
 }  // namespace tsl

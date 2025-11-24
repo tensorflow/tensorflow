@@ -23,6 +23,8 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/layout_util.h"
 #include "xla/literal.h"
+#include "xla/service/spmd/shardy/constants.h"
+#include "xla/service/spmd/shardy/utils.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/util.h"
@@ -30,7 +32,22 @@ limitations under the License.
 
 namespace xla {
 
-absl::StatusOr<bool> ZeroSizedHloElimination::Run(
+namespace {
+
+// Whether `instruction` has side effects and therefore should be skipped.
+//
+// An exception is the custom call with target name
+// `kLocalToGlobalShapeCallTargetName`. We don't skip it since we want to
+// replace its uses with a constant if it's a zero-sized array.
+bool ShouldSkipForSideEffect(HloInstruction* instruction) {
+  return instruction->HasSideEffect() &&
+         !instruction->IsCustomCall(
+             sdy::toStringView(sdy::kLocalToGlobalShapeCallTargetName));
+}
+
+}  // namespace
+
+absl::StatusOr<bool> ZeroSizedHloElimination::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;
@@ -40,7 +57,8 @@ absl::StatusOr<bool> ZeroSizedHloElimination::Run(
       if (!ShapeUtil::IsZeroElementArray(instruction->shape())) {
         continue;
       }
-      if (instruction->HasSideEffect() || !instruction->shape().IsArray() ||
+      if (ShouldSkipForSideEffect(instruction) ||
+          !instruction->shape().IsArray() ||
           !instruction->shape().is_static() ||
           instruction->opcode() == HloOpcode::kConstant) {
         continue;

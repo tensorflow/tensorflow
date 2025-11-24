@@ -164,7 +164,7 @@ absl::Status FastParseSequenceExample(
 // It uses the same specialized parser as FastParseExample which is efficient.
 // But then constructs Example which is relatively slow.
 // It is exported here as a convenient API to test parser part separately.
-bool TestFastParse(const string& serialized, Example* example);
+bool TestFastParse(const std::string& serialized, Example* example);
 
 }  // namespace example
 }  // namespace tensorflow

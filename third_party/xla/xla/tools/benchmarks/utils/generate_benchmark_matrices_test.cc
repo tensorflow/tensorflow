@@ -22,6 +22,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "json/json.h"
@@ -76,6 +77,10 @@ std::string CreateTempRegistryFile(const std::string& content,
 // Matchers for JsonCpp values
 MATCHER_P(JsonStringEq, expected_str, "") {
   return arg.isString() && arg.asString() == expected_str;
+}
+MATCHER_P(JsonStringHasSubtr, expected_str, "") {
+  return arg.isString() && ExplainMatchResult(HasSubstr(expected_str),
+                                              arg.asString(), result_listener);
 }
 MATCHER_P(JsonBoolEq, expected_bool, "") {
   return arg.isBool() && arg.asBool() == expected_bool;
@@ -217,9 +222,9 @@ TEST_F(GenerateBenchmarkMatricesTest,
   )";
   std::string filepath = CreateTempRegistryFile(content);
   ASSERT_FALSE(filepath.empty());
-  EXPECT_THAT(
-      LoadBenchmarkSuiteFromFile(filepath),
-      StatusIs(absl::StatusCode::kInvalidArgument, HasSubstr("empty 'name'")));
+  EXPECT_THAT(LoadBenchmarkSuiteFromFile(filepath),
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument,
+                                     HasSubstr("empty 'name'")));
 }
 
 TEST_F(GenerateBenchmarkMatricesTest,
@@ -234,9 +239,10 @@ TEST_F(GenerateBenchmarkMatricesTest,
   )";
   std::string filepath = CreateTempRegistryFile(content);
   ASSERT_FALSE(filepath.empty());
-  EXPECT_THAT(LoadBenchmarkSuiteFromFile(filepath),
-              StatusIs(absl::StatusCode::kInvalidArgument,
-                       HasSubstr("has no 'hardware_execution_configs'")));
+  EXPECT_THAT(
+      LoadBenchmarkSuiteFromFile(filepath),
+      absl_testing::StatusIs(absl::StatusCode::kInvalidArgument,
+                             HasSubstr("has no 'hardware_execution_configs'")));
 }
 
 // --- BuildGitHubActionsMatrix Tests ---
@@ -261,8 +267,8 @@ TEST_F(GenerateBenchmarkMatricesTest,
   EXPECT_THAT(entry0["runner_label"], JsonStringEq("linux-x86-g2-16-l4-1gpu"));
   EXPECT_THAT(
       entry0["container_image"],
-      JsonStringEq("us-docker.pkg.dev/ml-oss-artifacts-published/"
-                   "ml-public-container/ml-build-cuda12.8-cudnn9.8:latest"));
+      JsonStringHasSubtr("us-docker.pkg.dev/ml-oss-artifacts-published/"
+                         "ml-public-container/ml-build-cuda12.8-cudnn9.8"));
   EXPECT_THAT(entry0["runtime_flags"],
               JsonArrayContainsString("--repeat_l4=5"));
   EXPECT_THAT(entry0["xla_compilation_flags"],
@@ -279,8 +285,8 @@ TEST_F(GenerateBenchmarkMatricesTest,
               JsonStringEq("gemma_test_x86_1h2d_presubmit"));
   EXPECT_THAT(entry1["runner_label"], JsonStringEq("linux-x86-n2-128"));
   EXPECT_THAT(entry1["container_image"],
-              JsonStringEq("us-docker.pkg.dev/ml-oss-artifacts-published/"
-                           "ml-public-container/ml-build:latest"));
+              JsonStringHasSubtr("us-docker.pkg.dev/ml-oss-artifacts-published/"
+                                 "ml-public-container/ml-build"));
   EXPECT_THAT(entry1["runtime_flags"],
               JsonArrayContainsString("--repeat_cpu=3"));
   EXPECT_THAT(entry1["xla_compilation_flags"],
@@ -347,8 +353,9 @@ TEST_F(GenerateBenchmarkMatricesTest, BuildMatrixFailsOnUnmappableHardware) {
   )";
   std::string filepath = CreateTempRegistryFile(specific_content);
   EXPECT_THAT(LoadBenchmarkSuiteFromFile(filepath),
-              StatusIs(absl::StatusCode::kFailedPrecondition,
-                       HasSubstr("Error parsing TextProto registry file:")));
+              absl_testing::StatusIs(
+                  absl::StatusCode::kFailedPrecondition,
+                  HasSubstr("Error parsing TextProto registry file:")));
 }
 
 // --- FindRegistryFile Tests ---
@@ -367,7 +374,8 @@ TEST_F(GenerateBenchmarkMatricesTest, FindRegistryFileReturnsAbsolutePath) {
   std::string expected_absolute_path(resolved_tmp_cstr);
   free(resolved_tmp_cstr);
 
-  EXPECT_THAT(FindRegistryFile(tmp_file), IsOkAndHolds(expected_absolute_path));
+  EXPECT_THAT(FindRegistryFile(tmp_file),
+              absl_testing::IsOkAndHolds(expected_absolute_path));
 }
 
 TEST_F(GenerateBenchmarkMatricesTest,
@@ -375,7 +383,7 @@ TEST_F(GenerateBenchmarkMatricesTest,
   std::string non_existent_absolute_path =
       "/absolute/path/that/definitely/does/not/exist.textproto";
   EXPECT_THAT(FindRegistryFile(non_existent_absolute_path),
-              StatusIs(absl::StatusCode::kNotFound));
+              absl_testing::StatusIs(absl::StatusCode::kNotFound));
 }
 
 TEST_F(GenerateBenchmarkMatricesTest,
@@ -398,7 +406,7 @@ TEST_F(GenerateBenchmarkMatricesTest,
   free(resolved_full_cstr);
 
   EXPECT_THAT(FindRegistryFile(relative_path),
-              IsOkAndHolds(expected_absolute_path));
+              absl_testing::IsOkAndHolds(expected_absolute_path));
 }
 
 TEST_F(GenerateBenchmarkMatricesTest,
@@ -407,14 +415,15 @@ TEST_F(GenerateBenchmarkMatricesTest,
   unsetenv("BUILD_WORKSPACE_DIRECTORY");
 
   EXPECT_THAT(FindRegistryFile(non_existent_relative),
-              StatusIs(absl::StatusCode::kNotFound,
-                       HasSubstr("NOT_FOUND: Registry file")));
+              absl_testing::StatusIs(absl::StatusCode::kNotFound,
+                                     HasSubstr("NOT_FOUND: Registry file")));
 }
 
 TEST_F(GenerateBenchmarkMatricesTest, FindRegistryFileIsEmpty) {
-  EXPECT_THAT(FindRegistryFile(""),
-              StatusIs(absl::StatusCode::kNotFound,
-                       HasSubstr("Registry file path cannot be empty")));
+  EXPECT_THAT(
+      FindRegistryFile(""),
+      absl_testing::StatusIs(absl::StatusCode::kNotFound,
+                             HasSubstr("Registry file path cannot be empty")));
 }
 
 }  // namespace

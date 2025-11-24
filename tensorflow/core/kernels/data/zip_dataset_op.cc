@@ -185,7 +185,7 @@ class ZipDatasetOp::Dataset : public DatasetBase {
       input_impls_.resize(dataset()->inputs_.size());
       for (size_t i = 0; i < input_impls_.size(); ++i) {
         TF_RETURN_IF_ERROR(dataset()->inputs_[i]->MakeIterator(
-            &input_contexts_[i], this, strings::StrCat(prefix(), "[", i, "]"),
+            &input_contexts_[i], this, absl::StrCat(prefix(), "[", i, "]"),
             &input_impls_[i]));
         ctx->MergeCheckpoint(input_contexts_[i].checkpoint());
       }

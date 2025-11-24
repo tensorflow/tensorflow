@@ -33,16 +33,15 @@ absl::StatusOr<std::string> ProtoToHumanReadableJson(
 
   protobuf::util::JsonPrintOptions json_options;
   json_options.preserve_proto_field_names = true;
-  json_options.always_print_primitive_fields = true;
+  json_options.always_print_fields_with_no_presence = true;
   auto status =
       protobuf::util::MessageToJsonString(proto, &result, json_options);
   if (!status.ok()) {
     // Convert error_msg google::protobuf::StringPiece to
     // tsl::StringPiece.
     auto error_msg = status.message();
-    return errors::Internal(strings::StrCat(
-        "Could not convert proto to JSON string: ",
-        absl::string_view(error_msg.data(), error_msg.length())));
+    return errors::Internal(
+        absl::StrCat("Could not convert proto to JSON string: ", error_msg));
   }
   return std::move(result);
 }
@@ -52,7 +51,7 @@ absl::StatusOr<std::string> ProtoToHumanReadableJson(
   return std::string("[human readable output not available for lite protos]");
 }
 
-absl::Status HumanReadableJsonToProto(const string& str,
+absl::Status HumanReadableJsonToProto(const std::string& str,
                                       protobuf::Message* proto) {
   proto->Clear();
   auto status = protobuf::util::JsonStringToMessage(str, proto);
@@ -60,14 +59,13 @@ absl::Status HumanReadableJsonToProto(const string& str,
     // Convert error_msg google::protobuf::StringPiece to
     // tsl::StringPiece.
     auto error_msg = status.message();
-    return errors::Internal(strings::StrCat(
-        "Could not convert JSON string to proto: ",
-        absl::string_view(error_msg.data(), error_msg.length())));
+    return errors::Internal(
+        absl::StrCat("Could not convert JSON string to proto: ", error_msg));
   }
   return absl::OkStatus();
 }
 
-absl::Status HumanReadableJsonToProto(const string& str,
+absl::Status HumanReadableJsonToProto(const std::string& str,
                                       protobuf::MessageLite* proto) {
   return errors::Internal("Cannot parse JSON protos on Android");
 }

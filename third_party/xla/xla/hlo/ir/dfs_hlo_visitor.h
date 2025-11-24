@@ -17,17 +17,11 @@ limitations under the License.
 #define XLA_HLO_IR_DFS_HLO_VISITOR_H_
 
 #include <cstddef>
+#include <cstdint>
 #include <type_traits>
-#include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
-#include "absl/strings/string_view.h"
-#include "absl/types/span.h"
-#include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/literal.h"
-#include "xla/tsl/platform/status.h"
-#include "xla/types.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -110,6 +104,7 @@ class DfsHloVisitorBase {
   }
   virtual absl::Status HandleDot(HloInstructionPtr hlo) = 0;
   virtual absl::Status HandleRaggedDot(HloInstructionPtr hlo) = 0;
+  virtual absl::Status HandleScaledDot(HloInstructionPtr hlo) = 0;
   virtual absl::Status HandlePower(HloInstructionPtr hlo) {
     return HandleElementwiseBinary(hlo);
   }
@@ -170,8 +165,23 @@ class DfsHloVisitorBase {
   virtual absl::Status HandleAbs(HloInstructionPtr hlo) {
     return HandleElementwiseUnary(hlo);
   }
+  virtual absl::Status HandleAcos(HloInstructionPtr hlo) {
+    return HandleElementwiseUnary(hlo);
+  }
+  virtual absl::Status HandleAcosh(HloInstructionPtr hlo) {
+    return HandleElementwiseUnary(hlo);
+  }
+  virtual absl::Status HandleAsin(HloInstructionPtr hlo) {
+    return HandleElementwiseUnary(hlo);
+  }
+  virtual absl::Status HandleAsinh(HloInstructionPtr hlo) {
+    return HandleElementwiseUnary(hlo);
+  }
   virtual absl::Status HandleAtan2(HloInstructionPtr hlo) {
     return HandleElementwiseBinary(hlo);
+  }
+  virtual absl::Status HandleAtanh(HloInstructionPtr hlo) {
+    return HandleElementwiseUnary(hlo);
   }
   virtual absl::Status HandleRound(HloInstructionPtr hlo) {
     return HandleElementwiseUnary(hlo);
@@ -215,7 +225,13 @@ class DfsHloVisitorBase {
   virtual absl::Status HandleCos(HloInstructionPtr hlo) {
     return HandleElementwiseUnary(hlo);
   }
+  virtual absl::Status HandleCosh(HloInstructionPtr hlo) {
+    return HandleElementwiseUnary(hlo);
+  }
   virtual absl::Status HandleSin(HloInstructionPtr hlo) {
+    return HandleElementwiseUnary(hlo);
+  }
+  virtual absl::Status HandleSinh(HloInstructionPtr hlo) {
     return HandleElementwiseUnary(hlo);
   }
   virtual absl::Status HandleTan(HloInstructionPtr hlo) {
@@ -340,7 +356,7 @@ class DfsHloVisitorBase {
     kVisited = 2,
   };
 
-  VisitState GetVisitState(int id) {
+  VisitState GetVisitState(int64_t id) {
     auto iter = visit_state_.find(id);
     if (iter == visit_state_.end()) {
       return VisitState::kNotVisited;
@@ -367,10 +383,10 @@ class DfsHloVisitorBase {
   // Useful when we want to free up the memory used by the visit state without
   // destroying the actual visitor subclass.
   void DestroyVisitState() {
-    visit_state_ = absl::flat_hash_map<int, VisitState>{};
+    visit_state_ = absl::flat_hash_map<int64_t, VisitState>{};
   }
 
-  void SetVisitState(int id, VisitState state) { visit_state_[id] = state; }
+  void SetVisitState(int64_t id, VisitState state) { visit_state_[id] = state; }
 
   // Sets the visitation state of the given instruction as kVisiting.
   //
@@ -424,7 +440,7 @@ class DfsHloVisitorBase {
   virtual bool ShouldProcessNode(HloInstructionPtr hlo) { return true; }
 
  private:
-  absl::flat_hash_map<int, VisitState> visit_state_;
+  absl::flat_hash_map<int64_t, VisitState> visit_state_;
 
   DfsHloVisitorBase(const DfsHloVisitorBase&) = delete;
   DfsHloVisitorBase& operator=(const DfsHloVisitorBase&) = delete;

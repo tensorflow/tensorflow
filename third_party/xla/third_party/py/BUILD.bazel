@@ -1,6 +1,6 @@
 load("@bazel_skylib//rules:common_settings.bzl", "bool_flag")
-load("@python//:defs.bzl", "compile_pip_requirements")
 load("@python_version_repo//:py_version.bzl", "REQUIREMENTS")
+load("@rules_python//python:pip.bzl", "compile_pip_requirements")
 
 compile_pip_requirements(
     name = "requirements",
@@ -56,5 +56,18 @@ config_setting(
 filegroup(
     name = "manylinux_compliance_test",
     srcs = ["manylinux_compliance_test.py"],
+    visibility = ["//visibility:public"],
+)
+
+py_binary(
+    name = "unpack_wheel_and_unzip_archive_files",
+    srcs = ["unpack_wheel_and_unzip_archive_files.py"],
+    main = "unpack_wheel_and_unzip_archive_files.py",
+    visibility = ["//visibility:public"],
+)
+
+py_library(
+    name = "setup_py_nvidia_dependencies_util",
+    srcs = ["setup_py_nvidia_dependencies_util.py"],
     visibility = ["//visibility:public"],
 )

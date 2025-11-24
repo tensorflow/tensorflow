@@ -24,6 +24,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -32,7 +33,8 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "grpcpp/channel.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
-#include "tsl/platform/env.h"
+#include "xla/service/global_device_id.h"
+#include "xla/tsl/platform/env.h"
 
 namespace tsl {
 class CoordinationServiceAgent;
@@ -66,19 +68,6 @@ class DistributedRuntimeClient {
     // it hasn't received any heartbeats from the client.
     absl::Duration heartbeat_timeout = absl::Seconds(100);
 
-    // Interval at which the client should send heartbeat RPCs to the
-    // coordinator.
-    //
-    // TODO(mwhittaker): Deprecate this; use heartbeat_timeout instead.
-    absl::Duration heartbeat_interval = absl::Seconds(10);
-
-    // How many failed heartbeat RPCs may fail due to a possibly-ephemeral
-    // reason before we decide the coordinator has vanished and that we should
-    // shut down.
-    //
-    // TODO(mwhittaker): Deprecate this; use heartbeat_timeout instead.
-    int max_missing_heartbeats = 10;
-
     // Callback invoked by the client when notification of a missing heartbeat
     // is reported by the coordinator, or we have not heard from the coordinator
     // recently. `coordinator_reported_failure` is true in the former case.
@@ -102,6 +91,10 @@ class DistributedRuntimeClient {
     // coordination service at the startup.
     // TODO(b/355706798): eventually remove this option.
     bool poll_for_error_from_service_at_startup = true;
+
+    // If true, a multi-controller JAX job can continue even if this client
+    // fails. Otherwise, the job will fail when the task fails.
+    bool recoverable = false;
   };
 
   virtual ~DistributedRuntimeClient() = default;
@@ -128,6 +121,11 @@ class DistributedRuntimeClient {
   // Returns `NotFoundError` immediately if the key is not found.
   virtual absl::StatusOr<std::string> KeyValueTryGet(absl::string_view key) = 0;
 
+  // Returns `FailedPreconditionError` if the corresponding value is not int
+  // convertible.
+  virtual absl::StatusOr<int64_t> KeyValueIncrement(absl::string_view key,
+                                                    int64_t increment) = 0;
+
   // Get all key-value pairs under a directory (key).
   // A value is considered to be in the directory if its key is prefixed with
   // the directory.
@@ -153,8 +151,15 @@ class DistributedRuntimeClient {
       std::string barrier_id, absl::Duration timeout,
       std::optional<absl::Span<const int32_t>> nodes) = 0;
 
+  // Returns the subset of live nodes, along with their incarnations. See
+  // CoordinationService.GetAliveTasks for detailed semantics.
+  virtual absl::StatusOr<absl::flat_hash_map<int32_t, IncarnationId>>
+  GetLiveNodesWithIncarnations(absl::Span<const int32_t> nodes) = 0;
+
   // Returns the subset of live nodes. See CoordinationService.GetAliveTasks for
   // detailed semantics.
+  //
+  // TODO: mwhittaker - Remove this function.
   virtual absl::StatusOr<std::vector<int32_t>> GetLiveNodes(
       absl::Span<const int32_t> nodes) = 0;
 

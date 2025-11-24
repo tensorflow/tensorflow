@@ -19,6 +19,8 @@ limitations under the License.
 #include <vector>
 
 #include <gtest/gtest.h>
+#include "absl/strings/string_view.h"
+#include "llvm/ADT/StringRef.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinTypeInterfaces.h"
 #include "mlir/IR/BuiltinTypes.h"
@@ -67,6 +69,17 @@ TEST(ConvertTensorShapeToType, Simple) {
         << " Expected: " << mlir::debugString(expected)
         << " Computed: " << mlir::debugString(type);
   }
+}
+
+TEST(StringRefToStringView, Conversion) {
+  absl::string_view sv = "hello";
+  llvm::StringRef sref = ToStringRef(sv);
+  EXPECT_EQ(sref.data(), sv.data());
+  EXPECT_EQ(sref.size(), sv.size());
+
+  absl::string_view sv2 = ToStringView(sref);
+  EXPECT_EQ(sv2.data(), sref.data());
+  EXPECT_EQ(sv2.size(), sref.size());
 }
 
 }  // namespace

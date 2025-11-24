@@ -1,6 +1,10 @@
 load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
+load("@bazel_skylib//rules:common_settings.bzl", "bool_flag")
 
-exports_files(["pybind_extension.py.tpl"])
+exports_files([
+    "pybind_extension.py.tpl",
+    "wrapped_py_init.cc",
+])
 
 bzl_library(
     name = "pywrap_bzl",
@@ -14,5 +18,19 @@ bzl_library(
 py_binary(
     name = "def_file_filter_tool",
     srcs = [":def_file_filter_tool.py"],
+    visibility = ["//visibility:public"],
+)
+
+bool_flag(
+    name = "wrap_py_init",
+    build_setting_default = False,
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "config_wrap_py_init",
+    flag_values = {
+        ":wrap_py_init": "True",
+    },
     visibility = ["//visibility:public"],
 )

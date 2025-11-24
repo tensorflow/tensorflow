@@ -18,32 +18,29 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "xla/stream_executor/gpu/tma_metadata.h"
-#include "xla/tsl/platform/status_matchers.h"
 
 namespace stream_executor::gpu {
 namespace {
 
-using ::tsl::testing::IsOkAndHolds;
-using ::tsl::testing::StatusIs;
-
 TEST(TmaUtilTest, GetTensorMapDataTypeReturnsCorrectDataType) {
   EXPECT_THAT(GetTensorMapDataType(1),
-              IsOkAndHolds(CU_TENSOR_MAP_DATA_TYPE_UINT8));
+              absl_testing::IsOkAndHolds(CU_TENSOR_MAP_DATA_TYPE_UINT8));
   EXPECT_THAT(GetTensorMapDataType(2),
-              IsOkAndHolds(CU_TENSOR_MAP_DATA_TYPE_UINT16));
+              absl_testing::IsOkAndHolds(CU_TENSOR_MAP_DATA_TYPE_UINT16));
   EXPECT_THAT(GetTensorMapDataType(4),
-              IsOkAndHolds(CU_TENSOR_MAP_DATA_TYPE_UINT32));
+              absl_testing::IsOkAndHolds(CU_TENSOR_MAP_DATA_TYPE_UINT32));
   EXPECT_THAT(GetTensorMapDataType(8),
-              IsOkAndHolds(CU_TENSOR_MAP_DATA_TYPE_UINT64));
+              absl_testing::IsOkAndHolds(CU_TENSOR_MAP_DATA_TYPE_UINT64));
 }
 
 TEST(TmaUtilTest, GetTensorMapDataTypeFailsGracefully) {
   EXPECT_THAT(GetTensorMapDataType(0),
-              StatusIs(absl::StatusCode::kInvalidArgument));
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
   EXPECT_THAT(GetTensorMapDataType(16),
-              StatusIs(absl::StatusCode::kInvalidArgument));
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
 TEST(TmaUtilTest, GetTensorMapSwizzleReturnsCorrectSwizzle) {

@@ -40,6 +40,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "mlir/Dialect/Func/Extensions/AllExtensions.h"
 #include "xla/client/executable_build_options.h"
+#include "xla/future.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -58,7 +59,6 @@ limitations under the License.
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_executable.h"
-#include "xla/pjrt/pjrt_future.h"
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/primitive_util.h"
 #include "xla/runtime/large_hlo_snapshot_serialization/serialization.h"
@@ -111,35 +111,12 @@ absl::Span<PjRtDevice* const> GetLocalDevices(const PjRtClient& client) {
 //
 // Case 1: the HLO module is compiled with
 // CompileOptions::parameter_is_tupled_arguments = true
-// and the HLO module is executed with
-// ExecuteOptions::arguments_are_tupled = false.
 // This enables PjRtClient::Execute to assemble the tupled arguments from
 // a flat list of buffers.
-// Additionally, we set ExecuteOptions::untuple_result = true if the module's
-// output is a tuple. Thus we can use the aliased output buffer as input
-// arguments and reuse the non-aliased argument buffers. In this mode, users may
-// provide the argument literals as a list of tuples (for the convenience of
-// future use cases) or a tuple literal (to support existing use cases).
 //
 // Case 2: the HLO module is compiled with
 // CompileOptions::parameter_is_tupled_arguments = false
-// and the HLO module is executed with
-// ExecuteOptions::arguments_are_tupled = false.
-// Same as above, we set ExecuteOptions::untuple_result = true if the module's
-// output is a tuple. This allows us to reuse on-device buffers in the same way
-// as case 1.
-//
-// Case 3: the HLO module is compiled with
-// CompileOptions::parameter_is_tupled_arguments = false
-// and the HLO module is executed with
-// ExecuteOptions::arguments_are_tupled = false.
 // We will create new on-device buffers for each repeated execution.
-//
-// Irrespective of the above, if the output is a tuple with leaves mixing host
-// and device memory spaces, we set ExecuteOptions::untuple_result = true.
-// Otherwise PJRT cannot correctly represent these tuples, because a PjRtBuffer
-// can only belong to one memory space. By "untupling", PJRT assigns a separate
-// PjRtBuffer to each leaf.
 
 enum class ParameterType {
   kOneTupleOfArrays = 0,
@@ -237,19 +214,60 @@ absl::StatusOr<HloModuleAndArguments> ReadModuleFromSnapshotBinaryProtoFile(
   return hlo_module_and_arguments;
 }
 
-absl::StatusOr<HloModuleAndArguments>
-ReadModuleFromUnoptimizedSnapshotBinaryProtoFile(absl::string_view hlo_file) {
-  HloModuleAndArguments hlo_module_and_arguments;
-  tsl::Env* env = tsl::Env::Default();
+namespace {
 
+// This function reads an HloUnoptimizedSnapshot from the file at the given
+// path.
+// It first tries to deserialize the snapshot using custom serialization.
+// If that fails, it falls back to standard deserialization.
+absl::StatusOr<HloUnoptimizedSnapshot> ReadHloUnoptimizedSnapshot(
+    absl::string_view hlo_file) {
+  tsl::Env* env = tsl::Env::Default();
   std::unique_ptr<tsl::RandomAccessFile> file;
   TF_RETURN_IF_ERROR(env->NewRandomAccessFile(std::string(hlo_file), &file));
 
-  tsl::RandomAccessFileCopyingInputStream input_stream(file.get());
-  tsl::protobuf::io::CopyingInputStreamAdaptor adaptor(&input_stream);
+  tsl::RandomAccessFileCopyingInputStream custom_deserialization_input_stream(
+      file.get());
+  tsl::protobuf::io::CopyingInputStreamAdaptor custom_deserialization_adaptor(
+      &custom_deserialization_input_stream);
+
+  // Try to deserialize snapshot with custom deserialization.
+  auto proto_or_status =
+      DeserializeHloUnoptimizedSnapshot(&custom_deserialization_adaptor);
+
+  if (proto_or_status.ok()) {
+    return proto_or_status.value();
+  }
+
+  // Fallback to standard deserialization.
+
+  HloUnoptimizedSnapshot proto;
+  // Fallback to standard deserialization. This requires creating a new input
+  // stream because we need to read from the beginning of the file.
+  tsl::RandomAccessFileCopyingInputStream fallback_input_stream(file.get());
+  tsl::protobuf::io::CopyingInputStreamAdaptor fallback_adaptor(
+      &fallback_input_stream);
+  tsl::protobuf::io::CodedInputStream coded_stream(&fallback_adaptor);
+
+  if (!proto.ParseFromCodedStream(&coded_stream)) {
+    return Internal(
+        "Failed to parse HloUnoptimizedSnapshot from the input stream with "
+        "standard deserialization. Custom deserialization also failed with "
+        "error: "
+        "%s",
+        proto_or_status.status().message());
+  }
+  return proto;
+}
+
+}  // namespace
+
+absl::StatusOr<HloModuleAndArguments>
+ReadModuleFromUnoptimizedSnapshotBinaryProtoFile(absl::string_view hlo_file) {
+  HloModuleAndArguments hlo_module_and_arguments;
 
   TF_ASSIGN_OR_RETURN(HloUnoptimizedSnapshot proto,
-                      DeserializeHloUnoptimizedSnapshot(&adaptor));
+                      ReadHloUnoptimizedSnapshot(hlo_file));
 
   TF_ASSIGN_OR_RETURN(hlo_module_and_arguments.hlo_module,
                       CreateModuleFromProto(proto.hlo_module()));
@@ -371,10 +389,12 @@ absl::StatusOr<PerDeviceLiteralVecType> FetchAndLogOutput(
         TF_RET_CHECK(buffer->device() == output_buffers[i][0]->device())
             << "All outputs from a given vector of outputs should be for the "
                "same device";
+        TF_ASSIGN_OR_RETURN(auto logical_shape,
+                            buffer->logical_on_device_shape());
         output_slice.emplace_back(
-            ShapeUtil::DeviceShapeToHostShape(buffer->on_device_shape()));
+            ShapeUtil::DeviceShapeToHostShape(logical_shape));
         buffer->ToLiteral(&output_slice.back()).OnReady([&](absl::Status s) {
-          absl::MutexLock lock(&mu);
+          absl::MutexLock lock(mu);
           --num_pending_transfers;
           status.Update(s);
         });
@@ -392,7 +412,7 @@ absl::StatusOr<PerDeviceLiteralVecType> FetchAndLogOutput(
       (module_output_mode == ModuleOutputMode::kReturnDevice0Outputs &&
        device_0_is_local)) {
     auto cond = [&]() { return !status.ok() || num_pending_transfers == 0; };
-    absl::MutexLock lock(&mu);
+    absl::MutexLock lock(mu);
     mu.Await(absl::Condition(&cond));
     TF_RETURN_IF_ERROR(status);
     if (log_output) {
@@ -502,9 +522,6 @@ absl::StatusOr<PerDeviceLiteralVecType> RunInternal(
   if (running_options.multi_slice_config != nullptr) {
     execute_options.multi_slice_config = running_options.multi_slice_config;
   }
-  if (running_options.untuple_result.has_value()) {
-    execute_options.untuple_result = *running_options.untuple_result;
-  }
   TF_ASSIGN_OR_RETURN(std::vector<std::shared_ptr<HloModule>> hlo_modules,
                       executable->GetHloModules());
   CHECK_EQ(hlo_modules.size(), 1);
@@ -545,40 +562,19 @@ absl::StatusOr<PerDeviceLiteralVecType> RunInternal(
   };
 
   std::vector<std::vector<std::unique_ptr<PjRtBuffer>>> output_buffers;
-  auto output_has_tuple_leaf_on_host_memory_space = [&module]() {
-    if (!module.result_shape().IsTuple()) {
-      return false;
-    }
-    return true;
-  };
-  // If any output leaf buffer is a tuple, PJRT requires untuple_result.
-  bool must_untuple_result = output_has_tuple_leaf_on_host_memory_space();
-  bool default_untuple_result =
-      must_untuple_result || execute_options.untuple_result;
-  switch (parameter_type) {
-    case ParameterType::kOneTupleOfArrays:
-      execute_options.arguments_are_tupled = false;
-      execute_options.untuple_result =
-          module.entry_computation()->root_instruction()->shape().IsTuple();
-      break;
-    case ParameterType::kOneListOfArrays:
-      execute_options.arguments_are_tupled = false;
-      execute_options.untuple_result =
-          module.entry_computation()->root_instruction()->shape().IsTuple();
-      break;
-    case ParameterType::kOther:
-      execute_options.arguments_are_tupled = false;
-      execute_options.untuple_result = false;
-      break;
-  }
-  if (must_untuple_result) {
-    execute_options.untuple_result = true;
-  }
-  std::optional<std::vector<PjRtFuture<>>> futures;
+  std::optional<std::vector<Future<>>> futures;
   futures.emplace();
   std::vector<std::vector<std::unique_ptr<PjRtBuffer>>> device_buffers;
   std::vector<std::vector<PjRtBuffer*>> argument_ptrs;
+
+  bool has_active_profiler_session = false;
   for (int repeat = 0; repeat < running_options.num_repeats; ++repeat) {
+    const bool is_last_repeat = (repeat == running_options.num_repeats - 1);
+    const bool profile_current_repeat =
+        (running_options.profiler != nullptr) &&
+        (repeat >= running_options.num_repeats -
+                       running_options.num_repeats_with_profiler);
+
     VLOG(1) << "FunctionalHloRunner: ExecuteOnDevices started (repeat = "
             << repeat << ").";
     {
@@ -592,17 +588,16 @@ absl::StatusOr<PerDeviceLiteralVecType> RunInternal(
                                                 flatten_arguments));
         argument_ptrs = CreateArgumentPointersFromDeviceBuffers(device_buffers);
       }
-      if (repeat == running_options.num_repeats - 1) {
-        execute_options.untuple_result = default_untuple_result;
-        if (running_options.profiler != nullptr) {
-          running_options.profiler->CreateSession();
-        }
-      }
-      execute_options.launch_id = repeat + 1;
+      execute_options.launch_id = repeat + 1 + running_options.base_run_id;
       if (running_options.execution_profiles != nullptr) {
         execute_options.execution_profile =
             &running_options.execution_profiles->emplace_back();
         execute_options.execution_profile->set_warmup_run_executed(repeat > 0);
+      }
+
+      if (profile_current_repeat && !has_active_profiler_session) {
+        running_options.profiler->CreateSession();
+        has_active_profiler_session = true;
       }
       futures->clear();
       TF_ASSIGN_OR_RETURN(
@@ -611,10 +606,18 @@ absl::StatusOr<PerDeviceLiteralVecType> RunInternal(
       for (auto& future : *futures) {
         TF_RETURN_IF_ERROR(future.Await());
       }
+
+      const bool upload_active_profiler_session =
+          running_options.recreate_profiler_session_between_repeats ||
+          is_last_repeat;
+      if (has_active_profiler_session && upload_active_profiler_session) {
+        running_options.profiler->UploadSession();
+        has_active_profiler_session = false;
+      }
     }
     VLOG(1) << "FunctionalHloRunner: ExecuteOnDevices succeeded (repeat = "
             << repeat << ")";
-    if (repeat < running_options.num_repeats - 1) {
+    if (!is_last_repeat) {
       switch (parameter_type) {
         case ParameterType::kOneTupleOfArrays:
           argument_ptrs = CreateArgumentPointersBasedOnAliasing(
@@ -638,9 +641,6 @@ absl::StatusOr<PerDeviceLiteralVecType> RunInternal(
                       FetchAndLogOutput(client, output_buffers,
                                         running_options.module_output_mode,
                                         running_options.log_input_output()));
-  if (running_options.profiler != nullptr) {
-    running_options.profiler->UploadSession();
-  }
   return results;
 }
 
@@ -1177,6 +1177,12 @@ absl::StatusOr<HloModuleAndArguments> LoadHloModuleAndArguments(
           ReadModuleFromUnoptimizedSnapshotTextProtoFile(hlo_file));
       break;
     }
+    case InputFormat::kSerializedPjRtExecutable: {
+      LOG(INFO) << "Skipping loading HLO module and arguments for serialized "
+                   "PjRtExecutable.";
+      return hlo_module_and_arguments;
+      break;
+    }
     default:
       LOG(FATAL) << "Cannot process input format: "
                  << AbslUnparseFlag(input_format);
@@ -1191,16 +1197,17 @@ absl::Status LoadAndRunAndDump(
     const xla::FunctionalHloRunner::RunningOptions& running_options,
     absl::string_view hlo_file, InputFormat input_format,
     std::string dump_output_to, int task_id, int num_nodes,
-    std::shared_ptr<xla::KeyValueStoreInterface> kv_store) {
+    std::shared_ptr<xla::KeyValueStoreInterface> kv_store,
+    std::minstd_rand0* engine) {
   TF_ASSIGN_OR_RETURN(
       CompileOptions compile_options,
       FunctionalHloRunner::CreateCompileOptions(client, raw_compile_options,
                                                 task_id, num_nodes, kv_store));
   TF_ASSIGN_OR_RETURN(
       FunctionalHloRunner::PerDeviceLiteralVecType output,
-      FunctionalHloRunner::LoadAndRun(client, debug_options, preproc_options,
-                                      compile_options, running_options,
-                                      hlo_file, input_format));
+      FunctionalHloRunner::LoadAndRun(
+          client, debug_options, preproc_options, compile_options,
+          running_options, hlo_file, input_format, /*arguments=*/{}, engine));
   return dump_output_to.empty()
              ? absl::OkStatus()
              : FunctionalHloRunner::DumpOutput(output, dump_output_to, task_id);
@@ -1218,33 +1225,53 @@ absl::StatusOr<FunctionalHloRunner::PerDeviceLiteralVecType> LoadAndRun(
   // Currently there is no mechanism to map the loaded arguments to
   // proper device ID, so loading and executing from HLO snapshot might not
   // replay the original execution.
-  TF_ASSIGN_OR_RETURN(HloModuleAndArguments hlo_module_and_arguments,
-                      LoadHloModuleAndArguments(hlo_file, input_format));
-  // Arguments from `arguments` take precedence over the arguments from a
-  // snapshot.
-  if (!arguments.empty()) {
-    return CompileAndRun(client, debug_options, preproc_options,
-                         compile_options, running_options,
-                         hlo_module_and_arguments.hlo_module.get(), arguments);
-  }
 
-  // Check that the number of shards is not greater than the number of
-  // devices.
-  if (hlo_module_and_arguments.arguments.size() > client.devices().size()) {
-    return absl::InvalidArgumentError(
-        "The number of shards in the given input file is greater than the "
-        "number of devices available on the host.");
-  }
-
+  const PerDeviceLiteralVecType* final_arguments = nullptr;
+  std::unique_ptr<HloModule> hlo_module;
   PerDeviceLiteralVecType loaded_arguments;
-  for (int i = 0; i < hlo_module_and_arguments.arguments.size(); ++i) {
-    loaded_arguments[client.devices()[i]->id()] =
-        std::move(hlo_module_and_arguments.arguments[i]);
+  if (!arguments.empty()) {
+    final_arguments = &arguments;
+  } else {
+    TF_ASSIGN_OR_RETURN(HloModuleAndArguments hlo_module_and_arguments,
+                        LoadHloModuleAndArguments(hlo_file, input_format));
+
+    // Check that the number of shards is not greater than the number of
+    // devices.
+    if (hlo_module_and_arguments.arguments.size() > client.devices().size()) {
+      return absl::InvalidArgumentError(
+          "The number of shards in the given input file is greater than the "
+          "number of devices available on the host.");
+    }
+
+    for (int i = 0; i < hlo_module_and_arguments.arguments.size(); ++i) {
+      loaded_arguments[client.devices()[i]->id()] =
+          std::move(hlo_module_and_arguments.arguments[i]);
+    }
+    hlo_module = std::move(hlo_module_and_arguments.hlo_module);
+    final_arguments = &loaded_arguments;
   }
 
-  return CompileAndRun(
-      client, debug_options, preproc_options, compile_options, running_options,
-      hlo_module_and_arguments.hlo_module.get(), loaded_arguments, engine);
+  if (input_format == InputFormat::kSerializedPjRtExecutable) {
+    std::string serialized_executable;
+    TF_RETURN_IF_ERROR(tsl::ReadFileToString(
+        tsl::Env::Default(), std::string(hlo_file), &serialized_executable));
+    TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtLoadedExecutable> executable,
+                        client.LoadSerializedExecutable(
+                            serialized_executable,
+                            /*options=*/std::nullopt, LoadOptions()));
+    return Run(client, executable.get(), *final_arguments, running_options,
+               engine);
+  }
+  if (!hlo_module) {
+    // Load hlo module.
+    TF_ASSIGN_OR_RETURN(HloModuleAndArguments hlo_module_and_arguments,
+                        LoadHloModuleAndArguments(hlo_file, input_format));
+    hlo_module = std::move(hlo_module_and_arguments.hlo_module);
+  }
+
+  return CompileAndRun(client, debug_options, preproc_options, compile_options,
+                       running_options, hlo_module.get(), *final_arguments,
+                       engine);
 }
 
 absl::Status LoadAndCompile(

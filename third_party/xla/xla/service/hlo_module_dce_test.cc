@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/service/hlo_module_dce.h"
 
+#include <gtest/gtest.h>
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -194,6 +195,55 @@ TEST_F(HloModuleDceTest, OneWhileWithDeadTupleElement) {
                                                    "while", 0));
   // While tuple element {1} should now be pass-through after ModuleDCE.
   auto while_loops = GetWhileLoops(module->entry_computation());
+  EXPECT_EQ(1, while_loops.size());
+  EXPECT_EQ(1, ShapeUtil::TupleElementCount(while_loops[0]->shape()));
+}
+
+// Tests that a while loop with one dead tuple element at {1} has its while
+// loop body modified to make that tuple element pass-through the while body
+// even when it's used by a non-entry computation.
+TEST_F(HloModuleDceTest, OneWhileWithDeadTupleElementInCall) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+  HloModule SimpleLoop
+  SimpleLoop.body {
+    loop_var.1 = (s32[], s32[3]{0}) parameter(0)
+    get-tuple-element.1 = s32[] get-tuple-element(loop_var.1), index=0
+    constant.1 = s32[] constant(1)
+    add = s32[] add(get-tuple-element.1, constant.1)
+    get-tuple-element.2 = s32[3]{0} get-tuple-element(loop_var.1), index=1
+    multiply = s32[3]{0} multiply(get-tuple-element.2, get-tuple-element.2)
+    ROOT tuple = (s32[], s32[3]{0}) tuple(add, multiply)
+  }
+  SimpleLoop.condition {
+    loop_var.2 = (s32[], s32[3]{0}) parameter(0)
+    get-tuple-element.3 = s32[] get-tuple-element(loop_var.2), index=0
+    constant.2 = s32[] constant(5)
+    ROOT less-than = pred[] compare(get-tuple-element.3, constant.2), direction=LT
+  }
+  callee {
+    calee.param = (s32[], s32[3]{0}) parameter(0)
+    ROOT while = (s32[], s32[3]{0}) while(calee.param), condition=
+      SimpleLoop.condition, body=SimpleLoop.body
+  }
+  ENTRY SimpleLoop {
+    constant.3 = s32[] constant(0)
+    constant.4 = s32[3]{0} constant({0, 1, 2})
+    tuple.1 = (s32[], s32[3]{0}) tuple(constant.3, constant.4)
+    call = call(tuple.1), to_apply=callee
+    ROOT get-tuple-element.4 = s32[] get-tuple-element(call), index=0
+  })")
+                    .value();
+
+  HloComputation* callee = module->GetComputationWithName("callee");
+  ASSERT_FALSE(WhileBodyHasPassThroughTupleElement(callee, "while", 1));
+  auto while_loops = GetWhileLoops(callee);
+  ASSERT_EQ(1, while_loops.size());
+  ASSERT_EQ(2, ShapeUtil::TupleElementCount(while_loops[0]->shape()));
+
+  HloModuleDCE dce;
+  EXPECT_TRUE(dce.Run(module.get()).value());
+  EXPECT_FALSE(WhileBodyHasPassThroughTupleElement(callee, "while", 0));
+  while_loops = GetWhileLoops(callee);
   EXPECT_EQ(1, while_loops.size());
   EXPECT_EQ(1, ShapeUtil::TupleElementCount(while_loops[0]->shape()));
 }

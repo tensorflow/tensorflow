@@ -34,6 +34,7 @@ static_assert(false,
 #include <memory>
 #include <optional>
 #include <string>
+#include <tuple>
 #include <vector>
 
 #include "absl/base/attributes.h"
@@ -45,7 +46,6 @@ static_assert(false,
 #include "xla/literal.h"
 #include "xla/service/backend.h"
 #include "xla/service/computation_placer.h"
-#include "xla/service/executable.h"
 #include "xla/service/hlo_runner.h"
 #include "xla/service/hlo_runner_interface.h"
 #include "xla/stream_executor/device_memory_allocator.h"
@@ -147,10 +147,9 @@ class ABSL_DEPRECATED(
   absl::StatusOr<std::vector<Literal>> ExecuteReplicatedWithHloRunner(
       OpaqueExecutable* executable,
       const HloRunnerInterface::ReplicatedExecuteOptions& options,
-      DeviceAssignment* device_assignment,
-      ExecutionProfile* profile = nullptr) {
+      DeviceAssignment* device_assignment) {
     return test_runner_as_hlo_runner().ExecuteReplicated(
-        executable, options, device_assignment, profile);
+        executable, options, device_assignment, nullptr);
   }
 
   [[nodiscard]] ::testing::AssertionResult RunAndCompareFromFile(
@@ -206,8 +205,6 @@ class ABSL_DEPRECATED(
     return backend().device_count();
   }
 
-  absl::StatusOr<std::unique_ptr<HloRunnerInterface>> GetHloRunner();
-
   // Helper functions to get test and reference platforms.
   static se::Platform* GetReferencePlatform();
   static se::Platform* GetTestPlatform();
@@ -218,7 +215,15 @@ class ABSL_DEPRECATED(
   ErrorSpec error_spec_{0.0001};
 
  private:
-  se::Platform* test_platform_;
+  HloTestBase(std::tuple<std::unique_ptr<HloRunnerInterface>,
+                         HloRunnerAgnosticTestBase::DeviceShapeRepresentationFn,
+                         HloRunnerAgnosticTestBase::DeviceShapeSizeFn>
+                  test_runner_and_functions,
+              std::unique_ptr<HloRunnerInterface> reference_runner,
+              bool verifier_layout_sensitive,
+              bool allow_mixed_precision_in_hlo_verifier,
+              HloPredicate instruction_can_change_layout_func);
+
   std::unique_ptr<se::DeviceMemoryAllocator> allocator_;
 };
 

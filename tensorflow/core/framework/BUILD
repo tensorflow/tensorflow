@@ -1,4 +1,4 @@
-# Placeholder: load py_proto_library
+load("@rules_python//python:proto.bzl", "py_proto_library")
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_test",
@@ -599,6 +599,7 @@ cc_library(
         ":reader_base_proto_cc",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/synchronization",
     ],
 )
 
@@ -735,6 +736,7 @@ cc_library(
         "//third_party/py/grain/_src/tensorflow/ops:__pkg__",
         "//waymo/ml/compiler/frontend/kernels:__pkg__",
         "//waymo/ml/compiler/runtime/alpine/core:__pkg__",
+        "//waymo/ml/woodshed/ops:__pkg__",
     ],
     deps = [
         "//tensorflow/core/lib/core:refcount",
@@ -957,19 +959,24 @@ cc_library(
     deps = [
         ":attr_value_proto_text",
         ":tensor",
+        ":tensor_proto_cc",
         ":tensor_shape",
         ":tensor_shape_proto_cc",
+        "//tensorflow/core:portable_gif_internal",
         "//tensorflow/core/lib/core:errors",
         "//tensorflow/core/lib/core:status",
         "//tensorflow/core/lib/core:stringpiece",
         "//tensorflow/core/lib/gtl:array_slice",
-        "//tensorflow/core/lib/hash",
         "//tensorflow/core/lib/strings:proto_serialization",
         "//tensorflow/core/lib/strings:str_util",
         "//tensorflow/core/platform:fingerprint",
-        "//tensorflow/core/platform:protobuf",
+        "//tensorflow/core/platform:hash",
+        "//tensorflow/core/platform:numbers",
         "//tensorflow/core/util:overflow",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -1413,6 +1420,7 @@ tf_cc_tests(
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
         "@com_google_googletest//:gtest",
         "@eigen_archive//:eigen3",
         "@local_xla//xla/tsl/profiler/utils:xplane_utils",
@@ -1624,6 +1632,7 @@ tf_proto_library(
     name = "device_attributes_proto",
     srcs = ["device_attributes.proto"],
     make_default_target_header_only = True,
+    visibility = ["//visibility:public"],
 )
 
 tf_proto_library(
@@ -1772,6 +1781,7 @@ tf_proto_library(
     name = "types_proto",
     srcs = ["types.proto"],
     make_default_target_header_only = True,
+    visibility = ["//visibility:public"],
 )
 
 tf_jspb_proto_library(

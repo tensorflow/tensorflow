@@ -17,12 +17,12 @@ limitations under the License.
 #include <memory>
 #include <string>
 #include <utility>
-#include <variant>
 #include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
@@ -45,7 +45,7 @@ limitations under the License.
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
-#include "xla/service/gpu/model/tiled_hlo_computation.h"
+#include "xla/service/gpu/model/block_level_parameters.h"
 #include "xla/service/gpu/tests/gpu_codegen_test.h"
 #include "xla/service/gpu/transforms/nest_gemm_fusion.h"
 #include "xla/service/pattern_matcher.h"
@@ -54,7 +54,6 @@ limitations under the License.
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/xla.pb.h"
@@ -66,7 +65,6 @@ namespace gpu {
 namespace {
 
 namespace m = ::xla::match;
-using tsl::testing::StatusIs;
 
 struct ModuleAndNestedFusionMetadata {
   std::unique_ptr<VerifiedHloModule> module;
@@ -89,10 +87,6 @@ class TritonTest : public GpuCodegenTest {
  public:
   DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options = GpuCodegenTest::GetDebugOptionsForTest();
-    debug_options
-        .set_xla_gpu_unsupported_enable_generic_triton_emitter_for_gemms(true);
-    // Disable autotuning by default, re-enable it on a per-test basis in order
-    // to avoid unnecessary slowness.
     debug_options.set_xla_gpu_autotune_level(0);
     return debug_options;
   }
@@ -108,15 +102,6 @@ class TritonTest : public GpuCodegenTest {
     return device_desc().gpu_compute_capability();
   }
 
-  stream_executor::GpuComputeCapability CudaAmpereOrRocm() {
-    if (std::holds_alternative<stream_executor::RocmComputeCapability>(
-            GpuComputeCapability())) {
-      return stream_executor::GpuComputeCapability{
-          device_desc().rocm_compute_capability()};
-    }
-    return se::CudaComputeCapability::Ampere();
-  }
-
   // Returns the module, its fusion computation and associated block level
   // parameters from an HLO module text whose entry computation contains a
   // single GEMM fusion.
@@ -126,7 +111,7 @@ class TritonTest : public GpuCodegenTest {
                         ParseAndReturnVerifiedModule(hlo_text));
     TF_ASSIGN_OR_RETURN(
         bool fusion_was_nested,
-        NestGemmFusion(GpuComputeCapability()).Run(module.get()));
+        NestGemmFusion(device_desc(), &mlir_context_).Run(module.get()));
     if (!fusion_was_nested) {
       return absl::InternalError("Failed to nest the GEMM fusion.");
     }
@@ -147,6 +132,8 @@ class TritonTest : public GpuCodegenTest {
   const stream_executor::DeviceDescription& device_desc() {
     return backend().default_stream_executor()->GetDeviceDescription();
   }
+
+  mlir::MLIRContext mlir_context_;
 };
 
 class TritonGemmTest : public TritonTest {
@@ -252,9 +239,9 @@ ENTRY e {
       CreateTritonIrAndFileCheck(*module_and_metadata.computation,
                                  module_and_metadata.block_level_parameters,
                                  R"(
-CHECK: %[[LOAD:.*]] = triton_xla.extract {{.*}} : tensor<2x2xi8> to tensor<16x16xi8>
-CHECK: %[[TRUNCI:.*]] = arith.trunci %[[LOAD]] : tensor<16x16xi8> to tensor<16x16xi1>
-CHECK: %{{.*}} = arith.andi %[[TRUNCI]], %{{.*}} : tensor<16x16xi1>
+CHECK: %[[LOAD:.*]] = xtile.extract {{.*}} -> tensor<16x16xi8>
+CHECK: %[[CMPI:.*]] = arith.cmpi ne, %[[LOAD]], {{.*}} : tensor<16x16xi8>
+CHECK: %{{.*}} = arith.andi %[[CMPI]], %{{.*}} : tensor<16x16xi1>
 )"));
 }
 
@@ -294,7 +281,8 @@ CHECK: tt.dot {{.*}} : tensor<16x32xf32> * tensor<32x64xf32> -> tensor<16x64xf32
 )"));
 }
 
-TEST_F(TritonTest, CodegenDynamicSliceWithCorrectOffsets) {
+// TODO(b/417172838): enable after enabling dynamic slice in support.cc.
+TEST_F(TritonTest, DISABLED_CodegenDynamicSliceWithCorrectOffsets) {
   // TODO(b/417172838): we now should support non-majormost dimensions, port
   // this test to fusion_emitter_device_test with that support.
 
@@ -339,12 +327,12 @@ ENTRY e {
     CHECK: func.func @triton_fn(%[[ARG0:.*]]: tensor<2x4xf32>, %[[ARG1:.*]]: tensor<4x5x2xf32>, %[[ARG2:.*]]: tensor<i32>, %[[ARG3:.*]]: tensor<i32>, %[[ARG4:.*]]: tensor<i32>, %[[ARG5:.*]]: tensor<4x5xf32>) -> tensor<4x5xf32> {
     CHECK-DAG: %[[c3:.*]] = arith.constant 3 : i32
     CHECK-DAG: %[[c0:.*]] = arith.constant 0 : i32
-    CHECK-DAG: triton_xla.extract %[[ARG0]][0, 0] [32, 32] [1, 1]
+    CHECK-DAG: triton_xla.extract from  %[[ARG0]] {{.*}} [0, 0] [32, 32] [1, 1]
     CHECK: %[[V2:.*]] = tensor.extract %[[ARG2]][] : tensor<i32>
     CHECK: %[[CLAMP0:.*]] = arith.maxsi %[[V2]], %[[c0]] : i32
     CHECK: %[[CLAMP1:.*]] = arith.minsi %[[CLAMP0]], %[[c3]] : i32
-    CHECK: %[[OFFSET:.*]] = arith.index_castui %[[CLAMP1]] : i32 to index
-    CHECK: triton_xla.extract %[[ARG1]][%[[OFFSET]], 0, 0] [1, 32, 32] [0, 1, 1]
+    CHECK: %[[OFFSET:.*]] = arith.index_cast %[[CLAMP1]] : i32 to index
+    CHECK: triton_xla.extract from %[[ARG1]] {{.*}} [%[[OFFSET]], 0, 0] [1, 32, 32] [0, 1, 1]
     CHECK: tt.dot
   )"));
 }
@@ -470,7 +458,6 @@ TEST_F(TritonGemmTest, FailIfTooMuchShmem) {
       TestGpuDeviceInfo::RTXA6000DeviceInfo();
   llvm::LLVMContext llvm_ctx;
   llvm::Module llvm_module("module", llvm_ctx);
-  mlir::MLIRContext mlir_context;
 
   constexpr absl::string_view kHloTextTemplate = R"(
 triton_gemm_dot {
@@ -493,16 +480,17 @@ ENTRY entry {
 })";
   TF_ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata module1_and_metadata,
                           GetModuleAndNestedFusionMetadata(absl::Substitute(
-                              kHloTextTemplate, 16, 32, 512, 8)));
+                              kHloTextTemplate, 256, 256, 256, 8)));
 
   const HloFusionInstruction* fusion1 = Cast<HloFusionInstruction>(
       module1_and_metadata.computation->FusionInstruction());
   EXPECT_THAT(
-      TritonWrapper("test_fn", fusion1, cc, device_info,
-                    module1_and_metadata.block_level_parameters, &llvm_module,
-                    mlir_context),
-      StatusIs(tsl::error::RESOURCE_EXHAUSTED,
-               ::testing::HasSubstr("Shared memory size limit exceeded")));
+      TritonWrapper("test_fn", fusion1, se::GpuComputeCapability{cc},
+                    device_info, module1_and_metadata.block_level_parameters,
+                    &llvm_module, mlir_context_),
+      absl_testing::StatusIs(
+          tsl::error::RESOURCE_EXHAUSTED,
+          ::testing::HasSubstr("Shared memory size limit exceeded")));
 
   TF_ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata module2_and_metadata,
                           GetModuleAndNestedFusionMetadata(absl::Substitute(
@@ -513,9 +501,9 @@ ENTRY entry {
 
   TF_ASSERT_OK_AND_ASSIGN(
       const auto result,
-      TritonWrapper("test_fn", fusion2, cc, device_info,
-                    module2_and_metadata.block_level_parameters, &llvm_module,
-                    mlir_context));
+      TritonWrapper("test_fn", fusion2, se::GpuComputeCapability{cc},
+                    device_info, module2_and_metadata.block_level_parameters,
+                    &llvm_module, mlir_context_));
   // Use optin shared memory which is > shared_memory_per_block.
   EXPECT_GT(result.shmem_bytes, device_info.shared_memory_per_block());
 }
@@ -662,12 +650,14 @@ ENTRY r {
 })";
 
   MatchOptimizedHlo(kHloText, R"(
-; CHECK: ENTRY
-; CHECK-NEXT: parameter
-; CHECK-NEXT: parameter
-; CHECK-NEXT: fusion(
-; CHECK-SAME: kind=kCustom
-; CHECK-SAME: "__triton_nested_gemm_fusion"
+; CHECK: %[[p0:.*]] = f16[10,3,128]{2,0,1} parameter(0)
+; CHECK: %[[cv:.*]] = f32[10,3,128]{2,0,1} convert(%[[p0]])
+; CHECK: ROOT
+; CHECK-SAME: f32[3,10,128]{2,0,1} transpose(%[[cv]]), dimensions={1,0,2}
+; CHECK: %[[p0:.*]] = f16[10,3,128]{2,0,1} parameter(0)
+; CHECK: %[[fusion:.*]] = f32[3,10,128]{2,0,1} fusion(%[[p0]])
+; CHECK: ROOT
+; CHECK-SAME: f32[3,128,123]{2,1,0} dot(%[[fusion]],
 )");
 
   EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
@@ -811,7 +801,6 @@ TEST_F(TritonGemmTest, DISABLED_FailForTooComplexTiling) {
       TestGpuDeviceInfo::RTXA6000DeviceInfo();
   llvm::LLVMContext llvm_ctx;
   llvm::Module llvm_module("module", llvm_ctx);
-  mlir::MLIRContext mlir_context;
 
   constexpr absl::string_view kHloTextTemplate = R"(
 HloModule module
@@ -841,11 +830,12 @@ ENTRY entry {
 
   const HloFusionInstruction* fusion1 = Cast<HloFusionInstruction>(
       module1_and_metadata.computation->FusionInstruction());
-  EXPECT_THAT(TritonWrapper("test_fn", fusion1, cc, device_info,
-                            module1_and_metadata.block_level_parameters,
-                            &llvm_module, mlir_context),
-              StatusIs(tsl::error::RESOURCE_EXHAUSTED,
-                       "Tiling complexity heuristic exceeded"));
+  EXPECT_THAT(
+      TritonWrapper("test_fn", fusion1, se::GpuComputeCapability{cc},
+                    device_info, module1_and_metadata.block_level_parameters,
+                    &llvm_module, mlir_context_),
+      absl_testing::StatusIs(tsl::error::RESOURCE_EXHAUSTED,
+                             "Tiling complexity heuristic exceeded"));
 
   // Succeeds if the tiling is not too complex.
   TF_ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata module2_and_metadata,
@@ -855,9 +845,10 @@ ENTRY entry {
   const HloFusionInstruction* fusion2 = Cast<HloFusionInstruction>(
       module1_and_metadata.computation->FusionInstruction());
 
-  TF_EXPECT_OK(TritonWrapper("test_fn", fusion2, cc, device_info,
+  TF_EXPECT_OK(TritonWrapper("test_fn", fusion2, se::GpuComputeCapability{cc},
+                             device_info,
                              module2_and_metadata.block_level_parameters,
-                             &llvm_module, mlir_context)
+                             &llvm_module, mlir_context_)
                    .status());
 }
 
@@ -929,7 +920,8 @@ e {
                                ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
-TEST_F(TritonGemmTest, DynamicSliceIsSupportedInLhsEndToEnd) {
+// TODO(b/417172838): enable after enabling dynamic slice in support.cc.
+TEST_F(TritonGemmTest, DISABLED_DynamicSliceIsSupportedInLhsEndToEnd) {
   // The select is used to restrict the start index to values that make sense.
   // If it was constant, then the dynamic-slice would be optimized to slice. It
   // is not strictly needed, because we also support clamping the indices.
@@ -963,7 +955,8 @@ ENTRY e {
   EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-4, /*arel=*/1e-6}));
 }
 
-TEST_F(TritonGemmTest, DynamicSliceIsSupportedInRhs) {
+// TODO(b/417172838): enable after enabling dynamic slice in support.cc.
+TEST_F(TritonGemmTest, DISABLED_DynamicSliceIsSupportedInRhs) {
   // The start index(es) for the non-majormost dimension(s) are constant zero(s)
   // because we don't support dynamic slice on those dimensions.
   constexpr absl::string_view kHloText = R"(
@@ -1004,8 +997,9 @@ class TritonGemmDynamicSliceClampingTest
     : public TritonTest,
       public ::testing::WithParamInterface<int> {};
 
+// TODO(b/417172838): enable after enabling dynamic slice in support.cc.
 TEST_P(TritonGemmDynamicSliceClampingTest,
-       DynamicSliceIsSupportedWhenTheStartIndexNeedsClamping) {
+       DISABLED_DynamicSliceIsSupportedWhenTheStartIndexNeedsClamping) {
   // The start index(es) for the non-majormost dimension(s) are constant zero(s)
   // because we don't support dynamic slice on those dimensions.
   // TODO(b/417172838): we now should support non-majormost dimensions, port
@@ -1054,7 +1048,9 @@ std::string OffsetParamToString(const ::testing::TestParamInfo<int>& data) {
 INSTANTIATE_TEST_SUITE_P(All, TritonGemmDynamicSliceClampingTest,
                          ::testing::Values(-100, 3, 999), OffsetParamToString);
 
-TEST_F(TritonGemmTest, DynamicSliceOfMajormostContractingDimIsSupported) {
+// TODO(b/417172838): enable after enabling dynamic slice in support.cc.
+TEST_F(TritonGemmTest,
+       DISABLED_DynamicSliceOfMajormostContractingDimIsSupported) {
   // Tests that dynamic-slice works on the majormost dimension even if that
   // dimension is contracted.
   // The start index(es) for the non-majormost dimension(s) are constant zero(s)
@@ -1093,7 +1089,8 @@ ENTRY e {
                                ErrorSpec{/*aabs=*/1e-4, /*arel=*/1e-6}));
 }
 
-TEST_F(TritonGemmTest, DynamicSliceOfMajormostBatchDimIsSupported) {
+// TODO(b/417172838): enable after enabling dynamic slice in support.cc.
+TEST_F(TritonGemmTest, DISABLED_DynamicSliceOfMajormostBatchDimIsSupported) {
   // Tests that dynamic-slice works on the majormost dimension even if that
   // dimension is a batch.
   // The start index(es) for the non-majormost dimension(s) are constant zero(s)
@@ -1137,7 +1134,9 @@ ENTRY e {
                                ErrorSpec{/*aabs=*/1e-4, /*arel=*/1e-6}));
 }
 
-TEST_F(TritonGemmTest, DynamicSliceSingleDimensionIntoReshapeIsSupported) {
+// TODO(b/417172838): enable after enabling dynamic slice in support.cc.
+TEST_F(TritonGemmTest,
+       DISABLED_DynamicSliceSingleDimensionIntoReshapeIsSupported) {
   // This directly tests the targeted use case (b/307922364) of iterating over
   // layer weights and extracting them with dynamic slice.
   // The start index(es) for the non-majormost dimension(s) are constant zero(s)
@@ -1182,8 +1181,7 @@ ENTRY e {
 // TODO(b/393299275): this should just be a fusion test and does not need to be
 // in the codegen directory.
 TEST_F(TritonGemmTest, DoNotFuseConcatenationOfSplitNonContractingDimension) {
-  if (std::holds_alternative<se::RocmComputeCapability>(
-          GpuComputeCapability())) {
+  if (GpuComputeCapability().IsRocm()) {
     GTEST_SKIP() << "Not using autotuner on ROCM yet.";
   }
   if (!SupportsBF16(GpuComputeCapability())) {
@@ -1281,7 +1279,8 @@ ENTRY e {
                           GetOptimizedModule(kHloText));
   EXPECT_THAT(
       module->entry_computation()->root_instruction(),
-      GmockMatch(m::Fusion(m::Parameter(), m::Parameter(), m::Parameter())
+      GmockMatch(m::Fusion(m::Parameter(), m::Bitcast(m::Parameter()),
+                           m::Bitcast(m::Parameter()))
                      .WithFusionKind(HloInstruction::FusionKind::kCustom)));
 }
 
@@ -1699,8 +1698,9 @@ ENTRY e {
   }
   EXPECT_THAT(
       instr,
-      GmockMatch(m::Fusion(m::Parameter(), m::Parameter(), m::Parameter())
-                     .WithFusionKind(HloInstruction::FusionKind::kCustom)));
+      GmockMatch(
+          m::Fusion(m::Parameter(), m::Parameter(), m::Bitcast(m::Parameter()))
+              .WithFusionKind(HloInstruction::FusionKind::kCustom)));
 
   EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/2e-2, /*arel=*/2e-2}));
 }
@@ -1783,8 +1783,7 @@ TEST_F(TritonGemmTest, DISABLED_SplitLHSInputOutputIsFused) {
   if (!SupportsBF16(GpuComputeCapability())) {
     GTEST_SKIP() << "BF16 not supported.";
   }
-  if (std::holds_alternative<se::RocmComputeCapability>(
-          GpuComputeCapability())) {
+  if (GpuComputeCapability().IsRocm()) {
     GTEST_SKIP() << "Skipped until corresponding issue on ROCm is fixed.";
   }
 
@@ -1940,8 +1939,7 @@ ENTRY e {
 // probably be made deviceless and repurposed to test that opt-in shared memory
 // is used only.
 TEST_F(CompareTest, UsingOptinSharedMemoryProducesSameResult) {
-  if (std::holds_alternative<se::RocmComputeCapability>(
-          GpuComputeCapability())) {
+  if (GpuComputeCapability().IsRocm()) {
     GTEST_SKIP() << "No Optin Shared Memory on AMD.";
   }
   const se::DeviceDescription dev_info =
@@ -1989,14 +1987,13 @@ ENTRY e {
       optin_shmem_module_and_metadata.computation->FusionInstruction());
   llvm::LLVMContext llvm_ctx;
   llvm::Module llvm_module("module", llvm_ctx);
-  mlir::MLIRContext mlir_context;
 
   TF_ASSERT_OK_AND_ASSIGN(
       const auto result,
       TritonWrapper("test_fn", triton_dot_fusion, GpuComputeCapability(),
                     dev_info,
                     optin_shmem_module_and_metadata.block_level_parameters,
-                    &llvm_module, mlir_context));
+                    &llvm_module, mlir_context_));
   // The config is chosen so that the used memory size is slightly above the
   // 48 kB boundary of standard / opt-in shared memory so that any GPU that
   // has the opt-in one should be able to execute the test.
@@ -2280,9 +2277,7 @@ ENTRY entry {
 // There were relatively large numeric errors with an f16 temporary buffer, so I
 // ended up using --xla_gpu_triton_gemm_disable_reduced_precision_reduction=true
 // when generating this test case.
-//
-// TODO(b/393299275): transform this test once padding derivation if fixed.
-TEST_F(CompareTest, DISABLED_SupportsSplitKWithIndivisibleKComplexExample) {
+TEST_F(CompareTest, SupportsSplitKWithIndivisibleKComplexExample) {
   constexpr absl::string_view kHloTextRef = R"(
 dot {
   p0 = s8[3,129,5,32]{3,2,1,0} parameter(0)
@@ -3140,47 +3135,6 @@ ENTRY e {
                           GetModuleAndNestedFusionMetadata(kHloText));
   EXPECT_TRUE(Run(std::move(module_and_metadata.module),
                   /*run_hlo_passes=*/false));
-}
-
-// Test PreventMmaV3LoopUnrolling pass in order to keep compile time low.
-// See b/344841434.
-// TODO(b/353484968): Tests that don't run RunAndCompareNoHloPasses should be
-// moved to deviceless test file.
-TEST_F(TritonGemmTest, TestPreventMMAV3LoopUnrolling) {
-  if (GetCudaComputeCapability().major != se::CudaComputeCapability::kHopper) {
-    GTEST_SKIP() << "wgmma instruction is only available on Hopper";
-  }
-  constexpr absl::string_view kHloText = R"(
-gemm_fusion_dot {
-  p0 = f16[64,1024]{1,0} parameter(0)
-  p1 = f16[1024,32,32]{2,1,0} parameter(1)
-  bitcast = f16[1024,1024]{0,1} bitcast(p1)
-  ROOT dot = f16[64,1024]{1,0} dot(p0, bitcast),
-    lhs_contracting_dims={1}, rhs_contracting_dims={0}
-}
-
-ENTRY e {
-  p0 = f16[64,1024]{1,0} parameter(0)
-  p1 = f16[1024,32,32]{2,1,0} parameter(1)
-  ROOT triton_gemm_fusion_dot = f16[64,1024]{1,0} fusion(p0, p1), kind=kCustom,
-    calls=gemm_fusion_dot,
-    backend_config={"fusion_backend_config": {kind: "__triton_gemm",
-      triton_gemm_config:
-        {"block_m":64,"block_n":32,"block_k":32,
-         "split_k":1,"num_stages":1,"num_warps":4,
-         "num_ctas":1}}}
-})";
-  TF_ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata module_and_metadata,
-                          GetModuleAndNestedFusionMetadata(kHloText));
-
-  CompileAndOptionallyVerifyPtx(std::move(module_and_metadata.module), R"(
-                                R"(
-CHECK: $L__BB0_1:
-CHECK-NEXT: // begin inline asm
-CHECK-NEXT: .pragma "nounroll";
-CHECK: wgmma
-)",
-                                /*run_optimization_passes=*/false);
 }
 
 // TODO(b/353484968): Tests that don't run RunAndCompareNoHloPasses should be

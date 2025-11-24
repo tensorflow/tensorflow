@@ -15,19 +15,11 @@ limitations under the License.
 
 #include "xla/pjrt/plugin/example_plugin/myplugin_c_pjrt.h"
 
-#include <dirent.h>
-#include <dlfcn.h>
-#include <unistd.h>
-
-#include <memory>
-
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "absl/status/statusor.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
-#include "xla/pjrt/pjrt_c_api_client.h"
-#include "xla/pjrt/pjrt_client.h"
-#include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/pjrt/c/pjrt_c_api_helpers.h"
+#include "xla/pjrt/extensions/example/example_extension.h"
 
 namespace {
 
@@ -36,11 +28,23 @@ TEST(MypluginCPjRtTest, CreatesPjRtAPI) {
   EXPECT_THAT(myplugin, ::testing::NotNull());
 }
 
-// This test builds the dynamic library and registers it as a PJRT plugin. This
-// exists to test the dynamic registration path.
-TEST(MypluginCPjRtTest, FindSharedLibrary) {
-  absl::StatusOr<std::unique_ptr<xla::PjRtClient>> c_api_client =
-      xla::GetCApiClient("myplugin");
-  TF_EXPECT_OK(c_api_client);
+TEST(MypluginCPjRtTest, CallsExampleExtension) {
+  const PJRT_Api* myplugin = GetPjrtApi();
+  EXPECT_THAT(myplugin, ::testing::NotNull());
+  PJRT_Example_Extension* ext_api = pjrt::FindExtension<PJRT_Example_Extension>(
+      myplugin, PJRT_Extension_Type::PJRT_Extension_Type_Unknown);
+  EXPECT_THAT(ext_api, ::testing::NotNull());
+
+  PJRT_ExampleExtension_CreateExampleExtensionCpp_Args get_args = {};
+  ext_api->create(&get_args);
+
+  PJRT_ExampleExtension_ExampleMethod_Args args = {
+      /*extension=*/get_args.extension_cpp,
+      /*value=*/42,
+  };
+  ext_api->example_method(&args);
+
+  ext_api->destroy(&get_args);
 }
+
 }  // namespace

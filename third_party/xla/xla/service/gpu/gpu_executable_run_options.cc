@@ -59,12 +59,12 @@ GpuCollectives* GpuExecutableRunOptions::collectives() const {
 }
 
 GpuExecutableRunOptions& GpuExecutableRunOptions::set_incarnations(
-    absl::flat_hash_map<GlobalDeviceId, uint64_t> incarnations) {
+    absl::flat_hash_map<GlobalDeviceId, IncarnationId> incarnations) {
   incarnations_ = std::move(incarnations);
   return *this;
 }
 
-const std::optional<absl::flat_hash_map<GlobalDeviceId, uint64_t>>&
+const std::optional<absl::flat_hash_map<GlobalDeviceId, IncarnationId>>&
 GpuExecutableRunOptions::incarnations() const {
   return incarnations_;
 }

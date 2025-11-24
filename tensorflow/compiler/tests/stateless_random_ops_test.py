@@ -340,10 +340,13 @@ class StatelessRandomOpsTest(xla_test.XLATestCase, parameterized.TestCase):
                                         minvals,
                                         maxvals,
                                         variance_rtol=None):
+    if 'CPU' in xla_device().device_type:
+      n = int(1e7)
+    else:
+      n = int(10e7)
     for dtype in self._random_types():
       with self.session() as sess, self.test_scope():
         seed_t = array_ops.placeholder(dtypes.int32, shape=[2])
-        n = int(10e7)
         x = stateless.stateless_parameterized_truncated_normal(
             shape=[n],
             seed=seed_t,

@@ -22,8 +22,8 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "xla/backends/gpu/autotuner/gpu_codegen_backend.h"
 #include "xla/backends/autotuner/codegen_backend.h"
+#include "xla/backends/gpu/autotuner/gpu_codegen_backend.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/compiler.h"
 #include "xla/stream_executor/stream_executor.h"
@@ -34,7 +34,7 @@ namespace gpu {
 
 // A codegen backend for cuDNN.
 // Determines execution plan id. Requires a device with cuDNN >= 9.0.
-// Note: We only support cudnn fusions containing a dot.
+// Note: We support cudnn fusions containing a dot and cudnn convolutions.
 //
 // A Cudnn fusion is a fusion with a custom call target of "__cudnn$fusion":
 // ```
@@ -57,8 +57,10 @@ namespace gpu {
 class CudnnBackend : public GpuCodegenBackend {
  public:
   explicit CudnnBackend(stream_executor::StreamExecutor* stream_executor,
-                        const DebugOptions* debug_options, Compiler* compiler)
-      : GpuCodegenBackend("Cublas", stream_executor, debug_options, compiler) {}
+                        const DebugOptions* debug_options, Compiler* compiler,
+                        const Compiler::GpuTargetConfig* target_config)
+      : GpuCodegenBackend("Cudnn", debug_options, compiler, target_config,
+                          stream_executor) {}
 
   absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>>
   GetSupportedConfigs(const HloInstruction& instr) override;
@@ -66,15 +68,13 @@ class CudnnBackend : public GpuCodegenBackend {
   absl::StatusOr<std::unique_ptr<BackendConfig>> GetDefaultConfig(
       const HloInstruction& instr) override;
 
+  // Can replace the instruction with a new one in the parent computation, to
+  // apply the configs with non-zero workspace size.
   absl::Status ApplyConfig(HloInstruction& instr,
                            const BackendConfig& config) override;
 
  private:
-  absl::StatusOr<std::unique_ptr<HloModule>> RunHloPasses(
-      std::unique_ptr<HloModule> hlo_module,
-      const Compiler::CompileOptions& options) override {
-    return absl::UnimplementedError("Not implemented.");
-  }
+  bool IsSupported(const HloInstruction& instr) override;
 };
 
 }  // namespace gpu

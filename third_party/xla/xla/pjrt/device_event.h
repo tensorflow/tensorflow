@@ -20,7 +20,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/pjrt/pjrt_future.h"
+#include "xla/future.h"
 #include "xla/tsl/concurrency/async_value.h"
 #include "xla/tsl/concurrency/ref_count.h"
 
@@ -33,13 +33,20 @@ class PjRtDeviceEventOrPromise
  public:
   virtual ~PjRtDeviceEventOrPromise() = default;
 
-  // If this event is based on async-value, return it.
-  virtual tsl::AsyncValue* async_value() { return nullptr; }
+  // The underlying AsyncValue.
+  virtual tsl::AsyncValue* async_value() const = 0;
 
   // If this event type supports tracking, add tracking information.
   virtual void AppendDescriptionToEvent(
       absl::string_view description,
       absl::Span<PjRtDeviceEventOrPromise* const> waiters) {}
+
+  // If this event type supports tracking, add dependency async values.
+  virtual void AddEventDependencies(
+      absl::Span<const tsl::RCReference<tsl::AsyncValue>> dependencies) {}
+
+  // If this event type supports tracking, report that a thread is waiting.
+  virtual void RegisterClientThreadWait(absl::string_view description) {}
 };
 
 // A device event occurs (potentially) on a device. It can be waited on
@@ -56,19 +63,31 @@ class PjRtDeviceEvent : public PjRtDeviceEventOrPromise {
   };
 
   // Runs a callback when an event becomes ready.
-  virtual void AndThen(absl::AnyInvocable<void() &&> cb) = 0;
+  template <typename Waiter>
+  void AndThen(Waiter&& cb) {
+    async_value()->AndThen(std::forward<Waiter>(cb));
+  }
 
   // Polls current event state.
-  virtual State state() const = 0;
+  State state() const {
+    switch (async_value()->state()) {
+      case tsl::AsyncValue::State::kError:
+        return PjRtDeviceEvent::State::kError;
+      case tsl::AsyncValue::State::kConcrete:
+        return PjRtDeviceEvent::State::kReady;
+      default:
+        return PjRtDeviceEvent::State::kPending;
+    }
+  }
 
   // Check if ready.
   bool ok() const { return state() != State::kError; }
 
   // Fetches the error if this event is in state kError.
-  virtual const absl::Status& status() const = 0;
+  const absl::Status& status() const { return async_value()->GetError(); }
 
   // Converts a device-event into a future.
-  virtual PjRtFuture<> GetReadyFuture() = 0;
+  virtual Future<> GetReadyFuture() = 0;
 };
 
 // Instead of taking a device event as an argument, apis may instead decide to
@@ -82,6 +101,9 @@ class PjRtDeviceEventPromise : public PjRtDeviceEventOrPromise {
 
   // Mark the promise as an error.
   virtual void SetError(absl::Status s) = 0;
+
+  // Mark the event as ready.
+  virtual void SetReady() = 0;
 };
 
 }  // namespace xla

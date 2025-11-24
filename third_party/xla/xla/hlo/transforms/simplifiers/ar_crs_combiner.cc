@@ -16,7 +16,9 @@ limitations under the License.
 #include "xla/hlo/transforms/simplifiers/ar_crs_combiner.h"
 
 #include <algorithm>
+#include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <utility>
 #include <vector>
@@ -106,34 +108,51 @@ absl::StatusOr<bool> ReplaceReplicatedAllReduce(HloModule* module,
 // belong to the same group.
 bool HasCombinableReplicaGroup(HloInstruction* hlo, int64_t num_partitions) {
   auto all_reduce = Cast<HloAllReduceInstruction>(hlo);
-  auto replica_groups = all_reduce->replica_groups();
+  const std::vector<ReplicaGroup>& replica_groups =
+      all_reduce->replica_groups();
   const int64_t replica_count = hlo->GetModule()->config().replica_count();
   CHECK(all_reduce->IsCrossModuleAllReduce());
 
-  if (all_reduce->use_global_device_ids()) {
-    if (replica_groups.size() != replica_count) {
-      return false;
-    }
-    for (const auto& group : replica_groups) {
+  const size_t num_replica_groups = replica_groups.size();
+  if (num_replica_groups != replica_count) {
+    return false;
+  }
+  if (all_reduce->use_global_device_ids() && num_replica_groups > 0) {
+    int marker = 0;
+    auto seen_partition_ids = std::make_unique<int[]>(num_partitions);
+    for (const ReplicaGroup& group : replica_groups) {
+      ++marker;
       if (group.replica_ids_size() != num_partitions) {
         return false;
       }
-      absl::flat_hash_set<int64_t> partition_ids;
-      int64_t replica_id = group.replica_ids(0) / num_partitions;
-      for (int64_t i = 0; i < num_partitions; ++i) {
-        if (group.replica_ids(i) / num_partitions != replica_id) {
+      const int64_t group_replica_id0 = group.replica_ids(0);
+      const int64_t group_replica_id_start =
+          (group_replica_id0 / num_partitions) * num_partitions;
+      seen_partition_ids[group_replica_id0 - group_replica_id_start] = marker;
+      for (int64_t i = 1; i < num_partitions; ++i) {
+        const int64_t partition_id =
+            group.replica_ids(i) - group_replica_id_start;
+        if (partition_id < 0 || partition_id >= num_partitions ||
+            seen_partition_ids[partition_id] == marker) {
           return false;
         }
-        partition_ids.insert(group.replica_ids(i) % num_partitions);
+        seen_partition_ids[partition_id] = marker;
       }
-      if (partition_ids.size() != num_partitions) {
-        return false;
+      // If we come here then it is guaranteed that we have seen all replicas
+      // from 0 to num_partitions-1. This is because we mark a partition_id as
+      // seen iff we see a replica id in the range [0, num_partitions) for the
+      // first time. So, there is no need to check that all `seen_partition_ids`
+      // values are equal to `marker`.
+#ifndef NDEBUG
+      for (int64_t i = 0; i < num_partitions; ++i) {
+        CHECK_EQ(seen_partition_ids[i], marker)
+            << "Programming error: seen_partition_ids[" << i
+            << "] != " << marker;
       }
+#endif  // NDEBUG
     }
-    return true;
   }
-
-  return replica_groups.size() == replica_count;
+  return true;
 }
 
 }  // namespace
@@ -613,7 +632,7 @@ absl::StatusOr<bool> ArCrsCombiner::RewriteGraph() {
   return true;
 }
 
-absl::StatusOr<bool> ArCrsCombiner::Run(
+absl::StatusOr<bool> ArCrsCombiner::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   call_graph_ = CallGraph::Build(module);

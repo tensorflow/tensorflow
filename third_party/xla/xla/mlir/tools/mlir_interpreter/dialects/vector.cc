@@ -302,20 +302,6 @@ InterpreterValue Extract(InterpreterState& state, vector::ExtractOp extract,
   return result_view.num_dimensions() == 0 ? result.ExtractElement({}) : result;
 }
 
-InterpreterValue ExtractElement(InterpreterState& state,
-                                vector::ExtractElementOp,
-                                const InterpreterValue& vector,
-                                std::optional<int64_t> index) {
-  if (!index) {
-    return vector.ExtractElement({});
-  }
-  if (!vector.View().InBounds(*index)) {
-    state.AddFailure("array index out of bounds");
-    return {};
-  }
-  return vector.ExtractElement(*index);
-}
-
 InterpreterValue ExtractSlice(InterpreterState& state,
                               vector::ExtractStridedSliceOp extract,
                               const InterpreterValue& vector) {
@@ -325,20 +311,6 @@ InterpreterValue ExtractSlice(InterpreterState& state,
                          ExtractVector<int64_t>(extract.getSizes()),
                          ExtractVector<int64_t>(extract.getStrides())),
       "subview out of bounds");
-  return out;
-}
-
-InterpreterValue FlatTranspose(InterpreterState&,
-                               vector::FlatTransposeOp transpose,
-                               const InterpreterValue& vector) {
-  auto out = vector.Clone();
-  // We currently only implement -matrix-default-layout=column-major.
-  int64_t rows = transpose.getRows();
-  int64_t cols = transpose.getColumns();
-  for (int64_t i = 0; i < rows * cols; ++i) {
-    int64_t src_index = (i % cols) * rows + (i / cols);
-    out.InsertElement({i}, vector.ExtractElement({src_index}));
-  }
   return out;
 }
 
@@ -393,23 +365,6 @@ InterpreterValue Insert(InterpreterState& state, vector::InsertOp insert,
                        "index out of bounds");
   }
   result_slice.Fill([&](auto indices) { return src.ExtractElement(indices); });
-  return result;
-}
-
-InterpreterValue InsertElement(InterpreterState& state, vector::InsertElementOp,
-                               const InterpreterValue& value,
-                               const InterpreterValue& vector,
-                               std::optional<int64_t> index) {
-  auto result = vector.Clone();
-  if (!index) {
-    result.InsertElement({}, value);
-    return result;
-  }
-  if (!result.View().InBounds(*index)) {
-    state.AddFailure("array index out of bounds");
-    return {};
-  }
-  result.InsertElement(*index, value);
   return result;
 }
 
@@ -652,16 +607,6 @@ InterpreterValue Shuffle(InterpreterState& state, vector::ShuffleOp shuffle,
   return result;
 }
 
-InterpreterValue Splat(InterpreterState&, vector::SplatOp op,
-                       const InterpreterValue& in) {
-  auto out = in.AsUnitTensor(/*is_vector=*/true);
-  auto& view = out.View();
-  view.sizes = llvm::to_vector(
-      mlir::cast<ShapedType>(op->getResultTypes()[0]).getShape());
-  view.strides = SmallVector<int64_t>(view.sizes.size(), 0);
-  return out;
-}
-
 void Store(InterpreterState& state, vector::StoreOp,
            const InterpreterValue& src, InterpreterValue dst,
            ArrayRef<int64_t> offsets) {
@@ -805,8 +750,7 @@ llvm::SmallVector<InterpreterValue> TransferWrite(
              src_view.num_dimensions() &&
          "expected matching number of results");
 
-  dst =
-      mlir::isa<TensorType>(transfer.getSource().getType()) ? dst.Clone() : dst;
+  dst = mlir::isa<TensorType>(transfer.getBase().getType()) ? dst.Clone() : dst;
   auto dst_slice = ExtractMemorySlice(state, transfer.getPermutationMap(), dst,
                                       src, offsets, transfer.getInBounds());
   if (!dst_slice) {
@@ -849,13 +793,10 @@ REGISTER_MLIR_INTERPRETER_OP(Contract);
 REGISTER_MLIR_INTERPRETER_OP(CreateMask);
 REGISTER_MLIR_INTERPRETER_OP(ExpandLoad);
 REGISTER_MLIR_INTERPRETER_OP(Extract);
-REGISTER_MLIR_INTERPRETER_OP(ExtractElement);
 REGISTER_MLIR_INTERPRETER_OP(ExtractSlice);
 REGISTER_MLIR_INTERPRETER_OP(FusedMultiplyAdd);
-REGISTER_MLIR_INTERPRETER_OP(FlatTranspose);
 REGISTER_MLIR_INTERPRETER_OP(Gather);
 REGISTER_MLIR_INTERPRETER_OP(Insert);
-REGISTER_MLIR_INTERPRETER_OP(InsertElement);
 REGISTER_MLIR_INTERPRETER_OP(InsertSlice);
 REGISTER_MLIR_INTERPRETER_OP(Load);
 REGISTER_MLIR_INTERPRETER_OP(Mask);
@@ -866,7 +807,6 @@ REGISTER_MLIR_INTERPRETER_OP(OuterProduct);
 REGISTER_MLIR_INTERPRETER_OP(Reduction);
 REGISTER_MLIR_INTERPRETER_OP(ShapeCast);
 REGISTER_MLIR_INTERPRETER_OP(Shuffle);
-REGISTER_MLIR_INTERPRETER_OP(Splat);
 REGISTER_MLIR_INTERPRETER_OP(Store);
 REGISTER_MLIR_INTERPRETER_OP(TransferRead);
 REGISTER_MLIR_INTERPRETER_OP(TransferWrite);

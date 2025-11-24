@@ -51,11 +51,11 @@ message OneDnnFusionConfig {
     RELU6 = 9;
     SIGMOID = 10;
     SUM = 11;  // This represents in-place accumulation.
+    SWISH = 12;
   }
   repeated FusionKind ops = 1;
-  // To avoid protobuf failures for specific decimal values,
-  // the original float value alpha is type-casted to int32.
-  repeated int32 alpha_typecast = 2;
+  reserved 2;  // was alpha_typecast
+  repeated float alpha = 3;
 }
 
 message OneDnnTensorLayoutProto {

@@ -23,10 +23,13 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/tsl/platform/types.h"
+#include "xla/tsl/profiler/utils/preprocess_xplane.h"
 #include "xla/tsl/profiler/utils/tf_xplane_visitor.h"
+#include "xla/tsl/profiler/utils/timespan.h"
 #include "xla/tsl/profiler/utils/xplane_builder.h"
 #include "xla/tsl/profiler/utils/xplane_schema.h"
 #include "xla/tsl/profiler/utils/xplane_test_utils.h"
+#include "xla/tsl/profiler/utils/xplane_utils.h"
 #include "xla/tsl/profiler/utils/xplane_visitor.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
 
@@ -438,7 +441,7 @@ TEST(GroupEventsTest, SemanticArgTest) {
   constexpr int64_t kIsRoot = 1;
   constexpr int64_t kStepNum = 100;
   constexpr int64_t kContextType = 123;
-  constexpr uint64 kContextId = 456;
+  constexpr uint64_t kContextId = 456;
 
   XSpace raw_space;
   XPlane* raw_plane = raw_space.add_planes();
@@ -476,8 +479,8 @@ TEST(GroupEventsTest, SemanticIntArgNoMatchTest) {
   constexpr int64_t kIsRoot = 1;
   constexpr int64_t kStepNum = 100;
   constexpr int64_t kContextType = 123;
-  constexpr uint64 kProducerId = 456;
-  constexpr uint64 kConsumerId = 789;
+  constexpr uint64_t kProducerId = 456;
+  constexpr uint64_t kConsumerId = 789;
 
   XSpace raw_space;
   XPlane* raw_plane = raw_space.add_planes();
@@ -519,8 +522,8 @@ TEST(GroupEventsTest, SemanticUintArgNoMatchTest) {
   constexpr int64_t kIsRoot = 1;
   constexpr int64_t kStepNum = 100;
   constexpr int64_t kContextType = 123;
-  constexpr uint64 kProducerId = UINT64_MAX;
-  constexpr uint64 kConsumerId = UINT64_MAX - 1;
+  constexpr uint64_t kProducerId = UINT64_MAX;
+  constexpr uint64_t kConsumerId = UINT64_MAX - 1;
 
   XSpace raw_space;
   XPlane* raw_plane = raw_space.add_planes();
@@ -638,7 +641,7 @@ TEST(GroupEventsTest, BatchingSessionTest) {
   EXPECT_EQ(group_metadata_map.at(1).children.size(), 1);
   EXPECT_EQ(group_metadata_map.at(2).children.size(), 1);
   // Check that the events have the selected_group_ids stat set.
-  uint64 num_checked = 0;
+  uint64_t num_checked = 0;
   CreateTfXPlaneVisitor(raw_plane).ForEachLine([&](const XLineVisitor& line) {
     line.ForEachEvent([&](const XEventVisitor& event) {
       std::optional<int64_t> group_id;
@@ -757,6 +760,84 @@ TEST(GroupTPUEventsTest, ModuleRootEventTest) {
       EXPECT_TRUE(event.GetStat(StatType::kGroupId).has_value());
     });
   });
+}
+
+TEST(GroupTPUEventsTest, MergeHostStepsTest) {
+  XSpace space;
+  XPlaneBuilder host_plane_builder(GetOrCreateHostXPlane(&space));
+  host_plane_builder.ReserveLines(1);
+  auto main_thread = host_plane_builder.GetOrCreateLine(0);
+  main_thread.SetName("main");
+  CreateXEvent(
+      &host_plane_builder, &main_thread, "train", 100, 10,
+      {{StatType::kStepNum, int64_t{1}}, {StatType::kIsRoot, int64_t{1}}});
+  CreateXEvent(&host_plane_builder, &main_thread, "DoEnqueueProgram", 100, 1,
+               {{StatType::kRunId, int64_t{2}},
+                {StatType::kQueueId, int64_t{0}},
+                {StatType::kDeviceOrdinal, int64_t{0}}});
+  CreateXEvent(&host_plane_builder, &main_thread, "DoEnqueueProgram", 101, 2,
+               {{StatType::kRunId, int64_t{3}},
+                {StatType::kQueueId, int64_t{0}},
+                {StatType::kDeviceOrdinal, int64_t{0}}});
+  CreateXEvent(&host_plane_builder, &main_thread, "DoEnqueueProgram", 103, 2,
+               {{StatType::kRunId, int64_t{4}},
+                {StatType::kQueueId, int64_t{0}},
+                {StatType::kDeviceOrdinal, int64_t{0}}});
+  CreateXEvent(&host_plane_builder, &main_thread, "DoEnqueueProgram", 105, 4,
+               {{StatType::kRunId, int64_t{5}},
+                {StatType::kQueueId, int64_t{0}},
+                {StatType::kDeviceOrdinal, int64_t{0}}});
+  XPlane* device_plane = GetOrCreateTpuXPlane(&space, 0, "TPUv4", 0, 0);
+  XPlaneBuilder device_plane_builder(device_plane);
+  device_plane_builder.ReserveLines(1);
+  auto module_line = device_plane_builder.GetOrCreateLine(0);
+  module_line.SetName(tsl::profiler::kXlaModuleLineName);
+  CreateXEvent(
+      &device_plane_builder, &module_line, "jit_something(1)", 1000, 10,
+      {{StatType::kRunId, int64_t{2}}, {StatType::kQueueId, int64_t{0}}});
+  CreateXEvent(
+      &device_plane_builder, &module_line, "jit_something(2)", 1015, 100,
+      {{StatType::kRunId, int64_t{3}}, {StatType::kQueueId, int64_t{0}}});
+  CreateXEvent(
+      &device_plane_builder, &module_line, "jit_something(3)", 1125, 50,
+      {{StatType::kRunId, int64_t{4}}, {StatType::kQueueId, int64_t{0}}});
+  CreateXEvent(
+      &device_plane_builder, &module_line, "jit_something(4)", 1180, 25,
+      {{StatType::kRunId, int64_t{5}}, {StatType::kQueueId, int64_t{0}}});
+  auto step_line = device_plane_builder.GetOrCreateLine(1);
+  step_line.SetName(kStepLineName);
+  CreateXEvent(&device_plane_builder, &step_line, "0", 1000, 10,
+               {{StatType::kDeviceOffsetPs, int64_t{1000}},
+                {StatType::kDeviceDurationPs, int64_t{10}}});
+  CreateXEvent(&device_plane_builder, &step_line, "1", 1015, 100,
+               {{StatType::kDeviceOffsetPs, int64_t{1015}},
+                {StatType::kDeviceDurationPs, int64_t{100}}});
+  CreateXEvent(&device_plane_builder, &step_line, "2", 1125, 50,
+               {{StatType::kDeviceOffsetPs, int64_t{1125}},
+                {StatType::kDeviceDurationPs, int64_t{50}}});
+  CreateXEvent(&device_plane_builder, &step_line, "3", 1180, 25,
+               {{StatType::kDeviceOffsetPs, int64_t{1180}},
+                {StatType::kDeviceDurationPs, int64_t{25}}});
+  // Make sure to preprocess so that the Runtime events have a Producer/Consumer
+  // event set created.
+  PreprocessXSpace(&space);
+  EventForest event_forest;
+  GroupTpuEventsOSS(&space, {device_plane}, &event_forest);
+  auto visitor = CreateTfXPlaneVisitor(device_plane);
+  bool step_line_found = false;
+  visitor.ForEachLine([&](const XLineVisitor& line) {
+    if (line.Name() != kStepLineName) {
+      return;
+    }
+    step_line_found = true;
+    EXPECT_EQ(line.NumEvents(), 1);
+    auto step_event = line.GetFirstEvent();
+    EXPECT_EQ(step_event.GetTimespan().begin_ps(), 1000);
+    EXPECT_EQ(step_event.GetTimespan().end_ps(), 1205);
+    EXPECT_EQ(GetDeviceEventTimespan(step_event).begin_ps(), 1000);
+    EXPECT_EQ(GetDeviceEventTimespan(step_event).end_ps(), 1205);
+  });
+  EXPECT_TRUE(step_line_found);
 }
 
 }  // namespace

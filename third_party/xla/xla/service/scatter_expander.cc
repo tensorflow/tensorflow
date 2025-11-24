@@ -20,8 +20,12 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/container/inlined_vector.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "xla/comparison_util.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -34,6 +38,10 @@ limitations under the License.
 #include "xla/service/scatter_utils.h"
 #include "xla/service/while_util.h"
 #include "xla/shape.h"
+#include "xla/shape_util.h"
+#include "xla/status_macros.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/util.h"
 
 namespace xla {
 
@@ -101,9 +109,10 @@ std::vector<int64_t> GetDegeneratedSliceDims(
 }
 
 // Body of the while loop that performs the scatter operation using other HLOs.
-static absl::StatusOr<std::vector<HloInstruction*>> ScatterLoopBody(
-    HloScatterInstruction* scatter, HloInstruction* induction_var,
+absl::StatusOr<std::vector<HloInstruction*>> ScatterExpander::ScatterLoopBody(
+    HloInstruction* scatter_inst, HloInstruction* induction_var,
     absl::Span<HloInstruction* const> loop_state) {
+  HloScatterInstruction* scatter = Cast<HloScatterInstruction>(scatter_inst);
   const ScatterDimensionNumbers& dim_numbers =
       scatter->scatter_dimension_numbers();
   CHECK_EQ(loop_state.size(), scatter->operand_count());

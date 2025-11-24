@@ -48,6 +48,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/ir/hlo_original_value.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/service/call_inliner.h"
@@ -60,12 +61,12 @@ limitations under the License.
 #include "xla/shape_tree.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/status.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/window_util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/status.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 
@@ -95,6 +96,8 @@ WidenComputation(HloComputation* narrow_comp, const Shape& wide_shape) {
   HloInstruction* call_narrow_comp = wide_comp->AddInstruction(
       HloInstruction::CreateCall(narrow_comp->root_instruction()->shape(),
                                  {truncated_parameter}, narrow_comp));
+  call_narrow_comp->set_original_value(
+      std::make_shared<OriginalValue>(OriginalValue::SyntheticCall()));
   wide_comp->set_root_instruction(call_narrow_comp,
                                   /*accept_different_shape=*/true);
   TF_ASSIGN_OR_RETURN(auto inline_map, CallInliner::Inline(call_narrow_comp));
@@ -1498,7 +1501,7 @@ absl::Status DynamicDimensionInferenceVisitor::HandleReshape(
 
         if (output_dynamic_dimension == -1 &&
             output_dim_end - output_dim_start > 1) {
-          // One input dimension is splitted into multiple output dimensions.
+          // One input dimension is split into multiple output dimensions.
           // Output dimension is decomposed from input most major dimension.
           // In this case, we don't know which one is dynamic, e.g., when we
           // have:
@@ -1511,7 +1514,7 @@ absl::Status DynamicDimensionInferenceVisitor::HandleReshape(
           //
           // Any dimension from the first '1' to 'a/c' can be dynamic.
           //
-          // We use the following logics to disambiguate:
+          // We use the following logic to disambiguate:
           // 1. If the user sets "inferred_dimension", then use that as
           // dynamic dimension.
           // 2. If the one dimension in the reshape is dynamic, use that as
@@ -1524,7 +1527,7 @@ absl::Status DynamicDimensionInferenceVisitor::HandleReshape(
           //   [1, <=2, 2]
           // We use second dim as dynamic dimension.
           //
-          // 3. If all logics above cannot disambiguate, e.g.,:
+          // 3. If all logic above cannot disambiguate, e.g.,:
           //
           //     [<=1]
           //      |
@@ -2764,7 +2767,6 @@ absl::Status DynamicDimensionInference::AnalyzeDynamicDimensions() {
   TF_ASSIGN_OR_RETURN(std::unique_ptr<HloDataflowAnalysis> dataflow_analysis,
                       HloDataflowAnalysis::Run(*module_, /*ssa_form=*/false,
                                                /*bitcast_defines_value=*/true,
-                                               /*can_share_buffer=*/nullptr,
                                                execution_threads_));
   for (HloComputation* computation : module_->MakeComputationPostOrder()) {
     if (!HloInstruction::IsThreadIncluded(computation->execution_thread(),

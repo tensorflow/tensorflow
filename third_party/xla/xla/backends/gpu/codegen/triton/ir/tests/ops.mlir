@@ -1,25 +1,25 @@
-// RUN: xla-opt %s --split-input-file | FileCheck %s
-// Verify the printed output can be parsed.
-// RUN: xla-opt %s --split-input-file | xla-opt --split-input-file | FileCheck %s
-// Verify the generic form can be parsed.
-// RUN: xla-opt %s --split-input-file --mlir-print-op-generic | xla-opt --split-input-file | FileCheck %s
+// RUN: xla-opt %s | FileCheck %s
 
-tt.func @xla_triton_extract(%arg0: tensor<512x128xbf16>, %i : index)
-    -> tensor<16x64xbf16> {
-  %extracted_tensor = triton_xla.extract %arg0 [0, %i] [16, 64] [128, 1]
-    {layout = array<i64:1, 0>} : tensor<512x128xbf16> to tensor<16x64xbf16>
+// Verify the printed output can be parsed.
+// RUN: xla-opt %s | xla-opt --split-input-file | FileCheck %s
+
+// Verify the generic form can be parsed.
+// RUN: xla-opt %s --mlir-print-op-generic | xla-opt --split-input-file | FileCheck %s
+
+// CHECK-LABEL: @xla_triton_extract
+tt.func @xla_triton_extract(%src: !tt.ptr<bf16>, %i : index) -> tensor<16x64xbf16> {
+  // CHECK: triton_xla.extract
+  %extracted_tensor = triton_xla.extract from %src
+    as memref<512x1x128xbf16, #triton_xla.layout<[2, 1, 0]>>
+    [0, 0, %i] [16, 1, 64] [128, 1, 1] : tensor<16x64xbf16>
   tt.return %extracted_tensor : tensor<16x64xbf16>
 }
-// CHECK-LABEL: xla_triton_extract
-//       CHECK:   triton_xla.extract
 
-// -----
-
-tt.func @xla_triton_insert(%src: tensor<16x64xbf16>, %dst: tensor<512x128xbf16>,
-    %j: index) -> tensor<512x128xbf16> {
-  %updated_tensor = triton_xla.insert %src into %dst [0, 0][16, 64][%j, 1]
-    {layout = array<i64:1, 0>} : tensor<16x64xbf16> into tensor<512x128xbf16>
-  tt.return %updated_tensor : tensor<512x128xbf16>
+// CHECK-LABEL: @xla_triton_insert
+tt.func @xla_triton_insert(%src: tensor<16x64xbf16>, %dst: !tt.ptr<bf16>, %j: index) {
+  // CHECK: triton_xla.insert
+  triton_xla.insert %src into %dst
+    as memref<512x128xbf16, #triton_xla.layout<[0, 1]>>
+    [%j, 0][16, 64][1, 1] : tensor<16x64xbf16>
+  tt.return
 }
-// CHECK-LABEL: xla_triton_insert
-//       CHECK:   triton_xla.insert

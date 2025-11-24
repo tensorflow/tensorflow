@@ -39,7 +39,13 @@ TargetMachineFeatures::TargetMachineFeatures(
   if (target_machine_) {
     has_avx512bf16_ = absl::StrContains(
         target_machine_->getTargetFeatureString().str(), "+avx512bf16");
+    has_avx512fp16_ = absl::StrContains(
+        target_machine_->getTargetFeatureString().str(), "+avx512fp16");
   }
+}
+
+const llvm::TargetMachine* TargetMachineFeatures::target_machine() const {
+  return target_machine_;
 }
 
 int32_t TargetMachineFeatures::vectorization_factor_in_bytes() const {

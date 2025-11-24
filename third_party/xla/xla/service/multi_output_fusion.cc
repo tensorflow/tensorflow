@@ -36,7 +36,7 @@ limitations under the License.
 
 namespace xla {
 
-absl::StatusOr<bool> MultiOutputFusion::Run(
+absl::StatusOr<bool> MultiOutputFusion::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;
@@ -82,18 +82,16 @@ HloInstruction* MultiOutputFusion::Fuse(HloInstruction* instr1,
   HloInstruction* fused = instr2;
   // Make sure that if only one of the instructions is a fusion, or if only one
   // of the instructions is a multi-output fusion, it's what will be fused into.
-  if (fused->opcode() == HloOpcode::kFusion) {
+  if (!remaining->IsMultiOutputFusion() && fused->IsMultiOutputFusion()) {
     std::swap(remaining, fused);
   }
-  if (fused->IsMultiOutputFusion()) {
-    std::swap(remaining, fused);
+  if (remaining->opcode() != HloOpcode::kFusion) {
+    remaining = CreateFusion(remaining, fused);
   }
   if (fused->opcode() == HloOpcode::kFusion) {
     remaining->MergeFusionInstructionIntoMultiOutput(fused);
   } else {
     remaining->FuseInstructionIntoMultiOutput(fused);
-    CHECK_EQ(0, fused->user_count());
-    TF_CHECK_OK(computation()->RemoveInstruction(fused));
   }
   return remaining;
 }

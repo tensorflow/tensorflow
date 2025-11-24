@@ -1,6 +1,7 @@
 # TensorFlow Lite for Objective-C
 
 load("@build_bazel_rules_apple//apple:ios.bzl", "ios_application", "ios_unit_test")
+load("@rules_cc//cc:objc_library.bzl", "objc_library")
 load("//tensorflow/lite:special_rules.bzl", "ios_visibility_allowlist", "tflite_ios_lab_runner")
 load("//tensorflow/lite/ios:ios.bzl", "TFL_DEFAULT_TAGS", "TFL_DISABLED_SANITIZER_TAGS", "TFL_MINIMUM_OS_VERSION")
 
@@ -10,6 +11,7 @@ package(
     licenses = ["notice"],
 )
 
+# TODO: b425991613 - Provide a way to disable CoreML Delegate with `--define=use_coreml_delegate=0`.
 SOURCES = glob([
     "sources/*.h",
     "sources/*.m",
@@ -120,10 +122,11 @@ objc_library(
     data = [
         "//tensorflow/lite:testdata/add.bin",
         "//tensorflow/lite:testdata/add_quantized.bin",
+        "//tensorflow/lite:testdata/multi_add.bin",
         "//tensorflow/lite:testdata/multi_signatures.bin",
     ],
     sdk_frameworks = ["XCTest"],
-    tags = TFL_DEFAULT_TAGS + ["builder_default_ios_x86_64"],
+    tags = TFL_DEFAULT_TAGS + ["builder_default_ios_arm64"],
     deps = [":TensorFlowLite"],
 )
 
@@ -156,7 +159,7 @@ objc_library(
     ],
     module_name = "TestApp",
     tags = TFL_DEFAULT_TAGS + [
-        "builder_default_ios_x86_64",
+        "builder_default_ios_arm64",
         "manual",
     ],
     deps = [

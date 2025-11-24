@@ -57,16 +57,15 @@ names, parameter ordering etc, layouts (in some instances).
       bazel run hlo_diff -- \
         --{first_hlo_snapshot,first_hlo_proto,first_hlo_module_proto,first_hlo_text}=path/to/first/binary_proto
         --{second_hlo_snapshot,second_hlo_proto,second_hlo_module_proto,second_hlo_text}=path/to/second/binary_proto
-        [--ignore_shape_during_instruction_matching]
+        [--ignore_shape]
         [--text_output=path/to/file/to/save/text]
         [--html_output=path/to/file/to/save/html]
 
 first and second hlo file paths are required flags. Optionally the following
 flags can be used:
 
-If --ignore_shape_during_instruction_matching is specified, the tool ignores
-array/tensor shapes when matching instructions allowing for more permissive
-matches.
+If --ignore_shape is specified, the tool ignores array/tensor shapes when
+matching instructions and reporting diffs, allowing for more permissive matches.
 If --text_output is specified, the full diff result will be printed in text
 format and saved to the specified file.
 if --html_output is specified, the diff result will be rendered in HTML
@@ -128,12 +127,28 @@ absl::StatusOr<std::unique_ptr<HloModule>> LoadHLOModule(
     return BuildHloModule(snapshot.hlo().hlo_module());
   }
   if (!hlo_path.hlo_proto.empty()) {
-    return ReadModuleFromBinaryProtoFile(hlo_path.hlo_proto,
-                                         xla::GetDebugOptionsFromFlags());
+    absl::StatusOr<std::unique_ptr<HloModule>> module =
+        ReadModuleFromBinaryProtoFile(hlo_path.hlo_proto,
+                                      xla::GetDebugOptionsFromFlags());
+    if (module.ok()) {
+      return module;
+    }
+    LOG(INFO) << "Failed to read " << hlo_path.hlo_proto
+              << " as a binary proto, attempting to read as text proto.";
+    return ReadModuleFromTextProtoFile(hlo_path.hlo_proto,
+                                       xla::GetDebugOptionsFromFlags());
   }
   if (!hlo_path.hlo_module_proto.empty()) {
-    return ReadModuleFromModuleBinaryProtofile(hlo_path.hlo_module_proto,
-                                               xla::GetDebugOptionsFromFlags());
+    absl::StatusOr<std::unique_ptr<HloModule>> module =
+        ReadModuleFromModuleBinaryProtofile(hlo_path.hlo_module_proto,
+                                            xla::GetDebugOptionsFromFlags());
+    if (module.ok()) {
+      return module;
+    }
+    LOG(INFO) << "Failed to read " << hlo_path.hlo_module_proto
+              << " as a binary proto, attempting to read as text proto.";
+    return ReadModuleFromModuleTextProtoFile(hlo_path.hlo_module_proto,
+                                             xla::GetDebugOptionsFromFlags());
   }
   if (!hlo_path.hlo_text.empty()) {
     return ReadModuleFromHloTextFile(
@@ -232,9 +247,10 @@ int main(int argc, char** argv) {
                 "second XLA hlo module proto to compare"),
       tsl::Flag("second_hlo_text", &opts.second.hlo_text,
                 "second XLA hlo text to compare"),
-      tsl::Flag("ignore_shape_during_instruction_matching",
-                &opts.diff_options.fingerprint_options.ignore_shape,
-                "Ignore array/tensor shapes when matching instructions"),
+      tsl::Flag(
+          "ignore_shape", &opts.diff_options.fingerprint_options.ignore_shape,
+          "If true, ignore array/tensor shapes when matching instructions "
+          "and reporting diffs."),
       tsl::Flag("text_output", &opts.render_options.text_output,
                 "file to save diff blocks as text"),
       tsl::Flag("html_output", &opts.render_options.html_output,

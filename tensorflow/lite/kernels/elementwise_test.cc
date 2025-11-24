@@ -344,6 +344,91 @@ TEST(ElementWise, Sqrt) {
   EXPECT_THAT(m.GetTensorShape(m.output()), ElementsAreArray({1, 1, 4, 1}));
 }
 
+TEST(ElementWise, SqrtInt8) {
+  const std::vector<float> input_data = {0, 1, 2, 9, 16, 25, 1.44, 0.5};
+  std::vector<float> expected_output(input_data.size());
+  for (int i = 0; i < expected_output.size(); i++) {
+    expected_output[i] = std::sqrt(input_data[i]);
+  }
+  const std::vector<int> shape = {1, 8};
+  float kInputScale = 25.0 / 255.0;
+  float kOutputScale = 5.0 / 255.0;
+  int32_t zero_point = -128;
+  ElementWiseOpQuantizedModel m(
+      BuiltinOperator_SQRT,
+      /*input_tensor_data=*/
+      {/*type=*/TensorType_INT8,
+       /*shape=*/shape,
+       /*min=*/0,
+       /*max=*/25.0,
+       /*scale=*/kInputScale,
+       /*zero_point=*/zero_point,
+       /*per_channel_quantization=*/true,
+       /*per_channel_quantization_scales=*/{kInputScale},
+       /*per_channel_quantization_offsets=*/{zero_point}},
+      /*output_tensor_data=*/
+      {/*type=*/TensorType_INT8,
+       /*shape=*/shape,
+       /*min=*/0,
+       /*max=*/5.0,
+       /*scale=*/kOutputScale,
+       /*zero_point=*/zero_point,
+       /*per_channel_quantization=*/true,
+       /*per_channel_quantization_scales=*/{kOutputScale},
+       /*per_channel_quantization_offsets=*/{zero_point}});
+  m.QuantizeAndPopulate<int8_t>(m.input(), input_data);
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.ExtractDequantVector<int8_t>(m.output()),
+              ElementsAreArray(ArrayFloatNear(expected_output, kInputScale)));
+}
+
+TEST(ElementWise, SqrtNegativeInt8) {
+  const std::vector<float> input_data = {-1.0};
+  float kInputScale = 1.0 / 255.0;
+  float kOutputScale = 1.0 / 255.0;
+  int32_t zero_point = 0;
+  ElementWiseOpQuantizedModel m(BuiltinOperator_SQRT,
+                                {TensorType_INT8,
+                                 {1, 1},
+                                 0,
+                                 1.0,
+                                 kInputScale,
+                                 zero_point,
+                                 true,
+                                 {kInputScale},
+                                 {zero_point}},
+                                {TensorType_INT8,
+                                 {1, 1},
+                                 0,
+                                 1.0,
+                                 kOutputScale,
+                                 zero_point,
+                                 true,
+                                 {kOutputScale},
+                                 {zero_point}});
+  m.QuantizeAndPopulate<int8_t>(m.input(), input_data);
+  EXPECT_EQ(m.Invoke(), kTfLiteError);
+}
+
+TEST(ElementWise, SqrtInt16) {
+  const std::vector<float> input_data = {0, 1, 2, 9, 16, 25, 1.44, 0.5};
+  std::vector<float> expected_output(input_data.size());
+  for (int i = 0; i < expected_output.size(); i++) {
+    expected_output[i] = std::sqrt(input_data[i]);
+  }
+
+  const float kQuantizedTolerance = GetQuantizationStep<int16_t>(-25, 25);
+
+  ElementWiseOpQuantizedModel m(BuiltinOperator_SQRT,
+                                {TensorType_INT16, {1, 8}, -25, 25},
+                                {TensorType_INT16, {1, 8}, -5, 5});
+  m.QuantizeAndPopulate<int16_t>(m.input(), input_data);
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(
+      m.ExtractDequantVector<int16_t>(m.output()),
+      ElementsAreArray(ArrayFloatNear(expected_output, kQuantizedTolerance)));
+}
+
 TEST(ElementWise, Rsqrt) {
   ElementWiseOpFloatModel m(BuiltinOperator_RSQRT, {1, 1, 4, 1});
   m.PopulateTensor<float>(m.input(), {1, 2, 4, 9});

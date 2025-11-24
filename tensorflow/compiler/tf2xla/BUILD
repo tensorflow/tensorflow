@@ -55,6 +55,7 @@ package_group(
         "//third_party/mlperf/submissions/training/v0_7/models/...",
         "//third_party/py/ai_edge_torch/...",
         "//third_party/py/keras_cv/...",
+        "//third_party/py/orbax/...",
         "//third_party/py/tf_keras/...",
         "//third_party/sparse_conv/ops/...",
         "//waymo/ml/deploy/benchmark/...",
@@ -138,6 +139,25 @@ cc_library(
 )
 
 cc_library(
+    name = "encoded_buffer_allocation_info",
+    hdrs = ["encoded_buffer_allocation_info.h"],
+    visibility = [":friends"],
+    deps = [
+        "@local_xla//xla/backends/cpu:buffer_allocation_info",
+    ],
+)
+
+tf_cc_test(
+    name = "encoded_buffer_allocation_info_test",
+    srcs = ["encoded_buffer_allocation_info_test.cc"],
+    deps = [
+        ":encoded_buffer_allocation_info",
+        "@com_google_googletest//:gtest_main",
+        "@local_xla//xla/backends/cpu:buffer_allocation_info",
+    ],
+)
+
+cc_library(
     name = "tf2xla",
     srcs = ["tf2xla.cc"],
     hdrs = ["tf2xla.h"],
@@ -216,6 +236,8 @@ cc_library(
 filegroup(
     name = "xla_compiled_cpu_runtime_hdrs",
     srcs = [
+        "allocator.h",
+        "encoded_buffer_allocation_info.h",
         "xla_compiled_cpu_function.h",
         "//tensorflow/core/kernels:xla_cpu_runtime_hdrs",
         "//tensorflow/core/platform:xla_cpu_runtime_srcs",
@@ -239,6 +261,7 @@ filegroup(
 filegroup(
     name = "xla_compiled_cpu_runtime_srcs",
     srcs = [
+        "allocator.cc",
         "xla_compiled_cpu_function.cc",
         "//tensorflow/core/kernels:xla_cpu_runtime_srcs",
         "//tensorflow/core/platform:xla_cpu_runtime_srcs",
@@ -352,6 +375,7 @@ cc_library(
 #         "@local_tsl//tsl/platform:context",
 #         "@local_tsl//tsl/platform:cord",
 #         "@local_tsl//tsl/platform:env_time",
+#         "@local_tsl//tsl/platform:refcount",
 #         "@local_tsl//tsl/platform:ml_dtypes",
 #         "@local_tsl//tsl/platform:logging",
 #         "@local_tsl//tsl/platform:macros",
@@ -368,12 +392,10 @@ cc_library(
 #         "@local_xla//xla/tsl/platform/default:context",
 #         "@local_xla//xla/tsl/platform/default:cord",
 #         "@local_xla//xla/tsl/platform/default:env_time",
-#         "@local_xla//xla/tsl/platform/default:logging",
 #         "@local_xla//xla/tsl/platform/default:types",
 #         "@local_xla//xla/tsl/platform/google:context",
 #         "@local_xla//xla/tsl/platform/google:cord",
 #         "@local_xla//xla/tsl/platform/google:env_time",
-#         "@local_xla//xla/tsl/platform/google:logging",
 #         "@local_xla//xla/tsl/platform/google:types",
 #         "@local_xla//xla/tsl/platform/windows:env_time",
 #         "//tensorflow/core/platform:bfloat16",
@@ -398,20 +420,50 @@ cc_library(
 # copybara:uncomment_end
 
 cc_library(
+    name = "allocator",
+    srcs = ["allocator.cc"],
+    hdrs = ["allocator.h"],
+    compatible_with = get_compatible_with_portable(),
+    visibility = ["//visibility:public"],
+    deps = [
+        "@com_google_absl//absl/base:dynamic_annotations",
+        "@com_google_absl//absl/types:span",
+        "@local_xla//xla/backends/cpu:alignment",
+        "@local_xla//xla/backends/cpu:buffer_allocation_info",
+    ],
+)
+
+tf_cc_test(
+    name = "allocator_test",
+    srcs = ["allocator_test.cc"],
+    deps = [
+        ":allocator",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "@local_xla//xla/backends/cpu:alignment",
+        "@local_xla//xla/backends/cpu:buffer_allocation_info",
+    ],
+)
+
+cc_library(
     name = "xla_compiled_cpu_function",
     srcs = ["xla_compiled_cpu_function.cc"],
     hdrs = ["xla_compiled_cpu_function.h"],
     compatible_with = get_compatible_with_portable(),
     visibility = ["//visibility:public"],
     deps = [
-        "@com_google_absl//absl/log:check",
-        "@local_xla//xla/service:custom_call_status_internal",
         # Keep dependencies to a minimum here; this library is used in every AOT
         # binary produced by tfcompile.
+        ":allocator",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/types:span",
+        ":encoded_buffer_allocation_info",
+        "@local_xla//xla/service:custom_call_status_internal",
         "@local_xla//xla/backends/cpu/runtime:rng_state_lib",
-        "@local_xla//xla:cpu_function_runtime",
+        "@local_xla//xla/backends/cpu:alignment",
+        "@local_xla//xla/backends/cpu:buffer_allocation_info",
         "@local_xla//xla:executable_run_options",
-        "@local_xla//xla/service/cpu:buffer_desc",
         "//tensorflow/core/platform:types",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings:string_view",
@@ -466,23 +518,13 @@ cc_library(
     alwayslink = 1,
 )
 
-tf_cc_test(
-    name = "cpu_function_runtime_test",
-    srcs = ["cpu_function_runtime_test.cc"],
-    deps = [
-        "//tensorflow/core:framework",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-        "@local_xla//xla:cpu_function_runtime",
-    ],
-)
-
 cc_library(
     name = "xla_jit_compiled_cpu_function",
     srcs = ["xla_jit_compiled_cpu_function.cc"],
     hdrs = ["xla_jit_compiled_cpu_function.h"],
     visibility = ["//visibility:public"],
     deps = [
+        ":encoded_buffer_allocation_info",
         ":tf2xla",
         ":tf2xla_proto_cc",
         ":xla_compiled_cpu_function",
@@ -496,9 +538,10 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/platform:casts",
-        "@local_xla//xla:cpu_function_runtime",
         "@local_xla//xla:shape_util",
         "@local_xla//xla:xla_data_proto_cc",
+        "@local_xla//xla/backends/cpu:buffer_allocation_info",
+        "@local_xla//xla/backends/cpu:buffer_allocation_info_util",
         "@local_xla//xla/backends/cpu/codegen:compiled_function_library",
         "@local_xla//xla/client:client_library",
         "@local_xla//xla/client:executable_build_options",
@@ -511,7 +554,6 @@ cc_library(
     ] + if_libtpu(
         if_false = [
             "@local_xla//xla/service:cpu_plugin",
-            "@local_xla//xla/service/cpu:buffer_info_util",
             "@local_xla//xla/service/cpu:cpu_executable",
         ],
         if_true = [],
@@ -610,6 +652,7 @@ cc_library(
         "@local_xla//xla:status_macros",
         "@local_xla//xla:util",
         "@local_xla//xla:xla_data_proto_cc",
+        "@local_xla//xla/client",
         "@local_xla//xla/client:client_library",
         "@local_xla//xla/client:local_client",
         "@local_xla//xla/core/collectives:clique_id",
@@ -621,6 +664,10 @@ cc_library(
         "@local_xla//xla/hlo/translate/mhlo_to_hlo:layout_util",
         "@local_xla//xla/service:computation_placer_hdr",
         "@local_xla//xla/service:hlo_proto_cc",
+        "@local_xla//xla/service/spmd/shardy:constants",
+        "@local_xla//xla/service/spmd/shardy:utils",
+        "@local_xla//xla/service/spmd/shardy/stablehlo_round_trip:stablehlo_import",
+        "@local_xla//xla/stream_executor:device_memory_allocator",
     ] + if_libtpu([
         ":xla_tpu_backend_registration",
     ]) + if_static(["@local_tsl//tsl/platform:tensor_float_32_utils"]),
@@ -833,9 +880,10 @@ cc_library(
         ":host_compute_metadata_proto_cc",
         ":xla_resource",
         "//tensorflow/core:framework",
-        "@com_google_absl//absl/types:optional",
+        "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
+        "@local_xla//xla:shape_util",
         "@local_xla//xla/hlo/builder:xla_builder",
         "@local_xla//xla/hlo/ir:hlo",
     ],
@@ -940,9 +988,15 @@ cc_library(
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
+        "@local_xla//xla:shape_util",
         "@local_xla//xla:status_macros",
         "@local_xla//xla/hlo/builder:sharding_builder",
+        "@local_xla//xla/hlo/builder:xla_builder",
+        "@local_xla//xla/hlo/ir:hlo_sharding",
+        "@local_xla//xla/service/spmd/shardy/stablehlo_round_trip:stablehlo_import",
     ],
 )
 
@@ -956,6 +1010,12 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "@com_google_googletest//:gtest",
+        "@local_xla//xla:shape_util",
+        "@local_xla//xla/hlo/builder:xla_builder",
+        "@local_xla//xla/hlo/builder:xla_computation",
+        "@local_xla//xla/hlo/ir:hlo_sharding",
+        "@local_xla//xla/tsl/platform:statusor",
     ],
 )
 
@@ -1088,30 +1148,47 @@ tf_cc_test(
         "//tensorflow/cc:functional_ops",
         "//tensorflow/cc:ops",
         "//tensorflow/cc:resource_variable_ops",
+        "//tensorflow/cc:scope",
         "//tensorflow/compiler/tf2xla/kernels:xla_ops",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
+        "//tensorflow/core:portable_gif_internal",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "//tensorflow/core/framework:resource_base",
         "//tensorflow/core/framework:tensor_testutil",
+        "//tensorflow/core/platform:errors",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest",
         "@local_tsl//tsl/platform:statusor",
+        "@local_xla//xla:array",
+        "@local_xla//xla:debug_options_flags",
         "@local_xla//xla:literal",
+        "@local_xla//xla:literal_util",
         "@local_xla//xla:shape_util",
         "@local_xla//xla:status_macros",
         "@local_xla//xla:xla_data_proto_cc",
+        "@local_xla//xla/client",
         "@local_xla//xla/client:client_library",
         "@local_xla//xla/client:local_client",
         "@local_xla//xla/hlo/builder:xla_builder",
+        "@local_xla//xla/hlo/ir:hlo",
+        "@local_xla//xla/hlo/ir:hlo_sharding",
+        "@local_xla//xla/hlo/testlib:filecheck",
+        "@local_xla//xla/service",
         "@local_xla//xla/service:cpu_plugin",
         "@local_xla//xla/service:hlo_module_util",
         "@local_xla//xla/service:hlo_proto_cc",
         "@local_xla//xla/service:hlo_proto_util",
         "@local_xla//xla/tests:literal_test_util",
+        "@local_xla//xla/tsl/platform:errors",
+        "@local_xla//xla/tsl/platform:statusor",
     ],
 )
 
@@ -1328,6 +1405,8 @@ cc_library(
         "@com_google_absl//absl/status",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
+        "@local_xla//xla/tsl/platform:logging",
     ],
     alwayslink = 1,
 )

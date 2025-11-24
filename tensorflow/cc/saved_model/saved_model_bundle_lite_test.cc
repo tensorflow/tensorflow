@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "absl/status/status.h"
 #include "tensorflow/cc/saved_model/constants.h"
 #include "tensorflow/cc/saved_model/loader.h"
 #include "tensorflow/cc/saved_model/signature_constants.h"
@@ -20,7 +21,6 @@ limitations under the License.
 #include "tensorflow/core/example/example.pb.h"
 #include "tensorflow/core/example/feature.pb.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
-#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/io/path.h"
@@ -101,7 +101,7 @@ class LoaderTest : public ::testing::Test {
     absl::Status s =
         bundle.GetSession()->Run(run_options, {{input_name, input}},
                                  {output_name}, {}, &outputs, &run_metadata);
-    ASSERT_TRUE(errors::IsInvalidArgument(s));
+    ASSERT_TRUE(absl::IsInvalidArgument(s));
   }
 };
 
@@ -133,7 +133,7 @@ TEST_F(LoaderTest, ExtendFailsTest) {
   TF_ASSERT_OK(LoadSavedModel(session_options, run_options, export_dir,
                               {kSavedModelTagServe}, &bundle));
   absl::Status s = bundle.GetSession()->Extend({});
-  ASSERT_TRUE(errors::IsUnimplemented(s));
+  ASSERT_TRUE(absl::IsUnimplemented(s));
 }
 
 TEST_F(LoaderTest, TagMatch) {

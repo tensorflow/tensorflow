@@ -28,7 +28,8 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
-#include "absl/container/flat_hash_map.h"
+#include "absl/base/no_destructor.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/functional/bind_front.h"
 #include "absl/log/log.h"
 #include "absl/strings/str_cat.h"
@@ -166,10 +167,13 @@ void ConnectContextGroups(const ContextGroupMap& context_groups) {
 }
 
 bool IsImplicitRootEvent(const XEventVisitor& event) {
-  static const auto* const kImplicitRootEvents =
-      new absl::flat_hash_set<int64_t>{
-          HostEventType::kFunctionRun, HostEventType::kSessionRun,
-          HostEventType::kRunGraph, HostEventType::kExecutorStateProcess};
+  static const absl::NoDestructor<absl::flat_hash_set<int64_t>>
+      kImplicitRootEvents({
+          HostEventType::kFunctionRun,
+          HostEventType::kSessionRun,
+          HostEventType::kRunGraph,
+          HostEventType::kExecutorStateProcess,
+      });
   return event.Type().has_value() &&
          kImplicitRootEvents->contains(*event.Type());
 }
@@ -358,12 +362,12 @@ const EventNode* EventNode::FindParent(int64_t event_type) const {
 
 void EventForest::FindEventNodeAndApply(
     const int64_t event_type, const std::vector<int64_t>& stat_types,
-    const std::function<void(EventNode&, const std::vector<uint64>&)>& cb) {
+    const std::function<void(EventNode&, const std::vector<uint64_t>&)>& cb) {
   if (auto* event_node_list = gtl::FindOrNull(event_node_map_, event_type)) {
     // Drop 'const' here because the event_node entry can be mutated by the
     // apply function 'cb'.
     for (EventNode& event_node : *event_node_list) {
-      std::vector<uint64> stats;
+      std::vector<uint64_t> stats;
       for (const auto stat_type : stat_types) {
         std::optional<XStatVisitor> stat =
             event_node.GetEventVisitor().GetStat(stat_type);
@@ -420,7 +424,7 @@ void EventForest::ConnectIntraThread(XPlane* plane, XPlaneVisitor* visitor,
 void EventForest::ConnectInterThread(
     const std::vector<InterThreadConnectInfo>& connect_info_list) {
   for (const auto& connect_info : connect_info_list) {
-    absl::flat_hash_map<std::vector<uint64>, EventNode*> connect_map;
+    absl::flat_hash_map<std::vector<uint64_t>, EventNode*> connect_map;
     const std::vector<int64_t>& parent_stat_types =
         connect_info.parent_stat_types;
     const std::vector<int64_t>* child_stat_types =
@@ -434,7 +438,7 @@ void EventForest::ConnectInterThread(
     // the parent node.
     FindEventNodeAndApply(connect_info.parent_event_type, parent_stat_types,
                           [&connect_map](EventNode& event_node,
-                                         const std::vector<uint64>& stats) {
+                                         const std::vector<uint64_t>& stats) {
                             connect_map[stats] = &event_node;
                           });
 
@@ -445,7 +449,7 @@ void EventForest::ConnectInterThread(
     FindEventNodeAndApply(
         connect_info.child_event_type, *child_stat_types,
         [&connect_map](EventNode& event_node,
-                       const std::vector<uint64>& stats) {
+                       const std::vector<uint64_t>& stats) {
           if (auto parent_event_node = gtl::FindPtrOrNull(connect_map, stats)) {
             parent_event_node->AddChild(&event_node);
           }
@@ -647,7 +651,7 @@ void EventForest::ConnectTfDataEvents() {
       std::pair<int64_t /*iterator_id*/, int64_t /*element_id*/>,
       std::vector<EventNode*>>
       produce_iterator_map;
-  uint64 num_producers = 0;
+  uint64_t num_producers = 0;
   for (HostEventType event_type :
        {HostEventType::kPrefetchProduce,
         HostEventType::kParallelInterleaveProduce,
@@ -677,7 +681,7 @@ void EventForest::ConnectTfDataEvents() {
     }
   }
   VLOG(1) << num_producers << " producer iterators found.";
-  uint64 num_matched = 0;
+  uint64_t num_matched = 0;
   for (HostEventType event_type :
        {HostEventType::kPrefetchConsume,
         HostEventType::kParallelInterleaveConsume,
@@ -820,7 +824,12 @@ class GroupQueue {
 void MergeHostSteps(const XStatMetadata& group_id_stat_metadata,
                     const XPlaneVisitor& plane_visitor,
                     XPlaneBuilder* plane_builder, XLine* step_line) {
+  auto device_duration_stat_metadata = *plane_builder->GetOrCreateStatMetadata(
+      GetStatTypeStr(StatType::kDeviceDurationPs));
+  auto device_offset_stat_metadata = *plane_builder->GetOrCreateStatMetadata(
+      GetStatTypeStr(StatType::kDeviceOffsetPs));
   std::optional<int64_t> merged_group_id;
+  std::optional<Timespan> merged_device_timespan;
   std::optional<XEventBuilder> merged_step_builder;
   absl::flat_hash_set<const XEvent*> events_to_remove;
   for (XEvent& step_event : *step_line->mutable_events()) {
@@ -836,10 +845,24 @@ void MergeHostSteps(const XStatMetadata& group_id_stat_metadata,
     } else if (merged_group_id != group_id) {
       // Start a new step with the current event.
       merged_group_id = group_id;
+      merged_device_timespan.reset();
+      if (step_visitor.GetStat(StatType::kDeviceOffsetPs).has_value() &&
+          step_visitor.GetStat(StatType::kDeviceDurationPs).has_value()) {
+        merged_device_timespan = GetDeviceEventTimespan(step_visitor);
+      }
       merged_step_builder.emplace(step_line, plane_builder, &step_event);
     } else {
       // Multi-module step: extend the previous step until the end of the
       // current event and discard the current event.
+      if (merged_device_timespan.has_value()) {
+        merged_device_timespan->ExpandToInclude(
+            GetDeviceEventTimespan(step_visitor));
+        merged_step_builder->SetOrAddStatValue(
+            device_offset_stat_metadata, merged_device_timespan->begin_ps());
+        merged_step_builder->SetOrAddStatValue(
+            device_duration_stat_metadata,
+            merged_device_timespan->duration_ps());
+      }
       merged_step_builder->SetEndTimestampPs(step_visitor.EndTimestampPs());
       events_to_remove.insert(&step_event);
     }
@@ -911,7 +934,15 @@ void GroupXplaneEvents(tensorflow::profiler::XPlane* plane,
   if (step_line) {
     bool device_loop = (step_line->events_size() > module_line->events_size());
     if (device_loop) {
-      group_line = nullptr;
+      int32_t group_id = 0;
+      for (XEvent& event : *step_line->mutable_events()) {
+        XEventBuilder step_builder(step_line, &plane_builder, &event);
+        XEventVisitor step_visitor(&plane_visitor, step_line, &event);
+        if (!step_visitor.GetStat(StatType::kGroupId).has_value()) {
+          step_builder.AddStatValue(*group_id_stat_metadata, group_id++);
+        }
+      }
+      group_line = step_line;
     } else {  // host loop
       if (group_line) {
         // Determine whether the module line has been grouped.

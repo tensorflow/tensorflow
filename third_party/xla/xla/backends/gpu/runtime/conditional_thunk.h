@@ -17,6 +17,7 @@ limitations under the License.
 #define XLA_BACKENDS_GPU_RUNTIME_CONDITIONAL_THUNK_H_
 
 #include <memory>
+#include <string>
 #include <vector>
 
 #include "absl/base/thread_annotations.h"
@@ -29,6 +30,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/host_memory_pool.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/stream_executor/stream_executor.h"
 
@@ -70,6 +72,12 @@ class ConditionalThunk : public Thunk {
   }
 
   void ForAllThunks(absl::FunctionRef<void(const Thunk*)> fn) const override;
+  void ForAllThunksMutable(absl::FunctionRef<void(Thunk*)> fn) override;
+  absl::Status TransformAllNestedThunks(
+      absl::FunctionRef<
+          absl::StatusOr<std::unique_ptr<Thunk>>(std::unique_ptr<Thunk>)>
+          fn) override;
+
   bool branch_index_is_bool() const { return branch_index_is_bool_; }
 
   absl::StatusOr<ThunkProto> ToProto() const override;
@@ -87,6 +95,8 @@ class ConditionalThunk : public Thunk {
       ThunkInfo thunk_info, const ConditionalThunkProto& thunk_proto,
       absl::Span<const BufferAllocation> buffer_allocations,
       const Deserializer& deserializer);
+
+  std::string ToString(int indent) const override;
 
  private:
   const BufferAllocation::Slice branch_index_buffer_index_;

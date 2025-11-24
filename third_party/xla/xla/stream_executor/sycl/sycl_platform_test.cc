@@ -10,24 +10,21 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <gtest/gtest.h>
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/test.h"
+#include "xla/stream_executor/sycl/sycl_platform_id.h"
+#include "xla/tsl/platform/statusor.h"
 
-namespace stream_executor {
-namespace gpu {
+namespace stream_executor::sycl {
+namespace {
 
-static Platform* NewPlatform() {
-  Platform* platform = PlatformManager::PlatformWithName("SYCL").value();
-  return platform;
+TEST(SyclPlatformTest, TestPlatformName) {
+  TF_ASSERT_OK_AND_ASSIGN(
+      Platform * platform,
+      stream_executor::PlatformManager::PlatformWithId(kSyclPlatformId));
+  EXPECT_EQ(platform->Name(), "SYCL");
 }
 
-TEST(SyclPlatformTest, Name) {
-  auto platform = NewPlatform();
-  auto name = platform->Name();
-  EXPECT_EQ(name, "SYCL");
-}
-
-}  // namespace gpu
-}  // namespace stream_executor
+}  // namespace
+}  // namespace stream_executor::sycl

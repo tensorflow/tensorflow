@@ -121,7 +121,7 @@ TEST(EagerExecutorTest, TestSyncExecuteMethodFailureCases) {
   auto sync_node = std::make_unique<TestEagerNode>(state.get());
 
   EXPECT_THAT(async_executor->SyncExecute(sync_node.get()),
-              tensorflow::testing::StatusIs(tensorflow::error::INTERNAL));
+              absl_testing::StatusIs(tensorflow::error::INTERNAL));
   ASSERT_EQ(state->read_state(), TestState::kNotRun);
 
   // Sync Executor with Async node fails
@@ -132,7 +132,7 @@ TEST(EagerExecutorTest, TestSyncExecuteMethodFailureCases) {
   auto async_node = std::make_unique<TestAsyncEagerNode>(state.get());
 
   EXPECT_THAT(sync_executor->SyncExecute(async_node.get()),
-              tensorflow::testing::StatusIs(tensorflow::error::INTERNAL));
+              absl_testing::StatusIs(tensorflow::error::INTERNAL));
   ASSERT_EQ(state->read_state(), TestState::State::kNotRun);
 }
 
@@ -277,9 +277,8 @@ TEST(EagerExecutorTest, TestAsyncExecutorAddNodesAfterShutdown) {
   auto node = std::make_unique<TestAsyncEagerNode>(state.get());
 
   TF_ASSERT_OK(async_executor->ShutDown());
-  EXPECT_THAT(
-      async_executor->AddOrExecute(std::move(node)),
-      tensorflow::testing::StatusIs(tensorflow::error::FAILED_PRECONDITION));
+  EXPECT_THAT(async_executor->AddOrExecute(std::move(node)),
+              absl_testing::StatusIs(tensorflow::error::FAILED_PRECONDITION));
 }
 }  // namespace
 }  // namespace tensorflow

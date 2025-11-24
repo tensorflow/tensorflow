@@ -15,13 +15,23 @@ limitations under the License.
 #include "xla/stream_executor/gpu/gpu_blas_lt.h"
 
 #include <optional>
+#include <string>
+#include <vector>
 
+#include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
+#include "absl/strings/str_cat.h"
+#include "google/protobuf/descriptor.h"
 #include "xla/stream_executor/blas.h"
+#include "xla/stream_executor/gpu/gpu_blas_lt.pb.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/xla_data.pb.h"
 
 namespace stream_executor::gpu {
+using absl_testing::StatusIs;
+using ::testing::ValuesIn;
 
 // Helper to compare MatrixLayout structs.
 void ExpectMatrixLayoutEq(const MatrixLayout& lhs, const MatrixLayout& rhs) {
@@ -108,6 +118,77 @@ TEST(GemmConfigTest, ProtoConversionWithOptionals) {
                           GemmConfig::FromProto(proto));
 
   ExpectGemmConfigEq(original_config, round_tripped_config);
+}
+
+TEST(EpilogueTest, ToProtoSucceedsForValidValues) {
+  EXPECT_EQ(BlasLt::EpilogueToProto(BlasLt::Epilogue::kDefault),
+            xla::BlasLtEpilogueProto::EPILOGUE_DEFAULT);
+  EXPECT_EQ(BlasLt::EpilogueToProto(BlasLt::Epilogue::kReLU),
+            xla::BlasLtEpilogueProto::EPILOGUE_RELU);
+  EXPECT_EQ(BlasLt::EpilogueToProto(BlasLt::Epilogue::kBias),
+            xla::BlasLtEpilogueProto::EPILOGUE_BIAS);
+  EXPECT_EQ(BlasLt::EpilogueToProto(BlasLt::Epilogue::kBiasThenReLU),
+            xla::BlasLtEpilogueProto::EPILOGUE_BIAS_THEN_RELU);
+  EXPECT_EQ(BlasLt::EpilogueToProto(BlasLt::Epilogue::kGELU),
+            xla::BlasLtEpilogueProto::EPILOGUE_GELU);
+  EXPECT_EQ(BlasLt::EpilogueToProto(BlasLt::Epilogue::kSILU),
+            xla::BlasLtEpilogueProto::EPILOGUE_SILU);
+  EXPECT_EQ(BlasLt::EpilogueToProto(BlasLt::Epilogue::kSILUWithAux),
+            xla::BlasLtEpilogueProto::EPILOGUE_SILU_WITH_AUX);
+  EXPECT_EQ(BlasLt::EpilogueToProto(BlasLt::Epilogue::kGELUWithAux),
+            xla::BlasLtEpilogueProto::EPILOGUE_GELU_WITH_AUX);
+  EXPECT_EQ(BlasLt::EpilogueToProto(BlasLt::Epilogue::kBiasThenGELU),
+            xla::BlasLtEpilogueProto::EPILOGUE_BIAS_THEN_GELU);
+  EXPECT_EQ(BlasLt::EpilogueToProto(BlasLt::Epilogue::kBiasThenSILU),
+            xla::BlasLtEpilogueProto::EPILOGUE_BIAS_THEN_SILU);
+  EXPECT_EQ(BlasLt::EpilogueToProto(BlasLt::Epilogue::kBiasThenGELUWithAux),
+            xla::BlasLtEpilogueProto::EPILOGUE_BIAS_THEN_GELU_WITH_AUX);
+  EXPECT_EQ(BlasLt::EpilogueToProto(BlasLt::Epilogue::kBiasThenSILUWithAux),
+            xla::BlasLtEpilogueProto::EPILOGUE_BIAS_THEN_SILU_WITH_AUX);
+}
+
+using EpilogueFromProtoTest =
+    ::testing::TestWithParam<xla::BlasLtEpilogueProto>;
+
+TEST_P(EpilogueFromProtoTest, SucceedsForValidValue) {
+  TF_EXPECT_OK(BlasLt::EpilogueFromProto(GetParam()));
+}
+
+std::vector<xla::BlasLtEpilogueProto> EnumerateBlasLtEpilogueProtoValues() {
+  const google::protobuf::EnumDescriptor* descriptor =
+      xla::BlasLtEpilogueProto_descriptor();
+  std::vector<xla::BlasLtEpilogueProto> values;
+  for (int i = 0; i < descriptor->value_count(); ++i) {
+    values.push_back(
+        static_cast<xla::BlasLtEpilogueProto>(descriptor->value(i)->number()));
+  }
+  return values;
+}
+
+std::string ToString(const xla::BlasLtEpilogueProto& proto) {
+  const google::protobuf::EnumDescriptor* descriptor =
+      xla::BlasLtEpilogueProto_descriptor();
+  const google::protobuf::EnumValueDescriptor* value =
+      descriptor->FindValueByNumber(proto);
+  if (value == nullptr) {
+    return absl::StrCat("Unknown(", proto, ")");
+  }
+  return std::string(value->name());
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    EpilogueFromProtoTests, EpilogueFromProtoTest,
+    ValuesIn(EnumerateBlasLtEpilogueProtoValues()),
+    [](const testing::TestParamInfo<xla::BlasLtEpilogueProto>& info) {
+      return ToString(info.param);
+    });
+
+TEST(BlasLtTest, EpilogueFromProtoReturnsErrorForInvalidValues) {
+  constexpr int kInvalidProtoValue = 123456789;
+  EXPECT_FALSE(xla::BlasLtEpilogueProto_IsValid(kInvalidProtoValue));
+  EXPECT_THAT(BlasLt::EpilogueFromProto(
+                  static_cast<xla::BlasLtEpilogueProto>(kInvalidProtoValue)),
+              StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
 }  // namespace stream_executor::gpu

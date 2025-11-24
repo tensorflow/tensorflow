@@ -18,7 +18,6 @@ limitations under the License.
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
-#include <cstring>
 #include <iterator>
 #include <optional>
 #include <ostream>
@@ -30,13 +29,14 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
-#include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_print_options.h"
+#include "xla/hlo/utils/hlo_longest_prefix.h"
 #include "xla/printer.h"
-#include "tsl/platform/errors.h"
 #include "tsl/profiler/lib/nvtx_utils.h"
 #include "tsl/profiler/lib/scoped_annotation.h"
 
@@ -49,6 +49,9 @@ namespace xla::gpu {
 
 using ::tsl::profiler::ScopedAnnotation;
 using ::tsl::profiler::StringHandle;
+using ::xla::hlo_longest_prefix::GetLongestOpNamePrefix;
+using ::xla::hlo_longest_prefix::VisitInstAndCalledButNotOperands;
+
 namespace {
 
 StringHandle RegisterString(const std::string& str) {
@@ -237,91 +240,14 @@ class SourceLocationVisitor : public ConstDfsHloVisitorWithDefault {
   std::set<std::vector<StackFrame>> location_set_{};
 };
 
-template <typename Visitor>
-absl::Status VisitInstAndCalledButNotOperands(Visitor& visitor,
-                                              const HloInstruction& inst) {
-  // Visit the given instruction, and the things it calls, but not its operands.
-  TF_RETURN_IF_ERROR(visitor.DefaultAction(&inst));
-  for (const HloComputation* called : inst.called_computations()) {
-    const HloInstruction* const root = called->root_instruction();
-    TF_RETURN_IF_ERROR(root->Accept(&visitor, false /* call_finish_visit */,
-                                    true /* ignore_control_predecessors */,
-                                    true /* cross_computation */));
-  }
-  return absl::OkStatus();
-}
-
-// Split `a` and `b` by `delim` into two lists of possibly-empty tokens, then
-// rejoin the first N of those lists that match by `delim`. Note: it is
-// unspecified which argument the return value points into.
-absl::string_view LongestPrefix(absl::string_view a, absl::string_view b,
-                                char delim = '/') {
-  auto split_a = absl::StrSplit(a, delim);
-  auto split_b = absl::StrSplit(b, delim);
-
-  size_t common_prefix_len = 0;
-
-  for (auto a_it = split_a.begin(), b_it = split_b.begin();
-       a_it != split_a.end() && b_it != split_b.end(); ++a_it, ++b_it) {
-    if (*a_it != *b_it) break;
-
-    if (common_prefix_len) ++common_prefix_len;  // account for delimiter
-    common_prefix_len += a_it->size();           // length of a matching token
-  }
-
-  return absl::string_view(a.data(), common_prefix_len);
-}
-
-// Find the longest prefix among instructions' op_name metadata
-// Chunk this by delimiting slashes, i.e. given a/b/cat and a/b/cabbage, the
-// longest prefix is a/b not a/b/ca
-class OpNamePrefixVisitor : public ConstDfsHloVisitorWithDefault {
- public:
-  absl::Status DefaultAction(const HloInstruction* inst) final {
-    auto const& op_name = inst->metadata().op_name();
-    if (!op_name.empty()) {
-      prefix_ = prefix_ ? LongestPrefix(*prefix_, op_name) : op_name;
-    }
-    return absl::OkStatus();
-  }
-
-  absl::string_view longest_op_name_prefix() const {
-    return prefix_.value_or("");
-  }
-
- private:
-  std::optional<absl::string_view> prefix_;
-};
-
-absl::string_view GetLongestOpNamePrefix(const HloModule& mod) {
-  // In the presence of (at least) debug callbacks, calling Accept on the root
-  // instruction of the module may not reach all instructions in the module.
-  OpNamePrefixVisitor visitor{};
-  for (const HloComputation* computation : mod.computations()) {
-    for (const HloInstruction* inst : computation->instructions()) {
-      if (!visitor.DefaultAction(inst).ok()) {
-        return {};
-      }
-    }
-  }
-  return visitor.longest_op_name_prefix();
-}
-
-absl::string_view GetLongestOpNamePrefix(const HloInstruction& inst) {
-  OpNamePrefixVisitor visitor{};
-  if (!VisitInstAndCalledButNotOperands(visitor, inst).ok()) {
-    return {};
-  }
-  return visitor.longest_op_name_prefix();
-}
-
 std::string MakeTitle(const HloModule& mod, absl::string_view longest_prefix) {
   if (longest_prefix.empty()) {
-    return absl::StrFormat("XlaModule:#hlo_module=%s,program_id=%d#",
-                           mod.name(), mod.unique_id());
+    return absl::StrCat("XlaModule:#hlo_module=", mod.name(),
+                        ",program_id=", mod.unique_id(), "#");
   }
-  return absl::StrFormat("XlaModule:#prefix=%s,hlo_module=%s,program_id=%d#",
-                         longest_prefix, mod.name(), mod.unique_id());
+  return absl::StrCat("XlaModule:#prefix=", longest_prefix,
+                      ",hlo_module=", mod.name(),
+                      ",program_id=", mod.unique_id(), "#");
 }
 
 std::string FormatSourceLocations(HloInstruction const& inst,
@@ -379,7 +305,7 @@ std::pair<StringHandle, int32_t> GetLongestSourceLocationPrefix(
 }  // namespace
 
 ModuleAnnotation::ModuleAnnotation(absl::string_view module_name_)
-    : title_str_(absl::StrFormat("XlaModule:#hlo_module=%s#", module_name_)),
+    : title_str_(absl::StrCat("XlaModule:#hlo_module=", module_name_, "#")),
       title_(RegisterString(title_str_)),
       module_name_(RegisterString(std::string{module_name_})) {}
 
@@ -457,21 +383,20 @@ std::string MakeKernelName(absl::string_view prefix,
   // and attach the longest prefix to this launch.
   absl::string_view op_name = GetLongestOpNamePrefix(inst);
   if (op_name.empty()) {
-    return absl::StrFormat("Thunk:#hlo_op=%s#", inst.name());
-  } else if (op_name.substr(0, prefix.size()) != prefix) {
+    return absl::StrCat("Thunk:#hlo_op=", inst.name(), "#");
+  }
+  if (op_name.substr(0, prefix.size()) != prefix) {
     // the op_name we got for this instruction does not start with the prefix
     // that we thought was common to all instructions in the module
-    return absl::StrFormat("Thunk:#name=%s,hlo_op=%s#", op_name, inst.name());
-  } else {
-    // remove the prefix that's in the parent module annotation
-    auto short_name = op_name.substr(prefix.size());
-    // remove the leading / if there is one (prefix might be an empty string)
-    if (!short_name.empty() && short_name.front() == '/') {
-      short_name = short_name.substr(1);
-    }
-    return absl::StrFormat("Thunk:#name=%s,hlo_op=%s#", short_name,
-                           inst.name());
+    return absl::StrCat("Thunk:#name=", op_name, ",hlo_op=", inst.name(), "#");
   }
+  // remove the prefix that's in the parent module annotation
+  auto short_name = op_name.substr(prefix.size());
+  // remove the leading / if there is one (prefix might be an empty string)
+  if (!short_name.empty() && short_name.front() == '/') {
+    short_name = short_name.substr(1);
+  }
+  return absl::StrCat("Thunk:#name=", short_name, ",hlo_op=", inst.name(), "#");
 }
 }  // namespace
 

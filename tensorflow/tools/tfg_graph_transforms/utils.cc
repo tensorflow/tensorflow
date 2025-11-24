@@ -18,6 +18,7 @@ limitations under the License.
 #include <string>
 
 #include "absl/status/status.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/cc/saved_model/image_format/internal_api.h"
 #include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/platform/status.h"

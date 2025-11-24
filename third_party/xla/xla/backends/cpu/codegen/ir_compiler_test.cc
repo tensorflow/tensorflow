@@ -16,22 +16,34 @@ limitations under the License.
 #include "xla/backends/cpu/codegen/ir_compiler.h"
 
 #include <memory>
+#include <optional>
+#include <string>
+#include <utility>
 #include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/log/log.h"
+#include "absl/memory/memory.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "llvm/AsmParser/Parser.h"
 #include "llvm/IR/LLVMContext.h"
+#include "llvm/MC/TargetRegistry.h"
 #include "llvm/Support/CodeGen.h"
 #include "llvm/Support/Error.h"
 #include "llvm/Support/MemoryBufferRef.h"
 #include "llvm/Support/SourceMgr.h"
+#include "llvm/Support/TargetSelect.h"
 #include "llvm/Target/TargetMachine.h"
+#include "llvm/TargetParser/Triple.h"
 #include "xla/backends/cpu/codegen/kernel_api_ir_builder.h"
+#include "xla/backends/cpu/target_machine_options.h"
+#include "xla/debug_options_flags.h"
 #include "xla/service/cpu/backend_config.pb.h"
+#include "xla/service/cpu/cpu_compiler.h"
+#include "xla/service/cpu/test_target_triple_helper.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/statusor.h"
@@ -40,6 +52,9 @@ limitations under the License.
 namespace xla::cpu {
 
 namespace {
+
+using ::testing::HasSubstr;
+using ::testing::Not;
 
 constexpr absl::string_view kUnoptimizedIr = R"(
   define void @sum_vectors(ptr noalias %a, ptr noalias %b, ptr noalias %c, i64 %n) {
@@ -94,7 +109,9 @@ TEST(IrCompilerTest, OverrideIrCompilerCompileOptions) {
 
   std::unique_ptr<IrCompiler> ir_compiler = IrCompiler::Create(
       llvm::TargetOptions(),
-      IrCompiler::Options{/*opt_level=*/llvm::CodeGenOptLevel::Aggressive},
+      IrCompiler::Options{/*opt_level=*/llvm::CodeGenOptLevel::Aggressive,
+                          /*optimize_for_size=*/false,
+                          TargetMachineOptions(GetDebugOptionsFromFlags())},
       compilation_hooks);
 
   std::vector<std::unique_ptr<llvm::Module>> modules;
@@ -154,6 +171,89 @@ TEST(IrCompilerTest, OverrideIrCompilerCompileOptions) {
   EXPECT_THAT(non_vectorized_module_ir,
               ::testing::Not(::testing::ContainsRegex("fadd <[0-9]+ x float>")))
       << non_vectorized_module_ir;
+}
+
+TEST(IrCompilerTest, TestAdditionalFeatures) {
+#if !defined(__x86_64__)
+  GTEST_SKIP()
+      << "Test only supported on native x86_64 (InitializeNativeTarget).";
+#endif
+
+  llvm::InitializeNativeTarget();
+
+  bool has_avx512;
+  auto builder =
+      [&has_avx512]() -> absl::StatusOr<std::unique_ptr<llvm::TargetMachine>> {
+    absl::string_view cpu_name = "skylake";
+    absl::string_view features = has_avx512 ? "+avx512f" : "-avx512f";
+    absl::string_view triple = "x86_64-unknown-linux-gnu";
+    std::string error;
+    llvm::Triple target_triple((llvm::StringRef(triple)));
+    const llvm::Target* target =
+        llvm::TargetRegistry::lookupTarget(target_triple, error);
+    if (target == nullptr) {
+      return absl::InternalError("Failed to lookup target: " + error);
+    }
+
+    TargetMachineOptions target_machine_options(triple, cpu_name, features);
+
+    llvm::TargetOptions target_options;
+    return absl::WrapUnique(target->createTargetMachine(
+        llvm::Triple(target_machine_options.triple()),
+        target_machine_options.cpu(),
+        target_machine_options.GetTargetMachineFeatures(), target_options,
+        /*RM=*/std::nullopt));
+  };
+
+  IrCompiler ir_compiler(
+      std::move(builder),
+      IrCompiler::Options{/*opt_level=*/llvm::CodeGenOptLevel::None,
+                          /*optimize_for_size=*/false,
+                          TargetMachineOptions(GetDebugOptionsFromFlags())},
+      IrCompiler::CompilationHooks());
+
+  {
+    has_avx512 = true;
+    TF_ASSERT_OK_AND_ASSIGN(auto target_machine,
+                            ir_compiler.build_target_machine());
+
+    absl::string_view features = target_machine->getTargetFeatureString();
+    EXPECT_THAT(features, HasSubstr("+prefer-no-scatter"));
+    EXPECT_THAT(features, HasSubstr("+prefer-no-gather"));
+  }
+
+  {
+    has_avx512 = false;
+    TF_ASSERT_OK_AND_ASSIGN(auto target_machine,
+                            ir_compiler.build_target_machine());
+
+    absl::string_view features = target_machine->getTargetFeatureString();
+    EXPECT_THAT(features, Not(HasSubstr("+prefer-no-scatter")));
+    EXPECT_THAT(features, Not(HasSubstr("+prefer-no-gather")));
+  }
+}
+
+TEST(IrCompilerTest, TargetMachineOptionsAreCorrectlySet) {
+  auto context = std::make_unique<llvm::LLVMContext>();
+  IrCompiler::CompilationHooks compilation_hooks;
+
+  TargetMachineOptions target_machine_options(
+      kTargetTripleForHost, kTargetCpuForHost, "+foo-feature,-bar-feature");
+
+  std::unique_ptr<IrCompiler> ir_compiler = IrCompiler::Create(
+      llvm::TargetOptions(),
+      IrCompiler::Options{/*opt_level=*/llvm::CodeGenOptLevel::Aggressive,
+                          /*optimize_for_size=*/false, target_machine_options},
+      compilation_hooks);
+
+  TF_ASSERT_OK_AND_ASSIGN(auto target_machine,
+                          ir_compiler->build_target_machine());
+
+  EXPECT_EQ(target_machine->getTargetCPU(), kTargetCpuForHost);
+  EXPECT_EQ(target_machine->getTargetTriple().getTriple(),
+            kTargetTripleForHost);
+  EXPECT_EQ(target_machine->getTargetFeatureString(),
+            "+foo-feature,-bar-feature");
 }
 
 }  // namespace

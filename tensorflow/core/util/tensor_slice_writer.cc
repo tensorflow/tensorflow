@@ -88,15 +88,15 @@ TensorSliceWriter::TensorSliceWriter(const string& filename,
       create_builder_(std::move(create_builder)),
       slices_(0) {
   Env* env = Env::Default();
-  absl::Status status = env->CanCreateTempFile(filename_, &use_temp_file_);
+  absl::Status status = env->HasAtomicMove(filename_, &use_temp_file_);
   if (!status.ok()) {
-    LOG(ERROR) << "Failed to get CanCreateTempFile attribute: " << filename_;
+    LOG(ERROR) << "Failed to get HasAtomicMove attribute: " << filename_;
     use_temp_file_ = true;
   }
 
   data_filename_ = filename_;
   if (use_temp_file_) {
-    data_filename_ = strings::StrCat(filename_, ".tempstate", random::New64());
+    data_filename_ = absl::StrCat(filename_, ".tempstate", random::New64());
   }
   VersionDef* versions = sts_.mutable_meta()->mutable_versions();
   versions->set_producer(TF_CHECKPOINT_VERSION);

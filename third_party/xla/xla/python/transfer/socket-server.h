@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
+#include "absl/types/span.h"
 #include "xla/python/transfer/event_loop.h"
 #include "xla/python/transfer/streaming.h"
 #include "xla/python/transfer/transfer_socket.pb.h"
@@ -44,6 +45,9 @@ class SocketServer {
     pull_table_->AwaitPull(uuid, std::move(handler));
   }
 
+  // Clears outstanding buffers and buffer requests.
+  void Reset() { pull_table_->Reset(); }
+
   class SocketNetworkState;
 
   // Connection state.
@@ -60,7 +64,12 @@ class SocketServer {
     void Pull(uint64_t uuid, absl::Span<const int> buffer_ids,
               std::vector<tsl::RCReference<ChunkDestination>> dests);
 
-    void InjectFailure();
+    enum FailureKind {
+      kPoison,
+      kProtocolFailure,
+    };
+
+    void InjectFailure(FailureKind kind = kProtocolFailure);
 
    private:
     SocketNetworkState* local_;

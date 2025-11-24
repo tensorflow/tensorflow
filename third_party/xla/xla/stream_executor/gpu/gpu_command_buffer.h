@@ -22,6 +22,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/inlined_vector.h"
+#include "absl/functional/any_invocable.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -31,7 +32,6 @@ limitations under the License.
 #include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/dnn.h"
-#include "xla/stream_executor/gpu/scoped_update_mode.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/platform.h"
@@ -106,11 +106,22 @@ class GpuCommandBuffer : public CommandBuffer {
     GraphConditionalNodeHandle conditional_node;
   };
 
-  GpuCommandBuffer(Mode mode, StreamExecutor* parent);
+  struct GpuChildCommand : public CommandBuffer::Command {
+    GpuChildCommand(GraphNodeHandle h, std::unique_ptr<CommandBuffer> cb)
+        : handle(h), command_buffer(std::move(cb)) {}
+    GraphNodeHandle handle = nullptr;
+    std::unique_ptr<CommandBuffer> command_buffer;
+  };
+
+  GpuCommandBuffer(Mode mode, StreamExecutor* executor);
 
   // Bring CreateLaunch and UpdateLaunch template functions into scope.
   using CommandBuffer::CreateLaunch;
   using CommandBuffer::UpdateLaunch;
+
+  absl::StatusOr<const Command*> CreateEmptyCmd(
+      absl::Span<const Command* const> dependencies,
+      StreamPriority priority = StreamPriority::Default) override;
 
   absl::StatusOr<const Command*> CreateLaunch(
       const ThreadDim& threads, const BlockDim& blocks, const Kernel& kernel,
@@ -121,12 +132,25 @@ class GpuCommandBuffer : public CommandBuffer {
                             const BlockDim& blocks, const Kernel& kernel,
                             const KernelArgs& args) override;
 
-  absl::StatusOr<const Command*> CreateNestedCommand(
-      const CommandBuffer& nested,
+  // Cloned type child command creation and update.
+  absl::StatusOr<const Command*> CreateChildCommand(
+      ChildCommandType type, CommandBuffer& nested,
       absl::Span<const Command* const> dependencies) override;
 
-  absl::Status UpdateNestedCommand(const Command* command,
-                                   const CommandBuffer& nested) override;
+  absl::Status UpdateChildCommand(ChildCommandType type, const Command* command,
+                                  const CommandBuffer& nested) override;
+
+  // Moved type child command creation and update.
+  absl::StatusOr<const Command*> CreateChildCommand(
+      ChildCommandType type, StreamExecutor* executor,
+      absl::AnyInvocable<absl::Status(stream_executor::CommandBuffer*)>
+          record_fn,
+      absl::Span<const Command* const> dependencies) override;
+
+  absl::Status UpdateChildCommand(
+      ChildCommandType type, const Command* command,
+      absl::AnyInvocable<absl::Status(stream_executor::CommandBuffer*)>
+          record_fn) override;
 
   absl::StatusOr<const Command*> CreateMemcpyD2D(
       DeviceMemoryBase* dst, const DeviceMemoryBase& src, uint64_t size,
@@ -197,13 +221,6 @@ class GpuCommandBuffer : public CommandBuffer {
   using Dependencies = absl::InlinedVector<GraphNodeHandle, 1>;
 
  private:
-  // Prepares a nested command buffer for an update of the graph.
-  // It's a prerequisite to a call to `Update` on a nested command buffer.
-  // The return value needs to be kept alive until the update is finished. An
-  // update finishes by a call to `Finalize`.
-  virtual std::unique_ptr<ScopedUpdateMode> ActivateUpdateMode(
-      GpuCommandBuffer* nested_cmd_buffer) = 0;
-
   absl::StatusOr<std::vector<GraphConditionalHandle>> CreateConditionalHandles(
       size_t num_handles);
 
@@ -257,8 +274,8 @@ class GpuCommandBuffer : public CommandBuffer {
   // possible to add new commands to it, otherwise returns internal error.
   absl::Status CheckNotFinalized();
 
-  // Return OK status if command buffer is in the given state, otherwise returns
-  // an error.
+  // Return OK status if command buffer is in the given state, otherwise
+  // returns an error.
   absl::Status CheckInState(State state);
 
   // Returns OK status if the command buffer can be updated.
@@ -278,6 +295,8 @@ class GpuCommandBuffer : public CommandBuffer {
   template <typename T>
   const Command* AppendCommand(T command) {
     commands_.push_back(std::make_unique<T>(std::move(command)));
+    VLOG(5) << "AppendCommand: "
+            << reinterpret_cast<const void*>(commands_.back().get());
     return commands_.back().get();
   }
 
@@ -289,8 +308,12 @@ class GpuCommandBuffer : public CommandBuffer {
   // APIs for creating and updating underlying GPU graph nodes.
   //===--------------------------------------------------------------------===//
 
-  // Adds a new conditional node to the graph and creates a corresponding nested
-  // command buffer.
+  // Adds a new empty node to the underlying graph.
+  virtual absl::StatusOr<GraphNodeHandle> CreateEmptyNode(
+      absl::Span<const GraphNodeHandle> dependencies) = 0;
+
+  // Adds a new conditional node to the graph and creates a corresponding
+  // nested command buffer.
   virtual absl::StatusOr<GraphConditionalNodeHandle> CreateConditionalNode(
       absl::Span<const GraphNodeHandle> dependencies,
       GraphConditionalHandle conditional, ConditionType type) = 0;
@@ -327,12 +350,13 @@ class GpuCommandBuffer : public CommandBuffer {
 
   // Adds a new nested command buffer node to the graph.
   virtual absl::StatusOr<GraphNodeHandle> CreateChildNode(
-      absl::Span<const GraphNodeHandle> dependencies,
-      const CommandBuffer& nested) = 0;
+      ChildCommandType type, absl::Span<const GraphNodeHandle> dependencies,
+      CommandBuffer& nested) = 0;
 
-  // Associate another command buffer with this child node. Will return an
-  // error if the given node has not been created as a child node.
-  virtual absl::Status UpdateChildNode(GraphNodeHandle node_handle,
+  // Updates an existing child node. Will return an error if the given node
+  // has not been created as a child node.
+  virtual absl::Status UpdateChildNode(ChildCommandType type,
+                                       GraphNodeHandle node_handle,
                                        const CommandBuffer& nested) = 0;
 
   // Adds a new kernel launch node to the graph.
@@ -350,7 +374,8 @@ class GpuCommandBuffer : public CommandBuffer {
 
   //===--------------------------------------------------------------------===//
 
-  // Launches an instantiated graph. Only supported on primary command buffers.
+  // Launches an instantiated graph. Only supported on primary command
+  // buffers.
   virtual absl::Status LaunchGraph(Stream* stream) = 0;
 
   // Returns the number of nodes in the graph associated with this command
@@ -373,7 +398,7 @@ class GpuCommandBuffer : public CommandBuffer {
   Mode mode_;
   State state_ = State::kCreate;
 
-  StreamExecutor* parent_;  // not owned, must outlive *this
+  StreamExecutor* executor_;  // not owned, must outlive *this
 
   // Track the number of command buffer updates for debugging.
   int64_t num_updates_ = 0;

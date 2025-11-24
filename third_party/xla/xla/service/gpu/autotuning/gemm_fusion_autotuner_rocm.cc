@@ -19,6 +19,7 @@ limitations under the License.
 #include "rocm/include/hipblas/hipblas.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/gpu/autotuning/gemm_fusion_autotuner.h"
+#include "xla/service/gpu/autotuning/triton_configs.h"
 #include "xla/service/gpu/matmul_utils.h"
 
 namespace xla {
@@ -27,20 +28,14 @@ namespace gpu {
 const int64_t GemmFusionAutotunerImpl::BLAS_GEMM_DEFAULT = HIPBLAS_GEMM_DEFAULT;
 
 bool GemmFusionAutotunerImpl::AddLibConfigs(
-    const HloFusionInstruction& fusion, const HloDotInstruction* dot,
+    const HloFusionInstruction& fusion, const HloInstruction* dot,
     std::vector<BackendConfig>& configs) {
   return false;
 }
 
 std::vector<TritonGemmConfig> GemmFusionAutotunerImpl::GetDefaultTritonConfigs()
     const {
-  using Config = TritonGemmConfig;
-  std::vector<Config> configs = {
-      Config(32, 32, 256, 1, 1, 4), Config(64, 32, 32, 16, 1, 4),
-      Config(32, 64, 64, 4, 1, 4),  Config(128, 128, 64, 4, 1, 4),
-      Config(16, 16, 256, 1, 1, 4), Config(16, 128, 32, 16, 1, 4),
-  };
-  return configs;
+  return *kDefaultRocmConfigs;
 }
 
 }  // namespace gpu
