@@ -22,6 +22,10 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/strings/match.h"
+#include "absl/strings/numbers.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
 #include "xla/tsl/platform/errors.h"
@@ -78,6 +82,8 @@ void UpdateMaxSessionDuration(RemoteProfilerSessionManagerOptions& options) {
 
 // Receives a comma delimited list of service_addresses and adds them to
 // RemoteProfilerSessionManagerOptions::service_addresses.
+// If override_hostnames is also specified, the order of hosts in
+// service_addresses and override_hostnames must match.
 void AddServiceAddresses(absl::string_view service_addresses,
                          RemoteProfilerSessionManagerOptions* options) {
   for (absl::string_view server : absl::StrSplit(service_addresses, ',')) {
@@ -143,6 +149,18 @@ RemoteProfilerSessionManagerOptions GetRemoteSessionManagerOptionsLocked(
             options.mutable_profiler_options()->set_session_id(value);
           },
           nullptr);
+    } else if (key == "override_hostnames") {
+      // A comma-separated list of hostnames that should be used to save the
+      // profile results. The order of these hostnames must match the order of
+      // service_addresses.
+      SetOption<std::string>(
+          key, kw.second,
+          [&options](tensorflow::ProfileOptions*, std::string value) {
+            (*options.mutable_profiler_options()
+                  ->mutable_advanced_configuration())["override_hostnames"]
+                .set_string_value(value);
+          },
+          nullptr);
     } else {
       LOG(WARNING) << "Unrecognised key: " << key;
     }
@@ -197,12 +215,11 @@ RemoteProfilerSessionManagerOptions GetRemoteSessionManagerOptionsLocked(
 absl::Status ValidateRemoteProfilerSessionManagerOptions(
     const RemoteProfilerSessionManagerOptions& options) {
   if (options.service_addresses().empty()) {
-    return tsl::errors::InvalidArgument("No service address provided.");
+    return absl::InvalidArgumentError("No service address provided.");
   }
 
   if (options.profiler_options().duration_ms() == 0) {
-    return tsl::errors::InvalidArgument(
-        "duration_ms must be greater than zero.");
+    return absl::InvalidArgumentError("duration_ms must be greater than zero.");
   }
 
   for (absl::string_view host_port : options.service_addresses()) {
@@ -211,7 +228,7 @@ absl::Status ValidateRemoteProfilerSessionManagerOptions(
 
   if (options.max_session_duration_ms() <
       options.profiler_options().duration_ms()) {
-    return tsl::errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "The maximum profiling session duration must be greater than or equal "
         "to the local profiler duration.");
   }
@@ -226,8 +243,8 @@ absl::Status ValidateHostPortPair(absl::string_view host_port) {
   // host also must not be empty.
   if (parts.size() != 2 || !absl::SimpleAtoi(parts[1], &port) ||
       absl::StrContains(parts[0], "/") || parts[0].empty()) {
-    return tsl::errors::InvalidArgument("Could not interpret \"", host_port,
-                                        "\" as a host-port pair.");
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Could not interpret \"", host_port, "\" as a host-port pair."));
   }
   return absl::OkStatus();
 }
