@@ -24,7 +24,6 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
@@ -54,6 +53,7 @@ limitations under the License.
 #include "xla/service/call_inliner.h"
 #include "xla/service/dump.h"
 #include "xla/service/executable.h"
+#include "xla/service/gpu/autotuning/autotune_cache_key.h"
 #include "xla/service/gpu/autotuning/autotuner_util.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/matmul_utils.h"
@@ -1837,8 +1837,6 @@ class GemmFusionAutotunerEnableTma : public GemmFusionAutotunerTest {
   DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options =
         GemmFusionAutotunerTest::GetDebugOptionsForTest();
-    debug_options.add_xla_gpu_unsupported_generic_triton_emitter_features(
-        DebugOptions::GENERIC_TRITON_EMITTER_ENABLE_NESTED_GEMM);
     debug_options.set_xla_gpu_experimental_enable_triton_tma(true);
     return debug_options;
   }

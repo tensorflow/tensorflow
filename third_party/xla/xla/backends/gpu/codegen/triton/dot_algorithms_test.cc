@@ -27,7 +27,6 @@ limitations under the License.
 #include <string>
 #include <tuple>
 #include <utility>
-#include <variant>
 #include <vector>
 
 #include <gmock/gmock.h>
@@ -81,16 +80,6 @@ class AlgorithmTest : public GpuCodegenTest {
   DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options = GpuCodegenTest::GetDebugOptionsForTest();
     debug_options.set_xla_gpu_autotune_level(0);
-    // TODO(b/393299275): remove when these flags are on by default.
-    debug_options.clear_xla_gpu_unsupported_generic_triton_emitter_features();
-    debug_options.add_xla_gpu_unsupported_generic_triton_emitter_features(
-        DebugOptions::GENERIC_TRITON_EMITTER_ENABLE_NESTED_GEMM);
-    debug_options.add_xla_gpu_unsupported_generic_triton_emitter_features(
-        DebugOptions::GENERIC_TRITON_EMITTER_DISABLE_LEGACY_GEMM);
-    debug_options.add_xla_gpu_unsupported_generic_triton_emitter_features(
-        DebugOptions::GENERIC_TRITON_EMITTER_ALLOW_ALL_OPS_IN_GEMM_FUSION);
-    debug_options.add_xla_gpu_unsupported_generic_triton_emitter_features(
-        DebugOptions::GENERIC_TRITON_EMITTER_ALLOW_ALL_GEMM_SHAPES);
     return debug_options;
   }
 

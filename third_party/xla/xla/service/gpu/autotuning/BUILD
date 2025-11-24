@@ -124,6 +124,7 @@ cc_library(
     deps = if_cuda_is_configured([":gemm_fusion_autotuner_cuda"]) + if_rocm_is_configured([
         ":gemm_fusion_autotuner_rocm",
     ]) + [
+        ":autotune_cache_key",
         ":autotuner_compile_util",
         ":autotuner_pass",
         ":autotuner_status_key",
@@ -237,6 +238,7 @@ xla_test(
         "no_mac",
     ],
     deps = [
+        ":autotune_cache_key",
         ":autotuner_util",
         ":gemm_fusion_autotuner",
         "//xla:autotune_results_proto_cc",
@@ -274,7 +276,6 @@ xla_test(
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",
-        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",

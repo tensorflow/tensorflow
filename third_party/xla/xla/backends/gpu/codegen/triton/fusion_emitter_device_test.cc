@@ -4867,14 +4867,6 @@ class TritonScaledDotGemmTest
     debug_options.set_xla_gpu_experimental_scaled_dot_with_triton(true);
     debug_options.set_xla_gpu_autotune_level(0);
     debug_options.set_xla_gpu_cublas_fallback(false);
-    debug_options.add_xla_gpu_unsupported_generic_triton_emitter_features(
-        DebugOptions::GENERIC_TRITON_EMITTER_ENABLE_NESTED_GEMM);
-    debug_options.add_xla_gpu_unsupported_generic_triton_emitter_features(
-        DebugOptions::GENERIC_TRITON_EMITTER_DISABLE_LEGACY_GEMM);
-    debug_options.add_xla_gpu_unsupported_generic_triton_emitter_features(
-        DebugOptions::GENERIC_TRITON_EMITTER_ALLOW_ALL_OPS_IN_GEMM_FUSION);
-    debug_options.add_xla_gpu_unsupported_generic_triton_emitter_features(
-        DebugOptions::GENERIC_TRITON_EMITTER_ALLOW_ALL_GEMM_SHAPES);
     return debug_options;
   }
 };
@@ -5062,8 +5054,6 @@ class TritonScaledDotTest : public TritonEmitterTest {
     debug_options.set_xla_gpu_experimental_scaled_dot_with_triton(true);
     debug_options.set_xla_gpu_autotune_level(0);
     debug_options.set_xla_gpu_cublas_fallback(false);
-    debug_options.add_xla_gpu_unsupported_generic_triton_emitter_features(
-        DebugOptions::GENERIC_TRITON_EMITTER_ENABLE_NESTED_GEMM);
     return debug_options;
   }
 

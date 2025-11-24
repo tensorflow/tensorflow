@@ -317,27 +317,6 @@ message DebugOptions {
     LHS = 2;
   }
 
-  // Options for the generic Triton emitter.
-  // Set with xla_gpu_unsupported_generic_triton_emitter_features.
-  enum GenericTritonEmitterFeature {
-    // No specfic meaning, zero value for protobuf best practices.
-    GENERIC_TRITON_EMITTER_UNSPECIFIED = 0;
-    // Enable nest_gemm_fusion pass to convert gemms to be emitted by the
-    // generic Triton emitter.
-    GENERIC_TRITON_EMITTER_ENABLE_NESTED_GEMM = 1;
-    // Disable legacy GEMM emitter, that might lead to crashes if GEMM is not
-    // supported by the generic emitter.
-    GENERIC_TRITON_EMITTER_DISABLE_LEGACY_GEMM = 2;
-    // Do not restrict which ops can be present in the GEMM fusion.
-    GENERIC_TRITON_EMITTER_ALLOW_ALL_OPS_IN_GEMM_FUSION = 3;
-    // Do not restrict the shapes of the operands and the result of the dot
-    // instruction.
-    GENERIC_TRITON_EMITTER_ALLOW_ALL_GEMM_SHAPES = 4;
-    // Fail in autotuner if any of the configs are not supported.
-    // Otherwise, the autotuner will silenly ignore configs that are regected.
-    GENERIC_TRITON_EMITTER_MUST_ACCEPT_ALL_AUTOTUNER_CONFIGS = 5;
-  }
-
   // Experimental optimizations for SPMD-based pipeline parallelism on GPU.
   enum PipelineParallelismOptLevel {
     PIPELINE_PARALLELISM_OPT_LEVEL_DISABLE = 0;
@@ -962,14 +941,6 @@ message DebugOptions {
   // TODO(b/390559452): Remove the flag once the feature is stable.
   optional bool xla_gpu_unsupported_enable_triton_multi_output_fusion = 382;
 
-  // Controls smaller knobs of the generic Triton emitter.
-  // Do not rely on this flag currently supported values as they are subject to
-  // change. Check 'debug_option_flags' for description.
-  // TODO(b/393299275): remove the flag once we fully switched to the new
-  // emitter.
-  repeated GenericTritonEmitterFeature
-      xla_gpu_unsupported_generic_triton_emitter_features = 398;
-
   // Internal debug/testing flag to override the number of devices in the fast
   // interconnect domain. Default is 0, which means the number of devices is not
   // overridden.
@@ -1467,8 +1438,9 @@ message DebugOptions {
   // xla_allow_get_default_platform
   // xla_gpu_ensure_minor_dot_contraction_dims
   // xla_gpu_unsafe_pipelined_loop_annotator
+  // xla_gpu_unsupported_generic_triton_emitter_features
   reserved 5, 117, 133, 139, 176, 178, 180, 193, 214, 194, 221, 242, 206, 320,
-      325, 326, 332, 361, 270, 229, 271, 279, 218, 369, 371, 249, 309;
+      325, 326, 332, 361, 270, 229, 271, 279, 218, 369, 371, 249, 309, 398;
 }
 
 // Contains flags which affects the GPU compilation result.

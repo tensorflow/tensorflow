@@ -1946,7 +1946,6 @@ cc_library(
         "//xla/service/gpu/model:block_level_parameters",
         "//xla/service/gpu/model:triton_emitter_constraints",
         "//xla/stream_executor:device_description",
-        "//xla/tools:hlo_decomposer_lib",
         "//xla/tools:hlo_extractor",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:statusor",

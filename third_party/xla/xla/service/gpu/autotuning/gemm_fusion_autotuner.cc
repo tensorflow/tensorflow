@@ -68,6 +68,7 @@ limitations under the License.
 #include "xla/service/compiler.h"
 #include "xla/service/dump.h"
 #include "xla/service/executable.h"
+#include "xla/service/gpu/autotuning/autotune_cache_key.h"
 #include "xla/service/gpu/autotuning/autotuner_compile_util.h"
 #include "xla/service/gpu/autotuning/autotuner_pass.h"
 #include "xla/service/gpu/autotuning/autotuner_status_key.h"
@@ -97,12 +98,10 @@ limitations under the License.
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/matmul_indexing_utils.h"
 #include "xla/service/shaped_buffer.h"
-#include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/cuda/ptx_compiler_helpers.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/gpu/redzone_allocator.h"
 #include "xla/stream_executor/gpu/tma_metadata.h"
@@ -120,7 +119,6 @@ limitations under the License.
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/path.h"
-#include "tsl/platform/protobuf.h"
 #include "tsl/profiler/lib/scoped_annotation.h"
 #include "tsl/profiler/lib/traceme.h"
 
@@ -346,17 +344,6 @@ absl::StatusOr<std::unique_ptr<HloModule>> TritonGemmAutotuneExtractor(
 
   NestGemmFusion nest_gemm_fusion(gpu_device_info, mlir_context);
   TF_RETURN_IF_ERROR(nest_gemm_fusion.Run(new_module.get()).status());
-  bool is_legacy_gemm_disabled = absl::c_contains(
-      debug_opts.xla_gpu_unsupported_generic_triton_emitter_features(),
-      DebugOptions::GENERIC_TRITON_EMITTER_DISABLE_LEGACY_GEMM);
-  bool is_triton_gemm_fusion =
-      IsGpuFusionKind(*new_module->entry_computation()->root_instruction(),
-                      kTritonGemmFusionKind);
-  if (is_legacy_gemm_disabled && is_triton_gemm_fusion) {
-    return absl::InternalError(
-        absl::StrCat("Unexpected ", kTritonGemmFusionKind,
-                     " fusion: ", new_module->ToString()));
-  }
   return new_module;
 }
 
@@ -1092,13 +1079,6 @@ GemmFusionAutotunerImpl::CompileAll(AutotunerCompileUtil& compile_util,
             fusion, opts, mlir_context_,
             allow_filtering_kernels_spilling_registers);
       });
-      if (absl::c_contains(
-              debug_options_
-                  .xla_gpu_unsupported_generic_triton_emitter_features(),
-              DebugOptions::
-                  GENERIC_TRITON_EMITTER_MUST_ACCEPT_ALL_AUTOTUNER_CONFIGS)) {
-        return executable_or;
-      }
       absl::StatusCode code = executable_or.status().code();
       // TODO(b/447113513): we should not silently ignore that wide range of
       // errors as we might hide real regressions and drop the optimal

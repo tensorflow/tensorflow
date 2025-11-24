@@ -1759,10 +1759,6 @@ TEST_F(PassOrderTest, GemmRewriterRunsAfterDotNormalizer) {
 TEST_F(PassOrderTest, NestGemmFusionRunsAfterGemmFusionAutotuner) {
   // NestGemmFusion expect to see __triton_gemm custom call with a backend
   // config created by gemm_fusion_autotuner.
-  DebugOptions options = GetDebugOptionsForTest();
-  options.add_xla_gpu_unsupported_generic_triton_emitter_features(
-      DebugOptions::GENERIC_TRITON_EMITTER_ENABLE_NESTED_GEMM);
-  SetDebugOptions(options);
   VerifyPassOrder("gemm-fusion-autotuner", "nest_gemm_fusion");
 }
 
