@@ -196,8 +196,7 @@ absl::StatusOr<std::unique_ptr<SequentialThunk>> LowerHlo(
     XLA_SCOPED_LOGGING_TIMER(absl::StrCat(
         "GpuCompiler::RunBackend - IR emission for ", hlo_module->name()));
 
-    TF_RETURN_IF_ERROR(
-        ir_emitter->EmitHloComputation(hlo_module->entry_computation()));
+    TF_RETURN_IF_ERROR(ir_emitter->EmitHloEntryComputation(hlo_module));
 
     RemoveUnusedAndUninitializedGlobals(
         platform_id, options, ir_emitter_context.llvm_module_constants(),

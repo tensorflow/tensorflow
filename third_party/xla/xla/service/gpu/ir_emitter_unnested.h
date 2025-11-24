@@ -96,6 +96,11 @@ class IrEmitterUnnested : public IrEmitter {
                                              std::move(thunk_sequence_));
   }
 
+  absl::Status EmitHloEntryComputation(const HloModule* module);
+
+ private:
+  explicit IrEmitterUnnested(IrEmitterContext* ir_emitter_context);
+
   // Emits code for the given HLO computation.
   //
   // Also populates related information to 'ir_emitter_context_' for
@@ -104,9 +109,6 @@ class IrEmitterUnnested : public IrEmitter {
   // constants will be stored in 'content'. Constants with initializers in the
   // generated code will have empty 'content'.
   absl::Status EmitHloComputation(const HloComputation* computation);
-
- private:
-  explicit IrEmitterUnnested(IrEmitterContext* ir_emitter_context);
 
   absl::Status EmitCommandBufferThunk(const HloInstruction* instr);
 

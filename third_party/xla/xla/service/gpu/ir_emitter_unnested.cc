@@ -3416,6 +3416,11 @@ absl::Status IrEmitterUnnested::EmitHloInstruction(
   return Internal("Unhandled HLO instruction");
 }
 
+absl::Status IrEmitterUnnested::EmitHloEntryComputation(
+    const HloModule* module) {
+  return EmitHloComputation(module->entry_computation());
+}
+
 absl::Status IrEmitterUnnested::EmitHloComputation(
     const HloComputation* computation) {
   const HloSchedule& schedule = computation->parent()->schedule();

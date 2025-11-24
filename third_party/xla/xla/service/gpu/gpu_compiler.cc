@@ -3022,8 +3022,7 @@ GpuCompiler::LoadExecutableFromAotResult(
   }
 
   auto ir_emitter = IrEmitterUnnested::Create(&ir_emitter_context);
-  TF_RETURN_IF_ERROR(
-      ir_emitter->EmitHloComputation(hlo_module->entry_computation()));
+  TF_RETURN_IF_ERROR(ir_emitter->EmitHloEntryComputation(hlo_module.get()));
 
   // Get all other fields required by GpuExecutable.
   std::vector<GpuExecutable::ConstantInfo> constants =
