@@ -14,21 +14,28 @@ limitations under the License.
 ==============================================================================*/
 #include "xla/tsl/profiler/rpc/client/capture_profile.h"
 
+#include <cstdint>
 #include <iostream>
 #include <limits>
 #include <memory>
+#include <string>
 #include <variant>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/str_split.h"
+#include "absl/strings/string_view.h"
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/types.h"
+#include "xla/tsl/profiler/convert/trace_container.h"
 #include "xla/tsl/profiler/convert/trace_events_to_json.h"
 #include "xla/tsl/profiler/convert/xplane_to_trace_events.h"
 #include "xla/tsl/profiler/rpc/client/profiler_client.h"
@@ -191,6 +198,41 @@ absl::Status NewSession(absl::string_view repository_root,
 }
 
 }  // namespace
+
+absl::Status StartContinuousProfiling(
+    const char* service_addr, const char* session_id,
+    const tensorflow::RemoteProfilerSessionManagerOptions& opts) {
+  ProfileRequest request = PopulateProfileRequest(
+      /*repository_root=*/"", session_id,
+      /*host_name=*/service_addr, opts);
+  tensorflow::ContinuousProfilingResponse response;
+  TF_RETURN_IF_ERROR(ContinuousProfilingGrpc(service_addr, request, &response));
+  return absl::OkStatus();
+}
+
+absl::Status GetSnapShot(const char* service_addr, const char* session_id,
+                         const char* logdir) {
+  tensorflow::GetSnapShotRequest request;
+  request.set_session_id(session_id);
+  ProfileResponse response;
+  TF_RETURN_IF_ERROR(GetSnapShotGrpc(service_addr, request, &response));
+
+  if (response.empty_trace()) {
+    LOG(INFO) << "Snapshot is empty.";
+    return absl::OkStatus();
+  }
+
+  std::string repository_root = GetTensorBoardProfilePluginDir(logdir);
+  std::string snapshot_session_id = GetCurrentTimeStampAsString();
+  TF_RETURN_IF_ERROR(SaveProfile(repository_root, snapshot_session_id,
+                                 service_addr, response, &std::cout));
+  if (response.has_xspace()) {
+    TF_RETURN_IF_ERROR(SaveXSpace(repository_root, snapshot_session_id,
+                                  service_addr, response.xspace()));
+  }
+
+  return absl::OkStatus();
+}
 
 absl::Status CaptureRemoteTrace(const std::string& logdir,
                                 int num_tracing_attempts,
