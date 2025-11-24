@@ -22,7 +22,7 @@ struct PLUGIN_Profiler_Error {
   absl::Status status;
 };
 
-#define PLUGIN_PROFILER_RETURN_IF_ERROR(expr)            \
+#define PLUGIN_PROFILER_XLA_RETURN_IF_ERROR(expr)            \
   do {                                                   \
     absl::Status _status = (expr);                       \
     if (!_status.ok()) {                                 \
@@ -32,12 +32,12 @@ struct PLUGIN_Profiler_Error {
     }                                                    \
   } while (false)
 
-#define PLUGIN_PROFILER_ASSIGN_OR_RETURN(lhs, rexpr)                      \
-  _PLUGIN_PROFILER_ASSIGN_OR_RETURN_IMPL(                                 \
+#define PLUGIN_PROFILER_XLA_ASSIGN_OR_RETURN(lhs, rexpr)                      \
+  _PLUGIN_PROFILER_XLA_ASSIGN_OR_RETURN_IMPL(                                 \
       _PLUGIN_PROFILER_CONCAT(_status_or_value, __COUNTER__), lhs, rexpr, \
       _PLUGIN_PROFILER_CONCAT(_c_status, __COUNTER__));
 
-#define _PLUGIN_PROFILER_ASSIGN_OR_RETURN_IMPL(statusor, lhs, rexpr, c_status) \
+#define _PLUGIN_PROFILER_XLA_ASSIGN_OR_RETURN_IMPL(statusor, lhs, rexpr, c_status) \
   auto statusor = (rexpr);                                                     \
   if (!statusor.ok()) {                                                        \
     PLUGIN_Profiler_Error* c_status = new PLUGIN_Profiler_Error();             \

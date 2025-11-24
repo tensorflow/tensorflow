@@ -83,7 +83,7 @@ static ncclComm_t Cast(const Communicator* comm) {
 absl::StatusOr<CliqueId> NcclCollectives::CreateUniqueCliqueId() const {
   VLOG(3) << "Create NCCL unique clique id";
   ncclUniqueId id;
-  XLA_NCCL_RETURN_IF_ERROR(ncclGetUniqueId(&id));
+  XLA_NCCL_XLA_RETURN_IF_ERROR(ncclGetUniqueId(&id));
   return CliqueId(absl::string_view(id.internal, NCCL_UNIQUE_ID_BYTES));
 }
 
@@ -115,7 +115,7 @@ static absl::StatusOr<ncclConfig_t> AsNcclConfig(
   comm_config.splitShare = config.split_share;
 #endif
   int nccl_version;
-  XLA_NCCL_RETURN_IF_ERROR(ncclGetVersion(&nccl_version));
+  XLA_NCCL_XLA_RETURN_IF_ERROR(ncclGetVersion(&nccl_version));
   if (config.max_nchannels > 0) {
     VLOG(1) << "Maximum number of channels is set to: " << comm_config.maxCTAs;
     comm_config.maxCTAs = config.max_nchannels;
@@ -179,12 +179,12 @@ NcclCollectives::CreateCommunicatorsWithCancel(
     TF_RET_CHECK(device != nullptr);
     auto activate_context = device->stream_executor()->Activate();
 
-    TF_ASSIGN_OR_RETURN(ncclConfig_t comm_config,
+    TF_XLA_ASSIGN_OR_RETURN(ncclConfig_t comm_config,
                         AsNcclConfig(gpu_config, device->stream_executor()));
 
-    TF_ASSIGN_OR_RETURN(auto nccl_unique_id, AsNcclUniqueId(clique_ids->at(0)));
+    TF_XLA_ASSIGN_OR_RETURN(auto nccl_unique_id, AsNcclUniqueId(clique_ids->at(0)));
     ncclComm_t comm;
-    XLA_NCCL_RETURN_IF_ERROR(
+    XLA_NCCL_XLA_RETURN_IF_ERROR(
         ncclCommInitRankConfig(&comm, clique_key.num_devices(), nccl_unique_id,
                                ranks[i].rank.value(), &comm_config));
     return comm;
@@ -210,7 +210,7 @@ NcclCollectives::CreateCommunicatorsWithCancel(
       });
     }
   }  // pool's destructor blocks until all scheduled work is done.
-  TF_RETURN_IF_ERROR(status);
+  TF_XLA_RETURN_IF_ERROR(status);
   return comms;
 }
 
@@ -241,13 +241,13 @@ NcclCollectives::SplitCommunicatorsWithCancel(
     auto* device = tsl::down_cast<GpuCollectives::Device*>(ranks[i].device);
     TF_RET_CHECK(device != nullptr);
 
-    TF_ASSIGN_OR_RETURN(ncclConfig_t comm_config,
+    TF_XLA_ASSIGN_OR_RETURN(ncclConfig_t comm_config,
                         AsNcclConfig(gpu_config, device->stream_executor()));
 
     VLOG(1) << "Split NCCL communicator " << comms[i] << " with color " << color
             << " and key " << keys[i];
     ncclComm_t split_comm;
-    XLA_NCCL_RETURN_IF_ERROR(ncclCommSplit(
+    XLA_NCCL_XLA_RETURN_IF_ERROR(ncclCommSplit(
         Cast(comms[i]), color, keys[i].value(), &split_comm, &comm_config));
     return split_comm;
   };
@@ -271,7 +271,7 @@ NcclCollectives::SplitCommunicatorsWithCancel(
       });
     }
   }  // pool's destructor blocks until all scheduled work is done.
-  TF_RETURN_IF_ERROR(status);
+  TF_XLA_RETURN_IF_ERROR(status);
   return split_comms;
 #else
   return absl::UnimplementedError(
@@ -281,7 +281,7 @@ NcclCollectives::SplitCommunicatorsWithCancel(
 }
 
 static absl::StatusOr<xla::gpu::GpuCollectives*> GetNvshmemCollectives() {
-  TF_ASSIGN_OR_RETURN(xla::Collectives * collectives,
+  TF_XLA_ASSIGN_OR_RETURN(xla::Collectives * collectives,
                       xla::CollectivesRegistry::Get("gpu", "nvshmem"));
   xla::gpu::GpuCollectives* nvshmem_collectives =
       tsl::down_cast<xla::gpu::GpuCollectives*>(collectives);
@@ -294,7 +294,7 @@ static absl::StatusOr<xla::gpu::GpuCollectives*> GetNvshmemCollectives() {
 
 absl::StatusOr<void*> NcclCollectives::Allocate(uint64_t bytes) {
   if (xla::GetDebugOptionsFromFlags().xla_gpu_experimental_enable_nvshmem()) {
-    TF_ASSIGN_OR_RETURN(auto* nvshmem_collectives, GetNvshmemCollectives());
+    TF_XLA_ASSIGN_OR_RETURN(auto* nvshmem_collectives, GetNvshmemCollectives());
     return nvshmem_collectives->Allocate(bytes);
   }
 
@@ -314,7 +314,7 @@ absl::StatusOr<void*> NcclCollectives::Allocate(uint64_t bytes) {
 
 absl::Status NcclCollectives::Deallocate(void* location) {
   if (xla::GetDebugOptionsFromFlags().xla_gpu_experimental_enable_nvshmem()) {
-    TF_ASSIGN_OR_RETURN(auto* nvshmem_collectives, GetNvshmemCollectives());
+    TF_XLA_ASSIGN_OR_RETURN(auto* nvshmem_collectives, GetNvshmemCollectives());
     return nvshmem_collectives->Deallocate(location);
   }
 
@@ -358,12 +358,12 @@ class NcclIdStore {
     CliqueId clique_id;
     int primary_node_id = device_to_node_.at(gpu_key->root_device());
     if (node_id_ == primary_node_id) {
-      TF_ASSIGN_OR_RETURN(
+      TF_XLA_ASSIGN_OR_RETURN(
           clique_id, gpu::GpuCollectives::Default()->CreateUniqueCliqueId());
-      TF_RETURN_IF_ERROR(
+      TF_XLA_RETURN_IF_ERROR(
           kv_store_->Set(gpu_key->ToString(), clique_id.ToString()));
     } else {
-      TF_ASSIGN_OR_RETURN(
+      TF_XLA_ASSIGN_OR_RETURN(
           std::string id_str,
           kv_store_->Get(gpu_key->ToString(), absl::Minutes(10)));
       clique_id = CliqueId(id_str);
@@ -386,8 +386,8 @@ class NcclIdStore {
 absl::Status NcclCollectives::InitializeTopology(
     NcclCollectives::Topology topology) {
   if (xla::GetDebugOptionsFromFlags().xla_gpu_experimental_enable_nvshmem()) {
-    TF_ASSIGN_OR_RETURN(auto* nvshmem_collectives, GetNvshmemCollectives());
-    TF_RETURN_IF_ERROR(nvshmem_collectives->InitializeTopology(topology));
+    TF_XLA_ASSIGN_OR_RETURN(auto* nvshmem_collectives, GetNvshmemCollectives());
+    TF_XLA_RETURN_IF_ERROR(nvshmem_collectives->InitializeTopology(topology));
   }
 
   if (topology.num_nodes > 1) {

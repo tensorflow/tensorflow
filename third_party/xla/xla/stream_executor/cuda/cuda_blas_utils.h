@@ -23,8 +23,8 @@ limitations under the License.
 #include "xla/stream_executor/blas.h"
 #include "tsl/platform/errors.h"
 
-#define SE_CUBLAS_RETURN_IF_ERROR(expr) \
-  TF_RETURN_IF_ERROR(::stream_executor::cuda::ToStatus(expr, #expr))
+#define SE_CUBLAS_XLA_RETURN_IF_ERROR(expr) \
+  TF_XLA_RETURN_IF_ERROR(::stream_executor::cuda::ToStatus(expr, #expr))
 
 namespace stream_executor {
 namespace cuda {

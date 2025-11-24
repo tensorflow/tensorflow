@@ -1165,9 +1165,9 @@ TEST_F(CommandBufferSchedulingTest, DynamicSliceFusionStaticSlicing) {
       -> absl::StatusOr<std::unique_ptr<GpuExecutable>> {
     std::unique_ptr<HloModule> m_clone = m->Clone();
     m_clone->mutable_config().set_debug_options(options);
-    TF_ASSIGN_OR_RETURN(std::unique_ptr<OpaqueExecutable> wrapped_exec,
+    TF_XLA_ASSIGN_OR_RETURN(std::unique_ptr<OpaqueExecutable> wrapped_exec,
                         CreateExecutable(std::move(m_clone), false));
-    TF_ASSIGN_OR_RETURN(std::unique_ptr<Executable> exec,
+    TF_XLA_ASSIGN_OR_RETURN(std::unique_ptr<Executable> exec,
                         test_runner_as_hlo_runner().ExecutableFromWrapped(
                             std::move(wrapped_exec)));
     return std::unique_ptr<GpuExecutable>(

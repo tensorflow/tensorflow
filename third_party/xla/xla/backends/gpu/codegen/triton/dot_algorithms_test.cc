@@ -1860,7 +1860,7 @@ class PrecisionTests
 
   absl::Status CheckGemmPattern(const HloModule& module,
                                 absl::string_view pattern) {
-    TF_ASSIGN_OR_RETURN(bool ok, RunFileCheck(module.ToString(), pattern));
+    TF_XLA_ASSIGN_OR_RETURN(bool ok, RunFileCheck(module.ToString(), pattern));
     if (!ok) {
       return absl::InternalError(
           absl::StrCat("The module does not contain the pattern: ", pattern));
@@ -1877,7 +1877,7 @@ class PrecisionTests
                           {"${n}", absl::StrCat(rhs_outer_dim)},
                           {"${k}", absl::StrCat(contracting_dim)},
                           {"${algorithm}", AlgorithmToString(algorithm)}});
-    TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
+    TF_XLA_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
                         ParseAndReturnVerifiedModule(hlo_text));
     auto debug_options = module->config().debug_options();
     debug_options.set_xla_gpu_enable_split_k_autotuning(false);
@@ -1891,12 +1891,12 @@ class PrecisionTests
       return absl::InvalidArgumentError("Invalid backend");
     }
     module->mutable_config().set_debug_options(debug_options);
-    TF_ASSIGN_OR_RETURN(module, GetOptimizedModule(std::move(module)));
+    TF_XLA_ASSIGN_OR_RETURN(module, GetOptimizedModule(std::move(module)));
     if (backend == Backend::kTriton) {
-      TF_RETURN_IF_ERROR(CheckGemmPattern(
+      TF_XLA_RETURN_IF_ERROR(CheckGemmPattern(
           *module, "CHECK: {{__triton_gemm|__triton_nested_gemm_fusion}}"));
     } else if (backend == Backend::kBlas) {
-      TF_RETURN_IF_ERROR(CheckGemmPattern(*module, "CHECK: __cublas$gemm"));
+      TF_XLA_RETURN_IF_ERROR(CheckGemmPattern(*module, "CHECK: __cublas$gemm"));
     } else {
       return absl::InvalidArgumentError("Invalid backend");
     }

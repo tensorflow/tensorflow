@@ -447,13 +447,13 @@ absl::Status MayAddWhileOpToPipelinedGroup(HloInstruction* while_op,
       return Internal(
           "Expecting up to two pipelined P2P groups for each while-loop");
     }
-    TF_RETURN_IF_ERROR(group->second.RecordWhileOpToPipelinedGroup(while_op));
+    TF_XLA_RETURN_IF_ERROR(group->second.RecordWhileOpToPipelinedGroup(while_op));
   }
   return absl::OkStatus();
 }
 
 absl::Status OrderBefore(HloInstruction* i1, HloInstruction* i2) {
-  TF_RETURN_IF_ERROR(i1->AddControlDependencyTo(i2));
+  TF_XLA_RETURN_IF_ERROR(i1->AddControlDependencyTo(i2));
   VLOG(10) << "Add control predecessor " << i2->ToString();
   return absl::OkStatus();
 }
@@ -465,9 +465,9 @@ absl::Status ConnectP2P1NodeChain(const P2PGroupNode& node) {
   HloRecvInstruction* recv = node.recv;
   HloSendDoneInstruction* send_done = node.send_done;
   HloSendInstruction* send = node.send;
-  TF_RETURN_IF_ERROR(OrderBefore(recv, send));
-  TF_RETURN_IF_ERROR(OrderBefore(send, recv_done));
-  TF_RETURN_IF_ERROR(OrderBefore(recv_done, send_done));
+  TF_XLA_RETURN_IF_ERROR(OrderBefore(recv, send));
+  TF_XLA_RETURN_IF_ERROR(OrderBefore(send, recv_done));
+  TF_XLA_RETURN_IF_ERROR(OrderBefore(recv_done, send_done));
   return absl::OkStatus();
 }
 
@@ -500,15 +500,15 @@ absl::Status ConnectP2P2NodeChain(const P2PGroupNode& node0,
   HloSendRecvInstruction* send_done1 = node1.send_done;
   HloSendInstruction* send1 = node1.send;
 
-  TF_RETURN_IF_ERROR(OrderBefore(recv_done0, recv_done1));
-  TF_RETURN_IF_ERROR(OrderBefore(recv_done1, send_done0));
-  TF_RETURN_IF_ERROR(OrderBefore(send_done0, send_done1));
+  TF_XLA_RETURN_IF_ERROR(OrderBefore(recv_done0, recv_done1));
+  TF_XLA_RETURN_IF_ERROR(OrderBefore(recv_done1, send_done0));
+  TF_XLA_RETURN_IF_ERROR(OrderBefore(send_done0, send_done1));
 
-  TF_RETURN_IF_ERROR(OrderBefore(recv0, send0));
-  TF_RETURN_IF_ERROR(OrderBefore(send0, recv1));
-  TF_RETURN_IF_ERROR(OrderBefore(recv1, send1));
+  TF_XLA_RETURN_IF_ERROR(OrderBefore(recv0, send0));
+  TF_XLA_RETURN_IF_ERROR(OrderBefore(send0, recv1));
+  TF_XLA_RETURN_IF_ERROR(OrderBefore(recv1, send1));
 
-  TF_RETURN_IF_ERROR(OrderBefore(send1, recv_done0));
+  TF_XLA_RETURN_IF_ERROR(OrderBefore(send1, recv_done0));
 
   return absl::OkStatus();
 }
@@ -589,15 +589,15 @@ absl::Status GatherP2PGroupsAndCollectiveInfo(
       // P2P group and may turn it into a kPipelined group or kUnrecognized
       // group.
       P2PGroup group;
-      TF_RETURN_IF_ERROR(group.RecordP2POpForUnpipelinedGroup(p2p));
+      TF_XLA_RETURN_IF_ERROR(group.RecordP2POpForUnpipelinedGroup(p2p));
       p2p_group_map[channel] = group;
     } else {
       P2PGroup& group = p2p_group->second;
       if (group.ChildComputation() == computation) {
-        TF_RETURN_IF_ERROR(group.RecordP2POpForUnpipelinedGroup(p2p));
+        TF_XLA_RETURN_IF_ERROR(group.RecordP2POpForUnpipelinedGroup(p2p));
       } else {
         // We are at the parent computation for a pipelined P2P group.
-        TF_RETURN_IF_ERROR(group.RecordP2POpForPipelinedGroup(p2p));
+        TF_XLA_RETURN_IF_ERROR(group.RecordP2POpForPipelinedGroup(p2p));
       }
     }
     // We can't rely on the operation on p2p_group_map above to find out
@@ -615,7 +615,7 @@ absl::Status GatherP2PGroupsAndCollectiveInfo(
   }
 
   for (auto hlo : while_ops) {
-    TF_RETURN_IF_ERROR(
+    TF_XLA_RETURN_IF_ERROR(
         MayAddWhileOpToPipelinedGroup(hlo, p2p_in_computation, p2p_group_map));
   }
 
@@ -654,7 +654,7 @@ absl::Status GatherP2PGroupsAndCollectiveInfo(
         p2p_group.InCycle() || p2p_group.runtime_stream != kStream1) {
       continue;
     }
-    TF_RETURN_IF_ERROR(p2p_group.RecordComplementGroup(p2p_group_map));
+    TF_XLA_RETURN_IF_ERROR(p2p_group.RecordComplementGroup(p2p_group_map));
   }
 
   return absl::OkStatus();
@@ -683,23 +683,23 @@ absl::StatusOr<std::pair<int, const P2PGroup*>> ConnectP2PChain(
     P2PGroupKind kind = p2p_group.kind;
     if (kind == P2PGroupKind::kUnpipelined) {
       if (!p2p_group.InCycle()) {
-        TF_RETURN_IF_ERROR(ConnectUnpipelinedP2P(p2p_group));
+        TF_XLA_RETURN_IF_ERROR(ConnectUnpipelinedP2P(p2p_group));
       } else if (p2p_group.runtime_stream == kStream1) {
-        TF_RETURN_IF_ERROR(ConnectUnpipelined2P2P(p2p_group, p2p_group_map));
+        TF_XLA_RETURN_IF_ERROR(ConnectUnpipelined2P2P(p2p_group, p2p_group_map));
       }
       continue;
     }
 
     if (!p2p_group.InCycle()) {
       if (computation == p2p_group.ParentComputation()) {
-        TF_RETURN_IF_ERROR(ConnectPipelined1P2PParent(p2p_group));
+        TF_XLA_RETURN_IF_ERROR(ConnectPipelined1P2PParent(p2p_group));
       } else {
         // A pipeline of one group.
         if (pipelined_group != nullptr) {
           return Internal("Expected <=1 pipelined group in a while-body");
         }
         pipelined_group = &p2p_group;
-        TF_RETURN_IF_ERROR(ConnectPipelined1P2PChild(p2p_group));
+        TF_XLA_RETURN_IF_ERROR(ConnectPipelined1P2PChild(p2p_group));
       }
       continue;
     }
@@ -711,7 +711,7 @@ absl::StatusOr<std::pair<int, const P2PGroup*>> ConnectP2PChain(
     }
 
     if (computation == p2p_group.ParentComputation()) {
-      TF_RETURN_IF_ERROR(ConnectPipelined2P2PParent(p2p_group, p2p_group_map));
+      TF_XLA_RETURN_IF_ERROR(ConnectPipelined2P2PParent(p2p_group, p2p_group_map));
     } else {
       if (pipelined_group != nullptr) {
         return Internal(
@@ -719,7 +719,7 @@ absl::StatusOr<std::pair<int, const P2PGroup*>> ConnectP2PChain(
             "while-body");
       }
       pipelined_group = &p2p_group;
-      TF_RETURN_IF_ERROR(ConnectPipelined2P2PChild(p2p_group, p2p_group_map));
+      TF_XLA_RETURN_IF_ERROR(ConnectPipelined2P2PChild(p2p_group, p2p_group_map));
     }
   }
   return std::make_pair(num_p2p_chains, pipelined_group);
@@ -729,7 +729,7 @@ absl::Status OrderBefore(HloReachabilityMap* reachability, HloInstruction* a,
                          HloInstruction* b) {
   VLOG(10) << "OrderBefore " << a->ToString() << " " << b->ToString();
   if (!reachability->IsReachable(a, b)) {
-    TF_RETURN_IF_ERROR(a->AddControlDependencyTo(b));
+    TF_XLA_RETURN_IF_ERROR(a->AddControlDependencyTo(b));
     VLOG(10) << "add control predecessor " << b->ToString();
     reachability->UpdateReachabilityThroughInstruction(b);
   }
@@ -787,11 +787,11 @@ absl::Status LinearizeCollectivesWithOtherP2P(
 
       if (reachability->IsReachable(start_end.first, cur_start_end.second)) {
         // Order chain A before chain B.
-        TF_RETURN_IF_ERROR(
+        TF_XLA_RETURN_IF_ERROR(
             OrderBefore(reachability, start_end.second, cur_start_end.first));
       } else {
         // Order chain B before chain A.
-        TF_RETURN_IF_ERROR(
+        TF_XLA_RETURN_IF_ERROR(
             OrderBefore(reachability, cur_start_end.second, start_end.first));
       }
       continue;
@@ -809,20 +809,20 @@ absl::Status LinearizeCollectivesWithOtherP2P(
     if (hlo_query::IsAsyncCollectiveDoneOp(hlo, /*include_send_recv=*/false)) {
       if (reachability->IsReachable(start_end.first, hlo)) {
         // Order chain A before the async op.
-        TF_RETURN_IF_ERROR(OrderBefore(reachability, start_end.second,
+        TF_XLA_RETURN_IF_ERROR(OrderBefore(reachability, start_end.second,
                                        GetStartOpForDoneOp(hlo)));
       } else {
         // Order the async op before chain A.
-        TF_RETURN_IF_ERROR(OrderBefore(reachability, hlo, start_end.first));
+        TF_XLA_RETURN_IF_ERROR(OrderBefore(reachability, hlo, start_end.first));
       }
     }
     // CustomCall or other op that indirectly invoke collectives.
     if (reachability->IsReachable(start_end.first, hlo)) {
       // Order chain A before the op.
-      TF_RETURN_IF_ERROR(OrderBefore(reachability, start_end.second, hlo));
+      TF_XLA_RETURN_IF_ERROR(OrderBefore(reachability, start_end.second, hlo));
     } else {
       // Order the op before chain A.
-      TF_RETURN_IF_ERROR(OrderBefore(reachability, hlo, start_end.first));
+      TF_XLA_RETURN_IF_ERROR(OrderBefore(reachability, hlo, start_end.first));
     }
   }
 
@@ -868,14 +868,14 @@ absl::Status LinearizeCollectivesWithPipelinedP2PChild(
 
       ChainStartEnd cur_start_end =
           cur_group.GetChainStartEnd(computation, p2p_group_map);
-      TF_RETURN_IF_ERROR(
+      TF_XLA_RETURN_IF_ERROR(
           OrderBefore(reachability, cur_start_end.second, start_end.first));
 
       continue;
     }
 
     // Async done, CustomCall, or other ops that indirectly invoke collectives.
-    TF_RETURN_IF_ERROR(OrderBefore(reachability, hlo, start_end.first));
+    TF_XLA_RETURN_IF_ERROR(OrderBefore(reachability, hlo, start_end.first));
   }
 
   return absl::OkStatus();
@@ -901,7 +901,7 @@ absl::StatusOr<bool> P2PSchedulePreparation::RunImpl(
        ++iter) {
     VLOG(10) << "Gathering P2P groups and collective info for computation "
              << (*iter)->name();
-    TF_RETURN_IF_ERROR(GatherP2PGroupsAndCollectiveInfo(
+    TF_XLA_RETURN_IF_ERROR(GatherP2PGroupsAndCollectiveInfo(
         *iter, p2p_in_computation, p2p_group_map, collective_in_computation));
   }
 
@@ -927,7 +927,7 @@ absl::StatusOr<bool> P2PSchedulePreparation::RunImpl(
     // Connect P2P chains and return the number of chains and the P2P group
     // representation for pipelined P2P in the current computation as a
     // while-body.
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         auto result, ConnectP2PChain(computation, p2p_group_map, p2p_channels));
     if (result.first == 0) {
       continue;
@@ -942,7 +942,7 @@ absl::StatusOr<bool> P2PSchedulePreparation::RunImpl(
       // The current computation is a while-body with pipelined P2P chain.
       // Order all other collectives in a pipelined while-body before the
       // pipelined P2P chain.
-      TF_RETURN_IF_ERROR(LinearizeCollectivesWithPipelinedP2PChild(
+      TF_XLA_RETURN_IF_ERROR(LinearizeCollectivesWithPipelinedP2PChild(
           p2p_group_map, *result.second, collective_in_computation, computation,
           reachability.get()));
     }
@@ -983,7 +983,7 @@ absl::StatusOr<bool> P2PSchedulePreparation::RunImpl(
       VLOG(10) << "linearize other collectives with respect to channel "
                << hlo->ToString();
 
-      TF_RETURN_IF_ERROR(LinearizeCollectivesWithOtherP2P(
+      TF_XLA_RETURN_IF_ERROR(LinearizeCollectivesWithOtherP2P(
           p2p_group_map, group, collective_in_computation, instr_it, begin, end,
           reachability.get()));
       VLOG(10) << "finish connect other collectives with channel ";

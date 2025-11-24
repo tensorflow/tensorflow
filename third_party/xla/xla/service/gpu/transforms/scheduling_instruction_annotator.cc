@@ -63,7 +63,7 @@ absl::StatusOr<bool> SchedulingInstructionAnnotator::RunImpl(
   // propagated from calles to callers.
   for (HloComputation* computation :
        module->MakeComputationPostOrder(execution_threads)) {
-    TF_ASSIGN_OR_RETURN(bool result,
+    TF_XLA_ASSIGN_OR_RETURN(bool result,
                         AnnotateSchedulingInstructionNames(*computation));
     changed |= result;
   }

@@ -113,7 +113,7 @@ absl::Status CollectiveMetadataThunk::ConstructCollectiveMetadata(
   rendezvous_value.rank = device_ordinal;
   rendezvous_value.parameters = std::move(parameters);
 
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       std::shared_ptr<std::vector<CollectiveMetadataRendezvousValue>>
           rendezvous_values,
       Rendezvous<std::vector<CollectiveMetadataRendezvousValue>>(
@@ -155,9 +155,9 @@ absl::Status CollectiveMetadataThunk::ConstructCollectiveMetadata(
   metadata.param_to_peers =
       reinterpret_cast<void**>(param_to_peers_ptrs_buffer.opaque());
 
-  TF_RETURN_IF_ERROR(stream->Memcpy(&destination, &metadata,
+  TF_XLA_RETURN_IF_ERROR(stream->Memcpy(&destination, &metadata,
                                     sizeof(CollectiveKernelMetadata)));
-  TF_RETURN_IF_ERROR(stream->Memcpy(&param_to_peers_ptrs_buffer,
+  TF_XLA_RETURN_IF_ERROR(stream->Memcpy(&param_to_peers_ptrs_buffer,
                                     param_to_peers_ptrs.data(),
                                     param_to_peers_ptrs_size));
   return stream->BlockHostUntilDone();
@@ -165,7 +165,7 @@ absl::Status CollectiveMetadataThunk::ConstructCollectiveMetadata(
 
 absl::Status CollectiveMetadataThunk::Initialize(
     const InitializeParams& params) {
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       const GpuCliqueKey clique_key,
       GetCollectiveGpuCliqueKey(*params.collective_params, collective_config_,
                                 /*use_nccl=*/false));
@@ -183,7 +183,7 @@ absl::Status CollectiveMetadataThunk::Initialize(
   se::DeviceMemoryBase result_ptr =
       params.buffer_allocations->GetDeviceAddress(result_);
 
-  TF_ASSIGN_OR_RETURN(void* multimem_address_space,
+  TF_XLA_ASSIGN_OR_RETURN(void* multimem_address_space,
                       SetupMultimem(clique_key, params));
   return ConstructCollectiveMetadata(
       std::move(parameters), params.stream, clique_key, multimem_address_space,
@@ -200,7 +200,7 @@ absl::StatusOr<void*> CollectiveMetadataThunk::SetupMultimem(
   se::DeviceMemoryBase memory_range;
   for (const CollectiveMetadataThunk::Buffer& parameter : parameters_) {
     if (parameter.memory_space == xla::Layout::kGenericFastMemorySpace) {
-      TF_ASSIGN_OR_RETURN(
+      TF_XLA_ASSIGN_OR_RETURN(
           memory_range,
           params.executor->GetMemoryRange(
               params.buffer_allocations->GetDeviceAddress(parameter.slice)));
@@ -243,7 +243,7 @@ absl::StatusOr<void*> CollectiveMetadataThunk::MultimemAddressSpaceProvider::
   int64_t first_device = clique_key.devices()[0].value();
 
   if (device_number == first_device) {
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         std::unique_ptr<stream_executor::gpu::GpuExecutor::MulticastMemory>
             multicast_memory,
         gpu_executor->CreateMulticastMemory(
@@ -253,17 +253,17 @@ absl::StatusOr<void*> CollectiveMetadataThunk::MultimemAddressSpaceProvider::
   }
 
   // Wait for all devices to create the multicast object.
-  TF_RETURN_IF_ERROR(Barrier(device_number, clique_key));
+  TF_XLA_RETURN_IF_ERROR(Barrier(device_number, clique_key));
 
   TF_RET_CHECK(first_device_to_multicast_memory_.contains(first_device))
       << "Multicast memory is not created for device " << first_device;
   // Add current devices to the multicast object.
-  TF_RETURN_IF_ERROR(
+  TF_XLA_RETURN_IF_ERROR(
       first_device_to_multicast_memory_[first_device]->SubscribeDevice(
           device_number));
 
   // Wait for all devices to register the multicast object.
-  TF_RETURN_IF_ERROR(Barrier(device_number, clique_key));
+  TF_XLA_RETURN_IF_ERROR(Barrier(device_number, clique_key));
 
   return first_device_to_multicast_memory_[first_device]->MapMemory(
       mapped_memory, gpu_executor);

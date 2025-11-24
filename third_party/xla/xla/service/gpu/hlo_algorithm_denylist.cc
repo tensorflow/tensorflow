@@ -264,7 +264,7 @@ absl::StatusOr<std::string> GenerateDenyListEntry(
   AlgorithmDenylist list;
   AlgorithmDenylistEntry* entry = list.add_entries();
   entry->set_hlo(instr.ToString(::xla::HloPrintOptions::Fingerprint()));
-  TF_ASSIGN_OR_RETURN(*entry->mutable_backend_config(),
+  TF_XLA_ASSIGN_OR_RETURN(*entry->mutable_backend_config(),
                       instr.backend_config<GpuBackendConfig>());
 
   *entry->mutable_cc() = cc;

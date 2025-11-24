@@ -153,7 +153,7 @@ DecomposeFrontendAttributes(const FrontendAttributes& orig,
     return std::make_pair(attr1, attr2);
   }
 
-  TF_ASSIGN_OR_RETURN(SourceTargetPairs bounds,
+  TF_XLA_ASSIGN_OR_RETURN(SourceTargetPairs bounds,
                       SourceTargetPairs::FromString(it->second));
   int64_t num_pairs = bounds.size();
   if (num_pairs < 2) {
@@ -219,11 +219,11 @@ absl::Status DecomposeCollectivePermuteCycle(
       fwd_pairs.push_back(pairs[i]);
     }
   }
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       CollectiveOpGroupMode mode,
       GetCollectiveOpGroupMode(cp->channel_id().has_value(), std::nullopt));
 
-  TF_ASSIGN_OR_RETURN(auto attrs, DecomposeFrontendAttributes(
+  TF_XLA_ASSIGN_OR_RETURN(auto attrs, DecomposeFrontendAttributes(
                                       cp->frontend_attributes(), cycle_type));
 
   // Backward edge.
@@ -245,7 +245,7 @@ absl::Status DecomposeCollectivePermuteCycle(
   //   recv-data = type[?] select(compare, cp1_done, cp2_done)
   // If the collective is across replicas, then `partition` is replaced by
   // `replica = u32[] replica-id()`.
-  TF_ASSIGN_OR_RETURN(HloInstruction * partition_or_replica,
+  TF_XLA_ASSIGN_OR_RETURN(HloInstruction * partition_or_replica,
                       CreatePartitionOrReplicaId(computation, mode, cp_name));
   int64_t bwd_recv_id = back_pairs.back().second;
   HloInstruction* constant = computation->AddInstruction(
@@ -266,8 +266,8 @@ absl::Status DecomposeCollectivePermuteCycle(
                                     back_cp, fwd_cp),
       absl::StrCat(cp_name, "-sel"));
 
-  TF_RETURN_IF_ERROR(cp->ReplaceAllUsesWith(recv_data));
-  TF_RETURN_IF_ERROR(computation->RemoveInstructionAndUnusedOperands(cp));
+  TF_XLA_RETURN_IF_ERROR(cp->ReplaceAllUsesWith(recv_data));
+  TF_XLA_RETURN_IF_ERROR(computation->RemoveInstructionAndUnusedOperands(cp));
 
   return absl::OkStatus();
 }
@@ -293,7 +293,7 @@ absl::StatusOr<bool> CollectivePermuteCycleDecomposer::RunImpl(
           next_channel_id = hlo_query::NextChannelId(*module);
           changed = true;
         }
-        TF_RETURN_IF_ERROR(DecomposeCollectivePermuteCycle(
+        TF_XLA_RETURN_IF_ERROR(DecomposeCollectivePermuteCycle(
             collective_permute, comp, module, next_channel_id++, cycle_type,
             indices_to_break_out));
       }

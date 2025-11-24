@@ -145,7 +145,7 @@ absl::Status MatchRowMajorGemm(HloDotInstruction* dot) {
 // having the same data type.
 static absl::Status MatchSimpleGemm(
     HloDotInstruction* dot, absl::Span<const PrimitiveType> support_dtypes) {
-  TF_RETURN_IF_ERROR(MatchRowMajorGemm(dot));
+  TF_XLA_RETURN_IF_ERROR(MatchRowMajorGemm(dot));
 
   for (PrimitiveType dtype : support_dtypes) {
     if (dot->operand(0)->shape().element_type() == dtype &&
@@ -162,7 +162,7 @@ static absl::Status MatchSimpleGemm(
 // accumulator data type with an HLO convert instruction.
 static absl::StatusOr<GemmWithUpcast> MatchGemmWithUpcast(
     HloDotInstruction* dot) {
-  TF_RETURN_IF_ERROR(MatchRowMajorGemm(dot));
+  TF_XLA_RETURN_IF_ERROR(MatchRowMajorGemm(dot));
 
   GemmWithUpcast match(dot);
 
@@ -206,7 +206,7 @@ static absl::StatusOr<GemmWithDynamicSlice> MatchGemmWithDynamicUpdateSlice(
     return absl::InternalError("failed to match update slice instr");
   }
 
-  TF_RETURN_IF_ERROR(MatchRowMajorGemm(Cast<HloDotInstruction>(match.dot)));
+  TF_XLA_RETURN_IF_ERROR(MatchRowMajorGemm(Cast<HloDotInstruction>(match.dot)));
 
   return match;
 }
@@ -353,7 +353,7 @@ class CutlassGemmFusion : public CustomKernelFusion {
           "cutlass_gemm requires ROOT operation to be a dot");
     }
 
-    TF_RETURN_IF_ERROR(MatchSimpleGemm(dot, {PrimitiveType::F32}));
+    TF_XLA_RETURN_IF_ERROR(MatchSimpleGemm(dot, {PrimitiveType::F32}));
 
     PrimitiveType dot_type = dot->shape().element_type();
 
@@ -392,7 +392,7 @@ class CutlassGemmWithUpcastFusion : public CustomKernelFusion {
           "cutlass_gemm_with_upcast requires ROOT operation to be a dot");
     }
 
-    TF_ASSIGN_OR_RETURN(GemmWithUpcast matched, MatchGemmWithUpcast(dot));
+    TF_XLA_ASSIGN_OR_RETURN(GemmWithUpcast matched, MatchGemmWithUpcast(dot));
 
     const HloParameterInstruction* lhs;
     const HloParameterInstruction* rhs;
@@ -445,8 +445,8 @@ class CutlassGemmWithDynamicUpdateSliceFusion : public CustomKernelFusion {
           "be a dynamic update slice");
     }
 
-    TF_ASSIGN_OR_RETURN(auto matched, MatchGemmWithDynamicUpdateSlice(dus));
-    TF_RETURN_IF_ERROR(
+    TF_XLA_ASSIGN_OR_RETURN(auto matched, MatchGemmWithDynamicUpdateSlice(dus));
+    TF_XLA_RETURN_IF_ERROR(
         MatchSimpleGemm(Cast<HloDotInstruction>(matched.dot),
                         {PrimitiveType::F32, PrimitiveType::BF16}));
 

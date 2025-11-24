@@ -67,7 +67,7 @@ void PLUGIN_Profiler_Error_Message(PLUGIN_Profiler_Error_Message_Args* args) {
 
 PLUGIN_Profiler_Error* PLUGIN_Profiler_Error_GetCode(
     PLUGIN_Profiler_Error_GetCode_Args* args) {
-  PLUGIN_PROFILER_RETURN_IF_ERROR(CheckMatchingStructSizes(
+  PLUGIN_PROFILER_XLA_RETURN_IF_ERROR(CheckMatchingStructSizes(
       "PLUGIN_Profiler_Error_GetCode_Args",
       PLUGIN_Profiler_Error_GetCode_Args_STRUCT_SIZE, args->struct_size));
   args->code = static_cast<int>(args->error->status.code());

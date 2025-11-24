@@ -110,7 +110,7 @@ absl::StatusOr<RemapPlan::InputDeviceRange> InputDeviceRangeFromProto(
     Client* client, const RemapPlanProto::InputDevices& proto) {
   RemapPlan::InputDeviceRange range;
   range.in_array = proto.in_array();
-  TF_ASSIGN_OR_RETURN(range.input_devices,
+  TF_XLA_ASSIGN_OR_RETURN(range.input_devices,
                       DeviceList::FromProto(client, proto.device_list()));
   return range;
 }
@@ -250,7 +250,7 @@ absl::Status RemapPlan::ComputeInputDevicesForOutputMap(Client* client) {
       } else if (intervals.count == out_devices->size()) {
         interval_device_list = out_devices;
       } else {
-        TF_ASSIGN_OR_RETURN(
+        TF_XLA_ASSIGN_OR_RETURN(
             interval_device_list,
             ComputeDeviceListFromIntervals(client, in_devices, intervals.count,
                                            intervals.intervals));
@@ -349,8 +349,8 @@ absl::Status RemapPlan::Validate() const {
       const RemapPlan::Interval& in_interval = mapping.from[s];
       const RemapPlan::Interval& out_interval = mapping.to[s];
 
-      TF_RETURN_IF_ERROR(CheckRange(in_shards_count, in_interval));
-      TF_RETURN_IF_ERROR(CheckRange(out_shards_count, out_interval));
+      TF_XLA_RETURN_IF_ERROR(CheckRange(in_shards_count, in_interval));
+      TF_XLA_RETURN_IF_ERROR(CheckRange(out_shards_count, out_interval));
       if (GetNumberOfSteps(in_interval) != GetNumberOfSteps(out_interval)) {
         return InvalidArgument(
             "mappings[%d].from[%d] and mappings[%d].to[%d] must have the same "
@@ -466,14 +466,14 @@ absl::StatusOr<RemapPlan> RemapPlan::FromProto(Client* client,
 
   plan.input_specs.reserve(proto.input_specs_size());
   for (const auto& input_spec_proto : proto.input_specs()) {
-    TF_ASSIGN_OR_RETURN(ArraySpec input_spec,
+    TF_XLA_ASSIGN_OR_RETURN(ArraySpec input_spec,
                         ArraySpec::FromProto(client, input_spec_proto));
     plan.input_specs.push_back(std::move(input_spec));
   }
 
   plan.output_specs.reserve(proto.output_specs_size());
   for (const auto& output_spec_proto : proto.output_specs()) {
-    TF_ASSIGN_OR_RETURN(ArraySpec output_spec,
+    TF_XLA_ASSIGN_OR_RETURN(ArraySpec output_spec,
                         ArraySpec::FromProto(client, output_spec_proto));
     plan.output_specs.push_back(std::move(output_spec));
   }
@@ -481,7 +481,7 @@ absl::StatusOr<RemapPlan> RemapPlan::FromProto(Client* client,
   plan.mappings = std::make_shared<std::vector<Mapping>>();
   plan.mappings->reserve(proto.mappings_size());
   for (const auto& mapping_proto : proto.mappings()) {
-    TF_ASSIGN_OR_RETURN(auto mapping, MappingFromProto(mapping_proto));
+    TF_XLA_ASSIGN_OR_RETURN(auto mapping, MappingFromProto(mapping_proto));
     plan.mappings->push_back(std::move(mapping));
   }
 
@@ -492,7 +492,7 @@ absl::StatusOr<RemapPlan> RemapPlan::FromProto(Client* client,
         plan.input_devices_for_output_map[inputs_for_output_proto.out_array()];
     for (const auto& inputs_range_proto :
          inputs_for_output_proto.input_devices()) {
-      TF_ASSIGN_OR_RETURN(
+      TF_XLA_ASSIGN_OR_RETURN(
           auto devices, InputDeviceRangeFromProto(client, inputs_range_proto));
       input_ranges.push_back(std::move(devices));
     }
@@ -513,17 +513,17 @@ absl::StatusOr<RemapPlanProto> RemapPlan::ToProto(SerDesVersion version) const {
 
   proto.mutable_input_specs()->Reserve(input_specs.size());
   for (const auto& input_spec : input_specs) {
-    TF_ASSIGN_OR_RETURN(*proto.add_input_specs(), input_spec.ToProto(version));
+    TF_XLA_ASSIGN_OR_RETURN(*proto.add_input_specs(), input_spec.ToProto(version));
   }
   proto.mutable_output_specs()->Reserve(output_specs.size());
   for (const auto& output_spec : output_specs) {
-    TF_ASSIGN_OR_RETURN(*proto.add_output_specs(),
+    TF_XLA_ASSIGN_OR_RETURN(*proto.add_output_specs(),
                         output_spec.ToProto(version));
   }
 
   proto.mutable_mappings()->Reserve(mappings->size());
   for (const auto& mapping : *mappings) {
-    TF_ASSIGN_OR_RETURN(*proto.add_mappings(), MappingToProto(mapping));
+    TF_XLA_ASSIGN_OR_RETURN(*proto.add_mappings(), MappingToProto(mapping));
   }
 
   proto.mutable_input_devices_for_output()->Reserve(

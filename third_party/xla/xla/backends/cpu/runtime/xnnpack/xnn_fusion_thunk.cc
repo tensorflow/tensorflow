@@ -108,14 +108,14 @@ XnnFusionThunk::XnnExecutable::Invoke(
   }
 
   DCHECK_NE(runtime.get(), nullptr) << "XNNPACK runtime is not initialized";
-  XNN_RETURN_IF_ERROR(xnn_setup_runtime_v2(
+  XNN_XLA_RETURN_IF_ERROR(xnn_setup_runtime_v2(
       runtime.get(), external_values.size(), external_values.data()));
 
   // Update threadpool used by the XNNPACK runtime.
   xnn_update_runtime_with_threadpool(runtime.get(), threadpool.get());
 
   // Execute XNNPACK runtime in the caller thread.
-  XNN_RETURN_IF_ERROR(xnn_invoke_runtime(runtime.get()));
+  XNN_XLA_RETURN_IF_ERROR(xnn_invoke_runtime(runtime.get()));
   return OkExecuteEvent();
 }
 
@@ -142,9 +142,9 @@ XnnFusionThunk::CreateXnnExecutable(
   executable.captured_arguments = CaptureArguments(arguments_buffers);
 
   if (builder_) {
-    TF_ASSIGN_OR_RETURN(executable.subgraph, builder_(arguments_, results_));
+    TF_XLA_ASSIGN_OR_RETURN(executable.subgraph, builder_(arguments_, results_));
   } else {
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         executable.subgraph,
         capturing_builder_(arguments_, results_, arguments_buffers));
   }
@@ -152,13 +152,13 @@ XnnFusionThunk::CreateXnnExecutable(
   uint32_t flags = XNN_FLAG_SLINKY_ENABLED | XNN_FLAG_SLINKY_STATIC_BOUNDS |
                    XNN_FLAG_DONT_SPIN_WORKERS;
 
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       executable.runtime, CreateXnnRuntime([&](xnn_runtime_t* runtime) {
         return xnn_create_runtime_with_threadpool(
             executable.subgraph.get(), /*weights_cache=*/nullptr,
             threadpool.get(), flags, runtime);
       }));
-  XNN_RETURN_IF_ERROR(xnn_reshape_runtime(executable.runtime.get()));
+  XNN_XLA_RETURN_IF_ERROR(xnn_reshape_runtime(executable.runtime.get()));
 
   return {std::move(executable)};
 }
@@ -183,25 +183,25 @@ absl::Status XnnFusionThunk::UpdateXnnExecutable(
   VLOG(3) << absl::StreamFormat("Update XNN executable for `%s` operation",
                                 info().op_name);
 
-  TF_RETURN_IF_ERROR(executable.Reset());
+  TF_XLA_RETURN_IF_ERROR(executable.Reset());
 
   // Keep track of the updated arguments captured by value.
   executable.captured_arguments = std::move(capture_arguments);
 
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       executable.subgraph,
       capturing_builder_(arguments_, results_, arguments_buffers));
 
   uint32_t flags = XNN_FLAG_SLINKY_ENABLED | XNN_FLAG_SLINKY_STATIC_BOUNDS |
                    XNN_FLAG_DONT_SPIN_WORKERS;
 
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       executable.runtime, CreateXnnRuntime([&](xnn_runtime_t* runtime) {
         return xnn_create_runtime_with_threadpool(
             executable.subgraph.get(), /*weights_cache=*/nullptr,
             threadpool.get(), flags, runtime);
       }));
-  XNN_RETURN_IF_ERROR(xnn_reshape_runtime(executable.runtime.get()));
+  XNN_XLA_RETURN_IF_ERROR(xnn_reshape_runtime(executable.runtime.get()));
 
   return absl::OkStatus();
 }
@@ -220,7 +220,7 @@ std::vector<se::DeviceMemoryBase> XnnFusionThunk::CaptureArguments(
 absl::StatusOr<std::unique_ptr<XnnFusionThunk>> XnnFusionThunk::Create(
     Options options, Info info, std::vector<Argument> arguments,
     std::vector<Result> results, Builder builder) {
-  TF_RETURN_IF_ERROR(InitializeXnnPack());
+  TF_XLA_RETURN_IF_ERROR(InitializeXnnPack());
 
   return absl::WrapUnique(new XnnFusionThunk(
       XnnFusionKind::kFusion, std::move(options), std::move(info),
@@ -231,7 +231,7 @@ absl::StatusOr<std::unique_ptr<XnnFusionThunk>> XnnFusionThunk::Create(
     Options options, Info info, std::vector<Argument> arguments,
     std::vector<Result> results, CapturingBuilder capturing_builder,
     absl::Span<const int64_t> captured_arguments_ids) {
-  TF_RETURN_IF_ERROR(InitializeXnnPack());
+  TF_XLA_RETURN_IF_ERROR(InitializeXnnPack());
 
   return absl::WrapUnique(new XnnFusionThunk(
       XnnFusionKind::kFusion, std::move(options), std::move(info),
@@ -303,7 +303,7 @@ tsl::AsyncValueRef<XnnFusionThunk::ExecuteEvent> XnnFusionThunk::Execute(
   for (size_t i = 0; i < arguments_.size(); ++i) {
     Argument& argument = arguments_[i];
 
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         arguments_buffers[i],
         params.buffer_allocations->GetDeviceAddress(argument.slice));
 
@@ -319,7 +319,7 @@ tsl::AsyncValueRef<XnnFusionThunk::ExecuteEvent> XnnFusionThunk::Execute(
   for (size_t i = 0; i < results_.size(); ++i) {
     Result& result = results_[i];
 
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         results_buffers[i],
         params.buffer_allocations->GetDeviceAddress(results_[i].slice));
 
@@ -344,7 +344,7 @@ tsl::AsyncValueRef<XnnFusionThunk::ExecuteEvent> XnnFusionThunk::Execute(
   };
 
   // Borrow XnnExecutable from the pool.
-  TF_ASSIGN_OR_RETURN(auto executable,
+  TF_XLA_ASSIGN_OR_RETURN(auto executable,
                       xnn_executable_pool_.GetOrCreate(GetXnnThreadpool(params),
                                                        arguments_buffers));
 
@@ -355,7 +355,7 @@ tsl::AsyncValueRef<XnnFusionThunk::ExecuteEvent> XnnFusionThunk::Execute(
   }
 
   // Otherwise reset XnnExecutable to capture new arguments buffers.
-  TF_RETURN_IF_ERROR(UpdateXnnExecutable(GetXnnThreadpool(params), *executable,
+  TF_XLA_RETURN_IF_ERROR(UpdateXnnExecutable(GetXnnThreadpool(params), *executable,
                                          arguments_buffers));
   return invoke(std::move(executable));
 }

@@ -81,11 +81,11 @@ absl::StatusOr<bool> HostComputeAsyncifier::RunImpl(
           tsl::down_cast<HloCallInstruction*>(call);
       CHECK_NE(call_instr, nullptr);
 
-      TF_ASSIGN_OR_RETURN(
+      TF_XLA_ASSIGN_OR_RETURN(
           HloCallInstruction * call_instr_no_tuple_operands,
           HloHostDeviceTypeCallWrapper::RemoveTupleParameters(call_instr));
-      TF_RETURN_IF_ERROR(TupleSimplifier().Run(module).status());
-      TF_ASSIGN_OR_RETURN(
+      TF_XLA_RETURN_IF_ERROR(TupleSimplifier().Run(module).status());
+      TF_XLA_ASSIGN_OR_RETURN(
           HloInstruction * call_instr_no_constants,
           HloHostDeviceTypeCallWrapper::MaterializeConstantsOnHostComputation(
               call_instr_no_tuple_operands));
@@ -105,7 +105,7 @@ absl::StatusOr<bool> HostComputeAsyncifier::RunImpl(
              "corresponding "
              "host call.";
 
-      TF_ASSIGN_OR_RETURN(
+      TF_XLA_ASSIGN_OR_RETURN(
           HloInstruction * async_done,
           parent_computation->CreateAsyncInstructions(
               call_instr_no_constants, {ShapeUtil::MakeScalarShape(U32)},
@@ -116,7 +116,7 @@ absl::StatusOr<bool> HostComputeAsyncifier::RunImpl(
 
       VLOG(1) << "Replacing" << call_instr_no_constants->name() << " with "
               << async_done->name();
-      TF_RETURN_IF_ERROR(
+      TF_XLA_RETURN_IF_ERROR(
           call_instr_no_constants->ReplaceAllUsesWith(async_done));
 
       RemoveTilesAndMemorySpaces(host_computation);
@@ -126,10 +126,10 @@ absl::StatusOr<bool> HostComputeAsyncifier::RunImpl(
   }
 
   if (modified) {
-    TF_RETURN_IF_ERROR(HloDCE().Run(module).status());
+    TF_XLA_RETURN_IF_ERROR(HloDCE().Run(module).status());
 
     if (module->has_schedule()) {
-      TF_RETURN_IF_ERROR(module->schedule().Update());
+      TF_XLA_RETURN_IF_ERROR(module->schedule().Update());
     }
   }
   return modified;

@@ -66,9 +66,9 @@ absl::StatusOr<ThunkProto> DeviceToDeviceCopyThunk::ToProto() const {
   DeviceToDeviceCopyThunkProto* d2d_copy_thunk_proto =
       proto.mutable_device_to_device_copy_thunk();
   CopyThunkProto* copy_thunk_proto = d2d_copy_thunk_proto->mutable_copy_thunk();
-  TF_ASSIGN_OR_RETURN(*copy_thunk_proto->mutable_source_buffer(),
+  TF_XLA_ASSIGN_OR_RETURN(*copy_thunk_proto->mutable_source_buffer(),
                       source().ToProto());
-  TF_ASSIGN_OR_RETURN(*copy_thunk_proto->mutable_destination_buffer(),
+  TF_XLA_ASSIGN_OR_RETURN(*copy_thunk_proto->mutable_destination_buffer(),
                       destination().ToProto());
   copy_thunk_proto->set_mem_size(size_bytes());
   return proto;
@@ -78,11 +78,11 @@ absl::StatusOr<std::unique_ptr<DeviceToDeviceCopyThunk>>
 DeviceToDeviceCopyThunk::FromProto(
     ThunkInfo thunk_info, const DeviceToDeviceCopyThunkProto& thunk_proto,
     absl::Span<const BufferAllocation> buffer_allocations) {
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       BufferAllocation::Slice src_slice,
       BufferAllocation::Slice::FromProto(
           thunk_proto.copy_thunk().source_buffer(), buffer_allocations));
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       BufferAllocation::Slice dst_slice,
       BufferAllocation::Slice::FromProto(
           thunk_proto.copy_thunk().destination_buffer(), buffer_allocations));
@@ -145,9 +145,9 @@ absl::StatusOr<ThunkProto> CopyThunk::ToProto() const {
   *proto.mutable_thunk_info() = thunk_info().ToProto();
 
   CopyThunkProto* copy_thunk_proto = proto.mutable_copy_thunk();
-  TF_ASSIGN_OR_RETURN(*copy_thunk_proto->mutable_source_buffer(),
+  TF_XLA_ASSIGN_OR_RETURN(*copy_thunk_proto->mutable_source_buffer(),
                       source().ToProto());
-  TF_ASSIGN_OR_RETURN(*copy_thunk_proto->mutable_destination_buffer(),
+  TF_XLA_ASSIGN_OR_RETURN(*copy_thunk_proto->mutable_destination_buffer(),
                       destination().ToProto());
   copy_thunk_proto->set_mem_size(size_bytes());
   return proto;
@@ -156,10 +156,10 @@ absl::StatusOr<ThunkProto> CopyThunk::ToProto() const {
 absl::StatusOr<std::unique_ptr<CopyThunk>> CopyThunk::FromProto(
     ThunkInfo thunk_info, const CopyThunkProto& thunk_proto,
     absl::Span<const BufferAllocation> buffer_allocations) {
-  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice src_slice,
+  TF_XLA_ASSIGN_OR_RETURN(BufferAllocation::Slice src_slice,
                       BufferAllocation::Slice::FromProto(
                           thunk_proto.source_buffer(), buffer_allocations));
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       BufferAllocation::Slice dst_slice,
       BufferAllocation::Slice::FromProto(thunk_proto.destination_buffer(),
                                          buffer_allocations));
@@ -187,19 +187,19 @@ absl::Status DeviceToHostCopyThunk::ExecuteOnStream(
   se::DeviceMemoryBase source_data =
       params.buffer_allocations->GetDeviceAddress(source());
   void* cpu_dst = destination_data.opaque();
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       se::Stream * stream,
       GetStreamForExecution(Thunk::execution_stream_id(), params));
-  TF_RETURN_IF_ERROR(stream->Memcpy(cpu_dst, source_data, size_bytes()));
+  TF_XLA_RETURN_IF_ERROR(stream->Memcpy(cpu_dst, source_data, size_bytes()));
   if (stream == params.stream) {
     VLOG(2) << "Memcpy D2H from the main stream";
     return absl::OkStatus();
   }
   VLOG(2) << "Memcpy D2H from the other stream";
   se::StreamExecutor* executor = params.stream->parent();
-  TF_ASSIGN_OR_RETURN(auto event, executor->CreateEvent());
+  TF_XLA_ASSIGN_OR_RETURN(auto event, executor->CreateEvent());
   // Record memcpy operation completion.
-  TF_RETURN_IF_ERROR(stream->RecordEvent(event.get()));
+  TF_XLA_RETURN_IF_ERROR(stream->RecordEvent(event.get()));
   VLOG(3) << "Emplace events: " << event.get()
           << " for instr: " << instr_->ToString();
   return async_events_->Emplace(executor, instr_, std::move(event));
@@ -212,9 +212,9 @@ absl::StatusOr<ThunkProto> DeviceToHostCopyThunk::ToProto() const {
   DeviceToHostCopyThunkProto* d2h_copy_thunk_proto =
       proto.mutable_device_to_host_copy_thunk();
   CopyThunkProto* copy_thunk_proto = d2h_copy_thunk_proto->mutable_copy_thunk();
-  TF_ASSIGN_OR_RETURN(*copy_thunk_proto->mutable_source_buffer(),
+  TF_XLA_ASSIGN_OR_RETURN(*copy_thunk_proto->mutable_source_buffer(),
                       source().ToProto());
-  TF_ASSIGN_OR_RETURN(*copy_thunk_proto->mutable_destination_buffer(),
+  TF_XLA_ASSIGN_OR_RETURN(*copy_thunk_proto->mutable_destination_buffer(),
                       destination().ToProto());
   copy_thunk_proto->set_mem_size(size_bytes());
   return proto;
@@ -224,11 +224,11 @@ absl::StatusOr<std::unique_ptr<DeviceToHostCopyThunk>>
 DeviceToHostCopyThunk::FromProto(
     ThunkInfo thunk_info, const DeviceToHostCopyThunkProto& thunk_proto,
     absl::Span<const BufferAllocation> buffer_allocations) {
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       BufferAllocation::Slice src_slice,
       BufferAllocation::Slice::FromProto(
           thunk_proto.copy_thunk().source_buffer(), buffer_allocations));
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       BufferAllocation::Slice dst_slice,
       BufferAllocation::Slice::FromProto(
           thunk_proto.copy_thunk().destination_buffer(), buffer_allocations));
@@ -268,19 +268,19 @@ absl::Status HostToDeviceCopyThunk::ExecuteOnStream(
   se::DeviceMemoryBase source_data =
       params.buffer_allocations->GetDeviceAddress(source());
   void* cpu_src = source_data.opaque();
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       se::Stream * stream,
       GetStreamForExecution(Thunk::execution_stream_id(), params));
-  TF_RETURN_IF_ERROR(stream->Memcpy(&destination_data, cpu_src, size_bytes()));
+  TF_XLA_RETURN_IF_ERROR(stream->Memcpy(&destination_data, cpu_src, size_bytes()));
   if (stream == params.stream) {
     VLOG(2) << "Memcpy H2D from the main stream";
     return absl::OkStatus();
   }
   VLOG(2) << "Memcpy H2D from the other stream";
   se::StreamExecutor* executor = params.stream->parent();
-  TF_ASSIGN_OR_RETURN(auto event, executor->CreateEvent());
+  TF_XLA_ASSIGN_OR_RETURN(auto event, executor->CreateEvent());
   // Record memcpy operation completion.
-  TF_RETURN_IF_ERROR(stream->RecordEvent(event.get()));
+  TF_XLA_RETURN_IF_ERROR(stream->RecordEvent(event.get()));
   VLOG(3) << "Emplace events: " << event.get()
           << " for instr: " << instr_->ToString();
   return async_events_->Emplace(executor, instr_, std::move(event));
@@ -293,9 +293,9 @@ absl::StatusOr<ThunkProto> HostToDeviceCopyThunk::ToProto() const {
   HostToDeviceCopyThunkProto* h2d_copy_thunk_proto =
       proto.mutable_host_to_device_copy_thunk();
   CopyThunkProto* copy_thunk_proto = h2d_copy_thunk_proto->mutable_copy_thunk();
-  TF_ASSIGN_OR_RETURN(*copy_thunk_proto->mutable_source_buffer(),
+  TF_XLA_ASSIGN_OR_RETURN(*copy_thunk_proto->mutable_source_buffer(),
                       source().ToProto());
-  TF_ASSIGN_OR_RETURN(*copy_thunk_proto->mutable_destination_buffer(),
+  TF_XLA_ASSIGN_OR_RETURN(*copy_thunk_proto->mutable_destination_buffer(),
                       destination().ToProto());
   copy_thunk_proto->set_mem_size(size_bytes());
   return proto;
@@ -305,11 +305,11 @@ absl::StatusOr<std::unique_ptr<HostToDeviceCopyThunk>>
 HostToDeviceCopyThunk::FromProto(
     ThunkInfo thunk_info, const HostToDeviceCopyThunkProto& thunk_proto,
     absl::Span<const BufferAllocation> buffer_allocations) {
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       BufferAllocation::Slice src_slice,
       BufferAllocation::Slice::FromProto(
           thunk_proto.copy_thunk().source_buffer(), buffer_allocations));
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       BufferAllocation::Slice dst_slice,
       BufferAllocation::Slice::FromProto(
           thunk_proto.copy_thunk().destination_buffer(), buffer_allocations));
@@ -345,7 +345,7 @@ absl::Status CopyDoneThunk::ExecuteOnStream(const ExecuteParams& params) {
   VLOG(3) << "CopyDone thunk between a host and a device for: "
           << copy_start_instr_->ToString();
   se::StreamExecutor* executor = params.stream->parent();
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<se::Event> event,
+  TF_XLA_ASSIGN_OR_RETURN(std::unique_ptr<se::Event> event,
                       async_events_->Extract(executor, copy_start_instr_));
   return params.stream->WaitFor(event.get());
 }
@@ -381,7 +381,7 @@ absl::Status DynamicMemcpyThunk::ExecuteOnStream(const ExecuteParams& params) {
 
   int64_t iteration_index = 0;
   if (offsets_.depends_on_loop) {
-    TF_ASSIGN_OR_RETURN(iteration_index, WhileThunk::CurrentLoopIteration());
+    TF_XLA_ASSIGN_OR_RETURN(iteration_index, WhileThunk::CurrentLoopIteration());
   }
 
   int64_t src_offset = offsets_.src_offsets[iteration_index];
@@ -392,7 +392,7 @@ absl::Status DynamicMemcpyThunk::ExecuteOnStream(const ExecuteParams& params) {
   VLOG(3) << "Memcpy of size " << mem_size_ << " from "
           << src_with_offset.opaque() << " (offset " << src_offset << ") to "
           << dst_with_offset.opaque() << " (offset " << dst_offset << ")";
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       se::Stream * stream,
       GetStreamForExecution(Thunk::execution_stream_id(), params));
   return stream->Memcpy(&dst_with_offset, src_with_offset, mem_size_);

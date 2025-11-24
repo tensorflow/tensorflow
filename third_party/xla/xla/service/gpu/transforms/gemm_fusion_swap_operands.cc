@@ -103,8 +103,8 @@ absl::Status SwapDotOperandsInFusion(HloComputation* computation) {
   HloDotInstruction* new_dot = MakeDotWithSwappedOperands(dot);
   HloInstruction* new_bitcast = computation->AddInstruction(
       HloInstruction::CreateBitcast(dot->shape(), new_dot), &dot->metadata());
-  TF_RETURN_IF_ERROR(dot->ReplaceAllUsesWith(new_bitcast));
-  TF_RETURN_IF_ERROR(computation->RemoveInstruction(dot));
+  TF_XLA_RETURN_IF_ERROR(dot->ReplaceAllUsesWith(new_bitcast));
+  TF_XLA_RETURN_IF_ERROR(computation->RemoveInstruction(dot));
   return absl::OkStatus();
 }
 
@@ -162,9 +162,9 @@ absl::StatusOr<bool> ShouldSwapOperands(const HloInstruction* instr) {
   }
   const bool lhs_has_code = HasCodeGeneratingInstructions(dot->operand(0));
   const bool rhs_has_code = HasCodeGeneratingInstructions(dot->operand(1));
-  TF_ASSIGN_OR_RETURN(const int64_t lhs_size, GetNonContractingDimsNumElements(
+  TF_XLA_ASSIGN_OR_RETURN(const int64_t lhs_size, GetNonContractingDimsNumElements(
                                                   dot, /*operand_index=*/0));
-  TF_ASSIGN_OR_RETURN(const int64_t rhs_size, GetNonContractingDimsNumElements(
+  TF_XLA_ASSIGN_OR_RETURN(const int64_t rhs_size, GetNonContractingDimsNumElements(
                                                   dot, /*operand_index=*/1));
   if (lhs_size < 64 && rhs_size >= 64) {
     return true;
@@ -184,7 +184,7 @@ absl::StatusOr<bool> EmitterCanHandleSwappedOperands(
   HloCloneContext clone_context(&tmp_module);
   HloComputation* cloned_computation = tmp_module.AddEntryComputation(
       dot->parent()->CloneInContext(clone_context));
-  TF_RETURN_IF_ERROR(SwapDotOperandsInFusion(cloned_computation));
+  TF_XLA_RETURN_IF_ERROR(SwapDotOperandsInFusion(cloned_computation));
   return TritonFusionAnalysis::Execute(*cloned_computation).ok();
 }
 
@@ -194,16 +194,16 @@ absl::StatusOr<bool> MaybeSwapOperands(HloComputation* computation) {
   if (dot == nullptr) {
     return false;
   }
-  TF_ASSIGN_OR_RETURN(const bool should_swap_operands, ShouldSwapOperands(dot));
+  TF_XLA_ASSIGN_OR_RETURN(const bool should_swap_operands, ShouldSwapOperands(dot));
   if (!should_swap_operands) {
     return false;
   }
-  TF_ASSIGN_OR_RETURN(const bool can_handle_swapped_operands,
+  TF_XLA_ASSIGN_OR_RETURN(const bool can_handle_swapped_operands,
                       EmitterCanHandleSwappedOperands(dot));
   if (!can_handle_swapped_operands) {
     return false;
   }
-  TF_RETURN_IF_ERROR(SwapDotOperandsInFusion(computation));
+  TF_XLA_RETURN_IF_ERROR(SwapDotOperandsInFusion(computation));
   return true;
 }
 
@@ -218,7 +218,7 @@ absl::StatusOr<bool> GemmFusionSwapOperands::RunImpl(
     if (!IsTritonFusedComputation(*computation)) {
       continue;
     }
-    TF_ASSIGN_OR_RETURN(const bool changed, MaybeSwapOperands(computation));
+    TF_XLA_ASSIGN_OR_RETURN(const bool changed, MaybeSwapOperands(computation));
     any_changed |= changed;
   }
   return any_changed;

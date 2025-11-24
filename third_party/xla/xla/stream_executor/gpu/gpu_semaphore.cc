@@ -26,7 +26,7 @@ namespace stream_executor {
 absl::StatusOr<GpuSemaphore> GpuSemaphore::Create(StreamExecutor* executor) {
   // Allocate the value in pinned host memory that can be read from both
   // host and device.
-  TF_ASSIGN_OR_RETURN(auto alloc,
+  TF_XLA_ASSIGN_OR_RETURN(auto alloc,
                       executor->HostMemoryAllocate(sizeof(GpuSemaphoreState)));
   return GpuSemaphore{std::move(alloc)};
 }

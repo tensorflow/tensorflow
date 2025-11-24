@@ -249,7 +249,7 @@ std::unique_ptr<IrEmitterUnnested> IrEmitterUnnested::Create(
 
 absl::Status IrEmitterUnnested::EmitConstant(
     const HloConstantInstruction* instr) {
-  TF_ASSIGN_OR_RETURN(DenseDataIntermediate content,
+  TF_XLA_ASSIGN_OR_RETURN(DenseDataIntermediate content,
                       LiteralToXlaFormat(instr->literal()));
 
   int element_bytes =
@@ -259,7 +259,7 @@ absl::Status IrEmitterUnnested::EmitConstant(
   int num_elements = content.span().size() / element_bytes;
 
   std::string global_name = llvm_ir::ConstantHloToGlobalName(*instr);
-  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice slice,
+  TF_XLA_ASSIGN_OR_RETURN(BufferAllocation::Slice slice,
                       GetAllocationSliceForHlo(instr, {}));
 
   ir_emitter_context_->emit_constant(num_elements, element_bytes, global_name,
@@ -273,7 +273,7 @@ absl::Status IrEmitterUnnested::EmitConditional(const HloInstruction* instr) {
 
   for (auto comp : instr->branch_computations()) {
     auto ir_emitter = IrEmitterUnnested::Create(ir_emitter_context_);
-    TF_RETURN_IF_ERROR(ir_emitter->EmitHloComputation(comp));
+    TF_XLA_RETURN_IF_ERROR(ir_emitter->EmitHloComputation(comp));
     Thunk::ThunkInfo branch_thunk_info =
         Thunk::ThunkInfo::WithProfileAnnotation(
             instr, ir_emitter_context_->GetNextThunkId());
@@ -283,7 +283,7 @@ absl::Status IrEmitterUnnested::EmitConditional(const HloInstruction* instr) {
         ir_emitter->ConsumeThunkSequence(branch_thunk_info));
   }
 
-  TF_ASSIGN_OR_RETURN(auto slice,
+  TF_XLA_ASSIGN_OR_RETURN(auto slice,
                       GetAllocationSliceForHlo(instr->operand(0), {}));
   bool branch_index_is_bool = instr->operand(0)->shape().element_type() == PRED;
   AddThunkToThunkSequence(std::unique_ptr<Thunk>(new ConditionalThunk(
@@ -358,7 +358,7 @@ absl::Status IrEmitterUnnested::EmitPadToStatic(
 
   LaunchDimensions launch_dimensions = CalculateLaunchDimensions(
       input_shape, ir_emitter_context_->gpu_device_info(), {unroll_factor});
-  TF_ASSIGN_OR_RETURN(std::vector<llvm_ir::IrArray> ir_arrays,
+  TF_XLA_ASSIGN_OR_RETURN(std::vector<llvm_ir::IrArray> ir_arrays,
                       BuildKernelThunkForNonFusionOp(instr, launch_dimensions));
 
   const llvm_ir::IrArray& source_array = ir_arrays[0];
@@ -469,7 +469,7 @@ absl::Status IrEmitterUnnested::EmitPadToStatic(
   };
 
   const Shape& data_shape = instr->shape().tuple_shapes(0);
-  TF_RETURN_IF_ERROR(ParallelLoopEmitter(body_generator, data_shape,
+  TF_XLA_RETURN_IF_ERROR(ParallelLoopEmitter(body_generator, data_shape,
                                          launch_dimensions, &b_,
                                          {unroll_factor})
                          .EmitLoop(ir_name, index_ty));
@@ -490,7 +490,7 @@ absl::Status IrEmitterUnnested::EmitSliceToDynamic(
       input_shape, ir_emitter_context_->gpu_device_info(), {unroll_factor});
   llvm::Type* index_ty =
       GetIndexTypeForKernel(instr, launch_dimensions.launch_bound(), &b_);
-  TF_ASSIGN_OR_RETURN(std::vector<llvm_ir::IrArray> ir_arrays,
+  TF_XLA_ASSIGN_OR_RETURN(std::vector<llvm_ir::IrArray> ir_arrays,
                       BuildKernelThunkForNonFusionOp(instr, launch_dimensions));
 
   const Shape& data_shape = ShapeUtil::MakeStaticShape(instr->shape());
@@ -590,7 +590,7 @@ absl::Status IrEmitterUnnested::EmitSliceToDynamic(
     return absl::OkStatus();
   };
 
-  TF_RETURN_IF_ERROR(ParallelLoopEmitter(body_generator, data_shape,
+  TF_XLA_RETURN_IF_ERROR(ParallelLoopEmitter(body_generator, data_shape,
                                          launch_dimensions, &b_,
                                          {unroll_factor})
                          .EmitLoop(ir_name, index_ty));
@@ -607,7 +607,7 @@ absl::Status IrEmitterUnnested::EmitCommandBufferThunk(
   DCHECK_EQ(instr->called_computations().size(), 1);
   const HloComputation* command_buffer = instr->called_computations().front();
   auto ir_emitter = IrEmitterUnnested::Create(ir_emitter_context_);
-  TF_RETURN_IF_ERROR(ir_emitter->EmitHloComputation(command_buffer));
+  TF_XLA_RETURN_IF_ERROR(ir_emitter->EmitHloComputation(command_buffer));
   std::unique_ptr<SequentialThunk> thunk_sequence =
       ir_emitter->ConsumeThunkSequence();
 
@@ -637,7 +637,7 @@ absl::Status IrEmitterUnnested::EmitCommandBufferThunk(
 
   bool enable_loop_unroll = ir_emitter_context_->debug_options()
                                 .xla_gpu_command_buffer_unroll_loops();
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       CommandBufferCmdExecutor cmd_executor,
       ConvertToCommands(
           thunk_sequence->thunks(),
@@ -659,7 +659,7 @@ absl::Status IrEmitterUnnested::EmitConvolutionThunk(
   std::vector<BufferAllocation::Slice> operand_slices;
   operand_slices.reserve(instr->operand_count());
   for (const HloInstruction* operand : instr->operands()) {
-    TF_ASSIGN_OR_RETURN(BufferAllocation::Slice slice,
+    TF_XLA_ASSIGN_OR_RETURN(BufferAllocation::Slice slice,
                         GetAllocationSliceForHlo(operand, {}));
     operand_slices.push_back(slice);
   }
@@ -669,17 +669,17 @@ absl::Status IrEmitterUnnested::EmitConvolutionThunk(
   // may have auxiliary results in addition to the main result.
   std::vector<BufferAllocation::Slice> result_slices;
   for (int i = 0; i < instr->shape().tuple_shapes().size() - 1; i++) {
-    TF_ASSIGN_OR_RETURN(BufferAllocation::Slice result_slice,
+    TF_XLA_ASSIGN_OR_RETURN(BufferAllocation::Slice result_slice,
                         GetAllocationSliceForHlo(instr, {i}));
     result_slices.push_back(result_slice);
   }
 
-  TF_ASSIGN_OR_RETURN(CudnnConvKind kind, GetCudnnConvKind(instr));
-  TF_ASSIGN_OR_RETURN(auto gpu_config,
+  TF_XLA_ASSIGN_OR_RETURN(CudnnConvKind kind, GetCudnnConvKind(instr));
+  TF_XLA_ASSIGN_OR_RETURN(auto gpu_config,
                       instr->backend_config<GpuBackendConfig>());
   const CudnnConvBackendConfig& backend_config =
       gpu_config.cudnn_conv_backend_config();
-  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice scratch_slice,
+  TF_XLA_ASSIGN_OR_RETURN(BufferAllocation::Slice scratch_slice,
                       GetAllocationSliceForHlo(
                           instr, {instr->shape().tuple_shapes_size() - 1}));
   GpuConvDescriptor descriptor = {kind,
@@ -692,7 +692,7 @@ absl::Status IrEmitterUnnested::EmitConvolutionThunk(
                                   instr->convolution_dimension_numbers(),
                                   instr->feature_group_count()};
 
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<ConvolutionThunk> thunk,
+  TF_XLA_ASSIGN_OR_RETURN(std::unique_ptr<ConvolutionThunk> thunk,
                       ConvolutionThunk::Create(
                           Thunk::ThunkInfo::WithProfileAnnotation(
                               instr, ir_emitter_context_->GetNextThunkId()),
@@ -704,9 +704,9 @@ absl::Status IrEmitterUnnested::EmitConvolutionThunk(
 
 absl::Status IrEmitterUnnested::EmitGemmThunk(
     const HloCustomCallInstruction* instr) {
-  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice a,
+  TF_XLA_ASSIGN_OR_RETURN(BufferAllocation::Slice a,
                       GetAllocationSliceForHlo(instr->operand(0), {}));
-  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice b,
+  TF_XLA_ASSIGN_OR_RETURN(BufferAllocation::Slice b,
                       GetAllocationSliceForHlo(instr->operand(1), {}));
 
   // Result of a legacy cuBLAS custom call can be a tuple if we
@@ -717,13 +717,13 @@ absl::Status IrEmitterUnnested::EmitGemmThunk(
   std::optional<BufferAllocation::Slice> workspace;
 
   if (instr->shape().IsArray()) {
-    TF_ASSIGN_OR_RETURN(c, GetAllocationSliceForHlo(instr, {}));
+    TF_XLA_ASSIGN_OR_RETURN(c, GetAllocationSliceForHlo(instr, {}));
   } else {
-    TF_ASSIGN_OR_RETURN(c, GetAllocationSliceForHlo(instr, {0}));
-    TF_ASSIGN_OR_RETURN(workspace, GetAllocationSliceForHlo(instr, {1}));
+    TF_XLA_ASSIGN_OR_RETURN(c, GetAllocationSliceForHlo(instr, {0}));
+    TF_XLA_ASSIGN_OR_RETURN(workspace, GetAllocationSliceForHlo(instr, {1}));
   }
 
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       GemmConfig config,
       GemmConfig::For(static_cast<const HloInstruction*>(instr),
                       ir_emitter_context_->gpu_compute_capability()));
@@ -738,46 +738,46 @@ absl::Status IrEmitterUnnested::EmitGemmThunk(
 
 absl::Status IrEmitterUnnested::EmitCublasLtMatmulThunk(
     const HloCustomCallInstruction* instr) {
-  TF_ASSIGN_OR_RETURN(const auto gpu_config,
+  TF_XLA_ASSIGN_OR_RETURN(const auto gpu_config,
                       instr->backend_config<xla::gpu::GpuBackendConfig>());
   const xla::gpu::GemmBackendConfig& config = gpu_config.gemm_backend_config();
   xla::gpu::GemmBackendConfig_Epilogue epilogue = config.epilogue();
 
-  TF_ASSIGN_OR_RETURN(bool has_vector_bias,
+  TF_XLA_ASSIGN_OR_RETURN(bool has_vector_bias,
                       xla::gpu::gpublas_lt::EpilogueAddsVectorBias(epilogue));
   bool has_matrix_bias = config.beta() != 0;
 
   TF_RET_CHECK(instr->operand_count() ==
                2 + int{has_matrix_bias} + int{has_vector_bias});
 
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       bool has_aux_output,
       xla::gpu::gpublas_lt::EpilogueHasAuxiliaryOutput(epilogue));
   xla::ShapeIndex output_index =
       instr->shape().IsTuple() ? xla::ShapeIndex{0} : xla::ShapeIndex{};
 
-  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice a,
+  TF_XLA_ASSIGN_OR_RETURN(BufferAllocation::Slice a,
                       GetAllocationSliceForHlo(instr->operand(0)));
-  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice b,
+  TF_XLA_ASSIGN_OR_RETURN(BufferAllocation::Slice b,
                       GetAllocationSliceForHlo(instr->operand(1)));
   BufferAllocation::Slice c;
   if (has_matrix_bias) {
-    TF_ASSIGN_OR_RETURN(c, GetAllocationSliceForHlo(instr->operand(2)));
+    TF_XLA_ASSIGN_OR_RETURN(c, GetAllocationSliceForHlo(instr->operand(2)));
   } else {
-    TF_ASSIGN_OR_RETURN(c, GetAllocationSliceForHlo(instr, output_index));
+    TF_XLA_ASSIGN_OR_RETURN(c, GetAllocationSliceForHlo(instr, output_index));
   }
-  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice d,
+  TF_XLA_ASSIGN_OR_RETURN(BufferAllocation::Slice d,
                       GetAllocationSliceForHlo(instr, output_index));
 
   BufferAllocation::Slice bias;
   if (has_vector_bias) {
-    TF_ASSIGN_OR_RETURN(bias, GetAllocationSliceForHlo(
+    TF_XLA_ASSIGN_OR_RETURN(bias, GetAllocationSliceForHlo(
                                   instr->operand(has_matrix_bias ? 3 : 2)));
   }
 
   BufferAllocation::Slice aux;
   if (has_aux_output) {
-    TF_ASSIGN_OR_RETURN(aux, GetAllocationSliceForHlo(instr, {1}));
+    TF_XLA_ASSIGN_OR_RETURN(aux, GetAllocationSliceForHlo(instr, {1}));
   }
 
   std::optional<BufferAllocation::Slice> workspace_buffer;
@@ -786,12 +786,12 @@ absl::Status IrEmitterUnnested::EmitCublasLtMatmulThunk(
     TF_RET_CHECK(
         (has_aux_output && instr->shape().tuple_shapes().size() == 3) ||
         (!has_aux_output && instr->shape().tuple_shapes().size() == 2));
-    TF_ASSIGN_OR_RETURN(workspace_buffer,
+    TF_XLA_ASSIGN_OR_RETURN(workspace_buffer,
                         GetAllocationSliceForHlo(
                             instr, {instr->shape().tuple_shapes_size() - 1}));
   }
 
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       auto gemm_config,
       GemmConfig::For(static_cast<const HloInstruction*>(instr),
                       ir_emitter_context_->gpu_compute_capability()));
@@ -804,7 +804,7 @@ absl::Status IrEmitterUnnested::EmitCublasLtMatmulThunk(
           : 0;
 
   BufferAllocation::Slice a_scale, b_scale, c_scale, d_scale, d_amax;
-  TF_ASSIGN_OR_RETURN(se::gpu::BlasLt::Epilogue blas_lt_epilogue,
+  TF_XLA_ASSIGN_OR_RETURN(se::gpu::BlasLt::Epilogue blas_lt_epilogue,
                       gpublas_lt::AsBlasLtEpilogue(epilogue));
   Thunk::ThunkInfo thunk_info = Thunk::ThunkInfo::WithProfileAnnotation(
       instr, ir_emitter_context_->GetNextThunkId());
@@ -821,39 +821,39 @@ absl::Status IrEmitterUnnested::EmitCublasLtMatmulThunk(
 absl::Status IrEmitterUnnested::EmitCublasLtMatmulThunkF8(
     const HloCustomCallInstruction* instr) {
   TF_RET_CHECK(instr->operand_count() > 3 && instr->operand_count() < 8);
-  TF_ASSIGN_OR_RETURN(const auto gpu_config,
+  TF_XLA_ASSIGN_OR_RETURN(const auto gpu_config,
                       instr->backend_config<xla::gpu::GpuBackendConfig>());
   const xla::gpu::GemmBackendConfig& config = gpu_config.gemm_backend_config();
   xla::gpu::GemmBackendConfig_Epilogue epilogue = config.epilogue();
 
-  TF_ASSIGN_OR_RETURN(bool has_vector_bias,
+  TF_XLA_ASSIGN_OR_RETURN(bool has_vector_bias,
                       xla::gpu::gpublas_lt::EpilogueAddsVectorBias(epilogue));
 
   TF_RET_CHECK(instr->shape().IsTuple());
   xla::ShapeIndex output_index = xla::ShapeIndex{0};
 
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       bool has_aux_output,
       xla::gpu::gpublas_lt::EpilogueHasAuxiliaryOutput(epilogue));
 
-  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice a,
+  TF_XLA_ASSIGN_OR_RETURN(BufferAllocation::Slice a,
                       GetAllocationSliceForHlo(instr->operand(0)));
-  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice b,
+  TF_XLA_ASSIGN_OR_RETURN(BufferAllocation::Slice b,
                       GetAllocationSliceForHlo(instr->operand(1)));
   BufferAllocation::Slice c;
   bool has_matrix_bias = config.beta() != 0;
   if (has_matrix_bias) {
-    TF_ASSIGN_OR_RETURN(c, GetAllocationSliceForHlo(instr->operand(2)));
+    TF_XLA_ASSIGN_OR_RETURN(c, GetAllocationSliceForHlo(instr->operand(2)));
   } else {
-    TF_ASSIGN_OR_RETURN(c, GetAllocationSliceForHlo(instr, output_index));
+    TF_XLA_ASSIGN_OR_RETURN(c, GetAllocationSliceForHlo(instr, output_index));
   }
-  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice d,
+  TF_XLA_ASSIGN_OR_RETURN(BufferAllocation::Slice d,
                       GetAllocationSliceForHlo(instr, output_index));
 
   int a_scale_index = has_matrix_bias ? 3 : 2;
-  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice a_scale,
+  TF_XLA_ASSIGN_OR_RETURN(BufferAllocation::Slice a_scale,
                       GetAllocationSliceForHlo(instr->operand(a_scale_index)));
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       BufferAllocation::Slice b_scale,
       GetAllocationSliceForHlo(instr->operand(a_scale_index + 1)));
 
@@ -864,22 +864,22 @@ absl::Status IrEmitterUnnested::EmitCublasLtMatmulThunkF8(
   // FP8. Currently, C cannot be FP8.
   BufferAllocation::Slice c_scale, d_scale;
   if (is_cuda && is_fp8) {
-    TF_ASSIGN_OR_RETURN(d_scale,
+    TF_XLA_ASSIGN_OR_RETURN(d_scale,
                         GetAllocationSliceForHlo(instr->operands().back()));
   }
 
   BufferAllocation::Slice bias;
   if (has_vector_bias) {
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         bias, GetAllocationSliceForHlo(instr->operand(a_scale_index + 2)));
   }
 
   BufferAllocation::Slice d_amax;
   if (config.damax_output()) {
-    TF_ASSIGN_OR_RETURN(d_amax, GetAllocationSliceForHlo(instr, {1}));
+    TF_XLA_ASSIGN_OR_RETURN(d_amax, GetAllocationSliceForHlo(instr, {1}));
   }
 
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       auto gemm_config,
       GemmConfig::For(static_cast<const HloInstruction*>(instr),
                       ir_emitter_context_->gpu_compute_capability()));
@@ -895,12 +895,12 @@ absl::Status IrEmitterUnnested::EmitCublasLtMatmulThunkF8(
   TF_RET_CHECK(!has_aux_output);
   std::optional<BufferAllocation::Slice> workspace_buffer;
   if (instr->shape().tuple_shapes().size() - config.damax_output() == 2) {
-    TF_ASSIGN_OR_RETURN(workspace_buffer,
+    TF_XLA_ASSIGN_OR_RETURN(workspace_buffer,
                         GetAllocationSliceForHlo(
                             instr, {instr->shape().tuple_shapes_size() - 1}));
   }
 
-  TF_ASSIGN_OR_RETURN(se::gpu::BlasLt::Epilogue blas_lt_epilogue,
+  TF_XLA_ASSIGN_OR_RETURN(se::gpu::BlasLt::Epilogue blas_lt_epilogue,
                       gpublas_lt::AsBlasLtEpilogue(epilogue));
   Thunk::ThunkInfo thunk_info = Thunk::ThunkInfo::WithProfileAnnotation(
       instr, ir_emitter_context_->GetNextThunkId());
@@ -928,21 +928,21 @@ absl::Status IrEmitterUnnested::EmitConvolutionReorderThunk(
   filter_dimensions.set_input_filter_height(shape.dimensions(2));
   filter_dimensions.set_input_filter_width(shape.dimensions(3));
 
-  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice filter_input,
+  TF_XLA_ASSIGN_OR_RETURN(BufferAllocation::Slice filter_input,
                       GetAllocationSliceForHlo(instr->operand(0)));
 
   BufferAllocation::Slice filter_output;
   std::optional<ConvolutionReorderThunk::BiasBuffers> biases;
   if (has_bias) {
-    TF_ASSIGN_OR_RETURN(filter_output, GetAllocationSliceForHlo(instr, {0}));
+    TF_XLA_ASSIGN_OR_RETURN(filter_output, GetAllocationSliceForHlo(instr, {0}));
 
-    TF_ASSIGN_OR_RETURN(BufferAllocation::Slice bias_input,
+    TF_XLA_ASSIGN_OR_RETURN(BufferAllocation::Slice bias_input,
                         GetAllocationSliceForHlo(instr->operand(1)));
-    TF_ASSIGN_OR_RETURN(BufferAllocation::Slice bias_output,
+    TF_XLA_ASSIGN_OR_RETURN(BufferAllocation::Slice bias_output,
                         GetAllocationSliceForHlo(instr, {1}));
     biases = {{bias_input, bias_output}};
   } else {
-    TF_ASSIGN_OR_RETURN(filter_output, GetAllocationSliceForHlo(instr));
+    TF_XLA_ASSIGN_OR_RETURN(filter_output, GetAllocationSliceForHlo(instr));
   }
 
   auto thunk = std::make_unique<ConvolutionReorderThunk>(
@@ -955,16 +955,16 @@ absl::Status IrEmitterUnnested::EmitConvolutionReorderThunk(
 
 absl::Status IrEmitterUnnested::EmitNormThunk(
     const HloCustomCallInstruction* instr) {
-  TF_ASSIGN_OR_RETURN(auto const gpu_backend_config,
+  TF_XLA_ASSIGN_OR_RETURN(auto const gpu_backend_config,
                       instr->backend_config<xla::gpu::GpuBackendConfig>());
   const xla::gpu::CudnnNormBackendConfig& backend_config =
       gpu_backend_config.cudnn_norm_backend_config();
 
-  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice x_slice,
+  TF_XLA_ASSIGN_OR_RETURN(BufferAllocation::Slice x_slice,
                       GetAllocationSliceForHlo(instr->operand(0)));
-  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice scale_slice,
+  TF_XLA_ASSIGN_OR_RETURN(BufferAllocation::Slice scale_slice,
                       GetAllocationSliceForHlo(instr->operand(1)));
-  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice y_or_dx_slice,
+  TF_XLA_ASSIGN_OR_RETURN(BufferAllocation::Slice y_or_dx_slice,
                       GetAllocationSliceForHlo(instr, {0}));
 
   std::optional<BufferAllocation::Slice> bias_slice, expectation_slice,
@@ -974,26 +974,26 @@ absl::Status IrEmitterUnnested::EmitNormThunk(
           xla::gpu::CudnnNormBackendConfig::LAYER_FWD_INFER ||
       backend_config.kind() ==
           xla::gpu::CudnnNormBackendConfig::LAYER_FWD_TRAIN) {
-    TF_ASSIGN_OR_RETURN(bias_slice,
+    TF_XLA_ASSIGN_OR_RETURN(bias_slice,
                         GetAllocationSliceForHlo(instr->operand(2)));
   }
   if (backend_config.kind() ==
       xla::gpu::CudnnNormBackendConfig::LAYER_FWD_TRAIN) {
-    TF_ASSIGN_OR_RETURN(expectation_slice,
+    TF_XLA_ASSIGN_OR_RETURN(expectation_slice,
                         GetAllocationSliceForHlo(instr, {1}));
-    TF_ASSIGN_OR_RETURN(norm_factor_slice,
+    TF_XLA_ASSIGN_OR_RETURN(norm_factor_slice,
                         GetAllocationSliceForHlo(instr, {2}));
   }
   if (backend_config.kind() == xla::gpu::CudnnNormBackendConfig::LAYER_BWD) {
-    TF_ASSIGN_OR_RETURN(dy_slice, GetAllocationSliceForHlo(instr->operand(2)));
-    TF_ASSIGN_OR_RETURN(expectation_slice,
+    TF_XLA_ASSIGN_OR_RETURN(dy_slice, GetAllocationSliceForHlo(instr->operand(2)));
+    TF_XLA_ASSIGN_OR_RETURN(expectation_slice,
                         GetAllocationSliceForHlo(instr->operand(3)));
-    TF_ASSIGN_OR_RETURN(norm_factor_slice,
+    TF_XLA_ASSIGN_OR_RETURN(norm_factor_slice,
                         GetAllocationSliceForHlo(instr->operand(4)));
-    TF_ASSIGN_OR_RETURN(dscale_slice, GetAllocationSliceForHlo(instr, {1}));
-    TF_ASSIGN_OR_RETURN(dbias_slice, GetAllocationSliceForHlo(instr, {2}));
+    TF_XLA_ASSIGN_OR_RETURN(dscale_slice, GetAllocationSliceForHlo(instr, {1}));
+    TF_XLA_ASSIGN_OR_RETURN(dbias_slice, GetAllocationSliceForHlo(instr, {2}));
   }
-  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice scratch_slice,
+  TF_XLA_ASSIGN_OR_RETURN(BufferAllocation::Slice scratch_slice,
                       GetAllocationSliceForHlo(
                           instr, {instr->shape().tuple_shapes_size() - 1}));
 
@@ -1022,7 +1022,7 @@ absl::Status IrEmitterUnnested::EmitNormThunk(
     descriptor.dbias_shape = ShapeUtil::GetSubshape(instr->shape(), {2});
   }
 
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       std::unique_ptr<NormThunk> thunk,
       NormThunk::Create(Thunk::ThunkInfo::WithProfileAnnotation(
                             instr, ir_emitter_context_->GetNextThunkId()),
@@ -1036,16 +1036,16 @@ absl::Status IrEmitterUnnested::EmitNormThunk(
 
 absl::Status IrEmitterUnnested::EmitCuDnnThunk(
     const HloCustomCallInstruction* instr) {
-  TF_ASSIGN_OR_RETURN(auto kernel_arguments,
+  TF_XLA_ASSIGN_OR_RETURN(auto kernel_arguments,
                       emitters::KernelArguments::Create(
                           ir_emitter_context_->buffer_assignment(),
                           GetDefaultBufferAlignment(), instr));
-  TF_ASSIGN_OR_RETURN(const std::string fingerprint,
+  TF_XLA_ASSIGN_OR_RETURN(const std::string fingerprint,
                       FingerprintWithBackendConfig<GpuBackendConfig>(*instr));
   // check if sdpa dropout is enabled
   std::optional<int64_t> dropout_seed = std::nullopt;
   if (MHACallHasDropout(instr->custom_call_target())) {
-    TF_ASSIGN_OR_RETURN(const auto gpu_config,
+    TF_XLA_ASSIGN_OR_RETURN(const auto gpu_config,
                         instr->backend_config<xla::gpu::GpuBackendConfig>());
     dropout_seed = gpu_config.cudnn_fmha_backend_config().seed();
   }
@@ -1060,7 +1060,7 @@ absl::Status IrEmitterUnnested::EmitCuDnnThunk(
 
 absl::Status IrEmitterUnnested::EmitPtxCustomCall(
     const HloCustomCallInstruction* instr) {
-  TF_ASSIGN_OR_RETURN(auto thunk,
+  TF_XLA_ASSIGN_OR_RETURN(auto thunk,
                       EmitPtxCustomKernelThunk(instr, ir_emitter_context_));
   AddThunkToThunkSequence(std::move(thunk));
   return absl::OkStatus();
@@ -1081,30 +1081,30 @@ absl::Status IrEmitterUnnested::EmitCubDeviceRadixSort(
 
   absl::InlinedVector<BufferAllocation::Slice, 2> operands;
   for (int i = 0; i < instr->operand_count(); ++i) {
-    TF_ASSIGN_OR_RETURN(BufferAllocation::Slice operand,
+    TF_XLA_ASSIGN_OR_RETURN(BufferAllocation::Slice operand,
                         GetAllocationSliceForHlo(instr->operand(i), {}));
     operands.push_back(operand);
   }
 
   absl::InlinedVector<BufferAllocation::Slice, 2> results;
-  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice result,
+  TF_XLA_ASSIGN_OR_RETURN(BufferAllocation::Slice result,
                       GetAllocationSliceForHlo(instr, {0}));
   results.push_back(result);
 
   BufferAllocation::Slice scratch;
   if (instr->operand_count() == 1) {
-    TF_ASSIGN_OR_RETURN(scratch, GetAllocationSliceForHlo(instr, {1}));
+    TF_XLA_ASSIGN_OR_RETURN(scratch, GetAllocationSliceForHlo(instr, {1}));
   } else {
-    TF_ASSIGN_OR_RETURN(BufferAllocation::Slice result,
+    TF_XLA_ASSIGN_OR_RETURN(BufferAllocation::Slice result,
                         GetAllocationSliceForHlo(instr, {1}));
     results.push_back(result);
-    TF_ASSIGN_OR_RETURN(scratch, GetAllocationSliceForHlo(instr, {2}));
+    TF_XLA_ASSIGN_OR_RETURN(scratch, GetAllocationSliceForHlo(instr, {2}));
   }
 
-  TF_ASSIGN_OR_RETURN(xla::SortOptions options,
+  TF_XLA_ASSIGN_OR_RETURN(xla::SortOptions options,
                       instr->backend_config<xla::SortOptions>());
   const Shape& operand_shape = instr->operand(0)->shape();
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       std::unique_ptr<CubSortThunk> thunk,
       CubSortThunk::Create(
           Thunk::ThunkInfo::WithProfileAnnotation(
@@ -1134,7 +1134,7 @@ absl::Status IrEmitterUnnested::EmitCustomCallThunk(
 
   Slices operands;
   for (auto* operand : instr->operands()) {
-    TF_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
+    TF_XLA_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
         operand->shape(), [&](const Shape& subshape, const ShapeIndex& index) {
           if (subshape.IsToken()) {
             operands.push_back(std::nullopt);
@@ -1143,7 +1143,7 @@ absl::Status IrEmitterUnnested::EmitCustomCallThunk(
           if (!subshape.IsArray()) {
             return absl::OkStatus();
           }
-          TF_ASSIGN_OR_RETURN(auto slice,
+          TF_XLA_ASSIGN_OR_RETURN(auto slice,
                               GetAllocationSliceForHlo(operand, index));
           operands.push_back(ShapedSlice{slice, subshape});
           return absl::OkStatus();
@@ -1151,7 +1151,7 @@ absl::Status IrEmitterUnnested::EmitCustomCallThunk(
   }
 
   Slices results;
-  TF_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
+  TF_XLA_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
       instr->shape(), [&](const Shape& subshape, const ShapeIndex& index) {
         if (subshape.IsToken()) {
           results.push_back(std::nullopt);
@@ -1160,7 +1160,7 @@ absl::Status IrEmitterUnnested::EmitCustomCallThunk(
         if (!subshape.IsArray()) {
           return absl::OkStatus();
         }
-        TF_ASSIGN_OR_RETURN(auto slice, GetAllocationSliceForHlo(instr, index));
+        TF_XLA_ASSIGN_OR_RETURN(auto slice, GetAllocationSliceForHlo(instr, index));
         results.push_back(ShapedSlice{slice, subshape});
         return absl::OkStatus();
       }));
@@ -1194,7 +1194,7 @@ absl::Status IrEmitterUnnested::EmitCustomCallThunk(
             "parsable into "
             "dictionary attribute");
       }
-      TF_ASSIGN_OR_RETURN(attributes, xla::ffi::BuildAttributesMap(dict));
+      TF_XLA_ASSIGN_OR_RETURN(attributes, xla::ffi::BuildAttributesMap(dict));
     }
     return CustomCallThunk::Create(
         Thunk::ThunkInfo::WithProfileAnnotation(
@@ -1237,9 +1237,9 @@ absl::Status IrEmitterUnnested::EmitCustomCallThunk(
 }
 
 absl::Status IrEmitterUnnested::EmitFftThunk(const HloFftInstruction* instr) {
-  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice arg_slice,
+  TF_XLA_ASSIGN_OR_RETURN(BufferAllocation::Slice arg_slice,
                       GetAllocationSliceForHlo(instr->operand(0)));
-  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice dest_slice,
+  TF_XLA_ASSIGN_OR_RETURN(BufferAllocation::Slice dest_slice,
                       GetAllocationSliceForHlo(instr));
   AddThunkToThunkSequence(std::make_unique<FftThunk>(
       Thunk::ThunkInfo::WithProfileAnnotation(
@@ -1272,13 +1272,13 @@ absl::Status IrEmitterUnnested::EmitTriangularSolveCustomCall(
   TF_RET_CHECK(has_fortran_layout(operands[1]->shape().layout()));
   TF_RET_CHECK(has_fortran_layout(instr->shape().tuple_shapes(0).layout()));
 
-  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice a_slice,
+  TF_XLA_ASSIGN_OR_RETURN(BufferAllocation::Slice a_slice,
                       GetAllocationSliceForHlo(operands[0]));
-  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice b_slice,
+  TF_XLA_ASSIGN_OR_RETURN(BufferAllocation::Slice b_slice,
                       GetAllocationSliceForHlo(operands[1]));
-  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice result_slice,
+  TF_XLA_ASSIGN_OR_RETURN(BufferAllocation::Slice result_slice,
                       GetAllocationSliceForHlo(instr, {0}));
-  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice temp_slice,
+  TF_XLA_ASSIGN_OR_RETURN(BufferAllocation::Slice temp_slice,
                       GetAllocationSliceForHlo(instr, {1}));
 
   const Shape b_shape = operands[1]->shape();
@@ -1287,7 +1287,7 @@ absl::Status IrEmitterUnnested::EmitTriangularSolveCustomCall(
   TriangularSolveOptions backend_config;
   auto& backend_config_str = instr->raw_backend_config_string();
   if (!backend_config_str.empty()) {
-    TF_RETURN_IF_ERROR(
+    TF_XLA_RETURN_IF_ERROR(
         tsl::HumanReadableJsonToProto(backend_config_str, &backend_config));
   }
 
@@ -1364,7 +1364,7 @@ absl::Status IrEmitterUnnested::EmitTopKCustomCall(
                 1, data_shape.dimensions(0), top_elements_shape.dimensions(0)};
 
   // Prepare kernel arguments.
-  TF_ASSIGN_OR_RETURN(auto kernel_arguments,
+  TF_XLA_ASSIGN_OR_RETURN(auto kernel_arguments,
                       emitters::KernelArguments::Create(
                           ir_emitter_context_->buffer_assignment(),
                           GetDefaultBufferAlignment(), instr));
@@ -1404,7 +1404,7 @@ absl::Status IrEmitterUnnested::EmitTopKCustomCall(
 
   TF_RET_CHECK(k <= 16) << "CustomCall TopK requires k <= 16";
   // Load TopK custom kernel.
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       CustomKernel kernel,
       kernel::topk::GetTopKKernel("topk", dtype, n, k, batch_size,
                                   platform_name(), wavefront_size));
@@ -1460,7 +1460,7 @@ absl::Status IrEmitterUnnested::EmitTritonCustomCall(
     block_level_parameters.num_warps = call.num_warps;
     block_level_parameters.num_ctas = 1;
 
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         auto result,
         CompileTritonToLLVM(kernel_name, *hlo_module,
                             ir_emitter_context_->gpu_device_info(),
@@ -1468,7 +1468,7 @@ absl::Status IrEmitterUnnested::EmitTritonCustomCall(
                             ir_emitter_context_->llvm_module(), mlir_context,
                             /*is_xla_fusion=*/false, emit_kernels));
 
-    TF_ASSIGN_OR_RETURN(auto kernel_arguments,
+    TF_XLA_ASSIGN_OR_RETURN(auto kernel_arguments,
                         emitters::KernelArguments::Create(
                             ir_emitter_context_->buffer_assignment(),
                             GetDefaultBufferAlignment(), instr));
@@ -1490,7 +1490,7 @@ absl::Status IrEmitterUnnested::EmitTritonCustomCall(
 
       llvm::IRBuilder builder(ir_emitter_context_->llvm_module()->getContext());
 
-      TF_ASSIGN_OR_RETURN(llvm::Function * kernel,
+      TF_XLA_ASSIGN_OR_RETURN(llvm::Function * kernel,
                           BuildKernelPrototypeFromUniqueName(
                               *ir_emitter_context_, impl_fn->getName().str(),
                               sanitized_kernel_name, kernel_arguments,
@@ -1536,9 +1536,9 @@ absl::Status IrEmitterUnnested::EmitTritonCustomCall(
   auto [status_or_entry, was_cached] =
       ir_emitter_context_->kernel_cache().GetWithStatus(
           instr->raw_backend_config_string(), generate);
-  TF_ASSIGN_OR_RETURN(const KernelReuseCache::Entry* entry, status_or_entry);
+  TF_XLA_ASSIGN_OR_RETURN(const KernelReuseCache::Entry* entry, status_or_entry);
 
-  TF_ASSIGN_OR_RETURN(auto kernel_arguments,
+  TF_XLA_ASSIGN_OR_RETURN(auto kernel_arguments,
                       emitters::KernelArguments::Create(
                           ir_emitter_context_->buffer_assignment(),
                           GetDefaultBufferAlignment(), instr));
@@ -1556,19 +1556,19 @@ absl::Status IrEmitterUnnested::EmitAsyncComputation(
   const HloInstruction* wrapped = instr->async_wrapped_instruction();
   const ExecutionStreamAssignment& stream_assignment =
       ir_emitter_context_->execution_stream_assignment();
-  TF_ASSIGN_OR_RETURN(auto stream,
+  TF_XLA_ASSIGN_OR_RETURN(auto stream,
                       stream_assignment.GetSyncExecutionStreamId(wrapped));
   TF_RET_CHECK(wrapped->called_computations().size() == 1);
   auto computation = wrapped->called_computations().front();
   auto ir_emitter = IrEmitterUnnested::Create(ir_emitter_context_);
-  TF_RETURN_IF_ERROR(ir_emitter->EmitHloComputation(computation));
+  TF_XLA_RETURN_IF_ERROR(ir_emitter->EmitHloComputation(computation));
   std::unique_ptr<SequentialThunk> thunk_sequence =
       ir_emitter->ConsumeThunkSequence();
   for (auto& thunk : thunk_sequence->thunks()) {
     thunk->set_execution_stream_id(stream);
   }
   auto* async_start = Cast<HloAsyncInstruction>(instr);
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       ExecutionStreamAssignment::AsyncExecutionStreamIds async_streams,
       stream_assignment.GetAsyncExecutionStreamIds(async_start));
   // We launch the thunk sequence computation on a concurrent
@@ -1597,12 +1597,12 @@ absl::Status IrEmitterUnnested::EmitFusion(const HloFusionInstruction* instr) {
           &ir_emitter_context_->buffer_assignment(),
           /*call_graph=*/*call_graph_),
       ir_emitter_context_->mlir_context());
-  TF_ASSIGN_OR_RETURN(auto result, emitter->Emit(*ir_emitter_context_, *instr));
+  TF_XLA_ASSIGN_OR_RETURN(auto result, emitter->Emit(*ir_emitter_context_, *instr));
 
   const ExecutionStreamAssignment& stream_assignment =
       ir_emitter_context_->execution_stream_assignment();
   for (std::unique_ptr<Thunk>& thunk : result.thunks) {
-    TF_ASSIGN_OR_RETURN(ExecutionStreamId execution_stream_id,
+    TF_XLA_ASSIGN_OR_RETURN(ExecutionStreamId execution_stream_id,
                         stream_assignment.GetSyncExecutionStreamId(instr));
     thunk->set_execution_stream_id(execution_stream_id);
     AddThunkToThunkSequence(std::move(thunk));
@@ -1615,9 +1615,9 @@ absl::Status IrEmitterUnnested::EmitCopy(const HloInstruction* instr) {
   TF_RET_CHECK(LayoutUtil::LayoutsInShapesEqual(
       instr->operand(0)->shape(), instr->shape(),
       Layout::Equal().MinorToMajorOnly()));
-  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice src_buffer,
+  TF_XLA_ASSIGN_OR_RETURN(BufferAllocation::Slice src_buffer,
                       GetAllocationSliceForHlo(instr->operand(0)));
-  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice dst_buffer,
+  TF_XLA_ASSIGN_OR_RETURN(BufferAllocation::Slice dst_buffer,
                       GetAllocationSliceForHlo(instr));
   AddThunkToThunkSequence(std::make_unique<DeviceToDeviceCopyThunk>(
       Thunk::ThunkInfo::WithProfileAnnotation(
@@ -1634,14 +1634,14 @@ absl::Status IrEmitterUnnested::EmitAsyncCustomCallStart(
   auto* async_start = Cast<HloAsyncInstruction>(instr);
   const ExecutionStreamAssignment& stream_assignment =
       ir_emitter_context_->execution_stream_assignment();
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       ExecutionStreamAssignment::AsyncExecutionStreamIds streams,
       stream_assignment.GetAsyncExecutionStreamIds(async_start));
   AddThunkToThunkSequence(std::make_unique<WaitForStreamsThunk>(
       Thunk::ThunkInfo::WithProfileAnnotation(
           instr, ir_emitter_context_->GetNextThunkId()),
       streams.destination_stream_id, streams.source_stream_id));
-  TF_ASSIGN_OR_RETURN(ExecutionStreamId execution_stream_id,
+  TF_XLA_ASSIGN_OR_RETURN(ExecutionStreamId execution_stream_id,
                       stream_assignment.GetSyncExecutionStreamId(wrapped));
 
   auto* custom_call = Cast<HloCustomCallInstruction>(wrapped);
@@ -1683,7 +1683,7 @@ absl::Status IrEmitterUnnested::AssertNonDeterminismIsOkay(
 }
 
 absl::Status IrEmitterUnnested::EmitWhile(const HloInstruction* instr) {
-  TF_ASSIGN_OR_RETURN(auto config,
+  TF_XLA_ASSIGN_OR_RETURN(auto config,
                       instr->backend_config<xla::WhileLoopBackendConfig>());
 
   std::optional<int64_t> trip_count = std::nullopt;
@@ -1691,7 +1691,7 @@ absl::Status IrEmitterUnnested::EmitWhile(const HloInstruction* instr) {
     trip_count = config.known_trip_count().n();
   }
 
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       auto thunk,
       BuildWhileThunk(instr,
                       Thunk::ThunkInfo::WithProfileAnnotation(
@@ -1706,7 +1706,7 @@ absl::Status IrEmitterUnnested::EmitRngGetAndUpdateState(
     const HloRngGetAndUpdateStateInstruction* instr) {
   // Emit a kernel to increment the global state for Philox RNG
   // algorithm.
-  TF_ASSIGN_OR_RETURN(auto ir_arrays, BuildKernelThunkForNonFusionOp(
+  TF_XLA_ASSIGN_OR_RETURN(auto ir_arrays, BuildKernelThunkForNonFusionOp(
                                           instr, LaunchDimensions()));
   llvm::Value* old_state =
       llvm_ir::RngGetAndUpdateState(instr->delta(), module_, &b_);
@@ -1740,9 +1740,9 @@ absl::Status IrEmitterUnnested::EmitSort(const HloSortInstruction* sort) {
     // If possible, we share buffers. If that is not possible, we
     // need to copy the values, because the emitter does the sorting
     // in-place.
-    TF_ASSIGN_OR_RETURN(destination_buffer,
+    TF_XLA_ASSIGN_OR_RETURN(destination_buffer,
                         GetAllocationSliceForHlo(sort, shape_index));
-    TF_ASSIGN_OR_RETURN(source_address,
+    TF_XLA_ASSIGN_OR_RETURN(source_address,
                         GetAllocationSliceForHlo(sort->operand(i), {}));
 
     if (destination_buffer != source_address) {
@@ -1864,7 +1864,7 @@ absl::Status IrEmitterUnnested::EmitSort(const HloSortInstruction* sort) {
     LaunchDimensions launch_dimensions = xor_masks.size() > 1
                                              ? tiled_launch_dimensions
                                              : standard_launch_dimensions;
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         std::vector<llvm_ir::IrArray> ir_arrays,
         BuildKernelThunkForNonFusionOp(sort, launch_dimensions));
 
@@ -1898,17 +1898,17 @@ absl::Status IrEmitterUnnested::EmitSort(const HloSortInstruction* sort) {
       }
       if (xor_mask >= tile_size) {
         if (!xor_masks.empty()) {
-          TF_RETURN_IF_ERROR(emit_kernel(xor_masks));
+          TF_XLA_RETURN_IF_ERROR(emit_kernel(xor_masks));
           xor_masks.clear();
         }
-        TF_RETURN_IF_ERROR(emit_kernel({xor_mask}));
+        TF_XLA_RETURN_IF_ERROR(emit_kernel({xor_mask}));
       } else {
         xor_masks.push_back(xor_mask);
       }
     }
   }
   if (!xor_masks.empty()) {
-    TF_RETURN_IF_ERROR(emit_kernel(xor_masks));
+    TF_XLA_RETURN_IF_ERROR(emit_kernel(xor_masks));
   }
   return absl::OkStatus();
 }
@@ -1916,7 +1916,7 @@ absl::Status IrEmitterUnnested::EmitSort(const HloSortInstruction* sort) {
 template <typename ThunkType>
 absl::Status IrEmitterUnnested::EmitReplicaOrPartitionId(
     const HloInstruction* instr) {
-  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice result_slice,
+  TF_XLA_ASSIGN_OR_RETURN(BufferAllocation::Slice result_slice,
                       GetAllocationSliceForHlo(instr, {}));
   auto thunk = std::make_unique<ThunkType>(
       Thunk::ThunkInfo::WithProfileAnnotation(
@@ -1941,7 +1941,7 @@ absl::Status IrEmitterUnnested::EmitCollectiveMetadata(
   std::vector<CollectiveMetadataThunk::Buffer> buffers;
   buffers.reserve(instr->operands().size());
   for (const HloInstruction* operand : instr->operands()) {
-    TF_ASSIGN_OR_RETURN(BufferAllocation::Slice slice,
+    TF_XLA_ASSIGN_OR_RETURN(BufferAllocation::Slice slice,
                         GetAllocationSliceForHlo(operand, {}));
     buffers.push_back({slice, operand->shape().layout().memory_space()});
   }
@@ -1949,7 +1949,7 @@ absl::Status IrEmitterUnnested::EmitCollectiveMetadata(
   // Operation result should be a tuple where the last element is the buffer for
   // the metadata.
   ShapeIndex result_shape_index = {static_cast<int64_t>(buffers.size())};
-  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice result,
+  TF_XLA_ASSIGN_OR_RETURN(BufferAllocation::Slice result,
                       GetAllocationSliceForHlo(instr, result_shape_index));
 
   auto thunk = std::make_unique<CollectiveMetadataThunk>(
@@ -1980,7 +1980,7 @@ absl::Status IrEmitterUnnested::EmitCollectivePermute(
     const ShapeIndex nested_shape_idx = {1, oprd_idx}, normal_shape_idx = {1};
     const Shape operand_shape = operand->shape();
     const Shape result_shape = instr->shape().tuple_shapes(1);
-    TF_ASSIGN_OR_RETURN(BufferAllocation::Slice result_slice,
+    TF_XLA_ASSIGN_OR_RETURN(BufferAllocation::Slice result_slice,
                         GetAllocationSliceForHlo(
                             instr, result_shape.IsTuple() ? nested_shape_idx
                                                           : normal_shape_idx));
@@ -1991,7 +1991,7 @@ absl::Status IrEmitterUnnested::EmitCollectivePermute(
             ? result_shape.tuple_shapes(0).layout().memory_space()
             : result_shape.layout().memory_space();
 
-    TF_ASSIGN_OR_RETURN(BufferAllocation::Slice source_slice,
+    TF_XLA_ASSIGN_OR_RETURN(BufferAllocation::Slice source_slice,
                         GetAllocationSliceForHlo(operand));
     if (CollectivePermuteStartThunk::IsDegenerate(instr, replica_count,
                                                   partition_count)) {
@@ -2100,8 +2100,8 @@ absl::Status IrEmitterUnnested::EmitCollectiveThunk(
       ShapeIndex idx = operand_count > 1 ? ShapeIndex({1, i}) : ShapeIndex({1});
       const Shape& src_shape = inst->operand(i)->shape();
       const Shape& dst_shape = ShapeUtil::GetSubshape(inst->shape(), idx);
-      TF_ASSIGN_OR_RETURN(auto src, GetAllocationSliceForHlo(inst->operand(i)));
-      TF_ASSIGN_OR_RETURN(auto dst, GetAllocationSliceForHlo(inst, idx));
+      TF_XLA_ASSIGN_OR_RETURN(auto src, GetAllocationSliceForHlo(inst->operand(i)));
+      TF_XLA_ASSIGN_OR_RETURN(auto dst, GetAllocationSliceForHlo(inst, idx));
       add_buffer(ShapeUtil::ElementsIn(src_shape), src,
                  src_shape.layout().memory_space(), dst,
                  dst_shape.layout().memory_space());
@@ -2112,7 +2112,7 @@ absl::Status IrEmitterUnnested::EmitCollectiveThunk(
     // operand is aliased with the instruction result. All other
     // operands are not aliased.
     const Shape& input_shape = inst->operand(0)->shape();
-    TF_ASSIGN_OR_RETURN(auto input_buffer,
+    TF_XLA_ASSIGN_OR_RETURN(auto input_buffer,
                         GetAllocationSliceForHlo(inst->operand(0)));
     add_buffer(ShapeUtil::ElementsIn(input_shape), input_buffer,
                input_shape.layout().memory_space(), input_buffer,
@@ -2120,9 +2120,9 @@ absl::Status IrEmitterUnnested::EmitCollectiveThunk(
 
     const Shape& output_shape = inst->operand(1)->shape();
     const Shape& result_shape = inst->shape();
-    TF_ASSIGN_OR_RETURN(auto output_buffer,
+    TF_XLA_ASSIGN_OR_RETURN(auto output_buffer,
                         GetAllocationSliceForHlo(inst->operand(1)));
-    TF_ASSIGN_OR_RETURN(auto result_buffer, GetAllocationSliceForHlo(inst));
+    TF_XLA_ASSIGN_OR_RETURN(auto result_buffer, GetAllocationSliceForHlo(inst));
 
     add_buffer(ShapeUtil::ElementsIn(result_shape), output_buffer,
                output_shape.layout().memory_space(), result_buffer,
@@ -2130,7 +2130,7 @@ absl::Status IrEmitterUnnested::EmitCollectiveThunk(
 
     for (int64_t i = 2; i < operand_count; i++) {
       const Shape& shape = inst->operand(i)->shape();
-      TF_ASSIGN_OR_RETURN(auto slice,
+      TF_XLA_ASSIGN_OR_RETURN(auto slice,
                           GetAllocationSliceForHlo(inst->operand(i)));
       add_buffer(ShapeUtil::ElementsIn(shape), slice,
                  shape.layout().memory_space(), slice,
@@ -2143,8 +2143,8 @@ absl::Status IrEmitterUnnested::EmitCollectiveThunk(
           inst->shape().IsTuple() ? ShapeIndex({i}) : ShapeIndex({});
       const Shape& src_shape = inst->operand(i)->shape();
       const Shape& dst_shape = ShapeUtil::GetSubshape(inst->shape(), idx);
-      TF_ASSIGN_OR_RETURN(auto src, GetAllocationSliceForHlo(inst->operand(i)));
-      TF_ASSIGN_OR_RETURN(auto dst, GetAllocationSliceForHlo(inst, idx));
+      TF_XLA_ASSIGN_OR_RETURN(auto src, GetAllocationSliceForHlo(inst->operand(i)));
+      TF_XLA_ASSIGN_OR_RETURN(auto dst, GetAllocationSliceForHlo(inst, idx));
       add_buffer(ShapeUtil::ElementsIn(src_shape), src,
                  src_shape.layout().memory_space(), dst,
                  dst_shape.layout().memory_space());
@@ -2162,7 +2162,7 @@ absl::Status IrEmitterUnnested::EmitCollectiveThunk(
     // TODO(b/828435206) Remove this constexpr once collective kernel thunk is
     // lifted out of the all reduce thunk.
     if constexpr (kRequiresCollectiveKernelThunk<CollectiveThunkType>) {
-      TF_ASSIGN_OR_RETURN(
+      TF_XLA_ASSIGN_OR_RETURN(
           auto collective_kernel_thunk,
           EmitCollectiveKernelThunk(ir_emitter_context_, call_graph_.get(),
                                     thunk_info, buffers,
@@ -2358,7 +2358,7 @@ absl::Status IrEmitterUnnested::EmitCollectiveGroupStartThunk(
   std::optional<AsyncStreamKind> stream_kind;
   for (const HloInstruction* nested_instruction :
        instr->async_wrapped_computation()->instructions()) {
-    TF_RETURN_IF_ERROR(EmitHloInstruction(nested_instruction));
+    TF_XLA_RETURN_IF_ERROR(EmitHloInstruction(nested_instruction));
     if ((nested_instruction->opcode() == HloOpcode::kSend ||
          nested_instruction->opcode() == HloOpcode::kRecv) &&
         !stream_kind.has_value()) {
@@ -2501,8 +2501,8 @@ absl::Status IrEmitterUnnested::EmitNvshmemThunk(
     ShapeIndex idx = operand_count > 1 ? ShapeIndex({i}) : ShapeIndex({});
     const Shape& src_shape = inst->operand(i)->shape();
     const Shape& dst_shape = ShapeUtil::GetSubshape(inst->shape(), idx);
-    TF_ASSIGN_OR_RETURN(auto src, GetAllocationSliceForHlo(inst->operand(i)));
-    TF_ASSIGN_OR_RETURN(auto dst, GetAllocationSliceForHlo(inst, idx));
+    TF_XLA_ASSIGN_OR_RETURN(auto src, GetAllocationSliceForHlo(inst->operand(i)));
+    TF_XLA_ASSIGN_OR_RETURN(auto dst, GetAllocationSliceForHlo(inst, idx));
     add_buffer(ShapeUtil::ElementsIn(src_shape), src,
                src_shape.layout().memory_space(), dst,
                dst_shape.layout().memory_space());
@@ -2565,12 +2565,12 @@ absl::Status IrEmitterUnnested::EmitInfeed(const HloInfeedInstruction* instr) {
   // and a token. We only need the result data to construct the
   // infeed thunk.
   std::vector<ShapedSlice> shaped_slices;
-  TF_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
+  TF_XLA_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
       instr->shape(),
       [&](const Shape& subshape, const ShapeIndex& index) -> absl::Status {
         if (subshape.IsTuple() || subshape.IsToken()) return absl::OkStatus();
         if (subshape.IsArray()) {
-          TF_ASSIGN_OR_RETURN(BufferAllocation::Slice data,
+          TF_XLA_ASSIGN_OR_RETURN(BufferAllocation::Slice data,
                               GetAllocationSliceForHlo(instr, index));
           ShapedSlice shaped_slice = {data, subshape};
           shaped_slices.push_back(shaped_slice);
@@ -2594,12 +2594,12 @@ absl::Status IrEmitterUnnested::EmitOutfeed(
   // and a single token output.
   const HloInstruction* source = instr->operand(0);
   std::vector<ShapedSlice> shaped_slices;
-  TF_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
+  TF_XLA_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
       source->shape(),
       [&](const Shape& subshape, const ShapeIndex& index) -> absl::Status {
         if (subshape.IsTuple()) return absl::OkStatus();
         if (subshape.IsArray()) {
-          TF_ASSIGN_OR_RETURN(BufferAllocation::Slice data,
+          TF_XLA_ASSIGN_OR_RETURN(BufferAllocation::Slice data,
                               GetAllocationSliceForHlo(source, index));
           ShapedSlice shaped_slice = {data, subshape};
           shaped_slices.push_back(shaped_slice);
@@ -2622,14 +2622,14 @@ IrEmitterUnnested::BuildKernelThunkForNonFusionOp(
     const HloInstruction* instr, const LaunchDimensions& launch_dimensions) {
   std::string suggested_kernel_name(instr->name());
 
-  TF_ASSIGN_OR_RETURN(auto kernel_arguments,
+  TF_XLA_ASSIGN_OR_RETURN(auto kernel_arguments,
                       emitters::KernelArguments::Create(
                           ir_emitter_context_->buffer_assignment(),
                           GetDefaultBufferAlignment(), instr));
 
   VLOG(3) << "Generating (without reuse check): " << suggested_kernel_name;
 
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       llvm::Function * kernel,
       BuildKernelPrototype(*ir_emitter_context_, suggested_kernel_name,
                            suggested_kernel_name, kernel_arguments,
@@ -2669,14 +2669,14 @@ absl::StatusOr<std::unique_ptr<Thunk>> IrEmitterUnnested::BuildWhileThunk(
 
   // Generate thunk sequence for while 'condition'.
   auto ir_emitter_condition = IrEmitterUnnested::Create(ir_emitter_context_);
-  TF_RETURN_IF_ERROR(ir_emitter_condition->EmitHloComputation(condition));
+  TF_XLA_RETURN_IF_ERROR(ir_emitter_condition->EmitHloComputation(condition));
 
   // Generate thunk sequence for while 'body'.
   auto ir_emitter_body = IrEmitterUnnested::Create(ir_emitter_context_);
-  TF_RETURN_IF_ERROR(ir_emitter_body->EmitHloComputation(body));
+  TF_XLA_RETURN_IF_ERROR(ir_emitter_body->EmitHloComputation(body));
 
   // Buffer slice holding while loop predicate.
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       auto pred, GetAllocationSliceForHlo(condition->root_instruction(), {}));
 
   Thunk::ThunkInfo cond_thunk_info = Thunk::ThunkInfo::WithProfileAnnotation(
@@ -2725,20 +2725,20 @@ absl::Status IrEmitterUnnested::EmitCopyStartThunk(
   // copy-start has a tuple shape: {host, device, context},
   // or {device, host, context}.
   // Only the destination shape is needed to get the output buffer.
-  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice dst_buffer,
+  TF_XLA_ASSIGN_OR_RETURN(BufferAllocation::Slice dst_buffer,
                       GetAllocationSliceForHlo(copy_start_instr,
                                                /*index=*/{0}));
 
   const HloInstruction* src = copy_start_instr->operand(0);
   const Shape& input_shape = src->shape();
-  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice src_buffer,
+  TF_XLA_ASSIGN_OR_RETURN(BufferAllocation::Slice src_buffer,
                       GetAllocationSliceForHlo(src, {}));
   const Shape& shape = copy_start_instr->shape();
   CHECK(shape.IsTuple());
   int host_memory_space = static_cast<int>(stream_executor::MemoryType::kHost);
-  TF_ASSIGN_OR_RETURN(bool is_dst_host_memory,
+  TF_XLA_ASSIGN_OR_RETURN(bool is_dst_host_memory,
                       ShapeHasHostMemorySpace(shape, 0, host_memory_space));
-  TF_ASSIGN_OR_RETURN(bool is_src_host_memory,
+  TF_XLA_ASSIGN_OR_RETURN(bool is_src_host_memory,
                       ShapeHasHostMemorySpace(shape, 1, host_memory_space));
   if (is_dst_host_memory == is_src_host_memory) {
     return absl::InternalError(
@@ -2749,7 +2749,7 @@ absl::Status IrEmitterUnnested::EmitCopyStartThunk(
   }
   const ExecutionStreamAssignment& stream_assignment =
       ir_emitter_context_->execution_stream_assignment();
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       ExecutionStreamAssignment::AsyncExecutionStreamIds streams,
       stream_assignment.GetAsyncExecutionStreamIds(copy_start_instr));
   // Insert a waitFor() thunk for asynchronous memcpy only when the
@@ -2804,7 +2804,7 @@ absl::Status IrEmitterUnnested::EmitCopyDoneThunk(const HloInstruction* instr) {
 
 absl::Status IrEmitterUnnested::EmitSendThunk(const HloSendInstruction* instr) {
   const HloInstruction* src = instr->operand(0);
-  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice slice,
+  TF_XLA_ASSIGN_OR_RETURN(BufferAllocation::Slice slice,
                       GetAllocationSliceForHlo(src, {}));
   if (!instr->is_host_transfer()) {
     const auto& hlo_config = ir_emitter_context_->hlo_module().config();
@@ -2906,7 +2906,7 @@ absl::Status IrEmitterUnnested::EmitSendDoneThunk(
 
 absl::Status IrEmitterUnnested::EmitRecvThunk(const HloRecvInstruction* instr) {
   TF_RET_CHECK(instr->shape().IsTuple());
-  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice slice,
+  TF_XLA_ASSIGN_OR_RETURN(BufferAllocation::Slice slice,
                       GetAllocationSliceForHlo(instr, {0}));
 
   if (!instr->is_host_transfer()) {
@@ -3074,7 +3074,7 @@ absl::Status IrEmitterUnnested::EmitHloInstruction(
           if (collective_hero.has_value()) {
             switch ((*collective_hero)->opcode()) {
               case HloOpcode::kReduceScatter:
-                TF_RETURN_IF_ERROR(
+                TF_XLA_RETURN_IF_ERROR(
                     EmitCollectiveAsyncDone(Thunk::kReduceScatterDone, instr));
                 break;
               default:
@@ -3107,7 +3107,7 @@ absl::Status IrEmitterUnnested::EmitHloInstruction(
           auto* async_done = Cast<HloAsyncInstruction>(instr);
           const ExecutionStreamAssignment& stream_assignment =
               ir_emitter_context_->execution_stream_assignment();
-          TF_ASSIGN_OR_RETURN(
+          TF_XLA_ASSIGN_OR_RETURN(
               ExecutionStreamAssignment::AsyncExecutionStreamIds streams,
               stream_assignment.GetAsyncExecutionStreamIds(async_done));
           AddThunkToThunkSequence(std::make_unique<WaitForStreamsThunk>(
@@ -3165,7 +3165,7 @@ absl::Status IrEmitterUnnested::EmitHloInstruction(
           auto* async_start = Cast<HloAsyncInstruction>(instr);
           const ExecutionStreamAssignment& stream_assignment =
               ir_emitter_context_->execution_stream_assignment();
-          TF_ASSIGN_OR_RETURN(
+          TF_XLA_ASSIGN_OR_RETURN(
               ExecutionStreamAssignment::AsyncExecutionStreamIds streams,
               stream_assignment.GetAsyncExecutionStreamIds(async_start));
           AddThunkToThunkSequence(std::make_unique<WaitForStreamsThunk>(
@@ -3198,7 +3198,7 @@ absl::Status IrEmitterUnnested::EmitHloInstruction(
                 operand_slices;
             for (HloInstruction* operand : wrapped->operands()) {
               for (auto& indexed : ShapeUtil::GetLeafShapes(operand->shape())) {
-                TF_ASSIGN_OR_RETURN(
+                TF_XLA_ASSIGN_OR_RETURN(
                     auto slice,
                     ir_emitter_context_->buffer_assignment().GetUniqueSlice(
                         operand, indexed.index));
@@ -3210,7 +3210,7 @@ absl::Status IrEmitterUnnested::EmitHloInstruction(
             absl::InlinedVector<HostExecuteStartThunk::SliceAndShape, 4>
                 result_slices;
             for (auto& indexed : ShapeUtil::GetLeafShapes(wrapped->shape())) {
-              TF_ASSIGN_OR_RETURN(
+              TF_XLA_ASSIGN_OR_RETURN(
                   auto slice,
                   ir_emitter_context_->buffer_assignment().GetUniqueSlice(
                       wrapped, indexed.index));
@@ -3223,7 +3223,7 @@ absl::Status IrEmitterUnnested::EmitHloInstruction(
             host_offloading_executable_proto.set_executable_type(
                 HostOffloadingExecutableProto::EXECUTABLE_TYPE_NANORT);
 
-            TF_ASSIGN_OR_RETURN(
+            TF_XLA_ASSIGN_OR_RETURN(
                 auto thunk,
                 HostExecuteStartThunk::Create(
                     Thunk::ThunkInfo::WithProfileAnnotation(
@@ -3400,7 +3400,7 @@ absl::Status IrEmitterUnnested::EmitHloComputation(
   absl::flat_hash_map<const HloInstruction*, Thunk*> instr_to_thunk;
   for (const HloInstruction* instr : sequence.instructions()) {
     int64_t previous_thunk_size = thunk_sequence_.size();
-    TF_RETURN_IF_ERROR(EmitHloInstruction(instr));
+    TF_XLA_RETURN_IF_ERROR(EmitHloInstruction(instr));
     if (thunk_sequence_.size() > previous_thunk_size) {
       instr_to_thunk[instr] = thunk_sequence_.back().get();
     }

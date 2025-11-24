@@ -52,7 +52,7 @@ absl::StatusOr<std::vector<uint8_t>> CompileGpuAsm(
     bool cancel_if_reg_spill) {
   if (IsLibNvPtxCompilerSupported()) {
     VLOG(3) << "Compiling GPU ASM with libnvptxcompiler";
-    TF_ASSIGN_OR_RETURN(auto assembly,
+    TF_XLA_ASSIGN_OR_RETURN(auto assembly,
                         CompileGpuAsmUsingLibNvPtxCompiler(
                             cc, ptx, options, cancel_if_reg_spill,
                             /*dump_compilation_log=*/false));
@@ -61,7 +61,7 @@ absl::StatusOr<std::vector<uint8_t>> CompileGpuAsm(
 
   VLOG(3) << "Compiling GPU ASM with PTXAS. Libnvptxcompiler compilation "
              "not supported.";
-  TF_ASSIGN_OR_RETURN(auto assembly, CompileGpuAsmUsingPtxAs(
+  TF_XLA_ASSIGN_OR_RETURN(auto assembly, CompileGpuAsmUsingPtxAs(
                                          cc, ptx, options, cancel_if_reg_spill,
                                          /*dump_compilation_log=*/false));
   return std::move(assembly.cubin);
@@ -89,7 +89,7 @@ absl::StatusOr<absl::Span<const uint8_t>> CompileGpuAsmOrGetCached(
 
   // Failed compilation attempts are cached.
   // Use separate status check and ValueOrDie invocation on ptx_cache
-  // entry to avoid value moving introduced by TF_ASSIGN_OR_RETURN.
+  // entry to avoid value moving introduced by TF_XLA_ASSIGN_OR_RETURN.
 
   if (ABSL_PREDICT_FALSE(!it->second.ok())) {
     return it->second.status();

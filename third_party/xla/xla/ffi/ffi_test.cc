@@ -217,7 +217,7 @@ TEST(FfiTest, RunId) {
   auto handler = Ffi::Bind().Ctx<RunId>().Ctx().To(
       [&](RunId run_id, Context context) -> absl::Status {
         EXPECT_EQ(run_id.ToInt(), 42);
-        TF_ASSIGN_OR_RETURN(RunId run_id_from_context, context.get<RunId>());
+        TF_XLA_ASSIGN_OR_RETURN(RunId run_id_from_context, context.get<RunId>());
         EXPECT_EQ(run_id_from_context.ToInt(), 42);
         return absl::OkStatus();
       });

@@ -52,7 +52,7 @@ absl::StatusOr<absl::Duration> MaybeGetGemmCostModelForGemmTritonFusion(
     return absl::FailedPreconditionError("Not a custom fusion.");
   }
 
-  TF_ASSIGN_OR_RETURN(GpuBackendConfig config,
+  TF_XLA_ASSIGN_OR_RETURN(GpuBackendConfig config,
                       fusion->backend_config<GpuBackendConfig>());
   if (config.fusion_backend_config().kind() != kTritonNestedGemmFusionKind) {
     return absl::FailedPreconditionError("Not a Triton GeMM fusion.");

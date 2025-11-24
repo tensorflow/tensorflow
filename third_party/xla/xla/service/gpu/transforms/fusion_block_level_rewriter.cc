@@ -164,7 +164,7 @@ absl::StatusOr<bool> ProcessFusionInstruction(
     const se::DeviceDescription& device_info,
     HloCostAnalysis::ShapeSizeFunction shape_size,
     mlir::MLIRContext* mlir_context) {
-  TF_ASSIGN_OR_RETURN(bool should_try_rewrite,
+  TF_XLA_ASSIGN_OR_RETURN(bool should_try_rewrite,
                       ShouldTryRewriteFusion(fusion_instruction, device_info));
   if (!should_try_rewrite) {
     VLOG(2) << "Not rewriting fusion " << fusion_instruction->ToString()
@@ -183,7 +183,7 @@ absl::StatusOr<bool> ProcessFusionInstruction(
     return false;
   }
 
-  TF_ASSIGN_OR_RETURN(auto backend_config,
+  TF_XLA_ASSIGN_OR_RETURN(auto backend_config,
                       fusion_instruction->backend_config<GpuBackendConfig>());
 
   if (backend_config.has_fusion_backend_config() &&
@@ -199,7 +199,7 @@ absl::StatusOr<bool> ProcessFusionInstruction(
   auto fusion_adaptor = HloFusionAdaptor::ForInstruction(
       Cast<HloFusionInstruction>(fusion_instruction));
 
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       TiledRunTimeDataOrError tiled_runtime_data_or_error,
       indexing_performance_model.TryFindBestTilingForFusion(*fusion_adaptor));
 
@@ -229,7 +229,7 @@ absl::StatusOr<bool> ProcessFusionInstruction(
        ->mutable_block_level_fusion_config() =
       tiled_runtime_data.block_level_parameters.ToBlockLevelFusionConfig();
   backend_config.mutable_fusion_backend_config()->set_kind(kTritonFusionKind);
-  TF_RETURN_IF_ERROR(fusion_instruction->set_backend_config(backend_config));
+  TF_XLA_RETURN_IF_ERROR(fusion_instruction->set_backend_config(backend_config));
   fusion_instruction->set_fusion_kind(HloInstruction::FusionKind::kCustom);
   return true;
 }
@@ -239,7 +239,7 @@ absl::StatusOr<bool> ProcessFusionInstruction(
 absl::StatusOr<bool> FusionBlockLevelRewriter::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
-  TF_RETURN_IF_ERROR(EnsureTritonSupportsComputeCapability(
+  TF_XLA_RETURN_IF_ERROR(EnsureTritonSupportsComputeCapability(
       device_info_.gpu_compute_capability()));
 
   bool has_changed = false;
@@ -251,7 +251,7 @@ absl::StatusOr<bool> FusionBlockLevelRewriter::RunImpl(
     }
     HloFusionInstruction* fusion_instruction =
         ::xla::Cast<HloFusionInstruction>(computation->FusionInstruction());
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         bool changed, ProcessFusionInstruction(fusion_instruction, device_info_,
                                                shape_size_, mlir_context_));
 

@@ -121,7 +121,7 @@ absl::StatusOr<bool> FlattenCallGraph::RunImpl(
   {  // Flatten original call graph.
     std::unique_ptr<CallGraph> call_graph =
         CallGraph::Build(module, execution_threads);
-    TF_ASSIGN_OR_RETURN(bool flattened,
+    TF_XLA_ASSIGN_OR_RETURN(bool flattened,
                         call_graph->VisitNodesWithReturn(FlattenNode));
     changed |= flattened;
   }
@@ -135,7 +135,7 @@ absl::StatusOr<bool> FlattenCallGraph::RunImpl(
   {  // Annotate flattened computations with callee types.
     std::unique_ptr<CallGraph> call_graph =
         CallGraph::Build(module, execution_threads);
-    TF_RETURN_IF_ERROR(call_graph->VisitNodes(AnnotateNode));
+    TF_XLA_RETURN_IF_ERROR(call_graph->VisitNodes(AnnotateNode));
   }
 
   XLA_VLOG_LINES(3, "After flatten call graph:\n" + module->ToString());

@@ -111,7 +111,7 @@ IfrtIrExecutableImplTestBase::SerDeRoundTrip(
 
   // Serialize IFRT IR program with the given compatibility requirement, and the
   // atom programs at the current VHLO version.
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       auto serialized,
       Serialize(
           *program,
@@ -121,7 +121,7 @@ IfrtIrExecutableImplTestBase::SerDeRoundTrip(
               mlir::vhlo::Version::getCurrentVersion().toString())));
 
   // Deserialize the versioned IFRT IR program.
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       program, Deserialize<IfrtIRProgram>(serialized, /*options=*/nullptr));
   return program;
 }
@@ -132,16 +132,16 @@ absl::StatusOr<ArrayRef> IfrtIrExecutableImplTestBase::CreateArray(
   TF_RET_CHECK(per_shard_data.size() == device_list->devices().size())
       << "Inconsistent sizes. per_shard_data " << per_shard_data.size()
       << " vs device_list " << device_list->devices().size();
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       ShardingRef sharding,
       ShardingParamSharding::Create(sharding_param, device_list, MemoryKind()));
-  TF_ASSIGN_OR_RETURN(auto per_shard, sharding->Disassemble(shape));
+  TF_XLA_ASSIGN_OR_RETURN(auto per_shard, sharding->Disassemble(shape));
   // All shards have the same shape. Just pick 0.
   Shape per_shard_shape = per_shard[0].first;
   std::vector<ArrayRef> per_shard_arrays;
   per_shard_arrays.reserve(per_shard_data.size());
   for (int i = 0; i < per_shard_data.size(); ++i) {
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         ArrayRef per_shard_array,
         client_->MakeArrayFromHostBuffer(
             per_shard_data[i], dtype, per_shard_shape,

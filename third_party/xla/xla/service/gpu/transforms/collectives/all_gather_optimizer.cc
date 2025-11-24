@@ -96,7 +96,7 @@ absl::StatusOr<bool> AllGatherOptimizer::RunImpl(
           Cast<HloAllGatherInstruction>(left_all_gather)
               ->use_global_device_ids());
 
-      TF_RETURN_IF_ERROR(computation->ReplaceWithNewInstruction(
+      TF_XLA_RETURN_IF_ERROR(computation->ReplaceWithNewInstruction(
           instruction, std::move(combined)));
       changed = true;
     }

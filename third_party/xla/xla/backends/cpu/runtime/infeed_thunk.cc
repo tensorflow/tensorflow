@@ -64,7 +64,7 @@ tsl::AsyncValueRef<Thunk::ExecuteEvent> InfeedThunk::Execute(
   int64_t infeed_num = 0;
 
   for (InfeedBuffer& infeed_buffer : infeed_buffers_) {
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         se::DeviceMemoryBase infeed_data,
         params.buffer_allocations->GetDeviceAddress(infeed_buffer.slice));
 

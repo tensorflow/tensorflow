@@ -109,7 +109,7 @@ class SubcomputationInsertionVisitor : public DfsHloVisitorWithDefault {
   absl::Status DefaultAction(HloInstruction* hlo) override {
     std::vector<HloInstruction*> new_operands;
     for (HloInstruction* operand : hlo->operands()) {
-      TF_ASSIGN_OR_RETURN(HloInstruction * new_operand, Resolve(operand));
+      TF_XLA_ASSIGN_OR_RETURN(HloInstruction * new_operand, Resolve(operand));
       new_operands.push_back(new_operand);
     }
     VLOG(1) << "Cloning HLO and adding to caller: " << hlo->ToString();
@@ -117,22 +117,22 @@ class SubcomputationInsertionVisitor : public DfsHloVisitorWithDefault {
     RecursivelyUpdateOpName(new_hlo.get(), call_op_name_);
     HloInstruction* new_hlo_pointer =
         outer_->AddInstruction(std::move(new_hlo));
-    TF_RETURN_IF_ERROR(NoteMapping(hlo, new_hlo_pointer));
+    TF_XLA_RETURN_IF_ERROR(NoteMapping(hlo, new_hlo_pointer));
 
     PropagateOriginalValue(new_hlo_pointer, hlo);
 
     // Account for control edges.
     for (HloInstruction* control_predecessor : hlo->control_predecessors()) {
-      TF_ASSIGN_OR_RETURN(HloInstruction * new_control_predecessor,
+      TF_XLA_ASSIGN_OR_RETURN(HloInstruction * new_control_predecessor,
                           Resolve(control_predecessor));
-      TF_RETURN_IF_ERROR(
+      TF_XLA_RETURN_IF_ERROR(
           new_control_predecessor->AddControlDependencyTo(new_hlo_pointer));
     }
 
     // The newly inlined instructions should honor the control predecessors of
     // the previous call instruction.
     for (HloInstruction* control_predecessor : call_->control_predecessors()) {
-      TF_RETURN_IF_ERROR(control_predecessor->AddControlDependencyTo(
+      TF_XLA_RETURN_IF_ERROR(control_predecessor->AddControlDependencyTo(
           /*instruction=*/new_hlo_pointer));
     }
 
@@ -143,7 +143,7 @@ class SubcomputationInsertionVisitor : public DfsHloVisitorWithDefault {
   // from the subcomputation parameter node to the call operands in the caller
   // computation.
   absl::Status HandleParameter(HloInstruction* parameter) override {
-    TF_RETURN_IF_ERROR(NoteMapping(
+    TF_XLA_RETURN_IF_ERROR(NoteMapping(
         parameter, call_->mutable_operand(parameter->parameter_number())));
     return absl::OkStatus();
   }
@@ -151,7 +151,7 @@ class SubcomputationInsertionVisitor : public DfsHloVisitorWithDefault {
   // Wires the consumers of the call to instead point at the newly created
   // root, replacing the call operation in the caller computation.
   absl::Status FinishVisit(HloInstruction* root) override {
-    TF_ASSIGN_OR_RETURN(HloInstruction * new_root, Resolve(root));
+    TF_XLA_ASSIGN_OR_RETURN(HloInstruction * new_root, Resolve(root));
     VLOG(1) << "Replacing all uses of " << call_->ToString()
             << " with new root " << new_root->ToString();
     auto original_value = new_root->original_value();
@@ -322,7 +322,7 @@ CallInliner::Inline(HloInstruction* call) {
 
   // We visit the callee, cloning its body into its caller.
   SubcomputationInsertionVisitor visitor(call, call->metadata().op_name());
-  TF_RETURN_IF_ERROR(callee->Accept(&visitor));
+  TF_XLA_RETURN_IF_ERROR(callee->Accept(&visitor));
   return visitor.ConsumeInstructionMap();
 }
 
@@ -404,7 +404,7 @@ absl::StatusOr<bool> CallInliner::InlineAndLegalize(
       // The caller instruction will get removed after inlining. Record the
       // callee computation beforehand, so we can find its schedule.
       HloComputation* callee = instruction->to_apply();
-      TF_ASSIGN_OR_RETURN(
+      TF_XLA_ASSIGN_OR_RETURN(
           CallInliner::InlinedInstructionMap inline_map_cur_call,
           Inline(instruction));
       if (module->has_schedule()) {
@@ -421,7 +421,7 @@ absl::StatusOr<bool> CallInliner::InlineAndLegalize(
       if (update_domain_) {
         HloDomainIsolator isolator([]() { return ShardingDomainCreator{}; });
         for (const auto& [call_inst, inlined_inst] : inline_map_cur_call) {
-          TF_RETURN_IF_ERROR(isolator.UpdateDomains(inlined_inst).status());
+          TF_XLA_RETURN_IF_ERROR(isolator.UpdateDomains(inlined_inst).status());
         }
       }
       if (inline_map.has_value()) {
@@ -479,7 +479,7 @@ absl::StatusOr<bool> CallInliner::RunWithInlineMap(
 
   // Because call graph nodes are visited in post-order (callees before callers)
   // we'll always inline kCalls into their callers in the appropriate order.
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       bool did_mutate,
       call_graph->VisitNodesWithReturn(
           [&](const CallGraphNode& node) -> absl::StatusOr<bool> {
@@ -505,9 +505,9 @@ absl::StatusOr<bool> CallInliner::RunWithInlineMap(
     // were send/recv instructions, which the module group verifier will flag as
     // error finding the same channel ID used for multiple send/recv
     // instructions.
-    TF_RETURN_IF_ERROR(HloDCE().Run(module, execution_threads).status());
+    TF_XLA_RETURN_IF_ERROR(HloDCE().Run(module, execution_threads).status());
     if (module->has_schedule()) {
-      TF_RETURN_IF_ERROR(module->schedule().Update(execution_threads));
+      TF_XLA_RETURN_IF_ERROR(module->schedule().Update(execution_threads));
     }
   }
   return did_mutate;
@@ -550,7 +550,7 @@ absl::StatusOr<InlinedModule> GetInlinedModule(const HloModule* module) {
       module->CloneWithContext("inline", module->config());
   CallInliner::InlinedInstructionMap clone_inlined_map;
   CallInliner inliner;
-  TF_RETURN_IF_ERROR(
+  TF_XLA_RETURN_IF_ERROR(
       inliner.RunWithInlineMap(cloned_module.get(), &clone_inlined_map, {})
           .status());
   return InlinedModule{std::move(cloned_module), std::move(clone_context),

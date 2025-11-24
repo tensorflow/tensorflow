@@ -49,7 +49,7 @@ RngGetAndUpdateStateThunk::RngGetAndUpdateStateThunk(
 
 tsl::AsyncValueRef<Thunk::ExecuteEvent> RngGetAndUpdateStateThunk::Execute(
     const ExecuteParams& params) {
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       se::DeviceMemoryBase state_data,
       params.buffer_allocations->GetDeviceAddress(state_buffer_));
 

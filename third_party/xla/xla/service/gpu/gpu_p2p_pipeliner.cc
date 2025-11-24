@@ -361,7 +361,7 @@ static absl::Status PostProcessRotatedSendRecvOps(
       conflicting_collective =
           GetSendRecvDoneInstructionOrSelf(conflicting_collective);
       rotated_instr = GetSendRecvStartInstructionOrSelf(rotated_instr);
-      TF_RETURN_IF_ERROR(
+      TF_XLA_RETURN_IF_ERROR(
           conflicting_collective->AddControlDependencyTo(rotated_instr));
       VLOG(5) << "Adding control dependency from "
               << conflicting_collective->ToShortString() << " to "
@@ -408,7 +408,7 @@ static absl::Status AddControlDependencies(
   for (HloInstruction* from_instr : from_instructions) {
     VLOG(5) << "Adding control dependency from " << from_instr->ToShortString()
             << " to " << to_instr->ToShortString();
-    TF_RETURN_IF_ERROR(from_instr->AddControlDependencyTo(to_instr));
+    TF_XLA_RETURN_IF_ERROR(from_instr->AddControlDependencyTo(to_instr));
   }
   return absl::OkStatus();
 }
@@ -419,7 +419,7 @@ static absl::Status AddControlDependencies(
   for (HloInstruction* to_instr : to_instructions) {
     VLOG(5) << "Adding control dependency from " << from_instr->ToShortString()
             << " to " << to_instr->ToShortString();
-    TF_RETURN_IF_ERROR(from_instr->AddControlDependencyTo(to_instr));
+    TF_XLA_RETURN_IF_ERROR(from_instr->AddControlDependencyTo(to_instr));
   }
   return absl::OkStatus();
 }
@@ -488,7 +488,7 @@ static absl::Status PostProcessPeeledSendRecvOps(
     // collectives cannot slip in between the peeled send/recv instructions
     // where it could cause a deadlock.
     VLOG(5) << "Adding control dependencies FROM dominating conflicting";
-    TF_RETURN_IF_ERROR(AddControlDependencies(
+    TF_XLA_RETURN_IF_ERROR(AddControlDependencies(
         dominating_unpeeled_conflicting_collectives, peeled.instr));
 
     // Add control dependencies from the final peeleled send/recv-done
@@ -499,7 +499,7 @@ static absl::Status PostProcessPeeledSendRecvOps(
     VLOG(5) << "Adding control dependencies TO dominating conflicting";
     HloInstruction* done_op = FindSendRecvDoneInstruction(peeled.instr);
     CHECK_NE(done_op, nullptr);
-    TF_RETURN_IF_ERROR(
+    TF_XLA_RETURN_IF_ERROR(
         AddControlDependencies(done_op, unpeeled_conflicting_collectives));
   }
 
@@ -604,7 +604,7 @@ absl::StatusOr<bool> GpuP2PPipeliner::Run(
       /*postprocess_backward_rotated_op=*/postprocess_backward_rotated_op,
       /*postprocess_backward_peeled_trailing_op=*/
       postprocess_backward_peeled_trailing_op};
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       bool changed, CollectivePipeliner(config).Run(module, execution_threads));
 
   VLOG(5) << "After pipelining, before post-processing:";
@@ -613,10 +613,10 @@ absl::StatusOr<bool> GpuP2PPipeliner::Run(
   // Post-process rotated and peeled send/recv ops to add control dependencies
   // with conflicting collectives.
   if (enable_partial_send_recv_pipelining_) {
-    TF_RETURN_IF_ERROR(PostProcessRotatedSendRecvOps(rotated_send_recvs));
-    TF_RETURN_IF_ERROR(
+    TF_XLA_RETURN_IF_ERROR(PostProcessRotatedSendRecvOps(rotated_send_recvs));
+    TF_XLA_RETURN_IF_ERROR(
         PostProcessPeeledSendRecvOps(peeled_trailing_send_recvs));
-    TF_RETURN_IF_ERROR(PostProcessPeeledSendRecvOps(peeled_send_recvs));
+    TF_XLA_RETURN_IF_ERROR(PostProcessPeeledSendRecvOps(peeled_send_recvs));
   }
 
   VLOG(5) << "After post-processing:";

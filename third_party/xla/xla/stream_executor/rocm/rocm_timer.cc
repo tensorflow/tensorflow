@@ -45,7 +45,7 @@ absl::StatusOr<float> GetEventElapsedTime(StreamExecutor* executor,
     return false;
   }
   float elapsed_milliseconds;
-  TF_RETURN_IF_ERROR(
+  TF_XLA_RETURN_IF_ERROR(
       ToStatus(wrap::hipEventElapsedTime(&elapsed_milliseconds, start, stop),
                "failed to get elapsed time between events"));
 
@@ -64,8 +64,8 @@ absl::StatusOr<absl::Duration> RocmTimer::GetElapsedDuration() {
   if (is_stopped_) {
     return absl::FailedPreconditionError("Measuring inactive timer");
   }
-  TF_RETURN_IF_ERROR(stream_->RecordEvent(&stop_event_));
-  TF_ASSIGN_OR_RETURN(float elapsed_milliseconds,
+  TF_XLA_RETURN_IF_ERROR(stream_->RecordEvent(&stop_event_));
+  TF_XLA_ASSIGN_OR_RETURN(float elapsed_milliseconds,
                       GetEventElapsedTime(executor_, start_event_.GetHandle(),
                                           stop_event_.GetHandle()));
   is_stopped_ = true;
@@ -74,11 +74,11 @@ absl::StatusOr<absl::Duration> RocmTimer::GetElapsedDuration() {
 
 absl::StatusOr<RocmTimer> RocmTimer::Create(StreamExecutor* executor,
                                             Stream* stream) {
-  TF_ASSIGN_OR_RETURN(RocmEvent start_event,
+  TF_XLA_ASSIGN_OR_RETURN(RocmEvent start_event,
                       RocmEvent::Create(executor, /*allow_timing=*/true));
-  TF_ASSIGN_OR_RETURN(RocmEvent stop_event,
+  TF_XLA_ASSIGN_OR_RETURN(RocmEvent stop_event,
                       RocmEvent::Create(executor, /*allow_timing=*/true));
-  TF_RETURN_IF_ERROR(stream->RecordEvent(&start_event));
+  TF_XLA_RETURN_IF_ERROR(stream->RecordEvent(&start_event));
   return RocmTimer(executor, std::move(start_event), std::move(stop_event),
                    stream);
 }

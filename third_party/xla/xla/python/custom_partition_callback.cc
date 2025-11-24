@@ -79,7 +79,7 @@ absl::StatusOr<HloInstruction*> InlineHloComputation(
       std::vector<HloInstruction*> new_operands;
       new_operands.reserve(inst->operand_count());
       for (HloInstruction* operand : inst->mutable_operands()) {
-        TF_ASSIGN_OR_RETURN(auto* new_operand, resolve(operand));
+        TF_XLA_ASSIGN_OR_RETURN(auto* new_operand, resolve(operand));
         new_operands.push_back(new_operand);
       }
       auto* new_inst = builder->AddInstruction(
@@ -114,16 +114,16 @@ class CApiCustomCallPartitioner : public xla::CustomCallPartitioner {
     std::vector<HloSharding> arg_shardings;
     std::optional<HloSharding> result_sharding;
     std::string mlir_module;
-    TF_ASSIGN_OR_RETURN(std::tie(mlir_module, arg_shardings, result_sharding),
+    TF_XLA_ASSIGN_OR_RETURN(std::tie(mlir_module, arg_shardings, result_sharding),
                         jax::ConsumeResults(&args));
-    TF_RETURN_IF_ERROR(ParseMlirModuleStringAndConvertToXlaComputation(
+    TF_XLA_RETURN_IF_ERROR(ParseMlirModuleStringAndConvertToXlaComputation(
         mlir_module, computation, /*use_tuple_args=*/false,
         /*return_tuple=*/false));
     auto hlo_module_config =
         xla::HloModule::CreateModuleConfigFromProto(
             computation.proto(), xla::DefaultDebugOptionsIgnoringFlags())
             .value();
-    TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> hlo_module,
+    TF_XLA_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> hlo_module,
                         xla::HloModule::CreateFromProto(computation.proto(),
                                                         hlo_module_config));
     std::vector<HloInstruction*> operands;
@@ -145,9 +145,9 @@ class CApiCustomCallPartitioner : public xla::CustomCallPartitioner {
     // so inline all calls here explicitly, since some targets require it.
     HloPassPipeline pipeline("custom-call-inliner");
     pipeline.AddPass<CallInliner>();
-    TF_RETURN_IF_ERROR(pipeline.Run(hlo_module.get(), {}).status());
+    TF_XLA_RETURN_IF_ERROR(pipeline.Run(hlo_module.get(), {}).status());
 
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         auto* partitioned_hlo,
         InlineHloComputation(
             instruction, hlo_module->entry_computation(),
@@ -309,13 +309,13 @@ ConsumeResults(JAX_CustomCallPartitioner_Partition_Args* args) {
   absl::Cleanup cleanup = [args] {
     args->header.cleanup_fn(args->header.data);
   };
-  TF_RETURN_IF_ERROR(ConsumeHeader(args->header));
-  TF_ASSIGN_OR_RETURN(auto result_sharding,
+  TF_XLA_RETURN_IF_ERROR(ConsumeHeader(args->header));
+  TF_XLA_ASSIGN_OR_RETURN(auto result_sharding,
                       ReadHloSharding(args->result_sharding));
   std::vector<xla::HloSharding> arg_shardings;
   arg_shardings.reserve(args->num_args);
   for (size_t i = 0; i < args->num_args; ++i) {
-    TF_ASSIGN_OR_RETURN(auto arg_sharding,
+    TF_XLA_ASSIGN_OR_RETURN(auto arg_sharding,
                         ReadHloSharding(args->args_sharding[i]));
     arg_shardings.push_back(std::move(arg_sharding));
   }
@@ -355,10 +355,10 @@ ReadArgs(JAX_CustomCallPartitioner_Partition_Args* args) {
   shapes.reserve(args->num_args);
   shardings.reserve(args->num_args);
   for (size_t i = 0; i < args->num_args; ++i) {
-    TF_ASSIGN_OR_RETURN(auto shape, ReadHloShape(args->op_args[i].shape));
+    TF_XLA_ASSIGN_OR_RETURN(auto shape, ReadHloShape(args->op_args[i].shape));
     shapes.push_back(shape);
     if (args->op_args[i].has_sharding) {
-      TF_ASSIGN_OR_RETURN(auto sharding,
+      TF_XLA_ASSIGN_OR_RETURN(auto sharding,
                           ReadHloSharding(args->op_args[i].sharding));
       shardings.push_back(std::move(sharding));
     } else {
@@ -366,10 +366,10 @@ ReadArgs(JAX_CustomCallPartitioner_Partition_Args* args) {
     }
   }
 
-  TF_ASSIGN_OR_RETURN(auto result_shape, ReadHloShape(args->op_result.shape));
+  TF_XLA_ASSIGN_OR_RETURN(auto result_shape, ReadHloShape(args->op_result.shape));
   std::optional<xla::HloSharding> result_sharding;
   if (args->op_result.has_sharding) {
-    TF_ASSIGN_OR_RETURN(result_sharding,
+    TF_XLA_ASSIGN_OR_RETURN(result_sharding,
                         ReadHloSharding(args->op_result.sharding));
   }
   return std::tuple<std::vector<xla::Shape>,
@@ -388,10 +388,10 @@ ReadArgs(JAX_CustomCallPartitioner_InferShardingFromOperands_Args* args) {
   shapes.reserve(args->num_args);
   shardings.reserve(args->num_args);
   for (size_t i = 0; i < args->num_args; ++i) {
-    TF_ASSIGN_OR_RETURN(auto shape, ReadHloShape(args->op_args[i].shape));
+    TF_XLA_ASSIGN_OR_RETURN(auto shape, ReadHloShape(args->op_args[i].shape));
     shapes.push_back(shape);
     if (args->op_args[i].has_sharding) {
-      TF_ASSIGN_OR_RETURN(auto sharding,
+      TF_XLA_ASSIGN_OR_RETURN(auto sharding,
                           ReadHloSharding(args->op_args[i].sharding));
       shardings.push_back(std::move(sharding));
     } else {
@@ -399,7 +399,7 @@ ReadArgs(JAX_CustomCallPartitioner_InferShardingFromOperands_Args* args) {
     }
   }
 
-  TF_ASSIGN_OR_RETURN(auto result_shape, ReadHloShape(args->result_shape));
+  TF_XLA_ASSIGN_OR_RETURN(auto result_shape, ReadHloShape(args->result_shape));
   return std::tuple<std::vector<xla::Shape>,
                     std::vector<std::optional<xla::HloSharding>>, xla::Shape,
                     absl::string_view>(std::move(shapes), std::move(shardings),
@@ -454,7 +454,7 @@ absl::StatusOr<std::optional<xla::HloSharding>> ConsumeResults(
   absl::Cleanup cleanup = [args] {
     args->header.cleanup_fn(args->header.data);
   };
-  TF_RETURN_IF_ERROR(ConsumeHeader(args->header));
+  TF_XLA_RETURN_IF_ERROR(ConsumeHeader(args->header));
   if (!args->has_result_sharding) {
     return std::nullopt;
   }
@@ -463,8 +463,8 @@ absl::StatusOr<std::optional<xla::HloSharding>> ConsumeResults(
 
 absl::StatusOr<std::tuple<xla::HloSharding, xla::Shape, absl::string_view>>
 ReadArgs(JAX_CustomCallPartitioner_PropagateUserSharding_Args* args) {
-  TF_ASSIGN_OR_RETURN(auto shape, ReadHloShape(args->result_shape));
-  TF_ASSIGN_OR_RETURN(auto sharding, ReadHloSharding(args->result_sharding));
+  TF_XLA_ASSIGN_OR_RETURN(auto shape, ReadHloShape(args->result_shape));
+  TF_XLA_ASSIGN_OR_RETURN(auto sharding, ReadHloSharding(args->result_sharding));
   return std::tuple<xla::HloSharding, xla::Shape, absl::string_view>(
       std::move(sharding), std::move(shape),
       ToStringView(args->backend_config));
@@ -505,7 +505,7 @@ absl::StatusOr<xla::HloSharding> ConsumeResults(
   absl::Cleanup cleanup = [args] {
     args->header.cleanup_fn(args->header.data);
   };
-  TF_RETURN_IF_ERROR(ConsumeHeader(args->header));
+  TF_XLA_RETURN_IF_ERROR(ConsumeHeader(args->header));
   return ReadHloSharding(args->result_sharding);
 }
 

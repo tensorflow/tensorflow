@@ -110,7 +110,7 @@ class ClientLibraryTestRunnerMixin : public T {
     for (const Literal* argument : arguments) {
       argument_shapes.push_back(&argument->shape());
     }
-    TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
+    TF_XLA_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
                         BuildAndVerifyHloModule(computation, argument_shapes,
                                                 &execution_options));
     return this->Execute(std::move(module), arguments);
@@ -121,7 +121,7 @@ class ClientLibraryTestRunnerMixin : public T {
       const absl::Span<const Literal* const> arguments,
       const Shape* shape_with_output_layout = nullptr) {
     // Build the computation, as a convenience.
-    TF_ASSIGN_OR_RETURN(XlaComputation computation, builder->Build());
+    TF_XLA_ASSIGN_OR_RETURN(XlaComputation computation, builder->Build());
     return ExecuteAndTransfer(std::move(computation), arguments,
                               shape_with_output_layout);
   }
@@ -393,16 +393,16 @@ class ClientLibraryTestRunnerMixin : public T {
     if (execution_options == nullptr) {
       execution_options = &execution_options_;
     }
-    TF_ASSIGN_OR_RETURN(const ProgramShape program_shape,
+    TF_XLA_ASSIGN_OR_RETURN(const ProgramShape program_shape,
                         computation.GetProgramShape());
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         std::unique_ptr<HloModuleConfig> module_config,
         CreateModuleConfig(program_shape, argument_shapes, execution_options,
                            /*default_num_replicas=*/1));
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         std::unique_ptr<HloModule> module,
         HloModule::CreateFromProto(computation.proto(), *module_config));
-    TF_RETURN_IF_ERROR(this->verifier().Run(module.get()).status());
+    TF_XLA_RETURN_IF_ERROR(this->verifier().Run(module.get()).status());
     return module;
   }
 

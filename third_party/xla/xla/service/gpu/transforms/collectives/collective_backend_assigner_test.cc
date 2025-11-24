@@ -47,7 +47,7 @@ class CollectiveBackendAssignerTest : public HloHardwareIndependentTestBase {
 
   absl::StatusOr<CollectiveBackendConfig_CollectiveBackend>
   GetCollectiveBackendConfig(const HloInstruction* instr) {
-    TF_ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
+    TF_XLA_ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
                         instr->backend_config<GpuBackendConfig>());
     return gpu_config.collective_backend_config().backend();
   }

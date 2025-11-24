@@ -58,11 +58,11 @@ absl::Status AttemptRecordPassEndMetadata(HloModule& module,
                                           bool module_changed) {
   // Module id is set here instead of RecordPassStartMetadata because it may
   // change in the middle of the pass, and we want the final id.
-  TF_RETURN_IF_ERROR(
+  TF_XLA_RETURN_IF_ERROR(
       module.metadata()->set_current_pass_module_id(module.unique_id()));
-  TF_RETURN_IF_ERROR(
+  TF_XLA_RETURN_IF_ERROR(
       module.metadata()->set_current_pass_module_changed(module_changed));
-  TF_RETURN_IF_ERROR(module.metadata()->RecordPassEnd());
+  TF_XLA_RETURN_IF_ERROR(module.metadata()->RecordPassEnd());
   return absl::OkStatus();
 }
 
@@ -149,7 +149,7 @@ absl::StatusOr<bool> HloPassPipeline::RunPassesInternal(
                            pipeline_name, hlo->name(), UniqueId(*hlo));
   }};
 
-  TF_RETURN_IF_ERROR(
+  TF_XLA_RETURN_IF_ERROR(
       RunInvariantCheckers<HloT>(hlo, kPipelineStart, execution_threads));
 
   RecordPassStartMetadata(*hlo, std::string(kPipelineStart), pipeline_name);
@@ -190,7 +190,7 @@ absl::StatusOr<bool> HloPassPipeline::RunPassesInternal(
       compilation_stats_->RecordPassError(
           pass_name, absl::StatusCodeToString(status.code()));
     }
-    TF_ASSIGN_OR_RETURN(bool pass_changed, status_or_changed);
+    TF_XLA_ASSIGN_OR_RETURN(bool pass_changed, status_or_changed);
     if (verify_pass_changed_report) {
       VerifyPassChangedReport<HloT>(hlo, pass_changed, debug_options, pass_name,
                                     pipeline_name, hash_before.value());
@@ -212,7 +212,7 @@ absl::StatusOr<bool> HloPassPipeline::RunPassesInternal(
         compilation_stats_->RecordPassError(
             pass_name, absl::StatusCodeToString(status.code()));
       }
-      TF_RETURN_IF_ERROR(status);
+      TF_XLA_RETURN_IF_ERROR(status);
     }
     if (!pass->IsPassPipeline()) {
       compilation_stats_->EndPass(pass_name);

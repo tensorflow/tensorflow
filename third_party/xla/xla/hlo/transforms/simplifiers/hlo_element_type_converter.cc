@@ -200,7 +200,7 @@ absl::StatusOr<bool> HloElementTypeConverter::RunImpl(
 
         new_hlo = computation->AddInstruction(
             hlo->CloneWithNewOperands(shape, new_operands, &context));
-        TF_RETURN_IF_ERROR(new_hlo->CopyAllControlDepsFrom(hlo));
+        TF_XLA_RETURN_IF_ERROR(new_hlo->CopyAllControlDepsFrom(hlo));
 
         new_hlo = ToElementType(new_hlo, eliminate_type_);
       } else if (hlo->shape().IsTuple()) {
@@ -210,7 +210,7 @@ absl::StatusOr<bool> HloElementTypeConverter::RunImpl(
 
         new_hlo = computation->AddInstruction(
             hlo->CloneWithNewOperands(new_shape, new_operands, &context));
-        TF_RETURN_IF_ERROR(new_hlo->CopyAllControlDepsFrom(hlo));
+        TF_XLA_RETURN_IF_ERROR(new_hlo->CopyAllControlDepsFrom(hlo));
 
         // Convert the elements of the result of `new_hlo` to produce a new
         // tuple with shape `old_shape`.
@@ -218,16 +218,16 @@ absl::StatusOr<bool> HloElementTypeConverter::RunImpl(
       } else {
         new_hlo = computation->AddInstruction(
             hlo->CloneWithNewOperands(hlo->shape(), new_operands, &context));
-        TF_RETURN_IF_ERROR(new_hlo->CopyAllControlDepsFrom(hlo));
+        TF_XLA_RETURN_IF_ERROR(new_hlo->CopyAllControlDepsFrom(hlo));
       }
 
-      TF_RETURN_IF_ERROR(hlo->ReplaceAllUsesWith(new_hlo));
-      TF_RETURN_IF_ERROR(hlo->DropAllControlDeps());
+      TF_XLA_RETURN_IF_ERROR(hlo->ReplaceAllUsesWith(new_hlo));
+      TF_XLA_RETURN_IF_ERROR(hlo->DropAllControlDeps());
 
       // NB!  We want to replace and remove side effecting instructions like Rng
       // as well so we can't rely HloComputation::ReplaceInstruction to reliably
       // remove the replaced instruction.
-      TF_RETURN_IF_ERROR(computation->RemoveInstruction(hlo));
+      TF_XLA_RETURN_IF_ERROR(computation->RemoveInstruction(hlo));
       changed = true;
     }
   }

@@ -178,7 +178,7 @@ class NcclCommunicator::NcclRegisteredBufferHandle
           return FailedPrecondition("[%d] NcclCommunicator aborted",
                                     device_ordinal_);
         }
-        XLA_NCCL_RETURN_IF_ERROR(ncclCommDeregister(comm_.comm(), handle_));
+        XLA_NCCL_XLA_RETURN_IF_ERROR(ncclCommDeregister(comm_.comm(), handle_));
         return comm_.PollUntilDone();
       };
       return executor_ ? Future<>::MakeOn(*executor_, f).Await() : f();
@@ -198,7 +198,7 @@ class NcclCommunicator::NcclRegisteredBufferHandle
           return FailedPrecondition("[%d] NcclCommunicator aborted",
                                     device_ordinal_);
         }
-        XLA_NCCL_RETURN_IF_ERROR(
+        XLA_NCCL_XLA_RETURN_IF_ERROR(
             ncclCommWindowDeregister(comm_.comm(), *(ncclWindow_t*)(handle_)));
         return comm_.PollUntilDone();
       };
@@ -227,12 +227,12 @@ absl::StatusOr<std::unique_ptr<NcclCommunicator>> NcclCommunicator::Create(
     absl::AnyInvocable<absl::StatusOr<ncclComm_t>()> make_comm, bool is_async,
     std::atomic_bool* cancel, tsl::Env& env) {
   auto f = [cancel, &make_comm]() -> absl::StatusOr<ncclComm_t> {
-    TF_ASSIGN_OR_RETURN(ncclComm_t comm, make_comm());
+    TF_XLA_ASSIGN_OR_RETURN(ncclComm_t comm, make_comm());
     if (cancel) {
-      TF_RETURN_IF_ERROR(::xla::gpu::PollUntilDone(comm, *cancel));
+      TF_XLA_RETURN_IF_ERROR(::xla::gpu::PollUntilDone(comm, *cancel));
     } else {
       std::atomic_bool never_cancelled;
-      TF_RETURN_IF_ERROR(::xla::gpu::PollUntilDone(comm, never_cancelled));
+      TF_XLA_RETURN_IF_ERROR(::xla::gpu::PollUntilDone(comm, never_cancelled));
     }
     return comm;
   };
@@ -240,7 +240,7 @@ absl::StatusOr<std::unique_ptr<NcclCommunicator>> NcclCommunicator::Create(
   if (!is_async) {
     // If this NcclCommunicator is synchronous, construct ncclComm_t in the
     // calling thread.
-    TF_ASSIGN_OR_RETURN(ncclComm_t comm, f());
+    TF_XLA_ASSIGN_OR_RETURN(ncclComm_t comm, f());
     return absl::WrapUnique(new NcclCommunicator(comm, nullptr));
   }
 
@@ -248,7 +248,7 @@ absl::StatusOr<std::unique_ptr<NcclCommunicator>> NcclCommunicator::Create(
   // underlying ncclComm_t, including its creation, must take place on the
   // single threaded executor.
   auto executor = std::make_unique<SingleThreadedExecutor>(env);
-  TF_ASSIGN_OR_RETURN(ncclComm_t comm,
+  TF_XLA_ASSIGN_OR_RETURN(ncclComm_t comm,
                       Future<ncclComm_t>::MakeOn(*executor, f).Await());
   return absl::WrapUnique(new NcclCommunicator(comm, std::move(executor)));
 }
@@ -301,7 +301,7 @@ absl::Status NcclCommunicator::HealthCheck() const {
     }
 
     ncclResult_t async_err;
-    XLA_NCCL_RETURN_IF_ERROR(ncclCommGetAsyncError(comm_, &async_err));
+    XLA_NCCL_XLA_RETURN_IF_ERROR(ncclCommGetAsyncError(comm_, &async_err));
     if (async_err == ncclSuccess) {
       return absl::OkStatus();
     }
@@ -321,7 +321,7 @@ absl::StatusOr<size_t> NcclCommunicator::NumRanks() const {
     // We intentionally don't call PollUntilDone. ncclCommCount is
     // blocking.
     int32_t count = 0;
-    XLA_NCCL_RETURN_IF_ERROR(ncclCommCount(comm_, &count));
+    XLA_NCCL_XLA_RETURN_IF_ERROR(ncclCommCount(comm_, &count));
     return count;
   });
 }
@@ -347,7 +347,7 @@ absl::Status NcclCommunicator::RegisterBufferOnce(
             << ", is symmetric: " << (use_symmetric_buffer ? "true" : "false");
     // Symmetric buffer registration is a collective operation,
     // we need to do that before locking on a global.
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         auto handle,
         RegisterBuffer(buffer_range, device_ordinal, use_symmetric_buffer));
     absl::MutexLock lock(registered_buffers_.mu);
@@ -376,10 +376,10 @@ NcclCommunicator::RegisterBuffer(stream_executor::DeviceMemoryBase buffer,
             return absl::FailedPreconditionError("NcclCommunicator aborted");
           }
           void* handle = nullptr;
-          XLA_NCCL_RETURN_IF_ERROR(
+          XLA_NCCL_XLA_RETURN_IF_ERROR(
               ncclCommRegister(comm_, buffer.opaque(), buffer.size(), &handle));
           if (group_nesting_level_ == 0) {
-            TF_RETURN_IF_ERROR(PollUntilDone());
+            TF_XLA_RETURN_IF_ERROR(PollUntilDone());
           }
           return std::make_unique<NcclRegisteredBufferHandle>(
               *this, handle, executor_.get(), /*symmetric_buffer= */ false,
@@ -398,13 +398,13 @@ NcclCommunicator::RegisterBuffer(stream_executor::DeviceMemoryBase buffer,
               "buffer=%p; size=%d; comm=%p",
               device_ordinal, buffer.opaque(), buffer.size(), comm_);
           void* handle = nullptr;
-          XLA_NCCL_RETURN_IF_ERROR(ncclGroupStart());
-          XLA_NCCL_RETURN_IF_ERROR(ncclCommWindowRegister(
+          XLA_NCCL_XLA_RETURN_IF_ERROR(ncclGroupStart());
+          XLA_NCCL_XLA_RETURN_IF_ERROR(ncclCommWindowRegister(
               comm_, buffer.opaque(), buffer.size(), (ncclWindow_t*)&handle,
               NCCL_WIN_COLL_SYMMETRIC));
-          XLA_NCCL_RETURN_IF_ERROR(ncclGroupEnd());
+          XLA_NCCL_XLA_RETURN_IF_ERROR(ncclGroupEnd());
           if (group_nesting_level_ == 0) {
-            TF_RETURN_IF_ERROR(PollUntilDone());
+            TF_XLA_RETURN_IF_ERROR(PollUntilDone());
           }
           return std::make_unique<NcclRegisteredBufferHandle>(
               *this, handle, executor_.get(),
@@ -421,9 +421,9 @@ NcclCommunicator::RegisterBuffer(stream_executor::DeviceMemoryBase buffer,
 Future<> NcclCommunicator::GroupExecute(
     absl::AnyInvocable<absl::Status(GpuCommunicator*)> f) {
   return Execute([f = std::move(f), this]() mutable -> absl::Status {
-    TF_RETURN_IF_ERROR(GroupStart());
-    TF_RETURN_IF_ERROR(f(this));
-    TF_RETURN_IF_ERROR(GroupEnd());
+    TF_XLA_RETURN_IF_ERROR(GroupStart());
+    TF_XLA_RETURN_IF_ERROR(f(this));
+    TF_XLA_RETURN_IF_ERROR(GroupEnd());
     return absl::OkStatus();
   });
 }
@@ -513,14 +513,14 @@ Future<> NcclCommunicator::Recv(se::DeviceMemoryBase recv_buffer,
 
 absl::Status NcclCommunicator::GroupStart() {
   VLOG(5) << "Start NCCL group";
-  XLA_NCCL_RETURN_IF_ERROR(ncclGroupStart());
+  XLA_NCCL_XLA_RETURN_IF_ERROR(ncclGroupStart());
   group_nesting_level_++;
   return absl::OkStatus();
 }
 
 absl::Status NcclCommunicator::GroupEnd() {
   VLOG(5) << "End NCCL group";
-  XLA_NCCL_RETURN_IF_ERROR(ncclGroupEnd());
+  XLA_NCCL_XLA_RETURN_IF_ERROR(ncclGroupEnd());
   group_nesting_level_--;
   if (group_nesting_level_ > 0) {
     // Though NCCL allows groups to be nested, no operations are actually
@@ -551,14 +551,14 @@ absl::Status NcclCommunicator::LaunchAllReduce(
       recv_buffer.opaque(), primitive_util::LowercasePrimitiveTypeName(dtype),
       count, ReductionKindToString(reduction_kind), comm_, stream);
 
-  TF_ASSIGN_OR_RETURN(ncclDataType_t nccl_dtype, ToNcclDataType(dtype, false));
+  TF_XLA_ASSIGN_OR_RETURN(ncclDataType_t nccl_dtype, ToNcclDataType(dtype, false));
 
-  TF_RETURN_IF_ERROR(XLA_NCCL_STATUS(ncclAllReduce(
+  TF_XLA_RETURN_IF_ERROR(XLA_NCCL_STATUS(ncclAllReduce(
       send_buffer.opaque(), recv_buffer.opaque(), ToNcclCount(dtype, count),
       nccl_dtype, ToNcclReduction(reduction_kind), comm_,
       se::gpu::AsGpuStreamValue(stream))));
   if (group_nesting_level_ == 0) {
-    TF_RETURN_IF_ERROR(PollUntilDone());
+    TF_XLA_RETURN_IF_ERROR(PollUntilDone());
   }
   return absl::OkStatus();
 }
@@ -581,13 +581,13 @@ absl::Status NcclCommunicator::LaunchBroadcast(se::DeviceMemoryBase send_buffer,
       recv_buffer.opaque(), primitive_util::LowercasePrimitiveTypeName(dtype),
       count, root.value(), comm_, stream);
 
-  TF_ASSIGN_OR_RETURN(ncclDataType_t nccl_dtype, ToNcclDataType(dtype, false));
+  TF_XLA_ASSIGN_OR_RETURN(ncclDataType_t nccl_dtype, ToNcclDataType(dtype, false));
 
-  TF_RETURN_IF_ERROR(XLA_NCCL_STATUS(ncclBroadcast(
+  TF_XLA_RETURN_IF_ERROR(XLA_NCCL_STATUS(ncclBroadcast(
       send_buffer.opaque(), recv_buffer.opaque(), ToNcclCount(dtype, count),
       nccl_dtype, root.value(), comm_, se::gpu::AsGpuStreamValue(stream))));
   if (group_nesting_level_ == 0) {
-    TF_RETURN_IF_ERROR(PollUntilDone());
+    TF_XLA_RETURN_IF_ERROR(PollUntilDone());
   }
   return absl::OkStatus();
 }
@@ -609,14 +609,14 @@ absl::Status NcclCommunicator::LaunchReduceScatter(
       recv_buffer.opaque(), primitive_util::LowercasePrimitiveTypeName(dtype),
       count, ReductionKindToString(reduction_kind), comm_, stream);
 
-  TF_ASSIGN_OR_RETURN(ncclDataType_t nccl_dtype, ToNcclDataType(dtype, false));
+  TF_XLA_ASSIGN_OR_RETURN(ncclDataType_t nccl_dtype, ToNcclDataType(dtype, false));
 
-  TF_RETURN_IF_ERROR(XLA_NCCL_STATUS(ncclReduceScatter(
+  TF_XLA_RETURN_IF_ERROR(XLA_NCCL_STATUS(ncclReduceScatter(
       send_buffer.opaque(), recv_buffer.opaque(), ToNcclCount(dtype, count),
       nccl_dtype, ToNcclReduction(reduction_kind), comm_,
       se::gpu::AsGpuStreamValue(stream))));
   if (group_nesting_level_ == 0) {
-    TF_RETURN_IF_ERROR(PollUntilDone());
+    TF_XLA_RETURN_IF_ERROR(PollUntilDone());
   }
   return absl::OkStatus();
 }
@@ -638,13 +638,13 @@ absl::Status NcclCommunicator::LaunchAllGather(se::DeviceMemoryBase send_buffer,
       recv_buffer.opaque(), primitive_util::LowercasePrimitiveTypeName(dtype),
       count, comm_, stream);
 
-  TF_ASSIGN_OR_RETURN(ncclDataType_t nccl_dtype, ToNcclDataType(dtype, false));
+  TF_XLA_ASSIGN_OR_RETURN(ncclDataType_t nccl_dtype, ToNcclDataType(dtype, false));
 
-  TF_RETURN_IF_ERROR(XLA_NCCL_STATUS(ncclAllGather(
+  TF_XLA_RETURN_IF_ERROR(XLA_NCCL_STATUS(ncclAllGather(
       send_buffer.opaque(), recv_buffer.opaque(), ToNcclCount(dtype, count),
       nccl_dtype, comm_, se::gpu::AsGpuStreamValue(stream))));
   if (group_nesting_level_ == 0) {
-    TF_RETURN_IF_ERROR(PollUntilDone());
+    TF_XLA_RETURN_IF_ERROR(PollUntilDone());
   }
   return absl::OkStatus();
 }
@@ -677,7 +677,7 @@ absl::Status NcclCommunicator::LaunchAllToAll(
   }
 
   int32_t num_ranks;
-  XLA_NCCL_RETURN_IF_ERROR(ncclCommCount(comm_, &num_ranks));
+  XLA_NCCL_XLA_RETURN_IF_ERROR(ncclCommCount(comm_, &num_ranks));
 
   if (send_buffers.size() != num_ranks) {
     return InvalidArgument(
@@ -685,22 +685,22 @@ absl::Status NcclCommunicator::LaunchAllToAll(
         send_buffers.size(), num_ranks);
   }
 
-  TF_ASSIGN_OR_RETURN(ncclDataType_t nccl_dtype, ToNcclDataType(dtype, false));
+  TF_XLA_ASSIGN_OR_RETURN(ncclDataType_t nccl_dtype, ToNcclDataType(dtype, false));
 
-  TF_RETURN_IF_ERROR(GroupStart());
+  TF_XLA_RETURN_IF_ERROR(GroupStart());
   for (size_t i = 0; i < send_buffers.size(); ++i) {
     se::DeviceMemoryBase send_buffer = send_buffers[i];
     se::DeviceMemoryBase recv_buffer = recv_buffers[i];
 
-    XLA_NCCL_RETURN_IF_ERROR(
+    XLA_NCCL_XLA_RETURN_IF_ERROR(
         ncclSend(send_buffer.opaque(), ToNcclCount(dtype, count), nccl_dtype, i,
                  comm_, se::gpu::AsGpuStreamValue(stream)));
 
-    XLA_NCCL_RETURN_IF_ERROR(
+    XLA_NCCL_XLA_RETURN_IF_ERROR(
         ncclRecv(recv_buffer.opaque(), ToNcclCount(dtype, count), nccl_dtype, i,
                  comm_, se::gpu::AsGpuStreamValue(stream)));
   }
-  TF_RETURN_IF_ERROR(GroupEnd());
+  TF_XLA_RETURN_IF_ERROR(GroupEnd());
   return absl::OkStatus();
 }
 
@@ -726,28 +726,28 @@ absl::Status NcclCommunicator::LaunchCollectivePermute(
       source_rank ? absl::StrCat(source_rank->value()) : "<empty>",
       absl::StrJoin(target_ranks, ", ", rank_formatter), count, comm_, stream);
 
-  TF_ASSIGN_OR_RETURN(ncclDataType_t nccl_dtype, ToNcclDataType(dtype, false));
+  TF_XLA_ASSIGN_OR_RETURN(ncclDataType_t nccl_dtype, ToNcclDataType(dtype, false));
 
   // Short-circuit if there is no source or target rank.
   if (!source_rank && target_ranks.empty()) {
     return absl::OkStatus();
   }
 
-  TF_RETURN_IF_ERROR(GroupStart());
+  TF_XLA_RETURN_IF_ERROR(GroupStart());
 
   if (source_rank) {
-    XLA_NCCL_RETURN_IF_ERROR(ncclRecv(
+    XLA_NCCL_XLA_RETURN_IF_ERROR(ncclRecv(
         recv_buffer.opaque(), ToNcclCount(dtype, count), nccl_dtype,
         source_rank->value(), comm_, se::gpu::AsGpuStreamValue(stream)));
   }
 
   for (auto target_rank : target_ranks) {
-    XLA_NCCL_RETURN_IF_ERROR(ncclSend(
+    XLA_NCCL_XLA_RETURN_IF_ERROR(ncclSend(
         send_buffer.opaque(), ToNcclCount(dtype, count), nccl_dtype,
         target_rank.value(), comm_, se::gpu::AsGpuStreamValue(stream)));
   }
 
-  TF_RETURN_IF_ERROR(GroupEnd());
+  TF_XLA_RETURN_IF_ERROR(GroupEnd());
 
   return absl::OkStatus();
 }
@@ -768,13 +768,13 @@ absl::Status NcclCommunicator::LaunchSend(se::DeviceMemoryBase send_buffer,
       primitive_util::LowercasePrimitiveTypeName(dtype), count, peer.value(),
       comm_, stream);
 
-  TF_ASSIGN_OR_RETURN(ncclDataType_t nccl_dtype, ToNcclDataType(dtype, false));
+  TF_XLA_ASSIGN_OR_RETURN(ncclDataType_t nccl_dtype, ToNcclDataType(dtype, false));
 
-  TF_RETURN_IF_ERROR(XLA_NCCL_STATUS(
+  TF_XLA_RETURN_IF_ERROR(XLA_NCCL_STATUS(
       ncclSend(send_buffer.opaque(), ToNcclCount(dtype, count), nccl_dtype,
                peer.value(), comm_, se::gpu::AsGpuStreamValue(stream))));
   if (group_nesting_level_ == 0) {
-    TF_RETURN_IF_ERROR(PollUntilDone());
+    TF_XLA_RETURN_IF_ERROR(PollUntilDone());
   }
   return absl::OkStatus();
 }
@@ -795,13 +795,13 @@ absl::Status NcclCommunicator::LaunchRecv(se::DeviceMemoryBase recv_buffer,
       primitive_util::LowercasePrimitiveTypeName(dtype), count, peer.value(),
       comm_, stream);
 
-  TF_ASSIGN_OR_RETURN(ncclDataType_t nccl_dtype, ToNcclDataType(dtype, false));
+  TF_XLA_ASSIGN_OR_RETURN(ncclDataType_t nccl_dtype, ToNcclDataType(dtype, false));
 
-  TF_RETURN_IF_ERROR(XLA_NCCL_STATUS(
+  TF_XLA_RETURN_IF_ERROR(XLA_NCCL_STATUS(
       ncclRecv(recv_buffer.opaque(), ToNcclCount(dtype, count), nccl_dtype,
                peer.value(), comm_, se::gpu::AsGpuStreamValue(stream))));
   if (group_nesting_level_ == 0) {
-    TF_RETURN_IF_ERROR(PollUntilDone());
+    TF_XLA_RETURN_IF_ERROR(PollUntilDone());
   }
   return absl::OkStatus();
 }

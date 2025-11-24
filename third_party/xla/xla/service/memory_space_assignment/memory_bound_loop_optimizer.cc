@@ -353,7 +353,7 @@ MemoryBoundLoopOptimizer::Create(int loop_start, int loop_end,
           options.memory_bound_loop_optimizer_options, hlo_live_range,
           alias_analysis, *options.cost_analysis, &options.size_fn,
           options.reserved_scoped_memory_fn, options.alignment_in_bytes));
-  TF_RETURN_IF_ERROR(optimizer->Initialize());
+  TF_XLA_RETURN_IF_ERROR(optimizer->Initialize());
   return std::move(optimizer);
 }
 

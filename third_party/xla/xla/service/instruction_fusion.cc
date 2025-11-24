@@ -738,8 +738,8 @@ absl::StatusOr<bool> InstructionFusion::RunImpl(
           // Operand is now dead. Remove from queue.
           fusion_queue->RemoveInstruction(operand);
           // Remove from computation.
-          TF_RETURN_IF_ERROR(operand->SafelyDropAllControlDependencies());
-          TF_RETURN_IF_ERROR(computation->RemoveInstruction(operand));
+          TF_XLA_RETURN_IF_ERROR(operand->SafelyDropAllControlDependencies());
+          TF_XLA_RETURN_IF_ERROR(computation->RemoveInstruction(operand));
         }
 
         if (dump_fusion) {

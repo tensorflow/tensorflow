@@ -76,14 +76,14 @@ std::string SequentialThunk::ToString(int indent) const {
 absl::Status SequentialThunk::Prepare(
     const PrepareParams& params, ResourceRequestsInterface& resource_requests) {
   for (auto& thunk : thunks_) {
-    TF_RETURN_IF_ERROR(thunk->Prepare(params, resource_requests));
+    TF_XLA_RETURN_IF_ERROR(thunk->Prepare(params, resource_requests));
   }
   return absl::OkStatus();
 }
 
 absl::Status SequentialThunk::Initialize(const InitializeParams& params) {
   for (auto& thunk : thunks_) {
-    TF_RETURN_IF_ERROR(thunk->Initialize(params));
+    TF_XLA_RETURN_IF_ERROR(thunk->Initialize(params));
   }
   return absl::OkStatus();
 }
@@ -103,7 +103,7 @@ absl::Status SequentialThunk::ExecuteOnStream(const ExecuteParams& params) {
     VLOG(1) << "[" << params.stream->parent()->device_ordinal() << "] "
             << "Start SequentialThunk::ExecuteOnStream: "
             << thunk->profile_annotation();
-    TF_RETURN_IF_ERROR(thunk->ExecuteOnStream(params));
+    TF_XLA_RETURN_IF_ERROR(thunk->ExecuteOnStream(params));
     VLOG(1) << "[" << params.stream->parent()->device_ordinal() << "] "
             << "End SequentialThunk::ExecuteOnStream: "
             << thunk->profile_annotation();
@@ -131,8 +131,8 @@ absl::Status SequentialThunk::TransformAllNestedThunks(
         absl::StatusOr<std::unique_ptr<Thunk>>(std::unique_ptr<Thunk>)>
         fn) {
   for (std::unique_ptr<Thunk>& thunk : thunks_) {
-    TF_RETURN_IF_ERROR(thunk->TransformAllNestedThunks(fn));
-    TF_ASSIGN_OR_RETURN(thunk, fn(std::move(thunk)));
+    TF_XLA_RETURN_IF_ERROR(thunk->TransformAllNestedThunks(fn));
+    TF_XLA_ASSIGN_OR_RETURN(thunk, fn(std::move(thunk)));
   }
   return absl::OkStatus();
 }
@@ -145,7 +145,7 @@ absl::StatusOr<ThunkProto> SequentialThunk::ToProto() const {
   // empty.
   proto.mutable_sequential_thunk();
   for (const auto& thunk : thunks_) {
-    TF_ASSIGN_OR_RETURN(*proto.mutable_sequential_thunk()->add_thunks(),
+    TF_XLA_ASSIGN_OR_RETURN(*proto.mutable_sequential_thunk()->add_thunks(),
                         thunk->ToProto());
   }
   return proto;
@@ -156,7 +156,7 @@ absl::StatusOr<std::unique_ptr<SequentialThunk>> SequentialThunk::FromProto(
     const Deserializer& deserializer) {
   ThunkSequence thunk_sequence;
   for (const auto& sub_thunk_proto : thunk_proto.thunks()) {
-    TF_ASSIGN_OR_RETURN(std::unique_ptr<Thunk> sub_thunk,
+    TF_XLA_ASSIGN_OR_RETURN(std::unique_ptr<Thunk> sub_thunk,
                         deserializer(sub_thunk_proto));
     thunk_sequence.push_back(std::move(sub_thunk));
   }

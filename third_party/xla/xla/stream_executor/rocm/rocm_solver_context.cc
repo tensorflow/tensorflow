@@ -235,7 +235,7 @@ absl::Status ConvertStatus(rocblas_status status) {
 
 absl::StatusOr<std::unique_ptr<GpuSolverContext>> RocmSolverContext::Create() {
   gpusolverHandle_t handle;
-  TF_RETURN_IF_ERROR(ConvertStatus(GpuSolverCreate(&handle)));
+  TF_XLA_RETURN_IF_ERROR(ConvertStatus(GpuSolverCreate(&handle)));
   return absl::WrapUnique(new RocmSolverContext(handle));
 }
 
@@ -266,25 +266,25 @@ absl::StatusOr<int64_t> RocmSolverContext::PotrfBufferSize(
 #if TENSORFLOW_USE_HIPSOLVER
   switch (type) {
     case xla::F32: {
-      TF_RETURN_IF_ERROR(
+      TF_XLA_RETURN_IF_ERROR(
           ConvertStatus(GpuSolverSpotrf_bufferSize(handle_, gpu_uplo, n,
                                                    /*A=*/nullptr, lda, &size)));
       break;
     }
     case xla::F64: {
-      TF_RETURN_IF_ERROR(
+      TF_XLA_RETURN_IF_ERROR(
           ConvertStatus(GpuSolverDpotrf_bufferSize(handle_, gpu_uplo, n,
                                                    /*A=*/nullptr, lda, &size)));
       break;
     }
     case xla::C64: {
-      TF_RETURN_IF_ERROR(
+      TF_XLA_RETURN_IF_ERROR(
           ConvertStatus(GpuSolverCpotrf_bufferSize(handle_, gpu_uplo, n,
                                                    /*A=*/nullptr, lda, &size)));
       break;
     }
     case xla::C128: {
-      TF_RETURN_IF_ERROR(
+      TF_XLA_RETURN_IF_ERROR(
           ConvertStatus(GpuSolverZpotrf_bufferSize(handle_, gpu_uplo, n,
                                                    /*A=*/nullptr, lda, &size)));
       break;

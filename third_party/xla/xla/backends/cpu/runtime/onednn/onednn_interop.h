@@ -24,7 +24,7 @@ limitations under the License.
 
 namespace xla::cpu {
 
-#define ONEDNN_RETURN_IF_ERROR(expr)             \
+#define ONEDNN_XLA_RETURN_IF_ERROR(expr)             \
   do {                                           \
     absl::Status s = OneDnnStatusToStatus(expr); \
     if (!s.ok()) {                               \

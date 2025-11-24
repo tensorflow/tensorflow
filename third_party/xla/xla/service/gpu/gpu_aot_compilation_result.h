@@ -43,7 +43,7 @@ class GpuAotCompilationResult : public AotCompilationResult {
  public:
   static absl::StatusOr<std::unique_ptr<GpuAotCompilationResult>> Create(
       GpuExecutableProto executable) {
-    TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
+    TF_XLA_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
                         HloModule::CreateFromProtoWithConfig(
                             executable.hlo_module_with_config()));
 

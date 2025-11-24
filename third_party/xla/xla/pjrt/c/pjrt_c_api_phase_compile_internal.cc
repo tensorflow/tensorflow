@@ -53,7 +53,7 @@ absl::StatusOr<xla::CompileOptions> ParseCompileOptions(
 
 static PJRT_Error* PJRT_PhaseCompile_Run_Phase(
     PJRT_PhaseCompile_Run_Phase_Args* args) {
-  PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
+  PJRT_XLA_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
       "PJRT_PhaseCompile_Run_Phase_Args",
       PJRT_PhaseCompile_Run_Phase_Args_STRUCT_SIZE, args->struct_size));
 
@@ -61,14 +61,14 @@ static PJRT_Error* PJRT_PhaseCompile_Run_Phase(
       absl::MakeSpan(args->phases_to_run, args->num_phases_to_run),
       absl::MakeConstSpan(args->phases_to_run_sizes, args->num_phases_to_run));
 
-  PJRT_ASSIGN_OR_RETURN(
+  PJRT_XLA_ASSIGN_OR_RETURN(
       std::vector<xla::PjRtPartialProgramProto> programs_in_protos,
       xla::ConvertCharBuffersToPjRtPartialProgramProtos(
           absl::MakeSpan(args->input_programs, args->num_input_programs),
           absl::MakeConstSpan(args->input_programs_sizes,
                               args->num_input_programs)));
 
-  PJRT_ASSIGN_OR_RETURN(
+  PJRT_XLA_ASSIGN_OR_RETURN(
       xla::CompileOptions options,
       ParseCompileOptions(absl::string_view(args->compile_options,
                                             args->compile_options_size)));
@@ -77,12 +77,12 @@ static PJRT_Error* PJRT_PhaseCompile_Run_Phase(
     return new PJRT_Error{absl::InternalError(
         "PJRT_PhaseCompile_Run_Phase: phase compiler is null")};
   }
-  PJRT_ASSIGN_OR_RETURN(std::vector<xla::PjRtPartialProgramProto> programs_out,
+  PJRT_XLA_ASSIGN_OR_RETURN(std::vector<xla::PjRtPartialProgramProto> programs_out,
                         args->phase_compiler->compiler->RunPhases(
                             options, programs_in_protos,
                             *args->topology->topology, phases_to_run));
 
-  PJRT_ASSIGN_OR_RETURN(args->output_programs,
+  PJRT_XLA_ASSIGN_OR_RETURN(args->output_programs,
                         xla::ConvertPjRtPartialProgramProtosToCharBuffers(
                             programs_out, args->output_programs_sizes));
   args->num_output_programs = programs_out.size();
@@ -92,7 +92,7 @@ static PJRT_Error* PJRT_PhaseCompile_Run_Phase(
 
 static PJRT_Error* PJRT_PhaseCompile_Get_Phase_Names(
     PJRT_PhaseCompile_Get_PhaseNames_Args* args) {
-  PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
+  PJRT_XLA_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
       "PJRT_PhaseCompile_Get_Phase_Names_Args",
       PJRT_PhaseCompile_Get_PhaseNames_Args_STRUCT_SIZE, args->struct_size));
 
@@ -100,7 +100,7 @@ static PJRT_Error* PJRT_PhaseCompile_Get_Phase_Names(
     return new PJRT_Error{absl::InternalError(
         "PJRT_PhaseCompile_Get_Phase_Names: phase compiler is null")};
   }
-  PJRT_ASSIGN_OR_RETURN(std::vector<std::string> phase_names,
+  PJRT_XLA_ASSIGN_OR_RETURN(std::vector<std::string> phase_names,
                         args->phase_compiler->compiler->GetPhaseNames());
 
   args->phase_names =

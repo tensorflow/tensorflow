@@ -123,14 +123,14 @@ YnnFusionThunk::YnnExecutable::Invoke(
 
   DCHECK_NE(runtime.get(), nullptr) << "YNNPACK runtime is not initialized";
 
-  YNN_RETURN_IF_ERROR(set_external_values(runtime.get(), external_values));
+  YNN_XLA_RETURN_IF_ERROR(set_external_values(runtime.get(), external_values));
 
   // Update threadpool used by the YNNPACK runtime.
-  YNN_RETURN_IF_ERROR(ynn_update_runtime_with_threadpool(
+  YNN_XLA_RETURN_IF_ERROR(ynn_update_runtime_with_threadpool(
       runtime.get(), reinterpret_cast<ynn_threadpool_t>(threadpool.get())));
 
   // Execute YNNPACK runtime in the caller thread.
-  YNN_RETURN_IF_ERROR(ynn_invoke_runtime(runtime.get()));
+  YNN_XLA_RETURN_IF_ERROR(ynn_invoke_runtime(runtime.get()));
   return OkExecuteEvent();
 }
 
@@ -157,14 +157,14 @@ YnnFusionThunk::CreateYnnExecutable(
   executable.captured_arguments = CaptureArguments(arguments_buffers);
 
   if (builder_) {
-    TF_ASSIGN_OR_RETURN(executable.subgraph, builder_(arguments_, results_));
+    TF_XLA_ASSIGN_OR_RETURN(executable.subgraph, builder_(arguments_, results_));
   } else {
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         executable.subgraph,
         capturing_builder_(arguments_, results_, arguments_buffers));
   }
 
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       executable.runtime, CreateYnnRuntime([&](ynn_runtime_t* runtime) {
         uint32_t ynn_flags = 0;
         return ynn_create_runtime(
@@ -172,7 +172,7 @@ YnnFusionThunk::CreateYnnExecutable(
             reinterpret_cast<ynn_threadpool_t>(threadpool.get()), ynn_flags,
             runtime);
       }));
-  YNN_RETURN_IF_ERROR(ynn_reshape_runtime(executable.runtime.get()));
+  YNN_XLA_RETURN_IF_ERROR(ynn_reshape_runtime(executable.runtime.get()));
 
   return {std::move(executable)};
 }
@@ -197,16 +197,16 @@ absl::Status YnnFusionThunk::UpdateYnnExecutable(
   VLOG(3) << absl::StreamFormat("Update YNN executable for `%s` operation",
                                 info().op_name);
 
-  TF_RETURN_IF_ERROR(executable.Reset());
+  TF_XLA_RETURN_IF_ERROR(executable.Reset());
 
   // Keep track of the updated arguments captured by value.
   executable.captured_arguments = std::move(capture_arguments);
 
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       executable.subgraph,
       capturing_builder_(arguments_, results_, arguments_buffers));
 
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       executable.runtime, CreateYnnRuntime([&](ynn_runtime_t* runtime) {
         uint32_t ynn_flags = 0;
         return ynn_create_runtime(
@@ -214,7 +214,7 @@ absl::Status YnnFusionThunk::UpdateYnnExecutable(
             reinterpret_cast<ynn_threadpool_t>(threadpool.get()), ynn_flags,
             runtime);
       }));
-  YNN_RETURN_IF_ERROR(ynn_reshape_runtime(executable.runtime.get()));
+  YNN_XLA_RETURN_IF_ERROR(ynn_reshape_runtime(executable.runtime.get()));
 
   return absl::OkStatus();
 }
@@ -318,7 +318,7 @@ tsl::AsyncValueRef<YnnFusionThunk::ExecuteEvent> YnnFusionThunk::Execute(
   for (size_t i = 0; i < arguments_.size(); ++i) {
     Argument& argument = arguments_[i];
 
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         arguments_buffers[i],
         params.buffer_allocations->GetDeviceAddress(argument.slice));
 
@@ -334,7 +334,7 @@ tsl::AsyncValueRef<YnnFusionThunk::ExecuteEvent> YnnFusionThunk::Execute(
   for (size_t i = 0; i < results_.size(); ++i) {
     Result& result = results_[i];
 
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         results_buffers[i],
         params.buffer_allocations->GetDeviceAddress(results_[i].slice));
 
@@ -359,7 +359,7 @@ tsl::AsyncValueRef<YnnFusionThunk::ExecuteEvent> YnnFusionThunk::Execute(
   };
 
   // Borrow YnnExecutable from the pool.
-  TF_ASSIGN_OR_RETURN(auto executable,
+  TF_XLA_ASSIGN_OR_RETURN(auto executable,
                       ynn_executable_pool_.GetOrCreate(GetYnnThreadpool(params),
                                                        arguments_buffers));
 
@@ -370,7 +370,7 @@ tsl::AsyncValueRef<YnnFusionThunk::ExecuteEvent> YnnFusionThunk::Execute(
   }
 
   // Otherwise reset YnnExecutable to capture new arguments buffers.
-  TF_RETURN_IF_ERROR(UpdateYnnExecutable(GetYnnThreadpool(params), *executable,
+  TF_XLA_RETURN_IF_ERROR(UpdateYnnExecutable(GetYnnThreadpool(params), *executable,
                                          arguments_buffers));
   return invoke(std::move(executable));
 }

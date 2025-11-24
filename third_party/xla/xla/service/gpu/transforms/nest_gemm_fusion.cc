@@ -139,16 +139,16 @@ absl::Status FuseInstructionsForConsumer(HloInstruction& root,
       << "Consumer " << consumer.ToString() << " does not use root "
       << root.ToString();
 
-  TF_ASSIGN_OR_RETURN(HloInstruction * fusion, FuseInstructionsFromRoot(root));
+  TF_XLA_ASSIGN_OR_RETURN(HloInstruction * fusion, FuseInstructionsFromRoot(root));
 
-  TF_ASSIGN_OR_RETURN(auto gpu_config,
+  TF_XLA_ASSIGN_OR_RETURN(auto gpu_config,
                       fusion->backend_config<GpuBackendConfig>());
   gpu_config.mutable_fusion_backend_config()->set_kind(
       kTritonNestedGemmFusionKind);
-  TF_RETURN_IF_ERROR(fusion->set_backend_config(gpu_config));
+  TF_XLA_RETURN_IF_ERROR(fusion->set_backend_config(gpu_config));
 
   for (int64_t operand_index : consumer.OperandIndices(&root)) {
-    TF_RETURN_IF_ERROR(consumer.ReplaceOperandWith(operand_index, fusion));
+    TF_XLA_RETURN_IF_ERROR(consumer.ReplaceOperandWith(operand_index, fusion));
   }
 
   return absl::OkStatus();
@@ -171,14 +171,14 @@ absl::Status AnnotateDotOperandNestedFusionImpl(
     absl::Span<const int64_t> contracting_dimensions,  // Must be single element
     absl::Span<const int64_t> batch_dimensions, int64_t contracting_dim_size,
     int64_t non_contracting_dim_size) {
-  TF_RETURN_IF_ERROR(IsDot(dot));
+  TF_XLA_RETURN_IF_ERROR(IsDot(dot));
   if (contracting_dimensions.size() != 1) {
     return absl::InternalError(
         absl::StrCat("Expected a single lhs contracting dimension but got ",
                      contracting_dimensions.size()));
   }
 
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       std::vector<int64_t> non_contracting_dimensions,
       GetNonContractingDims(dot.operand(0)->shape(), batch_dimensions,
                             contracting_dimensions));
@@ -205,12 +205,12 @@ absl::Status AnnotateDotOperandNestedFusionImpl(
   block_level_parameters.is_warp_specialization_allowed =
       config.is_warp_specialization_allowed;
 
-  TF_ASSIGN_OR_RETURN(auto gpu_config,
+  TF_XLA_ASSIGN_OR_RETURN(auto gpu_config,
                       nested_fusion.backend_config<GpuBackendConfig>());
   *gpu_config.mutable_fusion_backend_config()
        ->mutable_block_level_fusion_config() =
       block_level_parameters.ToBlockLevelFusionConfig();
-  TF_RETURN_IF_ERROR(nested_fusion.set_backend_config(gpu_config));
+  TF_XLA_RETURN_IF_ERROR(nested_fusion.set_backend_config(gpu_config));
 
   return absl::OkStatus();
 }
@@ -218,7 +218,7 @@ absl::Status AnnotateDotOperandNestedFusionImpl(
 absl::Status AnnotateDotLhsNestedFusion(HloFusionInstruction& nested_fusion,
                                         const HloInstruction& dot,
                                         const TritonGemmConfig& config) {
-  TF_RETURN_IF_ERROR(IsDot(dot));
+  TF_XLA_RETURN_IF_ERROR(IsDot(dot));
   const DotDimensionNumbers& dimension_numbers = dot.dot_dimension_numbers();
   return AnnotateDotOperandNestedFusionImpl(
       nested_fusion, dot, config,
@@ -229,7 +229,7 @@ absl::Status AnnotateDotLhsNestedFusion(HloFusionInstruction& nested_fusion,
 absl::Status AnnotateDotRhsNestedFusion(HloFusionInstruction& nested_fusion,
                                         const HloInstruction& dot,
                                         const TritonGemmConfig& config) {
-  TF_RETURN_IF_ERROR(IsDot(dot));
+  TF_XLA_RETURN_IF_ERROR(IsDot(dot));
   const DotDimensionNumbers& dimension_numbers = dot.dot_dimension_numbers();
   return AnnotateDotOperandNestedFusionImpl(
       nested_fusion, dot, config,
@@ -240,7 +240,7 @@ absl::Status AnnotateDotRhsNestedFusion(HloFusionInstruction& nested_fusion,
 // Extracts the TritonGemmConfig from the given fusion's backend config.
 absl::StatusOr<TritonGemmConfig> GetTritonGemmConfig(
     const HloFusionInstruction& fusion) {
-  TF_ASSIGN_OR_RETURN(auto gpu_config,
+  TF_XLA_ASSIGN_OR_RETURN(auto gpu_config,
                       fusion.backend_config<GpuBackendConfig>());
   const FusionBackendConfig& backend_config =
       gpu_config.fusion_backend_config();
@@ -259,7 +259,7 @@ absl::Status FuseAndAnnotateConcatOperands(HloComputation* computation) {
       continue;
     }
     for (HloInstruction* operand : instr->mutable_operands()) {
-      TF_RETURN_IF_ERROR(FuseInstructionsForConsumer(*operand, *instr));
+      TF_XLA_RETURN_IF_ERROR(FuseInstructionsForConsumer(*operand, *instr));
     }
   }
   return absl::OkStatus();
@@ -270,28 +270,28 @@ absl::Status FuseAndAnnotateConcatOperands(HloComputation* computation) {
 absl::Status MakeNestedFusionFromGemmFusion(
     HloFusionInstruction* fusion, HloInstruction* dot, MLIRContext* ctx,
     const se::DeviceDescription& device_description) {
-  TF_RETURN_IF_ERROR(IsDot(*dot));
+  TF_XLA_RETURN_IF_ERROR(IsDot(*dot));
   const bool is_scaled_dot = dot->opcode() == HloOpcode::kScaledDot;
   constexpr int lhs = 0;
   constexpr int rhs = 1;
-  TF_ASSIGN_OR_RETURN(TritonGemmConfig config, GetTritonGemmConfig(*fusion));
+  TF_XLA_ASSIGN_OR_RETURN(TritonGemmConfig config, GetTritonGemmConfig(*fusion));
   HloComputation* computation = fusion->called_computation();
 
   // First, create nested fusions for the operands of `concatenate` instructions
   // if they exist.
-  TF_RETURN_IF_ERROR(FuseAndAnnotateConcatOperands(computation));
+  TF_XLA_RETURN_IF_ERROR(FuseAndAnnotateConcatOperands(computation));
 
   // Left-hand side of the dot.
-  TF_RETURN_IF_ERROR(
+  TF_XLA_RETURN_IF_ERROR(
       FuseInstructionsForConsumer(*dot->mutable_operand(lhs), *dot));
-  TF_RETURN_IF_ERROR(AnnotateDotLhsNestedFusion(
+  TF_XLA_RETURN_IF_ERROR(AnnotateDotLhsNestedFusion(
       *::xla::Cast<HloFusionInstruction>(dot->mutable_operand(lhs)), *dot,
       config));
 
   // Right-hand side of the dot.
-  TF_RETURN_IF_ERROR(
+  TF_XLA_RETURN_IF_ERROR(
       FuseInstructionsForConsumer(*dot->mutable_operand(rhs), *dot));
-  TF_RETURN_IF_ERROR(AnnotateDotRhsNestedFusion(
+  TF_XLA_RETURN_IF_ERROR(AnnotateDotRhsNestedFusion(
       *::xla::Cast<HloFusionInstruction>(dot->mutable_operand(rhs)), *dot,
       config));
 
@@ -301,38 +301,38 @@ absl::Status MakeNestedFusionFromGemmFusion(
     constexpr int kContractingScaleFactor = 32;
     auto scale_config = config;
     scale_config.block_k /= kContractingScaleFactor;
-    TF_RETURN_IF_ERROR(
+    TF_XLA_RETURN_IF_ERROR(
         FuseInstructionsForConsumer(*dot->mutable_operand(kLhsScale), *dot));
-    TF_RETURN_IF_ERROR(AnnotateDotLhsNestedFusion(
+    TF_XLA_RETURN_IF_ERROR(AnnotateDotLhsNestedFusion(
         *::xla::Cast<HloFusionInstruction>(dot->mutable_operand(kLhsScale)),
         *dot, scale_config));
-    TF_RETURN_IF_ERROR(
+    TF_XLA_RETURN_IF_ERROR(
         FuseInstructionsForConsumer(*dot->mutable_operand(kRhsScale), *dot));
-    TF_RETURN_IF_ERROR(AnnotateDotRhsNestedFusion(
+    TF_XLA_RETURN_IF_ERROR(AnnotateDotRhsNestedFusion(
         *::xla::Cast<HloFusionInstruction>(dot->mutable_operand(kRhsScale)),
         *dot, scale_config));
   }
   // Delete newly unused instructions, if any.
-  TF_ASSIGN_OR_RETURN([[maybe_unused]] bool changed,
+  TF_XLA_ASSIGN_OR_RETURN([[maybe_unused]] bool changed,
                       HloDCE::RunOnComputation(
                           computation,
                           /*remove_cross_partition_collective_ops=*/false));
 
   // Annotate the fusion itself.
-  TF_ASSIGN_OR_RETURN(auto gpu_config,
+  TF_XLA_ASSIGN_OR_RETURN(auto gpu_config,
                       fusion->backend_config<GpuBackendConfig>());
   FusionBackendConfig& backend_config =
       *gpu_config.mutable_fusion_backend_config();
   backend_config.clear_triton_gemm_config();
   backend_config.set_kind(kTritonNestedGemmFusionKind);
 
-  TF_ASSIGN_OR_RETURN(BlockLevelParameters block_level_parameters,
+  TF_XLA_ASSIGN_OR_RETURN(BlockLevelParameters block_level_parameters,
                       ::xla::gpu::detail::FindBlockLevelParameters(
                           dot, config, ctx, device_description));
 
   *backend_config.mutable_block_level_fusion_config() =
       block_level_parameters.ToBlockLevelFusionConfig();
-  TF_RETURN_IF_ERROR(fusion->set_backend_config(gpu_config));
+  TF_XLA_RETURN_IF_ERROR(fusion->set_backend_config(gpu_config));
 
   return absl::OkStatus();
 }
@@ -743,7 +743,7 @@ absl::StatusOr<BitcastParams> CalculateBitcastOfTransposeImpl(
 // - transpose does not change layout (checks);
 absl::StatusOr<BitcastParams> CalculateBitcastOfTranspose(
     const HloTransposeInstruction* transpose, const Shape& result_shape) {
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       BitcastParams result,
       CalculateBitcastOfTransposeImpl(
           transpose, result_shape, transpose->shape(),
@@ -784,7 +784,7 @@ PlanHoistBitcastUpwardsToCallers(const HloInstruction* bitcast) {
   // It is possible to support more cases by sinking the bitcast from such
   // producers downward.
   HloInstructionSetVector producers = GetProducerSet(bitcast);
-  TF_RETURN_IF_ERROR(VerifyIsClosedProducerSet(producers, bitcast));
+  TF_XLA_RETURN_IF_ERROR(VerifyIsClosedProducerSet(producers, bitcast));
   if (bitcast->shape().element_type() !=
       bitcast->operand(0)->shape().element_type()) {
     return absl::UnimplementedError(
@@ -821,7 +821,7 @@ PlanHoistBitcastUpwardsToCallers(const HloInstruction* bitcast) {
     }
     return absl::OkStatus();
   };
-  TF_RETURN_IF_ERROR(set_result_shape(bitcast->operands(), bitcast->shape()));
+  TF_XLA_RETURN_IF_ERROR(set_result_shape(bitcast->operands(), bitcast->shape()));
 
   std::vector<std::pair<HloInstruction*, Shape>> result;
   // We want to visit instructions in order from consumers to producers: we
@@ -855,20 +855,20 @@ PlanHoistBitcastUpwardsToCallers(const HloInstruction* bitcast) {
         // update its operand.
         break;
       case HloOpcode::kBroadcast: {
-        TF_ASSIGN_OR_RETURN(
+        TF_XLA_ASSIGN_OR_RETURN(
             BitcastParams params,
             CalculateBitcastOfBroadcast(
                 Cast<HloBroadcastInstruction>(instruction), result_shape));
-        TF_RETURN_IF_ERROR(
+        TF_XLA_RETURN_IF_ERROR(
             set_result_shape(instruction->operands(), params.new_shape));
         break;
       }
       case HloOpcode::kTranspose: {
-        TF_ASSIGN_OR_RETURN(
+        TF_XLA_ASSIGN_OR_RETURN(
             BitcastParams params,
             CalculateBitcastOfTranspose(
                 Cast<HloTransposeInstruction>(instruction), result_shape));
-        TF_RETURN_IF_ERROR(
+        TF_XLA_RETURN_IF_ERROR(
             set_result_shape(instruction->operands(), params.new_shape));
         break;
       }
@@ -877,7 +877,7 @@ PlanHoistBitcastUpwardsToCallers(const HloInstruction* bitcast) {
           return absl::FailedPreconditionError(absl::StrCat(
               "Cannot hoist bitcast past ", instruction->ToString()));
         }
-        TF_RETURN_IF_ERROR(
+        TF_XLA_RETURN_IF_ERROR(
             set_result_shape(instruction->operands(), result_shape));
         break;
     }
@@ -936,7 +936,7 @@ absl::StatusOr<Shape> ComputeRootShapeAfterHoistingBitcasts(
     }
     return absl::OkStatus();
   };
-  TF_RETURN_IF_ERROR(set_operand_shape(dot->users(), dot->shape()));
+  TF_XLA_RETURN_IF_ERROR(set_operand_shape(dot->users(), dot->shape()));
 
   for (HloInstruction* instruction : GetConsumerSet(dot)) {
     auto it = operand_shapes.find(instruction);
@@ -944,17 +944,17 @@ absl::StatusOr<Shape> ComputeRootShapeAfterHoistingBitcasts(
       continue;  // Not affected.
     }
     Shape& operand_shape = it->second;
-    TF_ASSIGN_OR_RETURN(Shape result_shape, [&]() -> absl::StatusOr<Shape> {
+    TF_XLA_ASSIGN_OR_RETURN(Shape result_shape, [&]() -> absl::StatusOr<Shape> {
       switch (instruction->opcode()) {
         case HloOpcode::kBroadcast: {
-          TF_ASSIGN_OR_RETURN(
+          TF_XLA_ASSIGN_OR_RETURN(
               BitcastParams params,
               CalculateBroadcastOfBitcast(
                   Cast<HloBroadcastInstruction>(instruction), operand_shape));
           return params.new_shape;
         }
         case HloOpcode::kTranspose: {
-          TF_ASSIGN_OR_RETURN(
+          TF_XLA_ASSIGN_OR_RETURN(
               BitcastParams params,
               CalculateTransposeOfBitcast(
                   Cast<HloTransposeInstruction>(instruction), operand_shape));
@@ -975,7 +975,7 @@ absl::StatusOr<Shape> ComputeRootShapeAfterHoistingBitcasts(
       CopyElementType(instruction->shape(), &result_shape);
       return result_shape;
     }
-    TF_RETURN_IF_ERROR(set_operand_shape(instruction->users(), result_shape));
+    TF_XLA_RETURN_IF_ERROR(set_operand_shape(instruction->users(), result_shape));
   }
   return absl::InternalError("No root found");
 }
@@ -984,7 +984,7 @@ absl::StatusOr<Shape> ComputeRootShapeAfterHoistingBitcasts(
 // each caller.
 absl::Status HoistBitcastUpwardsToCallers(HloInstruction* bitcast,
                                           absl::Span<HloInstruction*> callers) {
-  TF_ASSIGN_OR_RETURN(auto rewrite_plan,
+  TF_XLA_ASSIGN_OR_RETURN(auto rewrite_plan,
                       PlanHoistBitcastUpwardsToCallers(bitcast));
   for (auto [instruction, result_shape] : rewrite_plan) {
     VLOG(2) << absl::StrCat("rewriting result shape of ",
@@ -1000,7 +1000,7 @@ absl::Status HoistBitcastUpwardsToCallers(HloInstruction* bitcast,
           HloInstruction* new_bitcast =
               caller->AddInstruction(HloInstruction::CreateBitcast(
                   result_shape, caller->mutable_operand(number)));
-          TF_RETURN_IF_ERROR(
+          TF_XLA_RETURN_IF_ERROR(
               caller->ReplaceOperandWithDifferentShape(number, new_bitcast));
         }
         break;
@@ -1028,8 +1028,8 @@ absl::Status HoistBitcastUpwardsToCallers(HloInstruction* bitcast,
     }
     *instruction->mutable_shape() = result_shape;
   }
-  TF_RETURN_IF_ERROR(bitcast->ReplaceAllUsesWith(bitcast->mutable_operand(0)));
-  TF_RETURN_IF_ERROR(bitcast->parent()->RemoveInstruction(bitcast));
+  TF_XLA_RETURN_IF_ERROR(bitcast->ReplaceAllUsesWith(bitcast->mutable_operand(0)));
+  TF_XLA_RETURN_IF_ERROR(bitcast->parent()->RemoveInstruction(bitcast));
   return absl::OkStatus();
 }
 
@@ -1039,7 +1039,7 @@ absl::Status HoistBitcastUpwardsToCallers(HloInstruction* bitcast,
 // root shape.
 absl::Status MaybeInsertRootBitcast(HloInstruction* dot,
                                     absl::Span<HloInstruction*> callers) {
-  TF_ASSIGN_OR_RETURN(Shape root_shape,
+  TF_XLA_ASSIGN_OR_RETURN(Shape root_shape,
                       ComputeRootShapeAfterHoistingBitcasts(dot));
 
   HloComputation* computation = dot->parent();
@@ -1056,7 +1056,7 @@ absl::Status MaybeInsertRootBitcast(HloInstruction* dot,
   for (HloInstruction* caller : callers) {
     HloInstruction* new_bitcast = caller->AddInstruction(
         HloInstruction::CreateBitcast(caller->shape(), caller));
-    TF_RETURN_IF_ERROR(caller->ReplaceAllUsesWith(new_bitcast));
+    TF_XLA_RETURN_IF_ERROR(caller->ReplaceAllUsesWith(new_bitcast));
     *caller->mutable_shape() = root_shape;
   }
 
@@ -1134,7 +1134,7 @@ class NestGemmFusionVisitor : public DfsHloRewriteVisitor {
   absl::Status AcceptResultingFusion(const HloFusionInstruction* fusion) {
     const HloComputation* computation = fusion->called_computation();
     for (const HloInstruction* instruction : computation->instructions()) {
-      TF_RETURN_IF_ERROR(AcceptNestedInstruction(instruction));
+      TF_XLA_RETURN_IF_ERROR(AcceptNestedInstruction(instruction));
     }
     return absl::OkStatus();
   }
@@ -1154,9 +1154,9 @@ class NestGemmFusionVisitor : public DfsHloRewriteVisitor {
       }
     }
 
-    TF_RETURN_IF_ERROR(
+    TF_XLA_RETURN_IF_ERROR(
         TryHoistBitcastsInComputationToCallers(instr, call_graph));
-    TF_RETURN_IF_ERROR(MakeNestedFusionFromGemmFusion(
+    TF_XLA_RETURN_IF_ERROR(MakeNestedFusionFromGemmFusion(
         fusion, instr, mlir_context_, device_description_));
 
     MarkAsChanged();
@@ -1217,7 +1217,7 @@ absl::StatusOr<bool> NestGemmFusion::RunOnModule(
        module->MakeNonfusionComputations(execution_threads)) {
     NestGemmFusionVisitor visitor(mlir_context_, call_graph.get(),
                                   device_description_);
-    TF_RETURN_IF_ERROR(computation->Accept(&visitor));
+    TF_XLA_RETURN_IF_ERROR(computation->Accept(&visitor));
     changed |= visitor.changed();
   }
   return changed;
@@ -1234,7 +1234,7 @@ namespace detail {
 absl::StatusOr<BlockLevelParameters> FindBlockLevelParameters(
     HloInstruction* dot, const TritonGemmConfig& config, MLIRContext* ctx,
     const se::DeviceDescription& device_description) {
-  TF_RETURN_IF_ERROR(IsDot(*dot));
+  TF_XLA_RETURN_IF_ERROR(IsDot(*dot));
   HloComputation* computation = dot->parent();
   VLOG(3) << "FindOutputTileSizesForEpilogue of computation: "
           << computation->ToString();
@@ -1311,13 +1311,13 @@ absl::StatusOr<BlockLevelParameters> FindBlockLevelParameters(
     }
 
     Tiling tiling(std::move(tile_mapping));
-    TF_ASSIGN_OR_RETURN(bool parameters_satisfy_constraints,
+    TF_XLA_ASSIGN_OR_RETURN(bool parameters_satisfy_constraints,
                         analysis.ParametersSatisfyConstraints(tiling));
     if (!parameters_satisfy_constraints) {
       VLOG(4) << "Parameters don't satisfy constraints";
       continue;
     }
-    TF_ASSIGN_OR_RETURN(FlatTiling flat_tiling_parameters,
+    TF_XLA_ASSIGN_OR_RETURN(FlatTiling flat_tiling_parameters,
                         tiling.Flatten(tiling_specification));
     llvm::SmallVector<int64_t> mapped_dot_tile_sizes =
         EvaluateTileSizes(tiled_dot.symbolic_tile(), flat_tiling_parameters);

@@ -52,29 +52,29 @@ absl::Status UpdateCuptiTracerOptionsFromProfilerOptions(
     input_keys.insert(key);
   }
 
-  TF_RETURN_IF_ERROR(
+  TF_XLA_RETURN_IF_ERROR(
       SetValue<int64_t>(profile_options, "gpu_max_callback_api_events",
                         input_keys, [&](int64_t value) {
                           collector_options.max_callback_api_events = value;
                         }));
 
-  TF_RETURN_IF_ERROR(
+  TF_XLA_RETURN_IF_ERROR(
       SetValue<int64_t>(profile_options, "gpu_max_activity_api_events",
                         input_keys, [&](int64_t value) {
                           collector_options.max_activity_api_events = value;
                         }));
 
-  TF_RETURN_IF_ERROR(
+  TF_XLA_RETURN_IF_ERROR(
       SetValue<int64_t>(profile_options, "gpu_max_annotation_strings",
                         input_keys, [&](int64_t value) {
                           collector_options.max_annotation_strings = value;
                         }));
 
-  TF_RETURN_IF_ERROR(SetValue<bool>(
+  TF_XLA_RETURN_IF_ERROR(SetValue<bool>(
       profile_options, "gpu_dump_graph_node_mapping", input_keys,
       [&](bool value) { collector_options.dump_graph_nope_mapping = value; }));
 
-  TF_RETURN_IF_ERROR(SetValue<int64_t>(
+  TF_XLA_RETURN_IF_ERROR(SetValue<int64_t>(
       profile_options, "gpu_num_chips_to_profile_per_task", input_keys,
       [&](int64_t value) {
         if (value >= 0 && value <= std::numeric_limits<uint32_t>::max()) {
@@ -82,11 +82,11 @@ absl::Status UpdateCuptiTracerOptionsFromProfilerOptions(
         }
       }));
 
-  TF_RETURN_IF_ERROR(SetValue<bool>(
+  TF_XLA_RETURN_IF_ERROR(SetValue<bool>(
       profile_options, "gpu_enable_nvtx_tracking", input_keys,
       [&](bool value) { tracer_options.enable_nvtx_tracking = value; }));
 
-  TF_RETURN_IF_ERROR(
+  TF_XLA_RETURN_IF_ERROR(
       SetValue<bool>(profile_options, "gpu_enable_cupti_activity_graph_trace",
                      input_keys, [&](bool value) {
                        if (value) {
@@ -95,7 +95,7 @@ absl::Status UpdateCuptiTracerOptionsFromProfilerOptions(
                        }
                      }));
 
-  TF_RETURN_IF_ERROR(SetValue<std::string>(
+  TF_XLA_RETURN_IF_ERROR(SetValue<std::string>(
       profile_options, "gpu_pm_sample_counters", input_keys,
       [&](const std::string& value) {
         std::vector<std::string> metrics;
@@ -107,13 +107,13 @@ absl::Status UpdateCuptiTracerOptionsFromProfilerOptions(
         tracer_options.pm_sampler_options.enable = !metrics.empty();
       }));
 
-  TF_RETURN_IF_ERROR(SetValue<int64_t>(
+  TF_XLA_RETURN_IF_ERROR(SetValue<int64_t>(
       profile_options, "gpu_pm_sample_interval_us", input_keys,
       [&](int64_t value) {
         tracer_options.pm_sampler_options.sample_interval_ns = value * 1000;
       }));
 
-  TF_RETURN_IF_ERROR(SetValue<int64_t>(
+  TF_XLA_RETURN_IF_ERROR(SetValue<int64_t>(
       profile_options, "gpu_pm_sample_buffer_size_per_gpu_mb", input_keys,
       [&](int64_t value) {
         tracer_options.pm_sampler_options.hw_buf_size =

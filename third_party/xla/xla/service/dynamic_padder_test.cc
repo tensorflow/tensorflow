@@ -118,14 +118,14 @@ class DynamicPadderTest : public HloTestBase {
         std::move(op_supports_dynamism_handler);
     options.custom_call_handler = std::move(custom_call_handler);
     DynamicPadder padder(std::move(options));
-    TF_ASSIGN_OR_RETURN(bool changed, RunHloPass(&padder, module_.get()));
+    TF_XLA_ASSIGN_OR_RETURN(bool changed, RunHloPass(&padder, module_.get()));
     if (!changed) return false;
     // Dynamic padder can add redundant tuple/get-tuple-element and copy
     // instructions.
     TupleSimplifier tuple_simplifier;
-    TF_RETURN_IF_ERROR(RunHloPass(&tuple_simplifier, module_.get()).status());
+    TF_XLA_RETURN_IF_ERROR(RunHloPass(&tuple_simplifier, module_.get()).status());
     AlgebraicSimplifier alg_simplifier(AlgebraicSimplifierOptions{});
-    TF_RETURN_IF_ERROR(RunHloPass(&alg_simplifier, module_.get()).status());
+    TF_XLA_RETURN_IF_ERROR(RunHloPass(&alg_simplifier, module_.get()).status());
     return true;
   }
 

@@ -97,7 +97,7 @@ absl::StatusOr<std::unique_ptr<Thunk>> InsertBufferSaverCustomCall(
         absl::StrCat("Buffer saver ", sequence[0]->profile_annotation());
     info.execution_stream_id = sequence[0]->execution_stream_id();
 
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         auto log_thunk,
         CustomCallThunk::Create(
             info, std::string{kXlaGpuAppendToFileCustomCallTag}, {output},

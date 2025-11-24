@@ -285,7 +285,7 @@ absl::StatusOr<std::unique_ptr<PjRtExecutable>> TfrtGpuClient::Compile(
   const bool allow_auto_layout =
       build_options.has_debug_options() &&
       build_options.debug_options().xla_pjrt_allow_auto_layout_in_hlo();
-  TF_RETURN_IF_ERROR(DetermineArgumentLayoutsFromCompileOptions(
+  TF_XLA_RETURN_IF_ERROR(DetermineArgumentLayoutsFromCompileOptions(
       computation,
       [local_client = xla_client_,
        allow_auto_layout](Shape shape) -> absl::StatusOr<Shape> {
@@ -320,8 +320,8 @@ absl::StatusOr<std::unique_ptr<PjRtExecutable>> TfrtGpuClient::CompileInternal(
   }
   auto input_options = options;
 
-  TF_RETURN_IF_ERROR(options.ApplyAllOptionOverrides());
-  TF_RETURN_IF_ERROR(
+  TF_XLA_RETURN_IF_ERROR(options.ApplyAllOptionOverrides());
+  TF_XLA_RETURN_IF_ERROR(
       UpdateCompileOptions(&options, lookup_addressable_devices));
 
   // It is important to set the canonicalization callback after creating
@@ -332,7 +332,7 @@ absl::StatusOr<std::unique_ptr<PjRtExecutable>> TfrtGpuClient::CompileInternal(
         layout_canonicalization_callback);
   }
 
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       std::vector<std::unique_ptr<LocalExecutable>> local_executables,
       xla_client_->Compile(computation, argument_layout_pointers,
                            options.executable_build_options));
@@ -343,7 +343,7 @@ absl::StatusOr<std::unique_ptr<PjRtExecutable>> TfrtGpuClient::CompileInternal(
 
 absl::StatusOr<std::unique_ptr<PjRtExecutable>> TfrtGpuClient::Compile(
     mlir::ModuleOp module, CompileOptions options) {
-  TF_RETURN_IF_ERROR(pjrt::MaybeDumpCompileInputs(options, module, topology_));
+  TF_XLA_RETURN_IF_ERROR(pjrt::MaybeDumpCompileInputs(options, module, topology_));
   return Compile(module, options, /*lookup_addressable_devices=*/false);
 }
 
@@ -352,7 +352,7 @@ absl::StatusOr<std::unique_ptr<PjRtExecutable>> TfrtGpuClient::Compile(
     bool lookup_addressable_devices) {
   XlaComputation xla_computation;
   ExecutableBuildOptions& exec_build_options = options.executable_build_options;
-  TF_RETURN_IF_ERROR(MlirToXlaComputation(
+  TF_XLA_RETURN_IF_ERROR(MlirToXlaComputation(
       module, xla_computation,
       /*use_tuple_args=*/options.parameter_is_tupled_arguments,
       /*return_tuple=*/false, &exec_build_options,
@@ -364,13 +364,13 @@ absl::StatusOr<std::unique_ptr<PjRtExecutable>> TfrtGpuClient::Compile(
     return Compile(xla_computation, options, lookup_addressable_devices);
   }
 
-  TF_ASSIGN_OR_RETURN(std::vector<LayoutMode> arg_layout_modes,
+  TF_XLA_ASSIGN_OR_RETURN(std::vector<LayoutMode> arg_layout_modes,
                       GetArgLayoutModes(module));
-  TF_ASSIGN_OR_RETURN(std::vector<LayoutMode> out_layout_modes,
+  TF_XLA_ASSIGN_OR_RETURN(std::vector<LayoutMode> out_layout_modes,
                       GetOutputLayoutModes(module));
-  TF_ASSIGN_OR_RETURN(std::vector<MemorySpaceColor> arg_memory_spaces,
+  TF_XLA_ASSIGN_OR_RETURN(std::vector<MemorySpaceColor> arg_memory_spaces,
                       GetArgMemoryKinds(module));
-  TF_ASSIGN_OR_RETURN(std::vector<MemorySpaceColor> out_memory_spaces,
+  TF_XLA_ASSIGN_OR_RETURN(std::vector<MemorySpaceColor> out_memory_spaces,
                       GetOutputMemoryKinds(module));
 
   // If auto-sharding modifies shapes of arguments and/or result,
@@ -392,7 +392,7 @@ absl::StatusOr<std::unique_ptr<PjRtExecutable>> TfrtGpuClient::Compile(
   };
 
   // This call will update result_layout in options.executable_build_options.
-  TF_ASSIGN_OR_RETURN(auto arg_layouts_and_pointers,
+  TF_XLA_ASSIGN_OR_RETURN(auto arg_layouts_and_pointers,
                       LayoutModesToXla(
                           xla_computation, arg_layout_modes, out_layout_modes,
                           arg_memory_spaces, out_memory_spaces,
@@ -409,7 +409,7 @@ absl::StatusOr<std::unique_ptr<PjRtExecutable>> TfrtGpuClient::Compile(
 absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
 TfrtGpuClient::CompileAndLoad(const XlaComputation& computation,
                               CompileOptions options) {
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtExecutable> executable,
+  TF_XLA_ASSIGN_OR_RETURN(std::unique_ptr<PjRtExecutable> executable,
                       Compile(computation, options,
                               /*lookup_addressable_devices=*/true));
   return Load(std::move(executable), LoadOptions());
@@ -417,7 +417,7 @@ TfrtGpuClient::CompileAndLoad(const XlaComputation& computation,
 
 absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
 TfrtGpuClient::CompileAndLoad(mlir::ModuleOp module, CompileOptions options) {
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtExecutable> executable,
+  TF_XLA_ASSIGN_OR_RETURN(std::unique_ptr<PjRtExecutable> executable,
                       Compile(module, options,
                               /*lookup_addressable_devices=*/true));
   return Load(std::move(executable), LoadOptions());
@@ -455,7 +455,7 @@ TfrtGpuClient::CreateUninitializedBuffer(const Shape& shape,
           << " memory_space: " << memory_space->DebugString();
   TransferManager* transfer_manager =
       xla_client()->backend().transfer_manager();
-  TF_ASSIGN_OR_RETURN(Shape compact_shape,
+  TF_XLA_ASSIGN_OR_RETURN(Shape compact_shape,
                       transfer_manager->ChooseCompactLayoutForShape(shape));
   return AllocateTfrtGpuDestinationBuffer(
       compact_shape, tsl::MakeAvailableAsyncValueRef<GpuEvent>(),
@@ -553,7 +553,7 @@ absl::StatusOr<std::unique_ptr<PjRtExecutable>>
 TfrtGpuClient::DeserializeExecutable(
     absl::string_view serialized,
     std::optional<CompileOptions> compile_options) {
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       auto local_executables_and_options,
       DeserializeToLocalExecutable(serialized, compile_options));
 
@@ -585,7 +585,7 @@ TfrtGpuClient::DeserializeToLocalExecutable(
   if (options.has_value()) {
     compile_options = *std::move(options);
   } else {
-    TF_ASSIGN_OR_RETURN(compile_options,
+    TF_XLA_ASSIGN_OR_RETURN(compile_options,
                         CompileOptions::FromProto(proto.compile_options()));
   }
 
@@ -593,7 +593,7 @@ TfrtGpuClient::DeserializeToLocalExecutable(
   VLOG(1) << "TfrtGpuClient::DeserializeToLocalExecutable";
 
   std::string str = std::move(*proto.mutable_serialized_executable());
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       std::unique_ptr<LocalExecutable> loaded,
       xla_client_->Load(str, compile_options.executable_build_options));
 
@@ -607,7 +607,7 @@ absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
 TfrtGpuClient::LoadSerializedExecutable(absl::string_view serialized,
                                         std::optional<CompileOptions> options,
                                         const LoadOptions& load_options) {
-  TF_ASSIGN_OR_RETURN(auto local_executables_and_options,
+  TF_XLA_ASSIGN_OR_RETURN(auto local_executables_and_options,
                       DeserializeToLocalExecutable(serialized, options));
   return LoadInternal(std::move(local_executables_and_options.first),
                       local_executables_and_options.second);
@@ -619,9 +619,9 @@ TfrtGpuClient::LoadInternal(
     CompileOptions compile_options) {
   auto input_options = compile_options;
 
-  TF_RETURN_IF_ERROR(compile_options.ApplyAllOptionOverrides());
+  TF_XLA_RETURN_IF_ERROR(compile_options.ApplyAllOptionOverrides());
 
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       ExecutableExtras extras,
       UpdateCompileOptionsAndGetExecutableExtras(&compile_options));
   std::shared_ptr<DeviceAssignment>& device_assignment =
@@ -646,7 +646,7 @@ TfrtGpuClient::LoadInternal(
       std::move(addressable_device_logical_ids), std::move(addressable_devices),
       this);
 
-  TF_RETURN_IF_ERROR(
+  TF_XLA_RETURN_IF_ERROR(
       executable->SetUpDonation(compile_options.parameter_is_tupled_arguments));
   if (xla_dump_hlo_unoptimized_snapshots) {
     executable->SetInputHloSnapshotBits(
@@ -666,7 +666,7 @@ absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> TfrtGpuClient::Load(
   tsl::profiler::TraceMe traceme("TfrtGpuClient::Load");
   VLOG(1) << "TfrtGpuClient::Load";
 
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       auto local_executables,
       se_executable->ConsumeExecutable(xla_client_, compile_options));
   return LoadInternal(std::move(local_executables), compile_options);
@@ -710,7 +710,7 @@ absl::StatusOr<TfrtGpuClient::ExecutableExtras>
 TfrtGpuClient::UpdateCompileOptionsAndGetExecutableExtras(
     CompileOptions* options) {
   ExecutableExtras extras;
-  TF_RETURN_IF_ERROR(UpdateCompileOptionsInternal(
+  TF_XLA_RETURN_IF_ERROR(UpdateCompileOptionsInternal(
       options, &extras, /*lookup_addressable_devices=*/true));
   return extras;
 }
@@ -737,7 +737,7 @@ absl::Status TfrtGpuClient::UpdateCompileOptionsInternal(
     const bool allow_auto_layout =
         build_options.has_debug_options() &&
         build_options.debug_options().xla_pjrt_allow_auto_layout_in_hlo();
-    TF_RETURN_IF_ERROR(DetermineArgumentLayoutsFromCompileOptions(
+    TF_XLA_RETURN_IF_ERROR(DetermineArgumentLayoutsFromCompileOptions(
         XlaComputation(module.ToProto()),
         [local_client,
          allow_auto_layout](Shape shape) -> absl::StatusOr<Shape> {
@@ -778,7 +778,7 @@ absl::Status TfrtGpuClient::UpdateCompileOptionsInternal(
 
   int num_replicas;
   int num_partitions;
-  TF_RETURN_IF_ERROR(ParseDeviceAssignmentCompileOptions(
+  TF_XLA_RETURN_IF_ERROR(ParseDeviceAssignmentCompileOptions(
       options->compile_portable_executable, &options->executable_build_options,
       [this](int num_replicas, int num_partitions) {
         return this->GetDefaultDeviceAssignment(num_replicas, num_partitions);
@@ -796,7 +796,7 @@ absl::Status TfrtGpuClient::UpdateCompileOptionsInternal(
         int64_t device_id = (*device_assignment)(replica, partition);
         PjRtGlobalDeviceId global_device_id(device_id);
 
-        TF_ASSIGN_OR_RETURN(PjRtDevice * device,
+        TF_XLA_ASSIGN_OR_RETURN(PjRtDevice * device,
                             LookupDevice(global_device_id));
         all_process_indices.insert(device->process_index());
         if (device->process_index() != process_index()) {
@@ -850,7 +850,7 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> TfrtGpuClient::BufferFromHostBuffer(
   absl::InlinedVector<int64_t, 4> tmp_strides;
   if (!byte_strides) {
     tmp_strides.resize(dims.size());
-    TF_RETURN_IF_ERROR(ShapeUtil::UnpackedByteStrides(
+    TF_XLA_RETURN_IF_ERROR(ShapeUtil::UnpackedByteStrides(
         device_shape, absl::MakeSpan(tmp_strides)));
     byte_strides = tmp_strides;
   }
@@ -861,14 +861,14 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> TfrtGpuClient::BufferFromHostBuffer(
   if (device_layout != nullptr) {
     *(device_shape.mutable_layout()) = *device_layout;
   } else {
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         device_shape,
         transfer_manager->ChooseCompactLayoutForShape(device_shape));
   }
 
   absl::InlinedVector<int64_t, 4> shape_strides(
       device_shape.dimensions().size());
-  TF_RETURN_IF_ERROR(ShapeUtil::UnpackedByteStrides(
+  TF_XLA_RETURN_IF_ERROR(ShapeUtil::UnpackedByteStrides(
       device_shape, absl::MakeSpan(shape_strides)));
   bool host_and_device_strides_equal =
       (byte_size == 0 || *byte_strides == shape_strides);
@@ -884,7 +884,7 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> TfrtGpuClient::BufferFromHostBuffer(
     options.permutation = permutation;
     options.input_layout = TransposePlan::Striding{*byte_strides};
     absl::MutexLock lock(transpose_mu_);
-    TF_ASSIGN_OR_RETURN(transpose, transpose_cache_.GetOrCreate(options));
+    TF_XLA_ASSIGN_OR_RETURN(transpose, transpose_cache_.GetOrCreate(options));
   }
 
   bool should_pack = primitive_util::IsSubByteNonPredType(type) &&
@@ -897,7 +897,7 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> TfrtGpuClient::BufferFromHostBuffer(
     packed_size = byte_size;
   }
   auto dst_definition_event = tsl::MakeConstructedAsyncValueRef<GpuEvent>();
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<TfrtGpuBuffer> output_buffer,
+  TF_XLA_ASSIGN_OR_RETURN(std::unique_ptr<TfrtGpuBuffer> output_buffer,
                       AllocateTfrtGpuDestinationBuffer(
                           device_shape, dst_definition_event.CopyRef(), device,
                           this, memory_space, packed_size));
@@ -1077,7 +1077,7 @@ TfrtGpuClient::BufferFromHostLiteral(const LiteralSlice& literal,
   // buffer. They are set only after h2d dispatch.
   tsl::AsyncValueRef<GpuEvent> definition_event =
       tsl::MakeConstructedAsyncValueRef<GpuEvent>();
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       std::unique_ptr<TfrtGpuBuffer> output_buffer,
       AllocateTfrtGpuDestinationBuffer(shape, definition_event,
                                        tsl::down_cast<TfrtGpuDevice*>(device),
@@ -1178,14 +1178,14 @@ absl::StatusOr<std::unique_ptr<PjRtClient>> GetTfrtGpuClient(
   const auto* pjrt_platform_name = xla::CudaName();
 #endif  // TENSORFLOW_USE_ROCM
 
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       LocalClient * xla_client,
       GetGpuXlaClient(options.platform_name, options.allowed_devices));
   EnablePeerAccess(xla_client->backend().stream_executors());
 
   std::unique_ptr<tsl::Allocator> host_memory_allocator;
   if (!xla_client->backend().stream_executors().empty()) {
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         host_memory_allocator,
         GetGpuHostAllocator(xla_client->backend().stream_executors().front()));
   }
@@ -1206,7 +1206,7 @@ absl::StatusOr<std::unique_ptr<PjRtClient>> GetTfrtGpuClient(
     kv_store = std::make_shared<InMemoryKeyValueStore>();
   }
   TF_RET_CHECK(options.num_nodes == 1 || kv_store != nullptr);
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       DeviceTopologyPair device_topology_pair,
       BuildDistributedDevices(
           pjrt_platform_name, xla_client, options.node_id,
@@ -1220,7 +1220,7 @@ absl::StatusOr<std::unique_ptr<PjRtClient>> GetTfrtGpuClient(
   auto gpu_topology = std::shared_ptr<const GpuTopology>(
       GpuTopology::FromProto(device_topology_pair.second));
 
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       auto allocator,
       CreateDeviceAllocator(xla_client, options.allocator_config, devices));
 

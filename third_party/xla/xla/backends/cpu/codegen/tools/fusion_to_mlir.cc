@@ -32,11 +32,11 @@ namespace xla::cpu {
 
 absl::Status Run(const std::string& filename) {
   auto mlir_context = FusionCompiler::CreateContext();
-  TF_ASSIGN_OR_RETURN(auto module, LoadTestModule(filename));
+  TF_XLA_ASSIGN_OR_RETURN(auto module, LoadTestModule(filename));
   auto fusion = DynCast<HloFusionInstruction>(
       module->entry_computation()->root_instruction());
   fusion->SetAndSanitizeName("main");
-  TF_ASSIGN_OR_RETURN(KernelDefinition kernel_definition,
+  TF_XLA_ASSIGN_OR_RETURN(KernelDefinition kernel_definition,
                       EmitFusionKernel(*mlir_context, *fusion, nullptr, false));
   llvm::outs() << kernel_definition.source().ToString();
   return absl::OkStatus();

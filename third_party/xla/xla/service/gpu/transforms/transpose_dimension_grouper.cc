@@ -202,7 +202,7 @@ class TransposeDimensionGroupVisitor : public DfsHloRewriteVisitor {
 absl::StatusOr<bool> TransposeDimensionGrouper::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       bool changed,
       TransposeDimensionGroupVisitor().RunOnModule(module, execution_threads));
   return changed;

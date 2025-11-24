@@ -74,7 +74,7 @@ absl::StatusOr<bool> CanonicalizeNonTupleConditional(
           0, HloInstruction::CreateParameter(0, shape, param->name()));
       HloInstruction* const gte = branch->AddInstruction(
           HloInstruction::CreateGetTupleElement(new_param, 0));
-      TF_RETURN_IF_ERROR(new_param->ReplaceAllUsesWithDifferentShape(gte));
+      TF_XLA_RETURN_IF_ERROR(new_param->ReplaceAllUsesWithDifferentShape(gte));
       changed = true;
     }
 
@@ -96,7 +96,7 @@ absl::StatusOr<bool> CanonicalizeNonTupleConditional(
     if (!operand->shape().IsTuple()) {
       auto tuple =
           parent->AddInstruction(HloInstruction::CreateTuple({operand}));
-      TF_RETURN_IF_ERROR(
+      TF_XLA_RETURN_IF_ERROR(
           conditional->ReplaceOperandWithDifferentShape(i, tuple));
       changed = true;
     }
@@ -110,7 +110,7 @@ absl::StatusOr<bool> CanonicalizeNonTupleConditional(
         parent->AddInstruction(conditional->CloneWithNewShape(new_shape));
     auto gte = parent->AddInstruction(
         HloInstruction::CreateGetTupleElement(root_shape, new_conditional, 0));
-    TF_RETURN_IF_ERROR(parent->ReplaceInstruction(conditional, gte));
+    TF_XLA_RETURN_IF_ERROR(parent->ReplaceInstruction(conditional, gte));
     changed = true;
   }
 
@@ -128,7 +128,7 @@ absl::StatusOr<bool> ConditionalCanonicalizer::RunImpl(
   for (auto* comp : module->MakeNonfusionComputations(execution_threads)) {
     for (auto* inst : comp->MakeInstructionPostOrder()) {
       if (inst->opcode() == HloOpcode::kConditional) {
-        TF_ASSIGN_OR_RETURN(changed, CanonicalizeNonTupleConditional(inst));
+        TF_XLA_ASSIGN_OR_RETURN(changed, CanonicalizeNonTupleConditional(inst));
       }
     }
   }

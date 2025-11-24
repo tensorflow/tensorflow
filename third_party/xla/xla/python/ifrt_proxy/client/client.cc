@@ -124,12 +124,12 @@ absl::StatusOr<std::unique_ptr<Client>> Client::Create(
         pjrt_device_attributes;
     if (rpc_helper->protocol_version() <= 3) {
       for (const auto& [key, attr] : d.deprecated_attributes()) {
-        TF_ASSIGN_OR_RETURN(xla::PjRtDeviceAttribute value,
+        TF_XLA_ASSIGN_OR_RETURN(xla::PjRtDeviceAttribute value,
                             FromVariantProto(attr));
         pjrt_device_attributes.insert({key, std::move(value)});
       }
     } else {
-      TF_ASSIGN_OR_RETURN(auto attributes,
+      TF_XLA_ASSIGN_OR_RETURN(auto attributes,
                           AttributeMap::FromProto(d.attributes()));
       pjrt_device_attributes = ToPjRtAttributeMap(std::move(attributes));
     }
@@ -191,7 +191,7 @@ absl::StatusOr<std::unique_ptr<Client>> Client::Create(
 
   AttributeMap client_attributes({});
   if (init_response.has_client_attributes()) {
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         client_attributes,
         AttributeMap::FromProto(init_response.client_attributes()));
   }
@@ -309,7 +309,7 @@ absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> Client::CopyArrays(
   for (const auto& array : arrays) {
     if (auto* proxy_array =
             llvm::dyn_cast<xla::ifrt::proxy::Array>(array.get())) {
-      TF_ASSIGN_OR_RETURN(ArrayHandle handle,
+      TF_XLA_ASSIGN_OR_RETURN(ArrayHandle handle,
                           proxy_array->GetHandle(semantics));
       req->add_array_handles(handle.handle);
     } else {
@@ -333,7 +333,7 @@ absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> Client::CopyArrays(
   std::vector<uint64_t> result_handles;
   if (rpc_helper_->protocol_version() <
       protocol_version::kClientHandlesOptimization2) {
-    TF_ASSIGN_OR_RETURN(auto response,
+    TF_XLA_ASSIGN_OR_RETURN(auto response,
                         rpc_helper_->CopyArrays(std::move(req)).Await());
     result_handles.assign(response->array_handles().begin(),
                           response->array_handles().end());
@@ -356,12 +356,12 @@ absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> Client::CopyArrays(
   std::vector<xla::ifrt::ArrayRef> new_arrays;
   new_arrays.reserve(arrays.size());
   for (int i = 0; i < result_handles.size(); ++i) {
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         auto new_sharding,
         arrays[i]->sharding().WithDeviceAssignment(devices, memory_kind));
     auto* proxy_array = llvm::cast<xla::ifrt::proxy::Array>(arrays[i].get());
     CHECK(proxy_array != nullptr);
-    TF_ASSIGN_OR_RETURN(std::shared_ptr<const xla::PjRtLayout> layout,
+    TF_XLA_ASSIGN_OR_RETURN(std::shared_ptr<const xla::PjRtLayout> layout,
                         proxy_array->pjrt_layout());
     new_arrays.push_back(
         tsl::MakeRef<Array>(this, rpc_helper_, arrays[i]->dtype(),
@@ -426,9 +426,9 @@ absl::StatusOr<DeviceAssignment> Client::GetDefaultDeviceAssignment(
   req->set_num_partitions(num_partitions);
 
   auto future = rpc_helper_->GetDefaultDeviceAssignment(std::move(req));
-  TF_ASSIGN_OR_RETURN(auto response, future.Await());
+  TF_XLA_ASSIGN_OR_RETURN(auto response, future.Await());
 
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       auto assignment_to_return,
       DeviceAssignment::Deserialize(response->device_assignment()));
 
@@ -473,9 +473,9 @@ Client::GetDefaultPjRtLayout(xla::ifrt::DType dtype,
   req->set_memory_kind(std::string(memory_kind.memory_kind().value_or("")));
 
   auto future = rpc_helper_->GetDefaultLayout(std::move(req));
-  TF_ASSIGN_OR_RETURN(auto response, future.Await());
+  TF_XLA_ASSIGN_OR_RETURN(auto response, future.Await());
 
-  TF_ASSIGN_OR_RETURN(auto layout, xla::PjRtLayout::Deserialize(
+  TF_XLA_ASSIGN_OR_RETURN(auto layout, xla::PjRtLayout::Deserialize(
                                        response->serialized_pjrt_layout()));
   {
     absl::MutexLock l(mu_);

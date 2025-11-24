@@ -76,7 +76,7 @@ class PjRtLayoutSerDes : public llvm::RTTIExtends<PjRtLayoutSerDes, SerDes> {
       return absl::FailedPreconditionError(absl::StrCat(
           "Unsupported ", version_number, " for PjRtLayout deserialization"));
     }
-    TF_ASSIGN_OR_RETURN(auto xla_layout,
+    TF_XLA_ASSIGN_OR_RETURN(auto xla_layout,
                         xla::Layout::FromProto(proto.xla_layout()));
     return PjRtLayout::Create(
         std::make_unique<xla::PjRtLayout>(std::move(xla_layout)));

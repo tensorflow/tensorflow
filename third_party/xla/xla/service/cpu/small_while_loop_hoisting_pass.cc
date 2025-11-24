@@ -102,7 +102,7 @@ absl::StatusOr<bool> SmallWhileLoopHoistingPass::RunImpl(
       continue;
     }
 
-    TF_ASSIGN_OR_RETURN(bool is_small_call_site, IsSmall(while_instr));
+    TF_XLA_ASSIGN_OR_RETURN(bool is_small_call_site, IsSmall(while_instr));
     if (!is_small_call_site) {
       continue;
     }
@@ -112,7 +112,7 @@ absl::StatusOr<bool> SmallWhileLoopHoistingPass::RunImpl(
     std::vector<HloInstruction*> parameters;
     parameters.reserve(while_instr->operand_count());
     for (HloInstruction* operand : while_instr->operands()) {
-      TF_ASSIGN_OR_RETURN(HloInstruction * parameter,
+      TF_XLA_ASSIGN_OR_RETURN(HloInstruction * parameter,
                           builder.AddParameter(HloInstruction::CreateParameter(
                               while_instr->operand_index(operand),
                               operand->shape(), operand->name())));
@@ -127,9 +127,9 @@ absl::StatusOr<bool> SmallWhileLoopHoistingPass::RunImpl(
             module->AddEmbeddedComputation(builder.Build())));
     call_instruction->add_frontend_attribute("xla_cpu_small_call", "true");
 
-    TF_RETURN_IF_ERROR(while_instr->ReplaceAllUsesWith(call_instruction));
-    TF_RETURN_IF_ERROR(while_instr->SafelyDropAllControlDependencies());
-    TF_RETURN_IF_ERROR(while_instr->parent()->RemoveInstruction(while_instr));
+    TF_XLA_RETURN_IF_ERROR(while_instr->ReplaceAllUsesWith(call_instruction));
+    TF_XLA_RETURN_IF_ERROR(while_instr->SafelyDropAllControlDependencies());
+    TF_XLA_RETURN_IF_ERROR(while_instr->parent()->RemoveInstruction(while_instr));
 
     changed = true;
   }
@@ -140,7 +140,7 @@ absl::StatusOr<bool> SmallWhileLoopHoistingPass::RunImpl(
 absl::StatusOr<bool> SmallWhileLoopHoistingPass::IsSmall(
     const HloInstruction* instr) {
   HloCostAnalysis cost_analysis(&CpuExecutable::ShapeSizeBytes);
-  TF_RETURN_IF_ERROR(cost_analysis.RevisitInstruction(instr));
+  TF_XLA_RETURN_IF_ERROR(cost_analysis.RevisitInstruction(instr));
   return cost_analysis.bytes_accessed(*instr) < small_buffer_access_size_;
 }
 

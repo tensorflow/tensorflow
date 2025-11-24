@@ -57,9 +57,9 @@ RecvThunk::RecvThunk(ThunkInfo thunk_info, const HloRecvInstruction* instr,
       hlo_name_(instr->name()) {}
 
 absl::Status RecvThunk::Initialize(const InitializeParams& params) {
-  TF_RETURN_IF_ERROR(CollectiveThunk::Initialize(params));
+  TF_XLA_RETURN_IF_ERROR(CollectiveThunk::Initialize(params));
   if (execution_counters_) {
-    TF_RETURN_IF_ERROR(execution_counters_->Initialize(
+    TF_XLA_RETURN_IF_ERROR(execution_counters_->Initialize(
         params.executor, params.collective_params->run_id));
   }
   return absl::OkStatus();
@@ -68,7 +68,7 @@ absl::Status RecvThunk::Initialize(const InitializeParams& params) {
 absl::StatusOr<bool> RecvThunk::RunCollective(const ExecuteParams& params,
                                               se::Stream& stream,
                                               CommunicatorHandle comm_handle) {
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       std::vector<DeviceBufferPair> device_buffers,
       ConvertToDeviceBuffers(params, {buffer_},
                              config_.config.operand_element_type));
@@ -76,7 +76,7 @@ absl::StatusOr<bool> RecvThunk::RunCollective(const ExecuteParams& params,
 
   GlobalDeviceId global_device_id = params.collective_params->global_device_id;
 
-  TF_ASSIGN_OR_RETURN(const DeviceAssignment::LogicalID current_logical_id,
+  TF_XLA_ASSIGN_OR_RETURN(const DeviceAssignment::LogicalID current_logical_id,
                       params.collective_params->device_assn->LogicalIdForDevice(
                           global_device_id));
   const int64_t current_id =
@@ -113,7 +113,7 @@ absl::StatusOr<bool> RecvThunk::RunCollective(const ExecuteParams& params,
                                                                        : true;
     if (config_.validation_kind == P2PConfig::ValidationKind::kConditional) {
       se::StreamExecutor* executor = params.stream->parent();
-      TF_ASSIGN_OR_RETURN(int64_t* counter,
+      TF_XLA_ASSIGN_OR_RETURN(int64_t* counter,
                           execution_counters_->GetCounter(
                               executor, params.collective_params->run_id));
       auto it = config_.source_target_to_bounds.find(
@@ -129,12 +129,12 @@ absl::StatusOr<bool> RecvThunk::RunCollective(const ExecuteParams& params,
       ++(*counter);
     }
     if (should_run) {
-      TF_RETURN_IF_ERROR(
+      TF_XLA_RETURN_IF_ERROR(
           MaybeRegisterBuffers(stream.parent(), {buffer}, comm_handle.comm));
       auto future = comm_handle.comm->Recv(
           dest_addr, buffer.element_type, buffer.element_count,
           RankId(*source_id), GpuCollectives::On(stream));
-      TF_RETURN_IF_ERROR(future.Await());
+      TF_XLA_RETURN_IF_ERROR(future.Await());
     } else {
       VLOG(3) << "[" << device_ordinal << "] Skipping Recv";
     }
@@ -144,7 +144,7 @@ absl::StatusOr<bool> RecvThunk::RunCollective(const ExecuteParams& params,
     // the destination buffer.
     VLOG(3) << absl::StreamFormat("[%d] %s : Recv: Issuing MemZero",
                                   device_ordinal, device_string);
-    TF_RETURN_IF_ERROR(stream.MemZero(&dest_addr, dest_addr.size()));
+    TF_XLA_RETURN_IF_ERROR(stream.MemZero(&dest_addr, dest_addr.size()));
   }
   return false;
 }

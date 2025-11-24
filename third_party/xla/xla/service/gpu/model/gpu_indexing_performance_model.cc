@@ -588,7 +588,7 @@ GpuPerformanceModelWithIndexingAnalysis::EstimateRunTimeForTiledFusion(
   Tiling tiling = Tiling({{real_root, FlatTiling(real_root_tile_sizes.begin(),
                                                  real_root_tile_sizes.end())}});
 
-  TF_ASSIGN_OR_RETURN(TiledHloComputation tiled_hlo_computation,
+  TF_XLA_ASSIGN_OR_RETURN(TiledHloComputation tiled_hlo_computation,
                       analysis.ComputeTiledHloInstructions(tiling));
 
   return EstimateRunTimeForTiledHloComputation(
@@ -649,7 +649,7 @@ GpuPerformanceModelWithIndexingAnalysis::TryFindBestTilingForFusion(
   SymbolicTileAnalysis analysis =
       std::get<SymbolicTileAnalysis>(std::move(analysis_or_error));
 
-  TF_ASSIGN_OR_RETURN(auto tilings, analysis.GetValidTilings());
+  TF_XLA_ASSIGN_OR_RETURN(auto tilings, analysis.GetValidTilings());
 
   std::optional<TiledRunTimeData> best_tiled_run_time_data;
 
@@ -675,7 +675,7 @@ GpuPerformanceModelWithIndexingAnalysis::TryFindBestTilingForFusion(
     LaunchDimensions launch_dimensions =
         GetLaunchDimensionsForTiledFusion(tiled_hlo_computation, *device_info_);
 
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         EstimateRunTimeData estimate_run_time_data,
         EstimateRunTimeForTiledHloComputation(
             fusion_adaptor, tiled_hlo_computation, launch_dimensions));

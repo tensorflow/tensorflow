@@ -89,7 +89,7 @@ absl::StatusOr<bool> GpuAllReduceCombiner::RunImpl(
 
   if (auto suggested_threshold = SuggestedCombinerThreshold(*module)) {
     combine_threshold_in_bytes_ = *suggested_threshold;
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         bool combined,
         RunWithKeyCombiner(module, execution_threads, CustomCombinerKey));
     changed |= combined;
@@ -98,7 +98,7 @@ absl::StatusOr<bool> GpuAllReduceCombiner::RunImpl(
   // Use the default combiner thresholds after we combined pipelined and
   // synchronous collectives.
   combine_threshold_in_bytes_ = default_combine_threshold_in_bytes_;
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       bool combined,
       RunWithKeyCombiner(module, execution_threads, DefaultCombinerKey));
   changed |= combined;

@@ -86,7 +86,7 @@ absl::StatusOr<bool> ChangeOpDataType::RunImpl(
 
       HloInstruction* new_instr =
           comp->AddInstruction(cloner(instr, new_shape, new_operands));
-      TF_RETURN_IF_ERROR(comp->ReplaceInstruction(
+      TF_XLA_RETURN_IF_ERROR(comp->ReplaceInstruction(
           instr, MakeConvertToHlo(new_instr, from_type)));
       changed = true;
     }

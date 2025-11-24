@@ -82,11 +82,11 @@ absl::StatusOr<HloInstruction*> BitcastDtypesExpander::ExpandInstruction(
       reshaped_input_shape.push_back(1);
       int64_t output_bit_width_mask = (int64_t{1} << output_bit_width) - 1;
 
-      TF_ASSIGN_OR_RETURN(input,
+      TF_XLA_ASSIGN_OR_RETURN(input,
                           BroadcastTo(Reshape(input, reshaped_input_shape),
                                       broadcasted_input_shape));
       input = BitcastConvertType(input, input_logical_type);
-      TF_ASSIGN_OR_RETURN(Shape input_shape, b.GetShape(input));
+      TF_XLA_ASSIGN_OR_RETURN(Shape input_shape, b.GetShape(input));
       XlaOp iota = Iota(&b, input_shape, input_shape.dimensions().size() - 1);
       XlaOp iota_m = Mul(ScalarLike(input, output_bit_width), iota);
       input = And(ShiftRightLogical(input, iota_m),
@@ -110,8 +110,8 @@ absl::StatusOr<HloInstruction*> BitcastDtypesExpander::ExpandInstruction(
 
     BitcastConvertType(input, to_shape.element_type());
 
-    TF_ASSIGN_OR_RETURN(XlaComputation xla_computation, b.Build());
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(XlaComputation xla_computation, b.Build());
+    TF_XLA_ASSIGN_OR_RETURN(
         computation, XlaComputationToHloComputation(xla_computation, module));
   }
 
@@ -126,7 +126,7 @@ absl::StatusOr<HloInstruction*> BitcastDtypesExpander::ExpandInstruction(
   // inlined. Since each function only has a single call-site anyway, this isn't
   // a big deal.
   CallInliner call_inliner;
-  TF_ASSIGN_OR_RETURN(auto inline_map, call_inliner.Inline(call));
+  TF_XLA_ASSIGN_OR_RETURN(auto inline_map, call_inliner.Inline(call));
   return inline_map[root];
 }
 

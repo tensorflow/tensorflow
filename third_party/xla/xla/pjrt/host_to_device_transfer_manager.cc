@@ -116,7 +116,7 @@ class CommonAsyncHostToDeviceTransferManager
         allocation_events.push_back({});
       }
 
-      TF_ASSIGN_OR_RETURN(
+      TF_XLA_ASSIGN_OR_RETURN(
           Shape device_shape,
           client->MakeDefaultShapeForMemorySpace(
               memory_space,
@@ -125,10 +125,10 @@ class CommonAsyncHostToDeviceTransferManager
               device_layouts.has_value() && (*device_layouts)[i].has_value()
                   ? &(*(*device_layouts)[i])
                   : nullptr));
-      TF_ASSIGN_OR_RETURN(
+      TF_XLA_ASSIGN_OR_RETURN(
           int64_t on_device_bytes_count,
           client->GetOnDeviceBytesCount(memory_space, device_shape));
-      TF_ASSIGN_OR_RETURN(
+      TF_XLA_ASSIGN_OR_RETURN(
           auto raw_buffer,
           client->AllocateRawBuffer(memory_space, on_device_bytes_count,
                                     /*retry_on_oom=*/true, allocation_event));
@@ -138,20 +138,20 @@ class CommonAsyncHostToDeviceTransferManager
       tsl::RCReference<PjRtDeviceEventPromise> definition_event_promise;
       tsl::RCReference<PjRtDeviceEvent> definition_event;
       if (client->event_tracking_enabled()) {
-        TF_ASSIGN_OR_RETURN(
+        TF_XLA_ASSIGN_OR_RETURN(
             std::tie(definition_event_promise, definition_event),
             client->CreateLinkedEventPromise(
                 memory_space,
                 absl::StrCat("AsyncHostToDeviceTransferManager Op:",
                              debug_info.value_or(""))));
       } else {
-        TF_ASSIGN_OR_RETURN(
+        TF_XLA_ASSIGN_OR_RETURN(
             std::tie(definition_event_promise, definition_event),
             client->CreateLinkedEventPromise(memory_space, ""));
       }
       definition_events.push_back(std::move(definition_event_promise));
 
-      TF_ASSIGN_OR_RETURN(
+      TF_XLA_ASSIGN_OR_RETURN(
           auto buffer,
           client->DefineBuffer(device_shape, memory_space, raw_buffer,
                                {std::move(definition_event)},
@@ -249,7 +249,7 @@ class CommonAsyncHostToDeviceTransferManager
     tsl::profiler::TraceMeProducer producer("TransferLiteralToBuffer",
                                             tsl::profiler::ContextType::kPjRt);
 
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         auto h2d_transfer_event,
         client_->LinearizeInto(
             literal, device_shapes_[buffer_index],
@@ -346,7 +346,7 @@ class CommonAsyncHostToDeviceTransferManager
     //   (2) Cleanup of this class may be called within the `on_done` of
     //        `h2d_transfer_event.AndThen`, which would cause deadlock.
     l.Release();
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         auto h2d_transfer_event,
         undispatched_buffer_ref->CopyRawHostToDeviceAndReturnEvent(
             data, offset, transfer_size));

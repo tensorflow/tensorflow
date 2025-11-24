@@ -95,7 +95,7 @@ class FlattenCallGraphTest : public HloHardwareIndependentTestBase {
 
   absl::StatusOr<bool> RunFlattenCallGraph(HloModule* module) {
     FlattenCallGraph flatten;
-    TF_ASSIGN_OR_RETURN(bool result, flatten.Run(module));
+    TF_XLA_ASSIGN_OR_RETURN(bool result, flatten.Run(module));
     return result;
   }
 

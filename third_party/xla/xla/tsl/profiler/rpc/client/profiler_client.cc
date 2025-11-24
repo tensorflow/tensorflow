@@ -67,7 +67,7 @@ absl::Status ProfileGrpc(const std::string& service_address,
   ::grpc::ClientContext context;
   std::unique_ptr<tensorflow::grpc::ProfilerService::Stub> stub =
       CreateStub<tensorflow::grpc::ProfilerService>(service_address);
-  TF_RETURN_IF_ERROR(
+  TF_XLA_RETURN_IF_ERROR(
       FromGrpcStatus(stub->Profile(&context, request, response)));
   return absl::OkStatus();
 }
@@ -78,7 +78,7 @@ absl::Status NewSessionGrpc(const std::string& service_address,
   ::grpc::ClientContext context;
   std::unique_ptr<tensorflow::grpc::ProfileAnalysis::Stub> stub =
       CreateStub<tensorflow::grpc::ProfileAnalysis>(service_address);
-  TF_RETURN_IF_ERROR(
+  TF_XLA_RETURN_IF_ERROR(
       FromGrpcStatus(stub->NewSession(&context, request, response)));
   return absl::OkStatus();
 }
@@ -89,7 +89,7 @@ absl::Status MonitorGrpc(const std::string& service_address,
   ::grpc::ClientContext context;
   std::unique_ptr<tensorflow::grpc::ProfilerService::Stub> stub =
       CreateStub<tensorflow::grpc::ProfilerService>(service_address);
-  TF_RETURN_IF_ERROR(
+  TF_XLA_RETURN_IF_ERROR(
       FromGrpcStatus(stub->Monitor(&context, request, response)));
   return absl::OkStatus();
 }

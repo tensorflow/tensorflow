@@ -607,13 +607,13 @@ class OneDnnContractionRewriteVisitor : public DfsHloRewriteVisitor {
       return absl::OkStatus();
     }
 
-    TF_RETURN_IF_ERROR(
+    TF_XLA_RETURN_IF_ERROR(
         ValidateDotDimensionNumbers(dot_instr->dot_dimension_numbers()));
     if (!OneDnnContractionRewriter::ShouldRewriteDot(dot_instr)) {
-      TF_RETURN_IF_ERROR(UpcastDotToF32(dot_instr));
+      TF_XLA_RETURN_IF_ERROR(UpcastDotToF32(dot_instr));
       return absl::OkStatus();
     }
-    TF_ASSIGN_OR_RETURN(dot_instr, ReconfigureDotDimensions(dot_instr));
+    TF_XLA_ASSIGN_OR_RETURN(dot_instr, ReconfigureDotDimensions(dot_instr));
     auto dot_dim_numbers = dot_instr->dot_dimension_numbers();
     const Shape& lhs_shape = dot_instr->operand(0)->shape();
     const Shape& rhs_shape = dot_instr->operand(1)->shape();
@@ -636,8 +636,8 @@ class OneDnnContractionRewriteVisitor : public DfsHloRewriteVisitor {
     bool transpose_b = (rhs_dim_k != rhs_shape.dimensions().size() - 2);
     matmul_config->set_transpose_a(transpose_a);
     matmul_config->set_transpose_b(transpose_b);
-    TF_RETURN_IF_ERROR(matmul_call->set_backend_config(backend_config));
-    TF_RETURN_IF_ERROR(ReplaceInstruction(dot_instr, matmul_call));
+    TF_XLA_RETURN_IF_ERROR(matmul_call->set_backend_config(backend_config));
+    TF_XLA_RETURN_IF_ERROR(ReplaceInstruction(dot_instr, matmul_call));
     return absl::OkStatus();
   }
 
@@ -700,8 +700,8 @@ class OneDnnContractionRewriteVisitor : public DfsHloRewriteVisitor {
             output_shape, {conv->mutable_operand(0), conv->mutable_operand(1)},
             "__onednn$convolution"));
 
-    TF_RETURN_IF_ERROR(custom_call->set_backend_config(backend_config));
-    TF_RETURN_IF_ERROR(ReplaceInstruction(conv, custom_call));
+    TF_XLA_RETURN_IF_ERROR(custom_call->set_backend_config(backend_config));
+    TF_XLA_RETURN_IF_ERROR(ReplaceInstruction(conv, custom_call));
     return absl::OkStatus();
   }
 
@@ -872,7 +872,7 @@ class OneDnnContractionRewriteVisitor : public DfsHloRewriteVisitor {
       if (optional_addend_broadcast) {
         optimization_config->set_bias_broadcast(true);
       }
-      TF_RETURN_IF_ERROR(custom_call->set_backend_config(*backend_config));
+      TF_XLA_RETURN_IF_ERROR(custom_call->set_backend_config(*backend_config));
 
       HloInstruction* new_instr;
       // If matched pattern has custom-call -> bitcast -> add, then we need to
@@ -910,7 +910,7 @@ class OneDnnContractionRewriteVisitor : public DfsHloRewriteVisitor {
           new_instr = custom_call;
         }
       }
-      TF_RETURN_IF_ERROR(ReplaceInstruction(instr, new_instr));
+      TF_XLA_RETURN_IF_ERROR(ReplaceInstruction(instr, new_instr));
     }
     return absl::OkStatus();
   }
@@ -1064,7 +1064,7 @@ class OneDnnContractionRewriteVisitor : public DfsHloRewriteVisitor {
       auto fusions_config = GetFusionsConfig(&backend_config);
       fusions_config->add_ops(OneDnnFusionConfig::LINEAR);
       fusions_config->add_alpha(constant_value.value());
-      TF_RETURN_IF_ERROR(custom_call->set_backend_config(*backend_config));
+      TF_XLA_RETURN_IF_ERROR(custom_call->set_backend_config(*backend_config));
       HloInstruction* new_instr;
       if (optional_convert != nullptr &&
           optional_convert->opcode() == HloOpcode::kConvert) {
@@ -1076,7 +1076,7 @@ class OneDnnContractionRewriteVisitor : public DfsHloRewriteVisitor {
         new_instr = custom_call;
       }
 
-      TF_RETURN_IF_ERROR(ReplaceInstruction(instr, new_instr));
+      TF_XLA_RETURN_IF_ERROR(ReplaceInstruction(instr, new_instr));
     }
     return absl::OkStatus();
   }
@@ -1124,8 +1124,8 @@ class OneDnnContractionRewriteVisitor : public DfsHloRewriteVisitor {
       auto matmul_call = Cast<HloCustomCallInstruction>(
           custom_call->AddInstruction(custom_call->CloneWithNewOperands(
               copy->shape(), custom_call->mutable_operands())));
-      TF_RETURN_IF_ERROR(matmul_call->set_backend_config(*backend_config));
-      TF_RETURN_IF_ERROR(ReplaceInstruction(copy, matmul_call));
+      TF_XLA_RETURN_IF_ERROR(matmul_call->set_backend_config(*backend_config));
+      TF_XLA_RETURN_IF_ERROR(ReplaceInstruction(copy, matmul_call));
     }
     return absl::OkStatus();
   }
@@ -1138,7 +1138,7 @@ class OneDnnContractionRewriteVisitor : public DfsHloRewriteVisitor {
     auto backend_config = contraction->backend_config<BackendConfig>();
     auto fusions_config = GetFusionsConfig(&backend_config);
     fusions_config->add_ops(kind);
-    TF_RETURN_IF_ERROR(contraction->set_backend_config(*backend_config));
+    TF_XLA_RETURN_IF_ERROR(contraction->set_backend_config(*backend_config));
     std::unique_ptr<HloInstruction> output = contraction->Clone();
     if (optional_bitcast != nullptr &&
         optional_bitcast->opcode() == HloOpcode::kBitcast) {
@@ -1240,7 +1240,7 @@ class OneDnnContractionRewriteVisitor : public DfsHloRewriteVisitor {
     HloInstruction* replacement_instr = adjusted_dot->AddInstruction(
         HloInstruction::CreateBitcast(dot_instr->shape(), adjusted_dot));
 
-    TF_RETURN_IF_ERROR(ReplaceInstruction(dot_instr, replacement_instr));
+    TF_XLA_RETURN_IF_ERROR(ReplaceInstruction(dot_instr, replacement_instr));
     return adjusted_dot;
   }
 
@@ -1268,7 +1268,7 @@ class OneDnnContractionRewriteVisitor : public DfsHloRewriteVisitor {
         f32_dot->AddInstruction(HloInstruction::CreateConvert(
             ShapeUtil::ChangeElementType(f32_dot->shape(), BF16), f32_dot));
 
-    TF_RETURN_IF_ERROR(ReplaceInstruction(dot_instr, replacement_instr));
+    TF_XLA_RETURN_IF_ERROR(ReplaceInstruction(dot_instr, replacement_instr));
     return absl::OkStatus();
   }
 
@@ -1331,8 +1331,8 @@ class OneDnnPostRewriteVisitor : public DfsHloRewriteVisitor {
       auto matmul_call = Cast<HloCustomCallInstruction>(
           contraction->AddInstruction(contraction->CloneWithNewOperands(
               contraction->shape(), new_ops)));
-      TF_RETURN_IF_ERROR(matmul_call->set_backend_config(*backend_config));
-      TF_RETURN_IF_ERROR(ReplaceInstruction(contraction, matmul_call));
+      TF_XLA_RETURN_IF_ERROR(matmul_call->set_backend_config(*backend_config));
+      TF_XLA_RETURN_IF_ERROR(ReplaceInstruction(contraction, matmul_call));
       return HandleCustomCallInternal<dnnl::matmul::primitive_desc>(
           matmul_call);
     } else if (Match(custom_call, OneDnnConvolutionInstr(&contraction))) {
@@ -1384,7 +1384,7 @@ class OneDnnPostRewriteVisitor : public DfsHloRewriteVisitor {
     if (GetUserScratch<PrimDesc>(custom_call)) {
       return custom_call;
     }
-    TF_RETURN_IF_ERROR(SetUserScratch<PrimDesc>(custom_call, true));
+    TF_XLA_RETURN_IF_ERROR(SetUserScratch<PrimDesc>(custom_call, true));
     auto prim_desc = CreateOneDnnPrimDesc<PrimDesc>(custom_call);
     int64_t scratch_size = prim_desc->scratchpad_desc().get_size();
     Shape scratch_shape = ShapeUtil::MakeShape(U8, {scratch_size});
@@ -1397,7 +1397,7 @@ class OneDnnPostRewriteVisitor : public DfsHloRewriteVisitor {
             custom_call->shape(), new_custom_call, 0));
     auto status = ReplaceInstruction(custom_call, gte);
     if (!status.ok()) {
-      TF_RETURN_IF_ERROR(SetUserScratch<PrimDesc>(custom_call, false));
+      TF_XLA_RETURN_IF_ERROR(SetUserScratch<PrimDesc>(custom_call, false));
       return absl::CancelledError("Adding scratch is unsuccessful.");
     }
     return new_custom_call;
@@ -1418,13 +1418,13 @@ class OneDnnPostRewriteVisitor : public DfsHloRewriteVisitor {
     }
     auto plain_weights_md = ShapeToMemDesc(weights_shape);
     if constexpr (std::is_same<PrimDesc, dnnl::matmul::primitive_desc>::value) {
-      TF_ASSIGN_OR_RETURN(auto backend_config,
+      TF_XLA_ASSIGN_OR_RETURN(auto backend_config,
                           custom_call->backend_config<BackendConfig>());
       TRANSPOSE_LAST_TWO_DIMS_IF(
           backend_config.onednn_matmul_config().transpose_b(),
           plain_weights_md);
     }
-    TF_RETURN_IF_ERROR(SetWeightsPrepack<PrimDesc>(custom_call, true));
+    TF_XLA_RETURN_IF_ERROR(SetWeightsPrepack<PrimDesc>(custom_call, true));
     auto prim_desc = CreateOneDnnPrimDesc<PrimDesc>(custom_call);
     auto packed_weights_md = prim_desc->weights_desc();
     auto packed_weights_shape = MemDescToXlaShapeFlattened(packed_weights_md);
@@ -1436,7 +1436,7 @@ class OneDnnPostRewriteVisitor : public DfsHloRewriteVisitor {
     auto status =
         custom_call->ReplaceOperandWithDifferentShape(1, reordered_weight);
     if (!status.ok()) {
-      TF_RETURN_IF_ERROR(SetWeightsPrepack<PrimDesc>(custom_call, false));
+      TF_XLA_RETURN_IF_ERROR(SetWeightsPrepack<PrimDesc>(custom_call, false));
       return absl::CancelledError(
           "Cannot replace plain weights with prepacked weights.");
     } else {
@@ -1505,7 +1505,7 @@ EMIT_GET_BACKEND_CONFIG_SPECIALIZATION(
   template <>                                                                  \
   inline absl::Status OneDnnPostRewriteVisitor::SETTER<PRIM_DESC>(             \
       HloInstruction * custom_call, bool value) {                              \
-    TF_ASSIGN_OR_RETURN(auto backend_config,                                   \
+    TF_XLA_ASSIGN_OR_RETURN(auto backend_config,                                   \
                         custom_call->backend_config<BackendConfig>());         \
     CONFIG_TYPE* config = backend_config.mutable_##CONFIG();                   \
     config->mutable_##SUB_CONFIG()->set_##FIELD(value);                        \
@@ -1531,12 +1531,12 @@ absl::StatusOr<bool> OneDnnContractionRewriter::RunImpl(
   XLA_VLOG_LINES(3, "OneDnnContractionRewriter::RunImpl(), before:\n" +
                         module->ToString());
   OneDnnContractionRewriteVisitor visitor(graph_enabled_);
-  TF_ASSIGN_OR_RETURN(auto result,
+  TF_XLA_ASSIGN_OR_RETURN(auto result,
                       visitor.RunOnModule(module, execution_threads));
 
   OneDnnPostRewriteVisitor reorder_visitor(intra_op_parallelism_,
                                            compile_threadpool_);
-  TF_ASSIGN_OR_RETURN(auto result2,
+  TF_XLA_ASSIGN_OR_RETURN(auto result2,
                       reorder_visitor.RunOnModule(module, execution_threads));
   XLA_VLOG_LINES(
       3, "OneDnnContractionRewriter::RunImpl(), after:\n" + module->ToString());

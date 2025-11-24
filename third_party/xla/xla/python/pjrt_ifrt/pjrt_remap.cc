@@ -45,7 +45,7 @@ PjRtCompatibleClientRemapArrays(PjRtCompatibleClient* client,
                                 const RemapPlan& plan,
                                 absl::Span<xla::ifrt::ArrayRef> arrays,
                                 ArrayCopySemantics semantics) {
-  TF_RETURN_IF_ERROR(plan.CheckArrayCopySemantics(semantics));
+  TF_XLA_RETURN_IF_ERROR(plan.CheckArrayCopySemantics(semantics));
   const int num_inputs = plan.input_specs.size();
   const int num_actual_inputs = arrays.size();
   const int num_outputs = plan.output_specs.size();
@@ -97,7 +97,7 @@ PjRtCompatibleClientRemapArrays(PjRtCompatibleClient* client,
   }
 
   for (const RemapPlan::Mapping& mapping : *plan.mappings) {
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         absl::Span<std::shared_ptr<xla::PjRtBuffer>> in_buffers,
         static_cast<PjRtCompatibleArray*>(arrays[mapping.in_array].get())
             ->mutable_pjrt_buffers());
@@ -134,7 +134,7 @@ PjRtCompatibleClientRemapArrays(PjRtCompatibleClient* client,
     CHECK_GE(out_buffers_list[i].size(), 1);
     std::shared_ptr<const xla::PjRtLayout> layout =
         out_buffers_list[i].front()->layout();
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         auto output_array,
         PjRtArray::Create(client, plan.output_specs[i].dtype,
                           plan.output_specs[i].shape,

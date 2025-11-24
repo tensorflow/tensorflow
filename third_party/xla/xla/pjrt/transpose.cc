@@ -951,7 +951,7 @@ absl::StatusOr<std::unique_ptr<TransposePlan>> TransposePlan::Create(
   absl::c_copy(o.dims, plan->original_a_dims_.begin());
   plan->original_b_dims_ = Permute(o.dims, o.permutation);
 
-  TF_RETURN_IF_ERROR(
+  TF_XLA_RETURN_IF_ERROR(
       ParseTilingSpecification(ndim, o.output_tiling.tiling, plan->b_tiling_));
 
   // Handles strides.
@@ -1006,7 +1006,7 @@ absl::StatusOr<std::unique_ptr<TransposePlan>> TransposePlan::Create(
     plan->lda_tile_.resize(ndim, 1);
     plan->a_tiling_.resize(ndim, 1);
   } else {
-    TF_RETURN_IF_ERROR(ParseTilingSpecification(
+    TF_XLA_RETURN_IF_ERROR(ParseTilingSpecification(
         ndim, std::get<Tiling>(o.input_layout).tiling, plan->a_tiling_));
 
     plan->a_dims_ = plan->original_a_dims_;
@@ -1403,7 +1403,7 @@ absl::StatusOr<std::shared_ptr<TransposePlan>> TransposePlanCache::GetOrCreate(
       key,
       [&](const TransposePlanCacheKey& key)
           -> absl::StatusOr<std::shared_ptr<TransposePlan>> {
-        TF_ASSIGN_OR_RETURN(std::unique_ptr<TransposePlan> plan,
+        TF_XLA_ASSIGN_OR_RETURN(std::unique_ptr<TransposePlan> plan,
                             TransposePlan::Create(o));
         return std::shared_ptr<TransposePlan>(std::move(plan));
       });

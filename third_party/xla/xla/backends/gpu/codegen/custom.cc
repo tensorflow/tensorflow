@@ -97,7 +97,7 @@ constexpr unsigned kGEMMWorkspaceBufferIndex = 1;
 absl::StatusOr<std::unique_ptr<Thunk>> BuildCustomKernelThunkForFusion(
     IrEmitterContext& ir_emitter_context, const HloFusionInstruction& fusion,
     CustomKernel custom_kernel) {
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       auto kernel_arguments,
       emitters::KernelArguments::Create(ir_emitter_context.buffer_assignment(),
                                         GetDefaultBufferAlignment(), &fusion));
@@ -156,7 +156,7 @@ absl::StatusOr<BufferAllocation::Slice> GetOperandSlice(
     const auto* param = Cast<HloParameterInstruction>(slice_instr->operand(0));
     // At this point we've walked through all `shape_idx`, `index` should be
     // empty.
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         BufferAllocation::Slice orig_slice,
         GetAllocationSlice(buffer_assignment,
                            fusion_instr.operand(param->parameter_number()),
@@ -371,7 +371,7 @@ absl::Status CollectSliceInfo(
       arg_offsets.emplace_back() = extracted_offset_modules.back().get();
     } else {
       // Loop offset computed on device and has to be transferred to host.
-      TF_ASSIGN_OR_RETURN(arg_offsets.emplace_back(),
+      TF_XLA_ASSIGN_OR_RETURN(arg_offsets.emplace_back(),
                           GetAllocationSlice(buffer_assignment, offset_value,
                                              /*index=*/{}));
     }
@@ -569,7 +569,7 @@ absl::StatusOr<FusionEmissionResult> EmitGemm(
   if (while_op != std::nullopt) {
     CHECK(while_op.value() != nullptr)
         << "GetWhileOp is not expected to return nullptr.";
-    TF_ASSIGN_OR_RETURN(inlined_module,
+    TF_XLA_ASSIGN_OR_RETURN(inlined_module,
                         ir_emitter_context.get_inlined_module());
     auto inlined_while_op = inlined_module->get_inlined_inst(*while_op);
     CHECK(inlined_while_op != nullptr)
@@ -587,23 +587,23 @@ absl::StatusOr<FusionEmissionResult> EmitGemm(
       (init_module != nullptr && update_module != nullptr);
 
   unsigned arg_idx = 0;
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       BufferAllocation::Slice lhs_slice,
       GetOperandSlice(buffer_assignment, adaptor, fusion,
                       *custom_call.operand(arg_idx), slice_instrs,
                       /*shape_idx=*/{}, arg_idx));
-  TF_RETURN_IF_ERROR(CollectSliceInfo(
+  TF_XLA_RETURN_IF_ERROR(CollectSliceInfo(
       buffer_assignment, fusion, absl::Span<HloInstruction*>(slice_instrs),
       offset_buffer_indices, orig_shapes, sliced_shapes, offset_byte_sizes,
       extracted_offset_modules, arg_idx++, can_compute_indvar_on_host, while_op,
       indvar_idx, inlined_module));
 
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       BufferAllocation::Slice rhs_slice,
       GetOperandSlice(buffer_assignment, adaptor, fusion,
                       *custom_call.operand(arg_idx), slice_instrs,
                       /*shape_idx=*/{}, arg_idx));
-  TF_RETURN_IF_ERROR(CollectSliceInfo(
+  TF_XLA_RETURN_IF_ERROR(CollectSliceInfo(
       buffer_assignment, fusion, absl::Span<HloInstruction*>(slice_instrs),
       offset_buffer_indices, orig_shapes, sliced_shapes, offset_byte_sizes,
       extracted_offset_modules, arg_idx++, can_compute_indvar_on_host, while_op,
@@ -619,21 +619,21 @@ absl::StatusOr<FusionEmissionResult> EmitGemm(
   // 0. DynamicSliceThunk will take care of the offset adjustment.
   std::vector<BufferAllocation> fake_allocations(4, {0, 0, 0});
   if (fusion.shape().IsArray()) {
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         output, GetResultSlice(buffer_assignment, adaptor, fusion, custom_call,
                                slice_instrs, /*shape_idx=*/{}, arg_idx));
-    TF_RETURN_IF_ERROR(CollectSliceInfo(
+    TF_XLA_RETURN_IF_ERROR(CollectSliceInfo(
         buffer_assignment, fusion, absl::Span<HloInstruction*>(slice_instrs),
         offset_buffer_indices, orig_shapes, sliced_shapes, offset_byte_sizes,
         extracted_offset_modules, arg_idx, can_compute_indvar_on_host, while_op,
         indvar_idx, inlined_module));
   } else {
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         output,
         GetResultSlice(buffer_assignment, adaptor, fusion, custom_call,
                        slice_instrs, /*shape_idx=*/{kGEMMOutputBufferIndex},
                        arg_idx));
-    TF_RETURN_IF_ERROR(CollectSliceInfo(
+    TF_XLA_RETURN_IF_ERROR(CollectSliceInfo(
         buffer_assignment, fusion, absl::Span<HloInstruction*>(slice_instrs),
         offset_buffer_indices, orig_shapes, sliced_shapes, offset_byte_sizes,
         extracted_offset_modules, arg_idx++, can_compute_indvar_on_host,
@@ -641,10 +641,10 @@ absl::StatusOr<FusionEmissionResult> EmitGemm(
 
     // TODO(vuson): If we want to support slices of workspace, we'd need to
     // start `HloFindIf` with `get-tuple-element` with the right index.
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         workspace, GetAllocationSlice(buffer_assignment, &fusion,
                                       /*index=*/{kGEMMWorkspaceBufferIndex}));
-    TF_RETURN_IF_ERROR(CollectSliceInfo(
+    TF_XLA_RETURN_IF_ERROR(CollectSliceInfo(
         buffer_assignment, fusion, absl::Span<HloInstruction*>(slice_instrs),
         offset_buffer_indices, orig_shapes, sliced_shapes, offset_byte_sizes,
         extracted_offset_modules, arg_idx, can_compute_indvar_on_host, while_op,
@@ -666,7 +666,7 @@ absl::StatusOr<FusionEmissionResult> EmitGemm(
   const bool deterministic_ops =
       RequireDeterminism(fusion.GetModule()->config());
 
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       GemmConfig config,
       GemmConfig::For(static_cast<const HloInstruction*>(&custom_call),
                       ir_emitter_context.gpu_compute_capability()));
@@ -792,7 +792,7 @@ absl::StatusOr<FusionEmissionResult> EmitCustomCall(
   if (while_op != std::nullopt) {
     CHECK(while_op.value() != nullptr)
         << "GetWhileOp is not expected to return nullptr.";
-    TF_ASSIGN_OR_RETURN(inlined_module,
+    TF_XLA_ASSIGN_OR_RETURN(inlined_module,
                         ir_emitter_context.get_inlined_module());
     auto inlined_while_op = inlined_module->get_inlined_inst(*while_op);
     CHECK(inlined_while_op != nullptr)
@@ -813,7 +813,7 @@ absl::StatusOr<FusionEmissionResult> EmitCustomCall(
   // TODO(vuson): add test for custom call with token-typed operands
   Slices operands;
   for (auto* operand : custom_call.operands()) {
-    TF_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
+    TF_XLA_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
         operand->shape(), [&](const Shape& subshape, const ShapeIndex& index) {
           if (subshape.IsToken()) {
             arg_idx++;
@@ -823,11 +823,11 @@ absl::StatusOr<FusionEmissionResult> EmitCustomCall(
           if (!subshape.IsArray()) {
             return absl::OkStatus();
           }
-          TF_ASSIGN_OR_RETURN(
+          TF_XLA_ASSIGN_OR_RETURN(
               auto slice,
               GetOperandSlice(buffer_assignment, adaptor, fusion, *operand,
                               slice_instrs, /*shape_idx=*/index, arg_idx));
-          TF_RETURN_IF_ERROR(CollectSliceInfo(
+          TF_XLA_RETURN_IF_ERROR(CollectSliceInfo(
               buffer_assignment, fusion,
               absl::Span<HloInstruction*>(slice_instrs), offsets, orig_shapes,
               sliced_shapes, offset_byte_sizes, extracted_offset_modules,
@@ -841,7 +841,7 @@ absl::StatusOr<FusionEmissionResult> EmitCustomCall(
   }
 
   Slices results;
-  TF_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
+  TF_XLA_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
       custom_call.shape(), [&](const Shape& subshape, const ShapeIndex& index) {
         if (subshape.IsToken()) {
           arg_idx++;
@@ -851,11 +851,11 @@ absl::StatusOr<FusionEmissionResult> EmitCustomCall(
         if (!subshape.IsArray()) {
           return absl::OkStatus();
         }
-        TF_ASSIGN_OR_RETURN(
+        TF_XLA_ASSIGN_OR_RETURN(
             auto slice,
             GetResultSlice(buffer_assignment, adaptor, fusion, custom_call,
                            slice_instrs, /*shape_idx=*/index, arg_idx));
-        TF_RETURN_IF_ERROR(CollectSliceInfo(
+        TF_XLA_RETURN_IF_ERROR(CollectSliceInfo(
             buffer_assignment, fusion,
             absl::Span<HloInstruction*>(slice_instrs), offsets, orig_shapes,
             sliced_shapes, offset_byte_sizes, extracted_offset_modules,
@@ -942,7 +942,7 @@ absl::StatusOr<FusionEmissionResult> EmitCustomCall(
             "Unsupported backend config. Expected a string parsable into "
             "dictionary attribute");
       }
-      TF_ASSIGN_OR_RETURN(attributes, xla::ffi::BuildAttributesMap(dict));
+      TF_XLA_ASSIGN_OR_RETURN(attributes, xla::ffi::BuildAttributesMap(dict));
     }
     return CustomCallThunk::Create(
         thunk_info, call_target_name, std::move(ops), std::move(res),
@@ -971,7 +971,7 @@ absl::StatusOr<FusionEmissionResult> EmitCustomCall(
 
     Slices fake_operands;
     for (auto* operand : custom_call.operands()) {
-      TF_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
+      TF_XLA_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
           operand->shape(),
           [&](const Shape& subshape, const ShapeIndex& index) {
             if (subshape.IsToken()) {
@@ -996,7 +996,7 @@ absl::StatusOr<FusionEmissionResult> EmitCustomCall(
     }
 
     Slices fake_results;
-    TF_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
+    TF_XLA_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
         custom_call.shape(),
         [&](const Shape& subshape, const ShapeIndex& index) {
           if (subshape.IsToken()) {
@@ -1020,7 +1020,7 @@ absl::StatusOr<FusionEmissionResult> EmitCustomCall(
         }));
 
     ThunkSequence seq;
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         seq.emplace_back(),
         found_ffi_handler
             ? ffi_thunk(std::move(fake_operands), std::move(fake_results))
@@ -1042,7 +1042,7 @@ absl::StatusOr<FusionEmissionResult> EmitCustomCall(
         std::move(orig_shapes), std::move(sliced_shapes),
         std::move(offset_byte_sizes), std::move(offset_modules_metadata));
   } else {
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         thunk, found_ffi_handler
                    ? ffi_thunk(std::move(operands), std::move(results))
                    : legacy_thunk(std::move(operands), std::move(results)));
@@ -1128,13 +1128,13 @@ CollectSliceArgumentMetadataForCollectives(
   // Collect slice information for inputs.
   unsigned arg_idx = 0;
   for (HloInstruction* operand : instr->operands()) {
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         BufferAllocation::Slice src,
         GetOperandSlice(buffer_assignment, adaptor, fusion_instr,
                         /*start_instr=*/*operand, slice_data.slice_instrs,
                         /*shape_idx=*/{}, arg_idx));
     slice_data.arguments[arg_idx] = src;
-    TF_RETURN_IF_ERROR(CollectSliceInfo(
+    TF_XLA_RETURN_IF_ERROR(CollectSliceInfo(
         buffer_assignment, fusion_instr,
         /*slice_instrs=*/absl::Span<HloInstruction*>(slice_data.slice_instrs),
         /*offsets=*/slice_data.offset_buffer_indices, slice_data.orig_shapes,
@@ -1155,13 +1155,13 @@ CollectSliceArgumentMetadataForCollectives(
     collective_results.push_back(instr);
   }
   for (const HloInstruction* user : collective_results) {
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         BufferAllocation::Slice dst,
         GetResultSlice(buffer_assignment, adaptor, fusion_instr,
                        /*start_instr=*/*user, slice_data.slice_instrs,
                        /*shape_idx=*/{}, arg_idx));
     slice_data.arguments[arg_idx] = dst;
-    TF_RETURN_IF_ERROR(CollectSliceInfo(
+    TF_XLA_RETURN_IF_ERROR(CollectSliceInfo(
         buffer_assignment, fusion_instr,
         /*slice_instrs=*/absl::Span<HloInstruction*>(slice_data.slice_instrs),
         /*offsets=*/slice_data.offset_buffer_indices, slice_data.orig_shapes,
@@ -1183,7 +1183,7 @@ CollectSliceArgumentMetadataForCollectives(
   }
   slice_data.isDynamic = absl::c_any_of(slice_data.slice_instrs,
                                         IsDynamicSliceOrDynamicUpdateSlice);
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       auto backend_config,
       fusion_instr.backend_config<xla::gpu::GpuBackendConfig>());
   const std::string fusion_name =
@@ -1249,10 +1249,10 @@ absl::StatusOr<FusionEmissionResult> EmitCollective(
   const BufferAssignment& buffer_assignment =
       ir_emitter_context.buffer_assignment();
 
-  TF_ASSIGN_OR_RETURN(InlinedModule * inlined_module,
+  TF_XLA_ASSIGN_OR_RETURN(InlinedModule * inlined_module,
                       ir_emitter_context.get_inlined_module());
 
-  TF_ASSIGN_OR_RETURN(auto slice_data,
+  TF_XLA_ASSIGN_OR_RETURN(auto slice_data,
                       CollectSliceArgumentMetadataForCollectives(
                           instr, buffer_assignment, adaptor, fusion_instr,
                           call_graph, inlined_module));
@@ -1375,7 +1375,7 @@ absl::StatusOr<FusionEmissionResult> EmitCollective(
 absl::StatusOr<FusionEmissionResult> CustomFusion::Emit(
     IrEmitterContext& ir_emitter_context,
     const HloFusionInstruction& fusion) const {
-  TF_ASSIGN_OR_RETURN(auto gpu_config,
+  TF_XLA_ASSIGN_OR_RETURN(auto gpu_config,
                       fusion.backend_config<GpuBackendConfig>());
   const FusionBackendConfig& backend_config =
       gpu_config.fusion_backend_config();
@@ -1395,7 +1395,7 @@ absl::StatusOr<FusionEmissionResult> CustomFusion::Emit(
   }
 
   // Load custom kernels that can implement a fusion computation.
-  TF_ASSIGN_OR_RETURN(std::vector<CustomKernel> kernels,
+  TF_XLA_ASSIGN_OR_RETURN(std::vector<CustomKernel> kernels,
                       custom_kernel_fusion->LoadKernels(
                           ir_emitter_context.gpu_device_info(),
                           fusion.fused_instructions_computation()));
@@ -1408,7 +1408,7 @@ absl::StatusOr<FusionEmissionResult> CustomFusion::Emit(
                      " returned empty custom kernels for a fused computation"));
   }
 
-  TF_ASSIGN_OR_RETURN(auto thunk,
+  TF_XLA_ASSIGN_OR_RETURN(auto thunk,
                       BuildCustomKernelThunkForFusion(
                           ir_emitter_context, fusion,
                           std::move(kernels[config.kernel_index()])));

@@ -130,7 +130,7 @@ absl::StatusOr<mlir::Operation*> ImportOldStyleAsyncStart(
   auto sync_operation = async_builder.create<sync_op>(
       loc, Untuple(result_types[1]), sync_operand, attributes);
   async_builder.create<mlir::func::ReturnOp>(loc, sync_operation->getResults());
-  TF_RETURN_IF_ERROR(mutate_op(sync_operation));
+  TF_XLA_RETURN_IF_ERROR(mutate_op(sync_operation));
 
   function->setAttr(kExecutionThread, builder->getStringAttr("main"));
 

@@ -83,10 +83,10 @@ HloInstruction* GetRoot(HloModule& module) {
 
 // TODO(b/74197823): Move the tests to service/.
 absl::StatusOr<std::unique_ptr<HloModule>> BuildHloModule(XlaBuilder& b) {
-  TF_ASSIGN_OR_RETURN(XlaComputation computation,
+  TF_XLA_ASSIGN_OR_RETURN(XlaComputation computation,
                       b.Build(/*remove_dynamic_dimensions=*/false));
   const HloModuleProto& proto = computation.proto();
-  TF_ASSIGN_OR_RETURN(const auto& config,
+  TF_XLA_ASSIGN_OR_RETURN(const auto& config,
                       HloModule::CreateModuleConfigFromProto(
                           proto, GetDebugOptionsFromFlags()));
   return HloModule::CreateFromProto(proto, config);
@@ -95,10 +95,10 @@ absl::StatusOr<std::unique_ptr<HloModule>> BuildHloModule(XlaBuilder& b) {
 // Overload which explicitly specifies the root instruction.
 absl::StatusOr<std::unique_ptr<HloModule>> BuildHloModule(XlaBuilder& b,
                                                           XlaOp root) {
-  TF_ASSIGN_OR_RETURN(XlaComputation computation,
+  TF_XLA_ASSIGN_OR_RETURN(XlaComputation computation,
                       b.Build(root, /*remove_dynamic_dimensions=*/false));
   const HloModuleProto& proto = computation.proto();
-  TF_ASSIGN_OR_RETURN(const auto& config,
+  TF_XLA_ASSIGN_OR_RETURN(const auto& config,
                       HloModule::CreateModuleConfigFromProto(
                           proto, GetDebugOptionsFromFlags()));
   return HloModule::CreateFromProto(proto, config);

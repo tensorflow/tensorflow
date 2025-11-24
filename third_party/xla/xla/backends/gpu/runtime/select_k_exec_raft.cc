@@ -62,7 +62,7 @@ class OwningScratchAllocator {
 
   // Allocate memory and track ownership
   absl::StatusOr<se::DeviceMemory<uint8_t>> AllocateBytes(int64_t byte_size) {
-    TF_ASSIGN_OR_RETURN(se::OwningDeviceMemory buffer,
+    TF_XLA_ASSIGN_OR_RETURN(se::OwningDeviceMemory buffer,
                         allocator_->Allocate(device_ordinal_, byte_size,
                                              /*retry_on_failure=*/false));
 

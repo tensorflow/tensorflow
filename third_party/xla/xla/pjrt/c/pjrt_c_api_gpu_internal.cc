@@ -69,7 +69,7 @@ namespace gpu_plugin {
 #endif
 
 PJRT_Error* PJRT_Client_Create(PJRT_Client_Create_Args* args) {
-  PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
+  PJRT_XLA_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
       "PJRT_Client_Create_Args", PJRT_Client_Create_Args_STRUCT_SIZE,
       args->struct_size));
 
@@ -96,7 +96,7 @@ PJRT_Error* PJRT_Client_Create(PJRT_Client_Create_Args* args) {
           {"mock_gpu_topology", PJRT_NamedValue_Type::PJRT_NamedValue_kString},
           {"partition_index", PJRT_NamedValue_Type::PJRT_NamedValue_kInt64},
       });
-  PJRT_RETURN_IF_ERROR(
+  PJRT_XLA_RETURN_IF_ERROR(
       ValidateCreateOptions(create_options, kExpectedOptionNameAndTypes));
 
   std::optional<std::string> platform_name;
@@ -196,14 +196,14 @@ PJRT_Error* PJRT_Client_Create(PJRT_Client_Create_Args* args) {
   options.enable_mock_nccl = enable_mock_nccl;
   options.mock_gpu_topology = mock_gpu_topology;
   options.partition_index = partition_index;
-  PJRT_ASSIGN_OR_RETURN(std::unique_ptr<xla::PjRtClient> client,
+  PJRT_XLA_ASSIGN_OR_RETURN(std::unique_ptr<xla::PjRtClient> client,
                         xla::GetXlaPjrtGpuClient(options));
   args->client = pjrt::CreateWrapperClient(std::move(client));
   return nullptr;
 }
 
 PJRT_Error* PJRT_ExecuteContext_Create(PJRT_ExecuteContext_Create_Args* args) {
-  PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
+  PJRT_XLA_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
       "PJRT_ExecuteContext_Create_Args",
       PJRT_ExecuteContext_Create_Args_STRUCT_SIZE, args->struct_size));
   auto execute_context = std::make_unique<xla::ExecuteContext>();
@@ -237,7 +237,7 @@ absl::StatusOr<TargetConfigAndDevices> GetTargetConfigFromOptions(
     }
     return {{target_config_proto, {}}};
   }
-  TF_ASSIGN_OR_RETURN(xla::LocalClient * xla_client,
+  TF_XLA_ASSIGN_OR_RETURN(xla::LocalClient * xla_client,
                       xla::GetGpuXlaClient(/*platform_name=*/std::nullopt,
                                            /*allowed_devices=*/std::nullopt));
   stream_executor::StreamExecutor* executor =
@@ -256,7 +256,7 @@ absl::StatusOr<TargetConfigAndDevices> GetTargetConfigFromOptions(
 
 PJRT_Error* PJRT_GpuDeviceTopology_Create(
     PJRT_TopologyDescription_Create_Args* args) {
-  PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
+  PJRT_XLA_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
       "PJRT_TopologyDescription_Create_Args",
       PJRT_TopologyDescription_Create_Args_STRUCT_SIZE, args->struct_size));
 
@@ -272,7 +272,7 @@ PJRT_Error* PJRT_GpuDeviceTopology_Create(
       pjrt::ConvertFromPjRtNamedValueList(args->create_options,
                                           args->num_options);
 
-  PJRT_ASSIGN_OR_RETURN(TargetConfigAndDevices target_config_and_devices,
+  PJRT_XLA_ASSIGN_OR_RETURN(TargetConfigAndDevices target_config_and_devices,
                         GetTargetConfigFromOptions(create_options));
 
   std::vector<int>& device_ids = target_config_and_devices.device_ids;
@@ -283,7 +283,7 @@ PJRT_Error* PJRT_GpuDeviceTopology_Create(
   if (auto topology_it = create_options.find("topology");
       topology_it != create_options.end()) {
     std::string topology_string = std::get<std::string>(topology_it->second);
-    PJRT_ASSIGN_OR_RETURN(sizes,
+    PJRT_XLA_ASSIGN_OR_RETURN(sizes,
                           xla::TopologySizes::FromString(topology_string));
   }
 
@@ -346,7 +346,7 @@ PJRT_Profiler_Extension profiler_extension{
 
 PJRT_Error* PJRT_Register_Custom_Partitioner(
     PJRT_Register_Custom_Partitioner_Args* args) {
-  PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
+  PJRT_XLA_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
       "PJRT_Register_Custom_Partitioner_Args",
       PJRT_Register_Custom_Partitioner_Args_STRUCT_SIZE, args->struct_size));
   std::string name(args->name, args->name_size);
@@ -357,7 +357,7 @@ PJRT_Error* PJRT_Register_Custom_Partitioner(
 
 PJRT_Error* PJRT_Register_Batch_Partitionable(
     PJRT_Register_Batch_Partitionable_Args* args) {
-  PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
+  PJRT_XLA_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
       "PJRT_Register_Batch_Partitionable_Args",
       PJRT_Register_Batch_Partitionable_Args_STRUCT_SIZE, args->struct_size));
   std::string name(args->name, args->name_size);
@@ -378,25 +378,25 @@ PJRT_Custom_Partitioner_Extension custom_partitioner{
 
 PJRT_Error* PJRT_Get_Stream_For_External_Ready_Events(
     PJRT_Get_Stream_For_External_Ready_Events_Args* args) {
-  PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
+  PJRT_XLA_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
       "PJRT_Get_Stream_For_External_Ready_Events_Args",
       PJRT_Get_Stream_For_External_Ready_Events_Args_STRUCT_SIZE,
       args->struct_size));
-  PJRT_ASSIGN_OR_RETURN(
+  PJRT_XLA_ASSIGN_OR_RETURN(
       args->stream, args->device->device->GetStreamForExternalReadyEvents());
   return nullptr;
 }
 
 PJRT_Error* PJRT_Wait_Until_Buffer_Ready_On_Stream(
     PJRT_Wait_Until_Buffer_Ready_On_Stream_Args* args) {
-  PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
+  PJRT_XLA_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
       "PJRT_Wait_Until_Buffer_Ready_On_Stream_Args",
       PJRT_Wait_Until_Buffer_Ready_On_Stream_Args_STRUCT_SIZE,
       args->struct_size));
-  PJRT_ASSIGN_OR_RETURN(
+  PJRT_XLA_ASSIGN_OR_RETURN(
       std::unique_ptr<xla::PjRtBuffer::ExternalReference> external_reference,
       args->buffer->buffer->AcquireExternalReference());
-  PJRT_RETURN_IF_ERROR(
+  PJRT_XLA_RETURN_IF_ERROR(
       external_reference->WaitUntilBufferReadyOnStream(args->stream));
   return nullptr;
 }
@@ -413,7 +413,7 @@ PJRT_Stream_Extension stream{
 
 PJRT_Error* PJRT_Gpu_Register_Custom_Call(
     PJRT_Gpu_Register_Custom_Call_Args* args) {
-  PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
+  PJRT_XLA_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
       "PJRT_Gpu_Register_Custom_Call_Args",
       PJRT_Gpu_Register_Custom_Call_Args_STRUCT_SIZE, args->struct_size));
   std::string function_name(args->function_name, args->function_name_size);

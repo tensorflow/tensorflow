@@ -641,10 +641,10 @@ class GetCollectOpGroupModeTestForInstruction
 absl::StatusOr<std::unique_ptr<HloComputation>> CreateMaxComputation() {
   Shape scalar = ShapeUtil::MakeScalarShape(F32);
   auto builder_max = HloComputation::Builder("max");
-  TF_ASSIGN_OR_RETURN(HloInstruction * a,
+  TF_XLA_ASSIGN_OR_RETURN(HloInstruction * a,
                       builder_max.AddParameter(
                           HloInstruction::CreateParameter(0, scalar, "a")));
-  TF_ASSIGN_OR_RETURN(HloInstruction * b,
+  TF_XLA_ASSIGN_OR_RETURN(HloInstruction * b,
                       builder_max.AddParameter(
                           HloInstruction::CreateParameter(1, scalar, "b")));
   HloInstruction *max = builder_max.AddInstruction(

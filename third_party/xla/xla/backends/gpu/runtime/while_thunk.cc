@@ -102,19 +102,19 @@ WhileThunk::WhileThunk(
 
 absl::Status WhileThunk::Prepare(const PrepareParams& params,
                                  ResourceRequestsInterface& resource_requests) {
-  TF_RETURN_IF_ERROR(
+  TF_XLA_RETURN_IF_ERROR(
       condition_thunk_sequence_->Prepare(params, resource_requests));
-  TF_RETURN_IF_ERROR(body_thunk_sequence_->Prepare(params, resource_requests));
+  TF_XLA_RETURN_IF_ERROR(body_thunk_sequence_->Prepare(params, resource_requests));
   return absl::OkStatus();
 }
 
 absl::Status WhileThunk::Initialize(const InitializeParams& params) {
-  TF_RETURN_IF_ERROR(condition_thunk_sequence_->Initialize(params));
-  TF_RETURN_IF_ERROR(body_thunk_sequence_->Initialize(params));
+  TF_XLA_RETURN_IF_ERROR(condition_thunk_sequence_->Initialize(params));
+  TF_XLA_RETURN_IF_ERROR(body_thunk_sequence_->Initialize(params));
 
   absl::MutexLock lock(mutex_);
   if (!host_memory_pools_.contains(params.executor)) {
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         std::unique_ptr<HostMemoryPool> pool,
         HostMemoryPool::Create(params.executor, PrimitiveType::PRED));
     host_memory_pools_[params.executor] = std::move(pool);
@@ -137,7 +137,7 @@ absl::Status WhileThunk::ExecuteOnStream(const ExecuteParams& params) {
     for (iter = 0; iter < trip_count_; ++iter) {
       VLOG(3) << "[" << device_ordinal << "] Executing iteration # " << iter
               << " (Device: " << stream.parent()->device_ordinal() << ")";
-      TF_RETURN_IF_ERROR(body_thunk_sequence_->ExecuteOnStream(params));
+      TF_XLA_RETURN_IF_ERROR(body_thunk_sequence_->ExecuteOnStream(params));
     }
     return absl::OkStatus();
   }
@@ -147,7 +147,7 @@ absl::Status WhileThunk::ExecuteOnStream(const ExecuteParams& params) {
     absl::MutexLock lock(mutex_);
     pool = host_memory_pools_.at(stream.parent()).get();
   }
-  TF_ASSIGN_OR_RETURN(HostMemoryPool::Handle handle, pool->Acquire());
+  TF_XLA_ASSIGN_OR_RETURN(HostMemoryPool::Handle handle, pool->Acquire());
   bool* condition_result = handle.get<bool>();
   se::DeviceMemoryBase condition_result_data =
       params.buffer_allocations->GetDeviceAddress(
@@ -158,10 +158,10 @@ absl::Status WhileThunk::ExecuteOnStream(const ExecuteParams& params) {
         [&] { return TraceMeEncode("While", {{"iteration:", iter}}); });
     VLOG(3) << "[" << device_ordinal
             << "] Executing WhileThunk condition computation; iter=" << iter;
-    TF_RETURN_IF_ERROR(condition_thunk_sequence_->ExecuteOnStream(params));
+    TF_XLA_RETURN_IF_ERROR(condition_thunk_sequence_->ExecuteOnStream(params));
 
     // Copy the result of condition computation and break the loop if 'false'.
-    TF_RETURN_IF_ERROR(
+    TF_XLA_RETURN_IF_ERROR(
         stream.Memcpy(condition_result, condition_result_data, sizeof(bool)));
 
     if (absl::Status blocked = stream.BlockHostUntilDone(); !blocked.ok()) {
@@ -181,7 +181,7 @@ absl::Status WhileThunk::ExecuteOnStream(const ExecuteParams& params) {
     VLOG(3) << "[" << device_ordinal
             << "] Executing WhileThunk body computation; iter=" << iter
             << " (Device: " << stream.parent()->device_ordinal() << ")";
-    TF_RETURN_IF_ERROR(body_thunk_sequence_->ExecuteOnStream(params));
+    TF_XLA_RETURN_IF_ERROR(body_thunk_sequence_->ExecuteOnStream(params));
     ++iter;
   }
   return absl::OkStatus();
@@ -203,15 +203,15 @@ absl::Status WhileThunk::TransformAllNestedThunks(
     absl::FunctionRef<
         absl::StatusOr<std::unique_ptr<Thunk>>(std::unique_ptr<Thunk>)>
         fn) {
-  TF_RETURN_IF_ERROR(condition_thunk_sequence_->TransformAllNestedThunks(fn));
+  TF_XLA_RETURN_IF_ERROR(condition_thunk_sequence_->TransformAllNestedThunks(fn));
 
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<Thunk> thunk,
+  TF_XLA_ASSIGN_OR_RETURN(std::unique_ptr<Thunk> thunk,
                       fn(std::move(condition_thunk_sequence_)));
   condition_thunk_sequence_ = SequentialThunk::FromThunk(std::move(thunk));
 
-  TF_RETURN_IF_ERROR(body_thunk_sequence_->TransformAllNestedThunks(fn));
+  TF_XLA_RETURN_IF_ERROR(body_thunk_sequence_->TransformAllNestedThunks(fn));
 
-  TF_ASSIGN_OR_RETURN(thunk, fn(std::move(body_thunk_sequence_)));
+  TF_XLA_ASSIGN_OR_RETURN(thunk, fn(std::move(body_thunk_sequence_)));
   body_thunk_sequence_ = SequentialThunk::FromThunk(std::move(thunk));
   return absl::OkStatus();
 }
@@ -231,18 +231,18 @@ absl::StatusOr<ThunkProto> WhileThunk::ToProto() const {
   *proto.mutable_thunk_info() = thunk_info().ToProto();
 
   auto* while_proto = proto.mutable_while_thunk();
-  TF_ASSIGN_OR_RETURN(*while_proto->mutable_condition_result_buffer_index(),
+  TF_XLA_ASSIGN_OR_RETURN(*while_proto->mutable_condition_result_buffer_index(),
                       condition_result_buffer_index_.ToProto());
 
   if (condition_thunk_sequence_) {
-    TF_ASSIGN_OR_RETURN(ThunkProto thunk_proto,
+    TF_XLA_ASSIGN_OR_RETURN(ThunkProto thunk_proto,
                         condition_thunk_sequence_->ToProto());
     *while_proto->mutable_condition_thunk_sequence() =
         thunk_proto.sequential_thunk();
   }
 
   if (body_thunk_sequence_) {
-    TF_ASSIGN_OR_RETURN(ThunkProto thunk_proto,
+    TF_XLA_ASSIGN_OR_RETURN(ThunkProto thunk_proto,
                         body_thunk_sequence_->ToProto());
     *while_proto->mutable_body_thunk_sequence() =
         thunk_proto.sequential_thunk();
@@ -258,15 +258,15 @@ absl::StatusOr<std::unique_ptr<WhileThunk>> WhileThunk::FromProto(
     ThunkInfo thunk_info, const WhileThunkProto& thunk_proto,
     absl::Span<const BufferAllocation> buffer_allocations,
     const Deserializer& deserializer) {
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       BufferAllocation::Slice condition_result_buffer_index,
       BufferAllocation::Slice::FromProto(
           thunk_proto.condition_result_buffer_index(), buffer_allocations));
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       std::unique_ptr<SequentialThunk> condition_thunk_sequence,
       SequentialThunk::FromProto(
           thunk_info, thunk_proto.condition_thunk_sequence(), deserializer));
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       std::unique_ptr<SequentialThunk> body_thunk_sequence,
       SequentialThunk::FromProto(thunk_info, thunk_proto.body_thunk_sequence(),
                                  deserializer));

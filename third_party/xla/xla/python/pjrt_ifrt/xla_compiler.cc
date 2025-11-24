@@ -52,7 +52,7 @@ class XlaCompileOptionsSerDes
     const auto& options = llvm::cast<XlaCompileOptions>(serializable);
 
     XlaCompileOptionsProto proto;
-    TF_ASSIGN_OR_RETURN(*proto.mutable_compile_options(),
+    TF_XLA_ASSIGN_OR_RETURN(*proto.mutable_compile_options(),
                         options.compile_options.ToProto());
     if (!options.loaded_host_callbacks.empty()) {
       return absl::UnimplementedError(
@@ -72,7 +72,7 @@ class XlaCompileOptionsSerDes
     }
 
     auto options = std::make_unique<XlaCompileOptions>();
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         options->compile_options,
         xla::CompileOptions::FromProto(proto.compile_options()));
     return options;
@@ -121,7 +121,7 @@ absl::StatusOr<xla::ifrt::DeviceListRef> GetDeviceListFromDeviceAssignment(
                   device_assignment.computation_count());
   for (int64_t i = 0; i < device_assignment.replica_count(); ++i) {
     for (int64_t j = 0; j < device_assignment.computation_count(); ++j) {
-      TF_ASSIGN_OR_RETURN(xla::ifrt::Device * device,
+      TF_XLA_ASSIGN_OR_RETURN(xla::ifrt::Device * device,
                           ifrt_client->LookupDevice(
                               xla::ifrt::DeviceId(device_assignment(i, j))));
       devices.push_back(device);
@@ -144,16 +144,16 @@ absl::StatusOr<xla::ifrt::DeviceListRef> GetDeviceListFromXlaCompileOptions(
   }
   auto& build_options = compile_options.executable_build_options;
   if (build_options.device_ordinal() >= 0) {
-    TF_ASSIGN_OR_RETURN(xla::ifrt::Device * device,
+    TF_XLA_ASSIGN_OR_RETURN(xla::ifrt::Device * device,
                         ifrt_client->LookupDevice(xla::ifrt::DeviceId(
                             build_options.device_ordinal())));
     return ifrt_client->MakeDeviceList({device});
   }
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       xla::DeviceAssignment default_da,
       ifrt_client->GetDefaultDeviceAssignment(build_options.num_replicas(),
                                               build_options.num_partitions()));
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       xla::ifrt::DeviceListRef devices,
       GetDeviceListFromDeviceAssignment(ifrt_client, default_da));
   return devices;

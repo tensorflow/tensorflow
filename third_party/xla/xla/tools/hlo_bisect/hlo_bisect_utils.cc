@@ -60,7 +60,7 @@ Literal ExecuteWithRunnerAndRetrieveResult(std::unique_ptr<HloModule> module,
 absl::StatusOr<std::unique_ptr<HloModule>> LoadModuleFromHloProto(
     const HloProto& proto) {
   const HloModuleProto& module_proto = proto.hlo_module();
-  TF_ASSIGN_OR_RETURN(const HloModuleConfig module_config,
+  TF_XLA_ASSIGN_OR_RETURN(const HloModuleConfig module_config,
                       HloModule::CreateModuleConfigFromProto(
                           module_proto, GetDebugOptionsFromFlags()));
   return CreateModuleFromProto(module_proto, module_config);
@@ -70,11 +70,11 @@ absl::StatusOr<std::unique_ptr<HloModule>>
 LoadModuleAndInputDataFromHloSnapshot(const HloSnapshot& snapshot,
                                       std::vector<Literal>* input_data) {
   for (int64_t i = 0; i < snapshot.arguments_size(); ++i) {
-    TF_ASSIGN_OR_RETURN(Literal literal,
+    TF_XLA_ASSIGN_OR_RETURN(Literal literal,
                         Literal::CreateFromProto(snapshot.arguments(i)));
     input_data->push_back(std::move(literal));
   }
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       HloModuleConfig config,
       HloModule::CreateModuleConfigFromProto(snapshot.hlo().hlo_module(),
                                              xla::GetDebugOptionsFromFlags()));
@@ -90,7 +90,7 @@ absl::StatusOr<ModuleWithInputs> GetModuleAndInputData(
   HloSnapshot hlo_snapshot;
   if (tsl::ReadBinaryProto(env, input_file, &hlo_snapshot).ok()) {
     std::vector<Literal> input_data;
-    TF_ASSIGN_OR_RETURN(module, LoadModuleAndInputDataFromHloSnapshot(
+    TF_XLA_ASSIGN_OR_RETURN(module, LoadModuleAndInputDataFromHloSnapshot(
                                     hlo_snapshot, &input_data));
     CHECK_EQ(module->entry_computation()->num_parameters(), input_data.size());
     return std::make_pair(std::move(module), std::move(input_data));
@@ -138,11 +138,11 @@ absl::Status DumpHloModule(HloModule* module, const std::string& file_name,
   HloProto proto = MakeHloProto(*module);
   if (output_format == "hlo") {
     tsl::Env* env = tsl::Env::Default();
-    TF_RETURN_IF_ERROR(CreateDirIfNeeded(std::string(dir_path), env));
+    TF_XLA_RETURN_IF_ERROR(CreateDirIfNeeded(std::string(dir_path), env));
     std::string file_path =
         tsl::io::JoinPath(dir_path, SanitizeFileName(file_name)) + ".hlo";
     LOG(INFO) << "Dumped HLO text to " << file_path;
-    TF_RETURN_IF_ERROR(tsl::WriteStringToFile(
+    TF_XLA_RETURN_IF_ERROR(tsl::WriteStringToFile(
         env, file_path,
         module->ToString(HloPrintOptions::Canonical()
                              .set_print_large_constants(true)
@@ -150,7 +150,7 @@ absl::Status DumpHloModule(HloModule* module, const std::string& file_name,
                              .set_compact_operands(false))));
   } else if (output_format == "pb") {
     std::string path;
-    TF_RETURN_IF_ERROR(
+    TF_XLA_RETURN_IF_ERROR(
         DumpProtoToDirectory(proto, std::string(dir_path), file_name, &path));
     LOG(INFO) << "Dumped HLO module proto to " << path;
 
@@ -214,7 +214,7 @@ absl::StatusOr<bool> MiscompareChecker::Run(const HloModule& module) {
   }
 
   // Prepare the reference module.
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> reference_module,
+  TF_XLA_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> reference_module,
                       PrepareReferenceModule(*test_module, test_runner_.get()));
 
   // Run the module on the reference platform.
@@ -269,7 +269,7 @@ absl::StatusOr<bool> ScriptChecker::Run(const HloModule& module) {
                           .set_print_backend_config(true)
                           .set_compact_operands(false));
 
-  TF_RETURN_IF_ERROR(tsl::WriteStringToFile(env, hlo_path, hlo_contents));
+  TF_XLA_RETURN_IF_ERROR(tsl::WriteStringToFile(env, hlo_path, hlo_contents));
 
   tsl::SubProcess script_subprocess;
   std::vector<std::string> script_args = {path_to_script_, hlo_path};
@@ -300,14 +300,14 @@ absl::flat_hash_map<std::string, Literal> ScriptChecker::GetResults() {
 
 absl::StatusOr<std::unique_ptr<HloModule>> BisectRunner::RunEntry() {
   HloBisectState hlo_bisect(std::move(module_), bug_checker_.get());
-  TF_ASSIGN_OR_RETURN(bool has_bug, hlo_bisect.ShouldProcess());
+  TF_XLA_ASSIGN_OR_RETURN(bool has_bug, hlo_bisect.ShouldProcess());
   if (!has_bug) {
     return InvalidArgument(
         "Don't see the bug in the unmodified module. Something is not right. "
         "Can't bisect.");
   }
 
-  TF_RETURN_IF_ERROR(hlo_bisect.TrimEntryComputation().status());
+  TF_XLA_RETURN_IF_ERROR(hlo_bisect.TrimEntryComputation().status());
   return hlo_bisect.GetResult();
 }
 
@@ -361,7 +361,7 @@ absl::StatusOr<ModuleWithInputs> GetVerifiedModuleAndInputData(
     absl::string_view input_filename) {
   std::unique_ptr<HloModule> module;
   std::vector<Literal> input_data;
-  TF_ASSIGN_OR_RETURN(std::tie(module, input_data),
+  TF_XLA_ASSIGN_OR_RETURN(std::tie(module, input_data),
                       GetModuleAndInputData(input_filename));
 
   // If any instruction doesn't have a layout, set to default layout.

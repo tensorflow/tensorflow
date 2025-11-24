@@ -175,7 +175,7 @@ KernelThunk<num_arguments, num_results>::ExecuteInternal(
 
   for (const BufferAllocation::Slice& buffer : arguments_buffers_) {
     if constexpr (ShouldCheckBufferSlices()) {
-      TF_ASSIGN_OR_RETURN(auto mem, allocations->GetDeviceAddress(buffer));
+      TF_XLA_ASSIGN_OR_RETURN(auto mem, allocations->GetDeviceAddress(buffer));
       kernel_args_ptr++->data = mem.opaque();
     } else {
       auto mem = allocations->GetDeviceAddressUnchecked(buffer);
@@ -185,7 +185,7 @@ KernelThunk<num_arguments, num_results>::ExecuteInternal(
 
   for (const BufferAllocation::Slice& buffer : results_buffers_) {
     if constexpr (ShouldCheckBufferSlices()) {
-      TF_ASSIGN_OR_RETURN(auto mem, allocations->GetDeviceAddress(buffer));
+      TF_XLA_ASSIGN_OR_RETURN(auto mem, allocations->GetDeviceAddress(buffer));
       kernel_args_ptr++->data = mem.opaque();
     } else {
       auto mem = allocations->GetDeviceAddressUnchecked(buffer);
@@ -201,9 +201,9 @@ KernelThunk<num_arguments, num_results>::ExecuteInternal(
   // property holds.
   if constexpr (ShouldCheckBufferSlices()) {
     // TODO(abanas): Check also for overlapping buffers.
-    TF_RETURN_IF_ERROR(
+    TF_XLA_RETURN_IF_ERROR(
         CheckBufferAlignment(info(), min_alignment_.value_or(0), kernel_args));
-    TF_RETURN_IF_ERROR(CheckInvariantBuffersMemory(kernel_args));
+    TF_XLA_RETURN_IF_ERROR(CheckInvariantBuffersMemory(kernel_args));
   }
 
   // TODO(ezhulenev): Kernel ptr should be loaded as a part of Thunk
@@ -222,12 +222,12 @@ KernelThunk<num_arguments, num_results>::ExecuteInternal(
     }
   });
 
-  TF_RETURN_IF_ERROR(kernel_.status());
+  TF_XLA_RETURN_IF_ERROR(kernel_.status());
   Kernel* kernel = &kernel_.value();
 
   // Use a fast path if kernel called just once.
   if (ABSL_PREDICT_TRUE(call_once_)) {
-    TF_RETURN_IF_ERROR(kernel->CallOnce(kernel_args));
+    TF_XLA_RETURN_IF_ERROR(kernel->CallOnce(kernel_args));
     return OkExecuteEvent();
   }
 
@@ -239,7 +239,7 @@ KernelThunk<num_arguments, num_results>::ExecuteInternal(
                           params.intra_op_threadpool);
   }
 
-  TF_RETURN_IF_ERROR(kernel->Launch(num_workgroups_, kernel_args));
+  TF_XLA_RETURN_IF_ERROR(kernel->Launch(num_workgroups_, kernel_args));
   return OkExecuteEvent();
 }
 

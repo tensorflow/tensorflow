@@ -27,11 +27,11 @@ limitations under the License.
 namespace xla::gpu {
 
 absl::Status WaitForStreamsThunk::ExecuteOnStream(const ExecuteParams& params) {
-  TF_ASSIGN_OR_RETURN(se::Stream * stream,
+  TF_XLA_ASSIGN_OR_RETURN(se::Stream * stream,
                       Thunk::GetStreamForExecution(stream_id_, params));
 
   VLOG(5) << "Waiting for stream id: " << wait_for_stream_id_;
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       se::Stream * wait_on_stream,
       Thunk::GetStreamForExecution(wait_for_stream_id_, params));
 

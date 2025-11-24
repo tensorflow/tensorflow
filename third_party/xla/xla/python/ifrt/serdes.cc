@@ -105,7 +105,7 @@ absl::StatusOr<Serialized> Serialize(
     }
     serdes = it->second;
   }
-  TF_ASSIGN_OR_RETURN(std::string data,
+  TF_XLA_ASSIGN_OR_RETURN(std::string data,
                       serdes->Serialize(serializable, std::move(options)));
 
   Serialized proto;

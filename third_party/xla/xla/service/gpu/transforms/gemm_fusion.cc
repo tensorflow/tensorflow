@@ -553,7 +553,7 @@ absl::StatusOr<HlosAndRequirements> FuseDotOperand(
     std::vector<HloInstruction*>& fusion_params  // append
 ) {
   // Direct dot inputs have well defined dimension orders.
-  TF_ASSIGN_OR_RETURN(const FusionContext context,
+  TF_XLA_ASSIGN_OR_RETURN(const FusionContext context,
                       FusionContext::FromDotOperand(dot, operand_index));
   const HloInstruction& operand = *dot.operand(operand_index);
   return FuseTowardOperands(operand, context.dim_orders().at(&operand),
@@ -725,11 +725,11 @@ absl::StatusOr<Decision> CreateDotFusion(
 
   std::vector<HlosAndRequirements> hlos_and_reqs;
   hlos_and_reqs.reserve(dot.operand_count());
-  TF_ASSIGN_OR_RETURN(HlosAndRequirements lhs_hlos_and_reqs,
+  TF_XLA_ASSIGN_OR_RETURN(HlosAndRequirements lhs_hlos_and_reqs,
                       FuseDotOperand(dot, /*operand_index=*/0, gpu_version,
                                      builder, fusion_inputs));
   hlos_and_reqs.push_back(lhs_hlos_and_reqs);
-  TF_ASSIGN_OR_RETURN(HlosAndRequirements rhs_hlos_and_reqs,
+  TF_XLA_ASSIGN_OR_RETURN(HlosAndRequirements rhs_hlos_and_reqs,
                       FuseDotOperand(dot, /*operand_index=*/1, gpu_version,
                                      builder, fusion_inputs));
   hlos_and_reqs.push_back(rhs_hlos_and_reqs);
@@ -815,7 +815,7 @@ class GemmFusionVisitor : public DfsHloRewriteVisitor {
             ->config()
             .debug_options()
             .xla_gpu_gemm_rewrite_size_threshold();
-    TF_ASSIGN_OR_RETURN(bool is_matmul_tiny,
+    TF_XLA_ASSIGN_OR_RETURN(bool is_matmul_tiny,
                         IsMatrixMultiplicationTooSmallForRewriting(
                             *dot, gemm_rewrite_size_threshold));
     if (is_matmul_tiny && IsDotSupportedByClassicalEmitters(*dot)) {
@@ -826,7 +826,7 @@ class GemmFusionVisitor : public DfsHloRewriteVisitor {
     HloComputation::Builder builder(absl::StrCat(fusion_name, "_computation"));
     std::vector<HloInstruction*> fusion_inputs;
     HloInstruction* fusion_output = nullptr;
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         const Decision decision,
         CreateDotFusion(*Cast<HloDotInstruction>(dot), gpu_version_, builder,
                         fusion_inputs, &fusion_output));
@@ -854,21 +854,21 @@ class GemmFusionVisitor : public DfsHloRewriteVisitor {
     dot_fusion->set_metadata(dot->metadata());
     dot_fusion->GetModule()->SetAndUniquifyInstrName(dot_fusion, fusion_name);
 
-    TF_ASSIGN_OR_RETURN(auto gpu_config,
+    TF_XLA_ASSIGN_OR_RETURN(auto gpu_config,
                         dot_fusion->backend_config<GpuBackendConfig>());
     FusionBackendConfig& backend_config =
         *gpu_config.mutable_fusion_backend_config();
     backend_config.set_kind(std::string(kTritonGemmFusionKind));
-    TF_RETURN_IF_ERROR(dot_fusion->set_backend_config(gpu_config));
+    TF_XLA_RETURN_IF_ERROR(dot_fusion->set_backend_config(gpu_config));
 
     if (fusion_output->IsRoot()) {
       fusion_output->parent()->set_root_instruction(dot_fusion);
-      TF_RETURN_IF_ERROR(
+      TF_XLA_RETURN_IF_ERROR(
           fusion_output->parent()->RemoveInstructionAndUnusedOperands(
               fusion_output));
       MarkAsChanged();
     } else {
-      TF_RETURN_IF_ERROR(ReplaceInstruction(fusion_output, dot_fusion));
+      TF_XLA_RETURN_IF_ERROR(ReplaceInstruction(fusion_output, dot_fusion));
     }
     XLA_VLOG_LINES(5, computation->ToString(HloPrintOptions::ShortParsable()));
     return absl::OkStatus();
@@ -897,14 +897,14 @@ class GemmFusionVisitor : public DfsHloRewriteVisitor {
                                      HloInstruction::FusionKind::kCustom,
                                      ragged_dot->operands(), computation));
 
-    TF_ASSIGN_OR_RETURN(auto gpu_config,
+    TF_XLA_ASSIGN_OR_RETURN(auto gpu_config,
                         dot_fusion->backend_config<GpuBackendConfig>());
     FusionBackendConfig& backend_config =
         *gpu_config.mutable_fusion_backend_config();
     backend_config.set_kind("__triton_ragged_dot");
-    TF_RETURN_IF_ERROR(dot_fusion->set_backend_config(gpu_config));
+    TF_XLA_RETURN_IF_ERROR(dot_fusion->set_backend_config(gpu_config));
 
-    TF_RETURN_IF_ERROR(ReplaceInstruction(ragged_dot, dot_fusion));
+    TF_XLA_RETURN_IF_ERROR(ReplaceInstruction(ragged_dot, dot_fusion));
     MarkAsChanged();
     return absl::OkStatus();
   }
@@ -918,19 +918,19 @@ class GemmFusionVisitor : public DfsHloRewriteVisitor {
 
     std::vector<HlosAndRequirements> hlos_and_reqs;
     hlos_and_reqs.reserve(scaled_dot->operand_count());
-    TF_ASSIGN_OR_RETURN(HlosAndRequirements lhs_hlos_and_reqs,
+    TF_XLA_ASSIGN_OR_RETURN(HlosAndRequirements lhs_hlos_and_reqs,
                         FuseDotOperand(*scaled_dot, /*operand_index=*/0,
                                        gpu_version_, builder, fusion_inputs));
     hlos_and_reqs.push_back(lhs_hlos_and_reqs);
-    TF_ASSIGN_OR_RETURN(HlosAndRequirements rhs_hlos_and_reqs,
+    TF_XLA_ASSIGN_OR_RETURN(HlosAndRequirements rhs_hlos_and_reqs,
                         FuseDotOperand(*scaled_dot, /*operand_index=*/1,
                                        gpu_version_, builder, fusion_inputs));
     hlos_and_reqs.push_back(rhs_hlos_and_reqs);
-    TF_ASSIGN_OR_RETURN(HlosAndRequirements lhs_scale_hlos_and_reqs,
+    TF_XLA_ASSIGN_OR_RETURN(HlosAndRequirements lhs_scale_hlos_and_reqs,
                         FuseDotOperand(*scaled_dot, /*operand_index=*/2,
                                        gpu_version_, builder, fusion_inputs));
     hlos_and_reqs.push_back(lhs_scale_hlos_and_reqs);
-    TF_ASSIGN_OR_RETURN(HlosAndRequirements rhs_scale_hlos_and_reqs,
+    TF_XLA_ASSIGN_OR_RETURN(HlosAndRequirements rhs_scale_hlos_and_reqs,
                         FuseDotOperand(*scaled_dot, /*operand_index=*/3,
                                        gpu_version_, builder, fusion_inputs));
     hlos_and_reqs.push_back(rhs_scale_hlos_and_reqs);
@@ -947,13 +947,13 @@ class GemmFusionVisitor : public DfsHloRewriteVisitor {
             computation->root_instruction()->shape(),
             HloInstruction::FusionKind::kCustom, fusion_inputs, computation));
 
-    TF_ASSIGN_OR_RETURN(auto gpu_config,
+    TF_XLA_ASSIGN_OR_RETURN(auto gpu_config,
                         fusion->backend_config<GpuBackendConfig>());
     FusionBackendConfig& backend_config =
         *gpu_config.mutable_fusion_backend_config();
     backend_config.set_kind(kTritonScaledDotFusionKind);
-    TF_RETURN_IF_ERROR(fusion->set_backend_config(gpu_config));
-    TF_RETURN_IF_ERROR(ReplaceInstruction(scaled_dot, fusion));
+    TF_XLA_RETURN_IF_ERROR(fusion->set_backend_config(gpu_config));
+    TF_XLA_RETURN_IF_ERROR(ReplaceInstruction(scaled_dot, fusion));
     MarkAsChanged();
     return absl::OkStatus();
   }
@@ -965,7 +965,7 @@ class GemmFusionVisitor : public DfsHloRewriteVisitor {
 absl::StatusOr<bool> RunOnComputation(
     HloComputation* computation, const se::GpuComputeCapability& gpu_version) {
   GemmFusionVisitor visitor(gpu_version);
-  TF_RETURN_IF_ERROR(computation->Accept(&visitor));
+  TF_XLA_RETURN_IF_ERROR(computation->Accept(&visitor));
   return visitor.changed();
 }
 
@@ -983,13 +983,13 @@ bool ShouldTritonHandleGEMM(HloDotInstruction& dot,
 absl::StatusOr<bool> GemmFusion::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
-  TF_RETURN_IF_ERROR(
+  TF_XLA_RETURN_IF_ERROR(
       EnsureTritonSupportsComputeCapability(compute_capability_));
 
   bool changed = false;
   for (HloComputation* computation :
        module->MakeNonfusionComputations(execution_threads)) {
-    TF_ASSIGN_OR_RETURN(bool result,
+    TF_XLA_ASSIGN_OR_RETURN(bool result,
                         RunOnComputation(computation, compute_capability_));
     changed |= result;
   }

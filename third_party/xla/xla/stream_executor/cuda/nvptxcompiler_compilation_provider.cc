@@ -64,7 +64,7 @@ absl::StatusOr<RelocatableModule>
 NvptxcompilerCompilationProvider::CompileToRelocatableModule(
     const CudaComputeCapability& cc, absl::string_view ptx,
     const CompilationOptions& options) const {
-  TF_ASSIGN_OR_RETURN(Assembly assembly,
+  TF_XLA_ASSIGN_OR_RETURN(Assembly assembly,
                       CompileHelper(cc, ptx, options,
                                     /*compile_to_relocatable_module=*/true));
   return RelocatableModule{std::move(assembly.cubin),

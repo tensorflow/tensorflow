@@ -101,12 +101,12 @@ namespace xla {
       sequence.push_back(instr_it->second);
     }
   }
-  TF_RETURN_IF_ERROR(schedule.Verify());
+  TF_XLA_RETURN_IF_ERROR(schedule.Verify());
   return schedule;
 }
 
 absl::StatusOr<HloScheduleProto> HloSchedule::ToProto() const {
-  TF_RETURN_IF_ERROR(Verify());
+  TF_XLA_RETURN_IF_ERROR(Verify());
   HloScheduleProto proto;
   for (const auto& id_sequence : sequences_) {
     int64_t computation_id = id_sequence.first;
@@ -270,7 +270,7 @@ absl::Status HloSchedule::Update(
   for (const HloComputation* computation : nonfusion_computations) {
     if (!is_computation_scheduled(computation)) {
       GetOrCreateSequence(computation);
-      TF_RETURN_IF_ERROR(UpdateComputationSchedule(computation));
+      TF_XLA_RETURN_IF_ERROR(UpdateComputationSchedule(computation));
     }
   }
   auto sum_of_sequences_for_threads = [&]() -> int64_t {
@@ -312,10 +312,10 @@ absl::Status HloSchedule::Update(
   CHECK_EQ(sequence_sum, nonfusion_computations.size());
 
   for (const HloComputation* computation : nonfusion_computations) {
-    TF_RETURN_IF_ERROR(UpdateComputationSchedule(computation));
+    TF_XLA_RETURN_IF_ERROR(UpdateComputationSchedule(computation));
   }
 
-  TF_RETURN_IF_ERROR(Verify());
+  TF_XLA_RETURN_IF_ERROR(Verify());
   return absl::OkStatus();
 }
 
@@ -355,7 +355,7 @@ absl::Status HloSchedule::Verify() const {
     // For each computation verify the set of instructions is the same and
     // that each dependency and control edge is honored.
     for (const HloComputation* computation : nonfusion_computations) {
-      TF_RETURN_IF_ERROR(Verify(computation));
+      TF_XLA_RETURN_IF_ERROR(Verify(computation));
     }
   }
 

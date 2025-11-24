@@ -350,8 +350,8 @@ class CompileOnlyIfRtClient final
       return std::make_shared<PjRtLayout>(
           LayoutUtil::MakeDescendingLayout(dims.size()));
     }
-    TF_ASSIGN_OR_RETURN(PrimitiveType element_type, ToPrimitiveType(dtype));
-    TF_ASSIGN_OR_RETURN(xla::Layout layout,
+    TF_XLA_ASSIGN_OR_RETURN(PrimitiveType element_type, ToPrimitiveType(dtype));
+    TF_XLA_ASSIGN_OR_RETURN(xla::Layout layout,
                         topology_->GetDefaultLayout(element_type, dims));
     return std::make_shared<PjRtLayout>(std::move(layout));
   }

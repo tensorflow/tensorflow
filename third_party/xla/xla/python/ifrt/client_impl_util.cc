@@ -133,9 +133,9 @@ absl::StatusOr<std::vector<ArrayRef>> ClientMakeArraysFromHostBufferShards(
       // Fast-path for fully replicated arrays. Assumes that
       // `MakeArrayFromHostBuffer` can handle fully replicated array creation.
       auto& [addressable_shard_indices, host_buffer] = spec.buffers.front();
-      TF_RETURN_IF_ERROR(CheckHostBuffer(spec, host_buffer, shard_shape));
+      TF_XLA_RETURN_IF_ERROR(CheckHostBuffer(spec, host_buffer, shard_shape));
 
-      TF_ASSIGN_OR_RETURN(
+      TF_XLA_ASSIGN_OR_RETURN(
           ArrayRef array,
           client->MakeArrayFromHostBuffer(
               host_buffer.data, host_buffer.dtype, std::move(host_buffer.shape),
@@ -157,7 +157,7 @@ absl::StatusOr<std::vector<ArrayRef>> ClientMakeArraysFromHostBufferShards(
     // from it because the same instance may be used multiple times if the same
     // index domain shows up in `addressable_index_domains` multiple times.
     for (const auto& [addressable_shard_indices, host_buffer] : spec.buffers) {
-      TF_RETURN_IF_ERROR(CheckHostBuffer(spec, host_buffer, shard_shape));
+      TF_XLA_RETURN_IF_ERROR(CheckHostBuffer(spec, host_buffer, shard_shape));
 
       std::function<void()> on_done_with_host_buffer_per_device;
       if (host_buffer.on_done != nullptr) {
@@ -187,7 +187,7 @@ absl::StatusOr<std::vector<ArrayRef>> ClientMakeArraysFromHostBufferShards(
         auto sharding = xla::ifrt::SingleDeviceSharding::Create(
             addressable_devices[addressable_shard_index],
             spec.array_spec.sharding->memory_kind());
-        TF_ASSIGN_OR_RETURN(
+        TF_XLA_ASSIGN_OR_RETURN(
             shard, client->MakeArrayFromHostBuffer(
                        host_buffer.data, host_buffer.dtype, host_buffer.shape,
                        host_buffer.byte_strides, std::move(sharding), semantics,
@@ -202,7 +202,7 @@ absl::StatusOr<std::vector<ArrayRef>> ClientMakeArraysFromHostBufferShards(
           num_processed_shards, " vs. ", addressable_devices.size()));
     }
 
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         ArrayRef array,
         client->AssembleArrayFromSingleDeviceArrays(
             spec.array_spec.dtype, std::move(spec.array_spec.shape),

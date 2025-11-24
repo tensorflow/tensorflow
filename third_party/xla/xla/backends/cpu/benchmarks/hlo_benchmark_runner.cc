@@ -130,7 +130,7 @@ absl::Status RunHloBenchmark(benchmark::State& state,
                              absl::Span<const Literal* const> args,
                              StrToStrMapping replacements,
                              const HloBenchmarkOptions& benchmark_options) {
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
+  TF_XLA_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
                       ParseAndReturnUnverifiedModule(
                           absl::StrReplaceAll(hlo_module, replacements),
                           HloModuleConfig() /* unused */));
@@ -157,10 +157,10 @@ absl::Status RunHloBenchmark(benchmark::State& state,
                              absl::Span<const Literal* const> args,
                              const HloBenchmarkOptions& benchmark_options) {
   xla::CpuClientOptions client_options;
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtClient> client,
+  TF_XLA_ASSIGN_OR_RETURN(std::unique_ptr<PjRtClient> client,
                       xla::GetXlaPjrtCpuClient(client_options));
   PjRtDevice* device = client->devices().front();
-  TF_ASSIGN_OR_RETURN(PjRtMemorySpace * memory_space,
+  TF_XLA_ASSIGN_OR_RETURN(PjRtMemorySpace * memory_space,
                       device->default_memory_space());
 
   XlaComputation computation(module->ToProto());
@@ -175,11 +175,11 @@ absl::Status RunHloBenchmark(benchmark::State& state,
   std::unique_ptr<PjRtLoadedExecutable> executable;
   if (benchmark_options.aot_options) {
     auto* cpu_client = tsl::down_cast<PjRtCpuClient*>(client.get());
-    TF_ASSIGN_OR_RETURN(executable, cpu_client->CompileAheadOfTimeAndLoad(
+    TF_XLA_ASSIGN_OR_RETURN(executable, cpu_client->CompileAheadOfTimeAndLoad(
                                         computation, compile_options,
                                         *benchmark_options.aot_options));
   } else {
-    TF_ASSIGN_OR_RETURN(executable,
+    TF_XLA_ASSIGN_OR_RETURN(executable,
                         client->CompileAndLoad(computation, compile_options));
   }
 
@@ -197,14 +197,14 @@ absl::Status RunHloBenchmark(benchmark::State& state,
   // If the user has not passed any arguments we need to generate
   // fake arguments based on the number of inputs to the hlo module.
   if (args.empty()) {
-    TF_ASSIGN_OR_RETURN(std::vector<Literal> fake_args,
+    TF_XLA_ASSIGN_OR_RETURN(std::vector<Literal> fake_args,
                         MakeFakeArguments(module.get()));
     for (auto& args_buffers : execution_args_buffers) {
       args_buffers.reserve(fake_args.size());
       for (const Literal& arg : fake_args) {
-        TF_ASSIGN_OR_RETURN(args_buffers.emplace_back(),
+        TF_XLA_ASSIGN_OR_RETURN(args_buffers.emplace_back(),
                             client->BufferFromHostLiteral(arg, memory_space));
-        TF_RETURN_IF_ERROR(args_buffers.back()->GetReadyFuture().Await());
+        TF_XLA_RETURN_IF_ERROR(args_buffers.back()->GetReadyFuture().Await());
       }
     }
   } else {
@@ -217,9 +217,9 @@ absl::Status RunHloBenchmark(benchmark::State& state,
     for (auto& args_buffers : execution_args_buffers) {
       args_buffers.reserve(args.size());
       for (const Literal* arg : args) {
-        TF_ASSIGN_OR_RETURN(args_buffers.emplace_back(),
+        TF_XLA_ASSIGN_OR_RETURN(args_buffers.emplace_back(),
                             client->BufferFromHostLiteral(*arg, memory_space));
-        TF_RETURN_IF_ERROR(args_buffers.back()->GetReadyFuture().Await());
+        TF_XLA_RETURN_IF_ERROR(args_buffers.back()->GetReadyFuture().Await());
       }
     }
   }
@@ -283,7 +283,7 @@ absl::Status RunHloBenchmark(benchmark::State& state,
       std::vector<std::unique_ptr<PjRtBuffer>>& args_buffers =
           execution_args_buffers[i];
       std::vector<PjRtBuffer*>& args_ptrs = execution_args_ptrs[i];
-      TF_RETURN_IF_ERROR(alias_helper.SwapOutputAliasedBuffersToArgumentBuffers(
+      TF_XLA_RETURN_IF_ERROR(alias_helper.SwapOutputAliasedBuffersToArgumentBuffers(
           execution_results[i], args_buffers, args_ptrs));
     }
 
@@ -291,11 +291,11 @@ absl::Status RunHloBenchmark(benchmark::State& state,
   };
 
   // Warm up executable.
-  TF_RETURN_IF_ERROR(run_benchmark_once());
+  TF_XLA_RETURN_IF_ERROR(run_benchmark_once());
 
   // Benchmark executable.
   for (auto _ : state) {
-    TF_RETURN_IF_ERROR(run_benchmark_once());
+    TF_XLA_RETURN_IF_ERROR(run_benchmark_once());
   }
 
   return absl::OkStatus();
@@ -305,7 +305,7 @@ absl::Status CompileHloBenchmark(benchmark::State& state,
                                  absl::string_view hlo_module,
                                  StrToStrMapping replacements,
                                  const HloBenchmarkOptions& benchmark_options) {
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
+  TF_XLA_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
                       ParseAndReturnUnverifiedModule(
                           absl::StrReplaceAll(hlo_module, replacements),
                           HloModuleConfig() /* unused */));
@@ -317,7 +317,7 @@ absl::Status CompileHloBenchmark(benchmark::State& state,
                                  std::unique_ptr<HloModule> module,
                                  const HloBenchmarkOptions& benchmark_options) {
   xla::CpuClientOptions client_options;
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtClient> client,
+  TF_XLA_ASSIGN_OR_RETURN(std::unique_ptr<PjRtClient> client,
                       xla::GetXlaPjrtCpuClient(client_options));
 
   XlaComputation computation(module->ToProto());
@@ -329,7 +329,7 @@ absl::Status CompileHloBenchmark(benchmark::State& state,
   }
 
   for (auto _ : state) {
-    TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtLoadedExecutable> executable,
+    TF_XLA_ASSIGN_OR_RETURN(std::unique_ptr<PjRtLoadedExecutable> executable,
                         client->CompileAndLoad(computation, compile_options));
     tsl::testing::DoNotOptimize(executable);
   }
@@ -346,11 +346,11 @@ LoadFromHloSnapshotOrHloModuleProto(absl::string_view hlo_data,
   auto iteration_literals_proto =
       std::make_unique<RunHloModuleIterationLiterals>();
   if (extension == "pb" || extension == "pbtxt") {
-    TF_ASSIGN_OR_RETURN(iteration_literals_proto,
+    TF_XLA_ASSIGN_OR_RETURN(iteration_literals_proto,
                         LoadInputFromData(hlo_data, extension));
   }
 
-  TF_ASSIGN_OR_RETURN(auto hlo_module, LoadModuleFromData(hlo_data, extension));
+  TF_XLA_ASSIGN_OR_RETURN(auto hlo_module, LoadModuleFromData(hlo_data, extension));
 
   return std::make_pair(std::move(hlo_module),
                         std::move(iteration_literals_proto));
@@ -360,12 +360,12 @@ absl::StatusOr<std::pair<std::unique_ptr<HloModule>,
                          std::unique_ptr<RunHloModuleIterationLiterals>>>
 LoadFromHloUnoptimizedSnapshot(
     const HloUnoptimizedSnapshot& unoptimized_snapshot) {
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       HloModuleConfig config,
       HloModule::CreateModuleConfigFromProto(unoptimized_snapshot.hlo_module(),
                                              xla::GetDebugOptionsFromFlags()));
 
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       std::unique_ptr<HloModule> hlo_module,
       HloModule::CreateFromProto(unoptimized_snapshot.hlo_module(), config));
 
@@ -391,7 +391,7 @@ absl::StatusOr<std::pair<std::unique_ptr<HloModule>,
                          std::unique_ptr<RunHloModuleIterationLiterals>>>
 LoadHloModuleAndMaybeIterationLiterals(absl::string_view hlo_path) {
   std::string hlo_data;
-  TF_RETURN_IF_ERROR(tsl::ReadFileToString(tsl::Env::Default(),
+  TF_XLA_RETURN_IF_ERROR(tsl::ReadFileToString(tsl::Env::Default(),
                                            std::string(hlo_path), &hlo_data));
 
   HloUnoptimizedSnapshot unoptimized_snapshot;

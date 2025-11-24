@@ -59,7 +59,7 @@ absl::StatusOr<bool> ShapeCanonicalizer::RunImpl(
   VLOG(3) << "Garbage collected " << num_erased << " expired shapes";
 
   ShapeCanonicalizerVisitor visitor(shape_pool_);
-  TF_RETURN_IF_ERROR(module->entry_computation()->Accept(&visitor));
+  TF_XLA_RETURN_IF_ERROR(module->entry_computation()->Accept(&visitor));
   return visitor.changed();
 }
 

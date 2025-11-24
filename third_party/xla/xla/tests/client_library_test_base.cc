@@ -112,7 +112,7 @@ std::string ClientLibraryTestBase::TestName() const {
 absl::StatusOr<std::unique_ptr<GlobalData>> ClientLibraryTestBase::Execute(
     XlaBuilder* builder, absl::Span<GlobalData* const> arguments) {
   // Build the computation, as a convenience.
-  TF_ASSIGN_OR_RETURN(auto computation, builder->Build());
+  TF_XLA_ASSIGN_OR_RETURN(auto computation, builder->Build());
   return client_->Execute(computation, arguments, &execution_options_);
 }
 
@@ -132,7 +132,7 @@ absl::StatusOr<Literal> ClientLibraryTestBase::ExecuteAndTransfer(
     XlaBuilder* builder, absl::Span<GlobalData* const> arguments,
     const Shape* shape_with_output_layout) {
   // Build the computation, as a convenience.
-  TF_ASSIGN_OR_RETURN(auto computation, builder->Build());
+  TF_XLA_ASSIGN_OR_RETURN(auto computation, builder->Build());
   return ExecuteAndTransfer(computation, arguments, shape_with_output_layout);
 }
 
@@ -196,7 +196,7 @@ ClientLibraryTestBase::ComputeAndCompareLiteralWithAllOutputLayouts(
                              const std::string& error_message)>&
         verify_output) {
   // Try with no layout requirement.
-  TF_ASSIGN_OR_RETURN(auto actual, ExecuteAndTransfer(computation, arguments));
+  TF_XLA_ASSIGN_OR_RETURN(auto actual, ExecuteAndTransfer(computation, arguments));
   verify_output(actual, "");
 
   // Try with all output layouts.
@@ -206,7 +206,7 @@ ClientLibraryTestBase::ComputeAndCompareLiteralWithAllOutputLayouts(
     auto layout = ShapeUtil::MakeShapeWithDenseLayout(
         expected.shape().element_type(), expected.shape().dimensions(),
         minor_to_major);
-    TF_ASSIGN_OR_RETURN(auto actual,
+    TF_XLA_ASSIGN_OR_RETURN(auto actual,
                         ExecuteAndTransfer(computation, arguments, &layout));
     verify_output(actual,
                   absl::StrCat("Test with output layout: ",
@@ -230,14 +230,14 @@ absl::Status ClientLibraryTestBase::ComputeAndCompareLiteralWithAllInputLayouts(
   choose = [&, this](int64_t index) -> absl::Status {
     if (index < arguments.size()) {
       // Try out all layouts for the operand.
-      TF_ASSIGN_OR_RETURN(auto literal,
+      TF_XLA_ASSIGN_OR_RETURN(auto literal,
                           client_->Transfer(*arguments[index], nullptr));
       // Skip tuples because they don't have a rank.
       if (literal.shape().IsTuple()) {
         layout_strings.push_back(
             ShapeUtil::HumanStringWithLayout(literal.shape()));
         arguments_with_layout.push_back(arguments[index]);
-        TF_RETURN_IF_ERROR(choose(index + 1));
+        TF_XLA_RETURN_IF_ERROR(choose(index + 1));
         arguments_with_layout.pop_back();
         layout_strings.pop_back();
         return absl::OkStatus();
@@ -250,10 +250,10 @@ absl::Status ClientLibraryTestBase::ComputeAndCompareLiteralWithAllInputLayouts(
             literal.Relayout(LayoutUtil::MakeLayout(minor_to_major));
         layout_strings.push_back(
             ShapeUtil::HumanStringWithLayout(literal_relayout.shape()));
-        TF_ASSIGN_OR_RETURN(auto data,
+        TF_XLA_ASSIGN_OR_RETURN(auto data,
                             client_->TransferToServer(literal_relayout));
         arguments_with_layout.push_back(data.get());
-        TF_RETURN_IF_ERROR(choose(index + 1));
+        TF_XLA_RETURN_IF_ERROR(choose(index + 1));
         arguments_with_layout.pop_back();
         layout_strings.pop_back();
       } while (
@@ -262,7 +262,7 @@ absl::Status ClientLibraryTestBase::ComputeAndCompareLiteralWithAllInputLayouts(
     }
 
     // Every argument has an assigned layout.
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         auto actual,
         ExecuteAndTransfer(computation,
                            absl::Span<GlobalData* const>(arguments_with_layout),
@@ -289,7 +289,7 @@ absl::StatusOr<Literal> ClientLibraryTestBase::ComputeAndTransfer(
   if (!arguments_.empty()) {
     CHECK(arguments.empty());
     for (const auto& argument : arguments_) {
-      TF_ASSIGN_OR_RETURN(
+      TF_XLA_ASSIGN_OR_RETURN(
           std::unique_ptr<GlobalData> owned_argument,
           client_->TransferToServer(MaybeConvertLiteralToTestType(argument)));
       owning_arguments.push_back(std::move(owned_argument));
@@ -297,7 +297,7 @@ absl::StatusOr<Literal> ClientLibraryTestBase::ComputeAndTransfer(
     }
   }
 
-  TF_ASSIGN_OR_RETURN(auto computation, builder->Build());
+  TF_XLA_ASSIGN_OR_RETURN(auto computation, builder->Build());
   return ExecuteAndTransfer(computation, arguments, shape_with_layout);
 }
 
@@ -313,7 +313,7 @@ absl::Status ClientLibraryTestBase::ComputeAndCompareLiteralWithStatus(
   if (!arguments_.empty()) {
     CHECK(arguments.empty());
     for (const auto& argument : arguments_) {
-      TF_ASSIGN_OR_RETURN(
+      TF_XLA_ASSIGN_OR_RETURN(
           std::unique_ptr<GlobalData> owned_argument,
           client_->TransferToServer(MaybeConvertLiteralToTestType(argument)));
       owning_arguments.push_back(std::move(owned_argument));
@@ -321,7 +321,7 @@ absl::Status ClientLibraryTestBase::ComputeAndCompareLiteralWithStatus(
     }
   }
 
-  TF_ASSIGN_OR_RETURN(auto computation, builder->Build());
+  TF_XLA_ASSIGN_OR_RETURN(auto computation, builder->Build());
   if (error == std::nullopt) {
     if (ShapeUtil::ElementIsFloating(expected.shape()) ||
         ShapeUtil::ElementIsComplex(expected.shape())) {
@@ -364,7 +364,7 @@ absl::Status ClientLibraryTestBase::ComputeAndCompareLiteralWithStatus(
     return ComputeAndCompareLiteralWithAllInputLayouts(
         computation, *expected_ptr, arguments, expect, shape_with_layout);
   }
-  TF_ASSIGN_OR_RETURN(auto actual, ExecuteAndTransfer(computation, arguments,
+  TF_XLA_ASSIGN_OR_RETURN(auto actual, ExecuteAndTransfer(computation, arguments,
                                                       shape_with_layout));
   if (error) {
     EXPECT_TRUE(LiteralTestUtil::Near(*expected_ptr, actual, *error));
@@ -443,8 +443,8 @@ ClientLibraryTestBase::ComputeValueAndReference(
   }
 
   for (const auto& arg : arguments) {
-    TF_ASSIGN_OR_RETURN(auto data, client_->TransferToServer(arg.Clone()));
-    TF_ASSIGN_OR_RETURN(auto ref_data, ref_client_->TransferToServer(arg));
+    TF_XLA_ASSIGN_OR_RETURN(auto data, client_->TransferToServer(arg.Clone()));
+    TF_XLA_ASSIGN_OR_RETURN(auto ref_data, ref_client_->TransferToServer(arg));
     argument_data.push_back(std::move(data));
     ref_argument_data.push_back(std::move(ref_data));
   }
@@ -461,12 +461,12 @@ ClientLibraryTestBase::ComputeValueAndReference(
       std::back_inserter(ref_argument_data_ptr),
       [](const std::unique_ptr<GlobalData>& data) { return data.get(); });
 
-  TF_ASSIGN_OR_RETURN(auto computation, builder->Build());
+  TF_XLA_ASSIGN_OR_RETURN(auto computation, builder->Build());
 
-  TF_ASSIGN_OR_RETURN(auto result,
+  TF_XLA_ASSIGN_OR_RETURN(auto result,
                       ExecuteAndTransfer(computation, argument_data_ptr));
 
-  TF_ASSIGN_OR_RETURN(auto reference, ExecuteAndTransferReference(
+  TF_XLA_ASSIGN_OR_RETURN(auto reference, ExecuteAndTransferReference(
                                           computation, ref_argument_data_ptr));
 
   return std::make_pair(std::move(reference), std::move(result));
@@ -554,7 +554,7 @@ ClientLibraryTestBase::CreateParameterAndTransferLiteral(
     const DeviceHandle* device_handle, XlaBuilder* builder,
     XlaOp* data_handle) {
   Literal param_literal = MaybeConvertLiteralToTestType(literal);
-  TF_ASSIGN_OR_RETURN(auto data,
+  TF_XLA_ASSIGN_OR_RETURN(auto data,
                       client_->TransferToServer(param_literal, device_handle));
   *data_handle =
       Parameter(builder, parameter_number, param_literal.shape(), name);

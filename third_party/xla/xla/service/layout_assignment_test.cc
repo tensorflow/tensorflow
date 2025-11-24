@@ -528,7 +528,7 @@ class OperandsMustBeTheSameLayoutAssignment : public LayoutAssignment {
           operand->shape().dimensions().size()) {
         continue;
       }
-      TF_RETURN_IF_ERROR(SetArrayOperandLayout(buffer_constraint.layout(),
+      TF_XLA_RETURN_IF_ERROR(SetArrayOperandLayout(buffer_constraint.layout(),
                                                instruction, operand_no,
                                                /*mandatory=*/true));
     }

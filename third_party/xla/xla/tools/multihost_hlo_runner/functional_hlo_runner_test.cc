@@ -519,7 +519,7 @@ absl::Status ShardedAutotuningWorksTestBody(const int node_id) {
   gpu_options.node_id = node_id;
   gpu_options.num_nodes = kNumNodes;
   gpu_options.allowed_devices = {node_id};
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       PjRtEnvironment env,
       xla::GetPjRtEnvironmentForGpu("127.0.0.1:12345", gpu_options,
                                     /*init_timeout=*/absl::Seconds(120)));
@@ -531,7 +531,7 @@ absl::Status ShardedAutotuningWorksTestBody(const int node_id) {
   // gemm_fusion_autotuner_test.cc. Here, we just check that compilation
   // actually succeeds, and that the autotuner runs correctly ends up storing
   // results for each node in the key-value store.
-  TF_RETURN_IF_ERROR(FunctionalHloRunner::LoadAndCompile(
+  TF_XLA_RETURN_IF_ERROR(FunctionalHloRunner::LoadAndCompile(
       *env.client, GetDebugOptionsFromFlags(),
       FunctionalHloRunner::PreprocessingOptions{},
       FunctionalHloRunner::RawCompileOptions{.num_replicas = kNumNodes},
@@ -539,14 +539,14 @@ absl::Status ShardedAutotuningWorksTestBody(const int node_id) {
       kNumNodes, /*kv_store=*/nullptr,
       /*use_gpu_count_workaround=*/false));
   if (node_id == 0) {
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         std::string results0,
         env.kv_store->Get("gemm_fusion_autotuning_results_"
                           "b190aeb9aa0b9e93e4c08d095726f562_"
                           "iuhMRX2JY-YpaUJD3Pw0h3H3HNGWEzN4xA0s9Q3CoK8_0",
                           absl::Seconds(1)));
     CHECK(absl::StrContains(results0, "run_time"));
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         std::string results1,
         env.kv_store->Get("gemm_fusion_autotuning_results_"
                           "b190aeb9aa0b9e93e4c08d095726f562_"

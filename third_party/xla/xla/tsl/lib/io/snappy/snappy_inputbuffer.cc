@@ -51,7 +51,7 @@ absl::Status SnappyInputBuffer::ReadNBytes(int64_t bytes_to_read,
     DCHECK_EQ(avail_out_, 0);
 
     // Now that the cache is empty we need to inflate more data.
-    TF_RETURN_IF_ERROR(Inflate());
+    TF_XLA_RETURN_IF_ERROR(Inflate());
 
     bytes_read = ReadBytesFromCache(bytes_to_read, result_ptr);
     bytes_to_read -= bytes_read;
@@ -87,11 +87,11 @@ size_t SnappyInputBuffer::ReadBytesFromCache(size_t bytes_to_read,
 absl::Status SnappyInputBuffer::Inflate() {
   // Read length of compressed block.
   uint32_t compressed_block_length;
-  TF_RETURN_IF_ERROR(ReadCompressedBlockLength(&compressed_block_length));
+  TF_XLA_RETURN_IF_ERROR(ReadCompressedBlockLength(&compressed_block_length));
 
   // If the entire block is not in cache do a read from file.
   if (avail_in_ < compressed_block_length) {
-    TF_RETURN_IF_ERROR(ReadFromFile());
+    TF_XLA_RETURN_IF_ERROR(ReadFromFile());
     if (avail_in_ < compressed_block_length) {
       if (compressed_block_length > input_buffer_capacity_) {
         return errors::ResourceExhausted(
@@ -135,7 +135,7 @@ absl::Status SnappyInputBuffer::ReadCompressedBlockLength(uint32_t* length) {
   size_t bytes_to_read = 4;
   while (bytes_to_read > 0) {
     if (avail_in_ == 0) {
-      TF_RETURN_IF_ERROR(ReadFromFile());
+      TF_XLA_RETURN_IF_ERROR(ReadFromFile());
     }
     size_t readable = std::min(bytes_to_read, avail_in_);
 

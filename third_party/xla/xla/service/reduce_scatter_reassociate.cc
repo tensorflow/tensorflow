@@ -87,8 +87,8 @@ absl::StatusOr<bool> ReduceScatterReassociate::RunImpl(
         VLOG(2) << "Reduce-Scatter operations have > 1 users";
         continue;
       }
-      TF_ASSIGN_OR_RETURN(auto rs0_annotation, GetSchedulingAnnotation(rs0));
-      TF_ASSIGN_OR_RETURN(auto rs1_annotation, GetSchedulingAnnotation(rs1));
+      TF_XLA_ASSIGN_OR_RETURN(auto rs0_annotation, GetSchedulingAnnotation(rs0));
+      TF_XLA_ASSIGN_OR_RETURN(auto rs1_annotation, GetSchedulingAnnotation(rs1));
       if (rs0_annotation.has_value() && rs1_annotation.has_value() &&
           *rs0_annotation != *rs1_annotation) {
         VLOG(2) << "If two reduce scatters have different scheduling group do "
@@ -114,14 +114,14 @@ absl::StatusOr<bool> ReduceScatterReassociate::RunImpl(
         new_rs->set_channel_id(next_channel_id++);
       }
 
-      TF_RETURN_IF_ERROR(inst->ReplaceAllUsesWith(new_rs));
+      TF_XLA_RETURN_IF_ERROR(inst->ReplaceAllUsesWith(new_rs));
       // Note that RemoveInstructionAndUnusedOperands may not remove the 2
       // reduce-scatter operands of `inst` if they are not safe to remove
       // otherwise, so manually these instructions.
-      TF_RETURN_IF_ERROR(computation->RemoveInstruction(inst));
-      TF_RETURN_IF_ERROR(computation->RemoveInstruction(rs0));
+      TF_XLA_RETURN_IF_ERROR(computation->RemoveInstruction(inst));
+      TF_XLA_RETURN_IF_ERROR(computation->RemoveInstruction(rs0));
       if (rs0 != rs1) {
-        TF_RETURN_IF_ERROR(computation->RemoveInstruction(rs1));
+        TF_XLA_RETURN_IF_ERROR(computation->RemoveInstruction(rs1));
       }
       changed = true;
     }

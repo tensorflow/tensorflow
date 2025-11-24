@@ -106,9 +106,9 @@ namespace {
 
 absl::StatusOr<Value> ScaledDot(EmitterLocOpBuilder b,
                                 ScaledDotOperands& operands) {
-  TF_ASSIGN_OR_RETURN(auto lhs_dot_elem_type,
+  TF_XLA_ASSIGN_OR_RETURN(auto lhs_dot_elem_type,
                       internal::GetScaleDotElemType(operands.lhs.getType()));
-  TF_ASSIGN_OR_RETURN(auto rhs_dot_elem_type,
+  TF_XLA_ASSIGN_OR_RETURN(auto rhs_dot_elem_type,
                       internal::GetScaleDotElemType(operands.rhs.getType()));
 
   Value lhs_scale;
@@ -174,11 +174,11 @@ Value EmitStableHloDotAndAdd(EmitterLocOpBuilder b, Value lhs, Value rhs,
 
 absl::StatusOr<Type> GetAlgUnsetAccumulatorType(EmitterLocOpBuilder b,
                                                 const HloDotInstruction& dot) {
-  TF_ASSIGN_OR_RETURN(Type lhs_type,
+  TF_XLA_ASSIGN_OR_RETURN(Type lhs_type,
                       TritonType(b, dot.operand(0)->shape().element_type()));
-  TF_ASSIGN_OR_RETURN(Type rhs_type,
+  TF_XLA_ASSIGN_OR_RETURN(Type rhs_type,
                       TritonType(b, dot.operand(1)->shape().element_type()));
-  TF_ASSIGN_OR_RETURN(Type accumulator_type,
+  TF_XLA_ASSIGN_OR_RETURN(Type accumulator_type,
                       TritonType(b, dot.shape().element_type()));
 
   // The code below assumes that lhs and rhs have the same type. However
@@ -211,7 +211,7 @@ absl::StatusOr<std::optional<Type>> GetForceOperandsType(
     return std::nullopt;
   }
 
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       std::vector<PrimitiveType> allowed_operands_primitive_types,
       algorithm_util::GetAllowedOperandsTypeForAlgorithm(algorithm));
   CHECK(!allowed_operands_primitive_types.empty());
@@ -219,7 +219,7 @@ absl::StatusOr<std::optional<Type>> GetForceOperandsType(
   std::vector<Type> allowed_operands_types;
   allowed_operands_types.reserve(allowed_operands_primitive_types.size());
   for (PrimitiveType primitive_type : allowed_operands_primitive_types) {
-    TF_ASSIGN_OR_RETURN(Type type, TritonType(b, primitive_type));
+    TF_XLA_ASSIGN_OR_RETURN(Type type, TritonType(b, primitive_type));
     allowed_operands_types.push_back(type);
   }
 
@@ -262,7 +262,7 @@ absl::StatusOr<Type> GetDotAccumulatorType(EmitterLocOpBuilder b,
     return GetAlgUnsetAccumulatorType(b, dot);
   }
 
-  TF_ASSIGN_OR_RETURN(PrimitiveType accumulator_type,
+  TF_XLA_ASSIGN_OR_RETURN(PrimitiveType accumulator_type,
                       algorithm_util::GetDotAccumulatorType(algorithm));
   return TritonType(b, accumulator_type);
 }
@@ -278,10 +278,10 @@ absl::StatusOr<Value> EmitSingleTileDot(EmitterLocOpBuilder b,
       XlaPrecisionToStableHloPrecision(
           dot.precision_config().operand_precision(1))};
 
-  TF_ASSIGN_OR_RETURN(std::optional<Type> force_operands_type,
+  TF_XLA_ASSIGN_OR_RETURN(std::optional<Type> force_operands_type,
                       GetForceOperandsType(b, dot, dot_operands));
 
-  TF_ASSIGN_OR_RETURN(Type force_accumulator_type,
+  TF_XLA_ASSIGN_OR_RETURN(Type force_accumulator_type,
                       GetDotAccumulatorType(b, dot));
 
   if (force_operands_type.has_value()) {

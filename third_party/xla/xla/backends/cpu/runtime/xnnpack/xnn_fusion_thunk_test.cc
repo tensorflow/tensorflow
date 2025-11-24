@@ -50,7 +50,7 @@ namespace {
 static absl::StatusOr<XnnSubgraph> BuildBinaryAddSubgraph(
     absl::Span<const XnnFusionThunk::Argument> arguments,
     absl::Span<const XnnFusionThunk::Result> results) {
-  TF_ASSIGN_OR_RETURN(XnnSubgraph subgraph,
+  TF_XLA_ASSIGN_OR_RETURN(XnnSubgraph subgraph,
                       CreateXnnSubgraph([&](xnn_subgraph_t* subgraph) {
                         return xnn_create_subgraph(
                             /*external_value_ids=*/3,
@@ -69,17 +69,17 @@ static absl::StatusOr<XnnSubgraph> BuildBinaryAddSubgraph(
   std::vector<size_t> rhs_dims = dims(arguments[1].shape.dimensions());
   std::vector<size_t> out_dims = dims(results[0].shape.dimensions());
 
-  XNN_RETURN_IF_ERROR(xnn_define_tensor_value(
+  XNN_XLA_RETURN_IF_ERROR(xnn_define_tensor_value(
       subgraph.get(), xnn_datatype_fp32, lhs_dims.size(), lhs_dims.data(),
       nullptr,
       /*external_id=*/0, XNN_VALUE_FLAG_EXTERNAL_INPUT, &lhs_id));
 
-  XNN_RETURN_IF_ERROR(xnn_define_tensor_value(
+  XNN_XLA_RETURN_IF_ERROR(xnn_define_tensor_value(
       subgraph.get(), xnn_datatype_fp32, rhs_dims.size(), rhs_dims.data(),
       nullptr,
       /*external_id=*/1, XNN_VALUE_FLAG_EXTERNAL_INPUT, &rhs_id));
 
-  XNN_RETURN_IF_ERROR(xnn_define_tensor_value(
+  XNN_XLA_RETURN_IF_ERROR(xnn_define_tensor_value(
       subgraph.get(), xnn_datatype_fp32, out_dims.size(), out_dims.data(),
       nullptr,
       /*external_id=*/2, XNN_VALUE_FLAG_EXTERNAL_OUTPUT, &out_id));
@@ -87,7 +87,7 @@ static absl::StatusOr<XnnSubgraph> BuildBinaryAddSubgraph(
   xnn_binary_params params = {-std::numeric_limits<float>::infinity(),
                               std::numeric_limits<float>::infinity()};
 
-  XNN_RETURN_IF_ERROR(xnn_define_binary(subgraph.get(), xnn_binary_add, &params,
+  XNN_XLA_RETURN_IF_ERROR(xnn_define_binary(subgraph.get(), xnn_binary_add, &params,
                                         lhs_id, rhs_id, out_id, /*flags=*/0));
 
   return subgraph;

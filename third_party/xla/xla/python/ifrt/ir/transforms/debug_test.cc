@@ -82,7 +82,7 @@ class InitPassManagerTest : public testing::Test {
 
   absl::StatusOr<std::vector<std::string>> MatchUndeclaredOutputs() {
     std::vector<std::string> paths;
-    TF_RETURN_IF_ERROR(tsl::Env::Default()->GetMatchingPaths(
+    TF_XLA_RETURN_IF_ERROR(tsl::Env::Default()->GetMatchingPaths(
         tsl::io::JoinPath(
             absl::NullSafeStringView(getenv("TEST_UNDECLARED_OUTPUTS_DIR")),
             "*.mlir"),

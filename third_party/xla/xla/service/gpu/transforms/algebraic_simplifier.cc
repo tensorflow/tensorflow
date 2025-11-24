@@ -62,14 +62,14 @@ GpuAlgebraicSimplifierVisitor::TryToSinkBroadcastOperandsOfChainedAdds(
   HloInstruction* new_bcast =
       add->AddInstruction(HloInstruction::CreateBroadcast(
           broadcast_0->shape(), new_constant_add, broadcast_0->dimensions()));
-  TF_RETURN_IF_ERROR(ReplaceWithNewInstruction(
+  TF_XLA_RETURN_IF_ERROR(ReplaceWithNewInstruction(
       add, HloInstruction::CreateBinary(add->shape(), HloOpcode::kAdd,
                                         new_bcast, conv)));
   return true;
 }
 
 absl::Status GpuAlgebraicSimplifierVisitor::HandleAdd(HloInstruction* add) {
-  TF_ASSIGN_OR_RETURN(bool replaced,
+  TF_XLA_ASSIGN_OR_RETURN(bool replaced,
                       TryToSinkBroadcastOperandsOfChainedAdds(add));
   if (replaced) {
     return absl::OkStatus();

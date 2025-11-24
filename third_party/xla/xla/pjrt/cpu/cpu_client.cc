@@ -175,7 +175,7 @@ class CustomAllocator final : public CpuDeviceMemory::Allocator {
 
   absl::StatusOr<std::unique_ptr<CpuDeviceMemory::RawMemory>> Allocate(
       size_t size_bytes, size_t alignment) const final {
-    TF_ASSIGN_OR_RETURN(std::unique_ptr<CpuMemory> mem,
+    TF_XLA_ASSIGN_OR_RETURN(std::unique_ptr<CpuMemory> mem,
                         allocator_fn_(size_bytes, alignment));
     return std::make_unique<CustomMemory>(std::move(mem));
   }
@@ -401,7 +401,7 @@ FindResultBufferAllocationIndex(const BufferAssignment& assignment,
     CHECK_EQ(1, sources.values().size());
     const HloValue* value_source = sources.values()[0];
     HloInstruction* src = value_source->instruction();
-    TF_ASSIGN_OR_RETURN(const BufferAllocation::Slice slice,
+    TF_XLA_ASSIGN_OR_RETURN(const BufferAllocation::Slice slice,
                         assignment.GetUniqueSlice(src, value_source->index()));
     const BufferAllocation::Index buffer_index = slice.index();
     buffer_indices.push_back(buffer_index);
@@ -416,7 +416,7 @@ FindResultBufferAllocationIndex(const BufferAssignment& assignment,
     CHECK_EQ(1, sources.values().size());
     const HloValue* value_source = sources.values()[0];
     HloInstruction* src = value_source->instruction();
-    TF_ASSIGN_OR_RETURN(const BufferAllocation::Slice slice,
+    TF_XLA_ASSIGN_OR_RETURN(const BufferAllocation::Slice slice,
                         assignment.GetUniqueSlice(src, value_source->index()));
     const BufferAllocation::Index buffer_index = slice.index();
     buffer_indices.push_back(buffer_index);
@@ -426,17 +426,17 @@ FindResultBufferAllocationIndex(const BufferAssignment& assignment,
 
 absl::StatusOr<std::string> PjRtCpuExecutable::SerializeExecutable() const {
   cpu::CpuCompiler compiler;
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<AotCompilationResult> aot_result,
+  TF_XLA_ASSIGN_OR_RETURN(std::unique_ptr<AotCompilationResult> aot_result,
                       compiler.Export(cpu_executable_.get()));
 
-  TF_ASSIGN_OR_RETURN(std::string serialized, aot_result->SerializeAsString());
+  TF_XLA_ASSIGN_OR_RETURN(std::string serialized, aot_result->SerializeAsString());
   if (serialized.empty()) {
     return Internal(
         "PjRtCpuClient::SerializeExecutable proto serialization failed");
   }
   ExecutableAndOptionsProto proto;
   *proto.mutable_serialized_executable() = std::move(serialized);
-  TF_ASSIGN_OR_RETURN(*proto.mutable_compile_options(),
+  TF_XLA_ASSIGN_OR_RETURN(*proto.mutable_compile_options(),
                       compile_options_.ToProto());
   return proto.SerializeAsString();
 }
@@ -458,16 +458,16 @@ PjRtCpuClient::LoadSerializedExecutable(absl::string_view serialized,
   if (options.has_value()) {
     compile_options = *std::move(options);
   } else {
-    TF_ASSIGN_OR_RETURN(compile_options,
+    TF_XLA_ASSIGN_OR_RETURN(compile_options,
                         CompileOptions::FromProto(proto.compile_options()));
   }
   auto input_options = compile_options;
   // Load a CpuExecutable
   cpu::CpuCompiler compiler;
   std::string str = std::move(*proto.mutable_serialized_executable());
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<AotCompilationResult> aot_result,
+  TF_XLA_ASSIGN_OR_RETURN(std::unique_ptr<AotCompilationResult> aot_result,
                       compiler.LoadAotCompilationResult(str));
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       std::unique_ptr<Executable> executable,
       std::move(*aot_result).LoadExecutable(&compiler, /*executor=*/nullptr));
 
@@ -477,7 +477,7 @@ PjRtCpuClient::LoadSerializedExecutable(absl::string_view serialized,
   int num_replicas;
   int num_partitions;
   std::shared_ptr<DeviceAssignment> device_assignment;
-  TF_RETURN_IF_ERROR(ParseDeviceAssignmentCompileOptions(
+  TF_XLA_RETURN_IF_ERROR(ParseDeviceAssignmentCompileOptions(
       compile_options.compile_portable_executable,
       &compile_options.executable_build_options,
       [this](int num_replicas, int num_partitions) {
@@ -490,7 +490,7 @@ PjRtCpuClient::LoadSerializedExecutable(absl::string_view serialized,
 
   // `result_buffer_indices` has the buffer allocation indices that make up the
   // output buffer (could be tuple).
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       auto result_buffer_indices,
       FindResultBufferAllocationIndex(cpu_executable_ptr->buffer_assignment(),
                                       executable->module()));
@@ -510,7 +510,7 @@ PjRtCpuClient::LoadSerializedExecutable(absl::string_view serialized,
           VLOG(3) << "Non-local device: " << device_id;
           continue;
         }
-        TF_ASSIGN_OR_RETURN(PjRtDevice * device, LookupDevice(device_id));
+        TF_XLA_ASSIGN_OR_RETURN(PjRtDevice * device, LookupDevice(device_id));
         PjRtLoadedExecutable::LogicalDeviceIds logica_device_ids;
         logica_device_ids.replica = replica;
         logica_device_ids.partition = partition;
@@ -526,7 +526,7 @@ PjRtCpuClient::LoadSerializedExecutable(absl::string_view serialized,
   }
 
   // Propagate env_option_overrides-> debug_options
-  TF_RETURN_IF_ERROR(compile_options.ApplyAllOptionOverrides());
+  TF_XLA_RETURN_IF_ERROR(compile_options.ApplyAllOptionOverrides());
   // Override the debug_options() embedded in the module with those
   // explicitly passed in when deserializing. This allows options such as
   // --xla_dump_to to be changed.
@@ -543,7 +543,7 @@ PjRtCpuClient::LoadSerializedExecutable(absl::string_view serialized,
       std::move(executable), std::move(result_buffer_indices),
       std::move(addressable_device_logical_ids), std::move(addressable_devices),
       this, nullptr);
-  TF_RETURN_IF_ERROR(cpu_executable->SetUpDonation(
+  TF_XLA_RETURN_IF_ERROR(cpu_executable->SetUpDonation(
       compile_options.parameter_is_tupled_arguments));
 
   return std::unique_ptr<PjRtLoadedExecutable>(std::move(cpu_executable));
@@ -566,7 +566,7 @@ static absl::StatusOr<std::unique_ptr<xla::Executable>> JitCompile(
   // Run Hlo Passes
   cpu::CpuCompiler compiler;
   if (!build_options.run_backend_only()) {
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         hlo_module,
         compiler.RunHloPasses(std::move(hlo_module),
                               /*stream_exec=*/nullptr, compile_options));
@@ -585,7 +585,7 @@ static absl::StatusOr<std::unique_ptr<xla::Executable>> CompileAheadOfTime(
   cpu::CpuCompiler compiler;
   // TODO (basioli): honor build_options.run_backend_only() for AOT.
   // Compile AOT.
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       std::vector<std::unique_ptr<AotCompilationResult>> aot_results,
       compiler.CompileAheadOfTime(std::move(hlo_module), compile_options));
 
@@ -596,9 +596,9 @@ static absl::StatusOr<std::unique_ptr<xla::Executable>> CompileAheadOfTime(
 
   // Technically not needed, but it makes sense so that we know serialization
   // and deserialization works.
-  TF_ASSIGN_OR_RETURN(std::string serialized_aot_result,
+  TF_XLA_ASSIGN_OR_RETURN(std::string serialized_aot_result,
                       aot_results[0]->SerializeAsString());
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<AotCompilationResult> aot_result,
+  TF_XLA_ASSIGN_OR_RETURN(std::unique_ptr<AotCompilationResult> aot_result,
                       compiler.LoadAotCompilationResult(serialized_aot_result));
 
   return std::move(*aot_result).LoadExecutable(&compiler, /*executor=*/nullptr);
@@ -606,11 +606,11 @@ static absl::StatusOr<std::unique_ptr<xla::Executable>> CompileAheadOfTime(
 
 absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
 PjRtCpuClient::CompileAndLoad(mlir::ModuleOp module, CompileOptions options) {
-  TF_RETURN_IF_ERROR(pjrt::MaybeDumpCompileInputs(options, module, topology_));
+  TF_XLA_RETURN_IF_ERROR(pjrt::MaybeDumpCompileInputs(options, module, topology_));
 
   XlaComputation xla_computation;
   ExecutableBuildOptions& exec_build_options = options.executable_build_options;
-  TF_RETURN_IF_ERROR(MlirToXlaComputation(
+  TF_XLA_RETURN_IF_ERROR(MlirToXlaComputation(
       module, xla_computation,
       /*use_tuple_args=*/options.parameter_is_tupled_arguments,
       /*return_tuple=*/false, &exec_build_options));
@@ -619,13 +619,13 @@ PjRtCpuClient::CompileAndLoad(mlir::ModuleOp module, CompileOptions options) {
     return CompileAndLoad(xla_computation, options);
   }
 
-  TF_ASSIGN_OR_RETURN(std::vector<LayoutMode> arg_layout_modes,
+  TF_XLA_ASSIGN_OR_RETURN(std::vector<LayoutMode> arg_layout_modes,
                       GetArgLayoutModes(module));
-  TF_ASSIGN_OR_RETURN(std::vector<LayoutMode> out_layout_modes,
+  TF_XLA_ASSIGN_OR_RETURN(std::vector<LayoutMode> out_layout_modes,
                       GetOutputLayoutModes(module));
-  TF_ASSIGN_OR_RETURN(std::vector<MemorySpaceColor> arg_memory_spaces,
+  TF_XLA_ASSIGN_OR_RETURN(std::vector<MemorySpaceColor> arg_memory_spaces,
                       GetArgMemoryKinds(module));
-  TF_ASSIGN_OR_RETURN(std::vector<MemorySpaceColor> out_memory_spaces,
+  TF_XLA_ASSIGN_OR_RETURN(std::vector<MemorySpaceColor> out_memory_spaces,
                       GetOutputMemoryKinds(module));
 
   // If auto-sharding modifies shapes of arguments and/or result,
@@ -642,7 +642,7 @@ PjRtCpuClient::CompileAndLoad(mlir::ModuleOp module, CompileOptions options) {
   };
 
   // This call will update result_layout in options.executable_build_options.
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       auto arg_layouts_and_pointers,
       LayoutModesToXla(xla_computation, arg_layout_modes, out_layout_modes,
                        arg_memory_spaces, out_memory_spaces,
@@ -662,7 +662,7 @@ PjRtCpuClient::CompileAndLoad(const XlaComputation& computation,
   const bool allow_auto_layout =
       build_options.has_debug_options() &&
       build_options.debug_options().xla_pjrt_allow_auto_layout_in_hlo();
-  TF_RETURN_IF_ERROR(DetermineArgumentLayoutsFromCompileOptions(
+  TF_XLA_RETURN_IF_ERROR(DetermineArgumentLayoutsFromCompileOptions(
       computation,
       [allow_auto_layout](Shape shape) -> absl::StatusOr<Shape> {
         if (allow_auto_layout && !shape.has_layout()) {
@@ -686,7 +686,7 @@ PjRtCpuClient::CompileAheadOfTimeAndLoad(
   const bool allow_auto_layout =
       build_options.has_debug_options() &&
       build_options.debug_options().xla_pjrt_allow_auto_layout_in_hlo();
-  TF_RETURN_IF_ERROR(DetermineArgumentLayoutsFromCompileOptions(
+  TF_XLA_RETURN_IF_ERROR(DetermineArgumentLayoutsFromCompileOptions(
       computation,
       [allow_auto_layout](Shape shape) -> absl::StatusOr<Shape> {
         if (allow_auto_layout && !shape.has_layout()) {
@@ -711,7 +711,7 @@ PjRtCpuClient::CompileInternal(
   tsl::profiler::TraceMe traceme("PjRtCpuClient::Compile");
   auto input_options = options;
 
-  TF_RETURN_IF_ERROR(options.ApplyAllOptionOverrides());
+  TF_XLA_RETURN_IF_ERROR(options.ApplyAllOptionOverrides());
 
   if (layout_canonicalization_callback) {
     options.executable_build_options.set_layout_canonicalization_callback(
@@ -721,7 +721,7 @@ PjRtCpuClient::CompileInternal(
   int num_replicas;
   int num_partitions;
   std::shared_ptr<DeviceAssignment> device_assignment;
-  TF_RETURN_IF_ERROR(ParseDeviceAssignmentCompileOptions(
+  TF_XLA_RETURN_IF_ERROR(ParseDeviceAssignmentCompileOptions(
       options.compile_portable_executable, &options.executable_build_options,
       [this](int num_replicas, int num_partitions) {
         return this->GetDefaultDeviceAssignment(num_replicas, num_partitions);
@@ -760,7 +760,7 @@ PjRtCpuClient::CompileInternal(
           VLOG(3) << "Non-local device: " << device_id;
           continue;
         }
-        TF_ASSIGN_OR_RETURN(PjRtDevice * device, LookupDevice(device_id));
+        TF_XLA_ASSIGN_OR_RETURN(PjRtDevice * device, LookupDevice(device_id));
         PjRtLoadedExecutable::LogicalDeviceIds logica_device_ids;
         logica_device_ids.replica = replica;
         logica_device_ids.partition = partition;
@@ -774,7 +774,7 @@ PjRtCpuClient::CompileInternal(
     }
   }
 
-  TF_ASSIGN_OR_RETURN(ProgramShape program_shape,
+  TF_XLA_ASSIGN_OR_RETURN(ProgramShape program_shape,
                       computation.GetProgramShape());
 
   std::unique_ptr<Executable> cpu_executable;
@@ -782,7 +782,7 @@ PjRtCpuClient::CompileInternal(
       CreateExecutionOptions(build_options, &program_shape);
 
   // Unoptimized HloModuleConfig.
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       std::unique_ptr<HloModuleConfig> hlo_module_config,
       CreateModuleConfig(program_shape, argument_layout_pointers,
                          &execution_options, execution_options.num_replicas(),
@@ -796,12 +796,12 @@ PjRtCpuClient::CompileInternal(
 
   // Unoptimized HloModule.
   const xla::HloModuleProto& hlo_module_proto = computation.proto();
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       std::unique_ptr<HloModule> hlo_module,
       xla::HloModule::CreateFromProto(hlo_module_proto, *hlo_module_config));
 
   if (aot_options) {
-    TF_ASSIGN_OR_RETURN(cpu_executable,
+    TF_XLA_ASSIGN_OR_RETURN(cpu_executable,
                         CompileAheadOfTime(std::move(hlo_module), build_options,
                                            execution_options, *aot_options));
   } else {
@@ -816,12 +816,12 @@ PjRtCpuClient::CompileInternal(
         hlo_module->config().debug_options());
     // Overwrite the features with the machine attributes from the topology.
 
-    TF_RETURN_IF_ERROR(target_machine_options.SetFeatures(
+    TF_XLA_RETURN_IF_ERROR(target_machine_options.SetFeatures(
         absl::StrJoin(topology_.cpu_topology().machine_attributes(), ",")));
 
     compile_options.cpu_target_config.emplace(target_machine_options);
 
-    TF_ASSIGN_OR_RETURN(cpu_executable,
+    TF_XLA_ASSIGN_OR_RETURN(cpu_executable,
                         JitCompile(std::move(hlo_module), build_options,
                                    execution_options, compile_options));
   }
@@ -831,7 +831,7 @@ PjRtCpuClient::CompileInternal(
 
   // `result_buffer_indices` has the buffer allocation indices that make up the
   // output buffer (could be tuple).
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       auto result_buffer_indices,
       FindResultBufferAllocationIndex(cpu_executable_ptr->buffer_assignment(),
                                       cpu_executable->module()));
@@ -844,7 +844,7 @@ PjRtCpuClient::CompileInternal(
           .xla_dump_hlo_unoptimized_snapshots();
 
   if (xla_dump_hlo_unoptimized_snapshots) {
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         unoptimized_hlo_module,
         HloModule::CreateFromProto(computation.proto(),
                                    cpu_executable->module().config()));
@@ -856,7 +856,7 @@ PjRtCpuClient::CompileInternal(
       std::move(cpu_executable), std::move(result_buffer_indices),
       std::move(addressable_device_logical_ids), std::move(addressable_devices),
       this, std::move(unoptimized_hlo_module));
-  TF_RETURN_IF_ERROR(
+  TF_XLA_RETURN_IF_ERROR(
       executable->SetUpDonation(options.parameter_is_tupled_arguments));
 
   return std::unique_ptr<PjRtLoadedExecutable>(std::move(executable));
@@ -884,7 +884,7 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> PjRtCpuClient::CreateErrorBuffer(
   }
   // Create a dummy buffer because the rest of the code expects a buffer
   // regardless of whether the definition event is an error.
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       auto raw_buffer,
       CpuRawBuffer::Allocate(memory_space, ShapeUtil::ByteSizeOf(shape),
                              *allocator_));
@@ -956,7 +956,7 @@ absl::StatusOr<CompiledMemoryStats> PjRtCpuExecutable::GetCompiledMemoryStats()
   memory_stats.serialized_buffer_assignment = proto.SerializeAsString();
   memory_stats.PopulateBufferStatsFromAllocations(
       cpu_executable_->GetAllocations());
-  TF_ASSIGN_OR_RETURN(int64_t peak_memory, ComputePeakMemory(proto));
+  TF_XLA_ASSIGN_OR_RETURN(int64_t peak_memory, ComputePeakMemory(proto));
   memory_stats.peak_memory_in_bytes = peak_memory;
   return memory_stats;
 }
@@ -1131,7 +1131,7 @@ void PjRtCpuExecutable::Delete() {}
 bool PjRtCpuExecutable::IsDeleted() const { return false; }
 
 absl::Status PjRtCpuExecutable::SetUpDonation(bool tuple_inputs) {
-  TF_ASSIGN_OR_RETURN(parameters_that_must_be_donated_,
+  TF_XLA_ASSIGN_OR_RETURN(parameters_that_must_be_donated_,
                       ComputeParametersThatMustBeDonated(
                           *cpu_executable_->shared_module(), tuple_inputs));
   return absl::OkStatus();
@@ -1292,7 +1292,7 @@ static absl::StatusOr<std::vector<BufferInfo>> CreateBufferTable(
   std::vector<BufferInfo> buffer_table(assignment.Allocations().size());
   for (BufferAllocation::Index i = 0; i < buffer_table.size(); ++i) {
     const BufferAllocation& allocation = assignment.GetAllocation(i);
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         buffer_table[i],
         MemoryForAllocation(allocation, constants, arguments, buffer_alloc,
                             buffer_alloc_and_copy, tuple_index_table));
@@ -1351,7 +1351,7 @@ absl::StatusOr<PjRtLoadedExecutable::Result> PjRtCpuExecutable::ExecuteHelper(
     CHECK(device_assignment_ != nullptr);
     const int64_t device_id = (*device_assignment_)(replica, partition);
     PjRtGlobalDeviceId global_device_id(device_id);
-    TF_ASSIGN_OR_RETURN(PjRtDevice * pjrt_device,
+    TF_XLA_ASSIGN_OR_RETURN(PjRtDevice * pjrt_device,
                         client_->LookupDevice(global_device_id));
     device = tsl::down_cast<PjRtCpuDevice*>(pjrt_device);
     device_assignment = device_assignment_;
@@ -1406,7 +1406,7 @@ absl::StatusOr<PjRtLoadedExecutable::Result> PjRtCpuExecutable::ExecuteHelper(
       bool must_donate = donate_it != parameters_that_must_be_donated_.end() &&
                          *donate_it == i &&
                          !options.non_donatable_input_indices.contains(i);
-      TF_RETURN_IF_ERROR(TestBufferDonationClashes(
+      TF_XLA_RETURN_IF_ERROR(TestBufferDonationClashes(
           cpu_buffer, donation_clashes, must_donate, i, replica, partition));
       if (must_donate) {
         ++donate_it;
@@ -1448,7 +1448,7 @@ absl::StatusOr<PjRtLoadedExecutable::Result> PjRtCpuExecutable::ExecuteHelper(
       }
       return absl::OkStatus();
     };
-    TF_RETURN_IF_ERROR(get_buffer(i));
+    TF_XLA_RETURN_IF_ERROR(get_buffer(i));
 
     // Definition events are never modified after buffer construction. If they
     // are available and have no error, they can be skipped in input deps.
@@ -1460,7 +1460,7 @@ absl::StatusOr<PjRtLoadedExecutable::Result> PjRtCpuExecutable::ExecuteHelper(
     }
   }
 
-  TF_RETURN_IF_ERROR(CheckBufferCompatibilities(tracked_buffers));
+  TF_XLA_RETURN_IF_ERROR(CheckBufferCompatibilities(tracked_buffers));
 
   // Tuplize the inputs if compiler expects a single tuple argument but runtime
   // gets many inputs that are not yet tupled.
@@ -1495,7 +1495,7 @@ absl::StatusOr<PjRtLoadedExecutable::Result> PjRtCpuExecutable::ExecuteHelper(
   // allocation and copy work.
   BufferAlloc buffer_alloc;
   BufferAllocAndCopy buffer_alloc_and_copy;
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       std::vector<BufferInfo> buffer_table,
       CreateBufferTable(cpu_executable->buffer_assignment(),
                         cpu_executable->constants(), tracked_buffers,
@@ -1611,23 +1611,23 @@ absl::StatusOr<PjRtLoadedExecutable::Result> PjRtCpuExecutable::ExecuteHelper(
 
       cpu::BufferAllocations allocations(buffer_device_mem);
 
-      TF_ASSIGN_OR_RETURN(
+      TF_XLA_ASSIGN_OR_RETURN(
           cpu::Thunk::CollectiveExecuteParams collective_params,
           cpu::Thunk::CollectiveExecuteParams::Create(&run_options));
 
-      TF_ASSIGN_OR_RETURN(
+      TF_XLA_ASSIGN_OR_RETURN(
           cpu::Thunk::CustomCallExecuteParams custom_call_execute_params,
           cpu::Thunk::CustomCallExecuteParams::Create(&run_options));
 
       std::optional<cpu::Thunk::XnnParams> xnn_params;
       if (cpu_executable->has_xnn_fusions()) {
-        TF_ASSIGN_OR_RETURN(xnn_params,
+        TF_XLA_ASSIGN_OR_RETURN(xnn_params,
                             cpu::Thunk::XnnParams::Create(&run_options));
       }
 
       std::optional<cpu::Thunk::YnnParams> ynn_params;
       if (cpu_executable->has_ynn_fusions()) {
-        TF_ASSIGN_OR_RETURN(ynn_params,
+        TF_XLA_ASSIGN_OR_RETURN(ynn_params,
                             cpu::Thunk::YnnParams::Create(&run_options));
       }
 
@@ -1961,7 +1961,7 @@ PjRtCpuExecutable::Execute(
       for (const auto& argument_handle : argument_handles) {
         HloInputs hlo_inputs;
         for (const auto& buffer : argument_handle) {
-          TF_ASSIGN_OR_RETURN(auto literal, buffer->ToLiteralSync());
+          TF_XLA_ASSIGN_OR_RETURN(auto literal, buffer->ToLiteralSync());
           *hlo_inputs.add_arguments() = literal->ToProto();
         }
         *hlo_snapshot.add_partitions() = std::move(hlo_inputs);
@@ -2061,7 +2061,7 @@ PjRtCpuExecutable::ExecuteSharded(
       VLOG(1) << "ExecuteShard executes computation " << name()
               << " on assigned replica/partition on device "
               << device->DebugString();
-      TF_ASSIGN_OR_RETURN(
+      TF_XLA_ASSIGN_OR_RETURN(
           auto result,
           ExecuteHelper(
               argument_handles, addressable_device_logical_ids_[i].replica,
@@ -2098,7 +2098,7 @@ PjRtCpuExecutable::ExecutePortable(
   }
   VLOG(1) << "ExecutePortable executes single-core portable executable "
           << name();
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       auto result,
       ExecuteHelper(argument_handles,
                     /*replica=*/0,

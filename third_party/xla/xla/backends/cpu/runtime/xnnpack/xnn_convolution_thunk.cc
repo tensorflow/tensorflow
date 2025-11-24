@@ -48,7 +48,7 @@ namespace xla::cpu {
 absl::StatusOr<XnnSubgraph> XnnConvolutionThunk::BuildConvolutionSubgraph(
     absl::Span<const Argument> arguments, absl::Span<const Result> results,
     absl::Span<const se::DeviceMemoryBase> arguments_buffers) {
-  TF_ASSIGN_OR_RETURN(XnnSubgraph subgraph,
+  TF_XLA_ASSIGN_OR_RETURN(XnnSubgraph subgraph,
                       CreateXnnSubgraph([&](xnn_subgraph_t* subgraph) {
                         return xnn_create_subgraph(
                             /*external_value_ids=*/3,
@@ -76,23 +76,23 @@ absl::StatusOr<XnnSubgraph> XnnConvolutionThunk::BuildConvolutionSubgraph(
   std::vector<size_t> out_dims =
       dims(convolution_slices_.output_shape.dimensions());
 
-  XNN_RETURN_IF_ERROR(xnn_define_tensor_value(
+  XNN_XLA_RETURN_IF_ERROR(xnn_define_tensor_value(
       subgraph.get(), xnn_datatype_fp32, input_dims.size(), input_dims.data(),
       nullptr,
       /*external_id=*/0, XNN_VALUE_FLAG_EXTERNAL_INPUT, &input_id));
 
-  XNN_RETURN_IF_ERROR(xnn_define_tensor_value(
+  XNN_XLA_RETURN_IF_ERROR(xnn_define_tensor_value(
       subgraph.get(), xnn_datatype_fp32, kernel_dims.size(), kernel_dims.data(),
       /*data=*/arguments_buffers[1].opaque(),
       /*external_id=*/1, /*flags=*/0, &kernel_id));
 
-  XNN_RETURN_IF_ERROR(xnn_define_tensor_value(
+  XNN_XLA_RETURN_IF_ERROR(xnn_define_tensor_value(
       subgraph.get(), xnn_datatype_fp32, out_dims.size(), out_dims.data(),
       nullptr,
       /*external_id=*/2, XNN_VALUE_FLAG_EXTERNAL_OUTPUT, &out_id));
 
   auto& ds = convolution_canonical_dims_;
-  XNN_RETURN_IF_ERROR(xnn_define_convolution_2d(
+  XNN_XLA_RETURN_IF_ERROR(xnn_define_convolution_2d(
       subgraph.get(),  //
       /*input_padding_top=*/ds.padding_before.x,
       /*input_padding_right=*/ds.padding_before.y,
@@ -122,7 +122,7 @@ XnnConvolutionThunk::Create(
     const Shape& kernel_shape, BufferAllocation::Slice output_buffer,
     const Shape& output_shape, const ConvolutionDimensionNumbers& dnums,
     const Window& window, int64_t feature_group_count) {
-  TF_RETURN_IF_ERROR(InitializeXnnPack());
+  TF_XLA_RETURN_IF_ERROR(InitializeXnnPack());
 
   if (dnums.kernel_input_feature_dimension() != 3 ||
       dnums.kernel_output_feature_dimension() != 0) {
@@ -133,7 +133,7 @@ XnnConvolutionThunk::Create(
   ConvolutionSlices slices = {input_buffer, input_shape,   kernel_buffer,
                               kernel_shape, output_buffer, output_shape};
 
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       ConvolutionCanonicalDims canonical_dims,
       GetConvolutionCanonicalDims(slices, dnums, window, feature_group_count));
 

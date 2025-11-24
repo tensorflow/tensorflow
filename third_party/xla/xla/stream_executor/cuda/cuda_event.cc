@@ -66,7 +66,7 @@ absl::StatusOr<CUevent> InitEvent(StreamExecutor *executor, EventFlags flags) {
 
   std::unique_ptr<ActivateContext> activation = executor->Activate();
   CUevent event_handle;
-  TF_RETURN_IF_ERROR(cuda::ToStatus(cuEventCreate(&event_handle, cuflags)));
+  TF_XLA_RETURN_IF_ERROR(cuda::ToStatus(cuEventCreate(&event_handle, cuflags)));
   return event_handle;
 }
 
@@ -90,7 +90,7 @@ absl::Status CudaEvent::WaitForEventOnExternalStream(std::intptr_t stream) {
 
 absl::StatusOr<CudaEvent> CudaEvent::Create(StreamExecutor *executor,
                                             bool allow_timing) {
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       CUevent event_handle,
       InitEvent(executor, allow_timing ? EventFlags::kDefault
                                        : EventFlags::kDisableTiming));

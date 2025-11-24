@@ -91,7 +91,7 @@ absl::StatusOr<std::unique_ptr<Event>> TpuExecutor::CreateEvent() {
   StatusHelper status;
   ExecutorApiFn()->TpuExecutor_AllocateEventFn(executor_, se_event,
                                                status.c_status);
-  TF_RETURN_IF_ERROR(status.status());
+  TF_XLA_RETURN_IF_ERROR(status.status());
 
   return std::move(tpu_event);
 }

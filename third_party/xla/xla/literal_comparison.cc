@@ -166,7 +166,7 @@ absl::Status Equal(LiteralSlice expected, LiteralSlice actual,
       result.Update(Equal<NativeT>(expected, actual, multi_index, dimension + 1,
                                    mismatched));
     } else {
-      TF_RETURN_IF_ERROR(Equal<NativeT>(expected, actual, multi_index,
+      TF_XLA_RETURN_IF_ERROR(Equal<NativeT>(expected, actual, multi_index,
                                         dimension + 1, mismatched));
     }
   }
@@ -294,7 +294,7 @@ class NearComparator {
   absl::Status Run() {
     // If the shapes mismatch, we simply fail the expectation instead of
     // printing out data, as it's a type error rather than a value error.
-    TF_RETURN_IF_ERROR(EqualShapes(expected_.shape(), actual_.shape()));
+    TF_XLA_RETURN_IF_ERROR(EqualShapes(expected_.shape(), actual_.shape()));
     if (!expected_.shape().IsArray()) {
       return InvalidArgument("Expected array shape; got %s.",
                              ShapeUtil::HumanString(expected_.shape()));
@@ -685,9 +685,9 @@ absl::Status EqualHelper(const LiteralSlice& expected,
                          const ShapeIndex& shape_index,
                          const MiscompareCallback& miscompare_callback) {
   if (expected.shape().is_static() && actual.shape().is_static()) {
-    TF_RETURN_IF_ERROR(EqualShapes(expected.shape(), actual.shape()));
+    TF_XLA_RETURN_IF_ERROR(EqualShapes(expected.shape(), actual.shape()));
   } else {
-    TF_RETURN_IF_ERROR(EqualDynamicShapesAndDimensions(expected, actual));
+    TF_XLA_RETURN_IF_ERROR(EqualDynamicShapesAndDimensions(expected, actual));
   }
 
   absl::Status result;
@@ -701,7 +701,7 @@ absl::Status EqualHelper(const LiteralSlice& expected,
       if (miscompare_callback) {
         result.Update(tuple_result);
       } else {
-        TF_RETURN_IF_ERROR(tuple_result);
+        TF_XLA_RETURN_IF_ERROR(tuple_result);
       }
       next_index.pop_back();
     }
@@ -755,9 +755,9 @@ absl::Status NearHelper(const LiteralSlice& expected,
                         std::optional<bool> detailed_message,
                         const MiscompareCallback& miscompare_callback) {
   if (expected.shape().is_static() && actual.shape().is_static()) {
-    TF_RETURN_IF_ERROR(EqualShapes(expected.shape(), actual.shape()));
+    TF_XLA_RETURN_IF_ERROR(EqualShapes(expected.shape(), actual.shape()));
   } else {
-    TF_RETURN_IF_ERROR(EqualDynamicShapesAndDimensions(expected, actual));
+    TF_XLA_RETURN_IF_ERROR(EqualDynamicShapesAndDimensions(expected, actual));
   }
 
   if (expected.shape().IsTuple()) {
@@ -871,7 +871,7 @@ absl::Status EqualShapes(const Shape& expected, const Shape& actual) {
 
 absl::Status EqualDynamicShapesAndDimensions(const LiteralSlice& expected,
                                              const LiteralSlice& actual) {
-  TF_RETURN_IF_ERROR(EqualShapes(expected.shape(), actual.shape()));
+  TF_XLA_RETURN_IF_ERROR(EqualShapes(expected.shape(), actual.shape()));
   return ShapeUtil::ForEachSubshapeWithStatus(
       expected.shape(),
       [&expected, &actual](const Shape& expected_shape,

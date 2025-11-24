@@ -114,7 +114,7 @@ class CondThunk : public Thunk {
   tsl::AsyncValueRef<ExecuteEvent> Execute(const ExecuteParams& params) final {
     auto event = tsl::MakeConstructedAsyncValueRef<ExecuteEvent>();
 
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         se::DeviceMemoryBase predicate_mem,
         params.buffer_allocations->GetDeviceAddress(pred_slice_));
     bool* predicate = reinterpret_cast<bool*>(predicate_mem.opaque());
@@ -145,7 +145,7 @@ class BodyThunk : public Thunk {
   tsl::AsyncValueRef<ExecuteEvent> Execute(const ExecuteParams& params) final {
     auto event = tsl::MakeConstructedAsyncValueRef<ExecuteEvent>();
 
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         se::DeviceMemoryBase counter_mem,
         params.buffer_allocations->GetDeviceAddress(counter_slice_));
 

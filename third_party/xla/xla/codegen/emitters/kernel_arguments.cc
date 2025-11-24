@@ -123,12 +123,12 @@ absl::StatusOr<OutputArguments> ExtractOutputArguments(
     const BufferAssignment& buffer_assignment,
     const HloInstruction* hlo_instruction) {
   OutputArguments result;
-  TF_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
+  TF_XLA_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
       hlo_instruction->shape(),
       [&](const Shape& subshape, const ShapeIndex& index) {
         if (!subshape.IsArray()) return absl::OkStatus();
 
-        TF_ASSIGN_OR_RETURN(
+        TF_XLA_ASSIGN_OR_RETURN(
             BufferAllocation::Slice slice,
             buffer_assignment.GetUniqueSlice(hlo_instruction, index));
 
@@ -147,12 +147,12 @@ absl::StatusOr<KernelArguments> KernelArguments::Create(
     const HloInstruction* hlo_instruction) {
   std::vector<KernelArgument> kernel_arguments;
   for (const HloInstruction* operand : hlo_instruction->operands()) {
-    TF_ASSIGN_OR_RETURN(BufferAllocation::Slice slice,
+    TF_XLA_ASSIGN_OR_RETURN(BufferAllocation::Slice slice,
                         buffer_assignment.GetUniqueSlice(operand, {}));
     kernel_arguments.emplace_back(KernelArgument(operand->shape(), slice));
   }
 
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       OutputArguments output_result,
       ExtractOutputArguments(buffer_assignment, hlo_instruction));
 
@@ -177,7 +177,7 @@ absl::StatusOr<KernelArguments> KernelArguments::Create(
 
   const auto& operands = hlo_instruction->operands();
 
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       OutputArguments output_result,
       ExtractOutputArguments(buffer_assignment, hlo_instruction));
   auto& [output_arguments, buffers_written] = output_result;
@@ -212,7 +212,7 @@ absl::StatusOr<KernelArguments> KernelArguments::Create(
         return absl::InvalidArgumentError(
             "Not enough inputs for remaining positions");
       }
-      TF_ASSIGN_OR_RETURN(
+      TF_XLA_ASSIGN_OR_RETURN(
           BufferAllocation::Slice slice,
           buffer_assignment.GetUniqueSlice(operands[arg_idx], {}));
       kernel_arguments.emplace_back(

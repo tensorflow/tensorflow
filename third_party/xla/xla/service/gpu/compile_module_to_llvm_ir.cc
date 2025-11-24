@@ -187,7 +187,7 @@ absl::StatusOr<std::unique_ptr<SequentialThunk>> LowerHlo(
   uint64_t start_usecs = tsl::Env::Default()->NowMicros();
 
   if (use_cache) {
-    TF_RETURN_IF_ERROR(
+    TF_XLA_RETURN_IF_ERROR(
         LoadCache(ir_emitter_context, options.xla_gpu_kernel_cache_file()));
   }
   std::unique_ptr<IrEmitterUnnested> ir_emitter =
@@ -196,7 +196,7 @@ absl::StatusOr<std::unique_ptr<SequentialThunk>> LowerHlo(
     XLA_SCOPED_LOGGING_TIMER(absl::StrCat(
         "GpuCompiler::RunBackend - IR emission for ", hlo_module->name()));
 
-    TF_RETURN_IF_ERROR(
+    TF_XLA_RETURN_IF_ERROR(
         ir_emitter->EmitHloComputation(hlo_module->entry_computation()));
 
     RemoveUnusedAndUninitializedGlobals(
@@ -224,7 +224,7 @@ absl::Status LoadCache(IrEmitterContext& ir_emitter_context,
   }
   if (tsl::Env::Default()->FileExists(resolved_path).ok()) {
     std::string serialized;
-    TF_RETURN_IF_ERROR(
+    TF_XLA_RETURN_IF_ERROR(
         tsl::ReadFileToString(tsl::Env::Default(), resolved_path, &serialized));
     CompilationCacheProto proto;
     if (!proto.ParseFromString(serialized)) {
@@ -237,7 +237,7 @@ absl::Status LoadCache(IrEmitterContext& ir_emitter_context,
                    name)
           << "Failed registering " << name << "in NameUniquer.";
     }
-    TF_RETURN_IF_ERROR(ir_emitter_context.kernel_cache().Load(proto));
+    TF_XLA_RETURN_IF_ERROR(ir_emitter_context.kernel_cache().Load(proto));
   } else {
     VLOG(1) << "Compilation cache file does not exist: " << resolved_path;
   }
@@ -257,7 +257,7 @@ absl::StatusOr<std::unique_ptr<BufferAssignment>> RunBufferAssignment(
                 (int)MemorySpaceColor::kTempBuffer)
           : std::nullopt;
 
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       std::unique_ptr<BufferAssignment> buffer_assignment,
       BufferAssigner::Run(
           module, std::make_unique<SequentialHloOrdering>(module->schedule()),
@@ -291,11 +291,11 @@ absl::StatusOr<CompileModuleResults> CompileModuleToLlvmIr(
       InitializeResults(hlo_module, llvm_context, target_triple, data_layout,
                         split_constants_module);
 
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       results.buffer_assignment,
       RunBufferAssignment(hlo_module, alias_info,
                           std::move(buffer_size_bytes_function)));
-  TF_ASSIGN_OR_RETURN(results.output_info,
+  TF_XLA_ASSIGN_OR_RETURN(results.output_info,
                       GetOutputInfo(*hlo_module, *results.buffer_assignment));
 
   // capture the output shape after buffer assignment because it may change
@@ -315,7 +315,7 @@ absl::StatusOr<CompileModuleResults> CompileModuleToLlvmIr(
       results.llvm_module_constants.get(),
       /*emit_kernels=*/true);
 
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       results.executable,
       LowerHlo(hlo_module, ir_emitter_context,
                results.llvm_module_constants.get(), platform->id(), use_cache));

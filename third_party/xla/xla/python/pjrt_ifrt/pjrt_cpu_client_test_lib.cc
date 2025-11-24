@@ -33,7 +33,7 @@ const bool kUnused =
          []() -> absl::StatusOr<std::shared_ptr<Client>> {
            xla::CpuClientOptions options;
            options.cpu_device_count = 4;
-           TF_ASSIGN_OR_RETURN(auto pjrt_client,
+           TF_XLA_ASSIGN_OR_RETURN(auto pjrt_client,
                                xla::GetXlaPjrtCpuClient(std::move(options)));
            return std::shared_ptr<Client>(
                PjRtClient::Create(std::move(pjrt_client)));

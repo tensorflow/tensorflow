@@ -67,12 +67,12 @@ static HloComputation* WrapMultipleSendRecvInstructions(
 static absl::Status UpdateControlDependencies(HloInstruction* old_instruction,
                                               HloInstruction* new_instruction) {
   for (HloInstruction* predecessor : old_instruction->control_predecessors()) {
-    TF_RETURN_IF_ERROR(predecessor->RemoveControlDependencyTo(old_instruction));
-    TF_RETURN_IF_ERROR(predecessor->AddControlDependencyTo(new_instruction));
+    TF_XLA_RETURN_IF_ERROR(predecessor->RemoveControlDependencyTo(old_instruction));
+    TF_XLA_RETURN_IF_ERROR(predecessor->AddControlDependencyTo(new_instruction));
   }
   for (HloInstruction* successor : old_instruction->control_successors()) {
-    TF_RETURN_IF_ERROR(old_instruction->RemoveControlDependencyTo(successor));
-    TF_RETURN_IF_ERROR(new_instruction->AddControlDependencyTo(successor));
+    TF_XLA_RETURN_IF_ERROR(old_instruction->RemoveControlDependencyTo(successor));
+    TF_XLA_RETURN_IF_ERROR(new_instruction->AddControlDependencyTo(successor));
   }
   return absl::OkStatus();
 }
@@ -130,16 +130,16 @@ static absl::Status CreateAsyncStartAndAsyncDone(
     for (HloInstruction* instruction_user : instruction->users()) {
       if (HloPredicateIsOp<HloOpcode::kSendDone, HloOpcode::kRecvDone>(
               instruction_user)) {
-        TF_RETURN_IF_ERROR(UpdateControlDependencies(instruction, async_start));
-        TF_RETURN_IF_ERROR(UpdateControlDependencies(instruction_user,
+        TF_XLA_RETURN_IF_ERROR(UpdateControlDependencies(instruction, async_start));
+        TF_XLA_RETURN_IF_ERROR(UpdateControlDependencies(instruction_user,
                                                      replacement_async_done));
-        TF_RETURN_IF_ERROR(
+        TF_XLA_RETURN_IF_ERROR(
             instruction_user->ReplaceAllUsesWith(replacement_async_done));
-        TF_RETURN_IF_ERROR(computation->RemoveInstruction(instruction_user));
+        TF_XLA_RETURN_IF_ERROR(computation->RemoveInstruction(instruction_user));
         changed = true;
       }
     }
-    TF_RETURN_IF_ERROR(computation->RemoveInstruction(instruction));
+    TF_XLA_RETURN_IF_ERROR(computation->RemoveInstruction(instruction));
   }
   return absl::OkStatus();
 }
@@ -179,7 +179,7 @@ absl::StatusOr<bool> CollectiveSendRecvCombiner::RunImpl(
     HloComputation* async_computation = WrapMultipleSendRecvInstructions(
         send_recv_instructions, async_start_inputs, async_start_input_shapes,
         builder, module);
-    TF_RETURN_IF_ERROR(CreateAsyncStartAndAsyncDone(
+    TF_XLA_RETURN_IF_ERROR(CreateAsyncStartAndAsyncDone(
         send_recv_instructions, async_computation, computation, module,
         async_start_inputs, async_start_input_shapes, changed));
   }

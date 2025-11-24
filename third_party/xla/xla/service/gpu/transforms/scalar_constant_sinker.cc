@@ -59,7 +59,7 @@ absl::StatusOr<bool> ScalarConstantSinker::RunImpl(
 
       // Clone the constant into the fusion, replace all uses of the parameter
       // and remove the parameter and the operand.
-      TF_RETURN_IF_ERROR(
+      TF_XLA_RETURN_IF_ERROR(
           computation->ReplaceWithNewInstruction(param, operand->Clone()));
       changed = true;
     }

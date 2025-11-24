@@ -199,7 +199,7 @@ void HloTestBase::MatchOptimizedHlo(absl::string_view hlo,
 
 absl::StatusOr<std::unique_ptr<HloModule>> HloTestBase::GetOptimizedModule(
     absl::string_view hlo) {
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       std::unique_ptr<HloModule> module,
       ParseAndReturnVerifiedModule(hlo, GetModuleConfigForTest()));
   // TODO - b/391868033: Remove calls to UpdateEntryComputationLayout.

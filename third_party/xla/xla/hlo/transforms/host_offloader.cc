@@ -244,7 +244,7 @@ absl::StatusOr<bool> HostOffloader::WalkDownHostMemoryOffloadPaths(
         }
       }
     } else if (instruction->opcode() == HloOpcode::kDynamicSlice) {
-      TF_ASSIGN_OR_RETURN(bool is_end_of_offload,
+      TF_XLA_ASSIGN_OR_RETURN(bool is_end_of_offload,
                           SliceLeadsToMoveToDeviceCustomCall(instruction));
       if (is_end_of_offload) {
         // This DynamicSlice is the end of this path of host memory offload.
@@ -255,7 +255,7 @@ absl::StatusOr<bool> HostOffloader::WalkDownHostMemoryOffloadPaths(
         need_to_wrap_instruction_as_host_compute = true;
       }
     } else if (instruction->opcode() == HloOpcode::kSlice) {
-      TF_ASSIGN_OR_RETURN(bool is_end_of_offload,
+      TF_XLA_ASSIGN_OR_RETURN(bool is_end_of_offload,
                           SliceLeadsToMoveToDeviceCustomCall(instruction));
       if (is_end_of_offload) {
         // This Slice is the end of this path of host memory offload.
@@ -349,7 +349,7 @@ absl::StatusOr<bool> HostOffloader::WalkDownHostMemoryOffloadPaths(
       }
     }
     // Push successors onto the queue to be visited.
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         const std::vector<InstructionAndShapeIndex> successors,
         host_offload_utils::GetSuccessors(instruction_and_shape_index));
     for (const InstructionAndShapeIndex& successor : successors) {
@@ -378,7 +378,7 @@ absl::StatusOr<bool> HostOffloader::WalkDownHostMemoryOffloadPaths(
     const auto predecessors =
         host_offload_utils::GetPredecessors(starting_instruction_and_index);
     CHECK_EQ(predecessors.size(), 1);
-    TF_ASSIGN_OR_RETURN(bool inserted_copy,
+    TF_XLA_ASSIGN_OR_RETURN(bool inserted_copy,
                         InsertCopyBetween(predecessors.front(),
                                           starting_instruction_and_index));
     changed = changed || inserted_copy;
@@ -395,7 +395,7 @@ absl::StatusOr<bool> HostOffloader::WalkDownHostMemoryOffloadPaths(
     VLOG(1) << absl::StreamFormat(
         "Inserted copy \"%s\" before custom call \"%s\"",
         copy_to_device->name(), custom_call->name());
-    TF_RETURN_IF_ERROR(custom_call->ReplaceAllUsesWith(copy_to_device));
+    TF_XLA_RETURN_IF_ERROR(custom_call->ReplaceAllUsesWith(copy_to_device));
     changed = true;
   }
 
@@ -412,7 +412,7 @@ absl::StatusOr<bool> HostOffloader::WalkDownHostMemoryOffloadPaths(
             data_to_copy->shape(), HloOpcode::kCopy, data_to_copy));
     SetMemorySpace(copy_to_device->mutable_shape(),
                    Layout::kDefaultMemorySpace);
-    TF_RETURN_IF_ERROR(
+    TF_XLA_RETURN_IF_ERROR(
         x64_split_instruction->ReplaceOperandWith(0, copy_to_device));
   }
 
@@ -421,14 +421,14 @@ absl::StatusOr<bool> HostOffloader::WalkDownHostMemoryOffloadPaths(
   for (HloInstruction* custom_call : mth_custom_calls_to_remove) {
     VLOG(1) << absl::StreamFormat("Removing MoveToHost custom call \"%s\"",
                                   custom_call->name());
-    TF_RETURN_IF_ERROR(
+    TF_XLA_RETURN_IF_ERROR(
         custom_call->ReplaceAllUsesWith(custom_call->mutable_operand(0)));
-    TF_RETURN_IF_ERROR(custom_call->parent()->RemoveInstruction(custom_call));
+    TF_XLA_RETURN_IF_ERROR(custom_call->parent()->RemoveInstruction(custom_call));
     changed = true;
   }
 
   for (HloInstruction* slice : slices_to_dynamify) {
-    TF_RETURN_IF_ERROR(DynamifySlice(slice));
+    TF_XLA_RETURN_IF_ERROR(DynamifySlice(slice));
     changed = true;
   }
 
@@ -442,7 +442,7 @@ absl::StatusOr<bool> HostOffloader::HandleInputStreaming(
       entry_computation->parent()->entry_computation_layout();
 
   for (int i = 0; i < entry_computation_layout.parameter_count(); ++i) {
-    TF_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
+    TF_XLA_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
         entry_computation_layout.parameter_shape(i),
         [&](const Shape& subshape, const ShapeIndex& index) {
           if (subshape.has_layout() &&
@@ -453,7 +453,7 @@ absl::StatusOr<bool> HostOffloader::HandleInputStreaming(
                     << " streamed into program with shape: "
                     << subshape.ToString(/*print_layout=*/true) << " at index "
                     << index.ToString();
-            TF_ASSIGN_OR_RETURN(
+            TF_XLA_ASSIGN_OR_RETURN(
                 bool result,
                 WalkDownHostMemoryOffloadPaths(
                     InstructionAndShapeIndex(parameter_instruction, index),
@@ -474,7 +474,7 @@ absl::StatusOr<bool> HostOffloader::HandleMoveToHostCustomCall(
   }
   VLOG(1) << "Offloading \"" << custom_call_instruction->operand(0)->name()
           << "\" to host.";
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       std::vector<InstructionAndShapeIndex> starting_instruction_and_shapes,
       GetStartingInstructions(custom_call_instruction));
   if (starting_instruction_and_shapes.empty()) {
@@ -494,7 +494,7 @@ absl::StatusOr<bool> HostOffloader::HandleMoveToHostCustomCall(
           data_to_copy->parent()->AddInstruction(HloInstruction::CreateUnary(
               data_to_copy->shape(), HloOpcode::kCopy, data_to_copy));
       SetMemorySpace(copy_to_host->mutable_shape(), Layout::kHostMemorySpace);
-      TF_RETURN_IF_ERROR(
+      TF_XLA_RETURN_IF_ERROR(
           custom_call_instruction->ReplaceAllUsesWith(copy_to_host));
       VLOG(2) << absl::StreamFormat(
           "Custom call \"%s\" is entry computation root. Inserted copy \"%s\" "
@@ -509,7 +509,7 @@ absl::StatusOr<bool> HostOffloader::HandleMoveToHostCustomCall(
     const bool should_insert_copy_before_instruction =
         starting_instruction_and_shape.instruction->opcode() !=
         HloOpcode::kDynamicUpdateSlice;
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         bool result,
         WalkDownHostMemoryOffloadPaths(starting_instruction_and_shape,
                                        should_insert_copy_before_instruction));
@@ -522,9 +522,9 @@ absl::StatusOr<bool> HostOffloader::HandleMoveToHostCustomCall(
   // Remove custom call.
   VLOG(2) << absl::StreamFormat("Removing MoveToHost custom call \"%s\"",
                                 custom_call_instruction->name());
-  TF_RETURN_IF_ERROR(custom_call_instruction->ReplaceAllUsesWith(
+  TF_XLA_RETURN_IF_ERROR(custom_call_instruction->ReplaceAllUsesWith(
       custom_call_instruction->mutable_operand(0)));
-  TF_RETURN_IF_ERROR(custom_call_instruction->parent()->RemoveInstruction(
+  TF_XLA_RETURN_IF_ERROR(custom_call_instruction->parent()->RemoveInstruction(
       custom_call_instruction));
   return true;
 }
@@ -533,9 +533,9 @@ absl::StatusOr<bool> HostOffloader::HandleMoveToDeviceCustomCall(
     HloInstruction* custom_call_instruction) {
   VLOG(2) << absl::StreamFormat("Removing MoveToDevice custom call \"%s\"",
                                 custom_call_instruction->name());
-  TF_RETURN_IF_ERROR(custom_call_instruction->ReplaceAllUsesWith(
+  TF_XLA_RETURN_IF_ERROR(custom_call_instruction->ReplaceAllUsesWith(
       custom_call_instruction->mutable_operand(0)));
-  TF_RETURN_IF_ERROR(custom_call_instruction->parent()->RemoveInstruction(
+  TF_XLA_RETURN_IF_ERROR(custom_call_instruction->parent()->RemoveInstruction(
       custom_call_instruction));
   move_to_device_custom_calls_to_remove_.insert(custom_call_instruction);
   return true;
@@ -599,7 +599,7 @@ absl::StatusOr<bool> HostOffloader::InsertCopyBetween(
           instruction_and_index.shape_index.empty()
               ? 0
               : instruction_and_index.shape_index.front();
-      TF_RETURN_IF_ERROR(instruction_and_index.instruction->ReplaceOperandWith(
+      TF_XLA_RETURN_IF_ERROR(instruction_and_index.instruction->ReplaceOperandWith(
           operand_index, copy_to_host));
       VLOG(2) << absl::StreamFormat(
           "Inserted copy \"%s\" between \"%s\" and \"%s\"",
@@ -621,7 +621,7 @@ HostOffloader::GetStartingInstructions(
   // 2. Does "normal" memory offloading.
   std::vector<InstructionAndShapeIndex> result;
   std::queue<InstructionAndShapeIndex> queue;
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       const std::vector<InstructionAndShapeIndex> successors_of_custom_call,
       host_offload_utils::GetSuccessors(
           InstructionAndShapeIndex(custom_call_instruction)));
@@ -644,7 +644,7 @@ HostOffloader::GetStartingInstructions(
     } else {
       // Is a logical bitcast/reshape, we won't offload this yet.
     }
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         const std::vector<InstructionAndShapeIndex> successors,
         host_offload_utils::GetSuccessors(instruction_and_shape));
     for (const InstructionAndShapeIndex& successor : successors) {
@@ -662,7 +662,7 @@ absl::StatusOr<bool> HostOffloader::SliceLeadsToMoveToDeviceCustomCall(
         slice->opcode() == HloOpcode::kSlice)
       << "This function must only be called with a slice or dynamic slice.";
   std::queue<InstructionAndShapeIndex> queue;
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       const std::vector<InstructionAndShapeIndex> successors_of_slice,
       host_offload_utils::GetSuccessors(InstructionAndShapeIndex(slice)));
   for (const InstructionAndShapeIndex& successor : successors_of_slice) {
@@ -687,7 +687,7 @@ absl::StatusOr<bool> HostOffloader::SliceLeadsToMoveToDeviceCustomCall(
           HloOpcodeString(slice->opcode()), slice->name(), slice->name());
       return false;
     }
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         const std::vector<InstructionAndShapeIndex> successors,
         host_offload_utils::GetSuccessors(instruction_and_shape));
     for (const InstructionAndShapeIndex& successor : successors) {
@@ -780,7 +780,7 @@ absl::Status HostOffloader::CreateAllocateBufferForDynamicUpdateSlice(
                     nested_instruction_and_shape.instruction->mutable_shape(),
                     nested_instruction_and_shape.shape_index),
                 Layout::kHostMemorySpace);
-            TF_ASSIGN_OR_RETURN(
+            TF_XLA_ASSIGN_OR_RETURN(
                 const std::vector<InstructionAndShapeIndex> successors,
                 host_offload_utils::GetSuccessors(
                     nested_instruction_and_shape));
@@ -807,7 +807,7 @@ absl::Status HostOffloader::CreateAllocateBufferForDynamicUpdateSlice(
       // instruction that we're walking up the graph from.
       CHECK(previous_instruction_and_shape.has_value())
           << "We expect to have a previous instruction at this point.";
-      TF_ASSIGN_OR_RETURN(
+      TF_XLA_ASSIGN_OR_RETURN(
           std::vector<InstructionAndShapeIndex> successors,
           host_offload_utils::GetSuccessors(
               InstructionAndShapeIndex(instruction, shape_index)));
@@ -842,7 +842,7 @@ absl::Status HostOffloader::CreateAllocateBufferForDynamicUpdateSlice(
                                                    "AllocateBuffer"));
           SetMemorySpace(new_allocate_buffer->mutable_shape(),
                          Layout::kHostMemorySpace);
-          TF_RETURN_IF_ERROR(
+          TF_XLA_RETURN_IF_ERROR(
               previous_instruction_and_shape->instruction->ReplaceOperandWith(
                   operand_indices[operand_index], new_allocate_buffer));
           break;
@@ -877,7 +877,7 @@ absl::Status HostOffloader::CreateAllocateBufferForDynamicUpdateSlice(
           // index might not be expecting host memory.
           CHECK_EQ(instruction->opcode(), HloOpcode::kTuple)
               << "Expecting a tuple when shape index has ndim>0";
-          TF_RETURN_IF_ERROR(broadcast_user->ReplaceOperandWith(
+          TF_XLA_RETURN_IF_ERROR(broadcast_user->ReplaceOperandWith(
               shape_index[0], allocate_buffer));
         } else {
           // Any shape index larger than 1 would mean that the broadcast
@@ -894,7 +894,7 @@ absl::Status HostOffloader::CreateAllocateBufferForDynamicUpdateSlice(
           // memory space could be incorrect.
           CHECK_EQ(operand_indices.size(), 1)
               << "Only a single use it currently supported";
-          TF_RETURN_IF_ERROR(broadcast_user->ReplaceOperandWith(
+          TF_XLA_RETURN_IF_ERROR(broadcast_user->ReplaceOperandWith(
               operand_indices[0], allocate_buffer));
         }
         if (predecessor_instruction->user_count() == 0) {
@@ -902,7 +902,7 @@ absl::Status HostOffloader::CreateAllocateBufferForDynamicUpdateSlice(
           VLOG(3) << absl::StreamFormat(
               "Broadcast \"%s\" has no remaining users; removing.",
               predecessor_instruction->name());
-          TF_RETURN_IF_ERROR(
+          TF_XLA_RETURN_IF_ERROR(
               predecessor_instruction->parent()->RemoveInstruction(
                   predecessor_instruction));
         }
@@ -936,11 +936,11 @@ absl::Status HostOffloader::DynamifySlice(HloInstruction* slice) {
       slice->parent()->AddInstruction(HloInstruction::CreateDynamicSlice(
           slice->shape(), slice->mutable_operand(0), start_constants,
           slice_sizes));
-  TF_RETURN_IF_ERROR(slice->ReplaceAllUsesWith(new_ds));
+  TF_XLA_RETURN_IF_ERROR(slice->ReplaceAllUsesWith(new_ds));
   VLOG(2) << absl::StreamFormat(
       "Changed slice \"%s\" into dynamic slice \"%s\"", slice->name(),
       new_ds->name());
-  TF_RETURN_IF_ERROR(slice->parent()->RemoveInstruction(slice));
+  TF_XLA_RETURN_IF_ERROR(slice->parent()->RemoveInstruction(slice));
   return absl::OkStatus();
 }
 
@@ -948,7 +948,7 @@ absl::StatusOr<bool> HostOffloader::ApplySchedulingFix(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
+  TF_XLA_ASSIGN_OR_RETURN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
                       HloAliasAnalysis::Run(module, alias_info_));
   auto uses_parameter_buffer = [&](HloInstruction* hlo) {
     for (const HloBuffer* buffer : alias_analysis->ComputeBuffersAt(hlo)) {
@@ -988,7 +988,7 @@ absl::StatusOr<bool> HostOffloader::ApplySchedulingFix(
         VLOG(5) << "Added copy " << std::quoted(copy->name())
                 << " for DynamicUpdateSlice " << instruction->name()
                 << "'s 1st operand " << operand->name();
-        TF_RETURN_IF_ERROR(instruction->ReplaceOperandWith(1, copy));
+        TF_XLA_RETURN_IF_ERROR(instruction->ReplaceOperandWith(1, copy));
         changed = true;
       }
     }
@@ -1022,7 +1022,7 @@ absl::StatusOr<bool> UpdateMemorySpaceForHostOffloadedOutputs(
   std::vector<InstructionAndShapeIndex> to_replace;
 
   HloComputation* called_computation = call_start->async_wrapped_computation();
-  TF_RETURN_IF_ERROR(ValidateAsyncComputationStructure(called_computation));
+  TF_XLA_RETURN_IF_ERROR(ValidateAsyncComputationStructure(called_computation));
   HloInstruction* root = called_computation->root_instruction();
   Shape* root_shape = root->mutable_shape();
 
@@ -1058,7 +1058,7 @@ absl::StatusOr<bool> UpdateMemorySpaceForHostOffloadedOutputs(
   for (InstructionAndShapeIndex& instr_and_shape : to_replace) {
     modified = true;
     HloInstruction* pred = instr_and_shape.instruction->mutable_operand(0);
-    TF_RETURN_IF_ERROR(instr_and_shape.instruction->ReplaceAllUsesWith(pred));
+    TF_XLA_RETURN_IF_ERROR(instr_and_shape.instruction->ReplaceAllUsesWith(pred));
   }
 
   return modified;
@@ -1137,7 +1137,7 @@ absl::StatusOr<bool> HostOffloader::HandleRedundantCopiesBackToHost(
   Shape* done_shape = call_done->mutable_shape();
   ShapeTree<std::vector<InstructionAndShapeIndex>> host_instrs_tree(done_shape);
 
-  TF_RETURN_IF_ERROR(ShapeUtil::ForEachMutableLeafShapeWithStatus(
+  TF_XLA_RETURN_IF_ERROR(ShapeUtil::ForEachMutableLeafShapeWithStatus(
       done_shape, [&](Shape* subshape, const ShapeIndex& output_shape_index) {
         std::queue<InstructionAndShapeIndex> queue;
         queue.push(InstructionAndShapeIndex(call_done, output_shape_index));
@@ -1191,7 +1191,7 @@ absl::StatusOr<bool> HostOffloader::HandleRedundantCopiesBackToHost(
             }
           }
 
-          TF_ASSIGN_OR_RETURN(
+          TF_XLA_ASSIGN_OR_RETURN(
               std::vector<InstructionAndShapeIndex> successors,
               host_offload_utils::GetSuccessors(InstructionAndShapeIndex(
                   instruction_and_shape_index.instruction,
@@ -1235,7 +1235,7 @@ absl::StatusOr<bool> HostOffloader::ProcessNextMoveToHostInstr(
   for (HloInstruction* instruction : computation->MakeInstructionPostOrder()) {
     if (instruction->IsCustomCall(
             memory_annotations::kMoveToHostCustomCallTarget)) {
-      TF_ASSIGN_OR_RETURN(bool removed_move_to_host,
+      TF_XLA_ASSIGN_OR_RETURN(bool removed_move_to_host,
                           HandleMoveToHostCustomCall(instruction));
       if (removed_move_to_host) {
         return true;
@@ -1244,7 +1244,7 @@ absl::StatusOr<bool> HostOffloader::ProcessNextMoveToHostInstr(
 
     if (instruction->has_called_computations()) {
       for (HloComputation* called_comp : instruction->called_computations()) {
-        TF_ASSIGN_OR_RETURN(bool removed_move_to_host,
+        TF_XLA_ASSIGN_OR_RETURN(bool removed_move_to_host,
                             ProcessNextMoveToHostInstr(called_comp));
         if (removed_move_to_host) {
           return true;
@@ -1311,7 +1311,7 @@ absl::StatusOr<bool> HostOffloader::HandleDynamicUpdateSlices() {
         // This DynamicUpdateSlice is used as a pure memory offload. Create a
         // host AllocateBuffer instruction which this DynamicUpdateSlice will
         // update-slice into.
-        TF_RETURN_IF_ERROR(CreateAllocateBufferForDynamicUpdateSlice(dus));
+        TF_XLA_RETURN_IF_ERROR(CreateAllocateBufferForDynamicUpdateSlice(dus));
         changed = true;
       }
     }
@@ -1321,7 +1321,7 @@ absl::StatusOr<bool> HostOffloader::HandleDynamicUpdateSlices() {
 
 absl::StatusOr<bool> HostOffloader::HandlePallasKernel(
     HloInstruction* instruction) {
-  TF_ASSIGN_OR_RETURN(std::vector<int64_t> memory_space_colors,
+  TF_XLA_ASSIGN_OR_RETURN(std::vector<int64_t> memory_space_colors,
                       GetPallasCustomCallOutputMemorySpaces(instruction));
   if (instruction->shape().IsArray()) {
     CHECK_EQ(memory_space_colors.size(), 1)
@@ -1331,7 +1331,7 @@ absl::StatusOr<bool> HostOffloader::HandlePallasKernel(
       // Does not output to host memory; skip.
       return false;
     }
-    TF_ASSIGN_OR_RETURN(bool result,
+    TF_XLA_ASSIGN_OR_RETURN(bool result,
                         WalkDownHostMemoryOffloadPaths(
                             InstructionAndShapeIndex(instruction, {}),
                             /*insert_copy_before=*/false));
@@ -1354,7 +1354,7 @@ absl::StatusOr<bool> HostOffloader::HandlePallasKernel(
       // Does not output to host memory; skip.
       continue;
     }
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         bool result, WalkDownHostMemoryOffloadPaths(
                          InstructionAndShapeIndex(instruction, {tuple_index}),
                          /*insert_copy_before=*/false));
@@ -1373,7 +1373,7 @@ absl::StatusOr<bool> HostOffloader::HandlePallasKernels(HloModule* module) {
         // Is not a pallas kernel; skip.
         continue;
       }
-      TF_ASSIGN_OR_RETURN(bool this_changed, HandlePallasKernel(instruction));
+      TF_XLA_ASSIGN_OR_RETURN(bool this_changed, HandlePallasKernel(instruction));
       changed = changed || this_changed;
     }
   }
@@ -1397,18 +1397,18 @@ absl::StatusOr<bool> HostOffloader::RunImpl(
        module->MakeNonfusionComputations(execution_threads)) {
     for (HloInstruction* instruction : computation->instructions()) {
       if (host_offload_utils::IsHostAsyncStart(instruction)) {
-        TF_ASSIGN_OR_RETURN(changed_in_loop, HandleRedundantCopiesBackToHost(
+        TF_XLA_ASSIGN_OR_RETURN(changed_in_loop, HandleRedundantCopiesBackToHost(
                                                  module, instruction));
         changed = changed || changed_in_loop;
       }
     }
   }
 
-  TF_ASSIGN_OR_RETURN(const bool input_streaming_changed_module,
+  TF_XLA_ASSIGN_OR_RETURN(const bool input_streaming_changed_module,
                       HandleInputStreaming(module->entry_computation()));
   changed = changed || input_streaming_changed_module;
 
-  TF_ASSIGN_OR_RETURN(const bool handled_mosaic, HandlePallasKernels(module));
+  TF_XLA_ASSIGN_OR_RETURN(const bool handled_mosaic, HandlePallasKernels(module));
   changed = changed || handled_mosaic;
 
   // Since we're modifying the graph as we iterate over it, any time we change
@@ -1418,7 +1418,7 @@ absl::StatusOr<bool> HostOffloader::RunImpl(
     // Iterate over the computations in the order that they are executed. This
     // ensures we process "MoveToHost" instructions that are at the beginning of
     // a host memory offload instruction chain.
-    TF_ASSIGN_OR_RETURN(changed_in_loop, ProcessNextMoveToHostInstr(
+    TF_XLA_ASSIGN_OR_RETURN(changed_in_loop, ProcessNextMoveToHostInstr(
                                              module->entry_computation()));
     if (changed_in_loop) {
       changed = true;
@@ -1429,7 +1429,7 @@ absl::StatusOr<bool> HostOffloader::RunImpl(
   // converted to host compute. DynamicUpdateSlices are different because they
   // have multiple operands. Only after finishing all host memory space
   // propagation can we know what to do with the DynamicUpdateSlice.
-  TF_ASSIGN_OR_RETURN(bool any_dus_changed, HandleDynamicUpdateSlices());
+  TF_XLA_ASSIGN_OR_RETURN(bool any_dus_changed, HandleDynamicUpdateSlices());
   changed = changed || any_dus_changed;
 
   // Remove all MoveToDevice custom calls.
@@ -1439,20 +1439,20 @@ absl::StatusOr<bool> HostOffloader::RunImpl(
          computation->MakeInstructionPostOrder()) {
       if (instruction->IsCustomCall(
               memory_annotations::kMoveToDeviceCustomCallTarget)) {
-        TF_ASSIGN_OR_RETURN(bool result,
+        TF_XLA_ASSIGN_OR_RETURN(bool result,
                             HandleMoveToDeviceCustomCall(instruction));
         changed = changed || result;
       }
     }
   }
 
-  TF_ASSIGN_OR_RETURN(bool applied_scheduling_fix,
+  TF_XLA_ASSIGN_OR_RETURN(bool applied_scheduling_fix,
                       ApplySchedulingFix(module, execution_threads));
   changed = changed || applied_scheduling_fix;
 
   // Finally, run CSE to do a little cleanup.
   HloCSE cse(/*is_layout_sensitive=*/true);
-  TF_ASSIGN_OR_RETURN(bool cse_changed, cse.Run(module, execution_threads));
+  TF_XLA_ASSIGN_OR_RETURN(bool cse_changed, cse.Run(module, execution_threads));
   changed = changed || cse_changed;
 
   return changed;

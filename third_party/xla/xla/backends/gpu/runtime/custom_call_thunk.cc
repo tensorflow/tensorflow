@@ -198,7 +198,7 @@ absl::StatusOr<std::unique_ptr<CustomCallThunk>> CustomCallThunk::Create(
         "legacy custom calls with api_version=API_VERSION_TYPED_FFI");
   }
 
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       CustomCallTarget call_target,
       ResolveLegacyCustomCall(*CustomCallTargetRegistry::Global(), target_name,
                               platform_name, api_version));
@@ -213,7 +213,7 @@ absl::StatusOr<std::unique_ptr<CustomCallThunk>> CustomCallThunk::Create(
     std::vector<NullableShapedSlice> operands,
     std::vector<NullableShapedSlice> results, ffi::AttributesMap attributes,
     const HloComputation* called_computation, absl::string_view platform_name) {
-  TF_ASSIGN_OR_RETURN(ffi::HandlerRegistration registration,
+  TF_XLA_ASSIGN_OR_RETURN(ffi::HandlerRegistration registration,
                       ffi::FindHandler(target_name, platform_name));
 
   return Create(thunk_info, std::move(target_name),
@@ -242,11 +242,11 @@ absl::StatusOr<std::unique_ptr<CustomCallThunk>> CustomCallThunk::Create(
 
     CallOptions options;
     options.execution_state = execution_state.get();
-    TF_RETURN_IF_ERROR(Call(bundle.instantiate, call_frame, options,
+    TF_XLA_RETURN_IF_ERROR(Call(bundle.instantiate, call_frame, options,
                             XLA_FFI_ExecutionStage_INSTANTIATE));
   }
 
-  TF_ASSIGN_OR_RETURN(CallFrame call_frame,
+  TF_XLA_ASSIGN_OR_RETURN(CallFrame call_frame,
                       BuildCallFramePrototype(operands, results, attributes));
   return absl::WrapUnique(new CustomCallThunk(
       thunk_info, std::move(target_name), std::move(bundle),
@@ -280,11 +280,11 @@ absl::StatusOr<std::unique_ptr<CustomCallThunk>> CustomCallThunk::Create(
 
     CallOptions options;
     options.execution_state = execution_state.get();
-    TF_RETURN_IF_ERROR(Call(*bundle.instantiate, call_frame, options,
+    TF_XLA_RETURN_IF_ERROR(Call(*bundle.instantiate, call_frame, options,
                             xla::ffi::ExecutionStage::kInstantiate));
   }
 
-  TF_ASSIGN_OR_RETURN(CallFrame call_frame,
+  TF_XLA_ASSIGN_OR_RETURN(CallFrame call_frame,
                       BuildCallFramePrototype(operands, results, attributes));
   return absl::WrapUnique(new CustomCallThunk(
       thunk_info, std::move(target_name), std::move(bundle),
@@ -346,7 +346,7 @@ absl::Status CustomCallThunk::ExecuteCustomCall(const ExecuteParams& params) {
     }
   }
 
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       se::Stream * stream,
       GetStreamForExecution(Thunk::execution_stream_id(), params));
   XlaCustomCallStatus custom_call_status;
@@ -397,8 +397,8 @@ CustomCallThunk::BuildCallFrame(
 
   // Borrow the FFI call frame from the object pool and update with the actual
   // device memory addresses.
-  TF_ASSIGN_OR_RETURN(auto call_frame, call_frames_->GetOrCreate());
-  TF_RETURN_IF_ERROR(call_frame->UpdateWithBuffers(arguments, results));
+  TF_XLA_ASSIGN_OR_RETURN(auto call_frame, call_frames_->GetOrCreate());
+  TF_XLA_RETURN_IF_ERROR(call_frame->UpdateWithBuffers(arguments, results));
   return call_frame;
 }
 
@@ -437,7 +437,7 @@ absl::Status CustomCallThunk::ExecuteFfiHandler(
     return absl::InternalError("buffer allocations and stream are required");
   }
 
-  TF_ASSIGN_OR_RETURN(auto call_frame, BuildCallFrame(buffer_allocations));
+  TF_XLA_ASSIGN_OR_RETURN(auto call_frame, BuildCallFrame(buffer_allocations));
   CallOptions options =
       BuildCallOptions(run_id, stream, buffer_allocations, execution_context);
   return Call(handler, *call_frame, options, stage);
@@ -452,7 +452,7 @@ absl::Status CustomCallThunk::ExecuteFfiHandler(
     return absl::InternalError("buffer allocations and stream are required");
   }
 
-  TF_ASSIGN_OR_RETURN(auto call_frame, BuildCallFrame(buffer_allocations));
+  TF_XLA_ASSIGN_OR_RETURN(auto call_frame, BuildCallFrame(buffer_allocations));
   CallOptions options =
       BuildCallOptions(run_id, stream, buffer_allocations, execution_context);
   return Call(handler, *call_frame, options, stage);
@@ -513,7 +513,7 @@ absl::Status CustomCallThunk::Initialize(const InitializeParams& params) {
 }
 
 absl::Status CustomCallThunk::ExecuteOnStream(const ExecuteParams& params) {
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       se::Stream * stream,
       GetStreamForExecution(Thunk::execution_stream_id(), params));
 
@@ -560,12 +560,12 @@ absl::StatusOr<ThunkProto> CustomCallThunk::ToProto() const {
   }
 
   for (const NullableShapedSlice& operand : operands_) {
-    TF_ASSIGN_OR_RETURN(*proto.mutable_custom_call_thunk()->add_operands(),
+    TF_XLA_ASSIGN_OR_RETURN(*proto.mutable_custom_call_thunk()->add_operands(),
                         operand.ToProto());
   }
 
   for (const NullableShapedSlice& result : results_) {
-    TF_ASSIGN_OR_RETURN(*proto.mutable_custom_call_thunk()->add_results(),
+    TF_XLA_ASSIGN_OR_RETURN(*proto.mutable_custom_call_thunk()->add_results(),
                         result.ToProto());
   }
 
@@ -589,18 +589,18 @@ absl::StatusOr<std::unique_ptr<CustomCallThunk>> CustomCallThunk::FromProto(
 
   std::vector<NullableShapedSlice> operands, results;
   for (const auto& operand_proto : proto.operands()) {
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         NullableShapedSlice operand,
         NullableShapedSlice::FromProto(operand_proto, buffer_allocations));
     operands.push_back(std::move(operand));
   }
   for (const auto& result_proto : proto.results()) {
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         NullableShapedSlice result,
         NullableShapedSlice::FromProto(result_proto, buffer_allocations));
     results.push_back(std::move(result));
   }
-  TF_ASSIGN_OR_RETURN(ffi::AttributesMap attributes,
+  TF_XLA_ASSIGN_OR_RETURN(ffi::AttributesMap attributes,
                       ffi::AttributesMap::FromProto(proto.attributes()));
 
   HloComputation* called_computation = nullptr;

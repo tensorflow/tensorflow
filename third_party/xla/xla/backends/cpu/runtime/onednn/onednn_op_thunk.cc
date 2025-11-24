@@ -167,7 +167,7 @@ tsl::AsyncValueRef<OneDnnOpThunk::ExecuteEvent> OneDnnOpThunk::Execute(
   runtime->resources.arg_memrefs.reserve(num_operands);
   for (size_t i = 0; i < num_operands; ++i) {
     const auto& shape = op_buffers_.arguments_shapes[i];
-    TF_ASSIGN_OR_RETURN(se::DeviceMemoryBase arg,
+    TF_XLA_ASSIGN_OR_RETURN(se::DeviceMemoryBase arg,
                         params.buffer_allocations->GetDeviceAddress(
                             op_buffers_.arguments_buffers[i]));
 
@@ -185,7 +185,7 @@ tsl::AsyncValueRef<OneDnnOpThunk::ExecuteEvent> OneDnnOpThunk::Execute(
   runtime->resources.result_memrefs.reserve(num_results);
   for (size_t i = 0; i < num_results; ++i) {
     const auto& shape = op_buffers_.results_shapes[i];
-    TF_ASSIGN_OR_RETURN(se::DeviceMemoryBase res,
+    TF_XLA_ASSIGN_OR_RETURN(se::DeviceMemoryBase res,
                         params.buffer_allocations->GetDeviceAddress(
                             op_buffers_.results_buffers[i]));
 

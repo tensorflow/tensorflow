@@ -77,7 +77,7 @@ class GpuLatencyHidingSchedulerBaseTest
         num_parallel_resources);
     options.set_xla_gpu_pgle_accuracy_checker(strictness);
 
-    TF_RETURN_IF_ERROR(ScheduleGpuModule(module, /*pointer_size=*/8,
+    TF_XLA_RETURN_IF_ERROR(ScheduleGpuModule(module, /*pointer_size=*/8,
                                          gpu_device_info, &mlir_context_,
                                          &alias_info)
                            .status());

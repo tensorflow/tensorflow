@@ -58,7 +58,7 @@ absl::StatusOr<LayoutProto> Layout::ToProto(SerDesVersion version) const {
   // `LayoutProto` does not store its own version. It delegates the details to
   // SerDes of the `Layout` subclasses.
   auto options = std::make_unique<SerializeOptions>(version);
-  TF_ASSIGN_OR_RETURN(*layout_proto.mutable_serialized_layout(),
+  TF_XLA_ASSIGN_OR_RETURN(*layout_proto.mutable_serialized_layout(),
                       Serialize(*this, std::move(options)));
   return layout_proto;
 }
@@ -149,11 +149,11 @@ absl::StatusOr<bool> EquivalentLayouts(DType dtype1, const Shape& shape1,
     }
     // TODO(hyeontaek): Change to IFRT `Layout` comparison once
     // we add `Client::GetDefaultLayout()` that returns a `CustomLayoutRef`.
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         std::shared_ptr<const xla::PjRtLayout> pjrt_layout1,
         device1->client()->GetDefaultPjRtLayout(dtype1, shape1.dims(), device1,
                                                 sharding1->memory_kind()));
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         std::shared_ptr<const xla::PjRtLayout> pjrt_layout2,
         device2->client()->GetDefaultPjRtLayout(dtype2, shape2.dims(), device2,
                                                 sharding2->memory_kind()));

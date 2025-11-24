@@ -567,7 +567,7 @@ class HloEvaluator : public ConstDfsHloVisitorWithDefault,
     TF_RET_CHECK(ShapeUtil::SameDimensions(shape, operand->shape()));
 
     Literal result(shape);
-    TF_RETURN_IF_ERROR(
+    TF_XLA_RETURN_IF_ERROR(
         result.PopulateLinearParallel<ReturnT>([&](int64_t linear_index, int) {
           return unary_op(operand_literal.GetLinear<NativeT>(linear_index));
         }));

@@ -646,7 +646,7 @@ Status WindowsFileSystem::IsDirectory(const string& fname,
                                       TransactionToken* token) {
   std::wstring ws_final_fname = GetUncPathName(TranslateName(fname));
   std::string str_final_fname(ws_final_fname.begin(), ws_final_fname.end());
-  TF_RETURN_IF_ERROR(FileExists(str_final_fname));
+  TF_XLA_RETURN_IF_ERROR(FileExists(str_final_fname));
   if (PathIsDirectoryW(ws_final_fname.c_str())) {
     return absl::OkStatus();
   }
@@ -697,7 +697,7 @@ Status WindowsFileSystem::GetMatchingPaths(const string& pattern,
   // but no code appears to rely on this behavior.
   string converted_pattern(pattern);
   std::replace(converted_pattern.begin(), converted_pattern.end(), '\\', '/');
-  TF_RETURN_IF_ERROR(internal::GetMatchingPaths(this, Env::Default(),
+  TF_XLA_RETURN_IF_ERROR(internal::GetMatchingPaths(this, Env::Default(),
                                                 converted_pattern, results));
   for (string& result : *results) {
     std::replace(result.begin(), result.end(), '/', '\\');

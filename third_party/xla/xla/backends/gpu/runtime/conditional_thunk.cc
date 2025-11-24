@@ -65,7 +65,7 @@ absl::Status ConditionalThunk::Prepare(
     TF_RET_CHECK(!branch_thunks_.empty());
   }
   for (auto& branch_thunk : branch_thunks_) {
-    TF_RETURN_IF_ERROR(branch_thunk->Prepare(params, resource_requests));
+    TF_XLA_RETURN_IF_ERROR(branch_thunk->Prepare(params, resource_requests));
   }
   return absl::OkStatus();
 }
@@ -77,7 +77,7 @@ absl::Status ConditionalThunk::Initialize(const InitializeParams& params) {
     TF_RET_CHECK(!branch_thunks_.empty());
   }
   for (auto& branch_thunk : branch_thunks_) {
-    TF_RETURN_IF_ERROR(branch_thunk->Initialize(params));
+    TF_XLA_RETURN_IF_ERROR(branch_thunk->Initialize(params));
   }
 
   absl::MutexLock lock(mutex_);
@@ -85,7 +85,7 @@ absl::Status ConditionalThunk::Initialize(const InitializeParams& params) {
   if (!host_memory_pools_.contains(params.executor)) {
     PrimitiveType type =
         branch_index_is_bool_ ? PrimitiveType::PRED : PrimitiveType::S32;
-    TF_ASSIGN_OR_RETURN(std::unique_ptr<HostMemoryPool> pool,
+    TF_XLA_ASSIGN_OR_RETURN(std::unique_ptr<HostMemoryPool> pool,
                         HostMemoryPool::Create(params.executor, type));
     host_memory_pools_[params.executor] = std::move(pool);
   }
@@ -101,7 +101,7 @@ absl::Status ConditionalThunk::ExecuteOnStream(const ExecuteParams& params) {
     absl::MutexLock lock(mutex_);
     pool = host_memory_pools_.at(stream.parent()).get();
   }
-  TF_ASSIGN_OR_RETURN(HostMemoryPool::Handle handle, pool->Acquire());
+  TF_XLA_ASSIGN_OR_RETURN(HostMemoryPool::Handle handle, pool->Acquire());
 
   // Copy the predicate value from device.
   auto branch_index_or_pred = [&]() -> std::variant<int32_t*, bool*> {
@@ -114,10 +114,10 @@ absl::Status ConditionalThunk::ExecuteOnStream(const ExecuteParams& params) {
   se::DeviceMemoryBase branch_index_address =
       params.buffer_allocations->GetDeviceAddress(branch_index_buffer_index_);
   if (branch_index_is_bool_) {
-    TF_RETURN_IF_ERROR(stream.Memcpy(std::get<bool*>(branch_index_or_pred),
+    TF_XLA_RETURN_IF_ERROR(stream.Memcpy(std::get<bool*>(branch_index_or_pred),
                                      branch_index_address, sizeof(bool)));
   } else {
-    TF_RETURN_IF_ERROR(stream.Memcpy(std::get<int32_t*>(branch_index_or_pred),
+    TF_XLA_RETURN_IF_ERROR(stream.Memcpy(std::get<int32_t*>(branch_index_or_pred),
                                      branch_index_address, sizeof(int32_t)));
   }
 
@@ -145,7 +145,7 @@ absl::Status ConditionalThunk::ExecuteOnStream(const ExecuteParams& params) {
   }
 
   // Execute the branch computation corresponding to the value of branch_index.
-  TF_RETURN_IF_ERROR(branch_thunks_[branch_index]->ExecuteOnStream(params));
+  TF_XLA_RETURN_IF_ERROR(branch_thunks_[branch_index]->ExecuteOnStream(params));
 
   return absl::OkStatus();
 }
@@ -170,9 +170,9 @@ absl::Status ConditionalThunk::TransformAllNestedThunks(
         absl::StatusOr<std::unique_ptr<Thunk>>(std::unique_ptr<Thunk>)>
         fn) {
   for (std::unique_ptr<SequentialThunk>& branch_thunk : branch_thunks_) {
-    TF_RETURN_IF_ERROR(branch_thunk->TransformAllNestedThunks(fn));
+    TF_XLA_RETURN_IF_ERROR(branch_thunk->TransformAllNestedThunks(fn));
 
-    TF_ASSIGN_OR_RETURN(std::unique_ptr<Thunk> thunk,
+    TF_XLA_ASSIGN_OR_RETURN(std::unique_ptr<Thunk> thunk,
                         fn(std::move(branch_thunk)));
     branch_thunk = SequentialThunk::FromThunk(std::move(thunk));
   }
@@ -184,11 +184,11 @@ absl::StatusOr<ThunkProto> ConditionalThunk::ToProto() const {
   *proto.mutable_thunk_info() = thunk_info().ToProto();
 
   auto* conditional_thunk_proto = proto.mutable_conditional_thunk();
-  TF_ASSIGN_OR_RETURN(*conditional_thunk_proto->mutable_branch_index_buffer(),
+  TF_XLA_ASSIGN_OR_RETURN(*conditional_thunk_proto->mutable_branch_index_buffer(),
                       branch_index_buffer_index_.ToProto());
 
   for (const auto& seq_thunk : branch_thunks_) {
-    TF_ASSIGN_OR_RETURN(ThunkProto seq_thunk_proto, seq_thunk->ToProto());
+    TF_XLA_ASSIGN_OR_RETURN(ThunkProto seq_thunk_proto, seq_thunk->ToProto());
     *conditional_thunk_proto->add_branch_thunks() =
         std::move(seq_thunk_proto).sequential_thunk();
   }
@@ -201,7 +201,7 @@ absl::StatusOr<std::unique_ptr<ConditionalThunk>> ConditionalThunk::FromProto(
     ThunkInfo thunk_info, const ConditionalThunkProto& thunk_proto,
     absl::Span<const BufferAllocation> buffer_allocations,
     const Deserializer& deserializer) {
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       BufferAllocation::Slice branch_index_buffer_index,
       BufferAllocation::Slice::FromProto(thunk_proto.branch_index_buffer(),
                                          buffer_allocations));
@@ -209,7 +209,7 @@ absl::StatusOr<std::unique_ptr<ConditionalThunk>> ConditionalThunk::FromProto(
   std::vector<std::unique_ptr<SequentialThunk>> branch_thunks;
   branch_thunks.reserve(thunk_proto.branch_thunks_size());
   for (const auto& seq_thunk_proto : thunk_proto.branch_thunks()) {
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         std::unique_ptr<SequentialThunk> seq_thunk,
         SequentialThunk::FromProto(thunk_info, seq_thunk_proto, deserializer));
     branch_thunks.push_back(std::move(seq_thunk));

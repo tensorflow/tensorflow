@@ -52,13 +52,13 @@ absl::StatusOr<std::unique_ptr<TopKThunk>> TopKThunk::Create(
 
 tsl::AsyncValueRef<Thunk::ExecuteEvent> TopKThunk::Execute(
     const ExecuteParams& params) {
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       se::DeviceMemoryBase values,
       params.buffer_allocations->GetDeviceAddress(values_buffer_));
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       se::DeviceMemoryBase output,
       params.buffer_allocations->GetDeviceAddress(output_buffer_));
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       se::DeviceMemoryBase indices,
       params.buffer_allocations->GetDeviceAddress(indices_buffer_));
 

@@ -89,7 +89,7 @@ class SingleDeviceShardingSerDes
           absl::StrCat("Unsupported ", version_number,
                        " for SingleDeviceSharding deserialization"));
     }
-    TF_ASSIGN_OR_RETURN(Device * device,
+    TF_XLA_ASSIGN_OR_RETURN(Device * device,
                         deserialize_sharding_options->client->LookupDevice(
                             DeviceId(proto.device_id())));
     MemoryKind memory_kind;
@@ -146,7 +146,7 @@ class OpaqueShardingSerDes
           absl::StrCat("Unsupported ", version_number,
                        " for OpaqueSharding deserialization"));
     }
-    TF_ASSIGN_OR_RETURN(auto devices, DeviceList::FromProto(
+    TF_XLA_ASSIGN_OR_RETURN(auto devices, DeviceList::FromProto(
                                           deserialize_sharding_options->client,
                                           proto.devices()));
     MemoryKind memory_kind;
@@ -217,7 +217,7 @@ class ConcreteShardingSerDes
           absl::StrCat("Unsupported ", version_number,
                        " for ConcreteSharding deserialization"));
     }
-    TF_ASSIGN_OR_RETURN(auto devices, DeviceList::FromProto(
+    TF_XLA_ASSIGN_OR_RETURN(auto devices, DeviceList::FromProto(
                                           deserialize_sharding_options->client,
                                           proto.devices()));
     MemoryKind memory_kind;
@@ -225,11 +225,11 @@ class ConcreteShardingSerDes
       memory_kind = MemoryKind(proto.memory_kind());
     }
     if (proto.has_shape()) {
-      TF_ASSIGN_OR_RETURN(auto shape, Shape::FromProto(proto.shape()));
+      TF_XLA_ASSIGN_OR_RETURN(auto shape, Shape::FromProto(proto.shape()));
       std::vector<Shape> shard_shapes;
       shard_shapes.reserve(proto.shard_shapes_size());
       for (const auto& shard_shape_proto : proto.shard_shapes()) {
-        TF_ASSIGN_OR_RETURN(auto shard_shape,
+        TF_XLA_ASSIGN_OR_RETURN(auto shard_shape,
                             Shape::FromProto(shard_shape_proto));
         shard_shapes.push_back(std::move(shard_shape));
       }
@@ -241,12 +241,12 @@ class ConcreteShardingSerDes
       return absl::InvalidArgumentError(
           "ConcreteSharding must have Shape or DynamicShape.");
     }
-    TF_ASSIGN_OR_RETURN(auto dynamic_shape,
+    TF_XLA_ASSIGN_OR_RETURN(auto dynamic_shape,
                         DynamicShape::FromProto(proto.dynamic_shape()));
     std::vector<DynamicShape> shard_dynamic_shapes;
     shard_dynamic_shapes.reserve(proto.shard_dynamic_shapes_size());
     for (const auto& shard_dynamic_shape_proto : proto.shard_dynamic_shapes()) {
-      TF_ASSIGN_OR_RETURN(auto dynamic_shape,
+      TF_XLA_ASSIGN_OR_RETURN(auto dynamic_shape,
                           DynamicShape::FromProto(shard_dynamic_shape_proto));
       shard_dynamic_shapes.push_back(std::move(dynamic_shape));
     }
@@ -306,15 +306,15 @@ class ConcreteEvenShardingSerDes
           absl::StrCat("Unsupported ", version_number,
                        " for ConcreteEvenSharding deserialization"));
     }
-    TF_ASSIGN_OR_RETURN(auto devices, DeviceList::FromProto(
+    TF_XLA_ASSIGN_OR_RETURN(auto devices, DeviceList::FromProto(
                                           deserialize_sharding_options->client,
                                           proto.devices()));
     MemoryKind memory_kind;
     if (proto.has_memory_kind()) {
       memory_kind = MemoryKind(proto.memory_kind());
     }
-    TF_ASSIGN_OR_RETURN(auto shape, Shape::FromProto(proto.shape()));
-    TF_ASSIGN_OR_RETURN(auto shard_shape,
+    TF_XLA_ASSIGN_OR_RETURN(auto shape, Shape::FromProto(proto.shape()));
+    TF_XLA_ASSIGN_OR_RETURN(auto shard_shape,
                         Shape::FromProto(proto.shard_shape()));
     return ConcreteEvenSharding::Create(
         std::move(devices), memory_kind, std::move(shape),
@@ -348,7 +348,7 @@ class ShardingParamShardingSerDes
     if (sharding.memory_kind().memory_kind().has_value()) {
       proto.set_memory_kind(std::string(*sharding.memory_kind().memory_kind()));
     }
-    TF_ASSIGN_OR_RETURN(*proto.mutable_sharding_param(),
+    TF_XLA_ASSIGN_OR_RETURN(*proto.mutable_sharding_param(),
                         sharding.sharding_param().ToProto(version));
     return proto.SerializeAsString();
   }
@@ -369,14 +369,14 @@ class ShardingParamShardingSerDes
           absl::StrCat("Unsupported ", version_number,
                        " for ShardingParamSharding deserialization"));
     }
-    TF_ASSIGN_OR_RETURN(auto devices, DeviceList::FromProto(
+    TF_XLA_ASSIGN_OR_RETURN(auto devices, DeviceList::FromProto(
                                           deserialize_sharding_options->client,
                                           proto.devices()));
     MemoryKind memory_kind;
     if (proto.has_memory_kind()) {
       memory_kind = MemoryKind(proto.memory_kind());
     }
-    TF_ASSIGN_OR_RETURN(ShardingParam sharding_param,
+    TF_XLA_ASSIGN_OR_RETURN(ShardingParam sharding_param,
                         ShardingParam::FromProto(proto.sharding_param()));
     return ShardingParamSharding::Create(std::move(sharding_param),
                                          std::move(devices), memory_kind);

@@ -353,7 +353,7 @@ HloModuleConfig::CreateFromProto(const HloModuleConfigProto& proto) {
   auto config = std::make_unique<HloModuleConfig>();
 
   if (proto.has_entry_computation_layout()) {
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         auto comp_layout,
         ProgramShape::FromProto(proto.entry_computation_layout()));
     config->SetComputationLayoutIfExists(comp_layout);
@@ -387,7 +387,7 @@ HloModuleConfig::CreateFromProto(const HloModuleConfigProto& proto) {
     config->debug_options_ = proto.debug_options();
   }
   if (proto.has_static_device_assignment()) {
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         std::unique_ptr<DeviceAssignment> device_assignment,
         DeviceAssignment::Deserialize(proto.static_device_assignment()));
     config->static_device_assignment_ = std::move(*device_assignment);

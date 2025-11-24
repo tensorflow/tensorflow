@@ -187,7 +187,7 @@ absl::StatusOr<TensorValue> EmitAllReduce(
   // !tt.ptr<!tt.ptr<i64>>
   mlir::Value remote_input_buffers = fn.getArgument(start_idx + 3);
 
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       TileInfo tile_info,
       TileInfo::Construct(b, pid, /*runtime_values=*/{}, *tiled_input_hlo));
 
@@ -258,7 +258,7 @@ absl::StatusOr<TensorValue> EmitAllReduce(
     region_values[reduction_computation->parameter_instruction(0)] =
         accumulator;
     region_values[reduction_computation->parameter_instruction(1)] = next_tile;
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         accumulator,
         triton::EmitScope(b,
                           /*analysis=*/nullptr, /*instructions=*/to_emit,
@@ -285,19 +285,19 @@ GetCollectiveBlockLevelFusionConfig(const se::DeviceDescription& device_info,
 absl::StatusOr<bool> TrySetGpuBackendConfigForCollective(
     const se::DeviceDescription& device_info,
     HloFusionInstruction* fusion_instr) {
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       const std::optional<BlockLevelFusionConfig> block_config,
       GetCollectiveBlockLevelFusionConfig(device_info, fusion_instr));
   if (!block_config.has_value()) {
     return false;
   }
-  TF_ASSIGN_OR_RETURN(GpuBackendConfig gpu_backend_config,
+  TF_XLA_ASSIGN_OR_RETURN(GpuBackendConfig gpu_backend_config,
                       fusion_instr->backend_config<GpuBackendConfig>());
   gpu_backend_config.mutable_fusion_backend_config()->set_kind(
       kTritonCollectiveFusionKind);
   *gpu_backend_config.mutable_fusion_backend_config()
        ->mutable_block_level_fusion_config() = *std::move(block_config);
-  TF_RETURN_IF_ERROR(
+  TF_XLA_RETURN_IF_ERROR(
       fusion_instr->set_backend_config(std::move(gpu_backend_config)));
   return true;
 }
@@ -321,7 +321,7 @@ absl::StatusOr<int32_t> AddCollectiveMetadataArguments(
     } else if (type == S4) {
       ir_type = b.getI4Type();
     } else {
-      TF_ASSIGN_OR_RETURN(ir_type, triton::TritonType(b, type));
+      TF_XLA_ASSIGN_OR_RETURN(ir_type, triton::TritonType(b, type));
     }
     // Also add the remote/scratch buffers for collectives.
     // !tt.ptr<!tt.ptr<type>>

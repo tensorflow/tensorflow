@@ -85,10 +85,10 @@ absl::StatusOr<bool> MoveParametersAndConstantsToFront(
       // we forward control predecessors to all users.
       for (HloInstruction* control_predecessor : inst->control_predecessors()) {
         for (HloInstruction* user : inst->users()) {
-          TF_RETURN_IF_ERROR(control_predecessor->AddControlDependencyTo(user));
+          TF_XLA_RETURN_IF_ERROR(control_predecessor->AddControlDependencyTo(user));
         }
       }
-      TF_RETURN_IF_ERROR(inst->DropAllControlDeps());
+      TF_XLA_RETURN_IF_ERROR(inst->DropAllControlDeps());
     }
   }
 

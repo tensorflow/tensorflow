@@ -43,7 +43,7 @@ namespace xla {
 absl::StatusOr<bool> AllReduceSimplifier::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       auto replication,
       HloReplicationAnalysis::Run(module, /*cross_partition_spmd=*/false));
   std::vector<std::pair<HloInstruction*, int64_t>> all_reduces_to_replace;
@@ -54,7 +54,7 @@ absl::StatusOr<bool> AllReduceSimplifier::RunImpl(
   auto get_participant_counts_for_replica_group =
       [](const HloInstruction* all_reduce) -> absl::StatusOr<int64_t> {
     const HloModuleConfig& config = all_reduce->GetModule()->config();
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         CollectiveOpGroupMode group_mode,
         GetCollectiveOpGroupMode(all_reduce->channel_id().has_value(),
                                  Cast<HloAllReduceInstruction>(all_reduce)
@@ -62,7 +62,7 @@ absl::StatusOr<bool> AllReduceSimplifier::RunImpl(
 
     int64_t num_devices = config.num_partitions();
     int64_t num_replicas = config.replica_count();
-    TF_ASSIGN_OR_RETURN(std::vector<int64_t> participant_counts,
+    TF_XLA_ASSIGN_OR_RETURN(std::vector<int64_t> participant_counts,
                         GetPariticipantCountsForReplicaGroups(
                             num_replicas, num_devices,
                             all_reduce->replica_groups(), group_mode));
@@ -85,7 +85,7 @@ absl::StatusOr<bool> AllReduceSimplifier::RunImpl(
            inst->opcode() == HloOpcode::kReduceScatter) &&
           ShapeUtil::Compatible(inst->shape(), inst->operand(0)->shape())) {
         changed = true;
-        TF_RETURN_IF_ERROR(
+        TF_XLA_RETURN_IF_ERROR(
             computation->ReplaceInstruction(inst, inst->mutable_operand(0)));
       }
     }
@@ -103,7 +103,7 @@ absl::StatusOr<bool> AllReduceSimplifier::RunImpl(
       if (!inst->IsCrossReplicaAllReduce() && !inst->IsCrossModuleAllReduce()) {
         continue;
       }
-      TF_ASSIGN_OR_RETURN(int64_t group_size,
+      TF_XLA_ASSIGN_OR_RETURN(int64_t group_size,
                           get_participant_counts_for_replica_group(inst));
 
       // We will not simplify this all reduce if any of the following is true:
@@ -131,7 +131,7 @@ absl::StatusOr<bool> AllReduceSimplifier::RunImpl(
     auto all_reduce = all_reduce_and_group_size.first;
     const int64_t replica_group_size = all_reduce_and_group_size.second;
     if (replica_group_size == 1) {
-      TF_RETURN_IF_ERROR(all_reduce->parent()->ReplaceInstruction(
+      TF_XLA_RETURN_IF_ERROR(all_reduce->parent()->ReplaceInstruction(
           all_reduce, all_reduce->mutable_operand(0)));
       changed = true;
       continue;
@@ -177,7 +177,7 @@ absl::StatusOr<bool> AllReduceSimplifier::RunImpl(
     }
     VLOG(2) << "Replacing " << all_reduce->ToString() << " with "
             << replacement->ToString();
-    TF_RETURN_IF_ERROR(all_reduce->ReplaceAllUsesWith(replacement));
+    TF_XLA_RETURN_IF_ERROR(all_reduce->ReplaceAllUsesWith(replacement));
     changed = true;
   }
   return changed;

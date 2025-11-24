@@ -92,8 +92,8 @@ XlaOp ComputeSums(XlaOp operand, XlaOp init_value,
                   const TensorFormat& data_format) {
   XlaBuilder* b = operand.builder();
   return b->ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
-    TF_ASSIGN_OR_RETURN(Shape operand_shape, b->GetShape(operand));
-    TF_ASSIGN_OR_RETURN(Shape init_shape, b->GetShape(init_value));
+    TF_XLA_ASSIGN_OR_RETURN(Shape operand_shape, b->GetShape(operand));
+    TF_XLA_ASSIGN_OR_RETURN(Shape init_shape, b->GetShape(init_value));
     PrimitiveType accumulation_type = init_shape.element_type();
     auto add_computation = CreateScalarAddComputation(accumulation_type, b);
     return ReduceWindow(operand, init_value, add_computation, kernel_size,
@@ -152,7 +152,7 @@ XlaOp MaxPool(XlaOp operand, absl::Span<const int64_t> kernel_size,
               const TensorFormat& data_format) {
   XlaBuilder* b = operand.builder();
   return b->ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
-    TF_ASSIGN_OR_RETURN(Shape operand_shape, b->GetShape(operand));
+    TF_XLA_ASSIGN_OR_RETURN(Shape operand_shape, b->GetShape(operand));
     PrimitiveType dtype = operand_shape.element_type();
     auto max_computation = CreateScalarMaxComputation(dtype, b);
     auto init_value = MinValue(b, dtype);
@@ -168,7 +168,7 @@ XlaOp AvgPool(XlaOp operand, absl::Span<const int64_t> kernel_size,
               const bool counts_include_padding) {
   XlaBuilder* b = operand.builder();
   return b->ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
-    TF_ASSIGN_OR_RETURN(Shape operand_shape, b->GetShape(operand));
+    TF_XLA_ASSIGN_OR_RETURN(Shape operand_shape, b->GetShape(operand));
     PrimitiveType dtype = operand_shape.element_type();
     auto init_value = Zero(b, dtype);
     std::vector<int64_t> input_size(operand_shape.dimensions().begin(),
@@ -221,7 +221,7 @@ XlaOp AvgPoolGrad(XlaOp out_backprop, absl::Span<const int64_t> gradients_size,
                                           "-dimensional");
     }
 
-    TF_ASSIGN_OR_RETURN(Shape out_backprop_xla_shape,
+    TF_XLA_ASSIGN_OR_RETURN(Shape out_backprop_xla_shape,
                         b->GetShape(out_backprop));
     const int backprop_xla_num_dims =
         out_backprop_xla_shape.dimensions().size();
@@ -269,7 +269,7 @@ XlaOp AvgPoolGrad(XlaOp out_backprop, absl::Span<const int64_t> gradients_size,
     }
     for (int i = 0; i < num_spatial_dims; ++i) {
       int dim = data_format.spatial_dimension(i);
-      TF_ASSIGN_OR_RETURN(
+      TF_XLA_ASSIGN_OR_RETURN(
           SpatialDimensionOutputSizeAndPadding conv_backprop_spatial_dim,
           ConvGradExtractAndVerifyDimension(
               /*input_size=*/padded_gradients_size[dim],

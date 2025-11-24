@@ -1704,7 +1704,7 @@ XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "xla.cpu.ffi_execution_context",
                          });
 
 static absl::StatusOr<LocalClient*> CreateClient() {
-  TF_ASSIGN_OR_RETURN(se::Platform * platform,
+  TF_XLA_ASSIGN_OR_RETURN(se::Platform * platform,
                       PlatformUtil::GetPlatform(PLATFORM));
   LocalClientOptions client_options(platform, 1, 1, std::nullopt);
   return xla::ClientLibrary::GetOrCreateLocalClient(client_options);

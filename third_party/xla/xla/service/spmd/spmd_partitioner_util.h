@@ -911,7 +911,7 @@ absl::StatusOr<std::pair<int64_t, int64_t>> EvaluatePartitionCost(
       0, ShapeUtil::MakeShape(F32, {}), "input"));
   HloComputation* temp_entry = fake_module.AddEntryComputation(temp_b.Build());
 
-  TF_ASSIGN_OR_RETURN(SpmdPartitioningVisitor * visitor,
+  TF_XLA_ASSIGN_OR_RETURN(SpmdPartitioningVisitor * visitor,
                       detail::FindSpmdPartitioningVisitor(
                           std::forward<Args>(partition_method_args)...));
   SpmdPartitioner* partitioner = visitor->partitioner();
@@ -920,7 +920,7 @@ absl::StatusOr<std::pair<int64_t, int64_t>> EvaluatePartitionCost(
   auto* fake_b = fake_visitor->builder();
   fake_b->set_visiting_hlo(temp_p);
   auto parameter_count = std::make_unique<int>(0);
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       HloInstruction * new_hlo,
       partition_method(detail::ArgModifier(
           std::forward<Args>(partition_method_args), &fake_module,
@@ -943,7 +943,7 @@ absl::StatusOr<std::pair<int64_t, int64_t>> EvaluatePartitionCost(
   fake_module.ReplaceComputations(replacement);
 
   HloDCE hlo_dce;
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       auto _, hlo_dce.Run(&fake_module, partitioner->execution_threads()));
   (void)_;  // Suppress unused variable warning in OSS
   VLOG(5) << "Dry-run partitioning for op: " << original_hlo->ToString() << "\n"

@@ -47,7 +47,7 @@ absl::Status KernelSupportLibrary::ForWithStatus(
     llvm::Value* step,
     const std::function<absl::Status(llvm::Value*, bool)>& for_body_generator) {
   return IfWithStatus(b_->CreateICmpSLT(start, end), [&]() -> absl::Status {
-    TF_RETURN_IF_ERROR(for_body_generator(start, /*is_first_iteration=*/true));
+    TF_XLA_RETURN_IF_ERROR(for_body_generator(start, /*is_first_iteration=*/true));
     return ForWithStatus(
         name, b_->CreateAdd(start, step), end, step,
         [&](llvm::Value* iv) { return for_body_generator(iv, false); });
@@ -63,7 +63,7 @@ absl::Status KernelSupportLibrary::ForWithStatus(
       /*unroll_mode=*/unroll_mode_,
       /*prevent_vectorization=*/prevent_vectorization_);
   b_->SetInsertPoint(&loop->GetBodyBasicBlock()->back());
-  TF_RETURN_IF_ERROR(for_body_generator(loop->GetIndVarValue()));
+  TF_XLA_RETURN_IF_ERROR(for_body_generator(loop->GetIndVarValue()));
   llvm_ir::SetToLastInsertPoint(loop->GetExitBasicBlock(), b_);
   return absl::OkStatus();
 }
@@ -76,10 +76,10 @@ absl::Status KernelSupportLibrary::IfWithStatus(
       llvm_ir::EmitIfThenElse(condition, name, b_,
                               /*emit_else=*/false_block_generator != nullptr);
   b_->SetInsertPoint(&if_data.true_block->back());
-  TF_RETURN_IF_ERROR(true_block_generator());
+  TF_XLA_RETURN_IF_ERROR(true_block_generator());
   if (false_block_generator != nullptr) {
     b_->SetInsertPoint(&if_data.false_block->back());
-    TF_RETURN_IF_ERROR(false_block_generator());
+    TF_XLA_RETURN_IF_ERROR(false_block_generator());
   }
   llvm_ir::SetToLastInsertPoint(if_data.after_block, b_);
   return absl::OkStatus();

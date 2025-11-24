@@ -130,8 +130,8 @@ GpuCommandBuffer::ToGraphNodeDependencies(
 
 absl::StatusOr<const CommandBuffer::Command*> GpuCommandBuffer::CreateEmptyCmd(
     absl::Span<const Command* const> dependencies, StreamPriority priority) {
-  TF_RETURN_IF_ERROR(CheckInState(State::kCreate));
-  TF_ASSIGN_OR_RETURN(GraphNodeHandle handle,
+  TF_XLA_RETURN_IF_ERROR(CheckInState(State::kCreate));
+  TF_XLA_ASSIGN_OR_RETURN(GraphNodeHandle handle,
                       CreateEmptyNode(ToGraphNodeDependencies(dependencies)));
   return AppendCommand(GpuCommand{handle});
 }
@@ -141,13 +141,13 @@ GpuCommandBuffer::CreateLaunchWithPackedArgs(
     const ThreadDim& threads, const BlockDim& blocks, const Kernel& kernel,
     const KernelArgsPackedArrayBase& packed_args,
     absl::Span<const Command* const> dependencies, StreamPriority priority) {
-  TF_RETURN_IF_ERROR(CheckInState(State::kCreate));
+  TF_XLA_RETURN_IF_ERROR(CheckInState(State::kCreate));
 
   CHECK_EQ(kernel.Arity() + (packed_args.number_of_shared_bytes() > 0),
            packed_args.number_of_arguments());
 
   // Adds a new kernel node to the graph under construction.
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       GraphNodeHandle handle,
       CreateKernelNode(ToGraphNodeDependencies(dependencies), priority, threads,
                        blocks, kernel, packed_args));
@@ -158,7 +158,7 @@ GpuCommandBuffer::CreateLaunchWithPackedArgs(
 absl::Status GpuCommandBuffer::UpdateLaunchWithPackedArgs(
     const Command* command, const ThreadDim& threads, const BlockDim& blocks,
     const Kernel& kernel, const KernelArgsPackedArrayBase& packed_args) {
-  TF_RETURN_IF_ERROR(CheckInState(State::kUpdate));
+  TF_XLA_RETURN_IF_ERROR(CheckInState(State::kUpdate));
   auto* gpu_command = tsl::down_cast<const GpuCommand*>(command);
   return UpdateKernelNode(gpu_command->handle, threads, blocks, kernel,
                           packed_args);
@@ -168,7 +168,7 @@ absl::StatusOr<const CommandBuffer::Command*> GpuCommandBuffer::CreateLaunch(
     const ThreadDim& threads, const BlockDim& blocks, const Kernel& kernel,
     const KernelArgs& args, absl::Span<const Command* const> dependencies,
     StreamPriority priority) {
-  TF_RETURN_IF_ERROR(CheckInState(State::kCreate));
+  TF_XLA_RETURN_IF_ERROR(CheckInState(State::kCreate));
 
   // If arguments are already packed we can just launch the kernel.
   if (auto* packed = DynCast<KernelArgsPackedArrayBase>(&args)) {
@@ -185,7 +185,7 @@ absl::StatusOr<const CommandBuffer::Command*> GpuCommandBuffer::CreateLaunch(
           "memory arguments array");
     }
 
-    TF_ASSIGN_OR_RETURN(auto packed, pack(kernel, *device_mem));
+    TF_XLA_ASSIGN_OR_RETURN(auto packed, pack(kernel, *device_mem));
     return CreateLaunchWithPackedArgs(threads, blocks, kernel, *packed,
                                       dependencies, priority);
   }
@@ -198,7 +198,7 @@ absl::Status GpuCommandBuffer::UpdateLaunch(const Command* command,
                                             const BlockDim& blocks,
                                             const Kernel& kernel,
                                             const KernelArgs& args) {
-  TF_RETURN_IF_ERROR(CheckInState(State::kUpdate));
+  TF_XLA_RETURN_IF_ERROR(CheckInState(State::kUpdate));
 
   // If arguments are already packed we can just launch the kernel.
   if (auto* packed = DynCast<KernelArgsPackedArrayBase>(&args)) {
@@ -215,7 +215,7 @@ absl::Status GpuCommandBuffer::UpdateLaunch(const Command* command,
           "memory arguments array");
     }
 
-    TF_ASSIGN_OR_RETURN(auto packed, pack(kernel, *device_mem));
+    TF_XLA_ASSIGN_OR_RETURN(auto packed, pack(kernel, *device_mem));
     return UpdateLaunchWithPackedArgs(command, threads, blocks, kernel,
                                       *packed);
   }
@@ -227,8 +227,8 @@ absl::StatusOr<const CommandBuffer::Command*>
 GpuCommandBuffer::CreateChildCommand(
     ChildCommandType type, CommandBuffer& nested,
     absl::Span<const Command* const> dependencies) {
-  TF_RETURN_IF_ERROR(CheckInState(State::kCreate));
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_RETURN_IF_ERROR(CheckInState(State::kCreate));
+  TF_XLA_ASSIGN_OR_RETURN(
       GraphNodeHandle handle,
       CreateChildNode(type, ToGraphNodeDependencies(dependencies), nested));
   return AppendCommand(GpuCommand{handle});
@@ -237,7 +237,7 @@ GpuCommandBuffer::CreateChildCommand(
 absl::Status GpuCommandBuffer::UpdateChildCommand(ChildCommandType type,
                                                   const Command* command,
                                                   const CommandBuffer& nested) {
-  TF_RETURN_IF_ERROR(CheckInState(State::kUpdate));
+  TF_XLA_RETURN_IF_ERROR(CheckInState(State::kUpdate));
   auto* gpu_command = tsl::down_cast<const GpuCommand*>(command);
   VLOG(5) << "UpdateChildCommand: " << reinterpret_cast<const void*>(command);
   return UpdateChildNode(type, gpu_command->handle, nested);
@@ -248,11 +248,11 @@ GpuCommandBuffer::CreateChildCommand(
     ChildCommandType type, StreamExecutor* executor,
     absl::AnyInvocable<absl::Status(stream_executor::CommandBuffer*)> record_fn,
     absl::Span<const Command* const> dependencies) {
-  TF_RETURN_IF_ERROR(CheckInState(State::kCreate));
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<CommandBuffer> nested,
+  TF_XLA_RETURN_IF_ERROR(CheckInState(State::kCreate));
+  TF_XLA_ASSIGN_OR_RETURN(std::unique_ptr<CommandBuffer> nested,
                       executor->CreateCommandBuffer(Mode::kNested));
-  TF_RETURN_IF_ERROR(record_fn(nested.get()));
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_RETURN_IF_ERROR(record_fn(nested.get()));
+  TF_XLA_ASSIGN_OR_RETURN(
       GraphNodeHandle handle,
       CreateChildNode(type, ToGraphNodeDependencies(dependencies), *nested));
   return AppendCommand(GpuChildCommand{handle, std::move(nested)});
@@ -262,7 +262,7 @@ absl::Status GpuCommandBuffer::UpdateChildCommand(
     ChildCommandType type, const Command* command,
     absl::AnyInvocable<absl::Status(stream_executor::CommandBuffer*)>
         record_fn) {
-  TF_RETURN_IF_ERROR(CheckInState(State::kUpdate));
+  TF_XLA_RETURN_IF_ERROR(CheckInState(State::kUpdate));
   auto* gpu_command = dynamic_cast<const GpuChildCommand*>(command);
   CHECK(gpu_command) << "Command must be a GpuChildCommand";
   return record_fn(gpu_command->command_buffer.get());
@@ -271,9 +271,9 @@ absl::Status GpuCommandBuffer::UpdateChildCommand(
 absl::StatusOr<const CommandBuffer::Command*> GpuCommandBuffer::CreateMemcpyD2D(
     DeviceMemoryBase* dst, const DeviceMemoryBase& src, uint64_t size,
     absl::Span<const Command* const> dependencies) {
-  TF_RETURN_IF_ERROR(CheckInState(State::kCreate));
+  TF_XLA_RETURN_IF_ERROR(CheckInState(State::kCreate));
 
-  TF_ASSIGN_OR_RETURN(GraphNodeHandle handle,
+  TF_XLA_ASSIGN_OR_RETURN(GraphNodeHandle handle,
                       CreateMemcpyD2DNode(ToGraphNodeDependencies(dependencies),
                                           *dst, src, size));
 
@@ -284,7 +284,7 @@ absl::Status GpuCommandBuffer::UpdateMemcpyD2D(const Command* command,
                                                DeviceMemoryBase* dst,
                                                const DeviceMemoryBase& src,
                                                uint64_t size) {
-  TF_RETURN_IF_ERROR(CheckInState(State::kUpdate));
+  TF_XLA_RETURN_IF_ERROR(CheckInState(State::kUpdate));
   auto* gpu_command = tsl::down_cast<const GpuCommand*>(command);
   return UpdateMemcpyD2DNode(gpu_command->handle, *dst, src, size);
 }
@@ -292,9 +292,9 @@ absl::Status GpuCommandBuffer::UpdateMemcpyD2D(const Command* command,
 absl::StatusOr<const CommandBuffer::Command*> GpuCommandBuffer::CreateMemset(
     DeviceMemoryBase* dst, BitPattern bit_pattern, size_t num_elements,
     absl::Span<const Command* const> dependencies) {
-  TF_RETURN_IF_ERROR(CheckInState(State::kCreate));
+  TF_XLA_RETURN_IF_ERROR(CheckInState(State::kCreate));
 
-  TF_ASSIGN_OR_RETURN(GraphNodeHandle handle,
+  TF_XLA_ASSIGN_OR_RETURN(GraphNodeHandle handle,
                       CreateMemsetNode(ToGraphNodeDependencies(dependencies),
                                        *dst, bit_pattern, num_elements));
 
@@ -305,7 +305,7 @@ absl::Status GpuCommandBuffer::UpdateMemset(const Command* command,
                                             DeviceMemoryBase* dst,
                                             const BitPattern& bit_pattern,
                                             size_t num_elements) {
-  TF_RETURN_IF_ERROR(CheckInState(State::kUpdate));
+  TF_XLA_RETURN_IF_ERROR(CheckInState(State::kUpdate));
   auto* gpu_command = tsl::down_cast<const GpuCommand*>(command);
   return UpdateMemsetNode(gpu_command->handle, *dst, bit_pattern, num_elements);
 }
@@ -319,16 +319,16 @@ GpuCommandBuffer::CreateDnnGraphCommand(
     dnn::DnnGraph& dnn_graph, Stream& stream,
     absl::Span<DeviceMemoryBase> operands,
     absl::Span<const Command* const> dependencies) {
-  TF_RETURN_IF_ERROR(CheckInState(State::kCreate));
+  TF_XLA_RETURN_IF_ERROR(CheckInState(State::kCreate));
 
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<CommandBuffer> nested,
+  TF_XLA_ASSIGN_OR_RETURN(std::unique_ptr<CommandBuffer> nested,
                       stream.parent()->CreateCommandBuffer(Mode::kNested));
   GpuCommandBuffer& nested_gpu =
       tensorflow::down_cast<GpuCommandBuffer&>(*nested);
-  TF_RETURN_IF_ERROR(
+  TF_XLA_RETURN_IF_ERROR(
       nested_gpu.PopulateDnnGraphNode(dnn_graph, stream, operands));
 
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       GraphNodeHandle handle,
       CreateChildNode(ChildCommandType::kCloned,
                       ToGraphNodeDependencies(dependencies), *nested));
@@ -339,7 +339,7 @@ GpuCommandBuffer::CreateDnnGraphCommand(
 absl::Status GpuCommandBuffer::UpdateDnnGraphCommand(
     const Command* command, dnn::DnnGraph& dnn_graph, Stream& stream,
     absl::Span<DeviceMemoryBase> operands) {
-  TF_RETURN_IF_ERROR(CheckInState(State::kUpdate));
+  TF_XLA_RETURN_IF_ERROR(CheckInState(State::kUpdate));
   return UpdateDnnGraphNode(dnn_graph, stream, operands,
                             tsl::down_cast<const GpuCommand*>(command)->handle);
 }
@@ -353,7 +353,7 @@ GpuCommandBuffer::CreateConditionalHandles(size_t num_handles) {
   std::vector<GraphConditionalHandle> handles;
   handles.reserve(num_handles);
   for (size_t i = 0; i < num_handles; ++i) {
-    TF_ASSIGN_OR_RETURN(handles.emplace_back(), CreateConditionalHandle());
+    TF_XLA_ASSIGN_OR_RETURN(handles.emplace_back(), CreateConditionalHandle());
   }
   return handles;
 }
@@ -362,7 +362,7 @@ absl::StatusOr<const CommandBuffer::Command*> GpuCommandBuffer::CreateCase(
     DeviceMemory<uint8_t> index, bool index_is_bool,
     std::vector<CreateCommands> create_branches,
     absl::Span<const Command* const> dependencies) {
-  TF_RETURN_IF_ERROR(CheckInState(State::kCreate));
+  TF_XLA_RETURN_IF_ERROR(CheckInState(State::kCreate));
 
   constexpr size_t kBranchBatchSize = 8;
 
@@ -389,10 +389,10 @@ absl::StatusOr<const CommandBuffer::Command*> GpuCommandBuffer::CreateCase(
       enable_conditional_default = false;
     }
 
-    TF_ASSIGN_OR_RETURN(auto conditionals,
+    TF_XLA_ASSIGN_OR_RETURN(auto conditionals,
                         CreateConditionalHandles(batch_size));
 
-    TF_ASSIGN_OR_RETURN(auto set_condition_node,
+    TF_XLA_ASSIGN_OR_RETURN(auto set_condition_node,
                         CreateSetCaseConditionNode(
                             conditionals, index, index_is_bool, batch_offset,
                             enable_conditional_default, node_dependencies));
@@ -400,17 +400,17 @@ absl::StatusOr<const CommandBuffer::Command*> GpuCommandBuffer::CreateCase(
     std::vector<GraphConditionalNodeHandle> conditional_nodes;
     for (int z = 0; z < batch_size; ++z) {
       int branch_offset = z + batch_offset;
-      TF_ASSIGN_OR_RETURN(
+      TF_XLA_ASSIGN_OR_RETURN(
           conditional_nodes.emplace_back(),
           CreateConditionalNode({set_condition_node}, conditionals[z],
                                 ConditionType::kIf));
 
       GpuCommandBuffer* case_command_buffer =
           conditional_nodes.back().command_buffer.get();
-      TF_RETURN_IF_ERROR(create_branches[branch_offset](case_command_buffer,
+      TF_XLA_RETURN_IF_ERROR(create_branches[branch_offset](case_command_buffer,
                                                         /*dependencies=*/{})
                              .status());
-      TF_RETURN_IF_ERROR(case_command_buffer->Finalize());
+      TF_XLA_RETURN_IF_ERROR(case_command_buffer->Finalize());
     }
 
     // Move the state into the recorded command.
@@ -431,7 +431,7 @@ absl::StatusOr<const CommandBuffer::Command*> GpuCommandBuffer::CreateCase(
 absl::Status GpuCommandBuffer::UpdateCase(
     const Command* command, DeviceMemory<uint8_t> index, bool index_is_bool,
     std::vector<UpdateCommands> update_branches) {
-  TF_RETURN_IF_ERROR(CheckInState(State::kUpdate));
+  TF_XLA_RETURN_IF_ERROR(CheckInState(State::kUpdate));
 
   constexpr size_t kBranchBatchSize = 8;
 
@@ -452,7 +452,7 @@ absl::Status GpuCommandBuffer::UpdateCase(
       enable_conditional_default = false;
     }
 
-    TF_RETURN_IF_ERROR(UpdateSetCaseConditionNode(
+    TF_XLA_RETURN_IF_ERROR(UpdateSetCaseConditionNode(
         gpu_command->set_condition_nodes[batch_index],
         absl::MakeSpan(gpu_command->conditionals)
             .subspan(batch_offset, batch_size),
@@ -466,9 +466,9 @@ absl::Status GpuCommandBuffer::UpdateCase(
   for (size_t i = 0; i < gpu_command->conditional_nodes.size(); ++i) {
     GpuCommandBuffer* case_command_buffer =
         gpu_command->conditional_nodes[i].command_buffer.get();
-    TF_RETURN_IF_ERROR(case_command_buffer->Update());
-    TF_RETURN_IF_ERROR(update_branches[i](case_command_buffer));
-    TF_RETURN_IF_ERROR(case_command_buffer->Finalize());
+    TF_XLA_RETURN_IF_ERROR(case_command_buffer->Update());
+    TF_XLA_RETURN_IF_ERROR(update_branches[i](case_command_buffer));
+    TF_XLA_RETURN_IF_ERROR(case_command_buffer->Finalize());
   }
 
   return absl::OkStatus();
@@ -511,31 +511,31 @@ absl::Status GpuCommandBuffer::UpdateCase(
 absl::StatusOr<const CommandBuffer::Command*> GpuCommandBuffer::CreateWhile(
     DeviceMemory<bool> pred, CreateCommands create_cond,
     CreateCommands create_body, absl::Span<const Command* const> dependencies) {
-  TF_RETURN_IF_ERROR(CheckInState(State::kCreate));
+  TF_XLA_RETURN_IF_ERROR(CheckInState(State::kCreate));
 
   GpuWhileCommand command = {};
 
-  TF_ASSIGN_OR_RETURN(auto init_cond, create_cond(this, dependencies));
+  TF_XLA_ASSIGN_OR_RETURN(auto init_cond, create_cond(this, dependencies));
 
-  TF_ASSIGN_OR_RETURN(command.conditional, CreateConditionalHandle());
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(command.conditional, CreateConditionalHandle());
+  TF_XLA_ASSIGN_OR_RETURN(
       command.set_init_condition_node,
       CreateSetWhileConditionNode(command.conditional, pred,
                                   ToGraphNodeDependencies(init_cond)));
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       command.conditional_node,
       CreateConditionalNode({command.set_init_condition_node},
                             command.conditional, ConditionType::kWhile));
 
   GpuCommandBuffer* body = command.conditional_node.command_buffer.get();
-  TF_ASSIGN_OR_RETURN(auto body_commands,
+  TF_XLA_ASSIGN_OR_RETURN(auto body_commands,
                       create_body(body, /*dependencies=*/{}));
-  TF_ASSIGN_OR_RETURN(auto update_cond, create_cond(body, body_commands));
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(auto update_cond, create_cond(body, body_commands));
+  TF_XLA_ASSIGN_OR_RETURN(
       command.set_body_condition_node,
       body->CreateSetWhileConditionNode(command.conditional, pred,
                                         ToGraphNodeDependencies(update_cond)));
-  TF_RETURN_IF_ERROR(command.conditional_node.command_buffer->Finalize());
+  TF_XLA_RETURN_IF_ERROR(command.conditional_node.command_buffer->Finalize());
 
   return AppendCommand(std::move(command));
 }
@@ -544,31 +544,31 @@ absl::Status GpuCommandBuffer::UpdateWhile(const Command* command,
                                            DeviceMemory<bool> pred,
                                            UpdateCommands update_cond,
                                            UpdateCommands update_body) {
-  TF_RETURN_IF_ERROR(CheckInState(State::kUpdate));
+  TF_XLA_RETURN_IF_ERROR(CheckInState(State::kUpdate));
 
   auto* gpu_command = tsl::down_cast<const GpuWhileCommand*>(command);
 
-  TF_RETURN_IF_ERROR(update_cond(this));
+  TF_XLA_RETURN_IF_ERROR(update_cond(this));
 
-  TF_RETURN_IF_ERROR(UpdateSetWhileConditionNode(
+  TF_XLA_RETURN_IF_ERROR(UpdateSetWhileConditionNode(
       gpu_command->set_init_condition_node, gpu_command->conditional, pred));
 
   GpuCommandBuffer* body = gpu_command->conditional_node.command_buffer.get();
 
   // Update command buffer using user-provided builder callback.
-  TF_RETURN_IF_ERROR(body->Update());
-  TF_RETURN_IF_ERROR(update_body(body));
-  TF_RETURN_IF_ERROR(update_cond(body));
-  TF_RETURN_IF_ERROR(body->UpdateSetWhileConditionNode(
+  TF_XLA_RETURN_IF_ERROR(body->Update());
+  TF_XLA_RETURN_IF_ERROR(update_body(body));
+  TF_XLA_RETURN_IF_ERROR(update_cond(body));
+  TF_XLA_RETURN_IF_ERROR(body->UpdateSetWhileConditionNode(
       gpu_command->set_body_condition_node, gpu_command->conditional, pred));
-  TF_RETURN_IF_ERROR(body->Finalize());
+  TF_XLA_RETURN_IF_ERROR(body->Finalize());
 
   return absl::OkStatus();
 }
 
 absl::Status GpuCommandBuffer::Finalize() {
-  TF_RETURN_IF_ERROR(CheckNotFinalized());
-  TF_RETURN_IF_ERROR(PrepareFinalization());
+  TF_XLA_RETURN_IF_ERROR(CheckNotFinalized());
+  TF_XLA_RETURN_IF_ERROR(PrepareFinalization());
 
   // Maybe dump created GPU graph to a dot file for debugging.
   if (state_ == State::kCreate &&
@@ -598,7 +598,7 @@ absl::Status GpuCommandBuffer::Finalize() {
           "error: %s",
           num_commands, AliveExecs(), instantiated.message()));
     }
-    TF_RETURN_IF_ERROR(instantiated);
+    TF_XLA_RETURN_IF_ERROR(instantiated);
 
     uint64_t end_nanos = tsl::Env::Default()->NowNanos();
 
@@ -626,7 +626,7 @@ absl::Status GpuCommandBuffer::Finalize() {
 }
 
 absl::Status GpuCommandBuffer::Update() {
-  TF_RETURN_IF_ERROR(CheckCanBeUpdated());
+  TF_XLA_RETURN_IF_ERROR(CheckCanBeUpdated());
 
   if (state_ != State::kFinalized) {
     return absl::InternalError(

@@ -53,7 +53,7 @@ struct DummyThunk : public Thunk {
   }
   static absl::StatusOr<std::unique_ptr<DummyThunk>> FromProto(
       const ThunkProto& thunk_proto, Thunk::Kind kind) {
-    TF_ASSIGN_OR_RETURN(Thunk::ThunkInfo thunk_info,
+    TF_XLA_ASSIGN_OR_RETURN(Thunk::ThunkInfo thunk_info,
                         Thunk::ThunkInfo::FromProto(thunk_proto.thunk_info()));
     return std::make_unique<DummyThunk>(kind, std::move(thunk_info));
   }

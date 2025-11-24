@@ -52,7 +52,7 @@ absl::Status LaunchTypedKernel(
     se::DeviceMemoryBase send_sizes_buffer,
     se::DeviceMemoryBase output_offsets_buffer, int64_t num_updates_per_output,
     int64_t num_row_elements) {
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       auto kernel,
       se::gpu::GpuKernelRegistry::GetGlobalRegistry()
           .LoadKernel<se::gpu::RaggedAllToAllKernel<kVectorSize>>(executor));

@@ -108,7 +108,7 @@ Future<> CpuTrackedDeviceEvent::GetReadyFuture() {
 /*static*/ absl::StatusOr<tsl::RCReference<CpuRawBuffer>>
 CpuRawBuffer::Allocate(PjRtMemorySpace* memory_space, size_t size_bytes,
                        const CpuDeviceMemory::Allocator& allocator) {
-  TF_ASSIGN_OR_RETURN(auto memory,
+  TF_XLA_ASSIGN_OR_RETURN(auto memory,
                       CpuDeviceMemory::Allocate(size_bytes, allocator));
   return tsl::MakeRef<CpuRawBuffer>(memory_space, std::move(memory));
 }
@@ -149,7 +149,7 @@ absl::Status CpuRawBuffer::ValidateSlice(int64_t offset, int64_t slice_size) {
 absl::StatusOr<tsl::RCReference<PjRtDeviceEvent>>
 CpuRawBuffer::CopyRawHostToDeviceAndReturnEvent(const void* src, int64_t offset,
                                                 int64_t transfer_size) {
-  TF_RETURN_IF_ERROR(ValidateSlice(offset, transfer_size));
+  TF_XLA_RETURN_IF_ERROR(ValidateSlice(offset, transfer_size));
   std::memcpy(static_cast<uint8_t*>(GetHostPointer()) + offset, src,
               transfer_size);
   return tsl::MakeRef<CpuTrackedDeviceEvent>(
@@ -159,7 +159,7 @@ CpuRawBuffer::CopyRawHostToDeviceAndReturnEvent(const void* src, int64_t offset,
 absl::StatusOr<tsl::RCReference<PjRtDeviceEvent>>
 CpuRawBuffer::CopyRawDeviceToHostAndReturnEvent(void* dst, int64_t offset,
                                                 int64_t transfer_size) {
-  TF_RETURN_IF_ERROR(ValidateSlice(offset, transfer_size));
+  TF_XLA_RETURN_IF_ERROR(ValidateSlice(offset, transfer_size));
   std::memcpy(dst, static_cast<uint8_t*>(GetHostPointer()) + offset,
               transfer_size);
   return tsl::MakeRef<CpuTrackedDeviceEvent>(
@@ -239,7 +239,7 @@ CpuRawBuffer::CopyFromHostBuffer(
             std::min(thread_pool->NumThreads(), max_transpose_threads);
       }
       absl::MutexLock lock(*transpose_mu);
-      TF_ASSIGN_OR_RETURN(transpose, transpose_cache->GetOrCreate(options));
+      TF_XLA_ASSIGN_OR_RETURN(transpose, transpose_cache->GetOrCreate(options));
     }
     std::optional<std::function<void(std::function<void(void)>)>> schedule_work;
     if (thread_pool && max_transpose_threads > 1) {

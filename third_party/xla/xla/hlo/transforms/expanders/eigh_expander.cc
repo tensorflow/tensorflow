@@ -104,7 +104,7 @@ struct Eigh2x2 {
 //   return rt1, rt2, c, s
 absl::StatusOr<Eigh2x2> HermitianEigenDecomposition2x2(XlaOp w_tl, XlaOp w_tr,
                                                        XlaOp w_br) {
-  TF_ASSIGN_OR_RETURN(Shape w_tl_shape, w_tl.builder()->GetShape(w_tl));
+  TF_XLA_ASSIGN_OR_RETURN(Shape w_tl_shape, w_tl.builder()->GetShape(w_tl));
   bool is_complex = primitive_util::IsComplexType(w_tl_shape.element_type());
 
   w_tl = GetMatrixDiagonal(Real(w_tl));
@@ -247,7 +247,7 @@ void PermuteColumnsInRow(XlaOp& left, XlaOp& right) {
 absl::Status ApplyRotations(int64_t n, XlaOp& w_tl, XlaOp& w_tr, XlaOp& w_bl,
                             XlaOp& w_br, XlaOp& v_tl, XlaOp& v_tr, XlaOp& v_bl,
                             XlaOp& v_br) {
-  TF_ASSIGN_OR_RETURN(Eigh2x2 rotation,
+  TF_XLA_ASSIGN_OR_RETURN(Eigh2x2 rotation,
                       HermitianEigenDecomposition2x2(w_tl, w_tr, w_br));
 
   ApplyJacobiRotationOverRows(rotation, w_tl, w_tr, w_bl, w_br);
@@ -279,7 +279,7 @@ struct FrobeniusNorms {
 absl::StatusOr<FrobeniusNorms> ComputeFrobeniusNorms(XlaOp w_tl, XlaOp w_tr,
                                                      XlaOp w_bl, XlaOp w_br) {
   XlaBuilder* builder = w_tl.builder();
-  TF_ASSIGN_OR_RETURN(Shape shape, builder->GetShape(w_tl));
+  TF_XLA_ASSIGN_OR_RETURN(Shape shape, builder->GetShape(w_tl));
   const int64_t num_dims = shape.dimensions().size();
   auto square_norm = [](XlaOp x) -> XlaOp {
     return Real(x * MaybeConjugate(x, true));
@@ -317,7 +317,7 @@ absl::StatusOr<std::vector<XlaOp>> Sweeps(
     XlaOp w_tl, w_tr, w_bl, w_br;
     std::tie(w_tl, w_tr, w_bl, w_br) =
         std::make_tuple(values[2], values[3], values[4], values[5]);
-    TF_ASSIGN_OR_RETURN(auto norms,
+    TF_XLA_ASSIGN_OR_RETURN(auto norms,
                         ComputeFrobeniusNorms(w_tl, w_tr, w_bl, w_br));
     auto tol = norms.frobenius_sq_norm * Square(values[1]);
     auto tol_cond = ReduceAll(Lt(tol, norms.off_diagonal_sq_norm),
@@ -331,7 +331,7 @@ absl::StatusOr<std::vector<XlaOp>> Sweeps(
       [&](absl::Span<const XlaOp> values,
           XlaBuilder* body_builder) -> absl::StatusOr<std::vector<XlaOp>> {
     std::vector<XlaOp> sweep_values(values.begin() + 1, values.end());
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         sweep_values,
         ForEachIndex(
             n - 1, S32,
@@ -342,7 +342,7 @@ absl::StatusOr<std::vector<XlaOp>> Sweeps(
                   std::make_tuple(values[0], values[1], values[2], values[3],
                                   values[4], values[5], values[6], values[7],
                                   values[8]);
-              TF_RETURN_IF_ERROR(ApplyRotations(n, w_tl, w_tr, w_bl, w_br, v_tl,
+              TF_XLA_RETURN_IF_ERROR(ApplyRotations(n, w_tl, w_tr, w_bl, w_br, v_tl,
                                                 v_tr, v_bl, v_br));
               return std::vector<XlaOp>{tol,  w_tl, w_tr, w_bl, w_br,
                                         v_tl, v_tr, v_bl, v_br};
@@ -361,8 +361,8 @@ absl::StatusOr<std::vector<XlaOp>> Sweeps(
 
 absl::Status EighExpander::SortByEigenvalues(XlaOp& v, XlaOp& w) {
   XlaBuilder* builder = v.builder();
-  TF_ASSIGN_OR_RETURN(Shape v_shape, builder->GetShape(v));
-  TF_ASSIGN_OR_RETURN(Shape w_shape, builder->GetShape(w));
+  TF_XLA_ASSIGN_OR_RETURN(Shape v_shape, builder->GetShape(v));
+  TF_XLA_ASSIGN_OR_RETURN(Shape w_shape, builder->GetShape(w));
   const int64_t num_dims = v_shape.dimensions().size();
   auto dimensions = v_shape.dimensions();
 
@@ -438,7 +438,7 @@ XlaOp EighExpander::BuildEigh(XlaOp a, bool lower, int64_t max_iter, float tol,
                               bool sort_eigenvalues) {
   XlaBuilder* builder = a.builder();
   return builder->ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
-    TF_ASSIGN_OR_RETURN(Shape a_shape, builder->GetShape(a));
+    TF_XLA_ASSIGN_OR_RETURN(Shape a_shape, builder->GetShape(a));
     const int64_t num_dims = a_shape.dimensions().size();
     if (num_dims < 2) {
       return InvalidArgument(
@@ -503,7 +503,7 @@ XlaOp EighExpander::BuildEigh(XlaOp a, bool lower, int64_t max_iter, float tol,
     auto v_tr = ZerosLike(v_tl);
     auto v_bl = v_tr;
 
-    TF_ASSIGN_OR_RETURN(auto output, Sweeps(
+    TF_XLA_ASSIGN_OR_RETURN(auto output, Sweeps(
                                          {
                                              Zero(builder, S32),
                                              ScalarLike(Real(a), tol),
@@ -537,7 +537,7 @@ XlaOp EighExpander::BuildEigh(XlaOp a, bool lower, int64_t max_iter, float tol,
     v = MaybeConjugate(TransposeInMinorDims(v), true);
 
     if (sort_eigenvalues) {
-      TF_RETURN_IF_ERROR(SortByEigenvalues(v, w));
+      TF_XLA_RETURN_IF_ERROR(SortByEigenvalues(v, w));
     }
     return Tuple(builder, {v, w});
   });
@@ -589,8 +589,8 @@ absl::StatusOr<HloInstruction*> EighExpander::ExpandInstruction(
                       instruction->raw_backend_config_string());
     }
     XlaOp result = BuildEigh(a, lower, max_iter, tol, sort_eigenvalues);
-    TF_ASSIGN_OR_RETURN(XlaComputation xla_computation, builder.Build(result));
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(XlaComputation xla_computation, builder.Build(result));
+    TF_XLA_ASSIGN_OR_RETURN(
         computation, XlaComputationToHloComputation(xla_computation, module));
   }
 

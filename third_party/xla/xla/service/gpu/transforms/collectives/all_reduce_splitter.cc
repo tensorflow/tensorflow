@@ -389,11 +389,11 @@ static absl::StatusOr<bool> SplitAllReduce(const HloModuleConfig& config,
           channel_id, ar.use_global_device_ids()));
 
   // Rewire.
-  TF_RETURN_IF_ERROR(computation.ReplaceInstruction(&ar, first_ar));
+  TF_XLA_RETURN_IF_ERROR(computation.ReplaceInstruction(&ar, first_ar));
   if (ds.IsRoot()) {
     computation.set_root_instruction(second_ar);
   }
-  TF_RETURN_IF_ERROR(ds.ReplaceAllUsesWith(second_ar));
+  TF_XLA_RETURN_IF_ERROR(ds.ReplaceAllUsesWith(second_ar));
   return true;  // changed
 }
 
@@ -423,7 +423,7 @@ absl::StatusOr<bool> AllReduceSplitter::RunImpl(
   for (auto* computation : module->computations(execution_threads)) {
     ARReplicaGroupMap replica_map = GetReplicaGroupsMap(*computation);
     for (HloInstruction* instr : computation->MakeInstructionPostOrder()) {
-      TF_ASSIGN_OR_RETURN(bool rewritten, SplitAllReduce(*module, replica_map,
+      TF_XLA_ASSIGN_OR_RETURN(bool rewritten, SplitAllReduce(*module, replica_map,
                                                          *computation, *instr));
       changed |= rewritten;
     }

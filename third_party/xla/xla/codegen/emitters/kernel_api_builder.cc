@@ -146,7 +146,7 @@ absl::StatusOr<mlir::func::FuncOp> EmitKernelApi(
   llvm::SmallVector<mlir::Type> param_types;
   std::optional<KernelArguments> args;
   if (buffer_assignment != nullptr) {
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         args, KernelArguments::Create(*buffer_assignment, buffer_alignment,
                                       &hlo_instruction));
   }
@@ -364,7 +364,7 @@ absl::StatusOr<CallTargetProvider> EmitPartitionedComputations(
   for (const auto& comp : computations.partitioned_computations()) {
     for (const auto& subgraph : comp.subgraphs()) {
       if (subgraph_to_mlir_fn.contains(&subgraph)) {
-        TF_RETURN_IF_ERROR(SubgraphToMlirFunction(
+        TF_XLA_RETURN_IF_ERROR(SubgraphToMlirFunction(
             comp, subgraph, subgraph_to_mlir_fn[&subgraph], call_targets,
             computations.mlir_context()));
       }
@@ -376,7 +376,7 @@ absl::StatusOr<CallTargetProvider> EmitPartitionedComputations(
     if (epilogue.roots.empty()) {
       continue;
     }
-    TF_RETURN_IF_ERROR(SubgraphToMlirFunction(
+    TF_XLA_RETURN_IF_ERROR(SubgraphToMlirFunction(
         computations.FindPartitionedComputation(fused_computation), epilogue,
         subgraph_to_mlir_fn[&epilogue], call_targets,
         computations.mlir_context()));
@@ -398,7 +398,7 @@ absl::StatusOr<KernelSpec> GetKernelSpec(
 
   KernelSpec::Buffers result_buffers;
   for (auto& indexed : ShapeUtil::GetLeafShapes(hlo_instruction.shape())) {
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         BufferAllocation::Slice slice,
         buffer_assignment->GetUniqueSlice(&hlo_instruction, indexed.index));
     result_buffers.push_back(std::move(slice));
@@ -409,7 +409,7 @@ absl::StatusOr<KernelSpec> GetKernelSpec(
   int64_t operand_index = 0;
   for (HloInstruction* operand : hlo_instruction.operands()) {
     for (auto& indexed : ShapeUtil::GetLeafShapes(operand->shape())) {
-      TF_ASSIGN_OR_RETURN(
+      TF_XLA_ASSIGN_OR_RETURN(
           BufferAllocation::Slice slice,
           buffer_assignment->GetUniqueSlice(operand, indexed.index));
 

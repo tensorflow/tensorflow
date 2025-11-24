@@ -159,7 +159,7 @@ absl::Status HloControlFlowFlattening::FlattenWhileLoop(
   HloInstruction* new_tuple =
       TupleUtil::AppendSuffix(old_tuple, {initialization});
   int new_tuple_size = new_tuple->shape().tuple_shapes().size();
-  TF_RETURN_IF_ERROR(while_hlo->ReplaceOperandWithDifferentShape(0, new_tuple));
+  TF_XLA_RETURN_IF_ERROR(while_hlo->ReplaceOperandWithDifferentShape(0, new_tuple));
 
   auto change_op_shape = [&](HloInstruction* instruction) {
     Shape* shape = instruction->mutable_shape();
@@ -186,7 +186,7 @@ absl::Status HloControlFlowFlattening::FlattenWhileLoop(
         prefix = TupleUtil::ExtractPrefix(
             new_tuple, new_tuple->shape().tuple_shapes().size() - 1);
       }
-      TF_RETURN_IF_ERROR(new_tuple->ReplaceUseWithDifferentShape(user, prefix));
+      TF_XLA_RETURN_IF_ERROR(new_tuple->ReplaceUseWithDifferentShape(user, prefix));
     }
     return prefix;
   };
@@ -194,8 +194,8 @@ absl::Status HloControlFlowFlattening::FlattenWhileLoop(
   {
     // Add the new variable to the while loop condition.
     HloComputation* condition = while_hlo->while_condition();
-    TF_RETURN_IF_ERROR(change_op_shape(condition->parameter_instruction(0)));
-    TF_RETURN_IF_ERROR(
+    TF_XLA_RETURN_IF_ERROR(change_op_shape(condition->parameter_instruction(0)));
+    TF_XLA_RETURN_IF_ERROR(
         replace_non_gte_users(condition->parameter_instruction(0)).status());
     if (VLOG_IS_ON(2)) {
       VLOG(2) << "Loop condition in " << while_hlo->parent()->name();
@@ -217,15 +217,15 @@ absl::Status HloControlFlowFlattening::FlattenWhileLoop(
         condition->AddInstruction(HloInstruction::CreateCompare(
             ShapeUtil::MakeShape(PRED, {}), induction_variable, limit,
             ComparisonDirection::kLt));
-    TF_RETURN_IF_ERROR(
+    TF_XLA_RETURN_IF_ERROR(
         condition->ReplaceInstruction(condition->root_instruction(), compare));
   }
 
   {
     // Add the new variable to the while loop body.
     HloComputation* body = while_hlo->while_body();
-    TF_RETURN_IF_ERROR(change_op_shape(body->parameter_instruction(0)));
-    TF_RETURN_IF_ERROR(
+    TF_XLA_RETURN_IF_ERROR(change_op_shape(body->parameter_instruction(0)));
+    TF_XLA_RETURN_IF_ERROR(
         replace_non_gte_users(body->parameter_instruction(0)).status());
     HloInstruction* old_root = body->root_instruction();
     Shape shape = initialization->shape();
@@ -246,8 +246,8 @@ absl::Status HloControlFlowFlattening::FlattenWhileLoop(
                                            while_hlo->users().end());
 
   // Take care of the users of this while loop.
-  TF_RETURN_IF_ERROR(change_op_shape(while_hlo));
-  TF_ASSIGN_OR_RETURN(HloInstruction * prefix,
+  TF_XLA_RETURN_IF_ERROR(change_op_shape(while_hlo));
+  TF_XLA_ASSIGN_OR_RETURN(HloInstruction * prefix,
                       replace_non_gte_users(while_hlo));
 
   // If the while loop had been the root of its computation, make the prefix new
@@ -280,7 +280,7 @@ absl::Status HloControlFlowFlattening::RemoveInfeed(
   // originally the operand of infeed, and replace the infeed operation.
   auto new_tuple = HloInstruction::CreateTuple(
       {custom_call, infeed_hlo->mutable_operand(0)});
-  TF_RETURN_IF_ERROR(
+  TF_XLA_RETURN_IF_ERROR(
       computation->ReplaceWithNewInstruction(infeed_hlo, std::move(new_tuple)));
   custom_call->SetAndSanitizeName(infeed_hlo->name());
 
@@ -308,7 +308,7 @@ HloControlFlowFlattening::RemoveRecvAndRecvDone(
       module->schedule().is_computation_scheduled(computation)) {
     module->schedule().replace_instruction(computation, recv, custom_call_recv);
   }
-  TF_RETURN_IF_ERROR(computation->ReplaceInstruction(recv, custom_call_recv));
+  TF_XLA_RETURN_IF_ERROR(computation->ReplaceInstruction(recv, custom_call_recv));
   custom_call_recv->SetAndSanitizeName(original_recv_name);
 
   std::string original_recv_done_name(recv_done->name());
@@ -321,7 +321,7 @@ HloControlFlowFlattening::RemoveRecvAndRecvDone(
     module->schedule().replace_instruction(computation, recv_done,
                                            custom_call_recv_done);
   }
-  TF_RETURN_IF_ERROR(
+  TF_XLA_RETURN_IF_ERROR(
       computation->ReplaceInstruction(recv_done, custom_call_recv_done));
   custom_call_recv_done->SetAndSanitizeName(original_recv_done_name);
 
@@ -344,7 +344,7 @@ absl::Status HloControlFlowFlattening::RemoveOutfeed(
   // For SPMD graphs, partitioner requires that side-effecting custom calls have
   // a sharding that is non-replicated.
   custom_call->set_sharding(HloSharding::Manual());
-  TF_RETURN_IF_ERROR(computation->ReplaceInstruction(outfeed_hlo, custom_call));
+  TF_XLA_RETURN_IF_ERROR(computation->ReplaceInstruction(outfeed_hlo, custom_call));
   custom_call->SetAndSanitizeName(outfeed_hlo->name());
 
   return absl::OkStatus();
@@ -370,7 +370,7 @@ HloControlFlowFlattening::RemoveSendAndSendDone(
       module->schedule().is_computation_scheduled(computation)) {
     module->schedule().replace_instruction(computation, send, custom_call_send);
   }
-  TF_RETURN_IF_ERROR(computation->ReplaceInstruction(send, custom_call_send));
+  TF_XLA_RETURN_IF_ERROR(computation->ReplaceInstruction(send, custom_call_send));
   custom_call_send->SetAndSanitizeName(original_send_name);
 
   HloInstruction* custom_call_send_done =
@@ -386,7 +386,7 @@ HloControlFlowFlattening::RemoveSendAndSendDone(
     module->schedule().replace_instruction(computation, send_done,
                                            custom_call_send_done);
   }
-  TF_RETURN_IF_ERROR(
+  TF_XLA_RETURN_IF_ERROR(
       computation->ReplaceInstruction(send_done, custom_call_send_done));
   custom_call_send_done->SetAndSanitizeName(original_send_done_name);
 
@@ -408,7 +408,7 @@ absl::StatusOr<HloInstruction*> HloControlFlowFlattening::RemoveCollective(
     module->schedule().replace_instruction(computation, hlo, custom_call);
   }
   std::string original_op_name(hlo->name());
-  TF_RETURN_IF_ERROR(computation->ReplaceInstruction(hlo, custom_call));
+  TF_XLA_RETURN_IF_ERROR(computation->ReplaceInstruction(hlo, custom_call));
   custom_call->SetAndSanitizeName(original_op_name);
   return custom_call;
 }
@@ -417,7 +417,7 @@ absl::Status HloControlFlowFlattening::RemoveId(HloInstruction* hlo) const {
   HloComputation* computation = hlo->parent();
   HloInstruction* zero = CreateConstant(hlo->shape(), computation);
   std::string original_op_name(hlo->name());
-  TF_RETURN_IF_ERROR(computation->ReplaceInstruction(hlo, zero));
+  TF_XLA_RETURN_IF_ERROR(computation->ReplaceInstruction(hlo, zero));
   zero->SetAndSanitizeName(original_op_name);
   return absl::OkStatus();
 }
@@ -455,7 +455,7 @@ absl::Status HloControlFlowFlattening::SetConditionalValue(
         LiteralUtil::CreateR0<int32_t>(conditional->branch_count() - 1)));
   }
   new_branch_op->SetAndSanitizeName(original_op_name + "_flattened");
-  TF_RETURN_IF_ERROR(conditional->ReplaceOperandWith(0, new_branch_op));
+  TF_XLA_RETURN_IF_ERROR(conditional->ReplaceOperandWith(0, new_branch_op));
 
   return absl::OkStatus();
 }
@@ -467,7 +467,7 @@ absl::Status HloControlFlowFlattening::RemoveEntryComputationLayoutDynamism(
          ++idx) {
       Shape parameter_shape =
           module->config().entry_computation_layout().parameter_shape(idx);
-      TF_RETURN_IF_ERROR(module->mutable_config()
+      TF_XLA_RETURN_IF_ERROR(module->mutable_config()
                              .mutable_entry_computation_layout()
                              ->mutable_parameter_layout(idx)
                              ->CopyLayoutFromShape(
@@ -475,7 +475,7 @@ absl::Status HloControlFlowFlattening::RemoveEntryComputationLayoutDynamism(
     }
     Shape result_shape =
         module->config().entry_computation_layout().result_shape();
-    TF_RETURN_IF_ERROR(
+    TF_XLA_RETURN_IF_ERROR(
         module->mutable_config()
             .mutable_entry_computation_layout()
             ->mutable_result_layout()
@@ -509,17 +509,17 @@ absl::StatusOr<bool> HloControlFlowFlattening::RunImpl(
       }
       if (flatten_while_loop_ && instruction->opcode() == HloOpcode::kWhile) {
         VLOG(1) << "Remove " << instruction->name();
-        TF_RETURN_IF_ERROR(FlattenWhileLoop(instruction, *call_graph));
+        TF_XLA_RETURN_IF_ERROR(FlattenWhileLoop(instruction, *call_graph));
         changed = true;
       } else if (remove_infeed_outfeed_ &&
                  instruction->opcode() == HloOpcode::kInfeed) {
         VLOG(1) << "Remove " << instruction->name();
-        TF_RETURN_IF_ERROR(RemoveInfeed(instruction));
+        TF_XLA_RETURN_IF_ERROR(RemoveInfeed(instruction));
         changed = true;
       } else if (remove_infeed_outfeed_ &&
                  instruction->opcode() == HloOpcode::kOutfeed) {
         VLOG(1) << "Remove " << instruction->name();
-        TF_RETURN_IF_ERROR(RemoveOutfeed(instruction));
+        TF_XLA_RETURN_IF_ERROR(RemoveOutfeed(instruction));
         changed = true;
       } else if (instruction->opcode() == HloOpcode::kSendDone) {
         auto send_done_instruction =
@@ -528,7 +528,7 @@ absl::StatusOr<bool> HloControlFlowFlattening::RunImpl(
         if (remove_comm_ || (remove_host_transfer_ &&
                              send_done_instruction->is_host_transfer())) {
           VLOG(1) << "Remove " << instruction->name();
-          TF_RETURN_IF_ERROR(
+          TF_XLA_RETURN_IF_ERROR(
               RemoveSendAndSendDone(instruction, &removed).status());
           changed = true;
         }
@@ -539,7 +539,7 @@ absl::StatusOr<bool> HloControlFlowFlattening::RunImpl(
         if (remove_comm_ || (remove_host_transfer_ &&
                              recv_done_instruction->is_host_transfer())) {
           VLOG(1) << "Remove " << instruction->name();
-          TF_RETURN_IF_ERROR(
+          TF_XLA_RETURN_IF_ERROR(
               RemoveRecvAndRecvDone(instruction, &removed).status());
           changed = true;
         }
@@ -561,12 +561,12 @@ absl::StatusOr<bool> HloControlFlowFlattening::RunImpl(
                  instruction->opcode() == HloOpcode::kAsyncStart) {
             HloInstruction* operand = instruction->mutable_operand(0);
             VLOG(1) << "Remove " << instruction->name();
-            TF_RETURN_IF_ERROR(RemoveCollective(instruction).status());
+            TF_XLA_RETURN_IF_ERROR(RemoveCollective(instruction).status());
             instruction = operand;
           }
         } else {
           VLOG(1) << "Remove " << instruction->name();
-          TF_RETURN_IF_ERROR(RemoveCollective(instruction).status());
+          TF_XLA_RETURN_IF_ERROR(RemoveCollective(instruction).status());
         }
         changed = true;
       } else if ((remove_comm_ || remove_id_) &&
@@ -575,27 +575,27 @@ absl::StatusOr<bool> HloControlFlowFlattening::RunImpl(
                   (instruction->opcode() == HloOpcode::kCustomCall &&
                    instruction->custom_call_target() == "SliceId"))) {
         VLOG(1) << "Remove " << instruction->name();
-        TF_RETURN_IF_ERROR(RemoveId(instruction));
+        TF_XLA_RETURN_IF_ERROR(RemoveId(instruction));
         changed = true;
       } else if (flatten_conditional_ &&
                  instruction->opcode() == HloOpcode::kConditional) {
-        TF_RETURN_IF_ERROR(SetConditionalValue(instruction));
+        TF_XLA_RETURN_IF_ERROR(SetConditionalValue(instruction));
         changed = true;
       }
     }
   }
 
   if (remove_dynamic_shapes_) {
-    TF_RETURN_IF_ERROR(RemoveEntryComputationLayoutDynamism(module));
+    TF_XLA_RETURN_IF_ERROR(RemoveEntryComputationLayoutDynamism(module));
   }
 
   HloDCE hlo_dce;
-  TF_ASSIGN_OR_RETURN(bool dce_changed, hlo_dce.Run(module, execution_threads));
+  TF_XLA_ASSIGN_OR_RETURN(bool dce_changed, hlo_dce.Run(module, execution_threads));
   changed |= dce_changed;
 
   // Fix the schedule if the module was scheduled.
   if (changed && module->has_schedule()) {
-    TF_RETURN_IF_ERROR(module->schedule().Update());
+    TF_XLA_RETURN_IF_ERROR(module->schedule().Update());
   }
   XLA_VLOG_LINES(3, module->ToString());
   return changed;

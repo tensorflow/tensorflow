@@ -38,7 +38,7 @@ namespace {
 absl::Status WaitStreamOnEvent(StreamExecutor *executor, hipStream_t stream,
                                hipEvent_t event) {
   std::unique_ptr<ActivateContext> activation = executor->Activate();
-  TF_RETURN_IF_ERROR(
+  TF_XLA_RETURN_IF_ERROR(
       ToStatus(wrap::hipStreamWaitEvent(stream, event, 0 /* = flags */),
                "could not wait stream on event"));
   return absl::OkStatus();
@@ -111,7 +111,7 @@ absl::Status RocmEvent::WaitForEventOnExternalStream(std::intptr_t stream) {
 
 absl::StatusOr<RocmEvent> RocmEvent::Create(StreamExecutor *executor,
                                             bool allow_timing) {
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       hipEvent_t event_handle,
       InitEvent(executor, allow_timing ? EventFlags::kDefault
                                        : EventFlags::kDisableTiming));

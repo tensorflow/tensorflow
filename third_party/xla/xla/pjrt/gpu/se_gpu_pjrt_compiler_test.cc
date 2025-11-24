@@ -67,7 +67,7 @@ constexpr absl::string_view mlir_str = R"mlir(
 
 absl::StatusOr<xla::XlaComputation> GetXlaComputation(
     absl::string_view program) {
-  TF_ASSIGN_OR_RETURN(auto hlo_module,
+  TF_XLA_ASSIGN_OR_RETURN(auto hlo_module,
                       xla::ParseAndReturnUnverifiedModule(program, {}));
 
   return XlaComputation(hlo_module->ToProto());

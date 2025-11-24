@@ -114,7 +114,7 @@ absl::StatusOr<HouseHolderResult> HouseRow(
     XlaOp a, XlaOp i, XlaOp j, XlaOp eps,
     PrecisionConfig::Precision precision) {
   XlaBuilder* builder = a.builder();
-  TF_ASSIGN_OR_RETURN(Shape a_shape, builder->GetShape(a));
+  TF_XLA_ASSIGN_OR_RETURN(Shape a_shape, builder->GetShape(a));
   const int64_t num_dims = a_shape.dimensions().size();
   const int64_t n = ShapeUtil::GetDimension(a_shape, -1);
   XlaOp zero = ScalarLike(i, 0);
@@ -126,7 +126,7 @@ absl::StatusOr<HouseHolderResult> HouseRow(
     batch_dims[k] = ShapeUtil::GetDimension(a_shape, k);
   }
 
-  TF_ASSIGN_OR_RETURN(Shape x_shape, builder->GetShape(x));
+  TF_XLA_ASSIGN_OR_RETURN(Shape x_shape, builder->GetShape(x));
   auto idx = Iota(builder, ShapeUtil::MakeShape(S32, x_shape.dimensions()),
                   num_dims - 1);
   auto zeros = ZerosLike(x);
@@ -180,7 +180,7 @@ absl::StatusOr<HouseHolderResult> HouseCol(
     XlaOp a, XlaOp i, XlaOp j, XlaOp eps,
     PrecisionConfig::Precision precision) {
   XlaBuilder* builder = a.builder();
-  TF_ASSIGN_OR_RETURN(Shape a_shape, builder->GetShape(a));
+  TF_XLA_ASSIGN_OR_RETURN(Shape a_shape, builder->GetShape(a));
   const int64_t num_dims = a_shape.dimensions().size();
   const int64_t m = ShapeUtil::GetDimension(a_shape, -2);
   XlaOp zero = ScalarLike(i, 0);
@@ -192,7 +192,7 @@ absl::StatusOr<HouseHolderResult> HouseCol(
     batch_dims[k] = ShapeUtil::GetDimension(a_shape, k);
   }
 
-  TF_ASSIGN_OR_RETURN(Shape x_shape, builder->GetShape(x));
+  TF_XLA_ASSIGN_OR_RETURN(Shape x_shape, builder->GetShape(x));
   auto idx = Iota(builder, ShapeUtil::MakeShape(S32, x_shape.dimensions()),
                   num_dims - 2);
   auto zeros = ZerosLike(x);
@@ -258,7 +258,7 @@ absl::StatusOr<HouseHolderResult> HouseCol(
 absl::StatusOr<SVDResult> HouseHolderBidiagonalization(
     XlaOp a, XlaOp eps, PrecisionConfig::Precision precision) {
   XlaBuilder* builder = a.builder();
-  TF_ASSIGN_OR_RETURN(Shape a_shape, builder->GetShape(a));
+  TF_XLA_ASSIGN_OR_RETURN(Shape a_shape, builder->GetShape(a));
   const int64_t num_dims = a_shape.dimensions().size();
   const int64_t num_batch_dims = num_dims - 2;
   std::vector<int64_t> batch_dims(num_batch_dims);
@@ -288,14 +288,14 @@ absl::StatusOr<SVDResult> HouseHolderBidiagonalization(
     auto a = values[3];
     auto eps = values[4];
 
-    TF_ASSIGN_OR_RETURN(HouseHolderResult house_col,
+    TF_XLA_ASSIGN_OR_RETURN(HouseHolderResult house_col,
                         HouseCol(a, i, i, eps, precision));
     u = Sub(u,
             Mul(house_col.beta, BatchDot(BatchDot(u, house_col.v, precision),
                                          false, house_col.v, true, precision)));
     a = house_col.a;
 
-    TF_ASSIGN_OR_RETURN(HouseHolderResult house_row,
+    TF_XLA_ASSIGN_OR_RETURN(HouseHolderResult house_row,
                         HouseRow(a, i, i + one, eps, precision));
     v = Sub(v, Mul(house_row.beta,
                    BatchDot(BatchDot(v, false, house_row.v, true, precision),
@@ -320,14 +320,14 @@ absl::StatusOr<SVDResult> HouseHolderBidiagonalization(
   values[3] = a;
   values[4] = eps;
 
-  TF_ASSIGN_OR_RETURN(values,
+  TF_XLA_ASSIGN_OR_RETURN(values,
                       WhileLoopHelper(while_cond_fn, while_body_fn, values,
                                       "HouseHolderBidiagonalization", builder));
 
   for (int k = 2; k > 0; --k) {
     if (n - k >= 0) {
       XlaOp index = ScalarLike(values[0], n - k);
-      TF_ASSIGN_OR_RETURN(HouseHolderResult house_col,
+      TF_XLA_ASSIGN_OR_RETURN(HouseHolderResult house_col,
                           HouseCol(values[3], index, index, eps, precision));
       values[1] = Sub(values[1],
                       Mul(house_col.beta,
@@ -447,7 +447,7 @@ absl::StatusOr<OneSidedJacobiRotation> GetOneSidedJacobiRotation(XlaOp a,
   XlaOp a_qq_new = rot.s * a_pq + rot.c * a_qq;
 
   OneSidedJacobiRotation rots;
-  TF_ASSIGN_OR_RETURN(rots.rot_r,
+  TF_XLA_ASSIGN_OR_RETURN(rots.rot_r,
                       MakeJacobi(a_pp_new, a_qq_new, a_pq_new, eps));
 
   rots.rot_l.c = rot.c * rots.rot_r.c - rot.s * rots.rot_r.s;
@@ -463,7 +463,7 @@ absl::StatusOr<SVDResult> OneSidedJacobiUpdate(SVDResult svd_result, XlaOp p,
   XlaOp v = svd_result.v;
   XlaOp d = svd_result.d;
   XlaBuilder* builder = d.builder();
-  TF_ASSIGN_OR_RETURN(Shape d_shape, builder->GetShape(d));
+  TF_XLA_ASSIGN_OR_RETURN(Shape d_shape, builder->GetShape(d));
   const int64_t num_dims = d_shape.dimensions().size();
   const int64_t num_batch_dims = num_dims - 2;
   std::vector<int64_t> batch_dims(num_batch_dims);
@@ -473,7 +473,7 @@ absl::StatusOr<SVDResult> OneSidedJacobiUpdate(SVDResult svd_result, XlaOp p,
   const int64_t m = ShapeUtil::GetDimension(d_shape, -2);
   const int64_t n = ShapeUtil::GetDimension(d_shape, -1);
 
-  TF_ASSIGN_OR_RETURN(OneSidedJacobiRotation onesided_jacobi,
+  TF_XLA_ASSIGN_OR_RETURN(OneSidedJacobiRotation onesided_jacobi,
                       GetOneSidedJacobiRotation(d, p, q, eps));
 
   auto zero = ScalarLike(p, 0);
@@ -573,7 +573,7 @@ absl::StatusOr<SVDResult> OneSidedJacobiUpdate(SVDResult svd_result, XlaOp p,
 
 absl::StatusOr<XlaOp> ComputeToleranceComparison(XlaOp w, XlaOp epsilon) {
   XlaBuilder* builder = w.builder();
-  TF_ASSIGN_OR_RETURN(Shape shape, builder->GetShape(w));
+  TF_XLA_ASSIGN_OR_RETURN(Shape shape, builder->GetShape(w));
   auto num_dims = static_cast<int32_t>(shape.dimensions().size());
   int64_t n = shape.dimensions(num_dims - 1);
   shape.set_dimensions(num_dims - 2, n);
@@ -620,7 +620,7 @@ absl::StatusOr<std::vector<XlaOp>> WhileLoopFn(
     auto max_sweeps = ScalarLike(k, max_sweep_updates);
     auto sweep_update_cond = Gt(max_sweeps, k);
 
-    TF_ASSIGN_OR_RETURN(auto tolerance_comparison,
+    TF_XLA_ASSIGN_OR_RETURN(auto tolerance_comparison,
                         ComputeToleranceComparison(values[3], values[4]));
     auto tolerance_cond = ReduceAll(
         tolerance_comparison, xla::ConstantR0<bool>(cond_builder, false),
@@ -662,7 +662,7 @@ absl::StatusOr<std::vector<XlaOp>> WhileLoopFn(
 
         auto eps = values_innermost[5];
 
-        TF_ASSIGN_OR_RETURN(
+        TF_XLA_ASSIGN_OR_RETURN(
             onesided_jacobi_update,
             OneSidedJacobiUpdate(onesided_jacobi_update, p, q, eps));
 
@@ -688,7 +688,7 @@ absl::StatusOr<std::vector<XlaOp>> WhileLoopFn(
       values_innermost[3] = values_inner[2];  // v.
       values_innermost[4] = values_inner[3];  // d.
       values_innermost[5] = values_inner[4];  // eps.
-      TF_ASSIGN_OR_RETURN(
+      TF_XLA_ASSIGN_OR_RETURN(
           values_innermost,
           WhileLoopHelper(while_cond_fn_innermost, while_body_fn_innermost,
                           values_innermost, absl::StrCat(name, "-Innermost"),
@@ -713,7 +713,7 @@ absl::StatusOr<std::vector<XlaOp>> WhileLoopFn(
     values_inner[2] = values[2];         // v.
     values_inner[3] = values[3];         // d.
     values_inner[4] = values[4];         // eps.
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         values_inner,
         WhileLoopHelper(while_cond_fn_inner, while_body_fn_inner, values_inner,
                         absl::StrCat(name, "-Inner"), body_builder));
@@ -730,7 +730,7 @@ absl::StatusOr<std::vector<XlaOp>> WhileLoopFn(
     return updated_values;
   };
   std::vector<XlaOp> values;
-  TF_ASSIGN_OR_RETURN(values, WhileLoopHelper(while_cond_fn, while_body_fn,
+  TF_XLA_ASSIGN_OR_RETURN(values, WhileLoopHelper(while_cond_fn, while_body_fn,
                                               initial_values, name, builder));
 
   return values;
@@ -742,7 +742,7 @@ absl::StatusOr<std::vector<XlaOp>> WhileLoopFn(
 absl::StatusOr<SVDResult> SortBySingularValuesAndPostProcessing(
     SVDResult result) {
   XlaBuilder* builder = result.d.builder();
-  TF_ASSIGN_OR_RETURN(Shape shape, builder->GetShape(result.d));
+  TF_XLA_ASSIGN_OR_RETURN(Shape shape, builder->GetShape(result.d));
   const int64_t num_dims = shape.dimensions().size();
   auto dimensions = shape.dimensions();
   const int64_t m = ShapeUtil::GetDimension(shape, -2);

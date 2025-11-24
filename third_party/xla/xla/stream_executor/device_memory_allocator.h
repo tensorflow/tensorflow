@@ -219,7 +219,7 @@ template <typename ElemT>
 absl::Status ScopedDeviceMemory<ElemT>::Free() {
   if (!wrapped_.is_null()) {
     CHECK(allocator_ != nullptr) << "Owning pointer in inconsistent state";
-    TF_RETURN_IF_ERROR(allocator_->Deallocate(device_ordinal_, wrapped_));
+    TF_XLA_RETURN_IF_ERROR(allocator_->Deallocate(device_ordinal_, wrapped_));
   }
   wrapped_ = DeviceMemory<ElemT>{};
   return absl::OkStatus();

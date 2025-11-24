@@ -64,9 +64,9 @@ NvshmemRecvThunk::NvshmemRecvThunk(
       buffer_addresses_(std::move(buffer_addresses)) {}
 
 absl::Status NvshmemRecvThunk::Initialize(const InitializeParams& params) {
-  TF_RETURN_IF_ERROR(NvshmemCollectiveThunk::Initialize(params));
+  TF_XLA_RETURN_IF_ERROR(NvshmemCollectiveThunk::Initialize(params));
   if (execution_counters_) {
-    TF_RETURN_IF_ERROR(execution_counters_->Initialize(
+    TF_XLA_RETURN_IF_ERROR(execution_counters_->Initialize(
         params.executor, params.collective_params->run_id));
   }
   return absl::OkStatus();
@@ -74,7 +74,7 @@ absl::Status NvshmemRecvThunk::Initialize(const InitializeParams& params) {
 
 absl::Status NvshmemRecvThunk::RunNvshmemCollective(const ExecuteParams& params,
                                                     se::Stream& stream) {
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       std::vector<DeviceBufferPair> device_buffers,
       ConvertToDeviceBuffers(params, {buffer_},
                              config_.config.operand_element_type));
@@ -82,7 +82,7 @@ absl::Status NvshmemRecvThunk::RunNvshmemCollective(const ExecuteParams& params,
 
   GlobalDeviceId global_device_id = params.collective_params->global_device_id;
 
-  TF_ASSIGN_OR_RETURN(const DeviceAssignment::LogicalID current_logical_id,
+  TF_XLA_ASSIGN_OR_RETURN(const DeviceAssignment::LogicalID current_logical_id,
                       params.collective_params->device_assn->LogicalIdForDevice(
                           global_device_id));
   const int64_t current_id =
@@ -128,7 +128,7 @@ absl::Status NvshmemRecvThunk::RunNvshmemCollective(const ExecuteParams& params,
 
   if (config_.validation_kind == P2PConfig::ValidationKind::kConditional) {
     se::StreamExecutor* executor = params.stream->parent();
-    TF_ASSIGN_OR_RETURN(int64_t* counter,
+    TF_XLA_ASSIGN_OR_RETURN(int64_t* counter,
                         execution_counters_->GetCounter(
                             executor, params.collective_params->run_id));
     auto it = config_.source_target_to_bounds.find(
@@ -148,8 +148,8 @@ absl::Status NvshmemRecvThunk::RunNvshmemCollective(const ExecuteParams& params,
     return absl::OkStatus();
   }
 
-  TF_ASSIGN_OR_RETURN(auto* collectives, GetNvshmemCollectivesFromRegistry());
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<Communicator> nvshmem_comm,
+  TF_XLA_ASSIGN_OR_RETURN(auto* collectives, GetNvshmemCollectivesFromRegistry());
+  TF_XLA_ASSIGN_OR_RETURN(std::unique_ptr<Communicator> nvshmem_comm,
                       collectives->CreateCommunicator());
   VLOG(1) << "Running Recv operation"
           << " element_type=" << buffer.element_type
@@ -160,8 +160,8 @@ absl::Status NvshmemRecvThunk::RunNvshmemCollective(const ExecuteParams& params,
   auto recv_future = nvshmem_comm->Recv(
       buffer.destination_buffer, buffer.source_buffer, buffer.element_type,
       buffer.element_count, RankId(*source_id), GpuCollectives::On(stream));
-  TF_RETURN_IF_ERROR(recv_future.Await());
-  TF_RETURN_IF_ERROR(nvshmem_comm->Quiet(GpuCollectives::On(stream)));
+  TF_XLA_RETURN_IF_ERROR(recv_future.Await());
+  TF_XLA_RETURN_IF_ERROR(nvshmem_comm->Quiet(GpuCollectives::On(stream)));
 
   return absl::OkStatus();
 }

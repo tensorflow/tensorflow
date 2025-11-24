@@ -186,7 +186,7 @@ static absl::StatusOr<Attribute> ConvertDenseElementsAttr(
 
 static absl::StatusOr<Attribute> ConvertDictionaryAttr(
     absl::string_view name, mlir::DictionaryAttr dict) {
-  TF_ASSIGN_OR_RETURN(auto attrs, BuildAttributesMap(dict));
+  TF_XLA_ASSIGN_OR_RETURN(auto attrs, BuildAttributesMap(dict));
   return AttributesDictionary{
       std::make_shared<AttributesMap>(std::move(attrs))};
 }
@@ -200,12 +200,12 @@ absl::StatusOr<AttributesMap> BuildAttributesMap(mlir::DictionaryAttr dict) {
     // Wraps attribute conversion function into callable object.
     auto convert_with = [&](auto converter_fn) {
       return [&, fn = converter_fn](auto attr) -> absl::Status {
-        TF_ASSIGN_OR_RETURN(attributes[name], fn(name, attr));
+        TF_XLA_ASSIGN_OR_RETURN(attributes[name], fn(name, attr));
         return absl::OkStatus();
       };
     };
 
-    TF_RETURN_IF_ERROR(
+    TF_XLA_RETURN_IF_ERROR(
         llvm::TypeSwitch<mlir::Attribute, absl::Status>(value)
             .Case<mlir::BoolAttr>(convert_with(ConvertBoolAttr))
             .Case<mlir::IntegerAttr>(convert_with(ConvertIntegerAttr))
@@ -233,7 +233,7 @@ AttributesMapProto AttributesDictionary::ToProto() const {
 
 absl::StatusOr<AttributesDictionary> AttributesDictionary::FromProto(
     const AttributesMapProto& proto) {
-  TF_ASSIGN_OR_RETURN(auto attrs, AttributesMap::FromProto(proto));
+  TF_XLA_ASSIGN_OR_RETURN(auto attrs, AttributesMap::FromProto(proto));
   return AttributesDictionary{std::make_shared<AttributesMap>(attrs)};
 }
 
@@ -249,7 +249,7 @@ absl::StatusOr<AttributesMap> AttributesMap::FromProto(
     const AttributesMapProto& proto) {
   AttributesMap result;
   for (const auto& [key, value] : proto.attrs()) {
-    TF_ASSIGN_OR_RETURN(result[key], Attribute::FromProto(value));
+    TF_XLA_ASSIGN_OR_RETURN(result[key], Attribute::FromProto(value));
   }
   return result;
 }
@@ -512,7 +512,7 @@ absl::StatusOr<FlatAttributesMap> FlatAttributesMap::FromProto(
     const FlatAttributesMapProto& proto) {
   FlatAttributesMap result;
   for (const auto& [key, value] : proto.attrs()) {
-    TF_ASSIGN_OR_RETURN(result[key], FlatAttribute::FromProto(value));
+    TF_XLA_ASSIGN_OR_RETURN(result[key], FlatAttribute::FromProto(value));
   }
   return result;
 }

@@ -167,11 +167,11 @@ absl::StatusOr<bool> WhileLoopPipelineUnroller::RunImpl(
         while_instruction->parent()->AddInstruction(HloInstruction::CreateWhile(
             while_instruction->shape(), unrolled_condition, body,
             while_instruction->mutable_operand(0)));
-    TF_RETURN_IF_ERROR(WhileUtil::IncrementWhileLoopTripCount(
+    TF_XLA_RETURN_IF_ERROR(WhileUtil::IncrementWhileLoopTripCount(
         *unrolled_while_instruction, -(unroll_factor - 1)));
     unrolled_while_instruction->set_while_body(unrolled_body);
 
-    TF_RETURN_IF_ERROR(
+    TF_XLA_RETURN_IF_ERROR(
         while_instruction->ReplaceOperandWith(0, unrolled_while_instruction));
   }
 
@@ -181,9 +181,9 @@ absl::StatusOr<bool> WhileLoopPipelineUnroller::RunImpl(
     // recursively clone all the nested computations. FCG will take care of this
     // for us.
     FlattenCallGraph fcg;
-    TF_RETURN_IF_ERROR(fcg.Run(module).status());
+    TF_XLA_RETURN_IF_ERROR(fcg.Run(module).status());
     HloDCE dce;
-    TF_RETURN_IF_ERROR(dce.Run(module).status());
+    TF_XLA_RETURN_IF_ERROR(dce.Run(module).status());
   }
 
   return changed;

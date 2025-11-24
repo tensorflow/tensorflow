@@ -344,7 +344,7 @@ absl::StatusOr<GlobalTopology> MakeGlobalTopologyFromPjRtClient(
           it == ifrt_device_id_to_pjrt_global_device_id.end()) {
         pjrt_device = nullptr;
       } else {
-        TF_ASSIGN_OR_RETURN(pjrt_device, pjrt_client->LookupDevice(it->second));
+        TF_XLA_ASSIGN_OR_RETURN(pjrt_device, pjrt_client->LookupDevice(it->second));
       }
 
       if (pjrt_device == nullptr) {
@@ -429,7 +429,7 @@ absl::StatusOr<GlobalTopology> MakeGlobalTopologyWithLocalTopology(
     xla::PjRtClient* pjrt_client, const PjRtClient::CreateOptions& options,
     const LocalTopologyProto& local_topology_proto) {
   GlobalTopologyProto global_topology_proto;
-  TF_RETURN_IF_ERROR(ExchangeTopologies(
+  TF_XLA_RETURN_IF_ERROR(ExchangeTopologies(
       pjrt_client->platform_name(), options.process_id, options.num_processes,
       options.get_local_topology_timeout, options.get_global_topology_timeout,
       options.kv_store.get(), local_topology_proto, &global_topology_proto,
@@ -501,7 +501,7 @@ MakePjRtDevicesFromGlobalTopology(PjRtClient* client,
     const bool node_is_me = process_index == global_topology.my_process_index;
     for (const DeviceProto& device_proto : node.devices()) {
       absl::flat_hash_map<std::string, PjRtDeviceAttribute> attributes;
-      TF_RETURN_IF_ERROR(
+      TF_XLA_RETURN_IF_ERROR(
           DeserializePjRtDeviceAttributes(device_proto, attributes));
       if (partition_index != -1) {
         // Sets a generated `partition_index` attribute if not already present.
@@ -522,7 +522,7 @@ MakePjRtDevicesFromGlobalTopology(PjRtClient* client,
         xla::PjRtGlobalDeviceId pjrt_global_device_id =
             global_topology.ifrt_device_id_to_pjrt_global_device_id.at(
                 ifrt_device_id);
-        TF_ASSIGN_OR_RETURN(pjrt_device,
+        TF_XLA_ASSIGN_OR_RETURN(pjrt_device,
                             pjrt_client->LookupDevice(pjrt_global_device_id));
         // Only append any device ID remapping to the device debug string. The
         // user code often uses a pattern matching on the debug string (which is
@@ -588,7 +588,7 @@ absl::StatusOr<ArrayRef> MakeStringArrayFromHostBuffer(
     return absl::OkStatus();
   }();
 
-  TF_RETURN_IF_ERROR(param_validation);
+  TF_XLA_RETURN_IF_ERROR(param_validation);
 
   auto num_elements = shape.num_elements();
   auto strings = std::make_shared<std::vector<absl::Cord>>();
@@ -744,7 +744,7 @@ absl::StatusOr<std::unique_ptr<PjRtClient>> PjRtClient::Create(
 
   GlobalTopology global_topology;
   if (!options.kv_store || !options.use_kv_store_for_topology_exchange) {
-    TF_ASSIGN_OR_RETURN(global_topology,
+    TF_XLA_ASSIGN_OR_RETURN(global_topology,
                         MakeGlobalTopologyFromPjRtClient(pjrt_client, options));
   } else {
     if (options.global_device_mapping.has_value()) {
@@ -757,11 +757,11 @@ absl::StatusOr<std::unique_ptr<PjRtClient>> PjRtClient::Create(
     // from all processes.
     const LocalTopologyProto local_topology_proto =
         MakeLocalTopologyFromPjRtClient(pjrt_client, options);
-    TF_ASSIGN_OR_RETURN(global_topology,
+    TF_XLA_ASSIGN_OR_RETURN(global_topology,
                         MakeGlobalTopologyWithLocalTopology(
                             pjrt_client, options, local_topology_proto));
   }
-  TF_ASSIGN_OR_RETURN(std::vector<std::unique_ptr<PjRtDevice>> devices,
+  TF_XLA_ASSIGN_OR_RETURN(std::vector<std::unique_ptr<PjRtDevice>> devices,
                       MakePjRtDevicesFromGlobalTopology(
                           client.get(), pjrt_client, global_topology));
 
@@ -952,7 +952,7 @@ absl::StatusOr<Device*> PjRtClient::LookupDevice(DeviceId device_id) const {
 absl::StatusOr<Device*> PjRtClient::LookupAddressableDevice(
     int local_hardware_id) const {
   DCHECK(this);
-  TF_ASSIGN_OR_RETURN(xla::PjRtDevice * pjrt_device,
+  TF_XLA_ASSIGN_OR_RETURN(xla::PjRtDevice * pjrt_device,
                       pjrt_client_->LookupAddressableDevice(
                           xla::PjRtLocalDeviceId(local_hardware_id)));
   return LookupPjRtDevice(pjrt_device);
@@ -968,7 +968,7 @@ const AttributeMap& PjRtClient::Attributes() const { return attributes_; }
 absl::StatusOr<tsl::RCReference<PjRtCompatibleArray>>
 PjRtClient::CreatePjRtArray(std::shared_ptr<PjRtBuffer> pjrt_buffer,
                             bool has_custom_layout) {
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       auto array,
       PjRtArray::Create(this, std::move(pjrt_buffer), has_custom_layout));
   return tsl::RCReference<PjRtCompatibleArray>(std::move(array));
@@ -978,7 +978,7 @@ absl::StatusOr<tsl::RCReference<PjRtCompatibleArray>>
 PjRtClient::CreatePjRtArray(Shape shape, PjRtBuffers pjrt_buffers,
                             bool has_custom_layout) {
   std::shared_ptr<const xla::PjRtLayout> layout;
-  TF_ASSIGN_OR_RETURN(auto array, PjRtArray::Create(this, std::move(shape),
+  TF_XLA_ASSIGN_OR_RETURN(auto array, PjRtArray::Create(this, std::move(shape),
                                                     std::move(pjrt_buffers),
                                                     has_custom_layout));
   return tsl::RCReference<PjRtCompatibleArray>(std::move(array));
@@ -1002,7 +1002,7 @@ absl::StatusOr<ArrayRef> PjRtClient::MakeArrayFromHostBuffer(
         "sharding=%s",
         sharding->DebugString());
   }
-  TF_ASSIGN_OR_RETURN(auto primitive_type, ToPrimitiveType(dtype));
+  TF_XLA_ASSIGN_OR_RETURN(auto primitive_type, ToPrimitiveType(dtype));
 
   absl::Span<xla::ifrt::Device* const> ifrt_addressable_devices =
       sharding->devices()->AddressableDeviceList()->devices();
@@ -1052,18 +1052,18 @@ absl::StatusOr<ArrayRef> PjRtClient::MakeArrayFromHostBuffer(
                             absl::StrAppend(out, *ms->Kind().memory_kind());
                           }));
       }
-      TF_ASSIGN_OR_RETURN(
+      TF_XLA_ASSIGN_OR_RETURN(
           buffer, pjrt_client_->BufferFromHostBuffer(
                       data, primitive_type, shape.dims(), byte_strides,
                       semantics, on_done_with_host_buffer_per_device,
                       tensorflow::down_cast<PjRtMemory*>(memory)->pjrt_memory(),
                       /*device_layout=*/nullptr));
     } else {
-      TF_ASSIGN_OR_RETURN(xla::PjRtMemorySpace * memory_space,
+      TF_XLA_ASSIGN_OR_RETURN(xla::PjRtMemorySpace * memory_space,
                           tensorflow::down_cast<PjRtDevice*>(device)
                               ->pjrt_device()
                               ->default_memory_space());
-      TF_ASSIGN_OR_RETURN(buffer,
+      TF_XLA_ASSIGN_OR_RETURN(buffer,
                           pjrt_client_->BufferFromHostBuffer(
                               data, primitive_type, shape.dims(), byte_strides,
                               semantics, on_done_with_host_buffer_per_device,
@@ -1094,7 +1094,7 @@ absl::StatusOr<std::vector<ArrayRef>> PjRtClient::MakeErrorArrays(
   arrays.reserve(array_specs.size());
   for (const auto& array_spec : array_specs) {
     if (array_spec.dtype.kind() == DType::kString) {
-      TF_ASSIGN_OR_RETURN(arrays.emplace_back(),
+      TF_XLA_ASSIGN_OR_RETURN(arrays.emplace_back(),
                           BasicStringArray::Create(
                               this, array_spec.shape, array_spec.sharding,
                               tsl::Future<BasicStringArray::Buffers>(error),
@@ -1102,10 +1102,10 @@ absl::StatusOr<std::vector<ArrayRef>> PjRtClient::MakeErrorArrays(
       continue;
     }
 
-    TF_ASSIGN_OR_RETURN(auto primitive_type, ToPrimitiveType(array_spec.dtype));
+    TF_XLA_ASSIGN_OR_RETURN(auto primitive_type, ToPrimitiveType(array_spec.dtype));
     absl::Span<xla::ifrt::Device* const> ifrt_addressable_devices =
         array_spec.sharding->devices()->AddressableDeviceList()->devices();
-    TF_ASSIGN_OR_RETURN(Shape shard_shape,
+    TF_XLA_ASSIGN_OR_RETURN(Shape shard_shape,
                         array_spec.sharding->GetShardShape(array_spec.shape));
     xla::Shape xla_shape =
         xla::ShapeUtil::MakeShape(primitive_type, shard_shape.dims());
@@ -1132,13 +1132,13 @@ absl::StatusOr<std::vector<ArrayRef>> PjRtClient::MakeErrorArrays(
                             absl::StrAppend(out, *ms->Kind().memory_kind());
                           })));
       }
-      TF_ASSIGN_OR_RETURN(
+      TF_XLA_ASSIGN_OR_RETURN(
           buffers.emplace_back(),
           pjrt_client_->CreateErrorBuffer(
               error, xla_shape,
               tensorflow::down_cast<PjRtMemory*>(memory)->pjrt_memory()));
     }
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(
         arrays.emplace_back(),
         PjRtArray::Create(this, array_spec.dtype, std::move(shard_shape),
                           array_spec.sharding, std::move(buffers),
@@ -1228,7 +1228,7 @@ absl::StatusOr<ArrayRef> PjRtClient::AssembleArrayFromSingleDeviceArrays(
   // TODO(emilyaf): Remove the following logic once layout is plumbed through.
   std::shared_ptr<const xla::PjRtLayout> layout;
   if (!arrays.empty()) {
-    TF_ASSIGN_OR_RETURN(layout, arrays.front()->pjrt_layout());
+    TF_XLA_ASSIGN_OR_RETURN(layout, arrays.front()->pjrt_layout());
   }
   return PjRtArray::Create(this, dtype, std::move(shape), std::move(sharding),
                            std::move(buffers), std::move(layout));
@@ -1278,11 +1278,11 @@ absl::StatusOr<std::vector<ArrayRef>> PjRtClient::CopyArrays(
     new_arrays.reserve(arrays.size());
     for (const ArrayRef& array : arrays) {
       if (auto* const pjrt_array = llvm::dyn_cast<PjRtArray>(array.get())) {
-        TF_ASSIGN_OR_RETURN(new_arrays.emplace_back(),
+        TF_XLA_ASSIGN_OR_RETURN(new_arrays.emplace_back(),
                             pjrt_array->Copy(devices, memory_kind, semantics));
       } else if (auto* const string_array =
                      llvm::dyn_cast<BasicStringArray>(array.get())) {
-        TF_ASSIGN_OR_RETURN(
+        TF_XLA_ASSIGN_OR_RETURN(
             new_arrays.emplace_back(),
             string_array->Copy(devices, memory_kind, semantics));
       } else {
@@ -1350,7 +1350,7 @@ PjRtClient::CopyArraysForCrossHost(absl::Span<ArrayRef> arrays,
               "PjRtClient::CopyArraysForCrossHost");
         }
       }
-      TF_RETURN_IF_ERROR(
+      TF_XLA_RETURN_IF_ERROR(
           CrossHostSendBuffers(send_buffers, std::move(transfer_keys)));
       ++j;
     } else if (dst_devices->devices()[i]->IsAddressable()) {
@@ -1358,8 +1358,8 @@ PjRtClient::CopyArraysForCrossHost(absl::Span<ArrayRef> arrays,
       recv_shapes.reserve(arrays.size());
       for (const ArrayRef& array : arrays) {
         if (auto* const pjrt_array = llvm::dyn_cast<PjRtArray>(array.get())) {
-          TF_ASSIGN_OR_RETURN(auto dtype, ToPrimitiveType(pjrt_array->dtype()));
-          TF_ASSIGN_OR_RETURN(
+          TF_XLA_ASSIGN_OR_RETURN(auto dtype, ToPrimitiveType(pjrt_array->dtype()));
+          TF_XLA_ASSIGN_OR_RETURN(
               Shape shard_shape,
               pjrt_array->sharding().GetShardShape(pjrt_array->shape()));
           xla::Shape recv_shape =
@@ -1371,12 +1371,12 @@ PjRtClient::CopyArraysForCrossHost(absl::Span<ArrayRef> arrays,
               "PjRtClient::CopyArraysForCrossHost");
         }
       }
-      TF_ASSIGN_OR_RETURN(
+      TF_XLA_ASSIGN_OR_RETURN(
           xla::PjRtGlobalDeviceId pjrt_global_device_id,
           GetPjRtGlobalDeviceId(dst_devices->devices()[i]->Id()));
-      TF_ASSIGN_OR_RETURN(xla::PjRtDevice * pjrt_device,
+      TF_XLA_ASSIGN_OR_RETURN(xla::PjRtDevice * pjrt_device,
                           pjrt_client_->LookupDevice(pjrt_global_device_id));
-      TF_ASSIGN_OR_RETURN(recv_buffers.emplace_back(),
+      TF_XLA_ASSIGN_OR_RETURN(recv_buffers.emplace_back(),
                           CrossHostReceiveBuffers(recv_shapes, pjrt_device,
                                                   std::move(transfer_keys)));
     }
@@ -1391,11 +1391,11 @@ PjRtClient::CopyArraysForCrossHost(absl::Span<ArrayRef> arrays,
         new_buffers.push_back(std::move(recv_buffers[k++][i]));
       }
     }
-    TF_ASSIGN_OR_RETURN(ShardingRef new_sharding,
+    TF_XLA_ASSIGN_OR_RETURN(ShardingRef new_sharding,
                         arrays[i]->shared_ptr_sharding()->WithDeviceAssignment(
                             dst_devices, memory_kind));
-    TF_ASSIGN_OR_RETURN(auto new_layout, arrays[i]->pjrt_layout());
-    TF_ASSIGN_OR_RETURN(
+    TF_XLA_ASSIGN_OR_RETURN(auto new_layout, arrays[i]->pjrt_layout());
+    TF_XLA_ASSIGN_OR_RETURN(
         new_arrays.emplace_back(),
         PjRtArray::Create(this, arrays[i]->dtype(), arrays[i]->shape(),
                           std::move(new_sharding), std::move(new_buffers),
@@ -1409,7 +1409,7 @@ absl::Status PjRtClient::InitializeTransferServer() {
     if (transfer_server_factory_ == nullptr) {
       return absl::FailedPreconditionError("Transfer server factory is null.");
     }
-    TF_ASSIGN_OR_RETURN(transfer_server_,
+    TF_XLA_ASSIGN_OR_RETURN(transfer_server_,
                         transfer_server_factory_(pjrt_client_));
   }
   return absl::OkStatus();
@@ -1421,7 +1421,7 @@ PjRtClient::CopyArraysForCrossHostFallback(
     DeviceListRef dst_devices, std::optional<MemoryKind> memory_kind) {
   {
     absl::MutexLock lock(transfer_server_mu_);
-    TF_RETURN_IF_ERROR(InitializeTransferServer());
+    TF_XLA_RETURN_IF_ERROR(InitializeTransferServer());
   }
   return (*transfer_server_)
       ->CopyArraysForCrossHost(this, arrays, src_devices, dst_devices,
@@ -1432,7 +1432,7 @@ int64_t PjRtClient::CreateNewTransferKey() { return next_transfer_key_++; }
 
 absl::Status PjRtClient::WatchGlobalProcessInfo(
     tsl::CoordinationServiceAgent& agent) {
-  TF_ASSIGN_OR_RETURN(tensorflow::CoordinatedTask task, agent.GetOwnTask());
+  TF_XLA_ASSIGN_OR_RETURN(tensorflow::CoordinatedTask task, agent.GetOwnTask());
   VLOG(3) << "Watching global process info for task "
           << task.ShortDebugString();
 
@@ -1581,7 +1581,7 @@ absl::StatusOr<PjRtArray::PjRtBuffers> PjRtClient::CrossHostReceiveBuffers(
       }
     }
   };
-  TF_ASSIGN_OR_RETURN(auto recv_buffers,
+  TF_XLA_ASSIGN_OR_RETURN(auto recv_buffers,
                       pjrt_client_->MakeCrossHostReceiveBuffers(
                           shapes, device, std::move(notifier)));
   PjRtArray::PjRtBuffers buffers;
@@ -1622,7 +1622,7 @@ absl::StatusOr<std::shared_ptr<Topology>> PjRtClient::GetTopologyForDevices(
     const xla::ifrt::DeviceListRef& devices) const {
   // TODO(parkers): Consider constructing a sub-slice topology based on the
   // provided devices.
-  TF_ASSIGN_OR_RETURN(auto topology, pjrt_client_->GetTopologyDescription());
+  TF_XLA_ASSIGN_OR_RETURN(auto topology, pjrt_client_->GetTopologyDescription());
   return std::make_shared<PjRtTopology>(
       std::shared_ptr<const xla::PjRtTopologyDescription>(pjrt_client_,
                                                           topology));
@@ -1652,12 +1652,12 @@ PjRtClient::GetDefaultPjRtLayout(DType dtype, absl::Span<const int64_t> dims,
       return std::make_shared<xla::PjRtLayout>(
           LayoutUtil::MakeDescendingLayout(dims.size()));
     }
-    TF_ASSIGN_OR_RETURN(PrimitiveType element_type, ToPrimitiveType(dtype));
+    TF_XLA_ASSIGN_OR_RETURN(PrimitiveType element_type, ToPrimitiveType(dtype));
     if (element_type == PrimitiveType::TOKEN) {
       return std::make_shared<PjRtLayout>(
           LayoutUtil::MakeDescendingLayout(dims.size()));
     }
-    TF_ASSIGN_OR_RETURN(xla::Layout layout,
+    TF_XLA_ASSIGN_OR_RETURN(xla::Layout layout,
                         pjrt_client_->GetDefaultLayout(element_type, dims));
     return std::make_shared<xla::PjRtLayout>(std::move(layout));
   }();
@@ -1695,7 +1695,7 @@ PjRtClient::Incarnations() const {
   if (!distributed_client_) {
     return absl::FailedPreconditionError("missing distributed client");
   }
-  TF_ASSIGN_OR_RETURN(tsl::CoordinationServiceAgent * agent,
+  TF_XLA_ASSIGN_OR_RETURN(tsl::CoordinationServiceAgent * agent,
                       distributed_client_->GetCoordinationServiceAgent());
   return agent->Incarnations();
 }

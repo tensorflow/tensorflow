@@ -64,7 +64,7 @@ class KernelEmitter : public KernelEmitterBase {
  private:
   absl::StatusOr<std::unique_ptr<KernelDefinitionBase>>
   EmitKernelDefinitionBase() final {
-    TF_ASSIGN_OR_RETURN(auto kernel_definition, EmitKernelDefinition());
+    TF_XLA_ASSIGN_OR_RETURN(auto kernel_definition, EmitKernelDefinition());
     return std::make_unique<KernelDefinition>(std::move(kernel_definition));
   }
 };

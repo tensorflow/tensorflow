@@ -82,7 +82,7 @@ IfrtIRCompileOptions::FromProto(const IfrtIrCompileOptionsProto& proto) {
   }
 
   for (const auto& [key, value] : proto.compile_option_overrides()) {
-    TF_ASSIGN_OR_RETURN(xla::CompileOptions compile_options,
+    TF_XLA_ASSIGN_OR_RETURN(xla::CompileOptions compile_options,
                         xla::CompileOptions::FromProto(value));
     // TODO(emilyaf): XlaCompileOptions should be built with the correct
     // devices. Pass `ifrt::Client*` to `IfrtIRCompileOptions::FromProto` and
@@ -124,7 +124,7 @@ absl::StatusOr<IfrtIrCompileOptionsProto> IfrtIRCompileOptions::ToProto(
             "compile_options must be XlaCompileOptions");
       }
 
-      TF_ASSIGN_OR_RETURN(
+      TF_XLA_ASSIGN_OR_RETURN(
           CompileOptionsProto compile_options_proto,
           static_cast<xla::ifrt::XlaCompileOptions*>(compile_options.get())
               ->compile_options.ToProto());

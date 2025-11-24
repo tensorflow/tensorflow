@@ -109,8 +109,8 @@ absl::Status RecordWriter::WriteRecord(absl::string_view data) {
   char footer[kFooterSize];
   PopulateHeader(header, data.data(), data.size());
   PopulateFooter(footer, data.data(), data.size());
-  TF_RETURN_IF_ERROR(dest_->Append(absl::string_view(header, sizeof(header))));
-  TF_RETURN_IF_ERROR(dest_->Append(data));
+  TF_XLA_RETURN_IF_ERROR(dest_->Append(absl::string_view(header, sizeof(header))));
+  TF_XLA_RETURN_IF_ERROR(dest_->Append(data));
   return dest_->Append(absl::string_view(footer, sizeof(footer)));
 }
 
@@ -129,8 +129,8 @@ absl::Status RecordWriter::WriteRecord(const absl::Cord& data) {
   char footer[kFooterSize];
   PopulateHeader(header, data);
   PopulateFooter(footer, data);
-  TF_RETURN_IF_ERROR(dest_->Append(absl::string_view(header, sizeof(header))));
-  TF_RETURN_IF_ERROR(dest_->Append(data));
+  TF_XLA_RETURN_IF_ERROR(dest_->Append(absl::string_view(header, sizeof(header))));
+  TF_XLA_RETURN_IF_ERROR(dest_->Append(data));
   return dest_->Append(absl::string_view(footer, sizeof(footer)));
 }
 #endif

@@ -94,13 +94,13 @@ absl::StatusOr<std::unique_ptr<TriangularSolveThunk>>
 TriangularSolveThunk::FromProto(
     ThunkInfo thunk_info, const TriangularSolveThunkProto& proto,
     absl::Span<const BufferAllocation> allocations) {
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       BufferAllocation::Slice a_buffer,
       BufferAllocation::Slice::FromProto(proto.a_buffer(), allocations));
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       BufferAllocation::Slice b_buffer,
       BufferAllocation::Slice::FromProto(proto.b_buffer(), allocations));
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       BufferAllocation::Slice temp_buffer,
       BufferAllocation::Slice::FromProto(proto.temp_buffer(), allocations));
   return std::make_unique<TriangularSolveThunk>(
@@ -137,11 +137,11 @@ absl::StatusOr<ThunkProto> TriangularSolveThunk::ToProto() const {
           transpose_a_);
   }
 
-  TF_ASSIGN_OR_RETURN(*triangular_solve_thunk_proto->mutable_a_buffer(),
+  TF_XLA_ASSIGN_OR_RETURN(*triangular_solve_thunk_proto->mutable_a_buffer(),
                       a_buffer_.ToProto());
-  TF_ASSIGN_OR_RETURN(*triangular_solve_thunk_proto->mutable_b_buffer(),
+  TF_XLA_ASSIGN_OR_RETURN(*triangular_solve_thunk_proto->mutable_b_buffer(),
                       b_buffer_.ToProto());
-  TF_ASSIGN_OR_RETURN(*triangular_solve_thunk_proto->mutable_temp_buffer(),
+  TF_XLA_ASSIGN_OR_RETURN(*triangular_solve_thunk_proto->mutable_temp_buffer(),
                       temp_buffer_.ToProto());
   triangular_solve_thunk_proto->set_type(type_);
   triangular_solve_thunk_proto->set_batch_size(batch_size_);
@@ -225,9 +225,9 @@ absl::Status RunTriangularSolve(se::DeviceMemoryBase a_data,
     se::DeviceMemoryBase b_pointers(temp_base + batch_size,
                                     batch_pointers_bytes);
 
-    TF_RETURN_IF_ERROR(MakeBatchPointers(stream, a_data, a_batch_stride,
+    TF_XLA_RETURN_IF_ERROR(MakeBatchPointers(stream, a_data, a_batch_stride,
                                          batch_size, a_pointers));
-    TF_RETURN_IF_ERROR(MakeBatchPointers(stream, b_data, b_batch_stride,
+    TF_XLA_RETURN_IF_ERROR(MakeBatchPointers(stream, b_data, b_batch_stride,
                                          batch_size, b_pointers));
 
     switch (type) {

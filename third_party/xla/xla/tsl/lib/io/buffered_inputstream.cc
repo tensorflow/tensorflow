@@ -170,7 +170,7 @@ absl::Status BufferedInputStream::Seek(int64_t position) {
   const int64_t buf_lower_limit = input_stream_->Tell() - limit_;
   if (position < buf_lower_limit) {
     // Seek before buffer, reset input stream and skip 'position' bytes.
-    TF_RETURN_IF_ERROR(Reset());
+    TF_XLA_RETURN_IF_ERROR(Reset());
     return SkipNBytes(position);
   }
 
@@ -208,7 +208,7 @@ template Status BufferedInputStream::ReadAll<std::string>(std::string* result);
 template Status BufferedInputStream::ReadAll<tstring>(tstring* result);
 
 absl::Status BufferedInputStream::Reset() {
-  TF_RETURN_IF_ERROR(input_stream_->Reset());
+  TF_XLA_RETURN_IF_ERROR(input_stream_->Reset());
   pos_ = 0;
   limit_ = 0;
   file_status_ = absl::OkStatus();

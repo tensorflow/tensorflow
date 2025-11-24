@@ -144,7 +144,7 @@ HloInstruction* ReduceDimensions(HloInstruction* instruction,
 absl::StatusOr<HloInstruction*> DotStrengthReduction::ExpandInstruction(
     HloInstruction* instruction) {
   HloDotInstruction* dot = Cast<HloDotInstruction>(instruction);
-  TF_ASSIGN_OR_RETURN(auto dot_dims, DotOperandDims::FromDot(dot));
+  TF_XLA_ASSIGN_OR_RETURN(auto dot_dims, DotOperandDims::FromDot(dot));
 
   std::array<HloInstruction*, 2> operands = {dot->mutable_operand(0),
                                              dot->mutable_operand(1)};
@@ -172,7 +172,7 @@ absl::StatusOr<HloInstruction*> DotStrengthReduction::ExpandInstruction(
 
   // At this point, both operands have the same shape. Elementwise multiply.
   CHECK(operands[0]->shape().dimensions() == operands[1]->shape().dimensions());
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       HloInstruction * flow,
       MakeMultiplyForDotPrecisionAlgorithm(
           operands[0], operands[1], dot->precision_config().algorithm()));

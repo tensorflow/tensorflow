@@ -44,12 +44,12 @@ absl::StatusOr<bool> OpExpanderPass::RunImpl(
   }
 
   for (HloInstruction* inst : matching_instructions) {
-    TF_ASSIGN_OR_RETURN(HloInstruction * expanded_root,
+    TF_XLA_ASSIGN_OR_RETURN(HloInstruction * expanded_root,
                         ExpandInstruction(inst));
     if (expanded_root == nullptr) {
       continue;
     }
-    TF_ASSIGN_OR_RETURN(bool changed,
+    TF_XLA_ASSIGN_OR_RETURN(bool changed,
                         inst->parent()->ReplaceInstruction(
                             inst, expanded_root, preserve_sharding_,
                             relay_control_dependency_));

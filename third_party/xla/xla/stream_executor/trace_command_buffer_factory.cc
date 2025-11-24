@@ -33,7 +33,7 @@ TraceCommandBufferFactory::Create(
     StreamExecutor* executor,
     absl::AnyInvocable<absl::Status(Stream*)> function,
     CommandBuffer::Mode mode) {
-  TF_ASSIGN_OR_RETURN(auto stream, executor->CreateStream());
+  TF_XLA_ASSIGN_OR_RETURN(auto stream, executor->CreateStream());
   stream->SetName("Command buffer tracer");
   return TraceCommandBufferFactory::Create(executor, stream.get(),
                                            std::move(function), mode);
@@ -49,13 +49,13 @@ TraceCommandBufferFactory::Create(
         "Can't trace command buffer on a null stream");
 
   // Prepare an empty command buffer instance.
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<CommandBuffer> command_buffer,
+  TF_XLA_ASSIGN_OR_RETURN(std::unique_ptr<CommandBuffer> command_buffer,
                       executor->CreateCommandBuffer(mode));
 
   // Trace and finalize the command buffer.
-  TF_RETURN_IF_ERROR(
+  TF_XLA_RETURN_IF_ERROR(
       command_buffer->Trace(stream, [&]() { return function(stream); }));
-  TF_RETURN_IF_ERROR(command_buffer->Finalize());
+  TF_XLA_RETURN_IF_ERROR(command_buffer->Finalize());
 
   return command_buffer;
 }

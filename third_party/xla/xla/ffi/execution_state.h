@@ -86,7 +86,7 @@ absl::Status ExecutionState::Set(std::unique_ptr<T> state) {
 
 template <typename T>
 absl::StatusOr<T*> ExecutionState::Get() const {
-  TF_ASSIGN_OR_RETURN(void* state, Get(TypeRegistry::GetTypeId<T>()));
+  TF_XLA_ASSIGN_OR_RETURN(void* state, Get(TypeRegistry::GetTypeId<T>()));
   return tsl::safe_reinterpret_cast<T*>(state);
 }
 

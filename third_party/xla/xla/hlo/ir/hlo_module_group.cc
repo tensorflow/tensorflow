@@ -80,7 +80,7 @@ HloModuleGroupProto HloModuleGroup::ToProto() const {
                      proto.hlo_modules_size()));
   }
   const HloModuleProto& module_proto = proto.hlo_modules(0);
-  TF_ASSIGN_OR_RETURN(
+  TF_XLA_ASSIGN_OR_RETURN(
       std::unique_ptr<HloModule> module,
       HloModule::CreateFromProto(module_proto, module_configs[0]));
 

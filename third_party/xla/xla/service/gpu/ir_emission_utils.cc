@@ -81,7 +81,7 @@ absl::StatusOr<bool> IsCublasSupportedMatMul(
   // Number of operands that have non-trivial non-contracting dimension.
   int num_matrix_operands = 0;
   for (int operand : {0, 1}) {
-    TF_ASSIGN_OR_RETURN(DotOperandDims dims,
+    TF_XLA_ASSIGN_OR_RETURN(DotOperandDims dims,
                         DotOperandDims::FromDotOperand(&dot, operand));
     // cuBLAS only supports single contracting dimension.
     if (dims.DimensionCount(DotOperandDims::kContracting) != 1) {

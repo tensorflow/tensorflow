@@ -227,10 +227,10 @@ absl::StatusOr<bool> TrySimplifyPadding(HloInstruction* instr) {
   // padding is allowed.
   new_pad_feature_dim->set_edge_padding_high(
       new_pad_feature_dim->edge_padding_high() - num_sliced_from_feature_dim);
-  TF_ASSIGN_OR_RETURN(HloInstruction * new_pad,
+  TF_XLA_ASSIGN_OR_RETURN(HloInstruction * new_pad,
                       MakePadHlo(slice->mutable_operand(0),
                                  pad->mutable_operand(1), new_padding_config));
-  TF_RETURN_IF_ERROR(pad->parent()->ReplaceInstruction(pad, new_pad));
+  TF_XLA_RETURN_IF_ERROR(pad->parent()->ReplaceInstruction(pad, new_pad));
   return true;
 }
 
@@ -243,7 +243,7 @@ absl::StatusOr<bool> CudnnSimplifyPadding::RunImpl(
   for (HloComputation* comp :
        module->MakeNonfusionComputations(execution_threads)) {
     for (HloInstruction* instr : comp->MakeInstructionPostOrder()) {
-      TF_ASSIGN_OR_RETURN(bool c, TrySimplifyPadding(instr));
+      TF_XLA_ASSIGN_OR_RETURN(bool c, TrySimplifyPadding(instr));
       changed |= c;
     }
   }
