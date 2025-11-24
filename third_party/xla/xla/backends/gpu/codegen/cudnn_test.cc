@@ -559,6 +559,24 @@ ENTRY e {
 })"));
 }
 
+TEST_F(CuDnnFusionExecutionTest, NonDefaultDotAlgorithmIsNotSupported) {
+  EXPECT_FALSE(Run(R"(
+fusion1 {
+  a = bf16[32,96] parameter(0)
+  b = bf16[96,64] parameter(1)
+  r = f32[32,64] dot(a, b),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0},
+    algorithm=dot_bf16_bf16_f32
+}
+
+e {
+  a = bf16[32,96] parameter(0)
+  b = bf16[96,64] parameter(1)
+  _ = f32[32,64] fusion(a, b), kind=kCustom, calls=fusion1,
+    backend_config={"fusion_backend_config": {kind: "__cudnn$fusion"}}
+})"));
+}
+
 TEST_F(CuDnnFusionExecutionTest,
        DotF16NegateNonDefaultDimensionsExecutesCorrectly) {
   EXPECT_TRUE(RunAndCompare(R"(
