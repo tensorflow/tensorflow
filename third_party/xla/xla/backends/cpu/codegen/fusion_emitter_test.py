@@ -57,6 +57,7 @@ class LoopFusionTest(parameterized.TestCase):
         mlir_context,
         hlo_module.get_root_instruction(),
         buffer_assignment,
+        False,
     )
 
     kernel_runner = testlib_cpu.KernelRunner.create(
@@ -117,6 +118,7 @@ class LoopFusionTest(parameterized.TestCase):
         mlir_context,
         hlo_module.get_root_instruction(),
         buffer_assignment,
+        False,
     )
 
     kernel_runner = testlib_cpu.KernelRunner.create(
@@ -172,6 +174,7 @@ class LoopFusionTest(parameterized.TestCase):
         mlir_context,
         hlo_module.get_root_instruction(),
         buffer_assignment,
+        False,
     )
 
     kernel_runner = testlib_cpu.KernelRunner.create(
@@ -224,6 +227,7 @@ class LoopFusionTest(parameterized.TestCase):
         mlir_context,
         hlo_module.get_root_instruction(),
         buffer_assignment,
+        False,
     )
 
     kernel_runner = testlib_cpu.KernelRunner.create(
@@ -273,6 +277,7 @@ class FusionEmitterTest(parameterized.TestCase):
         mlir_context,
         hlo_module.get_root_instruction(),
         buffer_assignment,
+        False,
     )
 
     kernel_runner = testlib_cpu.KernelRunner.create(
