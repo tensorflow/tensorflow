@@ -125,11 +125,11 @@ ValueRange EmitUpdateIf(
           condition,
           [&](OpBuilder& then_b, Location then_loc) -> void {
             ImplicitLocOpBuilder implicit_then_b(then_loc, then_b);
-            then_b.create<scf::YieldOp>(then_loc,
-                                        updated_values_fn(implicit_then_b));
+            scf::YieldOp::create(then_b, then_loc,
+                                 updated_values_fn(implicit_then_b));
           },
           [&](OpBuilder& else_b, Location else_loc) -> void {
-            else_b.create<scf::YieldOp>(else_loc, values);
+            scf::YieldOp::create(else_b, else_loc, values);
           })
       .getResults();
 }
@@ -140,10 +140,10 @@ Value EmitBoundsCheck(ImplicitLocOpBuilder& b,
                       absl::Span<const int64_t> slice_shape,
                       absl::Span<const int64_t> operand_shape,
                       ValueRange offsets) {
-  Value in_bounds = b.create<arith::ConstantIntOp>(b.getI1Type(), 1);
+  Value in_bounds = arith::ConstantIntOp::create(b, b.getI1Type(), 1);
   for (auto [update_dim, operand_dim, offset] :
        llvm::zip(slice_shape, operand_shape, offsets)) {
-    Value ub = b.create<arith::ConstantIndexOp>(operand_dim - update_dim);
+    Value ub = arith::ConstantIndexOp::create(b, operand_dim - update_dim);
     // One bounds check is enough even for signed indices: `sge 0` is
     // implied by `ule ub`, because `ub >= 0`.
     in_bounds = b.createOrFold<arith::AndIOp>(
@@ -155,7 +155,7 @@ Value EmitBoundsCheck(ImplicitLocOpBuilder& b,
 
 Value EmitInequalityCheck(ImplicitLocOpBuilder& b, ValueRange lhs,
                           ValueRange rhs) {
-  Value not_equal = b.create<arith::ConstantIntOp>(b.getI1Type(), 0);
+  Value not_equal = arith::ConstantIntOp::create(b, b.getI1Type(), 0);
   for (auto [lhs_elem, rhs_elem] : llvm::zip(lhs, rhs)) {
     not_equal = b.createOrFold<arith::OrIOp>(
         not_equal, b.createOrFold<arith::CmpIOp>(arith::CmpIPredicate::ne,
@@ -209,7 +209,7 @@ SmallVector<Value, 4> PadWithZeros(ValueRange values, int64_t size,
                                    ImplicitLocOpBuilder& b) {
   SmallVector<Value, 4> padded_values(values.begin(), values.end());
   if (values.size() >= size) return padded_values;
-  auto zero = b.create<arith::ConstantIndexOp>(0);
+  auto zero = arith::ConstantIndexOp::create(b, 0);
   for (int i = values.size(); i < size; ++i) {
     padded_values.push_back(zero);
   }
@@ -283,13 +283,13 @@ SmallVector<Value, 4> EmitterHelper::ExtractOffsets(ImplicitLocOpBuilder& b,
   offsets.reserve(description_->index_vector_length);
   for (int i = 0; i < description_->index_vector_length; ++i) {
     SmallVector<Value, 4> indices_tensor_indices = {
-        slice_id, b.create<arith::ConstantIndexOp>(i)};
+        slice_id, arith::ConstantIndexOp::create(b, i)};
     auto index = GetIndicesElement(b, indices_tensor_indices);
     index =
         IsUnsignedIntegralType(
             description_->scatter->scatter_indices()->shape().element_type())
-            ? b.create<arith::IndexCastUIOp>(index_type, index).getResult()
-            : b.create<arith::IndexCastOp>(index_type, index).getResult();
+            ? arith::IndexCastUIOp::create(b, index_type, index).getResult()
+            : arith::IndexCastOp::create(b, index_type, index).getResult();
     offsets.push_back(index);
   }
   return offsets;
@@ -304,27 +304,27 @@ Value EmitterHelper::EmitScatterComputation(ImplicitLocOpBuilder& b,
     auto operand_elem = GetOperandElement(b, indices);
     auto reduced_val = emitters::InlineBlock(b, reducer.getBody().front(),
                                              {operand_elem, update_elem})[0];
-    return b.create<tensor::InsertOp>(reduced_val, output_tensor, indices);
+    return tensor::InsertOp::create(b, reduced_val, output_tensor, indices);
   }
-  auto atomic_rmw = b.create<AtomicRMWOp>(output_tensor, indices);
+  auto atomic_rmw = AtomicRMWOp::create(b, output_tensor, indices);
   OpBuilder body_b = atomic_rmw.getBodyBuilder();
   auto reduced_val =
       emitters::InlineBlock(body_b, reducer.getBody().front(),
                             {atomic_rmw.getCurrentValue(), update_elem})[0];
-  body_b.create<xla::YieldOp>(reducer->getLoc(), reduced_val);
+  xla::YieldOp::create(body_b, reducer->getLoc(), reduced_val);
   return atomic_rmw->getResult(0);
 }
 
 SmallVector<Value> EmitterHelper::WriteAccumulatedElementToOutput(
     ImplicitLocOpBuilder& b, Value accumulator, ValueRange accumulator_indices,
     ValueRange slice_indices, ValueRange offsets, Value output_tensor) const {
-  Value accumulator_elem = b.create<vector::ExtractOp>(
-      accumulator, mlir::getAsOpFoldResult(accumulator_indices));
+  Value accumulator_elem = vector::ExtractOp::create(
+      b, accumulator, mlir::getAsOpFoldResult(accumulator_indices));
 
   SmallVector<Value, 4> output_indices(offsets.begin(), offsets.end());
   for (int i = 0; i < output_indices.size(); ++i) {
     output_indices[i] =
-        b.create<arith::AddIOp>(slice_indices[i + 1], output_indices[i]);
+        arith::AddIOp::create(b, slice_indices[i + 1], output_indices[i]);
   }
   return {EmitScatterComputation(b, output_indices, accumulator_elem,
                                  output_tensor)};
@@ -488,7 +488,7 @@ void EmitNaiveImplementation(ImplicitLocOpBuilder& b,
           .front();
   Value index_id_in_bounds = b.createOrFold<arith::CmpIOp>(
       arith::CmpIPredicate::ult, thread_id_to_index_id_value,
-      b.create<arith::ConstantIndexOp>(description.num_slices));
+      arith::ConstantIndexOp::create(b, description.num_slices));
   auto result = EmitUpdateIf(
       b, index_id_in_bounds, {output_tensor},
       [&](ImplicitLocOpBuilder& outer_nested_b) -> SmallVector<Value> {
@@ -515,8 +515,8 @@ void EmitNaiveImplementation(ImplicitLocOpBuilder& b,
                     output_indices = PadWithZeros(output_indices, output_rank,
                                                   update_loop_b);
                     for (int i = 0; i < output_indices.size(); ++i) {
-                      output_indices[i] = update_loop_b.create<arith::AddIOp>(
-                          map_results[i + 1], output_indices[i]);
+                      output_indices[i] = arith::AddIOp::create(
+                          update_loop_b, map_results[i + 1], output_indices[i]);
                     }
                     Value output_tensor = output_tensors.front();
                     Value updated_output = helper.EmitScatterComputation(
@@ -527,7 +527,7 @@ void EmitNaiveImplementation(ImplicitLocOpBuilder& b,
             });
         return predicated_update;
       });
-  b.create<ReturnOp>(result.front());
+  ReturnOp::create(b, result.front());
 }
 
 absl::Status ScatterWithDistributedUpdates::EmitEntryFunctionImpl(
@@ -647,8 +647,9 @@ Value ScatterWithDistributedIndices::InitializeAccumulator(
       num_elements_per_slice, num_warps_per_slice_ * warp_size_ * vector_size_);
   auto accumulator_type =
       VectorType::get({update_iterations_per_thread, vector_size_}, elem_type);
-  return b.create<arith::ConstantOp>(
-      accumulator_type, emitters::GetZeroDenseElementsAttr(accumulator_type));
+  return arith::ConstantOp::create(
+      b, accumulator_type,
+      emitters::GetZeroDenseElementsAttr(accumulator_type));
 }
 
 absl::Status ScatterWithDistributedIndices::EmitEntryFunctionImpl(
@@ -686,10 +687,10 @@ absl::Status ScatterWithDistributedIndices::EmitEntryFunctionImpl(
 
   // Prepare loop initial values. Inits are packed as
   // [index_changed, is_inbounds, index_0,  ..., accumulator].
-  Value is_inbounds_init = b.create<arith::ConstantIntOp>(b.getI1Type(), 0);
-  Value slice_id_init = b.create<arith::ConstantIndexOp>(0);
+  Value is_inbounds_init = arith::ConstantIntOp::create(b, b.getI1Type(), 0);
+  Value slice_id_init = arith::ConstantIndexOp::create(b, 0);
   std::vector<Value> indices_init(description_.index_vector_length,
-                                  b.create<arith::ConstantIndexOp>(-1));
+                                  arith::ConstantIndexOp::create(b, -1));
   Value accumulator_init = InitializeAccumulator(b);
   SmallVector<Value> inits =
       Pack({slice_id_init, indices_init, is_inbounds_init, accumulator_init,
@@ -711,10 +712,11 @@ absl::Status ScatterWithDistributedIndices::EmitEntryFunctionImpl(
     CHECK_EQ(ivs.size(), 2);
     Value index_loop_id = ivs.front();
     Value index_vector_id = ivs.back();
-    Value iter_slice_id = nested_b.create<arith::AddIOp>(
-        nested_b.create<arith::MulIOp>(
-            index_loop_id,
-            nested_b.create<arith::ConstantIndexOp>(indices_vector_size_)),
+    Value iter_slice_id = arith::AddIOp::create(
+        nested_b,
+        arith::MulIOp::create(
+            nested_b, index_loop_id,
+            arith::ConstantIndexOp::create(nested_b, indices_vector_size_)),
         index_vector_id);
 
     SmallVector<Value> offsets =
@@ -728,19 +730,20 @@ absl::Status ScatterWithDistributedIndices::EmitEntryFunctionImpl(
         EmitInequalityCheck(nested_b, trimmed_offsets, new_trimmed_offsets);
 
     for (int i = 0; i < description_.index_vector_length; ++i) {
-      new_trimmed_offsets[i] = nested_b.create<arith::SelectOp>(
-          offsets_changed, new_trimmed_offsets[i], trimmed_offsets[i]);
+      new_trimmed_offsets[i] =
+          arith::SelectOp::create(nested_b, offsets_changed,
+                                  new_trimmed_offsets[i], trimmed_offsets[i]);
     }
 
     auto new_offsets = PadWithZeros(new_trimmed_offsets, output_rank, nested_b);
 
     // Write accumulated values into the tensor if the offsets changed.
     Value is_not_first_iteration =
-        b.create<arith::CmpIOp>(arith::CmpIPredicate::ne, iter_slice_id,
-                                b.create<arith::ConstantIndexOp>(0));
-    Value write_to_output_required = b.create<arith::AndIOp>(
-        is_not_first_iteration,
-        b.create<arith::AndIOp>(offsets_changed, iter_is_inbounds));
+        arith::CmpIOp::create(b, arith::CmpIPredicate::ne, iter_slice_id,
+                              arith::ConstantIndexOp::create(b, 0));
+    Value write_to_output_required = arith::AndIOp::create(
+        b, is_not_first_iteration,
+        arith::AndIOp::create(b, offsets_changed, iter_is_inbounds));
     iter_output = helper.WriteAccumulatorToOutput(
         b, write_to_output_required, thread_and_block_ids, iter_slice_id,
         slice_indexing, offsets, iter_acc, iter_output);
@@ -770,7 +773,7 @@ absl::Status ScatterWithDistributedIndices::EmitEntryFunctionImpl(
                                           acc_ind_opfold)
                 ->getResults();
           });
-      implicit_then_b.create<scf::YieldOp>(then_loc, then_results);
+      scf::YieldOp::create(implicit_then_b, then_loc, then_results);
     };
     // Emits a loop that combines the accumulator with the new update elements
     // if the offsets did not change.
@@ -787,8 +790,8 @@ absl::Status ScatterWithDistributedIndices::EmitEntryFunctionImpl(
             auto update_elem =
                 helper.GetUpdateElement(update_loop_b, slice_indices);
             auto acc_ind_opfold = mlir::getAsOpFoldResult(accumulator_indices);
-            Value accumulator_elem = update_loop_b.create<vector::ExtractOp>(
-                acc_arg, acc_ind_opfold);
+            Value accumulator_elem = vector::ExtractOp::create(
+                update_loop_b, acc_arg, acc_ind_opfold);
             auto reduced_val = emitters::InlineBlock(
                 update_loop_b, helper.GetReducer().getBody().front(),
                 {accumulator_elem, update_elem})[0];
@@ -796,7 +799,7 @@ absl::Status ScatterWithDistributedIndices::EmitEntryFunctionImpl(
                 .create<vector::InsertOp>(reduced_val, acc_arg, acc_ind_opfold)
                 ->getResults();
           });
-      implicit_else_b.create<scf::YieldOp>(else_results);
+      scf::YieldOp::create(implicit_else_b, else_results);
     };
     auto updated_accumulator =
         EmitUpdateIf(nested_b, new_is_inbounds, {iter_acc},
@@ -831,7 +834,7 @@ absl::Status ScatterWithDistributedIndices::EmitEntryFunctionImpl(
       b, result_is_inbounds, thread_and_block_ids, result_slice_id,
       slice_indexing, result_offsets, result_acc, result_output);
 
-  b.create<ReturnOp>(result_output);
+  ReturnOp::create(b, result_output);
   return absl::OkStatus();
 }
 

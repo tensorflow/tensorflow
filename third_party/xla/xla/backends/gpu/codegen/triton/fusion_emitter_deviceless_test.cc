@@ -130,7 +130,8 @@ ENTRY e {
     EXPECT_THAT(RunFileCheck(annotated_ir, R"(
       CHECK:  [[SOMETHING:.*]] "triton_dot -> [[FILE_LINE:fusion_emitter.*:.*]]"
     )"),
-                absl_testing::IsOkAndHolds(true));
+                absl_testing::IsOkAndHolds(true))
+        << annotated_ir;
   } else {
     EXPECT_THAT(RunFileCheck(annotated_ir, R"(
       CHECK:  [[SOMETHING:.*]] "triton_dot"

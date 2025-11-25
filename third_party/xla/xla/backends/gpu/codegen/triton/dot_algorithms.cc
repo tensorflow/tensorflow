@@ -118,19 +118,19 @@ absl::StatusOr<Value> ScaledDot(EmitterLocOpBuilder b,
   Value rhs_scale;
   if (rhs_dot_elem_type != ttir::ScaleDotElemType::BF16) {
     rhs_scale = Bitcast(b, operands.rhs_scale, b.getI8Type());
-    rhs_scale = b.create<mlir::stablehlo::TransposeOp>(
-        rhs_scale, b.getDenseI64ArrayAttr({1, 0}));
+    rhs_scale = mlir::stablehlo::TransposeOp::create(
+        b, rhs_scale, b.getDenseI64ArrayAttr({1, 0}));
   }
 
-  auto dot_scaled_op =
-      b.create<xtile::DotScaledOp>(operands.accumulator.getType(), operands.lhs,
-                                   operands.rhs, lhs_scale, rhs_scale, true);
+  auto dot_scaled_op = xtile::DotScaledOp::create(
+      b, operands.accumulator.getType(), operands.lhs, operands.rhs, lhs_scale,
+      rhs_scale, true);
 
   auto add_result =
       mlir::isa<mlir::IntegerType>(
           dot_scaled_op.getResult().getType().getElementType())
-          ? b.create<mlir::arith::AddIOp>(operands.accumulator, dot_scaled_op)
-          : b.create<mlir::arith::AddFOp>(operands.accumulator, dot_scaled_op);
+          ? mlir::arith::AddIOp::create(b, operands.accumulator, dot_scaled_op)
+          : mlir::arith::AddFOp::create(b, operands.accumulator, dot_scaled_op);
   return add_result->getResult(0);
 }
 
@@ -157,16 +157,16 @@ Value EmitStableHloDotAndAdd(EmitterLocOpBuilder b, Value lhs, Value rhs,
   auto precision_config = mlir::stablehlo::PrecisionConfigAttr::get(
       b.getContext(), {precision_spec.lhs_operand_precision,
                        precision_spec.rhs_operand_precision});
-  auto dot = b.create<mlir::stablehlo::DotGeneralOp>(
-      acc.getType(), lhs, rhs, dot_dimension_numbers,
+  auto dot = mlir::stablehlo::DotGeneralOp::create(
+      b, acc.getType(), lhs, rhs, dot_dimension_numbers,
       /*precision_config=*/precision_config,
       /*algorithm=*/
       stablehlo::ConvertDotAlgorithm(precision_spec.algorithm, &b));
 
   auto add_result =
       mlir::isa<mlir::IntegerType>(dot.getResult().getType().getElementType())
-          ? b.create<mlir::arith::AddIOp>(acc, dot)
-          : b.create<mlir::arith::AddFOp>(acc, dot);
+          ? mlir::arith::AddIOp::create(b, acc, dot)
+          : mlir::arith::AddFOp::create(b, acc, dot);
   return add_result->getResult(0);
 }
 

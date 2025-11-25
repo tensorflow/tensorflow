@@ -117,17 +117,18 @@ Value ReadVectorTileFromShmem(ImplicitLocOpBuilder& b, Value shmem,
       mlir::cast<mlir::RankedTensorType>(shmem.getType()).getElementType();
   auto vector_type = mlir::VectorType::get({vector_size}, elem_type);
   for (int64_t i = 0; i < vector_size; ++i) {
-    Value loaded_vector = b.create<mv::TransferReadOp>(
-        vector_type, shmem, shmem_indices_vec, /*padding=*/std::nullopt,
+    Value loaded_vector = mv::TransferReadOp::create(
+        b, vector_type, shmem, shmem_indices_vec, /*padding=*/std::nullopt,
         llvm::ArrayRef<bool>{true});
     for (int64_t j = 0; j < vector_size; ++j) {
       Value elem =
-          b.create<mv::ExtractOp>(loaded_vector, SmallVector<int64_t>{j});
-      vector_tile =
-          b.create<mv::InsertOp>(elem, vector_tile, SmallVector<int64_t>{j, i});
+          mv::ExtractOp::create(b, loaded_vector, SmallVector<int64_t>{j});
+      vector_tile = mv::InsertOp::create(b, elem, vector_tile,
+                                         SmallVector<int64_t>{j, i});
     }
-    shmem_indices_vec.front() = b.create<mlir::arith::AddIOp>(
-        shmem_indices_vec.front(), b.create<mlir::arith::ConstantIndexOp>(1));
+    shmem_indices_vec.front() =
+        mlir::arith::AddIOp::create(b, shmem_indices_vec.front(),
+                                    mlir::arith::ConstantIndexOp::create(b, 1));
   }
   return vector_tile;
 }
@@ -351,8 +352,8 @@ TransposeFusion::WriteResult TransposeFusion::EmitWriteToShMemMlir(
   for (auto* transpose : shmem_transposes_) {
     auto elem_type = emitters::PrimitiveTypeToMlirType(
         transpose->shape().element_type(), builder);
-    inits.push_back(builder.create<AllocateSharedOp>(
-        RankedTensorType::get(shmem_tensor_size, elem_type)));
+    inits.push_back(AllocateSharedOp::create(
+        builder, RankedTensorType::get(shmem_tensor_size, elem_type)));
   }
 
   // Add output arguments for side outputs.
@@ -382,8 +383,8 @@ TransposeFusion::WriteResult TransposeFusion::EmitWriteToShMemMlir(
           root_computation, transpose,
           /*operand_index=*/0, input_indices(transpose->operand(0)),
           call_target_provider, entry_function, builder)[0];
-      result_tensors.push_back(builder.create<mlir::tensor::InsertOp>(
-          result_scalar, output, shmem_indices));
+      result_tensors.push_back(mlir::tensor::InsertOp::create(
+          builder, result_scalar, output, shmem_indices));
     }
 
     // Produce all side outputs and then write them.
@@ -403,7 +404,7 @@ TransposeFusion::WriteResult TransposeFusion::EmitWriteToShMemMlir(
          llvm::zip(side_outputs, side_output_indices,
                    output_tensors.take_back(side_output_roots_.size()))) {
       result_tensors.push_back(
-          nested_b.create<mt::InsertOp>(value, output, indices));
+          mt::InsertOp::create(nested_b, value, output, indices));
     }
 
     return result_tensors;
@@ -452,7 +453,7 @@ void TransposeFusion::EmitReadFromShMemMlir(
         for (auto [transpose, shmem] :
              llvm::zip(shmem_transposes_, written.shmem_tensors)) {
           transpose_values[transpose].push_back(
-              nested_b.create<mt::ExtractOp>(shmem, shmem_indices));
+              mt::ExtractOp::create(nested_b, shmem, shmem_indices));
         }
         llvm::SmallVector<Value> epilogue_indices = thread_and_block_ids;
         absl::c_copy(symbol_values, std::back_inserter(epilogue_indices));
@@ -466,13 +467,14 @@ void TransposeFusion::EmitReadFromShMemMlir(
                        shmem_transpose_root_indices_)) {
           llvm::SmallVector<Value> indices = ApplyIndexing(
               indexing, thread_and_block_ids, symbol_values, nested_b);
-          results[root_index] = nested_b.create<mt::InsertOp>(
-              result_scalars.at(root).front(), results[root_index], indices);
+          results[root_index] =
+              mt::InsertOp::create(nested_b, result_scalars.at(root).front(),
+                                   results[root_index], indices);
         }
         return results;
       });
 
-  builder.create<ReturnOp>(result_tensors);
+  ReturnOp::create(builder, result_tensors);
 }
 
 llvm::SmallVector<mlir::AffineExpr, 4> TransposeFusion::GetThreadOffsets(
@@ -633,8 +635,8 @@ PackedTranspose::WriteResult PackedTranspose::EmitWriteToShMemMlir(
   for (auto* transpose : shmem_transposes_) {
     Type elem_type = emitters::PrimitiveTypeToMlirType(
         transpose->shape().element_type(), builder);
-    Value shmem = builder.create<AllocateSharedOp>(
-        RankedTensorType::get({shmem_dim, shmem_dim}, elem_type));
+    Value shmem = AllocateSharedOp::create(
+        builder, RankedTensorType::get({shmem_dim, shmem_dim}, elem_type));
 
     auto tids_and_bids = EmitThreadAndBlockIds(builder);
     Value updated_shmem =
@@ -690,7 +692,7 @@ PackedTranspose::WriteResult PackedTranspose::EmitWriteToShMemMlir(
     for (const auto& [value, indices, output] :
          llvm::zip(side_outputs, side_output_indices, output_tensors)) {
       result_tensors.push_back(
-          nested_b.create<mt::InsertOp>(value, output, indices));
+          mt::InsertOp::create(nested_b, value, output, indices));
     }
 
     return result_tensors;
@@ -719,8 +721,9 @@ Value GetZeroVector(ImplicitLocOpBuilder& b, PrimitiveType elem_type,
                     llvm::ArrayRef<int64_t> shape) {
   auto mlir_elem_type = emitters::PrimitiveTypeToMlirType(elem_type, b);
   auto accumulator_type = mlir::VectorType::get(shape, mlir_elem_type);
-  return b.create<mlir::arith::ConstantOp>(
-      accumulator_type, emitters::GetZeroDenseElementsAttr(accumulator_type));
+  return mlir::arith::ConstantOp::create(
+      b, accumulator_type,
+      emitters::GetZeroDenseElementsAttr(accumulator_type));
 }
 
 void PackedTranspose::EmitReadFromShMemMlir(
@@ -735,7 +738,7 @@ void PackedTranspose::EmitReadFromShMemMlir(
   auto output_indexing_over_vectors = ConvertRangeVariablesToDimensions(
       output_indexing, /*range_var_indices=*/{0});
 
-  auto c0 = builder.create<mlir::arith::ConstantIndexOp>(0);
+  auto c0 = mlir::arith::ConstantIndexOp::create(builder, 0);
   SmallVector<Value> grid_and_vector_ids{thread_and_block_ids};
   grid_and_vector_ids.append({c0, c0});
   absl::flat_hash_map<PrimitiveType, Value> elem_type_to_vector_tile;
@@ -775,8 +778,8 @@ void PackedTranspose::EmitReadFromShMemMlir(
                 ValueRange output_tensors) -> SmallVector<Value> {
               for (auto [transpose, shmem] :
                    llvm::zip(shmem_transposes_, written.shmem_tensors)) {
-                Value elem = nested_b_2.create<mv::ExtractOp>(
-                    transpose_values[transpose].front(),
+                Value elem = mv::ExtractOp::create(
+                    nested_b_2, transpose_values[transpose].front(),
                     getAsOpFoldResult(ivs));
                 transpose_values[transpose] = {elem};
               }
@@ -795,15 +798,15 @@ void PackedTranspose::EmitReadFromShMemMlir(
                 symbols.append(ivs.begin(), ivs.end());
                 llvm::SmallVector<Value> indices = ApplyIndexing(
                     indexing, thread_and_block_ids, symbols, nested_b);
-                results[root_index] = nested_b_2.create<mt::InsertOp>(
-                    result_scalars.at(root).front(), results[root_index],
-                    indices);
+                results[root_index] = mt::InsertOp::create(
+                    nested_b_2, result_scalars.at(root).front(),
+                    results[root_index], indices);
               }
               return results;
             });
         return inner_loop_results;
       });
-  builder.create<ReturnOp>(outer_loop_results);
+  ReturnOp::create(builder, outer_loop_results);
 }
 
 IndexingMap PackedTranspose::GetInputIndexing(MLIRContext* mlir_context) const {

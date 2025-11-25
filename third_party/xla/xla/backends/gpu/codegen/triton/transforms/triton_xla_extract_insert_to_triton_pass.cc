@@ -95,7 +95,7 @@ SmallVector<Value> IndexCast(::xla::EmitterLocOpBuilder& builder, Type type,
   SmallVector<Value> result;
   result.reserve(values.size());
   for (auto value : values) {
-    result.push_back(builder.create<arith::IndexCastOp>(type, value));
+    result.push_back(arith::IndexCastOp::create(builder, type, value));
   }
   return result;
 }
@@ -326,8 +326,8 @@ class RewriteFuncOp : public mlir::OpRewritePattern<func::FuncOp> {
           builder.getContext(),
           RankedTensorType::get(ordered_block_shape, element_type));
       // !tt.tensordesc<tensor<block_shape x element_type>> -> !tt.ptr<>
-      auto cast_to_orig_type = builder.create<mlir::UnrealizedConversionCastOp>(
-          operand_type, func_arg);
+      auto cast_to_orig_type = mlir::UnrealizedConversionCastOp::create(
+          builder, operand_type, func_arg);
       func_arg.replaceAllUsesExcept(cast_to_orig_type.getResult(0),
                                     cast_to_orig_type);
     }
@@ -354,8 +354,8 @@ class RewriteFuncOp : public mlir::OpRewritePattern<func::FuncOp> {
 
     // Currently not propagating any function attributes to the new function.
     ArrayRef<NamedAttribute> attrs;
-    auto new_func = builder.create<triton::FuncOp>(
-        op.getName(), new_function_type, attrs, arg_attrs);
+    auto new_func = triton::FuncOp::create(builder, op.getName(),
+                                           new_function_type, attrs, arg_attrs);
 
     for (int i = 0; i < new_func.getNumArguments(); ++i) {
       // TMA arguments don't require tt.divisibility.
@@ -372,7 +372,7 @@ class RewriteFuncOp : public mlir::OpRewritePattern<func::FuncOp> {
 
     auto terminator = new_func.getBody().front().getTerminator();
     rewriter.setInsertionPoint(terminator);
-    rewriter.create<triton::ReturnOp>(new_func.getLoc());
+    triton::ReturnOp::create(rewriter, new_func.getLoc());
     rewriter.eraseOp(terminator);
 
     return mlir::success();
@@ -414,7 +414,7 @@ Value ExpandAndBroadcastValue(::xla::EmitterLocOpBuilder& builder, Value value,
                               int dim, RankedTensorType tile_type) {
   for (int i = 0; i < tile_type.getRank(); ++i) {
     if (i != dim) {
-      value = builder.create<ExpandDimsOp>(value, i);
+      value = ExpandDimsOp::create(builder, value, i);
     }
   }
   return BroadcastOp::create(builder, tile_type, value);
@@ -597,12 +597,13 @@ class RewriteExtract : public mlir::OpRewritePattern<ExtractOp> {
         reduced_dims, tile_shape);
     Value other;
     if (mask) {
-      other = builder.create<arith::ConstantOp>(builder.getZeroAttr(
-          RankedTensorType::get(tile_shape, tile_type.getElementType())));
+      other = arith::ConstantOp::create(
+          builder, builder.getZeroAttr(RankedTensorType::get(
+                       tile_shape, tile_type.getElementType())));
     }
-    auto load = builder.create<LoadOp>(ptr, mask, other, CacheModifier::NONE,
-                                       EvictionPolicy::NORMAL,
-                                       /*isVolatile=*/false);
+    auto load = LoadOp::create(builder, ptr, mask, other, CacheModifier::NONE,
+                               EvictionPolicy::NORMAL,
+                               /*isVolatile=*/false);
     rewriter.replaceOp(op, load);
     return mlir::success();
   }
@@ -678,7 +679,7 @@ class RewriteInsert : public mlir::OpRewritePattern<InsertOp> {
         // Transpose to a major-to-minor tensor by simply reversing the layout.
         auto transpose_order = llvm::to_vector_of<int32_t>(dst_layout);
         std::reverse(transpose_order.begin(), transpose_order.end());
-        src = builder.create<TransOp>(src, transpose_order);
+        src = TransOp::create(builder, src, transpose_order);
       }
 
       auto ordered_offsets = GetMajorToMinorOrder(offsets, dst_layout);
@@ -713,9 +714,9 @@ class RewriteScalarInsert : public mlir::OpRewritePattern<tensor::InsertOp> {
     }
     ::xla::EmitterLocOpBuilder builder(op.getLoc(), rewriter);
     auto ptr_type = GetTensorPtrType(op.getScalar().getType());
-    auto cast_dst_to_tensor_ptr_type =
-        builder.create<mlir::UnrealizedConversionCastOp>(ptr_type, op.getDest())
-            .getResult(0);
+    auto cast_dst_to_tensor_ptr_type = mlir::UnrealizedConversionCastOp::create(
+                                           builder, ptr_type, op.getDest())
+                                           .getResult(0);
     StoreOp::create(builder, cast_dst_to_tensor_ptr_type, op.getScalar(),
                     /*boundary_checks=*/std::vector<int32_t>{},
                     CacheModifier::NONE, EvictionPolicy::NORMAL);

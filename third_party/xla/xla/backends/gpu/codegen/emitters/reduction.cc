@@ -223,7 +223,7 @@ PerThreadOutputs ReductionFusion::EmitterState::EmitPerThreadElements(
         addf->setAttr("fastmath", no_signed_zeros);
       });
       absl::c_copy(
-          nested_b.create<PureCallOp>(reducer, reduce_args).getResults(),
+          PureCallOp::create(nested_b, reducer, reduce_args).getResults(),
           results.begin() + start);
     }
     struct SideOutput {
@@ -245,8 +245,8 @@ PerThreadOutputs ReductionFusion::EmitterState::EmitPerThreadElements(
          llvm::zip(side_outputs, side_output_values)) {
       // The first iter args are the outputs.
       int offset = OutputIndex(side_output, 0);
-      results[offset] = builder.create<mlir::tensor::InsertOp>(
-          values.scalar, iter_args[offset], values.indices);
+      results[offset] = mlir::tensor::InsertOp::create(
+          builder, values.scalar, iter_args[offset], values.indices);
     }
     return results;
   };
@@ -286,8 +286,8 @@ SmallVector<Value> ReductionFusion::EmitterState::WriteToSharedMemory(
     for (int i = 0; i < reduction->operand_count() / 2; ++i) {
       auto tile_shape = ShapeUtil::MakeShapeWithDescendingLayout(
           reduction->operand(i)->shape().element_type(), shape);
-      tiles.push_back(builder.create<AllocateSharedOp>(
-          emitters::TensorShapeToMlirType(tile_shape, builder)));
+      tiles.push_back(AllocateSharedOp::create(
+          builder, emitters::TensorShapeToMlirType(tile_shape, builder)));
     }
   }
 
@@ -302,11 +302,12 @@ SmallVector<Value> ReductionFusion::EmitterState::WriteToSharedMemory(
         for (auto* hero : reductions) {
           for (auto value : values.at(hero)) {
             if (mlir::isa<mlir::VectorType>(value.getType())) {
-              value = builder.create<mlir::vector::ExtractOp>(
-                  value, symbol_values.back());
+              value = mlir::vector::ExtractOp::create(builder, value,
+                                                      symbol_values.back());
             }
             auto& tile = written[shared_index++];
-            tile = builder.create<mlir::tensor::InsertOp>(value, tile, indices);
+            tile =
+                mlir::tensor::InsertOp::create(builder, value, tile, indices);
           }
         }
         return written;
@@ -314,7 +315,7 @@ SmallVector<Value> ReductionFusion::EmitterState::WriteToSharedMemory(
 
   // Wait for the entire tile to be written.
   auto synced_tiles =
-      builder.create<SyncThreadsOp>(mlir::TypeRange(tiles), written_tiles)
+      SyncThreadsOp::create(builder, mlir::TypeRange(tiles), written_tiles)
           .getResults();
 
   return synced_tiles;
@@ -325,8 +326,8 @@ HloValueMap ReductionFusion::EmitterState::ShuffleReduce(
     const HloValueMap& per_thread_values, int max_dist) {
   HloValueMap results;
   for (auto* hero : reductions) {
-    auto reduce = builder.create<ShuffleReduceOp>(
-        GetReducer(hero), per_thread_values.at(hero), max_dist);
+    auto reduce = ShuffleReduceOp::create(builder, GetReducer(hero),
+                                          per_thread_values.at(hero), max_dist);
     results[hero] = reduce.getResults();
   }
   return results;
@@ -366,8 +367,8 @@ mlir::ValueRange ReductionFusion::EmitterState::ReduceViaSharedMemory(
           auto& args = reduce_args[hero];
           for (auto init : inits.at(hero)) {
             // If a warp didn't write anything, use the init values instead.
-            auto extract = builder.create<PredicatedExtractOp>(
-                read_condition, init, tiles[tile_index++], indices);
+            auto extract = PredicatedExtractOp::create(
+                builder, read_condition, init, tiles[tile_index++], indices);
             args.push_back(extract.getResult());
           }
         }
@@ -483,17 +484,18 @@ absl::Status ReductionFusion::EmitEntryFunction(
   b.setInsertionPointToStart(entry_function.addEntryBlock());
   state.thread_and_block_ids = EmitThreadAndBlockIds(b);
   if (reduction_heroes_.size() == 1) {
-    b.create<mlir::func::ReturnOp>(EmitReduction(0, state));
+    mlir::func::ReturnOp::create(b, EmitReduction(0, state));
     return absl::OkStatus();
   }
   SmallVector<int64_t> cases(reduction_heroes_.size() - 1);
   absl::c_iota(cases, 1);  // `default` is region 0.
-  auto switch_op = b.create<mlir::scf::IndexSwitchOp>(
-      entry_function.getResultTypes(), EmitBlockId(b, 1), cases, cases.size());
-  b.create<mlir::func::ReturnOp>(switch_op.getResults());
+  auto switch_op =
+      mlir::scf::IndexSwitchOp::create(b, entry_function.getResultTypes(),
+                                       EmitBlockId(b, 1), cases, cases.size());
+  mlir::func::ReturnOp::create(b, switch_op.getResults());
   for (auto [id, region] : llvm::enumerate(switch_op->getRegions())) {
     b.setInsertionPointToStart(&region.emplaceBlock());
-    b.create<mlir::scf::YieldOp>(EmitReduction(id, state));
+    mlir::scf::YieldOp::create(b, EmitReduction(id, state));
   }
   return absl::OkStatus();
 }
@@ -602,8 +604,8 @@ SmallVector<Value> ReductionFusion::EvaluateEpilogue(
                                 state.thread_and_block_ids, symbol_values, b);
     for (auto [result_index, result] : llvm::enumerate(values.at(root))) {
       auto& output = outputs[state.OutputIndex(root, result_index)];
-      output = b.create<PredicatedInsertOp>(thread_has_output, result, output,
-                                            output_indices);
+      output = PredicatedInsertOp::create(b, thread_has_output, result, output,
+                                          output_indices);
     }
   }
   return outputs;

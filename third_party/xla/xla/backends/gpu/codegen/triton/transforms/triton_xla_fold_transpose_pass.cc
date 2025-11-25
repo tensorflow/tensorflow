@@ -132,8 +132,8 @@ LogicalResult PushTransposeUpThroughBroadcast(TransOp op,
     return rewriter.notifyMatchFailure(  //
         op, "Transpose source is not a broadcast.");
   }
-  Value new_trans = rewriter.create<TransOp>(op.getLoc(), broadcast.getSrc(),
-                                             op.getOrderAttr());
+  Value new_trans = TransOp::create(rewriter, op.getLoc(), broadcast.getSrc(),
+                                    op.getOrderAttr());
   rewriter.replaceOpWithNewOp<BroadcastOp>(op, op.getType(), new_trans);
   return success();
 }
@@ -162,7 +162,7 @@ LogicalResult PushTransposeUpThroughExpandDims(TransOp op,
   }
 
   Value new_trans =
-      rewriter.create<TransOp>(op.getLoc(), expand_dims.getSrc(), new_order);
+      TransOp::create(rewriter, op.getLoc(), expand_dims.getSrc(), new_order);
   rewriter.replaceOpWithNewOp<ExpandDimsOp>(op, op.getType(), new_trans,
                                             new_axis);
   return success();
@@ -181,8 +181,8 @@ LogicalResult PushTransposeUpThroughElementwise(TransOp op,
   new_operands.reserve(elementwise->getNumOperands());
   for (Value operand : elementwise->getOperands()) {
     if (auto tensor_type = dyn_cast<RankedTensorType>(operand.getType())) {
-      operand = rewriter.create<TransOp>(elementwise->getLoc(), operand,
-                                         op.getOrderAttr());
+      operand = TransOp::create(rewriter, elementwise->getLoc(), operand,
+                                op.getOrderAttr());
     }
     new_operands.push_back(operand);
   }
@@ -223,9 +223,10 @@ LogicalResult PushTransposeUpIntoIf(TransOp op, PatternRewriter& rewriter) {
   auto new_types = llvm::to_vector(if_op.getResultTypes());
   new_types[result_number] = op.getType();
 
-  auto new_if_op = rewriter.create<scf::IfOp>(
-      op.getLoc(), new_types, if_op.getCondition(), /*addThenBlock=*/false,
-      /*addElseBlock=*/false);
+  auto new_if_op =
+      scf::IfOp::create(rewriter, op.getLoc(), new_types, if_op.getCondition(),
+                        /*addThenBlock=*/false,
+                        /*addElseBlock=*/false);
 
   // Update then and else regions.
   for (auto [old_region, new_region] :
@@ -236,9 +237,9 @@ LogicalResult PushTransposeUpIntoIf(TransOp op, PatternRewriter& rewriter) {
     }
     auto yield_op = new_region->front().getTerminator();
     OpBuilder::InsertionGuard guard = SetInsertionPoint(rewriter, yield_op);
-    auto trans_op = rewriter.create<TransOp>(
-        op.getLoc(), op.getType(), yield_op->getOperand(result_number),
-        op.getOrderAttr());
+    auto trans_op =
+        TransOp::create(rewriter, op.getLoc(), op.getType(),
+                        yield_op->getOperand(result_number), op.getOrderAttr());
     yield_op->setOperand(result_number, trans_op);
   }
   rewriter.replaceOp(op, new_if_op.getResult(result_number));
@@ -312,7 +313,7 @@ LogicalResult PushTransposeUpThroughReshape(TransOp op,
   }
 
   auto new_trans =
-      rewriter.create<TransOp>(reshape.getLoc(), reshape.getSrc(), new_order);
+      TransOp::create(rewriter, reshape.getLoc(), reshape.getSrc(), new_order);
   rewriter.replaceOpWithNewOp<ReshapeOp>(op, op.getType(), new_trans);
   return success();
 }

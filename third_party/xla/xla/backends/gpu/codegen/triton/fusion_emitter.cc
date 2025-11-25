@@ -187,7 +187,7 @@ using ::xla::gpu::triton::TritonType;
 namespace {
 
 Value MakeIndex(EmitterLocOpBuilder& b, int64_t value) {
-  return b.create<arith::ConstantIndexOp>(value);
+  return arith::ConstantIndexOp::create(b, value);
 }
 
 // Same as HLO BroadcastInDims. The sorted indices in `dims` specify the mapping
@@ -200,22 +200,22 @@ TensorValue BroadcastInDims(EmitterLocOpBuilder b, TensorValue value,
   auto result_type = mlir::RankedTensorType::get(
       output_shape, value.getType().getElementType());
 
-  return b.create<stablehlo::BroadcastInDimOp>(result_type, value, dims);
+  return stablehlo::BroadcastInDimOp::create(b, result_type, value, dims);
 }
 
 TensorValue Splat(EmitterLocOpBuilder b, Value value,
                   ArrayRef<int64_t> output_shape) {
   auto tensor_value = mlir::dyn_cast<TensorValue>(value);
   if (!tensor_value) {
-    tensor_value = b.create<mlir::tensor::FromElementsOp>(
-        mlir::RankedTensorType::get({}, value.getType()), value);
+    tensor_value = mlir::tensor::FromElementsOp::create(
+        b, mlir::RankedTensorType::get({}, value.getType()), value);
   }
   return BroadcastInDims(b, tensor_value, output_shape, /*dims=*/{});
 }
 
 TensorValue Iota(EmitterLocOpBuilder b, int32_t limit) {
   auto type = mlir::RankedTensorType::get(limit, b.getI32Type());
-  return b.create<stablehlo::IotaOp>(type, /*iota_dimension=*/0);
+  return stablehlo::IotaOp::create(b, type, /*iota_dimension=*/0);
 }
 
 absl::StatusOr<TensorValue> EmitReduce(
@@ -257,8 +257,8 @@ absl::StatusOr<TensorValue> EmitReduce(
 
   Value init_value = values[tiled_hlo_reduce.operand(1)];
 
-  stablehlo::ReduceOp reduction =
-      b.create<stablehlo::ReduceOp>(input, init_value, hlo_reduce.dimensions());
+  stablehlo::ReduceOp reduction = stablehlo::ReduceOp::create(
+      b, input, init_value, hlo_reduce.dimensions());
   {
     TF_ASSIGN_OR_RETURN(Type result_ty,
                         TritonType(b, hlo_reduce.shape().element_type()));
@@ -295,7 +295,7 @@ absl::StatusOr<TensorValue> EmitReduce(
 
     TF_ASSIGN_OR_RETURN(TensorValue result, EmitScope(b, /*analysis=*/nullptr,
                                                       to_emit, region_values));
-    b.create<stablehlo::ReturnOp>(SmallVector<Value>({result}));
+    stablehlo::ReturnOp::create(b, SmallVector<Value>({result}));
     b.setInsertionPointAfter(reduction);
   }
 
@@ -348,15 +348,15 @@ absl::StatusOr<TensorValue> EmitTiledIota(
            b.getI32Type());
 
   // First, stride as needed between the iota components.
-  Value range = b.create<arith::MulIOp>(
-      Iota(b, padded_tile_sizes[iota_dim]),
+  Value range = arith::MulIOp::create(
+      b, Iota(b, padded_tile_sizes[iota_dim]),
       Splat(b,
             CreateConst(b, b.getI32Type(), tiled_iota.tile_strides()[iota_dim]),
             padded_tile_sizes[iota_dim]));
 
   // Then, add the base offset to the iota components.
-  range = b.create<arith::AddIOp>(
-      range, Splat(b, iota_dim_offset, padded_tile_sizes[iota_dim]));
+  range = arith::AddIOp::create(
+      b, range, Splat(b, iota_dim_offset, padded_tile_sizes[iota_dim]));
 
   // Cast the result to the targeted type.
   TF_ASSIGN_OR_RETURN(Type iota_element_type,
@@ -406,7 +406,7 @@ absl::StatusOr<TensorValue> EmitTiledReshape(EmitterLocOpBuilder b,
                      absl::StrJoin(output_tensor_type.getShape(), "x")));
   }
 
-  return b.create<stablehlo::ReshapeOp>(output_tensor_type, input);
+  return stablehlo::ReshapeOp::create(b, output_tensor_type, input);
 }
 
 TensorValue EmitTiledTranspose(EmitterLocOpBuilder b,
@@ -421,7 +421,7 @@ TensorValue EmitTiledTranspose(EmitterLocOpBuilder b,
 
   mlir::DenseI64ArrayAttr order = b.getDenseI64ArrayAttr(dimensions);
 
-  return b.create<stablehlo::TransposeOp>(output_tensor_type, input, order);
+  return stablehlo::TransposeOp::create(b, output_tensor_type, input, order);
 }
 
 absl::StatusOr<TensorValue> EmitTiledBitcast(
@@ -444,7 +444,7 @@ absl::StatusOr<TensorValue> EmitTiledBitcast(
         GetPaddedTileSizes(tiled_bitcast.operand(0)->tile_sizes()),
         output_element_type);
     input = mlir::cast<TensorValue>(
-        b.create<mlir::tensor::BitcastOp>(output_type, input).getResult());
+        mlir::tensor::BitcastOp::create(b, output_type, input).getResult());
     input_shape.set_element_type(output_shape.element_type());
   }
 
@@ -553,15 +553,15 @@ absl::StatusOr<TensorValue> MaskDotOperand(
     // full tiles (tiles without padding).
     Type result_type = dot_operand_value.getType();
     Value tile_size_value = CreateConst(b, b.getI32Type(), tile_size);
-    Value num_full_tiles = b.create<arith::DivSIOp>(
-        CreateConst(b, b.getI32Type(), contracting_dimension_size),
+    Value num_full_tiles = arith::DivSIOp::create(
+        b, CreateConst(b, b.getI32Type(), contracting_dimension_size),
         tile_size_value);
     // if tile_index >= num_full_tiles...
-    auto cond = b.create<arith::CmpIOp>(arith::CmpIPredicate::sge,
-                                        contracting_dimension_tile_index,
-                                        num_full_tiles);
-    auto if_op = b.create<mlir::scf::IfOp>(mlir::TypeRange(result_type), cond,
-                                           /*withElseRegion=*/true);
+    auto cond =
+        arith::CmpIOp::create(b, arith::CmpIPredicate::sge,
+                              contracting_dimension_tile_index, num_full_tiles);
+    auto if_op = mlir::scf::IfOp::create(b, mlir::TypeRange(result_type), cond,
+                                         /*withElseRegion=*/true);
     // then ...
     {
       b.setInsertionPointToStart(if_op.thenBlock());
@@ -569,17 +569,17 @@ absl::StatusOr<TensorValue> MaskDotOperand(
       //   contracting_dimension_tile_index * tile_size + range(0, tile_size)
       // mask = indices < contracting_dimension_size
       // operand = select(broadcast(mask, operand.shape), operand, 0)
-      Value tile_offset = b.create<arith::MulIOp>(
-          contracting_dimension_tile_index, tile_size_value);
+      Value tile_offset = arith::MulIOp::create(
+          b, contracting_dimension_tile_index, tile_size_value);
       TensorValue range = Iota(b, tile_size);
       TensorValue broadcasted_tile_offset = Splat(b, tile_offset, {tile_size});
-      Value indices = b.create<arith::AddIOp>(range, broadcasted_tile_offset);
+      Value indices = arith::AddIOp::create(b, range, broadcasted_tile_offset);
 
       Value boundary = CreateConst(b, b.getI32Type(),
                                    contracting_dimension_size, {tile_size});
 
-      Value mask =
-          b.create<arith::CmpIOp>(arith::CmpIPredicate::slt, indices, boundary);
+      Value mask = arith::CmpIOp::create(b, arith::CmpIPredicate::slt, indices,
+                                         boundary);
 
       mask = BroadcastInDims(b, mlir::cast<TensorValue>(mask), tile_shape,
                              {contraction_dimension_index});
@@ -590,13 +590,13 @@ absl::StatusOr<TensorValue> MaskDotOperand(
       TensorValue zero = CreateConst(b, element_type, 0.0f, tile_shape);
 
       Value masked_dot_operand =
-          b.create<arith::SelectOp>(mask, dot_operand_value, zero);
-      b.create<mlir::scf::YieldOp>(masked_dot_operand);
+          arith::SelectOp::create(b, mask, dot_operand_value, zero);
+      mlir::scf::YieldOp::create(b, masked_dot_operand);
     }
     // else ...
     {
       b.setInsertionPointToStart(if_op.elseBlock());
-      b.create<mlir::scf::YieldOp>(dot_operand_value);
+      mlir::scf::YieldOp::create(b, dot_operand_value);
     }
     b.setInsertionPointAfter(if_op);
     return mlir::cast<TensorValue>(if_op.getResult(0));
@@ -753,7 +753,8 @@ absl::StatusOr<TensorValue> EmitDot(
       {IndexingMap::Variable{{0, loop_iteration_count - 1}, "k"}},
       /*rt_vars=*/{}};
 
-  auto for_op = b.create<mlir::scf::ForOp>(
+  auto for_op = mlir::scf::ForOp::create(
+      b,
       /*lowerBound=*/MakeIndex(b, 0),
       /*upperBound=*/MakeIndex(b, loop_iteration_count),
       /*step=*/MakeIndex(b, 1), accumulator);
@@ -766,8 +767,8 @@ absl::StatusOr<TensorValue> EmitDot(
     mlir::OpBuilder::InsertionGuard g(b);
     b.setInsertionPointToStart(for_op.getBody());
     Value ki = for_op.getInductionVar();
-    Value computation_index = b.create<xla::ApplyIndexingOp>(
-                                   ValueRange{pid, ki}, computation_index_map)
+    Value computation_index = xla::ApplyIndexingOp::create(
+                                  b, ValueRange{pid, ki}, computation_index_map)
                                   .getResult(0);
     SmallVector<TensorValue> dot_args;
     for (const TiledHloInstruction* operand : tiled_hlo_dot.operands()) {
@@ -817,7 +818,7 @@ absl::StatusOr<TensorValue> EmitDot(
     TF_ASSIGN_OR_RETURN(
         Value acc_next,
         triton::EmitSingleTileDot(b, dot, triton::DotOperands{lhs, rhs, acc}));
-    b.create<mlir::scf::YieldOp>(acc_next);
+    mlir::scf::YieldOp::create(b, acc_next);
   }
 
   // The output of the loop may not match the expected output type of the dot.
@@ -889,7 +890,8 @@ absl::StatusOr<TensorValue> EmitScaledDot(
 
   // TODO(b/449668102): Consider adding warp specialization support for scaled
   // dot. At the moment, there are no benchmarks that use scaled dot.
-  auto for_op = b.create<mlir::scf::ForOp>(
+  auto for_op = mlir::scf::ForOp::create(
+      b,
       /*lowerBound=*/MakeIndex(b, 0),
       /*upperBound=*/MakeIndex(b, loop_iteration_count),
       /*step=*/MakeIndex(b, 1), accumulator);
@@ -897,8 +899,8 @@ absl::StatusOr<TensorValue> EmitScaledDot(
     mlir::OpBuilder::InsertionGuard g(b);
     b.setInsertionPointToStart(for_op.getBody());
     Value ki = for_op.getInductionVar();
-    Value computation_index = b.create<xla::ApplyIndexingOp>(
-                                   ValueRange{pid, ki}, computation_index_map)
+    Value computation_index = xla::ApplyIndexingOp::create(
+                                  b, ValueRange{pid, ki}, computation_index_map)
                                   .getResult(0);
     SmallVector<TensorValue> dot_args;
     for (const TiledHloInstruction* operand : tiled_hlo_dot.operands()) {
@@ -969,7 +971,7 @@ absl::StatusOr<TensorValue> EmitScaledDot(
         triton::EmitSingleTileScaledDot(
             b, scaled_dot,
             triton::ScaledDotOperands{lhs, rhs, lhs_scale, rhs_scale, acc}));
-    b.create<mlir::scf::YieldOp>(acc_next);
+    mlir::scf::YieldOp::create(b, acc_next);
   }
 
   // The output of the loop may not match the expected output type of the dot.
@@ -1066,15 +1068,16 @@ absl::StatusOr<TensorValue> EmitConcatenate(
       Value offset_limit = CreateConst(b, b.getIndexType(), limit);
 
       auto cond =
-          b.create<arith::CmpIOp>(arith::CmpIPredicate::slt,
-                                  concatenate_dimension_offset, offset_limit);
-      auto if_op = b.create<mlir::scf::IfOp>(mlir::TypeRange(result_type), cond,
-                                             /*withElseRegion=*/true);
+          arith::CmpIOp::create(b, arith::CmpIPredicate::slt,
+                                concatenate_dimension_offset, offset_limit);
+      auto if_op =
+          mlir::scf::IfOp::create(b, mlir::TypeRange(result_type), cond,
+                                  /*withElseRegion=*/true);
 
       // Propagate the result from the nested `if_op` if we were already within
       // an `if_op`.
       if (!if_ops.empty()) {
-        b.create<mlir::scf::YieldOp>(if_op.getResult(0));
+        mlir::scf::YieldOp::create(b, if_op.getResult(0));
       }
 
       b.setInsertionPointToStart(if_op.thenBlock());
@@ -1091,7 +1094,7 @@ absl::StatusOr<TensorValue> EmitConcatenate(
             *tiled_fusion_operand->called_computation(), block_level_parameters,
             fn, pid, values));
     CHECK_EQ(result.size(), 1);
-    b.create<mlir::scf::YieldOp>(result.front());
+    mlir::scf::YieldOp::create(b, result.front());
   }
 
   b.setInsertionPointAfter(if_ops.front());
@@ -1136,12 +1139,12 @@ absl::StatusOr<TensorValue> EmitPad(
 
     // RHS for the compare is splat(pad_input_dim_size - tile_offset).
     Value tile_offset_i32 = Cast(b, tile_offset, i32_type);
-    Value threshold = b.create<arith::SubIOp>(
-        CreateConst(b, i32_type, pad_input_dim_size), tile_offset_i32);
+    Value threshold = arith::SubIOp::create(
+        b, CreateConst(b, i32_type, pad_input_dim_size), tile_offset_i32);
     TensorValue threshold_splat = Splat(b, threshold, padded_tile_sizes);
-    Value cmp = b.create<arith::CmpIOp>(arith::CmpIPredicate::slt, bcast,
-                                        threshold_splat);
-    mask = mask ? b.create<arith::AndIOp>(mask, cmp) : cmp;
+    Value cmp = arith::CmpIOp::create(b, arith::CmpIPredicate::slt, bcast,
+                                      threshold_splat);
+    mask = mask ? arith::AndIOp::create(b, mask, cmp) : cmp;
   }
   if (!mask) {
     return values[tiled_operand];
@@ -1151,7 +1154,7 @@ absl::StatusOr<TensorValue> EmitPad(
   TensorValue pad_value_splat =
       Splat(b, values[padding_value], padded_tile_sizes);
   return mlir::cast<TensorValue>(
-      b.create<arith::SelectOp>(mask, values[tiled_operand], pad_value_splat)
+      arith::SelectOp::create(b, mask, values[tiled_operand], pad_value_splat)
           .getResult());
 }
 
@@ -1512,9 +1515,9 @@ absl::Status EmitGeneric(
         auto tile_info,
         TileInfo::Construct(b, tile_id, /*runtime_values=*/{}, *root));
 
-    b.create<xtile::InsertTileOp>(result, arg, tile_info.offsets(),
-                                  tile_info.padded_tile_sizes(),
-                                  tile_info.tile_strides());
+    xtile::InsertTileOp::create(b, result, arg, tile_info.offsets(),
+                                tile_info.padded_tile_sizes(),
+                                tile_info.tile_strides());
   }
 
   return absl::OkStatus();
@@ -2012,8 +2015,8 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> EmitXTileModule(
   llvm::SmallVector<mlir::NamedAttribute> named_attributes{b.getNamedAttr(
       "num_opaque_args", b.getI32IntegerAttr(num_metadata_arguments))};
 
-  auto fn =
-      b.create<xtile::EntryFuncOp>(fn_name, fn_arg_types, named_attributes, {});
+  auto fn = xtile::EntryFuncOp::create(b, fn_name, fn_arg_types,
+                                       named_attributes, {});
 
   fn.addEntryBlock();
   b.setInsertionPointToStart(&fn.front());

@@ -101,10 +101,10 @@ using TensorValue = mlir::TypedValue<mlir::RankedTensorType>;
 Value EmitClampedIndex(EmitterLocOpBuilder b, Value value, int64_t lower,
                        int64_t upper) {
   Value clamped_index =
-      b.create<ma::MaxSIOp>(value, CreateConst(b, value.getType(), lower));
-  clamped_index = b.create<ma::MinSIOp>(clamped_index,
-                                        CreateConst(b, value.getType(), upper));
-  return b.create<ma::IndexCastOp>(b.getIndexType(), clamped_index);
+      ma::MaxSIOp::create(b, value, CreateConst(b, value.getType(), lower));
+  clamped_index = ma::MinSIOp::create(b, clamped_index,
+                                      CreateConst(b, value.getType(), upper));
+  return ma::IndexCastOp::create(b, b.getIndexType(), clamped_index);
 }
 
 absl::StatusOr<SmallVector<Value>> ComputeOffsetsForTile(
@@ -267,17 +267,17 @@ Value Cast(EmitterLocOpBuilder& b, Value value, Type dst_element_ty) {
   }
 
   if (src_ty.isIndex() || dst_ty.isIndex()) {
-    return b.create<ma::IndexCastOp>(dst_ty, value);
+    return ma::IndexCastOp::create(b, dst_ty, value);
   }
 
   // All operations on bf16 are done through f32.
   if (src_element_ty.isBF16()) {
-    return Cast(b, b.create<ma::ExtFOp>(fp32_ty, value), dst_element_ty);
+    return Cast(b, ma::ExtFOp::create(b, fp32_ty, value), dst_element_ty);
   }
   if (dst_element_ty.isBF16()) {
     // S8 -> BF16 is directly supported and doesn't need to go through f32.
     if (!src_element_ty.isInteger(8)) {
-      return b.create<ma::TruncFOp>(dst_ty, Cast(b, value, b.getF32Type()));
+      return ma::TruncFOp::create(b, dst_ty, Cast(b, value, b.getF32Type()));
     }
   }
 
@@ -287,15 +287,15 @@ Value Cast(EmitterLocOpBuilder& b, Value value, Type dst_element_ty) {
   if (src_fp_element_ty && dst_fp_element_ty) {
     if (IsFp8Type(src_element_ty) && IsFp8Type(dst_element_ty)) {
       // FP8 <-> FP8 conversion needs to go through FP16
-      auto fp16_value = b.create<ma::ExtFOp>(fp16_ty, value);
-      return b.create<ma::TruncFOp>(dst_ty, fp16_value);
+      auto fp16_value = ma::ExtFOp::create(b, fp16_ty, value);
+      return ma::TruncFOp::create(b, dst_ty, fp16_value);
     }
 
     if (src_fp_element_ty.getFPMantissaWidth() >
         dst_fp_element_ty.getFPMantissaWidth()) {
-      return b.create<ma::TruncFOp>(dst_ty, value);
+      return ma::TruncFOp::create(b, dst_ty, value);
     } else {
-      return b.create<ma::ExtFOp>(dst_ty, value);
+      return ma::ExtFOp::create(b, dst_ty, value);
     }
   }
   // int => int
@@ -304,30 +304,30 @@ Value Cast(EmitterLocOpBuilder& b, Value value, Type dst_element_ty) {
     if (src_element_ty.getIntOrFloatBitWidth() <
         dst_element_ty.getIntOrFloatBitWidth()) {
       if (src_element_ty.isInteger(1)) {
-        return b.create<ma::ExtUIOp>(dst_ty, value);
+        return ma::ExtUIOp::create(b, dst_ty, value);
       }
-      return b.create<ma::ExtSIOp>(dst_ty, value);
+      return ma::ExtSIOp::create(b, dst_ty, value);
     }
     // int => bool is always value != 0.
     if (dst_element_ty.isInteger(1)) {
-      return b.create<ma::CmpIOp>(ma::CmpIPredicate::ne, value,
-                                  ZerosLike(b, value));
+      return ma::CmpIOp::create(b, ma::CmpIPredicate::ne, value,
+                                ZerosLike(b, value));
     }
-    return b.create<ma::TruncIOp>(dst_ty, value);
+    return ma::TruncIOp::create(b, dst_ty, value);
   }
   // int => float
   if (mlir::isa<mlir::IntegerType>(src_element_ty) && dst_fp_element_ty) {
     // The current logic handles signed integer types only.
     if (src_element_ty.isInteger(1)) {
-      return b.create<ma::UIToFPOp>(dst_ty, value);
+      return ma::UIToFPOp::create(b, dst_ty, value);
     }
-    return b.create<ma::SIToFPOp>(dst_ty, value);
+    return ma::SIToFPOp::create(b, dst_ty, value);
   }
   // float => int
   if (src_fp_element_ty && mlir::isa<mlir::IntegerType>(dst_element_ty)) {
     if (dst_element_ty.isInteger(1)) {
-      return b.create<ma::CmpFOp>(ma::CmpFPredicate::UNE, value,
-                                  ZerosLike(b, value));
+      return ma::CmpFOp::create(b, ma::CmpFPredicate::UNE, value,
+                                ZerosLike(b, value));
     }
     // The current logic handles signed integer types only. Additional handling
     // is needed for unsigned integer types.
@@ -345,22 +345,22 @@ Value Cast(EmitterLocOpBuilder& b, Value value, Type dst_element_ty) {
         return CreateConst(b, src_fp_element_ty, x);
       }
     };
-    auto fptosi = b.create<ma::FPToSIOp>(dst_ty, value);
+    auto fptosi = ma::FPToSIOp::create(b, dst_ty, value);
     int64_t min = llvm::minIntN(dst_element_ty.getIntOrFloatBitWidth());
     int64_t max = llvm::maxIntN(dst_element_ty.getIntOrFloatBitWidth());
 
     // value <= static_cast<float>(INT_MIN) ? INT_MIN : ...
-    auto clamped = b.create<ma::SelectOp>(
-        b.create<ma::CmpFOp>(ma::CmpFPredicate::OLE, value, cst_float(min)),
+    auto clamped = ma::SelectOp::create(
+        b, ma::CmpFOp::create(b, ma::CmpFPredicate::OLE, value, cst_float(min)),
         cst_int(min), fptosi);
     // value >= static_cast<float>(INT_MAX) ? INT_MAX : ...
-    clamped = b.create<ma::SelectOp>(
-        b.create<ma::CmpFOp>(ma::CmpFPredicate::OGE, value, cst_float(max)),
+    clamped = ma::SelectOp::create(
+        b, ma::CmpFOp::create(b, ma::CmpFPredicate::OGE, value, cst_float(max)),
         cst_int(max), clamped);
     // isnan(value) ? 0 : ...
-    return b.create<ma::SelectOp>(
-        b.create<ma::CmpFOp>(ma::CmpFPredicate::UNO, value, value), cst_int(0),
-        clamped);
+    return ma::SelectOp::create(
+        b, ma::CmpFOp::create(b, ma::CmpFPredicate::UNO, value, value),
+        cst_int(0), clamped);
   }
 
   LOG(FATAL) << "Type conversion not supported: "
@@ -370,9 +370,9 @@ Value Cast(EmitterLocOpBuilder& b, Value value, Type dst_element_ty) {
 
 Value Subtract(EmitterLocOpBuilder& b, ValueRange values) {
   if (mlir::isa<mlir::IntegerType>(mlir::getElementTypeOrSelf(values[0]))) {
-    return b.create<ma::SubIOp>(values[0], values[1]);
+    return ma::SubIOp::create(b, values[0], values[1]);
   } else {
-    return b.create<ma::SubFOp>(values[0], values[1]);
+    return ma::SubFOp::create(b, values[0], values[1]);
   }
 }
 
@@ -380,13 +380,15 @@ Value Compare(EmitterLocOpBuilder& b, ValueRange values,
               mh::ComparisonDirection direction) {
   const Type type = mlir::getElementTypeOrSelf(values[0]);
   if (mlir::isa<mlir::IntegerType>(type)) {
-    return b.create<ma::CmpIOp>(mh::impl::getCmpPredicate<ma::CmpIPredicate>(
-                                    direction,
-                                    /*isSigned=*/!type.isInteger(1))
-                                    .value(),
-                                values[0], values[1]);
+    return ma::CmpIOp::create(b,
+                              mh::impl::getCmpPredicate<ma::CmpIPredicate>(
+                                  direction,
+                                  /*isSigned=*/!type.isInteger(1))
+                                  .value(),
+                              values[0], values[1]);
   }
-  return b.create<ma::CmpFOp>(
+  return ma::CmpFOp::create(
+      b,
       mh::impl::getCmpPredicate<ma::CmpFPredicate>(direction,
                                                    /*isSigned=*/true)
           .value(),
@@ -396,27 +398,27 @@ Value Compare(EmitterLocOpBuilder& b, ValueRange values,
 Value Maximum(EmitterLocOpBuilder& b, ValueRange values) {
   auto type = mlir::getElementTypeOrSelf(values[0]);
   if (mlir::isa<mlir::FloatType>(type)) {
-    return b.create<ma::MaximumFOp>(values);
+    return ma::MaximumFOp::create(b, values);
   }
 
   if (type.isInteger(1)) {
-    return b.create<ma::OrIOp>(values);
+    return ma::OrIOp::create(b, values);
   }
 
-  return b.create<ma::MaxSIOp>(values);
+  return ma::MaxSIOp::create(b, values);
 }
 
 Value Minimum(EmitterLocOpBuilder& b, ValueRange values) {
   auto type = mlir::getElementTypeOrSelf(values[0]);
   if (mlir::isa<mlir::FloatType>(type)) {
-    return b.create<ma::MinimumFOp>(values);
+    return ma::MinimumFOp::create(b, values);
   }
 
   if (type.isInteger(1)) {
-    return b.create<ma::AndIOp>(values);
+    return ma::AndIOp::create(b, values);
   }
 
-  return b.create<ma::MinSIOp>(values);
+  return ma::MinSIOp::create(b, values);
 }
 
 bool IsSupportedElementwiseLibdeviceFunction(const HloInstruction& hlo) {
@@ -460,8 +462,8 @@ absl::StatusOr<Value> EmitElementwiseLibdeviceFunction(
   } else {
     casted_inputs.assign(inputs.begin(), inputs.end());
   }
-  Value res = b.create<mt::ExternElementwiseOp>(
-      casted_inputs[0].getType(), casted_inputs, "libdevice", libdevice_path,
+  Value res = mt::ExternElementwiseOp::create(
+      b, casted_inputs[0].getType(), casted_inputs, "libdevice", libdevice_path,
       ObtainDeviceFunctionName(dev_fn_id.value(), output_type, triple),
       /*pure=*/true);
   if (output_type == PrimitiveType::BF16 || output_type == PrimitiveType::F16) {
@@ -484,15 +486,15 @@ absl::StatusOr<Value> EmitElementwise(EmitterLocOpBuilder& b,
       return inputs[0];
     case HloOpcode::kAbs:
       if (is_integer) {
-        return b.create<mm::AbsIOp>(inputs[0]);
+        return mm::AbsIOp::create(b, inputs[0]);
       }
-      return b.create<mm::AbsFOp>(inputs[0]);
+      return mm::AbsFOp::create(b, inputs[0]);
     case HloOpcode::kCeil:
-      return b.create<mm::CeilOp>(inputs[0]);
+      return mm::CeilOp::create(b, inputs[0]);
     case HloOpcode::kFloor:
-      return b.create<mm::FloorOp>(inputs[0]);
+      return mm::FloorOp::create(b, inputs[0]);
     case HloOpcode::kNot:
-      return b.create<ma::XOrIOp>(inputs[0], OnesLike(b, inputs[0]));
+      return ma::XOrIOp::create(b, inputs[0], OnesLike(b, inputs[0]));
     case HloOpcode::kNegate:
       // NegFOp is not supported by Triton.
       return Subtract(b, {ZerosLike(b, inputs[0]), inputs[0]});
@@ -506,18 +508,18 @@ absl::StatusOr<Value> EmitElementwise(EmitterLocOpBuilder& b,
         // XLA add semantics for predicates is equal to bitwise OR, while Arith
         // defines it differently. Replace add with or in this case.
         if (getElementTypeOrSelf(inputs[0]).isInteger(1)) {
-          return b.create<ma::OrIOp>(inputs[0], inputs[1]);
+          return ma::OrIOp::create(b, inputs[0], inputs[1]);
         }
-        return b.create<ma::AddIOp>(inputs[0], inputs[1]);
+        return ma::AddIOp::create(b, inputs[0], inputs[1]);
       }
-      return b.create<ma::AddFOp>(inputs[0], inputs[1]);
+      return ma::AddFOp::create(b, inputs[0], inputs[1]);
     case HloOpcode::kSubtract:
       return Subtract(b, inputs);
     case HloOpcode::kMultiply:
       if (is_integer) {
-        return b.create<ma::MulIOp>(inputs[0], inputs[1]);
+        return ma::MulIOp::create(b, inputs[0], inputs[1]);
       }
-      return b.create<ma::MulFOp>(inputs[0], inputs[1]);
+      return ma::MulFOp::create(b, inputs[0], inputs[1]);
     case HloOpcode::kMaximum:
       return Maximum(b, inputs);
     case HloOpcode::kMinimum:
@@ -525,17 +527,17 @@ absl::StatusOr<Value> EmitElementwise(EmitterLocOpBuilder& b,
     case HloOpcode::kClamp:
       return Minimum(b, {Maximum(b, {inputs[0], inputs[1]}), inputs[2]});
     case HloOpcode::kAnd:
-      return b.create<ma::AndIOp>(inputs[0], inputs[1]);
+      return ma::AndIOp::create(b, inputs[0], inputs[1]);
     case HloOpcode::kOr:
-      return b.create<ma::OrIOp>(inputs[0], inputs[1]);
+      return ma::OrIOp::create(b, inputs[0], inputs[1]);
     case HloOpcode::kXor:
-      return b.create<ma::XOrIOp>(inputs[0], inputs[1]);
+      return ma::XOrIOp::create(b, inputs[0], inputs[1]);
     case HloOpcode::kDivide:
       if (is_integer) {
         // Unsigned not supported yet.
-        return b.create<ma::DivSIOp>(inputs[0], inputs[1]);
+        return ma::DivSIOp::create(b, inputs[0], inputs[1]);
       }
-      return b.create<ma::DivFOp>(inputs[0], inputs[1]);
+      return ma::DivFOp::create(b, inputs[0], inputs[1]);
     case HloOpcode::kCompare:
       return Compare(
           b, inputs,
@@ -543,7 +545,8 @@ absl::StatusOr<Value> EmitElementwise(EmitterLocOpBuilder& b,
               ComparisonDirectionToString(hlo.comparison_direction()))
               .value());
     case HloOpcode::kSelect:
-      return b.create<ma::SelectOp>(
+      return ma::SelectOp::create(
+          b,
           Compare(b, {inputs[0], ZerosLike(b, inputs[0])},
                   mh::ComparisonDirection::NE),
           inputs[1], inputs[2]);
@@ -551,49 +554,49 @@ absl::StatusOr<Value> EmitElementwise(EmitterLocOpBuilder& b,
       return mh::reducePrecision<mlir::tensor::BitcastOp>(
           b.getLoc(), inputs[0], hlo.exponent_bits(), hlo.mantissa_bits(), &b);
     case HloOpcode::kAcos:
-      return b.create<mm::AcosOp>(inputs[0]);
+      return mm::AcosOp::create(b, inputs[0]);
     case HloOpcode::kAcosh:
-      return b.create<mm::AcoshOp>(inputs[0]);
+      return mm::AcoshOp::create(b, inputs[0]);
     case HloOpcode::kAsin:
-      return b.create<mm::AsinOp>(inputs[0]);
+      return mm::AsinOp::create(b, inputs[0]);
     case HloOpcode::kAsinh:
-      return b.create<mm::AsinhOp>(inputs[0]);
+      return mm::AsinhOp::create(b, inputs[0]);
     case HloOpcode::kAtan2:
-      return b.create<mm::Atan2Op>(inputs[0], inputs[1]);
+      return mm::Atan2Op::create(b, inputs[0], inputs[1]);
     case HloOpcode::kAtanh:
-      return b.create<mm::AtanhOp>(inputs[0]);
+      return mm::AtanhOp::create(b, inputs[0]);
     case HloOpcode::kCos:
-      return b.create<mm::CosOp>(inputs[0]);
+      return mm::CosOp::create(b, inputs[0]);
     case HloOpcode::kCosh:
-      return b.create<mm::CoshOp>(inputs[0]);
+      return mm::CoshOp::create(b, inputs[0]);
     case HloOpcode::kExp:
-      return b.create<mm::ExpOp>(inputs[0]);
+      return mm::ExpOp::create(b, inputs[0]);
     case HloOpcode::kErf:
-      return b.create<mm::ErfOp>(inputs[0]);
+      return mm::ErfOp::create(b, inputs[0]);
     case HloOpcode::kExpm1:
-      return b.create<mm::ExpM1Op>(inputs[0]);
+      return mm::ExpM1Op::create(b, inputs[0]);
     case HloOpcode::kLog:
-      return b.create<mm::LogOp>(inputs[0]);
+      return mm::LogOp::create(b, inputs[0]);
     case HloOpcode::kLog1p:
-      return b.create<mm::Log1pOp>(inputs[0]);
+      return mm::Log1pOp::create(b, inputs[0]);
     case HloOpcode::kPower:
-      return b.create<mm::PowFOp>(inputs[0], inputs[1]);
+      return mm::PowFOp::create(b, inputs[0], inputs[1]);
     case HloOpcode::kRemainder:
-      return b.create<ma::RemFOp>(inputs[0], inputs[1]);
+      return ma::RemFOp::create(b, inputs[0], inputs[1]);
     case HloOpcode::kRsqrt:
-      return b.create<mm::RsqrtOp>(inputs[0]);
+      return mm::RsqrtOp::create(b, inputs[0]);
     case HloOpcode::kSin:
-      return b.create<mm::SinOp>(inputs[0]);
+      return mm::SinOp::create(b, inputs[0]);
     case HloOpcode::kSinh:
-      return b.create<mm::SinhOp>(inputs[0]);
+      return mm::SinhOp::create(b, inputs[0]);
     case HloOpcode::kSqrt:
-      return b.create<mm::SqrtOp>(inputs[0]);
+      return mm::SqrtOp::create(b, inputs[0]);
     case HloOpcode::kTan:
-      return b.create<mm::TanOp>(inputs[0]);
+      return mm::TanOp::create(b, inputs[0]);
     case HloOpcode::kTanh:
-      return b.create<mm::TanhOp>(inputs[0]);
+      return mm::TanhOp::create(b, inputs[0]);
     case HloOpcode::kCbrt:
-      return b.create<mm::CbrtOp>(inputs[0]);
+      return mm::CbrtOp::create(b, inputs[0]);
     default:
       return absl::InvalidArgumentError(
           absl::StrCat("Unsupported elementwise operation ", hlo.ToString()));
@@ -621,7 +624,7 @@ absl::StatusOr<mlir::TypedValue<mlir::RankedTensorType>> EmitConstant(
 Value Bitcast(EmitterLocOpBuilder& b, Value value, Type type) {
   auto value_type = value.getType();
   value_type = mlir::dyn_cast<ShapedType>(value_type).clone(type);
-  return b.create<mlir::arith::BitcastOp>(value_type, value);
+  return mlir::arith::BitcastOp::create(b, value_type, value);
 }
 
 std::vector<llvm::Metadata*> ExtractNvvmAnnotations(
@@ -745,8 +748,8 @@ TensorValue EmitParameterExtract(EmitterLocOpBuilder b,
   auto tensor_type = mlir::RankedTensorType::get(tile_info.padded_tile_sizes(),
                                                  tile_info.storage_type());
 
-  return b.create<xla::xtile::ExtractTileOp>(
-      tensor_type, arg, tile_info.offsets(), tile_info.padded_tile_sizes(),
+  return xla::xtile::ExtractTileOp::create(
+      b, tensor_type, arg, tile_info.offsets(), tile_info.padded_tile_sizes(),
       tile_info.tile_strides());
 }
 

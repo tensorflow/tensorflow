@@ -195,33 +195,32 @@ absl::StatusOr<TensorValue> EmitAllReduce(
   const auto ptr_to_i64_type =
       ttir::PointerType::get(b.getI64Type(), kGlobalAddressSpace);
   auto remote_input_buffers_i64 =
-      b.create<ttir::BitcastOp>(ptr_to_i64_type, remote_input_buffers);
-  Value remote_buf_ptr_addr = b.create<ttir::AddPtrOp>(
-      ptr_to_i64_type, remote_input_buffers_i64, device_rank);
-  Value remote_buf_i64 =
-      b.create<ttir::LoadOp>(remote_buf_ptr_addr,
-                             ttir::CacheModifier::NONE,     //
-                             ttir::EvictionPolicy::NORMAL,  //
-                             false);                        // isVolatile
+      ttir::BitcastOp::create(b, ptr_to_i64_type, remote_input_buffers);
+  Value remote_buf_ptr_addr = ttir::AddPtrOp::create(
+      b, ptr_to_i64_type, remote_input_buffers_i64, device_rank);
+  Value remote_buf_i64 = ttir::LoadOp::create(b, remote_buf_ptr_addr,
+                                              ttir::CacheModifier::NONE,     //
+                                              ttir::EvictionPolicy::NORMAL,  //
+                                              false);  // isVolatile
   const auto elem_type =
       mlir::cast<ShapedType>(input_tile.getType()).getElementType();
   const auto ptr_to_elem_type =
       ttir::PointerType::get(elem_type, kGlobalAddressSpace);
   Value remote_buf_ptr =
-      b.create<ttir::IntToPtrOp>(ptr_to_elem_type, remote_buf_i64);
+      ttir::IntToPtrOp::create(b, ptr_to_elem_type, remote_buf_i64);
   mlir::ArrayRef<int64_t> remote_shape = tile_info.original_shape();
   const mlir::MemRefType remote_memref_type =
       mlir::MemRefType::get(remote_shape, elem_type);
   mlir::Value remote_buf_memref =
-      b.create<mtx::PtrToMemrefOp>(remote_memref_type, remote_buf_ptr);
-  b.create<xtile::InsertTileOp>(
-      input_tile, remote_buf_memref, tile_info.offsets(),
+      mtx::PtrToMemrefOp::create(b, remote_memref_type, remote_buf_ptr);
+  xtile::InsertTileOp::create(
+      b, input_tile, remote_buf_memref, tile_info.offsets(),
       tile_info.padded_tile_sizes(), tile_info.tile_strides());
 
   // 2. Synchronization phase: Wait for all ranks to complete the scatter.
   int64_t world_size = all_reduce.device_list().num_devices_per_group();
-  b.create<mtx::BlockBarrierOp>(signal_buffers, device_rank, signal_value,
-                                b.getI32IntegerAttr(world_size));
+  mtx::BlockBarrierOp::create(b, signal_buffers, device_rank, signal_value,
+                              b.getI32IntegerAttr(world_size));
 
   // 3. Reduce phase: Load tiles from all ranks and reduce them.
   HloComputation* reduction_computation = all_reduce.to_apply();
@@ -234,23 +233,23 @@ absl::StatusOr<TensorValue> EmitAllReduce(
   }
   // Set accumulator zero.
   mlir::Value accumulator_zero =
-      b.create<arith::ConstantOp>(elem_type, b.getZeroAttr(elem_type));
+      arith::ConstantOp::create(b, elem_type, b.getZeroAttr(elem_type));
   TensorValue accumulator =
-      b.create<ttir::SplatOp>(input_tile.getType(), accumulator_zero);
+      ttir::SplatOp::create(b, input_tile.getType(), accumulator_zero);
   for (int rank = 0; rank < world_size; ++rank) {
     Value rank_idx =
-        b.create<arith::ConstantOp>(b.getI64Type(), b.getI64IntegerAttr(rank));
-    Value remote_buf_ptr_addr = b.create<ttir::AddPtrOp>(
-        ptr_to_i64_type, remote_input_buffers_i64, rank_idx);
+        arith::ConstantOp::create(b, b.getI64Type(), b.getI64IntegerAttr(rank));
+    Value remote_buf_ptr_addr = ttir::AddPtrOp::create(
+        b, ptr_to_i64_type, remote_input_buffers_i64, rank_idx);
     Value remote_buf_i64 =
-        b.create<ttir::LoadOp>(remote_buf_ptr_addr,
-                               ttir::CacheModifier::NONE,     //
-                               ttir::EvictionPolicy::NORMAL,  //
-                               false);                        // isVolatile
+        ttir::LoadOp::create(b, remote_buf_ptr_addr,
+                             ttir::CacheModifier::NONE,     //
+                             ttir::EvictionPolicy::NORMAL,  //
+                             false);                        // isVolatile
     Value remote_buf_ptr =
-        b.create<ttir::IntToPtrOp>(ptr_to_elem_type, remote_buf_i64);
+        ttir::IntToPtrOp::create(b, ptr_to_elem_type, remote_buf_i64);
     Value remote_buf_memref =
-        b.create<mtx::PtrToMemrefOp>(remote_memref_type, remote_buf_ptr);
+        mtx::PtrToMemrefOp::create(b, remote_memref_type, remote_buf_ptr);
     TensorValue next_tile =
         EmitParameterExtract(b, tile_info, remote_buf_memref);
 

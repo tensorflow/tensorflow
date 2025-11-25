@@ -154,7 +154,7 @@ class LowerBroadcastInDim
         axis = output_dim_id + 1;
         continue;
       }
-      input_tensor = builder.create<ttir::ExpandDimsOp>(input_tensor, axis);
+      input_tensor = ttir::ExpandDimsOp::create(builder, input_tensor, axis);
     }
     rewriter.replaceOpWithNewOp<ttir::BroadcastOp>(op, op.getResult().getType(),
                                                    input_tensor);
@@ -424,8 +424,8 @@ absl::StatusOr<Value> EmitDotAlgUnset(
     max_num_imprecise_acc = std::numeric_limits<int>::max();
   }
 
-  return b.create<ttir::DotOp>(
-      lhs, rhs, acc,
+  return ttir::DotOp::create(
+      b, lhs, rhs, acc,
       /*inputPrecision=*/precision_spec.ttir_input_precision,
       /*maxNumImpreciseAcc=*/max_num_imprecise_acc);
 }
@@ -458,8 +458,8 @@ absl::StatusOr<Value> EmitRegularDot(
     }
   }
 
-  return b.create<ttir::DotOp>(
-      dot_operands.lhs, dot_operands.rhs, dot_operands.accumulator,
+  return ttir::DotOp::create(
+      b, dot_operands.lhs, dot_operands.rhs, dot_operands.accumulator,
       /*inputPrecision=*/precision_spec.ttir_input_precision,
       /*maxNumImpreciseAcc=*/max_num_imprecise_acc);
 }
@@ -475,11 +475,11 @@ Value ZeroNaNs(::xla::EmitterLocOpBuilder b, Value input) {
   Value positive_inf = ::xla::gpu::triton::CreateConst<float>(
       b, b.getF32Type(), std::numeric_limits<float>::infinity(),
       mlir::cast<ShapedType>(input.getType()).getShape());
-  Value abs_input = b.create<math::AbsFOp>(input);
-  Value is_finite = b.create<arith::CmpFOp>(arith::CmpFPredicate::OGT,
-                                            positive_inf, abs_input);
-  return b.create<arith::SelectOp>(is_finite, input,
-                                   ::xla::gpu::triton::ZerosLike(b, input));
+  Value abs_input = math::AbsFOp::create(b, input);
+  Value is_finite = arith::CmpFOp::create(b, arith::CmpFPredicate::OGT,
+                                          positive_inf, abs_input);
+  return arith::SelectOp::create(b, is_finite, input,
+                                 ::xla::gpu::triton::ZerosLike(b, input));
 }
 
 absl::Status ExpectType(Value v, Type expected_type) {
@@ -506,7 +506,7 @@ std::vector<Value> SplitF32(::xla::EmitterLocOpBuilder b, Value input,
     if (i != split_count - 1) {
       Value input_as_f32 =
           ::xla::gpu::triton::Cast(b, input_as_bf16, b.getF32Type());
-      input = b.create<arith::SubFOp>(input, input_as_f32);
+      input = arith::SubFOp::create(b, input, input_as_f32);
     }
     split_inputs.push_back(input_as_bf16);
   }
@@ -514,9 +514,9 @@ std::vector<Value> SplitF32(::xla::EmitterLocOpBuilder b, Value input,
 }
 
 Value IEEEDot(::xla::EmitterLocOpBuilder b, Value lhs, Value rhs, Value acc) {
-  return b.create<ttir::DotOp>(lhs, rhs, acc,
-                               /*inputPrecision=*/ttir::InputPrecision::IEEE,
-                               /*maxNumImpreciseAcc=*/0);
+  return ttir::DotOp::create(b, lhs, rhs, acc,
+                             /*inputPrecision=*/ttir::InputPrecision::IEEE,
+                             /*maxNumImpreciseAcc=*/0);
 }
 
 // Leverages BF16 datatype for F32 matmul computation. It follows the guidance
@@ -554,7 +554,7 @@ absl::StatusOr<Value> EmitBF16x9Matmul(
 
   result = ZeroNaNs(b, result);
   result = IEEEDot(b, lhs_parts[kHigh], rhs_parts[kHigh], result);
-  result = b.create<arith::AddFOp>(dot_operands.accumulator, result);
+  result = arith::AddFOp::create(b, dot_operands.accumulator, result);
   return result;
 }
 
@@ -589,7 +589,7 @@ absl::StatusOr<Value> EmitBF16x6Matmul(
 
   result = ZeroNaNs(b, result);
   result = IEEEDot(b, lhs_parts[kHigh], rhs_parts[kHigh], result);
-  result = b.create<arith::AddFOp>(dot_operands.accumulator, result);
+  result = arith::AddFOp::create(b, dot_operands.accumulator, result);
   return result;
 }
 
@@ -616,7 +616,7 @@ absl::StatusOr<Value> EmitBF16x3Matmul(
   result = IEEEDot(b, lhs_bf16[kHigh], rhs_bf16[kLow], result);
   result = ZeroNaNs(b, result);
   result = IEEEDot(b, lhs_bf16[kHigh], rhs_bf16[kHigh], result);
-  result = b.create<arith::AddFOp>(dot_operands.accumulator, result);
+  result = arith::AddFOp::create(b, dot_operands.accumulator, result);
   return result;
 }
 

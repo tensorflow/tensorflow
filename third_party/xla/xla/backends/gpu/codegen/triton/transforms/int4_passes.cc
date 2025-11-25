@@ -416,13 +416,14 @@ class ExtSIInt4ToInt8Pattern : public OpConversionPattern<ma::ExtSIOp> {
     auto packed_type = converter_.convertType(input_type);
     VLOG(5) << "ExtSIInt4ToInt8Pattern: Regular int4 to int8 conversion";
     Value shift4_const =
-        r.create<ma::ConstantOp>(loc, r.getIntegerAttr(r.getI8Type(), 4));
-    Value shift4 = r.create<mt::SplatOp>(loc, packed_type, shift4_const);
+        ma::ConstantOp::create(r, loc, r.getIntegerAttr(r.getI8Type(), 4));
+    Value shift4 = mt::SplatOp::create(r, loc, packed_type, shift4_const);
     Value shifted_lo =
-        r.create<ma::ShLIOp>(loc, packed_type, adaptor.getIn(), shift4);
-    Value lo = r.create<ma::ShRSIOp>(loc, packed_type, shifted_lo, shift4);
-    Value hi = r.create<ma::ShRSIOp>(loc, packed_type, adaptor.getIn(), shift4);
-    Value hi_lo = r.create<mt::JoinOp>(loc, lo, hi);
+        ma::ShLIOp::create(r, loc, packed_type, adaptor.getIn(), shift4);
+    Value lo = ma::ShRSIOp::create(r, loc, packed_type, shifted_lo, shift4);
+    Value hi =
+        ma::ShRSIOp::create(r, loc, packed_type, adaptor.getIn(), shift4);
+    Value hi_lo = mt::JoinOp::create(r, loc, lo, hi);
     if (converter_.packed_dimension() + 1 != input_type.getRank()) {
       // Move the minor (joined) dimension to just after the packed dimension.
       SmallVector<int32_t> trans_order(input_type.getRank() + 1);
@@ -430,7 +431,7 @@ class ExtSIInt4ToInt8Pattern : public OpConversionPattern<ma::ExtSIOp> {
       std::rotate(trans_order.begin() + converter_.packed_dimension() + 1,
                   std::prev(trans_order.end()), trans_order.end());
       auto trans_attr = r.getDenseI32ArrayAttr(trans_order);
-      hi_lo = r.create<mt::TransOp>(loc, hi_lo, trans_attr);
+      hi_lo = mt::TransOp::create(r, loc, hi_lo, trans_attr);
     }
     auto unpacked_type = input_type.clone(r.getI8Type());
     r.replaceOpWithNewOp<mt::ReshapeOp>(ext_si_op, unpacked_type, hi_lo,
@@ -476,13 +477,13 @@ class ExtSIInt4ToInt8Pattern : public OpConversionPattern<ma::ExtSIOp> {
         sub.bf16x2 $3, $3, bias;
       }
     )";
-    auto elementwise_op = r.create<ElementwiseInlineAsmOp>(
-        loc, std::vector<Type>{bf16_packed_type, bf16_packed_type},
+    auto elementwise_op = ElementwiseInlineAsmOp::create(
+        r, loc, std::vector<Type>{bf16_packed_type, bf16_packed_type},
         kInt4ToBF16Asm, "=r,=r,=r,=r,r",
         /*pure=*/true, /*pack_result=*/4, adaptor.getOperands());
     Value lo = elementwise_op->getResult(0);
     Value hi = elementwise_op->getResult(1);
-    Value hi_lo = r.create<mt::JoinOp>(loc, lo, hi);
+    Value hi_lo = mt::JoinOp::create(r, loc, lo, hi);
     if (converter_.packed_dimension() + 1 != input_type.getRank()) {
       // Move the minor (joined) dimension to just after the packed dimension.
       SmallVector<int32_t> trans_order(input_type.getRank() + 1);
@@ -490,7 +491,7 @@ class ExtSIInt4ToInt8Pattern : public OpConversionPattern<ma::ExtSIOp> {
       std::rotate(trans_order.begin() + converter_.packed_dimension() + 1,
                   std::prev(trans_order.end()), trans_order.end());
       auto trans_attr = r.getDenseI32ArrayAttr(trans_order);
-      hi_lo = r.create<mt::TransOp>(loc, hi_lo, trans_attr);
+      hi_lo = mt::TransOp::create(r, loc, hi_lo, trans_attr);
     }
 
     r.replaceOpWithNewOp<mt::ReshapeOp>(si_to_fp_op, bf16_type, hi_lo,
@@ -679,7 +680,7 @@ LogicalResult SitofpInt4ToInt8Rewrite(ma::SIToFPOp op, PatternRewriter &r) {
   if (auto tensor_type = dyn_cast<RankedTensorType>(op.getType())) {
     type = tensor_type.clone(type);
   }
-  auto ext_si_op = r.create<ma::ExtSIOp>(op.getLoc(), type, op.getIn());
+  auto ext_si_op = ma::ExtSIOp::create(r, op.getLoc(), type, op.getIn());
   r.replaceOpWithNewOp<ma::SIToFPOp>(op, op.getType(), ext_si_op);
   return success();
 }
@@ -733,8 +734,9 @@ LogicalResult SitofpToExtFpSitofpRewrite(ma::SIToFPOp sitofp_op,
              "ExtFOp(SiToFp(i4): bf16): Fp32: type:"
           << DumpToString(type_ranked);
   auto loc = sitofp_op.getLoc();
-  auto sitofp_bf16_op = rewriter.create<ma::SIToFPOp>(
-      loc, type_ranked.clone(rewriter.getBF16Type()), sitofp_op.getIn());
+  auto sitofp_bf16_op = ma::SIToFPOp::create(
+      rewriter, loc, type_ranked.clone(rewriter.getBF16Type()),
+      sitofp_op.getIn());
   rewriter.replaceOpWithNewOp<ma::ExtFOp>(sitofp_op, type, sitofp_bf16_op,
                                           ma::FastMathFlagsAttr{});
   return success();

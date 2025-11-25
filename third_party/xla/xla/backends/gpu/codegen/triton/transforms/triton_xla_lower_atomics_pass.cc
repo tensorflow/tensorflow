@@ -116,7 +116,8 @@ LogicalResult LowerAtomicWriteOp(AtomicWriteOp atomic_write,
   if (mask) {
     const std::string atomic_write_asm_with_mask = absl::StrFormat(
         kAtomicWriteAsmWithMaskTemplate, scope, memory_semantic);
-    builder.create<triton::ElementwiseInlineAsmOp>(
+    triton::ElementwiseInlineAsmOp::create(
+        builder,
         /*result_types=*/result_type,
         /*asm_string=*/rewriter.getStringAttr(atomic_write_asm_with_mask),
         /*constraints=*/rewriter.getStringAttr("=r,l,r,r"),
@@ -126,7 +127,8 @@ LogicalResult LowerAtomicWriteOp(AtomicWriteOp atomic_write,
   } else {
     const std::string atomic_write_asm =
         absl::StrFormat(kAtomicWriteAsmTemplate, scope, memory_semantic);
-    builder.create<triton::ElementwiseInlineAsmOp>(
+    triton::ElementwiseInlineAsmOp::create(
+        builder,
         /*result_types=*/result_type,
         /*asm_string=*/rewriter.getStringAttr(atomic_write_asm),
         /*constraints=*/rewriter.getStringAttr("=r,l,r"),
@@ -180,7 +182,8 @@ LogicalResult LowerAtomicSpinWaitOp(AtomicSpinWaitOp atomic_wait,
   if (mask) {
     const std::string atomic_wait_asm_with_mask = absl::StrFormat(
         kAtomicSpinWaitAsmWithMaskTemplate, scope, memory_semantic, comparator);
-    builder.create<triton::ElementwiseInlineAsmOp>(
+    triton::ElementwiseInlineAsmOp::create(
+        builder,
         /*result_types=*/result_type,
         /*asm_string=*/rewriter.getStringAttr(atomic_wait_asm_with_mask),
         /*constraints=*/rewriter.getStringAttr("=r,l,r,r"),
@@ -190,7 +193,8 @@ LogicalResult LowerAtomicSpinWaitOp(AtomicSpinWaitOp atomic_wait,
   } else {
     const std::string atomic_wait_asm = absl::StrFormat(
         kAtomicSpinWaitAsmTemplate, scope, memory_semantic, comparator);
-    builder.create<triton::ElementwiseInlineAsmOp>(
+    triton::ElementwiseInlineAsmOp::create(
+        builder,
         /*result_types=*/result_type,
         /*asm_string=*/rewriter.getStringAttr(atomic_wait_asm),
         /*constraints=*/rewriter.getStringAttr("=r,l,r"),
