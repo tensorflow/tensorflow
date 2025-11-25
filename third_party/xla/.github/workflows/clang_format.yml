@@ -34,7 +34,7 @@ jobs:
       contains(github.event.pull_request.body, 'FORCE_TEST_ACTIONS')
     steps:
       - name: "Checking out repository"
-        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6.0.0
       - name: "Fetch HEAD of main branch"
         run: git fetch origin main --depth=1
       - name: "Run clang-format" # Use pipx to get version that apt doesn't have by default
