@@ -1022,6 +1022,40 @@ TEST_F(HeapSimulatorTest, AsyncCallImplicitSharding) {
   }
 }
 
+TEST_F(HeapSimulatorTest, ConcatBitcastPeakMemory) {
+  std::string hlo_string = R"(
+HloModule concat_bitcast_module, is_scheduled=true
+
+ENTRY main {
+  p0 = s8[6,16384,1,256]{3,1,2,0} parameter(0)
+  p1 = s8[6,16384,1,256]{3,1,2,0} parameter(1)
+  p2 = s8[6,16384,1,256]{3,1,2,0} parameter(2)
+  p3 = s8[6,16384,1,256]{3,1,2,0} parameter(3)
+  ROOT cc = s8[24,16384,1,256]{3,1,2,0} custom-call(p0, p1, p2, p3), custom_call_target="ConcatBitcast"
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(auto alias_analysis,
+                          HloAliasAnalysis::Run(module.get(), &alias_info_));
+  BufferValue::SizeFunction size_fn = [](const BufferValue& buffer) -> int64_t {
+    return ShapeUtil::ByteSizeOf(buffer.shape());
+  };
+  auto algorithm = std::make_unique<GlobalDecreasingSizeBestFitHeap<HloValue>>(
+      /*alignment=*/1);
+
+  HeapSimulator::Result<HloValue> result =
+      HeapSimulator::Run(std::move(algorithm), *module, module->schedule(),
+                         *alias_analysis, &alias_info_, &size_fn)
+          .value();
+  for (const auto& event : result.debug_trace.events()) {
+    if (event.instruction_name() == "cc") {
+      EXPECT_EQ(event.kind(), HeapSimulatorTrace::Event::SHARE_WITH);
+    }
+  }
+}
+
 // Base class for heap algorithm tests.
 class HeapAlgorithmTestBase : public ::testing::Test {
  protected:
