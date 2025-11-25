@@ -18,9 +18,6 @@ permissions:
   contents: read
 on:
   pull_request:
-  push:
-    branches:
-      - main
 
 jobs:
   clang-format:
@@ -28,6 +25,8 @@ jobs:
     defaults:
       run:
         shell: bash
+    env:
+      GH_TOKEN: ${{ github.token }}
     timeout-minutes: 6
     if: |
       github.event.sender.type == 'User' ||
@@ -35,7 +34,5 @@ jobs:
     steps:
       - name: "Checking out repository"
         uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
-      - name: "Fetch HEAD of main branch"
-        run: git fetch origin main --depth=1
       - name: "Run clang-format" # Use pipx to get version that apt doesn't have by default
-        run: pipx run clang-format==17.0.6 --dry-run --Werror --verbose $(git diff --name-only origin/main HEAD -- '*.cc' '*.h')
+        run: pipx run clang-format==17.0.6 --dry-run --Werror --verbose $(gh pr diff --name-only ${{ github.event.pull_request.html_url }} | grep -E '\.h|\.cc')
