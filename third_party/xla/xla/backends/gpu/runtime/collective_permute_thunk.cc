@@ -100,10 +100,8 @@ CollectivePermuteStartThunk::CollectivePermuteStartThunk(
           ->config()
           .debug_options()
           .xla_gpu_experimental_enable_nccl_symmetric_buffers();
-  config.operand_count = instr->operand_count();
-  for (int i = 0; i < config.operand_count; ++i) {
-    config.operand_element_type.push_back(
-        instr->operand(i)->shape().element_type());
+  for (const HloInstruction* operand : instr->operands()) {
+    config.operand_element_type.push_back(operand->shape().element_type());
   }
   config.group_mode = GetGroupMode(instr);
 

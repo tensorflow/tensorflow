@@ -1,3 +1,5 @@
+#include <cstddef>
+
 #include "xla/backends/gpu/runtime/collective_cliques.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
 /* Copyright 2019 The OpenXLA Authors.
@@ -55,7 +57,6 @@ struct CollectiveConfig {
   // the groups formed by the operation are singleton.
   bool IsDegenerate(int64_t replica_count, int64_t partition_count) const;
 
-  int64_t operand_count;
   std::vector<PrimitiveType> operand_element_type;
   std::vector<ReplicaGroup> replica_groups;
   CollectiveOpGroupMode group_mode;

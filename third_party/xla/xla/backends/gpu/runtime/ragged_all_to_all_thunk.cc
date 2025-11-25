@@ -416,7 +416,7 @@ RaggedAllToAllStartThunk::RaggedAllToAllStartThunk(
               ->config()
               .debug_options()
               .xla_gpu_unsupported_use_ragged_all_to_all_one_shot_kernel()) {
-  CHECK_EQ(config_.config.operand_count, buffers_.size());
+  CHECK_EQ(config_.config.operand_element_type.size(), buffers_.size());
 }
 
 /*static*/ absl::Status RaggedAllToAllStartThunk::CheckImplementable(

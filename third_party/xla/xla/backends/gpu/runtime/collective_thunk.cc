@@ -37,13 +37,13 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
+#include "xla/backends/gpu/runtime/collective_cliques.h"
 #include "xla/backends/gpu/runtime/collective_params.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/core/collectives/communicator.h"
 #include "xla/core/collectives/rank_id.h"
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/ir/collective_op_group_mode.h"
-#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/primitive_util.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/computation_placer.h"
@@ -66,7 +66,6 @@ namespace xla::gpu {
 namespace {
 
 static constexpr int64_t kCollectiveMemorySpaceColor = 1;
-static constexpr CollectiveStreamId kNoStreamId = CollectiveStreamId(0);
 
 bool IsTypeSupportedBy(PrimitiveType element_type, Thunk::Kind reduction_op) {
   switch (element_type) {
@@ -120,19 +119,6 @@ int64_t GetNumLocalParticipants(
 
 }  // namespace
 
-// This file runs collective ops (i.e. ops that communicate between multiple
-// GPUs) using NCCL.
-//
-// Here's a high-level overview of how running an op works.
-//
-//  - Multiple threads call ExecuteOnStream.
-//  - All threads that "go together" (i.e. are participating in the "same"
-//    collective op) choose the same Rendezvous object from a global map.
-//  - Once all threads have arrived at the Rendezvous, we know exactly which
-//    GPUs are participating in the op, so we get or create a NcclClique
-//    containing those GPUs.
-//  - We perform the NCCL operation using the clique.
-
 // Returns if the collective communication operation is degenerate because all
 // the groups formed by the operation are singleton. A given op can be
 // degenerate under several conditions, corresponding to the modes supported
@@ -185,11 +171,9 @@ bool CollectiveConfig::IsDegenerate(int64_t replica_count,
 CollectiveConfig GetCollectiveConfig(
     const HloInstruction* hlo, std::optional<bool> use_global_device_ids) {
   CollectiveConfig config;
-  config.operand_count = hlo->operands().size();
-  config.operand_element_type.reserve(config.operand_count);
-  for (int i = 0; i < config.operand_count; i++) {
-    config.operand_element_type.push_back(
-        hlo->operand(i)->shape().element_type());
+  config.operand_element_type.reserve(hlo->operands().size());
+  for (const HloInstruction* operand : hlo->operands()) {
+    config.operand_element_type.push_back(operand->shape().element_type());
   }
   config.replica_groups = hlo->replica_groups();
 
@@ -324,8 +308,9 @@ absl::StatusOr<std::vector<DeviceBufferPair>> ConvertToDeviceBuffers(
     const BufferAllocations* buffer_allocations,
     const std::vector<CollectiveThunk::Buffer>& buffers,
     const std::vector<PrimitiveType>& element_types) {
-  if (buffers.size() != element_types.size())
+  if (buffers.size() != element_types.size()) {
     return FailedPrecondition("Mismatch in operand buffer counts.");
+  }
 
   std::vector<DeviceBufferPair> device_buffers;
   device_buffers.reserve(buffers.size());
@@ -344,8 +329,8 @@ absl::Status MaybeRegisterBuffer(se::StreamExecutor* executor,
                                  Communicator* comm,
                                  bool use_symmetric_buffer) {
   TF_ASSIGN_OR_RETURN(auto range, executor->GetMemoryRange(buffer));
-  VLOG(1) << "[" << executor->device_ordinal()
-          << "] Registering range: " << range.opaque()
+  VLOG(1) << "[" << executor->device_ordinal() << "] "
+          << "Registering range: " << range.opaque()
           << " with size: " << range.size()
           << " for buffer: " << buffer.opaque()
           << " with size: " << buffer.size()
@@ -376,7 +361,9 @@ absl::Status MaybeRegisterBuffers(se::StreamExecutor* executor,
 absl::Status CollectiveThunk::AsyncEvents::Initialize(
     se::StreamExecutor* executor) {
   absl::MutexLock lock(mu_);
-  if (events_.contains(executor)) return absl::OkStatus();
+  if (events_.contains(executor)) {
+    return absl::OkStatus();
+  }
 
   TF_ASSIGN_OR_RETURN(auto event, executor->CreateEvent());
 

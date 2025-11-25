@@ -116,7 +116,7 @@ AllReduceReduceScatterThunkBase::AllReduceReduceScatterThunkBase(
                       AsyncStreamKind::ASYNC_STREAM_KIND_COLLECTIVE),
       config_(std::move(config)),
       buffers_(std::move(buffers)) {
-  CHECK_EQ(config_.config.operand_count, buffers_.size());
+  CHECK_EQ(config_.config.operand_element_type.size(), buffers_.size());
 }
 
 AllReduceStartThunk::AllReduceStartThunk(

@@ -160,7 +160,6 @@ CollectiveKernelThunkMetadata CreateCollectiveKernelThunk(
   }
 
   CollectiveConfig collective_config{
-      /*operand_count=*/1,
       /*operand_element_type=*/{PrimitiveType::F32},
       /*replica_groups=*/{replica_group},
       /*group_mode=*/

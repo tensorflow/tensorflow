@@ -52,11 +52,9 @@ namespace gpu {
 CollectiveConfig CollectiveMetadataThunk::GetCollectiveConfig(
     const HloInstruction& hlo) {
   CollectiveConfig config;
-  config.operand_count = hlo.operands().size();
-  config.operand_element_type.reserve(config.operand_count);
-  for (int i = 0; i < config.operand_count; i++) {
-    config.operand_element_type.push_back(
-        hlo.operand(i)->shape().element_type());
+  config.operand_element_type.reserve(hlo.operands().size());
+  for (const HloInstruction* operand : hlo.operands()) {
+    config.operand_element_type.push_back(operand->shape().element_type());
   }
 
   if (hlo.has_backend_config()) {

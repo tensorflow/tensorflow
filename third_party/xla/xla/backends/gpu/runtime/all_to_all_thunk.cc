@@ -84,7 +84,7 @@ AllToAllStartThunk::AllToAllStartThunk(
       config_(GetAllToAllConfig(instr)),
       buffers_(std::move(buffers)),
       p2p_memcpy_enabled_(p2p_memcpy_enabled) {
-  CHECK_EQ(config_.config.operand_count, buffers_.size());
+  CHECK_EQ(config_.config.operand_element_type.size(), buffers_.size());
 }
 
 /*static*/ absl::Status AllToAllStartThunk::CheckImplementable(
