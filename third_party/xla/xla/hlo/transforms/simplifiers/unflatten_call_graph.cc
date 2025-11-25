@@ -55,30 +55,40 @@ struct HloCalls {
 // Iterates through all instructions in the module's computations
 // and collects all `HloInstruction`s with opcode `kCall` into 'call_sites'
 // and all unique computations targeted by these calls into 'targets'.
+// It only retains call sites and targets that could potentially be duplicates
+// by filtering out computations with unique properties (instruction count,
+// parameter count).
 HloCalls CollectHloCalls(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
-  std::unique_ptr<CallGraph> call_graph = CallGraph::Build(module);
+  std::unique_ptr<CallGraph> call_graph =
+      CallGraph::Build(module, execution_threads);
   HloCalls calls;
-  absl::flat_hash_map<uint64_t, uint64_t> count_num_instructions;
+  absl::flat_hash_map<uint64_t, uint64_t> count_num_instructions,
+      count_num_params;
+
   for (const CallGraphNode& node : call_graph->nodes()) {
     for (const CallSite& callsite : node.callsites()) {
       if (callsite.instruction()->opcode() == HloOpcode::kCall) {
         calls.call_sites.insert(callsite.instruction());
-        calls.targets.insert(callsite.instruction()->to_apply());
-        ++count_num_instructions
-            [callsite.instruction()->to_apply()->instruction_count()];
+        HloComputation* target = callsite.instruction()->to_apply();
+        calls.targets.insert(target);
+        ++count_num_instructions[target->instruction_count()];
+        ++count_num_params[target->num_parameters()];
       }
     }
   }
-  // Remove computations for which there is no other computation with matching
-  // number of instructions (i.e. it cannot have duplicate)
+
+  // Remove computations that cannot be duplicates: if a computation is unique
+  // in terms of instruction count or parameter count it implies it cannot be
+  // identical to any other computation.
   for (auto it = calls.call_sites.begin(), end = calls.call_sites.end();
        it != end;) {
     // `erase()` will invalidate `it`, so advance `it` first.
     auto copy_it = it++;
     HloComputation* computation = (*copy_it)->to_apply();
-    if (count_num_instructions[computation->instruction_count()] == 1) {
+    if (count_num_instructions[computation->instruction_count()] == 1 ||
+        count_num_params[computation->num_parameters()] == 1) {
       calls.targets.erase(computation);
       calls.call_sites.erase(copy_it);
     }
