@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "xla/service/cpu_gpu_shape_verifier.h"
 
-#include <cstdint>
 #include <memory>
 #include <utility>
 
