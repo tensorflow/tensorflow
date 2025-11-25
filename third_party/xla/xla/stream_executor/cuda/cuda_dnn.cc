@@ -3461,13 +3461,12 @@ GetGenericCudnnOperationGraph(
 bool SideInputNeeded(dnn::ActivationMode activation_mode, double conv_scale,
                      double side_input_scale) {
   // Cudnn uses precompiled kernels to perform the Conv-Add-BiasAdd-Act when the
-  // activation is Relu or Identity and this requires the "side_input" for the
+  // activation is Relu and this requires the "side_input" for the
   // Add. For other activations, cudnn uses the runtime-compiled kernels.
   // However, for this case, we need to drop the Add node and use
   // Conv-BiasAdd-Act pattern to trigger the correct cudnn path.
   // TODO(kaixih@nvidia): We should remove this WAR when the cudnn fixes it.
-  bool check_activation = activation_mode == dnn::ActivationMode::kNone ||
-                          activation_mode == dnn::ActivationMode::kRelu;
+  bool check_activation = activation_mode == dnn::ActivationMode::kRelu;
   bool check_scale = conv_scale != 1.0 || side_input_scale != 0.0;
   return check_activation || check_scale;
 }
