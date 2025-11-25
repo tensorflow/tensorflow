@@ -115,7 +115,7 @@ void QuantizeMultiplierSmallerThanOneExp(double double_multiplier,
                                          int32_t* quantized_multiplier,
                                          int* left_shift) {
   TFLITE_CHECK_LT(double_multiplier, 1.);
-  TFLITE_CHECK_GT(double_multiplier, 0.);
+  TFLITE_CHECK_GE(double_multiplier, 0.);
   int shift;
   QuantizeMultiplier(double_multiplier, quantized_multiplier, &shift);
   TFLITE_CHECK_LE(shift, 0);
@@ -396,6 +396,9 @@ bool CheckedLog2(const float x, int* log2_result) {
   // Using TfLiteRound instead of std::round and std::log instead of
   // std::log2 to work around these functions being missing in a toolchain
   // used in some TensorFlow tests as of May 2018.
+  if (x <= 0.0f) {
+    return false;
+  }
   const float x_log2 = std::log(x) * (1.0f / std::log(2.0f));
   const float x_log2_rounded = TfLiteRound(x_log2);
   const float x_log2_fracpart = x_log2 - x_log2_rounded;
