@@ -48,6 +48,7 @@ cc_library(
         ":triton_configs",
         "//xla:autotuning_proto_cc",
         "//xla:xla_proto_cc",
+        "//xla/backends/gpu/codegen/triton:tma_utils",
         "//xla/hlo/analysis:symbolic_expr",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass",
@@ -299,6 +300,7 @@ cc_library(
     deps = [
         "//xla:shape_util",
         "//xla:util",
+        "//xla/backends/gpu/codegen/triton:tma_utils",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/utils:hlo_traversal",
         "//xla/service/gpu:matmul_utils",

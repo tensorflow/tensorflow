@@ -17,6 +17,7 @@ limitations under the License.
 #include <vector>
 
 #include "third_party/gpus/cuda/include/cublas_v2.h"
+#include "xla/backends/gpu/codegen/triton/tma_utils.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -116,8 +117,10 @@ std::vector<TritonGemmConfig> GemmFusionAutotunerImpl::GetDefaultTritonConfigs()
     config.is_tma_allowed = false;
     tma_parameterized_configs.push_back(config);
 
-    config.is_tma_allowed = true;
-    tma_parameterized_configs.push_back(config);
+    if (IsTmaRecommended(config)) {
+      config.is_tma_allowed = true;
+      tma_parameterized_configs.push_back(config);
+    }
   }
 
   // TODO(b/449668102): Currently only supporting warp specialization on

@@ -1878,19 +1878,18 @@ TEST_F(GemmFusionAutotunerEnableTma,
   std::set<TritonGemmConfig> hopper_configs_set(hopper_configs.begin(),
                                                 hopper_configs.end());
 
-  // Expect that both configs are greater than zero and that the number of
-  // configs for Hopper is twice the number of configs for Ampere. This is
-  // because Hopper expects the same configs with and without TMA.
+  // Expect that both configs sets are non-empty, that Hopper configs include
+  // TMA options, and Ampere configs do not.
   EXPECT_GT(ampere_configs_set.size(), 0);
   EXPECT_GT(hopper_configs_set.size(), 0);
-  EXPECT_EQ(ampere_configs_set.size() * 2, hopper_configs_set.size());
 
-  auto count_tma_allowed = [](const std::vector<TritonGemmConfig>& configs) {
-    return std::count_if(
+  auto any_tma_allowed = [](const std::vector<TritonGemmConfig>& configs) {
+    return std::any_of(
         configs.begin(), configs.end(),
         [](const TritonGemmConfig& config) { return config.is_tma_allowed; });
   };
-  EXPECT_EQ(count_tma_allowed(hopper_configs), hopper_configs.size() / 2);
+  EXPECT_FALSE(any_tma_allowed(ampere_configs));
+  EXPECT_TRUE(any_tma_allowed(hopper_configs));
 
   EXPECT_TRUE(RunAndCompare(std::move(module),
                             ErrorSpec{/*aabs=*/5e-3, /*arel=*/5e-3}));
