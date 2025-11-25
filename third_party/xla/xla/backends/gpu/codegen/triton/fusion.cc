@@ -36,13 +36,13 @@ limitations under the License.
 #include "llvm/IR/Metadata.h"
 #include "llvm/IR/Module.h"
 #include "llvm/Support/Casting.h"
+#include "mlir/IR/MLIRContext.h"
 #include "mlir/Support/LLVM.h"
 #include "xla/backends/gpu/codegen/fusion_emitter.h"
 #include "xla/backends/gpu/codegen/triton/fusion_emitter.h"
 #include "xla/backends/gpu/runtime/kernel_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/codegen/emitters/kernel_arguments.h"
-#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -54,7 +54,6 @@ limitations under the License.
 #include "xla/service/gpu/kernel_reuse_cache.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu/model/block_level_parameters.h"
-#include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/shape.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/device_description.h"
@@ -95,49 +94,17 @@ TritonFusion::GenerateTritonKernelAndWrapper(
     const se::DeviceDescription& device_info, llvm::Module* llvm_module,
     mlir::MLIRContext* mlir_context) const {
   const se::GpuComputeCapability& cc = device_info.gpu_compute_capability();
-  auto backend_config =
-      fusion.backend_config<GpuBackendConfig>()->fusion_backend_config();
-  absl::string_view fusion_kind = backend_config.kind();
-  TritonWrapperResult triton_wrapper_result;
 
-  if (fusion_kind == kTritonFusionKind ||
-      fusion_kind == kTritonNestedGemmFusionKind ||
-      fusion_kind == kTritonCollectiveFusionKind) {
-    if (!analysis_.fusion_backend_config().has_block_level_fusion_config()) {
-      return absl::InvalidArgumentError(absl::StrCat(
-          "Block level fusion config is required for Triton fusions: ",
-          fusion.ToString()));
-    }
-    TF_ASSIGN_OR_RETURN(
-        triton_wrapper_result,
-        TritonWrapper(
-            impl_fn_name, &fusion, cc, device_info,
-            BlockLevelParameters::FromBlockLevelFusionConfig(
-                analysis_.fusion_backend_config().block_level_fusion_config()),
-            llvm_module, *mlir_context));
-  } else {  // Must be a MatMul
-    CHECK_EQ(fusion_kind, kTritonGemmFusionKind);
-    // TODO(bchetioui): port matmul emitter to fully use the new
-    // infrastructure.
-    BlockLevelParameters block_level_parameters;
-    if (!backend_config.has_triton_gemm_config()) {
-      block_level_parameters.num_ctas = 1;
-      block_level_parameters.num_stages = 1;
-      block_level_parameters.num_warps = 2;
-    } else {
-      const auto& triton_config = backend_config.triton_gemm_config();
-      block_level_parameters.num_ctas = triton_config.num_ctas();
-      block_level_parameters.num_stages = triton_config.num_stages();
-      block_level_parameters.num_warps = triton_config.num_warps();
-    }
-
-    TF_ASSIGN_OR_RETURN(
-        triton_wrapper_result,
-        TritonWrapper(impl_fn_name, &fusion, cc, device_info,
-                      block_level_parameters, llvm_module, *mlir_context));
+  if (!analysis_.fusion_backend_config().has_block_level_fusion_config()) {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Block level fusion config is required for Triton fusions: ",
+        fusion.ToString()));
   }
-
-  return triton_wrapper_result;
+  return TritonWrapper(
+      impl_fn_name, &fusion, cc, device_info,
+      BlockLevelParameters::FromBlockLevelFusionConfig(
+          analysis_.fusion_backend_config().block_level_fusion_config()),
+      llvm_module, *mlir_context);
 };
 
 absl::StatusOr<FusionEmissionResult> TritonFusion::Emit(

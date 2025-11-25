@@ -44,7 +44,6 @@ cc_library(
         "//xla/backends/gpu/runtime:thunk",
         "//xla/codegen/emitters:kernel_arguments",
         "//xla/codegen/tiling:tiled_hlo_computation",
-        "//xla/hlo/analysis:symbolic_expr",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/utils:hlo_traversal",
         "//xla/service/gpu:backend_configs_cc",
@@ -55,7 +54,6 @@ cc_library(
         "//xla/service/gpu:kernel_reuse_cache",
         "//xla/service/gpu:launch_dimensions",
         "//xla/service/gpu/model:block_level_parameters",
-        "//xla/service/llvm_ir:llvm_util",
         "//xla/stream_executor:device_description",
         "//xla/stream_executor:launch_dim",
         "//xla/tsl/platform:statusor",
@@ -69,6 +67,7 @@ cc_library(
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
         "@llvm-project//llvm:ir_headers",
+        "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
     ],
 )

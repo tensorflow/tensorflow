@@ -2034,20 +2034,12 @@ absl::Status LowerXTileToTriton(mlir::ModuleOp xtile_dialect_module,
                                 const HloFusionInstruction& fusion,
                                 const se::DeviceDescription& device_info) {
   {
-    auto backend_config =
-        fusion.backend_config<GpuBackendConfig>()->fusion_backend_config();
-    absl::string_view fusion_kind = backend_config.kind();
-
     // Convert xTile ops to Triton ops.
     mlir::PassManager pm(&mlir_context);
     // Disable verifier because the Triton code may be invalid due to the
     // unsupported types.
     pm.enableVerifier(/*enabled=*/false);
-    // The legacy emitter supports 0D tensors so we would get inconsistent
-    // results if we try to rewrite them.
-    if (fusion_kind != kTritonGemmFusionKind) {
-      pm.addPass(xtile::createConvertElementwise0DTensorToScalarPass());
-    }
+    pm.addPass(xtile::createConvertElementwise0DTensorToScalarPass());
     pm.addPass(mlir::triton::xla::CreateArithFP8ConversionToTritonPass());
     pm.addPass(mlir::triton::xla::CreateTensorLowerToTritonPass());
     pm.addPass(mlir::triton::xla::CreateStableHLOLowerToTritonPass());
