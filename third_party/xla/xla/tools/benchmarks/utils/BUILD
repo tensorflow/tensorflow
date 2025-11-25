@@ -43,7 +43,6 @@ xla_cc_test(
         ":generate_benchmark_matrices_cc",
         "//xla/tools/benchmarks/proto:benchmark_config_proto_cc",
         "//xla/tsl/platform:env",
-        "//xla/tsl/platform:status_matchers",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",
         "@com_google_absl//absl/status",

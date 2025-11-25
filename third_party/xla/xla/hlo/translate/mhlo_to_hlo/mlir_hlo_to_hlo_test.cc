@@ -25,7 +25,6 @@ limitations under the License.
 #include "xla/hlo/translate/register.h"
 #include "xla/mlir/utils/error_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/test.h"
 
 // This file should contain tests for interfaces that can't be tested at the
@@ -37,7 +36,6 @@ namespace {
 using testing::_;
 using testing::AllOf;
 using testing::HasSubstr;
-using tsl::testing::StatusIs;
 
 TEST(ConvertMlirHloToHloModuleTest, PropagatesDiagnostics) {
   const std::string mlir_source = R"mlir(
