@@ -501,6 +501,7 @@ xla_cc_test(
     deps = [
         ":shape_pool",
         ":shape_util",
+        ":xla_data_proto_cc",
         "//xla/tsl/platform:test",
         "//xla/tsl/platform:test_benchmark",
         "//xla/tsl/platform:test_main",
@@ -563,6 +564,7 @@ xla_cc_test(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest",
+        "@com_google_protobuf//:protobuf",
         "@local_tsl//tsl/platform:protobuf",
     ],
 )

@@ -31,6 +31,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
+#include "google/protobuf/text_format.h"
 #include "xla/hlo/testlib/test.h"
 #include "xla/layout.h"
 #include "xla/layout_util.h"
