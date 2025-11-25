@@ -33,6 +33,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/layout_util.h"
 #include "xla/service/shape_inference.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -104,8 +105,8 @@ absl::Status CanonicalizeDot(HloDotInstruction* original_dot) {
   HloInstruction* lhs_operand = original_dot->mutable_operand(0);
   HloInstruction* transposed_lhs = computation->AddInstruction(
       HloInstruction::CreateTranspose(
-          ShapeUtil::PermuteDimensions(lhs_transpose, lhs_shape), lhs_operand,
-          lhs_transpose),
+          ShapeUtil::PermuteDimensionsIgnoringLayout(lhs_transpose, lhs_shape),
+          lhs_operand, lhs_transpose),
       &lhs_operand->metadata());
 
   std::vector<int64_t> lhs_reshape_dims = batch_dim_sizes;
@@ -163,8 +164,8 @@ absl::Status CanonicalizeDot(HloDotInstruction* original_dot) {
   HloInstruction* rhs_operand = original_dot->mutable_operand(1);
   HloInstruction* transposed_rhs = computation->AddInstruction(
       HloInstruction::CreateTranspose(
-          ShapeUtil::PermuteDimensions(rhs_transpose, rhs_shape), rhs_operand,
-          rhs_transpose),
+          ShapeUtil::PermuteDimensionsIgnoringLayout(rhs_transpose, rhs_shape),
+          rhs_operand, rhs_transpose),
       &rhs_operand->metadata());
 
   std::vector<int64_t> rhs_reshape_dims = batch_dim_sizes;
