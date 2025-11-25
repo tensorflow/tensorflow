@@ -44,6 +44,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/literal_util.h"
+#include "xla/service/gpu/autotuning/autotune_cache_key.h"
 #include "xla/service/gpu/autotuning/autotuner_util.h"
 #include "xla/service/gpu/autotuning/gpu_autotuning.pb.h"
 #include "xla/service/gpu/autotuning/redzone_buffers.h"
@@ -72,7 +73,6 @@ limitations under the License.
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"
-#include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/protobuf/dnn.pb.h"
 #include "xla/tsl/util/env_var.h"
@@ -112,8 +112,8 @@ class ScratchAllocator : public se::ScratchAllocator {
 
   static int64_t GetDefaultMemoryLimitInBytes() {
     int64_t value;
-    TF_CHECK_OK(tsl::ReadInt64FromEnvVar("TF_CUDNN_WORKSPACE_LIMIT_IN_MB",
-                                         1LL << 12, &value));
+    CHECK_OK(tsl::ReadInt64FromEnvVar("TF_CUDNN_WORKSPACE_LIMIT_IN_MB",
+                                      1LL << 12, &value));
     return value * (1LL << 20);
   }
 

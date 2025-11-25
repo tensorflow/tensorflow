@@ -49,7 +49,6 @@ limitations under the License.
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"  // IWYU pragma: keep
-#include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/xla.pb.h"
@@ -364,16 +363,16 @@ class FileBasedCacheTest : public AutotunerUtilTest {
 
   static std::string Read(const absl::string_view filepath) {
     std::string file_content;
-    TF_CHECK_OK(tsl::ReadFileToString(tsl::Env::Default(),
-                                      std::string(filepath), &file_content));
+    CHECK_OK(tsl::ReadFileToString(tsl::Env::Default(), std::string(filepath),
+                                   &file_content));
     return file_content;
   }
 
   void Write(const absl::string_view filepath,
              const absl::string_view content) {
-    TF_CHECK_OK(CreateDirIfNeeded(cache_dir_, tsl::Env::Default()));
-    TF_CHECK_OK(tsl::WriteStringToFile(tsl::Env::Default(),
-                                       std::string(filepath), content));
+    CHECK_OK(CreateDirIfNeeded(cache_dir_, tsl::Env::Default()));
+    CHECK_OK(tsl::WriteStringToFile(tsl::Env::Default(), std::string(filepath),
+                                    content));
   }
 
   stream_executor::StreamExecutor* executor_ = NewStreamExecutor();

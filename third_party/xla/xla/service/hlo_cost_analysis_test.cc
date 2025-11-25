@@ -24,6 +24,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/container/inlined_vector.h"
+#include "absl/log/check.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -44,7 +45,6 @@ limitations under the License.
 #include "xla/service/service.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 
@@ -71,7 +71,7 @@ class HloCostAnalysisTest : public ::testing::Test {
       auto half = ConstantR0<float>(&builder, 0.5);
       Exp(Add(x, half));
       auto computation_status = builder.Build();
-      TF_CHECK_OK(computation_status.status());
+      CHECK_OK(computation_status.status());
       add_and_exp_ = std::move(computation_status).value();
     }
 
@@ -82,7 +82,7 @@ class HloCostAnalysisTest : public ::testing::Test {
       auto y = Parameter(&builder, 1, ShapeUtil::MakeShape(F32, {}), "y");
       Add(x, y);
       auto computation_status = builder.Build();
-      TF_CHECK_OK(computation_status.status());
+      CHECK_OK(computation_status.status());
       add_ = std::move(computation_status).value();
     }
 
@@ -93,7 +93,7 @@ class HloCostAnalysisTest : public ::testing::Test {
       auto one = ConstantR0<float>(&builder, 1.0);
       Div(one, Add(one, Exp(Neg(x))));
       auto computation_status = builder.Build();
-      TF_CHECK_OK(computation_status.status());
+      CHECK_OK(computation_status.status());
       sigmoid_ = std::move(computation_status).value();
     }
 
@@ -104,7 +104,7 @@ class HloCostAnalysisTest : public ::testing::Test {
       auto y = Parameter(&builder, 1, ShapeUtil::MakeShape(F32, {}), "y");
       Max(x, y);
       auto computation_status = builder.Build();
-      TF_CHECK_OK(computation_status.status());
+      CHECK_OK(computation_status.status());
       max_ = std::move(computation_status).value();
     }
 
@@ -115,7 +115,7 @@ class HloCostAnalysisTest : public ::testing::Test {
       auto y = Parameter(&builder, 1, ShapeUtil::MakeShape(F32, {}), "y");
       Gt(x, y);
       auto computation_status = builder.Build();
-      TF_CHECK_OK(computation_status.status());
+      CHECK_OK(computation_status.status());
       gt_ = std::move(computation_status).value();
     }
   }
@@ -123,7 +123,7 @@ class HloCostAnalysisTest : public ::testing::Test {
   // Build HLO graph from the given builder and return the HLO module.
   std::unique_ptr<HloModule> BuildHloGraph(XlaBuilder* builder) {
     auto computation_status = builder->Build();
-    TF_CHECK_OK(computation_status.status());
+    CHECK_OK(computation_status.status());
     auto computation = std::move(computation_status).value();
     auto config = HloModule::CreateModuleConfigFromProto(computation.proto(),
                                                          DebugOptions())
@@ -1632,7 +1632,7 @@ TEST_F(HloCostAnalysisTest, MultioutputScatter) {
     auto y1 = Parameter(&builder, 3, ShapeUtil::MakeShape(S32, {}), "y1");
     Tuple(&builder, {Add(x0, y0), Add(x1, y1)});
     auto computation_status = builder.Build();
-    TF_CHECK_OK(computation_status.status());
+    CHECK_OK(computation_status.status());
     return std::move(computation_status).value();
   }();
   Scatter({operand0, operand1}, indices, {values0, values1}, add, dim_numbers);

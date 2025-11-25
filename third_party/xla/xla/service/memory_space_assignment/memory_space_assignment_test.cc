@@ -85,7 +85,6 @@ limitations under the License.
 #include "xla/tests/test_utils.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
@@ -179,7 +178,7 @@ TEST_F(MemorySpaceAssignmentTest, ParameterOnly) {
 
   HloSchedule schedule(module.get());
   schedule.set_sequence(computation, {p0});
-  TF_CHECK_OK(module->set_schedule(schedule));
+  CHECK_OK(module->set_schedule(schedule));
 
   AssignMemorySpace(module.get());
 
@@ -208,7 +207,7 @@ TEST_F(MemorySpaceAssignmentTest, Simple) {
 
   HloSchedule schedule(module.get());
   schedule.set_sequence(computation, {p0, p1, add, sub, mul});
-  TF_CHECK_OK(module->set_schedule(schedule));
+  CHECK_OK(module->set_schedule(schedule));
 
   Options options = DefaultMemorySpaceOptions();
   options.post_module_scoped_alternate_memory_size_in_bytes = 10;
@@ -352,7 +351,7 @@ TEST_F(MemorySpaceAssignmentTest, NegateChain) {
   HloSchedule schedule(module.get());
   schedule.set_sequence(computation, {p0, p1, negate0, negate1, negate2,
                                       negate3, negate4, negate5, negate6, add});
-  TF_CHECK_OK(module->set_schedule(schedule));
+  CHECK_OK(module->set_schedule(schedule));
 
   AssignMemorySpace(module.get());
 
@@ -1873,7 +1872,7 @@ TEST_F(MemorySpaceAssignmentTest, FilterUpdatePreferredPrefetchTest) {
   HloSchedule schedule(module.get());
   schedule.set_sequence(computation, {p0, p1, negate0, negate1, negate2,
                                       negate3, negate4, negate5, negate6, add});
-  TF_CHECK_OK(module->set_schedule(schedule));
+  CHECK_OK(module->set_schedule(schedule));
 
   Options options = DefaultMemorySpaceOptions();
 
@@ -1949,7 +1948,7 @@ TEST_F(MemorySpaceAssignmentTest, FilterUpdateConfigExactMatchBeforeTest) {
   HloSchedule schedule(module.get());
   schedule.set_sequence(computation, {p0, p1, negate0, negate1, negate2,
                                       negate3, negate4, negate5, negate6, add});
-  TF_CHECK_OK(module->set_schedule(schedule));
+  CHECK_OK(module->set_schedule(schedule));
 
   Options options = DefaultMemorySpaceOptions();
 
@@ -2027,7 +2026,7 @@ TEST_F(MemorySpaceAssignmentTest, FilterUpdateConfigExactMatchAfterTest) {
   HloSchedule schedule(module.get());
   schedule.set_sequence(computation, {p0, p1, negate0, negate1, negate2,
                                       negate3, negate4, negate5, negate6, add});
-  TF_CHECK_OK(module->set_schedule(schedule));
+  CHECK_OK(module->set_schedule(schedule));
 
   Options options = DefaultMemorySpaceOptions();
 
@@ -2105,7 +2104,7 @@ TEST_F(MemorySpaceAssignmentTest, FilterUpdateConfigExactMatchTooLateTest) {
   HloSchedule schedule(module.get());
   schedule.set_sequence(computation, {p0, p1, negate0, negate1, negate2,
                                       negate3, negate4, negate5, negate6, add});
-  TF_CHECK_OK(module->set_schedule(schedule));
+  CHECK_OK(module->set_schedule(schedule));
 
   Options options = DefaultMemorySpaceOptions();
 
@@ -2175,7 +2174,7 @@ TEST_F(MemorySpaceAssignmentTest, FilterUpdateConfigPrecedenceTest) {
   HloSchedule schedule(module.get());
   schedule.set_sequence(computation, {p0, p1, negate0, negate1, negate2,
                                       negate3, negate4, negate5, negate6, add});
-  TF_CHECK_OK(module->set_schedule(schedule));
+  CHECK_OK(module->set_schedule(schedule));
 
   Options options = DefaultMemorySpaceOptions();
 
@@ -2257,7 +2256,7 @@ TEST_F(MemorySpaceAssignmentTest, FilterUpdateConfigExactMatchPrecedenceTest) {
   HloSchedule schedule(module.get());
   schedule.set_sequence(computation, {p0, p1, negate0, negate1, negate2,
                                       negate3, negate4, negate5, negate6, add});
-  TF_CHECK_OK(module->set_schedule(schedule));
+  CHECK_OK(module->set_schedule(schedule));
 
   Options options = DefaultMemorySpaceOptions();
 
@@ -2340,7 +2339,7 @@ TEST_F(MemorySpaceAssignmentTest, FilterUpdatePreferredPrefetchNoMatchTest) {
   HloSchedule schedule(module.get());
   schedule.set_sequence(computation, {p0, p1, negate0, negate1, negate2,
                                       negate3, negate4, negate5, negate6, add});
-  TF_CHECK_OK(module->set_schedule(schedule));
+  CHECK_OK(module->set_schedule(schedule));
 
   Options options = DefaultMemorySpaceOptions();
 
@@ -2488,7 +2487,7 @@ TEST_F(MemorySpaceAssignmentTest,
   HloSchedule schedule(module.get());
   schedule.set_sequence(computation, {p0, p1, tanh, a, b, c, d, e, f, g, h, i,
                                       j, k, l, m, n, o, add});
-  TF_CHECK_OK(module->set_schedule(schedule));
+  CHECK_OK(module->set_schedule(schedule));
 
   AssignMemorySpace(module.get(),
                     UpdateMaxAsyncCopies(DefaultMemorySpaceOptions(), 1));
@@ -2577,7 +2576,7 @@ TEST_F(MemorySpaceAssignmentTest, EvictAndPrefetchAndPrefetch) {
        f,       g,       h,       i,       j,       k,       l,       m,
        n,       o,       add0,    negate0, negate1, negate2, negate3, negate4,
        negate5, negate6, negate7, negate8, negate9, add1});
-  TF_CHECK_OK(module->set_schedule(schedule));
+  CHECK_OK(module->set_schedule(schedule));
 
   AssignMemorySpace(module.get());
 
@@ -2668,7 +2667,7 @@ TEST_F(MemorySpaceAssignmentTest, While) {
                          body_iter_next, body_data_increment, body_data_mul,
                          body_data_add, body_data_next, body_out});
   schedule.set_sequence(entry_computation, {iter, data, tuple, while_op});
-  TF_CHECK_OK(module->set_schedule(schedule));
+  CHECK_OK(module->set_schedule(schedule));
 
   LOG(INFO) << module->ToString(HloPrintOptions::ShortParsable());
 
@@ -2724,7 +2723,7 @@ TEST_F(MemorySpaceAssignmentTest, Tuple) {
   schedule.set_sequence(
       computation, {p, p0, negate0, negate1, negate2, negate3, negate4, negate5,
                     negate6, p1, add, p2, p2_0, mul});
-  TF_CHECK_OK(module->set_schedule(schedule));
+  CHECK_OK(module->set_schedule(schedule));
 
   AssignMemorySpace(module.get());
 
@@ -2760,7 +2759,7 @@ TEST_F(MemorySpaceAssignmentTest, Bitcast) {
 
   HloSchedule schedule(module.get());
   schedule.set_sequence(computation, {p0, p1, negate, bitcast, add});
-  TF_CHECK_OK(module->set_schedule(schedule));
+  CHECK_OK(module->set_schedule(schedule));
 
   AssignMemorySpace(module.get());
 
@@ -2798,7 +2797,7 @@ TEST_F(MemorySpaceAssignmentTest, Bitcast2) {
   HloSchedule schedule(module.get());
   schedule.set_sequence(computation, {p0, p1, negate0, negate1, negate2,
                                       negate3, negate4, bitcast, add});
-  TF_CHECK_OK(module->set_schedule(schedule));
+  CHECK_OK(module->set_schedule(schedule));
 
   AssignMemorySpace(module.get());
 
@@ -2846,7 +2845,7 @@ TEST_F(MemorySpaceAssignmentTest, Bitcast3) {
   schedule.set_sequence(computation,
                         {p0, p1, negate0, negate1, negate2, negate3, negate4,
                          bitcast1, add, bitcast2, bitcast3, bitcast4, mul});
-  TF_CHECK_OK(module->set_schedule(schedule));
+  CHECK_OK(module->set_schedule(schedule));
 
   AssignMemorySpace(module.get());
 
@@ -2918,7 +2917,7 @@ TEST_F(MemorySpaceAssignmentTest, BitcastTuple) {
   schedule.set_sequence(computation,
                         {p0, p1, negate0, negate1, negate2, negate3, negate4,
                          bitcast, tuple, fusion});
-  TF_CHECK_OK(module->set_schedule(schedule));
+  CHECK_OK(module->set_schedule(schedule));
 
   AssignMemorySpace(module.get());
 }
@@ -3011,7 +3010,7 @@ TEST_F(MemorySpaceAssignmentTest, BitcastMultiUse) {
   HloSchedule schedule(module.get());
   schedule.set_sequence(computation, {p0, bitcast, negate0, negate1, negate2,
                                       negate3, negate4, add});
-  TF_CHECK_OK(module->set_schedule(schedule));
+  CHECK_OK(module->set_schedule(schedule));
 
   AssignMemorySpace(module.get());
   Shape shape_in_alternate_mem = ShapeUtil::MakeShapeWithDenseLayout(
@@ -3067,7 +3066,7 @@ TEST_F(MemorySpaceAssignmentTest, BitcastMultiUseTuple) {
   HloSchedule schedule(module.get());
   schedule.set_sequence(computation, {p0, bitcast, negate0, negate1, negate2,
                                       negate3, negate4, tuple, fusion});
-  TF_CHECK_OK(module->set_schedule(schedule));
+  CHECK_OK(module->set_schedule(schedule));
 
   AssignMemorySpace(module.get());
   Shape shape_in_alternate_mem = ShapeUtil::MakeShapeWithDenseLayout(
@@ -3131,7 +3130,7 @@ TEST_F(MemorySpaceAssignmentTest, BitcastScheduleBug) {
   schedule.set_sequence(
       computation, {p0, p1, bitcast, negate0, negate1, negate2, negate3,
                     negate4, negate5, negate6, negate7, negate8, negate9, add});
-  TF_CHECK_OK(module->set_schedule(schedule));
+  CHECK_OK(module->set_schedule(schedule));
 
   AssignMemorySpace(module.get(), DefaultMemorySpaceOptions(),
                     /*max_prefetch_interval=*/5, /*min_prefetch_interval=*/4);
@@ -4423,7 +4422,7 @@ TEST_F(MemorySpaceAssignmentTest, LastUseOpt) {
   HloSchedule schedule(module.get());
   schedule.set_sequence(computation, {p0, p1, add1, sub1, mul1, add2, mul2,
                                       padding_value, padded_mul2, add3});
-  TF_CHECK_OK(module->set_schedule(schedule));
+  CHECK_OK(module->set_schedule(schedule));
 
   AssignMemorySpace(module.get());
 
@@ -4515,7 +4514,7 @@ TEST_F(MemorySpaceAssignmentTest, NonEntryComputationSchedule1) {
                          body_data_add, body_data_next, body_out});
   schedule.set_sequence(entry_computation,
                         {iter, data, p2, tuple, while_op, while_data, add});
-  TF_CHECK_OK(module->set_schedule(schedule));
+  CHECK_OK(module->set_schedule(schedule));
 
   AssignMemorySpace(module.get(), DefaultMemorySpaceOptions(), 50);
 }
@@ -4586,7 +4585,7 @@ TEST_F(MemorySpaceAssignmentTest, NonEntryComputationSchedule2) {
        negate4, negate5, negate6, negate7, add0});
   schedule.set_sequence(entry_computation,
                         {p0, p1, add1, add2, negate8, call, add3, add4, add5});
-  TF_CHECK_OK(module->set_schedule(schedule));
+  CHECK_OK(module->set_schedule(schedule));
 
   AssignMemorySpace(module.get(), DefaultMemorySpaceOptions(), 5);
 }
@@ -4652,7 +4651,7 @@ TEST_F(MemorySpaceAssignmentTest, NonEntryComputationSchedule3) {
       {call_param, iota, slice, mul, negate0, negate1, negate2, negate3,
        negate4, negate5, negate6, negate7, add0});
   schedule.set_sequence(entry_computation, {p0, add1, add2, call, add3});
-  TF_CHECK_OK(module->set_schedule(schedule));
+  CHECK_OK(module->set_schedule(schedule));
 
   AssignMemorySpace(module.get(), DefaultMemorySpaceOptions(), 5);
 }
@@ -4726,7 +4725,7 @@ TEST_F(MemorySpaceAssignmentTest, DISABLED_NonEntryComputationSchedule4) {
   schedule.set_sequence(false_computation, {false_param});
   schedule.set_sequence(entry_computation,
                         {p0, add1, add2, pred, conditional, add3});
-  TF_CHECK_OK(module->set_schedule(schedule));
+  CHECK_OK(module->set_schedule(schedule));
 
   AssignMemorySpace(module.get(), DefaultMemorySpaceOptions(), 5);
 }
@@ -4845,7 +4844,7 @@ TEST_F(MemorySpaceAssignmentTest, NonEntryComputationSchedule5) {
       entry_computation,
       {iter, data, data2, negate0, negate1, negate2, negate3, negate4, negate5,
        negate6, negate7, sub, tuple, while_op, while_data, root});
-  TF_CHECK_OK(module->set_schedule(schedule));
+  CHECK_OK(module->set_schedule(schedule));
 
   // Set a large max prefetch interval so that the buffer can be kept in
   // alternate memory.
@@ -4950,7 +4949,7 @@ TEST_F(MemorySpaceAssignmentTest, NonEntryComputationSchedule6) {
       entry_computation,
       {iter, data, negate0, negate1, negate2, negate3, negate4, negate5,
        negate6, negate7, tuple, while_op, while_data, while_data2, root});
-  TF_CHECK_OK(module->set_schedule(schedule));
+  CHECK_OK(module->set_schedule(schedule));
 
   // Pick a large max prefetch interval to ensure all the while inputs are
   // allocated in the alternate memory.
@@ -5035,7 +5034,7 @@ TEST_F(MemorySpaceAssignmentTest, DanglingCopy) {
   schedule.set_sequence(
       computation, {p, p0, negate0, negate1, negate2, negate3, negate4, negate5,
                     negate6, p1a, copy, p1b, add});
-  TF_CHECK_OK(module->set_schedule(schedule));
+  CHECK_OK(module->set_schedule(schedule));
 
   AssignMemorySpace(module.get());
 }
@@ -5072,7 +5071,7 @@ TEST_F(MemorySpaceAssignmentTest, MultiOutputFusion) {
 
   HloSchedule schedule(module.get());
   schedule.set_sequence(computation, {p0, fusion, element0, element1, add});
-  TF_CHECK_OK(module->set_schedule(schedule));
+  CHECK_OK(module->set_schedule(schedule));
 
   AssignMemorySpace(module.get());
 }
@@ -5112,7 +5111,7 @@ TEST_F(MemorySpaceAssignmentTest, TupleInput) {
 
   HloSchedule schedule(module.get());
   schedule.set_sequence(computation, {p0, p1, negate0, negate1, tuple, fusion});
-  TF_CHECK_OK(module->set_schedule(schedule));
+  CHECK_OK(module->set_schedule(schedule));
 
   AssignMemorySpace(module.get());
 }
@@ -5185,7 +5184,7 @@ TEST_F(MemorySpaceAssignmentTest, TupleToTuple1) {
       computation,
       {p0, fusion0, element0, element1, negate0, negate1, negate2, negate3,
        negate4, negate5, negate6, add0, add1, fusion1, mul});
-  TF_CHECK_OK(module->set_schedule(schedule));
+  CHECK_OK(module->set_schedule(schedule));
 
   AssignMemorySpace(module.get(), DefaultMemorySpaceOptions(), 5);
   EXPECT_THAT(fusion1,
@@ -5258,7 +5257,7 @@ TEST_F(MemorySpaceAssignmentTest, TupleToTuple2) {
   schedule.set_sequence(
       computation, {p0, fusion0, negate0, negate1, negate2, negate3, negate4,
                     negate5, negate6, fusion1});
-  TF_CHECK_OK(module->set_schedule(schedule));
+  CHECK_OK(module->set_schedule(schedule));
 
   AssignMemorySpace(module.get(), DefaultMemorySpaceOptions(), 5);
 
@@ -5317,7 +5316,7 @@ TEST_F(MemorySpaceAssignmentTest, TupleToTuple3) {
 
   HloSchedule schedule(module.get());
   schedule.set_sequence(computation, {p0, fusion0, fusion1});
-  TF_CHECK_OK(module->set_schedule(schedule));
+  CHECK_OK(module->set_schedule(schedule));
 
   AssignMemorySpace(module.get());
   EXPECT_THAT(fusion1, op::Fusion(op::Fusion()));
@@ -5361,11 +5360,11 @@ TEST_F(MemorySpaceAssignmentTest, InputOutputAlias) {
   schedule.set_sequence(
       computation, {p, p0, negate0, negate1, negate2, negate3, negate4, negate5,
                     negate6, p1, add, negate7, tuple});
-  TF_CHECK_OK(module->set_schedule(schedule));
+  CHECK_OK(module->set_schedule(schedule));
 
   // Make input {0} alias with output {0} and input {1} alias with output {1}.
-  TF_CHECK_OK(module->input_output_alias_config().SetUpAlias({0}, 0, {0}));
-  TF_CHECK_OK(module->input_output_alias_config().SetUpAlias({1}, 0, {1}));
+  CHECK_OK(module->input_output_alias_config().SetUpAlias({0}, 0, {0}));
+  CHECK_OK(module->input_output_alias_config().SetUpAlias({1}, 0, {1}));
 
   AssignMemorySpace(module.get());
 
@@ -5408,7 +5407,7 @@ TEST_F(MemorySpaceAssignmentTest, CostAnalysis) {
   HloSchedule schedule(module.get());
   schedule.set_sequence(computation, {p0, p1, negate0, negate1, negate2,
                                       negate3, negate4, negate5, negate6, add});
-  TF_CHECK_OK(module->set_schedule(schedule));
+  CHECK_OK(module->set_schedule(schedule));
 
   AssignMemorySpaceUsingCostAnalysis(module.get());
   // Parameters are in the default memory space.
@@ -5480,7 +5479,7 @@ TEST_F(MemorySpaceAssignmentTest, MemoryBoundednessBufferIntervalCompare) {
   schedule.set_sequence(computation,
                         {p0, p1, tanh0, negate0, tanh1, negate1, tanh2, negate2,
                          tanh3, negate3, tanh4, negate4, tuple});
-  TF_CHECK_OK(module->set_schedule(schedule));
+  CHECK_OK(module->set_schedule(schedule));
 
   AssignMemorySpaceUsingCostAnalysis(module.get());
   // Parameters are in the default memory space.
@@ -6475,7 +6474,7 @@ TEST_F(MemorySpaceAssignmentTest, SimpleWhileTupleTest) {
 
   HloComputation* computation = module->AddEntryComputation(builder.Build());
   schedule.set_sequence(computation, {param, gte0, gte1, tuple, while0});
-  TF_CHECK_OK(module->set_schedule(schedule));
+  CHECK_OK(module->set_schedule(schedule));
 
   AssignMemorySpace(module.get(), DefaultMemorySpaceOptions(),
                     /*max_prefetch_interval=*/50);
@@ -6558,7 +6557,7 @@ TEST_F(MemorySpaceAssignmentTest, EvictionsShouldntBeDelayed) {
       {p0, tanh0, tanh_redundant0, tanh_redundant1, tanh_redundant2,
        tanh_redundant3, tanh_redundant4, tanh_redundant5, tanh_redundant6,
        negate0, tanh1, negate1, tanh2, negate2, tanh3, negate3, tuple});
-  TF_CHECK_OK(module->set_schedule(schedule));
+  CHECK_OK(module->set_schedule(schedule));
 
   AssignMemorySpaceUsingCostAnalysis(module.get());
 
@@ -6647,7 +6646,7 @@ TEST_F(MemorySpaceAssignmentTest,
   schedule.set_sequence(computation,
                         {p0, p1, negate0, negate1, negate2, negate3, negate4,
                          negate5, negate6, add, tuple});
-  TF_CHECK_OK(module->set_schedule(schedule));
+  CHECK_OK(module->set_schedule(schedule));
 
   Options options = DefaultMemorySpaceOptions();
   options.post_module_scoped_alternate_memory_size_in_bytes = 32;
@@ -10701,7 +10700,7 @@ TEST_F(MemorySpaceAssignmentTest, CrossProgramPrefetchTest) {
 
   HloSchedule schedule(module.get());
   schedule.set_sequence(computation, {lhs, rhs, dot});
-  TF_CHECK_OK(module->set_schedule(schedule));
+  CHECK_OK(module->set_schedule(schedule));
 
   AssignMemorySpace(module.get());
 
@@ -10754,7 +10753,7 @@ TEST_F(MemorySpaceAssignmentTest, MultiCrossProgramPrefetchTest) {
   HloSchedule schedule(module.get());
   schedule.set_sequence(
       computation, {lhs, first_weight, second_weight, first_dot, second_dot});
-  TF_CHECK_OK(module->set_schedule(schedule));
+  CHECK_OK(module->set_schedule(schedule));
 
   Options options = DefaultMemorySpaceOptions();
   options.max_cross_program_prefetches = -1;
@@ -10809,7 +10808,7 @@ TEST_F(MemorySpaceAssignmentTest, CrossProgramPrefetchTupleTest) {
 
   HloSchedule schedule(module.get());
   schedule.set_sequence(computation, {param, lhs, rhs, dot});
-  TF_CHECK_OK(module->set_schedule(schedule));
+  CHECK_OK(module->set_schedule(schedule));
 
   AssignMemorySpace(module.get());
 
@@ -10849,7 +10848,7 @@ TEST_F(MemorySpaceAssignmentTest, CrossProgramPrefetchBitcastTest) {
 
   HloSchedule schedule(module.get());
   schedule.set_sequence(computation, {lhs, rhs, bitcast, dot});
-  TF_CHECK_OK(module->set_schedule(schedule));
+  CHECK_OK(module->set_schedule(schedule));
 
   AssignMemorySpace(module.get());
 
@@ -10893,7 +10892,7 @@ TEST_F(MemorySpaceAssignmentTest, CrossProgramPrefetchBitcastTupleTest) {
 
   HloSchedule schedule(module.get());
   schedule.set_sequence(computation, {param, lhs, rhs, bitcast, dot});
-  TF_CHECK_OK(module->set_schedule(schedule));
+  CHECK_OK(module->set_schedule(schedule));
 
   AssignMemorySpace(module.get());
 
@@ -10937,7 +10936,7 @@ TEST_F(MemorySpaceAssignmentTest, CrossProgramPrefetchNestedTupleTest) {
 
   HloSchedule schedule(module.get());
   schedule.set_sequence(computation, {param, gte, lhs, rhs, dot});
-  TF_CHECK_OK(module->set_schedule(schedule));
+  CHECK_OK(module->set_schedule(schedule));
 
   AssignMemorySpace(module.get());
 
@@ -10960,7 +10959,7 @@ TEST_F(MemorySpaceAssignmentTest, CrossProgramPrefetchUnusedParamTest) {
 
   HloSchedule schedule(module.get());
   schedule.set_sequence(computation, {param});
-  TF_CHECK_OK(module->set_schedule(schedule));
+  CHECK_OK(module->set_schedule(schedule));
 
   AssignMemorySpace(module.get());
 
@@ -10994,7 +10993,7 @@ TEST_F(MemorySpaceAssignmentTest, CrossProgramPrefetchTooBigTest) {
 
   HloSchedule schedule(module.get());
   schedule.set_sequence(computation, {lhs, rhs, dot});
-  TF_CHECK_OK(module->set_schedule(schedule));
+  CHECK_OK(module->set_schedule(schedule));
 
   AssignMemorySpace(module.get());
 
@@ -11032,7 +11031,7 @@ TEST_F(MemorySpaceAssignmentTest, CrossProgramPrefetchTooBigTupleTest) {
 
   HloSchedule schedule(module.get());
   schedule.set_sequence(computation, {param, lhs, rhs, dot});
-  TF_CHECK_OK(module->set_schedule(schedule));
+  CHECK_OK(module->set_schedule(schedule));
 
   AssignMemorySpace(module.get());
 
@@ -11080,7 +11079,7 @@ TEST_F(MemorySpaceAssignmentTest, CrossProgramPrefetchFusionTest) {
 
   HloSchedule schedule(module.get());
   schedule.set_sequence(computation, {activations, weights, fusion});
-  TF_CHECK_OK(module->set_schedule(schedule));
+  CHECK_OK(module->set_schedule(schedule));
 
   AssignMemorySpace(module.get());
 
@@ -11133,7 +11132,7 @@ TEST_F(MemorySpaceAssignmentTest, CrossProgramPrefetchFusionTupleTest) {
 
   HloSchedule schedule(module.get());
   schedule.set_sequence(computation, {activations, weights, tuple, fusion});
-  TF_CHECK_OK(module->set_schedule(schedule));
+  CHECK_OK(module->set_schedule(schedule));
 
   AssignMemorySpace(module.get());
 
@@ -11171,7 +11170,7 @@ TEST_F(MemorySpaceAssignmentTest, CrossProgramPrefetchPinnedTest) {
 
   HloSchedule schedule(module.get());
   schedule.set_sequence(computation, {lhs, rhs, dot});
-  TF_CHECK_OK(module->set_schedule(schedule));
+  CHECK_OK(module->set_schedule(schedule));
 
   Options options = DefaultMemorySpaceOptions();
   options.is_allowed_in_alternate_mem_fn = [](const HloValue& value) {
@@ -11218,7 +11217,7 @@ TEST_F(MemorySpaceAssignmentTest, CrossProgramPrefetchPinnedTupleTest) {
 
   HloSchedule schedule(module.get());
   schedule.set_sequence(computation, {param, lhs, rhs, dot});
-  TF_CHECK_OK(module->set_schedule(schedule));
+  CHECK_OK(module->set_schedule(schedule));
 
   Options options = DefaultMemorySpaceOptions();
   options.is_allowed_in_alternate_mem_fn = [](const HloValue& value) {

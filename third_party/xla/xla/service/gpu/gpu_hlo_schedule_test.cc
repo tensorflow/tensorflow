@@ -56,7 +56,6 @@ limitations under the License.
 #include "xla/tests/test_utils.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/logging.h"
-#include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/statusor.h"
 #include "tsl/profiler/protobuf/profiled_instructions.pb.h"
 
@@ -87,7 +86,7 @@ class GpuHloScheduleTest : public HloTestBase {
   }
 
   SequentialHloOrdering BuildHloOrdering(HloModule* module) {
-    TF_CHECK_OK(ScheduleGpuModule(module).status());
+    CHECK_OK(ScheduleGpuModule(module).status());
     return SequentialHloOrdering{module->schedule()};
   }
 
@@ -224,7 +223,7 @@ TEST_P(GpuHloScheduleParameterizedTest, AsyncCustomCall) {
   static_cast<HloCustomCallInstruction*>(nonblocking_call)
       ->set_custom_call_schedule(SCHEDULE_EARLIEST);
   // In addition, add control_dependency: add1->nonblocking_call.
-  TF_CHECK_OK(add1->AddControlDependencyTo(nonblocking_call));
+  CHECK_OK(add1->AddControlDependencyTo(nonblocking_call));
   // Blocking call, which only add4 depends on.
   HloInstruction* blocking_call =
       builder.AddInstruction(HloInstruction::CreateCustomCall(
@@ -295,7 +294,7 @@ TEST_P(GpuHloScheduleParameterizedTest, AsyncCollectivePermute) {
           collective_permute_start_shape, add0,
           /*source_target_pairs=*/{{0, 1}}, /*channel_id=*/std::nullopt));
   // In addition, add control_dependency: add1->nonblocking_call.
-  TF_CHECK_OK(add1->AddControlDependencyTo(collective_permute_start));
+  CHECK_OK(add1->AddControlDependencyTo(collective_permute_start));
   // Blocking call, which only add4 depends on.
   HloInstruction* collective_permute_done = builder.AddInstruction(
       HloInstruction::CreateUnary(f32_2x2_, HloOpcode::kCollectivePermuteDone,
@@ -1388,7 +1387,7 @@ ENTRY e {
   ROOT t = (f32[1024,1024]{1,0}, f32[1024,1024]{1,0}) tuple(wrapped_exponential, wrapped_negate)
 })")
                     .value();
-  TF_CHECK_OK(ScheduleGpuModule(module.get()).status());
+  CHECK_OK(ScheduleGpuModule(module.get()).status());
   EXPECT_TRUE(*RunFileCheck(module->ToString(), R"(
 // CHECK: ENTRY
 // CHECK: wrapped_negate = f32[1024,1024]{1,0}
@@ -1514,7 +1513,7 @@ TEST_P(GpuHloScheduleParameterizedTest, AsyncAllReduce) {
           /*constrain_layout=*/false,
           /*channel_id=*/std::nullopt, /*use_global_device_ids=*/true));
   // In addition, add control_dependency: add1->nonblocking_call.
-  TF_CHECK_OK(add1->AddControlDependencyTo(all_reduce_start));
+  CHECK_OK(add1->AddControlDependencyTo(all_reduce_start));
   // Blocking call, which only add4 depends on.
   HloInstruction* all_reduce_done =
       builder.AddInstruction(HloInstruction::CreateUnary(
@@ -1725,7 +1724,7 @@ TEST_P(GpuHloScheduleParameterizedTest, CopyStartDoneScheduled) {
   TF_ASSERT_OK_AND_ASSIGN(
       auto module, ParseAndReturnVerifiedModule(kHloCopyStartDone,
                                                 GetModuleConfig(test_config)));
-  TF_CHECK_OK(ScheduleGpuModule(module.get()).status());
+  CHECK_OK(ScheduleGpuModule(module.get()).status());
   EXPECT_TRUE(*RunFileCheck(module->ToString(), R"(
 // CHECK: ENTRY
 // CHECK: copy-start.3 = (f32[512,1024]{1,0}, f32[512,1024]{1,0:S(5)}, u32[]) copy-start

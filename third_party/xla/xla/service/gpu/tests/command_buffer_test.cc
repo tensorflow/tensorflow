@@ -120,7 +120,7 @@ class CommandBufferTest
       std::unique_ptr<HloModule> module, bool run_hlo_passes,
       const std::optional<ErrorSpec>& error) {
     // Verify module then clone for reference.
-    TF_CHECK_OK(this->verifier().Run(module.get()).status());
+    CHECK_OK(this->verifier().Run(module.get()).status());
     std::unique_ptr<HloModule> reference_module = module->Clone();
 
     // Prepare fake args for both runners.

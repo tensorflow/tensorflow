@@ -56,6 +56,7 @@ limitations under the License.
 #include "xla/stream_executor/gpu/gpu_kernel_registry.h"
 #include "xla/stream_executor/gpu/repeat_buffer_kernel.h"
 #include "xla/stream_executor/kernel.h"
+#include "xla/stream_executor/kernel_args.h"
 #include "xla/stream_executor/kernel_metadata.h"
 #include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/launch_dim.h"
@@ -490,8 +491,8 @@ static void InitializeTypedBuffer(se::Stream* stream,
   // Copy the last part of `host_buffer` to the start of `buf` on the device
   int64_t first_size =
       std::min<int64_t>(host_buffer_size - host_index, elements_to_fill);
-  TF_CHECK_OK(stream->Memcpy(&buffer, host_buffer->data() + host_index,
-                             first_size * sizeof(T)));
+  CHECK_OK(stream->Memcpy(&buffer, host_buffer->data() + host_index,
+                          first_size * sizeof(T)));
   elements_to_fill -= first_size;
   if (elements_to_fill == 0) {
     // Nothing more to do
@@ -502,7 +503,7 @@ static void InitializeTypedBuffer(se::Stream* stream,
   CHECK_LE(first_size + second_size, host_buffer_size);
   se::DeviceMemoryBase mem =
       buffer.GetByteSlice(first_size * sizeof(T), second_size * sizeof(T));
-  TF_CHECK_OK(stream->Memcpy(&mem, host_buffer->data(), mem.size()));
+  CHECK_OK(stream->Memcpy(&mem, host_buffer->data(), mem.size()));
   elements_to_fill -= second_size;
   if (elements_to_fill == 0) {
     // Nothing more to do
@@ -524,10 +525,10 @@ static void InitializeTypedBuffer(se::Stream* stream,
   constexpr int threads_per_block = 256;
   constexpr int blocks_per_grid =
       (host_buffer_bytes + threads_per_block - 1) / threads_per_block;
-  TF_CHECK_OK(kernel->Launch(se::ThreadDim(threads_per_block, 1, 1),
-                             se::BlockDim(blocks_per_grid, 1, 1), stream,
-                             buffer, host_buffer_bytes,
-                             static_cast<int64_t>(buffer.size())));
+  CHECK_OK(kernel->Launch(se::ThreadDim(threads_per_block, 1, 1),
+                          se::BlockDim(blocks_per_grid, 1, 1), stream, buffer,
+                          host_buffer_bytes,
+                          static_cast<int64_t>(buffer.size())));
 }
 
 void InitializeBuffer(se::Stream* stream, PrimitiveType buffer_type,

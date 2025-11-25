@@ -43,7 +43,6 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/statusor.h"
 
 namespace xla {
@@ -387,8 +386,8 @@ bool MultiOutputFusion::FuseSiblings(HloInstruction* parent,
       fusion_info_cache->Invalidate(*j);
       HloInstruction* remaining = *i;
       HloInstruction* fused = *j;
-      TF_CHECK_OK(cost_analysis->RemoveInstruction(remaining));
-      TF_CHECK_OK(cost_analysis->RemoveInstruction(fused));
+      CHECK_OK(cost_analysis->RemoveInstruction(remaining));
+      CHECK_OK(cost_analysis->RemoveInstruction(fused));
 
       DumpFusionState(*remaining,
                       absl::StrCat("About to fuse sibling |", fused->name(),
@@ -404,12 +403,12 @@ bool MultiOutputFusion::FuseSiblings(HloInstruction* parent,
       } else {
         remaining->FuseInstructionIntoMultiOutput(fused);
         CHECK_EQ(0, fused->user_count());
-        TF_CHECK_OK(computation_->RemoveInstruction(fused));
+        CHECK_OK(computation_->RemoveInstruction(fused));
       }
       DumpFusionState(*remaining,
                       absl::StrCat("Fused into |", remaining->name(),
                                    "| inside multi-output fusion"));
-      TF_CHECK_OK(cost_analysis->RevisitInstruction(remaining));
+      CHECK_OK(cost_analysis->RevisitInstruction(remaining));
       changed = true;
       siblings.erase(j);
       RecomputeReachability();
@@ -485,7 +484,7 @@ absl::StatusOr<bool> MultiOutputFusion::DoMultiOutputFusion() {
       VLOG(2) << "Fuse producer " << producer->name() << " and its consumer "
               << consumer_for_fusion->name() << " into "
               << input_fusion->name();
-      TF_CHECK_OK(
+      CHECK_OK(
           computation_->ReplaceInstruction(consumer_for_fusion, input_fusion));
     }
 
@@ -500,7 +499,7 @@ absl::StatusOr<bool> MultiOutputFusion::DoMultiOutputFusion() {
     } else {
       input_fusion->FuseInstructionIntoMultiOutput(producer);
       CHECK_EQ(0, producer->user_count());
-      TF_CHECK_OK(computation_->RemoveInstruction(producer));
+      CHECK_OK(computation_->RemoveInstruction(producer));
     }
     TF_RETURN_IF_ERROR(cost_analysis.RevisitInstruction(input_fusion));
 

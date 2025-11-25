@@ -48,7 +48,6 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
-#include "xla/tsl/platform/status.h"
 #include "xla/util.h"
 
 using absl::StrAppend;
@@ -320,7 +319,7 @@ bool ComputeRelativeLocation::AddControlDependenceForUnorderedOps() {
         VLOG(3) << "   Adding control dependence between:";
         VLOG(3) << "     predecessor: " << entry2->name();
         VLOG(3) << "       successor: " << entry1->name();
-        TF_CHECK_OK(entry2->AddControlDependencyTo(entry1));
+        CHECK_OK(entry2->AddControlDependencyTo(entry1));
       }
       reachability_map.UpdateReachabilityThroughInstruction(entry1);
       for (HloInstruction* entry2 : instr_it.second) {
@@ -731,7 +730,7 @@ CopyRemover::CopyRemover(
   CreateCopyMap(module, value_to_node);
 
   XLA_VLOG_LINES(3, ToString());
-  TF_DCHECK_OK(Verify());
+  DCHECK_OK(Verify());
 }
 
 // Add a list containing the given values to CopyRemover. This
@@ -1193,7 +1192,7 @@ bool CopyRemover::TryElideCopy(
   RemoveCopyValue(copy_node.dest);
 
   XLA_VLOG_LINES(4, ToString());
-  TF_DCHECK_OK(Verify());
+  DCHECK_OK(Verify());
   VLOG(3) << "TryElideCopy succeeded for: " << copy->name();
   return true;
 }

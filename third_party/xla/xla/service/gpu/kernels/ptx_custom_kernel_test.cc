@@ -22,15 +22,16 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/log/check.h"
 #include "absl/strings/string_view.h"
 #include "xla/service/gpu/kernels/custom_kernel.h"
 #include "xla/stream_executor/cuda/cuda_platform.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/kernel.h"
+#include "xla/stream_executor/kernel_args.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 
@@ -98,20 +99,20 @@ TEST(PtxCustomKernelTest, GetPtxCustomKernel) {
   se::DeviceMemory<int32_t> a = executor->AllocateArray<int32_t>(length, 0);
   se::DeviceMemory<int32_t> b = executor->AllocateArray<int32_t>(length, 0);
   se::DeviceMemory<int32_t> c = executor->AllocateArray<int32_t>(length, 0);
-  TF_CHECK_OK(stream->Memset32(&a, 1, byte_length));
-  TF_CHECK_OK(stream->Memset32(&b, 2, byte_length));
-  TF_CHECK_OK(stream->MemZero(&c, byte_length));
+  CHECK_OK(stream->Memset32(&a, 1, byte_length));
+  CHECK_OK(stream->Memset32(&b, 2, byte_length));
+  CHECK_OK(stream->MemZero(&c, byte_length));
 
   se::KernelArgsDeviceMemoryArray args(
       std::vector<se::DeviceMemoryBase>({a, b, c}),
       custom_kernel.shared_memory_bytes());
-  TF_CHECK_OK(kernel->Launch(custom_kernel.thread_dims(),
-                             custom_kernel.block_dims(), stream.get(), args));
+  CHECK_OK(kernel->Launch(custom_kernel.thread_dims(),
+                          custom_kernel.block_dims(), stream.get(), args));
 
-  TF_CHECK_OK(stream->BlockHostUntilDone());
+  CHECK_OK(stream->BlockHostUntilDone());
 
   std::vector<int32_t> dst(4, 42);
-  TF_CHECK_OK(stream->Memcpy(dst.data(), c, byte_length));
+  CHECK_OK(stream->Memcpy(dst.data(), c, byte_length));
 
   std::vector<int32_t> expected = {3, 3, 3, 3};
   ASSERT_EQ(dst, expected);
@@ -138,20 +139,20 @@ TEST(PtxCustomKernelTest, GetPtxCustomKernelWithClusterDim) {
   se::DeviceMemory<int32_t> a = executor->AllocateArray<int32_t>(length, 0);
   se::DeviceMemory<int32_t> b = executor->AllocateArray<int32_t>(length, 0);
   se::DeviceMemory<int32_t> c = executor->AllocateArray<int32_t>(length, 0);
-  TF_CHECK_OK(stream->Memset32(&a, 1, byte_length));
-  TF_CHECK_OK(stream->Memset32(&b, 2, byte_length));
-  TF_CHECK_OK(stream->MemZero(&c, byte_length));
+  CHECK_OK(stream->Memset32(&a, 1, byte_length));
+  CHECK_OK(stream->Memset32(&b, 2, byte_length));
+  CHECK_OK(stream->MemZero(&c, byte_length));
 
   se::KernelArgsDeviceMemoryArray args(
       std::vector<se::DeviceMemoryBase>({a, b, c}),
       custom_kernel.shared_memory_bytes());
-  TF_CHECK_OK(kernel->Launch(custom_kernel.thread_dims(),
-                             custom_kernel.block_dims(), stream.get(), args));
+  CHECK_OK(kernel->Launch(custom_kernel.thread_dims(),
+                          custom_kernel.block_dims(), stream.get(), args));
 
-  TF_CHECK_OK(stream->BlockHostUntilDone());
+  CHECK_OK(stream->BlockHostUntilDone());
 
   std::vector<int32_t> dst(4, 42);
-  TF_CHECK_OK(stream->Memcpy(dst.data(), c, byte_length));
+  CHECK_OK(stream->Memcpy(dst.data(), c, byte_length));
 
   ASSERT_THAT(dst, ElementsAre(3, 3, 3, 3));
   ASSERT_EQ(custom_kernel.ToString(),
@@ -217,20 +218,20 @@ TEST(PtxCustomKernelTest, GetOwnedPtxCustomKernel) {
   se::DeviceMemory<int32_t> a = executor->AllocateArray<int32_t>(length, 0);
   se::DeviceMemory<int32_t> b = executor->AllocateArray<int32_t>(length, 0);
   se::DeviceMemory<int32_t> c = executor->AllocateArray<int32_t>(length, 0);
-  TF_CHECK_OK(stream->Memset32(&a, 1, byte_length));
-  TF_CHECK_OK(stream->Memset32(&b, 2, byte_length));
-  TF_CHECK_OK(stream->MemZero(&c, byte_length));
+  CHECK_OK(stream->Memset32(&a, 1, byte_length));
+  CHECK_OK(stream->Memset32(&b, 2, byte_length));
+  CHECK_OK(stream->MemZero(&c, byte_length));
 
   se::KernelArgsDeviceMemoryArray args(
       std::vector<se::DeviceMemoryBase>({a, b, c}),
       custom_kernel.shared_memory_bytes());
-  TF_CHECK_OK(kernel->Launch(custom_kernel.thread_dims(),
-                             custom_kernel.block_dims(), stream.get(), args));
+  CHECK_OK(kernel->Launch(custom_kernel.thread_dims(),
+                          custom_kernel.block_dims(), stream.get(), args));
 
-  TF_CHECK_OK(stream->BlockHostUntilDone());
+  CHECK_OK(stream->BlockHostUntilDone());
 
   std::vector<int32_t> dst(4, 42);
-  TF_CHECK_OK(stream->Memcpy(dst.data(), c, byte_length));
+  CHECK_OK(stream->Memcpy(dst.data(), c, byte_length));
 
   ASSERT_THAT(dst, ElementsAre(3, 3, 3, 3));
 }

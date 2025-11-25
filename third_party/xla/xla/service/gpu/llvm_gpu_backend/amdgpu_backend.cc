@@ -206,8 +206,8 @@ absl::StatusOr<std::vector<uint8_t>> EmitModuleToHsaco(
   VLOG(1) << "Compile-time artifacts located at: " << tempdir_name;
 
   bool keep_tempfiles = false;
-  TF_CHECK_OK(tsl::ReadBoolFromEnvVar("TF_ROCM_KEEP_XLA_TEMPFILES",
-                                      /*default_val=*/false, &keep_tempfiles));
+  CHECK_OK(tsl::ReadBoolFromEnvVar("TF_ROCM_KEEP_XLA_TEMPFILES",
+                                   /*default_val=*/false, &keep_tempfiles));
   // Prepare filenames for all stages of compilation:
   // IR, binary ISA, and HSACO.
   std::string random_number = std::to_string(tsl::random::New64());

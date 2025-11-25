@@ -23,7 +23,6 @@ limitations under the License.
 #include <string>
 #include <tuple>
 #include <utility>
-#include <variant>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -46,7 +45,6 @@ limitations under the License.
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/window_util.h"
@@ -629,7 +627,7 @@ ConvolutionMatch MatchBackwardInput(HloInstruction* conv) {
     reverse_filter = c->AddInstruction(
         HloInstruction::CreateReverse(reverse_filter->shape(), reverse_filter,
                                       dnums.kernel_spatial_dimensions()));
-    TF_CHECK_OK(conv->ReplaceOperandWith(/*operand_num=*/1, reverse_filter));
+    CHECK_OK(conv->ReplaceOperandWith(/*operand_num=*/1, reverse_filter));
   }
 
   // Calculate the 'rhs' that goes into the backward input convolution.

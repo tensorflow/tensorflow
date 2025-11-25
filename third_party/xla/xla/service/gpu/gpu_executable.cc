@@ -96,7 +96,6 @@ limitations under the License.
 #include "xla/tsl/platform/env_time.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"
-#include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "tsl/platform/random.h"
@@ -708,7 +707,7 @@ GpuExecutable::ResolveConstantGlobals(se::Stream* stream) {
   // destructor will not race with any operations in flight (deallocate
   // xla::Literal owned by the HLO module).
   if (submitted_mem_copies) {
-    TF_CHECK_OK(stream->BlockHostUntilDone());
+    CHECK_OK(stream->BlockHostUntilDone());
   }
 
   module_handles_.emplace(executor,

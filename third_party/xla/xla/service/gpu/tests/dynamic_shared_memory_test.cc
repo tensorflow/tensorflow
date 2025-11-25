@@ -168,22 +168,22 @@ TEST(SharedMemoryUseTest, ArrayReversalWorks) {
     }
   }
 
-  TF_CHECK_OK(
+  CHECK_OK(
       stream->Memcpy(&device_buffer, host_buffer.data(), buffer_size_bytes));
   se::DeviceMemory<uint32_t> dev_n_cols = executor->AllocateScalar<uint32_t>();
-  TF_CHECK_OK(stream->Memcpy(&dev_n_cols, &n_cols, sizeof(uint32_t)));
+  CHECK_OK(stream->Memcpy(&dev_n_cols, &n_cols, sizeof(uint32_t)));
   se::DeviceMemory<uint32_t> dev_n_rows = executor->AllocateScalar<uint32_t>();
-  TF_CHECK_OK(stream->Memcpy(&dev_n_rows, &n_rows, sizeof(uint32_t)));
-  TF_CHECK_OK(stream->BlockHostUntilDone());
+  CHECK_OK(stream->Memcpy(&dev_n_rows, &n_rows, sizeof(uint32_t)));
+  CHECK_OK(stream->BlockHostUntilDone());
 
-  TF_CHECK_OK(ExecuteKernelOnStream(
+  CHECK_OK(ExecuteKernelOnStream(
       *kernel, {device_buffer, dev_n_cols, dev_n_rows},
       {/*block_x_count=*/1, /*thread_x_count_per_block=*/n_cols},
       /*cluster_dim=*/{}, stream.get()));
-  TF_CHECK_OK(stream->BlockHostUntilDone());
-  TF_CHECK_OK(
+  CHECK_OK(stream->BlockHostUntilDone());
+  CHECK_OK(
       stream->Memcpy(host_buffer.data(), device_buffer, buffer_size_bytes));
-  TF_CHECK_OK(stream->BlockHostUntilDone());
+  CHECK_OK(stream->BlockHostUntilDone());
 
   for (int row = 0; row < n_rows; ++row) {
     for (int col = 0; col < n_cols; ++col) {

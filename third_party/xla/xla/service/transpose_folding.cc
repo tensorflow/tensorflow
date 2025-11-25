@@ -29,15 +29,12 @@ limitations under the License.
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/shape_util.h"
 #include "xla/status_macros.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/logging.h"
-#include "tsl/platform/status.h"
 
 namespace xla {
 namespace {
@@ -179,7 +176,7 @@ bool FoldTransposeIntoConvolution(InstructionOperandsPair& pair) {
       convolution.shape(), new_lhs, new_rhs, convolution.feature_group_count(),
       convolution.batch_group_count(), convolution.window(), new_dnums,
       convolution.precision_config());
-  TF_CHECK_OK(convolution.parent()->ReplaceWithNewInstruction(
+  CHECK_OK(convolution.parent()->ReplaceWithNewInstruction(
       &convolution, std::move(new_conv)));
 
   return true;

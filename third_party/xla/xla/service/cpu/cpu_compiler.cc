@@ -26,7 +26,6 @@ limitations under the License.
 #include <stack>
 #include <string>
 #include <tuple>
-#include <type_traits>
 #include <utility>
 #include <vector>
 
@@ -35,7 +34,6 @@ limitations under the License.
 // IWYU pragma: no_include "llvm/Config/Disassemblers.def.inc"
 // IWYU pragma: no_include "llvm/Config/Targets.def.inc"
 
-#include "absl/cleanup/cleanup.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
@@ -88,18 +86,15 @@ limitations under the License.
 #include "mlir/Transforms/DialectConversion.h"
 #include "xla/backends/cpu/alignment.h"
 #include "xla/backends/cpu/codegen/builtin_definition_generator.h"
-#include "xla/backends/cpu/codegen/cpu_features.h"
 #include "xla/backends/cpu/codegen/emitters/cpu_fusion_emitter_config.h"
 #include "xla/backends/cpu/codegen/execution_engine.h"
 #include "xla/backends/cpu/codegen/ir_compiler.h"
 #include "xla/backends/cpu/codegen/jit_compiler.h"
-#include "xla/backends/cpu/codegen/object_loader.h"
 #include "xla/backends/cpu/codegen/target_machine_features.h"
 #include "xla/backends/cpu/constant_allocation.h"
 #include "xla/backends/cpu/runtime/function_library.h"
 #include "xla/backends/cpu/runtime/thunk.h"
 #include "xla/backends/cpu/runtime/thunk.pb.h"
-#include "xla/backends/cpu/runtime/thunk_proto_serdes.h"
 #include "xla/backends/cpu/target_machine_options.h"
 #include "xla/backends/cpu/transforms/collectives/all_reduce_combiner.h"
 #include "xla/backends/cpu/transforms/library_rewriter.h"
@@ -234,7 +229,6 @@ limitations under the License.
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/threadpool.h"
 #include "xla/util.h"
@@ -304,8 +298,8 @@ ModuleComputationsTransitivelyContainCustomCall(const HloModule& module) {
   std::unique_ptr<CallGraph> call_graph = CallGraph::Build(&module);
 
   // Can never fail because we always return an OK status from the visitor.
-  TF_CHECK_OK(call_graph->VisitNodes([&custom_call_map](
-                                         const CallGraphNode& node) {
+  CHECK_OK(call_graph->VisitNodes([&custom_call_map](
+                                      const CallGraphNode& node) {
     const HloComputation* computation = node.computation();
 
     for (const HloInstruction* instruction : computation->instructions()) {

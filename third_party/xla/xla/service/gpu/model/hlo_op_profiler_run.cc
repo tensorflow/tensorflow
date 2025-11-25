@@ -58,9 +58,8 @@ void WriteOutput(const DeviceHloInstructionProfiles& literal,
     file_name = tsl::io::GetTempFilename(absl::StrCat(name, ".textproto"));
   }
   VLOG(0) << "Writing output to " << file_name;
-  TF_CHECK_OK(
-      tsl::WriteStringToFile(tsl::Env::Default(), file_name,
-                             tsl::LegacyUnredactedDebugString(literal)));
+  CHECK_OK(tsl::WriteStringToFile(tsl::Env::Default(), file_name,
+                                  tsl::LegacyUnredactedDebugString(literal)));
 }
 
 int RunProfiler(int argc, char** argv) {

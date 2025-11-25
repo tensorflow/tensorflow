@@ -66,7 +66,6 @@ limitations under the License.
 #include "xla/status_macros.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"
-#include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
@@ -2972,7 +2971,7 @@ void HloScheduleGraph::AnnotateGraph(
     for (const HloInstruction* instr :
          annotation_tracker->GetInstructions(comp, annotation)) {
       HloGraphNode& node = GetNode(instr);
-      TF_CHECK_OK(node.SetAnnotation(annotation));
+      CHECK_OK(node.SetAnnotation(annotation));
     }
   }
 }

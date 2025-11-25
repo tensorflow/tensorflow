@@ -305,7 +305,7 @@ void GpuPerformanceModel::RecordEstimatedRunTime(
       absl::ToDoubleNanoseconds(data.exec_time) * device_info_.clock_rate_ghz();
 
   auto gpu_config = instruction->backend_config<GpuBackendConfig>();
-  TF_CHECK_OK(gpu_config.status()) << instruction->ToString();
+  CHECK_OK(gpu_config.status()) << instruction->ToString();
   auto reification_cost = gpu_config->add_reification_cost();
   reification_cost->set_end_to_end_cycles(cycles);
   reification_cost->set_compute_time_us(
@@ -314,7 +314,7 @@ void GpuPerformanceModel::RecordEstimatedRunTime(
       absl::ToDoubleMicroseconds(data.read_time + data.write_time));
   reification_cost->set_exec_time_us(
       absl::ToDoubleMicroseconds(data.exec_time));
-  TF_CHECK_OK(instruction->set_backend_config(*gpu_config));
+  CHECK_OK(instruction->set_backend_config(*gpu_config));
 
   VLOG(8) << "RecordEstimatedRunTime: " << instruction->ToString();
 }

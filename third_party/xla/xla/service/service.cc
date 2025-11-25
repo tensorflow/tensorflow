@@ -18,9 +18,7 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <functional>
-#include <map>
 #include <memory>
-#include <numeric>
 #include <optional>
 #include <set>
 #include <string>
@@ -41,7 +39,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/hlo/ir/hlo_module_group.h"
 #include "xla/layout.h"
 #include "xla/layout_util.h"
 #include "xla/literal.h"
@@ -68,12 +65,10 @@ limitations under the License.
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/protobuf.h"
 #include "tsl/profiler/lib/scoped_annotation.h"
 
 namespace xla {
@@ -903,7 +898,7 @@ absl::StatusOr<Literal> Service::ComputeConstantGraph(
   TF_ASSIGN_OR_RETURN(
       ProgramShape program_shape,
       ProgramShape::FromProto(computation.proto().host_program_shape()));
-  TF_DCHECK_OK(ShapeUtil::ValidateShape(program_shape.result()));
+  DCHECK_OK(ShapeUtil::ValidateShape(program_shape.result()));
 
   if (output_layout) {
     TF_RETURN_IF_ERROR(LayoutUtil::ValidateLayoutForShape(

@@ -254,7 +254,7 @@ int64_t GpuPerformanceModelWithIndexingAnalysis::FlopsPerElement(
   }
 
   // Encountered unexpected instruction, call into `GpuHloCostAnalysis`.
-  TF_CHECK_OK(
+  CHECK_OK(
       cost_analysis_.RevisitInstruction(const_cast<HloInstruction*>(instr)));
 
   return cost_analysis_.flop_count(*instr) /

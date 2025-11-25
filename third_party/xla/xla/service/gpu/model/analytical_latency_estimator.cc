@@ -89,7 +89,7 @@ AnalyticalLatencyEstimator::AnalyticalLatencyEstimator(
                                   /*min_latencies_seconds=*/{},
                                   /*count_multiple_input_accesses=*/true},
       gpu_info_);
-  TF_CHECK_OK(computation->Accept(&cost_analysis_.value()));
+  CHECK_OK(computation->Accept(&cost_analysis_.value()));
 }
 
 }  // namespace gpu

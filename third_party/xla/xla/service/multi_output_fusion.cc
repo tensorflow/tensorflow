@@ -18,20 +18,26 @@ limitations under the License.
 #include <algorithm>
 #include <cstdint>
 #include <optional>
+#include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/functional/function_ref.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/analysis/hlo_dataflow_analysis.h"
 #include "xla/hlo/analysis/hlo_reachability.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/hlo/transforms/simplifiers/hlo_dce.h"
 #include "xla/map_util.h"
 #include "xla/shape_util.h"
+#include "xla/tsl/platform/errors.h"
 #include "xla/util.h"
 
 namespace xla {
@@ -109,7 +115,7 @@ HloInstruction* MultiOutputFusion::CreateFusion(HloInstruction* base,
   reachability_->Replace(base, input_fusion);
   all_fusion_candidates_.emplace_back(input_fusion,
                                       reachability_->GetIndex(input_fusion));
-  TF_CHECK_OK(computation()->ReplaceInstruction(base, input_fusion));
+  CHECK_OK(computation()->ReplaceInstruction(base, input_fusion));
   return input_fusion;
 }
 

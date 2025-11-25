@@ -58,7 +58,6 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
@@ -1412,7 +1411,7 @@ std::unique_ptr<Layout> LayoutAssignment::ChooseOperandLayoutFromOutputLayout(
         ShapeUtil::AlignLayouts(output_shape_with_layout, operand_shape);
     if (aligned_operand_shape) {
       auto operand_layout = aligned_operand_shape.value().layout();
-      TF_CHECK_OK(
+      CHECK_OK(
           LayoutUtil::ValidateLayoutForShape(operand_layout, operand_shape));
       return std::make_unique<Layout>(operand_layout);
     }
@@ -1428,7 +1427,7 @@ std::unique_ptr<Layout> LayoutAssignment::ChooseOperandLayoutFromOutputLayout(
       new_minor_to_major[i] = operand_dim;
     }
     Layout operand_layout = LayoutUtil::MakeLayout(new_minor_to_major);
-    TF_CHECK_OK(
+    CHECK_OK(
         LayoutUtil::ValidateLayoutForShape(operand_layout, operand->shape()));
     return std::make_unique<Layout>(operand_layout);
   }
@@ -1458,7 +1457,7 @@ std::unique_ptr<Layout> LayoutAssignment::ChooseOperandLayoutFromOutputLayout(
       new_minor_to_major.push_back(output_to_operand_mapping[output_dim]);
     }
     Layout operand_layout = LayoutUtil::MakeLayout(new_minor_to_major);
-    TF_CHECK_OK(
+    CHECK_OK(
         LayoutUtil::ValidateLayoutForShape(operand_layout, operand->shape()));
     return std::make_unique<Layout>(operand_layout);
   }
@@ -1551,8 +1550,7 @@ std::unique_ptr<Layout> LayoutAssignment::ChooseOutputLayoutFromOperandLayout(
         ShapeUtil::AlignLayouts(operand_shape_with_layout, output_shape);
     if (aligned_user_shape) {
       auto user_layout = aligned_user_shape.value().layout();
-      TF_CHECK_OK(
-          LayoutUtil::ValidateLayoutForShape(user_layout, output_shape));
+      CHECK_OK(LayoutUtil::ValidateLayoutForShape(user_layout, output_shape));
       return std::make_unique<Layout>(user_layout);
     }
   }
@@ -1568,7 +1566,7 @@ std::unique_ptr<Layout> LayoutAssignment::ChooseOutputLayoutFromOperandLayout(
       new_minor_to_major[i] = user_dim;
     }
     Layout user_layout = LayoutUtil::MakeLayout(new_minor_to_major);
-    TF_CHECK_OK(LayoutUtil::ValidateLayoutForShape(user_layout, user->shape()));
+    CHECK_OK(LayoutUtil::ValidateLayoutForShape(user_layout, user->shape()));
     return std::make_unique<Layout>(user_layout);
   }
 

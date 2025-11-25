@@ -83,7 +83,6 @@ limitations under the License.
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"
-#include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/tsl/platform/threadpool.h"
@@ -630,10 +629,10 @@ class GpuCompilerTestWithAutotuneDb : public GpuCompilerTest {
     std::string tmp_filepath = ::testing::TempDir();
     ASSERT_TRUE(env->CreateUniqueFileName(&tmp_filepath, ".textproto"));
 
-    absl::Cleanup cleanup = [&] { TF_CHECK_OK(env->DeleteFile(tmp_filepath)); };
+    absl::Cleanup cleanup = [&] { CHECK_OK(env->DeleteFile(tmp_filepath)); };
 
     std::string contents;
-    TF_CHECK_OK(tsl::ReadFileToString(env, path, &contents));
+    CHECK_OK(tsl::ReadFileToString(env, path, &contents));
 
     // The autotuning cache entries depend on the DNN library version, but this
     // is not relevant for these tests. Therefore we replace the DNN version

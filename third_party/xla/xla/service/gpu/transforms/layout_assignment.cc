@@ -23,7 +23,6 @@ limitations under the License.
 #include <string>
 #include <tuple>
 #include <utility>
-#include <variant>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -58,7 +57,6 @@ limitations under the License.
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/protobuf/dnn.pb.h"
 #include "xla/tsl/util/env_var.h"
@@ -181,8 +179,8 @@ HeuristicLayoutAssignment(const HloInstruction* instr,
     // If we do not have NHWC layout support or not fp16/bfloat16, or not
     // conv2D, or ROCm NHWC is disabled the decision is to use NCHW.
     bool is_enabled = false;
-    TF_CHECK_OK(tsl::ReadBoolFromEnvVar("TF_USE_ROCM_NHWC",
-                                        /*default_val=*/false, &is_enabled));
+    CHECK_OK(tsl::ReadBoolFromEnvVar("TF_USE_ROCM_NHWC",
+                                     /*default_val=*/false, &is_enabled));
     if (!isFloat16 || (!rocm_compute_capability->has_nhwc_layout_support()) ||
         instr->shape().tuple_shapes(0).dimensions().size() != 4 ||
         !is_enabled) {

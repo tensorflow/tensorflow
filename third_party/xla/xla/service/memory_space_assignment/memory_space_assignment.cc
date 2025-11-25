@@ -61,7 +61,6 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
@@ -428,7 +427,7 @@ MemorySpaceAssignment::RunMemorySpaceAssignment(
     LOG(INFO) << "Module after memory space assignment: ";
     XLA_LOG_LINES(INFO, module_->ToString());
   }
-  TF_CHECK_OK(module_->schedule().Verify());
+  CHECK_OK(module_->schedule().Verify());
   if (VLOG_IS_ON(1)) {
     TF_ASSIGN_OR_RETURN(AsyncCopyStats stats,
                         CalculateAsyncCopyStats(alias->dataflow_analysis()));

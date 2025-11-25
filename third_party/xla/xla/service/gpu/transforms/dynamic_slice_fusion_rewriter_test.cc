@@ -1005,7 +1005,7 @@ TEST_F(DynamicSliceFusionRewriterTest, SimpleCustomCallLegacy) {
   //     ScheduleModule(hlo.get(), [](const BufferValue& buffer) {
   //       return ShapeUtil::ByteSizeOf(buffer.shape(), /*pointer_size=*/8);
   //     }));
-  // TF_CHECK_OK(hlo->set_schedule(std::move(schedule)));
+  // CHECK_OK(hlo->set_schedule(std::move(schedule)));
 
   const char* expected = R"(
     ; CHECK:     %dynamic-slice-fusion{{.*}} {
@@ -1067,7 +1067,7 @@ TEST_F(DynamicSliceFusionRewriterTest, TupleSliceCustomCallLegacy) {
   //     ScheduleModule(hlo.get(), [](const BufferValue& buffer) {
   //       return ShapeUtil::ByteSizeOf(buffer.shape(), /*pointer_size=*/8);
   //     }));
-  // TF_CHECK_OK(hlo->set_schedule(std::move(schedule)));
+  // CHECK_OK(hlo->set_schedule(std::move(schedule)));
 
   const char* expected = R"(
     ; CHECK:     %dynamic-slice-fusion{{.*}} {
@@ -1141,7 +1141,7 @@ TEST_F(DynamicSliceFusionRewriterTest, TupledOutputCustomCallLegacy) {
   //     ScheduleModule(hlo.get(), [](const BufferValue& buffer) {
   //       return ShapeUtil::ByteSizeOf(buffer.shape(), /*pointer_size=*/8);
   //     }));
-  // TF_CHECK_OK(hlo->set_schedule(std::move(schedule)));
+  // CHECK_OK(hlo->set_schedule(std::move(schedule)));
 
   const char* expected = R"(
     ; CHECK:     %dynamic-slice-fusion{{.*}} {
@@ -1204,7 +1204,7 @@ TEST_F(DynamicSliceFusionRewriterTest, UnalignedSlice) {
   //     ScheduleModule(hlo.get(), [](const BufferValue& buffer) {
   //       return ShapeUtil::ByteSizeOf(buffer.shape(), /*pointer_size=*/8);
   //     }));
-  // TF_CHECK_OK(hlo->set_schedule(std::move(schedule)));
+  // CHECK_OK(hlo->set_schedule(std::move(schedule)));
 
   auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
   RunAndFilecheckHloRewrite(hlo->ToString(), DynamicSliceFusionRewriter("gpu"),

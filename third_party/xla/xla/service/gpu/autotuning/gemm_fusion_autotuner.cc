@@ -41,6 +41,7 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
+#include "mlir/IR/MLIRContext.h"
 #include "google/protobuf/text_format.h"
 #include "xla/autotune_results.pb.h"
 #include "xla/autotuning.pb.h"
@@ -49,7 +50,6 @@ limitations under the License.
 #include "xla/backends/gpu/autotuner/fission_backend.h"
 #include "xla/backends/gpu/autotuner/triton.h"
 #include "xla/backends/gpu/runtime/buffer_comparator.h"
-#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_clone_context.h"
@@ -111,7 +111,6 @@ limitations under the License.
 #include "xla/tools/hlo_decomposer.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/threadpool.h"
 #include "xla/tsl/util/proto/proto_utils.h"
@@ -1167,7 +1166,7 @@ GemmFusionAutotunerImpl::CompileAll(AutotunerCompileUtil& compile_util,
                   << Serialize(config) << "'";
           absl::StatusOr<std::unique_ptr<Executable>> executable =
               compile(fusion, config, gemm_config_set.size() > 1);
-          TF_CHECK_OK(executable.status())
+          CHECK_OK(executable.status())
               << " - Failure occured when compiling fusion " << fusion->name()
               << " with config '" << ConfigToString(config)
               << "'\nFused HLO computation:\n"

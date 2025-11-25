@@ -40,7 +40,6 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/statusor.h"
 
 namespace xla {
@@ -116,8 +115,8 @@ absl::StatusOr<bool> CombineConstants(
 
     if (match != nullptr) {
       // Match found, replace this instruction with the one in the set.
-      TF_CHECK_OK(instruction->ReplaceAllUsesWith(match));
-      TF_CHECK_OK(computation->RemoveInstruction(instruction));
+      CHECK_OK(instruction->ReplaceAllUsesWith(match));
+      CHECK_OK(computation->RemoveInstruction(instruction));
       ++combined;
     }
   }

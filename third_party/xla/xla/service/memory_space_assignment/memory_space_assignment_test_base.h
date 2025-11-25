@@ -30,6 +30,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/log/check.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/hlo/analysis/alias_info.h"
@@ -56,7 +57,6 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/statusor.h"
 
 namespace xla {
@@ -190,9 +190,9 @@ class MemorySpaceAssignmentTestBase : public HloPjRtTestBase {
     HloCostAnalysis hlo_cost_analysis(hlo_cost_options);
     HloCostAnalysisWithAcceptState hlo_cost_analysis_wrapper(hlo_cost_analysis);
     for (HloComputation* computation : module->MakeNonfusionComputations()) {
-      TF_CHECK_OK(computation->Accept(&hlo_cost_analysis));
+      CHECK_OK(computation->Accept(&hlo_cost_analysis));
     }
-    TF_CHECK_OK(HloAliasAnalysis::Run(module, &alias_info_).status());
+    CHECK_OK(HloAliasAnalysis::Run(module, &alias_info_).status());
 
     Options memory_space_options = DefaultMemorySpaceOptions();
     if (memory_space_options_override) {
@@ -214,7 +214,7 @@ class MemorySpaceAssignmentTestBase : public HloPjRtTestBase {
 
     auto status_or_cost_analysis = CostAnalysis::Create(
         op_cost_manager, cost_analysis_options, &alias_info_, *module);
-    TF_CHECK_OK(status_or_cost_analysis.status());
+    CHECK_OK(status_or_cost_analysis.status());
     auto cost_analysis = std::move(status_or_cost_analysis.value());
 
     memory_space_options.cost_analysis = cost_analysis.get();
@@ -243,7 +243,7 @@ class MemorySpaceAssignmentTestBase : public HloPjRtTestBase {
       HloModule* module, std::optional<Options> options_override = std::nullopt,
       int64_t max_prefetch_interval = 10, int64_t min_prefetch_interval = 2) {
     InstructionHoister instruction_hoister;
-    TF_CHECK_OK(instruction_hoister.Run(module).status());
+    CHECK_OK(instruction_hoister.Run(module).status());
     InstructionCountPrefetchIntervalPicker prefetch_interval_picker(
         min_prefetch_interval, max_prefetch_interval);
     return AssignMemorySpace(module, std::move(options_override),
@@ -493,7 +493,7 @@ class MemorySpaceAssignmentTestBase : public HloPjRtTestBase {
     const HloModule* module = instruction->GetModule();
     AliasInfo alias_info;
     auto status_or_alias_analysis = HloAliasAnalysis::Run(module, &alias_info);
-    TF_CHECK_OK(status_or_alias_analysis.status());
+    CHECK_OK(status_or_alias_analysis.status());
     auto alias_analysis = std::move(status_or_alias_analysis.value());
     const HloBuffer& buffer =
         alias_analysis->GetUniqueBufferAt(instruction, index);
@@ -562,7 +562,7 @@ class MemorySpaceAssignmentTestBase : public HloPjRtTestBase {
     HloSchedule schedule(module.get());
     schedule.set_sequence(computation, {p0, p1, tanh, a, b, c, d, e, f, g, h, i,
                                         j, k, l, m, n, o, add});
-    TF_CHECK_OK(module->set_schedule(schedule));
+    CHECK_OK(module->set_schedule(schedule));
     return module;
   }
 

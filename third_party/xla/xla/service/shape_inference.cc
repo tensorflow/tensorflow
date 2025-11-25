@@ -16,7 +16,6 @@ limitations under the License.
 #include "xla/service/shape_inference.h"
 
 #include <algorithm>
-#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <iterator>
@@ -32,26 +31,24 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/permutation_util.h"
 #include "xla/primitive_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/window_util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/logging.h"
-#include "tsl/platform/status.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -345,7 +342,7 @@ absl::StatusOr<DimAndBound> InferMostSpecificDimAndBound(int64_t dim,
 
   TF_RETURN_IF_ERROR(ExpectArray(shape, "operand of unary operation"));
 
-  TF_DCHECK_OK(ShapeUtil::ValidateShapeWithOptionalLayout(shape));
+  DCHECK_OK(ShapeUtil::ValidateShapeWithOptionalLayout(shape));
   switch (opcode) {
     case HloOpcode::kFloor:
     case HloOpcode::kCbrt:  // Complex cbrt is not implemented in either of the
@@ -664,8 +661,8 @@ absl::StatusOr<DimAndBound> InferMostSpecificDimAndBound(int64_t dim,
 /* static */ absl::StatusOr<Shape> ShapeInference::InferStochasticConvertShape(
     const Shape& operand_shape, const Shape& random_shape,
     PrimitiveType new_element_type) {
-  TF_DCHECK_OK(ShapeUtil::ValidateShapeWithOptionalLayout(operand_shape));
-  TF_DCHECK_OK(ShapeUtil::ValidateShapeWithOptionalLayout(random_shape));
+  DCHECK_OK(ShapeUtil::ValidateShapeWithOptionalLayout(operand_shape));
+  DCHECK_OK(ShapeUtil::ValidateShapeWithOptionalLayout(random_shape));
 
   TF_RETURN_IF_ERROR(
       ExpectArray(operand_shape, "lhs of stochastic convert operation"));
@@ -967,7 +964,7 @@ void GenerateDotResultDimensions(
       ShapeUtil::HigherPrecisionElementType(lhs, rhs));
   Shape result = ShapeUtil::MakeShape(type, dimensions, is_dynamic);
 
-  TF_DCHECK_OK(ShapeUtil::ValidateShapeWithOptionalLayout(result));
+  DCHECK_OK(ShapeUtil::ValidateShapeWithOptionalLayout(result));
   VLOG(2) << "inferred dot shape: " << ShapeUtil::HumanString(result);
   return result;
 }
@@ -1173,7 +1170,7 @@ void GenerateDotResultDimensions(
                               is_dynamic, rhs_group_dimensions);
 
   Shape result = ShapeUtil::MakeShape(type, dimensions, is_dynamic);
-  TF_DCHECK_OK(ShapeUtil::ValidateShapeWithOptionalLayout(result));
+  DCHECK_OK(ShapeUtil::ValidateShapeWithOptionalLayout(result));
   VLOG(2) << "inferred ragged dot shape: " << ShapeUtil::HumanString(result);
   return result;
 }
@@ -1465,8 +1462,8 @@ ShapeInference::InferScalarBroadcastShape(absl::Span<const Shape> shapes) {
       ShapeUtil::HumanStringWithLayout(rhs),
       StrJoin(broadcast_dimensions, ", "));
 
-  TF_DCHECK_OK(ShapeUtil::ValidateShapeWithOptionalLayout(lhs));
-  TF_DCHECK_OK(ShapeUtil::ValidateShapeWithOptionalLayout(rhs));
+  DCHECK_OK(ShapeUtil::ValidateShapeWithOptionalLayout(lhs));
+  DCHECK_OK(ShapeUtil::ValidateShapeWithOptionalLayout(rhs));
 
   TF_RETURN_IF_ERROR(ExpectArray(
       lhs, absl::StrCat("lhs of binary operation ", HloOpcodeString(opcode))));
@@ -1548,9 +1545,9 @@ ShapeInference::InferScalarBroadcastShape(absl::Span<const Shape> shapes) {
 
 /* static */ absl::StatusOr<Shape> ShapeInference::InferTernaryOpShape(
     HloOpcode opcode, const Shape& lhs, const Shape& rhs, const Shape& ehs) {
-  TF_DCHECK_OK(ShapeUtil::ValidateShapeWithOptionalLayout(lhs));
-  TF_DCHECK_OK(ShapeUtil::ValidateShapeWithOptionalLayout(rhs));
-  TF_DCHECK_OK(ShapeUtil::ValidateShapeWithOptionalLayout(ehs));
+  DCHECK_OK(ShapeUtil::ValidateShapeWithOptionalLayout(lhs));
+  DCHECK_OK(ShapeUtil::ValidateShapeWithOptionalLayout(rhs));
+  DCHECK_OK(ShapeUtil::ValidateShapeWithOptionalLayout(ehs));
   switch (opcode) {
     case HloOpcode::kClamp:
       return InferClampShape(lhs, rhs, ehs);
@@ -1574,7 +1571,7 @@ ShapeInference::InferScalarBroadcastShape(absl::Span<const Shape> shapes) {
 /* static */ absl::StatusOr<Shape> ShapeInference::InferVariadicOpShape(
     HloOpcode opcode, absl::Span<const Shape* const> operand_shapes) {
   for (const Shape* shape : operand_shapes) {
-    TF_DCHECK_OK(ShapeUtil::ValidateShapeWithOptionalLayout(*shape));
+    DCHECK_OK(ShapeUtil::ValidateShapeWithOptionalLayout(*shape));
   }
   switch (opcode) {
     case HloOpcode::kTuple: {
@@ -2184,8 +2181,8 @@ ShapeInference::InferScalarBroadcastShape(absl::Span<const Shape> shapes) {
         "The RHS argument to a convolution should have rank %d; rhs: %s.",
         num_dims, ShapeUtil::HumanString(rhs));
   }
-  TF_DCHECK_OK(ShapeUtil::ValidateShapeWithOptionalLayout(lhs));
-  TF_DCHECK_OK(ShapeUtil::ValidateShapeWithOptionalLayout(rhs));
+  DCHECK_OK(ShapeUtil::ValidateShapeWithOptionalLayout(lhs));
+  DCHECK_OK(ShapeUtil::ValidateShapeWithOptionalLayout(rhs));
 
   // Verifies that the input and window dimensions are a permutation of
   // the dimension numbers.
