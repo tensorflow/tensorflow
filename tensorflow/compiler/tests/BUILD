@@ -100,6 +100,7 @@ py_strict_test(
 tf_xla_combined_py_test(
     name = "combined_ops_test_a",
     size = "medium",
+    timeout = "long",
     package = "tensorflow.compiler.tests",
     tags = [
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
