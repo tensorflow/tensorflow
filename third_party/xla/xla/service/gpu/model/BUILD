@@ -809,6 +809,9 @@ xla_test(
     # expressions like integer add and multiply.
     args = ["--xla_backend_optimization_level=0"],
     backends = ["gpu"],
+    fail_if_no_test_linked = False,  # NOLINT=not based on gtest and thus doesn't support --gunit_fail_if_no_test_linked.
+    fail_if_no_test_selected = False,  # NOLINT=not based on gtest and thus doesn't support --gunit_fail_if_no_test_selected.
+    shuffle_tests = False,  # CANNOT_SHUFFLE_TESTS=This test is not based on gtest and thus doesn't support shuffling.
     # This is a development tool, not a normal test, and thus should only be run
     # manually with --config=cuda.
     tags = [
@@ -826,6 +829,8 @@ xla_test(
         "//xla/service:hlo_runner",
         "//xla/service:platform_util",
         "//xla/stream_executor:device_description",
+        "//xla/tsl/platform:env",
+        "//xla/tsl/platform:status",
         "//xla/tsl/util:command_line_flags",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/strings",
