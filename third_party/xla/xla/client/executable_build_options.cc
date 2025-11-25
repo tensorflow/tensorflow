@@ -202,6 +202,11 @@ absl::StatusOr<ExecutableBuildOptionsProto> ExecutableBuildOptions::ToProto()
   output.set_use_shardy_partitioner(use_shardy_partitioner());
   output.set_process_index(process_index());
   output.set_process_count(process_count());
+  for (const auto& process_info : process_infos()) {
+    auto* process_info_proto = output.add_process_infos();
+    process_info_proto->set_slice_index(process_info.slice_index);
+    process_info_proto->set_virtual_task_id(process_info.virtual_task_id);
+  }
   output.set_slice_size(slice_size());
   return output;
 }
@@ -259,6 +264,13 @@ absl::StatusOr<ExecutableBuildOptions> ExecutableBuildOptionsFromProto(
   output.set_use_shardy_partitioner(input.use_shardy_partitioner());
   output.set_process_index(input.process_index());
   output.set_process_count(input.process_count());
+  std::vector<xla::ExecutableBuildOptions::ProcessInfo> process_infos;
+  process_infos.reserve(input.process_infos_size());
+  for (const auto& process_info : input.process_infos()) {
+    process_infos.emplace_back(process_info.slice_index(),
+                               process_info.virtual_task_id());
+  }
+  output.set_process_infos(std::move(process_infos));
   output.set_slice_size(input.slice_size());
   return output;
 }
