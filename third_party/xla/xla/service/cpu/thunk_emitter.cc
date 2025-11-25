@@ -214,8 +214,7 @@ ThunkEmitter::ThunkEmitter(IrEmitter2& ir_emitter,
           thread_pool, FusionCompilerOptions(hlo_module_config_),
           FusionCompilerHooks(hlo_module), &buffer_assignment,
           hlo_module_config_.debug_options()
-              .xla_cpu_generate_unique_c_style_kernel_entry_points(),
-          options::EnableTiledEmitter(hlo_module_config_)) {}
+              .xla_cpu_generate_unique_c_style_kernel_entry_points()) {}
 
 static Thunk::Info ThunkInfo(const HloInstruction* instruction) {
   const HloModule* module = instruction->GetModule();

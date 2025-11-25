@@ -116,8 +116,7 @@ TEST_F(ParallelFusionEmitterTest, HappyPathSingleFusion) {
   tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), "test_pool", 4);
 
   xla::cpu::ParallelFusionEmitter fussion_emitter(
-      thread_pool, CreateDefaultOptions(), CreateMockHooks(1), nullptr, false,
-      false);
+      thread_pool, CreateDefaultOptions(), CreateMockHooks(1), nullptr, false);
 
   TF_ASSERT_OK_AND_ASSIGN(auto kernel_spec, fussion_emitter.AddFusion(fusion));
   EXPECT_EQ(kernel_spec.name(), expected_name);
@@ -171,8 +170,7 @@ TEST_F(ParallelFusionEmitterTest, FusionsAreSorted) {
 
   xla::cpu::ParallelFusionEmitter fussion_emitter(
       thread_pool, CreateDefaultOptions(), CreateMockHooks(2),
-      /*buffer_assignment=*/nullptr, /*use_unique_c_name=*/false,
-      /*enable_tiled_emitter=*/false);
+      /*buffer_assignment=*/nullptr, /*use_unique_c_name=*/false);
 
   // Add the fusions in reverse order.
   TF_ASSERT_OK_AND_ASSIGN(auto kernel_spec_1,
@@ -216,8 +214,7 @@ TEST_F(ParallelFusionEmitterTest, Error) {
 
   tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), "test_pool", 4);
   xla::cpu::ParallelFusionEmitter fussion_emitter(
-      thread_pool, CreateDefaultOptions(), CreateMockHooks(0), nullptr, false,
-      false);
+      thread_pool, CreateDefaultOptions(), CreateMockHooks(0), nullptr, false);
 
   EXPECT_THAT(fussion_emitter.AddFusion(fusion), Not(IsOk()));
 }

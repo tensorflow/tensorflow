@@ -31,8 +31,7 @@ emitters::KernelArguments::BufferAlignment GetDefaultBufferAlignment();
 
 absl::StatusOr<KernelDefinition<MlirKernelSource>> EmitFusionKernel(
     mlir::MLIRContext& mlir_context, const HloFusionInstruction& fusion,
-    const BufferAssignment* buffer_assignment, bool use_unique_c_name,
-    bool enable_tiled_emitter);
+    const BufferAssignment* buffer_assignment, bool use_unique_c_name);
 
 }  // namespace xla::cpu
 
