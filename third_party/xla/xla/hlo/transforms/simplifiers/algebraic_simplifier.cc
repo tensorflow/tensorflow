@@ -6904,6 +6904,88 @@ absl::Status AlgebraicSimplifierVisitor::HandleSlice(HloInstruction* slice) {
     }
   }
 
+  // Simplify:
+  //    Txx[...,1]   slice(Txx[..., K] reshape(Txx[...,N*K])) // N > 1
+  // To:
+  //    Txx[...,1] reshape(Txx[..., N]   slice(Txx[...,N*K], stride(-1)=K)
+  //
+  // Maintaining data-parallelism to improve throughput on some architectures.
+  HloInstruction* reshape;
+  if (Match(slice, m::Slice(m::Reshape(&reshape, m::Op())))) {
+    HloInstruction* input = reshape->mutable_operand(0);
+    const Shape& input_shape = input->shape();
+    const Shape& reshape_shape = reshape->shape();
+
+    const int64_t input_rank = input_shape.dimensions().size();
+    const int64_t reshape_rank = reshape_shape.dimensions().size();
+    const int64_t slice_rank = slice->shape().dimensions().size();
+
+    // Reshape must have at least 2 dimensions and same number of
+    // dimensions as slice.
+    if (reshape_rank >= 2 && reshape_rank == slice_rank) {
+      bool is_valid_reshape_slice = true;
+      for (int64_t i = 0; i < slice_rank; ++i) {
+        if (i == slice_rank - 1) {
+          // Continue if we are slicing exactly one element from the last
+          // dimension.
+          if (slice->slice_limits()[i] - slice->slice_starts()[i] == 1 &&
+              slice->slice_strides()[i] == 1) {
+            continue;
+          }
+        } else {
+          // Continue if we are not slicing any other dimension.
+          if (slice->slice_starts()[i] == 0 &&
+              slice->slice_limits()[i] == reshape_shape.dimensions(i) &&
+              slice->slice_strides()[i] == 1) {
+            continue;
+          }
+        }
+        // If the rules above are not met, prevent a match.
+        is_valid_reshape_slice = false;
+        break;
+      }
+
+      // Check if slice is selecting a single element from the last dimension.
+      if (is_valid_reshape_slice) {
+        int64_t slice_index = slice->slice_starts()[slice_rank - 1];
+        int64_t K = reshape_shape.dimensions(reshape_rank - 1);
+
+        // Check if input shape can be viewed as [..., N*K], where N is two or
+        // more, e.g. Input [1, 2024, 4, 128], Reshape [518144, 2].
+        // Last dim of input 128 is multiple of 2.
+        if (!input_shape.dimensions().empty()) {
+          int64_t last_dim = input_shape.dimensions(input_rank - 1);
+          if (last_dim % K == 0 && last_dim / K > 1 &&
+              ShapeUtil::ElementsIn(reshape_shape) ==
+                  ShapeUtil::ElementsIn(input_shape)) {
+            // It matches!
+            DimensionVector starts(input_rank, 0);
+            DimensionVector limits(input_shape.dimensions().begin(),
+                                   input_shape.dimensions().end());
+            DimensionVector strides(input_rank, 1);
+
+            starts[input_rank - 1] = slice_index;
+            limits[input_rank - 1] = last_dim;
+            strides[input_rank - 1] = K;
+
+            Shape new_slice_shape = input_shape;
+            new_slice_shape.set_dimensions(
+                input_rank - 1, input_shape.dimensions(input_rank - 1) / K);
+            simplifier_->UpdateLayout(&new_slice_shape);
+
+            HloInstruction* new_slice =
+                slice->parent()->AddInstruction(HloInstruction::CreateSlice(
+                    new_slice_shape, input, starts, limits, strides));
+            HloInstruction* new_reshape = slice->parent()->AddInstruction(
+                HloInstruction::CreateReshape(slice->shape(), new_slice));
+
+            return ReplaceInstruction(slice, new_reshape);
+          }
+        }
+      }
+    }
+  }
+
   if (slice->operand(0)->opcode() == HloOpcode::kSlice &&
       hlo_instruction_utils::IsUnstridedSlice(slice) &&
       hlo_instruction_utils::IsUnstridedSlice(slice->operand(0))) {
