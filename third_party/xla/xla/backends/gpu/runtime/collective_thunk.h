@@ -38,7 +38,6 @@ limitations under the License.
 #include "xla/core/collectives/communicator.h"
 #include "xla/hlo/ir/collective_op_group_mode.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/llvm_ir/llvm_util.h"
@@ -52,14 +51,13 @@ limitations under the License.
 namespace xla::gpu {
 
 struct CollectiveConfig {
-  void SetCollectiveOpKindAndID(const HloCollectivePermuteInstruction* instr);
-  void SetCollectiveOpKindAndID(const HloSendRecvInstruction* instr);
+  // Returns if the collective communication operation is degenerate because all
+  // the groups formed by the operation are singleton.
   bool IsDegenerate(int64_t replica_count, int64_t partition_count) const;
 
   int64_t operand_count;
   std::vector<PrimitiveType> operand_element_type;
   std::vector<ReplicaGroup> replica_groups;
-  int64_t op_id;
   CollectiveOpGroupMode group_mode;
   bool use_symmetric_buffer;
 };

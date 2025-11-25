@@ -105,7 +105,6 @@ CollectivePermuteStartThunk::CollectivePermuteStartThunk(
     config.operand_element_type.push_back(
         instr->operand(i)->shape().element_type());
   }
-  config.SetCollectiveOpKindAndID(instr);
   config.group_mode = GetGroupMode(instr);
 
   // With a collective permute, all execution instances together form one
@@ -268,10 +267,9 @@ absl::StatusOr<bool> CollectivePermuteStartThunk::RunCollective(
                         comm_handle.comm->NumRanks());
 
     auto rendezvous_name = absl::StrFormat(
-        "rendezvous before calling collective-permute; run_id=%ld; op id:%d; "
-        "num_local_participants:%d",
-        params.collective_params->run_id.ToInt(), config_.config.op_id,
-        num_local_participants);
+        "rendezvous before calling collective-permute: run_id=%ld; "
+        "num_local_participants=%d",
+        params.collective_params->run_id.ToInt(), num_local_participants);
     auto rendezvous_key = CallRendezvousKey{params.collective_params->run_id};
 
     // Perform a rendezvous to make sure all receivers have their events
@@ -310,10 +308,9 @@ absl::StatusOr<bool> CollectivePermuteStartThunk::RunCollective(
                         comm_handle.comm->NumRanks());
 
     auto rendezvous_name = absl::StrFormat(
-        "rendezvous after calling collective-permute; run_id=%ld; op id:%d; "
-        "num_local_participants:%d",
-        params.collective_params->run_id.ToInt(), config_.config.op_id,
-        num_local_participants);
+        "rendezvous after calling collective-permute: run_id=%ld; "
+        "num_local_participants=%d",
+        params.collective_params->run_id.ToInt(), num_local_participants);
     auto rendezvous_key = CallRendezvousKey{params.collective_params->run_id};
 
     // Perform a rendezvous to make sure all senders have their events

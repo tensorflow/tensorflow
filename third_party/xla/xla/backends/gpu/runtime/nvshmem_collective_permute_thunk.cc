@@ -75,7 +75,6 @@ NvshmemCollectivePermuteStartThunk::NvshmemCollectivePermuteStartThunk(
   for (const HloInstruction* operand : instr->operands()) {
     config.operand_element_type.push_back(operand->shape().element_type());
   }
-  config.SetCollectiveOpKindAndID(instr);
   config.group_mode = GetGroupMode(instr);
 
   // With a collective permute, all execution instances together form one

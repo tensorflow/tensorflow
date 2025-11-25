@@ -95,7 +95,6 @@ P2PConfig GetP2PConfigForSendRecv(const HloSendRecvInstruction* instr,
 
   config.operand_count = 1;
   config.operand_element_type.push_back(shape.element_type());
-  config.SetCollectiveOpKindAndID(instr);
   config.group_mode = GetCollectiveOpGroupMode(
                           instr->channel_id().value_or(0) > 0, std::nullopt)
                           .value();

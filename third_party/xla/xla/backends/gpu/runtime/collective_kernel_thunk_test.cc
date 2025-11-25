@@ -163,7 +163,6 @@ CollectiveKernelThunkMetadata CreateCollectiveKernelThunk(
       /*operand_count=*/1,
       /*operand_element_type=*/{PrimitiveType::F32},
       /*replica_groups=*/{replica_group},
-      /*op_id=*/0,
       /*group_mode=*/
       CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_CROSS_REPLICA,
       /*use_symmetric_buffer=*/false};

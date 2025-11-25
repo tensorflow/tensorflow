@@ -37,6 +37,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
+#include "xla/backends/gpu/runtime/collective_params.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/core/collectives/communicator.h"
 #include "xla/core/collectives/rank_id.h"
@@ -181,24 +182,6 @@ bool CollectiveConfig::IsDegenerate(int64_t replica_count,
   }
 }
 
-void CollectiveConfig::SetCollectiveOpKindAndID(
-    const HloCollectivePermuteInstruction* instr) {
-  if (instr->channel_id().has_value()) {
-    op_id = *instr->channel_id();
-  } else {
-    op_id = static_cast<int64_t>(instr->GetModule()->unique_id());
-  }
-}
-
-void CollectiveConfig::SetCollectiveOpKindAndID(
-    const HloSendRecvInstruction* instr) {
-  if (instr->channel_id().has_value()) {
-    op_id = *instr->channel_id();
-  } else {
-    op_id = static_cast<int64_t>(instr->GetModule()->unique_id());
-  }
-}
-
 CollectiveConfig GetCollectiveConfig(
     const HloInstruction* hlo, std::optional<bool> use_global_device_ids) {
   CollectiveConfig config;
@@ -209,12 +192,6 @@ CollectiveConfig GetCollectiveConfig(
         hlo->operand(i)->shape().element_type());
   }
   config.replica_groups = hlo->replica_groups();
-
-  if (hlo->channel_id().has_value()) {
-    config.op_id = *hlo->channel_id();
-  } else {
-    config.op_id = static_cast<int64_t>(hlo->GetModule()->unique_id());
-  }
 
   config.group_mode = GetCollectiveOpGroupMode(hlo->channel_id().has_value(),
                                                use_global_device_ids)
@@ -489,16 +466,14 @@ absl::Status CollectiveThunk::ExecuteOnStream(const ExecuteParams& params) {
             << "] Do a rendezvous after a first call to "
             << Thunk::KindToString(kind())
             << "; run_id=" << params.collective_params->run_id.ToInt()
-            << "; op_id=" << config().op_id
             << "; num_local_participants=" << num_local_participants
             << "; rank=" << rank.value()
             << "; clique_key=" << clique_key.ToString();
 
     auto rendezvous_key = FirstCallRendezvousKey{std::move(clique_key)};
     auto rendezvous_name = absl::StrFormat(
-        "first call to collective operation %d; kind=%s; run_id=%ld",
-        config().op_id, Thunk::KindToString(kind()),
-        params.collective_params->run_id.ToInt());
+        "first call to collective operation: kind=%s; run_id=%ld",
+        Thunk::KindToString(kind()), params.collective_params->run_id.ToInt());
 
     const xla::DebugOptions debug_options = xla::GetDebugOptionsFromFlags();
 
