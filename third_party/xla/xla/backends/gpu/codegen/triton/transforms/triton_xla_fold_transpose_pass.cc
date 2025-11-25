@@ -317,6 +317,26 @@ LogicalResult PushTransposeUpThroughReshape(TransOp op,
   return success();
 }
 
+LogicalResult PushTransposeUpThroughMask(TransOp op,
+                                         PatternRewriter& rewriter) {
+  auto mask_op = op.getSrc().getDefiningOp<::xla::xtile::MaskOp>();
+  if (!mask_op) {
+    return rewriter.notifyMatchFailure(op, "source is not a mask op");
+  }
+
+  llvm::SmallVector<int64_t> new_bounds(op.getOrder().size());
+  for (auto [idx, dim] : llvm::enumerate(op.getOrder())) {
+    new_bounds[idx] = mask_op.getBounds()[dim];
+  }
+
+  auto new_transpose = TransOp::create(rewriter, op.getLoc(),
+                                       mask_op.getSource(), op.getOrderAttr());
+
+  rewriter.replaceOpWithNewOp<::xla::xtile::MaskOp>(
+      op, op.getType(), new_transpose, new_bounds, mask_op.getValue());
+  return success();
+}
+
 class TritonXLAFoldTransposePass
     : public impl::TritonXLAFoldTransposePassBase<TritonXLAFoldTransposePass> {
  public:
@@ -332,6 +352,7 @@ class TritonXLAFoldTransposePass
     patterns.add(PushTransposeUpThroughElementwise);
     patterns.add(PushTransposeUpThroughExpandDims);
     patterns.add(PushTransposeUpThroughReshape);
+    patterns.add(PushTransposeUpThroughMask);
     if (failed(applyPatternsGreedily(getOperation(), std::move(patterns)))) {
       return signalPassFailure();
     }

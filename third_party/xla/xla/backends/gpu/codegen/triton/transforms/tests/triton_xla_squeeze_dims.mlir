@@ -256,3 +256,14 @@ func.func @squeeze_dims_to_reshape(%arg0: tensor<4x1x8xf32>) -> tensor<4x8xf32> 
   %0 = triton_xla.squeeze_dims %arg0 {axis = 1 : i32} : tensor<4x1x8xf32> -> tensor<4x8xf32>
   return %0 : tensor<4x8xf32>
 }
+
+// -----
+
+// CHECK-LABEL: func @push_squeeze_dims_up_through_mask
+func.func @push_squeeze_dims_up_through_mask(
+    %arg0: tensor<4x1x8xf32>, %arg1: f32) -> tensor<4x8xf32> {
+  // CHECK: xtile.mask %{{.*}} bounds [4, 6], %arg1 : tensor<4x8xf32>
+  %0 = xtile.mask %arg0 bounds [4, 1, 6], %arg1 : tensor<4x1x8xf32>
+  %1 = triton_xla.squeeze_dims %0 {axis = 1 : i32} : tensor<4x1x8xf32> -> tensor<4x8xf32>
+  return %1 : tensor<4x8xf32>
+}

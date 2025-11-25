@@ -35,6 +35,7 @@ limitations under the License.
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/memory_allocation.h"
 #include "xla/stream_executor/stream.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace gpu {
