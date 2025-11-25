@@ -425,7 +425,6 @@ cc_library(
         "//xla/backends/cpu/codegen:ir_compiler",
         "//xla/backends/cpu/codegen:target_machine_features",
         "//xla/hlo/ir:hlo",
-        "//xla/hlo/ir:hlo_module_group",
         "//xla/service:buffer_assignment",
         "//xla/service:compiler",
         "//xla/service:executable",
@@ -596,7 +595,6 @@ cc_library(
         "//xla:xla_data_proto_cc",
         "//xla/codegen/intrinsic",
         "//xla/codegen/intrinsic:erf",
-        "//xla/codegen/intrinsic:tanh",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@llvm-project//llvm:Core",
@@ -981,7 +979,6 @@ cc_library(
         ":cpu_executable_run_options",
         "//xla:executable_run_options",
         "//xla:shape_util",
-        "//xla:types",
         "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla/backends/cpu/collectives:cpu_clique_key",
@@ -1056,7 +1053,6 @@ cc_library(
         "//xla/tsl/framework/contraction:eigen_contraction_kernel_no_mkl",
         "@com_google_absl//absl/base:core_headers",
         "@eigen_archive//:eigen3",
-        "@local_tsl//tsl/platform:ml_dtypes",
     ],
 )
 
@@ -1629,8 +1625,6 @@ cc_library(
     hdrs = ["cpu_float_support.h"],
     copts = tsl_copts(),
     deps = [
-        "//xla/backends/cpu:xnn_support",
-        "//xla/backends/cpu/codegen:target_machine_features",
         "//xla/hlo/ir:hlo",
         "//xla/service:float_support",
     ],
@@ -1742,7 +1736,6 @@ cc_library(
         "//xla/codegen:kernel_spec",
         "//xla/codegen:llvm_kernel_source",
         "//xla/codegen:mlir_kernel_source",
-        "//xla/hlo/analysis:symbolic_expr",
         "//xla/hlo/ir:hlo",
         "//xla/service:buffer_assignment",
         "//xla/tsl/platform:env",

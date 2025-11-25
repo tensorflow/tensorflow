@@ -54,7 +54,6 @@ cc_library(
         "//xla/hlo/ir:hlo",
         "//xla/service:buffer_assignment",
         "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/types:span",
     ],
@@ -181,7 +180,6 @@ cc_library(
     srcs = ["xnn_gemm_config.cc"],
     hdrs = ["xnn_gemm_config.h"],
     deps = [
-        "//xla:shape_util",
         "//xla:xla_data_proto_cc",
         "//xla/backends/cpu/codegen:target_machine_features",
         "//xla/backends/cpu/runtime:dot_dims",
@@ -207,7 +205,6 @@ cc_library(
         "//xla/service:pattern_matcher",
         "//xla/tsl/platform:statusor",
         "@XNNPACK",
-        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:no_destructor",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",

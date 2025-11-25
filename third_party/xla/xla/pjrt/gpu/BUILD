@@ -211,6 +211,7 @@ xla_test(
         ],
     },
     backends = ["gpu"],
+    tags = ["nofixdeps"],
     deps = [
         ":gpu_topology",
         ":gpu_topology_proto_cc",

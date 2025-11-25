@@ -247,7 +247,6 @@ tsl_cc_test(
         "//xla/tsl/platform:test",
         "//xla/tsl/platform:types",
         "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
         "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:hash",
     ],

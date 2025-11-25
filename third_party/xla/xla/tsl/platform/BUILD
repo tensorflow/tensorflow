@@ -341,7 +341,10 @@ cc_library(
     textual_hdrs = [
         "subprocess.h",
     ],
-    deps = tf_windows_aware_platform_deps("subprocess"),
+    deps = tf_windows_aware_platform_deps("subprocess") + [
+        ":types",
+        "@local_tsl//tsl/platform",
+    ],
 )
 
 tsl_cc_test(
@@ -367,6 +370,9 @@ tsl_cc_test(
 
 cc_library(
     name = "env",
+    # TODO: b/456605953 - Adding the deps that build_clenaner wants may break some TF builds, so keep
+    # nofixdeps for now, and try to romove it in a separate CL.
+    tags = ["nofixdeps"],
     textual_hdrs = [
         "env.h",
         "file_system.h",
@@ -411,7 +417,6 @@ tsl_cc_test(
     srcs = ["env_test.cc"],
     deps = [
         ":env",
-        ":test",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
         "@com_google_googletest//:gtest_main",
@@ -422,7 +427,7 @@ cc_library(
     name = "env_time",
     compatible_with = get_compatible_with_portable(),
     textual_hdrs = ["env_time.h"],
-    deps = tf_windows_aware_platform_deps("env_time"),
+    deps = tf_windows_aware_platform_deps("env_time") + [":types"],
 )
 
 cc_library(
@@ -470,7 +475,6 @@ cc_library(
         ":types",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/status",
-        "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/platform",
@@ -488,7 +492,7 @@ tsl_cc_test(
     srcs = ["file_system_helper_test.cc"],
     deps = [
         ":env",
-        ":env_impl",
+        ":env_impl",  # buildcleaner: keep
         ":file_system_helper",
         "//xla/tsl/lib/core:status_test_util",
         "@com_google_googletest//:gtest_main",
@@ -724,7 +728,7 @@ tsl_cc_test(
     srcs = ["threadpool_test.cc"],
     deps = [
         ":env",
-        ":env_impl",
+        ":env_impl",  # buildcleaner: keep
         ":test",
         "//xla/tsl/concurrency:executor",
         "@com_google_absl//absl/synchronization",
@@ -791,6 +795,7 @@ cc_library(
 cc_library(
     name = "grpc_credentials",
     compatible_with = get_compatible_with_portable(),
+    tags = ["nofixdeps"],
     textual_hdrs = ["grpc_credentials.h"],
     deps = tsl_grpc_credentials_deps(),
 )
@@ -858,7 +863,7 @@ cc_library(
 cc_library(
     name = "rocm_rocdl_path",
     textual_hdrs = ["rocm_rocdl_path.h"],
-    deps = tf_platform_deps("rocm_rocdl_path"),
+    deps = tf_platform_deps("rocm_rocdl_path") + [":types"],
 )
 
 cc_library(
@@ -871,7 +876,7 @@ cc_library(
     name = "criticality",
     compatible_with = get_compatible_with_portable(),
     textual_hdrs = ["criticality.h"],
-    deps = tf_platform_deps("criticality"),
+    deps = tf_platform_deps("criticality") + ["@local_tsl//tsl/platform"],
 )
 
 tsl_cc_test(

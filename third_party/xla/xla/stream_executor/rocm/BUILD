@@ -779,10 +779,7 @@ cc_library(
     deps = [
         ":rocm_executor",
         ":roctracer_if_static",  # buildcleaner: keep
-        "//xla/tsl/platform:env",
         "@local_config_rocm//rocm:rocm_headers",
-        "@local_tsl//tsl/platform",
-        "@local_tsl//tsl/platform:dso_loader",
     ],
     alwayslink = True,
 )
@@ -1202,7 +1199,6 @@ rocm_library(
         "//xla/stream_executor:kernel_spec",
         "//xla/stream_executor/gpu:gpu_kernel_registry",
         "//xla/stream_executor/gpu:repeat_buffer_kernel",
-        "@com_google_absl//absl/base",
     ],
     alwayslink = 1,
 )
@@ -1221,12 +1217,8 @@ rocm_library(
     deps = [
         ":rocm_platform_id",
         "//xla/stream_executor:kernel_spec",
-        "//xla/stream_executor:platform",
         "//xla/stream_executor/gpu:gpu_kernel_registry",
         "//xla/stream_executor/gpu:redzone_allocator_kernel",
-        "@com_google_absl//absl/base",
-        "@com_google_absl//absl/log",
-        "@com_google_absl//absl/status",
     ],
     alwayslink = 1,
 )

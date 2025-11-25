@@ -39,7 +39,6 @@ cc_library(
         "//third_party/py/numpy:headers",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/synchronization",
         "@pybind11",
         "@rules_python//python/cc:current_py_cc_headers",  # build_cleaner: keep; DNR: b/35864863
     ],

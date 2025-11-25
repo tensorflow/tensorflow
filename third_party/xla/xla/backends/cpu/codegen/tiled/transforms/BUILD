@@ -87,7 +87,6 @@ cc_library(
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TensorDialect",
         "@llvm-project//mlir:TransformUtils",
-        "@llvm-project//mlir:UBDialect",
         "@llvm-project//mlir:VectorDialect",
         "@stablehlo//:stablehlo_ops",
     ],
@@ -111,7 +110,6 @@ cc_library(
         "@llvm-project//mlir:MemRefDialect",
         "@llvm-project//mlir:SCFDialect",
         "@llvm-project//mlir:Support",
-        "@llvm-project//mlir:TensorDialect",
         "@llvm-project//mlir:VectorDialect",
     ],
 )
