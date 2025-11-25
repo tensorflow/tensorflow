@@ -1,7 +1,13 @@
 # Tiled layout
 
-> **Caution:** Tiled layout is *pre-release* and this describes how it's
-> intended to work. Errors may be silently ignored.
+XLA TPU uses a variety of tile-based formats due to the two-dimensional nature
+of its vector registers.
+
+## Tiled formats
+
+A tiled format breaks down a shape into tiles (usually 1D or 2D). Tiles are laid
+out in memory in major to minor order (row major layout). Within a tile,
+elements are also laid out in major to minor order.
 
 ![](images/xla_array_layout_figure1.png)
 <br>Figure 1
@@ -80,6 +86,10 @@ logical shape is then
 = (1 ∙ 3 + 1) ∙ 2 ∙ 2 + (0 ∙ 2 + 1) <br>
 = 17.
 
+$$ LinearIndexWithTile((2,3), (3,5), (2,2)) \\ = LinearIndex((1,1,0,1),
+(2,3,2,2)) \\ = LinearIndex((1,1), (2,3)) \cdot 2 \cdot 2 + LinearIndex((0,1),
+(2,2)) \\ = (1 \cdot 3 + 1) \cdot 2 \cdot 2 + (0 \cdot 2 + 1) \\ = 17 $$
+
 ## Tiling as pad-reshape-transpose
 
 Tiling-based layout operates as follows: <br>
@@ -153,3 +163,33 @@ removed from both the shape being tiled and the tile vector, and what was
 dimension i-1 of the shape has its array bound increased from d<sub>i-1</sub> to
 d<sub>i</sub>d<sub>i-1</sub>. This step is repeated for each asterisk in the
 tile vector.
+
+## Examples of tiling formats
+
+This section shows examples of popular XLA formats.
+
+1.  **Untiled format** - Most arrays not on the TPU use an untiled linear
+    format, same as in e.g. C++.
+2.  **TPU tile format** - The most common format in XLA/TPU is tiling by
+    `8x128`, which matches the 32-bit `8x128` vector registers on a TPU.
+3.  **TPU small tile format** (a.k.a. "Compact 2nd Minor Layout") - When the
+    second most minor dimension size is 1 or 2, XLA/TPU instead tiles by `2x128`
+    to save memory since a `2x128` tile is smaller than an `8x128` tile. When
+    the second most minor dimension size is 3 or 4, XLA/TPU tiles by `4x128`.
+4.  **TPU 16 bit tile format** - When array element type is BF16, the tiles we
+    use are typically (8,128)(2,1). The second level of tiling does the
+    so-called BF16 packing. See Figure 2 above, one element from an even row and
+    one element from an odd row are laid out together and put in one 32-bit
+    element. This format is used because TPUs work with 32 bit values natively
+    and it is much more efficient to move data across the second most minor
+    dimension than across the most minor dimension, so collecting two 16 bit
+    values to get 32 bits from the same column is much more efficient than doing
+    it in the more obvious fashion of taking two 16 bit values from the same
+    row.
+5.  **TPU 8 bit tile format** - The format here is very similar to the 16 bit
+    format, the difference is just that we need to collect together 4 elements
+    to get 32 bits instead of just the two, so the tiling becomes
+    `(8,128)(4,1)`.
+6.  **TPU 1 bit tile format** - TPUs currently use 1 byte for one boolean value,
+    i.e. the size in bytes of the PRED element type is 1. It would be less
+    wasteful to use a tiling by `(32,128)(32,1)` and use only 1 bit per element.
