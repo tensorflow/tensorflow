@@ -163,7 +163,7 @@ use_repo(tsl_extension, "tsl")
 
 ### LLVM
 llvm = use_extension("//third_party/extensions:llvm.bzl", "llvm_extension")
-use_repo(llvm, "llvm-project")
+use_repo(llvm, "llvm-project", "llvm_zlib", "llvm_zstd")
 
 ### pybind
 pybind11_internal_configure = use_extension(
