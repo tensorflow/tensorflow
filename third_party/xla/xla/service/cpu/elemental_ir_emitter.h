@@ -82,6 +82,8 @@ class CpuElementalIrEmitter final : public ElementalIrEmitter {
                                        llvm::Value* value,
                                        absl::string_view name) override;
 
+  absl::StatusOr<llvm::Value*> EmitLog(PrimitiveType prim_type,
+                                       llvm::Value* value) override;
   absl::StatusOr<llvm::Value*> EmitRsqrt(PrimitiveType prim_type,
                                          llvm::Value* value) override;
 

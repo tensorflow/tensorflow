@@ -26,10 +26,12 @@ limitations under the License.
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/Intrinsics.h"
 #include "llvm/IR/Value.h"
+#include "xla/codegen/intrinsic/cpp/intrinsic_declarations.h"
 #include "xla/codegen/intrinsic/exp.h"
 #include "xla/codegen/intrinsic/intrinsic.h"
 #include "xla/codegen/intrinsic/rsqrt.h"
 #include "xla/codegen/intrinsic/tanh.h"
+#include "xla/codegen/intrinsic/type.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/service/cpu/elemental_math_emitter.h"
 #include "xla/service/llvm_ir/llvm_util.h"
@@ -106,6 +108,24 @@ absl::StatusOr<llvm::Value*> CpuElementalIrEmitter::EmitExp(
   }
   return llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::exp, {value},
                                       {value->getType()}, b(), name);
+}
+
+absl::StatusOr<llvm::Value*> CpuElementalIrEmitter::EmitLog(
+    PrimitiveType prim_type, llvm::Value* value) {
+  using EigenLog = codegen::intrinsics::EigenLog;
+  auto type = codegen::intrinsics::Type::TypeFromIrType(value->getType());
+  // For now, we don't have easy access to CPU features here, so we assume
+  // standard features or rely on Eigen's internal dispatch if possible,
+  // but EigenLog::IsSupported requires features.
+  // However, on CPU we generally support these.
+  // To be safe, we can check if it's supported with empty features, or just
+  // assume it's supported on CPU for now, as we are in CpuElementalIrEmitter.
+  if (EigenLog::IsSupported("", type)) {
+    llvm::Function* log_decl = EigenLog::GetOrInsertDeclaration(module(), type);
+    return b()->CreateCall(log_decl, {value});
+  }
+  return llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::log, {value},
+                                      {value->getType()}, b());
 }
 
 absl::StatusOr<llvm::Value*> CpuElementalIrEmitter::EmitRsqrt(
