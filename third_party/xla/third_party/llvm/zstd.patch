@@ -1,8 +1,20 @@
+diff --git a/utils/bazel/llvm-project-overlay/lld/BUILD.bazel b/utils/bazel/llvm-project-overlay/lld/BUILD.bazel
+index 8a03266da632..c5ddc324079c 100644
+--- a/utils/bazel/llvm-project-overlay/lld/BUILD.bazel
++++ b/utils/bazel/llvm-project-overlay/lld/BUILD.bazel
+@@ -106,7 +106,6 @@ cc_library(
+         "//llvm:TransformUtils",
+         "//llvm:config",
+         "//third-party:zstd",
+-        "@llvm_zlib//:zlib",
+     ],
+ )
+ 
 diff --git a/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel b/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel
-index 37e79db376b4..058788948f94 100644
+index b59e6ea973f1..b0823f178716 100644
 --- a/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel
 +++ b/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel
-@@ -321,14 +321,6 @@ cc_library(
+@@ -324,14 +324,6 @@ cc_library(
          ":config",
          ":Demangle",
          "//third-party/siphash",
@@ -13,19 +25,21 @@ index 37e79db376b4..058788948f94 100644
 -        # We unconditionally depend on the custom LLVM zstd wrapper. This will
 -        # be an empty library unless zstd is enabled, in which case it will
 -        # both provide the necessary dependencies and configuration defines.
--        "@llvm_zstd//:zstd",
+-        "//third-party:zstd",
      ],
  )
  
-diff -u a/utils/bazel/llvm-project-overlay/lld/BUILD.bazel  b/utils/bazel/llvm-project-overlay/lld/BUILD.bazel
---- a/utils/bazel/llvm-project-overlay/lld/BUILD.bazel
-+++ b/utils/bazel/llvm-project-overlay/lld/BUILD.bazel
-@@ -111,8 +111,6 @@
-         "//llvm:TargetParser",
-         "//llvm:TransformUtils",
-         "//llvm:config",
--        "@llvm_zlib//:zlib",
--        "@llvm_zstd//:zstd",
-     ],
+diff --git a/utils/bazel/llvm-project-overlay/third-party/BUILD.bazel b/utils/bazel/llvm-project-overlay/third-party/BUILD.bazel
+index bf780b5f3c0b..a6dbdbe4b806 100644
+--- a/utils/bazel/llvm-project-overlay/third-party/BUILD.bazel
++++ b/utils/bazel/llvm-project-overlay/third-party/BUILD.bazel
+@@ -26,9 +26,6 @@ cc_library_wrapper(
+         "//conditions:default": [],
+     }),
+     deps = select({
+-        ":llvm_zstd_enabled": [
+-            "@llvm_zstd//:zstd",
+-        ],
+         "//conditions:default": [],
+     }),
  )
-
