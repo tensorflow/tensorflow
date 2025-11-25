@@ -59,8 +59,8 @@ limitations under the License.
 #include "xla/service/gpu/gpu_executable.h"
 #include "xla/service/gpu/gpu_memory_space_assignment.h"
 #include "xla/service/gpu/ir_emitter_context.h"
-#include "xla/service/gpu/ir_emitter_unnested.h"
 #include "xla/service/gpu/metrics.h"
+#include "xla/service/gpu/thunk_emitter.h"
 #include "xla/service/logical_buffer.h"
 #include "xla/shape.h"
 #include "xla/status_macros.h"
@@ -190,13 +190,13 @@ absl::StatusOr<std::unique_ptr<SequentialThunk>> LowerHlo(
     TF_RETURN_IF_ERROR(
         LoadCache(ir_emitter_context, options.xla_gpu_kernel_cache_file()));
   }
-  std::unique_ptr<IrEmitterUnnested> ir_emitter =
-      IrEmitterUnnested::Create(&ir_emitter_context);
+  std::unique_ptr<ThunkEmitter> thunk_emitter =
+      ThunkEmitter::Create(&ir_emitter_context);
   {
     XLA_SCOPED_LOGGING_TIMER(absl::StrCat(
         "GpuCompiler::RunBackend - IR emission for ", hlo_module->name()));
 
-    TF_RETURN_IF_ERROR(ir_emitter->EmitHloEntryComputation(hlo_module));
+    TF_RETURN_IF_ERROR(thunk_emitter->EmitHloEntryComputation(hlo_module));
 
     RemoveUnusedAndUninitializedGlobals(
         platform_id, options, ir_emitter_context.llvm_module_constants(),
@@ -207,7 +207,7 @@ absl::StatusOr<std::unique_ptr<SequentialThunk>> LowerHlo(
     uint64_t end_usecs = tsl::Env::Default()->NowMicros();
     RecordHloToLlvmDuration(end_usecs - start_usecs);
   }
-  return ir_emitter->ConsumeThunkSequence();
+  return thunk_emitter->ConsumeThunkSequence();
 }
 
 }  // namespace

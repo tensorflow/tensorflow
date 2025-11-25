@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/clusters/cluster.h"
 
 #include <algorithm>
+#include <string>
 #include <vector>
 
 #include "tensorflow/core/protobuf/config.pb.h"
