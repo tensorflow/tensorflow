@@ -1656,7 +1656,8 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CreateTritonModule(
 
   const auto debug_options = fusion->GetModule()->config().debug_options();
 
-  if (DumpingEnabledForHloModule(*hlo_computation->parent())) {
+  if (DumpingEnabledForHloModule(*hlo_computation->parent()) &&
+      DumpingEnabledForEmitter("triton-fusion", debug_options)) {
     auto suffix = absl::StrCat(fusion->name(), ".before_validation.ttir.txt");
     DumpToFileInDirOrStdout(
         *hlo_computation->parent(), "", suffix,
@@ -1679,7 +1680,8 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CreateTritonModule(
                               ->config()
                               .debug_options()
                               .xla_gpu_unsupported_annotate_with_emitter_loc());
-  if (DumpingEnabledForHloModule(*hlo_computation->parent())) {
+  if (DumpingEnabledForHloModule(*hlo_computation->parent()) &&
+      DumpingEnabledForEmitter("triton-fusion", debug_options)) {
     std::string suffix = absl::StrCat(fusion->name(), ".ttir.txt");
     DumpToFileInDirOrStdout(
         *hlo_computation->parent(), "", suffix,
@@ -1749,8 +1751,7 @@ absl::StatusOr<TritonWrapperResult> CompileTritonToLLVM(
   bool should_dump_mlir_passes =
       hlo_config.debug_options().xla_enable_dumping() &&
       DumpingEnabledForHloModule(hlo_module) &&
-      DumpingEnabledForHloPass("triton-fusion-emitter",
-                               hlo_config.debug_options());
+      DumpingEnabledForEmitter("triton-fusion", hlo_config.debug_options());
 
   mlir::PassManager pm(&mlir_context);
   pm.enableVerifier(should_verify);
@@ -1787,7 +1788,7 @@ absl::StatusOr<TritonWrapperResult> CompileTritonToLLVM(
       }
     } else {
       LOG(ERROR)
-          << "--xla_dump_hlo_pass_re=triton-fusion-emitter is set, but neither "
+          << "--xla_dump_emitter_re=triton-fusion is set, but neither "
           << "the environment variable TEST_UNDECLARED_OUTPUTS_DIR nor the "
           << "flag --xla_dump_to is set, so the llvm dumps are disabled.";
     }

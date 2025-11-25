@@ -1412,6 +1412,13 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       "If specified, dumps HLO before and after optimization passes which "
       "match this regular expression, in addition to dumping at the very "
       "beginning and end of compilation."));
+  flag_list->push_back(tsl::Flag(
+      "xla_dump_emitter_re",
+      string_setter_for(&DebugOptions::set_xla_dump_emitter_re),
+      debug_options->xla_dump_emitter_re(),
+      "If specified, dumps debug logs (e.g. IR like LLVM or MLIR) before and "
+      "after emitters which match this regular expression, in addition to "
+      "dumping at the very beginning and end of compilation."));
   flag_list->push_back(
       tsl::Flag("xla_dump_include_timestamp",
                 bool_setter_for(&DebugOptions::set_xla_dump_include_timestamp),

@@ -180,7 +180,7 @@ absl::Status RunPassPipeline(mlir::ModuleOp module, const HloModule& hlo_module,
                              absl::string_view entry_function_name) {
   bool should_dump_mlir_passes =
       DumpingEnabledForHloModule(hlo_module) &&
-      DumpingEnabledForHloPass("mlir-fusion-emitter",
+      DumpingEnabledForEmitter("mlir-fusion",
                                hlo_module.config().debug_options());
 
   std::string mlir_passes_dump_result;
