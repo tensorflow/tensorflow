@@ -1,0 +1,37 @@
+graph TD
+    %% Artifacts (Data - Rounded Box Shape)
+    InitialHlo("Unoptimized HLO")
+    OptimizedHlo("Optimized and scheduled HLO")
+    BufferAssignment("BufferAssignment")
+    ThunkSequence("ThunkSequence")
+    LlvmIr("LLVM IR")
+    MachineCode("Machine Code<br/><i>PTX, obj, ..</i>")
+    Executable("Executable")
+
+    %% Stages (Processes - Subroutine Shape)
+    HloPasses[[1. HLO Optimization<br/>& Scheduling]]
+    BufferAssigner[[2. Buffer Assignment]]
+    ThunkEmitter[[3. Thunk Emission]]
+    LlvmCompiler[[4. LLVM Compilation]]
+    ExecutableBuilder[[5. Executable Creation]]
+
+    %% Edges (Flow of Artifacts through Stages)
+    InitialHlo --> HloPasses
+    HloPasses --> OptimizedHlo
+
+    OptimizedHlo --> BufferAssigner
+    BufferAssigner --> BufferAssignment
+
+    OptimizedHlo --> ThunkEmitter
+    BufferAssignment --> ThunkEmitter
+    ThunkEmitter --> ThunkSequence
+    ThunkEmitter --> LlvmIr
+
+    LlvmIr --> LlvmCompiler
+    LlvmCompiler --> MachineCode
+
+    MachineCode --> ExecutableBuilder
+    ThunkSequence --> ExecutableBuilder
+    BufferAssignment --> ExecutableBuilder
+
+    ExecutableBuilder --> Executable
