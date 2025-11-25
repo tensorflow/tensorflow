@@ -21,6 +21,7 @@ limitations under the License.
 #include <optional>
 #include <string>
 #include <variant>
+#include <vector>
 
 #include "absl/log/check.h"
 #include "absl/status/status.h"
@@ -123,6 +124,10 @@ class AutotuneConfig {
   const DebugOptions::AutotuneCacheMode& autotune_cache_mode() const {
     return autotune_cache_mode_;
   }
+  const std::optional<std::vector<AutotuneResult::TritonGemmKey>>&
+  gemm_config_overrides() const {
+    return gemm_config_overrides_;
+  }
 
   AutotuneConfig(const DeviceOrDevicelessConfig& config,
                  bool should_init_buffers, bool should_reinit_output_buffer,
@@ -131,7 +136,9 @@ class AutotuneConfig {
                  bool exhaustive_tiling_search,
                  bool should_require_complete_aot_autotune_results,
                  absl::string_view autotune_cache_dir,
-                 DebugOptions::AutotuneCacheMode autotune_cache_mode)
+                 DebugOptions::AutotuneCacheMode autotune_cache_mode,
+                 std::optional<std::vector<AutotuneResult::TritonGemmKey>>
+                     gemm_config_overrides)
       : config_(config),
         should_init_buffers_(should_init_buffers),
         should_reinit_output_buffer_(should_reinit_output_buffer),
@@ -142,11 +149,12 @@ class AutotuneConfig {
         should_require_complete_aot_autotune_results_(
             should_require_complete_aot_autotune_results),
         autotune_cache_dir_(autotune_cache_dir),
-        autotune_cache_mode_(autotune_cache_mode) {}
+        autotune_cache_mode_(autotune_cache_mode),
+        gemm_config_overrides_(gemm_config_overrides) {}
 
   // Derives the autotune config parameters from the DebugOptions `opts`.
-  static AutotuneConfig FromDebugOptions(const DeviceOrDevicelessConfig& config,
-                                         const DebugOptions& opts);
+  static absl::StatusOr<AutotuneConfig> FromDebugOptions(
+      const DeviceOrDevicelessConfig& config, const DebugOptions& opts);
 
   se::StreamExecutor* GetExecutor() const { return config_.GetExecutor(); }
 
@@ -181,6 +189,8 @@ class AutotuneConfig {
   bool should_require_complete_aot_autotune_results_;
   std::string autotune_cache_dir_;
   DebugOptions::AutotuneCacheMode autotune_cache_mode_;
+  std::optional<std::vector<AutotuneResult::TritonGemmKey>>
+      gemm_config_overrides_;
 };
 
 using AutotuneNoCacheFn = std::function<absl::StatusOr<AutotuneResult>()>;

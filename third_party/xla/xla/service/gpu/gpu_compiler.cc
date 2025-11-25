@@ -1527,8 +1527,9 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
           gpu_target_config.platform_name == "ROCM");
   DeviceOrDevicelessConfig device_config =
       GetDeviceConfig(stream_exec, options, gpu_target_config);
-  AutotuneConfig autotune_config =
-      AutotuneConfig::FromDebugOptions(device_config, debug_options);
+  TF_ASSIGN_OR_RETURN(
+      AutotuneConfig autotune_config,
+      AutotuneConfig::FromDebugOptions(device_config, debug_options));
   // Lambdas and related constants:
   const GpuFloatSupport bf16_support(gpu_version, BF16);
   const GpuFloatSupport f8e5m2_support(gpu_version, F8E5M2, F16);
@@ -1888,8 +1889,9 @@ absl::StatusOr<std::unique_ptr<HloModule>> GpuCompiler::RunHloPasses(
   AutotuneResults autotune_results;
   DeviceOrDevicelessConfig device_config =
       GetDeviceConfig(stream_exec, options, gpu_target_config);
-  AutotuneConfig autotune_config =
-      AutotuneConfig::FromDebugOptions(device_config, debug_opts);
+  TF_ASSIGN_OR_RETURN(
+      AutotuneConfig autotune_config,
+      AutotuneConfig::FromDebugOptions(device_config, debug_opts));
   if (!is_deviceless) {
     TF_RETURN_IF_ERROR(
         AutotunerUtil::SerializeAutotuneResults(&autotune_results));

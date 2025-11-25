@@ -1020,7 +1020,17 @@ GemmFusionAutotunerImpl::GenerateTritonConfigs(const HloDotInstruction& dot) {
       /*autotune_tma=*/autotune_tma,
       /*autotune_warp_specialization=*/autotune_warp_specialization);
 
-  if (!debug_options_.xla_gpu_exhaustive_tiling_search()) {
+  if (auto overrides = config_.gemm_config_overrides(); overrides.has_value()) {
+    VLOG(1) << "Restricting configs to the overridden set.";
+    std::vector<TritonGemmConfig> allowed_configs;
+    for (const AutotuneResult::TritonGemmKey& key : *overrides) {
+      TF_ASSIGN_OR_RETURN(TritonGemmConfig config,
+                          TritonGemmConfig::FromProto(key));
+      allowed_configs.push_back(std::move(config));
+    }
+    configs =
+        search_space.OptimizeConfigSet(configs, /*hints=*/allowed_configs);
+  } else if (!debug_options_.xla_gpu_exhaustive_tiling_search()) {
     VLOG(1) << "Restricting configs to the default set.";
     configs = search_space.OptimizeConfigSet(
         configs, /*hints=*/GetDefaultTritonConfigs());

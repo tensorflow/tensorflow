@@ -2343,6 +2343,13 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       debug_options->xla_gpu_experimental_autotuner_cache_dir(),
       "Experimental: Specify the directory to read/write autotuner cache to."));
   flag_list->push_back(tsl::Flag(
+      "xla_gpu_gemm_autotuner_override_file",
+      string_setter_for(
+          &DebugOptions::set_xla_gpu_gemm_autotuner_override_file),
+      debug_options->xla_gpu_gemm_autotuner_override_file(),
+      "A textproto file to override autotune results. See also "
+      "`xla_gpu_override_gemm_autotuner` to override with a single config."));
+  flag_list->push_back(tsl::Flag(
       "xla_enable_command_buffers_during_profiling",
       bool_setter_for(
           &DebugOptions::set_xla_enable_command_buffers_during_profiling),
