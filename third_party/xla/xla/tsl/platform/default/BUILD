@@ -123,7 +123,6 @@ cc_library(
         "@local_config_nccl//:nccl_config",
         "@local_config_tensorrt//:tensorrt_headers",
     ]) + if_rocm_is_configured([
-        "@local_config_rocm//rocm:rocm_config",
         "@local_config_rocm//rocm:rocm_headers",
     ]),
 )
@@ -399,7 +398,6 @@ cc_library(
     deps = [
         "//xla/tsl/platform:logging",
         "//xla/tsl/platform:types",
-        "@local_config_rocm//rocm:rocm_config",
         "@local_config_rocm//rocm:rocm_headers",
         "@local_tsl//tsl/platform:path",
     ],
