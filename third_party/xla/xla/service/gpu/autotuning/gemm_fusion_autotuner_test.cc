@@ -1848,19 +1848,7 @@ TEST_F(GemmFusionAutotunerTest, ScaledDotConfigsHaveCuBlasFallback) {
          "scaled-dot.";
 }
 
-// TODO(b/315957220): Remove the experimental flags once TMA is enabled by
-// default.
-class GemmFusionAutotunerEnableTma : public GemmFusionAutotunerTest {
- public:
-  DebugOptions GetDebugOptionsForTest() const override {
-    DebugOptions debug_options =
-        GemmFusionAutotunerTest::GetDebugOptionsForTest();
-    debug_options.set_xla_gpu_experimental_enable_triton_tma(true);
-    return debug_options;
-  }
-};
-
-TEST_F(GemmFusionAutotunerEnableTma,
+TEST_F(GemmFusionAutotunerTest,
        TmaConfigsAreGeneratedOnlyForHopperAndWorkCorrectly) {
   if (GpuComputeComp().IsRocm()) {
     GTEST_SKIP() << "Not supported on ROCm.";
@@ -1913,7 +1901,9 @@ TEST_F(GemmFusionAutotunerEnableTma,
                             ErrorSpec{/*aabs=*/5e-3, /*arel=*/5e-3}));
 }
 
-TEST_F(GemmFusionAutotunerEnableTma, TmaRunCorrectlyForDotsOfBroadcasts) {
+// Context in b/421858850. This test ensures that we work around the issue
+// correctly.
+TEST_F(GemmFusionAutotunerTest, TmaRunCorrectlyForDotsOfBroadcasts) {
   if (GpuComputeComp().IsRocm()) {
     GTEST_SKIP() << "Not supported on ROCm.";
   }
@@ -1927,14 +1917,6 @@ TEST_F(GemmFusionAutotunerEnableTma, TmaRunCorrectlyForDotsOfBroadcasts) {
         lhs_contracting_dims={1}, rhs_contracting_dims={0}
     })")
                                                   .value();
-
-  TF_ASSERT_OK_AND_ASSIGN(
-      const std::vector<TritonGemmConfig> hopper_configs,
-      GetPossibleMatmulAutotuneTritonConfigs(
-          *Cast<HloDotInstruction>(
-              module->entry_computation()->root_instruction()),
-          se::CudaComputeCapability(se::CudaComputeCapability::kHopper, 0),
-          GetToolkitVersion(), GetDebugOptionsForTest(), &mlir_context_));
 
   EXPECT_TRUE(RunAndCompare(std::move(module),
                             ErrorSpec{/*aabs=*/5e-3, /*arel=*/5e-3}));
