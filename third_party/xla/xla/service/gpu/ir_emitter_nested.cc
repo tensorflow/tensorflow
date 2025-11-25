@@ -14,10 +14,12 @@ limitations under the License.
 ==============================================================================*/
 #include "xla/service/gpu/ir_emitter_nested.h"
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <iterator>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -25,21 +27,28 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "llvm/ADT/ArrayRef.h"
 #include "llvm/IR/Argument.h"
 #include "llvm/IR/BasicBlock.h"
+#include "llvm/IR/Constants.h"
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/GlobalValue.h"
+#include "llvm/IR/GlobalVariable.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/Support/Casting.h"
+#include "llvm/TargetParser/Triple.h"
 #include "xla/codegen/emitters/computation_fingerprint.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/literal.h"
+#include "xla/service/gpu/gpu_constants.h"
+#include "xla/service/gpu/gpu_executable.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/ir_emitter.h"
 #include "xla/service/gpu/ir_emitter_context.h"
@@ -51,6 +60,8 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/fingerprint.h"
@@ -117,8 +128,7 @@ absl::StatusOr<llvm::Function*> IrEmitterNested::CodegenNestedComputation() {
   std::string function_name = llvm_ir::SanitizeFunctionName(absl::StrCat(
       nested_computation_.name(), "_", fingerprint.low64, fingerprint.high64));
 
-  auto* function =
-      ir_emitter_context_->llvm_module()->getFunction(function_name);
+  auto* function = module_->getFunction(function_name);
   if (function) return function;
 
   TF_RETURN_IF_ERROR(EmitConstants(nested_computation_));
@@ -143,8 +153,8 @@ absl::StatusOr<llvm::Function*> IrEmitterNested::CodegenNestedComputation() {
   {
     const Shape& root_shape = root->shape();
     argument_types.push_back(b_.getPtrTy());
-    int64_t root_size = llvm_ir::ByteSizeOf(
-        root_shape, ir_emitter_context_->llvm_module()->getDataLayout());
+    int64_t root_size =
+        llvm_ir::ByteSizeOf(root_shape, module_->getDataLayout());
     argument_dereferenceable_bytes.push_back(root_size);
   }
 
@@ -154,7 +164,7 @@ absl::StatusOr<llvm::Function*> IrEmitterNested::CodegenNestedComputation() {
       function_type,                       // The function type.
       llvm::GlobalValue::InternalLinkage,  // The linkage type.
       function_name,
-      ir_emitter_context_->llvm_module());  // The parent LLVM module.
+      module_);  // The parent LLVM module.
   for (size_t arg_no = 0; arg_no < argument_dereferenceable_bytes.size();
        ++arg_no) {
     int64_t arg_size = argument_dereferenceable_bytes[arg_no];
@@ -270,15 +280,14 @@ absl::Status IrEmitterNested::EmitConstants(const HloComputation& computation) {
     std::string global_name = llvm_ir::ConstantHloToGlobalName(*instr);
 
     auto base = static_cast<const uint8_t*>(literal.untyped_data());
-    ir_emitter_context_->emit_constant(
-        literal.element_count(),
+    GpuExecutable::ConstantInfo info = AppendGlobalConstant(
+        module_, literal.element_count(),
         ShapeUtil::ByteSizeOfPrimitiveType(literal.shape().element_type()),
-
-        global_name,
-        /*allocation_idx=*/-1,
+        global_name, /*allocation_idx=*/-1,
         DenseDataIntermediate::Alias(
             absl::MakeSpan(base, base + literal.size_bytes())),
         &b_);
+    ir_emitter_context_->constants().push_back(std::move(info));
   }
   return absl::OkStatus();
 }
@@ -303,6 +312,7 @@ llvm::Value* AddrCastToDefault(llvm::Value* arg, llvm::IRBuilderBase& b) {
 
 absl::Status CallNestedComputation(llvm::IRBuilderBase* builder,
                                    IrEmitterContext& ir_emitter_context,
+                                   llvm::Module* llvm_module,
                                    const HloComputation& computation,
                                    absl::Span<llvm::Value* const> operands,
                                    llvm::Value* output) {
@@ -328,55 +338,65 @@ absl::Status CallNestedComputation(llvm::IRBuilderBase* builder,
   return absl::OkStatus();
 }
 
-absl::StatusOr<std::vector<llvm::Value*>> CallNestedComputationWithScalars(
-    llvm::IRBuilderBase* builder, IrEmitterContext& ir_emitter_context,
-    const HloComputation& computation,
-    absl::Span<llvm::Value* const> parameter_elements) {
-  std::vector<llvm::Value*> parameter_buffers;
-  for (llvm::Value* parameter_element : parameter_elements) {
-    parameter_buffers.push_back(llvm_ir::EmitAllocaAtFunctionEntry(
-        parameter_element->getType(), "parameter_buffer", builder));
-    builder->CreateStore(parameter_element, parameter_buffers.back());
-  }
+GpuExecutable::ConstantInfo AppendGlobalConstant(
+    llvm::Module* module, int64_t num_elements, int64_t bytes_per_element,
+    absl::string_view symbol_name, int allocation_idx,
+    DenseDataIntermediate content, llvm::IRBuilderBase* b) {
+  // LLVM and PTXAS don't deal well with large constants, so we only emit very
+  // small constants directly in LLVM IR.  Larger constants are emitted with
+  // zero initializers in LLVM IR and are later overwritten when the PTX/CUBIN
+  // is loaded.
+  bool should_emit_initializer = num_elements <= 1;
 
-  return CallNestedComputationWithScalarAddrs(builder, ir_emitter_context,
-                                              computation, parameter_buffers);
-}
+  // Ptxas has issues if the constant allocation is smaller than 64 bytes.
+  // TODO(b/253259975): Remove when fixed ptxas version is submitted.
+  constexpr int64_t kMinConstAllocationInBytes = 64;
+  bool needs_padding =
+      num_elements * bytes_per_element < kMinConstAllocationInBytes;
 
-absl::StatusOr<std::vector<llvm::Value*>> CallNestedComputationWithScalarAddrs(
-    llvm::IRBuilderBase* builder, IrEmitterContext& ir_emitter_context,
-    const HloComputation& computation,
-    absl::Span<llvm::Value* const> parameter_elements_addrs) {
-  const Shape& return_shape = computation.root_instruction()->shape();
-  llvm::Type* return_buffer_type =
-      llvm_ir::ShapeToIrType(return_shape, builder->getContext());
-  llvm::Value* return_buffer = llvm_ir::EmitAllocaAtFunctionEntry(
-      return_buffer_type, "return_buffer", builder);
+  llvm::ArrayType* global_type = llvm::ArrayType::get(
+      b->getInt8Ty(),
+      std::max(num_elements * bytes_per_element, kMinConstAllocationInBytes));
 
-  std::vector<llvm::Value*> allocas_for_returned_scalars;
-  if (!return_shape.IsTuple()) {
-    allocas_for_returned_scalars.push_back(return_buffer);
-  } else {
-    allocas_for_returned_scalars =
-        llvm_ir::EmitTupleAllocasAtFunctionEntry(return_shape, builder);
-    llvm_ir::IrArray tuple_array(return_buffer, return_buffer_type,
-                                 return_shape);
+  GpuExecutable::ConstantInfo info;
+  llvm::Constant* initializer = [&]() -> llvm::Constant* {
+    if (!should_emit_initializer) {
+      info.content = std::move(content);
+      return llvm::ConstantAggregateZero::get(global_type);
+    }
 
-    llvm_ir::EmitTuple(tuple_array, allocas_for_returned_scalars, builder);
-  }
+    std::vector<uint8_t> padded(kMinConstAllocationInBytes, 0);
+    absl::c_copy(content.span(), padded.begin());
+    return llvm::ConstantDataArray::get<uint8_t>(
+        module->getContext(),
+        needs_padding ? llvm::ArrayRef<uint8_t>(padded)
+                      : llvm::ArrayRef<uint8_t>(content.span().data(),
+                                                content.span().size()));
+  }();
 
-  TF_RETURN_IF_ERROR(
-      CallNestedComputation(builder, ir_emitter_context, computation,
-                            parameter_elements_addrs, return_buffer));
+  // Explicitly set global addrspace for SPIR backend.
+  int addrspace = llvm::Triple(module->getTargetTriple()).isSPIR() ? 1 : 0;
+  // These globals will be looked up by name by GpuExecutable so we need to
+  // give them an external linkage.  Not all of their uses are visible in
+  // the LLVM IR so we can't give then a linkage that merely preserves their
+  // names (like available_externally), we also need to ensure that they stick
+  // around even if they're "unused".
+  //
+  // We may have to be more clever here in the future if we notice that we're
+  // keeping around too many globals because of their linkage.
+  auto* global_for_const = new llvm::GlobalVariable(
+      global_type, /*isConstant=*/should_emit_initializer,
+      llvm::GlobalValue::ExternalLinkage,
+      /*Initializer=*/initializer, symbol_name,
+      /*TLMode=*/llvm::GlobalValue::NotThreadLocal,
+      /*AddressSpace=*/addrspace,
+      /*isExternallyInitialized=*/false);
+  global_for_const->setAlignment(llvm::Align(kConstantBufferAlignBytes));
+  module->insertGlobalVariable(global_for_const);
 
-  std::vector<llvm::Value*> returned_scalars;
-  returned_scalars.reserve(allocas_for_returned_scalars.size());
-  for (llvm::Value* addr : allocas_for_returned_scalars) {
-    auto alloca = llvm::cast<llvm::AllocaInst>(addr);
-    returned_scalars.push_back(
-        builder->CreateLoad(alloca->getAllocatedType(), alloca));
-  }
-  return returned_scalars;
+  info.symbol_name.assign(symbol_name);
+  info.allocation_index = allocation_idx;
+  return info;
 }
 
 }  // namespace gpu

@@ -16,14 +16,18 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_IR_EMITTER_NESTED_H_
 #define XLA_SERVICE_GPU_IR_EMITTER_NESTED_H_
 
+#include <cstdint>
 #include <vector>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Value.h"
 #include "xla/hlo/ir/hlo_computation.h"
+#include "xla/service/gpu/gpu_executable.h"
+#include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/ir_emitter_context.h"
 
 namespace xla {
@@ -45,21 +49,17 @@ namespace gpu {
 //   - a pointer to the top-level temp buffer.
 absl::Status CallNestedComputation(llvm::IRBuilderBase* builder,
                                    IrEmitterContext& ir_emitter_context,
+                                   llvm::Module* llvm_module,
                                    const HloComputation& computation,
                                    absl::Span<llvm::Value* const> operands,
                                    llvm::Value* output);
 
-// Like CallNestedComputation, but parameters and results are scalars.
-absl::StatusOr<std::vector<llvm::Value*>> CallNestedComputationWithScalars(
-    llvm::IRBuilderBase* builder, IrEmitterContext& ir_emitter_context,
-    const HloComputation& computation,
-    absl::Span<llvm::Value* const> parameter_elements);
-
-// Like CallNestedComputationWithScalars, but parameters are scalar addresses.
-absl::StatusOr<std::vector<llvm::Value*>> CallNestedComputationWithScalarAddrs(
-    llvm::IRBuilderBase* builder, IrEmitterContext& ir_emitter_context,
-    const HloComputation& computation,
-    absl::Span<llvm::Value* const> parameter_elements_addrs);
+// Emit a constant with a given number of element, given byte size of the
+// element, given symbol name and content.
+GpuExecutable::ConstantInfo AppendGlobalConstant(
+    llvm::Module* module, int64_t num_elements, int64_t bytes_per_element,
+    absl::string_view symbol_name, int allocation_idx,
+    DenseDataIntermediate content, llvm::IRBuilderBase* b);
 
 }  // namespace gpu
 }  // namespace xla

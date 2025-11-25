@@ -156,8 +156,9 @@ absl::Status IrEmitter::HandleCall(HloInstruction* call) {
   for (HloInstruction* operand : call->operands()) {
     operand_addresses.push_back(GetBasePointer(*operand));
   }
-  return CallNestedComputation(&b_, *ir_emitter_context_, *call->to_apply(),
-                               operand_addresses, GetBasePointer(*call));
+  return CallNestedComputation(&b_, *ir_emitter_context_, module_,
+                               *call->to_apply(), operand_addresses,
+                               GetBasePointer(*call));
 }
 
 absl::Status IrEmitter::HandleCustomCall(HloInstruction*) {
