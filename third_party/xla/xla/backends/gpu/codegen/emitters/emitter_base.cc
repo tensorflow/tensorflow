@@ -339,8 +339,8 @@ absl::StatusOr<std::unique_ptr<llvm::Module>> EmitterBase::CreateLLVMModule(
   AddLoopTransformationPasses(pm, device);
   AddLoweringPasses(pm, device);
 
-  auto pipeline_status = RunPassPipeline(module.get(), *fusion.GetModule(), pm,
-                                         entry_function_name);
+  TF_RETURN_IF_ERROR(RunPassPipeline(module.get(), *fusion.GetModule(), pm,
+                                     entry_function_name));
 
   auto llvm_module = mlir::translateModuleToLLVMIR(module.get(), llvm_context);
   TF_RET_CHECK(llvm_module != nullptr)
