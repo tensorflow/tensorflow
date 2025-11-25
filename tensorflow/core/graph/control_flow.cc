@@ -16,8 +16,11 @@ limitations under the License.
 #include "tensorflow/core/graph/control_flow.h"
 
 #include <deque>
+#include <unordered_map>
 #include <vector>
 
+#include "absl/status/status.h"
+#include "absl/strings/match.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/graph/node_builder.h"

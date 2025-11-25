@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_GRAPH_GRAPH_NODE_UTIL_H_
 #define TENSORFLOW_CORE_GRAPH_GRAPH_NODE_UTIL_H_
 
+#include "absl/status/status.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/platform/status.h"
