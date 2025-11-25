@@ -486,6 +486,24 @@ LogicalResult ReorderSqueezeDims(SqueezeDimsOp op, PatternRewriter& rewriter) {
   return success();
 }
 
+LogicalResult PushSqueezeDimsUpThroughMask(::xla::xtile::MaskOp op,
+                                           PatternRewriter& rewriter) {
+  std::optional<uint32_t> axis = GetSqueezeDimsUserAxis(op);
+  if (!axis) {
+    return rewriter.notifyMatchFailure(op, "No squeeze_dims users.");
+  }
+
+  auto new_operand = SqueezeTensorValue(rewriter, op.getSource(), *axis);
+
+  llvm::SmallVector<int64_t> new_bounds(op.getBounds());
+  new_bounds.erase(new_bounds.begin() + *axis);
+
+  auto new_mask = ::xla::xtile::MaskOp::create(
+      rewriter, op.getLoc(), new_operand, new_bounds, op.getValue());
+  ReplaceOpWithExpandDimsOf(rewriter, op, new_mask->getResults(), *axis);
+  return success();
+}
+
 // Converts squeeze_dims to tt.reshape.
 LogicalResult SqueezeDimsToReshape(SqueezeDimsOp op,
                                    PatternRewriter& rewriter) {
@@ -525,6 +543,7 @@ class TritonXLASqueezeDimsPass
     patterns.add(PushSqueezeDimsUpThroughReduce);
     patterns.add(PushSqueezeDimsUpThroughTrans);
     patterns.add(ReorderSqueezeDims);
+    patterns.add(PushSqueezeDimsUpThroughMask);
     if (failed(applyPatternsGreedily(getOperation(), std::move(patterns)))) {
       return signalPassFailure();
     }

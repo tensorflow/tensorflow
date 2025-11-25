@@ -71,3 +71,11 @@ func.func @push_transpose_up_through_reshape(%arg0: tensor<4x8x2xf32>) -> tensor
   %1 = tt.trans %0 {order = array<i32: 1, 0>} : tensor<4x16xf32> -> tensor<16x4xf32>
   return %1 : tensor<16x4xf32>
 }
+
+// CHECK-LABEL: func @push_transpose_up_through_mask
+func.func @push_transpose_up_through_mask(%arg0: tensor<4x8xf32>, %arg1: f32) -> tensor<8x4xf32> {
+  // CHECK: xtile.mask %{{.*}} bounds [7, 3], %arg1 : tensor<8x4xf32>
+  %0 = xtile.mask %arg0 bounds [3, 7], %arg1 : tensor<4x8xf32>
+  %1 = tt.trans %0 {order = array<i32: 1, 0>} : tensor<4x8xf32> -> tensor<8x4xf32>
+  return %1 : tensor<8x4xf32>
+}
