@@ -184,22 +184,17 @@ bool CollectiveConfig::IsDegenerate(int64_t replica_count,
 void CollectiveConfig::SetCollectiveOpKindAndID(
     const HloCollectivePermuteInstruction* instr) {
   if (instr->channel_id().has_value()) {
-    collective_op_kind = RendezvousKey::kCrossModule;
-    op_id = instr->channel_id().value();
+    op_id = *instr->channel_id();
   } else {
-    collective_op_kind = RendezvousKey::kCrossReplica;
     op_id = static_cast<int64_t>(instr->GetModule()->unique_id());
   }
 }
 
 void CollectiveConfig::SetCollectiveOpKindAndID(
     const HloSendRecvInstruction* instr) {
-  int64_t channel_id = instr->channel_id().value_or(0);
-  if (channel_id > 0) {
-    collective_op_kind = RendezvousKey::kCrossModule;
-    op_id = channel_id;
+  if (instr->channel_id().has_value()) {
+    op_id = *instr->channel_id();
   } else {
-    collective_op_kind = RendezvousKey::kCrossReplica;
     op_id = static_cast<int64_t>(instr->GetModule()->unique_id());
   }
 }
@@ -216,10 +211,8 @@ CollectiveConfig GetCollectiveConfig(
   config.replica_groups = hlo->replica_groups();
 
   if (hlo->channel_id().has_value()) {
-    config.collective_op_kind = RendezvousKey::kCrossModule;
     config.op_id = *hlo->channel_id();
   } else {
-    config.collective_op_kind = RendezvousKey::kCrossReplica;
     config.op_id = static_cast<int64_t>(hlo->GetModule()->unique_id());
   }
 

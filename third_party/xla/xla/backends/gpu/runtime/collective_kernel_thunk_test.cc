@@ -163,8 +163,6 @@ CollectiveKernelThunkMetadata CreateCollectiveKernelThunk(
       /*operand_count=*/1,
       /*operand_element_type=*/{PrimitiveType::F32},
       /*replica_groups=*/{replica_group},
-      /*collective_op_kind=*/
-      RendezvousKey::CollectiveOpKind::kCrossReplica,
       /*op_id=*/0,
       /*group_mode=*/
       CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_CROSS_REPLICA,

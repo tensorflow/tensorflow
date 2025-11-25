@@ -59,7 +59,6 @@ CollectiveConfig CollectiveMetadataThunk::GetCollectiveConfig(
         hlo.operand(i)->shape().element_type());
   }
 
-  config.collective_op_kind = RendezvousKey::kCrossReplica;
   config.op_id = static_cast<int64_t>(hlo.GetModule()->unique_id());
   if (hlo.has_backend_config()) {
     xla::gpu::GpuBackendConfig backend_config =
