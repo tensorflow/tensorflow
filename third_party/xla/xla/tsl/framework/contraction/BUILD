@@ -93,6 +93,7 @@ cc_library(
     name = "eigen_contraction_kernel",
     hdrs = ["eigen_contraction_kernel.h"],
     compatible_with = get_compatible_with_portable(),
+    tags = ["nofixdeps"],
     deps = select({
         ":no_mkldnn_contraction_kernel": [":eigen_contraction_kernel_no_mkl"],
         ":disable_onednn_contraction_kernel_config": [":eigen_contraction_kernel_no_mkl"],
@@ -154,6 +155,7 @@ cc_library(
     srcs = ["eigen_contraction_kernel.cc"],
     hdrs = ["eigen_contraction_kernel.h"],
     compatible_with = get_compatible_with_portable(),
+    tags = ["nofixdeps"],
     # Somehow the following code works with fixedpoint, but not here.
     # visibility = [
     #     "//tensorflow:__subpackages__",

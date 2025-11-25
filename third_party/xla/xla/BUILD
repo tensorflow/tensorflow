@@ -1,6 +1,7 @@
 load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 load("//third_party/compute_library:build_defs.bzl", "if_enable_acl")
 
+# copybara:uncomment load("//devtools/build_cleaner/skylark:action_config_test.bzl", "action_config_test")
 # copybara:uncomment load("@rules_python//python:proto.bzl", "py_proto_library")
 load("//xla:package_groups.bzl", "xla_package_groups")
 load("//xla:xla.default.bzl", "xla_bzl_library", "xla_cc_test", "xla_py_proto_library")
@@ -1279,7 +1280,6 @@ xla_cc_test(
             "//xla/tsl/platform:env",
             "//xla/tsl/platform:test",
             "//xla/tsl/util:command_line_flags",
-            "@com_google_absl//absl/base:nullability",
             "@com_google_absl//absl/container:flat_hash_map",
             "@com_google_absl//absl/status",
             "@com_google_absl//absl/status:status_matchers",
@@ -1400,6 +1400,11 @@ cc_library(
 #     compatible_with = get_compatible_with_portable(),
 #     visibility = internal_visibility([":friends"]),
 #     deps = [":xla_proto"],
+# )
+#
+# action_config_test(
+#     name = "build_cleaner_spec_test",
+#     src = "build_cleaner_spec.textproto",
 # )
 # copybara:uncomment_end
 
