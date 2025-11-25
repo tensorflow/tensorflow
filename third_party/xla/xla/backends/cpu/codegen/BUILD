@@ -257,6 +257,7 @@ cc_library(
         "@stablehlo//:linalg_passes",
         "@stablehlo//:stablehlo_ops",
         "@stablehlo//:stablehlo_passes",
+        "@stablehlo//:stablehlo_passes_optimization",
     ],
 )
 
