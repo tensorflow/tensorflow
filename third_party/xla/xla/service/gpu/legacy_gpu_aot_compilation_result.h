@@ -55,6 +55,9 @@ class LegacyGpuAotCompilationResult : public AotCompilationResult {
   static absl::StatusOr<std::unique_ptr<LegacyGpuAotCompilationResult>>
   FromString(const std::string& serialized, int pointer_size);
 
+  static absl::StatusOr<std::unique_ptr<LegacyGpuAotCompilationResult>>
+  FromProto(const GpuExecutableProto& proto, int pointer_size);
+
   absl::StatusOr<std::string> SerializeAsString() const override;
 
   absl::StatusOr<std::unique_ptr<Executable>> LoadExecutable(

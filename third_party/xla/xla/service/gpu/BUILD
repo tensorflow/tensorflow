@@ -859,6 +859,7 @@ xla_cc_test(
         "//xla/backends/gpu/runtime:kernel_thunk",
         "//xla/backends/gpu/runtime:sequential_thunk",
         "//xla/backends/gpu/runtime:thunk",
+        "//xla/client:executable_build_options",
         "//xla/codegen/emitters:kernel_arguments",
         "//xla/hlo/analysis:alias_info",
         "//xla/hlo/analysis:hlo_ordering",
@@ -1648,6 +1649,7 @@ cc_library(
         ":flag_utils",
         ":fusion_dispatch_pipeline",
         ":fusion_pipeline",
+        ":gpu_aot_compilation_result",
         ":gpu_constants",
         ":gpu_executable",
         ":gpu_executable_proto_cc",
@@ -2060,6 +2062,7 @@ cc_library(
     deps = [
         ":gpu_executable",
         ":gpu_executable_proto_cc",
+        "//xla:util",
         "//xla/hlo/ir:hlo",
         "//xla/service:compiler",
         "//xla/service:executable",
@@ -2385,6 +2388,7 @@ xla_cc_test(
         ":amdgpu_compiler_impl",
     ]) + [
         ":gpu_transfer_manager",
+        "//xla:literal",
         "//xla:literal_util",
         "//xla/backends/gpu/codegen/triton:support",
         "//xla/hlo/ir:hlo",
@@ -2400,8 +2404,11 @@ xla_cc_test(
         "//xla/tests:hlo_test_base",
         "//xla/tests:literal_test_util",
         "//xla/tests:xla_internal_test_main",  # build_cleaner: keep
+        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
         "@com_google_googletest//:gtest",
+        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@local_tsl//tsl/platform:statusor",
     ],

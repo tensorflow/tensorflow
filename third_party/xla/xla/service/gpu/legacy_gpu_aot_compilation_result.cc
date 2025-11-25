@@ -64,9 +64,17 @@ LegacyGpuAotCompilationResult::FromString(const std::string& serialized,
   tsl::profiler::TraceMe traceme("ResultFromString");
   GpuExecutableProto proto;
   if (!proto.ParseFromString(serialized)) {
-    return Internal("Failed to parse serialized GpuThunkAotCompilationResult.");
+    return Internal(
+        "Failed to parse serialized LegacyGpuAotCompilationResult.");
   }
 
+  return FromProto(proto, pointer_size);
+}
+
+absl::StatusOr<std::unique_ptr<LegacyGpuAotCompilationResult>>
+LegacyGpuAotCompilationResult::FromProto(const GpuExecutableProto& proto,
+                                         int pointer_size) {
+  tsl::profiler::TraceMe traceme("ResultFromProto");
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<HloModule> module,
       HloModule::CreateFromProtoWithConfig(proto.hlo_module_with_config()));

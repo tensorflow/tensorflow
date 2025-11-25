@@ -598,6 +598,11 @@ message DebugOptions {
   // regressions.
   optional bool xla_gpu_experimental_allow_unroll_factor_eight = 430;
 
+  // Enables an Ahead-of-Time (AOT) compilation flow where the compiled binary
+  // includes the generated Thunks. In contrast, the legacy flow only compiles
+  // up to the HLO optimization stage, before Thunk generation.
+  optional bool xla_gpu_experimental_aot_compiled_thunks = 435;
+
   // Specifies the behavior of per kernel autotuning cache.
   optional AutotuneCacheMode xla_gpu_experimental_autotune_cache_mode = 324;
 
@@ -1320,7 +1325,7 @@ message DebugOptions {
   // Note: when adding a new flag, please add it to one of the hardware-specific
   // or hardware-agnostic sections at the top of this proto message.
 
-  // Next id: 435
+  // Next id: 436
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
