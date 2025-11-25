@@ -303,6 +303,7 @@ const StatTypeMap& GetStatTypeMap() {
        {"Thread Id", kThreadId},
        {"Time Scale Multiplier", kTimeScaleMultiplier},
        {"matrix_unit_utilization_percent", kMatrixUnitUtilizationPercent},
+       {"hbm_utilization_percent", kHbmUtilizationPercent},
        // XLA metadata map related.
        {"Hlo Proto", kHloProto},
        {"EdgeTPU Model information", kEdgeTpuModelInfo},
