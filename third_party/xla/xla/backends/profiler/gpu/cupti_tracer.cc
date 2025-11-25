@@ -1075,6 +1075,13 @@ int CuptiTracer::NumGpus() {
       return 0;
     }
     LOG(INFO) << "Profiler found " << gpu_count << " GPUs";
+    if (gpu_count > 0) {
+      CUdevice dev;
+      char name[128] = {0};
+      cuDeviceGet(&dev, 0);
+      cuDeviceGetName(name, 127, dev);
+      LOG(INFO) << "Profiler make code change to trigger presubmit";
+    }
     return gpu_count;
   }();
   return num_gpus;
