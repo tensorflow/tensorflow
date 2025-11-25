@@ -16,27 +16,14 @@ limitations under the License.
 #include "xla/tsl/platform/cloud/curl_http_request.h"
 
 #include <algorithm>
-#include <cerrno>
-#include <cstddef>
-#include <cstdint>
-#include <cstdio>
-#include <cstring>
-#include <string>
-#include <vector>
 
-#include "absl/log/check.h"
-#include "absl/log/log.h"
-#include "absl/status/status.h"
-#include "absl/strings/ascii.h"
-#include "absl/strings/str_cat.h"
-#include "absl/strings/string_view.h"
-#include "xla/tsl/platform/env.h"
+#include "xla/tsl/lib/gtl/map_util.h"
 #include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/status.h"
+#include "xla/tsl/platform/macros.h"
 #include "xla/tsl/platform/types.h"
 #include "xla/tsl/util/env_var.h"
 #include "tsl/platform/scanner.h"
-#include "tsl/platform/strcat.h"
+#include "tsl/platform/str_util.h"
 
 #define CHECK_CURL_OK(expr) CHECK_EQ(expr, CURLE_OK)
 
@@ -519,7 +506,7 @@ absl::Status CurlHttpRequest::Send() {
     // NOT_FOUND indicates that the requested resource does not exist.
     case 404:  // Not found
     case 410:  // Gone
-      result = absl::NotFoundError(get_error_message());
+      result = errors::NotFound(get_error_message());
       break;
 
     // FAILED_PRECONDITION indicates that the request failed because some
