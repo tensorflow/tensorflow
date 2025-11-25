@@ -135,6 +135,13 @@ HloFusionAnalysis::EmitterFusionKind GetEmitterFusionKind(
     return HloFusionAnalysis::EmitterFusionKind::kCuDnn;
   }
 
+  if (fusion_roots[0].opcode() == HloOpcode::kCustomCall &&
+      (fusion_roots[0].instruction().custom_call_target() == "PadToStatic" ||
+       fusion_roots[0].instruction().custom_call_target() ==
+           "SliceToDynamic")) {
+    return HloFusionAnalysis::EmitterFusionKind::kDynamicPadder;
+  }
+
   std::optional<HloInstructionAdaptor> first_reduce_hero;
   for (auto [root, hero] : llvm::zip(fusion_roots, fusion_heroes)) {
     if (IsRealReductionHero(root.instruction(), hero.instruction(),

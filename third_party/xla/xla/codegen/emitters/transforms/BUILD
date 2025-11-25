@@ -81,7 +81,6 @@ cc_library(
         "//xla/codegen/intrinsic:tanh",
         "//xla/codegen/intrinsic:type",
         "//xla/hlo/analysis:indexing_analysis",
-        "//xla/hlo/analysis:symbolic_expr",
         "//xla/mlir_hlo",
         "//xla/mlir_hlo:map_mhlo_to_scalar_op",
         "//xla/service/gpu:ir_emission_utils",

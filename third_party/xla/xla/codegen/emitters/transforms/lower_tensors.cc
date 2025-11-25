@@ -1325,6 +1325,74 @@ class RewriteAtomicRMW : public OpRewritePattern<AtomicRMWOp> {
   const DeviceSpec& device_spec_;
 };
 
+Value EmitI32Load(mlir::ImplicitLocOpBuilder& b, Value ptr, bool is_aligned) {
+  if (is_aligned) {
+    return b.create<ml::LoadOp>(b.getI32Type(), ptr);
+  }
+
+  mlir::LLVMTypeConverter converter(b.getContext());
+  auto llvm_element_type = converter.convertType(b.getI8Type());
+  auto array_type = b.getType<ml::LLVMArrayType>(llvm_element_type, 4);
+
+  Value result = b.create<ml::ConstantOp>(b.getI32Type(), 0);
+  for (int i = 0; i < 4; ++i) {
+    auto gep = b.create<ml::GEPOp>(ptr.getType(), array_type, ptr,
+                                   llvm::SmallVector<mlir::LLVM::GEPArg>{0, i});
+    gep.setNoWrapFlags(mlir::LLVM::GEPNoWrapFlags::inbounds);
+    Value byte_value = b.create<ml::LoadOp>(b.getI8Type(), gep);
+
+    byte_value = b.create<ml::ZExtOp>(b.getI32Type(), byte_value);
+    Value shifted = b.create<ml::ShlOp>(
+        byte_value, b.create<ml::ConstantOp>(b.getI32Type(), i * 8));
+    result = b.create<ml::OrOp>(result, shifted);
+  }
+  return result;
+}
+
+class RewriteGetDynamicDimSize : public OpRewritePattern<GetDynamicDimSizeOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(
+      GetDynamicDimSizeOp op, mlir::PatternRewriter& rewriter) const override {
+    mlir::ImplicitLocOpBuilder b(op.getLoc(), rewriter);
+
+    auto tensor = op.getTensor();
+    auto tensor_type = mlir::dyn_cast<mlir::RankedTensorType>(tensor.getType());
+
+    Type element_type = tensor_type.getElementType();
+    int64_t num_elements = tensor_type.getNumElements();
+    std::optional<int> sub_byte_width = GetSubByteBitWidth(element_type);
+    if (sub_byte_width) {
+      element_type = b.getI8Type();
+      // Elements are packed.
+      num_elements = CeilOfRatio<int64_t>(num_elements, 8 / *sub_byte_width);
+    }
+
+    // The offset of the dim size from the start of the buffer. The dynamic dim
+    // sizes are stored after the tensor data as a tail-allocated metadata of
+    // s32 type.
+    int64_t dynamic_size_offset_in_bytes =
+        num_elements * element_type.getIntOrFloatBitWidth() / 8 +
+        op.getDim() * b.getI32Type().getWidth() / 8;
+
+    auto ptr_type = ml::LLVMPointerType::get(b.getContext());
+    Value tensor_ptr =
+        b.create<UnrealizedConversionCastOp>(ptr_type, tensor).getResult(0);
+
+    Value addr_offset =
+        b.create<ml::ConstantOp>(b.getI64Type(), dynamic_size_offset_in_bytes);
+
+    Value addr_int = b.create<ml::PtrToIntOp>(b.getI64Type(), tensor_ptr);
+    Value metadata_addr_int = b.create<ml::AddOp>(addr_int, addr_offset);
+    Value metadata_addr = b.create<ml::IntToPtrOp>(ptr_type, metadata_addr_int);
+
+    bool is_aligned = dynamic_size_offset_in_bytes % 4 == 0;
+    rewriter.replaceOp(op, EmitI32Load(b, metadata_addr, is_aligned));
+
+    return success();
+  }
+};
+
 class LowerTensorsPass : public impl::LowerTensorsPassBase<LowerTensorsPass> {
  public:
   explicit LowerTensorsPass(const LowerTensorsPassOptions& options)
@@ -1351,10 +1419,11 @@ class LowerTensorsPass : public impl::LowerTensorsPassBase<LowerTensorsPass> {
     mlir::RewritePatternSet tensor_patterns(mlir_context);
 
     tensor_patterns.add<RewriteAtomicRMW>(mlir_context, device_spec_);
-    tensor_patterns
-        .add<RewriteAllocateShared, RewriteNonScalarConstants,
-             RewriteSyncThreads, RewriteTensorExtract, RewriteTransferRead,
-             RewriteTensorInsert, RewriteTransferWrite>(mlir_context);
+    tensor_patterns.add<RewriteAllocateShared, RewriteGetDynamicDimSize,
+                        RewriteNonScalarConstants, RewriteSyncThreads,
+                        RewriteTensorExtract, RewriteTensorInsert,
+                        RewriteTransferRead, RewriteTransferWrite>(
+        mlir_context);
     if (mlir::failed(mlir::applyPatternsGreedily(getOperation(),
                                                  std::move(tensor_patterns)))) {
       signalPassFailure();
@@ -1396,13 +1465,7 @@ class LowerTensorsPass : public impl::LowerTensorsPassBase<LowerTensorsPass> {
           if (func.getArgAttr(base.getArgNumber(), "xla.invariant")) {
             load.setInvariant(true);
           }
-          return;
         }
-      }
-      if (!device_spec_.IsCpu()) {
-        load.emitOpError(
-            "load op address is not (a GEP of) a function argument");
-        signalPassFailure();
       }
     });
   }
