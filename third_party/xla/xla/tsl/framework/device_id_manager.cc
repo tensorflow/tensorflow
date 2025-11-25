@@ -15,17 +15,13 @@ limitations under the License.
 
 #include "xla/tsl/framework/device_id_manager.h"
 
-#include <cstdint>
-#include <string>
 #include <unordered_map>
-#include <utility>
 #include <vector>
 
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/tsl/framework/device_id.h"
-#include "xla/tsl/framework/device_type.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/macros.h"
@@ -138,9 +134,8 @@ absl::Status DeviceIdManager::TfToPlatformDeviceId(
                                                  platform_device_id)) {
     return absl::OkStatus();
   }
-  return absl::NotFoundError(
-      absl::StrCat("TensorFlow device ", type.type_string(), ":",
-                   tf_device_id.value(), " was not registered"));
+  return errors::NotFound("TensorFlow device ", type, ":", tf_device_id.value(),
+                          " was not registered");
 }
 
 absl::StatusOr<std::vector<TfDeviceId>> DeviceIdManager::GetTfDevicesOnPlatform(
