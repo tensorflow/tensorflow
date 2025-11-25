@@ -81,3 +81,6 @@ def rocm_library(copts = [], deps = [], **kwargs):
     if "@local_config_rocm//rocm:rocm_headers" not in deps:
       deps.append("@local_config_rocm//rocm:rocm_headers")
     native.cc_library(copts = rocm_default_copts() + copts, deps = deps, **kwargs)
+
+def get_rbe_amdgpu_pool(is_single_gpu = False):
+    return "%{single_gpu_rbe_pool}" if is_single_gpu else "%{multi_gpu_rbe_pool}"
