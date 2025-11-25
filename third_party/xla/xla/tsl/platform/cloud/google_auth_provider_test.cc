@@ -17,10 +17,25 @@ limitations under the License.
 
 #include <stdlib.h>
 
+#include <cstdint>
+#include <memory>
+#include <string>
+#include <vector>
+
+#include "absl/status/status.h"
+#include "absl/strings/string_view.h"
+#include "json/json.h"
+#include "third_party/jsoncpp/include/json/value.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/cloud/compute_engine_metadata_client.h"
+#include "xla/tsl/platform/cloud/http_request.h"
 #include "xla/tsl/platform/cloud/http_request_fake.h"
+#include "xla/tsl/platform/cloud/oauth_client.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/test.h"
 #include "tsl/platform/path.h"
+#include "tsl/platform/retrying_utils.h"
 
 namespace tsl {
 
@@ -225,7 +240,7 @@ TEST_F(GoogleAuthProviderTest, NothingAvailable) {
       "Uri: http://metadata.google.internal/computeMetadata/v1/instance"
       "/service-accounts/default/token\n"
       "Header Metadata-Flavor: Google\n",
-      "", errors::NotFound("404"), 404)});
+      "", absl::NotFoundError("404"), 404)});
 
   FakeEnv env;
   std::shared_ptr<HttpRequest::Factory> fakeHttpRequestFactory =

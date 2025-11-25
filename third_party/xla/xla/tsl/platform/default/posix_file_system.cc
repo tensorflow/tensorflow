@@ -20,6 +20,18 @@ limitations under the License.
 #include <stdio.h>
 #include <sys/mman.h>
 
+#include <cstring>
+#include <memory>
+#include <string>
+#include <vector>
+
+#include "absl/status/status.h"
+#include "absl/strings/cord.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
+#include "xla/tsl/platform/file_statistics.h"
+#include "xla/tsl/platform/file_system.h"
+
 #if defined(__linux__)
 #include <sys/sendfile.h>
 #endif
@@ -295,7 +307,7 @@ absl::Status PosixFileSystem::FileExists(const std::string& fname,
   if (access(TranslateName(fname).c_str(), F_OK) == 0) {
     return absl::OkStatus();
   }
-  return errors::NotFound(fname, " not found");
+  return absl::NotFoundError(absl::StrCat(fname, " not found"));
 }
 
 absl::Status PosixFileSystem::GetChildren(const std::string& dir,

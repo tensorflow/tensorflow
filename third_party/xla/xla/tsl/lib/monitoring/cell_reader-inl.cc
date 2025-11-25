@@ -21,7 +21,9 @@ limitations under the License.
 #include <vector>
 
 #include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "xla/tsl/lib/monitoring/collected_metrics.h"
 #include "xla/tsl/lib/monitoring/collection_registry.h"
@@ -67,8 +69,8 @@ absl::StatusOr<std::vector<Point>> GetPoints(
     const std::vector<std::string>& labels) {
   auto metric_descriptor = metrics.metric_descriptor_map.find(metric_name);
   if (metric_descriptor == metrics.metric_descriptor_map.end()) {
-    return errors::NotFound("Metric descriptor is not found for metric ",
-                            metric_name, ".");
+    return absl::NotFoundError(absl::StrCat(
+        "Metric descriptor is not found for metric ", metric_name, "."));
   }
   const std::vector<std::string>& label_names =
       metric_descriptor->second->label_names;
@@ -80,8 +82,8 @@ absl::StatusOr<std::vector<Point>> GetPoints(
   }
   auto point_set = metrics.point_set_map.find(metric_name);
   if (point_set == metrics.point_set_map.end()) {
-    return errors::NotFound("Metric point set is not found for metric ",
-                            metric_name, ".");
+    return absl::NotFoundError(absl::StrCat(
+        "Metric point set is not found for metric ", metric_name, "."));
   }
 
   std::vector<Point> points;

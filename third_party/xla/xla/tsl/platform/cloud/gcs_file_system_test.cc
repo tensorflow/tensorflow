@@ -1262,7 +1262,7 @@ TEST(GcsFileSystemTest, NewWritableFile_UploadReturns410) {
                            "Header Content-Range: bytes 0-16/17\n"
                            "Timeouts: 5 1 30\n"
                            "Put body: content1,content2\n",
-                           "", errors::NotFound("important HTTP error 410"),
+                           "", absl::NotFoundError("important HTTP error 410"),
                            410),
        // These calls will be made in the Close() attempt from the destructor.
        // Letting the destructor succeed.
@@ -1444,7 +1444,7 @@ TEST(GcsFileSystemTest, NewAppendableFile_ObjectDoesNotExist) {
            "Auth Token: fake_token\n"
            "Range: 0-1048575\n"
            "Timeouts: 5 1 20\n",
-           "", errors::NotFound("404"), 404),
+           "", absl::NotFoundError("404"), 404),
        new FakeHttpRequest(
            "Uri: https://www.googleapis.com/upload/storage/v1/b/bucket/o"
            "?uploadType=resumable&name=filename\n"
@@ -1553,7 +1553,7 @@ TEST(GcsFileSystemTest, FileExists_YesAsFolder) {
            "path%2Fsubfolder?fields=size%2Cgeneration%2Cupdated\n"
            "Auth Token: fake_token\n"
            "Timeouts: 5 1 10\n",
-           "", errors::NotFound("404"), 404),
+           "", absl::NotFoundError("404"), 404),
        new FakeHttpRequest(
            "Uri: https://www.googleapis.com/storage/v1/b/bucket/o?"
            "fields=items%2Fname%2CnextPageToken&prefix=path%2Fsubfolder%2F"
@@ -1610,7 +1610,7 @@ TEST(GcsFileSystemTest, FileExists_NotAsObjectOrFolder) {
            "path%2Ffile1.txt?fields=size%2Cgeneration%2Cupdated\n"
            "Auth Token: fake_token\n"
            "Timeouts: 5 1 10\n",
-           "", errors::NotFound("404"), 404),
+           "", absl::NotFoundError("404"), 404),
        new FakeHttpRequest(
            "Uri: https://www.googleapis.com/storage/v1/b/bucket/o?"
            "fields=items%2Fname%2CnextPageToken&prefix=path%2Ffile1.txt%2F"
@@ -1639,12 +1639,12 @@ TEST(GcsFileSystemTest, FileExists_NotAsBucket) {
            "Uri: https://www.googleapis.com/storage/v1/b/bucket2\n"
            "Auth Token: fake_token\n"
            "Timeouts: 5 1 10\n",
-           "", errors::NotFound("404"), 404),
+           "", absl::NotFoundError("404"), 404),
        new FakeHttpRequest(
            "Uri: https://www.googleapis.com/storage/v1/b/bucket2\n"
            "Auth Token: fake_token\n"
            "Timeouts: 5 1 10\n",
-           "", errors::NotFound("404"), 404)});
+           "", absl::NotFoundError("404"), 404)});
   GcsFileSystem fs(
       std::unique_ptr<AuthProvider>(new FakeAuthProvider),
       std::unique_ptr<HttpRequest::Factory>(
@@ -1673,7 +1673,7 @@ TEST(GcsFileSystemTest, FileExists_StatCache) {
            "path%2Fsubfolder%2F?fields=size%2Cgeneration%2Cupdated\n"
            "Auth Token: fake_token\n"
            "Timeouts: 5 1 10\n",
-           "", errors::NotFound("404"), 404),
+           "", absl::NotFoundError("404"), 404),
        new FakeHttpRequest(
            "Uri: https://www.googleapis.com/storage/v1/b/bucket/o?"
            "fields=items%2Fname%2CnextPageToken&prefix=path%2Fsubfolder%2F"
@@ -2318,7 +2318,7 @@ TEST(GcsFileSystemTest, DeleteFile_StatCacheRemoved) {
            "file.txt?fields=size%2Cgeneration%2Cupdated\n"
            "Auth Token: fake_token\n"
            "Timeouts: 5 1 10\n",
-           "", errors::NotFound("404"), 404),
+           "", absl::NotFoundError("404"), 404),
        new FakeHttpRequest(
            "Uri: https://www.googleapis.com/storage/v1/b/bucket/o?"
            "fields=items%2Fname%2CnextPageToken&prefix=file.txt%2F"
@@ -3035,7 +3035,7 @@ TEST(GcsFileSystemTest, RenameFile_Object_DeletionRetried) {
            "Auth Token: fake_token\n"
            "Timeouts: 5 1 10\n"
            "Delete: yes\n",
-           "", errors::NotFound("404"), 404)});
+           "", absl::NotFoundError("404"), 404)});
   GcsFileSystem fs(
       std::unique_ptr<AuthProvider>(new FakeAuthProvider),
       std::unique_ptr<HttpRequest::Factory>(
@@ -3202,7 +3202,7 @@ TEST(GcsFileSystemTest, Stat_Folder) {
            "subfolder?fields=size%2Cgeneration%2Cupdated\n"
            "Auth Token: fake_token\n"
            "Timeouts: 5 1 10\n",
-           "", errors::NotFound("404"), 404),
+           "", absl::NotFoundError("404"), 404),
        new FakeHttpRequest(
            "Uri: https://www.googleapis.com/storage/v1/b/bucket/o?"
            "fields=items%2Fname%2CnextPageToken&prefix=subfolder%2F"
@@ -3236,7 +3236,7 @@ TEST(GcsFileSystemTest, Stat_ObjectOrFolderNotFound) {
            "path?fields=size%2Cgeneration%2Cupdated\n"
            "Auth Token: fake_token\n"
            "Timeouts: 5 1 10\n",
-           "", errors::NotFound("404"), 404),
+           "", absl::NotFoundError("404"), 404),
        new FakeHttpRequest(
            "Uri: https://www.googleapis.com/storage/v1/b/bucket/o?"
            "fields=items%2Fname%2CnextPageToken&prefix=path%2F"
@@ -3289,7 +3289,7 @@ TEST(GcsFileSystemTest, Stat_BucketNotFound) {
       "Uri: https://www.googleapis.com/storage/v1/b/bucket\n"
       "Auth Token: fake_token\n"
       "Timeouts: 5 1 10\n",
-      "", errors::NotFound("404"), 404)});
+      "", absl::NotFoundError("404"), 404)});
   GcsFileSystem fs(
       std::unique_ptr<AuthProvider>(new FakeAuthProvider),
       std::unique_ptr<HttpRequest::Factory>(
@@ -3320,7 +3320,7 @@ TEST(GcsFileSystemTest, Stat_Cache) {
            "subfolder%2F?fields=size%2Cgeneration%2Cupdated\n"
            "Auth Token: fake_token\n"
            "Timeouts: 5 1 10\n",
-           "", errors::NotFound("404"), 404),
+           "", absl::NotFoundError("404"), 404),
        new FakeHttpRequest(
            "Uri: https://www.googleapis.com/storage/v1/b/bucket/o?"
            "fields=items%2Fname%2CnextPageToken&prefix=subfolder%2F"
@@ -3439,7 +3439,7 @@ TEST(GcsFileSystemTest, IsDirectory_NotFound) {
            "file.txt?fields=size%2Cgeneration%2Cupdated\n"
            "Auth Token: fake_token\n"
            "Timeouts: 5 1 10\n",
-           "", errors::NotFound("404"), 404)});
+           "", absl::NotFoundError("404"), 404)});
   GcsFileSystem fs(
       std::unique_ptr<AuthProvider>(new FakeAuthProvider),
       std::unique_ptr<HttpRequest::Factory>(
@@ -3549,7 +3549,7 @@ TEST(GcsFileSystemTest, IsDirectory_BucketNotFound) {
       "Uri: https://www.googleapis.com/storage/v1/b/bucket\n"
       "Auth Token: fake_token\n"
       "Timeouts: 5 1 10\n",
-      "", errors::NotFound("404"), 404)});
+      "", absl::NotFoundError("404"), 404)});
   GcsFileSystem fs(
       std::unique_ptr<AuthProvider>(new FakeAuthProvider),
       std::unique_ptr<HttpRequest::Factory>(
@@ -3767,7 +3767,7 @@ TEST(GcsFileSystemTest, DeleteRecursively_DeletionErrors) {
                            "Auth Token: fake_token\n"
                            "Timeouts: 5 1 10\n"
                            "Delete: yes\n",
-                           "", errors::NotFound("404"), 404),
+                           "", absl::NotFoundError("404"), 404),
        // Checking if gs://bucket/path/subpath/ is a folder - it is.
        new FakeHttpRequest(
            "Uri: https://www.googleapis.com/storage/v1/b/bucket/o?"
@@ -3790,7 +3790,7 @@ TEST(GcsFileSystemTest, DeleteRecursively_DeletionErrors) {
                            "Auth Token: fake_token\n"
                            "Timeouts: 5 1 10\n"
                            "Delete: yes\n",
-                           "", errors::NotFound("404"), 404),
+                           "", absl::NotFoundError("404"), 404),
        // Checking if gs://bucket/path/file3.txt/ is a folder - it's not.
        new FakeHttpRequest(
            "Uri: https://www.googleapis.com/storage/v1/b/bucket/o?"
@@ -3805,7 +3805,7 @@ TEST(GcsFileSystemTest, DeleteRecursively_DeletionErrors) {
            "path%2Ffile3.txt?fields=size%2Cgeneration%2Cupdated\n"
            "Auth Token: fake_token\n"
            "Timeouts: 5 1 10\n",
-           "", errors::NotFound("404"), 404)});
+           "", absl::NotFoundError("404"), 404)});
 
   GcsFileSystem fs(
       std::unique_ptr<AuthProvider>(new FakeAuthProvider),
@@ -3841,7 +3841,7 @@ TEST(GcsFileSystemTest, DeleteRecursively_NotAFolder) {
            "path?fields=size%2Cgeneration%2Cupdated\n"
            "Auth Token: fake_token\n"
            "Timeouts: 5 1 10\n",
-           "", errors::NotFound("404"), 404)});
+           "", absl::NotFoundError("404"), 404)});
   GcsFileSystem fs(
       std::unique_ptr<AuthProvider>(new FakeAuthProvider),
       std::unique_ptr<HttpRequest::Factory>(

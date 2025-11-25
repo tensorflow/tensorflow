@@ -14,6 +14,19 @@ limitations under the License.
 ==============================================================================*/
 
 #include "xla/tsl/platform/cloud/google_auth_provider.h"
+
+#include <cstdint>
+#include <cstdlib>
+#include <memory>
+#include <vector>
+
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
+#include "xla/tsl/platform/cloud/compute_engine_metadata_client.h"
+#include "xla/tsl/platform/cloud/oauth_client.h"
+#include "xla/tsl/platform/types.h"
 #ifndef _WIN32
 #include <pwd.h>
 #include <unistd.h>
@@ -89,8 +102,8 @@ absl::Status GetEnvironmentVariableFileName(string* filename) {
   }
   const char* result = std::getenv(kGoogleApplicationCredentials);
   if (!result || !IsFile(result)) {
-    return errors::NotFound(absl::StrCat("$", kGoogleApplicationCredentials,
-                                         " is not set or corrupt."));
+    return absl::NotFoundError(absl::StrCat("$", kGoogleApplicationCredentials,
+                                            " is not set or corrupt."));
   }
   *filename = result;
   return absl::OkStatus();
@@ -115,7 +128,7 @@ absl::Status GetWellKnownFileName(string* filename) {
   }
   auto result = io::JoinPath(config_dir, kWellKnownCredentialsFile);
   if (!IsFile(result)) {
-    return errors::NotFound(
+    return absl::NotFoundError(
         "Could not find the credentials file in the standard gcloud location.");
   }
   *filename = result;
@@ -211,7 +224,7 @@ absl::Status GoogleAuthProvider::GetTokenFromFiles() {
   string credentials_filename;
   if (!GetEnvironmentVariableFileName(&credentials_filename).ok() &&
       !GetWellKnownFileName(&credentials_filename).ok()) {
-    return errors::NotFound("Could not locate the credentials file.");
+    return absl::NotFoundError("Could not locate the credentials file.");
   }
 
   Json::Value json;
@@ -254,7 +267,7 @@ absl::Status GoogleAuthProvider::GetTokenFromGce() {
 absl::Status GoogleAuthProvider::GetTokenForTesting() {
   const char* token = std::getenv(kGoogleAuthTokenForTesting);
   if (!token) {
-    return errors::NotFound("The env variable for testing was not set.");
+    return absl::NotFoundError("The env variable for testing was not set.");
   }
   expiration_timestamp_sec_ = UINT64_MAX;
   current_token_ = token;

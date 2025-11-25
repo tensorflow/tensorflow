@@ -1322,7 +1322,7 @@ void GcsFileSystem::ClearFileCaches(const string& fname) {
   absl::ReaderMutexLock l(&block_cache_lock_);
   file_block_cache_->RemoveFile(fname);
   stat_cache_->Delete(fname);
-  // TODO(rxsang): Remove the patterns that matche the file in
+  // TODO(rxsang): Remove the patterns that match the file in
   // MatchingPathsCache as well.
 }
 
@@ -1499,7 +1499,8 @@ absl::Status GcsFileSystem::FileExists(const string& fname,
   if (result) {
     return absl::OkStatus();
   }
-  return errors::NotFound("The specified path ", fname, " was not found.");
+  return absl::NotFoundError(
+      absl::StrCat("The specified path ", fname, " was not found."));
 }
 
 absl::Status GcsFileSystem::ObjectExists(const string& fname,
@@ -1925,7 +1926,8 @@ absl::Status GcsFileSystem::Stat(const string& fname, TransactionToken* token,
       *stat = DIRECTORY_STAT;
       return absl::OkStatus();
     }
-    return errors::NotFound("The specified bucket ", fname, " was not found.");
+    return absl::NotFoundError(
+        absl::StrCat("The specified bucket ", fname, " was not found."));
   }
 
   GcsFileStat gcs_stat;
@@ -1943,7 +1945,8 @@ absl::Status GcsFileSystem::Stat(const string& fname, TransactionToken* token,
     *stat = DIRECTORY_STAT;
     return absl::OkStatus();
   }
-  return errors::NotFound("The specified path ", fname, " was not found.");
+  return absl::NotFoundError(
+      absl::StrCat("The specified path ", fname, " was not found."));
 }
 
 absl::Status GcsFileSystem::DeleteFile(const string& fname,
@@ -1975,8 +1978,9 @@ absl::Status GcsFileSystem::CreateDir(const string& dirname,
     bool is_bucket;
     TF_RETURN_IF_ERROR(BucketExists(bucket, &is_bucket));
     return is_bucket ? absl::OkStatus()
-                     : errors::NotFound("The specified bucket ",
-                                        dirname_with_slash, " was not found.");
+                     : absl::NotFoundError(absl::StrCat("The specified bucket ",
+                                                        dirname_with_slash,
+                                                        " was not found."));
   }
 
   if (FileExists(dirname_with_slash, token).ok()) {
@@ -2147,8 +2151,8 @@ absl::Status GcsFileSystem::IsDirectory(const string& fname,
     if (is_bucket) {
       return absl::OkStatus();
     }
-    return errors::NotFound("The specified bucket gs://", bucket,
-                            " was not found.");
+    return absl::NotFoundError(
+        absl::StrCat("The specified bucket gs://", bucket, " was not found."));
   }
   bool is_folder;
   TF_RETURN_IF_ERROR(FolderExists(fname, &is_folder));
@@ -2161,7 +2165,8 @@ absl::Status GcsFileSystem::IsDirectory(const string& fname,
     return errors::FailedPrecondition("The specified path ", fname,
                                       " is not a directory.");
   }
-  return errors::NotFound("The specified path ", fname, " was not found.");
+  return absl::NotFoundError(
+      absl::StrCat("The specified path ", fname, " was not found."));
 }
 
 absl::Status GcsFileSystem::DeleteRecursively(const string& dirname,

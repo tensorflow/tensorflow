@@ -28,11 +28,16 @@ limitations under the License.
 #include <time.h>
 
 #include "absl/status/status.h"
+#include "absl/strings/cord.h"
 #include "absl/strings/string_view.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/file_statistics.h"
+#include "xla/tsl/platform/file_system.h"
 #include "xla/tsl/platform/file_system_helper.h"
 #include "xla/tsl/platform/logging.h"
+#include "xla/tsl/platform/status.h"
+#include "xla/tsl/platform/types.h"
 #include "xla/tsl/platform/windows/error_windows.h"
 #include "xla/tsl/platform/windows/wide_char.h"
 #include "xla/tsl/protobuf/error_codes.pb.h"
@@ -534,7 +539,7 @@ Status WindowsFileSystem::FileExists(const string& fname,
   if (_waccess(ws_translated_fname.c_str(), kOk) == 0) {
     return absl::OkStatus();
   }
-  return errors::NotFound(fname, " not found");
+  return absl::NotFoundError(absl::StrCat(fname, " not found"));
 }
 
 Status WindowsFileSystem::GetChildren(const string& dir,
