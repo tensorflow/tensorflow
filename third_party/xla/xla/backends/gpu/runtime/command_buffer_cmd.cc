@@ -457,10 +457,9 @@ CommandBufferCmdExecutor::CommandBufferCmdExecutor(
 }
 
 absl::Status CommandBufferCmdExecutor::Prepare(
-    const Thunk::PrepareParams& params,
-    Thunk::ResourceRequestsInterface& resource_requests) {
+    const Thunk::PrepareParams& params) {
   for (auto& command : commands_) {
-    TF_RETURN_IF_ERROR(command->Prepare(params, resource_requests));
+    TF_RETURN_IF_ERROR(command->Prepare(params));
   }
   return absl::OkStatus();
 }
@@ -1552,11 +1551,9 @@ absl::Status WhileCmd::Initialize(const Thunk::InitializeParams& params,
   return absl::OkStatus();
 }
 
-absl::Status WhileCmd::Prepare(
-    const Thunk::PrepareParams& params,
-    Thunk::ResourceRequestsInterface& resource_requests) {
-  TF_RETURN_IF_ERROR(cond_commands_.Prepare(params, resource_requests));
-  TF_RETURN_IF_ERROR(body_commands_.Prepare(params, resource_requests));
+absl::Status WhileCmd::Prepare(const Thunk::PrepareParams& params) {
+  TF_RETURN_IF_ERROR(cond_commands_.Prepare(params));
+  TF_RETURN_IF_ERROR(body_commands_.Prepare(params));
   return absl::OkStatus();
 }
 
@@ -2062,9 +2059,8 @@ CollectiveCmd::CollectiveCmd(
       config_(std::move(config)),
       async_events_(std::move(async_events)) {}
 
-absl::Status CollectiveCmd::Prepare(
-    const Thunk::PrepareParams& params,
-    Thunk::ResourceRequestsInterface& resource_requests) {
+absl::Status CollectiveCmd::Prepare(const Thunk::PrepareParams& params) {
+  TF_RET_CHECK(params.collective_params != nullptr);
   TF_ASSIGN_OR_RETURN(GpuCollectives * collectives,
                       Thunk::GetGpuCollectives(params));
   TF_ASSIGN_OR_RETURN(
@@ -2072,7 +2068,7 @@ absl::Status CollectiveCmd::Prepare(
       GetGpuCliqueKey(collectives, *params.collective_params,
                       config().replica_groups, config().group_mode,
                       AsyncStreamKind::ASYNC_STREAM_KIND_COLLECTIVE));
-  return resource_requests.AddClique(clique_key);
+  return params.clique_requests->RequestClique(clique_key);
 }
 
 absl::StatusOr<const se::CommandBuffer::Command*>
@@ -2592,8 +2588,7 @@ absl::Status DynamicSliceFusionCmd::Initialize(
 }
 
 absl::Status DynamicSliceFusionCmd::Prepare(
-    const Thunk::PrepareParams& params,
-    Thunk::ResourceRequestsInterface& resource_requests) {
+    const Thunk::PrepareParams& params) {
   for (DynamicSliceThunk::SliceDef& slice : slices_) {
     VLOG(3) << "DynamicSliceFusionCmd: slice: " << slice.ToString();
     if (slice.offsets.has_value()) {
@@ -2609,7 +2604,7 @@ absl::Status DynamicSliceFusionCmd::Prepare(
                    slice.orig_shape->dimensions().size());
     }
   }
-  TF_RETURN_IF_ERROR(embedded_commands_.Prepare(params, resource_requests));
+  TF_RETURN_IF_ERROR(embedded_commands_.Prepare(params));
   if (offset_as_function_of_indvar_metadata_ != std::nullopt) {
     Indvar(this) =
         HloEvaluator()

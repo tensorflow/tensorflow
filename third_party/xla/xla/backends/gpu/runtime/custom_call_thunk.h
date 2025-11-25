@@ -124,8 +124,7 @@ class CustomCallThunk : public Thunk {
       xla::ffi::AttributesMap attributes,
       const HloComputation* called_computation);
 
-  absl::Status Prepare(const PrepareParams& params,
-                       ResourceRequestsInterface& resource_requests) override;
+  absl::Status Prepare(const PrepareParams& params) override;
   absl::Status Initialize(const InitializeParams& params) override;
   absl::Status ExecuteOnStream(const ExecuteParams& params) override;
 

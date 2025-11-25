@@ -100,11 +100,9 @@ WhileThunk::WhileThunk(
       body_thunk_sequence_(std::move(body_thunk_sequence)),
       trip_count_(trip_count) {}
 
-absl::Status WhileThunk::Prepare(const PrepareParams& params,
-                                 ResourceRequestsInterface& resource_requests) {
-  TF_RETURN_IF_ERROR(
-      condition_thunk_sequence_->Prepare(params, resource_requests));
-  TF_RETURN_IF_ERROR(body_thunk_sequence_->Prepare(params, resource_requests));
+absl::Status WhileThunk::Prepare(const PrepareParams& params) {
+  TF_RETURN_IF_ERROR(condition_thunk_sequence_->Prepare(params));
+  TF_RETURN_IF_ERROR(body_thunk_sequence_->Prepare(params));
   return absl::OkStatus();
 }
 

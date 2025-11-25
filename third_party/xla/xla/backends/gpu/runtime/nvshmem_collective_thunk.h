@@ -42,8 +42,7 @@ class NvshmemCollectiveThunk : public Thunk {
  public:
   NvshmemCollectiveThunk(Kind kind, ThunkInfo thunk_info, bool is_sync);
 
-  absl::Status Prepare(const PrepareParams& params,
-                       ResourceRequestsInterface& resource_requests) override;
+  absl::Status Prepare(const PrepareParams& params) override;
 
   absl::Status Initialize(const InitializeParams& params) override;
 

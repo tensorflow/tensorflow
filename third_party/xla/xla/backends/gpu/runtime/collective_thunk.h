@@ -1,3 +1,4 @@
+#include "xla/backends/gpu/runtime/collective_cliques.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
 /* Copyright 2019 The OpenXLA Authors.
 
@@ -32,6 +33,7 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
+#include "xla/backends/gpu/runtime/collective_params.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/core/collectives/communicator.h"
 #include "xla/hlo/ir/collective_op_group_mode.h"
@@ -133,11 +135,9 @@ class CollectiveThunk : public Thunk {
   };
 
   // Logging support.
-  static std::string GetDeviceString(
-      const Thunk::CollectiveExecuteParams& params);
+  static std::string GetDeviceString(const CollectiveParams& params);
 
-  absl::Status Prepare(const PrepareParams& params,
-                       ResourceRequestsInterface& resource_requests) override;
+  absl::Status Prepare(const PrepareParams& params) override;
 
   absl::Status Initialize(const InitializeParams& params) override;
 
@@ -276,20 +276,20 @@ absl::Status AddOpDescription(absl::Status status, OpT op,
 //===----------------------------------------------------------------------===//
 
 absl::StatusOr<GpuCliqueKey> GetGpuCliqueKey(
-    GpuCollectives* collectives, const Thunk::CollectiveExecuteParams& params,
+    GpuCollectives* collectives, const CollectiveParams& params,
     const std::vector<ReplicaGroup>& replica_groups,
     CollectiveOpGroupMode group_mode, AsyncStreamKind stream_kind,
     bool use_nccl = true);
 
 // Helper over GetGpuCliqueKey that builds key for AsyncStreamKind::kCollective.
 absl::StatusOr<GpuCliqueKey> GetCollectiveGpuCliqueKey(
-    const CollectiveThunk::CollectiveExecuteParams& params,
-    const CollectiveConfig& collective_config, bool use_nccl = true);
+    const CollectiveParams& params, const CollectiveConfig& collective_config,
+    bool use_nccl = true);
 
 // Returns a communicator and additional information about the clique.
 absl::StatusOr<CommunicatorHandle> GetComm(
-    GpuCollectives* collectives, const Thunk::CollectiveExecuteParams& params,
-    const Thunk::CollectiveCliques& collective_cliques,
+    GpuCollectives* collectives, const CollectiveParams& params,
+    const CollectiveCliques& collective_cliques,
     const std::vector<ReplicaGroup>& replica_groups,
     CollectiveOpGroupMode group_mode, AsyncStreamKind stream_kind);
 

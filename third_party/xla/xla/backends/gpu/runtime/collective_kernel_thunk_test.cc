@@ -226,7 +226,7 @@ absl::StatusOr<se::DeviceMemoryBase> RunCollectiveKernelThunk(
       &gpu_options);
 
   TF_ASSIGN_OR_RETURN(auto collective_params,
-                      Thunk::CollectiveExecuteParams::Create(
+                      CollectiveParams::Create(
                           run_options, /*async_streams=*/{},
                           /*local_device_ordinal=*/executor->device_ordinal()));
   std::vector<se::DeviceMemoryBase> allocated_buffers = {

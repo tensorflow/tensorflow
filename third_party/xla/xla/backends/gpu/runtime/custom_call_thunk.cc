@@ -458,8 +458,7 @@ absl::Status CustomCallThunk::ExecuteFfiHandler(
   return Call(handler, *call_frame, options, stage);
 }
 
-absl::Status CustomCallThunk::Prepare(
-    const PrepareParams& params, ResourceRequestsInterface& resource_requests) {
+absl::Status CustomCallThunk::Prepare(const PrepareParams& params) {
   if (bundle_.has_value()) {
     const RunId run_id =
         params.collective_params ? params.collective_params->run_id : RunId{-1};

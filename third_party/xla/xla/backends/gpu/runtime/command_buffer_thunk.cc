@@ -118,20 +118,19 @@ CommandBufferThunk::ExecutorCommandBuffer::UpdateBufferAllocations(
   return updated_allocs;
 }
 
-absl::Status CommandBufferThunk::Prepare(
-    const PrepareParams& params, ResourceRequestsInterface& resource_requests) {
+absl::Status CommandBufferThunk::Prepare(const PrepareParams& params) {
   // We might end up with empty command sequence if all of the captured fusions
   // are no-op (e.g. memcpy of size 0) and we have no emitted thunks for them.
   if (commands_.empty()) {
     return absl::OkStatus();
   }
 
-  TF_RETURN_IF_ERROR(commands_.Prepare(params, resource_requests));
+  TF_RETURN_IF_ERROR(commands_.Prepare(params));
 
   // Always prepare thunks if they are present so we are ready to fall back
   // on them if we detect profiling activity.
   if (thunks_) {
-    TF_RETURN_IF_ERROR(thunks_->Prepare(params, resource_requests));
+    TF_RETURN_IF_ERROR(thunks_->Prepare(params));
   }
 
   return absl::OkStatus();

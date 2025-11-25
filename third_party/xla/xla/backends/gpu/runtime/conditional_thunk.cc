@@ -57,15 +57,14 @@ ConditionalThunk::ConditionalThunk(
       branch_thunks_(std::move(branch_thunks)),
       branch_index_is_bool_(branch_index_is_bool) {}
 
-absl::Status ConditionalThunk::Prepare(
-    const PrepareParams& params, ResourceRequestsInterface& resource_requests) {
+absl::Status ConditionalThunk::Prepare(const PrepareParams& params) {
   if (branch_index_is_bool_) {
     TF_RET_CHECK(branch_thunks_.size() == 2);
   } else {
     TF_RET_CHECK(!branch_thunks_.empty());
   }
   for (auto& branch_thunk : branch_thunks_) {
-    TF_RETURN_IF_ERROR(branch_thunk->Prepare(params, resource_requests));
+    TF_RETURN_IF_ERROR(branch_thunk->Prepare(params));
   }
   return absl::OkStatus();
 }

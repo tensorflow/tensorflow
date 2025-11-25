@@ -41,8 +41,7 @@ class SequentialThunk : public Thunk {
   const ThunkSequence& thunks() const { return thunks_; }
   std::string ToString(int indent) const override;
 
-  absl::Status Prepare(const PrepareParams& params,
-                       ResourceRequestsInterface& resource_requests) override;
+  absl::Status Prepare(const PrepareParams& params) override;
   absl::Status Initialize(const InitializeParams& params) override;
   absl::Status ExecuteOnStream(const ExecuteParams& params) override;
 

@@ -81,8 +81,7 @@ class CollectiveKernelThunk : public Thunk {
       const CollectiveCliques* collective_cliques) const;
 
   // The single host collective thunk actually requires a clique key.
-  absl::Status Prepare(const PrepareParams& params,
-                       ResourceRequestsInterface& resource_requests) final;
+  absl::Status Prepare(const PrepareParams& params) final;
 
   // Allocate buffers and events as needed for cross device communication.
   // If InitializeParams contains a PTX kernel, it will be used instead of the

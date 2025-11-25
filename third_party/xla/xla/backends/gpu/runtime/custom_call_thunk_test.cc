@@ -44,7 +44,6 @@ limitations under the License.
 #include "xla/service/custom_call_status.h"
 #include "xla/service/custom_call_target_registry.h"
 #include "xla/service/gpu/buffer_allocations.h"
-#include "xla/service/gpu/resource_requests.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/platform_util.h"
 #include "xla/service/service_executable_run_options.h"
@@ -243,7 +242,6 @@ TEST(CustomCallThunkTest, CustomCallWithOwnedHandlers) {
   });
   se::StreamExecutorMemoryAllocator allocator(executor);
   Thunk::PrepareParams prepare_params = Thunk::PrepareParams{};
-  ResourceRequests resource_requests;
   BufferAllocations buffer_allocations({}, 0, &allocator);
   Thunk::InitializeParams initialize_params;
   initialize_params.stream = stream.get();
@@ -264,7 +262,7 @@ TEST(CustomCallThunkTest, CustomCallWithOwnedHandlers) {
   EXPECT_EQ(initialize_calls, 0);
   EXPECT_EQ(execute_calls, 0);
 
-  EXPECT_THAT(thunk->Prepare(prepare_params, resource_requests), IsOk());
+  EXPECT_THAT(thunk->Prepare(prepare_params), IsOk());
   EXPECT_EQ(instantiate_calls, 1);
   EXPECT_EQ(prepare_calls, 1);
   EXPECT_EQ(initialize_calls, 0);
@@ -295,7 +293,6 @@ TEST(CustomCallThunkTest, CustomCallWithOwnedHandlersWithoutOptionalOnes) {
   });
   se::StreamExecutorMemoryAllocator allocator(executor);
   Thunk::PrepareParams prepare_params = Thunk::PrepareParams{};
-  ResourceRequests resource_requests;
   Thunk::InitializeParams initialize_params = Thunk::InitializeParams{};
   BufferAllocations buffer_allocations({}, 0, &allocator);
   Thunk::ExecuteParams execute_params = Thunk::ExecuteParams::Create(
@@ -310,7 +307,7 @@ TEST(CustomCallThunkTest, CustomCallWithOwnedHandlersWithoutOptionalOnes) {
                               /*operands=*/{},
                               /*results=*/{}, /*attributes=*/{},
                               /*called_computation=*/nullptr));
-  EXPECT_THAT(thunk->Prepare(prepare_params, resource_requests), IsOk());
+  EXPECT_THAT(thunk->Prepare(prepare_params), IsOk());
   EXPECT_THAT(thunk->Initialize(initialize_params), IsOk());
   EXPECT_THAT(thunk->ExecuteOnStream(execute_params), IsOk());
   EXPECT_EQ(execute_calls, 1);

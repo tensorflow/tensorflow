@@ -195,8 +195,7 @@ AsyncStreamKind GetStreamKindForP2P(const HloInstruction* instr) {
 // Retrieves the current collective ID (replica or partition ID) for the
 // executing device.
 absl::StatusOr<const int64_t> GetCollectiveCurrentId(
-    Thunk::CollectiveExecuteParams* collective_params,
-    const P2PConfig& config) {
+    CollectiveParams* collective_params, const P2PConfig& config) {
   GlobalDeviceId global_device_id = collective_params->global_device_id;
   TF_ASSIGN_OR_RETURN(
       const DeviceAssignment::LogicalID current_logical_id,

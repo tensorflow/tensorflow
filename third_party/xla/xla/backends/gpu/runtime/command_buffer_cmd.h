@@ -264,9 +264,7 @@ class CommandBufferCmd {
 
   // Prepare command for execution by allowing command to request shared state
   // required for recording (i.e. collective commands request cliques).
-  virtual absl::Status Prepare(
-      const Thunk::PrepareParams& params,
-      Thunk::ResourceRequestsInterface& resource_requests) {
+  virtual absl::Status Prepare(const Thunk::PrepareParams& params) {
     return absl::OkStatus();
   }
 
@@ -423,8 +421,7 @@ class CommandBufferCmdExecutor {
       SynchronizationMode synchronization_mode);
 
   // Prepares all commands added to a sequence.
-  absl::Status Prepare(const Thunk::PrepareParams& params,
-                       Thunk::ResourceRequestsInterface& resource_requests);
+  absl::Status Prepare(const Thunk::PrepareParams& params);
 
   // Initializes all commands added to a sequence.
   absl::Status Initialize(const Thunk::InitializeParams& params,
@@ -874,9 +871,7 @@ class WhileCmd : public CommandBufferCmd {
   absl::Status Initialize(const Thunk::InitializeParams& params,
                           StateManager& state) override;
 
-  absl::Status Prepare(
-      const Thunk::PrepareParams& params,
-      Thunk::ResourceRequestsInterface& resource_requests) override;
+  absl::Status Prepare(const Thunk::PrepareParams& params) override;
 
   absl::StatusOr<const se::CommandBuffer::Command*> Record(
       const Thunk::ExecuteParams& execute_params,
@@ -1076,9 +1071,7 @@ class CollectiveCmd : public CommandBufferCmd {
   CollectiveCmd(CommandBufferCmdType cmd_type, CollectiveConfig config,
                 std::shared_ptr<CollectiveThunk::AsyncEvents> async_events);
 
-  absl::Status Prepare(
-      const Thunk::PrepareParams& params,
-      Thunk::ResourceRequestsInterface& resource_requests) final;
+  absl::Status Prepare(const Thunk::PrepareParams& params) final;
 
   bool requires_initialization() override { return true; }
 
@@ -1257,9 +1250,7 @@ class DynamicSliceFusionCmd : public CommandBufferCmd {
   absl::Status Initialize(const Thunk::InitializeParams& params,
                           StateManager& state) override;
 
-  absl::Status Prepare(
-      const Thunk::PrepareParams& params,
-      Thunk::ResourceRequestsInterface& resource_requests) final;
+  absl::Status Prepare(const Thunk::PrepareParams& params) final;
 
   absl::StatusOr<const se::CommandBuffer::Command*> Record(
       const Thunk::ExecuteParams& execute_params,

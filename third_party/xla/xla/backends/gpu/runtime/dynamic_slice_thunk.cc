@@ -216,8 +216,7 @@ DynamicSliceThunk::DynamicSliceThunk(
   }
 }
 
-absl::Status DynamicSliceThunk::Prepare(
-    const PrepareParams& params, ResourceRequestsInterface& resource_requests) {
+absl::Status DynamicSliceThunk::Prepare(const PrepareParams& params) {
   for (SliceDef& slice : slices_) {
     VLOG(2) << "DynamicSliceThunk: slice: " << slice.ToString();
     if (slice.offsets.has_value()) {
@@ -236,7 +235,7 @@ absl::Status DynamicSliceThunk::Prepare(
     }
   }
 
-  TF_RETURN_IF_ERROR(embedded_thunk_->Prepare(params, resource_requests));
+  TF_RETURN_IF_ERROR(embedded_thunk_->Prepare(params));
 
   if (offset_as_function_of_indvar_metadata_ != std::nullopt) {
     Indvar(this) =

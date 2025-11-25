@@ -142,10 +142,9 @@ CollectiveOpGroupMode AllReduceStartThunk::GetGroupMode(
   return GetGroupModeInst(inst);
 }
 
-absl::Status AllReduceStartThunk::Prepare(
-    const PrepareParams& params, ResourceRequestsInterface& resource_requests) {
-  TF_RETURN_IF_ERROR(CollectiveThunk::Prepare(params, resource_requests));
-  return collective_kernel_thunk_->Prepare(params, resource_requests);
+absl::Status AllReduceStartThunk::Prepare(const PrepareParams& params) {
+  TF_RETURN_IF_ERROR(CollectiveThunk::Prepare(params));
+  return collective_kernel_thunk_->Prepare(params);
 }
 
 absl::Status AllReduceStartThunk::Initialize(const InitializeParams& params) {

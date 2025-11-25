@@ -50,6 +50,7 @@ limitations under the License.
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/rendezvous.h"
 #include "xla/shape.h"
+#include "xla/status_macros.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/stream.h"
@@ -99,7 +100,7 @@ bool IsTypeSupportedBy(PrimitiveType element_type, Thunk::Kind reduction_op) {
 }
 
 int64_t GetNumLocalParticipants(
-    const Thunk::CollectiveExecuteParams& params,
+    const CollectiveParams& params,
     const std::vector<GlobalDeviceId>& participants) {
   if (!params.global_device_id_map) {
     return participants.size();
@@ -242,7 +243,7 @@ CollectiveThunk::CollectiveThunk(Kind kind, ThunkInfo thunk_info, bool is_sync,
       async_events_(is_sync ? nullptr : std::make_shared<AsyncEvents>()) {}
 
 absl::StatusOr<GpuCliqueKey> GetGpuCliqueKey(
-    GpuCollectives* collectives, const Thunk::CollectiveExecuteParams& params,
+    GpuCollectives* collectives, const CollectiveParams& params,
     const std::vector<ReplicaGroup>& replica_groups,
     CollectiveOpGroupMode group_mode, AsyncStreamKind stream_kind,
     bool use_nccl) {
@@ -315,8 +316,8 @@ absl::StatusOr<GpuCliqueKey> GetGpuCliqueKey(
 }
 
 absl::StatusOr<GpuCliqueKey> GetCollectiveGpuCliqueKey(
-    const Thunk::CollectiveExecuteParams& params,
-    const CollectiveConfig& collective_config, bool use_nccl) {
+    const CollectiveParams& params, const CollectiveConfig& collective_config,
+    bool use_nccl) {
   TF_ASSIGN_OR_RETURN(GpuCollectives * collectives,
                       CollectiveThunk::GetGpuCollectives(params));
   return GetGpuCliqueKey(collectives, params, collective_config.replica_groups,
@@ -326,8 +327,8 @@ absl::StatusOr<GpuCliqueKey> GetCollectiveGpuCliqueKey(
 }
 
 absl::StatusOr<CommunicatorHandle> GetComm(
-    GpuCollectives* collectives, const Thunk::CollectiveExecuteParams& params,
-    const Thunk::CollectiveCliques& collective_cliques,
+    GpuCollectives* collectives, const CollectiveParams& params,
+    const CollectiveCliques& collective_cliques,
     const std::vector<ReplicaGroup>& replica_groups,
     CollectiveOpGroupMode group_mode, AsyncStreamKind stream_kind) {
   TF_ASSIGN_OR_RETURN(GpuCliqueKey clique_key,
@@ -426,15 +427,15 @@ absl::StatusOr<se::Event*> CollectiveThunk::AsyncEvents::GetEvent(
   return event->second.get();
 }
 
-absl::Status CollectiveThunk::Prepare(
-    const PrepareParams& params, ResourceRequestsInterface& resource_requests) {
+absl::Status CollectiveThunk::Prepare(const PrepareParams& params) {
+  TF_RET_CHECK(params.collective_params != nullptr);
   TF_ASSIGN_OR_RETURN(GpuCollectives * collectives, GetGpuCollectives(params));
   TF_ASSIGN_OR_RETURN(
       GpuCliqueKey clique_key,
       GetGpuCliqueKey(collectives, *params.collective_params,
                       config().replica_groups, config().group_mode,
                       GetAsyncStreamKind()));
-  return resource_requests.AddClique(clique_key);
+  return params.clique_requests->RequestClique(clique_key);
 }
 
 absl::Status CollectiveThunk::Initialize(const InitializeParams& params) {
@@ -539,7 +540,7 @@ absl::StatusOr<std::vector<Communicator*>> CollectiveThunk::GetCommunicators(
 }
 
 std::string CollectiveThunk::GetDeviceString(
-    const Thunk::CollectiveExecuteParams& collective_params) {
+    const CollectiveParams& collective_params) {
   GlobalDeviceId global_device_id = collective_params.global_device_id;
   DeviceAssignment::LogicalID logical_id =
       collective_params.device_assn->LogicalIdForDevice(global_device_id)

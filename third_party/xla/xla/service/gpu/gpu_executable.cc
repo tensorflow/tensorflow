@@ -41,6 +41,9 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/runtime/annotation.h"
+#include "xla/backends/gpu/runtime/collective_clique_requests.h"
+#include "xla/backends/gpu/runtime/collective_cliques.h"
+#include "xla/backends/gpu/runtime/collective_params.h"
 #include "xla/backends/gpu/runtime/command_buffer_conversion_pass.h"
 #include "xla/backends/gpu/runtime/nvshmem_collective_thunk.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
@@ -62,7 +65,6 @@ limitations under the License.
 #include "xla/service/gpu/gpu_constants.h"
 #include "xla/service/gpu/gpu_executable_run_options.h"
 #include "xla/service/gpu/ir_emission_utils.h"
-#include "xla/service/gpu/resource_requests.h"
 #include "xla/service/gpu/stream_executor_util.h"
 #include "xla/service/hlo_value.h"
 #include "xla/service/maybe_owning_device_memory.h"
@@ -419,37 +421,36 @@ absl::Status ExecuteThunksImpl(
   }
 
   // Parameters for executing collective operations.
-  TF_ASSIGN_OR_RETURN(Thunk::CollectiveExecuteParams collective_params,
-                      Thunk::CollectiveExecuteParams::Create(
-                          *run_options, async_comms_streams,
-                          main_stream->parent()->device_ordinal(),
-                          collective_max_nchannels, p2p_max_nchannels));
+  TF_ASSIGN_OR_RETURN(
+      CollectiveParams collective_params,
+      CollectiveParams::Create(*run_options, async_comms_streams,
+                               main_stream->parent()->device_ordinal(),
+                               collective_max_nchannels, p2p_max_nchannels));
 
-  ResourceRequests resource_requests;
+  CollectiveCliqueRequests clique_requests;
 
-  {  // Collect resource requirements from thunks.
-    Thunk::PrepareParams prepare_params{&collective_params};
+  {  // Prepare thunks for execution and collect requested GPU cliques.
+    Thunk::PrepareParams prepare_params{&collective_params, &clique_requests};
 
     tsl::profiler::TraceMe trace_prepare("Thunks::Prepare");
-    TF_RETURN_IF_ERROR(
-        thunk_sequence.Prepare(prepare_params, resource_requests));
+    TF_RETURN_IF_ERROR(thunk_sequence.Prepare(prepare_params));
   }
 
   std::vector<std::unique_ptr<CliqueKey>>* clique_keys =
       run_options->run_options().clique_keys();
   if (clique_keys != nullptr) {
-    for (const GpuCliqueKey& clique_key : resource_requests.CliqueKeys()) {
+    for (const GpuCliqueKey& clique_key : clique_requests.RequestedCliques()) {
       clique_keys->push_back(std::make_unique<GpuCliqueKey>(clique_key));
     }
   }
 
   // Acquire collective cliques requested by thunks.
-  Thunk::CollectiveCliques collective_cliques;
+  CollectiveCliques collective_cliques;
   if (!mock_collectives) {
     TF_ASSIGN_OR_RETURN(
         collective_cliques,
-        resource_requests.AcquireCollectiveCliques(
-            collective_params,
+        AcquireCollectiveCliques(
+            collective_params, clique_requests,
             debug_options
                 ? debug_options->xla_gpu_collectives_use_persistent_cliques()
                 : false));

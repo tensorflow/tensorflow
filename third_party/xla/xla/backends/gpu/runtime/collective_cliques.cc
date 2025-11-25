@@ -1,4 +1,4 @@
-/* Copyright 2024 The OpenXLA Authors.
+/* Copyright 2025 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/resource_requests.h"
+#include "xla/backends/gpu/runtime/collective_cliques.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -22,26 +22,25 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/algorithm/container.h"
+#include "absl/base/no_destructor.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/log/log.h"
-#include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/str_cat.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/backends/gpu/collectives/gpu_clique.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/collectives/gpu_cliques.h"
-#include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/backends/gpu/runtime/collective_clique_requests.h"
+#include "xla/backends/gpu/runtime/collective_params.h"
+#include "xla/core/collectives/communicator.h"
 #include "xla/core/collectives/rank_id.h"
 #include "xla/service/gpu/gpu_executable_run_options.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/util.h"
 #include "tsl/profiler/lib/traceme.h"
-#include "tsl/profiler/lib/traceme_encode.h"
 
-namespace xla {
-namespace gpu {
+namespace xla::gpu {
 
 namespace {
 
@@ -52,36 +51,57 @@ struct PersistentCliquesMap {
 };
 
 static PersistentCliquesMap& GetPersistentCliquesMap() {
-  static auto* const persistent_cliques = new PersistentCliquesMap();
+  static absl::NoDestructor<PersistentCliquesMap> persistent_cliques;
   return *persistent_cliques;
 }
 }  // namespace
 
-absl::Status ResourceRequests::AddClique(const GpuCliqueKey& clique_key) {
-  VLOG(5) << "Add collective clique request: " << clique_key.ToString();
+CollectiveCliques::CollectiveCliques(AcquiredCliquesMap cliques_map,
+                                     int32_t num_transient_cliques)
+    : cliques_map_(std::move(cliques_map)),
+      num_transient_cliques_(num_transient_cliques) {}
 
-  // XLA compiler guarantees that all collective operations have the same
-  // order on all replicas. We rely on this property to assign unique id to
-  // clique requests simply based on the number of already recorded requests.
-  int64_t id = cliques_.size();
-  cliques_.try_emplace(clique_key, CliqueRequest{clique_key, id});
-  return absl::OkStatus();
-}
-
-std::vector<GpuCliqueKey> ResourceRequests::CliqueKeys() const {
-  std::vector<GpuCliqueKey> clique_keys;
-  for (const auto& [key, unused] : cliques_) {
-    clique_keys.push_back(key);
+absl::StatusOr<Communicator*> CollectiveCliques::GetComm(
+    const GpuCliqueKey& clique_key, RankId rank) const {
+  // Check that we locked access to a clique for `clique_key`.
+  auto clique = cliques_map_.find(clique_key);
+  if (clique == cliques_map_.end()) {
+    return NotFound("No clique found for clique key: %s",
+                    clique_key.ToString());
   }
-  return clique_keys;
+
+  // Check that clique has a communicator for our rank.
+  auto communicator = (*clique->second)->comm(rank);
+  if (!communicator.has_value()) {
+    return Internal("Communicator for rank %d not found in a NCCL clique %s",
+                    rank.value(), clique_key.ToString());
+  }
+
+  return *communicator;
 }
 
-absl::StatusOr<Thunk::CollectiveCliques>
-ResourceRequests::AcquireCollectiveCliques(
-    const Thunk::CollectiveExecuteParams& params, bool use_persistent_cliques) {
-  if (cliques_.empty()) return Thunk::CollectiveCliques();
+absl::StatusOr<bool> CollectiveCliques::peer_access_enabled(
+    const GpuCliqueKey& clique_key) const {
+  // Check that we locked access to a clique for `clique_key`.
+  auto clique = cliques_map_.find(clique_key);
+  if (clique == cliques_map_.end()) {
+    return NotFound("No clique found for clique key: %s",
+                    clique_key.ToString());
+  }
 
-  VLOG(2) << "Acquire " << cliques_.size()
+  return (*clique->second)->peer_access_enabled();
+}
+
+absl::StatusOr<CollectiveCliques> AcquireCollectiveCliques(
+    const CollectiveParams& params, const CollectiveCliqueRequests& cliques,
+    bool use_persistent_cliques) {
+  std::vector<CollectiveCliqueRequests::CliqueRequest> ordered_cliques =
+      cliques.OrderedRequestedCliques();
+  if (ordered_cliques.empty()) {
+    return CollectiveCliques();
+  }
+
+  VLOG(2) << "Acquire " << ordered_cliques.size()
           << " collective cliques for global device id "
           << params.global_device_id.value()
           << "; run_id=" << params.run_id.ToInt()
@@ -90,9 +110,8 @@ ResourceRequests::AcquireCollectiveCliques(
           << "; max number of channels for p2p " << params.p2p_max_nchannels
           << "; use_persistent_cliques=" << use_persistent_cliques;
 
-  std::vector<CliqueRequest> ordered_cliques = GetOrderedCliqueRequests();
   for (size_t i = 0; i < ordered_cliques.size(); ++i) {
-    const CliqueRequest& r = ordered_cliques[i];
+    const CollectiveCliqueRequests::CliqueRequest& r = ordered_cliques[i];
     VLOG(2) << "  clique #" << i << " (for global device id "
             << params.global_device_id.value() << ")"
             << ": num_local_participants=" << r.key.num_local_participants()
@@ -102,7 +121,7 @@ ResourceRequests::AcquireCollectiveCliques(
   tsl::profiler::TraceMe trace([&] {
     return tsl::profiler::TraceMeEncode(
         "AcquireCollectiveCliques",
-        {{"num_cliques", cliques_.size()},
+        {{"num_cliques", ordered_cliques.size()},
          {"use_persistent_cliques", use_persistent_cliques}});
   });
 
@@ -111,13 +130,12 @@ ResourceRequests::AcquireCollectiveCliques(
   AcquiredCliquesMap cliques_map;
   int32_t num_transient_cliques = 0;
 
-  for (const CliqueRequest& r : ordered_cliques) {
+  for (const CollectiveCliqueRequests::CliqueRequest& r : ordered_cliques) {
     std::optional<RankId> rank = r.key.rank(params.global_device_id);
 
     if (!rank.has_value()) {
-      return absl::InternalError(absl::StrCat(
-          "Can't find global device id ", params.global_device_id.value(),
-          " in clique key ", r.key.ToString()));
+      return Internal("Can't find global device id %d in clique key %s",
+                      params.global_device_id.value(), r.key.ToString());
     }
 
     TF_ASSIGN_OR_RETURN(const CliqueIdCallback* clique_id_callback,
@@ -174,26 +192,7 @@ ResourceRequests::AcquireCollectiveCliques(
           << "; run_id=" << params.run_id.ToInt()
           << "; num_transient_cliques=" << num_transient_cliques;
 
-  return Thunk::CollectiveCliques(std::move(cliques_map),
-                                  num_transient_cliques);
+  return CollectiveCliques(std::move(cliques_map), num_transient_cliques);
 }
 
-std::vector<ResourceRequests::CliqueRequest>
-ResourceRequests::GetOrderedCliqueRequests() {
-  std::vector<CliqueRequest> cliques;
-  cliques.reserve(cliques_.size());
-  for (const auto& [_, request] : cliques_) cliques.push_back(request);
-
-  absl::c_sort(cliques, [](const CliqueRequest& a, const CliqueRequest& b) {
-    // Acquire larger cliques first to be able to split them later.
-    if (a.key.devices().size() > b.key.devices().size()) return true;
-    if (b.key.devices().size() > a.key.devices().size()) return false;
-
-    // Prefer cliques with smaller id (comes earlier in execution order).
-    return a.id < b.id;
-  });
-
-  return cliques;
-}
-}  // namespace gpu
-}  // namespace xla
+}  // namespace xla::gpu

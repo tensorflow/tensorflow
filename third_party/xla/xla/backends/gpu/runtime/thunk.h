@@ -34,21 +34,19 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/backends/gpu/collectives/gpu_clique_key.h"
-#include "xla/backends/gpu/collectives/gpu_cliques.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
+#include "xla/backends/gpu/runtime/collective_clique_requests.h"
+#include "xla/backends/gpu/runtime/collective_cliques.h"
+#include "xla/backends/gpu/runtime/collective_params.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/backends/gpu/runtime/thunk_id.h"
 #include "xla/core/collectives/communicator.h"
-#include "xla/core/collectives/rank_id.h"
 #include "xla/executable_run_options.h"
 #include "xla/ffi/execution_context.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/runtime/buffer_use.h"
 #include "xla/service/buffer_assignment.h"
-#include "xla/service/global_device_id.h"
 #include "xla/service/gpu/buffer_allocations.h"
-#include "xla/service/gpu/gpu_executable_run_options.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/service_executable_run_options.h"
 #include "xla/stream_executor/stream.h"
@@ -238,107 +236,6 @@ class Thunk {
   };
 
   //===--------------------------------------------------------------------===//
-  // ResourceRequests
-  //===--------------------------------------------------------------------===//
-
-  // Each individual thunk can request various resources required for execution
-  // at prepare stage. XLA executable is responsible for allocating them before
-  // initializing and executing thunks.
-  class ResourceRequestsInterface {
-   public:
-    virtual ~ResourceRequestsInterface() = default;
-    virtual absl::Status AddClique(const GpuCliqueKey& clique_key) = 0;
-  };
-
-  //===--------------------------------------------------------------------===//
-  // CollectiveCliques
-  //===--------------------------------------------------------------------===//
-
-  // A collection of collective cliques acquired based on resource requests
-  // collected from all thunks at prepare stage.
-  class CollectiveCliques {
-   public:
-    CollectiveCliques() = default;
-    CollectiveCliques(AcquiredCliquesMap cliques_map,
-                      int32_t num_transient_cliques);
-
-    absl::StatusOr<Communicator*> GetComm(const GpuCliqueKey& clique_key,
-                                          RankId rank) const;
-
-    // Returns whether peer device memory access is possible between all devices
-    // in the clique.
-    absl::StatusOr<bool> peer_access_enabled(
-        const GpuCliqueKey& clique_key) const;
-
-    bool empty() const { return cliques_map_.empty(); }
-
-    bool num_transient_cliques() const { return num_transient_cliques_; }
-
-   private:
-    AcquiredCliquesMap cliques_map_;
-
-    // The number of acquired non-persistent clique. We need to keep track of
-    // newly created communicators to insert rendezvous after first
-    // initialization, because otherwise we observe deadlocks with NCCL
-    // collectives backends.
-    int32_t num_transient_cliques_ = 0;
-  };
-
-  //===--------------------------------------------------------------------===//
-  // CollectiveExecuteParams
-  //===--------------------------------------------------------------------===//
-
-  // Parameters capturing all the details required for collective execution of
-  // XLA executables (multiple partitions and replicas).
-  struct CollectiveExecuteParams {
-    // Creates NCCL execution parameters from the run options for the given
-    // local device. Returns an error if run options are misconfigured (i.e.
-    // missing a global device mapping for a local device ordinal).
-    static absl::StatusOr<CollectiveExecuteParams> Create(
-        const ServiceExecutableRunOptions& run_options,
-        absl::Span<se::Stream* const> async_streams,
-        int64_t local_device_ordinal, int64_t collective_max_nchannels = 0,
-        int64_t p2p_max_nchannels = 0);
-
-    // A mapping from local device ordinals to global device IDs.
-    using GlobalDeviceIdMap = std::map<int32_t, GlobalDeviceId>;
-
-    GpuCollectives* collectives;
-    se::StreamExecutor* executor;
-
-    // XLA execution run id allows us to distinguish collective operations
-    // from different concurrent executions and avoid deadlocks.
-    RunId run_id;
-
-    // Streams for asynchronous collective communications.
-    absl::InlinedVector<se::Stream*, 4> async_streams;
-
-    int64_t local_device_ordinal;
-    GlobalDeviceId global_device_id;
-
-    const DeviceAssignment* device_assn;
-    const GlobalDeviceIdMap* global_device_id_map;
-    const CliqueIdCallback* nccl_clique_id_callback;
-    const absl::flat_hash_map<GlobalDeviceId, IncarnationId>* incarnations;
-
-    int64_t collective_max_nchannels;
-    int64_t p2p_max_nchannels;
-
-    bool need_barrier = false;
-
-   private:
-    CollectiveExecuteParams(
-        GpuCollectives* collectives, se::StreamExecutor* executor, RunId run_id,
-        absl::Span<se::Stream* const> async_streams,
-        int64_t local_device_ordinal, GlobalDeviceId global_device_id,
-        const DeviceAssignment* device_assn,
-        const GlobalDeviceIdMap* global_device_id_map,
-        const CliqueIdCallback* nccl_clique_id_callback,
-        const absl::flat_hash_map<GlobalDeviceId, IncarnationId>* incarnations,
-        int64_t collective_max_nchannels, int64_t p2p_max_nchannels);
-  };
-
-  //===--------------------------------------------------------------------===//
   // PrepareParams
   //===--------------------------------------------------------------------===//
 
@@ -347,7 +244,9 @@ class Thunk {
   // back to executable, i.e. request collective cliques required at run time.
   struct PrepareParams {
     // Parameters for executing collective operations.
-    const CollectiveExecuteParams* collective_params = nullptr;
+    const CollectiveParams* collective_params = nullptr;
+    // Clique requests for preparing collective communicators.
+    CollectiveCliqueRequests* clique_requests = nullptr;
   };
 
   //===--------------------------------------------------------------------===//
@@ -375,7 +274,7 @@ class Thunk {
     se::Stream* command_buffer_trace_stream = nullptr;
 
     // Parameters for executing collective operations.
-    CollectiveExecuteParams* collective_params = nullptr;
+    CollectiveParams* collective_params = nullptr;
 
     // Collective cliques acquired based on resource requests.
     CollectiveCliques* collective_cliques = nullptr;
@@ -401,7 +300,7 @@ class Thunk {
         const ServiceExecutableRunOptions& run_options,
         const BufferAllocations& buffer_allocations, se::Stream* stream,
         se::Stream* command_buffer_trace_stream,
-        CollectiveExecuteParams* collective_params,
+        CollectiveParams* collective_params,
         CollectiveCliques* collective_cliques,
         ExecutionStreamIdMap additional_compute_streams = {});
 
@@ -421,7 +320,7 @@ class Thunk {
     se::Stream* command_buffer_trace_stream;
 
     // Parameters for executing collective operations.
-    CollectiveExecuteParams* collective_params;
+    CollectiveParams* collective_params;
 
     // Collective cliques acquired based on resource requests.
     CollectiveCliques* collective_cliques;
@@ -449,7 +348,7 @@ class Thunk {
 
     ExecuteParams(const BufferAllocations* buffer_allocations,
                   se::Stream* stream, se::Stream* command_buffer_trace_stream,
-                  CollectiveExecuteParams* collective_params,
+                  CollectiveParams* collective_params,
                   CollectiveCliques* collective_cliques,
                   se::Stream* device_to_host_stream,
                   se::Stream* host_to_device_stream,
@@ -480,8 +379,7 @@ class Thunk {
   // This may be called multiple times. Its main purpose is to pass resource
   // requests up to the parent executable so it can acquire them before
   // initialization and execution.
-  virtual absl::Status Prepare(const PrepareParams& params,
-                               ResourceRequestsInterface& resource_requests) {
+  virtual absl::Status Prepare(const PrepareParams& params) {
     return absl::OkStatus();
   }
 
@@ -550,9 +448,9 @@ class Thunk {
   }
 
   // A helper function to get the `GpuCollectives*` pointer from the
-  // CollectiveExecuteParams.
+  // CollectiveParams.
   static absl::StatusOr<GpuCollectives* absl_nonnull> GetGpuCollectives(
-      CollectiveExecuteParams const& params);
+      CollectiveParams const& params);
 
   // A helper function to get the `GpuCollectives*` pointer from the
   // thunk parameters. Returns an error if collectives API is not provided.
