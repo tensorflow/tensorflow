@@ -401,7 +401,7 @@ ENTRY e {
     calls=triton_dot,
     backend_config={
       "fusion_backend_config": {
-        kind: "__triton_scaled_dot_fusion",
+        kind: "__triton_nested_gemm_fusion",
         "block_level_fusion_config":{
           "output_tiles":[{"sizes":["128", "256"]}],
           "num_warps":"4",

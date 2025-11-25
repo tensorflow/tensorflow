@@ -793,7 +793,9 @@ absl::StatusOr<Decision> CreateDotFusion(
     return absl::OkStatus();
   });
 
-  if (is_pure_matmul) return Decision::NotProfitable("Pure Matmul");
+  if (is_pure_matmul) {
+    return Decision::NotProfitable("Pure Matmul");
+  }
 
   return Decision::Allow();
 }
@@ -858,7 +860,7 @@ class GemmFusionVisitor : public DfsHloRewriteVisitor {
                         dot_fusion->backend_config<GpuBackendConfig>());
     FusionBackendConfig& backend_config =
         *gpu_config.mutable_fusion_backend_config();
-    backend_config.set_kind(std::string(kTritonGemmFusionKind));
+    backend_config.set_kind(kTritonGemmFusionKind);
     TF_RETURN_IF_ERROR(dot_fusion->set_backend_config(gpu_config));
 
     if (fusion_output->IsRoot()) {
@@ -951,7 +953,7 @@ class GemmFusionVisitor : public DfsHloRewriteVisitor {
                         fusion->backend_config<GpuBackendConfig>());
     FusionBackendConfig& backend_config =
         *gpu_config.mutable_fusion_backend_config();
-    backend_config.set_kind(kTritonScaledDotFusionKind);
+    backend_config.set_kind(kTritonGemmFusionKind);
     TF_RETURN_IF_ERROR(fusion->set_backend_config(gpu_config));
     TF_RETURN_IF_ERROR(ReplaceInstruction(scaled_dot, fusion));
     MarkAsChanged();
