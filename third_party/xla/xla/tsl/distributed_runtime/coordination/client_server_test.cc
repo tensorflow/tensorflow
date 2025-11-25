@@ -13,7 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <algorithm>
 #include <cassert>
 #include <functional>
 #include <memory>
@@ -23,6 +22,7 @@ limitations under the License.
 
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
@@ -60,7 +60,6 @@ using ::testing::ElementsAre;
 using ::testing::HasSubstr;
 using ::testing::IsEmpty;
 using ::testing::UnorderedElementsAre;
-using ::tsl::testing::StatusIs;
 
 constexpr absl::Duration kBarrierTimeout = absl::Milliseconds(200);
 constexpr absl::Duration kHeartbeatTimeout = absl::Seconds(3);

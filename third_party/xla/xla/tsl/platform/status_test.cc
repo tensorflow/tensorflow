@@ -12,16 +12,18 @@ limitations under the License.
 ==============================================================================*/
 #include "xla/tsl/platform/status.h"
 
+#include <cstddef>
 #include <string>
 #include <unordered_map>
 #include <vector>
 
 #include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "absl/strings/cord.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/string_view.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/stack_frame.h"
-#include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/status_to_from_proto.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/tsl/protobuf/error_codes.pb.h"
@@ -33,8 +35,6 @@ namespace {
 using ::testing::ElementsAre;
 using ::testing::IsEmpty;
 using ::testing::Pair;
-using ::tsl::testing::IsOk;
-using ::tsl::testing::StatusIs;
 
 TEST(ToStringTest, PayloadsArePrinted) {
   absl::Status status = errors::Aborted("Aborted Error Message");
