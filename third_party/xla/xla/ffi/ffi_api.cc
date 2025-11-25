@@ -889,7 +889,7 @@ static XLA_FFI_Error* XLA_FFI_ThreadPool_NumThreads(
 }
 
 //===----------------------------------------------------------------------===//
-// XLA FFI Internal Api Implementation
+// Generic XLA internal APIs available on all XLA backends.
 //===----------------------------------------------------------------------===//
 
 static XLA_FFI_Error* XLA_FFI_INTERNAL_Error_Forward(void* status) {
@@ -908,6 +908,50 @@ static XLA_FFI_Future* XLA_FFI_INTERNAL_Future_Forward(void* async_value) {
       tsl::AsyncValueRef<tsl::Chain>(tsl::TakeRef(tsl_async_value))};
 }
 
+static int32_t XLA_FFI_INTERNAL_DeviceOrdinal_Get(
+    XLA_FFI_ExecutionContext* ctx) {
+  return ctx->device_ordinal;
+}
+
+static int64_t XLA_FFI_INTERNAL_RunId_Get(XLA_FFI_ExecutionContext* ctx) {
+  return ctx->run_id.ToInt();
+}
+
+static void* XLA_FFI_INTERNAL_CalledComputation_Get(
+    XLA_FFI_ExecutionContext* ctx) {
+  return const_cast<HloComputation*>(ctx->called_computation);  // NOLINT
+}
+
+static void* XLA_FFI_INTERNAL_ExecutionContext_Get(
+    XLA_FFI_ExecutionContext* ctx) {
+  return const_cast<ffi::ExecutionContext*>(ctx->execution_context);  // NOLINT
+}
+
+static void* XLA_FFI_INTERNAL_ExecutionState_Get(
+    XLA_FFI_ExecutionContext* ctx) {
+  return const_cast<ffi::ExecutionState*>(ctx->execution_state);  // NOLINT
+}
+
+//===----------------------------------------------------------------------===//
+// XLA:CPU specific internal APIs.
+//===----------------------------------------------------------------------===//
+
+static void* XLA_FFI_INTERNAL_IntraOpThreadPool_Get(
+    XLA_FFI_ExecutionContext* ctx) {
+  if (auto* cpu = std::get_if<XLA_FFI_ExecutionContext::CpuContext>(
+          &ctx->backend_context)) {
+    return const_cast<Eigen::ThreadPoolDevice*>(  // NOLINT
+        cpu->intra_op_thread_pool);
+  }
+
+  return new XLA_FFI_Error{
+      InvalidArgument("XLA FFI CPU context is not available")};
+}
+
+//===----------------------------------------------------------------------===//
+// XLA:GPU specific internal APIs.
+//===----------------------------------------------------------------------===//
+
 static void* XLA_FFI_INTERNAL_Stream_Get(XLA_FFI_ExecutionContext* ctx) {
   if (auto* gpu = std::get_if<XLA_FFI_ExecutionContext::GpuContext>(
           &ctx->backend_context)) {
@@ -916,15 +960,6 @@ static void* XLA_FFI_INTERNAL_Stream_Get(XLA_FFI_ExecutionContext* ctx) {
 
   return new XLA_FFI_Error{
       InvalidArgument("XLA FFI GPU context is not available")};
-}
-
-static int32_t XLA_FFI_INTERNAL_DeviceOrdinal_Get(
-    XLA_FFI_ExecutionContext* ctx) {
-  return ctx->device_ordinal;
-}
-
-static int64_t XLA_FFI_INTERNAL_RunId_Get(XLA_FFI_ExecutionContext* ctx) {
-  return ctx->run_id.ToInt();
 }
 
 static void* XLA_FFI_INTERNAL_DeviceMemoryAllocator_Get(
@@ -938,31 +973,6 @@ static void* XLA_FFI_INTERNAL_DeviceMemoryAllocator_Get(
       InvalidArgument("XLA FFI GPU context is not available")};
 }
 
-static void* XLA_FFI_INTERNAL_CalledComputation_Get(
-    XLA_FFI_ExecutionContext* ctx) {
-  return const_cast<HloComputation*>(ctx->called_computation);
-}
-
-static void* XLA_FFI_INTERNAL_ExecutionContext_Get(
-    XLA_FFI_ExecutionContext* ctx) {
-  return const_cast<ffi::ExecutionContext*>(ctx->execution_context);
-}
-
-static void* XLA_FFI_INTERNAL_ExecutionState_Get(
-    XLA_FFI_ExecutionContext* ctx) {
-  return const_cast<ffi::ExecutionState*>(ctx->execution_state);
-}
-
-void* XLA_FFI_INTERNAL_IntraOpThreadPool_Get(XLA_FFI_ExecutionContext* ctx) {
-  if (auto* cpu = std::get_if<XLA_FFI_ExecutionContext::CpuContext>(
-          &ctx->backend_context)) {
-    return const_cast<Eigen::ThreadPoolDevice*>(cpu->intra_op_thread_pool);
-  }
-
-  return new XLA_FFI_Error{
-      InvalidArgument("XLA FFI CPU context is not available")};
-}
-
 //===----------------------------------------------------------------------===//
 // XLA FFI Api access
 //===----------------------------------------------------------------------===//
@@ -970,16 +980,21 @@ void* XLA_FFI_INTERNAL_IntraOpThreadPool_Get(XLA_FFI_ExecutionContext* ctx) {
 extern "C" const XLA_FFI_Api* XLA_FFI_GetApi() { return GetXlaFfiApi(); }
 
 static XLA_FFI_InternalApi internal_api = {
+    // Generic XLA APIs available on all XLA backends.
     XLA_FFI_INTERNAL_Error_Forward,
     XLA_FFI_INTERNAL_Future_Forward,
-    XLA_FFI_INTERNAL_Stream_Get,
     XLA_FFI_INTERNAL_DeviceOrdinal_Get,
     XLA_FFI_INTERNAL_RunId_Get,
-    XLA_FFI_INTERNAL_DeviceMemoryAllocator_Get,
     XLA_FFI_INTERNAL_CalledComputation_Get,
     XLA_FFI_INTERNAL_ExecutionContext_Get,
     XLA_FFI_INTERNAL_ExecutionState_Get,
+
+    // XLA:CPU specific APIs.
     XLA_FFI_INTERNAL_IntraOpThreadPool_Get,
+
+    // XLA:GPU specific APIs.
+    XLA_FFI_INTERNAL_Stream_Get,
+    XLA_FFI_INTERNAL_DeviceMemoryAllocator_Get,
 };
 
 static XLA_FFI_Api api = {
