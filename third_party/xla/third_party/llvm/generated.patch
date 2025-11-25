@@ -1,20 +1,17 @@
 Auto generated patch. Do not edit or delete it, even if empty.
-diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/clang/BUILD.bazel b/utils/bazel/llvm-project-overlay/clang/BUILD.bazel
---- a/utils/bazel/llvm-project-overlay/clang/BUILD.bazel
-+++ b/utils/bazel/llvm-project-overlay/clang/BUILD.bazel
-@@ -1563,7 +1563,6 @@
-         ":basic",
-         ":config",
-         ":driver_options_inc_gen",
--        ":frontend",
-         ":lex",
-         ":options",
-         ":parse",
-@@ -1719,6 +1718,7 @@
-         ":ast",
-         ":basic",
-         ":config",
-+        ":driver",
-         ":driver_options_inc_gen",
-         ":edit",
-         ":lex",
+diff -ruN --strip-trailing-cr a/mlir/lib/Target/LLVMIR/Dialect/OpenMP/OpenMPToLLVMIRTranslation.cpp b/mlir/lib/Target/LLVMIR/Dialect/OpenMP/OpenMPToLLVMIRTranslation.cpp
+--- a/mlir/lib/Target/LLVMIR/Dialect/OpenMP/OpenMPToLLVMIRTranslation.cpp
++++ b/mlir/lib/Target/LLVMIR/Dialect/OpenMP/OpenMPToLLVMIRTranslation.cpp
+@@ -4095,6 +4095,12 @@
+   llvm::SmallVector<size_t> occludedChildren;
+   llvm::sort(
+       indices.begin(), indices.end(), [&](const size_t a, const size_t b) {
++        // Bail early if we are asked to look at the same index. If we do not
++        // bail early, we can end up mistakenly adding indices to
++        // occludedChildren. This can occur with some types of libc++ hardening.
++        if (a == b)
++          return false;
++
+         auto memberIndicesA = cast<ArrayAttr>(indexAttr[a]);
+         auto memberIndicesB = cast<ArrayAttr>(indexAttr[b]);
+ 
