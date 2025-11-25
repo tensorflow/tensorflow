@@ -60,9 +60,8 @@ class MultiThreadedAtomProgramCompiler {
   //
   // Note that the method runs `ifrt-compile-xla-preprocessing-pipeline`
   // before dispatching compilation.
-  absl::StatusOr<CompileFuture> CompileXla(
-      CallOp call_op, mlir::ModuleOp module_op,
-      tsl::thread::ThreadPool* thread_pool);
+  absl::StatusOr<CompileFuture> CompileXla(CallOp call_op,
+                                           mlir::ModuleOp module_op);
 
   // Returns a future of a AtomProgramCompileResult for the MPMD reshard module.
   absl::StatusOr<CompileFuture> CompileMpmdReshard(mlir::ModuleOp module_op);
