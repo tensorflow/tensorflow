@@ -37,6 +37,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/annotation.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/client/executable_build_options.h"
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/buffer_assignment.h"
@@ -222,6 +223,10 @@ class GpuExecutable : public Executable {
       absl::string_view platform);
 
   absl::StatusOr<GpuExecutableProto> ToProto() const;
+
+  absl::Status DumpExecutableIfEnabled(
+      const ExecutableBuildOptions& options,
+      const DebugOptions& debug_options) const final;
 
  private:
   // Use GpuExecutable::Create() to create an instance.
