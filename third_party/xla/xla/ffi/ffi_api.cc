@@ -936,37 +936,47 @@ static void* XLA_FFI_INTERNAL_ExecutionState_Get(
 // XLA:CPU specific internal APIs.
 //===----------------------------------------------------------------------===//
 
-static void* XLA_FFI_INTERNAL_IntraOpThreadPool_Get(
-    XLA_FFI_ExecutionContext* ctx) {
+static XLA_FFI_Error* XLA_FFI_INTERNAL_IntraOpThreadPool_Get(
+    XLA_FFI_ExecutionContext* ctx, void** thread_pool) {
   if (auto* cpu = std::get_if<XLA_FFI_ExecutionContext::CpuContext>(
           &ctx->backend_context)) {
-    return const_cast<Eigen::ThreadPoolDevice*>(  // NOLINT
+    *thread_pool = const_cast<Eigen::ThreadPoolDevice*>(  // NOLINT
         cpu->intra_op_thread_pool);
+    return nullptr;
   }
 
-  return new XLA_FFI_Error{
-      InvalidArgument("XLA FFI CPU context is not available")};
+  // For GPU backend we don't have intra-op thread pool, but we didn't promise
+  // to return one, so instead of an error we return a nullptr thread pool.
+  if (auto* gpu = std::get_if<XLA_FFI_ExecutionContext::GpuContext>(
+          &ctx->backend_context)) {
+    return nullptr;
+  }
+
+  return new XLA_FFI_Error{InvalidArgument("XLA FFI context is not available")};
 }
 
 //===----------------------------------------------------------------------===//
 // XLA:GPU specific internal APIs.
 //===----------------------------------------------------------------------===//
 
-static void* XLA_FFI_INTERNAL_Stream_Get(XLA_FFI_ExecutionContext* ctx) {
+static XLA_FFI_Error* XLA_FFI_INTERNAL_Stream_Get(XLA_FFI_ExecutionContext* ctx,
+                                                  void** stream) {
   if (auto* gpu = std::get_if<XLA_FFI_ExecutionContext::GpuContext>(
           &ctx->backend_context)) {
-    return gpu->stream;
+    *stream = gpu->stream;
+    return nullptr;
   }
 
   return new XLA_FFI_Error{
       InvalidArgument("XLA FFI GPU context is not available")};
 }
 
-static void* XLA_FFI_INTERNAL_DeviceMemoryAllocator_Get(
-    XLA_FFI_ExecutionContext* ctx) {
+static XLA_FFI_Error* XLA_FFI_INTERNAL_DeviceMemoryAllocator_Get(
+    XLA_FFI_ExecutionContext* ctx, void** allocator) {
   if (auto* gpu = std::get_if<XLA_FFI_ExecutionContext::GpuContext>(
           &ctx->backend_context)) {
-    return gpu->allocator;
+    *allocator = gpu->allocator;
+    return nullptr;
   }
 
   return new XLA_FFI_Error{

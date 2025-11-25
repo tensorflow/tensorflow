@@ -559,11 +559,16 @@ struct CtxDecoding<Stream> {
   static std::optional<Type> Decode(const XLA_FFI_Api* api,
                                     XLA_FFI_ExecutionContext* ctx,
                                     DiagnosticEngine& diagnostic) {
-    void* ptr = api->internal_api->XLA_FFI_INTERNAL_Stream_Get(ctx);
-    if (ABSL_PREDICT_FALSE(ptr == nullptr)) {
-      return diagnostic.Emit("Failed to decode stream");
+    void* stream = nullptr;
+    if (XLA_FFI_Error* error =
+            api->internal_api->XLA_FFI_INTERNAL_Stream_Get(ctx, &stream);
+        ABSL_PREDICT_FALSE(error)) {
+      diagnostic.Emit("Failed to get stream: ")
+          << internal::GetErrorMessage(api, error);
+      internal::DestroyError(api, error);
+      return std::nullopt;
     }
-    return reinterpret_cast<Type>(ptr);
+    return reinterpret_cast<Type>(stream);
   }
 };
 
@@ -584,9 +589,17 @@ struct CtxDecoding<Allocator> {
 
   static std::optional<Type> Decode(const XLA_FFI_Api* api,
                                     XLA_FFI_ExecutionContext* ctx,
-                                    DiagnosticEngine&) {
-    void* device_allocator =
-        api->internal_api->XLA_FFI_INTERNAL_DeviceMemoryAllocator_Get(ctx);
+                                    DiagnosticEngine& diagnostic) {
+    void* device_allocator = nullptr;
+    if (XLA_FFI_Error* error =
+            api->internal_api->XLA_FFI_INTERNAL_DeviceMemoryAllocator_Get(
+                ctx, &device_allocator);
+        ABSL_PREDICT_FALSE(error)) {
+      diagnostic.Emit("Failed to get device memory allocator: ")
+          << internal::GetErrorMessage(api, error);
+      internal::DestroyError(api, error);
+      return std::nullopt;
+    }
     return reinterpret_cast<Type>(device_allocator);
   }
 };
@@ -597,15 +610,17 @@ struct CtxDecoding<ScratchAllocator> {
 
   static std::optional<Type> Decode(const XLA_FFI_Api* api,
                                     XLA_FFI_ExecutionContext* ctx,
-                                    DiagnosticEngine&) {
+                                    DiagnosticEngine& diagnostic) {
     int32_t device_ordinal =
         api->internal_api->XLA_FFI_INTERNAL_DeviceOrdinal_Get(ctx);
-    void* device_allocator =
-        api->internal_api->XLA_FFI_INTERNAL_DeviceMemoryAllocator_Get(ctx);
 
-    return se::OwningScratchAllocator<>(
-        device_ordinal,
-        reinterpret_cast<se::DeviceMemoryAllocator*>(device_allocator));
+    auto device_allocator =
+        CtxDecoding<Allocator>::Decode(api, ctx, diagnostic);
+    if (ABSL_PREDICT_FALSE(!device_allocator)) {
+      return std::nullopt;
+    }
+
+    return se::OwningScratchAllocator<>(device_ordinal, *device_allocator);
   }
 };
 
@@ -627,10 +642,19 @@ struct CtxDecoding<IntraOpThreadPool> {
 
   static std::optional<Type> Decode(const XLA_FFI_Api* api,
                                     XLA_FFI_ExecutionContext* ctx,
-                                    DiagnosticEngine&) {
-    void* intra_op_thread_pool =
-        api->internal_api->XLA_FFI_INTERNAL_IntraOpThreadPool_Get(ctx);
-    return reinterpret_cast<Type>(intra_op_thread_pool);
+                                    DiagnosticEngine& diagnostic) {
+    void* thread_pool = nullptr;
+    if (XLA_FFI_Error* error =
+            api->internal_api->XLA_FFI_INTERNAL_IntraOpThreadPool_Get(
+                ctx, &thread_pool);
+        ABSL_PREDICT_FALSE(error)) {
+      diagnostic.Emit("Failed to get intra op thread pool: ")
+          << internal::GetErrorMessage(api, error);
+      internal::DestroyError(api, error);
+      return std::nullopt;
+    }
+
+    return reinterpret_cast<Type>(thread_pool);
   }
 };
 
