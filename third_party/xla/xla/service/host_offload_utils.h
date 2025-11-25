@@ -107,6 +107,10 @@ bool ComputeTypeIsHost(const HloInstruction* hlo_instruction);
 // instruction should be lowered as host compute.
 void SetHostComputeFrontendAttribute(HloInstruction& host_instruction);
 
+bool IsMoveToHostWithDynamicUpdateSlice(const HloInstruction* instr);
+
+bool IsMoveToDeviceWithDynamicSlice(const HloInstruction* instr);
+
 }  // namespace host_offload_utils
 }  // namespace xla
 
