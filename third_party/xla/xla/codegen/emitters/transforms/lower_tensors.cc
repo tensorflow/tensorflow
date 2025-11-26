@@ -62,6 +62,7 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/LogicalResult.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
+#include "google/protobuf/text_format.h"
 #include "xla/backends/gpu/codegen/emitters/ir/xla_gpu_ops.h"
 #include "xla/codegen/device_spec.h"
 #include "xla/codegen/emitters/ir/xla_ops.h"
@@ -70,7 +71,7 @@ limitations under the License.
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_description.pb.h"
-#include "xla/tsl/platform/status.h"
+#include "xla/stream_executor/rocm/rocm_compute_capability.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/protobuf.h"  // IWYU pragma: keep
@@ -1389,7 +1390,7 @@ class LowerTensorsPass : public impl::LowerTensorsPassBase<LowerTensorsPass> {
                                                        &device_info));
       absl::StatusOr<se::DeviceDescription> device_description =
           se::DeviceDescription::FromProto(device_info);
-      TF_CHECK_OK(device_description.status());
+      CHECK_OK(device_description.status());
       *device_spec_.mutable_type() = *device_description;
     } else if (target_type_ == "cpu") {
       CHECK(gpu_device_info_.empty());

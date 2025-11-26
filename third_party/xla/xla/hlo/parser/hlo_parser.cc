@@ -46,6 +46,7 @@ limitations under the License.
 #include "absl/strings/strip.h"
 #include "absl/types/span.h"
 #include "Eigen/Core"
+#include "google/protobuf/descriptor.h"
 #include "xla/array.h"
 #include "xla/comparison_util.h"
 #include "xla/hlo/ir/collective_op_group_mode.h"
@@ -79,12 +80,10 @@ limitations under the License.
 #include "xla/tsl/lib/gtl/map_util.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"
-#include "xla/tsl/platform/status.h"
 #include "xla/tuple_tree.h"
 #include "xla/types.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/protobuf.h"
 
 namespace xla {
 
@@ -1145,7 +1144,7 @@ bool HloParserImpl::ParseHloModule(HloModule* module,
   module->set_name(name);
 
   if (is_scheduled.value_or(false)) {
-    TF_CHECK_OK(module->set_schedule(ScheduleFromInstructionOrder(module)));
+    CHECK_OK(module->set_schedule(ScheduleFromInstructionOrder(module)));
   }
   HloModuleConfig config = module->config();
   bool default_config = true;
@@ -1172,14 +1171,14 @@ bool HloParserImpl::ParseHloModule(HloModule* module,
     for (int64_t p = 0; p < entry_computation->num_parameters(); p++) {
       const Shape& param_shape =
           entry_computation->parameter_instruction(p)->shape();
-      TF_CHECK_OK(module->mutable_entry_computation_layout()
-                      ->mutable_parameter_layout(p)
-                      ->CopyLayoutFromShape(param_shape));
+      CHECK_OK(module->mutable_entry_computation_layout()
+                   ->mutable_parameter_layout(p)
+                   ->CopyLayoutFromShape(param_shape));
     }
     const Shape& result_shape = entry_computation->root_instruction()->shape();
-    TF_CHECK_OK(module->mutable_entry_computation_layout()
-                    ->mutable_result_layout()
-                    ->CopyLayoutFromShape(result_shape));
+    CHECK_OK(module->mutable_entry_computation_layout()
+                 ->mutable_result_layout()
+                 ->CopyLayoutFromShape(result_shape));
   }
   if (frontend_attributes) {
     module->set_frontend_attributes(frontend_attributes.value());
@@ -7561,7 +7560,7 @@ bool HloParserImpl::ParseSingleInstruction(HloModule* module) {
   for (auto& comp : computations_) {
     module->AddEmbeddedComputation(std::move(comp));
   }
-  TF_CHECK_OK(module->set_schedule(ScheduleFromInstructionOrder(module)));
+  CHECK_OK(module->set_schedule(ScheduleFromInstructionOrder(module)));
   return true;
 }
 

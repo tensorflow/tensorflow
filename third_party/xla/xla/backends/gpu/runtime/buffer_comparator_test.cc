@@ -22,6 +22,7 @@ limitations under the License.
 #include <vector>
 
 #include <gtest/gtest.h>
+#include "absl/log/check.h"
 #include "absl/strings/ascii.h"
 #include "absl/types/span.h"
 #include "xla/primitive_util.h"
@@ -33,7 +34,6 @@ limitations under the License.
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream.h"
-#include "xla/tsl/platform/status.h"
 #include "xla/types.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/ml_dtypes.h"
@@ -65,11 +65,11 @@ class BufferComparatorTest : public testing::Test {
         stream_exec_,
         stream_exec_->AllocateArray<ElementType>(expected.size()));
 
-    TF_CHECK_OK(stream->Memcpy(current_buffer.memory_ptr(), current.data(),
-                               current_buffer.memory().size()));
-    TF_CHECK_OK(stream->Memcpy(expected_buffer.memory_ptr(), expected.data(),
-                               expected_buffer.memory().size()));
-    TF_CHECK_OK(stream->BlockHostUntilDone());
+    CHECK_OK(stream->Memcpy(current_buffer.memory_ptr(), current.data(),
+                            current_buffer.memory().size()));
+    CHECK_OK(stream->Memcpy(expected_buffer.memory_ptr(), expected.data(),
+                            expected_buffer.memory().size()));
+    CHECK_OK(stream->BlockHostUntilDone());
 
     BufferComparator comparator(
         ShapeUtil::MakeShape(
@@ -109,11 +109,11 @@ class BufferComparatorTest : public testing::Test {
     se::DeviceMemoryHandle expected_buffer(
         stream_exec_, stream_exec_->AllocateScalar<ElementType>());
 
-    TF_CHECK_OK(stream->Memcpy(current_buffer.memory_ptr(), &current,
-                               current_buffer.memory().size()));
-    TF_CHECK_OK(stream->Memcpy(expected_buffer.memory_ptr(), &expected,
-                               expected_buffer.memory().size()));
-    TF_CHECK_OK(stream->BlockHostUntilDone());
+    CHECK_OK(stream->Memcpy(current_buffer.memory_ptr(), &current,
+                            current_buffer.memory().size()));
+    CHECK_OK(stream->Memcpy(expected_buffer.memory_ptr(), &expected,
+                            expected_buffer.memory().size()));
+    CHECK_OK(stream->BlockHostUntilDone());
 
     BufferComparator comparator(
         ShapeUtil::MakeShape(

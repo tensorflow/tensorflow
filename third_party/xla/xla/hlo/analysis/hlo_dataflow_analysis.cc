@@ -44,15 +44,14 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/layout_util.h"
 #include "xla/map_util.h"
 #include "xla/service/call_graph.h"
 #include "xla/service/hlo_value.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"
-#include "xla/tsl/platform/status.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
@@ -1515,7 +1514,7 @@ absl::Status HloDataflowAnalysis::RunImpl() {
   }
   absl::c_sort(values_vector_, HloValue::IdLessThan);
 
-  TF_DCHECK_OK(Verify());
+  DCHECK_OK(Verify());
 
   XLA_VLOG_LINES(1, ToString());
 

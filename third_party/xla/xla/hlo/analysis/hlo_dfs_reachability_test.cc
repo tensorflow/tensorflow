@@ -19,6 +19,7 @@ limitations under the License.
 #include <memory>
 #include <string>
 
+#include "absl/log/check.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -30,7 +31,6 @@ limitations under the License.
 #include "xla/service/hlo_module_config.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test_benchmark.h"
 #include "xla/xla_data.pb.h"
@@ -78,7 +78,7 @@ TEST_F(HloDfsReachabilityTest, NonTrivialReachability) {
   auto computation =
       module->AddEntryComputation(builder.Build(/*root_instruction=*/mul));
 
-  TF_CHECK_OK(add->AddControlDependencyTo(exp));
+  CHECK_OK(add->AddControlDependencyTo(exp));
   auto reachability = HloDfsReachability::Build(computation);
 
   EXPECT_TRUE(reachability->IsReachable(constant1, constant1));

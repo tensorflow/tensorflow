@@ -19,7 +19,9 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/analysis/hlo_dataflow_analysis.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
@@ -28,11 +30,9 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/float_support.h"
 #include "xla/shape_util.h"
+#include "xla/tsl/platform/errors.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/logging.h"
-#include "tsl/platform/status.h"
 
 namespace xla {
 
@@ -55,7 +55,7 @@ class BFloat16ConversionFoldingVisitor : public DfsHloVisitorWithDefault {
                   BFloat16ConversionFolding* bfloat16_conversion_folding) {
     BFloat16ConversionFoldingVisitor visitor(computation, bfloat16_support,
                                              bfloat16_conversion_folding);
-    TF_CHECK_OK(computation->Accept(&visitor));
+    CHECK_OK(computation->Accept(&visitor));
     return visitor.changed_;
   }
 

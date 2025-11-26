@@ -29,15 +29,14 @@ limitations under the License.
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/local_service.h"
 #include "xla/shape.h"
+#include "xla/tsl/platform/env.h"
 #include "xla/tsl/util/command_line_flags.h"
 #include "xla/xla.pb.h"
-#include "tsl/platform/env.h"
 #include "tsl/platform/init_main.h"
-#include "tsl/platform/logging.h"
-#include "tsl/platform/status.h"
 
 namespace xla {
 namespace tools {
@@ -48,7 +47,7 @@ void RealMain(absl::Span<char* const> args, bool compile) {
       ClientLibrary::GetXlaService(client->platform());
   for (char* arg : args) {
     HloSnapshot snapshot;
-    TF_CHECK_OK(tsl::ReadBinaryProto(tsl::Env::Default(), arg, &snapshot));
+    CHECK_OK(tsl::ReadBinaryProto(tsl::Env::Default(), arg, &snapshot));
     auto computation_status = client->LoadSnapshot(snapshot);
     if (!computation_status.ok()) {
       fprintf(stderr, "could not load snapshot for %s: %s\n", arg,

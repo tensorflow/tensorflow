@@ -56,12 +56,12 @@ cc_library(
     hdrs = ["fptrunc.h"],
     deps = [
         ":intrinsic",
+        ":type",
         "//xla:shape_util",
         "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla/service/llvm_ir:llvm_util",
         "//xla/tsl/platform:errors",
-        "//xla/tsl/platform:status",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",

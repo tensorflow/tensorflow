@@ -60,6 +60,7 @@ cc_library(
         "//xla/stream_executor:device_description",
         "//xla/stream_executor:device_description_proto_cc",
         "//xla/stream_executor:semantic_version",
+        "//xla/stream_executor/rocm:rocm_compute_capability",
         "//xla/tsl/platform:status",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",

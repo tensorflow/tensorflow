@@ -24,6 +24,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
@@ -56,7 +57,6 @@ limitations under the License.
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/tsl/platform/status.h"
 
 namespace xla {
 namespace gpu {
@@ -199,7 +199,7 @@ std::unique_ptr<CustomCallThunk> CreateCustomCallThunk(
                               /*operands=*/{},
                               /*results=*/{},
                               /*opaque=*/"");
-  TF_CHECK_OK(thunk.status());
+  CHECK_OK(thunk.status());
   return std::move(thunk).value();
 }
 

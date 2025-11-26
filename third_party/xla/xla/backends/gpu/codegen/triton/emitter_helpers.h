@@ -42,7 +42,6 @@ limitations under the License.
 #include "xla/literal.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/shape_util.h"
-#include "xla/tsl/platform/status.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 
@@ -135,7 +134,7 @@ T ScalarConstantValue(const HloInstruction& instr, PrimitiveType dst_type) {
   CHECK_EQ(instr.opcode(), HloOpcode::kConstant);
   CHECK(ShapeUtil::IsEffectiveScalar(instr.shape()));
   absl::StatusOr<Literal> converted = instr.literal().Convert(dst_type);
-  TF_CHECK_OK(converted.status());
+  CHECK_OK(converted.status());
   return converted.value().GetFirstElement<T>();
 }
 

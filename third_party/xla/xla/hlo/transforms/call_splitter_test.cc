@@ -20,6 +20,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -34,7 +35,6 @@ limitations under the License.
 #include "xla/hlo/transforms/simplifiers/tuple_simplifier.h"
 #include "xla/service/call_inliner.h"
 #include "xla/service/pattern_matcher.h"
-#include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
@@ -89,9 +89,9 @@ ENTRY entry {
   CallParameterCleanup cleanup;
   HloDCE dce;
   TupleSimplifier tuple_simplifier;
-  TF_CHECK_OK(cleanup.Run(module.get()).status());
-  TF_CHECK_OK(dce.Run(module.get()).status());
-  TF_CHECK_OK(tuple_simplifier.Run(module.get()).status());
+  CHECK_OK(cleanup.Run(module.get()).status());
+  CHECK_OK(dce.Run(module.get()).status());
+  CHECK_OK(tuple_simplifier.Run(module.get()).status());
 
   // Verify we got the two-call structure, with the mul in the second call.
   HloInstruction* call1;
@@ -107,8 +107,8 @@ ENTRY entry {
   // Verify we hooked up all the parameters correctly by simplifying again and
   // making sure it's equivalent to what we had in the beginning.
   CallInliner call_inliner;
-  TF_CHECK_OK(call_inliner.Run(module.get()).status());
-  TF_CHECK_OK(tuple_simplifier.Run(module.get()).status());
+  CHECK_OK(call_inliner.Run(module.get()).status());
+  CHECK_OK(tuple_simplifier.Run(module.get()).status());
 
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               GmockMatch(m::Tuple(m::Multiply(
@@ -151,9 +151,9 @@ ENTRY entry {
   CallParameterCleanup cleanup;
   HloDCE dce;
   TupleSimplifier tuple_simplifier;
-  TF_CHECK_OK(cleanup.Run(module.get()).status());
-  TF_CHECK_OK(dce.Run(module.get()).status());
-  TF_CHECK_OK(tuple_simplifier.Run(module.get()).status());
+  CHECK_OK(cleanup.Run(module.get()).status());
+  CHECK_OK(dce.Run(module.get()).status());
+  CHECK_OK(tuple_simplifier.Run(module.get()).status());
 
   HloInstruction* call1;
   HloInstruction* call2;
@@ -208,9 +208,9 @@ ENTRY entry {
   CallParameterCleanup cleanup;
   HloDCE dce;
   TupleSimplifier tuple_simplifier;
-  TF_CHECK_OK(cleanup.Run(module.get()).status());
-  TF_CHECK_OK(dce.Run(module.get()).status());
-  TF_CHECK_OK(tuple_simplifier.Run(module.get()).status());
+  CHECK_OK(cleanup.Run(module.get()).status());
+  CHECK_OK(dce.Run(module.get()).status());
+  CHECK_OK(tuple_simplifier.Run(module.get()).status());
 
   HloInstruction* call1;
   HloInstruction* call1_copy;
@@ -264,9 +264,9 @@ ENTRY entry {
   CallParameterCleanup cleanup;
   HloDCE dce;
   TupleSimplifier tuple_simplifier;
-  TF_CHECK_OK(cleanup.Run(module.get()).status());
-  TF_CHECK_OK(dce.Run(module.get()).status());
-  TF_CHECK_OK(tuple_simplifier.Run(module.get()).status());
+  CHECK_OK(cleanup.Run(module.get()).status());
+  CHECK_OK(dce.Run(module.get()).status());
+  CHECK_OK(tuple_simplifier.Run(module.get()).status());
 
   HloInstruction* call1;
   HloInstruction* call1_copy;
@@ -320,9 +320,9 @@ ENTRY entry {
   CallParameterCleanup cleanup;
   HloDCE dce;
   TupleSimplifier tuple_simplifier;
-  TF_CHECK_OK(cleanup.Run(module.get()).status());
-  TF_CHECK_OK(dce.Run(module.get()).status());
-  TF_CHECK_OK(tuple_simplifier.Run(module.get()).status());
+  CHECK_OK(cleanup.Run(module.get()).status());
+  CHECK_OK(dce.Run(module.get()).status());
+  CHECK_OK(tuple_simplifier.Run(module.get()).status());
 
   HloInstruction* call0_first;
   HloInstruction* call1_first;
@@ -374,7 +374,7 @@ ENTRY entry {
   EXPECT_FALSE(splitter.Run(module.get()).value());
 
   AlgebraicSimplifier simplifier(AlgebraicSimplifierOptions{});
-  TF_CHECK_OK(simplifier.Run(module.get()).status());
+  CHECK_OK(simplifier.Run(module.get()).status());
 
   EXPECT_TRUE(splitter.Run(module.get()).value());
 }

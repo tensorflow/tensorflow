@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <utility>
@@ -40,18 +41,20 @@ limitations under the License.
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"  // IWYU pragma: keep
 #include "mlir/Dialect/LLVMIR/NVVMDialect.h"  // IWYU pragma: keep
-#include "mlir/Dialect/LLVMIR/ROCDLDialect.h"
 #include "mlir/Dialect/Math/IR/Math.h"
+#include "mlir/IR/Diagnostics.h"
+#include "mlir/IR/Location.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Interfaces/DataLayoutInterfaces.h"
 #include "mlir/Pass/Pass.h"
+#include "mlir/Support/LLVM.h"
 #include "mlir/Transforms/DialectConversion.h"
+#include "google/protobuf/text_format.h"
 #include "xla/codegen/device_spec.h"
 #include "xla/codegen/emitters/transforms/passes.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_description.pb.h"
 #include "xla/tsl/platform/logging.h"
-#include "xla/tsl/platform/status.h"
 #include "tsl/platform/protobuf.h"  // IWYU pragma: keep
 
 namespace xla {
@@ -78,7 +81,7 @@ class LowerToLLVMPass : public impl::LowerToLLVMPassBase<LowerToLLVMPass> {
                                                        &device_info));
       absl::StatusOr<se::DeviceDescription> device_description =
           se::DeviceDescription::FromProto(device_info);
-      TF_CHECK_OK(device_description.status());
+      CHECK_OK(device_description.status());
       *device_spec_.mutable_type() = *device_description;
     } else if (target_type_ == "cpu") {
       CHECK(gpu_device_info_.empty());

@@ -44,10 +44,9 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/status.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -578,8 +577,8 @@ absl::StatusOr<bool> ArCrsCombiner::RewriteGraph() {
       auto channel_id = all_reduce->channel_id();
       auto prev = all_reduce->mutable_operand(0);
       auto next = all_reduce->users()[0];
-      TF_CHECK_OK(all_reduce->ReplaceUseWith(next, prev));
-      TF_CHECK_OK(parent_computation->RemoveInstruction(all_reduce));
+      CHECK_OK(all_reduce->ReplaceUseWith(next, prev));
+      CHECK_OK(parent_computation->RemoveInstruction(all_reduce));
       while (!next->IsCrossReplicaAllReduce()) {
         switch (next->opcode()) {
           case HloOpcode::kBitcast:
@@ -598,7 +597,7 @@ absl::StatusOr<bool> ArCrsCombiner::RewriteGraph() {
             // other_operand is a cross-module AR, which can be eliminated.
             if (other_operand->IsCrossModuleAllReduce() &&
                 other_operand->user_count() == 1) {
-              TF_CHECK_OK(other_operand->ReplaceAllUsesWith(
+              CHECK_OK(other_operand->ReplaceAllUsesWith(
                   other_operand->mutable_operand(0)));
             } else {
               auto shape = other_operand->shape();
@@ -609,7 +608,7 @@ absl::StatusOr<bool> ArCrsCombiner::RewriteGraph() {
               auto division = parent_computation->AddInstruction(
                   HloInstruction::CreateBinary(shape, HloOpcode::kDivide,
                                                other_operand, divisor));
-              TF_CHECK_OK(other_operand->ReplaceUseWith(next, division));
+              CHECK_OK(other_operand->ReplaceUseWith(next, division));
             }
             break;
           }

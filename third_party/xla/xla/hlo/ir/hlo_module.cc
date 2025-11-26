@@ -73,7 +73,6 @@ limitations under the License.
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"
-#include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tuple_tree.h"
 #include "xla/util.h"
@@ -339,7 +338,7 @@ void HloModule::ReplaceComputations(
     }
     auto& computation = *iterator;
     if (replacements.contains(computation.get())) {
-      TF_CHECK_OK(RemoveEmbeddedComputation(iterator));
+      CHECK_OK(RemoveEmbeddedComputation(iterator));
     }
   }
 
@@ -1144,7 +1143,7 @@ HloInstruction* HloModule::OutlineExpressionFromComputation(
             parameter_count, old_operand->shape(), "p"));
         ++parameter_count;
       }
-      TF_CHECK_OK(
+      CHECK_OK(
           outlined_instruction->ReplaceOperandWith(operand_num, *operand_slot));
     }
 
@@ -1185,10 +1184,10 @@ HloInstruction* HloModule::OutlineExpressionFromComputation(
   VLOG(2) << "as a call " << call->ToString();
   VLOG(2) << "to " << nested_computation->ToString();
 
-  TF_CHECK_OK(output->ReplaceAllUsesWith(call));
+  CHECK_OK(output->ReplaceAllUsesWith(call));
   for (auto i = instructions_to_outline.rbegin();
        i != instructions_to_outline.rend(); ++i) {
-    TF_CHECK_OK(computation->RemoveInstruction(*i));
+    CHECK_OK(computation->RemoveInstruction(*i));
   }
 
   return call;
@@ -1455,7 +1454,7 @@ void HloModule::Clone(const std::string& suffix, HloCloneContext* context,
         }
       }
     }
-    TF_CHECK_OK(module->set_schedule(std::move(clone_schedule)));
+    CHECK_OK(module->set_schedule(std::move(clone_schedule)));
   }
   for (const auto& [parameter, indices, offset] : CrossProgramPrefetches()) {
     module->AddCrossProgramPrefetch(parameter, indices, offset);

@@ -18,7 +18,6 @@ limitations under the License.
 #ifndef XLA_HLO_IR_HLO_INSTRUCTIONS_H_
 #define XLA_HLO_IR_HLO_INSTRUCTIONS_H_
 
-#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -51,7 +50,6 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/tsl/lib/gtl/iterator_range.h"
 #include "xla/tsl/platform/logging.h"  // IWYU pragma: keep
-#include "xla/tsl/platform/status.h"
 #include "xla/window_util.h"
 #include "xla/xla_data.pb.h"
 
@@ -1827,7 +1825,7 @@ class HloInfeedInstruction : public HloInstruction {
   // as the shape of the infeed instruction which produces a tuple containing
   // the infeed data shape and a TOKEN.
   const Shape& infeed_shape() const {
-    TF_DCHECK_OK(ShapeUtil::ValidateShapeWithOptionalLayout(shape()));
+    DCHECK_OK(ShapeUtil::ValidateShapeWithOptionalLayout(shape()));
     return ShapeUtil::GetSubshape(shape(), {0});
   }
   // Returns a serialized representation of this instruction.

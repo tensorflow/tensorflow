@@ -352,9 +352,13 @@ xla_cc_binary(
     compatible_with = get_compatible_with_libtpu_portable(),
     deps = [
         ":auto_sharding",
+        ":auto_sharding_option",
         "//xla/hlo/analysis:alias_info",
         "//xla/hlo/ir:hlo",
         "//xla/tools:hlo_module_loader",
+        "//xla/tsl/platform:env",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@local_tsl//tsl/platform:platform_port",

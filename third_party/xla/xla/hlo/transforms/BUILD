@@ -398,6 +398,7 @@ cc_library(
     hdrs = ["despecializer.h"],
     deps = [
         ":defuser",
+        "//xla:shape_util",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass",
@@ -408,6 +409,7 @@ cc_library(
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
     ],
@@ -607,9 +609,9 @@ xla_cc_test(
         "//xla/hlo/transforms/simplifiers:tuple_simplifier",
         "//xla/service:call_inliner",
         "//xla/service:pattern_matcher",
-        "//xla/tsl/platform:status",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status:statusor",
         "@com_google_googletest//:gtest",
         "@com_google_googletest//:gtest_main",  # fixdeps: keep

@@ -201,7 +201,6 @@ xla_cc_binary(
         "//xla/service:hlo_proto_cc",
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:errors",
-        "//xla/tsl/platform:status",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/util:command_line_flags",
         "@com_google_absl//absl/log",

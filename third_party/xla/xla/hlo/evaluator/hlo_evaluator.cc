@@ -36,6 +36,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/base/internal/endian.h"
 #include "absl/cleanup/cleanup.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
@@ -69,7 +70,6 @@ limitations under the License.
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/primitive_util.h"
-#include "xla/service/compilation_environments.h"
 #include "xla/service/gather_scatter_utils.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/logical_buffer.h"
@@ -81,7 +81,6 @@ limitations under the License.
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"
-#include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/types.h"
 #include "xla/util.h"
@@ -2332,7 +2331,7 @@ class FftTransform {
     }
 
     // Check input-related values.
-    TF_CHECK_OK(ShapeUtil::ValidateShape(input_shape));
+    CHECK_OK(ShapeUtil::ValidateShape(input_shape));
     if (!input_shape.IsArray()) {
       return Unimplemented("Only array input shapes are supported.");
     }
@@ -2351,7 +2350,7 @@ class FftTransform {
     }
 
     // Check output-related values.
-    TF_CHECK_OK(ShapeUtil::ValidateShape(output_shape));
+    CHECK_OK(ShapeUtil::ValidateShape(output_shape));
     if (!output_shape.IsArray()) {
       return Unimplemented("Only array output shapes are supported.");
     }
@@ -4638,7 +4637,7 @@ absl::Status HloEvaluator::HandleReduce(const HloInstruction* hlo) {
   if (is_tuple) {
     Literal tuple_result(inferred_return_shape);
     for (int64_t i = 0; i < num_args; ++i) {
-      TF_CHECK_OK(tuple_result.MoveFrom(std::move(results[i]), {i}));
+      CHECK_OK(tuple_result.MoveFrom(std::move(results[i]), {i}));
     }
     SetEvaluatedLiteralFor(reduce, std::move(tuple_result));
   } else {

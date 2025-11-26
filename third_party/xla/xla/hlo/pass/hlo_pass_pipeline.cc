@@ -28,13 +28,11 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
-#include "xla/hlo/ir/hlo_module_group.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
 #include "xla/service/dump.h"
 #include "xla/status_macros.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"
-#include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
@@ -49,8 +47,8 @@ void RecordPassStartMetadata(HloModule& module, const std::string& pass_name,
                              const std::string& pipeline_name) {
   module.metadata()->RecordPassStart();
   // An HloPassMetadata was just created so absl::Status should always be OK.
-  TF_CHECK_OK(module.metadata()->set_current_pass_name(pass_name));
-  TF_CHECK_OK(module.metadata()->set_current_pass_pipeline_name(pipeline_name));
+  CHECK_OK(module.metadata()->set_current_pass_name(pass_name));
+  CHECK_OK(module.metadata()->set_current_pass_pipeline_name(pipeline_name));
 }
 
 absl::Status AttemptRecordPassEndMetadata(HloModule& module,

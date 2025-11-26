@@ -122,7 +122,6 @@ cc_library(
         "//xla/mlir_hlo:map_mhlo_to_scalar_op",
         "//xla/mlir_hlo:transformation_helpers",
         "//xla/service/llvm_ir:llvm_util",
-        "//xla/tsl/platform:status",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log",
