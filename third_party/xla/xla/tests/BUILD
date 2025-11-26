@@ -310,7 +310,7 @@ cc_library(
     deps = [
         ":client_library_test_runner_utils",
         ":literal_test_util",
-        ":test_utils",
+        "//xla:array",
         "//xla:array2d",
         "//xla:array3d",
         "//xla:array4d",
@@ -330,10 +330,10 @@ cc_library(
         "//xla/service:interpreter_plugin",  # reference backend
         "//xla/service:platform_util",
         "//xla/stream_executor:platform",
-        "//xla/stream_executor:stream_executor_h",
         "//xla/tsl/lib/core:bitmap",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
@@ -341,8 +341,6 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_for_library",
-        "@local_tsl//tsl/platform:ml_dtypes",
-        "@local_tsl//tsl/platform:test",
     ],
     alwayslink = True,  # This library registers test cases at static initialization time.
 )
@@ -2522,19 +2520,22 @@ xla_test(
     ],
     deps = [
         ":client_library_test_base",
+        ":literal_test_util",
         ":xla_internal_test_main",
         "//xla:literal",
+        "//xla:literal_util",
         "//xla:shape_util",
-        "//xla:util",
+        "//xla:types",
         "//xla:xla_data_proto_cc",
         "//xla/client:local_client",
         "//xla/hlo/builder:xla_builder",
         "//xla/hlo/testlib:test",
+        "//xla/service",
         "//xla/tests:xla_test_backend_predicates",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/types:span",
         "@eigen_archive//:eigen3",
-        "@local_tsl//tsl/platform:protobuf",
-        "@local_tsl//tsl/platform:test",
     ],
 )
 
