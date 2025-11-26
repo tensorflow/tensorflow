@@ -55,17 +55,16 @@ class TfToPlatformDeviceIdMap {
           {tf_device_id.value(), platform_device_id.value()});
     }
     if (!result.second && platform_device_id.value() != result.first->second) {
-      return absl::AlreadyExistsError(absl::StrCat(
-          "TensorFlow device (", type.type_string(), ":", tf_device_id.value(),
+      return errors::AlreadyExists(
+          "TensorFlow device (", type, ":", tf_device_id.value(),
           ") is being mapped to multiple devices (", platform_device_id.value(),
           " now, and ", result.first->second,
           " previously), which is not supported. "
           "This may be the result of providing different ",
-          type.type_string(),
-          " configurations (ConfigProto.gpu_options, for example ",
+          type, " configurations (ConfigProto.gpu_options, for example ",
           "different visible_device_list) when creating multiple Sessions in ",
           "the same process. This is not currently supported, see ",
-          "https://github.com/tensorflow/tensorflow/issues/19083"));
+          "https://github.com/tensorflow/tensorflow/issues/19083");
     }
     return absl::OkStatus();
   }
