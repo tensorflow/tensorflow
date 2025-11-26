@@ -1325,6 +1325,30 @@ class RewriteAtomicRMW : public OpRewritePattern<AtomicRMWOp> {
   const DeviceSpec& device_spec_;
 };
 
+Value EmitI32Load(mlir::ImplicitLocOpBuilder& b, Value ptr, bool is_aligned) {
+  if (is_aligned) {
+    return b.create<ml::LoadOp>(b.getI32Type(), ptr);
+  }
+
+  mlir::LLVMTypeConverter converter(b.getContext());
+  auto llvm_element_type = converter.convertType(b.getI8Type());
+  auto array_type = b.getType<ml::LLVMArrayType>(llvm_element_type, 4);
+
+  Value result = b.create<ml::ConstantOp>(b.getI32Type(), 0);
+  for (int i = 0; i < 4; ++i) {
+    auto gep = b.create<ml::GEPOp>(ptr.getType(), array_type, ptr,
+                                   llvm::SmallVector<mlir::LLVM::GEPArg>{0, i});
+    gep.setNoWrapFlags(mlir::LLVM::GEPNoWrapFlags::inbounds);
+    Value byte_value = b.create<ml::LoadOp>(b.getI8Type(), gep);
+
+    byte_value = b.create<ml::ZExtOp>(b.getI32Type(), byte_value);
+    Value shifted = b.create<ml::ShlOp>(
+        byte_value, b.create<ml::ConstantOp>(b.getI32Type(), i * 8));
+    result = b.create<ml::OrOp>(result, shifted);
+  }
+  return result;
+}
+
 class RewriteGetDynamicDimSize : public OpRewritePattern<GetDynamicDimSizeOp> {
   using OpRewritePattern::OpRewritePattern;
 
@@ -1351,12 +1375,6 @@ class RewriteGetDynamicDimSize : public OpRewritePattern<GetDynamicDimSizeOp> {
         num_elements * element_type.getIntOrFloatBitWidth() / 8 +
         op.getDim() * b.getI32Type().getWidth() / 8;
 
-    int64_t alignment = dynamic_size_offset_in_bytes % 4;
-    // TODO(b/463569416): Support unaligned loads.
-    if (alignment != 0) {
-      return op->emitOpError("dynamic size offset is not 4-byte aligned");
-    }
-
     auto ptr_type = ml::LLVMPointerType::get(b.getContext());
     Value tensor_ptr =
         b.create<UnrealizedConversionCastOp>(ptr_type, tensor).getResult(0);
@@ -1368,7 +1386,8 @@ class RewriteGetDynamicDimSize : public OpRewritePattern<GetDynamicDimSizeOp> {
     Value metadata_addr_int = b.create<ml::AddOp>(addr_int, addr_offset);
     Value metadata_addr = b.create<ml::IntToPtrOp>(ptr_type, metadata_addr_int);
 
-    rewriter.replaceOpWithNewOp<ml::LoadOp>(op, b.getI32Type(), metadata_addr);
+    bool is_aligned = dynamic_size_offset_in_bytes % 4 == 0;
+    rewriter.replaceOp(op, EmitI32Load(b, metadata_addr, is_aligned));
 
     return success();
   }

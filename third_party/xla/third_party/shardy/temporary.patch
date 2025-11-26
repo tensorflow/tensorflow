@@ -1,147 +1,64 @@
-diff --git a/shardy/dialect/sdy/transforms/export/explicit_reshards_util.cc b/shardy/dialect/sdy/transforms/export/explicit_reshards_util.cc
-index f8e9369..f1bece8 100644
---- a/shardy/dialect/sdy/transforms/export/explicit_reshards_util.cc
-+++ b/shardy/dialect/sdy/transforms/export/explicit_reshards_util.cc
-@@ -330,8 +330,7 @@ int64_t getCommunicationCost(const ShardingProjection& shardingProjection,
-                              OpShardingRuleAttr shardingRule,
-                              ArrayRef<int64_t> tensorSizes,
-                              ArrayRef<int64_t> localTensorSizes, MeshAttr mesh,
--                             const FactorAxesPair& factorAxesPair,
--                             const int64_t expandedShardingSize) {
-+                             const FactorAxesPair& factorAxesPair) {
-   // The relative cost of collective operations.
-   constexpr int64_t allToAllCost = 1;
-   constexpr int64_t collectivePermuteCost = 2;
-@@ -408,14 +407,10 @@ int64_t getCommunicationCost(const ShardingProjection& shardingProjection,
-   // If the result contains this factor, we need
-   // 1. all-to-all to move AX from this factor to other factors.
-   // 2. all-gather to shrink the sharding size after the all-to-all above.
--  for (const auto& [localTensorSize, tensorFactorSharding] : llvm::zip_equal(
-+  for (const auto& [tensorSize, tensorFactorSharding] : llvm::zip_equal(
-            localTensorSizes.drop_front(shardingProjection.getNumOperands()),
-            shardingProjection.getResults())) {
--    // A candidate factor axes (factorAxesPair) is guaranteed to be an expansion
--    // of its existing sharding and `localTensorSize` has already taken into its
--    // existing sharding. In order to avoid double counting, it needs to shard
--    // further on the expanded sharding size only.
--    int64_t shardedTensorSize = localTensorSize / expandedShardingSize;
-+    int64_t shardedTensorSize = tensorSize / axesXSize;
-     auto [axesA, axesB] = getShardingAxesInOtherAndThisFactor(
-         tensorFactorSharding, factorAxesPair.factorIndex);
- 
-@@ -533,16 +528,9 @@ class FactorAxesCandidateBag {
- 
-     FactorAxesCandidate bestCandidate;
-     for (FactorAxesCandidate& candidate : candidates) {
--      // NOTE: The axes on replication factors are distributed to batching
--      // dimensions after the common axes are found for all non-replication
--      // factors. The communication cost calculation does not take this into
--      // account yet and hence is not ready for cases that sharding rule has
--      // replication factors.
--      if (shardingRule.getNeedReplicationFactors().empty()) {
--        candidate.communicationCost = getCommunicationCost(
--            shardingProjection, shardingRule, tensorSizes, localTensorSizes,
--            mesh, candidate.factorAxes, candidate.shardingSize);
--      }
-+      candidate.communicationCost =
-+          getCommunicationCost(shardingProjection, shardingRule, tensorSizes,
-+                               localTensorSizes, mesh, candidate.factorAxes);
-       if (isValid(candidate)) {
-         bestCandidate = std::max(bestCandidate, candidate);
-       }
-diff --git a/shardy/dialect/sdy/transforms/export/test/insert_explicit_reshards/cholesky_triangular_solve.mlir b/shardy/dialect/sdy/transforms/export/test/insert_explicit_reshards/cholesky_triangular_solve.mlir
-index 8b9401e..bb14074 100644
---- a/shardy/dialect/sdy/transforms/export/test/insert_explicit_reshards/cholesky_triangular_solve.mlir
-+++ b/shardy/dialect/sdy/transforms/export/test/insert_explicit_reshards/cholesky_triangular_solve.mlir
-@@ -147,12 +147,12 @@ func.func @cholesky_cholesky_dims_shardings_can_merge(%arg0: tensor<16x8x8x8xf32
-   return %0 :  tensor<16x8x8x8xf32>
- }
- 
-+// TODO(zixuanjiang). We may want to keep 'x' due to its larger size.
- // CHECK-LABEL: func @cholesky_sharded_cholesky_dim_input_only_batch_dim_both_but_input_sharding_larger
- func.func @cholesky_sharded_cholesky_dim_input_only_batch_dim_both_but_input_sharding_larger(%arg0: tensor<8x4x8x8xf32> {sdy.sharding = #sdy.sharding<@mesh_xyz, [{"x"}, {}, {}, {"z"}]>}) -> (tensor<8x4x8x8xf32> {sdy.sharding = #sdy.sharding<@mesh_xyz, [{"y"}, {}, {}, {}]>}){
--  // CHECK-NEXT: %[[RESHARD1:.*]] = sdy.reshard %arg0 <@mesh_xyz, [{"x"}, {}, {}, {}]> : tensor<8x4x8x8xf32>
--  // CHECK-NEXT: %[[CHOLESKY:.*]] = stablehlo.cholesky %[[RESHARD1]], lower = true {sdy.sharding = #sdy.sharding_per_value<[<@mesh_xyz, [{"x"}, {}, {}, {}]>]>} : tensor<8x4x8x8xf32>
--  // CHECK-NEXT: %[[RESHARD2:.*]] = sdy.reshard %[[CHOLESKY]] <@mesh_xyz, [{"y"}, {}, {}, {}]> : tensor<8x4x8x8xf32>
--  // CHECK-NEXT: return %[[RESHARD2]] : tensor<8x4x8x8xf32>
-+  // CHECK: %[[RESHARD1:.*]] = sdy.reshard %arg0 <@mesh_xyz, [{"y"}, {}, {}, {}]> : tensor<8x4x8x8xf32>
-+  // CHECK-NEXT: %[[CHOLESKY:.*]] = stablehlo.cholesky %[[RESHARD1]], lower = true {sdy.sharding = #sdy.sharding_per_value<[<@mesh_xyz, [{"y"}, {}, {}, {}]>]>} : tensor<8x4x8x8xf32>
-+  // CHECK-NEXT: return %[[CHOLESKY]] : tensor<8x4x8x8xf32>
-   %0 = stablehlo.cholesky %arg0, lower = true {sdy.sharding = #sdy.sharding_per_value<[<@mesh_xyz, [{"y"}, {}, {}, {}]>]>} : (tensor<8x4x8x8xf32>) -> tensor<8x4x8x8xf32>
-   return %0 :  tensor<8x4x8x8xf32>
- }
-diff --git a/shardy/dialect/sdy/transforms/export/test/insert_explicit_reshards/dynamic_slice_dynamic_update_slice.mlir b/shardy/dialect/sdy/transforms/export/test/insert_explicit_reshards/dynamic_slice_dynamic_update_slice.mlir
-index 904d776..c12086a 100644
---- a/shardy/dialect/sdy/transforms/export/test/insert_explicit_reshards/dynamic_slice_dynamic_update_slice.mlir
-+++ b/shardy/dialect/sdy/transforms/export/test/insert_explicit_reshards/dynamic_slice_dynamic_update_slice.mlir
-@@ -42,10 +42,10 @@ func.func @dynamic_update_slice(%arg0: tensor<32x4x8xf32> {sdy.sharding = #sdy.s
- 
- // CHECK-LABEL: func @dynamic_update_slice_different_input_and_output_sharding
- func.func @dynamic_update_slice_different_input_and_output_sharding(%arg0: tensor<32x4x8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{}, {"x"}, {"y"}]>}, %arg1: tensor<32x1x2xf32> {sdy.sharding = #sdy.sharding<@mesh, [{}, {}, {"y"}]>}, %arg2: tensor<i32>, %arg3: tensor<i32>, %arg4: tensor<i32>) -> (tensor<32x4x8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{}, {"y"}, {"x"}]>}){
--  // CHECK-NEXT: %[[RESHARD0:.*]] = sdy.reshard %arg0 <@mesh, [{}, {"y"}, {"x"}]> : tensor<32x4x8xf32>
--  // CHECK-NEXT: %[[RESHARD1:.*]] = sdy.reshard %arg1 <@mesh, [{}, {}, {}]> : tensor<32x1x2xf32>
--  // CHECK-NEXT: %[[DYNAMIC_UPDATE_SLICE:.*]] = stablehlo.dynamic_update_slice %[[RESHARD0]], %[[RESHARD1]], %arg2, %arg3, %arg4 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}, {"y"}, {"x"}]>]>} : (tensor<32x4x8xf32>, tensor<32x1x2xf32>, tensor<i32>, tensor<i32>, tensor<i32>) -> tensor<32x4x8xf32>
--  // CHECK-NEXT: return %[[DYNAMIC_UPDATE_SLICE]] : tensor<32x4x8xf32>
-+  // CHECK-NEXT: %[[REPLICATED_UPDATE:.*]] = sdy.reshard %arg1 <@mesh, [{}, {}, {}]> : tensor<32x1x2xf32>
-+  // CHECK-NEXT: %[[DYNAMIC_UPDATE_SLICE:.*]] = stablehlo.dynamic_update_slice %arg0, %[[REPLICATED_UPDATE]], %arg2, %arg3, %arg4 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}, {"x"}, {"y"}]>]>} : (tensor<32x4x8xf32>, tensor<32x1x2xf32>, tensor<i32>, tensor<i32>, tensor<i32>) -> tensor<32x4x8xf32>
-+  // CHECK-NEXT: %[[RESHARD:.*]] = sdy.reshard %[[DYNAMIC_UPDATE_SLICE]] <@mesh, [{}, {"y"}, {"x"}]> : tensor<32x4x8xf32>
-+  // CHECK-NEXT: return %[[RESHARD]] : tensor<32x4x8xf32>
-   %0 = stablehlo.dynamic_update_slice %arg0, %arg1, %arg2, %arg3, %arg4 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}, {"y"}, {"x"}]>]>} : (tensor<32x4x8xf32>, tensor<32x1x2xf32>, tensor<i32>, tensor<i32>, tensor<i32>) -> tensor<32x4x8xf32>
-   return %0 : tensor<32x4x8xf32>
- }
 diff --git a/third_party/llvm/generated.patch b/third_party/llvm/generated.patch
-index 8327093..e25178e 100644
+index e25178e..37a7256 100644
 --- a/third_party/llvm/generated.patch
 +++ b/third_party/llvm/generated.patch
-@@ -1,20 +1,17 @@
+@@ -1,17 +1,29 @@
  Auto generated patch. Do not edit or delete it, even if empty.
--diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/clang/BUILD.bazel b/utils/bazel/llvm-project-overlay/clang/BUILD.bazel
----- a/utils/bazel/llvm-project-overlay/clang/BUILD.bazel
--+++ b/utils/bazel/llvm-project-overlay/clang/BUILD.bazel
--@@ -1563,7 +1563,6 @@
--         ":basic",
--         ":config",
--         ":driver_options_inc_gen",
---        ":frontend",
--         ":lex",
--         ":options",
--         ":parse",
--@@ -1719,6 +1718,7 @@
--         ":ast",
--         ":basic",
--         ":config",
--+        ":driver",
--         ":driver_options_inc_gen",
--         ":edit",
--         ":lex",
-+diff -ruN --strip-trailing-cr a/mlir/lib/Target/LLVMIR/Dialect/OpenMP/OpenMPToLLVMIRTranslation.cpp b/mlir/lib/Target/LLVMIR/Dialect/OpenMP/OpenMPToLLVMIRTranslation.cpp
-+--- a/mlir/lib/Target/LLVMIR/Dialect/OpenMP/OpenMPToLLVMIRTranslation.cpp
-++++ b/mlir/lib/Target/LLVMIR/Dialect/OpenMP/OpenMPToLLVMIRTranslation.cpp
-+@@ -4095,6 +4095,12 @@
-+   llvm::SmallVector<size_t> occludedChildren;
-+   llvm::sort(
-+       indices.begin(), indices.end(), [&](const size_t a, const size_t b) {
-++        // Bail early if we are asked to look at the same index. If we do not
-++        // bail early, we can end up mistakenly adding indices to
-++        // occludedChildren. This can occur with some types of libc++ hardening.
-++        if (a == b)
-++          return false;
+-diff -ruN --strip-trailing-cr a/mlir/lib/Target/LLVMIR/Dialect/OpenMP/OpenMPToLLVMIRTranslation.cpp b/mlir/lib/Target/LLVMIR/Dialect/OpenMP/OpenMPToLLVMIRTranslation.cpp
+---- a/mlir/lib/Target/LLVMIR/Dialect/OpenMP/OpenMPToLLVMIRTranslation.cpp
+-+++ b/mlir/lib/Target/LLVMIR/Dialect/OpenMP/OpenMPToLLVMIRTranslation.cpp
+-@@ -4095,6 +4095,12 @@
+-   llvm::SmallVector<size_t> occludedChildren;
+-   llvm::sort(
+-       indices.begin(), indices.end(), [&](const size_t a, const size_t b) {
+-+        // Bail early if we are asked to look at the same index. If we do not
+-+        // bail early, we can end up mistakenly adding indices to
+-+        // occludedChildren. This can occur with some types of libc++ hardening.
+-+        if (a == b)
+-+          return false;
+-+
+-         auto memberIndicesA = cast<ArrayAttr>(indexAttr[a]);
+-         auto memberIndicesB = cast<ArrayAttr>(indexAttr[b]);
++diff -ruN --strip-trailing-cr a/clang/lib/Analysis/ThreadSafety.cpp b/clang/lib/Analysis/ThreadSafety.cpp
++--- a/clang/lib/Analysis/ThreadSafety.cpp
+++++ b/clang/lib/Analysis/ThreadSafety.cpp
++@@ -2820,7 +2820,7 @@
++         case CFGElement::AutomaticObjectDtor: {
++           CFGAutomaticObjDtor AD = BI.castAs<CFGAutomaticObjDtor>();
++           const auto *DD = AD.getDestructorDecl(AC.getASTContext());
++-          if (!DD->hasAttrs())
+++          if (!DD || !DD->hasAttrs())
++             break;
+  
++           LocksetBuilder.handleCall(
++diff -ruN --strip-trailing-cr a/clang/test/SemaCXX/no-warn-thread-safety-analysis.cpp b/clang/test/SemaCXX/no-warn-thread-safety-analysis.cpp
++--- a/clang/test/SemaCXX/no-warn-thread-safety-analysis.cpp
+++++ b/clang/test/SemaCXX/no-warn-thread-safety-analysis.cpp
++@@ -0,0 +1,12 @@
+++// RUN: %clang_cc1 -fsyntax-only -verify -std=c++11 -Wthread-safety -Wthread-safety-pointer -Wthread-safety-beta -Wno-thread-safety-negative -fcxx-exceptions -DUSE_CAPABILITY=0 %s
+++// RUN: %clang_cc1 -fsyntax-only -verify -std=c++11 -Wthread-safety -Wthread-safety-pointer -Wthread-safety-beta -Wno-thread-safety-negative -fcxx-exceptions -DUSE_CAPABILITY=1 %s
+++// RUN: %clang_cc1 -fsyntax-only -verify -std=c++17 -Wthread-safety -Wthread-safety-pointer -Wthread-safety-beta -Wno-thread-safety-negative -fcxx-exceptions -DUSE_CAPABILITY=0 %s
+++// RUN: %clang_cc1 -fsyntax-only -verify -std=c++17 -Wthread-safety -Wthread-safety-pointer -Wthread-safety-beta -Wno-thread-safety-negative -fcxx-exceptions -DUSE_CAPABILITY=1 %s
+++// expected-no-diagnostics
 ++
-+         auto memberIndicesA = cast<ArrayAttr>(indexAttr[a]);
-+         auto memberIndicesB = cast<ArrayAttr>(indexAttr[b]);
-+ 
+++struct foo {
+++  ~foo();
+++};
+++struct bar : foo {};
+++struct baz : bar {};
+++baz foobar(baz a) { return a; }
 diff --git a/third_party/llvm/workspace.bzl b/third_party/llvm/workspace.bzl
-index 8e6cbc9..215fe72 100644
+index 215fe72..3b35979 100644
 --- a/third_party/llvm/workspace.bzl
 +++ b/third_party/llvm/workspace.bzl
 @@ -4,8 +4,8 @@ load("//third_party:repo.bzl", "tf_http_archive")
  
  def repo(name):
      """Imports LLVM."""
--    LLVM_COMMIT = "dea330b38d9c18b68219abdb52baaa72c9f1103d"
--    LLVM_SHA256 = "0f00dd4e0d61e49051b09169450af0c5ca364bf7e3f015794089455ae8c8555c"
-+    LLVM_COMMIT = "26362c68579dd4375198aae4651b4d5f8a36c715"
-+    LLVM_SHA256 = "1b81809d98940d0a6d4f19ef9e0bf72cd5847b9bbed47bc3517fcf8a40d38fd9"
+-    LLVM_COMMIT = "26362c68579dd4375198aae4651b4d5f8a36c715"
+-    LLVM_SHA256 = "1b81809d98940d0a6d4f19ef9e0bf72cd5847b9bbed47bc3517fcf8a40d38fd9"
++    LLVM_COMMIT = "4f39a4ff0ada92870ca1c2dccad382ea04947da8"
++    LLVM_SHA256 = "264c7cc3e166b840911494a2e94cff2ae8730b56239bd91dc8f65c8dc9468262"
  
      tf_http_archive(
          name = name,
