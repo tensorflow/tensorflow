@@ -65,6 +65,7 @@ limitations under the License.
 #include "xla/types.h"
 
 using ::testing::ElementsAreArray;
+using ::testing::HasSubstr;
 
 namespace xla {
 namespace {
@@ -130,6 +131,23 @@ TEST(PjRtCApiClientTest, FulfillAliasBuffer) {
   // Expected result: data + 1
   EXPECT_TRUE(LiteralTestUtil::Equal(
       LiteralUtil::CreateR2<int32_t>({{2, 3, 4}, {5, 6, 7}}), *alias_literal));
+}
+
+TEST(PjRtCApiClientTest, CreateErrorBuffer) {
+  SetUpCpuPjRtApi();
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                          GetCApiClient("cpu"));
+
+  absl::Status error = absl::InternalError("Test Error");
+  Shape shape = ShapeUtil::MakeShape(S32, {2, 3});
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto error_buffer,
+      client->CreateErrorBuffer(error, shape, client->memory_spaces()[0]));
+
+  absl::Status awaited_status = error_buffer->GetReadyFuture().Await();
+  EXPECT_TRUE(absl::IsInternal(awaited_status));
+  EXPECT_THAT(awaited_status.message(), HasSubstr("Test Error"));
 }
 
 TEST(PjRtCApiClientTest, ConcurrentGetReadyFuture) {

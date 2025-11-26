@@ -386,6 +386,9 @@ class PjRtCApiClient : public PjRtClient {
       std::pair<std::unique_ptr<PjRtBuffer>, PjRtFulfillAliasBufferCallback>>
   CreateAliasBuffer(const Shape& shape, PjRtMemorySpace* memory_space) override;
 
+  absl::StatusOr<std::unique_ptr<PjRtBuffer>> CreateErrorBuffer(
+      absl::Status error, const Shape& shape, PjRtMemorySpace* memory) override;
+
   absl::StatusOr<const PjRtTopologyDescription*> GetTopologyDescription()
       const override;
 
@@ -469,6 +472,9 @@ class PjRtCApiClient : public PjRtClient {
   void InitDevicesAndMemorySpaces();
   void InitAttributes();
   PJRT_Extension_Base* FindExtensionImpl(PJRT_Extension_Type type) const;
+
+  std::unique_ptr<PJRT_Error, ::pjrt::PJRT_ErrorDeleter> CreatePjRtError(
+      const absl::Status& error) const;
 
   absl::StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostBufferInternalImpl(
       const void* data, PrimitiveType type, absl::Span<int64_t const> dims,

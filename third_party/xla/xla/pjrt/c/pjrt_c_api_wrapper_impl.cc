@@ -977,6 +977,29 @@ PJRT_Error* PJRT_Client_CreateUninitializedBuffer(
   return nullptr;
 }
 
+PJRT_Error* PJRT_Client_CreateErrorBuffer(
+    PJRT_Client_CreateErrorBuffer_Args* args) {
+  PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
+      "PJRT_Client_CreateErrorBuffer_Args",
+      PJRT_Client_CreateErrorBuffer_Args_STRUCT_SIZE, args->struct_size));
+
+  absl::Status error = absl::Status(
+      pjrt::PjrtErrorCodeToStatusCode(args->error_code),
+      absl::string_view(args->error_message, args->error_message_size));
+
+  PJRT_ASSIGN_OR_RETURN(
+      xla::Shape shape,
+      pjrt::BuildXlaShapeFromC(args->shape_element_type, args->shape_dims,
+                               args->shape_num_dims, args->shape_layout));
+
+  PJRT_ASSIGN_OR_RETURN(auto error_buffer,
+                        args->client->client->CreateErrorBuffer(
+                            error, shape, args->memory->memory_space));
+
+  args->buffer = new PJRT_Buffer{std::move(error_buffer), args->client};
+  return nullptr;
+}
+
 PJRT_Error* PJRT_Client_CreateAliasBuffer(
     PJRT_Client_CreateAliasBuffer_Args* args) {
   PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
@@ -3124,6 +3147,8 @@ PJRT_Api CreatePjrtApi(PJRT_Client_Create* create_fn,
       pjrt::PJRT_Client_FulfillAliasBuffer,
       /*PJRT_LoadedExecutable_GetDeviceAssignment=*/
       pjrt::PJRT_LoadedExecutable_GetDeviceAssignment,
+      /*PJRT_Client_CreateErrorBuffer=*/
+      pjrt::PJRT_Client_CreateErrorBuffer,
   };
 }
 
