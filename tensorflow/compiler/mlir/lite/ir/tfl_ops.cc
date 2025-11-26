@@ -247,16 +247,26 @@ bool ShouldFoldOperation(Operation* inst) {
     return size;
   };
 
-  int64_t results_size = get_size(inst->getResultTypes());
-  int64_t operands_size = get_size(inst->getOperandTypes());
+  int64_t inputs_size = get_size(inst->getOperandTypes());
+  int64_t outputs_size = get_size(inst->getResultTypes());
 
-  constexpr int kSizeFactor = 2;
-  constexpr int64_t kResultsSizeThreshold = (1 << 19);                // 64 KiB
-  constexpr int64_t kOperandsSizeThreshold = 200L * 1024 * 1024 * 8;  // 200 MiB
+  constexpr int64_t kInputsSizeThreshold = 200L * 1024 * 1024 * 8;  // 200 MiB
+  constexpr int64_t kOutputsSizeThreshold =
+      2 * kInputsSizeThreshold;  // 400 MiB
 
-  return (operands_size <= kOperandsSizeThreshold) &&
-         ((results_size <= kResultsSizeThreshold) ||
-          (results_size <= kSizeFactor * operands_size));
+  auto output_size_is_smaller_than_inputs = outputs_size <= inputs_size;
+
+  auto inputs_and_outputs_smaller_than_arbitrary_thresholds =
+      (inputs_size <= kInputsSizeThreshold) &&
+      (outputs_size <= kOutputsSizeThreshold);
+
+  // Folding rules are:
+  // 1. if the size of the resulting outputs are smaller than the inputs then
+  // just do the fold. The model size will be smaller as a result.
+  // 2. if the inputs and outputs sizes are smaller than certain thresholds, do
+  // the fold regardless of their impact on model size.
+  return output_size_is_smaller_than_inputs ||
+         inputs_and_outputs_smaller_than_arbitrary_thresholds;
 }
 
 // Returns dimension index for the given axis that supports negative
@@ -4374,10 +4384,23 @@ OpFoldResult CastFloatToFloat(DenseFPElementsAttr data, FloatType in_type,
     return DenseFPElementsAttr::get(result_type,
                                     MapStaticCast<double, float>(data));
   }
+
+  if (in_type.isF32() && out_type.isF16()) {
+    return data.mapValues(out_type, [&](const APFloat& old_value) {
+      APFloat value(old_value);
+      bool unused_loses_info;
+      value.convert(out_type.getFloatSemantics(), APFloat::rmNearestTiesToEven,
+                    &unused_loses_info);
+      return value.bitcastToAPInt();
+    });
+  }
   return {};
 }
 
 OpFoldResult CastOp::fold(FoldAdaptor adaptor) {
+  auto in_type = getInput().getType().getElementType();
+  auto out_type = getType().getElementType();
+
   if (!ShouldFoldOperation(this->getOperation())) return {};
 
   auto operands = adaptor.getOperands();
@@ -4389,9 +4412,6 @@ OpFoldResult CastOp::fold(FoldAdaptor adaptor) {
   }
 
   auto input = operands[0];
-
-  auto in_type = getInput().getType().getElementType();
-  auto out_type = getType().getElementType();
 
   if (auto int_in_type = llvm::dyn_cast_or_null<IntegerType>(in_type)) {
     auto in_data = llvm::dyn_cast_or_null<DenseIntElementsAttr>(input);
