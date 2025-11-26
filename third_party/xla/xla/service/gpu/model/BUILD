@@ -84,6 +84,7 @@ cc_library(
 xla_cc_test(
     name = "sol_latency_estimator_test",
     srcs = ["sol_latency_estimator_test.cc"],
+    tags = ["optonly"],  # Remove once b/463565595 is fixed.
     deps = [
         ":collective_interpolator",
         ":sol_gpu_cost_model",
