@@ -84,7 +84,7 @@ bool GpuFloatSupport::IsSupported(const HloInstruction& hlo) const {
           // Do not normalize supported types inside Triton fused computations.
           return cuda_compute_capability &&
                  cuda_compute_capability->SupportsAllFeaturesOf(cc) &&
-                 IsTritonFusedComputation(*hlo.parent());
+                 IsTritonGemmFusion(hlo.parent()->FusionInstruction());
         }
       }
       return LowPrecisionType() == BF16;

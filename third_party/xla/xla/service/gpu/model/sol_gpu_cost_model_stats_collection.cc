@@ -42,17 +42,6 @@ namespace xla::gpu {
 
 namespace {
 
-bool IsTritonGemm(const HloInstruction& instr) {
-  if (instr.called_computations().size() != 1) {
-    return false;
-  }
-  if (!IsTritonFusedComputation(*instr.called_computations()[0])) {
-    return false;
-  }
-  auto fused_range = instr.fused_instructions();
-  return absl::c_count_if(fused_range, HloPredicateIsOp<HloOpcode::kDot>) == 1;
-}
-
 // Returns true if successfully set the reification cost.
 bool SetReificationCost(HloInstruction* instr, double cost_us) {
   auto gpu_config = instr->backend_config<GpuBackendConfig>();
@@ -125,7 +114,7 @@ absl::StatusOr<bool> SolGpuCostModelStatsCollection::RunImpl(
     for (HloInstruction* instr : comp->MakeInstructionPostOrder()) {
       if (instr->opcode() != HloOpcode::kFusion &&
           !hlo_query::IsAsyncCollectiveStartOp(instr) &&
-          !IsCublasGemm(*instr) && !IsTritonGemm(*instr)) {
+          !IsCublasGemm(*instr) && !IsTritonGemmFusion(instr)) {
         continue;
       }
       if (!RecordReificationCost(*instr, *estimator)) {
