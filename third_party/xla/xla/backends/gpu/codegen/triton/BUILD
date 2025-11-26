@@ -36,6 +36,7 @@ cc_library(
     ],
     deps = [
         ":fusion_emitter",
+        ":xtile_compiler",
         "//xla:shape_util",
         "//xla:status_macros",
         "//xla:util",
@@ -245,12 +246,83 @@ xla_cc_test(
 
 cc_library(
     name = "fusion_emitter",
+    srcs = ["fusion_emitter.cc"],
+    hdrs = ["fusion_emitter.h"],
+    deps = [
+        ":collective_emitter",  # TODO(willfroom): Migrate to using stablehlo.allreduce etc.
+        ":dot_algorithms",
+        ":emitter_helpers",
+        "//xla:autotuning_proto_cc",
+        "//xla:permutation_util",
+        "//xla:shape_util",
+        "//xla:status_macros",
+        "//xla:util",
+        "//xla:xla_data_proto_cc",
+        "//xla:xla_proto_cc",
+        "//xla/backends/gpu/codegen/triton/ir:triton_xla",
+        "//xla/codegen:emitter_loc_op_builder",
+        "//xla/codegen/emitters:elemental_hlo_to_mlir",
+        "//xla/codegen/emitters/ir:xla",
+        "//xla/codegen/tiling:symbolic_tile_analysis",
+        "//xla/codegen/tiling:tiled_hlo_computation",
+        "//xla/codegen/tiling:tiled_hlo_fusion_instruction",
+        "//xla/codegen/tiling:tiled_hlo_instruction",
+        "//xla/codegen/tiling:tiled_hlo_schedule",
+        "//xla/codegen/tiling:tiling_specification",
+        "//xla/codegen/xtile/ir:xtile",
+        "//xla/hlo/analysis:indexing_analysis",
+        "//xla/hlo/builder:xla_builder",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/translate/hlo_to_mhlo:hlo_function_importer",
+        "//xla/mlir_hlo",
+        "//xla/service:hlo_module_config",
+        "//xla/service:instruction_fusion",
+        "//xla/service/gpu:backend_configs_cc",
+        "//xla/service/gpu:ir_emission_utils",
+        "//xla/service/gpu/model:block_level_parameters",
+        "//xla/service/llvm_ir:llvm_util",
+        "//xla/tools:hlo_decomposer_lib",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//llvm:ir_headers",
+        "@llvm-project//mlir:AffineToStandard",
+        "@llvm-project//mlir:ArithDialect",
+        "@llvm-project//mlir:BuiltinToLLVMIRTranslation",
+        "@llvm-project//mlir:FunctionInterfaces",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:LLVMToLLVMIRTranslation",
+        "@llvm-project//mlir:NVVMToLLVMIRTranslation",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:ROCDLToLLVMIRTranslation",
+        "@llvm-project//mlir:SCFDialect",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TensorDialect",
+        "@llvm-project//mlir:ToLLVMIRTranslation",
+        "@local_tsl//tsl/platform:path",
+        "@stablehlo//:stablehlo_ops",
+    ],
+)
+
+cc_library(
+    name = "xtile_compiler",
     # Using if_cuda_or_rocm_is_configured guard to prevent sycl target build / link errors.
     srcs = if_cuda_or_rocm_is_configured(
-        ["fusion_emitter.cc"],
-        ["fusion_emitter_stub.cc"],
+        ["xtile_compiler.cc"],
+        ["xtile_compiler_stub.cc"],
     ),
-    hdrs = ["fusion_emitter.h"],
+    hdrs = ["xtile_compiler.h"],
     compatible_with = get_compatible_with_portable(),
     deps = [
         "//xla:autotuning_proto_cc",
@@ -283,6 +355,7 @@ cc_library(
         "@stablehlo//:stablehlo_ops",
         "@triton//:TritonDialects",
     ] + if_cuda_or_rocm_is_configured([
+        ":fusion_emitter",
         ":lowering_util",
         ":compilation_pipeline",
         ":collective_emitter",
@@ -366,6 +439,7 @@ cc_library(
     name = "dot_algorithms",
     srcs = ["dot_algorithms.cc"],
     hdrs = ["dot_algorithms.h"],
+    compatible_with = get_compatible_with_portable(),
     deps = [
         ":emitter_helpers",
         "//xla:xla_data_proto_cc",
@@ -395,13 +469,14 @@ cc_library(
 )
 
 cc_library(
-    name = "fusion_emitter_stub_for_testing",
+    name = "xtile_compiler_stub_for_testing",
     srcs = [
-        "fusion_emitter_stub.cc",
+        "xtile_compiler_stub.cc",
     ],
     hdrs = [
-        "fusion_emitter.h",
+        "xtile_compiler.h",
     ],
+    visibility = ["//visibility:private"],
     deps = [
         ":emitter_helpers",
         ":support",
@@ -438,10 +513,10 @@ cc_library(
 )
 
 xla_cc_test(
-    name = "fusion_emitter_stub_test",
-    srcs = ["fusion_emitter_stub_test.cc"],
+    name = "xtile_compiler_stub_test",
+    srcs = ["xtile_compiler_stub_test.cc"],
     deps = [
-        ":fusion_emitter_stub_for_testing",
+        ":xtile_compiler_stub_for_testing",
         "//xla:literal",
         "//xla:literal_util",
         "//xla/codegen:emitter_loc_op_builder",
@@ -461,10 +536,9 @@ xla_cc_test(
     srcs = ["fusion_emitter_deviceless_test.cc"],
     tags = ["no_oss"],  # Doesn't pass in OSS when building with the `fusion_emitter_stub`.
     deps = [
-        ":fusion_emitter",
+        ":xtile_compiler",
         "//xla:xla_proto_cc",
         "//xla/codegen:emitter_loc_op_builder",
-        "//xla/hlo/analysis:symbolic_expr",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:filecheck",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
@@ -500,6 +574,7 @@ xla_test(
     deps = [
         ":fusion_emitter",
         ":test_utils",
+        ":xtile_compiler",
         "//xla:autotuning_proto_cc",
         "//xla:error_spec",
         "//xla:xla_data_proto_cc",
@@ -657,6 +732,7 @@ xla_test(
         ":fusion_emitter",
         ":support",
         ":test_utils",
+        ":xtile_compiler",
         "//xla:autotuning_proto_cc",
         "//xla:error_spec",
         "//xla:literal",
@@ -710,6 +786,7 @@ cc_library(
     hdrs = ["test_utils.h"],
     deps = [
         ":fusion_emitter",
+        ":xtile_compiler",
         "//xla:shape_util",
         "//xla:status_macros",
         "//xla:xla_data_proto_cc",
@@ -876,6 +953,7 @@ xla_cc_test(
         ":fusion_emitter",
         ":support",
         ":test_utils",
+        ":xtile_compiler",
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
         "//xla:xla_proto_cc",
@@ -911,6 +989,7 @@ xla_test(
         ":fusion_emitter",
         ":support",
         ":test_utils",
+        ":xtile_compiler",
         "//xla:error_spec",
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
@@ -996,7 +1075,7 @@ xla_cc_test(
     deps = [
         ":collective_emitter",
         ":fusion",
-        ":fusion_emitter",
+        ":xtile_compiler",
         "//xla:shape_util",
         "//xla:status_macros",
         "//xla/backends/gpu/codegen:fusion_emitter",

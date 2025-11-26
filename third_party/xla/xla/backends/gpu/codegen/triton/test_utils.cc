@@ -37,6 +37,7 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
 #include "xla/backends/gpu/codegen/triton/fusion_emitter.h"
+#include "xla/backends/gpu/codegen/triton/xtile_compiler.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -165,14 +166,13 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CreateXTileIrAndFileCheck(
     const BlockLevelParameters& block_level_parameters,
     absl::string_view filecheck_pattern) {
   auto* fusion = Cast<HloFusionInstruction>(computation.FusionInstruction());
-
+  LoadMlirDialectsForTriton(*test->mlir_context());
   TF_ASSIGN_OR_RETURN(
       mlir::OwningOpRef<mlir::ModuleOp> xtile_dialect_module,
-      ir_emitter_triton_internal::EmitXTileModule(
-          "xtile_dialect_fn",
-          TritonEmitterConstraints::GetBuilder(
-              TestGpuDeviceInfo::RTXA6000DeviceInfo()),
-          fusion, block_level_parameters, *test->mlir_context()));
+      EmitXTileModule("xtile_dialect_fn",
+                      TritonEmitterConstraints::GetBuilder(
+                          TestGpuDeviceInfo::RTXA6000DeviceInfo()),
+                      fusion, block_level_parameters, *test->mlir_context()));
 
   std::string out;
   llvm::raw_string_ostream os(out);

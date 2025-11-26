@@ -480,6 +480,7 @@ cc_library(
         "//xla/backends/gpu/codegen:fusion_emitter",
         "//xla/backends/gpu/codegen:fusions",
         "//xla/backends/gpu/codegen/triton:fusion_emitter",
+        "//xla/backends/gpu/codegen/triton:xtile_compiler",
         "//xla/backends/gpu/collectives:gpu_clique_key",
         "//xla/backends/gpu/runtime:all_gather_thunk",
         "//xla/backends/gpu/runtime:all_reduce_thunk",

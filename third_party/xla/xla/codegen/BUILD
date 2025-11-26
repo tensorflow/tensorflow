@@ -44,7 +44,7 @@ xla_cc_test(
     tags = ["gpu"],
     deps = [
         ":emitter_loc_op_builder",
-        "//xla/backends/gpu/codegen/triton:fusion_emitter",
+        "//xla/backends/gpu/codegen/triton:xtile_compiler",
         "//xla/hlo/testlib:filecheck",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/service/llvm_ir:llvm_util",
