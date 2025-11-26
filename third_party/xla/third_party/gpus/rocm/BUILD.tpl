@@ -601,6 +601,9 @@ filegroup(
         "%{rocm_root}/lib/llvm/**",
         "%{rocm_root}/share/hip/**",
         "%{rocm_root}/amdgcn/**",
+        "%{rocm_root}/lib/rocm_sysdeps/lib/*.so*",
+        "%{rocm_root}/lib/libamd_comgr_loader.so*",
+        "%{rocm_root}/lib/libamd_comgr.so*",
     ]),
     visibility = ["//visibility:public"],
 )
