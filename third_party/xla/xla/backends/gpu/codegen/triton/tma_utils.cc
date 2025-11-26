@@ -151,4 +151,21 @@ bool IsTmaRecommended(const TritonGemmConfig& config) {
          config.block_k <= 256;
 }
 
+// Equivalent to the recommendation constructed for TritonGemmConfig.
+bool IsTmaRecommended(const BlockLevelFusionConfig& config) {
+  if (!(config.num_warps() <= 8 &&
+        (config.num_stages() == 1 || config.num_stages() == 3 ||
+         config.num_stages() == 4))) {
+    return false;
+  }
+  for (const auto& tile : config.output_tiles()) {
+    for (const auto& dim : tile.sizes()) {
+      if (dim > 256) {
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
 }  // namespace xla::gpu
