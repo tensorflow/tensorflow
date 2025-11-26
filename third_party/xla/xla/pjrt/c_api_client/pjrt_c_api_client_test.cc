@@ -571,6 +571,32 @@ TEST(PjRtClientTest, DeserializeExecutableWithDifferentDeviceAssignment) {
       deserialized_executable->addressable_devices()[0]->global_device_id(), 1);
 }
 
+TEST(PjRtCApiClientTest, GetOutputShapes) {
+  static constexpr char const* kProgram = R"(
+    HloModule ffi_handler
+    ENTRY main {
+      ROOT %custom-call = f32[4] custom-call(),
+                          custom_call_target="MemsetFromValue",
+                          api_version=API_VERSION_TYPED_FFI
+    })";
+
+  const PJRT_Api* c_api = ::pjrt::cpu_plugin::GetCpuPjrtApi();
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                          WrapClientAroundCApi(c_api));
+
+  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module,
+                          ParseAndReturnUnverifiedModule(kProgram, {}));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto executable,
+      client->CompileAndLoad(XlaComputation(hlo_module->ToProto()), {}));
+
+  TF_ASSERT_OK_AND_ASSIGN(std::vector<Shape> output_shapes,
+                          executable->GetOutputShapes());
+  EXPECT_EQ(output_shapes.size(), 1);
+  Shape expected_shape = ShapeUtil::MakeShape(F32, {4});
+  EXPECT_EQ(output_shapes[0], expected_shape);
+}
+
 TEST(PjRtClientTest, BufferFromLiteralInt4) {
   SetUpCpuPjRtApi();
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,

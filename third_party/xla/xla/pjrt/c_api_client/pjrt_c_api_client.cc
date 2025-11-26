@@ -1825,6 +1825,46 @@ PjRtCApiExecutable::GetOutputElementTypes() const {
   return std::vector<std::vector<PrimitiveType>>{std::move(out)};
 }
 
+static absl::StatusOr<Shape> GetOutputShapeHelper(
+    const std::vector<PrimitiveType>& element_types,
+    const std::vector<DimensionVector>& dimensions,
+    const std::vector<std::shared_ptr<const PjRtLayout>>& layouts) {
+  CHECK_EQ(element_types.size(), dimensions.size());
+  CHECK_EQ(element_types.size(), layouts.size());
+
+  std::vector<xla::Shape> shapes;
+  shapes.reserve(element_types.size());
+  for (int i = 0; i < element_types.size(); ++i) {
+    TF_ASSIGN_OR_RETURN(xla::Shape shape, ShapeUtil::MakeValidatedShape(
+                                              element_types[i], dimensions[i]));
+    *shape.mutable_layout() = layouts[i]->xla_layout();
+    shapes.push_back(std::move(shape));
+  }
+  if (shapes.size() == 1) {
+    return shapes[0];
+  }
+  return ShapeUtil::MakeTupleShape(shapes);
+}
+
+absl::StatusOr<std::vector<Shape>> PjRtCApiExecutable::GetOutputShapes() const {
+  TF_ASSIGN_OR_RETURN(std::vector<std::vector<PrimitiveType>> element_types,
+                      GetOutputElementTypes());
+  TF_ASSIGN_OR_RETURN(std::vector<std::vector<DimensionVector>> dimensions,
+                      GetOutputDimensions());
+  TF_ASSIGN_OR_RETURN(std::vector<std::shared_ptr<const PjRtLayout>> layouts,
+                      GetOutputLayouts());
+
+  // `PjRtExecutable::GetOutputLayouts` doesn't support MPMD executables.
+  // Only one output is expected.
+  CHECK_EQ(element_types.size(), 1);
+  CHECK_EQ(dimensions.size(), 1);
+
+  TF_ASSIGN_OR_RETURN(
+      Shape shape,
+      GetOutputShapeHelper(element_types[0], dimensions[0], layouts));
+  return std::vector<Shape>{shape};
+}
+
 absl::StatusOr<std::string>
 PjRtCApiExecutable::GetSerializedExecutableMetadata() const {
   auto executable_metadata_extension =
