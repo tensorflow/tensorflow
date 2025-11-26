@@ -349,7 +349,7 @@ absl::Status PosixFileSystem::CreateDir(const std::string& name,
                                         TransactionToken* token) {
   std::string translated = TranslateName(name);
   if (translated.empty()) {
-    return errors::AlreadyExists(name);
+    return absl::AlreadyExistsError(name);
   }
   if (mkdir(translated.c_str(), 0755) != 0) {
     return IOError(name, errno);

@@ -18,19 +18,30 @@ limitations under the License.
 #include <sys/stat.h>
 
 #include <cstdint>
-#include <deque>
+#include <cstdio>
+#include <memory>
+#include <string>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
+#include "absl/log/check.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
-#include "xla/tsl/platform/env_time.h"
+#include "absl/types/span.h"
+#include "google/protobuf/io/coded_stream.h"
+#include "google/protobuf/io/zero_copy_stream.h"
+#include "google/protobuf/message.h"
+#include "google/protobuf/message_lite.h"
+#include "google/protobuf/text_format.h"
 #include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/file_statistics.h"
+#include "xla/tsl/platform/file_system.h"
 #include "tsl/platform/host_info.h"
 #include "tsl/platform/path.h"
-#include "tsl/platform/platform.h"
-#include "tsl/platform/protobuf.h"
-#include "tsl/platform/stringprintf.h"
 #include "tsl/platform/thread_annotations.h"
 
 #if defined(__APPLE__)
@@ -77,8 +88,8 @@ absl::Status FileSystemRegistryImpl::Register(
   absl::MutexLock lock(mu_);
   if (!registry_.emplace(scheme, std::unique_ptr<FileSystem>(factory()))
            .second) {
-    return errors::AlreadyExists("File factory for ", scheme,
-                                 " already registered");
+    return absl::AlreadyExistsError(
+        absl::StrCat("File factory for ", scheme, " already registered"));
   }
   return absl::OkStatus();
 }
@@ -87,8 +98,8 @@ absl::Status FileSystemRegistryImpl::Register(
     const std::string& scheme, std::unique_ptr<FileSystem> filesystem) {
   absl::MutexLock lock(mu_);
   if (!registry_.emplace(scheme, std::move(filesystem)).second) {
-    return errors::AlreadyExists("File system for ", scheme,
-                                 " already registered");
+    return absl::AlreadyExistsError(
+        absl::StrCat("File system for ", scheme, " already registered"));
   }
   return absl::OkStatus();
 }
