@@ -12,6 +12,7 @@ bazel_dep(name = "curl", version = "8.11.0")
 bazel_dep(name = "google_benchmark", version = "1.8.5", repo_name = "com_google_benchmark")
 bazel_dep(name = "googletest", version = "1.17.0", repo_name = "com_google_googletest")
 bazel_dep(name = "grpc", version = "1.74.1", repo_name = "com_github_grpc_grpc")
+bazel_dep(name = "gutil", version = "20250502.0", repo_name = "com_google_gutil");
 bazel_dep(name = "jsoncpp", version = "1.9.6", repo_name = "jsoncpp_git")
 bazel_dep(name = "or-tools", version = "9.12", repo_name = "com_google_ortools")
 bazel_dep(name = "platforms", version = "1.0.0")
