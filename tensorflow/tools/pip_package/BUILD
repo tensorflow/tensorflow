@@ -226,6 +226,7 @@ COMMON_PIP_DEPS = [
     "//tensorflow/tools/common:test_module1",
     "//tensorflow/tools/common:traverse",
     "//tensorflow/tools/docs:tf_doctest_lib",
+    "//tensorflow/tools/model_summary_cli:cli",
     "@local_tsl//tsl/profiler/protobuf:trace_events_proto_py",
     "//tensorflow/python/distribute:parameter_server_strategy_v2",
     "//tensorflow/python/distribute/coordinator:cluster_coordinator",
