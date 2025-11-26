@@ -998,9 +998,8 @@ ENTRY entry_computation {
   EXPECT_EQ(computation->instruction_count(), 4);
   EXPECT_EQ(module->entry_computation_layout().parameter_count(), 3);
 
-  HloDCE dce(/*remove_cross_partition_collective_ops=*/false,
-             /*use_call_analysis=*/false,
-             /*remove_dead_parameters_from_entry_computation=*/true);
+  HloDCE dce;
+  dce.set_remove_dead_parameters_from_entry_computation(true);
   EXPECT_TRUE(dce.Run(module.get()).value());
 
   EXPECT_EQ(computation->num_parameters(), 2);
