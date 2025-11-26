@@ -24,8 +24,7 @@ limitations under the License.
 #include "xla/stream_executor/cuda/cuda_status.h"
 #include "xla/stream_executor/gpu/context_map.h"
 #include "xla/stream_executor/gpu/scoped_activate_context.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/status.h"
+#include "xla/tsl/platform/errors.h"
 
 namespace stream_executor::gpu {
 
@@ -67,8 +66,8 @@ int GetFlagsFromEnv() {
 // Returns the current context or dies if it fails.
 CUcontext CurrentContextOrDie() {
   CUcontext current = nullptr;
-  TF_CHECK_OK(cuda::ToStatus(cuCtxGetCurrent(&current),
-                             "Failed to query current context"));
+  CHECK_OK(cuda::ToStatus(cuCtxGetCurrent(&current),
+                          "Failed to query current context"));
   return current;
 }
 
@@ -183,8 +182,7 @@ absl::StatusOr<CudaContext*> CudaContext::Create(int device_ordinal,
 }
 
 void CudaContext::SetActive() {
-  TF_CHECK_OK(
-      cuda::ToStatus(cuCtxSetCurrent(context_), "Failed setting context"));
+  CHECK_OK(cuda::ToStatus(cuCtxSetCurrent(context_), "Failed setting context"));
 }
 
 bool CudaContext::IsActive() const { return CurrentContext() == context_; }

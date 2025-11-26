@@ -79,7 +79,6 @@ cc_library(
         "//xla/service:hlo_proto_cc",
         "//xla/tsl/framework:allocator",
         "//xla/tsl/platform:errors",
-        "//xla/tsl/platform:status",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/protobuf:coordination_service_proto_cc",
         "@com_google_absl//absl/algorithm:container",

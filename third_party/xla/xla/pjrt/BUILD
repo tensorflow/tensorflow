@@ -700,6 +700,7 @@ cc_library(
         "//xla/client:local_client",
         "//xla/hlo/builder:xla_computation",
         "//xla/hlo/ir:hlo",
+        "//xla/mlir_hlo:mhlo_passes",
         "//xla/pjrt/distributed:protocol_proto_cc",
         "//xla/pjrt/dump",
         "//xla/pjrt/profiling:device_time_measurement",
@@ -719,7 +720,6 @@ cc_library(
         "//xla/service/gpu:gpu_executable_run_options",
         "//xla/stream_executor:device_memory",
         "//xla/stream_executor:device_memory_allocator",
-        "//xla/stream_executor:event",
         "//xla/stream_executor:stream",
         "//xla/tsl/concurrency:async_value",
         "//xla/tsl/concurrency:ref_count",
@@ -727,7 +727,6 @@ cc_library(
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:logging",
-        "//xla/tsl/platform:status",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base",
@@ -1074,7 +1073,6 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/synchronization",
         "@local_tsl//tsl/platform:logging",
-        "@local_tsl//tsl/platform:status",
     ],
 )
 

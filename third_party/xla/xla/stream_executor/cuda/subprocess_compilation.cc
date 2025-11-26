@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/cleanup/cleanup.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -52,7 +53,6 @@ limitations under the License.
 #include "xla/stream_executor/semantic_version.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/subprocess.h"
 #include "xla/util.h"
@@ -281,7 +281,7 @@ absl::StatusOr<cuda::Assembly> CompileGpuAsmUsingPtxAs(
   VLOG(2) << "ptx written to: " << ptx_path;
 
   absl::Cleanup ptx_cleaner = [&ptx_path] {
-    TF_CHECK_OK(tsl::Env::Default()->DeleteFile(ptx_path));
+    CHECK_OK(tsl::Env::Default()->DeleteFile(ptx_path));
   };
 
   // Invoke ptxas and collect its output.
@@ -396,7 +396,7 @@ absl::StatusOr<std::vector<uint8_t>> BundleGpuAsmUsingFatbin(
   }
   absl::Cleanup image_files_cleaner = [&image_paths] {
     for (const auto& path : image_paths) {
-      TF_CHECK_OK(tsl::Env::Default()->DeleteFile(path));
+      CHECK_OK(tsl::Env::Default()->DeleteFile(path));
     }
   };
 
@@ -504,7 +504,7 @@ absl::StatusOr<std::vector<uint8_t>> LinkUsingNvlink(
   std::vector<std::string> temp_files;
   absl::Cleanup cleaners = [&] {
     for (auto& f : temp_files) {
-      TF_CHECK_OK(tsl::Env::Default()->DeleteFile(f));
+      CHECK_OK(tsl::Env::Default()->DeleteFile(f));
     }
   };
   for (int i = 0; i < images.size(); i++) {

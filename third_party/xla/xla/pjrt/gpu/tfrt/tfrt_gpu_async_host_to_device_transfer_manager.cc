@@ -59,7 +59,6 @@ limitations under the License.
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/platform/logging.h"
-#include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
@@ -232,8 +231,8 @@ absl::Status TfrtGpuAsyncHostToDeviceTransferManager::TransferLiteralToBuffer(
         buffer->AsShapedBuffer(device_shapes_[buffer_index], device_);
 
     auto stream = device_->stream();
-    TF_CHECK_OK(transfer_manager->TransferLiteralToDeviceAsync(stream, literal,
-                                                               shaped_buffer));
+    CHECK_OK(transfer_manager->TransferLiteralToDeviceAsync(stream, literal,
+                                                            shaped_buffer));
 
     absl::Status status = BlockHostUntilDoneWithHostCallback(stream);
     VLOG(3) << "Finish transfer h2d for literal with shape "
@@ -332,7 +331,7 @@ TfrtGpuAsyncHostToDeviceTransferManager::TransferRawDataToSubBuffer(
       VLOG(3) << "H2D copy: " << host_data_ptr << " -> " << sub_buffer.opaque()
               << " (" << transfer_size << " bytes) on device "
               << device_->DebugString();
-      TF_CHECK_OK(stream->Memcpy(&sub_buffer, host_data_ptr, transfer_size))
+      CHECK_OK(stream->Memcpy(&sub_buffer, host_data_ptr, transfer_size))
           << "Failed to copy data to GPU";
 
       absl::Status status = BlockHostUntilDoneWithHostCallback(stream);

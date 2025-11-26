@@ -282,7 +282,6 @@ xla_test(
         "@local_tsl//tsl/platform",
         "@local_tsl//tsl/platform:casts",
         "@local_tsl//tsl/platform:platform_port",
-        "@local_tsl//tsl/platform:protobuf",
     ],
 )
 

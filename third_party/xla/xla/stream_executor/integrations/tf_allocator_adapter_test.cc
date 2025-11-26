@@ -32,7 +32,6 @@ limitations under the License.
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/framework/allocator.h"
-#include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/statusor.h"
 
 namespace stream_executor {
@@ -144,7 +143,7 @@ TEST(MultiDeviceAdapter, DeallocationWithDifferentAllocator) {
   CHECK_EQ(allocations->size(), 1);
   CHECK_EQ(reinterpret_cast<size_t>(buff0->opaque()), 0x1001);
 
-  TF_CHECK_OK(deallocator->Deallocate(/*device_ordinal=*/0, buff0.cref()));
+  CHECK_OK(deallocator->Deallocate(/*device_ordinal=*/0, buff0.cref()));
   CHECK_EQ(allocations->size(), 0);
 
   // Place back memory pointer to remove it during with ScopedDeviceMemory

@@ -105,9 +105,10 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/layout.h"
-#include "xla/layout_util.h"
 #include "xla/literal.h"
+#include "xla/mlir_hlo/mhlo/transforms/passes.h"
 #include "xla/pjrt/abstract_tracked_device_buffer.h"
+#include "xla/pjrt/buffer_sequencing_event.h"
 #include "xla/pjrt/common_pjrt_client.h"
 #include "xla/pjrt/device_event.h"
 #include "xla/pjrt/distributed/protocol.pb.h"
@@ -138,7 +139,6 @@ limitations under the License.
 #include "xla/service/computation_layout.h"
 #include "xla/service/dump.h"
 #include "xla/service/executable.h"
-#include "xla/service/generic_transfer_manager.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/maybe_owning_device_memory.h"
@@ -155,7 +155,6 @@ limitations under the License.
 #include "xla/tsl/framework/allocator.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/threadpool.h"
 #include "xla/util.h"
@@ -391,7 +390,7 @@ void StallStreamOnError(LocalDeviceState* local_device, se::Stream* stream) {
       // This will stall the calling thread but that's ok in this very rare
       // error case. If the stall fails just crash, since we have no other
       // way to synchronize.
-      TF_CHECK_OK(stream->BlockHostUntilDone());
+      CHECK_OK(stream->BlockHostUntilDone());
       break;
   }
 }
@@ -725,7 +724,7 @@ PjRtStreamExecutorClient::LinearizeHostBufferInto(
                      std::move(on_done_with_host_buffer))
                : nullptr,
        host_buffer_semantics, transpose{std::move(transpose)}]() mutable {
-        // This function uses TF_CHECK_OK and value() since we have no way
+        // This function uses CHECK_OK and value() since we have no way
         // to report failures from a callback. However, the operations here are
         // unlikely to fail and not recoverable even if we were to fail: DMAs to
         // memory that has already been allocated, and a possible Event
@@ -767,14 +766,14 @@ PjRtStreamExecutorClient::LinearizeHostBufferInto(
               }
             }
           }
-          TF_CHECK_OK(local_device->host_to_device_stream()->Memcpy(
+          CHECK_OK(local_device->host_to_device_stream()->Memcpy(
               &device_memory, staging_buffer.get(), packed_size));
         } else {
-          TF_CHECK_OK(local_device->host_to_device_stream()->Memcpy(
+          CHECK_OK(local_device->host_to_device_stream()->Memcpy(
               &device_memory, data, packed_size));
         }
 
-        TF_CHECK_OK(AddDestinationBufferSynchronization(
+        CHECK_OK(AddDestinationBufferSynchronization(
             this, local_device, event, local_device->host_to_device_stream()));
 
         event.AndThen([raw_buffer = std::move(raw_buffer),
@@ -865,7 +864,7 @@ PjRtStreamExecutorClient::LinearizeInto(
   auto transfer_h2d = [this, local_client = client(), transfer_manager,
                        local_device, raw_buffer, device, event, literal,
                        on_device_shape = std::move(on_device_shape)]() mutable {
-    // This function uses TF_CHECK_OK and value() since we have no way
+    // This function uses CHECK_OK and value() since we have no way
     // to report failures from a callback. However, the operations here are
     // unlikely to fail and not recoverable even if we were to fail: DMAs to
     // memory that has already been allocated, and a possible Event
@@ -878,11 +877,11 @@ PjRtStreamExecutorClient::LinearizeInto(
 
     ShapedBuffer buffer =
         device_memory->AsShapedBuffer(device, on_device_shape);
-    TF_CHECK_OK(transfer_manager->TransferLiteralToDeviceAsync(
-        h2d_stream, literal, buffer));
+    CHECK_OK(transfer_manager->TransferLiteralToDeviceAsync(h2d_stream, literal,
+                                                            buffer));
 
-    TF_CHECK_OK(AddDestinationBufferSynchronization(this, local_device, event,
-                                                    h2d_stream));
+    CHECK_OK(AddDestinationBufferSynchronization(this, local_device, event,
+                                                 h2d_stream));
 
     local_device->ThenRelease(h2d_stream, device_memory).IgnoreError();
 

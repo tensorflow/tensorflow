@@ -240,12 +240,12 @@ absl::Status SuccessfulCrossHostTransferTestBody(bool is_sender,
       if (transfer_error != nullptr) {
         return transfer_error->status;
       }
-      TF_CHECK_OK(args.buffer->buffer->GetReadyFuture().Await());
+      CHECK_OK(args.buffer->buffer->GetReadyFuture().Await());
       std::unique_ptr<PJRT_Event, PJRT_EventDeleter> event(
           args.done_with_host_buffer, MakeEventDeleter(api));
 
       raw_buffers.push_back(args.buffer);
-      TF_CHECK_OK(event->future.Await());
+      CHECK_OK(event->future.Await());
       xla::PjRtGlobalDeviceId src_device_id =
           args.device->device->global_device_id();
       dst_device_ids.push_back(1 - src_device_id);
@@ -268,12 +268,12 @@ absl::Status SuccessfulCrossHostTransferTestBody(bool is_sender,
         ->PJRT_Transfers_PJRT_Client_CrossHostSendBuffers(&send_args);
 
     for (int i = 0; i < num_arrays; ++i) {
-      TF_CHECK_OK(send_args.send_events[i]->future.Await());
+      CHECK_OK(send_args.send_events[i]->future.Await());
       std::unique_ptr<PJRT_Buffer, ::pjrt::PJRT_BufferDeleter> buffer(
           raw_buffers[i], ::pjrt::MakeBufferDeleter(api));
       std::unique_ptr<PJRT_Event, PJRT_EventDeleter> send_event(
           send_args.send_events[i], MakeEventDeleter(api));
-      TF_CHECK_OK(send_event->future.Await());
+      CHECK_OK(send_event->future.Await());
     }
   } else {
     // Receive some data.

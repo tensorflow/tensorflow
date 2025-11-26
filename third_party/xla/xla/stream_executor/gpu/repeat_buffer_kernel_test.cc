@@ -22,6 +22,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/log/check.h"
 #include "absl/status/status_matchers.h"
 #include "absl/strings/ascii.h"
 #include "absl/types/span.h"
@@ -33,7 +34,6 @@ limitations under the License.
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/statusor.h"
 
 namespace stream_executor::gpu {
@@ -67,7 +67,7 @@ TEST_F(RepeatBufferKernelTest, CreateRepeatedBufferAndTestResult) {
   DeviceMemory<float> buffer =
       executor_->AllocateArray<float>(kNumberOfTotalElements);
 
-  TF_CHECK_OK(stream->MemcpyH2D(absl::MakeConstSpan(kInitialBuf), &buffer));
+  CHECK_OK(stream->MemcpyH2D(absl::MakeConstSpan(kInitialBuf), &buffer));
 
   TF_ASSERT_OK_AND_ASSIGN(
       RepeatBufferKernel::KernelType kernel,
@@ -86,8 +86,8 @@ TEST_F(RepeatBufferKernelTest, CreateRepeatedBufferAndTestResult) {
   std::array<float, kNumberOfTotalElements> result_buffer{};
   absl::Span<const float> result = absl::MakeConstSpan(result_buffer);
 
-  TF_CHECK_OK(stream->MemcpyD2H(buffer, absl::MakeSpan(result_buffer)));
-  TF_CHECK_OK(stream->BlockHostUntilDone());
+  CHECK_OK(stream->MemcpyD2H(buffer, absl::MakeSpan(result_buffer)));
+  CHECK_OK(stream->BlockHostUntilDone());
 
   for (int offset = 0; offset < kNumberOfTotalElements;
        offset += kNumberOfRepeatedElements) {

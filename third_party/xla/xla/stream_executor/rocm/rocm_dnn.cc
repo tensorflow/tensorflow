@@ -63,7 +63,6 @@ limitations under the License.
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/macros.h"
-#include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/util/determinism.h"
 #include "xla/tsl/util/env_var.h"
@@ -790,19 +789,19 @@ MIOpenSupport::MIOpenSupport(StreamExecutor* parent) : parent_(parent) {
   return_best_algo_only_ = false;
   // but if the env var TF_ROCM_RETURN_BEST_ALGO_ONLY is set, only the best
   // (i.e. most efficient) algorithm will be returned
-  TF_CHECK_OK(tsl::ReadBoolFromEnvVar("TF_ROCM_RETURN_BEST_ALGO_ONLY", false,
-                                      &return_best_algo_only_));
+  CHECK_OK(tsl::ReadBoolFromEnvVar("TF_ROCM_RETURN_BEST_ALGO_ONLY", false,
+                                   &return_best_algo_only_));
 
   // by default, use Find Mode APIs for convolution
   use_immediate_mode_ = false;
   // swich to Find Mode if env var TF_ROCM_USE_IMMEDIATE_MODE is set
 
-  TF_CHECK_OK(tsl::ReadBoolFromEnvVar("TF_ROCM_USE_IMMEDIATE_MODE", false,
-                                      &use_immediate_mode_));
+  CHECK_OK(tsl::ReadBoolFromEnvVar("TF_ROCM_USE_IMMEDIATE_MODE", false,
+                                   &use_immediate_mode_));
 
   bool enable_pooling_cache = false;
-  TF_CHECK_OK(tsl::ReadBoolFromEnvVar("TF_ROCM_BW_POOL_CACHE", false,
-                                      &enable_pooling_cache));
+  CHECK_OK(tsl::ReadBoolFromEnvVar("TF_ROCM_BW_POOL_CACHE", false,
+                                   &enable_pooling_cache));
   if (enable_pooling_cache) m_pooling_cache_allowed = true;
 }
 
@@ -5200,8 +5199,8 @@ bool UseNhwcLayoutForRocm() {
 #if TF_ROCM_VERSION >= 50100
   static bool is_enabled = [] {
     bool is_enabled = false;
-    TF_CHECK_OK(tsl::ReadBoolFromEnvVar("TF_USE_ROCM_NHWC",
-                                        /*default_val=*/false, &is_enabled));
+    CHECK_OK(tsl::ReadBoolFromEnvVar("TF_USE_ROCM_NHWC",
+                                     /*default_val=*/false, &is_enabled));
     return is_enabled;
   }();
   return is_enabled;

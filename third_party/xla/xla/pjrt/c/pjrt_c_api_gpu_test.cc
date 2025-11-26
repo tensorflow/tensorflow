@@ -69,9 +69,7 @@ limitations under the License.
 #include "xla/stream_executor/gpu/gpu_init.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/statusor.h"
-#include "xla/util.h"
 #include "tsl/platform/mem.h"
 
 namespace pjrt {
@@ -99,7 +97,7 @@ class PjrtCApiGpuTest : public PjrtCApiTestBase {
 TEST_F(PjrtCApiGpuTest, CreateViewOfDeviceBuffer) {
   // Prepares a device memory ptr on GPU.
   auto [buffer, buffer_future] = create_iota_buffer();
-  TF_CHECK_OK(buffer_future.Await());
+  CHECK_OK(buffer_future.Await());
   PJRT_Buffer_OpaqueDeviceMemoryDataPointer_Args device_buffer_ptr_args;
   device_buffer_ptr_args.struct_size =
       PJRT_Buffer_OpaqueDeviceMemoryDataPointer_Args_STRUCT_SIZE;
@@ -170,7 +168,7 @@ TEST_F(PjrtCApiGpuTest, CreateViewOfDeviceBuffer) {
   ASSERT_EQ(to_host_error, nullptr);
   xla::Future<> transfer_to_host =
       ::pjrt::ConvertCEventToCppFuture(to_host_args.event, api_);
-  TF_CHECK_OK(transfer_to_host.Await());
+  CHECK_OK(transfer_to_host.Await());
   ASSERT_EQ(literal->data<float>().size(), 4);
   std::vector<float> float_data(4);
   std::iota(float_data.begin(), float_data.end(), 41.0f);
@@ -207,7 +205,7 @@ class PjrtCApiGpuBufferTest : public PjrtCApiGpuTest {
 
 TEST_F(PjrtCApiGpuBufferTest, CopyRawToHost) {
   auto [buffer, buffer_future] = create_iota_buffer();
-  TF_CHECK_OK(buffer_future.Await());
+  CHECK_OK(buffer_future.Await());
 
   size_t size = buffer_->buffer->GetOnDeviceSizeInBytes().value();
   PJRT_Buffer_CopyRawToHost_Args args;

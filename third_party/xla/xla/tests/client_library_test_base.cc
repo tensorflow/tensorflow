@@ -15,24 +15,45 @@ limitations under the License.
 
 #include "xla/tests/client_library_test_base.h"
 
+#include <algorithm>
+#include <cstdint>
+#include <functional>
+#include <iterator>
 #include <memory>
+#include <numeric>
+#include <optional>
 #include <string>
+#include <tuple>
 #include <utility>
+#include <vector>
 
+#include <gtest/gtest.h>
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "xla/client/client_library.h"
 #include "xla/client/local_client.h"
+#include "xla/error_spec.h"
 #include "xla/execution_options_util.h"
 #include "xla/hlo/builder/xla_builder.h"
+#include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/testlib/test_helpers.h"
+#include "xla/layout_util.h"
 #include "xla/literal_util.h"
 #include "xla/service/platform_util.h"
+#include "xla/service/service.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/status_macros.h"
+#include "xla/stream_executor/platform.h"
+#include "xla/tests/literal_test_util.h"
+#include "xla/tsl/lib/core/bitmap.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/logging.h"
 
 namespace xla {
 namespace {
@@ -46,14 +67,14 @@ LocalClient* GetOrCreateLocalClientOrDie(
     const LocalClientOptions& client_options) {
   absl::StatusOr<LocalClient*> result =
       ClientLibrary::GetOrCreateLocalClient(client_options);
-  TF_CHECK_OK(result.status()) << " could not create local client for testing";
+  CHECK_OK(result.status()) << " could not create local client for testing";
   return result.value();
 }
 
 // Helper functions to get the reference platform.
 se::Platform* GetReferencePlatform() {
   auto result = PlatformUtil::GetPlatform(kInterpreter);
-  TF_CHECK_OK(result.status()) << "could not get interpreter platform";
+  CHECK_OK(result.status()) << "could not get interpreter platform";
   return result.value();
 }
 

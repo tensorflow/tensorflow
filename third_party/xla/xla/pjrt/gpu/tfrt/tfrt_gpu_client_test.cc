@@ -45,6 +45,7 @@ limitations under the License.
 #include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "mlir/IR/MLIRContext.h"
+#include "google/protobuf/text_format.h"
 #include "xla/ffi/ffi.h"
 #include "xla/ffi/ffi_api.h"
 #include "xla/future.h"
@@ -85,7 +86,6 @@ limitations under the License.
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/threadpool.h"
 #include "xla/types.h"
@@ -94,7 +94,6 @@ limitations under the License.
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/casts.h"
 #include "tsl/platform/mem.h"
-#include "tsl/platform/protobuf.h"
 
 namespace xla {
 
@@ -273,11 +272,11 @@ TEST(TfrtGpuClientTest, SendRecvChunked) {
                             std::unique_ptr<CopyToDeviceStream> stream) {
         auto chunk0 = PjRtChunk::AllocateDefault(sizeof(float));
         *reinterpret_cast<float*>(chunk0.data()) = 5.0f;
-        TF_CHECK_OK(stream->AddChunk(std::move(chunk0)).Await());
+        CHECK_OK(stream->AddChunk(std::move(chunk0)).Await());
 
         auto chunk1 = PjRtChunk::AllocateDefault(sizeof(float));
         *reinterpret_cast<float*>(chunk1.data()) = 6.0f;
-        TF_CHECK_OK(stream->AddChunk(std::move(chunk1)).Await());
+        CHECK_OK(stream->AddChunk(std::move(chunk1)).Await());
 
         return absl::OkStatus();
       }};

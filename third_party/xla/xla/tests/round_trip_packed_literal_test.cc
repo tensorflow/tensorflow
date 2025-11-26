@@ -14,20 +14,25 @@ limitations under the License.
 ==============================================================================*/
 
 #include <memory>
+#include <string>
 
 #include "absl/base/casts.h"
+#include "absl/log/check.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/client/local_client.h"
+#include "xla/layout.h"
 #include "xla/layout_util.h"
 #include "xla/literal.h"
 #include "xla/packed_literal_reader.h"
+#include "xla/service/service.h"
 #include "xla/shape_util.h"
 #include "xla/tests/client_library_test_base.h"
 #include "xla/tests/literal_test_util.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/file_system.h"
+#include "xla/tsl/platform/test.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/env.h"
-#include "tsl/platform/test.h"
 
 namespace xla {
 namespace {
@@ -52,7 +57,7 @@ TEST_F(RoundTripPackedLiteralTest, RoundTripsR1F32Length2) {
   EXPECT_TRUE(tsl::WriteStringToFile(tsl::Env::Default(), fname, data).ok());
 
   std::unique_ptr<tsl::RandomAccessFile> f;
-  TF_CHECK_OK(tsl::Env::Default()->NewRandomAccessFile(fname, &f));
+  CHECK_OK(tsl::Env::Default()->NewRandomAccessFile(fname, &f));
   PackedLiteralReader reader(f.release());
   Literal actual = reader.Read(ShapeUtil::MakeShape(F32, {2})).value();
   EXPECT_TRUE(reader.IsExhausted());
@@ -77,7 +82,7 @@ TEST_F(RoundTripPackedLiteralTest, RoundTripsR2F32Size2x2Dim0Minor) {
   const Layout layout = LayoutUtil::MakeLayout({1, 0});
 
   std::unique_ptr<tsl::RandomAccessFile> f;
-  TF_CHECK_OK(tsl::Env::Default()->NewRandomAccessFile(fname, &f));
+  CHECK_OK(tsl::Env::Default()->NewRandomAccessFile(fname, &f));
   PackedLiteralReader reader(f.release());
   Literal actual =
       reader.Read(ShapeUtil::MakeShape(F32, {2, 2}), &layout).value();
@@ -108,7 +113,7 @@ TEST_F(RoundTripPackedLiteralTest, RoundTripsR2F32Size2x2Dim1Minor) {
   const Layout layout = LayoutUtil::MakeLayout({0, 1});
 
   std::unique_ptr<tsl::RandomAccessFile> f;
-  TF_CHECK_OK(tsl::Env::Default()->NewRandomAccessFile(fname, &f));
+  CHECK_OK(tsl::Env::Default()->NewRandomAccessFile(fname, &f));
   PackedLiteralReader reader(f.release());
   Literal actual =
       reader.Read(ShapeUtil::MakeShape(F32, {2, 2}), &layout).value();

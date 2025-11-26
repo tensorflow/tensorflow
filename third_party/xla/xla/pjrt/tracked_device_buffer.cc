@@ -33,7 +33,6 @@ limitations under the License.
 #include "xla/pjrt/abstract_tracked_device_buffer.h"
 #include "xla/pjrt/buffer_sequencing_event.h"
 #include "xla/pjrt/device_event.h"
-#include "xla/pjrt/event_pool.h"
 #include "xla/pjrt/local_device_state.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_common.h"
@@ -45,16 +44,12 @@ limitations under the License.
 #include "xla/shape_tree.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/device_memory_allocator.h"
-#include "xla/stream_executor/event.h"
 #include "xla/tsl/concurrency/async_value.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/platform/logging.h"
-#include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/threadpool.h"
 #include "tsl/platform/casts.h"
-#include "tsl/profiler/lib/connected_traceme.h"
-#include "tsl/profiler/lib/context_types.h"
 
 namespace xla {
 
@@ -224,8 +219,8 @@ TrackedDeviceBuffer::CloneWithControlDependency(PjRtMemorySpace* memory_space,
           return;
         }
         auto stream = local_device->BorrowStreamFromPool();
-        TF_CHECK_OK(client->AllocateAndRecordEvent(definition_event_for_status,
-                                                   local_device, stream.get()));
+        CHECK_OK(client->AllocateAndRecordEvent(definition_event_for_status,
+                                                local_device, stream.get()));
         local_device->ReturnStreamToPool(std::move(stream));
       });
   return new_device_buffer;

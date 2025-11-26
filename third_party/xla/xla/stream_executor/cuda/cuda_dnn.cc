@@ -72,7 +72,6 @@ limitations under the License.
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/protobuf/dnn.pb.h"
 #include "xla/tsl/util/env_var.h"
@@ -845,7 +844,7 @@ const json* CudnnExecutionPlanEngineFilterRuntime() {
 bool BatchnormSpatialPersistentEnabled() {
   static bool is_enabled = [] {
     bool is_enabled = false;
-    TF_CHECK_OK(
+    CHECK_OK(
         tsl::ReadBoolFromEnvVar("TF_USE_CUDNN_BATCHNORM_SPATIAL_PERSISTENT",
                                 /*default_val=*/false, &is_enabled));
     return is_enabled;
@@ -857,8 +856,8 @@ bool BatchnormSpatialPersistentEnabled() {
 bool ConvUseDefaultAlgorithm() {
   static bool use_default = [] {
     bool use_default = false;
-    TF_CHECK_OK(tsl::ReadBoolFromEnvVar("TF_USE_DEFAULT_CONV_ALGO",
-                                        /*default_val=*/false, &use_default));
+    CHECK_OK(tsl::ReadBoolFromEnvVar("TF_USE_DEFAULT_CONV_ALGO",
+                                     /*default_val=*/false, &use_default));
     return use_default;
   }();
   return use_default;

@@ -96,6 +96,7 @@ limitations under the License.
 #include "xla/tests/literal_test_util.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/concurrency/ref_count.h"
+#include "xla/tsl/framework/allocator.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
@@ -111,7 +112,6 @@ limitations under the License.
 #include "tsl/platform/casts.h"
 #include "tsl/platform/mem.h"
 #include "tsl/platform/platform.h"
-#include "tsl/platform/protobuf.h"
 
 namespace xla {
 namespace {
@@ -395,11 +395,11 @@ TEST(StreamExecutorGpuClientTest, SendRecvChunked) {
                             std::unique_ptr<CopyToDeviceStream> stream) {
         auto chunk0 = PjRtChunk::AllocateDefault(sizeof(float));
         *reinterpret_cast<float*>(chunk0.data()) = 5.0f;
-        TF_CHECK_OK(stream->AddChunk(std::move(chunk0)).Await());
+        CHECK_OK(stream->AddChunk(std::move(chunk0)).Await());
 
         auto chunk1 = PjRtChunk::AllocateDefault(sizeof(float));
         *reinterpret_cast<float*>(chunk1.data()) = 6.0f;
-        TF_CHECK_OK(stream->AddChunk(std::move(chunk1)).Await());
+        CHECK_OK(stream->AddChunk(std::move(chunk1)).Await());
 
         return absl::OkStatus();
       }};
@@ -2498,11 +2498,11 @@ TEST(StreamExecutorGpuClientTest, NonZeroGPUDeviceTimeMeasurementSingleGPU) {
                             std::unique_ptr<CopyToDeviceStream> stream) {
         auto chunk0 = PjRtChunk::AllocateDefault(sizeof(float));
         *reinterpret_cast<float*>(chunk0.data()) = 5.0f;
-        TF_CHECK_OK(stream->AddChunk(std::move(chunk0)).Await());
+        CHECK_OK(stream->AddChunk(std::move(chunk0)).Await());
 
         auto chunk1 = PjRtChunk::AllocateDefault(sizeof(float));
         *reinterpret_cast<float*>(chunk1.data()) = 6.0f;
-        TF_CHECK_OK(stream->AddChunk(std::move(chunk1)).Await());
+        CHECK_OK(stream->AddChunk(std::move(chunk1)).Await());
 
         return absl::OkStatus();
       }};

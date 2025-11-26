@@ -18,15 +18,26 @@ limitations under the License.
 
 #include "xla/tests/literal_test_util.h"
 
+#include <cmath>
+#include <cstdint>
+#include <limits>
+#include <string>
 #include <vector>
 
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/strings/str_join.h"
+#include "xla/error_spec.h"
 #include "xla/hlo/testlib/test_helpers.h"
 #include "xla/literal.h"
-#include "tsl/platform/env.h"
-#include "tsl/platform/logging.h"
+#include "xla/literal_util.h"
+#include "xla/shape_util.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/test.h"
+#include "xla/types.h"
 #include "tsl/platform/path.h"
-#include "tsl/platform/test.h"
 
 namespace xla {
 namespace {
@@ -135,9 +146,9 @@ TEST(LiteralTestUtilTest, ExpectNearFailurePlacesResultsInTemporaryDirectory) {
   }
   std::string pattern = tsl::io::JoinPath(outdir, "tempfile-*.pb");
   std::vector<std::string> files;
-  TF_CHECK_OK(env->GetMatchingPaths(pattern, &files));
+  CHECK_OK(env->GetMatchingPaths(pattern, &files));
   for (const auto& f : files) {
-    TF_CHECK_OK(env->DeleteFile(f)) << f;
+    CHECK_OK(env->DeleteFile(f)) << f;
   }
 
   ASSERT_DEATH(dummy_lambda(), "two is not near four");
@@ -145,14 +156,13 @@ TEST(LiteralTestUtilTest, ExpectNearFailurePlacesResultsInTemporaryDirectory) {
   // Now check we wrote temporary files to the temporary directory that we can
   // read.
   std::vector<std::string> results;
-  TF_CHECK_OK(env->GetMatchingPaths(pattern, &results));
+  CHECK_OK(env->GetMatchingPaths(pattern, &results));
 
   LOG(INFO) << "results: [" << absl::StrJoin(results, ", ") << "]";
   EXPECT_EQ(3, results.size());
   for (const std::string& result : results) {
     LiteralProto literal_proto;
-    TF_CHECK_OK(
-        tsl::ReadBinaryProto(tsl::Env::Default(), result, &literal_proto));
+    CHECK_OK(tsl::ReadBinaryProto(tsl::Env::Default(), result, &literal_proto));
     Literal literal = Literal::CreateFromProto(literal_proto).value();
     if (result.find("expected") != std::string::npos) {
       EXPECT_EQ("f32[] 2", literal.ToString());
