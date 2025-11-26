@@ -23,6 +23,7 @@ To update the goldens associated with this file, run:
   ```PYTHONDONTWRITEBYTECODE=1 python3 build.py \
       --dump_commands > golden_commands.txt```
 """
+
 import argparse
 import dataclasses
 import enum
@@ -531,14 +532,18 @@ Build(
     type_=BuildType.XLA_LINUX_X86_GPU_L4_16_VCPU_BENCHMARK_PRESUBMIT_GITHUB_ACTIONS,
     repo="openxla/xla",
     target_patterns=_XLA_GPU_PRESUBMIT_BENCHMARKS_DEFAULT_TARGET_PATTERNS,
-    configs=("warnings", "rbe_linux_cuda_nvcc", "hermetic_cuda_umd"),
+    configs=(
+        "warnings",
+        "rbe_linux_cuda_nvcc",
+        "hermetic_cuda_umd",
+        "cuda_libraries_from_stubs",
+    ),
     test_tag_filters=nvidia_single_gpu_filters
     + _tag_filters_for_compute_capability(compute_capability=75),
     build_tag_filters=nvidia_single_gpu_filters,
     options={
         "run_under": "//build_tools/ci:parallel_gpu_execute",
         "//xla/tsl:ci_build": True,
-        "@local_config_cuda//cuda:include_cuda_libs": False,
         **_DEFAULT_BAZEL_OPTIONS,
     },
     repo_env={
@@ -571,7 +576,12 @@ Build(
 Build(
     type_=BuildType.XLA_LINUX_X86_GPU_L4_48_VCPU_BENCHMARK_PRESUBMIT_GITHUB_ACTIONS,
     repo="openxla/xla",
-    configs=("warnings", "rbe_linux_cuda_nvcc", "hermetic_cuda_umd"),
+    configs=(
+        "warnings",
+        "rbe_linux_cuda_nvcc",
+        "hermetic_cuda_umd",
+        "cuda_libraries_from_stubs",
+    ),
     target_patterns=_XLA_GPU_PRESUBMIT_BENCHMARKS_DEFAULT_TARGET_PATTERNS,
     test_tag_filters=nvidia_single_gpu_filters
     + _tag_filters_for_compute_capability(compute_capability=75),
@@ -579,7 +589,6 @@ Build(
     options={
         "run_under": "//build_tools/ci:parallel_gpu_execute",
         "//xla/tsl:ci_build": True,
-        "@local_config_cuda//cuda:include_cuda_libs": False,
         **_DEFAULT_BAZEL_OPTIONS,
     },
     repo_env={
@@ -615,7 +624,7 @@ Build(
 Build(
     type_=BuildType.XLA_LINUX_X86_GPU_A4_224_VCPU_BENCHMARK_PRESUBMIT_GITHUB_ACTIONS,
     repo="openxla/xla",
-    configs=(),
+    configs=("cuda_libraries_from_stubs",),
     target_patterns=_XLA_GPU_PRESUBMIT_BENCHMARKS_DEFAULT_TARGET_PATTERNS,
     test_tag_filters=nvidia_single_gpu_filters
     + _tag_filters_for_compute_capability(compute_capability=100),
@@ -624,7 +633,6 @@ Build(
         "run_under": "//build_tools/ci:parallel_gpu_execute",
         # Use User Mode and Kernel Mode Drivers pre-installed on the system.
         "//xla/tsl:ci_build": True,
-        "@local_config_cuda//cuda:include_cuda_libs": False,
         **_DEFAULT_BAZEL_OPTIONS,
     },
     repo_env={

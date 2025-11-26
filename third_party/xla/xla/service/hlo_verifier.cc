@@ -1304,25 +1304,21 @@ absl::Status CheckScanToApplyShape(
   const HloComputation* to_apply = scan->to_apply();
   const Shape& root_shape = to_apply->root_instruction()->shape();
   int64_t num_carries = scan->num_carries();
-
-  if (!root_shape.IsTuple() ||
-      root_shape.tuple_shapes().size() != 2 * num_carries) {
-    return Internal("Computation %s result shape must be a tuple of size %d",
-                    to_apply->name(), 2 * num_carries);
-  }
   int64_t num_inputs = scan->operand_count() - num_carries;
   int64_t num_outputs = root_shape.tuple_shapes().size() - num_carries;
 
   for (int64_t i = 0; i < num_carries; ++i) {
     int64_t result_idx = num_outputs + i;
+    int64_t param_idx = num_inputs + i;
     if (!shapes_same(root_shape.tuple_shapes(result_idx),
-                     scan->operand(num_inputs + i)->shape())) {
+                     to_apply->parameter_instruction(param_idx)->shape())) {
       return Internal(
-          "Computation %s result element %d shape %s does not match init "
-          "shape %s in %s",
+          "Computation %s result element %d shape %s does not match parameter "
+          "%d shape %s in %s",
           to_apply->name(), result_idx,
-          root_shape.tuple_shapes(result_idx).ToString(),
-          scan->operand(num_inputs + i)->shape().ToString(), scan->ToString());
+          root_shape.tuple_shapes(result_idx).ToString(), param_idx,
+          to_apply->parameter_instruction(param_idx)->shape().ToString(),
+          scan->ToString());
     }
   }
 

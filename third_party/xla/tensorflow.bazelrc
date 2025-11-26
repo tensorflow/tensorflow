@@ -209,6 +209,12 @@ common:cuda_wheel --@local_config_cuda//cuda:include_cuda_libs=false
 
 common:hermetic_cuda_umd --@cuda_driver//:include_cuda_umd_libs=true
 
+# This config is used for building targets with CUDA/NVSHMEM libraries from stubs.
+build:cuda_libraries_from_stubs --@local_config_cuda//cuda:include_cuda_libs=false
+# The stub targets are not yet compatible with the layering check.
+build:cuda_libraries_from_stubs --features=-layering_check
+
+
 # CUDA: This config refers to building CUDA op kernels with clang.
 common:cuda_clang --config=cuda
 common:cuda_clang --@local_config_cuda//:cuda_compiler=clang

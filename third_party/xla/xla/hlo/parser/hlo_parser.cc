@@ -2728,43 +2728,76 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
           !ParseAttributes(attrs, allow_attributes, shape)) {
         return nullptr;
       }
-      if (operands.size() % 2 != 0 || operands.size() < 2) {
-        TokenError(StrCat("expects an even number of operands (>= 2), but has ",
-                          operands.size()));
+      if (dimensions->empty()) {
+        TokenError("expects at least 1 dimension");
         return nullptr;
       }
-      if (dimensions->size() != 1) {
-        TokenError(StrCat("expects 1 dimension, but has ", dimensions->size()));
+
+      // Infer num_carries by matching the operands from the right to the
+      // parameters of to_apply.
+      int64_t num_carries = 0;
+      HloComputation* computation = *to_apply;
+      if (operands.size() != computation->num_parameters()) {
+        TokenError(StrCat("expects ", operands.size(),
+                          " operands to match the number of parameters of "
+                          "to_apply, but to_apply has ",
+                          computation->num_parameters(), " parameters"));
+        return nullptr;
+      }
+      for (int i = operands.size() - 1; i >= 0; --i) {
+        if (ShapeUtil::Compatible(
+                operands[i]->shape(),
+                computation->parameter_instruction(i)->shape())) {
+          num_carries++;
+        } else {
+          break;
+        }
+      }
+
+      if (num_carries == 0) {
+        TokenError("expects at least one carry operand");
+        return nullptr;
+      }
+      if (num_carries == operands.size()) {
+        TokenError("expects at least one input operand");
         return nullptr;
       }
 
       if (!maybe_infer_shape([&]() -> absl::StatusOr<Shape> {
-            if (operands.size() != 2) {
-              return InvalidArgument(
-                  "Shape inference for variadic Scan not implemented. Please "
-                  "specify the shape explicitly.");
-            }
-            const Shape& input_shape = operands[0]->shape();
-            const Shape& init_shape = operands[1]->shape();
+            int64_t num_inputs = operands.size() - num_carries;
             const Shape& root_shape =
                 to_apply.value()->root_instruction()->shape();
-            if (!root_shape.IsTuple() ||
-                root_shape.tuple_shapes().size() != 2) {
-              return InvalidArgument(
-                  "Scan computation result must be a tuple of size 2");
+            if (!root_shape.IsTuple()) {
+              return InvalidArgument("Scan computation result must be a tuple");
             }
-            PrimitiveType output_element_type =
-                root_shape.tuple_shapes(0).element_type();
-            Shape output_shape = ShapeUtil::MakeShape(output_element_type,
-                                                      input_shape.dimensions());
-            return ShapeUtil::MakeTupleShape({output_shape, init_shape});
+
+            if (root_shape.tuple_shapes().size() != operands.size()) {
+              return InvalidArgument(
+                  "Scan computation result must be a tuple of size %d",
+                  operands.size());
+            }
+
+            std::vector<Shape> result_shapes;
+            result_shapes.reserve(operands.size());
+            for (int i = 0; i < num_inputs; ++i) {
+              const Shape& input_shape = operands[i]->shape();
+              Shape output_shape = input_shape;
+              output_shape.set_element_type(
+                  root_shape.tuple_shapes(i).element_type());
+              result_shapes.push_back(output_shape);
+            }
+            for (int i = num_inputs; i < operands.size(); ++i) {
+              result_shapes.push_back(root_shape.tuple_shapes(i));
+            }
+            return ShapeUtil::MakeTupleShape(result_shapes);
           })) {
         return nullptr;
       }
-      int64_t num_carries = operands.size() / 2;
+
+      int64_t num_inputs = operands.size() - num_carries;
       return builder->AddInstruction(HloInstruction::CreateScan(
-          *shape, absl::MakeSpan(operands).subspan(0, num_carries),
-          absl::MakeSpan(operands).subspan(num_carries, num_carries), *to_apply,
+          *shape, absl::MakeSpan(operands).subspan(0, num_inputs),
+          absl::MakeSpan(operands).subspan(num_inputs, num_carries), *to_apply,
           dimensions->at(0), *is_reverse,
           *is_associative ? TRI_STATE_TRUE : TRI_STATE_FALSE));
     }

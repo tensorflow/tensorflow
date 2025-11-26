@@ -1,0 +1,22 @@
+diff --git a/BUILD.bazel b/BUILD.bazel
+index 34e4a54..b6365aa 100644
+--- a/BUILD.bazel
++++ b/BUILD.bazel
+@@ -116,7 +116,7 @@ cc_library(
+ cc_library(
+     name = "brotlicommon",
+     srcs = [":common_sources"],
+-    hdrs = [":common_headers"],
++    hdrs = [":common_headers", ":public_headers"],
+     copts = STRICT_C_OPTIONS,
+     deps = [":brotli_inc"],
+ )
+@@ -132,7 +132,7 @@ cc_library(
+ cc_library(
+     name = "brotlienc",
+     srcs = [":enc_sources"],
+-    hdrs = [":enc_headers"],
++    hdrs = [":enc_headers", ":public_headers"],
+     copts = STRICT_C_OPTIONS,
+     linkopts = select({
+         ":clang-cl": [],
