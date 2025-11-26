@@ -1,0 +1,17 @@
+// RUN: fusion_to_mlir %s | emitters_opt -xla-test-optimize |\
+// RUN:   FileCheck %s
+
+fusion {
+  param = s32[2,<=5] parameter(0)
+  ROOT static_param = (s32[2,5], s32[], s32[]) custom-call(param), custom_call_target="PadToStatic"
+}
+
+// CHECK-COUNT-2:      xla.get_dynamic_dim_size
+// CHECK: scf.if{{.*}} (tensor<i32>, tensor<i32>)
+// CHECK-COUNT-2: tensor.insert
+// CHECK: xla.loop
+// CHECK: scf.if
+// CHECK: tensor.extract
+// CHECK-COUNT-2: scf.yield
+// CHECK: tensor.insert
+// CHECK: return 
