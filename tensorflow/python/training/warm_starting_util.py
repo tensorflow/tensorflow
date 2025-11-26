@@ -234,7 +234,7 @@ def _warm_start_var_with_vocab(var,
   if not (current_vocab_path and current_vocab_size and prev_ckpt and
           prev_vocab_path):
     raise ValueError("Invalid args: Must provide all of [current_vocab_path, "
-                     "current_vocab_size, prev_ckpt, prev_vocab_path}.")
+                     "current_vocab_size, prev_ckpt, prev_vocab_path].")
   if checkpoint_utils._is_variable(var):
     var = [var]
   elif (isinstance(var, list) and
@@ -350,7 +350,7 @@ def _get_grouped_variables(vars_to_warm_start):
                        "`Variable` or all `str`.  Given types are {}".format(
                            [type(v) for v in vars_to_warm_start]))
   else:
-    raise ValueError("`vars_to_warm_start must be a `list` or `str`.  Given "
+    raise ValueError("`vars_to_warm_start` must be a `list` or `str`.  Given "
                      "type is {}".format(type(vars_to_warm_start)))
   # We have to deal with partitioned variables, since get_collection flattens
   # out the list.
@@ -397,8 +397,7 @@ def _get_object_checkpoint_renames(path, variable_names):
     raise ValueError(
         "Attempting to warm-start from an object-based checkpoint, but found "
         "that the checkpoint did not contain values for all variables. The "
-        "following variables were missing: {}"
-        .format(missing_names))
+        "following variables were missing: {}".format(missing_names))
   return {name: names_to_keys[name] for name in variable_names}
 
 
@@ -557,5 +556,5 @@ def warm_start(ckpt_to_initialize_from,
     raise ValueError(
         "You provided the following variables in "
         "var_name_to_vocab_info that were not used: {0}. "
-        " Perhaps you misspelled them?  Here is the list of viable variable "
+        "Perhaps you misspelled them?  Here is the list of viable variable "
         "names: {1}".format(vocab_info_not_used, grouped_variables.keys()))

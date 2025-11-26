@@ -1404,7 +1404,7 @@ class ArgMaxMinTest(test_util.TensorFlowTestCase, parameterized.TestCase):
         tf_max = math_ops.argmax(tf_values, axis=axis)
         self.assertAllEqual(tf_max, np_max)
 
-  def testArgMaxReturnsFirstOccurence(self):
+  def testArgMaxReturnsFirstOccurrence(self):
     for dtype in self._getValidDtypes():
       values = constant_op.constant(
           [[10, 11, 15, 15, 10], [12, 12, 10, 10, 12]], dtype=dtype)
@@ -1467,7 +1467,7 @@ class ArgMaxMinTest(test_util.TensorFlowTestCase, parameterized.TestCase):
         tf_min = math_ops.argmin(tf_values, axis=axis)
         self.assertAllEqual(tf_min, np_min)
 
-  def testArgMinReturnsFirstOccurence(self):
+  def testArgMinReturnsFirstOccurrence(self):
     for dtype in self._getValidDtypes():
       values = constant_op.constant(
           [[10, 11, 15, 15, 10], [12, 12, 10, 10, 12]], dtype=dtype)

@@ -18,7 +18,7 @@
 # setup.cuda.sh: Clean up and prepare the CUDA installation on the container.
 # TODO(@perfinion) Review this file
 
-# Delete uneccessary static libraries
+# Delete unnecessary static libraries
 find /usr/local/cuda-*/lib*/ -type f -name 'lib*_static.a' -not -name 'libcudart_static.a' -delete
 rm /usr/lib/x86_64-linux-gnu/libcudnn_static_v*.a
 
