@@ -244,6 +244,7 @@ strict_cc_test(
         "//xla:shape_tree",
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
+        "//xla/backends/cpu:ffi",
         "//xla/backends/cpu/nanort:nanort_client",
         "//xla/backends/cpu/nanort:nanort_executable",
         "//xla/ffi",

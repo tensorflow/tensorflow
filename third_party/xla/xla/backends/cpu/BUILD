@@ -60,6 +60,18 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "ffi",
+    hdrs = ["ffi.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//xla/ffi",
+        "//xla/ffi/api:c_api",
+        "//xla/ffi/api:c_api_internal",
+        "@com_google_absl//absl/base:core_headers",
+    ],
+)
+
 onednn_graph_cc_library(
     name = "onednn_emitter",
     srcs = ["onednn_emitter.cc"],

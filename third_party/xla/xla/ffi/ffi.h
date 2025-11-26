@@ -68,7 +68,6 @@ struct DeviceOrdinal {};      // binds `int32_t` with device ordinal
 struct Allocator {};          // binds `se::DeviceMemoryAllocator*`
 struct ScratchAllocator {};   // binds `se::OwningScratchAllocator`
 struct CalledComputation {};  // binds `HloComputation*`
-struct IntraOpThreadPool {};  // binds `const Eigen::ThreadPoolDevice*`
 
 template <typename T>
 struct PlatformStream {};  // binds a platform stream, e.g. `cudaStream_t`
@@ -633,28 +632,6 @@ struct CtxDecoding<CalledComputation> {
                                     DiagnosticEngine&) {
     void* ptr = api->internal_api->XLA_FFI_INTERNAL_CalledComputation_Get(ctx);
     return reinterpret_cast<Type>(ptr);
-  }
-};
-
-template <>
-struct CtxDecoding<IntraOpThreadPool> {
-  using Type = const Eigen::ThreadPoolDevice*;
-
-  static std::optional<Type> Decode(const XLA_FFI_Api* api,
-                                    XLA_FFI_ExecutionContext* ctx,
-                                    DiagnosticEngine& diagnostic) {
-    void* thread_pool = nullptr;
-    if (XLA_FFI_Error* error =
-            api->internal_api->XLA_FFI_INTERNAL_IntraOpThreadPool_Get(
-                ctx, &thread_pool);
-        ABSL_PREDICT_FALSE(error)) {
-      diagnostic.Emit("Failed to get intra op thread pool: ")
-          << internal::GetErrorMessage(api, error);
-      internal::DestroyError(api, error);
-      return std::nullopt;
-    }
-
-    return reinterpret_cast<Type>(thread_pool);
   }
 };
 

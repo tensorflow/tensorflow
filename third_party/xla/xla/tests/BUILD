@@ -2338,6 +2338,7 @@ xla_test(
         "//xla:literal_util",
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
+        "//xla/backends/cpu:ffi",
         "//xla/client:client_library",
         "//xla/client:local_client",
         "//xla/ffi",
