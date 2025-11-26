@@ -1125,11 +1125,20 @@ func.func @get_dynamic_dim_size_sub_byte_width(%arg0: tensor<512xi4>) -> i32 {
 // CHECK-LABEL: @get_dynamic_dim_size_sub_byte_width
 // CHECK: llvm.mlir.constant(260 : i64) : i64
 
-// // -----
+// -----
 
 func.func @get_dynamic_dim_size_unaligned(%arg0: tensor<7xf16>) -> i32 {
-// expected-error @+1 {{'xla.get_dynamic_dim_size' op dynamic size offset is not 4-byte aligned}}
   %0 = xla.get_dynamic_dim_size %arg0 1 : tensor<7xf16>
   func.return %0 : i32
 }
 
+// CHECK-LABEL: @get_dynamic_dim_size_unaligned
+// CHECK: llvm.mlir.constant(18 : i64) : i64
+// CHECK: llvm.getelementptr{{.*}}[0, 0] {{.*}} !llvm.array<4 x i8>
+// CHECK: llvm.load{{.*}} : !llvm.ptr -> i8
+// CHECK: llvm.getelementptr{{.*}}[0, 1] {{.*}} !llvm.array<4 x i8>
+// CHECK: llvm.load{{.*}} : !llvm.ptr -> i8
+// CHECK: llvm.getelementptr{{.*}}[0, 2] {{.*}} !llvm.array<4 x i8>
+// CHECK: llvm.load{{.*}} : !llvm.ptr -> i8
+// CHECK: llvm.getelementptr{{.*}}[0, 3] {{.*}} !llvm.array<4 x i8>
+// CHECK: llvm.load{{.*}} : !llvm.ptr -> i8
