@@ -79,8 +79,6 @@ class TritonBackendTest : public HloHardwareIndependentTestBase {
                              .value()),
         target_config_(stream_executor_),
         backend_(&debug_options_, &compiler_, &target_config_, &mlir_context_) {
-    // TODO(b/315957220): Remove the experimental flags once TMA is enabled by
-    // default.
     debug_options_.set_xla_gpu_experimental_enable_triton_tma(true);
   }
 
@@ -105,20 +103,15 @@ TEST_F(TritonBackendTest, GetSupportedConfigs) {
   if (backend_.target_config()
           .device_description.cuda_compute_capability()
           .IsAtLeastHopper()) {
-    auto count_tma_allowed =
-        [](const std::vector<std::unique_ptr<BackendConfig>>& configs) {
-          return std::count_if(configs.begin(), configs.end(),
-                               [](auto& config) {
-                                 TritonBackendConfig actual_config;
-                                 if (!config->UnpackTo(&actual_config)) {
-                                   return false;
-                                 }
-                                 return actual_config.is_tma_allowed();
-                               });
-        };
-    // The current TMA autotuning duplicates the given configurations with
-    // is_tma_allowed set to true.
-    EXPECT_EQ(count_tma_allowed(configs.value()), configs.value().size() / 2);
+    // Check that TMA configurations are generated.
+    EXPECT_TRUE(std::any_of(configs.value().begin(), configs.value().end(),
+                            [](auto& config) {
+                              TritonBackendConfig actual_config;
+                              if (!config->UnpackTo(&actual_config)) {
+                                return false;
+                              }
+                              return actual_config.is_tma_allowed();
+                            }));
   }
 }
 

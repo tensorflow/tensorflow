@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "xla/autotuning.pb.h"
 #include "xla/backends/autotuner/codegen_backend.h"
+#include "xla/backends/gpu/codegen/triton/tma_utils.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -88,8 +89,10 @@ std::vector<TritonGemmConfig> GetDefaultTritonConfigs(
     config.is_tma_allowed = false;
     tma_parameterized_configs.push_back(config);
 
-    config.is_tma_allowed = true;
-    tma_parameterized_configs.push_back(config);
+    if (IsTmaRecommended(config)) {
+      config.is_tma_allowed = true;
+      tma_parameterized_configs.push_back(config);
+    }
   }
   return tma_parameterized_configs;
 }

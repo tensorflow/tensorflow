@@ -32,6 +32,7 @@ limitations under the License.
 #include "xla/autotuning.pb.h"
 #include "xla/backends/autotuner/codegen_backend.h"
 #include "xla/backends/gpu/codegen/triton/support.h"
+#include "xla/backends/gpu/codegen/triton/tma_utils.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -201,11 +202,13 @@ void ExtendConfigsWithTma(
       LOG(ERROR) << "Failed to unpack BlockLevelFusionConfig";
       continue;
     }
-    BlockLevelFusionConfig new_config = original_config;
-    new_config.set_is_tma_allowed(true);
-    auto any = std::make_unique<google::protobuf::Any>();
-    any->PackFrom(new_config);
-    configs.push_back(std::move(any));
+    if (IsTmaRecommended(original_config)) {
+      BlockLevelFusionConfig new_config = original_config;
+      new_config.set_is_tma_allowed(true);
+      auto any = std::make_unique<google::protobuf::Any>();
+      any->PackFrom(new_config);
+      configs.push_back(std::move(any));
+    }
   }
 }
 }  // namespace
