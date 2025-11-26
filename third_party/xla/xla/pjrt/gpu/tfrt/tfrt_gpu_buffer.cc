@@ -528,7 +528,7 @@ Future<> TfrtGpuBuffer::ToLiteralHelper(Future<MutableLiteralBase*> literal) {
           }
           if (on_device_shape.IsArray() && !should_unpack &&
               transpose == nullptr) {
-            std::memcpy(literal->untyped_data(), buffer, byte_size);
+            std::memcpy(literal->untyped_data(), buffer, literal->size_bytes());
           }
           promise.Set(absl::OkStatus());
         });
