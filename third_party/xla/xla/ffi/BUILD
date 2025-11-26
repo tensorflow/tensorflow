@@ -166,6 +166,8 @@ cc_library(
         ":call_frame",
         ":execution_context",
         ":execution_state",
+        ":ffi_internal_api",
+        ":ffi_structs",
         ":type_registry",
         "//xla:executable_run_options",
         "//xla:util",
@@ -191,6 +193,42 @@ cc_library(
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/strings:string_view",
         "@eigen_archive//:eigen3",
+    ],
+)
+
+cc_library(
+    name = "ffi_internal_api",
+    srcs = ["ffi_internal_api.cc"],
+    hdrs = ["ffi_internal_api.h"],
+    visibility = ["//visibility:private"],
+    deps = [
+        ":execution_context",
+        ":execution_state",
+        ":ffi_structs",
+        "//xla:util",
+        "//xla/ffi/api:c_api",
+        "//xla/ffi/api:c_api_internal",
+        "//xla/hlo/ir:hlo",
+        "//xla/tsl/concurrency:async_value",
+        "//xla/tsl/concurrency:ref_count",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+    ],
+)
+
+cc_library(
+    name = "ffi_structs",
+    hdrs = ["ffi_structs.h"],
+    visibility = ["//visibility:private"],
+    deps = [
+        ":execution_context",
+        ":execution_state",
+        "//xla:executable_run_options",
+        "//xla/ffi/api:c_api",
+        "//xla/hlo/ir:hlo",
+        "//xla/tsl/concurrency:async_value",
+        "@com_google_absl//absl/status",
     ],
 )
 
