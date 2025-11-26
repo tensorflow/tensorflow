@@ -373,6 +373,8 @@ enum StatType {
   kCudaGraphMapValueId,
   kCudaGraphNodeMapId,
   kGraphMetadataLineId,
+  kOffloadCoreId,
+  kTcOffloadStartId,
   kMarkerPayloadString,
   kLastStatType = kMarkerPayloadString,
 };

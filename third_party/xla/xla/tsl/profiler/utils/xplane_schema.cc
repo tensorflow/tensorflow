@@ -386,6 +386,8 @@ const StatTypeMap& GetStatTypeMap() {
        {"cuda_graph_map_value_id", kCudaGraphMapValueId},
        {"cuda_graph_node_map_id", kCudaGraphNodeMapId},
        {"graph_metadata_line_id", kGraphMetadataLineId},
+       {"offload_core_id", kOffloadCoreId},
+       {"tc_offload_start_id", kTcOffloadStartId},
        {"marker_payload", kMarkerPayloadString}});
   DCHECK_EQ(stat_type_map->size(), kNumStatTypes);
   return *stat_type_map;
