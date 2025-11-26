@@ -155,7 +155,8 @@ absl::Status CollectiveKernelThunk::ExchangeStateMetadata(
       sizeof(CollectiveKernelMetadata) + param_to_peers_ptrs_size_bytes, 0);
   return CollectiveMetadataThunk::ConstructCollectiveMetadata(
       std::move(parameters), params.stream, clique_key,
-      state.multicast_device_ptr, rank.value().value(), state.metadata);
+      state.multicast_device_ptr,
+      /* device_ordinal= */ params.executor->device_ordinal(), state.metadata);
 }
 
 absl::Status CollectiveKernelThunk::Initialize(const InitializeParams& params) {
