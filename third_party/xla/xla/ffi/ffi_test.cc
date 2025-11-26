@@ -215,6 +215,22 @@ TEST(FfiTest, WrongNumAttrs) {
               "[execute] Wrong number of attributes: expected 1 but got 2")));
 }
 
+TEST(FfiTest, IgnoreAttrs) {
+  CallFrameBuilder::AttributesBuilder attrs;
+  attrs.Insert("i32", 42);
+  attrs.Insert("f32", 42.0f);
+
+  CallFrameBuilder builder(/*num_args=*/0, /*num_rets=*/0);
+  builder.AddAttributes(attrs.Build());
+  auto call_frame = builder.Build();
+
+  // If signature doesn't have attributes, then we can safely ignore them.
+  auto handler = Ffi::Bind().To([]() { return absl::OkStatus(); });
+
+  auto status = Call(*handler, call_frame);
+  TF_ASSERT_OK(status);
+}
+
 TEST(FfiTest, RunId) {
   CallFrameBuilder builder(/*num_args=*/0, /*num_rets=*/0);
   auto call_frame = builder.Build();
@@ -231,7 +247,6 @@ TEST(FfiTest, RunId) {
   options.run_id = RunId{42};
 
   auto status = Call(*handler, call_frame, options);
-
   TF_ASSERT_OK(status);
 }
 
