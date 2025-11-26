@@ -19,18 +19,20 @@ limitations under the License.
 #include <optional>
 #include <type_traits>
 #include <utility>
+#include <vector>
 
 #include "absl/base/casts.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "llvm/Support/MathExtras.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/LLVMIR/NVVMDialect.h"
-#include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/IR/BuiltinTypeInterfaces.h"
 #include "mlir/IR/BuiltinTypes.h"
+#include "mlir/IR/TypeUtilities.h"
 #include "mlir/IR/Types.h"
 #include "mlir/IR/Value.h"
 #include "mlir/Interfaces/FunctionInterfaces.h"
@@ -80,32 +82,68 @@ static constexpr auto kGlobalAddressSpace =
         mlir::NVVM::NVVMMemorySpace::Global);
 
 // Metadata arguments for the collective emitter.
-// device_rank, signal-value, signal_buffers.
+// device_rank, signal_value, signal_buffers.
 static constexpr int32_t kNumCollectiveMetadataArgs = 3;
 
-bool CanAllReduceBeEmitted(const HloAllReduceInstruction* all_reduce,
-                           ReductionKind reduction_kind, int64_t num_devices,
-                           int64_t num_elements, PrimitiveType element_type,
-                           AllReduceStrategy all_reduce_strategy) {
+struct AllReduceInfo {
+  ReductionKind reduction_kind;
+  int64_t num_devices;
+  int64_t num_elements;
+  PrimitiveType element_type;
+  AllReduceStrategy all_reduce_strategy;
+};
+
+// Returns the AllReduceInfo for the given all-reduce instruction if the
+// instruction is supported by the codegen.
+std::optional<AllReduceInfo> MaybeBuildAllReduceInfo(
+    const HloAllReduceInstruction* all_reduce) {
   if (!all_reduce->GetModule()
            ->config()
            .debug_options()
            .xla_gpu_unsupported_use_all_reduce_one_shot_kernel()) {
-    return false;
+    return std::nullopt;
   }
+  if (all_reduce->device_list().replica_groups().empty()) {
+    VLOG(1) << "Replica groups are empty for " << all_reduce->name()
+            << ". Codegen will not be supported.";
+    return std::nullopt;
+  }
+  const int64_t num_devices = all_reduce->device_list().num_devices_per_group();
+  const std::optional<ReductionKind> reduction_kind =
+      MatchReductionComputation(all_reduce->called_computations().front());
+  if (!reduction_kind.has_value()) {
+    return std::nullopt;
+  }
+  const int64_t num_elements =
+      ShapeUtil::ElementsIn(all_reduce->operand(0)->shape());
+  const PrimitiveType element_type =
+      all_reduce->operand(0)->shape().element_type();
+  // NB: We do not codegen multimem kernels for now.
+  const AllReduceStrategy all_reduce_strategy =
+      GetAllReduceStrategy(num_elements, /*is_multimem_enabled=*/false);
   // TODO(b/383125489): Support variadic all-reduce.
   if (all_reduce->operand_count() > 1) {
-    return false;
+    return std::nullopt;
   }
   const int64_t byte_size =
       num_elements * ShapeUtil::ByteSizeOfPrimitiveType(element_type);
   // TODO(b/457333991): Support twoShot for codegen.
   if (byte_size >
       GetMaxSupportedAllReduceSizeBytes(AllReduceStrategy::kOneShot)) {
-    return false;
+    return std::nullopt;
   }
-  return IsAllReduceKernelSupported(num_devices, num_elements, element_type,
-                                    reduction_kind, all_reduce_strategy);
+  if (!IsAllReduceKernelSupported(num_devices, num_elements, element_type,
+                                  reduction_kind.value(),
+                                  all_reduce_strategy)) {
+    return std::nullopt;
+  }
+  return AllReduceInfo{
+      /* .reduction_kind= */ reduction_kind.value(),
+      /* .num_devices= */ num_devices,
+      /* .num_elements= */ num_elements,
+      /* .element_type= */ element_type,
+      /* .all_reduce_strategy= */ all_reduce_strategy,
+  };
 }
 
 // The logic here is very naive and assumes a monotonic layout
@@ -114,27 +152,15 @@ absl::StatusOr<std::optional<BlockLevelFusionConfig>>
 GetBlockLevelFusionConfigForAllReduce(
     const se::DeviceDescription& device_info,
     const HloAllReduceInstruction* all_reduce) {
-  const std::optional<ReductionKind> reduction_kind =
-      MatchReductionComputation(all_reduce->called_computations().front());
-  if (!reduction_kind.has_value()) {
-    return absl::InternalError(
-        "Reduction computation not found for all-reduce.");
-  }
-  const int64_t num_devices = all_reduce->device_list().num_devices_per_group();
-  const int64_t num_elements =
-      ShapeUtil::ElementsIn(all_reduce->operand(0)->shape());
-  const PrimitiveType element_type =
-      all_reduce->operand(0)->shape().element_type();
-  // NB: We do not codegen multimem kernels for now.
-  const AllReduceStrategy all_reduce_strategy =
-      GetAllReduceStrategy(num_elements, /*is_multimem_enabled=*/false);
-  if (!CanAllReduceBeEmitted(all_reduce, reduction_kind.value(), num_devices,
-                             num_elements, element_type, all_reduce_strategy)) {
+  const std::optional<AllReduceInfo> all_reduce_info =
+      MaybeBuildAllReduceInfo(all_reduce);
+  if (!all_reduce_info.has_value()) {
     return std::nullopt;
   }
   const Shape& output_shape = all_reduce->shape();
-  const LaunchDimensions launch_dims =
-      AllReduceLaunchDimensions(num_elements, num_devices, all_reduce_strategy);
+  const LaunchDimensions launch_dims = AllReduceLaunchDimensions(
+      all_reduce_info->num_elements, all_reduce_info->num_devices,
+      all_reduce_info->all_reduce_strategy);
   BlockLevelFusionConfig block_level_config;
   block_level_config.set_num_warps(launch_dims.num_threads_per_block() /
                                    WarpSize(device_info));
@@ -143,8 +169,8 @@ GetBlockLevelFusionConfigForAllReduce(
   Tile* output_tile = block_level_config.add_output_tiles();
   const int64_t rank = output_shape.dimensions().size();
 
-  // Tile sizes are rolled up to power of 2 because this is what the triton
-  // expects (and consequently the tiling infra).
+  // Tile sizes are rolled up to power of 2 because this is what triton expects
+  // and consequently the tiling infra.
   for (int i = 0; i < rank - 1; ++i) {
     output_tile->add_sizes(llvm::PowerOf2Ceil(output_shape.dimensions(i)));
   }
