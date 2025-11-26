@@ -210,7 +210,7 @@ absl::Status CompilationEnvironments::InitializeAllKnownEnvs() {
 absl::Status CompilationEnvironments::AddEnv(
     std::unique_ptr<tsl::protobuf::Message> env) {
   if (!env) {
-    return tsl::errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "Can not add a null compilation environment.");
   }
   const tsl::protobuf::Descriptor& descriptor = *env->GetDescriptor();

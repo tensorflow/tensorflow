@@ -37,6 +37,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/cord.h"
 #include "absl/strings/match.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/tsl/platform/env.h"
@@ -44,12 +45,12 @@ limitations under the License.
 #include "xla/tsl/platform/file_statistics.h"
 #include "xla/tsl/platform/file_system.h"
 #include "xla/tsl/platform/types.h"
-#include "tsl/platform/stringpiece.h"
 
 #ifdef PLATFORM_WINDOWS
 #undef DeleteFile
 #undef CopyFile
 #undef TranslateName
+#undef StrCat
 #endif
 
 namespace tsl {
@@ -128,7 +129,8 @@ class RamFileSystem : public FileSystem {
       return absl::NotFoundError("");
     }
     if (fs_[fname] == nullptr) {
-      return errors::InvalidArgument(fname_, " is a directory.");
+      return absl::InvalidArgumentError(
+          absl::StrCat(fname_, " is a directory."));
     }
     *result = std::unique_ptr<RandomAccessFile>(
         new RamRandomAccessFile(fname, fs_[fname]));
@@ -145,7 +147,8 @@ class RamFileSystem : public FileSystem {
       fs_[fname] = std::make_shared<std::string>();
     }
     if (fs_[fname] == nullptr) {
-      return errors::InvalidArgument(fname_, " is a directory.");
+      return absl::InvalidArgumentError(
+          absl::StrCat(fname_, " is a directory."));
     }
     *result = std::unique_ptr<WritableFile>(
         new RamRandomAccessFile(fname, fs_[fname]));
@@ -162,7 +165,8 @@ class RamFileSystem : public FileSystem {
       fs_[fname] = std::make_shared<std::string>();
     }
     if (fs_[fname] == nullptr) {
-      return errors::InvalidArgument(fname_, " is a directory.");
+      return absl::InvalidArgumentError(
+          absl::StrCat(fname_, " is a directory."));
     }
     *result = std::unique_ptr<WritableFile>(
         new RamRandomAccessFile(fname, fs_[fname]));
@@ -293,7 +297,7 @@ class RamFileSystem : public FileSystem {
       return absl::NotFoundError("");
     }
     if (it->second != nullptr) {
-      return errors::InvalidArgument("Not a directory");
+      return absl::InvalidArgumentError("Not a directory");
     }
     fs_.erase(dirname);
 
@@ -307,7 +311,7 @@ class RamFileSystem : public FileSystem {
 
     if (fs_.find(fname) != fs_.end()) {
       if (fs_[fname] == nullptr) {
-        return errors::InvalidArgument("Not a file");
+        return absl::InvalidArgumentError("Not a file");
       }
       *file_size = fs_[fname]->size();
       return absl::OkStatus();

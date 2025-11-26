@@ -256,8 +256,8 @@ absl::Status CurlHttpRequest::SetPutFromFile(const string& body_filepath,
   }
   put_body_ = fopen(body_filepath.c_str(), "r");
   if (!put_body_) {
-    return errors::InvalidArgument("Couldn't open the specified file: " +
-                                   body_filepath);
+    return absl::InvalidArgumentError(
+        absl::StrCat("Couldn't open the specified file: ", body_filepath));
   }
   fseek(put_body_, 0, SEEK_END);
   const auto size = ftell(put_body_) - offset;
@@ -506,7 +506,7 @@ absl::Status CurlHttpRequest::Send() {
     case 406:  // Not Acceptable
     case 411:  // Length Required
     case 414:  // URI Too Long
-      result = errors::InvalidArgument(get_error_message());
+      result = absl::InvalidArgumentError(get_error_message());
       break;
 
     // PERMISSION_DENIED indicates an authentication or an authorization issue.

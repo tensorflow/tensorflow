@@ -19,12 +19,17 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <string>
 
 #include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/file_system.h"
 #include "xla/tsl/platform/logging.h"
+#include "tsl/platform/coding.h"
 
 namespace tsl {
 namespace io {
@@ -89,8 +94,8 @@ absl::Status InputBuffer::ReadNBytes(int64_t bytes_to_read,
                                      std::string* result) {
   result->clear();
   if (bytes_to_read < 0) {
-    return errors::InvalidArgument("Can't read a negative number of bytes: ",
-                                   bytes_to_read);
+    return absl::InvalidArgumentError(
+        absl::StrCat("Can't read a negative number of bytes: ", bytes_to_read));
   }
   result->resize(bytes_to_read);
   size_t bytes_read = 0;
@@ -102,10 +107,10 @@ absl::Status InputBuffer::ReadNBytes(int64_t bytes_to_read,
 absl::Status InputBuffer::ReadNBytes(int64_t bytes_to_read, char* result,
                                      size_t* bytes_read) {
   if (bytes_to_read < 0) {
-    return errors::InvalidArgument("Can't read a negative number of bytes: ",
-                                   bytes_to_read);
+    return absl::InvalidArgumentError(
+        absl::StrCat("Can't read a negative number of bytes: ", bytes_to_read));
   }
-  absl::Status status;
+  absl::Status status;  // Re-declare status here
   *bytes_read = 0;
   while (*bytes_read < static_cast<size_t>(bytes_to_read)) {
     if (pos_ == limit_) {
@@ -164,8 +169,8 @@ absl::Status InputBuffer::ReadVarintFallback(T* result, int max_bytes) {
 
 absl::Status InputBuffer::SkipNBytes(int64_t bytes_to_skip) {
   if (bytes_to_skip < 0) {
-    return errors::InvalidArgument("Can only skip forward, not ",
-                                   bytes_to_skip);
+    return absl::InvalidArgumentError(
+        absl::StrCat("Can only skip forward, not ", bytes_to_skip));
   }
   int64_t bytes_skipped = 0;
   absl::Status s;
@@ -190,8 +195,8 @@ absl::Status InputBuffer::SkipNBytes(int64_t bytes_to_skip) {
 
 absl::Status InputBuffer::Seek(int64_t position) {
   if (position < 0) {
-    return errors::InvalidArgument("Seeking to a negative position: ",
-                                   position);
+    return absl::InvalidArgumentError(
+        absl::StrCat("Seeking to a negative position: ", position));
   }
   // Position of the buffer within file.
   const int64_t bufpos = file_pos_ - static_cast<int64_t>(limit_ - buf());
@@ -210,8 +215,8 @@ absl::Status InputBuffer::Seek(int64_t position) {
 
 absl::Status InputBuffer::Hint(int64_t bytes_to_read) {
   if (bytes_to_read < 0) {
-    return errors::InvalidArgument("Can't read a negative number of bytes: ",
-                                   bytes_to_read);
+    return absl::InvalidArgumentError(
+        absl::StrCat("Can't read a negative number of bytes: ", bytes_to_read));
   }
 
   // The internal buffer is too small. Do nothing.

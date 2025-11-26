@@ -282,7 +282,7 @@ xla_test(
         "@com_google_googletest//:gtest",
         "@local_tsl//tsl/platform:path",
         "@local_tsl//tsl/platform:protobuf",
-    ],
+    ] + if_cuda(["//xla/tsl/cuda:nvml"]),
 )
 
 tsl_pybind_extension(

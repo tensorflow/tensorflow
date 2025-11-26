@@ -523,8 +523,8 @@ static absl::StatusOr<PJRT_NamedValue> ConvertToPjRtNamedValue(
     c_value.bool_value = std::get<bool>(value);
     c_value.value_size = 1;
   } else {
-    return tsl::errors::InvalidArgument("Unexpected PjRtValueType: '",
-                                        value.index(), " with name: ", name);
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Unexpected PjRtValueType: '", value.index(), " with name: ", name));
   }
 
   return c_value;
@@ -601,8 +601,8 @@ static absl::StatusOr<PJRT_NamedValue_Type> GetPjrtNamedValueType(
   if (std::holds_alternative<bool>(cpp_value)) {
     return PJRT_NamedValue_Type::PJRT_NamedValue_kBool;
   }
-  return tsl::errors::InvalidArgument("Unexpected PjRtValueType with index",
-                                      cpp_value.index());
+  return absl::InvalidArgumentError(
+      absl::StrCat("Unexpected PjRtValueType with index", cpp_value.index()));
 }
 
 absl::Status ValidateCreateOptions(
@@ -612,16 +612,16 @@ absl::Status ValidateCreateOptions(
   for (const auto& [name, value] : value_map) {
     auto it = expected_name_and_types.find(name);
     if (it == expected_name_and_types.end()) {
-      return tsl::errors::InvalidArgument(
-          "Unexpected option name passed to PJRT_Client_Create: ", name);
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Unexpected option name passed to PJRT_Client_Create: ", name));
     }
     TF_ASSIGN_OR_RETURN(PJRT_NamedValue_Type type,
                         GetPjrtNamedValueType(value));
     if (type != it->second) {
-      return tsl::errors::InvalidArgument(
-          "Option passed to PJRT_Client_Create with name ", name,
-          " has type index ", value.index(), " but expected type index is ",
-          it->second);
+      return absl::InvalidArgumentError(
+          absl::StrCat("Option passed to PJRT_Client_Create with name ", name,
+                       " has type index ", value.index(),
+                       " but expected type index is ", it->second));
     }
   }
   return absl::OkStatus();
@@ -686,7 +686,7 @@ absl::Status ActualStructSizeIsGreaterOrEqual(absl::string_view struct_name,
                                               size_t expected_size,
                                               size_t actual_size) {
   if (actual_size < expected_size) {
-    return tsl::errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         StructSizeErrorMsg(struct_name, expected_size, actual_size));
   }
   if (actual_size > expected_size) {

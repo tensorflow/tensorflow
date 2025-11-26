@@ -46,9 +46,7 @@ limitations under the License.
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/file_system_helper.h"
 #include "xla/tsl/platform/logging.h"
-#include "xla/tsl/platform/status.h"
 #include "xla/tsl/protobuf/error_codes.pb.h"
-#include "tsl/platform/strcat.h"
 
 namespace tsl {
 
@@ -116,9 +114,9 @@ class PosixRandomAccessFile : public RandomAccessFile {
       return absl::OkStatus();
     }
     if (n < 0) {
-      return errors::InvalidArgument(
-          "Attempting to read ", n,
-          " bytes. You cannot read a negative number of bytes.");
+      return absl::InvalidArgumentError(
+          absl::StrCat("Attempting to read ", n,
+                       " bytes. You cannot read a negative number of bytes."));
     }
 
     char* scratch = new char[n];

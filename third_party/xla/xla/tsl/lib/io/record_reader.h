@@ -162,9 +162,9 @@ class SequentialRecordReader {
   // offset. Trying to seek backward will throw error.
   absl::Status SeekOffset(uint64_t offset) {
     if (offset < offset_)
-      return errors::InvalidArgument(
-          "Trying to seek offset: ", offset,
-          " which is less than the current offset: ", offset_);
+      return absl::InvalidArgumentError(
+          absl::StrCat("Trying to seek offset: ", offset,
+                       " which is less than the current offset: ", offset_));
     offset_ = offset;
     return absl::OkStatus();
   }

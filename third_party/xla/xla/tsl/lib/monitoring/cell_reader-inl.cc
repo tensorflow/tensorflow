@@ -75,10 +75,10 @@ absl::StatusOr<std::vector<Point>> GetPoints(
   const std::vector<std::string>& label_names =
       metric_descriptor->second->label_names;
   if (label_names.size() != labels.size()) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "Metric ", metric_name, " has ", label_names.size(), " labels: [",
         absl::StrJoin(label_names, ", "), "]. Got label values [",
-        absl::StrJoin(labels, ", "), "].");
+        absl::StrJoin(labels, ", "), "]."));
   }
   auto point_set = metrics.point_set_map.find(metric_name);
   if (point_set == metrics.point_set_map.end()) {

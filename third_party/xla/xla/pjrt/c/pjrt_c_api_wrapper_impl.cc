@@ -834,7 +834,7 @@ absl::StatusOr<xla::CompileOptions> ParseCompileOptions(
   xla::CompileOptionsProto options_proto;
   // Open source ParseFromString doesn't support string_view.
   if (!options_proto.ParseFromString(options_str)) {
-    return tsl::errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "PJRT_Client_Compile: failed to deserialize CompileOptionsProto");
   }
   return xla::CompileOptions::FromProto(options_proto);
@@ -861,12 +861,12 @@ ParsePjrtProgram(std::optional<mlir::MLIRContext>& context,
     xla::HloModuleProto module_proto;
     // Open source ParseFromString doesn't support string_view.
     if (!module_proto.ParseFromString(module_str)) {
-      return tsl::errors::InvalidArgument(
+      return absl::InvalidArgumentError(
           "PJRT_Client_Compile: failed to deserialize HloModuleProto");
     }
     return ProgramVariant(xla::XlaComputation(module_proto));
   } else {
-    return tsl::errors::InvalidArgument(ProgramFormatErrorMsg(format_str));
+    return absl::InvalidArgumentError(ProgramFormatErrorMsg(format_str));
   }
 }
 

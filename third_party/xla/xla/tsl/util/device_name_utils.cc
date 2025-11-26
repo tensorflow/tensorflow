@@ -17,12 +17,18 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstdint>
+#include <ostream>
 #include <string>
+#include <vector>
 
+#include "absl/log/check.h"
+#include "absl/status/status.h"
 #include "absl/strings/ascii.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "absl/strings/strip.h"
 #include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/types.h"
 #include "tsl/platform/str_util.h"
 
 namespace tsl {
@@ -214,15 +220,15 @@ absl::Status DeviceNameUtils::CanonicalizeDeviceName(absl::string_view fullname,
   *canonical_name = "";
   ParsedName parsed_basename;
   if (!ParseFullName(basename, &parsed_basename)) {
-    return errors::InvalidArgument("Could not parse basename: ", basename,
-                                   " into a device specification.");
+    return absl::InvalidArgumentError(
+        absl::StrCat("Could not parse basename: ", basename,
+                     " into a device specification."));
   }
   if (!(parsed_basename.has_job && parsed_basename.has_replica &&
         parsed_basename.has_task && parsed_basename.has_type &&
         parsed_basename.has_id)) {
-    return errors::InvalidArgument("Basename: ", basename,
-                                   " should be fully "
-                                   "specified.");
+    return absl::InvalidArgumentError(
+        absl::StrCat("Basename: ", basename, " should be fully specified."));
   }
   ParsedName parsed_name;
   if (ParseLocalName(fullname, &parsed_name)) {
@@ -235,9 +241,9 @@ absl::Status DeviceNameUtils::CanonicalizeDeviceName(absl::string_view fullname,
     *canonical_name = ParsedNameToString(parsed_name);
     return absl::OkStatus();
   }
-  return errors::InvalidArgument("Could not parse ", fullname,
-                                 " into a device "
-                                 "specification.");
+  return absl::InvalidArgumentError(absl::StrCat("Could not parse ", fullname,
+                                                 " into a device "
+                                                 "specification."));
 }
 
 /* static */
@@ -367,10 +373,10 @@ absl::Status MergeDevNamesImpl(DeviceNameUtils::ParsedName* target,
   const auto& ParsedNameToString = DeviceNameUtils::ParsedNameToString;
   if (other.has_job) {
     if (target->has_job && target->job != other.job) {
-      return errors::InvalidArgument(
-          "Cannot merge devices with incompatible jobs: '",
-          ParsedNameToString(*target), "' and '", ParsedNameToString(other),
-          "'");
+      return absl::InvalidArgumentError(
+          absl::StrCat("Cannot merge devices with incompatible jobs: '",
+                       ParsedNameToString(*target), "' and '",
+                       ParsedNameToString(other), "'"));
     }
     target->has_job = other.has_job;
     target->job = other.job;
@@ -378,10 +384,10 @@ absl::Status MergeDevNamesImpl(DeviceNameUtils::ParsedName* target,
 
   if (other.has_replica) {
     if (target->has_replica && target->replica != other.replica) {
-      return errors::InvalidArgument(
-          "Cannot merge devices with incompatible replicas: '",
-          ParsedNameToString(*target), "' and '", ParsedNameToString(other),
-          "'");
+      return absl::InvalidArgumentError(
+          absl::StrCat("Cannot merge devices with incompatible replicas: '",
+                       ParsedNameToString(*target), "' and '",
+                       ParsedNameToString(other), "'"));
     }
     target->has_replica = other.has_replica;
     target->replica = other.replica;
@@ -389,10 +395,10 @@ absl::Status MergeDevNamesImpl(DeviceNameUtils::ParsedName* target,
 
   if (other.has_task) {
     if (target->has_task && target->task != other.task) {
-      return errors::InvalidArgument(
-          "Cannot merge devices with incompatible tasks: '",
-          ParsedNameToString(*target), "' and '", ParsedNameToString(other),
-          "'");
+      return absl::InvalidArgumentError(
+          absl::StrCat("Cannot merge devices with incompatible tasks: '",
+                       ParsedNameToString(*target), "' and '",
+                       ParsedNameToString(other), "'"));
     }
     target->has_task = other.has_task;
     target->task = other.task;
@@ -401,10 +407,10 @@ absl::Status MergeDevNamesImpl(DeviceNameUtils::ParsedName* target,
   if (other.has_type) {
     if (target->has_type && target->type != other.type) {
       if (!allow_soft_placement) {
-        return errors::InvalidArgument(
-            "Cannot merge devices with incompatible types: '",
-            ParsedNameToString(*target), "' and '", ParsedNameToString(other),
-            "'");
+        return absl::InvalidArgumentError(
+            absl::StrCat("Cannot merge devices with incompatible types: '",
+                         ParsedNameToString(*target), "' and '",
+                         ParsedNameToString(other), "'"));
       }
       if (override_conflicts) {
         target->type = other.type;
@@ -422,10 +428,10 @@ absl::Status MergeDevNamesImpl(DeviceNameUtils::ParsedName* target,
   if (other.has_id) {
     if (target->has_id && target->id != other.id) {
       if (!allow_soft_placement) {
-        return errors::InvalidArgument(
-            "Cannot merge devices with incompatible ids: '",
-            ParsedNameToString(*target), "' and '", ParsedNameToString(other),
-            "'");
+        return absl::InvalidArgumentError(
+            absl::StrCat("Cannot merge devices with incompatible ids: '",
+                         ParsedNameToString(*target), "' and '",
+                         ParsedNameToString(other), "'"));
       }
       if (override_conflicts) {
         target->id = other.id;
