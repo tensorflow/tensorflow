@@ -1690,7 +1690,8 @@ class Handler : public Ffi {
       if (XLA_FFI_PREDICT_FALSE(call_frame->args.size < kNumArgs)) {
         return InvalidArgument(
             call_frame->api,
-            StrCat("Wrong number of arguments: expected at least ",
+            StrCat("[", call_frame->stage, "] ",
+                   "Wrong number of arguments: expected at least ",
                    kNumArgs - kNumOptionalArgs - 1, " but got ",
                    call_frame->args.size));
       }
@@ -1698,7 +1699,8 @@ class Handler : public Ffi {
       if (XLA_FFI_PREDICT_FALSE(call_frame->args.size < kNumArgs)) {
         return InvalidArgument(
             call_frame->api,
-            StrCat("Wrong number of arguments: expected at least ",
+            StrCat("[", call_frame->stage, "] ",
+                   "Wrong number of arguments: expected at least ",
                    kNumArgs - kNumOptionalArgs, " but got ",
                    call_frame->args.size));
       }
@@ -1706,7 +1708,8 @@ class Handler : public Ffi {
       if (XLA_FFI_PREDICT_FALSE(call_frame->args.size != kNumArgs)) {
         return InvalidArgument(
             call_frame->api,
-            StrCat("Wrong number of arguments: expected ", kNumArgs,
+            StrCat("[", call_frame->stage, "] ",
+                   "Wrong number of arguments: expected ", kNumArgs,
                    " but got ", call_frame->args.size));
       }
     }
@@ -1717,7 +1720,8 @@ class Handler : public Ffi {
       if (XLA_FFI_PREDICT_FALSE(call_frame->rets.size < kNumRets)) {
         return InvalidArgument(
             call_frame->api,
-            StrCat("Wrong number of results: expected at least ",
+            StrCat("[", call_frame->stage, "] ",
+                   "Wrong number of results: expected at least ",
                    kNumRets - kNumOptionalRets - 1, " but got ",
                    call_frame->rets.size));
       }
@@ -1725,7 +1729,8 @@ class Handler : public Ffi {
       if (XLA_FFI_PREDICT_FALSE(call_frame->rets.size < kNumRets)) {
         return InvalidArgument(
             call_frame->api,
-            StrCat("Wrong number of results: expected at least ",
+            StrCat("[", call_frame->stage, "] ",
+                   "Wrong number of results: expected at least ",
                    kNumRets - kNumOptionalRets, " but got ",
                    call_frame->rets.size));
       }
@@ -1733,7 +1738,8 @@ class Handler : public Ffi {
       if (XLA_FFI_PREDICT_FALSE(call_frame->rets.size != kNumRets)) {
         return InvalidArgument(
             call_frame->api,
-            StrCat("Wrong number of results: expected ", kNumRets, " but got ",
+            StrCat("[", call_frame->stage, "] ",
+                   "Wrong number of results: expected ", kNumRets, " but got ",
                    call_frame->rets.size));
       }
     }
@@ -1746,7 +1752,8 @@ class Handler : public Ffi {
     if (XLA_FFI_PREDICT_FALSE(kNumDictAttrs == 0 &&
                               call_frame->attrs.size != kNumAttrs)) {
       std::stringstream msg;
-      msg << "Wrong number of attributes: expected " << kNumAttrs << " but got "
+      msg << "[" << call_frame->stage << "] "
+          << "Wrong number of attributes: expected " << kNumAttrs << " but got "
           << call_frame->attrs.size;
       if (call_frame->attrs.size > 0) {
         msg << " with name(s): ";

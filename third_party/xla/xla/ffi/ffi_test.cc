@@ -185,8 +185,12 @@ TEST(FfiTest, WrongNumArgs) {
 
   auto status = Call(*handler, call_frame);
 
-  ASSERT_EQ(status.message(),
-            "Wrong number of arguments: expected 2 but got 1");
+  EXPECT_THAT(
+      status,
+      absl_testing::StatusIs(
+          absl::StatusCode::kInvalidArgument,
+          HasSubstr(
+              "[execute] Wrong number of arguments: expected 2 but got 1")));
 }
 
 TEST(FfiTest, WrongNumAttrs) {
@@ -207,7 +211,8 @@ TEST(FfiTest, WrongNumAttrs) {
       status,
       absl_testing::StatusIs(
           absl::StatusCode::kInvalidArgument,
-          HasSubstr("Wrong number of attributes: expected 1 but got 2")));
+          HasSubstr(
+              "[execute] Wrong number of attributes: expected 1 but got 2")));
 }
 
 TEST(FfiTest, RunId) {
