@@ -4,7 +4,7 @@ This document outlines the journey of an XLA *High Level Optimizer* (HLO) module
 from its initial state to a final executable. Sometimes we will omit the
 "module" and refer to it just as "HLO".
 
-![hlo_to_thunks](./images/hlo_to_thunks.svg "High level diagram of HLO to thunk path")
+<img src="./images/hlo_to_thunks.svg" alt="HLO to thunks diagram" width="50%">
 
 ## Pre-optimization HLO
 
@@ -171,14 +171,9 @@ After an HLO graph is optimized and scheduled, it is lowered into a
 linear sequence of thunks for a specific backend (CPU or GPU).
 
 In XLA, a **Thunk** is an abstraction of a self-contained unit of work that the
-runtime executes. It might be a specific operation, library call, control-flow
-construct, collective communication, and so on. A **Thunk Sequence** represents
-the entire executable for a specific backend.
-
-Examples of concrete thunk types include `KernelThunk` (for launching a compiled
-kernel), `GemmThunk` (for a cuBLAS matrix multiplication), `ConvolutionThunk`
-(for a cuDNN convolution), and control-flow thunks like `WhileThunk` and
-`ConditionalThunk`.
+runtime executes. It might be a compiled kernel launch, specific operation,
+library call, control-flow construct, collective communication, and so on. A
+**Thunk Sequence** represents the entire executable for a specific backend.
 
 ### Thunk Emission
 
@@ -200,7 +195,7 @@ performs this role and is organized in a similar manner. Final `ThunkSequence`
 is embedded in the `CpuExecutable`.
 
 Note that each instruction in the entry computation of an HLO module might
-correspond to none (`kTuple`, `kConstant`, ..), one, or multiple (for example
+correspond to no (`kTuple`, `kConstant`, ..), one, or multiple (for example
 sort instruction) thunks in the final thunk sequence.
 
 ### Command Buffers: Optimizing Execution on the GPU
