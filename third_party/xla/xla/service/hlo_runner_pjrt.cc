@@ -491,6 +491,12 @@ HloRunnerPjRt::CreateExecutable(std::unique_ptr<HloModule> module,
   absl::StatusOr<std::unique_ptr<PjRtExecutable>> pjrt_executable =
       pjrt_client_->Compile(computation, compile_options);
   if (pjrt_executable.ok()) {
+    absl::StatusOr<std::vector<std::shared_ptr<HloModule>>> hlo_modules =
+        pjrt_executable->get()->GetHloModules();
+    if (hlo_modules.ok() && !hlo_modules->empty()) {
+      std::shared_ptr<HloModule> exe_module = (*hlo_modules)[0];
+      exe_module->mutable_config().set_seed(module->config().seed());
+    }
     return std::make_unique<HloRunnerPjRtExecutable>(
         this, *std::move(pjrt_executable));
   }
@@ -502,6 +508,14 @@ HloRunnerPjRt::CreateExecutable(std::unique_ptr<HloModule> module,
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<PjRtLoadedExecutable> pjrt_loaded_executable,
       pjrt_client_->CompileAndLoad(computation, std::move(compile_options)));
+  if (pjrt_loaded_executable != nullptr) {
+    absl::StatusOr<std::vector<std::shared_ptr<HloModule>>> hlo_modules =
+        pjrt_loaded_executable->GetHloModules();
+    if (hlo_modules.ok() && !hlo_modules->empty()) {
+      std::shared_ptr<HloModule> exe_module = (*hlo_modules)[0];
+      exe_module->mutable_config().set_seed(module->config().seed());
+    }
+  }
   return std::make_unique<HloRunnerPjRtExecutable>(
       this, std::move(pjrt_loaded_executable));
 }
