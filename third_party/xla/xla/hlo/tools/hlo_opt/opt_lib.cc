@@ -248,7 +248,8 @@ void OptProvider::RegisterAllHardwareIndependentPasses() {
   RegisterPass<BFloat16ConversionFolding>(
       /*bfloat16_support=*/bfloat16_support);
   RegisterPass<BFloat16MixedPrecisionRemoval>();
-  RegisterPass<BFloat16Propagation>(/*bfloat16_support=*/bfloat16_support);
+  RegisterPass<BFloat16Propagation>(/*bfloat16_support=*/bfloat16_support,
+                                    alias_info_.get());
   RegisterPass<BatchDotSimplification>();
   RegisterPass<BroadcastCanonicalizer>();
   RegisterPass<CholeskyExpander>();

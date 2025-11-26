@@ -1014,6 +1014,7 @@ absl::Status RunFusionPasses(HloModule* hlo_module,
                              const Compiler::GpuTargetConfig& gpu_target_config,
                              tsl::thread::ThreadPool* thread_pool,
                              HloCostAnalysis::ShapeSizeFunction shape_size_fn,
+                             const GpuAliasInfo* alias_info,
                              mlir::MLIRContext* mlir_context) {
   const se::DeviceDescription& gpu_device_info =
       gpu_target_config.device_description;
@@ -1024,7 +1025,7 @@ absl::Status RunFusionPasses(HloModule* hlo_module,
 
   TF_RETURN_IF_ERROR(
       FusionPipeline(hlo_module->config().debug_options(), shape_size_fn,
-                     thread_pool, gpu_device_info, mlir_context)
+                     alias_info, thread_pool, gpu_device_info, mlir_context)
           .Run(hlo_module, {HloInstruction::kMainExecutionThread})
           .status());
 
@@ -1437,9 +1438,9 @@ absl::Status GpuCompiler::OptimizeHloModule(
   TF_RETURN_IF_ERROR(
       RunDynamicSliceFusionPasses(hlo_module, /*platform_id=*/PlatformId()));
 
-  TF_RETURN_IF_ERROR(RunFusionPasses(hlo_module, gpu_target_config,
-                                     thread_pool.get_mutable(),
-                                     ShapeSizeBytesFunction(), &mlir_context_));
+  TF_RETURN_IF_ERROR(
+      RunFusionPasses(hlo_module, gpu_target_config, thread_pool.get_mutable(),
+                      ShapeSizeBytesFunction(), alias_info, &mlir_context_));
   TF_RETURN_IF_ERROR(RunPostFusionPasses(hlo_module, device_description,
                                          alias_info, pointer_size_, options,
                                          &mlir_context_));
@@ -1665,7 +1666,7 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
       pipeline.AddPass<HloDCE>();
       pipeline.AddPass<SoftmaxRewriterTriton>(
           gpu_target_config.device_description, ShapeSizeBytesFunction(),
-          &mlir_context_,
+          alias_info, &mlir_context_,
           /*only_fuse_if_profitable=*/true);
     }
 

@@ -39,6 +39,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/permutation_util.h"
+#include "xla/service/gpu/alias_info.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/ir_emission_utils.h"
@@ -528,7 +529,8 @@ FusionDecision CanEmitInputFusedScatter(const HloInstruction& producer,
 }
 
 FusionDecision IsProducerMultiOutputFusible(
-    const HloInstruction& producer, const se::DeviceDescription& device_info) {
+    const HloInstruction& producer, const GpuAliasInfo* alias_info,
+    const se::DeviceDescription& device_info) {
   // Skip multiple output fusion. It's not yet supported.
   if (producer.IsMultiOutputFusion()) {
     return FusionDecision::Forbid("Producer is a multi-output fusion");
@@ -558,7 +560,7 @@ FusionDecision IsProducerMultiOutputFusible(
   // is in-place. (We can relax this restriction by establishing an explicit
   // contract that describes what multi-output fusion scenarios are supported by
   // codegen and then changing this check to allow exactly those fusions).
-  if (!HloDataflowAnalysis::GetInPlaceInputOutputPairs(&producer).empty()) {
+  if (!alias_info->GetInPlaceInputOutputPairs(&producer).empty()) {
     return FusionDecision::Forbid("In-place operations are present");
   }
 

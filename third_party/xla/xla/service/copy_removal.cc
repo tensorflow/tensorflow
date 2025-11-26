@@ -346,8 +346,9 @@ bool ComputeRelativeLocation::ForceRuntimeOrder(
                "kBeforeStart or kAfterEnd";
     return false;
   }
-  auto ModifiesNonCopy = [](HloInstruction* instr, const HloInstruction* op) {
-    auto in_place = HloDataflowAnalysis::GetInPlaceInputOutputPairs(instr);
+  auto ModifiesNonCopy = [this](HloInstruction* instr,
+                                const HloInstruction* op) {
+    auto in_place = alias_info_->GetInPlaceInputOutputPairs(instr);
     if (in_place.empty()) {
       return false;
     }
@@ -435,7 +436,7 @@ bool ComputeRelativeLocation::InstructionCanIntercept(
     // If the instruction only uses the value, it can intercept only if it
     // modifies the buffer in place.
     for (const auto& operand_and_output_index :
-         HloDataflowAnalysis::GetInPlaceInputOutputPairs(instr)) {
+         alias_info_->GetInPlaceInputOutputPairs(instr)) {
       const HloOperandIndex& operand_index = operand_and_output_index.first;
       if (region.contains(
               instr->mutable_operand(operand_index.operand_number))) {
@@ -1293,7 +1294,7 @@ bool CopyRemover::ValuesInterfere(const ValueNode* src, const ValueNode* dest,
   VLOG(5) << "    ValuesInterfere destination live range:\n"
           << dest_live_range.ToString();
 
-  ComputeRelativeLocation relative_location_analysis(ordering_);
+  ComputeRelativeLocation relative_location_analysis(ordering_, alias_info_);
   auto rel1 = relative_location_analysis.ComputeBetweenLiveRangeRegions(
       src_live_range, dest_live_range);
   VLOG(3) << "    ValuesInterfere - location of dest in relation to src: ";
