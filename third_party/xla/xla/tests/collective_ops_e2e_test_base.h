@@ -106,10 +106,7 @@ class CollectiveOpsE2ETestBase : public HloHardwareIndependentTestBase {
 class CollectiveOpsWithFlagsBase : public CollectiveOpsE2ETestBase {
  public:
   CollectiveOpsWithFlagsBase(bool enable_async, bool enable_p2p_memcpy)
-      : enable_async_(enable_async), enable_p2p_memcpy_(enable_p2p_memcpy) {
-    VLOG(1) << "Running with " << num_devices_ << " devices";
-    num_devices_ = hlo_runner_->backend().device_count();
-  }
+      : enable_async_(enable_async), enable_p2p_memcpy_(enable_p2p_memcpy) {}
 
  protected:
   DebugOptions GetDebugOptionsForTest() const override;
@@ -119,7 +116,6 @@ class CollectiveOpsWithFlagsBase : public CollectiveOpsE2ETestBase {
 
   const bool enable_async_;
   const bool enable_p2p_memcpy_;
-  int64_t num_devices_;
 };
 
 }  // namespace xla
