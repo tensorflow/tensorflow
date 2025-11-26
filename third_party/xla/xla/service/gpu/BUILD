@@ -446,9 +446,9 @@ cc_library(
 )
 
 cc_library(
-    name = "ir_emitter_unnested",
-    srcs = ["ir_emitter_unnested.cc"],
-    hdrs = ["ir_emitter_unnested.h"],
+    name = "thunk_emitter",
+    srcs = ["thunk_emitter.cc"],
+    hdrs = ["thunk_emitter.h"],
     tags = ["gpu"],
     deps = [
         ":backend_configs_cc",
@@ -1523,9 +1523,9 @@ cc_library(
         ":gpu_executable",
         ":gpu_memory_space_assignment",
         ":ir_emitter_context",
-        ":ir_emitter_unnested",
         ":kernel_reuse_cache_proto_cc",
         ":metrics",
+        ":thunk_emitter",
         "//xla:shape_util",
         "//xla:status_macros",
         "//xla:util",
@@ -1663,7 +1663,6 @@ cc_library(
         ":ir_emission_utils",
         ":ir_emitter",
         ":ir_emitter_context",
-        ":ir_emitter_unnested",
         ":kernel_reuse_cache",
         ":legacy_gpu_aot_compilation_result",
         ":matmul_utils",
@@ -1671,6 +1670,7 @@ cc_library(
         ":pre_scheduling_copy_insertion_pipeline",
         ":reduction_utils",
         ":stream_executor_util",
+        ":thunk_emitter",
         "//xla:autotune_results_proto_cc",
         "//xla:debug_options_flags",
         "//xla:shape_util",

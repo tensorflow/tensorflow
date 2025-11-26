@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_SERVICE_GPU_IR_EMITTER_UNNESTED_H_
-#define XLA_SERVICE_GPU_IR_EMITTER_UNNESTED_H_
+#ifndef XLA_SERVICE_GPU_THUNK_EMITTER_H_
+#define XLA_SERVICE_GPU_THUNK_EMITTER_H_
 
 #include <array>
 #include <cstdint>
@@ -63,16 +63,16 @@ namespace gpu {
 //  - The true/false computation of an HLO conditional.
 //
 // Note the opportunity for confusion -- the while loop's computation is nested
-// within the root computation, but it's emitted using IrEmitterUnnested!  Don't
+// within the root computation, but it's emitted using ThunkEmitter!  Don't
 // think about it too hard.
 //
 // Examples of things that are not unnested computations:
 //
-//  - The body of a fusion node.  IrEmitterUnnested emits the relevant code
+//  - The body of a fusion node.  ThunkEmitter emits the relevant code
 //    within a kernel function using FusedIrEmitter.  (FusedIrEmitter is not
 //    really an IrEmitter, but is more an "IR generator generator".)
 //
-class IrEmitterUnnested : public IrEmitter {
+class ThunkEmitter : public IrEmitter {
  public:
   absl::string_view platform_name() const {
     return ir_emitter_context_->platform_name();
@@ -83,10 +83,10 @@ class IrEmitterUnnested : public IrEmitter {
 
   using ConstantGenerator = std::function<llvm::Value*(int64_t)>;
 
-  IrEmitterUnnested(const IrEmitterUnnested&) = delete;
-  IrEmitterUnnested& operator=(const IrEmitterUnnested&) = delete;
+  ThunkEmitter(const ThunkEmitter&) = delete;
+  ThunkEmitter& operator=(const ThunkEmitter&) = delete;
 
-  static std::unique_ptr<IrEmitterUnnested> Create(
+  static std::unique_ptr<ThunkEmitter> Create(
       IrEmitterContext* ir_emitter_context);
 
   // Transfers the ownership of thunk_sequence_ out.
@@ -99,7 +99,7 @@ class IrEmitterUnnested : public IrEmitter {
   absl::Status EmitHloEntryComputation(const HloModule* module);
 
  private:
-  explicit IrEmitterUnnested(IrEmitterContext* ir_emitter_context);
+  explicit ThunkEmitter(IrEmitterContext* ir_emitter_context);
 
   // Emits code for the given HLO computation.
   //
@@ -112,7 +112,7 @@ class IrEmitterUnnested : public IrEmitter {
 
   absl::Status EmitCommandBufferThunk(const HloInstruction* instr);
 
-  // IrEmitterUnnested handles the following instructions differently from
+  // ThunkEmitter handles the following instructions differently from
   // IrEmitter. It also mixes in some special handling for custom kernels
   // via the ThunkEmitter.
   absl::Status EmitConstant(const HloConstantInstruction* instr);
@@ -365,4 +365,4 @@ class IrEmitterUnnested : public IrEmitter {
 }  // namespace gpu
 }  // namespace xla
 
-#endif  // XLA_SERVICE_GPU_IR_EMITTER_UNNESTED_H_
+#endif  // XLA_SERVICE_GPU_THUNK_EMITTER_H_

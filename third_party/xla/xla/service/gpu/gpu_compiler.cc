@@ -188,7 +188,6 @@ limitations under the License.
 #include "xla/service/gpu/hlo_fusion_stats.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/ir_emitter_context.h"
-#include "xla/service/gpu/ir_emitter_unnested.h"
 #include "xla/service/gpu/kernel_reuse_cache.h"
 #include "xla/service/gpu/legacy_gpu_aot_compilation_result.h"
 #include "xla/service/gpu/matmul_utils.h"
@@ -201,6 +200,7 @@ limitations under the License.
 #include "xla/service/gpu/pre_scheduling_copy_insertion_pipeline.h"
 #include "xla/service/gpu/reduction_utils.h"
 #include "xla/service/gpu/stream_executor_util.h"
+#include "xla/service/gpu/thunk_emitter.h"
 #include "xla/service/gpu/transforms/add_tracking_suffix_to_instruction_names.h"
 #include "xla/service/gpu/transforms/algebraic_simplifier.h"
 #include "xla/service/gpu/transforms/algorithm_checker.h"
@@ -3041,7 +3041,7 @@ GpuCompiler::LoadExecutableFromAotResult(
     TF_RETURN_IF_ERROR(LoadCache(ir_emitter_context, cache_file_path));
   }
 
-  auto ir_emitter = IrEmitterUnnested::Create(&ir_emitter_context);
+  auto ir_emitter = ThunkEmitter::Create(&ir_emitter_context);
   TF_RETURN_IF_ERROR(ir_emitter->EmitHloEntryComputation(hlo_module.get()));
 
   // Get all other fields required by GpuExecutable.
