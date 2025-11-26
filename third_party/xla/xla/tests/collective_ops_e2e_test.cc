@@ -1541,6 +1541,7 @@ TEST_F(CollectiveOpsTestE2EShardedUnsharded,
                                        /*enable_enzyme_comms_opt=*/false);
 }
 
+// TODO(463571743): Reduce the shapes to make test-case faster.
 TEST_F(CollectiveOpsTestE2EShardedUnsharded,
        KeepPartitionedNonSlicedDimensionWithConstantIndices) {
   const std::string hlo_text = R"(
@@ -3269,13 +3270,13 @@ TEST_P(RaggedAllToAllTest, RaggedAllToAll_8GPUs_2ReplicasPerGroups) {
   HloModule module, num_partitions=1
 
   ENTRY entry {
-    input = f32[4096,1024] parameter(0)
-    output = f32[8192,1024] parameter(1)
-    input_offsets = s64[32] parameter(2)
-    send_sizes = s64[32] parameter(3)
-    output_offsets = s64[32] parameter(4)
-    recv_sizes = s64[32] parameter(5)
-    ROOT ra2a = f32[8192,1024] ragged-all-to-all(input, output,
+    input = f32[512, 5, 32] parameter(0)
+    output = f32[512, 5, 32] parameter(1)
+    input_offsets = s32[32] parameter(2)
+    send_sizes = s32[32] parameter(3)
+    output_offsets = s32[32] parameter(4)
+    recv_sizes = s32[32] parameter(5)
+    ROOT ra2a = f32[512, 5, 32] ragged-all-to-all(input, output,
       input_offsets, send_sizes, output_offsets, recv_sizes),
       replica_groups={{0,4},{1,5},{2,6},{3,7}}
   })";

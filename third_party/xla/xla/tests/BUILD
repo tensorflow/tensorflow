@@ -2906,6 +2906,9 @@ xla_test(
     backend_tags = {
         "gpu": [
             "multi_gpu",
+        ],
+        "nvgpu_any": [
+            "broken",
             "no_oss",
         ],
     },
