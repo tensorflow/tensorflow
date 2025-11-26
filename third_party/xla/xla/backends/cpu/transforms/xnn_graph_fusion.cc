@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <cstdint>
 #include <memory>
+#include <string>
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
@@ -33,6 +34,7 @@ limitations under the License.
 #include "xla/service/call_graph.h"
 #include "xla/service/cpu/backend_config.pb.h"
 #include "xla/service/instruction_fusion.h"
+#include "xla/tsl/platform/status.h"
 #include "xla/xla.pb.h"
 
 namespace xla::cpu {
@@ -89,7 +91,7 @@ HloInstruction* XnnGraphFusion::Fuse(HloInstruction* producer,
   FusionBackendConfig* fusion_config = backend_config.mutable_fusion_config();
   fusion_config->set_kind(kXnnFusionKind);
   CHECK(backend_config.has_fusion_config());
-  CHECK_OK(fusion->set_backend_config(backend_config));
+  TF_CHECK_OK(fusion->set_backend_config(backend_config));
   return fusion;
 }
 

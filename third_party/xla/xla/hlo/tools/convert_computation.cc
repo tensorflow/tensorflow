@@ -16,6 +16,9 @@ limitations under the License.
 // Usage: convert_computation <txt2bin|bin2txt> serialized_computation_proto
 //
 // bin2txt spits out the result to stdout. txt2bin modifies the file in place.
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "tsl/platform/status.h"
 #ifndef _WIN32
 #include <unistd.h>
 #endif
@@ -23,12 +26,11 @@ limitations under the License.
 
 #include <string>
 
-#include "absl/log/check.h"
-#include "absl/log/log.h"
-#include "google/protobuf/text_format.h"
 #include "xla/service/hlo.pb.h"
-#include "xla/tsl/platform/env.h"
+#include "tsl/platform/env.h"
 #include "tsl/platform/init_main.h"
+#include "tsl/platform/logging.h"
+#include "tsl/platform/protobuf.h"
 
 namespace xla {
 namespace tools {
@@ -37,10 +39,10 @@ void RealMain(const std::string& mode, const std::string& path) {
   HloSnapshot module;
   tsl::Env* env = tsl::Env::Default();
   if (mode == "txt2bin") {
-    CHECK_OK(tsl::ReadTextProto(env, path, &module));
-    CHECK_OK(tsl::WriteBinaryProto(env, path, module));
+    TF_CHECK_OK(tsl::ReadTextProto(env, path, &module));
+    TF_CHECK_OK(tsl::WriteBinaryProto(env, path, module));
   } else if (mode == "bin2txt") {
-    CHECK_OK(tsl::ReadBinaryProto(env, path, &module));
+    TF_CHECK_OK(tsl::ReadBinaryProto(env, path, &module));
     std::string out;
     tsl::protobuf::TextFormat::PrintToString(module, &out);
     fprintf(stdout, "%s", out.c_str());

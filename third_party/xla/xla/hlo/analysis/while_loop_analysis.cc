@@ -51,6 +51,7 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tools/hlo_extractor.h"
+#include "xla/tsl/platform/status.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -1073,9 +1074,9 @@ optional<int64_t> ComputeWhileLoopTripCountUpperBound(
   HloEvaluator evaluator(/*max_loop_iterations=*/0);
   Literal fake_input = Literal::CreateFromShape(
       new_computation->parameter_instruction(0)->shape());
-  CHECK_OK(fake_input.CopyFrom(while_body_indvar->literal(),
-                               /*dest_shape_index=*/{0},
-                               /*src_shape_index=*/{}));
+  TF_CHECK_OK(fake_input.CopyFrom(while_body_indvar->literal(),
+                                  /*dest_shape_index=*/{0},
+                                  /*src_shape_index=*/{}));
   absl::StatusOr<Literal> eval_result =
       evaluator.Evaluate(*new_computation, {std::move(fake_input)});
 

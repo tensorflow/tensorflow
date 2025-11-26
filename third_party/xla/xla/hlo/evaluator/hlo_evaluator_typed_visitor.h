@@ -54,6 +54,7 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/types.h"
 #include "xla/util.h"
@@ -877,8 +878,8 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
     const Shape& lhs_shape = lhs_literal.shape();
     const Shape& rhs_shape = rhs_literal.shape();
 
-    CHECK_OK(ShapeUtil::ValidateShape(lhs_shape));
-    CHECK_OK(ShapeUtil::ValidateShape(rhs_shape));
+    TF_CHECK_OK(ShapeUtil::ValidateShape(lhs_shape));
+    TF_CHECK_OK(ShapeUtil::ValidateShape(rhs_shape));
     CHECK(lhs_shape.IsArray());
     CHECK(rhs_shape.IsArray());
     CHECK(ShapeUtil::SameElementType(lhs_shape, rhs_shape));
@@ -1074,8 +1075,8 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
     Shape lhs_shape = GetShapeWithLayout(lhs->shape());
     Shape rhs_shape = GetShapeWithLayout(rhs->shape());
 
-    CHECK_OK(ShapeUtil::ValidateShape(lhs_shape));
-    CHECK_OK(ShapeUtil::ValidateShape(rhs_shape));
+    TF_CHECK_OK(ShapeUtil::ValidateShape(lhs_shape));
+    TF_CHECK_OK(ShapeUtil::ValidateShape(rhs_shape));
     CHECK(lhs_shape.IsArray());
     CHECK(rhs_shape.IsArray());
 

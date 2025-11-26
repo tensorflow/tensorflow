@@ -18,7 +18,6 @@ limitations under the License.
 #include <cstdint>
 
 #include "absl/container/flat_hash_set.h"
-#include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
@@ -28,9 +27,9 @@ limitations under the License.
 #include "xla/primitive_util.h"
 #include "xla/shape.h"
 #include "xla/shape_layout.h"
-#include "xla/tsl/platform/errors.h"
-#include "xla/util.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/status.h"
 
 namespace xla {
 
@@ -83,7 +82,7 @@ bool ProcessInputOrOutputLayout(ShapeLayout* shape_layout,
   Shape shape = shape_layout->shape();
   bool changed = UpdateShape(&shape, mode);
   if (changed) {
-    CHECK_OK(shape_layout->CopyLayoutFromShape(shape));
+    TF_CHECK_OK(shape_layout->CopyLayoutFromShape(shape));
   }
   return changed;
 }
