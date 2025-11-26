@@ -12,7 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "xla/backends/gpu/codegen/triton/emitter_helpers.h"
+
+#include "xla/backends/gpu/codegen/triton/lowering_util.h"
 
 #include <string>
 

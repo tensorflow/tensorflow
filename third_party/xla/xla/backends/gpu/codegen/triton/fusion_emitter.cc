@@ -99,6 +99,7 @@ limitations under the License.
 #include "xla/backends/gpu/codegen/triton/dot_algorithms.h"
 #include "xla/backends/gpu/codegen/triton/emitter_helpers.h"
 #include "xla/backends/gpu/codegen/triton/ir/triton_xla_ops.h"
+#include "xla/backends/gpu/codegen/triton/lowering_util.h"
 #include "xla/backends/gpu/codegen/triton/support.h"
 #include "xla/backends/gpu/codegen/triton/transforms/passes.h"
 #include "xla/codegen/emitter_loc_op_builder.h"
@@ -115,7 +116,6 @@ limitations under the License.
 #include "xla/codegen/xtile/ir/xtile_dialect.h"
 #include "xla/codegen/xtile/ir/xtile_ops.h"
 #include "xla/hlo/analysis/indexing_map.h"
-#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -270,8 +270,8 @@ absl::StatusOr<TensorValue> EmitReduce(
 
     TF_RET_CHECK(!to_emit.empty());
 
-    TF_ASSIGN_OR_RETURN(TensorValue result, EmitScope(b, /*analysis=*/nullptr,
-                                                      to_emit, region_values));
+    TF_ASSIGN_OR_RETURN(TensorValue result,
+                        EmitScope(b, to_emit, region_values));
     stablehlo::ReturnOp::create(b, SmallVector<Value>({result}));
     b.setInsertionPointAfter(reduction);
   }

@@ -28,18 +28,13 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
-#include "llvm/IR/Metadata.h"
-#include "llvm/IR/Module.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/MathExtras.h"
-#include "llvm/TargetParser/Triple.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
-#include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Dialect/Math/IR/Math.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributes.h"
-#include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/BuiltinTypeInterfaces.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/TypeUtilities.h"
@@ -48,8 +43,6 @@ limitations under the License.
 #include "mlir/IR/ValueRange.h"
 #include "mlir/Support/LLVM.h"
 #include "stablehlo/dialect/StablehloOps.h"
-#include "xla/backends/gpu/codegen/triton/ir/triton_xla_ops.h"
-#include "xla/backends/gpu/codegen/triton/tma_utils.h"
 #include "xla/codegen/emitter_loc_op_builder.h"
 #include "xla/codegen/emitters/elemental_hlo_to_mlir.h"
 #include "xla/codegen/tiling/tiled_hlo_instruction.h"
@@ -66,20 +59,13 @@ limitations under the License.
 #include "xla/mlir_hlo/mhlo/transforms/map_mhlo_to_scalar_op.h"
 #include "xla/mlir_hlo/mhlo/transforms/transformation_helpers.h"
 #include "xla/primitive_util.h"
-#include "xla/service/gpu/target_util.h"
-#include "xla/service/gpu/triton_fusion_analysis.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/shape.h"
 #include "xla/status_macros.h"
-#include "xla/stream_executor/device_description.h"
-#include "xla/stream_executor/gpu/tma_metadata.h"
-#include "xla/stream_executor/launch_dim.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
-#include "triton/Dialect/Triton/IR/Dialect.h"
-#include "triton/Dialect/Triton/IR/Types.h"
 
 namespace xla::gpu::triton {
 
@@ -93,7 +79,6 @@ using ::mlir::ValueRange;
 namespace ma = ::mlir::arith;
 namespace mh = ::mlir::mhlo;
 namespace mm = ::mlir::math;
-namespace mt = ::mlir::triton;
 
 namespace {
 using TensorValue = mlir::TypedValue<mlir::RankedTensorType>;
@@ -169,7 +154,7 @@ absl::StatusOr<TensorValue> EmitNestedFusion(
 
   TF_RET_CHECK(to_emit.back() == fusion_computation->root_instruction());
 
-  return EmitScope(b, /*analysis=*/nullptr, to_emit, region_values);
+  return EmitScope(b, to_emit, region_values);
 }
 }  // namespace
 
@@ -422,59 +407,6 @@ Value Minimum(EmitterLocOpBuilder& b, ValueRange values) {
   return ma::MinSIOp::create(b, values);
 }
 
-bool IsSupportedElementwiseLibdeviceFunction(const HloInstruction& hlo) {
-  auto dev_fn_id = GetTargetDeviceFunctionID(hlo.opcode());
-  if (!dev_fn_id.has_value()) {
-    return false;
-  }
-  PrimitiveType output_type = hlo.shape().element_type();
-  return output_type == PrimitiveType::BF16 ||
-         output_type == PrimitiveType::F16 ||
-         output_type == PrimitiveType::F32 || output_type == PrimitiveType::F64;
-}
-
-// TODO(willfroom): Remove this (and associated functions) once the legacy
-// matmul is removed.
-absl::StatusOr<Value> EmitElementwiseLibdeviceFunction(
-    EmitterLocOpBuilder& b, absl::string_view libdevice_path,
-    const se::DeviceDescription& device_info, const HloInstruction& hlo,
-    ValueRange inputs) {
-  auto dev_fn_id = GetTargetDeviceFunctionID(hlo.opcode());
-  if (!dev_fn_id.has_value()) {
-    return absl::InvalidArgumentError(
-        absl::StrCat("No libdevice function for operation ", hlo.ToString()));
-  }
-  PrimitiveType output_type = hlo.shape().element_type();
-  if (output_type != PrimitiveType::BF16 && output_type != PrimitiveType::F16 &&
-      output_type != PrimitiveType::F32 && output_type != PrimitiveType::F64) {
-    return absl::InvalidArgumentError(
-        absl::StrCat("Unsupported elementwise operation ", hlo.ToString()));
-  }
-  llvm::Triple triple("nvptx64-unknown-unknown");
-  if (device_info.gpu_compute_capability().IsRocm()) {
-    triple.setTriple("amdgcn-unknown-unknown");
-  }
-  llvm::SmallVector<Value, 2> casted_inputs;
-  if (output_type == PrimitiveType::BF16 || output_type == PrimitiveType::F16) {
-    // Upcast the inputs to F32.
-    for (int64_t i = 0; i < inputs.size(); ++i) {
-      casted_inputs.push_back(Cast(b, inputs[i], b.getF32Type()));
-    }
-  } else {
-    casted_inputs.assign(inputs.begin(), inputs.end());
-  }
-  Value res = mt::ExternElementwiseOp::create(
-      b, casted_inputs[0].getType(), casted_inputs, "libdevice", libdevice_path,
-      ObtainDeviceFunctionName(dev_fn_id.value(), output_type, triple),
-      /*pure=*/true);
-  if (output_type == PrimitiveType::BF16 || output_type == PrimitiveType::F16) {
-    // Downcast back to the original output type.
-    TF_ASSIGN_OR_RETURN(auto dst_ty, TritonType(b, output_type));
-    res = Cast(b, res, dst_ty);
-  }
-  return res;
-}
-
 absl::StatusOr<Value> EmitElementwise(EmitterLocOpBuilder& b,
                                       const HloInstruction& hlo,
                                       ValueRange inputs) {
@@ -628,98 +560,6 @@ Value Bitcast(EmitterLocOpBuilder& b, Value value, Type type) {
   return mlir::arith::BitcastOp::create(b, value_type, value);
 }
 
-std::vector<llvm::Metadata*> ExtractNvvmAnnotations(
-    llvm::Module* ll_triton_module) {
-  std::vector<llvm::Metadata*> captured_nvvm_annotations;
-  llvm::NamedMDNode* nvvm_annotations =
-      ll_triton_module->getNamedMetadata("nvvm.annotations");
-  if (nvvm_annotations) {
-    for (llvm::MDNode* operand : nvvm_annotations->operands()) {
-      captured_nvvm_annotations.push_back(operand);
-    }
-    ll_triton_module->eraseNamedMetadata(nvvm_annotations);
-  }
-  return captured_nvvm_annotations;
-}
-
-absl::StatusOr<stream_executor::ThreadDim> ExtractThreadDims(
-    mlir::ModuleOp triton_module, mlir::LLVM::LLVMFuncOp func_op) {
-  // Extract the launch information from the Triton module.
-  auto threads_per_warp_attr =
-      triton_module->getAttrOfType<mlir::IntegerAttr>("ttg.threads-per-warp");
-  if (!threads_per_warp_attr) {
-    return absl::InternalError("ttg.threads-per-warp attribute not found.");
-  }
-  auto num_warps_attr =
-      triton_module->getAttrOfType<mlir::IntegerAttr>("ttg.num-warps");
-  if (!num_warps_attr) {
-    return absl::InternalError("ttg.num-warps attribute not found.");
-  }
-  auto total_num_warps_attr =
-      triton_module->getAttrOfType<mlir::IntegerAttr>("ttg.total-num-warps");
-  if (!total_num_warps_attr) {
-    return absl::InternalError("ttg.total-num-warps attribute not found.");
-  }
-  auto reqntid_attr =
-      func_op->getAttrOfType<mlir::DenseI32ArrayAttr>("nvvm.reqntid");
-  if (!reqntid_attr) {
-    return absl::InternalError("nvvm.reqntid attribute not found.");
-  }
-  auto reqntids = reqntid_attr.asArrayRef();
-  if (reqntids.empty()) {
-    return absl::InternalError("nvvm.reqntid attribute is empty.");
-  }
-  if (reqntids.size() > 3) {
-    return absl::InternalError(
-        "nvvm.reqntid attribute has more than 3 dimensions.");
-  }
-
-  // Validate the launch information.
-  if (num_warps_attr.getInt() != total_num_warps_attr.getInt()) {
-    VLOG(6)
-        << "num_warps and total_num_warps are different! This can happen if "
-           "Triton compilation decides to use a different number of warps than "
-           "configured. e.g. auto warp specialization can do that.";
-  }
-  int64_t expected_total_threads = xla::Product<int32_t>(reqntids);
-  int64_t actual_total_threads =
-      total_num_warps_attr.getInt() * threads_per_warp_attr.getInt();
-  if (actual_total_threads != expected_total_threads) {
-    return absl::InternalError(absl::StrCat(
-        "Expected total threads as per reqntid attribute to be ",
-        expected_total_threads, " but got ", actual_total_threads,
-        " as per ttg.total-num-warps and tt.threads-per-warp attributes."));
-  }
-
-  stream_executor::ThreadDim thread_dims(reqntids[0],
-                                         reqntids.size() > 1 ? reqntids[1] : 1,
-                                         reqntids.size() > 2 ? reqntids[2] : 1);
-  return thread_dims;
-}
-
-absl::StatusOr<stream_executor::gpu::TmaMetadata> ExtractTmaMetadata(
-    mlir::LLVM::LLVMFuncOp func_op) {
-  stream_executor::gpu::TmaMetadata tma_metadata;
-  for (auto [idx, arg] : llvm::enumerate(func_op.getArguments())) {
-    if (auto attr =
-            func_op.getArgAttrOfType<mlir::triton::xla::TmaDescriptorAttr>(
-                idx, "tt.tma_descriptor")) {
-      TF_ASSIGN_OR_RETURN(
-          auto tma_desc,
-          CreateTmaDescriptor(attr.getGlobalShape(), attr.getTileShape(),
-                              attr.getTileStrides(), attr.getLayout(),
-                              attr.getElementByteSize(),
-                              attr.getSwizzleMode().getValue()));
-      tma_metadata.arg_index_to_tma_info.insert({idx, tma_desc});
-    }
-  }
-  return tma_metadata;
-}
-
-mt::PointerType GetGlobalPointerType(mlir::Type element_type) {
-  return mlir::cast<mt::PointerType>(mt::getPointerTypeToElement(element_type));
-}
-
 /*static */ absl::StatusOr<TileInfo> TileInfo::Construct(
     EmitterLocOpBuilder b, Value pid, ValueRange runtime_values,
     const TiledHloInstruction& tiled_hlo) {
@@ -755,8 +595,7 @@ TensorValue EmitParameterExtract(EmitterLocOpBuilder b,
 }
 
 absl::StatusOr<TensorValue> EmitScope(
-    EmitterLocOpBuilder b, const TritonFusionAnalysis* analysis,
-    absl::Span<const HloInstruction* const> instructions,
+    EmitterLocOpBuilder b, absl::Span<const HloInstruction* const> instructions,
     absl::flat_hash_map<const HloInstruction*, TensorValue>& values) {
   for (const HloInstruction* hlo : instructions) {
     TensorValue result;

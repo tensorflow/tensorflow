@@ -258,11 +258,10 @@ absl::StatusOr<TensorValue> EmitAllReduce(
     region_values[reduction_computation->parameter_instruction(0)] =
         accumulator;
     region_values[reduction_computation->parameter_instruction(1)] = next_tile;
-    TF_ASSIGN_OR_RETURN(
-        accumulator,
-        triton::EmitScope(b,
-                          /*analysis=*/nullptr, /*instructions=*/to_emit,
-                          /*values=*/region_values));
+    TF_ASSIGN_OR_RETURN(accumulator,
+                        triton::EmitScope(b,
+                                          /*instructions=*/to_emit,
+                                          /*values=*/region_values));
   }
   return accumulator;
 }
