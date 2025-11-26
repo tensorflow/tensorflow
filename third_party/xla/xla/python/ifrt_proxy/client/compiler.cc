@@ -177,8 +177,10 @@ absl::StatusOr<xla::ifrt::LoadedExecutableRef> Compiler::CompileAndLoad(
       devices.push_back(device);
     }
   }
-  TF_ASSIGN_OR_RETURN(DeviceListRef device_list,
-                      client_->MakeDeviceList(devices));
+  std::optional<DeviceListRef> device_list;
+  if (!devices.empty()) {
+    TF_ASSIGN_OR_RETURN(device_list, client_->MakeDeviceList(devices));
+  }
 
   return std::make_unique<LoadedExecutable>(
       client_, rpc_helper_, response->loaded_executable_handle(),

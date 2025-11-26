@@ -337,7 +337,8 @@ class LoadedExecutable::OutputSpecCache {
 
 LoadedExecutable::LoadedExecutable(
     xla::ifrt::Client* client, std::shared_ptr<RpcHelper> rpc_helper,
-    uint64_t handle, std::string name, int num_devices, DeviceListRef devices,
+    uint64_t handle, std::string name, int num_devices,
+    std::optional<DeviceListRef> devices,
     std::vector<xla::ifrt::Device*> addressable_devices,
     absl::StatusOr<std::optional<std::string>> fingerprint,
     tsl::Future<> ready_future,
@@ -843,7 +844,9 @@ LoadedExecutable::Execute(absl::Span<xla::ifrt::ArrayRef> args,
   return result;
 }
 
-const DeviceListRef& LoadedExecutable::devices() const { return devices_; }
+std::optional<DeviceListRef> LoadedExecutable::devices() const {
+  return devices_;
+}
 
 absl::Span<xla::ifrt::Device* const> LoadedExecutable::addressable_devices()
     const {

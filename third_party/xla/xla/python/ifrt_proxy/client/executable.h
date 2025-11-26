@@ -59,7 +59,8 @@ class LoadedExecutable final
  public:
   LoadedExecutable(xla::ifrt::Client* client,
                    std::shared_ptr<RpcHelper> rpc_helper, uint64_t handle,
-                   std::string name, int num_devices, DeviceListRef devices,
+                   std::string name, int num_devices,
+                   std::optional<DeviceListRef> devices,
                    std::vector<xla::ifrt::Device*> addressable_devices,
                    absl::StatusOr<std::optional<std::string>> fingerprint,
                    tsl::Future<> ready_future,
@@ -111,7 +112,7 @@ class LoadedExecutable final
       absl::Span<xla::ifrt::ArrayRef> args, const ExecuteOptions& options,
       std::optional<xla::ifrt::DeviceListRef> devices) override;
 
-  const DeviceListRef& devices() const override;
+  std::optional<DeviceListRef> devices() const override;
   absl::Span<xla::ifrt::Device* const> addressable_devices() const override;
 
   static char ID;  // NOLINT
@@ -148,7 +149,7 @@ class LoadedExecutable final
   const uint64_t handle_;
   const std::string name_;
   const int num_devices_;
-  const DeviceListRef devices_;
+  const std::optional<DeviceListRef> devices_;
   const std::vector<xla::ifrt::Device*> addressable_devices_;
   const absl::StatusOr<std::optional<std::string>> fingerprint_;
   const tsl::Future<> ready_future_;

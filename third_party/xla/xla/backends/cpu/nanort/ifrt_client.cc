@@ -1009,7 +1009,9 @@ class NanoExecutable final
     return client_->addressable_devices();
   }
 
-  const ifrt::DeviceListRef& devices() const override { return devices_; }
+  std::optional<ifrt::DeviceListRef> devices() const override {
+    return devices_;
+  }
 
   static char ID;  // NOLINT
 

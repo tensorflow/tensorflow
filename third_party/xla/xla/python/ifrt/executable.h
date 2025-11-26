@@ -279,8 +279,9 @@ class LoadedExecutable
       std::optional<DeviceListRef> devices) = 0;
 
   // Returns the list of devices where the executable has been compiled and
-  // loaded onto.
-  virtual const DeviceListRef& devices() const = 0;
+  // loaded onto. Returns `std::nullopt` if the executable is not bound to a
+  // particular device list, e.g., portable executables.
+  virtual std::optional<DeviceListRef> devices() const = 0;
 
   // The following APIs are taken from xla::PjRtLoadedExecutable for fast
   // prototyping.

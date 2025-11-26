@@ -406,6 +406,7 @@ TEST_P(LoadedExecutableImplTest, CompileAndExecutePortable) {
                          /*replicated=*/false, serialize));
   }
   EXPECT_EQ(loaded_executable->user_context()->Id(), UserContextId(20));
+  EXPECT_EQ(loaded_executable->devices(), std::nullopt);
 
   DType dtype(DType::kF32);
   Shape shape({2, 3});

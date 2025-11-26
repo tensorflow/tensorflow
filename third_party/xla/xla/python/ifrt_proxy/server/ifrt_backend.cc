@@ -1456,8 +1456,12 @@ tsl::Future<BackendInterface::Response> IfrtBackend::HandleCompileRequest(
     for (const auto* device : executable->addressable_devices()) {
       compile_resp->add_addressable_device_ids(device->Id().value());
     }
-    for (const auto* device : executable->devices()->devices()) {
-      compile_resp->add_device_ids(device->Id().value());
+    if (std::optional<xla::ifrt::DeviceListRef> device_list =
+            executable->devices();
+        device_list.has_value()) {
+      for (const auto* device : (*device_list)->devices()) {
+        compile_resp->add_device_ids(device->Id().value());
+      }
     }
     // TODO(b/282757875): Consider making fingerprint calculation asynchronous
     // if it is expected to take long.
