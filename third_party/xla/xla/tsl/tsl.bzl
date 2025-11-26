@@ -508,9 +508,6 @@ def if_not_mobile_or_arm_or_macos_or_lgpl_restricted(a):
         "//conditions:default": [],
     })
 
-def tsl_grpc_cc_dependencies():
-    return [clean_dep("//xla/tsl:grpc++")]
-
 # Bazel rule for collecting the header files that a target depends on.
 def _transitive_hdrs_impl(ctx):
     outputs = _get_transitive_headers([], ctx.attr.deps)

@@ -311,7 +311,7 @@ def tf_proto_library(
             generate_mocks = True,
             visibility = visibility,
             compatible_with = compatible_with,
-            deps = [":{}".format(cc_proto_name)],
+            deps = [":{}".format(cc_proto_name), "@com_github_grpc_grpc//:grpc++"],
             plugin_flags = ["services_namespace=grpc"],
             grpc_only = True,
         )

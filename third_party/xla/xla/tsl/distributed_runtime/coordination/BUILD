@@ -1,5 +1,4 @@
 load("//xla/tsl:tsl.bzl", "if_oss", "internal_visibility")
-load("//xla/tsl:tsl.default.bzl", "tsl_grpc_cc_dependencies")
 load("//xla/tsl/platform:build_config.bzl", "tf_proto_library", "tsl_cc_test")
 load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 
@@ -265,6 +264,7 @@ tsl_cc_test(
         "//xla/tsl/protobuf:coordination_config_proto_cc_impl",
         "//xla/tsl/protobuf:coordination_service_proto_cc_impl",
         "//xla/tsl/protobuf:distributed_runtime_payloads_proto_cc_impl",
+        "@com_github_grpc_grpc//:grpc++",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log",
@@ -272,7 +272,7 @@ tsl_cc_test(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/synchronization",
         "@com_google_googletest//:gtest_main",
-    ] + tsl_grpc_cc_dependencies(),
+    ],
 )
 
 tsl_cc_test(
@@ -297,6 +297,7 @@ tsl_cc_test(
         "//xla/tsl/protobuf:coordination_config_proto_cc_impl",
         "//xla/tsl/protobuf:coordination_service_proto_cc_impl",
         "//xla/tsl/protobuf:distributed_runtime_payloads_proto_cc_impl",
+        "@com_github_grpc_grpc//:grpc++",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_matchers",
@@ -306,7 +307,7 @@ tsl_cc_test(
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
         "@com_google_googletest//:gtest_main",
-    ] + tsl_grpc_cc_dependencies(),
+    ],
 )
 
 filegroup(

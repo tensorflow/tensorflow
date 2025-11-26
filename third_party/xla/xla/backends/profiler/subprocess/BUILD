@@ -3,7 +3,6 @@ load(
     "xla_cc_test",
 )
 load("//xla/tsl:tsl.bzl", "internal_visibility")
-load("//xla/tsl:tsl.default.bzl", "tsl_grpc_cc_dependencies")
 load("//xla/tsl/platform:rules_cc.bzl", "cc_binary", "cc_library")
 load("//xla/tsl/profiler/builds:build_config.bzl", "tf_profiler_copts")
 
@@ -18,6 +17,7 @@ cc_library(
     ]),
     deps = [
         "//xla/tsl/platform:env",
+        "@com_github_grpc_grpc//:grpc++",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/base:no_destructor",
         "@com_google_absl//absl/container:flat_hash_set",
@@ -26,7 +26,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
         "@local_tsl//tsl/profiler/protobuf:profiler_service_cc_grpc_proto",
-    ] + tsl_grpc_cc_dependencies(),
+    ],
 )
 
 xla_cc_test(
@@ -56,6 +56,7 @@ cc_library(
         "//xla/tsl/profiler/utils:timestamp_utils",
         "//xla/tsl/profiler/utils:xplane_schema",
         "//xla/tsl/profiler/utils:xplane_utils",
+        "@com_github_grpc_grpc//:grpc++",
         "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/memory",
@@ -69,7 +70,7 @@ cc_library(
         "@local_tsl//tsl/profiler/protobuf:profiler_options_proto_cc",
         "@local_tsl//tsl/profiler/protobuf:profiler_service_proto_cc",
         "@local_tsl//tsl/profiler/protobuf:xplane_proto_cc",
-    ] + tsl_grpc_cc_dependencies(),
+    ],
     alwayslink = True,
 )
 
@@ -106,7 +107,7 @@ xla_cc_test(
         "@local_tsl//tsl/profiler/lib:traceme",
         "@local_tsl//tsl/profiler/protobuf:profiler_options_proto_cc",
         "@local_tsl//tsl/profiler/protobuf:xplane_proto_cc",
-    ] + tsl_grpc_cc_dependencies(),
+    ],
 )
 
 cc_binary(

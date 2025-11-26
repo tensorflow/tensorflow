@@ -1,6 +1,5 @@
 load("//xla:xla.default.bzl", "xla_cc_test")
 load("//xla/tsl:tsl.bzl", "if_oss", "internal_visibility")
-load("//xla/tsl:tsl.default.bzl", "tsl_grpc_cc_dependencies")
 load("//xla/tsl/platform:build_config.bzl", "tf_proto_library")
 load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 
@@ -29,6 +28,7 @@ cc_library(
         "//xla/tsl/distributed_runtime/rpc:async_service_interface",
         "//xla/tsl/distributed_runtime/rpc/coordination:grpc_coordination_service_impl",
         "//xla/tsl/protobuf:coordination_config_proto_cc",
+        "@com_github_grpc_grpc//:grpc++",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/memory",
@@ -39,7 +39,7 @@ cc_library(
         "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:random",
-    ] + tsl_grpc_cc_dependencies(),
+    ],
 )
 
 xla_cc_test(
@@ -79,6 +79,7 @@ cc_library(
         "//xla/tsl/platform:statusor",
         "//xla/tsl/protobuf:coordination_config_proto_cc",
         "//xla/tsl/protobuf:coordination_service_proto_cc",
+        "@com_github_grpc_grpc//:grpc++",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
@@ -88,15 +89,16 @@ cc_library(
         "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:statusor",
-    ] + tsl_grpc_cc_dependencies(),
+    ],
 )
 
 cc_library(
     name = "util",
     hdrs = ["util.h"],
     deps = [
+        "@com_github_grpc_grpc//:grpc++",
         "@com_google_absl//absl/status",
-    ] + tsl_grpc_cc_dependencies(),
+    ],
 )
 
 cc_library(
@@ -107,8 +109,9 @@ cc_library(
         ":client",
         ":service",
         "//xla/tsl/platform:grpc_credentials",
+        "@com_github_grpc_grpc//:grpc++",
         "@com_google_absl//absl/status:statusor",
-    ] + tsl_grpc_cc_dependencies(),
+    ],
 )
 
 cc_library(
@@ -157,6 +160,7 @@ xla_cc_test(
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",
         "//xla/tsl/util/proto:proto_matchers",
+        "@com_github_grpc_grpc//:grpc++",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
@@ -170,7 +174,7 @@ xla_cc_test(
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform:test",
-    ] + tsl_grpc_cc_dependencies(),
+    ],
 )
 
 cc_library(

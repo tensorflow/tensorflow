@@ -1,5 +1,4 @@
 load("//xla/tsl:tsl.bzl", "internal_visibility")
-load("//xla/tsl:tsl.default.bzl", "tsl_grpc_cc_dependencies")
 load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 load(
     "//xla/tsl/profiler/builds:build_config.bzl",
@@ -44,6 +43,7 @@ cc_library(
         "//xla/tsl/profiler/utils:profiler_options_util",
         "//xla/tsl/profiler/utils:time_utils",
         "//xla/tsl/profiler/utils:xplane_utils",
+        "@com_github_grpc_grpc//:grpc++",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status",
@@ -54,7 +54,7 @@ cc_library(
         "@local_tsl//tsl/profiler/protobuf:profiler_service_cc_grpc_proto",
         "@local_tsl//tsl/profiler/protobuf:profiler_service_proto_cc",
         "@local_tsl//tsl/profiler/protobuf:xplane_proto_cc",
-    ] + tsl_grpc_cc_dependencies(),
+    ],
 )
 
 tf_profiler_pybind_cc_library_wrapper(
@@ -81,8 +81,9 @@ cc_library(
         ":profiler_service_impl",
         "//xla/tsl/platform:logging",
         "//xla/tsl/platform:types",
+        "@com_github_grpc_grpc//:grpc++",
         "@com_google_absl//absl/strings",
         "@local_tsl//tsl/profiler/protobuf:profiler_service_cc_grpc_proto",
-    ] + tsl_grpc_cc_dependencies(),
+    ],
     alwayslink = True,
 )
