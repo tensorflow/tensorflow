@@ -21,6 +21,7 @@
 #include <utility>
 #include <vector>
 
+#include "base/examine_stack.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
@@ -90,7 +91,15 @@ absl::StatusOr<xla::ifrt::LoadedExecutableRef> Compiler::CompileAndLoad(
           llvm::dyn_cast<xla::ifrt::PjRtHostSendAndRecvLoadedHostCallback>(
               loaded_host_callback.get());
       if (pjrt_host_callback == nullptr) {
-        return absl::UnimplementedError("Unsupported host callback type");
+        LOG(INFO) << "[clin-host-callback] "
+                     "xla_options->loaded_host_callbacks.size() = "
+                  << xla_options->loaded_host_callbacks.size();
+        std::string trace;
+        DumpStackTrace(1, DebugWriteToString, &trace);
+        LOG(INFO) << "[clin-host-callback] TRACE:\n" << trace;
+
+        return absl::UnimplementedError(
+            "[ifrt-proxy] Unsupported host callback type");
       }
 
       const xla::HostCallback& xla_host_callback =
@@ -118,8 +127,12 @@ absl::StatusOr<xla::ifrt::LoadedExecutableRef> Compiler::CompileAndLoad(
     // both should be set at the proxy client.
     auto& build_options = xla_options->compile_options.executable_build_options;
     *build_options.mutable_debug_options() = xla::GetDebugOptionsFromFlags();
+#if defined(GOOGLE_CUDA)
+    LOG(WARNING) << "[clin] disable compiler envs init";
+#else
     TF_RETURN_IF_ERROR(
         build_options.mutable_comp_envs()->InitializeAllKnownEnvs());
+#endif
 #endif
   }
 
