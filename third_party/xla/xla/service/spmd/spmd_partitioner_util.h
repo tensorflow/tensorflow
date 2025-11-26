@@ -630,8 +630,8 @@ std::optional<IotaReplicaGroupList> GetIotaPartitionGroupsForReplication(
 // Expands partition group list across all replicas. Expects that provided
 // partition_group_list utilizes all the partitions.
 CollectiveDeviceList ExpandPartitionGroupListAcrossReplicas(
-    IotaReplicaGroupList partition_group_list, int num_replicas,
-    int num_partitions);
+    IotaReplicaGroupList partition_group_list, int64_t num_replicas,
+    int64_t num_partitions);
 
 namespace detail {
 
