@@ -28,6 +28,7 @@ limitations under the License.
 #include "llvm/Support/MathExtras.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/LLVMIR/NVVMDialect.h"
+#include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/IR/BuiltinTypeInterfaces.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Types.h"
@@ -235,7 +236,7 @@ absl::StatusOr<TensorValue> EmitAllReduce(
   mlir::Value accumulator_zero =
       arith::ConstantOp::create(b, elem_type, b.getZeroAttr(elem_type));
   TensorValue accumulator =
-      ttir::SplatOp::create(b, input_tile.getType(), accumulator_zero);
+      triton::Splat(b, accumulator_zero, input_tile.getType().getShape());
   for (int rank = 0; rank < world_size; ++rank) {
     Value rank_idx =
         arith::ConstantOp::create(b, b.getI64Type(), b.getI64IntegerAttr(rank));

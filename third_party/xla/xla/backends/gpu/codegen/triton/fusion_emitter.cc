@@ -190,29 +190,6 @@ Value MakeIndex(EmitterLocOpBuilder& b, int64_t value) {
   return arith::ConstantIndexOp::create(b, value);
 }
 
-// Same as HLO BroadcastInDims. The sorted indices in `dims` specify the mapping
-// of the input dimensions to the output dimensions.
-TensorValue BroadcastInDims(EmitterLocOpBuilder b, TensorValue value,
-                            ArrayRef<int64_t> output_shape,
-                            ArrayRef<int64_t> dims) {
-  CHECK(llvm::is_sorted(dims)) << "broadcast dims must be sorted";
-
-  auto result_type = mlir::RankedTensorType::get(
-      output_shape, value.getType().getElementType());
-
-  return stablehlo::BroadcastInDimOp::create(b, result_type, value, dims);
-}
-
-TensorValue Splat(EmitterLocOpBuilder b, Value value,
-                  ArrayRef<int64_t> output_shape) {
-  auto tensor_value = mlir::dyn_cast<TensorValue>(value);
-  if (!tensor_value) {
-    tensor_value = mlir::tensor::FromElementsOp::create(
-        b, mlir::RankedTensorType::get({}, value.getType()), value);
-  }
-  return BroadcastInDims(b, tensor_value, output_shape, /*dims=*/{});
-}
-
 TensorValue Iota(EmitterLocOpBuilder b, int32_t limit) {
   auto type = mlir::RankedTensorType::get(limit, b.getI32Type());
   return stablehlo::IotaOp::create(b, type, /*iota_dimension=*/0);
@@ -323,8 +300,9 @@ TensorValue EmitTiledBroadcast(
       GetPaddedTileSizes(output_tile_shape);
 
   TensorValue input = values[tiled_broadcast.operand(0)];
-  return BroadcastInDims(b, input, padded_output_tile_shape,
-                         MakeArrayRef(tiled_broadcast.hlo()->dimensions()));
+  return triton::BroadcastInDims(
+      b, input, padded_output_tile_shape,
+      MakeArrayRef(tiled_broadcast.hlo()->dimensions()));
 }
 
 absl::StatusOr<TensorValue> EmitTiledIota(
@@ -350,13 +328,14 @@ absl::StatusOr<TensorValue> EmitTiledIota(
   // First, stride as needed between the iota components.
   Value range = arith::MulIOp::create(
       b, Iota(b, padded_tile_sizes[iota_dim]),
-      Splat(b,
-            CreateConst(b, b.getI32Type(), tiled_iota.tile_strides()[iota_dim]),
-            padded_tile_sizes[iota_dim]));
+      triton::Splat(
+          b,
+          CreateConst(b, b.getI32Type(), tiled_iota.tile_strides()[iota_dim]),
+          padded_tile_sizes[iota_dim]));
 
   // Then, add the base offset to the iota components.
   range = arith::AddIOp::create(
-      b, range, Splat(b, iota_dim_offset, padded_tile_sizes[iota_dim]));
+      b, range, triton::Splat(b, iota_dim_offset, padded_tile_sizes[iota_dim]));
 
   // Cast the result to the targeted type.
   TF_ASSIGN_OR_RETURN(Type iota_element_type,
@@ -366,8 +345,9 @@ absl::StatusOr<TensorValue> EmitTiledIota(
 
   // And finally, produce a broadcast along the non-iota dimensions in order to
   // produce the whole iota tile.
-  return BroadcastInDims(b, mlir::cast<TensorValue>(range), padded_tile_sizes,
-                         /*dims=*/{iota_dim});
+  return triton::BroadcastInDims(b, mlir::cast<TensorValue>(range),
+                                 padded_tile_sizes,
+                                 /*dims=*/{iota_dim});
 }
 
 SmallVector<Value> GetRuntimeValues(
@@ -572,7 +552,8 @@ absl::StatusOr<TensorValue> MaskDotOperand(
       Value tile_offset = arith::MulIOp::create(
           b, contracting_dimension_tile_index, tile_size_value);
       TensorValue range = Iota(b, tile_size);
-      TensorValue broadcasted_tile_offset = Splat(b, tile_offset, {tile_size});
+      TensorValue broadcasted_tile_offset =
+          triton::Splat(b, tile_offset, {tile_size});
       Value indices = arith::AddIOp::create(b, range, broadcasted_tile_offset);
 
       Value boundary = CreateConst(b, b.getI32Type(),
@@ -581,8 +562,8 @@ absl::StatusOr<TensorValue> MaskDotOperand(
       Value mask = arith::CmpIOp::create(b, arith::CmpIPredicate::slt, indices,
                                          boundary);
 
-      mask = BroadcastInDims(b, mlir::cast<TensorValue>(mask), tile_shape,
-                             {contraction_dimension_index});
+      mask = triton::BroadcastInDims(b, mlir::cast<TensorValue>(mask),
+                                     tile_shape, {contraction_dimension_index});
       TF_ASSIGN_OR_RETURN(
           auto element_type,
           TritonType(b, dot_operand.hlo()->shape().element_type()));
@@ -1134,14 +1115,15 @@ absl::StatusOr<TensorValue> EmitPad(
 
     // LHS for the compare is an iota broadcasted to the output shape.
     TensorValue range = Iota(b, pad_output_dim_size);
-    TensorValue bcast = BroadcastInDims(b, range, padded_tile_sizes,
-                                        {static_cast<int64_t>(dim_index)});
+    TensorValue bcast = triton::BroadcastInDims(
+        b, range, padded_tile_sizes, {static_cast<int64_t>(dim_index)});
 
     // RHS for the compare is splat(pad_input_dim_size - tile_offset).
     Value tile_offset_i32 = Cast(b, tile_offset, i32_type);
     Value threshold = arith::SubIOp::create(
         b, CreateConst(b, i32_type, pad_input_dim_size), tile_offset_i32);
-    TensorValue threshold_splat = Splat(b, threshold, padded_tile_sizes);
+    TensorValue threshold_splat =
+        triton::Splat(b, threshold, padded_tile_sizes);
     Value cmp = arith::CmpIOp::create(b, arith::CmpIPredicate::slt, bcast,
                                       threshold_splat);
     mask = mask ? arith::AndIOp::create(b, mask, cmp) : cmp;
@@ -1152,7 +1134,7 @@ absl::StatusOr<TensorValue> EmitPad(
   const TiledHloInstruction* padding_value = tiled_pad.operand(1);
 
   TensorValue pad_value_splat =
-      Splat(b, values[padding_value], padded_tile_sizes);
+      triton::Splat(b, values[padding_value], padded_tile_sizes);
   return mlir::cast<TensorValue>(
       arith::SelectOp::create(b, mask, values[tiled_operand], pad_value_splat)
           .getResult());

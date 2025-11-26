@@ -47,6 +47,7 @@ limitations under the License.
 #include "mlir/IR/Value.h"
 #include "mlir/IR/ValueRange.h"
 #include "mlir/Support/LLVM.h"
+#include "stablehlo/dialect/StablehloOps.h"
 #include "xla/backends/gpu/codegen/triton/ir/triton_xla_ops.h"
 #include "xla/backends/gpu/codegen/triton/tma_utils.h"
 #include "xla/codegen/emitter_loc_op_builder.h"
@@ -811,6 +812,27 @@ absl::StatusOr<TensorValue> EmitScope(
     VLOG(8) << "Emitted " << hlo->ToString(HloPrintOptions::ShortParsable());
   }
   return values[instructions.back()];
+}
+
+TensorValue BroadcastInDims(EmitterLocOpBuilder b, TensorValue value,
+                            ArrayRef<int64_t> output_shape,
+                            ArrayRef<int64_t> dims) {
+  CHECK(llvm::is_sorted(dims)) << "broadcast dims must be sorted";
+
+  auto result_type = mlir::RankedTensorType::get(
+      output_shape, value.getType().getElementType());
+
+  return mlir::stablehlo::BroadcastInDimOp::create(b, result_type, value, dims);
+}
+
+TensorValue Splat(EmitterLocOpBuilder b, Value value,
+                  ArrayRef<int64_t> output_shape) {
+  auto tensor_value = mlir::dyn_cast<TensorValue>(value);
+  if (!tensor_value) {
+    tensor_value = mlir::tensor::FromElementsOp::create(
+        b, mlir::RankedTensorType::get({}, value.getType()), value);
+  }
+  return BroadcastInDims(b, tensor_value, output_shape, /*dims=*/{});
 }
 
 }  // namespace xla::gpu::triton
