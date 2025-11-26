@@ -106,6 +106,7 @@ class GpuCodegenBackend : public CodegenBackend {
     debug_options.set_xla_gpu_async_dot(false);
     debug_options.set_xla_embed_ir_in_executable(false);
     debug_options.set_xla_gpu_kernel_cache_file("");
+    debug_options.set_xla_enable_scoped_logging_timers(false);
     if (force_allow_register_spills) {
       debug_options.set_xla_gpu_filter_kernels_spilling_registers_on_autotuning(
           false);

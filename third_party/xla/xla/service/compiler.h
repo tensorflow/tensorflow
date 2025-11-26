@@ -28,6 +28,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/attributes.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
@@ -184,6 +185,7 @@ class Compiler {
         const HloModule& module)>
         layout_canonicalization_callback = {};
 
+    ABSL_DEPRECATED("This field is being deprecated, please do not rely on it.")
     bool is_autotuning_compilation = false;
 
     // AOT device description. If provided, used instead of querying the device

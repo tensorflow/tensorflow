@@ -636,7 +636,7 @@ NVPTXCompiler::CompileTargetBinary(
   } else {
     selected_module = llvm_module;
   }
-
+  const DebugOptions& debug_options = module_config.debug_options();
   std::string ptx;
   if (!(debug_module &&
         MaybeLoadPtxFromFile(module_config, debug_module, &ptx))) {
@@ -646,12 +646,13 @@ NVPTXCompiler::CompileTargetBinary(
         absl::StrCat(
             "NVPTXCompiler::CompileTargetBinary - CompileToPtx for ",
             (debug_module != nullptr ? debug_module->name() : "(unknown")),
-        !options.is_autotuning_compilation);
+        debug_options.xla_enable_scoped_logging_timers());
     uint64_t start_usecs = tsl::Env::Default()->NowMicros();
+
     TF_ASSIGN_OR_RETURN(
         ptx, nvptx::CompileToPtx(selected_module,
                                  device_description.gpu_compute_capability(),
-                                 module_config.debug_options()));
+                                 debug_options));
 
     uint64_t end_usecs = tsl::Env::Default()->NowMicros();
     // This won't record values for calls that error out (because if they error
@@ -659,7 +660,7 @@ NVPTXCompiler::CompileTargetBinary(
     RecordLlvmPassesAndLlvmToPtxDuration(end_usecs - start_usecs);
 
     if (DumpingEnabledForHloModule(debug_module ? debug_module->name() : "",
-                                   module_config.debug_options())) {
+                                   debug_options)) {
       if (debug_module) {
         DumpToFileInDirOrStdout(*debug_module, "",
                                 shard_number.has_value()
@@ -697,7 +698,7 @@ NVPTXCompiler::CompileTargetBinary(
   XLA_SCOPED_LOGGING_TIMER_IF(
       absl::StrCat("NVPTXCompiler::CompileTargetBinary - PtxToCubin for ",
                    module_name),
-      !options.is_autotuning_compilation);
+      debug_options.xla_enable_scoped_logging_timers());
   tsl::profiler::ScopedAnnotation annotation([&] {
     return absl::StrFormat("XlaCompileGpuAsm:#module=%s#", module_name);
   });
