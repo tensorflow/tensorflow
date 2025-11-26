@@ -200,7 +200,8 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/types:span",
-    ] + if_google(["@com_google_protobuf//:wrappers_cc_proto"]),
+        "@com_google_protobuf//:wrappers_cc_proto",
+    ],
 )
 
 cc_library(
@@ -372,13 +373,14 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:span",
+        "@com_google_protobuf//:wrappers_cc_proto",
         "@eigen_archive//:eigen3",  # buildcleaner: keep
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:ml_dtypes",
         "@local_tsl//tsl/platform:status",
         "@local_tsl//tsl/platform:statusor",
-    ] + if_google(["@com_google_protobuf//:wrappers_cc_proto"]),
+    ],
 )
 
 tf_proto_library(
