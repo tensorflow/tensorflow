@@ -1792,7 +1792,7 @@ absl::Status ThunkEmitter::EmitSort(const HloSortInstruction* sort) {
   const uint64_t kMaxThreadsPerBlock =
       ir_emitter_context_->gpu_device_info().threads_per_block_limit();
   // Choose the tile size based on actual amount of elements to sort, the amount
-  // of shared memory avaiable, and the maximum number of threads per block.
+  // of shared memory available, and the maximum number of threads per block.
   uint64_t tile_size =
       std::min(std::min(kMaxThreadsPerBlock * kUnrollFactor,
                         max_tile_size_fitting_into_shared_memory),
@@ -1839,6 +1839,18 @@ absl::Status ThunkEmitter::EmitSort(const HloSortInstruction* sort) {
   LaunchDimensions tiled_launch_dimensions(num_blocks, kThreadsPerBlock);
   VLOG(2) << absl::StreamFormat("%s launch dims: %d blocks, %d threads/block",
                                 op_name, num_blocks, kThreadsPerBlock);
+  auto local_llvm_module =
+      CreateLocalLLVMModule(op_name, ir_emitter_context_->llvm_module());
+  // Copy of the main context with the local module.
+  IrEmitterContext local_ir_emitter_context(
+      &ir_emitter_context_->hlo_module(),
+      &ir_emitter_context_->buffer_assignment(),
+      &ir_emitter_context_->execution_stream_assignment(),
+      std::string(ir_emitter_context_->platform_name()),
+      ir_emitter_context_->gpu_device_info(),
+      ir_emitter_context_->mlir_context(), local_llvm_module.get(),
+      ir_emitter_context_->llvm_module_constants(),
+      ir_emitter_context_->emit_kernels());
   auto emit_kernel = [&](absl::Span<const int64_t> xor_masks) {
     VLOG(2) << absl::StreamFormat(
         "%s uses kernel for xor masks [%s]", op_name,
@@ -1848,10 +1860,9 @@ absl::Status ThunkEmitter::EmitSort(const HloSortInstruction* sort) {
     LaunchDimensions launch_dimensions = xor_masks.size() > 1
                                              ? tiled_launch_dimensions
                                              : standard_launch_dimensions;
-    TF_ASSIGN_OR_RETURN(
-        std::vector<llvm_ir::IrArray> ir_arrays,
-        BuildKernelThunkForNonFusionOp(ir_emitter_context_->llvm_module(), sort,
-                                       launch_dimensions));
+    TF_ASSIGN_OR_RETURN(std::vector<llvm_ir::IrArray> ir_arrays,
+                        BuildKernelThunkForNonFusionOp(
+                            local_llvm_module.get(), sort, launch_dimensions));
 
     // The first `operand_count()` elements of `ir_arrays` are the input
     // operands and the rest are the output arrays. Inputs are aliases with
@@ -1868,9 +1879,9 @@ absl::Status ThunkEmitter::EmitSort(const HloSortInstruction* sort) {
                              : standard_num_iterations_in_sort_dim,
         tile_size, kUnrollFactor,
         [&](absl::Span<llvm::Value* const> operands, llvm::Value* output) {
-          return CallNestedComputation(&b_, *ir_emitter_context_,
-                                       ir_emitter_context_->llvm_module(),
-                                       *comparator, operands, output);
+          return CallNestedComputation(&b_, local_ir_emitter_context,
+                                       local_llvm_module.get(), *comparator,
+                                       operands, output);
         });
   };
   std::vector<int64_t> xor_masks;
@@ -1896,6 +1907,9 @@ absl::Status ThunkEmitter::EmitSort(const HloSortInstruction* sort) {
   if (!xor_masks.empty()) {
     TF_RETURN_IF_ERROR(emit_kernel(xor_masks));
   }
+  TF_RET_CHECK(!llvm::Linker::linkModules(
+      *ir_emitter_context_->llvm_module(), std::move(local_llvm_module),
+      llvm::Linker::Flags::OverrideFromSrc));
   return absl::OkStatus();
 }
 
