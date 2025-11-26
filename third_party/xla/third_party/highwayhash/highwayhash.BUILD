@@ -255,6 +255,7 @@ cc_library(
     deps = [
         ":arch_specific",
         ":compiler_specific",
+        ":endianess",
         ":hh_types",
         ":iaca",
         ":load3",

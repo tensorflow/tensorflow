@@ -118,10 +118,13 @@ cc_library(
         "@local_tsl//tsl/platform:load_library",
         "@local_tsl//tsl/platform:path",
     ] + if_oss([
-        "@nvshmem//:nvshmem_config",
+        # keep sorted
         "@local_config_nccl//:nccl_config",
         "@local_config_tensorrt//:tensorrt_headers",
+        "@local_tsl//tsl/platform",
+        "@nvshmem//:nvshmem_config",
     ]) + if_rocm_is_configured([
+        # keep sorted
         "@local_config_rocm//rocm:rocm_headers",
     ]),
 )

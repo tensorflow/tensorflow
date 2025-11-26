@@ -396,7 +396,6 @@ cc_library(
     name = "serving_device_selector_policies",
     srcs = ["serving_device_selector_policies.cc"],
     hdrs = ["serving_device_selector_policies.h"],
-    features = ["-layering_check"],
     deps = [
         ":serving_device_selector",
         "@com_google_absl//absl/strings:string_view",
