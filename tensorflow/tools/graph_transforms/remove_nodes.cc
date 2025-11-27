@@ -40,17 +40,17 @@ absl::Status RemoveNodes(const GraphDef& input_graph_def,
       context.GetOneInt32Parameter("max_inputs", 1, &max_inputs));
 
   // Make sure we don't get rid of any nodes used as graph inputs or outputs.
-  std::set<string> required_nodes;
-  for (const string& input : context.input_names) {
+  std::set<std::string> required_nodes;
+  for (const std::string& input : context.input_names) {
     required_nodes.insert(NodeNameFromInput(input));
   }
-  for (const string& output : context.output_names) {
+  for (const std::string& output : context.output_names) {
     required_nodes.insert(NodeNameFromInput(output));
   }
 
-  std::vector<string> ops_to_remove = context.params.at("op");
+  std::vector<std::string> ops_to_remove = context.params.at("op");
   GraphDef current_graph_def = input_graph_def;
-  for (const string& op : ops_to_remove) {
+  for (const std::string& op : ops_to_remove) {
     for (int num_inputs = 1; num_inputs <= max_inputs; ++num_inputs) {
       // Look for a variable number of inputs.
       OpTypePattern pattern = {op};
@@ -62,13 +62,14 @@ absl::Status RemoveNodes(const GraphDef& input_graph_def,
       bool any_nodes_removed;
       do {
         any_nodes_removed = false;
-        std::map<string, string> inputs_to_rename;
+        std::map<std::string, std::string> inputs_to_rename;
         GraphDef replaced_graph_def;
         TF_RETURN_IF_ERROR(ReplaceMatchingOpTypes(
             current_graph_def, pattern,
             [&inputs_to_rename, &required_nodes, &any_nodes_removed](
-                const NodeMatch& match, const std::set<string>& input_nodes,
-                const std::set<string>& output_nodes,
+                const NodeMatch& match,
+                const std::set<std::string>& input_nodes,
+                const std::set<std::string>& output_nodes,
                 std::vector<NodeDef>* new_nodes) {
               const NodeDef& replace_node = match.node;
               // If this node is needed in the inputs or outputs don't replace
@@ -79,8 +80,8 @@ absl::Status RemoveNodes(const GraphDef& input_graph_def,
                 return absl::OkStatus();
               }
               const NodeDef& input_node = match.inputs[0].node;
-              string target_name = input_node.name();
-              for (const string& input : replace_node.input()) {
+              std::string target_name = input_node.name();
+              for (const std::string& input : replace_node.input()) {
                 if (!input.compare(0, target_name.size(), target_name)) {
                   if (input.size() == target_name.size() ||
                       input[target_name.size()] == ':') {
@@ -98,9 +99,9 @@ absl::Status RemoveNodes(const GraphDef& input_graph_def,
             },
             {true}, &replaced_graph_def));
         // Make sure all references to removed nodes now point to their inputs.
-        TF_RETURN_IF_ERROR(
-            RenameNodeInputs(replaced_graph_def, inputs_to_rename,
-                             std::unordered_set<string>(), &current_graph_def));
+        TF_RETURN_IF_ERROR(RenameNodeInputs(
+            replaced_graph_def, inputs_to_rename,
+            std::unordered_set<std::string>(), &current_graph_def));
       } while (any_nodes_removed);
     }
   }

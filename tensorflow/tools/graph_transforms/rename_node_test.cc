@@ -50,13 +50,13 @@ TEST(RenameNodeTest, Rename) {
   TransformFuncContext context;
   context.input_names = {};
   context.output_names = {"adder"};
-  context.params.insert(std::pair<string, std::vector<string>>(
+  context.params.insert(std::pair<std::string, std::vector<std::string>>(
       {"old_node_name", {std::string("splitter")}}));
-  context.params.insert(std::pair<string, std::vector<string>>(
-      {"new_node_name", {string("demux")}}));
+  context.params.insert(std::pair<std::string, std::vector<std::string>>(
+      {"new_node_name", {std::string("demux")}}));
   TF_ASSERT_OK(RenameNode(in_graph, context, &result));
 
-  std::map<string, const NodeDef*> node_lookup;
+  std::map<std::string, const NodeDef*> node_lookup;
   MapNamesToNodes(result, &node_lookup);
   EXPECT_EQ(1, node_lookup.count("demux"));
   EXPECT_EQ(1, node_lookup.count("adder"));
@@ -85,10 +85,10 @@ TEST(RenameNodeTest, FailWhenNameAlreadyExists) {
   TransformFuncContext context;
   context.input_names = {};
   context.output_names = {"adder"};
-  context.params.insert(std::pair<string, std::vector<string>>(
+  context.params.insert(std::pair<std::string, std::vector<std::string>>(
       {"old_node_name", {std::string("splitter")}}));
-  context.params.insert(std::pair<string, std::vector<string>>(
-      {"new_node_name", {string("adder")}}));
+  context.params.insert(std::pair<std::string, std::vector<std::string>>(
+      {"new_node_name", {std::string("adder")}}));
   EXPECT_FALSE(RenameNode(in_graph, context, &result).ok());
 }
 
