@@ -88,6 +88,7 @@ limitations under the License.
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Pass/PassOptions.h"
 #include "mlir/Pass/PassRegistry.h"
+#include "mlir/Support/DebugStringHelper.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/WalkResult.h"
 #include "mlir/Target/LLVMIR/Dialect/Builtin/BuiltinToLLVMIRTranslation.h"
@@ -115,6 +116,9 @@ limitations under the License.
 #include "xla/codegen/xtile/ir/xtile_ops.h"
 #include "xla/mlir/tools/mlir_replay/public/compiler_trace.pb.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
+#include "xla/service/dump.h"
+#include "xla/service/hlo_module_config.h"
+#include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/status_macros.h"
 #include "xla/tsl/framework/mlir/status_scoped_diagnostic_handler.h"
 #include "xla/tsl/platform/errors.h"
@@ -161,6 +165,51 @@ class ModuleCallbackPass
  private:
   absl::FunctionRef<void(mlir::ModuleOp)> callback_;
 };
+
+FusionCompiler::CompilationHooks FusionCompiler::CompilationHooks::FromConfig(
+    int unique_id, absl::string_view module_name,
+    const DebugOptions& debug_options) {
+  if (!DumpingEnabledForHloModule(module_name, debug_options)) {
+    return {};
+  }
+
+  auto shared_debug_options = std::make_shared<DebugOptions>(debug_options);
+
+  auto callback_factory = [&](absl::string_view stage_name) {
+    return [shared_debug_options, unique_id,
+            module_name = std::string(module_name),
+            stage_name = std::string(stage_name)](mlir::ModuleOp module) {
+      std::optional<llvm::StringRef> name = module.getName();
+      if (!name.has_value()) {
+        return;
+      }
+
+      DumpToFileInDirOrStdout(
+          *shared_debug_options, unique_id, module_name, "",
+          absl::StrCat(absl::string_view(*name), "-", stage_name, ".mlir"),
+          mlir::debugString(module));
+    };
+  };
+
+  FusionCompiler::CompilationHooks hooks;
+  hooks.pre_optimization = callback_factory("pre-optimization");
+  hooks.post_optimization = callback_factory("post-optimization");
+  hooks.post_lowering = callback_factory("post-lowering");
+
+  return hooks;
+}
+
+FusionCompiler::Options FusionCompiler::Options::FromConfig(
+    const HloModuleConfig& config) {
+  const DebugOptions& debug_options = config.debug_options();
+  FusionCompiler::Options options;
+  options.vector_width = debug_options.xla_cpu_prefer_vector_width();
+  options.verification_level =
+      debug_options.xla_cpu_emitter_verification_level();
+  options.fast_min_max = debug_options.xla_cpu_enable_fast_min_max();
+  options.fast_math_flags = llvm_ir::GetCpuFastMathFlags(config);
+  return options;
+}
 
 static absl::Status RunPassPipeline(
     mlir::ModuleOp module, mlir::PassManager& pm,

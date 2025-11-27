@@ -43,3 +43,10 @@ ScatterDimensionNumbers = _extension.ScatterDimensionNumbers
 # go/keep-sorted start
 build_hlo_computation = _extension.build_hlo_computation
 # go/keep-sorted end
+
+
+def init(argv: list[str]):
+  _extension.init(argv)
+  # Remove the last argument, which is the module name.
+  # This is needed otherwise XLA flags will fail to be parsed by absl.
+  del argv[1:]

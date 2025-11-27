@@ -58,6 +58,7 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/init_main.h"
 
 namespace xla {
 
@@ -170,6 +171,19 @@ std::unique_ptr<HloComputation> BuildComputation(
 
 NB_MODULE(_extension, kernel_runner_module) {
   namespace nb = nanobind;
+
+  kernel_runner_module.def("init", [](std::vector<std::string> argv) {
+    int argc = argv.size();
+
+    std::vector<char*> argv_chars;
+    argv_chars.reserve(argv.size());
+    for (std::string& arg : argv) {
+      argv_chars.push_back(arg.data());
+    }
+    char** argv_ptr = argv_chars.data();
+
+    tsl::port::InitMain(argv_chars[0], &argc, &argv_ptr);
+  });
 
   nb::class_<KernelSource>(kernel_runner_module, "KernelSource")
       .def("__str__", &KernelSource::ToString);

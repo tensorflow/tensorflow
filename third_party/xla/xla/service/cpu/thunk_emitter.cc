@@ -190,7 +190,8 @@ static FusionCompiler::Options FusionCompilerOptions(
 
 static FusionCompiler FusionCompilerFactory(mlir::MLIRContext* context,
                                             const HloModule& hlo_module) {
-  FusionCompiler::Options options = FusionCompilerOptions(hlo_module.config());
+  FusionCompiler::Options options =
+      FusionCompiler::Options::FromConfig(hlo_module.config());
 
   return FusionCompiler(context, std::move(options),
                         FusionCompilerHooks(hlo_module));
@@ -211,7 +212,7 @@ ThunkEmitter::ThunkEmitter(IrEmitter2& ir_emitter,
       mlir_context_(FusionCompiler::CreateContext()),
       fusion_compiler_(FusionCompilerFactory(mlir_context_.get(), hlo_module)),
       parallel_fusion_emitter_(
-          thread_pool, FusionCompilerOptions(hlo_module_config_),
+          thread_pool, FusionCompiler::Options::FromConfig(hlo_module_config_),
           FusionCompilerHooks(hlo_module), &buffer_assignment,
           hlo_module_config_.debug_options()
               .xla_cpu_generate_unique_c_style_kernel_entry_points(),

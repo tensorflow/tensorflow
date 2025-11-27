@@ -84,6 +84,8 @@ class Type : public std::variant<Scalar, Vec> {
   static mlir::Type TypeToIrType(Type type, mlir::MLIRContext& context);
 
   // Returns the intrinsic type for the given MLIR type.
+  // May return null if the type is not supported (such as multi-dimensional
+  // vectors).
   static Type TypeFromIrType(mlir::Type type);
 
   // Returns the intrinsic type for the given LLVM type.

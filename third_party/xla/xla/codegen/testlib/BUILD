@@ -65,6 +65,7 @@ tsl_pybind_extension(
         "//xla/python:nb_absl_span",
         "//xla/service:buffer_assignment",
         "//xla/service:hlo_module_config",
+        "@local_tsl//tsl/platform:platform_port",
     ],
 )
 

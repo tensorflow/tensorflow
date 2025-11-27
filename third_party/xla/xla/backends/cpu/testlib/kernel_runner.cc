@@ -53,7 +53,8 @@ limitations under the License.
 namespace xla::cpu {
 
 absl::StatusOr<KernelRunner> KernelRunner::Create(
-    KernelDefinition<LlvmKernelSource> kernel, JitCompiler compiler) {
+    KernelDefinition<LlvmKernelSource> kernel, JitCompiler compiler,
+    const HloModuleConfig& config) {
   auto spec = kernel.spec();
   auto thread_safe_module = std::move(kernel).TakeSource().thread_safe_module();
   SetModuleMemoryRegionName(*thread_safe_module.getModuleUnlocked(),
@@ -74,13 +75,15 @@ absl::StatusOr<KernelRunner> KernelRunner::Create(
 }
 
 absl::StatusOr<KernelRunner> KernelRunner::Create(
-    KernelDefinition<MlirKernelSource> kernel, JitCompiler compiler) {
+    KernelDefinition<MlirKernelSource> kernel, JitCompiler compiler,
+    const HloModuleConfig& config) {
   auto spec = kernel.spec();
   auto source = std::move(kernel).TakeSource();
-  TF_ASSIGN_OR_RETURN(LlvmKernelSource llvm_kernel_source, LowerToLlvm(source));
+  TF_ASSIGN_OR_RETURN(LlvmKernelSource llvm_kernel_source,
+                      LowerToLlvm(source, config));
 
   return Create(KernelDefinition(spec, std::move(llvm_kernel_source)),
-                std::move(compiler));
+                std::move(compiler), config);
 }
 
 KernelRunner::KernelRunner(std::unique_ptr<FunctionLibrary> library,
@@ -116,6 +119,18 @@ absl::StatusOr<JitCompiler> KernelRunner::CreateJitCompiler(
 
   IrCompiler::CompilationHooks ir_compiler_hooks;
 
+  auto shared_debug_options = std::make_shared<DebugOptions>(debug_options);
+  ir_compiler_hooks.pre_optimization =
+      [shared_debug_options](const llvm::Module& module) {
+        llvm_ir::DumpIrIfEnabled(*shared_debug_options, module.getName(), 0,
+                                 module, false, "");
+      };
+  ir_compiler_hooks.post_optimization =
+      [shared_debug_options](const llvm::Module& module) {
+        llvm_ir::DumpIrIfEnabled(*shared_debug_options, module.getName(), 0,
+                                 module, true, "");
+      };
+
   // Needed to resolve symbols such as built in intrinsics (sin, cos etc).
   ExecutionEngine::DefinitionGenerator definition_generator =
       [](const llvm::DataLayout& data_layout) {
@@ -139,15 +154,15 @@ absl::StatusOr<JitCompiler> KernelRunner::CreateJitCompiler(
 }
 
 absl::StatusOr<LlvmKernelSource> LowerToLlvm(
-    MlirKernelSource& mlir_kernel_source) {
+    MlirKernelSource& mlir_kernel_source, const HloModuleConfig& config) {
   auto llvm_context = std::make_unique<llvm::LLVMContext>();
 
-  FusionCompiler::Options options;
-  options.vector_width = 256;
-  options.verification_level = 1;
-  options.fast_min_max = true;
+  FusionCompiler::Options options = FusionCompiler::Options::FromConfig(config);
+  FusionCompiler::CompilationHooks hooks =
+      FusionCompiler::CompilationHooks::FromConfig(0, "",
+                                                   config.debug_options());
   FusionCompiler fusion_compiler(mlir_kernel_source.module().getContext(),
-                                 options);
+                                 options, std::move(hooks));
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<llvm::Module> llvm_module,
       fusion_compiler.Compile(*llvm_context, mlir_kernel_source.module()));
