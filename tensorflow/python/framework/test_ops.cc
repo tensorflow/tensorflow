@@ -262,7 +262,7 @@ REGISTER_KERNEL_BUILDER(Name("SleepIdentityOp").Device(DEVICE_CPU),
 // Stubbed-out resource to test resource handle ops.
 class StubResource : public ResourceBase {
  public:
-  string DebugString() const override { return ""; }
+  std::string DebugString() const override { return ""; }
 };
 
 REGISTER_RESOURCE_HANDLE_KERNEL(StubResource);
