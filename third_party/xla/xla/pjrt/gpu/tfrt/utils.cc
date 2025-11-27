@@ -30,6 +30,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/container/btree_map.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/log/check.h"
@@ -73,6 +74,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/plugin/xla_gpu/xla_gpu_allocator_config.h"
 #include "xla/pjrt/proto/compile_options.pb.h"
+#include "xla/runtime/device_id.h"
 #include "xla/service/compiler.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/global_device_id.h"
@@ -812,7 +814,7 @@ absl::StatusOr<DeviceTopologyPair> BuildDistributedDevices(
         &global_topology, /*assign_global_device_ids=*/true));
   }
 
-  std::map<int, GlobalDeviceId> gpu_device_ids;
+  absl::btree_map<LocalDeviceId, GlobalDeviceId> gpu_device_ids;
   absl::flat_hash_map<GlobalDeviceId, int> device_to_node;
   int curr_partition_index = -1;
   int curr_process_index = -1;
@@ -836,7 +838,8 @@ absl::StatusOr<DeviceTopologyPair> BuildDistributedDevices(
       device_to_node[global_device_id] = node.node_id();
       TfrtGpuDevice::Options options;
       if (node.node_id() == node_id) {
-        gpu_device_ids[device_proto.local_device_ordinal()] = global_device_id;
+        gpu_device_ids[LocalDeviceId(device_proto.local_device_ordinal())] =
+            global_device_id;
         // Assign some descriptive names for profiling tools.
         // TODO: hhb
         // NameDeviceAndLauncherThread(node, device_proto,
@@ -869,8 +872,8 @@ absl::StatusOr<DeviceTopologyPair> BuildDistributedDevices(
   }
   for (se::StreamExecutor* executor :
        xla_client->backend().stream_executors()) {
-    TF_RET_CHECK(gpu_device_ids.find(executor->device_ordinal()) !=
-                 gpu_device_ids.end());
+    TF_RET_CHECK(gpu_device_ids.find(LocalDeviceId(
+                     executor->device_ordinal())) != gpu_device_ids.end());
   }
   gpu_executable_run_options->set_gpu_global_device_ids(
       std::move(gpu_device_ids));

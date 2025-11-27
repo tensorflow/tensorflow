@@ -18,9 +18,7 @@ limitations under the License.
 #include <cstdint>
 
 #include "absl/container/flat_hash_map.h"
-#include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
 #include "xla/executable_run_options.h"
@@ -31,6 +29,7 @@ limitations under the License.
 #include "xla/service/service_executable_run_options.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/util.h"
 
 namespace xla::gpu {
 
@@ -39,18 +38,17 @@ using GlobalDeviceIdMap = CollectiveParams::GlobalDeviceIdMap;
 // Returns global device id for a local device ordinal or an error if global
 // device id map is misconfigured and missing an entry for a local device.
 static absl::StatusOr<GlobalDeviceId> GetGlobalDeviceId(
-    const GlobalDeviceIdMap* device_id_map, int64_t local_device_ordinal) {
+    const GlobalDeviceIdMap* device_id_map, LocalDeviceId local_device_id) {
   // No local -> global mapping was provided; assume the identity mapping.
   if (!device_id_map) {
-    return GlobalDeviceId(local_device_ordinal);
+    return GlobalDeviceId(local_device_id.value());
   }
 
   // Find a global device id in a global device id map.
-  auto it = device_id_map->find(local_device_ordinal);
+  auto it = device_id_map->find(local_device_id);
   if (it == device_id_map->end()) {
-    return absl::NotFoundError(
-        absl::StrCat("No global device id found for local device ordinal: ",
-                     local_device_ordinal));
+    return NotFound("No global device id found for local device ordinal: %d",
+                    local_device_id.value());
   }
 
   return it->second;
@@ -58,7 +56,7 @@ static absl::StatusOr<GlobalDeviceId> GetGlobalDeviceId(
 
 absl::StatusOr<CollectiveParams> CollectiveParams::Create(
     const ServiceExecutableRunOptions& run_options,
-    absl::Span<se::Stream* const> async_streams, int64_t local_device_ordinal,
+    absl::Span<se::Stream* const> async_streams, LocalDeviceId local_device_id,
     int64_t collective_max_nchannels, int64_t p2p_max_nchannels) {
   const GpuExecutableRunOptions* gpu_options =
       run_options.run_options().gpu_executable_run_options();
@@ -80,11 +78,11 @@ absl::StatusOr<CollectiveParams> CollectiveParams::Create(
                            : nullptr;
 
   TF_ASSIGN_OR_RETURN(GlobalDeviceId global_device_id,
-                      GetGlobalDeviceId(device_id_map, local_device_ordinal));
+                      GetGlobalDeviceId(device_id_map, local_device_id));
 
   return CollectiveParams(collectives, run_options.stream()->parent(),
                           run_options.run_options().run_id(), async_streams,
-                          local_device_ordinal, global_device_id,
+                          local_device_id, global_device_id,
                           run_options.run_options().device_assignment(),
                           device_id_map, clique_id_callback, incarnations,
                           collective_max_nchannels, p2p_max_nchannels);
@@ -92,7 +90,7 @@ absl::StatusOr<CollectiveParams> CollectiveParams::Create(
 
 CollectiveParams::CollectiveParams(
     GpuCollectives* collectives, se::StreamExecutor* executor, RunId run_id,
-    absl::Span<se::Stream* const> async_streams, int64_t local_device_ordinal,
+    absl::Span<se::Stream* const> async_streams, LocalDeviceId local_device_id,
     GlobalDeviceId global_device_id, const DeviceAssignment* device_assn,
     const GlobalDeviceIdMap* global_device_id_map,
     const CliqueIdCallback* nccl_clique_id_callback,
@@ -102,7 +100,7 @@ CollectiveParams::CollectiveParams(
       executor(executor),
       run_id(run_id),
       async_streams(async_streams.begin(), async_streams.end()),
-      local_device_ordinal(local_device_ordinal),
+      local_device_id(local_device_id),
       global_device_id(global_device_id),
       device_assn(device_assn),
       global_device_id_map(global_device_id_map),

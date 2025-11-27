@@ -60,6 +60,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/map_util.h"
+#include "xla/runtime/device_id.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/dump.h"
 #include "xla/service/executable.h"
@@ -425,9 +426,10 @@ absl::Status ExecuteThunksImpl(
   // Parameters for executing collective operations.
   TF_ASSIGN_OR_RETURN(
       CollectiveParams collective_params,
-      CollectiveParams::Create(*run_options, async_comms_streams,
-                               main_stream->parent()->device_ordinal(),
-                               collective_max_nchannels, p2p_max_nchannels));
+      CollectiveParams::Create(
+          *run_options, async_comms_streams,
+          LocalDeviceId(main_stream->parent()->device_ordinal()),
+          collective_max_nchannels, p2p_max_nchannels));
 
   CollectiveCliqueRequests clique_requests;
 

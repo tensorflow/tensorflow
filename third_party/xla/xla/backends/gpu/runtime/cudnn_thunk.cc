@@ -89,9 +89,9 @@ absl::Status CuDnnThunk::ExecuteOnStream(const ExecuteParams& params) {
     }
     buffer_args.push_back(addr);
   }
-  return graph_->get()->Execute(*params.stream,
-                                absl::Span<se::DeviceMemoryBase>(buffer_args),
-                                params.collective_params->local_device_ordinal);
+  return graph_->get()->Execute(
+      *params.stream, absl::Span<se::DeviceMemoryBase>(buffer_args),
+      params.collective_params->local_device_id.value());
 }
 
 absl::StatusOr<ThunkProto> CuDnnThunk::ToProto() const {

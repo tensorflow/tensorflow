@@ -16,7 +16,6 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/collective_kernel_thunk.h"
 
 #include <cstdint>
-#include <map>
 #include <memory>
 #include <string>
 #include <utility>
@@ -26,6 +25,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/backends/gpu/runtime/collective_params.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/runtime/device_id.h"
@@ -203,9 +203,9 @@ absl::StatusOr<se::DeviceMemoryBase> RunCollectiveKernelThunk(
   BufferAllocation buffer_allocation(
       /*index=*/0, /*size=*/metadata.total_buffer_size, /*color=*/0);
   GpuExecutableRunOptions gpu_options;
-  gpu_options.set_gpu_global_device_ids(
-      std::map{std::make_pair(0, GlobalDeviceId(0)),
-               std::make_pair(1, GlobalDeviceId(1))});
+  gpu_options.set_gpu_global_device_ids(GpuExecutableRunOptions::DeviceIdMap{
+      std::make_pair(LocalDeviceId(0), GlobalDeviceId(0)),
+      std::make_pair(LocalDeviceId(1), GlobalDeviceId(1))});
 
   TF_ASSIGN_OR_RETURN(auto stream, executor->CreateStream());
   ServiceExecutableRunOptions run_options;
@@ -221,10 +221,10 @@ absl::StatusOr<se::DeviceMemoryBase> RunCollectiveKernelThunk(
   run_options.mutable_run_options()->set_gpu_executable_run_options(
       &gpu_options);
 
-  TF_ASSIGN_OR_RETURN(auto collective_params,
-                      CollectiveParams::Create(
-                          run_options, /*async_streams=*/{},
-                          /*local_device_ordinal=*/executor->device_ordinal()));
+  TF_ASSIGN_OR_RETURN(
+      auto collective_params,
+      CollectiveParams::Create(run_options, /*async_streams=*/{},
+                               LocalDeviceId(executor->device_ordinal())));
   std::vector<se::DeviceMemoryBase> allocated_buffers = {
       executor->AllocateArray<uint64_t>(metadata.total_buffer_size)};
 

@@ -1854,7 +1854,7 @@ absl::StatusOr<const se::CommandBuffer::Command*> CuDnnCmd::Record(
       [&](se::Stream* stream) {
         return graph_->get()->Execute(
             *stream, absl::Span<se::DeviceMemoryBase>(operands),
-            execute_params.collective_params->local_device_ordinal);
+            execute_params.collective_params->local_device_id.value());
       });
 }
 

@@ -17,7 +17,6 @@ limitations under the License.
 #define XLA_BACKENDS_GPU_RUNTIME_COLLECTIVE_PARAMS_H_
 
 #include <cstdint>
-#include <map>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
@@ -38,17 +37,16 @@ namespace xla::gpu {
 // XLA executables (multiple partitions and replicas).
 struct CollectiveParams {
   // A mapping from local device ordinals to global device IDs.
-  //
-  // TODO(ezhulenev): Use type safe RankId instead of int32_t.
-  using GlobalDeviceIdMap = std::map<int32_t, GlobalDeviceId>;
+  using GlobalDeviceIdMap = GpuExecutableRunOptions::DeviceIdMap;
 
   // Creates NCCL execution parameters from the run options for the given
   // local device. Returns an error if run options are misconfigured (i.e.
   // missing a global device mapping for a local device ordinal).
   static absl::StatusOr<CollectiveParams> Create(
       const ServiceExecutableRunOptions& run_options,
-      absl::Span<se::Stream* const> async_streams, int64_t local_device_ordinal,
-      int64_t collective_max_nchannels = 0, int64_t p2p_max_nchannels = 0);
+      absl::Span<se::Stream* const> async_streams,
+      LocalDeviceId local_device_id, int64_t collective_max_nchannels = 0,
+      int64_t p2p_max_nchannels = 0);
 
   GpuCollectives* collectives;
   se::StreamExecutor* executor;
@@ -60,7 +58,7 @@ struct CollectiveParams {
   // Streams for asynchronous collective communications.
   absl::InlinedVector<se::Stream*, 4> async_streams;
 
-  int64_t local_device_ordinal;
+  LocalDeviceId local_device_id;
   GlobalDeviceId global_device_id;
 
   const DeviceAssignment* device_assn;
@@ -76,8 +74,9 @@ struct CollectiveParams {
  private:
   CollectiveParams(
       GpuCollectives* collectives, se::StreamExecutor* executor, RunId run_id,
-      absl::Span<se::Stream* const> async_streams, int64_t local_device_ordinal,
-      GlobalDeviceId global_device_id, const DeviceAssignment* device_assn,
+      absl::Span<se::Stream* const> async_streams,
+      LocalDeviceId local_device_id, GlobalDeviceId global_device_id,
+      const DeviceAssignment* device_assn,
       const GlobalDeviceIdMap* global_device_id_map,
       const CliqueIdCallback* nccl_clique_id_callback,
       const absl::flat_hash_map<GlobalDeviceId, IncarnationId>* incarnations,

@@ -1281,6 +1281,7 @@ xla_test(
         "//xla:array",
         "//xla:util",
         "//xla:xla_data_proto_cc",
+        "//xla/backends/gpu/runtime:collective_params",
         "//xla/pjrt:worker_thread",
         "//xla/runtime:device_id",
         "//xla/service:buffer_assignment",
@@ -1597,6 +1598,7 @@ cc_library(
     deps = [
         ":collective_clique_requests",
         "//xla:executable_run_options",
+        "//xla:util",
         "//xla/backends/gpu/collectives:gpu_clique_key",
         "//xla/backends/gpu/collectives:gpu_collectives",
         "//xla/runtime:device_id",

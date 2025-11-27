@@ -163,6 +163,7 @@ cc_library(
     name = "device_id",
     hdrs = ["device_id.h"],
     deps = [
+        "//xla/tsl/distributed_runtime/coordination:coordination_service",
         "//xla/tsl/lib/gtl:int_type",
     ],
 )

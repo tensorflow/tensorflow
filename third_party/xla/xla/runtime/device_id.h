@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <cstdint>
 
+#include "xla/tsl/distributed_runtime/coordination/coordination_service.h"
 #include "xla/tsl/lib/gtl/int_type.h"
 
 namespace xla {
@@ -28,6 +29,8 @@ namespace xla {
 // GpuExecutableRunOptions for the local GPUs.
 TSL_LIB_GTL_DEFINE_INT_TYPE(GlobalDeviceId, int64_t);
 TSL_LIB_GTL_DEFINE_INT_TYPE(LocalDeviceId, int64_t);
+
+using ::tsl::IncarnationId;  // NOLINT(misc-unused-using-decls)
 
 }  // namespace xla
 

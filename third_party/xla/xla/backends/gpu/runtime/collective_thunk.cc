@@ -503,7 +503,7 @@ std::string CollectiveThunk::GetDeviceString(
   return absl::StrFormat("(r%d, p%d) : GlobalID %d, ord %d",
                          logical_id.replica_id, logical_id.computation_id,
                          global_device_id.value(),
-                         collective_params.local_device_ordinal);
+                         collective_params.local_device_id.value());
 }
 
 std::optional<AsyncEventsUniqueId> CollectiveThunk::GetAsyncEventsUniqueId()
