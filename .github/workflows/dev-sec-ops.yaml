@@ -31,4 +31,7 @@ jobs:
           args: >
             -Dsonar.projectKey=mukilathuruvan_tensorflow
             -Dsonar.organization=mukilathuruvan
-                    -Dsonar.exclusions=**/*.java,**/*.c,**/*.cc,**/*.cpp,**/*.cxx,**/*.h,**/*.hpp
+                    -Dsonar.exclusions=**/*.java
+                                        -Dsonar.c.file.suffixes=-
+                                                            -Dsonar.cpp.file.suffixes=-
+                                                                                -Dsonar.objc.file.suffixes=-
