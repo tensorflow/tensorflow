@@ -358,6 +358,8 @@ static void AddTiledLoweringPasses(mlir::OpPassManager& pm, bool fast_min_max) {
   pm.addPass(mlir::createConvertComplexToStandardPass());
   pm.addPass(mlir::memref::createExpandStridedMetadataPass());
 
+  pm.addPass(emitters::CreateSafeIntegerArithmeticPass());
+
   AddGenericLoweringPasses(pm, fast_min_max);
 }
 

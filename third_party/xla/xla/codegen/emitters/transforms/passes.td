@@ -332,4 +332,14 @@ def VectorizeLoadsAndStoresPass :
   let constructor = "CreateVectorizeLoadsAndStoresPass()";
 }
 
+def SafeIntegerArithmeticPass : Pass<"xla-safe-integer-arithmetic"> {
+  let summary = "Make integer arithmetics safe.";
+
+  let description = [{
+    This pass converts integer division and remainder to ones that do not cause
+    undefined behavior. It only converts operations that are marked with the
+    attribute "xla.guard_ub".
+  }];
+}
+
 #endif  // XLA_CODEGEN_EMITTERS_TRANSFORMS_PASSES_TD_

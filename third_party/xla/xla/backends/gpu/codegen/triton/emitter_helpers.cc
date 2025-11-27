@@ -468,7 +468,11 @@ absl::StatusOr<Value> EmitElementwise(EmitterLocOpBuilder& b,
     case HloOpcode::kDivide:
       if (is_integer) {
         // Unsigned not supported yet.
-        return ma::DivSIOp::create(b, inputs[0], inputs[1]);
+        auto div = ma::DivSIOp::create(b, inputs[0], inputs[1]);
+        // Attr signifies that this op should be re-written to guard against
+        // undefined behavior.
+        div->setAttr("xla.guard_ub", b.getUnitAttr());
+        return div;
       }
       return ma::DivFOp::create(b, inputs[0], inputs[1]);
     case HloOpcode::kCompare:
@@ -516,7 +520,11 @@ absl::StatusOr<Value> EmitElementwise(EmitterLocOpBuilder& b,
       return mm::PowFOp::create(b, inputs[0], inputs[1]);
     case HloOpcode::kRemainder:
       if (is_integer) {
-        return ma::RemSIOp::create(b, inputs[0], inputs[1]);
+        auto rem = ma::RemSIOp::create(b, inputs[0], inputs[1]);
+        // Attr signifies that this op should be re-written to guard against
+        // undefined behavior.
+        rem->setAttr("xla.guard_ub", b.getUnitAttr());
+        return rem;
       }
       return ma::RemFOp::create(b, inputs[0], inputs[1]);
     case HloOpcode::kRsqrt:
