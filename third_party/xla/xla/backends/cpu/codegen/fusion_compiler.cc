@@ -336,6 +336,9 @@ static void AddTiledOptimizationPasses(mlir::OpPassManager& pm) {
   AddBufferizationPasses(pm);
 
   pm.addPass(CreateLinalgElementwiseToVectorPass());
+
+  pm.addPass(mlir::createCanonicalizerPass());
+  pm.addPass(mlir::createCSEPass());
 }
 
 // Lowering passes for the tiled emitter.
