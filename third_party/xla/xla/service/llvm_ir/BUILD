@@ -212,8 +212,6 @@ cc_library(
         "//xla/hlo/ir:hlo",
         "//xla/service:buffer_assignment",
         "//xla/service/cpu:backend_config_proto_cc",
-        "//xla/service/gpu:launch_dimensions",
-        "//xla/service/gpu:parallel_loop_emitter",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/log",
@@ -223,32 +221,6 @@ cc_library(
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:ir_headers",
-    ],
-)
-
-cc_library(
-    name = "sort_util",
-    srcs = ["sort_util.cc"],
-    hdrs = ["sort_util.h"],
-    deps = [
-        ":ir_array",
-        ":kernel_support_library",
-        ":llvm_util",
-        ":loop_emitter",
-        "//xla:shape_util",
-        "//xla:util",
-        "//xla:xla_data_proto_cc",
-        "//xla/service/gpu:ir_emission_utils",
-        "//xla/service/gpu:launch_dimensions",
-        "//xla/service/gpu:parallel_loop_emitter",
-        "//xla/service/gpu:target_util",
-        "//xla/tsl/platform:errors",
-        "//xla/tsl/platform:status",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/types:span",
-        "@llvm-project//llvm:Core",
-        "@llvm-project//llvm:Support",
     ],
 )
 

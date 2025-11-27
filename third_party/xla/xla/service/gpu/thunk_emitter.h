@@ -42,11 +42,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/call_graph.h"
-#include "xla/service/gpu/ir_emitter.h"
 #include "xla/service/gpu/ir_emitter_context.h"
-#include "xla/service/gpu/launch_dimensions.h"
-#include "xla/service/llvm_ir/ir_array.h"
-#include "xla/service/llvm_ir/loop_emitter.h"
 #include "xla/shape_util.h"
 
 namespace xla {
@@ -77,11 +73,6 @@ class ThunkEmitter {
   absl::string_view platform_name() const {
     return ir_emitter_context_->platform_name();
   }
-
-  using ValueVector3 = std::array<llvm::Value*, 3>;
-  using ValueVector2 = std::array<llvm::Value*, 2>;
-
-  using ConstantGenerator = std::function<llvm::Value*(int64_t)>;
 
   ThunkEmitter(const ThunkEmitter&) = delete;
   ThunkEmitter& operator=(const ThunkEmitter&) = delete;

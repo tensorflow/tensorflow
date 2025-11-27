@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/llvm_ir/sort_util.h"
+#include "xla/backends/gpu/codegen/llvm/sort_util.h"
 
 #include <algorithm>
 #include <cstdint>
@@ -33,10 +33,10 @@ limitations under the License.
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/Value.h"
 #include "llvm/Support/Casting.h"
+#include "xla/backends/gpu/codegen/llvm/parallel_loop_emitter.h"
 #include "xla/layout_util.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/launch_dimensions.h"
-#include "xla/service/gpu/parallel_loop_emitter.h"
 #include "xla/service/gpu/target_util.h"
 #include "xla/service/llvm_ir/ir_array.h"
 #include "xla/service/llvm_ir/kernel_support_library.h"

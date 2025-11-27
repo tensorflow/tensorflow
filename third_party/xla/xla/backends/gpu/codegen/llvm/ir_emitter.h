@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_SERVICE_GPU_IR_EMITTER_H_
-#define XLA_SERVICE_GPU_IR_EMITTER_H_
+#ifndef XLA_BACKENDS_GPU_CODEGEN_LLVM_IR_EMITTER_H_
+#define XLA_BACKENDS_GPU_CODEGEN_LLVM_IR_EMITTER_H_
 
 #include <vector>
 
@@ -159,4 +159,4 @@ absl::StatusOr<ThunkSequence> EmitRngGetAndUpdateStateLLVMIR(
 }  // namespace gpu
 }  // namespace xla
 
-#endif  // XLA_SERVICE_GPU_IR_EMITTER_H_
+#endif  // XLA_BACKENDS_GPU_CODEGEN_LLVM_IR_EMITTER_H_

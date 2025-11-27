@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/parallel_loop_emitter.h"
+#include "xla/backends/gpu/codegen/llvm/parallel_loop_emitter.h"
 
 #include <cstdint>
 #include <vector>

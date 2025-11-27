@@ -12,7 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "xla/service/gpu/ir_emitter_nested.h"
+#include "xla/backends/gpu/codegen/llvm/ir_emitter_nested.h"
 
 #include <algorithm>
 #include <cstddef>
@@ -42,6 +42,7 @@ limitations under the License.
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/TargetParser/Triple.h"
+#include "xla/backends/gpu/codegen/llvm/ir_emitter.h"
 #include "xla/codegen/emitters/computation_fingerprint.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -50,7 +51,6 @@ limitations under the License.
 #include "xla/service/gpu/gpu_constants.h"
 #include "xla/service/gpu/gpu_executable.h"
 #include "xla/service/gpu/ir_emission_utils.h"
-#include "xla/service/gpu/ir_emitter.h"
 #include "xla/service/gpu/ir_emitter_context.h"
 #include "xla/service/llvm_ir/buffer_assignment_util.h"
 #include "xla/service/llvm_ir/ir_array.h"

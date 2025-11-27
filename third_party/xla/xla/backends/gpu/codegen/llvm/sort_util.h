@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_SERVICE_LLVM_IR_SORT_UTIL_H_
-#define XLA_SERVICE_LLVM_IR_SORT_UTIL_H_
+#ifndef XLA_BACKENDS_GPU_CODEGEN_LLVM_SORT_UTIL_H_
+#define XLA_BACKENDS_GPU_CODEGEN_LLVM_SORT_UTIL_H_
 
 #include <cstdint>
 #include <functional>
@@ -45,4 +45,4 @@ absl::Status EmitSortInPlace(
 }  // namespace llvm_ir
 }  // namespace xla
 
-#endif  // XLA_SERVICE_LLVM_IR_SORT_UTIL_H_
+#endif  // XLA_BACKENDS_GPU_CODEGEN_LLVM_SORT_UTIL_H_
