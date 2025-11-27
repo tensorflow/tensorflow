@@ -53,6 +53,28 @@ class TestModule(tf.Module):
   def some_function(self, x):
     return x + self.v42 + self.c43
 
-
-if __name__ == '__main__':
-  common.do_test(TestModule)
+  # Test for robust graph/XLA-friendly tensor operations avoiding Python built-ins
+  # CHECK: func {{@[a-zA-Z_0-9]+}}(
+  # CHECK-SAME:   %arg0: tensor<3x?xf32> {tf._user_specified_name = "x", tf_saved_model.index_path = [0]},
+  # CHECK-SAME:   tensor<?xf32> {tf_saved_model.index_path = []})
+  @tf.function(input_signature=[tf.TensorSpec([3, None, 16], tf.float32)])
+  def robust_concat_function(self, x):
+    # Stack candidate feature tensors
+    candidates = tf.stack([x, x * 2, x * 3], axis=0)  # shape (3, batch, 16)
+    # Compute scalar sums per candidate
+    sums = tf.reduce_sum(candidates, axis=[1, 2])  # shape (3,)
+    # Create mask
+    mask = sums > 0.5  # shape (3,)
+    # Select filtered candidates
+    filtered = tf.boolean_mask(candidates, mask, axis=0)  # shape (k, batch, 16)
+    # Apply mapping
+    mapped = tf.nn.sigmoid(filtered)  # shape (k, batch, 16)
+    # Prepare ones_like part
+    ones = tf.ones_like(x, dtype=x.dtype)  # shape (batch, 16)
+    ones_tiled = tf.tile(tf.expand_dims(ones, 0), [tf.shape(mapped)[0], 1, 1])  # shape (k, batch, 16)
+    # Concatenate per candidate along last axis
+    per_candidate = tf.concat([mapped, ones_tiled], axis=-1)  # shape (k, batch, 32)
+    # Unstack and concatenate across candidate axis
+    per_candidate_list = tf.unstack(per_candidate, axis=0)  # list of (batch, 32)
+    combined = tf.concat(per_candidate_list, axis=-1)  # shape (batch, 32 * k)
+    return combined
