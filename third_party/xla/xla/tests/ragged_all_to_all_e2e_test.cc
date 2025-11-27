@@ -54,7 +54,6 @@ using ::testing::NotNull;
 
 enum class RaggedAllToAllImplType {
   kNccl,
-  kMemcpy,
   kDecomposer,
   kOneShot,
 };
@@ -62,8 +61,7 @@ enum class RaggedAllToAllImplType {
 class RaggedAllToAllTestBase : public CollectiveOpsWithFlagsBase {
  public:
   RaggedAllToAllTestBase(bool enable_async, RaggedAllToAllImplType impl_type)
-      : CollectiveOpsWithFlagsBase(
-            enable_async, impl_type == RaggedAllToAllImplType::kMemcpy),
+      : CollectiveOpsWithFlagsBase(enable_async, /*enable_p2p_memcpy=*/false),
         impl_type_(impl_type) {}
 
   // Creates random test data for a ragged-all-to-all.
@@ -824,8 +822,6 @@ std::string RaggedAllToAllImplTypeName(
   switch (ragged_all_to_all_impl_type) {
     case RaggedAllToAllImplType::kNccl:
       return "nccl";
-    case RaggedAllToAllImplType::kMemcpy:
-      return "memcpy";
     case RaggedAllToAllImplType::kDecomposer:
       return "decomposer";
     case RaggedAllToAllImplType::kOneShot:
@@ -839,7 +835,6 @@ INSTANTIATE_TEST_SUITE_P(
     RaggedAllToAllTest, RaggedAllToAllTest,
     ::testing::Combine(::testing::Bool(),
                        ::testing::Values(RaggedAllToAllImplType::kNccl,
-                                         RaggedAllToAllImplType::kMemcpy,
                                          RaggedAllToAllImplType::kDecomposer,
                                          RaggedAllToAllImplType::kOneShot)),
     [](const ::testing::TestParamInfo<std::tuple<bool, RaggedAllToAllImplType>>&

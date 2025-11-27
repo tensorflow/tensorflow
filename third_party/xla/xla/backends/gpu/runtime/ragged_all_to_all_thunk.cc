@@ -308,60 +308,6 @@ absl::Status RendezvousAfterKernelFinish(
 
 }  // namespace
 
-absl::Status RaggedAllToAllStartThunk::RunMemCpyRaggedAllToAll(
-    const GpuCliqueKey& clique_key, se::Stream& stream,
-    const StreamState& state, absl::Span<DeviceBufferPair const> buffers,
-    absl::Span<int64_t* const> ragged_metadata_allocs) {
-  int device_ordinal = stream.parent()->device_ordinal();
-  const RankId& rank = state.rank;
-  const int64_t num_ranks = clique_key.num_local_participants();
-
-  VLOG(3) << "[" << device_ordinal << "] Performing mem-copy-ragged-all-to-all";
-
-  PrimitiveType element_type = buffers[0].element_type;
-
-  se::DeviceMemoryBase input_buffer = buffers[0].source_buffer;
-  se::DeviceMemoryBase output_buffer = buffers[1].destination_buffer;
-
-  TF_RETURN_IF_ERROR(
-      LoadRaggedTensorMetadata(stream, buffers, ragged_metadata_allocs));
-
-  const int64_t num_updates_per_replica = config_.num_total_updates / num_ranks;
-
-  const int64_t* input_offsets = ragged_metadata_allocs[0];
-  const int64_t* send_sizes = ragged_metadata_allocs[1];
-  const int64_t* output_offsets = ragged_metadata_allocs[2];
-
-  TF_ASSIGN_OR_RETURN(
-      std::shared_ptr<std::vector<RendezvousValue>> rendezvous_values,
-      RendezvousBeforeKernelStart(
-          /*name=*/"memcpy", clique_key, rank, num_ranks, output_buffer, stream,
-          state.start_event.get(), state.end_event.get()));
-
-  // Transfer a slice of data to each peer's output buffer.
-  for (int64_t i = 0; i < num_updates_per_replica; ++i) {
-    for (int peer = 0; peer < num_ranks; ++peer) {
-      int64_t idx = peer * num_updates_per_replica + i;
-      se::DeviceMemoryBase send_slice =
-          GpuCollectives::Slice(input_buffer, element_type,
-                                input_offsets[idx] * config_.num_row_elements,
-                                send_sizes[idx] * config_.num_row_elements);
-      se::DeviceMemoryBase dst_slice = GpuCollectives::Slice(
-          (*rendezvous_values)[peer].output_buffer, element_type,
-          output_offsets[idx] * config_.num_row_elements,
-          send_sizes[idx] * config_.num_row_elements);
-      TF_RETURN_IF_ERROR(
-          stream.MemcpyD2D(&dst_slice, send_slice, send_slice.size()));
-    }
-  }
-
-  TF_RETURN_IF_ERROR(RendezvousAfterKernelFinish(
-      /*name=*/"memcpy", clique_key, rank, num_ranks, stream,
-      state.end_event.get(), rendezvous_values));
-
-  return absl::OkStatus();
-}
-
 absl::Status RaggedAllToAllStartThunk::RunOneShotRaggedAllToAll(
     const GpuCliqueKey& clique_key, se::Stream& stream,
     const StreamState& state, absl::Span<DeviceBufferPair const> buffers) {
@@ -410,7 +356,6 @@ RaggedAllToAllStartThunk::RaggedAllToAllStartThunk(
                       AsyncStreamKind::ASYNC_STREAM_KIND_COLLECTIVE),
       config_(GetRaggedAllToAllConfig(instr)),
       buffers_(std::move(buffers)),
-      p2p_memcpy_enabled_(p2p_memcpy_enabled),
       one_shot_kernel_enabled_(
           instr->GetModule()
               ->config()
@@ -560,13 +505,6 @@ absl::StatusOr<bool> RaggedAllToAllStartThunk::RunCollective(
   for (int64_t i = 0; i < kNumRaggedMetadataOperands; ++i) {
     ragged_metadata_allocs.push_back(
         reinterpret_cast<int64_t*>(state->host_buffer_allocs[i]->opaque()));
-  }
-
-  if (should_use_memcpy()) {
-    TF_RETURN_IF_ERROR(RunMemCpyRaggedAllToAll(comm_handle.clique_key, stream,
-                                               *state, device_buffers,
-                                               ragged_metadata_allocs));
-    return false;
   }
 
   TF_RETURN_IF_ERROR(RunRaggedAllToAll(
