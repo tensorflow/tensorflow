@@ -1381,26 +1381,6 @@ class DnnSupport {
         output_profile_result);
   }
 
-  template <typename ElementType, typename OutputType>
-  absl::Status PrepareForConvolution(
-      ConvolutionKind kind, Stream* stream,
-      const BatchDescriptor& batch_descriptor,
-      DeviceMemory<ElementType> input_data,
-      const FilterDescriptor& filter_descriptor,
-      DeviceMemory<ElementType> filter_data,
-      const BatchDescriptor& output_descriptor,
-      DeviceMemory<OutputType> output_data,
-      const ConvolutionDescriptor& convolution_descriptor,
-      const AlgorithmConfig& algorithm_config,
-      ScratchAllocator* scratch_allocator, AlgorithmDesc* algorithm_desc,
-      DeviceMemory<uint8_t>* scratch_memory) {
-    return DoPrepareForConvolution(
-        kind, ToDataType<ElementType>::value, stream, batch_descriptor,
-        input_data, filter_descriptor, filter_data, output_descriptor,
-        output_data, convolution_descriptor, algorithm_config,
-        scratch_allocator, algorithm_desc, scratch_memory);
-  }
-
   // cuDNN-specific input transformation that allows running int8x32
   // convolutions faster using Tensor Core IMMA instruction.
   virtual absl::Status CudnnReorderConvolutionFilterAndBias(
@@ -1412,76 +1392,6 @@ class DnnSupport {
     return absl::UnimplementedError(
         "DnnSupport::CudnnReorderConvolutionFilterAndBias is specific to CUDA "
         "convolution implementation.");
-  }
-
-  // Enqueues a single-precision convolution operation onto the stream.
-  //
-  // Arguments (all borrowed):
-  //  stream: borrowed pointer to the stream that the 'convolve' operation
-  //    should be enqueued onto.
-  //  input_descriptor: dimensions of the input layer.
-  //  input_data: un-owned device memory region which contains the
-  //    convolution input.
-  //  filter_descriptor: dimensions of the convolution filter.
-  //  convolution_descriptor: stride of the convolution filter.
-  //  output_descriptor: dimensions of the output layer.
-  //  output_data: un-owned device memory region in which to place the
-  //    convolution result.
-  //  algorithm_desc: specifies which algorithm should be used for the
-  //    operation.
-  //  scratch: un-owned device memory for scratch space in order to speed up
-  //    the convolution operation.
-  //  output_profile_result: the output profile result for this call. The
-  //    profiling is only enabled when this is not nullptr.
-  //
-  // input_descriptor, filter_descriptor, convolution_descriptor and
-  // output_descriptor together specify exactly how the convolution is aligned
-  // with the input data:
-  //
-  // * (input dimensions - filter size + 1) / filter stride == output dimensions
-  //   corresponds to dist_belief padding = VALID, i.e. the input is not padded.
-  // * input dimensions / filter stride == output dimensions
-  //   corresponds to dist_belief padding = SAME, i.e. input and output are the
-  //   same size - this requires padding the input.
-  // * (input dimensions + filter size - 1) / filter stride == output dimensions
-  //   corresponds to dist_belief padding = FULL, i.e. the output is sized so
-  //   that if the inverse of the filter is applied to the output in VALID mode
-  //   the result is the same size as the input - this requires even more
-  //   padding of the input.
-  virtual absl::Status DoConvolve(
-      ConvolutionKind kind, DataType element_type, DataType output_type,
-      Stream* stream, const BatchDescriptor& input_descriptor,
-      DeviceMemoryBase input_data, const FilterDescriptor& filter_descriptor,
-      DeviceMemoryBase filter_data, const BatchDescriptor& output_descriptor,
-      DeviceMemoryBase output_data,
-      const ConvolutionDescriptor& convolution_descriptor,
-      AlgorithmDesc algorithm_desc, DeviceMemory<uint8_t> scratch_memory,
-      ProfileResult* output_profile_result) = 0;
-
-  template <typename InputType, typename OutputType>
-  absl::Status ConvolveWithAlgorithm(
-      Stream* stream, ConvolutionKind kind,
-      const BatchDescriptor& input_descriptor,
-      DeviceMemory<InputType> input_data,
-      const FilterDescriptor& filter_descriptor,
-      DeviceMemory<InputType> filter_data,
-      const BatchDescriptor& output_descriptor,
-      DeviceMemory<OutputType> output_data,
-      const ConvolutionDescriptor& convolution_descriptor,
-      ScratchAllocator* scratch_allocator,
-      const AlgorithmConfig& algorithm_config,
-      ProfileResult* output_profile_result) {
-    DeviceMemory<uint8_t> scratch_memory;
-    AlgorithmDesc algorithm_desc;
-    TF_RETURN_IF_ERROR(PrepareForConvolution(
-        kind, stream, input_descriptor, input_data, filter_descriptor,
-        filter_data, output_descriptor, output_data, convolution_descriptor,
-        algorithm_config, scratch_allocator, &algorithm_desc, &scratch_memory));
-    return DoConvolve(kind, ToDataType<InputType>::value,
-                      ToDataType<OutputType>::value, stream, input_descriptor,
-                      input_data, filter_descriptor, filter_data,
-                      output_descriptor, output_data, convolution_descriptor,
-                      algorithm_desc, scratch_memory, output_profile_result);
   }
 
   virtual absl::Status GetConvolveRunners(
@@ -2079,20 +1989,6 @@ class DnnSupport {
   static bool IsStatusOk(const absl::Status& status, bool report_error);
 
  private:
-  virtual absl::Status DoPrepareForConvolution(
-      ConvolutionKind kind, DataType element_type, Stream* stream,
-      const BatchDescriptor& batch_descriptor, DeviceMemoryBase input_data,
-      const FilterDescriptor& filter_descriptor, DeviceMemoryBase filter_data,
-      const BatchDescriptor& output_descriptor, DeviceMemoryBase output_data,
-      const ConvolutionDescriptor& convolution_descriptor,
-      const AlgorithmConfig& algorithm_config,
-      ScratchAllocator* scratch_allocator, AlgorithmDesc* algorithm_desc,
-      DeviceMemory<uint8_t>* scratch_memory) {
-    *algorithm_desc = {};
-    *scratch_memory = {};
-    return absl::OkStatus();
-  }
-
   virtual absl::Status DoPrepareForCtcLoss(
       Stream* stream, DataType element_type,
       const RnnStateTensorDescriptor& probs_desc,
