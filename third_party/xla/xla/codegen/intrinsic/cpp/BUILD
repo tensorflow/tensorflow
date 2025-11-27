@@ -74,6 +74,7 @@ cc_ir_header(
         ":cpp_context_provider",
         ":eigen_unary_lib",
         ":vector_ops",
+        "@eigen_archive//:eigen3",
     ],
 )
 
