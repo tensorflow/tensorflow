@@ -45,6 +45,7 @@ limitations under the License.
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
+#include "xla/types.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -350,6 +351,62 @@ TEST_P(RaggedAllToAllTest, RaggedAllToAll_2GPUs) {
   TF_ASSERT_OK(CreateRandomTestData(module.get(),
                                     /*input_sizes=*/{/*replica_0=*/{1, 1},
                                                      /*replica_1=*/{3, 1}}));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::vector<Literal> results,
+      ExecuteReplicated(std::move(module), GetInputLiteralPtrs(),
+                        /*device_assignment=*/nullptr,
+                        /*num_replicas=*/kNumReplicas,
+                        /*run_hlo_passes=*/true));
+  ASSERT_EQ(results.size(), kNumReplicas);
+  EXPECT_TRUE(LiteralTestUtil::Equal(expected_outputs_[0], results[0]));
+  EXPECT_TRUE(LiteralTestUtil::Equal(expected_outputs_[1], results[1]));
+}
+
+TEST_P(RaggedAllToAllTest, RaggedAllToAll_2GPUs_S4) {
+  absl::string_view kModuleReplicatedStr = R"(
+  HloModule module, num_partitions=1
+
+  ENTRY entry {
+    input = s4[4,2]{1,0:E(4)} parameter(0)
+    output = s4[4,2]{1,0:E(4)} parameter(1)
+    input_offsets = s32[2] parameter(2)
+    send_sizes = s32[2] parameter(3)
+    output_offsets = s32[2] parameter(4)
+    recv_sizes = s32[2] parameter(5)
+    ROOT ra2a = s4[4,2]{1,0:E(4)} ragged-all-to-all(input, output, 
+      input_offsets, send_sizes, output_offsets, recv_sizes), 
+      replica_groups={{0,1}}
+  })";
+
+  const int64_t kNumReplicas = 2;
+  const int64_t kNumPartitions = 1;
+  ASSERT_GE(hlo_runner_->device_count(), kNumReplicas)
+      << "Test requires at least " << kNumReplicas << " devices ("
+      << hlo_runner_->device_count() << " available)";
+
+  HloModuleConfig config =
+      GetModuleConfigForTest(/*replica_count=*/kNumReplicas * kNumPartitions);
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module, ParseAndReturnVerifiedModule(kModuleReplicatedStr, config));
+
+  TF_ASSERT_OK(CreateRandomTestData(module.get(),
+                                    /*input_sizes=*/{/*replica_0=*/{1, 1},
+                                                     /*replica_1=*/{3, 1}}));
+
+  // `CreateRandomTestData` calculates sizes and offsets metadata, but fill
+  // input and expected output literals with random floats. We need to manually
+  // override them with s4 values.
+  inputs_[0] = LiteralUtil::CreateR2<s4>(
+      {{s4(1), s4(1)}, {s4(2), s4(2)}, {s4(0), s4(0)}, {s4(0), s4(0)}});
+  inputs_[1] = LiteralUtil::CreateR2<s4>(
+      {{s4(3), s4(3)}, {s4(4), s4(4)}, {s4(5), s4(5)}, {s4(6), s4(6)}});
+
+  expected_outputs_[0] = LiteralUtil::CreateR2<s4>(
+      {{s4(1), s4(1)}, {s4(3), s4(3)}, {s4(4), s4(4)}, {s4(5), s4(5)}});
+  expected_outputs_[1] = LiteralUtil::CreateR2<s4>(
+      {{s4(2), s4(2)}, {s4(6), s4(6)}, {s4(-1), s4(-1)}, {s4(-1), s4(-1)}});
 
   TF_ASSERT_OK_AND_ASSIGN(
       std::vector<Literal> results,
