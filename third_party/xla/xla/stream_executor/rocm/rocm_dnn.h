@@ -325,7 +325,7 @@ class MIOpenSupport : public dnn::DnnSupport {
       DeviceMemory<float>* batch_mean, DeviceMemory<float>* batch_var,
       DeviceMemory<float>* saved_mean, DeviceMemory<float>* saved_inv_var,
       bool is_training, ScratchAllocator* reserve_space_allocator,
-      ScratchAllocator* workspace_allocator) override;
+      ScratchAllocator* workspace_allocator);
 
   bool DoBatchNormalizationForward(
       Stream* stream, const DeviceMemory<Eigen::half>& x,
@@ -340,7 +340,7 @@ class MIOpenSupport : public dnn::DnnSupport {
       DeviceMemory<float>* batch_mean, DeviceMemory<float>* batch_var,
       DeviceMemory<float>* saved_mean, DeviceMemory<float>* saved_inv_var,
       bool is_training, ScratchAllocator* reserve_space_allocator,
-      ScratchAllocator* workspace_allocator) override;
+      ScratchAllocator* workspace_allocator);
 
   bool DoBatchNormalizationForward(
       Stream* stream, const DeviceMemory<Eigen::bfloat16>& x,
@@ -355,7 +355,7 @@ class MIOpenSupport : public dnn::DnnSupport {
       DeviceMemory<float>* batch_mean, DeviceMemory<float>* batch_var,
       DeviceMemory<float>* saved_mean, DeviceMemory<float>* saved_inv_var,
       bool is_training, ScratchAllocator* reserve_space_allocator,
-      ScratchAllocator* workspace_allocator) override;
+      ScratchAllocator* workspace_allocator);
 
   bool DoBatchNormalizationBackward(
       Stream* stream, const DeviceMemory<float>& y_backprop,

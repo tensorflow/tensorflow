@@ -22,7 +22,10 @@ limitations under the License.
 #define EIGEN_USE_GPU
 #if GOOGLE_CUDA
 #include "third_party/gpus/cudnn/cudnn.h"
-#endif  // GOOGLE_CUDA
+#include "xla/stream_executor/cuda/cuda_dnn.h"
+#elif TENSORFLOW_USE_ROCM
+#include "xla/stream_executor/rocm/rocm_dnn.h"
+#endif
 
 #include "tensorflow/core/kernels/conv_2d.h"
 #include "tensorflow/core/kernels/gpu_utils.h"
@@ -984,7 +987,9 @@ struct FusedBatchNormImplGPU {
       context->SetStatus(absl::InternalError("No DNN support for stream"));
       return;
     }
-    bool cudnn_launch_status = dnn->DoBatchNormalizationForward(
+#if GOOGLE_CUDA
+    auto* cuda_dnn = static_cast<stream_executor::gpu::CudnnSupport*>(dnn);
+    bool cudnn_launch_status = cuda_dnn->DoBatchNormalizationForward(
         stream, x_ptr, scale_ptr, offset_ptr, estimated_mean_ptr,
         estimated_variance_ptr, side_input_ptr, x_desc, scale_offset_desc,
         static_cast<double>(epsilon),
@@ -992,6 +997,17 @@ struct FusedBatchNormImplGPU {
         AsDnnActivationMode(activation_mode), &y_ptr, &batch_mean_ptr,
         &batch_var_ptr, &saved_mean_ptr, &saved_inv_var_ptr, is_training,
         reserve_space_allocator.get(), workspace_allocator.get());
+#elif TENSORFLOW_USE_ROCM
+    auto* rocm_dnn = static_cast<stream_executor::gpu::MIOpenSupport*>(dnn);
+    bool cudnn_launch_status = rocm_dnn->DoBatchNormalizationForward(
+        stream, x_ptr, scale_ptr, offset_ptr, estimated_mean_ptr,
+        estimated_variance_ptr, side_input_ptr, x_desc, scale_offset_desc,
+        static_cast<double>(epsilon),
+        static_cast<double>(exponential_avg_factor),
+        AsDnnActivationMode(activation_mode), &y_ptr, &batch_mean_ptr,
+        &batch_var_ptr, &saved_mean_ptr, &saved_inv_var_ptr, is_training,
+        reserve_space_allocator.get(), workspace_allocator.get());
+#endif
 
     if (!cudnn_launch_status) {
       context->SetStatus(
