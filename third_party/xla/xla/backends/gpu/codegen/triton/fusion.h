@@ -20,13 +20,15 @@ limitations under the License.
 
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "llvm/IR/Module.h"
 #include "xla/backends/gpu/codegen/fusion_emitter.h"
-#include "xla/codegen/tiling/tiled_hlo_computation.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/ir_emitter_context.h"
 #include "xla/service/gpu/launch_dimensions.h"
+#include "xla/shape.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/launch_dim.h"
 
@@ -46,6 +48,25 @@ class TritonFusion : public FusionInterface {
   absl::StatusOr<FusionEmissionResult> Emit(
       IrEmitterContext& ir_emitter_context,
       const HloFusionInstruction& fusion) const final;
+
+  // Overload of [Emit] that allows passing overrides for instructions
+  // and unmanaged arguments.
+  // - Instruction overloads are required when we forcibly form fusions for
+  // instructions by extracting them into a separate HLO module. In this case
+  // buffer assignments are still associated with the original instruction.
+  // So the root of the fusion cannot be used to determine the emitted kernel
+  // arguments.
+  // - The unmanaged arguments are used for collectives which have extra
+  // arguments (such as pointers to remote buffers, and metadata arguments).
+  // Empty unmanaged arguments mean that all arguments have buffer slices
+  // associated with them.
+  //
+  // TODO(b/461717780): Remove the instruction override once we form collective
+  // based fusions earlier in the compiler pipeline.
+  absl::StatusOr<FusionEmissionResult> Emit(
+      IrEmitterContext& ir_emitter_context, const HloFusionInstruction& fusion,
+      const HloInstruction* instr_override,
+      absl::Span<const Shape> unmanaged_arguments) const;
 
   // Returns the launch config for Triton fusions that have a block level fusion
   // config.

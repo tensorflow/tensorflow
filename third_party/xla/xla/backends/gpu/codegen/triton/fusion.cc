@@ -110,13 +110,22 @@ TritonFusion::GenerateTritonKernelAndWrapper(
 absl::StatusOr<FusionEmissionResult> TritonFusion::Emit(
     IrEmitterContext& ir_emitter_context,
     const HloFusionInstruction& fusion) const {
+  return Emit(ir_emitter_context, fusion, nullptr, {});
+}
+
+absl::StatusOr<FusionEmissionResult> TritonFusion::Emit(
+    IrEmitterContext& ir_emitter_context, const HloFusionInstruction& fusion,
+    const HloInstruction* instr_override,
+    absl::Span<const Shape> unmanaged_arguments) const {
   llvm::IRBuilder builder(ir_emitter_context.llvm_module()->getContext());
   VLOG(3) << fusion.ToString();
   std::string suggested_kernel_name = std::string(fusion.name());
   TF_ASSIGN_OR_RETURN(
       auto kernel_arguments,
-      emitters::KernelArguments::Create(ir_emitter_context.buffer_assignment(),
-                                        GetDefaultBufferAlignment(), &fusion));
+      emitters::KernelArguments::Create(
+          ir_emitter_context.buffer_assignment(), GetDefaultBufferAlignment(),
+          instr_override != nullptr ? instr_override : &fusion,
+          unmanaged_arguments));
 
   const HloComputation* hlo_computation =
       fusion.fused_instructions_computation();

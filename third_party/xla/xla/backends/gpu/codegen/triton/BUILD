@@ -44,7 +44,6 @@ cc_library(
         "//xla/backends/gpu/runtime:kernel_thunk",
         "//xla/backends/gpu/runtime:thunk",
         "//xla/codegen/emitters:kernel_arguments",
-        "//xla/codegen/tiling:tiled_hlo_computation",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/utils:hlo_traversal",
         "//xla/service/gpu:backend_configs_cc",

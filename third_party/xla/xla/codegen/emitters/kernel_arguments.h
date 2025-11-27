@@ -31,14 +31,29 @@ namespace xla::emitters {
 // Thread-safe.
 class KernelArgument {
  public:
+  // Managed arguments are those that are assigned slices during the buffer
+  // assignment pass.
+  // Unmanaged arguments can be scalars of tensors. Scalars are simply passed
+  // by value. For buffers the memory is managed by the runtime thunk.
+  // The[KernelThunk] currently assumes that all arguments are managed.
+  // The [CollectiveKernelThunk] distinguishes between the two types of
+  // arguments because it manages scratch buffers for the collectives itself.
+  enum class Kind { kManaged, kUnmanaged };
+
   KernelArgument(Shape shape, BufferAllocation::Slice slice)
-      : shape_(shape), slice_(slice) {}
+      : kind_(Kind::kManaged), shape_(shape), slice_(slice) {}
+  // Constructor for arguments that don't have an associated slice.
+  explicit KernelArgument(Shape shape)
+      : kind_(Kind::kUnmanaged), shape_(shape) {}
+
+  Kind kind() const { return kind_; }
   const Shape& shape() const { return shape_; }
   const BufferAllocation::Slice& slice() const { return slice_; }
 
   bool written() const { return written_; }
   void set_written(bool written) { written_ = written; }
 
+  // An alignment of 0 means that the alignment attribute shouldn't be set.
   int64_t alignment() const { return alignment_; }
   void set_alignment(int64_t alignment) { alignment_ = alignment; }
 
@@ -49,6 +64,7 @@ class KernelArgument {
   void set_slice_index(int64_t slice_index) { slice_index_ = slice_index; }
 
  private:
+  Kind kind_;
   Shape shape_;
   BufferAllocation::Slice slice_;
   bool aliased_ = true;
@@ -79,6 +95,15 @@ class KernelArguments {
     // Minimum alignment for constant buffers.
     int64_t constant_buffer_align_bytes;
   };
+
+  // Creates a KernelArguments object for the given HLO instruction.
+  // The unmanaged_arguments are added to the end of the list of input/output
+  // arguments.
+  static absl::StatusOr<KernelArguments> Create(
+      const BufferAssignment& buffer_assignment,
+      const BufferAlignment& buffer_alignment,
+      const HloInstruction* hlo_instruction,
+      absl::Span<const Shape> unmanaged_arguments);
 
   static absl::StatusOr<KernelArguments> Create(
       const BufferAssignment& buffer_assignment,
@@ -128,6 +153,15 @@ class KernelArguments {
       output_flags.push_back(arg.written());
     }
     return output_flags;
+  }
+
+  std::vector<KernelArgument::Kind> GetArgumentKinds() const {
+    std::vector<KernelArgument::Kind> kinds;
+    kinds.reserve(args_.size());
+    for (const KernelArgument& arg : args_) {
+      kinds.push_back(arg.kind());
+    }
+    return kinds;
   }
 
  private:

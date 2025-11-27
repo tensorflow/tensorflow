@@ -292,6 +292,37 @@ absl::StatusOr<TensorValue> EmitAllReduce(
   return accumulator;
 }
 
+absl::StatusOr<std::vector<Shape>> GetAllReduceUnmanagedKernelArguments(
+    const HloComputation* computation,
+    const HloAllReduceInstruction* all_reduce) {
+  const int32_t num_devices = all_reduce->device_list().num_devices_per_group();
+  std::vector<Shape> unmanaged_arguments;
+  unmanaged_arguments.reserve(computation->num_parameters() +
+                              kNumCollectiveMetadataArgs);
+
+  // rank and signal_value
+  unmanaged_arguments.push_back(ShapeUtil::MakeShape(S32, {}));
+  unmanaged_arguments.push_back(ShapeUtil::MakeShape(S32, {}));
+  // The shape for signal and scratch buffers does not really matter in the end
+  // because this would just be a pointer. For documentation purposes we add
+  // the correct shape which would be
+  // - num_devices * num_blocks for the signal buffer.
+  // - num_devices * shape of the parameter for scratch buffers.
+  // Since number of blocks is not known in this context we use a constant.
+  static constexpr int32_t kMaxBlocksPerGrid = 24;
+  unmanaged_arguments.push_back(
+      ShapeUtil::MakeShape(S32, {num_devices, kMaxBlocksPerGrid}));
+  // Scratch buffers
+  for (const HloInstruction* instr : computation->parameter_instructions()) {
+    Shape shape =
+        ShapeUtil::InsertDimensionAtIndex(instr->shape(), 0, num_devices);
+    unmanaged_arguments.push_back(shape);
+  }
+  TF_RET_CHECK(unmanaged_arguments.size() ==
+               computation->num_parameters() + kNumCollectiveMetadataArgs);
+  return unmanaged_arguments;
+}
+
 }  // namespace
 
 absl::StatusOr<std::optional<BlockLevelFusionConfig>>
@@ -325,6 +356,19 @@ absl::StatusOr<bool> TrySetGpuBackendConfigForCollective(
   TF_RETURN_IF_ERROR(
       fusion_instr->set_backend_config(std::move(gpu_backend_config)));
   return true;
+}
+
+absl::StatusOr<std::vector<Shape>> GetCollectiveUnmanagedKernelArguments(
+    const HloFusionInstruction* fusion) {
+  const HloComputation* computation = fusion->fused_instructions_computation();
+  const HloInstruction* root = computation->root_instruction();
+  switch (root->opcode()) {
+    case HloOpcode::kAllReduceStart:
+      return GetAllReduceUnmanagedKernelArguments(
+          computation, Cast<HloAllReduceInstruction>(root));
+    default:
+      return std::vector<Shape>();
+  }
 }
 
 absl::StatusOr<int32_t> AddCollectiveMetadataArguments(

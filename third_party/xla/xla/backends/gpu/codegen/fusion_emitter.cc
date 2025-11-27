@@ -15,6 +15,7 @@ limitations under the License.
 #include "xla/backends/gpu/codegen/fusion_emitter.h"
 
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/log/check.h"
@@ -38,8 +39,6 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "llvm/TargetParser/Triple.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
-#include "mlir/IR/AffineExpr.h"
-#include "mlir/IR/AffineMap.h"
 #include "xla/codegen/emitters/kernel_api_builder.h"
 #include "xla/codegen/emitters/kernel_arguments.h"
 #include "xla/hlo/analysis/indexing_map.h"
@@ -125,10 +124,28 @@ absl::StatusOr<llvm::Function*> BuildKernelPrototypeFromUniqueName(
   llvm::LLVMContext& context = llvm_module->getContext();
   // Explicitly set global addrspace for SPIR backend.
   int addrspace = llvm::Triple(llvm_module->getTargetTriple()).isSPIR() ? 1 : 0;
+  std::vector<llvm::Type*> kernel_args;
+  kernel_args.reserve(arguments.args().size());
+  for (const auto& arg : arguments.args()) {
+    // Handle pointer arguments.
+    // Either managed OR unmanaged with non-scalar shape.
+    if (arg.kind() == emitters::KernelArgument::Kind::kManaged ||
+        !arg.shape().dimensions().empty()) {
+      kernel_args.push_back(builder->getPtrTy(addrspace));
+      continue;
+    }
+    // Handle scalars.
+    llvm::Type* ir_type =
+        llvm_ir::PrimitiveTypeToIrType(arg.shape().element_type(), context);
+    if (!ir_type) {
+      return absl::InvalidArgumentError(
+          absl::StrCat("Unsupported scalar type: ",
+                       PrimitiveType_Name(arg.shape().element_type())));
+    }
+    kernel_args.push_back(ir_type);
+  }
   llvm::FunctionType* kernel_type = llvm::FunctionType::get(
-      /*Result=*/llvm::Type::getVoidTy(context),
-      std::vector<llvm::Type*>(arguments.args().size(),
-                               builder->getPtrTy(addrspace)),
+      /*Result=*/llvm::Type::getVoidTy(context), std::move(kernel_args),
       /*isVarArg=*/false);
   llvm::Function* kernel =
       llvm::Function::Create(kernel_type, llvm::GlobalValue::ExternalLinkage,
@@ -166,7 +183,8 @@ absl::StatusOr<llvm::Function*> BuildKernelPrototypeFromUniqueName(
     if (impl_arg && impl_arg->hasAttribute(llvm::Attribute::Alignment)) {
       kernel->addParamAttr(arg_idx,
                            impl_arg->getAttribute(llvm::Attribute::Alignment));
-    } else {
+    } else if (kernel_argument.alignment() > 0) {
+      // Scalars don't need an alignment attribute.
       kernel->addParamAttr(arg_idx,
                            llvm::Attribute::get(llvm_arg.getContext(),
                                                 llvm::Attribute::Alignment,

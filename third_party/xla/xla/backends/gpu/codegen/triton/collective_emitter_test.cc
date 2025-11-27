@@ -219,6 +219,25 @@ TEST_F(CollectiveEmitterTest, AllReduceBlockLevelConfigNoReplicaGroups) {
   EXPECT_EQ(block_level_config, std::nullopt);
 }
 
+TEST_F(CollectiveEmitterTest, AllReduceGetCollectiveUnmanagedKernelArguments) {
+  TF_ASSERT_OK_AND_ASSIGN(
+      const auto module_with_fusion,
+      BuildModuleWithFusion(GetModuleStr(ShapeUtil::MakeShape(F32, {65536}))));
+  TF_ASSERT_OK_AND_ASSIGN(
+      const auto unmanaged_arguments,
+      GetCollectiveUnmanagedKernelArguments(module_with_fusion.FusionInstr()));
+  ASSERT_EQ(unmanaged_arguments.size(), 4);
+  EXPECT_EQ(unmanaged_arguments[0].dimensions().size(), 0);
+  EXPECT_EQ(unmanaged_arguments[1].dimensions().size(), 0);
+  // num_devices x input_shape
+  ASSERT_EQ(unmanaged_arguments[2].dimensions().size(), 2);
+  EXPECT_EQ(unmanaged_arguments[2].dimensions()[0], 2);  // num_devices
+
+  ASSERT_EQ(unmanaged_arguments[3].dimensions().size(), 2);
+  EXPECT_EQ(unmanaged_arguments[3].dimensions()[0], 2);      // num_devices
+  EXPECT_EQ(unmanaged_arguments[3].dimensions()[1], 65536);  // input_shape[0]
+}
+
 TEST_F(CollectiveEmitterTest, AllReduceWithTritonGetLaunchConfig) {
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<ModuleWithEmitter> result_ptr,
