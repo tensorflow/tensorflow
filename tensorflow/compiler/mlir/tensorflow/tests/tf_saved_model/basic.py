@@ -36,7 +36,8 @@ class TestModule(tf.Module):
   def __init__(self):
     super(TestModule, self).__init__()
     self.v42 = tf.Variable(42.0)
-    self.c43 = tf.constant(43.0)
+    # Use convert_to_tensor to avoid forcing eager `.numpy()` in graph/XLA mode.
+    self.c43 = tf.convert_to_tensor(43.0, dtype=tf.float32)
 
   # During serialization, the constants are given internal (non-user-accessible, non-semantically-load-bearing) exported names.
   # CHECK: "tf_saved_model.global_tensor"() <{sym_name = "[[CONST:[a-zA-Z_0-9.]+]]", type = tensor<f32>, value = dense<4.300000e+01> : tensor<f32>}> {tf_saved_model.exported_names = [{{.*}}]} : () -> ()
