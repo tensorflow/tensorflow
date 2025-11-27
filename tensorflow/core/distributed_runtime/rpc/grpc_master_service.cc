@@ -304,8 +304,7 @@ class GrpcMasterService : public tsl::AsyncServiceInterface {
       absl::string_view name,
       const std::multimap<::grpc::string_ref, ::grpc::string_ref>& metadata) {
     absl::string_view id;
-    auto it = metadata.find(GrpcIdKey());
-    if (it != metadata.end()) {
+    if (const auto [it, end] = metadata.equal_range(GrpcIdKey()); it != end) {
       id = absl::string_view(it->second.data(), it->second.size());
     }
     return new tsl::profiler::TraceMe(
