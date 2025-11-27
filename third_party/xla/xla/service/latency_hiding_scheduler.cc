@@ -1480,7 +1480,13 @@ class ReadySetLt {
       static_assert(
           std::is_trivially_copyable_v<DefaultSchedulerCore::ScheduleCandidate>,
           "ScheduleCandidate should be is_trivially_copyable");
-      memcpy(&b, &a, sizeof(DefaultSchedulerCore::ScheduleCandidate));
+      if (VLOG_IS_ON(2)) {
+        DefaultSchedulerCore::ScheduleCandidate tmp = b;
+        memcpy(&b, &a, sizeof(DefaultSchedulerCore::ScheduleCandidate));
+        memcpy(&a, &tmp, sizeof(DefaultSchedulerCore::ScheduleCandidate));
+      } else {
+        memcpy(&b, &a, sizeof(DefaultSchedulerCore::ScheduleCandidate));
+      }
     }
     return result;
   }
@@ -1753,19 +1759,11 @@ DefaultSchedulerCore::FindAndExtractBestNodeAvailable(
               return std::string("N/A");
             };
         VLOG(2) << "Choosing from ready ("
-                << (new_candidate_selected
-                        ? ready_candidate.node->GetInstr().name()
-                        : ready_chosen.node->GetInstr().name())
-                << ") vs ("
-                << (new_candidate_selected
-                        ? ready_chosen.node->GetInstr().name()
-                        : ready_candidate.node->GetInstr().name())
+                << ready_chosen.node->GetInstr().name() << ") vs ("
+                << ready_candidate.node->GetInstr().name()
                 << ") Reason: " << reason << " mem pressure chosen "
-                << print_pressure_change(
-                       new_candidate_selected ? ready_candidate : ready_chosen)
-                << " mem pressure other "
-                << print_pressure_change(
-                       new_candidate_selected ? ready_chosen : ready_candidate);
+                << print_pressure_change(ready_chosen) << " mem pressure other "
+                << print_pressure_change(ready_candidate);
       }
 
       if (new_candidate_selected) {
