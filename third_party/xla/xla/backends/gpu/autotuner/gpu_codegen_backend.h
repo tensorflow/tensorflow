@@ -96,6 +96,7 @@ class GpuCodegenBackend : public CodegenBackend {
   static void AdjustDebugOptionsForAutotuning(
       DebugOptions& debug_options, bool force_allow_register_spills) {
     debug_options.set_xla_enable_dumping(false);
+    debug_options.set_xla_gpu_dump_llvmir(false);
     // Avoid using another thread pool.
     debug_options.set_xla_gpu_force_compilation_parallelism(1);
     debug_options.set_xla_gpu_enable_llvm_module_compilation_parallelism(false);
@@ -114,6 +115,10 @@ class GpuCodegenBackend : public CodegenBackend {
               .xla_gpu_filter_kernels_spilling_registers_on_autotuning() &&
           !force_allow_register_spills);
     }
+    // Avoid dumping compilation steps.
+    debug_options.set_xla_gpu_dump_autotune_results_to("");
+    debug_options.set_xla_gpu_load_autotune_results_from("");
+    debug_options.set_xla_gpu_dump_autotune_logs_to("");
   }
 
  private:
