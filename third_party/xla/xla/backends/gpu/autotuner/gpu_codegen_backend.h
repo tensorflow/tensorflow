@@ -86,11 +86,11 @@ class GpuCodegenBackend : public CodegenBackend {
   }
 
   bool CanProduceWrongResults() const override { return false; }
+  // When called, the backend will not set
+  // `xla_gpu_fail_ptx_compilation_on_register_spilling` flag during autotuning,
+  // keeping the value already set in module config.
   // TODO b/443207721 - Remove this once we have a better way to handle register
   // spilling during autotuning.
-  // Allows compilation to succeed even if kernels spill registers,
-  // ignoring the `xla_gpu_filter_kernels_spilling_registers_on_autotuning`
-  // flag. If not called, the flag's value is honored.
   void AllowRegisterSpills() { allow_register_spills_ = true; }
 
   static void AdjustDebugOptionsForAutotuning(
@@ -107,9 +107,12 @@ class GpuCodegenBackend : public CodegenBackend {
     debug_options.set_xla_embed_ir_in_executable(false);
     debug_options.set_xla_gpu_kernel_cache_file("");
     debug_options.set_xla_enable_scoped_logging_timers(false);
-    if (force_allow_register_spills) {
-      debug_options.set_xla_gpu_filter_kernels_spilling_registers_on_autotuning(
-          false);
+    // Don't touch the "fail on register spilling" flag if it's already on.
+    if (!debug_options.xla_gpu_fail_ptx_compilation_on_register_spilling()) {
+      debug_options.set_xla_gpu_fail_ptx_compilation_on_register_spilling(
+          debug_options
+              .xla_gpu_filter_kernels_spilling_registers_on_autotuning() &&
+          !force_allow_register_spills);
     }
   }
 

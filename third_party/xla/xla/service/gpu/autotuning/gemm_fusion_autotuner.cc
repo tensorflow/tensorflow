@@ -303,8 +303,7 @@ absl::StatusOr<std::unique_ptr<HloModule>> TritonGemmAutotuneExtractor(
   std::unique_ptr<HloModule> new_module =
       ExtractInstructionIntoNewModule(*fusion);
   if (!allow_filtering_kernels_spilling_registers) {
-    debug_opts.set_xla_gpu_filter_kernels_spilling_registers_on_autotuning(
-        false);
+    debug_opts.set_xla_gpu_fail_ptx_compilation_on_register_spilling(true);
   }
   new_module->mutable_config().set_debug_options(debug_opts);
 

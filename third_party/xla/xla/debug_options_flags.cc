@@ -2147,7 +2147,8 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
           &DebugOptions::
               set_xla_gpu_filter_kernels_spilling_registers_on_autotuning),
       debug_options->xla_gpu_filter_kernels_spilling_registers_on_autotuning(),
-      "Filter out kernels that spill registers during autotuning"));
+      "Filter out kernels that spill registers during autotuning. Default is "
+      "true."));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_fail_ptx_compilation_on_register_spilling",
       bool_setter_for(
