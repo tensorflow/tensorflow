@@ -1228,6 +1228,7 @@ xla_cc_test(
         ":user_context_test_util",
         "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/platform:status_to_from_proto",
+        "//xla/tsl/protobuf:status_proto_cc",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:cord",
