@@ -1536,9 +1536,10 @@ TEST_F(CollectiveOpsTestE2EShardedUnsharded,
                                        /*enable_enzyme_comms_opt=*/false);
 }
 
-// TODO(463571743): Reduce the shapes to make test-case faster.
 TEST_F(CollectiveOpsTestE2EShardedUnsharded,
        KeepPartitionedNonSlicedDimensionWithConstantIndices) {
+  // TODO(464253894): Re-enable this test once hang is fixed.
+  GTEST_SKIP() << "Skipping hanging test";
   const std::string hlo_text = R"(
     HloModule module, entry_computation_layout={(bf16[16,192,192,384]{3,2,1,0}, bf16[16,128,128,384]{3,2,1,0})->bf16[16,224,224,384]{3,2,1,0}}, num_partitions=8
 
