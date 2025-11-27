@@ -2571,10 +2571,9 @@ absl::StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<GpuExecutable> gpu_executable,
       GpuExecutable::Create(GpuExecutable::Params{
-          /*asm_text=*/(options.is_autotuning_compilation &&
-                        !res.backend_result.binary.empty())
-              ? std::string()
-              : std::move(res.backend_result.asm_text),
+          /*asm_text=*/embed_ir_in_executable
+              ? std::move(res.backend_result.asm_text)
+              : std::string(),
           /*binary=*/std::move(res.backend_result.binary),
           /*dnn_compiled_graphs=*/
           std::move(dnn_compiled_graphs),
@@ -2596,28 +2595,24 @@ absl::StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
           /*debug_module=*/options.is_autotuning_compilation
               ? std::unique_ptr<HloModule>()
               : std::move(module),
-          /*enable_debug_info_manager=*/!options.is_autotuning_compilation}));
+          /*enable_debug_info_manager=*/embed_ir_in_executable}));
 
   if (embed_ir_in_executable) {
     std::string ir_module_string_before_opt =
         llvm_ir::DumpToString(res.compile_module_results.llvm_module.get());
     gpu_executable->set_ir_module_string(ir_module_string_before_opt);
     DCHECK_NE("", ir_module_string_before_opt);
+    if (gpu_executable->has_module()) {
+      auto hlo_proto = std::make_unique<HloProto>();
+      *hlo_proto->mutable_buffer_assignment() =
+          gpu_executable->buffer_assignment()->ToProto();
+      gpu_executable->set_hlo_proto(std::move(hlo_proto));
+      gpu_executable->set_debug_info(
+          gpu_executable->buffer_assignment()->StatsString(alias_info_ptr));
+    }
   }
 
   IncrementCompiledProgramsCount();
-
-  if (!options.is_autotuning_compilation && gpu_executable->has_module()) {
-    // Dump computation proto state and buffer assignment for
-    // CompiledMemoryAnalysis.
-    auto hlo_proto = std::make_unique<HloProto>();
-    *hlo_proto->mutable_buffer_assignment() =
-        gpu_executable->buffer_assignment()->ToProto();
-    gpu_executable->set_hlo_proto(std::move(hlo_proto));
-    gpu_executable->set_debug_info(
-        gpu_executable->buffer_assignment()->StatsString(alias_info_ptr));
-  }
-
   return static_cast<std::unique_ptr<Executable>>(std::move(gpu_executable));
 }
 
