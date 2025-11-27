@@ -19,6 +19,8 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/status/status.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/control_flow.h"
 #include "tensorflow/core/framework/device_base.h"
