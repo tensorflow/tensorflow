@@ -29,7 +29,6 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/debug_options_flags.h"
-#include "xla/hlo/analysis/hlo_dataflow_analysis.h"
 #include "xla/hlo/analysis/hlo_reachability.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -292,11 +291,11 @@ bool MultiOutputFusion::LegalToFuseMainConstraints(HloInstruction* instr1,
   // If both nodes are in-place operations and they use a common in-place
   // operand, we can't fuse these two.
   for (const auto& operand_and_output_index1 :
-       HloDataflowAnalysis::GetInPlaceInputOutputPairs(instr1)) {
+       alias_info_->GetInPlaceInputOutputPairs(instr1)) {
     const HloInstruction* operand =
         instr1->operand(operand_and_output_index1.first.operand_number);
     for (const auto& operand_and_output_index2 :
-         HloDataflowAnalysis::GetInPlaceInputOutputPairs(instr2)) {
+         alias_info_->GetInPlaceInputOutputPairs(instr2)) {
       if (operand ==
           instr2->operand(operand_and_output_index2.first.operand_number)) {
         return false;

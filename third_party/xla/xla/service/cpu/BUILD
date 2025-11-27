@@ -1790,9 +1790,9 @@ cc_library(
     deps = [
         "//xla:shape_util",
         "//xla/codegen/emitters:elemental_hlo_to_mlir",
+        "//xla/hlo/analysis:alias_info",
         "//xla/hlo/ir:hlo",
         "//xla/service:multi_output_fusion",
-        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings:string_view",
     ],
@@ -1803,6 +1803,7 @@ xla_cc_test(
     srcs = ["cpu_multi_output_fusion_test.cc"],
     deps = [
         ":cpu_multi_output_fusion",
+        "//xla/hlo/analysis:alias_info",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/hlo/utils:hlo_matchers",

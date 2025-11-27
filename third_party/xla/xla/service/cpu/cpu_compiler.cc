@@ -1020,8 +1020,9 @@ absl::Status CpuCompiler::RunHloPassesAfterLayoutAssn(
     pipeline.AddPass<FusionWrapper>(use_experimental_loop_fusion);
   }
 
+  AliasInfo alias_info;
   if (use_multi_output_fusion) {
-    pipeline.AddPass<CpuMultiOutputFusion>();
+    pipeline.AddPass<CpuMultiOutputFusion>(&alias_info);
     pipeline.AddPass<TupleSimplifier>();
   }
 
@@ -1084,7 +1085,6 @@ absl::Status CpuCompiler::RunHloPassesAfterLayoutAssn(
   pipeline.AddPass<OptimizeInputOutputBufferAlias>(true);
 
   // If enabled we'll use more precise region based analysis for copy removal.
-  AliasInfo alias_info;
   if (debug_options.xla_cpu_copy_insertion_use_region_analysis()) {
     pipeline.AddPass<CopyInsertion>(
         &alias_info,
