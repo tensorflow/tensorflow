@@ -35,3 +35,5 @@ jobs:
                                         -Dsonar.c.file.suffixes=-
                                                             -Dsonar.cpp.file.suffixes=-
                                                                                 -Dsonar.objc.file.suffixes=-
+                                                                                                    -Dsonar.qualitygate.wait=true
+                                                                                                                        -Dsonar.coverage.exclusions=**/*
