@@ -16,18 +16,18 @@ limitations under the License.
 #include "xla/service/gpu/gpu_float_support.h"
 
 #include <utility>
-#include <variant>
 
 #include "absl/algorithm/container.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "xla/backends/gpu/codegen/triton/support.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/primitive_util.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/float_support.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/xla_data.pb.h"
@@ -57,9 +57,17 @@ bool GpuFloatSupport::SupportsMixedPrecisions(const HloInstruction& hlo) const {
   }
 }
 
+bool IsAnySubByteNonPredType(const Shape& shape) {
+  bool result = false;
+  ShapeUtil::ForEachSubshape(
+      shape, [&](const Shape& subshape, const ShapeIndex& /*index*/) {
+        result |= primitive_util::IsSubByteNonPredType(subshape.element_type());
+      });
+  return result;
+}
+
 bool GpuFloatSupport::IsSupported(const HloInstruction& hlo) const {
-  if (IsCollective(&hlo) &&
-      primitive_util::IsSubByteNonPredType(hlo.shape().element_type())) {
+  if (IsCollective(&hlo) && IsAnySubByteNonPredType(hlo.shape())) {
     return false;
   }
   switch (hlo.opcode()) {
