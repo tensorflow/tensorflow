@@ -17,6 +17,7 @@ limitations under the License.
 #define XLA_PYTHON_IFRT_MPMD_EXECUTABLE_H_
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -28,6 +29,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/python/ifrt/attribute_map.h"
 #include "xla/python/ifrt/device.h"
+#include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/executable.h"
 
 namespace xla {
@@ -42,8 +44,8 @@ class MpmdLoadedExecutable
 
   // Returns a mapping between atom program name and addressable devices.
   virtual absl::StatusOr<
-      absl::flat_hash_map<std::string, absl::Span<Device* const>>>
-  GetMpmdAddressableDevices() const = 0;
+      absl::flat_hash_map<std::string, std::optional<xla::ifrt::DeviceListRef>>>
+  GetMpmdDevices() const = 0;
 
   // Returns a mapping between atom program name and CompiledMemoryStats.
   virtual absl::StatusOr<absl::flat_hash_map<std::string, CompiledMemoryStats>>
