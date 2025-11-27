@@ -98,7 +98,7 @@ jobs:
             echo "Pull Request Base Ref: ${{ github.event.pull_request.base.ref }}"
           fi
       # Find the current PR number, if any, because github context doesn't have it for push events.
-      - uses: jwalton/gh-find-current-pr@2f6a0c6ed5c54c19f04d8411e0723b3de68f464a # v1.3.3
+      - uses: jwalton/gh-find-current-pr@89ee5799558265a1e0e31fab792ebb4ee91c016b # v1.3.3
         id: find_pr
         with:
           # Can be "open", "closed", or "all".  Defaults to "open".
