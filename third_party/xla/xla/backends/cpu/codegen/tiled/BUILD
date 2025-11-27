@@ -64,5 +64,6 @@ cc_library(
         "@llvm-project//mlir:IR",
     ] + if_cuda_or_rocm_is_configured([
         "//xla/backends/gpu/codegen/triton:fusion_emitter",
+        "//xla/backends/gpu/codegen/triton/ir:triton_xla",
     ]),
 )

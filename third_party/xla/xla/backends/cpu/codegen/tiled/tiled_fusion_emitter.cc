@@ -34,6 +34,7 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"
 #include "xla/backends/cpu/codegen/kernel_api_ir_builder.h"
 #include "xla/backends/gpu/codegen/triton/fusion_emitter.h"
+#include "xla/backends/gpu/codegen/triton/ir/triton_xla_ops.h"
 #include "xla/codegen/emitters/ir/xla_ops.h"
 #include "xla/codegen/emitters/kernel_api_builder.h"
 #include "xla/codegen/kernel_definition.h"
@@ -199,6 +200,10 @@ absl::StatusOr<KernelDefinition<MlirKernelSource>> EmitTiledFusionKernel(
     mlir::MLIRContext& context, const HloFusionInstruction& fusion,
     const BufferAssignment* buffer_assignment, absl::string_view name,
     int64_t num_work_groups, absl::Span<const FlatTiling> tiling) {
+  // TODO(willfroom): Remove this once the tiled emitter is untangled from
+  // triton.
+  context.loadDialect<mlir::triton::xla::XlaTritonDialect>();
+
   gpu::BlockLevelParameters block_level_parameters;
   for (const auto& tile_sizes : tiling) {
     block_level_parameters.output_tile_sizes.emplace_back(tile_sizes.begin(),
