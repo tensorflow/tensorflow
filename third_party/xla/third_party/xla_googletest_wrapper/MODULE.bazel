@@ -1,0 +1,4 @@
+module(name = "xla_googletest_wrapper", version = "1.0")
+
+bazel_dep(name = "abseil-cpp", version = "20250814.0", repo_name = "com_google_absl")
+bazel_dep(name = "googletest", version = "1.17.0", repo_name = "com_google_googletest_upstream")
