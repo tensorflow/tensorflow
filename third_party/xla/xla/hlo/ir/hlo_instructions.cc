@@ -63,6 +63,7 @@ limitations under the License.
 #include "xla/tsl/lib/gtl/iterator_range.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"  // IWYU pragma: keep
+#include "xla/tsl/platform/status.h"
 #include "xla/util.h"
 #include "xla/window_util.h"
 #include "xla/xla_data.pb.h"
@@ -2009,11 +2010,11 @@ HloCallableInstruction::CloneAndAppendInstructionIntoCalledComputation(
         // the clone.
         HloInstruction* called_computation_parameter =
             called_computation_parameters[operand_num];
-        CHECK_OK(called_computation_parameter->ReplaceAllUsesWith(clone));
+        TF_CHECK_OK(called_computation_parameter->ReplaceAllUsesWith(clone));
 
         // Remove the corresponding called computation parameter and operand
         // from their respective vectors.
-        CHECK_OK(called_computation()->RemoveParameter(operand_num));
+        TF_CHECK_OK(called_computation()->RemoveParameter(operand_num));
         RemoveOperandAt(operand_num);
         break;
       }
@@ -2060,7 +2061,7 @@ HloCallableInstruction::CloneAndAppendInstructionIntoCalledComputation(
       // original value is saved in the corresponding argument.
       called_computation_parameter = AddCallOperand(operand);
     }
-    CHECK_OK(
+    TF_CHECK_OK(
         clone->ReplaceOperandWith(operand_num, called_computation_parameter));
   }
 
@@ -2081,7 +2082,7 @@ HloCallableInstruction::CloneAndAppendInstructionIntoCalledComputation(
         if (root->operand(i) == clone) {
           HloInstruction* new_gte = AddInstruction(
               HloInstruction::CreateGetTupleElement(clone->shape(), this, i));
-          CHECK_OK(instruction_to_append->ReplaceAllUsesWith(new_gte));
+          TF_CHECK_OK(instruction_to_append->ReplaceAllUsesWith(new_gte));
           return clone;
         }
       }
@@ -2124,7 +2125,7 @@ HloCallableInstruction::CloneAndAppendInstructionIntoCalledComputation(
     // be valid after we change the shape. So clear the sharding.
     clear_sharding();
     if (root->opcode() == HloOpcode::kTuple) {
-      CHECK_OK(called_computation()->RemoveInstruction(root));
+      TF_CHECK_OK(called_computation()->RemoveInstruction(root));
     }
 
     // If this is a newly created multioutput instruction, we need to update
@@ -2132,7 +2133,7 @@ HloCallableInstruction::CloneAndAppendInstructionIntoCalledComputation(
     if (newly_created_tuple_instr) {
       HloInstruction* new_instr = AddInstruction(
           HloInstruction::CreateGetTupleElement(root->shape(), this, 0));
-      CHECK_OK(ReplaceAllUsesWithDifferentShape(new_instr));
+      TF_CHECK_OK(ReplaceAllUsesWithDifferentShape(new_instr));
     }
     int64_t index = tuple_elements.size();
     if (do_not_clone) {
@@ -2147,17 +2148,17 @@ HloCallableInstruction::CloneAndAppendInstructionIntoCalledComputation(
         HloInstruction* new_gte =
             AddInstruction(HloInstruction::CreateGetTupleElement(
                 old_gte->shape(), this, index + old_tuple_index));
-        CHECK_OK(old_gte->ReplaceAllUsesWith(new_gte));
+        TF_CHECK_OK(old_gte->ReplaceAllUsesWith(new_gte));
         to_be_removed.push_back(old_gte);
       }
       for (auto old_gte : to_be_removed) {
-        CHECK_OK(parent()->RemoveInstruction(old_gte));
+        TF_CHECK_OK(parent()->RemoveInstruction(old_gte));
       }
     } else {
       HloInstruction* new_gte =
           AddInstruction(HloInstruction::CreateGetTupleElement(
               clone->shape(), this, index - 1));
-      CHECK_OK(instruction_to_append->ReplaceAllUsesWith(new_gte));
+      TF_CHECK_OK(instruction_to_append->ReplaceAllUsesWith(new_gte));
     }
   }
 
@@ -2338,7 +2339,7 @@ void HloFusionInstruction::MergeFusionInstruction(
        fused_it != fused_instructions.rend(); ++fused_it) {
     auto fused_instruction = *fused_it;
     if (fused_instruction->opcode() == HloOpcode::kParameter) {
-      CHECK_OK(
+      TF_CHECK_OK(
           fused_instruction->ReplaceAllUsesWith(cloned_fusion->mutable_operand(
               fused_instruction->parameter_number())));
     } else {
@@ -2359,7 +2360,7 @@ void HloFusionInstruction::MergeFusionInstruction(
   CHECK(unfused_root == cloned_fusion->fused_expression_root() ||
         unfused_instructions.empty());
   // Replace instruction_to_merge use of 'this' with unfused_root.
-  CHECK_OK(instruction_to_merge->ReplaceUseWith(this, unfused_root));
+  TF_CHECK_OK(instruction_to_merge->ReplaceUseWith(this, unfused_root));
 
   // Build a dummy root for the cloned fusion as we may remove the original
   // root in the fusion process.
@@ -2377,11 +2378,11 @@ void HloFusionInstruction::MergeFusionInstruction(
   // decide if a side-effectful instruction is fusible).
   for (auto& instruction : unfused_instructions) {
     auto* fused = FuseInstruction(instruction);
-    CHECK_OK(instruction->ReplaceAllUsesWith(fused));
-    CHECK_OK(instruction->parent()->RemoveInstruction(instruction));
+    TF_CHECK_OK(instruction->ReplaceAllUsesWith(fused));
+    TF_CHECK_OK(instruction->parent()->RemoveInstruction(instruction));
   }
   CHECK_EQ(0, cloned_fusion->user_count());
-  CHECK_OK(GetModule()->RemoveEmbeddedComputation(
+  TF_CHECK_OK(GetModule()->RemoveEmbeddedComputation(
       cloned_fusion->fused_instructions_computation()));
 }
 
@@ -2455,8 +2456,8 @@ void HloFusionInstruction::MergeFusionInstructionIntoMultiOutput(
       for (HloInstruction* gte : instruction_to_merge->users()) {
         if (gte->opcode() == HloOpcode::kGetTupleElement &&
             gte->tuple_index() == tuple_index) {
-          CHECK_OK(gte->ReplaceAllUsesWith(new_root));
-          CHECK_OK(gte->parent()->RemoveInstruction(gte));
+          TF_CHECK_OK(gte->ReplaceAllUsesWith(new_root));
+          TF_CHECK_OK(gte->parent()->RemoveInstruction(gte));
         }
       }
     }
@@ -2472,12 +2473,12 @@ void HloFusionInstruction::MergeFusionInstructionIntoMultiOutput(
                       ->parameter_number())
             : unfused_instructions.back();
     new_roots.insert(unfused_root);
-    CHECK_OK(instruction_to_merge->ReplaceAllUsesWith(unfused_root));
+    TF_CHECK_OK(instruction_to_merge->ReplaceAllUsesWith(unfused_root));
   }
-  CHECK_OK(
+  TF_CHECK_OK(
       instruction_to_merge->parent()->RemoveInstruction(instruction_to_merge));
   if (GetModule()) {
-    CHECK_OK(GetModule()->RemoveEmbeddedComputation(computation_to_merge));
+    TF_CHECK_OK(GetModule()->RemoveEmbeddedComputation(computation_to_merge));
   }
   for (int64_t i = unfused_instructions.size() - 1; i >= 0; --i) {
     HloInstruction* instruction = unfused_instructions[i];
@@ -2486,7 +2487,7 @@ void HloFusionInstruction::MergeFusionInstructionIntoMultiOutput(
     } else {
       FuseInstruction(instruction);
     }
-    CHECK_OK(instruction->parent()->RemoveInstruction(instruction));
+    TF_CHECK_OK(instruction->parent()->RemoveInstruction(instruction));
   }
 }
 

@@ -34,6 +34,7 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tools/hlo_extractor.h"
+#include "tsl/platform/status.h"
 
 namespace xla {
 namespace {
@@ -143,7 +144,7 @@ void RemoveSharding(HloModule* hlo_module) {
     // Verify if the module is still valid.
     HloVerifier verifier(/*layout_sensitive=*/false,
                          /*allow_mixed_precision=*/true);
-    CHECK_OK(verifier.Run(hlo_module).status());
+    TF_CHECK_OK(verifier.Run(hlo_module).status());
   }
 }
 
@@ -531,7 +532,7 @@ std::vector<std::unique_ptr<HloModule>> SliceModuleAndExtract(
     // Verify if the extracted module (after processing) is valid or not.
     HloVerifier verifier(/*layout_sensitive=*/false,
                          /*allow_mixed_precision=*/true);
-    CHECK_OK(verifier.Run(extracted_module.get()).status());
+    TF_CHECK_OK(verifier.Run(extracted_module.get()).status());
 
     sliced_modules.emplace_back(std::move(extracted_module));
   }

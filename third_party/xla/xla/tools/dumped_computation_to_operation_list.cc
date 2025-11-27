@@ -41,8 +41,10 @@ limitations under the License.
 #include "xla/service/local_service.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/tsl/platform/env.h"
+#include "tsl/platform/env.h"
 #include "tsl/platform/init_main.h"
+#include "tsl/platform/logging.h"
+#include "tsl/platform/status.h"
 
 namespace xla {
 namespace tools {
@@ -74,7 +76,7 @@ void RealMain(absl::Span<char* const> args) {
       ClientLibrary::GetXlaService(client->platform());
   for (char* arg : args) {
     HloSnapshot snapshot;
-    CHECK_OK(tsl::ReadBinaryProto(tsl::Env::Default(), arg, &snapshot));
+    TF_CHECK_OK(tsl::ReadBinaryProto(tsl::Env::Default(), arg, &snapshot));
     auto computation_status = client->LoadSnapshot(snapshot);
     if (!computation_status.ok()) {
       fprintf(stderr, "could not load snapshot for %s: %s\n", arg,
@@ -102,7 +104,7 @@ void RealMain(absl::Span<char* const> args) {
 
     OperationDumper dumper(arg);
     for (auto* computation : module.computations()) {
-      CHECK_OK(computation->Accept(&dumper));
+      TF_CHECK_OK(computation->Accept(&dumper));
     }
   }
 }

@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstddef>
 #include <cstdint>
 #include <iterator>
 #include <limits>
@@ -74,6 +75,10 @@ limitations under the License.
 #include "xla/util.h"
 #include "xla/window_util.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/logging.h"
+#include "tsl/platform/status.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 
@@ -576,7 +581,7 @@ bool AlgebraicSimplifierVisitor::Run(HloComputation* computation,
                                      const AlgebraicSimplifierOptions& options,
                                      AlgebraicSimplifier* simplifier) {
   ResetState(computation);
-  CHECK_OK(computation->Accept(this));
+  TF_CHECK_OK(computation->Accept(this));
   return changed();
 }
 
@@ -793,7 +798,7 @@ void AlgebraicSimplifierVisitor::ReplaceWithBitcast(HloInstruction* instruction,
 
   auto bitcast = instruction->AddInstruction(
       HloInstruction::CreateBitcast(instruction->shape(), operand));
-  CHECK_OK(ReplaceInstruction(instruction, bitcast));
+  TF_CHECK_OK(ReplaceInstruction(instruction, bitcast));
 }
 
 // Replace the old instruction with the new one if they are compatible, i.e.,
@@ -1582,7 +1587,7 @@ bool AlgebraicSimplifierVisitor::SwapCopyBitcastCopy(
             bitcast->CloneWithNewOperands(new_shape.value(), {op})));
     VLOG(2) << "Replace with " << repl->operand(0)->ToString() << "\n"
             << repl->ToString() << "\n";
-    CHECK_OK(ReplaceWithNewInstruction(root_copy, std::move(repl)));
+    TF_CHECK_OK(ReplaceWithNewInstruction(root_copy, std::move(repl)));
     return true;
   }
 
@@ -1598,7 +1603,7 @@ bool AlgebraicSimplifierVisitor::SwapCopyBitcastCopy(
             root_copy->CloneWithNewOperands(new_shape.value(), {op})));
     VLOG(2) << "Replace with " << repl->operand(0)->ToString() << "\n"
             << repl->ToString() << "\n";
-    CHECK_OK(ReplaceWithNewInstruction(root_copy, std::move(repl)));
+    TF_CHECK_OK(ReplaceWithNewInstruction(root_copy, std::move(repl)));
     return true;
   }
   return false;
@@ -9265,7 +9270,7 @@ absl::Status AlgebraicSimplifierVisitor::HandleTranspose(
       *new_dot->mutable_shape()->mutable_layout() = transpose->shape().layout();
 
       dot->SetupDerivedInstruction(new_dot);
-      CHECK_OK(ReplaceInstruction(transpose, new_dot));
+      TF_CHECK_OK(ReplaceInstruction(transpose, new_dot));
       return true;
     }());
     if (did_transform) {
