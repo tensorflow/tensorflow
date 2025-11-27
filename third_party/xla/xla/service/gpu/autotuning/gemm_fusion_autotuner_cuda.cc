@@ -126,7 +126,9 @@ std::vector<TritonGemmConfig> GemmFusionAutotunerImpl::GetDefaultTritonConfigs()
 
   // TODO(b/449668102): Currently only supporting warp specialization on
   // Blackwell+. Potentially extend support to Hopper.
-  if (!compute_capability.IsAtLeastBlackwell()) {
+  if (!debug_options_
+           .xla_gpu_experimental_enable_triton_warp_specialization() ||
+      !compute_capability.IsAtLeastBlackwell()) {
     return tma_parameterized_configs;
   }
   std::vector<TritonGemmConfig> warp_specialized_configs;

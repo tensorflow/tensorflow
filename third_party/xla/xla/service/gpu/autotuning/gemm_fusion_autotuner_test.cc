@@ -1808,6 +1808,41 @@ TEST_F(GemmFusionAutotunerTest, TmaRunCorrectlyForDotsOfBroadcasts) {
                             ErrorSpec{/*aabs=*/5e-3, /*arel=*/5e-3}));
 }
 
+// TODO(b/449668102): Remove this test once warp specialization is enabled by
+// default.
+TEST_F(GemmFusionAutotunerTest, WarpSpecializationIsOffByDefault) {
+  if (GpuComputeComp().IsRocm()) {
+    GTEST_SKIP() << "Not supported on ROCm.";
+  }
+
+  std::unique_ptr<VerifiedHloModule> module = ParseAndReturnVerifiedModule(R"(
+    ENTRY e {
+      p0 = f32[64,64] parameter(0)
+      p1 = f32[64,64] parameter(1)
+      ROOT r = f32[64,64] dot(p0, p1),
+        lhs_contracting_dims={1}, rhs_contracting_dims={0}
+    })")
+                                                  .value();
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      const std::vector<TritonGemmConfig> configs,
+      GetPossibleMatmulAutotuneTritonConfigs(
+          *Cast<HloDotInstruction>(
+              module->entry_computation()->root_instruction()),
+          GetCudaComputeCapability(), GetToolkitVersion(),
+          GetDebugOptionsForTest(), &mlir_context_));
+
+  std::set<TritonGemmConfig> configs_set(configs.begin(), configs.end());
+
+  auto any_ws_allowed = [](const std::vector<TritonGemmConfig>& configs) {
+    return std::any_of(configs.begin(), configs.end(),
+                       [](const TritonGemmConfig& config) {
+                         return config.is_warp_specialization_allowed;
+                       });
+  };
+  EXPECT_FALSE(any_ws_allowed(configs));
+}
+
 TEST_F(GemmFusionAutotunerTest, ReadsOverrideFile) {
   if (GpuComputeComp().IsRocm()) {
     GTEST_SKIP() << "Not supported on ROCm.";
