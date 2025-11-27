@@ -1,3 +1,38 @@
+diff --ruN a/stablehlo/stablehlo/conversions/linalg/tests/miscellaneous.mlir b/stablehlo/stablehlo/conversions/linalg/tests/miscellaneous.mlir
+--- stablehlo/stablehlo/conversions/linalg/tests/miscellaneous.mlir
++++ stablehlo/stablehlo/conversions/linalg/tests/miscellaneous.mlir
+@@ -913,6 +913,15 @@
+ 
+ // -----
+ 
++// CHECK-LABEL: func @reshape_0D_0D
++func.func @reshape_0D_0D(%arg0: tensor<i32>) ->tensor<i32> {
++  %0 = "stablehlo.reshape"(%arg0) : (tensor<i32>) -> tensor<i32>
++  func.return %0 : tensor<i32>
++}
++// CHECK: return %arg0 : tensor<i32>
++
++// -----
++
+ // CHECK-LABEL: func @reshape_0D_1D_unsigned
+ // CHECK-SAME:    %[[ARG_UNSIGNED:[a-zA-Z0-9_]*]]
+ func.func @reshape_0D_1D_unsigned(%arg0: tensor<ui32>) -> tensor<1xui32> {
+diff --ruN a/stablehlo/stablehlo/conversions/linalg/transforms/StablehloLegalizeToLinalg.cpp b/stablehlo/stablehlo/conversions/linalg/transforms/StablehloLegalizeToLinalg.cpp
+--- stablehlo/stablehlo/conversions/linalg/transforms/StablehloLegalizeToLinalg.cpp
++++ stablehlo/stablehlo/conversions/linalg/transforms/StablehloLegalizeToLinalg.cpp
+@@ -1103,6 +1103,12 @@
+ 
+     if (!resultType.hasStaticShape()) return failure();
+ 
++    // If the reshape is a no-op simply fold it away.
++    if (resultType == operandType) {
++      rewriter.replaceOp(reshapeOp, operand);
++      return success();
++    }
++
+     // If any of the output dimensions is 0, the tensor has no elements. In that
+     // case, we can just replace the reshape with an empty op.
+     if (llvm::is_contained(resultType.getShape(), 0)) {
 diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.cpp b/stablehlo/stablehlo/dialect/StablehloOps.cpp
 --- stablehlo/stablehlo/dialect/StablehloOps.cpp
 +++ stablehlo/stablehlo/dialect/StablehloOps.cpp
