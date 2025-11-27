@@ -1971,11 +1971,6 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
                 bool_setter_for(&DebugOptions::set_xla_gpu_enable_triton_gemm),
                 debug_options->xla_gpu_enable_triton_gemm(),
                 "[Stable] Whether to use Triton-based matrix multiplication."));
-  // TODO(b/393299275): remove. The flag is left here as a no-op to migrate
-  // users separately from deleting the underlying functionality.
-  flag_list->push_back(tsl::Flag(
-      "xla_gpu_unsupported_generic_triton_emitter_features",
-      noop_flag_setter<std::string>, "", "[Deprecated, do not use]."));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_unsupported_enable_triton_multi_output_fusion",
       bool_setter_for(
