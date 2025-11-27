@@ -47,6 +47,7 @@ limitations under the License.
 #include "xla/stream_executor/cuda/ptx_compilation_method.h"
 #include "xla/stream_executor/cuda/ptx_compiler_support.h"
 #include "xla/stream_executor/cuda/ptx_linking_method.h"
+#include "xla/stream_executor/cuda/subprocess_compilation_support.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/platform/env.h"
@@ -198,6 +199,18 @@ class NVPTXCompilationTests
       // refactoring of the flags.
       GTEST_SKIP() << "Compilation method Ptxas is not supported with linking "
                       "method NvJitLink.";
+    }
+
+    if (compilation_method == PtxCompilationMethod::kPtxas &&
+        !stream_executor::IsSubprocessCompilationSupported()) {
+      GTEST_SKIP() << "Compilation method Ptxas is not supported "
+                      "if subprocess compilation is not supported.";
+    }
+
+    if (linking_method == PtxLinkingMethod::kNvLink &&
+        !stream_executor::IsSubprocessCompilationSupported()) {
+      GTEST_SKIP() << "Linking method NvLink is not supported if subprocess "
+                      "compilation is not supported.";
     }
   }
 

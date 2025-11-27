@@ -540,7 +540,7 @@ static absl::Status PostProcessPeeledSendRecvOps(
   return PostProcessPeeledSendRecvOps(peeled_info);
 }
 
-absl::StatusOr<bool> GpuP2PPipeliner::Run(
+absl::StatusOr<bool> GpuP2PPipeliner::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   HloPredicate should_process = ShouldPipeline;
