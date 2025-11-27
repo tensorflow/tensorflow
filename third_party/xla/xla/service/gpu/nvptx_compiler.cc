@@ -684,9 +684,7 @@ NVPTXCompiler::CompileTargetBinary(
                       GetCompilationProvider(module_config.debug_options()));
 
   se::cuda::CompilationOptions compilation_options =
-      PtxCompileOptionsFromDebugOptions(
-          module_config.debug_options(),
-          /*is_autotuning_compilation=*/options.is_autotuning_compilation);
+      PtxCompileOptionsFromDebugOptions(module_config.debug_options());
 
   se::CudaComputeCapability cc =
       *device_description.gpu_compute_capability().cuda_compute_capability();
@@ -761,8 +759,7 @@ absl::StatusOr<std::vector<uint8_t>> NVPTXCompiler::LinkModules(
   }
 
   se::cuda::CompilationOptions compilation_options =
-      PtxCompileOptionsFromDebugOptions(debug_options,
-                                        /*is_autotuning_compilation=*/false);
+      PtxCompileOptionsFromDebugOptions(debug_options);
 
   VLOG(1) << "Linking " << modules.size()
           << " modules with compilation provider "

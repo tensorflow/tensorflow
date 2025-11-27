@@ -21,7 +21,7 @@ limitations under the License.
 namespace xla::gpu {
 
 stream_executor::cuda::CompilationOptions PtxCompileOptionsFromDebugOptions(
-    const DebugOptions& debug_options, bool is_autotuning_compilation) {
+    const DebugOptions& debug_options) {
   stream_executor::cuda::CompilationOptions compilation_options;
   compilation_options.cancel_if_reg_spill =
       debug_options.xla_gpu_fail_ptx_compilation_on_register_spilling();
