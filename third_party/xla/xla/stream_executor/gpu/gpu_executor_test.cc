@@ -43,7 +43,7 @@ TEST_F(GetPointerMemorySpaceTest, Host) {
   StreamExecutor* executor = GetPlatform()->ExecutorForDevice(0).value();
   TF_ASSERT_OK_AND_ASSIGN(auto host_ptr, executor->HostMemoryAllocate(64));
   TF_ASSERT_OK_AND_ASSIGN(auto memory_space,
-                          executor->GetPointerMemorySpace(host_ptr->opaque()))
+                          executor->GetPointerMemorySpace(host_ptr->opaque()));
   EXPECT_EQ(memory_space, MemoryType::kHost);
 }
 
@@ -53,7 +53,7 @@ TEST_F(GetPointerMemorySpaceTest, HostAllocatedWithMemoryKind) {
       64, static_cast<int64_t>(stream_executor::MemoryType::kHost));
   EXPECT_FALSE(host_ptr.is_null());
   TF_ASSERT_OK_AND_ASSIGN(MemoryType memory_space,
-                          executor->GetPointerMemorySpace(host_ptr.opaque()))
+                          executor->GetPointerMemorySpace(host_ptr.opaque()));
   EXPECT_EQ(memory_space, MemoryType::kHost);
   executor->Deallocate(&host_ptr);
 }
@@ -63,7 +63,7 @@ TEST_F(GetPointerMemorySpaceTest, Device) {
   auto mem = executor->Allocate(64);
   ASSERT_NE(mem, nullptr);
   TF_ASSERT_OK_AND_ASSIGN(auto memory_space,
-                          executor->GetPointerMemorySpace(mem.opaque()))
+                          executor->GetPointerMemorySpace(mem.opaque()));
   EXPECT_EQ(memory_space, MemoryType::kDevice);
   executor->Deallocate(&mem);
 }

@@ -1411,7 +1411,7 @@ TEST(TfrtGpuClientTest, ExecutePinnedHostOutputTest) {
   EXPECT_EQ(memory_stats.host_output_size_in_bytes, 16);
 
   TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<Literal> literal,
-                          result_buffers[0]->ToLiteralSync())
+                          result_buffers[0]->ToLiteralSync());
   EXPECT_THAT(literal->data<int32_t>(), ElementsAreArray(kData));
 }
 
@@ -1448,10 +1448,10 @@ TEST(TfrtGpuClientTest, ExecutePinnedHostOutputTupleTest) {
   EXPECT_EQ(result_buffers[1]->memory_space()->kind(), "pinned_host");
 
   TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<Literal> literal,
-                          result_buffers[0]->ToLiteralSync())
+                          result_buffers[0]->ToLiteralSync());
   EXPECT_THAT(literal->data<int32_t>(), ElementsAreArray(kData));
   TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<Literal> another_literal,
-                          result_buffers[1]->ToLiteralSync())
+                          result_buffers[1]->ToLiteralSync());
   EXPECT_THAT(another_literal->data<int32_t>(), ElementsAreArray(kData));
 }
 

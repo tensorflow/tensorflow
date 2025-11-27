@@ -467,7 +467,7 @@ TEST_F(CallInlinerTest, DontInlineCallWithAttributeInlineableFalse) {
     })";
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hloString));
   module->mutable_config().set_use_shardy_partitioner(true);
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, CallInliner().Run(module.get()))
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, CallInliner().Run(module.get()));
   // The single call in the module is not inlined.
   EXPECT_FALSE(changed);
 
@@ -588,7 +588,7 @@ TEST_F(CallInlinerTest, UseShardManualComputationBodySurroundedNotInlined) {
     })";
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hloString));
   module->mutable_config().set_use_shardy_partitioner(true);
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, CallInliner().Run(module.get()))
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, CallInliner().Run(module.get()));
   // The single call in the module is not inlined.
   EXPECT_FALSE(changed);
 

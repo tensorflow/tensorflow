@@ -75,7 +75,7 @@ TEST(MultiDeviceAdapter, UsesCorrectAllocator) {
   TF_ASSERT_OK_AND_ASSIGN(auto* platform,
                           xla::PlatformUtil::GetDefaultPlatform());
   TF_ASSERT_OK_AND_ASSIGN(std::vector<StreamExecutor*> executors,
-                          xla::PlatformUtil::GetStreamExecutors(platform))
+                          xla::PlatformUtil::GetStreamExecutors(platform));
   TF_ASSERT_OK_AND_ASSIGN(auto stream, executors[0]->CreateStream());
 
   std::vector<MultiDeviceAdapter::AllocatorInfo> infos;
