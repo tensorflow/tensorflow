@@ -72,7 +72,6 @@ limitations under the License.
 #ifdef _WIN32
 #include <io.h>  // for _mktemp
 #endif
-#include "absl/base/macros.h"
 #include "json/json.h"
 #include "xla/tsl/platform/cloud/curl_http_request.h"
 #include "xla/tsl/platform/cloud/file_block_cache.h"
@@ -83,7 +82,6 @@ limitations under the License.
 #include "xla/tsl/platform/errors.h"
 #include "tsl/platform/numbers.h"
 #include "tsl/platform/path.h"
-#include "tsl/platform/protobuf.h"
 #include "tsl/platform/retrying_utils.h"
 #include "tsl/platform/str_util.h"
 #include "tsl/platform/stringprintf.h"
@@ -687,9 +685,9 @@ class GcsWritableFile : public WritableFile {
     if (absl::IsNotFound(upload_status)) {
       // GCS docs recommend retrying the whole upload. We're relying on the
       // RetryingFileSystem to retry the Sync() call.
-      return errors::Unavailable(
-          strings::StrCat("Upload to gs://", bucket_, "/", object_,
-                          " failed, caused by: ", upload_status.message()));
+      return absl::UnavailableError(
+          absl::StrCat("Upload to gs://", bucket_, "/", object_,
+                       " failed, caused by: ", upload_status.message()));
     }
     if (upload_status.ok()) {
       if (should_compose) {

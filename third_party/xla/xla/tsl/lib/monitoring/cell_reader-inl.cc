@@ -31,7 +31,6 @@ limitations under the License.
 #include "xla/tsl/lib/monitoring/test_utils.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
-#include "xla/tsl/platform/types.h"
 
 namespace tsl {
 namespace monitoring {
@@ -101,9 +100,9 @@ absl::StatusOr<Point> GetLatestPoint(const CollectedMetrics& metrics,
   TF_ASSIGN_OR_RETURN(std::vector<Point> points,
                       GetPoints(metrics, metric_name, labels));
   if (points.empty()) {
-    return errors::Unavailable("No data collected for metric ", metric_name,
-                               " with labels [", absl::StrJoin(labels, ", "),
-                               "].");
+    return absl::UnavailableError(
+        absl::StrCat("No data collected for metric ", metric_name,
+                     " with labels [", absl::StrJoin(labels, ", "), "]."));
   }
 
   bool same_start_time =

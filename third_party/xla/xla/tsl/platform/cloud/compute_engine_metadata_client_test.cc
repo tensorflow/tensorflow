@@ -15,9 +15,17 @@ limitations under the License.
 
 #include "xla/tsl/platform/cloud/compute_engine_metadata_client.h"
 
+#include <memory>
+#include <string>
+#include <vector>
+
+#include "absl/status/status.h"
+#include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/cloud/http_request.h"
 #include "xla/tsl/platform/cloud/http_request_fake.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/test.h"
+#include "tsl/platform/retrying_utils.h"
 
 namespace tsl {
 
@@ -81,7 +89,7 @@ TEST_F(ComputeEngineMetadataClientTest, RetryOnFailure) {
            "Uri: http://metadata.google.internal/computeMetadata/v1/instance"
            "/service-accounts/default/token\n"
            "Header Metadata-Flavor: Google\n",
-           "", errors::Unavailable("503"), 503),
+           "", absl::UnavailableError("503"), 503),
        new FakeHttpRequest(
            "Uri: http://metadata.google.internal/computeMetadata/v1/instance"
            "/service-accounts/default/token\n"

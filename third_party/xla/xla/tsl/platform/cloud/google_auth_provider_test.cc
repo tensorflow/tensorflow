@@ -32,7 +32,6 @@ limitations under the License.
 #include "xla/tsl/platform/cloud/http_request_fake.h"
 #include "xla/tsl/platform/cloud/oauth_client.h"
 #include "xla/tsl/platform/env.h"
-#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/test.h"
 #include "tsl/platform/path.h"
 #include "tsl/platform/retrying_utils.h"
@@ -180,7 +179,7 @@ TEST_F(GoogleAuthProviderTest, RunningOnGCE) {
            "Uri: http://metadata.google.internal/computeMetadata/v1/instance"
            "/service-accounts/default/token\n"
            "Header Metadata-Flavor: Google\n",
-           "", errors::Unavailable("503"), 503),
+           "", absl::UnavailableError("503"), 503),
        new FakeHttpRequest(
            "Uri: http://metadata.google.internal/computeMetadata/v1/instance"
            "/service-accounts/default/token\n"

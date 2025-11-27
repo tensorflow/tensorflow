@@ -171,8 +171,8 @@ class WindowsRandomAccessFile : public RandomAccessFile {
 
     char* scratch = new char[n];
     if (scratch == nullptr) {
-      return errors::ResourceExhausted("Unable to allocate ", n,
-                                       " bytes for file reading.");
+      return absl::ResourceExhaustedError(
+          absl::StrCat("Unable to allocate ", n, " bytes for file reading."));
     }
 
     absl::string_view tmp;

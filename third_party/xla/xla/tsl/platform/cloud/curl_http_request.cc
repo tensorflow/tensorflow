@@ -547,7 +547,7 @@ absl::Status CurlHttpRequest::Send() {
     case 502:  // Bad Gateway
     case 503:  // Service Unavailable
     default:   // All other HTTP response codes also should be retried.
-      result = errors::Unavailable(get_error_message());
+      result = absl::UnavailableError(get_error_message());
       break;
   }
   if (!result.ok()) {
@@ -676,7 +676,7 @@ absl::Status CurlHttpRequest::CURLcodeToStatus(CURLcode code,
   }
   // Return Unavailable to retry by default. There may be other permanent
   // failures that should be distinguished.
-  return errors::Unavailable(
+  return absl::UnavailableError(
       absl::StrCat(error_message, *error_buffer ? error_buffer : "(none)"));
 }
 
