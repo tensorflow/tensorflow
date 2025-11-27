@@ -52,6 +52,7 @@ class CollectiveMetadataThunk : public Thunk {
         collective_config_(std::move(collective_config)),
         parameters_(std::move(parameters)),
         result_(result) {}
+
   absl::Status Initialize(const InitializeParams& params) override;
   absl::Status ExecuteOnStream(const ExecuteParams& params) override;
 
@@ -71,14 +72,20 @@ class CollectiveMetadataThunk : public Thunk {
       se::DeviceMemoryBase metadata, int64_t num_parameters,
       int64_t num_devices, int64_t parameter_index);
 
-  absl::StatusOr<void*> SetupMultimem(const GpuCliqueKey& clique_key,
-                                      const InitializeParams& params);
-
  private:
+  absl::StatusOr<void*> AllocateMultimem(const GpuCliqueKey& clique_key,
+                                         const InitializeParams& params);
+
   const CollectiveConfig collective_config_;
   std::vector<Buffer> parameters_;
   BufferAllocation::Slice result_;
 
+  // This is a collective multi-mem per stream executor allocated for the thunk
+  // execution in the initialize stage. In theory multiple XLA executions can
+  // run concurrently, and this map would lead to a data race, however XLA
+  // programs with collective operations rely on locking cliques before the
+  // execution starts, and we never get concurrent executions when collective
+  // operations are present in the program.
   absl::Mutex mutex_;
   absl::flat_hash_map<se::StreamExecutor*, std::shared_ptr<CollectiveMultimem>>
       collective_multimem_ ABSL_GUARDED_BY(mutex_);
