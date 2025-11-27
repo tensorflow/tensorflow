@@ -639,13 +639,13 @@ tsl_cc_test(
     size = "small",
     srcs = ["statusor_test.cc"],
     deps = [
-        ":errors",
         ":macros",
         ":statusor",
         ":test",
         ":test_benchmark",
         ":test_main",
-        "@com_google_absl//absl/base:config",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
     ],
 )
 

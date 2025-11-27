@@ -15,11 +15,19 @@ limitations under the License.
 
 #include "xla/tsl/framework/cancellation.h"
 
+#include <atomic>
 #include <forward_list>
+#include <functional>
+#include <memory>
+#include <string>
+#include <utility>
 
 #include "absl/memory/memory.h"
+#include "absl/status/status.h"
+#include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
-#include "xla/tsl/platform/errors.h"
+#include "absl/synchronization/notification.h"
+#include "xla/tsl/lib/gtl/flatmap.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/status.h"
 
@@ -116,7 +124,7 @@ bool CancellationManager::RegisterCallbackConfig(CancellationToken token,
   bool should_register = !is_cancelled_ && !is_cancelling_;
   if (should_register) {
     if (!state_) {
-      state_ = absl::make_unique<State>();
+      state_ = std::make_unique<State>();
     }
     std::swap(state_->callbacks[token], config);
   }
@@ -240,7 +248,7 @@ absl::Status RegisterCancellationCallback(
   if (cancellation_manager) {
     CancellationToken token = cancellation_manager->get_cancellation_token();
     if (!cancellation_manager->RegisterCallback(token, std::move(callback))) {
-      return errors::Cancelled("Operation was cancelled");
+      return absl::CancelledError("Operation was cancelled");
     }
     *deregister_fn = [cancellation_manager, token]() {
       cancellation_manager->DeregisterCallback(token);

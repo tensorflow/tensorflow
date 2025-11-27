@@ -18,12 +18,13 @@ limitations under the License.
 #include "xla/tsl/platform/statusor.h"
 
 #include <memory>
+#include <string>
 #include <type_traits>
 #include <utility>
 #include <vector>
 
-#include "absl/base/config.h"
-#include "xla/tsl/platform/errors.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "xla/tsl/platform/macros.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/tsl/platform/test_benchmark.h"
@@ -82,7 +83,7 @@ TEST(StatusOr, NullPointerStatusOr) {
 
 TEST(StatusOr, TestNoDefaultConstructorInitialization) {
   // Explicitly initialize it with an error code.
-  absl::StatusOr<NoDefaultConstructor> statusor(errors::Cancelled(""));
+  absl::StatusOr<NoDefaultConstructor> statusor(absl::CancelledError(""));
   EXPECT_FALSE(statusor.ok());
   EXPECT_EQ(statusor.status().code(), absl::StatusCode::kCancelled);
 
@@ -105,7 +106,7 @@ TEST(StatusOr, TestMoveOnlyInitialization) {
 }
 
 TEST(StatusOr, TestMoveOnlyStatusCtr) {
-  absl::StatusOr<std::unique_ptr<int>> thing(errors::Cancelled(""));
+  absl::StatusOr<std::unique_ptr<int>> thing(absl::CancelledError(""));
   ASSERT_FALSE(thing.ok());
 }
 

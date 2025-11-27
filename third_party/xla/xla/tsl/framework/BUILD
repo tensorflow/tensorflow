@@ -366,11 +366,12 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "//xla/tsl/lib/gtl:flatmap",
-        "//xla/tsl/platform:errors",
         "//xla/tsl/platform:logging",
         "//xla/tsl/platform:status",
         "//xla/tsl/platform:types",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/synchronization",
         "@local_tsl//tsl/platform:hash",
         "@local_tsl//tsl/platform:stringpiece",
