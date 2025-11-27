@@ -50,6 +50,20 @@ absl::StatusOr<stream_executor::ThreadDim> ExtractThreadDims(
   if (!num_warps_attr) {
     return absl::InternalError("ttg.num-warps attribute not found.");
   }
+  // AMD/ROCm Triton backend does not support warp specialization.
+  // Consequently, `ttg.total-num-warps` and  `nvvm.reqntid` are not added
+  // to triton module/function.
+  // ThreadDim is therefore calculated from the Module attributes and not
+  // retrieved from `nvvm.reqntid`.
+  auto target = triton_module->getAttrOfType<mlir::StringAttr>("ttg.target");
+  if (!target) {
+    return absl::InternalError("ttg.target attribute not found.");
+  }
+  if (target.getValue().find("gfx") != std::string::npos) {
+    stream_executor::ThreadDim thread_dims(
+        num_warps_attr.getInt() * threads_per_warp_attr.getInt(), 1, 1);
+    return thread_dims;
+  }
   auto total_num_warps_attr =
       triton_module->getAttrOfType<mlir::IntegerAttr>("ttg.total-num-warps");
   if (!total_num_warps_attr) {
