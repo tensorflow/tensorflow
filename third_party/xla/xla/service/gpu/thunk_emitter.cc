@@ -15,20 +15,6 @@ limitations under the License.
 
 #include "xla/service/gpu/thunk_emitter.h"
 
-#include <algorithm>
-#include <cassert>
-#include <cstdint>
-#include <cstring>
-#include <functional>
-#include <memory>
-#include <numeric>
-#include <optional>
-#include <string>
-#include <tuple>
-#include <type_traits>
-#include <utility>
-#include <vector>
-
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
@@ -38,27 +24,18 @@ limitations under the License.
 #include "absl/strings/escaping.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
-#include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/APInt.h"
-#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringRef.h"
-#include "llvm/IR/Argument.h"
-#include "llvm/IR/Attributes.h"
 #include "llvm/IR/BasicBlock.h"
-#include "llvm/IR/Constants.h"
-#include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/Function.h"
-#include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
 #include "llvm/Linker/Linker.h"
-#include "llvm/Support/Casting.h"
 #include "llvm/TargetParser/Triple.h"
 #include "mlir/AsmParser/AsmParser.h"
-#include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Dialect/MemRef/Transforms/Passes.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/BuiltinAttributes.h"
@@ -141,7 +118,6 @@ limitations under the License.
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/call_graph.h"
 #include "xla/service/collective_ops_utils.h"
-#include "xla/service/global_device_id.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/gpu/custom_kernel_emitter.h"
@@ -160,23 +136,15 @@ limitations under the License.
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/gpu/model/block_level_parameters.h"
-#include "xla/service/gpu/parallel_loop_emitter.h"
 #include "xla/service/gpu/stream_executor_util.h"
 #include "xla/service/gpu/transforms/collectives/collective_ops_utils.h"
 #include "xla/service/gpu/triton_call.h"
 #include "xla/service/llvm_ir/buffer_assignment_util.h"
-#include "xla/service/llvm_ir/ir_array.h"
-#include "xla/service/llvm_ir/kernel_support_library.h"
-#include "xla/service/llvm_ir/llvm_util.h"
-#include "xla/service/llvm_ir/loop_emitter.h"
-#include "xla/service/llvm_ir/sort_util.h"
-#include "xla/service/name_uniquer.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/gpu/gpu_blas_lt.h"
-#include "xla/stream_executor/gpu/tma_metadata.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tools/hlo_decomposer.h"
@@ -191,8 +159,8 @@ limitations under the License.
 
 namespace xla {
 namespace gpu {
-
 namespace {
+
 // TODO: move into a host_execute specific file.
 bool IsHostExecuteCustomCall(const HloInstruction& hlo) {
   return hlo.opcode() == HloOpcode::kCustomCall &&
@@ -247,7 +215,7 @@ std::unique_ptr<llvm::Module> CreateLocalLLVMModule(
 }  // namespace
 
 ThunkEmitter::ThunkEmitter(IrEmitterContext* ir_emitter_context)
-    : IrEmitter(ir_emitter_context, /*is_nested=*/false),
+    : ir_emitter_context_(ir_emitter_context),
       send_recv_events_(std::make_shared<HostSendRecvAsyncEvents>()),
       copy_events_(std::make_shared<CopyThunk::AsyncEvents>()),
       nvshmem_buffer_addresses_(std::make_shared<NvshmemBufferAddresses>()),
@@ -274,7 +242,7 @@ absl::Status ThunkEmitter::EmitConstant(const HloConstantInstruction* instr) {
 
   GpuExecutable::ConstantInfo info = AppendGlobalConstant(
       ir_emitter_context_->llvm_module_constants(), num_elements, element_bytes,
-      global_name, slice.index(), std::move(content), &b_);
+      global_name, slice.index(), std::move(content));
   ir_emitter_context_->constants().push_back(std::move(info));
   return absl::OkStatus();
 }
@@ -305,60 +273,6 @@ absl::Status ThunkEmitter::EmitConditional(const HloInstruction* instr) {
   return absl::OkStatus();
 }
 
-llvm::Value* ThunkEmitter::CreateLoad(llvm::Value* address,
-                                      llvm::Type* data_type,
-                                      int alignment_bytes) {
-  int data_bytes = data_type->getPrimitiveSizeInBits() /
-                   primitive_util::BitWidth(PrimitiveType::U8);
-  if (alignment_bytes == 0) {
-    return b_.CreateLoad(data_type, address);
-  }
-
-  int alignment_bitwidth =
-      alignment_bytes * primitive_util::BitWidth(PrimitiveType::U8);
-
-  llvm::Value* output = llvm::ConstantInt::get(data_type, 0);
-  for (int offset_bytes = 0; offset_bytes < data_bytes;
-       offset_bytes += alignment_bytes) {
-    llvm::Value* offset_address = b_.CreateConstInBoundsGEP1_32(
-        b_.getInt8Ty(), address, offset_bytes, "offset_address");
-    llvm::Value* partial_value = b_.CreateLoad(b_.getIntNTy(alignment_bitwidth),
-                                               offset_address, "partial_value");
-    llvm::Value* zextd =
-        b_.CreateZExt(partial_value, output->getType(), "partial_value_zextd");
-    llvm::Value* shifted = b_.CreateShl(
-        zextd, llvm::ConstantInt::get(b_.getInt32Ty(), offset_bytes),
-        "partial_input_shifted");
-    output = b_.CreateAdd(output, shifted, "output_updated");
-  }
-  return output;
-}
-
-void ThunkEmitter::CreateStore(llvm::Value* data, llvm::Value* address,
-                               int alignment_bytes) {
-  int data_bytes = data->getType()->getPrimitiveSizeInBits() /
-                   primitive_util::BitWidth(PrimitiveType::U8);
-  CHECK_GE(data_bytes, alignment_bytes);
-  if (alignment_bytes == 0) {
-    b_.CreateStore(data, address);
-    return;
-  }
-
-  int alignment_bitwidth =
-      alignment_bytes * primitive_util::BitWidth(PrimitiveType::U8);
-
-  for (int offset_bytes = 0; offset_bytes < data_bytes;
-       offset_bytes += alignment_bytes) {
-    llvm::Value* offset_address = b_.CreateConstInBoundsGEP1_32(
-        b_.getInt8Ty(), address, offset_bytes, "offset_address");
-    llvm::Value* shifted_partial = b_.CreateTrunc(
-        b_.CreateLShr(data,
-                      llvm::ConstantInt::get(b_.getInt32Ty(), offset_bytes)),
-        b_.getIntNTy(alignment_bitwidth), "truncated_value");
-    b_.CreateStore(shifted_partial, offset_address);
-  }
-}
-
 // Input = {dynamic array(with dynamic dimension meta data at the
 // end)} Output = {static array, dynamic_dim0, dynamic_dim1}
 absl::Status ThunkEmitter::EmitPadToStatic(
@@ -367,127 +281,12 @@ absl::Status ThunkEmitter::EmitPadToStatic(
   auto local_llvm_module =
       CreateLocalLLVMModule(ir_name, ir_emitter_context_->llvm_module());
 
-  constexpr int kUnrollFactor = 1;
-  const Shape& input_shape = instr->operand(0)->shape();
-
-  LaunchDimensions launch_dimensions = CalculateLaunchDimensions(
-      input_shape, ir_emitter_context_->gpu_device_info(), {kUnrollFactor});
-  TF_ASSIGN_OR_RETURN(std::vector<llvm_ir::IrArray> ir_arrays,
-                      BuildKernelThunkForNonFusionOp(local_llvm_module.get(),
-                                                     instr, launch_dimensions));
-
-  const llvm_ir::IrArray& source_array = ir_arrays[0];
-  const llvm_ir::IrArray& output_array = ir_arrays[1];
-  auto output_dim_arrays =
-      absl::Span<const llvm_ir::IrArray>(ir_arrays).subspan(2);
-
-  llvm::Type* index_ty =
-      GetIndexTypeForKernel(instr, launch_dimensions.launch_bound(), &b_);
-
-  // pseudo code for PadToStatic on a 2d array
-  //   int* source_array = args[0];
-  //   int* dest_array = args[1];
-  llvm::Value* source_buffer = source_array.GetBasePointer();
-
-  // TODO(jurahul): input_shape here is the static shape of the
-  // input (which has a dynamic shape in XLA). Currently, we are
-  // mapping that to a static shaped memref. When we change that to
-  // a more appropriate representation in MLIR, fix this code to
-  // correctly deduce the static shape backing the dynamically
-  // shaped memref.
-  int64_t raw_data_size = ShapeUtil::ByteSizeOf(input_shape);
-
-  //   int* dyn_dim0_size = source_array + meta_data_offset;
-  //   int* dyn_dim1_size = source_array + meta_data_offset +
-  //   sizeof(int);
-  std::vector<llvm::Value*> dynamic_dims;
-  int alignment = raw_data_size % sizeof(int32_t);
-  std::vector<ShapeUtil::IndexedShape> output_shapes =
-      ShapeUtil::GetLeafShapes(instr->shape());
-
-  for (int64_t i = 1; i < output_shapes.size(); ++i) {
-    // Dynamic size of each dimension is attached at the end of the
-    // source array(operand(0)). We need to extract these value.
-    const Shape& dim_shape = output_shapes[i].shape;
-    TF_RET_CHECK(Shape::Equal()(dim_shape, ShapeUtil::MakeScalarShape(S32)));
-
-    const int64_t dim_index = i - 1;
-    llvm::Value* metadata = b_.CreateConstInBoundsGEP1_32(
-        b_.getInt8Ty(), source_buffer,
-        raw_data_size + dim_index * sizeof(int32_t));
-    llvm::Value* dyn_dim_size =
-        CreateLoad(metadata, b_.getInt32Ty(), alignment);
-    dynamic_dims.push_back(dyn_dim_size);
+  TF_ASSIGN_OR_RETURN(auto thunk_sequence,
+                      EmitPadToStaticLLVMIR(instr, local_llvm_module.get(),
+                                            ir_emitter_context_));
+  for (auto& thunk : thunk_sequence) {
+    AddThunkToThunkSequence(std::move(thunk));
   }
-
-  // only one thread need to store the dynamic index
-  //   int thread_id = GetThreadId();
-  //   int block_id = GetBlockId();
-  //   if (thread_id == 0 && block_id == 0) {
-  //     *output[1] = *dyn_dim0_size;
-  //     *output[2] = *dyn_dim1_size;
-  //   }
-  KernelSupportLibrary{&b_}.If("is_thread_0", IsBlock0Thread0(&b_), [&] {
-    for (int64_t i = 1; i < output_shapes.size(); ++i) {
-      const int64_t dim_index = i - 1;
-      llvm::Value* dest_dim_size_address =
-          output_dim_arrays[dim_index].GetBasePointer();
-      // output[i] stores dynamic_dim_(i-1)
-      CreateStore(dynamic_dims[dim_index], dest_dim_size_address, alignment);
-    }
-  });
-
-  //     int dyn_element_total = 1;
-  //     dyn_element_total *= *dyn_dim0_size;
-  //     dyn_element_total *= *dyn_dim1_size;
-  llvm::Value* dyn_element_total = llvm::ConstantInt::get(index_ty, 1);
-  for (llvm::Value* dynamic_dim : dynamic_dims) {
-    dyn_element_total =
-        b_.CreateMul(dyn_element_total,
-                     b_.CreateIntCast(dynamic_dim, dyn_element_total->getType(),
-                                      /*isSigned=*/true),
-                     /*Name=*/"dyn_element_total_pad");
-  }
-
-  //   linear_index = block_id * threads_per_block + thread_id;
-  //   if (linear_index < max_num_element) {
-  //     Index static_index =
-  //         delinerized(linerized_index, static_dim0_size,
-  //         static_dim1_size);
-  //     if (linerized_index < dyn_element_total) {
-  //       Index dyn_index =
-  //           delinerized(linerized_index, *dyn_dim0_size,
-  //           *dyn_dim1_size);
-  //       dest_array[dyn_index.dim0][dyn_index.dim1] =
-  //           source_array[static_index.dim0][static_index.dim1];
-  //     }
-  //   }
-  llvm_ir::BodyEmitter body_generator =
-      [&](const llvm_ir::IrArray::Index& array_index) -> absl::Status {
-    llvm::Value* linearIndex =
-        array_index.Linearize(input_shape.dimensions(), &b_);
-    auto if_in_dyn_bounds = llvm_ir::EmitIfThenElse(
-        b_.CreateICmpULT(linearIndex, dyn_element_total),
-        llvm_ir::IrName(ir_name, "in_dyn_bounds"), &b_, false);
-    // Set IR builder insertion point to the body of the if
-    // structure.
-    llvm_ir::SetToFirstInsertPoint(if_in_dyn_bounds.true_block, &b_);
-    llvm_ir::IrArray::Index dyn_index(linearIndex, input_shape,
-                                      absl::MakeSpan(dynamic_dims), &b_);
-    output_array.EmitWriteArrayElement(
-        dyn_index,
-        source_array.EmitReadArrayElement(array_index, &b_,
-                                          /*name=*/""),
-        &b_,
-        /*use_linear_index=*/false);
-    return absl::OkStatus();
-  };
-
-  const Shape& data_shape = instr->shape().tuple_shapes(0);
-  TF_RETURN_IF_ERROR(ParallelLoopEmitter(body_generator, data_shape,
-                                         launch_dimensions, &b_,
-                                         {kUnrollFactor})
-                         .EmitLoop(ir_name, index_ty));
   CHECK(!llvm::Linker::linkModules(*ir_emitter_context_->llvm_module(),
                                    std::move(local_llvm_module),
                                    llvm::Linker::Flags::OverrideFromSrc));
@@ -501,120 +300,12 @@ absl::Status ThunkEmitter::EmitSliceToDynamic(
   std::string ir_name = std::string(instr->name());
   auto local_llvm_module =
       CreateLocalLLVMModule(ir_name, ir_emitter_context_->llvm_module());
-
-  // TODO(jurahul): Create an op to represent SliceToDynamic.
-  constexpr int kUnrollFactor = 1;
-  const Shape& input_shape = instr->operand(0)->shape();
-
-  LaunchDimensions launch_dimensions = CalculateLaunchDimensions(
-      input_shape, ir_emitter_context_->gpu_device_info(), {kUnrollFactor});
-  llvm::Type* index_ty =
-      GetIndexTypeForKernel(instr, launch_dimensions.launch_bound(), &b_);
-  TF_ASSIGN_OR_RETURN(std::vector<llvm_ir::IrArray> ir_arrays,
-                      BuildKernelThunkForNonFusionOp(local_llvm_module.get(),
-                                                     instr, launch_dimensions));
-
-  const Shape& data_shape = ShapeUtil::MakeStaticShape(instr->shape());
-  TF_RET_CHECK(data_shape.IsArray());
-
-  // TODO(jurahul): data_shape here is the static shape of the
-  // output (which has a dynamic shape in XLA). Currently, we are
-  // mapping that to a static shaped memref. When we change that to
-  // a more appropriate representation in MLIR, fix this code to
-  // correctly deduce the static shape backing the dynamically
-  // shaped memref.
-
-  // calculate the location where metadata needs to be inserted
-  //   int* dyn_dim0_size = dest_array + meta_data_offset;
-  //   int* dyn_dim1_size = dest_array + meta_data_offset +
-  //   sizeof(int);
-  int32_t raw_data_size = ShapeUtil::ByteSizeOf(data_shape);
-
-  // pseudo code for sliceToDynamic on a 2d array
-  //   int* source_array = args[0];
-  //   int* dest_array = args.back();
-  const llvm_ir::IrArray& data_array = ir_arrays.back();
-  llvm::Value* dest_buffer = data_array.GetBasePointer();
-
-  // Load dynamic dimensions from memory.
-  std::vector<llvm::Value*> dynamic_dims;
-  int alignment = raw_data_size % sizeof(int32_t);
-  for (int64_t i = 1; i < instr->operand_count(); ++i) {
-    llvm::Value* source_buffer = ir_arrays[i].GetBasePointer();
-    llvm::Type* source_buffer_pointee_type = ir_arrays[i].GetBasePointeeType();
-    llvm::LoadInst* dyn_dim_size =
-        Load(source_buffer_pointee_type, source_buffer, "dyn_dim_size");
-    dynamic_dims.push_back(dyn_dim_size);
+  TF_ASSIGN_OR_RETURN(auto thunk_sequence,
+                      EmitSliceToDynamicLLVMIR(instr, local_llvm_module.get(),
+                                               ir_emitter_context_));
+  for (auto& thunk : thunk_sequence) {
+    AddThunkToThunkSequence(std::move(thunk));
   }
-
-  // only one thread need to store the dynamic index
-  //   int thread_id = GetThreadId();
-  //   int block_id = GetBlockId();
-  //   if (thread_id == 0 && block_id == 0) {
-  //     *dyn_dim0_size = *output[1];
-  //     *dyn_dim1_size = *output[2];
-  //   }
-  KernelSupportLibrary{&b_}.If("is_thread_0", IsBlock0Thread0(&b_), [&] {
-    for (int64_t i = 1; i < instr->operand_count(); ++i) {
-      const int64_t dim_index = i - 1;
-      llvm::Value* metadata = b_.CreateConstInBoundsGEP1_32(
-          b_.getInt8Ty(), dest_buffer,
-          raw_data_size + dim_index * sizeof(int32_t));
-      // output[i] stores dynamic_dim_(i-1)
-      CreateStore(dynamic_dims[dim_index], metadata, alignment);
-    }
-  });
-
-  //     int dyn_element_total = 1;
-  //     dyn_element_total *= dyn_dim0_size;
-  //     dyn_element_total *= dyn_dim1_size;
-  llvm::Value* dyn_element_total = llvm::ConstantInt::get(index_ty, 1);
-  for (llvm::Value* dynamic_dim : dynamic_dims) {
-    dyn_element_total =
-        b_.CreateMul(dyn_element_total,
-                     b_.CreateIntCast(dynamic_dim, dyn_element_total->getType(),
-                                      /*isSigned=*/true),
-                     /*Name=*/"dyn_element_total_slice");
-  }
-
-  //   linear_index = block_id * threads_per_block + thread_id;
-  //   if (linear_index < max_num_element) {
-  //     Index static_index =
-  //         delinerized(linerized_index, static_dim0_size,
-  //         static_dim1_size);
-  //     if (linerized_index < dyn_element_total) {
-  //       Index dyn_index =
-  //           delinerized(linerized_index, *dyn_dim0_size,
-  //           *dyn_dim1_size);
-  //       dest_array[static_index.dim0][static_index.di] =
-  //           source_array[dyn_index.dim0][dyn_index.dim1];
-  //     }
-  //   }
-  llvm_ir::BodyEmitter body_generator =
-      [&](const llvm_ir::IrArray::Index& array_index) -> absl::Status {
-    llvm::Value* linearIndex =
-        array_index.Linearize(input_shape.dimensions(), &b_);
-    auto if_in_dyn_bounds = llvm_ir::EmitIfThenElse(
-        b_.CreateICmpULT(linearIndex, dyn_element_total),
-        llvm_ir::IrName(ir_name, "in_dyn_bounds"), &b_, false);
-    // Set IR builder insertion point to the body of the if
-    // structure.
-    llvm_ir::SetToFirstInsertPoint(if_in_dyn_bounds.true_block, &b_);
-    llvm_ir::IrArray::Index dyn_index(linearIndex, input_shape,
-                                      absl::MakeSpan(dynamic_dims), &b_);
-
-    data_array.EmitWriteArrayElement(
-        array_index,
-        ir_arrays[0].EmitReadArrayElement(dyn_index, &b_, /*name=*/"",
-                                          /*use_linear_index=*/false),
-        &b_);
-    return absl::OkStatus();
-  };
-
-  TF_RETURN_IF_ERROR(ParallelLoopEmitter(body_generator, data_shape,
-                                         launch_dimensions, &b_,
-                                         {kUnrollFactor})
-                         .EmitLoop(ir_name, index_ty));
   CHECK(!llvm::Linker::linkModules(*ir_emitter_context_->llvm_module(),
                                    std::move(local_llvm_module),
                                    llvm::Linker::Flags::OverrideFromSrc));
@@ -673,7 +364,6 @@ absl::Status ThunkEmitter::EmitCommandBufferThunk(const HloInstruction* instr) {
       std::move(thunk_sequence),
       ir_emitter_context_->debug_options()
           .xla_enable_command_buffers_during_profiling()));
-
   return absl::OkStatus();
 }
 
@@ -1687,25 +1377,25 @@ absl::Status ThunkEmitter::EmitWhile(const HloInstruction* instr) {
 
 absl::Status ThunkEmitter::EmitRngGetAndUpdateState(
     const HloRngGetAndUpdateStateInstruction* instr) {
-  // Emit a kernel to increment the global state for Philox RNG
-  // algorithm.
-  TF_ASSIGN_OR_RETURN(auto ir_arrays, BuildKernelThunkForNonFusionOp(
-                                          ir_emitter_context_->llvm_module(),
-                                          instr, LaunchDimensions()));
-  llvm::Value* old_state =
-      llvm_ir::RngGetAndUpdateState(instr->delta(), module_, &b_);
-  llvm::Value* output_address = ir_arrays[0].EmitArrayElementAddress(
-      llvm_ir::IrArray::Index(
-          /*linear=*/b_.getInt64(0), instr->shape(), &b_),
-      &b_, "rng_state_address");
-  Store(old_state, output_address);
+  std::string ir_name = std::string(instr->name());
+  auto local_llvm_module =
+      CreateLocalLLVMModule(ir_name, ir_emitter_context_->llvm_module());
+
+  TF_ASSIGN_OR_RETURN(auto thunk_sequence,
+                      EmitRngGetAndUpdateStateLLVMIR(
+                          instr, local_llvm_module.get(), ir_emitter_context_));
+  for (auto& thunk : thunk_sequence) {
+    AddThunkToThunkSequence(std::move(thunk));
+  }
+  CHECK(!llvm::Linker::linkModules(*ir_emitter_context_->llvm_module(),
+                                   std::move(local_llvm_module),
+                                   llvm::Linker::Flags::OverrideFromSrc));
   return absl::OkStatus();
 }
 
 absl::Status ThunkEmitter::EmitSort(const HloSortInstruction* sort) {
   std::string op_name(sort->name());
   const Shape& keys_shape = sort->operand(0)->shape();
-  int64_t dimension_to_sort = sort->sort_dimension();
   for (int64_t i = 0; i < sort->operand_count(); ++i) {
     ShapeIndex shape_index =
         sort->operand_count() > 1 ? ShapeIndex({i}) : ShapeIndex({});
@@ -1743,173 +1433,18 @@ absl::Status ThunkEmitter::EmitSort(const HloSortInstruction* sort) {
     }
   }
 
-  uint64_t dimension_to_sort_bound = keys_shape.dimensions(dimension_to_sort);
-  int64_t num_stages = Log2Ceiling(dimension_to_sort_bound);
-  VLOG(2) << op_name << " requires " << num_stages << " stages.";
-  CHECK_GE(1ULL << num_stages, dimension_to_sort_bound);
-  CHECK_LT(1ULL << (num_stages - 1), dimension_to_sort_bound);
-
-  // Naive C++ code for the outer loops:
-  //
-  // for (int64_t stage = 0; stage <
-  // Log2Ceiling(dimension_to_sort_bound);
-  //     ++stage) {
-  //   int64_t first_xor_mask = (1LL << (stage + 1)) - 1;
-  //   SortInPlace(first_xor_mask);
-  //   for (int64_t mask = stage - 1; mask >= 0; --mask) {
-  //     int64_t later_xor_mask = 1LL << mask;
-  //     SortInPlace(later_xor_mask);
-  //   }
-  // }
-  //
-  // This follows the alternative representation of the algorithm
-  // described on Wikipedia:
-  // https://en.wikipedia.org/wiki/Bitonic_sorter
-  //
-  // Each mask specifies how to derive from one position in the
-  // array the position with which it should be compared (we
-  // calculate the xor of the position with the mask). As an
-  // optimization, we can move the 'mask' loop to inside the
-  // sorting/comparison loop if the comparisons happen within a
-  // small block of the array. To make this work, we collect all
-  // consecutive masks that are smaller than our chosen power of 2
-  // tile size, and pass them to SortInPlace. Each block then
-  // processes one tile of data.
-
-  const uint64_t kUnrollFactor = 4;
-  // Determine the total element size of all sort operands. We need to choose a
-  // tile size such that we have enough shared memory to store a tile of
-  // elements from each operand.
-  uint64_t total_element_size = 0;
-  for (int64_t i = 0; i < sort->operand_count(); ++i) {
-    total_element_size += ShapeUtil::ByteSizeOfPrimitiveType(
-        sort->operand(i)->shape().element_type());
-  }
-  const uint64_t kMaxSharedMemoryPerBlock =
-      ir_emitter_context_->gpu_device_info().shared_memory_per_block();
-  uint64_t max_tile_size_fitting_into_shared_memory =
-      kMaxSharedMemoryPerBlock / total_element_size;
-  const uint64_t kMaxThreadsPerBlock =
-      ir_emitter_context_->gpu_device_info().threads_per_block_limit();
-  // Choose the tile size based on actual amount of elements to sort, the amount
-  // of shared memory available, and the maximum number of threads per block.
-  uint64_t tile_size =
-      std::min(std::min(kMaxThreadsPerBlock * kUnrollFactor,
-                        max_tile_size_fitting_into_shared_memory),
-               uint64_t{1} << num_stages);
-  // The tile size needs to be a power of 2.
-  tile_size = uint64_t{1} << Log2Floor(tile_size);
-
-  // If we cannot combine several xor masks together, we don't use
-  // tiling, so we calculate the standard launch dimensions for the
-  // shape. However we only need to iterate through ~half of the
-  // dimension to sort (rounded up to the next highest power of 2),
-  // because each iteration compares one pair of elements.
-  Shape standard_iteration_shape = keys_shape;
-  uint64_t standard_num_iterations_in_sort_dim = 1ULL << (num_stages - 1);
-  standard_iteration_shape.set_dimensions(
-      dimension_to_sort,
-      CeilOfRatio(standard_num_iterations_in_sort_dim, kUnrollFactor));
-
-  LaunchDimensions standard_launch_dimensions = CalculateLaunchDimensions(
-      standard_iteration_shape, ir_emitter_context_->gpu_device_info());
-
-  // Calculate the launch dimensions for the case where we use
-  // tiling. We split the dimension that should be sorted into tiles
-  // of size 'tile_size'. This means we first need to round
-  // 'dimension_to_sort_bound' up to be a multiple of the tile size.
-  uint64_t rounded_bound = RoundUpTo(dimension_to_sort_bound, tile_size);
-  Shape iteration_shape = keys_shape;
-
-  // We iterate through the element pairs that should be compared.
-  uint64_t num_iterations_in_sort_dim =
-      CeilOfRatio(rounded_bound, kUnrollFactor);
-  iteration_shape.set_dimensions(dimension_to_sort, num_iterations_in_sort_dim);
-  uint64_t num_iterations = ShapeUtil::ElementsIn(iteration_shape);
-
-  // For correctness reasons we need exactly `tile_size` / `kUnrollFactor` many
-  // threads per block. Each thread is responsible for copying
-  // exactly `kUnrollFactor` many adjacent elements into shared memory, and then
-  // does `kUnrollFactor` / 2 many comparisons of two elements taken from shared
-  // memory.
-  const uint64_t kThreadsPerBlock =
-      std::max(uint64_t{1}, tile_size / kUnrollFactor);
-
-  uint64_t num_blocks = CeilOfRatio(num_iterations, kThreadsPerBlock);
-  LaunchDimensions tiled_launch_dimensions(num_blocks, kThreadsPerBlock);
-  VLOG(2) << absl::StreamFormat("%s launch dims: %d blocks, %d threads/block",
-                                op_name, num_blocks, kThreadsPerBlock);
   auto local_llvm_module =
       CreateLocalLLVMModule(op_name, ir_emitter_context_->llvm_module());
-  // Copy of the main context with the local module.
-  IrEmitterContext local_ir_emitter_context(
-      &ir_emitter_context_->hlo_module(),
-      &ir_emitter_context_->buffer_assignment(),
-      &ir_emitter_context_->execution_stream_assignment(),
-      std::string(ir_emitter_context_->platform_name()),
-      ir_emitter_context_->gpu_device_info(),
-      ir_emitter_context_->mlir_context(), local_llvm_module.get(),
-      ir_emitter_context_->llvm_module_constants(),
-      ir_emitter_context_->emit_kernels());
-  auto emit_kernel = [&](absl::Span<const int64_t> xor_masks) {
-    VLOG(2) << absl::StreamFormat(
-        "%s uses kernel for xor masks [%s]", op_name,
-        absl::StrJoin(xor_masks, ", ", [](std::string* out, int64_t xor_mask) {
-          absl::StrAppendFormat(out, "0x%x", xor_mask);
-        }));
-    LaunchDimensions launch_dimensions = xor_masks.size() > 1
-                                             ? tiled_launch_dimensions
-                                             : standard_launch_dimensions;
-    TF_ASSIGN_OR_RETURN(std::vector<llvm_ir::IrArray> ir_arrays,
-                        BuildKernelThunkForNonFusionOp(
-                            local_llvm_module.get(), sort, launch_dimensions));
 
-    // The first `operand_count()` elements of `ir_arrays` are the input
-    // operands and the rest are the output arrays. Inputs are aliases with
-    // outputs, so we need to pass only the outputs to the in-place sort kernel.
-    auto output_arrays_span =
-        absl::Span<const llvm_ir::IrArray>(ir_arrays).subspan(
-            sort->operand_count());
-
-    auto* comparator = sort->called_computations().front();
-    return llvm_ir::EmitSortInPlace(
-        dimension_to_sort, output_arrays_span, llvm_ir::IrName(op_name),
-        xor_masks, &b_, launch_dimensions,
-        xor_masks.size() > 1 ? num_iterations_in_sort_dim
-                             : standard_num_iterations_in_sort_dim,
-        tile_size, kUnrollFactor,
-        [&](absl::Span<llvm::Value* const> operands, llvm::Value* output) {
-          return CallNestedComputation(&b_, local_ir_emitter_context,
-                                       local_llvm_module.get(), *comparator,
-                                       operands, output);
-        });
-  };
-  std::vector<int64_t> xor_masks;
-  for (int64_t stage = 0; stage < num_stages; ++stage) {
-    for (int64_t mask = stage; mask >= 0; --mask) {
-      int64_t xor_mask;
-      if (mask == stage) {
-        xor_mask = (1LL << (stage + 1)) - 1;
-      } else {
-        xor_mask = 1LL << mask;
-      }
-      if (xor_mask >= tile_size) {
-        if (!xor_masks.empty()) {
-          TF_RETURN_IF_ERROR(emit_kernel(xor_masks));
-          xor_masks.clear();
-        }
-        TF_RETURN_IF_ERROR(emit_kernel({xor_mask}));
-      } else {
-        xor_masks.push_back(xor_mask);
-      }
-    }
+  TF_ASSIGN_OR_RETURN(ThunkSequence thunks,
+                      EmitBitonicSortLLVMIR(sort, local_llvm_module.get(),
+                                            ir_emitter_context_));
+  for (auto& thunk : thunks) {
+    AddThunkToThunkSequence(std::move(thunk));
   }
-  if (!xor_masks.empty()) {
-    TF_RETURN_IF_ERROR(emit_kernel(xor_masks));
-  }
-  TF_RET_CHECK(!llvm::Linker::linkModules(
-      *ir_emitter_context_->llvm_module(), std::move(local_llvm_module),
-      llvm::Linker::Flags::OverrideFromSrc));
+  llvm::Linker::linkModules(*ir_emitter_context_->llvm_module(),
+                            std::move(local_llvm_module),
+                            llvm::Linker::Flags::OverrideFromSrc);
   return absl::OkStatus();
 }
 
@@ -2615,52 +2150,6 @@ absl::Status ThunkEmitter::EmitOutfeed(const HloOutfeedInstruction* instr) {
   return absl::OkStatus();
 }
 
-absl::StatusOr<std::vector<llvm_ir::IrArray>>
-ThunkEmitter::BuildKernelThunkForNonFusionOp(
-    llvm::Module* llvm_module, const HloInstruction* instr,
-    const LaunchDimensions& launch_dimensions) {
-  std::string suggested_kernel_name(instr->name());
-
-  TF_ASSIGN_OR_RETURN(auto kernel_arguments,
-                      emitters::KernelArguments::Create(
-                          ir_emitter_context_->buffer_assignment(),
-                          GetDefaultBufferAlignment(), instr));
-
-  VLOG(3) << "Generating (without reuse check): " << suggested_kernel_name;
-
-  TF_ASSIGN_OR_RETURN(
-      llvm::Function * kernel,
-      BuildKernelPrototype(
-          llvm_module, ir_emitter_context_->gpu_device_info(),
-          suggested_kernel_name,
-          GetSanitizedUniqueName(*ir_emitter_context_, suggested_kernel_name),
-          kernel_arguments, launch_dimensions, &b_));
-
-  AddThunkToThunkSequence(std::make_unique<KernelThunk>(
-      Thunk::ThunkInfo::WithProfileAnnotation(
-          instr, ir_emitter_context_->GetNextThunkId()),
-      kernel->getName().str(), kernel_arguments, launch_dimensions,
-      /*cluster_dim=*/std::nullopt,
-      /*shmem_bytes=*/0,
-      /*tma_metadata=*/se::gpu::TmaMetadata()));
-
-  std::vector<llvm_ir::IrArray> ir_arrays;
-  ir_arrays.reserve(kernel_arguments.args().size());
-  for (const auto& [kernel_argument, llvm_arg] :
-       llvm::zip(kernel_arguments.args(), kernel->args())) {
-    llvm::Type* ir_type =
-        llvm_ir::ShapeToIrType(kernel_argument.shape(), llvm_arg.getContext());
-    llvm_ir::IrArray ir_array(&llvm_arg, ir_type, kernel_argument.shape());
-
-    if (!kernel_argument.written()) {
-      ir_array.MarkInvariantOverWholeProgram(&llvm_arg.getContext());
-    }
-
-    ir_arrays.push_back(ir_array);
-  }
-
-  return ir_arrays;
-}
 
 absl::StatusOr<std::unique_ptr<Thunk>> ThunkEmitter::BuildWhileThunk(
     const HloInstruction* instr, const Thunk::ThunkInfo& thunk_info,
@@ -2691,11 +2180,6 @@ absl::StatusOr<std::unique_ptr<Thunk>> ThunkEmitter::BuildWhileThunk(
       thunk_info, instr, pred,
       ir_emitter_condition->ConsumeThunkSequence(cond_thunk_info),
       ir_emitter_body->ConsumeThunkSequence(body_thunk_info), trip_count));
-}
-
-absl::Status ThunkEmitter::EmitTargetElementLoop(
-    const HloInstruction& hlo, const llvm_ir::ElementGenerator& body_emitter) {
-  return Internal("This should be unreachable");
 }
 
 static absl::flat_hash_map<std::string, std::string> ConvertFrontendAttributes(

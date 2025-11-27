@@ -285,8 +285,7 @@ absl::Status IrEmitterNested::EmitConstants(const HloComputation& computation) {
         ShapeUtil::ByteSizeOfPrimitiveType(literal.shape().element_type()),
         global_name, /*allocation_idx=*/-1,
         DenseDataIntermediate::Alias(
-            absl::MakeSpan(base, base + literal.size_bytes())),
-        &b_);
+            absl::MakeSpan(base, base + literal.size_bytes())));
     ir_emitter_context_->constants().push_back(std::move(info));
   }
   return absl::OkStatus();
@@ -341,13 +340,14 @@ absl::Status CallNestedComputation(llvm::IRBuilderBase* builder,
 GpuExecutable::ConstantInfo AppendGlobalConstant(
     llvm::Module* module, int64_t num_elements, int64_t bytes_per_element,
     absl::string_view symbol_name, int allocation_idx,
-    DenseDataIntermediate content, llvm::IRBuilderBase* b) {
+    DenseDataIntermediate content) {
   // LLVM and PTXAS don't deal well with large constants, so we only emit very
   // small constants directly in LLVM IR.  Larger constants are emitted with
   // zero initializers in LLVM IR and are later overwritten when the PTX/CUBIN
   // is loaded.
   bool should_emit_initializer = num_elements <= 1;
 
+  llvm::IRBuilder<> b(module->getContext());
   // Ptxas has issues if the constant allocation is smaller than 64 bytes.
   // TODO(b/253259975): Remove when fixed ptxas version is submitted.
   constexpr int64_t kMinConstAllocationInBytes = 64;
@@ -355,7 +355,7 @@ GpuExecutable::ConstantInfo AppendGlobalConstant(
       num_elements * bytes_per_element < kMinConstAllocationInBytes;
 
   llvm::ArrayType* global_type = llvm::ArrayType::get(
-      b->getInt8Ty(),
+      b.getInt8Ty(),
       std::max(num_elements * bytes_per_element, kMinConstAllocationInBytes));
 
   GpuExecutable::ConstantInfo info;

@@ -41,6 +41,7 @@ limitations under the License.
 #include "xla/service/gpu/gpu_executable.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/kernel_reuse_cache.h"
+#include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/service/name_uniquer.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
@@ -140,6 +141,11 @@ class IrEmitterContext {
   bool emit_kernels() const { return emit_kernels_; }
 
   ThunkId GetNextThunkId() { return thunk_id_generator_.GetNextThunkId(); }
+
+  std::string GetSanitizedUniqueName(const std::string& suggested_name) {
+    return name_uniquer_.GetUniqueName(
+        llvm_ir::SanitizeFunctionName(suggested_name));
+  }
 
  private:
   const HloModule* hlo_module_;

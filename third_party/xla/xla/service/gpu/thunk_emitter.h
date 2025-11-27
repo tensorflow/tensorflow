@@ -72,7 +72,7 @@ namespace gpu {
 //    within a kernel function using FusedIrEmitter.  (FusedIrEmitter is not
 //    really an IrEmitter, but is more an "IR generator generator".)
 //
-class ThunkEmitter : public IrEmitter {
+class ThunkEmitter {
  public:
   absl::string_view platform_name() const {
     return ir_emitter_context_->platform_name();
@@ -191,10 +191,6 @@ class ThunkEmitter : public IrEmitter {
 
   absl::Status EmitCollectiveGroupStartThunk(const HloInstruction* instr);
 
-  absl::Status EmitTargetElementLoop(
-      const HloInstruction& hlo,
-      const llvm_ir::ElementGenerator& body_emitter) override;
-
   // Add a owning Thunk object to the thunk sequence.
   void AddThunkToThunkSequence(std::unique_ptr<Thunk> thunk) {
     if (emit_group_thunks_) {
@@ -203,30 +199,6 @@ class ThunkEmitter : public IrEmitter {
     }
     thunk_sequence_.emplace_back(std::move(thunk));
   }
-
-  // Load data from potentially unaligned address. If address is offset by
-  // `alignment_bytes`, data is read in the unit of `alignment_bytes` to avoid
-  // memory read misalignment in CUDA; otherwise, the entire data are loaded
-  // from the given memory address.
-  //
-  //   address: the memory address to load data from.
-  //   data_type: the type of data to load.
-  //   alignment_bytes: the number of bytes required to align. The number of
-  //     bytes of the data_type must be divisible by alignment_bytes.
-  llvm::Value* CreateLoad(llvm::Value* address, llvm::Type* data_type,
-                          int alignment_bytes);
-
-  // Store data at a potentially unaligned address. If the address is offset by
-  // `alignment_bytes`, data is stored in the unit of `alignment_bytes` to avoid
-  // memory write misalignment in CUDA; otherwise, the entire data is stored at
-  // the given memory address.
-  //
-  //   data: the data to be stored.
-  //   address: the memory address to store data.
-  //   alignment_bytes: the number of bytes required to align. The number of
-  //     bytes of the data_type must be divisible by alignment_bytes.
-  void CreateStore(llvm::Value* data, llvm::Value* address,
-                   int alignment_bytes);
 
   // Input = {static array, dynamic_dim0, dynamic_dim1}
   // Output = {dynamic array(with dynamic dimension meta data at the end)}
@@ -320,10 +292,6 @@ class ThunkEmitter : public IrEmitter {
   //   ```
   absl::Status EmitSliceToDynamic(const HloCustomCallInstruction* instr);
 
-  absl::StatusOr<std::vector<llvm_ir::IrArray>> BuildKernelThunkForNonFusionOp(
-      llvm::Module* llvm_module, const HloInstruction* instr,
-      const LaunchDimensions& launch_dimensions);
-
   // Returns a WhileThunk that invokes thunk sequences for 'condition' and
   // 'body' sub-computations of while instruction.
   absl::StatusOr<std::unique_ptr<Thunk>> BuildWhileThunk(
@@ -343,6 +311,7 @@ class ThunkEmitter : public IrEmitter {
   GetInstructionToHostExecuteAsyncEvents() {
     return ir_emitter_context_->instruction_to_host_execute_async_events();
   }
+  IrEmitterContext* ir_emitter_context_;
 
   // The thunk sequence this IrEmitter generates for the input computation.
   ThunkSequence thunk_sequence_;

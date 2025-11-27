@@ -19,12 +19,14 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Value.h"
-#include "llvm/Support/AtomicOrdering.h"
+#include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/gpu/hlo_to_ir_bindings.h"
 #include "xla/service/gpu/ir_emitter_context.h"
 #include "xla/service/llvm_ir/fused_ir_emitter.h"
@@ -59,6 +61,11 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   IrEmitter(const IrEmitter&) = delete;
   IrEmitter& operator=(const IrEmitter&) = delete;
 
+  // Constructs an IrEmitter with the given IrEmitter context.
+  // ir_emitter_context is owned by the caller and should outlive the IrEmitter
+  // object.
+  explicit IrEmitter(IrEmitterContext* ir_emitter_context, bool is_nested);
+
   absl::Status DefaultAction(HloInstruction* hlo) override;
   absl::Status HandleConstant(HloInstruction* constant) override;
   absl::Status HandleGetTupleElement(
@@ -89,11 +96,6 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   llvm::IRBuilderBase* builder() { return &b_; }
 
  protected:
-  // Constructs an IrEmitter with the given IrEmitter context.
-  // ir_emitter_context is owned by the caller and should outlive the IrEmitter
-  // object.
-  explicit IrEmitter(IrEmitterContext* ir_emitter_context, bool is_nested);
-
   // Helper for calling HloToIrBindings::GetIrArray.
   //
   // Gets the IrArray which contains inst.  This array has metadata that makes
@@ -121,8 +123,7 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   // nested loops (e.g. one for each dimension of the `hlo`'s shape). The body
   // of the inner-most loop is provided by the body_emitter function.
   virtual absl::Status EmitTargetElementLoop(
-      const HloInstruction& hlo,
-      const llvm_ir::ElementGenerator& body_emitter) = 0;
+      const HloInstruction& hlo, const llvm_ir::ElementGenerator& body_emitter);
 
   IrEmitterContext* ir_emitter_context_;
   llvm::Module* module_;
@@ -138,6 +139,22 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   void BindFusionArguments(const HloInstruction* fusion,
                            FusedIrEmitter* fused_emitter);
 };
+
+absl::StatusOr<ThunkSequence> EmitBitonicSortLLVMIR(
+    const HloSortInstruction* sort, llvm::Module* llvm_module,
+    IrEmitterContext* ir_emitter_context);
+
+absl::StatusOr<ThunkSequence> EmitPadToStaticLLVMIR(
+    const HloCustomCallInstruction* hlo, llvm::Module* llvm_module,
+    IrEmitterContext* ir_emitter_context);
+
+absl::StatusOr<ThunkSequence> EmitSliceToDynamicLLVMIR(
+    const HloCustomCallInstruction* hlo, llvm::Module* llvm_module,
+    IrEmitterContext* ir_emitter_context);
+
+absl::StatusOr<ThunkSequence> EmitRngGetAndUpdateStateLLVMIR(
+    const HloRngGetAndUpdateStateInstruction* hlo, llvm::Module* llvm_module,
+    IrEmitterContext* ir_emitter_context);
 
 }  // namespace gpu
 }  // namespace xla

@@ -56,10 +56,12 @@ absl::Status CallNestedComputation(llvm::IRBuilderBase* builder,
 
 // Emit a constant with a given number of element, given byte size of the
 // element, given symbol name and content.
-GpuExecutable::ConstantInfo AppendGlobalConstant(
-    llvm::Module* module, int64_t num_elements, int64_t bytes_per_element,
-    absl::string_view symbol_name, int allocation_idx,
-    DenseDataIntermediate content, llvm::IRBuilderBase* b);
+GpuExecutable::ConstantInfo AppendGlobalConstant(llvm::Module* module,
+                                                 int64_t num_elements,
+                                                 int64_t bytes_per_element,
+                                                 absl::string_view symbol_name,
+                                                 int allocation_idx,
+                                                 DenseDataIntermediate content);
 
 }  // namespace gpu
 }  // namespace xla
