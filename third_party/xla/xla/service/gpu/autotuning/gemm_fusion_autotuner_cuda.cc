@@ -34,6 +34,7 @@ limitations under the License.
 #include "xla/service/gpu/transforms/block_scaling_rewriter.h"
 #include "xla/service/gpu/transforms/cudnn_fusion_compiler.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
+#include "xla/stream_executor/gpu/tma_metadata.h"
 
 namespace xla {
 namespace gpu {
@@ -107,9 +108,9 @@ std::vector<TritonGemmConfig> GemmFusionAutotunerImpl::GetDefaultTritonConfigs()
     configs = *kDefaultCudaConfigs;
   }
 
-  // Hopper+ devices support TMA. Add TMA parameterized configs.
   if (!debug_options_.xla_gpu_experimental_enable_triton_tma() ||
-      !compute_capability.IsAtLeastHopper()) {
+      !stream_executor::gpu::IsTmaAvailableForDevice(
+          config_.GetDeviceDescription())) {
     return configs;
   }
   std::vector<TritonGemmConfig> tma_parameterized_configs;
