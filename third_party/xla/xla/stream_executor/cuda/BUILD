@@ -2336,6 +2336,7 @@ cuda_library(
     ],
     deps = [
         ":cub_sort_kernel_cuda_impl_{}".format(typename),
+        "//xla/backends/gpu:ffi",
         "//xla/ffi",
         "//xla/ffi:ffi_api",
         "//xla/stream_executor/cuda:cuda_status",

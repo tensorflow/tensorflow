@@ -86,6 +86,7 @@ xla_test(
         [
             "//xla:error_spec",
             "//xla:shape_util",
+            "//xla/backends/gpu:ffi",
             "//xla/ffi",
             "//xla/ffi:ffi_api",
             "@com_google_absl//absl/algorithm:container",

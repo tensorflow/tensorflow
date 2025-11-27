@@ -203,6 +203,7 @@ xla_test(
         "//xla:shape_util",
         "//xla:status_macros",
         "//xla:xla_data_proto_cc",
+        "//xla/backends/gpu:ffi",
         "//xla/ffi",
         "//xla/ffi:execution_context",
         "//xla/ffi:ffi_api",

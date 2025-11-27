@@ -1150,6 +1150,7 @@ rocm_library(
         "rocm-only",
     ],
     deps = [
+        "//xla/backends/gpu:ffi",
         "//xla/ffi",
         "//xla/ffi:ffi_api",
         "//xla/stream_executor/rocm:rocm_status",
