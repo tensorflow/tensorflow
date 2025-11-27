@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "xla/tests/client_library_test_base.h"
 
-#include <algorithm>
 #include <cstdint>
 #include <functional>
 #include <iterator>
@@ -232,7 +231,7 @@ ClientLibraryTestBase::ComputeAndCompareLiteralWithAllOutputLayouts(
     verify_output(actual,
                   absl::StrCat("Test with output layout: ",
                                ShapeUtil::HumanStringWithLayout(layout)));
-  } while (std::next_permutation(minor_to_major.begin(), minor_to_major.end()));
+  } while (absl::c_next_permutation(minor_to_major));
   return absl::OkStatus();
 }
 
@@ -277,8 +276,7 @@ absl::Status ClientLibraryTestBase::ComputeAndCompareLiteralWithAllInputLayouts(
         TF_RETURN_IF_ERROR(choose(index + 1));
         arguments_with_layout.pop_back();
         layout_strings.pop_back();
-      } while (
-          std::next_permutation(minor_to_major.begin(), minor_to_major.end()));
+      } while (absl::c_next_permutation(minor_to_major));
       return absl::OkStatus();
     }
 
