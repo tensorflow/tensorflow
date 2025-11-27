@@ -979,11 +979,13 @@ CreateArgumentsOnDevice(PjRtClient& client,
 
 // Creates an ExecutableBuildOptions using the specified ExecutionOptions.
 ExecutableBuildOptions CreateExecutableBuildOptionsFromExecutionOptions(
-    const ExecutionOptions& execution_options) {
+    const ExecutionOptions& execution_options, bool preserve_xla_dump_to) {
   ExecutableBuildOptions build_options;
   if (execution_options.has_debug_options()) {
     *build_options.mutable_debug_options() = execution_options.debug_options();
-    build_options.mutable_debug_options()->set_xla_dump_to("");
+    if (!preserve_xla_dump_to) {
+      build_options.mutable_debug_options()->set_xla_dump_to("");
+    }
   }
   if (execution_options.has_shape_with_output_layout()) {
     absl::StatusOr<Shape> shape =
@@ -1032,7 +1034,8 @@ absl::StatusOr<CompileOptions> CreateCompileOptions(
   if (raw_options.execution_options.has_value()) {
     compile_options.executable_build_options =
         CreateExecutableBuildOptionsFromExecutionOptions(
-            raw_options.execution_options.value());
+            raw_options.execution_options.value(),
+            raw_options.preserve_xla_dump_to);
   }
 
   ExecutableBuildOptions& build_options =

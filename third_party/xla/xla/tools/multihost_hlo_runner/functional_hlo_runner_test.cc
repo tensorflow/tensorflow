@@ -914,6 +914,7 @@ TEST(FunctionalHloRunnerTest, TestDebugOptionsAreNotOverwrittenByRawOptions) {
   // This test checks that we don't overwrite if we don't set xla_dump_to in the
   // raw options.
   xla::DebugOptions debug_options;
+  debug_options.set_xla_dump_to("test_dump_to");
   debug_options.set_xla_dump_hlo_as_text(true);
   FunctionalHloRunner::RawCompileOptions raw_compile_options;
   raw_compile_options.execution_options = ExecutionOptions();
@@ -930,6 +931,33 @@ TEST(FunctionalHloRunnerTest, TestDebugOptionsAreNotOverwrittenByRawOptions) {
                                                 /*kv_store=*/nullptr));
   EXPECT_TRUE(compile_options.executable_build_options.debug_options()
                   .xla_dump_hlo_as_text());
+  EXPECT_EQ(
+      compile_options.executable_build_options.debug_options().xla_dump_to(),
+      "");
+}
+
+// Check that xla_dump_to is respected if preserve_xla_dump_to is true.
+TEST(FunctionalHloRunnerTest, TestDebugOptionsDumpToIsRespected) {
+  xla::DebugOptions debug_options;
+  std::string xla_dump_to = "test_dump_to";
+  debug_options.set_xla_dump_to(xla_dump_to);
+  FunctionalHloRunner::RawCompileOptions raw_compile_options;
+  raw_compile_options.preserve_xla_dump_to = true;
+  raw_compile_options.execution_options = ExecutionOptions();
+  *raw_compile_options.execution_options->mutable_debug_options() =
+      debug_options;
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::PjRtClient> client,
+                          GetPjRtClient());
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      CompileOptions compile_options,
+      FunctionalHloRunner::CreateCompileOptions(*client, raw_compile_options,
+                                                /*task_id=*/0, /*num_nodes=*/1,
+                                                /*kv_store=*/nullptr));
+  EXPECT_EQ(
+      compile_options.executable_build_options.debug_options().xla_dump_to(),
+      xla_dump_to);
 }
 
 TEST(FunctionalHloRunnerTest, RespectUseSpmdPartitioning) {
