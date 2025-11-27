@@ -3622,11 +3622,11 @@ TEST(GcsFileSystemTest, CreateDir_Folder) {
   TF_EXPECT_OK(fs.CreateDir("gs://bucket/subpath", nullptr));
   // Check that when GCS returns the object already exists return that the
   // directory already exists.
-  EXPECT_EQ(errors::AlreadyExists("gs://bucket/subpath"),
+  EXPECT_EQ(absl::AlreadyExistsError("gs://bucket/subpath"),
             fs.CreateDir("gs://bucket/subpath", nullptr));
   // Check that when GCS returns the object already has a version (failed
   // precondition) return directory already exists.
-  EXPECT_EQ(errors::AlreadyExists("gs://bucket/subpath"),
+  EXPECT_EQ(absl::AlreadyExistsError("gs://bucket/subpath"),
             fs.CreateDir("gs://bucket/subpath", nullptr));
 }
 

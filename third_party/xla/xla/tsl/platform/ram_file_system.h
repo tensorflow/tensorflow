@@ -263,7 +263,7 @@ class RamFileSystem : public FileSystem {
 
     auto it = fs_.find(dirname);
     if (it != fs_.end() && it->second != nullptr) {
-      return errors::AlreadyExists(
+      return absl::AlreadyExistsError(
           "cannot create directory with same name as an existing file");
     }
 
