@@ -1258,6 +1258,7 @@ cc_library(
 cc_library(
     name = "async_work_runner",
     hdrs = ["async_work_runner.h"],
+    visibility = internal_visibility([":friends"]),
     deps = [
         "//xla/tsl/concurrency:async_value",
         "//xla/tsl/concurrency:ref_count",
