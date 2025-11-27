@@ -448,8 +448,9 @@ MemorySpaceAssignment::RunMemorySpaceAssignment(
 absl::Status MemorySpaceAssignment::FindAllocationSequence(
     const HloLiveRange& hlo_live_range,
     const HloAliasAnalysis& alias_analysis) {
-  auto algorithm = std::make_unique<MsaAlgorithm>(
-      module_, &allocations_, options_, alias_analysis, hlo_live_range);
+  auto algorithm = std::make_unique<MsaAlgorithm>(module_, &allocations_,
+                                                  options_, alias_analysis,
+                                                  alias_info_, hlo_live_range);
 
   HeapSimulator::Options heap_simulator_options;
   heap_simulator_options.may_reuse_operand_buffers = false;

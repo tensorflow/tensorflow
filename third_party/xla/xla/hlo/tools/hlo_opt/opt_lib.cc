@@ -246,7 +246,7 @@ void OptProvider::RegisterAllHardwareIndependentPasses() {
   RegisterPass<AsyncCollectiveCreator>(
       AsyncCollectiveCreator::CollectiveCreatorConfig());
   RegisterPass<BFloat16ConversionFolding>(
-      /*bfloat16_support=*/bfloat16_support);
+      /*bfloat16_support=*/bfloat16_support, alias_info_.get());
   RegisterPass<BFloat16MixedPrecisionRemoval>();
   RegisterPass<BFloat16Propagation>(/*bfloat16_support=*/bfloat16_support,
                                     alias_info_.get());

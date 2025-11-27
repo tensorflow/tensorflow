@@ -39,6 +39,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/analysis/hlo_alias_analysis.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/utils/hlo_live_range.h"
@@ -314,7 +315,7 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
  public:
   MsaAlgorithm(HloModule* module, AllocationSequence* allocations,
                const Options& options, const HloAliasAnalysis& alias_analysis,
-               const HloLiveRange& hlo_live_range);
+               const AliasInfo* alias_info, const HloLiveRange& hlo_live_range);
 
   // Allocates a buffer in preferred memory with whole program lifetime and
   // enables prefetching prefetch_candidate from default memory across program
@@ -1253,6 +1254,7 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
   absl::flat_hash_set<int64_t> edge_time_indices_;
   const Options& options_;
   const HloAliasAnalysis& alias_analysis_;
+  const AliasInfo* alias_info_;
   const HloLiveRange& hlo_live_range_;
   std::unique_ptr<CallGraph> call_graph_;
   // We use a interval tree to keep track of the number of outstanding
