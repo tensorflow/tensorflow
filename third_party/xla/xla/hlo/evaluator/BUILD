@@ -75,7 +75,6 @@ cc_library(
         "//xla/service:logical_buffer",
         "//xla/service:pattern_matcher",
         "//xla/service:shape_inference",
-        "//xla/tsl/framework/contraction:eigen_contraction_kernel",
         "//xla/tsl/lib/core:bitmap",
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:errors",
