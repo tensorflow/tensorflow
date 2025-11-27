@@ -21,14 +21,54 @@ jobs:
         with:
           python-version: "3.10"
 
-      - name: SonarQube Scan
-        uses: sonarsource/sonarqube-scan-action@40f5b61913e891f9d316696628698051136015be
-        env:
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+      - name: Install Cppcheck
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cppcheck
+
+      - name: Run Cppcheck C++ Analysis
+        run: |
+          cppcheck --enable=warning,style,performance,portability,information \
+            --suppress=missingIncludeSystem \
+            --xml --xml-version=2 \
+            --output-file=cppcheck-report.xml \
+            tensorflow/core/ tensorflow/python/ tensorflow/cc/ \
+            2>&1 || true
+        continue-on-error: true
+
+      - name: Install Bandit
+        run: pip install bandit
+
+      - name: Run Bandit Python Security Scan
+        run: |
+          bandit -r tensorflow/ -ll -f json -o bandit-report.json || true
+        continue-on-error: true
+
+      - name: Upload SAST Reports
+        uses: actions/upload-artifact@v4
+        if: always()
         with:
-          projectBaseDir: .
-          args: >
-            -Dsonar.projectKey=mukilathuruvan_tensorflow
-            -Dsonar.organization=mukilathuruvan
-                                                                                                                        -Dsonar.coverage.exclusions=**/*
+          name: sast-reports
+          path: |
+            cppcheck-report.xml
+            bandit-report.json
+
+      - name: Display Cppcheck Summary
+        if: always()
+        run: |
+          echo "=== Cppcheck Summary ==="
+          if [ -f cppcheck-report.xml ]; then
+            grep -o 'severity="[^"]*"' cppcheck-report.xml | sort | uniq -c || echo "No issues found"
+          else
+            echo "Cppcheck report not found"
+          fi
+
+      - name: Display Bandit Summary
+        if: always()
+        run: |
+          echo "=== Bandit Summary ==="
+          if [ -f bandit-report.json ]; then
+            python3 -c "import json; data=json.load(open('bandit-report.json')); print(f\"High: {len([i for i in data['results'] if i['issue_severity']=='HIGH'])}\\nMedium: {len([i for i in data['results'] if i['issue_severity']=='MEDIUM'])}\\nLow: {len([i for i in data['results'] if i['issue_severity']=='LOW'])}\")" || echo "No issues or error parsing"
+          else
+            echo "Bandit report not found"
+          fi
