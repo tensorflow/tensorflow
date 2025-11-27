@@ -35,10 +35,8 @@ cc_library(
         "//xla/service/gpu:__subpackages__",
     ],
     deps = [
-        ":fusion_emitter",
         ":xtile_compiler",
         "//xla:shape_util",
-        "//xla:status_macros",
         "//xla:util",
         "//xla/backends/gpu/codegen:fusion_emitter",
         "//xla/backends/gpu/runtime:kernel_thunk",

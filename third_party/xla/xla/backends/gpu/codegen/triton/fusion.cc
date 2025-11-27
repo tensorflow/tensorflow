@@ -29,8 +29,6 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/STLExtras.h"
-#include "llvm/IR/Constants.h"
-#include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Metadata.h"
@@ -39,7 +37,7 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/Support/LLVM.h"
 #include "xla/backends/gpu/codegen/fusion_emitter.h"
-#include "xla/backends/gpu/codegen/triton/fusion_emitter.h"
+#include "xla/backends/gpu/codegen/triton/xtile_compiler.h"
 #include "xla/backends/gpu/runtime/kernel_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/codegen/emitters/kernel_arguments.h"
@@ -55,7 +53,6 @@ limitations under the License.
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu/model/block_level_parameters.h"
 #include "xla/shape.h"
-#include "xla/status_macros.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/tsl/platform/statusor.h"
@@ -135,7 +132,7 @@ absl::StatusOr<FusionEmissionResult> TritonFusion::Emit(
     VLOG(3) << "Generating: " << suggested_kernel_name;
 
     const std::string sanitized_kernel_name =
-        GetSanitizedUniqueName(ir_emitter_context, suggested_kernel_name);
+        ir_emitter_context.GetSanitizedUniqueName(suggested_kernel_name);
 
     TF_ASSIGN_OR_RETURN(
         TritonWrapperResult triton_wrapper_result,
@@ -180,14 +177,18 @@ absl::StatusOr<FusionEmissionResult> TritonFusion::Emit(
     CHECK(launch_config.has_value());
     launch_dimensions = std::move(launch_config->launch_dimensions);
 
-    TF_ASSIGN_OR_RETURN(llvm::Function * kernel,
-                        RemoveUnusedTritonAbiArguments(
-                            ir_emitter_context, sanitized_kernel_name,
-                            launch_dimensions, kernel_arguments));
+    TF_ASSIGN_OR_RETURN(
+        llvm::Function * kernel,
+        RemoveUnusedTritonAbiArguments(
+            ir_emitter_context.llvm_module(),
+            ir_emitter_context.gpu_device_info(), sanitized_kernel_name,
+            /* unique_impl_kernel_name= */
+            ir_emitter_context.GetSanitizedUniqueName(sanitized_kernel_name +
+                                                      "_impl"),
+            launch_dimensions, kernel_arguments));
 
     PopulateNvvmAnnotations(ir_emitter_context.llvm_module(), kernel,
                             triton_wrapper_result);
-
 
     return {{kernel->getName().str(), launch_dimensions,
              triton_wrapper_result.cluster_dim,

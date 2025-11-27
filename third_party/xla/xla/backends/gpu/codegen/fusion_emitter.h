@@ -16,28 +16,23 @@ limitations under the License.
 #define XLA_BACKENDS_GPU_CODEGEN_FUSION_EMITTER_H_
 
 #include <array>
-#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
-#include <tuple>
 #include <vector>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/types/span.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/IRBuilder.h"
 #include "mlir/IR/AffineMap.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/codegen/emitters/kernel_arguments.h"
-#include "xla/hlo/analysis/indexing_analysis.h"
 #include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/gpu/ir_emitter_context.h"
 #include "xla/service/gpu/launch_dimensions.h"
-#include "xla/service/llvm_ir/ir_array.h"
 #include "xla/shape.h"
 #include "xla/stream_executor/device_description.h"
 
@@ -107,15 +102,11 @@ absl::StatusOr<llvm::Function*> BuildKernelPrototype(
     const LaunchDimensions& launch_dimensions, llvm::IRBuilderBase* builder);
 
 absl::StatusOr<llvm::Function*> RemoveUnusedTritonAbiArguments(
-    IrEmitterContext& ir_emitter_context,
+    llvm::Module* llvm_module, const se::DeviceDescription& gpu_device_info,
     const std::string& sanitized_kernel_name,
+    const std::string& unique_impl_kernel_name,
     LaunchDimensions& launch_dimensions,
-    const emitters::KernelArguments& arguments);
-
-// Compute the kernel name. The opcode string may contain "-" which cannot be
-// in a PTX function name, so sanitize the name before uniquifying it.
-std::string GetSanitizedUniqueName(IrEmitterContext& ir_emitter_context,
-                                   const std::string& suggested_name);
+    const emitters::KernelArguments& kernel_arguments);
 
 absl::Status AnnotateKernelLaunchDimensions(
     const se::DeviceDescription& device_info,

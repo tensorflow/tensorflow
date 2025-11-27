@@ -26,6 +26,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/cleanup/cleanup.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
@@ -307,9 +308,9 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitPadToStatic(
   TF_ASSIGN_OR_RETURN(auto thunk_sequence,
                       EmitPadToStaticLLVMIR(instr, local_llvm_module.get(),
                                             ir_emitter_context_));
-  CHECK(!llvm::Linker::linkModules(*ir_emitter_context_->llvm_module(),
-                                   std::move(local_llvm_module),
-                                   llvm::Linker::Flags::OverrideFromSrc));
+  TF_RET_CHECK(!llvm::Linker::linkModules(
+      *ir_emitter_context_->llvm_module(), std::move(local_llvm_module),
+      llvm::Linker::Flags::OverrideFromSrc));
   return thunk_sequence;
 }
 
@@ -323,9 +324,9 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitSliceToDynamic(
   TF_ASSIGN_OR_RETURN(auto thunk_sequence,
                       EmitSliceToDynamicLLVMIR(instr, local_llvm_module.get(),
                                                ir_emitter_context_));
-  CHECK(!llvm::Linker::linkModules(*ir_emitter_context_->llvm_module(),
-                                   std::move(local_llvm_module),
-                                   llvm::Linker::Flags::OverrideFromSrc));
+  TF_RET_CHECK(!llvm::Linker::linkModules(
+      *ir_emitter_context_->llvm_module(), std::move(local_llvm_module),
+      llvm::Linker::Flags::OverrideFromSrc));
   return thunk_sequence;
 }
 
@@ -1131,12 +1132,16 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitTopKCustomCall(
 
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitTritonCustomCall(
     const HloCustomCallInstruction* instr) {
-  auto generate = [this, &instr]() -> absl::StatusOr<KernelReuseCache::Entry> {
+  auto local_llvm_module = CreateLocalLLVMModule(
+      std::string{instr->name()}, ir_emitter_context_->llvm_module());
+  auto generate = [&]() -> absl::StatusOr<KernelReuseCache::Entry> {
     mlir::MLIRContext& mlir_context = *ir_emitter_context_->mlir_context();
     LoadMlirDialectsForTriton(mlir_context);
     auto call =
         TritonCall::Parse(instr->raw_backend_config_string(), &mlir_context);
-    auto kernel_name = GetSanitizedUniqueName(*ir_emitter_context_, call.name);
+    auto kernel_name = ir_emitter_context_->GetSanitizedUniqueName(call.name);
+    const se::DeviceDescription& gpu_device_info =
+        ir_emitter_context_->gpu_device_info();
     VLOG(3) << "Generating: " << kernel_name;
 
     mlir::OwningOpRef<mlir::ModuleOp> triton_module;
@@ -1174,10 +1179,9 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitTritonCustomCall(
 
     TF_ASSIGN_OR_RETURN(
         auto result,
-        CompileTritonToLLVM(kernel_name, *hlo_module,
-                            ir_emitter_context_->gpu_device_info(),
+        CompileTritonToLLVM(kernel_name, *hlo_module, gpu_device_info,
                             block_level_parameters, triton_module.get(),
-                            ir_emitter_context_->llvm_module(), mlir_context,
+                            local_llvm_module.get(), mlir_context,
                             /*is_xla_fusion=*/false, emit_kernels));
 
     TF_ASSIGN_OR_RETURN(auto kernel_arguments,
@@ -1186,15 +1190,16 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitTritonCustomCall(
                             GetDefaultBufferAlignment(), instr));
     auto launch_dimensions = LaunchDimensions(
         se::BlockDim(call.grid_x, call.grid_y, call.grid_z),
-        se::ThreadDim(
-            call.num_warps *
-            ir_emitter_context_->gpu_device_info().threads_per_warp()));
+        se::ThreadDim(call.num_warps * gpu_device_info.threads_per_warp()));
 
     if (emit_kernels) {
-      TF_RETURN_IF_ERROR(
-          RemoveUnusedTritonAbiArguments(*ir_emitter_context_, kernel_name,
-                                         launch_dimensions, kernel_arguments)
-              .status());
+      TF_RETURN_IF_ERROR(RemoveUnusedTritonAbiArguments(
+                             local_llvm_module.get(), gpu_device_info,
+                             kernel_name,
+                             ir_emitter_context_->GetSanitizedUniqueName(
+                                 kernel_name + "_impl"),
+                             launch_dimensions, kernel_arguments)
+                             .status());
     }
 
     return {{kernel_name, launch_dimensions, result.cluster_dim,
@@ -1204,6 +1209,11 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitTritonCustomCall(
   auto [status_or_entry, was_cached] =
       ir_emitter_context_->kernel_cache().GetWithStatus(
           instr->raw_backend_config_string(), generate);
+  if (!was_cached) {
+    TF_RET_CHECK(!llvm::Linker::linkModules(
+        *ir_emitter_context_->llvm_module(), std::move(local_llvm_module),
+        llvm::Linker::Flags::OverrideFromSrc));
+  }
   TF_ASSIGN_OR_RETURN(const KernelReuseCache::Entry* entry, status_or_entry);
 
   TF_ASSIGN_OR_RETURN(auto kernel_arguments,
@@ -1253,11 +1263,18 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitAsyncComputation(
 
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitFusion(
     const HloFusionInstruction* instr) {
-  const se::DeviceDescription& device_info =
-      ir_emitter_context_->gpu_device_info();
+  VLOG(3) << "ThunkEmitter::EmitFusion:start(" << instr->name() << ")";
+  auto local_llvm_module = CreateLocalLLVMModule(
+      std::string{instr->name()}, ir_emitter_context_->llvm_module());
+  // TODO(b/461711175): Clean this up once the module is separated out of the
+  // emitter context.
+  llvm::Module* old_module = ir_emitter_context_->llvm_module();
+  ir_emitter_context_->set_llvm_module(local_llvm_module.get());
+  absl::Cleanup cleanup = [&] {
+    ir_emitter_context_->set_llvm_module(old_module);
+  };
   const HloFusionAnalysis fusion_analysis =
-      HloFusionAnalysis::Create(*instr, device_info);
-  VLOG(3) << "ThunkEmitter::EmitFusion:start";
+      HloFusionAnalysis::Create(*instr, ir_emitter_context_->gpu_device_info());
   std::unique_ptr<FusionInterface> emitter = GetFusionEmitter(
       /*fusion_info=*/HloFusionInfo(
           /*analysis=*/fusion_analysis, instr,
@@ -1269,19 +1286,22 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitFusion(
 
   // Use override flag because libdevice functions can be present in both.
   if (result.module) {
-    TF_RET_CHECK(!llvm::Linker::linkModules(
-        *ir_emitter_context_->llvm_module(), std::move(result.module),
-        llvm::Linker::Flags::OverrideFromSrc));
+    TF_RET_CHECK(
+        !llvm::Linker::linkModules(*local_llvm_module, std::move(result.module),
+                                   llvm::Linker::Flags::OverrideFromSrc));
   }
 
   const ExecutionStreamAssignment& stream_assignment =
       ir_emitter_context_->execution_stream_assignment();
+  TF_RET_CHECK(
+      !llvm::Linker::linkModules(*old_module, std::move(local_llvm_module),
+                                 llvm::Linker::Flags::OverrideFromSrc));
   for (std::unique_ptr<Thunk>& thunk : result.thunks) {
     TF_ASSIGN_OR_RETURN(ExecutionStreamId execution_stream_id,
                         stream_assignment.GetSyncExecutionStreamId(instr));
     thunk->set_execution_stream_id(execution_stream_id);
   }
-  VLOG(3) << "ThunkEmitter::EmitFusion:complete";
+  VLOG(3) << "ThunkEmitter::EmitFusion:complete(" << instr->name() << ")";
   return std::move(result.thunks);
 }
 
@@ -1388,9 +1408,9 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitRngGetAndUpdateState(
   TF_ASSIGN_OR_RETURN(auto thunk_sequence,
                       EmitRngGetAndUpdateStateLLVMIR(
                           instr, local_llvm_module.get(), ir_emitter_context_));
-  CHECK(!llvm::Linker::linkModules(*ir_emitter_context_->llvm_module(),
-                                   std::move(local_llvm_module),
-                                   llvm::Linker::Flags::OverrideFromSrc));
+  TF_RET_CHECK(!llvm::Linker::linkModules(
+      *ir_emitter_context_->llvm_module(), std::move(local_llvm_module),
+      llvm::Linker::Flags::OverrideFromSrc));
   return thunk_sequence;
 }
 
@@ -1443,9 +1463,9 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitSort(
                       EmitBitonicSortLLVMIR(sort, local_llvm_module.get(),
                                             ir_emitter_context_));
   AppendThunkSequence(thunks, sort_thunks);
-  llvm::Linker::linkModules(*ir_emitter_context_->llvm_module(),
-                            std::move(local_llvm_module),
-                            llvm::Linker::Flags::OverrideFromSrc);
+  TF_RET_CHECK(!llvm::Linker::linkModules(
+      *ir_emitter_context_->llvm_module(), std::move(local_llvm_module),
+      llvm::Linker::Flags::OverrideFromSrc));
   return thunks;
 }
 

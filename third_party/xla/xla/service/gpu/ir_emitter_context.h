@@ -104,6 +104,9 @@ class IrEmitterContext {
 
   mlir::MLIRContext* mlir_context() { return mlir_context_; }
   llvm::Module* llvm_module() { return llvm_module_; }
+  void set_llvm_module(llvm::Module* llvm_module) {
+    llvm_module_ = llvm_module;
+  }
 
   // A separate module can optionally be used to emit constants.
   llvm::Module* llvm_module_constants() {
