@@ -55,7 +55,7 @@ const uint64_t kDefaultMemoryFilterMask = tsl::profiler::TraceMeFiltersToMask(
 constexpr BFCAllocator::ChunkHandle BFCAllocator::kInvalidChunkHandle;
 
 BFCAllocator::BFCAllocator(std::unique_ptr<SubAllocator> sub_allocator,
-                           size_t total_memory, const string& name,
+                           size_t total_memory, const std::string& name,
                            const Options& opts)
     : opts_(opts),
       coalesce_regions_(sub_allocator->SupportsCoalescing()),
@@ -1089,9 +1089,9 @@ void BFCAllocator::DumpMemoryLog(size_t num_bytes) {
       if (c->in_use()) {
         in_use_by_size[c->size]++;
       }
-      string buf = absl::StrCat((c->in_use() ? "InUse" : "Free "), " at ",
-                                absl::Hex(reinterpret_cast<uint64>(c->ptr)),
-                                " of size ", c->size);
+      std::string buf = absl::StrCat(
+          (c->in_use() ? "InUse" : "Free "), " at ",
+          absl::Hex(reinterpret_cast<uint64>(c->ptr)), " of size ", c->size);
 #ifdef TENSORFLOW_MEM_DEBUG
       if (ShouldRecordOpName()) {
         absl::StrAppend(&buf, " by op ", c->op_name, " action_count ",
@@ -1128,8 +1128,8 @@ void BFCAllocator::MaybeWriteMemoryMap() {
   const char* gpu_memory_map_file = std::getenv("TF_BFC_MEMORY_DUMP");
   if (gpu_memory_map_file != nullptr) {
     std::unique_ptr<WritableFile> dump_file;
-    string file_name = absl::StrCat(gpu_memory_map_file, "_", Name(), ".",
-                                    Env::Default()->NowMicros());
+    std::string file_name = absl::StrCat(gpu_memory_map_file, "_", Name(), ".",
+                                         Env::Default()->NowMicros());
     absl::Status status =
         Env::Default()->NewWritableFile(file_name, &dump_file);
     if (!status.ok()) {

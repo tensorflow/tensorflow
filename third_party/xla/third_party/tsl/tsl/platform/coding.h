@@ -21,6 +21,8 @@ limitations under the License.
 #ifndef TENSORFLOW_TSL_PLATFORM_CODING_H_
 #define TENSORFLOW_TSL_PLATFORM_CODING_H_
 
+#include <string>
+
 #include "absl/strings/string_view.h"
 #include "xla/tsl/platform/types.h"
 #include "tsl/platform/stringpiece.h"
@@ -40,12 +42,12 @@ static const int kMaxVarint64Bytes = 10;
 extern void EncodeFixed16(char* dst, uint16 value);
 extern void EncodeFixed32(char* dst, uint32 value);
 extern void EncodeFixed64(char* dst, uint64 value);
-extern void PutFixed16(string* dst, uint16 value);
-extern void PutFixed32(string* dst, uint32 value);
-extern void PutFixed64(string* dst, uint64 value);
+extern void PutFixed16(std::string* dst, uint16 value);
+extern void PutFixed32(std::string* dst, uint32 value);
+extern void PutFixed64(std::string* dst, uint64 value);
 
-extern void PutVarint32(string* dst, uint32 value);
-extern void PutVarint64(string* dst, uint64 value);
+extern void PutVarint32(std::string* dst, uint32 value);
+extern void PutVarint64(std::string* dst, uint64 value);
 
 extern void PutVarint32(tstring* dst, uint32 value);
 extern void PutVarint64(tstring* dst, uint64 value);

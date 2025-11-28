@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstdint>
 #include <cstdlib>
 #include <memory>
+#include <string>
 #include <vector>
 
 #include "absl/log/log.h"
@@ -88,13 +89,13 @@ constexpr char kGceTokenPath[] = "instance/service-accounts/default/token";
 constexpr char kOAuthScope[] = "https://www.googleapis.com/auth/cloud-platform";
 
 /// Returns whether the given path points to a readable file.
-bool IsFile(const string& filename) {
+bool IsFile(const std::string& filename) {
   std::ifstream fstream(filename.c_str());
   return fstream.good();
 }
 
 /// Returns the credentials file name from the env variable.
-absl::Status GetEnvironmentVariableFileName(string* filename) {
+absl::Status GetEnvironmentVariableFileName(std::string* filename) {
   if (!filename) {
     return absl::FailedPreconditionError("'filename' cannot be nullptr.");
   }
@@ -108,11 +109,11 @@ absl::Status GetEnvironmentVariableFileName(string* filename) {
 }
 
 /// Returns the well known file produced by command 'gcloud auth login'.
-absl::Status GetWellKnownFileName(string* filename) {
+absl::Status GetWellKnownFileName(std::string* filename) {
   if (!filename) {
     return absl::FailedPreconditionError("'filename' cannot be nullptr.");
   }
-  string config_dir;
+  std::string config_dir;
   const char* config_dir_override = std::getenv(kCloudSdkConfig);
   if (config_dir_override) {
     config_dir = config_dir_override;
@@ -150,7 +151,7 @@ GoogleAuthProvider::GoogleAuthProvider(
           std::move(compute_engine_metadata_client)),
       env_(env) {}
 
-absl::Status GoogleAuthProvider::GetToken(string* t) {
+absl::Status GoogleAuthProvider::GetToken(std::string* t) {
   absl::MutexLock lock(&mu_);
   const uint64 now_sec = env_->NowSeconds();
 
@@ -219,7 +220,7 @@ absl::Status GoogleAuthProvider::GetToken(string* t) {
 }
 
 absl::Status GoogleAuthProvider::GetTokenFromFiles() {
-  string credentials_filename;
+  std::string credentials_filename;
   if (!GetEnvironmentVariableFileName(&credentials_filename).ok() &&
       !GetWellKnownFileName(&credentials_filename).ok()) {
     return absl::NotFoundError("Could not locate the credentials file.");

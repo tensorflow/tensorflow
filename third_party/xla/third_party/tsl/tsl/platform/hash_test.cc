@@ -107,9 +107,9 @@ TEST(StringPieceHasher, Equality) {
 }
 
 TEST(StringPieceHasher, HashMap) {
-  string s1("foo");
-  string s2("bar");
-  string s3("baz");
+  std::string s1("foo");
+  std::string s2("bar");
+  std::string s3("baz");
 
   absl::string_view p1(s1);
   absl::string_view p2(s2);

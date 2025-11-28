@@ -312,7 +312,7 @@ class CPUIDInfo {
     return false;
   }
 
-  string vendor_str() const { return vendor_str_; }
+  std::string vendor_str() const { return vendor_str_; }
   int family() const { return family_; }
   int model_num() { return model_num_; }
 
@@ -364,7 +364,7 @@ class CPUIDInfo {
   int have_sse4_2_ : 1;
   int have_ssse3_ : 1;
   int have_hypervisor_ : 1;
-  string vendor_str_;
+  std::string vendor_str_;
   int family_;
   int model_num_;
 };

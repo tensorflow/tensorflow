@@ -94,8 +94,8 @@ struct hash<T*> {
 };
 
 template <>
-struct hash<string> {
-  size_t operator()(const string& s) const {
+struct hash<std::string> {
+  size_t operator()(const std::string& s) const {
     return static_cast<size_t>(Hash64(s));
   }
 };

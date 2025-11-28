@@ -38,7 +38,7 @@ TEST(FpToString, Ints) {
   for (int s = 0; s < 64; s++) {
     for (int delta = -1; delta <= 1; delta++) {
       uint64 fp = (1ull << s) + delta;
-      string s = FpToString(fp);
+      std::string s = FpToString(fp);
       uint64 fp2;
       EXPECT_TRUE(HexStringToUint64(s, &fp2));
       EXPECT_EQ(fp, fp2);

@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_TSL_PLATFORM_DEMANGLE_H_
 #define TENSORFLOW_TSL_PLATFORM_DEMANGLE_H_
 
+#include <string>
+
 #include "xla/tsl/platform/types.h"
 
 namespace tsl {
@@ -23,8 +25,8 @@ namespace port {
 
 // If the compiler supports, demangle a mangled symbol name and return
 // the demangled name. Otherwise, returns 'mangled' as is.
-string Demangle(const char* mangled);
-inline string Demangle(const string mangled) {
+std::string Demangle(const char* mangled);
+inline std::string Demangle(const std::string mangled) {
   return Demangle(mangled.c_str());
 }
 

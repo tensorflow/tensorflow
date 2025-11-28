@@ -60,7 +60,7 @@ class CurlHttpRequest : public HttpRequest {
   ~CurlHttpRequest() override;
 
   /// Sets the request URI.
-  void SetUri(const string& uri) override;
+  void SetUri(const std::string& uri) override;
 
   /// \brief Sets the Range header.
   ///
@@ -69,13 +69,13 @@ class CurlHttpRequest : public HttpRequest {
   void SetRange(uint64 start, uint64 end) override;
 
   /// Sets a request header.
-  void AddHeader(const string& name, const string& value) override;
+  void AddHeader(const std::string& name, const std::string& value) override;
 
-  void AddResolveOverride(const string& hostname, int64_t port,
-                          const string& ip_addr) override;
+  void AddResolveOverride(const std::string& hostname, int64_t port,
+                          const std::string& ip_addr) override;
 
   /// Sets the 'Authorization' header to the value of 'Bearer ' + auth_token.
-  void AddAuthBearerHeader(const string& auth_token) override;
+  void AddAuthBearerHeader(const std::string& auth_token) override;
 
   void SetRequestStats(RequestStats* stats) override;
 
@@ -86,7 +86,7 @@ class CurlHttpRequest : public HttpRequest {
   ///
   /// The request body will be taken from the specified file starting from
   /// the given offset.
-  absl::Status SetPutFromFile(const string& body_filepath,
+  absl::Status SetPutFromFile(const std::string& body_filepath,
                               size_t offset) override;
 
   /// Makes the request a PUT request with an empty body.
@@ -132,7 +132,7 @@ class CurlHttpRequest : public HttpRequest {
   /// \brief Returns the response headers of a completed request.
   ///
   /// If the header is not found, returns an empty string.
-  string GetResponseHeader(const string& name) const override;
+  std::string GetResponseHeader(const std::string& name) const override;
 
   /// Returns the response code of a completed request.
   uint64 GetResponseCode() const override;
@@ -144,7 +144,7 @@ class CurlHttpRequest : public HttpRequest {
   absl::Status Send() override;
 
   // Url encodes str and returns a new string.
-  string EscapeString(const string& str) override;
+  std::string EscapeString(const std::string& str) override;
 
   void SetTimeouts(uint32 connection, uint32 inactivity, uint32 total) override;
 
@@ -200,7 +200,7 @@ class CurlHttpRequest : public HttpRequest {
 
   std::vector<char> default_response_buffer_;
 
-  std::unordered_map<std::string, string> response_headers_;
+  std::unordered_map<std::string, std::string> response_headers_;
   uint64 response_code_ = 0;
 
   // The timestamp of the last activity related to the request execution, in
@@ -224,7 +224,7 @@ class CurlHttpRequest : public HttpRequest {
   bool is_sent_ = false;
 
   // Store the URI to help disambiguate requests when errors occur.
-  string uri_;
+  std::string uri_;
   RequestMethod method_ = RequestMethod::kGet;
 
   // Limit the size of an http response that is copied into an error message.

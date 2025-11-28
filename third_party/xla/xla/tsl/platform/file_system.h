@@ -165,12 +165,12 @@ class FileSystem {
   /// Returns true if all the listed files exist, false otherwise.
   /// if status is not null, populate the vector with a detailed status
   /// for each file.
-  virtual bool FilesExist(const std::vector<string>& files,
+  virtual bool FilesExist(const std::vector<std::string>& files,
                           std::vector<absl::Status>* status) {
     return FilesExist(files, nullptr, status);
   }
 
-  virtual bool FilesExist(const std::vector<string>& files,
+  virtual bool FilesExist(const std::vector<std::string>& files,
                           TransactionToken* token,
                           std::vector<absl::Status>* status);
 
@@ -178,13 +178,13 @@ class FileSystem {
   ///
   /// The returned paths are relative to 'dir'.
   virtual absl::Status GetChildren(const std::string& dir,
-                                   std::vector<string>* result) {
+                                   std::vector<std::string>* result) {
     return GetChildren(dir, nullptr, result);
   }
 
   virtual absl::Status GetChildren(const std::string& dir,
                                    TransactionToken* token,
-                                   std::vector<string>* result) {
+                                   std::vector<std::string>* result) {
     return absl::OkStatus();
   }
 
@@ -211,13 +211,13 @@ class FileSystem {
   ///  * UNIMPLEMENTED - Some underlying functions (like GetChildren) are not
   ///                    implemented
   virtual absl::Status GetMatchingPaths(const std::string& pattern,
-                                        std::vector<string>* results) {
+                                        std::vector<std::string>* results) {
     return GetMatchingPaths(pattern, nullptr, results);
   }
 
   virtual absl::Status GetMatchingPaths(const std::string& pattern,
                                         TransactionToken* token,
-                                        std::vector<string>* results) {
+                                        std::vector<std::string>* results) {
     return absl::OkStatus();
   }
 
@@ -519,13 +519,14 @@ class FileSystem {
   virtual std::string DecodeTransaction(const TransactionToken* token);
 
   /// \brief Set File System Configuration Options
-  virtual absl::Status SetOption(const string& key, const string& value) {
+  virtual absl::Status SetOption(const std::string& key,
+                                 const std::string& value) {
     return absl::UnimplementedError("SetOption");
   }
 
   /// \brief Set File System Configuration Option
   virtual absl::Status SetOption(const std::string& name,
-                                 const std::vector<string>& values) {
+                                 const std::vector<std::string>& values) {
     return absl::UnimplementedError("SetOption");
   }
 
@@ -619,19 +620,20 @@ class WrappedFileSystem : public FileSystem {
     return fs_->FileExists(fname, (token ? token : token_));
   }
 
-  bool FilesExist(const std::vector<string>& files, TransactionToken* token,
+  bool FilesExist(const std::vector<std::string>& files,
+                  TransactionToken* token,
                   std::vector<absl::Status>* status) override {
     return fs_->FilesExist(files, (token ? token : token_), status);
   }
 
   absl::Status GetChildren(const std::string& dir, TransactionToken* token,
-                           std::vector<string>* result) override {
+                           std::vector<std::string>* result) override {
     return fs_->GetChildren(dir, (token ? token : token_), result);
   }
 
   absl::Status GetMatchingPaths(const std::string& pattern,
                                 TransactionToken* token,
-                                std::vector<string>* results) override {
+                                std::vector<std::string>* results) override {
     return fs_->GetMatchingPaths(pattern, (token ? token : token_), results);
   }
 

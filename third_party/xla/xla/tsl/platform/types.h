@@ -28,8 +28,6 @@ limitations under the License.
 
 namespace tsl {
 
-// Alias tsl::string to std::string.
-using string ABSL_DEPRECATE_AND_INLINE() = std::string;
 using uint8 ABSL_DEPRECATE_AND_INLINE() = uint8_t;
 using uint16 ABSL_DEPRECATE_AND_INLINE() = uint16_t;
 using uint32 ABSL_DEPRECATE_AND_INLINE() = uint32_t;

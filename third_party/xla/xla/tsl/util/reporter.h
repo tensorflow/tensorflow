@@ -32,14 +32,14 @@ namespace tsl {
 class TestReportFile {
  public:
   // Create a TestReportFile with the test name 'test_name'.
-  TestReportFile(const string& fname, const string& test_name);
+  TestReportFile(const std::string& fname, const std::string& test_name);
 
   // Initialize the TestReportFile.  If the reporting env flag is set,
   // try to create the reporting file.  Fails if the file already exists.
   absl::Status Initialize();
 
   // Append the report file w/ 'content'.
-  absl::Status Append(const string& content);
+  absl::Status Append(const std::string& content);
 
   // Close the report file.
   absl::Status Close();
@@ -50,8 +50,8 @@ class TestReportFile {
 
  private:
   bool closed_;
-  string fname_;
-  string test_name_;
+  std::string fname_;
+  std::string test_name_;
   std::unique_ptr<WritableFile> log_file_;
   TestReportFile(const TestReportFile&) = delete;
   void operator=(const TestReportFile&) = delete;
@@ -82,11 +82,11 @@ class TestReporter {
   static constexpr const char* kTestReporterEnv = "TEST_REPORT_FILE_PREFIX";
 
   // Create a TestReporter with the test name 'test_name'.
-  explicit TestReporter(const string& test_name)
+  explicit TestReporter(const std::string& test_name)
       : TestReporter(GetLogEnv(), test_name) {}
 
   // Provide a prefix filename, mostly used for testing this class.
-  TestReporter(const string& fname, const string& test_name);
+  TestReporter(const std::string& fname, const std::string& test_name);
 
   // Initialize the TestReporter.  If the reporting env flag is set,
   // try to create the reporting file.  Fails if the file already exists.
@@ -106,19 +106,19 @@ class TestReporter {
                          double throughput);
 
   // Set property on Benchmark to the given value.
-  absl::Status SetProperty(const string& name, double value);
+  absl::Status SetProperty(const std::string& name, double value);
 
   // Set property on Benchmark to the given value.
-  absl::Status SetProperty(const string& name, const string& value);
+  absl::Status SetProperty(const std::string& name, const std::string& value);
 
   // Add the given value to the metrics on the Benchmark.
-  absl::Status AddMetric(const string& name, double value);
+  absl::Status AddMetric(const std::string& name, double value);
 
   // TODO(b/32704451): Don't just ignore the ::tensorflow::Status object!
   ~TestReporter() { Close().IgnoreError(); }  // Autoclose in destructor.
 
  private:
-  static string GetLogEnv() {
+  static std::string GetLogEnv() {
     const char* fname_ptr = getenv(kTestReporterEnv);
     return (fname_ptr != nullptr) ? fname_ptr : "";
   }
