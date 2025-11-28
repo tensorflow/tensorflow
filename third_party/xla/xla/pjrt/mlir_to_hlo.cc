@@ -306,7 +306,14 @@ absl::StatusOr<std::string> SerializeUsingVersionedStablehlo(
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::stablehlo::createShapeLegalizeToStablehloPass());
   pm.addPass(mlir::createReconcileUnrealizedCastsPass());
-  pm.addPass(mlir::mhlo::createHloLegalizeToStablehloPass());  // not required
+
+  // The following pass is likely not required, but included while we migrate
+  // to StableHLO->HLO lowering.
+  // If a users is passing a mixed StableHLO+MHLO program, we should permit
+  // these ops when converting to StableHLO.
+  mlir::mhlo::HloLegalizeToStablehloPassOptions options;
+  options.allow_xla_features_ = true;
+  pm.addPass(mlir::mhlo::createHloLegalizeToStablehloPass(options));
   if (!mlir::succeeded(pm.run(mlir_module))) {
     const absl::Status status = diagnostic_handler.ConsumeStatus();
     return absl::InvalidArgumentError(absl::StrCat(
