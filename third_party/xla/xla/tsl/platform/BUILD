@@ -374,6 +374,8 @@ cc_library(
         "threadpool.h",
     ],
     deps = tf_windows_aware_platform_deps("env") + if_static([":env_impl"]) + [
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
     ],
 )

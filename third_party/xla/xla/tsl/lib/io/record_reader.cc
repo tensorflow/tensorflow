@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "xla/tsl/lib/hash/crc32c.h"
 #include "xla/tsl/lib/io/buffered_inputstream.h"
 #include "xla/tsl/lib/io/compression.h"
@@ -115,8 +116,8 @@ inline const char* GetChecksumErrorSuffix(uint64_t offset) {
 absl::Status RecordReader::ReadChecksummed(uint64_t offset, size_t n,
                                            tstring* result) {
   if (n >= SIZE_MAX - sizeof(uint32_t)) {
-    return errors::DataLoss("record size too large",
-                            GetChecksumErrorSuffix(offset));
+    return absl::DataLossError(
+        absl::StrCat("record size too large", GetChecksumErrorSuffix(offset)));
   }
 
   const size_t expected = n + sizeof(uint32_t);
@@ -124,17 +125,18 @@ absl::Status RecordReader::ReadChecksummed(uint64_t offset, size_t n,
 
   if (result->size() != expected) {
     if (result->empty()) {
-      return errors::OutOfRange("eof", GetChecksumErrorSuffix(offset));
+      return absl::OutOfRangeError(
+          absl::StrCat("eof", GetChecksumErrorSuffix(offset)));
     } else {
-      return errors::DataLoss("truncated record at ", offset,
-                              GetChecksumErrorSuffix(offset));
+      return absl::DataLossError(absl::StrCat("truncated record at ", offset,
+                                              GetChecksumErrorSuffix(offset)));
     }
   }
 
   const uint32_t masked_crc = core::DecodeFixed32(result->data() + n);
   if (crc32c::Unmask(masked_crc) != crc32c::Value(result->data(), n)) {
-    return errors::DataLoss("corrupted record at ", offset,
-                            GetChecksumErrorSuffix(offset));
+    return absl::DataLossError(absl::StrCat("corrupted record at ", offset,
+                                            GetChecksumErrorSuffix(offset)));
   }
   result->resize(n);
   return absl::OkStatus();
@@ -224,8 +226,8 @@ absl::Status RecordReader::ReadRecord(uint64_t* offset, tstring* record) {
   if (!s.ok()) {
     last_read_failed_ = true;
     if (absl::IsOutOfRange(s)) {
-      s = errors::DataLoss("truncated record at ", *offset, "' failed with ",
-                           s.message());
+      s = absl::DataLossError(absl::StrCat("truncated record at ", *offset,
+                                           "' failed with ", s.message()));
     }
     return s;
   }
@@ -255,8 +257,8 @@ absl::Status RecordReader::SkipRecords(uint64_t* offset, int num_to_skip,
     if (!s.ok()) {
       last_read_failed_ = true;
       if (absl::IsOutOfRange(s)) {
-        s = errors::DataLoss("truncated record at ", *offset, "' failed with ",
-                             s.message());
+        s = absl::DataLossError(absl::StrCat("truncated record at ", *offset,
+                                             "' failed with ", s.message()));
       }
       return s;
     }

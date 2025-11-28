@@ -87,7 +87,7 @@ class StringSource : public RandomAccessFile {
                     char* scratch) const override {
     if (force_error_) {
       force_error_ = false;
-      return errors::DataLoss("read error");
+      return absl::DataLossError("read error");
     }
 
     if (offset >= contents_->size()) {

@@ -20,6 +20,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "absl/strings/escaping.h"
 #include "xla/tsl/lib/io/block.h"
 #include "xla/tsl/lib/io/block_builder.h"
@@ -98,7 +99,7 @@ class StringSink : public WritableFile {
   absl::Status Close() override { return absl::OkStatus(); }
   absl::Status Flush() override { return absl::OkStatus(); }
   absl::Status Name(absl::string_view* result) const override {
-    return errors::Unimplemented("StringSink does not support Name()");
+    return absl::UnimplementedError("StringSink does not support Name()");
   }
   absl::Status Sync() override { return absl::OkStatus(); }
   absl::Status Tell(int64_t* pos) override {
@@ -125,13 +126,13 @@ class StringSource : public RandomAccessFile {
   uint64_t Size() const { return contents_.size(); }
 
   absl::Status Name(absl::string_view* result) const override {
-    return errors::Unimplemented("StringSource does not support Name()");
+    return absl::UnimplementedError("StringSource does not support Name()");
   }
 
   absl::Status Read(uint64_t offset, size_t n, absl::string_view* result,
                     char* scratch) const override {
     if (offset > contents_.size()) {
-      return errors::InvalidArgument("invalid Read offset");
+      return absl::InvalidArgumentError("invalid Read offset");
     }
     if (offset + n > contents_.size()) {
       n = contents_.size() - offset;

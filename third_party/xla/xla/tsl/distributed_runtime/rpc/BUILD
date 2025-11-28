@@ -66,6 +66,7 @@ tsl_cc_test(
         "//xla/tsl/platform:test_main",
         "//xla/tsl/util/proto:proto_matchers",
         "@com_github_grpc_grpc//:grpc++",
+        "@com_google_absl//absl/status",
     ],
 )
 
@@ -97,6 +98,7 @@ cc_library(
         "//xla/tsl/protobuf:rpc_options_proto_cc",
         "//xla/tsl/util:device_name_utils",
         "@com_github_grpc_grpc//:grpc++",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
         "@local_tsl//tsl/platform:numbers",

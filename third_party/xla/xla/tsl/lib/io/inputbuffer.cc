@@ -138,7 +138,7 @@ absl::Status InputBuffer::ReadNBytes(int64_t bytes_to_read, char* result,
 absl::Status InputBuffer::ReadVarint32Fallback(uint32_t* result) {
   absl::Status s = ReadVarintFallback(result, core::kMaxVarint32Bytes);
   if (absl::IsDataLoss(s)) {
-    return errors::DataLoss("Stored data is too large to be a varint32.");
+    return absl::DataLossError("Stored data is too large to be a varint32.");
   }
   return s;
 }
@@ -146,7 +146,7 @@ absl::Status InputBuffer::ReadVarint32Fallback(uint32_t* result) {
 absl::Status InputBuffer::ReadVarint64Fallback(uint64_t* result) {
   absl::Status s = ReadVarintFallback(result, core::kMaxVarint64Bytes);
   if (absl::IsDataLoss(s)) {
-    return errors::DataLoss("Stored data is too large to be a varint64.");
+    return absl::DataLossError("Stored data is too large to be a varint64.");
   }
   return s;
 }
@@ -164,7 +164,8 @@ absl::Status InputBuffer::ReadVarintFallback(T* result, int max_bytes) {
     *result |= (static_cast<T>(scratch) & 127) << shift;
     if (!(scratch & 128)) return absl::OkStatus();
   }
-  return errors::DataLoss("Stored data longer than ", max_bytes, " bytes.");
+  return absl::DataLossError(
+      absl::StrCat("Stored data longer than ", max_bytes, " bytes."));
 }
 
 absl::Status InputBuffer::SkipNBytes(int64_t bytes_to_skip) {
