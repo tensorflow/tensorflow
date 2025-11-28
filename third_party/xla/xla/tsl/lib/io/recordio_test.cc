@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "absl/status/status.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/lib/hash/crc32c.h"
 #include "xla/tsl/lib/io/record_reader.h"
@@ -90,7 +91,7 @@ class StringSource : public RandomAccessFile {
     }
 
     if (offset >= contents_->size()) {
-      return errors::OutOfRange("end of file");
+      return absl::OutOfRangeError("end of file");
     }
 
     if (contents_->size() < offset + n) {

@@ -431,8 +431,8 @@ class BufferedGcsRandomAccessFile : public RandomAccessFile {
         // Forget the end-of-file flag to allow for clients that poll on the
         // same file.
         buffer_end_is_past_eof_ = false;
-        return errors::OutOfRange("EOF reached. Requested to read ", n,
-                                  " bytes from ", offset, ".");
+        return absl::OutOfRangeError(absl::StrCat(
+            "EOF reached. Requested to read ", n, " bytes from ", offset, "."));
       }
     }
     return absl::OkStatus();
