@@ -52,7 +52,9 @@ std::string GpuClique::DebugString() const {
       num_communicators());
   int32_t cnt = 0;
   ForEachComm([&](RankId rank, Communicator* comm) {
-    if (cnt++) absl::StrAppend(&out, ", ");
+    if (cnt++) {
+      absl::StrAppend(&out, ", ");
+    }
     absl::StrAppendFormat(&out, "[rank=%d, comm=%p]", rank.value(), comm);
   });
   return out;
@@ -63,7 +65,9 @@ absl::Status GpuClique::HealthCheck() const {
   ForEachComm([&health_check](RankId rank, Communicator* comm) {
     if (auto s = comm->HealthCheck(); !s.ok()) {
       LOG(ERROR) << "GPU communicator error (rank " << rank << "): " << s;
-      if (health_check.ok()) health_check = std::move(s);  // return first error
+      if (health_check.ok()) {
+        health_check = std::move(s);  // return first error
+      }
     }
   });
   return health_check;

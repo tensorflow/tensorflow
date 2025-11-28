@@ -34,7 +34,6 @@ limitations under the License.
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "xla/backends/gpu/codegen/triton/emitter_helpers.h"
 #include "xla/backends/gpu/codegen/triton/transforms/passes.h"
-#include "xla/codegen/emitter_loc_op_builder.h"
 #include "xla/service/gpu/target_util.h"
 #include "xla/xla_data.pb.h"
 #include "triton/Dialect/Triton/IR/Dialect.h"
@@ -186,19 +185,19 @@ class ConvertToLibdevice : public mlir::OpRewritePattern<OpTy> {
     }
 
     absl::StatusOr<::xla::PrimitiveType> primitive_type_or =
-        ::xla::gpu::triton::GetPrimitiveType(output_type);
+        ::xla::xtile::GetPrimitiveType(output_type);
     if (!primitive_type_or.ok()) {
       return rewriter.notifyMatchFailure(op, "could not get primitive type");
     }
 
-    ::xla::EmitterLocOpBuilder builder(op->getLoc(), rewriter);
+    mlir::ImplicitLocOpBuilder builder(op->getLoc(), rewriter);
 
     llvm::SmallVector<Value, 2> casted_inputs;
     if (output_type_is_16bit_float) {
       // Upcast the inputs to F32.
       for (auto operand : op->getOperands()) {
         casted_inputs.push_back(
-            ::xla::gpu::triton::Cast(builder, operand, rewriter.getF32Type()));
+            ::xla::xtile::Cast(builder, operand, rewriter.getF32Type()));
       }
     } else {
       casted_inputs = llvm::to_vector(op->getOperands());
@@ -213,7 +212,7 @@ class ConvertToLibdevice : public mlir::OpRewritePattern<OpTy> {
 
     if (res.getType() != output_type) {
       // Downcast back to the original output type.
-      res = ::xla::gpu::triton::Cast(builder, res, output_type);
+      res = ::xla::xtile::Cast(builder, res, output_type);
     }
 
     rewriter.replaceOp(op, res);

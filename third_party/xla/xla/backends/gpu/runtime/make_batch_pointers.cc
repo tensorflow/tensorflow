@@ -39,9 +39,8 @@ absl::Status MakeBatchPointers(se::Stream* stream,
     if (executor->GetPlatform()->id() ==
         stream_executor::rocm::kROCmPlatformId) {
       return 256;
-    } else {
-      return 128;
     }
+    return 128;
   }();
 
   TF_ASSIGN_OR_RETURN(

@@ -47,6 +47,7 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/LogicalResult.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
+#include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/hlo/analysis/hlo_ordering.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -192,11 +193,11 @@ absl::StatusOr<std::unique_ptr<SequentialThunk>> LowerHlo(
   }
   std::unique_ptr<ThunkEmitter> thunk_emitter =
       ThunkEmitter::Create(&ir_emitter_context);
-  {
     XLA_SCOPED_LOGGING_TIMER(absl::StrCat(
         "GpuCompiler::RunBackend - IR emission for ", hlo_module->name()));
 
-    TF_RETURN_IF_ERROR(thunk_emitter->EmitHloEntryComputation(hlo_module));
+    TF_ASSIGN_OR_RETURN(auto thunks,
+                        thunk_emitter->EmitHloEntryComputation(hlo_module));
 
     RemoveUnusedAndUninitializedGlobals(
         platform_id, options, ir_emitter_context.llvm_module_constants(),
@@ -206,8 +207,8 @@ absl::StatusOr<std::unique_ptr<SequentialThunk>> LowerHlo(
     // out we have no way of telling how far through the process we got).
     uint64_t end_usecs = tsl::Env::Default()->NowMicros();
     RecordHloToLlvmDuration(end_usecs - start_usecs);
-  }
-  return thunk_emitter->ConsumeThunkSequence();
+    return std::make_unique<SequentialThunk>(Thunk::ThunkInfo{},
+                                             std::move(thunks));
 }
 
 }  // namespace

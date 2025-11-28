@@ -147,7 +147,9 @@ static absl::StatusOr<bool> HostCompare(const ComparisonParams& params) {
                         std::abs(expected_value_canonical)) +
                1) <
           params.relative_tol)) {
-      if (!params.verbose) return false;  // Return immediately if not verbose.
+      if (!params.verbose) {
+        return false;  // Return immediately if not verbose.
+      }
       ++differences_seen;
       LOG(ERROR) << "Difference at " << i << ": " << current_value
                  << ", expected " << expected_value;

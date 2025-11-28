@@ -42,6 +42,7 @@ limitations under the License.
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/Attributes.h"
+#include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/BuiltinTypeInterfaces.h"
@@ -57,7 +58,6 @@ limitations under the License.
 #include "xla/backends/gpu/codegen/triton/emitter_helpers.h"
 #include "xla/backends/gpu/codegen/triton/ir/triton_xla_ops.h"
 #include "xla/backends/gpu/codegen/triton/transforms/passes.h"
-#include "xla/codegen/emitter_loc_op_builder.h"
 #include "xla/codegen/emitters/ir/xla_ops.h"
 #include "xla/permutation_util.h"
 #include "xla/stream_executor/gpu/tma_metadata.h"
@@ -68,8 +68,7 @@ namespace mlir::triton::xla {
 #define GEN_PASS_DEF_TRITONXLAEXTRACTINSERTTOTRITONPASS
 #include "xla/backends/gpu/codegen/triton/transforms/passes.h.inc"
 
-namespace xg = ::xla::gpu;
-namespace xgt = xg::triton;
+namespace xtile = ::xla::xtile;
 
 namespace {
 
@@ -86,11 +85,11 @@ bool HasBroadcastConsumer(Operation* op) {
 
 PointerType GetTensorPtrType(Type type) {
   return PointerType::get(
-      xgt::StorageType(type),
+      xtile::StorageType(type),
       static_cast<unsigned>(mlir::NVVM::NVVMMemorySpace::Global));
 }
 
-SmallVector<Value> IndexCast(::xla::EmitterLocOpBuilder& builder, Type type,
+SmallVector<Value> IndexCast(ImplicitLocOpBuilder& builder, Type type,
                              ValueRange values) {
   SmallVector<Value> result;
   result.reserve(values.size());
@@ -233,7 +232,7 @@ bool CanUseTma(Operation* op, bool allow_tma, int num_stages,
 }
 
 // Add TMA attributes to the corresponding argument in the function.
-void AddTmaAttributes(::xla::EmitterLocOpBuilder& builder,
+void AddTmaAttributes(ImplicitLocOpBuilder& builder,
                       const TypedValue<PointerType>& pointer,
                       const ArrayRef<int64_t>& original_shape,
                       const ArrayRef<int64_t>& layout,
@@ -303,7 +302,7 @@ class RewriteFuncOp : public mlir::OpRewritePattern<func::FuncOp> {
  private:
   mlir::LogicalResult matchAndRewrite(
       func::FuncOp op, mlir::PatternRewriter& rewriter) const override {
-    ::xla::EmitterLocOpBuilder builder(op.getLoc(), rewriter);
+    ImplicitLocOpBuilder builder(op.getLoc(), rewriter);
 
     auto input_types = op.getFunctionType().getInputs();
 
@@ -410,7 +409,7 @@ SmallVector<unsigned> GetRetainedDims(ArrayRef<unsigned> reduced_dims,
 
 // Expands the value in all dimensions except `dim` and broadcasts the result
 // to the provided tile shape.
-Value ExpandAndBroadcastValue(::xla::EmitterLocOpBuilder& builder, Value value,
+Value ExpandAndBroadcastValue(ImplicitLocOpBuilder& builder, Value value,
                               int dim, RankedTensorType tile_type) {
   for (int i = 0; i < tile_type.getRank(); ++i) {
     if (i != dim) {
@@ -424,7 +423,7 @@ Value ExpandAndBroadcastValue(::xla::EmitterLocOpBuilder& builder, Value value,
 // - The first tensor is a tensor of pointers to load/store.
 // - The second tensor is a tensor of in-bounds predicates.
 static std::pair<Value, Value> CreateTensorOfPointersAndMask(
-    ::xla::EmitterLocOpBuilder& builder, Value base_ptr,
+    ImplicitLocOpBuilder& builder, Value base_ptr,
     ArrayRef<int64_t> original_shape, ArrayRef<int64_t> layout,
     ValueRange offsets, ArrayRef<int64_t> sizes, ArrayRef<int64_t> strides,
     ArrayRef<unsigned> reduced_dims, ArrayRef<int64_t> tile_shape) {
@@ -535,7 +534,7 @@ class RewriteExtract : public mlir::OpRewritePattern<ExtractOp> {
   // tt.descriptor_load + tt.transpose.
   mlir::LogicalResult matchAndRewrite(
       ExtractOp op, mlir::PatternRewriter& rewriter) const override {
-    ::xla::EmitterLocOpBuilder builder(op.getLoc(), rewriter);
+    ImplicitLocOpBuilder builder(op.getLoc(), rewriter);
     RankedTensorType tile_type = op.getType();
     ArrayRef<int64_t> tile_shape = tile_type.getShape();
     ArrayRef<int64_t> src_shape = op.getSrcShape();
@@ -634,7 +633,7 @@ class RewriteInsert : public mlir::OpRewritePattern<InsertOp> {
   // tt.descriptor_store.
   mlir::LogicalResult matchAndRewrite(
       InsertOp op, mlir::PatternRewriter& rewriter) const override {
-    ::xla::EmitterLocOpBuilder builder(op.getLoc(), rewriter);
+    ImplicitLocOpBuilder builder(op.getLoc(), rewriter);
     RankedTensorType tile_type = op.getSrc().getType();
     ArrayRef<int64_t> tile_shape = tile_type.getShape();
     ArrayRef<int64_t> dst_shape = op.getDstShape();
@@ -712,7 +711,7 @@ class RewriteScalarInsert : public mlir::OpRewritePattern<tensor::InsertOp> {
     if (op.getDest().getType().getRank() != 0) {
       return rewriter.notifyMatchFailure(op, "Expected dest to be scalar.");
     }
-    ::xla::EmitterLocOpBuilder builder(op.getLoc(), rewriter);
+    ImplicitLocOpBuilder builder(op.getLoc(), rewriter);
     auto ptr_type = GetTensorPtrType(op.getScalar().getType());
     auto cast_dst_to_tensor_ptr_type = mlir::UnrealizedConversionCastOp::create(
                                            builder, ptr_type, op.getDest())
@@ -736,7 +735,7 @@ class RewriteScalarExtract : public mlir::OpRewritePattern<tensor::ExtractOp> {
     if (op.getTensor().getType().getRank() != 0) {
       return rewriter.notifyMatchFailure(op, "Expected src to be scalar.");
     }
-    ::xla::EmitterLocOpBuilder builder(op.getLoc(), rewriter);
+    ImplicitLocOpBuilder builder(op.getLoc(), rewriter);
     auto ptr_type = GetTensorPtrType(op.getType());
     auto cast_src_to_tensor_ptr_type = mlir::UnrealizedConversionCastOp::create(
                                            builder, ptr_type, op.getTensor())

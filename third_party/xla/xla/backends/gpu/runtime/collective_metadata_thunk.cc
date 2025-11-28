@@ -127,7 +127,7 @@ absl::Status CollectiveMetadataThunk::ConstructCollectiveMetadata(
                         clique_key.ToString()));
   }
   metadata.multicast_buffer_ptr = multimem_address_space;
-  TF_RET_CHECK(rendezvous_values->size() > 0)
+  TF_RET_CHECK(!rendezvous_values->empty())
       << "Not enough devices in the clique.";
   const size_t num_parameters = (*rendezvous_values)[0].parameters.size();
   for (const auto& value : *rendezvous_values) {

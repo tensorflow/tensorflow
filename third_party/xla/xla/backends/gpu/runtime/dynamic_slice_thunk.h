@@ -191,9 +191,8 @@ class DynamicSliceThunk : public Thunk {
   get_offset_function() const {
     if (offset_as_function_of_indvar_metadata_.has_value()) {
       return &offset_as_function_of_indvar_metadata_.value();
-    } else {
-      return std::nullopt;
     }
+    return std::nullopt;
   }
 
  private:

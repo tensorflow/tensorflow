@@ -49,6 +49,7 @@ limitations under the License.
 #include "xla/ffi/api/c_api.h"
 #include "xla/ffi/attribute_map.h"
 #include "xla/ffi/call_frame.h"
+#include "xla/ffi/execution_state.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/runtime/buffer_use.h"
 #include "xla/runtime/execution_graph.h"
@@ -131,8 +132,9 @@ using ResourceUseVector = absl::InlinedVector<ResourceUse, 1>;
 
 class CommandBufferCmd {
  public:
-  CommandBufferCmd(CommandBufferCmdType cmd_type,
-                   se::StreamPriority priority = se::StreamPriority::Default)
+  explicit CommandBufferCmd(
+      CommandBufferCmdType cmd_type,
+      se::StreamPriority priority = se::StreamPriority::Default)
       : cmd_type_(cmd_type), priority_(priority) {
     token_ = Resource::Create(Resource::kToken);
     resources_.push_back(ResourceUse::Write(token_));
@@ -765,7 +767,7 @@ class MemcpyDeviceToDeviceCmd : public CommandBufferCmd {
 
 class MemzeroCmd : public CommandBufferCmd {
  public:
-  MemzeroCmd(BufferAllocation::Slice dst);
+  explicit MemzeroCmd(BufferAllocation::Slice dst);
 
   absl::StatusOr<const se::CommandBuffer::Command*> Record(
       const Thunk::ExecuteParams& execute_params,
@@ -804,7 +806,7 @@ class Memset32Cmd : public CommandBufferCmd {
 
 class ChildCmd : public CommandBufferCmd {
  public:
-  ChildCmd(CommandBufferCmdExecutor child_commands);
+  explicit ChildCmd(CommandBufferCmdExecutor child_commands);
 
   absl::Status Initialize(const Thunk::InitializeParams& params,
                           StateManager& state) override;
@@ -936,7 +938,7 @@ class GemmCmd : public TracedCommandBufferCmd {
 
 class CublasLtCmd : public TracedCommandBufferCmd, public CublasLtMatmulThunk {
  public:
-  CublasLtCmd(const CublasLtMatmulThunk& matmul_thunk);
+  explicit CublasLtCmd(const CublasLtMatmulThunk& matmul_thunk);
 
   absl::Status Initialize(const Thunk::InitializeParams& params,
                           StateManager& state) override;
@@ -1008,11 +1010,13 @@ class CustomCallCmd : public CommandBufferCmd {
                 std::vector<NullableShapedSlice> operands,
                 std::vector<NullableShapedSlice> results,
                 ffi::CallFrame call_frame,
+                std::shared_ptr<ffi::ExecutionState> execution_state,
                 const HloComputation* called_computation)
       : CommandBufferCmd(CommandBufferCmdType::kCustomCallCmd),
         target_name_(std::move(target_name)),
         handler_(handler),
         call_frame_(std::move(call_frame)),
+        execution_state_(std::move(execution_state)),
         call_frames_([this] { return call_frame_->Copy(); }),
         called_computation_(called_computation),
         operands_(std::move(operands)),
@@ -1051,6 +1055,10 @@ class CustomCallCmd : public CommandBufferCmd {
 
   // Reference call frame pre-initialized at construction time.
   std::optional<ffi::CallFrame> call_frame_;
+
+  // Execution state bound to the FFI handler. It is initialized by the
+  // corresponding Thunk at construction time.
+  std::shared_ptr<ffi::ExecutionState> execution_state_;
 
   // A pool of call frames used at run time. Newly created call frames are
   // copied from the reference call frame and updated with buffer addresses.

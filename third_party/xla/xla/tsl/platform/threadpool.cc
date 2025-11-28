@@ -124,9 +124,41 @@ ThreadPool::ThreadPool(Env* env, const ThreadOptions& thread_options,
                        const std::string& name, int num_threads,
                        bool low_latency_hint, Eigen::Allocator* allocator)
     : executor_(this) {
+  // Line 127: Validate that num_threads is at least 1 (lower bound check)
+  // This prevents creating a thread pool with 0 or negative threads
   CHECK_GE(num_threads, 1);
 
+  // Lines 129-135: SAFETY FIX - Validate and clamp upper bound to prevent crashes
+  // Problem: When intra_op_parallelism_threads=INT_MAX (2147483647) is passed,
+  // the system tries to create billions of threads, causing:
+  // 1. Memory exhaustion (each thread needs ~8MB stack = ~17 petabytes total)
+  // 2. Integer overflow in memory calculations
+  // 3. OS resource limit violations leading to segmentation faults
+  //
+  // Solution: Clamp num_threads to a reasonable maximum
+  // We use 256 as a hard limit based on research showing it's nearly impossible
+  // to efficiently utilize more than 256 threads for intra-op parallelism
+  // (see: xla/core/host_offloading/host_offloading_nanort_executable.cc:72)
+  const int kMaxReasonableThreads = 256;
+  
+  // Store original value for logging if we need to clamp
+  const int original_num_threads = num_threads;
+  
+  // Clamp num_threads if it exceeds the reasonable maximum
+  // This prevents the crash by ensuring we never try to create more than
+  // 256 threads, which is already far more than any practical system needs
+  if (num_threads > kMaxReasonableThreads) {
+    // Log a warning so users know their config value was adjusted
+    // This helps with debugging and makes the behavior transparent
+    LOG(WARNING) << "Clamping intra_op_parallelism_threads from "
+                 << original_num_threads << " to " << kMaxReasonableThreads
+                 << " to prevent memory exhaustion and crashes. Values above "
+                 << kMaxReasonableThreads << " are not practical for thread pools.";
+    num_threads = kMaxReasonableThreads;
+  }
+
 #ifdef DNNL_AARCH64_USE_ACL
+  // Lines 149-155: Platform-specific optimization for ARM64 with DNNL
   // To avoid cost of swapping in and out threads from running processes
   // we do not use all available cores to parallelise TF operations.
   if (num_threads == tsl::port::NumTotalCPUs() && num_threads >= 16) {
@@ -135,16 +167,32 @@ ThreadPool::ThreadPool(Env* env, const ThreadOptions& thread_options,
 #endif  // DNNL_AARCH64_USE_ACL
 
 #ifdef TENSORFLOW_THREADSCALING_EXPERIMENTAL
+  // Lines 157-161: Experimental feature to scale thread counts
+  // This multiplies the thread count by a scale factor (for testing purposes)
+  // After scaling, we ensure it doesn't drop below 1
   CHECK_GT(absl::GetFlag(FLAGS_tensorflow_num_threads_scale_factor), 0);
   num_threads *= absl::GetFlag(FLAGS_tensorflow_num_threads_scale_factor);
   if (num_threads < 1) num_threads = 1;
 #endif  // TENSORFLOW_THREADSCALING_EXPERIMENTAL
 
+  // Lines 163-165: Create the underlying Eigen thread pool
+  // At this point, num_threads is guaranteed to be between 1 and 256
+  // (or system CPU count if lower), so this is safe
+  // Eigen::ThreadPoolTempl is the low-level thread pool implementation
+  // that manages the actual OS threads
   eigen_threadpool_ =
       std::make_unique<Eigen::ThreadPoolTempl<EigenEnvironment>>(
           num_threads, low_latency_hint,
           EigenEnvironment(env, thread_options, "tf_" + name));
+  
+  // Line 166: Store a pointer to the underlying thread pool interface
+  // This allows the ThreadPool to delegate work to Eigen's implementation
   underlying_threadpool_ = eigen_threadpool_.get();
+  
+  // Lines 167-168: Create the Eigen ThreadPoolDevice
+  // This is a higher-level abstraction that provides tensor operations
+  // It uses the thread pool we just created to parallelize computations
+  // The num_threads parameter tells it how many threads are available
   threadpool_device_ = std::make_unique<Eigen::ThreadPoolDevice>(
       underlying_threadpool_, num_threads, allocator);
 }

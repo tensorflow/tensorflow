@@ -51,6 +51,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/debug_options_flags.h"
+#include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/analysis/hlo_alias_analysis.h"
 #include "xla/hlo/analysis/hlo_dataflow_analysis.h"
 #include "xla/hlo/analysis/hlo_operand_index.h"
@@ -194,7 +195,7 @@ bool LooksLikeAnActivation(const HloInstruction* inst, bool permissive_mode) {
 // aliasing with program output.
 std::vector<HloUse> FindCrossProgramPrefetchUses(
     absl::Span<const HloUse> buffer_uses,
-    const HloAliasAnalysis& alias_analysis) {
+    const HloAliasAnalysis& alias_analysis, const AliasInfo* alias_info) {
   std::vector<HloUse> uses;
   if (buffer_uses.empty()) {
     return uses;
@@ -214,7 +215,7 @@ std::vector<HloUse> FindCrossProgramPrefetchUses(
           return false;
         }
         auto in_place_pairs =
-            HloDataflowAnalysis::GetInPlaceInputOutputPairs(use.instruction);
+            alias_info->GetInPlaceInputOutputPairs(use.instruction);
         return absl::c_all_of(
             in_place_pairs,
             [&](const std::pair<HloOperandIndex, ShapeIndex>& in_place_pair) {
@@ -238,6 +239,7 @@ std::vector<HloUse> FindCrossProgramPrefetchUses(
 
 bool IsCrossProgramPrefetchCandidate(const HloValue& value,
                                      const HloAliasAnalysis& alias_analysis,
+                                     const AliasInfo* alias_info,
                                      const Options& options) {
   // Filter out values that alias with the entry computation root.
   const HloBuffer& buffer = alias_analysis.GetBufferContainingValue(value);
@@ -251,7 +253,7 @@ bool IsCrossProgramPrefetchCandidate(const HloValue& value,
     }
   }
   std::vector<HloUse> uses =
-      FindCrossProgramPrefetchUses(value.GetUses(), alias_analysis);
+      FindCrossProgramPrefetchUses(value.GetUses(), alias_analysis, alias_info);
   return value.defining_instruction()->parent() ==
              value.defining_instruction()->GetModule()->entry_computation() &&
          value.defining_instruction()->opcode() == HloOpcode::kParameter &&
@@ -320,8 +322,8 @@ struct CrossProgramPrefetches {
 };
 
 CrossProgramPrefetches FindCrossProgramPrefetches(
-    const HloAliasAnalysis& alias_analysis, const HloLiveRange& hlo_live_range,
-    const Options& options) {
+    const HloAliasAnalysis& alias_analysis, const AliasInfo* alias_info,
+    const HloLiveRange& hlo_live_range, const Options& options) {
   CrossProgramPrefetches cross_program_prefetches;
   for (const HloBuffer& buffer : alias_analysis.buffers()) {
     CHECK_GE(buffer.values().size(), 1);
@@ -331,7 +333,7 @@ CrossProgramPrefetches FindCrossProgramPrefetches(
     if (IsUserAnnotatedCrossProgramPrefetch(*value, options)) {
       cross_program_prefetches.prefetches.push_back(buffer_interval);
     } else if (IsCrossProgramPrefetchCandidate(*value, alias_analysis,
-                                               options)) {
+                                               alias_info, options)) {
       cross_program_prefetches.candidates.push_back(buffer_interval);
     } else if (MemorySpaceAssignmentUtils::
                    DoesCrossProgramPrefetchBufferMatchAnyFilter(
@@ -393,6 +395,7 @@ bool MsaAlgorithm::MatchesPrefetchContext(
 MsaAlgorithm::MsaAlgorithm(HloModule* module, AllocationSequence* allocations,
                            const Options& options,
                            const HloAliasAnalysis& alias_analysis,
+                           const AliasInfo* alias_info,
                            const HloLiveRange& hlo_live_range)
     : GlobalDecreasingSizeBestFitHeap(
           options.alignment_in_bytes,
@@ -406,6 +409,7 @@ MsaAlgorithm::MsaAlgorithm(HloModule* module, AllocationSequence* allocations,
       allocations_(allocations),
       options_(options),
       alias_analysis_(alias_analysis),
+      alias_info_(alias_info),
       hlo_live_range_(hlo_live_range),
       peak_memory_usage_(hlo_live_range.schedule_end_time() + 1) {
   // Override buffer interval compare if provided.
@@ -3067,8 +3071,8 @@ absl::StatusOr<HeapSimulator::Result<HloValue>> MsaAlgorithm::Finish() {
   }
   VLOG(1) << "Memory pressure = " << memory_pressure_;
 
-  CrossProgramPrefetches cross_program_prefetches =
-      FindCrossProgramPrefetches(alias_analysis_, hlo_live_range_, options_);
+  CrossProgramPrefetches cross_program_prefetches = FindCrossProgramPrefetches(
+      alias_analysis_, alias_info_, hlo_live_range_, options_);
   // Return error if cross program prefetch is disabled and user has requested
   // cross program prefetch.
   if (!options_.enable_cross_program_prefetch &&
@@ -3348,10 +3352,9 @@ absl::StatusOr<HeapSimulator::Result<HloValue>> MsaAlgorithm::Finish() {
   // Run post allocation transformation and fix the allocation sequence if
   // needed.
   if (options_.post_allocation_transformation_fn) {
-    auto has_in_place_user = [](HloInstruction* instr) {
+    auto has_in_place_user = [this](HloInstruction* instr) {
       for (HloInstruction* user : instr->users()) {
-        auto alias_pairs =
-            HloDataflowAnalysis::GetInPlaceInputOutputPairs(user);
+        auto alias_pairs = alias_info_->GetInPlaceInputOutputPairs(user);
         for (const auto& [operand_index, output_index] : alias_pairs) {
           if (user->operand(operand_index.operand_number) == instr) {
             return true;
@@ -4972,7 +4975,8 @@ void MsaAlgorithm::AllocateCrossProgramPrefetchBuffer(
 
   // Find the earliest use.
   const auto& instruction_schedule = hlo_live_range_.instruction_schedule();
-  auto uses = FindCrossProgramPrefetchUses(buffer->GetUses(), alias_analysis_);
+  auto uses = FindCrossProgramPrefetchUses(buffer->GetUses(), alias_analysis_,
+                                           alias_info_);
   CHECK_GE(uses.size(), 1);
   auto use_schedule_compare = [&](const HloUse& lhs, const HloUse& rhs) {
     return instruction_schedule.at(lhs.instruction) <

@@ -55,7 +55,9 @@ using tsl::profiler::TraceMeEncode;
 static absl::StatusOr<bool> ShouldSkip(
     absl::string_view operation, const Thunk::ExecuteParams& params,
     const std::optional<GlobalDeviceId>& device_constraint) {
-  if (!device_constraint.has_value()) return false;
+  if (!device_constraint.has_value()) {
+    return false;
+  }
 
   GlobalDeviceId global_device_id = params.collective_params->global_device_id;
   bool skip = global_device_id != *device_constraint;
@@ -77,8 +79,9 @@ absl::Status HostSendRecvAsyncEvents::Emplace(
   Key key = {executor, channel_id};
 
   absl::MutexLock lock(mutex_);
-  if (auto it = events_.try_emplace(key, std::move(event)); it.second)
+  if (auto it = events_.try_emplace(key, std::move(event)); it.second) {
     return absl::OkStatus();
+  }
 
   return absl::InternalError(absl::StrFormat(
       "Async send/recv event already exists (channel_id=%d)", channel_id));
@@ -90,7 +93,9 @@ HostSendRecvAsyncEvents::Extract(se::StreamExecutor* executor,
   Key key = {executor, channel_id};
 
   absl::MutexLock lock(mutex_);
-  if (auto event = events_.extract(key)) return std::move(event.mapped());
+  if (auto event = events_.extract(key)) {
+    return std::move(event.mapped());
+  }
 
   return absl::InternalError(absl::StrFormat(
       "Async send/recv event was not found (channel_id==%d)", channel_id));
@@ -166,7 +171,9 @@ absl::Status HostSendThunk::ExecuteOnStream(const ExecuteParams& params) {
 
   TF_ASSIGN_OR_RETURN(bool skip,
                       ShouldSkip("sending buffer", params, device_constraint_));
-  if (skip) return absl::OkStatus();
+  if (skip) {
+    return absl::OkStatus();
+  }
 
   TraceMe trace(
       [&] { return TraceMeEncode("Send", {{"channel_id", channel_id_}}); });
@@ -259,7 +266,9 @@ absl::Status HostSendDoneThunk::ExecuteOnStream(const ExecuteParams& params) {
 
   TF_ASSIGN_OR_RETURN(bool skip, ShouldSkip("waiting for send completion",
                                             params, device_constraint_));
-  if (skip) return absl::OkStatus();
+  if (skip) {
+    return absl::OkStatus();
+  }
 
   TraceMe trace(
       [&] { return TraceMeEncode("SendDone", {{"channel_id", channel_id_}}); });
@@ -269,7 +278,9 @@ absl::Status HostSendDoneThunk::ExecuteOnStream(const ExecuteParams& params) {
 
   // Wait until send handler will record an event on the stream.
   BlockUntilReady(done_event.GetAsyncValue());
-  if (done_event.IsError()) return done_event.GetError();
+  if (done_event.IsError()) {
+    return done_event.GetError();
+  }
 
   VLOG(5) << "Completed Send operation: channel_id=" << channel_id_;
 
@@ -356,7 +367,9 @@ absl::Status HostRecvThunk::ExecuteOnStream(const ExecuteParams& params) {
 
   TF_ASSIGN_OR_RETURN(
       bool skip, ShouldSkip("receiving buffer", params, device_constraint_));
-  if (skip) return absl::OkStatus();
+  if (skip) {
+    return absl::OkStatus();
+  }
 
   TraceMe trace(
       [&] { return TraceMeEncode("Recv", {{"channel_id", channel_id_}}); });
@@ -449,7 +462,9 @@ absl::Status HostRecvDoneThunk::ExecuteOnStream(const ExecuteParams& params) {
 
   TF_ASSIGN_OR_RETURN(bool skip, ShouldSkip("waiting for recv completion",
                                             params, device_constraint_));
-  if (skip) return absl::OkStatus();
+  if (skip) {
+    return absl::OkStatus();
+  }
 
   TraceMe trace(
       [&] { return TraceMeEncode("RecvDone", {{"channel_id", channel_id_}}); });
@@ -459,7 +474,9 @@ absl::Status HostRecvDoneThunk::ExecuteOnStream(const ExecuteParams& params) {
 
   // Wait until send handler will record an event on the stream.
   BlockUntilReady(done_event.GetAsyncValue());
-  if (done_event.IsError()) return done_event.GetError();
+  if (done_event.IsError()) {
+    return done_event.GetError();
+  }
 
   VLOG(5) << "Completed Recv operation: channel=" << channel_id_;
 

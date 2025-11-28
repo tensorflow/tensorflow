@@ -72,8 +72,12 @@ bool IsLocalPeerTransfer(const P2PConfig::SourceTargetMapEntry& source_target,
   // We determine if it's a local peer if the source/target id is within a node
   // if they are present.
   int64_t host_id = (current_id / device_count);
-  if (source_id && host_id != *source_id / device_count) return false;
-  if (target_id && host_id != *target_id / device_count) return false;
+  if (source_id && host_id != *source_id / device_count) {
+    return false;
+  }
+  if (target_id && host_id != *target_id / device_count) {
+    return false;
+  }
   return true;
 }
 
@@ -197,15 +201,13 @@ absl::Status CollectivePermuteStartThunk::Initialize(
 
     if (source_id) {
       std::vector<se::DeviceMemoryBase> dest_addrs;
-      std::transform(device_buffers.begin(), device_buffers.end(),
-                     std::back_inserter(dest_addrs),
-                     [](const DeviceBufferPair& buffer) {
-                       return buffer.destination_buffer;
-                     });
+      absl::c_transform(device_buffers, std::back_inserter(dest_addrs),
+                        [](const DeviceBufferPair& buffer) {
+                          return buffer.destination_buffer;
+                        });
       std::vector<void*> dest_opaques;
-      std::transform(
-          dest_addrs.begin(), dest_addrs.end(),
-          std::back_inserter(dest_opaques),
+      absl::c_transform(
+          dest_addrs, std::back_inserter(dest_opaques),
           [](se::DeviceMemoryBase dest_addr) { return dest_addr.opaque(); });
       TF_RETURN_IF_ERROR(recv_ptr_map_.PutRecvPtr(current_id, dest_opaques));
     }
@@ -368,11 +370,11 @@ absl::Status RunCollectivePermute(
   std::optional<int64_t> target_id = source_target.target;
 
   std::vector<se::DeviceMemoryBase> src_addrs, dest_addrs;
-  std::transform(
-      buffers.begin(), buffers.end(), std::back_inserter(src_addrs),
+  absl::c_transform(
+      buffers, std::back_inserter(src_addrs),
       [](const DeviceBufferPair& buffer) { return buffer.source_buffer; });
-  std::transform(
-      buffers.begin(), buffers.end(), std::back_inserter(dest_addrs),
+  absl::c_transform(
+      buffers, std::back_inserter(dest_addrs),
       [](const DeviceBufferPair& buffer) { return buffer.destination_buffer; });
 
   VLOG(3) << absl::StreamFormat("%s : id = %d, source_id = %d, target_id = %d",
@@ -386,8 +388,12 @@ absl::Status RunCollectivePermute(
 
     std::optional<RankId> source_rank;
     std::vector<RankId> target_ranks;
-    if (source_id) source_rank = RankId(*source_id);
-    if (target_id) target_ranks.push_back(RankId(*target_id));
+    if (source_id) {
+      source_rank = RankId(*source_id);
+    }
+    if (target_id) {
+      target_ranks.push_back(RankId(*target_id));
+    }
 
     if (!is_nccl_group_needed) {
       for (uint64_t idx = 0; idx < buffers.size(); ++idx) {

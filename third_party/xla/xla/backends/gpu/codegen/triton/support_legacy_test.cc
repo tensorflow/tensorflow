@@ -289,10 +289,9 @@ ENTRY e {
         ApplyFloatNormalization(dot.Module().get(), GetComputeCapability()));
     EXPECT_TRUE(RunAndCompareNoHloPasses(
         std::move(dot.Module()), ErrorSpec{/*aabs=*/2e-4, /*arel=*/2e-4}));
-  } else {
-    EXPECT_THAT(TritonFusionAnalysis::Execute(dot.TritonComputation()),
-                absl_testing::StatusIs(absl::StatusCode::kFailedPrecondition));
   }
+  EXPECT_THAT(TritonFusionAnalysis::Execute(dot.TritonComputation()),
+              absl_testing::StatusIs(absl::StatusCode::kFailedPrecondition));
 }
 
 INSTANTIATE_TEST_SUITE_P(

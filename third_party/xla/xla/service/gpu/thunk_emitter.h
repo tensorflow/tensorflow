@@ -48,26 +48,7 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-// Emits LLVM IR for an "unnested computation".
-//
-// An unnested computation is an HloComputation which you run by executing one
-// or more kernels for each HloInstruction it contains.  Examples of unnested
-// computations:
-//
-//  - An HloModule's root computation,
-//  - The body of an HLO while loop,
-//  - The true/false computation of an HLO conditional.
-//
-// Note the opportunity for confusion -- the while loop's computation is nested
-// within the root computation, but it's emitted using ThunkEmitter!  Don't
-// think about it too hard.
-//
-// Examples of things that are not unnested computations:
-//
-//  - The body of a fusion node.  ThunkEmitter emits the relevant code
-//    within a kernel function using FusedIrEmitter.  (FusedIrEmitter is not
-//    really an IrEmitter, but is more an "IR generator generator".)
-//
+// Emits Thunks for the given HLO module.
 class ThunkEmitter {
  public:
   absl::string_view platform_name() const {
@@ -80,14 +61,8 @@ class ThunkEmitter {
   static std::unique_ptr<ThunkEmitter> Create(
       IrEmitterContext* ir_emitter_context);
 
-  // Transfers the ownership of thunk_sequence_ out.
-  std::unique_ptr<SequentialThunk> ConsumeThunkSequence(
-      Thunk::ThunkInfo thunk_info = Thunk::ThunkInfo{}) {
-    return std::make_unique<SequentialThunk>(thunk_info,
-                                             std::move(thunk_sequence_));
-  }
-
-  absl::Status EmitHloEntryComputation(const HloModule* module);
+  absl::StatusOr<ThunkSequence> EmitHloEntryComputation(
+      const HloModule* module);
 
  private:
   explicit ThunkEmitter(IrEmitterContext* ir_emitter_context);
@@ -99,97 +74,112 @@ class ThunkEmitter {
   // the generated code and so must be initialized by XLA. The value of these
   // constants will be stored in 'content'. Constants with initializers in the
   // generated code will have empty 'content'.
-  absl::Status EmitHloComputation(const HloComputation* computation);
+  absl::StatusOr<ThunkSequence> EmitHloComputation(
+      const HloComputation* computation);
 
-  absl::Status EmitCommandBufferThunk(const HloInstruction* instr);
+  absl::StatusOr<ThunkSequence> EmitCommandBufferThunk(
+      const HloInstruction* instr);
 
   // ThunkEmitter handles the following instructions differently from
   // IrEmitter. It also mixes in some special handling for custom kernels
   // via the ThunkEmitter.
   absl::Status EmitConstant(const HloConstantInstruction* instr);
 
-  absl::Status EmitConditional(const HloInstruction* instr);
-  absl::Status EmitConvolutionThunk(const HloCustomCallInstruction* instr);
-  absl::Status EmitGemmThunk(const HloCustomCallInstruction* instr);
-  absl::Status EmitCublasLtMatmulThunk(const HloCustomCallInstruction* instr);
-  absl::Status EmitCublasLtMatmulThunkF8(const HloCustomCallInstruction* instr);
-  absl::Status EmitConvolutionReorderThunk(
+  absl::StatusOr<ThunkSequence> EmitConditional(const HloInstruction* instr);
+  absl::StatusOr<ThunkSequence> EmitConvolutionThunk(
       const HloCustomCallInstruction* instr);
-  absl::Status EmitNormThunk(const HloCustomCallInstruction* instr);
-  absl::Status EmitCuDnnThunk(const HloCustomCallInstruction* instr);
-  absl::Status EmitPtxCustomCall(const HloCustomCallInstruction* instr);
-  absl::Status EmitCubDeviceRadixSort(const HloCustomCallInstruction* instr);
-  absl::Status EmitCustomCallThunk(const HloCustomCallInstruction* instr);
-  absl::Status EmitFftThunk(const HloFftInstruction* instr);
-  absl::Status EmitAsyncComputation(const HloInstruction* instr);
-  absl::Status EmitFusion(const HloFusionInstruction* instr);
-  absl::Status EmitCopy(const HloInstruction* instr);
-  absl::Status EmitAsyncCustomCallStart(const HloInstruction* instr);
-  absl::Status EmitWhile(const HloInstruction* instr);
-  absl::Status EmitInfeed(const HloInfeedInstruction* instr);
-  absl::Status EmitOutfeed(const HloOutfeedInstruction* instr);
-  absl::Status EmitRngGetAndUpdateState(
+  absl::StatusOr<ThunkSequence> EmitGemmThunk(
+      const HloCustomCallInstruction* instr);
+  absl::StatusOr<ThunkSequence> EmitCublasLtMatmulThunk(
+      const HloCustomCallInstruction* instr);
+  absl::StatusOr<ThunkSequence> EmitCublasLtMatmulThunkF8(
+      const HloCustomCallInstruction* instr);
+  absl::StatusOr<ThunkSequence> EmitConvolutionReorderThunk(
+      const HloCustomCallInstruction* instr);
+  absl::StatusOr<ThunkSequence> EmitNormThunk(
+      const HloCustomCallInstruction* instr);
+  absl::StatusOr<ThunkSequence> EmitCuDnnThunk(
+      const HloCustomCallInstruction* instr);
+  absl::StatusOr<ThunkSequence> EmitPtxCustomCall(
+      const HloCustomCallInstruction* instr);
+  absl::StatusOr<ThunkSequence> EmitCubDeviceRadixSort(
+      const HloCustomCallInstruction* instr);
+  absl::StatusOr<ThunkSequence> EmitCustomCallThunk(
+      const HloCustomCallInstruction* instr);
+  absl::StatusOr<ThunkSequence> EmitFftThunk(const HloFftInstruction* instr);
+  absl::StatusOr<ThunkSequence> EmitAsyncComputation(
+      const HloInstruction* instr);
+  absl::StatusOr<ThunkSequence> EmitFusion(const HloFusionInstruction* instr);
+  absl::StatusOr<ThunkSequence> EmitCopy(const HloInstruction* instr);
+  absl::StatusOr<ThunkSequence> EmitAsyncCustomCallStart(
+      const HloInstruction* instr);
+  absl::StatusOr<ThunkSequence> EmitWhile(const HloInstruction* instr);
+  absl::StatusOr<ThunkSequence> EmitInfeed(const HloInfeedInstruction* instr);
+  absl::StatusOr<ThunkSequence> EmitOutfeed(const HloOutfeedInstruction* instr);
+  absl::StatusOr<ThunkSequence> EmitRngGetAndUpdateState(
       const HloRngGetAndUpdateStateInstruction* instr);
 
-  absl::Status EmitSort(const HloSortInstruction* sort);
-  absl::Status EmitTriangularSolveCustomCall(const HloInstruction* instr);
-  absl::Status EmitTopKCustomCall(const HloCustomCallInstruction* instr);
-  absl::Status EmitTritonCustomCall(const HloCustomCallInstruction* instr);
+  absl::StatusOr<ThunkSequence> EmitSort(const HloSortInstruction* sort);
+  absl::StatusOr<ThunkSequence> EmitTriangularSolveCustomCall(
+      const HloInstruction* instr);
+  absl::StatusOr<ThunkSequence> EmitTopKCustomCall(
+      const HloCustomCallInstruction* instr);
+  absl::StatusOr<ThunkSequence> EmitTritonCustomCall(
+      const HloCustomCallInstruction* instr);
 
-  absl::Status EmitSendThunk(const HloSendInstruction* instr);
-  absl::Status EmitSendDoneThunk(const HloSendDoneInstruction* instr);
+  absl::StatusOr<ThunkSequence> EmitSendThunk(const HloSendInstruction* instr,
+                                              bool emit_group_thunks);
+  absl::StatusOr<ThunkSequence> EmitSendDoneThunk(
+      const HloSendDoneInstruction* instr);
 
-  absl::Status EmitRecvThunk(const HloRecvInstruction* instr);
-  absl::Status EmitRecvDoneThunk(const HloRecvDoneInstruction* instr);
+  absl::StatusOr<ThunkSequence> EmitRecvThunk(const HloRecvInstruction* instr,
+                                              bool emit_group_thunks);
+  absl::StatusOr<ThunkSequence> EmitRecvDoneThunk(
+      const HloRecvDoneInstruction* instr);
 
   template <typename CollectiveThunkType, typename HloInstType>
-  absl::Status EmitCollectiveThunk(Thunk::Kind kind,
-                                   const HloInstruction* async_start,
-                                   const HloInstType* inst,
-                                   std::optional<bool> use_global_device_ids);
+  absl::StatusOr<ThunkSequence> EmitCollectiveThunk(
+      Thunk::Kind kind, const HloInstruction* async_start,
+      const HloInstType* inst, std::optional<bool> use_global_device_ids);
 
-  absl::Status EmitCollectiveAsyncDone(Thunk::Kind kind,
-                                       const HloInstruction* instr);
+  absl::StatusOr<ThunkSequence> EmitCollectiveAsyncDone(
+      Thunk::Kind kind, const HloInstruction* instr);
 
   template <typename NvshmemAllReduceThunkType,
             typename HloAllReduceInstruction>
-  absl::Status EmitNvshmemThunk(Thunk::Kind kind,
-                                const HloInstruction* async_start,
-                                const HloAllReduceInstruction* inst,
-                                std::optional<bool> use_global_device_ids);
+  absl::StatusOr<ThunkSequence> EmitNvshmemThunk(
+      Thunk::Kind kind, const HloInstruction* async_start,
+      const HloAllReduceInstruction* inst,
+      std::optional<bool> use_global_device_ids);
 
-  absl::Status EmitNvshmemAsyncDone(Thunk::Kind kind,
-                                    const HloInstruction* instr);
+  absl::StatusOr<ThunkSequence> EmitNvshmemAsyncDone(
+      Thunk::Kind kind, const HloInstruction* instr);
 
   template <typename HloInstType>
-  absl::Status EmitDegeneratedCollectiveThunk(
+  absl::StatusOr<ThunkSequence> EmitDegeneratedCollectiveThunk(
       std::vector<CollectiveThunk::Buffer>& buffers,
       const HloInstruction* async_start, const HloInstType* inst);
 
   template <typename ThunkType>
-  absl::Status EmitReplicaOrPartitionId(const HloInstruction* instr);
+  absl::StatusOr<ThunkSequence> EmitReplicaOrPartitionId(
+      const HloInstruction* instr);
 
-  absl::Status EmitCollectiveMetadata(const HloInstruction* instr);
+  absl::StatusOr<ThunkSequence> EmitCollectiveMetadata(
+      const HloInstruction* instr);
 
-  absl::Status EmitCollectivePermute(
+  absl::StatusOr<ThunkSequence> EmitCollectivePermute(
       const HloCollectivePermuteInstruction* instr);
 
-  absl::Status EmitCopyStartThunk(const HloCopyStartInstruction* instr);
+  absl::StatusOr<ThunkSequence> EmitCopyStartThunk(
+      const HloCopyStartInstruction* instr);
 
-  absl::Status EmitCopyDoneThunk(const HloInstruction* instr);
+  absl::StatusOr<ThunkSequence> EmitCopyDoneThunk(const HloInstruction* instr);
 
-  absl::Status EmitHloInstruction(const HloInstruction* instr);
+  absl::StatusOr<ThunkSequence> EmitHloInstruction(
+      const HloInstruction* instr, bool emit_group_thunks = false);
 
-  absl::Status EmitCollectiveGroupStartThunk(const HloInstruction* instr);
-
-  // Add a owning Thunk object to the thunk sequence.
-  void AddThunkToThunkSequence(std::unique_ptr<Thunk> thunk) {
-    if (emit_group_thunks_) {
-      scoped_thunk_sequence_.emplace_back(std::move(thunk));
-      return;
-    }
-    thunk_sequence_.emplace_back(std::move(thunk));
-  }
+  absl::StatusOr<ThunkSequence> EmitCollectiveGroupStartThunk(
+      const HloInstruction* instr);
 
   // Input = {static array, dynamic_dim0, dynamic_dim1}
   // Output = {dynamic array(with dynamic dimension meta data at the end)}
@@ -235,7 +225,8 @@ class ThunkEmitter {
   //   return;
   // }
   //   ```
-  absl::Status EmitPadToStatic(const HloCustomCallInstruction* instr);
+  absl::StatusOr<ThunkSequence> EmitPadToStatic(
+      const HloCustomCallInstruction* instr);
 
   // Input = {dynamic array(with dynamic dimension meta data at the end)}
   // Output = {static array, dynamic_dim0, dynamic_dim1}
@@ -281,7 +272,8 @@ class ThunkEmitter {
   //   return;
   // }
   //   ```
-  absl::Status EmitSliceToDynamic(const HloCustomCallInstruction* instr);
+  absl::StatusOr<ThunkSequence> EmitSliceToDynamic(
+      const HloCustomCallInstruction* instr);
 
   // Returns a WhileThunk that invokes thunk sequences for 'condition' and
   // 'body' sub-computations of while instruction.
@@ -303,11 +295,6 @@ class ThunkEmitter {
     return ir_emitter_context_->instruction_to_host_execute_async_events();
   }
   IrEmitterContext* ir_emitter_context_;
-
-  // The thunk sequence this IrEmitter generates for the input computation.
-  ThunkSequence thunk_sequence_;
-  ThunkSequence scoped_thunk_sequence_;
-  bool emit_group_thunks_ = false;
 
   // Container for async host send/recv events shared by host send/recv thunks.
   std::shared_ptr<HostSendRecvAsyncEvents> send_recv_events_;

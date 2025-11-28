@@ -919,11 +919,6 @@ message DebugOptions {
   // memory, or have bugs.
   optional bool xla_gpu_unsafe_fallback_to_driver_on_ptxas_not_found = 138;
 
-  // If true, XLA will annotate instructions in the dumps with emitter code
-  // location (source:line) annotations. This helps to identify the source of
-  // the code that emits a particular instruction.
-  optional bool xla_gpu_unsupported_annotate_with_emitter_loc = 358;
-
   // Internal testing flag to switch AllReduceDecomposer on or off.
   optional bool xla_gpu_unsupported_enable_all_reduce_decomposer = 384;
 
@@ -1427,14 +1422,15 @@ message DebugOptions {
   reserved "xla_hlo_dump_as_graphdef";
   reserved "xla_hlo_tfgraph_device_scopes";
   reserved "xla_use_shardy";
+  reserved "xla_gpu_unsupported_annotate_with_emitter_loc";
 
   reserved 5, 63, 80, 93, 94, 98, 117, 130, 133, 134, 139, 141, 143, 152, 158,
       160, 161, 162, 167, 168, 169, 171, 172, 173, 176, 177, 178, 179, 180, 183,
       184, 191, 192, 193, 194, 195, 196, 197, 198, 199, 200, 201, 202, 204, 206,
       207, 211, 214, 218, 220, 221, 226, 229, 230, 233, 234, 238, 242, 249, 263,
       264, 266, 270, 271, 275, 276, 278, 279, 281, 282, 286, 298, 299, 302, 303,
-      309, 313, 314, 319, 320, 325, 326, 332, 346, 352, 361, 367, 369, 371, 385,
-      398, 402, 423;
+      309, 313, 314, 319, 320, 325, 326, 332, 346, 352, 358, 361, 367, 369, 371,
+      385, 398, 402, 423;
 }
 
 // Contains flags which affects the GPU compilation result.

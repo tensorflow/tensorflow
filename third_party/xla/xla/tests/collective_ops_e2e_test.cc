@@ -1538,23 +1538,21 @@ TEST_F(CollectiveOpsTestE2EShardedUnsharded,
 
 TEST_F(CollectiveOpsTestE2EShardedUnsharded,
        KeepPartitionedNonSlicedDimensionWithConstantIndices) {
-  // TODO(464253894): Re-enable this test once hang is fixed.
-  GTEST_SKIP() << "Skipping hanging test";
   const std::string hlo_text = R"(
-    HloModule module, entry_computation_layout={(bf16[16,192,192,384]{3,2,1,0}, bf16[16,128,128,384]{3,2,1,0})->bf16[16,224,224,384]{3,2,1,0}}, num_partitions=8
+    HloModule module, entry_computation_layout={(bf16[2,24,24,32]{3,2,1,0}, bf16[2,4,4,32]{3,2,1,0})->bf16[2,56,56,32]{3,2,1,0}}, num_partitions=8
 
     ENTRY entry {
-      p1 = bf16[16,192,192,384]{3,2,1,0} parameter(0), sharding={replicated}
-      p2 = bf16[16,128,128,384]{3,2,1,0} parameter(1), sharding={replicated}
-      c1 = bf16[16,192,192,384]{3,2,1,0} copy(p1), sharding={devices=[2,2,2,1]<=[8]}
-      c2 = bf16[16,128,128,384]{3,2,1,0} copy(p2), sharding={devices=[2,2,2,1]<=[8]}
+      p1 = bf16[2,24,24,32]{3,2,1,0} parameter(0), sharding={replicated}
+      p2 = bf16[2,4,4,32]{3,2,1,0} parameter(1), sharding={replicated}
+      c1 = bf16[2,24,24,32]{3,2,1,0} copy(p1), sharding={devices=[2,2,2,1]<=[8]}
+      c2 = bf16[2,4,4,32]{3,2,1,0} copy(p2), sharding={devices=[2,2,2,1]<=[8]}
       constant.1163 = bf16[] constant(0), sharding={replicated}
       constant.1165 = s32[] constant(0), sharding={replicated}
-      pad.179 = bf16[16,224,224,384]{3,2,1,0} pad(c1, constant.1163), padding=0_0x16_16x16_16x0_0, sharding={devices=[2,2,2,1]<=[8]}
-      add.439 = bf16[16,128,128,384]{3,2,1,0} add(c2, c2), sharding={devices=[2,2,2,1]<=[8]}
+      pad.179 = bf16[2,56,56,32]{3,2,1,0} pad(c1, constant.1163), padding=0_0x16_16x16_16x0_0, sharding={devices=[2,2,2,1]<=[8]}
+      add.439 = bf16[2,4,4,32]{3,2,1,0} add(c2, c2), sharding={devices=[2,2,2,1]<=[8]}
       constant.1070 = s32[] constant(48), sharding={replicated}
-      dynamic-update-slice.128 = bf16[16,224,224,384]{3,2,1,0} dynamic-update-slice(pad.179, add.439, constant.1165, constant.1070, constant.1070, /*index=5*/constant.1165), sharding={devices=[2,2,2,1]<=[8]}
-      ROOT c = bf16[16,224,224,384]{3,2,1,0} copy(dynamic-update-slice.128), sharding={devices=[2,2,2,1]<=[8]}
+      dynamic-update-slice.128 = bf16[2,56,56,32]{3,2,1,0} dynamic-update-slice(pad.179, add.439, constant.1165, constant.1070, constant.1070, /*index=5*/constant.1165), sharding={devices=[2,2,2,1]<=[8]}
+      ROOT c = bf16[2,56,56,32]{3,2,1,0} copy(dynamic-update-slice.128), sharding={devices=[2,2,2,1]<=[8]}
     })";
   CollectiveOpsCompareShardedUnsharded(hlo_text, /*num_partitions=*/8,
                                        /*enable_enzyme_comms_opt=*/true);

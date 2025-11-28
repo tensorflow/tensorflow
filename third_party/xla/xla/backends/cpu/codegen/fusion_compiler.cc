@@ -351,8 +351,11 @@ static void AddTiledLoweringPasses(mlir::OpPassManager& pm, bool fast_min_max) {
   pm.addPass(mlir::createConvertVectorToSCFPass(
       mlir::VectorTransferToSCFOptions().enableFullUnroll(false)));
   mlir::ConvertVectorToLLVMPassOptions options;
+
+  // If the tile size is 16x16 this will generate the most efficient code for
+  // avx512 platforms.
   options.vectorTransposeLowering =
-      mlir::vector::VectorTransposeLowering::Shuffle1D;
+      mlir::vector::VectorTransposeLowering::Shuffle16x16;
   pm.addPass(mlir::createConvertVectorToLLVMPass(options));
 
   pm.addPass(mlir::createConvertComplexToStandardPass());

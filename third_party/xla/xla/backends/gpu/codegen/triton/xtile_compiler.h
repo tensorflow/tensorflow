@@ -33,7 +33,6 @@ limitations under the License.
 #include "mlir/IR/Value.h"
 #include "mlir/Pass/PassManager.h"
 #include "xla/autotuning.pb.h"
-#include "xla/codegen/emitter_loc_op_builder.h"
 #include "xla/codegen/tiling/symbolic_tile_analysis.h"
 #include "xla/codegen/xtile/ir/xtile_ops.h"
 #include "xla/hlo/analysis/symbolic_expr.h"
@@ -109,24 +108,12 @@ std::string GetLibdevicePath(const HloModuleConfig& hlo_config,
 // Exposed for testing and experimental purposes only. Do not use.
 namespace ir_emitter_triton_internal {
 
-// Computes the transformation from a 1-d program_id to a tile multi-index.
-llvm::SmallVector<mlir::Value, 3> ComputeDelinearizedTileIndex(
-    EmitterLocOpBuilder b, absl::Span<const int64_t> num_output_tiles_per_dim);
-
-// Dumps the Triton IR to a string.
-//
-// If `dump_annotations` is true, then the function also dumps the loc
-// attributes of the instructions. Otherwise, it dumps the IR without
-// annotations.
-inline std::string DumpTritonIR(mlir::ModuleOp triton_module,
-                                bool dump_annotations) {
+// Returns the MLIR module as a string.
+inline std::string GetModuleIrString(mlir::ModuleOp triton_module,
+                                     mlir::OpPrintingFlags flags = {}) {
   std::string triton_ir;
   llvm::raw_string_ostream os(triton_ir);
-  triton_module.print(os, mlir::OpPrintingFlags().enableDebugInfo(
-                              dump_annotations, dump_annotations));
-  if (dump_annotations) {
-    return EmitterLocOpBuilder::FormatTritonIrWithAnnotations(triton_ir);
-  }
+  triton_module.print(os, flags);
   return triton_ir;
 }
 
