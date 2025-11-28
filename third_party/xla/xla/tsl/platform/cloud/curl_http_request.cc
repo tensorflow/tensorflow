@@ -513,7 +513,7 @@ absl::Status CurlHttpRequest::Send() {
     case 401:  // Unauthorized
     case 403:  // Forbidden
     case 407:  // Proxy Authorization Required
-      result = errors::PermissionDenied(get_error_message());
+      result = absl::PermissionDeniedError(get_error_message());
       break;
 
     // NOT_FOUND indicates that the requested resource does not exist.
