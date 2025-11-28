@@ -19,7 +19,6 @@ limitations under the License.
 #include <set>
 #include <string>
 #include <utility>
-#include <variant>
 
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
