@@ -143,7 +143,6 @@ cc_library(
         "//xla:types",
         "//xla:util",
         "//xla:xla_data_proto_cc",
-        "//xla/backends/gpu:ffi",
         "//xla/ffi/api:c_api",
         "//xla/ffi/api:c_api_internal",
         "//xla/hlo/ir:hlo",

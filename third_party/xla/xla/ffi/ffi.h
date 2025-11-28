@@ -57,9 +57,6 @@ limitations under the License.
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
-// TODO(ezhulenev): Remove this once JAX is migrated to the new header.
-#include "xla/backends/gpu/ffi.h"
-
 namespace xla::ffi {
 
 // Type tags to bind parameters passed via execution context to FFI handler.
