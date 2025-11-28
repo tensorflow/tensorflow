@@ -24,7 +24,7 @@ class UniformQuantizeOpsTest : public OpsTestBase {
  protected:
   struct QParams {
     QParams(int q_axis, int q_min_val, int q_max_val, std::vector<float> scale,
-            std::vector<int32> zp)
+            std::vector<int32_t> zp)
         : q_axis(q_axis),
           q_min_val(q_min_val),
           q_max_val(q_max_val),
@@ -34,7 +34,7 @@ class UniformQuantizeOpsTest : public OpsTestBase {
     int q_min_val;
     int q_max_val;
     std::vector<float> scale;
-    std::vector<int32> zp;
+    std::vector<int32_t> zp;
   };
 
   template <typename Tin, typename Tout>
@@ -61,7 +61,7 @@ class UniformQuantizeOpsTest : public OpsTestBase {
                                      : TensorShape({}));
     AddInputFromArray<Tin>(TensorShape(shape), input);
     AddInputFromArray<float>(scale_shape, q_params.scale);
-    AddInputFromArray<int32>(zp_shape, q_params.zp);
+    AddInputFromArray<int32_t>(zp_shape, q_params.zp);
 
     TF_ASSERT_OK(RunOpKernel());
     Tensor expected(allocator(), DataTypeToEnum<Tout>::v(), TensorShape(shape));
@@ -99,7 +99,7 @@ TEST_F(UniformQuantizeOpsTest, QuantizeInvalidQuantizationAxis) {
 
   AddInputFromArray<float>(TensorShape({2, 3}), {0, 0, 0, 0, 0, 0});
   AddInputFromArray<float>(TensorShape({}), {1.0});
-  AddInputFromArray<int32>(TensorShape({}), {0});
+  AddInputFromArray<int32_t>(TensorShape({}), {0});
 
   // quantization_axis >= input tensor rank.
   EXPECT_TRUE(absl::IsInvalidArgument(RunOpKernel()));
