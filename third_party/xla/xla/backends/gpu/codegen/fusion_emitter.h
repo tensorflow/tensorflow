@@ -61,7 +61,7 @@ class FusionInterface {
 // Interface for fusions that are implemented using cuda kernels.
 class KernelFusionInterface : public FusionInterface {
  public:
-  virtual ~KernelFusionInterface() = default;
+  ~KernelFusionInterface() override = default;
 
   // Returns the fusion's launch dimensions.
   virtual LaunchDimensions launch_dimensions() const = 0;

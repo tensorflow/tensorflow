@@ -156,7 +156,9 @@ static void CheckClique(const GpuCliqueKey& clique_key,
             << " for async errors; num_communicators="
             << clique->num_communicators();
     clique->ForEachComm([](RankId rank, Communicator* comm) {
-      if (auto status = CheckComm(comm); !status.ok()) LOG(ERROR) << status;
+      if (auto status = CheckComm(comm); !status.ok()) {
+        LOG(ERROR) << status;
+      }
     });
   } else {
     VLOG(5) << "Skip checking in-use GPU clique " << clique_key.ToString();
@@ -225,7 +227,9 @@ static absl::StatusOr<bool> EnablePeerAccess(
   for (int64_t i = 0; i < devices.size(); ++i) {
     for (int64_t j = 0; j < devices.size(); ++j) {
       // An attempt to enable peer access to itself will fail.
-      if (i == j) continue;
+      if (i == j) {
+        continue;
+      }
 
       // To check if peer access is possible, we need to enable it and check
       // the result. OkStatus means that peer access is possible.
@@ -692,7 +696,9 @@ absl::StatusOr<std::shared_ptr<LockableGpuClique::Lock>> AcquireGpuClique(
           WarnStuckTimeout(), TerminateTimeout()));
 
   // If lock is not null return it to the caller.
-  if (*clique) return clique;
+  if (*clique) {
+    return clique;
+  }
 
   // Maybe find if we acquired a clique with communicators that we can split.
   static const int64_t enable_nccl_comm_splitting =

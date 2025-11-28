@@ -281,9 +281,8 @@ Value Cast(mlir::ImplicitLocOpBuilder& b, Value value, Type dst_element_ty) {
     if (src_fp_element_ty.getFPMantissaWidth() >
         dst_fp_element_ty.getFPMantissaWidth()) {
       return ma::TruncFOp::create(b, dst_ty, value);
-    } else {
-      return ma::ExtFOp::create(b, dst_ty, value);
     }
+    return ma::ExtFOp::create(b, dst_ty, value);
   }
   // int => int
   if (mlir::isa<mlir::IntegerType>(src_element_ty) &&
@@ -321,16 +320,14 @@ Value Cast(mlir::ImplicitLocOpBuilder& b, Value value, Type dst_element_ty) {
     auto cst_int = [&](int64_t x) -> Value {
       if (auto src_shaped_ty = mlir::dyn_cast<ShapedType>(src_ty)) {
         return CreateConst(b, dst_element_ty, x, src_shaped_ty.getShape());
-      } else {
-        return CreateConst(b, dst_element_ty, x);
       }
+      return CreateConst(b, dst_element_ty, x);
     };
     auto cst_float = [&](int64_t x) -> Value {
       if (auto src_shaped_ty = mlir::dyn_cast<ShapedType>(src_ty)) {
         return CreateConst(b, src_fp_element_ty, x, src_shaped_ty.getShape());
-      } else {
-        return CreateConst(b, src_fp_element_ty, x);
       }
+      return CreateConst(b, src_fp_element_ty, x);
     };
     auto fptosi = ma::FPToSIOp::create(b, dst_ty, value);
     int64_t min = llvm::minIntN(dst_element_ty.getIntOrFloatBitWidth());
@@ -358,9 +355,8 @@ Value Cast(mlir::ImplicitLocOpBuilder& b, Value value, Type dst_element_ty) {
 Value Subtract(mlir::ImplicitLocOpBuilder& b, ValueRange values) {
   if (mlir::isa<mlir::IntegerType>(mlir::getElementTypeOrSelf(values[0]))) {
     return ma::SubIOp::create(b, values[0], values[1]);
-  } else {
-    return ma::SubFOp::create(b, values[0], values[1]);
   }
+  return ma::SubFOp::create(b, values[0], values[1]);
 }
 
 Value Compare(mlir::ImplicitLocOpBuilder& b, ValueRange values,
@@ -560,10 +556,9 @@ absl::StatusOr<mlir::TypedValue<mlir::RankedTensorType>> EmitConstant(
     if (constant.shape().element_type() == U64) {
       return CreateConst(b, ty, ScalarConstantValue<uint64_t>(constant, U64),
                          shape);
-    } else {
-      return CreateConst(b, ty, ScalarConstantValue<int64_t>(constant, S64),
-                         shape);
     }
+    return CreateConst(b, ty, ScalarConstantValue<int64_t>(constant, S64),
+                       shape);
   }
   return CreateConst(b, ty, ScalarConstantValue<double>(constant, F64), shape);
 }

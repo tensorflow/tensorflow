@@ -31,7 +31,9 @@ static mlir::ParseResult parseI64ArrayAttr(mlir::AsmParser& parser,
                                            mlir::DenseI64ArrayAttr& array) {
   array = mlir::dyn_cast_or_null<mlir::DenseI64ArrayAttr>(
       mlir::DenseI64ArrayAttr::parse(parser, mlir::Type{}));
-  if (!array) return mlir::failure();
+  if (!array) {
+    return mlir::failure();
+  }
   return mlir::success();
 }
 

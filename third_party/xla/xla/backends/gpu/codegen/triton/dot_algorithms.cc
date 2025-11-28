@@ -229,23 +229,20 @@ absl::StatusOr<std::optional<Type>> GetForceOperandsType(
     // If there is a single allowed operand type, we force the operands to use
     // this type.
     return allowed_operands_types.front();
-
-  } else {
-    // If there are several allowed operand types, we just check that the
-    // operands have the same type, and that this type is one of the allowed
-    // ones. Raise an error otherwise.
-    if (lhs_type != rhs_type ||
-        !absl::c_linear_search(allowed_operands_types, lhs_type)) {
-      std::string allowed_operands_types_str = absl::StrJoin(
-          allowed_operands_types, ", ", [&](std::string* out, Type type) {
-            absl::StrAppend(out, MlirToString(type));
-          });
-      return absl::FailedPreconditionError(absl::StrCat(
-          "Expected dot operands to both have the same type, and for this type "
-          "to be one of the following types: ",
-          allowed_operands_types_str, " but got ", MlirToString(lhs_type),
-          " and ", MlirToString(rhs_type)));
-    }
+  }  // If there are several allowed operand types, we just check that the
+  // operands have the same type, and that this type is one of the allowed
+  // ones. Raise an error otherwise.
+  if (lhs_type != rhs_type ||
+      !absl::c_linear_search(allowed_operands_types, lhs_type)) {
+    std::string allowed_operands_types_str = absl::StrJoin(
+        allowed_operands_types, ", ", [&](std::string* out, Type type) {
+          absl::StrAppend(out, MlirToString(type));
+        });
+    return absl::FailedPreconditionError(absl::StrCat(
+        "Expected dot operands to both have the same type, and for this type "
+        "to be one of the following types: ",
+        allowed_operands_types_str, " but got ", MlirToString(lhs_type),
+        " and ", MlirToString(rhs_type)));
   }
 
   return std::nullopt;

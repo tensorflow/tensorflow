@@ -60,7 +60,9 @@ void StripParameterAddressSpaces(RewriterBase& rewriter,
   SmallVector<Type> generic_func_params(
       llvm::map_range(func_ty.getParams(), [](Type type) -> Type {
         auto ptr_ty = dyn_cast<LLVM::LLVMPointerType>(type);
-        if (!ptr_ty) return type;
+        if (!ptr_ty) {
+          return type;
+        }
         if (ptr_ty.getAddressSpace() != NVVM::NVVMMemorySpace::Global) {
           return type;
         }

@@ -49,7 +49,9 @@ absl::Status ExecutionCounters::Initialize(se::StreamExecutor* executor,
                                            RunId run_id) {
   absl::MutexLock lock(mu_);
   CounterKey key = {executor, run_id};
-  if (counters_.contains(key)) return absl::OkStatus();
+  if (counters_.contains(key)) {
+    return absl::OkStatus();
+  }
   counters_.emplace(key, 0);
   return absl::OkStatus();
 }

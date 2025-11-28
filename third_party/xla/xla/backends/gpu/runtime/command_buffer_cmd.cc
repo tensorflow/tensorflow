@@ -518,12 +518,24 @@ absl::Status CommandBufferCmdExecutor::Record(
           }
         }
 
-        if (has_input && !has_output && !has_temp) input_count++;
-        if (!has_input && has_output && !has_temp) output_count++;
-        if (has_input && !has_output && has_temp) input_temp_count++;
-        if (!has_input && has_output && has_temp) output_temp_count++;
-        if (has_input && has_output && !has_temp) input_output_count++;
-        if (has_input && has_output && has_temp) input_temp_output_count++;
+        if (has_input && !has_output && !has_temp) {
+          input_count++;
+        }
+        if (!has_input && has_output && !has_temp) {
+          output_count++;
+        }
+        if (has_input && !has_output && has_temp) {
+          input_temp_count++;
+        }
+        if (!has_input && has_output && has_temp) {
+          output_temp_count++;
+        }
+        if (has_input && has_output && !has_temp) {
+          input_output_count++;
+        }
+        if (has_input && has_output && has_temp) {
+          input_temp_output_count++;
+        }
       }
 
       VLOG(5) << "CommandBufferCmdExecutor allocation summary:\n"
@@ -1620,23 +1632,22 @@ absl::StatusOr<const se::CommandBuffer::Command*> WhileCmd::Record(
           return command_buffer->UpdateChildCommand(
               se::CommandBuffer::ChildCommandType::kMoved, command, record_fn);
         });
-  } else {
-    return Handle(
-        std::move(record_action),
-        [&](absl::Span<const se::CommandBuffer::Command* const> dependencies) {
-          return command_buffer->CreateWhile(
-              se::DeviceMemory<bool>(pred),
-              CreateCommands(&cond_commands_, &execute_params, &record_params),
-              CreateCommands(&body_commands_, &execute_params, &record_params),
-              dependencies);
-        },
-        [&](const se::CommandBuffer::Command* command) {
-          return command_buffer->UpdateWhile(
-              command, se::DeviceMemory<bool>(pred),
-              UpdateCommands(&cond_commands_, &execute_params, &record_params),
-              UpdateCommands(&body_commands_, &execute_params, &record_params));
-        });
   }
+  return Handle(
+      std::move(record_action),
+      [&](absl::Span<const se::CommandBuffer::Command* const> dependencies) {
+        return command_buffer->CreateWhile(
+            se::DeviceMemory<bool>(pred),
+            CreateCommands(&cond_commands_, &execute_params, &record_params),
+            CreateCommands(&body_commands_, &execute_params, &record_params),
+            dependencies);
+      },
+      [&](const se::CommandBuffer::Command* command) {
+        return command_buffer->UpdateWhile(
+            command, se::DeviceMemory<bool>(pred),
+            UpdateCommands(&cond_commands_, &execute_params, &record_params),
+            UpdateCommands(&body_commands_, &execute_params, &record_params));
+      });
 }
 
 bool WhileCmd::requires_initialization() {
@@ -2816,7 +2827,7 @@ absl::StatusOr<const se::CommandBuffer::Command*> DynamicSliceFusionCmd::Record(
 CommandBufferCmd::BufferUseVector DynamicSliceFusionCmd::buffers() const {
   CommandBufferCmd::BufferUseVector buffers;
   auto embed_buffers = embedded_commands_.buffers();
-  for (auto buffer_usage : embed_buffers) {
+  for (const auto& buffer_usage : embed_buffers) {
     buffers.emplace_back(
         *embeded_to_origin_slice_map_.at(buffer_usage.slice().index()),
         buffer_usage.access());
