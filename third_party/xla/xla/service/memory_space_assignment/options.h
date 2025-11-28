@@ -86,12 +86,14 @@ using OpSpanSizeFn = std::function<int64_t(
 // transformation is performed on an instruction, this result is returned. It
 // tells MSA:
 //  1. A list of instructions that MSA should delete.
-//  2. A list of HloUses that the transformation replaced.
+//  2. A list of instructions that the transformation replaced.
+//  3. A list of HloUses that the transformation replaced.
 //
 // This information is then processed via
 // FixAllocationSequenceAfterPostAllocationTransformation call.
 struct PostAllocationTransformationUpdate {
   std::vector<HloInstruction*> to_be_removed;
+  absl::flat_hash_map<HloInstruction*, HloInstruction*> to_be_replaced;
   absl::flat_hash_map<HloUse, HloUse> update_use_map;
 
   std::string ToString() const;
@@ -239,9 +241,10 @@ struct Options {
   // Dimension number indicating any split is allowable.
   int64_t any_split_dimension = -2;
 
-  // Applies post-allocation transformations to the given instruction. This
-  // function is called after the allocations are found in the MsaAlgorithm. It
-  // is called on each instruction I that meets the following conditions:
+  // Applies post-allocation transformations to the given instruction. The
+  // function is called after the allocations are found in the
+  // MsaAlgorithm. It is called on each instruction I that meets the following
+  // conditions:
   // 1. I is called from a non-fusion computation
   // 2. I's operands are not in alternate memory
   // 3. I is not successfully converted to async instruction.
@@ -249,15 +252,17 @@ struct Options {
   //
   // The transformation function is allowed to do the following:
   //  1. Mark instructions for removal.
-  //  2. Modify existing instructions.
+  //  2. Mark instructions for replacement.
+  //  3. Modify existing instructions.
   //
   // This transformation is NOT allowed to:
   //  1. Directly remove instructions (or nullify them).
-  //  2. Add new instructions.
+  //  2. Add new instructions that do not replace existing ones.
   //
   // Note that it is up to the transformation function to ensure that the
   // changes to the module preserves the semantics of the original program.
   std::function<absl::StatusOr<PostAllocationTransformationUpdate>(
+      const MsaInstructionToOperands& operands_in_alternate_memory_map,
       HloInstruction*)>
       post_allocation_transformation_fn;
 
