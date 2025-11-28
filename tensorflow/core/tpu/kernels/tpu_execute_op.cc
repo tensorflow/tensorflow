@@ -745,7 +745,7 @@ absl::Status TPUExecuteOp::DoWork(OpKernelContext* context) {
 
   trace_me_init.Stop();
 
-  const uint32 rng_seed = GetXLARandomSeed();
+  const uint32_t rng_seed = GetXLARandomSeed();
 
   std::unique_ptr<xla::DeviceAssignment> device_assignment;
   if (executable.has_device_assignment()) {
