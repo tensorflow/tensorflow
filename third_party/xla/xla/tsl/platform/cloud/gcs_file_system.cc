@@ -2152,10 +2152,10 @@ absl::Status GcsFileSystem::RenameObject(const string& src,
     // is being copied to a bucket with a different storage class or location,
     // which requires multiple rewrite calls.
     // TODO(surkov): implement multi-step rewrites.
-    return errors::Unimplemented(
-        "Couldn't rename ", src, " to ", target,
-        ": moving large files between buckets with different "
-        "locations or storage classes is not supported.");
+    return absl::UnimplementedError(
+        absl::StrCat("Couldn't rename ", src, " to ", target,
+                     ": moving large files between buckets with different "
+                     "locations or storage classes is not supported."));
   }
 
   VLOG(3) << "RenameObject: finished from: gs://" << src << " to " << target;
