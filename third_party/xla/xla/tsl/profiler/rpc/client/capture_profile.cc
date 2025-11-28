@@ -258,10 +258,10 @@ absl::Status Monitor(const std::string& service_addr, int duration_ms,
 
 absl::Status ExportToTensorBoard(const XSpace& xspace,
                                  const std::string& logdir,
+                                 const std::string& run,
                                  bool also_export_trace_json) {
   std::string repository_root =
       tsl::profiler::GetTensorBoardProfilePluginDir(logdir);
-  std::string run = tsl::profiler::GetCurrentTimeStampAsString();
   std::string host = tsl::port::Hostname();
   TF_RETURN_IF_ERROR(
       tsl::profiler::SaveXSpace(repository_root, run, host, xspace));
@@ -273,6 +273,14 @@ absl::Status ExportToTensorBoard(const XSpace& xspace,
         tsl::profiler::TraceContainerToJson(container));
   }
   return absl::OkStatus();
+}
+
+absl::Status ExportToTensorBoard(const XSpace& xspace,
+                                 const std::string& logdir,
+                                 bool also_export_trace_json) {
+  return ExportToTensorBoard(xspace, logdir,
+                             tsl::profiler::GetCurrentTimeStampAsString(),
+                             also_export_trace_json);
 }
 
 absl::Status CaptureRemoteTrace(
