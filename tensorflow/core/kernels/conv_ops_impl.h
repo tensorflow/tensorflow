@@ -750,23 +750,30 @@ void LaunchConvOpImpl(OpKernelContext* context, bool cudnn_use_autotune,
   auto* stream = context->op_device_context()->stream();
   OP_REQUIRES(context, stream, absl::InternalError("No GPU stream available."));
 
-  Tensor input = input_param;
+  const int64_t max_chunk_size = 1 << 26;  // Example: 64MB chunks
+  if (input_param.NumElements() > max_chunk_size) {
+    // Split input tensor into smaller chunks
+    auto input_chunks = SplitLargeTensor(context, input_param, max_chunk_size);
+    Tensor temp_output;
+    OP_REQUIRES_OK(context, context->allocate_temp(output->dtype(), output->shape(), &temp_output));
 
-  int spatial_dims = input.dims() - 2;
-  std::vector<int64_t> in_dims(spatial_dims);
-
-  const int64_t in_batch = GetTensorDim(input, data_format, 'N');
-  for (int i = 0; i < spatial_dims; ++i) {
-    in_dims[i] = GetTensorDim(input, data_format, static_cast<char>('0' + i));
+    for (const auto& chunk : input_chunks) {
+      LaunchConvOpImpl<T>(context, cudnn_use_autotune, chunk, filter, dilations, strides, padding, explicit_paddings, data_format, &temp_output);
+      cudaMemcpy(output->flat<T>().data(), temp_output.flat<T>().data(), temp_output.NumElements() * sizeof(T), cudaMemcpyDeviceToDevice);
+    }
+    return;
   }
-  const int64_t in_depth = GetTensorDim(input, data_format, 'C');
 
-  std::vector<int64_t> filter_dims(spatial_dims);
-  for (int i = 0; i < spatial_dims; ++i) {
+  // Existing implementation for smaller tensors
+  const int64_t in_batch = GetTensorDim(input_param, data_format, 'N');
+  const int64_t in_depth = GetTensorDim(input_param, data_format, 'C');
+
+  std::vector<int64_t> filter_dims(filter.dims());
+  for (int i = 0; i < filter.dims(); ++i) {
     filter_dims[i] = filter.dim_size(i);
   }
-  const int64_t filter_depth = filter.dim_size(spatial_dims);
-  const int64_t out_depth = filter.dim_size(spatial_dims + 1);
+  const int64_t filter_depth = filter.dim_size(filter.dims() - 2);
+  const int64_t out_depth = filter.dim_size(filter.dims() - 1);
 
   OP_REQUIRES(
       context, filter.NumElements() > 0,
@@ -778,15 +785,15 @@ void LaunchConvOpImpl(OpKernelContext* context, bool cudnn_use_autotune,
   bool one_filter = true;
   bool one_dilations = true;
   bool one_stride = true;
-  for (int i = 0; i < spatial_dims; ++i) {
+  for (int i = 0; i < filter_dims.size() - 2; ++i) {
     one_filter = one_filter && (filter_dims[i] == 1);
-    one_dilations = one_dilations && (dilations[i] == 1);
-    one_stride = one_stride && (strides[i] == 1);
+    one_dilations = one_dilations && (GetTensorDim(dilations, data_format, static_cast<char>(i + '0')) == 1);
+    one_stride = one_stride && (GetTensorDim(strides, data_format, static_cast<char>(i + '0')) == 1);
   }
   // check if filter is same spatial shape as input
   bool filter_same_dims = true;
-  for (int i = 0; i < spatial_dims; ++i) {
-    if (filter_dims[i] != in_dims[i]) filter_same_dims = false;
+  for (int i = 0; i < filter_dims.size() - 2; ++i) {
+    if (filter_dims[i] != GetTensorDim(input_param, data_format, static_cast<char>(i + '0'))) filter_same_dims = false;
   }
 
   auto* blas = stream->parent()->AsBlas();
@@ -795,13 +802,13 @@ void LaunchConvOpImpl(OpKernelContext* context, bool cudnn_use_autotune,
   if (!is_grouped_convolution && one_filter && one_dilations && one_stride &&
       data_format == FORMAT_NHWC && (padding == VALID || padding == SAME)) {
     // 1x1 filter, so call cublas directly.
-    const uint64 m = in_batch * std::accumulate(in_dims.begin(), in_dims.end(),
+    const uint64 m = in_batch * std::accumulate(filter_dims.begin(), filter_dims.end() - 2,
                                                 1, std::multiplies<>{});
     const uint64 k = in_depth;
     const uint64 n = out_depth;
 
-    auto a_ptr = AsDeviceMemory(input.template flat<T>().data(),
-                                input.template flat<T>().size());
+    auto a_ptr = AsDeviceMemory(input_param.template flat<T>().data(),
+                                input_param.template flat<T>().size());
     auto b_ptr = AsDeviceMemory(filter.template flat<T>().data(),
                                 filter.template flat<T>().size());
     auto c_ptr = AsDeviceMemory(output->template flat<T>().data(),
@@ -818,12 +825,12 @@ void LaunchConvOpImpl(OpKernelContext* context, bool cudnn_use_autotune,
     // The input data and filter have the same spatial dimensions, so call
     // cublas directly.
     const uint64 m = in_batch;
-    const uint64 k = in_depth * std::accumulate(in_dims.begin(), in_dims.end(),
+    const uint64 k = in_depth * std::accumulate(filter_dims.begin(), filter_dims.end() - 2,
                                                 1, std::multiplies<>{});
     const uint64 n = out_depth;
 
-    auto a_ptr = AsDeviceMemory(input.template flat<T>().data(),
-                                input.template flat<T>().size());
+    auto a_ptr = AsDeviceMemory(input_param.template flat<T>().data(),
+                                input_param.template flat<T>().size());
     auto b_ptr = AsDeviceMemory(filter.template flat<T>().data(),
                                 filter.template flat<T>().size());
     auto c_ptr = AsDeviceMemory(output->template flat<T>().data(),
@@ -838,7 +845,7 @@ void LaunchConvOpImpl(OpKernelContext* context, bool cudnn_use_autotune,
   }
 
   const bool compute_in_nhwc = ComputeInNhwcEnabled(
-      DataTypeToEnum<T>::value, stream, /*use_4d_tensor=*/(spatial_dims == 2));
+      DataTypeToEnum<T>::value, stream, /*use_4d_tensor=*/(filter_dims.size() - 2 == 2));
   const TensorFormat compute_data_format =
       (compute_in_nhwc && data_format == FORMAT_NHWC) ? FORMAT_NHWC
                                                       : FORMAT_NCHW;
@@ -851,7 +858,7 @@ void LaunchConvOpImpl(OpKernelContext* context, bool cudnn_use_autotune,
   for (int i = 0; i < output->dims(); ++i) {
     out_dims[i] = output->dim_size(i);
   }
-  std::vector<std::pair<int64_t, int64_t>> paddings(spatial_dims, {-1, -1});
+  std::vector<std::pair<int64_t, int64_t>> paddings(filter_dims.size() - 2, {-1, -1});
   // Explicit only on 2D case.
   if (padding == EXPLICIT) {
     GetExplicitPaddingForDim(explicit_paddings, data_format, 'H',
@@ -861,11 +868,12 @@ void LaunchConvOpImpl(OpKernelContext* context, bool cudnn_use_autotune,
   }
 
   // Get padding values, output should be valid, since it was checked before.
-  std::vector<int64_t> out_dims_check(spatial_dims);
-  for (int i = 0; i < spatial_dims; ++i) {
+  std::vector<int64_t> out_dims_check(filter_dims.size() - 2);
+  for (int i = 0; i < filter_dims.size() - 2; ++i) {
     OP_REQUIRES_OK(context, GetWindowedOutputSizeVerbose(
-                                in_dims[i], filter_dims[i], dilations[i],
-                                strides[i], padding, &out_dims_check[i],
+                                GetTensorDim(input_param, data_format, static_cast<char>(i + '0')), filter_dims[i],
+                                GetTensorDim(dilations, data_format, static_cast<char>(i + '0')),
+                                GetTensorDim(strides, data_format, static_cast<char>(i + '0')), padding, &out_dims_check[i],
                                 &paddings[i].first, &paddings[i].second));
     OP_REQUIRES(context,
                 (out_dims_check[i] == GetTensorDim(*output, data_format,
@@ -874,8 +882,8 @@ void LaunchConvOpImpl(OpKernelContext* context, bool cudnn_use_autotune,
   }
 
   bool assymmetric_padding = false;
-  std::vector<int64_t> common_padding(spatial_dims);
-  for (int i = 0; i < spatial_dims; ++i) {
+  std::vector<int64_t> common_padding(filter_dims.size() - 2);
+  for (int i = 0; i < filter_dims.size() - 2; ++i) {
     common_padding[i] = std::min(paddings[i].first, paddings[i].second);
     assymmetric_padding =
         assymmetric_padding || (paddings[i].first != paddings[i].second);
@@ -885,14 +893,14 @@ void LaunchConvOpImpl(OpKernelContext* context, bool cudnn_use_autotune,
     // cuDNN only supports padding the same amount on either side. So we
     // manually create a new padded input tensor.
     Tensor transformed_input;
-    std::vector<int64_t> new_in_dims(input.dims());
+    std::vector<int64_t> new_in_dims(input_param.dims());
     new_in_dims[0] = in_batch;
-    for (int i = 0; i < spatial_dims; ++i) {
-      int index = GetTensorSpatialDimIndex(input.dims(), data_format, i);
+    for (int i = 0; i < filter_dims.size() - 2; ++i) {
+      int index = GetTensorSpatialDimIndex(input_param.dims(), data_format, i);
       new_in_dims[index] =
-          in_dims[i] + std::abs(paddings[i].first - paddings[i].second);
+          GetTensorDim(input_param, data_format, static_cast<char>(i + '0')) + std::abs(paddings[i].first - paddings[i].second);
     }
-    new_in_dims[GetTensorDimIndex(data_format, 'C', input.dims())] = in_depth;
+    new_in_dims[GetTensorDimIndex(data_format, 'C', input_param.dims())] = in_depth;
     TensorShape transformed_input_shape(new_in_dims);
     OP_REQUIRES_OK(context, context->allocate_temp(DataTypeToEnum<T>::value,
                                                    transformed_input_shape,
@@ -901,14 +909,14 @@ void LaunchConvOpImpl(OpKernelContext* context, bool cudnn_use_autotune,
     // Padding to add on transformed input.
     std::vector<std::pair<int64_t, int64_t>> transformed_input_padding(
         paddings);
-    for (int i = 0; i < spatial_dims; ++i) {
+    for (int i = 0; i < filter_dims.size() - 2; ++i) {
       transformed_input_padding[i].first -= common_padding[i];
       transformed_input_padding[i].second -= common_padding[i];
     }
 
     // Check padding size.
     bool padding_bounds_valid = true;
-    for (int i = 0; i < spatial_dims; ++i) {
+    for (int i = 0; i < filter_dims.size() - 2; ++i) {
       padding_bounds_valid =
           padding_bounds_valid &&
           FastBoundsCheck(transformed_input_padding[i].first,
@@ -920,7 +928,7 @@ void LaunchConvOpImpl(OpKernelContext* context, bool cudnn_use_autotune,
                 absl::InvalidArgumentError("Padding is too large."));
 
     // Pad new input.
-    if (input.dims() == 4) {
+    if (input_param.dims() == 4) {
       std::array<int, 2> pad_left{
           static_cast<int>(transformed_input_padding[0].first),
           static_cast<int>(transformed_input_padding[1].first)};
@@ -929,10 +937,10 @@ void LaunchConvOpImpl(OpKernelContext* context, bool cudnn_use_autotune,
           static_cast<int>(transformed_input_padding[1].second)};
       functor::PadInput<GPUDevice, T, int, 4>()(
           context->eigen_device<GPUDevice>(),
-          To32Bit(static_cast<const Tensor&>(input).tensor<T, 4>()), pad_left,
+          To32Bit(static_cast<const Tensor&>(input_param).tensor<T, 4>()), pad_left,
           pad_right, To32Bit(transformed_input.tensor<T, 4>()), data_format,
           T{});
-    } else if (input.dims() == 5) {
+    } else if (input_param.dims() == 5) {
       std::array<int, 3> pad_left{
           static_cast<int>(transformed_input_padding[0].first),
           static_cast<int>(transformed_input_padding[1].first),
@@ -943,7 +951,7 @@ void LaunchConvOpImpl(OpKernelContext* context, bool cudnn_use_autotune,
           static_cast<int>(transformed_input_padding[2].second)};
       functor::PadInput<GPUDevice, T, int, 5>()(
           context->eigen_device<GPUDevice>(),
-          To32Bit(static_cast<const Tensor&>(input).tensor<T, 5>()), pad_left,
+          To32Bit(static_cast<const Tensor&>(input_param).tensor<T, 5>()), pad_left,
           pad_right, To32Bit(transformed_input.tensor<T, 5>()), data_format,
           T{});
     } else {
@@ -951,10 +959,10 @@ void LaunchConvOpImpl(OpKernelContext* context, bool cudnn_use_autotune,
           absl::InternalError("Failed to pad input, invalid dimensions."));
     }
 
-    input = transformed_input;
-    for (int i = 0; i < spatial_dims; ++i) {
+    input_param = transformed_input;
+    for (int i = 0; i < filter_dims.size() - 2; ++i) {
       in_dims[i] = new_in_dims[GetTensorDimIndex(
-          data_format, static_cast<char>('0' + i), input.dims())];
+          data_format, static_cast<char>('0' + i), input_param.dims())];
     }
   }
 
@@ -971,25 +979,25 @@ void LaunchConvOpImpl(OpKernelContext* context, bool cudnn_use_autotune,
       OP_REQUIRES_OK(context, context->allocate_temp(DataTypeToEnum<T>::value,
                                                      channels_first_shape,
                                                      &transformed_input));
-      if (input.dims() == 4) {
+      if (input_param.dims() == 4) {
         functor::NHWCToNCHW<GPUDevice, T, 4>()(
             context->eigen_device<GPUDevice>(),
-            const_cast<const Tensor&>(input).tensor<T, 4>(),
+            const_cast<const Tensor&>(input_param).tensor<T, 4>(),
             transformed_input.tensor<T, 4>());
-      } else if (input.dims() == 5) {
+      } else if (input_param.dims() == 5) {
         functor::NHWCToNCHW<GPUDevice, T, 5>()(
             context->eigen_device<GPUDevice>(),
-            const_cast<const Tensor&>(input).tensor<T, 5>(),
+            const_cast<const Tensor&>(input_param).tensor<T, 5>(),
             transformed_input.tensor<T, 5>());
       } else {
         context->SetStatus(
             absl::InternalError("Failed to reshape input to channels first "
                                 "format, invalid dimensions."));
       }
-      input = transformed_input;
+      input_param = transformed_input;
     } else {
       // Depth = 1, reshape.
-      if (!input.CopyFrom(input, channels_first_shape)) {
+      if (!input_param.CopyFrom(input_param, channels_first_shape)) {
         context->SetStatus(absl::InternalError(
             "Failed to reshape input to channels first format."));
       }
@@ -1003,7 +1011,7 @@ void LaunchConvOpImpl(OpKernelContext* context, bool cudnn_use_autotune,
 
   // Check paddings are not negative.
   bool non_negative_paddings = true;
-  for (int i = 0; i < spatial_dims; ++i) {
+  for (int i = 0; i < filter_dims.size() - 2; ++i) {
     non_negative_paddings = non_negative_paddings && common_padding[i] >= 0;
   }
   OP_REQUIRES(context, non_negative_paddings,
@@ -1022,13 +1030,13 @@ void LaunchConvOpImpl(OpKernelContext* context, bool cudnn_use_autotune,
   std::tie(compute_data_layout, filter_layout) =
       compute_data_format == FORMAT_NHWC ? kComputeInNHWC : kComputeInNCHW;
 
-  se::dnn::BatchDescriptor input_desc(spatial_dims);
+  se::dnn::BatchDescriptor input_desc(filter_dims.size() - 2);
   input_desc.set_count(in_batch).set_feature_map_count(in_depth).set_layout(
       compute_data_layout);
-  if (spatial_dims == 2) {
+  if (filter_dims.size() - 2 == 2) {
     input_desc.set_spatial_dim(stream_executor::dnn::DimIndex::X, in_dims[1])
         .set_spatial_dim(stream_executor::dnn::DimIndex::Y, in_dims[0]);
-  } else if (spatial_dims == 3) {
+  } else if (filter_dims.size() - 2 == 3) {
     input_desc.set_spatial_dim(stream_executor::dnn::DimIndex::X, in_dims[2])
         .set_spatial_dim(stream_executor::dnn::DimIndex::Y, in_dims[1])
         .set_spatial_dim(stream_executor::dnn::DimIndex::Z, in_dims[0]);
@@ -1038,11 +1046,11 @@ void LaunchConvOpImpl(OpKernelContext* context, bool cudnn_use_autotune,
                             " invalid number of spatial dimensions"));
   }
 
-  se::dnn::BatchDescriptor output_desc(spatial_dims);
+  se::dnn::BatchDescriptor output_desc(filter_dims.size() - 2);
   output_desc.set_count(GetTensorDim(*output, data_format, 'N'))
       .set_feature_map_count(GetTensorDim(*output, data_format, 'C'))
       .set_layout(compute_data_layout);
-  if (spatial_dims == 2) {
+  if (filter_dims.size() - 2 == 2) {
     output_desc
         .set_spatial_dim(
             stream_executor::dnn::DimIndex::X,
@@ -1050,7 +1058,7 @@ void LaunchConvOpImpl(OpKernelContext* context, bool cudnn_use_autotune,
         .set_spatial_dim(
             stream_executor::dnn::DimIndex::Y,
             GetTensorDim(*output, data_format, static_cast<int>('0')));
-  } else if (spatial_dims == 3) {
+  } else if (filter_dims.size() - 2 == 3) {
     output_desc
         .set_spatial_dim(
             stream_executor::dnn::DimIndex::X,
@@ -1067,15 +1075,15 @@ void LaunchConvOpImpl(OpKernelContext* context, bool cudnn_use_autotune,
                             "number of spatial dimensions"));
   }
 
-  se::dnn::FilterDescriptor filter_desc(spatial_dims);
+  se::dnn::FilterDescriptor filter_desc(filter_dims.size() - 2);
   filter_desc.set_input_feature_map_count(filter_depth)
       .set_output_feature_map_count(out_depth)
       .set_layout(filter_layout);
-  if (spatial_dims == 2) {
+  if (filter_dims.size() - 2 == 2) {
     filter_desc
         .set_spatial_dim(stream_executor::dnn::DimIndex::X, filter_dims[1])
         .set_spatial_dim(stream_executor::dnn::DimIndex::Y, filter_dims[0]);
-  } else if (spatial_dims == 3) {
+  } else if (filter_dims.size() - 2 == 3) {
     filter_desc
         .set_spatial_dim(stream_executor::dnn::DimIndex::X, filter_dims[2])
         .set_spatial_dim(stream_executor::dnn::DimIndex::Y, filter_dims[1])
@@ -1086,15 +1094,15 @@ void LaunchConvOpImpl(OpKernelContext* context, bool cudnn_use_autotune,
                             "number of spatial dimensions"));
   }
 
-  se::dnn::ConvolutionDescriptor conv_desc(spatial_dims);
-  if (spatial_dims == 2) {
+  se::dnn::ConvolutionDescriptor conv_desc(filter_dims.size() - 2);
+  if (filter_dims.size() - 2 == 2) {
     conv_desc.set_dilation_rate(stream_executor::dnn::DimIndex::X, dilations[1])
         .set_dilation_rate(stream_executor::dnn::DimIndex::Y, dilations[0])
         .set_filter_stride(stream_executor::dnn::DimIndex::X, strides[1])
         .set_filter_stride(stream_executor::dnn::DimIndex::Y, strides[0])
         .set_zero_padding(stream_executor::dnn::DimIndex::X, common_padding[1])
         .set_zero_padding(stream_executor::dnn::DimIndex::Y, common_padding[0]);
-  } else if (spatial_dims == 3) {
+  } else if (filter_dims.size() - 2 == 3) {
     conv_desc.set_dilation_rate(stream_executor::dnn::DimIndex::X, dilations[2])
         .set_dilation_rate(stream_executor::dnn::DimIndex::Y, dilations[1])
         .set_dilation_rate(stream_executor::dnn::DimIndex::Z, dilations[0])
@@ -1116,7 +1124,7 @@ void LaunchConvOpImpl(OpKernelContext* context, bool cudnn_use_autotune,
       compute_data_format == FORMAT_NCHW ? FORMAT_OIHW : FORMAT_OHWI;
   VLOG(4) << "Transform filter tensor from " << ToString(FORMAT_HWIO) << " to "
           << ToString(dst_format);
-  std::vector<int64_t> dst_shape_vec(spatial_dims + 2);
+  std::vector<int64_t> dst_shape_vec(filter_dims.size());
   dst_shape_vec[0] = out_depth;
   if (dst_format == FORMAT_OIHW) {
     dst_shape_vec[1] = filter_depth;
@@ -1138,12 +1146,12 @@ void LaunchConvOpImpl(OpKernelContext* context, bool cudnn_use_autotune,
   // Filter: [(spatial_dims), in, out] (HWIO)
   // T_filter: [out, in, (spatial_dims)] (OIHW) or
   // T_filter: [out, (spatial_dims), in] (OHWI)
-  if (spatial_dims == 2) {
+  if (filter_dims.size() - 2 == 2) {
     functor::TransformFilter<GPUDevice, T, int, 4>()(
         context->eigen_device<GPUDevice>(), dst_format,
         To32Bit(filter.tensor<T, 4>()),
         To32Bit(transformed_filter.tensor<T, 4>()));
-  } else if (spatial_dims == 3) {
+  } else if (filter_dims.size() - 2 == 3) {
     functor::TransformFilter<GPUDevice, T, int, 5>()(
         context->eigen_device<GPUDevice>(), dst_format,
         To32Bit(filter.tensor<T, 5>()),
@@ -1167,8 +1175,8 @@ void LaunchConvOpImpl(OpKernelContext* context, bool cudnn_use_autotune,
     transformed_output = *output;
   }
 
-  auto input_ptr = AsDeviceMemory(input.template flat<T>().data(),
-                                  input.template flat<T>().size());
+  auto input_ptr = AsDeviceMemory(input_param.template flat<T>().data(),
+                                  input_param.template flat<T>().size());
   auto filter_ptr =
       AsDeviceMemory(transformed_filter.template flat<T>().data(),
                      transformed_filter.template flat<T>().size());
@@ -1178,7 +1186,7 @@ void LaunchConvOpImpl(OpKernelContext* context, bool cudnn_use_autotune,
 
   static int64_t ConvolveScratchSize = GetDnnWorkspaceLimitOrDefault();
 
-  if (spatial_dims == 2) {
+  if (filter_dims.size() - 2 == 2) {
     filter_dims.push_back(filter_depth);
   }
   ConvParameters conv_parameters = {
@@ -1192,7 +1200,7 @@ void LaunchConvOpImpl(OpKernelContext* context, bool cudnn_use_autotune,
       dilations,            // dilations
       strides,              // strides
       common_padding,       // paddings (symmetrical)
-      input.dtype(),        // tensor datatype
+      input_param.dtype(),  // tensor datatype
       conv_desc.group_count(),
   };
 
@@ -1216,12 +1224,12 @@ void LaunchConvOpImpl(OpKernelContext* context, bool cudnn_use_autotune,
 
   if (data_format == FORMAT_NHWC && compute_data_format == FORMAT_NCHW) {
     VLOG(4) << "Convert the output tensor back from NCHW to NHWC.";
-    if (spatial_dims == 2) {
+    if (filter_dims.size() - 2 == 2) {
       functor::NCHWToNHWC<GPUDevice, T, 4>()(
           context->eigen_device<GPUDevice>(),
           const_cast<const Tensor&>(transformed_output).tensor<T, 4>(),
           output->tensor<T, 4>());
-    } else if (spatial_dims == 3) {
+    } else if (filter_dims.size() - 2 == 3) {
       functor::NCHWToNHWC<GPUDevice, T, 5>()(
           context->eigen_device<GPUDevice>(),
           const_cast<const Tensor&>(transformed_output).tensor<T, 5>(),
