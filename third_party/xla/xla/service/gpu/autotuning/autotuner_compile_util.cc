@@ -80,21 +80,9 @@ AutotunerCompileUtil::AutotunerCompileUtil(std::unique_ptr<Compiler> compiler,
       stream_(stream),
       allocator_(allocator),
       opts_(opts) {
-  // Avoid dumping compilation steps.
-  opts_.set_xla_enable_dumping(false);
-  opts_.set_xla_gpu_dump_autotune_results_to("");
-  opts_.set_xla_gpu_load_autotune_results_from("");
-  opts_.set_xla_gpu_dump_llvmir(false);
-  opts_.set_xla_gpu_dump_autotune_logs_to("");
-  // Avoid using another thread pool.
-  opts_.set_xla_gpu_force_compilation_parallelism(1);
-  opts_.set_xla_gpu_enable_llvm_module_compilation_parallelism(false);
-  // Avoid using GPU graphs as we don't want to measure graph construction time.
-  opts_.clear_xla_gpu_enable_command_buffer();
-  // Avoid using async dot as we don't want to measure event overheads.
-  opts_.set_xla_gpu_async_dot(false);
-  opts_.set_xla_embed_ir_in_executable(false);
-  opts_.set_xla_gpu_kernel_cache_file("");
+  GpuCodegenBackend::AdjustDebugOptionsForAutotuning(
+      opts_,
+      /*force_allow_register_spills=*/false);
 }
 
 absl::StatusOr<AutotunerCompileUtil::ProfilingOutput>
@@ -138,9 +126,6 @@ absl::StatusOr<std::unique_ptr<Executable>> AutotunerCompileUtil::Compile(
   if (!new_hlo_module.status().ok()) {
     return new_hlo_module.status();
   }
-  GpuCodegenBackend::AdjustDebugOptionsForAutotuning(
-      new_hlo_module->get()->mutable_config().mutable_debug_options(),
-      /*force_allow_register_spills=*/false);
   absl::StatusOr<std::unique_ptr<Executable>> out = compiler_->RunBackend(
       std::move(*new_hlo_module), &stream_executor_,
       Compiler::CompileOptions{&allocator_, /*thread_pool=*/nullptr,
