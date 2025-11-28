@@ -17,6 +17,7 @@ limitations under the License.
 #define XLA_CODEGEN_XTILE_IR_XTILE_ATTRS
 
 include "mlir/IR/AttrTypeBase.td"
+include "mlir/IR/BuiltinAttributeInterfaces.td"
 include "mlir/IR/EnumAttr.td"
 include "xla/codegen/xtile/ir/xtile_dialect.td"
 
@@ -32,6 +33,19 @@ def XTile_TilingInfoAttr : XTile_Attr<"TilingInfo"> {
   let assemblyFormat = [{
     `<` `tile_count` `:` $tile_count `,`
     `tiles_per_workgroup` `:` $tiles_per_workgroup `>`
+  }];
+}
+
+def XTile_LayoutAttr : XTile_Attr<"Layout", [
+    DeclareAttrInterfaceMethods<MemRefLayoutAttrInterface>]> {
+  let mnemonic = "layout";
+  let parameters = (ins "::mlir::DenseI64ArrayAttr":$minor_to_major);
+  let assemblyFormat = "`<` $minor_to_major `>`";
+  let extraClassDeclaration = [{
+    mlir::LogicalResult verifyLayout(
+        mlir::ArrayRef<int64_t> shape, mlir::function_ref<mlir::InFlightDiagnostic()> emit_error) const;
+    mlir::LogicalResult getStridesAndOffset(
+        mlir::ArrayRef<int64_t> shape, mlir::SmallVectorImpl<int64_t>& strides, int64_t& offset) const;
   }];
 }
 

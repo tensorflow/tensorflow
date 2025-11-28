@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/backends/gpu/codegen/triton/xtile_compiler.h"
 
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
@@ -22,6 +23,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -62,6 +64,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinTypeInterfaces.h"
 #include "mlir/IR/Diagnostics.h"
 #include "mlir/IR/DialectRegistry.h"
+#include "mlir/IR/Location.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
 #include "mlir/IR/Value.h"
@@ -78,12 +81,14 @@ limitations under the License.
 #include "mlir/Transforms/Passes.h"
 #include "stablehlo/dialect/StablehloOps.h"
 #include "xla/backends/gpu/codegen/emitters/ir/xla_gpu_ops.h"
+#include "xla/backends/gpu/codegen/triton/collective_emitter.h"
 #include "xla/backends/gpu/codegen/triton/compilation_pipeline.h"
 #include "xla/backends/gpu/codegen/triton/fusion_emitter.h"
 #include "xla/backends/gpu/codegen/triton/ir/triton_xla_ops.h"
 #include "xla/backends/gpu/codegen/triton/lowering_util.h"
 #include "xla/backends/gpu/codegen/triton/support.h"
 #include "xla/backends/gpu/codegen/triton/transforms/passes.h"
+#include "xla/codegen/emitter_loc_op_builder.h"
 #include "xla/codegen/emitters/ir/xla_dialect.h"
 #include "xla/codegen/emitters/transforms/passes.h"
 #include "xla/codegen/xtile/ir/transforms/passes.h"
@@ -234,6 +239,55 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CreateTritonModule(
 
   LoadMlirDialectsForTriton(mlir_context);
 
+  const HloComputation* hlo_computation =
+      fusion->fused_instructions_computation();
+
+  std::string fusion_kind(kTritonFusionKind);
+  if (fusion->has_backend_config()) {
+    auto backend_config = fusion->backend_config<GpuBackendConfig>();
+    if (backend_config.ok()) {
+      fusion_kind = backend_config->fusion_backend_config().kind();
+    }
+  }
+
+  if (fusion_kind == kTritonGemmFusionKind) {
+    return Internal(
+        "Attempted to emit a GEMM fusion through the legacy Triton "
+        "emitter, but it has been deleted. This is a bug.");
+  }
+
+  // TODO(bchetioui,pifon): this list should be consolidated; why do we need so
+  // many different fusion kinds?
+  const std::vector<absl::string_view> kSupportedFusionKinds = {
+      kTritonFusionKind,
+      kTritonNestedGemmFusionKind,
+      kTritonCollectiveFusionKind,
+  };
+
+  if (!absl::c_linear_search(kSupportedFusionKinds, fusion_kind)) {
+    return Internal("Unsupported fusion kind: %s", fusion_kind);
+  }
+
+  llvm::SmallVector<mlir::Type> opaque_args_types;
+  // Add metadata arguments for collectives.
+  // This is done after the input and output arguments but before the tile
+  // index.
+  int32_t num_metadata_arguments = 0;
+  if (fusion_kind == kTritonCollectiveFusionKind) {
+    auto loc = mlir::NameLoc::get(
+        mlir::StringAttr::get(&mlir_context, hlo_computation->name()));
+    EmitterLocOpBuilder b(loc, &mlir_context,
+                          fusion->parent()
+                              ->parent()
+                              ->config()
+                              .debug_options()
+                              .xla_gpu_unsupported_annotate_with_emitter_loc());
+
+    TF_ASSIGN_OR_RETURN(
+        num_metadata_arguments,
+        AddCollectiveMetadataArguments(opaque_args_types, b, hlo_computation));
+  }
+
   // TODO: b/451959933 - Use reference or check pointer.
 
   TF_ASSIGN_OR_RETURN(
@@ -241,9 +295,6 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CreateTritonModule(
       EmitXTileModule(fn_name,
                       TritonEmitterConstraints::GetBuilder(device_info), fusion,
                       block_level_parameters, mlir_context));
-
-  const HloComputation* hlo_computation =
-      fusion->fused_instructions_computation();
 
   const auto debug_options = fusion->GetModule()->config().debug_options();
 

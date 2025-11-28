@@ -68,8 +68,7 @@ namespace mlir::triton::xla {
 #define GEN_PASS_DEF_TRITONXLAEXTRACTINSERTTOTRITONPASS
 #include "xla/backends/gpu/codegen/triton/transforms/passes.h.inc"
 
-namespace xg = ::xla::gpu;
-namespace xgt = xg::triton;
+namespace xtile = ::xla::xtile;
 
 namespace {
 
@@ -86,7 +85,7 @@ bool HasBroadcastConsumer(Operation* op) {
 
 PointerType GetTensorPtrType(Type type) {
   return PointerType::get(
-      xgt::StorageType(type),
+      xtile::StorageType(type),
       static_cast<unsigned>(mlir::NVVM::NVVMMemorySpace::Global));
 }
 

@@ -74,11 +74,9 @@ class LowerDotScaled
                                                    : add_op->getOperand(1);
 
     auto lhs_dot_elem_type_or_status =
-        ::xla::gpu::triton::internal::GetScaleDotElemType(
-            op.getLhs().getType());
+        ::xla::xtile::internal::GetScaleDotElemType(op.getLhs().getType());
     auto rhs_dot_elem_type_or_status =
-        ::xla::gpu::triton::internal::GetScaleDotElemType(
-            op.getRhs().getType());
+        ::xla::xtile::internal::GetScaleDotElemType(op.getRhs().getType());
 
     if (!lhs_dot_elem_type_or_status.ok() ||
         !rhs_dot_elem_type_or_status.ok()) {

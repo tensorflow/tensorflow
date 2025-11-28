@@ -400,12 +400,11 @@ struct TritonPrecisionSpec {
 mlir::Type ElementType(mlir::Value v) { return mlir::getElementTypeOrSelf(v); }
 
 using AlgorithmEmitter = absl::StatusOr<Value> (*)(
-    ::xla::EmitterLocOpBuilder, const ::xla::gpu::triton::DotOperands&,
+    ::xla::EmitterLocOpBuilder, const ::xla::xtile::DotOperands&,
     const TritonPrecisionSpec&);
 
 absl::StatusOr<Value> EmitDotAlgUnset(
-    ::xla::EmitterLocOpBuilder b,
-    const ::xla::gpu::triton::DotOperands& dot_operands,
+    ::xla::EmitterLocOpBuilder b, const ::xla::xtile::DotOperands& dot_operands,
     const TritonPrecisionSpec& precision_spec) {
   // Execute matrix multiplication of input tiles and pass the accumulator.
   // TODO(manany): Should be looked into once we enable Hopper workloads.
@@ -431,8 +430,7 @@ absl::StatusOr<Value> EmitDotAlgUnset(
 }
 
 absl::StatusOr<Value> EmitRegularDot(
-    ::xla::EmitterLocOpBuilder b,
-    const ::xla::gpu::triton::DotOperands& dot_operands,
+    ::xla::EmitterLocOpBuilder b, const ::xla::xtile::DotOperands& dot_operands,
     const TritonPrecisionSpec& precision_spec) {
   Value lhs = dot_operands.lhs;
   Value rhs = dot_operands.rhs;
@@ -450,11 +448,11 @@ absl::StatusOr<Value> EmitRegularDot(
   if (precision_spec.algorithm ==
       ::xla::PrecisionConfig::ALG_DOT_BF16_BF16_F32) {
     if (ElementType(lhs).isF32()) {
-      lhs = ::xla::gpu::triton::Cast(b, lhs, b.getBF16Type());
+      lhs = ::xla::xtile::Cast(b, lhs, b.getBF16Type());
     }
 
     if (ElementType(rhs).isF32()) {
-      rhs = ::xla::gpu::triton::Cast(b, rhs, b.getBF16Type());
+      rhs = ::xla::xtile::Cast(b, rhs, b.getBF16Type());
     }
   }
 
@@ -472,14 +470,14 @@ absl::StatusOr<Value> EmitRegularDot(
 // must override any accumulated result if the last partial product is
 // non-finite. See b/115844437.
 Value ZeroNaNs(::xla::EmitterLocOpBuilder b, Value input) {
-  Value positive_inf = ::xla::gpu::triton::CreateConst<float>(
+  Value positive_inf = ::xla::xtile::CreateConst<float>(
       b, b.getF32Type(), std::numeric_limits<float>::infinity(),
       mlir::cast<ShapedType>(input.getType()).getShape());
   Value abs_input = math::AbsFOp::create(b, input);
   Value is_finite = arith::CmpFOp::create(b, arith::CmpFPredicate::OGT,
                                           positive_inf, abs_input);
   return arith::SelectOp::create(b, is_finite, input,
-                                 ::xla::gpu::triton::ZerosLike(b, input));
+                                 ::xla::xtile::ZerosLike(b, input));
 }
 
 absl::Status ExpectType(Value v, Type expected_type) {
@@ -502,10 +500,9 @@ std::vector<Value> SplitF32(::xla::EmitterLocOpBuilder b, Value input,
   std::vector<Value> split_inputs;
   split_inputs.reserve(split_count);
   for (int i = 0; i < split_count; ++i) {
-    Value input_as_bf16 = ::xla::gpu::triton::Cast(b, input, b.getBF16Type());
+    Value input_as_bf16 = ::xla::xtile::Cast(b, input, b.getBF16Type());
     if (i != split_count - 1) {
-      Value input_as_f32 =
-          ::xla::gpu::triton::Cast(b, input_as_bf16, b.getF32Type());
+      Value input_as_f32 = ::xla::xtile::Cast(b, input_as_bf16, b.getF32Type());
       input = arith::SubFOp::create(b, input, input_as_f32);
     }
     split_inputs.push_back(input_as_bf16);
@@ -522,8 +519,7 @@ Value IEEEDot(::xla::EmitterLocOpBuilder b, Value lhs, Value rhs, Value acc) {
 // Leverages BF16 datatype for F32 matmul computation. It follows the guidance
 // from https://arxiv.org/pdf/1904.06376.pdf.
 absl::StatusOr<Value> EmitBF16x9Matmul(
-    ::xla::EmitterLocOpBuilder b,
-    const ::xla::gpu::triton::DotOperands& dot_operands,
+    ::xla::EmitterLocOpBuilder b, const ::xla::xtile::DotOperands& dot_operands,
     const TritonPrecisionSpec& precision_spec) {
   constexpr int kNumParts = 3;
   constexpr int kHigh = 0;
@@ -538,7 +534,7 @@ absl::StatusOr<Value> EmitBF16x9Matmul(
   std::vector<Value> lhs_parts = SplitF32(b, dot_operands.lhs, kNumParts);
   std::vector<Value> rhs_parts = SplitF32(b, dot_operands.rhs, kNumParts);
 
-  Value result = ::xla::gpu::triton::ZerosLike(b, dot_operands.accumulator);
+  Value result = ::xla::xtile::ZerosLike(b, dot_operands.accumulator);
 
   result = IEEEDot(b, lhs_parts[kLow], rhs_parts[kLow], result);
   result = IEEEDot(b, lhs_parts[kMid], rhs_parts[kLow], result);
@@ -561,8 +557,7 @@ absl::StatusOr<Value> EmitBF16x9Matmul(
 // Leverages BF16 datatype for F32 matmul computation. It follows the guidance
 // from https://arxiv.org/pdf/1904.06376.pdf.
 absl::StatusOr<Value> EmitBF16x6Matmul(
-    ::xla::EmitterLocOpBuilder b,
-    const ::xla::gpu::triton::DotOperands& dot_operands,
+    ::xla::EmitterLocOpBuilder b, const ::xla::xtile::DotOperands& dot_operands,
     const TritonPrecisionSpec& precision_spec) {
   constexpr int kNumParts = 3;
   constexpr int kHigh = 0;
@@ -577,7 +572,7 @@ absl::StatusOr<Value> EmitBF16x6Matmul(
   std::vector<Value> lhs_parts = SplitF32(b, dot_operands.lhs, kNumParts);
   std::vector<Value> rhs_parts = SplitF32(b, dot_operands.rhs, kNumParts);
 
-  Value result = ::xla::gpu::triton::ZerosLike(b, dot_operands.accumulator);
+  Value result = ::xla::xtile::ZerosLike(b, dot_operands.accumulator);
 
   result = IEEEDot(b, lhs_parts[kMid], rhs_parts[kMid], result);
 
@@ -596,8 +591,7 @@ absl::StatusOr<Value> EmitBF16x6Matmul(
 // Compute F32 matmul with 3 BF16 dots. It is less accurate than
 // EmitBF16x6Matmul.
 absl::StatusOr<Value> EmitBF16x3Matmul(
-    ::xla::EmitterLocOpBuilder b,
-    const ::xla::gpu::triton::DotOperands& dot_operands,
+    ::xla::EmitterLocOpBuilder b, const ::xla::xtile::DotOperands& dot_operands,
     const TritonPrecisionSpec& precision_spec) {
   constexpr int kNumParts = 2;
   constexpr int kHigh = 0;
@@ -611,7 +605,7 @@ absl::StatusOr<Value> EmitBF16x3Matmul(
   std::vector<Value> lhs_bf16 = SplitF32(b, dot_operands.lhs, kNumParts);
   std::vector<Value> rhs_bf16 = SplitF32(b, dot_operands.rhs, kNumParts);
 
-  Value result = ::xla::gpu::triton::ZerosLike(b, dot_operands.accumulator);
+  Value result = ::xla::xtile::ZerosLike(b, dot_operands.accumulator);
   result = IEEEDot(b, lhs_bf16[kLow], rhs_bf16[kHigh], result);
   result = IEEEDot(b, lhs_bf16[kHigh], rhs_bf16[kLow], result);
   result = ZeroNaNs(b, result);
@@ -658,7 +652,7 @@ absl::StatusOr<AlgorithmEmitter> GetAlgorithmEmitter(
                    ::xla::PrecisionConfig::Algorithm_Name(algorithm)));
 }
 
-bool IsTf32Allowed(const ::xla::gpu::triton::PrecisionSpec& precision_spec) {
+bool IsTf32Allowed(const ::xla::xtile::PrecisionSpec& precision_spec) {
   if (precision_spec.algorithm == ::xla::PrecisionConfig::ALG_UNSET) {
     return tsl::tensor_float_32_execution_enabled() &&
            StableHloPrecisionToXlaPrecision(
@@ -672,7 +666,7 @@ bool IsTf32Allowed(const ::xla::gpu::triton::PrecisionSpec& precision_spec) {
 }
 
 ttir::InputPrecision InferDotPrecision(
-    const ::xla::gpu::triton::PrecisionSpec& precision_spec) {
+    const ::xla::xtile::PrecisionSpec& precision_spec) {
   if (precision_spec.algorithm ==
       ::xla::PrecisionConfig::ALG_DOT_TF32_TF32_F32_X3) {
     return ttir::InputPrecision::TF32x3;
@@ -714,8 +708,7 @@ LogicalResult RewriteDotGeneralToTritonDot(mlir::PatternRewriter& rewriter,
 
   ::xla::EmitterLocOpBuilder builder(op->getLoc(), rewriter);
 
-  ::xla::gpu::triton::DotOperands dot_operands{op.getLhs(), op.getRhs(),
-                                               accumulator};
+  ::xla::xtile::DotOperands dot_operands{op.getLhs(), op.getRhs(), accumulator};
 
   stablehlo::Precision lhs_precision;
   stablehlo::Precision rhs_precision;
@@ -725,8 +718,8 @@ LogicalResult RewriteDotGeneralToTritonDot(mlir::PatternRewriter& rewriter,
     return mlir::failure();
   }
 
-  ::xla::gpu::triton::PrecisionSpec precision_spec{hlo_algorithm, lhs_precision,
-                                                   rhs_precision};
+  ::xla::xtile::PrecisionSpec precision_spec{hlo_algorithm, lhs_precision,
+                                             rhs_precision};
 
   TritonPrecisionSpec triton_precision_spec{hlo_algorithm,
                                             InferDotPrecision(precision_spec)};
