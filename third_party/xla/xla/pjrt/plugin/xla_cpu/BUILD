@@ -143,6 +143,7 @@ cc_library(
     srcs = ["cpu_static_registration.cc"],
     deps = [
         "//xla/pjrt/c:pjrt_c_api_cpu_internal",
+        "//xla/pjrt/cpu:cpu_compiler",
         "//xla/pjrt/plugin:plugin_names",
         "//xla/pjrt/plugin:static_registration",
     ],
