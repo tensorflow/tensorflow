@@ -241,22 +241,35 @@ TEST_P(CommandBufferTest, Fusions) {
                               /*run_hlo_passes=*/false);
 }
 
-static absl::Status Memcpy(se::Stream* stream, ffi::AnyBuffer src,
+// Empty memcpy state to test stateful custom calls.
+struct MemcpyState {};
+
+static absl::StatusOr<std::unique_ptr<MemcpyState>> MemcpyInstantiate() {
+  return std::make_unique<MemcpyState>();
+}
+
+static absl::Status Memcpy(se::Stream* stream, MemcpyState* state,
+                           ffi::AnyBuffer src,
                            ffi::Result<ffi::AnyBuffer> dst) {
+  EXPECT_NE(state, nullptr);
   se::DeviceMemoryBase dst_mem = dst->device_memory();
   se::DeviceMemoryBase src_mem = src.device_memory();
   return stream->MemcpyD2D(&dst_mem, src_mem, src_mem.size());
 }
 
+XLA_FFI_DEFINE_HANDLER(kMemcpyInstantiate, MemcpyInstantiate,
+                       ffi::Ffi::BindInstantiate());
+
 XLA_FFI_DEFINE_HANDLER(kMemcpy, Memcpy,
                        ffi::Ffi::Bind()
                            .Ctx<ffi::Stream>()
+                           .Ctx<ffi::State<MemcpyState>>()
                            .Arg<ffi::AnyBuffer>()   // src
                            .Ret<ffi::AnyBuffer>(),  // dst
                        {ffi::Traits::kCmdBufferCompatible});
 
 XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test$$memcpy", "gpu",
-                         kMemcpy);
+                         {kMemcpyInstantiate, nullptr, nullptr, kMemcpy});
 
 TEST_P(CommandBufferTest, TracedCustomCalls) {
   constexpr absl::string_view hlo_text = R"(

@@ -2014,12 +2014,14 @@ CustomCallCmd::RecordXlaFfiCall(const Thunk::ExecuteParams& execute_params,
           execute_params.stream->parent(),
           execute_params.command_buffer_trace_stream, [&](se::Stream* stream) {
             ffi::CallOptions options = {
-                run_id, execute_params.buffer_allocations->device_ordinal(),
+                run_id,
+                execute_params.buffer_allocations->device_ordinal(),
                 ffi::CallOptions::GpuOptions{
                     stream,
                     execute_params.buffer_allocations->memory_allocator()},
                 /*called_computation=*/nullptr,  // TODO(b/342285364)
-                execute_params.ffi_execution_context};
+                execute_params.ffi_execution_context,
+                execution_state_.get()};
             return ffi::Call(handler_, *call_frame, options);
           }));
 

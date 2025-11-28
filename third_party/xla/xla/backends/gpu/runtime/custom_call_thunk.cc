@@ -266,6 +266,7 @@ absl::StatusOr<std::unique_ptr<CustomCallThunk>> CustomCallThunk::Create(
   }
 
   auto execution_state = std::make_unique<ffi::ExecutionState>();
+
   // Initialize FFI handler state if it has an instantiate callback.
   if (bundle.instantiate) {
     // At FFI handler instantiation time, we don't have any arguments or

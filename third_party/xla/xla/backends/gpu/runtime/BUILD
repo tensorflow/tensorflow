@@ -89,6 +89,7 @@ cc_library(
         "//xla/backends/gpu/collectives:gpu_collectives",
         "//xla/ffi:attribute_map",
         "//xla/ffi:call_frame",
+        "//xla/ffi:execution_state",
         "//xla/ffi:ffi_api",
         "//xla/ffi/api:c_api",
         "//xla/hlo/evaluator:hlo_evaluator",
