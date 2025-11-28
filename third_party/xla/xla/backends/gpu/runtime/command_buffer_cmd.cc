@@ -2074,12 +2074,10 @@ CollectiveCmd::CollectiveCmd(
 
 absl::Status CollectiveCmd::Prepare(const Thunk::PrepareParams& params) {
   TF_RET_CHECK(params.collective_params != nullptr);
-  TF_ASSIGN_OR_RETURN(GpuCollectives * collectives,
-                      Thunk::GetGpuCollectives(params));
   TF_ASSIGN_OR_RETURN(
       GpuCliqueKey clique_key,
-      GetGpuCliqueKey(collectives, *params.collective_params,
-                      config().replica_groups, config().group_mode,
+      GetGpuCliqueKey(*params.collective_params, config().replica_groups,
+                      config().group_mode,
                       AsyncStreamKind::ASYNC_STREAM_KIND_COLLECTIVE));
   return params.clique_requests->RequestClique(clique_key);
 }
@@ -2151,12 +2149,9 @@ absl::StatusOr<const se::CommandBuffer::Command*> AllReduceCmd::Record(
         "AllReduceCmd requires collective parameters and cliques");
   }
 
-  TF_ASSIGN_OR_RETURN(GpuCollectives * collectives,
-                      Thunk::GetGpuCollectives(execute_params));
-
   TF_ASSIGN_OR_RETURN(
       CommunicatorHandle comm_handle,
-      GetComm(collectives, *execute_params.collective_params,
+      GetComm(*execute_params.collective_params,
               *execute_params.collective_cliques, config().replica_groups,
               config().group_mode,
               AsyncStreamKind::ASYNC_STREAM_KIND_COLLECTIVE));  // Use constant
@@ -2217,12 +2212,9 @@ absl::StatusOr<const se::CommandBuffer::Command*> ReduceScatterCmd::Record(
         "ReduceScatterCmd requires collective parameters and cliques");
   }
 
-  TF_ASSIGN_OR_RETURN(GpuCollectives * collectives,
-                      Thunk::GetGpuCollectives(execute_params));
-
   TF_ASSIGN_OR_RETURN(
       CommunicatorHandle comm_handle,
-      GetComm(collectives, *execute_params.collective_params,
+      GetComm(*execute_params.collective_params,
               *execute_params.collective_cliques, config().replica_groups,
               config().group_mode,
               AsyncStreamKind::ASYNC_STREAM_KIND_COLLECTIVE));  // Use constant
@@ -2284,11 +2276,9 @@ absl::StatusOr<const se::CommandBuffer::Command*> AllToAllCmd::Record(
         "AllToAllCmd requires collective parameters and cliques");
   }
 
-  TF_ASSIGN_OR_RETURN(GpuCollectives * collectives,
-                      Thunk::GetGpuCollectives(execute_params));
   TF_ASSIGN_OR_RETURN(
       CommunicatorHandle comm_handle,
-      GetComm(collectives, *execute_params.collective_params,
+      GetComm(*execute_params.collective_params,
               *execute_params.collective_cliques, config().replica_groups,
               config().group_mode,
               AsyncStreamKind::ASYNC_STREAM_KIND_COLLECTIVE));  // Use constant
@@ -2347,12 +2337,9 @@ absl::StatusOr<const se::CommandBuffer::Command*> AllGatherCmd::Record(
         "AllGatherCmd requires collective parameters and cliques");
   }
 
-  TF_ASSIGN_OR_RETURN(GpuCollectives * collectives,
-                      Thunk::GetGpuCollectives(execute_params));
-
   TF_ASSIGN_OR_RETURN(
       CommunicatorHandle comm_handle,
-      GetComm(collectives, *execute_params.collective_params,
+      GetComm(*execute_params.collective_params,
               *execute_params.collective_cliques, config().replica_groups,
               config().group_mode,
               AsyncStreamKind::ASYNC_STREAM_KIND_COLLECTIVE));  // Use constant
@@ -2411,12 +2398,9 @@ CollectiveBroadcastCmd::Record(const Thunk::ExecuteParams& execute_params,
         "CollectiveBroadcastCmd requires collective parameters and cliques");
   }
 
-  TF_ASSIGN_OR_RETURN(GpuCollectives * collectives,
-                      Thunk::GetGpuCollectives(execute_params));
-
   TF_ASSIGN_OR_RETURN(
       CommunicatorHandle comm_handle,
-      GetComm(collectives, *execute_params.collective_params,
+      GetComm(*execute_params.collective_params,
               *execute_params.collective_cliques, config().replica_groups,
               config().group_mode,
               AsyncStreamKind::ASYNC_STREAM_KIND_COLLECTIVE));  // Use constant
@@ -2476,12 +2460,9 @@ absl::StatusOr<const se::CommandBuffer::Command*> CollectivePermuteCmd::Record(
         "CollectivePermuteCmd requires collective parameters and cliques");
   }
 
-  TF_ASSIGN_OR_RETURN(GpuCollectives * collectives,
-                      Thunk::GetGpuCollectives(execute_params));
-
   TF_ASSIGN_OR_RETURN(
       CommunicatorHandle comm_handle,
-      GetComm(collectives, *execute_params.collective_params,
+      GetComm(*execute_params.collective_params,
               *execute_params.collective_cliques, config().replica_groups,
               config().group_mode,
               AsyncStreamKind::ASYNC_STREAM_KIND_COLLECTIVE));  // Use constant
