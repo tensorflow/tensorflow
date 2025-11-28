@@ -16,3 +16,4 @@ vim
 wget
 jq
 file
+unar
