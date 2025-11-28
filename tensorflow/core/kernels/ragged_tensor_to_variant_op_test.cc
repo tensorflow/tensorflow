@@ -232,7 +232,7 @@ TEST_F(RaggedTensorToVariantKernelTest, NonEmptyBatchedInputInt32Splits) {
   const std::vector<int> batched_values = {0, 1, 1, 2, 2, 3, 4,
                                            5, 6, 7, 8, 9, 8, 9};
 
-  BuildEncodeRaggedTensorGraph<int, int32>(
+  BuildEncodeRaggedTensorGraph<int, int32_t>(
       {batched_splits_1, batched_splits_2, batched_splits_3}, TensorShape({14}),
       batched_values, true);
   TF_ASSERT_OK(RunOpKernel());
@@ -240,12 +240,12 @@ TEST_F(RaggedTensorToVariantKernelTest, NonEmptyBatchedInputInt32Splits) {
   const auto& encoded_list = GetOutput(0)->vec<Variant>();
   EXPECT_EQ(encoded_list.size(), 2);
 
-  ExpectRaggedTensorVariantEqual<int, int32>(
-      CreateVariantFromRagged<int, int32>(
+  ExpectRaggedTensorVariantEqual<int, int32_t>(
+      CreateVariantFromRagged<int, int32_t>(
           {{0, 1, 3, 4, 5, 6}, {0, 2, 3, 4, 5, 6, 7}}, {0, 1, 1, 2, 2, 3, 4}),
       *encoded_list(0).get<RaggedTensorVariant>());
-  ExpectRaggedTensorVariantEqual<int, int32>(
-      CreateVariantFromRagged<int, int32>(
+  ExpectRaggedTensorVariantEqual<int, int32_t>(
+      CreateVariantFromRagged<int, int32_t>(
           {{0, 1, 2, 3, 4, 5}, {0, 1, 2, 5, 6, 7}}, {5, 6, 7, 8, 9, 8, 9}),
       *encoded_list(1).get<RaggedTensorVariant>());
 }
