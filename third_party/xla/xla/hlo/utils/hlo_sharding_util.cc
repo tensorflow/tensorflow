@@ -1150,61 +1150,6 @@ HloSharding ReverseSharding(const HloSharding& sharding,
                                      sharding.metadata());
 }
 
-HloSharding ReshapeToTileDimension(const HloSharding& sharding, int64_t dim,
-                                   absl::Span<const int64_t> dims) {
-  CHECK(!sharding.IsTuple() && !sharding.IsTileMaximal());
-  CHECK_NE(absl::c_find(dims, dim), dims.end()) << "dim is not in dims";
-  // We optimize the tile assignment on the single dimension dim in a way to
-  // minimize communication among devices caused by the reshard:
-  // +---+---+               +---+---+              +-+-+-+-+
-  // |   |   |               |   0   |              | | | | |
-  // | 0 | 1 |               +-------+              | | | | |
-  // |   |   |  reshape on   |   1   |  reshape on  | | | | |
-  // +---+---+   dim 0  =>   +-------+   dim 1  =>  |0|2|1|3|
-  // |   |   |               |   2   |              | | | | |
-  // | 2 | 3 |               +-------+              | | | | |
-  // |   |   |               |   3   |              | | | | |
-  // +---+---+               +---+---+              +-+-+-+-+
-
-  auto old_dims = sharding.tile_assignment().dimensions();
-  DimensionVector new_dims(old_dims.begin(), old_dims.end());
-  std::vector<int> not_in_dims, dims_except_the_dim;
-  for (int64_t i = 0; i < sharding.tile_assignment().num_dimensions(); ++i) {
-    if (i == dim) {
-      continue;
-    } else if (absl::c_find(dims, i) != dims.end()) {
-      dims_except_the_dim.push_back(i);
-      new_dims[dim] *= old_dims[i];
-      new_dims[i] = 1;
-    } else {
-      not_in_dims.push_back(i);
-    }
-  }
-  // perm = not_in_dims + {dim} + dims_except_the_dim
-  std::vector<int> perm;
-  perm.reserve(sharding.tile_assignment().num_dimensions());
-  perm.insert(perm.end(), not_in_dims.begin(), not_in_dims.end());
-  perm.push_back(dim);
-  perm.insert(perm.end(), dims_except_the_dim.begin(),
-              dims_except_the_dim.end());
-
-  auto new_tile_assignment =
-      sharding.tile_assignment().Transpose(perm).Reshape(new_dims);
-  return HloSharding::Tile(new_tile_assignment, sharding.metadata());
-}
-
-bool ContainsTileSharding(const HloModule& module) {
-  for (const HloComputation* computation : module.computations()) {
-    for (const HloInstruction* instruction : computation->instructions()) {
-      if (instruction->has_sharding() &&
-          !instruction->sharding().IsTileMaximal()) {
-        return true;
-      }
-    }
-  }
-  return false;
-}
-
 HloSharding PropagateShardingAlongDimsAndReplicateOthers(
     const HloSharding& source_sharding, absl::Span<const int64_t> source_dims,
     absl::Span<const int64_t> target_dims, int64_t target_shape_rank) {

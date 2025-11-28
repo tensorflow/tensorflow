@@ -181,17 +181,6 @@ HloSharding PropagateShardingThroughReshape(const Shape& source_shape,
 HloSharding ReverseSharding(const HloSharding& sharding,
                             absl::Span<const int64_t> dimensions);
 
-// Returns a sharding tiled on unique dimension dim by reshaping the tile
-// assignment of the sharding argument. Only dimensions in the dims span
-// argument are considered for reshaping, the others are ignored.
-// Assumptions: sharding is tile sharded, and dim must be included in dims.
-HloSharding ReshapeToTileDimension(const HloSharding& sharding, int64_t dim,
-                                   absl::Span<const int64_t> dims);
-
-// Returns true if the provided module includes one or more instructions with
-// a tile sharding.
-bool ContainsTileSharding(const HloModule& module);
-
 // Returns the preferred output sharding for a gather op based on the sharding
 // of the indices.
 HloSharding GatherOutputShardingFromIndex(const HloSharding& index_sharding,
