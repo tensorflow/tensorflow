@@ -122,7 +122,12 @@ struct ProfilerSessionWrapper {
   explicit ProfilerSessionWrapper(std::unique_ptr<tsl::ProfilerSession> session)
       : session(std::move(session)) {}
 
+  ProfilerSessionWrapper(std::unique_ptr<tsl::ProfilerSession> session,
+                         std::string session_id)
+      : session(std::move(session)), session_id(std::move(session_id)) {}
+
   std::unique_ptr<tsl::ProfilerSession> session;
+  std::string session_id;
 };
 
 static std::string GetFdoProfile(const std::string& xspace,
@@ -172,8 +177,8 @@ NB_MODULE(_profiler, m) {
       .def("__init__",
            [](ProfilerSessionWrapper* wrapper,
               const tensorflow::ProfileOptions& options) {
-             new (wrapper)
-                 ProfilerSessionWrapper(tsl::ProfilerSession::Create(options));
+             new (wrapper) ProfilerSessionWrapper(
+                 tsl::ProfilerSession::Create(options), options.session_id());
            })
       .def(
           "stop_and_export",
@@ -181,8 +186,14 @@ NB_MODULE(_profiler, m) {
             tensorflow::profiler::XSpace xspace;
             // Disables the ProfilerSession
             xla::ThrowIfError(sess->session->CollectData(&xspace));
-            xla::ThrowIfError(tsl::profiler::ExportToTensorBoard(
-                xspace, tensorboard_dir, /* also_export_trace_json= */ true));
+            if (sess->session_id.empty()) {
+              xla::ThrowIfError(tsl::profiler::ExportToTensorBoard(
+                  xspace, tensorboard_dir, /* also_export_trace_json= */ true));
+            } else {
+              xla::ThrowIfError(tsl::profiler::ExportToTensorBoard(
+                  xspace, tensorboard_dir, sess->session_id,
+                  /* also_export_trace_json= */ true));
+            }
           },
           nb::call_guard<nb::gil_scoped_release>())
       .def("stop",
@@ -275,7 +286,10 @@ NB_MODULE(_profiler, m) {
           "repository_path", &tensorflow::ProfileOptions::repository_path,
           [](tensorflow::ProfileOptions* options, const std::string& path) {
             options->set_repository_path(path);
-          });
+          })
+      .def_prop_rw("session_id", &tensorflow::ProfileOptions::session_id,
+                   [](tensorflow::ProfileOptions* options,
+                      const std::string& id) { options->set_session_id(id); });
 
   nb::class_<TraceMeWrapper> traceme_class(m, "TraceMe");
   traceme_class.def(nb::init<nb::str, nb::kwargs>())
