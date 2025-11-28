@@ -282,8 +282,7 @@ CHECK: tt.dot {{.*}} : tensor<16x32xf32> * tensor<32x64xf32> -> tensor<16x64xf32
 )"));
 }
 
-// TODO(b/417172838): enable after enabling dynamic slice in support.cc.
-TEST_F(TritonTest, DISABLED_CodegenDynamicSliceWithCorrectOffsets) {
+TEST_F(TritonTest, CodegenDynamicSliceWithCorrectOffsets) {
   // TODO(b/417172838): we now should support non-majormost dimensions, port
   // this test to fusion_emitter_device_test with that support.
 
@@ -921,8 +920,7 @@ e {
                                ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
-// TODO(b/417172838): enable after enabling dynamic slice in support.cc.
-TEST_F(TritonGemmTest, DISABLED_DynamicSliceIsSupportedInLhsEndToEnd) {
+TEST_F(TritonGemmTest, DynamicSliceIsSupportedInLhsEndToEnd) {
   // The select is used to restrict the start index to values that make sense.
   // If it was constant, then the dynamic-slice would be optimized to slice. It
   // is not strictly needed, because we also support clamping the indices.
@@ -956,8 +954,7 @@ ENTRY e {
   EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-4, /*arel=*/1e-6}));
 }
 
-// TODO(b/417172838): enable after enabling dynamic slice in support.cc.
-TEST_F(TritonGemmTest, DISABLED_DynamicSliceIsSupportedInRhs) {
+TEST_F(TritonGemmTest, DynamicSliceIsSupportedInRhs) {
   // The start index(es) for the non-majormost dimension(s) are constant zero(s)
   // because we don't support dynamic slice on those dimensions.
   constexpr absl::string_view kHloText = R"(
@@ -998,9 +995,8 @@ class TritonGemmDynamicSliceClampingTest
     : public TritonTest,
       public ::testing::WithParamInterface<int> {};
 
-// TODO(b/417172838): enable after enabling dynamic slice in support.cc.
 TEST_P(TritonGemmDynamicSliceClampingTest,
-       DISABLED_DynamicSliceIsSupportedWhenTheStartIndexNeedsClamping) {
+       DynamicSliceIsSupportedWhenTheStartIndexNeedsClamping) {
   // The start index(es) for the non-majormost dimension(s) are constant zero(s)
   // because we don't support dynamic slice on those dimensions.
   // TODO(b/417172838): we now should support non-majormost dimensions, port
@@ -1049,9 +1045,7 @@ std::string OffsetParamToString(const ::testing::TestParamInfo<int>& data) {
 INSTANTIATE_TEST_SUITE_P(All, TritonGemmDynamicSliceClampingTest,
                          ::testing::Values(-100, 3, 999), OffsetParamToString);
 
-// TODO(b/417172838): enable after enabling dynamic slice in support.cc.
-TEST_F(TritonGemmTest,
-       DISABLED_DynamicSliceOfMajormostContractingDimIsSupported) {
+TEST_F(TritonGemmTest, DynamicSliceOfMajormostContractingDimIsSupported) {
   // Tests that dynamic-slice works on the majormost dimension even if that
   // dimension is contracted.
   // The start index(es) for the non-majormost dimension(s) are constant zero(s)
@@ -1090,8 +1084,7 @@ ENTRY e {
                                ErrorSpec{/*aabs=*/1e-4, /*arel=*/1e-6}));
 }
 
-// TODO(b/417172838): enable after enabling dynamic slice in support.cc.
-TEST_F(TritonGemmTest, DISABLED_DynamicSliceOfMajormostBatchDimIsSupported) {
+TEST_F(TritonGemmTest, DynamicSliceOfMajormostBatchDimIsSupported) {
   // Tests that dynamic-slice works on the majormost dimension even if that
   // dimension is a batch.
   // The start index(es) for the non-majormost dimension(s) are constant zero(s)
@@ -1135,9 +1128,7 @@ ENTRY e {
                                ErrorSpec{/*aabs=*/1e-4, /*arel=*/1e-6}));
 }
 
-// TODO(b/417172838): enable after enabling dynamic slice in support.cc.
-TEST_F(TritonGemmTest,
-       DISABLED_DynamicSliceSingleDimensionIntoReshapeIsSupported) {
+TEST_F(TritonGemmTest, DynamicSliceSingleDimensionIntoReshapeIsSupported) {
   // This directly tests the targeted use case (b/307922364) of iterating over
   // layer weights and extracting them with dynamic slice.
   // The start index(es) for the non-majormost dimension(s) are constant zero(s)
