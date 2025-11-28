@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/framework/tensor_shape.h"
 
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/lib/strings/str_util.h"
@@ -546,16 +548,16 @@ absl::Status TensorShapeBase<Shape>::InsertDimWithStatus(int d, int64_t size) {
   }
 
   if (TF_PREDICT_FALSE(d < 0)) {
-    return errors::Internal("The insertion index must be non-negative, got ",
-                            d);
+    return absl::InternalError(
+        absl::StrCat("The insertion index must be non-negative, got ", d));
   }
   if (TF_PREDICT_FALSE(d > dims())) {
-    return errors::Internal("The insertion index must be at most ", dims(),
-                            " got ", d);
+    return absl::InternalError(absl::StrCat(
+        "The insertion index must be at most ", dims(), " got ", d));
   }
   if (TF_PREDICT_FALSE(dims() >= MaxDimensions())) {
-    return errors::Internal("Shape has ", dims(),
-                            " dimensions which is the maximum allowed");
+    return absl::InternalError(absl::StrCat(
+        "Shape has ", dims(), " dimensions which is the maximum allowed"));
   }
 
   absl::InlinedVector<int64_t, 8UL> vals;
@@ -681,18 +683,20 @@ absl::Status TensorShapeBase<Shape>::RemoveDimRangeWithStatus(int begin,
   end = end < 0 ? dims() + end + 1 : end;
 
   if (TF_PREDICT_FALSE(begin < 0)) {
-    return errors::Internal("Start index must be non-negative, got ", begin);
+    return absl::InternalError(
+        absl::StrCat("Start index must be non-negative, got ", begin));
   }
   if (TF_PREDICT_FALSE(begin > dims())) {
-    return errors::Internal("Start index must be less than ", dims(), ", got ",
-                            begin);
+    return absl::InternalError(absl::StrCat("Start index must be less than ",
+                                            dims(), ", got ", begin));
   }
   if (TF_PREDICT_FALSE(end < 0)) {
-    return errors::Internal("End index must be non-negative, got ", end);
+    return absl::InternalError(
+        absl::StrCat("End index must be non-negative, got ", end));
   }
   if (TF_PREDICT_FALSE(end > dims())) {
-    return errors::Internal("End index must be less than ", dims(), ", got ",
-                            end);
+    return absl::InternalError(
+        absl::StrCat("End index must be less than ", dims(), ", got ", end));
   }
 
   if (begin >= end) {
@@ -932,7 +936,7 @@ absl::Status PartialTensorShape::MergeWith(const PartialTensorShape& shape,
   }
 
   if (result == this) {
-    return errors::Internal(
+    return absl::InternalError(
         "PartialTensorShape::MergeWith: Cannot output result to itself");
   }
 
