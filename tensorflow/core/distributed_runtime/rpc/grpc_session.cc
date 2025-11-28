@@ -96,14 +96,14 @@ void ReEncodeConsts(GraphDef* gdef) {
 }
 }  // namespace
 
-void GrpcSession::SetHandleAndGraphVersion(string handle,
+void GrpcSession::SetHandleAndGraphVersion(std::string handle,
                                            int64_t graph_version) {
   mutex_lock l(mu_);
   handle_ = std::move(handle);
   current_graph_version_ = graph_version;
 }
 
-absl::Status GrpcSession::Handle(string* out_handle) {
+absl::Status GrpcSession::Handle(std::string* out_handle) {
   mutex_lock l(mu_);
   if (handle_.empty()) {
     return errors::InvalidArgument("A session is not created yet....");
@@ -203,10 +203,11 @@ absl::Status GrpcSession::Extend(const RunOptions& run_options,
 
 absl::Status GrpcSession::RunHelper(
     const RunOptions& run_options,
-    const std::vector<std::pair<string, Tensor>>& inputs,
-    const std::vector<string>& output_tensor_names,
-    const std::vector<string>& target_node_names, std::vector<Tensor>* outputs,
-    RunMetadata* run_metadata, const string& prun_handle) {
+    const std::vector<std::pair<std::string, Tensor>>& inputs,
+    const std::vector<std::string>& output_tensor_names,
+    const std::vector<std::string>& target_node_names,
+    std::vector<Tensor>* outputs, RunMetadata* run_metadata,
+    const std::string& prun_handle) {
   // Convert to proto
   std::unique_ptr<MutableRunStepRequestWrapper> req(
       master_->CreateRunStepRequest());
@@ -233,14 +234,14 @@ absl::Status GrpcSession::RunHelper(
 
   // Build an index from fetch tensor name to first index in
   // output_tensor_names.
-  std::unordered_map<string, int> output_name_to_offset;
+  std::unordered_map<std::string, int> output_name_to_offset;
   for (int i = 0, end = output_tensor_names.size(); i < end; ++i) {
-    const string& name = output_tensor_names[i];
+    const std::string& name = output_tensor_names[i];
     if (output_name_to_offset.insert(std::make_pair(name, i)).second) {
       req->add_fetch(name);
     }
   }
-  for (const string& target : target_node_names) {
+  for (const std::string& target : target_node_names) {
     req->add_target(target);
   }
 
@@ -273,7 +274,7 @@ absl::Status GrpcSession::RunHelper(
   // the duplicate values.
   if (output_name_to_offset.size() != output_tensor_names.size()) {
     for (int i = 0, end = output_tensor_names.size(); i < end; ++i) {
-      const string& name = output_tensor_names[i];
+      const std::string& name = output_tensor_names[i];
       int offset = output_name_to_offset[name];
       if (offset != i) {
         (*outputs)[i] = (*outputs)[offset];
@@ -290,18 +291,18 @@ absl::Status GrpcSession::RunHelper(
 
 absl::Status GrpcSession::Run(
     const RunOptions& run_options,
-    const std::vector<std::pair<string, Tensor>>& inputs,
-    const std::vector<string>& output_tensor_names,
-    const std::vector<string>& target_node_names, std::vector<Tensor>* outputs,
-    RunMetadata* run_metadata) {
+    const std::vector<std::pair<std::string, Tensor>>& inputs,
+    const std::vector<std::string>& output_tensor_names,
+    const std::vector<std::string>& target_node_names,
+    std::vector<Tensor>* outputs, RunMetadata* run_metadata) {
   return RunHelper(run_options, inputs, output_tensor_names, target_node_names,
                    outputs, run_metadata, /* prun_handle */ "");
 }
 
 absl::Status GrpcSession::Run(
-    const std::vector<std::pair<string, Tensor>>& inputs,
-    const std::vector<string>& output_tensor_names,
-    const std::vector<string>& target_node_names,
+    const std::vector<std::pair<std::string, Tensor>>& inputs,
+    const std::vector<std::string>& output_tensor_names,
+    const std::vector<std::string>& target_node_names,
     std::vector<Tensor>* outputs) {
   RunOptions run_options;
   run_options.set_timeout_in_ms(options_.config.operation_timeout_in_ms());
@@ -312,28 +313,28 @@ absl::Status GrpcSession::Run(
 absl::Status GrpcSession::RunProto(CallOptions* call_options,
                                    MutableRunStepRequestWrapper* req,
                                    MutableRunStepResponseWrapper* resp) {
-  string handle;
+  std::string handle;
   TF_RETURN_IF_ERROR(Handle(&handle));
   req->set_session_handle(handle);
   return master_->RunStep(call_options, req, resp);
 }
 
-absl::Status GrpcSession::PRunSetup(const std::vector<string>& input_names,
-                                    const std::vector<string>& output_names,
-                                    const std::vector<string>& target_nodes,
-                                    string* handle) {
+absl::Status GrpcSession::PRunSetup(
+    const std::vector<std::string>& input_names,
+    const std::vector<std::string>& output_names,
+    const std::vector<std::string>& target_nodes, std::string* handle) {
   // Convert to proto
   PartialRunSetupRequest req;
   PartialRunSetupResponse resp;
   CallOptions call_options;
   TF_RETURN_IF_ERROR(Handle(req.mutable_session_handle()));
-  for (const string& feed : input_names) {
+  for (const std::string& feed : input_names) {
     req.add_feed(feed);
   }
-  for (const string& fetch : output_names) {
+  for (const std::string& fetch : output_names) {
     req.add_fetch(fetch);
   }
-  for (const string& target : target_nodes) {
+  for (const std::string& target : target_nodes) {
     req.add_target(target);
   }
   if (!is_local_) req.set_request_id(GetUniqueRequestId());
@@ -344,8 +345,10 @@ absl::Status GrpcSession::PRunSetup(const std::vector<string>& input_names,
 }
 
 absl::Status GrpcSession::PRun(
-    const string& handle, const std::vector<std::pair<string, Tensor>>& inputs,
-    const std::vector<string>& output_names, std::vector<Tensor>* outputs) {
+    const std::string& handle,
+    const std::vector<std::pair<std::string, Tensor>>& inputs,
+    const std::vector<std::string>& output_names,
+    std::vector<Tensor>* outputs) {
   RunOptions run_options;
   run_options.set_timeout_in_ms(options_.config.operation_timeout_in_ms());
   return RunHelper(run_options, inputs, output_names, /* targets */ {}, outputs,
@@ -411,7 +414,7 @@ void GrpcSession::SetRemoteMaster(std::unique_ptr<MasterInterface> master) {
 
 // Static method.
 absl::Status GrpcSession::Reset(const SessionOptions& options,
-                                const std::vector<string>& containers) {
+                                const std::vector<std::string>& containers) {
   SharedGrpcChannelPtr master_channel;
   TF_RETURN_IF_ERROR(
       NewHostPortGrpcChannel(options.target.substr(kSchemePrefixLength),
@@ -495,7 +498,7 @@ class GrpcSessionFactory : public SessionFactory {
 
   // Invokes the session specific static method to reset containers.
   absl::Status Reset(const SessionOptions& options,
-                     const std::vector<string>& containers) override {
+                     const std::vector<std::string>& containers) override {
     return GrpcSession::Reset(options, containers);
   }
 };
