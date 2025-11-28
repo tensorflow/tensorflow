@@ -30,14 +30,6 @@ namespace tsl {
 
 // Alias tsl::string to std::string.
 using string ABSL_DEPRECATE_AND_INLINE() = std::string;
-using uint8 ABSL_DEPRECATE_AND_INLINE() = uint8_t;
-using uint16 ABSL_DEPRECATE_AND_INLINE() = uint16_t;
-using uint32 ABSL_DEPRECATE_AND_INLINE() = uint32_t;
-using uint64 ABSL_DEPRECATE_AND_INLINE() = uint64_t;
-using int8 ABSL_DEPRECATE_AND_INLINE() = int8_t;
-using int16 ABSL_DEPRECATE_AND_INLINE() = int16_t;
-using int32 ABSL_DEPRECATE_AND_INLINE() = int32_t;
-using int64 ABSL_DEPRECATE_AND_INLINE() = int64_t;
 
 // Note: This duplication is necessary because the inliner doesn't handle
 // macros very well and templates will cause it to replace int32_t with int.
