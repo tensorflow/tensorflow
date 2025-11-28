@@ -353,11 +353,13 @@ TEST_P(RaggedAllToAllTest, RaggedAllToAll_2GPUs) {
                                                      /*replica_1=*/{3, 1}}));
 
   TF_ASSERT_OK_AND_ASSIGN(
-      std::vector<Literal> results,
+      ExecutionResult execution_result,
       ExecuteReplicated(std::move(module), GetInputLiteralPtrs(),
-                        /*device_assignment=*/nullptr,
                         /*num_replicas=*/kNumReplicas,
-                        /*run_hlo_passes=*/true));
+                        /*num_partitions=*/kNumPartitions));
+
+  const std::vector<Literal>& results = execution_result.results;
+
   ASSERT_EQ(results.size(), kNumReplicas);
   EXPECT_TRUE(LiteralTestUtil::Equal(expected_outputs_[0], results[0]));
   EXPECT_TRUE(LiteralTestUtil::Equal(expected_outputs_[1], results[1]));
@@ -409,11 +411,22 @@ TEST_P(RaggedAllToAllTest, RaggedAllToAll_2GPUs_S4) {
       {{s4(2), s4(2)}, {s4(6), s4(6)}, {s4(-1), s4(-1)}, {s4(-1), s4(-1)}});
 
   TF_ASSERT_OK_AND_ASSIGN(
-      std::vector<Literal> results,
+      ExecutionResult execution_result,
       ExecuteReplicated(std::move(module), GetInputLiteralPtrs(),
-                        /*device_assignment=*/nullptr,
                         /*num_replicas=*/kNumReplicas,
-                        /*run_hlo_passes=*/true));
+                        /*num_partitions=*/kNumPartitions));
+
+  // Check that ragged-all-to-all on S4 was converted to S8.
+  // Skip this check for decomposer test, because there ragged-all-to-all was
+  // lowered to all-to-all.
+  if (std::get<1>(GetParam()) != RaggedAllToAllImplType::kDecomposer) {
+    HloInstruction* ragged_all_to_all = FindInstruction(
+        execution_result.optimized_module, HloOpcode::kRaggedAllToAll);
+    ASSERT_NE(ragged_all_to_all, nullptr);
+    EXPECT_EQ(ragged_all_to_all->shape().element_type(), S8);
+  }
+
+  const std::vector<Literal>& results = execution_result.results;
   ASSERT_EQ(results.size(), kNumReplicas);
   EXPECT_TRUE(LiteralTestUtil::Equal(expected_outputs_[0], results[0]));
   EXPECT_TRUE(LiteralTestUtil::Equal(expected_outputs_[1], results[1]));
@@ -451,11 +464,12 @@ TEST_P(RaggedAllToAllTest, RaggedAllToAll_2GPUs_InputBufferLargerThanOutput) {
                                                      /*replica_1=*/{4, 3}}));
 
   TF_ASSERT_OK_AND_ASSIGN(
-      std::vector<Literal> results,
+      ExecutionResult execution_result,
       ExecuteReplicated(std::move(module), GetInputLiteralPtrs(),
-                        /*device_assignment=*/nullptr,
                         /*num_replicas=*/kNumReplicas,
-                        /*run_hlo_passes=*/true));
+                        /*num_partitions=*/kNumPartitions));
+
+  const std::vector<Literal>& results = execution_result.results;
   ASSERT_EQ(results.size(), kNumReplicas);
   EXPECT_TRUE(LiteralTestUtil::Equal(expected_outputs_[0], results[0]));
   EXPECT_TRUE(LiteralTestUtil::Equal(expected_outputs_[1], results[1]));
@@ -493,11 +507,12 @@ TEST_P(RaggedAllToAllTest, RaggedAllToAll_2GPUs_OutputBufferLargerThanInput) {
                                                      /*replica_1=*/{5, 11}}));
 
   TF_ASSERT_OK_AND_ASSIGN(
-      std::vector<Literal> results,
+      ExecutionResult execution_result,
       ExecuteReplicated(std::move(module), GetInputLiteralPtrs(),
-                        /*device_assignment=*/nullptr,
                         /*num_replicas=*/kNumReplicas,
-                        /*run_hlo_passes=*/true));
+                        /*num_partitions=*/kNumPartitions));
+
+  const std::vector<Literal>& results = execution_result.results;
   ASSERT_EQ(results.size(), kNumReplicas);
   EXPECT_TRUE(LiteralTestUtil::Equal(expected_outputs_[0], results[0]));
   EXPECT_TRUE(LiteralTestUtil::Equal(expected_outputs_[1], results[1]));
@@ -535,11 +550,12 @@ TEST_P(RaggedAllToAllTest, RaggedAllToAll_2GPUs_MultipleUpdates) {
                                      /*replica_1=*/{{3, 1}, {1, 1}}}));
 
   TF_ASSERT_OK_AND_ASSIGN(
-      std::vector<Literal> results,
+      ExecutionResult execution_result,
       ExecuteReplicated(std::move(module), GetInputLiteralPtrs(),
-                        /*device_assignment=*/nullptr,
                         /*num_replicas=*/kNumReplicas,
-                        /*run_hlo_passes=*/true));
+                        /*num_partitions=*/kNumPartitions));
+
+  const std::vector<Literal>& results = execution_result.results;
   ASSERT_EQ(results.size(), kNumReplicas);
   EXPECT_TRUE(LiteralTestUtil::Equal(expected_outputs_[0], results[0]));
   EXPECT_TRUE(LiteralTestUtil::Equal(expected_outputs_[1], results[1]));
@@ -578,11 +594,12 @@ TEST_P(RaggedAllToAllTest, RaggedAllToAll_2GPUs_MultiDimData) {
                                                      /*replica_1=*/{2, 5}}));
 
   TF_ASSERT_OK_AND_ASSIGN(
-      std::vector<Literal> results,
+      ExecutionResult execution_result,
       ExecuteReplicated(std::move(module), GetInputLiteralPtrs(),
-                        /*device_assignment=*/nullptr,
                         /*num_replicas=*/kNumReplicas,
-                        /*run_hlo_passes=*/true));
+                        /*num_partitions=*/kNumPartitions));
+
+  const std::vector<Literal>& results = execution_result.results;
   ASSERT_EQ(results.size(), kNumReplicas);
 
   EXPECT_TRUE(LiteralTestUtil::Equal(expected_outputs_[0], results[0]));
@@ -621,11 +638,12 @@ TEST_P(RaggedAllToAllTest, RaggedAllToAll_2GPUs_Degenerate) {
                                                      /*replica_1=*/{3}}));
 
   TF_ASSERT_OK_AND_ASSIGN(
-      std::vector<Literal> results,
+      ExecutionResult execution_result,
       ExecuteReplicated(std::move(module), GetInputLiteralPtrs(),
-                        /*device_assignment=*/nullptr,
                         /*num_replicas=*/kNumReplicas,
-                        /*run_hlo_passes=*/true));
+                        /*num_partitions=*/kNumPartitions));
+
+  const std::vector<Literal>& results = execution_result.results;
   ASSERT_EQ(results.size(), kNumReplicas);
   EXPECT_TRUE(LiteralTestUtil::Equal(expected_outputs_[0], results[0]));
   EXPECT_TRUE(LiteralTestUtil::Equal(expected_outputs_[1], results[1]));
@@ -668,11 +686,12 @@ TEST_P(RaggedAllToAllTest, RaggedAllToAll_2GPUs_NonDefaultLayout) {
                                                      /*replica_1=*/{2, 5}}));
 
   TF_ASSERT_OK_AND_ASSIGN(
-      std::vector<Literal> results,
+      ExecutionResult execution_result,
       ExecuteReplicated(std::move(module), GetInputLiteralPtrs(),
-                        /*device_assignment=*/nullptr,
                         /*num_replicas=*/kNumReplicas,
-                        /*run_hlo_passes=*/true));
+                        /*num_partitions=*/kNumPartitions));
+
+  const std::vector<Literal>& results = execution_result.results;
   ASSERT_EQ(results.size(), kNumReplicas);
 
   EXPECT_TRUE(LiteralTestUtil::Equal(expected_outputs_[0], results[0]));
@@ -712,11 +731,12 @@ TEST_P(RaggedAllToAllTest,
                                                      /*replica_1=*/{3, 1}}));
 
   TF_ASSERT_OK_AND_ASSIGN(
-      std::vector<Literal> results,
+      ExecutionResult execution_result,
       ExecuteReplicated(std::move(module), GetInputLiteralPtrs(),
-                        /*device_assignment=*/nullptr,
                         /*num_replicas=*/kNumReplicas,
-                        /*run_hlo_passes=*/true));
+                        /*num_partitions=*/kNumPartitions));
+
+  const std::vector<Literal>& results = execution_result.results;
   ASSERT_EQ(results.size(), kNumReplicas);
   EXPECT_TRUE(LiteralTestUtil::Equal(expected_outputs_[0], results[0]));
   EXPECT_TRUE(LiteralTestUtil::Equal(expected_outputs_[1], results[1]));
@@ -760,11 +780,12 @@ TEST_P(RaggedAllToAllTest, RaggedAllToAll_8GPUs) {
   TF_ASSERT_OK(CreateRandomTestData(module.get(), input_sizes));
 
   TF_ASSERT_OK_AND_ASSIGN(
-      std::vector<Literal> results,
+      ExecutionResult execution_result,
       ExecuteReplicated(std::move(module), GetInputLiteralPtrs(),
-                        /*device_assignment=*/nullptr,
                         /*num_replicas=*/kNumReplicas,
-                        /*run_hlo_passes=*/true));
+                        /*num_partitions=*/kNumPartitions));
+
+  const std::vector<Literal>& results = execution_result.results;
   ASSERT_EQ(results.size(), kNumReplicas);
 
   for (int i = 0; i < kNumReplicas; ++i) {
@@ -811,11 +832,12 @@ TEST_P(RaggedAllToAllTest, RaggedAllToAll_8GPUs_2ReplicasPerGroups) {
   TF_ASSERT_OK(CreateRandomTestData(module.get(), input_sizes));
 
   TF_ASSERT_OK_AND_ASSIGN(
-      std::vector<Literal> results,
+      ExecutionResult execution_result,
       ExecuteReplicated(std::move(module), GetInputLiteralPtrs(),
-                        /*device_assignment=*/nullptr,
                         /*num_replicas=*/kNumReplicas,
-                        /*run_hlo_passes=*/true));
+                        /*num_partitions=*/kNumPartitions));
+
+  const std::vector<Literal>& results = execution_result.results;
   ASSERT_EQ(results.size(), kNumReplicas);
 
   for (int i = 0; i < kNumReplicas; ++i) {
@@ -862,11 +884,12 @@ TEST_P(RaggedAllToAllTest, RaggedAllToAll_8GPUs_4ReplicasPerGroups) {
   TF_ASSERT_OK(CreateRandomTestData(module.get(), input_sizes));
 
   TF_ASSERT_OK_AND_ASSIGN(
-      std::vector<Literal> results,
+      ExecutionResult execution_result,
       ExecuteReplicated(std::move(module), GetInputLiteralPtrs(),
-                        /*device_assignment=*/nullptr,
                         /*num_replicas=*/kNumReplicas,
-                        /*run_hlo_passes=*/true));
+                        /*num_partitions=*/kNumPartitions));
+
+  const std::vector<Literal>& results = execution_result.results;
   ASSERT_EQ(results.size(), kNumReplicas);
 
   for (int i = 0; i < kNumReplicas; ++i) {
@@ -963,11 +986,12 @@ TEST_P(RaggedAllToAllMultiHostDecomposerTest, RaggedAllToAll_2GPUs_SliceSize1) {
   TF_ASSERT_OK(CreateRandomTestData(module.get(), input_sizes));
 
   TF_ASSERT_OK_AND_ASSIGN(
-      std::vector<Literal> results,
+      ExecutionResult execution_result,
       ExecuteReplicated(std::move(module), GetInputLiteralPtrs(),
-                        /*device_assignment=*/nullptr,
                         /*num_replicas=*/kNumReplicas,
-                        /*run_hlo_passes=*/true));
+                        /*num_partitions=*/kNumPartitions));
+
+  const std::vector<Literal>& results = execution_result.results;
   ASSERT_EQ(results.size(), kNumReplicas);
 
   for (int i = 0; i < kNumReplicas; ++i) {
@@ -1020,11 +1044,12 @@ TEST_P(RaggedAllToAllMultiHostDecomposerTest, RaggedAllToAll_8GPUs_SliceSize4) {
   TF_ASSERT_OK(CreateRandomTestData(module.get(), input_sizes));
 
   TF_ASSERT_OK_AND_ASSIGN(
-      std::vector<Literal> results,
+      ExecutionResult execution_result,
       ExecuteReplicated(std::move(module), GetInputLiteralPtrs(),
-                        /*device_assignment=*/nullptr,
                         /*num_replicas=*/kNumReplicas,
-                        /*run_hlo_passes=*/true));
+                        /*num_partitions=*/kNumPartitions));
+
+  const std::vector<Literal>& results = execution_result.results;
   ASSERT_EQ(results.size(), kNumReplicas);
 
   for (int i = 0; i < kNumReplicas; ++i) {
@@ -1079,11 +1104,12 @@ TEST_P(RaggedAllToAllMultiHostDecomposerTest,
   TF_ASSERT_OK(CreateRandomTestData(module.get(), input_sizes));
 
   TF_ASSERT_OK_AND_ASSIGN(
-      std::vector<Literal> results,
+      ExecutionResult execution_result,
       ExecuteReplicated(std::move(module), GetInputLiteralPtrs(),
-                        /*device_assignment=*/nullptr,
                         /*num_replicas=*/kNumReplicas,
-                        /*run_hlo_passes=*/true));
+                        /*num_partitions=*/kNumPartitions));
+
+  const std::vector<Literal>& results = execution_result.results;
   ASSERT_EQ(results.size(), kNumReplicas);
 
   for (int i = 0; i < kNumReplicas; ++i) {

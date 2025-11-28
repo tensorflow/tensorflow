@@ -48,6 +48,12 @@ class CollectiveOpsE2ETestBase : public HloHardwareIndependentTestBase {
  public:
   CollectiveOpsE2ETestBase();
 
+  struct ExecutionResult {
+    std::unique_ptr<OpaqueExecutable> executable;
+    std::vector<Literal> results;
+    const HloModule* optimized_module;
+  };
+
   absl::StatusOr<std::vector<Literal>> ExecuteReplicated(
       absl::AnyInvocable<OpaqueExecutable*(int64_t)> executable_provider,
       absl::AnyInvocable<int64_t(int64_t)> argument_count_provider,
@@ -69,6 +75,11 @@ class CollectiveOpsE2ETestBase : public HloHardwareIndependentTestBase {
   absl::StatusOr<std::vector<Literal>> ExecuteReplicated(
       OpaqueExecutable* executable, int64_t num_replicas);
 
+  absl::StatusOr<ExecutionResult> ExecuteReplicated(
+      std::unique_ptr<HloModule> module,
+      std::vector<std::vector<Literal*>> arguments, int64_t num_replicas,
+      int64_t num_partitions, bool run_hlo_passes = true);
+
   const se::GpuComputeCapability& Capability() {
     return hlo_runner_->backend()
         .default_stream_executor()
@@ -81,12 +92,15 @@ class CollectiveOpsE2ETestBase : public HloHardwareIndependentTestBase {
            Capability().cuda_compute_capability()->IsAtLeastHopper();
   }
 
-  // Makes a DeviceAssignment device#i to replica_id #i.
-  DeviceAssignment MakeDeviceAssn(int64_t num_replicas) {
+  // Makes an iota device assignment.
+  DeviceAssignment MakeDeviceAssignment(int64_t num_replicas,
+                                        int64_t num_partitions = 1) {
     DeviceAssignment assn(/*replica_count=*/num_replicas,
-                          /*computation_count=*/1);
+                          /*computation_count=*/num_partitions);
     for (int64_t i = 0; i < num_replicas; ++i) {
-      assn(i, 0) = i;
+      for (int64_t j = 0; j < num_partitions; ++j) {
+        assn(i, j) = i * num_partitions + j;
+      }
     }
     return assn;
   }

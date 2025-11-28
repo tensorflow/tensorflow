@@ -3475,7 +3475,7 @@ TEST_F(CollectiveMetadataTest, ConstructCollectiveMetadata) {
   const std::array<Literal, 2> arguments = {
       LiteralUtil::CreateR1<float>({1.0f, 2.0f, 3.0f, 4.0f}),
       LiteralUtil::CreateR1<float>({1.0f, 2.0f, 3.0f, 4.0f})};
-  DeviceAssignment device_assignment = MakeDeviceAssn(kNumReplicas);
+  DeviceAssignment device_assignment = MakeDeviceAssignment(kNumReplicas);
   TF_ASSERT_OK_AND_ASSIGN(
       std::vector<Literal> result,
       ExecuteReplicated(
@@ -3544,7 +3544,7 @@ TEST_F(CollectiveMetadataTest, ConstructCollectiveMetadataWithReplicaGroup) {
   const std::array<Literal, 2> arguments = {
       LiteralUtil::CreateR1<float>({1.0f, 2.0f, 3.0f, 4.0f}),
       LiteralUtil::CreateR1<float>({1.0f, 2.0f, 3.0f, 4.0f})};
-  DeviceAssignment device_assignment = MakeDeviceAssn(kNumReplicas);
+  DeviceAssignment device_assignment = MakeDeviceAssignment(kNumReplicas);
   TF_ASSERT_OK_AND_ASSIGN(
       std::vector<Literal> result,
       ExecuteReplicated(

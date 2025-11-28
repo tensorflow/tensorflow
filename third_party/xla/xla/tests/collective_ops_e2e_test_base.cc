@@ -177,10 +177,49 @@ CollectiveOpsE2ETestBase::ExecuteReplicated(
       /*device_assignment=*/device_assignment);
 }
 
+absl::StatusOr<CollectiveOpsE2ETestBase::ExecutionResult>
+CollectiveOpsE2ETestBase::ExecuteReplicated(
+    std::unique_ptr<HloModule> module,
+    const std::vector<std::vector<Literal*>> arguments, int64_t num_replicas,
+    int64_t num_partitions, bool run_hlo_passes) {
+  CHECK(num_replicas > 0 && "expect at least one replica");
+  CHECK(num_partitions > 0 && "expect at least one partition");
+  CHECK(num_replicas == arguments.size() &&
+        "expect arguments for each replica and partition");
+
+  DeviceAssignment device_assignment =
+      MakeDeviceAssignment(num_replicas, num_partitions);
+
+  ExecutionResult execution_result;
+
+  TF_ASSIGN_OR_RETURN(
+      execution_result.executable,
+      hlo_runner_->CreateExecutable(std::move(module), run_hlo_passes));
+
+  TF_ASSIGN_OR_RETURN(
+      execution_result.optimized_module,
+      hlo_runner_->HloModuleFromWrapped(execution_result.executable.get()));
+
+  TF_ASSIGN_OR_RETURN(
+      execution_result.results,
+      ExecuteReplicated(
+          /*executable_provider=*/
+          [&](int64_t) { return execution_result.executable.get(); },
+          /*argument_count_provider=*/
+          [&](int64_t) { return arguments.front().size(); },
+          /*argument_provider=*/
+          [&](int64_t replica_idx, int64_t argument_idx) -> const Literal* {
+            return arguments[replica_idx][argument_idx];
+          },
+          num_replicas, /*run_hlo_passes=*/run_hlo_passes,
+          /*device_assignment=*/&device_assignment));
+  return execution_result;
+}
+
 absl::StatusOr<std::vector<Literal>>
 CollectiveOpsE2ETestBase::ExecuteReplicated(OpaqueExecutable* executable,
                                             int64_t num_replicas) {
-  DeviceAssignment device_assignment = MakeDeviceAssn(num_replicas);
+  DeviceAssignment device_assignment = MakeDeviceAssignment(num_replicas);
   return ExecuteReplicated(
       /*executable_provider*/ [&](int64_t) { return executable; },
       /*argument_count_provider*/ [](int64_t) { return 0; },
