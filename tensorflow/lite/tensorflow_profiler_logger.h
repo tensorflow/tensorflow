@@ -47,21 +47,21 @@ TFLITE_ATTRIBUTE_WEAK void OnTfLiteOpPrepare(const char* op_name,
 
 // Returns a `TraceMe` pointer to record a subgraph invocation with
 // `subgraph_name` and `subgraph_index`.
-TFLITE_ATTRIBUTE_WEAK tensorflow::profiler::TraceMe* OnTfLiteSubgraphInvoke(
+TFLITE_ATTRIBUTE_WEAK tsl::profiler::TraceMe* OnTfLiteSubgraphInvoke(
     const char* subgraph_name, int subgraph_index);
 
 // Records an end of the subgraph invocation with the given `TraceMe` pointer.
 TFLITE_ATTRIBUTE_WEAK void OnTfLiteSubgraphInvokeEnd(
-    tensorflow::profiler::TraceMe* trace_me);
+    tsl::profiler::TraceMe* trace_me);
 
 // Returns a `TraceMe` pointer to record an op invocation with `op_name` and
 // `node_index`.
-TFLITE_ATTRIBUTE_WEAK tensorflow::profiler::TraceMe* OnTfLiteOpInvoke(
+TFLITE_ATTRIBUTE_WEAK tsl::profiler::TraceMe* OnTfLiteOpInvoke(
     const char* op_name, int subgraph_index, int node_index);
 
 // Records an end of the op invocation with the given `TraceMe` pointer.
 TFLITE_ATTRIBUTE_WEAK void OnTfLiteOpInvokeEnd(
-    tensorflow::profiler::TraceMe* trace_me);
+    tsl::profiler::TraceMe* trace_me);
 
 // Records an event of `num_bytes` of memory allocated for `tensor`.
 TFLITE_ATTRIBUTE_WEAK void OnTfLiteTensorAlloc(TfLiteTensor* tensor,
