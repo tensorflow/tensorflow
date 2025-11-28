@@ -116,7 +116,7 @@ void RemoveFakeSinks(FunctionDef* function_def) {
 absl::Status ApplyRewrites(
     OpKernelContext* ctx,
     const std::function<RewriterConfig(void)> config_factory,
-    GraphDef* graph_def, string* dataset_node) {
+    GraphDef* graph_def, std::string* dataset_node) {
   std::unique_ptr<tensorflow::grappler::GrapplerItem> grappler_item =
       GetGrapplerItem(graph_def, dataset_node, /*add_fake_sinks=*/true);
   std::unordered_map<std::string, tensorflow::DeviceProperties> device_map;
@@ -175,9 +175,9 @@ absl::Status RewriteDataset(OpKernelContext* ctx, const DatasetBase* input,
                             std::function<RewriterConfig(void)> config_factory,
                             bool record_fingerprint,
                             core::RefCountPtr<DatasetBase>* rewritten_input) {
-  std::vector<std::pair<string, Tensor>> input_list;
+  std::vector<std::pair<std::string, Tensor>> input_list;
   GraphDef graph_def;
-  string output_node;
+  std::string output_node;
   TF_RETURN_IF_ERROR(
       AsGraphDefForRewrite(ctx, input, &input_list, &graph_def, &output_node));
 
@@ -228,7 +228,7 @@ absl::Status RewriteDataset(OpKernelContext* ctx, const DatasetBase* input,
         VLOG(3) << "Failed to find node: " << output_node;
         return;
       }
-      uint64 hash = 0;
+      uint64_t hash = 0;
       absl::Status s = HashNode(graph_def, *node_def, *lib_def, &hash);
       if (!s.ok()) {
         VLOG(3) << "Failed to hash graph: " << s;
@@ -236,7 +236,7 @@ absl::Status RewriteDataset(OpKernelContext* ctx, const DatasetBase* input,
       }
       for (const auto& pair : input_list) {
         hash = Hash64CombineUnordered(hash, Hash64(pair.first));
-        uint64 tensor_hash = 0;
+        uint64_t tensor_hash = 0;
         absl::Status s = HashTensor(pair.second, &tensor_hash);
         if (s.ok()) {
           hash = Hash64CombineUnordered(hash, tensor_hash);
@@ -301,7 +301,7 @@ std::unique_ptr<tensorflow::grappler::GrapplerItem> GetGrapplerItem(
 }
 
 absl::flat_hash_set<tstring> SelectOptimizations(
-    const absl::flat_hash_set<string>& experiments,
+    const absl::flat_hash_set<std::string>& experiments,
     const absl::flat_hash_set<tstring>& optimizations_enabled,
     const absl::flat_hash_set<tstring>& optimizations_disabled,
     const absl::flat_hash_set<tstring>& optimizations_default) {
