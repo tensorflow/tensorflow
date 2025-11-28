@@ -123,6 +123,55 @@ xla_cc_test(
     ],
 )
 
+sycl_library(
+    name = "sycl_stream",
+    srcs = ["sycl_stream.cc"],
+    hdrs = ["sycl_stream.h"],
+    tags = [
+        "gpu",
+        "oneapi-only",
+    ],
+    deps = [
+        ":sycl_context",
+        ":sycl_event",
+        "//xla/stream_executor:device_memory",
+        "//xla/stream_executor:event",
+        "//xla/stream_executor:event_based_timer",
+        "//xla/stream_executor:stream",
+        "//xla/stream_executor:stream_common",
+        "//xla/tsl/platform:logging",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+    ],
+)
+
+xla_test(
+    name = "sycl_stream_test",
+    srcs = ["sycl_stream_test.cc"],
+    backends = ["gpu"],
+    tags = [
+        "gpu",
+        "oneapi-only",
+    ],
+    deps = [
+        ":sycl_event",
+        ":sycl_platform_id",
+        ":sycl_stream",
+        "//xla/backends/gpu/runtime:kernel_thunk",
+        "//xla/service/gpu:gpu_executable",
+        "//xla/stream_executor:device_memory",
+        "//xla/stream_executor:platform_manager",
+        "//xla/stream_executor:typed_kernel_factory",
+        "//xla/tests:llvm_irgen_test_base",
+        "//xla/tsl/platform:status_matchers",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 cc_library(
     name = "sycl_solver_context",
     srcs = ["sycl_solver_context.cc"],
