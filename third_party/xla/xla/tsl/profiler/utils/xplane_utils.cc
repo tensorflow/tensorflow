@@ -208,7 +208,29 @@ XPlane* FindMutablePlaneWithName(XSpace* space, absl::string_view name) {
 XPlane* FindOrAddMutablePlaneWithName(XSpace* space, absl::string_view name) {
   XPlane* plane = FindMutablePlaneWithName(space, name);
   if (plane == nullptr) {
+    // find an unused plane id for the new plane. As number of planes is usually
+    // small, brutal search is fine here to keep this function interface same.
+    // Also, as user could add remove plane, and setting any id to the plane,
+    // other methods based one some assumption could cause issue, like just
+    // use (1 + the id of the last plane). Here try to use the (largest plane id
+    // +1) if not overflow. Otherwise, search one by one.
+    int64_t plane_id = -1;  // Seek it to the largest plane id first (if any).
+    for (const XPlane& plane : space->planes()) {
+      plane_id = std::max(plane_id, plane.id());
+    }
+    if (plane_id < std::numeric_limits<int64_t>::max()) {
+      plane_id++;
+    } else {
+      absl::flat_hash_set<int64_t> seen_plane_ids{};
+      for (const XPlane& plane : space->planes()) {
+        seen_plane_ids.insert(plane.id());
+      }
+      while (seen_plane_ids.contains(plane_id)) {
+        plane_id--;
+      }
+    }
     plane = space->add_planes();
+    plane->set_id(plane_id);
     plane->set_name(name.data(), name.size());
   }
   return plane;
