@@ -3031,8 +3031,9 @@ GpuCompiler::LoadExecutableFromAotResult(
     TF_RETURN_IF_ERROR(LoadCache(ir_emitter_context, cache_file_path));
   }
 
-  auto ir_emitter = ThunkEmitter::Create(&ir_emitter_context);
-  TF_RETURN_IF_ERROR(ir_emitter->EmitHloEntryComputation(hlo_module.get()));
+  auto thunk_emitter = ThunkEmitter::Create(&ir_emitter_context);
+  TF_ASSIGN_OR_RETURN(auto thunks,
+                      thunk_emitter->EmitHloEntryComputation(hlo_module.get()));
 
   // Get all other fields required by GpuExecutable.
   std::vector<GpuExecutable::ConstantInfo> constants =
@@ -3054,7 +3055,9 @@ GpuCompiler::LoadExecutableFromAotResult(
         /*dnn_compiled_graphs=*/
         BinaryMap(proto.dnn_compiled_graphs().cbegin(),
                   proto.dnn_compiled_graphs().cend()),
-        /*executable=*/ir_emitter->ConsumeThunkSequence(),
+        /*executable=*/
+        std::make_unique<SequentialThunk>(Thunk::ThunkInfo{},
+                                          std::move(thunks)),
         /*constants=*/std::move(constants),
         /*output_info=*/std::move(output_info),
         /*module_name=*/std::move(hlo_module_name),
