@@ -27,19 +27,19 @@ DescriptorPoolRegistry* DescriptorPoolRegistry::Global() {
 }
 
 DescriptorPoolRegistry::DescriptorPoolFn* DescriptorPoolRegistry::Get(
-    const string& source) {
+    const std::string& source) {
   auto found = fns_.find(source);
   if (found == fns_.end()) return nullptr;
   return &found->second;
 }
 
 void DescriptorPoolRegistry::Register(
-    const string& source,
+    const std::string& source,
     const DescriptorPoolRegistry::DescriptorPoolFn& pool_fn) {
   auto existing = Get(source);
   CHECK_EQ(existing, nullptr)
       << "descriptor pool for source: " << source << " already registered";
-  fns_.insert(std::pair<const string&, DescriptorPoolFn>(source, pool_fn));
+  fns_.insert(std::pair<const std::string&, DescriptorPoolFn>(source, pool_fn));
 }
 
 }  // namespace tensorflow
