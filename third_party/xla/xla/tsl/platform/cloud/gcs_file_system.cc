@@ -249,7 +249,7 @@ std::set<string> AddAllSubpaths(const std::vector<string>& paths) {
 absl::Status ParseJson(absl::string_view json, Json::Value* result) {
   Json::Reader reader;
   if (!reader.parse(json.data(), json.data() + json.size(), *result)) {
-    return errors::Internal("Couldn't parse JSON response from GCS.");
+    return absl::InternalError("Couldn't parse JSON response from GCS.");
   }
   return absl::OkStatus();
 }
@@ -263,8 +263,8 @@ absl::Status GetValue(const Json::Value& parent, const char* name,
                       Json::Value* result) {
   *result = parent.get(name, Json::Value::null);
   if (result->isNull()) {
-    return errors::Internal("The field '", name,
-                            "' was expected in the JSON response.");
+    return absl::InternalError(absl::StrCat(
+        "The field '", name, "' was expected in the JSON response."));
   }
   return absl::OkStatus();
 }
@@ -275,9 +275,9 @@ absl::Status GetStringValue(const Json::Value& parent, const char* name,
   Json::Value result_value;
   TF_RETURN_IF_ERROR(GetValue(parent, name, &result_value));
   if (!result_value.isString()) {
-    return errors::Internal(
-        "The field '", name,
-        "' in the JSON response was expected to be a string.");
+    return absl::InternalError(
+        absl::StrCat("The field '", name,
+                     "' in the JSON response was expected to be a string."));
   }
   *result = result_value.asString();
   return absl::OkStatus();
@@ -296,9 +296,9 @@ absl::Status GetInt64Value(const Json::Value& parent, const char* name,
       absl::SimpleAtoi(result_value.asCString(), result)) {
     return absl::OkStatus();
   }
-  return errors::Internal(
-      "The field '", name,
-      "' in the JSON response was expected to be a number.");
+  return absl::InternalError(
+      absl::StrCat("The field '", name,
+                   "' in the JSON response was expected to be a number."));
 }
 
 /// Reads a boolean JSON value with the given name from a parent JSON value.
@@ -307,9 +307,9 @@ absl::Status GetBoolValue(const Json::Value& parent, const char* name,
   Json::Value result_value;
   TF_RETURN_IF_ERROR(GetValue(parent, name, &result_value));
   if (!result_value.isBool()) {
-    return errors::Internal(
-        "The field '", name,
-        "' in the JSON response was expected to be a boolean.");
+    return absl::InternalError(
+        absl::StrCat("The field '", name,
+                     "' in the JSON response was expected to be a boolean."));
   }
   *result = result_value.asBool();
   return absl::OkStatus();
@@ -576,7 +576,7 @@ class GcsWritableFile : public WritableFile {
     sync_needed_ = true;
     outfile_ << data;
     if (!outfile_.good()) {
-      return errors::Internal(
+      return absl::InternalError(
           "Could not append to the internal temporary file.");
     }
     return absl::OkStatus();
@@ -621,7 +621,7 @@ class GcsWritableFile : public WritableFile {
   absl::Status Tell(int64_t* position) override {
     *position = outfile_.tellp();
     if (*position == -1) {
-      return errors::Internal("tellp on the internal temporary file failed");
+      return absl::InternalError("tellp on the internal temporary file failed");
     }
     return absl::OkStatus();
   }
@@ -636,7 +636,7 @@ class GcsWritableFile : public WritableFile {
   absl::Status SyncImpl() {
     outfile_.flush();
     if (!outfile_.good()) {
-      return errors::Internal(
+      return absl::InternalError(
           "Could not write to the internal temporary file.");
     }
     UploadSessionHandle session_handle;
@@ -709,7 +709,7 @@ class GcsWritableFile : public WritableFile {
   absl::Status GetCurrentFileSize(uint64* size) {
     const auto tellp = outfile_.tellp();
     if (tellp == static_cast<std::streampos>(-1)) {
-      return errors::Internal(
+      return absl::InternalError(
           "Could not get the size of the internal temporary file.");
     }
     *size = tellp;
@@ -1183,7 +1183,7 @@ absl::Status GcsFileSystem::LoadBufferFromGCS(const string& fname,
     GcsFileStat stat;
     if (stat_cache_->Lookup(fname, &stat)) {
       if (offset + bytes_read < stat.base.length) {
-        return errors::Internal(strings::Printf(
+        return absl::InternalError(strings::Printf(
             "File contents are inconsistent for file: %s @ %lu.", fname.c_str(),
             offset));
       }
@@ -1219,8 +1219,9 @@ absl::Status GcsFileSystem::CreateNewUploadSession(
     session_handle->resumable = true;
     session_handle->session_uri = request->GetResponseHeader("Location");
     if (session_handle->session_uri.empty()) {
-      return errors::Internal("Unexpected response from GCS when writing to ",
-                              gcs_path, ": 'Location' header not returned.");
+      return absl::InternalError(
+          absl::StrCat("Unexpected response from GCS when writing to ",
+                       gcs_path, ": 'Location' header not returned."));
     }
   }
   return absl::OkStatus();
@@ -1281,8 +1282,9 @@ absl::Status GcsFileSystem::RequestUploadSessionStatus(
 
     auto return_error = [](const std::string& gcs_path,
                            const std::string& error_message) {
-      return errors::Internal("Unexpected response from GCS when writing ",
-                              gcs_path, ": ", error_message);
+      return absl::InternalError(
+          absl::StrCat("Unexpected response from GCS when writing ", gcs_path,
+                       ": ", error_message));
     };
 
     std::vector<string> range_strs = str_util::Split(range_piece, '-');
@@ -1870,13 +1872,13 @@ absl::Status GcsFileSystem::GetChildrenBounded(
     const auto items = root.get("items", Json::Value::null);
     if (!items.isNull()) {
       if (!items.isArray()) {
-        return errors::Internal(
+        return absl::InternalError(
             "Expected an array 'items' in the GCS response.");
       }
       for (size_t i = 0; i < items.size(); i++) {
         const auto item = items.get(i, Json::Value::null);
         if (!item.isObject()) {
-          return errors::Internal(
+          return absl::InternalError(
               "Unexpected JSON format: 'items' should be a list of objects.");
         }
         string name;
@@ -1886,7 +1888,7 @@ absl::Status GcsFileSystem::GetChildrenBounded(
         // the beginning of 'name'.
         absl::string_view relative_path(name);
         if (!absl::ConsumePrefix(&relative_path, object_prefix)) {
-          return errors::Internal(
+          return absl::InternalError(
               absl::StrCat("Unexpected response: the returned file name ", name,
                            " doesn't match the prefix ", object_prefix));
         }
@@ -1902,22 +1904,22 @@ absl::Status GcsFileSystem::GetChildrenBounded(
     if (!prefixes.isNull()) {
       // Subfolders are returned for the non-recursive mode.
       if (!prefixes.isArray()) {
-        return errors::Internal(
+        return absl::InternalError(
             "'prefixes' was expected to be an array in the GCS response.");
       }
       for (size_t i = 0; i < prefixes.size(); i++) {
         const auto prefix = prefixes.get(i, Json::Value::null);
         if (prefix.isNull() || !prefix.isString()) {
-          return errors::Internal(
+          return absl::InternalError(
               "'prefixes' was expected to be an array of strings in the GCS "
               "response.");
         }
         const string& prefix_str = prefix.asString();
         absl::string_view relative_path(prefix_str);
         if (!absl::ConsumePrefix(&relative_path, object_prefix)) {
-          return errors::Internal(
+          return absl::InternalError(absl::StrCat(
               "Unexpected response: the returned folder name ", prefix_str,
-              " doesn't match the prefix ", object_prefix);
+              " doesn't match the prefix ", object_prefix));
         }
         result->emplace_back(relative_path);
         if (++retrieved_results >= max_results) {
@@ -1930,7 +1932,7 @@ absl::Status GcsFileSystem::GetChildrenBounded(
       return absl::OkStatus();
     }
     if (!token.isString()) {
-      return errors::Internal(
+      return absl::InternalError(
           "Unexpected response: nextPageToken is not a string");
     }
     nextPageToken = token.asString();
@@ -1940,7 +1942,7 @@ absl::Status GcsFileSystem::GetChildrenBounded(
 absl::Status GcsFileSystem::Stat(const string& fname, TransactionToken* token,
                                  FileStatistics* stat) {
   if (!stat) {
-    return errors::Internal("'stat' cannot be nullptr.");
+    return absl::InternalError("'stat' cannot be nullptr.");
   }
   string bucket, object;
   TF_RETURN_IF_ERROR(ParseGcsPath(fname, true, &bucket, &object));
@@ -2067,7 +2069,7 @@ absl::Status GcsFileSystem::GetFileSize(const string& fname,
                                         TransactionToken* token,
                                         uint64* file_size) {
   if (!file_size) {
-    return errors::Internal("'file_size' cannot be nullptr.");
+    return absl::InternalError("'file_size' cannot be nullptr.");
   }
 
   // Only validate the name.
@@ -2199,7 +2201,7 @@ absl::Status GcsFileSystem::DeleteRecursively(const string& dirname,
                                               int64_t* undeleted_files,
                                               int64_t* undeleted_dirs) {
   if (!undeleted_files || !undeleted_dirs) {
-    return errors::Internal(
+    return absl::InternalError(
         "'undeleted_files' and 'undeleted_dirs' cannot be nullptr.");
   }
   *undeleted_files = 0;
@@ -2274,9 +2276,10 @@ absl::Status GcsFileSystem::RenameFolderHns(const string& src,
     TF_RETURN_IF_ERROR(GetBoolValue(operation_response, "done", &done));
     if (done) {
       if (operation_response.isMember("error")) {
-        return errors::Internal("RenameFolderHns for '", src,
-                                "' failed immediately with an error: ",
-                                operation_response["error"].toStyledString());
+        return absl::InternalError(
+            absl::StrCat("RenameFolderHns for '", src,
+                         "' failed immediately with an error: ",
+                         operation_response["error"].toStyledString()));
       }
       VLOG(1) << "RenameFolderHns finished immediately for " << src;
       return absl::OkStatus();
@@ -2311,9 +2314,9 @@ absl::Status GcsFileSystem::RenameFolderHns(const string& src,
     TF_RETURN_IF_ERROR(ParseJson(poll_output_buffer, &operation_response));
 
     if (operation_response.isMember("error")) {
-      return errors::Internal("RenameFolderHns for '", src,
-                              "' failed with an error: ",
-                              operation_response["error"].toStyledString());
+      return absl::InternalError(
+          absl::StrCat("RenameFolderHns for '", src, "' failed with an error: ",
+                       operation_response["error"].toStyledString()));
     }
 
     if (operation_response.isMember("done")) {

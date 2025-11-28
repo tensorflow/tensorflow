@@ -18,13 +18,13 @@ limitations under the License.
 #include <memory>
 
 #include "absl/memory/memory.h"
+#include "absl/status/status.h"
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
 #include "grpcpp/grpcpp.h"  // IWYU pragma: keep
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/status.h"
-#include "xla/tsl/platform/types.h"
 #include "xla/tsl/protobuf/error_codes.pb.h"
 
 namespace tsl {
@@ -149,7 +149,7 @@ std::unique_ptr<ProfileResponse> RemoteProfilerSession::WaitForCompletion(
   bool success = cq_.Next(&got_tag, &ok);
   if (!success || !ok || got_tag == nullptr) {
     out_status =
-        errors::Internal("Missing or invalid event from completion queue.");
+        absl::InternalError("Missing or invalid event from completion queue.");
     return nullptr;
   }
 
