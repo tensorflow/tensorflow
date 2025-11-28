@@ -1024,7 +1024,9 @@ absl::StatusOr<bool> BFloat16Propagation::RunImpl(
     }
   }
 
-  TF_ASSIGN_OR_RETURN(dataflow_, HloDataflowAnalysis::Run(*module));
+  TF_ASSIGN_OR_RETURN(dataflow_,
+                      HloDataflowAnalysis::Run(*module, /*ssa_form=*/false,
+                                               /*bitcast_defines_value=*/true));
 
   // The first step is a forward pass (parameters to root), where we determine
   // the potential candidate instructions to use bfloat16 in the outputs that
