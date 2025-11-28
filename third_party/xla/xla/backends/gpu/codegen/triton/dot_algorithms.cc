@@ -50,8 +50,7 @@ limitations under the License.
 #include "triton/Dialect/Triton/IR/Dialect.h"
 
 namespace xla {
-namespace gpu {
-namespace triton {
+namespace xtile {
 
 namespace {
 
@@ -174,12 +173,14 @@ Value EmitStableHloDotAndAdd(mlir::ImplicitLocOpBuilder& b, Value lhs,
 
 absl::StatusOr<Type> GetAlgUnsetAccumulatorType(mlir::ImplicitLocOpBuilder& b,
                                                 const HloDotInstruction& dot) {
-  TF_ASSIGN_OR_RETURN(Type lhs_type,
-                      TritonType(b, dot.operand(0)->shape().element_type()));
-  TF_ASSIGN_OR_RETURN(Type rhs_type,
-                      TritonType(b, dot.operand(1)->shape().element_type()));
+  TF_ASSIGN_OR_RETURN(
+      Type lhs_type,
+      PrimitiveTypeToMlirType(b, dot.operand(0)->shape().element_type()));
+  TF_ASSIGN_OR_RETURN(
+      Type rhs_type,
+      PrimitiveTypeToMlirType(b, dot.operand(1)->shape().element_type()));
   TF_ASSIGN_OR_RETURN(Type accumulator_type,
-                      TritonType(b, dot.shape().element_type()));
+                      PrimitiveTypeToMlirType(b, dot.shape().element_type()));
 
   // The code below assumes that lhs and rhs have the same type. However
   // this may not always be the case with f8 matmuls, e.g. e4m3×e5m2 is
@@ -219,7 +220,7 @@ absl::StatusOr<std::optional<Type>> GetForceOperandsType(
   std::vector<Type> allowed_operands_types;
   allowed_operands_types.reserve(allowed_operands_primitive_types.size());
   for (PrimitiveType primitive_type : allowed_operands_primitive_types) {
-    TF_ASSIGN_OR_RETURN(Type type, TritonType(b, primitive_type));
+    TF_ASSIGN_OR_RETURN(Type type, PrimitiveTypeToMlirType(b, primitive_type));
     allowed_operands_types.push_back(type);
   }
 
@@ -261,7 +262,7 @@ absl::StatusOr<Type> GetDotAccumulatorType(mlir::ImplicitLocOpBuilder& b,
 
   TF_ASSIGN_OR_RETURN(PrimitiveType accumulator_type,
                       algorithm_util::GetDotAccumulatorType(algorithm));
-  return TritonType(b, accumulator_type);
+  return PrimitiveTypeToMlirType(b, accumulator_type);
 }
 
 absl::StatusOr<Value> EmitSingleTileDot(mlir::ImplicitLocOpBuilder& b,
@@ -316,6 +317,5 @@ absl::StatusOr<Value> EmitSingleTileScaledDot(
   return ScaledDot(b, dot_operands);
 }
 
-}  // namespace triton
-}  // namespace gpu
+}  // namespace xtile
 }  // namespace xla

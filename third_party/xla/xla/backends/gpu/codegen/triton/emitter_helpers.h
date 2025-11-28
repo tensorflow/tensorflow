@@ -44,7 +44,7 @@ limitations under the License.
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 
-namespace xla::gpu::triton {
+namespace xla::xtile {
 
 using TensorValue = mlir::TypedValue<mlir::RankedTensorType>;
 
@@ -119,16 +119,16 @@ class TileInfo {
 llvm::SmallVector<int64_t> GetPaddedTileSizes(
     llvm::ArrayRef<int64_t> tile_sizes);
 
-// XLA -> Triton type conversions.
-absl::StatusOr<mlir::Type> TritonType(mlir::ImplicitLocOpBuilder& b,
-                                      PrimitiveType t);
+// XLA -> MLIR type conversions.
+absl::StatusOr<mlir::Type> PrimitiveTypeToMlirType(
+    mlir::ImplicitLocOpBuilder& b, PrimitiveType t);
 
-// Triton type -> XLA type conversions.
+// MLIR type -> XLA type conversions.
 absl::StatusOr<PrimitiveType> GetPrimitiveType(mlir::Type t);
 
 mlir::Type StorageType(mlir::Type t);
 
-// Get the value of the scalar constant's literal in a C++ type.
+// Get the value of the scalar constant's literal in a C++ ty˝pe.
 template <typename T>
 T ScalarConstantValue(const HloInstruction& instr, PrimitiveType dst_type) {
   CHECK_EQ(instr.opcode(), HloOpcode::kConstant);
@@ -244,6 +244,6 @@ TensorValue BroadcastInDims(mlir::ImplicitLocOpBuilder& b, TensorValue value,
 TensorValue Splat(mlir::ImplicitLocOpBuilder& b, ::mlir::Value value,
                   ::mlir::ArrayRef<int64_t> output_shape);
 
-}  // namespace xla::gpu::triton
+}  // namespace xla::xtile
 
 #endif  // XLA_BACKENDS_GPU_CODEGEN_TRITON_EMITTER_HELPERS_H_

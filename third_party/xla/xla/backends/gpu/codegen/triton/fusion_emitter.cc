@@ -126,16 +126,16 @@ using ::mlir::Type;
 using ::mlir::Value;
 using ::mlir::ValueRange;
 
-using ::xla::gpu::triton::Cast;
-using ::xla::gpu::triton::CreateConst;
-using ::xla::gpu::triton::EmitConstant;
-using ::xla::gpu::triton::EmitElementwise;
-using ::xla::gpu::triton::EmitScope;
-using ::xla::gpu::triton::GetPaddedTileSizes;
-using ::xla::gpu::triton::StorageType;
-using ::xla::gpu::triton::TensorValue;
-using ::xla::gpu::triton::TileInfo;
-using ::xla::gpu::triton::TritonType;
+using ::xla::xtile::Cast;
+using ::xla::xtile::CreateConst;
+using ::xla::xtile::EmitConstant;
+using ::xla::xtile::EmitElementwise;
+using ::xla::xtile::EmitScope;
+using ::xla::xtile::GetPaddedTileSizes;
+using ::xla::xtile::PrimitiveTypeToMlirType;
+using ::xla::xtile::StorageType;
+using ::xla::xtile::TensorValue;
+using ::xla::xtile::TileInfo;
 
 namespace {
 
@@ -190,8 +190,9 @@ absl::StatusOr<TensorValue> EmitReduce(
   stablehlo::ReduceOp reduction = stablehlo::ReduceOp::create(
       b, input, init_value, hlo_reduce.dimensions());
   {
-    TF_ASSIGN_OR_RETURN(Type result_ty,
-                        TritonType(b, hlo_reduce.shape().element_type()));
+    TF_ASSIGN_OR_RETURN(
+        Type result_ty,
+        PrimitiveTypeToMlirType(b, hlo_reduce.shape().element_type()));
     result_ty = mlir::RankedTensorType::get({}, result_ty);
 
     mlir::Location loc = b.getLoc();
@@ -253,7 +254,7 @@ TensorValue EmitTiledBroadcast(
       GetPaddedTileSizes(output_tile_shape);
 
   TensorValue input = values[tiled_broadcast.operand(0)];
-  return triton::BroadcastInDims(
+  return xtile::BroadcastInDims(
       b, input, padded_output_tile_shape,
       MakeArrayRef(tiled_broadcast.hlo()->dimensions()));
 }
@@ -282,26 +283,27 @@ absl::StatusOr<TensorValue> EmitTiledIota(
   // First, stride as needed between the iota components.
   Value range = arith::MulIOp::create(
       b, Iota(b, padded_tile_sizes[iota_dim]),
-      triton::Splat(
+      xtile::Splat(
           b,
           CreateConst(b, b.getI32Type(), tiled_iota.tile_strides()[iota_dim]),
           padded_tile_sizes[iota_dim]));
 
   // Then, add the base offset to the iota components.
   range = arith::AddIOp::create(
-      b, range, triton::Splat(b, iota_dim_offset, padded_tile_sizes[iota_dim]));
+      b, range, xtile::Splat(b, iota_dim_offset, padded_tile_sizes[iota_dim]));
 
   // Cast the result to the targeted type.
-  TF_ASSIGN_OR_RETURN(Type iota_element_type,
-                      TritonType(b, hlo_iota->shape().element_type()));
+  TF_ASSIGN_OR_RETURN(
+      Type iota_element_type,
+      PrimitiveTypeToMlirType(b, hlo_iota->shape().element_type()));
 
   range = Cast(b, range, iota_element_type);
 
   // And finally, produce a broadcast along the non-iota dimensions in order to
   // produce the whole iota tile.
-  return triton::BroadcastInDims(b, mlir::cast<TensorValue>(range),
-                                 padded_tile_sizes,
-                                 /*dims=*/{iota_dim});
+  return xtile::BroadcastInDims(b, mlir::cast<TensorValue>(range),
+                                padded_tile_sizes,
+                                /*dims=*/{iota_dim});
 }
 
 SmallVector<Value> GetRuntimeValues(
@@ -372,8 +374,9 @@ absl::StatusOr<TensorValue> EmitTiledBitcast(
           "Bitcast with different bitwidth for operand and output shape "
           "element type is not yet supported.");
     }
-    TF_ASSIGN_OR_RETURN(Type output_element_type,
-                        TritonType(b, output_shape.element_type()));
+    TF_ASSIGN_OR_RETURN(
+        Type output_element_type,
+        PrimitiveTypeToMlirType(b, output_shape.element_type()));
     auto output_type = mlir::RankedTensorType::get(
         GetPaddedTileSizes(tiled_bitcast.operand(0)->tile_sizes()),
         output_element_type);
@@ -507,7 +510,7 @@ absl::StatusOr<TensorValue> MaskDotOperand(
           b, contracting_dimension_tile_index, tile_size_value);
       TensorValue range = Iota(b, tile_size);
       TensorValue broadcasted_tile_offset =
-          triton::Splat(b, tile_offset, {tile_size});
+          xtile::Splat(b, tile_offset, {tile_size});
       Value indices = arith::AddIOp::create(b, range, broadcasted_tile_offset);
 
       Value boundary = CreateConst(b, b.getI32Type(),
@@ -516,11 +519,11 @@ absl::StatusOr<TensorValue> MaskDotOperand(
       Value mask = arith::CmpIOp::create(b, arith::CmpIPredicate::slt, indices,
                                          boundary);
 
-      mask = triton::BroadcastInDims(b, mlir::cast<TensorValue>(mask),
-                                     tile_shape, {contraction_dimension_index});
-      TF_ASSIGN_OR_RETURN(
-          auto element_type,
-          TritonType(b, dot_operand.hlo()->shape().element_type()));
+      mask = xtile::BroadcastInDims(b, mlir::cast<TensorValue>(mask),
+                                    tile_shape, {contraction_dimension_index});
+      TF_ASSIGN_OR_RETURN(auto element_type,
+                          PrimitiveTypeToMlirType(
+                              b, dot_operand.hlo()->shape().element_type()));
 
       TensorValue zero = CreateConst(b, element_type, 0.0f, tile_shape);
 
@@ -673,7 +676,7 @@ absl::StatusOr<TensorValue> EmitDot(
   // of the dot. In particular, that is the case when an algorithm is specified
   // and the dot's output type does not match its expectations.
   TF_ASSIGN_OR_RETURN(Type accumulator_type,
-                      triton::GetDotAccumulatorType(b, dot));
+                      xtile::GetDotAccumulatorType(b, dot));
   TensorValue accumulator =
       CreateConst(b, accumulator_type, 0.0f, padded_tile_sizes_no_unit_dims);
 
@@ -753,14 +756,14 @@ absl::StatusOr<TensorValue> EmitDot(
 
     TF_ASSIGN_OR_RETURN(
         Value acc_next,
-        triton::EmitSingleTileDot(b, dot, triton::DotOperands{lhs, rhs, acc}));
+        xtile::EmitSingleTileDot(b, dot, xtile::DotOperands{lhs, rhs, acc}));
     mlir::scf::YieldOp::create(b, acc_next);
   }
 
   // The output of the loop may not match the expected output type of the dot.
   // We make sure to issue a conversion if necessary.
   TF_ASSIGN_OR_RETURN(Type dot_output_type,
-                      TritonType(b, dot.shape().element_type()));
+                      PrimitiveTypeToMlirType(b, dot.shape().element_type()));
 
   Value result = for_op.getResult(0);
   if (dot_output_type != accumulator_type) {
@@ -904,16 +907,17 @@ absl::StatusOr<TensorValue> EmitScaledDot(
 
     TF_ASSIGN_OR_RETURN(
         Value acc_next,
-        triton::EmitSingleTileScaledDot(
+        xtile::EmitSingleTileScaledDot(
             b, scaled_dot,
-            triton::ScaledDotOperands{lhs, rhs, lhs_scale, rhs_scale, acc}));
+            xtile::ScaledDotOperands{lhs, rhs, lhs_scale, rhs_scale, acc}));
     mlir::scf::YieldOp::create(b, acc_next);
   }
 
   // The output of the loop may not match the expected output type of the dot.
   // We make sure to issue a conversion if necessary.
-  TF_ASSIGN_OR_RETURN(Type dot_output_type,
-                      TritonType(b, scaled_dot.shape().element_type()));
+  TF_ASSIGN_OR_RETURN(
+      Type dot_output_type,
+      PrimitiveTypeToMlirType(b, scaled_dot.shape().element_type()));
 
   Value result = for_op.getResult(0);
   if (dot_output_type != accumulator_type) {
@@ -971,9 +975,9 @@ absl::StatusOr<TensorValue> EmitConcatenate(
           operand_concat_dim_size, " % ", concat_dim_tile_size, " != 0"));
     }
   }
-  TF_ASSIGN_OR_RETURN(
-      Type element_type,
-      TritonType(b, tiled_concatenate.hlo()->shape().element_type()));
+  TF_ASSIGN_OR_RETURN(Type element_type,
+                      PrimitiveTypeToMlirType(
+                          b, tiled_concatenate.hlo()->shape().element_type()));
   Type result_type =
       mlir::RankedTensorType::get(padded_tile_sizes, element_type);
 
@@ -1070,15 +1074,14 @@ absl::StatusOr<TensorValue> EmitPad(
 
     // LHS for the compare is an iota broadcasted to the output shape.
     TensorValue range = Iota(b, pad_output_dim_size);
-    TensorValue bcast = triton::BroadcastInDims(
+    TensorValue bcast = xtile::BroadcastInDims(
         b, range, padded_tile_sizes, {static_cast<int64_t>(dim_index)});
 
     // RHS for the compare is splat(pad_input_dim_size - tile_offset).
     Value tile_offset_i32 = Cast(b, tile_offset, i32_type);
     Value threshold = arith::SubIOp::create(
         b, CreateConst(b, i32_type, pad_input_dim_size), tile_offset_i32);
-    TensorValue threshold_splat =
-        triton::Splat(b, threshold, padded_tile_sizes);
+    TensorValue threshold_splat = xtile::Splat(b, threshold, padded_tile_sizes);
     Value cmp = arith::CmpIOp::create(b, arith::CmpIPredicate::slt, bcast,
                                       threshold_splat);
     mask = mask ? arith::AndIOp::create(b, mask, cmp) : cmp;
@@ -1089,7 +1092,7 @@ absl::StatusOr<TensorValue> EmitPad(
   const TiledHloInstruction* padding_value = tiled_pad.operand(1);
 
   TensorValue pad_value_splat =
-      triton::Splat(b, values[padding_value], padded_tile_sizes);
+      xtile::Splat(b, values[padding_value], padded_tile_sizes);
   return mlir::cast<TensorValue>(
       arith::SelectOp::create(b, mask, values[tiled_operand], pad_value_splat)
           .getResult());
@@ -1127,8 +1130,9 @@ absl::StatusOr<TensorValue> EmitTiledHloInstruction(
     // loading if the type of the loaded parameter does not match what is
     // expected.
     Type loaded_element_type = getElementTypeOrSelf(parameter.getType());
-    TF_ASSIGN_OR_RETURN(Type expected_element_type,
-                        TritonType(b, hlo->shape().element_type()));
+    TF_ASSIGN_OR_RETURN(
+        Type expected_element_type,
+        PrimitiveTypeToMlirType(b, hlo->shape().element_type()));
 
     if (expected_element_type != loaded_element_type) {
       // Ensure that we didn't mess up somewhere else by checking that we
@@ -1532,13 +1536,14 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> EmitXTileModule(
     } else if (type == S4) {
       ir_type = b.getI4Type();
     } else {
-      TF_ASSIGN_OR_RETURN(ir_type, TritonType(b, type));
+      TF_ASSIGN_OR_RETURN(ir_type, PrimitiveTypeToMlirType(b, type));
     }
     fn_arg_types.push_back(GetMemRefType(p->shape(), ir_type));
   }
 
   for (const auto& [index, shape] : ShapeUtil::GetLeafShapes(fusion->shape())) {
-    TF_ASSIGN_OR_RETURN(Type triton_ty, TritonType(b, shape.element_type()));
+    TF_ASSIGN_OR_RETURN(Type triton_ty,
+                        PrimitiveTypeToMlirType(b, shape.element_type()));
     fn_arg_types.push_back(GetMemRefType(shape, triton_ty));
   }
 
