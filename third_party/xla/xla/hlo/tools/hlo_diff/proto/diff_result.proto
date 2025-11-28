@@ -32,7 +32,6 @@ message RenderDiffResultsProto {
 // Represents details about a computation, including its name and instructions.
 message ComputationDetailsProto {
   string name = 1;
-  repeated string instructions = 2;
 }
 
 // Represents a group of matched computations from the left and right modules.
