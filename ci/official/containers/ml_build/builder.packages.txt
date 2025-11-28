@@ -16,6 +16,3 @@ vim
 wget
 jq
 file
-unar
-cpio
-rpm2cpio
