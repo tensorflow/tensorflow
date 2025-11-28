@@ -60,7 +60,7 @@ class SleepDatasetOp : public UnaryDatasetOpKernel {
     ~Dataset() override { input_->Unref(); }
 
     std::unique_ptr<IteratorBase> MakeIteratorInternal(
-        const string& prefix) const override {
+        const std::string& prefix) const override {
       return std::make_unique<Iterator>(
           Iterator::Params{this, absl::StrCat(prefix, "::Sleep")});
     }
@@ -72,7 +72,9 @@ class SleepDatasetOp : public UnaryDatasetOpKernel {
       return input_->output_shapes();
     }
 
-    string DebugString() const override { return "SleepDatasetOp::Dataset"; }
+    std::string DebugString() const override {
+      return "SleepDatasetOp::Dataset";
+    }
 
     int64_t CardinalityInternal(CardinalityOptions options) const override {
       return input_->Cardinality(options);
