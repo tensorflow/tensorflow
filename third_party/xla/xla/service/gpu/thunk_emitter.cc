@@ -1588,24 +1588,6 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCollectiveThunk(
           << "; partition count: " << partition_count
           << "; operand count: " << inst->operand_count();
 
-  // A given collective op can be degenerate if across all groups
-  // formed by it are singleton. In such a case, we don't need to do
-  // any communication and we can just copy the input to the output.
-  //
-  // The only exception is RaggedAllToAll, which is not degenerate
-  // even if all groups are singleton. In a singleton group case,
-  // RaggedAllToAll becomes a generic equivalent of
-  // DynamicUpdateSlice, except update size is not statically known.
-  // This operation can not be expressed in term of standard HLO
-  // instructions, so the best solution we have is to use NCCL thunk
-  // even for degenerate cases.
-  bool is_degenerate = kind != Thunk::Kind::kRaggedAllToAll &&
-                       GetCollectiveConfig(inst, use_global_device_ids)
-                           .IsDegenerate(replica_count, partition_count);
-  absl::Status implementable_status = CollectiveThunkType::CheckImplementable(
-      inst, replica_count, partition_count);
-  bool should_use_nccl_thunk = !is_degenerate && implementable_status.ok();
-
   // Stash relevant information in CollectiveThunk::Buffer even if
   // we may not generate an CollectiveThunk.
   std::vector<CollectiveThunk::Buffer> buffers;
@@ -1684,41 +1666,54 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCollectiveThunk(
     }
   }
 
-  if (should_use_nccl_thunk) {
-    auto thunk_info = Thunk::ThunkInfo::WithProfileAnnotation(
-        inst, ir_emitter_context_->GetNextThunkId());
-    // The wrapper name is used when syntactic sugar is turned on.
-    if (ir_emitter_context_->debug_options().xla_syntax_sugar_async_ops()) {
-      thunk_info.profile_annotation = async_start->name();
-    }
-    std::unique_ptr<CollectiveThunkType> thunk;
-    // TODO(b/828435206) Remove this constexpr once collective kernel thunk is
-    // lifted out of the all reduce thunk.
-    if constexpr (kRequiresCollectiveKernelThunk<CollectiveThunkType>) {
-      TF_ASSIGN_OR_RETURN(
-          auto collective_kernel_thunk,
-          EmitCollectiveKernelThunk(ir_emitter_context_, call_graph_.get(),
-                                    thunk_info, buffers,
-                                    Cast<HloAllReduceInstruction>(inst),
-                                    GetAllReduceConfigInst(inst)));
-      thunk = std::make_unique<CollectiveThunkType>(
-          thunk_info, inst, /*buffers=*/std::move(buffers),
-          std::move(collective_kernel_thunk),
-          ir_emitter_context_->debug_options().xla_gpu_use_memcpy_local_p2p());
-    } else {
-      thunk = std::make_unique<CollectiveThunkType>(
-          thunk_info, inst, /*buffers=*/std::move(buffers),
-          ir_emitter_context_->debug_options().xla_gpu_use_memcpy_local_p2p());
-    }
-    GetCollectivesAsyncEvents().insert({async_start, thunk->async_events()});
-    return GetThunkSequence(std::move(thunk));
+  // A given collective op can be degenerate if across all groups
+  // formed by it are singleton. In such a case, we don't need to do
+  // any communication and we can just copy the input to the output.
+  //
+  // The only exception is RaggedAllToAll, which is not degenerate
+  // even if all groups are singleton. In a singleton group case,
+  // RaggedAllToAll becomes a generic equivalent of
+  // DynamicUpdateSlice, except update size is not statically known.
+  // This operation can not be expressed in term of standard HLO
+  // instructions, so the best solution we have is to use NCCL thunk
+  // even for degenerate cases.
+  bool is_degenerate = kind != Thunk::Kind::kRaggedAllToAll &&
+                       GetCollectiveConfig(inst, use_global_device_ids)
+                           .IsDegenerate(replica_count, partition_count);
+
+  if (is_degenerate) {
+    return EmitDegeneratedCollectiveThunk(buffers, async_start, inst);
   }
 
-  if (!is_degenerate) {
-    return implementable_status;
-  }
+  TF_RETURN_IF_ERROR(CollectiveThunkType::CheckImplementable(
+      inst, replica_count, partition_count));
 
-  return EmitDegeneratedCollectiveThunk(buffers, async_start, inst);
+  auto thunk_info = Thunk::ThunkInfo::WithProfileAnnotation(
+      inst, ir_emitter_context_->GetNextThunkId());
+  // The wrapper name is used when syntactic sugar is turned on.
+  if (ir_emitter_context_->debug_options().xla_syntax_sugar_async_ops()) {
+    thunk_info.profile_annotation = async_start->name();
+  }
+  std::unique_ptr<CollectiveThunkType> thunk;
+  // TODO(b/828435206) Remove this constexpr once collective kernel thunk is
+  // lifted out of the all reduce thunk.
+  if constexpr (kRequiresCollectiveKernelThunk<CollectiveThunkType>) {
+    TF_ASSIGN_OR_RETURN(
+        auto collective_kernel_thunk,
+        EmitCollectiveKernelThunk(
+            ir_emitter_context_, call_graph_.get(), thunk_info, buffers,
+            Cast<HloAllReduceInstruction>(inst), GetAllReduceConfigInst(inst)));
+    thunk = std::make_unique<CollectiveThunkType>(
+        thunk_info, inst, /*buffers=*/std::move(buffers),
+        std::move(collective_kernel_thunk),
+        ir_emitter_context_->debug_options().xla_gpu_use_memcpy_local_p2p());
+  } else {
+    thunk = std::make_unique<CollectiveThunkType>(
+        thunk_info, inst, /*buffers=*/std::move(buffers),
+        ir_emitter_context_->debug_options().xla_gpu_use_memcpy_local_p2p());
+  }
+  GetCollectivesAsyncEvents().insert({async_start, thunk->async_events()});
+  return GetThunkSequence(std::move(thunk));
 }
 
 // Find the canonical send/recv start op for one of send, recv,
