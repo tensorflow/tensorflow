@@ -49,6 +49,9 @@ else
         ROCM_VERS=$ROCM_VERSION
 fi
 
+# hardcode to 7.0.2
+AMDGPU_REPO_VERS=7.0.2
+
 if [[ "$DISTRO" == "focal" ]] || [[ "$DISTRO" == "jammy" ]] || [[ "$DISTRO" == "noble" ]]; then
     ROCM_DEB_REPO_HOME=https://repo.radeon.com/rocm/apt/
     AMDGPU_DEB_REPO_HOME=https://repo.radeon.com/amdgpu/
@@ -57,7 +60,7 @@ if [[ "$DISTRO" == "focal" ]] || [[ "$DISTRO" == "jammy" ]] || [[ "$DISTRO" == "
 
     # Adjust the ROCM repo location
     ROCM_DEB_REPO=${ROCM_DEB_REPO_HOME}${ROCM_VERS}/
-    AMDGPU_DEB_REPO=${AMDGPU_DEB_REPO_HOME}${ROCM_VERS}/
+    AMDGPU_DEB_REPO=${AMDGPU_DEB_REPO_HOME}${AMDGPU_REPO_VERS}/
 
     DEBIAN_FRONTEND=noninteractive apt-get --allow-unauthenticated update 
     DEBIAN_FRONTEND=noninteractive apt install -y wget software-properties-common
@@ -107,7 +110,7 @@ elif [[ "$DISTRO" == "el7" ]]; then
     if [ ! -f "/${CUSTOM_INSTALL}" ]; then
         RPM_ROCM_REPO=http://repo.radeon.com/rocm/yum/${ROCM_VERS}/main
         echo -e "[ROCm]\nname=ROCm\nbaseurl=$RPM_ROCM_REPO\nenabled=1\ngpgcheck=0" >>/etc/yum.repos.d/rocm.repo
-        echo -e "[amdgpu]\nname=amdgpu\nbaseurl=https://repo.radeon.com/amdgpu/${ROCM_VERS}/rhel/7/main/x86_64/\nenabled=1\ngpgcheck=0" >>/etc/yum.repos.d/amdgpu.repo
+        echo -e "[amdgpu]\nname=amdgpu\nbaseurl=https://repo.radeon.com/amdgpu/${AMDGPU_REPO_VERS}/rhel/7/main/x86_64/\nenabled=1\ngpgcheck=0" >>/etc/yum.repos.d/amdgpu.repo
     else
         bash "/${CUSTOM_INSTALL}"
     fi
@@ -123,7 +126,7 @@ elif [[ "$DISTRO" == "el8" ]]; then
     if [ ! -f "/${CUSTOM_INSTALL}" ]; then
         RPM_ROCM_REPO=http://repo.radeon.com/rocm/rhel8/${ROCM_VERS}/main
         echo -e "[ROCm]\nname=ROCm\nbaseurl=$RPM_ROCM_REPO\nenabled=1\ngpgcheck=1\ngpgkey=https://repo.radeon.com/rocm/rocm.gpg.key" >>/etc/yum.repos.d/rocm.repo
-        echo -e "[amdgpu]\nname=amdgpu\nbaseurl=https://repo.radeon.com/amdgpu/${ROCM_VERS}/rhel/8.10/main/x86_64/\nenabled=1\ngpgcheck=1\ngpgkey=https://repo.radeon.com/rocm/rocm.gpg.key" >>/etc/yum.repos.d/amdgpu.repo
+        echo -e "[amdgpu]\nname=amdgpu\nbaseurl=https://repo.radeon.com/amdgpu/${AMDGPU_REPO_VERS}/rhel/8.10/main/x86_64/\nenabled=1\ngpgcheck=1\ngpgkey=https://repo.radeon.com/rocm/rocm.gpg.key" >>/etc/yum.repos.d/amdgpu.repo
     else
         bash "/${CUSTOM_INSTALL}"
     fi
