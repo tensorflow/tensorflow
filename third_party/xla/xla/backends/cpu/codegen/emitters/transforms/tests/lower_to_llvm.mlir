@@ -139,3 +139,72 @@ func.func private @wrap_entry(
 // CHECK:         %[[ARG_2:.+]]: index, %[[ARG_3:.+]]: index, %[[ARG_4:.+]]: index)
 // CHECK:       return %[[ARG_0]], %[[ARG_1]], %[[ARG_3]], %[[ARG_2]], %[[ARG_4]]
 // CHECK:      }
+
+// -----
+
+func.func @test_8x8_vector_transpose_lowering(%arg0: vector<8x8xf32>) -> vector<8x8xf32> {
+  %0 = vector.transpose %arg0, [1, 0] : vector<8x8xf32> to vector<8x8xf32>
+  return %0 : vector<8x8xf32>
+}
+
+// CHECK @test_8x8_vector_transpose_lowering(%[[ARG_0:.+]]: vector<8x8xf32>) -> vector<8x8xf32> {
+// CHECK:      %[[POISON_RESULT:.+]] = ub.poison : vector<8x8xf32>
+// CHECK:      %[[R0:.+]] = vector.extract %[[ARG_0]][0]
+// CHECK:      %[[R1:.+]] = vector.extract %[[ARG_0]][1
+// CHECK:      %[[R2:.+]] = vector.extract %[[ARG_0]][2]
+// CHECK:      %[[R3:.+]] = vector.extract %[[ARG_0]][3]
+// CHECK:      %[[R4:.+]] = vector.extract %[[ARG_0]][4]
+// CHECK:      %[[R5:.+]] = vector.extract %[[ARG_0]][5]
+// CHECK:      %[[R6:.+]] = vector.extract %[[ARG_0]][6]
+// CHECK:      %[[R7:.+]] = vector.extract %[[ARG_0]][7]
+
+// CHECK:      %[[T0:.+]] = vector.shuffle %[[R0]], %[[R1]] [0, 8, 2, 10, 4, 12, 6, 14] : vector<8xf32>, vector<8xf32>
+// CHECK:      %[[T1:.+]] = vector.shuffle %[[R0]], %[[R1]] [1, 9, 3, 11, 5, 13, 7, 15] : vector<8xf32>, vector<8xf32>
+// CHECK:      %[[T2:.+]] = vector.shuffle %[[R2]], %[[R3]] [0, 8, 2, 10, 4, 12, 6, 14] : vector<8xf32>, vector<8xf32>
+// CHECK:      %[[T3:.+]] = vector.shuffle %[[R2]], %[[R3]] [1, 9, 3, 11, 5, 13, 7, 15] : vector<8xf32>, vector<8xf32>
+// CHECK:      %[[T4:.+]] = vector.shuffle %[[R4]], %[[R5]] [0, 8, 2, 10, 4, 12, 6, 14] : vector<8xf32>, vector<8xf32>
+// CHECK:      %[[T5:.+]] = vector.shuffle %[[R4]], %[[R5]] [1, 9, 3, 11, 5, 13, 7, 15] : vector<8xf32>, vector<8xf32>
+// CHECK:      %[[T6:.+]] = vector.shuffle %[[R6]], %[[R7]] [0, 8, 2, 10, 4, 12, 6, 14] : vector<8xf32>, vector<8xf32>
+// CHECK:      %[[T7:.+]] = vector.shuffle %[[R6]], %[[R7]] [1, 9, 3, 11, 5, 13, 7, 15] : vector<8xf32>, vector<8xf32>
+
+// CHECK:      %[[U0:.+]] = vector.shuffle %[[T0]], %[[T2]] [0, 1, 8, 9, 4, 5, 12, 13] : vector<8xf32>, vector<8xf32>
+// CHECK:      %[[U2:.+]] = vector.shuffle %[[T0]], %[[T2]] [2, 3, 10, 11, 6, 7, 14, 15] : vector<8xf32>, vector<8xf32>
+// CHECK:      %[[U1:.+]] = vector.shuffle %[[T1]], %[[T3]] [0, 1, 8, 9, 4, 5, 12, 13] : vector<8xf32>, vector<8xf32>
+// CHECK:      %[[U3:.+]] = vector.shuffle %[[T1]], %[[T3]] [2, 3, 10, 11, 6, 7, 14, 15] : vector<8xf32>, vector<8xf32>
+// CHECK:      %[[U4:.+]] = vector.shuffle %[[T4]], %[[T6]] [0, 1, 8, 9, 4, 5, 12, 13] : vector<8xf32>, vector<8xf32>
+// CHECK:      %[[U6:.+]] = vector.shuffle %[[T4]], %[[T6]] [2, 3, 10, 11, 6, 7, 14, 15] : vector<8xf32>, vector<8xf32>
+// CHECK:      %[[U5:.+]] = vector.shuffle %[[T5]], %[[T7]] [0, 1, 8, 9, 4, 5, 12, 13] : vector<8xf32>, vector<8xf32>
+// CHECK:      %[[U7:.+]] = vector.shuffle %[[T5]], %[[T7]] [2, 3, 10, 11, 6, 7, 14, 15] : vector<8xf32>, vector<8xf32>
+
+// CHECK:      %[[W0:.+]] = vector.shuffle %[[U0]], %[[U4]] [0, 1, 2, 3, 8, 9, 10, 11] : vector<8xf32>, vector<8xf32>
+// CHECK:      %[[W4:.+]] = vector.shuffle %[[U0]], %[[U4]] [4, 5, 6, 7, 12, 13, 14, 15] : vector<8xf32>, vector<8xf32>
+// CHECK:      %[[W1:.+]] = vector.shuffle %[[U1]], %[[U5]] [0, 1, 2, 3, 8, 9, 10, 11] : vector<8xf32>, vector<8xf32>
+// CHECK:      %[[W5:.+]] = vector.shuffle %[[U1]], %[[U5]] [4, 5, 6, 7, 12, 13, 14, 15] : vector<8xf32>, vector<8xf32>
+// CHECK:      %[[W2:.+]] = vector.shuffle %[[U2]], %[[U6]] [0, 1, 2, 3, 8, 9, 10, 11] : vector<8xf32>, vector<8xf32>
+// CHECK:      %[[W6:.+]] = vector.shuffle %[[U2]], %[[U6]] [4, 5, 6, 7, 12, 13, 14, 15] : vector<8xf32>, vector<8xf32>
+// CHECK:      %[[W3:.+]] = vector.shuffle %[[U3]], %[[U7]] [0, 1, 2, 3, 8, 9, 10, 11] : vector<8xf32>, vector<8xf32>
+// CHECK:      %[[W7:.+]] = vector.shuffle %[[U3]], %[[U7]] [4, 5, 6, 7, 12, 13, 14, 15] : vector<8xf32>, vector<8xf32>
+
+// CHECK:      %[[RES_0:.+]] = vector.insert %[[W0]], %[[POISON_RESULT]] [0]
+// CHECK:      %[[RES_1:.+]] = vector.insert %[[W1]], %[[RES_0]] [1]
+// CHECK:      %[[RES_2:.+]] = vector.insert %[[W2]], %[[RES_1]] [2]
+// CHECK:      %[[RES_3:.+]] = vector.insert %[[W3]], %[[RES_2]] [3]
+// CHECK:      %[[RES_4:.+]] = vector.insert %[[W4]], %[[RES_3]] [4]
+// CHECK:      %[[RES_5:.+]] = vector.insert %[[W5]], %[[RES_4]] [5]
+// CHECK:      %[[RES_6:.+]] = vector.insert %[[W6]], %[[RES_5]] [6]
+// CHECK:      %[[RES_7:.+]] = vector.insert %[[W7]], %[[RES_6]] [7]
+
+// CHECK-NEXT: return %[[RES_7]] : vector<8x8xf32>
+// CHECK:      }
+
+// -----
+
+func.func @test_other_vector_transpose_shape_falls_back_to_vector(%arg0: vector<8x16xf32>) -> vector<16x8xf32> {
+  %0 = vector.transpose %arg0, [1, 0] : vector<8x16xf32> to vector<16x8xf32>
+  return %0 : vector<16x8xf32>
+}
+
+// CHECK @test_other_vector_transpose_shape_falls_back_to_vector(%[[ARG_0:.+]]: vector<8x16xf32>) -> vector<16x8xf32> {
+// CHECK:      %[[RES:.+]] = vector.transpose %[[ARG_0]], [1, 0] : vector<8x16xf32> to vector<16x8xf32>
+// CHECK-NEXT: return %[[RES]] : vector<16x8xf32>
+// CHECK:      }
