@@ -129,7 +129,7 @@ namespace xgt = ::xla::gpu::triton;
 using ::llvm::SmallVector;
 using ::mlir::MLIRContext;
 
-using ::xla::gpu::ir_emitter_triton_internal::DumpTritonIR;
+using ::xla::gpu::ir_emitter_triton_internal::GetModuleIrString;
 
 void LoadMlirDialectsForTriton(mlir::MLIRContext& mlir_context) {
   mlir_context.loadDialect<
@@ -250,13 +250,8 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CreateTritonModule(
   if (DumpingEnabledForHloModule(*hlo_computation->parent()) &&
       DumpingEnabledForEmitter("triton-fusion", debug_options)) {
     auto suffix = absl::StrCat(fusion->name(), ".before_validation.ttir.txt");
-    DumpToFileInDirOrStdout(
-        *hlo_computation->parent(), "", suffix,
-        DumpTritonIR(triton_module.get(),
-                     fusion->GetModule()
-                         ->config()
-                         .debug_options()
-                         .xla_gpu_unsupported_annotate_with_emitter_loc()));
+    DumpToFileInDirOrStdout(*hlo_computation->parent(), "", suffix,
+                            GetModuleIrString(triton_module.get()));
     std::string fusion_suffix = absl::StrCat(fusion->name(), ".hlo");
     DumpToFileInDirOrStdout(
         *hlo_computation->parent(), "", fusion_suffix,
@@ -266,21 +261,12 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CreateTritonModule(
   TF_RETURN_IF_ERROR(ir_emitter_triton_internal::LowerXTileToTriton(
       triton_module.get(), mlir_context, *fusion, device_info));
 
-  VLOG(6) << DumpTritonIR(triton_module.get(),
-                          fusion->GetModule()
-                              ->config()
-                              .debug_options()
-                              .xla_gpu_unsupported_annotate_with_emitter_loc());
+  VLOG(6) << GetModuleIrString(triton_module.get());
   if (DumpingEnabledForHloModule(*hlo_computation->parent()) &&
       DumpingEnabledForEmitter("triton-fusion", debug_options)) {
     std::string suffix = absl::StrCat(fusion->name(), ".ttir.txt");
-    DumpToFileInDirOrStdout(
-        *hlo_computation->parent(), "", suffix,
-        DumpTritonIR(triton_module.get(),
-                     fusion->GetModule()
-                         ->config()
-                         .debug_options()
-                         .xla_gpu_unsupported_annotate_with_emitter_loc()));
+    DumpToFileInDirOrStdout(*hlo_computation->parent(), "", suffix,
+                            GetModuleIrString(triton_module.get()));
   }
 
   return std::move(triton_module);

@@ -37,7 +37,6 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"
 #include "stablehlo/dialect/StablehloOps.h"
 #include "xla/backends/gpu/codegen/triton/emitter_helpers.h"
-#include "xla/codegen/emitter_loc_op_builder.h"
 #include "xla/codegen/xtile/ir/xtile_ops.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -104,7 +103,7 @@ absl::StatusOr<ttir::ScaleDotElemType> GetScaleDotElemType(Type value) {
 
 namespace {
 
-absl::StatusOr<Value> ScaledDot(EmitterLocOpBuilder b,
+absl::StatusOr<Value> ScaledDot(mlir::ImplicitLocOpBuilder& b,
                                 ScaledDotOperands& operands) {
   TF_ASSIGN_OR_RETURN(auto lhs_dot_elem_type,
                       internal::GetScaleDotElemType(operands.lhs.getType()));
@@ -136,8 +135,9 @@ absl::StatusOr<Value> ScaledDot(EmitterLocOpBuilder b,
 
 namespace {
 
-Value EmitStableHloDotAndAdd(EmitterLocOpBuilder b, Value lhs, Value rhs,
-                             Value acc, PrecisionSpec precision_spec) {
+Value EmitStableHloDotAndAdd(mlir::ImplicitLocOpBuilder& b, Value lhs,
+                             Value rhs, Value acc,
+                             PrecisionSpec precision_spec) {
   auto lhs_type = mlir::cast<ShapedType>(lhs.getType());
   auto rhs_type = mlir::cast<ShapedType>(rhs.getType());
 
@@ -172,7 +172,7 @@ Value EmitStableHloDotAndAdd(EmitterLocOpBuilder b, Value lhs, Value rhs,
 
 }  // namespace
 
-absl::StatusOr<Type> GetAlgUnsetAccumulatorType(EmitterLocOpBuilder b,
+absl::StatusOr<Type> GetAlgUnsetAccumulatorType(mlir::ImplicitLocOpBuilder& b,
                                                 const HloDotInstruction& dot) {
   TF_ASSIGN_OR_RETURN(Type lhs_type,
                       TritonType(b, dot.operand(0)->shape().element_type()));
@@ -204,7 +204,7 @@ absl::StatusOr<Type> GetAlgUnsetAccumulatorType(EmitterLocOpBuilder b,
 // the operands do not already conform to any of them. Returns `std::nullopt` if
 // no casting is a priori needed.
 absl::StatusOr<std::optional<Type>> GetForceOperandsType(
-    EmitterLocOpBuilder b, const HloDotInstruction& dot,
+    mlir::ImplicitLocOpBuilder& b, const HloDotInstruction& dot,
     const DotOperands& dot_operands) {
   PrecisionConfig::Algorithm algorithm = dot.precision_config().algorithm();
   if (algorithm == PrecisionConfig::ALG_UNSET) {
@@ -253,7 +253,7 @@ absl::StatusOr<std::optional<Type>> GetForceOperandsType(
 
 }  // namespace
 
-absl::StatusOr<Type> GetDotAccumulatorType(EmitterLocOpBuilder b,
+absl::StatusOr<Type> GetDotAccumulatorType(mlir::ImplicitLocOpBuilder& b,
                                            const HloDotInstruction& dot) {
   const PrecisionConfig::Algorithm algorithm =
       dot.precision_config().algorithm();
@@ -267,7 +267,7 @@ absl::StatusOr<Type> GetDotAccumulatorType(EmitterLocOpBuilder b,
   return TritonType(b, accumulator_type);
 }
 
-absl::StatusOr<Value> EmitSingleTileDot(EmitterLocOpBuilder b,
+absl::StatusOr<Value> EmitSingleTileDot(mlir::ImplicitLocOpBuilder& b,
                                         const HloDotInstruction& dot,
                                         DotOperands dot_operands) {
   PrecisionConfig::Algorithm algorithm = dot.precision_config().algorithm();
@@ -314,7 +314,7 @@ absl::StatusOr<Value> EmitSingleTileDot(EmitterLocOpBuilder b,
 }
 
 absl::StatusOr<Value> EmitSingleTileScaledDot(
-    EmitterLocOpBuilder b, const HloScaledDotInstruction& scaled_dot,
+    mlir::ImplicitLocOpBuilder& b, const HloScaledDotInstruction& scaled_dot,
     ScaledDotOperands dot_operands) {
   return ScaledDot(b, dot_operands);
 }

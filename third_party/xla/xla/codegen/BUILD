@@ -1,5 +1,4 @@
 load("//xla:xla.default.bzl", "xla_cc_test")
-load("//xla/tsl:tsl.bzl", "if_google")
 load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
@@ -21,38 +20,6 @@ cc_library(
     deps = [
         "//xla/stream_executor:device_description",
         "//xla/tsl/platform:logging",
-    ],
-)
-
-cc_library(
-    name = "emitter_loc_op_builder",
-    srcs = ["emitter_loc_op_builder.cc"],
-    hdrs = ["emitter_loc_op_builder.h"],
-    visibility = ["//xla/backends:__subpackages__"],
-    deps = [
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/strings:string_view",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Support",
-        "@local_tsl//tsl/platform",
-    ] + if_google(["@com_google_absl//absl/types:source_location"]),
-)
-
-xla_cc_test(
-    name = "emitter_loc_op_builder_test",
-    srcs = ["emitter_loc_op_builder_test.cc"],
-    tags = ["gpu"],
-    deps = [
-        ":emitter_loc_op_builder",
-        "//xla/backends/gpu/codegen/triton:xtile_compiler",
-        "//xla/hlo/testlib:filecheck",
-        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
-        "//xla/service/llvm_ir:llvm_util",
-        "@com_google_absl//absl/status:status_matchers",
-        "@com_google_absl//absl/strings:string_view",
-        "@com_google_googletest//:gtest_main",
-        "@llvm-project//mlir:ArithDialect",
-        "@llvm-project//mlir:IR",
     ],
 )
 

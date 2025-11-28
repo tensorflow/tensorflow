@@ -72,7 +72,6 @@ limitations under the License.
 #include "xla/backends/gpu/codegen/triton/dot_algorithms.h"
 #include "xla/backends/gpu/codegen/triton/emitter_helpers.h"
 #include "xla/backends/gpu/codegen/triton/ir/triton_xla_ops.h"
-#include "xla/codegen/emitter_loc_op_builder.h"
 #include "xla/codegen/emitters/elemental_hlo_to_mlir.h"
 #include "xla/codegen/emitters/ir/xla_ops.h"
 #include "xla/codegen/tiling/symbolic_tile_analysis.h"
@@ -140,17 +139,17 @@ using ::xla::gpu::triton::TritonType;
 
 namespace {
 
-Value MakeIndex(EmitterLocOpBuilder& b, int64_t value) {
+Value MakeIndex(mlir::ImplicitLocOpBuilder& b, int64_t value) {
   return arith::ConstantIndexOp::create(b, value);
 }
 
-TensorValue Iota(EmitterLocOpBuilder b, int32_t limit) {
+TensorValue Iota(mlir::ImplicitLocOpBuilder& b, int32_t limit) {
   auto type = mlir::RankedTensorType::get(limit, b.getI32Type());
   return stablehlo::IotaOp::create(b, type, /*iota_dimension=*/0);
 }
 
 absl::StatusOr<TensorValue> EmitReduce(
-    EmitterLocOpBuilder b, const TiledHloInstruction& tiled_hlo_reduce,
+    mlir::ImplicitLocOpBuilder& b, const TiledHloInstruction& tiled_hlo_reduce,
     absl::flat_hash_map<const TiledHloInstruction*, TensorValue>& values) {
   // At the moment, we should only emit a full reduction over a single
   // dimension using a scalar as a neutral element.
@@ -239,7 +238,7 @@ ArrayRef<T> MakeArrayRef(const absl::Span<const T> span) {
 }
 
 TensorValue EmitTiledBroadcast(
-    EmitterLocOpBuilder b, const TiledHloInstruction& tiled_broadcast,
+    mlir::ImplicitLocOpBuilder& b, const TiledHloInstruction& tiled_broadcast,
     absl::flat_hash_map<const TiledHloInstruction*, TensorValue>& values) {
   const SmallVector<int64_t>& input_tile_shape =
       tiled_broadcast.operand(0)->tile_sizes();
@@ -260,7 +259,8 @@ TensorValue EmitTiledBroadcast(
 }
 
 absl::StatusOr<TensorValue> EmitTiledIota(
-    EmitterLocOpBuilder b, Value pid, const TiledHloInstruction& tiled_iota) {
+    mlir::ImplicitLocOpBuilder& b, Value pid,
+    const TiledHloInstruction& tiled_iota) {
   const HloIotaInstruction* hlo_iota =
       ::xla::Cast<HloIotaInstruction>(tiled_iota.hlo());
   int64_t iota_dim = hlo_iota->iota_dimension();
@@ -323,7 +323,7 @@ SmallVector<Value> GetRuntimeValues(
   return runtime_values;
 }
 
-absl::StatusOr<TensorValue> EmitTiledReshape(EmitterLocOpBuilder b,
+absl::StatusOr<TensorValue> EmitTiledReshape(mlir::ImplicitLocOpBuilder& b,
                                              ArrayRef<int64_t> tile_sizes,
                                              TensorValue input) {
   mlir::RankedTensorType input_type = input.getType();
@@ -343,7 +343,7 @@ absl::StatusOr<TensorValue> EmitTiledReshape(EmitterLocOpBuilder b,
   return stablehlo::ReshapeOp::create(b, output_tensor_type, input);
 }
 
-TensorValue EmitTiledTranspose(EmitterLocOpBuilder b,
+TensorValue EmitTiledTranspose(mlir::ImplicitLocOpBuilder& b,
                                ArrayRef<int64_t> tile_sizes,
                                SmallVector<int64_t> dimensions,
                                TensorValue input) {
@@ -359,7 +359,7 @@ TensorValue EmitTiledTranspose(EmitterLocOpBuilder b,
 }
 
 absl::StatusOr<TensorValue> EmitTiledBitcast(
-    EmitterLocOpBuilder b, const TiledHloInstruction& tiled_bitcast,
+    mlir::ImplicitLocOpBuilder& b, const TiledHloInstruction& tiled_bitcast,
     TensorValue input) {
   Shape input_shape = tiled_bitcast.hlo()->operand(0)->shape();
   const Shape& output_shape = tiled_bitcast.hlo()->shape();
@@ -433,7 +433,7 @@ absl::StatusOr<TensorValue> EmitTiledBitcast(
 }
 
 absl::StatusOr<std::vector<TensorValue>> EmitTiledComputation(
-    EmitterLocOpBuilder b, const HloFusionInstruction* fusion,
+    mlir::ImplicitLocOpBuilder& b, const HloFusionInstruction* fusion,
     const TiledHloComputation& tiled_computation,
     const BlockLevelParameters& block_level_parameters,
     mlir::FunctionOpInterface fn, Value pid,
@@ -467,7 +467,7 @@ absl::StatusOr<int64_t> GetDotLoopIterationCount(
 // Note: we currently assume that contracting_dimension_tile_index is an i32
 // scalar.
 absl::StatusOr<TensorValue> MaskDotOperand(
-    EmitterLocOpBuilder b, const TiledHloInstruction& dot_operand,
+    mlir::ImplicitLocOpBuilder& b, const TiledHloInstruction& dot_operand,
     TensorValue dot_operand_value, Value contracting_dimension_tile_index,
     int contraction_dimension_index) {
   if (contracting_dimension_tile_index.getType() != b.getI32Type()) {
@@ -573,8 +573,9 @@ enum class DotOperandSide { kLhs, kRhs };
 //
 // Returns an error if canonicalization is not possible.
 absl::StatusOr<TensorValue> CanonicalizeDotOperand(
-    EmitterLocOpBuilder b, TensorValue operand, int64_t contracting_dim_idx,
-    DotOperandSide side, TensorValue counterpart_operand = nullptr) {
+    mlir::ImplicitLocOpBuilder& b, TensorValue operand,
+    int64_t contracting_dim_idx, DotOperandSide side,
+    TensorValue counterpart_operand = nullptr) {
   llvm::ArrayRef<int64_t> shape = operand.getType().getShape();
   llvm::ArrayRef<int64_t> counterpart_shape =
       counterpart_operand == nullptr ? shape
@@ -609,7 +610,7 @@ absl::StatusOr<TensorValue> CanonicalizeDotOperand(
 }
 
 absl::StatusOr<TensorValue> EmitDot(
-    EmitterLocOpBuilder b, const HloFusionInstruction* fusion,
+    mlir::ImplicitLocOpBuilder& b, const HloFusionInstruction* fusion,
     const TiledHloInstruction& tiled_hlo_dot,
     const BlockLevelParameters& block_level_parameters,
     mlir::FunctionOpInterface fn, Value pid,
@@ -776,7 +777,7 @@ absl::StatusOr<TensorValue> EmitDot(
 }
 
 absl::StatusOr<TensorValue> EmitScaledDot(
-    EmitterLocOpBuilder b, const HloFusionInstruction* fusion,
+    mlir::ImplicitLocOpBuilder& b, const HloFusionInstruction* fusion,
     const TiledHloInstruction& tiled_hlo_dot,
     const BlockLevelParameters& block_level_parameters,
     mlir::FunctionOpInterface fn, Value pid,
@@ -929,7 +930,7 @@ absl::StatusOr<TensorValue> EmitScaledDot(
 }
 
 absl::StatusOr<TensorValue> EmitConcatenate(
-    EmitterLocOpBuilder b, const HloFusionInstruction* fusion,
+    mlir::ImplicitLocOpBuilder& b, const HloFusionInstruction* fusion,
     const TiledHloInstruction& tiled_concatenate,
     const BlockLevelParameters& block_level_parameters,
     mlir::FunctionOpInterface fn, Value pid,
@@ -1038,7 +1039,7 @@ absl::StatusOr<TensorValue> EmitConcatenate(
 }
 
 absl::StatusOr<TensorValue> EmitPad(
-    EmitterLocOpBuilder b, const TiledHloInstruction& tiled_pad,
+    mlir::ImplicitLocOpBuilder& b, const TiledHloInstruction& tiled_pad,
     absl::flat_hash_map<const TiledHloInstruction*, TensorValue>& values,
     Value pid) {
   // TODO(b/393299275): get rid of calls to `GetPaddedTileSizes` once tiling
@@ -1095,7 +1096,7 @@ absl::StatusOr<TensorValue> EmitPad(
 }
 
 absl::StatusOr<TensorValue> EmitTiledHloInstruction(
-    EmitterLocOpBuilder b, const HloFusionInstruction* fusion,
+    mlir::ImplicitLocOpBuilder& b, const HloFusionInstruction* fusion,
     const TiledHloInstruction& tiled_hlo,
     const BlockLevelParameters& block_level_parameters,
     mlir::FunctionOpInterface fn, Value pid,
@@ -1234,7 +1235,7 @@ absl::StatusOr<TensorValue> EmitTiledHloInstruction(
 }
 
 absl::StatusOr<std::vector<TensorValue>> EmitTiledComputation(
-    EmitterLocOpBuilder b, const HloFusionInstruction* fusion,
+    mlir::ImplicitLocOpBuilder& b, const HloFusionInstruction* fusion,
     const TiledHloComputation& tiled_computation,
     const BlockLevelParameters& block_level_parameters,
     mlir::FunctionOpInterface fn, Value pid,
@@ -1374,11 +1375,7 @@ absl::Status EmitGeneric(
   const HloInstruction* root =
       symbolic_tile_analysis.GetSymbolicTiledHloComputation().back()->hlo();
   auto loc = mlir::NameLoc::get(builder.getStringAttr(root->name()));
-  EmitterLocOpBuilder b(loc, builder,
-                        root->GetModule()
-                            ->config()
-                            .debug_options()
-                            .xla_gpu_unsupported_annotate_with_emitter_loc());
+  mlir::ImplicitLocOpBuilder b(loc, builder);
   absl::Span<const HloInstruction* const> roots =
       symbolic_tile_analysis.GetRoots();
   int64_t root_index = FindIndex(roots, root);
@@ -1493,9 +1490,7 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> EmitXTileModule(
 
   auto loc = mlir::NameLoc::get(
       mlir::StringAttr::get(&mlir_context, hlo_computation->name()));
-  EmitterLocOpBuilder b(
-      loc, &mlir_context,
-      debug_options.xla_gpu_unsupported_annotate_with_emitter_loc());
+  mlir::ImplicitLocOpBuilder b(loc, &mlir_context);
 
   mlir::OwningOpRef<mlir::ModuleOp> triton_module =
       llvm_ir::CreateMlirModuleOp(loc);

@@ -23,11 +23,11 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/statusor.h"
 #include "llvm/ADT/SmallVector.h"
+#include "mlir/IR/Builders.h"
 #include "mlir/IR/Types.h"
 #include "mlir/IR/Value.h"
 #include "mlir/Interfaces/FunctionInterfaces.h"
 #include "xla/backends/gpu/codegen/triton/emitter_helpers.h"
-#include "xla/codegen/emitter_loc_op_builder.h"
 #include "xla/codegen/tiling/tiled_hlo_instruction.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -63,7 +63,7 @@ absl::StatusOr<bool> TrySetGpuBackendConfigForCollective(
 // The fn_arg_types is updated in place to add these.
 // Returns the number of metadata arguments added or error.
 absl::StatusOr<int32_t> AddCollectiveMetadataArguments(
-    llvm::SmallVector<mlir::Type>& fn_arg_types, EmitterLocOpBuilder& b,
+    llvm::SmallVector<mlir::Type>& fn_arg_types, mlir::ImplicitLocOpBuilder& b,
     const HloComputation* hlo_computation);
 
 // Version of [AddCollectiveMetadataArguments] that does the same for
@@ -75,7 +75,7 @@ absl::StatusOr<std::vector<Shape>> GetCollectiveUnmanagedKernelArguments(
 // See [EmitTiledHloInstruction] for an overview of how this fits into the
 // emitter.
 absl::StatusOr<triton::TensorValue> EmitCollective(
-    EmitterLocOpBuilder b, const HloFusionInstruction* fusion,
+    mlir::ImplicitLocOpBuilder& b, const HloFusionInstruction* fusion,
     const TiledHloInstruction& tiled_hlo_reduce,
     const BlockLevelParameters& block_level_parameters,
     mlir::FunctionOpInterface fn, mlir::Value pid,

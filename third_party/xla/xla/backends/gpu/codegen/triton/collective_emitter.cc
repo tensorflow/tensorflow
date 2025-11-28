@@ -30,6 +30,7 @@ limitations under the License.
 #include "llvm/Support/MathExtras.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/LLVMIR/NVVMDialect.h"
+#include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinTypeInterfaces.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/TypeUtilities.h"
@@ -40,7 +41,6 @@ limitations under the License.
 #include "xla/backends/gpu/codegen/triton/emitter_helpers.h"
 #include "xla/backends/gpu/codegen/triton/ir/triton_xla_ops.h"
 #include "xla/backends/gpu/runtime/all_reduce.h"
-#include "xla/codegen/emitter_loc_op_builder.h"
 #include "xla/codegen/tiling/tiled_hlo_instruction.h"
 #include "xla/codegen/xtile/ir/xtile_ops.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -185,7 +185,7 @@ GetBlockLevelFusionConfigForAllReduce(
 }
 
 absl::StatusOr<TensorValue> EmitAllReduce(
-    EmitterLocOpBuilder b, const HloComputation* computation,
+    mlir::ImplicitLocOpBuilder& b, const HloComputation* computation,
     const HloAllReduceInstruction& all_reduce,
     const TiledHloInstruction& tiled_hlo_reduce,
     const BlockLevelParameters& block_level_parameters,
@@ -372,7 +372,7 @@ absl::StatusOr<std::vector<Shape>> GetCollectiveUnmanagedKernelArguments(
 }
 
 absl::StatusOr<int32_t> AddCollectiveMetadataArguments(
-    llvm::SmallVector<mlir::Type>& fn_arg_types, EmitterLocOpBuilder& b,
+    llvm::SmallVector<mlir::Type>& fn_arg_types, mlir::ImplicitLocOpBuilder& b,
     const HloComputation* hlo_computation) {
   // rank: i32
   fn_arg_types.push_back(b.getI32Type());
@@ -403,7 +403,7 @@ absl::StatusOr<int32_t> AddCollectiveMetadataArguments(
 }
 
 absl::StatusOr<TensorValue> EmitCollective(
-    EmitterLocOpBuilder b, const HloFusionInstruction* fusion,
+    mlir::ImplicitLocOpBuilder& b, const HloFusionInstruction* fusion,
     const TiledHloInstruction& tiled_hlo_reduce,
     const BlockLevelParameters& block_level_parameters,
     mlir::FunctionOpInterface fn, mlir::Value pid,

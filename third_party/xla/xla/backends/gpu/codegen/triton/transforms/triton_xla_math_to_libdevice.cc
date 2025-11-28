@@ -34,7 +34,6 @@ limitations under the License.
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "xla/backends/gpu/codegen/triton/emitter_helpers.h"
 #include "xla/backends/gpu/codegen/triton/transforms/passes.h"
-#include "xla/codegen/emitter_loc_op_builder.h"
 #include "xla/service/gpu/target_util.h"
 #include "xla/xla_data.pb.h"
 #include "triton/Dialect/Triton/IR/Dialect.h"
@@ -191,7 +190,7 @@ class ConvertToLibdevice : public mlir::OpRewritePattern<OpTy> {
       return rewriter.notifyMatchFailure(op, "could not get primitive type");
     }
 
-    ::xla::EmitterLocOpBuilder builder(op->getLoc(), rewriter);
+    mlir::ImplicitLocOpBuilder builder(op->getLoc(), rewriter);
 
     llvm::SmallVector<Value, 2> casted_inputs;
     if (output_type_is_16bit_float) {

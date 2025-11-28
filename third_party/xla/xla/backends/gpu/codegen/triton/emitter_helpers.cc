@@ -43,7 +43,6 @@ limitations under the License.
 #include "mlir/IR/ValueRange.h"
 #include "mlir/Support/LLVM.h"
 #include "stablehlo/dialect/StablehloOps.h"
-#include "xla/codegen/emitter_loc_op_builder.h"
 #include "xla/codegen/emitters/elemental_hlo_to_mlir.h"
 #include "xla/codegen/tiling/tiled_hlo_instruction.h"
 #include "xla/codegen/xtile/ir/xtile_ops.h"
@@ -84,8 +83,8 @@ namespace {
 using TensorValue = mlir::TypedValue<mlir::RankedTensorType>;
 
 // Emit a value as Index clamped to [lower, upper].
-Value EmitClampedIndex(EmitterLocOpBuilder b, Value value, int64_t lower,
-                       int64_t upper) {
+Value EmitClampedIndex(mlir::ImplicitLocOpBuilder& b, Value value,
+                       int64_t lower, int64_t upper) {
   Value clamped_index =
       ma::MaxSIOp::create(b, value, CreateConst(b, value.getType(), lower));
   clamped_index = ma::MinSIOp::create(b, clamped_index,
@@ -94,7 +93,7 @@ Value EmitClampedIndex(EmitterLocOpBuilder b, Value value, int64_t lower,
 }
 
 absl::StatusOr<SmallVector<Value>> ComputeOffsetsForTile(
-    EmitterLocOpBuilder b, Value pid, ValueRange runtime_values,
+    mlir::ImplicitLocOpBuilder& b, Value pid, ValueRange runtime_values,
     const TiledHloInstruction& tiled_hlo) {
   TF_ASSIGN_OR_RETURN(IndexingMap tile_offsets_indexing,
                       tiled_hlo.tile_offsets_indexing());
@@ -130,7 +129,8 @@ absl::StatusOr<SmallVector<Value>> ComputeOffsetsForTile(
 //
 // TODO(b/331413981): get rid of this special handling once this is solved.
 absl::StatusOr<TensorValue> EmitNestedFusion(
-    EmitterLocOpBuilder b, const HloFusionInstruction& fusion_instruction,
+    mlir::ImplicitLocOpBuilder& b,
+    const HloFusionInstruction& fusion_instruction,
     absl::flat_hash_map<const HloInstruction*, TensorValue>& values) {
   // TODO(b/331402498): revisit the order of scope once we completely
   // deprecate Triton fusion analysis.
@@ -167,7 +167,8 @@ SmallVector<int64_t> GetPaddedTileSizes(ArrayRef<int64_t> tile_sizes) {
   return result;
 }
 
-absl::StatusOr<Type> TritonType(EmitterLocOpBuilder& b, PrimitiveType t) {
+absl::StatusOr<Type> TritonType(mlir::ImplicitLocOpBuilder& b,
+                                PrimitiveType t) {
   switch (t) {
     case F64:
       return b.getF64Type();
@@ -236,7 +237,7 @@ bool IsFp8Type(Type t) {
                    mlir::Float8E4M3B11FNUZType>(t);
 }
 
-Value Cast(EmitterLocOpBuilder& b, Value value, Type dst_element_ty) {
+Value Cast(mlir::ImplicitLocOpBuilder& b, Value value, Type dst_element_ty) {
   Type src_ty = value.getType();
   Type src_element_ty = src_ty;
   Type fp16_ty = b.getF16Type();
@@ -354,7 +355,7 @@ Value Cast(EmitterLocOpBuilder& b, Value value, Type dst_element_ty) {
              << llvm_ir::DumpToString(dst_element_ty);
 }
 
-Value Subtract(EmitterLocOpBuilder& b, ValueRange values) {
+Value Subtract(mlir::ImplicitLocOpBuilder& b, ValueRange values) {
   if (mlir::isa<mlir::IntegerType>(mlir::getElementTypeOrSelf(values[0]))) {
     return ma::SubIOp::create(b, values[0], values[1]);
   } else {
@@ -362,7 +363,7 @@ Value Subtract(EmitterLocOpBuilder& b, ValueRange values) {
   }
 }
 
-Value Compare(EmitterLocOpBuilder& b, ValueRange values,
+Value Compare(mlir::ImplicitLocOpBuilder& b, ValueRange values,
               mh::ComparisonDirection direction) {
   const Type type = mlir::getElementTypeOrSelf(values[0]);
   if (mlir::isa<mlir::IntegerType>(type)) {
@@ -381,7 +382,7 @@ Value Compare(EmitterLocOpBuilder& b, ValueRange values,
       values[0], values[1]);
 }
 
-Value Maximum(EmitterLocOpBuilder& b, ValueRange values) {
+Value Maximum(mlir::ImplicitLocOpBuilder& b, ValueRange values) {
   auto type = mlir::getElementTypeOrSelf(values[0]);
   if (mlir::isa<mlir::FloatType>(type)) {
     return ma::MaximumFOp::create(b, values);
@@ -394,7 +395,7 @@ Value Maximum(EmitterLocOpBuilder& b, ValueRange values) {
   return ma::MaxSIOp::create(b, values);
 }
 
-Value Minimum(EmitterLocOpBuilder& b, ValueRange values) {
+Value Minimum(mlir::ImplicitLocOpBuilder& b, ValueRange values) {
   auto type = mlir::getElementTypeOrSelf(values[0]);
   if (mlir::isa<mlir::FloatType>(type)) {
     return ma::MinimumFOp::create(b, values);
@@ -407,7 +408,7 @@ Value Minimum(EmitterLocOpBuilder& b, ValueRange values) {
   return ma::MinSIOp::create(b, values);
 }
 
-absl::StatusOr<Value> EmitElementwise(EmitterLocOpBuilder& b,
+absl::StatusOr<Value> EmitElementwise(mlir::ImplicitLocOpBuilder& b,
                                       const HloInstruction& hlo,
                                       ValueRange inputs) {
   const bool is_integer =
@@ -550,7 +551,7 @@ absl::StatusOr<Value> EmitElementwise(EmitterLocOpBuilder& b,
 }
 
 absl::StatusOr<mlir::TypedValue<mlir::RankedTensorType>> EmitConstant(
-    EmitterLocOpBuilder& b, const HloInstruction& constant) {
+    mlir::ImplicitLocOpBuilder& b, const HloInstruction& constant) {
   TF_ASSIGN_OR_RETURN(Type ty, TritonType(b, constant.shape().element_type()));
   llvm::SmallVector<int64_t> shape{constant.shape().dimensions().begin(),
                                    constant.shape().dimensions().end()};
@@ -567,14 +568,14 @@ absl::StatusOr<mlir::TypedValue<mlir::RankedTensorType>> EmitConstant(
   return CreateConst(b, ty, ScalarConstantValue<double>(constant, F64), shape);
 }
 
-Value Bitcast(EmitterLocOpBuilder& b, Value value, Type type) {
+Value Bitcast(mlir::ImplicitLocOpBuilder& b, Value value, Type type) {
   auto value_type = value.getType();
   value_type = mlir::dyn_cast<ShapedType>(value_type).clone(type);
   return mlir::arith::BitcastOp::create(b, value_type, value);
 }
 
 /*static */ absl::StatusOr<TileInfo> TileInfo::Construct(
-    EmitterLocOpBuilder b, Value pid, ValueRange runtime_values,
+    mlir::ImplicitLocOpBuilder& b, Value pid, ValueRange runtime_values,
     const TiledHloInstruction& tiled_hlo) {
   TF_ASSIGN_OR_RETURN(SmallVector<Value> offsets,
                       ComputeOffsetsForTile(b, pid, runtime_values, tiled_hlo));
@@ -597,7 +598,7 @@ Value Bitcast(EmitterLocOpBuilder& b, Value value, Type type) {
                   minor_to_major_layout, storage_type);
 }
 
-TensorValue EmitParameterExtract(EmitterLocOpBuilder b,
+TensorValue EmitParameterExtract(mlir::ImplicitLocOpBuilder& b,
                                  const TileInfo& tile_info, Value arg) {
   auto tensor_type = mlir::RankedTensorType::get(tile_info.padded_tile_sizes(),
                                                  tile_info.storage_type());
@@ -608,7 +609,8 @@ TensorValue EmitParameterExtract(EmitterLocOpBuilder b,
 }
 
 absl::StatusOr<TensorValue> EmitScope(
-    EmitterLocOpBuilder b, absl::Span<const HloInstruction* const> instructions,
+    mlir::ImplicitLocOpBuilder& b,
+    absl::Span<const HloInstruction* const> instructions,
     absl::flat_hash_map<const HloInstruction*, TensorValue>& values) {
   for (const HloInstruction* hlo : instructions) {
     TensorValue result;
@@ -666,7 +668,7 @@ absl::StatusOr<TensorValue> EmitScope(
   return values[instructions.back()];
 }
 
-TensorValue BroadcastInDims(EmitterLocOpBuilder b, TensorValue value,
+TensorValue BroadcastInDims(mlir::ImplicitLocOpBuilder& b, TensorValue value,
                             ArrayRef<int64_t> output_shape,
                             ArrayRef<int64_t> dims) {
   CHECK(llvm::is_sorted(dims)) << "broadcast dims must be sorted";
@@ -677,7 +679,7 @@ TensorValue BroadcastInDims(EmitterLocOpBuilder b, TensorValue value,
   return mlir::stablehlo::BroadcastInDimOp::create(b, result_type, value, dims);
 }
 
-TensorValue Splat(EmitterLocOpBuilder b, Value value,
+TensorValue Splat(mlir::ImplicitLocOpBuilder& b, Value value,
                   ArrayRef<int64_t> output_shape) {
   auto tensor_value = mlir::dyn_cast<TensorValue>(value);
   if (!tensor_value) {
