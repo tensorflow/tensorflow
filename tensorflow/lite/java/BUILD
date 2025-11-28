@@ -999,6 +999,40 @@ cc_library_with_tflite(
 )
 
 #-----------------------------------------------------------------------------
+# Support library: FastImageProcessor
+#-----------------------------------------------------------------------------
+
+java_library(
+    name = "fastimageprocessor",
+    srcs = [
+        "src/main/java/org/tensorflow/lite/support/image/FastImageProcessor.java",
+        "src/main/java/org/tensorflow/lite/support/image/TensorImage.java",
+    ],
+    javacopts = JAVACOPTS,
+    visibility = ["//visibility:public"],
+    deps = [
+        ":tensorflowlite_javalib",
+    ],
+)
+
+java_test(
+    name = "FastImageProcessorTest",
+    size = "small",
+    srcs = [
+        "src/test/java/org/tensorflow/lite/support/image/FastImageProcessorTest.java",
+    ],
+    javacopts = JAVACOPTS,
+    test_class = "org.tensorflow.lite.support.image.FastImageProcessorTest",
+    visibility = ["//visibility:private"],
+    deps = [
+        ":fastimageprocessor",
+        ":tensorflowlite_api_javalib",
+        "@com_google_truth",
+        "@junit",
+    ],
+)
+
+#-----------------------------------------------------------------------------
 # JNI binary targets for generating the .so files for the JNI code.
 
 # JNI shared library containing Java API native code, including experimental APIs.
