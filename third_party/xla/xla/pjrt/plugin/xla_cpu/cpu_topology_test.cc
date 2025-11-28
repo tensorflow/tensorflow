@@ -18,6 +18,7 @@ limitations under the License.
 #include <memory>
 
 #include <gtest/gtest.h>
+#include "google/protobuf/text_format.h"
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/plugin/xla_cpu/cpu_topology.pb.h"
 #include "tsl/platform/protobuf.h"
