@@ -475,7 +475,7 @@ cc_library(
         "//xla:xla_data_proto_cc",
         "//xla/backends/gpu/codegen:fusion_emitter",
         "//xla/backends/gpu/codegen:fusions",
-        "//xla/backends/gpu/codegen/llvm:ir_emitter",
+        "//xla/backends/gpu/codegen/llvm:llvm_emitter",
         "//xla/backends/gpu/codegen/triton:fusion_emitter",
         "//xla/backends/gpu/codegen/triton:xtile_compiler",
         "//xla/backends/gpu/collectives:gpu_clique_key",
