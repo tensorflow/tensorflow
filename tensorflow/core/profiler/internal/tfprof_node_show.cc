@@ -136,7 +136,7 @@ ShowMultiNode::ShowMultiNode(TFMultiGraphNode* node)
 }
 
 bool ShowMultiNode::ReInit(int64_t step,
-                           const std::vector<string>& type_regexes) {
+                           const std::vector<std::string>& type_regexes) {
   bool has_matched_type = node->SnapshotNodes(step, type_regexes);
 
   std::vector<ShowNode> snodes;

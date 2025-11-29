@@ -32,7 +32,7 @@ limitations under the License.
 namespace tensorflow {
 namespace tfprof {
 
-const MultiGraphNodeProto& TFMultiShow::Show(const string& prefix,
+const MultiGraphNodeProto& TFMultiShow::Show(const std::string& prefix,
                                              const Options& opts) {
   if (opts.output_type == kOutput[0]) {
     Timeline timeline(opts.step, opts.output_options.at(kTimelineOpts[0]));
@@ -88,7 +88,7 @@ bool TFMultiShow::ShouldShow(const ShowMultiNode* node, const Options& opts,
   if (opts.show_name_regexes.size() == 1 && opts.show_name_regexes[0] == ".*") {
     show = true;
   } else {
-    for (const string& regex : opts.show_name_regexes) {
+    for (const std::string& regex : opts.show_name_regexes) {
       if (RE2::FullMatch(node->name(), regex)) {
         show = true;
         break;
@@ -98,15 +98,15 @@ bool TFMultiShow::ShouldShow(const ShowMultiNode* node, const Options& opts,
   // Don't show if show_name_regexes don't cover it.
   if (!show) return false;
   // Don't show if hide_name_regexes cover it.
-  for (const string& regex : opts.hide_name_regexes) {
+  for (const std::string& regex : opts.hide_name_regexes) {
     if (RE2::FullMatch(node->name(), regex)) return false;
   }
   return true;
 }
 
 bool TFMultiShow::ShouldTrim(const ShowMultiNode* node,
-                             const std::vector<string>& regexes) const {
-  for (const string& regex : regexes) {
+                             const std::vector<std::string>& regexes) const {
+  for (const std::string& regex : regexes) {
     if (RE2::FullMatch(node->name(), regex)) {
       return true;
     }
@@ -118,8 +118,8 @@ bool TFMultiShow::ReAccount(ShowMultiNode* node, const Options& opts) {
   return node->ReInit(opts.step, opts.account_type_regexes);
 }
 
-string TFMultiShow::FormatLegend(const Options& opts) const {
-  std::vector<string> legends;
+std::string TFMultiShow::FormatLegend(const Options& opts) const {
+  std::vector<std::string> legends;
   if (opts.select.find(kShown[0]) != opts.select.end()) {
     legends.push_back("requested bytes");
   }
@@ -166,9 +166,11 @@ string TFMultiShow::FormatLegend(const Options& opts) const {
   return absl::StrFormat("node name | %s\n", absl::StrJoin(legends, " | "));
 }
 
-string TFMultiShow::FormatInputShapes(const MultiGraphNodeProto& proto) const {
+std::string TFMultiShow::FormatInputShapes(
+    const MultiGraphNodeProto& proto) const {
   // input_shape string -> (static defined count, run count, run_micros)
-  std::map<string, std::tuple<int64_t, int64_t, int64_t>> input_shapes_attr;
+  std::map<std::string, std::tuple<int64_t, int64_t, int64_t>>
+      input_shapes_attr;
   for (int i = 0; i < proto.graph_nodes_size(); ++i) {
     const GraphNodeProto& gnode = proto.graph_nodes(i);
     // Convert and sort by input_idx.
@@ -177,7 +179,7 @@ string TFMultiShow::FormatInputShapes(const MultiGraphNodeProto& proto) const {
       input_shapes[inp.first] = ShapeProtoToVec(inp.second);
     }
 
-    std::vector<string> input_vec;
+    std::vector<std::string> input_vec;
     for (const auto& s : input_shapes) {
       if (s.second.empty()) {
         input_vec.push_back(absl::StrFormat("%d:unknown", s.first));
@@ -186,7 +188,7 @@ string TFMultiShow::FormatInputShapes(const MultiGraphNodeProto& proto) const {
             absl::StrFormat("%d:%s", s.first, absl::StrJoin(s.second, "x")));
       }
     }
-    string shape_type_str =
+    std::string shape_type_str =
         absl::StrFormat("input_type: %s", absl::StrJoin(input_vec, ",\t"));
     auto t = input_shapes_attr.find(shape_type_str);
     if (t == input_shapes_attr.end()) {
@@ -202,16 +204,18 @@ string TFMultiShow::FormatInputShapes(const MultiGraphNodeProto& proto) const {
     return "";
   }
 
-  std::vector<std::pair<string, std::tuple<int64_t, int64_t, int64_t>>>
+  std::vector<std::pair<std::string, std::tuple<int64_t, int64_t, int64_t>>>
       shape_count_vec(input_shapes_attr.begin(), input_shapes_attr.end());
   std::stable_sort(
       shape_count_vec.begin(), shape_count_vec.end(),
-      [](const std::pair<const string, std::tuple<int64_t, int64_t, int64_t>>&
-             a,
-         const std::pair<const string, std::tuple<int64_t, int64_t, int64_t>>&
-             b) { return std::get<1>(a.second) > std::get<1>(b.second); });
+      [](const std::pair<const std::string,
+                         std::tuple<int64_t, int64_t, int64_t>>& a,
+         const std::pair<const std::string,
+                         std::tuple<int64_t, int64_t, int64_t>>& b) {
+        return std::get<1>(a.second) > std::get<1>(b.second);
+      });
 
-  std::vector<string> input_types;
+  std::vector<std::string> input_types;
   input_types.reserve(shape_count_vec.size());
   for (const auto& s : shape_count_vec) {
     std::tuple<int64_t, int64_t, int64_t> t = s.second;
@@ -222,9 +226,9 @@ string TFMultiShow::FormatInputShapes(const MultiGraphNodeProto& proto) const {
   return absl::StrJoin(input_types, "\n");
 }
 
-std::vector<string> TFMultiShow::FormatTimes(const ShowMultiNode* node,
-                                             const Options& opts) const {
-  std::vector<string> attrs;
+std::vector<std::string> TFMultiShow::FormatTimes(const ShowMultiNode* node,
+                                                  const Options& opts) const {
+  std::vector<std::string> attrs;
   if (opts.select.find(kShown[1]) != opts.select.end()) {
     attrs.push_back(FormatTotalExecTime(node, opts));
     attrs.push_back(FormatAcceleratorExecTime(node, opts));
