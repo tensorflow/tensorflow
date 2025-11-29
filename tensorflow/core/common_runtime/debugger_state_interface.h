@@ -28,7 +28,7 @@ limitations under the License.
 namespace tensorflow {
 
 // Returns a summary string for the list of debug tensor watches.
-const string SummarizeDebugTensorWatches(
+const std::string SummarizeDebugTensorWatches(
     const protobuf::RepeatedPtrField<DebugTensorWatch>& watches);
 
 // An abstract interface for storing and retrieving debugging information.
@@ -50,9 +50,10 @@ class DebuggerStateInterface {
   //   target_names: Names of the target nodes.
   virtual absl::Status PublishDebugMetadata(
       const int64_t global_step, const int64_t session_run_index,
-      const int64_t executor_step_index, const std::vector<string>& input_names,
-      const std::vector<string>& output_names,
-      const std::vector<string>& target_nodes) = 0;
+      const int64_t executor_step_index,
+      const std::vector<std::string>& input_names,
+      const std::vector<std::string>& output_names,
+      const std::vector<std::string>& target_nodes) = 0;
 };
 
 class DebugGraphDecoratorInterface {
@@ -66,7 +67,7 @@ class DebugGraphDecoratorInterface {
 
   // Publish Graph to debug URLs.
   virtual absl::Status PublishGraph(const Graph& graph,
-                                    const string& device_name) = 0;
+                                    const std::string& device_name) = 0;
 };
 
 typedef std::function<std::unique_ptr<DebuggerStateInterface>(
