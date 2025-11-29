@@ -39,4 +39,5 @@ cc_library(
             "numpy": ["numpy_headers"],
         },
         requirements_lock = REQUIREMENTS_WITH_LOCAL_WHEELS,
+        timeout = 3600,
     )
