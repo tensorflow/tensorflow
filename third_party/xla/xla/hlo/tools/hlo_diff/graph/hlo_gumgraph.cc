@@ -71,6 +71,9 @@ HloPrintOptions CreateHloPrintOptions(
     hlo_print_options.set_print_operand_shape(false);
     hlo_print_options.set_print_result_shape(false);
   }
+  if (!fingerprint_options.ignore_backend_config) {
+    hlo_print_options.set_print_backend_config(true);
+  }
   return hlo_print_options;
 }
 
