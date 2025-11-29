@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <array>
 
+#include "absl/status/status.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/util/padding.h"
 
