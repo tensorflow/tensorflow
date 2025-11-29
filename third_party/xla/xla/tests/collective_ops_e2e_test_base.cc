@@ -180,8 +180,10 @@ CollectiveOpsE2ETestBase::ExecuteReplicated(
 absl::StatusOr<CollectiveOpsE2ETestBase::ExecutionResult>
 CollectiveOpsE2ETestBase::ExecuteReplicated(
     std::unique_ptr<HloModule> module,
-    const std::vector<std::vector<Literal*>> arguments, int64_t num_replicas,
-    int64_t num_partitions, bool run_hlo_passes) {
+    const std::vector<std::vector<Literal*>> arguments, bool run_hlo_passes) {
+  int64_t num_replicas = module->config().replica_count();
+  int64_t num_partitions = module->config().num_partitions();
+
   CHECK(num_replicas > 0 && "expect at least one replica");
   CHECK(num_partitions > 0 && "expect at least one partition");
   CHECK(num_replicas == arguments.size() &&
