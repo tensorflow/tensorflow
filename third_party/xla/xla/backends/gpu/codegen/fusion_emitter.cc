@@ -109,12 +109,6 @@ IndexingMap KernelFusionInterface::GetDefaultThreadIdIndexingMap(
                                                  mlir_context);
 }
 
-std::string GetSanitizedUniqueName(IrEmitterContext& ir_emitter_context,
-                                   const std::string& suggested_name) {
-  return ir_emitter_context.name_uniquer()->GetUniqueName(
-      llvm_ir::SanitizeFunctionName(suggested_name));
-}
-
 absl::StatusOr<llvm::Function*> BuildKernelPrototypeFromUniqueName(
     llvm::Module* llvm_module, const se::DeviceDescription& gpu_device_info,
     const std::string& impl_fn_name, const std::string& unique_kernel_name,
@@ -227,8 +221,8 @@ absl::StatusOr<llvm::Function*> RemoveUnusedTritonAbiArguments(
     const emitters::KernelArguments& kernel_arguments) {
   llvm::Function* impl_fn = llvm_module->getFunction(sanitized_kernel_name);
   TF_RET_CHECK(impl_fn);
-  impl_fn->setName(ir_emitter_context.name_uniquer()->GetUniqueName(
-      sanitized_kernel_name + "_impl"));
+  impl_fn->setName(ir_emitter_context.GetSanitizedUniqueName(
+      absl::StrCat(sanitized_kernel_name, "_impl")));
 
   llvm::IRBuilder builder(llvm_module->getContext());
 

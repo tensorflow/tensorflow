@@ -1124,7 +1124,7 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitTritonCustomCall(
     LoadMlirDialectsForTriton(mlir_context);
     auto call =
         TritonCall::Parse(instr->raw_backend_config_string(), &mlir_context);
-    auto kernel_name = GetSanitizedUniqueName(*ir_emitter_context_, call.name);
+    auto kernel_name = ir_emitter_context_->GetSanitizedUniqueName(call.name);
     VLOG(3) << "Generating: " << kernel_name;
     auto local_module = ir_emitter_context_->CreateLocalLLVMModule(kernel_name);
 

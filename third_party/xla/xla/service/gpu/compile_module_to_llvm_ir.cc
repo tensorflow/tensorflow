@@ -233,8 +233,7 @@ absl::Status LoadCache(IrEmitterContext& ir_emitter_context,
     // Register all cached kernel names with the name uniquer to avoid
     // naming conflicts.
     for (const auto& [name, _] : proto.entries()) {
-      TF_RET_CHECK(ir_emitter_context.name_uniquer()->GetUniqueName(name) ==
-                   name)
+      TF_RET_CHECK(ir_emitter_context.GetSanitizedUniqueName(name) == name)
           << "Failed registering " << name << "in NameUniquer.";
     }
     TF_RETURN_IF_ERROR(ir_emitter_context.kernel_cache().Load(proto));

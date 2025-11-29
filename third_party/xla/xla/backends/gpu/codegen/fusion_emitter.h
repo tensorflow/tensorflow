@@ -112,11 +112,6 @@ absl::StatusOr<llvm::Function*> RemoveUnusedTritonAbiArguments(
     LaunchDimensions& launch_dimensions,
     const emitters::KernelArguments& arguments);
 
-// Compute the kernel name. The opcode string may contain "-" which cannot be
-// in a PTX function name, so sanitize the name before uniquifying it.
-std::string GetSanitizedUniqueName(IrEmitterContext& ir_emitter_context,
-                                   const std::string& suggested_name);
-
 absl::Status AnnotateKernelLaunchDimensions(
     const se::DeviceDescription& device_info,
     const LaunchDimensions& launch_dims, llvm::Function* kernel,

@@ -137,7 +137,7 @@ absl::StatusOr<FusionEmissionResult> TritonFusion::Emit(
     VLOG(3) << "Generating: " << suggested_kernel_name;
 
     const std::string sanitized_kernel_name =
-        GetSanitizedUniqueName(ir_emitter_context, suggested_kernel_name);
+        ir_emitter_context.GetSanitizedUniqueName(suggested_kernel_name);
 
     TF_ASSIGN_OR_RETURN(
         TritonWrapperResult triton_wrapper_result,
