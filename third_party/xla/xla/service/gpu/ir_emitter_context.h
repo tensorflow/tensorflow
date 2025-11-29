@@ -124,6 +124,15 @@ class IrEmitterContext {
 
   std::vector<GpuExecutable::ConstantInfo>& constants() { return constants_; }
 
+  std::unique_ptr<llvm::Module> CreateLocalLLVMModule(
+      const std::string& module_name) {
+    auto llvm_module =
+        std::make_unique<llvm::Module>(module_name, llvm_module_->getContext());
+    llvm_module->setTargetTriple(llvm::Triple(llvm_module_->getTargetTriple()));
+    llvm_module->setDataLayout(llvm_module_->getDataLayout());
+    return llvm_module;
+  }
+
   const DebugOptions& debug_options() const {
     return hlo_module_->config().debug_options();
   }
@@ -154,7 +163,6 @@ class IrEmitterContext {
   std::string platform_name_;
   const se::DeviceDescription& gpu_device_info_;
   mlir::MLIRContext* mlir_context_;
-  mlir::MLIRContext expr_context_;
   llvm::Module* llvm_module_;
   llvm::Module* llvm_module_constants_;
   NameUniquer name_uniquer_;

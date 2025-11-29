@@ -107,7 +107,7 @@ absl::StatusOr<llvm::Function*> BuildKernelPrototype(
     const LaunchDimensions& launch_dimensions, llvm::IRBuilderBase* builder);
 
 absl::StatusOr<llvm::Function*> RemoveUnusedTritonAbiArguments(
-    IrEmitterContext& ir_emitter_context,
+    llvm::Module* llvm_module, IrEmitterContext& ir_emitter_context,
     const std::string& sanitized_kernel_name,
     LaunchDimensions& launch_dimensions,
     const emitters::KernelArguments& arguments);

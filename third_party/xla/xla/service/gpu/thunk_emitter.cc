@@ -213,16 +213,6 @@ EmitCollectiveKernelThunk(IrEmitterContext* ir_emitter_context,
           .xla_gpu_unsupported_use_all_reduce_one_shot_kernel());
 }
 
-std::unique_ptr<llvm::Module> CreateLocalLLVMModule(
-    const std::string& module_name, llvm::Module* global_llvm_module) {
-  auto llvm_module = std::make_unique<llvm::Module>(
-      module_name, global_llvm_module->getContext());
-  llvm_module->setTargetTriple(
-      llvm::Triple(global_llvm_module->getTargetTriple()));
-  llvm_module->setDataLayout(global_llvm_module->getDataLayout());
-  return llvm_module;
-}
-
 }  // namespace
 
 ThunkEmitter::ThunkEmitter(IrEmitterContext* ir_emitter_context)
@@ -300,8 +290,7 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitConditional(
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitPadToStatic(
     const HloCustomCallInstruction* instr) {
   std::string ir_name = std::string(instr->name());
-  auto local_llvm_module =
-      CreateLocalLLVMModule(ir_name, ir_emitter_context_->llvm_module());
+  auto local_llvm_module = ir_emitter_context_->CreateLocalLLVMModule(ir_name);
 
   TF_ASSIGN_OR_RETURN(auto thunk_sequence,
                       EmitPadToStaticLLVMIR(instr, local_llvm_module.get(),
@@ -317,8 +306,8 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitPadToStatic(
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitSliceToDynamic(
     const HloCustomCallInstruction* instr) {
   std::string ir_name = std::string(instr->name());
-  auto local_llvm_module =
-      CreateLocalLLVMModule(ir_name, ir_emitter_context_->llvm_module());
+  auto local_llvm_module = ir_emitter_context_->CreateLocalLLVMModule(ir_name);
+
   TF_ASSIGN_OR_RETURN(auto thunk_sequence,
                       EmitSliceToDynamicLLVMIR(instr, local_llvm_module.get(),
                                                ir_emitter_context_));
@@ -1137,6 +1126,7 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitTritonCustomCall(
         TritonCall::Parse(instr->raw_backend_config_string(), &mlir_context);
     auto kernel_name = GetSanitizedUniqueName(*ir_emitter_context_, call.name);
     VLOG(3) << "Generating: " << kernel_name;
+    auto local_module = ir_emitter_context_->CreateLocalLLVMModule(kernel_name);
 
     mlir::OwningOpRef<mlir::ModuleOp> triton_module;
     {
@@ -1176,7 +1166,7 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitTritonCustomCall(
         CompileTritonToLLVM(kernel_name, *hlo_module,
                             ir_emitter_context_->gpu_device_info(),
                             block_level_parameters, triton_module.get(),
-                            ir_emitter_context_->llvm_module(), mlir_context,
+                            local_module.get(), mlir_context,
                             /*is_xla_fusion=*/false, emit_kernels));
 
     TF_ASSIGN_OR_RETURN(auto kernel_arguments,
@@ -1190,12 +1180,14 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitTritonCustomCall(
             ir_emitter_context_->gpu_device_info().threads_per_warp()));
 
     if (emit_kernels) {
-      TF_RETURN_IF_ERROR(
-          RemoveUnusedTritonAbiArguments(*ir_emitter_context_, kernel_name,
-                                         launch_dimensions, kernel_arguments)
-              .status());
+      TF_RETURN_IF_ERROR(RemoveUnusedTritonAbiArguments(
+                             local_module.get(), *ir_emitter_context_,
+                             kernel_name, launch_dimensions, kernel_arguments)
+                             .status());
     }
-
+    TF_RET_CHECK(!llvm::Linker::linkModules(
+        *ir_emitter_context_->llvm_module(), std::move(local_module),
+        llvm::Linker::Flags::OverrideFromSrc));
     return {{kernel_name, launch_dimensions, result.cluster_dim,
              result.shmem_bytes}};
   };
@@ -1381,8 +1373,7 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitWhile(
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitRngGetAndUpdateState(
     const HloRngGetAndUpdateStateInstruction* instr) {
   std::string ir_name = std::string(instr->name());
-  auto local_llvm_module =
-      CreateLocalLLVMModule(ir_name, ir_emitter_context_->llvm_module());
+  auto local_llvm_module = ir_emitter_context_->CreateLocalLLVMModule(ir_name);
 
   TF_ASSIGN_OR_RETURN(auto thunk_sequence,
                       EmitRngGetAndUpdateStateLLVMIR(
@@ -1435,8 +1426,7 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitSort(
     }
   }
 
-  auto local_llvm_module =
-      CreateLocalLLVMModule(op_name, ir_emitter_context_->llvm_module());
+  auto local_llvm_module = ir_emitter_context_->CreateLocalLLVMModule(op_name);
 
   TF_ASSIGN_OR_RETURN(ThunkSequence sort_thunks,
                       EmitBitonicSortLLVMIR(sort, local_llvm_module.get(),
