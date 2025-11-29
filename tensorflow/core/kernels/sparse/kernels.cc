@@ -31,8 +31,8 @@ namespace functor {
 
 absl::Status SparseTensorToCSRSparseMatrixCPUFunctor::operator()(
     int64_t batch_size, int num_rows, int num_cols,
-    TTypes<int64_t>::ConstMatrix indices, TTypes<int32>::Vec batch_ptr,
-    TTypes<int32>::Vec csr_row_ptr, TTypes<int32>::Vec csr_col_ind) {
+    TTypes<int64_t>::ConstMatrix indices, TTypes<int32_t>::Vec batch_ptr,
+    TTypes<int32_t>::Vec csr_row_ptr, TTypes<int32_t>::Vec csr_col_ind) {
   // Validate inputs.
   if (batch_ptr.size() != batch_size + 1) {
     return errors::InvalidArgument(
