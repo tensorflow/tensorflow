@@ -37,11 +37,11 @@ class TpuCompilationCacheRpcLookup : public TpuCompilationCacheLookup {
  public:
   using StubType = tpu::grpc::TpuCompilationCacheService::Stub;
 
-  TpuCompilationCacheRpcLookup(const string& server_address,
+  TpuCompilationCacheRpcLookup(const std::string& server_address,
                                int64_t max_cache_size);
   ~TpuCompilationCacheRpcLookup() override = default;
 
-  absl::Status Lookup(const string& proto_key,
+  absl::Status Lookup(const std::string& proto_key,
                       std::unique_ptr<tpu::CompilationCacheEntryRef>* entry,
                       tpu::CompilationCacheFetchTarget fetch_target) override;
 
@@ -49,11 +49,11 @@ class TpuCompilationCacheRpcLookup : public TpuCompilationCacheLookup {
                       std::unique_ptr<tpu::CompilationCacheEntryRef>* entry,
                       tpu::CompilationCacheFetchTarget fetch_target) override;
 
-  string DebugString() const override;
+  std::string DebugString() const override;
 
  private:
   // Helper method to make the RPC request to the central cache.
-  absl::Status RemoteLookupLocked(const string& local_proto_key,
+  absl::Status RemoteLookupLocked(const std::string& local_proto_key,
                                   const tpu::GetTpuProgramRequest& request,
                                   std::shared_ptr<CacheEntry>* cache_entry)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
