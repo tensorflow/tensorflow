@@ -24,7 +24,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "xla/backends/gpu/codegen/triton/support_legacy.h"
+#include "xla/backends/gpu/codegen/triton/support.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -176,19 +176,20 @@ absl::StatusOr<std::vector<HloDotInstruction*>> GetRelevantDots(
         bool is_matmul,
         IsCublasSupportedMatMul(*instr,
                                 /*allow_matrix_vector_multiplication=*/false));
-    if (is_matmul) {
-      HloDotInstruction* dot = Cast<HloDotInstruction>(instr);
-      if (instr->operand(0)->shape().element_type() == datatype &&
-          CheckCanonical(dot) &&
-          !(instr->GetModule()
-                ->config()
-                .debug_options()
-                .xla_gpu_enable_triton_gemm() &&
-            legacy_triton::IsTritonSupportedInstruction(
-                *dot, gpu_compute_capability) &&
-            ShouldTritonHandleGEMM(*dot, gpu_compute_capability))) {
-        gemms.push_back(dot);
-      }
+    if (!is_matmul) {
+      continue;
+    }
+    HloDotInstruction* dot = Cast<HloDotInstruction>(instr);
+    if (instr->operand(0)->shape().element_type() == datatype &&
+        CheckCanonical(dot) &&
+        !(instr->GetModule()
+              ->config()
+              .debug_options()
+              .xla_gpu_enable_triton_gemm() &&
+          IsTritonSupportedInstruction(*dot, gpu_compute_capability,
+                                       /*is_fused_computation=*/false) &&
+          ShouldTritonHandleGEMM(*dot, gpu_compute_capability))) {
+      gemms.push_back(dot);
     }
   }
   return gemms;
