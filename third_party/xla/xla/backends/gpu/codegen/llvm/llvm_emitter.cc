@@ -139,9 +139,10 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   // Constructs an IrEmitter with the given IrEmitter context.
   // ir_emitter_context is owned by the caller and should outlive the IrEmitter
   // object.
-  explicit IrEmitter(IrEmitterContext* ir_emitter_context, bool is_nested)
+  explicit IrEmitter(IrEmitterContext* ir_emitter_context, llvm::Module* module,
+                     bool is_nested)
       : ir_emitter_context_(ir_emitter_context),
-        module_(ir_emitter_context->llvm_module()),
+        module_(module),
         b_(module_->getContext()),
         bindings_(&b_, module_, is_nested) {}
 
@@ -297,8 +298,8 @@ class IrEmitterNested : public IrEmitter {
   // the containing IR function this emitter produces IR to. See
   // IrEmitter::IrEmitter for the meanings of other arguments.
   IrEmitterNested(const HloComputation& nested_computation,
-                  IrEmitterContext* ir_emitter_context)
-      : IrEmitter(ir_emitter_context,
+                  llvm::Module* module, IrEmitterContext* ir_emitter_context)
+      : IrEmitter(ir_emitter_context, module,
                   /*is_nested=*/true),
         nested_computation_(nested_computation) {}
 
@@ -386,9 +387,10 @@ absl::Status CallNestedComputation(llvm::IRBuilderBase* builder,
                                    llvm::Value* output) {
   TF_RET_CHECK(computation.num_parameters() > 0);
 
-  TF_ASSIGN_OR_RETURN(llvm::Function * emitted_function,
-                      IrEmitterNested(computation, &ir_emitter_context)
-                          .CodegenNestedComputation());
+  TF_ASSIGN_OR_RETURN(
+      llvm::Function * emitted_function,
+      IrEmitterNested(computation, llvm_module, &ir_emitter_context)
+          .CodegenNestedComputation());
 
   // Operands are in default address space for non-AMDGPU target.
   // However for AMDGPU target, addrspacecast alloca variables from
@@ -795,17 +797,7 @@ absl::StatusOr<ThunkSequence> EmitBitonicSortLLVMIR(
     IrEmitterContext* ir_emitter_context) {
   std::string op_name(sort->name());
 
-  // Copy of the main context with the local module.
-  IrEmitterContext local_ir_emitter_context(
-      &ir_emitter_context->hlo_module(),
-      &ir_emitter_context->buffer_assignment(),
-      &ir_emitter_context->execution_stream_assignment(),
-      std::string(ir_emitter_context->platform_name()),
-      ir_emitter_context->gpu_device_info(), ir_emitter_context->mlir_context(),
-      llvm_module, ir_emitter_context->llvm_module_constants(),
-      ir_emitter_context->emit_kernels());
-
-  IrEmitter ir_emitter(&local_ir_emitter_context, /*nested=*/false);
+  IrEmitter ir_emitter(ir_emitter_context, llvm_module, /*nested=*/false);
 
   int64_t dimension_to_sort = sort->sort_dimension();
   const Shape& keys_shape = sort->operand(0)->shape();
@@ -941,7 +933,7 @@ absl::StatusOr<ThunkSequence> EmitBitonicSortLLVMIR(
                              : standard_num_iterations_in_sort_dim,
         tile_size, kUnrollFactor,
         [&](absl::Span<llvm::Value* const> operands, llvm::Value* output) {
-          return CallNestedComputation(builder, local_ir_emitter_context,
+          return CallNestedComputation(builder, *ir_emitter_context,
                                        llvm_module, *comparator, operands,
                                        output);
         });
@@ -979,17 +971,8 @@ absl::StatusOr<ThunkSequence> EmitPadToStaticLLVMIR(
     IrEmitterContext* ir_emitter_context) {
   std::string ir_name = std::string(hlo->name());
 
-  // Copy of the main context with the local module.
-  IrEmitterContext local_ir_emitter_context(
-      &ir_emitter_context->hlo_module(),
-      &ir_emitter_context->buffer_assignment(),
-      &ir_emitter_context->execution_stream_assignment(),
-      std::string(ir_emitter_context->platform_name()),
-      ir_emitter_context->gpu_device_info(), ir_emitter_context->mlir_context(),
-      llvm_module, ir_emitter_context->llvm_module_constants(),
-      ir_emitter_context->emit_kernels());
-
-  IrEmitter ir_emitter(&local_ir_emitter_context, /*nested=*/false);
+  IrEmitter ir_emitter(ir_emitter_context, llvm_module,
+                       /*nested=*/false);
 
   constexpr int kUnrollFactor = 1;
   const Shape& input_shape = hlo->operand(0)->shape();
@@ -1137,17 +1120,7 @@ absl::StatusOr<ThunkSequence> EmitSliceToDynamicLLVMIR(
     IrEmitterContext* ir_emitter_context) {
   std::string ir_name = std::string(hlo->name());
 
-  // Copy of the main context with the local module.
-  IrEmitterContext local_ir_emitter_context(
-      &ir_emitter_context->hlo_module(),
-      &ir_emitter_context->buffer_assignment(),
-      &ir_emitter_context->execution_stream_assignment(),
-      std::string(ir_emitter_context->platform_name()),
-      ir_emitter_context->gpu_device_info(), ir_emitter_context->mlir_context(),
-      llvm_module, ir_emitter_context->llvm_module_constants(),
-      ir_emitter_context->emit_kernels());
-
-  IrEmitter ir_emitter(&local_ir_emitter_context, /*nested=*/false);
+  IrEmitter ir_emitter(ir_emitter_context, llvm_module, /*nested=*/false);
   constexpr int kUnrollFactor = 1;
   const Shape& input_shape = hlo->operand(0)->shape();
 
@@ -1282,18 +1255,7 @@ absl::StatusOr<ThunkSequence> EmitRngGetAndUpdateStateLLVMIR(
     const HloRngGetAndUpdateStateInstruction* hlo, llvm::Module* llvm_module,
     IrEmitterContext* ir_emitter_context) {
   std::string ir_name = std::string(hlo->name());
-
-  // Copy of the main context with the local module.
-  IrEmitterContext local_ir_emitter_context(
-      &ir_emitter_context->hlo_module(),
-      &ir_emitter_context->buffer_assignment(),
-      &ir_emitter_context->execution_stream_assignment(),
-      std::string(ir_emitter_context->platform_name()),
-      ir_emitter_context->gpu_device_info(), ir_emitter_context->mlir_context(),
-      llvm_module, ir_emitter_context->llvm_module_constants(),
-      ir_emitter_context->emit_kernels());
-
-  IrEmitter ir_emitter(&local_ir_emitter_context, /*nested=*/false);
+  IrEmitter ir_emitter(ir_emitter_context, llvm_module, /*nested=*/false);
 
   auto& b = *ir_emitter.builder();
   // Emit a kernel to increment the global state for Philox RNG
