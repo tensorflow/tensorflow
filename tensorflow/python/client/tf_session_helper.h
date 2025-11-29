@@ -124,14 +124,16 @@ void TF_Reset_wrapper(const TF_SessionOptions* opt,
 // Convenience wrapper around EqualGraphDef to make it easier to wrap.
 // Returns an explanation if a difference is found, or the empty string
 // for no difference.
-string EqualGraphDefWrapper(const string& actual, const string& expected);
+std::string EqualGraphDefWrapper(const std::string& actual,
+                                 const std::string& expected);
 
 // Convenience wrapper around AreAttrValuesEqual to make it easier to wrap.
 // The actual and expected strings must correspond to a serialized binary
 // representation of two AttrValue proto instances.
 // Returns an explanation if a difference is found, or the empty string
 // for no difference.
-string EqualAttrValueWrapper(const string& actual, const string& expected);
+std::string EqualAttrValueWrapper(const std::string& actual,
+                                  const std::string& expected);
 
 // Gets shape from C API Graph object.
 //
@@ -244,7 +246,8 @@ void TF_GraphSetTensorShape_wrapper(TF_Graph* graph, TF_Output output,
                                     bool unknown_shape, TF_Status* status);
 
 // Returns the string representations of the missing unused input mappings.
-std::vector<string> TF_ImportGraphDefResultsMissingUnusedInputMappings_wrapper(
+std::vector<std::string>
+TF_ImportGraphDefResultsMissingUnusedInputMappings_wrapper(
     TF_ImportGraphDefResults* results);
 
 // If evaluation was possible, returns the numpy ndarray of the evaluated
