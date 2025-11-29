@@ -92,6 +92,16 @@ class AsStringOp : public OpKernel {
     if (width_ <= -1) {
       width_ = 0;
     }
+    
+    // Check for unreasonably large width values to prevent memory exhaustion
+    // and segmentation faults when absl::StrFormat tries to allocate buffers
+    const int kMaxReasonableWidth = 1000000;  // 1 million characters
+    OP_REQUIRES(ctx, width_ <= kMaxReasonableWidth,
+                errors::InvalidArgument(
+                    "Width value ", width_, " is too large. "
+                    "Maximum allowed width is ", kMaxReasonableWidth, ". "
+                    "Large width values can cause memory exhaustion and crashes."));
+    
     // If input is string and width unspecified, simply forward to output.
     if (dtype == DT_STRING && width_ <= 0) {
       return;

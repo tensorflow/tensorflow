@@ -252,5 +252,19 @@ TEST_F(AsStringGraphTest, FillWithChar4) {
   ASSERT_TRUE(absl::StrContains(s.message(), "Fill argument not supported"));
 }
 
+TEST_F(AsStringGraphTest, LargeWidthFailsGracefully) {
+  // Test that extremely large width values fail gracefully instead of crashing
+  int int_max = 2147483647;
+  absl::Status s = Init(DT_FLOAT, /*fill=*/"", /*width=*/int_max);
+  ASSERT_EQ(error::INVALID_ARGUMENT, s.code());
+  ASSERT_TRUE(absl::StrContains(s.message(), "too large"));
+  ASSERT_TRUE(absl::StrContains(s.message(), "Maximum allowed width"));
+  
+  // Test with very large but still reasonable width
+  absl::Status s2 = Init(DT_FLOAT, /*fill=*/"", /*width=*/2000000);
+  ASSERT_EQ(error::INVALID_ARGUMENT, s2.code());
+  ASSERT_TRUE(absl::StrContains(s2.message(), "too large"));
+}
+
 }  // end namespace
 }  // end namespace tensorflow
