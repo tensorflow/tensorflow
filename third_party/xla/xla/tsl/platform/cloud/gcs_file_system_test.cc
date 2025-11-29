@@ -560,7 +560,7 @@ TEST(GcsFileSystemTest,
 
   std::unique_ptr<RandomAccessFile> file;
   EXPECT_EQ(
-      errors::FailedPrecondition(
+      absl::FailedPreconditionError(
           "Bucket 'bucket' is in 'barfoo' location, allowed locations "
           "are: (us-east1)."),
       fs.NewRandomAccessFile("gs://bucket/random_access.txt", nullptr, &file));

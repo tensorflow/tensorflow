@@ -531,7 +531,7 @@ absl::Status CurlHttpRequest::Send() {
     case 307:  // Temporary Redirect
     case 412:  // Precondition Failed
     case 413:  // Payload Too Large
-      result = errors::FailedPrecondition(get_error_message());
+      result = absl::FailedPreconditionError(get_error_message());
       break;
 
     // UNAVAILABLE indicates a problem that can go away if the request
@@ -664,14 +664,14 @@ absl::Status CurlHttpRequest::CURLcodeToStatus(CURLcode code,
     if (get_response_result == CURLE_OK && response_code == 416) {
       return absl::OkStatus();
     }
-    return errors::FailedPrecondition(
+    return absl::FailedPreconditionError(
         absl::StrCat(error_message, overflow_message));
   }
   // Domain resolution errors and certificate problems aren't going to improve
   // on retry, so we return a FailedPrecondition (as the caller must take action
   // before this can succeed).
   if (code == CURLE_COULDNT_RESOLVE_HOST || code == CURLE_SSL_CACERT_BADFILE) {
-    return errors::FailedPrecondition(
+    return absl::FailedPreconditionError(
         absl::StrCat(error_message, error_buffer));
   }
   // Return Unavailable to retry by default. There may be other permanent

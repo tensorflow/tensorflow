@@ -400,14 +400,12 @@ tsl_cc_test(
         ":ram_file_block_cache",
         "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/platform:env",
-        "//xla/tsl/platform:env_impl",
         "//xla/tsl/platform:test",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
         "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/platform:blocking_counter",
-        "@local_tsl//tsl/platform:notification",
     ],
 )
 

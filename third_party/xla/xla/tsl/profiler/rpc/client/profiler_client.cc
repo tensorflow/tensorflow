@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <limits>
 #include <memory>
+#include <string>
 
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
@@ -135,7 +136,7 @@ void RemoteProfilerSession::ProfileAsync() {
 std::unique_ptr<ProfileResponse> RemoteProfilerSession::WaitForCompletion(
     absl::Status& out_status) {
   if (!response_) {
-    out_status = errors::FailedPrecondition(
+    out_status = absl::FailedPreconditionError(
         "WaitForCompletion must only be called once.");
     return nullptr;
   }

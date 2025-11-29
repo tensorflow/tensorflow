@@ -700,7 +700,7 @@ class GcsWritableFile : public WritableFile {
 
   absl::Status CheckWritable() const {
     if (!outfile_.is_open()) {
-      return errors::FailedPrecondition(
+      return absl::FailedPreconditionError(
           "The internal temporary file is not writable.");
     }
     return absl::OkStatus();
@@ -1652,7 +1652,7 @@ absl::Status GcsFileSystem::CheckBucketLocationConstraint(
     return absl::OkStatus();
   }
 
-  return errors::FailedPrecondition(strings::Printf(
+  return absl::FailedPreconditionError(strings::Printf(
       "Bucket '%s' is in '%s' location, allowed locations are: (%s).",
       bucket.c_str(), location.c_str(),
       absl::StrJoin(allowed_locations_, ", ").c_str()));

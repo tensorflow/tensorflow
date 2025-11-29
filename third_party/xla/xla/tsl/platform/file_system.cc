@@ -206,7 +206,8 @@ absl::Status FileSystem::RecursivelyCreateDir(const std::string& dirname,
       } else if (directory_status.code() == absl::StatusCode::kUnimplemented) {
         return directory_status;
       } else {
-        return errors::FailedPrecondition(remaining_dir, " is not a directory");
+        return absl::FailedPreconditionError(
+            absl::StrCat(remaining_dir, " is not a directory"));
       }
     }
     if (exists_status.code() != error::Code::NOT_FOUND) {

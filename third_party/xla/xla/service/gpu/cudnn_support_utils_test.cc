@@ -25,6 +25,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/algorithm/container.h"
 #include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
@@ -57,7 +58,7 @@ class CudnnSupportUtilsTest : public HloHardwareIndependentTestBase {
         if (inst->IsCustomCall(target)) {
           VLOG(1) << inst->ToString();
           if (call != nullptr) {
-            return tsl::errors::FailedPrecondition(
+            return absl::FailedPreconditionError(
                 "Found more than one custom call.");
           }
           call = Cast<HloCustomCallInstruction>(inst);
@@ -65,7 +66,7 @@ class CudnnSupportUtilsTest : public HloHardwareIndependentTestBase {
       }
     }
     if (call == nullptr) {
-      return tsl::errors::FailedPrecondition(
+      return absl::FailedPreconditionError(
           "Did not find any matching custom call.");
     }
     return call;
