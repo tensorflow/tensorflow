@@ -26,7 +26,7 @@ class ReplicateOnSplit : public TFDataOptimizerBase {
   ReplicateOnSplit() = default;
   ~ReplicateOnSplit() override = default;
 
-  string name() const override { return "replicate_on_split"; }
+  std::string name() const override { return "replicate_on_split"; }
 
   bool UsesFunctionLibrary() const override { return false; }
 
