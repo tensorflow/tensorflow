@@ -108,7 +108,6 @@ tsl_cc_test(
         ":snappy_inputbuffer",
         ":snappy_inputstream",
         ":snappy_outputbuffer",
-        "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/lib/io:inputbuffer",
         "//xla/tsl/lib/io:random_inputstream",
         "//xla/tsl/platform:env",

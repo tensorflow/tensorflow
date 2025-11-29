@@ -1332,7 +1332,6 @@ xla_cc_test(
         "//xla/hlo/testlib:test",
         "//xla/hlo/testlib:verified_hlo_module",
         "//xla/tests:xla_internal_test_main",
-        "//xla/tsl/platform:errors",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/log",

@@ -69,7 +69,7 @@ class RamRandomAccessFile : public RandomAccessFile, public WritableFile {
   absl::Status Read(uint64 offset, size_t n, absl::string_view* result,
                     char* scratch) const override {
     if (offset >= data_->size()) {
-      return errors::OutOfRange("");
+      return absl::OutOfRangeError("");
     }
 
     uint64 left = std::min(static_cast<uint64>(n), data_->size() - offset);
@@ -82,7 +82,7 @@ class RamRandomAccessFile : public RandomAccessFile, public WritableFile {
     // In case of a partial read, we must still fill `result`, but also return
     // OutOfRange.
     if (left < n) {
-      return errors::OutOfRange("");
+      return absl::OutOfRangeError("");
     }
     return absl::OkStatus();
   }

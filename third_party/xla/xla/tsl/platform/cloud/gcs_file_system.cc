@@ -1080,9 +1080,9 @@ absl::Status GcsFileSystem::NewRandomAccessFile(
                                                  &bytes_transferred));
       *result = absl::string_view(scratch, bytes_transferred);
       if (bytes_transferred < n) {
-        return errors::OutOfRange("EOF reached, ", result->size(),
-                                  " bytes were read out of ", n,
-                                  " bytes requested.");
+        return absl::OutOfRangeError(
+            absl::StrCat("EOF reached, ", result->size(),
+                         " bytes were read out of ", n, " bytes requested."));
       }
       return absl::OkStatus();
     }));
@@ -1097,9 +1097,9 @@ absl::Status GcsFileSystem::NewRandomAccessFile(
               LoadBufferFromGCS(fname, offset, n, scratch, &bytes_transferred));
           *result = absl::string_view(scratch, bytes_transferred);
           if (bytes_transferred < n) {
-            return errors::OutOfRange("EOF reached, ", result->size(),
-                                      " bytes were read out of ", n,
-                                      " bytes requested.");
+            return absl::OutOfRangeError(absl::StrCat(
+                "EOF reached, ", result->size(), " bytes were read out of ", n,
+                " bytes requested."));
           }
           return absl::OkStatus();
         }));

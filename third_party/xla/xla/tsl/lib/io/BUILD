@@ -527,7 +527,6 @@ tsl_cc_test(
     deps = [
         ":inputstream_interface",
         "//xla/tsl/lib/core:status_test_util",
-        "//xla/tsl/platform:errors",
         "//xla/tsl/platform:test",
         "@com_google_absl//absl/status",
         "@com_google_googletest//:gtest_main",
