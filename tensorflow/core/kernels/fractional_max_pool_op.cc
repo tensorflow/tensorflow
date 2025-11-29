@@ -210,7 +210,7 @@ class FractionalMaxPoolOp : public OpKernel {
       Name("FractionalMaxPool").Device(DEVICE_CPU).TypeConstraint<type>("T"), \
       FractionalMaxPoolOp<type>)
 
-REGISTER_FRACTIONALMAXPOOL(int32);
+REGISTER_FRACTIONALMAXPOOL(int32_t);
 REGISTER_FRACTIONALMAXPOOL(int64_t);
 REGISTER_FRACTIONALMAXPOOL(float);
 REGISTER_FRACTIONALMAXPOOL(double);
@@ -239,7 +239,7 @@ class FractionalMaxPoolGradOp : public OpKernel {
         ConstEigenMatrixMap;
     typedef Eigen::Map<Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic>>
         EigenMatrixMap;
-    typedef Eigen::Map<Eigen::Matrix<int64, Eigen::Dynamic, Eigen::Dynamic>>
+    typedef Eigen::Map<Eigen::Matrix<int64_t, Eigen::Dynamic, Eigen::Dynamic>>
         EigenIndexMatrixMap;
 
     const Tensor& tensor_in = context->input(0);
@@ -419,7 +419,7 @@ class FractionalMaxPoolGradOp : public OpKernel {
                               .TypeConstraint<type>("T"), \
                           FractionalMaxPoolGradOp<type>)
 
-REGISTER_FRACTIONALMAXPOOLGRAD(int32);
+REGISTER_FRACTIONALMAXPOOLGRAD(int32_t);
 REGISTER_FRACTIONALMAXPOOLGRAD(int64_t);
 REGISTER_FRACTIONALMAXPOOLGRAD(float);
 REGISTER_FRACTIONALMAXPOOLGRAD(double);
