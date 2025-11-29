@@ -43,8 +43,8 @@ class StatelessShuffleOp : public OpKernel {
                   errors::InvalidArgument("Unsupported algorithm id: ", alg));
     }
 
-    auto rng = GetPhiloxRandomFromCounterKeyMem(counter_t.flat<uint64>().data(),
-                                                key_t.flat<uint64>().data());
+    auto rng = GetPhiloxRandomFromCounterKeyMem(
+        counter_t.flat<uint64_t>().data(), key_t.flat<uint64_t>().data());
     auto get_rng = [rng](auto num_samples) { return rng; };
     OP_REQUIRES_OK(ctx,
                    RandomShuffle<T>(ctx, input, /*output_idx=*/0, get_rng));
