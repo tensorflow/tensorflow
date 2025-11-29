@@ -220,13 +220,6 @@ absl::StatusOr<ExecuteResult> ProgramInterpreter::Execute(
           "Input array #", idx, " of program ", program_->program_name,
           " has already been deleted or donated."));
     }
-    if (array->sharding().devices() !=
-        program_->in_specs[idx].sharding->devices()) {
-      return absl::InvalidArgumentError(absl::StrCat(
-          "Program ", program_->program_name, " expects input array #", idx,
-          " to be on devices ", program_->in_specs[idx].sharding->devices(),
-          " but it is on devices ", array->sharding().devices(), "."));
-    }
   }
 
   Environment env;
