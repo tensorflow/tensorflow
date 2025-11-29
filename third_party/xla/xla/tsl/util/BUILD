@@ -145,6 +145,8 @@ cc_library(
         "//xla/tsl/platform:byte_order",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:status",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
     ],
 )
 

@@ -15,21 +15,30 @@ limitations under the License.
 
 #include "xla/tsl/lib/io/table.h"
 
-#include <algorithm>
+#include <cstddef>
+#include <cstdint>
+#include <cstdio>
+#include <cstring>
 #include <map>
 #include <string>
+#include <utility>
 #include <vector>
 
+#include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/strings/escaping.h"
+#include "absl/strings/string_view.h"
 #include "xla/tsl/lib/io/block.h"
 #include "xla/tsl/lib/io/block_builder.h"
 #include "xla/tsl/lib/io/format.h"
 #include "xla/tsl/lib/io/iterator.h"
 #include "xla/tsl/lib/io/table_builder.h"
+#include "xla/tsl/lib/io/table_options.h"
+#include "xla/tsl/lib/random/philox_random.h"
 #include "xla/tsl/lib/random/simple_philox.h"
-#include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/file_system.h"
+#include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/test.h"
 #include "tsl/platform/snappy.h"
 

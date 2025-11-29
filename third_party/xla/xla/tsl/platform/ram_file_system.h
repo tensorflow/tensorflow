@@ -105,7 +105,7 @@ class RamRandomAccessFile : public RandomAccessFile, public WritableFile {
 
   absl::Status Tell(int64_t* position) override {
     *position = -1;
-    return errors::Unimplemented("This filesystem does not support Tell()");
+    return absl::UnimplementedError("This filesystem does not support Tell()");
   }
 
  private:
@@ -176,7 +176,7 @@ class RamFileSystem : public FileSystem {
   absl::Status NewReadOnlyMemoryRegionFromFile(
       const std::string& fname, TransactionToken* token,
       std::unique_ptr<ReadOnlyMemoryRegion>* result) override {
-    return errors::Unimplemented("");
+    return absl::UnimplementedError("");
   }
 
   absl::Status FileExists(const std::string& fname_,
