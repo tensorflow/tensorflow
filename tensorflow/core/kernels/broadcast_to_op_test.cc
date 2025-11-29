@@ -31,8 +31,8 @@ static Graph* BroadcastTo(int dim0, int dim1, InputShape input_shape) {
   input.flat<float>() = input.flat<float>().setRandom();
 
   Tensor shape(DT_INT32, TensorShape({2}));
-  shape.flat<int32>()(0) = dim0;
-  shape.flat<int32>()(1) = dim1;
+  shape.flat<int32_t>()(0) = dim0;
+  shape.flat<int32_t>()(1) = dim1;
 
   Node* node;
   TF_CHECK_OK(NodeBuilder(g->NewName("n"), "BroadcastTo")
