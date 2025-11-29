@@ -39,7 +39,6 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
-#include "tsl/platform/statusor.h"
 
 struct Flags {
   std::string input_file = "";
