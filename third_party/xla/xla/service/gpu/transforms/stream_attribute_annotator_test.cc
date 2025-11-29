@@ -67,7 +67,7 @@ TEST_F(StreamAttributeAnnotatorTest, AllUsersAreAnnotated) {
   ENTRY entry {
     p1_32 = f32[1] parameter(0)
     p2_32 = f32[1] parameter(1)
-    add_32 = f32[1] add(p1_32, p2_32), backend_config={"operation_queue_id":"1", "wait_on_operation_queues":[]}
+    add_32 = f32[1] add(p1_32, p2_32), backend_config={"operation_queue_id":"1"}
     exp_32 = f32[1] exponential(add_32)
 
     neg32 = f32[1] negate(add_32)
@@ -100,8 +100,8 @@ TEST_F(StreamAttributeAnnotatorTest, MultipleStreamsAreCombined) {
   ENTRY entry {
     p1_32 = f32[1] parameter(0)
     p2_32 = f32[1] parameter(1)
-    add_32 = f32[1] add(p1_32, p2_32), backend_config={"operation_queue_id":"1", "wait_on_operation_queues":[]}
-    exp_32 = f32[1] exponential(p2_32), backend_config={"operation_queue_id":"2", "wait_on_operation_queues":[]}
+    add_32 = f32[1] add(p1_32, p2_32), backend_config={"operation_queue_id":"1"}
+    exp_32 = f32[1] exponential(p2_32), backend_config={"operation_queue_id":"2"}
 
     ROOT add_out_32 = f32[1] add(add_32, exp_32)
   }
@@ -135,7 +135,7 @@ TEST_F(StreamAttributeAnnotatorTest, GTEUserIsAnnotated) {
     p1_32 = f32[16,32] parameter(0)
     p2_32 = f32[32,16] parameter(1)
 
-    custom-call.3 = (f32[16,16], s8[1028]{0}) custom-call(p1_32, p2_32), custom_call_target="__cublas$gemm", backend_config={"operation_queue_id":"1","wait_on_operation_queues":[],"gemm_backend_config":{"alpha_real":1,"alpha_imag":0,"beta":0,"dot_dimension_numbers":{"lhs_contracting_dimensions":["1"],"rhs_contracting_dimensions":["0"],"lhs_batch_dimensions":[],"rhs_batch_dimensions":[]},"precision_config":{"operand_precision":["DEFAULT","DEFAULT"]},"epilogue":"DEFAULT","grad_x":false,"grad_y":false}}
+    custom-call.3 = (f32[16,16], s8[1028]{0}) custom-call(p1_32, p2_32), custom_call_target="__cublas$gemm", backend_config={"operation_queue_id":"1","gemm_backend_config":{"alpha_real":1,"alpha_imag":0,"beta":0,"dot_dimension_numbers":{"lhs_contracting_dimensions":["1"],"rhs_contracting_dimensions":["0"],"lhs_batch_dimensions":[],"rhs_batch_dimensions":[]},"precision_config":{"operand_precision":["DEFAULT","DEFAULT"]},"epilogue":"DEFAULT","grad_x":false,"grad_y":false}}
     get-tuple-element.24 = f32[16,16] get-tuple-element(custom-call.3), index=0
 
     exp_32 = f32[16,16] exponential(get-tuple-element.24)
@@ -167,7 +167,7 @@ TEST_F(StreamAttributeAnnotatorTest, GTENoUserIsHandled) {
     p1_32 = f32[16,32] parameter(0)
     p2_32 = f32[32,16] parameter(1)
 
-    custom-call.3 = (f32[16,16], s8[1028]{0}) custom-call(p1_32, p2_32), custom_call_target="__cublas$gemm", backend_config={"operation_queue_id":"1","wait_on_operation_queues":[],"gemm_backend_config":{"alpha_real":1,"alpha_imag":0,"beta":0,"dot_dimension_numbers":{"lhs_contracting_dimensions":["1"],"rhs_contracting_dimensions":["0"],"lhs_batch_dimensions":[],"rhs_batch_dimensions":[]},"precision_config":{"operand_precision":["DEFAULT","DEFAULT"]},"epilogue":"DEFAULT","grad_x":false,"grad_y":false}}
+    custom-call.3 = (f32[16,16], s8[1028]{0}) custom-call(p1_32, p2_32), custom_call_target="__cublas$gemm", backend_config={"operation_queue_id":"1","gemm_backend_config":{"alpha_real":1,"alpha_imag":0,"beta":0,"dot_dimension_numbers":{"lhs_contracting_dimensions":["1"],"rhs_contracting_dimensions":["0"],"lhs_batch_dimensions":[],"rhs_batch_dimensions":[]},"precision_config":{"operand_precision":["DEFAULT","DEFAULT"]},"epilogue":"DEFAULT","grad_x":false,"grad_y":false}}
     ROOT get-tuple-element.24 = f32[16,16] get-tuple-element(custom-call.3), index=0
   }
   )";
@@ -188,7 +188,7 @@ TEST_F(StreamAttributeAnnotatorTest, FusionIsAnnotated) {
   fused_computation.1 {
     fusion_p0_32 = f32[16,16] parameter(0)
     fusion_p2_32 = f32[16,16] parameter(1)
-    ROOT add = f32[16,16] add(fusion_p0_32, fusion_p2_32), backend_config={"operation_queue_id":"1","wait_on_operation_queues":[]}
+    ROOT add = f32[16,16] add(fusion_p0_32, fusion_p2_32), backend_config={"operation_queue_id":"1"}
   }
 
   ENTRY entry {

@@ -125,8 +125,7 @@ TEST_F(DynamicSliceFusionTest, GemmSlice) {
       p2 = f16[4,8,8]{2,1,0} parameter(2)
       address_computation = (f16[4,8,8]{2,1,0}, s8[256]{0}) fusion(p0, c1_s32, c0_s32, p1, p2),
         kind=kCustom, calls=dynamic-slice-fusion,
-        backend_config={"operation_queue_id":"0","wait_on_operation_queues":[],
-                        "fusion_backend_config":{
+        backend_config={"fusion_backend_config":{
                           "kind":"__custom_fusion",
                           "custom_fusion_config":{
                             "name":"dynamic_address_computation"
@@ -208,8 +207,7 @@ TEST_F(DynamicSliceFusionTest, CustomCallSlice) {
       c0_s32 = s32[] constant(0)
       ROOT address_computation = f16[4,8,8]{2,1,0} fusion(p0, c1_s32, c0_s32, p1),
         kind=kCustom, calls=dynamic-slice-fusion,
-        backend_config={"operation_queue_id":"0","wait_on_operation_queues":[],
-                        "fusion_backend_config":{
+        backend_config={"fusion_backend_config":{
                           "kind":"__custom_fusion",
                           "custom_fusion_config":{
                             "name":"dynamic_address_computation"

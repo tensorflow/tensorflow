@@ -1389,7 +1389,7 @@ async_call {
   p0 = f32[32,32] parameter(0)
   p1 = f32[32,32] parameter(1)
   gemm = (f32[32,32], s8[8192]) custom-call(p0, p1), custom_call_target="__cublas$gemm",
-    backend_config={"operation_queue_id":"0","wait_on_operation_queues":[],
+    backend_config={
       "gemm_backend_config":{"alpha_real":1,"alpha_imag":0,"beta":0,
       "dot_dimension_numbers":
         {"lhs_contracting_dimensions":["1"],"rhs_contracting_dimensions":["0"]},
@@ -1405,8 +1405,7 @@ ENTRY main {
     to_apply=async_call,
     frontend_attributes={_xla_stream_annotation="1"}
   ROOT call-done = f32[32,32]{1,0} call-done(call-start),
-    frontend_attributes={_xla_stream_annotation="1"},
-    backend_config={"operation_queue_id":"0"}
+    frontend_attributes={_xla_stream_annotation="1"}
 })";
   auto module = ParseAndReturnVerifiedModule(hlo_text).value();
 
@@ -1445,7 +1444,7 @@ async_call {
   p0 = f32[32,32] parameter(0)
   p1 = f32[32,32] parameter(1)
   gemm = (f32[32,32], s8[8192]) custom-call(p0, p1), custom_call_target="__cublas$gemm",
-    backend_config={"operation_queue_id":"0","wait_on_operation_queues":[],
+    backend_config={
       "gemm_backend_config":{"alpha_real":1,"alpha_imag":0,"beta":0,
       "dot_dimension_numbers":
         {"lhs_contracting_dimensions":["1"],"rhs_contracting_dimensions":["0"]},
@@ -1461,8 +1460,7 @@ ENTRY main {
     to_apply=async_call,
     frontend_attributes={_xla_stream_annotation="1"}
   ROOT call-done = f32[32,32]{1,0} call-done(call-start),
-    frontend_attributes={_xla_stream_annotation="1"},
-    backend_config={"operation_queue_id":"0"}
+    frontend_attributes={_xla_stream_annotation="1"}
 })";
 
   const absl::string_view fdo_profile = R"pb(
