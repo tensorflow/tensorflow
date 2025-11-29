@@ -22,6 +22,8 @@ limitations under the License.
 #include <string>
 
 #include "google/protobuf/text_format.h"
+#include "absl/status/status.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/platform.h"
@@ -94,13 +96,13 @@ inline uint32_t ReverseBits32(uint32_t n) {
 }
 }  // namespace port
 
-inline bool ParseFromStringOverload(const std::string& in,
+inline bool ParseFromStringOverload(absl::string_view in,
                                     TFLITE_PROTO_NS::Message* proto) {
   return TFLITE_PROTO_NS::TextFormat::ParseFromString(in, proto);
 }
 
 template <typename Proto>
-bool ParseFromStringEitherTextOrBinary(const std::string& input_file_contents,
+bool ParseFromStringEitherTextOrBinary(absl::string_view input_file_contents,
                                        Proto* proto) {
   if (proto->ParseFromString(input_file_contents)) {
     return true;
