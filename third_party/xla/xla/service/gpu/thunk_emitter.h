@@ -16,20 +16,15 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_THUNK_EMITTER_H_
 #define XLA_SERVICE_GPU_THUNK_EMITTER_H_
 
-#include <array>
 #include <cstdint>
-#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
-#include <utility>
 #include <vector>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "llvm/IR/Type.h"
-#include "llvm/IR/Value.h"
 #include "xla/autotuning.pb.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/backends/gpu/runtime/copy_thunk.h"
@@ -45,8 +40,7 @@ limitations under the License.
 #include "xla/service/gpu/ir_emitter_context.h"
 #include "xla/shape_util.h"
 
-namespace xla {
-namespace gpu {
+namespace xla::gpu {
 
 // Emits Thunks for the given HLO module.
 class ThunkEmitter {
@@ -55,18 +49,14 @@ class ThunkEmitter {
     return ir_emitter_context_->platform_name();
   }
 
+  explicit ThunkEmitter(IrEmitterContext* ir_emitter_context);
   ThunkEmitter(const ThunkEmitter&) = delete;
   ThunkEmitter& operator=(const ThunkEmitter&) = delete;
-
-  static std::unique_ptr<ThunkEmitter> Create(
-      IrEmitterContext* ir_emitter_context);
 
   absl::StatusOr<ThunkSequence> EmitHloEntryComputation(
       const HloModule* module);
 
  private:
-  explicit ThunkEmitter(IrEmitterContext* ir_emitter_context);
-
   // Emits code for the given HLO computation.
   //
   // Also populates related information to 'ir_emitter_context_' for
@@ -77,73 +67,83 @@ class ThunkEmitter {
   absl::StatusOr<ThunkSequence> EmitHloComputation(
       const HloComputation* computation);
 
-  absl::StatusOr<ThunkSequence> EmitCommandBufferThunk(
-      const HloInstruction* instr);
+  absl::StatusOr<ThunkSequence> EmitHloInstruction(
+      const HloInstruction* hlo, bool emit_group_thunks = false);
 
-  // ThunkEmitter handles the following instructions differently from
-  // IrEmitter. It also mixes in some special handling for custom kernels
-  // via the ThunkEmitter.
-  absl::Status EmitConstant(const HloConstantInstruction* instr);
+  absl::StatusOr<ThunkSequence> EmitAsyncStart(const HloInstruction* hlo);
 
-  absl::StatusOr<ThunkSequence> EmitConditional(const HloInstruction* instr);
-  absl::StatusOr<ThunkSequence> EmitConvolutionThunk(
-      const HloCustomCallInstruction* instr);
-  absl::StatusOr<ThunkSequence> EmitGemmThunk(
-      const HloCustomCallInstruction* instr);
-  absl::StatusOr<ThunkSequence> EmitCublasLtMatmulThunk(
-      const HloCustomCallInstruction* instr);
-  absl::StatusOr<ThunkSequence> EmitCublasLtMatmulThunkF8(
-      const HloCustomCallInstruction* instr);
-  absl::StatusOr<ThunkSequence> EmitConvolutionReorderThunk(
-      const HloCustomCallInstruction* instr);
-  absl::StatusOr<ThunkSequence> EmitNormThunk(
-      const HloCustomCallInstruction* instr);
-  absl::StatusOr<ThunkSequence> EmitCuDnnThunk(
-      const HloCustomCallInstruction* instr);
-  absl::StatusOr<ThunkSequence> EmitPtxCustomCall(
-      const HloCustomCallInstruction* instr);
-  absl::StatusOr<ThunkSequence> EmitCubDeviceRadixSort(
-      const HloCustomCallInstruction* instr);
-  absl::StatusOr<ThunkSequence> EmitCustomCallThunk(
-      const HloCustomCallInstruction* instr);
-  absl::StatusOr<ThunkSequence> EmitFftThunk(const HloFftInstruction* instr);
-  absl::StatusOr<ThunkSequence> EmitAsyncComputation(
-      const HloInstruction* instr);
-  absl::StatusOr<ThunkSequence> EmitFusion(const HloFusionInstruction* instr);
-  absl::StatusOr<ThunkSequence> EmitCopy(const HloInstruction* instr);
+  absl::StatusOr<ThunkSequence> EmitAsyncComputation(const HloInstruction* hlo);
+
   absl::StatusOr<ThunkSequence> EmitAsyncCustomCallStart(
-      const HloInstruction* instr);
-  absl::StatusOr<ThunkSequence> EmitWhile(const HloInstruction* instr);
-  absl::StatusOr<ThunkSequence> EmitInfeed(const HloInfeedInstruction* instr);
-  absl::StatusOr<ThunkSequence> EmitOutfeed(const HloOutfeedInstruction* instr);
-  absl::StatusOr<ThunkSequence> EmitRngGetAndUpdateState(
-      const HloRngGetAndUpdateStateInstruction* instr);
+      const HloInstruction* hlo);
 
-  absl::StatusOr<ThunkSequence> EmitSort(const HloSortInstruction* sort);
-  absl::StatusOr<ThunkSequence> EmitTriangularSolveCustomCall(
-      const HloInstruction* instr);
-  absl::StatusOr<ThunkSequence> EmitTopKCustomCall(
-      const HloCustomCallInstruction* instr);
-  absl::StatusOr<ThunkSequence> EmitTritonCustomCall(
-      const HloCustomCallInstruction* instr);
+  absl::StatusOr<ThunkSequence> EmitAsyncDone(const HloInstruction* hlo);
 
-  absl::StatusOr<ThunkSequence> EmitSendThunk(const HloSendInstruction* instr,
-                                              bool emit_group_thunks);
-  absl::StatusOr<ThunkSequence> EmitSendDoneThunk(
-      const HloSendDoneInstruction* instr);
+  absl::StatusOr<ThunkSequence> EmitCommandBufferThunk(
+      const HloInstruction* hlo);
 
-  absl::StatusOr<ThunkSequence> EmitRecvThunk(const HloRecvInstruction* instr,
-                                              bool emit_group_thunks);
-  absl::StatusOr<ThunkSequence> EmitRecvDoneThunk(
-      const HloRecvDoneInstruction* instr);
+  absl::StatusOr<ThunkSequence> EmitCollectiveAsyncDone(
+      Thunk::Kind kind, const HloInstruction* hlo);
+
+  absl::StatusOr<ThunkSequence> EmitCollectiveGroupStartThunk(
+      const HloInstruction* hlo);
+
+  absl::StatusOr<ThunkSequence> EmitCollectiveMetadata(
+      const HloInstruction* hlo);
+
+  absl::StatusOr<ThunkSequence> EmitCollectivePermute(
+      const HloCollectivePermuteInstruction* hlo);
 
   template <typename CollectiveThunkType, typename HloInstType>
   absl::StatusOr<ThunkSequence> EmitCollectiveThunk(
       Thunk::Kind kind, const HloInstruction* async_start,
       const HloInstType* inst, std::optional<bool> use_global_device_ids);
 
-  absl::StatusOr<ThunkSequence> EmitCollectiveAsyncDone(
-      Thunk::Kind kind, const HloInstruction* instr);
+  absl::StatusOr<ThunkSequence> EmitConditional(const HloInstruction* hlo);
+
+  absl::StatusOr<ThunkSequence> EmitConstant(const HloConstantInstruction* hlo);
+
+  absl::StatusOr<ThunkSequence> EmitConvolutionReorderThunk(
+      const HloCustomCallInstruction* hlo);
+
+  absl::StatusOr<ThunkSequence> EmitConvolutionThunk(
+      const HloCustomCallInstruction* hlo);
+
+  absl::StatusOr<ThunkSequence> EmitCopy(const HloInstruction* hlo);
+
+  absl::StatusOr<ThunkSequence> EmitCopyStartThunk(
+      const HloCopyStartInstruction* hlo);
+
+  absl::StatusOr<ThunkSequence> EmitCopyDoneThunk(const HloInstruction* hlo);
+
+  absl::StatusOr<ThunkSequence> EmitCuDnnThunk(
+      const HloCustomCallInstruction* hlo);
+
+  absl::StatusOr<ThunkSequence> EmitCubDeviceRadixSort(
+      const HloCustomCallInstruction* hlo);
+
+  absl::StatusOr<ThunkSequence> EmitCublasLtMatmulThunk(
+      const HloCustomCallInstruction* hlo);
+
+  absl::StatusOr<ThunkSequence> EmitCublasLtMatmulThunkF8(
+      const HloCustomCallInstruction* hlo);
+
+  absl::StatusOr<ThunkSequence> EmitCustomCallThunk(
+      const HloCustomCallInstruction* hlo);
+
+  template <typename HloInstType>
+  absl::StatusOr<ThunkSequence> EmitDegeneratedCollectiveThunk(
+      std::vector<CollectiveThunk::Buffer>& buffers,
+      const HloInstruction* async_start, const HloInstType* inst);
+
+  absl::StatusOr<ThunkSequence> EmitFusion(const HloFusionInstruction* hlo);
+
+  absl::StatusOr<ThunkSequence> EmitFftThunk(const HloFftInstruction* hlo);
+
+  absl::StatusOr<ThunkSequence> EmitGemmThunk(
+      const HloCustomCallInstruction* hlo);
+
+  absl::StatusOr<ThunkSequence> EmitInfeed(const HloInfeedInstruction* hlo);
 
   template <typename NvshmemAllReduceThunkType,
             typename HloAllReduceInstruction>
@@ -152,139 +152,59 @@ class ThunkEmitter {
       const HloAllReduceInstruction* inst,
       std::optional<bool> use_global_device_ids);
 
-  absl::StatusOr<ThunkSequence> EmitNvshmemAsyncDone(
-      Thunk::Kind kind, const HloInstruction* instr);
+  absl::StatusOr<ThunkSequence> EmitNvshmemAsyncDone(Thunk::Kind kind,
+                                                     const HloInstruction* hlo);
 
-  template <typename HloInstType>
-  absl::StatusOr<ThunkSequence> EmitDegeneratedCollectiveThunk(
-      std::vector<CollectiveThunk::Buffer>& buffers,
-      const HloInstruction* async_start, const HloInstType* inst);
+  absl::StatusOr<ThunkSequence> EmitNormThunk(
+      const HloCustomCallInstruction* hlo);
+
+  absl::StatusOr<ThunkSequence> EmitOutfeed(const HloOutfeedInstruction* hlo);
+
+  absl::StatusOr<ThunkSequence> EmitPadToStatic(
+      const HloCustomCallInstruction* hlo);
+
+  absl::StatusOr<ThunkSequence> EmitPtxCustomCall(
+      const HloCustomCallInstruction* hlo);
+
+  absl::StatusOr<ThunkSequence> EmitRecvDoneThunk(
+      const HloRecvDoneInstruction* hlo);
+
+  absl::StatusOr<ThunkSequence> EmitRecvThunk(const HloRecvInstruction* hlo,
+                                              bool emit_group_thunks);
 
   template <typename ThunkType>
   absl::StatusOr<ThunkSequence> EmitReplicaOrPartitionId(
-      const HloInstruction* instr);
+      const HloInstruction* hlo);
 
-  absl::StatusOr<ThunkSequence> EmitCollectiveMetadata(
-      const HloInstruction* instr);
+  absl::StatusOr<ThunkSequence> EmitRngGetAndUpdateState(
+      const HloRngGetAndUpdateStateInstruction* hlo);
 
-  absl::StatusOr<ThunkSequence> EmitCollectivePermute(
-      const HloCollectivePermuteInstruction* instr);
-
-  absl::StatusOr<ThunkSequence> EmitCopyStartThunk(
-      const HloCopyStartInstruction* instr);
-
-  absl::StatusOr<ThunkSequence> EmitCopyDoneThunk(const HloInstruction* instr);
-
-  absl::StatusOr<ThunkSequence> EmitHloInstruction(
-      const HloInstruction* instr, bool emit_group_thunks = false);
-
-  absl::StatusOr<ThunkSequence> EmitCollectiveGroupStartThunk(
-      const HloInstruction* instr);
-
-  // Input = {static array, dynamic_dim0, dynamic_dim1}
-  // Output = {dynamic array(with dynamic dimension meta data at the end)}
-  // For a tensor with static dimension [2][<=5] and dynamic dimension [2][3]
-  // (`_` stands for padding)
-  // Input = {{1,2,3,_,_,4,5,6_,_}, 2, 3}
-  // Output = {{1,2,3,4,5,6,_,_,_,_,2,3}}
-
-  // pseudo code for padToStatic on a 2d array
-  //   ```
-  // void padToStatic(int** input, int** output, int threads_per_block,
-  //                  int meta_data_offset, int max_num_element,
-  //                  int static_dim0_size, int static_dim1_size) {
-  //   int* source_array = input[0];
-  //   int* dest_array = output[0];
-
-  //   // extract the dynamic dimension from the source array's metadata
-  //   int* dyn_dim0_size = source_array + meta_data_offset;
-  //   int* dyn_dim1_size = source_array + meta_data_offset + sizeof(int);
-
-  //   // only one thread need to store the dynamic index
-  //   int thread_id = GetThreadId();
-  //   int block_id = GetBlockId();
-  //   if (thread_id == 0 && block_id == 0) {
-  //     *output[1] = *dyn_dim0_size;
-  //     *output[2] = *dyn_dim1_size;
-  //   }
-
-  //   int dyn_element_total = 1;
-  //   dyn_element_total *= *dyn_dim0_size;
-  //   dyn_element_total *= *dyn_dim1_size;
-  //   linear_index = block_id * threads_per_block + thread_id;
-  //   if (linear_index < max_num_element) {
-  //     Index static_index =
-  //         delinerized(linerized_index, static_dim0_size, static_dim1_size);
-  //     if (linerized_index < dyn_element_total) {
-  //       Index dyn_index =
-  //           delinerized(linerized_index, *dyn_dim0_size, *dyn_dim1_size);
-  //       dest_array[dyn_index.dim0][dyn_index.dim1] =
-  //           source_array[static_index.dim0][static_index.dim1];
-  //     }
-  //   }
-  //   return;
-  // }
-  //   ```
-  absl::StatusOr<ThunkSequence> EmitPadToStatic(
-      const HloCustomCallInstruction* instr);
-
-  // Input = {dynamic array(with dynamic dimension meta data at the end)}
-  // Output = {static array, dynamic_dim0, dynamic_dim1}
-  // For a tensor with static dimension [2][<=5] and dynamic dimension [2][3]
-  // (`_` stands for padding)
-  // Input = {{1,2,3,4,5,6,_,_,_,_,2,3}}
-  // Output = {{1,2,3,_,_,4,5,6_,_}, 2, 3}
-
-  // pseudo code for sliceToDynamic on a 2d array
-  //   ```
-  // void sliceToDynamic(int** input, int** output, int threads_per_block,
-  //                  int meta_data_offset, int max_num_element,
-  //                  int static_dim0_size, int static_dim1_size) {
-  //   int* source_array = input[0];
-  //   int* dest_array = output[0];
-
-  //   // calculate the location where metadata needs to be inserted
-  //   int* dyn_dim0_size = dest_array + meta_data_offset;
-  //   int* dyn_dim1_size = dest_array + meta_data_offset + sizeof(int);
-
-  //   // only one thread need to store the dynamic index
-  //   int thread_id = GetThreadId();
-  //   int block_id = GetBlockId();
-  //   if (thread_id == 0 && block_id == 0) {
-  //     *dyn_dim0_size = *output[1];
-  //     *dyn_dim1_size = *output[2];
-  //   }
-
-  //   int dyn_element_total = 1;
-  //   dyn_element_total *= *dyn_dim0_size;
-  //   dyn_element_total *= *dyn_dim1_size;
-  //   linear_index = block_id * threads_per_block + thread_id;
-  //   if (linear_index < max_num_element) {
-  //     Index static_index =
-  //         delinerized(linerized_index, static_dim0_size, static_dim1_size);
-  //     if (linerized_index < dyn_element_total) {
-  //       Index dyn_index =
-  //           delinerized(linerized_index, *dyn_dim0_size, *dyn_dim1_size);
-  //       dest_array[static_index.dim0][static_index.dim1] =
-  //           source_array[dyn_index.dim0][dyn_index.dim1];
-  //     }
-  //   }
-  //   return;
-  // }
-  //   ```
   absl::StatusOr<ThunkSequence> EmitSliceToDynamic(
-      const HloCustomCallInstruction* instr);
+      const HloCustomCallInstruction* hlo);
 
-  // Returns a WhileThunk that invokes thunk sequences for 'condition' and
-  // 'body' sub-computations of while instruction.
-  absl::StatusOr<std::unique_ptr<Thunk>> BuildWhileThunk(
-      const HloInstruction* instr, const Thunk::ThunkInfo& thunk_info,
-      std::optional<int64_t> trip_count);
+  absl::StatusOr<ThunkSequence> EmitSendDoneThunk(
+      const HloSendDoneInstruction* hlo);
+
+  absl::StatusOr<ThunkSequence> EmitSendThunk(const HloSendInstruction* hlo,
+                                              bool emit_group_thunks);
+
+  absl::StatusOr<ThunkSequence> EmitSort(const HloSortInstruction* sort);
+
+  absl::StatusOr<ThunkSequence> EmitTopKCustomCall(
+      const HloCustomCallInstruction* hlo);
+
+  absl::StatusOr<ThunkSequence> EmitTriangularSolveCustomCall(
+      const HloInstruction* hlo);
+
+  absl::StatusOr<ThunkSequence> EmitTritonCustomCall(
+      const HloCustomCallInstruction* hlo);
+
+  absl::StatusOr<ThunkSequence> EmitWhile(const HloInstruction* hlo);
 
   absl::Status AssertNonDeterminismIsOkay(const std::string& op_name);
 
   absl::StatusOr<BufferAllocation::Slice> GetAllocationSliceForHlo(
-      const HloInstruction* instr, const ShapeIndex& index = {}) const;
+      const HloInstruction* hlo, const ShapeIndex& index = {}) const;
 
   CollectivesAsyncEvents& GetCollectivesAsyncEvents() {
     return ir_emitter_context_->collectives_async_events();
@@ -309,7 +229,6 @@ class ThunkEmitter {
   std::unique_ptr<CallGraph> call_graph_;
 };
 
-}  // namespace gpu
-}  // namespace xla
+}  // namespace xla::gpu
 
 #endif  // XLA_SERVICE_GPU_THUNK_EMITTER_H_

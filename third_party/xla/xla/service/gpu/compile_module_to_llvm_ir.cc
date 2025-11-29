@@ -191,24 +191,23 @@ absl::StatusOr<std::unique_ptr<SequentialThunk>> LowerHlo(
     TF_RETURN_IF_ERROR(
         LoadCache(ir_emitter_context, options.xla_gpu_kernel_cache_file()));
   }
-  std::unique_ptr<ThunkEmitter> thunk_emitter =
-      ThunkEmitter::Create(&ir_emitter_context);
-    XLA_SCOPED_LOGGING_TIMER(absl::StrCat(
-        "GpuCompiler::RunBackend - IR emission for ", hlo_module->name()));
+  auto thunk_emitter = std::make_unique<ThunkEmitter>(&ir_emitter_context);
+  XLA_SCOPED_LOGGING_TIMER(absl::StrCat(
+      "GpuCompiler::RunBackend - IR emission for ", hlo_module->name()));
 
-    TF_ASSIGN_OR_RETURN(auto thunks,
-                        thunk_emitter->EmitHloEntryComputation(hlo_module));
+  TF_ASSIGN_OR_RETURN(auto thunks,
+                      thunk_emitter->EmitHloEntryComputation(hlo_module));
 
-    RemoveUnusedAndUninitializedGlobals(
-        platform_id, options, ir_emitter_context.llvm_module_constants(),
-        ir_emitter_context.constants());
+  RemoveUnusedAndUninitializedGlobals(
+      platform_id, options, ir_emitter_context.llvm_module_constants(),
+      ir_emitter_context.constants());
 
-    // This won't record values for calls that error out (because if they error
-    // out we have no way of telling how far through the process we got).
-    uint64_t end_usecs = tsl::Env::Default()->NowMicros();
-    RecordHloToLlvmDuration(end_usecs - start_usecs);
-    return std::make_unique<SequentialThunk>(Thunk::ThunkInfo{},
-                                             std::move(thunks));
+  // This won't record values for calls that error out (because if they error
+  // out we have no way of telling how far through the process we got).
+  uint64_t end_usecs = tsl::Env::Default()->NowMicros();
+  RecordHloToLlvmDuration(end_usecs - start_usecs);
+  return std::make_unique<SequentialThunk>(Thunk::ThunkInfo{},
+                                           std::move(thunks));
 }
 
 }  // namespace

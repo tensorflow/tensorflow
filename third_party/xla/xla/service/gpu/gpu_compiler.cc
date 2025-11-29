@@ -3031,7 +3031,7 @@ GpuCompiler::LoadExecutableFromAotResult(
     TF_RETURN_IF_ERROR(LoadCache(ir_emitter_context, cache_file_path));
   }
 
-  auto thunk_emitter = ThunkEmitter::Create(&ir_emitter_context);
+  auto thunk_emitter = std::make_unique<ThunkEmitter>(&ir_emitter_context);
   TF_ASSIGN_OR_RETURN(auto thunks,
                       thunk_emitter->EmitHloEntryComputation(hlo_module.get()));
 

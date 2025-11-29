@@ -156,6 +156,15 @@ class IrEmitterContext {
         llvm_ir::SanitizeFunctionName(suggested_name));
   }
 
+  std::unique_ptr<llvm::Module> CreateLLVMModule(
+      const std::string& module_name) {
+    auto llvm_module =
+        std::make_unique<llvm::Module>(module_name, llvm_module_->getContext());
+    llvm_module->setTargetTriple(llvm::Triple(llvm_module_->getTargetTriple()));
+    llvm_module->setDataLayout(llvm_module_->getDataLayout());
+    return llvm_module;
+  }
+
  private:
   const HloModule* hlo_module_;
   const BufferAssignment* buffer_assignment_;
