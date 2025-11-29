@@ -77,20 +77,22 @@ TEST(ScopeTest, ScopeAndOpNames) {
 
 namespace {
 
-string LastOp(const Scope& scope) { return scope.GetUniqueNameForOp("Last"); }
+std::string LastOp(const Scope& scope) {
+  return scope.GetUniqueNameForOp("Last");
+}
 
-std::vector<string> AnotherCompositeOp(const Scope& scope) {
+std::vector<std::string> AnotherCompositeOp(const Scope& scope) {
   auto cop_scopes = scope.GetCompositeOpScopes("another_cop");
-  const string c1 = cop_scopes.child.GetUniqueNameForOp("c1");
-  const string c2 = cop_scopes.child.GetUniqueNameForOp("mul");
+  const std::string c1 = cop_scopes.child.GetUniqueNameForOp("c1");
+  const std::string c2 = cop_scopes.child.GetUniqueNameForOp("mul");
   return {c1, c2, LastOp(cop_scopes.last)};
 }
 
-std::vector<string> LinearOp(const Scope& scope) {
+std::vector<std::string> LinearOp(const Scope& scope) {
   auto cop_scopes = scope.GetCompositeOpScopes("linear");
   Scope linear = cop_scopes.child;
-  const string mul_op_name = linear.GetUniqueNameForOp("mul");
-  const string bias_add_op_name = linear.GetUniqueNameForOp("bias_add");
+  const std::string mul_op_name = linear.GetUniqueNameForOp("mul");
+  const std::string bias_add_op_name = linear.GetUniqueNameForOp("bias_add");
   auto cop_names = AnotherCompositeOp(cop_scopes.last);
   return {mul_op_name, bias_add_op_name, cop_names[0], cop_names[1],
           cop_names[2]};
