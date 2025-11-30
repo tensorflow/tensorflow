@@ -24,6 +24,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
@@ -213,6 +214,7 @@ TEST_F(KernelNameTracerTest, CreateUnsupportedPlatform) {
 }
 
 TEST_F(KernelNameTracerTest, CaptureKernelNames) {
+  LOG(INFO) << "KernelNameTracerCuda::start......";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<KernelNameTracer> tracer,
                           KernelNameTracer::Create(platform_->id()));
   tracer->start();
