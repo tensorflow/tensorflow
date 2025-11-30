@@ -36,7 +36,7 @@ static const int kStepId = 123;
 
 class CollectiveRemoteAccessLocalTest : public ::testing::Test {
  protected:
-  const string kTaskName = "/job:localhost/replica:0/task:0";
+  const std::string kTaskName = "/job:localhost/replica:0/task:0";
 
   CollectiveRemoteAccessLocalTest() {
     work_queue_ = std::make_shared<UnboundedWorkQueue>(Env::Default(), "test");
