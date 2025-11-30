@@ -14,6 +14,7 @@
 # ==============================================================================
 
 from collections.abc import Callable, Iterable
+import sys
 from typing import Optional
 
 from absl.testing import absltest
@@ -476,4 +477,5 @@ class XtileLoweringTest(absltest.TestCase):
 
 
 if __name__ == "__main__":
+  base_testlib.init(sys.argv)
   absltest.main()
