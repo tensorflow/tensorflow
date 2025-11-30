@@ -1864,5 +1864,64 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
         )
         self.evaluate(result)
 
+  @test_util.run_in_graph_and_eager_modes
+  @test_util.run_gpu_only
+  def testComplexVariableAssignAddWithConj(self):
+    """Test for issue #105367: Segfault with complex Variable, Conj, and assign_add."""
+    # Test with complex64
+    input_data_64 = constant_op.constant([1 + 2j, 3 + 4j], dtype=dtypes.complex64)
+    var_64 = resource_variable_ops.ResourceVariable(input_data_64, dtype=dtypes.complex64)
+    self.evaluate(var_64.initializer)
+    
+    conj_result_64 = math_ops.conj(input_data_64)
+    assign_add_op_64 = var_64.assign_add(conj_result_64)
+    result_64 = self.evaluate(assign_add_op_64)
+    
+    # Expected: [1+2j, 3+4j] + [1-2j, 3-4j] = [2+0j, 6+0j]
+    expected_64 = np.array([2+0j, 6+0j], dtype=np.complex64)
+    self.assertAllClose(result_64, expected_64)
+    
+    # Test with complex128
+    input_data_128 = constant_op.constant([1 + 2j, 3 + 4j], dtype=dtypes.complex128)
+    var_128 = resource_variable_ops.ResourceVariable(input_data_128, dtype=dtypes.complex128)
+    self.evaluate(var_128.initializer)
+    
+    conj_result_128 = math_ops.conj(input_data_128)
+    assign_add_op_128 = var_128.assign_add(conj_result_128)
+    result_128 = self.evaluate(assign_add_op_128)
+    
+    # Expected: [1+2j, 3+4j] + [1-2j, 3-4j] = [2+0j, 6+0j]
+    expected_128 = np.array([2+0j, 6+0j], dtype=np.complex128)
+    self.assertAllClose(result_128, expected_128)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testComplexVariableAssignAddCPU(self):
+    """Test complex Variable assign_add on CPU."""
+    # Test with complex64
+    input_data_64 = constant_op.constant([1 + 2j, 3 + 4j], dtype=dtypes.complex64)
+    var_64 = resource_variable_ops.ResourceVariable(input_data_64, dtype=dtypes.complex64)
+    self.evaluate(var_64.initializer)
+    
+    delta_64 = constant_op.constant([0.5 - 1j, 1 + 0.5j], dtype=dtypes.complex64)
+    assign_add_op_64 = var_64.assign_add(delta_64)
+    result_64 = self.evaluate(assign_add_op_64)
+    
+    # Expected: [1+2j, 3+4j] + [0.5-1j, 1+0.5j] = [1.5+1j, 4+4.5j]
+    expected_64 = np.array([1.5+1j, 4+4.5j], dtype=np.complex64)
+    self.assertAllClose(result_64, expected_64)
+    
+    # Test with complex128
+    input_data_128 = constant_op.constant([1 + 2j, 3 + 4j], dtype=dtypes.complex128)
+    var_128 = resource_variable_ops.ResourceVariable(input_data_128, dtype=dtypes.complex128)
+    self.evaluate(var_128.initializer)
+    
+    delta_128 = constant_op.constant([0.5 - 1j, 1 + 0.5j], dtype=dtypes.complex128)
+    assign_add_op_128 = var_128.assign_add(delta_128)
+    result_128 = self.evaluate(assign_add_op_128)
+    
+    # Expected: [1+2j, 3+4j] + [0.5-1j, 1+0.5j] = [1.5+1j, 4+4.5j]
+    expected_128 = np.array([1.5+1j, 4+4.5j], dtype=np.complex128)
+    self.assertAllClose(result_128, expected_128)
+
 if __name__ == "__main__":
   test.main()
