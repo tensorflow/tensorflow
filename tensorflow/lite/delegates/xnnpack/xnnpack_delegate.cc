@@ -208,10 +208,13 @@ bool CheckZeroPointForPerChannelQuantization(
     TfLiteContext* context, const TfLiteTensor& tensor, int t,
     const TfLiteIntArray& quantization_zero_point) {
   // All zero points must be 0, except for INT4 tensors where it can also
-  // be 8.
+  // be 8 and INT2 where it can also be -0.5f.
   for (int c = 0; c < quantization_zero_point.size; c++) {
     const int zero_point = quantization_zero_point.data[c];
-    if (zero_point != 0 && (tensor.type != kTfLiteInt4 && zero_point != 8)) {
+    if (zero_point != 0 && (tensor.type != kTfLiteInt4 && zero_point != 8) &&
+        (tensor.type != kTfLiteInt2 &&
+         reinterpret_cast<const float*>(quantization_zero_point.data)[c] !=
+             -0.5f)) {
       TF_LITE_KERNEL_LOG(context,
                          "unsupported zero-point value (%d) in channel %d of "
                          "%s tensor %d in XNNPACK delegate",
@@ -268,7 +271,8 @@ xnn_datatype GetXNNPackDatatype(TfLiteContext* context,
       return xnn_datatype_quint8;
     }
     case kTfLiteInt8:
-    case kTfLiteInt4: {
+    case kTfLiteInt4:
+    case kTfLiteInt2: {
       switch (tensor.quantization.type) {
         case kTfLiteAffineQuantization: {
           const auto quantization_params =
@@ -320,6 +324,8 @@ xnn_datatype GetXNNPackDatatype(TfLiteContext* context,
               return xnn_datatype_qcint8;
             case kTfLiteInt4:
               return xnn_datatype_qcint4;
+            case kTfLiteInt2:
+              return xnn_datatype_qcint2;
             default:
               // Outermost switch prevents this
               TFL_UNREACHABLE();
@@ -528,6 +534,24 @@ TfLiteStatus DefineXNNPACKValue(TfLiteContext* context, xnn_subgraph_t subgraph,
           dims.size(), dims.data(), data, XNN_INVALID_VALUE_ID, flags,
           xnnpack_id);
     } break;
+    case xnn_datatype_qcint2:
+      status = xnn_define_channelwise_quantized_tensor_value_v3(
+          subgraph, datatype,
+          static_cast<const TfLiteAffineQuantization*>(
+              tensor.quantization.params)
+              ->zero_point->data[0],
+          static_cast<const TfLiteAffineQuantization*>(
+              tensor.quantization.params)
+              ->scale->data,
+          dims.size(),
+          static_cast<const TfLiteAffineQuantization*>(
+              tensor.quantization.params)
+              ->quantized_dimension,
+          dims.data(), data, XNN_INVALID_VALUE_ID, flags, xnnpack_id,
+          reinterpret_cast<float*>(static_cast<const TfLiteAffineQuantization*>(
+                                       tensor.quantization.params)
+                                       ->zero_point->data));
+      break;
     case xnn_datatype_qcint4:
     case xnn_datatype_qcint8:
     case xnn_datatype_qcint32:
@@ -2228,7 +2252,7 @@ class Subgraph {
     return kTfLiteError;
   }
 
-  static TfLiteStatus CheckTensorFloat32OrFloat16OrQCInt4OrQCInt8Type(
+  static TfLiteStatus CheckTensorFloat32OrFloat16OrQCInt4OrQCInt2OrQCInt8Type(
       const Delegate& delegate, TfLiteContext* context,
       const TfLiteTensor& tensor, int expected_quantized_dimension,
       int tensor_index, int node_index) {
@@ -2236,10 +2260,12 @@ class Subgraph {
       case kTfLiteFloat32:
       case kTfLiteFloat16:
         return kTfLiteOk;
+      case kTfLiteInt2:
       case kTfLiteInt4:
       case kTfLiteInt8:
         if (delegate.support_signed_8bit_quantization() &&
-            (kTfLiteInt8 == tensor.type || kTfLiteInt4 == tensor.type)) {
+            (kTfLiteInt8 == tensor.type || kTfLiteInt4 == tensor.type ||
+             kTfLiteInt2 == tensor.type)) {
           switch (tensor.quantization.type) {
             case kTfLiteAffineQuantization: {
               const TfLiteAffineQuantization* quantization_params =
@@ -2272,6 +2298,20 @@ class Subgraph {
                 TF_LITE_MAYBE_KERNEL_LOG(
                     context,
                     "4 bit weights must be per channel and not per tensor "
+                    "quantized in channel #%" PRId32
+                    " in tensor #%d in node #%d",
+                    quantization_params->quantized_dimension, tensor_index,
+                    node_index);
+                return kTfLiteError;
+              } else if (tensor.type == kTfLiteInt2 &&
+                         quantization_params->scale->size !=
+                             SizeOfDimension(
+                                 &tensor,
+                                 quantization_params->quantized_dimension)) {
+                // Only per channel quantized 2 bit weights are supported.
+                TF_LITE_MAYBE_KERNEL_LOG(
+                    context,
+                    "2 bit weights must be per channel and not per tensor "
                     "quantized in channel #%" PRId32
                     " in tensor #%d in node #%d",
                     quantization_params->quantized_dimension, tensor_index,
@@ -4489,9 +4529,11 @@ class Subgraph {
     // Dynamic filter is supported, but only for FP32.
     if (!(delegate.support_dynamic_fully_connected_operator() &&
           filter_tensor.type == kTfLiteFloat32)) {
-      TF_LITE_ENSURE_STATUS(CheckTensorFloat32OrFloat16OrQCInt4OrQCInt8Type(
-          delegate, logging_context, filter_tensor,
-          /*expected_quantized_dimension=*/0, filter_tensor_id, node_index));
+      TF_LITE_ENSURE_STATUS(
+          CheckTensorFloat32OrFloat16OrQCInt4OrQCInt2OrQCInt8Type(
+              delegate, logging_context, filter_tensor,
+              /*expected_quantized_dimension=*/0, filter_tensor_id,
+              node_index));
       if (quasi_static_tensors.count(filter_tensor_id) == 0) {
         TF_LITE_ENSURE_STATUS(CheckTensorStaticAllocation(
             logging_context, filter_tensor, filter_tensor_id,
@@ -4543,10 +4585,12 @@ class Subgraph {
     bool dynamically_quantized =
         (!delegate.disable_dynamically_quantized_ops() &&
          (input_tensor.type == kTfLiteFloat32 &&
-          (filter_tensor.type == kTfLiteInt4 ||
+          (filter_tensor.type == kTfLiteInt2 ||
+           filter_tensor.type == kTfLiteInt4 ||
            filter_tensor.type == kTfLiteInt8)));
     bool supported_srq = (input_tensor.type == kTfLiteInt8 &&
-                          (filter_tensor.type == kTfLiteInt4 ||
+                          (filter_tensor.type == kTfLiteInt2 ||
+                           filter_tensor.type == kTfLiteInt4 ||
                            filter_tensor.type == kTfLiteInt8));
     if (input_tensor.type != output_tensor.type ||
         ((input_tensor.type != filter_tensor.type) &&
@@ -4558,7 +4602,9 @@ class Subgraph {
       return kTfLiteError;
     }
 
-    if (filter_tensor.type == kTfLiteInt4 && input_channels % 2 == 1) {
+    if ((filter_tensor.type == kTfLiteInt4 ||
+         filter_tensor.type == kTfLiteInt2) &&
+        input_channels % 2 == 1) {
       TF_LITE_MAYBE_KERNEL_LOG(
           logging_context,
           "unsupported odd number of inputs channels (%d) in FULLY_CONNECTED"
@@ -4644,6 +4690,16 @@ class Subgraph {
             &filter_tensor.dims->data[NumDimensions(&filter_tensor)]);
         uint32_t kernel_id = XNN_INVALID_VALUE_ID;
         switch (filter_datatype) {
+          case xnn_datatype_qcint2: {
+            int32_t zero_point_value = filter_params->zero_point->data[0];
+            status = xnn_define_channelwise_quantized_tensor_value_v3(
+                subgraph, filter_datatype, zero_point_value,
+                filter_params->scale->data, filter_dims.size(),
+                /*channel_dim=*/0, filter_dims.data(),
+                GetTensorData<int8_t>(&filter_tensor), XNN_INVALID_VALUE_ID,
+                /*flags=*/0, &kernel_id, filter_params->scale->data);
+            break;
+          }
           case xnn_datatype_qcint4:
           case xnn_datatype_qcint8: {
             int32_t zero_point_value = filter_params->zero_point->data[0];
