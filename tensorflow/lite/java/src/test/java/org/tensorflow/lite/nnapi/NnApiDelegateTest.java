@@ -91,7 +91,10 @@ public final class NnApiDelegateTest {
           .contains(
               "Couldn't find TensorFlow Lite runtime's InterpreterFactoryImpl class -- make sure"
                   + " your app links in the right TensorFlow Lite runtime. You should declare a"
-                  + " build dependency on org.tensorflow.lite:tensorflow-lite, or call"
+                  + " build dependency on");
+      assertThat(e)
+          .hasMessageThat()
+          .contains(" , or call"
                   + " setTfLiteRuntime with a value other than TfLiteRuntime.FROM_APPLICATION_ONLY"
                   + " (see docs for"
                   + " org.tensorflow.lite.nnapi.NnApiDelegate.Options#setTfLiteRuntime).");
