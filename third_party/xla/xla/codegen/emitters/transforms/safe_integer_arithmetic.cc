@@ -20,11 +20,11 @@ limitations under the License.
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"  // IWYU pragma: keep
-#include "mlir/Dialect/Vector/IR/VectorOps.h"
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributeInterfaces.h"
 #include "mlir/IR/BuiltinAttributes.h"
+#include "mlir/IR/BuiltinTypeInterfaces.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/TypeUtilities.h"
@@ -44,8 +44,8 @@ namespace {
 
 inline mlir::Value GetConstantOrSplat(mlir::ImplicitLocOpBuilder& builder,
                                       mlir::Type type, mlir::TypedAttr value) {
-  if (auto vector_type = mlir::dyn_cast<mlir::VectorType>(type)) {
-    value = mlir::SplatElementsAttr::get(vector_type, value);
+  if (auto shaped_type = mlir::dyn_cast<mlir::ShapedType>(type)) {
+    value = mlir::SplatElementsAttr::get(shaped_type, value);
   }
   return mlir::arith::ConstantOp::create(builder, type, value);
 }
