@@ -743,7 +743,7 @@ CHECK-DAG: %[[P1:.*]] = f32[2,4]{1,0} parameter(1)
 CHECK-DAG: ROOT {{.*}} = f32[2,2]{1,0}
 CHECK-SAME: fusion(%[[P0]], %[[P1]], %[[P0]], %[[P1]]),
 CHECK-SAME: kind=kCustom
-CHECK-SAME: __triton_gemm
+CHECK-SAME: __triton
 })");
 }
 
@@ -774,7 +774,7 @@ CHECK-DAG: %[[P0:.*]] = f32[2,4]{1,0} parameter(0)
 CHECK-DAG: ROOT {{.*}} = f32[2,2]{1,0}
 CHECK-SAME: fusion(%[[P0]], %[[P0]])
 CHECK-SAME: kind=kCustom
-CHECK-SAME: __triton_gemm
+CHECK-SAME: __triton
 })");
 }
 
@@ -808,7 +808,7 @@ CHECK-DAG: %[[P1:.*]] = f32[4,4]{1,0} parameter(1)
 CHECK-DAG: ROOT {{.*}} = f32[4,4]{1,0}
 CHECK-SAME: fusion(%[[P0]], %[[P1]])
 CHECK-SAME: kind=kCustom
-CHECK-SAME: __triton_gemm
+CHECK-SAME: __triton
 })");
 }
 
@@ -841,7 +841,7 @@ CHECK-DAG: %[[P1:.*]] = f32[4,4]{1,0} parameter(1)
 CHECK-DAG: ROOT {{.*}} = f32[4,4]{1,0}
 CHECK-SAME: fusion(%[[P0]], %[[P0]], %[[P1]])
 CHECK-SAME: kind=kCustom
-CHECK-SAME: __triton_gemm
+CHECK-SAME: __triton
 })");
 }
 
@@ -1397,7 +1397,7 @@ ENTRY e {
 ; CHECK:      ROOT {{.*}} = f16[18,50]{1,0}
 ; CHECK:        fusion([[P0]], [[P1]]),
 ; CHECK:        kind=kCustom
-; CHECK:        __triton_gemm
+; CHECK: __triton
 })");
 }
 

@@ -45,7 +45,7 @@ ENTRY main {
   p1 = s4[64,448,320]{2,1,0} parameter(1)
   ROOT fusion = bf16[64,768,448]{2,1,0} fusion(p0, p1),
     kind=kCustom, calls=fcomp,
-    backend_config={"fusion_backend_config":{"kind":"__triton_gemm"}}
+    backend_config={"fusion_backend_config":{"kind":"__triton"}}
 })");
   EXPECT_TRUE(GemmFusionSwapOperands().Run(module->get()).value());
   EXPECT_TRUE(*RunFileCheck(module->get()->ToString(), R"(
@@ -76,7 +76,7 @@ ENTRY main {
   p1 = s4[448,320]{1,0} parameter(1)
   ROOT fusion = bf16[768,96,448]{2,1,0} fusion(p0, p1),
     kind=kCustom, calls=fcomp,
-    backend_config={"fusion_backend_config":{"kind":"__triton_gemm"}}
+    backend_config={"fusion_backend_config":{"kind":"__triton"}}
 })");
   EXPECT_TRUE(GemmFusionSwapOperands().Run(module->get()).value());
   EXPECT_TRUE(*RunFileCheck(module->get()->ToString(), R"(
@@ -104,7 +104,7 @@ ENTRY main {
   p1 = s4[448,320]{1,0} parameter(1)
   ROOT fusion = bf16[768,96,448]{2,1,0} fusion(p0, p1),
     kind=kCustom, calls=fcomp,
-    backend_config={"fusion_backend_config":{"kind":"__triton_gemm"}}
+    backend_config={"fusion_backend_config":{"kind":"__triton"}}
 })");
   EXPECT_FALSE(GemmFusionSwapOperands().Run(module->get()).value());
 }
@@ -129,7 +129,7 @@ ENTRY main {
   p1 = s4[64,32,320]{2,1,0} parameter(1)
   ROOT fusion = bf16[64,768,32]{2,1,0} fusion(p0, p1),
     kind=kCustom, calls=fcomp,
-    backend_config={"fusion_backend_config":{"kind":"__triton_gemm"}}
+    backend_config={"fusion_backend_config":{"kind":"__triton"}}
 })");
   EXPECT_FALSE(GemmFusionSwapOperands().Run(module->get()).value());
 }
@@ -152,7 +152,7 @@ ENTRY main {
   p1 = bf16[64,448,320]{2,1,0} parameter(1)
   ROOT fusion = bf16[64,32,448]{2,1,0} fusion(p0, p1),
     kind=kCustom, calls=fcomp,
-    backend_config={"fusion_backend_config":{"kind":"__triton_gemm"}}
+    backend_config={"fusion_backend_config":{"kind":"__triton"}}
 })");
   EXPECT_TRUE(GemmFusionSwapOperands().Run(module->get()).value());
   EXPECT_TRUE(*RunFileCheck(module->get()->ToString(), R"(
@@ -180,7 +180,7 @@ ENTRY main {
   p1 = s4[64,448,320]{2,1,0} parameter(1)
   ROOT fusion = bf16[64,32,448]{2,1,0} fusion(p0, p1),
     kind=kCustom, calls=fcomp,
-    backend_config={"fusion_backend_config":{"kind":"__triton_gemm"}}
+    backend_config={"fusion_backend_config":{"kind":"__triton"}}
 })");
   EXPECT_TRUE(GemmFusionSwapOperands().Run(module->get()).value());
   EXPECT_TRUE(*RunFileCheck(module->get()->ToString(), R"(
@@ -206,7 +206,7 @@ ENTRY main {
   p1 = bf16[64,48,320]{2,1,0} parameter(1)
   ROOT fusion = bf16[64,32,48]{2,1,0} fusion(p0, p1),
     kind=kCustom, calls=fcomp,
-    backend_config={"fusion_backend_config":{"kind":"__triton_gemm"}}
+    backend_config={"fusion_backend_config":{"kind":"__triton"}}
 })");
   EXPECT_FALSE(GemmFusionSwapOperands().Run(module->get()).value());
 }
@@ -229,7 +229,7 @@ ENTRY main {
   p1 = s8[1536,1536]{1,0} parameter(1)
   p2 = s8[1536,1536]{1,0} parameter(2)
   ROOT %micro_kernel = bf16[8,3072]{1,0} fusion(p0, p1, p2), kind=kCustom, calls=fcomp,
-    backend_config={"fusion_backend_config":{"kind":"__triton_gemm"}}
+    backend_config={"fusion_backend_config":{"kind":"__triton"}}
 })");
   EXPECT_TRUE(GemmFusionSwapOperands().Run(module->get()).value());
 }

@@ -136,7 +136,7 @@ class FloatSupportTest : public HloHardwareIndependentTestBase {
             computation));
     GpuBackendConfig config;
     config.mutable_fusion_backend_config()->set_kind(
-        std::string(kTritonGemmFusionKind));
+        std::string(kTritonFusionKind));
     CHECK_OK(fusion->set_backend_config(config));
 
     module->AddEntryComputation(builder.Build());
