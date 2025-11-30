@@ -33,15 +33,15 @@ namespace test {
 
 //=== Helper methods to construct the nodes.
 
-NodeDef MakeNodeConst(const string& name) {
+NodeDef MakeNodeConst(const std::string& name) {
   NodeDef n;
   n.set_name(name);
   n.set_op("Const");
   return n;
 }
 
-NodeDef MakeNode2Arg(const string& name, const string& opcode,
-                     const string& arg1, const string& arg2) {
+NodeDef MakeNode2Arg(const std::string& name, const std::string& opcode,
+                     const std::string& arg1, const std::string& arg2) {
   NodeDef n;
   n.set_name(name);
   n.set_op(opcode);
@@ -50,9 +50,9 @@ NodeDef MakeNode2Arg(const string& name, const string& opcode,
   return n;
 }
 
-NodeDef MakeNode4Arg(const string& name, const string& opcode,
-                     const string& arg1, const string& arg2, const string& arg3,
-                     const string& arg4) {
+NodeDef MakeNode4Arg(const std::string& name, const std::string& opcode,
+                     const std::string& arg1, const std::string& arg2,
+                     const std::string& arg3, const std::string& arg4) {
   NodeDef n;
   n.set_name(name);
   n.set_op(opcode);
@@ -64,45 +64,47 @@ NodeDef MakeNode4Arg(const string& name, const string& opcode,
 }
 
 // Not really a 2-argument but convenient to construct.
-NodeDef MakeNodeShapeN(const string& name, const string& arg1,
-                       const string& arg2) {
+NodeDef MakeNodeShapeN(const std::string& name, const std::string& arg1,
+                       const std::string& arg2) {
   // This opcode is multi-input but not commutative.
   return MakeNode2Arg(name, "ShapeN", arg1, arg2);
 }
 
 // Not really a 2-argument but convenient to construct.
-NodeDef MakeNodeIdentityN(const string& name, const string& arg1,
-                          const string& arg2) {
+NodeDef MakeNodeIdentityN(const std::string& name, const std::string& arg1,
+                          const std::string& arg2) {
   // The argument is of a list type.
   return MakeNode2Arg(name, "IdentityN", arg1, arg2);
 }
 
-NodeDef MakeNodeQuantizedConcat(const string& name, const string& arg1,
-                                const string& arg2, const string& arg3,
-                                const string& arg4) {
+NodeDef MakeNodeQuantizedConcat(const std::string& name,
+                                const std::string& arg1,
+                                const std::string& arg2,
+                                const std::string& arg3,
+                                const std::string& arg4) {
   // This opcode has multiple multi-inputs.
   return MakeNode4Arg(name, "QuantizedConcat", arg1, arg2, arg3, arg4);
 }
 
 //=== Helper methods for analysing the structures.
 
-std::vector<string> DumpLinkMap(const GenNode::LinkMap& link_map) {
+std::vector<std::string> DumpLinkMap(const GenNode::LinkMap& link_map) {
   // This will order the entries first.
-  std::map<string, string> ordered;
+  std::map<std::string, std::string> ordered;
   for (const auto& link : link_map) {
-    string key = string(link.first);
+    std::string key = std::string(link.first);
 
     // Order the other sides too. They may be repeating, so store them
     // in a multiset.
-    std::multiset<string> others;
+    std::multiset<std::string> others;
     for (const auto& other : link.second) {
-      others.emplace(
-          absl::StrFormat("%s[%s]", other.node->name(), string(other.port)));
+      others.emplace(absl::StrFormat("%s[%s]", other.node->name(),
+                                     std::string(other.port)));
     }
     ordered[key] = absl::StrJoin(others, ", ");
   }
   // Now dump the result in a predictable order.
-  std::vector<string> result;
+  std::vector<std::string> result;
   result.reserve(ordered.size());
   for (const auto& link : ordered) {
     result.emplace_back(link.first + ": " + link.second);
@@ -110,7 +112,8 @@ std::vector<string> DumpLinkMap(const GenNode::LinkMap& link_map) {
   return result;
 }
 
-std::vector<string> DumpLinkHashMap(const SigNode::LinkHashMap& link_hash_map) {
+std::vector<std::string> DumpLinkHashMap(
+    const SigNode::LinkHashMap& link_hash_map) {
   // The entries in this map are ordered by hash value which might change
   // at any point. Re-order them by the link tag.
   std::map<SigNode::LinkTag, size_t> tags;
@@ -118,23 +121,24 @@ std::vector<string> DumpLinkHashMap(const SigNode::LinkHashMap& link_hash_map) {
     tags[entry.second.tag] = entry.first;
   }
 
-  std::vector<string> result;
+  std::vector<std::string> result;
   for (const auto& id : tags) {
     // For predictability, the nodes need to be sorted.
-    std::vector<string> nodes;
+    std::vector<std::string> nodes;
     for (const auto& peer : link_hash_map.at(id.second).peers) {
       nodes.emplace_back(peer->name());
     }
     std::sort(nodes.begin(), nodes.end());
-    result.emplace_back(string(id.first.local) + ":" + string(id.first.remote) +
-                        ": " + absl::StrJoin(nodes, ", "));
+    result.emplace_back(std::string(id.first.local) + ":" +
+                        std::string(id.first.remote) + ": " +
+                        absl::StrJoin(nodes, ", "));
   }
   return result;
 }
 
-std::vector<string> DumpHashedPeerVector(
+std::vector<std::string> DumpHashedPeerVector(
     const SigNode::HashedPeerVector& hashed_peers) {
-  std::vector<string> result;
+  std::vector<std::string> result;
 
   // Each subset of nodes with the same hash has to be sorted by name.
   // Other than that, the vector is already ordered by full tags.
