@@ -17,10 +17,6 @@ cc_library(
     hdrs = ["xla_tpu_pjrt_client.h"],
     compatible_with = get_compatible_with_libtpu_portable(),
     deps = [
-        if_google(
-            ":tpu_static_registration",
-            ":tpu_dynamic_registration",
-        ),
         "//xla/pjrt:pjrt_api",
         "//xla/pjrt:pjrt_client",
         "//xla/pjrt:pjrt_common",
@@ -30,7 +26,15 @@ cc_library(
         "//xla/pjrt/plugin:plugin_names",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/status:statusor",
-    ],
+    ] + select({
+        # copybara:uncomment_begin(different config setting in OSS)
+        # "//tools/cc_target_os:gce": [":tpu_dynamic_registration"],
+        # copybara:uncomment_end
+        "//conditions:default": [if_google(
+            ":tpu_static_registration",
+            ":tpu_dynamic_registration",
+        )],
+    }),
 )
 
 cc_library(
