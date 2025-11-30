@@ -59,11 +59,11 @@ TEST_F(UniformQuantizedAddOpTest, InvalidShape) {
   AddInputFromArray<qint32>(TensorShape({2, 3}), {-6, -4, -2, 0, 2, 4});
   AddInputFromArray<qint32>(TensorShape({2}), {-100, 0});
   AddInputFromArray<float>(TensorShape({3}), {2, 3, 4});
-  AddInputFromArray<int32>(TensorShape({3}), {-20, 0, 20});
+  AddInputFromArray<int32_t>(TensorShape({3}), {-20, 0, 20});
   AddInputFromArray<float>(TensorShape({2}), {2, 3});
-  AddInputFromArray<int32>(TensorShape({2}), {0, 0});
+  AddInputFromArray<int32_t>(TensorShape({2}), {0, 0});
   AddInputFromArray<float>(TensorShape({3}), {2, 3, 4});
-  AddInputFromArray<int32>(TensorShape({3}), {-40, 0, 40});
+  AddInputFromArray<int32_t>(TensorShape({3}), {-40, 0, 40});
 
   EXPECT_TRUE(absl::IsInvalidArgument(RunOpKernel()));
 }
@@ -94,11 +94,11 @@ TEST_F(UniformQuantizedAddOpTest, PerChannelSameScale) {
   AddInputFromArray<qint32>(TensorShape({2, 3}), {-6, -4, -2, 0, 2, 4});
   AddInputFromArray<qint32>(TensorShape({3}), {-100, 0, 100});
   AddInputFromArray<float>(TensorShape({3}), {2, 3, 4});
-  AddInputFromArray<int32>(TensorShape({3}), {-20, 0, 20});
+  AddInputFromArray<int32_t>(TensorShape({3}), {-20, 0, 20});
   AddInputFromArray<float>(TensorShape({3}), {2, 3, 4});
-  AddInputFromArray<int32>(TensorShape({3}), {0, 0, 0});
+  AddInputFromArray<int32_t>(TensorShape({3}), {0, 0, 0});
   AddInputFromArray<float>(TensorShape({3}), {2, 3, 4});
-  AddInputFromArray<int32>(TensorShape({3}), {-40, 0, 40});
+  AddInputFromArray<int32_t>(TensorShape({3}), {-40, 0, 40});
 
   TF_ASSERT_OK(RunOpKernel());
   Tensor expected(allocator(), DT_QINT32, TensorShape({2, 3}));
@@ -132,11 +132,11 @@ TEST_F(UniformQuantizedAddOpTest, PerTensorSameScaleLhsMultiDims) {
   AddInputFromArray<qint32>(TensorShape({2, 3}), {-6, -4, -2, 0, 2, 4});
   AddInputFromArray<qint32>(TensorShape({3}), {-100, 0, 100});
   AddInputFromArray<float>(TensorShape({}), {2});
-  AddInputFromArray<int32>(TensorShape({}), {-20});
+  AddInputFromArray<int32_t>(TensorShape({}), {-20});
   AddInputFromArray<float>(TensorShape({}), {2});
-  AddInputFromArray<int32>(TensorShape({}), {0});
+  AddInputFromArray<int32_t>(TensorShape({}), {0});
   AddInputFromArray<float>(TensorShape({}), {2});
-  AddInputFromArray<int32>(TensorShape({}), {-40});
+  AddInputFromArray<int32_t>(TensorShape({}), {-40});
 
   TF_ASSERT_OK(RunOpKernel());
   Tensor expected(allocator(), DT_QINT32, TensorShape({2, 3}));
@@ -170,11 +170,11 @@ TEST_F(UniformQuantizedAddOpTest, PerTensorSameScaleRhsMultiDims) {
   AddInputFromArray<qint32>(TensorShape({3}), {-100, 0, 100});
   AddInputFromArray<qint32>(TensorShape({2, 3}), {-6, -4, -2, 0, 2, 4});
   AddInputFromArray<float>(TensorShape({}), {2});
-  AddInputFromArray<int32>(TensorShape({}), {0});
+  AddInputFromArray<int32_t>(TensorShape({}), {0});
   AddInputFromArray<float>(TensorShape({}), {2});
-  AddInputFromArray<int32>(TensorShape({}), {-20});
+  AddInputFromArray<int32_t>(TensorShape({}), {-20});
   AddInputFromArray<float>(TensorShape({}), {2});
-  AddInputFromArray<int32>(TensorShape({}), {-40});
+  AddInputFromArray<int32_t>(TensorShape({}), {-40});
 
   TF_ASSERT_OK(RunOpKernel());
   Tensor expected(allocator(), DT_QINT32, TensorShape({2, 3}));
@@ -208,11 +208,11 @@ TEST_F(UniformQuantizedAddOpTest, PerChannelDifferentScale) {
   AddInputFromArray<qint32>(TensorShape({2, 3}), {-6, -4, -2, 0, 2, 4});
   AddInputFromArray<qint32>(TensorShape({3}), {-100, 0, 100});
   AddInputFromArray<float>(TensorShape({3}), {2, 3, 1});
-  AddInputFromArray<int32>(TensorShape({3}), {-20, 0, 20});
+  AddInputFromArray<int32_t>(TensorShape({3}), {-20, 0, 20});
   AddInputFromArray<float>(TensorShape({3}), {1, 3, 2});
-  AddInputFromArray<int32>(TensorShape({3}), {0, 0, 0});
+  AddInputFromArray<int32_t>(TensorShape({3}), {0, 0, 0});
   AddInputFromArray<float>(TensorShape({3}), {4, 3, 2});
-  AddInputFromArray<int32>(TensorShape({3}), {-40, 0, 40});
+  AddInputFromArray<int32_t>(TensorShape({3}), {-40, 0, 40});
 
   TF_ASSERT_OK(RunOpKernel());
   Tensor expected(allocator(), DT_QINT32, TensorShape({2, 3}));
@@ -246,11 +246,11 @@ TEST_F(UniformQuantizedAddOpTest, PerChannelDifferentScaleBroadcastLhs) {
   AddInputFromArray<qint32>(TensorShape({1, 3}), {-100, 0, 100});
   AddInputFromArray<qint32>(TensorShape({2, 3}), {-6, -4, -2, 0, 2, 4});
   AddInputFromArray<float>(TensorShape({3}), {1, 3, 2});
-  AddInputFromArray<int32>(TensorShape({3}), {0, 0, 0});
+  AddInputFromArray<int32_t>(TensorShape({3}), {0, 0, 0});
   AddInputFromArray<float>(TensorShape({3}), {2, 3, 1});
-  AddInputFromArray<int32>(TensorShape({3}), {-20, 0, 20});
+  AddInputFromArray<int32_t>(TensorShape({3}), {-20, 0, 20});
   AddInputFromArray<float>(TensorShape({3}), {4, 3, 2});
-  AddInputFromArray<int32>(TensorShape({3}), {-40, 0, 40});
+  AddInputFromArray<int32_t>(TensorShape({3}), {-40, 0, 40});
 
   TF_ASSERT_OK(RunOpKernel());
   Tensor expected(allocator(), DT_QINT32, TensorShape({2, 3}));
@@ -284,11 +284,11 @@ TEST_F(UniformQuantizedAddOpTest, PerTensorDifferentScale) {
   AddInputFromArray<qint32>(TensorShape({2, 3}), {-6, -4, -2, 0, 2, 4});
   AddInputFromArray<qint32>(TensorShape({3}), {-100, 0, 100});
   AddInputFromArray<float>(TensorShape({}), {2});
-  AddInputFromArray<int32>(TensorShape({}), {-20});
+  AddInputFromArray<int32_t>(TensorShape({}), {-20});
   AddInputFromArray<float>(TensorShape({}), {1});
-  AddInputFromArray<int32>(TensorShape({}), {0});
+  AddInputFromArray<int32_t>(TensorShape({}), {0});
   AddInputFromArray<float>(TensorShape({}), {4});
-  AddInputFromArray<int32>(TensorShape({}), {-40});
+  AddInputFromArray<int32_t>(TensorShape({}), {-40});
 
   TF_ASSERT_OK(RunOpKernel());
   Tensor expected(allocator(), DT_QINT32, TensorShape({2, 3}));
@@ -322,11 +322,11 @@ TEST_F(UniformQuantizedAddOpTest, PerTensorSameScaleTensorAddScalar) {
   AddInputFromArray<qint32>(TensorShape({2, 3}), {-6, -4, -2, 0, 2, 4});
   AddInputFromArray<qint32>(TensorShape({}), {-100});
   AddInputFromArray<float>(TensorShape({}), {2});
-  AddInputFromArray<int32>(TensorShape({}), {-20});
+  AddInputFromArray<int32_t>(TensorShape({}), {-20});
   AddInputFromArray<float>(TensorShape({}), {2});
-  AddInputFromArray<int32>(TensorShape({}), {0});
+  AddInputFromArray<int32_t>(TensorShape({}), {0});
   AddInputFromArray<float>(TensorShape({}), {2});
-  AddInputFromArray<int32>(TensorShape({}), {-40});
+  AddInputFromArray<int32_t>(TensorShape({}), {-40});
 
   TF_ASSERT_OK(RunOpKernel());
   Tensor expected(allocator(), DT_QINT32, TensorShape({2, 3}));
@@ -360,11 +360,11 @@ TEST_F(UniformQuantizedAddOpTest, PerTensorSameScaleScalarAddTensor) {
   AddInputFromArray<qint32>(TensorShape({}), {-100});
   AddInputFromArray<qint32>(TensorShape({2, 3}), {-6, -4, -2, 0, 2, 4});
   AddInputFromArray<float>(TensorShape({}), {2});
-  AddInputFromArray<int32>(TensorShape({}), {0});
+  AddInputFromArray<int32_t>(TensorShape({}), {0});
   AddInputFromArray<float>(TensorShape({}), {2});
-  AddInputFromArray<int32>(TensorShape({}), {-20});
+  AddInputFromArray<int32_t>(TensorShape({}), {-20});
   AddInputFromArray<float>(TensorShape({}), {2});
-  AddInputFromArray<int32>(TensorShape({}), {-40});
+  AddInputFromArray<int32_t>(TensorShape({}), {-40});
 
   TF_ASSERT_OK(RunOpKernel());
   Tensor expected(allocator(), DT_QINT32, TensorShape({2, 3}));
@@ -398,11 +398,11 @@ TEST_F(UniformQuantizedAddOpTest, PerTensorSameScaleScalarAddScalar) {
   AddInputFromArray<qint32>(TensorShape({}), {-6});
   AddInputFromArray<qint32>(TensorShape({}), {-100});
   AddInputFromArray<float>(TensorShape({}), {2});
-  AddInputFromArray<int32>(TensorShape({}), {-20});
+  AddInputFromArray<int32_t>(TensorShape({}), {-20});
   AddInputFromArray<float>(TensorShape({}), {2});
-  AddInputFromArray<int32>(TensorShape({}), {0});
+  AddInputFromArray<int32_t>(TensorShape({}), {0});
   AddInputFromArray<float>(TensorShape({}), {2});
-  AddInputFromArray<int32>(TensorShape({}), {-40});
+  AddInputFromArray<int32_t>(TensorShape({}), {-40});
 
   TF_ASSERT_OK(RunOpKernel());
   Tensor expected(allocator(), DT_QINT32, TensorShape({}));
@@ -436,11 +436,11 @@ TEST_F(UniformQuantizedAddOpTest, TensorAddEmptyTensor) {
   AddInputFromArray<qint32>(TensorShape({2, 1, 1}), {-6, -12});
   AddInputFromArray<qint32>(TensorShape({2, 0, 1}), {});
   AddInputFromArray<float>(TensorShape({}), {2});
-  AddInputFromArray<int32>(TensorShape({}), {-20});
+  AddInputFromArray<int32_t>(TensorShape({}), {-20});
   AddInputFromArray<float>(TensorShape({}), {2});
-  AddInputFromArray<int32>(TensorShape({}), {0});
+  AddInputFromArray<int32_t>(TensorShape({}), {0});
   AddInputFromArray<float>(TensorShape({}), {2});
-  AddInputFromArray<int32>(TensorShape({}), {-40});
+  AddInputFromArray<int32_t>(TensorShape({}), {-40});
 
   TF_ASSERT_OK(RunOpKernel());
   Tensor expected(allocator(), DT_QINT32, TensorShape({2, 0, 1}));
@@ -474,11 +474,11 @@ TEST_F(UniformQuantizedAddOpTest, ScalarAddEmptyTensor) {
   AddInputFromArray<qint32>(TensorShape({}), {-6});
   AddInputFromArray<qint32>(TensorShape({2, 0, 1}), {});
   AddInputFromArray<float>(TensorShape({}), {2});
-  AddInputFromArray<int32>(TensorShape({}), {-20});
+  AddInputFromArray<int32_t>(TensorShape({}), {-20});
   AddInputFromArray<float>(TensorShape({}), {2});
-  AddInputFromArray<int32>(TensorShape({}), {0});
+  AddInputFromArray<int32_t>(TensorShape({}), {0});
   AddInputFromArray<float>(TensorShape({}), {2});
-  AddInputFromArray<int32>(TensorShape({}), {-40});
+  AddInputFromArray<int32_t>(TensorShape({}), {-40});
 
   TF_ASSERT_OK(RunOpKernel());
   Tensor expected(allocator(), DT_QINT32, TensorShape({2, 0, 1}));
