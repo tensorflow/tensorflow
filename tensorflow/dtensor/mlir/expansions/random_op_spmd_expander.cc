@@ -146,8 +146,9 @@ StatusOr<mlir::Value> GetDeviceSeed(const Layout& layout, mlir::Operation* op) {
     }
   }
 
-  mlir::RankedTensorType const_type = mlir::RankedTensorType::get(
-      {static_cast<int64>(multipliers.size()), 1}, builder.getIntegerType(32));
+  mlir::RankedTensorType const_type =
+      mlir::RankedTensorType::get({static_cast<int64_t>(multipliers.size()), 1},
+                                  builder.getIntegerType(32));
   mlir::Attribute const_attr =
       mlir::DenseIntElementsAttr::get(const_type, multipliers);
   mlir::Value multiplier =
