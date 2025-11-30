@@ -646,6 +646,15 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
         TF_ASSIGN_OR_RETURN(
             bool supported_by_cublaslt,
             GemmIsSupportedByCublasLt(*instr, gemm_backend_config));
+        if (!supported_by_cublaslt &&
+            gpu_backend_config.gemm_backend_config()
+                    .precision_config()
+                    .algorithm() ==
+                PrecisionConfig::ALG_DOT_ANY_F8_ANY_F8_F32_FAST_ACCUM) {
+          return absl::UnavailableError(
+              "Unsupported algorithm: FP8 fast accumulation was requested, but "
+              "this dot is not supported by cublasLt in FP8 mode.");
+        }
         std::optional<MatchedFp8Param> a, b;
         if (supported_by_cublaslt && HloPredicateIsOp<HloOpcode::kDot>(instr) &&
             (a = MatchFp8Param(
