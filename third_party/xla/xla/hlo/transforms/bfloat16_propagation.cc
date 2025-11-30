@@ -736,7 +736,7 @@ bool BFloat16Propagation::ResolveInconsistencyOfAliasingBuffersHelper(
           }
           VLOG(2) << "Adjust to F32 due to aliased dataflow value: "
                   << value->ToString() << "\n";
-          CHECK_EQ(value_type, F32);
+          CHECK(value_type == F32 || value_type == C64);
           type = F32;
           break;
         }
