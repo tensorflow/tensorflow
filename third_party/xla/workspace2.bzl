@@ -311,24 +311,14 @@ def _tf_repositories():
         # https://github.com/google/googletest/commit/28e9d1f26771c6517c3b4be10254887673c94018
         sha256 = "f253ca1a07262f8efde8328e4b2c68979e40ddfcfc001f70d1d5f612c7de2974",
         strip_prefix = "googletest-28e9d1f26771c6517c3b4be10254887673c94018",
-        # Patch googletest to:
-        #   - avoid dependencies on @fuchsia_sdk,
-        #   - refer to re2 as @com_googlesource_code_re2,
-        #   - refer to abseil as @com_google_absl.
-        #
-        # To update the patch, run:
-        # $ cd ~
-        # $ mkdir -p github
-        # $ cd github
-        # $ git clone https://github.com/google/googletest.git
-        # $ cd googletest
-        # $ git checkout 28e9d1f26771c6517c3b4be10254887673c94018
-        # ... make local changes to googletest ...
-        # $ git diff > <client-root>/third_party/tensorflow/third_party/googletest/googletest.patch
-        #
-        # The patch path is relative to third_party/xla.
+        # Patch googletest to make the gtest_main target export the gtest headers.
+        # This is needed to comply with the layering check.
         patch_file = ["//third_party/googletest:googletest.patch"],
         urls = tf_mirror_urls("https://github.com/google/googletest/archive/28e9d1f26771c6517c3b4be10254887673c940189.zip"),
+        repo_mapping = {
+            "@abseil-cpp": "@com_google_absl",
+            "@re2": "@com_googlesource_code_re2",
+        },
     )
 
     tf_http_archive(
@@ -426,6 +416,7 @@ def _tf_repositories():
         sha256 = "9dc53f851107eaf87b391136d13b815df97ec8f76dadb487b58b2fc45e624d2c",
         strip_prefix = "boringssl-c00d7ca810e93780bd0c8ee4eea28f4f2ea4bcdc",
         system_build_file = "//third_party:boringssl.BUILD",
+        patch_file = ["//third_party:boringssl.diff"],
         urls = tf_mirror_urls("https://github.com/google/boringssl/archive/c00d7ca810e93780bd0c8ee4eea28f4f2ea4bcdc.tar.gz"),
     )
 
@@ -433,7 +424,14 @@ def _tf_repositories():
         name = "com_google_ortools",
         sha256 = "f6a0bd5b9f3058aa1a814b798db5d393c31ec9cbb6103486728997b49ab127bc",
         strip_prefix = "or-tools-9.11",
-        patch_file = ["//third_party/ortools:ortools.patch"],
+        patch_file = [
+            "//third_party/ortools:ortools.patch",
+            # On a version upgrade, this patch can be regenerated with the command:
+            # third_party/gen_disable_layering_check_patch.sh \
+            #   https://github.com/google/or-tools/archive/v9.11.tar.gz \
+            #   > third_party/ortools/layering_check.diff
+            "//third_party/ortools:layering_check.diff",
+        ],
         urls = tf_mirror_urls("https://github.com/google/or-tools/archive/v9.11.tar.gz"),
         repo_mapping = {
             "@com_google_protobuf_cc": "@com_google_protobuf",

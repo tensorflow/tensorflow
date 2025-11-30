@@ -24,6 +24,10 @@ cc_library(
 cc_library(
     name = "numpy_headers",
     deps = [":numpy_headers_2", ":numpy_headers_1"],
+    # For the layering check to work we need to re-export the headers from the
+    # dependencies.
+    hdrs = glob(["site-packages/numpy/_core/include/**/*.h"]) +
+           glob(["site-packages/numpy/core/include/**/*.h"]),
 )
 """,
         ),
