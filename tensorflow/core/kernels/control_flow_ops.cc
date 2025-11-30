@@ -149,8 +149,8 @@ TF_CALL_bool(REGISTER_GPU_REF_SWITCH);
                               .TypeConstraint<type>("T"), \
                           SwitchOp)
 
-REGISTER_GPU_HOST_KERNEL(int32);
-REGISTER_GPU_HOST_REF_KERNEL(int32);
+REGISTER_GPU_HOST_KERNEL(int32_t);
+REGISTER_GPU_HOST_REF_KERNEL(int32_t);
 REGISTER_GPU_HOST_KERNEL(tstring);
 REGISTER_GPU_HOST_REF_KERNEL(tstring);
 REGISTER_GPU_HOST_KERNEL(ResourceHandle);
@@ -215,8 +215,8 @@ TF_CALL_bool(REGISTER_DEFAULT_REF_SWITCH);
                               .TypeConstraint<type>("T"), \
                           SwitchOp)
 
-REGISTER_DEFAULT_HOST_KERNEL(int32);
-REGISTER_DEFAULT_HOST_REF_KERNEL(int32);
+REGISTER_DEFAULT_HOST_KERNEL(int32_t);
+REGISTER_DEFAULT_HOST_REF_KERNEL(int32_t);
 REGISTER_DEFAULT_HOST_KERNEL(tstring);
 REGISTER_DEFAULT_HOST_REF_KERNEL(tstring);
 REGISTER_DEFAULT_HOST_KERNEL(ResourceHandle);
@@ -238,7 +238,7 @@ class RefSelectOp : public OpKernel {
                                  "but it has shape ",
                                  index_tensor.shape().DebugString())));
 
-    int32_t index = index_tensor.scalar<int32>()();
+    int32_t index = index_tensor.scalar<int32_t>()();
 
     OP_REQUIRES(context, index >= 0 && index < num_ref_inputs_,
                 absl::InvalidArgumentError(
@@ -299,7 +299,7 @@ void MergeOp::Compute(OpKernelContext* context) {
         Tensor* value_index = nullptr;
         OP_REQUIRES_OK(context, context->allocate_output(1, TensorShape({}),
                                                          &value_index));
-        value_index->scalar<int32>()() = i;
+        value_index->scalar<int32_t>()() = i;
       }
     }
   }
@@ -356,7 +356,7 @@ TF_CALL_variant(REGISTER_GPU_KERNEL);
                               .TypeConstraint<type>("T"), \
                           MergeOp)
 
-REGISTER_GPU_HOST_KERNEL(int32);
+REGISTER_GPU_HOST_KERNEL(int32_t);
 REGISTER_GPU_HOST_KERNEL(tstring);
 REGISTER_GPU_HOST_KERNEL(ResourceHandle);
 
@@ -403,7 +403,7 @@ TF_CALL_variant(REGISTER_DEFAULT_KERNEL);
                               .TypeConstraint<type>("T"), \
                           MergeOp)
 
-REGISTER_DEFAULT_HOST_KERNEL(int32);
+REGISTER_DEFAULT_HOST_KERNEL(int32_t);
 REGISTER_DEFAULT_HOST_KERNEL(tstring);
 REGISTER_DEFAULT_HOST_KERNEL(ResourceHandle);
 
@@ -457,8 +457,8 @@ TF_CALL_variant(REGISTER_GPU_KERNEL);
                               .TypeConstraint<type>("T"), \
                           EnterOp)
 
-REGISTER_GPU_HOST_KERNEL(int32);
-REGISTER_GPU_HOST_REF_KERNEL(int32);
+REGISTER_GPU_HOST_KERNEL(int32_t);
+REGISTER_GPU_HOST_REF_KERNEL(int32_t);
 REGISTER_GPU_HOST_KERNEL(tstring);
 REGISTER_GPU_HOST_REF_KERNEL(tstring);
 REGISTER_GPU_HOST_KERNEL(ResourceHandle);
@@ -501,8 +501,8 @@ TF_CALL_variant(REGISTER_DEFAULT_KERNEL);
                               .TypeConstraint<type>("T"), \
                           EnterOp)
 
-REGISTER_DEFAULT_HOST_KERNEL(int32);
-REGISTER_DEFAULT_HOST_REF_KERNEL(int32);
+REGISTER_DEFAULT_HOST_KERNEL(int32_t);
+REGISTER_DEFAULT_HOST_REF_KERNEL(int32_t);
 REGISTER_DEFAULT_HOST_KERNEL(tstring);
 REGISTER_DEFAULT_HOST_REF_KERNEL(tstring);
 REGISTER_DEFAULT_HOST_KERNEL(ResourceHandle);
@@ -556,7 +556,7 @@ TF_CALL_variant(REGISTER_GPU_KERNEL);
                               .TypeConstraint<type>("T"), \
                           ExitOp)
 
-REGISTER_GPU_HOST_KERNEL(int32);
+REGISTER_GPU_HOST_KERNEL(int32_t);
 REGISTER_GPU_HOST_KERNEL(tstring);
 REGISTER_GPU_HOST_KERNEL(ResourceHandle);
 
@@ -595,7 +595,7 @@ TF_CALL_variant(REGISTER_DEFAULT_KERNEL);
                               .TypeConstraint<type>("T"), \
                           ExitOp)
 
-REGISTER_DEFAULT_HOST_KERNEL(int32);
+REGISTER_DEFAULT_HOST_KERNEL(int32_t);
 REGISTER_DEFAULT_HOST_KERNEL(tstring);
 REGISTER_DEFAULT_HOST_KERNEL(ResourceHandle);
 
@@ -647,7 +647,7 @@ TF_CALL_variant(REGISTER_GPU_KERNEL);
                               .TypeConstraint<type>("T"), \
                           NextIterationOp)
 
-REGISTER_GPU_HOST_KERNEL(int32);
+REGISTER_GPU_HOST_KERNEL(int32_t);
 REGISTER_GPU_HOST_KERNEL(tstring);
 REGISTER_GPU_HOST_KERNEL(ResourceHandle);
 
@@ -682,7 +682,7 @@ TF_CALL_variant(REGISTER_DEFAULT_KERNEL);
                               .TypeConstraint<type>("T"), \
                           NextIterationOp)
 
-REGISTER_DEFAULT_HOST_KERNEL(int32);
+REGISTER_DEFAULT_HOST_KERNEL(int32_t);
 REGISTER_DEFAULT_HOST_KERNEL(tstring);
 REGISTER_DEFAULT_HOST_KERNEL(ResourceHandle);
 
@@ -742,7 +742,7 @@ class AbortOp : public OpKernel {
   }
 
  private:
-  string error_msg_;
+  std::string error_msg_;
   bool exit_without_error_;
 };
 
