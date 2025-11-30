@@ -119,7 +119,7 @@ absl::StatusOr<FusionEmissionResult> TritonFusion::Emit(
     absl::Span<const Shape> unmanaged_arguments) const {
   std::string suggested_kernel_name = std::string(fusion.name());
   auto local_module =
-      ir_emitter_context.CreateLocalLLVMModule(suggested_kernel_name);
+      ir_emitter_context.CreateLLVMModule(suggested_kernel_name);
   llvm::IRBuilder builder(local_module->getContext());
   VLOG(3) << fusion.ToString();
   TF_ASSIGN_OR_RETURN(
@@ -187,9 +187,7 @@ absl::StatusOr<FusionEmissionResult> TritonFusion::Emit(
                                        sanitized_kernel_name, launch_dimensions,
                                        kernel_arguments));
 
-    PopulateNvvmAnnotations(ir_emitter_context.llvm_module(), kernel,
-                            triton_wrapper_result);
-
+    PopulateNvvmAnnotations(local_module.get(), kernel, triton_wrapper_result);
 
     return {{kernel->getName().str(), launch_dimensions,
              triton_wrapper_result.cluster_dim,

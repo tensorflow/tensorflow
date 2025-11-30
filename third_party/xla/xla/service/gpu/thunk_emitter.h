@@ -20,11 +20,13 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "llvm/IR/Module.h"
 #include "xla/autotuning.pb.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/backends/gpu/runtime/copy_thunk.h"
@@ -53,8 +55,16 @@ class ThunkEmitter {
   ThunkEmitter(const ThunkEmitter&) = delete;
   ThunkEmitter& operator=(const ThunkEmitter&) = delete;
 
-  absl::StatusOr<ThunkSequence> EmitHloEntryComputation(
+  absl::StatusOr<std::unique_ptr<SequentialThunk>> EmitHloEntryComputation(
       const HloModule* module);
+
+  llvm::Module* constants_module() { return constants_module_.get(); }
+  std::unique_ptr<llvm::Module> ConsumeConstantsModule() {
+    return std::move(constants_module_);
+  }
+  std::vector<std::unique_ptr<llvm::Module>> ConsumeKernelModules() {
+    return std::move(kernel_modules_);
+  }
 
  private:
   // Emits code for the given HLO computation.
@@ -227,6 +237,12 @@ class ThunkEmitter {
 
   // Cache to store the call_graph.
   std::unique_ptr<CallGraph> call_graph_;
+
+  // Module with constants.
+  std::unique_ptr<llvm::Module> constants_module_;
+
+  // Modules for each emitted kernel.
+  std::vector<std::unique_ptr<llvm::Module>> kernel_modules_;
 };
 
 }  // namespace xla::gpu

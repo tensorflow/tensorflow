@@ -71,16 +71,18 @@ class IrEmitterContext {
                    const ExecutionStreamAssignment* execution_stream_assignment,
                    std::string platform_name,
                    const se::DeviceDescription& gpu_device_info,
-                   mlir::MLIRContext* mlir_context, llvm::Module* llvm_module,
-                   llvm::Module* llvm_module_constants, bool emit_kernels)
+                   mlir::MLIRContext* mlir_context,
+                   llvm::LLVMContext* llvm_context, bool emit_kernels,
+                   llvm::Triple target_triple, std::string data_layout)
       : hlo_module_(hlo_module),
         buffer_assignment_(buffer_assignment),
         execution_stream_assignment_(execution_stream_assignment),
         platform_name_(std::move(platform_name)),
         gpu_device_info_(gpu_device_info),
         mlir_context_(mlir_context),
-        llvm_module_(llvm_module),
-        llvm_module_constants_(llvm_module_constants),
+        llvm_context_(llvm_context),
+        data_layout_(std::move(data_layout)),
+        target_triple_(std::move(target_triple)),
         emit_kernels_(emit_kernels) {}
   // Disallow copy and assign.
   IrEmitterContext(const IrEmitterContext&) = delete;
@@ -103,13 +105,11 @@ class IrEmitterContext {
   }
 
   mlir::MLIRContext* mlir_context() { return mlir_context_; }
-  llvm::Module* llvm_module() { return llvm_module_; }
+  llvm::LLVMContext* llvm_context() { return llvm_context_; }
 
-  // A separate module can optionally be used to emit constants.
-  llvm::Module* llvm_module_constants() {
-    return (llvm_module_constants_ == nullptr) ? llvm_module_
-                                               : llvm_module_constants_;
-  }
+  const std::string& data_layout() { return data_layout_; }
+  const llvm::Triple& target_triple() { return target_triple_; }
+
   absl::StatusOr<InlinedModule*> get_inlined_module() {
     if (inlined_module_ == nullptr) {
       TF_ASSIGN_OR_RETURN(InlinedModule inlined_module,
@@ -121,15 +121,6 @@ class IrEmitterContext {
   }
 
   std::vector<GpuExecutable::ConstantInfo>& constants() { return constants_; }
-
-  std::unique_ptr<llvm::Module> CreateLocalLLVMModule(
-      const std::string& module_name) {
-    auto llvm_module =
-        std::make_unique<llvm::Module>(module_name, llvm_module_->getContext());
-    llvm_module->setTargetTriple(llvm::Triple(llvm_module_->getTargetTriple()));
-    llvm_module->setDataLayout(llvm_module_->getDataLayout());
-    return llvm_module;
-  }
 
   const DebugOptions& debug_options() const {
     return hlo_module_->config().debug_options();
@@ -159,9 +150,9 @@ class IrEmitterContext {
   std::unique_ptr<llvm::Module> CreateLLVMModule(
       const std::string& module_name) {
     auto llvm_module =
-        std::make_unique<llvm::Module>(module_name, llvm_module_->getContext());
-    llvm_module->setTargetTriple(llvm::Triple(llvm_module_->getTargetTriple()));
-    llvm_module->setDataLayout(llvm_module_->getDataLayout());
+        std::make_unique<llvm::Module>(module_name, *llvm_context_);
+    llvm_module->setTargetTriple(target_triple_);
+    llvm_module->setDataLayout(data_layout_);
     return llvm_module;
   }
 
@@ -172,12 +163,13 @@ class IrEmitterContext {
   std::string platform_name_;
   const se::DeviceDescription& gpu_device_info_;
   mlir::MLIRContext* mlir_context_;
-  llvm::Module* llvm_module_;
-  llvm::Module* llvm_module_constants_;
+  llvm::LLVMContext* llvm_context_;
   NameUniquer name_uniquer_;
   std::vector<GpuExecutable::ConstantInfo> constants_;
   KernelReuseCache kernel_cache_;
   std::unique_ptr<InlinedModule> inlined_module_;
+  const std::string data_layout_;
+  llvm::Triple target_triple_;
 
   CollectivesAsyncEvents collectives_async_events_;
   InstructionToHostExecuteAsyncEvents instruction_to_host_execute_async_events_;
