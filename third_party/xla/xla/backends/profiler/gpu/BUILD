@@ -97,6 +97,55 @@ cc_library(
 )
 
 cc_library(
+    name = "cuda_version_variants",
+    srcs = [
+        "cuda_version_variants.cc",
+    ] + if_cuda_newer_than(
+        "12_0",
+        ["cuda_version_12000_newer.cc"],
+        ["cuda_version_12000_older.cc"],
+    ) + if_cuda_newer_than(
+        "12_8",
+        ["cuda_version_12080_newer.cc"],
+        ["cuda_version_12080_older.cc"],
+    ),
+    hdrs = ["cuda_version_variants.h"],
+    # copybara:uncomment compatible_with = ["//buildenv/target:non_prod"],
+    tags = [
+        "cuda-only",
+        "gpu",
+        "requires-gpu-nvidia",
+    ],
+    deps = [
+        "@com_google_absl//absl/base:no_destructor",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/types:span",
+        "@local_config_cuda//cuda:cuda_headers",
+    ],
+)
+
+xla_cc_test(
+    name = "cuda_version_variants_test",
+    srcs = ["cuda_version_variants_test.cc"],
+    tags = [
+        "cuda-only",
+        "gpu",
+        "no_mac",
+        "requires-gpu-nvidia",
+    ],
+    deps = [
+        ":cuda_version_variants",
+        "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest_main",
+        "@local_config_cuda//cuda:cuda_headers",
+        "@local_config_cuda//cuda:cuda_runtime",
+        "@local_tsl//tsl/platform:status_matchers",
+        "@local_tsl//tsl/platform:test",
+    ],
+)
+
+cc_library(
     name = "mock_cupti",
     testonly = 1,
     hdrs = ["mock_cupti.h"],
@@ -231,6 +280,7 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
+        ":cuda_version_variants",
         ":cupti_buffer_events",
         ":cupti_collector",
         ":cupti_interface",
@@ -247,6 +297,7 @@ cc_library(
         "//xla/tsl/profiler/utils:xplane_schema",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/base:no_destructor",
         "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
