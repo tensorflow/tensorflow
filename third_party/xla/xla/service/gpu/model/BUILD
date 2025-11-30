@@ -90,6 +90,7 @@ xla_cc_test(
         ":sol_latency_estimator",
         "//xla:literal_util",
         "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
         "//xla/hlo/analysis:symbolic_expr",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
@@ -97,6 +98,7 @@ xla_cc_test(
         "//xla/service:hlo_cost_analysis",
         "//xla/service:hlo_module_config",
         "//xla/service:latency_hiding_scheduler",
+        "//xla/service/gpu:backend_configs_cc",
         "//xla/service/gpu:gpu_device_info_for_tests",
         "//xla/stream_executor:device_description",
         "//xla/stream_executor/cuda:cuda_compute_capability",
@@ -743,6 +745,7 @@ cc_library(
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
+        "@com_google_protobuf//:protobuf",
         "@local_tsl//tsl/platform:protobuf",
     ],
 )
@@ -1083,6 +1086,7 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/time",
+        "@com_google_protobuf//:protobuf",
     ],
 )
 
@@ -1106,6 +1110,7 @@ xla_cc_test(
         "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
+        "@com_google_protobuf//:protobuf",
     ],
 )
 
@@ -1168,6 +1173,7 @@ xla_cc_test(
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
+        "@com_google_protobuf//:protobuf",
         "@local_tsl//tsl/platform:path",
     ],
 )
