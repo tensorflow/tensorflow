@@ -1289,8 +1289,15 @@ std::vector<OperandIndexingSet> GetOperandIndexingMaps(
   // Create emitter-specific constraints if a builder was provided.
   std::unique_ptr<EmitterSpecificConstraints> emitter_specific_constraints;
   if (emitter_specific_constraints_builder != nullptr) {
+    absl::StatusOr<std::unique_ptr<EmitterSpecificConstraints>>
+        emitter_specific_constraints_applied =
+            emitter_specific_constraints_builder(tiled_hlo_instructions,
+                                                 fusion);
+    if (!emitter_specific_constraints_applied.ok()) {
+      return FusionDecision(emitter_specific_constraints_applied.status());
+    }
     emitter_specific_constraints =
-        emitter_specific_constraints_builder(tiled_hlo_instructions, fusion);
+        std::move(*emitter_specific_constraints_applied);
   }
 
   TilingSpecification tiling_specification = TilingSpecification(

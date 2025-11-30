@@ -97,7 +97,7 @@ class EmitterSpecificConstraints {
 // TODO(b/367306544): get rid of the HloFusionAdaptor parameter once the
 // abstraction exists.
 using EmitterSpecificConstraintsBuilder =
-    std::function<std::unique_ptr<EmitterSpecificConstraints>(
+    std::function<absl::StatusOr<std::unique_ptr<EmitterSpecificConstraints>>(
         const std::vector<std::unique_ptr<SymbolicTiledHloInstruction>>&,
         const HloFusionAdaptor&)>;
 
