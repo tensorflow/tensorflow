@@ -60,11 +60,12 @@ CodegenDecision IsTritonSupportedComputation(
     const HloComputation& computation,
     const se::GpuComputeCapability& gpu_compute_capability);
 
-// Returns `true` if the parameter computation is a Triton fused computation,
-// i.e. the calling fusion instruction has `FusionKind::kCustom` and
+// Returns `true` if the parameter's computation is a fused Triton gemm
+// computation, i.e. the instruction has `FusionKind::kCustom` and
 // `backend_config<gpu::GpuBackendConfig>()` with `kind` set to
-// `kTritonGemmFusionKind`.
-bool IsTritonFusedComputation(const HloComputation& computation);
+// `kTritonGemmFusionKind` or `kTritonFusionKind` and it has a dot in the
+// computation.
+bool IsTritonGemmFusion(const HloInstruction* hlo);
 
 namespace internal {
 // TODO(b/363981282): Remove the function below once all ops are tested via

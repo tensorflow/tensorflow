@@ -915,12 +915,16 @@ std::vector<const HloInstruction*> GetFusionRoots(
 bool IsGenericTritonFusion(const HloInstruction& instr) {
   // Note that we don't accept kTritonNestedGemmFusionKind here as they should
   // not be fused with anything else.
-  return instr.opcode() == HloOpcode::kFusion &&
-         instr.fusion_kind() == HloInstruction::FusionKind::kCustom &&
-         instr.backend_config<GpuBackendConfig>().ok() &&
-         instr.backend_config<GpuBackendConfig>()
-                 ->fusion_backend_config()
-                 .kind() == kTritonFusionKind;
+  if (instr.opcode() != HloOpcode::kFusion ||
+      instr.fusion_kind() != HloInstruction::FusionKind::kCustom) {
+    return false;
+  }
+  auto gpu_config = instr.backend_config<GpuBackendConfig>();
+  if (!gpu_config.ok()) {
+    return false;
+  }
+  absl::string_view kind = gpu_config->fusion_backend_config().kind();
+  return kind == kTritonFusionKind || kind == kTritonGemmFusionKind;
 }
 
 bool MayCausePerformanceDropIfUnrolled(const HloFusionAdaptor& fusion) {

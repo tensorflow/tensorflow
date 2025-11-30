@@ -775,14 +775,32 @@ CodegenDecision IsTritonSupportedComputation(
   return CodegenDecision::Allow();
 }
 
-bool IsTritonFusedComputation(const HloComputation& computation) {
-  HloFusionInstruction* fusion =
-      static_cast<HloFusionInstruction*>(computation.FusionInstruction());
-  return fusion != nullptr &&
-         fusion->fusion_kind() == HloInstruction::FusionKind::kCustom &&
-         fusion->backend_config<gpu::GpuBackendConfig>()
-                 ->fusion_backend_config()
-                 .kind() == kTritonGemmFusionKind;
+// TODO: rename to IsTritonGemmComputation.
+bool IsTritonGemmFusion(const HloInstruction* fusion) {
+  if (fusion == nullptr) {
+    return false;
+  }
+  if (fusion->fusion_kind() != HloInstruction::FusionKind::kCustom) {
+    return false;
+  }
+  absl::StatusOr<GpuBackendConfig> config =
+      fusion->backend_config<GpuBackendConfig>();
+  if (!config.ok()) {
+    return false;
+  }
+  auto kind = config->fusion_backend_config().kind();
+  if (kind == kTritonGemmFusionKind) {
+    return true;
+  }
+  if (kind != kTritonFusionKind) {
+    return false;
+  }
+  return absl::c_any_of(
+      Cast<HloFusionInstruction>(fusion)->called_computation()->instructions(),
+      [](const HloInstruction* instr) {
+        return instr->opcode() == HloOpcode::kDot ||
+               instr->opcode() == HloOpcode::kScaledDot;
+      });
 }
 
 }  // namespace gpu

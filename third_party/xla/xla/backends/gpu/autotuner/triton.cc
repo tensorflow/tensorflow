@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "xla/autotuning.pb.h"
 #include "xla/backends/autotuner/codegen_backend.h"
+#include "xla/backends/gpu/codegen/triton/support.h"
 #include "xla/backends/gpu/codegen/triton/tma_utils.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -178,7 +179,9 @@ absl::Status TritonBackend::ApplyConfig(HloInstruction& instr,
   FusionBackendConfig& backend_config =
       *gpu_config.mutable_fusion_backend_config();
 
-  backend_config.set_kind(kTritonGemmFusionKind);
+  if (backend_config.kind() != kTritonFusionKind) {
+    backend_config.set_kind(kTritonGemmFusionKind);
+  }
   *backend_config.mutable_triton_gemm_config() = triton_config_proto;
   TF_RETURN_IF_ERROR(instr.set_backend_config(gpu_config));
 
@@ -223,15 +226,15 @@ bool TritonBackend::IsSupported(const HloInstruction& instr) {
   if (instr.opcode() != HloOpcode::kFusion) {
     return false;
   }
+  if (IsTritonGemmFusion(&instr)) {
+    return true;
+  }
   auto gpu_config = instr.backend_config<GpuBackendConfig>();
   if (!gpu_config.ok()) {
     return false;
   }
-  const FusionBackendConfig& backend_config =
-      gpu_config->fusion_backend_config();
-  return backend_config.kind() == kTritonGemmFusionKind ||
-         backend_config.kind() == kCuDnnFusionKind ||
-         backend_config.kind() == kCustomFusionKind;
+  auto kind = gpu_config->fusion_backend_config().kind();
+  return kind == kCuDnnFusionKind || kind == kCustomFusionKind;
 }
 
 }  // namespace gpu

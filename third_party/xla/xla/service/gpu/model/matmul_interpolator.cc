@@ -82,17 +82,6 @@ struct InterpolationSpecificationFlops {
   int64_t flops;
 };
 
-bool IsTritonGemm(const HloInstruction& instr) {
-  if (instr.called_computations().size() != 1) {
-    return false;
-  }
-  if (!IsTritonFusedComputation(*instr.called_computations()[0])) {
-    return false;
-  }
-  auto fused_range = instr.fused_instructions();
-  return absl::c_count_if(fused_range, HloPredicateIsOp<HloOpcode::kDot>) == 1;
-}
-
 InterpolationSpecification ExtractDotSpec(const DotDimensionNumbers& dot_dims,
                                           const Shape& lhs, const Shape& rhs,
                                           const Shape& out) {
@@ -170,7 +159,7 @@ InterpolationSpecification Spec(const HloCustomCallInstruction& dot,
 
 InterpolationSpecification Spec(const HloFusionInstruction& dot_fusion,
                                 const Shape& out_shape) {
-  CHECK(IsTritonGemm(dot_fusion));
+  CHECK(IsTritonGemmFusion(&dot_fusion));
 
   auto fused = dot_fusion.fused_instructions();
   auto dot_it = absl::c_find_if(fused, HloPredicateIsOp<HloOpcode::kDot>);
@@ -204,7 +193,7 @@ std::optional<InterpolationSpecification> GetInterpolationSpec(
     spec = Spec(*dot, instr.shape().IsTuple()
                           ? ShapeUtil::GetTupleElementShape(instr.shape(), 0)
                           : instr.shape());
-  } else if (IsTritonGemm(instr)) {
+  } else if (IsTritonGemmFusion(&instr)) {
     auto* dot_fusion = Cast<HloFusionInstruction>(&instr);
     spec = Spec(*dot_fusion, instr.shape());
   }
