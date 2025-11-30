@@ -43,10 +43,13 @@ bool IsP2PStreamKind(AsyncStreamKind stream_kind) {
 CollectiveStreamId GetCollectiveStreamId(bool is_async,
                                          CollectiveStreamId stream_id,
                                          AsyncStreamKind stream_kind) {
-  if (!is_async) return CollectiveStreamId(0);
+  if (!is_async) {
+    return CollectiveStreamId(0);
+  }
   // TODO: Remove this fallback once AsyncStreamId is used everywhere.
-  if (stream_id.value() == 0)
+  if (stream_id.value() == 0) {
     return CollectiveStreamId(static_cast<int64_t>(stream_kind) + 1);
+  }
   return stream_id;
 }
 

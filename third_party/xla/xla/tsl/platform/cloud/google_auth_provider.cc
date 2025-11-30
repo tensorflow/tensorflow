@@ -41,9 +41,7 @@ limitations under the License.
 #include "json/json.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
-#include "tsl/platform/base64.h"
 #include "tsl/platform/path.h"
-#include "tsl/platform/retrying_utils.h"
 
 namespace tsl {
 
@@ -98,7 +96,7 @@ bool IsFile(const string& filename) {
 /// Returns the credentials file name from the env variable.
 absl::Status GetEnvironmentVariableFileName(string* filename) {
   if (!filename) {
-    return errors::FailedPrecondition("'filename' cannot be nullptr.");
+    return absl::FailedPreconditionError("'filename' cannot be nullptr.");
   }
   const char* result = std::getenv(kGoogleApplicationCredentials);
   if (!result || !IsFile(result)) {
@@ -112,7 +110,7 @@ absl::Status GetEnvironmentVariableFileName(string* filename) {
 /// Returns the well known file produced by command 'gcloud auth login'.
 absl::Status GetWellKnownFileName(string* filename) {
   if (!filename) {
-    return errors::FailedPrecondition("'filename' cannot be nullptr.");
+    return absl::FailedPreconditionError("'filename' cannot be nullptr.");
   }
   string config_dir;
   const char* config_dir_override = std::getenv(kCloudSdkConfig);
@@ -231,7 +229,7 @@ absl::Status GoogleAuthProvider::GetTokenFromFiles() {
   Json::Reader reader;
   std::ifstream credentials_fstream(credentials_filename);
   if (!reader.parse(credentials_fstream, json)) {
-    return errors::FailedPrecondition(
+    return absl::FailedPreconditionError(
         "Couldn't parse the JSON credentials file.");
   }
   if (json.isMember("refresh_token")) {

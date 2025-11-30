@@ -17,6 +17,8 @@ limitations under the License.
 
 #include <stdlib.h>
 
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"
 #include "tsl/platform/numbers.h"
@@ -41,7 +43,7 @@ absl::Status ReadBoolFromEnvVar(absl::string_view env_var_name,
     *value = true;
     return absl::OkStatus();
   }
-  return errors::InvalidArgument(strings::StrCat(
+  return absl::InvalidArgumentError(absl::StrCat(
       "Failed to parse the env-var ${", env_var_name, "} into bool: ",
       tf_env_var_val, ". Use the default value: ", default_val));
 }
@@ -56,7 +58,7 @@ absl::Status ReadInt64FromEnvVar(absl::string_view env_var_name,
   if (absl::SimpleAtoi(tf_env_var_val, value)) {
     return absl::OkStatus();
   }
-  return errors::InvalidArgument(strings::StrCat(
+  return absl::InvalidArgumentError(absl::StrCat(
       "Failed to parse the env-var ${", env_var_name, "} into int64: ",
       tf_env_var_val, ". Use the default value: ", default_val));
 }
@@ -71,7 +73,7 @@ absl::Status ReadFloatFromEnvVar(absl::string_view env_var_name,
   if (absl::SimpleAtof(tf_env_var_val, value)) {
     return absl::OkStatus();
   }
-  return errors::InvalidArgument(strings::StrCat(
+  return absl::InvalidArgumentError(absl::StrCat(
       "Failed to parse the env-var ${", env_var_name, "} into float: ",
       tf_env_var_val, ". Use the default value: ", default_val));
 }

@@ -89,7 +89,8 @@ bool SupportsBF16(const stream_executor::GpuComputeCapability& cc) {
   if (cc.IsCuda()) {
     return cc.cuda_compute_capability()->IsAtLeast(
         se::CudaComputeCapability::kAmpere);
-  } else if (cc.IsRocm()) {
+  }
+  if (cc.IsRocm()) {
     return cc.rocm_compute_capability()->has_bf16_dtype_support();
   }
   CHECK(false);
@@ -248,10 +249,9 @@ std::string ComputeCapabilityToString(
     const stream_executor::GpuComputeCapability& cc) {
   if (auto* cuda_cc = cc.cuda_compute_capability()) {
     return absl::StrReplaceAll(cuda_cc->ToString(), {{".", ""}});
-  } else {
-    CHECK(cc.IsRocm());
-    return "rocm";
   }
+  CHECK(cc.IsRocm());
+  return "rocm";
 }
 
 std::string TritonSupportTestTypeAndDeviceToString(
@@ -329,10 +329,9 @@ absl::Status ConvertEntryToTritonFusion(HloModule* module,
   gpu::GpuBackendConfig gpu_config;
   if (use_nested_gemm_fusions) {
     gpu_config.mutable_fusion_backend_config()->set_kind(
-        std::string(kTritonNestedGemmFusionKind));
+        kTritonNestedGemmFusionKind);
   } else {
-    gpu_config.mutable_fusion_backend_config()->set_kind(
-        std::string(kTritonFusionKind));
+    gpu_config.mutable_fusion_backend_config()->set_kind(kTritonFusionKind);
   }
   TF_RETURN_IF_ERROR(fusion->set_backend_config(gpu_config));
 

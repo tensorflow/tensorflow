@@ -109,12 +109,6 @@ IndexingMap KernelFusionInterface::GetDefaultThreadIdIndexingMap(
                                                  mlir_context);
 }
 
-std::string GetSanitizedUniqueName(IrEmitterContext& ir_emitter_context,
-                                   const std::string& suggested_name) {
-  return ir_emitter_context.name_uniquer()->GetUniqueName(
-      llvm_ir::SanitizeFunctionName(suggested_name));
-}
-
 absl::StatusOr<llvm::Function*> BuildKernelPrototypeFromUniqueName(
     llvm::Module* llvm_module, const se::DeviceDescription& gpu_device_info,
     const std::string& impl_fn_name, const std::string& unique_kernel_name,
@@ -221,22 +215,20 @@ absl::StatusOr<llvm::Function*> BuildKernelPrototype(
 // TODO: b/381242007 - Allocate a proper buffer if we want to use
 // device-side TMA APIs.
 absl::StatusOr<llvm::Function*> RemoveUnusedTritonAbiArguments(
-    IrEmitterContext& ir_emitter_context,
+    llvm::Module* llvm_module, IrEmitterContext& ir_emitter_context,
     const std::string& sanitized_kernel_name,
     LaunchDimensions& launch_dimensions,
     const emitters::KernelArguments& kernel_arguments) {
-  llvm::Function* impl_fn =
-      ir_emitter_context.llvm_module()->getFunction(sanitized_kernel_name);
+  llvm::Function* impl_fn = llvm_module->getFunction(sanitized_kernel_name);
   TF_RET_CHECK(impl_fn);
-  impl_fn->setName(ir_emitter_context.name_uniquer()->GetUniqueName(
-      sanitized_kernel_name + "_impl"));
+  impl_fn->setName(ir_emitter_context.GetSanitizedUniqueName(
+      absl::StrCat(sanitized_kernel_name, "_impl")));
 
-  llvm::IRBuilder builder(ir_emitter_context.llvm_module()->getContext());
+  llvm::IRBuilder builder(llvm_module->getContext());
 
   TF_ASSIGN_OR_RETURN(llvm::Function * kernel,
                       BuildKernelPrototypeFromUniqueName(
-                          ir_emitter_context.llvm_module(),
-                          ir_emitter_context.gpu_device_info(),
+                          llvm_module, ir_emitter_context.gpu_device_info(),
                           impl_fn->getName().str(), sanitized_kernel_name,
                           kernel_arguments, launch_dimensions, &builder));
 

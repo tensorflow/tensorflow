@@ -21,7 +21,6 @@ limitations under the License.
 #else
 #include <sys/types.h>
 #endif
-#include <fstream>
 
 #include <openssl/bio.h>
 #include <openssl/evp.h>
@@ -52,11 +51,11 @@ constexpr char kGrantType[] =
 absl::Status ReadJsonValue(const Json::Value& json, const string& name,
                            Json::Value* value) {
   if (!value) {
-    return errors::FailedPrecondition("'value' cannot be nullptr.");
+    return absl::FailedPreconditionError("'value' cannot be nullptr.");
   }
   *value = json.get(name, Json::Value::null);
   if (*value == Json::Value::null) {
-    return errors::FailedPrecondition(
+    return absl::FailedPreconditionError(
         absl::StrCat("Couldn't read a JSON value '", name, "'."));
   }
   return absl::OkStatus();
@@ -67,7 +66,7 @@ absl::Status ReadJsonString(const Json::Value& json, const string& name,
   Json::Value json_value;
   TF_RETURN_IF_ERROR(ReadJsonValue(json, name, &json_value));
   if (!json_value.isString()) {
-    return errors::FailedPrecondition(
+    return absl::FailedPreconditionError(
         absl::StrCat("JSON value '", name, "' is not string."));
   }
   *value = json_value.asString();
@@ -79,7 +78,7 @@ absl::Status ReadJsonInt(const Json::Value& json, const string& name,
   Json::Value json_value;
   TF_RETURN_IF_ERROR(ReadJsonValue(json, name, &json_value));
   if (!json_value.isIntegral()) {
-    return errors::FailedPrecondition(
+    return absl::FailedPreconditionError(
         absl::StrCat("JSON value '", name, "' is not integer."));
   }
   *value = json_value.asInt64();
@@ -89,7 +88,7 @@ absl::Status ReadJsonInt(const Json::Value& json, const string& name,
 absl::Status CreateSignature(RSA* private_key, absl::string_view to_sign,
                              string* signature) {
   if (!private_key || !signature) {
-    return errors::FailedPrecondition(
+    return absl::FailedPreconditionError(
         "'private_key' and 'signature' cannot be nullptr.");
   }
 

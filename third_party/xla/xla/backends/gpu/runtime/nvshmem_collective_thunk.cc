@@ -91,12 +91,11 @@ absl::StatusOr<xla::gpu::GpuCollectives*> GetNvshmemCollectivesFromRegistry() {
 
 absl::Status NvshmemCollectiveThunk::Prepare(const PrepareParams& params) {
   TF_RET_CHECK(params.collective_params != nullptr);
-  TF_ASSIGN_OR_RETURN(GpuCollectives * collectives, GetGpuCollectives(params));
   TF_ASSIGN_OR_RETURN(
       GpuCliqueKey clique_key,
-      GetGpuCliqueKey(collectives, *params.collective_params,
-                      config().replica_groups, config().group_mode,
-                      GetAsyncStreamKind(), /*use_nccl= */ false));
+      GetGpuCliqueKey(*params.collective_params, config().replica_groups,
+                      config().group_mode, GetAsyncStreamKind(),
+                      /*use_nccl= */ false));
   return params.clique_requests->RequestClique(clique_key);
 }
 

@@ -1,5 +1,6 @@
 #include <cstddef>
 
+#include "absl/types/span.h"
 #include "xla/backends/gpu/runtime/collective_cliques.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
 /* Copyright 2019 The OpenXLA Authors.
@@ -273,8 +274,8 @@ absl::Status AddOpDescription(absl::Status status, OpT op,
 //===----------------------------------------------------------------------===//
 
 absl::StatusOr<GpuCliqueKey> GetGpuCliqueKey(
-    GpuCollectives* collectives, const CollectiveParams& params,
-    const std::vector<ReplicaGroup>& replica_groups,
+    const CollectiveParams& params,
+    absl::Span<const ReplicaGroup> replica_groups,
     CollectiveOpGroupMode group_mode, AsyncStreamKind stream_kind,
     bool use_nccl = true);
 
@@ -285,8 +286,7 @@ absl::StatusOr<GpuCliqueKey> GetCollectiveGpuCliqueKey(
 
 // Returns a communicator and additional information about the clique.
 absl::StatusOr<CommunicatorHandle> GetComm(
-    GpuCollectives* collectives, const CollectiveParams& params,
-    const CollectiveCliques& collective_cliques,
+    const CollectiveParams& params, const CollectiveCliques& collective_cliques,
     const std::vector<ReplicaGroup>& replica_groups,
     CollectiveOpGroupMode group_mode, AsyncStreamKind stream_kind);
 

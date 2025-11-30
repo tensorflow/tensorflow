@@ -916,8 +916,6 @@ TEST_F(TritonAlgorithmTest, Dot_BF16_X6_WithConst) {
         kind=kCustom,
         calls=triton_fusion_dot,
         backend_config={
-          "operation_queue_id":"0",
-          "wait_on_operation_queues":[],
           "fusion_backend_config":{
             "kind":"__triton_nested_gemm_fusion",
             "block_level_fusion_config":{

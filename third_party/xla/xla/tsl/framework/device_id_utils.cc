@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/numbers.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "xla/tsl/framework/device_id.h"
 #include "xla/tsl/framework/device_id_manager.h"
@@ -44,9 +45,9 @@ absl::StatusOr<int> ParsePlatformDeviceIdString(
         tsl::str_util::Split(platform_device_id_str, ':');  // non-absl ok
     if (device_type_and_id.size() != 2 ||
         !absl::SimpleAtoi(device_type_and_id[1], &platform_device_id)) {
-      return tsl::errors::InvalidArgument(
-          "Could not parse entry in 'visible_device_list': '",
-          platform_device_id_str, "'.");
+      return absl::InvalidArgumentError(
+          absl::StrCat("Could not parse entry in 'visible_device_list': '",
+                       platform_device_id_str, "'."));
     }
     if (!device_type.empty() && device_type_and_id[0] != device_type) {
       return -1;  // Return -1 to indicate that the device type doesn't match.
@@ -95,10 +96,10 @@ absl::Status ParseVisibleDeviceList(
       }
       if (platform_device_id < 0 ||
           platform_device_id >= visible_device_count) {
-        return tsl::errors::InvalidArgument(
-            "'visible_device_list' listed an invalid Device id '",
-            platform_device_id, "' but visible device count is ",
-            visible_device_count);
+        return absl::InvalidArgumentError(
+            absl::StrCat("'visible_device_list' listed an invalid Device id '",
+                         platform_device_id, "' but visible device count is ",
+                         visible_device_count));
       }
       visible_device_order->push_back(
           tsl::PlatformDeviceId(platform_device_id));
@@ -109,9 +110,9 @@ absl::Status ParseVisibleDeviceList(
   std::set<PlatformDeviceId> visible_device_set(visible_device_order->begin(),
                                                 visible_device_order->end());
   if (visible_device_set.size() != visible_device_order->size()) {
-    return tsl::errors::InvalidArgument(
-        "visible_device_list contained a duplicate entry: ",
-        visible_device_list);
+    return absl::InvalidArgumentError(
+        absl::StrCat("visible_device_list contained a duplicate entry: ",
+                     visible_device_list));
   }
   return absl::OkStatus();
 }

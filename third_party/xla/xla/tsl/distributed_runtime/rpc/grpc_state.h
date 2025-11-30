@@ -84,7 +84,7 @@ class RPCState : public GrpcClientCQTag {
                 std::string error_message = absl::StrCat(
                     "Invalid GRPC_FAIL_FAST config: ", fail_fast_env);
                 LOG(WARNING) << error_message;
-                done(errors::InvalidArgument(error_message));
+                done(absl::InvalidArgumentError(error_message));
                 return false;
               }
             }(),
@@ -155,9 +155,9 @@ class RPCState : public GrpcClientCQTag {
     if (s.ok() && !ok) {
       // Since this function is only being used for processing the response
       // to Finish for client-side unary calls, ok should never be false
-      s.Update(
-          errors::Internal("GRPC status is okay but CompletionQueueStatus is "
-                           "not.  This should never happen."));
+      s.Update(absl::InternalError(
+          "GRPC status is okay but CompletionQueueStatus is "
+          "not.  This should never happen."));
     }
 
     if (s.ok()) {
@@ -210,7 +210,7 @@ class RPCState : public GrpcClientCQTag {
   void ParseAndCallDone() {
     absl::Status s;
     if (!parse_proto_fn_(&response_buf_, response_)) {
-      s.Update(errors::Internal("could not parse rpc response"));
+      s.Update(absl::InternalError("could not parse rpc response"));
     }
     done_(s);
     delete this;

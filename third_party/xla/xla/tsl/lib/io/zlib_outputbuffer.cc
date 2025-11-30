@@ -249,7 +249,7 @@ absl::Status ZlibOutputBuffer::Deflate(int flush) {
   if (z_stream_->msg != nullptr) {
     absl::StrAppend(&error_string, ": ", z_stream_->msg);
   }
-  return errors::DataLoss(error_string);
+  return absl::DataLossError(error_string);
 }
 
 absl::Status ZlibOutputBuffer::Tell(int64_t* position) {

@@ -95,7 +95,9 @@ bool NcclCollectives::IsGlobalConfig() const {
 absl::StatusOr<const NcclCollectives::CliqueIdCallback*>
 NcclCollectives::GetCliqueIdCallback(const CliqueIdCallback* clique_id_callback,
                                      bool is_local) {
-  if (clique_id_callback != nullptr) return clique_id_callback;
+  if (clique_id_callback != nullptr) {
+    return clique_id_callback;
+  }
 
   TF_RET_CHECK(is_local || IsGlobalConfig())
       << "If non-local devices are taking part of a collective API on "

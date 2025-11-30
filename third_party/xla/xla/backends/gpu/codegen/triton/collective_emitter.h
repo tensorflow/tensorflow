@@ -74,12 +74,12 @@ absl::StatusOr<std::vector<Shape>> GetCollectiveUnmanagedKernelArguments(
 // Emits tiled XTile/Triton IR for a collective op.
 // See [EmitTiledHloInstruction] for an overview of how this fits into the
 // emitter.
-absl::StatusOr<triton::TensorValue> EmitCollective(
+absl::StatusOr<xtile::TensorValue> EmitCollective(
     mlir::ImplicitLocOpBuilder& b, const HloFusionInstruction* fusion,
     const TiledHloInstruction& tiled_hlo_reduce,
     const BlockLevelParameters& block_level_parameters,
     mlir::FunctionOpInterface fn, mlir::Value pid,
-    absl::flat_hash_map<const TiledHloInstruction*, triton::TensorValue>&
+    absl::flat_hash_map<const TiledHloInstruction*, xtile::TensorValue>&
         values);
 
 }  // namespace xla::gpu

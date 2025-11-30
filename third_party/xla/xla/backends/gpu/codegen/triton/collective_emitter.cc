@@ -68,9 +68,9 @@ namespace {
 
 using ::mlir::ShapedType;
 using ::mlir::Value;
-using ::xla::gpu::triton::TensorValue;
-using ::xla::gpu::triton::TileInfo;
 using ::xla::se::gpu::AllReduceStrategy;
+using ::xla::xtile::TensorValue;
+using ::xla::xtile::TileInfo;
 
 namespace ttir = ::mlir::triton;
 namespace mtx = ::mlir::triton::xla;
@@ -262,7 +262,7 @@ absl::StatusOr<TensorValue> EmitAllReduce(
   mlir::Value accumulator_zero =
       arith::ConstantOp::create(b, elem_type, b.getZeroAttr(elem_type));
   TensorValue accumulator =
-      triton::Splat(b, accumulator_zero, input_tile.getType().getShape());
+      xtile::Splat(b, accumulator_zero, input_tile.getType().getShape());
   for (int rank = 0; rank < world_size; ++rank) {
     Value rank_idx =
         arith::ConstantOp::create(b, b.getI64Type(), b.getI64IntegerAttr(rank));
@@ -285,9 +285,9 @@ absl::StatusOr<TensorValue> EmitAllReduce(
         accumulator;
     region_values[reduction_computation->parameter_instruction(1)] = next_tile;
     TF_ASSIGN_OR_RETURN(accumulator,
-                        triton::EmitScope(b,
-                                          /*instructions=*/to_emit,
-                                          /*values=*/region_values));
+                        xtile::EmitScope(b,
+                                         /*instructions=*/to_emit,
+                                         /*values=*/region_values));
   }
   return accumulator;
 }
@@ -390,7 +390,7 @@ absl::StatusOr<int32_t> AddCollectiveMetadataArguments(
     } else if (type == S4) {
       ir_type = b.getI4Type();
     } else {
-      TF_ASSIGN_OR_RETURN(ir_type, triton::TritonType(b, type));
+      TF_ASSIGN_OR_RETURN(ir_type, xtile::PrimitiveTypeToMlirType(b, type));
     }
     // Also add the remote/scratch buffers for collectives.
     // !tt.ptr<!tt.ptr<type>>

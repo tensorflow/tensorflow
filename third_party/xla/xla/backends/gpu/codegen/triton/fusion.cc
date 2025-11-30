@@ -117,9 +117,11 @@ absl::StatusOr<FusionEmissionResult> TritonFusion::Emit(
     IrEmitterContext& ir_emitter_context, const HloFusionInstruction& fusion,
     const HloInstruction* instr_override,
     absl::Span<const Shape> unmanaged_arguments) const {
-  llvm::IRBuilder builder(ir_emitter_context.llvm_module()->getContext());
-  VLOG(3) << fusion.ToString();
   std::string suggested_kernel_name = std::string(fusion.name());
+  auto local_module =
+      ir_emitter_context.CreateLocalLLVMModule(suggested_kernel_name);
+  llvm::IRBuilder builder(local_module->getContext());
+  VLOG(3) << fusion.ToString();
   TF_ASSIGN_OR_RETURN(
       auto kernel_arguments,
       emitters::KernelArguments::Create(
@@ -135,14 +137,13 @@ absl::StatusOr<FusionEmissionResult> TritonFusion::Emit(
     VLOG(3) << "Generating: " << suggested_kernel_name;
 
     const std::string sanitized_kernel_name =
-        GetSanitizedUniqueName(ir_emitter_context, suggested_kernel_name);
+        ir_emitter_context.GetSanitizedUniqueName(suggested_kernel_name);
 
     TF_ASSIGN_OR_RETURN(
         TritonWrapperResult triton_wrapper_result,
-        GenerateTritonKernelAndWrapper(fusion, sanitized_kernel_name,
-                                       ir_emitter_context.gpu_device_info(),
-                                       ir_emitter_context.llvm_module(),
-                                       ir_emitter_context.mlir_context()));
+        GenerateTritonKernelAndWrapper(
+            fusion, sanitized_kernel_name, ir_emitter_context.gpu_device_info(),
+            local_module.get(), ir_emitter_context.mlir_context()));
 
     auto backend_config =
         fusion.backend_config<GpuBackendConfig>()->fusion_backend_config();
@@ -180,10 +181,11 @@ absl::StatusOr<FusionEmissionResult> TritonFusion::Emit(
     CHECK(launch_config.has_value());
     launch_dimensions = std::move(launch_config->launch_dimensions);
 
-    TF_ASSIGN_OR_RETURN(llvm::Function * kernel,
-                        RemoveUnusedTritonAbiArguments(
-                            ir_emitter_context, sanitized_kernel_name,
-                            launch_dimensions, kernel_arguments));
+    TF_ASSIGN_OR_RETURN(
+        llvm::Function * kernel,
+        RemoveUnusedTritonAbiArguments(local_module.get(), ir_emitter_context,
+                                       sanitized_kernel_name, launch_dimensions,
+                                       kernel_arguments));
 
     PopulateNvvmAnnotations(ir_emitter_context.llvm_module(), kernel,
                             triton_wrapper_result);
@@ -207,7 +209,9 @@ absl::StatusOr<FusionEmissionResult> TritonFusion::Emit(
           &fusion, ir_emitter_context.GetNextThunkId()),
       entry->kernel_name, kernel_arguments, entry->launch_dimensions,
       entry->cluster_dim, entry->shmem_bytes, entry->tma_metadata));
-
+  if (!was_cached) {
+    result.module = std::move(local_module);
+  }
   return result;
 }
 

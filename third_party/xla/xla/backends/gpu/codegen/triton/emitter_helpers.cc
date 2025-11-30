@@ -66,7 +66,7 @@ limitations under the License.
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 
-namespace xla::gpu::triton {
+namespace xla::xtile {
 
 using ::llvm::SmallVector;
 using ::mlir::ArrayRef;
@@ -116,7 +116,7 @@ absl::StatusOr<SmallVector<Value>> ComputeOffsetsForTile(
   for (const auto& [rt_var, value] : llvm::zip(rt_vars, runtime_values)) {
     Value clamped_index =
         EmitClampedIndex(b, value, rt_var.bounds.lower, rt_var.bounds.upper);
-    dims.push_back(triton::Cast(b, clamped_index, pid.getType()));
+    dims.push_back(Cast(b, clamped_index, pid.getType()));
   }
   return emitters::ApplyIndexing(dim_only_tiling, /*dims=*/dims,
                                  /*symbols=*/{}, b);
@@ -167,8 +167,9 @@ SmallVector<int64_t> GetPaddedTileSizes(ArrayRef<int64_t> tile_sizes) {
   return result;
 }
 
-absl::StatusOr<Type> TritonType(mlir::ImplicitLocOpBuilder& b,
-                                PrimitiveType t) {
+absl::StatusOr<Type> PrimitiveTypeToMlirType(mlir::ImplicitLocOpBuilder& b,
+
+                                             PrimitiveType t) {
   switch (t) {
     case F64:
       return b.getF64Type();
@@ -281,9 +282,8 @@ Value Cast(mlir::ImplicitLocOpBuilder& b, Value value, Type dst_element_ty) {
     if (src_fp_element_ty.getFPMantissaWidth() >
         dst_fp_element_ty.getFPMantissaWidth()) {
       return ma::TruncFOp::create(b, dst_ty, value);
-    } else {
-      return ma::ExtFOp::create(b, dst_ty, value);
     }
+    return ma::ExtFOp::create(b, dst_ty, value);
   }
   // int => int
   if (mlir::isa<mlir::IntegerType>(src_element_ty) &&
@@ -321,16 +321,14 @@ Value Cast(mlir::ImplicitLocOpBuilder& b, Value value, Type dst_element_ty) {
     auto cst_int = [&](int64_t x) -> Value {
       if (auto src_shaped_ty = mlir::dyn_cast<ShapedType>(src_ty)) {
         return CreateConst(b, dst_element_ty, x, src_shaped_ty.getShape());
-      } else {
-        return CreateConst(b, dst_element_ty, x);
       }
+      return CreateConst(b, dst_element_ty, x);
     };
     auto cst_float = [&](int64_t x) -> Value {
       if (auto src_shaped_ty = mlir::dyn_cast<ShapedType>(src_ty)) {
         return CreateConst(b, src_fp_element_ty, x, src_shaped_ty.getShape());
-      } else {
-        return CreateConst(b, src_fp_element_ty, x);
       }
+      return CreateConst(b, src_fp_element_ty, x);
     };
     auto fptosi = ma::FPToSIOp::create(b, dst_ty, value);
     int64_t min = llvm::minIntN(dst_element_ty.getIntOrFloatBitWidth());
@@ -358,9 +356,8 @@ Value Cast(mlir::ImplicitLocOpBuilder& b, Value value, Type dst_element_ty) {
 Value Subtract(mlir::ImplicitLocOpBuilder& b, ValueRange values) {
   if (mlir::isa<mlir::IntegerType>(mlir::getElementTypeOrSelf(values[0]))) {
     return ma::SubIOp::create(b, values[0], values[1]);
-  } else {
-    return ma::SubFOp::create(b, values[0], values[1]);
   }
+  return ma::SubFOp::create(b, values[0], values[1]);
 }
 
 Value Compare(mlir::ImplicitLocOpBuilder& b, ValueRange values,
@@ -433,8 +430,8 @@ absl::StatusOr<Value> EmitElementwise(mlir::ImplicitLocOpBuilder& b,
       // NegFOp is not supported by Triton.
       return Subtract(b, {ZerosLike(b, inputs[0]), inputs[0]});
     case HloOpcode::kConvert: {
-      TF_ASSIGN_OR_RETURN(Type dst_ty,
-                          TritonType(b, hlo.shape().element_type()));
+      TF_ASSIGN_OR_RETURN(
+          Type dst_ty, PrimitiveTypeToMlirType(b, hlo.shape().element_type()));
       return Cast(b, inputs[0], dst_ty);
     }
     case HloOpcode::kAdd:
@@ -552,7 +549,8 @@ absl::StatusOr<Value> EmitElementwise(mlir::ImplicitLocOpBuilder& b,
 
 absl::StatusOr<mlir::TypedValue<mlir::RankedTensorType>> EmitConstant(
     mlir::ImplicitLocOpBuilder& b, const HloInstruction& constant) {
-  TF_ASSIGN_OR_RETURN(Type ty, TritonType(b, constant.shape().element_type()));
+  TF_ASSIGN_OR_RETURN(
+      Type ty, PrimitiveTypeToMlirType(b, constant.shape().element_type()));
   llvm::SmallVector<int64_t> shape{constant.shape().dimensions().begin(),
                                    constant.shape().dimensions().end()};
 
@@ -560,10 +558,9 @@ absl::StatusOr<mlir::TypedValue<mlir::RankedTensorType>> EmitConstant(
     if (constant.shape().element_type() == U64) {
       return CreateConst(b, ty, ScalarConstantValue<uint64_t>(constant, U64),
                          shape);
-    } else {
-      return CreateConst(b, ty, ScalarConstantValue<int64_t>(constant, S64),
-                         shape);
     }
+    return CreateConst(b, ty, ScalarConstantValue<int64_t>(constant, S64),
+                       shape);
   }
   return CreateConst(b, ty, ScalarConstantValue<double>(constant, F64), shape);
 }
@@ -588,7 +585,7 @@ Value Bitcast(mlir::ImplicitLocOpBuilder& b, Value value, Type type) {
 
   const Shape& shape = tiled_hlo.hlo()->shape();
   TF_ASSIGN_OR_RETURN(Type expected_element_type,
-                      TritonType(b, shape.element_type()));
+                      PrimitiveTypeToMlirType(b, shape.element_type()));
   auto storage_type = StorageType(expected_element_type);
 
   auto tile_strides = tiled_hlo.tile_strides();
@@ -689,4 +686,4 @@ TensorValue Splat(mlir::ImplicitLocOpBuilder& b, Value value,
   return BroadcastInDims(b, tensor_value, output_shape, /*dims=*/{});
 }
 
-}  // namespace xla::gpu::triton
+}  // namespace xla::xtile

@@ -2806,7 +2806,7 @@ std::unique_ptr<Model> ImportTensorFlowGraphDef(
 
 std::unique_ptr<Model> ImportTensorFlowGraphDef(
     const ModelFlags& model_flags, const TensorFlowImportFlags& tf_import_flags,
-    const std::string& input_file_contents) {
+    absl::string_view input_file_contents) {
   std::unique_ptr<GraphDef> tf_graph(new GraphDef);
   CHECK(ParseFromStringEitherTextOrBinary(input_file_contents, tf_graph.get()));
 

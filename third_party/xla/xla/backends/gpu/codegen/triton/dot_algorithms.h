@@ -25,8 +25,7 @@ limitations under the License.
 #include "triton/Dialect/Triton/IR/Dialect.h"
 
 namespace xla {
-namespace gpu {
-namespace triton {
+namespace xtile {
 
 // Precision-relevant configuration bits for `dot`s.
 struct PrecisionSpec {
@@ -80,8 +79,7 @@ absl::StatusOr<mlir::triton::ScaleDotElemType> GetScaleDotElemType(
 
 }  // namespace internal
 
-}  // namespace triton
-}  // namespace gpu
+}  // namespace xtile
 }  // namespace xla
 
 #endif  // XLA_BACKENDS_GPU_CODEGEN_TRITON_DOT_ALGORITHMS_H_

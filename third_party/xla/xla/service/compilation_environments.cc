@@ -135,16 +135,16 @@ CompilationEnvironments::CreateFromProto(
     std::string fullname;
     if (!google::protobuf::Any::ParseAnyTypeUrl(env_proto.type_url(),
                                                 &fullname)) {
-      return tsl::errors::DataLoss(
-          "Invalid CompilationEnvironment message type url: %s",
-          env_proto.type_url());
+      return absl::DataLossError(
+          absl::StrCat("Invalid CompilationEnvironment message type url: ",
+                       env_proto.type_url()));
     }
 
     const tsl::protobuf::Descriptor* const descriptor =
         pool->FindMessageTypeByName(fullname);
     if (descriptor == nullptr) {
-      return tsl::errors::DataLoss(
-          "Unknown CompilationEnvironment message type: %s", fullname);
+      return absl::DataLossError(absl::StrCat(
+          "Unknown CompilationEnvironment message type: ", fullname));
     }
 
     const tsl::protobuf::Message* const prototype =
@@ -157,9 +157,9 @@ CompilationEnvironments::CreateFromProto(
 
     std::unique_ptr<tsl::protobuf::Message> env(prototype->New());
     if (!env_proto.UnpackTo(env.get())) {
-      return tsl::errors::DataLoss(
-          "Unable to unpack CompilationEnvironment message of type '%s'",
-          fullname);
+      return absl::DataLossError(absl::StrCat(
+          "Unable to unpack CompilationEnvironment message of type '", fullname,
+          "'"));
     }
 
     TF_RETURN_IF_ERROR(envs->AddEnv(std::move(env)));

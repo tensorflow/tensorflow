@@ -89,7 +89,7 @@ static constexpr auto serialize =
 // buffer cmd commands. We never execute this command, we need it only to pass
 // buffer usage vector to the command buffer cmd commands.
 struct TestOnlyCommandBufferCmd : public CommandBufferCmd {
-  TestOnlyCommandBufferCmd(BufferUseVector buffer_usage)
+  explicit TestOnlyCommandBufferCmd(BufferUseVector buffer_usage)
       : CommandBufferCmd(CommandBufferCmdType::kUnknownCmd, {}),
         buffer_usage(buffer_usage) {}
 

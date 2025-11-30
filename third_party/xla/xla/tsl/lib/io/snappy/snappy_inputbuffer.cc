@@ -110,7 +110,7 @@ absl::Status SnappyInputBuffer::Inflate() {
                          " bytes) too small. Should be larger than ",
                          compressed_block_length, " bytes."));
       } else {
-        return errors::DataLoss(
+        return absl::DataLossError(
             absl::StrCat("Failed to read ", compressed_block_length,
                          " bytes from file. Possible data corruption."));
       }
@@ -120,7 +120,7 @@ absl::Status SnappyInputBuffer::Inflate() {
   size_t uncompressed_length;
   if (!port::Snappy_GetUncompressedLength(next_in_, compressed_block_length,
                                           &uncompressed_length)) {
-    return errors::DataLoss("Parsing error in Snappy_GetUncompressedLength");
+    return absl::DataLossError("Parsing error in Snappy_GetUncompressedLength");
   }
 
   // Output buffer must have been cleared before uncompressing more input.
@@ -133,7 +133,7 @@ absl::Status SnappyInputBuffer::Inflate() {
   bool status = port::Snappy_Uncompress(next_in_, compressed_block_length,
                                         output_buffer_.get());
   if (!status) {
-    return errors::DataLoss("Snappy_Uncompress failed");
+    return absl::DataLossError("Snappy_Uncompress failed");
   }
   next_in_ += compressed_block_length;
   avail_in_ -= compressed_block_length;
@@ -207,7 +207,7 @@ absl::Status SnappyInputBuffer::ReadFromFile() {
   // fill up the buffer in which case file_->ReadNBytes would return an
   // OutOfRange error.
   if (data.empty()) {
-    return errors::OutOfRange("EOF reached");
+    return absl::OutOfRangeError("EOF reached");
   }
   if (absl::IsOutOfRange(s)) {
     return absl::OkStatus();
