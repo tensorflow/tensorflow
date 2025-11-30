@@ -3006,9 +3006,6 @@ GpuCompiler::LoadExecutableFromAotResult(
       stream_exec.GetDeviceDescription();
   llvm::LLVMContext llvm_context;
 
-  auto llvm_module = std::make_unique<llvm::Module>("", llvm_context);
-  llvm_module->setTargetTriple(llvm::Triple(target_triple()));
-  llvm_module->setDataLayout(data_layout());
 
   // Recreate BufferAssignment from proto.
   std::unique_ptr<GpuAliasInfo> alias_info = GetAliasInfo(gpu_device_info);
@@ -3019,8 +3016,8 @@ GpuCompiler::LoadExecutableFromAotResult(
 
   IrEmitterContext ir_emitter_context(
       hlo_module.get(), buffer_assignment.get(), &execution_stream_assignment,
-      platform_name, gpu_device_info, mlir_context(), llvm_module.get(),
-      /*llvm_module_constants=*/nullptr, /*emit_kernels=*/false);
+      platform_name, gpu_device_info, mlir_context(), &llvm_context,
+      /*emit_kernels=*/false, llvm::Triple(target_triple()), data_layout());
 
   absl::string_view cache_file_path =
       hlo_module->config().debug_options().xla_gpu_kernel_cache_file();
@@ -3031,9 +3028,9 @@ GpuCompiler::LoadExecutableFromAotResult(
     TF_RETURN_IF_ERROR(LoadCache(ir_emitter_context, cache_file_path));
   }
 
-  auto thunk_emitter = std::make_unique<ThunkEmitter>(&ir_emitter_context);
-  TF_ASSIGN_OR_RETURN(auto thunks,
-                      thunk_emitter->EmitHloEntryComputation(hlo_module.get()));
+  ThunkEmitter thunk_emitter(&ir_emitter_context);
+  TF_ASSIGN_OR_RETURN(auto sequential_thunk,
+                      thunk_emitter.EmitHloEntryComputation(hlo_module.get()));
 
   // Get all other fields required by GpuExecutable.
   std::vector<GpuExecutable::ConstantInfo> constants =
@@ -3055,9 +3052,7 @@ GpuCompiler::LoadExecutableFromAotResult(
         /*dnn_compiled_graphs=*/
         BinaryMap(proto.dnn_compiled_graphs().cbegin(),
                   proto.dnn_compiled_graphs().cend()),
-        /*executable=*/
-        std::make_unique<SequentialThunk>(Thunk::ThunkInfo{},
-                                          std::move(thunks)),
+        /*executable=*/std::move(sequential_thunk),
         /*constants=*/std::move(constants),
         /*output_info=*/std::move(output_info),
         /*module_name=*/std::move(hlo_module_name),

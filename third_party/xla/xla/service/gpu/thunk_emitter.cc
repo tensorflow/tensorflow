@@ -39,13 +39,8 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/StringRef.h"
-#include "llvm/IR/BasicBlock.h"
-#include "llvm/IR/Function.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/LLVMContext.h"
-#include "llvm/IR/Module.h"
-#include "llvm/Linker/Linker.h"
-#include "llvm/TargetParser/Triple.h"
 #include "mlir/AsmParser/AsmParser.h"
 #include "mlir/Dialect/MemRef/Transforms/Passes.h"
 #include "mlir/IR/Attributes.h"
@@ -59,7 +54,6 @@ limitations under the License.
 #include "mlir/Target/LLVMIR/Dialect/LLVMIR/LLVMToLLVMIRTranslation.h"
 #include "mlir/Target/LLVMIR/Dialect/NVVM/NVVMToLLVMIRTranslation.h"
 #include "mlir/Target/LLVMIR/Dialect/ROCDL/ROCDLToLLVMIRTranslation.h"
-#include "mlir/Target/LLVMIR/Export.h"
 #include "xla/backends/gpu/codegen/fusion_emitter.h"
 #include "xla/backends/gpu/codegen/fusions.h"
 #include "xla/backends/gpu/codegen/llvm/llvm_emitter.h"
@@ -341,7 +335,9 @@ ThunkEmitter::ThunkEmitter(IrEmitterContext* ir_emitter_context)
       send_recv_events_(std::make_shared<HostSendRecvAsyncEvents>()),
       copy_events_(std::make_shared<CopyThunk::AsyncEvents>()),
       nvshmem_buffer_addresses_(std::make_shared<NvshmemBufferAddresses>()),
-      call_graph_(CallGraph::Build(&ir_emitter_context->hlo_module())) {}
+      call_graph_(CallGraph::Build(&ir_emitter_context->hlo_module())),
+      constants_module_(ir_emitter_context_->CreateLLVMModule(
+          absl::StrCat(ir_emitter_context_->hlo_module().name(), "_consts"))) {}
 
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitConstant(
     const HloConstantInstruction* instr) {
@@ -358,9 +354,9 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitConstant(
   TF_ASSIGN_OR_RETURN(BufferAllocation::Slice slice,
                       GetAllocationSliceForHlo(instr, {}));
 
-  GpuExecutable::ConstantInfo info = AppendGlobalConstant(
-      ir_emitter_context_->llvm_module_constants(), num_elements, element_bytes,
-      global_name, slice.index(), std::move(content));
+  GpuExecutable::ConstantInfo info =
+      AppendGlobalConstant(constants_module_.get(), num_elements, element_bytes,
+                           global_name, slice.index(), std::move(content));
   ir_emitter_context_->constants().push_back(std::move(info));
   return ThunkSequence{};
 }
@@ -412,9 +408,7 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitPadToStatic(
   TF_ASSIGN_OR_RETURN(auto thunk_sequence,
                       EmitPadToStaticLLVMIR(instr, local_llvm_module.get(),
                                             ir_emitter_context_));
-  CHECK(!llvm::Linker::linkModules(*ir_emitter_context_->llvm_module(),
-                                   std::move(local_llvm_module),
-                                   llvm::Linker::Flags::OverrideFromSrc));
+  kernel_modules_.push_back(std::move(local_llvm_module));
   return thunk_sequence;
 }
 
@@ -428,9 +422,7 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitSliceToDynamic(
   TF_ASSIGN_OR_RETURN(auto thunk_sequence,
                       EmitSliceToDynamicLLVMIR(instr, local_llvm_module.get(),
                                                ir_emitter_context_));
-  CHECK(!llvm::Linker::linkModules(*ir_emitter_context_->llvm_module(),
-                                   std::move(local_llvm_module),
-                                   llvm::Linker::Flags::OverrideFromSrc));
+  kernel_modules_.push_back(std::move(local_llvm_module));
   return thunk_sequence;
 }
 
@@ -1303,9 +1295,7 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitTritonCustomCall(
                              .status());
     }
 
-    TF_RET_CHECK(!llvm::Linker::linkModules(
-        *ir_emitter_context_->llvm_module(), std::move(local_module),
-        llvm::Linker::Flags::OverrideFromSrc));
+    kernel_modules_.push_back(std::move(local_module));
     return {{kernel_name, launch_dimensions, result.cluster_dim,
              result.shmem_bytes}};
   };
@@ -1378,9 +1368,7 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitFusion(
 
   // Use override flag because libdevice functions can be present in both.
   if (result.module) {
-    TF_RET_CHECK(!llvm::Linker::linkModules(
-        *ir_emitter_context_->llvm_module(), std::move(result.module),
-        llvm::Linker::Flags::OverrideFromSrc));
+    kernel_modules_.push_back(std::move(result.module));
   }
 
   const ExecutionStreamAssignment& stream_assignment =
@@ -1518,9 +1506,7 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitRngGetAndUpdateState(
   TF_ASSIGN_OR_RETURN(auto thunk_sequence,
                       EmitRngGetAndUpdateStateLLVMIR(
                           instr, local_llvm_module.get(), ir_emitter_context_));
-  CHECK(!llvm::Linker::linkModules(*ir_emitter_context_->llvm_module(),
-                                   std::move(local_llvm_module),
-                                   llvm::Linker::Flags::OverrideFromSrc));
+  kernel_modules_.push_back(std::move(local_llvm_module));
   return thunk_sequence;
 }
 
@@ -1572,9 +1558,7 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitSort(
                       EmitBitonicSortLLVMIR(sort, local_llvm_module.get(),
                                             ir_emitter_context_));
   AppendThunkSequence(thunks, sort_thunks);
-  llvm::Linker::linkModules(*ir_emitter_context_->llvm_module(),
-                            std::move(local_llvm_module),
-                            llvm::Linker::Flags::OverrideFromSrc);
+  kernel_modules_.push_back(std::move(local_llvm_module));
   return thunks;
 }
 
@@ -2823,9 +2807,12 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitHloInstruction(
   return Internal("Unhandled HLO instruction");
 }
 
-absl::StatusOr<ThunkSequence> ThunkEmitter::EmitHloEntryComputation(
-    const HloModule* module) {
-  return EmitHloComputation(module->entry_computation());
+absl::StatusOr<std::unique_ptr<SequentialThunk>>
+ThunkEmitter::EmitHloEntryComputation(const HloModule* module) {
+  TF_ASSIGN_OR_RETURN(auto thunks,
+                      EmitHloComputation(module->entry_computation()));
+  return std::make_unique<SequentialThunk>(Thunk::ThunkInfo{},
+                                           std::move(thunks));
 }
 
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitHloComputation(
