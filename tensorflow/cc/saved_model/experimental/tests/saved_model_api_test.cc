@@ -19,6 +19,7 @@ limitations under the License.
 #include <string>
 #include <unordered_set>
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/c/tf_status.h"
 #include "tensorflow/cc/experimental/base/public/runtime.h"
 #include "tensorflow/cc/experimental/base/public/runtime_builder.h"
