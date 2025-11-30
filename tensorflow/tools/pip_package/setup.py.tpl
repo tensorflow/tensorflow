@@ -190,6 +190,7 @@ CONSOLE_SCRIPTS = [
     'tflite_convert = tensorflow.lite.python.tflite_convert:main',
     'toco = tensorflow.lite.python.tflite_convert:main',
     'saved_model_cli = tensorflow.python.tools.saved_model_cli:main',
+    'tf_model_summary = tensorflow.tools.model_summary_cli.cli:cli_main',
     (
         'import_pb_to_tensorboard ='
         ' tensorflow.python.tools.import_pb_to_tensorboard:main'
