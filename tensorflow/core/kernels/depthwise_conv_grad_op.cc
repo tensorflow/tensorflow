@@ -565,6 +565,13 @@ class DepthwiseConv2dNativeBackpropInputOp : public OpKernel {
     OP_REQUIRES(context, FormatFromString(data_format, &data_format_),
                 errors::InvalidArgument("Invalid data format"));
 
+    // Defensive check: ensure strides has exactly 4 elements before accessing.
+    // This prevents CHECK failures in GetTensorDim if validation above somehow
+    // didn't prevent reaching this point.
+    if (strides_.size() != 4) {
+      return;  // Error already set by OP_REQUIRES above
+    }
+
     stride_ = GetTensorDim(strides_, data_format_, 'H');
     const int64_t stride_w = GetTensorDim(strides_, data_format_, 'W');
     const int64_t stride_n = GetTensorDim(strides_, data_format_, 'N');
@@ -613,6 +620,22 @@ class DepthwiseConv2dNativeBackpropInputOp : public OpKernel {
   void Compute(OpKernelContext* context) override {
     const Tensor& input_sizes = context->input(0);
     const Tensor& filter = context->input(1);
+    const Tensor& out_backprop = context->input(2);
+
+    // Validate input tensor dimensions early to provide clear error messages
+    // and prevent CHECK failures in GetTensorDim
+    OP_REQUIRES(
+        context, filter.dims() == 4,
+        errors::InvalidArgument(
+            "DepthwiseConv2DBackpropInput: filter must be 4-dimensional, got ",
+            filter.dims(), "-dimensional tensor"));
+    OP_REQUIRES(
+        context, out_backprop.dims() == 4,
+        errors::InvalidArgument(
+            "DepthwiseConv2DBackpropInput: out_backprop must be 4-dimensional, "
+            "got ",
+            out_backprop.dims(), "-dimensional tensor"));
+
     OP_REQUIRES(
         context, TensorShapeUtils::IsVector(input_sizes.shape()),
         errors::InvalidArgument(
@@ -1076,6 +1099,13 @@ class DepthwiseConv2dNativeBackpropFilterOp : public OpKernel {
     OP_REQUIRES(context, FormatFromString(data_format, &data_format_),
                 errors::InvalidArgument("Invalid data format"));
 
+    // Defensive check: ensure strides has exactly 4 elements before accessing.
+    // This prevents CHECK failures in GetTensorDim if validation above somehow
+    // didn't prevent reaching this point.
+    if (strides_.size() != 4) {
+      return;  // Error already set by OP_REQUIRES above
+    }
+
     stride_ = GetTensorDim(strides_, data_format_, 'H');
     const int64_t stride_w = GetTensorDim(strides_, data_format_, 'W');
     const int64_t stride_n = GetTensorDim(strides_, data_format_, 'N');
@@ -1123,6 +1153,22 @@ class DepthwiseConv2dNativeBackpropFilterOp : public OpKernel {
   void Compute(OpKernelContext* context) override {
     const Tensor& input = context->input(0);
     const Tensor& filter_sizes = context->input(1);
+    const Tensor& out_backprop = context->input(2);
+
+    // Validate input tensor dimensions early to provide clear error messages
+    // and prevent CHECK failures in GetTensorDim
+    OP_REQUIRES(
+        context, input.dims() == 4,
+        errors::InvalidArgument(
+            "DepthwiseConv2DBackpropFilter: input must be 4-dimensional, got ",
+            input.dims(), "-dimensional tensor"));
+    OP_REQUIRES(
+        context, out_backprop.dims() == 4,
+        errors::InvalidArgument(
+            "DepthwiseConv2DBackpropFilter: out_backprop must be "
+            "4-dimensional, got ",
+            out_backprop.dims(), "-dimensional tensor"));
+
     OP_REQUIRES(
         context, TensorShapeUtils::IsVector(filter_sizes.shape()),
         errors::InvalidArgument(
