@@ -506,7 +506,7 @@ absl::Status MutableGraphView::CheckFaninsInternal(
   for (int i = 0; i < num_nodes; ++i) {
     bool has_observed_control = false;
     const NodeDef* node = nodes_[i].node();
-    const string& node_name = node->name();
+    const std::string& node_name = node->name();
     std::vector<TensorId> node_fanins;
     node_fanins.reserve(node->input_size());
     for (const string& input : node->input()) {
