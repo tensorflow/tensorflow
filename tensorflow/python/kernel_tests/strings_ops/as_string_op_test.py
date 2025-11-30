@@ -204,6 +204,30 @@ class AsStringOpTest(test.TestCase):
     )
     self.assertAllEqual(widened_string, "       hello, world!")
 
+  def testLargeWidthFailsGracefully(self):
+    """Test that extremely large width values fail gracefully instead of crashing."""
+    input_data = ops.convert_to_tensor([3.1415926, 2.71828], dtype=dtypes.float32)
+    
+    # Test with INT_MAX width value (should fail gracefully)
+    int_max = 2147483647
+    with self.assertRaisesOpError("too large"):
+      self.evaluate(
+          string_ops.as_string(
+              input_data,
+              precision=2,
+              scientific=True,
+              shortest=False,
+              width=int_max,
+              fill='0'
+          )
+      )
+    
+    # Test with very large but still reasonable width
+    with self.assertRaisesOpError("too large"):
+      self.evaluate(
+          string_ops.as_string(input_data, width=2000000)
+      )
+
 
 if __name__ == "__main__":
   test.main()
