@@ -188,6 +188,24 @@ class ConstantInitializersTest(InitializersTest):
       self._testNDimConstantInitializerIncorrectNumberValues(
           np.asarray(value).reshape(tuple([2, 3])), shape)
 
+  @test_util.run_in_graph_and_eager_modes
+  def testComplex64Initializer(self):
+    """Test for issue #105366: Complex64 constant initialization."""
+    complex_values = [1.0+1.0j, 2.0+2.0j, 3.0+3.0j]
+    init = init_ops_v2.constant_initializer(complex_values)
+    tensor = init(shape=[3], dtype=dtypes.complex64)
+    result = self.evaluate(tensor)
+    self.assertAllClose(result, complex_values)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testComplex128Initializer(self):
+    """Test for issue #105366: Complex128 constant initialization."""
+    complex_values = [1.0+1.0j, 2.0+2.0j, 3.0+3.0j]
+    init = init_ops_v2.constant_initializer(complex_values)
+    tensor = init(shape=[3], dtype=dtypes.complex128)
+    result = self.evaluate(tensor)
+    self.assertAllClose(result, complex_values)
+
 
 class RandomUniformInitializerTest(InitializersTest):
 
