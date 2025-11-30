@@ -25,14 +25,9 @@ limitations under the License.
 #include "xla/autotuning.pb.h"
 #include "xla/backends/autotuner/codegen_backend.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/hlo/utils/hlo_query.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/gpu/matmul_utils.h"
-#include "xla/service/gpu/transforms/dot_algorithm_rewriter.h"
-#include "xla/service/gpu/transforms/gemm_rewriter.h"
-#include "xla/service/hlo_cost_analysis.h"
 #include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_memory.h"
@@ -49,8 +44,17 @@ namespace se = ::stream_executor;
 
 absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>>
 CublasBackend::GetSupportedConfigs(const HloInstruction& instr) {
-  if (!IsLegacyCublasMatmul(instr)) {
+  if (!IsSupported(instr)) {
     return std::vector<std::unique_ptr<BackendConfig>>();
+  }
+
+  if (IsCublasLtMatmulF8(instr)) {
+    std::vector<std::unique_ptr<BackendConfig>> configs;
+    AutotuneResult::GemmKey gemm_key;
+    gemm_key.set_algorithm(se::blas::kDefaultAlgorithm);
+    configs.push_back(std::make_unique<google::protobuf::Any>());
+    configs.back()->PackFrom(gemm_key);
+    return configs;
   }
 
   std::unique_ptr<se::DeviceMemoryAllocator> allocator =
@@ -126,7 +130,7 @@ CublasBackend::GetSupportedConfigs(const HloInstruction& instr) {
 
 absl::StatusOr<std::unique_ptr<BackendConfig>> CublasBackend::GetDefaultConfig(
     const HloInstruction& instr) {
-  if (!IsLegacyCublasMatmul(instr)) {
+  if (!IsSupported(instr)) {
     return absl::InvalidArgumentError(
         "CublasBackend does not support this instruction.");
   }
@@ -154,7 +158,7 @@ absl::Status CublasBackend::ApplyConfig(HloInstruction& instr,
 }
 
 bool CublasBackend::IsSupported(const HloInstruction& instr) {
-  return IsLegacyCublasMatmul(instr);
+  return IsLegacyCublasMatmul(instr) || IsCublasLtMatmulF8(instr);
 }
 
 }  // namespace gpu

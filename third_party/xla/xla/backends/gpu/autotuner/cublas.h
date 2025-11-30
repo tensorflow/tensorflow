@@ -32,7 +32,7 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-// A codegen backend for cuBLAS.
+// A codegen backend for cuBLAS with fallback to cuBLAS LT for F8 matmuls.
 // This backend is used to autotune cuBLAS algorithms.
 //
 // Cublas calls are represented as custom-call instructions, with and
