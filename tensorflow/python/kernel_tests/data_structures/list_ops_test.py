@@ -786,6 +786,26 @@ class ListOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       l = list_ops.tensor_list_set_item(l, 0, 1.)
       self.evaluate(l)
 
+  def testSetItemWithNegativeIndexFails(self):
+    l = list_ops.empty_tensor_list(
+        element_dtype=dtypes.float32, element_shape=[])
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError,
+        "Index must be non-negative"):
+      l = list_ops.tensor_list_set_item(
+          l, -1, 1., resize_if_index_out_of_bounds=True)
+      self.evaluate(l)
+
+  def testSetItemWithExcessivelyLargeIndexFails(self):
+    l = list_ops.empty_tensor_list(
+        element_dtype=dtypes.float32, element_shape=[])
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError,
+        "Index too large"):
+      l = list_ops.tensor_list_set_item(
+          l, 2000000000, 1., resize_if_index_out_of_bounds=True)
+      self.evaluate(l)
+
   def testUnknownShape(self):
     l = list_ops.empty_tensor_list(
         element_dtype=dtypes.float32, element_shape=None)
