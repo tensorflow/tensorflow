@@ -342,7 +342,9 @@ def lit_test(
     _ = py_binary  # @unused
 
     # copybara:comment_begin(oss-only)
-    lit_name = "lit_custom_" + name
+    # Prevents creation of the files with identical names located in different
+    # directories on Windows platform.
+    lit_name = "lit_custom_" + name.replace("/", "_")
     py_binary(
         name = lit_name,
         main = "@llvm-project//llvm:utils/lit/lit.py",

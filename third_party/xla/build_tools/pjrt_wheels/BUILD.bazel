@@ -136,6 +136,7 @@ cc_test(
         "PJRT_PLUGIN_PATH": "build_tools/pjrt_wheels/xla_plugins/xla_cpu_pjrt/xla_cpu_pjrt.so",
     },
     linkopts = ["-ldl"],
+    tags = ["no_windows"],
     deps = ["//xla/pjrt/c:pjrt_c_api_hdrs"],
 )
 
@@ -147,12 +148,14 @@ cc_test(
         "PJRT_PLUGIN_PATH": "build_tools/pjrt_wheels/xla_plugins/xla_" + cuda_label + "_pjrt/xla_gpu_pjrt.so",
     },
     linkopts = ["-ldl"],
+    tags = ["no_windows"],
     deps = ["//xla/pjrt/c:pjrt_c_api_hdrs"],
 )
 
 # The CPU and CUDA test suites are run in CI's build script
 test_suite(
     name = "cpu_test_suite",
+    tags = ["no_windows"],
     tests = [
         ":cpu_smoke_test",
     ],
@@ -160,6 +163,7 @@ test_suite(
 
 test_suite(
     name = "cuda_test_suite",
+    tags = ["no_windows"],
     tests = [
         ":" + cuda_label + "_smoke_test",
     ],
