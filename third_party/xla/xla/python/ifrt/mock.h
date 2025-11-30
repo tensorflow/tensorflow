@@ -189,8 +189,6 @@ class MockClient : public llvm::RTTIExtends<MockClient, Client> {
   MOCK_METHOD(absl::StatusOr<CustomLayoutRef>, GetDefaultLayout,
               (DType dtype, const Shape& shape, const ShardingRef& sharding),
               (const, final));
-  MOCK_METHOD(tsl::RCReference<xla::ifrt::UserContext>, CreateUserContext, (),
-              (final));
   // LINT.ThenChange(mock.cc:MockClientDelegation)
 
   xla::ifrt::Client* delegated() const { return delegated_.get(); }

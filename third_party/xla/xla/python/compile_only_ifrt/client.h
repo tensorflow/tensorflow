@@ -330,10 +330,6 @@ class CompileOnlyIfRtClient final
 
   ifrt::Compiler* GetDefaultCompiler() override { return &default_compiler_; }
 
-  tsl::RCReference<xla::ifrt::UserContext> CreateUserContext() override {
-    return tsl::RCReference<xla::ifrt::UserContext>();
-  }
-
   static char ID;  // NOLINT
 
   const ifrt::PjRtTopology& topology() const { return *topology_; }

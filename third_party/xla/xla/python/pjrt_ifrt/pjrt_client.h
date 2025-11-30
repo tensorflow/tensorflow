@@ -345,10 +345,6 @@ class PjRtClient final
   absl::Status TransferFromOutfeed(PjRtDevice* device,
                                    MutableBorrowingLiteral literal);
 
-  tsl::RCReference<UserContext> CreateUserContext() override {
-    return tsl::RCReference<UserContext>();
-  }
-
   // Returns the latest set of incarnation ids for every task.
   absl::StatusOr<absl::flat_hash_map<int, IncarnationId>> Incarnations() const;
 
