@@ -90,10 +90,10 @@ TEST_F(RaggedRangeOpTest, RangeSizeOverflow) {
 }
 
 TEST_F(RaggedRangeOpTest, RangeSizeOverflow2) {
-  BuildRaggedRangeGraph<int64>();
-  AddInputFromArray<int64>(TensorShape({}), {static_cast<int64_t>(5e18)});
-  AddInputFromArray<int64>(TensorShape({}), {static_cast<int64_t>(-5e18)});
-  AddInputFromArray<int64>(TensorShape({}), {-1});
+  BuildRaggedRangeGraph<int64_t>();
+  AddInputFromArray<int64_t>(TensorShape({}), {static_cast<int64_t>(5e18)});
+  AddInputFromArray<int64_t>(TensorShape({}), {static_cast<int64_t>(-5e18)});
+  AddInputFromArray<int64_t>(TensorShape({}), {-1});
 
   EXPECT_EQ(absl::StrCat("Requires ((limit - start) / delta) <= ",
                          std::numeric_limits<int64_t>::max()),
