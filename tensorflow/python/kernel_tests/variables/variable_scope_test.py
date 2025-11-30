@@ -1869,6 +1869,32 @@ class VariableScopeMultithreadedTest(test.TestCase):
       thread.start()
       thread.join()
 
+  @test_util.run_in_graph_and_eager_modes
+  @run_inside_wrap_function_in_eager_mode
+  def testComplex128ConstantInitializer(self):
+    """Test for issue #105366: Complex128 variable with constant_initializer."""
+    # Test complex64
+    complex64_values = [1.0+1.0j, 2.0+2.0j, 3.0+3.0j]
+    v64 = variable_scope.get_variable(
+        "v_complex64", 
+        shape=[3], 
+        dtype=dtypes.complex64,
+        initializer=init_ops.constant_initializer(complex64_values))
+    self.evaluate(variables_lib.global_variables_initializer())
+    result64 = self.evaluate(v64)
+    self.assertAllClose(result64, complex64_values)
+    
+    # Test complex128
+    complex128_values = [1.0+1.0j, 2.0+2.0j, 3.0+3.0j]
+    v128 = variable_scope.get_variable(
+        "v_complex128", 
+        shape=[3], 
+        dtype=dtypes.complex128,
+        initializer=init_ops.constant_initializer(complex128_values))
+    self.evaluate(variables_lib.global_variables_initializer())
+    result128 = self.evaluate(v128)
+    self.assertAllClose(result128, complex128_values)
+
 
 if __name__ == "__main__":
   test.main()
