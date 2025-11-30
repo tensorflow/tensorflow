@@ -488,7 +488,7 @@ std::optional<xla::OpSharding> ExtractShardyResultShardingFromFrontendAttrs(
   mlir::Operation* defining_op =
       mlir::sdy::getBodyTerminatorOperand(function, res_num).getDefiningOp();
   auto custom_call_op =
-      mlir::dyn_cast_or_null<mlir::mhlo::CustomCallOp>(defining_op);
+      mlir::dyn_cast_or_null<mlir::stablehlo::CustomCallOp>(defining_op);
 
   if (custom_call_op == nullptr ||
       custom_call_op.getCallTargetName() !=

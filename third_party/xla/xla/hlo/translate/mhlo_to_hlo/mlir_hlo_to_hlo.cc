@@ -3058,8 +3058,8 @@ mlir::LogicalResult ExportXlaOp(SetDimensionSizeOp op, OpLoweringContext ctx) {
     return op.emitError(shape_or.status().ToString());
   }
   xla::XlaOp xla_result;
-  if (auto constant =
-          llvm::dyn_cast_or_null<ConstantOp>(op.getSize().getDefiningOp());
+  if (auto constant = llvm::dyn_cast_or_null<stablehlo::ConstantOp>(
+          op.getSize().getDefiningOp());
       constant != nullptr) {
     auto value = constant.getValue();
     auto values = value.getValues<mlir::IntegerAttr>();
@@ -3356,9 +3356,9 @@ LogicalResult ExportXlaOp(ReduceScatterOp op, OpLoweringContext ctx) {
   return success();
 }
 
-LogicalResult ExportXlaOp(AsyncStartOp op, OpLoweringContext ctx) {
+LogicalResult ExportXlaOp(mhlo::AsyncStartOp op, OpLoweringContext ctx) {
   for (auto* user : op.getResult().getUsers()) {
-    if (!isa<AsyncUpdateOp, AsyncDoneOp>(user)) {
+    if (!isa<mhlo::AsyncUpdateOp, mhlo::AsyncDoneOp>(user)) {
       return op.emitOpError() << "Users of AsyncStart's return value must be "
                               << "async_update or async_done";
     }
@@ -3373,8 +3373,8 @@ LogicalResult ExportXlaOp(AsyncStartOp op, OpLoweringContext ctx) {
   mlir::func::FuncOp callee = ctx.converter->LookUpSymbol(
       FlatSymbolRefAttr::get(op->getContext(), op.getCalledComputation()));
 
-  auto all_gather_op =
-      dyn_cast_or_null<AllGatherOp>(callee.getBody().front().front());
+  auto all_gather_op = dyn_cast_or_null<stablehlo::AllGatherOp>(
+      callee.getBody().front().front());
   if (all_gather_op && SimplyReturnedOp(all_gather_op)) {
     TensorType operand_type =
         mlir::cast<TensorType>(all_gather_op.getOperand(0).getType());
@@ -3394,8 +3394,8 @@ LogicalResult ExportXlaOp(AsyncStartOp op, OpLoweringContext ctx) {
         Convert_use_global_device_ids(all_gather_op.getUseGlobalDeviceIds()));
     return success();
   }
-  auto all_reduce_op =
-      dyn_cast_or_null<AllReduceOp>(callee.getBody().front().front());
+  auto all_reduce_op = dyn_cast_or_null<stablehlo::AllReduceOp>(
+      callee.getBody().front().front());
   if (all_reduce_op && SimplyReturnedOp(all_reduce_op)) {
     xla::XlaComputationId computation;
     if (failed(ctx.converter->LowerRegionAsComputation(
@@ -3410,8 +3410,8 @@ LogicalResult ExportXlaOp(AsyncStartOp op, OpLoweringContext ctx) {
         Convert_use_global_device_ids(all_reduce_op.getUseGlobalDeviceIds()));
     return success();
   }
-  auto collective_permute_op =
-      dyn_cast_or_null<CollectivePermuteOp>(callee.getBody().front().front());
+  auto collective_permute_op = dyn_cast_or_null<stablehlo::CollectivePermuteOp>(
+      callee.getBody().front().front());
   if (collective_permute_op && SimplyReturnedOp(collective_permute_op)) {
     value_map[result] =
         xla::internal::XlaBuilderFriend::BuildCollectivePermuteStart(
@@ -3421,7 +3421,8 @@ LogicalResult ExportXlaOp(AsyncStartOp op, OpLoweringContext ctx) {
             Convert_channel_handle(collective_permute_op.getChannelHandle()));
     return mlir::success();
   }
-  auto copy_op = dyn_cast_or_null<CopyOp>(callee.getBody().front().front());
+  auto copy_op =
+      dyn_cast_or_null<mhlo::CopyOp>(callee.getBody().front().front());
   if (copy_op && SimplyReturnedOp(copy_op)) {
     std::optional<int> cross_program_prefetch_index =
         copy_op.getCrossProgramPrefetchIndex()
@@ -3431,7 +3432,8 @@ LogicalResult ExportXlaOp(AsyncStartOp op, OpLoweringContext ctx) {
         ctx.builder, operands[0], cross_program_prefetch_index);
     return mlir::success();
   }
-  auto send_op = dyn_cast_or_null<SendOp>(callee.getBody().front().front());
+  auto send_op =
+      dyn_cast_or_null<stablehlo::SendOp>(callee.getBody().front().front());
   if (send_op && SimplyReturnedOp(send_op)) {
     xla::XlaOp operand;
     if (operands.size() == 2)
@@ -3448,7 +3450,8 @@ LogicalResult ExportXlaOp(AsyncStartOp op, OpLoweringContext ctx) {
         send_op.getIsHostTransfer());
     return mlir::success();
   }
-  auto recv_op = dyn_cast_or_null<RecvOp>(callee.getBody().front().front());
+  auto recv_op =
+      dyn_cast_or_null<stablehlo::RecvOp>(callee.getBody().front().front());
   if (recv_op && SimplyReturnedOp(recv_op)) {
     auto result_types =
         mlir::cast<AsyncBundleType>(result.getType()).getTypes()[1];
@@ -3482,8 +3485,9 @@ LogicalResult ExportXlaOp(AsyncStartOp op, OpLoweringContext ctx) {
   return success();
 }
 
-LogicalResult ExportXlaOp(AsyncUpdateOp op, OpLoweringContext ctx) {
-  if (!isa<AsyncStartOp, AsyncUpdateOp>(op.getBundle().getDefiningOp())) {
+LogicalResult ExportXlaOp(mhlo::AsyncUpdateOp op, OpLoweringContext ctx) {
+  if (!isa<mhlo::AsyncStartOp, mhlo::AsyncUpdateOp>(
+          op.getBundle().getDefiningOp())) {
     auto theerror = op.emitError()
                     << "Defining op of AsyncUpdate's operand must be "
                     << "async_start or async_update";
@@ -3496,7 +3500,7 @@ LogicalResult ExportXlaOp(AsyncUpdateOp op, OpLoweringContext ctx) {
   }
 
   for (auto* user : op.getResult().getUsers()) {
-    if (!isa<AsyncUpdateOp, AsyncDoneOp>(user)) {
+    if (!isa<mhlo::AsyncUpdateOp, mhlo::AsyncDoneOp>(user)) {
       return op.emitOpError() << "Users of AsyncUpdate's return value must be "
                               << "async_update or async_done";
     }
@@ -3513,8 +3517,9 @@ LogicalResult ExportXlaOp(AsyncUpdateOp op, OpLoweringContext ctx) {
   return success();
 }
 
-LogicalResult ExportXlaOp(AsyncDoneOp op, OpLoweringContext ctx) {
-  if (!isa<AsyncStartOp, AsyncUpdateOp>(op.getBundle().getDefiningOp())) {
+LogicalResult ExportXlaOp(mhlo::AsyncDoneOp op, OpLoweringContext ctx) {
+  if (!isa<mhlo::AsyncStartOp, mhlo::AsyncUpdateOp>(
+          op.getBundle().getDefiningOp())) {
     auto theerror = op.emitError()
                     << "Defining op of AsyncDone's operand must be "
                     << "async_start or async_update";
@@ -3530,42 +3535,44 @@ LogicalResult ExportXlaOp(AsyncDoneOp op, OpLoweringContext ctx) {
   if (failed(GetXlaOp(op.getBundle(), value_map, &operand, op)))
     return failure();
 
-  // Find the AsyncStartOp that starts the async chain.
+  // Find the mhlo::AsyncStartOp that starts the async chain.
   Operation* start = op;
-  while (start != nullptr && !isa<AsyncStartOp>(start)) {
+  while (start != nullptr && !isa<mhlo::AsyncStartOp>(start)) {
     start = start->getOperand(0).getDefiningOp();
-    if (start == nullptr || !isa<AsyncStartOp, AsyncUpdateOp>(start)) {
+    if (start == nullptr ||
+        !isa<mhlo::AsyncStartOp, mhlo::AsyncUpdateOp>(start)) {
       return op.emitError() << "Defining op of AsyncDone's operand must be "
                             << "async_start or async_update";
     }
   }
 
-  if (!isa<AsyncStartOp>(start)) {
+  if (!isa<mhlo::AsyncStartOp>(start)) {
     return op.emitError() << "Could not find async chain start";
   }
 
   mlir::func::FuncOp callee =
       ctx.converter->LookUpSymbol(FlatSymbolRefAttr::get(
-          op->getContext(), cast<AsyncStartOp>(start).getCalledComputation()));
+          op->getContext(),
+          cast<mhlo::AsyncStartOp>(start).getCalledComputation()));
 
-  auto all_gather_op =
-      dyn_cast_or_null<AllGatherOp>(callee.getBody().front().front());
+  auto all_gather_op = dyn_cast_or_null<stablehlo::AllGatherOp>(
+      callee.getBody().front().front());
   if (all_gather_op && SimplyReturnedOp(all_gather_op)) {
     value_map[op.getResult(0)] =
         xla::internal::XlaBuilderFriend::BuildAllGatherDone(
             ctx.builder, operand, xla::TypeToShape(all_gather_op.getType(0)));
     return success();
   }
-  auto all_reduce_op =
-      dyn_cast_or_null<AllReduceOp>(callee.getBody().front().front());
+  auto all_reduce_op = dyn_cast_or_null<stablehlo::AllReduceOp>(
+      callee.getBody().front().front());
   if (all_reduce_op && SimplyReturnedOp(all_reduce_op)) {
     value_map[op.getResult(0)] =
         xla::internal::XlaBuilderFriend::BuildAllReduceDone(
             ctx.builder, operand, xla::TypeToShape(all_reduce_op.getType(0)));
     return success();
   }
-  auto collective_permute_op =
-      dyn_cast_or_null<CollectivePermuteOp>(callee.getBody().front().front());
+  auto collective_permute_op = dyn_cast_or_null<stablehlo::CollectivePermuteOp>(
+      callee.getBody().front().front());
   if (collective_permute_op && SimplyReturnedOp(collective_permute_op)) {
     value_map[op.getResult(0)] =
         xla::internal::XlaBuilderFriend::BuildCollectivePermuteDone(
@@ -3573,13 +3580,15 @@ LogicalResult ExportXlaOp(AsyncDoneOp op, OpLoweringContext ctx) {
             xla::TypeToShape(collective_permute_op.getType()));
     return success();
   }
-  auto copy_op = dyn_cast_or_null<CopyOp>(callee.getBody().front().front());
+  auto copy_op =
+      dyn_cast_or_null<mhlo::CopyOp>(callee.getBody().front().front());
   if (copy_op && SimplyReturnedOp(copy_op)) {
     value_map[op.getResult(0)] = xla::internal::XlaBuilderFriend::BuildCopyDone(
         ctx.builder, operand, xla::TypeToShape(copy_op.getType()));
     return success();
   }
-  auto send_op = dyn_cast_or_null<SendOp>(callee.getBody().front().front());
+  auto send_op =
+      dyn_cast_or_null<stablehlo::SendOp>(callee.getBody().front().front());
   if (send_op && SimplyReturnedOp(send_op)) {
     value_map[op.getResult(0)] = xla::internal::XlaBuilderFriend::BuildSendDone(
         ctx.builder, operand,
@@ -3587,7 +3596,8 @@ LogicalResult ExportXlaOp(AsyncDoneOp op, OpLoweringContext ctx) {
         send_op.getIsHostTransfer());
     return success();
   }
-  auto recv_op = dyn_cast_or_null<RecvOp>(callee.getBody().front().front());
+  auto recv_op =
+      dyn_cast_or_null<stablehlo::RecvOp>(callee.getBody().front().front());
   if (recv_op && SimplyReturnedOp(recv_op)) {
     auto result_types =
         mlir::cast<AsyncBundleType>(op.getBundle().getType()).getTypes()[1];
@@ -6443,12 +6453,11 @@ absl::Status ConvertMlirHloToHlo(mlir::ModuleOp module,
 #endif
   pm.enableVerifier(enableVerifier);
 
-  mhlo::StablehloLegalizeToHloPassOptions shlo_pass_opts;
-  shlo_pass_opts.convert_xla_supported_stablehlo_ =
-      !options.direct_stablehlo_to_hlo;
-  pm.addPass(mlir::mhlo::createStablehloLegalizeToHloPass(shlo_pass_opts));
+  mhlo::HloLegalizeToStablehloPassOptions shlo_pass_opts;
+  shlo_pass_opts.allow_xla_features_ = true;
+  pm.addPass(mlir::mhlo::createHloLegalizeToStablehloPass(shlo_pass_opts));
   if (failed(pm.run(module))) {
-    return absl::InternalError("Unable to convert StableHLO to MHLO");
+    return absl::InternalError("Unable to convert MHLO to StableHLO");
   }
 
   TF_RETURN_IF_ERROR(PrepareForExport(module));
