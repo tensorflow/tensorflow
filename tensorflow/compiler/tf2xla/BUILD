@@ -13,7 +13,7 @@ load(
     "if_cuda_is_configured",
 )
 load("//tensorflow:strict.default.bzl", "py_strict_library")
-load("//tensorflow:tensorflow.bzl", "if_google", "if_libtpu", "tf_cc_binary", "tf_cc_test", "tf_copts", "tf_cuda_cc_test", "tf_gen_op_wrapper_py", "tf_openmp_copts")
+load("//tensorflow:tensorflow.bzl", "if_google", "if_libtpu", "tf_cc_binary", "tf_cc_test", "tf_copts", "tf_cuda_cc_test", "tf_gen_op_wrapper_py", "tf_openmp_copts", "tf_openmp_deps")
 load("//tensorflow:tensorflow.default.bzl", "cuda_py_strict_test", "filegroup", "get_compatible_with_portable")
 load(
     "//tensorflow/core/platform:build_config.bzl",
@@ -353,7 +353,7 @@ cc_library(
         "@local_tsl//tsl/platform:ml_dtypes",
         "@local_tsl//tsl/platform:tstring",
         "@local_tsl//tsl/platform:types",
-    ] + tf_additional_tensor_coding_deps() + mkl_deps(),
+    ] + tf_additional_tensor_coding_deps() + mkl_deps() + tf_openmp_deps(),
     alwayslink = 1,
 )
 

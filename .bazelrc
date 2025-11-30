@@ -297,7 +297,6 @@ common:cuda_version --repo_env=HERMETIC_NVSHMEM_VERSION="3.2.5"
 
 # CUDA: This config refers to building CUDA op kernels with nvcc.
 common:cuda --repo_env TF_NEED_CUDA=1
-common:cuda --crosstool_top=@local_config_cuda//crosstool:toolchain
 common:cuda --@local_config_cuda//:enable_cuda
 common:cuda --config=cuda_version
 # This flag is needed to include CUDA libraries.
@@ -332,8 +331,6 @@ common:cuda_clang --linkopt="-lm"
 # Set up compilation CUDA version and paths and use the CUDA Clang toolchain.
 common:cuda_clang_official --config=cuda_clang
 common:cuda_clang_official --config=cuda_version
-common:cuda_clang_official --action_env=CLANG_CUDA_COMPILER_PATH="/usr/lib/llvm-18/bin/clang"
-common:cuda_clang_official --crosstool_top="@local_config_cuda//crosstool:toolchain"
 
 # Build with nvcc for CUDA and clang for host
 common:cuda_nvcc --config=cuda
@@ -767,13 +764,17 @@ common:release_gpu_linux_clang_local --config=release_cpu_linux_clang_local
 
 common:release_arm64_linux --config=release_linux_base
 common:release_arm64_linux --config=linux_arm64
-common:release_arm64_linux --config=clang_local
-common:release_arm64_linux --repo_env=CC="/usr/lib/llvm-18/bin/clang"
-common:release_arm64_linux --repo_env=BAZEL_COMPILER="/usr/lib/llvm-18/bin/clang"
-common:release_arm64_linux --crosstool_top="@ml2014_clang_aarch64_config_aarch64//crosstool:toolchain"
 common:release_arm64_linux --config=mkl_aarch64_threadpool
 common:release_arm64_linux --copt=-flax-vector-conversions
 test:release_arm64_linux --flaky_test_attempts=3
+
+# Deprecated release CPU config with non-hermetic toolchains.
+common:release_arm64_linux_clang_local --config=release_arm64_linux
+common:release_arm64_linux_clang_local --config=clang_local
+common:release_arm64_linux_clang_local --repo_env=CC="/usr/lib/llvm-18/bin/clang"
+common:release_arm64_linux_clang_local --repo_env=BAZEL_COMPILER="/usr/lib/llvm-18/bin/clang"
+common:release_arm64_linux_clang_local --crosstool_top="@ml2014_clang_aarch64_config_aarch64//crosstool:toolchain"
+test:release_arm64_linux_clang_local --flaky_test_attempts=3
 
 common:release_cpu_macos --config=avx_linux
 
