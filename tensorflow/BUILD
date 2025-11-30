@@ -538,6 +538,19 @@ config_setting(
 )
 
 config_setting(
+    name = "linux_aarch64_with_mkl",
+    constraint_values =
+        [
+            "@platforms//cpu:aarch64",
+            "@platforms//os:linux",
+        ],
+    define_values = {
+        "build_with_mkl_aarch64": "true",
+    },
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
     name = "linux_armhf",
     constraint_values =
         [
@@ -1093,6 +1106,7 @@ bzl_library(
     deps = [
         ":tf_version_bzl",
         # copybara:uncomment "//devtools/build_cleaner/skylark:build_defs_lib",
+        "@rules_cc//cc:core_rules",
         "@rules_cc//cc/common",
         "@rules_java//java:rules",
         "@local_xla//xla/tsl:tsl_bzl",
