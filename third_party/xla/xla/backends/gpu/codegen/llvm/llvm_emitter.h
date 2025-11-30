@@ -16,24 +16,17 @@ limitations under the License.
 #ifndef XLA_BACKENDS_GPU_CODEGEN_LLVM_LLVM_EMITTER_H_
 #define XLA_BACKENDS_GPU_CODEGEN_LLVM_LLVM_EMITTER_H_
 
-#include <vector>
+#include <cstdint>
 
-#include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "llvm/IR/Function.h"
-#include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Value.h"
 #include "xla/backends/gpu/runtime/thunk.h"
-#include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
-#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
-#include "xla/service/gpu/hlo_to_ir_bindings.h"
+#include "xla/service/gpu/gpu_executable.h"
+#include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/ir_emitter_context.h"
-#include "xla/service/llvm_ir/fused_ir_emitter.h"
-#include "xla/service/llvm_ir/ir_array.h"
-#include "xla/service/llvm_ir/ir_builder_mixin.h"
-#include "xla/service/llvm_ir/loop_emitter.h"
-#include "xla/shape_util.h"
 
 namespace xla::gpu {
 
