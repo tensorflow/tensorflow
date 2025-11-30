@@ -126,11 +126,11 @@ absl::StatusOr<std::unique_ptr<Executable>> AutotunerCompileUtil::Compile(
   if (!new_hlo_module.status().ok()) {
     return new_hlo_module.status();
   }
+  Compiler::CompileOptions compile_options;
+  compile_options.device_allocator = &allocator_;
+  compile_options.embed_hlo_module = false;
   absl::StatusOr<std::unique_ptr<Executable>> out = compiler_->RunBackend(
-      std::move(*new_hlo_module), &stream_executor_,
-      Compiler::CompileOptions{&allocator_, /*thread_pool=*/nullptr,
-                               /*layout_canonicalization_callback=*/{},
-                               /*is_autotuning_compilation=*/true});
+      std::move(*new_hlo_module), &stream_executor_, compile_options);
   if (out.status().code() == absl::StatusCode::kResourceExhausted ||
       out.status().code() == absl::StatusCode::kCancelled) {
     // Being out of shared memory budget or registers is an expected failure.

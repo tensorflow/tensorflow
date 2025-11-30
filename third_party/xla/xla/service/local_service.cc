@@ -95,9 +95,9 @@ LocalService::CompileExecutables(
       build_options.device_allocator(),
       build_options.compile_thread_pool(),
       build_options.layout_canonicalization_callback(),
-      false,
       /*gpu_target_config=*/{},
       /*cpu_target_config=*/{},
+      /*key_value_store=*/
       {build_options.key_value_store(), build_options.process_index(),
        build_options.process_count()},
       build_options.slice_size()};

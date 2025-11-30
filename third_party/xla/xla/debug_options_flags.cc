@@ -423,6 +423,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_pgle_accuracy_checker(
       DebugOptions::PGLE_STRICTNESS_LEVEL_WARN);
 
+  opts.set_xla_gpu_executable_embed_debug_info(true);
   opts.set_xla_gpu_executable_warn_stuck_timeout_seconds(10);
   opts.set_xla_gpu_executable_terminate_timeout_seconds(30);
 
@@ -2385,7 +2386,12 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       "missing instructions in the profile, then the compilation will halt "
       "(ERROR), or a warning will be emitted (WARN), or the checker is "
       "disabled (OFF)"));
-
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_executable_embed_debug_info",
+      bool_setter_for(&DebugOptions::set_xla_gpu_executable_embed_debug_info),
+      debug_options->xla_gpu_executable_embed_debug_info(),
+      "Add debug information to the executable such as HLO module, asm_text "
+      "etc."));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_executable_warn_stuck_timeout",
       int32_setter_for(
