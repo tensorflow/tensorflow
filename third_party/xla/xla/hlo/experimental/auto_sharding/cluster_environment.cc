@@ -295,8 +295,8 @@ double ClusterEnvironment::ReshardingCost(const Shape& shape,
     return 0.0;
   }
 
-  if (src_spec.tile_assignment().num_elements() > device_mesh_.num_elements() ||
-      dst_spec.tile_assignment().num_elements() > device_mesh_.num_elements()) {
+  if (src_spec.num_devices() > device_mesh_.num_elements() ||
+      dst_spec.num_devices() > device_mesh_.num_elements()) {
     LOG(WARNING)
         << "Full device sharding found when solving for the partial mesh "
         << spmd::ToString(device_mesh_.dimensions())
