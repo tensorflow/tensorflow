@@ -1247,10 +1247,38 @@ class PjRtCApiAsyncHostToDeviceTransferManager
   absl::Status TransferLiteralToBuffer(
       int buffer_index, const LiteralSlice& literal,
       absl::AnyInvocable<void() &&> on_done) override {
-    return Unimplemented(
-        "PJRT C API does not support TransferLiteralToBuffer. Please report an "
-        "issue at https://github.com/google/jax/issues if you need this "
-        "feature.");
+    PJRT_AsyncHostToDeviceTransferManager_TransferLiteral_Args args;
+    args.struct_size =
+        PJRT_AsyncHostToDeviceTransferManager_TransferLiteral_Args_STRUCT_SIZE;
+    args.extension_start = nullptr;
+    args.transfer_manager = c_transfer_manager_.get();
+    args.buffer_index = buffer_index;
+
+    const xla::Shape& shape = literal.shape();
+    args.shape_dims = shape.dimensions().data();
+    args.shape_num_dims = shape.dimensions().size();
+    args.shape_element_type =
+        pjrt::ConvertToPjRtBufferType(shape.element_type());
+
+    pjrt::BufferMemoryLayoutData c_layout_data;
+    if (shape.has_layout()) {
+      TF_ASSIGN_OR_RETURN(
+          c_layout_data, pjrt::ConvertToBufferMemoryLayoutData(shape.layout()));
+      args.shape_layout = &c_layout_data.c_layout;
+    } else {
+      args.shape_layout = nullptr;
+    }
+
+    args.data = literal.untyped_data();
+    const PJRT_Api* api = c_client_->pjrt_c_api();
+    RETURN_STATUS_IF_PJRT_ERROR(
+        api->PJRT_AsyncHostToDeviceTransferManager_TransferLiteral(&args), api);
+    std::unique_ptr<PJRT_Event, ::pjrt::PJRT_EventDeleter> event(
+        args.done_with_h2d_transfer, ::pjrt::MakeEventDeleter(api));
+    RETURN_STATUS_IF_PJRT_ERROR(
+        pjrt::InvokePjRtEventWhenReady(api, event.get(), std::move(on_done)),
+        api);
+    return absl::OkStatus();
   }
 
   size_t buffer_size(int buffer_index) const override {
