@@ -377,6 +377,7 @@ class HloParserImpl : public HloParser {
   bool ParseHloModule(HloModule* module,
                       bool parse_module_without_header = false);
 
+  bool ParseStackFrameIndex(HloModule* module);
   bool ParseComputations(HloModule* module);
   bool ParseComputation(HloComputation** entry_computation);
   bool ParseInstructionList(HloComputation** computation,
@@ -605,6 +606,8 @@ class HloParserImpl : public HloParser {
   bool ParseOriginalValueRecoveryTable(
       OriginalValueRecoveryTable& original_value_recovery_table);
   bool ParseCollectiveOpGroupMode(CollectiveOpGroupMode* result);
+  bool ParseFileLocationList(StackFrameIndexProto* stack_frame_index);
+  bool ParseStackFramesList(StackFrameIndexProto* stack_frame_index);
 
   using AliasingData =
       absl::flat_hash_map<ShapeIndex, HloInputOutputAliasConfig::Alias>;
@@ -1133,7 +1136,7 @@ bool HloParserImpl::ParseHloModule(HloModule* module,
     module->set_name(name);
   }
 
-  if (!ParseComputations(module)) {
+  if (!ParseStackFrameIndex(module) || !ParseComputations(module)) {
     return false;
   }
 
@@ -1225,6 +1228,90 @@ bool HloParserImpl::ParseHloModule(HloModule* module,
   }
   DeduplicateOriginalValues(module);
 
+  return true;
+}
+
+// Parses a list of `int {file_name_id=int function_name_id=int line=int
+// end_line=int column=int end_column=int}` into
+// StackFrameIndexProto::file_locations.
+bool HloParserImpl::ParseFileLocationList(
+    StackFrameIndexProto* stack_frame_index) {
+  optional<int32_t> file_name_id, function_name_id, line, end_line, column,
+      end_column;
+  absl::flat_hash_map<std::string, AttrConfig> attrs = {
+      {"file_name_id", {/*required=*/true, AttrTy::kInt32, &file_name_id}},
+      {"function_name_id",
+       {/*required=*/true, AttrTy::kInt32, &function_name_id}},
+      {"line", {/*required=*/true, AttrTy::kInt32, &line}},
+      {"end_line", {/*required=*/true, AttrTy::kInt32, &end_line}},
+      {"column", {/*required=*/true, AttrTy::kInt32, &column}},
+      {"end_column", {/*required=*/true, AttrTy::kInt32, &end_column}}};
+  while (EatIfPresent(TokKind::kInt)) {
+    if (!ParseSubAttributes(attrs)) {
+      return false;
+    }
+    StackFrameIndexProto::FileLocation* file_location =
+        stack_frame_index->add_file_locations();
+    file_location->set_file_name_id(*file_name_id);
+    file_location->set_function_name_id(*function_name_id);
+    file_location->set_line(*line);
+    file_location->set_end_line(*end_line);
+    file_location->set_column(*column);
+    file_location->set_end_column(*end_column);
+  }
+  return true;
+}
+
+// Parses a list of `int {function_location_id=int parent_frame_id=int}` into
+// StackFrameIndexProto::stack_frames.
+bool HloParserImpl::ParseStackFramesList(
+    StackFrameIndexProto* stack_frame_index) {
+  optional<int32_t> file_location_id, parent_frame_id;
+  absl::flat_hash_map<std::string, AttrConfig> attrs = {
+      {"file_location_id",
+       {/*required=*/true, AttrTy::kInt32, &file_location_id}},
+      {"parent_frame_id",
+       {/*required=*/true, AttrTy::kInt32, &parent_frame_id}}};
+  while (lexer_.GetKind() == TokKind::kInt) {
+    lexer_.Lex();
+    if (!ParseSubAttributes(attrs)) {
+      return false;
+    }
+    StackFrameIndexProto::StackFrame* stack_frame =
+        stack_frame_index->add_stack_frames();
+    stack_frame->set_file_location_id(*file_location_id);
+    stack_frame->set_parent_frame_id(*parent_frame_id - 1);
+  }
+  return true;
+}
+
+bool HloParserImpl::ParseStackFrameIndex(HloModule* module) {
+  if (!EatIfPresent(TokKind::kw_FileNames)) {
+    return true;
+  }
+  StackFrameIndexProto stack_frame_index;
+
+  // Parse file names.
+  while (EatIfPresent(TokKind::kInt)) {
+    ParseString(stack_frame_index.add_file_names());
+  }
+
+  // Parse function names.
+  if (!ParseToken(TokKind::kw_FunctionNames, "expects 'FunctionNames'")) {
+    return false;
+  }
+  while (EatIfPresent(TokKind::kInt)) {
+    ParseString(stack_frame_index.add_function_names());
+  }
+
+  // Parse file locations and stack frames.
+  if (!ParseToken(TokKind::kw_FileLocations, "expects 'FileLocations'") ||
+      !ParseFileLocationList(&stack_frame_index) ||
+      !ParseToken(TokKind::kw_StackFrames, "expects 'StackFrames'") ||
+      !ParseStackFramesList(&stack_frame_index)) {
+    return false;
+  }
+  module->set_stack_frame_index(std::move(stack_frame_index));
   return true;
 }
 
@@ -6783,6 +6870,7 @@ bool HloParserImpl::ParseMetadata(OpMetadata& metadata) {
   optional<int32_t> source_end_line;
   optional<int32_t> source_column;
   optional<int32_t> source_end_column;
+  optional<int32_t> stack_frame_id;
   optional<std::vector<int64_t>> profile_type;
   optional<std::string> deduplicated_name;
   optional<std::string> scheduling_name;
@@ -6801,6 +6889,8 @@ bool HloParserImpl::ParseMetadata(OpMetadata& metadata) {
                                 &deduplicated_name};
   attrs["scheduling_name"] = {/*required=*/false, AttrTy::kString,
                               &scheduling_name};
+  attrs["stack_frame_id"] = {/*required=*/false, AttrTy::kInt32,
+                             &stack_frame_id};
   if (!ParseSubAttributes(attrs)) {
     return false;
   }
@@ -6838,6 +6928,9 @@ bool HloParserImpl::ParseMetadata(OpMetadata& metadata) {
   }
   if (scheduling_name) {
     metadata.set_scheduling_name(*scheduling_name);
+  }
+  if (stack_frame_id) {
+    metadata.set_stack_frame_id(*stack_frame_id);
   }
   return true;
 }

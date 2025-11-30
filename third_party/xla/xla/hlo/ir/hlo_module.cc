@@ -40,6 +40,7 @@ limitations under the License.
 #include "absl/strings/match.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
@@ -47,6 +48,7 @@ limitations under the License.
 #include "highwayhash/arch_specific.h"
 #include "highwayhash/hh_types.h"
 #include "highwayhash/highwayhash.h"
+#include "llvm/ADT/STLExtras.h"
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/ir/hlo_clone_context.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -397,6 +399,7 @@ void HloModule::Print(
         },
         value);
   }
+  PrintStackFrameIndex(printer);
   printer->Append("\n\n");
   PrintComputations(printer, options);
 }
@@ -466,6 +469,42 @@ void HloModule::PrintComputations(Printer* printer,
       computation->Print(printer, new_options);
     }
     printer->Append("\n\n");
+  }
+}
+
+void HloModule::PrintStackFrameIndex(Printer* printer) const {
+  if (!stack_frame_index_.has_value()) {
+    return;
+  }
+  printer->Append("\n\nFileNames\n");
+  for (const auto& [index, file_name] :
+       llvm::enumerate(stack_frame_index_->file_names())) {
+    printer->Append(
+        absl::StrFormat("%d \"%s\"\n", index + 1, absl::CEscape(file_name)));
+  }
+  printer->Append("\nFunctionNames\n");
+  for (const auto& [index, function_name] :
+       llvm::enumerate(stack_frame_index_->function_names())) {
+    printer->Append(absl::StrFormat("%d \"%s\"\n", index + 1,
+                                    absl::CEscape(function_name)));
+  }
+  printer->Append("\nFileLocations\n");
+  for (const auto& [index, file_location] :
+       llvm::enumerate(stack_frame_index_->file_locations())) {
+    printer->Append(
+        absl::StrFormat("%d {file_name_id=%d function_name_id=%d line=%d "
+                        "end_line=%d column=%d end_column=%d}\n",
+                        index + 1, file_location.file_name_id(),
+                        file_location.function_name_id(), file_location.line(),
+                        file_location.end_line(), file_location.column(),
+                        file_location.end_column()));
+  }
+  printer->Append("\nStackFrames\n");
+  for (const auto& [index, frame] :
+       llvm::enumerate(stack_frame_index_->stack_frames())) {
+    printer->Append(absl::StrFormat(
+        "%d {file_location_id=%d parent_frame_id=%d}\n", index + 1,
+        frame.file_location_id(), frame.parent_frame_id() + 1));
   }
 }
 
