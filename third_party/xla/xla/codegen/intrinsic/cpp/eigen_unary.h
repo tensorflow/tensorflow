@@ -21,10 +21,13 @@ namespace xla::codegen {
 
 // Single precision
 float tanh_f32(float x) asm("xla.tanh.f32");
+Vec4f tanh_v4f32(Vec4f x) asm("xla.tanh.v4f32");
+Vec8f tanh_v8f32(Vec8f x) asm("xla.tanh.v8f32");
 Vec16f tanh_v16f32(Vec16f x) asm("xla.tanh.v16f32");
 
 // Double precision
 double tanh_f64(double x) asm("xla.tanh.f64");
+Vec4d tanh_v4f64(Vec4d x) asm("xla.tanh.v4f64");
 Vec8d tanh_v8f64(Vec8d x) asm("xla.tanh.v8f64");
 
 }  // namespace xla::codegen
