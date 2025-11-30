@@ -36,6 +36,7 @@ import numpy as np
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import gen_linalg_ops
@@ -1795,21 +1796,38 @@ def _compute_fans(shape):
   Returns:
     A tuple of integer scalars (fan_in, fan_out).
   """
+  # Helper function to safely convert shape dimension to int
+  def _to_int(value):
+    """Convert value to int, handling symbolic tensors from XLA."""
+    # Try to extract constant value from tensor
+    const_value = tensor_util.constant_value(value)
+    if const_value is not None:
+      return int(const_value)
+    # If it's already a Python int or similar, just convert
+    try:
+      return int(value)
+    except (TypeError, ValueError):
+      # If conversion fails (e.g., symbolic tensor), raise informative error
+      raise TypeError(
+          f"Cannot compute fan_in/fan_out with dynamic shape dimensions. "
+          f"Shape dimension {value} is symbolic/dynamic (likely from XLA JIT compilation). "
+          f"Consider using concrete shapes or computing weights outside @tf.function(jit_compile=True).")
+
   if len(shape) < 1:  # Just to avoid errors for constants.
     fan_in = fan_out = 1
   elif len(shape) == 1:
-    fan_in = fan_out = shape[0]
+    fan_in = fan_out = _to_int(shape[0])
   elif len(shape) == 2:
-    fan_in = shape[0]
-    fan_out = shape[1]
+    fan_in = _to_int(shape[0])
+    fan_out = _to_int(shape[1])
   else:
     # Assuming convolution kernels (2D, 3D, or more).
     # kernel shape: (..., input_depth, depth)
     receptive_field_size = 1
     for dim in shape[:-2]:
-      receptive_field_size *= dim
-    fan_in = shape[-2] * receptive_field_size
-    fan_out = shape[-1] * receptive_field_size
+      receptive_field_size *= _to_int(dim)
+    fan_in = _to_int(shape[-2]) * receptive_field_size
+    fan_out = _to_int(shape[-1]) * receptive_field_size
   return int(fan_in), int(fan_out)
 
 
