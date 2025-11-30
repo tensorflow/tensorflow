@@ -1215,10 +1215,10 @@ bool InferConvolutionShardingFromOperands(HloInstruction* instruction,
         }
         for (const auto& dim : dims) {
           if (lhs_or_rhs == 0) {
-            partitions *= sharding.tile_assignment().dim(dim.lhs);
+            partitions *= sharding.dimension(dim.lhs);
           } else {
             CHECK_EQ(lhs_or_rhs, 1);
-            partitions *= sharding.tile_assignment().dim(dim.rhs);
+            partitions *= sharding.dimension(dim.rhs);
           }
         }
         return partitions;
@@ -1292,7 +1292,7 @@ std::optional<HloSharding> InferBroadcastOperandSharding(
   for (int64_t i = 0; i < instruction.shape().dimensions().size(); ++i) {
     if (absl::c_count(instruction.dimensions(), i) == 0) {
       dims_to_replicate.push_back(i);
-      if (instruction.sharding().tile_assignment().dim(i) > 1) {
+      if (instruction.sharding().dimension(i) > 1) {
         needs_replication = true;
       }
     }
@@ -1336,7 +1336,7 @@ bool InferReduceShardingFromOperand(HloInstruction* instruction,
     if (operand->sharding().IsReplicated() ||
         (!is_spmd &&
          absl::c_any_of(instruction->dimensions(), [operand](int64_t dim) {
-           return operand->sharding().tile_assignment().dim(dim) > 1;
+           return operand->sharding().dimension(dim) > 1;
          }))) {
       // We are reducing along one of the sharded dimensions. We only
       // support this in SPMD.
@@ -1834,7 +1834,7 @@ std::optional<HloSharding> ShardingPropagation::GetShardingFromUser(
         for (int64_t i = 0; i < target_tile_assignment_dimensions.size(); ++i) {
           if (absl::c_find(dimensions, i) == dimensions.end()) {
             target_tile_assignment_dimensions[i] =
-                user_sharding.tile_assignment().dim(next_output_dim++);
+                user_sharding.dimension(next_output_dim++);
           } else {
             target_tile_assignment_dimensions[i] = 1;
           }
@@ -2290,13 +2290,13 @@ bool ShardingPropagation::InferShardingFromOperands(
         } else {
           const int64_t source_dim = std::distance(dimensions.begin(), it);
           target_tile_assignment_dimensions.push_back(
-              op->sharding().tile_assignment().dim(source_dim));
+              op->sharding().dimension(source_dim));
         }
       }
       for (int64_t i = op->sharding().TiledDataRank();
            i < op->sharding().tile_assignment().num_dimensions(); ++i) {
         target_tile_assignment_dimensions.push_back(
-            op->sharding().tile_assignment().dim(i));
+            op->sharding().dimension(i));
       }
       auto new_tile_assignment = op->sharding().tile_assignment().Reshape(
           target_tile_assignment_dimensions);
@@ -2476,7 +2476,7 @@ bool ShardingPropagation::InferShardingFromOperands(
       CHECK(sort);
       const int64_t sort_dim = sort->sort_dimension();
       if (!operand->sharding().IsTileMaximal() &&
-          operand->sharding().tile_assignment().dim(sort_dim) != 1 &&
+          operand->sharding().dimension(sort_dim) != 1 &&
           !hlo_sharding_util::GetFirstTargetDimToMoveShardingTiles(
                operand->shape(), operand->sharding(), sort_dim)
                .has_value()) {
@@ -3557,7 +3557,7 @@ absl::StatusOr<bool> ShardingPropagation::RunImpl(
       }
     }
     for (int64_t i = 0; i < shape.dimensions().size(); ++i) {
-      if (shape.dimensions(i) % sharding.tile_assignment().dim(i) != 0) {
+      if (shape.dimensions(i) % sharding.dimension(i) != 0) {
         return false;
       }
     }

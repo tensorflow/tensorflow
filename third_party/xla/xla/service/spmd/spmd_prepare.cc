@@ -127,10 +127,10 @@ absl::StatusOr<bool> ProcessScatter(HloInstruction* hlo,
   // scatter would have no value.
   for (int i = 0; i < lhs_parallel_dims->operand_dims.size(); ++i) {
     if (lhs_operand->sharding().IsTiled() &&
-        lhs_operand->sharding().tile_assignment().dim(
-            lhs_parallel_dims->operand_dims[i]) != 1 &&
-        lhs_indices->sharding().tile_assignment().dim(
-            lhs_parallel_dims->indices_dims[i]) != 1) {
+        lhs_operand->sharding().dimension(lhs_parallel_dims->operand_dims[i]) !=
+            1 &&
+        lhs_indices->sharding().dimension(lhs_parallel_dims->indices_dims[i]) !=
+            1) {
       any_sharded_parallel_dim = true;
       break;
     }

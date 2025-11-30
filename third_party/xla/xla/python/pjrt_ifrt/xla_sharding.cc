@@ -208,7 +208,7 @@ HloSharding::Disassemble(
 
     is_even_sharding = true;
     for (int i = 0; i < tiled_data_rank; ++i) {
-      if (shape.dims()[i] % xla_hlo_sharding_.tile_assignment().dim(i) != 0) {
+      if (shape.dims()[i] % xla_hlo_sharding_.dimension(i) != 0) {
         is_even_sharding = false;
         break;
       }

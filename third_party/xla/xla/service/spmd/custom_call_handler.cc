@@ -103,8 +103,8 @@ absl::Status SpmdPartitioningVisitor::HandleCustomCallTopK(
   const int64_t sort_dim = 1;
 
   CHECK(sharding.IsTiled());
-  const int64_t shard_count = sharding.tile_assignment().dim(sort_dim);
-  const int64_t batch_dim_partition = sharding.tile_assignment().dim(batch_dim);
+  const int64_t shard_count = sharding.dimension(sort_dim);
+  const int64_t batch_dim_partition = sharding.dimension(batch_dim);
 
   const int64_t input_size = hlo->operand(0)->shape().dimensions(sort_dim);
   const int64_t batch_size = hlo->shape().tuple_shapes(0).dimensions(batch_dim);
