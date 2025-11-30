@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <utility>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status_matchers.h"
 #include "absl/strings/string_view.h"
