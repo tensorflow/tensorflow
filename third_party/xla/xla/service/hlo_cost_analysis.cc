@@ -62,8 +62,14 @@ absl::Status HloCostAnalysis::Preprocess(const HloInstruction* hlo) {
   // The default number of bytes accessed for an instruction is the sum of the
   // sizes of the inputs and outputs. The default ShapeUtil::ByteSizeOf does not
   // handle opaque types.
-  float bytes_accessed = GetShapeSize(hlo->shape());
-  current_properties_.set_output_bytes_accessed(GetShapeSize(hlo->shape()));
+  float bytes_accessed = 0;
+  ShapeUtil::ForEachLeafShape(
+      hlo->shape(), [&](const Shape& sub_shape, const ShapeIndex& index) {
+        int64_t bytes_written = GetShapeSize(sub_shape);
+        bytes_accessed += bytes_written;
+        current_properties_.set_output_bytes_accessed(index, bytes_written);
+      });
+  current_properties_.set_output_bytes_accessed(bytes_accessed);
   for (int64_t i = 0; i < hlo->operand_count(); ++i) {
     const HloInstruction* operand = hlo->operand(i);
     bytes_accessed += GetShapeSize(operand->shape());
