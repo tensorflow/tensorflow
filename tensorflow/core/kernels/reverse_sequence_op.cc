@@ -98,8 +98,8 @@ void CheckErrorsGPU(OpKernelContext* context, int batch_dim, int seq_dim) {
 }
 
 template <>
-void CheckErrors<GPUDevice, int32>(OpKernelContext* context, int batch_dim,
-                                   int seq_dim) {
+void CheckErrors<GPUDevice, int32_t>(OpKernelContext* context, int batch_dim,
+                                     int seq_dim) {
   CheckErrorsGPU(context, batch_dim, seq_dim);
 }
 
@@ -164,8 +164,8 @@ class ReverseSequenceOp : public OpKernel {
   }
 
  private:
-  int32 batch_dim_;
-  int32 seq_dim_;
+  int32_t batch_dim_;
+  int32_t seq_dim_;
 
   ReverseSequenceOp(const ReverseSequenceOp&) = delete;
   void operator=(const ReverseSequenceOp&) = delete;
