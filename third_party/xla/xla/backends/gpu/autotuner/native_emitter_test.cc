@@ -36,6 +36,7 @@ limitations under the License.
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/xla.pb.h"
 
 namespace xla {
 namespace gpu {

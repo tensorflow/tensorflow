@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/backends/gpu/autotuner/gpu_codegen_backend.h"
 
 #include <gtest/gtest.h>
+#include "xla/xla.pb.h"
 
 namespace xla {
 namespace gpu {

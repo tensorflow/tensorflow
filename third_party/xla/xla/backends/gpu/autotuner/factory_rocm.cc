@@ -28,6 +28,7 @@ limitations under the License.
 #include "xla/stream_executor/platform/platform_object_registry.h"
 #include "xla/stream_executor/rocm/rocm_platform_id.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/xla.pb.h"
 
 namespace xla {
 namespace gpu {
