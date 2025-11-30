@@ -1015,6 +1015,46 @@ class ListOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       self.evaluate(list_ops.tensor_list_set_item(l, 20, 3.0))
 
   @test_util.run_deprecated_v1
+  def testSetItemWithExtremeIndexFailsGracefully(self):
+    """Test that setting item with extremely large index fails gracefully."""
+    # Create a tensor list with max_num_elements=5
+    l = list_ops.empty_tensor_list(
+        element_dtype=dtypes.float32,
+        element_shape=[],
+        max_num_elements=5)
+    
+    # Test 1: Negative index should fail
+    with self.assertRaises(errors.InvalidArgumentError):
+      self.evaluate(
+          gen_list_ops.tensor_list_set_item(
+              input_handle=l,
+              index=constant_op.constant(-1, dtype=dtypes.int32),
+              item=constant_op.constant(1.0),
+              resize_if_index_out_of_bounds=True))
+    
+    # Test 2: Index exceeding max_num_elements should fail
+    with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                 "max_num_elements"):
+      self.evaluate(
+          gen_list_ops.tensor_list_set_item(
+              input_handle=l,
+              index=constant_op.constant(10, dtype=dtypes.int32),
+              item=constant_op.constant(1.0),
+              resize_if_index_out_of_bounds=True))
+    
+    # Test 3: Extremely large index (INT32_MAX) should fail gracefully
+    # This previously caused segmentation faults
+    int32_max = 2147483647  # INT32_MAX
+    with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                 "too large|Maximum allowed size"):
+      self.evaluate(
+          gen_list_ops.tensor_list_set_item(
+              input_handle=l,
+              index=constant_op.constant(int32_max, dtype=dtypes.int32),
+              item=constant_op.constant(1.0),
+              resize_if_index_out_of_bounds=True))
+
+  @test_util.run_deprecated_v1
   def testSkipEagerSetItemWithMismatchedShapeFails(self):
     with self.cached_session() as sess:
       ph = array_ops.placeholder(dtypes.float32)
