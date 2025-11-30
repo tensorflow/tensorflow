@@ -606,6 +606,22 @@ xla_test(
 )
 
 xla_test(
+    name = "regression_dot_test",
+    srcs = ["regression_dot_test.cc"],
+    backends = ["gpu"],
+    tags = ["test_migrated_to_hlo_runner_pjrt"],
+    deps = [
+        "//xla:error_spec",
+        "//xla:literal_util",
+        "//xla/tests:hlo_pjrt_interpreter_reference_mixin",
+        "//xla/tests:hlo_pjrt_test_base",
+        "//xla/tests:test_utils",
+        "//xla/tsl/platform:statusor",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+xla_test(
     name = "sorting_test",
     srcs = ["sorting_test.cc"],
     backends = ["gpu"],

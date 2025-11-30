@@ -491,14 +491,14 @@ absl::StatusOr<void*> HostAllocate(Context* context, uint64_t bytes) {
   TF_RETURN_IF_ERROR(
       ToStatus(wrap::hipHostMalloc(&host_mem, bytes, hipHostMallocPortable),
                "failed to allocate host memory"));
+  VLOG(2) << "allocated " << host_mem << " for context " << context << " of "
+          << bytes << " bytes of host memory";
   return host_mem;
 }
 
 absl::StatusOr<std::unique_ptr<MemoryAllocation>> AllocateHostMemory(
     RocmContext* rocm_context, uint64_t size) {
   TF_ASSIGN_OR_RETURN(void* ptr, HostAllocate(rocm_context, size));
-  VLOG(2) << "allocated " << ptr << " for context " << rocm_context << " of "
-          << size << " bytes of host memory";
   return std::make_unique<GenericMemoryAllocation>(
       ptr, size, [rocm_context](void* location, uint64_t size) {
         hipError_t res = wrap::hipHostFree(location);
