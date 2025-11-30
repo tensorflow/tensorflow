@@ -205,11 +205,15 @@ TEST_P(AsyncCollectiveOps, AsyncAllReduce) {
       << hlo_runner_->device_count() << " available)";
 
   const bool enable_async_all_reduce = GetParam();
-  TF_ASSERT_OK_AND_ASSIGN(auto executable,
-                          CreateExecutable(kModuleStr, kNumReplicas));
-  TF_ASSERT_OK_AND_ASSIGN(const HloModule* const hlo_module,
-                          hlo_runner_->HloModuleFromWrapped(executable.get()));
 
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module, ParseAndReturnVerifiedModule(kModuleStr, kNumReplicas));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      ExecutionResult execution_result,
+      ExecuteReplicated(std::move(module), /*arguments=*/{{}, {}}));
+
+  const HloModule* hlo_module = execution_result.optimized_module;
   HloInstruction* all_reduce_start =
       FindInstruction(hlo_module, HloOpcode::kAllReduceStart);
   HloInstruction* all_reduce_done =
@@ -218,8 +222,7 @@ TEST_P(AsyncCollectiveOps, AsyncAllReduce) {
   EXPECT_THAT(all_reduce_done, NotNull());
   EXPECT_EQ(IsAsync(all_reduce_start), enable_async_all_reduce);
 
-  TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> results,
-                          ExecuteReplicated(executable.get(), kNumReplicas));
+  const std::vector<Literal>& results = execution_result.results;
   ASSERT_EQ(results.size(), kNumReplicas);
   // sum [0, num_devices)
   const uint32_t expected = kNumReplicas * (kNumReplicas - 1) / 2;
@@ -247,11 +250,14 @@ TEST_P(AsyncCollectiveOps, AsyncAllGather) {
 
   const bool enable_async_all_gather = GetParam();
 
-  TF_ASSERT_OK_AND_ASSIGN(auto executable,
-                          CreateExecutable(kModuleStr, kNumReplicas));
-  TF_ASSERT_OK_AND_ASSIGN(const HloModule* const hlo_module,
-                          hlo_runner_->HloModuleFromWrapped(executable.get()));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module, ParseAndReturnVerifiedModule(kModuleStr, kNumReplicas));
 
+  TF_ASSERT_OK_AND_ASSIGN(
+      ExecutionResult execution_result,
+      ExecuteReplicated(std::move(module), /*arguments=*/{{}, {}}));
+
+  const HloModule* hlo_module = execution_result.optimized_module;
   HloInstruction* all_gather_start =
       FindInstruction(hlo_module, HloOpcode::kAllGatherStart);
   HloInstruction* all_gather_done =
@@ -260,9 +266,7 @@ TEST_P(AsyncCollectiveOps, AsyncAllGather) {
   EXPECT_THAT(all_gather_done, NotNull());
   EXPECT_EQ(IsAsync(all_gather_start), enable_async_all_gather);
 
-  TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> results,
-                          ExecuteReplicated(executable.get(), kNumReplicas));
-
+  const std::vector<Literal>& results = execution_result.results;
   ASSERT_EQ(results.size(), kNumReplicas);
   for (const Literal& result : results) {
     LiteralTestUtil::ExpectR1Equal<uint32_t>({10, 15, 11, 16}, result);
@@ -293,11 +297,14 @@ TEST_P(AsyncCollectiveOps, AsyncAllGatherMixedTypes) {
 
   const bool enable_async_all_gather = GetParam();
 
-  TF_ASSERT_OK_AND_ASSIGN(auto executable,
-                          CreateExecutable(kModuleStr, kNumReplicas));
-  TF_ASSERT_OK_AND_ASSIGN(const HloModule* const hlo_module,
-                          hlo_runner_->HloModuleFromWrapped(executable.get()));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module, ParseAndReturnVerifiedModule(kModuleStr, kNumReplicas));
 
+  TF_ASSERT_OK_AND_ASSIGN(
+      ExecutionResult execution_result,
+      ExecuteReplicated(std::move(module), /*arguments=*/{{}, {}}));
+
+  const HloModule* hlo_module = execution_result.optimized_module;
   HloInstruction* all_gather_start =
       FindInstruction(hlo_module, HloOpcode::kAllGatherStart);
   HloInstruction* all_gather_done =
@@ -306,14 +313,14 @@ TEST_P(AsyncCollectiveOps, AsyncAllGatherMixedTypes) {
   EXPECT_THAT(all_gather_done, NotNull());
   EXPECT_EQ(IsAsync(all_gather_start), enable_async_all_gather);
 
-  TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> results,
-                          ExecuteReplicated(executable.get(), kNumReplicas));
-
+  std::vector<Literal>& results = execution_result.results;
   ASSERT_EQ(results.size(), kNumReplicas);
   for (Literal& result : results) {
-    std::vector<Literal> results = result.DecomposeTuple();
-    LiteralTestUtil::ExpectR1Equal<uint32_t>({10, 15, 11, 16}, results[0]);
-    LiteralTestUtil::ExpectR1Equal<float>({10.0, 15.0, 11.0, 16.0}, results[1]);
+    std::vector<Literal> tuple_results = result.DecomposeTuple();
+    LiteralTestUtil::ExpectR1Equal<uint32_t>({10, 15, 11, 16},
+                                             tuple_results[0]);
+    LiteralTestUtil::ExpectR1Equal<float>({10.0, 15.0, 11.0, 16.0},
+                                          tuple_results[1]);
   }
 }
 
@@ -335,11 +342,14 @@ TEST_P(AsyncCollectiveOps, AsyncCollectiveBroadcast) {
       << hlo_runner_->device_count() << " available)";
 
   const bool enable_async_collective_broadcast = GetParam();
-  TF_ASSERT_OK_AND_ASSIGN(auto executable,
-                          CreateExecutable(kModuleStr, kNumReplicas));
-  TF_ASSERT_OK_AND_ASSIGN(const HloModule* const hlo_module,
-                          hlo_runner_->HloModuleFromWrapped(executable.get()));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module, ParseAndReturnVerifiedModule(kModuleStr, kNumReplicas));
 
+  TF_ASSERT_OK_AND_ASSIGN(
+      ExecutionResult execution_result,
+      ExecuteReplicated(std::move(module), /*arguments=*/{{}, {}}));
+
+  const HloModule* hlo_module = execution_result.optimized_module;
   HloInstruction* cb_start =
       FindInstruction(hlo_module, HloOpcode::kAsyncStart);
   HloInstruction* cb_done = FindInstruction(hlo_module, HloOpcode::kAsyncDone);
@@ -347,8 +357,7 @@ TEST_P(AsyncCollectiveOps, AsyncCollectiveBroadcast) {
   EXPECT_THAT(cb_done, NotNull());
   EXPECT_EQ(IsAsync(cb_start), enable_async_collective_broadcast);
 
-  TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> results,
-                          ExecuteReplicated(executable.get(), kNumReplicas));
+  const std::vector<Literal>& results = execution_result.results;
   ASSERT_EQ(results.size(), kNumReplicas);
   LiteralTestUtil::ExpectR1Equal<uint32_t>({11, 11}, results[0]);
   LiteralTestUtil::ExpectR1Equal<uint32_t>({11, 11}, results[1]);
@@ -372,11 +381,14 @@ TEST_P(AsyncCollectiveOps, AsyncCollectivePermute) {
       << hlo_runner_->device_count() << " available)";
 
   const bool enable_async_collective_permute = GetParam();
-  TF_ASSERT_OK_AND_ASSIGN(auto executable,
-                          CreateExecutable(kModuleStr, kNumReplicas));
-  TF_ASSERT_OK_AND_ASSIGN(const HloModule* const hlo_module,
-                          hlo_runner_->HloModuleFromWrapped(executable.get()));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module, ParseAndReturnVerifiedModule(kModuleStr, kNumReplicas));
 
+  TF_ASSERT_OK_AND_ASSIGN(
+      ExecutionResult execution_result,
+      ExecuteReplicated(std::move(module), /*arguments=*/{{}, {}}));
+
+  const HloModule* hlo_module = execution_result.optimized_module;
   HloInstruction* cp_start =
       FindInstruction(hlo_module, HloOpcode::kCollectivePermuteStart);
   HloInstruction* cp_done =
@@ -385,8 +397,7 @@ TEST_P(AsyncCollectiveOps, AsyncCollectivePermute) {
   EXPECT_THAT(cp_done, NotNull());
   EXPECT_EQ(IsAsync(cp_start), enable_async_collective_permute);
 
-  TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> results,
-                          ExecuteReplicated(executable.get(), kNumReplicas));
+  const std::vector<Literal>& results = execution_result.results;
   ASSERT_EQ(results.size(), kNumReplicas);
   LiteralTestUtil::ExpectR1Equal<uint32_t>({11, 11}, results[0]);
   LiteralTestUtil::ExpectR1Equal<uint32_t>({10, 10}, results[1]);
@@ -409,11 +420,15 @@ TEST_P(AsyncCollectiveOps, CombinedCollectivePermute) {
   )";
   const int64_t kNumReplicas = 2;
   const bool enable_async_collective_permute = GetParam();
-  TF_ASSERT_OK_AND_ASSIGN(auto executable,
-                          CreateExecutable(kModuleStr, kNumReplicas));
-  TF_ASSERT_OK_AND_ASSIGN(const HloModule* const hlo_module,
-                          hlo_runner_->HloModuleFromWrapped(executable.get()));
 
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module, ParseAndReturnVerifiedModule(kModuleStr, kNumReplicas));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      ExecutionResult execution_result,
+      ExecuteReplicated(std::move(module), /*arguments=*/{{}, {}}));
+
+  const HloModule* hlo_module = execution_result.optimized_module;
   HloInstruction* cp_start =
       FindInstruction(hlo_module, HloOpcode::kCollectivePermuteStart);
   HloInstruction* cp_done =
@@ -422,8 +437,7 @@ TEST_P(AsyncCollectiveOps, CombinedCollectivePermute) {
   EXPECT_THAT(cp_done, NotNull());
   EXPECT_EQ(IsAsync(cp_start), enable_async_collective_permute);
 
-  TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> results,
-                          ExecuteReplicated(executable.get(), kNumReplicas));
+  const std::vector<Literal>& results = execution_result.results;
   ASSERT_EQ(results.size(), kNumReplicas);
   LiteralTestUtil::ExpectR1Equal<uint32_t>({1, 1, 11, 11}, results[0]);
   LiteralTestUtil::ExpectR1Equal<uint32_t>({0, 0, 10, 10}, results[1]);
@@ -451,11 +465,14 @@ TEST_P(AsyncCollectiveOps, CollectivePermuteCombiner) {
     GTEST_SKIP() << "Test requires at least " << kNumReplicas << " devices ("
                  << hlo_runner_->device_count() << " available)";
   }
-  TF_ASSERT_OK_AND_ASSIGN(auto executable,
-                          CreateExecutable(kModuleStr, kNumReplicas));
-  TF_ASSERT_OK_AND_ASSIGN(const HloModule* const hlo_module,
-                          hlo_runner_->HloModuleFromWrapped(executable.get()));
 
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module, ParseAndReturnVerifiedModule(kModuleStr, kNumReplicas));
+  TF_ASSERT_OK_AND_ASSIGN(
+      ExecutionResult execution_result,
+      ExecuteReplicated(std::move(module), /*arguments=*/{{}, {}}));
+
+  const HloModule* hlo_module = execution_result.optimized_module;
   HloInstruction* cp_start =
       FindInstruction(hlo_module, HloOpcode::kCollectivePermuteStart);
   HloInstruction* cp_done =
@@ -479,8 +496,7 @@ TEST_P(AsyncCollectiveOps, CollectivePermuteCombiner) {
   EXPECT_THAT(cp_done, NotNull());
   EXPECT_EQ(IsAsync(cp_start), enable_async_collective_permute);
 
-  TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> results,
-                          ExecuteReplicated(executable.get(), kNumReplicas));
+  const std::vector<Literal>& results = execution_result.results;
   ASSERT_EQ(results.size(), kNumReplicas);
   LiteralTestUtil::ExpectR1Equal<uint32_t>({3, 3, 6, 6, 13, 13}, results[0]);
   LiteralTestUtil::ExpectR1Equal<uint32_t>({0, 0, 0, 0, 10, 10}, results[1]);
@@ -517,11 +533,14 @@ TEST_P(AsyncCollectiveOps, AsyncReduceScatter) {
       << hlo_runner_->device_count() << " available)";
 
   const bool enable_async_reduce_scatter = GetParam();
-  TF_ASSERT_OK_AND_ASSIGN(auto executable,
-                          CreateExecutable(kModuleStr, kNumReplicas));
-  TF_ASSERT_OK_AND_ASSIGN(const HloModule* const hlo_module,
-                          hlo_runner_->HloModuleFromWrapped(executable.get()));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module, ParseAndReturnVerifiedModule(kModuleStr, kNumReplicas));
 
+  TF_ASSERT_OK_AND_ASSIGN(
+      ExecutionResult execution_result,
+      ExecuteReplicated(std::move(module), /*arguments=*/{{}, {}}));
+
+  const HloModule* hlo_module = execution_result.optimized_module;
   HloInstruction* rs_start =
       FindInstruction(hlo_module, HloOpcode::kAsyncStart);
   HloInstruction* rs_done = FindInstruction(hlo_module, HloOpcode::kAsyncDone);
@@ -531,8 +550,7 @@ TEST_P(AsyncCollectiveOps, AsyncReduceScatter) {
   EXPECT_EQ(rs_start_async->async_wrapped_opcode(), HloOpcode::kReduceScatter);
   EXPECT_EQ(IsAsync(rs_start), enable_async_reduce_scatter);
 
-  TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> results,
-                          ExecuteReplicated(executable.get(), kNumReplicas));
+  const std::vector<Literal>& results = execution_result.results;
   LiteralTestUtil::ExpectR1Equal<uint32_t>({11, 13, 15, 17}, results[0]);
   LiteralTestUtil::ExpectR1Equal<uint32_t>({19, 21, 23, 25}, results[1]);
 }
@@ -555,11 +573,14 @@ TEST_P(AsyncCollectiveOps, AsyncAllToAllWithSplitDim) {
       << hlo_runner_->device_count() << " available)";
 
   const bool enable_async_all_to_all = GetParam();
-  TF_ASSERT_OK_AND_ASSIGN(auto executable,
-                          CreateExecutable(kModuleStr, kNumReplicas));
-  TF_ASSERT_OK_AND_ASSIGN(const HloModule* const hlo_module,
-                          hlo_runner_->HloModuleFromWrapped(executable.get()));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module, ParseAndReturnVerifiedModule(kModuleStr, kNumReplicas));
 
+  TF_ASSERT_OK_AND_ASSIGN(
+      ExecutionResult execution_result,
+      ExecuteReplicated(std::move(module), /*arguments=*/{{}, {}}));
+
+  const HloModule* hlo_module = execution_result.optimized_module;
   HloInstruction* a2a_start =
       FindInstruction(hlo_module, HloOpcode::kAsyncStart);
   HloInstruction* a2a_done = FindInstruction(hlo_module, HloOpcode::kAsyncDone);
@@ -569,8 +590,7 @@ TEST_P(AsyncCollectiveOps, AsyncAllToAllWithSplitDim) {
   EXPECT_EQ(a2a_start_async->async_wrapped_opcode(), HloOpcode::kAllToAll);
   EXPECT_EQ(IsAsync(a2a_start), enable_async_all_to_all);
 
-  TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> results,
-                          ExecuteReplicated(executable.get(), kNumReplicas));
+  const std::vector<Literal>& results = execution_result.results;
   ASSERT_EQ(results.size(), kNumReplicas);
   LiteralTestUtil::ExpectR1Equal<uint32_t>({10, 11}, results[0]);
   LiteralTestUtil::ExpectR1Equal<uint32_t>({15, 16}, results[1]);
@@ -643,11 +663,14 @@ TEST_P(AsyncCollectiveOps, AsyncAllToAllWithoutSplitDim) {
       << hlo_runner_->device_count() << " available)";
 
   const bool enable_async_all_to_all = GetParam();
-  TF_ASSERT_OK_AND_ASSIGN(auto executable,
-                          CreateExecutable(kModuleStr, kNumReplicas));
-  TF_ASSERT_OK_AND_ASSIGN(const HloModule* const hlo_module,
-                          hlo_runner_->HloModuleFromWrapped(executable.get()));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module, ParseAndReturnVerifiedModule(kModuleStr, kNumReplicas));
 
+  TF_ASSERT_OK_AND_ASSIGN(
+      ExecutionResult execution_result,
+      ExecuteReplicated(std::move(module), /*arguments=*/{{}, {}}));
+
+  const HloModule* hlo_module = execution_result.optimized_module;
   HloInstruction* a2a_start =
       FindInstruction(hlo_module, HloOpcode::kAsyncStart);
   HloInstruction* a2a_done = FindInstruction(hlo_module, HloOpcode::kAsyncDone);
@@ -657,8 +680,7 @@ TEST_P(AsyncCollectiveOps, AsyncAllToAllWithoutSplitDim) {
   EXPECT_EQ(a2a_start_async->async_wrapped_opcode(), HloOpcode::kAllToAll);
   EXPECT_EQ(IsAsync(a2a_start_async), enable_async_all_to_all);
 
-  TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> results,
-                          ExecuteReplicated(executable.get(), kNumReplicas));
+  const std::vector<Literal>& results = execution_result.results;
   ASSERT_EQ(results.size(), kNumReplicas);
   LiteralTestUtil::ExpectR1Equal<uint32_t>({10, 15, 11, 16}, results[0]);
   LiteralTestUtil::ExpectR1Equal<uint32_t>({40, 60, 44, 64}, results[1]);
@@ -708,7 +730,6 @@ TEST_P(AsyncCollectiveOps, AsyncAllToAllMemCpyWithoutSplitDim) {
 TEST_P(AsyncCollectiveOps, AsyncAllToAllNumberOfElementsLargerThanInt32Max) {
   const absl::string_view kModuleStr = R"(
   HloModule test
-
   ENTRY test_computation {
     id = u32[] replica-id()
     id_u8 = u8[] convert(id)
@@ -723,11 +744,14 @@ TEST_P(AsyncCollectiveOps, AsyncAllToAllNumberOfElementsLargerThanInt32Max) {
       << hlo_runner_->device_count() << " available)";
 
   const bool enable_async_all_to_all = GetParam();
-  TF_ASSERT_OK_AND_ASSIGN(auto executable,
-                          CreateExecutable(kModuleStr, kNumReplicas));
-  TF_ASSERT_OK_AND_ASSIGN(const HloModule* const hlo_module,
-                          hlo_runner_->HloModuleFromWrapped(executable.get()));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module, ParseAndReturnVerifiedModule(kModuleStr, kNumReplicas));
 
+  TF_ASSERT_OK_AND_ASSIGN(
+      ExecutionResult execution_result,
+      ExecuteReplicated(std::move(module), /*arguments=*/{{}, {}}));
+
+  const HloModule* hlo_module = execution_result.optimized_module;
   HloInstruction* a2a_start =
       FindInstruction(hlo_module, HloOpcode::kAsyncStart);
   HloInstruction* a2a_done = FindInstruction(hlo_module, HloOpcode::kAsyncDone);
@@ -737,8 +761,7 @@ TEST_P(AsyncCollectiveOps, AsyncAllToAllNumberOfElementsLargerThanInt32Max) {
   EXPECT_EQ(a2a_start_async->async_wrapped_opcode(), HloOpcode::kAllToAll);
   EXPECT_EQ(IsAsync(a2a_start_async), enable_async_all_to_all);
 
-  TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> results,
-                          ExecuteReplicated(executable.get(), kNumReplicas));
+  const std::vector<Literal>& results = execution_result.results;
   ASSERT_EQ(results.size(), kNumReplicas);
 
   // Sanity check only a few elements in each result, because checking all 2GB
@@ -775,11 +798,14 @@ ENTRY entry {
       << "Test requires at least " << kNumReplicas << " devices ("
       << hlo_runner_->device_count() << " available)";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto executable,
-                          CreateExecutable(kModuleStr, kNumReplicas));
-  TF_ASSERT_OK_AND_ASSIGN(const HloModule* const hlo_module,
-                          hlo_runner_->HloModuleFromWrapped(executable.get()));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module, ParseAndReturnVerifiedModule(kModuleStr, kNumReplicas));
 
+  TF_ASSERT_OK_AND_ASSIGN(
+      ExecutionResult execution_result,
+      ExecuteReplicated(std::move(module), /*arguments=*/{{}, {}}));
+
+  const HloModule* hlo_module = execution_result.optimized_module;
   const bool enable_async_ragged_all_to_all = GetParam();
   HloInstruction* ra2a_start =
       FindInstruction(hlo_module, HloOpcode::kAsyncStart);
@@ -798,8 +824,7 @@ ENTRY entry {
       ra2a_start_async->async_wrapped_instruction()->shape().element_type(),
       BF16);
 
-  TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> results,
-                          ExecuteReplicated(executable.get(), kNumReplicas));
+  const std::vector<Literal>& results = execution_result.results;
   ASSERT_EQ(results.size(), kNumReplicas);
 
   const bfloat16 four = static_cast<bfloat16>(4.);
