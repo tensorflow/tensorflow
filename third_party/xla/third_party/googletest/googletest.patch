@@ -1,5 +1,5 @@
 diff --git a/BUILD.bazel b/BUILD.bazel
-index cc254457..49120384 100644
+index cc254457..2cb9ca80 100644
 --- a/BUILD.bazel
 +++ b/BUILD.bazel
 @@ -142,16 +142,16 @@ cc_library(
@@ -29,7 +29,7 @@ index cc254457..49120384 100644
          ],
          "//conditions:default": [],
      }) + select({
-@@ -160,9 +160,6 @@ cc_library(
+@@ -160,12 +160,11 @@ cc_library(
          # so that's why these libraries are needed.
          # Otherwise, builds targeting Fuchsia would fail to compile.
          ":fuchsia": [
@@ -38,4 +38,14 @@ index cc254457..49120384 100644
 -            "@fuchsia_sdk//pkg/zx",
          ],
          "//conditions:default": [],
-     }),
+-    }),
++    }) + [
++        "@com_google_absl//absl/status:status_matchers",
++    ],
+ )
+ 
+ # `gtest`, but testonly. See guidance on `gtest` for when to use this.
+diff --git a/googlemock/include/gmock/gmock.h b/googlemock/include/gmock/gmock.upstream.h
+similarity index 100%
+rename from googlemock/include/gmock/gmock.h
+rename to googlemock/include/gmock/gmock.upstream.h

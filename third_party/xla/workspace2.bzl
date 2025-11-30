@@ -328,6 +328,9 @@ def _tf_repositories():
         #
         # The patch path is relative to third_party/xla.
         patch_file = ["//third_party/googletest:googletest.patch"],
+        link_files = {
+            "//third_party/googletest:gmock.h": "googlemock/include/gmock/gmock.h.oss",
+        },
         urls = tf_mirror_urls("https://github.com/google/googletest/archive/28e9d1f26771c6517c3b4be10254887673c940189.zip"),
     )
 
