@@ -65,9 +65,7 @@ cc_library(
         "@llvm-project//llvm:Core",
         "@llvm-project//llvm:Support",
         "@llvm-project//llvm:TargetParser",
-        "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:fingerprint",
-        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
