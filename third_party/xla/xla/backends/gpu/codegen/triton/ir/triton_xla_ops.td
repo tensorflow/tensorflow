@@ -87,7 +87,7 @@ def TTXLA_ExtractOp : TTXLA_OpWithOffsetSizesAndStrides<"extract", [
     Example:
       ```
       %extracted_tensor = triton_xla.extract from %src
-        as memref<512x128xbf16, #triton_xla.layout<[1, 0]>>
+        as memref<512x128xbf16, #xtile.layout<[1, 0]>>
         [0, 0] [16, 64] [128, 1] : tensor<16x64xbf16>
       ```
   }];
@@ -148,7 +148,7 @@ def TTXLA_InsertOp : TTXLA_OpWithOffsetSizesAndStrides<"insert"> {
     Example:
       ```
       triton_xla.insert %src into %dst
-        as memref<512x128xbf16, #triton_xla.layout<[1, 0]>>
+        as memref<512x128xbf16, #xtile.layout<[1, 0]>>
         [0, 0] [8, 8] [1, 1] : tensor<8x8xbf16>
       ```
   }];

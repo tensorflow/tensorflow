@@ -100,36 +100,4 @@ void TmaDescriptorAttr::print(mlir::AsmPrinter& printer) const {
   printer << ">";
 }
 
-AffineMap LayoutAttr::getAffineMap() const {
-  return AffineMap::getPermutationMap(getMinorToMajor(), getContext());
-}
-
-LogicalResult LayoutAttr::verifyLayout(
-    ArrayRef<int64_t> shape,
-    function_ref<InFlightDiagnostic()> emit_error) const {
-  if (getMinorToMajor().size() != shape.size()) {
-    emit_error() << "layout has " << getMinorToMajor().size()
-                 << " dimensions, but shape has " << shape.size();
-    return failure();
-  }
-  if (!isPermutationVector(getMinorToMajor().asArrayRef())) {
-    emit_error() << "layout is not a permutation";
-    return failure();
-  }
-  return success();
-}
-
-LogicalResult LayoutAttr::getStridesAndOffset(ArrayRef<int64_t> shape,
-                                              SmallVectorImpl<int64_t>& strides,
-                                              int64_t& offset) const {
-  strides.resize(shape.size());
-  int64_t size_product = 1;
-  for (auto dim : getMinorToMajor().asArrayRef()) {
-    strides[dim] = size_product;
-    size_product *= shape[dim];
-  }
-  offset = 0;
-  return success();
-}
-
 }  // namespace mlir::triton::xla
