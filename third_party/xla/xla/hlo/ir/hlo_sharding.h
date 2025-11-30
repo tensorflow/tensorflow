@@ -173,6 +173,11 @@ class HloSharding {
   // sharding with all the leaf nodes having the same input sharding.
   static HloSharding Single(const Shape& shape, const HloSharding& sharding);
 
+  // Creates a new sharding from a NamedSharding.
+  static HloSharding FromNamedSharding(const NamedSharding& named_sharding) {
+    return HloSharding(named_sharding);
+  }
+
   // Create a new sharding from a protobuf OpSharding.
   static absl::StatusOr<HloSharding> FromProto(const OpSharding& proto);
 
@@ -666,6 +671,10 @@ class HloSharding {
   }
 
   const ShardGroup& GetShardGroup() const { return shard_group_; }
+
+  std::optional<NamedSharding> named_sharding() const {
+    return named_sharding_;
+  }
 
  private:
   explicit HloSharding(bool manual, bool replicated, bool unknown,
