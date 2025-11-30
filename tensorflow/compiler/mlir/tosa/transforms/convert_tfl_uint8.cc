@@ -16,8 +16,8 @@ limitations under the License.
 // This pass converts a TFLite uint8 graph to the int8 domain, with adaptors at
 // input and output tensors. This is needed because TOSA precision is
 // implemented in the int8 domain. This pass does:
-// 1. match TFL::QConst with uint8, generate TFL::QConst with int8 with value
-// remapped.
+// 1. match TFL::QConst and tosa::Const with uint8, generate corresponding ops
+//  with int8 with value remapped.
 // 2. insert tosa.RESCALE uint8 -> int8 if block argument (placeholder of graph)
 // is uint8 typed.
 // 3. insert tosa.RESCALE int8 -> uint8 if original returned tensor is uint8
@@ -60,71 +60,6 @@ class ConvertUint8ToInt8
  public:
   explicit ConvertUint8ToInt8() = default;
   void runOnOperation() override;
-};
-
-struct ConvertUint8QConstOp : public RewritePattern {
-  explicit ConvertUint8QConstOp(MLIRContext *context)
-      : RewritePattern(TFL::QConstOp::getOperationName(), 1, context) {}
-
-  LogicalResult matchAndRewrite(Operation *op,
-                                PatternRewriter &builder) const override {
-    auto tfl_qconst_op = cast<TFL::QConstOp>(op);
-
-    // Skip if it's not ranked tensor type.
-    auto output_type =
-        dyn_cast<mlir::RankedTensorType>(tfl_qconst_op.getResult().getType());
-    if (!output_type)
-      return builder.notifyMatchFailure(op, "not ranked tensor");
-
-    // Skip if output is not per-tensor quantized type.
-    auto output_element_type = dyn_cast<mlir::quant::UniformQuantizedType>(
-        output_type.getElementType());
-    if (!output_element_type) return failure();
-
-    // Skip if output is not uint8.
-    if (output_element_type.isSigned() ||
-        output_element_type.getStorageTypeIntegralWidth() != 8) {
-      return failure();
-    }
-
-    mlir::DenseElementsAttr src_dense_attr =
-        mlir::cast<DenseElementsAttr>(tfl_qconst_op.getValue());
-
-    double type_range_min =
-        static_cast<double>(output_element_type.getStorageTypeMin() -
-                            output_element_type.getZeroPoint()) *
-        output_element_type.getScale();
-    double type_range_max =
-        static_cast<double>(output_element_type.getStorageTypeMax() -
-                            output_element_type.getZeroPoint()) *
-        output_element_type.getScale();
-    bool narrow_range =
-        output_element_type.getStorageTypeMin() == 1 ? true : false;
-
-    auto dst_qconst_type = TypeAttr::get(RankedTensorType::get(
-        output_type.getShape(),
-        buildQTypeFromMinMax(
-            builder, output_element_type.getExpressedType(),
-            builder.getF64FloatAttr(type_range_min),
-            builder.getF64FloatAttr(type_range_max),
-            builder.getI32IntegerAttr(
-                output_element_type.getStorageTypeIntegralWidth()),
-            0, true /* signed */, builder.getBoolAttr(narrow_range))));
-
-    Type dst_dense_element_type = builder.getIntegerType(8);
-
-    auto dst_dense_attr = src_dense_attr.mapValues(
-        dst_dense_element_type, [](const APInt &in) -> APInt {
-          int64_t in_i64 = in.getLimitedValue();
-          int64_t out_i64 = in_i64 - 128;
-          return APInt(8, out_i64, true);
-        });
-
-    builder.replaceOpWithNewOp<TFL::QConstOp>(op, dst_qconst_type,
-                                              dst_dense_attr);
-
-    return success();
-  }
 };
 
 namespace {
@@ -183,6 +118,59 @@ bool IsShapedUint8Type(OpBuilder &builder, const Type type, Type &rescaled_type,
 }
 
 }  // namespace
+
+template <typename ConstOpType>
+struct ConvertUint8ConstOp : public OpRewritePattern<ConstOpType> {
+  using OpRewritePattern<ConstOpType>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(ConstOpType const_op,
+                                PatternRewriter& rewriter) const override {
+    // Skip if it's not ranked tensor type.
+    auto output_type = dyn_cast<RankedTensorType>(const_op.getType());
+
+    if (!output_type)
+      return rewriter.notifyMatchFailure(const_op, "not ranked tensor");
+
+    Type rescaled_type;
+    int32_t uint8_zp, int8_zp;
+    if (!IsShapedUint8Type(rewriter, output_type, rescaled_type, 
+                           uint8_zp, int8_zp)) {
+      return failure();
+    }
+
+    // Get values attribute (different accessor for TFL vs TOSA)
+    ElementsAttr src_elements_attr;
+    if constexpr (std::is_same_v<ConstOpType, TFL::QConstOp>) {
+      src_elements_attr = const_op.getValue();
+    } else {
+      src_elements_attr = const_op.getValuesAttr();
+    }
+
+    auto src_dense_attr = dyn_cast<DenseElementsAttr>(src_elements_attr);
+    if (!src_dense_attr)
+      return failure();
+
+    Type dst_dense_element_type = rewriter.getIntegerType(8);
+    auto dst_dense_attr = src_dense_attr.mapValues(
+        dst_dense_element_type, [](const APInt& in) -> APInt {
+          uint64_t in_unsigned = in.getLimitedValue();
+          int64_t out_signed = static_cast<int64_t>(in_unsigned) - 128;
+          return APInt(8, static_cast<uint64_t>(out_signed),
+                       /*isSigned=*/true);
+        });
+
+    // Create the appropriate replacement
+    if constexpr (std::is_same_v<ConstOpType, TFL::QConstOp>) {
+      rewriter.replaceOpWithNewOp<TFL::QConstOp>(
+          const_op, TypeAttr::get(rescaled_type), dst_dense_attr);
+    } else {
+      rewriter.replaceOpWithNewOp<tosa::ConstOp>(const_op, rescaled_type,
+                                                dst_dense_attr);
+    }
+
+    return success();
+  }
+};
 
 LogicalResult convert_graph_uint8_tensor(mlir::MLIRContext &context,
                                          mlir::func::FuncOp &function) {
@@ -263,10 +251,6 @@ LogicalResult convert_graph_uint8_tensor(mlir::MLIRContext &context,
 
     // Convert intermediate tensor.
     for (auto &op : bb) {
-      if (llvm::dyn_cast<tosa::ConstOp>(&op)) {
-        continue;  // Skip if the operation is a tosa::ConstOp
-      }
-
       for (Value output_val : op.getResults()) {
         auto shaped_type = dyn_cast<ShapedType>(output_val.getType());
         if (!shaped_type) continue;
@@ -347,6 +331,18 @@ LogicalResult convert_graph_uint8_tensor(mlir::MLIRContext &context,
     }
   }
 
+  // Update function signature to match converted types. 
+  // For example if tosa::ConstOp with i8 type was created, update func signature.
+  auto terminator = function.getBody().front().getTerminator();
+  SmallVector<Type> new_result_types;
+  for (Value operand : terminator->getOperands()) {
+    new_result_types.push_back(operand.getType());
+  }
+  auto func_type = function.getFunctionType();
+  auto new_func_type =
+      FunctionType::get(&context, func_type.getInputs(), new_result_types);
+  function.setFunctionType(new_func_type);
+
   return success();
 }
 
@@ -356,7 +352,8 @@ void ConvertUint8ToInt8::runOnOperation() {
   mlir::func::FuncOp func = getOperation();
 
   // Convert uint8 const tensor. const needs to be handled specifically.
-  patterns.add<ConvertUint8QConstOp>(&ctx);
+  patterns.add<ConvertUint8ConstOp<TFL::QConstOp>>(&ctx);
+  patterns.add<ConvertUint8ConstOp<tosa::ConstOp>>(&ctx);
   (void)applyPatternsGreedily(func, std::move(patterns));
 
   // Replace uint8 tensor in the graph and insert rescale as needed.
