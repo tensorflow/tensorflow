@@ -16,9 +16,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/device_propagation.h"
 
 #include <string>
-#include <utility>
 
-#include "absl/container/flat_hash_set.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/graph.h"
