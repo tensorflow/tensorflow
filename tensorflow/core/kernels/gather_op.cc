@@ -99,6 +99,12 @@ class GatherOp : public OpKernel {
       axis = params.dims() + axis;
     }
 
+    // Validate that axis is within the valid range after normalization
+    OP_REQUIRES(c, axis >= 0 && axis < params.dims(),
+                absl::InvalidArgumentError(absl::StrCat(
+                    "axis ", axis, " is out of bounds for tensor of rank ",
+                    params.dims(), "; must be in [0, ", params.dims(), ")")));
+
     // Modify only a local copy of batch_dims_.
     int32_t batch_dims = batch_dims_;
     if (batch_dims != 0) {
