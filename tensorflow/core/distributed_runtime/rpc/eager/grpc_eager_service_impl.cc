@@ -45,7 +45,7 @@ GrpcEagerServiceImpl::GrpcEagerServiceImpl(
 }
 
 absl::Status GrpcEagerServiceImpl::CreateMasterContext(
-    const tensorflow::uint64 context_id, EagerContext* context) {
+    const uint64_t context_id, EagerContext* context) {
   return local_impl_.CreateMasterContext(context_id, context);
 }
 
