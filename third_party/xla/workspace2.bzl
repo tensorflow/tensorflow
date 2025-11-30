@@ -7,7 +7,7 @@ load("@bazel_tools//tools/build_defs/repo:utils.bzl", "maybe")
 load("@io_bazel_rules_closure//closure:defs.bzl", "filegroup_external")
 load("@rules_ml_toolchain//gpu/sycl:sycl_configure.bzl", "sycl_configure")
 load("@rules_ml_toolchain//gpu/sycl:sycl_init_repository.bzl", "sycl_init_repository")
-load("//third_party:repo.bzl", "tf_http_archive", "tf_mirror_urls")
+load("//third_party:repo.bzl", "tf_http_archive", "tf_mirror_urls", "tf_vendored")
 load("//third_party/absl:workspace.bzl", absl = "repo")
 load("//third_party/benchmark:workspace.bzl", benchmark = "repo")
 load("//third_party/clang_toolchain:cc_configure_clang.bzl", "cc_download_clang_toolchain")
@@ -305,8 +305,13 @@ def _tf_repositories():
         },
     )
 
-    tf_http_archive(
+    tf_vendored(
         name = "com_google_googletest",
+        path = "third_party/xla_googletest_wrapper",
+    )
+
+    tf_http_archive(
+        name = "com_google_googletest_upstream",
         # Use the commit on 2025/6/09:
         # https://github.com/google/googletest/commit/28e9d1f26771c6517c3b4be10254887673c94018
         sha256 = "f253ca1a07262f8efde8328e4b2c68979e40ddfcfc001f70d1d5f612c7de2974",
