@@ -807,6 +807,22 @@ absl::StatusOr<FabricInfo> GetDeviceFabricInfo(nvmlDevice_t device) {
 
 }  // namespace
 
+bool CudaExecutor::MemoryTracker::Add(CUdeviceptr ptr) {
+  absl::MutexLock lock(mutex);
+  auto [it, inserted] = allocated_memory.insert(ptr);
+  return inserted;
+}
+
+bool CudaExecutor::MemoryTracker::Contains(CUdeviceptr ptr) {
+  absl::MutexLock lock(mutex);
+  return allocated_memory.contains(ptr);
+}
+
+bool CudaExecutor::MemoryTracker::Remove(CUdeviceptr ptr) {
+  absl::MutexLock lock(mutex);
+  return allocated_memory.erase(ptr) > 0;
+}
+
 // Given const GPU memory, returns a libcuda device pointer datatype, suitable
 // for passing directly to libcuda APIs.
 //
@@ -936,12 +952,18 @@ absl::StatusOr<void*> CudaExecutor::VmmAllocateMemory(uint64_t bytes) {
     }
   }
 
+  vmm_memory_tracker_.Add(ptr);
   return reinterpret_cast<void*>(ptr);
 }
 
-absl::Status CudaExecutor::VmmDeallocateMemory(void* ptr) {
+absl::StatusOr<bool> CudaExecutor::VmmDeallocateMemory(void* ptr) {
   if (!is_vmm_supported_) {
     return absl::InternalError("VMM is not supported on this device.");
+  }
+
+  CUdeviceptr device_ptr = reinterpret_cast<CUdeviceptr>(ptr);
+  if (!vmm_memory_tracker_.Contains(device_ptr)) {
+    return false;
   }
 
   std::unique_ptr<ActivateContext> activation = Activate();
@@ -953,13 +975,14 @@ absl::Status CudaExecutor::VmmDeallocateMemory(void* ptr) {
     handle = static_cast<CUmemGenericAllocationHandle>(scoped_handle.handle());
   }
   size_t size = 0;
-  CUdeviceptr device_ptr = reinterpret_cast<CUdeviceptr>(ptr);
   TF_RETURN_IF_ERROR(
       cuda::ToStatus(cuMemGetAddressRange(nullptr, &size, device_ptr)));
+  VLOG(3) << "[" << device_ordinal() << "] VMM deallocated " << ptr
+          << " size: " << size;
   TF_RETURN_IF_ERROR(cuda::ToStatus(cuMemUnmap(device_ptr, size)));
   TF_RETURN_IF_ERROR(cuda::ToStatus(cuMemRelease(handle)));
   TF_RETURN_IF_ERROR(cuda::ToStatus(cuMemAddressFree(device_ptr, size)));
-  return absl::OkStatus();
+  return true;
 }
 
 absl::StatusOr<void*> CollectiveMemoryAllocate(StreamExecutor* executor,
