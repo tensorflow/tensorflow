@@ -15,12 +15,12 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
-#include <numeric>
 #include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -354,7 +354,7 @@ TEST_P(LoadedExecutableImplTest, CompileAndExecute) {
   DType dtype(DType::kF32);
   Shape shape({2, 3});
   std::vector<float> data(6);
-  std::iota(data.begin(), data.end(), 0);
+  absl::c_iota(data, 0);
   Device* device = client->addressable_devices().at(0);
   ShardingRef sharding = SingleDeviceSharding::Create(device, MemoryKind());
 
@@ -386,7 +386,7 @@ TEST_P(LoadedExecutableImplTest, CompileAndExecute) {
   TF_ASSERT_OK(future.Await());
 
   std::vector<float> expected_out_data(6);
-  std::iota(expected_out_data.begin(), expected_out_data.end(), 1);
+  absl::c_iota(expected_out_data, 1);
   EXPECT_THAT(out_data, ElementsAreArray(expected_out_data));
 }
 
@@ -411,7 +411,7 @@ TEST_P(LoadedExecutableImplTest, CompileAndExecutePortable) {
   DType dtype(DType::kF32);
   Shape shape({2, 3});
   std::vector<float> data(6);
-  std::iota(data.begin(), data.end(), 0);
+  absl::c_iota(data, 0);
   Device* device = client->addressable_devices().at(0);
   ShardingRef sharding = SingleDeviceSharding::Create(device, MemoryKind());
 
@@ -445,7 +445,7 @@ TEST_P(LoadedExecutableImplTest, CompileAndExecutePortable) {
   TF_ASSERT_OK(future.Await());
 
   std::vector<float> expected_out_data(6);
-  std::iota(expected_out_data.begin(), expected_out_data.end(), 1);
+  absl::c_iota(expected_out_data, 1);
   EXPECT_THAT(out_data, ElementsAreArray(expected_out_data));
 }
 
@@ -464,7 +464,7 @@ TEST_P(LoadedExecutableImplTest, DoNotFillStatus) {
   DType dtype(DType::kF32);
   Shape shape({2, 3});
   std::vector<float> data(6);
-  std::iota(data.begin(), data.end(), 0);
+  absl::c_iota(data, 0);
   Device* device = client->addressable_devices().at(0);
   ShardingRef sharding = SingleDeviceSharding::Create(device, MemoryKind());
 
@@ -493,7 +493,7 @@ TEST_P(LoadedExecutableImplTest, DoNotFillStatus) {
   TF_ASSERT_OK(future.Await());
 
   std::vector<float> expected_out_data(6);
-  std::iota(expected_out_data.begin(), expected_out_data.end(), 1);
+  absl::c_iota(expected_out_data, 1);
   EXPECT_THAT(out_data, ElementsAreArray(expected_out_data));
 }
 
@@ -556,7 +556,7 @@ module @add_sub {
     ShardingRef sharding = SingleDeviceSharding::Create(device, MemoryKind());
     for (int i = 0; i < 2; ++i) {
       std::vector<int32_t> data(6);
-      std::iota(data.begin(), data.end(), 0);
+      absl::c_iota(data, 0);
       TF_ASSERT_OK_AND_ASSIGN(
           arrays.emplace_back(),
           client->MakeArrayFromHostBuffer(
@@ -801,7 +801,7 @@ TEST(ExecutableTest, ExecutableSerialization) {
   xla::ifrt::Shape shard_shape({1, 3});
   xla::ifrt::Shape shape({2, 3});
   std::vector<int32_t> data(6);
-  std::iota(data.begin(), data.end(), 0);
+  absl::c_iota(data, 0);
   std::vector<xla::ifrt::ArrayRef> input_arrays;
 
   // Input 1 : [0, 1, 2, 3, 4, 5] sharded on device 0 and 1.
