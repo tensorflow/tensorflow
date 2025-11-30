@@ -2930,6 +2930,21 @@ func.func @test_relu_qi8(%arg0: tensor<13x21x3x!quant.uniform<i8:f32, 0.01568594
 
 // -----
 
+// CHECK-LABEL:   func.func @test_relu_qu16(
+// CHECK-SAME:      %[[ARG0:.*]]: tensor<?x112x112x32x!quant.uniform<u16:f32, 0.023529412224888802>>) -> tensor<?x112x112x32x!quant.uniform<u16:f32, 0.023529412224888802>> {
+// CHECK:           %[[VAL_0:.*]] = "tosa.const"() <{values = dense<1073741824> : tensor<1xi32>}> : () -> tensor<1xi32>
+// CHECK:           %[[VAL_1:.*]] = "tosa.const"() <{values = dense<30> : tensor<1xi8>}> : () -> tensor<1xi8>
+// CHECK:           %[[VAL_2:.*]] = "tosa.const"() <{values = dense<0> : tensor<1xui16>}> : () -> tensor<1xui16>
+// CHECK:           %[[RESCALE_0:.*]] = tosa.rescale %[[ARG0]], %[[VAL_0]], %[[VAL_1]], %[[VAL_2]], %[[VAL_2]] {input_unsigned = true, output_unsigned = true, per_channel = false, rounding_mode = SINGLE_ROUND, scale32 = true} : (tensor<?x112x112x32x!quant.uniform<u16:f32, 0.023529412224888802>>, tensor<1xi32>, tensor<1xi8>, tensor<1xui16>, tensor<1xui16>) -> tensor<?x112x112x32x!quant.uniform<u16:f32, 0.023529412224888802>>
+// CHECK:           %[[CLAMP_0:.*]] = tosa.clamp %[[RESCALE_0]] {max_val = 65535 : ui16, min_val = 0 : ui16} : (tensor<?x112x112x32x!quant.uniform<u16:f32, 0.023529412224888802>>) -> tensor<?x112x112x32x!quant.uniform<u16:f32, 0.023529412224888802>>
+// CHECK:           return %[[CLAMP_0]]
+func.func @test_relu_qu16(%arg0:tensor<?x112x112x32x!quant.uniform<u16:f32, 0.023529412224888802:0>>) -> (tensor<?x112x112x32x!quant.uniform<u16:f32, 0.023529412224888802:0>>) {
+    %0 = "tfl.relu"(%arg0) : (tensor<?x112x112x32x!quant.uniform<u16:f32, 0.023529412224888802:0>>) -> tensor<?x112x112x32x!quant.uniform<u16:f32, 0.023529412224888802:0>>
+    return %0 : tensor<?x112x112x32x!quant.uniform<u16:f32, 0.023529412224888802:0>>
+}
+
+// -----
+
 // CHECK-LABEL: test_relu0To1_qi8
 // CHECK-DAG: %[[VAL_0:.*]]: tensor<13x21x3x!quant.uniform<i8:f32, 0.015686025843024254:-1>>
 // CHECK-DAG: %[[VAL_1:.*]] = "tosa.const"() <{values = dense<2147449478> : tensor<1xi32>}>
@@ -3682,6 +3697,24 @@ func.func @test_conv2d_int8_input_variable_bias(%input: tensor<1x32x32x8x!quant.
   return %0 : tensor<1x32x32x16x!quant.uniform<i8:f32, 1.0>>
 }
 
+// -----
+
+// CHECK-LABEL:   func.func @test_conv2d_qu16(
+// CHECK-SAME:      %[[ARG0:.*]]: tensor<1x32x32x8x!quant.uniform<u16:f32, 1.000000e+00>>,
+// CHECK-SAME:      %[[ARG1:.*]]: tensor<3x3x8x16x!quant.uniform<i8:f32, 1.000000e+00>>) -> tensor<1x32x32x3x!quant.uniform<u16:f32, 1.000000e+00>> {
+// CHECK:           %[[VAL_0:.*]] = "tosa.const"() <{values = dense<14> : tensor<1xi8>}> : () -> tensor<1xi8>
+// CHECK:           %[[VAL_1:.*]] = "tosa.const"() <{values = dense<16384> : tensor<1xi16>}> : () -> tensor<1xi16>
+// CHECK:           %[[VAL_2:.*]] = "tosa.const"() <{values = dense<0> : tensor<1xi48>}> : () -> tensor<1xi48>
+// CHECK:           %[[VAL_3:.*]] = "tosa.const"() <{values = dense<0> : tensor<1xui16>}> : () -> tensor<1xui16>
+// CHECK:           %[[VAL_4:.*]] = "tosa.const"() <{values = dense<0> : tensor<1xi8>}> : () -> tensor<1xi8>
+// CHECK:           %[[VAL_5:.*]] = tosa.conv2d %[[ARG0]], %[[ARG1]], %[[VAL_2]], %[[VAL_3]], %[[VAL_4]] {acc_type = i48, dilation = array<i64: 1, 1>, pad = array<i64: 1, 1, 3, 4>, stride = array<i64: 1, 1>} : (tensor<1x32x32x8x!quant.uniform<u16:f32, 1.000000e+00>>, tensor<3x3x8x16x!quant.uniform<i8:f32, 1.000000e+00>>, tensor<1xi48>, tensor<1xui16>, tensor<1xi8>) -> tensor<1x32x32x3xi48>
+// CHECK:           %[[RESCALE_0:.*]] = tosa.rescale %[[VAL_5]], %[[VAL_1]], %[[VAL_0]], %[[VAL_2]], %[[VAL_3]] {input_unsigned = true, output_unsigned = true, per_channel = false, rounding_mode = SINGLE_ROUND, scale32 = false} : (tensor<1x32x32x3xi48>, tensor<1xi16>, tensor<1xi8>, tensor<1xi48>, tensor<1xui16>) -> tensor<1x32x32x3x!quant.uniform<u16:f32, 1.000000e+00>>
+// CHECK:           return %[[RESCALE_0]]
+func.func @test_conv2d_qu16(%input: tensor<1x32x32x8x!quant.uniform<u16:f32, 1.0>>, %filter: tensor<3x3x8x16x!quant.uniform<i8:f32, 1.0>>) -> tensor<1x32x32x3x!quant.uniform<u16:f32, 1.0>> {
+  %bias = "tfl.no_value"() {value} : () -> none
+  %0 = "tfl.conv_2d"(%input, %filter, %bias) {dilation_h_factor = 1 : i32, dilation_w_factor = 1 : i32, fused_activation_function = "NONE", padding = "SAME", stride_h = 1 : i32, stride_w = 1 : i32} : (tensor<1x32x32x8x!quant.uniform<u16:f32, 1.0>>, tensor<3x3x8x16x!quant.uniform<i8:f32, 1.0>>, none) -> tensor<1x32x32x3x!quant.uniform<u16:f32, 1.0>>
+  return %0 : tensor<1x32x32x3x!quant.uniform<u16:f32, 1.0>>
+}
 // -----
 
 // CHECK-LABEL: @test_squeeze
