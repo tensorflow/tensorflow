@@ -364,6 +364,20 @@ TEST_F(MathTest, ReciprocalTenValues) {
   ComputeAndCompareR1<float>(&builder, expected, {}, kErrorSpec);
 }
 
+TEST_F(MathTest, ReciprocalComplexInfinity) {
+  XlaBuilder builder(TestName());
+  auto x = ConstantR1<std::complex<float>>(
+      &builder, {{std::numeric_limits<float>::infinity(), 0.0},
+                 {0.0, std::numeric_limits<float>::infinity()},
+                 {std::numeric_limits<float>::infinity(),
+                  std::numeric_limits<float>::infinity()}});
+  Reciprocal(x);
+
+  std::vector<std::complex<float>> expected = {
+      {0.0, 0.0}, {0.0, 0.0}, {0.0, 0.0}};
+  ComputeAndCompareR1<std::complex<float>>(&builder, expected, {}, kErrorSpec);
+}
+
 TEST_F(MathTest, SqrtZeroes) {
   XlaBuilder builder(TestName());
   auto x = ConstantR1<float>(&builder, {0.0, -0.0});
