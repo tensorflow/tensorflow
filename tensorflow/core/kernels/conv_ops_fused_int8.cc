@@ -300,9 +300,8 @@ struct LaunchFusedConv2DOpCpuInt8Helper {
 };
 
 template <>
-struct LaunchFusedConv2DOp<CPUDevice, int8>
-    : LaunchFusedConv2DOpCpuInt8Helper<int8> {
-};
+struct LaunchFusedConv2DOp<CPUDevice, int8_t>
+    : LaunchFusedConv2DOpCpuInt8Helper<int8_t> {};
 
 template <>
 struct LaunchFusedConv2DOp<CPUDevice, qint8>
