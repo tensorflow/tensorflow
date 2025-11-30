@@ -16,7 +16,9 @@ limitations under the License.
 #include "xla/backends/gpu/codegen/llvm/llvm_emitter.h"
 
 #include <algorithm>
+#include <cstddef>
 #include <cstdint>
+#include <iterator>
 #include <memory>
 #include <optional>
 #include <string>
@@ -47,6 +49,7 @@ limitations under the License.
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
+#include "llvm/Support/Alignment.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/TargetParser/Triple.h"
 #include "xla/backends/gpu/codegen/fusion_emitter.h"
@@ -57,6 +60,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/thunk_id.h"
 #include "xla/codegen/emitters/computation_fingerprint.h"
 #include "xla/codegen/emitters/kernel_arguments.h"
+#include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -67,12 +71,14 @@ limitations under the License.
 #include "xla/service/elemental_ir_emitter.h"
 #include "xla/service/gpu/gpu_constants.h"
 #include "xla/service/gpu/gpu_executable.h"
+#include "xla/service/gpu/hlo_to_ir_bindings.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/ir_emitter_context.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/llvm_ir/buffer_assignment_util.h"
 #include "xla/service/llvm_ir/fused_ir_emitter.h"
 #include "xla/service/llvm_ir/ir_array.h"
+#include "xla/service/llvm_ir/ir_builder_mixin.h"
 #include "xla/service/llvm_ir/kernel_support_library.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/service/llvm_ir/loop_emitter.h"
@@ -85,23 +91,14 @@ limitations under the License.
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
-#include "tsl/platform/errors.h"
 #include "tsl/platform/fingerprint.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla::gpu {
 namespace {
 
 // Emits LLVM IR for a "nested computation" into a non-kernel device function.
 //
-// This is used to emit code for HloComputations that don't require a separate
-// kernel call.  For example, IrEmitterNested is used to emit code for a kReduce
-// HLO's elementwise reduction computation.  Notably, IrEmitterNested is *not*
-// used to emit code for fusion nodes -- fusion nodes use FusedIrEmitter, which
-// is a different beast altogether.
-//
-// IrEmitterNested generates a non-kernel function with the following
-// parameters:
+// IrEmitter generates a non-kernel function with the following parameters:
 //
 //   - N pointers to the buffers of each of the N parameters to the computation,
 //   - a pointer to the output buffer of the computation, and
@@ -113,23 +110,11 @@ absl::Status CallNestedComputation(llvm::IRBuilderBase* builder,
                                    absl::Span<llvm::Value* const> operands,
                                    llvm::Value* output);
 
-// Abstract base class for translating HLO graphs to LLVM IR for a GPU.
+// Class for translating HLO graphs to LLVM IR for a GPU.
 //
-// There are two concrete subclasses of IrEmitter: IrEmitterNested and
-// IrEmitterUnnested.  In the unnested variety, each HLO gets its own kernel
-// function, whereas in the nested version the whole computation is emitted as
-// one *non-kernel* function.
-//
-// In XLA, kernel functions never call other kernel functions.  This means that
-// if we have a kernel -- e.g. implementing a kReduce HLO -- that wants to use
-// an HLO computation as a "subroutine" -- e.g. the HLO computation that
-// specifies how to reduce two elements -- then the subroutine computation must
-// be emitted using IrEmitterNested.
-//
-// Fusion nodes are a special case.  A fusion node is emitted using
-// IrEmitterUnnested, but the code is generated using FusedIrEmitter, which is
-// not a subclass of gpu::IrEmitter, and in fact is better understood as an IR
-// generator generator.  See comments on that class.
+// In the unnested variety, each HLO gets its own kernel function, whereas in
+// the nested version the whole computation is emitted as one *non-kernel*
+// function.
 class IrEmitter : public DfsHloVisitorWithDefault,
                   public IrBuilderMixin<IrEmitter> {
  public:
@@ -163,6 +148,7 @@ class IrEmitter : public DfsHloVisitorWithDefault,
             &b_));
     return absl::OkStatus();
   }
+
   absl::Status HandleConvolution(HloInstruction* convolution) override {
     if (ShapeUtil::IsZeroElementArray(convolution->shape())) {
       // Emit no code for an empty output.
@@ -235,9 +221,26 @@ class IrEmitter : public DfsHloVisitorWithDefault,
     return Unimplemented("custom-call");
   }
 
-  absl::Status HandleBatchNormInference(HloInstruction* batch_norm) override;
-  absl::Status HandleBatchNormTraining(HloInstruction* batch_norm) override;
-  absl::Status HandleBatchNormGrad(HloInstruction* batch_norm) override;
+  absl::Status HandleBatchNormInference(HloInstruction*) override {
+    return Unimplemented(
+        "The GPU backend does not implement BatchNormInference directly.  It "
+        "should be lowered before IR emission to HLO-soup using "
+        "BatchNormRewriter.");
+  }
+
+  absl::Status HandleBatchNormTraining(HloInstruction*) override {
+    return Unimplemented(
+        "The GPU backend does not implement BatchNormTraining directly.  It "
+        "should be lowered before IR emission to HLO-soup using "
+        "BatchNormRewriter.");
+  }
+
+  absl::Status HandleBatchNormGrad(HloInstruction*) override {
+    return Unimplemented(
+        "The GPU backend does not implement BatchNormGrad directly.  It should "
+        "be lowered before IR emission to HLO-soup using BatchNormRewriter.");
+  }
+
   absl::Status HandleAddDependency(HloInstruction* add_dependency) override;
 
   absl::Status FinishVisit(HloInstruction* root) override {
@@ -245,6 +248,20 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   }
 
   llvm::IRBuilderBase* builder() { return &b_; }
+
+  // Generate the code for the computation passed in the constructor, if it
+  // wasn't already generated previously.
+  // As well as generting the code for the function, emits code for global
+  // constants, and also populates related information to 'ir_emitter_context'
+  // for large-constant initializations. Large constants don't get initializers
+  // in the generated code and so must be initialized by XLA. The value of these
+  // constants will be stored in 'content'. Constants with initializers in the
+  // generated code will have empty 'content'.
+  //
+  // The allocation index for these constants will always be -1 (i.e. doesn't
+  // correspond to any allocation)
+  absl::StatusOr<llvm::Function*> CodegenNestedComputation(
+      const HloComputation& nested_computation);
 
  protected:
   // Helper for calling HloToIrBindings::GetIrArray.
@@ -273,8 +290,9 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   // in the result of the given HLO instruction. This produces a series of
   // nested loops (e.g. one for each dimension of the `hlo`'s shape). The body
   // of the inner-most loop is provided by the body_emitter function.
-  virtual absl::Status EmitTargetElementLoop(
-      const HloInstruction& hlo, const llvm_ir::ElementGenerator& body_emitter);
+  absl::Status EmitTargetElementLoop(
+      const HloInstruction& hlo,
+      const llvm_ir::ElementGenerator& element_generator);
 
   IrEmitterContext* ir_emitter_context_;
   llvm::Module* module_;
@@ -291,51 +309,6 @@ class IrEmitter : public DfsHloVisitorWithDefault,
                            FusedIrEmitter* fused_emitter);
 };
 
-class IrEmitterNested : public IrEmitter {
- public:
-  // Constructs an LLVM IR emitter for a nested HLO computation. `function` is
-  // the containing IR function this emitter produces IR to. See
-  // IrEmitter::IrEmitter for the meanings of other arguments.
-  IrEmitterNested(const HloComputation& nested_computation,
-                  IrEmitterContext* ir_emitter_context)
-      : IrEmitter(ir_emitter_context,
-                  /*is_nested=*/true),
-        nested_computation_(nested_computation) {}
-
-  IrEmitterNested(const IrEmitterNested&) = delete;
-  IrEmitterNested& operator=(const IrEmitterNested&) = delete;
-
-  // Overrides the default empty implementation. Binds the given instruction
-  // "parameter" with the parameter of the IR function.
-  absl::Status HandleParameter(HloInstruction* parameter) override {
-    return absl::OkStatus();
-  }
-
-  // Generate the code for the computation passed in the constructor, if it
-  // wasn't already generated previously.
-  // As well as generting the code for the function, emits code for global
-  // constants, and also populates related information to 'ir_emitter_context_'
-  // for large-constant initializations. Large constants don't get initializers
-  // in the generated code and so must be initialized by XLA. The value of these
-  // constants will be stored in 'content'. Constants with initializers in the
-  // generated code will have empty 'content'.
-  //
-  // The allocation index for these constants will always be -1 (i.e. doesn't
-  // correspond to any allocation)
-  absl::StatusOr<llvm::Function*> CodegenNestedComputation();
-
- protected:
-  absl::Status EmitTargetElementLoop(
-      const HloInstruction& hlo,
-      const llvm_ir::ElementGenerator& element_generator) override;
-
- private:
-  // Emits constants to generated LLVM IR, and also populates related
-  // information to 'ir_emitter_context_' for large-constant initializations.
-  absl::Status EmitConstants(const HloComputation& computation);
-
-  const HloComputation& nested_computation_;
-};
 
 absl::Status IrEmitter::DefaultAction(HloInstruction* hlo) {
   ElementalIrEmitter::HloToElementGeneratorMap operand_to_generator;
@@ -387,8 +360,8 @@ absl::Status CallNestedComputation(llvm::IRBuilderBase* builder,
   TF_RET_CHECK(computation.num_parameters() > 0);
 
   TF_ASSIGN_OR_RETURN(llvm::Function * emitted_function,
-                      IrEmitterNested(computation, &ir_emitter_context)
-                          .CodegenNestedComputation());
+                      IrEmitter(&ir_emitter_context, /*is_nested=*/true)
+                          .CodegenNestedComputation(computation));
 
   // Operands are in default address space for non-AMDGPU target.
   // However for AMDGPU target, addrspacecast alloca variables from
@@ -406,26 +379,6 @@ absl::Status CallNestedComputation(llvm::IRBuilderBase* builder,
   return absl::OkStatus();
 }
 
-absl::Status IrEmitter::HandleBatchNormInference(HloInstruction*) {
-  return Unimplemented(
-      "The GPU backend does not implement BatchNormInference directly.  It "
-      "should be lowered before IR emission to HLO-soup using "
-      "BatchNormRewriter.");
-}
-
-absl::Status IrEmitter::HandleBatchNormTraining(HloInstruction*) {
-  return Unimplemented(
-      "The GPU backend does not implement BatchNormTraining directly.  It "
-      "should be lowered before IR emission to HLO-soup using "
-      "BatchNormRewriter.");
-}
-
-absl::Status IrEmitter::HandleBatchNormGrad(HloInstruction*) {
-  return Unimplemented(
-      "The GPU backend does not implement BatchNormGrad directly.  It should "
-      "be lowered before IR emission to HLO-soup using BatchNormRewriter.");
-}
-
 std::vector<llvm_ir::IrArray> IrEmitter::ConstructIrArrayForOutputs(
     const HloInstruction& hlo) {
   std::vector<llvm_ir::IrArray> output_arrays;
@@ -441,11 +394,6 @@ std::vector<llvm_ir::IrArray> IrEmitter::ConstructIrArrayForOutputs(
   return output_arrays;
 }
 
-absl::Status IrEmitter::EmitTargetElementLoop(
-    const HloInstruction& hlo, const llvm_ir::ElementGenerator& body_emitter) {
-  return Internal("This should be unreachable");
-}
-
 void IrEmitter::BindFusionArguments(const HloInstruction* fusion,
                                     FusedIrEmitter* fused_emitter) {
   for (int i = 0; i < fusion->operand_count(); i++) {
@@ -459,24 +407,61 @@ void IrEmitter::BindFusionArguments(const HloInstruction* fusion,
   }
 }
 
+// Emits constants to generated LLVM IR, and also populates related information
+// to 'ir_emitter_context' for large-constant initializations.
+absl::Status EmitConstants(llvm::Module* module,
+                           IrEmitterContext* ir_emitter_context,
+                           const HloComputation& computation) {
+  for (HloInstruction* instr : computation.instructions()) {
+    if (instr->opcode() != HloOpcode::kConstant) {
+      continue;
+    }
+    const Literal& literal = instr->literal();
+
+    // These globals will be looked up by name by GpuExecutable so we need to
+    // give them an external linkage.  Not all of their uses are visible in
+    // the LLVM IR (e.g. TupleThunk) so we can't give then a linkage that
+    // merely preserves their names (like available_externally), we also need
+    // to ensure that they stick around even if they're "unused".
+    //
+    // We may have to be more clever here in the future if we notice that we're
+    // keeping around too many globals because of their linkage.
+    std::string global_name = llvm_ir::ConstantHloToGlobalName(*instr);
+
+    auto base = static_cast<const uint8_t*>(literal.untyped_data());
+    GpuExecutable::ConstantInfo info = AppendGlobalConstant(
+        module, literal.element_count(),
+        ShapeUtil::ByteSizeOfPrimitiveType(literal.shape().element_type()),
+        global_name, /*allocation_idx=*/-1,
+        DenseDataIntermediate::Alias(
+            absl::MakeSpan(base, base + literal.size_bytes())));
+    ir_emitter_context->constants().push_back(std::move(info));
+  }
+  return absl::OkStatus();
+}
+
 // Nested function serves the same purpose on GPU as a thread-local function on
 // a CPU.
-absl::StatusOr<llvm::Function*> IrEmitterNested::CodegenNestedComputation() {
+absl::StatusOr<llvm::Function*> IrEmitter::CodegenNestedComputation(
+    const HloComputation& nested_computation) {
   // Include a fingerprint of the HLO in the function name to make the name
   // unique.
   tsl::Fprint128 fingerprint = tsl::Fingerprint128(
-      emitters::GetComputationFingerprint(&nested_computation_, {}));
+      emitters::GetComputationFingerprint(&nested_computation, {}));
   std::string function_name = llvm_ir::SanitizeFunctionName(absl::StrCat(
-      nested_computation_.name(), "_", fingerprint.low64, fingerprint.high64));
+      nested_computation.name(), "_", fingerprint.low64, fingerprint.high64));
 
   auto* function = module_->getFunction(function_name);
-  if (function) return function;
+  if (function) {
+    return function;
+  }
 
-  TF_RETURN_IF_ERROR(EmitConstants(nested_computation_));
+  TF_RETURN_IF_ERROR(EmitConstants(ir_emitter_context_->llvm_module(),
+                                   ir_emitter_context_, nested_computation));
   std::vector<const HloInstruction*> io_hlos;
   std::vector<llvm::Type*> argument_types;
   std::vector<int64_t> argument_dereferenceable_bytes;
-  const auto& params = nested_computation_.parameter_instructions();
+  const auto& params = nested_computation.parameter_instructions();
   const auto n = params.size() + 1;
   io_hlos.reserve(n - 1);
   argument_types.reserve(n);
@@ -490,7 +475,7 @@ absl::StatusOr<llvm::Function*> IrEmitterNested::CodegenNestedComputation() {
     argument_dereferenceable_bytes.push_back(param_size);
   }
 
-  const HloInstruction* root = nested_computation_.root_instruction();
+  const HloInstruction* root = nested_computation.root_instruction();
   {
     const Shape& root_shape = root->shape();
     argument_types.push_back(b_.getPtrTy());
@@ -524,21 +509,21 @@ absl::StatusOr<llvm::Function*> IrEmitterNested::CodegenNestedComputation() {
 
   std::vector<const HloInstruction*> non_io_hlos;
   non_io_hlos.push_back(root);
-  for (const auto* hlo : nested_computation_.instructions()) {
+  for (const auto* hlo : nested_computation.instructions()) {
     if (hlo->opcode() != HloOpcode::kParameter &&
-        hlo != nested_computation_.root_instruction()) {
+        hlo != nested_computation.root_instruction()) {
       non_io_hlos.push_back(hlo);
     }
   }
   bindings_.EmitBasePointersForHlos(io_hlos, non_io_hlos);
 
-  TF_RETURN_IF_ERROR(nested_computation_.root_instruction()->Accept(this));
+  TF_RETURN_IF_ERROR(nested_computation.root_instruction()->Accept(this));
   b_.SetInsertPoint(ret_instr);
 
   // Function epilogue: copy the output value back.
   {
     const HloInstruction* root_instruction =
-        nested_computation_.root_instruction();
+        nested_computation.root_instruction();
     llvm::Value* root_value = bindings_.GetBasePointer(*root_instruction);
     const Shape& return_shape = root_instruction->shape();
 
@@ -578,7 +563,7 @@ absl::StatusOr<llvm::Function*> IrEmitterNested::CodegenNestedComputation() {
   return function;
 }
 
-absl::Status IrEmitterNested::EmitTargetElementLoop(
+absl::Status IrEmitter::EmitTargetElementLoop(
     const HloInstruction& hlo,
     const llvm_ir::ElementGenerator& element_generator) {
   // For MOF we give the loop emitter an array for every output it should
@@ -593,35 +578,6 @@ absl::Status IrEmitterNested::EmitTargetElementLoop(
   }
   return llvm_ir::LoopEmitter(element_generator, GetIrArray(hlo, hlo), &b_)
       .EmitLoop();
-}
-
-absl::Status IrEmitterNested::EmitConstants(const HloComputation& computation) {
-  for (HloInstruction* instr : computation.instructions()) {
-    if (instr->opcode() != HloOpcode::kConstant) {
-      continue;
-    }
-    const Literal& literal = instr->literal();
-
-    // These globals will be looked up by name by GpuExecutable so we need to
-    // give them an external linkage.  Not all of their uses are visible in
-    // the LLVM IR (e.g. TupleThunk) so we can't give then a linkage that
-    // merely preserves their names (like available_externally), we also need
-    // to ensure that they stick around even if they're "unused".
-    //
-    // We may have to be more clever here in the future if we notice that we're
-    // keeping around too many globals because of their linkage.
-    std::string global_name = llvm_ir::ConstantHloToGlobalName(*instr);
-
-    auto base = static_cast<const uint8_t*>(literal.untyped_data());
-    GpuExecutable::ConstantInfo info = AppendGlobalConstant(
-        module_, literal.element_count(),
-        ShapeUtil::ByteSizeOfPrimitiveType(literal.shape().element_type()),
-        global_name, /*allocation_idx=*/-1,
-        DenseDataIntermediate::Alias(
-            absl::MakeSpan(base, base + literal.size_bytes())));
-    ir_emitter_context_->constants().push_back(std::move(info));
-  }
-  return absl::OkStatus();
 }
 
 struct KernelThunkInfo {
