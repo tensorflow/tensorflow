@@ -102,9 +102,9 @@ tf_cc_test(
         "//tensorflow/core/protobuf:for_core_protos_cc",
         "//tensorflow/core/protobuf/tpu:compile_metadata_proto_cc",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/status:statusor",
         "@com_google_googletest//:gtest",
-        "@local_xla//xla/tsl/platform:status_matchers",
         "@local_xla//xla/tsl/platform:statusor",
     ],
 )
