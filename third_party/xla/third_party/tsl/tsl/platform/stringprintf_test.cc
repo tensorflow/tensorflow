@@ -24,7 +24,7 @@ namespace strings {
 namespace {
 
 TEST(PrintfTest, Empty) {
-  EXPECT_EQ("", Printf("%s", string().c_str()));
+  EXPECT_EQ("", Printf("%s", std::string().c_str()));
   EXPECT_EQ("", Printf("%s", ""));
 }
 
@@ -36,26 +36,26 @@ TEST(PrintfTest, Misc) {
 }
 
 TEST(AppendfTest, Empty) {
-  string value("Hello");
+  std::string value("Hello");
   const char* empty = "";
   Appendf(&value, "%s", empty);
   EXPECT_EQ("Hello", value);
 }
 
 TEST(AppendfTest, EmptyString) {
-  string value("Hello");
+  std::string value("Hello");
   Appendf(&value, "%s", "");
   EXPECT_EQ("Hello", value);
 }
 
 TEST(AppendfTest, String) {
-  string value("Hello");
+  std::string value("Hello");
   Appendf(&value, " %s", "World");
   EXPECT_EQ("Hello World", value);
 }
 
 TEST(AppendfTest, Int) {
-  string value("Hello");
+  std::string value("Hello");
   Appendf(&value, " %d", 123);
   EXPECT_EQ("Hello 123", value);
 }
@@ -71,7 +71,7 @@ TEST(PrintfTest, Multibyte) {
   setlocale(LC_CTYPE, "en_US.utf8");
 
   const char kInvalidCodePoint[] = "\375\067s";
-  string value = Printf("%.*s", 3, kInvalidCodePoint);
+  std::string value = Printf("%.*s", 3, kInvalidCodePoint);
 
   // In some versions of glibc (e.g. eglibc-2.11.1, aka GRTEv2), snprintf
   // returns error given an invalid codepoint. Other versions
@@ -97,7 +97,7 @@ TEST(PrintfTest, NoMultibyte) {
   // No multibyte handling, but the string contains funny chars.
   char* old_locale = setlocale(LC_CTYPE, nullptr);
   setlocale(LC_CTYPE, "POSIX");
-  string value = Printf("%.*s", 3, "\375\067s");
+  std::string value = Printf("%.*s", 3, "\375\067s");
   setlocale(LC_CTYPE, old_locale);
   EXPECT_EQ("\375\067s", value);
 }
@@ -107,7 +107,7 @@ TEST(PrintfTest, DontOverwriteErrno) {
   // something significantly larger than what people are normally
   // printing in their badly written PLOG() statements.
   errno = ECHILD;
-  string value = Printf("Hello, %s!", "World");
+  std::string value = Printf("Hello, %s!", "World");
   EXPECT_EQ(ECHILD, errno);
 }
 
@@ -117,7 +117,7 @@ TEST(PrintfTest, LargeBuf) {
   char* buf = new char[n + 1];
   memset(buf, ' ', n);
   buf[n] = 0;
-  string value = Printf("%s", buf);
+  std::string value = Printf("%s", buf);
   EXPECT_EQ(buf, value);
   delete[] buf;
 }

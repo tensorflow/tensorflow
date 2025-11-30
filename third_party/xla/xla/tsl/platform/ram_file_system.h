@@ -355,14 +355,14 @@ class RamFileSystem : public FileSystem {
     return absl::StartsWith(s, prefix);
   }
 
-  string StripPrefix(std::string s, std::string prefix) {
+  std::string StripPrefix(std::string s, std::string prefix) {
     if (absl::StartsWith(s, prefix)) {
       return s.erase(0, prefix.size());
     }
     return s;
   }
 
-  string StripRamFsPrefix(std::string name) {
+  std::string StripRamFsPrefix(std::string name) {
     std::string s = StripPrefix(name, "ram://");
     if (*(s.rbegin()) == '/') {
       s.pop_back();

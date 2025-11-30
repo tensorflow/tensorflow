@@ -48,7 +48,7 @@ constexpr char kJwtType[] = "JWT";
 constexpr char kGrantType[] =
     "urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Ajwt-bearer";
 
-absl::Status ReadJsonValue(const Json::Value& json, const string& name,
+absl::Status ReadJsonValue(const Json::Value& json, const std::string& name,
                            Json::Value* value) {
   if (!value) {
     return absl::FailedPreconditionError("'value' cannot be nullptr.");
@@ -61,8 +61,8 @@ absl::Status ReadJsonValue(const Json::Value& json, const string& name,
   return absl::OkStatus();
 }
 
-absl::Status ReadJsonString(const Json::Value& json, const string& name,
-                            string* value) {
+absl::Status ReadJsonString(const Json::Value& json, const std::string& name,
+                            std::string* value) {
   Json::Value json_value;
   TF_RETURN_IF_ERROR(ReadJsonValue(json, name, &json_value));
   if (!json_value.isString()) {
@@ -73,7 +73,7 @@ absl::Status ReadJsonString(const Json::Value& json, const string& name,
   return absl::OkStatus();
 }
 
-absl::Status ReadJsonInt(const Json::Value& json, const string& name,
+absl::Status ReadJsonInt(const Json::Value& json, const std::string& name,
                          int64_t* value) {
   Json::Value json_value;
   TF_RETURN_IF_ERROR(ReadJsonValue(json, name, &json_value));
@@ -86,7 +86,7 @@ absl::Status ReadJsonInt(const Json::Value& json, const string& name,
 }
 
 absl::Status CreateSignature(RSA* private_key, absl::string_view to_sign,
-                             string* signature) {
+                             std::string* signature) {
   if (!private_key || !signature) {
     return absl::FailedPreconditionError(
         "'private_key' and 'signature' cannot be nullptr.");
@@ -133,7 +133,8 @@ absl::Status CreateSignature(RSA* private_key, absl::string_view to_sign,
 /// Encodes a claim for a JSON web token (JWT) to make an OAuth request.
 absl::Status EncodeJwtClaim(absl::string_view client_email,
                             absl::string_view scope, absl::string_view audience,
-                            uint64 request_timestamp_sec, string* encoded) {
+                            uint64 request_timestamp_sec,
+                            std::string* encoded) {
   // Step 1: create the JSON with the claim.
   Json::Value root;
   root["iss"] = Json::Value(client_email.data(),
@@ -148,14 +149,14 @@ absl::Status EncodeJwtClaim(absl::string_view client_email,
   root["exp"] = Json::Value::UInt64(expiration_timestamp_sec);
 
   // Step 2: represent the JSON as a string.
-  string claim = root.toStyledString();
+  std::string claim = root.toStyledString();
 
   // Step 3: encode the string as base64.
   return Base64Encode(claim, encoded);
 }
 
 /// Encodes a header for a JSON web token (JWT) to make an OAuth request.
-absl::Status EncodeJwtHeader(absl::string_view key_id, string* encoded) {
+absl::Status EncodeJwtHeader(absl::string_view key_id, std::string* encoded) {
   // Step 1: create the JSON with the header.
   Json::Value root;
   root["alg"] = kCryptoAlgorithm;
@@ -163,7 +164,7 @@ absl::Status EncodeJwtHeader(absl::string_view key_id, string* encoded) {
   root["kid"] = Json::Value(key_id.data(), key_id.data() + key_id.size());
 
   // Step 2: represent the JSON as a string.
-  const string header = root.toStyledString();
+  const std::string header = root.toStyledString();
 
   // Step 3: encode the string as base64.
   return Base64Encode(header, encoded);
@@ -182,12 +183,13 @@ OAuthClient::OAuthClient(
 
 absl::Status OAuthClient::GetTokenFromServiceAccountJson(
     Json::Value json, absl::string_view oauth_server_uri,
-    absl::string_view scope, string* token, uint64* expiration_timestamp_sec) {
+    absl::string_view scope, std::string* token,
+    uint64* expiration_timestamp_sec) {
   if (!token || !expiration_timestamp_sec) {
     return errors::FailedPrecondition(
         "'token' and 'expiration_timestamp_sec' cannot be nullptr.");
   }
-  string private_key_serialized, private_key_id, client_id, client_email;
+  std::string private_key_serialized, private_key_id, client_id, client_email;
   TF_RETURN_IF_ERROR(
       ReadJsonString(json, "private_key", &private_key_serialized));
   TF_RETURN_IF_ERROR(ReadJsonString(json, "private_key_id", &private_key_id));
@@ -213,17 +215,17 @@ absl::Status OAuthClient::GetTokenFromServiceAccountJson(
   TF_RETURN_IF_ERROR(EncodeJwtHeader(private_key_id, &encoded_header));
   TF_RETURN_IF_ERROR(EncodeJwtClaim(client_email, scope, oauth_server_uri,
                                     request_timestamp_sec, &encoded_claim));
-  const string to_sign = encoded_header + "." + encoded_claim;
-  string signature;
+  const std::string to_sign = encoded_header + "." + encoded_claim;
+  std::string signature;
   TF_RETURN_IF_ERROR(CreateSignature(private_key.get(), to_sign, &signature));
-  const string jwt = to_sign + "." + signature;
-  const string request_body =
+  const std::string jwt = to_sign + "." + signature;
+  const std::string request_body =
       absl::StrCat("grant_type=", kGrantType, "&assertion=", jwt);
 
   // Send the request to the Google OAuth 2.0 server to get the token.
   std::unique_ptr<HttpRequest> request(http_request_factory_->Create());
   std::vector<char> response_buffer;
-  request->SetUri(string(oauth_server_uri));
+  request->SetUri(std::string(oauth_server_uri));
   request->SetPostFromBuffer(request_body.c_str(), request_body.size());
   request->SetResultBuffer(&response_buffer);
   TF_RETURN_IF_ERROR(request->Send());
@@ -236,13 +238,13 @@ absl::Status OAuthClient::GetTokenFromServiceAccountJson(
 }
 
 absl::Status OAuthClient::GetTokenFromRefreshTokenJson(
-    Json::Value json, absl::string_view oauth_server_uri, string* token,
+    Json::Value json, absl::string_view oauth_server_uri, std::string* token,
     uint64* expiration_timestamp_sec) {
   if (!token || !expiration_timestamp_sec) {
     return errors::FailedPrecondition(
         "'token' and 'expiration_timestamp_sec' cannot be nullptr.");
   }
-  string client_id, client_secret, refresh_token;
+  std::string client_id, client_secret, refresh_token;
   TF_RETURN_IF_ERROR(ReadJsonString(json, "client_id", &client_id));
   TF_RETURN_IF_ERROR(ReadJsonString(json, "client_secret", &client_secret));
   TF_RETURN_IF_ERROR(ReadJsonString(json, "refresh_token", &refresh_token));
@@ -255,7 +257,7 @@ absl::Status OAuthClient::GetTokenFromRefreshTokenJson(
 
   std::unique_ptr<HttpRequest> request(http_request_factory_->Create());
   std::vector<char> response_buffer;
-  request->SetUri(string(oauth_server_uri));
+  request->SetUri(std::string(oauth_server_uri));
   request->SetPostFromBuffer(request_body.c_str(), request_body.size());
   request->SetResultBuffer(&response_buffer);
   TF_RETURN_IF_ERROR(request->Send());
@@ -269,7 +271,7 @@ absl::Status OAuthClient::GetTokenFromRefreshTokenJson(
 
 absl::Status OAuthClient::ParseOAuthResponse(absl::string_view response,
                                              uint64 request_timestamp_sec,
-                                             string* token,
+                                             std::string* token,
                                              uint64* expiration_timestamp_sec) {
   if (!token || !expiration_timestamp_sec) {
     return errors::FailedPrecondition(
@@ -281,7 +283,7 @@ absl::Status OAuthClient::ParseOAuthResponse(absl::string_view response,
     return errors::Internal("Couldn't parse JSON response from OAuth server.");
   }
 
-  string token_type;
+  std::string token_type;
   TF_RETURN_IF_ERROR(ReadJsonString(root, "token_type", &token_type));
   if (token_type != "Bearer") {
     return errors::FailedPrecondition("Unexpected Oauth token type: " +

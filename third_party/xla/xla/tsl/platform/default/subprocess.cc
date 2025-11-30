@@ -132,8 +132,8 @@ void SubProcess::ClosePipes() {
   }
 }
 
-void SubProcess::SetProgram(const string& file,
-                            const std::vector<string>& argv) {
+void SubProcess::SetProgram(const std::string& file,
+                            const std::vector<std::string>& argv) {
   absl::MutexLock procLock(&proc_mu_);
   absl::MutexLock dataLock(&data_mu_);
   if (running_) {
@@ -521,11 +521,12 @@ bool SubProcess::Kill(int signal) {
   return ret;
 }
 
-int SubProcess::Communicate(const string* stdin_input, string* stdout_output,
-                            string* stderr_output) {
+int SubProcess::Communicate(const std::string* stdin_input,
+                            std::string* stdout_output,
+                            std::string* stderr_output) {
   struct pollfd fds[kNFds];
   size_t nbytes[kNFds];
-  string* iobufs[kNFds];
+  std::string* iobufs[kNFds];
   int fd_count = 0;
 
   proc_mu_.Lock();
@@ -575,7 +576,7 @@ int SubProcess::Communicate(const string* stdin_input, string* stdout_output,
             parent_pipe_[i] = -1;
             continue;
           }
-          iobufs[fd_count] = const_cast<string*>(stdin_input);
+          iobufs[fd_count] = const_cast<std::string*>(stdin_input);
           break;
         case CHAN_STDOUT:
           iobufs[fd_count] = stdout_output;
@@ -657,7 +658,8 @@ int SubProcess::Communicate(const string* stdin_input, string* stdout_output,
   return WaitInternal(&status) ? status : -1;
 }
 
-std::unique_ptr<SubProcess> CreateSubProcess(const std::vector<string>& argv) {
+std::unique_ptr<SubProcess> CreateSubProcess(
+    const std::vector<std::string>& argv) {
   std::unique_ptr<SubProcess> proc(new SubProcess());
   proc->SetProgram(argv[0], argv);
   proc->SetChannelAction(CHAN_STDERR, ACTION_DUPPARENT);
