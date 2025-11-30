@@ -31,7 +31,7 @@ namespace {
 void ManyManyVariablesHelper(int threads, int variables,
                              ::testing::benchmark::State& state) {
   Graph g(OpRegistry::Global());
-  std::vector<string> targets;
+  std::vector<std::string> targets;
   for (int i = 0; i < variables; ++i) {
     Node* v;
     TF_CHECK_OK(
