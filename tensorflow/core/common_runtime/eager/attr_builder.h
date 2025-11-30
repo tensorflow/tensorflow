@@ -40,10 +40,10 @@ namespace tensorflow {
 // If the type is not a list type, the value is the same as the TF_AttrType type
 // of the value. Else, the highest order bit is on, and the rest of the bits
 // represent the TF_AttrType type of the values in the list.
-typedef std::unordered_map<string, uint32> AttrTypeMap;
+typedef std::unordered_map<std::string, uint32_t> AttrTypeMap;
 
 // Look up OpDef for `op_name`.
-absl::Status OpDefForOp(const string& op_name, const OpDef** op_def);
+absl::Status OpDefForOp(const std::string& op_name, const OpDef** op_def);
 
 // Returns the AttrTypeMap for the TensorFlow operation named op_name.
 // If op_name is not registered in global op registry, AttrTypeMapForOp assumes
@@ -53,7 +53,7 @@ absl::Status AttrTypeMapForOp(const char* op_name, const AttrTypeMap** out,
                               bool* is_function);
 
 // Looks for 'attr_name' in 'm' and sets 'out' and 'is_list'.
-absl::Status AttrTypeByName(const AttrTypeMap& m, const string& attr_name,
+absl::Status AttrTypeByName(const AttrTypeMap& m, const std::string& attr_name,
                             TF_AttrType* out, unsigned char* is_list);
 
 // KernelAndDevice::Init needs a NodeDef only to pass the attribute map through.
@@ -111,8 +111,8 @@ class AttrBuilder : public AbstractOpAttrs {
     device_for_cached_cache_key_.clear();
   }
 
-  const string& op_name() const { return op_name_; }
-  void set_op_name(const string& name) { op_name_ = name; }
+  const std::string& op_name() const { return op_name_; }
+  void set_op_name(const std::string& name) { op_name_ = name; }
 
   // Needed to work around call to ValidateNodeDef in CreateOpKernel.
   AttrBuilder& NumInputs(int n);
@@ -186,7 +186,7 @@ class AttrBuilder : public AbstractOpAttrs {
   tensorflow::Fprint128 BuildCacheKeyForDevice(absl::string_view device) const;
 
   template <class T>
-  void SetInAttrValueMap(AttrValueMap* m, const string& attr_name,
+  void SetInAttrValueMap(AttrValueMap* m, const std::string& attr_name,
                          T&& value) const {
     DCHECK(!node_def_finalized_)
         << "Calling SetInAttrValueMap after BuildNodeDef.";
@@ -196,17 +196,17 @@ class AttrBuilder : public AbstractOpAttrs {
 
   void AddAttrIfNotPresent(absl::string_view attr_name, const AttrValue& value);
 
-  gtl::FlatMap<string, string> encoded_attrs_;
+  gtl::FlatMap<std::string, std::string> encoded_attrs_;
   mutable AttrValue attr_tmp_;  // For encoding
 
-  string op_name_;
+  std::string op_name_;
   int num_inputs_;
   NodeDef node_def_;
   bool node_def_initialized_;
   bool node_def_finalized_;
 
   std::optional<tensorflow::Fprint128> cached_cache_key_;
-  string device_for_cached_cache_key_;
+  std::string device_for_cached_cache_key_;
 };
 
 template <>
