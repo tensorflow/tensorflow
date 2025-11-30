@@ -16,9 +16,15 @@ limitations under the License.
 #include "tensorflow/core/grappler/utils/pattern_utils.h"
 
 #include <algorithm>
+#include <map>
 #include <memory>
+#include <numeric>
+#include <set>
+#include <unordered_set>
+#include <vector>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/log/check.h"
 
 namespace tensorflow {
 namespace grappler {
