@@ -442,6 +442,7 @@ cc_library(
         "@local_xla//xla/tsl:ios": [],
         "@local_xla//xla/tsl:windows": [],
         "//conditions:default": [
+            "@boringssl//:crypto",
             "@boringssl//:ssl",
         ],
     }),
