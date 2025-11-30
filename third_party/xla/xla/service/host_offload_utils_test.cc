@@ -28,7 +28,28 @@ namespace xla {
 namespace host_offload_utils {
 namespace {
 
-class HostOffloadUtilsTest : public HloHardwareIndependentTestBase {};
+class HostOffloadUtilsTest : public HloHardwareIndependentTestBase {
+ protected:
+  void TestMoveToHostWithDus(absl::string_view hlo_string,
+                             absl::string_view instruction_name,
+                             bool expected_result) {
+    TF_ASSERT_OK_AND_ASSIGN(auto module,
+                            ParseAndReturnVerifiedModule(hlo_string));
+    HloInstruction* instr = FindInstruction(module.get(), instruction_name);
+    ASSERT_NE(instr, nullptr);
+    EXPECT_EQ(IsMoveToHostWithDynamicUpdateSlice(instr), expected_result);
+  }
+
+  void TestMoveToDeviceWithDs(absl::string_view hlo_string,
+                              absl::string_view instruction_name,
+                              bool expected_result) {
+    TF_ASSERT_OK_AND_ASSIGN(auto module,
+                            ParseAndReturnVerifiedModule(hlo_string));
+    HloInstruction* instr = FindInstruction(module.get(), instruction_name);
+    ASSERT_NE(instr, nullptr);
+    EXPECT_EQ(IsMoveToDeviceWithDynamicSlice(instr), expected_result);
+  }
+};
 
 TEST_F(HostOffloadUtilsTest, SimpleGetSuccessorsGetPredecessorsTest) {
   const std::string& hlo_string = R"(
@@ -107,6 +128,94 @@ ENTRY main {
   std::vector<InstructionAndShapeIndex> expected_pred = {
       InstructionAndShapeIndex(tuple, {0})};
   EXPECT_EQ(pred, expected_pred);
+}
+
+TEST_F(HostOffloadUtilsTest, IsMoveToHostWithDynamicUpdateSliceTest) {
+  TestMoveToHostWithDus(R"(
+HloModule my_module
+ENTRY main {
+  data_param = f32[1,2048,2048] parameter(0)
+  index_param = s32[] parameter(1)
+  constant_f32_0 = f32[] constant(0)
+  constant_s32_0 = s32[] constant(0)
+  broadcast = f32[2,2048,2048] broadcast(constant_f32_0), dimensions={}
+  custom_call = f32[1,2048,2048] custom-call(data_param), custom_call_target="MoveToHost"
+  dynamic_update_slice = f32[2,2048,2048] dynamic-update-slice(broadcast, custom_call, index_param, constant_s32_0, constant_s32_0)
+  ROOT result = f32[2,2048,2048] copy(dynamic_update_slice)
+}
+)",
+                        "custom_call", true);
+}
+
+TEST_F(HostOffloadUtilsTest, IsMoveToHostNotWithDynamicUpdateSliceTest) {
+  TestMoveToHostWithDus(R"(
+HloModule my_module
+ENTRY main {
+  data_param = f32[1,2048,2048] parameter(0)
+  custom_call = f32[1,2048,2048] custom-call(data_param), custom_call_target="MoveToHost"
+  ROOT result = f32[1,2048,2048] copy(custom_call)
+}
+)",
+                        "custom_call", false);
+}
+
+TEST_F(HostOffloadUtilsTest, IsMoveToDeviceWithDynamicSliceTest) {
+  TestMoveToDeviceWithDs(R"(
+HloModule my_module
+ENTRY main {
+  data_param = f32[2,2048,2048] parameter(0)
+  index_param = s32[] parameter(1)
+  constant_s32_0 = s32[] constant(0)
+  dynamic_slice = f32[1,2048,2048] dynamic-slice(data_param, index_param, constant_s32_0, constant_s32_0), dynamic_slice_sizes={1,2048,2048}
+  ROOT custom_call = f32[1,2048,2048] custom-call(dynamic_slice), custom_call_target="MoveToDevice"
+}
+)",
+                         "custom_call", true);
+}
+
+TEST_F(HostOffloadUtilsTest, IsMoveToDeviceNotWithDynamicSliceTest) {
+  TestMoveToDeviceWithDs(R"(
+HloModule my_module
+ENTRY main {
+  data_param = f32[1,2048,2048] parameter(0)
+  ROOT custom_call = f32[1,2048,2048] custom-call(data_param), custom_call_target="MoveToDevice"
+}
+)",
+                         "custom_call", false);
+}
+
+TEST_F(HostOffloadUtilsTest,
+       IsMoveToHostWithDynamicUpdateSliceThroughReshapeTest) {
+  TestMoveToHostWithDus(R"(
+HloModule my_module
+ENTRY main {
+  data_param = f32[2048,2048] parameter(0)
+  index_param = s32[] parameter(1)
+  constant_f32_0 = f32[] constant(0)
+  constant_s32_0 = s32[] constant(0)
+  broadcast = f32[2,2048,2048] broadcast(constant_f32_0), dimensions={}
+  custom_call = f32[2048,2048] custom-call(data_param), custom_call_target="MoveToHost"
+  reshape = f32[1,2048,2048] reshape(custom_call)
+  dynamic_update_slice = f32[2,2048,2048] dynamic-update-slice(broadcast, reshape, index_param, constant_s32_0, constant_s32_0)
+  ROOT result = f32[2,2048,2048] copy(dynamic_update_slice)
+}
+)",
+                        "custom_call", true);
+}
+
+TEST_F(HostOffloadUtilsTest, IsMoveToDeviceWithDynamicSliceThroughReshapeTest) {
+  TestMoveToDeviceWithDs(R"(
+HloModule my_module
+ENTRY main {
+  data_param = f32[2,2048,2048] parameter(0)
+  index_param = s32[] parameter(1)
+  constant_s32_0 = s32[] constant(0)
+  dynamic_slice = f32[1,2048,2048] dynamic-slice(data_param, index_param, constant_s32_0, constant_s32_0), dynamic_slice_sizes={1,2048,2048}
+  reshape = f32[2048,2048] reshape(dynamic_slice)
+  ROOT custom_call = f32[2048,2048] custom-call(reshape), custom_call_target="MoveToDevice"
+}
+)",
+                         "custom_call", true);
 }
 
 }  // namespace
