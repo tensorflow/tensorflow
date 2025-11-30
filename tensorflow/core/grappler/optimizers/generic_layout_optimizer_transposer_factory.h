@@ -32,7 +32,7 @@ class TransposerFactory {
 
  protected:
   template <typename T>
-  std::shared_ptr<Transposer> GetOrCreateIfNotFound(const string& key) {
+  std::shared_ptr<Transposer> GetOrCreateIfNotFound(const std::string& key) {
     auto& transposer = transposer_map_[key];
     if (transposer == nullptr) {
       transposer = std::make_shared<T>();
@@ -40,7 +40,7 @@ class TransposerFactory {
     return transposer;
   }
 
-  absl::flat_hash_map<string, std::shared_ptr<Transposer>> transposer_map_;
+  absl::flat_hash_map<std::string, std::shared_ptr<Transposer>> transposer_map_;
 };
 
 }  // end namespace grappler
