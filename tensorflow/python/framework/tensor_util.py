@@ -1050,7 +1050,9 @@ def constant_value(tensor, partial=False):  # pylint: disable=invalid-name
   class Foo:
     def __init__(self):
       self.a = tf.Variable(1)
-      self.b = tf.constant(2)
+      # Use convert_to_tensor to avoid forcing eager-only .numpy() calls
+      # when this example is used inside a tf.function.
+      self.b = tf.convert_to_tensor(2, dtype=tf.int32)
 
     @tf.function
     def bar(self, partial):
