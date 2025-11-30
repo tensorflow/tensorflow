@@ -1134,6 +1134,7 @@ message DebugOptions {
   optional bool xla_dump_hlo_as_proto = 113;
   optional bool xla_dump_hlo_as_dot = 114;
   optional bool xla_dump_hlo_as_url = 115;
+  optional bool xla_dump_hlo_as_riegeli = 436;
 
   // Dump HLO graphs as an HTML (DOT -> SVG inlined in HTML)
   optional bool xla_dump_hlo_as_html = 116;

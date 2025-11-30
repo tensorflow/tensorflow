@@ -47,6 +47,8 @@ limitations under the License.
 #include "mlir/Transforms/LocationSnapshot.h"
 #include "google/protobuf/descriptor.h"
 #include "google/protobuf/text_format.h"
+#include "third_party/riegeli/bytes/file_writer.h"
+#include "third_party/riegeli/records/record_writer.h"
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -152,6 +154,7 @@ struct CanonicalDebugOptions {
       : dump_to(opts.xla_dump_to()),
         dump_as_text(opts.xla_dump_hlo_as_text()),
         dump_as_proto(opts.xla_dump_hlo_as_proto()),
+        dump_as_riegeli(opts.xla_dump_hlo_as_riegeli()),
         dump_as_dot(opts.xla_dump_hlo_as_dot()),
         dump_as_html(opts.xla_dump_hlo_as_html()),
         dump_as_url(opts.xla_dump_hlo_as_url()),
@@ -172,8 +175,8 @@ struct CanonicalDebugOptions {
     // Did the user specify an explicit format for dumping?
     bool output_format_other_than_url_specified =
         opts.xla_dump_hlo_as_text() || opts.xla_dump_hlo_as_proto() ||
-        opts.xla_dump_hlo_as_dot() || opts.xla_dump_hlo_as_html() ||
-        opts.xla_dump_hlo_snapshots() ||
+        opts.xla_dump_hlo_as_riegeli() || opts.xla_dump_hlo_as_dot() ||
+        opts.xla_dump_hlo_as_html() || opts.xla_dump_hlo_snapshots() ||
         opts.xla_dump_hlo_unoptimized_snapshots();
     bool output_format_specified =
         output_format_other_than_url_specified || opts.xla_dump_hlo_as_url();
@@ -288,6 +291,7 @@ struct CanonicalDebugOptions {
   // dumping HLO.
   bool dump_as_text;
   bool dump_as_proto;
+  bool dump_as_riegeli;
   bool dump_as_dot;
   bool dump_as_html;
   bool dump_as_url;
@@ -519,6 +523,48 @@ static std::vector<std::string> DumpHloModuleImpl(
     file_paths.push_back(DumpToFileInDirImpl(
         StrCat(filename, opts.dump_compress_protos ? ".hlo.pb.gz" : ".hlo.pb"),
         pb, opts, opts.dump_compress_protos));
+  }
+
+  if (opts.dump_as_riegeli) {
+    file_paths.push_back(GetDumpFilePath(StrCat(filename, ".riegeli"), opts));
+    auto writer =
+        std::make_unique<riegeli::RecordWriter<riegeli::FileWriter<>>>(
+            riegeli::FileWriter(*file_paths.back()),
+            riegeli::RecordWriterBase::Options()
+                .set_transpose(false)
+                .set_brotli());
+    if (!writer->ok()) {
+      LOG(ERROR) << "Failed to open riegeli file: " << writer->status();
+      return {};
+    }
+    // Write everything except the computations.
+    {
+      HloProto proto_no_computations;
+      *proto_no_computations.mutable_hlo_module() =
+          module.ToProtoWithoutComputations();
+      writer->WriteRecord(proto_no_computations);
+    }
+
+    // Write the computations.
+    for (const HloComputation* computation :
+         module.MakeComputationPostOrder()) {
+      HloProto proto_single_computation;
+      *proto_single_computation.mutable_hlo_module()->add_computations() =
+          computation->ToProto();
+      writer->WriteRecord(proto_single_computation);
+    }
+
+    // Write the buffer assignment if present.
+    if (buffer_assn) {
+      HloProto buffer_assignment_proto;
+      *buffer_assignment_proto.mutable_buffer_assignment() =
+          buffer_assn->ToProto();
+      writer->WriteRecord(buffer_assignment_proto);
+    }
+    if (!writer->Close()) {
+      LOG(ERROR) << "Failed to close riegeli file: " << writer->status();
+      return {};
+    }
   }
 
   if (opts.dump_as_dot) {
