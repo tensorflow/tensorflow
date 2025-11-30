@@ -962,6 +962,12 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "kernel_stats",
+    hdrs = ["kernel_stats.h"],
+    deps = ["@com_google_absl//absl/container:flat_hash_map"],
+)
+
 xla_cc_test(
     name = "kernel_args_test",
     srcs = ["kernel_args_test.cc"],
