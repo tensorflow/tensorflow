@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <optional>
+#include <string>
 
 #include "tensorflow/compiler/tf2xla/mlir_xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"

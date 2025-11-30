@@ -20,6 +20,7 @@ limitations under the License.
 #include <algorithm>
 #include <cstdint>
 #include <numeric>
+#include <string>
 #include <utility>
 #include <vector>
 
