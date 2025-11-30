@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/autotuning.pb.h"
+#include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -79,11 +80,13 @@ class GemmFusionAutotuner : public HloModulePass {
                                const se::SemanticVersion& toolkit_version,
                                tsl::thread::ThreadPool* thread_pool,
                                const MultiProcessKeyValueStore& key_value_store,
+                               const AliasInfo* alias_info,
                                mlir::MLIRContext* mlir_context)
       : config_(config),
         toolkit_version_(toolkit_version),
         thread_pool_(thread_pool),
         key_value_store_(key_value_store),
+        alias_info_(alias_info),
         mlir_context_(mlir_context) {}
 
   absl::string_view name() const override { return "gemm-fusion-autotuner"; }
@@ -102,6 +105,7 @@ class GemmFusionAutotuner : public HloModulePass {
   se::SemanticVersion toolkit_version_;
   tsl::thread::ThreadPool* thread_pool_;
   MultiProcessKeyValueStore key_value_store_;
+  const AliasInfo* alias_info_;
   mlir::MLIRContext* mlir_context_;
 };
 
@@ -111,11 +115,12 @@ class GemmFusionAutotunerImpl {
       AutotuneConfig& config,
       const stream_executor::SemanticVersion& toolkit_version,
       DebugOptions debug_options, tsl::thread::ThreadPool* thread_pool,
-      mlir::MLIRContext* mlir_context)
+      const AliasInfo* alias_info, mlir::MLIRContext* mlir_context)
       : config_(std::move(config)),
         toolkit_version_(toolkit_version),
         debug_options_(std::move(debug_options)),
         thread_pool_(thread_pool),
+        alias_info_(alias_info),
         mlir_context_(mlir_context) {}
 
   struct CuBlasConfig {
@@ -217,6 +222,7 @@ class GemmFusionAutotunerImpl {
   DebugOptions debug_options_;
   tsl::thread::ThreadPool* thread_pool_;
   std::vector<TritonGemmConfig> triton_configs_;
+  const AliasInfo* alias_info_;
   mlir::MLIRContext* mlir_context_;
 };
 

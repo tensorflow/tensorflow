@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/string_view.h"
+#include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/instruction_fusion.h"
 
@@ -28,7 +29,8 @@ namespace cpu {
 
 class XnnGraphFusion : public InstructionFusion {
  public:
-  XnnGraphFusion() : InstructionFusion(XnnGraphFusion::IsExpensive) {}
+  explicit XnnGraphFusion(const AliasInfo* alias_info)
+      : InstructionFusion(XnnGraphFusion::IsExpensive, alias_info) {}
   ~XnnGraphFusion() override = default;
 
  private:

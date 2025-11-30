@@ -28,6 +28,7 @@ limitations under the License.
 #include "xla/backends/gpu/autotuner/cublaslt.h"
 #include "xla/backends/gpu/autotuner/custom_kernel.h"
 #include "xla/backends/gpu/autotuner/gpu_codegen_backend.h"
+#include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/compiler.h"
 #include "xla/stream_executor/stream_executor.h"
@@ -46,6 +47,7 @@ class FissionBackend : public GpuCodegenBackend {
   explicit FissionBackend(stream_executor::StreamExecutor* stream_executor,
                           const DebugOptions* debug_options, Compiler* compiler,
                           const Compiler::GpuTargetConfig* target_config,
+                          const AliasInfo* alias_info,
                           mlir::MLIRContext* mlir_context)
       : GpuCodegenBackend("Fission", debug_options, compiler, target_config),
         cublas_backend_(stream_executor, debug_options, compiler,
@@ -54,6 +56,7 @@ class FissionBackend : public GpuCodegenBackend {
                           target_config),
         custom_kernel_backend_(stream_executor, debug_options, compiler,
                                target_config),
+        alias_info_(alias_info),
         mlir_context_(mlir_context) {}
 
   absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>>
@@ -73,6 +76,7 @@ class FissionBackend : public GpuCodegenBackend {
   CublasBackend cublas_backend_;
   CublasLtBackend cublaslt_backend_;
   CustomKernelBackend custom_kernel_backend_;
+  const AliasInfo* alias_info_;
   mlir::MLIRContext* mlir_context_;
 };
 

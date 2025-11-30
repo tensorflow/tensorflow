@@ -17,6 +17,7 @@ limitations under the License.
 #include <utility>
 
 #include "xla/error_spec.h"
+#include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -41,6 +42,7 @@ class CpuFusionTest : public HloTestBase {
   CpuFusionTest() {}
 
   ErrorSpec error_spec_{0.0001, 1e-5};
+  AliasInfo alias_info_;
 
  private:
   DebugOptions GetDebugOptionsForTest() const override {
@@ -69,7 +71,7 @@ TEST_F(CpuFusionTest, FuseTwoElementwiseOps) {
   auto module = CreateNewVerifiedModule();
   module->AddEntryComputation(builder.Build());
 
-  CpuInstructionFusion fusion;
+  CpuInstructionFusion fusion(&alias_info_);
   EXPECT_TRUE(fusion.Run(module.get()).value());
 
   // The computation root instruction was fused. Verify the fusion instruction
@@ -116,7 +118,7 @@ TEST_F(CpuFusionTest, FuseElementwiseOpChain) {
   auto module = CreateNewVerifiedModule();
   module->AddEntryComputation(builder.Build());
 
-  CpuInstructionFusion fusion;
+  CpuInstructionFusion fusion(&alias_info_);
   EXPECT_TRUE(fusion.Run(module.get()).value());
 
   // The computation root instruction was fused. Verify the fusion instruction
@@ -195,7 +197,7 @@ TEST_F(CpuFusionTest, ElementwiseOpChainWithNonfusibleInstruction) {
 
   module->AddEntryComputation(builder.Build());
 
-  CpuInstructionFusion fusion;
+  CpuInstructionFusion fusion(&alias_info_);
   EXPECT_TRUE(fusion.Run(module.get()).value());
 
   // The computation root instruction was fused. Verify the fusion instruction
@@ -267,7 +269,7 @@ TEST_F(CpuFusionTest, TestOperandOrderToAvoidDuplication) {
   module->AddEntryComputation(builder.Build());
 
   // Run fusion.
-  CpuInstructionFusion fusion;
+  CpuInstructionFusion fusion(&alias_info_);
   EXPECT_TRUE(fusion.Run(module.get()).value());
 
   auto fusion1 = result->operand(0);
@@ -323,7 +325,7 @@ TEST_F(CpuFusionTest, DoNotDuplicateExpensiveOps) {
   auto module = CreateNewVerifiedModule();
   module->AddEntryComputation(builder.Build());
 
-  CpuInstructionFusion fusion;
+  CpuInstructionFusion fusion(&alias_info_);
   EXPECT_TRUE(fusion.Run(module.get()).value());
 
   // The only fusion instruction should be operand 0 of the tuple (formerly

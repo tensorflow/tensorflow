@@ -1172,7 +1172,7 @@ absl::Status RunPostFusionVerificationPasses(
     HloModule* hlo_module, se::StreamExecutor* stream_exec,
     const GpuCompiler::CompileOptions& options,
     const Compiler::GpuTargetConfig& gpu_target_config,
-    mlir::MLIRContext* mlir_context) {
+    const AliasInfo* alias_info, mlir::MLIRContext* mlir_context) {
   HloPassPipeline pipeline("post-fusion-verification-pipeline optimization");
 
   if (hlo_module->config()
@@ -1181,7 +1181,7 @@ absl::Status RunPostFusionVerificationPasses(
     DeviceOrDevicelessConfig device_config =
         GetDeviceConfig(stream_exec, options, gpu_target_config);
     if (!device_config.IsDeviceless()) {
-      pipeline.AddPass<TritonFusionNumericsVerifier>(device_config,
+      pipeline.AddPass<TritonFusionNumericsVerifier>(device_config, alias_info,
                                                      mlir_context);
     }
   }
@@ -1454,7 +1454,8 @@ absl::Status GpuCompiler::OptimizeHloModule(
       gpu_version, gpu_target_config));
 
   TF_RETURN_IF_ERROR(RunPostFusionVerificationPasses(
-      hlo_module, stream_exec, options, gpu_target_config, &mlir_context_));
+      hlo_module, stream_exec, options, gpu_target_config, alias_info,
+      &mlir_context_));
 
   TF_RETURN_IF_ERROR(
       RunCollectiveScheduleLinearizerPasses(hlo_module, stream_exec));
@@ -1704,7 +1705,8 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
   TF_RETURN_IF_ERROR(AddGemmFusionAutotuningPasses(
       &pipeline, hlo_module, autotune_config, thread_pool,
       options.key_value_store,
-      gpu_target_config.device_description.runtime_version(), stream_exec));
+      gpu_target_config.device_description.runtime_version(), alias_info,
+      stream_exec));
 
   // Inline back the calls which have better performance with cuBLAS.
   pipeline.AddPass<CallInliner>(
