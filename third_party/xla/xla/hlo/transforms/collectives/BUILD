@@ -311,13 +311,8 @@ xla_cc_test(
     srcs = ["all_gather_remove_degenerate_dims_test.cc"],
     deps = [
         ":all_gather_remove_degenerate_dims",
-        "//xla:xla_data_proto_cc",
-        "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
-        "//xla/hlo/utils:hlo_matchers",
-        "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/platform:statusor",
     ],
 )
 

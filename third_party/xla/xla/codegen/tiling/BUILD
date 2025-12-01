@@ -306,12 +306,7 @@ cc_library(
     hdrs = ["tiling_specification.h"],
     deps = [
         ":constraint_expression",
-        ":symbolic_tiled_hlo_instruction",
-        ":tiled_hlo_computation",
-        "//xla/hlo/analysis:indexing_analysis",
         "//xla/hlo/ir:hlo",
-        "//xla/hlo/utils:hlo_traversal",
-        "//xla/service:instruction_fusion",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:inlined_vector",
@@ -321,7 +316,6 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
-        "@llvm-project//mlir:IR",
     ],
 )
 
