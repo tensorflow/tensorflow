@@ -2786,6 +2786,7 @@ cc_library(
         ":collective_thunk",
         ":thunk",
         "//xla:shape_util",
+        "//xla:status_macros",
         "//xla:xla_data_proto_cc",
         "//xla/backends/gpu/collectives:gpu_clique_key",
         "//xla/backends/gpu/collectives:gpu_collectives",

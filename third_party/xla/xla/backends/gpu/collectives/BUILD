@@ -111,7 +111,7 @@ cc_library(
     deps = [
         "//xla:xla_data_proto_cc",
         "//xla/core/collectives:clique_key",
-        "//xla/service:global_device_id",
+        "//xla/runtime:device_id",
         "//xla/tsl/lib/gtl:int_type",
         "//xla/tsl/platform:logging",
         "@com_google_absl//absl/algorithm:container",

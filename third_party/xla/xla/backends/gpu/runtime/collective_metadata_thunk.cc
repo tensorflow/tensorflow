@@ -183,7 +183,7 @@ absl::Status CollectiveMetadataThunk::Initialize(
   TF_ASSIGN_OR_RETURN(
       const GpuCliqueKey clique_key,
       GetCollectiveGpuCliqueKey(*params.collective_params, collective_config_,
-                                /*use_nccl=*/false));
+                                /*include_participant_groups=*/false));
   const int64_t num_ranks = clique_key.num_devices();
   TF_RET_CHECK(result_.size() ==
                sizeof(CollectiveKernelMetadata) +

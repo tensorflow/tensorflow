@@ -277,17 +277,17 @@ absl::StatusOr<GpuCliqueKey> GetGpuCliqueKey(
     const CollectiveParams& params,
     absl::Span<const ReplicaGroup> replica_groups,
     CollectiveOpGroupMode group_mode, AsyncStreamKind stream_kind,
-    bool use_nccl = true);
+    bool include_participant_groups = true);
 
 // Helper over GetGpuCliqueKey that builds key for AsyncStreamKind::kCollective.
 absl::StatusOr<GpuCliqueKey> GetCollectiveGpuCliqueKey(
     const CollectiveParams& params, const CollectiveConfig& collective_config,
-    bool use_nccl = true);
+    bool include_participant_groups = true);
 
 // Returns a communicator and additional information about the clique.
 absl::StatusOr<CommunicatorHandle> GetComm(
     const CollectiveParams& params, const CollectiveCliques& collective_cliques,
-    const std::vector<ReplicaGroup>& replica_groups,
+    absl::Span<const ReplicaGroup> replica_groups,
     CollectiveOpGroupMode group_mode, AsyncStreamKind stream_kind);
 
 struct DeviceBufferPair {

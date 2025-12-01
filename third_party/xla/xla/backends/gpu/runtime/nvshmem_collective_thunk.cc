@@ -33,6 +33,7 @@ limitations under the License.
 #include "xla/core/collectives/collectives_registry.h"
 #include "xla/primitive_util.h"
 #include "xla/shape.h"
+#include "xla/status_macros.h"
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
@@ -45,7 +46,6 @@ namespace xla {
 namespace gpu {
 
 namespace {
-static constexpr CollectiveStreamId kNoStreamId = CollectiveStreamId(0);
 
 bool IsTypeSupportedByNvshmem(PrimitiveType element_type,
                               Thunk::Kind reduction_op) {
@@ -95,7 +95,7 @@ absl::Status NvshmemCollectiveThunk::Prepare(const PrepareParams& params) {
       GpuCliqueKey clique_key,
       GetGpuCliqueKey(*params.collective_params, config().replica_groups,
                       config().group_mode, GetAsyncStreamKind(),
-                      /*use_nccl= */ false));
+                      /*include_participant_groups=*/false));
   return params.clique_requests->RequestClique(clique_key);
 }
 

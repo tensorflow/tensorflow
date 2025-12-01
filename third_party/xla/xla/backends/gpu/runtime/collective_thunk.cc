@@ -201,7 +201,7 @@ absl::StatusOr<GpuCliqueKey> GetGpuCliqueKey(
     const CollectiveParams& params,
     absl::Span<const ReplicaGroup> replica_groups,
     CollectiveOpGroupMode group_mode, AsyncStreamKind stream_kind,
-    bool use_nccl) {
+    bool include_participant_groups) {
   TF_RET_CHECK(params.collectives) << "Collectives API is not provided";
 
   GlobalDeviceId global_device_id = params.global_device_id;
@@ -222,7 +222,7 @@ absl::StatusOr<GpuCliqueKey> GetGpuCliqueKey(
 
   // Get grouping of participating devices.
   std::vector<std::vector<GlobalDeviceId>> participant_groups;
-  if (use_nccl) {
+  if (include_participant_groups) {
     // If splitting is enabled, participating groups must match in order for a
     // clique to be reused from the cache. We can ignore the participating
     // groups otherwise.
@@ -274,15 +274,16 @@ absl::StatusOr<GpuCliqueKey> GetGpuCliqueKey(
 
 absl::StatusOr<GpuCliqueKey> GetCollectiveGpuCliqueKey(
     const CollectiveParams& params, const CollectiveConfig& collective_config,
-    bool use_nccl) {
-  return GetGpuCliqueKey(
-      params, collective_config.replica_groups, collective_config.group_mode,
-      AsyncStreamKind::ASYNC_STREAM_KIND_COLLECTIVE, use_nccl);
+    bool include_participant_groups) {
+  return GetGpuCliqueKey(params, collective_config.replica_groups,
+                         collective_config.group_mode,
+                         AsyncStreamKind::ASYNC_STREAM_KIND_COLLECTIVE,
+                         include_participant_groups);
 }
 
 absl::StatusOr<CommunicatorHandle> GetComm(
     const CollectiveParams& params, const CollectiveCliques& collective_cliques,
-    const std::vector<ReplicaGroup>& replica_groups,
+    absl::Span<const ReplicaGroup> replica_groups,
     CollectiveOpGroupMode group_mode, AsyncStreamKind stream_kind) {
   TF_ASSIGN_OR_RETURN(
       GpuCliqueKey clique_key,
