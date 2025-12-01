@@ -470,7 +470,7 @@ TEST_P(AsyncCollectiveOps, CollectivePermuteCombiner) {
       auto module, ParseAndReturnVerifiedModule(kModuleStr, kNumReplicas));
   TF_ASSERT_OK_AND_ASSIGN(
       ExecutionResult execution_result,
-      ExecuteReplicated(std::move(module), /*arguments=*/{{}, {}}));
+      ExecuteReplicated(std::move(module), /*arguments=*/{{}, {}, {}, {}}));
 
   const HloModule* hlo_module = execution_result.optimized_module;
   HloInstruction* cp_start =
