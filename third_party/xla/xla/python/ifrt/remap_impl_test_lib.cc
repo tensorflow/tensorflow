@@ -15,7 +15,6 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
-#include <numeric>
 #include <optional>
 #include <utility>
 #include <vector>
@@ -116,7 +115,7 @@ absl::StatusOr<ArrayRef> CreateArray(Client* client,
 
   for (int i = 0; i < base_values.size(); ++i) {
     std::vector<ValueType> data(shard_shape.num_elements());
-    std::iota(data.begin(), data.end(), base_values[i]);
+    absl::c_iota(data, base_values[i]);
 
     Device* device = client->addressable_devices().at(device_indices[i]);
     devices.push_back(device);
@@ -179,7 +178,7 @@ void AssertArrayContent(Client* client, Array* array,
                 ElementsAre(expected_device));
 
     std::vector<ValueType> expected_data(expected_shard_shape.num_elements());
-    std::iota(expected_data.begin(), expected_data.end(), base_values[i]);
+    absl::c_iota(expected_data, base_values[i]);
 
     std::vector<ValueType> actual_data(shards[i]->shape().num_elements());
     TF_ASSERT_OK(shards[i]

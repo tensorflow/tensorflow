@@ -19,13 +19,13 @@
 #include <deque>
 #include <functional>
 #include <memory>
-#include <numeric>
 #include <optional>
 #include <string>
 #include <utility>
 #include <variant>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/cleanup/cleanup.h"
 #include "absl/container/flat_hash_map.h"
@@ -685,7 +685,7 @@ uint64_t IfrtBackend::HandleGenerator::GenerateAtServer() {
 void IfrtBackend::HandleGenerator::GenerateAtServerBulk(
     absl::Span<uint64_t> result_handles) {
   absl::MutexLock lock(mu_);
-  std::iota(result_handles.begin(), result_handles.end(), current_);
+  absl::c_iota(result_handles, current_);
   current_ += result_handles.size();
   CHECK_GE(current_, kServerGeneratedHandlesMinValue);
 }

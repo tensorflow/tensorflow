@@ -21,7 +21,6 @@ limitations under the License.
 #include <cstring>
 #include <functional>
 #include <memory>
-#include <numeric>
 #include <string>
 #include <thread>  // NOLINT(build/c++11)
 #include <utility>
@@ -30,6 +29,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/algorithm/container.h"
 #include "absl/cleanup/cleanup.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
@@ -171,7 +171,7 @@ TEST_F(PjrtCApiGpuTest, CreateViewOfDeviceBuffer) {
   CHECK_OK(transfer_to_host.Await());
   ASSERT_EQ(literal->data<float>().size(), 4);
   std::vector<float> float_data(4);
-  std::iota(float_data.begin(), float_data.end(), 41.0f);
+  absl::c_iota(float_data, 41.0f);
   EXPECT_TRUE(xla::LiteralTestUtil::Equal(
       xla::LiteralUtil::CreateR1<float>(float_data), *literal));
 }

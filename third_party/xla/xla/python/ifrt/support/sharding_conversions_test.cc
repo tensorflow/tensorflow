@@ -16,12 +16,12 @@ limitations under the License.
 #include "xla/python/ifrt/support/sharding_conversions.h"
 
 #include <memory>
-#include <numeric>
 #include <utility>
 #include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
@@ -41,7 +41,6 @@ limitations under the License.
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/ifrt/test_util.h"
 #include "xla/shape.h"
-#include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
@@ -332,7 +331,7 @@ TEST_P(HloShardingToShardingParamTest, HloShardingToShardingParam) {
   EXPECT_EQ(param.hlo_sharding, actual_hlo_sharding);
   // Verify that the conversion to OpSharding is also correct.
   std::vector<int> device_ids(param.num_devices);
-  std::iota(device_ids.begin(), device_ids.end(), 0);
+  absl::c_iota(device_ids, 0);
   TF_ASSERT_OK_AND_ASSIGN(
       auto hlo_via_op_sharding,
       ToHloShardingViaOpSharding(sharding_param,

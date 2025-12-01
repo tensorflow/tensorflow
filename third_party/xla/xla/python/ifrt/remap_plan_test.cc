@@ -17,12 +17,12 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
-#include <numeric>
 #include <tuple>
 #include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/algorithm/container.h"
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
 #include "absl/types/span.h"
@@ -337,7 +337,7 @@ TEST_P(RemapPlanTest, InvalidShardIndex) {
       num_shards *= shape[i] / shard_shape[i];
     }
     std::vector<int> devices(num_shards);
-    std::iota(devices.begin(), devices.end(), 0);
+    absl::c_iota(devices, 0);
     RemapPlan plan;
     plan.input_specs.push_back(ArraySpec{
         /*dtype=*/DType(DType::kS32),

@@ -22,7 +22,6 @@ limitations under the License.
 #include <cstdint>
 #include <cstring>
 #include <memory>
-#include <numeric>
 #include <optional>
 #include <set>
 #include <string>
@@ -33,6 +32,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/algorithm/container.h"
 #include "absl/cleanup/cleanup.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
@@ -145,7 +145,9 @@ absl::StatusOr<std::shared_ptr<xla::Literal>> ExtractSingleResult(
   std::vector<std::unique_ptr<xla::PjRtBuffer>>& result_buffers = (*result)[0];
   TF_RET_CHECK(result_buffers.size() == 1);
   auto literal_or = result_buffers[0]->ToLiteralSync();
-  if (!literal_or.status().ok()) return literal_or.status();
+  if (!literal_or.status().ok()) {
+    return literal_or.status();
+  }
   return *literal_or;
 }
 
@@ -793,7 +795,7 @@ TEST(StreamExecutorGpuClientTest, FromHostAsync) {
   std::vector<Shape> src_shapes;
   for (int i = 0; i < 4; ++i) {
     std::vector<float> data(i + 1);
-    std::iota(data.begin(), data.end(), static_cast<float>(i + 10));
+    absl::c_iota(data, static_cast<float>(i + 10));
     src_literals.emplace_back(LiteralUtil::CreateR1<float>(data));
     src_shapes.push_back(src_literals.back().shape());
   }
@@ -865,7 +867,7 @@ TEST(StreamExecutorGpuClientTest, FromHostAsyncPinnedHost) {
   std::vector<Shape> src_shapes;
   for (int i = 0; i < 4; ++i) {
     std::vector<float> data(i + 1);
-    std::iota(data.begin(), data.end(), static_cast<float>(i + 10));
+    absl::c_iota(data, static_cast<float>(i + 10));
     src_literals.emplace_back(LiteralUtil::CreateR1<float>(data));
     src_shapes.push_back(src_literals.back().shape());
   }
@@ -1147,7 +1149,7 @@ TEST(StreamExecutorGpuClientTest, CreateMixOfErrorBuffers) {
   std::vector<Shape> src_shapes;
   for (int i = 0; i < 4; ++i) {
     std::vector<float> data(i + 1);
-    std::iota(data.begin(), data.end(), static_cast<float>(i + 10));
+    absl::c_iota(data, static_cast<float>(i + 10));
     src_literals.emplace_back(LiteralUtil::CreateR1<float>(data));
     src_shapes.push_back(src_literals.back().shape());
   }
@@ -2618,7 +2620,7 @@ TEST(StreamExecutorGpuClientTest, MultipleDeviceShareDmaMapping) {
                           GetStreamExecutorGpuClient(DefaultOptions()));
   ASSERT_GE(client->devices().size(), 2);
 
-  size_t test_length = 0.5l * 1024 * 1024;
+  size_t test_length = 512 * 1024;
   std::vector<int32_t> data(test_length);
   for (int32_t i = 0; i < test_length; ++i) {
     data[i] = i;
@@ -2669,7 +2671,7 @@ TEST(StreamExecutorGpuClientTest, RawBuffer) {
                           GetStreamExecutorGpuClient(DefaultOptions()));
 
   std::vector<int32_t> data(256);
-  std::iota(data.begin(), data.end(), 10);
+  absl::c_iota(data, 10);
 
   Shape shape = ShapeUtil::MakeShape(S32, {256});
   auto buffer =
@@ -2690,7 +2692,7 @@ TEST(StreamExecutorGpuClientTest, RawBuffer) {
   ASSERT_EQ(on_device_size, 1024);
 
   std::vector<int32_t> data2(256);
-  std::iota(data2.begin(), data2.end(), 47);
+  absl::c_iota(data2, 47);
   auto* dst1 = tsl::port::AlignedMalloc(1024, 1024);
   auto* dst2 = tsl::port::AlignedMalloc(1024, 1024);
   memcpy(dst1, data2.data(), sizeof(int32_t) * data2.size());
@@ -2894,7 +2896,7 @@ TEST(StreamExecutorGpuClientTest, FailedCrossHostSendArgsSizeMismatch) {
 
   // Create a buffer to try to send.
   std::vector<int32_t> data(256);
-  std::iota(data.begin(), data.end(), 1);
+  absl::c_iota(data, 1);
 
   Shape shape = ShapeUtil::MakeShape(S32, {256});
 
@@ -3075,7 +3077,7 @@ absl::Status SuccessfulCrossHostTransferTestBody(bool is_sender,
   if (is_sender) {
     LOG(INFO) << log_prefix << ": creating buffers";
     std::vector<int32_t> data(256);
-    std::iota(data.begin(), data.end(), 1);
+    absl::c_iota(data, 1);
     Shape shape = ShapeUtil::MakeShape(S32, {256});
 
     // Create the data to send.
@@ -3121,7 +3123,7 @@ absl::Status SuccessfulCrossHostTransferTestBody(bool is_sender,
     // Receiver logic.
     // Expected data to receive.
     std::vector<int32_t> expected_data(256);
-    std::iota(expected_data.begin(), expected_data.end(), 1);
+    absl::c_iota(expected_data, 1);
     auto expected_literal = LiteralUtil::CreateR1<int32_t>(expected_data);
 
     // Receive some data.
@@ -3263,7 +3265,7 @@ absl::Status ShardedAutotuningWorksTestBody(const int node_id,
         service,
         xla::GetDistributedRuntimeService(
             "[::]:12345", xla::CoordinationServiceImpl::Options{
-                              .num_nodes = ShardedAutotuningTest::kNumNodes}));
+                              /*num_nodes=*/ShardedAutotuningTest::kNumNodes}));
   }
 
   xla::DistributedRuntimeClient::Options distributed_options;
@@ -3305,8 +3307,7 @@ absl::Status ShardedAutotuningWorksTestBody(const int node_id,
   debug_options.set_xla_gpu_cublas_fallback(false);
 
   if (node_id < num_nodes_using_cache) {
-    debug_options.set_xla_gpu_per_fusion_autotune_cache_dir(
-        std::string(cache_dir));
+    debug_options.set_xla_gpu_per_fusion_autotune_cache_dir(cache_dir);
   }
 
   mlir::MLIRContext context;
