@@ -203,7 +203,10 @@ class CudaExecutor : public GpuExecutor {
   }
 
  private:
-  absl::Status VmmDeallocateMemory(void* ptr);
+  // Checks if the memory was allocated with VMM API.
+  // If yes, deallocates the memory and returns true.
+  // If not, returns false.
+  absl::StatusOr<bool> VmmDeallocateMemory(void* ptr);
 
   absl::StatusOr<void*> VmmAllocateMemory(uint64_t bytes);
 
@@ -280,6 +283,22 @@ class CudaExecutor : public GpuExecutor {
   // Lookup map for alive streams, from raw stream pointers.
   absl::flat_hash_map<void*, Stream*> alive_gpu_streams_
       ABSL_GUARDED_BY(alive_gpu_streams_mu_);
+
+  class MemoryTracker {
+   public:
+    // Adds a pointer to the set of allocated memory. Returns true if the memory
+    // was not already tracked.
+    bool Insert(CUdeviceptr ptr);
+    // Removes a pointer from the set of allocated memory. Returns true if the
+    // memory was tracked.
+    bool Remove(CUdeviceptr ptr);
+
+   private:
+    absl::Mutex mutex_;
+    absl::flat_hash_set<CUdeviceptr> allocated_memory_ ABSL_GUARDED_BY(mutex_);
+  };
+  // Memory allocation tracker for VMM memory.
+  MemoryTracker vmm_memory_tracker_;
 
   // CudaContext for this device.
   CudaContext* cuda_context_;
