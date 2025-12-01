@@ -783,7 +783,15 @@ Build(
     type_=BuildType.JAX_LINUX_X86_CPU_GITHUB_ACTIONS,
     repo="google/jax",
     configs=("rbe_linux_x86_64",),
-    target_patterns=("//tests:cpu_tests", "//tests:backend_independent_tests"),
+    target_patterns=(
+        "//tests:cpu_tests",
+        "//tests:backend_independent_tests",
+        "//jax/experimental/jax2tf/tests:jax2tf_test_cpu",
+        "//tests/multiprocess:cpu_tests",
+        "//jax/experimental/jax2tf/tests/multiprocess:cpu_tests",
+        "//jaxlib/tools:jaxlib_wheel_size_test",
+        "//:jax_wheel_size_test",
+    ),
     test_env=dict(
         JAX_NUM_GENERATED_CASES=25,
         JAX_SKIP_SLOW_TESTS=1,
@@ -799,7 +807,15 @@ Build(
     type_=BuildType.JAX_WINDOWS_X86_CPU_GITHUB_ACTIONS,
     repo="google/jax",
     configs=("rbe_windows_amd64",),
-    target_patterns=("//tests:cpu_tests", "//tests:backend_independent_tests"),
+    target_patterns=(
+        "//tests:cpu_tests",
+        "//tests:backend_independent_tests",
+        "//jax/experimental/jax2tf/tests:jax2tf_test_cpu",
+        "//tests/multiprocess:cpu_tests",
+        "//jax/experimental/jax2tf/tests/multiprocess:cpu_tests",
+        "//jaxlib/tools:jaxlib_wheel_size_test",
+        "//:jax_wheel_size_test",
+    ),
     test_env=dict(
         JAX_NUM_GENERATED_CASES=25,
         JAX_SKIP_SLOW_TESTS=1,
@@ -819,7 +835,16 @@ Build(
     type_=BuildType.JAX_LINUX_X86_GPU_L4_GITHUB_ACTIONS,
     repo="google/jax",
     configs=("rbe_linux_x86_64_cuda",),
-    target_patterns=("//tests:gpu_tests", "//tests:backend_independent_tests"),
+    target_patterns=(
+        "//tests:gpu_tests",
+        "//tests:backend_independent_tests",
+        "//tests/pallas:gpu_tests",
+        "//tests/pallas:backend_independent_tests",
+        "//jaxlib/tools:jax_cuda_plugin_wheel_size_test",
+        "//jaxlib/tools:jax_cuda_pjrt_wheel_size_test",
+        "//jaxlib/tools:jaxlib_wheel_size_test",
+        "//:jax_wheel_size_test",
+    ),
     build_tag_filters=("-multiaccelerator",),
     test_tag_filters=("-multiaccelerator",),
     test_env=dict(
@@ -830,7 +855,10 @@ Build(
     override_repository=dict(
         xla=f"{_GITHUB_WORKSPACE}/openxla/xla",
     ),
-    options=_DEFAULT_BAZEL_OPTIONS,
+    options={
+        **_DEFAULT_BAZEL_OPTIONS,
+        "@local_config_cuda//cuda:override_include_cuda_libs": True,
+    },
     repo_env={"HERMETIC_PYTHON_VERSION": "3.11"},
     extra_setup_commands=(["nvidia-smi"],),
 )
