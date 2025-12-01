@@ -63,7 +63,8 @@ AutotuneConfig GetAutotuneConfig(const DebugOptions& debug_options,
       !debug_options.xla_gpu_cublas_fallback();
   autotune_config.select_first_config =
       debug_options.xla_gpu_deterministic_ops() ||
-      debug_options.xla_gpu_exclude_nondeterministic_ops();
+      debug_options.xla_gpu_exclude_nondeterministic_ops() ||
+      debug_options.xla_gpu_autotune_level() == 0;
 
   if (is_deviceless) {
     // If we are running on a deviceless target, we want to use default configs.

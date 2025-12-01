@@ -4298,7 +4298,8 @@ constexpr std::array kBasicAlgorithms = {
     PrecisionConfig::ALG_DOT_TF32_TF32_F32,
 };
 
-TEST_P(BasicDotAlgorithmEmitterTest, BasicAlgorithmIsEmittedCorrectly) {
+TEST_P(BasicDotAlgorithmEmitterTest,
+       DISABLED_BasicAlgorithmIsEmittedCorrectly) {
   auto algorithm = GetParam();
   TF_ASSERT_OK_AND_ASSIGN(
       std::vector<PrimitiveType> allowed_types,

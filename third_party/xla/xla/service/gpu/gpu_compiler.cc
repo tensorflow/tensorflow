@@ -19,6 +19,7 @@ limitations under the License.
 #include <array>
 #include <cstdint>
 #include <functional>
+#include <iterator>
 #include <memory>
 #include <optional>
 #include <string>
@@ -58,8 +59,14 @@ limitations under the License.
 #include "llvm/Transforms/Utils/SplitModule.h"
 #include "mlir/Support/LLVM.h"
 #include "google/protobuf/text_format.h"
+#include "xla/backends/autotuner/codegen_backend.h"
 #include "xla/backends/cpu/nanort/nanort_client.h"
 #include "xla/backends/cpu/nanort/nanort_executable.h"
+#include "xla/backends/gpu/autotuner/cublas.h"
+#include "xla/backends/gpu/autotuner/cublaslt.h"
+#include "xla/backends/gpu/autotuner/custom_kernel.h"
+#include "xla/backends/gpu/autotuner/fission_backend.h"
+#include "xla/backends/gpu/autotuner/triton.h"
 #include "xla/backends/gpu/codegen/triton/support.h"
 #include "xla/backends/gpu/runtime/host_execute_thunk.h"
 #include "xla/backends/gpu/runtime/runtime_intrinsics.h"
@@ -142,6 +149,7 @@ limitations under the License.
 #include "xla/hlo/transforms/while_loop_trip_count_annotator.h"
 #include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/maybe_owning.h"
+#include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/pjrt/proto/compile_options.pb.h"
 #include "xla/service/all_reduce_promotion.h"
 #include "xla/service/all_reduce_reassociate.h"
@@ -170,6 +178,7 @@ limitations under the License.
 #include "xla/service/float_support.h"
 #include "xla/service/gather_expander.h"
 #include "xla/service/gpu/alias_info.h"
+#include "xla/service/gpu/autotuning/autotuner_pass.h"
 #include "xla/service/gpu/autotuning/autotuner_util.h"
 #include "xla/service/gpu/compile_module_to_llvm_ir.h"
 #include "xla/service/gpu/conv_layout_normalization.h"
@@ -373,6 +382,31 @@ DeviceOrDevicelessConfig GetDeviceConfig(
 
 se::GpuComputeCapability GetGpuVersion(const se::StreamExecutor* stream_exec) {
   return stream_exec->GetDeviceDescription().gpu_compute_capability();
+}
+
+std::unique_ptr<HloPassPipeline> GetCublasRewriterPipeline(
+    const se::DeviceDescription& device_description) {
+  auto pipeline = std::make_unique<HloPassPipeline>("cublas_rewriter_pipeline");
+  pipeline->AddPass(std::make_unique<DotAlgorithmRewriter>());
+  pipeline->AddPass(std::make_unique<ScaledDotRewriter>());
+  for (GemmRewriterOptions::DType dtype :
+       {GemmRewriterOptions::DType::kFp8Only,
+        GemmRewriterOptions::DType::kNonFp8Only}) {
+    auto gemm_rewriter = std::make_unique<GemmRewriter>(
+        device_description.gpu_compute_capability(),
+        device_description.runtime_version(), GemmRewriterOptions{dtype});
+    pipeline->AddPass(std::move(gemm_rewriter));
+  }
+  return pipeline;
+}
+
+std::unique_ptr<HloPassPipeline> GetCustomKernelRewriterPipeline(
+    const se::DeviceDescription& device_description) {
+  auto pipeline =
+      std::make_unique<HloPassPipeline>("custom_kernel_rewriter_pipeline");
+  pipeline->AddPass(
+      std::make_unique<CustomKernelFusionRewriter>(&device_description));
+  return pipeline;
 }
 
 }  // namespace
@@ -1709,25 +1743,11 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
   // f32).
   add_float_normalization(pipeline);
 
-  TF_RETURN_IF_ERROR(AddGemmFusionAutotuningPasses(
-      &pipeline, hlo_module, autotune_config, thread_pool,
-      options.key_value_store,
-      gpu_target_config.device_description.runtime_version(), stream_exec));
-
-  // Inline back the calls which have better performance with cuBLAS.
-  pipeline.AddPass<CallInliner>(
-      /*single_call_site=*/false, /*update_domain=*/false,
-      /*composites_to_preserve=*/absl::flat_hash_set<std::string>(),
-      /*uniquify_channel_ids=*/debug_options.xla_ignore_channel_id());
-  // TODO(tdanyluk): Apply CublasPadForGemms to the cuBLAS GEMMs generated
-  // here for possibly better cuBLAS performance.
-
-  AddGemmRewriterPasses(pipeline, debug_options, gpu_version,
-                        gpu_target_config.device_description.runtime_version());
-
   TF_RETURN_IF_ERROR(AddConvAndGemmAutotuningPasses(
-      &pipeline, gpu_version, options, hlo_module, autotune_config, thread_pool,
-      stream_exec, &gpu_target_config));
+      &pipeline, hlo_module, gpu_version, options, autotune_config, thread_pool,
+      stream_exec, &gpu_target_config, options.key_value_store,
+      gpu_target_config.device_description.runtime_version(), debug_options,
+      &mlir_context_, ShapeSizeBytesFunction()));
 
   // Rewrite GEMMs with broadcasted inputs as strided GEMMs.
   pipeline.AddPass<GemmBroadcastFoldingRewriter>();
@@ -3055,6 +3075,83 @@ GpuCompiler::LoadExecutableFromAotResult(
         /*debug_module=*/std::move(hlo_module),
         /*enable_debug_info_manager=*/true});
   }
+}
+
+absl::Status GpuCompiler::AddConvAndGemmAutotuningPasses(
+    HloPassPipeline* pipeline, HloModule* hlo_module,
+    const se::GpuComputeCapability& gpu_version, const CompileOptions& options,
+    AutotuneConfig& autotune_config, tsl::thread::ThreadPool* thread_pool,
+    se::StreamExecutor* stream_exec,
+    const Compiler::GpuTargetConfig* target_config,
+    const MultiProcessKeyValueStore& key_value_store,
+    const se::SemanticVersion& toolkit_version,
+    const DebugOptions& debug_options, mlir::MLIRContext* mlir_context,
+    HloCostAnalysis::ShapeSizeFunction shape_size_fn) {
+  std::vector<std::unique_ptr<CodegenBackend>> backends;
+  backends.push_back(std::make_unique<CublasBackend>(
+      stream_exec, &debug_options, this, target_config));
+  backends.push_back(std::make_unique<CublasLtBackend>(
+      stream_exec, &debug_options, this, target_config));
+  backends.push_back(std::make_unique<FissionBackend>(
+      &debug_options, this, target_config,
+      std::make_unique<CublasBackend>(stream_exec, &debug_options, this,
+                                      target_config, true),
+      GetCublasRewriterPipeline(target_config->device_description),
+      mlir_context));
+  backends.push_back(std::make_unique<TritonBackend>(
+      &debug_options, this, target_config, mlir_context));
+  backends.push_back(std::make_unique<FissionBackend>(
+      &debug_options, this, target_config,
+      std::make_unique<CustomKernelBackend>(stream_exec, &debug_options, this,
+                                            target_config),
+      GetCustomKernelRewriterPipeline(target_config->device_description),
+      mlir_context));
+  if (!debug_options.xla_gpu_experimental_disable_binary_libraries()) {
+    TF_ASSIGN_OR_RETURN(
+        std::vector<std::unique_ptr<CodegenBackend>> platform_backends,
+        GetCodegenBackends(stream_exec, target_config, debug_options));
+    backends.insert(backends.end(),
+                    std::make_move_iterator(platform_backends.begin()),
+                    std::make_move_iterator(platform_backends.end()));
+  }
+  bool do_not_autotune_cublas_and_cudnn =
+      debug_options.xla_gpu_experimental_disable_binary_libraries() ||
+      debug_options.xla_gpu_autotune_level() == 0 ||
+      debug_options.xla_gpu_exclude_nondeterministic_ops();
+  auto should_autotune = [do_not_autotune_cublas_and_cudnn](
+                             const HloInstruction& instruction) -> bool {
+    if (!do_not_autotune_cublas_and_cudnn &&
+        (instruction.opcode() == HloOpcode::kCustomCall &&
+         (IsCublasGemm(instruction) ||
+          IsCustomCallToDnnConvolution(instruction)))) {
+      return true;
+    }
+    if (instruction.opcode() != HloOpcode::kFusion) {
+      return false;
+    }
+    auto gpu_config = instruction.backend_config<GpuBackendConfig>();
+    const FusionBackendConfig& backend_config =
+        gpu_config->fusion_backend_config();
+    bool is_unassigned_triton =
+        backend_config.kind() == kTritonGemmFusionKind &&
+        !backend_config.has_triton_gemm_config();
+    bool is_unassigned_cudnn = backend_config.kind() == kCuDnnFusionKind &&
+                               !backend_config.has_cudnn_fusion_config();
+    bool is_unassigned_custom = backend_config.kind() == kCustomFusionKind &&
+                                !backend_config.has_custom_fusion_config();
+    if (is_unassigned_triton || is_unassigned_cudnn || is_unassigned_custom) {
+      return true;
+    }
+    return false;
+  };
+
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<AutotunerPass> autotuner_pass,
+      AutotunerPass::Create(std::move(backends), debug_options, stream_exec,
+                            thread_pool, should_autotune, target_config,
+                            options.device_allocator));
+  pipeline->AddPass(std::move(autotuner_pass));
+  return absl::OkStatus();
 }
 
 }  // namespace gpu

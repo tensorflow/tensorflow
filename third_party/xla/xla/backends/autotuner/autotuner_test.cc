@@ -709,12 +709,6 @@ TEST_F(AutotunerTest, ExcludeCublasConfig) {
   backends.push_back(std::move(backend));
 
   auto profiler = std::make_unique<MockProfiler>();
-  EXPECT_CALL(*profiler, CreateInputBuffers(_))
-      .WillOnce(Return(std::make_unique<InputBuffers>()));
-  EXPECT_CALL(*profiler, Profile(_, _))
-      .WillOnce(Return(ProfileResult({absl::Seconds(1)})))
-      .WillOnce(Return(ProfileResult({absl::Seconds(2)})));
-
   TF_ASSERT_OK_AND_ASSIGN(
       auto autotuner, Autotuner::Create(std::move(backends),
                                         std::move(profiler), config_, nullptr));
