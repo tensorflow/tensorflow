@@ -44,7 +44,10 @@ limitations under the License.
 #include "xla/runtime/large_hlo_snapshot_serialization/serialization.h"
 #include "xla/service/computation_layout.h"
 #include "xla/service/hlo.pb.h"
+#include "xla/service/platform_util.h"
 #include "xla/status_macros.h"
+#include "xla/stream_executor/platform_manager.h"
+#include "xla/tests/test_utils.h"
 #include "xla/tools/multihost_hlo_runner/create_client.h"
 #include "xla/tools/multihost_hlo_runner/hlo_input_output_format.h"
 #include "xla/tools/multihost_hlo_runner/profiler_interface.h"
@@ -102,6 +105,111 @@ TEST_F(FunctionalHloRunnerTest, SingleDeviceHlo) {
   TF_EXPECT_OK(FunctionalHloRunner::LoadAndRunAndDump(
       *client, debug_options, preproc_options, raw_compile_options,
       running_options, {GetHloPath("single_device.hlo")}, InputFormat::kText));
+}
+
+TEST_F(FunctionalHloRunnerTest, SingleDevicePinnedHostZeroInputs) {
+  if (test::DeviceTypeIs(test::kCpu)) {
+    GTEST_SKIP() << "This test is specialized for GPU platform!";
+  }
+
+  TF_ASSERT_OK_AND_ASSIGN(std::string platform_name,
+                          PlatformUtil::CanonicalPlatformName("gpu"));
+
+  TF_ASSERT_OK_AND_ASSIGN(se::Platform * platform,
+                          se::PlatformManager::PlatformWithName(
+                              absl::AsciiStrToUpper(platform_name)));
+
+  TF_ASSERT_OK_AND_ASSIGN(auto executors,
+                          PlatformUtil::GetStreamExecutors(platform));
+  EXPECT_TRUE(!executors.empty());
+  const auto& desc = executors[0]->GetDeviceDescription();
+  if (platform_name == "rocm") {
+    if (!desc.rocm_compute_capability().has_fp8_support()) {
+      GTEST_SKIP() << "This test requires fp8 support!";
+    }
+  }
+
+  GpuClientOptions gpu_opts;
+  gpu_opts.allocator_config.kind = GpuAllocatorConfig::Kind::kPlatform;
+  gpu_opts.should_stage_host_to_device_transfers = false;
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::PjRtClient> client,
+                          CreateGpuClient(gpu_opts));
+
+  xla::DebugOptions debug_options;
+  FunctionalHloRunner::PreprocessingOptions preproc_options;
+  FunctionalHloRunner::RawCompileOptions raw_compile_options;
+  raw_compile_options.num_replicas = 1;
+  raw_compile_options.num_partitions = 1;
+
+  auto set_host_memory_space = [](ShapeLayout* layout) {
+    Shape shape = layout->shape();
+    ShapeUtil::ForEachMutableSubshape(&shape, [](Shape* subshape,
+                                                 const ShapeIndex& index) {
+      if (subshape->IsArray()) {
+        subshape->mutable_layout()->set_memory_space(Layout::kHostMemorySpace);
+      }
+    });
+    *layout = ShapeLayout(shape);
+  };
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto hlo_module_and_arguments,
+      FunctionalHloRunner::LoadHloModuleAndArguments(
+          {GetHloPath("fp8_gemm_loop.hlo")}, InputFormat::kText));
+  auto hlo_module = std::move(hlo_module_and_arguments.hlo_module);
+
+  auto& entry_layout =
+      *hlo_module->mutable_config().mutable_entry_computation_layout();
+
+  FunctionalHloRunner::PerDeviceLiteralVecType arguments;
+  auto& args_vector = arguments[0];
+
+  const auto& params =
+      hlo_module->entry_computation()->parameter_instructions();
+  args_vector.resize(params.size());
+  for (size_t i = 0; i < params.size(); ++i) {
+    const auto& shape = params[i]->shape();
+    EXPECT_TRUE(shape.IsArray());
+    Literal literal(shape);
+    primitive_util::ArrayTypeSwitch(
+        [&](auto prim_const) {
+          using T = primitive_util::NativeTypeOf<prim_const>;
+          int idx = 0;
+          for (auto& val : literal.data<T>()) {
+            // Zero-out all input arguments except for the matrix B
+            val = static_cast<T>(i == 1 ? 0.05f + (idx + 1) / 100.f : 0.0f);
+          }
+          idx++;
+        },
+        shape.element_type());
+    args_vector[i] = std::move(literal);
+  }
+
+  EXPECT_EQ(entry_layout.parameter_count(), 3);
+  // Allocate the matrix C in pinned mem that would make the loading slow
+  set_host_memory_space(entry_layout.mutable_parameter_layout(2));
+
+  FunctionalHloRunner::RunningOptions running_options;
+  TF_ASSERT_OK_AND_ASSIGN(
+      CompileOptions compile_options,
+      FunctionalHloRunner::CreateCompileOptions(*client, raw_compile_options));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto output, FunctionalHloRunner::CompileAndRun(
+                       *client, debug_options, preproc_options, compile_options,
+                       running_options, hlo_module.get(), arguments));
+
+  for (const auto& [dev, vec] : output) {
+    for (const auto& item : vec) {
+      bool res = item.EachCellUntilFailure<float>(
+          [](absl::Span<const int64_t> indices, auto value) -> bool {
+            return Eigen::numext::isfinite(value) &&
+                   Eigen::numext::abs(value) < 1e-8;
+          });
+      EXPECT_TRUE(res);
+    }
+  }
 }
 
 TEST_F(FunctionalHloRunnerTest, SingleDeviceHloWithRandomEngine) {
