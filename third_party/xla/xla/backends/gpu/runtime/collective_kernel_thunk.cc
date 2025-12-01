@@ -14,6 +14,7 @@ limitations under the License.*/
 
 #include "xla/backends/gpu/runtime/collective_kernel_thunk.h"
 
+#include <array>
 #include <cstdint>
 #include <cstring>
 #include <memory>
@@ -46,6 +47,7 @@ limitations under the License.*/
 #include "xla/stream_executor/gpu/all_reduce_kernel.h"
 #include "xla/stream_executor/gpu/collective_kernel_metadata.h"
 #include "xla/stream_executor/kernel.h"
+#include "xla/stream_executor/kernel_args.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/platform/errors.h"
@@ -57,18 +59,15 @@ namespace xla::gpu {
 namespace {
 using se::gpu::AllReduceStrategy;
 
-static constexpr int64_t kMaxOneShotAllReduceSizeBytes = 256 * 1024;  // 256 KB
-static constexpr int64_t kMaxTwoShotAllReduceSizeBytes =
-    2 * 1024 * 1024;  // 2 MB
 // Number of arguments for the all-reduce kernel.
-// - Metadata pointer.
 // - Input buffer pointer.
 // - Output buffer pointer.
-// - Num elements.
-// - Num elements per rank.
-// - Rank offset.
+// - Rank
 // - Signal value.
-static constexpr int kAllReduceArgsCount = 7;
+// - Signal buffers
+// - Remote buffers
+static constexpr int32_t kAllReduceArgsCount = 6;
+static constexpr int32_t kNumParameters = 2;
 
 // Helper for allocating memory on the device.
 absl::StatusOr<se::DeviceMemoryHandle> AllocateMemory(
@@ -145,9 +144,10 @@ absl::Status CollectiveKernelThunk::ExchangeStateMetadata(
       << "Device " << params.collective_params->global_device_id
       << "is not in the clique.";
 
-  std::vector<se::DeviceMemoryBase> parameters;
-  parameters.push_back(state.local_buffers_handle.memory());
-  parameters.push_back(state.signal_buffers_handle.memory());
+  std::vector<se::DeviceMemoryBase> parameters{
+      state.local_buffers_handle.memory(),
+      state.signal_buffers_handle.memory()};
+  TF_RET_CHECK(parameters.size() == kNumParameters);
 
   const size_t param_to_peers_ptrs_size_bytes =
       parameters.size() * clique_key.num_devices() * sizeof(uint64_t);
@@ -194,7 +194,7 @@ absl::Status CollectiveKernelThunk::Initialize(const InitializeParams& params) {
 
       TF_ASSIGN_OR_RETURN(
           se::DeviceMemoryHandle signal_buffers_handle,
-          AllocateMemory(params.executor, kLocalBufferSize * kNumBuffers,
+          AllocateMemory(params.executor, kSignalBufferSize * kNumBuffers,
                          "Signal buffers"));
 
       // Step2: We needs 1 atomic flag per block per device on each device.
@@ -208,12 +208,19 @@ absl::Status CollectiveKernelThunk::Initialize(const InitializeParams& params) {
           signal_buffers_handle.memory().size()));
       // Create a kernel for execution.
       std::unique_ptr<se::Kernel> kernel = nullptr;
-      // If PTX is provided, we create a kernel from it.
       if (!kernel_name_.empty()) {
-        VLOG(3) << "Creating kernel from PTX." << params.src.text;
-        TF_ASSIGN_OR_RETURN(kernel,
-                            CreateKernel(kernel_name_, kAllReduceArgsCount,
-                                         params.src.text, params.executor, 0));
+        if (!params.src.binary.empty()) {
+          TF_ASSIGN_OR_RETURN(
+              kernel,
+              CreateKernel(kernel_name_, kAllReduceArgsCount, params.src.binary,
+                           params.executor, shmem_bytes_));
+
+        } else {
+          TF_ASSIGN_OR_RETURN(
+              kernel,
+              CreateKernel(kernel_name_, kAllReduceArgsCount, params.src.text,
+                           params.executor, shmem_bytes_));
+        }
       }
       // Step3: Emplace into the stream state.
       per_stream_state_.emplace(
@@ -319,18 +326,23 @@ absl::Status CollectiveKernelThunk::ExecuteOnStream(
           << "(block x threadsPerBlock)";
 
   if (state->kernel != nullptr) {
-    // NB: The assumption is one-shot all-reduce (for now).
-    std::vector<se::KernelArgument> kernel_args = {
-        state->metadata,
+    TF_ASSIGN_OR_RETURN(se::DeviceMemoryBase remote_buffers,
+                        CollectiveMetadataThunk::GetParameterDeviceMemoryBase(
+                            state->metadata, /*num_parameters=*/kNumParameters,
+                            /*num_devices=*/num_devices,
+                            /*parameter_index=*/0));
+    TF_ASSIGN_OR_RETURN(se::DeviceMemoryBase signal_buffers,
+                        CollectiveMetadataThunk::GetParameterDeviceMemoryBase(
+                            state->metadata, /*num_parameters=*/kNumParameters,
+                            /*num_devices=*/num_devices,
+                            /*parameter_index=*/1));
+    std::array<se::KernelArgument, kAllReduceArgsCount> kernel_args = {
         source_buffer,
         destination_buffer,
-        buffer.element_count,
-        /*num_elements_per_rank=*/buffer.element_count / num_devices,
-        /*rank_offset=*/0,
-        state->invocation_count};
-    TF_RET_CHECK(kernel_args.size() == kAllReduceArgsCount)
-        << "Kernel argument size mismatch." << kernel_args.size()
-        << " != " << kAllReduceArgsCount;
+        static_cast<int32_t>(state->rank.value()),
+        /* signal_value= */ state->invocation_count,
+        signal_buffers,
+        remote_buffers};
     return ExecuteKernelOnStream(*state->kernel, kernel_args, launch_dimensions,
                                  /*cluster_dim=*/std::nullopt, stream);
   }

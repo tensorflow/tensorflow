@@ -81,6 +81,12 @@ class CollectiveMetadataThunk : public Thunk {
       const GpuCliqueKey& clique_key, void* multimem_address_space,
       int device_ordinal, se::DeviceMemoryBase destination);
 
+  // Calculate the device memory base for the given parameter index.
+  // The size of the returned memory is num_devices pointers.
+  static absl::StatusOr<se::DeviceMemoryBase> GetParameterDeviceMemoryBase(
+      se::DeviceMemoryBase metadata, int64_t num_parameters,
+      int64_t num_devices, int64_t parameter_index);
+
   absl::StatusOr<void*> SetupMultimem(const GpuCliqueKey& clique_key,
                                       const InitializeParams& params);
 

@@ -63,6 +63,7 @@ class CollectiveKernelThunk : public Thunk {
                         std::vector<CollectiveThunk::Buffer> buffers,
                         bool is_collective_kernel_enabled,
                         absl::string_view kernel_name = "",
+                        int32_t shmem_bytes = 0,
                         bool is_multimem_enabled = false)
       : Thunk{Thunk::kCollectiveKernel, info},
         collective_kernel_enabled_(is_collective_kernel_enabled),
@@ -70,6 +71,7 @@ class CollectiveKernelThunk : public Thunk {
         collective_config_(std::move(collective_config)),
         reduction_kind_(reduction_kind),
         kernel_name_(kernel_name),
+        shmem_bytes_(shmem_bytes),
         buffers_(std::move(buffers)),
         is_multimem_enabled_(is_multimem_enabled) {
     per_stream_state_.reserve(kMaxNumExecutors);
@@ -160,6 +162,9 @@ class CollectiveKernelThunk : public Thunk {
   // Kernel name to execute. Required when Codegen/PTX kernel is used.
   // Must match the kernel name in the generated PTX kernel.
   const std::string kernel_name_;
+  // Number of bytes of shared memory used by the kernel.
+  // Only useful when the codegen kernel is used.
+  const int32_t shmem_bytes_;
   // Reference to the buffer related information required for the collective.
   std::vector<CollectiveThunk::Buffer> buffers_;
 

@@ -35,7 +35,14 @@ limitations under the License.
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/gpu/gpu_constants.h"
 #include "xla/service/gpu/gpu_executable_run_options.h"
+#include "xla/service/gpu/ptx_compile_options_from_debug_options.h"
 #include "xla/service/service_executable_run_options.h"
+#include "xla/stream_executor/cuda/assemble_compilation_provider.h"
+#include "xla/stream_executor/cuda/compilation_options.h"
+#include "xla/stream_executor/cuda/compilation_provider.h"
+#include "xla/stream_executor/cuda/compilation_provider_options.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/gpu/gpu_init.h"
 #include "xla/stream_executor/platform_manager.h"
@@ -54,25 +61,23 @@ namespace xla::gpu {
 namespace {
 
 static constexpr absl::string_view kProfileName = "test_kernel_profiler";
-static constexpr absl::string_view kKernelName = "seven_argument_kernel";
+static constexpr absl::string_view kKernelName = "six_argument_kernel";
+static constexpr int64_t kNumElements = 128;
 
 // Test kernel was compiled using following CUDA source:
-// __global__ void seven_argument_kernel(void* metadata,                 // 1
-//                                       int64_t* input_buffer,          // 2
-//                                       int64_t* output_buffer,         // 3
-//                                       int64_t num_elements,           // 4
-//                                       int64_t num_elements_per_rank,  // 5
-//                                       int64_t rank_offset,            // 6
-//                                       int64_t signal_value            // 7
+// __global__ void six_argument_kernel(int64_t* input_buffer,          // 1
+//                                     int64_t* output_buffer,         // 2
+//                                     int64_t rank,                   // 3
+//                                     int64_t signal_value            // 4
+//                                     int64_t* signal_buffers,        // 5
+//                                     int64_t* remote_buffers,        // 6
 // ) {
-//   (void)num_elements;
-//   (void)num_elements_per_rank;
-//   (void)rank_offset;
-//   (void)signal_value;
-//   (void)metadata;
+//   (void)rank;
+//   (void)signal_buffers;
+//   (void)remote_buffers;
 //   int64_t idx = blockIdx.x * blockDim.x + threadIdx.x;
-//   for (int i = idx; i < num_elements; i += gridDim.x * blockDim.x) {
-//     if (i < num_elements) {
+//   for (int i = idx; i < kNumElements; i += gridDim.x * blockDim.x) {
+//     if (i < kNumElements) {
 //       output_buffer[i] = input_buffer[i] + signal_value;
 //     }
 //   }
@@ -82,57 +87,47 @@ static constexpr absl::string_view kKernelSource = R"(
   .target sm_90
   .address_size 64
 
-  //
-  //
-  .visible .entry seven_argument_kernel(
-  .param .u64 .ptr .align 1 metadata,
+  .visible .entry six_argument_kernel(
   .param .u64 .ptr .align 1 input_buffer,
   .param .u64 .ptr .align 1 output_buffer,
-  .param .u64 num_elements,
-  .param .u64 num_elements_per_rank,
-  .param .u64 rank_offset,
-  .param .u64 signal_value
+  .param .u64 rank,
+  .param .u64 signal_value,
+  .param .u64 .ptr .align 1 signal_buffers,
+  .param .u64 .ptr .align 1 remote_buffers
   )
   {
   .reg .pred %p<3>;
-  .reg .b32 %r<12>;
-  .reg .b64 %rd<16>;
+  .reg .b32 %r<7>;
+  .reg .b64 %rd<11>;
 
-  //
-  ld.param.b64 %rd6, [num_elements];
-  ld.param.b64 %rd8, [input_buffer];
-  cvta.to.global.u64 %rd1, %rd8;
-  ld.param.b64 %rd9, [output_buffer];
-  cvta.to.global.u64 %rd2, %rd9;
-  mov.u32 %r1, %ctaid.x;
-  mov.u32 %r2, %ntid.x;
-  mov.u32 %r3, %tid.x;
-  mad.lo.s32 %r8, %r1, %r2, %r3;
-  cvt.s64.s32 %rd15, %r8;
-  setp.le.s64 %p1, %rd6, %rd15;
+  ld.param.b64 %rd4, [input_buffer];
+  cvta.to.global.u64 %rd1, %rd4;
+  ld.param.b64 %rd5, [output_buffer];
+  cvta.to.global.u64 %rd2, %rd5;
+  mov.u32 %r3, %ctaid.x;
+  mov.u32 %r1, %ntid.x;
+  mov.u32 %r4, %tid.x;
+  mad.lo.s32 %r6, %r3, %r1, %r4;
+  setp.gt.s32 %p1, %r6, 127;
   @%p1 bra $L__BB0_3;
   //
-  ld.param.b64 %rd7, [signal_value];
-  mov.u32 %r9, %nctaid.x;
-  mul.lo.s32 %r4, %r9, %r2;
-  add.s32 %r10, %r9, %r1;
-  mad.lo.s32 %r11, %r2, %r10, %r3;
+  ld.param.b64 %rd3, [signal_value];
+  mov.u32 %r5, %nctaid.x;
+  mul.lo.s32 %r2, %r5, %r1;
   $L__BB0_2: //
-  shl.b64 %rd10, %rd15, 3;
-  add.s64 %rd11, %rd1, %rd10;
-  ld.global.b64 %rd12, [%rd11];
-  add.s64 %rd13, %rd12, %rd7;
-  add.s64 %rd14, %rd2, %rd10;
-  st.global.b64 [%rd14], %rd13;
-  cvt.s64.s32 %rd15, %r11;
-  setp.gt.s64 %p2, %rd6, %rd15;
-  add.s32 %r11, %r11, %r4;
+  mul.wide.s32 %rd6, %r6, 8;
+  add.s64 %rd7, %rd1, %rd6;
+  ld.global.b64 %rd8, [%rd7];
+  add.s64 %rd9, %rd8, %rd3;
+  add.s64 %rd10, %rd2, %rd6;
+  st.global.b64 [%rd10], %rd9;
+  add.s32 %r6, %r6, %r2;
+  setp.lt.s32 %p2, %r6, 128;
   @%p2 bra $L__BB0_2;
   $L__BB0_3:
   ret;
-  //
   }
-)";
+  )";
 
 se::StreamExecutor* GetGpuExecutor(int64_t device_ordinal) {
   auto* platform =
@@ -147,11 +142,14 @@ struct CollectiveKernelThunkMetadata {
   int64_t input_data_size_bytes;
   int64_t aligned_input_size_bytes;
   int64_t num_devices;
+  // If true, the PTX is not compiled into CUBIN and is passed to the thunk as
+  // a string.
+  bool use_ptx;
   std::vector<CollectiveThunk::Buffer> buffers;
 };
 
 CollectiveKernelThunkMetadata CreateCollectiveKernelThunk(
-    int num_devices, int num_elements, bool is_multimem_enabled) {
+    int num_devices, int num_elements, bool is_multimem_enabled, bool use_ptx) {
   const int64_t input_size_bytes = num_elements * sizeof(uint64_t);
   ReplicaGroup replica_group;
 
@@ -189,12 +187,42 @@ CollectiveKernelThunkMetadata CreateCollectiveKernelThunk(
       /*is_async=*/false, result.buffers,
       /*is_collective_kernel_enabled=*/true,
       /*kernel_name=*/kKernelName,
+      /*shmem_bytes=*/0,
       /*is_multimem_enabled=*/is_multimem_enabled);
   result.total_buffer_size = total_buffer_size;
   result.num_devices = num_devices;
   result.aligned_input_size_bytes = aligned_input_size_bytes;
   result.input_data_size_bytes = input_size_bytes;
+  result.use_ptx = use_ptx;
   return result;
+}
+
+// Compiles a PTX string to a CUBIN using the NVPTXCompiler.
+//
+// Args:
+//   ptx_string: The PTX code to compile.
+//   device_description: The description of the target GPU device.
+//   debug_options: The debug options for configuring the compilation.
+//
+// Returns:
+//   A StatusOr containing the compiled CUBIN as a vector of bytes.
+absl::StatusOr<std::vector<uint8_t>> CompilePtxToCubin(
+    const absl::string_view ptx_string,
+    const se::DeviceDescription& device_description,
+    const DebugOptions& debug_options) {
+  se::cuda::CompilationProviderOptions options =
+      se::cuda::CompilationProviderOptions::FromDebugOptions(debug_options);
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<se::cuda::CompilationProvider> compilation_provider,
+      se::cuda::AssembleCompilationProvider(options));
+  se::CudaComputeCapability cc =
+      *device_description.gpu_compute_capability().cuda_compute_capability();
+  se::cuda::CompilationOptions compilation_options =
+      PtxCompileOptionsFromDebugOptions(debug_options);
+  TF_ASSIGN_OR_RETURN(
+      se::cuda::Assembly assembly,
+      compilation_provider->Compile(cc, ptx_string, compilation_options));
+  return std::move(assembly.cubin);
 }
 
 absl::StatusOr<se::DeviceMemoryBase> RunCollectiveKernelThunk(
@@ -250,6 +278,15 @@ absl::StatusOr<se::DeviceMemoryBase> RunCollectiveKernelThunk(
   initialize_params.buffer_allocations = &buffer_allocations;
   initialize_params.collective_params = &collective_params;
   initialize_params.src = {kKernelSource};
+
+  std::vector<uint8_t> cubin;
+  if (!metadata.use_ptx) {
+    TF_ASSIGN_OR_RETURN(
+        cubin,
+        CompilePtxToCubin(kKernelSource, executor->GetDeviceDescription(),
+                          DebugOptions()));
+    initialize_params.src.binary = cubin;
+  }
   TF_RETURN_IF_ERROR(metadata.thunk->Initialize(initialize_params));
 
   auto execute_params = Thunk::ExecuteParams::Create(
@@ -281,8 +318,10 @@ RunCollectiveKernelThunkOnDevices(CollectiveKernelThunkMetadata& metadata) {
   return results;
 }
 
-TEST(CollectiveKernelThunkTest, ExecutesPtxKernel) {
-  static constexpr int64_t kNumElements = 128;
+class CollectiveKernelThunkParameterizedTest
+    : public ::testing::TestWithParam<bool> {};
+
+TEST_P(CollectiveKernelThunkParameterizedTest, ExecutesPtxKernel) {
   static constexpr uint32_t kExpectedSignalValue = 1;
 
   std::vector<uint64_t> input_data(kNumElements);
@@ -297,7 +336,7 @@ TEST(CollectiveKernelThunkTest, ExecutesPtxKernel) {
 
   CollectiveKernelThunkMetadata metadata = CreateCollectiveKernelThunk(
       /*num_devices=*/1, /*num_elements=*/kNumElements,
-      /*is_multimem_enabled=*/false);
+      /*is_multimem_enabled=*/false, /*use_ptx=*/GetParam());
 
   se::StreamExecutor* executor0 = GetGpuExecutor(0);
   TF_ASSERT_OK_AND_ASSIGN(
@@ -315,13 +354,19 @@ TEST(CollectiveKernelThunkTest, ExecutesPtxKernel) {
   }
 }
 
+INSTANTIATE_TEST_SUITE_P(
+    CollectiveKernelThunkParameterizedTest,
+    CollectiveKernelThunkParameterizedTest, ::testing::Bool(),
+    [](const ::testing::TestParamInfo<bool>& use_ptx) -> std::string {
+      return use_ptx.param ? "UsingPtx" : "UsingCubin";
+    });
+
 TEST(CollectiveKernelThunkTest, MultimemSetupTest) {
   static constexpr int kDevicesCount = 2;
-  static constexpr int64_t kNumElements = 128;
 
   CollectiveKernelThunkMetadata metadata = CreateCollectiveKernelThunk(
       /*num_devices=*/kDevicesCount, /*num_elements=*/kNumElements,
-      /*is_multimem_enabled=*/true);
+      /*is_multimem_enabled=*/true, /*use_ptx=*/true);
   for (absl::StatusOr<se::DeviceMemoryBase> result :
        RunCollectiveKernelThunkOnDevices(metadata)) {
     TF_ASSERT_OK(result);

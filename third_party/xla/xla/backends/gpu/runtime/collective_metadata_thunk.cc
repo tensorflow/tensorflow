@@ -143,7 +143,7 @@ absl::Status CollectiveMetadataThunk::ConstructCollectiveMetadata(
     }
   }
 
-  const int param_to_peers_ptrs_size =
+  const int64_t param_to_peers_ptrs_size =
       param_to_peers_ptrs.size() * sizeof(void*);
   se::DeviceMemoryBase param_to_peers_ptrs_buffer = destination.GetByteSlice(
       sizeof(CollectiveKernelMetadata), param_to_peers_ptrs_size);
@@ -157,6 +157,25 @@ absl::Status CollectiveMetadataThunk::ConstructCollectiveMetadata(
                                     param_to_peers_ptrs.data(),
                                     param_to_peers_ptrs_size));
   return stream->BlockHostUntilDone();
+}
+
+/* static */ absl::StatusOr<se::DeviceMemoryBase>
+CollectiveMetadataThunk::GetParameterDeviceMemoryBase(
+    const se::DeviceMemoryBase metadata, const int64_t num_parameters,
+    const int64_t num_devices, const int64_t parameter_index) {
+  TF_RET_CHECK(parameter_index >= 0 && parameter_index < num_parameters)
+      << "Parameter index " << parameter_index << " is out of bounds [0, "
+      << num_parameters << ")";
+  // The pointer table is a flattened array laid out in parameter major order.
+  // P0R0 P0R1 ... P0Rn P1R0
+  // P1R1 ... P1Rn ... PnRn
+  // Where Pn is the parameter index and Rn is the rank.
+  se::DeviceMemoryBase ptr_table_base = metadata.GetByteSlice(
+      sizeof(CollectiveKernelMetadata),
+      /*size_bytes=*/num_parameters * num_devices * sizeof(void*));
+  return ptr_table_base.GetByteSlice(
+      (parameter_index * num_devices) * sizeof(void*),
+      /*size_bytes=*/num_devices * sizeof(void*));
 }
 
 absl::Status CollectiveMetadataThunk::Initialize(
