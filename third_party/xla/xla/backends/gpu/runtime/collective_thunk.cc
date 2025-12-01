@@ -38,6 +38,7 @@ limitations under the License.
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
 #include "xla/backends/gpu/runtime/collective_cliques.h"
+#include "xla/backends/gpu/runtime/collective_execution.h"
 #include "xla/backends/gpu/runtime/collective_params.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/core/collectives/communicator.h"
@@ -98,24 +99,6 @@ bool IsTypeSupportedBy(PrimitiveType element_type, Thunk::Kind reduction_op) {
     default:
       return false;
   }
-}
-
-int64_t GetNumLocalParticipants(
-    const CollectiveParams& params,
-    const std::vector<GlobalDeviceId>& participants) {
-  if (!params.global_device_id_map) {
-    return participants.size();
-  }
-
-  std::vector<GlobalDeviceId> local_devices;
-  local_devices.reserve(params.global_device_id_map->size());
-  for (const auto& entry : *params.global_device_id_map) {
-    local_devices.push_back(entry.second);
-  }
-
-  return absl::c_count_if(participants, [&](const GlobalDeviceId& device_id) {
-    return absl::c_linear_search(local_devices, device_id);
-  });
 }
 
 }  // namespace
@@ -197,81 +180,6 @@ CollectiveThunk::CollectiveThunk(Kind kind, ThunkInfo thunk_info, bool is_sync,
       stream_kind_(stream_kind),
       async_events_(is_sync ? nullptr : std::make_shared<AsyncEvents>()) {}
 
-absl::StatusOr<GpuCliqueKey> GetGpuCliqueKey(
-    const CollectiveParams& params,
-    absl::Span<const ReplicaGroup> replica_groups,
-    CollectiveOpGroupMode group_mode, AsyncStreamKind stream_kind,
-    bool include_participant_groups) {
-  TF_RET_CHECK(params.collectives) << "Collectives API is not provided";
-
-  GlobalDeviceId global_device_id = params.global_device_id;
-
-  if (params.device_assn == nullptr) {
-    return InvalidArgument(
-        "Device assignment is null, but must be specified when running a "
-        "collective thunk. If running multi-device HLO , make sure you're not "
-        "using a tool designed for only one device like run_hlo_module.");
-  }
-
-  // Get the list of all devices that are participating in the collective
-  // operation.
-  TF_ASSIGN_OR_RETURN(
-      std::vector<GlobalDeviceId> participants,
-      GetParticipatingDevices(global_device_id, *params.device_assn,
-                              replica_groups, group_mode));
-
-  // Get grouping of participating devices.
-  std::vector<std::vector<GlobalDeviceId>> participant_groups;
-  if (include_participant_groups) {
-    // If splitting is enabled, participating groups must match in order for a
-    // clique to be reused from the cache. We can ignore the participating
-    // groups otherwise.
-    static const bool enable_nccl_comm_splitting =
-        xla::GetDebugOptionsFromFlags().xla_gpu_enable_nccl_comm_splitting();
-    if (enable_nccl_comm_splitting) {
-      TF_ASSIGN_OR_RETURN(participant_groups,
-                          GetParticipatingDevicesGroups(
-                              *params.device_assn, replica_groups, group_mode));
-    }
-
-    if (params.collectives->IsGlobalConfig() &&
-        (participants.size() != params.device_assn->replica_count())) {
-      return InvalidArgument(
-          "Partial replica groups are not allowed when using NCCL_COMM_ID "
-          "environment configuration.");
-    }
-  }
-
-  // Remove trivial group that contains all participants, as we do not want to
-  // create two sets of communicator handles for these cases.
-  if (participant_groups.size() == 1 && participant_groups[0] == participants) {
-    participant_groups.clear();
-  }
-
-  int64_t num_local_participants =
-      GetNumLocalParticipants(params, participants);
-
-  absl::flat_hash_set<IncarnationId> unique_incarnations;
-  if (params.incarnations) {
-    for (GlobalDeviceId id : participants) {
-      auto it = params.incarnations->find(id);
-      if (it == params.incarnations->end()) {
-        return FailedPrecondition("Incarnation for device %d not found",
-                                  id.value());
-      }
-      unique_incarnations.insert(it->second);
-    }
-  }
-  std::vector<IncarnationId> incarnations(unique_incarnations.begin(),
-                                          unique_incarnations.end());
-  absl::c_sort(incarnations);
-
-  return GpuCliqueKey(std::move(participants), num_local_participants,
-                      xla::gpu::IsP2PStreamKind(stream_kind),
-                      std::move(participant_groups), GlobalDeviceId(-1),
-                      incarnations);
-}
-
 absl::StatusOr<GpuCliqueKey> GetCollectiveGpuCliqueKey(
     const CollectiveParams& params, const CollectiveConfig& collective_config,
     bool include_participant_groups) {
@@ -279,21 +187,6 @@ absl::StatusOr<GpuCliqueKey> GetCollectiveGpuCliqueKey(
                          collective_config.group_mode,
                          AsyncStreamKind::ASYNC_STREAM_KIND_COLLECTIVE,
                          include_participant_groups);
-}
-
-absl::StatusOr<CommunicatorHandle> GetComm(
-    const CollectiveParams& params, const CollectiveCliques& collective_cliques,
-    absl::Span<const ReplicaGroup> replica_groups,
-    CollectiveOpGroupMode group_mode, AsyncStreamKind stream_kind) {
-  TF_ASSIGN_OR_RETURN(
-      GpuCliqueKey clique_key,
-      GetGpuCliqueKey(params, replica_groups, group_mode, stream_kind));
-
-  std::optional<RankId> rank = clique_key.rank(params.global_device_id);
-  TF_ASSIGN_OR_RETURN(Communicator * comm,
-                      collective_cliques.GetComm(clique_key, *rank));
-
-  return CommunicatorHandle(comm, std::move(clique_key));
 }
 
 absl::StatusOr<std::vector<DeviceBufferPair>> ConvertToDeviceBuffers(

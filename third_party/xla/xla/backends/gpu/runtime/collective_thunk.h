@@ -1,8 +1,3 @@
-#include <cstddef>
-
-#include "absl/types/span.h"
-#include "xla/backends/gpu/runtime/collective_cliques.h"
-#include "xla/backends/gpu/runtime/thunk.pb.h"
 /* Copyright 2019 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -35,9 +30,10 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
-#include "xla/backends/gpu/collectives/gpu_collectives.h"
+#include "xla/backends/gpu/runtime/collective_execution.h"
 #include "xla/backends/gpu/runtime/collective_params.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/core/collectives/communicator.h"
 #include "xla/hlo/ir/collective_op_group_mode.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -66,15 +62,6 @@ struct CollectiveConfig {
 
 CollectiveConfig GetCollectiveConfig(const HloInstruction* hlo,
                                      std::optional<bool> use_global_device_ids);
-
-// Handle to a communicator object with corresponding clique key.
-struct CommunicatorHandle {
-  CommunicatorHandle(Communicator* comm, GpuCliqueKey clique_key)
-      : comm(comm), clique_key(std::move(clique_key)) {}
-
-  Communicator* comm;       // communicator object
-  GpuCliqueKey clique_key;  // clique key
-};
 
 // Wrap GpuCliqueKey into a unique struct to guarantee we do not accidentally
 // try to run multiple unrelated rendezvous for a same key.
@@ -273,22 +260,10 @@ absl::Status AddOpDescription(absl::Status status, OpT op,
 
 //===----------------------------------------------------------------------===//
 
-absl::StatusOr<GpuCliqueKey> GetGpuCliqueKey(
-    const CollectiveParams& params,
-    absl::Span<const ReplicaGroup> replica_groups,
-    CollectiveOpGroupMode group_mode, AsyncStreamKind stream_kind,
-    bool include_participant_groups = true);
-
 // Helper over GetGpuCliqueKey that builds key for AsyncStreamKind::kCollective.
 absl::StatusOr<GpuCliqueKey> GetCollectiveGpuCliqueKey(
     const CollectiveParams& params, const CollectiveConfig& collective_config,
     bool include_participant_groups = true);
-
-// Returns a communicator and additional information about the clique.
-absl::StatusOr<CommunicatorHandle> GetComm(
-    const CollectiveParams& params, const CollectiveCliques& collective_cliques,
-    absl::Span<const ReplicaGroup> replica_groups,
-    CollectiveOpGroupMode group_mode, AsyncStreamKind stream_kind);
 
 struct DeviceBufferPair {
   PrimitiveType element_type;
