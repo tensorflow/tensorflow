@@ -191,12 +191,6 @@ HloSharding GatherOutputShardingFromIndex(const HloSharding& index_sharding,
 HloSharding GatherIndexShardingFromOutput(const HloSharding& output_sharding,
                                           const HloInstruction* hlo);
 
-// Returns a new HloSharding for a gather op so that only non offset dimensions
-// are sharded. Assume "result" is returned by this function. It is ensured that
-// "GetIndexSharding(result, hlo)" will have the same number of elements as
-// "result".
-HloSharding GatherEffectiveOutputSharding(const HloInstruction& hlo);
-
 // Returns the preferred index sharding for a scatter op based on the sharding
 // of the data.
 HloSharding ScatterIndexShardingFromUpdate(
@@ -206,20 +200,6 @@ HloSharding ScatterIndexShardingFromUpdate(
 // of the index.
 HloSharding ScatterUpdateShardingFromIndex(
     const HloSharding& index_sharding, const HloScatterInstruction* scatter);
-
-// Returns a new index sharding for a scatter op so that we only shard on first
-// "number of scatter_window_dims" dimensions. Assume "result" is returned by
-// this function. It is ensured that "ScatterUpdateShardingFromIndex(result,
-// hlo)" will have the same number of elements as "result".
-HloSharding ScatterEffectiveIndexSharding(const HloSharding& index_sharding,
-                                          const HloScatterInstruction& scatter);
-
-// Returns a new data sharding for a scatter op so that we only shard on
-// scatter_window_dims. Assume "result" is returned by this function. It is
-// ensured that "ScatterIndexShardingFromUpdate(result, hlo)" will have the same
-// number of elements as "result".
-HloSharding ScatterEffectiveDataSharding(const HloSharding& data_sharding,
-                                         const HloScatterInstruction& scatter);
 
 // Returns an output sharding of gather by passing through the data operand's
 // sharding.
