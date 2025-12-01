@@ -16,7 +16,6 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/collective_execution.h"
 
 #include <cstdint>
-#include <optional>
 #include <utility>
 #include <vector>
 
@@ -28,7 +27,6 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/collective_cliques.h"
 #include "xla/backends/gpu/runtime/collective_params.h"
 #include "xla/core/collectives/communicator.h"
-#include "xla/core/collectives/rank_id.h"
 #include "xla/debug_options_flags.h"
 #include "xla/runtime/device_id.h"
 #include "xla/service/collective_ops_utils.h"
@@ -135,14 +133,9 @@ absl::StatusOr<GpuCliqueKey> GetGpuCliqueKey(
 absl::StatusOr<CommunicatorHandle> GetComm(
     const CollectiveParams& params, const CollectiveCliques& collective_cliques,
     const GpuCliqueKey& clique_key) {
-  std::optional<RankId> rank = clique_key.rank(params.global_device_id);
-  if (!rank.has_value()) {
-    return InvalidArgument("Rank not found for device %v",
-                           params.global_device_id);
-  }
-
-  TF_ASSIGN_OR_RETURN(Communicator * comm,
-                      collective_cliques.GetComm(clique_key, *rank));
+  TF_ASSIGN_OR_RETURN(
+      Communicator * comm,
+      collective_cliques.GetComm(clique_key, params.global_device_id));
   return CommunicatorHandle(comm, std::move(clique_key));
 }
 
