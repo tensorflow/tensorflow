@@ -304,6 +304,7 @@ absl::Status CollectiveThunk::ExecuteOnStream(const ExecuteParams& params) {
       Communicator * comm,
       params.collective_cliques->GetComm(
           clique_key, params.collective_params->global_device_id));
+  DCHECK(comm) << "Failed to get communicator for collective operation";
 
   se::StreamExecutor* executor = params.stream->parent();
   int64_t async_stream_idx = static_cast<int64_t>(stream_kind);
@@ -318,7 +319,7 @@ absl::Status CollectiveThunk::ExecuteOnStream(const ExecuteParams& params) {
     TF_RETURN_IF_ERROR(async_stream.WaitFor(params.stream));
 
     TF_ASSIGN_OR_RETURN(is_first_rendezvous_needed,
-                        RunCollective(params, async_stream, clique_key, comm));
+                        RunCollective(params, clique_key, async_stream, *comm));
 
     // Record collective operation completion.
     TF_ASSIGN_OR_RETURN(se::Event * event, async_events_->GetEvent(executor));
@@ -328,7 +329,7 @@ absl::Status CollectiveThunk::ExecuteOnStream(const ExecuteParams& params) {
     // Launch collective operation on a main stream.
     TF_ASSIGN_OR_RETURN(
         is_first_rendezvous_needed,
-        RunCollective(params, *params.stream, clique_key, comm));
+        RunCollective(params, clique_key, *params.stream, *comm));
   }
 
   // After a first execution of this instance of collective operation do a

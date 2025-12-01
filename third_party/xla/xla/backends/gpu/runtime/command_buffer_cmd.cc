@@ -2164,7 +2164,7 @@ absl::StatusOr<const se::CommandBuffer::Command*> AllReduceCmd::Record(
   return RecordTracedCommand(
       execute_params, record_params, std::move(record_action), command_buffer,
       [&](se::Stream* stream) {
-        return RunAllReduce(reduction_kind_, device_buffers, *stream, comm,
+        return RunAllReduce(reduction_kind_, device_buffers, *stream, *comm,
                             config().use_symmetric_buffer);
       });
 }
@@ -2232,7 +2232,7 @@ absl::StatusOr<const se::CommandBuffer::Command*> ReduceScatterCmd::Record(
                              command_buffer, [&](se::Stream* stream) {
                                return RunReduceScatter(
                                    reduction_kind_, device_buffers, *stream,
-                                   comm, config().use_symmetric_buffer);
+                                   *comm, config().use_symmetric_buffer);
                              });
 }
 
@@ -2299,7 +2299,7 @@ absl::StatusOr<const se::CommandBuffer::Command*> AllToAllCmd::Record(
   return RecordTracedCommand(
       execute_params, record_params, std::move(record_action), command_buffer,
       [&](se::Stream* stream) {
-        return RunAllToAll(has_split_dimension_, device_buffers, *stream, comm,
+        return RunAllToAll(has_split_dimension_, device_buffers, *stream, *comm,
                            config().use_symmetric_buffer);
       });
 }
@@ -2363,7 +2363,7 @@ absl::StatusOr<const se::CommandBuffer::Command*> AllGatherCmd::Record(
   return RecordTracedCommand(
       execute_params, record_params, std::move(record_action), command_buffer,
       [&](se::Stream* stream) {
-        return RunAllGather(device_buffers, *stream, comm,
+        return RunAllGather(device_buffers, *stream, *comm,
                             config().use_symmetric_buffer);
       });
 }
@@ -2428,7 +2428,7 @@ CollectiveBroadcastCmd::Record(const Thunk::ExecuteParams& execute_params,
   return RecordTracedCommand(
       execute_params, record_params, std::move(record_action), command_buffer,
       [&](se::Stream* stream) {
-        return RunCollectiveBroadcast(device_buffers, *stream, comm);
+        return RunCollectiveBroadcast(device_buffers, *stream, *comm);
       });
 }
 
@@ -2506,7 +2506,7 @@ absl::StatusOr<const se::CommandBuffer::Command*> CollectivePermuteCmd::Record(
       execute_params, record_params, std::move(record_action), command_buffer,
       [&](se::Stream* stream) {
         return RunCollectivePermute(source_target, device_buffers, *stream,
-                                    comm, device_string, current_id,
+                                    *comm, device_string, current_id,
                                     /*use_memcpy=*/false,
                                     /*recv_ptr_map=*/nullptr,
                                     use_symmetric_buffer);

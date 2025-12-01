@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
 #include "xla/backends/gpu/collectives/gpu_communicator.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
@@ -62,19 +63,19 @@ CollectiveBroadcastStartThunk::CollectiveBroadcastStartThunk(
 }
 
 absl::StatusOr<bool> CollectiveBroadcastStartThunk::RunCollective(
-    const ExecuteParams& params, se::Stream& stream,
-    CommunicatorHandle comm_handle) {
+    const ExecuteParams& params, const GpuCliqueKey& clique_key,
+    se::Stream& stream, Communicator& comm) {
   TF_ASSIGN_OR_RETURN(
       std::vector<DeviceBufferPair> device_buffers,
       ConvertToDeviceBuffers(params, buffers_, config_.operand_element_type));
-  TF_RETURN_IF_ERROR(::xla::gpu::RunCollectiveBroadcast(device_buffers, stream,
-                                                        comm_handle.comm));
+  TF_RETURN_IF_ERROR(
+      ::xla::gpu::RunCollectiveBroadcast(device_buffers, stream, comm));
   return true;
 }
 
 absl::Status RunCollectiveBroadcast(std::vector<DeviceBufferPair>& buffers,
-                                    se::Stream& stream, Communicator* comm) {
-  auto* gpu_comm = tsl::down_cast<GpuCommunicator*>(comm);
+                                    se::Stream& stream, Communicator& comm) {
+  auto* gpu_comm = tsl::down_cast<GpuCommunicator*>(&comm);
   Future<> future = gpu_comm->GroupExecute(
       [&buffers, &stream](GpuCommunicator* comm) -> absl::Status {
         for (auto buffer : buffers) {

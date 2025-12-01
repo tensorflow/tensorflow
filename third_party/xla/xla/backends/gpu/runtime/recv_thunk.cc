@@ -24,15 +24,17 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_format.h"
+#include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/backends/gpu/runtime/p2p_thunk_common.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/core/collectives/communicator.h"
 #include "xla/core/collectives/rank_id.h"
 #include "xla/hlo/ir/collective_op_group_mode.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/runtime/device_id.h"
 #include "xla/service/computation_placer.h"
-#include "xla/service/global_device_id.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/stream.h"
@@ -67,8 +69,9 @@ absl::Status RecvThunk::Initialize(const InitializeParams& params) {
 }
 
 absl::StatusOr<bool> RecvThunk::RunCollective(const ExecuteParams& params,
+                                              const GpuCliqueKey& clique_key,
                                               se::Stream& stream,
-                                              CommunicatorHandle comm_handle) {
+                                              Communicator& comm) {
   TF_ASSIGN_OR_RETURN(
       std::vector<DeviceBufferPair> device_buffers,
       ConvertToDeviceBuffers(params, {buffer_},
@@ -131,10 +134,10 @@ absl::StatusOr<bool> RecvThunk::RunCollective(const ExecuteParams& params,
     }
     if (should_run) {
       TF_RETURN_IF_ERROR(
-          MaybeRegisterBuffers(stream.parent(), {buffer}, comm_handle.comm));
-      auto future = comm_handle.comm->Recv(
-          dest_addr, buffer.element_type, buffer.element_count,
-          RankId(*source_id), GpuCollectives::On(stream));
+          MaybeRegisterBuffers(stream.parent(), {buffer}, &comm));
+      auto future =
+          comm.Recv(dest_addr, buffer.element_type, buffer.element_count,
+                    RankId(*source_id), GpuCollectives::On(stream));
       TF_RETURN_IF_ERROR(future.Await());
     } else {
       VLOG(3) << "[" << device_ordinal << "] Skipping Recv";

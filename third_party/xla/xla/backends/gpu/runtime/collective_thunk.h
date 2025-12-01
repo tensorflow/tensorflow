@@ -30,7 +30,6 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
-#include "xla/backends/gpu/runtime/collective_execution.h"
 #include "xla/backends/gpu/runtime/collective_params.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
@@ -153,24 +152,20 @@ class CollectiveThunk : public Thunk {
  protected:
   // Run collective operation on a given stream and return if the first call
   // rendezvous with other participants is needed.
+  //
   // A collective thunk is normally an independent operation in a sense that
   // different instances of the same collective thunk communicate each other.
   // The only exception are SendThunk and RecvThunk. Assume two devices are
   // executing a program contains the following instructions, the Recv from
   // device 1 will release the Send from device 0. Adding first call
   // rendezvous on the SendThunk would cause a runtime deadlock.
+  //
   //  Send(src_target={0,1})
   //  Recv(src_target={0,1})
-  virtual absl::StatusOr<bool> RunCollective(
-      const ExecuteParams& params, se::Stream& stream,
-      CommunicatorHandle comm_handle) = 0;
-
-  absl::StatusOr<bool> RunCollective(const ExecuteParams& params,
-                                     se::Stream& stream,
-                                     const GpuCliqueKey& clique_key,
-                                     Communicator* comm) {
-    return RunCollective(params, stream, CommunicatorHandle(comm, clique_key));
-  }
+  virtual absl::StatusOr<bool> RunCollective(const ExecuteParams& params,
+                                             const GpuCliqueKey& clique_key,
+                                             se::Stream& stream,
+                                             Communicator& comm) = 0;
 
   virtual const CollectiveConfig& config() const = 0;
   virtual AsyncStreamKind GetAsyncStreamKind() const { return stream_kind_; }

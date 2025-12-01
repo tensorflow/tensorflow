@@ -16,24 +16,12 @@ limitations under the License.
 #ifndef XLA_BACKENDS_GPU_RUNTIME_COLLECTIVE_EXECUTION_H_
 #define XLA_BACKENDS_GPU_RUNTIME_COLLECTIVE_EXECUTION_H_
 
-#include <utility>
-
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/runtime/collective_params.h"
-#include "xla/core/collectives/communicator.h"
 
 namespace xla::gpu {
-
-// Handle to a communicator object with corresponding clique key.
-struct CommunicatorHandle {
-  CommunicatorHandle(Communicator* comm, GpuCliqueKey clique_key)
-      : comm(comm), clique_key(std::move(clique_key)) {}
-
-  Communicator* comm;       // communicator object
-  GpuCliqueKey clique_key;  // clique key
-};
 
 // Returns a clique key for a collective operation executed for a given set of
 // replica groups, group mode and stream kind, based on the `params` argument
