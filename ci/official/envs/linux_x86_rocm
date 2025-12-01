@@ -13,8 +13,8 @@
 # limitations under the License.
 # ==============================================================================
 source ci/official/envs/linux_x86
-# Using image rocm/tensorflow-build:latest-jammy-pythonall-rocm7.0.2-ci_official
-TFCI_DOCKER_IMAGE="rocm/tensorflow-build@sha256:abd4ae15bab1292ba5cb6f7feab43e167b34963f991fc911478e9de65d54b1a3"
+# Using image rocm/tensorflow-build:latest-jammy-pythonall-rocm7.1.1-ci_official
+TFCI_DOCKER_IMAGE="rocm/tensorflow-build@sha256:7fcfbd36b7ac8f6b0805b37c4248e929e31cf5ee3af766c8409dd70d5ab65faa"
 TFCI_BAZEL_COMMON_ARGS="--repo_env=HERMETIC_PYTHON_VERSION=$TFCI_PYTHON_VERSION --repo_env=USE_PYWRAP_RULES=True --config rocm"
 TFCI_BUILD_PIP_PACKAGE_WHEEL_NAME_ARG="--repo_env=WHEEL_NAME=tensorflow"
 TFCI_DOCKER_ARGS="--device /dev/dri --device /dev/kfd     --device=/dev/infiniband --network host --ipc host     --group-add video --cap-add SYS_PTRACE --security-opt     seccomp=unconfined --privileged  --shm-size 64G"
