@@ -238,7 +238,7 @@ class Build:
         self.type_ == BuildType.XLA_MACOS_X86_CPU_KOKORO
         or self.type_ == BuildType.XLA_MACOS_ARM64_CPU_KOKORO
     )
-    windows_build = (self.type_ == BuildType.JAX_WINDOWS_X86_CPU_GITHUB_ACTIONS)
+    windows_build = self.type_ == BuildType.JAX_WINDOWS_X86_CPU_GITHUB_ACTIONS
     if not (macos_build or windows_build):
       cmds.append(
           retry(
@@ -302,7 +302,20 @@ def nvidia_gpu_build_with_compute_capability(
           **_DEFAULT_BAZEL_OPTIONS,
       },
       repo_env={"TF_CUDA_COMPUTE_CAPABILITIES": f"{compute_capability/10}"},
-      extra_setup_commands=(["nvidia-smi"],),
+      override_repository=dict(
+          rules_ml_toolchain=f"{_GITHUB_WORKSPACE}/openxla/rules_ml_toolchain",
+      ),
+      extra_setup_commands=(
+          ["nvidia-smi"],
+          [
+              "git",
+              "clone",
+              "-b",
+              "layering_check_support",
+              "https://github.com/beckerhe/rules_ml_toolchain.git",
+              f"{_GITHUB_WORKSPACE}/openxla/rules_ml_toolchain",
+          ],
+      ),
   )
 
 
@@ -321,6 +334,19 @@ Build(
     build_tag_filters=cpu_x86_tag_filter,
     test_tag_filters=cpu_x86_tag_filter,
     options={**_DEFAULT_BAZEL_OPTIONS, "//xla/tsl:ci_build": True},
+    override_repository=dict(
+        rules_ml_toolchain=f"{_GITHUB_WORKSPACE}/openxla/rules_ml_toolchain",
+    ),
+    extra_setup_commands=(
+        [
+            "git",
+            "clone",
+            "-b",
+            "layering_check_support",
+            "https://github.com/beckerhe/rules_ml_toolchain.git",
+            f"{_GITHUB_WORKSPACE}/openxla/rules_ml_toolchain",
+        ],
+    ),
 )
 
 Build(
@@ -331,6 +357,19 @@ Build(
     build_tag_filters=cpu_x86_tag_filter,
     test_tag_filters=cpu_x86_tag_filter,
     options={**_DEFAULT_BAZEL_OPTIONS, "//xla/tsl:ci_build": True},
+    override_repository=dict(
+        rules_ml_toolchain=f"{_GITHUB_WORKSPACE}/openxla/rules_ml_toolchain",
+    ),
+    extra_setup_commands=(
+        [
+            "git",
+            "clone",
+            "-b",
+            "layering_check_support",
+            "https://github.com/beckerhe/rules_ml_toolchain.git",
+            f"{_GITHUB_WORKSPACE}/openxla/rules_ml_toolchain",
+        ],
+    ),
 )
 
 cpu_arm_tag_filter = (
