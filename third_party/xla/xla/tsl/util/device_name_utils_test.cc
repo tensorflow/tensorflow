@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <vector>
 
+#include <gmock/gmock.h>
 #include "absl/strings/ascii.h"
 #include "absl/strings/match.h"
 #include "xla/tsl/lib/core/status_test_util.h"
@@ -403,11 +404,11 @@ static void MergeDevNamesHelperImpl(const string& name_a, const string& name_b,
                                     const string& expected_merge_name,
                                     bool allow_soft_placement) {
   DeviceNameUtils::ParsedName target_a = Name(name_a);
-  TF_EXPECT_OK(DeviceNameUtils::MergeDevNames(&target_a, Name(name_b),
-                                              allow_soft_placement));
+  EXPECT_OK(DeviceNameUtils::MergeDevNames(&target_a, Name(name_b),
+                                           allow_soft_placement));
   DeviceNameUtils::ParsedName target_b = Name(name_b);
-  TF_EXPECT_OK(DeviceNameUtils::MergeDevNames(&target_b, Name(name_a),
-                                              allow_soft_placement));
+  EXPECT_OK(DeviceNameUtils::MergeDevNames(&target_b, Name(name_a),
+                                           allow_soft_placement));
   EXPECT_EQ(target_a, target_b);
   EXPECT_EQ(target_a, Name(expected_merge_name));
   EXPECT_EQ(target_b, Name(expected_merge_name));
@@ -435,8 +436,7 @@ static void MergeDevNamesError(const string& name_a, const string& name_b,
 static void MergeOverrideHelper(const string& target, const string& name,
                                 const string& expected_merge_name) {
   DeviceNameUtils::ParsedName parsed_target = Name(target);
-  TF_EXPECT_OK(
-      DeviceNameUtils::MergeOverrideDevNames(&parsed_target, Name(name)));
+  EXPECT_OK(DeviceNameUtils::MergeOverrideDevNames(&parsed_target, Name(name)));
   DeviceNameUtils::ParsedName parsed_expected = Name(expected_merge_name);
 
   EXPECT_EQ(parsed_target, parsed_expected)
@@ -596,17 +596,17 @@ TEST(DeviceNameUtilsTest, CanonicalizeDeviceName) {
   {
     // Good basename.
     string basename = "/job:foo/replica:10/task:0/device:CPU:0";
-    TF_EXPECT_OK(DeviceNameUtils::CanonicalizeDeviceName(
+    EXPECT_OK(DeviceNameUtils::CanonicalizeDeviceName(
         "/job:foo/replica:10/task:0/device:CPU:1", basename, &canonical_name));
     EXPECT_EQ("/job:foo/replica:10/task:0/device:CPU:1", canonical_name);
-    TF_EXPECT_OK(DeviceNameUtils::CanonicalizeDeviceName(
+    EXPECT_OK(DeviceNameUtils::CanonicalizeDeviceName(
         "/job:foo/task:0/replica:10/device:CPU:1", basename, &canonical_name));
     EXPECT_EQ("/job:foo/replica:10/task:0/device:CPU:1", canonical_name);
-    TF_EXPECT_OK(DeviceNameUtils::CanonicalizeDeviceName(
+    EXPECT_OK(DeviceNameUtils::CanonicalizeDeviceName(
         "/job:foo/task:0/replica:10/cpu:1", basename, &canonical_name));
     EXPECT_EQ("/job:foo/replica:10/task:0/device:CPU:1", canonical_name);
-    TF_EXPECT_OK(DeviceNameUtils::CanonicalizeDeviceName("CPU:0", basename,
-                                                         &canonical_name));
+    EXPECT_OK(DeviceNameUtils::CanonicalizeDeviceName("CPU:0", basename,
+                                                      &canonical_name));
     EXPECT_EQ("/job:foo/replica:10/task:0/device:CPU:0", canonical_name);
     absl::Status s = DeviceNameUtils::CanonicalizeDeviceName(
         "/job:foo/task:0/replica/cpu:1", basename, &canonical_name);

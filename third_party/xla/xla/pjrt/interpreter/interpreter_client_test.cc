@@ -19,6 +19,7 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/types/span.h"
 #include "xla/hlo/builder/xla_builder.h"
@@ -59,7 +60,7 @@ TEST(InterpreterClientTest, EvaluateOnceShouldSucceed) {
   ASSERT_EQ(results.size(), 1);
   ASSERT_EQ(results.front().size(), 1);
   Literal result_literal(shape);
-  TF_ASSERT_OK(results.front().front()->ToLiteralSync(&result_literal));
+  ASSERT_OK(results.front().front()->ToLiteralSync(&result_literal));
   EXPECT_TRUE(LiteralTestUtil::Equal(
       result_literal,
       LiteralUtil::CreateR1(absl::Span<const int32_t>{2, 3, 4, 5})));
@@ -101,7 +102,7 @@ TEST(InterpreterClientTest, EvaluateTwiceShouldSucceed) {
   for (int i = 0; i < results.size(); ++i) {
     const std::vector<std::unique_ptr<PjRtBuffer>>& actual_buffers = results[i];
     EXPECT_EQ(actual_buffers.size(), 1);
-    TF_ASSERT_OK(actual_buffers.front()->ToLiteralSync(&actual_literal));
+    ASSERT_OK(actual_buffers.front()->ToLiteralSync(&actual_literal));
     EXPECT_TRUE(LiteralTestUtil::Equal(actual_literal, expected_literals[i]));
   }
 }

@@ -20,6 +20,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
@@ -297,7 +298,7 @@ TEST_F(ClientServerTest, ConnectAndShutdownAreBarriers) {
     }
   }
   for (int i = 0; i < num_nodes; ++i) {
-    TF_EXPECT_OK(statuses[i]);
+    EXPECT_OK(statuses[i]);
   }
 }
 
@@ -329,7 +330,7 @@ TEST_F(ClientServerTest, ClientsTerminateShutdownIfAnyClientGoesAway) {
       thread_pool.Schedule([&, i]() { statuses[i] = thread_fn(i); });
     }
   }
-  TF_EXPECT_OK(statuses[0]);
+  EXPECT_OK(statuses[0]);
   for (int i = 1; i < num_nodes; ++i) {
     EXPECT_THAT(
         statuses[i],
@@ -369,7 +370,7 @@ TEST_F(ClientServerTest, ClientsShutdownSuccessfully) {
     }
   }
   for (int i = 0; i < num_nodes; ++i) {
-    TF_EXPECT_OK(statuses[i]);
+    EXPECT_OK(statuses[i]);
   }
 }
 
@@ -406,7 +407,7 @@ TEST_F(ClientServerTest, MissedHeartbeatCallbackIsExecutedIfAnyClientGoesAway) {
     }
   }
   for (int i = 0; i < num_nodes; ++i) {
-    TF_EXPECT_OK(statuses[i]);
+    EXPECT_OK(statuses[i]);
   }
 }
 
@@ -428,7 +429,7 @@ TEST_F(ClientServerTest, ShutdownErrorIsPropagatedToClients) {
           statuses[node_id] = status;
         });
 
-    TF_ASSERT_OK(client->Connect());
+    ASSERT_OK(client->Connect());
 
     if (node_id == 0) {
       // Shut down early.
@@ -524,7 +525,7 @@ TEST_F(ClientServerTest, LateClientsAreOk) {
     }
   }
   for (int i = 0; i < num_nodes; ++i) {
-    TF_EXPECT_OK(statuses[i]);
+    EXPECT_OK(statuses[i]);
   }
 }
 
@@ -690,7 +691,7 @@ TEST_F(ClientServerTest, WaitAtBarrier_Succeed) {
     }
   }
   for (int i = 0; i < num_nodes; ++i) {
-    TF_EXPECT_OK(statuses[i]);
+    EXPECT_OK(statuses[i]);
   }
 }
 
@@ -795,7 +796,7 @@ TEST_F(ClientServerTest, WaitAtBarrier_ReuseSameId_Succeeds) {
     }
   }
   for (int i = 0; i < num_nodes; ++i) {
-    TF_EXPECT_OK(statuses[i]);
+    EXPECT_OK(statuses[i]);
   }
 }
 
@@ -811,16 +812,16 @@ TEST_F(ClientServerTest, WaitAtBarrier_RestartAndBarrierAgain_Fails) {
 
   auto thread_fn = [&](int node_id) {
     auto client = GetClient(node_id);
-    TF_ASSERT_OK(client->Connect());
+    ASSERT_OK(client->Connect());
 
     // Complete barrier 3 times (simulate job progress).
     for (int i = 0; i < 3; ++i) {
-      TF_ASSERT_OK(client->WaitAtBarrier("barrier_1", kBarrierTimeout, {}));
+      ASSERT_OK(client->WaitAtBarrier("barrier_1", kBarrierTimeout, {}));
     }
     if (node_id == 1) {
       client = nullptr;  // Simulate client restart.
       auto restarted_client = GetClient(1);
-      TF_ASSERT_OK(restarted_client->Connect());
+      ASSERT_OK(restarted_client->Connect());
       // This should fail! This variable is checked after the thread pool is
       // destroyed.
       barrier_status =
@@ -851,7 +852,7 @@ TEST_F(ClientServerTest,
   absl::Status status_0, status_0_new, status_1, status_1_new;
   auto thread_fn = [&](int node_id) {
     auto client = GetClient(node_id);
-    TF_ASSERT_OK(client->Connect());
+    ASSERT_OK(client->Connect());
     if (node_id == 0) {
       status_0 = client->WaitAtBarrier("barrier_1", kBarrierTimeout, {});
       n.Notify();
@@ -878,8 +879,8 @@ TEST_F(ClientServerTest,
   EXPECT_THAT(status_1,
               absl_testing::StatusIs(absl::StatusCode::kDeadlineExceeded));
   // Next barrier call is okay.
-  TF_EXPECT_OK(status_0_new);
-  TF_EXPECT_OK(status_1_new);
+  EXPECT_OK(status_0_new);
+  EXPECT_OK(status_1_new);
 }
 
 TEST_F(ClientServerTest,
@@ -890,9 +891,9 @@ TEST_F(ClientServerTest,
   absl::Status status_0, status_0_new, status_1;
   auto thread_fn = [&](int node_id) {
     auto client = GetClient(node_id);
-    TF_ASSERT_OK(client->Connect());
-    TF_ASSERT_OK(client->WaitAtBarrier("barrier_1", kBarrierTimeout, {}));
-    TF_ASSERT_OK(client->WaitAtBarrier("barrier_1", kBarrierTimeout, {}));
+    ASSERT_OK(client->Connect());
+    ASSERT_OK(client->WaitAtBarrier("barrier_1", kBarrierTimeout, {}));
+    ASSERT_OK(client->WaitAtBarrier("barrier_1", kBarrierTimeout, {}));
     if (node_id == 0) {
       // Let each barrier time out.
       status_0 = client->WaitAtBarrier("barrier_1", kBarrierTimeout, {});
@@ -948,7 +949,7 @@ TEST_F(ClientServerTest, WaitAtBarrierSubset_Succeeds) {
       thread_pool.Schedule([&, i]() { statuses[i] = thread_fn(i); });
     }
     for (int i = 0; i < num_nodes; ++i) {
-      TF_EXPECT_OK(statuses[i]);
+      EXPECT_OK(statuses[i]);
     }
   }
 }
@@ -961,7 +962,7 @@ TEST_F(ClientServerTest, WaitAtBarrier_DifferentSubset_Fails) {
 
   auto thread_fn = [&](int node_id) {
     auto client = GetClient(node_id);
-    TF_ASSERT_OK(client->Connect());
+    ASSERT_OK(client->Connect());
     if (node_id == 0) {
       status_0 =
           client->WaitAtBarrier("barrier_1", kBarrierTimeout, {GetTask(0)});
@@ -982,7 +983,7 @@ TEST_F(ClientServerTest, WaitAtBarrier_DifferentSubset_Fails) {
     }
   }
   // First barrier call succeeds.
-  TF_EXPECT_OK(status_0);
+  EXPECT_OK(status_0);
   // Second barrier call with different task args fails.
   EXPECT_THAT(status_1,
               absl_testing::StatusIs(absl::StatusCode::kInvalidArgument,
@@ -993,7 +994,7 @@ TEST_F(ClientServerTest, CancelNonExistentBarrier_Fails) {
   int num_nodes = 1;
   StartService(num_nodes);
   auto client = GetClient(0);
-  TF_ASSERT_OK(client->Connect());
+  ASSERT_OK(client->Connect());
 
   EXPECT_THAT(client->CancelBarrier("non_existent_barrier"),
               absl_testing::StatusIs(absl::StatusCode::kFailedPrecondition));
@@ -1079,22 +1080,22 @@ TEST_F(ClientServerTest, GetAliveTasks_Succeed) {
     }
   }
   for (int i = 0; i < num_nodes; ++i) {
-    TF_EXPECT_OK(statuses[i]);
+    EXPECT_OK(statuses[i]);
   }
 }
 
 TEST_F(ClientServerTest, GetKeyValueDir) {
   StartService(/*num_nodes=*/1);
   auto client = GetClient(/*node_id=*/0);
-  TF_ASSERT_OK(client->Connect());
-  TF_ASSERT_OK(client->InsertKeyValue("test_dir/sub_dir/1", "1"));
-  TF_ASSERT_OK(client->InsertKeyValue("test_dir/sub_dir/2", "2"));
-  TF_ASSERT_OK(client->InsertKeyValue("test_dir/3", "3"));
-  TF_ASSERT_OK(client->InsertKeyValue("test", "4"));  // Not in a directory.
+  ASSERT_OK(client->Connect());
+  ASSERT_OK(client->InsertKeyValue("test_dir/sub_dir/1", "1"));
+  ASSERT_OK(client->InsertKeyValue("test_dir/sub_dir/2", "2"));
+  ASSERT_OK(client->InsertKeyValue("test_dir/3", "3"));
+  ASSERT_OK(client->InsertKeyValue("test", "4"));  // Not in a directory.
 
   auto results = client->GetKeyValueDir("test_dir/");
 
-  TF_ASSERT_OK(results.status());
+  ASSERT_OK(results.status());
   auto kvs = results.value();
 
   EXPECT_THAT(kvs, UnorderedElementsAre(IsKvEntry("test_dir/sub_dir/1", "1"),
@@ -1105,60 +1106,60 @@ TEST_F(ClientServerTest, GetKeyValueDir) {
 TEST_F(ClientServerTest, InsertKeyValue_Duplicate_Fails) {
   StartService(/*num_nodes=*/1);
   auto client = GetClient(/*node_id=*/0);
-  TF_ASSERT_OK(client->Connect());
-  TF_ASSERT_OK(client->InsertKeyValue("test_key", "original_value"));
+  ASSERT_OK(client->Connect());
+  ASSERT_OK(client->InsertKeyValue("test_key", "original_value"));
   EXPECT_TRUE(
       absl::IsAlreadyExists(client->InsertKeyValue("test_key", "never_added")));
   auto result = client->GetKeyValue("test_key", absl::Milliseconds(100));
-  TF_ASSERT_OK(result.status());
+  ASSERT_OK(result.status());
   EXPECT_EQ(result.value(), "original_value");
 }
 
 TEST_F(ClientServerTest, InsertKeyValue_Duplicate_Overwrites) {
   StartService(/*num_nodes=*/1);
   auto client = GetClient(/*node_id=*/0);
-  TF_ASSERT_OK(client->Connect());
-  TF_ASSERT_OK(client->InsertKeyValue("test_key", "original_value"));
-  TF_EXPECT_OK(client->InsertKeyValue("test_key", "overwritten_value",
-                                      /*allow_overwrite=*/true));
+  ASSERT_OK(client->Connect());
+  ASSERT_OK(client->InsertKeyValue("test_key", "original_value"));
+  EXPECT_OK(client->InsertKeyValue("test_key", "overwritten_value",
+                                   /*allow_overwrite=*/true));
   auto result = client->GetKeyValue("test_key", absl::Milliseconds(100));
-  TF_ASSERT_OK(result.status());
+  ASSERT_OK(result.status());
   EXPECT_EQ(result.value(), "overwritten_value");
 }
 
 TEST_F(ClientServerTest, DeleteKeyValue) {
   StartService(/*num_nodes=*/1);
   auto client = GetClient(/*node_id=*/0);
-  TF_ASSERT_OK(client->Connect());
-  TF_ASSERT_OK(client->InsertKeyValue("to_be_deleted", "deleted"));
-  TF_ASSERT_OK(client->InsertKeyValue("to_be_kept", "kept"));
+  ASSERT_OK(client->Connect());
+  ASSERT_OK(client->InsertKeyValue("to_be_deleted", "deleted"));
+  ASSERT_OK(client->InsertKeyValue("to_be_kept", "kept"));
 
   auto results = client->DeleteKeyValue("to_be_deleted");
 
-  TF_EXPECT_OK(results);
+  EXPECT_OK(results);
   auto deleted_kv =
       client->GetKeyValue("to_be_deleted", absl::Milliseconds(200));
   // We time out from attempting to retrieve a deleted key.
   EXPECT_EQ(deleted_kv.status().code(), tsl::error::DEADLINE_EXCEEDED);
   // Other key should still exist.
   auto kept_kv = client->GetKeyValue("to_be_kept", absl::Milliseconds(200));
-  TF_ASSERT_OK(kept_kv.status());
+  ASSERT_OK(kept_kv.status());
   EXPECT_EQ(kept_kv.value(), "kept");
 }
 
 TEST_F(ClientServerTest, DeleteKeyValue_Directory) {
   StartService(/*num_nodes=*/1);
   auto client = GetClient(/*node_id=*/0);
-  TF_ASSERT_OK(client->Connect());
-  TF_ASSERT_OK(client->InsertKeyValue("test_dir/sub_dir/1", "1"));
-  TF_ASSERT_OK(client->InsertKeyValue("test_dir/sub_dir/2", "2"));
-  TF_ASSERT_OK(client->InsertKeyValue("test_dir/3", "3"));
+  ASSERT_OK(client->Connect());
+  ASSERT_OK(client->InsertKeyValue("test_dir/sub_dir/1", "1"));
+  ASSERT_OK(client->InsertKeyValue("test_dir/sub_dir/2", "2"));
+  ASSERT_OK(client->InsertKeyValue("test_dir/3", "3"));
 
   auto results = client->DeleteKeyValue("test_dir/");
 
-  TF_EXPECT_OK(results);
+  EXPECT_OK(results);
   auto kvs = client->GetKeyValueDir("test_dir/");
-  TF_ASSERT_OK(kvs.status());
+  ASSERT_OK(kvs.status());
   EXPECT_THAT(kvs.value(), IsEmpty());
 }
 
@@ -1169,7 +1170,7 @@ TEST_F(ClientServerTest, BarrierTimeout_ManyLateTasks_ReturnsCorrectError) {
                /*init_and_shutdown_timeout=*/absl::Seconds(1),
                /*cluster_register_with_barrier=*/false);
   auto client = GetClient(/*node_id=*/0);
-  TF_ASSERT_OK(client->Connect());
+  ASSERT_OK(client->Connect());
 
   // Blocks until the barrier times out.
   auto status =
@@ -1186,7 +1187,7 @@ TEST_F(ClientServerTest, Dtor_CancelsOngoingGetKeyValueAndBarrier) {
   auto client = GetClient(/*node_id=*/0,
                           /*init_and_shutdown_timeout=*/absl::Seconds(2),
                           /*shutdown_on_destruction=*/false);
-  TF_ASSERT_OK(client->Connect());
+  ASSERT_OK(client->Connect());
   absl::Status barrier_status, get_key_value_status;
   client->WaitAtBarrierAsync(
       "barrier", absl::Seconds(2), {},
@@ -1270,7 +1271,7 @@ TEST_F(ClientServerTest, NonrecoverableClientDies_ErrorPropagated) {
                             [&statuses, node_id](const absl::Status& status) {
                               statuses[node_id] = status;
                             });
-    TF_ASSERT_OK(client->Connect());
+    ASSERT_OK(client->Connect());
     if (node_id == 0) {
       // Non-recoverable node crashed unexpectedly.
       return;
@@ -1311,7 +1312,7 @@ TEST_F(ClientServerTest, RecoverableClientDies_NoErrorPropagated) {
                             [&statuses, node_id](const absl::Status& status) {
                               statuses[node_id] = status;
                             });
-    TF_ASSERT_OK(client->Connect());
+    ASSERT_OK(client->Connect());
     if (node_id == 1) {
       // Recoverable node crashed unexpectedly.
       return;
@@ -1328,9 +1329,9 @@ TEST_F(ClientServerTest, RecoverableClientDies_NoErrorPropagated) {
     }
   }
   // Nobody noticed that node 1 (recoverable) died.
-  TF_EXPECT_OK(statuses[0]);
-  TF_EXPECT_OK(statuses[1]);
-  TF_EXPECT_OK(statuses[2]);
+  EXPECT_OK(statuses[0]);
+  EXPECT_OK(statuses[1]);
+  EXPECT_OK(statuses[2]);
 }
 
 TEST_F(ClientServerTest, RecoverableClient_RestartsAndStartsBarrier) {
@@ -1347,13 +1348,13 @@ TEST_F(ClientServerTest, RecoverableClient_RestartsAndStartsBarrier) {
                             /*shutdown_on_destruction=*/true,
                             // Node 0 is recoverable.
                             /*recoverable=*/node_id == 0);
-    TF_ASSERT_OK(client->Connect());
+    ASSERT_OK(client->Connect());
     // This increments the internal barrier counter, and checks if the
     // recoverable node can start a new barrier later (despite having a reset
     // counter on the client-side)
-    TF_ASSERT_OK(client->WaitAtBarrier(kBarrierId, absl::Seconds(10), {}));
-    TF_ASSERT_OK(client->WaitAtBarrier(kBarrierId, absl::Seconds(10), {}));
-    TF_ASSERT_OK(client->WaitAtBarrier(kBarrierId, absl::Seconds(10), {}));
+    ASSERT_OK(client->WaitAtBarrier(kBarrierId, absl::Seconds(10), {}));
+    ASSERT_OK(client->WaitAtBarrier(kBarrierId, absl::Seconds(10), {}));
+    ASSERT_OK(client->WaitAtBarrier(kBarrierId, absl::Seconds(10), {}));
     // Timeline:
     // 1. Node 0 restarts.
     // 2. Node 0 starts a new barrier.
@@ -1395,10 +1396,10 @@ TEST_F(ClientServerTest, RecoverableClient_RestartsAndStartsBarrier) {
       thread_pool.Schedule([&, i]() { thread_fn(i); });
     }
   }
-  TF_EXPECT_OK(status_0);
-  TF_EXPECT_OK(status_0_shutdown);
-  TF_EXPECT_OK(status_1);
-  TF_EXPECT_OK(status_1_shutdown);
+  EXPECT_OK(status_0);
+  EXPECT_OK(status_0_shutdown);
+  EXPECT_OK(status_1);
+  EXPECT_OK(status_1_shutdown);
 }
 
 TEST_P(RecoverableTest, RecoverableClient_RestartsAndJoinsBarrier) {
@@ -1418,14 +1419,14 @@ TEST_P(RecoverableTest, RecoverableClient_RestartsAndJoinsBarrier) {
         params.recoverable_node_shutdown_on_destruction ? true : node_id != 1,
         // Node 1 is recoverable.
         /*recoverable=*/node_id == 1);
-    TF_ASSERT_OK(client->Connect());
+    ASSERT_OK(client->Connect());
     if (params.pass_multiple_barriers_before_test) {
       // This increments the internal barrier counter, and checks if the
       // recoverable node can join the barrier later (despite having a reset
       // counter on the client-side)
-      TF_ASSERT_OK(client->WaitAtBarrier(kBarrierId, absl::Seconds(10), {}));
-      TF_ASSERT_OK(client->WaitAtBarrier(kBarrierId, absl::Seconds(10), {}));
-      TF_ASSERT_OK(client->WaitAtBarrier(kBarrierId, absl::Seconds(10), {}));
+      ASSERT_OK(client->WaitAtBarrier(kBarrierId, absl::Seconds(10), {}));
+      ASSERT_OK(client->WaitAtBarrier(kBarrierId, absl::Seconds(10), {}));
+      ASSERT_OK(client->WaitAtBarrier(kBarrierId, absl::Seconds(10), {}));
     }
     // Timeline:
     // 1. Node 0 joins barrier.
@@ -1459,7 +1460,7 @@ TEST_P(RecoverableTest, RecoverableClient_RestartsAndJoinsBarrier) {
                     /*init_and_shutdown_timeout=*/absl::Seconds(2),
                     /*shutdown_on_destruction=*/true,
                     /*recoverable=*/true);
-      TF_ASSERT_OK(restarted_client->Connect());
+      ASSERT_OK(restarted_client->Connect());
       status_1 =
           restarted_client->WaitAtBarrier(kBarrierId, absl::Seconds(10), {});
       // Check that the cluster is healthy at the end of the test.
@@ -1475,10 +1476,10 @@ TEST_P(RecoverableTest, RecoverableClient_RestartsAndJoinsBarrier) {
       thread_pool.Schedule([&, i]() { thread_fn(i); });
     }
   }
-  TF_EXPECT_OK(status_0);
-  TF_EXPECT_OK(status_0_shutdown);
-  TF_EXPECT_OK(status_1);
-  TF_EXPECT_OK(status_1_shutdown);
+  EXPECT_OK(status_0);
+  EXPECT_OK(status_0_shutdown);
+  EXPECT_OK(status_1);
+  EXPECT_OK(status_1_shutdown);
 }
 
 TEST_P(RecoverableTest,
@@ -1502,14 +1503,14 @@ TEST_P(RecoverableTest,
         params.recoverable_node_shutdown_on_destruction ? true : node_id != 0,
         // Node 0 is recoverable.
         /*recoverable=*/node_id == 0);
-    TF_ASSERT_OK(client->Connect());
+    ASSERT_OK(client->Connect());
     if (params.pass_multiple_barriers_before_test) {
       // This increments the internal barrier counter, and checks if the
       // recoverable node can join the barrier later (despite having a reset
       // counter on the client-side)
-      TF_ASSERT_OK(client->WaitAtBarrier(kBarrierId, absl::Seconds(10), {}));
-      TF_ASSERT_OK(client->WaitAtBarrier(kBarrierId, absl::Seconds(10), {}));
-      TF_ASSERT_OK(client->WaitAtBarrier(kBarrierId, absl::Seconds(10), {}));
+      ASSERT_OK(client->WaitAtBarrier(kBarrierId, absl::Seconds(10), {}));
+      ASSERT_OK(client->WaitAtBarrier(kBarrierId, absl::Seconds(10), {}));
+      ASSERT_OK(client->WaitAtBarrier(kBarrierId, absl::Seconds(10), {}));
     }
     // Timeline:
     // 1. Node 0, 1 joins barrier.
@@ -1538,7 +1539,7 @@ TEST_P(RecoverableTest,
                     /*init_and_shutdown_timeout=*/absl::Seconds(2),
                     /*shutdown_on_destruction=*/true,
                     /*recoverable=*/true);
-      TF_ASSERT_OK(restarted_client->Connect());
+      ASSERT_OK(restarted_client->Connect());
       restarted_client->WaitAtBarrierAsync(
           kBarrierId, absl::Seconds(10), {},
           [&status_0_after_restart](const absl::Status& status) {
@@ -1576,12 +1577,12 @@ TEST_P(RecoverableTest,
   // cancelled.
   EXPECT_THAT(status_0_before_restart,
               absl_testing::StatusIs(absl::StatusCode::kCancelled));
-  TF_EXPECT_OK(status_0_after_restart);
-  TF_EXPECT_OK(status_0_shutdown);
-  TF_EXPECT_OK(status_1);
-  TF_EXPECT_OK(status_1_shutdown);
-  TF_EXPECT_OK(status_2);
-  TF_EXPECT_OK(status_2_shutdown);
+  EXPECT_OK(status_0_after_restart);
+  EXPECT_OK(status_0_shutdown);
+  EXPECT_OK(status_1);
+  EXPECT_OK(status_1_shutdown);
+  EXPECT_OK(status_2);
+  EXPECT_OK(status_2_shutdown);
 }
 
 INSTANTIATE_TEST_SUITE_P(

@@ -18,6 +18,7 @@ limitations under the License.
 #include <memory>
 #include <string>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/env.h"
@@ -31,13 +32,13 @@ TEST(WritableFileCopyingOutputStreamTest, Write) {
   std::unique_ptr<WritableFile> file;
   std::string filename = ::testing::TempDir() + "/write_using_stream.txt";
 
-  TF_ASSERT_OK(env->NewWritableFile(filename, &file));
+  ASSERT_OK(env->NewWritableFile(filename, &file));
 
   WritableFileCopyingOutputStream output(file.get());
   output.Write("hello\n", 6);
-  TF_ASSERT_OK(file->Close());
+  ASSERT_OK(file->Close());
   std::string contents;
-  TF_ASSERT_OK(ReadFileToString(env, filename, &contents));
+  ASSERT_OK(ReadFileToString(env, filename, &contents));
   EXPECT_EQ(contents, "hello\n");
 }
 
@@ -46,12 +47,12 @@ TEST(RandomAccessFileCopyingInputStreamTest, Read) {
   std::unique_ptr<WritableFile> file;
   std::string filename = ::testing::TempDir() + "/read_using_stream.txt";
 
-  TF_ASSERT_OK(env->NewWritableFile(filename, &file));
-  TF_ASSERT_OK(file->Append("hello\n"));
-  TF_ASSERT_OK(file->Close());
+  ASSERT_OK(env->NewWritableFile(filename, &file));
+  ASSERT_OK(file->Append("hello\n"));
+  ASSERT_OK(file->Close());
 
   std::unique_ptr<RandomAccessFile> random_file;
-  TF_ASSERT_OK(env->NewRandomAccessFile(filename, &random_file));
+  ASSERT_OK(env->NewRandomAccessFile(filename, &random_file));
 
   RandomAccessFileCopyingInputStream input(random_file.get());
   char buffer[10];

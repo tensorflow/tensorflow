@@ -117,7 +117,6 @@ tsl_cc_test(
     deps = [
         ":grpc_channel",
         "//xla/tsl/lib/core:status_test_util",
-        "//xla/tsl/platform:env_impl",
         "//xla/tsl/platform:test",
         "//xla/tsl/protobuf:rpc_options_proto_cc_impl",
         "//xla/tsl/util:device_name_utils",

@@ -19,6 +19,7 @@ limitations under the License.
 #include <optional>
 #include <utility>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
@@ -47,15 +48,15 @@ TEST(WithUserContextTest, Function) {
     std::function<absl::Status()> f =
         WithUserContext(std::function<absl::Status()>(CheckUserContext),
                         TestUserContext::Create(UserContextId(100)));
-    TF_EXPECT_OK(f());
-    TF_EXPECT_OK(std::move(f)());
+    EXPECT_OK(f());
+    EXPECT_OK(std::move(f)());
   }
   {
     const std::function<absl::Status()> f =
         WithUserContext(std::function<absl::Status()>(CheckUserContext),
                         TestUserContext::Create(UserContextId(100)));
-    TF_EXPECT_OK(f());
-    TF_EXPECT_OK(std::move(f)());
+    EXPECT_OK(f());
+    EXPECT_OK(std::move(f)());
   }
 }
 
@@ -64,15 +65,15 @@ TEST(WithUserContextTest, AnyInvocable) {
     absl::AnyInvocable<absl::Status()> f =
         WithUserContext(absl::AnyInvocable<absl::Status()>(CheckUserContext),
                         TestUserContext::Create(UserContextId(100)));
-    TF_EXPECT_OK(f());
-    TF_EXPECT_OK(std::move(f)());
+    EXPECT_OK(f());
+    EXPECT_OK(std::move(f)());
   }
   {
     const absl::AnyInvocable<absl::Status() const> f = WithUserContext(
         absl::AnyInvocable<absl::Status() const>(CheckUserContext),
         TestUserContext::Create(UserContextId(100)));
-    TF_EXPECT_OK(f());
-    TF_EXPECT_OK(std::move(f)());
+    EXPECT_OK(f());
+    EXPECT_OK(std::move(f)());
   }
 }
 
@@ -82,8 +83,8 @@ TEST(WithCurrentUserContextTest, Function) {
     UserContextScope user_context_scope(
         TestUserContext::Create(UserContextId(100)));
     f = WithCurrentUserContext(std::function<absl::Status()>(CheckUserContext));
-    TF_EXPECT_OK(f());
-    TF_EXPECT_OK(std::move(f)());
+    EXPECT_OK(f());
+    EXPECT_OK(std::move(f)());
   }
   {
     std::optional<const std::function<absl::Status()>> f;
@@ -92,8 +93,8 @@ TEST(WithCurrentUserContextTest, Function) {
           TestUserContext::Create(UserContextId(100)));
       f.emplace(WithCurrentUserContext(
           std::function<absl::Status()>(CheckUserContext)));
-      TF_EXPECT_OK((*f)());
-      TF_EXPECT_OK((*std::move(f))());
+      EXPECT_OK((*f)());
+      EXPECT_OK((*std::move(f))());
     }
   }
 }
@@ -107,8 +108,8 @@ TEST(WithCurrentUserContextTest, AnyInvocable) {
       f = WithCurrentUserContext(
           absl::AnyInvocable<absl::Status()>(CheckUserContext));
     }
-    TF_EXPECT_OK(f());
-    TF_EXPECT_OK(std::move(f)());
+    EXPECT_OK(f());
+    EXPECT_OK(std::move(f)());
   }
   {
     std::optional<const absl::AnyInvocable<absl::Status() const>> f;
@@ -118,8 +119,8 @@ TEST(WithCurrentUserContextTest, AnyInvocable) {
       f.emplace(WithCurrentUserContext(
           absl::AnyInvocable<absl::Status() const>(CheckUserContext)));
     }
-    TF_EXPECT_OK((*f)());
-    TF_EXPECT_OK((*std::move(f))());
+    EXPECT_OK((*f)());
+    EXPECT_OK((*std::move(f))());
   }
 }
 

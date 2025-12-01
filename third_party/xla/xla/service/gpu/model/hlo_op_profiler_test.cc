@@ -102,7 +102,7 @@ TEST_F(HloOpProfilerTest, AllSupportedCombinationsAreMeasurable) {
     if (!HloOpProfiler::TooFastToMeasure().count(op) &&
         !HloOpProfiler::Unsupported().count(op)) {
       auto Type = FloatTypes.count(op) ? F32 : S32;
-      TF_EXPECT_OK(profiler.MeasureClockCyclesPerOp(op, Type));
+      EXPECT_OK(profiler.MeasureClockCyclesPerOp(op, Type));
     }
   }
 }

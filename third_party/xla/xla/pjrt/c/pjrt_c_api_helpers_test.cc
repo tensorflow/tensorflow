@@ -68,7 +68,7 @@ TEST(PjRtCApiHelperTest, ValidOptionNameAndPjRtValueTypeIndex) {
       {"string", static_cast<std::string>("v1")},
       {"int64", static_cast<int64_t>(1)}};
 
-  TF_EXPECT_OK(ValidateCreateOptions(valid_map, expected));
+  EXPECT_OK(ValidateCreateOptions(valid_map, expected));
 }
 
 TEST(PjRtCApiHelperTest, InvalidOptionName) {
@@ -115,14 +115,14 @@ TEST(PjRtCApiHelperTest, Callback) {
   EXPECT_TRUE(absl::IsNotFound(v_not_found.status())) << v_not_found.status();
 
   auto s = converted_kv_store->Set("key", "value");
-  TF_EXPECT_OK(s);
+  EXPECT_OK(s);
 
   auto v = converted_kv_store->Get("key", absl::Seconds(1));
-  TF_EXPECT_OK(v.status());
+  EXPECT_OK(v.status());
   EXPECT_EQ(*v, "value");
 
   auto v_2 = converted_kv_store->TryGet("key");
-  TF_EXPECT_OK(v.status());
+  EXPECT_OK(v.status());
   EXPECT_EQ(*v, "value");
 }
 
@@ -215,19 +215,19 @@ TEST(PjRtCApiHelperTest, ConvertFromCLayoutToLayoutNoTile) {
 
 TEST(PjRtCApiHelperTest, GetXlaPluginCAttributes) {
   auto result = GetXlaPluginCAttributes();
-  std::unordered_map<std::string, PJRT_NamedValue *> map;
-  for (PJRT_NamedValue &nv : result) {
+  std::unordered_map<std::string, PJRT_NamedValue*> map;
+  for (PJRT_NamedValue& nv : result) {
     auto [_, did_not_exist_yet] = map.insert({nv.name, &nv});
     EXPECT_TRUE(did_not_exist_yet);
   }
   EXPECT_TRUE(map.find("xla_version") != map.end());
-  PJRT_NamedValue *current = map["stablehlo_current_version"];
+  PJRT_NamedValue* current = map["stablehlo_current_version"];
   mlir::vhlo::Version current_version =
       mlir::vhlo::Version::getCurrentVersion();
   EXPECT_TRUE(current->int64_array_value[0] == current_version.getMajor());
   EXPECT_TRUE(current->int64_array_value[1] == current_version.getMinor());
   EXPECT_TRUE(current->int64_array_value[2] == current_version.getPatch());
-  PJRT_NamedValue *minimum = map["stablehlo_minimum_version"];
+  PJRT_NamedValue* minimum = map["stablehlo_minimum_version"];
   mlir::vhlo::Version minimum_version =
       mlir::vhlo::Version::getMinimumVersion();
   EXPECT_TRUE(minimum->int64_array_value[0] == minimum_version.getMajor());

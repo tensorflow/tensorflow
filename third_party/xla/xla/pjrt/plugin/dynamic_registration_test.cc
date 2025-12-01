@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <memory>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/log/log.h"
 #include "absl/strings/string_view.h"
@@ -34,7 +35,7 @@ namespace {
 TEST(DynamicRegistrationTest, RegisteredDynamicPjrtPluginSucceeds) {
   absl::StatusOr<std::unique_ptr<xla::PjRtClient>> c_api_client =
       xla::GetCApiClient("myplugin");
-  TF_EXPECT_OK(c_api_client);
+  EXPECT_OK(c_api_client);
 }
 
 TEST(DynamicRegistrationTest, RegistrationFailsWithoutEnvVar) {

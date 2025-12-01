@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/mlir/utils/error_util.h"
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
 #include "absl/strings/match.h"
@@ -34,8 +35,7 @@ TEST(ErrorUtilTest, BaseScopedDiagnosticHandler) {
 
   // Test OK without diagnostic gets passed through.
   {
-    TF_EXPECT_OK(
-        BaseScopedDiagnosticHandler(&context).Combine(absl::OkStatus()));
+    EXPECT_OK(BaseScopedDiagnosticHandler(&context).Combine(absl::OkStatus()));
   }
 
   // Verify diagnostics are captured as Unknown status.

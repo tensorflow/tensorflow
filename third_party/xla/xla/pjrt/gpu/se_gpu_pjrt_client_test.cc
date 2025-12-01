@@ -270,7 +270,7 @@ ENTRY main.5 {
 
   ASSERT_EQ(result.size(), 1);
   ASSERT_EQ(result[0].size(), 1);
-  TF_EXPECT_OK(result[0][0]->GetReadyFuture().Await());
+  EXPECT_OK(result[0][0]->GetReadyFuture().Await());
 }
 #endif  // defined(GOOGLE_CUDA) || defined(TENSORFLOW_USE_ROCM)
 
@@ -539,7 +539,7 @@ TEST(StreamExecutorGpuClientTest, ForwardUserDataToFfiHandler) {
                           CompileExecutable(kProgram, *client));
 
   ExecuteContext context;
-  TF_ASSERT_OK(context.ffi_context().Emplace<MemsetValue>(42.0f));
+  ASSERT_OK(context.ffi_context().Emplace<MemsetValue>(42.0f));
 
   ExecuteOptions opts;
   opts.context = &context;
@@ -614,12 +614,12 @@ TEST(StreamExecutorGpuClientTest, ToLiteralAsync) {
       ShapeUtil::DeviceShapeToHostShape(buffer->on_device_shape()));
   bool got_literal = false;
 
-  TF_ASSERT_OK(
+  ASSERT_OK(
       transfer_manager->TransferLiteralToBuffer(0, src_literal, [&]() {}));
 
   buffer->ToLiteral(literal.get()).OnReady([&](absl::Status s) {
     absl::MutexLock l(mu);
-    TF_ASSERT_OK(s);
+    ASSERT_OK(s);
     got_literal = true;
   });
   buffer.reset();
@@ -661,11 +661,11 @@ TEST(StreamExecutorGpuClientTest, ToLiteralAsyncWithNonCompactLayout) {
   auto literal = std::make_shared<Literal>(
       ShapeUtil::DeviceShapeToHostShape(buffer->on_device_shape()));
 
-  TF_ASSERT_OK(
+  ASSERT_OK(
       transfer_manager->TransferLiteralToBuffer(0, src_literal, [&]() {}));
 
   buffer->ToLiteral(literal.get()).OnReady([&](absl::Status s) {
-    TF_ASSERT_OK(s);
+    ASSERT_OK(s);
     n.Notify();
   });
   buffer.reset();
@@ -705,11 +705,11 @@ TEST(StreamExecutorGpuClientTest, ToLiteralAsyncWithDifferentMajorToMinor) {
   absl::Notification n;
   auto literal = std::make_shared<Literal>(shape);
 
-  TF_ASSERT_OK(
+  ASSERT_OK(
       transfer_manager->TransferLiteralToBuffer(0, src_literal, [&]() {}));
 
   buffer->ToLiteral(literal.get()).OnReady([&](absl::Status s) {
-    TF_ASSERT_OK(s);
+    ASSERT_OK(s);
     n.Notify();
   });
   buffer.reset();
@@ -732,12 +732,12 @@ TEST(StreamExecutorGpuClientTest, ToLiteralAsyncToken) {
       auto buffer,
       client->BufferFromHostLiteral(
           literal, client->addressable_devices()[0]->memory_spaces()[0]));
-  TF_ASSERT_OK(buffer->GetReadyFuture().Await());
+  ASSERT_OK(buffer->GetReadyFuture().Await());
 
   absl::Notification n;
 
   buffer->ToLiteral(&literal).OnReady([&](absl::Status s) {
-    TF_ASSERT_OK(s);
+    ASSERT_OK(s);
     n.Notify();
   });
   buffer.reset();
@@ -765,13 +765,13 @@ TEST(StreamExecutorGpuClientTest, ToLiteralAsyncBeforeBufferReady) {
 
   buffer->ToLiteral(literal.get()).OnReady([&](absl::Status s) {
     absl::MutexLock l(mu);
-    TF_ASSERT_OK(s);
+    ASSERT_OK(s);
     got_literal = true;
   });
 
   absl::SleepFor(absl::Milliseconds(10));
   ASSERT_FALSE(got_literal);
-  TF_ASSERT_OK(
+  ASSERT_OK(
       transfer_manager->TransferLiteralToBuffer(0, src_literal, [&]() {}));
 
   buffer.reset();
@@ -809,7 +809,7 @@ TEST(StreamExecutorGpuClientTest, FromHostAsync) {
   }
 
   for (int i = 0; i < src_shapes.size(); ++i) {
-    TF_ASSERT_OK(transfer_manager->TransferRawDataToBuffer(
+    ASSERT_OK(transfer_manager->TransferRawDataToBuffer(
         i,
         absl::string_view(static_cast<char*>(src_literals[i].untyped_data()),
                           src_literals[i].size_bytes()),
@@ -826,12 +826,12 @@ TEST(StreamExecutorGpuClientTest, FromHostAsync) {
         ShapeUtil::DeviceShapeToHostShape(buffer->on_device_shape())));
     buffer->ToLiteral(literals.back().get()).OnReady([&](absl::Status s) {
       absl::MutexLock l(mu);
-      TF_ASSERT_OK(s);
+      ASSERT_OK(s);
       ++got_literal_count;
     });
     buffer->GetReadyFuture().OnReady([&](absl::Status s) {
       absl::MutexLock l(mu);
-      TF_ASSERT_OK(s);
+      ASSERT_OK(s);
       ++got_callback_count;
     });
     buffer.reset();
@@ -881,7 +881,7 @@ TEST(StreamExecutorGpuClientTest, FromHostAsyncPinnedHost) {
   }
 
   for (int i = 0; i < src_shapes.size(); ++i) {
-    TF_ASSERT_OK(transfer_manager->TransferRawDataToBuffer(
+    ASSERT_OK(transfer_manager->TransferRawDataToBuffer(
         i,
         absl::string_view(static_cast<char*>(src_literals[i].untyped_data()),
                           src_literals[i].size_bytes()),
@@ -898,12 +898,12 @@ TEST(StreamExecutorGpuClientTest, FromHostAsyncPinnedHost) {
         ShapeUtil::DeviceShapeToHostShape(buffer->on_device_shape())));
     buffer->ToLiteral(literals.back().get()).OnReady([&](absl::Status s) {
       absl::MutexLock l(mu);
-      TF_ASSERT_OK(s);
+      ASSERT_OK(s);
       ++got_literal_count;
     });
     buffer->GetReadyFuture().OnReady([&](absl::Status s) {
       absl::MutexLock l(mu);
-      TF_ASSERT_OK(s);
+      ASSERT_OK(s);
       ++got_callback_count;
     });
     buffer.reset();
@@ -953,7 +953,7 @@ TEST(StreamExecutorGpuClientTest, FromHostAsyncPinnedHostChunked) {
     }
     int sz = end - offset;
     bool reaches_end = end == raw_view.size();
-    TF_ASSERT_OK(txm->TransferRawDataToSubBuffer(
+    ASSERT_OK(txm->TransferRawDataToSubBuffer(
         /*buffer_index=*/0, raw_view.data() + offset, offset, sz, reaches_end,
         /*on_done=*/[]() {}));
     if (reaches_end) {
@@ -1000,7 +1000,7 @@ TEST(StreamExecutorGpuClientTest, DeleteBufferThenFulfillBufferNoDeadLock) {
       }
       int sz = end - offset;
       bool reaches_end = end == raw_view.size();
-      TF_ASSERT_OK(txm->TransferRawDataToSubBuffer(
+      ASSERT_OK(txm->TransferRawDataToSubBuffer(
           /*buffer_index=*/0, raw_view.data() + offset, offset, sz, reaches_end,
           /*on_done=*/[]() {}));
       if (reaches_end) {
@@ -1024,7 +1024,7 @@ TEST(StreamExecutorGpuClientTest, CopyRawToHostFullBuffer) {
       tsl::port::AlignedMalloc(size, tsl::Allocator::kAllocatorAlignment);
 
   auto result = buffer->CopyRawToHost(dst, 0, size);
-  TF_EXPECT_OK(result.Await());
+  EXPECT_OK(result.Await());
   EXPECT_EQ(*(static_cast<float*>(dst)), 41.0f);
   EXPECT_EQ(*(static_cast<float*>(dst) + 1), 42.0f);
 
@@ -1044,7 +1044,7 @@ TEST(StreamExecutorGpuClientTest, CopyRawToHostSubBuffer) {
       tsl::port::AlignedMalloc(size, tsl::Allocator::kAllocatorAlignment);
 
   auto result = buffer->CopyRawToHost(dst, 0, sizeof(float));
-  TF_EXPECT_OK(result.Await());
+  EXPECT_OK(result.Await());
   EXPECT_EQ(*(static_cast<float*>(dst)), 41.0f);
 
   tsl::port::AlignedSizedFree(dst, tsl::Allocator::kAllocatorAlignment, size);
@@ -1072,7 +1072,7 @@ TEST(StreamExecutorGpuClientTest, CopyRawToHostOutOfRange) {
   // before the prior buffer->BufferFromHostLiteral() is done. Make sure
   // `literal` is alive long enough to avoid use-after-free. See the comment in
   // PjRtStreamExecutorBuffer::CopyRawToHost() for details.
-  TF_EXPECT_OK(buffer->GetReadyFuture().Await());
+  EXPECT_OK(buffer->GetReadyFuture().Await());
 }
 
 TEST(StreamExecutorGpuClientTest, CopyRawToHostFuture) {
@@ -1099,7 +1099,7 @@ TEST(StreamExecutorGpuClientTest, CopyRawToHostFuture) {
     dst_promise.Set(dst);
   });
 
-  TF_EXPECT_OK(result.Await());
+  EXPECT_OK(result.Await());
   TF_ASSERT_OK_AND_ASSIGN(auto* dst, dst_future.Await());
   EXPECT_EQ(*(static_cast<float*>(dst)), 41.0f);
   EXPECT_EQ(*(static_cast<float*>(dst) + 1), 42.0f);
@@ -1128,13 +1128,12 @@ TEST(StreamExecutorGpuClientTest, AsyncCopyToDevice) {
   auto local_recv_buffer =
       *src_buffer->CopyToMemorySpace(*d1->default_memory_space());
 
-  TF_ASSERT_OK(
-      transfer_manager->TransferLiteralToBuffer(0, src_literal, []() {}));
+  ASSERT_OK(transfer_manager->TransferLiteralToBuffer(0, src_literal, []() {}));
 
   auto literal = std::make_shared<Literal>(src_literal.shape());
 
   auto local_recv_literal = local_recv_buffer->ToLiteral(literal.get());
-  TF_EXPECT_OK(local_recv_literal.Await());
+  EXPECT_OK(local_recv_literal.Await());
 
   ASSERT_TRUE(ShapeUtil::Compatible(src_literal.shape(), literal->shape()));
   ASSERT_EQ(src_literal.data<float>(),
@@ -1168,11 +1167,11 @@ TEST(StreamExecutorGpuClientTest, CreateMixOfErrorBuffers) {
   for (int i = 0; i < 4; ++i) {
     auto& buffer = buffers[i];
     if (i == 0 || i == 3) {
-      TF_ASSERT_OK(transfer_manager->TransferLiteralToBuffer(i, src_literals[i],
-                                                             [&]() {}));
+      ASSERT_OK(transfer_manager->TransferLiteralToBuffer(i, src_literals[i],
+                                                          [&]() {}));
       buffer->GetReadyFuture().OnReady([&](absl::Status s) {
         absl::MutexLock l(mu);
-        TF_ASSERT_OK(s);
+        ASSERT_OK(s);
         ++got_callback_count;
       });
     } else {
@@ -1257,10 +1256,10 @@ TEST(StreamExecutorGpuClientTest, GetAllocatorStatsTest) {
     TF_ASSERT_OK_AND_ASSIGN(
         std::unique_ptr<PjRtBuffer> buffer,
         client->BufferFromHostLiteral(literal, memory_space));
-    TF_ASSERT_OK(buffer->GetReadyFuture().Await());
+    ASSERT_OK(buffer->GetReadyFuture().Await());
 
     auto stats = device->GetAllocatorStats();
-    TF_ASSERT_OK(stats.status());
+    ASSERT_OK(stats.status());
     ASSERT_GT(stats.value().peak_bytes_in_use, 0);
   }
 }
@@ -1486,8 +1485,7 @@ TEST(StreamExecutorGpuClientTest, MockNcclClientWithGpuTopologyExecuteTest) {
   }
 
   // Test that running the program does not crash/hang.
-  TF_ASSERT_OK(
-      executable->Execute(absl::MakeSpan(input_ptrs), ExecuteOptions()));
+  ASSERT_OK(executable->Execute(absl::MakeSpan(input_ptrs), ExecuteOptions()));
 }
 
 TEST(StreamExecutorGpuClientTest, MockNcclClientWithGpuTopologyMismatchTest) {
@@ -1642,7 +1640,7 @@ TEST(StreamExecutorGpuClientTest, OpaqueDeviceMemoryDataPointer) {
   // Check that OpaqueDeviceMemoryDataPointer() points to actual data
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtBuffer::ExternalReference> ref,
                           buf->AcquireExternalReference());
-  TF_ASSERT_OK(buf->GetReadyFuture().Await());
+  ASSERT_OK(buf->GetReadyFuture().Await());
   const float* float_ptr =
       reinterpret_cast<const float*>(ref->OpaqueDeviceMemoryDataPointer());
   EXPECT_THAT(*float_ptr, FloatEq(12.0));
@@ -1657,7 +1655,7 @@ TEST(StreamExecutorGpuClientTest, OpaqueDeviceMemoryDataPointer) {
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<PjRtClient::AsyncHostToDeviceTransferManager> txm,
       client->CreateBuffersForAsyncHostToDevice({shape}, default_ms));
-  TF_ASSERT_OK(txm->TransferRawDataToBuffer(
+  ASSERT_OK(txm->TransferRawDataToBuffer(
       /*buffer_index=*/0,
       absl::string_view(
           static_cast<const char*>(ref->OpaqueDeviceMemoryDataPointer()),
@@ -1667,7 +1665,7 @@ TEST(StreamExecutorGpuClientTest, OpaqueDeviceMemoryDataPointer) {
   EXPECT_THAT(hbm_buf->GetOnDeviceSizeInBytes(),
               absl_testing::IsOkAndHolds(buf_sz));
   EXPECT_THAT(hbm_buf->HostShape(), absl_testing::IsOkAndHolds(shape));
-  TF_ASSERT_OK(hbm_buf->GetReadyFuture().Await());
+  ASSERT_OK(hbm_buf->GetReadyFuture().Await());
   TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<xla::Literal> literal,
                           hbm_buf->ToLiteralSync());
   EXPECT_THAT(literal->data<float>(), ElementsAreArray(float_data));
@@ -1678,7 +1676,7 @@ namespace {
 absl::StatusOr<std::unique_ptr<PjRtBuffer>> CreateDeviceBufferForTest(
     xla::PjRtClient* client) {
   auto device = client->addressable_devices()[0];
-  TF_EXPECT_OK(device->default_memory_space());
+  EXPECT_OK(device->default_memory_space());
 
   std::vector<int32_t> data{1, 2, 3, 4};
   Shape shape = ShapeUtil::MakeShapeWithDenseLayout(S32, {4}, {0});
@@ -1748,7 +1746,7 @@ TEST(StreamExecutorGpuClientTest, ExecutePinnedHostOutputTest) {
 
   std::vector<std::unique_ptr<xla::PjRtBuffer>>& result_buffers = result[0];
   EXPECT_EQ(result_buffers[0]->memory_space()->kind(), "pinned_host");
-  TF_ASSERT_OK(result_buffers[0]->GetReadyFuture().Await());
+  ASSERT_OK(result_buffers[0]->GetReadyFuture().Await());
 
   TF_ASSERT_OK_AND_ASSIGN(
       auto memory_stats, executable->GetExecutable()->GetCompiledMemoryStats());
@@ -1784,7 +1782,7 @@ TEST(StreamExecutorGpuClientTest, ExecutePinnedHostOutputTupleTest) {
       auto result, executable->Execute({{input.get()}}, execute_options));
 
   std::vector<std::unique_ptr<xla::PjRtBuffer>>& result_buffers = result[0];
-  TF_ASSERT_OK(result_buffers[0]->GetReadyFuture().Await());
+  ASSERT_OK(result_buffers[0]->GetReadyFuture().Await());
   EXPECT_EQ(result_buffers.size(), 2);
   EXPECT_EQ(result_buffers[0]->memory_space()->kind(), "device");
   EXPECT_EQ(result_buffers[1]->memory_space()->kind(), "pinned_host");
@@ -2007,7 +2005,7 @@ TEST(StreamExecutorGpuClientTest,
   shape.mutable_layout()->set_memory_space(Layout::kDefaultMemorySpace);
 
   auto device = client->addressable_devices()[0];
-  TF_EXPECT_OK(device->default_memory_space());
+  EXPECT_OK(device->default_memory_space());
   TF_ASSERT_OK_AND_ASSIGN(
       auto input,
       client->BufferFromHostBuffer(
@@ -2028,7 +2026,7 @@ TEST(StreamExecutorGpuClientTest,
       auto result, executable->Execute({{input.get()}}, ExecuteOptions()));
   std::vector<std::unique_ptr<xla::PjRtBuffer>>& result_buffers = result[0];
   EXPECT_EQ(result_buffers[0]->memory_space()->kind(), "device");
-  TF_ASSERT_OK(result_buffers[0]->GetReadyFuture().Await());
+  ASSERT_OK(result_buffers[0]->GetReadyFuture().Await());
   Shape result_shape = result_buffers[0]->on_device_shape();
   auto memory_space = result_shape.layout().memory_space();
   EXPECT_EQ(memory_space, 1);
@@ -2048,7 +2046,7 @@ TEST(StreamExecutorGpuClientTest, CollectiveMemorySpaceSmoke) {
   Shape shape = ShapeUtil::MakeShapeWithDenseLayout(S32, {1, 4}, {1, 0});
   shape.mutable_layout()->set_memory_space(Layout::kDefaultMemorySpace);
   auto* device = client->addressable_devices()[0];
-  TF_EXPECT_OK(device->default_memory_space());
+  EXPECT_OK(device->default_memory_space());
   TF_ASSERT_OK_AND_ASSIGN(
       auto input,
       client->BufferFromHostBuffer(
@@ -2062,7 +2060,7 @@ TEST(StreamExecutorGpuClientTest, CollectiveMemorySpaceSmoke) {
   TF_ASSERT_OK_AND_ASSIGN(auto results,
                           exe->Execute({{input.get()}}, ExecuteOptions()));
   auto& buf = results[0][0];
-  TF_ASSERT_OK(buf->GetReadyFuture().Await());
+  ASSERT_OK(buf->GetReadyFuture().Await());
 
   // Override default memory space to collective memory space.
   EXPECT_EQ(buf->on_device_shape().layout().memory_space(),
@@ -2190,7 +2188,7 @@ TEST(StreamExecutorGpuClientTest, ProfileExecution) {
   ExecutionProfile profile;
   ExecuteOptions opts;
   opts.execution_profile = &profile;
-  TF_ASSERT_OK(executable->Execute(/*argument_handles=*/{{}}, opts));
+  ASSERT_OK(executable->Execute(/*argument_handles=*/{{}}, opts));
   EXPECT_GT(profile.compute_time_ns(), 0);
 }
 
@@ -2588,7 +2586,7 @@ TEST(StreamExecutorGpuClientTest, NonZeroGPUDeviceTimeMeasurementMultiGPU) {
   TF_ASSERT_OK_AND_ASSIGN(
       auto res,
       executable->Execute(absl::MakeSpan(input_ptrs), ExecuteOptions()));
-  TF_ASSERT_OK(res[0][0]->GetReadyFuture().Await());
+  ASSERT_OK(res[0][0]->GetReadyFuture().Await());
 
   // Check measurement after execution completes.
   EXPECT_GT(
@@ -2608,11 +2606,11 @@ TEST(StreamExecutorGpuClientTest, DmaMapUnmap) {
       absl::Cleanup([host_dma_ptr, dma_size, alignment] {
         tsl::port::AlignedSizedFree(host_dma_ptr, alignment, dma_size);
       });
-  TF_EXPECT_OK(client->DmaMap(host_dma_ptr, dma_size));
+  EXPECT_OK(client->DmaMap(host_dma_ptr, dma_size));
   EXPECT_TRUE(client->IsDmaMapped(host_dma_ptr, dma_size));
   EXPECT_FALSE(
       client->IsDmaMapped(reinterpret_cast<char*>(host_dma_ptr) + 5, dma_size));
-  TF_EXPECT_OK(client->DmaUnmap(host_dma_ptr));
+  EXPECT_OK(client->DmaUnmap(host_dma_ptr));
   EXPECT_FALSE(client->IsDmaMapped(host_dma_ptr, dma_size));
 }
 
@@ -2646,10 +2644,10 @@ TEST(StreamExecutorGpuClientTest, MultipleDeviceShareDmaMapping) {
       absl::Cleanup([host_dma_ptr, dma_size, alignment] {
         tsl::port::AlignedSizedFree(host_dma_ptr, alignment, dma_size);
       });
-  TF_EXPECT_OK(client->DmaMap(host_dma_ptr, dma_size));
+  EXPECT_OK(client->DmaMap(host_dma_ptr, dma_size));
 
   auto result = first_buffer->CopyRawToHost(host_dma_ptr, 0, size);
-  TF_EXPECT_OK(result.Await());
+  EXPECT_OK(result.Await());
 
   PjRtDevice* const second_device = client->addressable_devices()[1];
 
@@ -2658,13 +2656,13 @@ TEST(StreamExecutorGpuClientTest, MultipleDeviceShareDmaMapping) {
                               {shape}, second_device->memory_spaces()[0]));
   auto second_buffer = transfer_manager->RetrieveBuffer(0);
 
-  TF_EXPECT_OK(transfer_manager->TransferRawDataToSubBuffer(
-      0, host_dma_ptr, 0, size, true, []() {}));
+  EXPECT_OK(transfer_manager->TransferRawDataToSubBuffer(0, host_dma_ptr, 0,
+                                                         size, true, []() {}));
   TF_ASSERT_OK_AND_ASSIGN(auto literal, second_buffer->ToLiteralSync());
   EXPECT_EQ(literal->element_count(), test_length);
   EXPECT_THAT(literal->data<int32_t>(), ElementsAreArray(data));
 
-  TF_EXPECT_OK(client->DmaUnmap(host_dma_ptr));
+  EXPECT_OK(client->DmaUnmap(host_dma_ptr));
 }
 
 TEST(StreamExecutorGpuClientTest, RawBuffer) {
@@ -2685,7 +2683,7 @@ TEST(StreamExecutorGpuClientTest, RawBuffer) {
               *client->addressable_devices()[0]->default_memory_space(),
               /*device_layout=*/nullptr)
           .value();
-  TF_ASSERT_OK(buffer->GetReadyFuture().Await());
+  ASSERT_OK(buffer->GetReadyFuture().Await());
   TF_ASSERT_OK_AND_ASSIGN(auto raw_buffer,
                           PjRtRawBuffer::CreateRawAliasOfBuffer(buffer.get()));
   ASSERT_EQ(raw_buffer->memory_space(), buffer->memory_space());
@@ -2697,8 +2695,8 @@ TEST(StreamExecutorGpuClientTest, RawBuffer) {
   auto* dst1 = tsl::port::AlignedMalloc(1024, 1024);
   auto* dst2 = tsl::port::AlignedMalloc(1024, 1024);
   memcpy(dst1, data2.data(), sizeof(int32_t) * data2.size());
-  TF_EXPECT_OK(raw_buffer->CopyRawHostToDevice(dst1, 0, 1024).Await());
-  TF_EXPECT_OK(raw_buffer->CopyRawDeviceToHost(dst2, 0, 1024).Await());
+  EXPECT_OK(raw_buffer->CopyRawHostToDevice(dst1, 0, 1024).Await());
+  EXPECT_OK(raw_buffer->CopyRawDeviceToHost(dst2, 0, 1024).Await());
   EXPECT_EQ(absl::MakeSpan(reinterpret_cast<int32_t*>(dst2), 256), data2);
 
   tsl::port::AlignedFree(dst1);
@@ -2758,7 +2756,7 @@ ENTRY main.5 {
       absl::Cleanup([host_dma_ptr, dma_size, alignment] {
         tsl::port::AlignedSizedFree(host_dma_ptr, alignment, dma_size);
       });
-  TF_EXPECT_OK(client->DmaMap(host_dma_ptr, dma_size));
+  EXPECT_OK(client->DmaMap(host_dma_ptr, dma_size));
   memset(host_dma_ptr, 0, dma_size);
   Shape shape =
       ShapeUtil::MakeShape(S32, {static_cast<int64_t>(dma_size * 1024)});
@@ -2785,7 +2783,7 @@ ENTRY main.5 {
 
     memcpy(host_dma_ptr, &i, sizeof(int32_t));
     absl::Notification done;
-    TF_EXPECT_OK(transfer_manager->TransferRawDataToSubBuffer(
+    EXPECT_OK(transfer_manager->TransferRawDataToSubBuffer(
         0, host_dma_ptr, 0, dma_size, true, [&done]() { done.Notify(); }));
     done.WaitForNotification();
 
@@ -2797,7 +2795,7 @@ ENTRY main.5 {
     w = std::move(results[0][0]);
     res_lst.push_back(std::move(results[0][1]));
     if (i - 1 > 0) {
-      TF_EXPECT_OK(res_lst[i - 1]->GetReadyFuture().Await());
+      EXPECT_OK(res_lst[i - 1]->GetReadyFuture().Await());
     }
   }
 
@@ -2813,7 +2811,7 @@ ENTRY main.5 {
 
   EXPECT_TRUE(clobbered);
 
-  TF_EXPECT_OK(client->DmaUnmap(host_dma_ptr));
+  EXPECT_OK(client->DmaUnmap(host_dma_ptr));
 }
 
 TEST(StreamExecutorGpuClientTest, EventCaching) {

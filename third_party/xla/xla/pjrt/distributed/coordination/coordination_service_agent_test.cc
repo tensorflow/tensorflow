@@ -20,6 +20,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/memory/memory.h"
@@ -183,12 +184,13 @@ class CoordinationServiceAgentTest : public ::testing::Test {
   // Should be called after mocking service responses, before testing the agent.
   void InitializeAgent(CoordinationServiceConfig config = {}) {
     config.set_service_leader("test_leader");
-    TF_ASSERT_OK(agent_->Initialize(
-        tsl::Env::Default(), /*job_name=*/"test_job",
-        /*task_id=*/0, config, std::move(client_),
-        /*error_fn=*/[](absl::Status s) {
-          LOG(ERROR) << "Coordination agent is set to error: " << s;
-        }));
+    ASSERT_OK(agent_->Initialize(tsl::Env::Default(), /*job_name=*/"test_job",
+                                 /*task_id=*/0, config, std::move(client_),
+                                 /*error_fn=*/[](absl::Status s) {
+                                   LOG(ERROR)
+                                       << "Coordination agent is set to error: "
+                                       << s;
+                                 }));
   }
 
   TestCoordinationClient* GetClient() {
@@ -221,7 +223,7 @@ TEST_F(CoordinationServiceAgentTest, GetKeyValue_Simple_Success) {
 
   auto result = agent_->GetKeyValue(test_key);
 
-  TF_ASSERT_OK(result.status());
+  ASSERT_OK(result.status());
   EXPECT_EQ(*result, test_value);
 }
 
@@ -241,7 +243,7 @@ TEST_F(CoordinationServiceAgentTest, GetKeyValue_WithTimeout_Success) {
 
   auto result = agent_->GetKeyValue(test_key, /*timeout=*/absl::Seconds(10));
 
-  TF_ASSERT_OK(result.status());
+  ASSERT_OK(result.status());
   EXPECT_EQ(*result, test_value);
 }
 
@@ -326,7 +328,7 @@ TEST_F(CoordinationServiceAgentTest,
 
   auto result = agent_->GetKeyValue(test_key, /*timeout=*/absl::Seconds(10));
 
-  TF_ASSERT_OK(result.status());
+  ASSERT_OK(result.status());
   EXPECT_EQ(*result, test_value);
 }
 
@@ -370,7 +372,7 @@ TEST_F(CoordinationServiceAgentTest, TryGetKeyValue_Simple_Success) {
   // Initialize coordination agent.
   InitializeAgent();
   auto result = agent_->TryGetKeyValue(test_key);
-  TF_ASSERT_OK(result.status());
+  ASSERT_OK(result.status());
   EXPECT_EQ(*result, test_value);
 }
 
@@ -408,15 +410,15 @@ TEST_F(CoordinationServiceAgentTest, GetKeyValueDir_Simple_Success) {
 
   auto result = agent_->GetKeyValueDir(test_key);
 
-  TF_ASSERT_OK(result.status());
+  ASSERT_OK(result.status());
   EXPECT_THAT(*result, UnorderedPointwise(KvEq(), test_values));
 }
 
 TEST_F(CoordinationServiceAgentTest, ShutdownInErrorShouldReturnError) {
   // Connect coordination agent and set it to error.
   InitializeAgent();
-  TF_ASSERT_OK(agent_->Connect());
-  TF_ASSERT_OK(agent_->ReportError(absl::InternalError("Test Error.")));
+  ASSERT_OK(agent_->Connect());
+  ASSERT_OK(agent_->ReportError(absl::InternalError("Test Error.")));
 
   // Shutdown should return error.
   absl::Status s = agent_->Shutdown();
@@ -427,7 +429,7 @@ TEST_F(CoordinationServiceAgentTest, ShutdownInErrorShouldReturnError) {
 TEST_F(CoordinationServiceAgentTest, Reset_ConnectedButNotInError_Fail) {
   // Connect agent.
   InitializeAgent();
-  TF_ASSERT_OK(agent_->Connect());
+  ASSERT_OK(agent_->Connect());
 
   auto status = agent_->Reset();
 
@@ -438,13 +440,13 @@ TEST_F(CoordinationServiceAgentTest, Reset_ConnectedButNotInError_Fail) {
 TEST_F(CoordinationServiceAgentTest, ConnectAfterResetError) {
   // Connect coordination agent and set it to error.
   InitializeAgent();
-  TF_ASSERT_OK(agent_->Connect());
-  TF_ASSERT_OK(agent_->ReportError(absl::InternalError("Test Error.")));
+  ASSERT_OK(agent_->Connect());
+  ASSERT_OK(agent_->ReportError(absl::InternalError("Test Error.")));
 
   // Reset error.
-  TF_ASSERT_OK(agent_->Reset());
+  ASSERT_OK(agent_->Reset());
   // Agent should be able to reconnect to the service after resetting.
-  TF_EXPECT_OK(agent_->Connect());
+  EXPECT_OK(agent_->Connect());
 }
 
 TEST_F(CoordinationServiceAgentTest, ConnectAfterReset_WithErrorPolling) {
@@ -462,15 +464,15 @@ TEST_F(CoordinationServiceAgentTest, ConnectAfterReset_WithErrorPolling) {
   // The agent will be in ERROR state after the first call to Connect()
   // because the error polling thread will be created and will immediately
   // return an error.
-  TF_ASSERT_OK(agent_->Connect());
+  ASSERT_OK(agent_->Connect());
   // Wait a bit for the error polling thread to start.
   absl::SleepFor(absl::Seconds(2));
   ASSERT_TRUE(agent_->IsError());
 
-  TF_ASSERT_OK(agent_->Reset());
+  ASSERT_OK(agent_->Reset());
   // Agent should be able to reconnect to the service after resetting. The
   // error polling thread will be recreated when the agent is connected again.
-  TF_EXPECT_OK(agent_->Connect());
+  EXPECT_OK(agent_->Connect());
   absl::SleepFor(absl::Seconds(2));
   // The agent should again be in ERROR state after Connect().
   EXPECT_TRUE(agent_->IsError());
@@ -486,7 +488,7 @@ TEST_F(CoordinationServiceAgentTest, CancelledPollForErrorRequest) {
   CoordinationServiceConfig config;
   config.set_poll_for_error_from_service_at_startup(true);
   InitializeAgent(config);
-  TF_ASSERT_OK(agent_->Connect());
+  ASSERT_OK(agent_->Connect());
   // Wait a bit for the error polling thread to start.
   absl::SleepFor(absl::Seconds(2));
   // Cancelled error polling request will not set agent to error.
@@ -504,7 +506,7 @@ TEST_F(CoordinationServiceAgentTest, InvalidPollForErrorRequest) {
   CoordinationServiceConfig config;
   config.set_poll_for_error_from_service_at_startup(true);
   InitializeAgent(config);
-  TF_ASSERT_OK(agent_->Connect());
+  ASSERT_OK(agent_->Connect());
   // Wait a bit for the error polling thread to start.
   absl::SleepFor(absl::Seconds(2));
   ASSERT_TRUE(agent_->IsError());
@@ -522,7 +524,7 @@ TEST_F(CoordinationServiceAgentTest,
   CoordinationServiceConfig config;
   config.set_poll_for_error_from_service_at_startup(true);
   InitializeAgent(config);
-  TF_ASSERT_OK(agent_->Connect());
+  ASSERT_OK(agent_->Connect());
   // Wait a bit for the error polling thread to start.
   absl::SleepFor(absl::Seconds(2));
   ASSERT_TRUE(agent_->IsError());
@@ -535,17 +537,17 @@ TEST_F(CoordinationServiceAgentTest, ResetCanBeRetried) {
       .WillOnce(InvokeArgument<2>(absl::OkStatus()));
   // Connect coordination agent and set it to error.
   InitializeAgent();
-  TF_ASSERT_OK(agent_->Connect());
-  TF_ASSERT_OK(agent_->ReportError(absl::InternalError("Test Error.")));
+  ASSERT_OK(agent_->Connect());
+  ASSERT_OK(agent_->ReportError(absl::InternalError("Test Error.")));
 
   // Reset error fails for the first time.
   absl::Status reset_status = agent_->Reset();
   EXPECT_TRUE(absl::IsInternal(reset_status));
 
   // Agent should be able to attempt resetting again.
-  TF_ASSERT_OK(agent_->Reset());
+  ASSERT_OK(agent_->Reset());
   // Agent should be able to reconnect to the service after resetting.
-  TF_EXPECT_OK(agent_->Connect());
+  EXPECT_OK(agent_->Connect());
 }
 
 TEST_F(CoordinationServiceAgentTest, GetOwnTask) {
@@ -553,7 +555,7 @@ TEST_F(CoordinationServiceAgentTest, GetOwnTask) {
 
   auto result = agent_->GetOwnTask();
 
-  TF_ASSERT_OK(result.status());
+  ASSERT_OK(result.status());
   CoordinatedTask actual_task = *result;
   // These fields are from the arguments used in InitializeAgent().
   CoordinatedTask expected_task;
@@ -575,7 +577,7 @@ TEST_F(CoordinationServiceAgentTest, GetEnv_SucceedsAfterInit) {
 
   absl::StatusOr<tsl::Env*> result = agent_->GetEnv();
 
-  TF_ASSERT_OK(result.status());
+  ASSERT_OK(result.status());
   EXPECT_EQ(*result, tsl::Env::Default());
 }
 
@@ -589,7 +591,7 @@ TEST_F(CoordinationServiceAgentTest, Connect_AbortedErrorShouldBeRetried) {
       .WillOnce(InvokeArgument<3>(absl::OkStatus()));
   InitializeAgent();
 
-  TF_EXPECT_OK(agent_->Connect());
+  EXPECT_OK(agent_->Connect());
 }
 
 TEST_F(CoordinationServiceAgentTest, Connect_AbortedErrorShouldFailEventually) {
@@ -618,7 +620,7 @@ TEST_F(CoordinationServiceAgentTest, Connect_InternalErrorShouldBeRetried) {
       .WillOnce(InvokeArgument<3>(absl::OkStatus()));
   InitializeAgent();
 
-  TF_EXPECT_OK(agent_->Connect());
+  EXPECT_OK(agent_->Connect());
 }
 
 TEST_F(CoordinationServiceAgentTest, WaitAtBarrier_Twice_Success) {
@@ -633,12 +635,10 @@ TEST_F(CoordinationServiceAgentTest, WaitAtBarrier_Twice_Success) {
       .WillOnce(InvokeArgument<3>(absl::OkStatus()));
 
   InitializeAgent();
-  TF_EXPECT_OK(agent_->Connect());
+  EXPECT_OK(agent_->Connect());
 
-  TF_EXPECT_OK(
-      agent_->WaitAtBarrier(barrier_id, absl::Seconds(1), /*tasks=*/{}));
-  TF_EXPECT_OK(
-      agent_->WaitAtBarrier(barrier_id, absl::Seconds(1), /*tasks=*/{}));
+  EXPECT_OK(agent_->WaitAtBarrier(barrier_id, absl::Seconds(1), /*tasks=*/{}));
+  EXPECT_OK(agent_->WaitAtBarrier(barrier_id, absl::Seconds(1), /*tasks=*/{}));
 }
 
 TEST_F(CoordinationServiceAgentTest, WaitAtBarrier_Ongoing_Fails) {
@@ -650,7 +650,7 @@ TEST_F(CoordinationServiceAgentTest, WaitAtBarrier_Ongoing_Fails) {
       .WillOnce(Return());
 
   InitializeAgent();
-  TF_EXPECT_OK(agent_->Connect());
+  EXPECT_OK(agent_->Connect());
 
   agent_->WaitAtBarrierAsync(barrier_id, absl::Seconds(1), /*tasks=*/{},
                              [](const absl::Status& s) {});
@@ -674,11 +674,11 @@ TEST_F(CoordinationServiceAgentTest,
       .WillOnce(InvokeArgument<3>(absl::OkStatus()));
 
   InitializeAgent();
-  TF_EXPECT_OK(agent_->Connect());
+  EXPECT_OK(agent_->Connect());
   EXPECT_THAT(agent_->WaitAtBarrier(barrier_id, absl::Seconds(1), /*tasks=*/{}),
               absl_testing::StatusIs(absl::StatusCode::kInternal));
 
-  TF_EXPECT_OK(agent_->WaitAtBarrier(barrier_id, absl::Seconds(1), {}));
+  EXPECT_OK(agent_->WaitAtBarrier(barrier_id, absl::Seconds(1), {}));
 }
 
 TEST_F(CoordinationServiceAgentTest,
@@ -693,11 +693,11 @@ TEST_F(CoordinationServiceAgentTest,
       .WillOnce(InvokeArgument<3>(absl::OkStatus()));
 
   InitializeAgent();
-  TF_EXPECT_OK(agent_->Connect());
+  EXPECT_OK(agent_->Connect());
   EXPECT_THAT(agent_->WaitAtBarrier(barrier_id, absl::Seconds(1), /*tasks=*/{}),
               absl_testing::StatusIs(absl::StatusCode::kUnavailable));
 
-  TF_EXPECT_OK(agent_->WaitAtBarrier(barrier_id, absl::Seconds(1), {}));
+  EXPECT_OK(agent_->WaitAtBarrier(barrier_id, absl::Seconds(1), {}));
 }
 
 TEST_F(CoordinationServiceAgentTest, CancelBarrier_OngoingBarrier_Cancelled) {
@@ -707,7 +707,7 @@ TEST_F(CoordinationServiceAgentTest, CancelBarrier_OngoingBarrier_Cancelled) {
       // Let the first call hang by not invoking the done callback.
       .WillOnce(Return());
   InitializeAgent();
-  TF_EXPECT_OK(agent_->Connect());
+  EXPECT_OK(agent_->Connect());
   agent_->WaitAtBarrierAsync(barrier_id, absl::Seconds(1), /*tasks=*/{},
                              // Can't test this since this would be invoked on
                              // service after cancel invocation.
@@ -719,7 +719,7 @@ TEST_F(CoordinationServiceAgentTest, CancelBarrier_OngoingBarrier_Cancelled) {
 
 TEST_F(CoordinationServiceAgentTest, CancelBarrier_NonExistent_Fails) {
   InitializeAgent();
-  TF_EXPECT_OK(agent_->Connect());
+  EXPECT_OK(agent_->Connect());
 
   EXPECT_THAT(agent_->CancelBarrier("nonexistent_barrier"),
               absl_testing::StatusIs(absl::StatusCode::kFailedPrecondition));
@@ -727,8 +727,8 @@ TEST_F(CoordinationServiceAgentTest, CancelBarrier_NonExistent_Fails) {
 
 TEST_F(CoordinationServiceAgentTest, CancelBarrier_CompletedBarrier_Fails) {
   InitializeAgent();
-  TF_EXPECT_OK(agent_->Connect());
-  TF_EXPECT_OK(
+  EXPECT_OK(agent_->Connect());
+  EXPECT_OK(
       agent_->WaitAtBarrier("barrier_id", absl::Seconds(1), /*tasks=*/{}));
 
   EXPECT_THAT(agent_->CancelBarrier("barrier_id"),
@@ -739,7 +739,7 @@ TEST_F(CoordinationServiceAgentTest, CancelBarrier_ErroredBarrier_Fails) {
   EXPECT_CALL(*GetClient(), BarrierAsync(_, _, _, _))
       .WillOnce(InvokeArgument<3>(absl::InternalError("Test Error.")));
   InitializeAgent();
-  TF_EXPECT_OK(agent_->Connect());
+  EXPECT_OK(agent_->Connect());
   ASSERT_THAT(
       agent_->WaitAtBarrier("barrier_id", absl::Seconds(1), /*tasks=*/{}),
       absl_testing::StatusIs(absl::StatusCode::kInternal));

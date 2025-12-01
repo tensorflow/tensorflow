@@ -163,7 +163,7 @@ TEST(PjRtStreamExecutorClientTest, DonateWithControlDependency) {
   bool got_literal = false;
   blocked_buffer->ToLiteral(result_literal.get()).OnReady([&](absl::Status s) {
     absl::MutexLock l(mu);
-    TF_ASSERT_OK(s);
+    ASSERT_OK(s);
     got_literal = true;
   });
   blocked_buffer.reset();
@@ -178,7 +178,7 @@ TEST(PjRtStreamExecutorClientTest, DonateWithControlDependency) {
     mu.Await(absl::Condition(&got_literal));
   }
 
-  TF_ASSERT_OK(literal_comparison::Equal(literal, *result_literal));
+  ASSERT_OK(literal_comparison::Equal(literal, *result_literal));
 }
 
 TEST(PjRtStreamExecutorClientTest, ExecuteWithInputError) {
@@ -229,12 +229,12 @@ TEST(PjRtStreamExecutorClientTest, DeserializeAndDump) {
   std::string compile_dump_name, compile_dump_contents;
   {
     std::vector<std::string> matches;
-    TF_ASSERT_OK(env->GetMatchingPaths(
+    ASSERT_OK(env->GetMatchingPaths(
         tsl::io::JoinPath(compile_dump_dir, "*after_optimizations.txt"),
         &matches));
     EXPECT_THAT(matches, testing::SizeIs(1));
     compile_dump_name = std::move(matches.front());
-    TF_ASSERT_OK(
+    ASSERT_OK(
         tsl::ReadFileToString(env, compile_dump_name, &compile_dump_contents));
   }
   TF_ASSERT_OK_AND_ASSIGN(std::string serialized,
@@ -253,13 +253,13 @@ TEST(PjRtStreamExecutorClientTest, DeserializeAndDump) {
   std::string deserialize_dump_name, deserialize_dump_contents;
   {
     std::vector<std::string> matches;
-    TF_ASSERT_OK(env->GetMatchingPaths(
+    ASSERT_OK(env->GetMatchingPaths(
         tsl::io::JoinPath(deserialize_dump_dir, "*after_optimizations.txt"),
         &matches));
     EXPECT_THAT(matches, testing::SizeIs(1));
     deserialize_dump_name = std::move(matches.front());
-    TF_ASSERT_OK(tsl::ReadFileToString(env, deserialize_dump_name,
-                                       &deserialize_dump_contents));
+    ASSERT_OK(tsl::ReadFileToString(env, deserialize_dump_name,
+                                    &deserialize_dump_contents));
   }
   EXPECT_EQ(compile_dump_contents, deserialize_dump_contents);
 }

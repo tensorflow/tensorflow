@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/tsl/platform/cloud/compute_engine_zone_provider.h"
 
+#include <gmock/gmock.h>
 #include "xla/tsl/platform/cloud/http_request_fake.h"
 #include "xla/tsl/platform/test.h"
 
@@ -42,10 +43,10 @@ TEST_F(ComputeEngineZoneProviderTest, GetZone) {
 
   std::string zone;
 
-  TF_EXPECT_OK(provider.GetZone(&zone));
+  EXPECT_OK(provider.GetZone(&zone));
   EXPECT_EQ("us-west1-b", zone);
   // Test caching, should be no further requests
-  TF_EXPECT_OK(provider.GetZone(&zone));
+  EXPECT_OK(provider.GetZone(&zone));
 }
 
 TEST_F(ComputeEngineZoneProviderTest, InvalidZoneString) {
@@ -63,7 +64,7 @@ TEST_F(ComputeEngineZoneProviderTest, InvalidZoneString) {
 
   std::string zone;
 
-  TF_EXPECT_OK(provider.GetZone(&zone));
+  EXPECT_OK(provider.GetZone(&zone));
   EXPECT_EQ("", zone);
 }
 

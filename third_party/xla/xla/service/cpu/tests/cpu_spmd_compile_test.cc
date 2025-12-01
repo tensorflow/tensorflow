@@ -17,6 +17,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include <gmock/gmock.h>
 #include "absl/status/statusor.h"
 #include "xla/debug_options_flags.h"
 #include "xla/service/cpu/cpu_compiler.h"
@@ -35,7 +36,7 @@ class CpuSpmdCompileTest : public CpuCodegenTest {};
 
 TEST_F(CpuSpmdCompileTest, SinglePartition) {
   // Module with "Sharding" custom call and use_spmd_partitioning enabled.
-  const char *const hlo_string = R"(
+  const char* const hlo_string = R"(
 HloModule module
 
 ENTRY entry {
@@ -52,7 +53,7 @@ ENTRY entry {
   // Verify that compilation succeeded.
   absl::StatusOr<std::unique_ptr<Executable>> executable =
       CompileToExecutable(std::move(hlo_module));
-  TF_EXPECT_OK(executable.status());
+  EXPECT_OK(executable.status());
 }
 
 }  // namespace

@@ -23,6 +23,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -136,7 +137,7 @@ TEST_P(ObjectLoaderTest, Load) {
     return absl::OkStatus();
   };
 
-  TF_ASSERT_OK(add_module(params.add_in_place_ir, "AddInplace", 0));
+  ASSERT_OK(add_module(params.add_in_place_ir, "AddInplace", 0));
 
   using ScalarFn = void(float*);
   std::vector<FunctionLibrary::Symbol> symbols = {
@@ -158,7 +159,7 @@ TEST_P(ObjectLoaderTest, Load) {
     size_t obj_file_index = 0;
     for (auto& obj_file : object_files) {
       llvm::StringRef data(obj_file.data(), obj_file.size());
-      TF_ASSERT_OK(object_loader->AddObjFile(
+      ASSERT_OK(object_loader->AddObjFile(
           obj_file, absl::StrCat("loaded_obj_file_", obj_file_index++)));
     }
   }

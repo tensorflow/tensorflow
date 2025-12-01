@@ -205,7 +205,7 @@ TEST_F(WhileLoopSimplifierTest,
   ASSERT_EQ(while_op->opcode(), HloOpcode::kWhile);
   auto* true_op = while_op->while_body()->AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<bool>(true)));
-  TF_ASSERT_OK(true_op->AddControlDependencyTo(
+  ASSERT_OK(true_op->AddControlDependencyTo(
       while_op->while_body()->root_instruction()));
   ASSERT_TRUE(WhileLoopSimplifier().Run(m.get()).value());
   EXPECT_THAT(computation->root_instruction()->control_predecessors(),

@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <string>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
 #include "xla/backends/cpu/benchmarks/hlo_benchmark_runner.h"
@@ -57,7 +58,7 @@ TEST(SnapshotLoadingTest, LoadHloSnapshot) {
 
   std::string tmp_snapshot_path = tsl::testing::TmpDir() + "/hlo_snapshot.pb";
 
-  TF_ASSERT_OK(
+  ASSERT_OK(
       tsl::WriteBinaryProto(tsl::Env::Default(), tmp_snapshot_path, snapshot));
 
   TF_ASSERT_OK_AND_ASSIGN(
@@ -106,7 +107,7 @@ TEST(SnapshotLoadingTest, LoadHloUnoptimizedSnapshot) {
   std::string tmp_snapshot_path =
       tsl::testing::TmpDir() + "/hlo_unoptimized_snapshot.pb";
 
-  TF_ASSERT_OK(
+  ASSERT_OK(
       tsl::WriteBinaryProto(tsl::Env::Default(), tmp_snapshot_path, snapshot));
 
   TF_ASSERT_OK_AND_ASSIGN(

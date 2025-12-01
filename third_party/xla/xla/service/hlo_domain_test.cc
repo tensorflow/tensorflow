@@ -17,6 +17,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include <gmock/gmock.h>
 #include "absl/log/log.h"
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -250,7 +251,7 @@ TEST_F(HloDomainTest, CheckDomainWithCallInliningDomainWithDomainsInFunc) {
 
   // Verify that inlining produces valid domains.
   HloDomainVerifier verifier({"sharding"});
-  TF_EXPECT_OK(verifier.Run(module.get()).status());
+  EXPECT_OK(verifier.Run(module.get()).status());
 }
 
 TEST_F(HloDomainTest, CheckDomainAroundCallsNoInlining) {
@@ -281,7 +282,7 @@ ENTRY entry {
   EXPECT_TRUE(isolator_changed);
 
   HloDomainVerifier verifier({"sharding"});
-  TF_EXPECT_OK(verifier.Run(module.get()).status());
+  EXPECT_OK(verifier.Run(module.get()).status());
 
   EXPECT_TRUE(HasDomainEdge(module.get(), "call0", "p0"));
   EXPECT_TRUE(HasDomainEdge(module.get(), "call0", "p1"));
@@ -607,7 +608,7 @@ ENTRY entry {
   HloInstruction* new_tuple = infeed_data->parent()->AddInstruction(
       HloInstruction::CreateTuple({new_copy0, new_copy1}));
   for (HloInstruction* user : infeed_data_users) {
-    TF_EXPECT_OK(infeed_data->ReplaceUseWith(user, new_tuple));
+    EXPECT_OK(infeed_data->ReplaceUseWith(user, new_tuple));
   }
 
   HloDomainRemover remover(ShardingMetadata::KindName(),
@@ -662,8 +663,8 @@ ENTRY entry {
   HloInstruction* gte = FindInstruction(module.get(), "gte");
   HloInstruction* tuple = FindInstruction(module.get(), "tuple");
   module->entry_computation()->set_root_instruction(tuple->mutable_operand(0));
-  TF_EXPECT_OK(module->entry_computation()->RemoveInstruction(gte));
-  TF_EXPECT_OK(module->entry_computation()->RemoveInstruction(tuple));
+  EXPECT_OK(module->entry_computation()->RemoveInstruction(gte));
+  EXPECT_OK(module->entry_computation()->RemoveInstruction(tuple));
 
   HloDomainRemover remover(ShardingMetadata::KindName(),
                            ShardingMetadata::NormalizeShardingDomain);
@@ -840,7 +841,7 @@ ENTRY entry {
   HloInstruction* copy0 = computation->AddInstruction(
       HloInstruction::CreateUnary(tuple0->operand(1)->shape(), HloOpcode::kCopy,
                                   tuple0->mutable_operand(1)));
-  TF_EXPECT_OK(tuple0->ReplaceOperandWith(1, copy0));
+  EXPECT_OK(tuple0->ReplaceOperandWith(1, copy0));
 
   HloInstruction* copy1 = computation->AddInstruction(
       HloInstruction::CreateUnary(tuple0->shape(), HloOpcode::kCopy, tuple0));
@@ -856,7 +857,7 @@ ENTRY entry {
       computation->AddInstruction(HloInstruction::CreateTuple({gte0, copy2}));
 
   for (HloInstruction* user : tuple0_users) {
-    TF_EXPECT_OK(tuple0->ReplaceUseWith(user, tuple1));
+    EXPECT_OK(tuple0->ReplaceUseWith(user, tuple1));
   }
 
   HloDomainRemover remover(ShardingMetadata::KindName(),

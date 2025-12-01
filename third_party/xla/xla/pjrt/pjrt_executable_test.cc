@@ -120,7 +120,7 @@ TEST(ExecuteOptionsTest, ApplyOptionsCanParseStringsAndEnums) {
       {"xla_gpu_enable_command_buffer", std::string("CUSTOM_CALL,COLLECTIVES")},
       {"xla_gpu_enable_command_buffer",
        static_cast<int64_t>(DebugOptions::CUSTOM_CALL)}};
-  TF_EXPECT_OK(src.ApplyAllOptionOverrides());
+  EXPECT_OK(src.ApplyAllOptionOverrides());
   auto& debug_options = src.executable_build_options.debug_options();
   EXPECT_EQ(debug_options.xla_gpu_use_runtime_fusion(), true);
   EXPECT_EQ(debug_options.xla_gpu_graph_min_graph_size(), 2);
@@ -140,7 +140,7 @@ TEST(ExecuteOptionsTest, ApplyOptionsCanParseStringsAndEnums) {
   // Test that repeated fields are cleared when empty string is provided.
   src.env_option_overrides = {
       {"xla_gpu_enable_command_buffer", std::string("")}};
-  TF_EXPECT_OK(src.ApplyAllOptionOverrides());
+  EXPECT_OK(src.ApplyAllOptionOverrides());
   EXPECT_TRUE(debug_options.xla_gpu_enable_command_buffer().empty());
 }
 

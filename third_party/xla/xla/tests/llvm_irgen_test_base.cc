@@ -18,6 +18,7 @@ limitations under the License.
 #include <functional>
 #include <utility>
 
+#include <gmock/gmock.h>
 #include "absl/status/status.h"
 #include "xla/hlo/testlib/filecheck.h"
 #include "xla/service/llvm_ir/llvm_util.h"
@@ -55,10 +56,10 @@ void LlvmIrGenTestBase::CompileAndVerifyIr(
       CompileToExecutable(std::move(hlo_module), run_optimization_passes)
           .status();
   ResetIrHook();
-  TF_ASSERT_OK(status);
+  ASSERT_OK(status);
 
   absl::StatusOr<bool> filecheck_result = RunFileCheck(ir_, pattern);
-  TF_ASSERT_OK(filecheck_result.status());
+  ASSERT_OK(filecheck_result.status());
   EXPECT_TRUE(filecheck_result.value()) << "Full IR: " << ir_;
 }
 
@@ -81,7 +82,7 @@ void LlvmIrGenTestBase::CompileAheadOfTimeAndVerifyIr(
   absl::Status status =
       CompileToAotCompilationResult(std::move(hlo_module), options).status();
   ResetIrHook();
-  TF_ASSERT_OK(status);
+  ASSERT_OK(status);
 
   absl::StatusOr<bool> filecheck_result = RunFileCheck(ir_, pattern);
   ASSERT_TRUE(filecheck_result.ok());

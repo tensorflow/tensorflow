@@ -219,7 +219,7 @@ TEST_F(PjrtCApiGpuBufferTest, CopyRawToHost) {
   PJRT_Error* error = api_->PJRT_Buffer_CopyRawToHost(&args);
   ASSERT_THAT(error, IsNull());
   xla::Future<> copy_to_host_event = ConvertCEventToCppFuture(args.event, api_);
-  TF_EXPECT_OK(copy_to_host_event.Await());
+  EXPECT_OK(copy_to_host_event.Await());
   EXPECT_EQ(*(static_cast<float*>(args.dst)), 41);
   tsl::port::AlignedSizedFree(args.dst, tsl::Allocator::kAllocatorAlignment,
                               size);

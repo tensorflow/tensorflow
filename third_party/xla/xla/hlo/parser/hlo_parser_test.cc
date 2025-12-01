@@ -3009,7 +3009,7 @@ ENTRY %SelectScalarS32True.v4 () -> s32[] {
 
 )";
   auto result = ParseAndReturnVerifiedModule(original);
-  TF_EXPECT_OK(result.status());
+  EXPECT_OK(result.status());
   // Constant instructions have no name. The string will be parsed successfully
   // but the constant names will not be exactly the same.
 }
@@ -3020,7 +3020,7 @@ ENTRY %configuration_test() -> s32[] {
   %constant = s32[] constant(42), backend_config="foo bar"
 })";
   auto result = ParseAndReturnVerifiedModule(original);
-  TF_ASSERT_OK(result.status());
+  ASSERT_OK(result.status());
   EXPECT_EQ("foo bar", result.value()
                            ->entry_computation()
                            ->root_instruction()
@@ -3247,7 +3247,7 @@ ENTRY %ConstantWithExp.v4 () -> f32[] {
 
 )";
   auto result = ParseAndReturnVerifiedModule(original);
-  TF_EXPECT_OK(result.status());
+  EXPECT_OK(result.status());
   // The string will be parsed successfully but the output strings are not
   // exactly the same, because "3e2" is parsed into value 300 and will be
   // printed as "300".
@@ -3263,7 +3263,7 @@ ENTRY %ShortConstant.v4 () -> f32[67,89] {
 
 )";
   auto result = ParseAndReturnVerifiedModule(original);
-  TF_EXPECT_OK(result.status());
+  EXPECT_OK(result.status());
   EXPECT_EQ(result.value()->ToString(HloPrintOptions()), original);
 }
 
@@ -3345,7 +3345,7 @@ ENTRY %Convolve1D1Window_0.v3 (input: f32[1,2,1], filter: f32[1,1,1]) -> f32[1,4
 }
 
 )";
-  TF_EXPECT_OK(ParseAndReturnVerifiedModule(original).status());
+  EXPECT_OK(ParseAndReturnVerifiedModule(original).status());
 }
 
 TEST_F(HloParserTest, InvalidDimLabels) {
@@ -3423,7 +3423,7 @@ ENTRY %slice.v2 (p0: f32[3,3,4,4]) -> f32[3,3,2,4] {
 }
 
 )";
-  TF_EXPECT_OK(ParseAndReturnVerifiedModule(original).status());
+  EXPECT_OK(ParseAndReturnVerifiedModule(original).status());
 }
 
 TEST_F(HloParserTest, PaddingConfigIsNotWindowPad) {
@@ -3449,7 +3449,7 @@ ENTRY %test_comma.v4 () -> f32[] {
 }
 
 )";
-  TF_EXPECT_OK(ParseAndReturnVerifiedModule(original).status());
+  EXPECT_OK(ParseAndReturnVerifiedModule(original).status());
 }
 
 TEST_F(HloParserTest, ComputationShapeDoesNotMatchRootShape) {
@@ -3481,7 +3481,7 @@ ENTRY %Reduce (input: f32[8,16,256]) -> f32[8,16] {
 })";
 
   auto module = ParseAndReturnVerifiedModule(original);
-  TF_ASSERT_OK(module.status());
+  ASSERT_OK(module.status());
   auto program_layout = module.value()->entry_computation_layout();
   ASSERT_EQ(program_layout.parameter_count(), 1);
   auto param_layout = program_layout.parameter_layout(0).layout();
@@ -3516,7 +3516,7 @@ ENTRY %Reduce (input: f32[8,16,256]) -> f32[8,16] {
                                      HloParserOptions()
                                          .set_fill_missing_layouts(false)
                                          .set_keep_module_auto_layouts(false));
-  TF_ASSERT_OK(module.status());
+  ASSERT_OK(module.status());
   // Do not set the default layout.
   EXPECT_FALSE(module.value()->entry_computation_layout().AnyLayoutSet());
 }
@@ -3542,7 +3542,7 @@ ENTRY %Reduce (input: f32[8,16,256]) -> f32[8,16] {
                                      HloParserOptions()
                                          .set_fill_missing_layouts(true)
                                          .set_keep_module_auto_layouts(true));
-  TF_ASSERT_OK(module.status());
+  ASSERT_OK(module.status());
   // Do not set the default layout.
   EXPECT_FALSE(module.value()->entry_computation_layout().AnyLayoutSet());
 }
@@ -3568,7 +3568,7 @@ ENTRY %Reduce (input: f32[8,16,256]) -> f32[8,16] {
                                      HloParserOptions()
                                          .set_fill_missing_layouts(true)
                                          .set_keep_module_auto_layouts(false));
-  TF_ASSERT_OK(module.status());
+  ASSERT_OK(module.status());
   EXPECT_THAT(module.value()
                   ->entry_computation_layout()
                   .parameter_layout(0)
@@ -3598,7 +3598,7 @@ ENTRY %Reduce (input: f32[8,16,256]) -> f32[8,16] {
                                      HloParserOptions()
                                          .set_fill_missing_layouts(true)
                                          .set_keep_module_auto_layouts(false));
-  TF_ASSERT_OK(module.status());
+  ASSERT_OK(module.status());
   EXPECT_THAT(module.value()
                   ->entry_computation_layout()
                   .parameter_layout(0)
@@ -3620,7 +3620,7 @@ ENTRY main {
   absl::StatusOr<std::unique_ptr<HloModule>> module =
       ParseAndReturnUnverifiedModule(
           original, {}, HloParserOptions().set_fill_missing_layouts(false));
-  TF_ASSERT_OK(module.status());
+  ASSERT_OK(module.status());
   EXPECT_FALSE(module.value()
                    ->entry_computation()
                    ->root_instruction()
@@ -3641,7 +3641,7 @@ ENTRY main {
   absl::StatusOr<std::unique_ptr<HloModule>> module =
       ParseAndReturnUnverifiedModule(
           original, {}, HloParserOptions().set_fill_missing_layouts(true));
-  TF_ASSERT_OK(module.status());
+  ASSERT_OK(module.status());
   EXPECT_THAT(module.value()
                   ->entry_computation()
                   ->root_instruction()
@@ -3664,7 +3664,7 @@ ENTRY main {
   absl::StatusOr<std::unique_ptr<HloModule>> module =
       ParseAndReturnUnverifiedModule(
           original, {}, HloParserOptions().set_fill_missing_layouts(true));
-  TF_ASSERT_OK(module.status());
+  ASSERT_OK(module.status());
   EXPECT_THAT(module.value()
                   ->entry_computation()
                   ->root_instruction()
@@ -3683,7 +3683,7 @@ c2 {
   const2 = f32[1]{0} constant({67890})
 })";
   auto module = ParseAndReturnVerifiedModule(original);
-  TF_ASSERT_OK(module.status());
+  ASSERT_OK(module.status());
   EXPECT_EQ(module.value()->entry_computation()->name(), "c2");
 }
 
@@ -3694,7 +3694,7 @@ ENTRY consts {
   last = f32[1]{0} constant({67890})
 })";
   auto module = ParseAndReturnVerifiedModule(original);
-  TF_ASSERT_OK(module.status());
+  ASSERT_OK(module.status());
   EXPECT_EQ(module.value()->entry_computation()->root_instruction()->name(),
             "last");
 }
@@ -3713,7 +3713,7 @@ ENTRY /*comment*/ c1 {
 
 )";
   auto module = ParseAndReturnVerifiedModule(original);
-  TF_ASSERT_OK(module.status());
+  ASSERT_OK(module.status());
 }
 
 TEST_F(HloParserTest, MultilineComments) {
@@ -3732,7 +3732,7 @@ d
 */
 })";
   auto module = ParseAndReturnVerifiedModule(original);
-  TF_ASSERT_OK(module.status());
+  ASSERT_OK(module.status());
 }
 
 TEST_F(HloParserTest, UnterminatedComment) {
@@ -3755,7 +3755,7 @@ ENTRY c1 {
   ROOT const1 = f32[1]{0} constant({12345}) // Something else
 })";
   auto module = ParseAndReturnVerifiedModule(original);
-  TF_ASSERT_OK(module.status());
+  ASSERT_OK(module.status());
 }
 
 TEST_F(HloParserTest, SlashSlashCommentMsDosEolFormat) {
@@ -3763,7 +3763,7 @@ TEST_F(HloParserTest, SlashSlashCommentMsDosEolFormat) {
       "HloModule slash_slash_comment:\r\n// Garbage\r\nENTRY c1 {\r\n// Foo "
       "bar\r\nROOT const1 = f32[1]{0} constant({12345}) // Something else\r\n}";
   auto module = ParseAndReturnVerifiedModule(original);
-  TF_ASSERT_OK(module.status());
+  ASSERT_OK(module.status());
 }
 
 TEST_F(HloParserTest, SlashSlashCommentMacEolFormat) {
@@ -3771,7 +3771,7 @@ TEST_F(HloParserTest, SlashSlashCommentMacEolFormat) {
       "HloModule slash_slash_comment:\r// Garbage\rENTRY c1 {\r// Foo "
       "bar\rROOT const1 = f32[1]{0} constant({12345}) // Something else\r}";
   auto module = ParseAndReturnVerifiedModule(original);
-  TF_ASSERT_OK(module.status());
+  ASSERT_OK(module.status());
 }
 
 TEST_F(HloParserTest, MultipleEntries) {
@@ -3798,7 +3798,7 @@ ENTRY entry {
 }
   )";
   auto module = ParseAndReturnVerifiedModule(original);
-  TF_ASSERT_OK(module.status());
+  ASSERT_OK(module.status());
   std::unique_ptr<HloModule> parsed_module = std::move(module).value();
   EXPECT_EQ(parsed_module->input_output_alias_config().GetAliasedOutput(0, {0}),
             ShapeIndex{0});
@@ -3825,7 +3825,7 @@ ENTRY entry {
 }
   )";
   auto module = ParseAndReturnVerifiedModule(original);
-  TF_ASSERT_OK(module.status());
+  ASSERT_OK(module.status());
   std::unique_ptr<HloModule> parsed_module = std::move(module).value();
   EXPECT_EQ(parsed_module->input_output_alias_config().GetAliasedOutput(0, {0}),
             ShapeIndex({0, 0}));
@@ -3920,7 +3920,7 @@ ENTRY entry {
 }
   )";
   auto module = ParseAndReturnVerifiedModule(original);
-  TF_ASSERT_OK(module.status());
+  ASSERT_OK(module.status());
   std::unique_ptr<HloModule> parsed_module = std::move(module).value();
   EXPECT_TRUE(
       parsed_module->buffer_donor_config().ParameterIsBufferDonor(0, {0}));
@@ -4434,7 +4434,7 @@ ENTRY %axpy.v5 (alpha: f32[], x: f32[2,4], y: f32[2,4]) -> f32[2,4] {
 )";
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(text));
   ASSERT_TRUE(module->has_schedule());
-  TF_ASSERT_OK(module->schedule().Verify());
+  ASSERT_OK(module->schedule().Verify());
   EXPECT_EQ(module->schedule().sequences().size(), 1);
   ASSERT_TRUE(
       module->schedule().is_computation_scheduled(module->entry_computation()));
@@ -4461,7 +4461,7 @@ ENTRY %axpy.v5 (alpha: f32[], x: f32[2,4], y: f32[2,4]) -> f32[2,4] {
 )";
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(text));
   ASSERT_TRUE(module->has_schedule());
-  TF_ASSERT_OK(module->schedule().Verify());
+  ASSERT_OK(module->schedule().Verify());
   EXPECT_EQ(module->schedule().sequences().size(), 1);
   ASSERT_TRUE(
       module->schedule().is_computation_scheduled(module->entry_computation()));
@@ -5008,7 +5008,7 @@ ENTRY TestComputation {
 }
 )";
   auto result = ParseAndReturnVerifiedModule(hlo_string);
-  TF_EXPECT_OK(result.status());
+  EXPECT_OK(result.status());
   EXPECT_TRUE(result.value()->config().alias_passthrough_params());
 }
 
@@ -5023,7 +5023,7 @@ ENTRY TestComputation {
 }
 )";
   auto result = ParseAndReturnVerifiedModule(hlo_string);
-  TF_EXPECT_OK(result.status());
+  EXPECT_OK(result.status());
   EXPECT_EQ(result.value()->config().replica_count(), 5);
 }
 
@@ -5038,7 +5038,7 @@ ENTRY TestComputation {
 }
 )";
   auto result = ParseAndReturnVerifiedModule(hlo_string);
-  TF_EXPECT_OK(result.status());
+  EXPECT_OK(result.status());
   EXPECT_EQ(result.value()->config().num_partitions(), 3);
   EXPECT_TRUE(result.value()->config().use_spmd_partitioning());
 }
@@ -5054,7 +5054,7 @@ ENTRY TestComputation {
 }
 )";
   auto result = ParseAndReturnVerifiedModule(hlo_string);
-  TF_EXPECT_OK(result.status());
+  EXPECT_OK(result.status());
   EXPECT_EQ(result.value()->frontend_attributes().map().size(), 1);
   EXPECT_EQ(result.value()->frontend_attributes().map().begin()->first,
             "attr_name");
@@ -5073,7 +5073,7 @@ ENTRY TestComputation {
 }
 )";
   auto result = ParseAndReturnVerifiedModule(hlo_string);
-  TF_EXPECT_OK(result.status());
+  EXPECT_OK(result.status());
   EXPECT_EQ((*result)
                 ->config()
                 .allow_spmd_sharding_propagation_to_parameters()
@@ -5094,7 +5094,7 @@ ENTRY TestComputation {
 }
 )";
   auto result = ParseAndReturnVerifiedModule(hlo_string);
-  TF_EXPECT_OK(result.status());
+  EXPECT_OK(result.status());
   EXPECT_EQ((*result)
                 ->config()
                 .allow_spmd_sharding_propagation_to_parameters()
@@ -5117,7 +5117,7 @@ ENTRY TestComputation {
 }
 )";
   auto result = ParseAndReturnVerifiedModule(hlo_string);
-  TF_EXPECT_OK(result.status());
+  EXPECT_OK(result.status());
   EXPECT_EQ(
       (*result)->config().allow_spmd_sharding_propagation_to_output().size(),
       1);
@@ -5136,7 +5136,7 @@ ENTRY TestComputation {
 }
 )";
   auto result = ParseAndReturnVerifiedModule(hlo_string);
-  TF_EXPECT_OK(result.status());
+  EXPECT_OK(result.status());
   EXPECT_EQ(
       (*result)->config().allow_spmd_sharding_propagation_to_output().size(),
       2);

@@ -147,7 +147,7 @@ TEST(TopologyTest, ExchangeTopology) {
                                         num_nodes);
     for (int i = 0; i < num_nodes; i++) {
       thread_pool.Schedule([&, i] {
-        TF_ASSERT_OK(ExchangeTopologies(
+        ASSERT_OK(ExchangeTopologies(
             /*platform=*/"cuda", /*node_id=*/i, num_nodes,
             /*get_local_topology_timeout=*/
             absl::Seconds(10), /*get_global_topology_timeout=*/
@@ -182,7 +182,7 @@ TEST(TopologyTest, ExchangeTopology_Twice_Succeeds) {
                                         num_nodes);
     for (int i = 0; i < num_nodes; i++) {
       thread_pool.Schedule([&, i] {
-        TF_ASSERT_OK(ExchangeTopologies(
+        ASSERT_OK(ExchangeTopologies(
             /*platform=*/"cuda", /*node_id=*/i, num_nodes,
             /*get_local_topology_timeout=*/
             absl::Seconds(10), /*get_global_topology_timeout=*/
@@ -190,7 +190,7 @@ TEST(TopologyTest, ExchangeTopology_Twice_Succeeds) {
             /*assign_global_device_ids=*/true));
         // Simulate node 1 restarting and exchanging topologies again.
         if (i == 1) {
-          TF_ASSERT_OK(ExchangeTopologies(
+          ASSERT_OK(ExchangeTopologies(
               /*platform=*/"cuda", /*node_id=*/i, num_nodes,
               /*get_local_topology_timeout=*/
               absl::Seconds(10), /*get_global_topology_timeout=*/
@@ -226,7 +226,7 @@ TEST(TopologyTest, ExchangeTopology_TwiceWithDifferentLocalTopology_Fails) {
                                         num_nodes);
     for (int i = 0; i < num_nodes; i++) {
       thread_pool.Schedule([&, i] {
-        TF_ASSERT_OK(ExchangeTopologies(
+        ASSERT_OK(ExchangeTopologies(
             /*platform=*/"cuda", /*node_id=*/i, num_nodes,
             /*get_local_topology_timeout=*/
             absl::Seconds(10), /*get_global_topology_timeout=*/

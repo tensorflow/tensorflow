@@ -515,8 +515,7 @@ TEST_F(Triton6xBF16GemmTest, Emit6xBF16GemmWhenBothInputsAreF32) {
             "num_stages":1,"num_warps":1,"num_ctas":1}}}
     }
   )";
-  TF_ASSERT_OK(
-      CreateTritonIrAndFileCheckForDot(this, kHloText, "triton_dot", R"(
+  ASSERT_OK(CreateTritonIrAndFileCheckForDot(this, kHloText, "triton_dot", R"(
 CHECK:          %[[INFINITY:.*]] = arith.constant dense<0x7F800000> : tensor<32x32xf32>
 CHECK:          %[[C0:.*]] = arith.constant dense<0.000000e+00> : tensor<32x32xf32>
 CHECK:          %[[LHS_HI_BF16:.*]] = arith.truncf %[[LHS_INPUT:.*]] : tensor<32x32xf32> to tensor<32x32xbf16>
@@ -584,8 +583,7 @@ TEST_F(Triton6xBF16GemmTest, Triton6xBF16GemmWorksForLongContractingDimension) {
             "num_stages":1,"num_warps":4, "num_ctas":1}}}
     }
   )";
-  TF_ASSERT_OK(
-      CreateTritonIrAndFileCheckForDot(this, kHloText, "triton_dot", R"(
+  ASSERT_OK(CreateTritonIrAndFileCheckForDot(this, kHloText, "triton_dot", R"(
 CHECK-COUNT-6:  %{{.*}} = tt.dot %{{.*}}, %{{.*}}, %{{.*}} : tensor<64x32xbf16> * tensor<32x32xbf16> -> tensor<64x32xf32>
     )"));
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHloText, ErrorSpec{/*aabs=*/1e-5,
@@ -661,8 +659,7 @@ TEST_F(Triton3xBF16GemmTest, Emit3xBF16GemmWhenBothInputsAreF32) {
             "num_stages":1,"num_warps":1,"num_ctas":1}}}
     }
   )";
-  TF_ASSERT_OK(
-      CreateTritonIrAndFileCheckForDot(this, kHloText, "triton_dot", R"(
+  ASSERT_OK(CreateTritonIrAndFileCheckForDot(this, kHloText, "triton_dot", R"(
 CHECK:          %[[INFINITY:.*]] = arith.constant dense<0x7F800000> : tensor<32x32xf32>
 CHECK:          %[[C0:.*]] = arith.constant dense<0.000000e+00> : tensor<32x32xf32>
 CHECK:          %[[LHS_HI_BF16:.*]] = arith.truncf %[[LHS_INPUT:.*]] : tensor<32x32xf32> to tensor<32x32xbf16>
@@ -724,8 +721,7 @@ TEST_F(Triton3xBF16GemmTest, Triton3xBF16GemmWorksForLongContractingDimension) {
             "num_stages":1,"num_warps":4, "num_ctas":1}}}
     }
   )";
-  TF_ASSERT_OK(
-      CreateTritonIrAndFileCheckForDot(this, kHloText, "triton_dot", R"(
+  ASSERT_OK(CreateTritonIrAndFileCheckForDot(this, kHloText, "triton_dot", R"(
 CHECK-COUNT-3:  %{{.*}} = tt.dot %{{.*}}, %{{.*}}, %{{.*}} : tensor<64x32xbf16> * tensor<32x32xbf16> -> tensor<64x32xf32>
     )"));
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHloText, ErrorSpec{/*aabs=*/1e-4,

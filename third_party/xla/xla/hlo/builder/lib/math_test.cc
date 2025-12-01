@@ -25,6 +25,7 @@ limitations under the License.
 #include <vector>
 
 #include "xla/tests/xla_test_backend_predicates.h"
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "xla/array3d.h"
 #include "xla/error_spec.h"
@@ -291,7 +292,7 @@ TEST_F(MathTest, RealFpOnlyOps) {
       test.first(p);
 
       if (primitive_util::IsFloatingPointType(ty)) {
-        TF_EXPECT_OK(b.first_error());
+        EXPECT_OK(b.first_error());
       } else {
         EXPECT_FALSE(b.first_error().ok());
       }

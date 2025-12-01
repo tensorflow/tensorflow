@@ -61,7 +61,7 @@ TEST(TslTaskExecutorTest, ParallelismOneExecutesInOrder) {
     return absl::OkStatus();
   });
 
-  TF_ASSERT_OK(task_executor.ExecuteIndependentTasks(std::move(actions), 1));
+  ASSERT_OK(task_executor.ExecuteIndependentTasks(std::move(actions), 1));
   EXPECT_THAT(results,
               ElementsAreArray({kSlowWrite, kMediumWrite, kFastWrite}));
 }
@@ -76,7 +76,7 @@ TEST(TslTaskExecutorTest, SuccessfulExecutionReturnsOkStatus) {
     actions.push_back([]() { return absl::OkStatus(); });
   }
 
-  TF_EXPECT_OK(task_executor.ExecuteIndependentTasks(std::move(actions)));
+  EXPECT_OK(task_executor.ExecuteIndependentTasks(std::move(actions)));
 }
 
 TEST(TaskExecutor, OnFailureNotAllWorkFinishes) {

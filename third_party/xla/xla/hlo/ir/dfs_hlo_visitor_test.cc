@@ -91,7 +91,7 @@ ENTRY TestComputation {
   std::unique_ptr<HloModule> module =
       ParseAndReturnVerifiedModule(hlo_string).value();
   ElementwiseTestVisitor visitor;
-  TF_EXPECT_OK(module->entry_computation()->Accept(&visitor));
+  EXPECT_OK(module->entry_computation()->Accept(&visitor));
 }
 
 TEST(FilteredDfsHloVisitorTest, FiltersInstructions) {
@@ -122,7 +122,7 @@ TEST(FilteredDfsHloVisitorTest, FiltersInstructions) {
       });
 
   // Run the filtered visitor on the computation.
-  TF_EXPECT_OK(computation->Accept(&filtered_visitor));
+  EXPECT_OK(computation->Accept(&filtered_visitor));
 
   // Check that the recording visitor only visited the Add instruction.
   EXPECT_THAT(visited_instructions, ElementsAre(add));

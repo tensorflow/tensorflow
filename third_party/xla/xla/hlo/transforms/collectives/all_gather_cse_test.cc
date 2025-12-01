@@ -55,7 +55,7 @@ TEST_F(AllGatherCSETest, ReplacesRedundantAllGather) {
   TF_ASSERT_OK_AND_ASSIGN(bool changed, pass_.Run(module.get()));
   EXPECT_TRUE(changed);
   HloDCE dce;
-  TF_ASSERT_OK(dce.Run(module.get()));
+  ASSERT_OK(dce.Run(module.get()));
 
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               op::Tuple(op::AllGather(op::Parameter(0)),
@@ -125,7 +125,7 @@ TEST_F(AllGatherCSETest, HandlesRawParameterOptimizationBarrierCSE) {
 
   TF_ASSERT_OK_AND_ASSIGN(bool changed, pass_.Run(module.get()));
   HloDCE dce;
-  TF_ASSERT_OK(dce.Run(module.get()));
+  ASSERT_OK(dce.Run(module.get()));
   EXPECT_TRUE(changed);
 
   EXPECT_THAT(
@@ -152,7 +152,7 @@ TEST_F(AllGatherCSETest, HandlesRawParameterConvert) {
 
   TF_ASSERT_OK_AND_ASSIGN(bool changed, pass_.Run(module.get()));
   HloDCE dce;
-  TF_ASSERT_OK(dce.Run(module.get()));
+  ASSERT_OK(dce.Run(module.get()));
   EXPECT_TRUE(changed);
 
   EXPECT_THAT(
@@ -213,7 +213,7 @@ TEST_F(AllGatherCSETest, RunsHloDCEAfterChanges) {
 
   TF_ASSERT_OK_AND_ASSIGN(bool changed, pass_.Run(module.get()));
   HloDCE dce;
-  TF_ASSERT_OK(dce.Run(module.get()));
+  ASSERT_OK(dce.Run(module.get()));
   EXPECT_TRUE(changed);
 
   EXPECT_THAT(module->entry_computation()->root_instruction(),

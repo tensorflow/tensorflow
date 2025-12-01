@@ -134,9 +134,9 @@ TEST(BasicStringArrayTest, CreateSuccess) {
   // This test implicitly tests that the on_done_with_buffer can be a nullptr,
   // and that the destruction of the BasicStringArray object completes
   // successfully (even when the callback is a nullptr).
-  TF_EXPECT_OK(CreateTestArray(client.get(),
-                               tsl::Future<BasicStringArray::Buffers>(buffers),
-                               /*on_done_with_buffer=*/nullptr));
+  EXPECT_OK(CreateTestArray(client.get(),
+                            tsl::Future<BasicStringArray::Buffers>(buffers),
+                            /*on_done_with_buffer=*/nullptr));
 }
 
 TEST(BasicStringArrayTest, CreateFailureWithInvalidFuture) {
@@ -171,7 +171,7 @@ TEST(BasicStringArrayTest, Destruction) {
       }));
 
   // Make sure that the array has been created successfully.
-  TF_ASSERT_OK(array_creation_future.Await());
+  ASSERT_OK(array_creation_future.Await());
 
   // Destruction must release the buffer. That is, the `on_done_with_buffer`
   // callback must be called.
@@ -254,7 +254,7 @@ TEST(GetReadyFutureTest, SuccessCase) {
   buffers.push_back({absl::Cord("abc"), absl::Cord("def")});
   tsl::Env::Default()->SchedClosure(
       [&, promise = std::move(promise)]() mutable { promise.Set(buffers); });
-  TF_EXPECT_OK(ready_future.Await());
+  EXPECT_OK(ready_future.Await());
 }
 
 TEST(GetReadyFutureTest, FailureCases) {
@@ -292,7 +292,7 @@ TEST(MakeArrayFromHostBufferTest, SuccessCase) {
   const void* data = strings->data();
   auto on_done_with_host_buffer = [strings = std::move(strings)]() {};
 
-  TF_ASSERT_OK(client->MakeArrayFromHostBuffer(
+  ASSERT_OK(client->MakeArrayFromHostBuffer(
       data, DType(DType::kString), shape,
       /*byte_strides=*/std::nullopt, std::move(sharding),
       Client::HostBufferSemantics::kImmutableOnlyDuringCall,
@@ -813,9 +813,8 @@ TEST(CopyTest, NonReadySourceArraySuccessfullyBecomesReadyAfterCopy) {
 
   TF_ASSERT_OK_AND_ASSIGN(DeviceListRef device_list,
                           client->MakeDeviceList({devices[1]}));
-  TF_ASSERT_OK(client->CopyArrays(absl::MakeSpan(arrays),
-                                  std::move(device_list), MemoryKind(),
-                                  ArrayCopySemantics::kAlwaysCopy));
+  ASSERT_OK(client->CopyArrays(absl::MakeSpan(arrays), std::move(device_list),
+                               MemoryKind(), ArrayCopySemantics::kAlwaysCopy));
 
   absl::Notification done_readying_single_device_arrays;
   tsl::Env::Default()->SchedClosure(([&]() mutable {
@@ -853,9 +852,8 @@ TEST(CopyTest, NonReadySourceArrayFailsToBecomeReadyAfterCopy) {
 
   TF_ASSERT_OK_AND_ASSIGN(DeviceListRef device_list,
                           client->MakeDeviceList({devices[1]}));
-  TF_ASSERT_OK(client->CopyArrays(absl::MakeSpan(arrays),
-                                  std::move(device_list), MemoryKind(),
-                                  ArrayCopySemantics::kAlwaysCopy));
+  ASSERT_OK(client->CopyArrays(absl::MakeSpan(arrays), std::move(device_list),
+                               MemoryKind(), ArrayCopySemantics::kAlwaysCopy));
 
   absl::Notification done_readying_single_device_arrays;
   tsl::Env::Default()->SchedClosure(([&]() mutable {
@@ -984,11 +982,11 @@ TEST(CopyToHostBufferTest, Success) {
       MakeSingleDeviceStringTestArray(input_data, client.get(), devices[0]));
 
   auto data_read = std::make_unique<std::vector<absl::Cord>>(input_data.size());
-  TF_ASSERT_OK(array
-                   ->CopyToHostBuffer(data_read->data(),
-                                      /*byte_strides=*/std::nullopt,
-                                      ArrayCopySemantics::kAlwaysCopy)
-                   .Await());
+  ASSERT_OK(array
+                ->CopyToHostBuffer(data_read->data(),
+                                   /*byte_strides=*/std::nullopt,
+                                   ArrayCopySemantics::kAlwaysCopy)
+                .Await());
   EXPECT_THAT(*data_read, ElementsAreArray(input_data));
 }
 
@@ -1001,7 +999,7 @@ TEST(CopyToHostBufferTest, FailsAfterDeletion) {
       auto array,
       MakeSingleDeviceStringTestArray(input_data, client.get(), devices[0]));
 
-  TF_ASSERT_OK(array->Delete().Await());
+  ASSERT_OK(array->Delete().Await());
 
   auto data_read = std::make_unique<std::vector<absl::Cord>>(input_data.size());
   EXPECT_THAT(array
@@ -1058,7 +1056,7 @@ TEST(CopytoHostBufferTest,
 
   done_readying_single_device_arrays.WaitForNotification();
 
-  TF_ASSERT_OK(copy_completion_future.Await());
+  ASSERT_OK(copy_completion_future.Await());
   EXPECT_THAT(*data_read, ElementsAre("abc"));
 }
 

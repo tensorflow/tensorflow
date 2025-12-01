@@ -39,7 +39,7 @@ TEST(TemporaryDirectoryTest, CreateForCurrentTestcase) {
     path = temp_dir.path();
 
     tsl::FileStatistics stat;
-    TF_ASSERT_OK(tsl::Env::Default()->Stat(temp_dir.path(), &stat));
+    ASSERT_OK(tsl::Env::Default()->Stat(temp_dir.path(), &stat));
     EXPECT_TRUE(stat.is_directory);
   }
 

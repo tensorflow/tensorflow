@@ -19,6 +19,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status_matchers.h"
 #include "absl/types/span.h"
@@ -95,7 +96,7 @@ module {
       loaded_exec->Execute(absl::MakeSpan(&input, 1), options,
                            /*devices=*/std::nullopt));
 
-  TF_ASSERT_OK(result.status.Await());
+  ASSERT_OK(result.status.Await());
   ASSERT_EQ(result.outputs.size(), 1);
   ASSERT_NO_FATAL_FAILURE(
       AssertPerShardData<int>(result.outputs[0], DType(DType::kS32),
@@ -143,7 +144,7 @@ module {
   TF_ASSERT_OK_AND_ASSIGN(
       LoadedExecutable::ExecuteResult result,
       loaded_exec->Execute(absl::MakeSpan(&input, 1), options, devices));
-  TF_ASSERT_OK(result.status.Await());
+  ASSERT_OK(result.status.Await());
   ASSERT_EQ(result.outputs.size(), 1);
   ASSERT_NO_FATAL_FAILURE(
       AssertPerShardData<int>(result.outputs[0], DType(DType::kS32),
@@ -198,7 +199,7 @@ module {
       auto result,
       mpmd_executable->Execute(absl::MakeSpan(&input, 1), options, devices));
 
-  TF_ASSERT_OK(result.status.Await());
+  ASSERT_OK(result.status.Await());
   ASSERT_EQ(result.outputs.size(), 1);
   ASSERT_NO_FATAL_FAILURE(
       AssertPerShardData<int>(result.outputs[0], DType(DType::kS32),
@@ -255,7 +256,7 @@ module {
   TF_ASSERT_OK_AND_ASSIGN(
       auto result,
       mpmd_executable->Execute(absl::MakeSpan(&input, 1), options, devices));
-  TF_ASSERT_OK(result.status.Await());
+  ASSERT_OK(result.status.Await());
   ASSERT_EQ(result.outputs.size(), 1);
   ASSERT_NO_FATAL_FAILURE(AssertPerShardData<int>(
       result.outputs[0], DType(DType::kS32), Shape({2, 2}),
@@ -310,7 +311,7 @@ module {
   TF_ASSERT_OK_AND_ASSIGN(
       auto result,
       mpmd_executable->Execute(absl::MakeSpan(&input, 1), options, devices));
-  TF_ASSERT_OK(result.status.Await());
+  ASSERT_OK(result.status.Await());
   ASSERT_EQ(result.outputs.size(), 1);
   ASSERT_NO_FATAL_FAILURE(
       AssertPerShardData<int>(result.outputs[0], DType(DType::kS32),
@@ -374,7 +375,7 @@ module {
   TF_ASSERT_OK_AND_ASSIGN(
       LoadedExecutable::ExecuteResult result,
       mpmd_executable->Execute(absl::MakeSpan(&input, 1), options, devices));
-  TF_ASSERT_OK(result.status.Await());
+  ASSERT_OK(result.status.Await());
   ASSERT_EQ(result.outputs.size(), 1);
   ASSERT_NO_FATAL_FAILURE(
       AssertPerShardData<int>(result.outputs[0], DType(DType::kS32),
@@ -416,7 +417,7 @@ module {
       loaded_exec->Execute(absl::MakeSpan(&input, 1), options,
                            /*devices=*/std::nullopt));
 
-  TF_ASSERT_OK(result.status.Await());
+  ASSERT_OK(result.status.Await());
   ASSERT_EQ(result.outputs.size(), 1);
   TF_ASSERT_OK_AND_ASSIGN(DeviceListRef device_list1,
                           client_->MakeDeviceList({devices->devices()[1]}));
@@ -466,7 +467,7 @@ module {
       loaded_exec->Execute(absl::MakeSpan(&input, 1), options,
                            /*devices=*/std::nullopt));
 
-  TF_ASSERT_OK(result.status.Await());
+  ASSERT_OK(result.status.Await());
   ASSERT_EQ(result.outputs.size(), 2);
   ASSERT_NO_FATAL_FAILURE(
       AssertPerShardData<int>(result.outputs[0], DType(DType::kS32),
@@ -509,7 +510,7 @@ module {
       LoadedExecutable::ExecuteResult result,
       loaded_exec->Execute(/*args=*/{}, options, /*devices=*/std::nullopt));
 
-  TF_ASSERT_OK(result.status.Await());
+  ASSERT_OK(result.status.Await());
   ASSERT_EQ(result.outputs.size(), 1);
   ASSERT_NO_FATAL_FAILURE(
       AssertPerShardData<int>(result.outputs[0], DType(DType::kS32),
@@ -556,7 +557,7 @@ module {
       loaded_exec->Execute(absl::MakeSpan(&input, 1), options,
                            /*devices=*/std::nullopt));
 
-  TF_ASSERT_OK(result.status.Await());
+  ASSERT_OK(result.status.Await());
   ASSERT_EQ(result.outputs.size(), 0);
 }
 
@@ -601,7 +602,7 @@ module {
       LoadedExecutable::ExecuteResult result,
       loaded_exec->Execute(absl::MakeSpan(&input, 1), options,
                            /*devices=*/std::nullopt));
-  TF_ASSERT_OK(result.status.Await());
+  ASSERT_OK(result.status.Await());
   ASSERT_EQ(result.outputs.size(), 1);
   ASSERT_NO_FATAL_FAILURE(
       AssertPerShardData<int>(result.outputs[0], DType(DType::kS32),
@@ -657,7 +658,7 @@ module {
       LoadedExecutable::ExecuteResult result,
       loaded_exec->Execute(absl::MakeSpan(&input, 1), options,
                            /*devices=*/std::nullopt));
-  TF_ASSERT_OK(result.status.Await());
+  ASSERT_OK(result.status.Await());
   ASSERT_EQ(result.outputs.size(), 1);
   ASSERT_NO_FATAL_FAILURE(
       AssertPerShardData<int>(result.outputs[0], DType(DType::kS32),
@@ -705,7 +706,7 @@ module {
       LoadedExecutable::ExecuteResult result,
       loaded_exec->Execute(absl::MakeSpan(&input, 1), options,
                            /*devices=*/std::nullopt));
-  TF_ASSERT_OK(result.status.Await());
+  ASSERT_OK(result.status.Await());
   ASSERT_EQ(result.outputs.size(), 1);
   ASSERT_NO_FATAL_FAILURE(
       AssertPerShardData<int>(result.outputs[0], DType(DType::kS32),
@@ -759,7 +760,7 @@ module {
   TF_ASSERT_OK_AND_ASSIGN(
       LoadedExecutable::ExecuteResult result,
       loaded_exec->Execute(absl::MakeSpan(&input, 1), options, devices));
-  TF_ASSERT_OK(result.status.Await());
+  ASSERT_OK(result.status.Await());
   ASSERT_EQ(result.outputs.size(), 2);
   TF_ASSERT_OK_AND_ASSIGN(DeviceListRef device_list0,
                           client_->MakeDeviceList({devices->devices()[0]}));
@@ -820,7 +821,7 @@ module {
   TF_ASSERT_OK_AND_ASSIGN(
       LoadedExecutable::ExecuteResult result,
       loaded_exec->Execute(absl::MakeSpan(&input, 1), options, devices));
-  TF_ASSERT_OK(result.status.Await());
+  ASSERT_OK(result.status.Await());
   ASSERT_EQ(result.outputs.size(), 1);
   ASSERT_NO_FATAL_FAILURE(
       AssertPerShardData<int>(result.outputs[0], DType(DType::kS32),
@@ -867,7 +868,7 @@ module {
   TF_ASSERT_OK_AND_ASSIGN(
       LoadedExecutable::ExecuteResult result,
       loaded_exec->Execute(absl::MakeSpan(&input, 1), options, devices));
-  TF_ASSERT_OK(result.status.Await());
+  ASSERT_OK(result.status.Await());
   ASSERT_EQ(result.outputs.size(), 2);
   TF_ASSERT_OK_AND_ASSIGN(DeviceListRef device_list0,
                           client_->MakeDeviceList({devices->devices()[0]}));
@@ -949,7 +950,7 @@ module {
       loaded_exec->Execute(absl::MakeSpan(&input, 1), execute_options,
                            /*devices=*/std::nullopt));
 
-  TF_ASSERT_OK(result.status.Await());
+  ASSERT_OK(result.status.Await());
   ASSERT_EQ(result.outputs.size(), 1);
   ASSERT_NO_FATAL_FAILURE(
       AssertPerShardData<int>(result.outputs[0], DType(DType::kS32),

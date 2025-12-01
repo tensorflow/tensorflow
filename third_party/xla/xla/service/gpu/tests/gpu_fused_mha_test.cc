@@ -20,6 +20,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include "absl/strings/str_replace.h"
 #include "absl/strings/string_view.h"
 #include "xla/array4d.h"
@@ -1555,9 +1556,8 @@ class FlashAttentionBMMScaleSoftmaxDropoutBMM
         std::unique_ptr<HloModule> module,
         ParseAndReturnVerifiedModule(
             kModuleFlashAttentionTrainingBMM1SoftmaxDropoutBMM2HloStringBF16));
-    TF_EXPECT_OK(
-        Execute(std::move(module), {&lhs_bmm1_literal, &rhs_bmm1_literal,
-                                    &rhs_bmm2_literal, &do_literal}));
+    EXPECT_OK(Execute(std::move(module), {&lhs_bmm1_literal, &rhs_bmm1_literal,
+                                          &rhs_bmm2_literal, &do_literal}));
   }
 };
 

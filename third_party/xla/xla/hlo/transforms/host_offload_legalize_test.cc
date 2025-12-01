@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstdint>
 #include <string>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -41,7 +42,7 @@ namespace {
 class HostOffloadLegalizeTest : public HloHardwareIndependentTestBase {
  protected:
   absl::StatusOr<bool> RunHostOffloadLegalize(HloModule* module) {
-    TF_EXPECT_OK(verifier().Run(module).status());
+    EXPECT_OK(verifier().Run(module).status());
     if (module->has_schedule()) {
       return absl::InternalError("Expected a non-scheduled module");
     }

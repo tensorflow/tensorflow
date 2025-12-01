@@ -492,7 +492,6 @@ tsl_cc_test(
     srcs = ["file_system_helper_test.cc"],
     deps = [
         ":env",
-        ":env_impl",
         ":file_system_helper",
         "//xla/tsl/lib/core:status_test_util",
         "@com_google_googletest//:gtest_main",

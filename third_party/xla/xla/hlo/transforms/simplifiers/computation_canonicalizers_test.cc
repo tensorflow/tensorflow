@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "xla/hlo/transforms/simplifiers/computation_canonicalizers.h"
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/testlib/filecheck.h"
@@ -62,7 +63,7 @@ TEST_F(ComputationCanonicalizersTest, MoveParametersToFront) {
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hlo));
-  TF_ASSERT_OK(MoveParametersAndConstantsToFront(*module->entry_computation()));
+  ASSERT_OK(MoveParametersAndConstantsToFront(*module->entry_computation()));
   EXPECT_THAT(
       RunFileCheck(
           module->ToString(HloPrintOptions{}.set_print_operand_shape(false)),

@@ -140,7 +140,7 @@ ENTRY e {
   std::string ExpectToReadNonEmptyFile(absl::string_view file_path) {
     std::string str;
     tsl::Env* env = tsl::Env::Default();
-    TF_EXPECT_OK(tsl::ReadFileToString(env, std::string(file_path), &str));
+    EXPECT_OK(tsl::ReadFileToString(env, std::string(file_path), &str));
     EXPECT_THAT(str, Not(IsEmpty()));
     return str;
   }
@@ -160,9 +160,9 @@ ENTRY e {
 };
 
 TEST_F(AutotunerUtilTest, SerializeAutotuneResultsToFile_TextProto1) {
-  TF_EXPECT_OK(PopulateResultCache());
+  EXPECT_OK(PopulateResultCache());
   std::string kFilePath = GetUniqueTempFilePath(".txt");
-  TF_EXPECT_OK(AutotunerUtil::SerializeAutotuneResultsToFile(kFilePath));
+  EXPECT_OK(AutotunerUtil::SerializeAutotuneResultsToFile(kFilePath));
 
   std::string autotune_results_str = ExpectToReadNonEmptyFile(kFilePath);
   AutotuneResults results;
@@ -172,9 +172,9 @@ TEST_F(AutotunerUtilTest, SerializeAutotuneResultsToFile_TextProto1) {
 }
 
 TEST_F(AutotunerUtilTest, SerializeAutotuneResultsToFile_TextProto2) {
-  TF_EXPECT_OK(PopulateResultCache());
+  EXPECT_OK(PopulateResultCache());
   std::string kFilePath = GetUniqueTempFilePath(".textproto");
-  TF_EXPECT_OK(AutotunerUtil::SerializeAutotuneResultsToFile(kFilePath));
+  EXPECT_OK(AutotunerUtil::SerializeAutotuneResultsToFile(kFilePath));
 
   std::string autotune_results_str = ExpectToReadNonEmptyFile(kFilePath);
   AutotuneResults results;
@@ -183,9 +183,9 @@ TEST_F(AutotunerUtilTest, SerializeAutotuneResultsToFile_TextProto2) {
 }
 
 TEST_F(AutotunerUtilTest, SerializeAutotuneResultsToFile_Protobuf) {
-  TF_EXPECT_OK(PopulateResultCache());
+  EXPECT_OK(PopulateResultCache());
   std::string kFilePath = GetUniqueTempFilePath(".pb");
-  TF_EXPECT_OK(AutotunerUtil::SerializeAutotuneResultsToFile(kFilePath));
+  EXPECT_OK(AutotunerUtil::SerializeAutotuneResultsToFile(kFilePath));
 
   std::string autotune_results_str = ExpectToReadNonEmptyFile(kFilePath);
   AutotuneResults results;
@@ -193,13 +193,13 @@ TEST_F(AutotunerUtilTest, SerializeAutotuneResultsToFile_Protobuf) {
 }
 
 TEST_F(AutotunerUtilTest, LoadAutotuneResultsFromFile_TextProto1) {
-  TF_EXPECT_OK(PopulateResultCache());
+  EXPECT_OK(PopulateResultCache());
   std::string kFilePath = GetUniqueTempFilePath(".txt");
-  TF_EXPECT_OK(AutotunerUtil::SerializeAutotuneResultsToFile(kFilePath));
+  EXPECT_OK(AutotunerUtil::SerializeAutotuneResultsToFile(kFilePath));
   AutotunerUtil::ClearAutotuneResults();
   EXPECT_TRUE(AutotunerUtil::ResultCacheIsEmpty());
 
-  TF_EXPECT_OK(AutotunerUtil::LoadAutotuneResultsFromFile(kFilePath));
+  EXPECT_OK(AutotunerUtil::LoadAutotuneResultsFromFile(kFilePath));
   EXPECT_FALSE(AutotunerUtil::ResultCacheIsEmpty());
 
   stream_executor::GpuDeviceInfoProto device_description_proto;
@@ -235,31 +235,31 @@ TEST_F(AutotunerUtilTest, LoadAutotuneResultsFromFile_TextProto1) {
 }
 
 TEST_F(AutotunerUtilTest, LoadAutotuneResultsFromFile_TextProto2) {
-  TF_EXPECT_OK(PopulateResultCache());
+  EXPECT_OK(PopulateResultCache());
   std::string kFilePath = GetUniqueTempFilePath(".textproto");
-  TF_EXPECT_OK(AutotunerUtil::SerializeAutotuneResultsToFile(kFilePath));
+  EXPECT_OK(AutotunerUtil::SerializeAutotuneResultsToFile(kFilePath));
   AutotunerUtil::ClearAutotuneResults();
   EXPECT_TRUE(AutotunerUtil::ResultCacheIsEmpty());
 
-  TF_EXPECT_OK(AutotunerUtil::LoadAutotuneResultsFromFile(kFilePath));
+  EXPECT_OK(AutotunerUtil::LoadAutotuneResultsFromFile(kFilePath));
   EXPECT_FALSE(AutotunerUtil::ResultCacheIsEmpty());
 }
 
 TEST_F(AutotunerUtilTest, LoadAutotuneResultsFromFile_Protobuf) {
-  TF_EXPECT_OK(PopulateResultCache());
+  EXPECT_OK(PopulateResultCache());
   std::string kFilePath = GetUniqueTempFilePath(".pb");
-  TF_EXPECT_OK(AutotunerUtil::SerializeAutotuneResultsToFile(kFilePath));
+  EXPECT_OK(AutotunerUtil::SerializeAutotuneResultsToFile(kFilePath));
   AutotunerUtil::ClearAutotuneResults();
   EXPECT_TRUE(AutotunerUtil::ResultCacheIsEmpty());
 
-  TF_EXPECT_OK(AutotunerUtil::LoadAutotuneResultsFromFile(kFilePath));
+  EXPECT_OK(AutotunerUtil::LoadAutotuneResultsFromFile(kFilePath));
   EXPECT_FALSE(AutotunerUtil::ResultCacheIsEmpty());
 }
 
 TEST_F(AutotunerUtilTest, ResultConflictsAreDetected) {
-  TF_EXPECT_OK(PopulateResultCache());
+  EXPECT_OK(PopulateResultCache());
   std::string kFilePath = GetUniqueTempFilePath(".pb");
-  TF_EXPECT_OK(AutotunerUtil::SerializeAutotuneResultsToFile(kFilePath));
+  EXPECT_OK(AutotunerUtil::SerializeAutotuneResultsToFile(kFilePath));
   EXPECT_THAT(AutotunerUtil::LoadAutotuneResultsFromFile(kFilePath),
               absl_testing::StatusIs(absl::StatusCode::kInternal,
                                      HasSubstr("Duplicate autotuning result")));
@@ -270,7 +270,7 @@ TEST_F(AutotunerUtilTest, ResultConflictsAreDetected) {
 TEST_F(AutotunerUtilTest, FailIfRequireCompleteAotAutotuning) {
   std::string kFilePath = GetUniqueTempFilePath(".txt");
   auto hlo_module = GetOptimizedModule(kHloText);
-  TF_EXPECT_OK(hlo_module.status());
+  EXPECT_OK(hlo_module.status());
   std::vector<HloComputation*> computations =
       (*hlo_module)
           ->MakeNonfusionComputations(absl::flat_hash_set<absl::string_view>());
@@ -314,9 +314,9 @@ TEST_F(AutotunerUtilTest, OkIfJitAutotuningDisabledButAlreadyLoadedAOT) {
         AutotuneConfig config,
         AutotuneConfig::FromDebugOptions(
             DeviceOrDevicelessConfig{DeviceConfig{executor}}, DebugOptions()));
-    TF_EXPECT_OK(AutotunerUtil::Autotune(instruction, config, [&] {
-                   return AutotuneResult();
-                 }).status());
+    EXPECT_OK(AutotunerUtil::Autotune(instruction, config, [&] {
+                return AutotuneResult();
+              }).status());
     EXPECT_EQ(AutotunerUtil::GetCacheStats().cache_hits, 0);
     EXPECT_EQ(AutotunerUtil::GetCacheStats().cache_misses, 1);
   }
@@ -331,9 +331,9 @@ TEST_F(AutotunerUtilTest, OkIfJitAutotuningDisabledButAlreadyLoadedAOT) {
           DeviceOrDevicelessConfig{DeviceConfig{executor}}, options));
   // Even though JIT autotuning is disabled, there is no cache miss when running
   // autotuning for the same entry, so no error should be raised either.
-  TF_EXPECT_OK(AutotunerUtil::Autotune(instruction, config, [&] {
-                 return AutotuneResult();
-               }).status());
+  EXPECT_OK(AutotunerUtil::Autotune(instruction, config, [&] {
+              return AutotuneResult();
+            }).status());
   EXPECT_EQ(AutotunerUtil::GetCacheStats().cache_hits, 1);
   EXPECT_EQ(AutotunerUtil::GetCacheStats().cache_misses, 1);
 }

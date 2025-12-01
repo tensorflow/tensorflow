@@ -137,13 +137,13 @@ TEST_F(BuffersDebugFloatCheckThunkTest, CalculatesNanCounts) {
   {
     std::vector<Eigen::bfloat16> data(kInputElems, Eigen::bfloat16(0));
     data[123] = std::numeric_limits<Eigen::bfloat16>::quiet_NaN();
-    TF_ASSERT_OK(stream_->Memcpy(&inputs0_mem, data.data(), kInputSizeInBytes));
+    ASSERT_OK(stream_->Memcpy(&inputs0_mem, data.data(), kInputSizeInBytes));
   }
   {
     std::vector<float> data(kInputElems, 0);
     data[456] = std::numeric_limits<float>::quiet_NaN();
     data[789] = std::numeric_limits<float>::quiet_NaN();
-    TF_ASSERT_OK(stream_->Memcpy(&inputs1_mem, data.data(), kInputSizeInBytes));
+    ASSERT_OK(stream_->Memcpy(&inputs1_mem, data.data(), kInputSizeInBytes));
   }
 
   // Setup parameters for Initialize/Prepare/ExecuteOnStream
@@ -162,9 +162,9 @@ TEST_F(BuffersDebugFloatCheckThunkTest, CalculatesNanCounts) {
       Thunk::ThunkInfo(), checked_thunk_info, log_slice,
       {{/*buffer_idx=*/0, inputs[0]}, {/*buffer_idx=*/1, inputs[1]}},
       metadata_store);
-  TF_ASSERT_OK(thunk.Initialize(init_params));
-  TF_ASSERT_OK(thunk.Prepare(Thunk::PrepareParams{}));
-  TF_ASSERT_OK(thunk.ExecuteOnStream(execute_params));
+  ASSERT_OK(thunk.Initialize(init_params));
+  ASSERT_OK(thunk.Prepare(Thunk::PrepareParams{}));
+  ASSERT_OK(thunk.ExecuteOnStream(execute_params));
   TF_ASSERT_OK_AND_ASSIGN(std::vector<BufferDebugFloatCheckEntry> entries,
                           device_log.ReadFromDevice(*stream_));
 
@@ -244,23 +244,23 @@ TEST_F(BuffersDebugFloatCheckThunkTest,
   // a kernel on the wrong device will fail with CUDA_ERROR_INVALID_HANDLE. The
   // error may be reported from the next operation on the stream, so assert on
   // BlockHostUntilDone as well.
-  TF_ASSERT_OK(
+  ASSERT_OK(
       thunk.Initialize(Thunk::InitializeParams{/*executor=*/device0.executor}));
-  TF_ASSERT_OK(thunk.ExecuteOnStream(Thunk::ExecuteParams::Create(
+  ASSERT_OK(thunk.ExecuteOnStream(Thunk::ExecuteParams::Create(
       ServiceExecutableRunOptions(), device0.allocations, device0.stream.get(),
       /*command_buffer_trace_stream=*/device0.stream.get(),
       /*collective_params=*/nullptr,
       /*collective_cliques=*/nullptr)));
-  TF_ASSERT_OK(device0.stream->BlockHostUntilDone());
+  ASSERT_OK(device0.stream->BlockHostUntilDone());
 
-  TF_ASSERT_OK(
+  ASSERT_OK(
       thunk.Initialize(Thunk::InitializeParams{/*executor=*/device1.executor}));
-  TF_ASSERT_OK(thunk.ExecuteOnStream(Thunk::ExecuteParams::Create(
+  ASSERT_OK(thunk.ExecuteOnStream(Thunk::ExecuteParams::Create(
       ServiceExecutableRunOptions(), device1.allocations, device1.stream.get(),
       /*command_buffer_trace_stream=*/device1.stream.get(),
       /*collective_params=*/nullptr,
       /*collective_cliques=*/nullptr)));
-  TF_ASSERT_OK(device1.stream->BlockHostUntilDone());
+  ASSERT_OK(device1.stream->BlockHostUntilDone());
 }
 
 }  // namespace

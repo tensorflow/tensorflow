@@ -13360,14 +13360,13 @@ ENTRY main {
                                    op::Parameter(1))));
 
   // Check the instruction schedule.
-  TF_EXPECT_OK(
-      CheckSchedule(*module, root->operand(1),
-                    /*slices_start_after_instruction_name=*/"p1",
-                    /*slices_done_before_instruction_name=*/"r",
-                    /*expect_slices_started_at_different_times=*/true));
+  EXPECT_OK(CheckSchedule(*module, root->operand(1),
+                          /*slices_start_after_instruction_name=*/"p1",
+                          /*slices_done_before_instruction_name=*/"r",
+                          /*expect_slices_started_at_different_times=*/true));
 
   // Check expectations on the chunks assigned to the asynchronous sliced copy.
-  TF_EXPECT_OK(CheckSliceChunks(*assignments, root->operand(1)));
+  EXPECT_OK(CheckSliceChunks(*assignments, root->operand(1)));
 }
 
 TEST_F(SlicedPrefetchTest, TwoSlicesWithCopyReplacement) {
@@ -13460,14 +13459,13 @@ ENTRY main {
                      op::Parameter(1))));
 
   // Check the instruction schedule.
-  TF_EXPECT_OK(
-      CheckSchedule(*module, root->operand(1),
-                    /*slices_start_after_instruction_name=*/"p1",
-                    /*slices_done_before_instruction_name=*/"r",
-                    /*expect_slices_started_at_different_times=*/true));
+  EXPECT_OK(CheckSchedule(*module, root->operand(1),
+                          /*slices_start_after_instruction_name=*/"p1",
+                          /*slices_done_before_instruction_name=*/"r",
+                          /*expect_slices_started_at_different_times=*/true));
 
   // Check expectations on the chunks assigned to the asynchronous sliced copy.
-  TF_EXPECT_OK(CheckSliceChunks(*assignments, root->operand(1)));
+  EXPECT_OK(CheckSliceChunks(*assignments, root->operand(1)));
 }
 
 TEST_F(SlicedPrefetchTest, SlicingDisabled) {
@@ -13630,7 +13628,7 @@ ENTRY main {
                                    op::Parameter(1))));
 
   // Check the instruction schedule.
-  TF_EXPECT_OK(CheckSchedule(
+  EXPECT_OK(CheckSchedule(
       *module, root->operand(1),
       // The CostAnalysisPrefetchIntervalPicker does not necessarily pick the
       // earliest possible time to start the prefetch.
@@ -13639,7 +13637,7 @@ ENTRY main {
       /*expect_slices_started_at_different_times=*/true));
 
   // Check expectations on the chunks assigned to the asynchronous sliced copy.
-  TF_EXPECT_OK(CheckSliceChunks(*assignments, root->operand(1)));
+  EXPECT_OK(CheckSliceChunks(*assignments, root->operand(1)));
 }
 
 TEST_F(SlicedPrefetchTest, LoopAliasing) {
@@ -13949,7 +13947,7 @@ ENTRY main {
 
   // Check expectations on the chunks assigned to the asynchronous sliced copy.
   // In particular, we want to make sure the slices are still contiguous.
-  TF_EXPECT_OK(CheckSliceChunks(*assignments, d->operand(0)));
+  EXPECT_OK(CheckSliceChunks(*assignments, d->operand(0)));
 
   // Find the slices and offsets for p2, in the order they start in the
   // schedule.
@@ -14142,7 +14140,7 @@ ENTRY main {
                                     kAlternateMemorySpace, kDefaultMemorySpace,
                                     {{{0, 4}, {0, 8}}, {{4, 8}, {0, 8}}},
                                     op::Parameter(6)))));
-  TF_EXPECT_OK(CheckSchedule(
+  EXPECT_OK(CheckSchedule(
       *module_and_assignments1.module, root1->operand(1)->operand(0),
       /*slices_start_after_instruction_name=*/"prefetch",
       /*slices_done_before_instruction_name=*/"prefetch_use",
@@ -14333,11 +14331,11 @@ ENTRY main {
                   op::Parameter(2), /*expect_bitcasted_io=*/true)));
 
   // Check expectations on the chunks assigned to the asynchronous sliced copy.
-  TF_EXPECT_OK(CheckSliceChunks(*assignments, root->operand(1),
-                                /*expect_bitcasted_io=*/true));
-  TF_EXPECT_OK(CheckSliceChunks(*assignments,
-                                root->operand(0)->operand(0)->operand(0),
-                                /*expect_bitcasted_io=*/true));
+  EXPECT_OK(CheckSliceChunks(*assignments, root->operand(1),
+                             /*expect_bitcasted_io=*/true));
+  EXPECT_OK(CheckSliceChunks(*assignments,
+                             root->operand(0)->operand(0)->operand(0),
+                             /*expect_bitcasted_io=*/true));
 }
 
 TEST_F(MemorySpaceAssignmentTest, TestAsyncCopyCustomKernel) {
@@ -15023,7 +15021,7 @@ ENTRY entry {
 })";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hlo_string));
-  TF_ASSERT_OK(module->input_output_alias_config().SetUpAlias({1}, 3, {}));
+  ASSERT_OK(module->input_output_alias_config().SetUpAlias({1}, 3, {}));
   Options memory_space_options = DefaultMemorySpaceOptions();
   memory_space_options.max_size_in_bytes = 24;
   memory_space_options.reserved_bytes_for_block_prefetches = 24;

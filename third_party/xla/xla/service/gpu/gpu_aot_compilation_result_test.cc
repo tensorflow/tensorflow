@@ -151,8 +151,8 @@ class GpuAotCompilationResultTest : public ::testing::Test {
                 AnyOf(IsOkAndHolds(kCudaSymbol),
                       StatusIs(absl::StatusCode::kNotFound)));
     if (!registry.FindSymbol("persistent_kernel_name", platform_id_).ok()) {
-      TF_ASSERT_OK(registry.RegisterSymbol("persistent_kernel_name",
-                                           platform_id_, kCudaSymbol));
+      ASSERT_OK(registry.RegisterSymbol("persistent_kernel_name", platform_id_,
+                                        kCudaSymbol));
     }
   }
 

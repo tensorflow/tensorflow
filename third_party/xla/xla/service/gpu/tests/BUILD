@@ -906,6 +906,7 @@ cc_library(
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",
         "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest_for_library",
     ],
     alwayslink = True,  # This library registers test cases at static initialization time.
 )

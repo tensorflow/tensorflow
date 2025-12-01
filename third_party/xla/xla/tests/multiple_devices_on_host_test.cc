@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <gmock/gmock.h>
 #include "absl/synchronization/mutex.h"
 #include "xla/client/client_library.h"
 #include "xla/hlo/builder/xla_builder.h"
@@ -87,14 +88,14 @@ void TestWithDeviceCount(const int device_count) {
 
   for (int device_ordinal = 0; device_ordinal < device_count;
        device_ordinal++) {
-    TF_ASSERT_OK(client->TransferToInfeedLocal(
+    ASSERT_OK(client->TransferToInfeedLocal(
         LiteralUtil::CreateR0<int32_t>(device_ordinal * 100), device_ordinal));
   }
 
   for (int device_ordinal = 0; device_ordinal < device_count;
        device_ordinal++) {
     Literal outfeed(ShapeUtil::MakeShape(S32, {}));
-    TF_ASSERT_OK(client->TransferFromOutfeedLocal(device_ordinal, &outfeed));
+    ASSERT_OK(client->TransferFromOutfeedLocal(device_ordinal, &outfeed));
     EXPECT_EQ(outfeed,
               LiteralUtil::CreateR0<int32_t>(device_ordinal * 100 + 1));
   }
@@ -106,7 +107,7 @@ void TestWithDeviceCount(const int device_count) {
 
   for (int device_ordinal = 0; device_ordinal < device_count;
        device_ordinal++) {
-    TF_ASSERT_OK(results[device_ordinal].second.status());
+    ASSERT_OK(results[device_ordinal].second.status());
   }
 }
 

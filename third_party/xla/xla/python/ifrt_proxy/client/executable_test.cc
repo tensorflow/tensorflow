@@ -254,12 +254,12 @@ TEST_F(LoadedExecutableTest, Execute) {
     auto* outputs =
         execute_response.mutable_loaded_executable_execute_response()
             ->mutable_outputs();
-    TF_ASSERT_OK(SingleDeviceSharding::Create(&device, MemoryKind())
-                     ->ToProto(*(*outputs)[0].mutable_sharding(),
-                               rpc_helper_->ifrt_serdes_version()));
-    TF_ASSERT_OK(SingleDeviceSharding::Create(&device, MemoryKind())
-                     ->ToProto(*(*outputs)[1].mutable_sharding(),
-                               rpc_helper_->ifrt_serdes_version()));
+    ASSERT_OK(SingleDeviceSharding::Create(&device, MemoryKind())
+                  ->ToProto(*(*outputs)[0].mutable_sharding(),
+                            rpc_helper_->ifrt_serdes_version()));
+    ASSERT_OK(SingleDeviceSharding::Create(&device, MemoryKind())
+                  ->ToProto(*(*outputs)[1].mutable_sharding(),
+                            rpc_helper_->ifrt_serdes_version()));
   }
   EXPECT_CALL(*session_, Enqueue(Pointee(Partially(EquivToProto(
                              R"pb(loaded_executable_execute_request {

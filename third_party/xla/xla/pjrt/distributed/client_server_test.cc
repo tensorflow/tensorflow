@@ -167,7 +167,7 @@ TEST_F(ClientServerTest, ConnectAndShutdownAreBarriers) {
     }
   }
   for (int i = 0; i < num_nodes; ++i) {
-    TF_EXPECT_OK(statuses[i]);
+    EXPECT_OK(statuses[i]);
   }
 }
 
@@ -273,8 +273,8 @@ TEST_F(ClientServerTest, ConnectAndEnumerateDevices) {
       thread_pool.Schedule([&, i]() { statuses[i] = functions[i](); });
     }
   }
-  TF_EXPECT_OK(statuses[0]);
-  TF_EXPECT_OK(statuses[1]);
+  EXPECT_OK(statuses[0]);
+  EXPECT_OK(statuses[1]);
 }
 
 // Make sure device list is ordered by 0,1,...,10 instead of 0,1,10,2,...,9.
@@ -327,7 +327,7 @@ TEST_F(ClientServerTest, EnumerateElevenDevices) {
     }
   }
   for (int i = 0; i < num_nodes; ++i) {
-    TF_EXPECT_OK(statuses[i]);
+    EXPECT_OK(statuses[i]);
   }
 }
 
@@ -363,7 +363,7 @@ TEST_F(ClientServerTest, ZeroInitTimeoutShouldStillWaitForOtherTasks) {
     }
   }
   for (int i = 0; i < num_nodes; ++i) {
-    TF_EXPECT_OK(statuses[i]);
+    EXPECT_OK(statuses[i]);
   }
 }
 
@@ -399,7 +399,7 @@ TEST_F(ClientServerTest,
       thread_pool.Schedule([&, i]() { statuses[i] = thread_fn(i); });
     }
   }
-  TF_EXPECT_OK(statuses[0]);
+  EXPECT_OK(statuses[0]);
   for (int i = 1; i < num_nodes; ++i) {
     // Other nodes will be placed into ERROR state when the service informs
     // them of node 0's missing heartbeat failure.
@@ -442,7 +442,7 @@ TEST_F(ClientServerTest, ClientsTerminateShutdownIfAnyClientGoesAway) {
       thread_pool.Schedule([&, i]() { statuses[i] = thread_fn(i); });
     }
   }
-  TF_EXPECT_OK(statuses[0]);
+  EXPECT_OK(statuses[0]);
   for (int i = 1; i < num_nodes; ++i) {
     // The error type depends on whether the node turns into ERROR state during
     // or before the shutdown call.
@@ -476,7 +476,7 @@ TEST_F(ClientServerTest, ClientsShutdownSuccessfully) {
     }
   }
   for (int i = 0; i < num_nodes; ++i) {
-    TF_EXPECT_OK(statuses[i]);
+    EXPECT_OK(statuses[i]);
   }
 }
 
@@ -511,7 +511,7 @@ TEST_F(ClientServerTest, MissedHeartbeatCallbackIsExecutedIfAnyClientGoesAway) {
     }
   }
   for (int i = 0; i < num_nodes; ++i) {
-    TF_EXPECT_OK(statuses[i]);
+    EXPECT_OK(statuses[i]);
   }
 }
 
@@ -548,7 +548,7 @@ TEST_F(ClientServerTest,
     }
   }
   for (int i = 0; i < num_nodes; ++i) {
-    TF_EXPECT_OK(statuses[i]);
+    EXPECT_OK(statuses[i]);
   }
 }
 
@@ -628,7 +628,7 @@ TEST_F(ClientServerTest, LateClientsAreOk) {
     }
   }
   for (int i = 0; i < num_nodes; ++i) {
-    TF_EXPECT_OK(statuses[i]);
+    EXPECT_OK(statuses[i]);
   }
 }
 
@@ -824,7 +824,7 @@ TEST_F(ClientServerTest, WaitAtBarrier_Succeed) {
     }
   }
   for (int i = 0; i < num_nodes; ++i) {
-    TF_EXPECT_OK(statuses[i]);
+    EXPECT_OK(statuses[i]);
   }
 }
 
@@ -930,7 +930,7 @@ TEST_F(ClientServerTest, WaitAtBarrierSubset_Succeeds) {
       thread_pool.Schedule([&, i]() { statuses[i] = thread_fn(i); });
     }
     for (int i = 0; i < num_nodes; ++i) {
-      TF_EXPECT_OK(statuses[i]);
+      EXPECT_OK(statuses[i]);
     }
   }
 }
@@ -999,12 +999,12 @@ TEST_F(ClientServerTest, GetLiveTasksSucceeds) {
     tp.Schedule([&, i]() {
       // Connect the client, which acts as a barrier.
       std::shared_ptr<DistributedRuntimeClient> client = GetClient(i);
-      TF_ASSERT_OK(client->Connect());
+      ASSERT_OK(client->Connect());
 
       // Get the set of live nodes. All three nodes should be live.
       absl::StatusOr<absl::flat_hash_map<int32_t, IncarnationId>> live_nodes =
           client->GetLiveNodesWithIncarnations(std::vector<int>{0, 1, 2});
-      TF_ASSERT_OK(live_nodes.status());
+      ASSERT_OK(live_nodes.status());
       EXPECT_THAT(*live_nodes, UnorderedElementsAre(Key(0), Key(1), Key(2)));
     });
   }
@@ -1019,7 +1019,7 @@ TEST_F(ClientServerTest, GetLiveTasksWithoutBeingAMember) {
     tp.Schedule([&, i]() {
       // Connect the client, which acts as a barrier.
       std::shared_ptr<DistributedRuntimeClient> client = GetClient(i);
-      TF_ASSERT_OK(client->Connect());
+      ASSERT_OK(client->Connect());
 
       // Get the set of live nodes but don't include ourselves.
       std::vector<int> nodes{0, 1, 2};
@@ -1033,15 +1033,15 @@ TEST_F(ClientServerTest, GetLiveTasksWithoutBeingAMember) {
 TEST_F(ClientServerTest, KeyValueDirGet) {
   StartService(/*num_nodes=*/1);
   auto client = GetClient(/*node_id=*/0);
-  TF_ASSERT_OK(client->Connect());
-  TF_ASSERT_OK(client->KeyValueSet("test_dir/sub_dir/1", "1"));
-  TF_ASSERT_OK(client->KeyValueSet("test_dir/sub_dir/2", "2"));
-  TF_ASSERT_OK(client->KeyValueSet("test_dir/3", "3"));
-  TF_ASSERT_OK(client->KeyValueSet("test", "4"));  // Not in a directory.
+  ASSERT_OK(client->Connect());
+  ASSERT_OK(client->KeyValueSet("test_dir/sub_dir/1", "1"));
+  ASSERT_OK(client->KeyValueSet("test_dir/sub_dir/2", "2"));
+  ASSERT_OK(client->KeyValueSet("test_dir/3", "3"));
+  ASSERT_OK(client->KeyValueSet("test", "4"));  // Not in a directory.
 
   auto results = client->KeyValueDirGet("test_dir/");
 
-  TF_ASSERT_OK(results.status());
+  ASSERT_OK(results.status());
   auto kvs = results.value();
 
   EXPECT_THAT(kvs, UnorderedElementsAre(Pair("test_dir/sub_dir/1", "1"),
@@ -1052,48 +1052,48 @@ TEST_F(ClientServerTest, KeyValueDirGet) {
 TEST_F(ClientServerTest, KeyValueSet_Duplicate_Fails) {
   StartService(/*num_nodes=*/1);
   auto client = GetClient(/*node_id=*/0);
-  TF_ASSERT_OK(client->Connect());
-  TF_ASSERT_OK(client->KeyValueSet("test_key", "original_value"));
+  ASSERT_OK(client->Connect());
+  ASSERT_OK(client->KeyValueSet("test_key", "original_value"));
   EXPECT_TRUE(
       absl::IsAlreadyExists(client->KeyValueSet("test_key", "never_added")));
   auto result =
       client->BlockingKeyValueGet("test_key", absl::Milliseconds(100));
-  TF_ASSERT_OK(result.status());
+  ASSERT_OK(result.status());
   EXPECT_EQ(result.value(), "original_value");
 }
 
 TEST_F(ClientServerTest, KeyValueSet_Duplicate_Overwrites) {
   StartService(/*num_nodes=*/1);
   auto client = GetClient(/*node_id=*/0);
-  TF_ASSERT_OK(client->Connect());
-  TF_ASSERT_OK(client->KeyValueSet("test_key", "original_value"));
-  TF_EXPECT_OK(client->KeyValueSet("test_key", "overwritten_value",
-                                   /*allow_overwrite=*/true));
+  ASSERT_OK(client->Connect());
+  ASSERT_OK(client->KeyValueSet("test_key", "original_value"));
+  EXPECT_OK(client->KeyValueSet("test_key", "overwritten_value",
+                                /*allow_overwrite=*/true));
   auto result =
       client->BlockingKeyValueGet("test_key", absl::Milliseconds(100));
-  TF_ASSERT_OK(result.status());
+  ASSERT_OK(result.status());
   EXPECT_EQ(result.value(), "overwritten_value");
 }
 
 TEST_F(ClientServerTest, KeyValueTryGet) {
   StartService(/*num_nodes=*/1);
   auto client = GetClient(/*node_id=*/0);
-  TF_ASSERT_OK(client->Connect());
+  ASSERT_OK(client->Connect());
 
   ASSERT_THAT(client->KeyValueTryGet("test_key").status(),
               absl_testing::StatusIs(absl::StatusCode::kNotFound));
 
-  TF_ASSERT_OK(client->KeyValueSet("test_key", "value"));
+  ASSERT_OK(client->KeyValueSet("test_key", "value"));
   auto result = client->KeyValueTryGet("test_key");
-  TF_ASSERT_OK(result.status());
+  ASSERT_OK(result.status());
   EXPECT_EQ(result.value(), "value");
 }
 
 TEST_F(ClientServerTest, KeyValueIncrement) {
   StartService(/*num_nodes=*/1);
   auto client = GetClient(/*node_id=*/0);
-  TF_ASSERT_OK(client->Connect());
-  TF_ASSERT_OK(client->KeyValueSet("test_key", "10"));
+  ASSERT_OK(client->Connect());
+  ASSERT_OK(client->KeyValueSet("test_key", "10"));
   EXPECT_THAT(client->KeyValueIncrement("test_key", 1),
               absl_testing::IsOkAndHolds(11));
   EXPECT_THAT(client->KeyValueTryGet("test_key"),
@@ -1103,13 +1103,13 @@ TEST_F(ClientServerTest, KeyValueIncrement) {
 TEST_F(ClientServerTest, KeyValueDelete) {
   StartService(/*num_nodes=*/1);
   auto client = GetClient(/*node_id=*/0);
-  TF_ASSERT_OK(client->Connect());
-  TF_ASSERT_OK(client->KeyValueSet("to_be_deleted", "deleted"));
-  TF_ASSERT_OK(client->KeyValueSet("to_be_kept", "kept"));
+  ASSERT_OK(client->Connect());
+  ASSERT_OK(client->KeyValueSet("to_be_deleted", "deleted"));
+  ASSERT_OK(client->KeyValueSet("to_be_kept", "kept"));
 
   auto results = client->KeyValueDelete("to_be_deleted");
 
-  TF_EXPECT_OK(results);
+  EXPECT_OK(results);
   auto deleted_kv =
       client->BlockingKeyValueGet("to_be_deleted", absl::Milliseconds(200));
   // We time out from attempting to retrieve a deleted key.
@@ -1117,23 +1117,23 @@ TEST_F(ClientServerTest, KeyValueDelete) {
   // Other key should still exist.
   auto kept_kv =
       client->BlockingKeyValueGet("to_be_kept", absl::Milliseconds(200));
-  TF_ASSERT_OK(kept_kv.status());
+  ASSERT_OK(kept_kv.status());
   EXPECT_EQ(kept_kv.value(), "kept");
 }
 
 TEST_F(ClientServerTest, KeyValueDelete_Directory) {
   StartService(/*num_nodes=*/1);
   auto client = GetClient(/*node_id=*/0);
-  TF_ASSERT_OK(client->Connect());
-  TF_ASSERT_OK(client->KeyValueSet("test_dir/sub_dir/1", "1"));
-  TF_ASSERT_OK(client->KeyValueSet("test_dir/sub_dir/2", "2"));
-  TF_ASSERT_OK(client->KeyValueSet("test_dir/3", "3"));
+  ASSERT_OK(client->Connect());
+  ASSERT_OK(client->KeyValueSet("test_dir/sub_dir/1", "1"));
+  ASSERT_OK(client->KeyValueSet("test_dir/sub_dir/2", "2"));
+  ASSERT_OK(client->KeyValueSet("test_dir/3", "3"));
 
   auto results = client->KeyValueDelete("test_dir/");
 
-  TF_EXPECT_OK(results);
+  EXPECT_OK(results);
   auto kvs = client->KeyValueDirGet("test_dir/");
-  TF_ASSERT_OK(kvs.status());
+  ASSERT_OK(kvs.status());
   EXPECT_THAT(kvs.value(), IsEmpty());
 }
 
@@ -1146,9 +1146,9 @@ TEST_F(ClientServerTest, UseCompression) {
       /*use_compression=*/true);
   auto client = GetClient(/*node_id=*/0, {}, channel);
 
-  TF_ASSERT_OK(client->Connect());
-  TF_ASSERT_OK(client->KeyValueSet("foo/bar/1", "1"));
-  TF_ASSERT_OK(client->Shutdown());
+  ASSERT_OK(client->Connect());
+  ASSERT_OK(client->KeyValueSet("foo/bar/1", "1"));
+  ASSERT_OK(client->Shutdown());
 }
 
 }  // namespace

@@ -428,7 +428,7 @@ TEST_F(PersistedAutotuningTest, WriteResultsOnEachCompilation) {
   xla_gpu_dump_autotune_results_to_ = GetUniqueTempFilePath(".txt");
 
   // Check that it writes the results on the first compilation.
-  TF_EXPECT_OK(GetOptimizedModule(kHloText).status());
+  EXPECT_OK(GetOptimizedModule(kHloText).status());
   {
     TF_ASSERT_OK_AND_ASSIGN(
         std::string autotune_results_str,
@@ -440,11 +440,11 @@ TEST_F(PersistedAutotuningTest, WriteResultsOnEachCompilation) {
 
   // Overwrite results with an invalid textproto.
   tsl::Env* env = tsl::Env::Default();
-  TF_EXPECT_OK(tsl::WriteStringToFile(env, xla_gpu_dump_autotune_results_to_,
-                                      kInvalidTextProto));
+  EXPECT_OK(tsl::WriteStringToFile(env, xla_gpu_dump_autotune_results_to_,
+                                   kInvalidTextProto));
 
   // Check that it writes the results on the second compilation.
-  TF_EXPECT_OK(GetOptimizedModule(kHloText).status());
+  EXPECT_OK(GetOptimizedModule(kHloText).status());
   {
     TF_ASSERT_OK_AND_ASSIGN(
         std::string autotune_results_str,
@@ -596,7 +596,7 @@ ENTRY main {
   EXPECT_EQ(while_op->while_body()->root_instruction()->operand(1)->opcode(),
             HloOpcode::kCopy);
 
-  TF_ASSERT_OK(Schedule(module.get()));
+  ASSERT_OK(Schedule(module.get()));
   EXPECT_EQ(CountCopies(*module), 4);
   module->entry_computation()->root_instruction();
   while_op = root->operand(0)->operand(0);
@@ -634,9 +634,9 @@ class GpuCompilerTestWithAutotuneDb : public GpuCompilerTest {
     contents = absl::StrReplaceAll(
         contents, {{kCudnnVersionPlaceholder, dnn_version.ToString()}});
 
-    TF_EXPECT_OK(tsl::WriteStringToFile(env, tmp_filepath, contents));
+    EXPECT_OK(tsl::WriteStringToFile(env, tmp_filepath, contents));
     AutotunerUtil::ClearAutotuneResults();
-    TF_EXPECT_OK(AutotunerUtil::LoadAutotuneResultsFromFile(tmp_filepath));
+    EXPECT_OK(AutotunerUtil::LoadAutotuneResultsFromFile(tmp_filepath));
   }
 
   static void TearDownTestSuite() { AutotunerUtil::ClearAutotuneResults(); }
@@ -1039,8 +1039,8 @@ class KernelCacheTest : public HloTestBase {
       return 0;
     }
     std::string serialized;
-    TF_EXPECT_OK(tsl::ReadFileToString(tsl::Env::Default(), cache_file_name_,
-                                       &serialized));
+    EXPECT_OK(tsl::ReadFileToString(tsl::Env::Default(), cache_file_name_,
+                                    &serialized));
     CompilationCacheProto proto;
     EXPECT_TRUE(proto.ParseFromString(std::string(serialized)));
     return proto.entries_size();
@@ -2042,7 +2042,7 @@ ENTRY %main {
 
   std::string target_file;
   ASSERT_TRUE(tsl::Env::Default()->LocalTempFilename(&target_file));
-  TF_ASSERT_OK(tsl::WriteTextProto(
+  ASSERT_OK(tsl::WriteTextProto(
       tsl::Env::Default(), target_file,
       Compiler::GpuTargetConfig(backend().default_stream_executor())
           .ToProto()));
@@ -2063,7 +2063,7 @@ ENTRY %main {
   mock_log.StartCapturingLogs();
   auto status_or_module = backend().compiler()->RunHloPasses(
       std::move(module), nullptr, GetAllocator());
-  TF_ASSERT_OK(status_or_module.status());
+  ASSERT_OK(status_or_module.status());
 }
 
 TEST_F(GpuCompilerTest, CompilingAndCollectingMetadata) {
@@ -2081,7 +2081,7 @@ TEST_F(GpuCompilerTest, CompilingAndCollectingMetadata) {
 
   std::string target_file;
   ASSERT_TRUE(tsl::Env::Default()->LocalTempFilename(&target_file));
-  TF_ASSERT_OK(tsl::WriteTextProto(
+  ASSERT_OK(tsl::WriteTextProto(
       tsl::Env::Default(), target_file,
       Compiler::GpuTargetConfig(backend().default_stream_executor())
           .ToProto()));

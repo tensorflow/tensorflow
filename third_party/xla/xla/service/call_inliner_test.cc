@@ -63,7 +63,7 @@ TEST_F(CallInlinerTest, ControlDependenciesAreCarriedToCaller) {
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(24.0f)));
   HloInstruction* one = inner.AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(42.0f)));
-  TF_ASSERT_OK(zero->AddControlDependencyTo(one));
+  ASSERT_OK(zero->AddControlDependencyTo(one));
   auto module = CreateNewVerifiedModule();
   HloComputation* inner_computation =
       module->AddEmbeddedComputation(inner.Build());
@@ -140,7 +140,7 @@ TEST_F(CallInlinerTest, InlineWithoutRunningPass) {
       HloInstruction::CreateConstant(LiteralUtil::CreateR1<bool>({true})));
   auto* false_constant = just_false.AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<bool>(false)));
-  TF_ASSERT_OK(false_constant->AddControlDependencyTo(true_constant));
+  ASSERT_OK(false_constant->AddControlDependencyTo(true_constant));
   HloComputation* false_computation =
       module->AddEmbeddedComputation(just_false.Build());
 
@@ -149,7 +149,7 @@ TEST_F(CallInlinerTest, InlineWithoutRunningPass) {
       HloInstruction::CreateCall(pred, {}, false_computation));
   auto computation = module->AddEntryComputation(call_false_builder.Build());
 
-  TF_ASSERT_OK(CallInliner::Inline(call).status());
+  ASSERT_OK(CallInliner::Inline(call).status());
   EXPECT_THAT(computation->root_instruction(), op::Constant());
   EXPECT_THAT(computation->root_instruction()->control_successors(),
               ElementsAre(op::Constant()));
@@ -716,7 +716,7 @@ ENTRY main {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(kHlo));
   ASSERT_TRUE(module->has_schedule());
-  TF_ASSERT_OK(module->schedule().Verify());
+  ASSERT_OK(module->schedule().Verify());
 
   // Inline the main thread.
   TF_ASSERT_OK_AND_ASSIGN(
@@ -727,13 +727,13 @@ ENTRY main {
   // Module should still be sequenced and valid on all threads after inlining.
   ASSERT_TRUE(module->has_schedule());
   const HloSchedule& schedule = module->schedule();
-  TF_ASSERT_OK(schedule.Verify());
+  ASSERT_OK(schedule.Verify());
 
   // A side effect of copying async ops is that the trampoline computation will
   // be cloned, but the original will not be removed, since it resides on a
   // thread that the pass did not run on. We need to run an extra pass of DCE to
   // clean up the async thread.
-  TF_ASSERT_OK(HloDCE().Run(module.get(), {"thread"}));
+  ASSERT_OK(HloDCE().Run(module.get(), {"thread"}));
 
   // The post-inline instruction sequence should mimic that of the pre-inline
   // computations - we expect to see the same scheduling overlap with respect to
@@ -793,7 +793,7 @@ ENTRY main {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(kHlo));
   ASSERT_TRUE(module->has_schedule());
-  TF_ASSERT_OK(module->schedule().Verify());
+  ASSERT_OK(module->schedule().Verify());
 
   TF_ASSERT_OK_AND_ASSIGN(bool modified, CallInliner().Run(module.get()));
   EXPECT_TRUE(modified);
@@ -801,7 +801,7 @@ ENTRY main {
   // Module should still be sequenced and valid after inlining.
   ASSERT_TRUE(module->has_schedule());
   const HloSchedule& schedule = module->schedule();
-  TF_ASSERT_OK(schedule.Verify());
+  ASSERT_OK(schedule.Verify());
 
   // The post-inline instruction sequence should mimic that of the pre-inline
   // computations.
@@ -838,7 +838,7 @@ ENTRY main {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(kHlo));
   ASSERT_TRUE(module->has_schedule());
-  TF_ASSERT_OK(module->schedule().Verify());
+  ASSERT_OK(module->schedule().Verify());
 
   TF_ASSERT_OK_AND_ASSIGN(bool modified, CallInliner().Run(module.get()));
   EXPECT_TRUE(modified);
@@ -846,7 +846,7 @@ ENTRY main {
   // Module should still be sequenced and valid after inlining.
   ASSERT_TRUE(module->has_schedule());
   const HloSchedule& schedule = module->schedule();
-  TF_ASSERT_OK(schedule.Verify());
+  ASSERT_OK(schedule.Verify());
 
   // The post-inline instruction sequence should mimic that of the pre-inline
   // computations.

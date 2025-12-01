@@ -23,6 +23,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/functional/any_invocable.h"
 #include "absl/log/check.h"
@@ -140,7 +141,7 @@ void CopyIntoDest(tsl::RCReference<ChunkDestination> dest,
     auto state = local_queue.front();
     local_queue.pop_front();
     mu.unlock();
-    TF_ASSERT_OK(
+    ASSERT_OK(
         dest->Put(state.buff, state.offset, state.size,
                   [cstate, buf = state.buff]() { cstate->ReturnBuffer(buf); }));
   }
@@ -237,7 +238,7 @@ TEST(PremappedCopierState, RoundTripSlicedRaw) {
       auto dest_arr, tests::CopyTestPatternToDevice(
                          client.get(), client->devices()[0],
                          std::vector<int32_t>(test_pattern.size() * 3 / 2, 0)));
-  TF_ASSERT_OK(dest_arr->GetReadyFuture().Await());
+  ASSERT_OK(dest_arr->GetReadyFuture().Await());
   TF_ASSERT_OK_AND_ASSIGN(
       auto arr, tests::CopyTestPatternToDevice(
                     client.get(), client->devices()[0], test_pattern));
@@ -253,7 +254,7 @@ TEST(PremappedCopierState, RoundTripSlicedRaw) {
           dest_raw_buffer, dest_raw_buffer->GetOnDeviceSizeInBytes() / 3,
           dest_raw_buffer->GetOnDeviceSizeInBytes() * 2 / 3));
   CopyIntoDest(std::move(fut_and_dest.first), arr, xfer_size, 0);
-  TF_ASSERT_OK(fut_and_dest.second.Await());
+  ASSERT_OK(fut_and_dest.second.Await());
 
   TF_ASSERT_OK_AND_ASSIGN(auto result,
                           FetchResult(dest_arr, test_pattern.size() * 3 / 2));
@@ -268,7 +269,7 @@ TEST(PremappedCopierState, PoisonSlicedRaw) {
   TF_ASSERT_OK_AND_ASSIGN(auto dest_arr, tests::CopyTestPatternToDevice(
                                              client.get(), client->devices()[0],
                                              std::vector<int32_t>(4096, 0)));
-  TF_ASSERT_OK(dest_arr->GetReadyFuture().Await());
+  ASSERT_OK(dest_arr->GetReadyFuture().Await());
   TF_ASSERT_OK_AND_ASSIGN(
       auto dest_raw_buffer,
       xla::PjRtRawBuffer::CreateRawAliasOfBuffer(

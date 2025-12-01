@@ -124,9 +124,9 @@ ENTRY entry {
   EXPECT_THAT(extracted_module->entry_computation()->root_instruction(),
               GmockMatch(m::Fusion(m::Parameter(), m::Parameter())));
   EXPECT_EQ(extracted_module->entry_computation()->instruction_count(), 3);
-  TF_EXPECT_OK(VerifyHloModule(extracted_module.get(),
-                               /*layout_sensitive=*/true,
-                               /*allow_mixed_precision=*/false));
+  EXPECT_OK(VerifyHloModule(extracted_module.get(),
+                            /*layout_sensitive=*/true,
+                            /*allow_mixed_precision=*/false));
 }
 
 TEST_F(HloExtractionTest, ComputationExtractionIsCorrect) {
@@ -164,9 +164,9 @@ ENTRY entry {
   EXPECT_THAT(extracted_module->entry_computation()->root_instruction(),
               GmockMatch(m::Dot(m::Convert(m::Parameter()), m::Parameter())));
   EXPECT_EQ(extracted_module->entry_computation()->instruction_count(), 4);
-  TF_EXPECT_OK(VerifyHloModule(extracted_module.get(),
-                               /*layout_sensitive=*/true,
-                               /*allow_mixed_precision=*/false));
+  EXPECT_OK(VerifyHloModule(extracted_module.get(),
+                            /*layout_sensitive=*/true,
+                            /*allow_mixed_precision=*/false));
 }
 
 class StatelessAutotunerTest : public HloTestBase {
@@ -735,7 +735,7 @@ ENTRY main {
                                    GemmRewriterOptions{dtype});
   }
 
-  TF_EXPECT_OK(HloTestBase::RunHloPass(&pipeline, module.get()));
+  EXPECT_OK(HloTestBase::RunHloPass(&pipeline, module.get()));
   const bool is_at_least_hopper =
       autotune_config.GetGpuComputeCapability().IsCuda() &&
       autotune_config.GetGpuComputeCapability()
@@ -790,7 +790,7 @@ ENTRY e {
                           GetOptimizedModule(std::move(module)));
 
   std::string dump;
-  TF_EXPECT_OK(tsl::ReadFileToString(
+  EXPECT_OK(tsl::ReadFileToString(
       tsl::Env::Default(),
       tsl::io::JoinPath(output_directory,
                         FilenameFor(*optimized_module, /*prefix=*/"",
@@ -805,7 +805,7 @@ CHECK-NOT: block_m
 
   dump.clear();
 
-  TF_EXPECT_OK(tsl::ReadFileToString(
+  EXPECT_OK(tsl::ReadFileToString(
       tsl::Env::Default(),
       tsl::io::JoinPath(
           output_directory,
@@ -1859,16 +1859,16 @@ TEST_F(GemmFusionAutotunerTest, ReadsOverrideFile) {
       tsl::io::JoinPath(output_directory, "override.textproto");
   // Block M 126 is not really a valid config, but allows us to check that the
   // override file was used.
-  TF_ASSERT_OK(tsl::WriteStringToFile(tsl::Env::Default(), override_file,
-                                      R"pb(config {
-                                             block_m: 126
-                                             block_n: 32
-                                             block_k: 16
-                                             split_k: 1
-                                             num_stages: 1
-                                             num_warps: 32
-                                             num_ctas: 1
-                                           })pb"));
+  ASSERT_OK(tsl::WriteStringToFile(tsl::Env::Default(), override_file,
+                                   R"pb(config {
+                                          block_m: 126
+                                          block_n: 32
+                                          block_k: 16
+                                          split_k: 1
+                                          num_stages: 1
+                                          num_warps: 32
+                                          num_ctas: 1
+                                        })pb"));
 
   DebugOptions debug_options = GetDebugOptionsForTest();
   debug_options.set_xla_gpu_gemm_autotuner_override_file(override_file);

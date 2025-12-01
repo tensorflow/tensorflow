@@ -20,6 +20,7 @@ limitations under the License.
 #include <tuple>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/base/optimization.h"
 #include "absl/strings/str_cat.h"
@@ -903,7 +904,7 @@ ENTRY e {
       primitive_util::LowercasePrimitiveTypeName(data_type1),
       primitive_util::LowercasePrimitiveTypeName(data_type2));
 
-  TF_ASSERT_OK(GetOptimizedModule(hlo_text).status());
+  ASSERT_OK(GetOptimizedModule(hlo_text).status());
 }
 
 INSTANTIATE_TEST_SUITE_P(
