@@ -203,7 +203,7 @@ class SyclTimerTest : public ::testing::Test {
     ASSERT_THAT(stream->Memset32(&a, 1.0, kByteLength), IsOk());
     ASSERT_THAT(stream->Memset32(&b, 2.0, kByteLength), IsOk());
     ASSERT_THAT(stream->Memset32(&c, 0.0, kByteLength), IsOk());
-    ASSERT_THAT(add.Launch(ThreadDim(), BlockDim(kLength), stream, a, b, c),
+    ASSERT_THAT(add.Launch(ThreadDim(kLength), BlockDim(), stream, a, b, c),
                 IsOk());
   }
 
