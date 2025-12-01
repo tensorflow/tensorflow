@@ -499,11 +499,10 @@ TEST(GpuExecutableTest, GpuExecutableDump) {
   debug_options.set_xla_dump_to(temp_dir.path());
   debug_options.set_xla_enable_dumping(true);
 
+  BufferAllocation alloc(0, 1024, 0);
   auto create_executable = [&]() {
-    BufferAllocation alloc(0, 1024, 0);
-    BufferAllocation::Slice slice(&alloc, 0, 1024);
-
     ThunkSequence thunk_sequence;
+    BufferAllocation::Slice slice(&alloc, 0, 1024);
     thunk_sequence.push_back(std::make_unique<KernelThunk>(
         ThunkInfoWithId(123),
         /*kernel_name=*/"test_kernel",
