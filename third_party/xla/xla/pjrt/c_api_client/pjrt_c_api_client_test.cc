@@ -14,8 +14,6 @@ limitations under the License.
 ==============================================================================*/
 #include "xla/pjrt/c_api_client/pjrt_c_api_client.h"
 
-#include <unistd.h>
-
 #include <array>
 #include <cstddef>
 #include <cstdint>

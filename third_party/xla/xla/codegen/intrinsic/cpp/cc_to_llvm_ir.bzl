@@ -44,7 +44,10 @@ def _cc_ir_header_impl(ctx):
     )
 
     # Copy the compiler's output to our declared intermediate file.
-    temp_ir_output = compilation_outputs[1].pic_objects[0]
+    if len(compilation_outputs[1].pic_objects) > 0:
+        temp_ir_output = compilation_outputs[1].pic_objects[0]
+    else:
+        temp_ir_output = compilation_outputs[1].objects[0]
     ctx.actions.run_shell(
         inputs = [temp_ir_output],
         outputs = [ir_file],

@@ -449,6 +449,13 @@ common:windows_x86_cpu_2022 --extra_execution_platforms="//tensorflow/tools/tool
 common:windows_x86_cpu_2022 --host_platform="//tensorflow/tools/toolchains/win2022:windows_ltsc2022_clang"
 common:windows_x86_cpu_2022 --platforms="//tensorflow/tools/toolchains/win2022:windows_ltsc2022_clang"
 
+common:xla_windows_x86_cpu_2022 --config=win_clang_base
+common:xla_windows_x86_cpu_2022 --crosstool_top="//tools/toolchains/win2022/20241118:toolchain"
+common:xla_windows_x86_cpu_2022 --extra_toolchains="//tools/toolchains/win2022/20241118:cc-toolchain-x64_windows-clang-cl"
+common:xla_windows_x86_cpu_2022 --extra_execution_platforms="//tools/toolchains/win2022:windows_ltsc2022_clang"
+common:xla_windows_x86_cpu_2022 --host_platform="//tools/toolchains/win2022:windows_ltsc2022_clang"
+common:xla_windows_x86_cpu_2022 --platforms="//tools/toolchains/win2022:windows_ltsc2022_clang"
+
 # Options to build TensorFlow 1.x or 2.x.
 # TODO(kanglan): Change v2's define to default behavior
 common:v2 --define=tf_api_version=2 --action_env=TF2_BEHAVIOR=1
@@ -557,6 +564,7 @@ common:rbe_win_base --nobuild_runfile_links
 common:rbe_win_base --define=override_eigen_strong_inline=true
 
 common:rbe_windows_x86_cpu_2022 --config=rbe_win_base --config=windows_x86_cpu_2022
+common:rbe_xla_windows_x86_cpu_2022 --config=rbe_win_base --config=xla_windows_x86_cpu_2022
 
 # END TF REMOTE BUILD EXECUTION OPTIONS
 
