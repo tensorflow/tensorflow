@@ -520,7 +520,7 @@ xla_test(
         "//xla/service:backend",
         "//xla/service:executable",
         "//xla/service:hlo_module_config",
-        "//xla/service:maybe_owning_device_memory",
+        "//xla/service:maybe_owning_device_address",
         "//xla/service:shaped_buffer",
         "//xla/stream_executor:device_memory",
         "//xla/stream_executor:device_memory_allocator",

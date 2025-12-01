@@ -41,7 +41,7 @@ limitations under the License.
 #include "xla/service/gpu/gpu_executable_run_options.h"
 #include "xla/service/hlo_module_util.h"
 #include "xla/service/hlo_runner_interface.h"
-#include "xla/service/maybe_owning_device_memory.h"
+#include "xla/service/maybe_owning_device_address.h"
 #include "xla/service/service_executable_run_options.h"
 #include "xla/service/shaped_buffer.h"
 #include "xla/service/transfer_manager.h"
@@ -294,7 +294,7 @@ static std::vector<ExecutionInput> ExecutionInputsFromScopedShapedBuffers(
 
   for (int param_num = 0; param_num < inputs.size(); param_num++) {
     const ScopedShapedBuffer& input_buffer = inputs[param_num];
-    ShapeTree<MaybeOwningDeviceMemory> buffer_tree(
+    ShapeTree<MaybeOwningDeviceAddress> buffer_tree(
         input_buffer.on_device_shape());
 
     input_buffer.buffers().ForEachElement(
@@ -329,7 +329,7 @@ static void ExecutionInputsFromMovedScopedShapedBuffers(
   for (int param_num = 0; param_num < inputs.size(); param_num++) {
     ShapedBuffer input_buffer = inputs[param_num].release();
 
-    ShapeTree<MaybeOwningDeviceMemory> buffer_tree(
+    ShapeTree<MaybeOwningDeviceAddress> buffer_tree(
         input_buffer.on_device_shape());
 
     input_buffer.buffers().ForEachElement(

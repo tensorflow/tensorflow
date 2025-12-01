@@ -39,7 +39,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/service/executable.h"
-#include "xla/service/maybe_owning_device_memory.h"
+#include "xla/service/maybe_owning_device_address.h"
 #include "xla/service/shaped_buffer.h"
 #include "xla/shape.h"
 #include "xla/shape_tree.h"
@@ -109,8 +109,8 @@ class TrackedDeviceBuffer : public AbstractTrackedDeviceBuffer {
   // on_device_shape matches that of the TrackedDeviceBuffer. 'end' is used to
   // check that 'iterator' doesn't run out of bounds.
   void AddToInputAsImmutable(
-      ShapeTree<MaybeOwningDeviceMemory>::iterator* iterator,
-      const ShapeTree<MaybeOwningDeviceMemory>::iterator& end) const;
+      ShapeTree<MaybeOwningDeviceAddress>::iterator* iterator,
+      const ShapeTree<MaybeOwningDeviceAddress>::iterator& end) const;
 
   // Adds the owned device buffers in order to 'iterator', marking them as
   // available to be donated. If donation succeeds, i.e., execution_input is
@@ -121,8 +121,8 @@ class TrackedDeviceBuffer : public AbstractTrackedDeviceBuffer {
   // that of the TrackedDeviceBuffer. 'end' is used to check that 'iterator'
   // doesn't run out of bounds.
   void AddToInputAsDonated(
-      ShapeTree<MaybeOwningDeviceMemory>::iterator* iterator,
-      const ShapeTree<MaybeOwningDeviceMemory>::iterator& end,
+      ShapeTree<MaybeOwningDeviceAddress>::iterator* iterator,
+      const ShapeTree<MaybeOwningDeviceAddress>::iterator& end,
       ExecutionInput* execution_input,
       se::DeviceMemoryAllocator* allocator) const;
 

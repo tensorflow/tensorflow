@@ -84,7 +84,7 @@ cc_library(
         "//xla/hlo/ir:hlo",
         "//xla/service:dynamic_dimension_inference",
         "//xla/service:executable",
-        "//xla/service:maybe_owning_device_memory",
+        "//xla/service:maybe_owning_device_address",
         "//xla/service:shaped_buffer",
         "//xla/service:transfer_manager",
         "//xla/stream_executor:device_address",

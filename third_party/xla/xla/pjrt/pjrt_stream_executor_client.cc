@@ -141,7 +141,7 @@ limitations under the License.
 #include "xla/service/executable.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_cost_analysis.h"
-#include "xla/service/maybe_owning_device_memory.h"
+#include "xla/service/maybe_owning_device_address.h"
 #include "xla/service/shaped_buffer.h"
 #include "xla/service/transfer_manager.h"
 #include "xla/shape.h"
@@ -1673,12 +1673,12 @@ PjRtStreamExecutorClient::RunAsync(
     auto it = tmp.MutableBuffers()->begin();
     for (auto& v : input) {
       if (v.second.is_donated) {
-        it->second = MaybeOwningDeviceMemory(se::OwningDeviceMemory(
+        it->second = MaybeOwningDeviceAddress(se::OwningDeviceMemory(
             v.second.buf->mem(), device->local_device_id().value(),
             run_options.allocator()));
         tmp.SetUnownedIndex(it->first);
       } else {
-        it->second = MaybeOwningDeviceMemory(v.second.buf->mem());
+        it->second = MaybeOwningDeviceAddress(v.second.buf->mem());
       }
       ++it;
     }

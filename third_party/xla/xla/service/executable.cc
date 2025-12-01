@@ -27,7 +27,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
-#include "xla/service/maybe_owning_device_memory.h"
+#include "xla/service/maybe_owning_device_address.h"
 #include "xla/service/service_executable_run_options.h"
 #include "xla/service/shaped_buffer.h"
 #include "xla/shape.h"
@@ -70,7 +70,7 @@ absl::Status ExecutionInput::SetDynamicShape(Shape dynamic_shape) {
 }
 
 void ExecutionInput::SetUnownedBuffer(const ShapeIndex& index,
-                                      MaybeOwningDeviceMemory buffer) {
+                                      MaybeOwningDeviceAddress buffer) {
   *buffers_.mutable_element(index) = std::move(buffer);
   unowned_indices_.insert(index);
 }
@@ -86,12 +86,12 @@ absl::StatusOr<ScopedShapedBuffer> Executable::ExecuteOnStream(
   return result;
 }
 
-static ExecutionInput MakeMaybeOwningDeviceMemoryTree(
+static ExecutionInput MakeMaybeOwningDeviceAddressTree(
     const ShapedBuffer& shaped_buffer) {
   ExecutionInput result(shaped_buffer.on_device_shape());
   shaped_buffer.buffers().ForEachElement(
       [&](const ShapeIndex& index, const se::DeviceAddressBase& mem) {
-        result.SetBuffer(index, MaybeOwningDeviceMemory(mem));
+        result.SetBuffer(index, MaybeOwningDeviceAddress(mem));
       });
   return result;
 }
@@ -102,7 +102,7 @@ absl::StatusOr<ScopedShapedBuffer> Executable::ExecuteAsyncOnStream(
   std::vector<ExecutionInput> args;
   args.reserve(arguments.size());
   for (const ShapedBuffer* arg : arguments) {
-    args.emplace_back(MakeMaybeOwningDeviceMemoryTree(*arg));
+    args.emplace_back(MakeMaybeOwningDeviceAddressTree(*arg));
   }
   TF_ASSIGN_OR_RETURN(ExecutionOutput out,
                       ExecuteAsyncOnStream(run_options, std::move(args)));

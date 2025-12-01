@@ -69,7 +69,7 @@ limitations under the License.
 #include "xla/service/executable.h"
 #include "xla/service/gpu/gpu_executable_run_options.h"
 #include "xla/service/hlo.pb.h"
-#include "xla/service/maybe_owning_device_memory.h"
+#include "xla/service/maybe_owning_device_address.h"
 #include "xla/service/shaped_buffer.h"
 #include "xla/service/transfer_manager.h"
 #include "xla/shape.h"
@@ -902,19 +902,19 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
         std::vector<ExecutionInput> inputs;
         if (parameter_is_tupled_arguments) {
           inputs.emplace_back(
-              ShapeTree<MaybeOwningDeviceMemory>(&parameter_shapes->front()));
+              ShapeTree<MaybeOwningDeviceAddress>(&parameter_shapes->front()));
           ExecutionInput& input = inputs.back();
           for (int i = 0; i < tracked_buffers.size(); ++i) {
             VLOG(4) << "tupled input[" << i
                     << "]: " << tracked_buffers[i]->buffer()->buffer().opaque();
             if (buffer_is_donated[i]) {
               input.SetUnownedBuffer(
-                  {i}, MaybeOwningDeviceMemory(se::OwningDeviceMemory(
+                  {i}, MaybeOwningDeviceAddress(se::OwningDeviceMemory(
                            tracked_buffers[i]->buffer()->buffer(),
                            device->local_hardware_id().value(),
                            client->allocator())));
             } else {
-              input.SetBuffer({i}, MaybeOwningDeviceMemory(
+              input.SetBuffer({i}, MaybeOwningDeviceAddress(
                                        tracked_buffers[i]->buffer()->buffer()));
             }
           }
@@ -924,16 +924,16 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
             VLOG(4) << "untupled input[" << i
                     << "]: " << tracked_buffers[i]->buffer()->buffer().opaque();
             inputs.emplace_back(
-                ShapeTree<MaybeOwningDeviceMemory>(&(*parameter_shapes)[i]));
+                ShapeTree<MaybeOwningDeviceAddress>(&(*parameter_shapes)[i]));
             ExecutionInput& input = inputs.back();
             if (buffer_is_donated[i]) {
               input.SetUnownedBuffer(
-                  {}, MaybeOwningDeviceMemory(se::OwningDeviceMemory(
+                  {}, MaybeOwningDeviceAddress(se::OwningDeviceMemory(
                           tracked_buffers[i]->buffer()->buffer(),
                           device->local_hardware_id().value(),
                           client->allocator())));
             } else {
-              input.SetBuffer({}, MaybeOwningDeviceMemory(
+              input.SetBuffer({}, MaybeOwningDeviceAddress(
                                       tracked_buffers[i]->buffer()->buffer()));
             }
           }

@@ -56,7 +56,7 @@ cc_library(
     deps = [
         "//xla:util",
         "//xla/service:buffer_assignment",
-        "//xla/service:maybe_owning_device_memory",
+        "//xla/service:maybe_owning_device_address",
         "//xla/stream_executor:device_address",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:inlined_vector",

@@ -39,7 +39,7 @@ limitations under the License.
 #include "xla/service/backend.h"
 #include "xla/service/executable.h"
 #include "xla/service/hlo_module_config.h"
-#include "xla/service/maybe_owning_device_memory.h"
+#include "xla/service/maybe_owning_device_address.h"
 #include "xla/service/service_executable_run_options.h"
 #include "xla/service/shaped_buffer.h"
 #include "xla/shape.h"
@@ -132,10 +132,11 @@ class BufferDonationTest : public HloTestBase {
           stream.get(), argument_literal, shaped_buffer));
       ShapeTree<se::DeviceMemoryBase> input_buffers = shaped_buffer.buffers();
       inputs_buffers.push_back(input_buffers);
-      ShapeTree<MaybeOwningDeviceMemory> owned_buffers(
+      ShapeTree<MaybeOwningDeviceAddress> owned_buffers(
           argument_literal.shape());
       owned_buffers.ForEachMutableElement(
-          [&](const ShapeIndex& index, MaybeOwningDeviceMemory* device_memory) {
+          [&](const ShapeIndex& index,
+              MaybeOwningDeviceAddress* device_memory) {
             if (donate_argument) {
               *device_memory = se::OwningDeviceMemory(
                   input_buffers.element(index), executor_->device_ordinal(),

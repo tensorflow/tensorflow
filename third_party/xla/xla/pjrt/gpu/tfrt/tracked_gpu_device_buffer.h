@@ -35,7 +35,7 @@ limitations under the License.
 #include "xla/tsl/concurrency/async_value_ref.h"
 
 namespace xla {
-// TODO(b/400541410): Refactor and Merge this with MaybeOwningDeviceMemory.
+// TODO(b/400541410): Refactor and Merge this with MaybeOwningDeviceAddress.
 
 // GpuDeviceMemory represents either an owned or unowned GPU memory. It
 // owns GPU memory if an allocator is provided. When the object goes output of

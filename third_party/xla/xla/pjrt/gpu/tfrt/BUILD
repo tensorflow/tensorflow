@@ -100,7 +100,7 @@ cc_library(
         "//xla/service:generic_transfer_manager",
         "//xla/service:hlo_cost_analysis",
         "//xla/service:hlo_proto_cc",
-        "//xla/service:maybe_owning_device_memory",
+        "//xla/service:maybe_owning_device_address",
         "//xla/service:shaped_buffer",
         "//xla/service:transfer_manager",
         "//xla/service/gpu:gpu_executable_run_options",
