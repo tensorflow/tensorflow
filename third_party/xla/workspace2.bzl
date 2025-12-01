@@ -7,7 +7,7 @@ load("@bazel_tools//tools/build_defs/repo:utils.bzl", "maybe")
 load("@io_bazel_rules_closure//closure:defs.bzl", "filegroup_external")
 load("@rules_ml_toolchain//gpu/sycl:sycl_configure.bzl", "sycl_configure")
 load("@rules_ml_toolchain//gpu/sycl:sycl_init_repository.bzl", "sycl_init_repository")
-load("//third_party:repo.bzl", "tf_http_archive", "tf_mirror_urls")
+load("//third_party:repo.bzl", "tf_http_archive", "tf_mirror_urls", "tf_vendored")
 load("//third_party/absl:workspace.bzl", absl = "repo")
 load("//third_party/benchmark:workspace.bzl", benchmark = "repo")
 load("//third_party/clang_toolchain:cc_configure_clang.bzl", "cc_download_clang_toolchain")
@@ -305,8 +305,25 @@ def _tf_repositories():
         },
     )
 
-    tf_http_archive(
+    # We use a vendored wrapper over googletest to provide
+    # ASSERT_OK/EXPECT_OK/ASSERT_OK_AND_ASSIGN macros through gmock/gmock.h.
+    #
+    # Internal gmock includes those macros, but the external one doesn't. This
+    # caused issues where internal builds succeed, but the copybara export to
+    # github doesn't compile because those macros are not defined. The
+    # workaround was to use custom TF_-prefixed variants of those macros.
+    #
+    # This wrapper lets us have the same code work in both by just swapping the
+    # internal header with gmock/gmock.h. This applies to XLA only, not to TF,
+    # so the TF_ macros that are still in use there must stay, and can't just
+    # expand to non-TF_ variants as.
+    tf_vendored(
         name = "com_google_googletest",
+        path = "third_party/xla_googletest_wrapper",
+    )
+
+    tf_http_archive(
+        name = "com_google_googletest_upstream",
         # Use the commit on 2025/6/09:
         # https://github.com/google/googletest/commit/28e9d1f26771c6517c3b4be10254887673c94018
         sha256 = "f253ca1a07262f8efde8328e4b2c68979e40ddfcfc001f70d1d5f612c7de2974",

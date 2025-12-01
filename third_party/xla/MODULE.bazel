@@ -10,7 +10,8 @@ bazel_dep(name = "bazel_skylib", version = "1.8.1")
 bazel_dep(name = "boringssl", version = "0.20250818.0")
 bazel_dep(name = "curl", version = "8.11.0")
 bazel_dep(name = "google_benchmark", version = "1.8.5", repo_name = "com_google_benchmark")
-bazel_dep(name = "googletest", version = "1.17.0", repo_name = "com_google_googletest")
+bazel_dep(name = "googletest", version = "1.17.0", repo_name = "com_google_googletest_upstream")
+bazel_dep(name = "xla_googletest_wrapper", version = "1.0", repo_name = "com_google_googletest")
 bazel_dep(name = "grpc", version = "1.74.1", repo_name = "com_github_grpc_grpc")
 bazel_dep(name = "gutil", version = "20250502.0", repo_name = "com_google_gutil");
 bazel_dep(name = "jsoncpp", version = "1.9.6", repo_name = "jsoncpp_git")
@@ -72,6 +73,11 @@ archive_override(
     module_name = "googletest",
     strip_prefix = "googletest-28e9d1f26771c6517c3b4be10254887673c94018",
     urls = ["https://github.com/google/googletest/archive/28e9d1f26771c6517c3b4be10254887673c94018.zip"],
+)
+
+local_path_override(
+    module_name = "xla_googletest_wrapper",
+    path = "third_party/xla_googletest_wrapper",
 )
 
 ##############################################################
