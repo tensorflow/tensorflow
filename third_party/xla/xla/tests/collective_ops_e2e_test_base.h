@@ -76,6 +76,9 @@ class CollectiveOpsE2ETestBase : public HloHardwareIndependentTestBase {
       OpaqueExecutable* executable, int64_t num_replicas);
 
   absl::StatusOr<ExecutionResult> ExecuteReplicated(
+      std::unique_ptr<HloModule> module);
+
+  absl::StatusOr<ExecutionResult> ExecuteReplicated(
       std::unique_ptr<HloModule> module,
       std::vector<std::vector<Literal*>> arguments, bool run_hlo_passes = true);
 

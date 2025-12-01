@@ -209,9 +209,8 @@ TEST_P(AsyncCollectiveOps, AsyncAllReduce) {
   TF_ASSERT_OK_AND_ASSIGN(
       auto module, ParseAndReturnVerifiedModule(kModuleStr, kNumReplicas));
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      ExecutionResult execution_result,
-      ExecuteReplicated(std::move(module), /*arguments=*/{{}, {}}));
+  TF_ASSERT_OK_AND_ASSIGN(ExecutionResult execution_result,
+                          ExecuteReplicated(std::move(module)));
 
   const HloModule* hlo_module = execution_result.optimized_module;
   HloInstruction* all_reduce_start =
@@ -253,9 +252,8 @@ TEST_P(AsyncCollectiveOps, AsyncAllGather) {
   TF_ASSERT_OK_AND_ASSIGN(
       auto module, ParseAndReturnVerifiedModule(kModuleStr, kNumReplicas));
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      ExecutionResult execution_result,
-      ExecuteReplicated(std::move(module), /*arguments=*/{{}, {}}));
+  TF_ASSERT_OK_AND_ASSIGN(ExecutionResult execution_result,
+                          ExecuteReplicated(std::move(module)));
 
   const HloModule* hlo_module = execution_result.optimized_module;
   HloInstruction* all_gather_start =
@@ -300,9 +298,8 @@ TEST_P(AsyncCollectiveOps, AsyncAllGatherMixedTypes) {
   TF_ASSERT_OK_AND_ASSIGN(
       auto module, ParseAndReturnVerifiedModule(kModuleStr, kNumReplicas));
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      ExecutionResult execution_result,
-      ExecuteReplicated(std::move(module), /*arguments=*/{{}, {}}));
+  TF_ASSERT_OK_AND_ASSIGN(ExecutionResult execution_result,
+                          ExecuteReplicated(std::move(module)));
 
   const HloModule* hlo_module = execution_result.optimized_module;
   HloInstruction* all_gather_start =
@@ -345,9 +342,8 @@ TEST_P(AsyncCollectiveOps, AsyncCollectiveBroadcast) {
   TF_ASSERT_OK_AND_ASSIGN(
       auto module, ParseAndReturnVerifiedModule(kModuleStr, kNumReplicas));
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      ExecutionResult execution_result,
-      ExecuteReplicated(std::move(module), /*arguments=*/{{}, {}}));
+  TF_ASSERT_OK_AND_ASSIGN(ExecutionResult execution_result,
+                          ExecuteReplicated(std::move(module)));
 
   const HloModule* hlo_module = execution_result.optimized_module;
   HloInstruction* cb_start =
@@ -384,9 +380,8 @@ TEST_P(AsyncCollectiveOps, AsyncCollectivePermute) {
   TF_ASSERT_OK_AND_ASSIGN(
       auto module, ParseAndReturnVerifiedModule(kModuleStr, kNumReplicas));
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      ExecutionResult execution_result,
-      ExecuteReplicated(std::move(module), /*arguments=*/{{}, {}}));
+  TF_ASSERT_OK_AND_ASSIGN(ExecutionResult execution_result,
+                          ExecuteReplicated(std::move(module)));
 
   const HloModule* hlo_module = execution_result.optimized_module;
   HloInstruction* cp_start =
@@ -424,9 +419,8 @@ TEST_P(AsyncCollectiveOps, CombinedCollectivePermute) {
   TF_ASSERT_OK_AND_ASSIGN(
       auto module, ParseAndReturnVerifiedModule(kModuleStr, kNumReplicas));
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      ExecutionResult execution_result,
-      ExecuteReplicated(std::move(module), /*arguments=*/{{}, {}}));
+  TF_ASSERT_OK_AND_ASSIGN(ExecutionResult execution_result,
+                          ExecuteReplicated(std::move(module)));
 
   const HloModule* hlo_module = execution_result.optimized_module;
   HloInstruction* cp_start =
@@ -468,9 +462,8 @@ TEST_P(AsyncCollectiveOps, CollectivePermuteCombiner) {
 
   TF_ASSERT_OK_AND_ASSIGN(
       auto module, ParseAndReturnVerifiedModule(kModuleStr, kNumReplicas));
-  TF_ASSERT_OK_AND_ASSIGN(
-      ExecutionResult execution_result,
-      ExecuteReplicated(std::move(module), /*arguments=*/{{}, {}}));
+  TF_ASSERT_OK_AND_ASSIGN(ExecutionResult execution_result,
+                          ExecuteReplicated(std::move(module)));
 
   const HloModule* hlo_module = execution_result.optimized_module;
   HloInstruction* cp_start =
@@ -536,9 +529,8 @@ TEST_P(AsyncCollectiveOps, AsyncReduceScatter) {
   TF_ASSERT_OK_AND_ASSIGN(
       auto module, ParseAndReturnVerifiedModule(kModuleStr, kNumReplicas));
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      ExecutionResult execution_result,
-      ExecuteReplicated(std::move(module), /*arguments=*/{{}, {}}));
+  TF_ASSERT_OK_AND_ASSIGN(ExecutionResult execution_result,
+                          ExecuteReplicated(std::move(module)));
 
   const HloModule* hlo_module = execution_result.optimized_module;
   HloInstruction* rs_start =
@@ -666,9 +658,8 @@ TEST_P(AsyncCollectiveOps, AsyncAllToAllWithoutSplitDim) {
   TF_ASSERT_OK_AND_ASSIGN(
       auto module, ParseAndReturnVerifiedModule(kModuleStr, kNumReplicas));
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      ExecutionResult execution_result,
-      ExecuteReplicated(std::move(module), /*arguments=*/{{}, {}}));
+  TF_ASSERT_OK_AND_ASSIGN(ExecutionResult execution_result,
+                          ExecuteReplicated(std::move(module)));
 
   const HloModule* hlo_module = execution_result.optimized_module;
   HloInstruction* a2a_start =
@@ -716,12 +707,9 @@ TEST_P(AsyncCollectiveOps, AsyncAllToAllMemCpyWithoutSplitDim) {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(kModuleStr, config));
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto executable, hlo_runner_->CreateExecutable(std::move(module),
-                                                     /*run_hlo_passes=*/true));
-
-  TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> results,
-                          ExecuteReplicated(executable.get(), kNumReplicas));
+  TF_ASSERT_OK_AND_ASSIGN(ExecutionResult execution_result,
+                          ExecuteReplicated(std::move(module)));
+  const std::vector<Literal>& results = execution_result.results;
   ASSERT_EQ(results.size(), kNumReplicas);
   LiteralTestUtil::ExpectR1Equal<uint32_t>({10, 15, 11, 16}, results[0]);
   LiteralTestUtil::ExpectR1Equal<uint32_t>({40, 60, 44, 64}, results[1]);
@@ -747,9 +735,8 @@ TEST_P(AsyncCollectiveOps, AsyncAllToAllNumberOfElementsLargerThanInt32Max) {
   TF_ASSERT_OK_AND_ASSIGN(
       auto module, ParseAndReturnVerifiedModule(kModuleStr, kNumReplicas));
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      ExecutionResult execution_result,
-      ExecuteReplicated(std::move(module), /*arguments=*/{{}, {}}));
+  TF_ASSERT_OK_AND_ASSIGN(ExecutionResult execution_result,
+                          ExecuteReplicated(std::move(module)));
 
   const HloModule* hlo_module = execution_result.optimized_module;
   HloInstruction* a2a_start =
@@ -801,9 +788,8 @@ ENTRY entry {
   TF_ASSERT_OK_AND_ASSIGN(
       auto module, ParseAndReturnVerifiedModule(kModuleStr, kNumReplicas));
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      ExecutionResult execution_result,
-      ExecuteReplicated(std::move(module), /*arguments=*/{{}, {}}));
+  TF_ASSERT_OK_AND_ASSIGN(ExecutionResult execution_result,
+                          ExecuteReplicated(std::move(module)));
 
   const HloModule* hlo_module = execution_result.optimized_module;
   const bool enable_async_ragged_all_to_all = GetParam();
@@ -856,12 +842,9 @@ TEST_P(AsyncMemcpyCollectiveOps, AsyncAllToAllMultipleReplicaGroups) {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(kModuleStr, config));
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto executable, hlo_runner_->CreateExecutable(std::move(module),
-                                                     /*run_hlo_passes=*/true));
-
-  TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> results,
-                          ExecuteReplicated(executable.get(), kNumReplicas));
+  TF_ASSERT_OK_AND_ASSIGN(ExecutionResult execution_result,
+                          ExecuteReplicated(std::move(module)));
+  const std::vector<Literal>& results = execution_result.results;
   ASSERT_EQ(results.size(), kNumReplicas);
   LiteralTestUtil::ExpectR1Equal<uint32_t>({10, 13}, results[0]);
   LiteralTestUtil::ExpectR1Equal<uint32_t>({11, 12}, results[1]);
@@ -891,12 +874,9 @@ TEST_P(AsyncMemcpyCollectiveOps, AsyncAllToAllDegenerateWithSplitDim) {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(kModuleStr, config));
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto executable, hlo_runner_->CreateExecutable(std::move(module),
-                                                     /*run_hlo_passes=*/true));
-
-  TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> results,
-                          ExecuteReplicated(executable.get(), kNumReplicas));
+  TF_ASSERT_OK_AND_ASSIGN(ExecutionResult execution_result,
+                          ExecuteReplicated(std::move(module)));
+  const std::vector<Literal>& results = execution_result.results;
   ASSERT_EQ(results.size(), kNumReplicas);
   LiteralTestUtil::ExpectR1Equal<uint32_t>({10, 20}, results[0]);
   LiteralTestUtil::ExpectR1Equal<uint32_t>({11, 21}, results[1]);
@@ -925,12 +905,9 @@ TEST_P(AsyncMemcpyCollectiveOps, AsyncAllToAllDegenerateWithoutSplitDim) {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(kModuleStr, config));
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto executable, hlo_runner_->CreateExecutable(std::move(module),
-                                                     /*run_hlo_passes=*/true));
-
-  TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> results,
-                          ExecuteReplicated(executable.get(), kNumReplicas));
+  TF_ASSERT_OK_AND_ASSIGN(ExecutionResult execution_result,
+                          ExecuteReplicated(std::move(module)));
+  const std::vector<Literal>& results = execution_result.results;
   ASSERT_EQ(results.size(), kNumReplicas);
   LiteralTestUtil::ExpectR1Equal<uint32_t>({10, 20}, results[0]);
   LiteralTestUtil::ExpectR1Equal<uint32_t>({11, 21}, results[1]);
@@ -963,13 +940,9 @@ TEST_P(MemcpyCollectiveOps, AllToAll8Gpus) {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(kModuleStr, config));
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto executable, hlo_runner_->CreateExecutable(std::move(module),
-                                                     /*run_hlo_passes=*/true));
-
-  TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> results,
-                          ExecuteReplicated(executable.get(), kNumReplicas));
-  ASSERT_EQ(results.size(), kNumReplicas);
+  TF_ASSERT_OK_AND_ASSIGN(ExecutionResult execution_result,
+                          ExecuteReplicated(std::move(module)));
+  const std::vector<Literal>& results = execution_result.results;
 
   Array<uint32_t> expected({16});
   expected.SetValues(
@@ -1160,11 +1133,10 @@ TEST_F(CollectiveOpsTestE2E, WhileLoopReduceScatterCodeMotion) {
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(kModuleStr, config));
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto executable, hlo_runner_->CreateExecutable(std::move(module),
-                                                     /*run_hlo_passes=*/true));
-  TF_ASSERT_OK_AND_ASSIGN(const HloModule* const executable_module,
-                          hlo_runner_->HloModuleFromWrapped(executable.get()));
+  TF_ASSERT_OK_AND_ASSIGN(ExecutionResult execution_result,
+                          ExecuteReplicated(std::move(module)));
+
+  const HloModule* executable_module = execution_result.optimized_module;
 
   // Verify that the reduce-scatter get hoisted out of the while loop.
   const HloInstruction* while_loop =
@@ -1183,8 +1155,7 @@ TEST_F(CollectiveOpsTestE2E, WhileLoopReduceScatterCodeMotion) {
   const HloComputation* entry = executable_module->entry_computation();
   EXPECT_EQ(reduce_scatter->parent(), entry);
 
-  TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> results,
-                          ExecuteReplicated(executable.get(), kNumReplicas));
+  const std::vector<Literal>& results = execution_result.results;
   ASSERT_EQ(results.size(), kNumReplicas);
   LiteralTestUtil::ExpectR1Equal<uint32_t>({74}, results[0]);
   LiteralTestUtil::ExpectR1Equal<uint32_t>({110}, results[1]);
@@ -1213,19 +1184,16 @@ TEST_F(CollectiveOpsTestE2E, NoAllToAllDecomposition) {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(kModuleStr, config));
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto executable, hlo_runner_->CreateExecutable(std::move(module),
-                                                     /*run_hlo_passes=*/true));
-  TF_ASSERT_OK_AND_ASSIGN(const HloModule* const executable_module,
-                          hlo_runner_->HloModuleFromWrapped(executable.get()));
+  TF_ASSERT_OK_AND_ASSIGN(ExecutionResult execution_result,
+                          ExecuteReplicated(std::move(module)));
+  const HloModule* executable_module = execution_result.optimized_module;
 
   // Verify that the all-to-all is not decomposed into a tuple all-to-all.
   const HloInstruction* all_to_all =
       FindInstruction(executable_module, HloOpcode::kAllToAll);
   EXPECT_THAT(all_to_all, op::Shape("u32[2, 2]"));
 
-  TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> results,
-                          ExecuteReplicated(executable.get(), kNumReplicas));
+  const std::vector<Literal>& results = execution_result.results;
   ASSERT_EQ(results.size(), kNumReplicas);
   LiteralTestUtil::ExpectR1Equal<uint32_t>({10, 15, 11, 16}, results[0]);
   LiteralTestUtil::ExpectR1Equal<uint32_t>({20, 25, 21, 26}, results[1]);

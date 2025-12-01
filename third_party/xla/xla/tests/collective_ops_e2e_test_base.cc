@@ -178,6 +178,14 @@ CollectiveOpsE2ETestBase::ExecuteReplicated(
 }
 
 absl::StatusOr<CollectiveOpsE2ETestBase::ExecutionResult>
+CollectiveOpsE2ETestBase::ExecuteReplicated(std::unique_ptr<HloModule> module) {
+  std::vector<std::vector<Literal*>> arguments(module->config().replica_count(),
+                                               std::vector<Literal*>());
+  return ExecuteReplicated(std::move(module), arguments,
+                           /*run_hlo_passes=*/true);
+}
+
+absl::StatusOr<CollectiveOpsE2ETestBase::ExecutionResult>
 CollectiveOpsE2ETestBase::ExecuteReplicated(
     std::unique_ptr<HloModule> module,
     const std::vector<std::vector<Literal*>> arguments, bool run_hlo_passes) {
