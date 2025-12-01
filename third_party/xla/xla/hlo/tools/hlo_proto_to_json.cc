@@ -30,6 +30,7 @@ limitations under the License.
 
 #include "absl/log/check.h"
 #include "absl/status/statusor.h"
+#include "google/protobuf/util/json_util.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/util/command_line_flags.h"
