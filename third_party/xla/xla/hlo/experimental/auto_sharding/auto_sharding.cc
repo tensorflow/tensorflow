@@ -1302,13 +1302,12 @@ bool ShardingIsConsistent(const HloSharding& partial_sharding,
   }
   for (size_t i = 0; i < partial_sharding.tile_assignment().num_dimensions();
        ++i) {
-    if (strict && partial_sharding.tile_assignment().dim(i) > 1 &&
-        partial_sharding.tile_assignment().dim(i) ==
-            complete_sharding.tile_assignment().dim(i)) {
+    if (strict && partial_sharding.dimension(i) > 1 &&
+        partial_sharding.dimension(i) == complete_sharding.dimension(i)) {
       return true;
     }
-    if (!strict && partial_sharding.tile_assignment().dim(i) > 1 &&
-        complete_sharding.tile_assignment().dim(i) > 1) {
+    if (!strict && partial_sharding.dimension(i) > 1 &&
+        complete_sharding.dimension(i) > 1) {
       return true;
     }
   }

@@ -674,14 +674,13 @@ std::optional<WindowedEinsumConfig> GetWindowedEinsumConfiguration(
     int lhs_non_windowing_sharded_dim_count = 0;
     for (int64_t i = 0; i < lhs_tile_assignment.num_dimensions(); ++i) {
       if (lhs_tile_assignment.dim(i) > 1 &&
-          output_sharding.tile_assignment().dim(
-              indices_map.lhs_to_output_indices[i]) == 1) {
+          output_sharding.dimension(indices_map.lhs_to_output_indices[i]) ==
+              1) {
         lhs_windowing_dim = i;
         ++lhs_windowing_dim_count;
       }
       if (lhs_tile_assignment.dim(i) > 1 &&
-          output_sharding.tile_assignment().dim(
-              indices_map.lhs_to_output_indices[i]) ==
+          output_sharding.dimension(indices_map.lhs_to_output_indices[i]) ==
               lhs_tile_assignment.dim(i)) {
         lhs_non_windowing_sharded_dim = i;
         ++lhs_non_windowing_sharded_dim_count;
@@ -909,7 +908,7 @@ absl::StatusOr<HloInstruction*> EmitWindowedDotGeneral(
   int64_t slice_sharding_dim = -1;
   for (int64_t i = 0; i < slice_sharding->tile_assignment().num_dimensions();
        ++i) {
-    if (slice_sharding->tile_assignment().dim(i) > 1) {
+    if (slice_sharding->dimension(i) > 1) {
       slice_sharding_dim = i;
       break;
     }
@@ -1975,7 +1974,7 @@ absl::StatusOr<HloInstruction*> PartitionBaseCase(
       } else {
         CHECK_EQ(e_config->windowed_op, WindowedEinsumOperand::LHS);
         for (int64_t dim : e_config->windowing_dims) {
-          loop_partitions *= lhs_sharding.tile_assignment().dim(dim);
+          loop_partitions *= lhs_sharding.dimension(dim);
         }
       }
 

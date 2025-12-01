@@ -1182,7 +1182,7 @@ int64_t HloSharding::NumTiles(absl::Span<const int64_t> dims) const {
   int64_t num_tiles = 1;
   for (auto d : dims) {
     CHECK(d < tile_assignment().num_dimensions());
-    num_tiles *= tile_assignment().dim(d);
+    num_tiles *= dimension(d);
   }
   return num_tiles;
 }
