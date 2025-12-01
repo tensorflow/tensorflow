@@ -26,6 +26,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/thunk_pass_pipeline.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/xla.pb.h"
 
 namespace xla {
 namespace gpu {
