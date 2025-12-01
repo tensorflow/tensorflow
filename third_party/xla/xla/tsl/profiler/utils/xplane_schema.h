@@ -375,6 +375,7 @@ enum StatType {
   kGraphMetadataLineId,
   kOffloadCoreId,
   kTcOffloadStartId,
+  kOffloadExecutionIndex,
   kMarkerPayloadString,
   kLastStatType = kMarkerPayloadString,
 };
