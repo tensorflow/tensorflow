@@ -476,6 +476,8 @@ cc_library(
         "//xla/backends/gpu/codegen:fusion_emitter",
         "//xla/backends/gpu/codegen:fusions",
         "//xla/backends/gpu/codegen/llvm:llvm_emitter",
+        "//xla/backends/gpu/codegen/triton:collective_emitter",
+        "//xla/backends/gpu/codegen/triton:fusion",
         "//xla/backends/gpu/codegen/triton:fusion_emitter",
         "//xla/backends/gpu/codegen/triton:xtile_compiler",
         "//xla/backends/gpu/collectives:gpu_clique_key",

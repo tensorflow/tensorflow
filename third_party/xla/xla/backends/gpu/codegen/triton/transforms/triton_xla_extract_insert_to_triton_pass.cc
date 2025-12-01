@@ -361,8 +361,8 @@ class RewriteFuncOp : public mlir::OpRewritePattern<func::FuncOp> {
       if (op.getArgAttr(i, "tt.nv_tma_desc")) {
         continue;
       }
-      new_func.setArgAttr(i, "tt.divisibility",
-                          builder.getIntegerAttr(builder.getI32Type(), 16));
+      const mlir::NamedAttribute attr = xtile::GetDivisibilityAttr(builder);
+      new_func.setArgAttr(i, attr.getName(), attr.getValue());
     }
 
     rewriter.inlineRegionBefore(op.getRegion(), new_func.getFunctionBody(),

@@ -1,4 +1,3 @@
-#include "xla/backends/gpu/codegen/triton/xtile_compiler.h"
 /* Copyright 2024 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -16,13 +15,17 @@ limitations under the License.
 #ifndef XLA_BACKENDS_GPU_CODEGEN_TRITON_FUSION_H_
 #define XLA_BACKENDS_GPU_CODEGEN_TRITON_FUSION_H_
 
+#include <memory>
 #include <optional>
+#include <utility>
 
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/IR/Module.h"
 #include "xla/backends/gpu/codegen/fusion_emitter.h"
+#include "xla/backends/gpu/codegen/triton/xtile_compiler.h"
+#include "xla/backends/gpu/runtime/kernel_thunk.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
@@ -49,6 +52,13 @@ class TritonFusion : public FusionInterface {
       IrEmitterContext& ir_emitter_context,
       const HloFusionInstruction& fusion) const final;
 
+  // A kernel thunk and the corresponding LLVM module if it was not cached.
+  // This is a more concrete version of FusionEmissionResult that can be used in
+  // places where we know we are dealing with Triton fusions.
+  struct EmitResult {
+    std::unique_ptr<KernelThunk> kernel_thunk;
+    std::unique_ptr<llvm::Module> llvm_module;
+  };
   // Overload of [Emit] that allows passing overrides for instructions
   // and unmanaged arguments.
   // - Instruction overloads are required when we forcibly form fusions for
@@ -63,7 +73,9 @@ class TritonFusion : public FusionInterface {
   //
   // TODO(b/461717780): Remove the instruction override once we form collective
   // based fusions earlier in the compiler pipeline.
-  absl::StatusOr<FusionEmissionResult> Emit(
+  // Returns a pair of the kernel thunk and an llvm module. The local module
+  // is only returned if the kernel was not cached.
+  absl::StatusOr<EmitResult> Emit(
       IrEmitterContext& ir_emitter_context, const HloFusionInstruction& fusion,
       const HloInstruction* instr_override,
       absl::Span<const Shape> unmanaged_arguments) const;

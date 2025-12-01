@@ -1124,6 +1124,7 @@ absl::StatusOr<TensorValue> EmitTiledHloInstruction(
     TensorValue parameter =
         EmitParameterExtract(b, tile_info, fn.getArgument(arg_index));
 
+    // Workaround(i1_to_i8_workaround)
     // Some types are stored using different types, e.g. i1 is stored in memory
     // as i8. It's important to type checking that we perform a conversion after
     // loading if the type of the loaded parameter does not match what is
@@ -1436,6 +1437,7 @@ absl::Status EmitGeneric(
   for (auto [root, result, arg] :
        llvm::zip(tiled_hlo_computation.GetRoots(), results,
                  fn.getArguments().drop_front(computation->num_parameters()))) {
+    // Workaround(i1_to_i8_workaround)
     // Some types are stored using different types, e.g. i1 is stored in memory
     // as i8. It's important to check converted types before storing if the type
     // of the result does not match the type of the output pointer.

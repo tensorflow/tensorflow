@@ -28,6 +28,7 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
+#include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinTypeInterfaces.h"
@@ -47,6 +48,7 @@ limitations under the License.
 namespace xla::xtile {
 
 using TensorValue = mlir::TypedValue<mlir::RankedTensorType>;
+static constexpr auto kTritonDivisibilityAttr = "tt.divisibility";
 
 // Returns a string representation of the given MLIR entity.
 template <typename T>
@@ -243,6 +245,13 @@ TensorValue BroadcastInDims(mlir::ImplicitLocOpBuilder& b, TensorValue value,
 
 TensorValue Splat(mlir::ImplicitLocOpBuilder& b, ::mlir::Value value,
                   ::mlir::ArrayRef<int64_t> output_shape);
+
+// Returns a named attribute for divisibility of triton pointer function
+// arguments.
+inline mlir::NamedAttribute GetDivisibilityAttr(mlir::ImplicitLocOpBuilder& b) {
+  return b.getNamedAttr(kTritonDivisibilityAttr,
+                        b.getIntegerAttr(b.getI32Type(), 16));
+}
 
 }  // namespace xla::xtile
 

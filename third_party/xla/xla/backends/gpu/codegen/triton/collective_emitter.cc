@@ -30,8 +30,8 @@ limitations under the License.
 #include "llvm/Support/MathExtras.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/LLVMIR/NVVMDialect.h"
+#include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
-#include "mlir/IR/BuiltinTypeInterfaces.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/TypeUtilities.h"
 #include "mlir/IR/Types.h"
@@ -66,7 +66,6 @@ limitations under the License.
 namespace xla::gpu {
 namespace {
 
-using ::mlir::ShapedType;
 using ::mlir::Value;
 using ::xla::se::gpu::AllReduceStrategy;
 using ::xla::xtile::TensorValue;
@@ -191,6 +190,8 @@ absl::StatusOr<TensorValue> EmitAllReduce(
     const BlockLevelParameters& block_level_parameters,
     mlir::FunctionOpInterface fn, mlir::Value pid,
     absl::flat_hash_map<const TiledHloInstruction*, TensorValue>& values) {
+  const int64_t num_elements =
+      ShapeUtil::ElementsIn(computation->root_instruction()->shape());
   const TiledHloInstruction* tiled_input_hlo = tiled_hlo_reduce.operand(0);
   TensorValue input_tile = values[tiled_input_hlo];
 
@@ -223,26 +224,59 @@ absl::StatusOr<TensorValue> EmitAllReduce(
       ttir::PointerType::get(b.getI64Type(), kGlobalAddressSpace);
   auto remote_input_buffers_i64 =
       ttir::BitcastOp::create(b, ptr_to_i64_type, remote_input_buffers);
-  Value remote_buf_ptr_addr = ttir::AddPtrOp::create(
-      b, ptr_to_i64_type, remote_input_buffers_i64, device_rank);
-  Value remote_buf_i64 = ttir::LoadOp::create(b, remote_buf_ptr_addr,
-                                              ttir::CacheModifier::NONE,     //
-                                              ttir::EvictionPolicy::NORMAL,  //
-                                              false);  // isVolatile
-  const auto elem_type =
-      mlir::cast<ShapedType>(input_tile.getType()).getElementType();
+
+  const mlir::Type i64_type = b.getI64Type();
+  const mlir::Type elem_type = input_tile.getType().getElementType();
+  const mlir::Type elem_storage_type = xtile::StorageType(elem_type);
   const auto ptr_to_elem_type =
-      ttir::PointerType::get(elem_type, kGlobalAddressSpace);
-  Value remote_buf_ptr =
-      ttir::IntToPtrOp::create(b, ptr_to_elem_type, remote_buf_i64);
+      ttir::PointerType::get(elem_storage_type, kGlobalAddressSpace);
+  constexpr int32_t kBitsPerByte = 8;
+  const int64_t remote_buffer_size =
+      num_elements * (elem_storage_type.getIntOrFloatBitWidth() / kBitsPerByte);
+  Value buffer_index = arith::AndIOp::create(
+      b, i64_type, arith::ExtSIOp::create(b, i64_type, signal_value),
+      arith::ConstantOp::create(b, i64_type, b.getI64IntegerAttr(1)));
+  Value buffer_offset = arith::MulIOp::create(
+      b, i64_type, buffer_index,
+      arith::ConstantOp::create(b, i64_type,
+                                b.getI64IntegerAttr(remote_buffer_size)));
+  // Helper function to get the buffer pointer for a given signal value.
+  const auto get_buffer_ptr = [&](mlir::Value buffer_ptr_base) -> mlir::Value {
+    return ttir::AddPtrOp::create(b, ptr_to_elem_type, buffer_ptr_base,
+                                  buffer_offset);
+  };
+
   mlir::ArrayRef<int64_t> remote_shape = tile_info.original_shape();
   const mlir::MemRefType remote_memref_type =
-      mlir::MemRefType::get(remote_shape, elem_type);
-  mlir::Value remote_buf_memref =
-      mtx::PtrToMemrefOp::create(b, remote_memref_type, remote_buf_ptr);
-  xtile::InsertTileOp::create(
-      b, input_tile, remote_buf_memref, tile_info.offsets(),
-      tile_info.padded_tile_sizes(), tile_info.tile_strides());
+      mlir::MemRefType::get(remote_shape, elem_storage_type);
+  // Scoped to reuse variable names during reduction phase.
+  {
+    Value remote_buf_ptr_addr = ttir::AddPtrOp::create(
+        b, ptr_to_i64_type, remote_input_buffers_i64, device_rank);
+    Value remote_buf_i64 =
+        ttir::LoadOp::create(b, remote_buf_ptr_addr,
+                             ttir::CacheModifier::NONE,     //
+                             ttir::EvictionPolicy::NORMAL,  //
+                             false);                        // isVolatile
+    Value remote_buf_ptr_base = ttir::IntToPtrOp::create(
+        b, ptr_to_elem_type, remote_buf_i64,
+        llvm::ArrayRef<mlir::NamedAttribute>{xtile::GetDivisibilityAttr(b)});
+    Value remote_buf_ptr = get_buffer_ptr(remote_buf_ptr_base);
+    mlir::Value remote_buf_memref =
+        mtx::PtrToMemrefOp::create(b, remote_memref_type, remote_buf_ptr);
+    // Workaround(i1_to_i8_workaround) as in fusion_emitter.
+    // The parameter extraction casts the storage type to the logical type.
+    // But for copying to the remote buffer we need to cast it back to the
+    // storage type. Downstream passes should be able to optimize this away.
+    TensorValue storage_tile = input_tile;
+    if (elem_storage_type != elem_type) {
+      storage_tile = mlir::cast<TensorValue>(
+          xtile::Cast(b, input_tile, elem_storage_type));
+    }
+    xtile::InsertTileOp::create(
+        b, storage_tile, remote_buf_memref, tile_info.offsets(),
+        tile_info.padded_tile_sizes(), tile_info.tile_strides());
+  }
 
   // 2. Synchronization phase: Wait for all ranks to complete the scatter.
   int64_t world_size = all_reduce.device_list().num_devices_per_group();
@@ -258,12 +292,8 @@ absl::StatusOr<TensorValue> EmitAllReduce(
       to_emit.push_back(instr);
     }
   }
-  // Set accumulator zero.
-  mlir::Value accumulator_zero =
-      arith::ConstantOp::create(b, elem_type, b.getZeroAttr(elem_type));
-  TensorValue accumulator =
-      xtile::Splat(b, accumulator_zero, input_tile.getType().getShape());
-  for (int rank = 0; rank < world_size; ++rank) {
+
+  const auto load_tile_for_rank = [&](int64_t rank) {
     Value rank_idx =
         arith::ConstantOp::create(b, b.getI64Type(), b.getI64IntegerAttr(rank));
     Value remote_buf_ptr_addr = ttir::AddPtrOp::create(
@@ -273,13 +303,23 @@ absl::StatusOr<TensorValue> EmitAllReduce(
                              ttir::CacheModifier::NONE,     //
                              ttir::EvictionPolicy::NORMAL,  //
                              false);                        // isVolatile
-    Value remote_buf_ptr =
+    Value remote_buf_ptr_base =
         ttir::IntToPtrOp::create(b, ptr_to_elem_type, remote_buf_i64);
+    Value remote_buf_ptr = get_buffer_ptr(remote_buf_ptr_base);
     Value remote_buf_memref =
         mtx::PtrToMemrefOp::create(b, remote_memref_type, remote_buf_ptr);
     TensorValue next_tile =
         EmitParameterExtract(b, tile_info, remote_buf_memref);
-
+    // # Workaround(i1_to_i8_workaround) as in fusion_emitter.
+    // See fusion emitter for more details.
+    if (elem_storage_type != elem_type) {
+      next_tile = mlir::cast<TensorValue>(xtile::Cast(b, next_tile, elem_type));
+    }
+    return next_tile;
+  };
+  TensorValue accumulator = load_tile_for_rank(0);
+  for (int rank = 1; rank < world_size; ++rank) {
+    TensorValue next_tile = load_tile_for_rank(rank);
     absl::flat_hash_map<const HloInstruction*, TensorValue> region_values;
     region_values[reduction_computation->parameter_instruction(0)] =
         accumulator;
@@ -395,7 +435,8 @@ absl::StatusOr<int32_t> AddCollectiveMetadataArguments(
     // Also add the remote/scratch buffers for collectives.
     // !tt.ptr<!tt.ptr<type>>
     fn_arg_types.push_back(ttir::PointerType::get(
-        ttir::PointerType::get(ir_type, kGlobalAddressSpace),
+        ttir::PointerType::get(xtile::StorageType(ir_type),
+                               kGlobalAddressSpace),
         kGlobalAddressSpace));
   }
   // num_metadata_args =

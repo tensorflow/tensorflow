@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "llvm/IR/Module.h"
 #include "mlir/IR/MLIRContext.h"
@@ -40,6 +41,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/utils/hlo_query.h"
+#include "xla/primitive_util.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/hlo_creation_utils.h"
@@ -102,12 +104,18 @@ class CollectiveBlockLevelConfigTest : public HloHardwareIndependentTestBase {
  protected:
   static std::string GetModuleStr(const Shape& shape,
                                   absl::string_view replica_groups = "{0,1}") {
+    absl::string_view type_str =
+        xla::primitive_util::LowercasePrimitiveTypeName(shape.element_type());
+    absl::string_view reduction_kind = "add";
+    if (shape.element_type() == PRED) {
+      reduction_kind = "or";
+    }
     return absl::StrFormat(R"(
       HloModule test
       apply_op {
-        x = f32[] parameter(0)
-        y = f32[] parameter(1)
-        ROOT apply_op = f32[] add(x, y)
+        x = %3$s[] parameter(0)
+        y = %3$s[] parameter(1)
+        ROOT apply_op = %3$s[] %4$s(x, y)
       }
 
       ENTRY test_computation {
@@ -116,7 +124,8 @@ class CollectiveBlockLevelConfigTest : public HloHardwareIndependentTestBase {
         ROOT all-reduce-done = %1$s all-reduce-done(all-reduce-start)
       }
     )",
-                           shape.ToString(), replica_groups);
+                           shape.ToString(), replica_groups, type_str,
+                           reduction_kind);
   }
 
   const se::DeviceDescription device_info_;
@@ -167,12 +176,12 @@ struct AllReduceBlockLevelConfigTestCase {
   }
 };
 
-class CollectiveEmitterParameterizedTest
+class CollectiveBlockLevelConfigParameterizedTest
     : public CollectiveBlockLevelConfigTest,
       public ::testing::WithParamInterface<AllReduceBlockLevelConfigTestCase> {
 };
 
-TEST_P(CollectiveEmitterParameterizedTest, AllReduceBlockLevelConfig) {
+TEST_P(CollectiveBlockLevelConfigParameterizedTest, AllReduceBlockLevelConfig) {
   const auto& param = GetParam();
   TF_ASSERT_OK_AND_ASSIGN(const auto module_with_fusion,
                           BuildModuleWithFusion(GetModuleStr(param.shape)));
@@ -184,7 +193,7 @@ TEST_P(CollectiveEmitterParameterizedTest, AllReduceBlockLevelConfig) {
 
 INSTANTIATE_TEST_SUITE_P(
     CollectiveEmitterParameterizedTestInstantiation,
-    CollectiveEmitterParameterizedTest,
+    CollectiveBlockLevelConfigParameterizedTest,
     ::testing::Values(AllReduceBlockLevelConfigTestCase{
                           /* .test_name = */ "F32_65536",
                           /* .shape = */ ShapeUtil::MakeShape(F32, {65536}),
@@ -204,7 +213,7 @@ INSTANTIATE_TEST_SUITE_P(
                             output_tiles { sizes: 256 sizes: 16 }
                           )pb"}),
     [](const ::testing::TestParamInfo<
-        CollectiveEmitterParameterizedTest::ParamType>& info) {
+        CollectiveBlockLevelConfigParameterizedTest::ParamType>& info) {
       return info.param.test_name;
     });
 
@@ -252,11 +261,15 @@ TEST_F(CollectiveEmitterTest, AllReduceWithTritonGetLaunchConfig) {
   EXPECT_EQ(launch_config->launch_dimensions.num_threads_per_block(), 512);
 }
 
-TEST_F(CollectiveEmitterTest, AllReduceWithTritonGenerateTritonKernel) {
+class CollectiveEmitterParameterizedTest
+    : public CollectiveEmitterTest,
+      public ::testing::WithParamInterface<Shape> {};
+
+TEST_P(CollectiveEmitterParameterizedTest,
+       AllReduceWithTritonGenerateTritonKernelSanity) {
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<ModuleWithEmitter> result,
-      BuildModuleWithEmitter(GetModuleStr(ShapeUtil::MakeShape(F32, {65536})),
-                             device_info_));
+      BuildModuleWithEmitter(GetModuleStr(GetParam()), device_info_));
   const TritonFusion* triton_fusion = result->emitter.get();
   ASSERT_NE(triton_fusion, nullptr);
   TF_ASSERT_OK_AND_ASSIGN(
@@ -265,6 +278,19 @@ TEST_F(CollectiveEmitterTest, AllReduceWithTritonGenerateTritonKernel) {
           *result->FusionInstr(), "test-all-reduce-start", device_info_,
           &result->llvm_module, &result->mlir_context));
 }
+
+INSTANTIATE_TEST_SUITE_P(
+    CollectiveEmitterParameterizedTestInstantiation,
+    CollectiveEmitterParameterizedTest,
+    ::testing::Values(ShapeUtil::MakeShape(F32, {65536}),
+                      ShapeUtil::MakeShape(BF16, {200, 100}),
+                      ShapeUtil::MakeShape(PRED, {200, 64})),
+    [](const ::testing::TestParamInfo<
+        CollectiveEmitterParameterizedTest::ParamType>& info) {
+      return primitive_util::LowercasePrimitiveTypeName(
+                 info.param.element_type()) +
+             "__" + absl::StrJoin(info.param.dimensions(), "_");
+    });
 
 }  // namespace
 
