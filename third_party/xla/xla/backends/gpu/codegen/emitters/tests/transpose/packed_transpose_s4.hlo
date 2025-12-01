@@ -7,4 +7,6 @@ fusion {
   ROOT %transpose= s4[128, 32, 8, 256] transpose(%param_0),
     dimensions={0,3,2,1}
 }
+// CHECK: #indexing_map{{.*}}domain:{{.*}}th_x in [0, [[N_THREADS:[0-9]+]]]
+// CHECK: %thread_id_x = gpu.thread_id  x {xla.range = [0 : index, [[N_THREADS]] : index]}
 // CHECK: xla_gpu.allocate_shared : tensor<256x256xi4>
