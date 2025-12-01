@@ -134,16 +134,15 @@ absl::StatusOr<GpuCliqueKey> GetGpuCliqueKey(
 
 absl::StatusOr<CommunicatorHandle> GetComm(
     const CollectiveParams& params, const CollectiveCliques& collective_cliques,
-    absl::Span<const ReplicaGroup> replica_groups,
-    CollectiveOpGroupMode group_mode, AsyncStreamKind stream_kind) {
-  TF_ASSIGN_OR_RETURN(
-      GpuCliqueKey clique_key,
-      GetGpuCliqueKey(params, replica_groups, group_mode, stream_kind));
-
+    const GpuCliqueKey& clique_key) {
   std::optional<RankId> rank = clique_key.rank(params.global_device_id);
+  if (!rank.has_value()) {
+    return InvalidArgument("Rank not found for device %v",
+                           params.global_device_id);
+  }
+
   TF_ASSIGN_OR_RETURN(Communicator * comm,
                       collective_cliques.GetComm(clique_key, *rank));
-
   return CommunicatorHandle(comm, std::move(clique_key));
 }
 

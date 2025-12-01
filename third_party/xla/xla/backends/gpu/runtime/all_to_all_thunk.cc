@@ -35,6 +35,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
+#include "xla/backends/gpu/runtime/collective_execution.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/core/collectives/communicator.h"
@@ -122,10 +123,16 @@ absl::Status AllToAllStartThunk::Initialize(const InitializeParams& params) {
 
   if (is_local() && p2p_memcpy_enabled_) {
     AsyncStreamKind stream_kind = GetAsyncStreamKind();
+
     TF_ASSIGN_OR_RETURN(
-        CommunicatorHandle comm_handle,
-        GetComm(*params.collective_params, *params.collective_cliques,
-                config().replica_groups, config().group_mode, stream_kind));
+        GpuCliqueKey clique_key,
+        GetGpuCliqueKey(*params.collective_params, config().replica_groups,
+                        config().group_mode, stream_kind));
+
+    TF_ASSIGN_OR_RETURN(CommunicatorHandle comm_handle,
+                        GetComm(*params.collective_params,
+                                *params.collective_cliques, clique_key));
+
     TF_ASSIGN_OR_RETURN(int32_t num_ranks, comm_handle.comm->NumRanks());
     se::StreamExecutor* executor = params.executor;
     {

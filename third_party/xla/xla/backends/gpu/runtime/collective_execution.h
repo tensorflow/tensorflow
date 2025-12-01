@@ -50,12 +50,11 @@ absl::StatusOr<GpuCliqueKey> GetGpuCliqueKey(
     CollectiveOpGroupMode group_mode, AsyncStreamKind stream_kind,
     bool include_participant_groups = true);
 
-// Returns a communicator handle from the set of acquired cliques acquired
-// before the XLA:GPU execution.
+// Returns a communicator handle for the given `clique_key` and `params` from
+// the set of cliques acquired before the XLA:GPU execution.
 absl::StatusOr<CommunicatorHandle> GetComm(
     const CollectiveParams& params, const CollectiveCliques& collective_cliques,
-    absl::Span<const ReplicaGroup> replica_groups,
-    CollectiveOpGroupMode group_mode, AsyncStreamKind stream_kind);
+    const GpuCliqueKey& clique_key);
 
 }  // namespace xla::gpu
 

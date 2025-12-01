@@ -1361,6 +1361,7 @@ cc_library(
     srcs = ["all_to_all_thunk.cc"],
     hdrs = ["all_to_all_thunk.h"],
     deps = [
+        ":collective_execution",
         ":collective_thunk",
         ":thunk",
         "//xla:shape_util",

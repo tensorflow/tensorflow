@@ -77,7 +77,6 @@ limitations under the License.
 #include "xla/service/computation_placer.h"
 #include "xla/service/custom_call_status.h"
 #include "xla/service/custom_call_status_internal.h"
-#include "xla/service/global_device_id.h"
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/gpu/kernels/custom_kernel.h"
 #include "xla/service/gpu/launch_dimensions.h"
@@ -2151,11 +2150,14 @@ absl::StatusOr<const se::CommandBuffer::Command*> AllReduceCmd::Record(
   }
 
   TF_ASSIGN_OR_RETURN(
-      CommunicatorHandle comm_handle,
-      GetComm(*execute_params.collective_params,
-              *execute_params.collective_cliques, config().replica_groups,
-              config().group_mode,
-              AsyncStreamKind::ASYNC_STREAM_KIND_COLLECTIVE));  // Use constant
+      GpuCliqueKey clique_key,
+      GetGpuCliqueKey(*execute_params.collective_params,
+                      config().replica_groups, config().group_mode,
+                      AsyncStreamKind::ASYNC_STREAM_KIND_COLLECTIVE));
+
+  TF_ASSIGN_OR_RETURN(CommunicatorHandle comm_handle,
+                      GetComm(*execute_params.collective_params,
+                              *execute_params.collective_cliques, clique_key));
 
   return RecordTracedCommand(
       execute_params, record_params, std::move(record_action), command_buffer,
@@ -2214,11 +2216,14 @@ absl::StatusOr<const se::CommandBuffer::Command*> ReduceScatterCmd::Record(
   }
 
   TF_ASSIGN_OR_RETURN(
-      CommunicatorHandle comm_handle,
-      GetComm(*execute_params.collective_params,
-              *execute_params.collective_cliques, config().replica_groups,
-              config().group_mode,
-              AsyncStreamKind::ASYNC_STREAM_KIND_COLLECTIVE));  // Use constant
+      GpuCliqueKey clique_key,
+      GetGpuCliqueKey(*execute_params.collective_params,
+                      config().replica_groups, config().group_mode,
+                      AsyncStreamKind::ASYNC_STREAM_KIND_COLLECTIVE));
+
+  TF_ASSIGN_OR_RETURN(CommunicatorHandle comm_handle,
+                      GetComm(*execute_params.collective_params,
+                              *execute_params.collective_cliques, clique_key));
 
   return RecordTracedCommand(execute_params, record_params, record_action,
                              command_buffer, [&](se::Stream* stream) {
@@ -2278,11 +2283,14 @@ absl::StatusOr<const se::CommandBuffer::Command*> AllToAllCmd::Record(
   }
 
   TF_ASSIGN_OR_RETURN(
-      CommunicatorHandle comm_handle,
-      GetComm(*execute_params.collective_params,
-              *execute_params.collective_cliques, config().replica_groups,
-              config().group_mode,
-              AsyncStreamKind::ASYNC_STREAM_KIND_COLLECTIVE));  // Use constant
+      GpuCliqueKey clique_key,
+      GetGpuCliqueKey(*execute_params.collective_params,
+                      config().replica_groups, config().group_mode,
+                      AsyncStreamKind::ASYNC_STREAM_KIND_COLLECTIVE));
+
+  TF_ASSIGN_OR_RETURN(CommunicatorHandle comm_handle,
+                      GetComm(*execute_params.collective_params,
+                              *execute_params.collective_cliques, clique_key));
 
   // MemCpy case is not currently supported in CommandBuffer.
   return RecordTracedCommand(
@@ -2339,11 +2347,14 @@ absl::StatusOr<const se::CommandBuffer::Command*> AllGatherCmd::Record(
   }
 
   TF_ASSIGN_OR_RETURN(
-      CommunicatorHandle comm_handle,
-      GetComm(*execute_params.collective_params,
-              *execute_params.collective_cliques, config().replica_groups,
-              config().group_mode,
-              AsyncStreamKind::ASYNC_STREAM_KIND_COLLECTIVE));  // Use constant
+      GpuCliqueKey clique_key,
+      GetGpuCliqueKey(*execute_params.collective_params,
+                      config().replica_groups, config().group_mode,
+                      AsyncStreamKind::ASYNC_STREAM_KIND_COLLECTIVE));
+
+  TF_ASSIGN_OR_RETURN(CommunicatorHandle comm_handle,
+                      GetComm(*execute_params.collective_params,
+                              *execute_params.collective_cliques, clique_key));
 
   return RecordTracedCommand(
       execute_params, record_params, std::move(record_action), command_buffer,
@@ -2400,11 +2411,14 @@ CollectiveBroadcastCmd::Record(const Thunk::ExecuteParams& execute_params,
   }
 
   TF_ASSIGN_OR_RETURN(
-      CommunicatorHandle comm_handle,
-      GetComm(*execute_params.collective_params,
-              *execute_params.collective_cliques, config().replica_groups,
-              config().group_mode,
-              AsyncStreamKind::ASYNC_STREAM_KIND_COLLECTIVE));  // Use constant
+      GpuCliqueKey clique_key,
+      GetGpuCliqueKey(*execute_params.collective_params,
+                      config().replica_groups, config().group_mode,
+                      AsyncStreamKind::ASYNC_STREAM_KIND_COLLECTIVE));
+
+  TF_ASSIGN_OR_RETURN(CommunicatorHandle comm_handle,
+                      GetComm(*execute_params.collective_params,
+                              *execute_params.collective_cliques, clique_key));
 
   return RecordTracedCommand(execute_params, record_params,
                              std::move(record_action), command_buffer,
@@ -2462,11 +2476,14 @@ absl::StatusOr<const se::CommandBuffer::Command*> CollectivePermuteCmd::Record(
   }
 
   TF_ASSIGN_OR_RETURN(
-      CommunicatorHandle comm_handle,
-      GetComm(*execute_params.collective_params,
-              *execute_params.collective_cliques, config().replica_groups,
-              config().group_mode,
-              AsyncStreamKind::ASYNC_STREAM_KIND_COLLECTIVE));  // Use constant
+      GpuCliqueKey clique_key,
+      GetGpuCliqueKey(*execute_params.collective_params,
+                      config().replica_groups, config().group_mode,
+                      AsyncStreamKind::ASYNC_STREAM_KIND_COLLECTIVE));
+
+  TF_ASSIGN_OR_RETURN(CommunicatorHandle comm_handle,
+                      GetComm(*execute_params.collective_params,
+                              *execute_params.collective_cliques, clique_key));
 
   std::string device_string =
       CollectiveThunk::GetDeviceString(*execute_params.collective_params);

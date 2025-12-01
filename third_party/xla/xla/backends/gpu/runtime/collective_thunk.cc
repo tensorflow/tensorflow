@@ -36,8 +36,6 @@ limitations under the License.
 #include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
-#include "xla/backends/gpu/collectives/gpu_collectives.h"
-#include "xla/backends/gpu/runtime/collective_cliques.h"
 #include "xla/backends/gpu/runtime/collective_execution.h"
 #include "xla/backends/gpu/runtime/collective_params.h"
 #include "xla/backends/gpu/runtime/thunk.h"
@@ -47,9 +45,7 @@ limitations under the License.
 #include "xla/hlo/ir/collective_op_group_mode.h"
 #include "xla/primitive_util.h"
 #include "xla/runtime/device_id.h"
-#include "xla/service/collective_ops_utils.h"
 #include "xla/service/computation_placer.h"
-#include "xla/service/global_device_id.h"
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/rendezvous.h"
 #include "xla/shape.h"
@@ -298,10 +294,16 @@ absl::Status CollectiveThunk::ExecuteOnStream(const ExecuteParams& params) {
       "[%d] Starting %s %s.", params.stream->parent()->device_ordinal(),
       IsAsync() ? "async" : "sync", Thunk::KindToString(kind()));
   AsyncStreamKind stream_kind = GetAsyncStreamKind();
+
   TF_ASSIGN_OR_RETURN(
-      CommunicatorHandle comm_handle,
-      GetComm(*params.collective_params, *params.collective_cliques,
-              config().replica_groups, config().group_mode, stream_kind));
+      GpuCliqueKey clique_key,
+      GetGpuCliqueKey(*params.collective_params, config().replica_groups,
+                      config().group_mode, stream_kind));
+
+  TF_ASSIGN_OR_RETURN(CommunicatorHandle comm_handle,
+                      GetComm(*params.collective_params,
+                              *params.collective_cliques, clique_key));
+
   se::StreamExecutor* executor = params.stream->parent();
   int64_t async_stream_idx = static_cast<int64_t>(stream_kind);
 
@@ -374,10 +376,14 @@ absl::Status CollectiveThunk::ExecuteOnStream(const ExecuteParams& params) {
 absl::StatusOr<std::vector<Communicator*>> CollectiveThunk::GetCommunicators(
     const ExecuteParams& params) const {
   AsyncStreamKind stream_kind = GetAsyncStreamKind();
+
   TF_ASSIGN_OR_RETURN(
-      CommunicatorHandle comm_handle,
-      GetComm(*params.collective_params, *params.collective_cliques,
-              config().replica_groups, config().group_mode, stream_kind));
+      GpuCliqueKey clique_key,
+      GetGpuCliqueKey(*params.collective_params, config().replica_groups,
+                      config().group_mode, stream_kind));
+  TF_ASSIGN_OR_RETURN(CommunicatorHandle comm_handle,
+                      GetComm(*params.collective_params,
+                              *params.collective_cliques, clique_key));
   return std::vector<Communicator*>{comm_handle.comm};
 }
 
