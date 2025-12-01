@@ -56,12 +56,12 @@ func.func @test_tosa_const_ui8() -> (
 
 
   %2 = "tosa.const"() {
-    values = dense<100> : tensor<i8>
+    values = dense<100> : tensor<ui8>
   } : () -> tensor<!quant.uniform<u8:f32, 0.028094837442040443:127>>
 
 
   %3 = "tosa.const"() {
-    values = dense<[[0, 127], [200, 255]]> : tensor<2x2xi8>
+    values = dense<[[0, 127], [200, 255]]> : tensor<2x2xui8>
   } : () -> tensor<2x2x!quant.uniform<u8:f32, 0.028094837442040443:128>>
 
   return %0, %1, %2, %3 : 
