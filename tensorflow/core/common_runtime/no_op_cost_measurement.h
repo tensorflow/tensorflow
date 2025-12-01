@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_COMMON_RUNTIME_NO_OP_COST_MEASUREMENT_H_
 
 #include "absl/strings/string_view.h"
+#include "absl/time/time.h"
 #include "tensorflow/core/common_runtime/cost_measurement.h"
 #include "tensorflow/core/common_runtime/cost_measurement_registry.h"
 
