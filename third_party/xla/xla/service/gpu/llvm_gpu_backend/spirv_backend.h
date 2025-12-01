@@ -33,6 +33,10 @@ absl::StatusOr<std::string> CompileToSPIRV(
     llvm::Module* module, stream_executor::GpuComputeCapability gpu_version,
     const DebugOptions& debug_options);
 
+// Filters out "unsupported_extensions" from the extensions list
+std::vector<std::string> RemoveUnsupportedExtensionsFromAll(
+    llvm::Triple triple, const std::vector<std::string> unsupported_extensions);
+
 // Returns the LLVM command line flags that we use for compilation.
 std::vector<std::string> GetSPIRVBackendOptions(
     const DebugOptions& debug_options);

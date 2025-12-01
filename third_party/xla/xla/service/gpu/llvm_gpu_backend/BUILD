@@ -370,3 +370,21 @@ cc_library(
         "@local_tsl//tsl/platform:errors",
     ],
 )
+
+xla_cc_test(
+    name = "spirv_backend_test",
+    srcs = ["spirv_backend_test.cc"],
+    tags = [
+        "gpu",
+        "oneapi-only",
+    ] + if_google([
+        "notap",
+        "nobuilder",
+        "manual",
+    ]),
+    deps = [
+        ":spirv_backend",
+        "//xla/tests:xla_internal_test_main",
+        "@com_google_googletest//:gtest",
+    ],
+)
