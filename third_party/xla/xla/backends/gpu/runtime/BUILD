@@ -1021,6 +1021,7 @@ xla_test(
         "//xla/runtime:buffer_use",
         "//xla/service:buffer_assignment",
         "//xla/service:executable",
+        "//xla/service:platform_util",
         "//xla/service/gpu:buffer_allocations",
         "//xla/service/gpu:launch_dimensions",
         "//xla/service/gpu/kernels:custom_kernel",

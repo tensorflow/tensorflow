@@ -42,6 +42,7 @@ limitations under the License.
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/gpu/kernels/custom_kernel.h"
 #include "xla/service/gpu/launch_dimensions.h"
+#include "xla/service/platform_util.h"
 #include "xla/service/service_executable_run_options.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/gpu/gpu_test_kernels.h"
@@ -427,8 +428,13 @@ class KernelThunkTmaPTXTest : public ::testing::TestWithParam<bool> {
 };
 
 TEST_P(KernelThunkTmaPTXTest, TmaPTX) {
+  auto name = absl::AsciiStrToUpper(
+      xla::PlatformUtil::CanonicalPlatformName("gpu").value());
+  if (name == "ROCM") {
+    GTEST_SKIP() << "TmaPTX cannot run on ROCm.";
+  }
   TF_ASSERT_OK_AND_ASSIGN(se::Platform * platform,
-                          se::PlatformManager::PlatformWithName("cuda"));
+                          se::PlatformManager::PlatformWithName(name));
   TF_ASSERT_OK_AND_ASSIGN(se::StreamExecutor * executor,
                           platform->ExecutorForDevice(0));
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<se::Stream> stream,
