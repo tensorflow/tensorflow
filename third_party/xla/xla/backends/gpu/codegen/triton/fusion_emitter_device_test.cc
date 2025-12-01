@@ -310,6 +310,114 @@ ENTRY entry_computation {
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHloText, kExactMatch));
 }
 
+TEST_F(TritonEmitterTest, DivByZeroIsEmittedCorrectly) {
+  constexpr absl::string_view kHloText = R"(
+HloModule m
+
+fused_div {
+  param_0 = s32[] parameter(0)
+  param_1 = s32[] parameter(1)
+  ROOT div = s32[] divide(param_0, param_1)
+}
+
+ENTRY main {
+  numerator = s32[] constant(10)
+  denominator = s32[] constant(0)
+  ROOT div = s32[] fusion(numerator, denominator), kind=kCustom, calls=fused_div,
+    backend_config={"fusion_backend_config":{
+      "kind":"__triton",
+      "block_level_fusion_config":{
+        "num_warps":"1","output_tiles":[{"sizes":[]}],
+        "num_ctas":1,"num_stages":1,"is_tma_allowed":false}}}
+}
+)";
+  TF_EXPECT_OK(CreateTritonIrAndFileCheck(this, kHloText, "fused_div", R"(
+CHECK-NOT: arith.constant
+CHECK: arith.divsi {{.*}} : i32
+)"));
+  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloText, kExactMatch));
+}
+
+TEST_F(TritonEmitterTest, DivConstantDenominatorByZeroIsEmittedCorrectly) {
+  constexpr absl::string_view kHloText = R"(
+HloModule m
+
+fused_div {
+  param_0 = s32[] parameter(0)
+  denominator = s32[] constant(0)
+  ROOT div = s32[] divide(param_0, denominator)
+}
+
+ENTRY main {
+  numerator = s32[] constant(10)
+  ROOT div = s32[] fusion(numerator), kind=kCustom, calls=fused_div,
+    backend_config={"fusion_backend_config":{
+      "kind":"__triton",
+      "block_level_fusion_config":{
+        "num_warps":"1","output_tiles":[{"sizes":[]}],
+        "num_ctas":1,"num_stages":1,"is_tma_allowed":false}}}
+}
+)";
+  TF_EXPECT_OK(CreateTritonIrAndFileCheck(this, kHloText, "fused_div", R"(
+CHECK-COUNT-1: arith.constant
+CHECK: arith.divsi {{.*}} : i32
+)"));
+  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloText, kExactMatch));
+}
+
+TEST_F(TritonEmitterTest, DivConstantsByZeroIsEmittedCorrectly) {
+  constexpr absl::string_view kHloText = R"(
+HloModule m
+
+fused_div {
+  numerator = s32[] constant(10)
+  denominator = s32[] constant(0)
+  ROOT div = s32[] divide(numerator, denominator)
+}
+
+ENTRY main {
+  ROOT div = s32[] fusion(), kind=kCustom, calls=fused_div,
+    backend_config={"fusion_backend_config":{
+      "kind":"__triton",
+      "block_level_fusion_config":{
+        "num_warps":"1","output_tiles":[{"sizes":[]}],
+        "num_ctas":1,"num_stages":1,"is_tma_allowed":false}}}
+}
+)";
+  TF_EXPECT_OK(CreateTritonIrAndFileCheck(this, kHloText, "fused_div", R"(
+CHECK-COUNT-2: arith.constant
+CHECK: arith.divsi {{.*}} : i32
+)"));
+  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloText, kExactMatch));
+}
+
+TEST_F(TritonEmitterTest, DivOverflowIsEmittedCorrectly) {
+  constexpr absl::string_view kHloText = R"(
+HloModule m
+
+fused_div {
+  param_0 = s32[] parameter(0)
+  param_1 = s32[] parameter(1)
+  ROOT div = s32[] divide(param_0, param_1)
+}
+
+ENTRY main {
+  int_min = s32[] constant(-2147483648)
+  denominator = s32[] constant(-1)
+  ROOT div = s32[] fusion(int_min, denominator), kind=kCustom, calls=fused_div,
+    backend_config={"fusion_backend_config":{
+      "kind":"__triton",
+      "block_level_fusion_config":{
+        "num_warps":"1","output_tiles":[{"sizes":[]}],
+        "num_ctas":1,"num_stages":1,"is_tma_allowed":false}}}
+}
+)";
+  TF_EXPECT_OK(CreateTritonIrAndFileCheck(this, kHloText, "fused_div", R"(
+CHECK: arith.divsi {{.*}} : i32
+)"));
+  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloText, kExactMatch));
+}
+
 TEST_F(TritonEmitterTest, ReductionOnMinormostAxisIsEmittedCorrectly) {
   constexpr absl::string_view kHloText = R"(
 HloModule m
