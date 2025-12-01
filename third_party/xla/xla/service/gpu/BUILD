@@ -1,6 +1,7 @@
 # Description:
 #   GPU-specific components in XLA service implementation.
 
+load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 load("@bazel_skylib//rules:common_settings.bzl", "bool_flag")
 load(
     "@local_config_rocm//rocm:build_defs.bzl",
@@ -2279,6 +2280,7 @@ xla_test(
         "//xla/stream_executor/cuda:ptx_compilation_method",
         "//xla/stream_executor/cuda:ptx_compiler_support",
         "//xla/stream_executor/cuda:ptx_linking_method",
+        "//xla/stream_executor/cuda:subprocess_compilation_support",
         "//xla/tests:hlo_test_base",
         "//xla/tests:xla_internal_test_main",
         "//xla/tsl/platform:env",
@@ -3428,6 +3430,34 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "gpu_p2p_pipeliner",
+    srcs = ["gpu_p2p_pipeliner.cc"],
+    hdrs = ["gpu_p2p_pipeliner.h"],
+    deps = [
+        "//xla:util",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/parser:hlo_parser",
+        "//xla/hlo/pass:hlo_pass_pipeline",
+        "//xla/service:collective_conflict_analysis",
+        "//xla/service:collective_ops_utils",
+        "//xla/service:collective_pipeliner",
+        "//xla/service:collective_pipeliner_utils",
+        "//xla/service:pattern_matcher",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/base:nullability",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+    ],
+)
+
 xla_test(
     name = "intel_gpu_compiler_test",
     srcs = ["intel_gpu_compiler_test.cc"],
@@ -3444,6 +3474,40 @@ xla_test(
     deps = [
         ":intel_gpu_compiler",
         "//xla/tests:hlo_test_base",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+bzl_library(
+    name = "build_defs_bzl",
+    srcs = ["build_defs.bzl"],
+    parse_tests = False,
+    visibility = ["//visibility:private"],
+    deps = [
+        "//platforms/xla/tests:build_defs_bzl",
+        "//xla/tsl:package_groups_bzl",
+        "@bazel_skylib//lib:paths",
+    ],
+)
+
+xla_test(
+    name = "gpu_p2p_pipeliner_test",
+    srcs = ["gpu_p2p_pipeliner_test.cc"],
+    deps = [
+        ":gpu_p2p_pipeliner",
+        "//xla:util",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/parser:hlo_parser",
+        "//xla/hlo/pass:hlo_pass_pipeline",
+        "//xla/hlo/testlib:filecheck",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/hlo/testlib:pattern_matcher_gmock",
+        "//xla/service:hlo_module_config",
+        "//xla/service:hlo_verifier",
+        "//xla/service:pattern_matcher",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
     ],
 )

@@ -39,6 +39,7 @@ limitations under the License.
 #include "xla/stream_executor/cuda/ptx_compiler_support.h"
 #include "xla/stream_executor/cuda/subprocess_compilation.h"
 #include "xla/stream_executor/cuda/subprocess_compilation_provider.h"
+#include "xla/stream_executor/cuda/subprocess_compilation_support.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/threadpool.h"
@@ -76,6 +77,11 @@ void CompilationProviderTest::SetUp() {
        provider ==
            kCompositeNvptxCompilerAndNvJitLinkCompilationProviderName)) {
     GTEST_SKIP() << "nvptxcompiler is not supported in this build.";
+  }
+
+  if (!IsSubprocessCompilationSupported() &&
+      provider == kSubprocessCompilationProviderName) {
+    GTEST_SKIP() << "subprocess compilation is not supported in this build.";
   }
 
   TF_ASSERT_OK_AND_ASSIGN(compilation_provider_,
