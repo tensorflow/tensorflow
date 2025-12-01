@@ -298,7 +298,7 @@ def lit_test(
     See https://llvm.org/docs/CommandGuide/lit.html for details on lit
     """
     args = args or []
-    data = data or []
+    data = (data or []) + ["//xla:sh_test_with_runfiles.py"]
     tools = tools or []
     env = env or {}
 
