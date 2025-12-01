@@ -53,6 +53,7 @@ using ::mlir::MLIRContext;
 
 class GpuPerformanceModelTest : public HloHardwareIndependentTestBase {
  public:
+  GpuPerformanceModelTest() { RegisterSymbolicExprStorage(&mlir_context_); }
   GpuPerformanceModel::RunTimes EstimateRunTimes(
       const HloInstruction* producer,
       std::vector<HloInstruction*> fused_consumers = {}) {

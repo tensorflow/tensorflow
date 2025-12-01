@@ -444,6 +444,7 @@ absl::StatusOr<bool> CanSymbolicTileAnalysisTileDiamond(
   TF_ASSIGN_OR_RETURN(HloFusionInstruction * normalization_fusion,
                       MakeFusionForDiamond(diamond));
   mlir::MLIRContext mlir_context;
+  RegisterSymbolicExprStorage(&mlir_context);
   SymbolicTileAnalysisOrError symbolic_tile_analysis_or_error =
       SymbolicTileAnalysis::AnalyzeComputation(
           *normalization_fusion->called_computation(), &mlir_context,

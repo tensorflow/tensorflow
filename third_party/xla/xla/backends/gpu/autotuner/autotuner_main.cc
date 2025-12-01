@@ -182,6 +182,7 @@ int main(int argc, char* argv[]) {
   auto module = xla::gpu::GetModule(hlo_file);
   CHECK_OK(module.status());
   mlir::MLIRContext mlir_context;
+  xla::RegisterSymbolicExprStorage(&mlir_context);
   CHECK_OK(xla::gpu::Autotune(*module.value(), cache_dir, autotune_cache_mode,
                               &mlir_context));
   std::cout << module.value()->ToString() << std::endl;

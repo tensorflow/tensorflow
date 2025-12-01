@@ -49,6 +49,7 @@ limitations under the License.
 #include "xla/codegen/emitters/ir/xla_ops.h"
 #include "xla/codegen/emitters/transforms/passes.h"
 #include "xla/hlo/analysis/indexing_map.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
 
 namespace xla {
 namespace emitters {
@@ -308,6 +309,7 @@ struct SimplifyAffinePass
  public:
   void runOnOperation() override {
     MLIRContext* ctx = &getContext();
+    RegisterSymbolicExprStorage(ctx);
     mlir::RewritePatternSet patterns(ctx);
     patterns.add<RewriteAffineApply, RewriteApplyIndexingOp>(ctx);
     mlir::GreedyRewriteConfig config;

@@ -73,6 +73,7 @@ MATCHER_P(OutputTileSizesIs, matcher, "") {
 
 class NestGemmFusionTest : public HloHardwareIndependentTestBase {
  protected:
+  NestGemmFusionTest() { RegisterSymbolicExprStorage(&mlir_context_); }
   const se::DeviceDescription device_description_{
       TestGpuDeviceInfo::RTXA6000DeviceInfo(
           se::GpuComputeCapability{se::CudaComputeCapability::Ampere()})};

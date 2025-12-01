@@ -24,7 +24,10 @@ namespace xla {
 
 class HloTestBaseWithMLIRContext : public HloTestBase {
  public:
-  mlir::MLIRContext* mlir_context() { return &mlir_context_; }
+  mlir::MLIRContext* mlir_context() {
+    RegisterSymbolicExprStorage(&mlir_context_);
+    return &mlir_context_;
+  }
 
  private:
   mlir::MLIRContext mlir_context_;

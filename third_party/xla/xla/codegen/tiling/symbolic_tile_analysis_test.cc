@@ -143,6 +143,8 @@ class FakeEmitterSpecificConstraints : public EmitterSpecificConstraints {
 
 class SymbolicTileAnalysisTest : public HloHardwareIndependentTestBase {
  public:
+  SymbolicTileAnalysisTest() { RegisterSymbolicExprStorage(&mlir_context_); }
+
   std::optional<SymbolicTileAnalysis> TryAnalyzeModule(
       HloModule* module,
       EmitterSpecificConstraintsBuilder emitter_specific_constraints_builder =

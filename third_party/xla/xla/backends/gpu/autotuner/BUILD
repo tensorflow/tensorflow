@@ -58,6 +58,7 @@ cc_library(
         "//xla/backends/autotuner:codegen_backend",
         "//xla/backends/gpu/codegen/triton:support",
         "//xla/backends/gpu/codegen/triton:tma_utils",
+        "//xla/hlo/analysis:symbolic_expr",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/utils:hlo_traversal",
         "//xla/service:compiler",

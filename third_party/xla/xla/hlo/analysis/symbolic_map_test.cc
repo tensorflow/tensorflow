@@ -29,26 +29,28 @@ namespace {
 using ::testing::ElementsAre;
 
 struct SymbolicMapTest : public ::testing::Test {
+  static constexpr int kSampleDims = 2;
+  static constexpr int kSampleSymbols = 2;
+  SymbolicMapTest() {
+    RegisterSymbolicExprStorage(&ctx);
+    d0 = CreateDimExpr(0, &ctx);
+    d1 = CreateDimExpr(1, &ctx);
+    s0 = CreateSymbolExpr(0, kSampleDims, &ctx);
+    s1 = CreateSymbolExpr(1, kSampleDims, &ctx);
+    c2 = CreateSymbolicConstant(2, &ctx);
+    c10 = CreateSymbolicConstant(10, &ctx);
+    sample_map =
+        SymbolicMap::Get(&ctx, kSampleDims, kSampleSymbols, {d0 + s0, d1 * s1});
+  }
+
   mlir::MLIRContext ctx;
   SymbolicExpr d0;
   SymbolicExpr d1;
-  static constexpr int kSampleDims = 2;
   SymbolicExpr s0;
   SymbolicExpr s1;
-  static constexpr int kSampleSymbols = 2;
   SymbolicExpr c2;
   SymbolicExpr c10;
   SymbolicMap sample_map;
-
-  SymbolicMapTest()
-      : d0(CreateDimExpr(0, &ctx)),
-        d1(CreateDimExpr(1, &ctx)),
-        s0(CreateSymbolExpr(0, kSampleDims, &ctx)),
-        s1(CreateSymbolExpr(1, kSampleDims, &ctx)),
-        c2(CreateSymbolicConstant(2, &ctx)),
-        c10(CreateSymbolicConstant(10, &ctx)),
-        sample_map(SymbolicMap::Get(&ctx, kSampleDims, kSampleSymbols,
-                                    {d0 + s0, d1 * s1})) {}
 };
 
 TEST_F(SymbolicMapTest, GetSymbolAndDimExpressions) {

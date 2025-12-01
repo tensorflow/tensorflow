@@ -89,6 +89,7 @@ class EmitterBaseTest : public HloHardwareIndependentTestBase {
   EmitterBaseTest() {
     mlir_context_.appendDialectRegistry(EmitterBase::GetDialectRegistry());
     mlir_context_.loadAllAvailableDialects();
+    RegisterSymbolicExprStorage(&mlir_context_);
   }
 
   mlir::MLIRContext mlir_context_;

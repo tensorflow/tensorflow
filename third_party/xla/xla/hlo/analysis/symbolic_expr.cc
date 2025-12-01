@@ -764,19 +764,19 @@ SymbolicExpr SymbolicExpr::ReplaceVariables(
 
 SymbolicExpr SymbolicExpr::ReplaceSymbols(
     absl::Span<const SymbolicExpr> sym_replacements, int64_t num_dims) const {
-  return ReplaceDimsAndSymbols({}, sym_replacements, num_dims);
+  llvm::SmallVector<SymbolicExpr> dim_replacements;
+  dim_replacements.reserve(num_dims);
+  for (int64_t i = 0; i < num_dims; ++i) {
+    dim_replacements.push_back(CreateSymbolicVariable(i, GetContext()));
+  }
+  return ReplaceDimsAndSymbols(dim_replacements, sym_replacements);
 }
 
 SymbolicExpr SymbolicExpr::ReplaceDimsAndSymbols(
     absl::Span<const SymbolicExpr> dim_replacements,
-    absl::Span<const SymbolicExpr> symbol_replacements,
-    int64_t num_dims) const {
+    absl::Span<const SymbolicExpr> symbol_replacements) const {
   llvm::SmallVector<SymbolicExpr> replacements;
   replacements.append(dim_replacements.begin(), dim_replacements.end());
-  mlir::MLIRContext* ctx = GetContext();
-  for (int64_t i = dim_replacements.size(); i < num_dims; ++i) {
-    replacements.push_back(CreateSymbolicVariable(i, ctx));
-  }
   replacements.append(symbol_replacements.begin(), symbol_replacements.end());
   return ReplaceVariables(replacements);
 }
@@ -978,9 +978,6 @@ void RegisterSymbolicExprStorage(mlir::MLIRContext* mlir_context) {
 SymbolicExpr GetOrCreateSymbolicExpr(SymbolicExprType type, int64_t value,
                                      SymbolicExpr lhs, SymbolicExpr rhs,
                                      mlir::MLIRContext* mlir_context) {
-  // TODO(b/433696544): This might be too expensive to call per expression.
-  // We should consider calling this once per MLIRContext creation.
-  RegisterSymbolicExprStorage(mlir_context);
   auto* uniquer = &mlir_context->getAffineUniquer();
   auto initContext = [&](SymbolicExprStorage* storage) {
     storage->mlir_context_ = mlir_context;

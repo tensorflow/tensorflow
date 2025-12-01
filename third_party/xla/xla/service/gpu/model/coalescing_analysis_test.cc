@@ -88,6 +88,7 @@ class CoalescingTest : public HloHardwareIndependentTestBase {
   }
 
  protected:
+  CoalescingTest() { RegisterSymbolicExprStorage(&mlir_context_); }
   stream_executor::DeviceDescription device_info_ =
       TestGpuDeviceInfo::RTXA6000DeviceInfo();
   mlir::MLIRContext mlir_context_;

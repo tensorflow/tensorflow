@@ -34,6 +34,9 @@ using ::testing::HasSubstr;
 
 class IndexingMapSerializationTest : public HloHardwareIndependentTestBase {
  public:
+  IndexingMapSerializationTest() {
+    RegisterSymbolicExprStorage(&mlir_context_);
+  }
   mlir::MLIRContext mlir_context_;
   void ParseAndCheck(absl::string_view indexing_map_str) {
     auto indexing_map = ParseIndexingMap(indexing_map_str, &mlir_context_);

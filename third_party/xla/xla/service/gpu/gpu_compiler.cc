@@ -383,7 +383,9 @@ GpuCompiler::GpuCompiler(se::Platform::Id platform_id,
       target_triple_(target_triple),
       data_layout_(data_layout),
       pointer_size_(llvm::DataLayout(data_layout)
-                        .getPointerSize(0 /* default address space */)) {}
+                        .getPointerSize(0 /* default address space */)) {
+  RegisterSymbolicExprStorage(&mlir_context_);
+}
 
 namespace {
 // Adds the HloVerifier for GPU to the given pipeline.

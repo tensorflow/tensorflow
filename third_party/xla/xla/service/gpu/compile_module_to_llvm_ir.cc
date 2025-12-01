@@ -49,6 +49,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/hlo/analysis/hlo_ordering.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/buffer_assignment.h"
@@ -147,6 +148,7 @@ std::unique_ptr<mlir::MLIRContext> CreateMlirContext() {
   auto mlir_context = std::make_unique<mlir::MLIRContext>(
       registry, mlir::MLIRContext::Threading::DISABLED);
   mlir_context->getDiagEngine().registerHandler(DiagnosticHandler);
+  RegisterSymbolicExprStorage(mlir_context.get());
   return mlir_context;
 }
 

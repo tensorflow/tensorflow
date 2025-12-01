@@ -88,6 +88,7 @@ limitations under the License.
 #include "xla/codegen/emitters/transforms/passes.h"
 #include "xla/codegen/xtile/ir/transforms/passes.h"
 #include "xla/codegen/xtile/ir/xtile_dialect.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -233,6 +234,7 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CreateTritonModule(
   TF_RETURN_IF_ERROR(IsTritonSupportedFusion(*fusion, device_info));
 
   LoadMlirDialectsForTriton(mlir_context);
+  RegisterSymbolicExprStorage(&mlir_context);
 
   // TODO: b/451959933 - Use reference or check pointer.
 

@@ -42,6 +42,7 @@ limitations under the License.
 #include "xla/backends/gpu/codegen/triton/test_utils.h"
 #include "xla/backends/gpu/codegen/triton/xtile_compiler.h"
 #include "xla/error_spec.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -1661,6 +1662,7 @@ ENTRY entry {
   llvm::LLVMContext llvm_ctx;
   llvm::Module llvm_module("module", llvm_ctx);
   mlir::MLIRContext mlir_context;
+  RegisterSymbolicExprStorage(&mlir_context);
 
   EXPECT_THAT(
       TritonWrapper("test_fn", triton_fusion,
@@ -1719,6 +1721,7 @@ ENTRY entry_computation {
   llvm::LLVMContext llvm_ctx;
   llvm::Module llvm_module("module", llvm_ctx);
   mlir::MLIRContext mlir_context;
+  RegisterSymbolicExprStorage(&mlir_context);
 
   BlockLevelParameters block_level_parameters;
   block_level_parameters.output_tile_sizes = {{1024, 1}};
@@ -4555,6 +4558,7 @@ TEST_F(TritonEmitterTest, RocmWarpSizeIsSetCorrectly) {
   llvm::LLVMContext llvm_ctx;
   llvm::Module llvm_module("module", llvm_ctx);
   mlir::MLIRContext mlir_context;
+  RegisterSymbolicExprStorage(&mlir_context);
   std::vector<std::string> paths;
   std::string triton_passes_log;
 

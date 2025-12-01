@@ -68,6 +68,7 @@ MATCHER_P(MatchIndexingString, indexing_string, "") {
 
 class IndexingTestBase : public HloHardwareIndependentTestBase {
  public:
+  IndexingTestBase() { RegisterSymbolicExprStorage(&mlir_context_); }
   HloInstruction* ParseAndGetRoot(absl::string_view hlo_string);
 
   HloInstructionIndexing GetOutputToInputIndexing(

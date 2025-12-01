@@ -63,6 +63,7 @@ class SoftmaxRewriterTritonTest
     : public HloHardwareIndependentTestBase,
       public ::testing::WithParamInterface<PrimitiveType> {
  protected:
+  SoftmaxRewriterTritonTest() { RegisterSymbolicExprStorage(&mlir_context_); }
   se::DeviceDescription device_info_{TestGpuDeviceInfo::RTXA6000DeviceInfo()};
   mlir::MLIRContext mlir_context_;
   GpuAliasInfo alias_info_{device_info_};

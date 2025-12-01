@@ -613,6 +613,8 @@ cc_library(
     deps = [
         ":interval",
         ":symbolic_expr",
+        ":symbolic_map",
+        ":symbolic_map_converter",
         "//xla:permutation_util",
         "//xla:shape_util",
         "//xla:util",
@@ -647,6 +649,7 @@ xla_cc_test(
         ":indexing_test_utils",
         ":interval",
         ":symbolic_expr",
+        ":symbolic_map_converter",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/hlo/testlib:verified_hlo_module",
         "//xla/tests:xla_internal_test_main",
@@ -725,6 +728,10 @@ cc_library(
     name = "symbolic_map",
     srcs = ["symbolic_map.cc"],
     hdrs = ["symbolic_map.h"],
+    visibility = [
+        "//xla/hlo/analysis:__subpackages__",
+        "//xla/service/gpu:__subpackages__",
+    ],
     deps = [
         ":symbolic_expr",
         "@com_google_absl//absl/algorithm:container",
@@ -753,6 +760,20 @@ cc_library(
     name = "symbolic_expr",
     srcs = ["symbolic_expr.cc"],
     hdrs = ["symbolic_expr.h"],
+    visibility = [
+        "//platforms/xla/experimental/mosaic_gpu/codegen:__pkg__",
+        "//xla/backends/cpu/codegen:__subpackages__",
+        "//xla/backends/cpu/testlib:__pkg__",
+        "//xla/backends/gpu/autotuner:__pkg__",
+        "//xla/backends/gpu/codegen:__subpackages__",
+        "//xla/backends/gpu/codegen/triton:__subpackages__",
+        "//xla/codegen:__subpackages__",
+        "//xla/hlo/analysis:__subpackages__",
+        "//xla/service/cpu:__subpackages__",
+        "//xla/service/gpu:__subpackages__",
+        "//xla/tests:__subpackages__",
+        "//xla/tools:__pkg__",
+    ],
     deps = [
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",

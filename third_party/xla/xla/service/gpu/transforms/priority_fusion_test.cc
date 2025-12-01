@@ -55,6 +55,8 @@ namespace gpu {
 
 class PriorityFusionTest : public HloHardwareIndependentTestBase {
  public:
+  PriorityFusionTest() { RegisterSymbolicExprStorage(&mlir_context_); }
+
   std::vector<HloFusionAnalysis::EmitterFusionKind> RunAndGetFusionKinds(
       absl::string_view hlo) {
     auto module = ParseAndReturnVerifiedModule(hlo).value();

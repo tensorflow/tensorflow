@@ -45,6 +45,9 @@ namespace {
 
 class TritonEmitterConstraintsTest : public HloHardwareIndependentTestBase {
  public:
+  TritonEmitterConstraintsTest() {
+    RegisterSymbolicExprStorage(&mlir_context_);
+  }
   std::optional<SymbolicTileAnalysis> TryAnalyzeModule(
       HloModule* module, bool with_triton_emitter_specific_constraints = true) {
     EmitterSpecificConstraintsBuilder constraints_builder = nullptr;

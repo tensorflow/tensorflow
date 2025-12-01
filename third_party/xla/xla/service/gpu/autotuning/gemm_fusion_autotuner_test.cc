@@ -185,6 +185,7 @@ class StatelessAutotunerTest : public HloTestBase {
   void SetUp() override {
     AutotunerUtil::ClearAutotuneResults();
     HloTestBase::SetUp();
+    RegisterSymbolicExprStorage(&mlir_context_);
   }
 
   void TearDown() override {
