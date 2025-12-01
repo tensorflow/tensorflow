@@ -542,7 +542,7 @@ uint64_t HloModule::ToFingerprint(
   return printer.ToFingerprint();
 }
 
-HloModuleProto HloModule::ToProto() const {
+HloModuleProto HloModule::ToProtoWithoutComputations() const {
   HloModuleProto proto;
   proto.set_id(unique_id_);
   proto.set_name(name_);
@@ -552,10 +552,6 @@ HloModuleProto HloModule::ToProto() const {
     proto.set_entry_computation_id(entry_computation_->unique_id());
     *proto.mutable_host_program_shape() =
         entry_computation_layout().ComputeProgramShape().ToProto();
-  }
-  for (const HloComputation* computation : MakeComputationPostOrder()) {
-    HloComputationProto computation_proto = computation->ToProto();
-    proto.add_computations()->Swap(&computation_proto);
   }
   if (has_schedule()) {
     *proto.mutable_schedule() = schedule().ToProto().value();
@@ -617,6 +613,15 @@ HloModuleProto HloModule::ToProto() const {
         original_value_recovery_table_.ToProto();
   }
 
+  return proto;
+}
+
+HloModuleProto HloModule::ToProto() const {
+  HloModuleProto proto = ToProtoWithoutComputations();
+  for (const HloComputation* computation : MakeComputationPostOrder()) {
+    HloComputationProto computation_proto = computation->ToProto();
+    proto.add_computations()->Swap(&computation_proto);
+  }
   return proto;
 }
 

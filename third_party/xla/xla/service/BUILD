@@ -543,6 +543,8 @@ cc_library(
         ":hlo_graph_dumper",
         ":hlo_proto_cc",
         ":hlo_proto_util",
+        "//third_party/riegeli/bytes:file_writer",
+        "//third_party/riegeli/records:record_writer",
         "//xla:debug_options_flags",
         "//xla:util",
         "//xla:xla_proto_cc",
