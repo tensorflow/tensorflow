@@ -179,10 +179,7 @@ ENTRY test_computation {
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<Executable> executable,
       backend().compiler()->RunBackend(std::move(compiled_module), executor,
-                                       {/*device_allocator=*/nullptr,
-                                        /*thread_pool=*/nullptr,
-                                        /*layout_canonicalization_callback=*/{},
-                                        /*is_autotuning_compilation=*/false}));
+                                       /*device_allocator=*/nullptr));
 
   // Downcast to GPU executable
   xla::gpu::GpuExecutable* gpu_executable =

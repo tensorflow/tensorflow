@@ -37,6 +37,7 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"
 #include "xla/autotune_results.pb.h"
 #include "xla/autotuning.pb.h"
+#include "xla/backends/gpu/autotuner/gpu_codegen_backend.h"
 #include "xla/error_spec.h"
 #include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -51,6 +52,7 @@ limitations under the License.
 #include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/service/call_inliner.h"
+#include "xla/service/compiler.h"
 #include "xla/service/dump.h"
 #include "xla/service/executable.h"
 #include "xla/service/gpu/autotuning/autotune_cache_key.h"
@@ -655,14 +657,16 @@ ENTRY %e {
 })";
 
   auto module = ParseAndReturnVerifiedModule(kHloText).value();
+  GpuCodegenBackend::AdjustDebugOptionsForAutotuning(
+      module->mutable_config().mutable_debug_options(),
+      /*force_allow_register_spills=*/false);
+  Compiler::CompileOptions options;
+  options.embed_hlo_module = false;
   std::unique_ptr<Executable> executable =
       backend()
           .compiler()
           ->RunBackend(std::move(module), backend().default_stream_executor(),
-                       {/*device_allocator=*/nullptr,
-                        /*thread_pool=*/nullptr,
-                        /*layout_canonicalization_callback=*/{},
-                        /*is_autotuning_compilation=*/true})
+                       /*device_allocator=*/nullptr)
           .value();
   EXPECT_NE(executable, nullptr);
 }

@@ -2537,14 +2537,10 @@ absl::StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
         gpu_device_info.memory_bandwidth());
     GpuHloCostAnalysis cost_analysis(cost_analysis_options, gpu_device_info);
     TF_RETURN_IF_ERROR(module->entry_computation()->Accept(&cost_analysis));
-    if (!options.is_autotuning_compilation) {
-      VLOG(1) << "HLO memory read+written: "
-              << tsl::strings::HumanReadableNumBytes(
-                     cost_analysis.bytes_accessed());
-    }
-    if (module->config().hlo_profiling_enabled()) {
-      LOG(ERROR) << "--xla_hlo_profile for GPU is unsupported.";
-    }
+    VLOG(1) << absl::StrFormat(
+        "#module=%s,program_id=%d# estimated memory r+w %s", module->name(),
+        module->unique_id(),
+        tsl::strings::HumanReadableNumBytes(cost_analysis.bytes_accessed()));
   }
 
   TF_ASSIGN_OR_RETURN(CompileResultWithMetadata res,
@@ -2560,6 +2556,7 @@ absl::StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
   // The module is being moved into the GpuExecutable below and we need to
   // read a few config values from the module, before it becomes invalid.
   bool embed_ir_in_executable = debug_opts.xla_embed_ir_in_executable();
+  bool embed_debug_info = debug_opts.xla_gpu_executable_embed_debug_info();
 
   tsl::profiler::ScopedAnnotation annotation([&] {
     return absl::StrFormat("XlaCreateGpuExecutable:#module=%s#",
@@ -2571,10 +2568,8 @@ absl::StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<GpuExecutable> gpu_executable,
       GpuExecutable::Create(GpuExecutable::Params{
-          /*asm_text=*/(options.is_autotuning_compilation &&
-                        !res.backend_result.binary.empty())
-              ? std::string()
-              : std::move(res.backend_result.asm_text),
+          /*asm_text=*/embed_debug_info ? std::move(res.backend_result.asm_text)
+                                        : std::string(),
           /*binary=*/std::move(res.backend_result.binary),
           /*dnn_compiled_graphs=*/
           std::move(dnn_compiled_graphs),
@@ -2593,10 +2588,10 @@ absl::StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
           /*alias_info=*/std::move(alias_info),
           /*debug_options=*/debug_opts,
           /*device_description=*/gpu_device_info,
-          /*debug_module=*/options.is_autotuning_compilation
-              ? std::unique_ptr<HloModule>()
-              : std::move(module),
-          /*enable_debug_info_manager=*/!options.is_autotuning_compilation}));
+          /*debug_module=*/options.embed_hlo_module
+              ? std::move(module)
+              : std::unique_ptr<HloModule>(),
+          /*enable_debug_info_manager=*/embed_debug_info}));
 
   if (embed_ir_in_executable) {
     std::string ir_module_string_before_opt =
@@ -2607,7 +2602,7 @@ absl::StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
 
   IncrementCompiledProgramsCount();
 
-  if (!options.is_autotuning_compilation && gpu_executable->has_module()) {
+  if (embed_debug_info && gpu_executable->has_module()) {
     // Dump computation proto state and buffer assignment for
     // CompiledMemoryAnalysis.
     auto hlo_proto = std::make_unique<HloProto>();
