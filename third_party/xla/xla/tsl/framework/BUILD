@@ -231,7 +231,10 @@ cc_library(
         "device_id_manager.h",
     ],
     deps = [
+        ":device_type",
         "//xla/tsl/lib/gtl:int_type",
+        "//xla/tsl/platform:status",
+        "//xla/tsl/platform:statusor",
     ] + if_static([
         ":device_id_impl",
     ]),
@@ -252,7 +255,6 @@ cc_library(
         "//xla/tsl/platform:macros",
         "//xla/tsl/platform:status",
         "//xla/tsl/platform:statusor",
-        "//xla/tsl/platform:types",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
@@ -368,13 +370,10 @@ cc_library(
         "//xla/tsl/lib/gtl:flatmap",
         "//xla/tsl/platform:logging",
         "//xla/tsl/platform:status",
-        "//xla/tsl/platform:types",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/synchronization",
-        "@local_tsl//tsl/platform:hash",
-        "@local_tsl//tsl/platform:stringpiece",
         "@local_tsl//tsl/platform:thread_annotations",
     ],
 )
@@ -414,7 +413,7 @@ tsl_cc_test(
     deps = [
         ":cancellation",
         "//xla/tsl/platform:env",
-        "//xla/tsl/platform:env_impl",
+        "//xla/tsl/platform:env_impl",  # buildcleaner: keep
         "//xla/tsl/platform:status",
         "//xla/tsl/platform:test",
         "@com_google_absl//absl/synchronization",

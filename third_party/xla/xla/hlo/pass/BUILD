@@ -60,7 +60,6 @@ xla_cc_test(
         "//xla/hlo/ir:hlo_module_group",
         "//xla/hlo/parser:hlo_parser",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
-        "//xla/hlo/testlib:test_helpers",
         "//xla/service:hlo_proto_cc",
         "//xla/service:pattern_matcher",
         "//xla/tsl/platform:errors",
@@ -147,7 +146,6 @@ xla_cc_test(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
-        "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest",
     ],
 )

@@ -33,7 +33,7 @@ xla_cc_binary(
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:AllPassesAndDialects",
         "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:RegisterAllDialects",
+        "@llvm-project//mlir:RegisterAllDialects",  # buildcleaner: keep
         "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:path",
         "@local_tsl//tsl/platform:platform_port",

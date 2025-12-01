@@ -88,7 +88,6 @@ cc_library(
     hdrs = ["xnnpack_backend.h"],
     deps = [
         ":cpu_codegen_backend",
-        "//xla:status_macros",
         "//xla:util",
         "//xla/backends/autotuner:codegen_backend",
         "//xla/backends/cpu:xnn_fusion_options_proto_cc",
@@ -102,7 +101,6 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
-        "@local_tsl//tsl/platform:casts",
     ],
 )
 
@@ -203,7 +201,5 @@ xla_cc_test(
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/platform:status_matchers",
-        "@local_tsl//tsl/platform:test",
     ],
 )
