@@ -111,6 +111,11 @@ inline int64_t ComputeSafeBatchSize(const Tensor& tensor, int64_t current_batch,
   if (current_batch <= 0) return 1;
   int64_t total_elements = tensor.NumElements();
   if (total_elements <= 0) return 1;
+  // Handle edge case where total_elements < current_batch
+  if (total_elements < current_batch) {
+    // Each batch has less than 1 element on average, return 1
+    return 1;
+  }
   int64_t elements_per_batch = total_elements / current_batch;
   if (elements_per_batch <= 0) return 1;
   int64_t max_elements = kMaxCudnnTensorSizeBytes / sizeof(T);
@@ -877,8 +882,13 @@ void LaunchConvOpImpl(OpKernelContext* context, bool cudnn_use_autotune,
                        stream->MemcpyD2D(&dst_ptr, src_ptr, copy_size_bytes));
 
         // Recursively call LaunchConvOpImpl with the smaller batch.
-        // Note: The recursive call is safe because safe_batch ensures the
-        // sliced tensor is below the size threshold, so it won't recurse again.
+        // Safety note: The recursive call is guaranteed not to re-enter this
+        // batch-splitting code path because:
+        // 1. safe_batch is computed to keep sliced tensors under the size limit
+        // 2. IsTensorTooLargeForCudnn will return false for the sliced tensor
+        // 3. Even if it were to trigger, in_batch would equal chunk_size,
+        //    and safe_batch would equal chunk_size, so the condition
+        //    "safe_batch < in_batch" would be false
         LaunchConvOpImpl<T>(context, cudnn_use_autotune, input_slice, filter,
                             dilations, strides, padding, explicit_paddings,
                             data_format, &output_slice);
