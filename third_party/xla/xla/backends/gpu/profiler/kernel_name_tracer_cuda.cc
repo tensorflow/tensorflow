@@ -46,13 +46,13 @@ class KernelNameTracerCuda : public KernelNameTracer {
 };
 
 void KernelNameTracerCuda::start() {
-  profiler::CuptiTracerCollectorOptions collector_options;
+  profiler::CuptiTracerCollectorOptions collector_options{};
   collector_options.num_gpus = profiler::CuptiTracer::NumGpus();
   auto start_gputime_ns = profiler::CuptiTracer::GetTimestamp();
   auto start_walltime_ns = tsl::profiler::GetCurrentTimeNanos();
   cupti_collector_ = profiler::CreateCuptiCollector(
       collector_options, start_walltime_ns, start_gputime_ns);
-  profiler::CuptiTracerOptions options;
+  profiler::CuptiTracerOptions options{};
   options.activities_selected = {CUPTI_ACTIVITY_KIND_CONCURRENT_KERNEL};
   cupti_tracer_->Enable(options, cupti_collector_.get()).IgnoreError();
 }
