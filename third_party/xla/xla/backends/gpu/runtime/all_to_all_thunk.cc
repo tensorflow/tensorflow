@@ -129,11 +129,13 @@ absl::Status AllToAllStartThunk::Initialize(const InitializeParams& params) {
         GetGpuCliqueKey(*params.collective_params, config().replica_groups,
                         config().group_mode, stream_kind));
 
-    TF_ASSIGN_OR_RETURN(CommunicatorHandle comm_handle,
-                        GetComm(*params.collective_params,
-                                *params.collective_cliques, clique_key));
+    TF_ASSIGN_OR_RETURN(
+        Communicator * comm,
+        params.collective_cliques->GetComm(
+            clique_key, params.collective_params->global_device_id));
 
-    TF_ASSIGN_OR_RETURN(int32_t num_ranks, comm_handle.comm->NumRanks());
+    TF_ASSIGN_OR_RETURN(int32_t num_ranks, comm->NumRanks());
+
     se::StreamExecutor* executor = params.executor;
     {
       absl::MutexLock lock(pointer_maps_mutex_);
@@ -155,7 +157,7 @@ absl::Status AllToAllStartThunk::Initialize(const InitializeParams& params) {
       }
     }
     std::optional<RankId> rank =
-        comm_handle.clique_key.rank(params.collective_params->global_device_id);
+        clique_key.rank(params.collective_params->global_device_id);
     size_t chunk_element_count = buffers_[0].element_count / num_ranks;
     TF_ASSIGN_OR_RETURN(
         std::vector<DeviceBufferPair> device_buffers,
@@ -184,7 +186,7 @@ absl::Status AllToAllStartThunk::Initialize(const InitializeParams& params) {
               rendezvous_results,
           Rendezvous<std::vector<BufferRendezvousValue>>(
               /*name=*/"memcpy all-to-all address population",
-              /*key=*/comm_handle.clique_key,
+              /*key=*/clique_key,
               /*value=*/buffer_rendezvous_value,
               /*num_threads=*/num_ranks,
               [num_ranks](

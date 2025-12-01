@@ -21,7 +21,6 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
-#include "xla/backends/gpu/runtime/collective_cliques.h"
 #include "xla/backends/gpu/runtime/collective_params.h"
 #include "xla/core/collectives/communicator.h"
 
@@ -49,12 +48,6 @@ absl::StatusOr<GpuCliqueKey> GetGpuCliqueKey(
     absl::Span<const ReplicaGroup> replica_groups,
     CollectiveOpGroupMode group_mode, AsyncStreamKind stream_kind,
     bool include_participant_groups = true);
-
-// Returns a communicator handle for the given `clique_key` and `params` from
-// the set of cliques acquired before the XLA:GPU execution.
-absl::StatusOr<CommunicatorHandle> GetComm(
-    const CollectiveParams& params, const CollectiveCliques& collective_cliques,
-    const GpuCliqueKey& clique_key);
 
 }  // namespace xla::gpu
 

@@ -161,9 +161,17 @@ class CollectiveThunk : public Thunk {
   // rendezvous on the SendThunk would cause a runtime deadlock.
   //  Send(src_target={0,1})
   //  Recv(src_target={0,1})
-  virtual absl::StatusOr<bool> RunCollective(const ExecuteParams& params,
-                                             se::Stream& stream,
-                                             CommunicatorHandle comm) = 0;
+  virtual absl::StatusOr<bool> RunCollective(
+      const ExecuteParams& params, se::Stream& stream,
+      CommunicatorHandle comm_handle) = 0;
+
+  absl::StatusOr<bool> RunCollective(const ExecuteParams& params,
+                                     se::Stream& stream,
+                                     const GpuCliqueKey& clique_key,
+                                     Communicator* comm) {
+    return RunCollective(params, stream, CommunicatorHandle(comm, clique_key));
+  }
+
   virtual const CollectiveConfig& config() const = 0;
   virtual AsyncStreamKind GetAsyncStreamKind() const { return stream_kind_; }
   virtual CollectiveStreamId GetAsyncStreamId() const { return stream_id_; }
