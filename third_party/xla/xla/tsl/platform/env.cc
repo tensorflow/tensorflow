@@ -504,8 +504,9 @@ absl::Status ReadFileToString(Env* env, const std::string& fname,
   if (!s.ok()) {
     data->clear();
   } else if (result.size() != file_size) {
-    s = errors::Aborted("File ", fname, " changed while reading: ", file_size,
-                        " vs. ", result.size());
+    s = absl::AbortedError(absl::StrCat("File ", fname,
+                                        " changed while reading: ", file_size,
+                                        " vs. ", result.size()));
     data->clear();
   } else if (result.data() == p) {
     // Data is already in the correct location
