@@ -1710,9 +1710,8 @@ TEST_F(PassOrderTest,
        SortRewriterRunsBeforeStableSortExpanderAndComparisonExpander) {
   VerifyPassOrder(/*first_pass_regex=*/"sort-rewriter",
                   /*last_pass_regex=*/"stable-sort-expander");
-  VerifyPassRunsAtLeastOnceBefore(
-      /*first_pass_regex=*/"sort-rewriter",
-      /*other_pass_regex=*/"comparison-expander");
+  VerifyPassOrder(/*first_pass_regex=*/"sort-rewriter",
+                  /*last_pass_regex=*/"comparison-expander");
 }
 
 TEST_F(PassOrderTest,

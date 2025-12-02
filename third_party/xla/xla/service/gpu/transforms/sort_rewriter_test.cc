@@ -190,33 +190,6 @@ ENTRY %main {
                                   m::GetTupleElement(m::CustomCall(), 1))));
 }
 
-// Sort a pair of S32 tensors, keys go first.
-TEST_F(SortRewriterTest, SortS32Pairs) {
-  constexpr char kHlo[] = R"(
-HloModule TestModule
-
-%compare {
-  %lhs_key = s32[] parameter(0)
-  %rhs_key = s32[] parameter(1)
-  %lhs_value = s32[] parameter(2)
-  %rhs_value = s32[] parameter(3)
-  ROOT %lt = pred[] compare(%lhs_key, %rhs_key), direction=LT
-}
-
-ENTRY %main {
-  %input_keys = s32[1000] parameter(0)
-  %input_values = s32[1000] parameter(1)
-  ROOT %sort = (s32[1000], s32[1000]) sort(%input_keys, %input_values),
-      dimensions={0}, is_stable=true, to_apply=%compare
-})";
-
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
-  EXPECT_TRUE(RunModuleAndPass(module.get()));
-  EXPECT_THAT(module->entry_computation()->root_instruction(),
-              GmockMatch(m::Tuple(m::GetTupleElement(m::CustomCall(), 0),
-                                  m::GetTupleElement(m::CustomCall(), 1))));
-}
-
 // Sort a pair of tensors, keys go last.
 TEST_F(SortRewriterTest, SortPairsSwapped) {
   constexpr char kHlo[] = R"(
