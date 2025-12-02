@@ -31,6 +31,15 @@ message GpuComputeCapabilityProto {
   }
 }
 
+message ExecutionUnitDescriptionProto {
+  message RateInfoProto {
+    float clock_rate_ghz = 1;
+    int32 units_per_core = 2;
+    int32 ops_per_clock = 3;
+  }
+  map<int32, RateInfoProto> rate_infos = 1;
+}
+
 message GpuDeviceInfoProto {
   int32 threads_per_block_limit = 1;
   int32 threads_per_warp = 2;
@@ -53,6 +62,8 @@ message GpuDeviceInfoProto {
   }
   int64 registers_per_core_limit = 18;
   int64 registers_per_block_limit = 19;
+  ExecutionUnitDescriptionProto scalar_unit_description = 20;
+  ExecutionUnitDescriptionProto matrix_unit_description = 21;
 }
 
 message DnnVersionInfoProto {

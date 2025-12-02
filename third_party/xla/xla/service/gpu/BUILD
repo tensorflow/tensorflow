@@ -337,10 +337,13 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     local_defines = if_rocm_is_configured(["TENSORFLOW_USE_ROCM=1"]),
     deps = [
+        "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
         "//xla/stream_executor:device_description",
         "//xla/stream_executor:semantic_version",
         "//xla/stream_executor/cuda:cuda_compute_capability",
         "//xla/stream_executor/rocm:rocm_compute_capability",
+        "@com_google_absl//absl/container:flat_hash_map",
     ],
 )
 
