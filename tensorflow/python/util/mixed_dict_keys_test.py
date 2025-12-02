@@ -1,3 +1,5 @@
+from tensorflow.python.framework import constant_op
+from tensorflow.python.util import nest_util
 # Copyright 2025 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -18,7 +20,6 @@ This test validates the fix for issue #105333 where @tf.function(jit_compile=Tru
 fails when returning dictionaries with mixed key types (e.g., strings and integers).
 """
 
-import tensorflow as tf
 from tensorflow.python.platform import test
 from tensorflow.python.util import nest
 
@@ -47,7 +48,7 @@ class XLAMixedDictKeysTest(test.TestCase):
       results[123] = x + 1
       return results
     
-    input_tensor = tf.constant([1.0, 2.0, 3.0])
+    input_tensor = constant_op.constant([1.0, 2.0, 3.0])
     output = simple_mixed_dict(input_tensor)
     
     self.assertIn('string_key', output)
@@ -86,7 +87,7 @@ class XLAMixedDictKeysTest(test.TestCase):
       results['str3'] = x + 5
       return results
     
-    input_tensor = tf.constant(10.0)
+    input_tensor = constant_op.constant(10.0)
     output = multi_type_dict(input_tensor)
     
     # Verify all keys are present
@@ -117,7 +118,7 @@ class XLAMixedDictKeysTest(test.TestCase):
       }
       return outer
     
-    input_tensor = tf.constant(5.0)
+    input_tensor = constant_op.constant(5.0)
     output = nested_mixed_dict(input_tensor)
     
     self.assertIn('outer', output)
@@ -145,7 +146,7 @@ class XLAMixedDictKeysTest(test.TestCase):
       results[123] = x + 1
       return results
     
-    input_tensor = tf.constant([1.0, 2.0])
+    input_tensor = constant_op.constant([1.0, 2.0])
     output = no_xla_mixed_dict(input_tensor)
     
     self.assertIn('string_key', output)
@@ -162,7 +163,7 @@ class XLAMixedDictKeysTest(test.TestCase):
       results[1] = x + 3
       return results
     
-    input_tensor = tf.constant(1.0)
+    input_tensor = constant_op.constant(1.0)
     
     # Call multiple times and verify same order
     output1 = consistent_dict(input_tensor)
