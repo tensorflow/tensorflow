@@ -1223,9 +1223,7 @@ absl::Status RunAsyncDotPasses(HloModule* hlo_module) {
       if (IsCublasGemm(*instruction)) {
         return true;
       }
-      if (instruction->called_computations().size() == 1 &&
-          IsTritonFusedComputation(
-              *instruction->called_computations().front())) {
+      if (IsTritonGemmFusion(instruction)) {
         return true;
       }
       return false;

@@ -144,6 +144,7 @@ cc_library(
         "//xla/backends/gpu/autotuner:cublas",
         "//xla/backends/gpu/autotuner:fission_backend",
         "//xla/backends/gpu/autotuner:triton",
+        "//xla/backends/gpu/codegen/triton:support",
         "//xla/backends/gpu/codegen/triton:tma_utils",
         "//xla/backends/gpu/runtime:buffer_comparator",
         "//xla/hlo/analysis:symbolic_expr",

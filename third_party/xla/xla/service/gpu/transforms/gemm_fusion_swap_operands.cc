@@ -215,7 +215,7 @@ absl::StatusOr<bool> GemmFusionSwapOperands::RunImpl(
   bool any_changed = false;
   for (HloComputation* computation :
        module->MakeComputationPostOrder(execution_threads)) {
-    if (!IsTritonFusedComputation(*computation)) {
+    if (!IsTritonGemmFusion(computation->FusionInstruction())) {
       continue;
     }
     TF_ASSIGN_OR_RETURN(const bool changed, MaybeSwapOperands(computation));
