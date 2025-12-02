@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/backends/gpu/codegen/triton/support.h"
 
 #include <string>
+#include <variant>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -652,8 +653,10 @@ CodegenDecision IsTritonSupportedInstructionImpl(
     case HloOpcode::kParameter:
       return CodegenDecision::Allow();
     case HloOpcode::kDynamicSlice:
-      return IsTritonSupportedDynamicSlice(
-          *Cast<HloDynamicSliceInstruction>(&instr));
+      // TODO(b/417172838): enable this once we confirm that no benchmarks were
+      // regressed.
+      return CodegenDecision::Forbid(
+          "dynamic slice is supported but not enabled yet");
     case HloOpcode::kBitcast:
       if (ShapeUtil::ElementsIn(instr.operand(0)->shape()) !=
           ShapeUtil::ElementsIn(instr.shape())) {
@@ -701,6 +704,7 @@ namespace internal {
 bool IsTritonUnsupportedOpcode(HloOpcode opcode) {
   switch (opcode) {
     case HloOpcode::kDynamicReshape:
+    case HloOpcode::kDynamicSlice:
     case HloOpcode::kDynamicUpdateSlice:
     case HloOpcode::kGather:
     case HloOpcode::kRaggedDot:
@@ -737,26 +741,6 @@ absl::Status EnsureTritonSupportsComputeCapability(
   }
 
   return absl::OkStatus();
-}
-
-CodegenDecision IsTritonSupportedDynamicSlice(
-    const HloDynamicSliceInstruction& instr) {
-  for (const HloInstruction* index_operand : instr.index_operands()) {
-    switch (index_operand->shape().element_type()) {
-      case S8:
-      case S16:
-      case S32:
-      case S64:
-        break;  // supported
-      default:
-        return CodegenDecision::Forbid(
-            "Dynamic slice is only supported S8, S16, S32, or S64 offsets.");
-    }
-  }
-  if (instr.shape().element_type() == PrimitiveType::S4) {
-    return CodegenDecision::Forbid("S4 is not supported.");
-  }
-  return CodegenDecision::Allow();
 }
 
 CodegenDecision IsTritonSupportedInstruction(
