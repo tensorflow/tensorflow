@@ -22,13 +22,11 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/functional/any_invocable.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
-#include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
@@ -147,7 +145,7 @@ CollectiveOpsE2ETestBase::ExecuteReplicated(
   CHECK(num_partitions > 0 && "expect at least one partition");
 
   DeviceAssignment device_assignment =
-      MakeDeviceAssignment(num_replicas, num_partitions);
+      GetDefaultDeviceAssignment(num_replicas, num_partitions);
   int64_t num_devices = num_replicas * num_partitions;
 
   CHECK(num_devices == arguments.size() &&
