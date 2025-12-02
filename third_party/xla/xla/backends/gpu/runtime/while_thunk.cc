@@ -41,6 +41,7 @@ limitations under the License.
 #include "xla/stream_executor/device_memory.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/profiler/lib/traceme.h"
 
@@ -130,11 +131,12 @@ absl::Status WhileThunk::ExecuteOnStream(const ExecuteParams& params) {
 
   int device_ordinal = stream.parent()->device_ordinal();
   if (trip_count_.has_value()) {
-    VLOG(2) << "[" << device_ordinal << "] Executing WhileThunk for "
-            << *trip_count_ << " iterations";
+    XLA_VLOG_DEVICE(2, device_ordinal)
+        << "Executing WhileThunk for " << *trip_count_ << " iterations";
     for (iter = 0; iter < trip_count_; ++iter) {
-      VLOG(3) << "[" << device_ordinal << "] Executing iteration # " << iter
-              << " (Device: " << stream.parent()->device_ordinal() << ")";
+      XLA_VLOG_DEVICE(3, device_ordinal)
+          << "Executing iteration # " << iter
+          << " (Device: " << stream.parent()->device_ordinal() << ")";
       TF_RETURN_IF_ERROR(body_thunk_sequence_->ExecuteOnStream(params));
     }
     return absl::OkStatus();
@@ -154,8 +156,8 @@ absl::Status WhileThunk::ExecuteOnStream(const ExecuteParams& params) {
   while (true) {
     TraceMe trace(
         [&] { return TraceMeEncode("While", {{"iteration:", iter}}); });
-    VLOG(3) << "[" << device_ordinal
-            << "] Executing WhileThunk condition computation; iter=" << iter;
+    XLA_VLOG_DEVICE(3, device_ordinal)
+        << "Executing WhileThunk condition computation; iter=" << iter;
     TF_RETURN_IF_ERROR(condition_thunk_sequence_->ExecuteOnStream(params));
 
     // Copy the result of condition computation and break the loop if 'false'.
@@ -168,17 +170,16 @@ absl::Status WhileThunk::ExecuteOnStream(const ExecuteParams& params) {
           blocked.message()));
     }
 
-    VLOG(3) << "[" << device_ordinal
-            << "] condition_result = " << *condition_result;
+    XLA_VLOG_DEVICE(3, device_ordinal)
+        << "condition_result = " << *condition_result;
     if (!*condition_result) {
-      VLOG(3) << "[" << device_ordinal
-              << "] Break WhileThunk loop; iter=" << iter;
+      XLA_VLOG_DEVICE(3, device_ordinal)
+          << "Break WhileThunk loop; iter=" << iter;
       break;
     }
 
-    VLOG(3) << "[" << device_ordinal
-            << "] Executing WhileThunk body computation; iter=" << iter
-            << " (Device: " << stream.parent()->device_ordinal() << ")";
+    XLA_VLOG_DEVICE(3, device_ordinal)
+        << "Executing WhileThunk body computation; iter=" << iter;
     TF_RETURN_IF_ERROR(body_thunk_sequence_->ExecuteOnStream(params));
     ++iter;
   }

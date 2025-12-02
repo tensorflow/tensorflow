@@ -218,12 +218,11 @@ absl::Status MaybeRegisterBuffer(se::StreamExecutor* executor,
                                  Communicator* comm,
                                  bool use_symmetric_buffer) {
   TF_ASSIGN_OR_RETURN(auto range, executor->GetMemoryRange(buffer));
-  VLOG(1) << "[" << executor->device_ordinal() << "] "
-          << "Registering range: " << range.opaque()
-          << " with size: " << range.size()
-          << " for buffer: " << buffer.opaque()
-          << " with size: " << buffer.size()
-          << " is symmetric: " << (use_symmetric_buffer ? "true" : "false");
+  XLA_VLOG_DEVICE(1, executor->device_ordinal())
+      << "Registering range: " << range.opaque()
+      << " with size: " << range.size() << " for buffer: " << buffer.opaque()
+      << " with size: " << buffer.size()
+      << " is symmetric: " << (use_symmetric_buffer ? "true" : "false");
   // If the collective memory buffer is a slice of a larger preallocated buffer,
   // we need to register the entire preallocated buffer once.
   return comm->RegisterBufferOnce(range, executor->device_ordinal(),
@@ -342,13 +341,13 @@ absl::Status CollectiveThunk::ExecuteOnStream(const ExecuteParams& params) {
 
     auto global_device_id = params.collective_params->global_device_id;
     RankId rank = clique_key.rank(global_device_id).value_or(RankId(-1));
-    VLOG(1) << "[" << global_device_id.value()
-            << "] Do a rendezvous after a first call to "
-            << Thunk::KindToString(kind())
-            << "; run_id=" << params.collective_params->run_id.ToInt()
-            << "; num_local_participants=" << num_local_participants
-            << "; rank=" << rank.value()
-            << "; clique_key=" << clique_key.ToString();
+    XLA_VLOG_DEVICE(1, global_device_id.value())
+        << "Do a rendezvous after a first call to "
+        << Thunk::KindToString(kind())
+        << "; run_id=" << params.collective_params->run_id.ToInt()
+        << "; num_local_participants=" << num_local_participants
+        << "; rank=" << rank.value()
+        << "; clique_key=" << clique_key.ToString();
 
     auto rendezvous_key = FirstCallRendezvousKey{std::move(clique_key)};
     auto rendezvous_name = absl::StrFormat(

@@ -335,16 +335,16 @@ absl::Status NcclCommunicator::RegisterBufferOnce(
     if (!registered_buffers_.range_to_handle.contains(buffer_range.opaque())) {
       need_reg = true;
     } else {
-      VLOG(5) << "[" << device_ordinal
-              << "] Buffer range: " << buffer_range.opaque()
-              << " with size: " << buffer_range.size()
-              << " is already registered.";
+      XLA_VLOG_DEVICE(5, device_ordinal)
+          << "Buffer range: " << buffer_range.opaque()
+          << " with size: " << buffer_range.size() << " is already registered.";
     }
   }
   if (need_reg) {
-    VLOG(5) << "[" << device_ordinal << "] Registering "
-            << buffer_range.opaque() << " with size: " << buffer_range.size()
-            << ", is symmetric: " << (use_symmetric_buffer ? "true" : "false");
+    XLA_VLOG_DEVICE(5, device_ordinal)
+        << "Registering " << buffer_range.opaque()
+        << " with size: " << buffer_range.size()
+        << ", is symmetric: " << (use_symmetric_buffer ? "true" : "false");
     // Symmetric buffer registration is a collective operation,
     // we need to do that before locking on a global.
     TF_ASSIGN_OR_RETURN(

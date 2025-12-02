@@ -56,6 +56,7 @@ limitations under the License.
 #include "xla/stream_executor/stream.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/casts.h"
 
@@ -146,9 +147,8 @@ absl::Status RunRaggedAllToAll(
     const se::DeviceMemoryBase& output_offsets_device_buffer,
     bool use_symmetric_buffer) {
   int device_ordinal = stream.parent()->device_ordinal();
-  VLOG(3) << "[" << device_ordinal
-          << "] Performing ragged-all-to-all from device ordinal: "
-          << device_ordinal;
+  XLA_VLOG_DEVICE(3, device_ordinal)
+      << "Performing ragged-all-to-all from device ordinal: " << device_ordinal;
   TF_ASSIGN_OR_RETURN(int32_t num_ranks, comm.NumRanks());
 
   std::vector<DeviceBufferPair> buffers = original_buffers;
@@ -316,8 +316,8 @@ absl::Status RaggedAllToAllStartThunk::RunOneShotRaggedAllToAll(
 
   const int64_t num_ranks = clique_key.num_local_participants();
 
-  VLOG(3) << "[" << device_ordinal
-          << "] Performing one-shot ragged-all-to-all rank: " << rank.value();
+  XLA_VLOG_DEVICE(3, device_ordinal)
+      << "Performing one-shot ragged-all-to-all rank: " << rank.value();
 
   PrimitiveType element_type = buffers[0].element_type;
 

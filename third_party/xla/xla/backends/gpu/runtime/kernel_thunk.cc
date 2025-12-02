@@ -47,6 +47,7 @@ limitations under the License.
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/util.h"
 #include "tsl/profiler/lib/traceme.h"
 #include "tsl/profiler/lib/traceme_encode.h"
 
@@ -214,13 +215,13 @@ absl::Status KernelThunk::ExecuteOnStream(const ExecuteParams& params) {
         },
         /*level=*/TraceMeLevel::kVerbose);
     int device_ordinal = executor->device_ordinal();
-    VLOG(3) << "[" << device_ordinal << "] Launching " << kernel->name();
+    XLA_VLOG_DEVICE(3, device_ordinal) << "Launching " << kernel->name();
     for (const auto& [idx, arg] : llvm::enumerate(args_)) {
       se::DeviceMemoryBase buf =
           params.buffer_allocations->GetDeviceAddress(arg);
-      VLOG(3) << "[" << device_ordinal << "] Arg: alloc #" << arg.index()
-              << ", offset: " << arg.offset() << ": " << buf.opaque() << " ("
-              << buf.size() << "B)";
+      XLA_VLOG_DEVICE(3, device_ordinal)
+          << "Arg: alloc #" << arg.index() << ", offset: " << arg.offset()
+          << ": " << buf.opaque() << " (" << buf.size() << "B)";
 
       if (auto it = tma_metadata_.arg_index_to_tma_info.find(idx);
           it != tma_metadata_.arg_index_to_tma_info.end()) {
@@ -228,8 +229,8 @@ absl::Status KernelThunk::ExecuteOnStream(const ExecuteParams& params) {
         const se::gpu::TmaDescriptor& tma_desc = it->second;
         TF_ASSIGN_OR_RETURN(se::TensorMap tensor_map,
                             executor->CreateTensorMap(tma_desc, buf.opaque()));
-        VLOG(3) << "[" << device_ordinal << "]  Using TensorMap for arg #"
-                << idx << ": " << tma_desc.ToString();
+        XLA_VLOG_DEVICE(3, device_ordinal) << "Using TensorMap for arg #" << idx
+                                           << ": " << tma_desc.ToString();
         kernel_args.push_back(std::move(tensor_map));
       } else {
         // Buffer argument.

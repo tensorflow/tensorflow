@@ -53,6 +53,7 @@ limitations under the License.
 #include "xla/stream_executor/stream.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/casts.h"
 
@@ -361,8 +362,8 @@ absl::Status RunCollectivePermute(
   //
 
   int device_ordinal = stream.parent()->device_ordinal();
-  VLOG(3) << "[" << device_ordinal
-          << "] Performing collective permute, current_id " << current_id;
+  XLA_VLOG_DEVICE(3, device_ordinal)
+      << "Performing collective permute, current_id " << current_id;
 
   std::optional<int64_t> source_id = source_target.source;
   std::optional<int64_t> target_id = source_target.target;

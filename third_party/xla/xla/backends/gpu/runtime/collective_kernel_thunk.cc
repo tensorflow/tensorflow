@@ -309,21 +309,20 @@ absl::Status CollectiveKernelThunk::ExecuteOnStream(
       AllReduceLaunchDimensions(buffer.element_count, num_devices, strategy);
   // In case of two-shot we want to increment in multiples of 2.
   state->invocation_count += 1 + static_cast<uint32_t>(strategy);
-  VLOG(3) << "[" << device_ordinal
-          << "] Performing one-shot all-reduce for clique "
-          << clique_key.ToString();
+  XLA_VLOG_DEVICE(3, device_ordinal)
+      << "Performing one-shot all-reduce for clique " << clique_key.ToString();
 
   se::DeviceMemoryBase input_buffer_ptr =
       state->remote_buffer_ptrs[buffer_index];
   se::DeviceMemoryBase signal_buffer_ptr =
       state->signal_buffer_ptrs[buffer_index];
-  VLOG(3) << "[" << device_ordinal
-          << "] input_buffer_ptr: " << input_buffer_ptr.opaque()
-          << " signal_buffer_ptr: " << signal_buffer_ptr.opaque();
-  VLOG(3) << "[" << device_ordinal
-          << "] launch dimensions: " << launch_dimensions.num_blocks() << "x"
-          << launch_dimensions.num_threads_per_block()
-          << "(block x threadsPerBlock)";
+  XLA_VLOG_DEVICE(3, device_ordinal)
+      << "input_buffer_ptr: " << input_buffer_ptr.opaque()
+      << " signal_buffer_ptr: " << signal_buffer_ptr.opaque();
+  XLA_VLOG_DEVICE(3, device_ordinal)
+      << "launch dimensions: " << launch_dimensions.num_blocks() << "x"
+      << launch_dimensions.num_threads_per_block()
+      << "(block x threadsPerBlock)";
 
   if (state->kernel != nullptr) {
     TF_ASSIGN_OR_RETURN(se::DeviceMemoryBase remote_buffers,

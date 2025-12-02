@@ -1580,7 +1580,8 @@ StreamExecutorGpuClient::RunAsync(
   }
   xla::gpu::BufferAllocations buffer_allocations(buffers, device_ordinal,
                                                  memory_allocator);
-  VLOG(3) << "[" << device_ordinal << "] " << buffer_allocations.ToString();
+  XLA_VLOG_DEVICE(3, device_ordinal)
+      << "Buffer allocations: " << buffer_allocations.ToString();
 
   std::set<se::DeviceMemoryBase> buffers_in_result;
 
@@ -1598,8 +1599,9 @@ StreamExecutorGpuClient::RunAsync(
         allocations[output_info.allocation_index];
     se::DeviceMemoryBase result_buffer;
 
-    VLOG(4) << "[" << device_ordinal << "] Looking at: allocation "
-            << output_info.allocation_index << " @ index: " << index.ToString();
+    XLA_VLOG_DEVICE(4, device_ordinal)
+        << "Looking at: allocation " << output_info.allocation_index
+        << " @ index: " << index.ToString();
 
     if (output_info.alias_config) {
       PjRtStreamExecutorExecutionInput& input =
@@ -1626,9 +1628,9 @@ StreamExecutorGpuClient::RunAsync(
         // The guard is above is not to insert copy-protection when aliasing
         // pass-through params, as we do not need to write into the output
         // buffer.
-        VLOG(3) << "[" << device_ordinal
-                << "] Using copy-protection: aliasing is specified, but the "
-                   "buffer is not donated; allocating a fresh buffer";
+        XLA_VLOG_DEVICE(3, device_ordinal)
+            << "Using copy-protection: aliasing is specified, but the "
+               "buffer is not donated; allocating a fresh buffer";
         int64_t allocation_size = ShapeUtil::ByteSizeOf(
             ShapeUtil::GetSubshape(gpu_exec->result_shape(), index));
         absl::StatusOr<se::OwningDeviceMemory> allocated_buffer =

@@ -492,11 +492,11 @@ absl::Status ExecuteThunksImpl(
       command_buffer_trace_stream, &collective_params, &collective_cliques,
       std::move(additional_execution_streams));
 
-  VLOG(1) << "[" << run_options->device_ordinal() << "] "
-          << "Start GpuExecutable::ExecuteOnStream module: " << module_name;
+  XLA_VLOG_DEVICE(1, run_options->device_ordinal())
+      << "Start GpuExecutable::ExecuteOnStream module: " << module_name;
   TF_RETURN_IF_ERROR(thunk_sequence.ExecuteOnStream(execute_params));
-  VLOG(1) << "[" << run_options->device_ordinal() << "] "
-          << "End GpuExecutable::ExecuteOnStream module: " << module_name;
+  XLA_VLOG_DEVICE(1, run_options->device_ordinal())
+      << "End GpuExecutable::ExecuteOnStream module: " << module_name;
 
   if (collective_params.need_barrier) {
     TF_RETURN_IF_ERROR(BarrierAfterExecutable(debug_options, main_stream));
