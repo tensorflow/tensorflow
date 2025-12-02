@@ -16,12 +16,12 @@ limitations under the License.
 #include <cstdint>
 #include <string>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "testing/base/public/malloc_counter.h"
 #include "absl/strings/str_format.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/transforms/simplifiers/hlo_constant_folding.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -58,12 +58,12 @@ TEST_F(HloConstantFoldingTest, PeakHeapTest) {
    )",
                              kNumAdds);
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(mod_str));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(mod_str));
   HloConstantFolding const_fold;
 
   // Measure the peah heap growth of the constant folding pass.
   ::testing::MallocCounter mc(::testing::MallocCounter::THIS_THREAD_ONLY);
-  TF_ASSERT_OK_AND_ASSIGN(bool result, RunHloPass(&const_fold, module.get()));
+  ASSERT_OK_AND_ASSIGN(bool result, RunHloPass(&const_fold, module.get()));
   EXPECT_TRUE(result);
 
   // The limit below is based on a few experimental runs plus a large margin to

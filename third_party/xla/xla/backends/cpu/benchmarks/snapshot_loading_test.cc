@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <string>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
 #include "xla/backends/cpu/benchmarks/hlo_benchmark_runner.h"
@@ -25,7 +26,6 @@ limitations under the License.
 #include "xla/service/hlo_module_config.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/env.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/xla_data.pb.h"
 
@@ -43,8 +43,8 @@ TEST(SnapshotLoadingTest, LoadHloSnapshot) {
     }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto module, ParseAndReturnUnverifiedModule(hlo, HloModuleConfig()));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnUnverifiedModule(hlo, HloModuleConfig()));
 
   auto literal_x = LiteralUtil::CreateR0<float>(5.0f);
   auto literal_y = LiteralUtil::CreateR0<float>(2.0f);
@@ -60,17 +60,17 @@ TEST(SnapshotLoadingTest, LoadHloSnapshot) {
   TF_ASSERT_OK(
       tsl::WriteBinaryProto(tsl::Env::Default(), tmp_snapshot_path, snapshot));
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto hlo_module_and_inputs,
       LoadHloModuleAndMaybeIterationLiterals(tmp_snapshot_path));
 
   EXPECT_EQ(hlo_module_and_inputs.second->arguments_size(), 2);
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto loaded_literal_x,
       Literal::CreateFromProto(hlo_module_and_inputs.second->arguments(0)));
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto loaded_literal_y,
       Literal::CreateFromProto(hlo_module_and_inputs.second->arguments(1)));
 
@@ -89,8 +89,8 @@ TEST(SnapshotLoadingTest, LoadHloUnoptimizedSnapshot) {
     }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto module, ParseAndReturnUnverifiedModule(hlo, HloModuleConfig()));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnUnverifiedModule(hlo, HloModuleConfig()));
 
   auto literal_x = LiteralUtil::CreateR0<float>(5.0f);
   auto literal_y = LiteralUtil::CreateR0<float>(2.0f);
@@ -109,17 +109,17 @@ TEST(SnapshotLoadingTest, LoadHloUnoptimizedSnapshot) {
   TF_ASSERT_OK(
       tsl::WriteBinaryProto(tsl::Env::Default(), tmp_snapshot_path, snapshot));
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto hlo_module_and_inputs,
       LoadHloModuleAndMaybeIterationLiterals(tmp_snapshot_path));
 
   EXPECT_EQ(hlo_module_and_inputs.second->arguments_size(), 2);
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto loaded_literal_x,
       Literal::CreateFromProto(hlo_module_and_inputs.second->arguments(0)));
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto loaded_literal_y,
       Literal::CreateFromProto(hlo_module_and_inputs.second->arguments(1)));
 

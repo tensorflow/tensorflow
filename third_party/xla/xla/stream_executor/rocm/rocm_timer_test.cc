@@ -33,7 +33,6 @@ limitations under the License.
 #include "xla/stream_executor/rocm/rocm_executor.h"
 #include "xla/stream_executor/rocm/rocm_platform_id.h"
 #include "xla/stream_executor/stream.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 
 namespace stream_executor::gpu {
@@ -43,7 +42,7 @@ using ::testing::Gt;
 class RocmTimerTest : public ::testing::Test {
  public:
   void LaunchSomeKernel(StreamExecutor* executor, Stream* stream) {
-    TF_ASSERT_OK_AND_ASSIGN(auto add, LoadAddI32TestKernel(executor));
+    ASSERT_OK_AND_ASSIGN(auto add, LoadAddI32TestKernel(executor));
 
     int64_t length = 4;
     int64_t byte_length = sizeof(int32_t) * length;
@@ -64,26 +63,25 @@ class RocmTimerTest : public ::testing::Test {
 
  private:
   void SetUp() override {
-    TF_ASSERT_OK_AND_ASSIGN(Platform * platform,
-                            stream_executor::PlatformManager::PlatformWithId(
-                                stream_executor::rocm::kROCmPlatformId));
-    TF_ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,
-                            platform->ExecutorForDevice(0));
+    ASSERT_OK_AND_ASSIGN(Platform * platform,
+                         stream_executor::PlatformManager::PlatformWithId(
+                             stream_executor::rocm::kROCmPlatformId));
+    ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,
+                         platform->ExecutorForDevice(0));
     executor_ = reinterpret_cast<RocmExecutor*>(executor);
-    TF_ASSERT_OK_AND_ASSIGN(stream_, executor_->CreateStream(std::nullopt));
+    ASSERT_OK_AND_ASSIGN(stream_, executor_->CreateStream(std::nullopt));
   }
 };
 
 TEST_F(RocmTimerTest, Create) {
-  TF_ASSERT_OK_AND_ASSIGN(RocmTimer timer,
-                          RocmTimer::Create(executor_, stream_.get()));
+  ASSERT_OK_AND_ASSIGN(RocmTimer timer,
+                       RocmTimer::Create(executor_, stream_.get()));
 
   // We don't really care what kernel we launch here as long as it takes a
   // non-zero amount of time.
   LaunchSomeKernel(executor_, stream_.get());
 
-  TF_ASSERT_OK_AND_ASSIGN(absl::Duration timer_result,
-                          timer.GetElapsedDuration());
+  ASSERT_OK_AND_ASSIGN(absl::Duration timer_result, timer.GetElapsedDuration());
   EXPECT_THAT(timer_result, Gt(absl::ZeroDuration()));
   EXPECT_THAT(timer.GetElapsedDuration(),
               absl_testing::StatusIs(absl::StatusCode::kFailedPrecondition));

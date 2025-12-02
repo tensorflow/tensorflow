@@ -19,6 +19,7 @@ limitations under the License.
 #include <vector>
 
 #include "xla/tests/xla_test_backend_predicates.h"
+#include <gmock/gmock.h>
 #include "xla/array2d.h"
 #include "xla/array3d.h"
 #include "xla/error_spec.h"
@@ -28,7 +29,6 @@ limitations under the License.
 #include "xla/tests/client_library_test_runner_mixin.h"
 #include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
 #include "xla/tests/hlo_pjrt_test_base.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/util.h"
 
@@ -216,10 +216,9 @@ TEST_F(HloTransposeTest, HloPassesDisabled) {
       ROOT transpose = s32[3,2] transpose(constant), dimensions={1,0}
     })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kModuleStr));
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto result, Execute(std::move(module), {}, /*run_hlo_passes=*/false));
   Array2D<int32_t> array({{1, 4}, {2, 5}, {3, 6}});
   auto expected = LiteralUtil::CreateR2FromArray2D(array);

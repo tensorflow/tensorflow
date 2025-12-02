@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <cstdint>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "xla/array.h"
 #include "xla/array2d.h"
@@ -31,7 +32,6 @@ limitations under the License.
 #include "xla/tests/client_library_test_base.h"
 #include "xla/types.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/statusor.h"
 
 namespace {
 
@@ -62,8 +62,8 @@ TEST_F(QrTest, Simple) {
         // the numerics from Python, anyway, where we have access to numpy and
         // scipy.
         xla::BatchDot(q, r, xla::PrecisionConfig::HIGHEST);
-        TF_ASSERT_OK_AND_ASSIGN(xla::Shape q_shape, builder.GetShape(q));
-        TF_ASSERT_OK_AND_ASSIGN(xla::Shape r_shape, builder.GetShape(r));
+        ASSERT_OK_AND_ASSIGN(xla::Shape q_shape, builder.GetShape(q));
+        ASSERT_OK_AND_ASSIGN(xla::Shape r_shape, builder.GetShape(r));
         EXPECT_EQ(q_shape,
                   xla::ShapeUtil::MakeShape(
                       xla::F32, {m, full_matrices ? m : std::min(m, n)}));

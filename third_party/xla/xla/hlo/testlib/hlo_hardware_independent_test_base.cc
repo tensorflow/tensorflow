@@ -25,6 +25,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include "absl/algorithm/container.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
@@ -223,13 +224,13 @@ void HloHardwareIndependentTestBase::RunAndFilecheckHloRewrite(
     std::optional<absl::string_view> expected,
     std::function<void(HloModule*)> after_pass_checks,
     const HloModuleConfig* config) const {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          config ? ParseAndReturnVerifiedModule(hlo, *config)
-                                 : ParseAndReturnVerifiedModule(hlo));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHloPass(&hlo_pass, module.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       config ? ParseAndReturnVerifiedModule(hlo, *config)
+                              : ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(bool changed, RunHloPass(&hlo_pass, module.get()));
   EXPECT_EQ(changed, expected.has_value()) << module->ToString();
   if (changed) {
-    TF_ASSERT_OK_AND_ASSIGN(
+    ASSERT_OK_AND_ASSIGN(
         bool filecheck_matches,
         RunFileCheck(
             module->ToString(HloPrintOptions().set_print_large_constants(true)),

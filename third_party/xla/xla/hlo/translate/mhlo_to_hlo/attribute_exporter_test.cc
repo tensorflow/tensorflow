@@ -37,7 +37,6 @@ limitations under the License.
 #include "xla/service/spmd/shardy/constants.h"
 #include "xla/service/spmd/shardy/utils.h"
 #include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
 #include "xla/xla_data.pb.h"
@@ -85,8 +84,8 @@ TEST_F(AttributeExporterTest, ExtractShardyArgShardingFromFrontendAttrs) {
       }
     }
   )mlir";
-  TF_ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> module,
-                          ParseMlirModule(mlir_source));
+  ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> module,
+                       ParseMlirModule(mlir_source));
 
   mlir::func::FuncOp main = module->lookupSymbol<mlir::func::FuncOp>("main");
   ASSERT_THAT(main, NotNull());
@@ -100,7 +99,7 @@ TEST_F(AttributeExporterTest, ExtractShardyArgShardingFromFrontendAttrs) {
   std::optional<OpSharding> sharding =
       ExtractShardyArgShardingFromFrontendAttrs(main, 0, sdy_meshes);
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       xla::HloSharding expected_sharding,
       xla::ParseSharding("{devices=[2,1,2]<=[4] last_tile_dim_replicate}"));
   EXPECT_THAT(sharding, Optional(EqualsProto(expected_sharding.ToProto())));
@@ -108,7 +107,7 @@ TEST_F(AttributeExporterTest, ExtractShardyArgShardingFromFrontendAttrs) {
   // Check the sharding on the second argument.
   sharding = ExtractShardyArgShardingFromFrontendAttrs(main, 1, sdy_meshes);
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       expected_sharding,
       xla::ParseSharding(
           "{devices=[1,2,2]<=[2,2]T(1,0) last_tile_dim_replicate}"));
@@ -128,8 +127,8 @@ TEST_F(AttributeExporterTest,
       }
     }
   )mlir";
-  TF_ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> module,
-                          ParseMlirModule(mlir_source));
+  ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> module,
+                       ParseMlirModule(mlir_source));
 
   mlir::func::FuncOp main = module->lookupSymbol<mlir::func::FuncOp>("main");
   ASSERT_THAT(main, NotNull());
@@ -142,7 +141,7 @@ TEST_F(AttributeExporterTest,
   std::optional<OpSharding> sharding =
       ExtractShardyArgShardingFromFrontendAttrs(main, 0, sdy_meshes);
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       xla::HloSharding expected_sharding,
       xla::ParseSharding("{devices=[2,1,2]<=[4] last_tile_dim_replicate}"));
   EXPECT_THAT(sharding, Optional(EqualsProto(expected_sharding.ToProto())));
@@ -150,7 +149,7 @@ TEST_F(AttributeExporterTest,
   // Check the sharding on the second argument.
   sharding = ExtractShardyArgShardingFromFrontendAttrs(main, 1, sdy_meshes);
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       expected_sharding,
       xla::ParseSharding(
           "{devices=[1,2,2]<=[2,2]T(1,0) last_tile_dim_replicate}"));
@@ -167,8 +166,8 @@ TEST_F(AttributeExporterTest,
       }
     }
   )mlir";
-  TF_ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> module,
-                          ParseMlirModule(mlir_source));
+  ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> module,
+                       ParseMlirModule(mlir_source));
 
   mlir::func::FuncOp main = module->lookupSymbol<mlir::func::FuncOp>("main");
   ASSERT_THAT(main, NotNull());
@@ -190,8 +189,8 @@ TEST_F(AttributeExporterTest, ExtractShardyResultShardingFromFrontendAttrs) {
       }
     }
   )mlir";
-  TF_ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> module,
-                          ParseMlirModule(mlir_source));
+  ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> module,
+                       ParseMlirModule(mlir_source));
 
   mlir::func::FuncOp main = module->lookupSymbol<mlir::func::FuncOp>("main");
   ASSERT_THAT(main, NotNull());
@@ -205,15 +204,14 @@ TEST_F(AttributeExporterTest, ExtractShardyResultShardingFromFrontendAttrs) {
   std::optional<OpSharding> sharding =
       ExtractShardyResultShardingFromFrontendAttrs(main, 0, sdy_meshes);
 
-  TF_ASSERT_OK_AND_ASSIGN(xla::HloSharding expected_sharding,
-                          xla::ParseSharding("{devices=[8,4]<=[32]}"));
+  ASSERT_OK_AND_ASSIGN(xla::HloSharding expected_sharding,
+                       xla::ParseSharding("{devices=[8,4]<=[32]}"));
   EXPECT_THAT(sharding, Optional(EqualsProto(expected_sharding.ToProto())));
 
   // Check the sharding on the second result.
   sharding = ExtractShardyResultShardingFromFrontendAttrs(main, 1, sdy_meshes);
 
-  TF_ASSERT_OK_AND_ASSIGN(expected_sharding,
-                          xla::ParseSharding("{replicated}"));
+  ASSERT_OK_AND_ASSIGN(expected_sharding, xla::ParseSharding("{replicated}"));
   EXPECT_THAT(sharding, Optional(EqualsProto(expected_sharding.ToProto())));
 }
 
@@ -228,8 +226,8 @@ TEST_F(AttributeExporterTest,
       }
     }
   )mlir";
-  TF_ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> module,
-                          ParseMlirModule(mlir_source));
+  ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> module,
+                       ParseMlirModule(mlir_source));
 
   mlir::func::FuncOp main = module->lookupSymbol<mlir::func::FuncOp>("main");
   ASSERT_THAT(main, NotNull());
@@ -242,15 +240,14 @@ TEST_F(AttributeExporterTest,
   std::optional<OpSharding> sharding =
       ExtractShardyResultShardingFromFrontendAttrs(main, 0, sdy_meshes);
 
-  TF_ASSERT_OK_AND_ASSIGN(xla::HloSharding expected_sharding,
-                          xla::ParseSharding("{devices=[8,4]<=[32]}"));
+  ASSERT_OK_AND_ASSIGN(xla::HloSharding expected_sharding,
+                       xla::ParseSharding("{devices=[8,4]<=[32]}"));
   EXPECT_THAT(sharding, Optional(EqualsProto(expected_sharding.ToProto())));
 
   // Check the sharding on the second result.
   sharding = ExtractShardyResultShardingFromFrontendAttrs(main, 1, sdy_meshes);
 
-  TF_ASSERT_OK_AND_ASSIGN(expected_sharding,
-                          xla::ParseSharding("{replicated}"));
+  ASSERT_OK_AND_ASSIGN(expected_sharding, xla::ParseSharding("{replicated}"));
   EXPECT_THAT(sharding, Optional(EqualsProto(expected_sharding.ToProto())));
 }
 
@@ -264,8 +261,8 @@ TEST_F(AttributeExporterTest,
       }
     }
   )mlir";
-  TF_ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> module,
-                          ParseMlirModule(mlir_source));
+  ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> module,
+                       ParseMlirModule(mlir_source));
 
   mlir::func::FuncOp main = module->lookupSymbol<mlir::func::FuncOp>("main");
   ASSERT_THAT(main, NotNull());

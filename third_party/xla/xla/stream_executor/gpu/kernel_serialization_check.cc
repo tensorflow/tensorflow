@@ -21,7 +21,6 @@ limitations under the License.
 #include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/kernel_symbol_registry.h"
 #include "xla/stream_executor/platform.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace stream_executor::gpu {
 using ::testing::IsEmpty;
@@ -35,9 +34,9 @@ void VerifyKernelIsSerializable(const KernelLoaderSpec& kernel_spec,
         persistent_kernel_name, platform_id);
   };
 
-  TF_ASSERT_OK_AND_ASSIGN(KernelLoaderSpecProto proto, kernel_spec.ToProto());
+  ASSERT_OK_AND_ASSIGN(KernelLoaderSpecProto proto, kernel_spec.ToProto());
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       KernelLoaderSpec deserialized_spec,
       KernelLoaderSpec::FromProto(proto, resolve_kernel_symbol));
 

@@ -24,7 +24,6 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "xla/ffi/type_registry.h"
 #include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 
 namespace xla::ffi {
@@ -51,7 +50,7 @@ TEST(ExecutionStateTest, SetAndGetForInternalType) {
   TF_ASSERT_OK(state.Set(std::make_unique<int32_t>(42)));
   EXPECT_TRUE(state.IsSet());
 
-  TF_ASSERT_OK_AND_ASSIGN(int32_t* data, state.Get<int32_t>());
+  ASSERT_OK_AND_ASSIGN(int32_t* data, state.Get<int32_t>());
   EXPECT_EQ(*data, 42);
 }
 
@@ -71,7 +70,7 @@ TEST(ExecutionStateTest, SetAndGetForExternalType) {
 
   TypeRegistry::TypeInfo type_info = {
       [](void* ptr) { delete static_cast<int32_t*>(ptr); }};
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       TypeRegistry::TypeId type_id,
       TypeRegistry::AssignExternalTypeId("int32_t", type_info));
 
@@ -81,7 +80,7 @@ TEST(ExecutionStateTest, SetAndGetForExternalType) {
   TF_ASSERT_OK(state.Set(type_id, value));
   EXPECT_TRUE(state.IsSet());
 
-  TF_ASSERT_OK_AND_ASSIGN(void* data, state.Get(type_id));
+  ASSERT_OK_AND_ASSIGN(void* data, state.Get(type_id));
   EXPECT_EQ(data, value);
 }
 

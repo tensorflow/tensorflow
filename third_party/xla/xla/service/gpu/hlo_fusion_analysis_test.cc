@@ -23,7 +23,6 @@ limitations under the License.
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_description.pb.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
 
 namespace xla::gpu {
@@ -34,7 +33,7 @@ using ::tsl::proto_testing::EqualsProto;
 class HloFusionAnalysisTest : public HloHardwareIndependentTestBase {};
 
 TEST_F(HloFusionAnalysisTest, DoesNotPeekOutsideBoundary) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
     HloModule test_module
 
     add {
@@ -64,7 +63,7 @@ TEST_F(HloFusionAnalysisTest, DoesNotPeekOutsideBoundary) {
 }
 
 TEST_F(HloFusionAnalysisTest, ReductionWithMultipleUsers) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
     HloModule test_module
 
     add {
@@ -100,7 +99,7 @@ TEST_F(HloFusionAnalysisTest, ReductionWithMultipleUsers) {
 }
 
 TEST_F(HloFusionAnalysisTest, ReductionEpilogueFusion) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
     HloModule test_module
 
     add {
@@ -133,7 +132,7 @@ TEST_F(HloFusionAnalysisTest, ReductionEpilogueFusion) {
 }
 
 TEST_F(HloFusionAnalysisTest, ReductionEpilogueFusionPartiallyFused) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
     HloModule test_module
 
     add {
@@ -166,7 +165,7 @@ TEST_F(HloFusionAnalysisTest, ReductionEpilogueFusionPartiallyFused) {
 }
 
 TEST_F(HloFusionAnalysisTest, ReductionEpilogueFusionPartiallyFusedInConsumer) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
     HloModule test_module
 
     add {
@@ -197,7 +196,7 @@ TEST_F(HloFusionAnalysisTest, ReductionEpilogueFusionPartiallyFusedInConsumer) {
 }
 
 TEST_F(HloFusionAnalysisTest, ReductionEpilogueFusionPartiallyFusedInBoth) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
     HloModule test_module
 
     add {
@@ -234,7 +233,7 @@ TEST_F(HloFusionAnalysisTest, ReductionEpilogueFusionPartiallyFusedInBoth) {
 }
 
 TEST_F(HloFusionAnalysisTest, ReduceMultiOutputFusionWithTransposeBitcast) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
     HloModule test_module
 
     add {
@@ -266,7 +265,7 @@ TEST_F(HloFusionAnalysisTest, ReduceMultiOutputFusionWithTransposeBitcast) {
 }
 
 TEST_F(HloFusionAnalysisTest, InvalidReduceMultiOutputFusion) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
     HloModule test_module
 
     add {
@@ -303,7 +302,7 @@ TEST_F(HloFusionAnalysisTest, InvalidDevice) {
   // Verifies that an analysis can be created even with an invalid/empty device
   // info, and that the emitter type is determined correctly.
   // Don't rely on this behavior.
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
     HloModule test_module
 
     add {
@@ -320,7 +319,7 @@ TEST_F(HloFusionAnalysisTest, InvalidDevice) {
     })"));
 
   stream_executor::GpuDeviceInfoProto device_info_proto;
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto device_info,
       stream_executor::DeviceDescription::FromProto(device_info_proto));
   device_info.set_threads_per_warp(32);
@@ -333,7 +332,7 @@ TEST_F(HloFusionAnalysisTest, InvalidDevice) {
 }
 
 TEST_F(HloFusionAnalysisTest, ConcatFusion) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
     HloModule test_module
 
     fused_computation {
@@ -361,7 +360,7 @@ TEST_F(HloFusionAnalysisTest, ConcatFusion) {
 }
 
 TEST_F(HloFusionAnalysisTest, ExtractValidGpuBackendConfig) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
     HloModule module
 
     fused_computation.1 {
@@ -399,7 +398,7 @@ TEST_F(HloFusionAnalysisTest, ExtractValidGpuBackendConfig) {
 
 TEST_F(HloFusionAnalysisTest,
        InvalidGpuBackendConfig_SingleInstruction_Ignored) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
     HloModule module
 
     ENTRY entry {
@@ -418,7 +417,7 @@ TEST_F(HloFusionAnalysisTest,
 
 TEST_F(HloFusionAnalysisTest,
        InvalidGpuBackendConfig_ProducerConsumer_Ignored) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
     HloModule module
 
     fused_computation {
@@ -444,7 +443,7 @@ TEST_F(HloFusionAnalysisTest,
 }
 
 TEST_F(HloFusionAnalysisTest, ConcatenateFusion) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
     HloModule module
 
     fusion {
@@ -475,7 +474,7 @@ TEST_F(HloFusionAnalysisTest, ConcatenateFusion) {
 }
 
 TEST_F(HloFusionAnalysisTest, ConcatenateFusionFallbackToLoop) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
     HloModule module
 
     fusion {

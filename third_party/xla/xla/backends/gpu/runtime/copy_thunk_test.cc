@@ -23,7 +23,6 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/service/buffer_assignment.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/util/proto/parse_text_proto.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
 
@@ -45,7 +44,7 @@ TEST(CopyThunkTest, ToProto) {
   auto dst_slice = BufferAllocation::Slice(&alloc1, /*offset=*/0, /*size=*/256);
 
   CopyThunk thunk(thunk_info, src_slice, dst_slice, /*mem_size=*/256);
-  TF_ASSERT_OK_AND_ASSIGN(ThunkProto proto, thunk.ToProto());
+  ASSERT_OK_AND_ASSIGN(ThunkProto proto, thunk.ToProto());
   EXPECT_THAT(proto, EqualsProto(R"pb(
                 thunk_info {
                   profile_annotation: "profile_annotation"
@@ -80,7 +79,7 @@ TEST(CopyThunkTest, FromProto) {
       BufferAllocation(/*index=*/0, /*size=*/1024, /*color=*/0),
       BufferAllocation(/*index=*/1, /*size=*/1024, /*color=*/0)};
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<CopyThunk> thunk,
       CopyThunk::FromProto(thunk_info, proto.copy_thunk(), buffer_allocations));
 
@@ -109,7 +108,7 @@ TEST(DeviceToHostCopyThunkProtoTest, ToProto) {
                               /*mem_size=*/256,
                               /*events=*/nullptr,
                               /*instr=*/nullptr);
-  TF_ASSERT_OK_AND_ASSIGN(ThunkProto proto, thunk.ToProto());
+  ASSERT_OK_AND_ASSIGN(ThunkProto proto, thunk.ToProto());
   EXPECT_THAT(proto, EqualsProto(R"pb(
                 thunk_info {
                   profile_annotation: "profile_annotation"
@@ -152,7 +151,7 @@ TEST(DeviceToHostCopyThunkProtoTest, FromProto) {
       BufferAllocation(/*index=*/0, /*size=*/1024, /*color=*/0),
       BufferAllocation(/*index=*/1, /*size=*/1024, /*color=*/0)};
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<DeviceToHostCopyThunk> thunk,
       DeviceToHostCopyThunk::FromProto(
           thunk_info, proto.device_to_host_copy_thunk(), buffer_allocations));
@@ -184,7 +183,7 @@ TEST(HostToDeviceCopyThunkProtoTest, ToProto) {
                               /*mem_size=*/256,
                               /*events=*/nullptr,
                               /*instr=*/nullptr);
-  TF_ASSERT_OK_AND_ASSIGN(ThunkProto proto, thunk.ToProto());
+  ASSERT_OK_AND_ASSIGN(ThunkProto proto, thunk.ToProto());
   EXPECT_THAT(proto, EqualsProto(R"pb(
                 thunk_info {
                   profile_annotation: "profile_annotation"
@@ -227,7 +226,7 @@ TEST(HostToDeviceCopyThunkProtoTest, FromProto) {
       BufferAllocation(/*index=*/0, /*size=*/1024, /*color=*/0),
       BufferAllocation(/*index=*/1, /*size=*/1024, /*color=*/0)};
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<HostToDeviceCopyThunk> thunk,
       HostToDeviceCopyThunk::FromProto(
           thunk_info, proto.host_to_device_copy_thunk(), buffer_allocations));
@@ -257,7 +256,7 @@ TEST(DeviceToDeviceCopyThunkProtoTest, ToProto) {
 
   DeviceToDeviceCopyThunk thunk(thunk_info, src_slice, dst_slice,
                                 /*mem_size=*/256);
-  TF_ASSERT_OK_AND_ASSIGN(ThunkProto proto, thunk.ToProto());
+  ASSERT_OK_AND_ASSIGN(ThunkProto proto, thunk.ToProto());
   EXPECT_THAT(proto, EqualsProto(R"pb(
                 thunk_info {
                   profile_annotation: "profile_annotation"
@@ -300,7 +299,7 @@ TEST(DeviceToDeviceCopyThunkProtoTest, FromProto) {
       BufferAllocation(/*index=*/0, /*size=*/1024, /*color=*/0),
       BufferAllocation(/*index=*/1, /*size=*/1024, /*color=*/0)};
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<DeviceToDeviceCopyThunk> thunk,
       DeviceToDeviceCopyThunk::FromProto(
           thunk_info, proto.device_to_device_copy_thunk(), buffer_allocations));

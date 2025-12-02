@@ -17,9 +17,11 @@ limitations under the License.
 
 #include <string>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/pattern_matcher_gmock.h"
@@ -27,7 +29,6 @@ limitations under the License.
 #include "xla/service/gpu/fusion_process_dump.pb.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/pattern_matcher.h"
-#include "tsl/platform/statusor.h"
 
 namespace m = ::xla::match;
 
@@ -48,7 +49,7 @@ void AddFusion(FusionProcessDumpProto& dump_proto,
 }
 
 TEST_F(FusionProcessDumpTest, MultipleFusionSteps) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
     HloModule test_module
 
     ENTRY main {
@@ -70,8 +71,8 @@ TEST_F(FusionProcessDumpTest, MultipleFusionSteps) {
   AddFusion(dump_proto, "fusion.2", "fusion.1", "multiply");
   AddFusion(dump_proto, "fusion.2", "add", "fusion.2");
 
-  TF_ASSERT_OK_AND_ASSIGN(auto fusion_process_dump,
-                          FusionProcessDump::LoadFromProto(dump_proto));
+  ASSERT_OK_AND_ASSIGN(auto fusion_process_dump,
+                       FusionProcessDump::LoadFromProto(dump_proto));
 
   fusion_process_dump.Advance();
   fusion_process_dump.Advance();

@@ -22,7 +22,6 @@ limitations under the License.
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/statusor.h"
 
 namespace op = xla::testing::opcode_matchers;
 
@@ -64,9 +63,9 @@ ENTRY main {
   ROOT while = (s32[4,4], s32[4,2], s32[4,2]) while(%init_param), condition=%while_cond, body=%while_body
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
   ReorderReduceTranspose rrt;
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, rrt.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, rrt.Run(module.get()));
   EXPECT_TRUE(changed);
 
   // Check that the transpose and reduce-scatter have been reordered inside the
@@ -98,9 +97,9 @@ ENTRY main {
   ROOT transpose.0 = s32[4,2] transpose(convert.0), dimensions={1,0}
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
   ReorderReduceTranspose rrt;
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, rrt.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, rrt.Run(module.get()));
   EXPECT_FALSE(changed);
 }
 
@@ -135,9 +134,9 @@ ENTRY main {
   ROOT while = (f32[4,4], s32[4,2], s32[4,2]) while(%init_param), condition=%while_cond, body=%while_body
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
   ReorderReduceTranspose rrt;
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, rrt.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, rrt.Run(module.get()));
   EXPECT_TRUE(changed);
   // Check that the transpose, convert, and reduce-scatter have been reordered
   // inside the while body.
@@ -184,9 +183,9 @@ ENTRY main {
   ROOT while = (s32[4,4], s32[8], s32[]) while(%init_param), condition=%while_cond, body=%while_body
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
   ReorderReduceTranspose rrt;
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, rrt.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, rrt.Run(module.get()));
   EXPECT_TRUE(changed);
 
   // Check that the transpose and reduce-scatter have been reordered inside the
@@ -238,9 +237,9 @@ ENTRY main {
   ROOT while = (f32[4,4], s32[2,4], s32[]) while(%init_param), condition=%while_cond, body=%while_body
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
   ReorderConvertReduceAdd rcra(/*enable_reduce_scatter=*/true);
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, rcra.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, rcra.Run(module.get()));
   EXPECT_TRUE(changed);
 
   // Check that the convert, reduce-scatter, and add have been reordered inside
@@ -273,9 +272,9 @@ ENTRY main {
   ROOT convert.0 = s32[4,4] convert(all_reduce.0)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
   ReorderConvertReduceAdd rcra;
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, rcra.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, rcra.Run(module.get()));
   EXPECT_FALSE(changed);
 }
 
@@ -310,9 +309,9 @@ ENTRY main {
   ROOT while = (f32[4,4], s32[2,4], s32[]) while(%init_param), condition=%while_cond, body=%while_body
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
   ReorderConvertReduceAdd rcra(/*enable_reduce_scatter=*/true);
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, rcra.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, rcra.Run(module.get()));
   EXPECT_TRUE(changed);
 
   // Check that the convert, reduce-scatter, and add have been reordered inside
@@ -357,9 +356,9 @@ ENTRY main {
   ROOT while = (f32[4,4], s32[2,4], s32[]) while(%init_param), condition=%while_cond, body=%while_body
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
   ReorderConvertReduceAdd rcra(/*enable_reduce_scatter=*/false);
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, rcra.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, rcra.Run(module.get()));
   EXPECT_FALSE(changed);
 }
 
@@ -394,9 +393,9 @@ ENTRY main {
   ROOT while = (f32[2,4], s32[2,4], s32[]) while(%init_param), condition=%while_cond, body=%while_body
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
   ReorderConvertReduceAdd rcra;
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, rcra.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, rcra.Run(module.get()));
   EXPECT_TRUE(changed);
 
   // Check that the convert, all-reduce, and add have been reordered inside the

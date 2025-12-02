@@ -24,7 +24,6 @@ limitations under the License.
 #include "xla/python/ifrt/execute_options.pb.h"
 #include "xla/python/ifrt/serdes_test_util.h"
 #include "xla/python/ifrt/serdes_version.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 
 namespace xla {
@@ -52,11 +51,10 @@ TEST_P(ExecuteOptionsSerDesTest, RoundTrip) {
   options.fill_status = true;
   options.custom_options = AttributeMap(
       AttributeMap::Map({{"foo", AttributeMap::StringValue("bar")}}));
-  TF_ASSERT_OK_AND_ASSIGN(ExecuteOptionsProto serialized,
-                          options.ToProto(version()));
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto deserialized,
-      LoadedExecutable::ExecuteOptions::FromProto(serialized));
+  ASSERT_OK_AND_ASSIGN(ExecuteOptionsProto serialized,
+                       options.ToProto(version()));
+  ASSERT_OK_AND_ASSIGN(auto deserialized,
+                       LoadedExecutable::ExecuteOptions::FromProto(serialized));
   EXPECT_EQ(deserialized.launch_id, 1234);
   EXPECT_THAT(deserialized.non_donatable_input_indices,
               UnorderedElementsAre(0, 3));

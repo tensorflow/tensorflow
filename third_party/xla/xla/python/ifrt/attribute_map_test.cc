@@ -27,7 +27,6 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/python/ifrt/serdes_test_util.h"
 #include "xla/python/ifrt/serdes_version.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace ifrt {
@@ -103,8 +102,8 @@ TEST_P(AttributeMapSerDesTest, ToFromProto) {
       {"float", AttributeMap::FloatValue(1.23f)},
   });
 
-  TF_ASSERT_OK_AND_ASSIGN(auto map_copy,
-                          AttributeMap::FromProto(map.ToProto(version())));
+  ASSERT_OK_AND_ASSIGN(auto map_copy,
+                       AttributeMap::FromProto(map.ToProto(version())));
   EXPECT_EQ(map_copy.map(), map.map()) << map_copy.DebugString();
 }
 

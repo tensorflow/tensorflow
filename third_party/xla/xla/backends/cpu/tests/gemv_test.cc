@@ -15,13 +15,13 @@ limitations under the License.
 
 #include <utility>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
 #include "xla/error_spec.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
 #include "xla/tests/hlo_pjrt_test_base.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace xla::cpu {
 namespace {
@@ -40,8 +40,8 @@ TEST_F(GemvTest, BatchedGemv) {
                                          lhs_batch_dims={0}, rhs_batch_dims={0}
     })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module,
-                          ParseAndReturnUnverifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto hlo_module,
+                       ParseAndReturnUnverifiedModule(hlo_string));
 
   EXPECT_TRUE(RunAndCompare(std::move(hlo_module), ErrorSpec{1e-5, 1e-3}));
 }
@@ -57,8 +57,8 @@ TEST_F(GemvTest, ColumnMajorGemv) {
                                        rhs_contracting_dims={0}
     })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module,
-                          ParseAndReturnUnverifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto hlo_module,
+                       ParseAndReturnUnverifiedModule(hlo_string));
 
   EXPECT_TRUE(RunAndCompare(std::move(hlo_module), ErrorSpec{1e-5, 1e-3}));
 }
@@ -74,8 +74,8 @@ TEST_F(GemvTest, RowMajorGemv) {
                                        rhs_contracting_dims={0}
     })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module,
-                          ParseAndReturnUnverifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto hlo_module,
+                       ParseAndReturnUnverifiedModule(hlo_string));
 
   EXPECT_TRUE(RunAndCompare(std::move(hlo_module), ErrorSpec{1e-5, 1e-3}));
 }

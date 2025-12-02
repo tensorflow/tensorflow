@@ -26,7 +26,6 @@ limitations under the License.
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/plugin/test/plugin_test_fixture.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace {
 
@@ -40,15 +39,15 @@ constexpr char kPassThroughStableHlo[] = R"(
   })";
 
 TEST_F(PluginTestFixture, CompileWithSharedTopology) {
-  TF_ASSERT_OK_AND_ASSIGN(const xla::PjRtTopologyDescription* topology,
-                          client_->GetTopologyDescription());
+  ASSERT_OK_AND_ASSIGN(const xla::PjRtTopologyDescription* topology,
+                       client_->GetTopologyDescription());
   ASSERT_NE(topology, nullptr);
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::PjRtCompiler> compiler_client,
-                          xla::GetCApiCompiler(plugin_name_));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::PjRtCompiler> compiler_client,
+                       xla::GetCApiCompiler(plugin_name_));
 
   mlir::MLIRContext context;
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       mlir::OwningOpRef<mlir::ModuleOp> module,
       xla::ParseMlirModuleString(kPassThroughStableHlo, context));
 
@@ -58,15 +57,15 @@ TEST_F(PluginTestFixture, CompileWithSharedTopology) {
 }
 
 TEST_F(PluginTestFixture, CompileWithoutDeviceType) {
-  TF_ASSERT_OK_AND_ASSIGN(const xla::PjRtTopologyDescription* topology,
-                          client_->GetTopologyDescription());
+  ASSERT_OK_AND_ASSIGN(const xla::PjRtTopologyDescription* topology,
+                       client_->GetTopologyDescription());
   ASSERT_NE(topology, nullptr);
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::PjRtCompiler> compiler_client,
-                          xla::GetCApiCompiler());
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::PjRtCompiler> compiler_client,
+                       xla::GetCApiCompiler());
 
   mlir::MLIRContext context;
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       mlir::OwningOpRef<mlir::ModuleOp> module,
       xla::ParseMlirModuleString(kPassThroughStableHlo, context));
 

@@ -20,6 +20,7 @@ limitations under the License.
 #include <optional>
 #include <string>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/log/check.h"
 #include "absl/log/log.h"
@@ -32,10 +33,11 @@ limitations under the License.
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/spmd/shardy/constants.h"
 #include "xla/shape_util.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -91,8 +93,8 @@ TEST_P(GpuSpmdPartitioningTest, DotWithEntryComputationLayout) {
      rhs_contracting_dims={0}
   })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          PartitionComputation(kHloModule, /*num_devices=*/8));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       PartitionComputation(kHloModule, /*num_devices=*/8));
 
   EXPECT_EQ(module->config().entry_computation_layout().parameter_shape(0),
             ShapeUtil::MakeShapeWithDenseLayout(F32, {8, 2}, {0, 1}));

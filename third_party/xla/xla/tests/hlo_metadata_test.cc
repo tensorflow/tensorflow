@@ -13,10 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
+#include "xla/client/executable_build_options.h"
 #include "xla/client/local_client.h"
 #include "xla/hlo/builder/xla_builder.h"
-#include "xla/hlo/testlib/test_helpers.h"
-#include "xla/service/local_service.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
 #include "xla/tests/local_client_test_base.h"
 
 namespace xla {
@@ -47,7 +50,7 @@ TEST_F(HloMetadataTest, MetadataPropagation) {
   builder.ClearOpMetadata();
 
   Shape argument_layout = ShapeUtil::MakeShape(F32, {});
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto executables,
       local_client_->Compile(builder.Build().value(),
                              {&argument_layout, &argument_layout},
@@ -70,7 +73,7 @@ TEST_F(HloMetadataTest, MetadataClearing) {
   BuildAddComputation(&builder);
 
   Shape argument_layout = ShapeUtil::MakeShape(F32, {});
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto executables,
       local_client_->Compile(builder.Build().value(),
                              {&argument_layout, &argument_layout},

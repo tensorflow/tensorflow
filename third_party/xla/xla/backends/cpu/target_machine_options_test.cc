@@ -20,7 +20,6 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "xla/service/cpu/executable.pb.h"
 #include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/xla.pb.h"
 
 namespace xla {
@@ -43,8 +42,8 @@ TEST(TargetMachineOptionsTest, FromProto) {
   proto.set_cpu("test_cpu");
   proto.set_features("+enabled_feature,-disabled_feature");
 
-  TF_ASSERT_OK_AND_ASSIGN(TargetMachineOptions options,
-                          TargetMachineOptions::FromProto(proto));
+  ASSERT_OK_AND_ASSIGN(TargetMachineOptions options,
+                       TargetMachineOptions::FromProto(proto));
 
   EXPECT_EQ(options.triple(), "test_triple");
   EXPECT_EQ(options.cpu(), "test_cpu");
@@ -60,8 +59,8 @@ TEST(TargetMachineOptionsTest, ProtoRoundTrip) {
   DebugOptions debug_options;
   TargetMachineOptions options(debug_options);
   TargetMachineOptionsProto proto = options.ToProto();
-  TF_ASSERT_OK_AND_ASSIGN(TargetMachineOptions new_options,
-                          TargetMachineOptions::FromProto(proto));
+  ASSERT_OK_AND_ASSIGN(TargetMachineOptions new_options,
+                       TargetMachineOptions::FromProto(proto));
 
   EXPECT_EQ(new_options.triple(), options.triple());
   EXPECT_EQ(new_options.cpu(), options.cpu());

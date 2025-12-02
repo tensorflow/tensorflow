@@ -44,7 +44,6 @@ limitations under the License.
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tests/hlo_test_base.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
@@ -75,8 +74,8 @@ ENTRY test_computation {
   debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::COLLECTIVES);
   config.set_debug_options(debug_options);
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_text, config));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(hlo_text, config));
 
   // Get CollectiveBroadcast Instruction
   const HloInstruction* root_instr =
@@ -140,8 +139,8 @@ ENTRY test_computation {
   // Use LHS synchronization mode to append Done command
   conv_options.synchronization_mode =
       CommandBufferCmdExecutor::SynchronizationMode::kLHS;
-  TF_ASSERT_OK_AND_ASSIGN(CommandBufferCmdExecutor cb_cmd_executor,
-                          ConvertToCommands(thunk_sequence, conv_options));
+  ASSERT_OK_AND_ASSIGN(CommandBufferCmdExecutor cb_cmd_executor,
+                       ConvertToCommands(thunk_sequence, conv_options));
 
   // Check that we have two commands: start and done.
   EXPECT_EQ(cb_cmd_executor.size(), 2);
@@ -166,17 +165,17 @@ ENTRY test_computation {
   debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::COLLECTIVES);
   config.set_debug_options(debug_options);
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_text, config));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(hlo_text, config));
 
   se::StreamExecutor* executor = backend().default_stream_executor();
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<HloModule> compiled_module,
       backend().compiler()->RunHloPasses(module->Clone(), executor,
                                          /*device_allocator=*/nullptr));
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<Executable> executable,
       backend().compiler()->RunBackend(std::move(compiled_module), executor,
                                        /*device_allocator=*/nullptr));

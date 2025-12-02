@@ -21,6 +21,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/container/flat_hash_map.h"
 #include "xla/comparison_util.h"
@@ -37,7 +38,6 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -387,7 +387,7 @@ ENTRY %While {
 
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnVerifiedModule(hlo_string));
   const HloSchedule& schedule = module_->schedule();
 
   const int32_t num_runs = 20;
@@ -452,18 +452,18 @@ ENTRY %main (a: f32[4096], b: f32[4096]) -> f32[4096] {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnVerifiedModule(hlo_string));
   const HloSchedule& schedule = module_->schedule();
   Analyze(schedule);
 
   CheckSchedule();
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloAliasAnalysis> aa,
-                          HloAliasAnalysis::Run(module_.get(), &alias_info_));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloAliasAnalysis> aa,
+                       HloAliasAnalysis::Run(module_.get(), &alias_info_));
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloLiveRange> hlo_live_range,
-                          HloLiveRange::Run(module_->schedule(), *aa,
-                                            module_->entry_computation()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloLiveRange> hlo_live_range,
+                       HloLiveRange::Run(module_->schedule(), *aa,
+                                         module_->entry_computation()));
 
   absl::flat_hash_map<std::string, std::pair<int32_t, int32_t>> inst_ranges;
   for (auto& [value, time_bound] : hlo_live_range->buffer_live_ranges()) {
@@ -502,14 +502,14 @@ TEST_F(HloLiveRangeTest, Call) {
       ROOT %e = f32[4096]{0} add(%c, %d)
     })";
 
-  TF_ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnVerifiedModule(hlo_string));
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloAliasAnalysis> aa,
-                          HloAliasAnalysis::Run(module_.get(), &alias_info_));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloAliasAnalysis> aa,
+                       HloAliasAnalysis::Run(module_.get(), &alias_info_));
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloLiveRange> hlo_live_range,
-                          HloLiveRange::Run(module_->schedule(), *aa,
-                                            module_->entry_computation()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloLiveRange> hlo_live_range,
+                       HloLiveRange::Run(module_->schedule(), *aa,
+                                         module_->entry_computation()));
 
   absl::flat_hash_map<std::string, std::pair<int32_t, int32_t>> inst_ranges;
   for (auto& [value, time_bound] : hlo_live_range->buffer_live_ranges()) {
@@ -535,7 +535,7 @@ ENTRY %main {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnVerifiedModule(hlo_string));
   const HloSchedule& schedule = module_->schedule();
   Analyze(schedule);
 
@@ -575,7 +575,7 @@ ENTRY %main {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnVerifiedModule(hlo_string));
   const HloSchedule& schedule = module_->schedule();
   Analyze(schedule);
 

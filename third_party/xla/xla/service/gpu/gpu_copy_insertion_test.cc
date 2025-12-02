@@ -15,8 +15,8 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
-#include <optional>
 
+#include <gmock/gmock.h>
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -30,7 +30,6 @@ limitations under the License.
 #include "xla/service/gpu/alias_info.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/stream_executor/device_description.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -114,8 +113,8 @@ ENTRY main {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
-                          ParseAndReturnVerifiedModule(kModuleString));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                       ParseAndReturnVerifiedModule(kModuleString));
 
   CopyInsertion copy_insertion = CreateCopyInsertion();
   ASSERT_IS_OK(copy_insertion.Run(module.get(), {"foobar"}).status());
@@ -182,8 +181,8 @@ ENTRY main {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
-                          ParseAndReturnVerifiedModule(kModuleString));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                       ParseAndReturnVerifiedModule(kModuleString));
 
   CopyInsertion copy_insertion = CreateCopyInsertion();
   ASSERT_IS_OK(copy_insertion.Run(module.get(), {"foobar"}).status());

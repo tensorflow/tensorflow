@@ -22,7 +22,6 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/container/flat_hash_set.h"
 #include "xla/pjrt/proto/pjrt_device_dimensions.pb.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -81,8 +80,8 @@ TEST(PjRtDeviceDimensionsTest, FromProto) {
   proto.add_dimensions(1);
   proto.add_dimensions(2);
   proto.add_dimensions(3);
-  TF_ASSERT_OK_AND_ASSIGN(PjRtDeviceDimensions dims,
-                          PjRtDeviceDimensions::FromProto(proto));
+  ASSERT_OK_AND_ASSIGN(PjRtDeviceDimensions dims,
+                       PjRtDeviceDimensions::FromProto(proto));
   EXPECT_EQ(dims, PjRtDeviceDimensions({1, 2, 3}));
 }
 

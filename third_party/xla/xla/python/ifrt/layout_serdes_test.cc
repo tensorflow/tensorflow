@@ -16,13 +16,13 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "llvm/Support/Casting.h"
 #include "xla/python/ifrt/layout.h"
 #include "xla/python/ifrt/serdes.h"
 #include "xla/python/ifrt/serdes_test_util.h"
 #include "xla/python/ifrt/serdes_version.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace ifrt {
@@ -39,15 +39,13 @@ class LayoutSerDesTest : public testing::TestWithParam<SerDesVersion> {
 };
 
 TEST_P(LayoutSerDesTest, CompactLayoutRoundTrip) {
-  TF_ASSERT_OK_AND_ASSIGN(auto layout, CompactLayout::Create({1, 0}));
+  ASSERT_OK_AND_ASSIGN(auto layout, CompactLayout::Create({1, 0}));
 
   auto options = std::make_unique<SerializeOptions>(version());
-  TF_ASSERT_OK_AND_ASSIGN(auto serialized,
-                          Serialize(*layout, std::move(options)));
+  ASSERT_OK_AND_ASSIGN(auto serialized, Serialize(*layout, std::move(options)));
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto deserialized,
-      Deserialize<CompactLayout>(serialized, /*options=*/nullptr));
+  ASSERT_OK_AND_ASSIGN(auto deserialized, Deserialize<CompactLayout>(
+                                              serialized, /*options=*/nullptr));
 
   const auto* out_layout = llvm::dyn_cast<CompactLayout>(deserialized.get());
   ASSERT_NE(out_layout, nullptr);

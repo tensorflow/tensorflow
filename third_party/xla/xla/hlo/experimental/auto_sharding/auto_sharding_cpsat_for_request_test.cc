@@ -15,6 +15,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/log/check.h"
 #include "absl/status/status.h"
@@ -24,9 +25,6 @@ limitations under the License.
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_solver.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_strategy.h"
 #include "xla/hlo/experimental/auto_sharding/iopddl.h"
-#include "xla/tsl/util/proto/proto_matchers.h"
-#include "tsl/platform/platform.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace spmd {
@@ -85,10 +83,10 @@ AutoShardingSolverRequest DefaultAutoShardingSolverRequest() {
   edge2.set_first(1);
   edge2.set_second(2);
   const auto edges = {edge1, edge2};
-  const std::vector<std::pair<int64_t, int64_t>> node_intervals =
-      {{0, 4}, {0, 4}, {2, 3}, {3, 4}, {100, -1}};
-  const std::vector<std::pair<int64_t, int64_t>> edge_intervals =
-      {{1, 2}, {2, 3}};
+  const std::vector<std::pair<int64_t, int64_t>> node_intervals = {
+      {0, 4}, {0, 4}, {2, 3}, {3, 4}, {100, -1}};
+  const std::vector<std::pair<int64_t, int64_t>> edge_intervals = {{1, 2},
+                                                                   {2, 3}};
   const CostMatrix c = {{10, 11, 12, 13},
                         {20, 21, 22},
                         {30, 31, 32, 33},
@@ -109,33 +107,24 @@ AutoShardingSolverRequest DefaultAutoShardingSolverRequest() {
                         {1.0, 0.0, 1.0, 1.0},
                         {1.0, 0.0, 1.0, 1.0},
                         {1.0, 0.0, 1.0}};
-  const CostMatrix r = {{1000, 1100, 1200, 1300,
-                         2000, 2100, 2200, 2300,
-                         3000, 3100, 3200, 3300,
-                         4000, 4100, 4200, 4300},
-                        {5000, 5100, 5200, 5300,
-                         6000, 6100, 6200, 6300,
-                         7000, 7100, 7200, 7300}};
-  const CostMatrix t = {{73000, 72000, 71000, 70000,
-                         63000, 62000, 61000, 60000,
-                         53000, 52000, 51000, 50000,
-                         43000, 42000, 41000, 40000},
-                        {33000, 32000, 31000, 30000,
-                         23000, 22000, 21000, 20000,
-                         13000, 12000, 11000, 10000}};
+  const CostMatrix r = {
+      {1000, 1100, 1200, 1300, 2000, 2100, 2200, 2300, 3000, 3100, 3200, 3300,
+       4000, 4100, 4200, 4300},
+      {5000, 5100, 5200, 5300, 6000, 6100, 6200, 6300, 7000, 7100, 7200, 7300}};
+  const CostMatrix t = {
+      {73000, 72000, 71000, 70000, 63000, 62000, 61000, 60000, 53000, 52000,
+       51000, 50000, 43000, 42000, 41000, 40000},
+      {33000, 32000, 31000, 30000, 23000, 22000, 21000, 20000, 13000, 12000,
+       11000, 10000}};
   AutoShardingSolverRequest_Pair alias;
   alias.set_first(1);
   alias.set_second(4);
   const auto aliases = {alias};
-  const CostMatrix v = {{0, 1, 1,
-                         1, 0, 1,
-                         1, 1, 0}};
+  const CostMatrix v = {{0, 1, 1, 1, 0, 1, 1, 1, 0}};
   const std::vector<std::string> instruction_names = {"A", "B", "C", "D", "E"};
-  const std::vector<std::string> metadata_source_files = {"attention.py",
-                                                          "convolution.py",
-                                                          "layers.py",
-                                                          "logits.py",
-                                                          "pipeline.py"};
+  const std::vector<std::string> metadata_source_files = {
+      "attention.py", "convolution.py", "layers.py", "logits.py",
+      "pipeline.py"};
 
   AutoShardingSolverRequest request;
   request.set_num_nodes(5);
@@ -169,10 +158,10 @@ AutoShardingSolverRequest AutoShardingSolverRequestWithEquivalences() {
   edge2.set_first(1);
   edge2.set_second(2);
   const auto edges = {edge1, edge2};
-  const std::vector<std::pair<int64_t, int64_t>> node_intervals =
-      {{0, 4}, {0, 4}, {2, 3}, {3, 4}, {100, -1}};
-  const std::vector<std::pair<int64_t, int64_t>> edge_intervals =
-      {{1, 2}, {2, 3}};
+  const std::vector<std::pair<int64_t, int64_t>> node_intervals = {
+      {0, 4}, {0, 4}, {2, 3}, {3, 4}, {100, -1}};
+  const std::vector<std::pair<int64_t, int64_t>> edge_intervals = {{1, 2},
+                                                                   {2, 3}};
   const CostMatrix c = {{10, 10, 10, 10},
                         {20, 20, 20},
                         {30, 30, 31, 30, 30, 30, 30},
@@ -193,31 +182,25 @@ AutoShardingSolverRequest AutoShardingSolverRequestWithEquivalences() {
                         {1.0, 0.0, 1.0, 1.0, 1.0, 1.0, 1.0},
                         {1.0, 0.0, 1.0, 1.0, 1.0, 1.0, 1.0},
                         {1.0, 0.0, 1.0}};
-  const CostMatrix r = {{1000, 1000, 1000, 1000, 1000, 1000, 1000,
-                         2000, 2000, 2000, 2000, 2000, 2000, 2000,
-                         3000, 3000, 3000, 3000, 3100, 3000, 3000,
-                         4000, 4000, 4000, 4000, 4000, 4000, 4000},
-                        {5000, 5000, 5000, 5000, 5000, 5000, 5000,
-                         6000, 6000, 6000, 6000, 6000, 6000, 6000,
-                         7000, 7000, 7000, 7000, 7000, 7000, 7000}};
-  const CostMatrix t = {{70000, 70000, 70000, 70000, 70000, 70000, 70000,
-                         60000, 60000, 60000, 60000, 60000, 60000, 60000,
-                         50000, 50000, 50000, 50000, 50000, 50000, 50000,
-                         40000, 40000, 40000, 40000, 40000, 40000, 40000},
-                        {30000, 30000, 30000, 30000, 30000, 30000, 30000,
-                         20000, 20000, 20000, 20000, 20000, 20000, 20000,
-                         10000, 10000, 10000, 10000, 10000, 10000, 10000}};
+  const CostMatrix r = {
+      {1000, 1000, 1000, 1000, 1000, 1000, 1000, 2000, 2000, 2000,
+       2000, 2000, 2000, 2000, 3000, 3000, 3000, 3000, 3100, 3000,
+       3000, 4000, 4000, 4000, 4000, 4000, 4000, 4000},
+      {5000, 5000, 5000, 5000, 5000, 5000, 5000, 6000, 6000, 6000, 6000,
+       6000, 6000, 6000, 7000, 7000, 7000, 7000, 7000, 7000, 7000}};
+  const CostMatrix t = {
+      {70000, 70000, 70000, 70000, 70000, 70000, 70000, 60000, 60000, 60000,
+       60000, 60000, 60000, 60000, 50000, 50000, 50000, 50000, 50000, 50000,
+       50000, 40000, 40000, 40000, 40000, 40000, 40000, 40000},
+      {30000, 30000, 30000, 30000, 30000, 30000, 30000,
+       20000, 20000, 20000, 20000, 20000, 20000, 20000,
+       10000, 10000, 10000, 10000, 10000, 10000, 10000}};
   AutoShardingSolverRequest_Pair alias;
   alias.set_first(2);
   alias.set_second(4);
   const auto aliases = {alias};
-  const CostMatrix v = {{0, 1, 0,
-                         0, 1, 0,
-                         0, 1, 0,
-                         0, 1, 0,
-                         0, 1, 0,
-                         1, 0, 1,
-                         0, 1, 0}};
+  const CostMatrix v = {
+      {0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 1, 0, 1, 0, 1, 0}};
   const std::vector<std::string> instruction_names = {"A", "B", "C", "D", "E"};
 
   AutoShardingSolverRequest request;
@@ -322,9 +305,9 @@ AutoShardingSolverParams DefaultParams() {
 TEST(FormulateAndSolveMIPFromSolverRequestTest, SolvesOptimally) {
   const AutoShardingSolverRequest request = DefaultAutoShardingSolverRequest();
 
-  TF_ASSERT_OK_AND_ASSIGN(const AutoShardingSolverOutput result,
-                          FormulateAndSolveMIPFromSolverRequest(
-                              request, GetParams(request)));
+  ASSERT_OK_AND_ASSIGN(
+      const AutoShardingSolverOutput result,
+      FormulateAndSolveMIPFromSolverRequest(request, GetParams(request)));
 
   const std::vector<NodeStrategyIdx> s_val = {0, 0, 0, 0, 0};
   const double objective_value = 7650.0;
@@ -337,9 +320,9 @@ TEST(FormulateAndSolveMIPFromSolverRequestTest, SolvesOverbudget) {
   request.set_memory_budget(100000);
   request.mutable_overbudget_coeff()->set_coeff(10.0);
 
-  TF_ASSERT_OK_AND_ASSIGN(const AutoShardingSolverOutput result,
-                          FormulateAndSolveMIPFromSolverRequest(
-                              request, GetParams(request)));
+  ASSERT_OK_AND_ASSIGN(
+      const AutoShardingSolverOutput result,
+      FormulateAndSolveMIPFromSolverRequest(request, GetParams(request)));
 
   const std::vector<NodeStrategyIdx> s_val = {0, 0, 0, 0, 0};
   const double objective_value = 9007650.0;
@@ -351,9 +334,9 @@ TEST(FormulateAndSolveMIPFromSolverRequestTest, SolvesMaxDepartures) {
   AutoShardingSolverRequest request = DefaultAutoShardingSolverRequest();
   request.mutable_max_departures()->set_coeff(3.0);
 
-  TF_ASSERT_OK_AND_ASSIGN(const AutoShardingSolverOutput result,
-                          FormulateAndSolveMIPFromSolverRequest(
-                              request, GetParams(request)));
+  ASSERT_OK_AND_ASSIGN(
+      const AutoShardingSolverOutput result,
+      FormulateAndSolveMIPFromSolverRequest(request, GetParams(request)));
 
   const std::vector<NodeStrategyIdx> s_val = {0, 0, 1, 1, 0};
   const double objective_value = 7872.0;
@@ -365,9 +348,9 @@ TEST(FormulateAndSolveMIPFromSolverRequestTest, MinimizesDepartures) {
   AutoShardingSolverRequest request = DefaultAutoShardingSolverRequest();
   request.set_minimize_departures(true);
 
-  TF_ASSERT_OK_AND_ASSIGN(const AutoShardingSolverOutput result,
-                          FormulateAndSolveMIPFromSolverRequest(
-                              request, GetParams(request)));
+  ASSERT_OK_AND_ASSIGN(
+      const AutoShardingSolverOutput result,
+      FormulateAndSolveMIPFromSolverRequest(request, GetParams(request)));
 
   const std::vector<NodeStrategyIdx> s_val = {1, 1, 1, 1, 1};
   const double objective_value = 0.0;
@@ -381,9 +364,9 @@ TEST(FormulateAndSolveMIPFromSolverRequestTest, AvoidsInfiniteNodeCosts) {
   request.mutable_computation_costs(0)->set_costs(1, kInfinityCost);
   request.mutable_computation_costs(0)->set_costs(2, kInfinityCost);
 
-  TF_ASSERT_OK_AND_ASSIGN(const AutoShardingSolverOutput result,
-                          FormulateAndSolveMIPFromSolverRequest(
-                              request, GetParams(request)));
+  ASSERT_OK_AND_ASSIGN(
+      const AutoShardingSolverOutput result,
+      FormulateAndSolveMIPFromSolverRequest(request, GetParams(request)));
 
   const std::vector<NodeStrategyIdx> s_val = {3, 0, 0, 0, 0};
   const double objective_value = 10683.0;
@@ -395,9 +378,9 @@ TEST(FormulateAndSolveMIPFromSolverRequestTest, AvoidsInfiniteEdgeCosts) {
   AutoShardingSolverRequest request = DefaultAutoShardingSolverRequest();
   request.mutable_resharding_costs(0)->set_costs(0, kInfinityCost);
 
-  TF_ASSERT_OK_AND_ASSIGN(const AutoShardingSolverOutput result,
-                          FormulateAndSolveMIPFromSolverRequest(
-                              request, GetParams(request)));
+  ASSERT_OK_AND_ASSIGN(
+      const AutoShardingSolverOutput result,
+      FormulateAndSolveMIPFromSolverRequest(request, GetParams(request)));
 
   const std::vector<NodeStrategyIdx> s_val = {0, 0, 1, 1, 0};
   const double objective_value = 7872.0;
@@ -412,18 +395,16 @@ TEST(FormulateAndSolveMIPFromSolverRequestTest, HandlesFollowedEdges) {
   edge.set_second(3);
   // Reduces to {1, 2} since node 3 follows node 2
   *request.mutable_edges()->Add() = edge;
-  const CostMatrix r = {{5000, 5100, 5200, 5300,
-                         6000, 6100, 6200, 6300,
-                         7000, 7100, 7200, 7300}};
+  const CostMatrix r = {
+      {5000, 5100, 5200, 5300, 6000, 6100, 6200, 6300, 7000, 7100, 7200, 7300}};
   AddCosts(request.mutable_resharding_costs(), r);
-  const CostMatrix t = {{50000, 51000, 52000, 53000,
-                         60000, 61000, 62000, 63000,
+  const CostMatrix t = {{50000, 51000, 52000, 53000, 60000, 61000, 62000, 63000,
                          70000, 71000, 72000, 73000}};
   AddCosts(request.mutable_duration_costs(), t);
 
-  TF_ASSERT_OK_AND_ASSIGN(const AutoShardingSolverOutput result,
-                          FormulateAndSolveMIPFromSolverRequest(
-                              request, GetParams(request)));
+  ASSERT_OK_AND_ASSIGN(
+      const AutoShardingSolverOutput result,
+      FormulateAndSolveMIPFromSolverRequest(request, GetParams(request)));
 
   const std::vector<NodeStrategyIdx> s_val = {0, 0, 0, 0, 0};
   const double objective_value = 12650.0;
@@ -438,20 +419,17 @@ TEST(FormulateAndSolveMIPFromSolverRequestTest, HandlesCollapsedEdge) {
   edge.set_second(3);
   // Both members of this edge will be collapsed into a single node.
   *request.mutable_edges()->Add() = edge;
-  const CostMatrix r = {{9000, 5100, 5200, 5300,
-                         6000, 6100, 6200, 6300,
-                         7000, 7100, 7200, 7300,
-                         8000, 8100, 8200, 8300}};
+  const CostMatrix r = {{9000, 5100, 5200, 5300, 6000, 6100, 6200, 6300, 7000,
+                         7100, 7200, 7300, 8000, 8100, 8200, 8300}};
   AddCosts(request.mutable_resharding_costs(), r);
-  const CostMatrix t = {{50000, 51000, 52000, 53000,
-                         60000, 61000, 62000, 63000,
-                         70000, 71000, 72000, 73000,
-                         80000, 81000, 82000, 83000}};
+  const CostMatrix t = {{50000, 51000, 52000, 53000, 60000, 61000, 62000, 63000,
+                         70000, 71000, 72000, 73000, 80000, 81000, 82000,
+                         83000}};
   AddCosts(request.mutable_duration_costs(), t);
 
-  TF_ASSERT_OK_AND_ASSIGN(const AutoShardingSolverOutput result,
-                        FormulateAndSolveMIPFromSolverRequest(
-                            request, GetParams(request)));
+  ASSERT_OK_AND_ASSIGN(
+      const AutoShardingSolverOutput result,
+      FormulateAndSolveMIPFromSolverRequest(request, GetParams(request)));
 
   const std::vector<NodeStrategyIdx> s_val = {0, 0, 1, 1, 0};
   const double objective_value = 13972.0;
@@ -464,9 +442,9 @@ TEST(FormulateAndSolveMIPFromSolverRequestTest, UsesHint) {
   const auto s_hint = {1, 0, 0, 0, 0};  // Not optimal, but close.
   request.mutable_s_hint()->Add(s_hint.begin(), s_hint.end());
 
-  TF_ASSERT_OK_AND_ASSIGN(const AutoShardingSolverOutput result,
-                        FormulateAndSolveMIPFromSolverRequest(
-                            request, GetParams(request)));
+  ASSERT_OK_AND_ASSIGN(
+      const AutoShardingSolverOutput result,
+      FormulateAndSolveMIPFromSolverRequest(request, GetParams(request)));
 
   const std::vector<NodeStrategyIdx> s_val = {0, 0, 0, 0, 0};
   const double objective_value = 7650.0;
@@ -479,8 +457,7 @@ TEST(DISABLED_FormulateAndSolveMIPFromSolverRequestTest, HonorsMaxCost) {
   request.mutable_max_cost()->set_coeff(7600.0);  // Best possible is 7650.0
 
   const absl::StatusOr<AutoShardingSolverOutput> result =
-      FormulateAndSolveMIPFromSolverRequest(request,
-                                            GetParams(request));
+      FormulateAndSolveMIPFromSolverRequest(request, GetParams(request));
 
   EXPECT_TRUE(absl::IsInternal(result.status()));
 }
@@ -489,9 +466,9 @@ TEST(FormulateAndSolveMIPFromSolverRequestTest, HandlesExtremelyHighMaxCost) {
   AutoShardingSolverRequest request = DefaultAutoShardingSolverRequest();
   request.mutable_max_cost()->set_coeff(1e19);
 
-  TF_ASSERT_OK_AND_ASSIGN(const AutoShardingSolverOutput result,
-                          FormulateAndSolveMIPFromSolverRequest(
-                              request, GetParams(request)));
+  ASSERT_OK_AND_ASSIGN(
+      const AutoShardingSolverOutput result,
+      FormulateAndSolveMIPFromSolverRequest(request, GetParams(request)));
 
   const std::vector<NodeStrategyIdx> s_val = {0, 0, 0, 0, 0};
   const double objective_value = 7650.0;
@@ -512,7 +489,7 @@ TEST(DISABLED_FormulateAndSolveMIPFromSolverRequestTest,
   AddCosts(request.mutable_memory_edge_costs(), memory_edge_costs);
   request.set_enable_memory_edge_costs(true);
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       const AutoShardingSolverOutput result,
       FormulateAndSolveMIPFromSolverRequest(request, GetParams(request)));
 
@@ -532,7 +509,7 @@ TEST(DISABLED_FormulateAndSolveMIPFromSolverRequestTest, HandlesIntervals) {
   AddCosts(request.mutable_memory_edge_costs(), memory_edge_costs);
   request.set_enable_memory_edge_costs(true);
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       const AutoShardingSolverOutput result,
       FormulateAndSolveMIPFromSolverRequest(request, GetParams(request)));
 
@@ -565,7 +542,7 @@ TEST(DISABLED_FormulateAndSolveMIPFromSolverRequestTest,
   AddCosts(request.mutable_memory_edge_costs(), memory_edge_costs);
   request.set_enable_memory_edge_costs(true);
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       const AutoShardingSolverOutput result,
       FormulateAndSolveMIPFromSolverRequest(request, GetParams(request)));
 
@@ -587,7 +564,7 @@ TEST(DISABLED_FormulateAndSolveMIPFromSolverRequestTest,
   AddGroups(request.mutable_node_groups(), node_groups);
   request.set_enable_memory_edge_costs(false);
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       const AutoShardingSolverOutput result,
       FormulateAndSolveMIPFromSolverRequest(request, GetParams(request)));
 
@@ -626,7 +603,7 @@ TEST(DISABLED_FormulateAndSolveMIPFromSolverRequestTest,
   request.set_enable_memory_edge_costs(true);
   request.set_memory_budget(4321);
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       const AutoShardingSolverOutput result,
       FormulateAndSolveMIPFromSolverRequest(request, GetParams(request)));
 
@@ -640,9 +617,9 @@ TEST(FormulateAndSolveMIPFromSolverRequestTest, SolvesWithEquivalences) {
   const AutoShardingSolverRequest request =
       AutoShardingSolverRequestWithEquivalences();
 
-  TF_ASSERT_OK_AND_ASSIGN(const AutoShardingSolverOutput result,
-                          FormulateAndSolveMIPFromSolverRequest(
-                              request, GetParams(request)));
+  ASSERT_OK_AND_ASSIGN(
+      const AutoShardingSolverOutput result,
+      FormulateAndSolveMIPFromSolverRequest(request, GetParams(request)));
 
   const double objective_value = 7650.0;
   EXPECT_EQ(result.cost, objective_value);  // Note: multiple solutions possible

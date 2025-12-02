@@ -17,10 +17,10 @@ limitations under the License.
 
 #include <utility>
 
+#include <gmock/gmock.h>
 #include "xla/backends/cpu/collectives/cpu_collectives.h"
 #include "xla/executable_run_options.h"
 #include "xla/service/cpu/cpu_executable_run_options.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 
 namespace xla::cpu {
@@ -86,8 +86,8 @@ TEST(ThunkTest, CollectiveExecuteParams) {
   run_options.set_device_ordinal(0);
 
   // Collectives interface initialized with a default implementation.
-  TF_ASSERT_OK_AND_ASSIGN(auto params,
-                          Thunk::CollectiveExecuteParams::Create(&run_options));
+  ASSERT_OK_AND_ASSIGN(auto params,
+                       Thunk::CollectiveExecuteParams::Create(&run_options));
   EXPECT_NE(params.collectives, nullptr);
 
   // Test forwarding collectives interface from CpuExecutableRunOptions.
@@ -96,8 +96,8 @@ TEST(ThunkTest, CollectiveExecuteParams) {
       reinterpret_cast<CpuCollectives*>(0x12345678));
   run_options.set_cpu_executable_run_options(&cpu_run_options);
 
-  TF_ASSERT_OK_AND_ASSIGN(params,
-                          Thunk::CollectiveExecuteParams::Create(&run_options));
+  ASSERT_OK_AND_ASSIGN(params,
+                       Thunk::CollectiveExecuteParams::Create(&run_options));
   EXPECT_EQ(params.collectives, reinterpret_cast<CpuCollectives*>(0x12345678));
 }
 

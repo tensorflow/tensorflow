@@ -25,7 +25,6 @@ limitations under the License.
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -45,12 +44,12 @@ TEST_F(HloHardwareIndependentTestBase, SlowReduceWindow) {
     }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
-                          ParseAndReturnVerifiedModule(kHloModule));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(kHloModule));
   std::vector<int32_t> data(8192, 1);
   auto input = LiteralUtil::CreateR1<int32_t>(data);
   HloEvaluator evaluator;
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       Literal actual_literal,
       evaluator.Evaluate(*hlo_module->entry_computation(), {&input}));
   std::vector<int32_t> expected(8192);

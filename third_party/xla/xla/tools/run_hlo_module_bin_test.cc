@@ -28,7 +28,6 @@ limitations under the License.
 #include "xla/literal_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/env.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/subprocess.h"
 #include "xla/tsl/platform/test.h"
 #include "tsl/platform/path.h"
@@ -171,8 +170,8 @@ TEST_F(RunHloModuleTest, ReadInputLiteralsFromFile) {
 }
 
 TEST_F(RunHloModuleTest, AddSnapshot) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnUnverifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(R"(
 HloModule f
 
 ENTRY f {

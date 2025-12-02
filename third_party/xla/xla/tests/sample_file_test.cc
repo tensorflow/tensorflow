@@ -20,6 +20,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include <gmock/gmock.h>
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
 #include "xla/error_spec.h"
@@ -32,7 +33,6 @@ limitations under the License.
 #include "xla/service/hlo_runner_pjrt.h"
 #include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/tests/hlo_runner_agnostic_reference_mixin.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "tsl/platform/path.h"
 
@@ -57,8 +57,8 @@ class SampleFileTest : public HloRunnerAgnosticReferenceMixin<HloPjRtTestBase> {
 TEST_F(SampleFileTest, Convolution) {
   const std::string filename = tsl::io::JoinPath(
       tsl::testing::XlaSrcRoot(), "tests", "isolated_convolution.hlo");
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ReadModuleFromHloTextFile(filename));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ReadModuleFromHloTextFile(filename));
   module->mutable_config()
       .mutable_debug_options()
       .set_xla_cpu_parallel_codegen_split_count(1);

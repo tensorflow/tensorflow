@@ -19,6 +19,8 @@ limitations under the License.
 #include <memory>
 #include <string>
 
+#include <gmock/gmock.h>
+#include "absl/status/statusor.h"
 #include "xla/comparison_util.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -31,7 +33,6 @@ limitations under the License.
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -146,7 +147,7 @@ TEST_F(FlattenCallGraphTest, ComplexGraph) {
   }
 
   {
-    TF_ASSERT_OK_AND_ASSIGN(bool result, RunFlattenCallGraph(module.get()));
+    ASSERT_OK_AND_ASSIGN(bool result, RunFlattenCallGraph(module.get()));
     EXPECT_TRUE(result);
     std::unique_ptr<CallGraph> flat_call_graph = CallGraph::Build(module.get());
     const CallGraphNode& c_node = flat_call_graph->GetNode(c_computation);
@@ -190,7 +191,7 @@ TEST_F(FlattenCallGraphTest, SharedWhileConditionAndBody) {
   }
 
   {
-    TF_ASSERT_OK_AND_ASSIGN(bool result, RunFlattenCallGraph(module.get()));
+    ASSERT_OK_AND_ASSIGN(bool result, RunFlattenCallGraph(module.get()));
     EXPECT_TRUE(result);
     EXPECT_NE(while_op->while_body(), while_op->while_condition());
     std::unique_ptr<CallGraph> call_graph = CallGraph::Build(module.get());
@@ -220,7 +221,7 @@ TEST_F(FlattenCallGraphTest, FlattenCalls) {
   module->AddEntryComputation(
       MakeCallingComputation(b_computation, /*callsites=*/2, ".Entry"));
 
-  TF_ASSERT_OK_AND_ASSIGN(bool result, RunFlattenCallGraph(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool result, RunFlattenCallGraph(module.get()));
   EXPECT_TRUE(result);
   std::unique_ptr<CallGraph> call_graph = CallGraph::Build(module.get());
   EXPECT_EQ(7, module->computation_count());
@@ -252,7 +253,7 @@ TEST_F(FlattenCallGraphTest, FlattenCallsInConditional) {
   module->AddEntryComputation(builder.Build());
   EXPECT_EQ(2, module->computation_count());
 
-  TF_ASSERT_OK_AND_ASSIGN(bool result, RunFlattenCallGraph(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool result, RunFlattenCallGraph(module.get()));
   EXPECT_TRUE(result);
   std::unique_ptr<CallGraph> call_graph = CallGraph::Build(module.get());
   // The true and false computations must now be different.
@@ -284,10 +285,9 @@ ENTRY %main (a: f32[4096], b: f32[4096]) -> f32[4096] {
   ROOT %add_1 = f32[4096]{0} add(f32[4096]{0} %a, f32[4096]{0} %call-done.1)
 }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
-  TF_ASSERT_OK_AND_ASSIGN(bool result, RunFlattenCallGraph(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool result, RunFlattenCallGraph(module.get()));
   EXPECT_TRUE(result);
 
   // We expect the entry computation, two async_wrapped computations and two
@@ -343,11 +343,10 @@ HloModule WhileInCall
   }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
   ASSERT_EQ(module->computation_count(), 4);
-  TF_ASSERT_OK_AND_ASSIGN(bool result, RunFlattenCallGraph(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool result, RunFlattenCallGraph(module.get()));
   EXPECT_TRUE(result);
   EXPECT_EQ(module->computation_count(), 7);
 }
@@ -388,11 +387,10 @@ HloModule CallInWhileInCall
   }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
   ASSERT_EQ(module->computation_count(), 5);
-  TF_ASSERT_OK_AND_ASSIGN(bool result, RunFlattenCallGraph(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool result, RunFlattenCallGraph(module.get()));
   EXPECT_TRUE(result);
   EXPECT_EQ(module->computation_count(), 9);
 }
@@ -421,11 +419,10 @@ HloModule SortInCall
   }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
   ASSERT_EQ(module->computation_count(), 3);
-  TF_ASSERT_OK_AND_ASSIGN(bool result, RunFlattenCallGraph(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool result, RunFlattenCallGraph(module.get()));
   ASSERT_EQ(module->computation_count(), 5);
   EXPECT_TRUE(result);
 
@@ -465,11 +462,10 @@ HloModule CallInSortInCall
   }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
   ASSERT_EQ(module->computation_count(), 4);
-  TF_ASSERT_OK_AND_ASSIGN(bool result, RunFlattenCallGraph(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool result, RunFlattenCallGraph(module.get()));
   ASSERT_EQ(module->computation_count(), 7);
   EXPECT_TRUE(result);
 
@@ -490,11 +486,10 @@ HloModule NoChange
   }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
   ASSERT_EQ(module->computation_count(), 1);
-  TF_ASSERT_OK_AND_ASSIGN(bool result, RunFlattenCallGraph(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool result, RunFlattenCallGraph(module.get()));
   ASSERT_EQ(module->computation_count(), 1);
   EXPECT_FALSE(result);
 }

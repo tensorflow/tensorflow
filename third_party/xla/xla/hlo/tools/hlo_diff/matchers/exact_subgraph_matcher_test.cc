@@ -24,7 +24,6 @@
 #include "xla/hlo/tools/hlo_diff/graph/hlo_gumgraph.h"
 #include "xla/hlo/tools/hlo_diff/hlo_gumgraph_mappings.h"
 #include "xla/hlo/tools/hlo_diff/utils/test_util.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace hlo_diff {
@@ -42,8 +41,8 @@ TEST_F(ExactSubgraphMatcherTest, SubGraphExactMatcherEntryChange) {
   //                       | add_1 | ---> ┌-------┐      ┌------┐
   // [Constant bar_L] ---> └-------┘      | add_0 | ---> | ROOT |
   // [Param baz_L] ---------------------> └-------┘      └------┘
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> module_l,
-                          ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> module_l,
+                       ParseAndReturnVerifiedModule(R"(
 HloModule module, is_scheduled=true
 
 ENTRY entry {
@@ -54,8 +53,8 @@ ENTRY entry {
   add_0 = f32[8,2048]{1,0:T(8,128)} add(add_1, baz_L)
 }
 )"));
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> graph_l,
-                          HloGumgraph::Create(module_l.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> graph_l,
+                       HloGumgraph::Create(module_l.get()));
 
   // Create right module with entry computation containing the following
   // structure:
@@ -63,8 +62,8 @@ ENTRY entry {
   //                       | add_1 | ---> ┌------------┐      ┌------┐
   // [Constant bar_R] ---> └-------┘      | subtract_0 | ---> | ROOT |
   // [Param baz_R] ---------------------> └------------┘      └------┘
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> module_r,
-                          ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> module_r,
+                       ParseAndReturnVerifiedModule(R"(
 HloModule module, is_scheduled=true
 
 ENTRY entry {
@@ -75,8 +74,8 @@ ENTRY entry {
   subtract_0 = f32[8,2048]{1,0:T(8,128)} subtract(add_1, baz_R)
 }
 )"));
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> graph_r,
-                          HloGumgraph::Create(module_r.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> graph_r,
+                       HloGumgraph::Create(module_r.get()));
   auto mappings = std::make_unique<HloGumgraphMappings>();
   auto matcher = std::make_unique<GreedySubGraphExactMatcher>(graph_l.get(),
                                                               graph_r.get());
@@ -99,8 +98,8 @@ TEST_F(ExactSubgraphMatcherTest, SubGraphExactMatcherLeafChange) {
   //                     | add_1 | ---> ┌-------┐      ┌------┐
   // [Constant bar] ---> └-------┘      | add_0 | ---> | ROOT |
   // [Param baz] ---------------------> └-------┘      └------┘
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> module_l,
-                          ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> module_l,
+                       ParseAndReturnVerifiedModule(R"(
 HloModule module, is_scheduled=true
 
 ENTRY entry {
@@ -111,8 +110,8 @@ ENTRY entry {
   add_0 = f32[8,2048]{1,0:T(8,128)} add(add_1, baz)
 }
 )"));
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> graph_l,
-                          HloGumgraph::Create(module_l.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> graph_l,
+                       HloGumgraph::Create(module_l.get()));
 
   // Create right module with entry computation containing the following
   // structure:
@@ -120,8 +119,8 @@ ENTRY entry {
   //                     | add_1 | ---> ┌-------┐      ┌------┐
   // [Constant bar] ---> └-------┘      | add_0 | ---> | ROOT |
   // [Constant baz] ------------------> └-------┘      └------┘
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> module_r,
-                          ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> module_r,
+                       ParseAndReturnVerifiedModule(R"(
 HloModule module, is_scheduled=true
 
 ENTRY entry {
@@ -132,8 +131,8 @@ ENTRY entry {
   add_0 = f32[8,2048]{1,0:T(8,128)} add(add_1, baz)
 }
 )"));
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> graph_r,
-                          HloGumgraph::Create(module_r.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> graph_r,
+                       HloGumgraph::Create(module_r.get()));
   auto mappings = std::make_unique<HloGumgraphMappings>();
   auto matcher = std::make_unique<GreedySubGraphExactMatcher>(graph_l.get(),
                                                               graph_r.get());

@@ -27,7 +27,6 @@ limitations under the License.
 #include "xla/stream_executor/cuda/nvjitlink_support.h"
 #include "xla/stream_executor/cuda/ptx_compiler_support.h"
 #include "xla/tsl/platform/env.h"
-#include "xla/tsl/platform/statusor.h"
 #include "tsl/platform/cuda_root_path.h"
 #include "tsl/platform/path.h"
 #include "tsl/platform/platform.h"
@@ -83,7 +82,7 @@ TEST(AssembleCompilationProviderTest,
       /*cuda_data_dir=*/"/does/not/exist",
   };
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<CompilationProvider> compilation_provider,
       AssembleCompilationProvider(options));
 
@@ -107,7 +106,7 @@ TEST(AssembleCompilationProviderTest,
       /*cuda_data_dir=*/cuda_dir,
   };
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<CompilationProvider> compilation_provider,
       AssembleCompilationProvider(options));
 
@@ -130,7 +129,7 @@ TEST(
       /*cuda_data_dir=*/"/does/not/exist",
   };
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<CompilationProvider> compilation_provider,
       AssembleCompilationProvider(options));
 
@@ -156,7 +155,7 @@ TEST(AssembleCompilationProviderTest,
       /*cuda_data_dir=*/"/does/not/exist",
   };
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<CompilationProvider> compilation_provider,
       AssembleCompilationProvider(options));
 

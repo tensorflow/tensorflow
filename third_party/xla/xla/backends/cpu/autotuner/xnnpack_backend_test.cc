@@ -29,7 +29,6 @@ limitations under the License.
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/service/compiler.h"
 #include "xla/service/cpu/backend_config.pb.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace xla::cpu {
 namespace {
@@ -57,9 +56,8 @@ constexpr absl::string_view kXnnpackFusionHlo = R"(
 class XnnpackBackendTest : public HloHardwareIndependentTestBase {
  protected:
   void SetUp() override {
-    TF_ASSERT_OK_AND_ASSIGN(compiler_,
-                            CpuCodegenBackend::CreateBackendCompiler());
-    TF_ASSERT_OK_AND_ASSIGN(backend_, XnnpackBackend::Create(compiler_.get()));
+    ASSERT_OK_AND_ASSIGN(compiler_, CpuCodegenBackend::CreateBackendCompiler());
+    ASSERT_OK_AND_ASSIGN(backend_, XnnpackBackend::Create(compiler_.get()));
   }
   std::unique_ptr<CodegenBackend> backend_;
   std::unique_ptr<Compiler> compiler_;
@@ -70,11 +68,11 @@ TEST_F(XnnpackBackendTest, NameTest) {
 }
 
 TEST_F(XnnpackBackendTest, GetDefaultConfigTest) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kXnnpackFusionHlo));
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto config, backend_->GetDefaultConfig(
-                       *module->entry_computation()->root_instruction()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kXnnpackFusionHlo));
+  ASSERT_OK_AND_ASSIGN(auto config,
+                       backend_->GetDefaultConfig(
+                           *module->entry_computation()->root_instruction()));
   XnnFusionOptions xnn_fusion_options;
   config->UnpackTo(&xnn_fusion_options);
 
@@ -101,8 +99,8 @@ TEST_F(XnnpackBackendTest, InvalidFusionKind) {
         backend_config={fusion_config: {kind: "__not_xnn_fusion"}}
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(bad_fusion_kind_hlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(bad_fusion_kind_hlo));
   auto config = backend_->GetDefaultConfig(
       *module->entry_computation()->root_instruction());
 
@@ -114,11 +112,11 @@ TEST_F(XnnpackBackendTest, InvalidFusionKind) {
 }
 
 TEST_F(XnnpackBackendTest, GetSupportedConfigsTest) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kXnnpackFusionHlo));
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto configs, backend_->GetSupportedConfigs(
-                        *module->entry_computation()->root_instruction()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kXnnpackFusionHlo));
+  ASSERT_OK_AND_ASSIGN(auto configs,
+                       backend_->GetSupportedConfigs(
+                           *module->entry_computation()->root_instruction()));
 
   EXPECT_EQ(configs.size(), 2);
   XnnFusionOptions xnn_fusion_options0;
@@ -130,34 +128,33 @@ TEST_F(XnnpackBackendTest, GetSupportedConfigsTest) {
 }
 
 TEST_F(XnnpackBackendTest, CompileSupportedBackends) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kXnnpackFusionHlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kXnnpackFusionHlo));
   HloInstruction* fusion_instruction =
       module->entry_computation()->root_instruction();
-  TF_ASSERT_OK_AND_ASSIGN(auto configs,
-                          backend_->GetSupportedConfigs(*fusion_instruction));
+  ASSERT_OK_AND_ASSIGN(auto configs,
+                       backend_->GetSupportedConfigs(*fusion_instruction));
   for (auto& config : configs) {
-    TF_ASSERT_OK_AND_ASSIGN(auto executable,
-                            backend_->Compile(*fusion_instruction, *config));
+    ASSERT_OK_AND_ASSIGN(auto executable,
+                         backend_->Compile(*fusion_instruction, *config));
   }
 }
 
 TEST_F(XnnpackBackendTest, EnsureConfigIsApplied) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kXnnpackFusionHlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kXnnpackFusionHlo));
   HloInstruction* fusion_instruction =
       module->entry_computation()->root_instruction();
-  TF_ASSERT_OK_AND_ASSIGN(auto configs,
-                          backend_->GetSupportedConfigs(*fusion_instruction));
+  ASSERT_OK_AND_ASSIGN(auto configs,
+                       backend_->GetSupportedConfigs(*fusion_instruction));
 
   for (const auto& config : configs) {
     XnnFusionOptions xnn_fusion_options;
     config->UnpackTo(&xnn_fusion_options);
     EXPECT_TRUE(backend_->ApplyConfig(*fusion_instruction, *config).ok());
 
-    TF_ASSERT_OK_AND_ASSIGN(
-        auto instruction_backend_config,
-        fusion_instruction->backend_config<BackendConfig>());
+    ASSERT_OK_AND_ASSIGN(auto instruction_backend_config,
+                         fusion_instruction->backend_config<BackendConfig>());
 
     EXPECT_EQ(instruction_backend_config.fusion_config()
                   .xnn_fusion_options()

@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/algorithm/container.h"
 #include "absl/strings/string_view.h"
@@ -28,7 +29,6 @@ limitations under the License.
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/test_helpers.h"
 #include "xla/service/pattern_matcher.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -72,8 +72,8 @@ ENTRY entry {
 }
 
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
   InsertCollectivesSchedule(module.get());
   EXPECT_EQ(CountControlEdges(*module->entry_computation()), 1);
   HloInstruction *c1 = nullptr, *c2 = nullptr;
@@ -108,8 +108,8 @@ ENTRY entry {
 }
 
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
   InsertCollectivesSchedule(module.get());
   EXPECT_EQ(CountControlEdges(*module->entry_computation()), 1);
 }
@@ -133,8 +133,8 @@ ENTRY entry {
 }
 
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
   InsertCollectivesSchedule(module.get());
   EXPECT_EQ(CountControlEdges(*module->entry_computation()), 0);
 }
@@ -159,8 +159,8 @@ ENTRY entry {
   ROOT out = f32[100] add(t, c3)
 }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
   ASSERT_IS_OK(
       module->entry_computation()
           ->GetInstructionWithName("c3")
@@ -190,18 +190,18 @@ ENTRY entry {
   ROOT out = f32[100] add(ard0, ard1)
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
   InsertCollectivesSchedule(module.get());
   EXPECT_EQ(CountControlEdges(*module->entry_computation()), 1);
 
-  const HloInstruction *root = module->entry_computation()->root_instruction();
-  const HloInstruction *ard0 = root->operand(0);
-  const HloInstruction *ard1 = root->operand(1);
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+  const HloInstruction* ard0 = root->operand(0);
+  const HloInstruction* ard1 = root->operand(1);
   EXPECT_EQ(ard0->opcode(), HloOpcode::kAllReduceDone);
   EXPECT_EQ(ard1->opcode(), HloOpcode::kAllReduceDone);
 
-  const HloInstruction *ars1 = ard1->operand(0);
+  const HloInstruction* ars1 = ard1->operand(0);
   EXPECT_EQ(ars1->opcode(), HloOpcode::kAllReduceStart);
 
   // verify control dependency is inserted from all-reduce-done to
@@ -232,32 +232,32 @@ ENTRY entry {
   ROOT out = f32[100] add(t, c3)
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
   InsertCollectivesSchedule(module.get());
   EXPECT_EQ(CountControlEdges(*module->entry_computation()), 2);
 
-  const HloInstruction *root = module->entry_computation()->root_instruction();
-  const HloInstruction *t = root->operand(0);   // t = add(c1, c2)
-  const HloInstruction *c3 = root->operand(1);  // c3 = all-reduce(i2)...
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+  const HloInstruction* t = root->operand(0);   // t = add(c1, c2)
+  const HloInstruction* c3 = root->operand(1);  // c3 = all-reduce(i2)...
   EXPECT_EQ(t->opcode(), HloOpcode::kAdd);
   EXPECT_EQ(c3->opcode(), HloOpcode::kAllReduce);
 
-  const HloInstruction *c1 = t->operand(0);
-  const HloInstruction *c2 = t->operand(1);
+  const HloInstruction* c1 = t->operand(0);
+  const HloInstruction* c2 = t->operand(1);
   EXPECT_EQ(c1->opcode(), HloOpcode::kAllReduce);
   EXPECT_EQ(c2->opcode(), HloOpcode::kAllReduce);
 
   bool found_i0 = false;
   // Verify that i0 is before c1.
-  for (const auto &instruction : module->entry_computation()->instructions()) {
+  for (const auto& instruction : module->entry_computation()->instructions()) {
     if (instruction->name() == "c1") EXPECT_TRUE(found_i0);
     if (instruction->name() == "i0") found_i0 = true;
   }
   // Calling MakeInstructionPostOrder() again to verify idempotence.
   auto post_order = module->entry_computation()->MakeInstructionPostOrder();
   found_i0 = false;
-  for (HloInstruction *instruction : post_order) {
+  for (HloInstruction* instruction : post_order) {
     if (instruction->name() == "c1") EXPECT_TRUE(found_i0);
     if (instruction->name() == "i0") found_i0 = true;
   }

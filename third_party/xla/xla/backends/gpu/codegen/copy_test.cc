@@ -17,7 +17,9 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "xla/hlo/ir/hlo_casting_utils.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 
 namespace xla {
@@ -222,8 +224,8 @@ constexpr char kSliceMemcpyModule[] = R"(
     })";
 
 TEST_F(CopyFusionTest, BuildSliceDescriptor) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kSliceMemcpyModule));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(kSliceMemcpyModule));
 
   auto descriptor = DynamicMemcpyFusion::GetMemcpyDescriptorForFusion(
       GetFusion(module.get()));
@@ -295,8 +297,8 @@ constexpr char kUpdateSliceMemcpyModule[] = R"(
     })";
 
 TEST_F(CopyFusionTest, BuildUpdateSliceDescriptor) {
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto module, ParseAndReturnVerifiedModule(kUpdateSliceMemcpyModule));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(kUpdateSliceMemcpyModule));
 
   auto descriptor = DynamicMemcpyFusion::GetMemcpyDescriptorForFusion(
       GetFusion(module.get()));
@@ -316,7 +318,7 @@ TEST_F(CopyFusionTest, BuildUpdateSliceDescriptor) {
 }
 
 TEST_F(CopyFusionTest, PackedSubByteTypesAreNotSupported) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
     dynamic_slice {
       a = s4[20]{0:E(4)} parameter(0)
       c = s32[] constant(10)

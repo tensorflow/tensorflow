@@ -20,6 +20,7 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/base/casts.h"
 #include "absl/log/check.h"
@@ -35,7 +36,6 @@ limitations under the License.
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/stream_executor_memory_allocator.h"
 #include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/types.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
@@ -88,7 +88,7 @@ void append_unique_numbers(size_t count, std::vector<T>& arr) {
 template <typename T>
 void RunSelectKTest() {
   se::StreamExecutor* stream_executor = GpuExecutor();
-  TF_ASSERT_OK_AND_ASSIGN(auto stream, stream_executor->CreateStream());
+  ASSERT_OK_AND_ASSIGN(auto stream, stream_executor->CreateStream());
   int device_ordinal = stream_executor->device_ordinal();
   se::StreamExecutorMemoryAllocator allocator(stream_executor);
 

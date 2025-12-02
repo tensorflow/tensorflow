@@ -34,7 +34,6 @@ limitations under the License.
 #include "xla/stream_executor/device_description.pb.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
 #include "xla/xla.pb.h"
 
@@ -124,8 +123,8 @@ TEST_F(CustomKernelBackendTest, CanCreateCublasBackend) {
 }
 
 TEST_F(CustomKernelBackendTest, GetSupportedConfigsFromCustomKernelFusion) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kCustomKernelFusionHlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kCustomKernelFusionHlo));
   absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>> configs =
       backend_.GetSupportedConfigs(
           (*module->entry_computation()->root_instruction()));
@@ -135,8 +134,8 @@ TEST_F(CustomKernelBackendTest, GetSupportedConfigsFromCustomKernelFusion) {
 
 TEST_F(CustomKernelBackendTest,
        GetSupportedConfigsReturnsEmptyVectorForNonCustomKernelFusion) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kTritonFusionHlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kTritonFusionHlo));
   absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>> configs =
       backend_.GetSupportedConfigs(
           (*module->entry_computation()->root_instruction()));
@@ -144,8 +143,8 @@ TEST_F(CustomKernelBackendTest,
 }
 
 TEST_F(CustomKernelBackendTest, ReturnsDefaultConfig) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kCustomKernelFusionHlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kCustomKernelFusionHlo));
 
   absl::StatusOr<std::unique_ptr<BackendConfig>> config =
       backend_.GetDefaultConfig(
@@ -158,8 +157,8 @@ TEST_F(CustomKernelBackendTest, ReturnsDefaultConfig) {
 
 TEST_F(CustomKernelBackendTest,
        FailsReturningDefaultConfigForNonCustomFusionInstruction) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kTritonFusionHlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kTritonFusionHlo));
 
   absl::StatusOr<std::unique_ptr<BackendConfig>> config =
       backend_.GetDefaultConfig(
@@ -169,8 +168,8 @@ TEST_F(CustomKernelBackendTest,
 }
 
 TEST_F(CustomKernelBackendTest, ApplyConfig) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
-                          ParseAndReturnVerifiedModule(kCustomKernelFusionHlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(kCustomKernelFusionHlo));
   CustomKernelBackendConfig config;
   config.set_kernel_index(2);
   google::protobuf::Any any;

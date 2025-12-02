@@ -24,10 +24,9 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
 #include "absl/strings/string_view.h"
+#include "google/protobuf/text_format.h"
 #include "xla/stream_executor/gpu/tma_metadata.pb.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
-#include "tsl/platform/protobuf.h"
 
 namespace stream_executor::gpu {
 namespace {
@@ -403,8 +402,8 @@ TEST(TmaMetadataTest, ProtoSerializationDeserialization) {
   metadata_proto.mutable_arg_index_to_tma_info()->emplace(
       /*arg_index=*/0, std::move(descriptor_proto));
 
-  TF_ASSERT_OK_AND_ASSIGN(TmaMetadata metadata,
-                          TmaMetadata::FromProto(metadata_proto));
+  ASSERT_OK_AND_ASSIGN(TmaMetadata metadata,
+                       TmaMetadata::FromProto(metadata_proto));
   EXPECT_THAT(metadata.ToProto(), EqualsProto(metadata_proto));
 }
 

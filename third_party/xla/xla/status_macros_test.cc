@@ -125,7 +125,7 @@ absl::StatusOr<int> CreateIntUnsuccessfully() {
 }
 
 TEST(StatusMacros, AssignOrAssertOnOK) {
-  TF_ASSERT_OK_AND_ASSIGN(int result, CreateIntSuccessfully());
+  ASSERT_OK_AND_ASSIGN(int result, CreateIntSuccessfully());
   EXPECT_EQ(42, result);
 }
 

@@ -32,7 +32,6 @@ limitations under the License.
 #include "xla/tools/xla_compile_lib.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/env.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/tsl/protobuf/error_codes.pb.h"
 #include "xla/tsl/protobuf/status.pb.h"
@@ -56,7 +55,7 @@ class XlaCompileLibTest : public HloTestBase {
                                                    "tools", "data", "add.hlo");
     std::string hlo;
     TF_ASSERT_OK(tsl::ReadFileToString(tsl::Env::Default(), hlo_path, &hlo));
-    TF_ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnVerifiedModule(hlo));
+    ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnVerifiedModule(hlo));
   }
 
   std::unique_ptr<HloModule> module_;

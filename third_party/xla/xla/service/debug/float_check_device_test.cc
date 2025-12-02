@@ -22,7 +22,6 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/service/gpu/tests/gpu_codegen_test.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/xla.pb.h"
 
 namespace xla::gpu {
@@ -41,8 +40,7 @@ TEST_F(GpuCodegenTest, OnNanShouldLogHloInstruction) {
     }
   )hlo";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnUnverifiedModule(kHloModule));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kHloModule));
   module->mutable_config().mutable_debug_options().set_xla_gpu_detect_nan(
       DebugOptions::DETECTION_MODE_WARNING);
   absl::ScopedMockLog log;
@@ -70,8 +68,7 @@ TEST_F(GpuCodegenTest, OnInfShouldLogHloInstruction) {
     }
   )hlo";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnUnverifiedModule(kHloModule));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kHloModule));
   module->mutable_config().mutable_debug_options().set_xla_gpu_detect_inf(
       DebugOptions::DETECTION_MODE_WARNING);
   absl::ScopedMockLog log;

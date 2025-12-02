@@ -13,8 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/backends/cpu/runtime/convolution_thunk.h"
-
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
 #include "absl/types/span.h"
@@ -23,7 +22,6 @@ limitations under the License.
 #include "xla/backends/cpu/runtime/convolution_thunk_test_util.h"
 #include "xla/backends/cpu/runtime/thunk.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 
 namespace xla::cpu {
@@ -43,7 +41,7 @@ template <typename ElementType>
 void SuccessfulConvolution(int convolution_rank) {
   ConvolutionThunkBuilder<ElementType> builder(
       ConvolutionDimensions{convolution_rank});
-  TF_ASSERT_OK_AND_ASSIGN(auto thunk, builder.Build());
+  ASSERT_OK_AND_ASSIGN(auto thunk, builder.Build());
   BufferAllocations allocations = builder.GetAllocations();
 
   // Execute thunk and wait for completion.

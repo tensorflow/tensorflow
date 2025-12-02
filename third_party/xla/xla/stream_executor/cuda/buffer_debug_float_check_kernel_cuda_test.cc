@@ -19,6 +19,7 @@ limitations under the License.
 #include <optional>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/cleanup/cleanup.h"
 #include "absl/log/log.h"
@@ -56,10 +57,10 @@ using xla::gpu::ThunkId;
 class FloatCheckKernelTest : public ::testing::Test {
  protected:
   void SetUp() override {
-    TF_ASSERT_OK_AND_ASSIGN(platform_,
-                            se::PlatformManager::PlatformWithName("CUDA"));
-    TF_ASSERT_OK_AND_ASSIGN(executor_, platform_->ExecutorForDevice(0));
-    TF_ASSERT_OK_AND_ASSIGN(stream_, executor_->CreateStream(std::nullopt));
+    ASSERT_OK_AND_ASSIGN(platform_,
+                         se::PlatformManager::PlatformWithName("CUDA"));
+    ASSERT_OK_AND_ASSIGN(executor_, platform_->ExecutorForDevice(0));
+    ASSERT_OK_AND_ASSIGN(stream_, executor_->CreateStream(std::nullopt));
     allocator_ =
         std::make_unique<se::StreamExecutorMemoryAllocator>(stream_->parent());
 
@@ -129,7 +130,7 @@ TEST_F(FloatCheckKernelTest, ChecksFloatsForF32) {
   input[400] = std::numeric_limits<float>::infinity();
   input[500] = std::numeric_limits<float>::infinity();
   input[600] = std::numeric_limits<float>::infinity();
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto device_log,
       se::gpu::BufferDebugLog<BufferDebugFloatCheckEntry>::CreateOnDevice(
           *stream_, mem));
@@ -137,7 +138,7 @@ TEST_F(FloatCheckKernelTest, ChecksFloatsForF32) {
   TF_EXPECT_OK(AppendFloatCheckOnDevice<gpu::BufferDebugFloatCheckF32Kernel>(
       BufferDebugLogEntryId{123}, input, device_log));
 
-  TF_ASSERT_OK_AND_ASSIGN(auto host_log, device_log.ReadFromDevice(*stream_));
+  ASSERT_OK_AND_ASSIGN(auto host_log, device_log.ReadFromDevice(*stream_));
   ASSERT_GE(host_log.size(), 1);
   EXPECT_EQ(host_log[0].nan_count, 2);
   EXPECT_EQ(host_log[0].inf_count, 3);
@@ -154,7 +155,7 @@ TEST_F(FloatCheckKernelTest, ChecksFloatsForBf16) {
   input[60] = xla::bfloat16(std::numeric_limits<float>::infinity());
 
   se::DeviceMemory<uint8_t> mem = executor_->AllocateArray<uint8_t>(1024);
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto device_log,
       se::gpu::BufferDebugLog<BufferDebugFloatCheckEntry>::CreateOnDevice(
           *stream_, mem));
@@ -162,7 +163,7 @@ TEST_F(FloatCheckKernelTest, ChecksFloatsForBf16) {
   TF_EXPECT_OK(AppendFloatCheckOnDevice<gpu::BufferDebugFloatCheckBf16Kernel>(
       BufferDebugLogEntryId{0}, input, device_log));
 
-  TF_ASSERT_OK_AND_ASSIGN(auto host_log, device_log.ReadFromDevice(*stream_));
+  ASSERT_OK_AND_ASSIGN(auto host_log, device_log.ReadFromDevice(*stream_));
   ASSERT_GE(host_log.size(), 1);
   EXPECT_EQ(host_log[0].nan_count, 2);
   EXPECT_EQ(host_log[0].inf_count, 3);
@@ -179,7 +180,7 @@ TEST_F(FloatCheckKernelTest, ChecksFloatsInParallel) {
   input[600] = std::numeric_limits<float>::infinity();
   input[700] = std::numeric_limits<float>::infinity();
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto device_log,
       se::gpu::BufferDebugLog<BufferDebugFloatCheckEntry>::CreateOnDevice(
           *stream_, mem));
@@ -189,7 +190,7 @@ TEST_F(FloatCheckKernelTest, ChecksFloatsInParallel) {
   TF_EXPECT_OK(AppendFloatCheckOnDevice<gpu::BufferDebugFloatCheckF32Kernel>(
       BufferDebugLogEntryId{0}, input, device_log, se::ThreadDim(2, 4, 8)));
 
-  TF_ASSERT_OK_AND_ASSIGN(auto host_log, device_log.ReadFromDevice(*stream_));
+  ASSERT_OK_AND_ASSIGN(auto host_log, device_log.ReadFromDevice(*stream_));
   ASSERT_GE(host_log.size(), 2);
   EXPECT_EQ(host_log[0].nan_count, 3);
   EXPECT_EQ(host_log[0].inf_count, 2);

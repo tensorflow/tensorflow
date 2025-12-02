@@ -12,18 +12,17 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include <array>
 #include <cstdint>
 #include <memory>
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/tests/collective_ops_e2e_test_base.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 
 namespace xla {
@@ -64,13 +63,12 @@ TEST_F(CollectiveMetadataTest, ConstructCollectiveMetadata) {
       << "Test requires at least " << kNumReplicas << " devices ("
       << hlo_runner_->device_count() << " available)";
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto unoptimized_module,
-      ParseAndReturnVerifiedModule(kModuleStr, kNumReplicas));
+  ASSERT_OK_AND_ASSIGN(auto unoptimized_module,
+                       ParseAndReturnVerifiedModule(kModuleStr, kNumReplicas));
 
   Literal input_0 = LiteralUtil::CreateR1<float>({1.0f, 2.0f, 3.0f, 4.0f});
   Literal input_1 = LiteralUtil::CreateR1<float>({1.0f, 2.0f, 3.0f, 4.0f});
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       ExecutionResult execution_result,
       ExecuteReplicated(std::move(unoptimized_module),
                         /*arguments=*/std::vector<Literal*>{&input_0, &input_1},
@@ -122,13 +120,13 @@ TEST_F(CollectiveMetadataTest, ConstructCollectiveMetadataWithReplicaGroup) {
                  << hlo_runner_->device_count() << " available)";
   }
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto module, ParseAndReturnVerifiedModule(kModuleStr, kNumReplicas));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(kModuleStr, kNumReplicas));
 
   Literal input_0 = LiteralUtil::CreateR1<float>({1.0f, 2.0f, 3.0f, 4.0f});
   Literal input_1 = LiteralUtil::CreateR1<float>({1.0f, 2.0f, 3.0f, 4.0f});
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       ExecutionResult execution_result,
       ExecuteReplicated(std::move(module),
                         /*arguments=*/std::vector<Literal*>{&input_0, &input_1},

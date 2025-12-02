@@ -20,10 +20,9 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/strings/match.h"
+#include <gmock/gmock.h>
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
-#include "xla/backends/cpu/codegen/target_machine_features.h"
 #include "xla/backends/cpu/codegen/target_machine_test_base.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -32,7 +31,6 @@ limitations under the License.
 #include "xla/service/hlo_module_config.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/xla_data.pb.h"
 
@@ -104,7 +102,7 @@ TEST_P(SkipInstructionTest, Bf16InF32Out) {
 
   // Run FloatNormalization and check the results.
   FloatNormalization float_normalization(&cpu_float_support);
-  TF_ASSERT_OK_AND_ASSIGN(bool upcast, float_normalization.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool upcast, float_normalization.Run(module.get()));
   EXPECT_EQ(upcast, spec.upcast);
   PrimitiveType expected_input_dtype = spec.upcast ? F32 : BF16;
   CheckDtype(module.get(), expected_input_dtype, expected_input_dtype, F32);

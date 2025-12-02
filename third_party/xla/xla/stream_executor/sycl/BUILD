@@ -65,7 +65,6 @@ xla_cc_test(
         ":sycl_platform_id",
         "//xla/stream_executor:platform",
         "//xla/stream_executor:platform_manager",
-        "//xla/tsl/platform:statusor",
         "@com_google_googletest//:gtest_main",
     ],
 )

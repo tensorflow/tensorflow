@@ -33,7 +33,6 @@ limitations under the License.
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 
@@ -47,7 +46,7 @@ namespace m = xla::testing::opcode_matchers;
 class ConvertAsyncCollectivesToSyncTest
     : public HloHardwareIndependentTestBase {
  public:
-  absl::Status RunPass(HloModule *module, bool expect_change,
+  absl::Status RunPass(HloModule* module, bool expect_change,
                        HloPredicate is_nop = {}) {
     TF_ASSIGN_OR_RETURN(bool changed,
                         ConvertAsyncCollectivesToSync{is_nop}.Run(module));
@@ -55,8 +54,8 @@ class ConvertAsyncCollectivesToSyncTest
     return absl::OkStatus();
   }
 
-  absl::string_view GetAsyncName(const HloInstruction *inst) {
-    const auto &map = inst->frontend_attributes().map();
+  absl::string_view GetAsyncName(const HloInstruction* inst) {
+    const auto& map = inst->frontend_attributes().map();
     return map.at(
         ConvertAsyncCollectivesToSync::kAsyncCollectiveNameAttributeName);
   }
@@ -82,12 +81,11 @@ TEST_F(ConvertAsyncCollectivesToSyncTest, SimpleAllReduce) {
         ROOT done = u32[] all-reduce-done(start)
       }
     )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   TF_ASSERT_OK(RunPass(module.get(), /*expect_change=*/true));
-  const HloInstruction *root = module->entry_computation()->root_instruction();
+  const HloInstruction* root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, m::AllReduce(m::ReplicaId()));
-  const auto *ar = Cast<HloAllReduceInstruction>(root);
+  const auto* ar = Cast<HloAllReduceInstruction>(root);
   EXPECT_TRUE(ar->channel_id().has_value());
   EXPECT_EQ(ar->channel_id().value(), 3);
   EXPECT_EQ(GetAsyncName(ar), "start");
@@ -110,12 +108,11 @@ TEST_F(ConvertAsyncCollectivesToSyncTest, SimpleAllReduceWithNop) {
         ROOT done = u32[] all-reduce-done(start)
       }
     )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   TF_ASSERT_OK(RunPass(module.get(), /*expect_change=*/true, is_nop_simple_));
-  const HloInstruction *root = module->entry_computation()->root_instruction();
+  const HloInstruction* root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, m::AllReduce(m::ReplicaId()));
-  const auto *ar = Cast<HloAllReduceInstruction>(root);
+  const auto* ar = Cast<HloAllReduceInstruction>(root);
   EXPECT_TRUE(ar->channel_id().has_value());
   EXPECT_EQ(ar->channel_id().value(), 3);
   EXPECT_THAT(ar, m::ReplicaGroups({{0, 1}, {2, 3}}));
@@ -139,8 +136,7 @@ TEST_F(ConvertAsyncCollectivesToSyncTest, SimpleAllReduceWithNonNop) {
         ROOT done = u32[] all-reduce-done(start)
       }
     )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   TF_ASSERT_OK(RunPass(module.get(), /*expect_change=*/false));
 }
 
@@ -152,12 +148,11 @@ TEST_F(ConvertAsyncCollectivesToSyncTest, SimpleAllGather) {
     ags = (u32[1, 2], u32[2, 2]) all-gather-start(a1), dimensions={0}, channel_id=3
     ROOT allgather = u32[2,2] all-gather-done(ags)
   })";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   TF_ASSERT_OK(RunPass(module.get(), /*expect_change=*/true));
-  const HloInstruction *root = module->entry_computation()->root_instruction();
+  const HloInstruction* root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, m::AllGather(m::Parameter(0)));
-  const auto *ag = Cast<HloAllGatherInstruction>(root);
+  const auto* ag = Cast<HloAllGatherInstruction>(root);
   EXPECT_TRUE(ag->channel_id().has_value());
   EXPECT_EQ(ag->channel_id().value(), 3);
   EXPECT_EQ(ag->all_gather_dimension(), 0);
@@ -172,14 +167,13 @@ TEST_F(ConvertAsyncCollectivesToSyncTest, PreserveFrontendAttributes) {
     ags = (u32[1, 2], u32[2, 2]) all-gather-start(a1), dimensions={0}, channel_id=3, frontend_attributes={_scheduling_group_id="127"}
     ROOT allgather = u32[2,2] all-gather-done(ags), frontend_attributes={_scheduling_group_id="127"}
   })";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   TF_ASSERT_OK(RunPass(module.get(), /*expect_change=*/true));
   const HloInstruction* root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, m::AllGather(m::Parameter(0)));
   EXPECT_TRUE(root->has_frontend_attributes());
-  TF_ASSERT_OK_AND_ASSIGN(std::optional<int64_t> group_id,
-                          GetSchedulingAnnotationGroupId(root));
+  ASSERT_OK_AND_ASSIGN(std::optional<int64_t> group_id,
+                       GetSchedulingAnnotationGroupId(root));
   EXPECT_TRUE(group_id.has_value());
   EXPECT_EQ(*group_id, 127);
 }
@@ -193,12 +187,11 @@ TEST_F(ConvertAsyncCollectivesToSyncTest, SimpleCollectivePermute) {
     start = (u32[2], u32[2], u32[], u32[]) collective-permute-start(p), source_target_pairs={{0,1}, {1,0}}
     ROOT done = u32[2] collective-permute-done(start)
   })";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   TF_ASSERT_OK(RunPass(module.get(), /*expect_change=*/true));
-  const HloInstruction *root = module->entry_computation()->root_instruction();
+  const HloInstruction* root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, m::CollectivePermute(m::Parameter(0)));
-  const auto *cp = Cast<HloCollectivePermuteInstruction>(root);
+  const auto* cp = Cast<HloCollectivePermuteInstruction>(root);
   EXPECT_THAT(cp, m::SourceTargetPairs({{0, 1}, {1, 0}}));
   EXPECT_EQ(GetAsyncName(cp), "start");
 }
@@ -213,12 +206,11 @@ TEST_F(ConvertAsyncCollectivesToSyncTest, CombinedCollectivePermute) {
     start = ((u32[2], u32[2]), (u32[2], u32[2])) collective-permute-start(p0, p1), source_target_pairs={{0,1}, {1,0}}
     ROOT done = (u32[2], u32[2]) collective-permute-done(start)
   })";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   TF_ASSERT_OK(RunPass(module.get(), /*expect_change=*/true));
-  const HloInstruction *root = module->entry_computation()->root_instruction();
+  const HloInstruction* root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, m::CollectivePermute(m::Parameter(0), m::Parameter(1)));
-  const auto *cp = Cast<HloCollectivePermuteInstruction>(root);
+  const auto* cp = Cast<HloCollectivePermuteInstruction>(root);
   EXPECT_THAT(cp, m::SourceTargetPairs({{0, 1}, {1, 0}}));
   EXPECT_EQ(GetAsyncName(cp), "start");
 }
@@ -245,12 +237,11 @@ TEST_F(ConvertAsyncCollectivesToSyncTest, SimpleReduceScatter) {
     ROOT %ars = u32[4]{0} async-done(((u32[8]{0}), u32[4]{0}) %rs-start), calls=reduce_scatter
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   TF_ASSERT_OK(RunPass(module.get(), /*expect_change=*/true));
-  const HloInstruction *root = module->entry_computation()->root_instruction();
+  const HloInstruction* root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, m::ReduceScatter(m::Parameter(0)));
-  const auto *rs = Cast<HloReduceScatterInstruction>(root);
+  const auto* rs = Cast<HloReduceScatterInstruction>(root);
   EXPECT_THAT(rs, m::ReplicaGroups({{0, 3}, {1, 2}}));
   EXPECT_EQ(rs->scatter_dimension(), 0);
   EXPECT_EQ(GetAsyncName(rs), "rs-start");
@@ -272,12 +263,11 @@ TEST_F(ConvertAsyncCollectivesToSyncTest, SimpleAllToAll) {
   }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   TF_ASSERT_OK(RunPass(module.get(), /*expect_change=*/true));
-  const HloInstruction *root = module->entry_computation()->root_instruction();
+  const HloInstruction* root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, m::AllToAll(m::Parameter(0)));
-  const auto *a2a = Cast<HloAllToAllInstruction>(root);
+  const auto* a2a = Cast<HloAllToAllInstruction>(root);
   EXPECT_THAT(a2a, m::ReplicaGroups({{0, 1}, {2, 3}}));
   EXPECT_TRUE(a2a->split_dimension().has_value());
   EXPECT_EQ(a2a->split_dimension().value(), 0);
@@ -303,10 +293,9 @@ TEST_F(ConvertAsyncCollectivesToSyncTest, ControlDeps) {
         ROOT x = u32[] add(done1, done2)
       }
     )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   TF_ASSERT_OK(RunPass(module.get(), /*expect_change=*/true));
-  const HloInstruction *root = module->entry_computation()->root_instruction();
+  const HloInstruction* root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, m::Add(m::AllReduce(), m::AllReduce()));
 }
 
@@ -331,10 +320,9 @@ TEST_F(ConvertAsyncCollectivesToSyncTest, MultipleInFlightStreaming) {
         ROOT x = u32[] add(done1, done2)
       }
     )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   TF_ASSERT_OK(RunPass(module.get(), /*expect_change=*/true));
-  const HloInstruction *root = module->entry_computation()->root_instruction();
+  const HloInstruction* root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, m::Add(m::AllReduce(), m::AllReduce()));
 }
 
@@ -358,10 +346,9 @@ TEST_F(ConvertAsyncCollectivesToSyncTest, MultipleInFlightNested) {
         ROOT x = u32[] add(done1, done2)
       }
     )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   TF_ASSERT_OK(RunPass(module.get(), /*expect_change=*/true));
-  const HloInstruction *root = module->entry_computation()->root_instruction();
+  const HloInstruction* root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, m::Add(m::AllReduce(), m::AllReduce()));
 }
 
@@ -387,10 +374,9 @@ TEST_F(ConvertAsyncCollectivesToSyncTest, MultipleInFlightNestedPartial) {
         ROOT x = u32[] add(done1, done2)
       }
     )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   TF_ASSERT_OK(RunPass(module.get(), /*expect_change=*/true));
-  const HloInstruction *root = module->entry_computation()->root_instruction();
+  const HloInstruction* root = module->entry_computation()->root_instruction();
   // We expect start2/done2 to be converted to async, start1/done1 will stay
   // unchanged.
   EXPECT_THAT(root, m::Add(m::AllReduceDone(), m::AllReduce()));

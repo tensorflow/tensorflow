@@ -19,13 +19,13 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/runtime/buffer_use.h"
 #include "xla/runtime/resource_use.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/shape.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 
 namespace xla {
@@ -80,8 +80,8 @@ TEST(ExecutionGraphTest, DependencyOrdering) {
   operations.push_back(Operation({BufferUse::Read(slice2, slice_shape),
                                   BufferUse::Write(slice2, slice_shape)}));
 
-  TF_ASSERT_OK_AND_ASSIGN(ExecutionGraph execution_graph,
-                          ExecutionGraph::Create<Operation>(operations));
+  ASSERT_OK_AND_ASSIGN(ExecutionGraph execution_graph,
+                       ExecutionGraph::Create<Operation>(operations));
 
   EXPECT_FALSE(execution_graph.is_sequential());
   EXPECT_THAT(execution_graph.source(), ElementsAre(0, 1));
@@ -112,8 +112,8 @@ TEST(ExecutionGraphTest, SequentialOrdering) {
   operations.push_back(Operation({BufferUse::Read(slice, slice_shape),
                                   BufferUse::Write(slice, slice_shape)}));
 
-  TF_ASSERT_OK_AND_ASSIGN(ExecutionGraph execution_graph,
-                          ExecutionGraph::Create<Operation>(operations));
+  ASSERT_OK_AND_ASSIGN(ExecutionGraph execution_graph,
+                       ExecutionGraph::Create<Operation>(operations));
 
   EXPECT_TRUE(execution_graph.is_sequential());
   EXPECT_THAT(execution_graph.source(), ElementsAre(0));
@@ -150,8 +150,8 @@ TEST(ExecutionGraphTest, TokenResourceOrdering) {
                                   BufferUse::Write(slice1, slice_shape)},
                                  {ResourceUse::Write(resource)}));
 
-  TF_ASSERT_OK_AND_ASSIGN(ExecutionGraph execution_graph,
-                          ExecutionGraph::Create<Operation>(operations));
+  ASSERT_OK_AND_ASSIGN(ExecutionGraph execution_graph,
+                       ExecutionGraph::Create<Operation>(operations));
 
   EXPECT_TRUE(execution_graph.is_sequential());
   EXPECT_THAT(execution_graph.source(), ElementsAre(0));
@@ -186,8 +186,8 @@ TEST(ExecutionGraphTest, CollectivesResourceOrdering) {
                                   BufferUse::Write(slice1, slice_shape)},
                                  {ResourceUse::Write(resource)}));
 
-  TF_ASSERT_OK_AND_ASSIGN(ExecutionGraph execution_graph,
-                          ExecutionGraph::Create<Operation>(operations));
+  ASSERT_OK_AND_ASSIGN(ExecutionGraph execution_graph,
+                       ExecutionGraph::Create<Operation>(operations));
 
   EXPECT_TRUE(execution_graph.is_sequential());
   EXPECT_THAT(execution_graph.source(), ElementsAre(0));
@@ -224,8 +224,8 @@ TEST(ExecutionGraphTest, TransitiveReduction) {
   operations.push_back(Operation({BufferUse::Read(slice, slice_shape),
                                   BufferUse::Write(slice, slice_shape)}));
 
-  TF_ASSERT_OK_AND_ASSIGN(ExecutionGraph execution_graph,
-                          ExecutionGraph::Create<Operation>(operations));
+  ASSERT_OK_AND_ASSIGN(ExecutionGraph execution_graph,
+                       ExecutionGraph::Create<Operation>(operations));
 
   EXPECT_THAT(execution_graph.source(), ElementsAre(0));
   EXPECT_THAT(execution_graph.sink(), ElementsAre(2));
@@ -263,8 +263,8 @@ TEST(ExecutionGraphTest, TransitiveReductionKeepsExecutionEdge) {
   operations.push_back(Operation({BufferUse::Write(slice, slice_shape)},
                                  {ResourceUse::Write(resource)}));
 
-  TF_ASSERT_OK_AND_ASSIGN(ExecutionGraph execution_graph,
-                          ExecutionGraph::Create<Operation>(operations));
+  ASSERT_OK_AND_ASSIGN(ExecutionGraph execution_graph,
+                       ExecutionGraph::Create<Operation>(operations));
 
   EXPECT_THAT(execution_graph.source(), ElementsAre(0));
   EXPECT_THAT(execution_graph.sink(), ElementsAre(2));

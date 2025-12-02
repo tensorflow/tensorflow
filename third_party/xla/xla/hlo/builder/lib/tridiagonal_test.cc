@@ -19,6 +19,7 @@ limitations under the License.
 #include <tuple>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
 #include "xla/array3d.h"
@@ -30,7 +31,6 @@ limitations under the License.
 #include "xla/tests/client_library_test_runner_mixin.h"
 #include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
 #include "xla/tests/hlo_pjrt_test_base.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
@@ -67,9 +67,9 @@ TEST_P(TridiagonalTest, SimpleTridiagonalMatMulOk) {
       lower_diagonal, 2, "lower_diagonal", &builder, &lower_diagonal_xla);
   auto rhs_data = CreateR3Parameter<float>(rhs, 3, "rhs", &builder, &rhs_xla);
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      XlaOp x, TridiagonalMatMul(upper_diagonal_xla, main_diagonal_xla,
-                                 lower_diagonal_xla, rhs_xla));
+  ASSERT_OK_AND_ASSIGN(XlaOp x,
+                       TridiagonalMatMul(upper_diagonal_xla, main_diagonal_xla,
+                                         lower_diagonal_xla, rhs_xla));
 
   ASSERT_EQ(x.builder()->first_error(), absl::OkStatus());
   ASSERT_TRUE(x.valid());
@@ -77,7 +77,7 @@ TEST_P(TridiagonalTest, SimpleTridiagonalMatMulOk) {
   std::vector<int64_t> expected_shape{1, 3, 4};
   std::vector<float> expected_values{191, 246, 301, 356, 435, 502,
                                      569, 636, 707, 830, 953, 1076};
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       const Literal result,
       ExecuteAndTransfer(x.builder(),
                          {&upper_diagonal_data, &main_diagonal_data,
@@ -139,7 +139,7 @@ TEST_P(TridiagonalTest, Solves) {
       upper_diagonal, 2, "upper_diagonal", &builder, &upper_diagonal_xla);
   auto rhs_data = CreateR3Parameter<float>(rhs, 3, "rhs", &builder, &rhs_xla);
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       XlaOp x, TridiagonalSolver(kThomas, lower_diagonal_xla, main_diagonal_xla,
                                  upper_diagonal_xla, rhs_xla));
 
@@ -170,7 +170,7 @@ TEST_P(TridiagonalTest, Solves) {
   }
   Abs(ConcatInDim(&builder, relative_errors, 2));
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       const Literal result,
       ExecuteAndTransfer(&builder, {&lower_diagonal_data, &main_diagonal_data,
                                     &upper_diagonal_data, &rhs_data}));

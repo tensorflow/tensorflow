@@ -20,6 +20,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -650,7 +651,7 @@ ENTRY main {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnVerifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnVerifiedModule(hlo_text));
   SCOPED_TRACE(module_->ToString());
   TF_ASSERT_OK(RunInference());
   EXPECT_EQ(inference_->GetDynamicSize(
@@ -1317,7 +1318,7 @@ HloModule test_module
   %reshape.9 = s32[] reshape(s32[1]{0} %slice.4)
   %dynamic-update-slice = c128[<=1]{0} dynamic-update-slice(c128[<=1]{0} %get-tuple-element.2,c128[1]{0} %select,s32[] %reshape.9)
 })";
-  TF_ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnUnverifiedModule(module_str));
+  ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnUnverifiedModule(module_str));
   TF_ASSERT_OK(RunInference());
 }
 
@@ -1340,7 +1341,7 @@ ENTRY computation {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnVerifiedModule(hlo));
 
   TF_ASSERT_OK(RunInference(
       /*op_supports_dynamism_handler=*/nullptr,
@@ -1754,7 +1755,7 @@ ENTRY tfcompile.377 {
 } // tfcompile.377
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnVerifiedModule(hlo));
 
   TF_ASSERT_OK(RunInference());
 }

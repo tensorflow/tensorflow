@@ -20,6 +20,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/algorithm/container.h"
 #include "absl/status/statusor.h"
@@ -54,7 +55,7 @@ class StreamAttributeAnnotatorTest : public HloHardwareIndependentTestBase {
 
  private:
   void SetUp() override {
-    TF_ASSERT_OK_AND_ASSIGN(device_description_, MakeDeviceDescription());
+    ASSERT_OK_AND_ASSIGN(device_description_, MakeDeviceDescription());
   }
 
   se::DeviceDescription device_description_;
@@ -75,20 +76,20 @@ TEST_F(StreamAttributeAnnotatorTest, AllUsersAreAnnotated) {
   }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kHloString));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloString));
 
   StreamAttributeAnnotator attr_annotator{device_description()};
   bool changed;
-  TF_ASSERT_OK_AND_ASSIGN(changed, attr_annotator.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(changed, attr_annotator.Run(module.get()));
   EXPECT_TRUE(changed);
 
   const HloInstruction* add = FindInstruction(module.get(), "add_32");
   for (auto user : add->users()) {
     // Every user should have an annotation.
     EXPECT_TRUE(user->has_backend_config());
-    TF_ASSERT_OK_AND_ASSIGN(GpuBackendConfig gpu_config,
-                            user->backend_config<GpuBackendConfig>());
+    ASSERT_OK_AND_ASSIGN(GpuBackendConfig gpu_config,
+                         user->backend_config<GpuBackendConfig>());
     EXPECT_EQ(gpu_config.wait_on_operation_queues()[0], 1);
   }
 }
@@ -107,19 +108,19 @@ TEST_F(StreamAttributeAnnotatorTest, MultipleStreamsAreCombined) {
   }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kHloString));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloString));
 
   StreamAttributeAnnotator attr_annotator{device_description()};
   bool changed;
-  TF_ASSERT_OK_AND_ASSIGN(changed, attr_annotator.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(changed, attr_annotator.Run(module.get()));
   EXPECT_TRUE(changed);
 
   const HloInstruction* root = module->entry_computation()->root_instruction();
   // Root should wait on 2 streams.
   EXPECT_TRUE(root->has_backend_config());
-  TF_ASSERT_OK_AND_ASSIGN(GpuBackendConfig gpu_config,
-                          root->backend_config<GpuBackendConfig>());
+  ASSERT_OK_AND_ASSIGN(GpuBackendConfig gpu_config,
+                       root->backend_config<GpuBackendConfig>());
   std::vector<int64_t> expected_stream_ids = {1, 2};
   for (auto id : expected_stream_ids) {
     auto it = absl::c_find(gpu_config.wait_on_operation_queues(), id);
@@ -144,18 +145,18 @@ TEST_F(StreamAttributeAnnotatorTest, GTEUserIsAnnotated) {
   }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kHloString));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloString));
 
   StreamAttributeAnnotator attr_annotator{device_description()};
   bool changed;
-  TF_ASSERT_OK_AND_ASSIGN(changed, attr_annotator.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(changed, attr_annotator.Run(module.get()));
   EXPECT_TRUE(changed);
 
   const HloInstruction* exp = FindInstruction(module.get(), "exp_32");
   EXPECT_TRUE(exp->has_backend_config());
-  TF_ASSERT_OK_AND_ASSIGN(GpuBackendConfig gpu_config,
-                          exp->backend_config<GpuBackendConfig>());
+  ASSERT_OK_AND_ASSIGN(GpuBackendConfig gpu_config,
+                       exp->backend_config<GpuBackendConfig>());
   EXPECT_EQ(gpu_config.wait_on_operation_queues()[0], 1);
 }
 
@@ -172,12 +173,12 @@ TEST_F(StreamAttributeAnnotatorTest, GTENoUserIsHandled) {
   }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kHloString));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloString));
 
   StreamAttributeAnnotator attr_annotator{device_description()};
   bool changed;
-  TF_ASSERT_OK_AND_ASSIGN(changed, attr_annotator.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(changed, attr_annotator.Run(module.get()));
   EXPECT_FALSE(changed);
 }
 
@@ -198,18 +199,18 @@ TEST_F(StreamAttributeAnnotatorTest, FusionIsAnnotated) {
   }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kHloString));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloString));
 
   StreamAttributeAnnotator attr_annotator{device_description()};
   bool changed;
-  TF_ASSERT_OK_AND_ASSIGN(changed, attr_annotator.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(changed, attr_annotator.Run(module.get()));
   EXPECT_TRUE(changed);
 
   const HloInstruction* fusion = FindInstruction(module.get(), "fusion.1");
   EXPECT_TRUE(fusion->has_backend_config());
-  TF_ASSERT_OK_AND_ASSIGN(GpuBackendConfig gpu_config,
-                          fusion->backend_config<GpuBackendConfig>());
+  ASSERT_OK_AND_ASSIGN(GpuBackendConfig gpu_config,
+                       fusion->backend_config<GpuBackendConfig>());
   EXPECT_EQ(gpu_config.operation_queue_id(), 1);
 }
 
@@ -239,20 +240,20 @@ TEST_F(StreamAttributeAnnotatorTest, CopyStartIsAnnotated) {
   }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kHloString));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloString));
 
   StreamAttributeAnnotator attr_annotator{device_description()};
   bool changed;
-  TF_ASSERT_OK_AND_ASSIGN(changed, attr_annotator.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(changed, attr_annotator.Run(module.get()));
   EXPECT_TRUE(changed);
 
   for (std::string i : {"", ".1", ".2", ".3"}) {
     const HloInstruction* cp_start =
         FindInstruction(module.get(), "copy-start" + i);
     EXPECT_TRUE(cp_start->has_backend_config());
-    TF_ASSERT_OK_AND_ASSIGN(GpuBackendConfig gpu_config,
-                            cp_start->backend_config<GpuBackendConfig>());
+    ASSERT_OK_AND_ASSIGN(GpuBackendConfig gpu_config,
+                         cp_start->backend_config<GpuBackendConfig>());
     EXPECT_EQ(gpu_config.operation_queue_id(), 1);
   }
 }
@@ -274,11 +275,11 @@ TEST_F(StreamAttributeAnnotatorTest, DynamicUpdateSliceWrappedAndAnnotated) {
   }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kHloString));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloString));
   EXPECT_TRUE(module->has_schedule());
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       bool changed,
       StreamAttributeAnnotator(device_description()).Run(module.get()));
   EXPECT_TRUE(changed);
@@ -294,8 +295,8 @@ TEST_F(StreamAttributeAnnotatorTest, DynamicUpdateSliceWrappedAndAnnotated) {
   EXPECT_TRUE(fusion->parent()->IsAsyncComputation());
 
   EXPECT_TRUE(fusion->has_backend_config());
-  TF_ASSERT_OK_AND_ASSIGN(GpuBackendConfig gpu_config,
-                          fusion->backend_config<GpuBackendConfig>());
+  ASSERT_OK_AND_ASSIGN(GpuBackendConfig gpu_config,
+                       fusion->backend_config<GpuBackendConfig>());
   EXPECT_EQ(gpu_config.operation_queue_id(), 1);
   // Check if the schedule name the same as the instruction name
   for (const auto* comp : module->computations()) {
@@ -314,7 +315,7 @@ TEST_F(StreamAttributeAnnotatorTest, DynamicUpdateSliceWrappedAndAnnotated) {
 // CHECK-SAME: calls=%wrapped_dynamic-update-slice_computation
 // CHECK-SAME: metadata={scheduling_name="[[DYNAMIC_UPDATE_SLICE_START]]"}
   )";
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       bool filecheck_matches,
       RunFileCheck(
           module->ToString(HloPrintOptions().set_print_operand_shape(false)),
@@ -338,11 +339,11 @@ TEST_F(StreamAttributeAnnotatorTest, DynamicSliceWrappedAndAnnotated) {
   }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kHloString));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloString));
 
   EXPECT_TRUE(module->has_schedule());
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       bool changed,
       StreamAttributeAnnotator(device_description()).Run(module.get()));
   EXPECT_TRUE(changed);
@@ -358,8 +359,8 @@ TEST_F(StreamAttributeAnnotatorTest, DynamicSliceWrappedAndAnnotated) {
   EXPECT_TRUE(fusion->parent()->IsAsyncComputation());
 
   EXPECT_TRUE(fusion->has_backend_config());
-  TF_ASSERT_OK_AND_ASSIGN(GpuBackendConfig gpu_config,
-                          fusion->backend_config<GpuBackendConfig>());
+  ASSERT_OK_AND_ASSIGN(GpuBackendConfig gpu_config,
+                       fusion->backend_config<GpuBackendConfig>());
   EXPECT_EQ(gpu_config.operation_queue_id(), 1);
   // Check if the schedule name the same as the instruction name
   for (const auto* comp : module->computations()) {
@@ -378,7 +379,7 @@ TEST_F(StreamAttributeAnnotatorTest, DynamicSliceWrappedAndAnnotated) {
 // CHECK-SAME: calls=%wrapped_dynamic-slice_computation
 // CHECK-SAME: metadata={scheduling_name="[[DYNAMIC_SLICE_START]]"}
   )";
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       bool filecheck_matches,
       RunFileCheck(
           module->ToString(HloPrintOptions().set_print_operand_shape(false)),

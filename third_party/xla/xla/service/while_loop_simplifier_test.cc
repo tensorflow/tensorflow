@@ -37,7 +37,6 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -1397,8 +1396,7 @@ ENTRY %main (arg.0: f32[3], arg.1: f32[3]) -> (f32[3], f32[3], f32[3], f32[3]) {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   ASSERT_TRUE(WhileLoopSimplifier().Run(module.get()).value());
   HloInstruction* new_while = FindFirstWhile(module.get());
   Shape new_while_shape = ParseShape("(f32[3], f32[3], s32[])").value();
@@ -1460,8 +1458,7 @@ ENTRY %main (arg.0: f32[3], arg.1: f32[2]) -> (f32[3], f32[2], f32[2], f32[3]) {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   ASSERT_TRUE(WhileLoopSimplifier().Run(module.get()).value());
   HloInstruction* new_while = FindFirstWhile(module.get());
   Shape new_while_shape = ParseShape("(f32[3], f32[2], s32[])").value();
@@ -1522,8 +1519,7 @@ ENTRY %main (arg.0: f32[3], arg.1: f32[2]) -> (f32[3], f32[2], f32[2], f32[3]) {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   ASSERT_TRUE(WhileLoopSimplifier().Run(module.get()).value());
   HloInstruction* while_instr = FindFirstWhile(module.get());
   ASSERT_NE(while_instr->original_value(), nullptr);
@@ -1565,10 +1561,8 @@ TEST_F(WhileLoopSimplifierTest, FlattenNestedTupleWithOriginalValue) {
       {"while.116" {1}}, {"while.116" {2}}, ({"while.116" {3}})))}
   })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          WhileLoopSimplifier().Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(bool changed, WhileLoopSimplifier().Run(module.get()));
   EXPECT_TRUE(changed);
   HloInstruction* while_instr = FindFirstWhile(module.get());
   ASSERT_NE(while_instr->original_value(), nullptr);
@@ -1623,10 +1617,8 @@ const char* const kSimpleMergeInductionVariablesModuleWithOriginalValue = R"(
 TEST_F(WhileLoopSimplifierTest, MergeInductionVariablesWithOriginalValue) {
   std::string hlo_string = absl::StrReplaceAll(
       kSimpleMergeInductionVariablesModuleWithOriginalValue, {{"TYPE", "s32"}});
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          WhileLoopSimplifier().Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(bool changed, WhileLoopSimplifier().Run(module.get()));
   EXPECT_TRUE(changed);
   HloInstruction* while_instr = FindFirstWhile(module.get());
   ASSERT_NE(while_instr->original_value(), nullptr);

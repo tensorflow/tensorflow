@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <utility>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "xla/stream_executor/cuda/cuda_executor.h"
@@ -25,22 +26,20 @@ limitations under the License.
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/test.h"
 
 namespace stream_executor::gpu {
 namespace {
 
 TEST(CudaEventTest, CreateEvent) {
-  TF_ASSERT_OK_AND_ASSIGN(Platform * platform,
-                          stream_executor::PlatformManager::PlatformWithId(
-                              stream_executor::cuda::kCudaPlatformId));
-  TF_ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,
-                          platform->ExecutorForDevice(0));
+  ASSERT_OK_AND_ASSIGN(Platform * platform,
+                       stream_executor::PlatformManager::PlatformWithId(
+                           stream_executor::cuda::kCudaPlatformId));
+  ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,
+                       platform->ExecutorForDevice(0));
   CudaExecutor* cuda_executor = reinterpret_cast<CudaExecutor*>(executor);
 
-  TF_ASSERT_OK_AND_ASSIGN(CudaEvent event,
-                          CudaEvent::Create(cuda_executor, false));
+  ASSERT_OK_AND_ASSIGN(CudaEvent event,
+                       CudaEvent::Create(cuda_executor, false));
 
   EXPECT_NE(event.GetHandle(), nullptr);
   EXPECT_EQ(event.PollForStatus(), Event::Status::kComplete);

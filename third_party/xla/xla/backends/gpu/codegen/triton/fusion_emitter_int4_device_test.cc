@@ -18,6 +18,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_replace.h"
@@ -32,7 +33,6 @@ limitations under the License.
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/tests/gpu_codegen_test.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/xla.pb.h"
 
 namespace xla {
@@ -151,7 +151,7 @@ TEST_F(TritonTest, FuseSubchannelDequantizationWithTranspose) {
       ROOT root = bf16[2,64,2,32]{3,2,0,1} reshape(dot_transposed)
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, GetOptimizedModule(kHloText));
+  ASSERT_OK_AND_ASSIGN(auto module, GetOptimizedModule(kHloText));
   EXPECT_TRUE(*RunFileCheck(module->ToString(), R"(
     CHECK:    %[[transpose:.*]] = bf16[2,64,8]{2,1,0} transpose(
     CHECK:    %[[broadcast:.*]] = {{.*}} broadcast(%[[transpose]])
@@ -192,7 +192,7 @@ TEST_F(TritonTest, FuseSubchannelDequantization) {
           rhs_batch_dims={1}, rhs_contracting_dims={2}
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, GetOptimizedModule(kHloText));
+  ASSERT_OK_AND_ASSIGN(auto module, GetOptimizedModule(kHloText));
   EXPECT_TRUE(
       *RunFileCheck(module->ToString(), "CHECK: __triton_nested_gemm_fusion"));
   EXPECT_TRUE(RunAndCompareNoHloPasses(
@@ -200,7 +200,7 @@ TEST_F(TritonTest, FuseSubchannelDequantization) {
 }
 
 // Dump trick:
-// TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
+// ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
 // HloPrintOptions options = HloPrintOptions::ShortParsable();
 // options.set_print_backend_config(true);
 // std::cout << "Dumping module: " << module->ToString(options) << std::endl;
@@ -231,8 +231,8 @@ TEST_F(TritonTest, FuseChannelDequantization) {
           rhs_batch_dims={2}, rhs_contracting_dims={4}
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          GetOptimizedModule(kHloText));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       GetOptimizedModule(kHloText));
   EXPECT_TRUE(
       *RunFileCheck(module->ToString(), "CHECK: __triton_nested_gemm_fusion"));
   EXPECT_TRUE(RunAndCompareNoHloPasses(
@@ -317,7 +317,7 @@ TEST_F(TritonTest, FuseBroadcastBitcastMultiplyInPrologue) {
         lhs_contracting_dims={0}, rhs_contracting_dims={0}
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, GetOptimizedModule(kHloText));
+  ASSERT_OK_AND_ASSIGN(auto module, GetOptimizedModule(kHloText));
   EXPECT_TRUE(*RunFileCheck(module->ToString(), R"(
     // We don't need to check the bitcast, because it is hoisted.
     CHECK:    %[[broadcast:.*]] = {{.*}} broadcast
@@ -397,7 +397,7 @@ TEST_F(TritonTest, FuseMultiplyInPrologue) {
         rhs_batch_dims={0}, rhs_contracting_dims={1}
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, GetOptimizedModule(kHloText));
+  ASSERT_OK_AND_ASSIGN(auto module, GetOptimizedModule(kHloText));
   // On Ampere the multiply result type is f32, on Hopper it is bf16.
   EXPECT_TRUE(*RunFileCheck(module->ToString(), R"(
     CHECK:    %[[multiply:.*]] = [[type:.*]]{{.*}} multiply({{.*}}, {{.*}})
@@ -424,7 +424,7 @@ TEST_F(TritonTest, DISABLED_FuseMultiplyInEpilogue) {
       ROOT m = bf16[4,32,64] multiply(dot, p2.1)
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, GetOptimizedModule(kHloText));
+  ASSERT_OK_AND_ASSIGN(auto module, GetOptimizedModule(kHloText));
   EXPECT_TRUE(*RunFileCheck(module->ToString(), R"(
       CHECK:  %[[dot:.*]] = bf16[4,64,32]{1,2,0} dot
       CHECK:  %[[multiply:.*]] = [[type:.*]][4,32,64]{2,1,0} multiply
@@ -445,7 +445,7 @@ TEST_F(TritonTest, NonstandardLayoutInt4) {
     }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, GetOptimizedModule(kHloText));
+  ASSERT_OK_AND_ASSIGN(auto module, GetOptimizedModule(kHloText));
   EXPECT_TRUE(
       *RunFileCheck(module->ToString(), "CHECK: __triton_nested_gemm_fusion"));
   EXPECT_TRUE(RunAndCompare(std::move(module),
@@ -675,7 +675,7 @@ TEST_F(TritonTest, NonstandardLayoutWithManyNonContractingDims) {
     }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, GetOptimizedModule(kHloText));
+  ASSERT_OK_AND_ASSIGN(auto module, GetOptimizedModule(kHloText));
   EXPECT_TRUE(
       *RunFileCheck(module->ToString(), "CHECK: __triton_nested_gemm_fusion"));
   EXPECT_TRUE(RunAndCompareNoHloPasses(
@@ -695,7 +695,7 @@ TEST_F(TritonTest, NonstandardLayoutWithManyNonContractingDimsReversedLayout) {
     }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, GetOptimizedModule(kHloText));
+  ASSERT_OK_AND_ASSIGN(auto module, GetOptimizedModule(kHloText));
   EXPECT_TRUE(
       *RunFileCheck(module->ToString(), "CHECK: __triton_nested_gemm_fusion"));
   EXPECT_TRUE(RunAndCompareNoHloPasses(
@@ -716,7 +716,7 @@ TEST_F(TritonTest, RejectTritonFusionForWithMinorBatchDim) {
     }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, GetOptimizedModule(kHloText));
+  ASSERT_OK_AND_ASSIGN(auto module, GetOptimizedModule(kHloText));
   EXPECT_TRUE(*RunFileCheck(module->ToString(),
                             "CHECK-NOT: __triton_nested_gemm_fusion"));
 }

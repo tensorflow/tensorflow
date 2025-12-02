@@ -21,6 +21,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -31,6 +32,8 @@ limitations under the License.
 #include "xla/ffi/ffi.h"
 #include "xla/ffi/ffi_api.h"
 #include "xla/hlo/builder/xla_computation.h"
+#include "xla/hlo/ir/hlo_computation.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/testlib/test.h"
 #include "xla/hlo/utils/hlo_query.h"
@@ -51,7 +54,9 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/util/command_line_flags.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
@@ -119,14 +124,14 @@ TEST(StreamExecutorGpuClientTest, NvshmemMemoryTest) {
   client_options.allowed_devices = {0};
   client_options.num_nodes = 1;
   client_options.kv_store = std::make_shared<InMemoryKeyValueStore>();
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
-                          GetStreamExecutorGpuClient(client_options));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                       GetStreamExecutorGpuClient(client_options));
   xla::CompileOptions options;
   options.executable_build_options.mutable_debug_options()
       ->set_xla_gpu_experimental_enable_nvshmem(true);
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::PjRtLoadedExecutable> executable,
-                          CompileExecutable(kProgram, *client, options));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::PjRtLoadedExecutable> executable,
+                       CompileExecutable(kProgram, *client, options));
   std::vector<int32_t> data{1, 2, 3, 4};
   Shape shape = ShapeUtil::MakeShapeWithDenseLayout(S32, {1, 4},
                                                     /*minor_to_major=*/{1, 0});
@@ -134,7 +139,7 @@ TEST(StreamExecutorGpuClientTest, NvshmemMemoryTest) {
 
   PjRtDevice* const device = client->addressable_devices()[0];
   TF_EXPECT_OK(device->default_memory_space());
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<PjRtBuffer> input,
       client->BufferFromHostBuffer(
           data.data(), shape.element_type(), shape.dimensions(),
@@ -144,14 +149,13 @@ TEST(StreamExecutorGpuClientTest, NvshmemMemoryTest) {
           /*device_layout=*/nullptr));
   EXPECT_EQ(input->memory_space()->kind(), "device");
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::vector<std::vector<absl::string_view>> memory_kinds,
-      executable->GetOutputMemoryKinds());
+  ASSERT_OK_AND_ASSIGN(std::vector<std::vector<absl::string_view>> memory_kinds,
+                       executable->GetOutputMemoryKinds());
   EXPECT_EQ(memory_kinds.size(), 1);
   EXPECT_EQ(memory_kinds[0].size(), 1);
   EXPECT_EQ(memory_kinds[0][0], "device");
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::vector<std::vector<std::unique_ptr<PjRtBuffer>>> result,
       executable->Execute({{input.get()}}, ExecuteOptions()));
   std::vector<std::unique_ptr<xla::PjRtBuffer>>& result_buffers = result[0];
@@ -184,21 +188,21 @@ TEST(StreamExecutorGpuClientTest, NvshmemMemArCanBeColored) {
   client_options.allowed_devices = {0};
   client_options.num_nodes = 1;
   client_options.kv_store = std::make_shared<InMemoryKeyValueStore>();
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
-                          GetStreamExecutorGpuClient(client_options));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                       GetStreamExecutorGpuClient(client_options));
   xla::CompileOptions options;
   options.executable_build_options.mutable_debug_options()
       ->set_xla_gpu_experimental_enable_nvshmem(true);
 
   options.executable_build_options.set_run_backend_only(true);
-  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module,
-                          ParseAndReturnUnverifiedModule(kProgram, {}));
+  ASSERT_OK_AND_ASSIGN(auto hlo_module,
+                       ParseAndReturnUnverifiedModule(kProgram, {}));
   xla::XlaComputation xla_computation(hlo_module->ToProto());
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::PjRtLoadedExecutable> executable,
-                          client->CompileAndLoad(xla_computation, options));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::PjRtLoadedExecutable> executable,
+                       client->CompileAndLoad(xla_computation, options));
 
   // Verify that the collective memory space is used.
-  TF_ASSERT_OK_AND_ASSIGN(auto modules, executable->GetHloModules());
+  ASSERT_OK_AND_ASSIGN(auto modules, executable->GetHloModules());
   HloInstruction* all_reduce_start =
       FindInstruction(modules[0].get(), HloOpcode::kAllReduceStart);
   EXPECT_THAT(all_reduce_start, NotNull());

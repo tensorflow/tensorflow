@@ -43,7 +43,6 @@ limitations under the License.
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/service/hlo_verifier.h"
 #include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -105,10 +104,10 @@ TEST_F(WhileLoopAllReduceCodeMotionTest, AllReduceAccumulate) {
       ROOT %while = (s32[], s32[], f32[1024, 1024], f32[1024, 1024]) while(%while_init), condition=%while_condition, body=%while_body
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kHloModule));
-  TF_ASSERT_OK_AND_ASSIGN(bool simplified_loop,
-                          WhileLoopAllReduceCodeMotion{}.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloModule));
+  ASSERT_OK_AND_ASSIGN(bool simplified_loop,
+                       WhileLoopAllReduceCodeMotion{}.Run(module.get()));
   ASSERT_TRUE(simplified_loop);
   TF_ASSERT_OK(
       HloVerifier(/*layout_sensitive=*/false, /*allow_mixed_precision=*/true)
@@ -179,9 +178,9 @@ TEST_F(WhileLoopAllReduceCodeMotionTest, ReduceScatterAccumulate) {
       ROOT %while = (s32[], s32[], f32[4096, 1024], f32[1024, 1024]) while(%while_init), condition=%while_condition, body=%while_body
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kHloModule));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloModule));
+  ASSERT_OK_AND_ASSIGN(
       bool simplified_loop,
       WhileLoopAllReduceCodeMotion{/*enable_reduce_scatter=*/true}.Run(
           module.get()));
@@ -258,10 +257,10 @@ TEST_F(WhileLoopAllReduceCodeMotionTest,
       ROOT %while = (s32[], s32[], f32[4096, 1024], f32[1024, 1024]) while(%while_init), condition=%while_condition, body=%while_body
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kHloModule));
-  TF_ASSERT_OK_AND_ASSIGN(bool simplified_loop,
-                          WhileLoopAllReduceCodeMotion{}.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloModule));
+  ASSERT_OK_AND_ASSIGN(bool simplified_loop,
+                       WhileLoopAllReduceCodeMotion{}.Run(module.get()));
   EXPECT_FALSE(simplified_loop);
 }
 
@@ -317,10 +316,10 @@ TEST_F(WhileLoopAllReduceCodeMotionTest, AllReduceSliceAccumulate) {
       ROOT %while = (s32[], s32[], f32[3, 1024, 1024], f32[1024, 1024], f32[1024, 1024], f32[1024, 1024]) while(%while_init), condition=%while_condition, body=%while_body
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kHloModule));
-  TF_ASSERT_OK_AND_ASSIGN(bool simplified_loop,
-                          WhileLoopAllReduceCodeMotion{}.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloModule));
+  ASSERT_OK_AND_ASSIGN(bool simplified_loop,
+                       WhileLoopAllReduceCodeMotion{}.Run(module.get()));
   ASSERT_TRUE(simplified_loop);
   TF_ASSERT_OK(
       HloVerifier(/*layout_sensitive=*/false, /*allow_mixed_precision=*/true)
@@ -389,10 +388,10 @@ TEST_F(WhileLoopAllReduceCodeMotionTest, AllReduceAccumulateUse) {
       ROOT %multiply = f32[1024, 1024] multiply(f32[1024, 1024] %gte_while, f32[1024, 1024] %param.1)
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kHloModule));
-  TF_ASSERT_OK_AND_ASSIGN(bool simplified_loop,
-                          WhileLoopAllReduceCodeMotion{}.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloModule));
+  ASSERT_OK_AND_ASSIGN(bool simplified_loop,
+                       WhileLoopAllReduceCodeMotion{}.Run(module.get()));
   ASSERT_TRUE(simplified_loop);
   TF_ASSERT_OK(
       HloVerifier(/*layout_sensitive=*/false, /*allow_mixed_precision=*/true)
@@ -452,10 +451,10 @@ TEST_F(WhileLoopAllReduceCodeMotionTest, RepeatedlyAccumulatedAllReduce) {
       ROOT %while = (s32[], s32[], f32[1024, 1024], f32[1024, 1024]) while(%while_init), condition=%while_condition, body=%while_body
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kHloModule));
-  TF_ASSERT_OK_AND_ASSIGN(bool simplified_loop,
-                          WhileLoopAllReduceCodeMotion{}.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloModule));
+  ASSERT_OK_AND_ASSIGN(bool simplified_loop,
+                       WhileLoopAllReduceCodeMotion{}.Run(module.get()));
   EXPECT_FALSE(simplified_loop);
 }
 
@@ -501,10 +500,10 @@ TEST_F(WhileLoopAllReduceCodeMotionTest, TypeCastAllReduceAccumulate) {
       ROOT %while = (s32[], s32[], f32[1024, 1024], f32[1024, 1024]) while(%while_init), condition=%while_condition, body=%while_body
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kHloModule));
-  TF_ASSERT_OK_AND_ASSIGN(bool simplified_loop,
-                          WhileLoopAllReduceCodeMotion{}.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloModule));
+  ASSERT_OK_AND_ASSIGN(bool simplified_loop,
+                       WhileLoopAllReduceCodeMotion{}.Run(module.get()));
   ASSERT_TRUE(simplified_loop);
   TF_ASSERT_OK(
       HloVerifier(/*layout_sensitive=*/false, /*allow_mixed_precision=*/true)
@@ -575,10 +574,10 @@ TEST_F(WhileLoopAllReduceCodeMotionTest, SelectAllReduceAccumulate) {
       ROOT %while = (s32[], s32[], f32[1024, 1024], f32[1024,1024]) while(%while_init), condition=%while_condition, body=%while_body
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kHloModule));
-  TF_ASSERT_OK_AND_ASSIGN(bool simplified_loop,
-                          WhileLoopAllReduceCodeMotion{}.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloModule));
+  ASSERT_OK_AND_ASSIGN(bool simplified_loop,
+                       WhileLoopAllReduceCodeMotion{}.Run(module.get()));
   ASSERT_TRUE(simplified_loop);
   TF_ASSERT_OK(
       HloVerifier(/*layout_sensitive=*/false, /*allow_mixed_precision=*/true)
@@ -651,9 +650,9 @@ TEST_F(WhileLoopAllReduceCodeMotionTest, SelectReduceScatterAccumulate) {
       ROOT %while = (s32[], s32[], f32[1024, 4096], f32[1024,1024]) while(%while_init), condition=%while_condition, body=%while_body
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kHloModule));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloModule));
+  ASSERT_OK_AND_ASSIGN(
       bool simplified_loop,
       WhileLoopAllReduceCodeMotion{/*enable_reduce_scatter=*/true}.Run(
           module.get()));
@@ -725,9 +724,9 @@ TEST_F(WhileLoopAllReduceCodeMotionTest,
       ROOT %while = (s32[], s32[], f32[1024, 4096], f32[1024,1024]) while(%while_init), condition=%while_condition, body=%while_body
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kHloModule));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloModule));
+  ASSERT_OK_AND_ASSIGN(
       bool simplified_loop,
       WhileLoopAllReduceCodeMotion{/*enable_reduce_scatter=*/true}.Run(
           module.get()));
@@ -780,10 +779,10 @@ TEST_F(WhileLoopAllReduceCodeMotionTest, MultipleLoopCalls) {
       ROOT %gte.4 = f32[1024, 1024] get-tuple-element((s32[], s32[], f32[1024, 1024], f32[1024, 1024])%while.1), index=3
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kHloModule));
-  TF_ASSERT_OK_AND_ASSIGN(bool simplified_loop,
-                          WhileLoopAllReduceCodeMotion{}.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloModule));
+  ASSERT_OK_AND_ASSIGN(bool simplified_loop,
+                       WhileLoopAllReduceCodeMotion{}.Run(module.get()));
   ASSERT_TRUE(simplified_loop);
   TF_ASSERT_OK(
       HloVerifier(/*layout_sensitive=*/false, /*allow_mixed_precision=*/true)
@@ -853,10 +852,10 @@ TEST_F(WhileLoopAllReduceCodeMotionTest, MultipleAllReduceAccumulate) {
       ROOT %while = (s32[], s32[], f32[1024, 1024], f32[1024, 1024], bf16[1024, 1024], bf16[1024, 1024]) while(%while_init), condition=%while_condition, body=%while_body
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kHloModule));
-  TF_ASSERT_OK_AND_ASSIGN(bool simplified_loop,
-                          WhileLoopAllReduceCodeMotion{}.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloModule));
+  ASSERT_OK_AND_ASSIGN(bool simplified_loop,
+                       WhileLoopAllReduceCodeMotion{}.Run(module.get()));
   ASSERT_TRUE(simplified_loop);
   TF_ASSERT_OK(
       HloVerifier(/*layout_sensitive=*/false, /*allow_mixed_precision=*/true)
@@ -927,9 +926,9 @@ TEST_F(WhileLoopAllReduceCodeMotionTest, MultipleReduceScatterAccumulate) {
       ROOT %while = (s32[], s32[], f32[4096, 1024], f32[1024, 1024], bf16[4096, 1024], bf16[1024, 1024]) while(%while_init), condition=%while_condition, body=%while_body
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kHloModule));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloModule));
+  ASSERT_OK_AND_ASSIGN(
       bool simplified_loop,
       WhileLoopAllReduceCodeMotion{/*enable_reduce_scatter=*/true}.Run(
           module.get()));
@@ -1015,10 +1014,10 @@ TEST_F(WhileLoopAllReduceCodeMotionTest, MixMovableAllReduceWithNotMovable) {
       ROOT %while = (s32[], s32[], f32[1024, 1024], f32[1024, 1024], bf16[1024, 1024], bf16[1024, 1024]) while(%while_init), condition=%while_condition, body=%while_body
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kHloModule));
-  TF_ASSERT_OK_AND_ASSIGN(bool simplified_loop,
-                          WhileLoopAllReduceCodeMotion{}.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloModule));
+  ASSERT_OK_AND_ASSIGN(bool simplified_loop,
+                       WhileLoopAllReduceCodeMotion{}.Run(module.get()));
   ASSERT_TRUE(simplified_loop);
   TF_ASSERT_OK(
       HloVerifier(/*layout_sensitive=*/false, /*allow_mixed_precision=*/true)
@@ -1090,13 +1089,13 @@ TEST_F(WhileLoopAllReduceCodeMotionTest,
       ROOT %while = (s32[], s32[], f32[1024, 1024], f32[2, 1024, 1024]) while(%while_init), condition=%while_condition, body=%while_body
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<HloModule> module,
       ParseAndReturnVerifiedModule(kHloModule, /*replica_count=*/1,
                                    /*num_partitions=*/8));
   module->mutable_config().set_use_spmd_partitioning(true);
-  TF_ASSERT_OK_AND_ASSIGN(bool simplified_loop,
-                          WhileLoopAllReduceCodeMotion{}.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool simplified_loop,
+                       WhileLoopAllReduceCodeMotion{}.Run(module.get()));
   ASSERT_TRUE(simplified_loop);
   TF_ASSERT_OK(
       HloVerifier(/*layout_sensitive=*/false, /*allow_mixed_precision=*/true)
@@ -1178,13 +1177,13 @@ TEST_F(WhileLoopAllReduceCodeMotionTest,
       ROOT %while = (s32[], s32[], f32[1024, 1024], f32[2, 1024, 1024]) while(%while_init), condition=%while_condition, body=%while_body
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<HloModule> module,
       ParseAndReturnVerifiedModule(kHloModule, /*replica_count=*/1,
                                    /*num_partitions=*/8));
   module->mutable_config().set_use_spmd_partitioning(true);
-  TF_ASSERT_OK_AND_ASSIGN(bool simplified_loop,
-                          WhileLoopAllReduceCodeMotion{}.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool simplified_loop,
+                       WhileLoopAllReduceCodeMotion{}.Run(module.get()));
   EXPECT_FALSE(simplified_loop);
 }
 
@@ -1231,13 +1230,12 @@ TEST_F(WhileLoopAllReduceCodeMotionTest, ReduceScatterTransposeAccumulate) {
       ROOT %while = (s32[], s32[], f32[4096, 1024], f32[1024, 1024]) while(%while_init), condition=%while_condition, body=%while_body
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kHloModule));
-  TF_ASSERT_OK_AND_ASSIGN(
-      bool simplified_loop,
-      (WhileLoopAllReduceCodeMotion{/*enable_reduce_scatter=*/true,
-                                    /*run_setup_passes=*/true}
-           .Run(module.get())));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloModule));
+  ASSERT_OK_AND_ASSIGN(bool simplified_loop, (WhileLoopAllReduceCodeMotion{
+                                                 /*enable_reduce_scatter=*/true,
+                                                 /*run_setup_passes=*/true}
+                                                  .Run(module.get())));
   ASSERT_TRUE(simplified_loop);
   TF_ASSERT_OK(
       HloVerifier(/*layout_sensitive=*/false, /*allow_mixed_precision=*/true)
@@ -1314,13 +1312,12 @@ TEST_F(WhileLoopAllReduceCodeMotionTest,
       ROOT %while = (s32[], s32[], f32[4096, 1024], f32[1024, 1024]) while(%while_init), condition=%while_condition, body=%while_body
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kHloModule));
-  TF_ASSERT_OK_AND_ASSIGN(
-      bool simplified_loop,
-      (WhileLoopAllReduceCodeMotion{/*enable_reduce_scatter=*/true,
-                                    /*run_setup_passes=*/false}
-           .Run(module.get())));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloModule));
+  ASSERT_OK_AND_ASSIGN(bool simplified_loop, (WhileLoopAllReduceCodeMotion{
+                                                 /*enable_reduce_scatter=*/true,
+                                                 /*run_setup_passes=*/false}
+                                                  .Run(module.get())));
   ASSERT_FALSE(simplified_loop);
 }
 
@@ -1370,13 +1367,12 @@ TEST_F(WhileLoopAllReduceCodeMotionTest,
       ROOT %while = (s32[], s32[], f32[4096, 1024], f32[1024, 1024]) while(%while_init), condition=%while_condition, body=%while_body
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kHloModule));
-  TF_ASSERT_OK_AND_ASSIGN(
-      bool simplified_loop,
-      (WhileLoopAllReduceCodeMotion{/*enable_reduce_scatter=*/true,
-                                    /*run_setup_passes=*/true}
-           .Run(module.get())));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloModule));
+  ASSERT_OK_AND_ASSIGN(bool simplified_loop, (WhileLoopAllReduceCodeMotion{
+                                                 /*enable_reduce_scatter=*/true,
+                                                 /*run_setup_passes=*/true}
+                                                  .Run(module.get())));
   ASSERT_TRUE(simplified_loop);
   TF_ASSERT_OK(
       HloVerifier(/*layout_sensitive=*/false, /*allow_mixed_precision=*/true)
@@ -1455,13 +1451,12 @@ TEST_F(WhileLoopAllReduceCodeMotionTest,
       ROOT %while = (s32[], s32[], f32[4096, 1024], f32[1024, 1024]) while(%while_init), condition=%while_condition, body=%while_body
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kHloModule));
-  TF_ASSERT_OK_AND_ASSIGN(
-      bool simplified_loop,
-      (WhileLoopAllReduceCodeMotion{/*enable_reduce_scatter=*/true,
-                                    /*run_setup_passes=*/false}
-           .Run(module.get())));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloModule));
+  ASSERT_OK_AND_ASSIGN(bool simplified_loop, (WhileLoopAllReduceCodeMotion{
+                                                 /*enable_reduce_scatter=*/true,
+                                                 /*run_setup_passes=*/false}
+                                                  .Run(module.get())));
   ASSERT_FALSE(simplified_loop);
 }
 
@@ -1509,13 +1504,12 @@ TEST_F(WhileLoopAllReduceCodeMotionTest, ReduceScatterConvertAccumulate) {
       ROOT %while = (s32[], s32[], f32[4096, 1024], f32[1024, 1024]) while(%while_init), condition=%while_condition, body=%while_body
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kHloModule));
-  TF_ASSERT_OK_AND_ASSIGN(
-      bool simplified_loop,
-      (WhileLoopAllReduceCodeMotion{/*enable_reduce_scatter=*/true,
-                                    /*run_setup_passes=*/true}
-           .Run(module.get())));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloModule));
+  ASSERT_OK_AND_ASSIGN(bool simplified_loop, (WhileLoopAllReduceCodeMotion{
+                                                 /*enable_reduce_scatter=*/true,
+                                                 /*run_setup_passes=*/true}
+                                                  .Run(module.get())));
   ASSERT_TRUE(simplified_loop);
   TF_ASSERT_OK(
       HloVerifier(/*layout_sensitive=*/false, /*allow_mixed_precision=*/true)
@@ -1595,13 +1589,12 @@ TEST_F(WhileLoopAllReduceCodeMotionTest, AllReduceConvertAccumulateUse) {
       ROOT %multiply = f32[1024, 1024] multiply(f32[1024, 1024] %gte_while, f32[1024, 1024] %param.1)
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kHloModule));
-  TF_ASSERT_OK_AND_ASSIGN(
-      bool simplified_loop,
-      (WhileLoopAllReduceCodeMotion{/*enable_reduce_scatter=*/true,
-                                    /*run_setup_passes=*/true}
-           .Run(module.get())));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloModule));
+  ASSERT_OK_AND_ASSIGN(bool simplified_loop, (WhileLoopAllReduceCodeMotion{
+                                                 /*enable_reduce_scatter=*/true,
+                                                 /*run_setup_passes=*/true}
+                                                  .Run(module.get())));
   ASSERT_TRUE(simplified_loop);
   TF_ASSERT_OK(
       HloVerifier(/*layout_sensitive=*/false, /*allow_mixed_precision=*/true)
@@ -1657,8 +1650,8 @@ TEST_F(WhileLoopAllReduceCodeMotionTest, SingleAllReduceDUS) {
       ROOT %while = (s32[], f32[256,256], f32[16]) while(%while_init), condition=%while_condition, body=%while_body
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kHloModule));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloModule));
   WhileLoopAllReduceCodeMotion pass;
   EXPECT_THAT(pass.Run(module.get()), absl_testing::IsOkAndHolds(true));
 
@@ -1722,8 +1715,8 @@ TEST_F(WhileLoopAllReduceCodeMotionTest, MultipleDUSAndConvert) {
       ROOT %while = (s32[], f16[256,256], f32[1,64], f32[16,64]) while(%while_init), condition=%while_condition, body=%while_body
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kHloModule));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloModule));
   WhileLoopAllReduceCodeMotion pass;
   EXPECT_THAT(pass.Run(module.get()), absl_testing::IsOkAndHolds(true));
 
@@ -1792,8 +1785,8 @@ TEST_F(WhileLoopAllReduceCodeMotionTest, MultipleAllReduceDifferentTypes) {
       ROOT %while = (s32[], f32[256,256], f32[16], f32[16]) while(%while_init), condition=%while_condition, body=%while_body
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kHloModule));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloModule));
   WhileLoopAllReduceCodeMotion pass;
   EXPECT_THAT(pass.Run(module.get()), absl_testing::IsOkAndHolds(true));
 
@@ -1853,8 +1846,8 @@ TEST_F(WhileLoopAllReduceCodeMotionTest, MultipleWhileOps) {
       ROOT %out = (f32[16], f32[16]) tuple(%res.0, %res.1)
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kHloModule));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloModule));
   WhileLoopAllReduceCodeMotion pass;
   EXPECT_THAT(pass.Run(module.get()), absl_testing::IsOkAndHolds(true));
 
@@ -1913,8 +1906,8 @@ TEST_F(WhileLoopAllReduceCodeMotionTest, ReverseIndexing) {
       ROOT %while = (s32[], f32[256,256], f32[16]) while(%while_init), condition=%while_condition, body=%while_body
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kHloModule));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloModule));
   WhileLoopAllReduceCodeMotion pass;
   EXPECT_THAT(pass.Run(module.get()), absl_testing::IsOkAndHolds(true));
 
@@ -1971,8 +1964,8 @@ TEST_F(WhileLoopAllReduceCodeMotionTest, InvalidIndexing) {
       ROOT %while = (s32[], f32[256,256], f32[16], s32[]) while(%while_init), condition=%while_condition, body=%while_body
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kHloModule));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloModule));
   WhileLoopAllReduceCodeMotion pass;
   EXPECT_THAT(pass.Run(module.get()), absl_testing::IsOkAndHolds(false));
 }
@@ -2015,8 +2008,8 @@ TEST_F(WhileLoopAllReduceCodeMotionTest, OverlappingUpdates) {
       ROOT %while = (s32[], f32[2,256], f32[17]) while(%while_init), condition=%while_condition, body=%while_body
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kHloModule));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloModule));
   WhileLoopAllReduceCodeMotion pass;
   EXPECT_THAT(pass.Run(module.get()), absl_testing::IsOkAndHolds(false));
 }
@@ -2064,8 +2057,8 @@ TEST_P(AllReduceCodeMotionLoopTest, InvalidLoop) {
     }
   )",
                                             start, step);
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_module));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_module));
   WhileLoopAllReduceCodeMotion pass;
   EXPECT_THAT(pass.Run(module.get()), absl_testing::IsOkAndHolds(false));
 }
@@ -2132,8 +2125,8 @@ TEST_P(AllReduceCodeMotionUserTest, UserPreventsCodeMotion) {
     }
   )",
                                             shape, op, init);
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_module));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_module));
   WhileLoopAllReduceCodeMotion pass;
   EXPECT_THAT(pass.Run(module.get()), absl_testing::IsOkAndHolds(false));
 }
@@ -2182,8 +2175,8 @@ TEST_F(WhileLoopAllReduceCodeMotionTest, LoopConditionUserPreventsCodeMotion) {
       ROOT %while = (s32[], f32[256,256], f32[16]) while(%while_init), condition=%while_condition, body=%while_body
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kHloModule));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloModule));
   WhileLoopAllReduceCodeMotion pass;
   EXPECT_THAT(pass.Run(module.get()), absl_testing::IsOkAndHolds(false));
 }
@@ -2232,8 +2225,8 @@ TEST_F(WhileLoopAllReduceCodeMotionTest, ComputationWithDUSAndAccumulation) {
       ROOT %while = (s32[], f32[256,256], f32[16], f32[256]) while(%while_init), condition=%while_condition, body=%while_body
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kHloModule));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloModule));
   WhileLoopAllReduceCodeMotion pass;
   EXPECT_THAT(pass.Run(module.get()), absl_testing::IsOkAndHolds(true));
 

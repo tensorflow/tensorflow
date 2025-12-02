@@ -19,6 +19,7 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
@@ -26,7 +27,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/shape_util.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -34,9 +34,9 @@ namespace {
 
 using HLOComputationTest = HloHardwareIndependentTestBase;
 
-int64_t CountControlEdges(const HloComputation &computation) {
+int64_t CountControlEdges(const HloComputation& computation) {
   int64_t count = 0;
-  for (const auto &instruction : computation.instructions()) {
+  for (const auto& instruction : computation.instructions()) {
     count += instruction->control_successors().size();
   }
   return count;
@@ -65,26 +65,26 @@ ENTRY entry {
   ROOT out = f32[100] add(add1, reduce2)
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
 
   EXPECT_EQ(CountControlEdges(*module->entry_computation()), 0);
 
-  const HloInstruction *root = module->entry_computation()->root_instruction();
-  const HloInstruction *add1 = root->operand(0);     // t = add(c1, c2)
-  const HloInstruction *reduce2 = root->operand(1);  // c3 = all-reduce(i2)...
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+  const HloInstruction* add1 = root->operand(0);     // t = add(c1, c2)
+  const HloInstruction* reduce2 = root->operand(1);  // c3 = all-reduce(i2)...
   EXPECT_EQ(add1->opcode(), HloOpcode::kAdd);
   EXPECT_EQ(reduce2->opcode(), HloOpcode::kAllReduce);
 
-  const HloInstruction *reduce0 = add1->operand(0);
-  const HloInstruction *reduce1 = add1->operand(1);
+  const HloInstruction* reduce0 = add1->operand(0);
+  const HloInstruction* reduce1 = add1->operand(1);
   EXPECT_EQ(reduce0->opcode(), HloOpcode::kAllReduce);
   EXPECT_EQ(reduce1->opcode(), HloOpcode::kAllReduce);
 
   bool found_add0 = false;
   // Verify that i0 is before c1.
   auto post_order = module->entry_computation()->MakeInstructionPostOrder();
-  for (const auto &instruction : post_order) {
+  for (const auto& instruction : post_order) {
     if (instruction->name() == "reduce0") {
       EXPECT_TRUE(found_add0);
     }
@@ -110,8 +110,8 @@ ENTRY entry {
   ROOT div0 = f32[100] divide(p1, mul0)
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
 
   auto post_order = module->entry_computation()->MakeInstructionPostOrder();
 
@@ -120,7 +120,7 @@ ENTRY entry {
   bool found_p1 = false;
   bool found_add0 = false;
   bool found_mul0 = false;
-  for (HloInstruction *instruction : post_order) {
+  for (HloInstruction* instruction : post_order) {
     if (instruction->name() == "add0") {
       EXPECT_TRUE(found_p0);
       EXPECT_TRUE(found_p1);
@@ -168,10 +168,10 @@ ENTRY entry {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
-  HloComputation *entry = module->entry_computation();
-  HloComputation *sum = module->GetComputationWithName("sum");
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+  HloComputation* entry = module->entry_computation();
+  HloComputation* sum = module->GetComputationWithName("sum");
   ASSERT_NE(entry, nullptr);
   ASSERT_NE(sum, nullptr);
 
@@ -181,8 +181,8 @@ ENTRY entry {
   EXPECT_EQ(sum->caller_computations().count(entry), 1);
 
   // Get the operands of the add.
-  HloInstruction *entry_a = entry->root_instruction()->mutable_operand(0);
-  HloInstruction *entry_b = entry->root_instruction()->mutable_operand(1);
+  HloInstruction* entry_a = entry->root_instruction()->mutable_operand(0);
+  HloInstruction* entry_b = entry->root_instruction()->mutable_operand(1);
 
   // Create a new computation and add it as a callee.
   auto builder = HloComputation::Builder("mul");
@@ -194,7 +194,7 @@ ENTRY entry {
   builder.AddInstruction(HloInstruction::CreateBinary(
       ShapeUtil::MakeShape(F32, {}), HloOpcode::kMultiply, a, b));
 
-  HloComputation *mul_comp = module->AddEmbeddedComputation(builder.Build());
+  HloComputation* mul_comp = module->AddEmbeddedComputation(builder.Build());
 
   auto map = HloInstruction::CreateMap(entry->root_instruction()->shape(),
                                        {entry_a, entry_b}, mul_comp);
@@ -204,7 +204,7 @@ ENTRY entry {
                                              std::move(map)),
             absl::OkStatus());
 
-  HloComputation *mul_int = module->GetComputationWithName("mul");
+  HloComputation* mul_int = module->GetComputationWithName("mul");
 
   EXPECT_EQ(entry->callee_computations().size(), 2);
   EXPECT_FALSE(entry->callee_computations().contains(sum));

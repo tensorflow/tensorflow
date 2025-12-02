@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <memory>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
 #include "xla/hlo/analysis/alias_info.h"
@@ -27,12 +28,12 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/literal_util.h"
+#include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_value.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/types.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -191,8 +192,8 @@ TEST_F(HloOrderingTest, ParametersDefinedBeforeOthers) {
   auto param = builder.AddInstruction(
       HloInstruction::CreateParameter(0, scalar_shape, "param"));
   module->AddEntryComputation(builder.Build());
-  TF_ASSERT_OK_AND_ASSIGN(auto dataflow,
-                          HloDataflowAnalysis::Run(*module, /*ssa_form=*/true));
+  ASSERT_OK_AND_ASSIGN(auto dataflow,
+                       HloDataflowAnalysis::Run(*module, /*ssa_form=*/true));
 
   DependencyHloOrdering ordering(module.get());
   EXPECT_TRUE(ordering.IsDefinedBefore(dataflow->GetValueDefinedAt(param),
@@ -243,8 +244,8 @@ TEST_F(HloOrderingTest, ValuesInWhileComputations) {
       scalar_shape, HloOpcode::kAdd, constant, xla_while));
   module->AddEntryComputation(builder.Build());
 
-  TF_ASSERT_OK_AND_ASSIGN(auto dataflow,
-                          HloDataflowAnalysis::Run(*module, /*ssa_form=*/true));
+  ASSERT_OK_AND_ASSIGN(auto dataflow,
+                       HloDataflowAnalysis::Run(*module, /*ssa_form=*/true));
   DependencyHloOrdering ordering(module.get());
 
   // Init value is defined before the while, but live range is not before the
@@ -346,8 +347,8 @@ ENTRY while.v11 {
   ROOT fusion = f32[3]{0} fusion(get-tuple-element.9, get-tuple-element.10, get-tuple-element.11), kind=kLoop, calls=fused_computation
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(module_str));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(module_str));
   DependencyHloOrdering ordering(module.get());
   ordering.ToString();  // Shouldn't crash.
 }
@@ -383,10 +384,10 @@ ENTRY root {
   ROOT result = (s32[], s32[], s32[]) tuple(add.3, cond_res.1, cond_res.2)
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(module_str));
-  TF_ASSERT_OK_AND_ASSIGN(auto dataflow,
-                          HloDataflowAnalysis::Run(*module, /*ssa_form=*/true));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(module_str));
+  ASSERT_OK_AND_ASSIGN(auto dataflow,
+                       HloDataflowAnalysis::Run(*module, /*ssa_form=*/true));
   DependencyHloOrdering ordering(module.get());
 
   // Even though the true and false branches has no ordering, since they do not
@@ -441,8 +442,8 @@ TEST_F(HloOrderingTest,
   TF_ASSERT_OK(schedule.Verify());
   SequentialHloOrdering ordering(schedule);
 
-  TF_ASSERT_OK_AND_ASSIGN(auto dataflow,
-                          HloDataflowAnalysis::Run(*module, /*ssa_form=*/true));
+  ASSERT_OK_AND_ASSIGN(auto dataflow,
+                       HloDataflowAnalysis::Run(*module, /*ssa_form=*/true));
 
   EXPECT_FALSE(ordering.ExecutesBefore(root, dead));
   EXPECT_FALSE(ordering.ExecutesBefore(dead, root));
@@ -497,8 +498,8 @@ TEST_F(HloOrderingTest,
   TF_ASSERT_OK(schedule.Verify());
   SequentialHloOrdering ordering(schedule);
 
-  TF_ASSERT_OK_AND_ASSIGN(auto dataflow,
-                          HloDataflowAnalysis::Run(*module, /*ssa_form=*/true));
+  ASSERT_OK_AND_ASSIGN(auto dataflow,
+                       HloDataflowAnalysis::Run(*module, /*ssa_form=*/true));
 
   EXPECT_FALSE(ordering.ExecutesBefore(root, dead));
   EXPECT_FALSE(ordering.ExecutesBefore(dead, root));
@@ -530,10 +531,10 @@ ENTRY InterferenceWithOuterRoot {
 
 )";
   HloModuleConfig hlo_config;
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string, hlo_config));
-  TF_ASSERT_OK_AND_ASSIGN(auto dataflow,
-                          HloDataflowAnalysis::Run(*module, /*ssa_form=*/true));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string, hlo_config));
+  ASSERT_OK_AND_ASSIGN(auto dataflow,
+                       HloDataflowAnalysis::Run(*module, /*ssa_form=*/true));
   DependencyHloOrdering ordering(module.get());
   auto multiply = FindInstruction(module.get(), "multiply");
   auto add = FindInstruction(module.get(), "add");
@@ -584,10 +585,10 @@ ENTRY entry {
 }
 )";
   HloModuleConfig hlo_config;
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string, hlo_config));
-  TF_ASSERT_OK_AND_ASSIGN(auto dataflow,
-                          HloDataflowAnalysis::Run(*module, /*ssa_form=*/true));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string, hlo_config));
+  ASSERT_OK_AND_ASSIGN(auto dataflow,
+                       HloDataflowAnalysis::Run(*module, /*ssa_form=*/true));
   SequentialHloOrdering ordering(module->schedule());
   auto root = FindInstruction(module.get(), "root");
   auto p_body_2 = FindInstruction(module.get(), "p_body2");
@@ -627,10 +628,10 @@ ENTRY %main {
 }
 )";
   HloModuleConfig hlo_config;
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string, hlo_config));
-  TF_ASSERT_OK_AND_ASSIGN(auto dataflow,
-                          HloDataflowAnalysis::Run(*module, /*ssa_form=*/true));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string, hlo_config));
+  ASSERT_OK_AND_ASSIGN(auto dataflow,
+                       HloDataflowAnalysis::Run(*module, /*ssa_form=*/true));
   DependencyHloOrdering ordering(module.get());
   auto async_start = FindInstruction(module.get(), "async-start");
   auto async_done = FindInstruction(module.get(), "async-done");
@@ -670,10 +671,10 @@ ENTRY %main {
   ROOT %copy.1 = f32[2,2] copy(f32[2,2] %host-async-done)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloDataflowAnalysis> dataflow,
-                          HloDataflowAnalysis::Run(*module, /*ssa_form=*/true));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloDataflowAnalysis> dataflow,
+                       HloDataflowAnalysis::Run(*module, /*ssa_form=*/true));
 
   HloInstruction* async_start =
       FindInstruction(module.get(), "host-async-start");
@@ -728,10 +729,10 @@ ENTRY %main {
   ROOT %host-async-done = f32[2,2] async-done(((f32[2,2]), f32[2,2], u32[]) %host-async-start)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloDataflowAnalysis> dataflow,
-                          HloDataflowAnalysis::Run(*module, /*ssa_form=*/true));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloDataflowAnalysis> dataflow,
+                       HloDataflowAnalysis::Run(*module, /*ssa_form=*/true));
 
   HloInstruction* async_start =
       FindInstruction(module.get(), "host-async-start");
@@ -782,10 +783,10 @@ ENTRY %main {
   ROOT %host-async-done = f32[2,2] async-done(%host-async-start)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloDataflowAnalysis> dataflow,
-                          HloDataflowAnalysis::Run(*module, /*ssa_form=*/true));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloDataflowAnalysis> dataflow,
+                       HloDataflowAnalysis::Run(*module, /*ssa_form=*/true));
 
   HloInstruction* async_start =
       FindInstruction(module.get(), "host-async-start");
@@ -853,11 +854,11 @@ ENTRY %main {
   ROOT %dynamic-update-slice-done = f32[10,32,512]{2,1,0:T(8,128)S(5)}
     async-done(%dynamic-update-slice-start), calls=%async_computation
 })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo));
 
-  TF_ASSERT_OK_AND_ASSIGN(auto dataflow,
-                          HloDataflowAnalysis::Run(*module, /*ssa_form=*/true));
+  ASSERT_OK_AND_ASSIGN(auto dataflow,
+                       HloDataflowAnalysis::Run(*module, /*ssa_form=*/true));
   DependencyHloOrdering ordering(module.get());
   auto* async_start =
       FindInstruction(module.get(), "dynamic-update-slice-start");

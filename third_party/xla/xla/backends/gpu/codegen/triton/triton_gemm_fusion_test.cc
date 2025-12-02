@@ -32,7 +32,6 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/Pass/PassManager.h"
 #include "xla/autotuning.pb.h"
-#include "xla/backends/gpu/codegen/triton/fusion_emitter.h"
 #include "xla/backends/gpu/codegen/triton/test_utils.h"
 #include "xla/backends/gpu/codegen/triton/xtile_compiler.h"
 #include "xla/error_spec.h"
@@ -158,8 +157,8 @@ class TritonGemmTest : public TritonTest {
   }
 
   void MatchHloModule(HloModule& module, absl::string_view pattern) {
-    TF_ASSERT_OK_AND_ASSIGN(bool filecheck_result,
-                            RunFileCheck(module.ToString(), pattern));
+    ASSERT_OK_AND_ASSIGN(bool filecheck_result,
+                         RunFileCheck(module.ToString(), pattern));
     EXPECT_TRUE(filecheck_result);
   }
 };
@@ -194,8 +193,8 @@ ENTRY e {
                          "split_k":1,"num_stages":1,"num_warps":2,
                          "num_ctas":1}}}
 })";
-  TF_ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata module_and_metadata,
-                          GetModuleAndNestedFusionMetadata(kHloText));
+  ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata module_and_metadata,
+                       GetModuleAndNestedFusionMetadata(kHloText));
   TF_EXPECT_OK(
       CreateTritonIrAndFileCheck(*module_and_metadata.computation,
                                  module_and_metadata.block_level_parameters,
@@ -236,8 +235,8 @@ ENTRY e {
       }
     }
 })";
-  TF_ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata module_and_metadata,
-                          GetModuleAndNestedFusionMetadata(kHloText));
+  ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata module_and_metadata,
+                       GetModuleAndNestedFusionMetadata(kHloText));
   TF_EXPECT_OK(
       CreateTritonIrAndFileCheck(*module_and_metadata.computation,
                                  module_and_metadata.block_level_parameters,
@@ -274,8 +273,8 @@ ENTRY e {
                          "num_ctas":1}}}
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata module_and_metadata,
-                          GetModuleAndNestedFusionMetadata(kHloText));
+  ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata module_and_metadata,
+                       GetModuleAndNestedFusionMetadata(kHloText));
   TF_EXPECT_OK(
       CreateTritonIrAndFileCheck(*module_and_metadata.computation,
                                  module_and_metadata.block_level_parameters, R"(
@@ -319,8 +318,8 @@ ENTRY e {
              "block_m":"32","block_n":"32","block_k":"32","split_k":"1",
              "num_stages":"1","num_warps":"1","num_ctas":"1"}}}
 })";
-  TF_ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata module_and_metadata,
-                          GetModuleAndNestedFusionMetadata(kHloText));
+  ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata module_and_metadata,
+                       GetModuleAndNestedFusionMetadata(kHloText));
   EXPECT_TRUE(
       RunAndCompareNoHloPasses(module_and_metadata.module->ToString(),
                                ErrorSpec{/*aabs=*/1e-4, /*arel=*/1e-6}));
@@ -361,8 +360,8 @@ ENTRY e {
        "split_k":1,"num_stages":1,"num_warps":2,
        "num_ctas":1}}}
 })";
-  TF_ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata module_and_metadata,
-                          GetModuleAndNestedFusionMetadata(kHloText));
+  ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata module_and_metadata,
+                       GetModuleAndNestedFusionMetadata(kHloText));
 
   CompileAndOptionallyVerifyPtx(std::move(module_and_metadata.module),
                                 R"(
@@ -379,8 +378,8 @@ ENTRY e {
   ROOT _ = f16[30,30] dot(p0, cp1),
     lhs_contracting_dims={0}, rhs_contracting_dims={1}
 })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> verified_module,
-                          ParseAndReturnVerifiedModule(kHloText));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> verified_module,
+                       ParseAndReturnVerifiedModule(kHloText));
   std::string output_directory;
   if (!tsl::io::GetTestUndeclaredOutputsDir(&output_directory)) {
     output_directory = tsl::testing::TmpDir();
@@ -418,8 +417,8 @@ ENTRY main {
   p2 = bf16[64,256]{0,1} parameter(2)
   ROOT gemm_fusion_dot.0 = bf16[512,256]{1,0} fusion(p0, p1, p2), kind=kCustom, calls=triton_dot, backend_config={"fusion_backend_config":{"kind":"__triton_gemm","triton_gemm_config":{"block_m":"64","block_n":"128","block_k":"32","split_k":"1","num_stages":"4","num_warps":"4","num_ctas":"1"}}}
 })";
-  TF_ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata module_and_metadata,
-                          GetModuleAndNestedFusionMetadata(kHloText));
+  ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata module_and_metadata,
+                       GetModuleAndNestedFusionMetadata(kHloText));
   EXPECT_TRUE(
       RunAndCompareNoHloPasses(module_and_metadata.module->ToString(),
                                ErrorSpec{/*aabs=*/1e-4, /*arel=*/1e-6}));
@@ -445,8 +444,8 @@ ENTRY e {
       "split_k":1,"num_stages":1,"num_warps":2,
       "num_ctas":1}}}
 })";
-  TF_ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata module_and_metadata,
-                          GetModuleAndNestedFusionMetadata(kHloText));
+  ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata module_and_metadata,
+                       GetModuleAndNestedFusionMetadata(kHloText));
   CompileAndOptionallyVerifyPtx(std::move(module_and_metadata.module),
                                 R"(
 CHECK: mma
@@ -482,9 +481,9 @@ ENTRY entry {
       "split_k":1,"num_stages":$3,"num_warps":4,
       "num_ctas":1}}}
 })";
-  TF_ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata module1_and_metadata,
-                          GetModuleAndNestedFusionMetadata(absl::Substitute(
-                              kHloTextTemplate, 256, 256, 256, 8)));
+  ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata module1_and_metadata,
+                       GetModuleAndNestedFusionMetadata(absl::Substitute(
+                           kHloTextTemplate, 256, 256, 256, 8)));
 
   const HloFusionInstruction* fusion1 = Cast<HloFusionInstruction>(
       module1_and_metadata.computation->FusionInstruction());
@@ -496,14 +495,14 @@ ENTRY entry {
           tsl::error::RESOURCE_EXHAUSTED,
           ::testing::HasSubstr("Shared memory size limit exceeded")));
 
-  TF_ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata module2_and_metadata,
-                          GetModuleAndNestedFusionMetadata(absl::Substitute(
-                              kHloTextTemplate, 64, 128, 128, 1)));
+  ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata module2_and_metadata,
+                       GetModuleAndNestedFusionMetadata(absl::Substitute(
+                           kHloTextTemplate, 64, 128, 128, 1)));
 
   const HloFusionInstruction* fusion2 = Cast<HloFusionInstruction>(
       module2_and_metadata.computation->FusionInstruction());
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       const auto result,
       TritonWrapper("test_fn", fusion2, se::GpuComputeCapability{cc},
                     device_info, module2_and_metadata.block_level_parameters,
@@ -554,8 +553,8 @@ ENTRY e {
       "num_ctas":1}}}
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata module_and_metadata,
-                          GetModuleAndNestedFusionMetadata(kHloText));
+  ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata module_and_metadata,
+                       GetModuleAndNestedFusionMetadata(kHloText));
   EXPECT_TRUE(
       RunAndCompareNoHloPasses(module_and_metadata.module->ToString(),
                                ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
@@ -829,9 +828,9 @@ ENTRY entry {
       "num_ctas":1}}}
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata module1_and_metadata,
-                          GetModuleAndNestedFusionMetadata(absl::Substitute(
-                              kHloTextTemplate, 512, 512, 32)));
+  ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata module1_and_metadata,
+                       GetModuleAndNestedFusionMetadata(
+                           absl::Substitute(kHloTextTemplate, 512, 512, 32)));
 
   const HloFusionInstruction* fusion1 = Cast<HloFusionInstruction>(
       module1_and_metadata.computation->FusionInstruction());
@@ -843,9 +842,9 @@ ENTRY entry {
                              "Tiling complexity heuristic exceeded"));
 
   // Succeeds if the tiling is not too complex.
-  TF_ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata module2_and_metadata,
-                          GetModuleAndNestedFusionMetadata(
-                              absl::Substitute(kHloTextTemplate, 32, 32, 32)));
+  ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata module2_and_metadata,
+                       GetModuleAndNestedFusionMetadata(
+                           absl::Substitute(kHloTextTemplate, 32, 32, 32)));
 
   const HloFusionInstruction* fusion2 = Cast<HloFusionInstruction>(
       module1_and_metadata.computation->FusionInstruction());
@@ -884,8 +883,8 @@ e {
     "triton_gemm_config": {"block_m":"16","block_n":"16","block_k":"64","split_k":"1",
           "num_stages":"1","num_warps":"4","num_ctas":"1"}}}
 })";
-  TF_ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata module_and_metadata,
-                          GetModuleAndNestedFusionMetadata(kHloText));
+  ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata module_and_metadata,
+                       GetModuleAndNestedFusionMetadata(kHloText));
 
   EXPECT_TRUE(
       RunAndCompareNoHloPasses(std::move(module_and_metadata.module),
@@ -917,8 +916,8 @@ e {
           "num_stages":"1","num_warps":"1","num_ctas":"1"}}}
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata module_and_metadata,
-                          GetModuleAndNestedFusionMetadata(kHloText));
+  ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata module_and_metadata,
+                       GetModuleAndNestedFusionMetadata(kHloText));
 
   EXPECT_TRUE(
       RunAndCompareNoHloPasses(std::move(module_and_metadata.module),
@@ -948,8 +947,8 @@ ENTRY e {
   ROOT dot = f32[4,5] dot(dot_lhs, dynamic_slice),
           lhs_contracting_dims={0}, rhs_contracting_dims={1}
 })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          GetOptimizedModule(kHloText));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       GetOptimizedModule(kHloText));
   EXPECT_THAT(
       module->entry_computation()->root_instruction(),
       GmockMatch(m::Fusion(m::Parameter(), m::Parameter(),
@@ -991,8 +990,8 @@ ENTRY e {
              "block_m":"32","block_n":"32","block_k":"32","split_k":"1",
              "num_stages":"1","num_warps":"4","num_ctas":"1"}}}
 })";
-  TF_ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata module_and_metadata,
-                          GetModuleAndNestedFusionMetadata(kHloText));
+  ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata module_and_metadata,
+                       GetModuleAndNestedFusionMetadata(kHloText));
   EXPECT_TRUE(
       RunAndCompareNoHloPasses(module_and_metadata.module->ToString(),
                                ErrorSpec{/*aabs=*/1e-4, /*arel=*/1e-6}));
@@ -1038,8 +1037,8 @@ ENTRY e {
              "num_stages":"1","num_warps":"4","num_ctas":"1"}}}
 })",
                                                 GetParam());
-  TF_ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata module_and_metadata,
-                          GetModuleAndNestedFusionMetadata(hlo_text));
+  ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata module_and_metadata,
+                       GetModuleAndNestedFusionMetadata(hlo_text));
   EXPECT_TRUE(
       RunAndCompareNoHloPasses(module_and_metadata.module->ToString(),
                                ErrorSpec{/*aabs=*/1e-4, /*arel=*/1e-6}));
@@ -1087,8 +1086,8 @@ ENTRY e {
              "block_m":"32","block_n":"32","block_k":"32","split_k":"1",
              "num_stages":"1","num_warps":"4","num_ctas":"1"}}}
 })";
-  TF_ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata module_and_metadata,
-                          GetModuleAndNestedFusionMetadata(kHloText));
+  ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata module_and_metadata,
+                       GetModuleAndNestedFusionMetadata(kHloText));
   EXPECT_TRUE(
       RunAndCompareNoHloPasses(module_and_metadata.module->ToString(),
                                ErrorSpec{/*aabs=*/1e-4, /*arel=*/1e-6}));
@@ -1132,8 +1131,8 @@ ENTRY e {
              "num_stages":"1","num_warps":"4","num_ctas":"1"}}}
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata module_and_metadata,
-                          GetModuleAndNestedFusionMetadata(kHloText));
+  ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata module_and_metadata,
+                       GetModuleAndNestedFusionMetadata(kHloText));
   EXPECT_TRUE(
       RunAndCompareNoHloPasses(module_and_metadata.module->ToString(),
                                ErrorSpec{/*aabs=*/1e-4, /*arel=*/1e-6}));
@@ -1176,8 +1175,8 @@ ENTRY e {
              "block_m":"32","block_n":"32","block_k":"32","split_k":"1",
              "num_stages":"1","num_warps":"4","num_ctas":"1"}}}
 })";
-  TF_ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata module_and_metadata,
-                          GetModuleAndNestedFusionMetadata(kHloText));
+  ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata module_and_metadata,
+                       GetModuleAndNestedFusionMetadata(kHloText));
   EXPECT_TRUE(
       RunAndCompareNoHloPasses(module_and_metadata.module->ToString(),
                                ErrorSpec{/*aabs=*/1e-4, /*arel=*/1e-6}));
@@ -1229,8 +1228,8 @@ ENTRY e {
     lhs_contracting_dims={1}, rhs_contracting_dims={0}
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          GetOptimizedModule(kHloText));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       GetOptimizedModule(kHloText));
 
   EXPECT_THAT(
       module->entry_computation()->root_instruction(),
@@ -1280,8 +1279,8 @@ ENTRY e {
     lhs_contracting_dims={0}, rhs_contracting_dims={0}
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          GetOptimizedModule(kHloText));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       GetOptimizedModule(kHloText));
   EXPECT_THAT(
       module->entry_computation()->root_instruction(),
       GmockMatch(m::Fusion(m::Parameter(), m::Bitcast(m::Parameter()),
@@ -1303,8 +1302,8 @@ ENTRY e {
     lhs_contracting_dims={0}, rhs_contracting_dims={1}
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          GetOptimizedModule(kHloText));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       GetOptimizedModule(kHloText));
 
   EXPECT_THAT(
       module->entry_computation()->root_instruction(),
@@ -1333,8 +1332,8 @@ ENTRY e {
   ROOT a = f32[7,16] add(d0, d1)
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          GetOptimizedModule(kHloText));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       GetOptimizedModule(kHloText));
 
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               GmockMatch(m::Add(
@@ -1359,8 +1358,8 @@ ENTRY e {
     lhs_contracting_dims={1}, rhs_contracting_dims={0}
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          GetOptimizedModule(kHloText));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       GetOptimizedModule(kHloText));
   EXPECT_THAT(
       module->entry_computation()->root_instruction(),
       GmockMatch(m::Fusion(m::Parameter(), m::Parameter())
@@ -1382,8 +1381,8 @@ ENTRY e {
     lhs_contracting_dims={1}, rhs_contracting_dims={0}
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          GetOptimizedModule(kHloText));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       GetOptimizedModule(kHloText));
   EXPECT_THAT(
       module->entry_computation()->root_instruction(),
       GmockMatch(m::Fusion(m::Parameter())
@@ -1406,8 +1405,8 @@ ENTRY e {
     lhs_contracting_dims={1}, rhs_contracting_dims={0}
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          GetOptimizedModule(kHloText));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       GetOptimizedModule(kHloText));
   EXPECT_THAT(
       GetNonBitcastRoot(module->entry_computation()),
       GmockMatch(m::Fusion(m::Parameter(), m::Parameter())
@@ -1428,8 +1427,8 @@ ENTRY e {
   ROOT d = f16[60,120] dot(c0, r1),
     lhs_contracting_dims={1}, rhs_contracting_dims={0}
 })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          GetOptimizedModule(kHloText));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       GetOptimizedModule(kHloText));
   EXPECT_THAT(
       GetNonBitcastRoot(module->entry_computation()),
       GmockMatch(m::Fusion(m::Parameter(), m::Constant())
@@ -1482,8 +1481,8 @@ e {
     lhs_contracting_dims={1}, rhs_contracting_dims={0}
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          GetOptimizedModule(kHloText));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       GetOptimizedModule(kHloText));
   EXPECT_THAT(
       GetNonBitcastRoot(module->entry_computation()),
       GmockMatch(m::Fusion(m::Parameter(), m::Parameter(), m::Parameter(),
@@ -1509,8 +1508,8 @@ ENTRY e {
   ROOT r = f32[7,16] sine(d)
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          GetOptimizedModule(kHloText));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       GetOptimizedModule(kHloText));
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               GmockMatch(m::Sin(
                   m::Fusion(m::Parameter(), m::Parameter())
@@ -1530,8 +1529,8 @@ ENTRY e {
     lhs_contracting_dims={0}, rhs_contracting_dims={1}
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          GetOptimizedModule(kHloText));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       GetOptimizedModule(kHloText));
   EXPECT_THAT(
       module->entry_computation()->root_instruction(),
       GmockMatch(m::Fusion(m::Parameter(), m::Parameter())
@@ -1552,8 +1551,8 @@ ENTRY e {
     lhs_contracting_dims={1}, rhs_contracting_dims={0}
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          GetOptimizedModule(kHloText));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       GetOptimizedModule(kHloText));
   EXPECT_THAT(
       GetNonBitcastRoot(module->entry_computation()),
       GmockMatch(m::Fusion(m::Parameter(), m::Parameter())
@@ -1577,8 +1576,8 @@ ENTRY e {
     lhs_contracting_dims={1}, rhs_contracting_dims={0}
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          GetOptimizedModule(kHloText));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       GetOptimizedModule(kHloText));
   EXPECT_THAT(
       module->entry_computation()->root_instruction(),
       GmockMatch(m::Fusion(m::Parameter(), m::Parameter())
@@ -1601,8 +1600,8 @@ ENTRY e {
     rhs_batch_dims={2}, rhs_contracting_dims={1}
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          GetOptimizedModule(kHloText));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       GetOptimizedModule(kHloText));
   EXPECT_THAT(
       module->entry_computation()->root_instruction(),
       GmockMatch(m::Fusion(m::Parameter(), m::Parameter())
@@ -1626,8 +1625,8 @@ ENTRY e {
     lhs_contracting_dims={1}, rhs_contracting_dims={0}
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          GetOptimizedModule(kHloText));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       GetOptimizedModule(kHloText));
   EXPECT_THAT(
       GetNonBitcastRoot(module->entry_computation()),
       GmockMatch(m::Fusion(m::Parameter(), m::Bitcast(m::Parameter()))
@@ -1667,8 +1666,8 @@ ENTRY e {
   ROOT r = f16[54,22] convert(d)
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          GetOptimizedModule(kHloText));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       GetOptimizedModule(kHloText));
   EXPECT_THAT(
       module->entry_computation()->root_instruction(),
       GmockMatch(m::Fusion(m::Parameter(), m::Parameter())
@@ -1694,8 +1693,8 @@ ENTRY e {
   ROOT r = bf16[350,690]{1,0} multiply(p2, dot.21)
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          GetOptimizedModule(kHloText));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       GetOptimizedModule(kHloText));
   const HloInstruction* instr = module->entry_computation()->root_instruction();
   if (!instr->IsCustomFusion()) {
     instr = instr->operand(0);
@@ -1731,8 +1730,8 @@ ENTRY e {
   ROOT multiply.8808 = bf16[350,690]{1,0} multiply(neg.484, p2)
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          GetOptimizedModule(kHloText));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       GetOptimizedModule(kHloText));
   const HloInstruction* instr = module->entry_computation()->root_instruction();
   if (!instr->IsCustomFusion()) {
     instr = instr->operand(0);
@@ -1766,8 +1765,8 @@ ENTRY e {
   ROOT t1 = bf16[5,42,200,15] transpose(r1), dimensions={0,3,1,2}
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          GetOptimizedModule(kHloText));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       GetOptimizedModule(kHloText));
   EXPECT_THAT(
       module->entry_computation()->root_instruction(),
       GmockMatch(m::Bitcast(
@@ -1805,8 +1804,8 @@ ENTRY e {
   ROOT t1 = bf16[5,42,20,150] transpose(r1), dimensions={0,3,1,2}
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          GetOptimizedModule(kHloText));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       GetOptimizedModule(kHloText));
   EXPECT_THAT(
       module->entry_computation()->root_instruction(),
       GmockMatch(m::Fusion(m::Parameter(), m::Parameter())
@@ -1830,8 +1829,8 @@ ENTRY e {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          GetOptimizedModule(kHloText));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       GetOptimizedModule(kHloText));
 
   EXPECT_THAT(
       module->entry_computation()->root_instruction(),
@@ -1853,8 +1852,8 @@ ENTRY e {
   ROOT dot = f32[1,250000] dot(parameter_0, parameter_1), lhs_batch_dims={0},
     lhs_contracting_dims={1}, rhs_batch_dims={0}, rhs_contracting_dims={1}
 })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          GetOptimizedModule(kHloText));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       GetOptimizedModule(kHloText));
 
   EXPECT_THAT(
       GetNonBitcastRoot(module->entry_computation()),
@@ -1876,8 +1875,8 @@ ENTRY e {
   ROOT dot = f32[1,250000] dot(parameter_0, parameter_1), lhs_batch_dims={0},
     lhs_contracting_dims={1}, rhs_batch_dims={0}, rhs_contracting_dims={1}
 })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          GetOptimizedModule(kHloText));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       GetOptimizedModule(kHloText));
 
   EXPECT_THAT(
       GetNonBitcastRoot(module->entry_computation()),
@@ -1924,12 +1923,11 @@ ENTRY e {
                          "num_ctas":1}}}
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      ModuleAndNestedFusionMetadata test_module_and_metadata,
-      GetModuleAndNestedFusionMetadata(kHloText));
+  ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata test_module_and_metadata,
+                       GetModuleAndNestedFusionMetadata(kHloText));
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> ref_module,
-                          ParseAndReturnVerifiedModule(kHloTextRef));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> ref_module,
+                       ParseAndReturnVerifiedModule(kHloTextRef));
 
   EXPECT_TRUE(RunAndCompareTwoModules(
       std::move(ref_module), std::move(test_module_and_metadata.module),
@@ -1985,7 +1983,7 @@ ENTRY e {
                          "num_ctas":1}}}
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       ModuleAndNestedFusionMetadata optin_shmem_module_and_metadata,
       GetModuleAndNestedFusionMetadata(kHloTextOptinShmem));
   const HloFusionInstruction* triton_dot_fusion = Cast<HloFusionInstruction>(
@@ -1994,7 +1992,7 @@ ENTRY e {
   llvm::Triple target_triple(nvptx::TargetTriple());
   std::string data_layout(nvptx::DataLayout());
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       const auto result,
       TritonWrapper("test_fn", triton_dot_fusion, GpuComputeCapability(),
                     dev_info,
@@ -2031,7 +2029,7 @@ ENTRY e {
                          "num_ctas":1}}}
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       ModuleAndNestedFusionMetadata low_shmem_module_and_metadata,
       GetModuleAndNestedFusionMetadata(kHloTextLowShmem));
 
@@ -2114,12 +2112,11 @@ ENTRY e {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      ModuleAndNestedFusionMetadata test_module_and_metadata,
-      GetModuleAndNestedFusionMetadata(hlo_text_splitk));
+  ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata test_module_and_metadata,
+                       GetModuleAndNestedFusionMetadata(hlo_text_splitk));
 
-  TF_ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata ref_module_and_metadata,
-                          GetModuleAndNestedFusionMetadata(hlo_text_ref));
+  ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata ref_module_and_metadata,
+                       GetModuleAndNestedFusionMetadata(hlo_text_ref));
 
   EXPECT_TRUE(
       RunAndCompareTwoModules(std::move(ref_module_and_metadata.module),
@@ -2183,12 +2180,11 @@ ENTRY e {
   constant = f32[] constant(0)
   ROOT reduce = f32[5,128,700]{2,1,0} reduce(triton_gemm_dot.24, constant), dimensions={0}, to_apply=add
 })";
-  TF_ASSERT_OK_AND_ASSIGN(
-      ModuleAndNestedFusionMetadata test_module_and_metadata,
-      GetModuleAndNestedFusionMetadata(kHloTextTest));
+  ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata test_module_and_metadata,
+                       GetModuleAndNestedFusionMetadata(kHloTextTest));
 
-  TF_ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata ref_module_and_metadata,
-                          GetModuleAndNestedFusionMetadata(kHloTextRef));
+  ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata ref_module_and_metadata,
+                       GetModuleAndNestedFusionMetadata(kHloTextRef));
 
   EXPECT_TRUE(
       RunAndCompareTwoModules(std::move(ref_module_and_metadata.module),
@@ -2264,12 +2260,11 @@ ENTRY entry {
                          "num_ctas":1}}}
   ROOT output = bf16[16,96]{1,0} fusion(dot), kind=kLoop, calls=split_k_reducer
 })";
-  TF_ASSERT_OK_AND_ASSIGN(
-      ModuleAndNestedFusionMetadata test_module_and_metadata,
-      GetModuleAndNestedFusionMetadata(kHloTextTest));
+  ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata test_module_and_metadata,
+                       GetModuleAndNestedFusionMetadata(kHloTextTest));
 
-  TF_ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata ref_module_and_metadata,
-                          GetModuleAndNestedFusionMetadata(kHloTextRef));
+  ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata ref_module_and_metadata,
+                       GetModuleAndNestedFusionMetadata(kHloTextRef));
 
   EXPECT_TRUE(
       RunAndCompareTwoModules(std::move(ref_module_and_metadata.module),
@@ -2351,12 +2346,11 @@ ENTRY entry_computation {
   ROOT output = f16[480,16]{1,0} fusion(fusion), kind=kLoop,
     calls=split_k_reducer
 })";
-  TF_ASSERT_OK_AND_ASSIGN(
-      ModuleAndNestedFusionMetadata test_module_and_metadata,
-      GetModuleAndNestedFusionMetadata(kHloTextTest));
+  ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata test_module_and_metadata,
+                       GetModuleAndNestedFusionMetadata(kHloTextTest));
 
-  TF_ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata ref_module_and_metadata,
-                          GetModuleAndNestedFusionMetadata(kHloTextRef));
+  ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata ref_module_and_metadata,
+                       GetModuleAndNestedFusionMetadata(kHloTextRef));
 
   EXPECT_TRUE(
       RunAndCompareTwoModules(std::move(ref_module_and_metadata.module),
@@ -2438,12 +2432,11 @@ ENTRY entry_computation {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      ModuleAndNestedFusionMetadata test_module_and_metadata,
-      GetModuleAndNestedFusionMetadata(kHloTextSplitK));
+  ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata test_module_and_metadata,
+                       GetModuleAndNestedFusionMetadata(kHloTextSplitK));
 
-  TF_ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata ref_module_and_metadata,
-                          GetModuleAndNestedFusionMetadata(kHloTextRef));
+  ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata ref_module_and_metadata,
+                       GetModuleAndNestedFusionMetadata(kHloTextRef));
 
   EXPECT_TRUE(
       RunAndCompareTwoModules(std::move(ref_module_and_metadata.module),
@@ -2541,12 +2534,11 @@ ENTRY entry_computation {
   ROOT fusion = f16[1,8,4,128]{3,2,1,0} fusion(dot), kind=kLoop,
     calls=split_k_reducer
 })";
-  TF_ASSERT_OK_AND_ASSIGN(
-      ModuleAndNestedFusionMetadata test_module_and_metadata,
-      GetModuleAndNestedFusionMetadata(kHloTextTest));
+  ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata test_module_and_metadata,
+                       GetModuleAndNestedFusionMetadata(kHloTextTest));
 
-  TF_ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata ref_module_and_metadata,
-                          GetModuleAndNestedFusionMetadata(kHloTextRef));
+  ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata ref_module_and_metadata,
+                       GetModuleAndNestedFusionMetadata(kHloTextRef));
 
   EXPECT_TRUE(
       RunAndCompareTwoModules(std::move(ref_module_and_metadata.module),
@@ -2610,12 +2602,11 @@ ENTRY e {
     calls=loop_fusion
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      ModuleAndNestedFusionMetadata test_module_and_metadata,
-      GetModuleAndNestedFusionMetadata(kHloTextTest));
+  ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata test_module_and_metadata,
+                       GetModuleAndNestedFusionMetadata(kHloTextTest));
 
-  TF_ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata ref_module_and_metadata,
-                          GetModuleAndNestedFusionMetadata(kHloTextRef));
+  ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata ref_module_and_metadata,
+                       GetModuleAndNestedFusionMetadata(kHloTextRef));
 
   EXPECT_TRUE(
       RunAndCompareTwoModules(std::move(ref_module_and_metadata.module),
@@ -2660,11 +2651,11 @@ ENTRY e {
     backend_config={"gemm_backend_config": {"alpha_real":1,"beta":0,"dot_dimension_numbers":{"lhs_contracting_dimensions":["0"],"rhs_contracting_dimensions":["1"],"lhs_batch_dimensions":[],"rhs_batch_dimensions":[]},"alpha_imag":0,"precision_config":{"operand_precision":["DEFAULT","DEFAULT"]},"epilogue":"DEFAULT"}}
   ROOT get-tuple-element = f32[63,92]{1,0} get-tuple-element((f32[63,92]{1,0}, s8[0]{0}) gemm), index=0
 })";
-  TF_ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata module_and_metadata,
-                          GetModuleAndNestedFusionMetadata(kHloTextTest));
+  ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata module_and_metadata,
+                       GetModuleAndNestedFusionMetadata(kHloTextTest));
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> ref_module,
-                          ParseAndReturnVerifiedModule(kHloTextRef));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> ref_module,
+                       ParseAndReturnVerifiedModule(kHloTextRef));
 
   EXPECT_TRUE(RunAndCompareTwoModules(std::move(ref_module),
                                       std::move(module_and_metadata.module),
@@ -2709,11 +2700,11 @@ ENTRY triton_gemm___computation {
   ROOT get-tuple-element = f32[11,45]{1,0} get-tuple-element((f32[11,45]{1,0}, s8[0]{0}) gemm), index=0
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata module_and_metadata,
-                          GetModuleAndNestedFusionMetadata(kHloTextTest));
+  ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata module_and_metadata,
+                       GetModuleAndNestedFusionMetadata(kHloTextTest));
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> ref_module,
-                          ParseAndReturnVerifiedModule(kHloTextRef));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> ref_module,
+                       ParseAndReturnVerifiedModule(kHloTextRef));
 
   EXPECT_TRUE(RunAndCompareTwoModules(std::move(ref_module),
                                       std::move(module_and_metadata.module),
@@ -2833,11 +2824,11 @@ ENTRY e {
   ROOT get-tuple-element = f32[32,57]{0,1} get-tuple-element((f32[32,57]{0,1}, s8[0]{0}) gemm), index=0
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata module_and_metadata,
-                          GetModuleAndNestedFusionMetadata(kHloTextTest));
+  ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata module_and_metadata,
+                       GetModuleAndNestedFusionMetadata(kHloTextTest));
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> ref_module,
-                          ParseAndReturnVerifiedModule(kHloTextRef));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> ref_module,
+                       ParseAndReturnVerifiedModule(kHloTextRef));
 
   EXPECT_TRUE(RunAndCompareTwoModules(std::move(ref_module),
                                       std::move(module_and_metadata.module),
@@ -2875,8 +2866,8 @@ ENTRY e {
                                           "num_ctas":"1"}}}
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata module_and_metadata,
-                          GetModuleAndNestedFusionMetadata(kHloTextTest));
+  ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata module_and_metadata,
+                       GetModuleAndNestedFusionMetadata(kHloTextTest));
 
   const std::string kHloTextRef = R"(
 HloModule m, is_scheduled=true
@@ -2903,8 +2894,8 @@ ENTRY e {
   ROOT get-tuple-element = bf16[92,63]{1,0} get-tuple-element((bf16[92,63]{1,0}, s8[0]{0}) gemm), index=0
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> ref_module,
-                          ParseAndReturnVerifiedModule(kHloTextRef));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> ref_module,
+                       ParseAndReturnVerifiedModule(kHloTextRef));
 
   EXPECT_TRUE(RunAndCompareTwoModules(std::move(ref_module),
                                       std::move(module_and_metadata.module),
@@ -2949,8 +2940,8 @@ ENTRY e {
                          "num_ctas":"1"}}}
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata module_and_metadata,
-                          GetModuleAndNestedFusionMetadata(kHloTextTest));
+  ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata module_and_metadata,
+                       GetModuleAndNestedFusionMetadata(kHloTextTest));
 
   const std::string kHloTextRef = R"(
 ENTRY e {
@@ -2972,8 +2963,8 @@ ENTRY e {
     lhs_contracting_dims={1}, rhs_contracting_dims={0}
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> ref_module,
-                          ParseAndReturnVerifiedModule(kHloTextRef));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> ref_module,
+                       ParseAndReturnVerifiedModule(kHloTextRef));
 
   EXPECT_TRUE(RunAndCompareTwoModules(std::move(ref_module),
                                       std::move(module_and_metadata.module),
@@ -3010,8 +3001,8 @@ ENTRY e {
          "split_k":1,"num_stages":1,"num_warps":4,
          "num_ctas":1}}}
 })";
-  TF_ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata module_and_metadata,
-                          GetModuleAndNestedFusionMetadata(kHloText));
+  ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata module_and_metadata,
+                       GetModuleAndNestedFusionMetadata(kHloText));
   TF_ASSERT_OK(
       CreateTritonIrAndFileCheck(*module_and_metadata.computation,
                                  module_and_metadata.block_level_parameters,
@@ -3047,8 +3038,8 @@ ENTRY e {
                          "num_ctas":1}}}
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata module_and_metadata,
-                          GetModuleAndNestedFusionMetadata(kHloText));
+  ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata module_and_metadata,
+                       GetModuleAndNestedFusionMetadata(kHloText));
   EXPECT_TRUE(Run(std::move(module_and_metadata.module),
                   /*run_hlo_passes=*/false));
 }
@@ -3075,8 +3066,8 @@ ENTRY e {
                          "num_ctas":1}}}
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata module_and_metadata,
-                          GetModuleAndNestedFusionMetadata(kHloText));
+  ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata module_and_metadata,
+                       GetModuleAndNestedFusionMetadata(kHloText));
   EXPECT_TRUE(Run(std::move(module_and_metadata.module),
                   /*run_hlo_passes=*/false));
 }
@@ -3106,8 +3097,8 @@ ENTRY e {
                          "num_ctas":1}}}
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata module_and_metadata,
-                          GetModuleAndNestedFusionMetadata(kHloText));
+  ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata module_and_metadata,
+                       GetModuleAndNestedFusionMetadata(kHloText));
   EXPECT_TRUE(Run(std::move(module_and_metadata.module),
                   /*run_hlo_passes=*/false));
 }
@@ -3137,8 +3128,8 @@ ENTRY e {
                          "num_ctas":1}}}
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata module_and_metadata,
-                          GetModuleAndNestedFusionMetadata(kHloText));
+  ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata module_and_metadata,
+                       GetModuleAndNestedFusionMetadata(kHloText));
   EXPECT_TRUE(Run(std::move(module_and_metadata.module),
                   /*run_hlo_passes=*/false));
 }
@@ -3169,8 +3160,8 @@ ENTRY e {
          "num_ctas":1}}}
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata module_and_metadata,
-                          GetModuleAndNestedFusionMetadata(kHloText));
+  ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata module_and_metadata,
+                       GetModuleAndNestedFusionMetadata(kHloText));
 
   CompileAndOptionallyVerifyPtx(std::move(module_and_metadata.module), R"(
 CHECK: wgmma.mma_async.sync.aligned.m64n16k16.f32.bf16.bf16
@@ -3192,8 +3183,8 @@ ENTRY e {
   ROOT _ = f16[30,30] dot(p0, cp1),
     lhs_contracting_dims={0}, rhs_contracting_dims={1}
 })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> verified_module,
-                          ParseAndReturnVerifiedModule(kHloText));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> verified_module,
+                       ParseAndReturnVerifiedModule(kHloText));
   DebugOptions debug_options = verified_module->config().debug_options();
   debug_options.set_xla_gpu_autotune_level(0);
   verified_module->mutable_config().set_debug_options(debug_options);

@@ -25,7 +25,6 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/service/buffer_assignment.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
 
 namespace xla::gpu {
@@ -61,12 +60,11 @@ TEST(InfeedThunkTest, ProtoRoundTrip) {
   thunk_info.execution_stream_id = xla::gpu::ExecutionStreamId{
       static_cast<xla::gpu::ExecutionStreamId::ValueType>(
           proto.thunk_info().execution_stream_id())};
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<InfeedThunk> thunk,
-      InfeedThunk::FromProto(thunk_info, proto.infeed_thunk(),
-                             buffer_allocations));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<InfeedThunk> thunk,
+                       InfeedThunk::FromProto(thunk_info, proto.infeed_thunk(),
+                                              buffer_allocations));
 
-  TF_ASSERT_OK_AND_ASSIGN(ThunkProto round_trip_proto, thunk->ToProto());
+  ASSERT_OK_AND_ASSIGN(ThunkProto round_trip_proto, thunk->ToProto());
   EXPECT_THAT(round_trip_proto, EqualsProto(proto));
 }
 

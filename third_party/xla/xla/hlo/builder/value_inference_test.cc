@@ -20,6 +20,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/comparison_util.h"
@@ -677,7 +678,7 @@ TEST_F(UpperBoundInferenceTest, KeyValueSort) {
   Parameter(&comparator_b, 2, ShapeUtil::MakeShape(S32, {}), "p2");
   Parameter(&comparator_b, 3, ShapeUtil::MakeShape(S32, {}), "p3");
   Compare(p0, p1, ComparisonDirection::kGe);
-  TF_ASSERT_OK_AND_ASSIGN(auto comparator, comparator_b.Build());
+  ASSERT_OK_AND_ASSIGN(auto comparator, comparator_b.Build());
 
   int64_t elem_count = 17;
   XlaBuilder b(TestName());

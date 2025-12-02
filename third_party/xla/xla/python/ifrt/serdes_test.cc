@@ -31,7 +31,6 @@ limitations under the License.
 #include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/python/ifrt/serdes.pb.h"
 #include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace ifrt {
@@ -119,11 +118,10 @@ class TestNumberTest : public testing::Test {
 
 TEST_F(TestNumberTest, RoundTrip) {
   auto obj = std::make_unique<TestNumber>(1234);
-  TF_ASSERT_OK_AND_ASSIGN(Serialized serialized,
-                          Serialize(*obj, /*options=*/nullptr));
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto deserialized,
-      Deserialize<TestNumber>(serialized, /*options=*/nullptr));
+  ASSERT_OK_AND_ASSIGN(Serialized serialized,
+                       Serialize(*obj, /*options=*/nullptr));
+  ASSERT_OK_AND_ASSIGN(auto deserialized, Deserialize<TestNumber>(
+                                              serialized, /*options=*/nullptr));
   EXPECT_EQ(obj->number, deserialized->number);
 }
 
@@ -138,8 +136,8 @@ TEST_F(TestNumberTest, WithSerializeOptions) {
 
 TEST_F(TestNumberTest, WithDeserializeOptions) {
   auto obj = std::make_unique<TestNumber>(1234);
-  TF_ASSERT_OK_AND_ASSIGN(Serialized serialized,
-                          Serialize(*obj, /*options=*/nullptr));
+  ASSERT_OK_AND_ASSIGN(Serialized serialized,
+                       Serialize(*obj, /*options=*/nullptr));
 
   auto options = std::make_unique<TestNumberDeserializeOptions>();
   options->injected_failure = absl::InternalError("injected failure");

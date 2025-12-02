@@ -17,12 +17,12 @@ limitations under the License.
 
 #include <memory>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/testlib/filecheck.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -38,11 +38,11 @@ ENTRY main {
   ROOT out = s8[10,4] bitcast-convert(p)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
 
   BitcastDtypesExpander expander;
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, expander.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, expander.Run(module.get()));
 
   EXPECT_TRUE(changed);
   EXPECT_TRUE(*RunFileCheck(module->ToString(), R"(
@@ -77,11 +77,11 @@ ENTRY main {
   ROOT out = s32[10,2] bitcast-convert(p)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
 
   BitcastDtypesExpander expander;
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, expander.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, expander.Run(module.get()));
 
   EXPECT_TRUE(changed);
   EXPECT_TRUE(*RunFileCheck(module->ToString(), R"(
@@ -116,11 +116,11 @@ ENTRY main {
   ROOT out = s32[10] bitcast-convert(p)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
 
   BitcastDtypesExpander expander;
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, expander.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, expander.Run(module.get()));
 
   // NB: Correctness will be checked by `bitcast_convert_test`,
   // and the fact that we have registered the converter on all platforms.
@@ -178,12 +178,12 @@ ENTRY entry {
   ROOT while = (f32[2], s32[]) while(while_init), condition=condition, body=body
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
 
   // Check that we do the rewrite and do not crash in the process.
   BitcastDtypesExpander expander;
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, expander.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, expander.Run(module.get()));
   EXPECT_TRUE(changed);
 }
 

@@ -18,6 +18,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/algorithm/container.h"
 #include "absl/log/check.h"
@@ -30,7 +31,6 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/tests/literal_test_util.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 
 namespace xla {
@@ -48,8 +48,8 @@ TEST_F(ConcatenateTest, TwoR3Axis1) {
       ROOT %cat_axis1 = s32[3,6,2] concatenate(x, y), dimensions={1}
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_text_module));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(hlo_text_module));
 
   Literal x_input =
       LiteralUtil::CreateR3<int32_t>({{{0, 1}, {2, 3}, {4, 5}},
@@ -60,8 +60,8 @@ TEST_F(ConcatenateTest, TwoR3Axis1) {
                                       {{-6, -7}, {-8, -9}, {-10, -11}},
                                       {{-12, -13}, {-14, -15}, {-16, -17}}});
 
-  TF_ASSERT_OK_AND_ASSIGN(auto result,
-                          Execute(std::move(module), {&x_input, &y_input}));
+  ASSERT_OK_AND_ASSIGN(auto result,
+                       Execute(std::move(module), {&x_input, &y_input}));
 
   LiteralTestUtil::ExpectR3Equal(
       {{{0, 1}, {2, 3}, {4, 5}, {0, -1}, {-2, -3}, {-4, -5}},
@@ -82,15 +82,15 @@ TEST_F(ConcatenateTest, ThreeR2Axis1) {
     }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_text_module));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(hlo_text_module));
 
   Literal x_input = LiteralUtil::CreateR2<int32_t>({{0, 1}, {2, 3}, {4, 5}});
   Literal y_input =
       LiteralUtil::CreateR2<int32_t>({{0, -1}, {-2, -3}, {-4, -5}});
   Literal z_input = LiteralUtil::CreateR2<int32_t>({{5, -4}, {-3, -2}, {1, 0}});
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto result, Execute(std::move(module), {&x_input, &y_input, &z_input}));
 
   LiteralTestUtil::ExpectR2Equal(
@@ -130,8 +130,8 @@ TEST_F(ConcatenateTest, TwoR3Axis1Parallel) {
     }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_text_module));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(hlo_text_module));
 
   Literal x_input = LiteralUtil::CreateFromDimensions(S32, {64, 64, 64});
   CHECK_OK(x_input.Populate<int32_t>(MakeIotaForShape(x_input.shape())));
@@ -140,8 +140,8 @@ TEST_F(ConcatenateTest, TwoR3Axis1Parallel) {
   CHECK_OK(
       y_input.Populate<int32_t>(MakeNegativeIotaForShape(y_input.shape())));
 
-  TF_ASSERT_OK_AND_ASSIGN(Literal result,
-                          Execute(std::move(module), {&x_input, &y_input}));
+  ASSERT_OK_AND_ASSIGN(Literal result,
+                       Execute(std::move(module), {&x_input, &y_input}));
 
   // Assert that the result is the concatenation of the two inputs.
   // Iota and negative iota are used to validate that the concatenation produces

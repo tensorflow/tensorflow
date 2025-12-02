@@ -15,13 +15,18 @@ limitations under the License.
 
 #include "xla/service/shaped_buffer.h"
 
+#include <cstdint>
+#include <cstdlib>
 #include <memory>
+#include <set>
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "benchmark/benchmark.h"
 #include "xla/hlo/testlib/test.h"
 #include "xla/service/platform_util.h"
 #include "xla/shape.h"
@@ -30,18 +35,16 @@ limitations under the License.
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/stream_executor_memory_allocator.h"
+#include "xla/tsl/platform/test_benchmark.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/test_benchmark.h"
 
 namespace xla {
 namespace {
 
 TEST(ShapedBufferTest, ScopedShapeBufferAsShapedBufferB71629047) {
-  TF_ASSERT_OK_AND_ASSIGN(auto* platform,
-                          xla::PlatformUtil::GetDefaultPlatform());
-  TF_ASSERT_OK_AND_ASSIGN(auto executors,
-                          xla::PlatformUtil::GetStreamExecutors(platform));
+  ASSERT_OK_AND_ASSIGN(auto* platform, xla::PlatformUtil::GetDefaultPlatform());
+  ASSERT_OK_AND_ASSIGN(auto executors,
+                       xla::PlatformUtil::GetStreamExecutors(platform));
   xla::se::StreamExecutorMemoryAllocator allocator(platform, executors);
   const xla::Shape shape = xla::ShapeUtil::MakeShape(xla::F32, {});
   const int kDeviceOrdinal = 0;
@@ -128,13 +131,12 @@ TEST(ScopedShapedBufferTest, TestTakeSubTree) {
   s = xla::ShapeUtil::MakeTupleShape(std::vector<xla::Shape>(3, s));
 
   ScopedShapedBuffer sb(s, &allocator, /*device_ordinal=*/0);
-  sb.buffers().ForEachMutableElement(
-      [&](const xla::ShapeIndex& index, se::DeviceMemoryBase* buffer) {
-        TF_ASSERT_OK_AND_ASSIGN(
-            se::OwningDeviceMemory m,
-            allocator.Allocate(/*device_ordinal=*/0, /*size=*/77));
-        *buffer = m.Release();
-      });
+  sb.buffers().ForEachMutableElement([&](const xla::ShapeIndex& index,
+                                         se::DeviceMemoryBase* buffer) {
+    ASSERT_OK_AND_ASSIGN(se::OwningDeviceMemory m,
+                         allocator.Allocate(/*device_ordinal=*/0, /*size=*/77));
+    *buffer = m.Release();
+  });
   ShapeTree<se::DeviceMemoryBase> buffers = sb.buffers();
 
   // Takes a subtree out of 'sb', and verifies the buffers are as expected.
@@ -166,13 +168,12 @@ TEST(ScopedShapedBufferTest, TestSubShapeTree) {
       xla::ShapeUtil::MakeTupleShape({array_shape, array_shape});
   TestAllocator allocator;
   ScopedShapedBuffer sb(tuple_shape, &allocator, /*device_ordinal=*/0);
-  sb.buffers().ForEachMutableElement(
-      [&](const xla::ShapeIndex& index, se::DeviceMemoryBase* buffer) {
-        TF_ASSERT_OK_AND_ASSIGN(
-            se::OwningDeviceMemory m,
-            allocator.Allocate(/*device_ordinal=*/0, /*size=*/32));
-        *buffer = m.Release();
-      });
+  sb.buffers().ForEachMutableElement([&](const xla::ShapeIndex& index,
+                                         se::DeviceMemoryBase* buffer) {
+    ASSERT_OK_AND_ASSIGN(se::OwningDeviceMemory m,
+                         allocator.Allocate(/*device_ordinal=*/0, /*size=*/32));
+    *buffer = m.Release();
+  });
   auto ssb_statusor = sb.SubShapedBuffer({1});
   ASSERT_TRUE(ssb_statusor.ok());
   auto ssb = std::move(ssb_statusor).value();

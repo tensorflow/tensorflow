@@ -28,7 +28,6 @@
 #include "xla/hlo/tools/hlo_diff/proto/diff_result.pb.h"
 #include "xla/hlo/tools/hlo_diff/utils/test_util.h"
 #include "xla/service/hlo_module_config.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace hlo_diff {
@@ -47,8 +46,8 @@ TEST_F(HloDiffTest, MatchedDifferentShapeMarkAsChanged) {
   // [Param 0] ---> ┌-------┐
   //                | add_0 |
   // [Param 1] ---> └-------┘
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> module_l,
-                          ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> module_l,
+                       ParseAndReturnVerifiedModule(R"(
 HloModule module, is_scheduled=true
 
 ENTRY entry {
@@ -57,8 +56,8 @@ ENTRY entry {
   add.0 = f32[] add(parameter.0, parameter.1)
 }
 )"));
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> graph_l,
-                          HloGumgraph::Create(module_l.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> graph_l,
+                       HloGumgraph::Create(module_l.get()));
 
   // Create right module with entry computation containing the following
   // structure:
@@ -66,8 +65,8 @@ ENTRY entry {
   //                | add_0 |
   // [Param 1] ---> └-------┘
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> module_r,
-                          ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> module_r,
+                       ParseAndReturnVerifiedModule(R"(
 HloModule module, is_scheduled=true
 
 ENTRY entry {
@@ -76,8 +75,8 @@ ENTRY entry {
   add.0 = f32[] add(parameter.0, parameter.1)
 }
 )"));
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> graph_r,
-                          HloGumgraph::Create(module_r.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> graph_r,
+                       HloGumgraph::Create(module_r.get()));
   auto mappings = std::make_unique<HloGumgraphMappings>();
   ASSERT_NO_FATAL_FAILURE(OverwriteMapInstructions(
       GetNodeByName(*graph_l, "add.0"), GetNodeByName(*graph_r, "add.0"),
@@ -127,8 +126,8 @@ TEST_F(HloDiffTest, MatchedDifferentFingerprintMarkAsChanged) {
   // [Param 0] ---> ┌-------┐      ┌------┐
   //                | add_0 | ---> | ROOT |
   // [Param 1] ---> └-------┘      └------┘
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> module_l,
-                          ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> module_l,
+                       ParseAndReturnVerifiedModule(R"(
 HloModule module, is_scheduled=true
 
 ENTRY entry {
@@ -137,8 +136,8 @@ ENTRY entry {
   add.0 = bf16[32,22,32]{0,2,1:T(8,128)(2,1)} add(parameter.0, parameter.1)
 }
 )"));
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> graph_l,
-                          HloGumgraph::Create(module_l.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> graph_l,
+                       HloGumgraph::Create(module_l.get()));
 
   // Create right module with entry computation containing the following
   // structure:
@@ -146,8 +145,8 @@ ENTRY entry {
   //                | add_0 | ---> | ROOT |
   // [Param 0] ---> └-------┘      └------┘
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> module_r,
-                          ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> module_r,
+                       ParseAndReturnVerifiedModule(R"(
 HloModule module, is_scheduled=true
 
 ENTRY entry {
@@ -156,8 +155,8 @@ ENTRY entry {
   add.0 = bf16[32,22,32]{0,2,1:T(8,128)(2,1)} add(parameter.1, parameter.0)
 }
 )"));
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> graph_r,
-                          HloGumgraph::Create(module_r.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> graph_r,
+                       HloGumgraph::Create(module_r.get()));
   auto mappings = std::make_unique<HloGumgraphMappings>();
   ASSERT_NO_FATAL_FAILURE(OverwriteMapInstructions(
       GetNodeByName(*graph_l, "add.0"), GetNodeByName(*graph_r, "add.0"),
@@ -211,8 +210,8 @@ TEST_F(HloDiffTest, UnmatchedInstructionsMarkAsUnmatched) {
   // [Param 0] ---> ┌-------┐
   //                | add_0 |
   // [Param 1] ---> └-------┘
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> module_l,
-                          ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> module_l,
+                       ParseAndReturnVerifiedModule(R"(
 HloModule module, is_scheduled=true
 
 ENTRY entry {
@@ -221,8 +220,8 @@ ENTRY entry {
   add.0 = f32[] add(parameter.0, parameter.1)
 }
 )"));
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> graph_l,
-                          HloGumgraph::Create(module_l.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> graph_l,
+                       HloGumgraph::Create(module_l.get()));
 
   // Create right module with entry computation containing the following
   // structure:
@@ -230,8 +229,8 @@ ENTRY entry {
   //                | add_0 |
   // [Param 0] ---> └-------┘
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> module_r,
-                          ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> module_r,
+                       ParseAndReturnVerifiedModule(R"(
 HloModule module, is_scheduled=true
 
 ENTRY entry {
@@ -240,8 +239,8 @@ ENTRY entry {
   add.0 = f32[] add(parameter.1, parameter.0)
 }
 )"));
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> graph_r,
-                          HloGumgraph::Create(module_r.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> graph_r,
+                       HloGumgraph::Create(module_r.get()));
   auto mappings = std::make_unique<HloGumgraphMappings>();
   ASSERT_NO_FATAL_FAILURE(OverwriteMapInstructions(
       GetNodeByName(*graph_l, "add.0"), GetNodeByName(*graph_r, "add.0"),
@@ -285,7 +284,7 @@ TEST_F(HloDiffTest, ShortFormConstantsMatched) {
   // [Param 0]    ---> ┌-------┐
   //                   | add_0 |
   // [Const 2958] ---> └-------┘
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<xla::HloModule> module_l,
       ParseAndReturnUnverifiedModule(
           R"(
@@ -300,8 +299,8 @@ ENTRY entry {
           HloModuleConfig(),
           HloParserOptions().set_fill_shortform_constants_with_random_values(
               false)));
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> graph_l,
-                          HloGumgraph::Create(module_l.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> graph_l,
+                       HloGumgraph::Create(module_l.get()));
 
   // Create right module with entry computation containing the following
   // structure:
@@ -309,7 +308,7 @@ ENTRY entry {
   //                   | add_0 |
   // [Const 2958] ---> └-------┘
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<xla::HloModule> module_r,
       ParseAndReturnUnverifiedModule(
           R"(
@@ -324,8 +323,8 @@ ENTRY entry {
           HloModuleConfig(),
           HloParserOptions().set_fill_shortform_constants_with_random_values(
               false)));
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> graph_r,
-                          HloGumgraph::Create(module_r.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> graph_r,
+                       HloGumgraph::Create(module_r.get()));
   auto mappings = std::make_unique<HloGumgraphMappings>();
   ASSERT_NO_FATAL_FAILURE(OverwriteMapInstructions(
       GetNodeByName(*graph_l, "add.0"), GetNodeByName(*graph_r, "add.0"),
@@ -372,8 +371,8 @@ ENTRY entry {
 
 TEST_F(HloDiffTest, DiffResultToAndFromProtoWorks) {
   DiffResult diff_result;
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> module_l,
-                          ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> module_l,
+                       ParseAndReturnVerifiedModule(R"(
 HloModule module, is_scheduled=true
 
 ENTRY entry {
@@ -382,8 +381,8 @@ ENTRY entry {
   add.0 = f32[] add(parameter.0, parameter.1)
 }
 )"));
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> module_r,
-                          ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> module_r,
+                       ParseAndReturnVerifiedModule(R"(
 HloModule module, is_scheduled=true
 
 ENTRY entry {
@@ -432,8 +431,8 @@ TEST_F(HloDiffTest, DebugInfoIsAttached) {
   // [Param 0] ---> ┌-------┐
   //                | add_0 |
   // [Param 1] ---> └-------┘
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> module_l,
-                          ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> module_l,
+                       ParseAndReturnVerifiedModule(R"(
 HloModule module, is_scheduled=true
 
 ENTRY entry {
@@ -442,8 +441,8 @@ ENTRY entry {
   add.0 = f32[] add(parameter.0, parameter.1)
 }
 )"));
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> graph_l,
-                          HloGumgraph::Create(module_l.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> graph_l,
+                       HloGumgraph::Create(module_l.get()));
 
   // Create right module with entry computation containing the following
   // structure:
@@ -451,8 +450,8 @@ ENTRY entry {
   //                | add_0 |
   // [Param 1] ---> └-------┘
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> module_r,
-                          ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> module_r,
+                       ParseAndReturnVerifiedModule(R"(
 HloModule module, is_scheduled=true
 
 ENTRY entry {
@@ -461,8 +460,8 @@ ENTRY entry {
   add.0 = f32[] add(parameter.0, parameter.1)
 }
 )"));
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> graph_r,
-                          HloGumgraph::Create(module_r.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> graph_r,
+                       HloGumgraph::Create(module_r.get()));
   auto mappings = std::make_unique<HloGumgraphMappings>();
   ASSERT_NO_FATAL_FAILURE(OverwriteMapInstructions(
       GetNodeByName(*graph_l, "add.0"), GetNodeByName(*graph_r, "add.0"),

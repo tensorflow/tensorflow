@@ -18,6 +18,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/testlib/test.h"
@@ -31,7 +32,6 @@ limitations under the License.
 #include "xla/tests/literal_test_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/logging.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 
 // Tests replicated infeed/outfeed operations.
@@ -79,9 +79,9 @@ TEST_F(ReplicatedIOFeedTest, InfeedAndOutfeed) {
   DeviceAssignment device_assn(/*replica_count=*/kNumReplicas,
                                /*computation_count=*/1);
   device_assn.FillIota(0);
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(
-                              kHloText, GetModuleConfigForTest(kNumReplicas)));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(
+                           kHloText, GetModuleConfigForTest(kNumReplicas)));
   TF_ASSERT_OK(test_runner()
                    .ExecuteReplicated(std::move(module), opts, &device_assn)
                    .status());

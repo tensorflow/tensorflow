@@ -21,6 +21,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include "ynnpack/include/ynnpack.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
@@ -128,7 +129,7 @@ TEST_P(YnnFusionThunkTest, ElementwiseAdd) {
   YnnFusionThunk::Argument rhs_arg = {rhs_slice, shape};
   YnnFusionThunk::Result out_res = {out_slice, shape};
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto thunk, YnnFusionThunk::Create(
                       YnnFusionThunk::Options{use_threadpool()}, {"fusion"},
                       reinterpret_cast<HloInstruction*>(0xDEADBEEF),
@@ -136,7 +137,7 @@ TEST_P(YnnFusionThunkTest, ElementwiseAdd) {
 
   YnnThreadpool threadpool;
   if (use_threadpool()) {
-    TF_ASSERT_OK_AND_ASSIGN(threadpool, CreateYnnThreadpool(&device));
+    ASSERT_OK_AND_ASSIGN(threadpool, CreateYnnThreadpool(&device));
   }
   Thunk::YnnParams ynn_params(std::move(threadpool));
 

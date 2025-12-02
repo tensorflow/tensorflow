@@ -18,11 +18,11 @@ limitations under the License.
 #include <cstdint>
 #include <string>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
 #include "xla/ffi/type_registry.h"
 #include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 
 namespace xla::ffi {
@@ -42,8 +42,8 @@ TEST(ExecutionContextTest, EmplaceUserData) {
   TF_ASSERT_OK(context.Emplace<I32UserData>(42));
   TF_ASSERT_OK(context.Emplace<StrUserData>("hello"));
 
-  TF_ASSERT_OK_AND_ASSIGN(auto* i32_data, context.Lookup<I32UserData>());
-  TF_ASSERT_OK_AND_ASSIGN(auto* str_data, context.Lookup<StrUserData>());
+  ASSERT_OK_AND_ASSIGN(auto* i32_data, context.Lookup<I32UserData>());
+  ASSERT_OK_AND_ASSIGN(auto* str_data, context.Lookup<StrUserData>());
 
   ASSERT_NE(i32_data, nullptr);
   ASSERT_NE(str_data, nullptr);
@@ -57,21 +57,21 @@ TEST(ExecutionContextTest, InsertUserOwned) {
   ExecutionContext context;
   TF_ASSERT_OK(context.Insert(&user_data));
 
-  TF_ASSERT_OK_AND_ASSIGN(auto* i32_data, context.Lookup<I32UserData>());
+  ASSERT_OK_AND_ASSIGN(auto* i32_data, context.Lookup<I32UserData>());
   ASSERT_EQ(i32_data, &user_data);
 }
 
 TEST(ExecutionContextTest, InsertUserOwnedWithTypeId) {
-  TF_ASSERT_OK_AND_ASSIGN(TypeRegistry::TypeId type_id,
-                          TypeRegistry::AssignExternalTypeId(
-                              "I32UserData", TypeRegistry::TypeInfo{}));
+  ASSERT_OK_AND_ASSIGN(TypeRegistry::TypeId type_id,
+                       TypeRegistry::AssignExternalTypeId(
+                           "I32UserData", TypeRegistry::TypeInfo{}));
 
   I32UserData user_data(42);
 
   ExecutionContext context;
   TF_ASSERT_OK(context.Insert(type_id, &user_data));
 
-  TF_ASSERT_OK_AND_ASSIGN(auto* i32_data, context.Lookup(type_id));
+  ASSERT_OK_AND_ASSIGN(auto* i32_data, context.Lookup(type_id));
   ASSERT_EQ(i32_data, &user_data);
 }
 

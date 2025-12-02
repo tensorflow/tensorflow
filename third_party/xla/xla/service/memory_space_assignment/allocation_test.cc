@@ -18,6 +18,7 @@ limitations under the License.
 #include <memory>
 #include <optional>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -27,7 +28,6 @@ limitations under the License.
 #include "xla/service/hlo_value.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla::memory_space_assignment {
 namespace {
@@ -46,8 +46,7 @@ ENTRY entry {
   ROOT tuple = tuple(add, p0)
 }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   // HloComputation* computation = module->entry_computation();
   HloInstruction* add = FindInstruction(module.get(), "add");
   HloInstruction* p1_negate = FindInstruction(module.get(), "p1_negate");
@@ -101,8 +100,7 @@ ENTRY entry {
   ROOT tuple = tuple(add, p0)
 }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   // HloComputation* computation = module->entry_computation();
   HloInstruction* add = FindInstruction(module.get(), "add");
   HloInstruction* p1_negate = FindInstruction(module.get(), "p1_negate");
@@ -158,8 +156,7 @@ ENTRY entry {
   ROOT tuple = tuple(add, p0)
 }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   // HloComputation* computation = module->entry_computation();
   HloInstruction* add = FindInstruction(module.get(), "add");
   HloInstruction* p1_negate = FindInstruction(module.get(), "p1_negate");

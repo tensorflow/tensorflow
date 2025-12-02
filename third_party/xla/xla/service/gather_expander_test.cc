@@ -15,15 +15,23 @@ limitations under the License.
 
 #include "xla/service/gather_expander.h"
 
+#include <memory>
+#include <string>
 #include <vector>
 
+#include <gmock/gmock.h>
+#include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/hlo/testlib/filecheck.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/test.h"
 #include "xla/hlo/utils/hlo_query.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
+#include "xla/tsl/platform/errors.h"
 
 namespace xla {
 namespace {
@@ -57,8 +65,8 @@ ENTRY main {
       slice_sizes={3, 1}
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_text));
 
   absl::Status status = GatherExpander{GatherExpander::kEliminateAllGathers}
                             .Run(module.get())
@@ -86,9 +94,9 @@ ENTRY main {
       slice_sizes={3, 1}
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_text));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(
       bool changed,
       GatherExpander{GatherExpander::kEliminateAllGathers}.Run(module.get()));
   ASSERT_TRUE(changed);
@@ -146,12 +154,12 @@ ENTRY main {
       slice_sizes={3, 1}
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_text));
   OpMetadata metadata;
   metadata.set_op_name("Gather");
   module->entry_computation()->root_instruction()->set_metadata(metadata);
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       bool changed,
       GatherExpander{GatherExpander::kEliminateAllGathers}.Run(module.get()));
   ASSERT_TRUE(changed);
@@ -188,10 +196,10 @@ ENTRY main {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_text));
   GatherExpander pass(GatherExpander::kEliminateSimpleGathers);
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHloPass(&pass, module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, RunHloPass(&pass, module.get()));
   ASSERT_FALSE(changed);
 }
 
@@ -211,10 +219,10 @@ ENTRY main {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_text));
   GatherExpander pass(GatherExpander::kEliminateAllGathers);
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHloPass(&pass, module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, RunHloPass(&pass, module.get()));
   ASSERT_TRUE(changed);
   ASSERT_FALSE(hlo_query::ContainsInstrWithOpcode(module->entry_computation(),
                                                   {HloOpcode::kGather}));
@@ -236,9 +244,9 @@ ENTRY main {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
   GatherExpander pass(GatherExpander::kEliminateSimpleGathers);
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHloPass(&pass, module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, RunHloPass(&pass, module.get()));
   ASSERT_TRUE(changed);
   ASSERT_FALSE(hlo_query::ContainsInstrWithOpcode(module->entry_computation(),
                                                   {HloOpcode::kGather}));
@@ -265,9 +273,9 @@ ENTRY main {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
   GatherExpander pass(GatherExpander::kEliminateSimpleGathers);
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHloPass(&pass, module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, RunHloPass(&pass, module.get()));
   ASSERT_TRUE(changed);
   ASSERT_FALSE(hlo_query::ContainsInstrWithOpcode(module->entry_computation(),
                                                   {HloOpcode::kGather}));
@@ -336,9 +344,9 @@ ENTRY main {
   //CHECK: ROOT %{{.*}} = (s32[], s32[5,2], s64[5,1], s32[5,1]) tuple(%[[I_PLUS_1]], %[[OPERAND]], %[[START_INDICES]], %[[UPDATED_RESULT]])
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_text));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(
       bool changed,
       GatherExpander{GatherExpander::kEliminateAllGathers}.Run(module.get()));
   ASSERT_TRUE(changed);
@@ -402,9 +410,9 @@ ENTRY main {
   //CHECK: %{{.*}} = s32[1,3,1,1] dynamic-slice(%[[OPERAND]], %[[OPERAND_INDEX_D0]], %[[OPERAND_INDEX_D1]], %[[OPERAND_INDEX_D2]], %[[OPERAND_INDEX_D3]])
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_text));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(
       bool changed,
       GatherExpander{GatherExpander::kEliminateAllGathers}.Run(module.get()));
   ASSERT_TRUE(changed);

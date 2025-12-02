@@ -29,7 +29,6 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/xla_data.pb.h"
 
@@ -62,8 +61,8 @@ ENTRY entry {
   ROOT result = f32[10] add(param0, param0)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
   // Set up the initial state: flattened params, aliased output
   ProgramShape program_shape = GetProgramShape(*module);
   HloInputOutputAliasConfig alias_config = GetAliasConfig(*module);
@@ -100,8 +99,8 @@ ENTRY entry {
   ROOT result = (f32[10], s32[5]) tuple(add0, add1)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
   ProgramShape program_shape = GetProgramShape(*module);
   HloInputOutputAliasConfig alias_config = GetAliasConfig(*module);
   // Alias output leaves to corresponding input leaves
@@ -159,8 +158,8 @@ ENTRY entry {
   ROOT result = (f32[10], s32[5]) tuple(add0, add1)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
   ProgramShape program_shape = GetProgramShape(*module);
   HloInputOutputAliasConfig alias_config = GetAliasConfig(*module);
   // Alias only the first output leaf
@@ -214,8 +213,8 @@ ENTRY entry {
   ROOT result = (f32[10], s32[5], u32[2]) tuple(add0, add1_0, add1_1)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
   ProgramShape program_shape = GetProgramShape(*module);
   HloInputOutputAliasConfig alias_config = GetAliasConfig(*module);
   // Alias all outputs to corresponding inputs/input elements

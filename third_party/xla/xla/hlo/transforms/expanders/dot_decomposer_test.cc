@@ -27,7 +27,6 @@ limitations under the License.
 #include "xla/hlo/testlib/pattern_matcher_gmock.h"
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/service/pattern_matcher.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -48,10 +47,9 @@ TEST_F(DotDecomposerTest, CanonicalizeMultipleNonContractingDims) {
                                                   rhs_contracting_dims={0}
   })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(module_string));
-  TF_ASSERT_OK_AND_ASSIGN(bool canonicalized,
-                          DotDecomposer().Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(module_string));
+  ASSERT_OK_AND_ASSIGN(bool canonicalized, DotDecomposer().Run(module.get()));
   EXPECT_TRUE(canonicalized);
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               op::Reshape(AllOf(op::Dot(op::Reshape(), op::Reshape(),
@@ -72,10 +70,9 @@ TEST_F(DotDecomposerTest,
                                               rhs_contracting_dims={1}
   })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(module_string));
-  TF_ASSERT_OK_AND_ASSIGN(bool canonicalized,
-                          DotDecomposer().Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(module_string));
+  ASSERT_OK_AND_ASSIGN(bool canonicalized, DotDecomposer().Run(module.get()));
   EXPECT_FALSE(canonicalized) << module->ToString();
 }
 
@@ -95,10 +92,9 @@ TEST_F(DotDecomposerTest, TransposeContractingDimsUponCanonicalization) {
                                                    rhs_contracting_dims={1}
   })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(module_string));
-  TF_ASSERT_OK_AND_ASSIGN(bool canonicalized,
-                          DotDecomposer().Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(module_string));
+  ASSERT_OK_AND_ASSIGN(bool canonicalized, DotDecomposer().Run(module.get()));
   EXPECT_TRUE(canonicalized) << module->ToString();
   const HloInstruction* dot = nullptr;
   const HloInstruction* lhs_transpose = nullptr;
@@ -130,10 +126,9 @@ TEST_F(DotDecomposerTest, DontCanonicalizeIfNoNoncontractingDims) {
                                        rhs_contracting_dims={1}
   })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(module_string));
-  TF_ASSERT_OK_AND_ASSIGN(bool canonicalized,
-                          DotDecomposer().Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(module_string));
+  ASSERT_OK_AND_ASSIGN(bool canonicalized, DotDecomposer().Run(module.get()));
   EXPECT_FALSE(canonicalized);
 }
 
@@ -150,10 +145,9 @@ TEST_F(DotDecomposerTest, DontAddLhsNonContractingDimIfOne) {
                                                rhs_contracting_dims={1}
   })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(module_string));
-  TF_ASSERT_OK_AND_ASSIGN(bool canonicalized,
-                          DotDecomposer().Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(module_string));
+  ASSERT_OK_AND_ASSIGN(bool canonicalized, DotDecomposer().Run(module.get()));
   EXPECT_TRUE(canonicalized);
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               op::Reshape(AllOf(op::Dot(op::Reshape(), op::Reshape(),
@@ -175,10 +169,9 @@ TEST_F(DotDecomposerTest, DontAddRhsNonContractingDimIfOne) {
                                                rhs_contracting_dims={1}
   })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(module_string));
-  TF_ASSERT_OK_AND_ASSIGN(bool canonicalized,
-                          DotDecomposer().Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(module_string));
+  ASSERT_OK_AND_ASSIGN(bool canonicalized, DotDecomposer().Run(module.get()));
   EXPECT_TRUE(canonicalized);
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               op::Reshape(AllOf(op::Dot(op::Reshape(), op::Reshape(),
@@ -200,10 +193,9 @@ TEST_F(DotDecomposerTest, AddLhsNonContractingDimIfZero) {
                                                rhs_contracting_dims={1}
   })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(module_string));
-  TF_ASSERT_OK_AND_ASSIGN(bool canonicalized,
-                          DotDecomposer().Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(module_string));
+  ASSERT_OK_AND_ASSIGN(bool canonicalized, DotDecomposer().Run(module.get()));
   EXPECT_TRUE(canonicalized);
 
   EXPECT_THAT(module->entry_computation()->root_instruction(),
@@ -226,10 +218,9 @@ TEST_F(DotDecomposerTest, AddRhsNonContractingDimIfZero) {
                                                  rhs_contracting_dims={1}
   })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(module_string));
-  TF_ASSERT_OK_AND_ASSIGN(bool canonicalized,
-                          DotDecomposer().Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(module_string));
+  ASSERT_OK_AND_ASSIGN(bool canonicalized, DotDecomposer().Run(module.get()));
   EXPECT_TRUE(canonicalized);
 
   EXPECT_THAT(module->entry_computation()->root_instruction(),
@@ -250,10 +241,9 @@ TEST_F(DotDecomposerTest, CanonicalizeBatchDims) {
                                              rhs_contracting_dims={1}
   })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(module_string));
-  TF_ASSERT_OK_AND_ASSIGN(bool canonicalized,
-                          DotDecomposer().Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(module_string));
+  ASSERT_OK_AND_ASSIGN(bool canonicalized, DotDecomposer().Run(module.get()));
   EXPECT_TRUE(canonicalized);
 
   EXPECT_THAT(module->entry_computation()->root_instruction(),

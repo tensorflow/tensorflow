@@ -19,6 +19,7 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status_matchers.h"
 #include "absl/strings/string_view.h"
@@ -27,7 +28,6 @@ limitations under the License.
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/test.h"
 #include "xla/shape.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -47,8 +47,8 @@ ENTRY AddDotsFunc {
 }
 
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_text));
   auto dot = module->entry_computation()->root_instruction();
   EXPECT_THAT(CanFoldTransposeOperandIntoDot(*dot, 0),
               absl_testing::IsOkAndHolds(true));
@@ -66,8 +66,8 @@ ENTRY AddDotsFunc {
 }
 
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_text));
   auto dot = module->entry_computation()->root_instruction();
   EXPECT_THAT(CanFoldTransposeOperandIntoDot(*dot, 0),
               absl_testing::IsOkAndHolds(true));
@@ -85,8 +85,8 @@ ENTRY AddDotsFunc {
 }
 
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_text));
   auto dot = module->entry_computation()->root_instruction();
   EXPECT_THAT(CanFoldTransposeOperandIntoDot(*dot, 0),
               absl_testing::IsOkAndHolds(true));
@@ -105,8 +105,8 @@ ENTRY AddDotsFunc {
 }
 
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_text));
   auto dot = module->entry_computation()->root_instruction();
   EXPECT_THAT(CanFoldTransposeOperandIntoDot(*dot, 0),
               absl_testing::IsOkAndHolds(false));
@@ -125,8 +125,8 @@ ENTRY AddDotsFunc {
 }
 
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_text));
   auto dot = module->entry_computation()->root_instruction();
   EXPECT_THAT(CanFoldTransposeOperandIntoDot(*dot, 1),
               absl_testing::IsOkAndHolds(false));
@@ -240,8 +240,8 @@ ENTRY DotFunc {
 }
 
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_text));
   auto dot = module->entry_computation()->root_instruction();
   EXPECT_THAT(IsMatrixMultiplicationTooSmallForRewriting(*dot, 100),
               absl_testing::IsOkAndHolds(true));
@@ -258,8 +258,8 @@ ENTRY DotFunc {
 }
 
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_text));
   auto dot = module->entry_computation()->root_instruction();
   EXPECT_TRUE(IsDotSupportedByClassicalEmitters(*dot));
 }
@@ -276,8 +276,8 @@ ENTRY DotFunc {
 }
 
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_text));
   auto dot = module->entry_computation()->root_instruction();
   EXPECT_FALSE(IsDotSupportedByClassicalEmitters(*dot));
 }
@@ -293,8 +293,8 @@ ENTRY DotFunc {
 }
 
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_text));
   auto dot = module->entry_computation()->root_instruction();
   EXPECT_THAT(IsMatrixMultiplicationTooSmallForRewriting(*dot, 100),
               absl_testing::IsOkAndHolds(false));
@@ -311,8 +311,8 @@ ENTRY DotFunc {
 }
 
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_text));
   auto dot = module->entry_computation()->root_instruction();
   EXPECT_THAT(IsMatrixMultiplicationTooSmallForRewriting(*dot, 100),
               absl_testing::IsOkAndHolds(false));
@@ -329,8 +329,8 @@ ENTRY DotFunc {
 }
 
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_text));
   auto dot = module->entry_computation()->root_instruction();
   EXPECT_THAT(IsMatrixMultiplicationTooSmallForRewriting(*dot, 100),
               absl_testing::IsOkAndHolds(false));

@@ -26,7 +26,6 @@ limitations under the License.
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_device_dimensions.h"
 #include "xla/pjrt/plugin/xla_cpu/cpu_topology.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -39,8 +38,7 @@ TEST(CpuTopologyDescriptionTest, ToProto) {
   CpuTopologyDescription topology(xla::CpuId(), "cpu", "1.0", cpu_devices,
                                   machine_attributes);
 
-  TF_ASSERT_OK_AND_ASSIGN(PjRtTopologyDescriptionProto proto,
-                          topology.ToProto());
+  ASSERT_OK_AND_ASSIGN(PjRtTopologyDescriptionProto proto, topology.ToProto());
 
   EXPECT_EQ(proto.platform_id(), xla::CpuId());
   EXPECT_EQ(proto.platform_name(), "cpu");
@@ -80,9 +78,8 @@ TEST(CpuTopologyDescriptionTest, FromProto) {
 
   proto.mutable_platform_specific_topology()->PackFrom(cpu_topology_proto);
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<PjRtTopologyDescription> topology_desc,
-      CpuTopologyDescription::FromProto(proto));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtTopologyDescription> topology_desc,
+                       CpuTopologyDescription::FromProto(proto));
 
   CpuTopologyDescription* cpu_topology =
       dynamic_cast<CpuTopologyDescription*>(topology_desc.get());
@@ -109,7 +106,7 @@ TEST(CpuTopologyDescriptionTest,
   std::vector<std::string> machine_attributes = {"attr1", "attr2"};
   CpuTopologyDescription topology(xla::CpuId(), "cpu", "1.0", cpu_devices,
                                   machine_attributes);
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto device_core,
       topology.ChipCoordAndCoreIndexForLogicalDeviceOfDefaultType(
           xla::PjRtGlobalDeviceId(1)));

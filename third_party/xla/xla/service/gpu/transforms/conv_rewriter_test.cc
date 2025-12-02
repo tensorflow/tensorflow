@@ -18,6 +18,7 @@ limitations under the License.
 #include <optional>
 #include <string>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/log/check.h"
 #include "absl/status/status.h"
@@ -39,8 +40,8 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/rocm/rocm_compute_capability.h"
 #include "xla/tests/hlo_test_base.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
 #include "xla/xla_data.pb.h"
 
@@ -654,7 +655,7 @@ TEST_F(ConvRewriterTest, BackwardInputConvolveConstantFilter) {
           dim_labels=bf01_01oi->bf01, feature_group_count=1
     })",
                                                  constant_str);
-  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
 
   EXPECT_TRUE(RunPass(m.get()));
   EXPECT_THAT(m->entry_computation()->root_instruction(),
@@ -676,7 +677,7 @@ TEST_F(ConvRewriterTest, TestBackwardFilterPatternMatch) {
 
       ROOT conv = f32[120,120,3,3] convolution(input, filter), window={size=256x256 pad=1_1x1_1}, dim_labels=fb01_io01->fb01
     })");
-  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
 
   EXPECT_TRUE(RunPass(m.get()));
   EXPECT_THAT(m->entry_computation()->root_instruction(),
@@ -698,7 +699,7 @@ TEST_F(ConvRewriterTest, TestBackwardFilterPatternNoMatch) {
 
       ROOT conv = f32[8,128,2,32] convolution(input, filter), window={size=3x3 pad=1_1x1_1}, dim_labels=bf01_01io->bf01
     })");
-  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
 
   EXPECT_TRUE(RunPass(m.get()));
   EXPECT_THAT(m->entry_computation()->root_instruction(),
@@ -721,7 +722,7 @@ TEST_F(ConvRewriterTest, TestConv1dBackwardFilterPatternMatch) {
       reshape.2 = f32[8,1,254,128] reshape(filter)
       ROOT conv = f32[1,3,128,128] convolution(reshape.1, reshape.2), window={size=1x254}, dim_labels=f01b_i01o->01bf
     })");
-  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
 
   EXPECT_TRUE(RunPass(m.get()));
   EXPECT_THAT(m->entry_computation()->root_instruction(),
@@ -744,7 +745,7 @@ TEST_F(ConvRewriterTest, TestConv1dBackwardInputPatternMatch) {
       reshape.2 = f32[1,3,128,128] reshape(reverse)
       ROOT conv = f32[8,1,256,128] convolution(reshape.1, reshape.2), window={size=1x3 pad=0_0x2_2}, dim_labels=b01f_01oi->b01f
     })");
-  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
 
   EXPECT_TRUE(RunPass(m.get()));
   EXPECT_THAT(m->entry_computation()->root_instruction(),
@@ -765,7 +766,7 @@ TEST_F(ConvRewriterTest, ForwardConvolutionWithWindowDilation) {
       filter = f32[3,3,128,128] parameter(1)
       ROOT conv = f32[8,128,32,32] convolution(input, filter), window={size=3x3 pad=2_2x2_2 rhs_dilate=2x2}, dim_labels=bf01_01io->bf01
     })");
-  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
 
   EXPECT_TRUE(RunPass(m.get()));
   EXPECT_THAT(m->entry_computation()->root_instruction(),
@@ -789,8 +790,8 @@ TEST_F(ConvRewriterTest, TestInvalidTypes) {
   for (absl::string_view type : {"c64", "c128"}) {
     const std::string module_with_type =
         absl::StrReplaceAll(module_str, {{"TYPE", type}});
-    TF_ASSERT_OK_AND_ASSIGN(auto m,
-                            ParseAndReturnVerifiedModule(module_with_type));
+    ASSERT_OK_AND_ASSIGN(auto m,
+                         ParseAndReturnVerifiedModule(module_with_type));
 
     absl::Status s = ConvRewriter(GetComputeCapability()).Run(m.get()).status();
     EXPECT_THAT(
@@ -803,8 +804,7 @@ TEST_F(ConvRewriterTest, TestInvalidTypes) {
   // Test FP8 type on unsupported GPUs
   std::string module_with_type =
       absl::StrReplaceAll(module_str, {{"TYPE", "f8e4m3fn"}});
-  TF_ASSERT_OK_AND_ASSIGN(auto m,
-                          ParseAndReturnVerifiedModule(module_with_type));
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_with_type));
   absl::Status s =
       ConvRewriter(se::CudaComputeCapability::Ampere()).Run(m.get()).status();
   EXPECT_THAT(s, absl_testing::StatusIs(
@@ -823,7 +823,7 @@ TEST_F(ConvRewriterTest, TestInvalidTypes) {
 
   // Test unsupported FP8 type
   module_with_type = absl::StrReplaceAll(module_str, {{"TYPE", "f8e4m3fnuz"}});
-  TF_ASSERT_OK_AND_ASSIGN(m, ParseAndReturnVerifiedModule(module_with_type));
+  ASSERT_OK_AND_ASSIGN(m, ParseAndReturnVerifiedModule(module_with_type));
   s = ConvRewriter(GetComputeCapability()).Run(m.get()).status();
   EXPECT_THAT(s,
               absl_testing::StatusIs(

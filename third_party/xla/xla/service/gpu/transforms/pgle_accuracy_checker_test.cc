@@ -30,9 +30,7 @@ limitations under the License.
 #include "xla/service/gpu/gpu_latency_hiding_scheduler.h"
 #include "xla/service/latency_hiding_scheduler.h"
 #include "xla/service/profile_guided_latency_estimator.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/xla.pb.h"
-#include "tsl/platform/protobuf.h"
 #include "tsl/profiler/protobuf/profiled_instructions.pb.h"
 
 namespace xla::gpu {
@@ -95,14 +93,13 @@ TEST_F(PGLEAccuracyCheckerTest,
   ProfiledInstructionsProto profile;
   ASSERT_TRUE(TextFormat::ParseFromString(kProfileString, &profile));
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kHloString));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloString));
   module->mutable_config().set_fdo_profile(kProfileString);
 
   auto pgle_estimator = GetProfileGuidedLatencyEstimator(profile);
   PGLEAccuracyChecker pgle_accuracy_checker(*pgle_estimator);
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          pgle_accuracy_checker.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, pgle_accuracy_checker.Run(module.get()));
   EXPECT_FALSE(changed);
 }
 
@@ -147,8 +144,8 @@ TEST_F(PGLEAccuracyCheckerTest,
   ProfiledInstructionsProto profile;
   ASSERT_TRUE(TextFormat::ParseFromString(kProfileString, &profile));
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kHloString));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloString));
   module->mutable_config().set_fdo_profile(kProfileString);
   module->mutable_config()
       .mutable_debug_options()

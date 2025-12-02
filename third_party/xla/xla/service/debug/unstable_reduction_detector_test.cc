@@ -23,7 +23,6 @@ limitations under the License.
 #include "absl/status/status_matchers.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/parser/hlo_parser.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/xla.pb.h"
 
 namespace xla {
@@ -85,7 +84,7 @@ using ::testing::_;
 using ::testing::HasSubstr;
 
 TEST(UnstableReductionDetectorTest, FailOnUnstableReductions) {
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto module, ParseAndReturnUnverifiedModule(kUnstableReductionHloModule));
   module->mutable_config()
       .mutable_debug_options()
@@ -112,7 +111,7 @@ TEST(UnstableReductionDetectorTest, FailOnUnstableReductions) {
 }
 
 TEST(UnstableReductionDetectorTest, WarningOnUnstableReduction) {
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto module, ParseAndReturnUnverifiedModule(kUnstableReductionHloModule));
   module->mutable_config()
       .mutable_debug_options()
@@ -132,9 +131,8 @@ TEST(UnstableReductionDetectorTest, WarningOnUnstableReduction) {
 }
 
 TEST(UnstableReductionDetectorTest, FailOnUnstableReductionNoMetadata) {
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto module,
-      ParseAndReturnUnverifiedModule(kUnstableReductionNoMetadataHloModule));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(
+                                        kUnstableReductionNoMetadataHloModule));
   module->mutable_config()
       .mutable_debug_options()
       .set_xla_detect_unstable_reductions(DebugOptions::DETECTION_MODE_FAIL);
@@ -152,7 +150,7 @@ TEST(UnstableReductionDetectorTest, FailOnUnstableReductionNoMetadata) {
 }
 
 TEST(UnstableReductionDetectorTest, DoNothingOnUnstableReduction) {
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto module, ParseAndReturnUnverifiedModule(kUnstableReductionHloModule));
   module->mutable_config()
       .mutable_debug_options()
@@ -166,8 +164,8 @@ TEST(UnstableReductionDetectorTest, DoNothingOnUnstableReduction) {
 }
 
 TEST(UnstableReductionDetectorTest, NoOpUnstableReduction) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(
-                                           kNoOpUnstableReductionHloModule));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(
+                                        kNoOpUnstableReductionHloModule));
   module->mutable_config()
       .mutable_debug_options()
       .set_xla_detect_unstable_reductions(DebugOptions::DETECTION_MODE_WARNING);

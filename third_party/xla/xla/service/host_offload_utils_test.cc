@@ -17,11 +17,11 @@ limitations under the License.
 
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/shape_util.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 
 namespace xla {
@@ -46,17 +46,15 @@ TEST_F(HostOffloadUtilsTest, SimpleGetSuccessorsGetPredecessorsTest) {
     }
   )hlo";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   HloInstruction* data_param = FindInstruction(module.get(), "data_param");
   ASSERT_NE(data_param, nullptr);
   HloInstruction* offload_custom_call =
       FindInstruction(module.get(), "offload_custom_call");
   ASSERT_NE(offload_custom_call, nullptr);
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::vector<InstructionAndShapeIndex> succ,
-      GetSuccessors(InstructionAndShapeIndex(data_param, {})));
+  ASSERT_OK_AND_ASSIGN(std::vector<InstructionAndShapeIndex> succ,
+                       GetSuccessors(InstructionAndShapeIndex(data_param, {})));
   std::vector<InstructionAndShapeIndex> expected_succ = {
       InstructionAndShapeIndex(offload_custom_call, {})};
   EXPECT_EQ(succ, expected_succ);
@@ -87,8 +85,7 @@ TEST_F(HostOffloadUtilsTest, ComputationGetSuccessorsGetPredecessorsTest) {
     }
   )hlo";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   HloInstruction* call = FindInstruction(module.get(), "call");
   ASSERT_NE(call, nullptr);
   HloInstruction* gte_0 = FindInstruction(module.get(), "gte_0");
@@ -96,8 +93,8 @@ TEST_F(HostOffloadUtilsTest, ComputationGetSuccessorsGetPredecessorsTest) {
   HloInstruction* tuple = FindInstruction(module.get(), "tuple");
   ASSERT_NE(tuple, nullptr);
 
-  TF_ASSERT_OK_AND_ASSIGN(std::vector<InstructionAndShapeIndex> succ,
-                          GetSuccessors(InstructionAndShapeIndex(call, {0})));
+  ASSERT_OK_AND_ASSIGN(std::vector<InstructionAndShapeIndex> succ,
+                       GetSuccessors(InstructionAndShapeIndex(call, {0})));
   std::vector<InstructionAndShapeIndex> expected_succ = {
       InstructionAndShapeIndex(gte_0, {})};
   EXPECT_EQ(succ, expected_succ);
@@ -123,8 +120,7 @@ TEST_F(HostOffloadUtilsTest, IsMoveToHostWithDynamicUpdateSliceTest) {
       ROOT result = f32[2,2048,2048] copy(dynamic_update_slice)
     }
   )hlo";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   HloInstruction* instr = FindInstruction(module.get(), "custom_call");
   ASSERT_NE(instr, nullptr);
   EXPECT_TRUE(IsMoveToHostWithDynamicUpdateSlice(instr));
@@ -139,8 +135,7 @@ TEST_F(HostOffloadUtilsTest, IsMoveToHostNotWithDynamicUpdateSliceTest) {
       ROOT result = f32[1,2048,2048] copy(custom_call)
     }
   )hlo";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   HloInstruction* instr = FindInstruction(module.get(), "custom_call");
   ASSERT_NE(instr, nullptr);
   EXPECT_FALSE(IsMoveToHostWithDynamicUpdateSlice(instr));
@@ -157,8 +152,7 @@ TEST_F(HostOffloadUtilsTest, IsMoveToDeviceWithDynamicSliceTest) {
       ROOT custom_call = f32[1,2048,2048] custom-call(dynamic_slice), custom_call_target="MoveToDevice"
     }
   )hlo";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   HloInstruction* instr = FindInstruction(module.get(), "custom_call");
   ASSERT_NE(instr, nullptr);
   EXPECT_TRUE(IsMoveToDeviceWithDynamicSlice(instr));
@@ -172,8 +166,7 @@ TEST_F(HostOffloadUtilsTest, IsMoveToDeviceNotWithDynamicSliceTest) {
       ROOT custom_call = f32[1,2048,2048] custom-call(data_param), custom_call_target="MoveToDevice"
     }
   )hlo";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   HloInstruction* instr = FindInstruction(module.get(), "custom_call");
   ASSERT_NE(instr, nullptr);
   EXPECT_FALSE(IsMoveToDeviceWithDynamicSlice(instr));
@@ -195,8 +188,7 @@ TEST_F(HostOffloadUtilsTest,
       ROOT result = f32[2,2048,2048] copy(dynamic_update_slice)
     }
   )hlo";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   HloInstruction* instr = FindInstruction(module.get(), "custom_call");
   ASSERT_NE(instr, nullptr);
   EXPECT_TRUE(IsMoveToHostWithDynamicUpdateSlice(instr));
@@ -214,8 +206,7 @@ TEST_F(HostOffloadUtilsTest, IsMoveToDeviceWithDynamicSliceThroughReshapeTest) {
       ROOT custom_call = f32[2048,2048] custom-call(reshape), custom_call_target="MoveToDevice"
     }
   )hlo";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   HloInstruction* instr = FindInstruction(module.get(), "custom_call");
   ASSERT_NE(instr, nullptr);
   EXPECT_TRUE(IsMoveToDeviceWithDynamicSlice(instr));

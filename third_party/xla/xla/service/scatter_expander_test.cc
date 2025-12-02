@@ -17,20 +17,17 @@ limitations under the License.
 
 #include <memory>
 #include <string>
-#include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
+#include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/hlo/testlib/filecheck.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/test.h"
-#include "xla/hlo/utils/hlo_matchers.h"
-#include "xla/literal.h"
-#include "xla/shape_util.h"
-#include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/types.h"
 
 namespace xla {
 namespace {
@@ -64,13 +61,12 @@ TEST_F(ScatterExpanderTest, ScatterOperandWithoutLayout) {
         to_apply=scatter_computation
     })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kModuleStr));
 
   ClearInstructionLayout(module.get(), "operand");
   ScatterExpander scatter_expander(ScatterExpander::kEliminateAllScatters);
-  TF_ASSERT_OK_AND_ASSIGN(bool result,
-                          RunHloPass(&scatter_expander, module.get()));
+  ASSERT_OK_AND_ASSIGN(bool result,
+                       RunHloPass(&scatter_expander, module.get()));
   EXPECT_TRUE(result);
 }
 
@@ -98,15 +94,14 @@ TEST_F(ScatterExpanderTest, ScatterMultipleOperandsWithoutLayout) {
         to_apply=scatter_computation
     })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kModuleStr));
 
   ClearInstructionLayout(module.get(), "operand0");
   ClearInstructionLayout(module.get(), "operand1");
 
   ScatterExpander scatter_expander(ScatterExpander::kEliminateAllScatters);
-  TF_ASSERT_OK_AND_ASSIGN(bool result,
-                          RunHloPass(&scatter_expander, module.get()));
+  ASSERT_OK_AND_ASSIGN(bool result,
+                       RunHloPass(&scatter_expander, module.get()));
   EXPECT_TRUE(result);
 }
 
@@ -131,14 +126,13 @@ TEST_F(ScatterExpanderTest, EliminateSimpleScattersSkipsNontrivialScatter) {
           index_vector_dim=1
     })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kModuleStr));
 
   ClearInstructionLayout(module.get(), "operand");
 
   ScatterExpander scatter_expander(ScatterExpander::kEliminateSimpleScatters);
-  TF_ASSERT_OK_AND_ASSIGN(bool result,
-                          RunHloPass(&scatter_expander, module.get()));
+  ASSERT_OK_AND_ASSIGN(bool result,
+                       RunHloPass(&scatter_expander, module.get()));
   EXPECT_FALSE(result);
 }
 
@@ -205,11 +199,11 @@ HloModule TensorFlowScatter
   //CHECK: %{{.*}} = s32[1,1,2,1] dynamic-slice(%[[OPERAND]], %[[OPERAND_INDEX_D0]], %[[OPERAND_INDEX_D1]], %[[OPERAND_INDEX_D2]], %[[OPERAND_INDEX_D3]])
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kModuleStr));
   ScatterExpander scatter_expander(ScatterExpander::kEliminateAllScatters);
-  TF_ASSERT_OK_AND_ASSIGN(bool result,
-                          RunHloPass(&scatter_expander, module.get()));
+  ASSERT_OK_AND_ASSIGN(bool result,
+                       RunHloPass(&scatter_expander, module.get()));
   EXPECT_TRUE(result);
 
   std::vector<HloInstruction*> while_instructions =
@@ -249,15 +243,14 @@ TEST_F(ScatterExpanderTest,
           index_vector_dim=1
     })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kModuleStr));
 
   ClearInstructionLayout(module.get(), "operand0");
   ClearInstructionLayout(module.get(), "operand1");
 
   ScatterExpander scatter_expander(ScatterExpander::kEliminateSimpleScatters);
-  TF_ASSERT_OK_AND_ASSIGN(bool result,
-                          RunHloPass(&scatter_expander, module.get()));
+  ASSERT_OK_AND_ASSIGN(bool result,
+                       RunHloPass(&scatter_expander, module.get()));
   EXPECT_FALSE(result);
 }
 
@@ -280,14 +273,13 @@ TEST_F(ScatterExpanderTest, EliminateSimpleScattersRewritesTrivialScatter) {
         to_apply=scatter_computation
     })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kModuleStr));
 
   ClearInstructionLayout(module.get(), "operand");
 
   ScatterExpander scatter_expander(ScatterExpander::kEliminateSimpleScatters);
-  TF_ASSERT_OK_AND_ASSIGN(bool result,
-                          RunHloPass(&scatter_expander, module.get()));
+  ASSERT_OK_AND_ASSIGN(bool result,
+                       RunHloPass(&scatter_expander, module.get()));
   EXPECT_TRUE(result);
 }
 
@@ -316,15 +308,14 @@ TEST_F(ScatterExpanderTest,
         to_apply=scatter_computation
     })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kModuleStr));
 
   ClearInstructionLayout(module.get(), "operand0");
   ClearInstructionLayout(module.get(), "operand1");
 
   ScatterExpander scatter_expander(ScatterExpander::kEliminateSimpleScatters);
-  TF_ASSERT_OK_AND_ASSIGN(bool result,
-                          RunHloPass(&scatter_expander, module.get()));
+  ASSERT_OK_AND_ASSIGN(bool result,
+                       RunHloPass(&scatter_expander, module.get()));
   EXPECT_TRUE(result);
 }
 
@@ -348,13 +339,12 @@ TEST_F(ScatterExpanderTest, DoNotEliminateScatterWithAssociativeCombiner) {
         to_apply=scatter_computation
     })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kModuleStr));
 
   ScatterExpander scatter_expander(
       ScatterExpander::kEliminateIndeterministicScatters);
-  TF_ASSERT_OK_AND_ASSIGN(bool result,
-                          RunHloPass(&scatter_expander, module.get()));
+  ASSERT_OK_AND_ASSIGN(bool result,
+                       RunHloPass(&scatter_expander, module.get()));
   EXPECT_FALSE(result);
 }
 
@@ -378,13 +368,12 @@ TEST_F(ScatterExpanderTest, EliminateScatterWithNonAssociativeCombiner) {
         to_apply=scatter_computation
     })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kModuleStr));
 
   ScatterExpander scatter_expander(
       ScatterExpander::kEliminateIndeterministicScatters);
-  TF_ASSERT_OK_AND_ASSIGN(bool result,
-                          RunHloPass(&scatter_expander, module.get()));
+  ASSERT_OK_AND_ASSIGN(bool result,
+                       RunHloPass(&scatter_expander, module.get()));
   EXPECT_TRUE(result);
 }
 
@@ -408,13 +397,12 @@ TEST_F(ScatterExpanderTest, DoNotEliminateScatterWithAssociativeFp32Combiner) {
         to_apply=scatter_computation
     })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kModuleStr));
 
   ScatterExpander scatter_expander(
       ScatterExpander::kEliminateIndeterministicScatters);
-  TF_ASSERT_OK_AND_ASSIGN(bool result,
-                          RunHloPass(&scatter_expander, module.get()));
+  ASSERT_OK_AND_ASSIGN(bool result,
+                       RunHloPass(&scatter_expander, module.get()));
   EXPECT_FALSE(result);
 }
 

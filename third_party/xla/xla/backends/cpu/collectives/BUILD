@@ -76,14 +76,12 @@ xla_cc_test(
         ":cpu_clique_key",
         ":cpu_cliques",
         ":in_process_collectives",
-        "//xla:util",
         "//xla/core/collectives:rank_id",
         "//xla/runtime:device_id",
-        "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",
         "//xla/tsl/platform:test_main",
-        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 

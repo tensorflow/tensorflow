@@ -28,7 +28,6 @@ limitations under the License.
 #include "json/json.h"
 #include "xla/tools/benchmarks/proto/benchmark_config.pb.h"
 #include "xla/tsl/platform/env.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "tsl/platform/path.h"
 
@@ -184,8 +183,8 @@ benchmarks: [
 TEST_F(GenerateBenchmarkMatricesTest, LoadBenchmarkSuiteFromFileSuccess) {
   std::string filepath = CreateTempRegistryFile(CreateTestRegistryContentNew());
   ASSERT_FALSE(filepath.empty());
-  TF_ASSERT_OK_AND_ASSIGN(BenchmarkSuite suite,
-                          LoadBenchmarkSuiteFromFile(filepath));
+  ASSERT_OK_AND_ASSIGN(BenchmarkSuite suite,
+                       LoadBenchmarkSuiteFromFile(filepath));
 
   ASSERT_THAT(suite.benchmarks(), SizeIs(3));
   const auto& gemma_def = suite.benchmarks(0);
@@ -247,12 +246,11 @@ TEST_F(GenerateBenchmarkMatricesTest,
        BuildMatrix_Presubmit_GeneratesTwoEntriesForGemma) {
   std::string filepath = CreateTempRegistryFile(CreateTestRegistryContentNew());
   ASSERT_FALSE(filepath.empty());
-  TF_ASSERT_OK_AND_ASSIGN(BenchmarkSuite suite,
-                          LoadBenchmarkSuiteFromFile(filepath));
+  ASSERT_OK_AND_ASSIGN(BenchmarkSuite suite,
+                       LoadBenchmarkSuiteFromFile(filepath));
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      Json::Value matrix,
-      BuildGitHubActionsMatrix(suite, WorkflowType::PRESUBMIT));
+  ASSERT_OK_AND_ASSIGN(Json::Value matrix, BuildGitHubActionsMatrix(
+                                               suite, WorkflowType::PRESUBMIT));
   ASSERT_THAT(matrix, IsJsonArray());
 
   // Entry 0: gemma_test on GPU_L4 for PRESUBMIT
@@ -297,10 +295,10 @@ TEST_F(GenerateBenchmarkMatricesTest,
        BuildMatrix_Postsubmit_GeneratesOneEntryForFusion) {
   std::string filepath = CreateTempRegistryFile(CreateTestRegistryContentNew());
   ASSERT_FALSE(filepath.empty());
-  TF_ASSERT_OK_AND_ASSIGN(BenchmarkSuite suite,
-                          LoadBenchmarkSuiteFromFile(filepath));
+  ASSERT_OK_AND_ASSIGN(BenchmarkSuite suite,
+                       LoadBenchmarkSuiteFromFile(filepath));
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       Json::Value matrix,
       BuildGitHubActionsMatrix(suite, WorkflowType::POSTSUBMIT));
   ASSERT_THAT(matrix, IsJsonArray());
@@ -320,12 +318,11 @@ TEST_F(GenerateBenchmarkMatricesTest,
        BuildMatrix_Scheduled_GeneratesOneEntryForGemmaL4) {
   std::string filepath = CreateTempRegistryFile(CreateTestRegistryContentNew());
   ASSERT_FALSE(filepath.empty());
-  TF_ASSERT_OK_AND_ASSIGN(BenchmarkSuite suite,
-                          LoadBenchmarkSuiteFromFile(filepath));
+  ASSERT_OK_AND_ASSIGN(BenchmarkSuite suite,
+                       LoadBenchmarkSuiteFromFile(filepath));
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      Json::Value matrix,
-      BuildGitHubActionsMatrix(suite, WorkflowType::SCHEDULED));
+  ASSERT_OK_AND_ASSIGN(Json::Value matrix, BuildGitHubActionsMatrix(
+                                               suite, WorkflowType::SCHEDULED));
   ASSERT_THAT(matrix, IsJsonArray());
   // gemma_test/GPU_L4 is for SCHEDULED
   const auto& entry0 = matrix[0];

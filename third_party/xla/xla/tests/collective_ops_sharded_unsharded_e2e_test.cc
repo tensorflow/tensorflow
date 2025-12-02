@@ -20,6 +20,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include "absl/algorithm/container.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
@@ -63,12 +64,12 @@ class CollectiveOpsTestE2EShardedUnsharded : public CollectiveOpsE2ETestBase {
                    << " available)";
     }
 
-    TF_ASSERT_OK_AND_ASSIGN(ExecutionResult ref_execution_result,
-                            ExecuteUnsharded(hlo_text));
+    ASSERT_OK_AND_ASSIGN(ExecutionResult ref_execution_result,
+                         ExecuteUnsharded(hlo_text));
     const std::vector<Literal>& ref_results = ref_execution_result.results;
     ASSERT_EQ(ref_results.size(), 1);
 
-    TF_ASSERT_OK_AND_ASSIGN(
+    ASSERT_OK_AND_ASSIGN(
         ExecutionResult execution_result,
         ExecuteSharded(hlo_text, num_partitions, enable_enzyme_comms_opt));
     const std::vector<Literal>& results = execution_result.results;
@@ -196,8 +197,8 @@ class CollectiveOpsTestE2EShardedUnsharded : public CollectiveOpsE2ETestBase {
     opts.set_xla_gpu_enable_triton_gemm(false);
     config.set_debug_options(opts);
     config.set_num_partitions(num_partitions);
-    TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                            ParseAndReturnVerifiedModule(hlo_text, config));
+    ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                         ParseAndReturnVerifiedModule(hlo_text, config));
     auto dimensions =
         module->entry_computation()->root_instruction()->shape().dimensions();
     std::vector<int64_t> root_dims(dimensions.begin(), dimensions.end());

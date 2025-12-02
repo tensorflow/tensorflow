@@ -18,6 +18,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
 #include "absl/strings/str_cat.h"
@@ -25,7 +26,6 @@ limitations under the License.
 #include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/gpu/gpu_blas_lt.pb.h"
 #include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/xla_data.pb.h"
 
@@ -81,8 +81,7 @@ TEST(GemmConfigTest, ProtoConversion) {
   };
 
   xla::GemmConfigProto proto = original_config.ToProto();
-  TF_ASSERT_OK_AND_ASSIGN(auto round_tripped_config,
-                          GemmConfig::FromProto(proto));
+  ASSERT_OK_AND_ASSIGN(auto round_tripped_config, GemmConfig::FromProto(proto));
 
   ExpectGemmConfigEq(original_config, round_tripped_config);
 }
@@ -114,8 +113,7 @@ TEST(GemmConfigTest, ProtoConversionWithOptionals) {
   };
 
   xla::GemmConfigProto proto = original_config.ToProto();
-  TF_ASSERT_OK_AND_ASSIGN(auto round_tripped_config,
-                          GemmConfig::FromProto(proto));
+  ASSERT_OK_AND_ASSIGN(auto round_tripped_config, GemmConfig::FromProto(proto));
 
   ExpectGemmConfigEq(original_config, round_tripped_config);
 }

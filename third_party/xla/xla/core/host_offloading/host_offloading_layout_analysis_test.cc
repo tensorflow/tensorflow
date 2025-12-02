@@ -24,7 +24,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -40,8 +39,8 @@ ENTRY main {
   ROOT multiply = f32[8,128]{1,0} multiply(arg0, arg0)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnUnverifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(hlo_string));
   EXPECT_THAT(HostOffloadingLayoutAnalysis::NeedsLayoutConversion(module.get()),
               absl_testing::IsOkAndHolds(false));
 }
@@ -56,8 +55,8 @@ ENTRY dot {
   ROOT dot = f32[2]{0} dot(a, b), lhs_batch_dims={0}, lhs_contracting_dims={1}, rhs_batch_dims={1}, rhs_contracting_dims={0}
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnUnverifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(hlo_string));
   // Dot is not elementwise.
   EXPECT_THAT(HostOffloadingLayoutAnalysis::NeedsLayoutConversion(module.get()),
               absl_testing::IsOkAndHolds(true));
@@ -72,8 +71,8 @@ ENTRY main {
   ROOT tuple = (f32[8,128]{1,0}, f32[8,128]{1,0}) tuple(arg0, arg0)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnUnverifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(hlo_string));
   EXPECT_THAT(HostOffloadingLayoutAnalysis::NeedsLayoutConversion(module.get()),
               absl_testing::IsOkAndHolds(false));
 }
@@ -87,8 +86,8 @@ ENTRY main {
   ROOT broadcast = f32[8,128]{1,0} broadcast(constant), dimensions={}
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnUnverifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(hlo_string));
   EXPECT_THAT(HostOffloadingLayoutAnalysis::NeedsLayoutConversion(module.get()),
               absl_testing::IsOkAndHolds(false));
 }
@@ -102,8 +101,8 @@ ENTRY main {
   ROOT broadcast = f32[8,128]{0,1} broadcast(constant), dimensions={}
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnUnverifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(hlo_string));
   // Non-scalar broadcast in column major -- must use layout conversion.
   EXPECT_THAT(HostOffloadingLayoutAnalysis::NeedsLayoutConversion(module.get()),
               absl_testing::IsOkAndHolds(true));
@@ -123,8 +122,8 @@ ENTRY main {
   ROOT convert = f32[8,512,128]{2,1,0} convert(call)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnUnverifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(hlo_string));
   EXPECT_THAT(HostOffloadingLayoutAnalysis::NeedsLayoutConversion(module.get()),
               absl_testing::IsOkAndHolds(false));
 }
@@ -138,8 +137,8 @@ ENTRY main {
   ROOT multiply = s32[8,2]{0,1} multiply(arg0, arg0)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnUnverifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(hlo_string));
   // The tiling used here creates padding, which requires layout conversion.
   EXPECT_THAT(HostOffloadingLayoutAnalysis::NeedsLayoutConversion(module.get()),
               absl_testing::IsOkAndHolds(true));

@@ -18,6 +18,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include <gmock/gmock.h>
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -26,7 +27,6 @@ limitations under the License.
 #include "xla/service/hlo_module_util.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tests/literal_test_util.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 
 namespace xla {
@@ -41,7 +41,7 @@ TEST_F(TokenHloTest, SingleTokenInstruction) {
 
   module->AddEntryComputation(builder.Build());
 
-  TF_ASSERT_OK_AND_ASSIGN(Literal result, Execute(std::move(module), {}));
+  ASSERT_OK_AND_ASSIGN(Literal result, Execute(std::move(module), {}));
   EXPECT_TRUE(LiteralTestUtil::Equal(result, LiteralUtil::CreateToken()));
 }
 
@@ -53,7 +53,7 @@ TEST_F(TokenHloTest, TokenInTuple) {
 
   module->AddEntryComputation(builder.Build());
 
-  TF_ASSERT_OK_AND_ASSIGN(Literal result, Execute(std::move(module), {}));
+  ASSERT_OK_AND_ASSIGN(Literal result, Execute(std::move(module), {}));
   Literal token_literal = LiteralUtil::CreateToken();
   EXPECT_TRUE(
       LiteralTestUtil::Equal(result, LiteralUtil::MakeTuple({&token_literal})));
@@ -70,7 +70,7 @@ TEST_F(TokenHloTest, TokenTree) {
 
   module->AddEntryComputation(builder.Build());
 
-  TF_ASSERT_OK_AND_ASSIGN(Literal result, Execute(std::move(module), {}));
+  ASSERT_OK_AND_ASSIGN(Literal result, Execute(std::move(module), {}));
   EXPECT_TRUE(LiteralTestUtil::Equal(result, LiteralUtil::CreateToken()));
 }
 
@@ -109,8 +109,8 @@ ENTRY %TokenInWhileLoop () -> s32[] {
   DebugOptions debug_options = GetDebugOptionsForTest();
   // Module DCE pass removes the generate token instructions.
   debug_options.add_xla_disable_hlo_passes("hlo-module-dce");
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          CreateModuleFromString(module_string, debug_options));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       CreateModuleFromString(module_string, debug_options));
 
   EXPECT_TRUE(RunAndCompare(std::move(module), error_spec_));
 }
@@ -146,21 +146,19 @@ ENTRY %TokenInConditional (param.3: pred[]) -> s32[] {
 
   {
     // True case.
-    TF_ASSERT_OK_AND_ASSIGN(
-        std::unique_ptr<HloModule> module,
-        CreateModuleFromString(module_string, debug_options));
+    ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                         CreateModuleFromString(module_string, debug_options));
     auto arg = LiteralUtil::CreateR0<bool>(true);
-    TF_ASSERT_OK_AND_ASSIGN(Literal result, Execute(std::move(module), {&arg}));
+    ASSERT_OK_AND_ASSIGN(Literal result, Execute(std::move(module), {&arg}));
     EXPECT_EQ(42, result.Get<int32_t>({}));
   }
 
   {
     // False case.
-    TF_ASSERT_OK_AND_ASSIGN(
-        std::unique_ptr<HloModule> module,
-        CreateModuleFromString(module_string, debug_options));
+    ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                         CreateModuleFromString(module_string, debug_options));
     auto arg = LiteralUtil::CreateR0<bool>(false);
-    TF_ASSERT_OK_AND_ASSIGN(Literal result, Execute(std::move(module), {&arg}));
+    ASSERT_OK_AND_ASSIGN(Literal result, Execute(std::move(module), {&arg}));
     EXPECT_EQ(7, result.Get<int32_t>({}));
   }
 }
@@ -184,14 +182,14 @@ ENTRY %AddDependency (p0: f32[], p1: f32[]) -> f32[] {
   ROOT %product = f32[] multiply(f32[] %add, f32[] %neg)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<HloModule> module,
       ParseAndReturnVerifiedModule(module_string, GetModuleConfigForTest()));
   auto p0 = LiteralUtil::CreateR0<float>(10.0);
   auto p1 = LiteralUtil::CreateR0<float>(3.0);
   auto expected = LiteralUtil::CreateR0<float>(-156.0);
-  TF_ASSERT_OK_AND_ASSIGN(Literal result, Execute(std::move(module), {&p0, &p1},
-                                                  /*run_hlo_passes=*/false));
+  ASSERT_OK_AND_ASSIGN(Literal result, Execute(std::move(module), {&p0, &p1},
+                                               /*run_hlo_passes=*/false));
   EXPECT_EQ(result, expected);
 }
 
@@ -216,14 +214,14 @@ ENTRY %AddDependency (p0: f32[], p1: f32[]) -> f32[] {
   ROOT %product = f32[] multiply(f32[] %add, f32[] %neg)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<HloModule> module,
       ParseAndReturnVerifiedModule(module_string, GetModuleConfigForTest()));
   auto p0 = LiteralUtil::CreateR0<float>(10.0);
   auto p1 = LiteralUtil::CreateR0<float>(3.0);
   auto expected = LiteralUtil::CreateR0<float>(2184.0);
-  TF_ASSERT_OK_AND_ASSIGN(Literal result, Execute(std::move(module), {&p0, &p1},
-                                                  /*run_hlo_passes=*/false));
+  ASSERT_OK_AND_ASSIGN(Literal result, Execute(std::move(module), {&p0, &p1},
+                                               /*run_hlo_passes=*/false));
   EXPECT_EQ(result, expected);
 }
 
@@ -239,13 +237,13 @@ ENTRY %AddDependency (p0: f32[]) -> f32[] {
   ROOT %product = f32[] multiply(f32[] %p0, f32[] %forty_two_after_token)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<HloModule> module,
       ParseAndReturnVerifiedModule(module_string, GetModuleConfigForTest()));
   auto p0 = LiteralUtil::CreateR0<float>(10.0);
   auto expected = LiteralUtil::CreateR0<float>(420.0);
-  TF_ASSERT_OK_AND_ASSIGN(Literal result, Execute(std::move(module), {&p0},
-                                                  /*run_hlo_passes=*/false));
+  ASSERT_OK_AND_ASSIGN(Literal result, Execute(std::move(module), {&p0},
+                                               /*run_hlo_passes=*/false));
   EXPECT_EQ(result, expected);
 }
 
@@ -259,13 +257,13 @@ ENTRY %AddDependency (p: f32[3]) -> f32[3] {
   ROOT %add_dep = f32[3] add-dependency(f32[3] %neg, token[] %token0)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<HloModule> module,
       ParseAndReturnVerifiedModule(module_string, GetModuleConfigForTest()));
   auto input = LiteralUtil::CreateR1<float>({1.0, 3.0, 7.0});
   auto expected = LiteralUtil::CreateR1<float>({-1.0, -3.0, -7.0});
-  TF_ASSERT_OK_AND_ASSIGN(Literal result, Execute(std::move(module), {&input},
-                                                  /*run_hlo_passes=*/false));
+  ASSERT_OK_AND_ASSIGN(Literal result, Execute(std::move(module), {&input},
+                                               /*run_hlo_passes=*/false));
   EXPECT_EQ(result, expected);
 }
 
@@ -284,14 +282,14 @@ ENTRY %TupleShapedAddDependency (p0: f32[3], p1: f32[3]) -> f32[3] {
   ROOT %diff = f32[3] subtract(f32[3] %elem0, f32[3] %elem2)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<HloModule> module,
       ParseAndReturnVerifiedModule(module_string, GetModuleConfigForTest()));
   auto p0 = LiteralUtil::CreateR1<float>({3.0, 3.0, 47.0});
   auto p1 = LiteralUtil::CreateR1<float>({1.0, -2.0, 2.0});
   auto expected = LiteralUtil::CreateR1<float>({2.0, 5.0, 45.0});
-  TF_ASSERT_OK_AND_ASSIGN(Literal result, Execute(std::move(module), {&p0, &p1},
-                                                  /*run_hlo_passes=*/false));
+  ASSERT_OK_AND_ASSIGN(Literal result, Execute(std::move(module), {&p0, &p1},
+                                               /*run_hlo_passes=*/false));
   EXPECT_EQ(result, expected);
 }
 

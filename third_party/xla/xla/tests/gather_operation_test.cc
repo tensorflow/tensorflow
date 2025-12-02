@@ -21,6 +21,7 @@ limitations under the License.
 #include <vector>
 
 #include "xla/tests/xla_test_backend_predicates.h"
+#include <gmock/gmock.h>
 #include "absl/types/span.h"
 #include "xla/array.h"
 #include "xla/error_spec.h"
@@ -39,7 +40,6 @@ limitations under the License.
 #include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 
 namespace xla {
@@ -56,8 +56,8 @@ class GatherOperationTest
   void RunTest(const std::string& hlo_text, absl::Span<Literal* const> args) {
     HloModuleConfig config;
     config.set_debug_options(GetDebugOptionsForTest());
-    TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                            ParseAndReturnVerifiedModule(hlo_text, config));
+    ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                         ParseAndReturnVerifiedModule(hlo_text, config));
     EXPECT_TRUE(RunAndCompare(std::move(module), args, std::nullopt));
   }
 };
@@ -389,7 +389,6 @@ ENTRY main {
       {{2, 7}, {2, 1}, {1, 1}, {5, 1}, {7, 1}, {1, 2}, {0x80, 0x80}});
   RunTest(hlo_text, &operand, &start_indices);
 }
-
 
 TEST_F(GatherOperationTest, OutOfBoundsUnsignedIndex) {
   // Out of bounds indices must not crash, and the indices in range should
@@ -782,14 +781,14 @@ TEST_F(GatherOperationWithoutReferenceTest, Basic) {
   dim_numbers.set_index_vector_dim(1);
   Gather(operand, indices, dim_numbers, {1, 3});
 
-  TF_ASSERT_OK_AND_ASSIGN(const XlaComputation computation, builder.Build());
+  ASSERT_OK_AND_ASSIGN(const XlaComputation computation, builder.Build());
   const ExecutionOptions execution_options = CreateDefaultExecutionOptions();
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       HloModuleConfig module_config,
       HloModule::CreateModuleConfigFromProto(computation.proto(),
                                              execution_options.debug_options(),
                                              &execution_options));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<HloModule> module,
       HloModule::CreateFromProto(computation.proto(), module_config));
   TF_ASSERT_OK(verifier().Run(module.get()).status());
@@ -797,7 +796,7 @@ TEST_F(GatherOperationWithoutReferenceTest, Basic) {
   Literal operand_arg =
       LiteralUtil::CreateR2<int32_t>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
   Literal indices_arg = LiteralUtil::CreateR1<int32_t>({0, 2});
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       const Literal result_literal,
       test_runner().Execute(std::move(module), {&operand_arg, &indices_arg},
                             /*run_hlo_passes=*/true));

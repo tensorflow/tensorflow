@@ -18,6 +18,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -26,7 +27,7 @@ limitations under the License.
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/service/memory_annotations.h"
 #include "xla/tsl/lib/core/status_test_util.h"
-#include "tsl/platform/statusor.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -86,11 +87,10 @@ ENTRY main {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          RunRewrite(module.get(), Rewrite::kElideMoveToHost));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       RunRewrite(module.get(), Rewrite::kElideMoveToHost));
 
   EXPECT_TRUE(changed);
 
@@ -136,11 +136,10 @@ ENTRY main {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          RunRewrite(module.get(), Rewrite::kElideMoveToHost));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       RunRewrite(module.get(), Rewrite::kElideMoveToHost));
 
   EXPECT_TRUE(changed);
 
@@ -187,11 +186,10 @@ ENTRY main {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          RunRewrite(module.get(), Rewrite::kElideMoveToHost));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       RunRewrite(module.get(), Rewrite::kElideMoveToHost));
 
   EXPECT_TRUE(changed);
 
@@ -235,11 +233,10 @@ ENTRY main {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          RunRewrite(module.get(), Rewrite::kElideMoveToHost));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       RunRewrite(module.get(), Rewrite::kElideMoveToHost));
 
   EXPECT_FALSE(changed);
 }
@@ -271,11 +268,10 @@ ENTRY main {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          RunRewrite(module.get(), Rewrite::kElideMoveToHost));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       RunRewrite(module.get(), Rewrite::kElideMoveToHost));
 
   EXPECT_FALSE(changed);
 }
@@ -308,11 +304,10 @@ ENTRY main {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          RunRewrite(module.get(), Rewrite::kElideMoveToHost));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       RunRewrite(module.get(), Rewrite::kElideMoveToHost));
 
   EXPECT_FALSE(changed);
 }

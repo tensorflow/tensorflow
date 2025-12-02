@@ -75,7 +75,6 @@ xla_cc_test(
         "//xla/runtime:buffer_use",
         "//xla/runtime:work_group",
         "//xla/service:hlo_module_config",
-        "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",
         "//xla/tsl/platform:test_main",
         "@com_google_absl//absl/status",
@@ -192,15 +191,12 @@ xla_cc_test(
         "//xla/codegen:llvm_kernel_source",
         "//xla/runtime:buffer_use",
         "//xla/service:buffer_assignment",
-        "//xla/stream_executor:launch_dim",
-        "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",
         "//xla/tsl/platform:test_main",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest",
         "@llvm-project//llvm:JITLink",
         "@llvm-project//llvm:ir_headers",
-        "@local_tsl//tsl/platform:casts",
     ],
 )
 

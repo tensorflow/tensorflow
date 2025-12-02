@@ -144,9 +144,9 @@ TEST(PjRtStreamExecutorClientTest, DonateSameBufferTwice) {
 }
 
 TEST(PjRtStreamExecutorClientTest, DonateWithControlDependency) {
-  TF_ASSERT_OK_AND_ASSIGN(auto client, GetClient());
+  ASSERT_OK_AND_ASSIGN(auto client, GetClient());
   auto literal = LiteralUtil::CreateR2({{1, 2, 3}, {4, 5, 6}});
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<PjRtBuffer> buffer,
       client->BufferFromHostLiteral(literal, client->memory_spaces()[0],
                                     /*device_layout=*/nullptr));
@@ -182,22 +182,22 @@ TEST(PjRtStreamExecutorClientTest, DonateWithControlDependency) {
 }
 
 TEST(PjRtStreamExecutorClientTest, ExecuteWithInputError) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtStreamExecutorClient> client,
-                          GetClient());
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtStreamExecutorClient> client,
+                       GetClient());
   Shape shape = xla::ShapeUtil::MakeScalarShape(F32);
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<PjRtBuffer> in_buffer,
       client->CreateErrorBuffer(
           absl::InternalError("test error"), shape,
           *client->addressable_devices()[0]->default_memory_space()));
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<PjRtLoadedExecutable> executable,
       ToyExecutable(*client, shape, [](XlaBuilder& builder) {}));
 
   // Call Execute with the error buffer.
   ExecuteOptions options;
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::vector<std::vector<std::unique_ptr<PjRtBuffer>>> result,
       executable->Execute({{in_buffer.get(), in_buffer.get()}}, options));
   ASSERT_EQ(result.size(), 1);
@@ -215,14 +215,14 @@ TEST(PjRtStreamExecutorClientTest, DeserializeAndDump) {
   tsl::Env* env = tsl::Env::Default();
   EXPECT_TRUE(env);
   Shape shape = xla::ShapeUtil::MakeScalarShape(F32);
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtStreamExecutorClient> client,
-                          GetClient());
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtStreamExecutorClient> client,
+                       GetClient());
   std::string compile_dump_dir;
   EXPECT_TRUE(env->LocalTempFilename(&compile_dump_dir));
   CompileOptions compile_options;
   compile_options.executable_build_options.mutable_debug_options()
       ->set_xla_dump_to(compile_dump_dir);
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<PjRtLoadedExecutable> executable,
       ToyExecutable(
           *client, shape, [](XlaBuilder& builder) {}, compile_options));
@@ -237,8 +237,8 @@ TEST(PjRtStreamExecutorClientTest, DeserializeAndDump) {
     TF_ASSERT_OK(
         tsl::ReadFileToString(env, compile_dump_name, &compile_dump_contents));
   }
-  TF_ASSERT_OK_AND_ASSIGN(std::string serialized,
-                          client->SerializeExecutable(*executable));
+  ASSERT_OK_AND_ASSIGN(std::string serialized,
+                       client->SerializeExecutable(*executable));
   std::string deserialize_dump_dir;
   EXPECT_TRUE(env->LocalTempFilename(&deserialize_dump_dir));
   EXPECT_NE(compile_dump_dir, deserialize_dump_dir);
@@ -246,7 +246,7 @@ TEST(PjRtStreamExecutorClientTest, DeserializeAndDump) {
   deserialize_options.executable_build_options.mutable_debug_options()
       ->set_xla_dump_to(deserialize_dump_dir);
   LoadOptions load_options;
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<PjRtLoadedExecutable> reloaded_executable,
       client->LoadSerializedExecutable(serialized, deserialize_options,
                                        load_options));

@@ -18,13 +18,13 @@ limitations under the License.
 #include <memory>
 #include <string>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/test.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -39,8 +39,8 @@ ENTRY convolution_computation {
   kernel = f32[20,1,2,1,4,15]{5,4,3,2,1,0} parameter(1)
   ROOT conv = f32[15,1,9,1,7,5]{5,4,3,2,1,0} convolution(input, kernel), dim_labels=0123bf_i0123o->f0123b, window={size=1x2x1x4}
 })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
 
   auto computation = module->entry_computation();
   HloInstruction* root = computation->root_instruction();
@@ -64,8 +64,8 @@ ENTRY convolution_computation {
   kernel = f32[20,1,2,1,4,15]{5,4,3,2,1,0} parameter(1)
   ROOT conv = f32[15,1,9,2,7,5]{5,4,3,2,1,0} convolution(input, kernel), dim_labels=0123bf_i0123o->f0123b, window={size=1x2x1x4 pad=0_0x0_0x1_0x0_0}
 })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
 
   auto computation = module->entry_computation();
   HloInstruction* root = computation->root_instruction();
@@ -91,8 +91,8 @@ ENTRY convolution_computation {
   kernel = f32[20,1,1,1,1,15]{5,4,3,2,1,0} parameter(1)
   ROOT conv = f32[15,1,1,1,1,5]{5,4,3,2,1,0} convolution(input, kernel), dim_labels=0123bf_i0123o->f0123b, window={size=1x1x1x1}
 })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
 
   auto computation = module->entry_computation();
   HloInstruction* root = computation->root_instruction();
@@ -116,8 +116,8 @@ ENTRY convolution_computation {
   kernel = f32[20,1,1,1,15]{4,3,2,1,0} parameter(1)
   ROOT conv = f32[15,1,1,1,5]{4,3,2,1,0} convolution(input, kernel), dim_labels=012bf_i012o->f012b, window={size=1x1x1}
 })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
 
   auto computation = module->entry_computation();
   HloInstruction* root = computation->root_instruction();
@@ -135,8 +135,8 @@ ENTRY convolution_computation {
   kernel = f32[20,2,2,2,4,15]{5,4,3,2,1,0} parameter(1)
   ROOT conv = f32[15,1,9,1,7,5]{5,4,3,2,1,0} convolution(input, kernel), dim_labels=0123bf_i0123o->f0123b, window={size=2x2x2x4}
 })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
 
   auto computation = module->entry_computation();
   HloInstruction* root = computation->root_instruction();
@@ -154,8 +154,8 @@ ENTRY convolution_computation {
   kernel = f32[20,1,2,1,4,15]{5,4,3,2,1,0} parameter(1)
   ROOT conv = f32[15,1,9,1,7,5]{5,4,3,2,1,0} convolution(input, kernel), dim_labels=0123bf_i0123o->f0123b, window={size=1x2x1x4 stride=2x1x2x1 pad=1_0x0_0x0_1x0_0}
 })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
 
   auto computation = module->entry_computation();
   HloInstruction* root = computation->root_instruction();

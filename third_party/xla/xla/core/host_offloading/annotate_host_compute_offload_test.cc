@@ -18,6 +18,7 @@ limitations under the License.
 #include <memory>
 #include <string>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
@@ -28,7 +29,6 @@ limitations under the License.
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/service/host_offload_utils.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -60,9 +60,9 @@ TEST_F(AnnotateHostComputeOffloadTest, TestUnmodifiedModule) {
     b = s32[32] broadcast(c)
     ROOT copy = s32[32] copy(b)
   })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> verified_module,
-                          ParseAndReturnVerifiedModule(hlo_string));
-  TF_ASSERT_OK_AND_ASSIGN(bool modified, RunPasses(verified_module.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> verified_module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(bool modified, RunPasses(verified_module.get()));
   EXPECT_FALSE(modified);
 }
 
@@ -83,9 +83,9 @@ TEST_F(AnnotateHostComputeOffloadTest, AnnotatesHostComputeOffloadForHostCall) {
     p1 = s32[32]{0} parameter(1)
     ROOT call = s32[32] call(p0, p1), to_apply=host_compute_offload, frontend_attributes={_xla_compute_type="host"}
   })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> verified_module,
-                          ParseAndReturnVerifiedModule(hlo_string));
-  TF_ASSERT_OK_AND_ASSIGN(bool modified, RunPasses(verified_module.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> verified_module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(bool modified, RunPasses(verified_module.get()));
   EXPECT_TRUE(modified);
 
   HloComputation* host_compute_offload =
@@ -118,9 +118,9 @@ TEST_F(AnnotateHostComputeOffloadTest,
     p1 = s32[32]{0} parameter(1)
     ROOT call = s32[32] call(p0, p1), to_apply=host_compute_offload, frontend_attributes={_xla_compute_type="host"}
   })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> verified_module,
-                          ParseAndReturnVerifiedModule(hlo_string));
-  TF_ASSERT_OK_AND_ASSIGN(bool modified, RunPasses(verified_module.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> verified_module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(bool modified, RunPasses(verified_module.get()));
   EXPECT_TRUE(modified);
 
   HloComputation* host_compute_offload =

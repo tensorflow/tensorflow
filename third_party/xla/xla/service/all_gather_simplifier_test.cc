@@ -17,6 +17,8 @@ limitations under the License.
 
 #include <memory>
 
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -24,7 +26,6 @@ limitations under the License.
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/pattern_matcher_gmock.h"
 #include "xla/service/pattern_matcher.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -50,8 +51,8 @@ test {
   ROOT add = f32[1, 512, 1, 512] add(dynamic-slice, p1)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(
-                                           kModuleStr, /*replica_count=*/16));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(
+                                        kModuleStr, /*replica_count=*/16));
   module->mutable_config().set_use_spmd_partitioning(true);
   AllGatherSimplifier ag_simplifier;
   ASSERT_TRUE(ag_simplifier.Run(module.get()).value());

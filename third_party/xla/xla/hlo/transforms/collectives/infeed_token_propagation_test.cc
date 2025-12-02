@@ -28,7 +28,6 @@ limitations under the License.
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/hlo/utils/hlo_matchers.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace op = xla::testing::opcode_matchers;
 
@@ -50,10 +49,10 @@ ENTRY main {
   ROOT gte.0 = get-tuple-element(infeed.0), index=0
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
   InfeedTokenPropagation itp;
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, itp.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, itp.Run(module.get()));
   EXPECT_FALSE(changed);
 }
 
@@ -69,10 +68,10 @@ ENTRY main {
   ROOT tuple.1 = tuple()
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
   InfeedTokenPropagation itp;
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, itp.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, itp.Run(module.get()));
   EXPECT_FALSE(changed);
 }
 
@@ -99,10 +98,10 @@ ENTRY main {
   ROOT cond.0 = () conditional(pred.0, true_tuple.0, false_tuple.0), true_computation=true_comp, false_computation=false_comp
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
   InfeedTokenPropagation itp;
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, itp.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, itp.Run(module.get()));
   EXPECT_TRUE(changed);
 
   // The infeed output token should have propagated through the conditional.
@@ -155,10 +154,10 @@ ENTRY main {
   ROOT cond.0 = () conditional(pred.0, true_tuple.0, false_tuple.0), true_computation=true_comp, false_computation=false_comp
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
   InfeedTokenPropagation itp;
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, itp.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, itp.Run(module.get()));
   EXPECT_TRUE(changed);
 
   // The outfeed output token should have propagated through the conditional.
@@ -208,10 +207,10 @@ ENTRY main {
   ROOT cond.0 = () conditional(pred.0, tuple.0, tuple.0), true_computation=true_comp, false_computation=false_comp
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
   InfeedTokenPropagation itp;
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, itp.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, itp.Run(module.get()));
   EXPECT_TRUE(changed);
 
   // The infeed output token should have propagated through the conditional.
@@ -264,10 +263,10 @@ ENTRY main {
   ROOT cond.0 = () conditional(pred.0, arg.0, false_tuple.0), true_computation=true_comp, false_computation=false_comp
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
   InfeedTokenPropagation itp;
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, itp.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, itp.Run(module.get()));
   EXPECT_TRUE(changed);
 
   // The outfeed output token should have propagated through the conditional.
@@ -320,10 +319,10 @@ ENTRY main {
   ROOT cond.0 = () conditional(pred.0, true_tuple.0, false_tuple.0), true_computation=true_comp, false_computation=false_comp
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
   InfeedTokenPropagation itp;
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, itp.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, itp.Run(module.get()));
   EXPECT_TRUE(changed);
 
   // The outfeed output token should have propagated through the conditional.
@@ -372,10 +371,10 @@ ENTRY main {
   ROOT while.0 = () while(while_tuple.0), condition=cond, body=comp
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
   InfeedTokenPropagation itp;
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, itp.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, itp.Run(module.get()));
   EXPECT_TRUE(changed);
 
   // The infeed output token should have propagated through the loop.
@@ -430,10 +429,10 @@ ENTRY main {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
   InfeedTokenPropagation itp;
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, itp.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, itp.Run(module.get()));
   EXPECT_TRUE(changed);
 
   // The outfeed output token should have propagated through the loop.
@@ -488,10 +487,10 @@ ENTRY main {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
   InfeedTokenPropagation itp;
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, itp.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, itp.Run(module.get()));
   EXPECT_TRUE(changed);
 
   // The outfeed output token should have propagated through the loop.
@@ -544,10 +543,10 @@ ENTRY main {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
   InfeedTokenPropagation itp;
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, itp.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, itp.Run(module.get()));
   EXPECT_TRUE(changed);
 
   // The outfeed output token should have propagated through the loop.
@@ -615,10 +614,10 @@ ENTRY main {
   ROOT while.0 = () while(while_tuple.0), condition=cond, body=comp
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
   InfeedTokenPropagation itp;
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, itp.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, itp.Run(module.get()));
   EXPECT_TRUE(changed);
 
   // The infeed and outfeed output tokens should have propagated through the
@@ -693,10 +692,10 @@ ENTRY main {
   ROOT while.0 = s32[] while(add.0), body=body, condition=cond
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
   InfeedTokenPropagation itp;
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, itp.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, itp.Run(module.get()));
   EXPECT_TRUE(changed);
 
   // The second infeed should send its token into the loop.
@@ -731,10 +730,10 @@ ENTRY main {
   outfeed.2 = token[] outfeed(while.0, outfeed.1), outfeed_shape=s32[] 
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
   InfeedTokenPropagation itp;
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, itp.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, itp.Run(module.get()));
   EXPECT_TRUE(changed);
 
   // The first outfeed should get its token from the loop.
@@ -775,10 +774,10 @@ ENTRY main {
   ROOT cond.0 = (s32[]) conditional(pred.0, tuple.0, tuple.0), true_computation=true_comp, false_computation=false_comp
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
   InfeedTokenPropagation itp;
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, itp.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, itp.Run(module.get()));
   EXPECT_TRUE(changed);
 
   // The conditional should get both its tokens from the second infeed.
@@ -826,10 +825,10 @@ ENTRY main {
   outfeed.3 = token[] outfeed(gte.0, outfeed.2), outfeed_shape=s32[]
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
   InfeedTokenPropagation itp;
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, itp.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, itp.Run(module.get()));
   EXPECT_TRUE(changed);
 
   // The second outfeed should get its token from the first outfeed.
@@ -871,10 +870,10 @@ ENTRY main {
   ROOT cond.0 = () conditional(pred.0, true_tuple.0, false_tuple.0), true_computation=true_comp, false_computation=false_comp
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
   InfeedTokenPropagation itp;
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, itp.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, itp.Run(module.get()));
   EXPECT_TRUE(changed);
 
   // The core infeed and host infeed should not be connected.
@@ -909,10 +908,10 @@ ENTRY main {
   ROOT cond.0 = () conditional(pred.0, arg.0, arg.0), true_computation=true_comp, false_computation=false_comp
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
   InfeedTokenPropagation itp;
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, itp.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, itp.Run(module.get()));
   EXPECT_TRUE(changed);
 
   // The core outfeed and host outfeed should not be connected.
@@ -948,10 +947,10 @@ ENTRY main {
   ROOT while.0 = () while(while_tuple.0), condition=cond, body=comp
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
   InfeedTokenPropagation itp;
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, itp.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, itp.Run(module.get()));
   EXPECT_TRUE(changed);
 
   // The core infeed and host infeed should not be connected.
@@ -988,10 +987,10 @@ ENTRY main {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
   InfeedTokenPropagation itp;
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, itp.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, itp.Run(module.get()));
   EXPECT_TRUE(changed);
 
   // The core outfeed and host outfeed should not be connected.
@@ -1026,10 +1025,10 @@ ENTRY main {
   ROOT cond.0 = () conditional(pred.0, arg.0, arg.0), true_computation=true_comp, false_computation=false_comp
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
   InfeedTokenPropagation itp;
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, itp.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, itp.Run(module.get()));
   EXPECT_TRUE(changed);
 
   // The parameter should have its original sharding, and sharding for the
@@ -1064,10 +1063,10 @@ ENTRY main {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
   InfeedTokenPropagation itp;
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, itp.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, itp.Run(module.get()));
   EXPECT_TRUE(changed);
 
   // The parameter should have its original sharding, and sharding for the
@@ -1109,8 +1108,8 @@ ENTRY main {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
   InfeedTokenPropagation itp;
   EXPECT_THAT(itp.Run(module.get()),
               absl_testing::StatusIs(absl::StatusCode::kFailedPrecondition));
@@ -1143,10 +1142,10 @@ ENTRY main {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
   InfeedTokenPropagation itp;
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, itp.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, itp.Run(module.get()));
   EXPECT_TRUE(changed);
   EXPECT_THAT(
       module->entry_computation()->root_instruction(),

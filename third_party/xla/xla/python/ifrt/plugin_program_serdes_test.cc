@@ -15,13 +15,13 @@
 #include <memory>
 #include <utility>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "xla/python/ifrt/plugin_program.h"
 #include "xla/python/ifrt/serdes.h"
 #include "xla/python/ifrt/serdes.pb.h"
 #include "xla/python/ifrt/serdes_version.h"
 #include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/protobuf/error_codes.pb.h"
 #include "xla/tsl/protobuf/status.pb.h"
 
@@ -33,9 +33,9 @@ TEST(PluginProgramSerDesTest, RoundTrip) {
   PluginProgram orig;
   orig.data = "foo";
   auto options = std::make_unique<SerializeOptions>(SerDesVersion::current());
-  TF_ASSERT_OK_AND_ASSIGN(Serialized serialized,
-                          Serialize(orig, std::move(options)));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(Serialized serialized,
+                       Serialize(orig, std::move(options)));
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<PluginProgram> deserialized_program,
       Deserialize<PluginProgram>(serialized, /*options=*/nullptr));
 
@@ -45,8 +45,8 @@ TEST(PluginProgramSerDesTest, RoundTrip) {
 TEST(PluginCompileOptionsSerDesTest, RoundTrip) {
   PluginCompileOptions orig;
   auto options = std::make_unique<SerializeOptions>(SerDesVersion::current());
-  TF_ASSERT_OK_AND_ASSIGN(Serialized serialized,
-                          Serialize(orig, std::move(options)));
+  ASSERT_OK_AND_ASSIGN(Serialized serialized,
+                       Serialize(orig, std::move(options)));
   TF_EXPECT_OK(
       Deserialize<PluginCompileOptions>(serialized, /*options=*/nullptr)
           .status());

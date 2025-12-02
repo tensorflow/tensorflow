@@ -15,12 +15,22 @@ limitations under the License.
 
 #include "xla/service/reduce_scatter_reassociate.h"
 
+#include <cstddef>
+#include <memory>
+#include <utility>
+
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
+#include "absl/algorithm/container.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/utils/hlo_matchers.h"
-#include "xla/service/hlo_verifier.h"
 #include "xla/service/scheduling_annotations_util.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -64,8 +74,8 @@ ENTRY main {
   ROOT add = f32[4] add(rs0, rs1)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          RunPass(hlo_string, /*expect_change=*/true));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       RunPass(hlo_string, /*expect_change=*/true));
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               m::ReduceScatter(m::Add(m::Parameter(0), m::Parameter(1))));
   EXPECT_EQ(ReduceScatterCount(module), 1);
@@ -89,8 +99,8 @@ ENTRY main {
   ROOT add = f32[4] add(rs0, rs1)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          RunPass(hlo_string, /*expect_change=*/false));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       RunPass(hlo_string, /*expect_change=*/false));
 }
 
 // Checks whether a linear chain of adds of RSs is reassociated in a single
@@ -119,8 +129,8 @@ ENTRY main {
   ROOT add2 = f32[4] add(add1, rs3)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          RunPass(hlo_string, /*expect_change=*/true));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       RunPass(hlo_string, /*expect_change=*/true));
   EXPECT_THAT(
       module->entry_computation()->root_instruction(),
       m::ReduceScatter(m::Add(
@@ -154,8 +164,8 @@ ENTRY main {
   ROOT add2 = f32[4] add(add0, add1)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          RunPass(hlo_string, /*expect_change=*/true));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       RunPass(hlo_string, /*expect_change=*/true));
   EXPECT_THAT(
       module->entry_computation()->root_instruction(),
       m::ReduceScatter(m::Add(m::Add(m::Parameter(0), m::Parameter(1)),
@@ -187,8 +197,8 @@ ENTRY main {
   ROOT add = f32[4] add(rs0, rs1)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          RunPass(hlo_string, /*expect_change=*/false));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       RunPass(hlo_string, /*expect_change=*/false));
 }
 
 TEST_F(ReduceScatterReassociateTest, MismatchOp1) {
@@ -215,8 +225,8 @@ ENTRY main {
   ROOT add = f32[4] add(rs0, rs1)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          RunPass(hlo_string, /*expect_change=*/false));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       RunPass(hlo_string, /*expect_change=*/false));
 }
 
 TEST_F(ReduceScatterReassociateTest, MismatchDimension) {
@@ -237,8 +247,8 @@ ENTRY main {
   ROOT add = f32[8,8] add(rs0, rs1)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          RunPass(hlo_string, /*expect_change=*/false));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       RunPass(hlo_string, /*expect_change=*/false));
 }
 
 TEST_F(ReduceScatterReassociateTest, MismatchReplicaGroups) {
@@ -259,8 +269,8 @@ ENTRY main {
   ROOT add = f32[4] add(rs0, rs1)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          RunPass(hlo_string, /*expect_change=*/false));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       RunPass(hlo_string, /*expect_change=*/false));
 }
 
 TEST_F(ReduceScatterReassociateTest, MismatchHasChannelId) {
@@ -281,8 +291,8 @@ ENTRY main {
   ROOT add = f32[4] add(rs0, rs1)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          RunPass(hlo_string, /*expect_change=*/false));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       RunPass(hlo_string, /*expect_change=*/false));
 }
 
 TEST_F(ReduceScatterReassociateTest, MismatchUseGlobalDeviceId) {
@@ -303,8 +313,8 @@ ENTRY main {
   ROOT add = f32[4] add(rs0, rs1)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          RunPass(hlo_string, /*expect_change=*/false));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       RunPass(hlo_string, /*expect_change=*/false));
 }
 
 TEST_F(ReduceScatterReassociateTest, NotSingleUser) {
@@ -326,8 +336,8 @@ ENTRY main {
   ROOT t = (f32[4], f32[4]) tuple(rs0, add)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          RunPass(hlo_string, /*expect_change=*/false));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       RunPass(hlo_string, /*expect_change=*/false));
 }
 
 TEST_F(ReduceScatterReassociateTest, DoubleUse) {
@@ -348,8 +358,8 @@ ENTRY main {
   ROOT c = f32[4] copy(add)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          RunPass(hlo_string, /*expect_change=*/true));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       RunPass(hlo_string, /*expect_change=*/true));
 }
 
 TEST_F(ReduceScatterReassociateTest, InconsistentAnnotation) {
@@ -371,8 +381,8 @@ ENTRY main {
   ROOT c = f32[4] copy(add)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          RunPass(hlo_string, /*expect_change=*/false));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       RunPass(hlo_string, /*expect_change=*/false));
 }
 
 TEST_F(ReduceScatterReassociateTest, DeleteAnnotation) {
@@ -394,8 +404,8 @@ ENTRY main {
   ROOT c = f32[4] copy(add)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          RunPass(hlo_string, /*expect_change=*/true));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       RunPass(hlo_string, /*expect_change=*/true));
   auto* rs = FindInstruction(module.get(), HloOpcode::kReduceScatter);
   EXPECT_FALSE(HasSchedulingAnnotation(rs));
 }

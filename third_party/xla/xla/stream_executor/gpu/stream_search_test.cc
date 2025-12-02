@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/statusor.h"
 #include "xla/service/platform_util.h"
@@ -20,8 +21,6 @@ limitations under the License.
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/stream_finder.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/test.h"
 
 namespace stream_executor {
 namespace {
@@ -29,7 +28,7 @@ namespace {
 class StreamSearchTest : public ::testing::Test {
  public:
   void SetUp() override {
-    TF_ASSERT_OK_AND_ASSIGN(platform_, xla::PlatformUtil::GetPlatform("GPU"));
+    ASSERT_OK_AND_ASSIGN(platform_, xla::PlatformUtil::GetPlatform("GPU"));
   }
 
   Platform* platform_;
@@ -44,19 +43,19 @@ TEST_F(StreamSearchTest, NoMatchBadPtr) {
 TEST_F(StreamSearchTest, FoundPrevExecutor) {
   int number_devices = platform_->VisibleDeviceCount();
   EXPECT_GT(number_devices, 0);
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       StreamExecutor * executor,
       platform_->ExecutorForDevice(number_devices > 1 ? 1 : 0));
 
-  TF_ASSERT_OK_AND_ASSIGN(auto s, executor->CreateStream());
-  TF_ASSERT_OK_AND_ASSIGN(auto s2, executor->CreateStream());
+  ASSERT_OK_AND_ASSIGN(auto s, executor->CreateStream());
+  ASSERT_OK_AND_ASSIGN(auto s2, executor->CreateStream());
 
   void* gpu_ptr = s->platform_specific_handle().stream;
   void* gpu_ptr_2 = s2->platform_specific_handle().stream;
 
-  TF_ASSERT_OK_AND_ASSIGN(Stream * found1, FindStream(platform_, gpu_ptr));
+  ASSERT_OK_AND_ASSIGN(Stream * found1, FindStream(platform_, gpu_ptr));
   EXPECT_EQ(found1, s.get());
-  TF_ASSERT_OK_AND_ASSIGN(Stream * found2, FindStream(platform_, gpu_ptr_2));
+  ASSERT_OK_AND_ASSIGN(Stream * found2, FindStream(platform_, gpu_ptr_2));
   EXPECT_EQ(found2, s2.get());
 }
 

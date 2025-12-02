@@ -19,6 +19,7 @@ limitations under the License.
 #include <memory>
 #include <string>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
@@ -39,9 +40,7 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tests/literal_test_util.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 
@@ -467,7 +466,7 @@ ENTRY main {
   }
 }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
 
   EXPECT_TRUE(PropagatePrecision(module.get()));
 
@@ -510,7 +509,7 @@ ENTRY main {
   }
 }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
 
   EXPECT_TRUE(PropagatePrecision(module.get()));
 
@@ -1145,8 +1144,8 @@ ENTRY entry {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(module_str));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(module_str));
   EXPECT_TRUE(PropagatePrecision(module.get()));
 
   auto cond = FindInstruction(module.get(), "conditional");
@@ -1182,8 +1181,8 @@ ENTRY entry {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(module_str));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(module_str));
   EXPECT_TRUE(PropagatePrecision(module.get()));
 
   auto cond = FindInstruction(module.get(), "conditional");
@@ -1223,8 +1222,8 @@ ENTRY entry {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(module_str));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(module_str));
   EXPECT_FALSE(PropagatePrecision(module.get()));
 }
 
@@ -1245,8 +1244,8 @@ ENTRY main {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(module_str));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(module_str));
   EXPECT_FALSE(PropagatePrecision(module.get()));
 
   HloInstruction* dus = module->entry_computation()->GetInstructionWithName(
@@ -1268,8 +1267,8 @@ TEST_F(BFloat16PropagationTest, DynamicSliceWithHostMemory) {
   }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(module_str));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(module_str));
   EXPECT_FALSE(PropagatePrecision(module.get()));
 
   HloInstruction* dus =
@@ -1343,8 +1342,8 @@ ENTRY entry {
   }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(module_str));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(module_str));
   EXPECT_TRUE(PropagatePrecision(module.get()));
   VLOG(2) << module->ToString() << "\n";
   EXPECT_TRUE(HloVerifier(/*layout_sensitive=*/false,

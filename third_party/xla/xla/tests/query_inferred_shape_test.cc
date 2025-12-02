@@ -13,10 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <gmock/gmock.h>
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/xla_data.pb.h"
 
@@ -27,7 +27,7 @@ TEST(QueryInferredShapeTest, OnePlusOneShape) {
   XlaBuilder builder("one_plus_one");
   XlaOp one = ConstantR0<float>(&builder, 1.0);
   XlaOp result = Add(one, one);
-  TF_ASSERT_OK_AND_ASSIGN(const Shape shape, builder.GetShape(result));
+  ASSERT_OK_AND_ASSIGN(const Shape shape, builder.GetShape(result));
   ASSERT_TRUE(ShapeUtil::Equal(shape, ShapeUtil::MakeShape(F32, {})));
 }
 

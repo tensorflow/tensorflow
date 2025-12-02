@@ -25,10 +25,10 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -92,10 +92,10 @@ TEST_F(HloSchedulingTest, DeferConstants) {
     }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
   ConstantDeferring pass;
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, pass.Run(module.get(), {}));
+  ASSERT_OK_AND_ASSIGN(bool changed, pass.Run(module.get(), {}));
   EXPECT_TRUE(changed);
   const std::vector<HloInstruction*>& sequence =
       module->schedule().sequence(module->entry_computation()).instructions();

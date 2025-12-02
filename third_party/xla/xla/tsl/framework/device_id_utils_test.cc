@@ -27,7 +27,6 @@ limitations under the License.
 #include "xla/tsl/framework/device_type.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/status.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/util/device_name_utils.h"
 
 namespace tsl {
@@ -151,9 +150,9 @@ TEST(DeviceIdUtilsTest, ParseMultiplePluggableOutOfOrderVisibleDeviceList) {
 }
 
 TEST(DeviceIdUtilsTest, GetNumberTfDevicesDefault) {
-  TF_ASSERT_OK_AND_ASSIGN(size_t num_tf_device,
-                          GetNumberTfDevicesAndConfigurePlatformDeviceId(
-                              {}, kTestDeviceType, "", 2));
+  ASSERT_OK_AND_ASSIGN(size_t num_tf_device,
+                       GetNumberTfDevicesAndConfigurePlatformDeviceId(
+                           {}, kTestDeviceType, "", 2));
 
   EXPECT_EQ(num_tf_device, 2);
   TfDeviceId tf_device_id_0(0);
@@ -166,9 +165,9 @@ TEST(DeviceIdUtilsTest, GetNumberTfDevicesDefault) {
 }
 
 TEST(DeviceIdUtilsTest, GetNumberTfDevicesWithVisibleDeviceList) {
-  TF_ASSERT_OK_AND_ASSIGN(size_t num_tf_device,
-                          GetNumberTfDevicesAndConfigurePlatformDeviceId(
-                              {}, kTestDeviceType, "2,0", 3));
+  ASSERT_OK_AND_ASSIGN(size_t num_tf_device,
+                       GetNumberTfDevicesAndConfigurePlatformDeviceId(
+                           {}, kTestDeviceType, "2,0", 3));
 
   EXPECT_EQ(num_tf_device, 2);
   TfDeviceId tf_device_id_0(0);
@@ -181,7 +180,7 @@ TEST(DeviceIdUtilsTest, GetNumberTfDevicesWithVisibleDeviceList) {
 }
 
 TEST(DeviceIdUtilsTest, GetNumberTfDevicesWithSessionOptionDeviceCount) {
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       size_t num_tf_device,
       GetNumberTfDevicesAndConfigurePlatformDeviceId(
           {{std::string(kTestDeviceType), 2}}, kTestDeviceType, "1,0,2", 3));
@@ -204,9 +203,9 @@ TEST(DeviceIdUtilsTest, GetPlatformDeviceId) {
   DeviceNameUtils::ParsedName device_name;
   device_name.id = 0;
 
-  TF_ASSERT_OK_AND_ASSIGN(int device_id,
-                          GetPlatformDeviceIdFromDeviceParsedName(
-                              device_name, DeviceType(kTestDeviceType)));
+  ASSERT_OK_AND_ASSIGN(int device_id,
+                       GetPlatformDeviceIdFromDeviceParsedName(
+                           device_name, DeviceType(kTestDeviceType)));
 
   EXPECT_EQ(device_id, 1);
   DeviceIdManager::TestOnlyReset();

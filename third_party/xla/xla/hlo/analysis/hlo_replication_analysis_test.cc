@@ -19,15 +19,13 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/shape_util.h"
-#include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/types.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -84,14 +82,14 @@ ENTRY entry {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(
-                                           module_str, /*replica_count=*/4));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(
+                                        module_str, /*replica_count=*/4));
   auto param = module->entry_computation()->parameter_instruction(0);
   param->set_parameter_replicated_at_leaf_buffers(
       absl::Span<const bool>{false, true});
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloReplicationAnalysis> analysis,
-                          HloReplicationAnalysis::Run(
-                              module.get(), /*cross_partition_spmd=*/false));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloReplicationAnalysis> analysis,
+                       HloReplicationAnalysis::Run(
+                           module.get(), /*cross_partition_spmd=*/false));
   EXPECT_FALSE(analysis->HloInstructionIsReplicatedAt(
       FindInstruction(module.get(), "get-tuple-element.2"), {}));
   EXPECT_TRUE(analysis->HloInstructionIsReplicatedAt(
@@ -174,12 +172,12 @@ ENTRY entry {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(
-                                           module_str, /*replica_count=*/4));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(
+                                        module_str, /*replica_count=*/4));
   auto param = module->entry_computation()->parameter_instruction(0);
   param->set_parameter_replicated_at_leaf_buffers(
       absl::Span<const bool>{false, true, false});
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<HloReplicationAnalysis> analysis,
       HloReplicationAnalysis::Run(module.get(), /*cross_partition_spmd=*/true));
   EXPECT_FALSE(analysis->HloInstructionIsReplicatedAt(
@@ -248,14 +246,13 @@ ENTRY entry {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(module_str));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(module_str));
   auto param = module->entry_computation()->parameter_instruction(0);
   param->set_parameter_replicated_at_leaf_buffers(
       absl::Span<const bool>{true, false});
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloReplicationAnalysis> analysis,
-                          HloReplicationAnalysis::Run(
-                              module.get(), /*cross_partition_spmd=*/false));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloReplicationAnalysis> analysis,
+                       HloReplicationAnalysis::Run(
+                           module.get(), /*cross_partition_spmd=*/false));
   EXPECT_TRUE(analysis->HloInstructionIsReplicatedAt(
       FindInstruction(module.get(), "get-tuple-element"), {}));
   EXPECT_FALSE(analysis->HloInstructionIsReplicatedAt(
@@ -301,14 +298,13 @@ ENTRY SimpleWhileLoop {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(module_str));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(module_str));
   auto param = module->entry_computation()->parameter_instruction(0);
   param->set_parameter_replicated_at_leaf_buffers(
       absl::Span<const bool>{true, true});
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloReplicationAnalysis> analysis,
-                          HloReplicationAnalysis::Run(
-                              module.get(), /*cross_partition_spmd=*/false));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloReplicationAnalysis> analysis,
+                       HloReplicationAnalysis::Run(
+                           module.get(), /*cross_partition_spmd=*/false));
   EXPECT_TRUE(analysis->HloInstructionIsReplicatedAt(
       FindInstruction(module.get(), "tuple"), {0}));
   EXPECT_TRUE(analysis->HloInstructionIsReplicatedAt(
@@ -351,14 +347,13 @@ ENTRY WhileLoopParameterAliasingNonReplicatedOutput {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(module_str));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(module_str));
   auto param = module->entry_computation()->parameter_instruction(0);
   param->set_parameter_replicated_at_leaf_buffers(
       absl::Span<const bool>{true, true});
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloReplicationAnalysis> analysis,
-                          HloReplicationAnalysis::Run(
-                              module.get(), /*cross_partition_spmd=*/false));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloReplicationAnalysis> analysis,
+                       HloReplicationAnalysis::Run(
+                           module.get(), /*cross_partition_spmd=*/false));
   EXPECT_FALSE(analysis->HloInstructionIsReplicatedAt(
       FindInstruction(module.get(), "multiply"), {}));
   EXPECT_FALSE(analysis->HloInstructionIsReplicatedAt(
@@ -398,14 +393,13 @@ ENTRY WhileLoopDifferentCondition {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(module_str));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(module_str));
   auto param = module->entry_computation()->parameter_instruction(0);
   param->set_parameter_replicated_at_leaf_buffers(
       absl::Span<const bool>{true, true});
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloReplicationAnalysis> analysis,
-                          HloReplicationAnalysis::Run(
-                              module.get(), /*cross_partition_spmd=*/false));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloReplicationAnalysis> analysis,
+                       HloReplicationAnalysis::Run(
+                           module.get(), /*cross_partition_spmd=*/false));
   EXPECT_FALSE(analysis->HloInstructionIsReplicatedAt(
       FindInstruction(module.get(), "while"), {0}));
   EXPECT_FALSE(analysis->HloInstructionIsReplicatedAt(
@@ -448,14 +442,13 @@ ENTRY entry {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(module_str));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(module_str));
   auto param = module->entry_computation()->parameter_instruction(0);
   param->set_parameter_replicated_at_leaf_buffers(
       absl::Span<const bool>{true, true, true, true, false, true, true});
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloReplicationAnalysis> analysis,
-                          HloReplicationAnalysis::Run(
-                              module.get(), /*cross_partition_spmd=*/false));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloReplicationAnalysis> analysis,
+                       HloReplicationAnalysis::Run(
+                           module.get(), /*cross_partition_spmd=*/false));
   EXPECT_TRUE(analysis->HloInstructionIsReplicatedAt(
       FindInstruction(module.get(), "tuple"), {0}));
   EXPECT_TRUE(analysis->HloInstructionIsReplicatedAt(
@@ -513,14 +506,13 @@ ENTRY entry {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(module_str));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(module_str));
   auto param = module->entry_computation()->parameter_instruction(0);
   param->set_parameter_replicated_at_leaf_buffers(
       absl::Span<const bool>{true, true, true, true, true, true});
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloReplicationAnalysis> analysis,
-                          HloReplicationAnalysis::Run(
-                              module.get(), /*cross_partition_spmd=*/false));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloReplicationAnalysis> analysis,
+                       HloReplicationAnalysis::Run(
+                           module.get(), /*cross_partition_spmd=*/false));
   EXPECT_FALSE(analysis->HloInstructionIsReplicatedAt(
       FindInstruction(module.get(), "tuple"), {0}));
   EXPECT_FALSE(analysis->HloInstructionIsReplicatedAt(
@@ -552,13 +544,12 @@ ENTRY entry {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(module_str));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(module_str));
   auto param = module->entry_computation()->parameter_instruction(0);
   param->set_parameter_replicated_at_leaf_buffers(absl::Span<const bool>{true});
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloReplicationAnalysis> analysis,
-                          HloReplicationAnalysis::Run(
-                              module.get(), /*cross_partition_spmd=*/false));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloReplicationAnalysis> analysis,
+                       HloReplicationAnalysis::Run(
+                           module.get(), /*cross_partition_spmd=*/false));
   EXPECT_TRUE(analysis->HloInstructionIsReplicatedAt(
       FindInstruction(module.get(), "gte"), {}));
   EXPECT_TRUE(analysis->HloInstructionIsReplicatedAt(
@@ -589,11 +580,11 @@ ENTRY entry {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(
-                                           module_str, /*replica_count=*/2));
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloReplicationAnalysis> analysis,
-                          HloReplicationAnalysis::Run(
-                              module.get(), /*cross_partition_spmd=*/false));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(
+                                        module_str, /*replica_count=*/2));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloReplicationAnalysis> analysis,
+                       HloReplicationAnalysis::Run(
+                           module.get(), /*cross_partition_spmd=*/false));
   EXPECT_TRUE(analysis->HloInstructionIsReplicatedAt(
       FindInstruction(module.get(), "ar0"), {}));
   EXPECT_FALSE(analysis->HloInstructionIsReplicatedAt(
@@ -618,14 +609,14 @@ ENTRY entry {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto module, ParseAndReturnVerifiedModule(module_str, /*replica_count=*/2,
                                                 /*num_partitions=*/2));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<HloReplicationAnalysis> replica_analysis,
       HloReplicationAnalysis::Run(module.get(),
                                   /*cross_partition_spmd=*/false));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<HloReplicationAnalysis> partition_analysis,
       HloReplicationAnalysis::Run(module.get(),
                                   /*cross_partition_spmd=*/true));
@@ -666,13 +657,12 @@ ENTRY entry {
   const std::vector<ReplicaGroup> replica_groups1 =
       CreateReplicaGroups({{0, 1, 2, 3}, {4, 5, 6, 7}});
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto module,
       ParseAndReturnVerifiedModule(module_str, replica_count, num_partitions));
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<HloReplicationAnalysis> replica_analysis,
-      HloReplicationAnalysis::RunWithPartialReplication(module.get(),
-                                                        cross_partition_spmd));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloReplicationAnalysis> replica_analysis,
+                       HloReplicationAnalysis::RunWithPartialReplication(
+                           module.get(), cross_partition_spmd));
 
   EXPECT_FALSE(replica_analysis->HloInstructionIsReplicatedAt(
       FindInstruction(module.get(), "dynamic-slice"), {}));
@@ -704,10 +694,10 @@ ENTRY entry {
   const std::vector<ReplicaGroup> replica_groups1 =
       CreateReplicaGroups({{0, 2}, {1, 3}});
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto module_replica_analysis,
       ParseAndReturnVerifiedModule(module_str, replica_count, num_partitions));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<HloReplicationAnalysis> replica_analysis,
       HloReplicationAnalysis::RunWithPartialReplication(
           module_replica_analysis.get(), cross_partition_spmd));
@@ -755,10 +745,10 @@ ENTRY entry {
   const std::vector<ReplicaGroup> replica_groups1 =
       CreateReplicaGroups({{0, 2}, {1, 3}});
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto module_partition_analysis,
       ParseAndReturnVerifiedModule(module_str, replica_count, num_partitions));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<HloReplicationAnalysis> partition_analysis,
       HloReplicationAnalysis::RunWithPartialReplication(
           module_partition_analysis.get(), cross_partition_spmd));
@@ -805,10 +795,10 @@ ENTRY entry {
   const std::vector<ReplicaGroup> replica_groups1 =
       CreateReplicaGroups({{0, 1, 2}, {3, 4, 5}});
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto module,
       ParseAndReturnVerifiedModule(module_str, replica_count, num_partitions));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<HloReplicationAnalysis> partition_analysis,
       HloReplicationAnalysis::RunWithPartialReplication(module.get(),
                                                         cross_partition_spmd));
@@ -837,10 +827,10 @@ ENTRY entry {
   const std::vector<ReplicaGroup> replica_groups1 =
       CreateReplicaGroups({{0, 1, 2}, {3, 4, 5}});
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto module,
       ParseAndReturnVerifiedModule(module_str, replica_count, num_partitions));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<HloReplicationAnalysis> partition_analysis,
       HloReplicationAnalysis::RunWithPartialReplication(module.get(),
                                                         cross_partition_spmd));
@@ -870,10 +860,10 @@ ENTRY entry {
   const std::vector<ReplicaGroup> replica_groups1 =
       CreateReplicaGroups({{0, 1, 2}, {3, 4, 5}});
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto module,
       ParseAndReturnVerifiedModule(module_str, replica_count, num_partitions));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<HloReplicationAnalysis> partition_analysis,
       HloReplicationAnalysis::RunWithPartialReplication(module.get(),
                                                         cross_partition_spmd));
@@ -900,10 +890,10 @@ ENTRY entry {
   const std::vector<ReplicaGroup> replica_groups =
       CreateReplicaGroups({{0, 1}, {2, 3}});
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto module,
       ParseAndReturnVerifiedModule(module_str, replica_count, num_partitions));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<HloReplicationAnalysis> partition_analysis,
       HloReplicationAnalysis::RunWithPartialReplication(module.get(),
                                                         cross_partition_spmd));
@@ -938,12 +928,12 @@ TEST_F(HloReplicationAnalysisTest,
   const std::vector<ReplicaGroup> replica_groups2 =
       CreateReplicaGroups({{1, 2}, {0, 3}, {4, 5}, {6, 7}});
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto module,
       ParseAndReturnVerifiedModule(module_str, replica_count, num_partitions));
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloReplicationAnalysis> analysis,
-                          HloReplicationAnalysis::RunWithPartialReplication(
-                              module.get(), cross_partition_spmd));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloReplicationAnalysis> analysis,
+                       HloReplicationAnalysis::RunWithPartialReplication(
+                           module.get(), cross_partition_spmd));
   EXPECT_FALSE(analysis->HloInstructionIsReplicatedAt(
       FindInstruction(module.get(), "add0"), {}, replica_groups0));
   EXPECT_TRUE(analysis->HloInstructionIsReplicatedAt(
@@ -978,11 +968,11 @@ ENTRY entry {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(
-                                           module_str, /*replica_count=*/2));
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloReplicationAnalysis> analysis,
-                          HloReplicationAnalysis::Run(
-                              module.get(), /*cross_partition_spmd=*/false));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(
+                                        module_str, /*replica_count=*/2));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloReplicationAnalysis> analysis,
+                       HloReplicationAnalysis::Run(
+                           module.get(), /*cross_partition_spmd=*/false));
   EXPECT_TRUE(analysis->HloInstructionIsReplicatedAt(
       FindInstruction(module.get(), "gte.0"), {}));
   EXPECT_FALSE(analysis->HloInstructionIsReplicatedAt(

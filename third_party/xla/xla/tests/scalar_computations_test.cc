@@ -21,6 +21,7 @@ limitations under the License.
 #include <type_traits>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
 #include "xla/error_spec.h"
@@ -34,7 +35,6 @@ limitations under the License.
 #include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
 #include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/tests/literal_test_util.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/xla_data.pb.h"
 
@@ -376,7 +376,7 @@ TEST_F(ScalarComputationsTest, DivU32s) {
     XlaOp divisor =
         Parameter(&builder, 1, ShapeUtil::MakeShape(U32, {}), "divisor");
     Div(dividend, divisor);
-    TF_ASSERT_OK_AND_ASSIGN(div_computation, builder.Build());
+    ASSERT_OK_AND_ASSIGN(div_computation, builder.Build());
   }
 
   for (uint32_t divisor : vals) {
@@ -388,7 +388,7 @@ TEST_F(ScalarComputationsTest, DivU32s) {
             LiteralUtil::CreateR0<uint32_t>(divisor);
         *div_computation.mutable_proto()->mutable_name() =
             absl::StrCat(TestName(), "_", dividend, "_", divisor);
-        TF_ASSERT_OK_AND_ASSIGN(
+        ASSERT_OK_AND_ASSIGN(
             const Literal actual_literal,
             ExecuteAndTransfer(div_computation,
                                {&dividend_literal, &divisor_literal}));
@@ -416,7 +416,7 @@ TEST_F(ScalarComputationsTest, RemU32s) {
     XlaOp divisor =
         Parameter(&builder, 1, ShapeUtil::MakeShape(U32, {}), "divisor");
     Rem(dividend, divisor);
-    TF_ASSERT_OK_AND_ASSIGN(rem_computation, builder.Build());
+    ASSERT_OK_AND_ASSIGN(rem_computation, builder.Build());
   }
 
   for (uint32_t divisor : vals) {
@@ -428,7 +428,7 @@ TEST_F(ScalarComputationsTest, RemU32s) {
             LiteralUtil::CreateR0<uint32_t>(divisor);
         *rem_computation.mutable_proto()->mutable_name() =
             absl::StrCat(TestName(), "_", dividend, "_", divisor);
-        TF_ASSERT_OK_AND_ASSIGN(
+        ASSERT_OK_AND_ASSIGN(
             const Literal actual_literal,
             ExecuteAndTransfer(rem_computation,
                                {&dividend_literal, &divisor_literal}));

@@ -24,8 +24,6 @@ limitations under the License.
 #include "xla/hlo/testlib/filecheck.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/service/gpu/backend_configs.pb.h"
-#include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace xla::gpu {
 namespace {
@@ -52,7 +50,7 @@ TEST_F(ExplicitCollectivesGroupAsyncWrapperTest, AnnotatedOpIsWrapped) {
   auto module = ParseAndReturnVerifiedModule(hlo_string).value();
   ExplicitCollectivesGroupAsyncWrapper wrapper_pass;
 
-  TF_ASSERT_OK_AND_ASSIGN(bool mutated, wrapper_pass.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool mutated, wrapper_pass.Run(module.get()));
   absl::StatusOr<bool> filecheck_result = RunFileCheck(module->ToString({}), R"(
   // CHECK: %b = f32[1]{0} parameter(0)
   // CHECK: %tuple-start = ((f32[1]{0}), (f32[1]{0}, f32[1]{0})) async-start(%b), calls=%comms.collectives_group, frontend_attributes={_collectives_group=""}
@@ -84,7 +82,7 @@ TEST_F(ExplicitCollectivesGroupAsyncWrapperTest,
   auto module = ParseAndReturnVerifiedModule(hlo_string).value();
   ExplicitCollectivesGroupAsyncWrapper wrapper_pass;
 
-  TF_ASSERT_OK_AND_ASSIGN(bool mutated, wrapper_pass.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool mutated, wrapper_pass.Run(module.get()));
   // Assert that the scheduling annotation is removed within the cloned
   // computation, but remains on the async operations.
   absl::StatusOr<bool> filecheck_result = RunFileCheck(module->ToString({}), R"(
@@ -126,7 +124,7 @@ TEST_F(ExplicitCollectivesGroupAsyncWrapperTest, ManyCollectivesGroups) {
   auto module = ParseAndReturnVerifiedModule(hlo_string).value();
   ExplicitCollectivesGroupAsyncWrapper wrapper_pass;
 
-  TF_ASSERT_OK_AND_ASSIGN(bool mutated, wrapper_pass.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool mutated, wrapper_pass.Run(module.get()));
   absl::StatusOr<bool> filecheck_result = RunFileCheck(module->ToString({}), R"(
   // CHECK: %b = f32[1]{0} parameter(0)
   // CHECK: %tuple-start = ((f32[1]{0}), (f32[1]{0}, f32[1]{0})) async-start(%b), calls=%comms.collectives_group, frontend_attributes={_collectives_group=""} 

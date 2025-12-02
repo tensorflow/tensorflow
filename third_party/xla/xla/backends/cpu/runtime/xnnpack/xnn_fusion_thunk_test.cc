@@ -22,6 +22,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include "xnnpack.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
@@ -125,14 +126,14 @@ TEST_P(XnnFusionThunkTest, ElementwiseAdd) {
   XnnFusionThunk::Argument rhs_arg = {rhs_slice, shape};
   XnnFusionThunk::Result out_res = {out_slice, shape};
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto thunk, XnnFusionThunk::Create(
                       XnnFusionThunk::Options{use_threadpool()}, {"fusion"},
                       {lhs_arg, rhs_arg}, {out_res}, &BuildBinaryAddSubgraph));
 
   XnnThreadpool threadpool;
   if (use_threadpool()) {
-    TF_ASSERT_OK_AND_ASSIGN(threadpool, CreateXnnThreadpool(&device));
+    ASSERT_OK_AND_ASSIGN(threadpool, CreateXnnThreadpool(&device));
   }
   Thunk::XnnParams xnn_params(std::move(threadpool));
 
