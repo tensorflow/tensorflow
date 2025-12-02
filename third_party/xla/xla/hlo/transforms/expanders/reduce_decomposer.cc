@@ -103,28 +103,30 @@ class ReduceDecomposerVisitor : public DfsHloRewriteVisitor {
         ShapeUtil::MakeValidatedMaybeTupleShape(expected_shapes));
     TF_ASSIGN_OR_RETURN(auto expected_output_shape,
                         ShapeUtil::MakeValidatedMaybeTupleShape(output_shapes));
-    if (expected_tuple_shape != expected_output_shape) {
-      TF_ASSIGN_OR_RETURN(auto r_prime,
-                          MakeReduceHlo(reduce->inputs(), reduce->init_values(),
-                                        reduce->dimensions(),
-                                        reduce->called_computations()[0]));
-      TF_RET_CHECK(r_prime->shape() == expected_tuple_shape);
-
-      if (!shape.IsTuple()) {
-        auto copy = MakeCopyHlo(r_prime, shape);
-        TF_RETURN_IF_ERROR(ReplaceInstruction(reduce, copy));
-        return absl::OkStatus();
-      }
-
-      std::vector<HloInstruction*> copies;
-      for (int i = 0; i < reduce->input_count(); i++) {
-        TF_ASSIGN_OR_RETURN(auto from, GetOutput(r_prime, i));
-        auto copy = MakeCopyHlo(from, output_shapes[i]);
-        copies.push_back(copy);
-      }
-      auto out = MaybeMakeTuple(copies);
-      TF_RETURN_IF_ERROR(ReplaceInstruction(reduce, out));
+    if (expected_tuple_shape == expected_output_shape) {
+      return absl::OkStatus();
     }
+
+    TF_ASSIGN_OR_RETURN(
+        auto r_prime,
+        MakeReduceHlo(reduce->inputs(), reduce->init_values(),
+                      reduce->dimensions(), reduce->called_computations()[0]));
+    TF_RET_CHECK(r_prime->shape() == expected_tuple_shape);
+
+    if (!shape.IsTuple()) {
+      auto copy = MakeCopyHlo(r_prime, shape);
+      TF_RETURN_IF_ERROR(ReplaceInstruction(reduce, copy));
+      return absl::OkStatus();
+    }
+
+    std::vector<HloInstruction*> copies;
+    for (int i = 0; i < reduce->input_count(); i++) {
+      TF_ASSIGN_OR_RETURN(auto from, GetOutput(r_prime, i));
+      auto copy = MakeCopyHlo(from, output_shapes[i]);
+      copies.push_back(copy);
+    }
+    auto out = MaybeMakeTuple(copies);
+    TF_RETURN_IF_ERROR(ReplaceInstruction(reduce, out));
     return absl::OkStatus();
   }
 
