@@ -272,11 +272,6 @@ absl::StatusOr<std::pair<std::unique_ptr<HloInstruction>, HloOpcode>>
 IdentityValueAndHloOpcodeForScatterReduceComputation(
     const HloScatterInstruction& scatter);
 
-// Given a sharding and a list of devices in the topology, return a
-// list of the devices that `sharding` applies to.
-std::vector<int64_t> DevicesForSharding(
-    const HloSharding& sharding, absl::Span<const int64_t> available_devices);
-
 // Returns a sharding that replicates data across devices along the given
 // dimensions in the original sharding.
 HloSharding PartiallyReplicateTiledShardingOnDims(
