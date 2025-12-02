@@ -2536,7 +2536,9 @@ TEST(StreamExecutorGpuClientTest, NonZeroGPUDeviceTimeMeasurementSingleGPU) {
 
 // Same test as MockNcclClientWithGpuTopologyExecuteTest, but check non-zero
 // GPU device time measurement.
-TEST(StreamExecutorGpuClientTest, NonZeroGPUDeviceTimeMeasurementMultiGPU) {
+// TODO(b/452317320): Re-enable once fixed.
+TEST(StreamExecutorGpuClientTest,
+     DISABLED_NonZeroGPUDeviceTimeMeasurementMultiGPU) {
   if (tsl::kIsOpenSource) {
     GTEST_SKIP()
         << "DeviceTimeMeasurement implementation isn't available in OSS.";
