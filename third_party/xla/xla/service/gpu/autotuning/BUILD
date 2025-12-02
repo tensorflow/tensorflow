@@ -142,6 +142,7 @@ cc_library(
         "//xla:xla_proto_cc",
         "//xla/backends/autotuner:codegen_backend",
         "//xla/backends/gpu/autotuner:cublas",
+        "//xla/backends/gpu/autotuner:custom_kernel",
         "//xla/backends/gpu/autotuner:fission_backend",
         "//xla/backends/gpu/autotuner:triton",
         "//xla/backends/gpu/codegen/triton:tma_utils",

@@ -47,6 +47,7 @@ limitations under the License.
 #include "xla/autotuning.pb.h"
 #include "xla/backends/autotuner/codegen_backend.h"
 #include "xla/backends/gpu/autotuner/cublas.h"
+#include "xla/backends/gpu/autotuner/custom_kernel.h"
 #include "xla/backends/gpu/autotuner/fission_backend.h"
 #include "xla/backends/gpu/autotuner/triton.h"
 #include "xla/backends/gpu/runtime/buffer_comparator.h"
@@ -141,17 +142,26 @@ using ProfilingOutput = AutotunerCompileUtil::ProfilingOutput;
 namespace {
 
 std::unique_ptr<HloPassPipeline> GetCublasRewriterPipeline(
-    const se::DeviceDescription& device_description) {
+    const se::DeviceDescription* device_description) {
   auto pipeline = std::make_unique<HloPassPipeline>("cublas_rewriter_pipeline");
   pipeline->AddPass(std::make_unique<DotAlgorithmRewriter>());
   for (GemmRewriterOptions::DType dtype :
        {GemmRewriterOptions::DType::kFp8Only,
         GemmRewriterOptions::DType::kNonFp8Only}) {
     auto gemm_rewriter = std::make_unique<GemmRewriter>(
-        device_description.gpu_compute_capability(),
-        device_description.runtime_version(), GemmRewriterOptions{dtype});
+        device_description->gpu_compute_capability(),
+        device_description->runtime_version(), GemmRewriterOptions{dtype});
     pipeline->AddPass(std::move(gemm_rewriter));
   }
+  return pipeline;
+}
+
+std::unique_ptr<HloPassPipeline> GetCustomKernelRewriterPipeline(
+    const se::DeviceDescription* device_description) {
+  auto pipeline =
+      std::make_unique<HloPassPipeline>("custom_kernel_rewriter_pipeline");
+  pipeline->AddPass(
+      std::make_unique<CustomKernelFusionRewriter>(device_description));
   return pipeline;
 }
 
@@ -1698,8 +1708,15 @@ absl::StatusOr<bool> GemmFusionAutotuner::RunViaNewInfra(
   backends.push_back(std::make_unique<FissionBackend>(
       &debug_options, compiler.get(), target_config.get(),
       std::make_unique<CublasBackend>(stream_exec, &debug_options,
-                                      compiler.get(), target_config.get()),
-      GetCublasRewriterPipeline(target_config->device_description),
+                                      compiler.get(), target_config.get(),
+                                      /*fp8_lt_fallback=*/true),
+      GetCublasRewriterPipeline(&target_config->device_description),
+      mlir_context_));
+  backends.push_back(std::make_unique<FissionBackend>(
+      &debug_options, compiler.get(), target_config.get(),
+      std::make_unique<CustomKernelBackend>(
+          stream_exec, &debug_options, compiler.get(), target_config.get()),
+      GetCustomKernelRewriterPipeline(&target_config->device_description),
       mlir_context_));
   auto should_autotune = [](const HloInstruction& instruction) -> bool {
     if (instruction.opcode() != HloOpcode::kFusion) {
@@ -1708,8 +1725,12 @@ absl::StatusOr<bool> GemmFusionAutotuner::RunViaNewInfra(
     auto gpu_config = instruction.backend_config<GpuBackendConfig>();
     const FusionBackendConfig& backend_config =
         gpu_config->fusion_backend_config();
-    if (backend_config.kind() == kTritonGemmFusionKind ||
-        backend_config.kind() == kCuDnnFusionKind) {
+    bool is_unassigned_triton =
+        backend_config.kind() == kTritonGemmFusionKind &&
+        !backend_config.has_triton_gemm_config();
+    bool is_unassigned_custom = backend_config.kind() == kCustomFusionKind &&
+                                !backend_config.has_custom_fusion_config();
+    if (is_unassigned_triton || is_unassigned_custom) {
       return true;
     }
     return false;
