@@ -621,11 +621,11 @@ void SetCuMemHostUnregisterEventUponApiExit(
 struct GraphResourceCreationInfo {
   uint32_t graph_id = 0;
   uint32_t orig_graph_id = 0;
-  absl::flat_hash_map<uint64_t, uint64_t> node_id_map;
+  absl::flat_hash_map<uint64_t, uint64_t> node_id_map = {};
 };
 
 static GraphResourceCreationInfo& GetGraphResourceCreationInfo() {
-  static thread_local GraphResourceCreationInfo per_thread_graph_info;
+  static thread_local GraphResourceCreationInfo per_thread_graph_info{};
   return per_thread_graph_info;
 }
 
