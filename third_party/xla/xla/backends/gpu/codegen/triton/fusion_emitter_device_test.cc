@@ -2480,7 +2480,7 @@ ENTRY entry_computation {
       auto xtile_module_and_hlo_module,
       CreateXTileIrAndFileCheck(this, kHloText, "triton_computation", R"(
 CHECK:      xtile.entry_func @xtile_dialect_fn(
-CHECK-SAME: memref<48x16xi32, #triton_xla.layout<[0, 1]>>
+CHECK-SAME: memref<48x16xi32, #xtile.layout<[0, 1]>>
 CHECK-SAME: memref<16x16x3xi32>,
 CHECK:      xtile.extract
 CHECK:      stablehlo.transpose

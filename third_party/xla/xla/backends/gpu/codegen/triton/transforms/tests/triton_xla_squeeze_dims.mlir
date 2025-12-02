@@ -137,14 +137,14 @@ func.func @reshape_with_encoding(%arg0: tensor<1x32xf32, #arg_enc>) -> tensor<32
 // -----
 
 // CHECK-LABEL: func @fold_squeeze_dims_of_extract
-// CHECK-SAME: (%[[INPUT:.*]]: memref<4x16x8xf32, #triton_xla.layout<[2, 1, 0]>>,
+// CHECK-SAME: (%[[INPUT:.*]]: memref<4x16x8xf32, #xtile.layout<[2, 1, 0]>>,
 func.func @fold_squeeze_dims_of_extract(
-  %input: memref<4x16x8xf32, #triton_xla.layout<[2, 1, 0]>>, %offset: index)  -> tensor<4x8xf32>
+  %input: memref<4x16x8xf32, #xtile.layout<[2, 1, 0]>>, %offset: index)  -> tensor<4x8xf32>
 {
   // CHECK: %[[EXTRACT:.*]] = xtile.extract %[[INPUT]]
-  // CHECK-SAME: memref<4x16x8xf32, #triton_xla.layout<[2, 1, 0]>> -> tensor<4x8xf32>
+  // CHECK-SAME: memref<4x16x8xf32, #xtile.layout<[2, 1, 0]>> -> tensor<4x8xf32>
   %tile = xtile.extract %input[%offset, %offset, %offset][4, 1, 8][1, 1, 1]
-    : memref<4x16x8xf32, #triton_xla.layout<[2, 1, 0]>> -> tensor<4x1x8xf32>
+    : memref<4x16x8xf32, #xtile.layout<[2, 1, 0]>> -> tensor<4x1x8xf32>
   // CHECK-NOT: triton_xla.squeeze_dims
   %squeezed = triton_xla.squeeze_dims %tile {axis = 1 : i32} : tensor<4x1x8xf32> -> tensor<4x8xf32>
   // CHECK: return %[[EXTRACT]]
@@ -155,18 +155,18 @@ func.func @fold_squeeze_dims_of_extract(
 // -----
 
 // CHECK-LABEL: func @squeeze_insert(
-// CHECK-SAME: %[[BUFFER:.*]]: memref<4x16x8xf32, #triton_xla.layout<[2, 1, 0]>>,
+// CHECK-SAME: %[[BUFFER:.*]]: memref<4x16x8xf32, #xtile.layout<[2, 1, 0]>>,
 // CHECK-SAME: %[[TILE:.*]]: tensor<4x1x8xf32>
 func.func @squeeze_insert(
-  %arg0: memref<4x16x8xf32, #triton_xla.layout<[2, 1, 0]>>,
+  %arg0: memref<4x16x8xf32, #xtile.layout<[2, 1, 0]>>,
   %arg1: tensor<4x1x8xf32>,
   %offset: index) {
   // CHECK: %[[REDUCED:.*]] = triton_xla.squeeze_dims %[[TILE]]
   // CHECK-SAME: {axis = 1 : i32} : tensor<4x1x8xf32> -> tensor<4x8xf32>
   // CHECK: xtile.insert %[[REDUCED]] into %[[BUFFER]]
-  // CHECK-SAME: tensor<4x8xf32> -> memref<4x16x8xf32, #triton_xla.layout<[2, 1, 0]>>
+  // CHECK-SAME: tensor<4x8xf32> -> memref<4x16x8xf32, #xtile.layout<[2, 1, 0]>>
   xtile.insert %arg1 into %arg0[%offset, %offset, %offset][4, 1, 8][1, 1, 1]
-    : tensor<4x1x8xf32> -> memref<4x16x8xf32, #triton_xla.layout<[2, 1, 0]>>
+    : tensor<4x1x8xf32> -> memref<4x16x8xf32, #xtile.layout<[2, 1, 0]>>
   return
 }
 
@@ -174,13 +174,13 @@ func.func @squeeze_insert(
 
 // CHECK-LABEL: func @squeeze_insert_unit_tensor
 func.func @squeeze_insert_unit_tensor(
-  %arg0: memref<1x1xf32,#triton_xla.layout<[0, 1]>>,
+  %arg0: memref<1x1xf32,#xtile.layout<[0, 1]>>,
   %arg1: tensor<1x1xf32>,
   %offset: index) {
   // CHECK: triton_xla.squeeze_dims
   // CHECK: xtile.insert {{.*}} : tensor<1xf32>
   xtile.insert %arg1 into %arg0[%offset, %offset] [1, 1] [1, 1]
-    : tensor<1x1xf32> -> memref<1x1xf32,#triton_xla.layout<[0, 1]>>
+    : tensor<1x1xf32> -> memref<1x1xf32,#xtile.layout<[0, 1]>>
   return
 }
 

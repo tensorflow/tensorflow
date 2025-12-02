@@ -30,7 +30,8 @@ def XlaTritonDialect : Dialect {
   let useDefaultAttributePrinterParser = 1;
   let dependentDialects = [
     "mlir::triton::TritonDialect",
-    "mlir::triton::gpu::TritonGPUDialect"
+    "mlir::triton::gpu::TritonGPUDialect",
+    "::xla::xtile::XTileDialect",
   ];
 }
 

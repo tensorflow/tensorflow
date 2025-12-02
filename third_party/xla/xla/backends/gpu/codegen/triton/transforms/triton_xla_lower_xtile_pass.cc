@@ -81,7 +81,7 @@ llvm::SmallVector<mlir::Type> GetTransformedArgTypes(
 
 // Function to get the permutation vector from a MemRefType.
 // The motivation for extracting it from getStridesAndOffset vs directly from
-// triton_xla.layout is that when we fold memrefs (such as in a transpose) it
+// xtile.layout is that when we fold memrefs (such as in a transpose) it
 // will have a generic strided layout that does not directly encode the
 // permutation.
 absl::StatusOr<llvm::SmallVector<int64_t>> getPermutationMinorToMajor(
