@@ -1765,9 +1765,8 @@ PartitionedHlo PartitionedHlo::ReshardWithAllToAll(
   HloInstruction* all_to_all = nullptr;
   // Try to generate replica groups in compressed format.
   std::optional<IotaReplicaGroupList> groups =
-      GetIotaPartitionGroupsAcrossTargetDims(
-          temp_target, {target_dim}, {group_size},
-          state_.partitioner->num_partitions());
+      GetIotaPartitionGroupsAcrossTargetDims(temp_target, {target_dim},
+                                             {group_size});
   if (state_.collective_ops_creator
           .create_cross_partition_all_to_all_with_iota_device_list &&
       groups.has_value()) {
@@ -1957,9 +1956,8 @@ PartitionedHlo PartitionedHlo::TryMultipleSourceTargetDims(
   HloInstruction* all_to_all = nullptr;
   // Try to generate replica groups in compressed format.
   std::optional<IotaReplicaGroupList> groups =
-      GetIotaPartitionGroupsAcrossTargetDims(
-          temp_target, eligible_target_dims, group_sizes,
-          state_.partitioner->num_partitions());
+      GetIotaPartitionGroupsAcrossTargetDims(temp_target, eligible_target_dims,
+                                             group_sizes);
   if (state_.collective_ops_creator
           .create_cross_partition_all_to_all_with_iota_device_list &&
       groups.has_value()) {
@@ -5231,8 +5229,8 @@ SpmdPartitioner::AllGatherShardsInternal(
       }
       // Attempt to generate partition groups in iota format. If infeasible,
       // fallback to list of lists representation.
-      auto partition_group_list = GetIotaPartitionGroupsForReplication(
-          sharding, {*it}, num_partitions_);
+      auto partition_group_list =
+          GetIotaPartitionGroupsForReplication(sharding, {*it});
       if (partition_group_list.has_value() &&
           collectives_creator
               .create_cross_partition_all_gather_with_iota_device_list) {
@@ -5270,8 +5268,8 @@ SpmdPartitioner::AllGatherShardsInternal(
 
   // Attempt to generate partition groups in iota format. If infeasible,
   // fallback to list of lists representation.
-  auto partition_group_list = GetIotaPartitionGroupsForReplication(
-      sharding, selected_dims, num_partitions_);
+  auto partition_group_list =
+      GetIotaPartitionGroupsForReplication(sharding, selected_dims);
   if (partition_group_list.has_value() &&
       collectives_creator
           .create_cross_partition_all_gather_with_iota_device_list) {
@@ -5365,8 +5363,8 @@ HloInstruction* SpmdPartitioner::AllReduceAlongShardingDimsInternal(
   if (!per_dim_ar) {
     // Attempt to generate partition groups in iota format. If infeasible,
     // fallback to list of lists representation.
-    auto partition_group_list = GetIotaPartitionGroupsForReplication(
-        sharding, selected_dims, num_partitions_);
+    auto partition_group_list =
+        GetIotaPartitionGroupsForReplication(sharding, selected_dims);
     if (partition_group_list.has_value() &&
         collectives_creator
             .create_cross_partition_all_reduce_with_iota_device_list) {
@@ -5389,7 +5387,7 @@ HloInstruction* SpmdPartitioner::AllReduceAlongShardingDimsInternal(
     // Attempt to generate partition groups in iota format. If infeasible,
     // fallback to list of lists representation.
     auto partition_group_list =
-        GetIotaPartitionGroupsForReplication(sharding, {*it}, num_partitions_);
+        GetIotaPartitionGroupsForReplication(sharding, {*it});
     if (partition_group_list.has_value() &&
         collectives_creator
             .create_cross_partition_all_reduce_with_iota_device_list) {

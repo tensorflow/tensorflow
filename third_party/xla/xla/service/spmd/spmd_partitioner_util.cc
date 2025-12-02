@@ -2924,7 +2924,7 @@ std::vector<std::vector<int64_t>> GetPartitionGroupsAcrossTargetDims(
 
 std::optional<IotaReplicaGroupList> GetIotaPartitionGroupsAcrossTargetDims(
     const HloSharding& sharding, std::vector<int64_t> target_dims,
-    std::vector<int64_t> group_sizes, int64_t num_partitions) {
+    std::vector<int64_t> group_sizes) {
   CHECK(target_dims.size() == group_sizes.size());
   // If provided sharding is not HloShardingV2, we cannot generate partition
   // groups in an iota format.
@@ -3011,8 +3011,7 @@ std::optional<IotaReplicaGroupList> GetIotaPartitionGroupsAcrossTargetDims(
 
 // Returns partition groups in an iota format.
 std::optional<IotaReplicaGroupList> GetIotaPartitionGroupsForReplication(
-    const HloSharding& sharding, absl::Span<const int64_t> replication_dims,
-    int64_t num_partitions) {
+    const HloSharding& sharding, absl::Span<const int64_t> replication_dims) {
   // If provided sharding is not HloShardingV2, we cannot generate partition
   // groups in an iota format.
   if (!sharding.tile_assignment().iota().has_value()) {
