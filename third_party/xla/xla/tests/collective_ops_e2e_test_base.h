@@ -79,8 +79,13 @@ class CollectiveOpsE2ETestBase : public HloHardwareIndependentTestBase {
       std::unique_ptr<HloModule> module);
 
   absl::StatusOr<ExecutionResult> ExecuteReplicated(
+      std::unique_ptr<HloModule> module, const std::vector<Literal*>& arguments,
+      bool run_hlo_passes = true);
+
+  absl::StatusOr<ExecutionResult> ExecuteReplicated(
       std::unique_ptr<HloModule> module,
-      std::vector<std::vector<Literal*>> arguments, bool run_hlo_passes = true);
+      const std::vector<std::vector<Literal*>>& arguments,
+      bool run_hlo_passes = true);
 
   const se::GpuComputeCapability& Capability() {
     return hlo_runner_->backend()

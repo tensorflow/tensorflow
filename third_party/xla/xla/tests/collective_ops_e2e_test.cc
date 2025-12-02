@@ -564,9 +564,8 @@ TEST_P(AsyncCollectiveOps, AsyncAllToAllWithSplitDim) {
   TF_ASSERT_OK_AND_ASSIGN(
       auto module, ParseAndReturnVerifiedModule(kModuleStr, kNumReplicas));
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      ExecutionResult execution_result,
-      ExecuteReplicated(std::move(module), /*arguments=*/{{}, {}}));
+  TF_ASSERT_OK_AND_ASSIGN(ExecutionResult execution_result,
+                          ExecuteReplicated(std::move(module)));
 
   const HloModule* hlo_module = execution_result.optimized_module;
   HloInstruction* a2a_start =
@@ -605,20 +604,16 @@ TEST_F(CollectiveOpsTestE2E, AsyncAllToAllMemCpyWithSplitDim) {
   config.set_debug_options(debug_options);
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(kModuleStr, config));
+  TF_ASSERT_OK_AND_ASSIGN(ExecutionResult execution_result,
+                          ExecuteReplicated(std::move(module)));
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto executable, hlo_runner_->CreateExecutable(std::move(module),
-                                                     /*run_hlo_passes=*/true));
-  TF_ASSERT_OK_AND_ASSIGN(const HloModule* const executable_module,
-                          hlo_runner_->HloModuleFromWrapped(executable.get()));
-
+  const HloModule* executable_module = execution_result.optimized_module;
   // Verify that the all-to-all is not decomposed into a tuple all-to-all.
   const HloInstruction* all_to_all =
       FindInstruction(executable_module, HloOpcode::kAllToAll);
   EXPECT_THAT(all_to_all, op::Shape("u32[2, 2]"));
 
-  TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> results,
-                          ExecuteReplicated(executable.get(), kNumReplicas));
+  const std::vector<Literal>& results = execution_result.results;
   ASSERT_EQ(results.size(), kNumReplicas);
   LiteralTestUtil::ExpectR1Equal<uint32_t>({10, 15, 11, 16}, results[0]);
   LiteralTestUtil::ExpectR1Equal<uint32_t>({20, 25, 21, 26}, results[1]);
@@ -1008,10 +1003,9 @@ TEST_P(AsyncCollectiveOps, MatmulReplicated) {
   for (int i = 0; i < fake_arguments.size(); i++) {
     fake_ptrs[i] = &fake_arguments[i];
   }
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::vector<Literal> results,
-      ExecuteReplicated(std::move(module), fake_ptrs, kNumReplicas, &assn,
-                        /*run_hlo_passes=*/true, /*use_threads=*/true));
+  TF_ASSERT_OK_AND_ASSIGN(ExecutionResult execution_result,
+                          ExecuteReplicated(std::move(module), fake_ptrs));
+  const std::vector<Literal>& results = execution_result.results;
   ASSERT_EQ(results.size(), kNumReplicas);
 
   TF_ASSERT_OK_AND_ASSIGN(
@@ -1299,12 +1293,6 @@ class CollectiveOpsTestE2EWindowedNonWindowed : public CollectiveOpsTestE2E {
                    << " available)";
     }
 
-    DeviceAssignment assn(/*replica_count=*/kNumReplicas,
-                          /*computation_count=*/kNumPartitions);
-    for (int64_t i = 0; i < kNumPartitions; ++i) {
-      assn(0, i) = i;
-    }
-
     HloModuleConfig ref_config =
         GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
     auto ref_opts = GetDebugOptionsForTest();
@@ -1324,10 +1312,9 @@ class CollectiveOpsTestE2EWindowedNonWindowed : public CollectiveOpsTestE2E {
     }
 
     TF_ASSERT_OK_AND_ASSIGN(
-        std::vector<Literal> ref_results,
-        ExecuteReplicated(std::move(ref_module), ref_fake_ptrs, kNumPartitions,
-                          &assn, /*run_hlo_passes=*/true,
-                          /*use_threads=*/true));
+        ExecutionResult ref_execution_result,
+        ExecuteReplicated(std::move(ref_module), ref_fake_ptrs));
+    const std::vector<Literal>& ref_results = ref_execution_result.results;
 
     HloModuleConfig config =
         GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
@@ -1354,10 +1341,9 @@ class CollectiveOpsTestE2EWindowedNonWindowed : public CollectiveOpsTestE2E {
       fake_ptrs[i] = &fake_arguments[i];
     }
 
-    TF_ASSERT_OK_AND_ASSIGN(
-        std::vector<Literal> results,
-        ExecuteReplicated(std::move(module), fake_ptrs, kNumPartitions, &assn,
-                          /*run_hlo_passes=*/true, /*use_threads=*/true));
+    TF_ASSERT_OK_AND_ASSIGN(ExecutionResult execution_result,
+                            ExecuteReplicated(std::move(module), fake_ptrs));
+    const std::vector<Literal>& results = execution_result.results;
     ASSERT_EQ(results.size(), kNumPartitions);
 
     ASSERT_EQ(ref_results.size(), kNumPartitions);
@@ -1733,16 +1719,9 @@ class CollectiveOpsTestE2EPipelinedNonPipelined : public CollectiveOpsTestE2E {
       fake_ptrs[i] = &fake_arguments[i];
     }
 
-    DeviceAssignment assn(/*replica_count=*/kNumReplicas,
-                          /*computation_count=*/kNumPartitions);
-    for (int64_t i = 0; i < kNumPartitions; ++i) {
-      assn(0, i) = i;
-    }
-
-    TF_ASSERT_OK_AND_ASSIGN(
-        std::vector<Literal> results,
-        ExecuteReplicated(std::move(module), fake_ptrs, kNumPartitions, &assn,
-                          /*run_hlo_passes=*/true, /*use_threads=*/true));
+    TF_ASSERT_OK_AND_ASSIGN(ExecutionResult execution_result,
+                            ExecuteReplicated(std::move(module), fake_ptrs));
+    const std::vector<Literal>& results = execution_result.results;
     ASSERT_EQ(results.size(), kNumPartitions);
 
     HloModuleConfig ref_config =
@@ -1761,10 +1740,9 @@ class CollectiveOpsTestE2EPipelinedNonPipelined : public CollectiveOpsTestE2E {
     }
 
     TF_ASSERT_OK_AND_ASSIGN(
-        std::vector<Literal> ref_results,
-        ExecuteReplicated(std::move(ref_module), ref_fake_ptrs, kNumPartitions,
-                          &assn,
-                          /*run_hlo_passes=*/true, /*use_threads=*/true));
+        ExecutionResult ref_execution_result,
+        ExecuteReplicated(std::move(ref_module), ref_fake_ptrs));
+    const std::vector<Literal>& ref_results = ref_execution_result.results;
     ASSERT_EQ(ref_results.size(), kNumPartitions);
     ErrorSpec error_spec{1e-5, 1e-5};
     // Expect same results with and without pipelining of collectives.
@@ -1965,35 +1943,19 @@ ENTRY entry {
       << "Test requires at least " << kNumReplicas * kNumPartitions
       << " devices (" << hlo_runner_->device_count() << " available)";
 
-  HloModuleConfig config =
-      GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
-  config.set_num_partitions(kNumPartitions);
   TF_ASSERT_OK_AND_ASSIGN(
-      auto module, ParseAndReturnVerifiedModule(kModuleReplicatedStr, config));
+      auto module, ParseAndReturnVerifiedModule(kModuleReplicatedStr,
+                                                kNumReplicas, kNumPartitions));
+  TF_ASSERT_OK_AND_ASSIGN(ExecutionResult execution_result,
+                          ExecuteReplicated(std::move(module)));
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto executable, hlo_runner_->CreateExecutable(std::move(module),
-                                                     /*run_hlo_passes=*/true));
-  TF_ASSERT_OK_AND_ASSIGN(const HloModule* const hlo_module,
-                          hlo_runner_->HloModuleFromWrapped(executable.get()));
+  const HloModule* hlo_module = execution_result.optimized_module;
   HloInstruction* all_to_all =
       FindInstruction(hlo_module, HloOpcode::kAllToAll);
   EXPECT_THAT(all_to_all, NotNull());
   EXPECT_EQ(all_to_all->shape().element_type(), BF16);
 
-  // Execute the test on 2 partitions.
-  TF_ASSERT_OK_AND_ASSIGN(
-      module, ParseAndReturnVerifiedModule(kModuleReplicatedStr, config));
-  DeviceAssignment assignment(/*replica_count=*/kNumReplicas,
-                              /*computation_count=*/kNumPartitions);
-  for (int64_t i = 0; i < kNumPartitions; ++i) {
-    assignment(0, i) = i;
-  }
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::vector<Literal> results,
-      ExecuteReplicated(std::move(module), {}, kNumPartitions, &assignment,
-                        /*run_hlo_passes=*/true,
-                        /*use_threads=*/true));
+  const std::vector<Literal>& results = execution_result.results;
   ASSERT_EQ(results.size(), kNumPartitions);
   const bfloat16 four = static_cast<bfloat16>(4.);
   const bfloat16 eight = static_cast<bfloat16>(8.);
@@ -2020,37 +1982,22 @@ ENTRY entry {
       << "Test requires at least " << kNumReplicas * kNumPartitions
       << " devices (" << hlo_runner_->device_count() << " available)";
 
-  HloModuleConfig config =
-      GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
-  config.set_num_partitions(kNumPartitions);
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module, ParseAndReturnVerifiedModule(kModuleReplicatedStr,
+                                                kNumReplicas, kNumPartitions));
+
+  TF_ASSERT_OK_AND_ASSIGN(ExecutionResult execution_result,
+                          ExecuteReplicated(std::move(module)));
 
   // Verify that the element type of the all-to-all has been changed to BF16.
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto module, ParseAndReturnVerifiedModule(kModuleReplicatedStr, config));
-
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto executable, hlo_runner_->CreateExecutable(std::move(module),
-                                                     /*run_hlo_passes=*/true));
-  TF_ASSERT_OK_AND_ASSIGN(const HloModule* const hlo_module,
-                          hlo_runner_->HloModuleFromWrapped(executable.get()));
+  const HloModule* hlo_module = execution_result.optimized_module;
   HloInstruction* all_to_all =
       FindInstruction(hlo_module, HloOpcode::kAllToAll);
   EXPECT_THAT(all_to_all, NotNull());
   EXPECT_EQ(all_to_all->shape().element_type(), BF16);
 
   // Execute the test on 2 partitions.
-  TF_ASSERT_OK_AND_ASSIGN(
-      module, ParseAndReturnVerifiedModule(kModuleReplicatedStr, config));
-  DeviceAssignment assignment(/*replica_count=*/kNumReplicas,
-                              /*computation_count=*/kNumPartitions);
-  for (int64_t i = 0; i < kNumPartitions; ++i) {
-    assignment(0, i) = i;
-  }
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::vector<Literal> results,
-      ExecuteReplicated(std::move(module), {}, kNumPartitions, &assignment,
-                        /*run_hlo_passes=*/true,
-                        /*use_threads=*/true));
+  const std::vector<Literal>& results = execution_result.results;
   ASSERT_EQ(results.size(), kNumPartitions);
   LiteralTestUtil::ExpectR1Equal<float>({4., 4.}, results[0]);
   LiteralTestUtil::ExpectR1Equal<float>({8., 8.}, results[1]);
@@ -2226,16 +2173,9 @@ ENTRY main.49 {
     fake_ptrs[i] = &fake_arguments[i];
   }
 
-  DeviceAssignment assn(/*replica_count=*/kNumReplicas,
-                        /*computation_count=*/kNumPartitions);
-  for (int64_t i = 0; i < kNumPartitions; ++i) {
-    assn(0, i) = i;
-  }
-
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::vector<Literal> results,
-      ExecuteReplicated(std::move(module), fake_ptrs, kNumPartitions, &assn,
-                        /*run_hlo_passes=*/true, /*use_threads=*/true));
+  TF_ASSERT_OK_AND_ASSIGN(ExecutionResult execution_result,
+                          ExecuteReplicated(std::move(module), fake_ptrs));
+  const std::vector<Literal>& results = execution_result.results;
   ASSERT_EQ(results.size(), kNumPartitions);
 
   HloModuleConfig ref_config =
@@ -2252,10 +2192,9 @@ ENTRY main.49 {
   }
 
   TF_ASSERT_OK_AND_ASSIGN(
-      std::vector<Literal> ref_results,
-      ExecuteReplicated(std::move(ref_module), ref_fake_ptrs, kNumPartitions,
-                        &assn,
-                        /*run_hlo_passes=*/true, /*use_threads=*/true));
+      ExecutionResult ref_execution_result,
+      ExecuteReplicated(std::move(ref_module), ref_fake_ptrs));
+  const std::vector<Literal>& ref_results = ref_execution_result.results;
   ASSERT_EQ(ref_results.size(), kNumPartitions);
   ErrorSpec error_spec{1e-5, 1e-5};
   // Expect same results with and without pipelining of collectives.
@@ -2325,23 +2264,15 @@ ENTRY main {
     ref_fake_ptrs[i] = &fake_ref_arguments[i];
   }
 
-  DeviceAssignment assn(/*replica_count=*/kNumReplicas,
-                        /*computation_count=*/kNumPartitions);
-  for (int64_t i = 0; i < kNumPartitions; ++i) {
-    assn(0, i) = i;
-  }
-
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::vector<Literal> results,
-      ExecuteReplicated(std::move(module), fake_ptrs, kNumPartitions, &assn,
-                        /*run_hlo_passes=*/true, /*use_threads=*/true));
+  TF_ASSERT_OK_AND_ASSIGN(ExecutionResult execution_result,
+                          ExecuteReplicated(std::move(module), fake_ptrs));
+  const std::vector<Literal>& results = execution_result.results;
   ASSERT_EQ(results.size(), kNumPartitions);
 
   TF_ASSERT_OK_AND_ASSIGN(
-      std::vector<Literal> ref_results,
-      ExecuteReplicated(std::move(ref_module), ref_fake_ptrs, kNumPartitions,
-                        &assn,
-                        /*run_hlo_passes=*/true, /*use_threads=*/true));
+      ExecutionResult ref_execution_result,
+      ExecuteReplicated(std::move(ref_module), ref_fake_ptrs));
+  const std::vector<Literal>& ref_results = ref_execution_result.results;
   ASSERT_EQ(ref_results.size(), kNumPartitions);
   ErrorSpec error_spec{1e-5, 1e-5};
   // Expect same results with and without pipelining of collectives.
@@ -2551,11 +2482,8 @@ TEST_P(AllReduceTest, AsyncAllReduce_F32_2GPUs) {
       << "Test requires at least " << kNumReplicas << " devices ("
       << hlo_runner_->device_count() << " available)";
 
-  HloModuleConfig config =
-      GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
-
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kModuleStr, config));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module, ParseAndReturnVerifiedModule(kModuleStr, kNumReplicas));
 
   int64_t num_elements =
       module->entry_computation()->root_instruction()->shape().dimensions()[0];
@@ -2574,12 +2502,11 @@ TEST_P(AllReduceTest, AsyncAllReduce_F32_2GPUs) {
       LiteralUtil::CreateFromArray(expected_output);
 
   TF_ASSERT_OK_AND_ASSIGN(
-      std::vector<Literal> results,
+      ExecutionResult execution_result,
       ExecuteReplicated(std::move(module),
-                        {{&input_literal1}, {&input_literal2}},
-                        /*device_assignment=*/nullptr,
-                        /*num_replicas=*/kNumReplicas,
-                        /*run_hlo_passes=*/true));
+                        std::vector<std::vector<Literal*>>{{&input_literal1},
+                                                           {&input_literal2}}));
+  const std::vector<Literal>& results = execution_result.results;
   ASSERT_EQ(results.size(), kNumReplicas);
   EXPECT_TRUE(LiteralTestUtil::Equal(expected_output_literal, results[0]));
   EXPECT_TRUE(LiteralTestUtil::Equal(expected_output_literal, results[1]));
@@ -2631,11 +2558,8 @@ TEST_P(AllReduceTest, AsyncAllReduceInsideWhile_F32_2GPUs) {
       << "Test requires at least " << kNumReplicas << " devices ("
       << hlo_runner_->device_count() << " available)";
 
-  HloModuleConfig config =
-      GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
-
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kModuleStr, config));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module, ParseAndReturnVerifiedModule(kModuleStr, kNumReplicas));
 
   int64_t num_elements =
       module->entry_computation()->root_instruction()->shape().dimensions()[0];
@@ -2655,12 +2579,11 @@ TEST_P(AllReduceTest, AsyncAllReduceInsideWhile_F32_2GPUs) {
       LiteralUtil::CreateFromArray(expected_output);
 
   TF_ASSERT_OK_AND_ASSIGN(
-      std::vector<Literal> results,
+      ExecutionResult execution_result,
       ExecuteReplicated(std::move(module),
-                        {{&input_literal1}, {&input_literal2}},
-                        /*device_assignment=*/nullptr,
-                        /*num_replicas=*/kNumReplicas,
-                        /*run_hlo_passes=*/true));
+                        std::vector<std::vector<Literal*>>{{&input_literal1},
+                                                           {&input_literal2}}));
+  const std::vector<Literal>& results = execution_result.results;
   ASSERT_EQ(results.size(), kNumReplicas);
   EXPECT_TRUE(LiteralTestUtil::Equal(expected_output_literal, results[0]));
   EXPECT_TRUE(LiteralTestUtil::Equal(expected_output_literal, results[1]));
@@ -2687,11 +2610,8 @@ TEST_P(AllReduceTest, AsyncAllReduce_BF16_2GPUs) {
       << "Test requires at least " << kNumReplicas << " devices ("
       << hlo_runner_->device_count() << " available)";
 
-  HloModuleConfig config =
-      GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
-
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kModuleStr, config));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module, ParseAndReturnVerifiedModule(kModuleStr, kNumReplicas));
 
   int64_t num_elements =
       module->entry_computation()->root_instruction()->shape().dimensions()[0];
@@ -2710,12 +2630,11 @@ TEST_P(AllReduceTest, AsyncAllReduce_BF16_2GPUs) {
       LiteralUtil::CreateFromArray(expected_output);
 
   TF_ASSERT_OK_AND_ASSIGN(
-      std::vector<Literal> results,
+      ExecutionResult execution_result,
       ExecuteReplicated(std::move(module),
-                        {{&input_literal1}, {&input_literal2}},
-                        /*device_assignment=*/nullptr,
-                        /*num_replicas=*/kNumReplicas,
-                        /*run_hlo_passes=*/true));
+                        std::vector<std::vector<Literal*>>{{&input_literal1},
+                                                           {&input_literal2}}));
+  const std::vector<Literal>& results = execution_result.results;
   ASSERT_EQ(results.size(), kNumReplicas);
   EXPECT_TRUE(LiteralTestUtil::Equal(expected_output_literal, results[0]));
   EXPECT_TRUE(LiteralTestUtil::Equal(expected_output_literal, results[1]));
@@ -2742,11 +2661,8 @@ TEST_P(AllReduceTest, AsyncAllReduce_PRED_2GPUs) {
       << "Test requires at least " << kNumReplicas << " devices ("
       << hlo_runner_->device_count() << " available)";
 
-  HloModuleConfig config =
-      GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
-
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kModuleStr, config));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module, ParseAndReturnVerifiedModule(kModuleStr, kNumReplicas));
 
   int64_t num_elements =
       module->entry_computation()->root_instruction()->shape().dimensions()[0];
@@ -2765,12 +2681,11 @@ TEST_P(AllReduceTest, AsyncAllReduce_PRED_2GPUs) {
       LiteralUtil::CreateFromArray(expected_output);
 
   TF_ASSERT_OK_AND_ASSIGN(
-      std::vector<Literal> results,
+      ExecutionResult execution_result,
       ExecuteReplicated(std::move(module),
-                        {{&input_literal1}, {&input_literal2}},
-                        /*device_assignment=*/nullptr,
-                        /*num_replicas=*/kNumReplicas,
-                        /*run_hlo_passes=*/true));
+                        std::vector<std::vector<Literal*>>{{&input_literal1},
+                                                           {&input_literal2}}));
+  const std::vector<Literal>& results = execution_result.results;
   ASSERT_EQ(results.size(), kNumReplicas);
   EXPECT_TRUE(LiteralTestUtil::Equal(expected_output_literal, results[0]));
   EXPECT_TRUE(LiteralTestUtil::Equal(expected_output_literal, results[1]));
@@ -2799,22 +2714,17 @@ TEST_P(AllReduceTest, AsyncAllReduce_8GPUs_AllReplicasOneGroup) {
                  << hlo_runner_->device_count() << " available)";
   }
 
-  HloModuleConfig config =
-      GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
-
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kModuleStr, config));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module, ParseAndReturnVerifiedModule(kModuleStr, kNumReplicas));
   TF_ASSERT_OK_AND_ASSIGN(
       InputsOutputs test_io,
       BuildTestInputsOutputs(*module, kNumReplicas, /*num_iterations=*/1));
 
   TF_ASSERT_OK_AND_ASSIGN(
-      std::vector<Literal> results,
+      ExecutionResult execution_result,
       ExecuteReplicated(std::move(module),
-                        /*arguments=*/test_io.InputLiteralPtrs(),
-                        /*device_assignment=*/nullptr,
-                        /*num_replicas=*/kNumReplicas,
-                        /*run_hlo_passes=*/true));
+                        /*arguments=*/test_io.InputLiteralPtrs()))
+  const std::vector<Literal>& results = execution_result.results;
   ASSERT_EQ(results.size(), kNumReplicas);
   for (int i = 0; i < kNumReplicas; ++i) {
     // NB: nccl accumulation order can be different from expected calculations
@@ -2871,23 +2781,18 @@ TEST_P(AllReduceTest, AsyncAllReduce_8GPUs_2ReplicasPerGroup) {
                  << hlo_runner_->device_count() << " available)";
   }
 
-  HloModuleConfig config =
-      GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
-
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kModuleStr, config));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module, ParseAndReturnVerifiedModule(kModuleStr, kNumReplicas));
 
   TF_ASSERT_OK_AND_ASSIGN(
       InputsOutputs test_io,
       BuildTestInputsOutputs(*module, kNumReplicas, kNumIterations));
 
   TF_ASSERT_OK_AND_ASSIGN(
-      std::vector<Literal> results,
+      ExecutionResult execution_result,
       ExecuteReplicated(std::move(module),
-                        /*arguments=*/test_io.InputLiteralPtrs(),
-                        /*device_assignment=*/nullptr,
-                        /*num_replicas=*/kNumReplicas,
-                        /*run_hlo_passes=*/true));
+                        /*arguments=*/test_io.InputLiteralPtrs()));
+  const std::vector<Literal>& results = execution_result.results;
   ASSERT_EQ(results.size(), kNumReplicas);
   for (int i = 0; i < kNumReplicas; ++i) {
     ASSERT_TRUE(LiteralTestUtil::Equal(test_io.expected_outputs[i], results[i]))
@@ -3000,9 +2905,7 @@ class CollectiveMetadataTest : public CollectiveOpsE2ETestBase {
 };
 
 TEST_F(CollectiveMetadataTest, ConstructCollectiveMetadata) {
-  constexpr int kNumReplicas = 2;
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> unoptimized_module,
-                          ParseAndReturnVerifiedModule(R"(
+  const absl::string_view kModuleStr = R"(
   HloModule test, replica_count=2
 
   ENTRY test_computation {
@@ -3014,35 +2917,29 @@ TEST_F(CollectiveMetadataTest, ConstructCollectiveMetadata) {
 
     result_tuple = (f32[4], f32[4]{0:S(1)}, f32[1], u64[9]) custom-call(param_0, copy_1, const_0), custom_call_target="CollectiveMetadata", output_to_operand_aliasing={{0}: (0, {}), {1}: (1, {})}
     ROOT get_tuple_element = u64[9] get-tuple-element(result_tuple), index=3
-  })"));
+  })";
+
+  constexpr int kNumReplicas = 2;
+  ASSERT_GE(hlo_runner_->device_count(), kNumReplicas)
+      << "Test requires at least " << kNumReplicas << " devices ("
+      << hlo_runner_->device_count() << " available)";
 
   TF_ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<OpaqueExecutable> executable,
-      hlo_runner_->CreateExecutable(std::move(unoptimized_module),
-                                    /*run_hlo_passes=*/false));
-  const std::array<Literal, 2> arguments = {
-      LiteralUtil::CreateR1<float>({1.0f, 2.0f, 3.0f, 4.0f}),
-      LiteralUtil::CreateR1<float>({1.0f, 2.0f, 3.0f, 4.0f})};
-  DeviceAssignment device_assignment = MakeDeviceAssignment(kNumReplicas);
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::vector<Literal> result,
-      ExecuteReplicated(
-          /*executable_provider*/ [&](int64_t) { return executable.get(); },
-          /*argument_count_provider*/ [&](int64_t) { return arguments.size(); },
-          /*argument_provider*/
-          [&](int64_t replica_id, int64_t arg_index) {
-            return &arguments[arg_index];
-          },
-          kNumReplicas,
-          /*run_hlo_passes=*/false, &device_assignment));
+      auto unoptimized_module,
+      ParseAndReturnVerifiedModule(kModuleStr, kNumReplicas));
 
+  Literal input_0 = LiteralUtil::CreateR1<float>({1.0f, 2.0f, 3.0f, 4.0f});
+  Literal input_1 = LiteralUtil::CreateR1<float>({1.0f, 2.0f, 3.0f, 4.0f});
+  TF_ASSERT_OK_AND_ASSIGN(
+      ExecutionResult execution_result,
+      ExecuteReplicated(std::move(unoptimized_module),
+                        /*arguments=*/std::vector<Literal*>{&input_0, &input_1},
+                        /*run_hlo_passes=*/false));
+  const std::vector<Literal>& result = execution_result.results;
   ASSERT_EQ(result.size(), kNumReplicas);
-  Literal first_result = std::move(result[0]);
-  Literal second_result = std::move(result[1]);
 
-  absl::Span<const uint64_t> first_result_data = first_result.data<uint64_t>();
-  absl::Span<const uint64_t> second_result_data =
-      second_result.data<uint64_t>();
+  absl::Span<const uint64_t> first_result_data = result[0].data<uint64_t>();
+  absl::Span<const uint64_t> second_result_data = result[1].data<uint64_t>();
   constexpr int kNumElements = 9;
   ASSERT_EQ(first_result_data.size(), kNumElements);
   ASSERT_EQ(second_result_data.size(), kNumElements);
@@ -3067,13 +2964,7 @@ TEST_F(CollectiveMetadataTest, ConstructCollectiveMetadata) {
 }
 
 TEST_F(CollectiveMetadataTest, ConstructCollectiveMetadataWithReplicaGroup) {
-  constexpr int kNumReplicas = 4;
-  if (hlo_runner_->device_count() < kNumReplicas) {
-    GTEST_SKIP() << "Test requires at least " << kNumReplicas << " devices ("
-                 << hlo_runner_->device_count() << " available)";
-  }
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> unoptimized_module,
-                          ParseAndReturnVerifiedModule(R"(
+  const absl::string_view kModuleStr = R"(
   HloModule test, replica_count=4
 
   ENTRY test_computation {
@@ -3083,42 +2974,35 @@ TEST_F(CollectiveMetadataTest, ConstructCollectiveMetadataWithReplicaGroup) {
 
     result_tuple = (f32[4], f32[4]{0:S(1)}, u64[7]) custom-call(param_0, copy_1), custom_call_target="CollectiveMetadata", output_to_operand_aliasing={{0}: (0, {}), {1}: (1, {})}, backend_config="{\"collective_metadata_backend_config\":{\"collective_devices\": { \"replica_groups\": [{\"replica_ids\": [0,1]}, {\"replica_ids\": [2,3]}]}}}"
     ROOT get_tuple_element = u64[7] get-tuple-element(result_tuple), index=2
-  })"));
+  })";
+
+  constexpr int kNumReplicas = 4;
+  if (hlo_runner_->device_count() < kNumReplicas) {
+    GTEST_SKIP() << "Test requires at least " << kNumReplicas << " devices ("
+                 << hlo_runner_->device_count() << " available)";
+  }
 
   TF_ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<OpaqueExecutable> executable,
-      hlo_runner_->CreateExecutable(std::move(unoptimized_module),
-                                    /*run_hlo_passes=*/false));
-  const std::array<Literal, 2> arguments = {
-      LiteralUtil::CreateR1<float>({1.0f, 2.0f, 3.0f, 4.0f}),
-      LiteralUtil::CreateR1<float>({1.0f, 2.0f, 3.0f, 4.0f})};
-  DeviceAssignment device_assignment = MakeDeviceAssignment(kNumReplicas);
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::vector<Literal> result,
-      ExecuteReplicated(
-          /*executable_provider*/ [&](int64_t) { return executable.get(); },
-          /*argument_count_provider*/ [&](int64_t) { return arguments.size(); },
-          /*argument_provider*/
-          [&](int64_t replica_id, int64_t arg_index) {
-            return &arguments[arg_index];
-          },
-          kNumReplicas,
-          /*run_hlo_passes=*/false, &device_assignment));
+      auto module, ParseAndReturnVerifiedModule(kModuleStr, kNumReplicas));
 
+  Literal input_0 = LiteralUtil::CreateR1<float>({1.0f, 2.0f, 3.0f, 4.0f});
+  Literal input_1 = LiteralUtil::CreateR1<float>({1.0f, 2.0f, 3.0f, 4.0f});
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      ExecutionResult execution_result,
+      ExecuteReplicated(std::move(module),
+                        /*arguments=*/std::vector<Literal*>{&input_0, &input_1},
+                        /*run_hlo_passes=*/false));
+  const std::vector<Literal>& result = execution_result.results;
   ASSERT_EQ(result.size(), kNumReplicas);
-  Literal replica_0_result_0 = std::move(result[0]);
-  Literal replica_0_result_1 = std::move(result[1]);
-  Literal replica_1_result_0 = std::move(result[2]);
-  Literal replica_1_result_1 = std::move(result[3]);
-
   absl::Span<const uint64_t> replica_0_result_0_data =
-      replica_0_result_0.data<uint64_t>();
+      result[0].data<uint64_t>();
   absl::Span<const uint64_t> replica_0_result_1_data =
-      replica_0_result_1.data<uint64_t>();
+      result[1].data<uint64_t>();
   absl::Span<const uint64_t> replica_1_result_0_data =
-      replica_1_result_0.data<uint64_t>();
+      result[2].data<uint64_t>();
   absl::Span<const uint64_t> replica_1_result_1_data =
-      replica_1_result_1.data<uint64_t>();
+      result[3].data<uint64_t>();
 
   // Check the rank in the first position.
   constexpr int kNumElements = 7;
