@@ -19,6 +19,7 @@ limitations under the License.
 #include <initializer_list>
 #include <memory>
 
+#include <gmock/gmock.h>
 #include "absl/algorithm/container.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -38,7 +39,7 @@ using ::testing::HasSubstr;
 
 class AllReduceFolderTest : public HloHardwareIndependentTestBase {};
 
-const char *k2AllReduce = R"(
+const char* k2AllReduce = R"(
     HloModule m
 
     sum {
@@ -54,15 +55,15 @@ const char *k2AllReduce = R"(
     }
   )";
 
-size_t AllReduceCount(HloModule *module) {
+size_t AllReduceCount(HloModule* module) {
   return absl::c_count_if(module->entry_computation()->instructions(),
                           HloPredicateIsOp<HloOpcode::kAllReduce>);
 }
 
-void ExpectOneAllReduce(HloModule *module,
+void ExpectOneAllReduce(HloModule* module,
                         absl::string_view target_replica_groups) {
   EXPECT_EQ(AllReduceCount(module), 1);
-  HloInstruction *root = module->entry_computation()->root_instruction();
+  HloInstruction* root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, matcher::AllReduce(matcher::Parameter(0)));
   EXPECT_THAT(root->ToString(), HasSubstr(target_replica_groups));
 }
@@ -85,12 +86,12 @@ TEST_F(AllReduceFolderTest, SimpleSwap) {
 }
 
 TEST_F(AllReduceFolderTest, BothEmptyReplicaGroups_NotTransformed) {
-  TF_ASSERT_OK(RunAndCheckHloRewrite(k2AllReduce, AllReduceFolder(), false,
-                                     {{"$group_0", "{}"}, {"$group_1", "{}"}}));
+  ASSERT_OK(RunAndCheckHloRewrite(k2AllReduce, AllReduceFolder(), false,
+                                  {{"$group_0", "{}"}, {"$group_1", "{}"}}));
 }
 
 TEST_F(AllReduceFolderTest, EmptyReplicaGroups_NotTransformed) {
-  TF_ASSERT_OK(RunAndCheckHloRewrite(
+  ASSERT_OK(RunAndCheckHloRewrite(
       k2AllReduce, AllReduceFolder(), false,
       {{"$group_0", "{}"}, {"$group_1", "{{0,2},{1,3}}"}}));
 }
@@ -111,7 +112,7 @@ TEST_F(AllReduceFolderTest, MismatchOtherProperties0_NotTransformed) {
       ROOT ar1 = f32[8] all-reduce(ar0), replica_groups={{0,2},{1,3}}, to_apply=sum
     }
     )";
-  TF_ASSERT_OK(RunAndCheckHloRewrite(hlo_string, AllReduceFolder(), false));
+  ASSERT_OK(RunAndCheckHloRewrite(hlo_string, AllReduceFolder(), false));
 }
 
 TEST_F(AllReduceFolderTest, MismatchOtherProperties1_NotTransformed) {
@@ -136,7 +137,7 @@ TEST_F(AllReduceFolderTest, MismatchOtherProperties1_NotTransformed) {
       ROOT ar1 = f32[8] all-reduce(ar0), replica_groups={{0,2},{1,3}}, to_apply=mul
     }
     )";
-  TF_ASSERT_OK(RunAndCheckHloRewrite(hlo_string, AllReduceFolder(), false));
+  ASSERT_OK(RunAndCheckHloRewrite(hlo_string, AllReduceFolder(), false));
 }
 
 TEST_F(AllReduceFolderTest, NotFoldable_NotTransformed) {
@@ -155,7 +156,7 @@ TEST_F(AllReduceFolderTest, NotFoldable_NotTransformed) {
       ROOT ar1 = f32[8] all-reduce(ar0), replica_groups={{0,1},{2,3}}, to_apply=sum
     }
     )";
-  TF_ASSERT_OK(RunAndCheckHloRewrite(hlo_string, AllReduceFolder(), false));
+  ASSERT_OK(RunAndCheckHloRewrite(hlo_string, AllReduceFolder(), false));
 }
 
 TEST_F(AllReduceFolderTest, Foldable0) {

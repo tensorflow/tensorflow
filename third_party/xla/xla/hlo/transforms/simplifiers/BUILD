@@ -643,7 +643,6 @@ xla_cc_test(
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest",
         "@com_google_googletest//:gtest_main",  # fixdeps: keep
-        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
@@ -1647,7 +1646,6 @@ xla_cc_test(
     srcs = ["sub_byte_collective_normalization_test.cc"],
     deps = [
         ":sub_byte_collective_normalization",
-        "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/tsl/lib/core:status_test_util",
         "@com_google_googletest//:gtest_main",

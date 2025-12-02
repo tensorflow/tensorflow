@@ -19,6 +19,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include "absl/status/status.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/cloud/http_request.h"
@@ -53,7 +54,7 @@ TEST_F(ComputeEngineMetadataClientTest, GetMetadata) {
                                      RetryConfig(0 /* init_delay_time_us */));
 
   std::vector<char> result;
-  TF_EXPECT_OK(
+  EXPECT_OK(
       client.GetMetadata("instance/service-accounts/default/token", &result));
   std::vector<char> expected(example_response.begin(), example_response.end());
   EXPECT_EQ(expected, result);
@@ -75,7 +76,7 @@ TEST_F(ComputeEngineMetadataClientTest, GetCustomMetadataEndpoint) {
                                      RetryConfig(0 /* init_delay_time_us */));
 
   std::vector<char> result;
-  TF_EXPECT_OK(
+  EXPECT_OK(
       client.GetMetadata("instance/service-accounts/default/token", &result));
   std::vector<char> expected(example_response.begin(), example_response.end());
   EXPECT_EQ(expected, result);
@@ -102,7 +103,7 @@ TEST_F(ComputeEngineMetadataClientTest, RetryOnFailure) {
                                      RetryConfig(0 /* init_delay_time_us */));
 
   std::vector<char> result;
-  TF_EXPECT_OK(
+  EXPECT_OK(
       client.GetMetadata("instance/service-accounts/default/token", &result));
   std::vector<char> expected(example_response.begin(), example_response.end());
   EXPECT_EQ(expected, result);

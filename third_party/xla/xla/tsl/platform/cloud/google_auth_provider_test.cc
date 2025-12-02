@@ -22,6 +22,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "json/json.h"
@@ -118,7 +119,7 @@ TEST_F(GoogleAuthProviderTest, EnvironmentVariable_Caching) {
   oauth_client->return_expiration_timestamp = env.NowSeconds() + 3600;
 
   std::string token;
-  TF_EXPECT_OK(provider.GetToken(&token));
+  EXPECT_OK(provider.GetToken(&token));
   EXPECT_EQ("fake-token", token);
   EXPECT_EQ("fake_key_id",
             oauth_client->provided_credentials_json.get("private_key_id", "")
@@ -127,12 +128,12 @@ TEST_F(GoogleAuthProviderTest, EnvironmentVariable_Caching) {
   // Check that the token is re-used if not expired.
   oauth_client->return_token = "new-fake-token";
   env.now += 3000;
-  TF_EXPECT_OK(provider.GetToken(&token));
+  EXPECT_OK(provider.GetToken(&token));
   EXPECT_EQ("fake-token", token);
 
   // Check that the token is re-generated when almost expired.
   env.now += 598;  // 2 seconds before expiration
-  TF_EXPECT_OK(provider.GetToken(&token));
+  EXPECT_OK(provider.GetToken(&token));
   EXPECT_EQ("new-fake-token", token);
 }
 
@@ -154,7 +155,7 @@ TEST_F(GoogleAuthProviderTest, GCloudRefreshToken) {
   oauth_client->return_expiration_timestamp = env.NowSeconds() + 3600;
 
   std::string token;
-  TF_EXPECT_OK(provider.GetToken(&token));
+  EXPECT_OK(provider.GetToken(&token));
   EXPECT_EQ("fake-token", token);
   EXPECT_EQ("fake-refresh-token",
             oauth_client->provided_credentials_json.get("refresh_token", "")
@@ -200,17 +201,17 @@ TEST_F(GoogleAuthProviderTest, RunningOnGCE) {
                               metadataClient, &env);
 
   std::string token;
-  TF_EXPECT_OK(provider.GetToken(&token));
+  EXPECT_OK(provider.GetToken(&token));
   EXPECT_EQ("fake-gce-token", token);
 
   // Check that the token is re-used if not expired.
   env.now += 3700;
-  TF_EXPECT_OK(provider.GetToken(&token));
+  EXPECT_OK(provider.GetToken(&token));
   EXPECT_EQ("fake-gce-token", token);
 
   // Check that the token is re-generated when almost expired.
   env.now += 598;  // 2 seconds before expiration
-  TF_EXPECT_OK(provider.GetToken(&token));
+  EXPECT_OK(provider.GetToken(&token));
   EXPECT_EQ("new-fake-gce-token", token);
 }
 
@@ -228,7 +229,7 @@ TEST_F(GoogleAuthProviderTest, OverrideForTesting) {
                               metadataClient, &env);
 
   std::string token;
-  TF_EXPECT_OK(provider.GetToken(&token));
+  EXPECT_OK(provider.GetToken(&token));
   EXPECT_EQ("tokenForTesting", token);
 }
 
@@ -250,7 +251,7 @@ TEST_F(GoogleAuthProviderTest, NothingAvailable) {
                               metadataClient, &env);
 
   std::string token;
-  TF_EXPECT_OK(provider.GetToken(&token));
+  EXPECT_OK(provider.GetToken(&token));
   EXPECT_EQ("", token);
 }
 
@@ -265,19 +266,19 @@ TEST_F(GoogleAuthProviderTest, NoGceCheckEnvironmentVariable) {
                               nullptr, &env);
 
   std::string token;
-  TF_EXPECT_OK(provider.GetToken(&token));
+  EXPECT_OK(provider.GetToken(&token));
   EXPECT_EQ("", token);
 
   // We confirm that our env var is case insensitive.
   setenv("NO_GCE_CHECK", "true", 1);
-  TF_EXPECT_OK(provider.GetToken(&token));
+  EXPECT_OK(provider.GetToken(&token));
   EXPECT_EQ("", token);
 
   // We also want to confirm that our empty token has a short expiration set: we
   // now set a testing token, and confirm that it's returned instead of our
   // empty token.
   setenv("GOOGLE_AUTH_TOKEN_FOR_TESTING", "newToken", 1);
-  TF_EXPECT_OK(provider.GetToken(&token));
+  EXPECT_OK(provider.GetToken(&token));
   EXPECT_EQ("newToken", token);
 }
 
