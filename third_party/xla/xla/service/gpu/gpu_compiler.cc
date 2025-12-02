@@ -709,10 +709,9 @@ absl::Status RunOptimizationPasses(
 
   // DynamicPadder creates a stable KeyValue sort for dynamic reshapes.
   pipeline.AddPass<DynamicPadder>(dynamic_padder_options);
-
-  // TODO(b/407909195): Add SortRewriter here once it supports S32 keys for
-  // KeyValueSort. It needs to run before StableSortExpander, otherwise we will
-  // not match the comparison computation.
+  // SortRewriter needs to run before StableSortExpander.
+  pipeline.AddPass<SortRewriter>(gpu_target_config.device_description,
+                                 gpu_target_config.platform_name);
 
   // Expand the sort op to support stable sorting if required.
   pipeline.AddPass<StableSortExpander>();
