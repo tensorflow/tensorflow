@@ -493,11 +493,11 @@ TEST_F(Triton6xBF16GemmTest, Emit6xBF16GemmWhenBothInputsAreF32) {
       p1 = f32[7,33] parameter(1)
       lhs = f32[5,7] fusion(p0), kind=kCustom, calls=lhs,
        backend_config={"fusion_backend_config":{
-        "kind":"__triton_nested_gemm_fusion",
+        "kind":"__triton_gemm",
         "block_level_fusion_config":{"output_tiles":[{"sizes":["32","32"]}]}}}
       rhs = f32[7,33] fusion(p1), kind=kCustom, calls=rhs,
        backend_config={"fusion_backend_config":{
-        "kind":"__triton_nested_gemm_fusion",
+        "kind":"__triton_gemm",
         "block_level_fusion_config":{"output_tiles":[{"sizes":["32","32"]}]}}}
       ROOT dot = f32[5,33] dot(lhs, rhs),
         lhs_contracting_dims={1}, rhs_contracting_dims={0},
@@ -509,7 +509,7 @@ TEST_F(Triton6xBF16GemmTest, Emit6xBF16GemmWhenBothInputsAreF32) {
       p1 = f32[7,33]{1,0} parameter(1)
       ROOT _ = f32[5,33] fusion(p0, p1), kind=kCustom, calls=triton_dot,
         backend_config={"fusion_backend_config": {
-          kind: "__triton_nested_gemm_fusion",
+          kind: "__triton_gemm",
           block_level_fusion_config: {
             "output_tiles":[{"sizes":["32","32"]}],
             "num_stages":1,"num_warps":1,"num_ctas":1}}}
@@ -562,11 +562,11 @@ TEST_F(Triton6xBF16GemmTest, Triton6xBF16GemmWorksForLongContractingDimension) {
       p1 = f32[2048,33] parameter(1)
       lhs = f32[5,2048] fusion(p0), kind=kCustom, calls=lhs,
        backend_config={"fusion_backend_config":{
-        "kind":"__triton_nested_gemm_fusion",
+        "kind":"__triton_gemm",
         "block_level_fusion_config":{"output_tiles":[{"sizes":["64","32"]}]}}}
       rhs = f32[2048,33] fusion(p1), kind=kCustom, calls=rhs,
        backend_config={"fusion_backend_config":{
-        "kind":"__triton_nested_gemm_fusion",
+        "kind":"__triton_gemm",
         "block_level_fusion_config":{"output_tiles":[{"sizes":["32","32"]}]}}}
       ROOT dot = f32[5,33] dot(lhs, rhs),
         lhs_contracting_dims={1}, rhs_contracting_dims={0},
@@ -578,7 +578,7 @@ TEST_F(Triton6xBF16GemmTest, Triton6xBF16GemmWorksForLongContractingDimension) {
       p1 = f32[2048,33]{1,0} parameter(1)
       ROOT _ = f32[5,33] fusion(p0, p1), kind=kCustom, calls=triton_dot,
         backend_config={"fusion_backend_config": {
-          kind: "__triton_nested_gemm_fusion",
+          kind: "__triton_gemm",
           block_level_fusion_config: {
             "output_tiles":[{"sizes":["64","32"]}],
             "num_stages":1,"num_warps":4, "num_ctas":1}}}
@@ -639,11 +639,11 @@ TEST_F(Triton3xBF16GemmTest, Emit3xBF16GemmWhenBothInputsAreF32) {
       p1 = f32[7,33] parameter(1)
       lhs = f32[5,7] fusion(p0), kind=kCustom, calls=lhs,
        backend_config={"fusion_backend_config":{
-        "kind":"__triton_nested_gemm_fusion",
+        "kind":"__triton_gemm",
         "block_level_fusion_config":{"output_tiles":[{"sizes":["32","32"]}]}}}
       rhs = f32[7,33] fusion(p1), kind=kCustom, calls=rhs,
        backend_config={"fusion_backend_config":{
-        "kind":"__triton_nested_gemm_fusion",
+        "kind":"__triton_gemm",
         "block_level_fusion_config":{"output_tiles":[{"sizes":["32","32"]}]}}}
       ROOT dot = f32[5,33] dot(lhs, rhs),
         lhs_contracting_dims={1}, rhs_contracting_dims={0},
@@ -655,7 +655,7 @@ TEST_F(Triton3xBF16GemmTest, Emit3xBF16GemmWhenBothInputsAreF32) {
       p1 = f32[7,33]{1,0} parameter(1)
       ROOT _ = f32[5,33] fusion(p0, p1), kind=kCustom, calls=triton_dot,
         backend_config={"fusion_backend_config": {
-          kind: "__triton_nested_gemm_fusion",
+          kind: "__triton_gemm",
           block_level_fusion_config: {
             "output_tiles":[{"sizes":["32","32"]}],
             "num_stages":1,"num_warps":1,"num_ctas":1}}}
@@ -702,11 +702,11 @@ TEST_F(Triton3xBF16GemmTest, Triton3xBF16GemmWorksForLongContractingDimension) {
       p1 = f32[2048,33] parameter(1)
       lhs = f32[5,2048] fusion(p0), kind=kCustom, calls=lhs,
        backend_config={"fusion_backend_config":{
-        "kind":"__triton_nested_gemm_fusion",
+        "kind":"__triton_gemm",
         "block_level_fusion_config":{"output_tiles":[{"sizes":["64","32"]}]}}}
       rhs = f32[2048,33] fusion(p1), kind=kCustom, calls=rhs,
        backend_config={"fusion_backend_config":{
-        "kind":"__triton_nested_gemm_fusion",
+        "kind":"__triton_gemm",
         "block_level_fusion_config":{"output_tiles":[{"sizes":["32","32"]}]}}}
       ROOT dot = f32[5,33] dot(lhs, rhs),
         lhs_contracting_dims={1}, rhs_contracting_dims={0},
@@ -718,7 +718,7 @@ TEST_F(Triton3xBF16GemmTest, Triton3xBF16GemmWorksForLongContractingDimension) {
       p1 = f32[2048,33]{1,0} parameter(1)
       ROOT _ = f32[5,33] fusion(p0, p1), kind=kCustom, calls=triton_dot,
         backend_config={"fusion_backend_config": {
-          kind: "__triton_nested_gemm_fusion",
+          kind: "__triton_gemm",
           block_level_fusion_config: {
             "output_tiles":[{"sizes":["64","32"]}],
             "num_stages":1,"num_warps":4, "num_ctas":1}}}
@@ -774,8 +774,7 @@ TEST_F(TritonAlgorithmTest, Algorithm_BF16_BF16_F32_X3) {
           rhs_contracting_dims={0}
     }
   )";
-  constexpr absl::string_view kPattern =
-      R"(CHECK: "kind":"__triton_nested_gemm_fusion")";
+  constexpr absl::string_view kPattern = R"(CHECK: "kind":"__triton_gemm")";
   TF_ASSERT_OK_AND_ASSIGN(auto module, GetOptimizedModule(kHloText));
   TF_ASSERT_OK_AND_ASSIGN(auto ok, RunFileCheck(module->ToString(), kPattern));
   EXPECT_TRUE(ok);
@@ -797,8 +796,7 @@ TEST_F(TritonAlgorithmTest, Algorithm_BF16_BF16_F32_X6) {
           rhs_contracting_dims={0}
     }
   )";
-  constexpr absl::string_view kPattern =
-      R"(CHECK: "kind":"__triton_nested_gemm_fusion")";
+  constexpr absl::string_view kPattern = R"(CHECK: "kind":"__triton_gemm")";
   TF_ASSERT_OK_AND_ASSIGN(auto module, GetOptimizedModule(kHloText));
   TF_ASSERT_OK_AND_ASSIGN(auto ok, RunFileCheck(module->ToString(), kPattern));
   EXPECT_TRUE(ok);
@@ -822,7 +820,7 @@ TEST_F(TritonAlgorithmTest, Algorithm_TF32_TF32_F32) {
   )";
   constexpr absl::string_view kPattern = R"(
     CHECK: algorithm=dot_tf32_tf32_f32
-    CHECK: "kind":"__triton_nested_gemm_fusion"
+    CHECK: "kind":"__triton_gemm"
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto module, GetOptimizedModule(kHloText));
   TF_ASSERT_OK_AND_ASSIGN(auto ok, RunFileCheck(module->ToString(), kPattern));
@@ -845,8 +843,7 @@ TEST_F(TritonAlgorithmTest, Algorithm_TF32_TF32_F32_X3) {
           rhs_contracting_dims={0}
     }
   )";
-  constexpr absl::string_view kPattern =
-      R"(CHECK: "kind":"__triton_nested_gemm_fusion")";
+  constexpr absl::string_view kPattern = R"(CHECK: "kind":"__triton_gemm")";
   TF_ASSERT_OK_AND_ASSIGN(auto module, GetOptimizedModule(kHloText));
   TF_ASSERT_OK_AND_ASSIGN(auto ok, RunFileCheck(module->ToString(), kPattern));
   EXPECT_TRUE(ok);
@@ -871,8 +868,7 @@ TEST_F(TritonAlgorithmTest, Algorithm_BF16_BF16_F32) {
           rhs_contracting_dims={0}
     }
   )";
-  constexpr absl::string_view kPattern =
-      R"(CHECK: "kind":"__triton_nested_gemm_fusion")";
+  constexpr absl::string_view kPattern = R"(CHECK: "kind":"__triton_gemm")";
   TF_ASSERT_OK_AND_ASSIGN(auto module, GetOptimizedModule(kHloText));
   TF_ASSERT_OK_AND_ASSIGN(auto ok, RunFileCheck(module->ToString(), kPattern));
   EXPECT_TRUE(ok);
@@ -895,11 +891,11 @@ TEST_F(TritonAlgorithmTest, Dot_BF16_X6_WithConst) {
       p0 = f32[258,1] parameter(0)
       lhs = f32[1,1] fusion(), kind=kCustom, calls=lhs,
        backend_config={"fusion_backend_config":{
-        "kind":"__triton_nested_gemm_fusion",
+        "kind":"__triton_gemm",
         "block_level_fusion_config":{"output_tiles":[{"sizes":["16","16"]}]}}}
       rhs = f32[258,1] fusion(p0), kind=kCustom, calls=rhs,
        backend_config={"fusion_backend_config":{
-        "kind":"__triton_nested_gemm_fusion",
+        "kind":"__triton_gemm",
         "block_level_fusion_config":{"output_tiles":[{"sizes":["16","256"]}]}}}
       dot = f32[1,258] dot(lhs, rhs),
           lhs_contracting_dims={0},
@@ -917,7 +913,7 @@ TEST_F(TritonAlgorithmTest, Dot_BF16_X6_WithConst) {
         calls=triton_fusion_dot,
         backend_config={
           "fusion_backend_config":{
-            "kind":"__triton_nested_gemm_fusion",
+            "kind":"__triton_gemm",
             "block_level_fusion_config":{
               "output_tiles": [{"sizes": ["16","256"]}],
               "num_stages":4,
@@ -1129,8 +1125,7 @@ class NumericTestsForTriton : public TritonAlgorithmTest,
     return absl::StrFormat(kHloTextTemplate, HloModuleTestName(), algorithm_);
   }
 
-  static constexpr absl::string_view kPattern =
-      R"(CHECK: __triton_nested_gemm_fusion)";
+  static constexpr absl::string_view kPattern = R"(CHECK: __triton_gemm)";
 
  private:
   static constexpr absl::string_view kHloTextTemplate = R"(
@@ -1590,7 +1585,7 @@ TEST_P(TritonAndBlasSupportForDifferentTensorSizes,
     if (!Run(std::move(module.value()), false)) {
       return absl::InternalError("failed to run module");
     }
-    return absl::StrContains(module_text, kTritonNestedGemmFusionKind);
+    return absl::StrContains(module_text, kTritonGemmFusionKind);
   };
 
   auto result_or_status = run("triton", triton_options_);
@@ -1891,8 +1886,8 @@ class PrecisionTests
     module->mutable_config().set_debug_options(debug_options);
     TF_ASSIGN_OR_RETURN(module, GetOptimizedModule(std::move(module)));
     if (backend == Backend::kTriton) {
-      TF_RETURN_IF_ERROR(CheckGemmPattern(
-          *module, "CHECK: {{__triton_gemm|__triton_nested_gemm_fusion}}"));
+      TF_RETURN_IF_ERROR(
+          CheckGemmPattern(*module, "CHECK: {{__triton_gemm|__triton_gemm}}"));
     } else if (backend == Backend::kBlas) {
       TF_RETURN_IF_ERROR(CheckGemmPattern(*module, "CHECK: __cublas$gemm"));
     } else {

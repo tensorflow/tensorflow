@@ -20,7 +20,7 @@ dot_computation {
   lhs = f16[15,19] fusion(p1), kind=kCustom, calls=lhs,
     backend_config={
       fusion_backend_config:{
-        kind:"__triton_nested_gemm_fusion",
+        kind:"__triton_gemm",
         block_level_fusion_config:{
           output_tiles:[{sizes:[64,64]}]
         }
@@ -30,7 +30,7 @@ dot_computation {
   rhs = f16[19,17] fusion(p0), kind=kCustom, calls=rhs,
     backend_config={
       fusion_backend_config:{
-        kind:"__triton_nested_gemm_fusion",
+        kind:"__triton_gemm",
         block_level_fusion_config:{
           output_tiles:[{sizes:[64,32]}]
         }
@@ -45,7 +45,7 @@ ENTRY e (p0: f16[15,19], p1: s8[19,17]) -> f16[15,17] {
   ROOT triton_gemm_r = f16[15,17] fusion(p1, p0),
     kind=kCustom, calls=dot_computation, backend_config={
       fusion_backend_config:{
-        kind:"__triton_nested_gemm_fusion",
+        kind:"__triton_gemm",
         block_level_fusion_config:{
           output_tiles:[{sizes:[64,32]}],
           num_stages:2,

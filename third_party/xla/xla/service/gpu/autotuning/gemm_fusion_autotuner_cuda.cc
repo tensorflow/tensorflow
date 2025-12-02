@@ -75,7 +75,7 @@ bool GemmFusionAutotunerImpl::AddLibConfigs(
        (cc.IsAtLeastBlackwell() &&
         debug_options_.xla_gpu_cudnn_gemm_fusion_level() > 0));
   bool is_cudnn_supported_scaled_dot_fusion =
-      IsGpuFusionKind(fusion, kTritonNestedGemmFusionKind) &&
+      IsGpuFusionKind(fusion, kTritonGemmFusionKind) &&
       dot->opcode() == HloOpcode::kScaledDot &&
       dnn_version >= kCudnnSupportsBlockScaledDot &&
       CudnnScaledDotHelper::IsSupported(Cast<HloScaledDotInstruction>(dot)) &&

@@ -164,7 +164,7 @@ absl::StatusOr<TritonFusion::EmitResult> TritonFusion::Emit(
     // so many different fusion kinds?
     const std::vector<absl::string_view> kSupportedFusionKinds = {
         kTritonFusionKind,
-        kTritonNestedGemmFusionKind,
+        kTritonGemmFusionKind,
         kTritonCollectiveFusionKind,
     };
 

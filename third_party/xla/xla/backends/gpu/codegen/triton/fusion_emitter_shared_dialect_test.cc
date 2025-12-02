@@ -271,14 +271,14 @@ dot_fusion {
   fdot.p1 = f32[160,31] parameter(1)
   fdot.lhs = f32[150,160] fusion(fdot.p0), kind=kCustom, calls=flhs, backend_config={
     "fusion_backend_config":{
-      "kind":"__triton_nested_gemm_fusion", "block_level_fusion_config":{
+      "kind":"__triton_gemm", "block_level_fusion_config":{
         "output_tiles":[{"sizes":["32", "8"]}]
       }
     }
   }
   fdot.rhs = f32[160,31]{1,0} fusion(fdot.p1), kind=kCustom, calls=frhs, backend_config={
     "fusion_backend_config":{
-      "kind":"__triton_nested_gemm_fusion", "block_level_fusion_config":{
+      "kind":"__triton_gemm", "block_level_fusion_config":{
         "output_tiles":[{"sizes":["32", "8"]}]
       }
     }
@@ -332,7 +332,7 @@ triton_dot {
     calls=flhs,
     backend_config={
       "fusion_backend_config":{
-        "kind":"__triton_nested_gemm_fusion",
+        "kind":"__triton_gemm",
         "block_level_fusion_config":{
           "output_tiles":[{"sizes":["128","128"]}],
           "num_warps":"4",
@@ -347,7 +347,7 @@ triton_dot {
     calls=frhs,
     backend_config={
       "fusion_backend_config":{
-        "kind":"__triton_nested_gemm_fusion",
+        "kind":"__triton_gemm",
         "block_level_fusion_config":{
           "output_tiles":[{"sizes":["128","256"]}],
           "num_warps":"4",
@@ -362,7 +362,7 @@ triton_dot {
     calls=flhs_scale,
     backend_config={
       "fusion_backend_config":{
-        "kind":"__triton_nested_gemm_fusion",
+        "kind":"__triton_gemm",
         "block_level_fusion_config":{
           "output_tiles":[{"sizes":["128","128"]}],
           "num_warps":"4",
@@ -377,7 +377,7 @@ triton_dot {
     calls=frhs_scale,
     backend_config={
       "fusion_backend_config":{
-        "kind":"__triton_nested_gemm_fusion",
+        "kind":"__triton_gemm",
         "block_level_fusion_config":{
           "output_tiles":[{"sizes":["128", "256"]}],
           "num_warps":"4",
@@ -401,7 +401,7 @@ ENTRY e {
     calls=triton_dot,
     backend_config={
       "fusion_backend_config": {
-        kind: "__triton_nested_gemm_fusion",
+        kind: "__triton_gemm",
         "block_level_fusion_config":{
           "output_tiles":[{"sizes":["128", "256"]}],
           "num_warps":"4",

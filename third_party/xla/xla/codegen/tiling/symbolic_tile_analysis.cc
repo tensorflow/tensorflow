@@ -383,7 +383,7 @@ bool IsWithinNestedGemmFusion(const HloInstruction* hlo) {
   const HloComputation* computation = hlo->parent();
   if (computation->IsFusionComputation()) {
     return gpu::IsGpuFusionKind(*computation->FusionInstruction(),
-                                gpu::kTritonNestedGemmFusionKind);
+                                gpu::kTritonGemmFusionKind);
   }
 
   return false;
@@ -1208,18 +1208,38 @@ std::vector<OperandIndexingSet> GetOperandIndexingMaps(
 
   // TODO(b/372454662): Once we get rid of the restriction of only one real
   // root, this needs to be adapted.
-  auto [root_tiled_hlo, _] = tiled_hlo_instructions_set.Insert(
-      std::make_unique<SymbolicTiledHloInstruction>(
-          root_indexing.GetRealRoot(), root_indexing.real_root_indexing,
-          std::move(root_runtime_variables)));
-  if (root_tiled_hlo->hlo()->opcode() == HloOpcode::kFusion) {
-    // This is an acceptable restriction because we expect the user of a nested
-    // fusion to be a dot or concatenate, which prevents it from being a root.
-    return FusionDecision::Forbid("Root fusion instruction is not supported.");
+  ConstraintExpression constraints = ConstraintExpression::GetAlwaysSatisfied();
+  std::unique_ptr<SymbolicTiledHloInstruction> root_tiled_ptr;
+  if (root_indexing.GetRealRoot()->opcode() == HloOpcode::kFusion) {
+    auto nested_fusion_adaptor = HloFusionAdaptor::ForComputation(
+        root_indexing.GetRealRoot()->fused_instructions_computation());
+    std::vector<SymbolicTiledHloInstruction*> root_rt_vars_copy =
+        root_runtime_variables;
+    auto analysis_or = SymbolicTileAnalysis::AnalyzeNestedFusion(
+        *nested_fusion_adaptor, parameter_mapping, mlir_context,
+        root_indexing.real_root_indexing, simplification_mode,
+        emitter_specific_constraints_builder, std::move(root_rt_vars_copy));
+    if (std::holds_alternative<FusionDecision>(analysis_or)) {
+      return std::get<FusionDecision>(analysis_or);
+    }
+    SymbolicTileAnalysis analysis =
+        std::get<SymbolicTileAnalysis>(std::move(analysis_or));
+    constraints =
+        constraints && analysis.GetTilingSpecification().constraints();
+    constraints.Simplify();
+    root_tiled_ptr = std::make_unique<SymbolicTiledHloFusionInstruction>(
+        root_indexing.GetRealRoot(), root_indexing.real_root_indexing,
+        std::move(analysis), std::move(root_runtime_variables));
+  } else {
+    root_tiled_ptr = std::make_unique<SymbolicTiledHloInstruction>(
+        root_indexing.GetRealRoot(), root_indexing.real_root_indexing,
+        std::move(root_runtime_variables));
   }
 
+  auto [root_tiled_hlo, _] =
+      tiled_hlo_instructions_set.Insert(std::move(root_tiled_ptr));
+
   std::vector<SymbolicTiledHloInstruction*> worklist = {root_tiled_hlo};
-  ConstraintExpression constraints = ConstraintExpression::GetAlwaysSatisfied();
 
   while (!worklist.empty()) {
     SymbolicTiledHloInstruction* tiled_hlo_instruction = worklist.back();

@@ -530,7 +530,7 @@ ENTRY e {
 ; CHECK-NOT:  convert
 ; CHECK: fusion(
 ; CHECK-SAME: kind=kCustom
-; CHECK-SAME: "__triton_nested_gemm_fusion"
+; CHECK-SAME: "__triton_gemm"
   )");
 
   EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
@@ -582,7 +582,7 @@ ENTRY e {
 ; CHECK-NOT: transpose
 ; CHECK: fusion(
 ; CHECK-SAME: kind=kCustom
-; CHECK-SAME: __triton_nested_gemm_fusion
+; CHECK-SAME: __triton_gemm
 )");
   EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/0, /*arel=*/0}));
 }
@@ -608,7 +608,7 @@ ENTRY e {
 ; CHECK-NOT: transpose
 ; CHECK: fusion(
 ; CHECK-SAME: kind=kCustom
-; CHECK-SAME: __triton_nested_gemm_fusion
+; CHECK-SAME: __triton_gemm
 )");
 
   EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
@@ -634,7 +634,7 @@ ENTRY e {
 ; CHECK-NOT: convert
 ; CHECK: fusion
 ; CHECK-SAME: kind=kCustom
-; CHECK-SAME: backend_config={{.*}}"kind":"__triton_nested_gemm_fusion"
+; CHECK-SAME: backend_config={{.*}}"kind":"__triton_gemm"
 )");
   EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
@@ -690,7 +690,7 @@ ENTRY e {
 ; CHECK-SAME: kind=kLoop
 ; CHECK: fusion
 ; CHECK-SAME: kind=kCustom
-; CHECK-SAME: "__triton_nested_gemm_fusion"
+; CHECK-SAME: "__triton_gemm"
 )");
 }
 
@@ -716,7 +716,7 @@ ENTRY e {
 ; CHECK-SAME: kind=kLoop
 ; CHECK: fusion
 ; CHECK-SAME: kind=kCustom
-; CHECK-SAME: "__triton_nested_gemm_fusion"
+; CHECK-SAME: "__triton_gemm"
 )");
 }
 
@@ -742,7 +742,7 @@ ENTRY e {
 ; CHECK-NEXT: parameter
 ; CHECK-NEXT: fusion
 ; CHECK-SAME: kind=kCustom
-; CHECK-SAME: "__triton_nested_gemm_fusion"
+; CHECK-SAME: "__triton_gemm"
 )");
 
   EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
@@ -769,7 +769,7 @@ ENTRY e {
 ; CHECK: f32[5,3,4]{2,1,0} bitcast
 ; CHECK: fusion
 ; CHECK-SAME: kind=kCustom
-; CHECK-SAME: "__triton_nested_gemm_fusion"
+; CHECK-SAME: "__triton_gemm"
 )");
 }
 
@@ -791,7 +791,7 @@ ENTRY e {
 ; CHECK: transpose(
 ; CHECK: bitcast(
 ; CHECK: kCustom
-; CHECK-SAME: backend_config={{.*}}"kind":"__triton_nested_gemm_fusion"
+; CHECK-SAME: backend_config={{.*}}"kind":"__triton_gemm"
 )");
 
   EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-4, /*arel=*/1e-4}));
@@ -1212,7 +1212,7 @@ ENTRY e {
 ; CHECK-SAME:   kind=kLoop
 ; CHECK:      fusion
 ; CHECK-SAME:   kind=kCustom
-; CHECK-SAME:   "__triton_nested_gemm_fusion"
+; CHECK-SAME:   "__triton_gemm"
 )");
 
   EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
@@ -1267,7 +1267,7 @@ ENTRY e {
 ; CHECK: ENTRY
 ; CHECK: kLoop
 ; CHECK: kCustom
-; CHECK-SAME: backend_config={{.*}}"kind":"__triton_nested_gemm_fusion"
+; CHECK-SAME: backend_config={{.*}}"kind":"__triton_gemm"
 )");
 }
 
@@ -1466,7 +1466,7 @@ ENTRY e {
 ; CHECK: ROOT
 ; CHECK: ENTRY
 ; CHECK: kCustom
-; CHECK-SAME: backend_config={{.*}}"kind":"__triton_nested_gemm_fusion"
+; CHECK-SAME: backend_config={{.*}}"kind":"__triton_gemm"
 )");
 }
 
@@ -3253,7 +3253,7 @@ ENTRY e {
 ; CHECK-NEXT: parameter
 ; CHECK-NEXT: fusion(
 ; CHECK-SAME: kind=kCustom
-; CHECK-SAME: __triton_nested_gemm_fusion
+; CHECK-SAME: __triton_gemm
   )");
 }
 

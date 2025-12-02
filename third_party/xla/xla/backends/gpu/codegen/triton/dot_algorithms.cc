@@ -192,9 +192,11 @@ absl::StatusOr<Type> GetAlgUnsetAccumulatorType(mlir::ImplicitLocOpBuilder& b,
 
   CHECK(lhs_type == rhs_type);
 
-  // Currently allowing 8x8-bit ints -> i32.
-  if (lhs_type == b.getIntegerType(8) && accumulator_type.isInteger(32)) {
-    return b.getI32Type();
+  if (auto int_type = mlir::dyn_cast<mlir::IntegerType>(lhs_type)) {
+    return int_type.getWidth() <= 32 ? b.getI32Type() : b.getI64Type();
+  }
+  if (mlir::isa<mlir::IntegerType>(accumulator_type)) {
+    return accumulator_type;
   }
   return (accumulator_type.isF64() && lhs_type.isF64()) ? b.getF64Type()
                                                         : b.getF32Type();
@@ -268,6 +270,7 @@ absl::StatusOr<Type> GetDotAccumulatorType(mlir::ImplicitLocOpBuilder& b,
 absl::StatusOr<Value> EmitSingleTileDot(mlir::ImplicitLocOpBuilder& b,
                                         const HloDotInstruction& dot,
                                         DotOperands dot_operands) {
+  Type original_accumulator_type = ElementType(dot_operands.accumulator);
   PrecisionConfig::Algorithm algorithm = dot.precision_config().algorithm();
   PrecisionSpec precision_spec{
       algorithm,
@@ -290,6 +293,12 @@ absl::StatusOr<Value> EmitSingleTileDot(mlir::ImplicitLocOpBuilder& b,
     if (ElementType(dot_operands.rhs) != *force_operands_type) {
       dot_operands.rhs = Cast(b, dot_operands.rhs, *force_operands_type);
     }
+  } else if (mlir::isa<mlir::IntegerType>(force_accumulator_type) &&
+             mlir::isa<mlir::FloatType>(ElementType(dot_operands.lhs))) {
+    // When using an integer accumulator with float inputs (e.g. ALG_UNSET), we
+    // cast the inputs to the accumulator type to match reference behavior.
+    dot_operands.lhs = Cast(b, dot_operands.lhs, force_accumulator_type);
+    dot_operands.rhs = Cast(b, dot_operands.rhs, force_accumulator_type);
   }
 
   if (ElementType(dot_operands.accumulator) != force_accumulator_type) {
@@ -303,9 +312,8 @@ absl::StatusOr<Value> EmitSingleTileDot(mlir::ImplicitLocOpBuilder& b,
 
   // TODO(b/393299275): once we've moved on from the legacy emitter, we should
   // make sure that this accumulator type is equal to the one derived here.
-  Type outer_accumulator_type = ElementType(dot_operands.accumulator);
-  if (ElementType(result) != outer_accumulator_type) {
-    result = Cast(b, result, outer_accumulator_type);
+  if (ElementType(result) != original_accumulator_type) {
+    result = Cast(b, result, original_accumulator_type);
   }
 
   return result;
