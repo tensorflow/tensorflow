@@ -499,6 +499,7 @@ cc_library(
     deps = [
         ":rocm_collector",
         ":rocm_tracer_utils",
+        "//xla:debug_options_flags",
         "//xla/stream_executor/rocm:roctracer_wrapper",
         "//xla/tsl/profiler/backends/cpu:annotation_stack",
         "@com_google_absl//absl/container:fixed_array",

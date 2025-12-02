@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/stream_executor/stream_executor_memory_allocator.h"
+#include "xla/stream_executor/stream_executor_address_allocator.h"
 
 #include <cstdint>
 #include <utility>
@@ -25,35 +25,35 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
-#include "xla/stream_executor/device_memory.h"
-#include "xla/stream_executor/device_memory_allocator.h"
+#include "xla/stream_executor/device_address.h"
+#include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "tsl/platform/logging.h"
+#include "xla/tsl/platform/statusor.h"
 #include "tsl/platform/numbers.h"
-#include "tsl/platform/statusor.h"
 
 namespace stream_executor {
 
-StreamExecutorMemoryAllocator::StreamExecutorMemoryAllocator(
+StreamExecutorAddressAllocator::StreamExecutorAddressAllocator(
     StreamExecutor* executor)
-    : DeviceMemoryAllocator(executor->GetPlatform()) {
+    : DeviceAddressAllocator(executor->GetPlatform()) {
   stream_executors_ = {executor};
 }
 
-StreamExecutorMemoryAllocator::StreamExecutorMemoryAllocator(
+StreamExecutorAddressAllocator::StreamExecutorAddressAllocator(
     const Platform* platform,
     absl::Span<StreamExecutor* const> stream_executors)
-    : DeviceMemoryAllocator(platform),
+    : DeviceAddressAllocator(platform),
       stream_executors_(stream_executors.begin(), stream_executors.end()) {}
 
-absl::StatusOr<OwningDeviceMemory> StreamExecutorMemoryAllocator::Allocate(
-    int device_ordinal, uint64_t size, bool retry_on_failure,
-    int64_t memory_space) {
+absl::StatusOr<ScopedDeviceAddress<uint8_t>>
+StreamExecutorAddressAllocator::Allocate(int device_ordinal, uint64_t size,
+                                         bool retry_on_failure,
+                                         int64_t memory_space) {
   TF_ASSIGN_OR_RETURN(StreamExecutor * executor,
                       GetStreamExecutor(device_ordinal));
-  DeviceMemoryBase result =
+  DeviceAddressBase result =
       executor->AllocateArray<uint8_t>(size, memory_space);
   if (size > 0 && result == nullptr) {
     return absl::ResourceExhaustedError(absl::StrFormat(
@@ -63,11 +63,11 @@ absl::StatusOr<OwningDeviceMemory> StreamExecutorMemoryAllocator::Allocate(
   VLOG(3) << absl::StreamFormat("Allocated %s (%uB) on device ordinal %d: %p",
                                 tsl::strings::HumanReadableNumBytes(size), size,
                                 device_ordinal, result.opaque());
-  return OwningDeviceMemory(result, device_ordinal, this);
+  return ScopedDeviceAddress<uint8_t>(result, device_ordinal, this);
 }
 
-absl::Status StreamExecutorMemoryAllocator::Deallocate(int device_ordinal,
-                                                       DeviceMemoryBase mem) {
+absl::Status StreamExecutorAddressAllocator::Deallocate(int device_ordinal,
+                                                        DeviceAddressBase mem) {
   if (!mem.is_null()) {
     TF_ASSIGN_OR_RETURN(StreamExecutor * executor,
                         GetStreamExecutor(device_ordinal));
@@ -79,7 +79,7 @@ absl::Status StreamExecutorMemoryAllocator::Deallocate(int device_ordinal,
 }
 
 absl::StatusOr<StreamExecutor*>
-StreamExecutorMemoryAllocator::GetStreamExecutor(int device_ordinal) const {
+StreamExecutorAddressAllocator::GetStreamExecutor(int device_ordinal) const {
   if (device_ordinal < 0) {
     return absl::InvalidArgumentError(absl::StrFormat(
         "device ordinal value (%d) must be non-negative", device_ordinal));
@@ -94,11 +94,11 @@ StreamExecutorMemoryAllocator::GetStreamExecutor(int device_ordinal) const {
                       platform()->Name(), device_ordinal));
 }
 
-bool StreamExecutorMemoryAllocator::AllowsAsynchronousDeallocation() const {
+bool StreamExecutorAddressAllocator::AllowsAsynchronousDeallocation() const {
   return false;
 }
 
-absl::StatusOr<Stream*> StreamExecutorMemoryAllocator::GetStream(
+absl::StatusOr<Stream*> StreamExecutorAddressAllocator::GetStream(
     int device_ordinal) {
   CHECK(!AllowsAsynchronousDeallocation())
       << "The logic below only works for synchronous allocators";
@@ -108,7 +108,7 @@ absl::StatusOr<Stream*> StreamExecutorMemoryAllocator::GetStream(
   if (!streams_.count(device_ordinal)) {
     TF_ASSIGN_OR_RETURN(auto stream, executor->CreateStream());
     auto stream_ptr = stream.get();
-    stream_ptr->SetName("StreamExecutorMemoryAllocator");
+    stream_ptr->SetName("StreamExecutorAddressAllocator");
     streams_.emplace(device_ordinal, std::move(stream));
     return stream_ptr;
   }

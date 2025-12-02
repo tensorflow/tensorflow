@@ -270,15 +270,16 @@ cc_library(
 )
 
 cc_library(
-    name = "stream_executor_memory_allocator",
-    srcs = ["stream_executor_memory_allocator.cc"],
-    hdrs = ["stream_executor_memory_allocator.h"],
+    name = "stream_executor_address_allocator",
+    srcs = ["stream_executor_address_allocator.cc"],
+    hdrs = ["stream_executor_address_allocator.h"],
     deps = [
-        ":device_memory",
-        ":device_memory_allocator",
+        ":device_address",
+        ":device_address_allocator",
         ":platform",
         ":stream",
         ":stream_executor_h",
+        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
@@ -287,9 +288,16 @@ cc_library(
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
-        "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:numbers",
-        "@local_tsl//tsl/platform:statusor",
+    ],
+)
+
+cc_library(
+    name = "stream_executor_memory_allocator",
+    hdrs = ["stream_executor_memory_allocator.h"],
+    deps = [
+        ":stream_executor_address_allocator",
+        "@com_google_absl//absl/base:core_headers",
     ],
 )
 
