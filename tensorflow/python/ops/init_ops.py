@@ -1787,31 +1787,26 @@ def he_uniform(seed=None):
 # Utility functions.
 
 
+
 def _compute_fans(shape):
-  """Computes the number of input and output units for a weight shape.
+  """Returns (fan_in, fan_out) for layers.
 
-  Args:
-    shape: Integer shape tuple or TF tensor shape.
-
-  Returns:
-    A tuple of integer scalars (fan_in, fan_out).
+  Handles dynamic/symbolic dimensions safely by attempting to extract a
+  constant value and otherwise raising an informative TypeError.
   """
-  # Helper function to safely convert shape dimension to int
   def _to_int(value):
     """Convert value to int, handling symbolic tensors from XLA."""
-    # Try to extract constant value from tensor
     const_value = tensor_util.constant_value(value)
     if const_value is not None:
       return int(const_value)
-    # If it's already a Python int or similar, just convert
     try:
       return int(value)
     except (TypeError, ValueError):
-      # If conversion fails (e.g., symbolic tensor), raise informative error
       raise TypeError(
-          f"Cannot compute fan_in/fan_out with dynamic shape dimensions. "
-          f"Shape dimension {value} is symbolic/dynamic (likely from XLA JIT compilation). "
-          f"Consider using concrete shapes or computing weights outside @tf.function(jit_compile=True).")
+          "Cannot compute fan_in/fan_out with dynamic shape dimensions. "
+          f"Shape dimension {value!r} is symbolic/dynamic. "
+          "Use concrete shapes or compute weights outside tf.function."
+      )
 
   if len(shape) < 1:  # Just to avoid errors for constants.
     fan_in = fan_out = 1
@@ -1821,8 +1816,7 @@ def _compute_fans(shape):
     fan_in = _to_int(shape[0])
     fan_out = _to_int(shape[1])
   else:
-    # Assuming convolution kernels (2D, 3D, or more).
-    # kernel shape: (..., input_depth, depth)
+    # Assuming convolution kernels (kernel spatial dims..., in_depth, out_depth)
     receptive_field_size = 1
     for dim in shape[:-2]:
       receptive_field_size *= _to_int(dim)
