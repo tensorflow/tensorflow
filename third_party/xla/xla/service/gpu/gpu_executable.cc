@@ -64,6 +64,7 @@ limitations under the License.
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/dump.h"
 #include "xla/service/executable.h"
+#include "xla/service/gpu/alias_info.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/gpu/gpu_constants.h"
@@ -110,13 +111,14 @@ namespace {
 
 // Chooses the correct allocations to be used within the GpuExecutable code.
 std::vector<const BufferAllocation*> GatherAllocationPtrs(
-    const GpuExecutable::Params& params,
+    const std::optional<std::vector<BufferAllocation>>& mlir_allocations,
+    const BufferAssignment* buffer_assignment,
     const std::deque<BufferAllocation>& thunk_pass_allocations) {
   const std::vector<BufferAllocation>* allocation_vec = nullptr;
-  if (params.mlir_allocations.has_value()) {
-    allocation_vec = &params.mlir_allocations.value();
-  } else if (params.buffer_assignment != nullptr) {
-    allocation_vec = &params.buffer_assignment->Allocations();
+  if (mlir_allocations.has_value()) {
+    allocation_vec = &mlir_allocations.value();
+  } else if (buffer_assignment != nullptr) {
+    allocation_vec = &buffer_assignment->Allocations();
   }
 
   std::vector<const BufferAllocation*> alloc_ptrs;
@@ -242,33 +244,51 @@ absl::StatusOr<std::unique_ptr<GpuExecutable>> GpuExecutable::Create(
       params.debug_module.get(), allocator));
 
   return std::unique_ptr<GpuExecutable>(new GpuExecutable(
-      std::move(params), std::move(allocator.MutableAllocations())));
+      std::move(params.debug_module), std::move(params.asm_text),
+      std::move(params.binary), std::move(params.dnn_compiled_graphs),
+      std::move(params.device_description), std::move(params.executable),
+      std::move(params.module_name), std::move(params.program_shape),
+      std::move(params.mlir_allocations), std::move(params.buffer_assignment),
+      std::move(allocator.MutableAllocations()), std::move(params.alias_info),
+      std::move(params.debug_options), std::move(params.constants),
+      std::move(params.output_info), params.enable_debug_info_manager));
 }
 
 // Implementation note: HLO profiling is always enabled for GPU executables,
 // since we can use timers around thunks.
 GpuExecutable::GpuExecutable(
-    GpuExecutable::Params params,
-    std::deque<BufferAllocation> thunk_pass_allocations)
-    : Executable(std::move(params.debug_module)),
-      text_(std::move(params.asm_text)),
-      binary_(std::move(params.binary)),
-      dnn_compiled_graphs_(std::move(params.dnn_compiled_graphs)),
-      gpu_version_(params.device_description.gpu_compute_capability()),
-      thunks_(std::move(params.executable)),
+    std::unique_ptr<HloModule> debug_module, std::string asm_text,
+    std::vector<uint8_t> binary, BinaryMap dnn_compiled_graphs,
+    se::DeviceDescription device_description,
+    std::unique_ptr<SequentialThunk> executable, std::string module_name,
+    ProgramShape program_shape,
+    std::optional<std::vector<BufferAllocation>> mlir_allocations,
+    std::unique_ptr<const BufferAssignment> buffer_assignment,
+    std::deque<BufferAllocation> thunk_pass_allocations,
+    std::unique_ptr<GpuAliasInfo> alias_info, DebugOptions debug_options,
+    std::vector<ConstantInfo> constants,
+    absl::flat_hash_map<ShapeIndex, OutputInfo> output_info,
+    bool enable_debug_info_manager)
+    : Executable(std::move(debug_module)),
+      text_(std::move(asm_text)),
+      binary_(std::move(binary)),
+      dnn_compiled_graphs_(std::move(dnn_compiled_graphs)),
+      gpu_version_(device_description.gpu_compute_capability()),
+      thunks_(std::move(executable)),
       execution_stream_ids_(GetExecutionStreamIds(*thunks_)),
-      module_name_(params.module_name),
-      program_shape_(params.program_shape),
-      allocation_ptrs_(GatherAllocationPtrs(params, thunk_pass_allocations)),
-      allocations_(std::move(params.mlir_allocations)),
-      buffer_assignment_(std::move(params.buffer_assignment)),
+      module_name_(std::move(module_name)),
+      program_shape_(std::move(program_shape)),
+      allocation_ptrs_(GatherAllocationPtrs(
+          mlir_allocations, buffer_assignment.get(), thunk_pass_allocations)),
+      allocations_(std::move(mlir_allocations)),
+      buffer_assignment_(std::move(buffer_assignment)),
       thunk_pass_allocations_(std::move(thunk_pass_allocations)),
-      alias_info_(std::move(params.alias_info)),
+      alias_info_(std::move(alias_info)),
       debug_buffer_assignment_show_max_(
-          params.debug_options.xla_debug_buffer_assignment_show_max()),
-      constants_(std::move(params.constants)),
-      output_info_(std::move(params.output_info)),
-      enable_debug_info_manager_(params.enable_debug_info_manager) {
+          debug_options.xla_debug_buffer_assignment_show_max()),
+      constants_(std::move(constants)),
+      output_info_(std::move(output_info)),
+      enable_debug_info_manager_(enable_debug_info_manager) {
   if (gpu_version_.IsRocm()) {
     // ROCm uses hsaco hashes to distinguish between modules.
     // Bad things happen if multiple modules with identical code are loaded.

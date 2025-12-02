@@ -230,8 +230,19 @@ class GpuExecutable : public Executable {
 
  private:
   // Use GpuExecutable::Create() to create an instance.
-  explicit GpuExecutable(Params params,
-                         std::deque<BufferAllocation> thunk_pass_allocations);
+  explicit GpuExecutable(
+      std::unique_ptr<HloModule> debug_module, std::string asm_text,
+      std::vector<uint8_t> binary, BinaryMap dnn_compiled_graphs,
+      se::DeviceDescription device_description,
+      std::unique_ptr<SequentialThunk> executable, std::string module_name,
+      ProgramShape program_shape,
+      std::optional<std::vector<BufferAllocation>> mlir_allocations,
+      std::unique_ptr<const BufferAssignment> buffer_assignment,
+      std::deque<BufferAllocation> thunk_pass_allocations,
+      std::unique_ptr<GpuAliasInfo> alias_info, DebugOptions debug_options,
+      std::vector<ConstantInfo> constants,
+      absl::flat_hash_map<ShapeIndex, OutputInfo> output_info,
+      bool enable_debug_info_manager);
 
   // GpuExecutable check with either AMD's ISA version, or Nvidia's major minor
   // version for compute capability, depending on the hardware.
