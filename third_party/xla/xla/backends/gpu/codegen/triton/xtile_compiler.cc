@@ -432,9 +432,7 @@ absl::StatusOr<TritonWrapperResult> CompileTritonToLLVM(
         "(num_warps, num_ctas, num_stages) must be positive, but got: (",
         num_warps, ", ", num_ctas, ", ", num_stages, ")"));
   }
-  mlir::triton::nvidia_gpu::ClusterInfo cluster_info;
-  CreateTritonPipeline(&pm, gpu_cc, num_warps, num_ctas, num_stages,
-                       cluster_info);
+  CreateTritonPipeline(&pm, gpu_cc, num_warps, num_ctas, num_stages);
 
   // Triton generates pointers to the global address space, while XLA needs a
   // kernel signature with pointers to the generic address space.
@@ -496,24 +494,6 @@ absl::StatusOr<TritonWrapperResult> CompileTritonToLLVM(
     }
   }
 
-  // `cluster_info` must be read after pm.run().
-  std::optional<se::ClusterDim> cluster_dim;
-  if (block_level_parameters.num_ctas > 1) {
-    VLOG(3) << "num_ctas: " << block_level_parameters.num_ctas
-            << ", cluster_info: " << cluster_info.clusterDimX << ","
-            << cluster_info.clusterDimY << "," << cluster_info.clusterDimZ;
-    if (cluster_info.clusterDimX > 1 || cluster_info.clusterDimY > 1 ||
-        cluster_info.clusterDimZ > 1) {
-      cluster_dim =
-          se::ClusterDim(cluster_info.clusterDimX, cluster_info.clusterDimY,
-                         cluster_info.clusterDimZ);
-    }
-  } else {
-    TF_RET_CHECK(cluster_info.clusterDimX == 1 &&
-                 cluster_info.clusterDimY == 1 &&
-                 cluster_info.clusterDimZ == 1);
-  }
-
   SmallVector<mlir::LLVM::LLVMFuncOp> func_ops;
   for (auto func : triton_module.getOps<mlir::LLVM::LLVMFuncOp>()) {
     // Custom calls will also match to LLVMFuncOp, so we are only interested in
@@ -535,10 +515,7 @@ absl::StatusOr<TritonWrapperResult> CompileTritonToLLVM(
   // - TMA metadata.
   // - Total threads per block. Computed from module attributes.
   // - Captured NVVM annotations.
-  TritonWrapperResult result = {shared_mem_bytes,
-                                cluster_dim,
-                                tma_metadata,
-                                thread_dims,
+  TritonWrapperResult result = {shared_mem_bytes, tma_metadata, thread_dims,
                                 captured_nvvm_annotations,
                                 std::move(ll_triton_module)};
   return result;
