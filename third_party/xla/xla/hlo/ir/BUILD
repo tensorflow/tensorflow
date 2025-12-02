@@ -128,6 +128,7 @@ cc_library(
         "@highwayhash",
         "@highwayhash//:arch_specific",
         "@highwayhash//:hh_types",
+        "@llvm-project//llvm:Support",
         "@local_tsl//tsl/platform:fingerprint",
         "@local_tsl//tsl/platform:protobuf",
     ],
