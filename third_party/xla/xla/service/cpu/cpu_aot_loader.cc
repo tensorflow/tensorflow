@@ -21,10 +21,10 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_join.h"
-#include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/StringRef.h"
@@ -172,50 +172,42 @@ CpuAotLoader::LoadAotCompilationResult(
       hlo_module->config().debug_options().xla_backend_extra_options());
   llvm_ir::LLVMCommandLineOptionsLock llvm_lock(llvm_options);
 
-  TF_ASSIGN_OR_RETURN(TargetMachineOptions target_machine_options,
+  TF_ASSIGN_OR_RETURN(TargetMachineOptions compilation_machine_options,
                       TargetMachineOptions::FromProto(
                           aot_result_proto.target_machine_options()));
 
-  TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<llvm::TargetMachine> target_machine,
-      IrCompiler::InferTargetMachine(
-          std::move(CompilerTargetOptions(hlo_module->config())),
-          IrCompiler::GetCodeGenOptLevel(hlo_module->config()),
-          target_machine_options));
+  TargetMachineOptions target_machine_options(
+      hlo_module->config().debug_options());
 
   llvm::Triple triple(target_machine_options.triple());
-  llvm::Triple expected_triple(target_machine->getTargetTriple());
+  llvm::Triple expected_triple(compilation_machine_options.triple());
   if (triple.getArchName() != expected_triple.getArchName()) {
     return Internal("Target arch mismatch expected %s got %s.",
                     expected_triple.getArchName(), triple.getArchName());
   }
 
-  llvm::StringMap<bool> host_machine_features = llvm::sys::getHostCPUFeatures();
   std::vector<std::string> compile_machine_features =
-      target_machine_options.GetTargetMachineFeaturesVector();
+      compilation_machine_options.GetTargetMachineFeaturesVector();
   // Convert the supported features to a vector of strings.
-  std::vector<std::string> host_machine_features_vector;
-  for (const auto& [feature, supported] : host_machine_features) {
-    if (supported) {
-      host_machine_features_vector.push_back(feature.str());
-    }
-  }
+  std::vector<std::string> host_machine_features_vector =
+      target_machine_options.GetTargetMachineFeaturesVector();
 
   for (const absl::string_view feature : compile_machine_features) {
+    // This is quadratic, we can easily optimize by pre-computing the set of
+    // host_machine_features_vector.
     if (feature[0] == '+' &&
-        (!host_machine_features.contains(feature.substr(1)) ||
-         !host_machine_features[feature.substr(1)])) {
+        absl::c_find(host_machine_features_vector, feature) ==
+            host_machine_features_vector.end()) {
       // TODO: b/457415427 - Turn this warning into an error once a mechanism
       // for passing target machine features to the CPU compiler is implemented.
-      LOG(ERROR)
-          << "Loading XLA:CPU AOT result. Target machine feature " << feature
-          << " is not  supported on the host machine. Machine type used for "
-             "XLA:CPU compilation doesn't match the machine type for "
-             "execution. Compile machine features: ["
-          << absl::StrJoin(compile_machine_features, ",")
-          << "] vs host machine features: ["
-          << absl::StrJoin(host_machine_features_vector, ",") << "]"
-          << ". This could lead to execution errors such as SIGILL.";
+      return InvalidArgument(
+          "Failed to load XLA:CPU AOT result. Target machine feature %s is not "
+          "supported on the host machine. Machine type used for XLA:CPU "
+          "compilation doesn't match the machine type for "
+          "execution. Compile machine features: [%s] vs host machine features: "
+          "[%s].",
+          feature, absl::StrJoin(compile_machine_features, ","),
+          absl::StrJoin(host_machine_features_vector, ","));
     }
   }
 
