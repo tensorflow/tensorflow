@@ -275,7 +275,7 @@ class Executable {
     CHECK_EQ(hlo_profile_printer_data_.get() == nullptr,
              hlo_profile_index_map_.get() == nullptr);
   }
-  virtual ~Executable() {}
+  virtual ~Executable() = default;
 
   // Enqueues the compilation result on the provided stream, passing the given
   // arguments. This call is blocking and returns after the execution is done.
@@ -426,10 +426,6 @@ class Executable {
                : nullptr;
   }
 
-  std::string& debug_info() { return debug_info_; }
-  void set_debug_info(const std::string& debug_info) {
-    debug_info_ = debug_info;
-  }
   // Gather unused but donated buffers, return them to the caller of this API.
   // We don't free buffers inside this function since the caller could have
   // different preferences for buffer deallocation. For example, in TensorFlow,
@@ -471,9 +467,6 @@ class Executable {
 
   std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data_;
   std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map_;
-
-  // Generic debug information as a string.
-  std::string debug_info_;
 
   // The serialized HLO proto. Non-null only if dumping snapshots is enabled.
   // This field may also be only partially set: if only
