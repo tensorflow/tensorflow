@@ -192,6 +192,9 @@ message DebugOptions {
   // has not yet timed out.
   optional int32 xla_cpu_collective_call_warn_stuck_seconds = 418;
 
+  // The number of seconds to wait before terminating a collective.
+  optional int32 xla_cpu_collective_timeout_seconds = 438;
+
   // Use region analysis in copy insertion pass.
   optional bool xla_cpu_copy_insertion_use_region_analysis = 337;
 
@@ -1326,7 +1329,7 @@ message DebugOptions {
   // Note: when adding a new flag, please add it to one of the hardware-specific
   // or hardware-agnostic sections at the top of this proto message.
 
-  // Next id: 438
+  // Next id: 439
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

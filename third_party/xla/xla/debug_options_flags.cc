@@ -469,6 +469,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
 
   opts.set_xla_cpu_collective_call_warn_stuck_seconds(20);
   opts.set_xla_cpu_collective_call_terminate_timeout_seconds(40);
+  opts.set_xla_cpu_collective_timeout_seconds(30 * 60);
 
   opts.set_xla_keep_shardings_after_spmd(false);
   opts.set_xla_gpu_experimental_enable_checksum_tracing_on_thunks(false);
@@ -2698,6 +2699,11 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
           &DebugOptions::set_xla_cpu_collective_call_terminate_timeout_seconds),
       debug_options->xla_cpu_collective_call_terminate_timeout_seconds(),
       "Set timeout for Collective Call Rendezvous termination"));
+  flag_list->push_back(tsl::Flag(
+      "xla_cpu_collective_timeout_seconds",
+      int32_setter_for(&DebugOptions::set_xla_cpu_collective_timeout_seconds),
+      debug_options->xla_cpu_collective_timeout_seconds(),
+      "Set timeout for CPU collectives"));
   flag_list->push_back(tsl::Flag(
       "xla_keep_shardings_after_spmd",
       bool_setter_for(&DebugOptions::set_xla_keep_shardings_after_spmd),

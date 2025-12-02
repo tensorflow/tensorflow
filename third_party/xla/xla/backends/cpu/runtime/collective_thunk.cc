@@ -40,6 +40,7 @@ limitations under the License.
 #include "xla/backends/cpu/runtime/thunk.h"
 #include "xla/core/collectives/communicator.h"
 #include "xla/core/collectives/rank_id.h"
+#include "xla/debug_options_flags.h"
 #include "xla/future.h"
 #include "xla/hlo/ir/collective_op_group_mode.h"
 #include "xla/runtime/buffer_use.h"
@@ -153,6 +154,11 @@ CollectiveThunk::GetOpDeviceMemory(const ExecuteParams& params) {
 }
 
 absl::Duration CollectiveThunk::DefaultCollectiveTimeout() {
+  static const int64_t timeout =
+      xla::GetDebugOptionsFromFlags().xla_cpu_collective_timeout_seconds();
+  if (timeout > 0) {
+    return absl::Seconds(timeout);
+  }
   return absl::Minutes(30);
 }
 
