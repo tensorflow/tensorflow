@@ -1717,6 +1717,10 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
   AddGemmRewriterPasses(pipeline, debug_options, gpu_version,
                         gpu_target_config.device_description.runtime_version());
 
+  TF_RETURN_IF_ERROR(AddConvAndGemmAutotuningPasses(
+      &pipeline, gpu_version, options, hlo_module, autotune_config, thread_pool,
+      stream_exec, &gpu_target_config));
+
   // Rewrite GEMMs with broadcasted inputs as strided GEMMs.
   pipeline.AddPass<GemmBroadcastFoldingRewriter>();
 
@@ -1733,10 +1737,6 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
   pipeline.AddPass<HloVerifier>(std::move(verifier_metadata));
 
   pipeline.AddPass<HostOffloader>(alias_info);
-
-  TF_RETURN_IF_ERROR(AddConvAndGemmAutotuningPasses(
-      &pipeline, gpu_version, options, hlo_module, autotune_config, thread_pool,
-      stream_exec, &gpu_target_config));
 
   // The GEMM fusion autotuner can insert new bf16 reductions that need to be
   // normalized again.
