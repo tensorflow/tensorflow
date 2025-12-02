@@ -100,7 +100,7 @@ cc_library(
     hdrs = ["clique_key.h"],
     deps = [
         ":rank_id",
-        "//xla/service:global_device_id",
+        "//xla/runtime:device_id",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/hash",
         "@com_google_absl//absl/types:span",

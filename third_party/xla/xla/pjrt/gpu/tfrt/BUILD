@@ -98,7 +98,6 @@ cc_library(
         "//xla/service:computation_placer_hdr",
         "//xla/service:executable",
         "//xla/service:generic_transfer_manager",
-        "//xla/service:global_device_id",
         "//xla/service:hlo_cost_analysis",
         "//xla/service:hlo_proto_cc",
         "//xla/service:maybe_owning_device_memory",

@@ -71,7 +71,7 @@ cc_library(
     deps = [
         ":key_value_store_interface",
         ":util",
-        "//xla/service:global_device_id",
+        "//xla/runtime:device_id",
         "//xla/tsl/distributed_runtime/coordination:coordination_client",
         "//xla/tsl/distributed_runtime/coordination:coordination_service_agent",
         "//xla/tsl/distributed_runtime/rpc/coordination:grpc_coordination_client",
@@ -152,7 +152,7 @@ xla_cc_test(
         ":service",
         ":topology_util",
         "//xla:status_macros",
-        "//xla/service:global_device_id",
+        "//xla/runtime:device_id",
         "//xla/tsl/distributed_runtime/coordination:coordination_service_agent",
         "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/platform:env",

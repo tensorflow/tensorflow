@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/executable_run_options.h"
@@ -38,9 +39,9 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/replica_group.h"
 #include "xla/literal.h"
+#include "xla/runtime/device_id.h"
 #include "xla/service/collective_permute_cycle.h"
 #include "xla/service/computation_placer.h"
-#include "xla/service/global_device_id.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/source_target_pairs.h"
 #include "xla/stream_executor/device_memory.h"
@@ -292,7 +293,7 @@ struct RendezvousKey {
     return absl::StrFormat(
         "RendezvousKey{run_id=%s, global_devices=[%s], "
         "num_local_participants=%d, collective_op_kind=%s, op_id=%d}",
-        run_id.ToString(), GlobalDeviceIdsToString(global_devices),
+        run_id.ToString(), absl::StrJoin(global_devices, ", "),
         num_local_participants, CollectiveOpKindString(), op_id);
   }
 

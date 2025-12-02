@@ -543,7 +543,6 @@ cc_library(
         "//xla/service:collective_ops_utils",
         "//xla/service:custom_call_status",
         "//xla/service:custom_call_target_registry",
-        "//xla/service:global_device_id",
         "//xla/service:hlo_creation_utils",
         "//xla/service:name_uniquer",
         "//xla/service:platform_util",
