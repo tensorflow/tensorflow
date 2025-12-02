@@ -17,10 +17,10 @@ limitations under the License.
 
 #include <string>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/base/casts.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace {
 
@@ -674,10 +674,9 @@ TEST(ElfSectionExtractionTest, GetSectionContentsFromStaticLibraryDump) {
       absl::bit_cast<const char*>(&kTextSectionContents[0]),
       sizeof(kTextSectionContents));
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::string section_contents,
-      stream_executor::gpu::GetSectionContentsFromLibraryDump(archive_dump,
-                                                              ".text"));
+  ASSERT_OK_AND_ASSIGN(std::string section_contents,
+                       stream_executor::gpu::GetSectionContentsFromLibraryDump(
+                           archive_dump, ".text"));
   EXPECT_EQ(section_contents, section_dump);
 }
 
@@ -689,10 +688,9 @@ TEST(ElfSectionExtractionTest, GetSectionContentsFromSharedLibraryDump) {
       absl::bit_cast<const char*>(&kSharedLibraryTextSectionContents[0]),
       sizeof(kSharedLibraryTextSectionContents));
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::string section_contents,
-      stream_executor::gpu::GetSectionContentsFromLibraryDump(
-          shared_library_dump, ".text"));
+  ASSERT_OK_AND_ASSIGN(std::string section_contents,
+                       stream_executor::gpu::GetSectionContentsFromLibraryDump(
+                           shared_library_dump, ".text"));
   EXPECT_EQ(section_contents, section_dump);
 }
 
@@ -704,10 +702,9 @@ TEST(ElfSectionExtractionTest, GetSectionContentsFromObjectFileDump) {
       absl::bit_cast<const char*>(&kTextSectionContents[0]),
       sizeof(kTextSectionContents));
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::string section_contents,
-      stream_executor::gpu::GetSectionContentsFromLibraryDump(object_file_dump,
-                                                              ".text"));
+  ASSERT_OK_AND_ASSIGN(std::string section_contents,
+                       stream_executor::gpu::GetSectionContentsFromLibraryDump(
+                           object_file_dump, ".text"));
   EXPECT_EQ(section_contents, section_dump);
 }
 

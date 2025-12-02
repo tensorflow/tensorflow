@@ -36,7 +36,7 @@ using RaggedAllToAllDecomposerTest = HloHardwareIndependentTestBase;
 
 TEST_F(RaggedAllToAllDecomposerTest,
        SimpleRaggedAllToAllCrossReplicaIsSupported) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
 HloModule module, replica_count=16
 
 ENTRY main {
@@ -54,7 +54,7 @@ ENTRY main {
 
   RaggedAllToAllMultiHostDecomposer decomposer(
       /*fast_interconnect_slice_size=*/8);
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, decomposer.Run(module.get(), {}));
+  ASSERT_OK_AND_ASSIGN(bool changed, decomposer.Run(module.get(), {}));
 
   EXPECT_TRUE(changed);
   EXPECT_OK(VerifyHloModule(module.get(), true, true));
@@ -69,7 +69,7 @@ ENTRY main {
 }
 
 TEST_F(RaggedAllToAllDecomposerTest, DispatchRaggedAllToAllIsDecomposed) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
 HloModule module, num_partitions=16
 
 ENTRY main {
@@ -87,7 +87,7 @@ ENTRY main {
 
   RaggedAllToAllMultiHostDecomposer decomposer(
       /*fast_interconnect_slice_size=*/8);
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, decomposer.Run(module.get(), {}));
+  ASSERT_OK_AND_ASSIGN(bool changed, decomposer.Run(module.get(), {}));
 
   EXPECT_TRUE(changed);
   EXPECT_OK(VerifyHloModule(module.get(), true, true));
@@ -103,7 +103,7 @@ ENTRY main {
 
 TEST_F(RaggedAllToAllDecomposerTest,
        DispatchRaggedAllToAllWithShuffledReplicaGroupsIsDecomposed) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
 HloModule module, num_partitions=16
 
 ENTRY main {
@@ -121,7 +121,7 @@ ENTRY main {
 
   RaggedAllToAllMultiHostDecomposer decomposer(
       /*fast_interconnect_slice_size=*/8);
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, decomposer.Run(module.get(), {}));
+  ASSERT_OK_AND_ASSIGN(bool changed, decomposer.Run(module.get(), {}));
 
   EXPECT_TRUE(changed);
   EXPECT_OK(VerifyHloModule(module.get(), true, true));
@@ -137,7 +137,7 @@ ENTRY main {
 }
 
 TEST_F(RaggedAllToAllDecomposerTest, SingleHostRaggedAllToAllIsNotDecomposed) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
 HloModule module
 
 ENTRY main {
@@ -155,12 +155,12 @@ ENTRY main {
 
   RaggedAllToAllMultiHostDecomposer decomposer(
       /*fast_interconnect_slice_size=*/8);
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, decomposer.Run(module.get(), {}));
+  ASSERT_OK_AND_ASSIGN(bool changed, decomposer.Run(module.get(), {}));
   EXPECT_FALSE(changed);
 }
 
 TEST_F(RaggedAllToAllDecomposerTest, CombineRaggedAllToAllIsDecomposed) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
 HloModule module, replica_count=16
 
 ENTRY main {
@@ -178,7 +178,7 @@ ENTRY main {
 
   RaggedAllToAllMultiHostDecomposer decomposer(
       /*fast_interconnect_slice_size=*/8);
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, decomposer.Run(module.get(), {}));
+  ASSERT_OK_AND_ASSIGN(bool changed, decomposer.Run(module.get(), {}));
 
   EXPECT_TRUE(changed);
   EXPECT_OK(VerifyHloModule(module.get(), true, true));
@@ -194,7 +194,7 @@ ENTRY main {
 }
 
 TEST_F(RaggedAllToAllDecomposerTest, MultipleReplicaGroupsAreSupported) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
 HloModule module
 
 ENTRY main {
@@ -212,7 +212,7 @@ ENTRY main {
 
   RaggedAllToAllMultiHostDecomposer decomposer(
       /*fast_interconnect_slice_size=*/8);
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, decomposer.Run(module.get(), {}));
+  ASSERT_OK_AND_ASSIGN(bool changed, decomposer.Run(module.get(), {}));
   EXPECT_TRUE(changed);
 
   EXPECT_OK(VerifyHloModule(module.get(), true, true));
@@ -227,7 +227,7 @@ ENTRY main {
 }
 
 TEST_F(RaggedAllToAllDecomposerTest, OnlyDecompositionForTwoHostsIsSupported) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
 HloModule module
 
 ENTRY main {
@@ -245,12 +245,12 @@ ENTRY main {
 
   RaggedAllToAllMultiHostDecomposer decomposer(
       /*fast_interconnect_slice_size=*/4);
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, decomposer.Run(module.get(), {}));
+  ASSERT_OK_AND_ASSIGN(bool changed, decomposer.Run(module.get(), {}));
   EXPECT_FALSE(changed);
 }
 
 TEST_F(RaggedAllToAllDecomposerTest, EmptyReplicaGroupsAreNotSupported) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
 HloModule module
 
 ENTRY main {
@@ -268,13 +268,13 @@ ENTRY main {
 
   RaggedAllToAllMultiHostDecomposer decomposer(
       /*fast_interconnect_slice_size=*/4);
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, decomposer.Run(module.get(), {}));
+  ASSERT_OK_AND_ASSIGN(bool changed, decomposer.Run(module.get(), {}));
   EXPECT_FALSE(changed);
 }
 
 TEST_F(RaggedAllToAllDecomposerTest,
        RaggedAllToAllWithinSingleHostIsNotDecomposed) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
 HloModule module
 
 ENTRY main {
@@ -292,7 +292,7 @@ ENTRY main {
 
   RaggedAllToAllMultiHostDecomposer decomposer(
       /*fast_interconnect_slice_size=*/8);
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, decomposer.Run(module.get(), {}));
+  ASSERT_OK_AND_ASSIGN(bool changed, decomposer.Run(module.get(), {}));
   EXPECT_FALSE(changed);
 }
 

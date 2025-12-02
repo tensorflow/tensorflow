@@ -13,36 +13,43 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include "xla/tests/xla_test_backend_predicates.h"
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/log/log.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "benchmark/benchmark.h"
 #include "xla/client/client_library.h"
+#include "xla/client/executable_build_options.h"
 #include "xla/client/local_client.h"
+#include "xla/error_spec.h"
+#include "xla/executable_run_options.h"
 #include "xla/hlo/builder/lib/arithmetic.h"
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/literal.h"
+#include "xla/literal_util.h"
 #include "xla/service/platform_util.h"
+#include "xla/service/service.h"
+#include "xla/service/shaped_buffer.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/status_macros.h"
+#include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream_executor_memory_allocator.h"
 #include "xla/tests/client_library_test_base.h"
 #include "xla/tests/hlo_test_base.h"
-#include "xla/tests/literal_test_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/env.h"
-#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/test_benchmark.h"
 #include "xla/tsl/platform/threadpool.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/logging.h"
-#include "tsl/platform/test.h"
-#include "tsl/platform/test_benchmark.h"
 
 namespace xla {
 namespace {
@@ -636,7 +643,7 @@ TEST_F(WhileTest, TwoWhileWithTupleResult) {
     auto prev = Parameter(&builder, 0, result_shape, "prev");
     auto iteration = GetTupleElement(prev, 0);
     Lt(iteration, ConstantR0<int32_t>(&builder, c1));
-    TF_ASSERT_OK_AND_ASSIGN(condition, builder.Build());
+    ASSERT_OK_AND_ASSIGN(condition, builder.Build());
   }
 
   XlaComputation condition2;
@@ -646,7 +653,7 @@ TEST_F(WhileTest, TwoWhileWithTupleResult) {
     auto prev = Parameter(&builder, 0, result_shape, "prev");
     auto iteration = GetTupleElement(prev, 0);
     Lt(iteration, ConstantR0<int32_t>(&builder, c2));
-    TF_ASSERT_OK_AND_ASSIGN(condition2, builder.Build());
+    ASSERT_OK_AND_ASSIGN(condition2, builder.Build());
   }
 
   // Create a computation for the body.
@@ -662,7 +669,7 @@ TEST_F(WhileTest, TwoWhileWithTupleResult) {
     auto new_weights = Add(weights, input);
     Tuple(&builder,
           {Add(iteration, ConstantR0<int32_t>(&builder, 1)), new_weights});
-    TF_ASSERT_OK_AND_ASSIGN(body, builder.Build());
+    ASSERT_OK_AND_ASSIGN(body, builder.Build());
   }
 
   XlaComputation body2;
@@ -675,7 +682,7 @@ TEST_F(WhileTest, TwoWhileWithTupleResult) {
     auto new_weights = Add(weights, input);
     Tuple(&builder,
           {Add(iteration, ConstantR0<int32_t>(&builder, 1)), new_weights});
-    TF_ASSERT_OK_AND_ASSIGN(body2, builder.Build());
+    ASSERT_OK_AND_ASSIGN(body2, builder.Build());
   }
 
   // Create a While node with computations for the condition and the body.
@@ -713,7 +720,7 @@ TEST_F(WhileTest, TwoWhileLoopsAndSharedBody) {
     auto prev = Parameter(&builder, 0, result_shape, "prev");
     auto iteration = GetTupleElement(prev, 0);
     Lt(iteration, ConstantR0<int32_t>(&builder, c1));
-    TF_ASSERT_OK_AND_ASSIGN(condition, builder.Build());
+    ASSERT_OK_AND_ASSIGN(condition, builder.Build());
   }
 
   XlaComputation condition2;
@@ -723,7 +730,7 @@ TEST_F(WhileTest, TwoWhileLoopsAndSharedBody) {
     auto prev = Parameter(&builder, 0, result_shape, "prev");
     auto iteration = GetTupleElement(prev, 0);
     Lt(iteration, ConstantR0<int32_t>(&builder, c2));
-    TF_ASSERT_OK_AND_ASSIGN(condition2, builder.Build());
+    ASSERT_OK_AND_ASSIGN(condition2, builder.Build());
   }
 
   // Create a computation for the body.
@@ -739,7 +746,7 @@ TEST_F(WhileTest, TwoWhileLoopsAndSharedBody) {
     auto new_weights = Add(weights, input);
     Tuple(&builder,
           {Add(iteration, ConstantR0<int32_t>(&builder, 1)), new_weights});
-    TF_ASSERT_OK_AND_ASSIGN(body, builder.Build());
+    ASSERT_OK_AND_ASSIGN(body, builder.Build());
   }
 
   // Create a While node with computations for the condition and the body.
@@ -776,7 +783,7 @@ TEST_F(WhileTest, WhileLoopsWithSharedBodyAndInit) {
     auto prev = Parameter(&builder, 0, result_shape, "prev");
     auto iteration = GetTupleElement(prev, 0);
     Lt(iteration, ConstantR0<int32_t>(&builder, c1));
-    TF_ASSERT_OK_AND_ASSIGN(condition, builder.Build());
+    ASSERT_OK_AND_ASSIGN(condition, builder.Build());
   }
 
   XlaComputation condition2;
@@ -786,7 +793,7 @@ TEST_F(WhileTest, WhileLoopsWithSharedBodyAndInit) {
     auto prev = Parameter(&builder, 0, result_shape, "prev");
     auto iteration = GetTupleElement(prev, 0);
     Lt(iteration, ConstantR0<int32_t>(&builder, c2));
-    TF_ASSERT_OK_AND_ASSIGN(condition2, builder.Build());
+    ASSERT_OK_AND_ASSIGN(condition2, builder.Build());
   }
 
   // Create a computation for the body.
@@ -802,7 +809,7 @@ TEST_F(WhileTest, WhileLoopsWithSharedBodyAndInit) {
     auto new_weights = Add(weights, input);
     Tuple(&builder,
           {Add(iteration, ConstantR0<int32_t>(&builder, 1)), new_weights});
-    TF_ASSERT_OK_AND_ASSIGN(body, builder.Build());
+    ASSERT_OK_AND_ASSIGN(body, builder.Build());
   }
 
   // Create a While node with computations for the condition and the body.
@@ -933,13 +940,12 @@ TEST_F(WhileTest, WhileWithPrngScalarResult) {
   };
 
   for (int i = 1; i < 4; ++i) {
-    TF_ASSERT_OK_AND_ASSIGN(auto computation, while_loop(i));
+    ASSERT_OK_AND_ASSIGN(auto computation, while_loop(i));
 
     ExecutionOptions execution_options = execution_options_;
     execution_options.set_seed(65);
-    TF_ASSERT_OK_AND_ASSIGN(
-        auto result,
-        client_->ExecuteAndTransfer(computation, {}, &execution_options));
+    ASSERT_OK_AND_ASSIGN(auto result, client_->ExecuteAndTransfer(
+                                          computation, {}, &execution_options));
   }
 }
 
@@ -950,7 +956,7 @@ TEST_F(WhileTest, WhileThatSwapsParameterWithTupleElement) {
   auto p = Parameter(&outer, 0, element_shape, "param");
   auto t = Tuple(&outer, {p, ConstantR1<float>(&outer, {1, 1})});
 
-  TF_ASSERT_OK_AND_ASSIGN(Shape tuple_shape, outer.GetShape(t));
+  ASSERT_OK_AND_ASSIGN(Shape tuple_shape, outer.GetShape(t));
 
   XlaBuilder cond("cond");
   auto cond_t = Parameter(&cond, 0, tuple_shape, "t");
@@ -961,14 +967,14 @@ TEST_F(WhileTest, WhileThatSwapsParameterWithTupleElement) {
   auto e = GetTupleElement(body_t, 1);
   Tuple(&body, {e, e});
 
-  TF_ASSERT_OK_AND_ASSIGN(auto cond_computation, cond.Build());
-  TF_ASSERT_OK_AND_ASSIGN(auto body_computation, body.Build());
+  ASSERT_OK_AND_ASSIGN(auto cond_computation, cond.Build());
+  ASSERT_OK_AND_ASSIGN(auto body_computation, body.Build());
   While(cond_computation, body_computation, t);
 
   auto expected_element = LiteralUtil::CreateR1<float>({1, 1});
   auto expected =
       LiteralUtil::MakeTuple({&expected_element, &expected_element});
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<GlobalData> parameter_data,
       client_->TransferToServer(LiteralUtil::CreateR1<float>({42, 42})));
   ComputeAndCompareTuple(&outer, expected, {parameter_data.get()},
@@ -989,11 +995,11 @@ TEST_F(WhileTest, WhileThatSwapsParameterWithBroadcast) {
   Parameter(&body, 0, element_shape, "t");
   Broadcast(ConstantR0<float>(&body, 1.0), {2});
 
-  TF_ASSERT_OK_AND_ASSIGN(auto cond_computation, cond.Build());
-  TF_ASSERT_OK_AND_ASSIGN(auto body_computation, body.Build());
+  ASSERT_OK_AND_ASSIGN(auto cond_computation, cond.Build());
+  ASSERT_OK_AND_ASSIGN(auto body_computation, body.Build());
   While(cond_computation, body_computation, p);
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<GlobalData> parameter_data,
       client_->TransferToServer(LiteralUtil::CreateR1<float>({42, 42})));
   ComputeAndCompareR1<float>(&outer, {1.0f, 1.0f}, {parameter_data.get()},
@@ -1015,11 +1021,11 @@ TEST_F(WhileTest, WhileThatTurnsScalarParameterToTupleElement) {
   auto tuple = Tuple(&body, {body_t, Add(body_t, ConstantR0<float>(&body, 1))});
   GetTupleElement(tuple, 1);
 
-  TF_ASSERT_OK_AND_ASSIGN(auto cond_computation, cond.Build());
-  TF_ASSERT_OK_AND_ASSIGN(auto body_computation, body.Build());
+  ASSERT_OK_AND_ASSIGN(auto cond_computation, cond.Build());
+  ASSERT_OK_AND_ASSIGN(auto body_computation, body.Build());
   While(cond_computation, body_computation, p);
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<GlobalData> parameter_data,
       client_->TransferToServer(LiteralUtil::CreateR0<float>(42)));
   ComputeAndCompareR0<float>(&outer, 43.0f, {parameter_data.get()},
@@ -1055,11 +1061,11 @@ TEST_F(WhileTest, WhileWithMixedTupleElements) {
         {Add(GetTupleElement(body_t, 0), ConstantR0<int32_t>(&body, 1)),
          Add(GetTupleElement(body_t, 1), ConstantR0<int32_t>(&body, 1))});
 
-  TF_ASSERT_OK_AND_ASSIGN(auto cond_computation, cond.Build());
-  TF_ASSERT_OK_AND_ASSIGN(auto body_computation, body.Build());
+  ASSERT_OK_AND_ASSIGN(auto cond_computation, cond.Build());
+  ASSERT_OK_AND_ASSIGN(auto body_computation, body.Build());
   While(cond_computation, body_computation, p);
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<GlobalData> parameter_data,
       client_->TransferToServer(LiteralUtil::CreateR0<int32_t>(1)));
 
@@ -1195,7 +1201,7 @@ TEST_F(WhileTest, WhileWithLoopInvariantOperation) {
     XlaBuilder builder("condition");
     auto state = Parameter(&builder, 0, while_shape, "state");
     Gt(ConstantR0<int32_t>(&builder, 5), GetTupleElement(state, 0));
-    TF_ASSERT_OK_AND_ASSIGN(condition, builder.Build());
+    ASSERT_OK_AND_ASSIGN(condition, builder.Build());
   }
 
   XlaComputation body;
@@ -1208,7 +1214,7 @@ TEST_F(WhileTest, WhileWithLoopInvariantOperation) {
     auto output = Tanh(Dot(input_0, input_1));
     auto indvar_next = Add(indvar, ConstantR0<int32_t>(&builder, 1));
     Tuple(&builder, {indvar_next, input_0, input_1, output});
-    TF_ASSERT_OK_AND_ASSIGN(body, builder.Build());
+    ASSERT_OK_AND_ASSIGN(body, builder.Build());
   }
 
   XlaBuilder builder(TestName());
@@ -1218,9 +1224,9 @@ TEST_F(WhileTest, WhileWithLoopInvariantOperation) {
   auto while_instruction = While(condition, body, init);
   GetTupleElement(while_instruction, 3);
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto param_value, client_->TransferToServer(LiteralUtil::CreateR2<float>(
-                            {{1.0, 2.0}, {-1.0, -2.0}})));
+  ASSERT_OK_AND_ASSIGN(auto param_value,
+                       client_->TransferToServer(LiteralUtil::CreateR2<float>(
+                           {{1.0, 2.0}, {-1.0, -2.0}})));
 
   ComputeAndCompareR2<float>(
       &builder, {{-0.76159416, -0.96402758}, {0.76159416, 0.96402758}},
@@ -1238,7 +1244,7 @@ TEST_F(WhileTest, WhileInfeedCondition) {
     XlaBuilder builder("condition");
     Parameter(&builder, 0, while_shape, "state");
     Infeed(&builder, ShapeUtil::MakeShape(PRED, {}));
-    TF_ASSERT_OK_AND_ASSIGN(condition, builder.Build());
+    ASSERT_OK_AND_ASSIGN(condition, builder.Build());
   }
 
   XlaComputation body;
@@ -1246,7 +1252,7 @@ TEST_F(WhileTest, WhileInfeedCondition) {
     XlaBuilder builder("body");
     auto indvar = Parameter(&builder, 0, while_shape, "state");
     Add(indvar, ConstantR0<int32_t>(&builder, 1));
-    TF_ASSERT_OK_AND_ASSIGN(body, builder.Build());
+    ASSERT_OK_AND_ASSIGN(body, builder.Build());
   }
 
   XlaBuilder builder(TestName());
@@ -1280,9 +1286,8 @@ TEST_F(HloTestBase, ParallelExecution) {
   }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(
       auto executable,
       CreateExecutable(std::move(module), /*run_hlo_passes=*/true));
 
@@ -1293,7 +1298,7 @@ TEST_F(HloTestBase, ParallelExecution) {
                                         kNumThreads);
     for (int i = 0; i < kNumThreads; ++i) {
       auto lambda = [this, i, &executable, &results]() {
-        TF_ASSERT_OK_AND_ASSIGN(
+        ASSERT_OK_AND_ASSIGN(
             results[i], test_runner().ExecuteWithExecutable(
                             executable.get(), absl::Span<const Literal>{}));
       };
@@ -1359,7 +1364,7 @@ void BM_WhileLoop(::testing::benchmark::State& state) {
   While(condition, body, init);
   auto computation = builder.Build().value();
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto executables,
       client->Compile(computation, {}, ExecutableBuildOptions()));
   auto executable = std::move(executables[0]);

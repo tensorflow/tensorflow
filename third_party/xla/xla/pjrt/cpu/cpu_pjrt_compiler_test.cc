@@ -77,16 +77,15 @@ std::unique_ptr<CpuTopologyDescription> GetDefaultCpuTopologyDescription() {
 
 TEST_F(CpuPjrtCompilerTest, CompileXlaComputationSuccess) {
   xla::CompileOptions options;
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kProgram));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kProgram));
   xla::XlaComputation computation(module->ToProto());
 
   auto topology_description = GetDefaultCpuTopologyDescription();
 
   xla::cpu::CpuPjRtCompiler compiler;
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto executable,
-      compiler.Compile(options, computation, *topology_description,
-                       /*client=*/nullptr));
+  ASSERT_OK_AND_ASSIGN(auto executable, compiler.Compile(options, computation,
+                                                         *topology_description,
+                                                         /*client=*/nullptr));
 }
 
 TEST_F(CpuPjrtCompilerTest, CompileMlirOpSuccess) {
@@ -99,15 +98,14 @@ TEST_F(CpuPjrtCompilerTest, CompileMlirOpSuccess) {
   auto topology_description = GetDefaultCpuTopologyDescription();
 
   xla::cpu::CpuPjRtCompiler compiler;
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto executable,
-      compiler.Compile(options, *mlir_module, *topology_description,
-                       /*client=*/nullptr));
+  ASSERT_OK_AND_ASSIGN(auto executable, compiler.Compile(options, *mlir_module,
+                                                         *topology_description,
+                                                         /*client=*/nullptr));
 }
 
 TEST_F(CpuPjrtCompilerTest, CompileXlaComputationWithAvx512FeatureOn) {
   xla::CompileOptions options;
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kProgram));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kProgram));
   xla::XlaComputation computation(module->ToProto());
 
   constexpr int kCpuDeviceCount = 1;
@@ -124,16 +122,15 @@ TEST_F(CpuPjrtCompilerTest, CompileXlaComputationWithAvx512FeatureOn) {
       std::vector<std::string>{"+avx512"});
 
   xla::cpu::CpuPjRtCompiler compiler;
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto executable,
-      compiler.Compile(options, computation, *topology_description,
-                       /*client=*/nullptr));
+  ASSERT_OK_AND_ASSIGN(auto executable, compiler.Compile(options, computation,
+                                                         *topology_description,
+                                                         /*client=*/nullptr));
 
   // We serialize and then load the executable to confirm that the target
   // machine options were set correctly.
 
-  TF_ASSERT_OK_AND_ASSIGN(auto serialized_executable,
-                          executable->SerializeExecutable());
+  ASSERT_OK_AND_ASSIGN(auto serialized_executable,
+                       executable->SerializeExecutable());
 
   ExecutableAndOptionsProto proto;
   EXPECT_TRUE(proto.ParseFromString(serialized_executable));

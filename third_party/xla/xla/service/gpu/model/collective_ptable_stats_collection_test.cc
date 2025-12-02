@@ -18,6 +18,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/log/log.h"
 #include "absl/strings/string_view.h"
@@ -35,7 +36,6 @@ limitations under the License.
 #include "xla/stream_executor/device_description.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/env.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/path.h"
@@ -112,10 +112,10 @@ TEST_F(CollectivePerfTableStatsCollectionTest,
     ROOT ar-done = f32[1024] all-reduce-done(ar-start)
   })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, CollectivePerfTableStatsCollection(
-                                            profiles_path_, device_info_)
-                                            .Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
+  ASSERT_OK_AND_ASSIGN(bool changed, CollectivePerfTableStatsCollection(
+                                         profiles_path_, device_info_)
+                                         .Run(module.get()));
 
   VLOG(1) << module->ToString();
 

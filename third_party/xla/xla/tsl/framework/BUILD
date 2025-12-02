@@ -469,7 +469,6 @@ tsl_cc_test(
         ":device_type",
         "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/platform:status",
-        "//xla/tsl/platform:statusor",
         "//xla/tsl/util:device_name_utils",
         "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/strings:string_view",

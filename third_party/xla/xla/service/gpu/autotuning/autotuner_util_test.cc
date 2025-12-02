@@ -49,7 +49,6 @@ limitations under the License.
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"  // IWYU pragma: keep
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/xla.pb.h"
 #include "tsl/platform/path.h"
@@ -206,15 +205,15 @@ TEST_F(AutotunerUtilTest, LoadAutotuneResultsFromFile_TextProto1) {
   ASSERT_TRUE(tsl::protobuf::TextFormat::ParseFromString(
       kDeviceDescriptionTextProto, &device_description_proto));
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnUnverifiedModule(kDotFusionHloText));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(kDotFusionHloText));
 
   AutotuneResults results;
   EXPECT_TRUE(
       tsl::protobuf::TextFormat::ParseFromString(kResultText, &results));
   ASSERT_GT(results.results().size(), 0);
   AddVersionToAutotuneResults(results);
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       stream_executor::DeviceDescription device_description,
       stream_executor::DeviceDescription::FromProto(device_description_proto));
   device_description.set_dnn_version({1, 2, 3});
@@ -224,7 +223,7 @@ TEST_F(AutotunerUtilTest, LoadAutotuneResultsFromFile_TextProto1) {
   auto options = DebugOptions();
   options.set_xla_gpu_require_complete_aot_autotune_results(true);
   stream_executor::StreamExecutor* executor = NewStreamExecutor();
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       AutotuneConfig config,
       AutotuneConfig::FromDebugOptions(
           DeviceOrDevicelessConfig{DeviceConfig{executor}}, options));
@@ -279,7 +278,7 @@ TEST_F(AutotunerUtilTest, FailIfRequireCompleteAotAutotuning) {
   stream_executor::StreamExecutor* executor = NewStreamExecutor();
   auto options = DebugOptions();
   options.set_xla_gpu_require_complete_aot_autotune_results(true);
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       AutotuneConfig config,
       AutotuneConfig::FromDebugOptions(
           DeviceOrDevicelessConfig{DeviceConfig{executor}}, options));
@@ -310,7 +309,7 @@ TEST_F(AutotunerUtilTest, OkIfJitAutotuningDisabledButAlreadyLoadedAOT) {
 
   {
     // By default, JIT autotuning is OK.
-    TF_ASSERT_OK_AND_ASSIGN(
+    ASSERT_OK_AND_ASSIGN(
         AutotuneConfig config,
         AutotuneConfig::FromDebugOptions(
             DeviceOrDevicelessConfig{DeviceConfig{executor}}, DebugOptions()));
@@ -325,7 +324,7 @@ TEST_F(AutotunerUtilTest, OkIfJitAutotuningDisabledButAlreadyLoadedAOT) {
   auto options = DebugOptions();
   options.set_xla_gpu_require_complete_aot_autotune_results(true);
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       AutotuneConfig config,
       AutotuneConfig::FromDebugOptions(
           DeviceOrDevicelessConfig{DeviceConfig{executor}}, options));
@@ -437,7 +436,7 @@ class FileBasedCacheTest : public AutotunerUtilTest {
 };
 
 TEST_F(FileBasedCacheTest, AutotuneCreatesTmpAndWritesResultToTheCacheDir) {
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       AutotuneResult result,
       AutotunerUtil::Autotune(dot_, GetConfig(), [&] { return result1_; }));
   EXPECT_EQ(AutotunerUtil::GetCacheStats().cache_hits, 0);
@@ -453,11 +452,11 @@ TEST_F(FileBasedCacheTest, AutotuneReadsResultFromTheCacheDir) {
   Write(GetCacheFilePath(), ToString(result1_));
 
   bool cache_hit = true;
-  TF_ASSERT_OK_AND_ASSIGN(AutotuneResult result,
-                          AutotunerUtil::Autotune(dot_, GetConfig(), [&] {
-                            cache_hit = false;
-                            return result2_;
-                          }));
+  ASSERT_OK_AND_ASSIGN(AutotuneResult result,
+                       AutotunerUtil::Autotune(dot_, GetConfig(), [&] {
+                         cache_hit = false;
+                         return result2_;
+                       }));
 
   EXPECT_TRUE(cache_hit);
   EXPECT_EQ(AutotunerUtil::GetCacheStats().cache_hits, 1);
@@ -471,13 +470,13 @@ TEST_F(FileBasedCacheTest,
                                      const AutotuneConfig& config,
                                      const AutotuneResult& expected_result) {
     bool cache_hit = true;
-    TF_ASSERT_OK_AND_ASSIGN(AutotuneResult result,
-                            AutotunerUtil::Autotune(instr, config, [&] {
-                              cache_hit = false;
-                              AutotuneResult new_result;
-                              new_result.set_scratch_bytes(2);
-                              return new_result;
-                            }));
+    ASSERT_OK_AND_ASSIGN(AutotuneResult result,
+                         AutotunerUtil::Autotune(instr, config, [&] {
+                           cache_hit = false;
+                           AutotuneResult new_result;
+                           new_result.set_scratch_bytes(2);
+                           return new_result;
+                         }));
     EXPECT_TRUE(cache_hit);
     EXPECT_EQ(ToString(result), ToString(expected_result));
   };
@@ -503,8 +502,8 @@ TEST_F(FileBasedCacheTest,
        IsInCacheReturnsTrueIfTheResultIsInTheFileBasedCache) {
   Write(GetCacheFilePath(), ToString(result1_));
 
-  TF_ASSERT_OK_AND_ASSIGN(bool is_in_cache,
-                          AutotunerUtil::IsInCache(GetCacheKey(), GetConfig()));
+  ASSERT_OK_AND_ASSIGN(bool is_in_cache,
+                       AutotunerUtil::IsInCache(GetCacheKey(), GetConfig()));
 
   EXPECT_TRUE(is_in_cache);
   EXPECT_EQ(AutotunerUtil::GetCacheStats().cache_hits, 1);
@@ -512,8 +511,8 @@ TEST_F(FileBasedCacheTest,
 }
 
 TEST_F(FileBasedCacheTest, IsInCacheReturnsFalseIfTheResultIsNotInEitherCache) {
-  TF_ASSERT_OK_AND_ASSIGN(bool is_in_cache,
-                          AutotunerUtil::IsInCache(GetCacheKey(), GetConfig()));
+  ASSERT_OK_AND_ASSIGN(bool is_in_cache,
+                       AutotunerUtil::IsInCache(GetCacheKey(), GetConfig()));
 
   EXPECT_FALSE(is_in_cache);
   EXPECT_EQ(AutotunerUtil::GetCacheStats().cache_hits, 0);
@@ -521,9 +520,8 @@ TEST_F(FileBasedCacheTest, IsInCacheReturnsFalseIfTheResultIsNotInEitherCache) {
 }
 
 TEST_F(FileBasedCacheTest, AddResultAddsTheResultToTheFileBasedCache) {
-  TF_ASSERT_OK_AND_ASSIGN(
-      bool added,
-      AutotunerUtil::AddResult(GetCacheKey(), result1_, GetConfig()));
+  ASSERT_OK_AND_ASSIGN(bool added, AutotunerUtil::AddResult(
+                                       GetCacheKey(), result1_, GetConfig()));
   EXPECT_TRUE(added);
 
   ASSERT_THAT(GetFilesInDir(cache_dir_),
@@ -536,8 +534,8 @@ TEST_F(FileBasedCacheTest, RepeatedAddResultDoesNotWriteTheFileAgain) {
   const AutotuneCacheKey cache_key = GetCacheKey();
   const AutotuneConfig config = GetConfig();
   {
-    TF_ASSERT_OK_AND_ASSIGN(
-        bool added, AutotunerUtil::AddResult(cache_key, result1_, config));
+    ASSERT_OK_AND_ASSIGN(bool added,
+                         AutotunerUtil::AddResult(cache_key, result1_, config));
     EXPECT_TRUE(added);
   }
   ASSERT_THAT(GetFilesInDir(cache_dir_),
@@ -547,8 +545,8 @@ TEST_F(FileBasedCacheTest, RepeatedAddResultDoesNotWriteTheFileAgain) {
   Write(cache_file_path, kPlaceholderContent);
 
   {
-    TF_ASSERT_OK_AND_ASSIGN(
-        bool added, AutotunerUtil::AddResult(cache_key, result1_, config));
+    ASSERT_OK_AND_ASSIGN(bool added,
+                         AutotunerUtil::AddResult(cache_key, result1_, config));
     EXPECT_FALSE(added);
   }
 
@@ -558,9 +556,8 @@ TEST_F(FileBasedCacheTest, RepeatedAddResultDoesNotWriteTheFileAgain) {
 
 TEST_F(FileBasedCacheTest, AddResultDoesNotWriteTheFileInReadMode) {
   SetCacheMode(DebugOptions::AUTOTUNE_CACHE_MODE_READ);
-  TF_ASSERT_OK_AND_ASSIGN(
-      bool added,
-      AutotunerUtil::AddResult(GetCacheKey(), result1_, GetConfig()));
+  ASSERT_OK_AND_ASSIGN(bool added, AutotunerUtil::AddResult(
+                                       GetCacheKey(), result1_, GetConfig()));
   EXPECT_TRUE(added);  // was added to in memory cache.
   EXPECT_EQ(GetFilesInDir(cache_dir_).size(),
             0);  // wasn't dumped to file based cache.

@@ -46,7 +46,6 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -1096,7 +1095,7 @@ TEST_P(HloDataflowAnalysisTest, AsyncOps) {
     ROOT async-done = f32[2,3] custom-call-done(async-update)
   }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       module_, ParseAndReturnVerifiedModule(hlo_str, GetModuleConfigForTest()));
 
   bool ssa_form = GetParam();
@@ -1165,7 +1164,7 @@ ENTRY %main (a: f32[4096], b: f32[4096]) -> f32[4096] {
   ROOT %add_1 = f32[4096]{0} add(f32[4096]{0} %add_0, f32[4096]{0} %async-done)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       module_, ParseAndReturnVerifiedModule(hlo_str, GetModuleConfigForTest()));
 
   bool ssa_form = GetParam();
@@ -1225,7 +1224,7 @@ ENTRY %main (a: f32[4096], pred: pred[]) -> f32[4096] {
   ROOT %async-done = f32[4096]{0} call-done(%async-start)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       module_, ParseAndReturnVerifiedModule(hlo_str, GetModuleConfigForTest()));
 
   bool ssa_form = GetParam();
@@ -1279,7 +1278,7 @@ TEST_P(HloDataflowAnalysisTest, TupleShapedAsyncOp) {
     ROOT async-done = (f32[2,3], f32[2,3]) custom-call-done(async-update)
   }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       module_, ParseAndReturnVerifiedModule(hlo_str, GetModuleConfigForTest()));
 
   bool ssa_form = GetParam();
@@ -1738,7 +1737,7 @@ ENTRY root {
   p1 = s32[1000] copy(param)
   ROOT t = (s32[1000], s32[1000]) tuple(p0, p1)
   })";
-  TF_ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnVerifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnVerifiedModule(hlo_text));
   auto entry = module_->entry_computation();
   entry->GetInstructionWithName("t");
   auto& dataflow_analysis = RunAnalysis(GetParam());
@@ -2087,12 +2086,12 @@ ENTRY %AddDependency (p: f32[3]) -> f32[3] {
   ROOT %add_dep = f32[3] add-dependency(f32[3] %p, token[] %token0)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<HloModule> module,
       ParseAndReturnVerifiedModule(module_string, GetModuleConfigForTest()));
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloDataflowAnalysis> analysis,
-                          HloDataflowAnalysis::Run(*module));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloDataflowAnalysis> analysis,
+                       HloDataflowAnalysis::Run(*module));
   const HloInstruction* root = module->entry_computation()->root_instruction();
   EXPECT_EQ(root->opcode(), HloOpcode::kAddDependency);
 
@@ -2116,11 +2115,11 @@ TEST_F(HloDataflowAnalysisTest, AllReduceStartAndDone) {
       ROOT done = f32[2] all-reduce-done(start)
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_text));
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloDataflowAnalysis> analysis,
-                          HloDataflowAnalysis::Run(*module));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloDataflowAnalysis> analysis,
+                       HloDataflowAnalysis::Run(*module));
 
   HloInstruction* done = module->entry_computation()->root_instruction();
   HloInstruction* start = done->mutable_operand(0);
@@ -2150,11 +2149,11 @@ TEST_F(HloDataflowAnalysisTest, AllReduceStartAndDoneTwoOperands) {
       ROOT done = (f32[2], f32[2]) all-reduce-done(start)
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_text));
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloDataflowAnalysis> analysis,
-                          HloDataflowAnalysis::Run(*module));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloDataflowAnalysis> analysis,
+                       HloDataflowAnalysis::Run(*module));
 
   HloInstruction* done = module->entry_computation()->root_instruction();
   HloInstruction* start = done->mutable_operand(0);
@@ -2184,7 +2183,7 @@ TEST_F(HloDataflowAnalysisTest, CombinedCollectivePermuteStartAndDone) {
       ROOT done = (f32[2], f32[2]) collective-permute-done(start)
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnVerifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnVerifiedModule(hlo_text));
   const HloDataflowAnalysis& analysis = RunAnalysis(/*ssa_form=*/false);
   absl::Status status = analysis.Verify();
   EXPECT_TRUE(status.ok()) << status;
@@ -2230,7 +2229,7 @@ TEST_F(HloDataflowAnalysisTest, AllGatherStartAndDoneWithTuple) {
       ROOT done = (f32[4], bf16[4]) all-gather-done(start)
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnVerifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnVerifiedModule(hlo_text));
   const HloDataflowAnalysis& analysis = RunAnalysis(/*ssa_form=*/false);
   absl::Status status = analysis.Verify();
   EXPECT_TRUE(status.ok()) << status;
@@ -2551,7 +2550,7 @@ TEST_F(CanShareOperandBufferWithUserTest, DUSWithSliceWithSameIndices) {
       ROOT fusion = f32[10,20,30] fusion(p0, p1, p2, p3), kind=kLoop, calls=fused_computation
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kModule));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kModule));
   auto* fusion = module->entry_computation()->root_instruction();
   auto* param = module->entry_computation()->parameter_instruction(0);
 
@@ -2732,7 +2731,7 @@ TEST_F(CanShareOperandBufferWithUserTest, ScatterCanShare) {
           index_vector_dim=1
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
   auto computation = module->entry_computation();
   auto dataflow_analysis = RunAnalysis(*module);
 
@@ -2776,7 +2775,7 @@ TEST_F(CanShareOperandBufferWithUserTest, MultioutputScatterCanShare) {
           index_vector_dim=1
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
   auto computation = module->entry_computation();
   auto dataflow_analysis = RunAnalysis(*module);
 
@@ -2820,7 +2819,7 @@ TEST_F(CanShareOperandBufferWithUserTest, TriangularSolveCanShare) {
                                               transpose_a=NO_TRANSPOSE
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
   auto computation = module->entry_computation();
   auto dataflow_analysis = RunAnalysis(*module);
 
@@ -2841,9 +2840,9 @@ TEST_F(CanShareOperandBufferWithUserTest, SortCanShare) {
   Shape keys_shape = ShapeUtil::MakeShape(F32, {8});
   auto keys = builder.AddInstruction(
       HloInstruction::CreateParameter(0, keys_shape, "keys"));
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto* sort, MakeSortHlo(keys_shape, {keys}, -1, /*is_stable=*/false,
-                              &builder, module.get()));
+  ASSERT_OK_AND_ASSIGN(auto* sort,
+                       MakeSortHlo(keys_shape, {keys}, -1, /*is_stable=*/false,
+                                   &builder, module.get()));
 
   module->AddEntryComputation(builder.Build());
   auto dataflow_analysis = RunAnalysis(*module);
@@ -2862,7 +2861,7 @@ TEST_F(CanShareOperandBufferWithUserTest, SortCanShareWithTupleUser) {
       HloInstruction::CreateParameter(0, keys_shape, "keys"));
   auto values = builder.AddInstruction(
       HloInstruction::CreateParameter(1, values_shape, "values"));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto* sort,
       MakeSortHlo(ShapeUtil::MakeTupleShape({keys_shape, values_shape}),
                   {keys, values}, 0, /*is_stable=*/false, &builder,
@@ -3095,7 +3094,7 @@ TEST_F(GetInPlaceInputOutputPairsTest, DUS) {
       ROOT dus = f32[10] dynamic-update-slice(p0, p1, p2)
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kModule));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kModule));
   HloInstruction* dus = module->entry_computation()->root_instruction();
 
   auto in_place_pairs = alias_info_.GetInPlaceInputOutputPairs(dus);
@@ -3122,7 +3121,7 @@ TEST_F(GetInPlaceInputOutputPairsTest, DUSFusion) {
       ROOT fusion = f32[10] fusion(p0, p1, p2), kind=kLoop, calls=fused_computation
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kModule));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kModule));
   HloInstruction* fusion = module->entry_computation()->root_instruction();
 
   auto in_place_pairs = alias_info_.GetInPlaceInputOutputPairs(fusion);
@@ -3150,7 +3149,7 @@ TEST_F(GetInPlaceInputOutputPairsTest, DUSFusionWithOutputOperandAliasing) {
       ROOT fusion = (f32[5], f32[10]) fusion(p0, p1, p2), kind=kLoop, output_to_operand_aliasing={{0}: (1, {})}, calls=fused_computation
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kModule));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kModule));
   HloInstruction* fusion = module->entry_computation()->root_instruction();
 
   auto in_place_pairs = alias_info_.GetInPlaceInputOutputPairs(fusion);
@@ -3176,7 +3175,7 @@ TEST_F(GetInPlaceInputOutputPairsTest, NonDUSFusion) {
       ROOT fusion = f32[10] fusion(p0, p1), kind=kLoop, calls=fused_computation
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kModule));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kModule));
   HloInstruction* fusion = module->entry_computation()->root_instruction();
 
   auto in_place_pairs = alias_info_.GetInPlaceInputOutputPairs(fusion);
@@ -3199,7 +3198,7 @@ TEST_F(GetInPlaceInputOutputPairsTest, NonDUSFusionWithOutputOperandAliasing) {
       ROOT fusion = f32[10] fusion(p0, p1), kind=kLoop, output_to_operand_aliasing={{}: (0, {})}, calls=fused_computation
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kModule));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kModule));
   HloInstruction* fusion = module->entry_computation()->root_instruction();
   auto in_place_pairs = alias_info_.GetInPlaceInputOutputPairs(fusion);
 
@@ -3233,7 +3232,7 @@ TEST_F(GetInPlaceInputOutputPairsTest, NestedDUSFusion) {
       ROOT fusion = f32[10] fusion(p0, p1, p2), kind=kLoop, calls=fused_computation2
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kModule));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kModule));
   HloInstruction* fusion = module->entry_computation()->root_instruction();
 
   auto in_place_pairs = alias_info_.GetInPlaceInputOutputPairs(fusion);
@@ -3275,7 +3274,7 @@ TEST_F(GetInPlaceInputOutputPairsTest, NestedMultiOutputDUSFusion) {
       ROOT fusion = (f32[5],f32[5],f32[10]) fusion(p0, p1), kind=kLoop, calls=fused_computation2
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kModule));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kModule));
   HloInstruction* fusion = module->entry_computation()->root_instruction();
   HloInstruction* inner_fusion = FindInstruction(module.get(), "inner_fusion");
 
@@ -3319,7 +3318,7 @@ TEST_F(GetInPlaceInputOutputPairsTest, NestedLoopWithAliasingInDUSFusion) {
       ROOT fusion = s8[8,256,1,256] fusion(p0, p1, p2), kind=kLoop, calls=fused_computation.0
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kModule));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kModule));
   HloInstruction* fusion = module->entry_computation()->root_instruction();
 
   auto in_place_pairs = alias_info_.GetInPlaceInputOutputPairs(fusion);
@@ -3373,7 +3372,7 @@ TEST_F(GetInPlaceInputOutputPairsTest, DUSLoopFusionWithCollective) {
       ROOT fusion = (bf16[1,2,2048,6144]{3,2,1,0:T(8,128)(2,1)S(1)}, bf16[1,2,8192,6144]{3,2,1,0:T(8,128)(2,1)}) fusion(p3, p2, p0, p1), kind=kLoop, calls=fused_computation
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kModule));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kModule));
   HloInstruction* fusion = module->entry_computation()->root_instruction();
   auto in_place_pairs = alias_info_.GetInPlaceInputOutputPairs(fusion);
   std::vector<std::pair<HloOperandIndex, ShapeIndex>> expected_pairs;
@@ -3424,7 +3423,7 @@ TEST_F(GetInPlaceInputOutputPairsTest, DUSOutputFusionWithCollective) {
       ROOT fusion = (bf16[1024,6144]{1,0:T(8,128)(2,1)S(1)}, bf16[4096,6144]{1,0:T(8,128)(2,1)}) fusion(p3, p2, p0, p1), kind=kOutput, calls=fused_computation
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kModule));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kModule));
   HloInstruction* fusion = module->entry_computation()->root_instruction();
   auto in_place_pairs = alias_info_.GetInPlaceInputOutputPairs(fusion);
   std::vector<std::pair<HloOperandIndex, ShapeIndex>> expected_pairs;
@@ -3457,7 +3456,7 @@ TEST_F(GetInPlaceInputOutputPairsTest, DUSLoopFusionWithBitcast) {
       ROOT fusion1 = bf16[32,1,18432,4096]{3,2,1,0} fusion(p0, p1, p2), kind=kLoop, calls=fused_dynamic_update_slice
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kModule));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kModule));
   HloInstruction* fusion = module->entry_computation()->root_instruction();
   auto in_place_pairs = alias_info_.GetInPlaceInputOutputPairs(fusion);
   std::vector<std::pair<HloOperandIndex, ShapeIndex>> expected_pairs;
@@ -3483,7 +3482,7 @@ ENTRY AllToAll {
   ROOT ra2a = f32[24,56,119] ragged-all-to-all(copy-done, output, input_offsets, send_sizes, output_offsets, recv_sizes), replica_groups={{0,1,2,3,4,5,6,7}}
 }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kModule));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kModule));
   HloInstruction* ragged_all_to_all =
       module->entry_computation()->root_instruction();
 
@@ -3522,11 +3521,11 @@ TEST_P(HloDataflowAnalysisTest, b409416499) {
     ROOT %tuple.1 = (s32[1]{0:T(128)}, s32[1]{0:T(128)}, s32[1]{0:T(128)}, s32[1]{0:T(128)}) tuple(%bitcast.3, %param.3, %param.4, %param.5)
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto after_layout_bitcast_module,
-                          ParseAndReturnVerifiedModule(after_layout_bitcast));
-  TF_ASSERT_OK_AND_ASSIGN(auto analysis,
-                          HloDataflowAnalysis::Run(*after_layout_bitcast_module,
-                                                   /*ssa_form=*/false));
+  ASSERT_OK_AND_ASSIGN(auto after_layout_bitcast_module,
+                       ParseAndReturnVerifiedModule(after_layout_bitcast));
+  ASSERT_OK_AND_ASSIGN(auto analysis,
+                       HloDataflowAnalysis::Run(*after_layout_bitcast_module,
+                                                /*ssa_form=*/false));
   HloInstruction* bitcast3 =
       FindInstruction(after_layout_bitcast_module.get(), "bitcast.3");
   HloInstruction* param2 =
@@ -3572,11 +3571,11 @@ TEST_P(HloDataflowAnalysisTest, b409756077) {
     ROOT %bitcast.3 = f32[1,256,256]{2,1,0:T(8,128)} bitcast(%while.1)
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto after_layout_bitcast_module,
-                          ParseAndReturnVerifiedModule(after_layout_bitcast));
-  TF_ASSERT_OK_AND_ASSIGN(auto analysis,
-                          HloDataflowAnalysis::Run(*after_layout_bitcast_module,
-                                                   /*ssa_form=*/false));
+  ASSERT_OK_AND_ASSIGN(auto after_layout_bitcast_module,
+                       ParseAndReturnVerifiedModule(after_layout_bitcast));
+  ASSERT_OK_AND_ASSIGN(auto analysis,
+                       HloDataflowAnalysis::Run(*after_layout_bitcast_module,
+                                                /*ssa_form=*/false));
   HloInstruction* bitcast3 =
       FindInstruction(after_layout_bitcast_module.get(), "bitcast.3");
   HloInstruction* param2 =
@@ -3606,7 +3605,7 @@ TEST_F(GetInPlaceInputOutputPairsTest, nvshmem_ar) {
       ROOT ar.done = f32[10] all-reduce-done(ar)
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kModule));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kModule));
   const HloInstruction* ar_start =
       module->entry_computation()->root_instruction()->operand(0);
 

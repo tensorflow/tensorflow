@@ -32,9 +32,6 @@ limitations under the License.
 #include "xla/hlo/transforms/simplifiers/algebraic_simplifier.h"
 #include "xla/literal.h"
 #include "xla/service/pattern_matcher.h"
-#include "xla/stream_executor/cuda/cuda_compute_capability.h"
-#include "xla/stream_executor/dnn.h"
-#include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
@@ -104,7 +101,7 @@ TEST_F(CudnnSimplifyPaddingTest, PaddedWeights) {
   )")
                     .value();
 
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunJustThisPass(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, RunJustThisPass(module.get()));
   EXPECT_TRUE(changed);
 
   SCOPED_TRACE(module->ToString());
@@ -139,7 +136,7 @@ TEST_F(CudnnSimplifyPaddingTest, PaddedWeightsNotPaddedEnough) {
   )")
                     .value();
 
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunJustThisPass(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, RunJustThisPass(module.get()));
   EXPECT_FALSE(changed);
 }
 
@@ -176,7 +173,7 @@ TEST_F(CudnnSimplifyPaddingTest, PaddedConstantWeight) {
         });
   }
 
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunJustThisPass(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, RunJustThisPass(module.get()));
   EXPECT_TRUE(changed);
 
   SCOPED_TRACE(module->ToString());
@@ -223,7 +220,7 @@ TEST_F(CudnnSimplifyPaddingTest, PaddedConstantWeightIsNotLargeEnough) {
 
   // Some of the value sliced off are not 0, so we can't merge the slice into
   // the pad.
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunJustThisPass(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, RunJustThisPass(module.get()));
   EXPECT_FALSE(changed);
 }
 
@@ -245,7 +242,7 @@ TEST_F(CudnnSimplifyPaddingTest, SliceDoesntStartAtBeginning) {
   )")
                     .value();
 
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunJustThisPass(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, RunJustThisPass(module.get()));
   EXPECT_FALSE(changed);
 }
 
@@ -267,7 +264,7 @@ TEST_F(CudnnSimplifyPaddingTest, SliceDoesntStartAtBeginningOfFeatureDim) {
   )")
                     .value();
 
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunJustThisPass(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, RunJustThisPass(module.get()));
   EXPECT_FALSE(changed);
 }
 
@@ -289,7 +286,7 @@ TEST_F(CudnnSimplifyPaddingTest, SliceHasStride) {
   )")
                     .value();
 
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunJustThisPass(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, RunJustThisPass(module.get()));
   EXPECT_FALSE(changed);
 }
 
@@ -311,7 +308,7 @@ TEST_F(CudnnSimplifyPaddingTest, PadAddsInteriorPadding) {
   )")
                     .value();
 
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunJustThisPass(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, RunJustThisPass(module.get()));
   EXPECT_FALSE(changed);
 }
 
@@ -333,7 +330,7 @@ TEST_F(CudnnSimplifyPaddingTest, SliceMoreElementsThanPad) {
   )")
                     .value();
 
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunJustThisPass(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, RunJustThisPass(module.get()));
   EXPECT_TRUE(changed);
 
   SCOPED_TRACE(module->ToString());
@@ -382,7 +379,7 @@ ENTRY main.26 {
   )")
                     .value();
 
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunJustThisPass(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, RunJustThisPass(module.get()));
   EXPECT_FALSE(changed);
 }
 
@@ -413,7 +410,7 @@ ENTRY main.26 {
   )")
                     .value();
 
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunJustThisPass(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, RunJustThisPass(module.get()));
   EXPECT_FALSE(changed);
 }
 
@@ -444,7 +441,7 @@ ENTRY main.26 {
   )")
                     .value();
 
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunJustThisPass(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, RunJustThisPass(module.get()));
   EXPECT_FALSE(changed);
 }
 

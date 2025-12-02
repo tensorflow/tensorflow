@@ -32,7 +32,6 @@ limitations under the License.
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace stream_executor::gpu {
 namespace {
@@ -41,7 +40,7 @@ using ::testing::Gt;
 class CudaTimerTest : public ::testing::TestWithParam<CudaTimer::TimerType> {
  public:
   void LaunchSomeKernel(StreamExecutor* executor, Stream* stream) {
-    TF_ASSERT_OK_AND_ASSIGN(auto add, LoadAddI32TestKernel(executor));
+    ASSERT_OK_AND_ASSIGN(auto add, LoadAddI32TestKernel(executor));
 
     int64_t length = 4;
     int64_t byte_length = sizeof(int32_t) * length;
@@ -64,24 +63,23 @@ class CudaTimerTest : public ::testing::TestWithParam<CudaTimer::TimerType> {
 
  private:
   void SetUp() override {
-    TF_ASSERT_OK_AND_ASSIGN(Platform * platform,
-                            stream_executor::PlatformManager::PlatformWithId(
-                                stream_executor::cuda::kCudaPlatformId));
-    TF_ASSERT_OK_AND_ASSIGN(executor_, platform->ExecutorForDevice(0));
-    TF_ASSERT_OK_AND_ASSIGN(stream_, executor_->CreateStream(std::nullopt));
+    ASSERT_OK_AND_ASSIGN(Platform * platform,
+                         stream_executor::PlatformManager::PlatformWithId(
+                             stream_executor::cuda::kCudaPlatformId));
+    ASSERT_OK_AND_ASSIGN(executor_, platform->ExecutorForDevice(0));
+    ASSERT_OK_AND_ASSIGN(stream_, executor_->CreateStream(std::nullopt));
   }
 };
 
 TEST_P(CudaTimerTest, Create) {
-  TF_ASSERT_OK_AND_ASSIGN(
-      CudaTimer timer, CudaTimer::Create(executor_, stream_.get(), GetParam()));
+  ASSERT_OK_AND_ASSIGN(CudaTimer timer,
+                       CudaTimer::Create(executor_, stream_.get(), GetParam()));
 
   // We don't really care what kernel we launch here as long as it takes a
   // non-zero amount of time.
   LaunchSomeKernel(executor_, stream_.get());
 
-  TF_ASSERT_OK_AND_ASSIGN(absl::Duration timer_result,
-                          timer.GetElapsedDuration());
+  ASSERT_OK_AND_ASSIGN(absl::Duration timer_result, timer.GetElapsedDuration());
   EXPECT_THAT(timer_result, Gt(absl::ZeroDuration()));
   EXPECT_THAT(timer.GetElapsedDuration(),
               absl_testing::StatusIs(absl::StatusCode::kFailedPrecondition));

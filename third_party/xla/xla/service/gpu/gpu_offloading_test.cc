@@ -38,10 +38,11 @@ limitations under the License.
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/stream_executor.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/util.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -214,22 +215,22 @@ TEST_F(GpuOffloadingTest, CopyIRCreationTest) {
   SetFlopsPerSecond(2 * 1024);
   SetTranscendentalsPerSecond(2 * 1024);
 
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          RunHloRematerialization(
-                              /*memory_limit_bytes=*/10 * 1024, module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       RunHloRematerialization(
+                           /*memory_limit_bytes=*/10 * 1024, module.get()));
   ASSERT_TRUE(changed);
   stream_executor::StreamExecutor* executor =
       backend().default_stream_executor();
   StreamAttributeAnnotator attr_annotator(executor->GetDeviceDescription());
-  TF_ASSERT_OK_AND_ASSIGN(bool changed_attr, attr_annotator.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed_attr, attr_annotator.Run(module.get()));
   EXPECT_TRUE(changed_attr);
   // Verify that the stream attribute for a copy-start is annotated
   for (std::string i : {"", ".1", ".2", ".3"}) {
     const HloInstruction* cp_start =
         FindInstruction(module.get(), "copy-start" + i);
     EXPECT_TRUE(cp_start->has_backend_config());
-    TF_ASSERT_OK_AND_ASSIGN(GpuBackendConfig gpu_config,
-                            cp_start->backend_config<GpuBackendConfig>());
+    ASSERT_OK_AND_ASSIGN(GpuBackendConfig gpu_config,
+                         cp_start->backend_config<GpuBackendConfig>());
     EXPECT_GT(gpu_config.operation_queue_id(), 0);
   }
 
@@ -272,8 +273,8 @@ TEST_F(GpuOffloadingTest, XLAHostMemoryAllocationDeallocationTest) {
       backend().default_stream_executor();
   stream_executor::DeviceAddressBase host_ptr =
       executor->Allocate(64, (int64_t)(stream_executor::MemoryType::kHost));
-  TF_ASSERT_OK_AND_ASSIGN(auto memory_space,
-                          executor->GetPointerMemorySpace(host_ptr.opaque()));
+  ASSERT_OK_AND_ASSIGN(auto memory_space,
+                       executor->GetPointerMemorySpace(host_ptr.opaque()));
   EXPECT_EQ(memory_space, stream_executor::MemoryType::kHost);
   executor->Deallocate(&host_ptr);
 }

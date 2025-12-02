@@ -142,7 +142,6 @@ xla_cc_test(
         "//xla/service/gpu:launch_dimensions",
         "//xla/stream_executor:device_description",
         "//xla/tests:xla_internal_test_main",
-        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",

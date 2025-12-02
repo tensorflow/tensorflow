@@ -60,11 +60,10 @@ ENTRY entry {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          WhileLoopFusibleSinking{}.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       WhileLoopFusibleSinking{}.Run(module.get()));
   ASSERT_TRUE(changed);
 
   auto* while_body = module->GetComputationWithName("body");
@@ -103,11 +102,10 @@ ENTRY entry {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          WhileLoopFusibleSinking{}.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       WhileLoopFusibleSinking{}.Run(module.get()));
   ASSERT_TRUE(changed);
 
   auto* while_body = module->GetComputationWithName("body");
@@ -153,11 +151,10 @@ ENTRY entry {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          WhileLoopFusibleSinking{}.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       WhileLoopFusibleSinking{}.Run(module.get()));
   EXPECT_FALSE(changed);
 }
 
@@ -193,10 +190,10 @@ TEST_F(WhileLoopFusibleSinkingTest, TestPlumbSingleBroadcast) {
     ROOT while = (s32[]{:T(128)}, s32[1,1,1,4,3,5]{5,4,3,2,1,0}, s32[4,3,5]{2,1,0}) while(input), condition=loop.condition, body=loop.body
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module_before,
-                          ParseAndReturnVerifiedModule(hlo_string_before));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          WhileLoopFusibleSinking{}.Run(module_before.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module_before,
+                       ParseAndReturnVerifiedModule(hlo_string_before));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       WhileLoopFusibleSinking{}.Run(module_before.get()));
   EXPECT_TRUE(changed);
   EXPECT_THAT(FindInstruction(module_before.get(), "while"),
               op::While(op::Tuple(_, op::CustomCall(), _, _)));
@@ -234,12 +231,11 @@ TEST_F(WhileLoopFusibleSinkingTest, TestDontSinkBroadcast) {
     ROOT while = (s32[]{:T(128)}, s32[1,1,1,4,3,5]{5,4,3,2,1,0}, s32[4,3,5]{2,1,0}) while(input), condition=loop.condition, body=loop.body
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module_before,
-                          ParseAndReturnVerifiedModule(hlo_string_before));
-  TF_ASSERT_OK_AND_ASSIGN(
-      bool changed,
-      WhileLoopFusibleSinking(/*sink_broadcast_of_constant=*/false)
-          .Run(module_before.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module_before,
+                       ParseAndReturnVerifiedModule(hlo_string_before));
+  ASSERT_OK_AND_ASSIGN(bool changed, WhileLoopFusibleSinking(
+                                         /*sink_broadcast_of_constant=*/false)
+                                         .Run(module_before.get()));
   EXPECT_FALSE(changed);
 }
 
@@ -278,11 +274,11 @@ TEST_F(WhileLoopFusibleSinkingTest,
     ROOT while2 = (s32[]{:T(128)}, s32[1,1,1,4,3,5]{5,4,3,2,1,0}, s32[4,3,5]{2,1,0}) while(input2), condition=loop.condition, body=loop.body
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module_before,
-                          ParseAndReturnVerifiedModule(hlo_string_before));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module_before,
+                       ParseAndReturnVerifiedModule(hlo_string_before));
   CHECK_OK(FlattenCallGraph{}.Run(module_before.get()).status());
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          WhileLoopFusibleSinking{}.Run(module_before.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       WhileLoopFusibleSinking{}.Run(module_before.get()));
   EXPECT_TRUE(changed);
   EXPECT_THAT(FindInstruction(module_before.get(), "while1"),
               op::While(op::Tuple(_, op::CustomCall(), _, _)));
@@ -324,10 +320,10 @@ TEST_F(WhileLoopFusibleSinkingTest, TestPlumbMultipleBroadcast) {
     ROOT while = (s32[]{:T(128)}, s32[1,1,1,4,3,5]{5,4,3,2,1,0}, s32[1,1,1,4,3,5]{5,4,3,2,1,0}, s32[4,3,5]{2,1,0}) while(input), condition=loop.condition, body=loop.body
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module_before,
-                          ParseAndReturnVerifiedModule(hlo_string_before));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          WhileLoopFusibleSinking{}.Run(module_before.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module_before,
+                       ParseAndReturnVerifiedModule(hlo_string_before));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       WhileLoopFusibleSinking{}.Run(module_before.get()));
   EXPECT_TRUE(changed);
   EXPECT_THAT(
       FindInstruction(module_before.get(), "while"),
@@ -375,10 +371,10 @@ TEST_F(WhileLoopFusibleSinkingTest, TestNoPlumbWithBadCondition) {
     ROOT while = (s32[]{:T(128)}, s32[1,1,1,4,3,5]{5,4,3,2,1,0}, s32[1,1,1,4,3,5]{5,4,3,2,1,0}, s32[4,3,5]{2,1,0}) while(input), condition=loop.condition, body=loop.body
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module_before,
-                          ParseAndReturnVerifiedModule(hlo_string_before));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          WhileLoopFusibleSinking{}.Run(module_before.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module_before,
+                       ParseAndReturnVerifiedModule(hlo_string_before));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       WhileLoopFusibleSinking{}.Run(module_before.get()));
   EXPECT_FALSE(changed);
 }
 
@@ -423,10 +419,10 @@ TEST_F(WhileLoopFusibleSinkingTest, TestNoPlumbWithUnknonwnTripCount) {
     ROOT while = (s32[]{:T(128)}, s32[1,1,1,4,3,5]{5,4,3,2,1,0}, s32[1,1,1,4,3,5]{5,4,3,2,1,0}, s32[4,3,5]{2,1,0}) while(input), condition=loop.condition, body=loop.body
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module_before,
-                          ParseAndReturnVerifiedModule(hlo_string_before));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          WhileLoopFusibleSinking{}.Run(module_before.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module_before,
+                       ParseAndReturnVerifiedModule(hlo_string_before));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       WhileLoopFusibleSinking{}.Run(module_before.get()));
   EXPECT_FALSE(changed);
 }
 
@@ -461,11 +457,10 @@ ENTRY entry {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          WhileLoopFusibleSinking{}.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       WhileLoopFusibleSinking{}.Run(module.get()));
   ASSERT_TRUE(changed);
 
   HloInstruction* while_instr = FindInstruction(module.get(), "while");
@@ -510,10 +505,10 @@ TEST_F(WhileLoopFusibleSinkingTest, PlumbSingleBroadcastWithOriginalValue) {
     ROOT while = (s32[]{:T(128)}, s32[1,1,1,4,3,5]{5,4,3,2,1,0}, s32[4,3,5]{2,1,0}) while(input), condition=loop.condition, body=loop.body, origin={({"while" {0}}, {"while" {1}}, {"while" {2}})}
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string_before));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          WhileLoopFusibleSinking{}.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string_before));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       WhileLoopFusibleSinking{}.Run(module.get()));
   EXPECT_TRUE(changed);
   HloInstruction* while_instr = FindInstruction(module.get(), "while");
   ASSERT_NE(while_instr->original_value(), nullptr);

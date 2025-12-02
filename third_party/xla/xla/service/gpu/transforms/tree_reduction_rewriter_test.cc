@@ -18,12 +18,12 @@ limitations under the License.
 
 #include <optional>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_description.pb.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 
@@ -33,10 +33,9 @@ class TreeReductionRewriterTest : public HloHardwareIndependentTestBase {
  public:
   void CheckTreeRewriter(absl::string_view hlo,
                          std::optional<absl::string_view> expected) {
-    TF_ASSERT_OK_AND_ASSIGN(
-        stream_executor::DeviceDescription device_description,
-        stream_executor::DeviceDescription::FromProto(
-            stream_executor::GpuDeviceInfoProto{}));
+    ASSERT_OK_AND_ASSIGN(stream_executor::DeviceDescription device_description,
+                         stream_executor::DeviceDescription::FromProto(
+                             stream_executor::GpuDeviceInfoProto{}));
     device_description.set_threads_per_warp(32);
     RunAndFilecheckHloRewrite(
         hlo, gpu::TreeReductionRewriter{device_description}, expected);

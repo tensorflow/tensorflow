@@ -188,10 +188,10 @@ class GpuBlasLtThunkBuilder {
 
 void GpuBlasLtMatmulThunkTest::CreateExecuteThunksFromHLO(
     se::StreamExecutor* executor, absl::string_view hlo_string) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          this->ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       this->ParseAndReturnVerifiedModule(hlo_string));
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       bool changed,
       RunHloPass(
           GemmRewriter(gpu_comp(executor),
@@ -204,7 +204,7 @@ void GpuBlasLtMatmulThunkTest::CreateExecuteThunksFromHLO(
 
   for (auto* instr : module->entry_computation()->instructions()) {
     if (IsCublasLtMatmul(*instr)) {
-      TF_ASSERT_OK_AND_ASSIGN(auto thunk, builder.CreateThunk(instr));
+      ASSERT_OK_AND_ASSIGN(auto thunk, builder.CreateThunk(instr));
       gemm_thunks.push_back(std::move(thunk));
     }
   }
@@ -237,7 +237,7 @@ void GpuBlasLtMatmulThunkTest::CreateExecuteThunksFromHLO(
                                  num_streams);
     // use two different loops to make sure all threads start at the same time
     for (auto& [s, _] : threads) {
-      TF_ASSERT_OK_AND_ASSIGN(s, executor->CreateStream());
+      ASSERT_OK_AND_ASSIGN(s, executor->CreateStream());
     }
     // some compilers complain about lambda capture of structured bindings
     for (auto& info : threads) {
@@ -446,7 +446,7 @@ TEST_F(GpuBlasLtMatmulThunkTest, ThunkProtoSerialization) {
       BufferAllocation(/*index=*/5, /*size=*/161600, /*color=*/0),
   };
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<Thunk> thunk,
       CublasLtMatmulThunk::FromProto(thunk_info, proto, allocations));
 

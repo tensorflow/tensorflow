@@ -31,9 +31,9 @@ limitations under the License.
 #include "xla/hlo/testlib/pattern_matcher_gmock.h"
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/service/pattern_matcher.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -80,8 +80,8 @@ ENTRY main {
   ROOT add = f32[8] add(ar0, ar1)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          RunPass(hlo_string, /*expect_change=*/true));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       RunPass(hlo_string, /*expect_change=*/true));
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               m::AllReduce(m::Add(m::Parameter(0), m::Parameter(1))));
   EXPECT_EQ(AllReduceCount(module), 1);
@@ -105,8 +105,8 @@ ENTRY main {
   ROOT add = f32[8] add(ar0, ar1)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          RunPass(hlo_string, /*expect_change=*/true));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       RunPass(hlo_string, /*expect_change=*/true));
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               m::AllReduce(m::Add(m::Parameter(0), m::Parameter(1))));
   EXPECT_EQ(AllReduceCount(module), 1);
@@ -138,8 +138,8 @@ ENTRY main {
   ROOT add2 = f32[8] add(add1, ar3)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          RunPass(hlo_string, /*expect_change=*/true));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       RunPass(hlo_string, /*expect_change=*/true));
   EXPECT_THAT(
       module->entry_computation()->root_instruction(),
       m::AllReduce(m::Add(
@@ -173,8 +173,8 @@ ENTRY main {
   ROOT add2 = f32[8] add(add0, add1)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          RunPass(hlo_string, /*expect_change=*/true));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       RunPass(hlo_string, /*expect_change=*/true));
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               m::AllReduce(m::Add(m::Add(m::Parameter(0), m::Parameter(1)),
                                   m::Add(m::Parameter(2), m::Parameter(3)))));
@@ -205,8 +205,8 @@ ENTRY main {
   ROOT add = f32[8] add(ar0, ar1)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          RunPass(hlo_string, /*expect_change=*/false));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       RunPass(hlo_string, /*expect_change=*/false));
 }
 
 TEST_F(AllReduceSimplifierTest, MismatchOp1) {
@@ -233,8 +233,8 @@ ENTRY main {
   ROOT add = f32[8] add(ar0, ar1)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          RunPass(hlo_string, /*expect_change=*/false));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       RunPass(hlo_string, /*expect_change=*/false));
 }
 
 TEST_F(AllReduceSimplifierTest, MismatchReplicaGroups) {
@@ -255,8 +255,8 @@ ENTRY main {
   ROOT add = f32[8] add(ar0, ar1)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          RunPass(hlo_string, /*expect_change=*/false));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       RunPass(hlo_string, /*expect_change=*/false));
 }
 
 TEST_F(AllReduceSimplifierTest, MismatchHasChannelId) {
@@ -277,8 +277,8 @@ ENTRY main {
   ROOT add = f32[8] add(ar0, ar1)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          RunPass(hlo_string, /*expect_change=*/false));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       RunPass(hlo_string, /*expect_change=*/false));
 }
 
 TEST_F(AllReduceSimplifierTest, MismatchUseGlobalDeviceId) {
@@ -299,8 +299,8 @@ ENTRY main {
   ROOT add = f32[8] add(ar0, ar1)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          RunPass(hlo_string, /*expect_change=*/false));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       RunPass(hlo_string, /*expect_change=*/false));
 }
 
 TEST_F(AllReduceSimplifierTest, NotSingleUser) {
@@ -322,8 +322,8 @@ ENTRY main {
   ROOT t = (f32[8], f32[8]) tuple(ar0, add)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          RunPass(hlo_string, /*expect_change=*/false));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       RunPass(hlo_string, /*expect_change=*/false));
 }
 
 TEST_F(AllReduceSimplifierTest, DoubleUse) {
@@ -344,8 +344,8 @@ ENTRY main {
   ROOT c = f32[8] copy(add)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          RunPass(hlo_string, /*expect_change=*/true));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       RunPass(hlo_string, /*expect_change=*/true));
 }
 
 TEST_F(AllReduceSimplifierTest, PaddedUse) {
@@ -369,8 +369,8 @@ ENTRY main {
   ROOT add = f32[12] add(pad, pad.1)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          RunPass(hlo_string, /*expect_change=*/true));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       RunPass(hlo_string, /*expect_change=*/true));
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               m::AllReduce(m::Add(m::Pad(m::Parameter(0), _),
                                   m::Pad(m::Parameter(1), _))));
@@ -398,8 +398,8 @@ ENTRY main {
   ROOT add = f32[12] add(pad, pad.1)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          RunPass(hlo_string, /*expect_change=*/false));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       RunPass(hlo_string, /*expect_change=*/false));
   EXPECT_EQ(AllReduceCount(module), 2);
 }
 
@@ -424,8 +424,8 @@ ENTRY main {
   ROOT add = f32[17] add(pad, pad.1)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          RunPass(hlo_string, /*expect_change=*/false));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       RunPass(hlo_string, /*expect_change=*/false));
   EXPECT_EQ(AllReduceCount(module), 2);
 }
 
@@ -448,8 +448,8 @@ ENTRY main {
   ROOT add = f32[9] add(pad, pad)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          RunPass(hlo_string, /*expect_change=*/false));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       RunPass(hlo_string, /*expect_change=*/false));
   EXPECT_EQ(AllReduceCount(module), 1);
 }
 
@@ -473,8 +473,8 @@ ENTRY main {
   ROOT add = f32[8] add(rshp0, rshp1)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          RunPass(hlo_string, /*expect_change=*/true));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       RunPass(hlo_string, /*expect_change=*/true));
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               m::AllReduce(m::Add(m::Reshape(m::Parameter(0)),
                                   m::Reshape(m::Parameter(1)))));
@@ -501,8 +501,8 @@ ENTRY main {
   ROOT add = f32[4] add(rshp0, rshp1)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          RunPass(hlo_string, /*expect_change=*/true));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       RunPass(hlo_string, /*expect_change=*/true));
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               m::AllReduce(m::Add(m::Slice(m::Parameter(0)),
                                   m::Slice(m::Parameter(1)))));
@@ -538,9 +538,8 @@ ENTRY main {
   ROOT convert4 = bf16[8] convert(add2)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          RunPass(hlo_string, /*expect_change=*/true,
-                                  /*reassociate_converted_ar*/ true));
+  ASSERT_OK_AND_ASSIGN(auto module, RunPass(hlo_string, /*expect_change=*/true,
+                                            /*reassociate_converted_ar*/ true));
   SCOPED_TRACE(module->ToString());
   EXPECT_THAT(
       module->entry_computation()->root_instruction(),
@@ -598,8 +597,8 @@ ENTRY main {
   ROOT convert4 = bf16[8] convert(add2)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          RunPass(hlo_string, /*expect_change=*/false));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       RunPass(hlo_string, /*expect_change=*/false));
   SCOPED_TRACE(module->ToString());
 }
 
@@ -632,8 +631,8 @@ ENTRY main {
   ROOT convert4 = bf16[8] convert(add2)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          RunPass(hlo_string, /*expect_change=*/false));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       RunPass(hlo_string, /*expect_change=*/false));
   SCOPED_TRACE(module->ToString());
 }
 
@@ -663,8 +662,8 @@ ENTRY main {
   ROOT add1 = f32[1,4] add(add, dyn2)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          RunPass(hlo_string, /*expect_change=*/true));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       RunPass(hlo_string, /*expect_change=*/true));
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               m::DynamicSlice(
                   m::AllReduce(m::Add(m::Add(m::Parameter(0), m::Parameter(1)),
@@ -697,8 +696,8 @@ ENTRY main {
   ROOT add1 = f32[1,4] add(add, dyn2)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          RunPass(hlo_string, /*expect_change=*/true));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       RunPass(hlo_string, /*expect_change=*/true));
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               m::DynamicSlice(
                   m::AllReduce(m::Add(m::Add(m::Parameter(0), m::Parameter(0)),
@@ -734,8 +733,8 @@ ENTRY main {
   ROOT add1 = f32[1,4] add(add, dyn2)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          RunPass(hlo_string, /*expect_change=*/true));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       RunPass(hlo_string, /*expect_change=*/true));
   EXPECT_THAT(
       module->entry_computation()->root_instruction(),
       m::Add(m::DynamicSlice(),

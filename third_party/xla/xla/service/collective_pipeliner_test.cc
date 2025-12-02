@@ -55,7 +55,6 @@ limitations under the License.
 #include "xla/service/legalize_scheduling_annotations.h"
 #include "xla/service/memory_annotations.h"
 #include "xla/service/scheduling_annotations_util.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 
 namespace xla {
@@ -260,8 +259,8 @@ TEST_F(CollectivePipelinerTest, MinimalCaseWithoutDefaultLayouts) {
   )";
   HloParserOptions parser_config;
   parser_config.set_fill_missing_layouts(false);
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(
-                                           hlo_string, config_, parser_config));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(
+                                        hlo_string, config_, parser_config));
   EXPECT_THAT(RunOptimizer(module.get(), /*last_run=*/true),
               absl_testing::IsOkAndHolds(true));
 
@@ -4929,16 +4928,16 @@ ENTRY entry {
   // Pipelined instructions are cleared. Cloned instructions are updated.
   for (HloInstruction* instr : module->entry_computation()->instructions()) {
     if (instr->opcode() == HloOpcode::kMultiply) {
-      TF_ASSERT_OK_AND_ASSIGN(std::optional<int64_t> id,
-                              GetSchedulingAnnotationGroupId(instr));
+      ASSERT_OK_AND_ASSIGN(std::optional<int64_t> id,
+                           GetSchedulingAnnotationGroupId(instr));
       EXPECT_EQ(id, 4);
     } else if (instr->opcode() == HloOpcode::kAllReduce) {
-      TF_ASSERT_OK_AND_ASSIGN(std::optional<int64_t> id,
-                              GetSchedulingAnnotationGroupId(instr));
+      ASSERT_OK_AND_ASSIGN(std::optional<int64_t> id,
+                           GetSchedulingAnnotationGroupId(instr));
       EXPECT_FALSE(id.has_value());
     } else if (instr->opcode() == HloOpcode::kAllGather) {
-      TF_ASSERT_OK_AND_ASSIGN(std::optional<int64_t> id,
-                              GetSchedulingAnnotationGroupId(instr));
+      ASSERT_OK_AND_ASSIGN(std::optional<int64_t> id,
+                           GetSchedulingAnnotationGroupId(instr));
       EXPECT_FALSE(id.has_value());
     }
   }
@@ -5008,16 +5007,16 @@ ENTRY entry {
   XLA_VLOG_LINES(1, module->ToString());
   for (HloInstruction* instr : module->entry_computation()->instructions()) {
     if (instr->opcode() == HloOpcode::kReshape) {
-      TF_ASSERT_OK_AND_ASSIGN(std::optional<int64_t> id,
-                              GetSchedulingAnnotationGroupId(instr));
+      ASSERT_OK_AND_ASSIGN(std::optional<int64_t> id,
+                           GetSchedulingAnnotationGroupId(instr));
       EXPECT_TRUE(!id.has_value() || id.value() == 4);
     } else if (instr->opcode() == HloOpcode::kAllGather) {
-      TF_ASSERT_OK_AND_ASSIGN(std::optional<int64_t> id,
-                              GetSchedulingAnnotationGroupId(instr));
+      ASSERT_OK_AND_ASSIGN(std::optional<int64_t> id,
+                           GetSchedulingAnnotationGroupId(instr));
       EXPECT_FALSE(id.has_value());
     } else if (instr->opcode() == HloOpcode::kAllReduce) {
-      TF_ASSERT_OK_AND_ASSIGN(std::optional<int64_t> id,
-                              GetSchedulingAnnotationGroupId(instr));
+      ASSERT_OK_AND_ASSIGN(std::optional<int64_t> id,
+                           GetSchedulingAnnotationGroupId(instr));
       EXPECT_EQ(id, 5);
     }
   }
@@ -5606,13 +5605,13 @@ ENTRY entry {
 )";
   auto module = ParseAndReturnUnverifiedModule(hlo_string, config_).value();
   auto direction = collective_pipeliner_utils::PipeliningDirection::kForward;
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto changed, RunOptimizer(module.get(), /*last_run=*/true, 0,
-                                 /*pipeline_use_tree=*/true,
-                                 /*process_different_sized_ops=*/true,
-                                 direction, [](const HloInstruction* instr) {
-                                   return instr->IsCustomCall("kSinkAnchor");
-                                 }));
+  ASSERT_OK_AND_ASSIGN(auto changed,
+                       RunOptimizer(module.get(), /*last_run=*/true, 0,
+                                    /*pipeline_use_tree=*/true,
+                                    /*process_different_sized_ops=*/true,
+                                    direction, [](const HloInstruction* instr) {
+                                      return instr->IsCustomCall("kSinkAnchor");
+                                    }));
   EXPECT_TRUE(changed);
   int64_t fusion_count = 0;
   for (auto* comp : module->computations()) {

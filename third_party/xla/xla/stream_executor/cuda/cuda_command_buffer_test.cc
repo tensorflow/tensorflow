@@ -39,7 +39,6 @@ limitations under the License.
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace stream_executor::cuda {
 namespace {
@@ -57,8 +56,8 @@ static constexpr auto primary = CommandBuffer::Mode::kPrimary;  // NOLINT
 TEST(CudaCommandBufferTest, CuDnnExplicitConstructionAndUpdateWork) {
   Platform* platform = CudaPlatform();
   StreamExecutor* executor = platform->ExecutorForDevice(0).value();
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Stream> stream,
-                          executor->CreateStream());
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<Stream> stream,
+                       executor->CreateStream());
   dnn::DnnSupport& dnn_support = *executor->AsDnn();
 
   if (dnn_support.GetVersion().value_or(dnn::VersionInfo{0, 0, 0}) <
@@ -115,9 +114,9 @@ TEST(CudaCommandBufferTest, CuDnnExplicitConstructionAndUpdateWork) {
     workspace = executor->Allocate(graph.Graph().get_workspace_size());
     operands.push_back(workspace);
   }
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<CommandBuffer> cmd_buffer,
-                          executor->CreateCommandBuffer(primary));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<CommandBuffer> cmd_buffer,
+                       executor->CreateCommandBuffer(primary));
+  ASSERT_OK_AND_ASSIGN(
       auto* dnn_command,
       cmd_buffer->CreateDnnGraphCommand(
           graph, *stream, absl::Span<DeviceAddressBase>(operands), {}));

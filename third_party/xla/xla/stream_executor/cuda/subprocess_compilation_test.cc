@@ -22,7 +22,6 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
 #include "xla/stream_executor/semantic_version.h"
-#include "xla/tsl/platform/statusor.h"
 #include "tsl/platform/path.h"
 
 namespace stream_executor {
@@ -36,28 +35,28 @@ TEST(SubprocessCompilationTest, GetToolVersion) {
                     "run this test. Was this called in a Bazel environment?";
   }
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       SemanticVersion ptxas_version,
       GetToolVersion(tsl::io::JoinPath(cuda_dir, "bin", "ptxas")));
   EXPECT_EQ(ptxas_version.major(), 111);
   EXPECT_EQ(ptxas_version.minor(), 2);
   EXPECT_EQ(ptxas_version.patch(), 3);
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       SemanticVersion nvlink_version,
       GetToolVersion(tsl::io::JoinPath(cuda_dir, "bin", "nvlink")));
   EXPECT_EQ(nvlink_version.major(), 444);
   EXPECT_EQ(nvlink_version.minor(), 5);
   EXPECT_EQ(nvlink_version.patch(), 6);
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       SemanticVersion fatbinary_version,
       GetToolVersion(tsl::io::JoinPath(cuda_dir, "bin", "fatbinary")));
   EXPECT_EQ(fatbinary_version.major(), 777);
   EXPECT_EQ(fatbinary_version.minor(), 8);
   EXPECT_EQ(fatbinary_version.patch(), 9);
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       SemanticVersion nvdisasm_version,
       GetToolVersion(tsl::io::JoinPath(cuda_dir, "bin", "nvdisasm")));
   EXPECT_EQ(nvdisasm_version.major(), 999);
@@ -72,8 +71,8 @@ TEST(SubprocessCompilationTest, GetNvlinkVersion) {
                     "run this test. Was this called in a Bazel environment?";
   }
 
-  TF_ASSERT_OK_AND_ASSIGN(SemanticVersion nvlink_version,
-                          GetNvLinkVersion(cuda_dir));
+  ASSERT_OK_AND_ASSIGN(SemanticVersion nvlink_version,
+                       GetNvLinkVersion(cuda_dir));
   EXPECT_EQ(nvlink_version.major(), 444);
   EXPECT_EQ(nvlink_version.minor(), 5);
   EXPECT_EQ(nvlink_version.patch(), 6);
@@ -86,8 +85,8 @@ TEST(SubprocessCompilationTest, GetAsmCompilerVersion) {
                     "run this test. Was this called in a Bazel environment?";
   }
 
-  TF_ASSERT_OK_AND_ASSIGN(SemanticVersion nvlink_version,
-                          GetAsmCompilerVersion(cuda_dir));
+  ASSERT_OK_AND_ASSIGN(SemanticVersion nvlink_version,
+                       GetAsmCompilerVersion(cuda_dir));
   EXPECT_EQ(nvlink_version.major(), 111);
   EXPECT_EQ(nvlink_version.minor(), 2);
   EXPECT_EQ(nvlink_version.patch(), 3);

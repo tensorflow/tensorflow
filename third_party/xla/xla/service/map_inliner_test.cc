@@ -18,6 +18,7 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -30,7 +31,6 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tests/literal_test_util.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 
 namespace op = xla::testing::opcode_matchers;
@@ -72,8 +72,8 @@ TEST_F(MapInlinerTest, MapMax) {
               op::Maximum(lhs, rhs));
 
   // Verify execution on CPU.
-  TF_ASSERT_OK_AND_ASSIGN(const Literal result,
-                          Execute(std::move(hlo_module), {}));
+  ASSERT_OK_AND_ASSIGN(const Literal result,
+                       Execute(std::move(hlo_module), {}));
   auto expected = LiteralUtil::CreateR1<float>({4, 3, 3, 4});
   EXPECT_TRUE(LiteralTestUtil::Equal(result, expected));
 }
@@ -107,8 +107,8 @@ TEST_F(MapInlinerTest, MapConstant) {
   EXPECT_THAT(root, op::Broadcast(op::Constant()));
 
   // Verify execution on CPU.
-  TF_ASSERT_OK_AND_ASSIGN(const Literal result,
-                          Execute(std::move(hlo_module), {}));
+  ASSERT_OK_AND_ASSIGN(const Literal result,
+                       Execute(std::move(hlo_module), {}));
   auto expected = LiteralUtil::CreateR2<float>({{2, 2, 2, 2}, {2, 2, 2, 2}});
   EXPECT_TRUE(LiteralTestUtil::Equal(result, expected));
 }
@@ -120,11 +120,11 @@ TEST_F(MapInlinerTest, MapSubtractOppositeOrder) {
   // position as operands
   auto max_builder = HloComputation::Builder(TestName());
   auto param1 = max_builder.AddInstruction(
-          HloInstruction::CreateParameter(1, r0f32, "x"));
+      HloInstruction::CreateParameter(1, r0f32, "x"));
   auto param2 = max_builder.AddInstruction(
-          HloInstruction::CreateParameter(0, r0f32, "y"));
+      HloInstruction::CreateParameter(0, r0f32, "y"));
   max_builder.AddInstruction(HloInstruction::CreateBinary(
-          param1->shape(), HloOpcode::kSubtract, param1, param2));
+      param1->shape(), HloOpcode::kSubtract, param1, param2));
   auto max_f32 = max_builder.Build();
 
   auto builder = HloComputation::Builder("MapSubFunction");
@@ -133,7 +133,7 @@ TEST_F(MapInlinerTest, MapSubtractOppositeOrder) {
   auto rhs = builder.AddInstruction(HloInstruction::CreateConstant(
       LiteralUtil::CreateR1<float>({4, 3, 2, 1})));
   builder.AddInstruction(
-    HloInstruction::CreateMap(lhs->shape(), {lhs, rhs}, max_f32.get()));
+      HloInstruction::CreateMap(lhs->shape(), {lhs, rhs}, max_f32.get()));
 
   auto computation = builder.Build();
   auto hlo_module = CreateNewVerifiedModule();
@@ -143,11 +143,11 @@ TEST_F(MapInlinerTest, MapSubtractOppositeOrder) {
   MapInliner inliner;
   EXPECT_TRUE(inliner.Run(hlo_module.get()).value());
   EXPECT_THAT(hlo_module->entry_computation()->root_instruction(),
-          op::Subtract(rhs, lhs));
+              op::Subtract(rhs, lhs));
 
   // Verify execution on CPU.
-  TF_ASSERT_OK_AND_ASSIGN(const Literal result,
-                          Execute(std::move(hlo_module), {}));
+  ASSERT_OK_AND_ASSIGN(const Literal result,
+                       Execute(std::move(hlo_module), {}));
   auto expected = LiteralUtil::CreateR1<float>({3, 1, -1, -3});
   EXPECT_TRUE(LiteralTestUtil::Equal(result, expected));
 }
@@ -178,8 +178,8 @@ TEST_F(MapInlinerTest, MapParameter) {
   EXPECT_THAT(hlo_module->entry_computation()->root_instruction(), rhs);
 
   // Verify execution on CPU.
-  TF_ASSERT_OK_AND_ASSIGN(const Literal result,
-                          Execute(std::move(hlo_module), {}));
+  ASSERT_OK_AND_ASSIGN(const Literal result,
+                       Execute(std::move(hlo_module), {}));
   auto expected = LiteralUtil::CreateR0<float>(4);
   EXPECT_TRUE(LiteralTestUtil::Equal(result, expected));
 }

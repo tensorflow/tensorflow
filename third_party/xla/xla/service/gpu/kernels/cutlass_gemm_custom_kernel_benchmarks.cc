@@ -17,6 +17,7 @@ limitations under the License.
 #include <cstring>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include "absl/log/check.h"
 #include "xla/service/gpu/kernels/cutlass_gemm_custom_kernel.h"
 #include "xla/stream_executor/device_address.h"
@@ -27,7 +28,6 @@ limitations under the License.
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/tsl/platform/test_benchmark.h"
 #include "xla/xla_data.pb.h"
@@ -46,22 +46,22 @@ static void BM_RowMajorGemm(benchmark::State& state) {
   se::StreamExecutor* executor = platform->ExecutorForDevice(0).value();
   const se::DeviceDescription& device = executor->GetDeviceDescription();
 
-  TF_ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
+  ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
 
   // GEMM: 8192x4096 * 4096x16384 -> 8192x16384
   int32_t m = 8192;
   int32_t n = 16384;
   int32_t k = 4096;
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto custom_kernels,
       GetCutlassGemmKernels("cutlass_gemm", PrimitiveType::BF16,
                             PrimitiveType::BF16, PrimitiveType::BF16, m, n, k,
                             /*indices=*/{0, 1, 2}, /*slices=*/{}, device));
   const auto& custom_kernel = custom_kernels[0];
 
-  TF_ASSERT_OK_AND_ASSIGN(auto gemm,
-                          executor->LoadKernel(custom_kernel.kernel_spec()));
+  ASSERT_OK_AND_ASSIGN(auto gemm,
+                       executor->LoadKernel(custom_kernel.kernel_spec()));
 
   // Prepare arguments: a=1.1, b=1.2, c=0.0
   se::DeviceAddress<float> a = executor->AllocateArray<float>(m * k, 0);

@@ -20,16 +20,23 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/parser/hlo_parser.h"
+#include "xla/literal.h"
 #include "xla/literal_util.h"
+#include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/plugin/xla_cpu/cpu_client_options.h"
 #include "xla/pjrt/plugin/xla_cpu/xla_cpu_pjrt_client.h"
 #include "xla/service/hlo.pb.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/file_system.h"
+#include "xla/tsl/platform/test.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/env.h"
-#include "tsl/platform/file_system.h"
-#include "tsl/platform/test.h"
 
 namespace xla {
 namespace {
@@ -44,10 +51,10 @@ TEST(TfClientTest, ExecuteAndHloSnapshot) {
     })";
 
   xla::CpuClientOptions cpu_options{.asynchronous = true};
-  TF_ASSERT_OK_AND_ASSIGN(auto client, xla::GetXlaPjrtCpuClient(cpu_options));
+  ASSERT_OK_AND_ASSIGN(auto client, xla::GetXlaPjrtCpuClient(cpu_options));
   client = TfPjRtClient::CreateTfPjRtClient(std::move(client));
-  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module,
-                          ParseAndReturnUnverifiedModule(kProgram, {}));
+  ASSERT_OK_AND_ASSIGN(auto hlo_module,
+                       ParseAndReturnUnverifiedModule(kProgram, {}));
 
   std::string dir = tsl::testing::TmpDir();
   xla::CompileOptions options;
@@ -55,22 +62,22 @@ TEST(TfClientTest, ExecuteAndHloSnapshot) {
   debug_opts->set_xla_dump_to(dir);
   debug_opts->set_xla_dump_hlo_snapshots(true);
   XlaComputation xla_computation(hlo_module->ToProto());
-  TF_ASSERT_OK_AND_ASSIGN(auto pjrt_executable,
-                          client->CompileAndLoad(xla_computation, options));
+  ASSERT_OK_AND_ASSIGN(auto pjrt_executable,
+                       client->CompileAndLoad(xla_computation, options));
 
   auto* device = client->addressable_devices()[0];
 
   std::vector<float> data1{1.0, 2.0, 3.0, 4.0, 5.0, 6.0};
   std::vector<float> data2{10.0, 20.0, 30.0, 40.0, 50.0, 60.0};
   Shape shape = ShapeUtil::MakeShape(F32, {3, 2});
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto buffer1,
       client->BufferFromHostBuffer(
           data1.data(), shape.element_type(), shape.dimensions(),
           /*byte_strides=*/std::nullopt,
           PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall, nullptr,
           *device->default_memory_space(), /*device_layout=*/nullptr));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto buffer2,
       client->BufferFromHostBuffer(
           data2.data(), shape.element_type(), shape.dimensions(),

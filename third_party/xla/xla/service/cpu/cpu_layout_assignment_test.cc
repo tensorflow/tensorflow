@@ -20,9 +20,11 @@ limitations under the License.
 #include <memory>
 #include <string>
 
+#include <gmock/gmock.h>
 #include "absl/log/check.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "xla/backends/cpu/codegen/target_machine_features.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -31,16 +33,19 @@ limitations under the License.
 #include "xla/hlo/testlib/test.h"
 #include "xla/hlo/testlib/test_helpers.h"
 #include "xla/hlo/utils/hlo_matchers.h"
+#include "xla/layout.h"
 #include "xla/layout_util.h"
 #include "xla/literal.h"
 #include "xla/service/computation_layout.h"
 #include "xla/service/cpu/target_machine_features_stub.h"
+#include "xla/shape.h"
 #include "xla/shape_layout.h"
 #include "xla/shape_util.h"
 #include "xla/tests/test_utils.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/status.h"
 
 namespace op = xla::testing::opcode_matchers;
 
@@ -375,7 +380,7 @@ static void AssertCorrectLayoutForDotOutputFusion(
 
 TEST_F(CpuLayoutAssignmentTest, DotOutputFusion_1x50x19_dot_idx_0) {
   std::unique_ptr<HloModule> module = CreateNewVerifiedModule();
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       DotOutputFusionLayoutAssignmentResult layout_assignment_result,
       RunDotOutputFusion(module.get(), TestName(), /*m=*/1, /*k=*/50, /*n=*/19,
                          /*dot_operand_idx_in_add=*/0));
@@ -387,7 +392,7 @@ TEST_F(CpuLayoutAssignmentTest, DotOutputFusion_1x50x19_dot_idx_0) {
 
 TEST_F(CpuLayoutAssignmentTest, DotOutputFusion_1x50x19_dot_idx_1) {
   std::unique_ptr<HloModule> module = CreateNewVerifiedModule();
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       DotOutputFusionLayoutAssignmentResult layout_assignment_result,
       RunDotOutputFusion(module.get(), TestName(), /*m=*/1, /*k=*/50, /*n=*/19,
                          /*dot_operand_idx_in_add=*/1));
@@ -399,7 +404,7 @@ TEST_F(CpuLayoutAssignmentTest, DotOutputFusion_1x50x19_dot_idx_1) {
 
 TEST_F(CpuLayoutAssignmentTest, DotOutputFusion_19x50x1_dot_idx_0) {
   std::unique_ptr<HloModule> module = CreateNewVerifiedModule();
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       DotOutputFusionLayoutAssignmentResult layout_assignment_result,
       RunDotOutputFusion(module.get(), TestName(), /*m=*/19, /*k=*/50, /*n=*/1,
                          /*dot_operand_idx_in_add=*/0));
@@ -411,7 +416,7 @@ TEST_F(CpuLayoutAssignmentTest, DotOutputFusion_19x50x1_dot_idx_0) {
 
 TEST_F(CpuLayoutAssignmentTest, DotOutputFusion_19x50x1_dot_idx_1) {
   std::unique_ptr<HloModule> module = CreateNewVerifiedModule();
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       DotOutputFusionLayoutAssignmentResult layout_assignment_result,
       RunDotOutputFusion(module.get(), TestName(), /*m=*/19, /*k=*/50, /*n=*/1,
                          /*dot_operand_idx_in_add=*/1));
@@ -423,7 +428,7 @@ TEST_F(CpuLayoutAssignmentTest, DotOutputFusion_19x50x1_dot_idx_1) {
 
 TEST_F(CpuLayoutAssignmentTest, DotOutputFusion_19x50x19_dot_idx_0) {
   std::unique_ptr<HloModule> module = CreateNewVerifiedModule();
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       DotOutputFusionLayoutAssignmentResult layout_assignment_result,
       RunDotOutputFusion(module.get(), TestName(), /*m=*/19, /*k=*/50, /*n=*/19,
                          /*dot_operand_idx_in_add=*/0));
@@ -435,7 +440,7 @@ TEST_F(CpuLayoutAssignmentTest, DotOutputFusion_19x50x19_dot_idx_0) {
 
 TEST_F(CpuLayoutAssignmentTest, DotOutputFusion_19x50x19_dot_idx_1) {
   std::unique_ptr<HloModule> module = CreateNewVerifiedModule();
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       DotOutputFusionLayoutAssignmentResult layout_assignment_result,
       RunDotOutputFusion(module.get(), TestName(), /*m=*/19, /*k=*/50, /*n=*/19,
                          /*dot_operand_idx_in_add=*/1));
@@ -459,8 +464,7 @@ ENTRY BatchDotLayoutMustBeRowMajor {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
   HloComputation* computation = module->entry_computation();
 

@@ -15,12 +15,18 @@ limitations under the License.
 
 #include "xla/tests/test_utils.h"
 
+#include <cstdint>
 #include <vector>
 
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
 #include "absl/base/casts.h"
 #include "absl/container/flat_hash_set.h"
+#include "xla/client/executable_build_options.h"
 #include "xla/hlo/builder/xla_builder.h"
-#include "xla/hlo/parser/hlo_parser.h"
+#include "xla/hlo/ir/hlo_module.h"
+#include "xla/literal.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tests/local_client_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
@@ -48,10 +54,10 @@ TEST_F(TestUtilsTest, UnusedParam) {
   computation_status = builder.Build();
   TF_ASSERT_OK(computation_status.status());
 
-  TF_ASSERT_OK_AND_ASSIGN(auto executables,
-                          local_client_->Compile(computation_status.value(),
-                                                 {&pair_float, &single_float},
-                                                 ExecutableBuildOptions()));
+  ASSERT_OK_AND_ASSIGN(auto executables,
+                       local_client_->Compile(computation_status.value(),
+                                              {&pair_float, &single_float},
+                                              ExecutableBuildOptions()));
   HloModule& module =
       const_cast<HloModule&>(executables[0]->executable()->module());
   TF_ASSERT_OK(MakeFakeArguments(&module).status());
@@ -71,8 +77,8 @@ TEST_F(TestUtilsTest, MultipleIndexSpacesForDynamicSlices) {
       ROOT dynamic-slice.2 = f32[3,2,2] dynamic-slice(array_param.2, index_param.0, index_param.1, index_param.2), dynamic_slice_sizes={3,2,2}
     })")
                     .value();
-  TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> args,
-                          MakeFakeArguments(module.get()));
+  ASSERT_OK_AND_ASSIGN(std::vector<Literal> args,
+                       MakeFakeArguments(module.get()));
   ASSERT_EQ(args.size(), 5);
 
   EXPECT_GE(args[0].Get<int32_t>({}), -1);
@@ -102,8 +108,8 @@ TEST_F(TestUtilsTest, MultipleIndexSpacesForDynamicUpdateSlices) {
       ROOT dynamic-update-slice.2 = f32[3,3000,5] dynamic-update-slice(array_param.2, update_param.2, index_param.0, index_param.1, index_param.2)
     })")
                     .value();
-  TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> args,
-                          MakeFakeArguments(module.get()));
+  ASSERT_OK_AND_ASSIGN(std::vector<Literal> args,
+                       MakeFakeArguments(module.get()));
   ASSERT_EQ(args.size(), 7);
 
   EXPECT_GE(args[0].Get<int32_t>({}), -1);
@@ -136,8 +142,8 @@ ENTRY %sort.148.1589 (parameter.0: s32[1048576], parameter.1: s32[1048576]) -> (
 }
 )")
                     .value();
-  TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> args,
-                          MakeFakeArguments(module.get()));
+  ASSERT_OK_AND_ASSIGN(std::vector<Literal> args,
+                       MakeFakeArguments(module.get()));
   ASSERT_EQ(args.size(), 2);
   const Literal& key_arg = args[0];
 
@@ -165,8 +171,8 @@ ENTRY %module (parameter.0: s32[], parameter.1: f32[20,20]) -> f32[] {
 )")
                     .value();
 
-  TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> args,
-                          MakeFakeArguments(module.get()));
+  ASSERT_OK_AND_ASSIGN(std::vector<Literal> args,
+                       MakeFakeArguments(module.get()));
   ASSERT_EQ(args.size(), 2);
   EXPECT_TRUE(ShapeUtil::Equal(args[0].shape(), ShapeUtil::MakeShape(S32, {})))
       << ShapeUtil::HumanString(args[0].shape());
@@ -194,8 +200,8 @@ ENTRY %module(parameter.0: f32[200,100,300], parameter.1: s32[10,2]) ->
 )")
                     .value();
 
-  TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> args,
-                          MakeFakeArguments(module.get()));
+  ASSERT_OK_AND_ASSIGN(std::vector<Literal> args,
+                       MakeFakeArguments(module.get()));
   ASSERT_EQ(args.size(), 2);
 
   const Shape& indices_shape = args[1].shape();
@@ -228,7 +234,7 @@ ENTRY cluster_13361217111314620287__.11 {
 )")
                     .value();
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::vector<Literal> args,
       MakeFakeArguments(module.get(), /*pseudo_random=*/true,
                         /*use_large_range=*/true,
@@ -269,8 +275,8 @@ ENTRY main {
 )")
                     .value();
 
-  TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> args,
-                          MakeFakeArguments(module.get()));
+  ASSERT_OK_AND_ASSIGN(std::vector<Literal> args,
+                       MakeFakeArguments(module.get()));
   ASSERT_EQ(args.size(), 3);
 
   const Shape& indices_shape = args[1].shape();

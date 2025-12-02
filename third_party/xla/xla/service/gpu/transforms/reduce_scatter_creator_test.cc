@@ -33,10 +33,12 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/pattern_matcher_gmock.h"
+#include "xla/hlo/transforms/simplifiers/algebraic_simplifier.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/transforms/algebraic_simplifier.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/pattern_matcher.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
@@ -65,11 +67,11 @@ class GpuReduceScatterCreatorTest : public HloHardwareIndependentTestBase {
     return absl::StatusOr<std::unique_ptr<HloModule>>(std::move(module));
   }
 
-  size_t AllReduceCount(std::unique_ptr<HloModule> &module) {
+  size_t AllReduceCount(std::unique_ptr<HloModule>& module) {
     return CollectiveCount(module, HloOpcode::kAllReduce);
   }
 
-  size_t ReduceScatterCount(std::unique_ptr<HloModule> &module) {
+  size_t ReduceScatterCount(std::unique_ptr<HloModule>& module) {
     return CollectiveCount(module, HloOpcode::kReduceScatter);
   }
 
@@ -84,7 +86,7 @@ class GpuReduceScatterCreatorTest : public HloHardwareIndependentTestBase {
   }
 
  private:
-  size_t CollectiveCount(std::unique_ptr<HloModule> &module, HloOpcode opcode) {
+  size_t CollectiveCount(std::unique_ptr<HloModule>& module, HloOpcode opcode) {
     return absl::c_count_if(
         module->entry_computation()->instructions(),
         [&opcode](HloInstruction* instr) { return instr->opcode() == opcode; });
@@ -93,7 +95,7 @@ class GpuReduceScatterCreatorTest : public HloHardwareIndependentTestBase {
   size_t CollectiveCount(HloModule* module, HloOpcode opcode) {
     return absl::c_count_if(
         module->entry_computation()->instructions(),
-        [&opcode](HloInstruction *instr) { return instr->opcode() == opcode; });
+        [&opcode](HloInstruction* instr) { return instr->opcode() == opcode; });
   }
 };
 
@@ -123,14 +125,14 @@ ENTRY %AllReduce {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, RunPass(hlo_string,
-                                               /*num_replicas=*/8,
-                                               /*num_partitions=*/1,
-                                               /*use_spmd_partitioning=*/false,
-                                               /*expect_change=*/true));
+  ASSERT_OK_AND_ASSIGN(auto module, RunPass(hlo_string,
+                                            /*num_replicas=*/8,
+                                            /*num_partitions=*/1,
+                                            /*use_spmd_partitioning=*/false,
+                                            /*expect_change=*/true));
   ASSERT_THAT(module->entry_computation()->root_instruction(),
               GmockMatch(m::ReduceScatter(m::Parameter(0))));
-  const auto *rs = Cast<HloReduceScatterInstruction>(
+  const auto* rs = Cast<HloReduceScatterInstruction>(
       module->entry_computation()->root_instruction());
   EXPECT_EQ(rs->scatter_dimension(), 0) << rs->ToString();
   EXPECT_EQ(AllReduceCount(module), 0);
@@ -162,14 +164,14 @@ ENTRY %AllReduce {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, RunPass(hlo_string,
-                                               /*num_replicas=*/8,
-                                               /*num_partitions=*/1,
-                                               /*use_spmd_partitioning=*/false,
-                                               /*expect_change=*/true));
+  ASSERT_OK_AND_ASSIGN(auto module, RunPass(hlo_string,
+                                            /*num_replicas=*/8,
+                                            /*num_partitions=*/1,
+                                            /*use_spmd_partitioning=*/false,
+                                            /*expect_change=*/true));
   ASSERT_THAT(module->entry_computation()->root_instruction(),
               GmockMatch(m::ReduceScatter(m::Parameter(0))));
-  const auto *rs = Cast<HloReduceScatterInstruction>(
+  const auto* rs = Cast<HloReduceScatterInstruction>(
       module->entry_computation()->root_instruction());
   EXPECT_EQ(rs->scatter_dimension(), 0) << rs->ToString();
   EXPECT_EQ(AllReduceCount(module), 0);
@@ -202,11 +204,11 @@ ENTRY %AllReduce {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, RunPass(hlo_string,
-                                               /*num_replicas=*/8,
-                                               /*num_partitions=*/1,
-                                               /*use_spmd_partitioning=*/false,
-                                               /*expect_change=*/true));
+  ASSERT_OK_AND_ASSIGN(auto module, RunPass(hlo_string,
+                                            /*num_replicas=*/8,
+                                            /*num_partitions=*/1,
+                                            /*use_spmd_partitioning=*/false,
+                                            /*expect_change=*/true));
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               GmockMatch(m::Reshape(m::ReduceScatter(m::Parameter(0)))));
   EXPECT_EQ(AllReduceCount(module), 0);
@@ -236,11 +238,11 @@ ENTRY %AllReduce {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, RunPass(hlo_string,
-                                               /*num_replicas=*/8,
-                                               /*num_partitions=*/1,
-                                               /*use_spmd_partitioning=*/false,
-                                               /*expect_change=*/true));
+  ASSERT_OK_AND_ASSIGN(auto module, RunPass(hlo_string,
+                                            /*num_replicas=*/8,
+                                            /*num_partitions=*/1,
+                                            /*use_spmd_partitioning=*/false,
+                                            /*expect_change=*/true));
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               GmockMatch(m::Reshape(m::ReduceScatter(m::Parameter(0)))));
   EXPECT_EQ(AllReduceCount(module), 0);
@@ -271,14 +273,14 @@ ENTRY %AllReduce {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, RunPass(hlo_string,
-                                               /*num_replicas=*/8,
-                                               /*num_partitions=*/1,
-                                               /*use_spmd_partitioning=*/false,
-                                               /*expect_change=*/true));
+  ASSERT_OK_AND_ASSIGN(auto module, RunPass(hlo_string,
+                                            /*num_replicas=*/8,
+                                            /*num_partitions=*/1,
+                                            /*use_spmd_partitioning=*/false,
+                                            /*expect_change=*/true));
   ASSERT_THAT(module->entry_computation()->root_instruction(),
               GmockMatch(m::ReduceScatter(m::Parameter(0))));
-  const auto *rs = Cast<HloReduceScatterInstruction>(
+  const auto* rs = Cast<HloReduceScatterInstruction>(
       module->entry_computation()->root_instruction());
   EXPECT_EQ(rs->scatter_dimension(), 2) << rs->ToString();
   EXPECT_EQ(AllReduceCount(module), 0);
@@ -309,11 +311,11 @@ ENTRY %AllReduce {
     dynamic_slice_sizes={4,8,128}
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, RunPass(hlo_string,
-                                               /*num_replicas=*/8,
-                                               /*num_partitions=*/1,
-                                               /*use_spmd_partitioning=*/false,
-                                               /*expect_change=*/false));
+  ASSERT_OK_AND_ASSIGN(auto module, RunPass(hlo_string,
+                                            /*num_replicas=*/8,
+                                            /*num_partitions=*/1,
+                                            /*use_spmd_partitioning=*/false,
+                                            /*expect_change=*/false));
 }
 
 TEST_F(GpuReduceScatterCreatorTest, AllReplicasIotaTable) {
@@ -341,11 +343,11 @@ ENTRY %AllReduce {
     dynamic_slice_sizes={4,8,128}
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, RunPass(hlo_string,
-                                               /*num_replicas=*/8,
-                                               /*num_partitions=*/2,
-                                               /*use_spmd_partitioning=*/true,
-                                               /*expect_change=*/true));
+  ASSERT_OK_AND_ASSIGN(auto module, RunPass(hlo_string,
+                                            /*num_replicas=*/8,
+                                            /*num_partitions=*/2,
+                                            /*use_spmd_partitioning=*/true,
+                                            /*expect_change=*/true));
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               GmockMatch(m::ReduceScatter(m::Parameter(0))));
   EXPECT_EQ(AllReduceCount(module), 0);
@@ -377,11 +379,11 @@ ENTRY %AllReduce {
     dynamic_slice_sizes={8,8,128}
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, RunPass(hlo_string,
-                                               /*num_replicas=*/8,
-                                               /*num_partitions=*/2,
-                                               /*use_spmd_partitioning=*/true,
-                                               /*expect_change=*/true));
+  ASSERT_OK_AND_ASSIGN(auto module, RunPass(hlo_string,
+                                            /*num_replicas=*/8,
+                                            /*num_partitions=*/2,
+                                            /*use_spmd_partitioning=*/true,
+                                            /*expect_change=*/true));
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               GmockMatch(m::ReduceScatter(m::Parameter(0))));
   EXPECT_EQ(AllReduceCount(module), 0);
@@ -412,11 +414,11 @@ ENTRY %AllReduce {
     dynamic_slice_sizes={4,8,128}
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, RunPass(hlo_string,
-                                               /*num_replicas=*/2,
-                                               /*num_partitions=*/8,
-                                               /*use_spmd_partitioning=*/true,
-                                               /*expect_change=*/true));
+  ASSERT_OK_AND_ASSIGN(auto module, RunPass(hlo_string,
+                                            /*num_replicas=*/2,
+                                            /*num_partitions=*/8,
+                                            /*use_spmd_partitioning=*/true,
+                                            /*expect_change=*/true));
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               GmockMatch(m::ReduceScatter(m::Parameter(0))));
   EXPECT_EQ(AllReduceCount(module), 0);
@@ -449,11 +451,11 @@ ENTRY %AllReduce {
     replica_groups={{0,8},{1,9},{2,10},{3,11},{4,12},{5,13},{6,14},{7,15}}, to_apply=%sum, use_global_device_ids=true, channel_id=2
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, RunPass(hlo_string,
-                                               /*num_replicas=*/2,
-                                               /*num_partitions=*/8,
-                                               /*use_spmd_partitioning=*/true,
-                                               /*expect_change=*/true));
+  ASSERT_OK_AND_ASSIGN(auto module, RunPass(hlo_string,
+                                            /*num_replicas=*/2,
+                                            /*num_partitions=*/8,
+                                            /*use_spmd_partitioning=*/true,
+                                            /*expect_change=*/true));
   EXPECT_EQ(AllReduceCount(module), 1);
   EXPECT_EQ(ReduceScatterCount(module), 1);
 }
@@ -488,11 +490,11 @@ ENTRY %AllReduce {
     dynamic_slice_sizes={8,8,128}
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, RunPass(hlo_string,
-                                               /*num_replicas=*/2,
-                                               /*num_partitions=*/4,
-                                               /*use_spmd_partitioning=*/true,
-                                               /*expect_change=*/true));
+  ASSERT_OK_AND_ASSIGN(auto module, RunPass(hlo_string,
+                                            /*num_replicas=*/2,
+                                            /*num_partitions=*/4,
+                                            /*use_spmd_partitioning=*/true,
+                                            /*expect_change=*/true));
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               GmockMatch(m::ReduceScatter(m::Parameter(0))));
   EXPECT_EQ(AllReduceCount(module), 0);
@@ -523,11 +525,11 @@ ENTRY %AllReduce {
     dynamic_slice_sizes={8,8,128}
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, RunPass(hlo_string,
-                                               /*num_replicas=*/2,
-                                               /*num_partitions=*/4,
-                                               /*use_spmd_partitioning=*/true,
-                                               /*expect_change=*/true));
+  ASSERT_OK_AND_ASSIGN(auto module, RunPass(hlo_string,
+                                            /*num_replicas=*/2,
+                                            /*num_partitions=*/4,
+                                            /*use_spmd_partitioning=*/true,
+                                            /*expect_change=*/true));
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               GmockMatch(m::ReduceScatter(m::Parameter(0))));
   EXPECT_EQ(AllReduceCount(module), 0);
@@ -558,11 +560,11 @@ ENTRY %AllReduce {
     dynamic_slice_sizes={8,8,128}
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, RunPass(hlo_string,
-                                               /*num_replicas=*/2,
-                                               /*num_partitions=*/4,
-                                               /*use_spmd_partitioning=*/true,
-                                               /*expect_change=*/false));
+  ASSERT_OK_AND_ASSIGN(auto module, RunPass(hlo_string,
+                                            /*num_replicas=*/2,
+                                            /*num_partitions=*/4,
+                                            /*use_spmd_partitioning=*/true,
+                                            /*expect_change=*/false));
 }
 
 TEST_F(GpuReduceScatterCreatorTest, NonUniformSplit) {
@@ -590,11 +592,11 @@ ENTRY %AllReduce {
     dynamic_slice_sizes={1,3}
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, RunPass(hlo_string,
-                                               /*num_replicas=*/1,
-                                               /*num_partitions=*/8,
-                                               /*use_spmd_partitioning=*/true,
-                                               /*expect_change=*/true));
+  ASSERT_OK_AND_ASSIGN(auto module, RunPass(hlo_string,
+                                            /*num_replicas=*/1,
+                                            /*num_partitions=*/8,
+                                            /*use_spmd_partitioning=*/true,
+                                            /*expect_change=*/true));
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               GmockMatch(m::ReduceScatter(m::Slice(m::Parameter(0)))));
 }
@@ -626,14 +628,14 @@ dynamic_slice_sizes={4,8,128}
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, RunPass(hlo_string,
-                                               /*num_replicas=*/8,
-                                               /*num_partitions=*/1,
-                                               /*use_spmd_partitioning=*/false,
-                                               /*expect_change=*/true));
+  ASSERT_OK_AND_ASSIGN(auto module, RunPass(hlo_string,
+                                            /*num_replicas=*/8,
+                                            /*num_partitions=*/1,
+                                            /*use_spmd_partitioning=*/false,
+                                            /*expect_change=*/true));
   ASSERT_THAT(module->entry_computation()->root_instruction(),
               GmockMatch(m::ReduceScatter(m::Parameter(0))));
-  const auto *rs = Cast<HloReduceScatterInstruction>(
+  const auto* rs = Cast<HloReduceScatterInstruction>(
       module->entry_computation()->root_instruction());
   EXPECT_TRUE(rs->backend_config<GpuBackendConfig>()
                   ->collective_backend_config()
@@ -667,11 +669,11 @@ ENTRY %AllReduce {
       %zero), dynamic_slice_sizes={4,8,128}
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, RunPass(hlo_string,
-                                               /*num_replicas=*/1,
-                                               /*num_partitions=*/8,
-                                               /*use_spmd_partitioning=*/false,
-                                               /*expect_change=*/true));
+  ASSERT_OK_AND_ASSIGN(auto module, RunPass(hlo_string,
+                                            /*num_replicas=*/1,
+                                            /*num_partitions=*/8,
+                                            /*use_spmd_partitioning=*/false,
+                                            /*expect_change=*/true));
   ASSERT_THAT(module->entry_computation()->root_instruction(),
               GmockMatch(m::ReduceScatter(m::Parameter(0))));
 }
@@ -704,11 +706,11 @@ ENTRY %SubtractionPattern {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, RunPass(hlo_string,
-                                               /*num_replicas=*/1,
-                                               /*num_partitions=*/8,
-                                               /*use_spmd_partitioning=*/true,
-                                               /*expect_change=*/true));
+  ASSERT_OK_AND_ASSIGN(auto module, RunPass(hlo_string,
+                                            /*num_replicas=*/1,
+                                            /*num_partitions=*/8,
+                                            /*use_spmd_partitioning=*/true,
+                                            /*expect_change=*/true));
   ASSERT_THAT(module->entry_computation()->root_instruction(),
               GmockMatch(m::ReduceScatter(m::Parameter(0))));
   const auto* rs = Cast<HloReduceScatterInstruction>(
@@ -748,27 +750,26 @@ ENTRY %AllReduce {
       /*replica_count=*/1, /*num_partitions=*/8);
   config.set_use_spmd_partitioning(true);
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module_without_algsimp,
-                          ParseAndReturnVerifiedModule(hlo_string, config));
-  TF_ASSERT_OK_AND_ASSIGN(
-      bool changed_without,
-      ReduceScatterCreator().Run(module_without_algsimp.get()));
+  ASSERT_OK_AND_ASSIGN(auto module_without_algsimp,
+                       ParseAndReturnVerifiedModule(hlo_string, config));
+  ASSERT_OK_AND_ASSIGN(bool changed_without, ReduceScatterCreator().Run(
+                                                 module_without_algsimp.get()));
   EXPECT_FALSE(changed_without) << "ReduceScatterCreator should not transform "
                                    "without AlgebraicSimplifier";
   EXPECT_EQ(AllReduceCount(module_without_algsimp), 1);
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module_with_algsimp,
-                          ParseAndReturnVerifiedModule(hlo_string, config));
+  ASSERT_OK_AND_ASSIGN(auto module_with_algsimp,
+                       ParseAndReturnVerifiedModule(hlo_string, config));
 
   AlgebraicSimplifierOptions options;
   se::GpuComputeCapability compute_capability{se::CudaComputeCapability{8, 0}};
   GpuAlgebraicSimplifier algsimp(options, compute_capability);
-  TF_ASSERT_OK_AND_ASSIGN(bool algsimp_changed,
-                          algsimp.Run(module_with_algsimp.get(), {}));
+  ASSERT_OK_AND_ASSIGN(bool algsimp_changed,
+                       algsimp.Run(module_with_algsimp.get(), {}));
   EXPECT_TRUE(algsimp_changed);
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      bool changed_with, ReduceScatterCreator().Run(module_with_algsimp.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed_with,
+                       ReduceScatterCreator().Run(module_with_algsimp.get()));
   EXPECT_TRUE(changed_with)
       << "ReduceScatterCreator should transform after AlgebraicSimplifier";
   EXPECT_GE(ReduceScatterCount(module_with_algsimp), 1)

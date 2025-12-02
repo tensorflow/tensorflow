@@ -29,14 +29,12 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/hlo/ir/hlo_module_group.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/test_helpers.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 
 namespace xla {
@@ -145,14 +143,14 @@ ENTRY main {
   ROOT foo = f32[] multiply(a, b)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(module_str));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(module_str));
   HloPassPipeline pipeline(TestName());
   pipeline.AddPass<FooToBarModulePass>();
 
   HloInstruction* root = module->entry_computation()->root_instruction();
   EXPECT_EQ(root->name(), "foo");
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, pipeline.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, pipeline.Run(module.get()));
   EXPECT_TRUE(changed);
   EXPECT_EQ(root->name(), "bar");
 }
@@ -168,12 +166,12 @@ ENTRY main {
   ROOT blahblah = f32[] multiply(a, b)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(module_str));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(module_str));
   HloPassPipeline pipeline(TestName());
   pipeline.AddPass<FooToBarModulePass>();
 
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, pipeline.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, pipeline.Run(module.get()));
   EXPECT_FALSE(changed);
 }
 
@@ -195,8 +193,8 @@ ENTRY %Entry (p0: f32[10], p1: f32[10]) -> f32[10] {
   ROOT %baz = f32[10]{0} async-done(((f32[10], f32[10]), f32[10], s32[]) %async-start), async_execution_thread="parallel_thread", calls=%async_builder
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(module_str));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(module_str));
   HloPassPipeline pipeline(TestName());
   pipeline.AddPass<ReverseStringModulePass>();
 
@@ -205,8 +203,8 @@ ENTRY %Entry (p0: f32[10], p1: f32[10]) -> f32[10] {
       main_root->async_wrapped_computation()->root_instruction();
   EXPECT_EQ(main_root->name(), "baz");
   EXPECT_EQ(parallel_thread_root->name(), "foo");
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          pipeline.Run(module.get(), {"parallel_thread"}));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       pipeline.Run(module.get(), {"parallel_thread"}));
   EXPECT_TRUE(changed);
   EXPECT_EQ(main_root->name(), "baz");
   EXPECT_EQ(parallel_thread_root->name(), "oof");
@@ -231,8 +229,8 @@ ENTRY %Entry (p0: f32[10], p1: f32[10]) -> f32[10] {
   ROOT %baz = f32[10]{0} async-done(((f32[10], f32[10]), f32[10], s32[]) %async-start), async_execution_thread="parallel_thread", calls=%async_builder
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(module_str));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(module_str));
   HloPassPipeline pipeline(TestName());
   pipeline.AddPass<ReverseStringModulePass>();
 
@@ -241,7 +239,7 @@ ENTRY %Entry (p0: f32[10], p1: f32[10]) -> f32[10] {
       main_root->async_wrapped_computation()->root_instruction();
   EXPECT_EQ(main_root->name(), "baz");
   EXPECT_EQ(parallel_thread_root->name(), "foo");
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, pipeline.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, pipeline.Run(module.get()));
   EXPECT_TRUE(changed);
   EXPECT_EQ(main_root->name(), "zab");
   EXPECT_EQ(parallel_thread_root->name(), "oof");
@@ -257,8 +255,8 @@ ENTRY main {
   ROOT baz = f32[] multiply(a, b)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(module_0_str));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(module_0_str));
 
   HloPassPipeline pipeline(TestName());
   pipeline.AddPass<BazToQuxModulePass>();
@@ -267,7 +265,7 @@ ENTRY main {
   HloInstruction* root0 = module->entry_computation()->root_instruction();
   EXPECT_EQ(root0->name(), "baz");
 
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, pipeline.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, pipeline.Run(module.get()));
   EXPECT_TRUE(changed);
 
   EXPECT_EQ(root0->name(), "qux");
@@ -283,15 +281,15 @@ ENTRY main {
   ROOT foo = f32[] multiply(a, b)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(module_str));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(module_str));
   {
     // Run a pipeline with just the invariant checker. It should not fail
     // because there is no 'bar' instruction in the module.
     HloPassPipeline pipeline(TestName());
     pipeline.AddInvariantChecker<BarBlowerUpper>();
 
-    TF_ASSERT_OK_AND_ASSIGN(bool changed, pipeline.Run(module.get()));
+    ASSERT_OK_AND_ASSIGN(bool changed, pipeline.Run(module.get()));
     EXPECT_FALSE(changed);
   }
 
@@ -373,8 +371,8 @@ ENTRY main {
   ROOT foo = f32[] multiply(a, b)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(module_str));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(module_str));
   module->mutable_config()
       .mutable_debug_options()
       .set_xla_unsupported_crash_on_hlo_pass_silent_hlo_change(true);

@@ -543,7 +543,6 @@ xla_cc_test(
         ":xla_data_proto_cc",
         "//xla/hlo/testlib:test",
         "//xla/tsl/lib/core:status_test_util",
-        "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test_benchmark",
         "//xla/tsl/platform:test_main",
         "@com_google_absl//absl/hash:hash_testing",
@@ -562,7 +561,6 @@ xla_cc_test(
         ":xla_data_proto_cc",
         "//xla/hlo/testlib:test",
         "//xla/tsl/platform:env",
-        "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test_benchmark",
         "//xla/tsl/platform:test_main",
         "@com_google_absl//absl/algorithm:container",
@@ -599,7 +597,6 @@ xla_cc_test(
         ":xla_data_proto_cc",
         "//xla/hlo/testlib:test",
         "//xla/hlo/testlib:test_helpers",
-        "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test_main",
         "@com_google_googletest//:gtest",
     ],
@@ -709,7 +706,6 @@ xla_cc_test(
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:logging",
         "//xla/tsl/platform:macros",
-        "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test_benchmark",
         "//xla/tsl/platform:test_main",
         "//xla/tsl/util:safe_reinterpret_cast",
@@ -1216,6 +1212,7 @@ xla_cc_test(
             "@com_google_absl//absl/log:check",
             "@com_google_absl//absl/strings:str_format",
             "@com_google_googletest//:gtest",
+            "@com_google_googletest//:gtest_main",
         ],
 )
 
@@ -1295,6 +1292,7 @@ xla_cc_test(
             "@com_google_absl//absl/status:statusor",
             "@com_google_absl//absl/strings",
             "@com_google_googletest//:gtest",
+            "@com_google_googletest//:gtest_main",
             "@com_google_protobuf//:protobuf_lite",
         ],
 )
@@ -1375,8 +1373,8 @@ xla_cc_test(
         ":autotuning_proto_cc",
         "//xla/hlo/testlib:test",
         "//xla/hlo/testlib:test_helpers",
-        "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test_main",
+        "@com_google_googletest//:gtest",
     ],
 )
 
@@ -1494,7 +1492,6 @@ xla_cc_test(
         ":shape_util",
         ":tuple_tree",
         "//xla/tsl/lib/core:status_test_util",
-        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/status:statusor",

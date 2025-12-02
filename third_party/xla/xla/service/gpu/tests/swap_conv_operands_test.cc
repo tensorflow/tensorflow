@@ -15,13 +15,13 @@ limitations under the License.
 
 #include <memory>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/statusor.h"
 #include "xla/error_spec.h"
 #include "xla/service/gpu/tests/gpu_codegen_test.h"
 #include "xla/stream_executor/device_description.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/test.h"
+#include "xla/tsl/platform/statusor.h"
 
 // TODO(b/210165681): The tests in this file are fragile to HLO op names.
 
@@ -57,8 +57,8 @@ ENTRY swap_conv {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(se::GpuComputeCapability gpu_compute_capability,
-                          GpuComputeCapability());
+  ASSERT_OK_AND_ASSIGN(se::GpuComputeCapability gpu_compute_capability,
+                       GpuComputeCapability());
 
   if (gpu_compute_capability.cuda_compute_capability()->IsAtLeastHopper()) {
     MatchOptimizedHloWithShapes(hlo_text,
@@ -88,8 +88,8 @@ ENTRY swap_conv {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(se::GpuComputeCapability gpu_compute_capability,
-                          GpuComputeCapability());
+  ASSERT_OK_AND_ASSIGN(se::GpuComputeCapability gpu_compute_capability,
+                       GpuComputeCapability());
 
   if (gpu_compute_capability.cuda_compute_capability()->IsAtLeastHopper()) {
     MatchOptimizedHloWithShapes(hlo_text,

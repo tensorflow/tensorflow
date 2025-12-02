@@ -17,11 +17,11 @@ limitations under the License.
 
 #include <memory>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace xla::cpu {
 namespace {
@@ -40,11 +40,10 @@ class LlvmKernelAutotunerTest : public HloHardwareIndependentTestBase {};
 
 TEST_F(LlvmKernelAutotunerTest, GetBestConfig) {
   LlvmKernelAutotuner autotuner;
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<HloModule> module,
-      ParseAndReturnVerifiedModule(kLlvmKernelConcatenateHlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kLlvmKernelConcatenateHlo));
 
-  TF_ASSERT_OK_AND_ASSIGN(auto changed, autotuner.Run(module.get(), {}));
+  ASSERT_OK_AND_ASSIGN(auto changed, autotuner.Run(module.get(), {}));
 
   EXPECT_TRUE(changed);
 }

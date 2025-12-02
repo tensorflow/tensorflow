@@ -20,6 +20,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -30,7 +31,6 @@ limitations under the License.
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 
 namespace xla {
@@ -106,7 +106,7 @@ class OpCostTest : public HloHardwareIndependentTestBase {
 
       ROOT result = ((f32[10,10], f32[10,10]), (f32[10,10], f32[10,10])) tuple(tuple0, tuple1)
     })";
-    TF_ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnVerifiedModule(kHloModule));
+    ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnVerifiedModule(kHloModule));
 
     add0_ =
         module_->entry_computation()->root_instruction()->operand(1)->operand(

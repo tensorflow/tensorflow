@@ -99,7 +99,6 @@ xla_cc_test(
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
         "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
@@ -173,6 +172,7 @@ xla_cc_test(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/synchronization",
         "@com_google_googletest//:gtest_main",
+        "@llvm-project//llvm:Support",
         "@local_tsl//tsl/platform:casts",
     ],
 )

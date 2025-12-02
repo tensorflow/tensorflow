@@ -48,7 +48,6 @@ limitations under the License.
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/service/logical_buffer.h"
 #include "xla/shape_util.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla::cpu {
@@ -130,8 +129,8 @@ TEST_F(KernelApiIrBuilderTest, BuildKernelPrototype) {
   std::vector<KernelApiIrBuilder::KernelParameter> results = {{shape, res0},
                                                               {shape, res1}};
 
-  TF_ASSERT_OK_AND_ASSIGN(auto prototype,
-                          EmitKernelPrototype("test", arguments, results));
+  ASSERT_OK_AND_ASSIGN(auto prototype,
+                       EmitKernelPrototype("test", arguments, results));
   llvm::IRBuilder<> builder = getBuilder();
   builder.SetInsertPoint(prototype.function->getEntryBlock().getTerminator());
 
@@ -243,9 +242,9 @@ TEST_F(KernelApiIrBuilderTest, AllInvariantBuffers) {
       ROOT add.0 = f32[2,2] add(p0, p1)
     })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto hlo, ParseAndReturnUnverifiedModule(hlo_text));
-  TF_ASSERT_OK_AND_ASSIGN(auto buffer_assignment, RunBufferAssignment(*hlo));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(auto hlo, ParseAndReturnUnverifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(auto buffer_assignment, RunBufferAssignment(*hlo));
+  ASSERT_OK_AND_ASSIGN(
       KernelApiIrBuilder::KernelPrototype prototype,
       EmitKernelPrototype(hlo->entry_computation()->root_instruction(),
                           buffer_assignment.get()));
@@ -264,9 +263,9 @@ TEST_F(KernelApiIrBuilderTest, InvariantBufferPassedTwice) {
       ROOT add.0 = f32[2,2] add(p0, p0)
     })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto hlo, ParseAndReturnUnverifiedModule(hlo_text));
-  TF_ASSERT_OK_AND_ASSIGN(auto buffer_assignment, RunBufferAssignment(*hlo));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(auto hlo, ParseAndReturnUnverifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(auto buffer_assignment, RunBufferAssignment(*hlo));
+  ASSERT_OK_AND_ASSIGN(
       KernelApiIrBuilder::KernelPrototype prototype,
       EmitKernelPrototype(hlo->entry_computation()->root_instruction(),
                           buffer_assignment.get()));
@@ -287,9 +286,9 @@ TEST_F(KernelApiIrBuilderTest, NoInvariantBuffers) {
       ROOT add.0 = f32[2,2] add(p0, p0)
     })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto hlo, ParseAndReturnUnverifiedModule(hlo_text));
-  TF_ASSERT_OK_AND_ASSIGN(auto buffer_assignment, RunBufferAssignment(*hlo));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(auto hlo, ParseAndReturnUnverifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(auto buffer_assignment, RunBufferAssignment(*hlo));
+  ASSERT_OK_AND_ASSIGN(
       KernelApiIrBuilder::KernelPrototype prototype,
       EmitKernelPrototype(hlo->entry_computation()->root_instruction(),
                           buffer_assignment.get()));
@@ -309,9 +308,9 @@ TEST_F(KernelApiIrBuilderTest, MixedBuffers) {
       ROOT add.0 = f32[2,2] add(p0, p1)
     })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto hlo, ParseAndReturnUnverifiedModule(hlo_text));
-  TF_ASSERT_OK_AND_ASSIGN(auto buffer_assignment, RunBufferAssignment(*hlo));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(auto hlo, ParseAndReturnUnverifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(auto buffer_assignment, RunBufferAssignment(*hlo));
+  ASSERT_OK_AND_ASSIGN(
       KernelApiIrBuilder::KernelPrototype prototype,
       EmitKernelPrototype(hlo->entry_computation()->root_instruction(),
                           buffer_assignment.get()));
@@ -339,8 +338,8 @@ TEST_F(KernelApiIrBuilderTestNoBufferValidation, PartialOverlap) {
   std::vector<KernelApiIrBuilder::KernelParameter> results = {
       {shape, res0}, {shape, res1}, {shape, res2}};
 
-  TF_ASSERT_OK_AND_ASSIGN(auto prototype,
-                          EmitKernelPrototype("test", arguments, results));
+  ASSERT_OK_AND_ASSIGN(auto prototype,
+                       EmitKernelPrototype("test", arguments, results));
   llvm::IRBuilder<> builder = getBuilder();
   builder.SetInsertPoint(prototype.function->getEntryBlock().getTerminator());
 
@@ -465,18 +464,18 @@ TEST_F(KernelApiIrBuilderTest, GetKernelParams) {
       ROOT add.0 = f32[2,2] add(p0, p1)
     })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto hlo, ParseAndReturnUnverifiedModule(hlo_text));
-  TF_ASSERT_OK_AND_ASSIGN(auto buffer_assignment, RunBufferAssignment(*hlo));
+  ASSERT_OK_AND_ASSIGN(auto hlo, ParseAndReturnUnverifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(auto buffer_assignment, RunBufferAssignment(*hlo));
   const auto* root = hlo->entry_computation()->root_instruction();
-  TF_ASSERT_OK_AND_ASSIGN(auto args,
-                          KernelApiIrBuilder::GetKernelArgumentsParameters(
-                              root, buffer_assignment.get()));
+  ASSERT_OK_AND_ASSIGN(auto args,
+                       KernelApiIrBuilder::GetKernelArgumentsParameters(
+                           root, buffer_assignment.get()));
   EXPECT_EQ(args.size(), 2);
   EXPECT_THAT(args[0].shape.dimensions(), ::testing::ElementsAre(2, 2));
   EXPECT_THAT(args[1].shape.dimensions(), ::testing::ElementsAre(2, 2));
-  TF_ASSERT_OK_AND_ASSIGN(auto results,
-                          KernelApiIrBuilder::GetKernelResultsParameters(
-                              root, buffer_assignment.get()));
+  ASSERT_OK_AND_ASSIGN(auto results,
+                       KernelApiIrBuilder::GetKernelResultsParameters(
+                           root, buffer_assignment.get()));
   EXPECT_EQ(results.size(), 1);
   EXPECT_THAT(results[0].shape.dimensions(), ::testing::ElementsAre(2, 2));
 }
@@ -497,8 +496,8 @@ TEST_F(KernelApiIrBuilderTest, SetKernelFunctionAttributes) {
 
 TEST_F(KernelApiIrBuilderTest, SetModuleMemoryRegionName) {
   const std::string memory_region_name = "kernel_api_ir_builder_test";
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto prototype, EmitKernelPrototype("test", {}, {}, memory_region_name));
+  ASSERT_OK_AND_ASSIGN(auto prototype,
+                       EmitKernelPrototype("test", {}, {}, memory_region_name));
 
   SetModuleMemoryRegionName(module(), memory_region_name);
 

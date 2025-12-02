@@ -17,15 +17,18 @@ limitations under the License.
 
 #include <cstdint>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "xla/comparison_util.h"
+#include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/pattern_matcher_gmock.h"
 #include "xla/hlo/testlib/test.h"
 #include "xla/hlo/transforms/simplifiers/algebraic_simplifier.h"
-#include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/service/pattern_matcher.h"
-#include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/shape.h"
 
 namespace xla {
 namespace {
@@ -102,8 +105,7 @@ TEST_F(StableSortExpanderTest, StabilizeSortReuseIotaOperand) {
        dimensions={1}, to_apply=compare, is_stable=true
      ROOT gte = f32[64,8732]{1,0} get-tuple-element(sort), index=0
    })";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
   StableSortExpander stabilizer;
   EXPECT_TRUE(stabilizer.Run(module.get()).value());
@@ -148,8 +150,7 @@ TEST_F(StableSortExpanderTest,
        dimensions={1}, to_apply=compare, is_stable=true
      ROOT gte = f32[64,8732]{1,0} get-tuple-element(sort), index=0
    })";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
   StableSortExpander stabilizer;
   EXPECT_TRUE(stabilizer.Run(module.get()).value());
@@ -178,8 +179,7 @@ TEST_F(StableSortExpanderTest, StabilizeSortAddIotaOperandAndChangeRoot) {
      ROOT sort = (f32[64,8732]{1,0}, s32[64,8732]{1,0}) sort(keys, values),
        dimensions={1}, to_apply=compare, is_stable=true
    })";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
   StableSortExpander stabilizer;
   EXPECT_TRUE(stabilizer.Run(module.get()).value());
@@ -214,8 +214,7 @@ TEST_F(StableSortExpanderTest, HonorIsStableFlag) {
        dimensions={1}, to_apply=compare, is_stable=false
      ROOT gte = f32[64,8732]{1,0} get-tuple-element(sort), index=0
    })";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
   StableSortExpander stabilizer;
   EXPECT_FALSE(stabilizer.Run(module.get()).value());
@@ -241,8 +240,7 @@ TEST_F(StableSortExpanderTest,
        dimensions={1}, to_apply=compare, is_stable=true
      ROOT gte = f32[64,8732]{1,0} get-tuple-element(sort), index=0
    })";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
   StableSortExpander stabilizer;
   EXPECT_TRUE(stabilizer.Run(module.get()).value());
@@ -278,8 +276,7 @@ TEST_F(StableSortExpanderTest, StabilizeSortDontReuseIotaOperandWrongType) {
        dimensions={1}, to_apply=compare, is_stable=true
      ROOT gte = f32[64,8732]{1,0} get-tuple-element(sort), index=0
    })";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
   StableSortExpander stabilizer;
   EXPECT_TRUE(stabilizer.Run(module.get()).value());
@@ -314,8 +311,7 @@ TEST_F(StableSortExpanderTest, StabilizeSortR1) {
      ROOT sort = s32[64,8732]{1,0} sort(keys), dimensions={0}, to_apply=compare,
        is_stable=true
    })";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
   StableSortExpander stabilizer;
   EXPECT_TRUE(stabilizer.Run(module.get()).value());
@@ -345,8 +341,7 @@ TEST_F(StableSortExpanderTest, StabilizeSortR1NoRoot) {
        is_stable=true
      ROOT neg = s32[64,8732]{1,0} negate(sort)
    })";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
   StableSortExpander stabilizer;
   EXPECT_TRUE(stabilizer.Run(module.get()).value());
@@ -378,8 +373,7 @@ TEST_F(StableSortExpanderTest, MultipleSortsSingleComputationNoIota) {
       ROOT add = f32[64,8732]{1,0} add(sort.0, sort.1)
     })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
   StableSortExpander stabilizer;
   EXPECT_TRUE(stabilizer.Run(module.get()).value());
@@ -417,8 +411,7 @@ TEST_F(StableSortExpanderTest, MultipleSortsSingleComputationWithIota) {
       ROOT add = f32[64,8732]{1,0} add(gte.0, gte.1)
     })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
   StableSortExpander stabilizer;
   EXPECT_TRUE(stabilizer.Run(module.get()).value());

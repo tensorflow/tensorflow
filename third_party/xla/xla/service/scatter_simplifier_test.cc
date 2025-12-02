@@ -19,6 +19,7 @@ limitations under the License.
 #include <optional>
 #include <string>
 
+#include <gmock/gmock.h>
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
 #include "xla/hlo/evaluator/hlo_evaluator.h"
@@ -29,7 +30,6 @@ limitations under the License.
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/tests/literal_test_util.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 
 namespace xla {
@@ -378,7 +378,7 @@ TEST_F(SimpleScatterExampleTest, 1x1d) {
           scatter_dims_to_operand_dims={0},
           index_vector_dim=1
     })";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
   auto scatter = module->entry_computation()->root_instruction();
   EXPECT_TRUE(ScatterSimplifier::IsSimplifiedScatter(
       Cast<HloScatterInstruction>(scatter)));
@@ -386,7 +386,7 @@ TEST_F(SimpleScatterExampleTest, 1x1d) {
   Literal scatter_indices = LiteralUtil::CreateR2<int32_t>({{2}});
   Literal updates = LiteralUtil::CreateR2<int32_t>({{2, 3}});
   HloEvaluator evaluator;
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       Literal result,
       evaluator.Evaluate(*module, {&operand, &scatter_indices, &updates}));
   EXPECT_TRUE(LiteralTestUtil::Equal(
@@ -414,7 +414,7 @@ TEST_F(SimpleScatterExampleTest, 2x2d) {
           scatter_dims_to_operand_dims={0,1},
           index_vector_dim=1
     })";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
   auto scatter = module->entry_computation()->root_instruction();
   EXPECT_TRUE(ScatterSimplifier::IsSimplifiedScatter(
       Cast<HloScatterInstruction>(scatter)));
@@ -423,7 +423,7 @@ TEST_F(SimpleScatterExampleTest, 2x2d) {
   Literal updates = LiteralUtil::CreateR3<int32_t>(
       {{{10, 20}, {30, 40}}, {{50, 60}, {70, 80}}});
   HloEvaluator evaluator;
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       Literal result,
       evaluator.Evaluate(*module, {&operand, &scatter_indices, &updates}));
   EXPECT_TRUE(LiteralTestUtil::Equal(
@@ -453,7 +453,7 @@ TEST_F(SimpleScatterExampleTest, 2x2d_n_less_than_N) {
           scatter_dims_to_operand_dims={0},
           index_vector_dim=1
     })";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
   auto scatter = module->entry_computation()->root_instruction();
   EXPECT_TRUE(ScatterSimplifier::IsSimplifiedScatter(
       Cast<HloScatterInstruction>(scatter)));
@@ -462,7 +462,7 @@ TEST_F(SimpleScatterExampleTest, 2x2d_n_less_than_N) {
   Literal updates = LiteralUtil::CreateR3<int32_t>(
       {{{10, 20}, {30, 40}}, {{50, 60}, {70, 80}}});
   HloEvaluator evaluator;
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       Literal result,
       evaluator.Evaluate(*module, {&operand, &scatter_indices, &updates}));
   EXPECT_TRUE(LiteralTestUtil::Equal(
@@ -492,7 +492,7 @@ TEST_F(SimpleScatterExampleTest, 2x2d_nofit) {
           scatter_dims_to_operand_dims={0},
           index_vector_dim=1
     })";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
   auto scatter = module->entry_computation()->root_instruction();
   EXPECT_TRUE(ScatterSimplifier::IsSimplifiedScatter(
       Cast<HloScatterInstruction>(scatter)));
@@ -504,7 +504,7 @@ TEST_F(SimpleScatterExampleTest, 2x2d_nofit) {
   Literal updates = LiteralUtil::CreateR3<int32_t>(
       {{{10, 20}, {30, 40}}, {{50, 60}, {70, 80}}});
   HloEvaluator evaluator;
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       Literal result,
       evaluator.Evaluate(*module, {&operand, &scatter_indices, &updates}));
   EXPECT_TRUE(LiteralTestUtil::Equal(
@@ -533,7 +533,7 @@ TEST_F(SimpleScatterExampleTest, 3x1d) {
           scatter_dims_to_operand_dims={0},
           index_vector_dim=1
     })";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
   auto scatter = module->entry_computation()->root_instruction();
   EXPECT_TRUE(ScatterSimplifier::IsSimplifiedScatter(
       Cast<HloScatterInstruction>(scatter)));
@@ -542,7 +542,7 @@ TEST_F(SimpleScatterExampleTest, 3x1d) {
   Literal updates =
       LiteralUtil::CreateR2<int32_t>({{1, 2}, {10, 20}, {200, 300}});
   HloEvaluator evaluator;
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       Literal result,
       evaluator.Evaluate(*module, {&operand, &scatter_indices, &updates}));
   EXPECT_TRUE(

@@ -26,6 +26,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/statusor.h"
+#include "absl/strings/ascii.h"
 #include "absl/strings/string_view.h"
 #include "xla/backends/gpu/runtime/command_buffer_cmd.h"
 #include "xla/backends/gpu/runtime/command_buffer_cmd_emitter.h"
@@ -33,17 +34,14 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
-#include "xla/backends/gpu/runtime/thunk_id.h"
 #include "xla/codegen/emitters/kernel_arguments.h"
-#include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/literal.h"
 #include "xla/runtime/buffer_use.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/buffer_allocations.h"
-#include "xla/service/gpu/kernels/custom_kernel.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/platform_util.h"
 #include "xla/service/service_executable_run_options.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/gpu/gpu_test_kernels.h"
 #include "xla/stream_executor/gpu/tma_metadata.h"
@@ -54,7 +52,6 @@ limitations under the License.
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/tsl/util/proto/parse_text_proto.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
@@ -154,13 +151,13 @@ TEST(KernelThunkTest, ToProto) {
   LaunchDimensions launch_dimensions(se::BlockDim(32, 31, 30),
                                      se::ThreadDim(256, 255, 254));
 
-  TF_ASSERT_OK_AND_ASSIGN(stream_executor::gpu::TmaDescriptor descriptor,
-                          stream_executor::gpu::TmaDescriptor::Create(
-                              /*global_dims=*/{1024, 1024},
-                              /*global_strides=*/{1024},
-                              /*box_dims=*/{128, 128},
-                              /*element_strides=*/{1, 1},
-                              /*element_byte_width=*/4));
+  ASSERT_OK_AND_ASSIGN(stream_executor::gpu::TmaDescriptor descriptor,
+                       stream_executor::gpu::TmaDescriptor::Create(
+                           /*global_dims=*/{1024, 1024},
+                           /*global_strides=*/{1024},
+                           /*box_dims=*/{128, 128},
+                           /*element_strides=*/{1, 1},
+                           /*element_byte_width=*/4));
   stream_executor::gpu::TmaMetadata tma_metadata;
   tma_metadata.arg_index_to_tma_info.emplace(/*arg_index=*/0,
                                              std::move(descriptor));
@@ -172,7 +169,7 @@ TEST(KernelThunkTest, ToProto) {
                     /*cluster_dim=*/se::ClusterDim(8, 7, 6),
                     /*shmem_bytes=*/1024,
                     /*tma_metadata=*/tma_metadata);
-  TF_ASSERT_OK_AND_ASSIGN(ThunkProto proto, thunk.ToProto());
+  ASSERT_OK_AND_ASSIGN(ThunkProto proto, thunk.ToProto());
   EXPECT_THAT(
       proto, EqualsProto(R"pb(
         thunk_info { profile_annotation: "DotGeneral" execution_stream_id: 123 }
@@ -252,13 +249,13 @@ TEST(KernelThunkTest, ToAndFromProto) {
   constexpr absl::string_view kKernelName = "kernel123";
   constexpr int kSharedMemoryBytes = 1024;
 
-  TF_ASSERT_OK_AND_ASSIGN(stream_executor::gpu::TmaDescriptor descriptor,
-                          stream_executor::gpu::TmaDescriptor::Create(
-                              /*global_dims=*/{1024, 1024},
-                              /*global_strides=*/{1024},
-                              /*box_dims=*/{128, 128},
-                              /*element_strides=*/{1, 1},
-                              /*element_byte_width=*/4));
+  ASSERT_OK_AND_ASSIGN(stream_executor::gpu::TmaDescriptor descriptor,
+                       stream_executor::gpu::TmaDescriptor::Create(
+                           /*global_dims=*/{1024, 1024},
+                           /*global_strides=*/{1024},
+                           /*box_dims=*/{128, 128},
+                           /*element_strides=*/{1, 1},
+                           /*element_byte_width=*/4));
   stream_executor::gpu::TmaMetadata tma_metadata;
   tma_metadata.arg_index_to_tma_info.emplace(/*arg_index=*/0,
                                              std::move(descriptor));
@@ -266,9 +263,9 @@ TEST(KernelThunkTest, ToAndFromProto) {
   KernelThunk thunk(thunk_info, std::string{kKernelName}, kernel_arguments,
                     launch_dimensions, cluster_dim, kSharedMemoryBytes,
                     tma_metadata);
-  TF_ASSERT_OK_AND_ASSIGN(ThunkProto proto, thunk.ToProto());
+  ASSERT_OK_AND_ASSIGN(ThunkProto proto, thunk.ToProto());
   ASSERT_TRUE(proto.has_kernel_thunk());
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<KernelThunk> reconstructed_thunk,
       KernelThunk::FromProto(thunk_info, proto.kernel_thunk(), allocations));
 
@@ -433,19 +430,19 @@ TEST_P(KernelThunkTmaPTXTest, TmaPTX) {
   if (name == "ROCM") {
     GTEST_SKIP() << "TmaPTX cannot run on ROCm.";
   }
-  TF_ASSERT_OK_AND_ASSIGN(se::Platform * platform,
-                          se::PlatformManager::PlatformWithName(name));
-  TF_ASSERT_OK_AND_ASSIGN(se::StreamExecutor * executor,
-                          platform->ExecutorForDevice(0));
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<se::Stream> stream,
-                          executor->CreateStream());
+  ASSERT_OK_AND_ASSIGN(se::Platform * platform,
+                       se::PlatformManager::PlatformWithName(name));
+  ASSERT_OK_AND_ASSIGN(se::StreamExecutor * executor,
+                       platform->ExecutorForDevice(0));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<se::Stream> stream,
+                       executor->CreateStream());
   if (!stream_executor::gpu::IsTmaAvailableForDevice(
           executor->GetDeviceDescription())) {
     GTEST_SKIP() << "TMA is not supported on this platform.";
   }
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<KernelThunk> kernel_thunk,
-                          GetTmaKernelThunk());
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<KernelThunk> kernel_thunk,
+                       GetTmaKernelThunk());
 
   Thunk::ExecutableSource executable_source;
   executable_source.text = stream_executor::gpu::GetTmaPtxKernelSpec()
@@ -478,7 +475,7 @@ TEST_P(KernelThunkTmaPTXTest, TmaPTX) {
     ThunkSequence thunk_sequence;
     thunk_sequence.push_back(std::move(kernel_thunk));
 
-    TF_ASSERT_OK_AND_ASSIGN(
+    ASSERT_OK_AND_ASSIGN(
         CommandBufferCmdExecutor cmds,
         ConvertToCommands(thunk_sequence, ConvertToCommandsOptions()));
     auto sequential_thunk = std::make_unique<SequentialThunk>(

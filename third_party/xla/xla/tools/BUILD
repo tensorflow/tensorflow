@@ -151,7 +151,6 @@ xla_cc_test(
         "//xla/tests:xla_internal_test_main",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest",
-        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
@@ -275,7 +274,6 @@ xla_cc_test(
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest",
-        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
@@ -408,11 +406,10 @@ xla_cc_test(
     srcs = ["hlo_module_loader_test.cc"],
     deps = [
         ":hlo_module_loader",
+        "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/tests:xla_internal_test_main",  # fixdeps: keep
-        "//xla/tsl/lib/core:status_test_util",
         "@com_google_googletest//:gtest",
-        "@local_tsl//tsl/platform:test",
     ],
 )
 
@@ -444,7 +441,6 @@ xla_cc_test(
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/hlo/testlib:test",
         "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
@@ -591,7 +587,6 @@ xla_cc_test(
         "//xla/hlo/parser:hlo_parser",
         "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/platform:env",
-        "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:subprocess",
         "//xla/tsl/platform:test",
         "@com_google_absl//absl/log",
@@ -636,16 +631,20 @@ xla_cc_test(
     deps = [
         ":hlo_control_flow_flattening",
         "//xla:shape_util",
+        "//xla:util",
         "//xla/hlo/ir:hlo",
+        "//xla/hlo/pass:hlo_pass_pipeline",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/hlo/testlib:verified_hlo_module",
         "//xla/hlo/transforms:despecializer",
         "//xla/hlo/utils:hlo_matchers",
         "//xla/service:collective_ops_utils",
+        "//xla/service:hlo_module_config",
         "//xla/service:hlo_verifier",
         "//xla/service/spmd:spmd_partitioner",
         "//xla/tests:xla_internal_test_main",  # fixdeps: keep
         "//xla/tsl/lib/core:status_test_util",
-        "//xla/tsl/platform:statusor",
+        "//xla/tsl/platform:errors",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
@@ -715,10 +714,9 @@ xla_test(
         "//xla/service/gpu/model:hlo_op_profile_proto_cc",
         "//xla/stream_executor:device_description",
         "//xla/tests:hlo_test_base",
-        "//xla/tsl/platform:env",
-        "//xla/tsl/platform:statusor",
         "//xla/tsl/util/proto:proto_matchers",
         "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest",
         "@com_google_googletest//:gtest_main",
         "@com_google_protobuf//:protobuf",
     ],
@@ -842,7 +840,6 @@ xla_cc_test(
     srcs = ["compute_xspace_stats_test.cc"],
     deps = [
         ":compute_xspace_stats",
-        "//xla/tsl/platform:statusor",
         "//xla/tsl/profiler/utils:group_events",
         "//xla/tsl/profiler/utils:xplane_builder",
         "//xla/tsl/profiler/utils:xplane_schema",
@@ -874,6 +871,7 @@ xla_test(
         "//xla/service/gpu/transforms/collectives:collective_ops_utils",
         "//xla/tests:hlo_test_base",
         "@com_google_absl//absl/log",
+        "@com_google_googletest//:gtest",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -925,6 +923,7 @@ xla_test(
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest",  # buildcleaner: keep
+        "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:path",
         "@local_tsl//tsl/platform:platform_port",
     ],
@@ -1121,7 +1120,6 @@ xla_test(
         "//xla/tests:xla_internal_test_main",  # fixdeps: keep
         "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/platform:env",
-        "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",
         "//xla/tsl/protobuf:error_codes_proto_impl_cc",
         "//xla/tsl/protobuf:status_proto_cc",
@@ -1140,9 +1138,9 @@ xla_test(
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:filecheck",
         "//xla/tests:hlo_pjrt_test_base",
-        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest",
         "@com_google_googletest//:gtest_main",
     ],
 )

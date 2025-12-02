@@ -21,6 +21,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/algorithm/container.h"
 #include "absl/status/statusor.h"
@@ -158,7 +159,7 @@ ENTRY entry {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
   hlo_module->mutable_config().set_num_partitions(8);
 
   HloSchedule& module_schedule = hlo_module->schedule();

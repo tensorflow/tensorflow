@@ -23,6 +23,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -107,7 +108,7 @@ TEST(JitCompilerTest, Compile) {
                           TargetMachineOptions(GetDebugOptionsFromFlags())},
       IrCompiler::CompilationHooks());
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto compiler,
       JitCompiler::Create(std::move(options), std::move(ir_compiler),
                           std::move(task_runner)));
@@ -144,16 +145,16 @@ TEST(JitCompilerTest, Compile) {
       FunctionLibrary::Sym<ScalarFn>("AddInplace"),
       FunctionLibrary::Sym<ScalarFn>("MulInplace")};
 
-  TF_ASSERT_OK_AND_ASSIGN(auto function_library,
-                          Compile(std::move(compiler), symbols));
+  ASSERT_OK_AND_ASSIGN(auto function_library,
+                       Compile(std::move(compiler), symbols));
 
   EXPECT_GE(num_tasks, 2);
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       ScalarFn * add_in_place,
       function_library->ResolveFunction<ScalarFn>("AddInplace"));
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       ScalarFn * mul_in_place,
       function_library->ResolveFunction<ScalarFn>("MulInplace"));
 
@@ -206,7 +207,7 @@ TEST(JitCompilerTest, ExternalDefinitionGenerator) {
                           TargetMachineOptions(GetDebugOptionsFromFlags())},
       IrCompiler::CompilationHooks());
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto compiler,
       JitCompiler::Create(std::move(options), std::move(ir_compiler),
                           /*task_runner=*/nullptr));
@@ -219,9 +220,8 @@ TEST(JitCompilerTest, ExternalDefinitionGenerator) {
       ret void
     })";
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      llvm::orc::ThreadSafeModule tsm,
-      ParseModule(tsc, call_external_fn_ir, "CallExternalFn"));
+  ASSERT_OK_AND_ASSIGN(llvm::orc::ThreadSafeModule tsm,
+                       ParseModule(tsc, call_external_fn_ir, "CallExternalFn"));
 
   TF_ASSERT_OK(compiler.AddModule(std::move(tsm)));
 
@@ -229,10 +229,10 @@ TEST(JitCompilerTest, ExternalDefinitionGenerator) {
   std::vector<FunctionLibrary::Symbol> symbols = {
       FunctionLibrary::Sym<ScalarFn>("CallExternalFn")};
 
-  TF_ASSERT_OK_AND_ASSIGN(auto function_library,
-                          Compile(std::move(compiler), symbols));
+  ASSERT_OK_AND_ASSIGN(auto function_library,
+                       Compile(std::move(compiler), symbols));
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       ScalarFn * call_external_fn,
       function_library->ResolveFunction<ScalarFn>("CallExternalFn"));
 

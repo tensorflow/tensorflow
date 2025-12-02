@@ -13,14 +13,32 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstdint>
+#include <memory>
+#include <utility>
+#include <vector>
+
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
+#include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "absl/synchronization/mutex.h"
+#include "absl/types/span.h"
 #include "xla/client/client_library.h"
+#include "xla/client/executable_build_options.h"
+#include "xla/client/local_client.h"
+#include "xla/executable_run_options.h"
 #include "xla/hlo/builder/xla_builder.h"
+#include "xla/hlo/builder/xla_computation.h"
+#include "xla/literal.h"
+#include "xla/literal_util.h"
+#include "xla/service/shaped_buffer.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/tsl/lib/core/status_test_util.h"
-#include "tsl/platform/env.h"
-#include "tsl/platform/test.h"
+#include "xla/tsl/platform/env.h"
 
 namespace xla {
 namespace {
@@ -56,17 +74,17 @@ void CompileAndExecute(
 
 void TestWithDeviceCount(const int device_count) {
   // Run `device_count` copies of the XLA program built by BuildComputation.
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       se::Platform* const platform,
       stream_executor::PlatformManager::PlatformWithName("Host"));
   xla::LocalClientOptions client_options;
   client_options.set_platform(platform);
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       LocalClient* const client,
       xla::ClientLibrary::GetOrCreateLocalClient(client_options));
 
-  TF_ASSERT_OK_AND_ASSIGN(XlaComputation xla_computation, BuildComputation());
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(XlaComputation xla_computation, BuildComputation());
+  ASSERT_OK_AND_ASSIGN(
       auto executables,
       client->Compile(xla_computation, {}, xla::ExecutableBuildOptions{}));
   std::unique_ptr<LocalExecutable> executable = std::move(executables[0]);

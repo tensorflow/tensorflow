@@ -22,6 +22,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "google/protobuf/io/zero_copy_stream_impl_lite.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/service/hlo.pb.h"
@@ -29,10 +30,8 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/protobuf.h"
 
 namespace xla {
 namespace {
@@ -69,8 +68,8 @@ absl::StatusOr<HloUnoptimizedSnapshot> SerializeAndDeserialize(
 TEST(LargeHloSnapshotSerializationTest, SerializeAndDeserialize) {
   HloUnoptimizedSnapshot snapshot = CreateSnapshot();
 
-  TF_ASSERT_OK_AND_ASSIGN(HloUnoptimizedSnapshot deserialized_snapshot,
-                          SerializeAndDeserialize(snapshot));
+  ASSERT_OK_AND_ASSIGN(HloUnoptimizedSnapshot deserialized_snapshot,
+                       SerializeAndDeserialize(snapshot));
   EXPECT_THAT(deserialized_snapshot, EqualsProto(snapshot));
 }
 
@@ -78,8 +77,8 @@ TEST(LargeHloSnapshotSerializationTest, SerializeAndDeserializeEmptyModule) {
   HloUnoptimizedSnapshot snapshot = CreateSnapshot();
   *snapshot.mutable_hlo_module() = HloModuleProto();
 
-  TF_ASSERT_OK_AND_ASSIGN(HloUnoptimizedSnapshot deserialized_snapshot,
-                          SerializeAndDeserialize(snapshot));
+  ASSERT_OK_AND_ASSIGN(HloUnoptimizedSnapshot deserialized_snapshot,
+                       SerializeAndDeserialize(snapshot));
 
   EXPECT_THAT(deserialized_snapshot, EqualsProto(snapshot));
 }
@@ -88,8 +87,8 @@ TEST(LargeHloSnapshotSerializationTest, SerializeAndDeserializeEmptyPartition) {
   HloUnoptimizedSnapshot snapshot = CreateSnapshot();
   snapshot.clear_partitions();
 
-  TF_ASSERT_OK_AND_ASSIGN(HloUnoptimizedSnapshot deserialized_snapshot,
-                          SerializeAndDeserialize(snapshot));
+  ASSERT_OK_AND_ASSIGN(HloUnoptimizedSnapshot deserialized_snapshot,
+                       SerializeAndDeserialize(snapshot));
 
   EXPECT_THAT(deserialized_snapshot, EqualsProto(snapshot));
 }
@@ -153,8 +152,8 @@ TEST(LargeHloSnapshotSerializationTest,
   *snapshot.mutable_partitions()->begin()->add_arguments() =
       large_literal.ToProto();
 
-  TF_ASSERT_OK_AND_ASSIGN(HloUnoptimizedSnapshot deserialized_snapshot,
-                          SerializeAndDeserialize(snapshot));
+  ASSERT_OK_AND_ASSIGN(HloUnoptimizedSnapshot deserialized_snapshot,
+                       SerializeAndDeserialize(snapshot));
 
   EXPECT_THAT(deserialized_snapshot, EqualsProto(snapshot));
 }

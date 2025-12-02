@@ -24,7 +24,6 @@
 #include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/hlo/tools/hlo_diff/graph/hlo_gumgraph.h"
 #include "xla/hlo/tools/hlo_diff/graph/hlo_gumgraph_node.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace hlo_diff {
@@ -40,8 +39,8 @@ TEST_F(HloGumgraphDfsTest, DfsPreOrderWorks) {
   //                     | add_1 | ---> ┌-------┐      ┌------┐
   // [Constant bar] ---> └-------┘      | add_0 | ---> | ROOT |
   // [Param baz] ---------------------> └-------┘      └------┘
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
 HloModule module, is_scheduled=true
 
 ENTRY entry {
@@ -52,8 +51,8 @@ ENTRY entry {
   add_0 = f32[8,2048]{1,0:T(8,128)} add(add_1, baz)
 }
 )"));
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> graph,
-                          HloGumgraph::Create(module.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> graph,
+                       HloGumgraph::Create(module.get()));
   const auto root = graph->GetRoot();
   std::vector<absl::string_view> visited_nodes;
   HloGumgraphDfs(
@@ -73,8 +72,8 @@ TEST_F(HloGumgraphDfsTest, DfsPostOrderWorks) {
   //                     | add_1 | ---> ┌-------┐      ┌------┐
   // [Constant bar] ---> └-------┘      | add_0 | ---> | ROOT |
   // [Param baz] ---------------------> └-------┘      └------┘
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
 HloModule module, is_scheduled=true
 
 ENTRY entry {
@@ -85,8 +84,8 @@ ENTRY entry {
   add_0 = f32[8,2048]{1,0:T(8,128)} add(add_1, baz)
 }
 )"));
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> graph,
-                          HloGumgraph::Create(module.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> graph,
+                       HloGumgraph::Create(module.get()));
   const auto root = graph->GetRoot();
   std::vector<absl::string_view> visited_nodes;
   HloGumgraphDfs(
@@ -105,8 +104,8 @@ TEST_F(HloGumgraphDfsTest, DfsPostOrderWorksForMultiplePathsFromRoot) {
   // [Param foo] ------> ┌-------┐      ┌------┐
   //     |               | add_1 | ---> | ROOT |
   // [copy_foo] -------> └-------┘      └------┘
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
 HloModule module, is_scheduled=true
 
 ENTRY entry {
@@ -115,8 +114,8 @@ ENTRY entry {
   add_1 = f32[8,2048]{1,0:T(8,128)} add(foo, copy_foo)
 }
 )"));
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> graph,
-                          HloGumgraph::Create(module.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> graph,
+                       HloGumgraph::Create(module.get()));
   const auto root = graph->GetRoot();
   std::vector<absl::string_view> visited_nodes;
   HloGumgraphDfs(
@@ -135,8 +134,8 @@ TEST_F(HloGumgraphDfsTest, GetAllNodesWorks) {
   //                     | add_1 | ---> ┌-------┐      ┌------┐
   // [Constant bar] ---> └-------┘      | add_0 | ---> | ROOT |
   // [Param baz] ---------------------> └-------┘      └------┘
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
 HloModule module, is_scheduled=true
 
 ENTRY entry {
@@ -147,8 +146,8 @@ ENTRY entry {
   add_0 = f32[8,2048]{1,0:T(8,128)} add(add_1, baz)
 }
 )"));
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> graph,
-                          HloGumgraph::Create(module.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> graph,
+                       HloGumgraph::Create(module.get()));
   const auto root = graph->GetRoot();
   std::vector<const HloInstructionNode*> visited_nodes = GetAllNodesInDfsOrder(
       root, DfsTraversalOrder::kPreOrder, graph->GetNodeCount());
@@ -168,8 +167,8 @@ TEST_F(HloGumgraphDfsTest, DfsPreOrderStopExpandingWorks) {
   //                     | add_1 | ---> ┌-------┐      ┌------┐
   // [Constant bar] ---> └-------┘      | add_0 | ---> | ROOT |
   // [Param baz] ---------------------> └-------┘      └------┘
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
 HloModule module, is_scheduled=true
 
 ENTRY entry {
@@ -180,8 +179,8 @@ ENTRY entry {
   add_0 = f32[8,2048]{1,0:T(8,128)} add(add_1, baz)
 }
 )"));
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> graph,
-                          HloGumgraph::Create(module.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> graph,
+                       HloGumgraph::Create(module.get()));
 
   std::vector<absl::string_view> visited_nodes;
   HloGumgraphDfs(
@@ -201,8 +200,8 @@ TEST_F(HloGumgraphDfsTest, DfsPostOrderStopExpandingWorks) {
   //                     | add_1 | ---> ┌-------┐      ┌------┐
   // [Constant bar] ---> └-------┘      | add_0 | ---> | ROOT |
   // [Param baz] ---------------------> └-------┘      └------┘
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
 HloModule module, is_scheduled=true
 
 ENTRY entry {
@@ -213,8 +212,8 @@ ENTRY entry {
   add_0 = f32[8,2048]{1,0:T(8,128)} add(add_1, baz)
 }
 )"));
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> graph,
-                          HloGumgraph::Create(module.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> graph,
+                       HloGumgraph::Create(module.get()));
 
   std::vector<absl::string_view> visited_nodes;
   HloGumgraphDfs(

@@ -17,10 +17,10 @@ limitations under the License.
 
 #include <string>
 
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
 #include "xla/tests/test_utils.h"
 #include "xla/xla.pb.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/test.h"
 
 namespace xla {
 namespace {
@@ -40,8 +40,8 @@ TEST(HloModuleConfigTest, ShardableValueUpdatePairProtoRoundTrip) {
     output_shape_index: 3
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto input_proto,
-                          ParseTextProto<HloModuleConfigProto>(text_proto));
+  ASSERT_OK_AND_ASSIGN(auto input_proto,
+                       ParseTextProto<HloModuleConfigProto>(text_proto));
   HloModuleConfig config;
   HloModuleConfig::AssignStructShardableValueUpdatePairs(
       config, input_proto.shardable_value_update_pairs());

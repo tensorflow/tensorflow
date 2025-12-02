@@ -16,8 +16,8 @@ limitations under the License.
 #include "xla/service/all_reduce_simplifier.h"
 
 #include <memory>
-#include <utility>
 
+#include <gmock/gmock.h>
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/parser/hlo_parser.h"
@@ -26,7 +26,6 @@ limitations under the License.
 #include "xla/hlo/testlib/test.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/pattern_matcher.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -74,8 +73,8 @@ test {
   ROOT tuple = (f32[8,16], f32[8,16], f32[8,16], f32[]) tuple(all-reduce, all-reduce.1, all-reduce.2, all-reduce.3)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(
-                                           kModuleStr, /*replica_count=*/8));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(
+                                        kModuleStr, /*replica_count=*/8));
   AllReduceSimplifier simplifier;
   ASSERT_TRUE(simplifier.Run(module.get()).value());
   EXPECT_THAT(
@@ -110,8 +109,8 @@ test {
   ROOT all-reduce.1 = f32[8,16] all-reduce(all-reduce), replica_groups={}, to_apply=sum
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(
-                                           kModuleStr, /*replica_count=*/8));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(
+                                        kModuleStr, /*replica_count=*/8));
   AllReduceSimplifier simplifier;
   ASSERT_TRUE(simplifier.Run(module.get()).value());
   EXPECT_THAT(module->entry_computation()->root_instruction(),
@@ -151,8 +150,8 @@ test {
   ROOT tuple = (f32[8,16], f32[8,16], f32[8,16]) tuple(all-reduce, all-reduce.1, all-reduce.2)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(
-                                           kModuleStr, /*replica_count=*/8));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(
+                                        kModuleStr, /*replica_count=*/8));
   AllReduceSimplifier simplifier;
   ASSERT_TRUE(simplifier.Run(module.get()).value());
   EXPECT_THAT(
@@ -181,8 +180,8 @@ test {
     to_apply=sum
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(
-                                           kModuleStr, /*replica_count=*/8));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(
+                                        kModuleStr, /*replica_count=*/8));
   AllReduceSimplifier simplifier;
   EXPECT_TRUE(simplifier.Run(module.get()).value());
   EXPECT_THAT(module->entry_computation()->root_instruction(),
@@ -209,7 +208,7 @@ test {
     to_apply=sum
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto module, ParseAndReturnVerifiedModule(kModuleStr, /*replica_count=*/1,
                                                 /*num_partitions=*/8));
   module->mutable_config().set_use_spmd_partitioning(true);
@@ -244,7 +243,7 @@ test {
     to_apply=sum
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto module, ParseAndReturnVerifiedModule(kModuleStr, /*replica_count=*/1,
                                                 /*num_partitions=*/8));
   module->mutable_config().set_use_spmd_partitioning(true);
@@ -270,7 +269,7 @@ test {
     to_apply=sum
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto module, ParseAndReturnVerifiedModule(kModuleStr, /*replica_count=*/2,
                                                 /*num_partitions=*/1));
   // Mark as MPMD.

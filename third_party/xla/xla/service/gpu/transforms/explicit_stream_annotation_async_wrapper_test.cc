@@ -26,8 +26,6 @@ limitations under the License.
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/side_effect_util.h"
-#include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace xla::gpu {
 namespace {
@@ -55,7 +53,7 @@ TEST_F(ExplicitStreamAnnotationAsyncWrapperTest, AnnotatedOpIsWrapped) {
   module->mutable_config().set_debug_options(debug_options);
   ExplicitStreamAnnotationAsyncWrapper wrapper_pass;
 
-  TF_ASSERT_OK_AND_ASSIGN(bool mutated, wrapper_pass.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool mutated, wrapper_pass.Run(module.get()));
   absl::StatusOr<bool> filecheck_result = RunFileCheck(module->ToString({}), R"(
   // CHECK: %lhs.1 = f32[] constant(42)
   // CHECK: %call-start = ((f32[]), f32[]) call-start(%lhs.1), to_apply=%sub, frontend_attributes={_xla_stream_annotation="1"}
@@ -99,7 +97,7 @@ TEST_F(ExplicitStreamAnnotationAsyncWrapperTest, OverlappingGemms) {
   module->mutable_config().set_debug_options(debug_options);
   ExplicitStreamAnnotationAsyncWrapper wrapper_pass;
 
-  TF_ASSERT_OK_AND_ASSIGN(bool mutated, wrapper_pass.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool mutated, wrapper_pass.Run(module.get()));
   ASSERT_TRUE(mutated);
 
   absl::StatusOr<bool> filecheck_result = RunFileCheck(module->ToString({}), R"(

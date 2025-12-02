@@ -17,6 +17,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -26,7 +27,6 @@ limitations under the License.
 #include "xla/service/cpu/tests/cpu_codegen_test.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace cpu {
@@ -66,10 +66,10 @@ ENTRY entry {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
 
   // Compile and execute the computation.
-  TF_ASSERT_OK_AND_ASSIGN(const Literal result, Execute(std::move(module), {}));
+  ASSERT_OK_AND_ASSIGN(const Literal result, Execute(std::move(module), {}));
 
   // Check the output correctness.
   LiteralTestUtil::ExpectR0Equal(3, result);
@@ -119,13 +119,13 @@ TEST_F(CpuCodegenTest, WhileSort) {
     }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
 
   Literal input = LiteralUtil::CreateR1<float>({3, 1, 4, 2});
 
   // Compile and execute the computation.
-  TF_ASSERT_OK_AND_ASSIGN(const Literal result,
-                          Execute(std::move(module), {&input}));
+  ASSERT_OK_AND_ASSIGN(const Literal result,
+                       Execute(std::move(module), {&input}));
 
   // Check the output correctness.
   LiteralTestUtil::ExpectR1Equal(absl::MakeConstSpan({4.0f, 3.0f, 2.0f, 1.0f}),
@@ -271,8 +271,8 @@ TEST_F(CpuCodegenTest, WhileDotDoesNotError) {
     }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_text));
 
   Literal input_real =
       LiteralUtil::CreateR3<float>({{{1, 2}, {3, 4}}, {{5, 6}, {7, 8}}});

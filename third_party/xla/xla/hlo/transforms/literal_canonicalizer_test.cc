@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/hlo/transforms/literal_canonicalizer.h"
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -22,8 +23,6 @@ limitations under the License.
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/literal_pool.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/test.h"
 
 namespace xla {
 namespace {
@@ -39,10 +38,8 @@ TEST_F(LiteralCanonicalizerTest, CanonicalizeConstants) {
     }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module0,
-                          ParseAndReturnVerifiedModule(hlo_string));
-  TF_ASSERT_OK_AND_ASSIGN(auto module1,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module0, ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module1, ParseAndReturnVerifiedModule(hlo_string));
 
   LiteralPool literal_pool;
   LiteralCanonicalizer literal_canonicalizer(&literal_pool, 0);

@@ -229,7 +229,6 @@ xla_cc_test(
         "//xla/service:buffer_value",
         "//xla/service:logical_buffer",
         "//xla/service/gpu:gpu_constants",
-        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/strings:string_view",

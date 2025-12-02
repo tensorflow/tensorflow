@@ -333,7 +333,6 @@ xla_cc_test(
     deps = [
         ":launch_dim",
         ":launch_dim_proto_cc",
-        "//xla/tsl/platform:statusor",
         "//xla/tsl/util/proto:proto_matchers",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_matchers",
@@ -667,7 +666,6 @@ xla_cc_test(
         ":kernel_argument_packing_spec",
         ":kernel_spec",
         ":kernel_spec_proto_cc",
-        "//xla/tsl/platform:statusor",
         "//xla/tsl/util:safe_reinterpret_cast",
         "//xla/tsl/util/proto:parse_text_proto",
         "//xla/tsl/util/proto:proto_matchers",
@@ -722,7 +720,6 @@ xla_cc_test(
         ":device_address",
         ":kernel_args_packed_vector",
         ":kernel_argument_packing_spec",
-        "//xla/tsl/platform:statusor",
         "//xla/tsl/util:safe_reinterpret_cast",
         "//xla/tsl/util/proto:parse_text_proto",
         "//xla/tsl/util/proto:proto_matchers",
@@ -983,7 +980,6 @@ xla_cc_test(
         ":generic_memory_allocation",
         ":generic_memory_allocator",
         ":memory_allocation",
-        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/status:statusor",
@@ -1041,7 +1037,6 @@ xla_cc_test(
         ":kernel_args",
         ":kernel_metadata",
         "//xla/stream_executor/host:host_platform",
-        "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test_main",
         "@com_google_absl//absl/types:span",
         "@com_google_benchmark//:benchmark",
@@ -1074,7 +1069,6 @@ xla_cc_test(
         ":stream",
         ":stream_executor_h",
         "//xla/stream_executor/host:host_platform",
-        "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",
         "@com_google_absl//absl/log:check",
         "@com_google_googletest//:gtest_main",
@@ -1126,8 +1120,6 @@ xla_cc_test(
         ":stream",
         "@com_google_absl//absl/log",
         "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/platform:statusor",
-        "@local_tsl//tsl/platform:test",
     ],
 )
 
@@ -1142,8 +1134,6 @@ xla_cc_test(
         "//xla/hlo/testlib:test",
         "@com_google_absl//absl/status",
         "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/platform:statusor",
-        "@local_tsl//tsl/platform:test",
     ],
 )
 

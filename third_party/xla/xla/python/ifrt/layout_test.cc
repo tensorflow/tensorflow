@@ -35,7 +35,6 @@ limitations under the License.
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
 #include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace ifrt {
@@ -49,11 +48,11 @@ using ::testing::ReturnRef;
 
 TEST(CompactLayoutTest, Create) {
   {
-    TF_ASSERT_OK_AND_ASSIGN(auto layout, CompactLayout::Create({}));
+    ASSERT_OK_AND_ASSIGN(auto layout, CompactLayout::Create({}));
     EXPECT_THAT(layout->major_to_minor(), ElementsAre());
   }
   {
-    TF_ASSERT_OK_AND_ASSIGN(auto layout, CompactLayout::Create({1, 0}));
+    ASSERT_OK_AND_ASSIGN(auto layout, CompactLayout::Create({1, 0}));
     EXPECT_THAT(layout->major_to_minor(), ElementsAre(1, 0));
   }
 }
@@ -66,42 +65,42 @@ TEST(CompactLayoutTest, CreateCOrder) {
 
 TEST(CompactLayoutTest, ByteSize) {
   {
-    TF_ASSERT_OK_AND_ASSIGN(auto layout, CompactLayout::Create({}));
+    ASSERT_OK_AND_ASSIGN(auto layout, CompactLayout::Create({}));
     EXPECT_THAT(layout->ByteSize(DType(DType::kToken), Shape({})),
                 absl_testing::IsOkAndHolds(std::nullopt));
   }
   {
-    TF_ASSERT_OK_AND_ASSIGN(auto layout, CompactLayout::Create({}));
+    ASSERT_OK_AND_ASSIGN(auto layout, CompactLayout::Create({}));
     EXPECT_THAT(layout->ByteSize(DType(DType::kOpaque), Shape({})),
                 absl_testing::IsOkAndHolds(std::nullopt));
   }
   {
-    TF_ASSERT_OK_AND_ASSIGN(auto layout, CompactLayout::Create({}));
+    ASSERT_OK_AND_ASSIGN(auto layout, CompactLayout::Create({}));
     EXPECT_THAT(layout->ByteSize(DType(DType::kString), Shape({})),
                 absl_testing::IsOkAndHolds(std::nullopt));
   }
   {
-    TF_ASSERT_OK_AND_ASSIGN(auto layout, CompactLayout::Create({}));
+    ASSERT_OK_AND_ASSIGN(auto layout, CompactLayout::Create({}));
     EXPECT_THAT(layout->ByteSize(DType(DType::kS8), Shape({})),
                 absl_testing::IsOkAndHolds(Optional(1)));
   }
   {
-    TF_ASSERT_OK_AND_ASSIGN(auto layout, CompactLayout::Create({}));
+    ASSERT_OK_AND_ASSIGN(auto layout, CompactLayout::Create({}));
     EXPECT_THAT(layout->ByteSize(DType(DType::kS32), Shape({})),
                 absl_testing::IsOkAndHolds(Optional(4)));
   }
   {
-    TF_ASSERT_OK_AND_ASSIGN(auto layout, CompactLayout::Create({1, 0}));
+    ASSERT_OK_AND_ASSIGN(auto layout, CompactLayout::Create({1, 0}));
     EXPECT_THAT(layout->ByteSize(DType(DType::kS32), Shape({3, 2})),
                 absl_testing::IsOkAndHolds(Optional(24)));
   }
   {
-    TF_ASSERT_OK_AND_ASSIGN(auto layout, CompactLayout::Create({1, 0}));
+    ASSERT_OK_AND_ASSIGN(auto layout, CompactLayout::Create({1, 0}));
     EXPECT_THAT(layout->ByteSize(DType(DType::kS4), Shape({3, 2})),
                 absl_testing::IsOkAndHolds(Optional(3)));
   }
   {
-    TF_ASSERT_OK_AND_ASSIGN(auto layout, CompactLayout::Create({}));
+    ASSERT_OK_AND_ASSIGN(auto layout, CompactLayout::Create({}));
     EXPECT_THAT(
         layout->ByteSize(DType(DType::kS32), Shape({3, 2})),
         absl_testing::StatusIs(
@@ -173,7 +172,7 @@ TEST(LayoutTest, EquivalentLayouts) {
 
   // A concrete layout and a default layout are not equivalent.
   {
-    TF_ASSERT_OK_AND_ASSIGN(LayoutRef layout0, CompactLayout::Create({1, 0}));
+    ASSERT_OK_AND_ASSIGN(LayoutRef layout0, CompactLayout::Create({1, 0}));
     LayoutRef layout1 = nullptr;
     EXPECT_THAT(
         EquivalentLayouts(
@@ -193,8 +192,8 @@ TEST(LayoutTest, EquivalentLayouts) {
 
   // Two same concrete layouts are equivalent.
   {
-    TF_ASSERT_OK_AND_ASSIGN(LayoutRef layout0, CompactLayout::Create({1, 0}));
-    TF_ASSERT_OK_AND_ASSIGN(LayoutRef layout1, CompactLayout::Create({1, 0}));
+    ASSERT_OK_AND_ASSIGN(LayoutRef layout0, CompactLayout::Create({1, 0}));
+    ASSERT_OK_AND_ASSIGN(LayoutRef layout1, CompactLayout::Create({1, 0}));
     EXPECT_THAT(
         EquivalentLayouts(
             DType(DType::kS32), shape,
@@ -205,8 +204,8 @@ TEST(LayoutTest, EquivalentLayouts) {
   }
   // Two different concrete layouts are not equivalent.
   {
-    TF_ASSERT_OK_AND_ASSIGN(LayoutRef layout0, CompactLayout::Create({1, 0}));
-    TF_ASSERT_OK_AND_ASSIGN(LayoutRef layout1, CompactLayout::Create({0, 1}));
+    ASSERT_OK_AND_ASSIGN(LayoutRef layout0, CompactLayout::Create({1, 0}));
+    ASSERT_OK_AND_ASSIGN(LayoutRef layout1, CompactLayout::Create({0, 1}));
     EXPECT_THAT(
         EquivalentLayouts(
             DType(DType::kS32), shape,

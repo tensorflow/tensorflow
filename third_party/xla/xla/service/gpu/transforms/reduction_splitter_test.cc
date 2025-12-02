@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstdint>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/statusor.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -55,7 +56,7 @@ class ReductionSplitterTest : public HloHardwareIndependentTestBase {
 
  private:
   void SetUp() override {
-    TF_ASSERT_OK_AND_ASSIGN(device_description_, MakeDeviceDescription());
+    ASSERT_OK_AND_ASSIGN(device_description_, MakeDeviceDescription());
   }
 
   stream_executor::DeviceDescription device_description_;

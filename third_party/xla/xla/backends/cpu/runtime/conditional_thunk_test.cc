@@ -20,6 +20,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include "xla/backends/cpu/runtime/thunk.h"
 #include "xla/backends/cpu/runtime/thunk_testlib.h"
 #include "xla/runtime/buffer_use.h"
@@ -27,7 +28,6 @@ limitations under the License.
 #include "xla/service/buffer_assignment.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/xla_data.pb.h"
 
@@ -45,7 +45,7 @@ TEST(ConditionalThunkTest, BufferUses) {
   branch_sequences[0].push_back(std::make_unique<BufferUseThunk>(
       BufferUse::Read(read_slice, read_slice_shape)));
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto thunk, ConditionalThunk::Create({"conditional"}, branch_index_slice,
                                            std::move(branch_sequences)));
 
@@ -66,7 +66,7 @@ TEST(ConditionalThunkTest, ResourceUses) {
   branch_sequences[0].push_back(
       std::make_unique<ResourceUseThunk>(ResourceUse::Read(token)));
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto thunk, ConditionalThunk::Create({"conditional"}, branch_index_slice,
                                            std::move(branch_sequences)));
 

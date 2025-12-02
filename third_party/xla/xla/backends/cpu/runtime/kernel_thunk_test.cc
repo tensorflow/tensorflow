@@ -18,6 +18,7 @@ limitations under the License.
 #include <array>
 #include <cstdint>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -31,8 +32,8 @@ limitations under the License.
 #include "xla/literal_util.h"
 #include "xla/runtime/work_group.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/stream_executor/device_memory.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 
 namespace xla::cpu {
@@ -75,7 +76,7 @@ TEST(KernelThunkTest, AddF32) {
   auto [in_alloc, out_alloc] = CreateBufferAllocation(in, out);
   auto [in_slice, out_slice] = CreateBufferAllocationSlice(in_alloc, out_alloc);
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto thunk,
       KernelThunk::Create({"add_f32"}, {in_slice}, {out_slice}, "add_f32",
                           NumWorkGroups{4}, /*invariant_arguments=*/{0}));
@@ -98,7 +99,7 @@ TEST(KernelThunkTest, AddF32Inline) {
   BufferAllocation alloc = CreateBufferAllocation(0, in_out);
   BufferAllocation::Slice slice = CreateBufferAllocationSlice(alloc);
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto thunk,
       KernelThunk::Create({"add_f32"}, {slice}, {slice}, "add_f32",
                           NumWorkGroups{4}, /*invariant_arguments=*/{}));
@@ -127,7 +128,7 @@ TEST(KernelThunkInvariantBuffersTest, MissingBufferSlice) {
   auto [in_slice, out_slice] = CreateBufferAllocationSlice(in_alloc, out_alloc);
 
   // Invariant buffer set is incorrect - should include in_slice, but is empty.
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto thunk,
       KernelThunk::Create({"add_f32"}, {in_slice}, {out_slice}, "add_f32",
                           NumWorkGroups{4}, /*invariant_arguments=*/{}));
@@ -160,7 +161,7 @@ TEST(KernelThunkInvariantBuffersTest, ExtraInputOutputBufferSlice) {
 
   // Invariant buffer set is incorrect - should be empty, but contains input
   // buffer that's not invariant.
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto thunk,
       KernelThunk::Create({"add_f32"}, {slice}, {slice}, "add_f32",
                           NumWorkGroups{4}, /*invariant_arguments=*/{0}));
@@ -194,7 +195,7 @@ TEST(KernelThunkInvariantBuffersTest,
   auto [alloc_0, alloc_1] = CreateBufferAllocation(data0, data1);
   auto [slice_0, slice_1] = CreateBufferAllocationSlice(alloc_0, alloc_1);
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto thunk, KernelThunk::Create({"add_f32"}, {slice_0, slice_1},
                                       {slice_0}, "add_f32", NumWorkGroups{4},
                                       /*invariant_arguments=*/{1}));

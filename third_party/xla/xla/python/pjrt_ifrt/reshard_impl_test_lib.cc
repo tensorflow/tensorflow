@@ -179,21 +179,21 @@ absl::StatusOr<xla::Literal> CreateIotaLiteral(xla::PrimitiveType element_type,
 class ReshardTest : public testing::Test {
  protected:
   void SetUp() override {
-    TF_ASSERT_OK_AND_ASSIGN(client_, test_util::GetClient());
+    ASSERT_OK_AND_ASSIGN(client_, test_util::GetClient());
   }
 
   std::shared_ptr<Client> client_;
 };
 
 TEST_F(ReshardTest, BatchedWithDifferentSharding) {
-  TF_ASSERT_OK_AND_ASSIGN(const xla::Literal literal,
-                          CreateIotaLiteral(xla::PrimitiveType::S32, {4, 8}));
+  ASSERT_OK_AND_ASSIGN(const xla::Literal literal,
+                       CreateIotaLiteral(xla::PrimitiveType::S32, {4, 8}));
 
-  TF_ASSERT_OK_AND_ASSIGN(const DeviceListRef src_device_list,
-                          client_->MakeDeviceList(client_->devices()));
+  ASSERT_OK_AND_ASSIGN(const DeviceListRef src_device_list,
+                       client_->MakeDeviceList(client_->devices()));
   std::vector<ArrayRef> src_arrays;
   for (int i = 0; i < 2; ++i) {
-    TF_ASSERT_OK_AND_ASSIGN(
+    ASSERT_OK_AND_ASSIGN(
         src_arrays.emplace_back(),
         MakeArrayFromLiteral(
             client_.get(), literal,
@@ -201,8 +201,8 @@ TEST_F(ReshardTest, BatchedWithDifferentSharding) {
                                 xla::HloSharding::IotaTile({4, 2}))));
   }
 
-  TF_ASSERT_OK_AND_ASSIGN(const DeviceListRef dst_device_list,
-                          client_->MakeDeviceList(client_->devices()));
+  ASSERT_OK_AND_ASSIGN(const DeviceListRef dst_device_list,
+                       client_->MakeDeviceList(client_->devices()));
   std::vector<ArraySpec> array_specs = {
       {
           /*dtype=*/src_arrays[0]->dtype(),
@@ -219,7 +219,7 @@ TEST_F(ReshardTest, BatchedWithDifferentSharding) {
                               xla::HloSharding::IotaTile({2, 4})),
       },
   };
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::vector<ArrayRef> dst_arrays,
       client_->ReshardArrays(absl::MakeSpan(src_arrays), array_specs,
                              ArrayCopySemantics::kDonateInput));
@@ -235,15 +235,15 @@ TEST_F(ReshardTest, BatchedWithDifferentSharding) {
 }
 
 TEST_F(ReshardTest, BatchedWithDifferentDeviceLists) {
-  TF_ASSERT_OK_AND_ASSIGN(const xla::Literal literal,
-                          CreateIotaLiteral(xla::PrimitiveType::S32, {4, 8}));
+  ASSERT_OK_AND_ASSIGN(const xla::Literal literal,
+                       CreateIotaLiteral(xla::PrimitiveType::S32, {4, 8}));
 
   std::vector<ArrayRef> src_arrays;
   {
-    TF_ASSERT_OK_AND_ASSIGN(
+    ASSERT_OK_AND_ASSIGN(
         const DeviceListRef src_device_list,
         client_->MakeDeviceList(client_->devices().subspan(0, 4)));
-    TF_ASSERT_OK_AND_ASSIGN(
+    ASSERT_OK_AND_ASSIGN(
         src_arrays.emplace_back(),
         MakeArrayFromLiteral(
             client_.get(), literal,
@@ -251,10 +251,10 @@ TEST_F(ReshardTest, BatchedWithDifferentDeviceLists) {
                                 xla::HloSharding::IotaTile({2, 2}))));
   }
   {
-    TF_ASSERT_OK_AND_ASSIGN(
+    ASSERT_OK_AND_ASSIGN(
         const DeviceListRef src_device_list,
         client_->MakeDeviceList(client_->devices().subspan(4, 4)));
-    TF_ASSERT_OK_AND_ASSIGN(
+    ASSERT_OK_AND_ASSIGN(
         src_arrays.emplace_back(),
         MakeArrayFromLiteral(
             client_.get(), literal,
@@ -262,10 +262,10 @@ TEST_F(ReshardTest, BatchedWithDifferentDeviceLists) {
                                 xla::HloSharding::IotaTile({2, 2}))));
   }
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       DeviceListRef device_list_0_4,
       client_->MakeDeviceList(client_->devices().subspan(0, 4)));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       DeviceListRef device_list_4_4,
       client_->MakeDeviceList(client_->devices().subspan(4, 4)));
   std::vector<ArraySpec> array_specs = {
@@ -284,7 +284,7 @@ TEST_F(ReshardTest, BatchedWithDifferentDeviceLists) {
                               xla::HloSharding::IotaTile({2, 2})),
       },
   };
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::vector<ArrayRef> dst_arrays,
       client_->ReshardArrays(absl::MakeSpan(src_arrays), array_specs,
                              ArrayCopySemantics::kDonateInput));
@@ -300,16 +300,16 @@ TEST_F(ReshardTest, BatchedWithDifferentDeviceLists) {
 }
 
 TEST_F(ReshardTest, PoisonedInput) {
-  TF_ASSERT_OK_AND_ASSIGN(const xla::Literal literal,
-                          CreateIotaLiteral(xla::PrimitiveType::S32, {4, 8}));
+  ASSERT_OK_AND_ASSIGN(const xla::Literal literal,
+                       CreateIotaLiteral(xla::PrimitiveType::S32, {4, 8}));
   const absl::Status error = absl::InternalError("injected error");
 
   std::vector<ArrayRef> src_arrays;
   {
-    TF_ASSERT_OK_AND_ASSIGN(
+    ASSERT_OK_AND_ASSIGN(
         const DeviceListRef src_device_list,
         client_->MakeDeviceList(client_->devices().subspan(0, 4)));
-    TF_ASSERT_OK_AND_ASSIGN(
+    ASSERT_OK_AND_ASSIGN(
         src_arrays.emplace_back(),
         MakeArrayFromLiteral(
             client_.get(), literal,
@@ -317,10 +317,10 @@ TEST_F(ReshardTest, PoisonedInput) {
                                 xla::HloSharding::IotaTile({2, 2}))));
   }
   {
-    TF_ASSERT_OK_AND_ASSIGN(
+    ASSERT_OK_AND_ASSIGN(
         const DeviceListRef src_device_list,
         client_->MakeDeviceList(client_->devices().subspan(4, 4)));
-    TF_ASSERT_OK_AND_ASSIGN(
+    ASSERT_OK_AND_ASSIGN(
         auto arrays,
         client_->MakeErrorArrays(
             error, {{
@@ -333,10 +333,10 @@ TEST_F(ReshardTest, PoisonedInput) {
     src_arrays.push_back(std::move(arrays[0]));
   }
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       DeviceListRef device_list_0_4,
       client_->MakeDeviceList(client_->devices().subspan(0, 4)));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       DeviceListRef device_list_4_4,
       client_->MakeDeviceList(client_->devices().subspan(4, 4)));
   std::vector<ArraySpec> array_specs = {
@@ -355,7 +355,7 @@ TEST_F(ReshardTest, PoisonedInput) {
                               xla::HloSharding::IotaTile({2, 2})),
       },
   };
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::vector<ArrayRef> dst_arrays,
       client_->ReshardArrays(absl::MakeSpan(src_arrays), array_specs,
                              ArrayCopySemantics::kDonateInput));
@@ -371,20 +371,20 @@ TEST_F(ReshardTest, PoisonedInput) {
 }
 
 TEST_F(ReshardTest, DifferentDestinationLayout) {
-  TF_ASSERT_OK_AND_ASSIGN(const xla::Literal literal,
-                          CreateIotaLiteral(xla::PrimitiveType::S32, {4, 8}));
+  ASSERT_OK_AND_ASSIGN(const xla::Literal literal,
+                       CreateIotaLiteral(xla::PrimitiveType::S32, {4, 8}));
 
-  TF_ASSERT_OK_AND_ASSIGN(const DeviceListRef src_device_list,
-                          client_->MakeDeviceList(client_->devices()));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(const DeviceListRef src_device_list,
+                       client_->MakeDeviceList(client_->devices()));
+  ASSERT_OK_AND_ASSIGN(
       ArrayRef src_array,
       MakeArrayFromLiteral(
           client_.get(), literal,
           HloSharding::Create(src_device_list, MemoryKind(),
                               xla::HloSharding::IotaTile({4, 2}))));
 
-  TF_ASSERT_OK_AND_ASSIGN(const DeviceListRef dst_device_list,
-                          client_->MakeDeviceList(client_->devices()));
+  ASSERT_OK_AND_ASSIGN(const DeviceListRef dst_device_list,
+                       client_->MakeDeviceList(client_->devices()));
   ArraySpec dst_array_spec = {
       /*dtype=*/src_array->dtype(),
       /*shape=*/src_array->shape(),
@@ -398,21 +398,20 @@ TEST_F(ReshardTest, DifferentDestinationLayout) {
 
   // Make sure that the destination layout is actually different from the source
   // layout in order to ensure the test coverage.
-  TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<const xla::PjRtLayout> src_layout,
-                          src_array->pjrt_layout());
+  ASSERT_OK_AND_ASSIGN(std::shared_ptr<const xla::PjRtLayout> src_layout,
+                       src_array->pjrt_layout());
   if (src_layout == nullptr) {
-    TF_ASSERT_OK_AND_ASSIGN(
-        Shape shard_shape,
-        src_array->sharding().GetShardShape(src_array->shape()));
-    TF_ASSERT_OK_AND_ASSIGN(
-        src_layout, client_->GetDefaultPjRtLayout(
-                        src_array->dtype(), shard_shape.dims(),
-                        src_array->sharding().devices()->devices().front(),
-                        src_array->sharding().memory_kind()));
+    ASSERT_OK_AND_ASSIGN(Shape shard_shape, src_array->sharding().GetShardShape(
+                                                src_array->shape()));
+    ASSERT_OK_AND_ASSIGN(src_layout,
+                         client_->GetDefaultPjRtLayout(
+                             src_array->dtype(), shard_shape.dims(),
+                             src_array->sharding().devices()->devices().front(),
+                             src_array->sharding().memory_kind()));
   }
   ASSERT_NE(src_layout->xla_layout(), dst_array_spec.layout->xla_layout());
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::vector<ArrayRef> dst_arrays,
       client_->ReshardArrays(absl::MakeSpan(&src_array, 1), {dst_array_spec},
                              ArrayCopySemantics::kDonateInput));
@@ -422,7 +421,7 @@ TEST_F(ReshardTest, DifferentDestinationLayout) {
   EXPECT_EQ(dst_array->sharding(), *dst_array_spec.sharding);
 
   // Verify that the destination array is created with the user-provided layout.
-  TF_ASSERT_OK_AND_ASSIGN(const auto dst_layout, dst_array->pjrt_layout());
+  ASSERT_OK_AND_ASSIGN(const auto dst_layout, dst_array->pjrt_layout());
   ASSERT_NE(dst_layout, nullptr);
   EXPECT_EQ(dst_layout->xla_layout(), dst_array_spec.layout->xla_layout());
 
@@ -435,20 +434,20 @@ class ReshardMemoryKindTest : public ReshardTest,
 
 TEST_P(ReshardMemoryKindTest, Int4) {
   const MemoryKind memory_kind = GetParam();
-  TF_ASSERT_OK_AND_ASSIGN(const xla::Literal literal,
-                          CreateIotaLiteral(xla::PrimitiveType::S4, {4, 8}));
+  ASSERT_OK_AND_ASSIGN(const xla::Literal literal,
+                       CreateIotaLiteral(xla::PrimitiveType::S4, {4, 8}));
 
-  TF_ASSERT_OK_AND_ASSIGN(const DeviceListRef src_device_list,
-                          client_->MakeDeviceList(client_->devices()));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(const DeviceListRef src_device_list,
+                       client_->MakeDeviceList(client_->devices()));
+  ASSERT_OK_AND_ASSIGN(
       ArrayRef src_array,
       MakeArrayFromLiteral(
           client_.get(), literal,
           HloSharding::Create(src_device_list, memory_kind,
                               xla::HloSharding::IotaTile({4, 2}))));
 
-  TF_ASSERT_OK_AND_ASSIGN(const DeviceListRef dst_device_list,
-                          client_->MakeDeviceList(client_->devices()));
+  ASSERT_OK_AND_ASSIGN(const DeviceListRef dst_device_list,
+                       client_->MakeDeviceList(client_->devices()));
   ArraySpec dst_array_spec = {
       /*dtype=*/src_array->dtype(),
       /*shape=*/src_array->shape(),
@@ -457,7 +456,7 @@ TEST_P(ReshardMemoryKindTest, Int4) {
                           xla::HloSharding::IotaTile({2, 4})),
   };
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::vector<ArrayRef> dst_arrays,
       client_->ReshardArrays(absl::MakeSpan(&src_array, 1), {dst_array_spec},
                              ArrayCopySemantics::kDonateInput));
@@ -504,8 +503,8 @@ TEST_P(ReshardParameterizedTest, RoundTrip) {
   for (const int index : param.src_device_indices) {
     src_devices.push_back(client_->devices()[index]);
   }
-  TF_ASSERT_OK_AND_ASSIGN(const DeviceListRef src_device_list,
-                          client_->MakeDeviceList(src_devices));
+  ASSERT_OK_AND_ASSIGN(const DeviceListRef src_device_list,
+                       client_->MakeDeviceList(src_devices));
   const ShardingRef src_sharding = HloSharding::Create(
       std::move(src_device_list), src_memory_kind, param.src_sharding);
 
@@ -514,15 +513,15 @@ TEST_P(ReshardParameterizedTest, RoundTrip) {
   for (const int index : param.dst_device_indices) {
     dst_devices.push_back(client_->devices()[index]);
   }
-  TF_ASSERT_OK_AND_ASSIGN(const DeviceListRef dst_device_list,
-                          client_->MakeDeviceList(dst_devices));
+  ASSERT_OK_AND_ASSIGN(const DeviceListRef dst_device_list,
+                       client_->MakeDeviceList(dst_devices));
   const ShardingRef dst_sharding = HloSharding::Create(
       std::move(dst_device_list), dst_memory_kind, param.dst_sharding);
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       const xla::Literal literal,
       CreateIotaLiteral(xla::PrimitiveType::S32, param.shape.dims()));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       ArrayRef src_array,
       MakeArrayFromLiteral(client_.get(), literal, src_sharding));
 
@@ -536,7 +535,7 @@ TEST_P(ReshardParameterizedTest, RoundTrip) {
         /*shape=*/src_array->shape(),
         /*sharding=*/dst_sharding,
     };
-    TF_ASSERT_OK_AND_ASSIGN(
+    ASSERT_OK_AND_ASSIGN(
         std::vector<ArrayRef> dst_arrays,
         client_->ReshardArrays(absl::MakeSpan(&src_array, 1), {array_spec},
                                ArrayCopySemantics::kDonateInput));
@@ -557,7 +556,7 @@ TEST_P(ReshardParameterizedTest, RoundTrip) {
         /*shape=*/dst_array->shape(),
         /*sharding=*/src_sharding,
     };
-    TF_ASSERT_OK_AND_ASSIGN(
+    ASSERT_OK_AND_ASSIGN(
         std::vector<ArrayRef> src_arrays,
         client_->ReshardArrays(absl::MakeSpan(&dst_array, 1), {array_spec},
                                ArrayCopySemantics::kDonateInput));

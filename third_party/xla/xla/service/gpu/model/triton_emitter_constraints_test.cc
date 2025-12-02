@@ -74,8 +74,8 @@ class TritonEmitterConstraintsTest : public HloHardwareIndependentTestBase {
 };
 
 TEST_F(TritonEmitterConstraintsTest, TooBigTileSizesConstraintIsEnforced) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
 HloModule m
 
 max_computation {
@@ -124,8 +124,8 @@ ENTRY entry_computation {
 }
 
 TEST_F(TritonEmitterConstraintsTest, DotOperandSizeConstraintIsEnforced) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
 HloModule m
 
 fused_computation {
@@ -157,8 +157,8 @@ ENTRY entry_computation {
 }
 
 TEST_F(TritonEmitterConstraintsTest, TooManyBlocksConstraintIsEnforced) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
 HloModule m
 
 max_computation {
@@ -196,8 +196,8 @@ ENTRY entry_computation {
 }
 
 TEST_F(TritonEmitterConstraintsTest, FusionHasValidTileSizes) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
 HloModule m
 
 fused_computation {
@@ -255,8 +255,8 @@ ENTRY entry_computation {
 }
 
 TEST_F(TritonEmitterConstraintsTest, MultiOutputFusionHasPowerOfTwoTileSizes) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
 HloModule m
 
 add {

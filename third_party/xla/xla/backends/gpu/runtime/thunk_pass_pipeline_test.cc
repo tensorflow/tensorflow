@@ -19,6 +19,7 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/base/nullability.h"
 #include "absl/status/status.h"
@@ -29,7 +30,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/xla.pb.h"
 
 namespace xla {
@@ -70,7 +70,7 @@ TEST(ThunkPassPipelineTest, PipelineRunsPass) {
 
   EXPECT_EQ(root_thunk->thunks().size(), 0);
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       bool changed,
       pipeline.Run(root_thunk.get(), debug_options, /*hlo_module=*/nullptr,
                    device_info, allocator));

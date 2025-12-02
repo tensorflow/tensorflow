@@ -52,7 +52,6 @@ limitations under the License.
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/service/buffer_value.h"
 #include "xla/service/hlo_value.h"
-#include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/statusor.h"
 
 namespace op = xla::testing::opcode_matchers;
@@ -164,8 +163,8 @@ ENTRY %elementwise {
   void RunMatMulAutoShardingWithOptions(
       AutoShardingOption option, size_t expected_num_tiles,
       size_t expected_sharded_dimensions = 1) {
-    TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                            ParseAndReturnVerifiedModule(kDotHloString));
+    ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                         ParseAndReturnVerifiedModule(kDotHloString));
     RunAutoShardingWithOptions(module.get(), option, expected_num_tiles,
                                expected_sharded_dimensions);
   }
@@ -173,8 +172,8 @@ ENTRY %elementwise {
   void RunAddAutoShardingWithOptions(AutoShardingOption option,
                                      size_t expected_num_tiles,
                                      size_t expected_sharded_dimensions = 1) {
-    TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                            ParseAndReturnVerifiedModule(kAddHloString));
+    ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                         ParseAndReturnVerifiedModule(kAddHloString));
     RunAutoShardingWithOptions(module.get(), option, expected_num_tiles,
                                expected_sharded_dimensions);
   }
@@ -182,8 +181,8 @@ ENTRY %elementwise {
   void RunAutoShardingWithOptions(HloModule* module, AutoShardingOption option,
                                   size_t expected_num_tiles,
                                   size_t expected_sharded_dimensions = 1) {
-    TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                            AutoSharding(option, &alias_info_).Run(module));
+    ASSERT_OK_AND_ASSIGN(bool changed,
+                         AutoSharding(option, &alias_info_).Run(module));
     EXPECT_TRUE(changed);
     // To simplify the test, only checking the sharding of root.
     auto* root = FindInstruction(module, "root");
@@ -196,8 +195,8 @@ ENTRY %elementwise {
   }
 
   void RunMatMulAutoShardingWithOptionsExpectFail(AutoShardingOption option) {
-    TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                            ParseAndReturnVerifiedModule(kDotHloString));
+    ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                         ParseAndReturnVerifiedModule(kDotHloString));
     RunAutoShardingWithOptionsExpectFail(module.get(), option);
   }
 
@@ -209,8 +208,8 @@ ENTRY %elementwise {
   void RunMatMulAutoShardingWithOptionsNoDeviceIds(
       AutoShardingOption option, std::vector<int64_t> expected_tile,
       bool expected_last_dim_replicate = false) {
-    TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                            ParseAndReturnVerifiedModule(kDotHloString));
+    ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                         ParseAndReturnVerifiedModule(kDotHloString));
     RunAutoShardingWithOptionsNoDeviceIds(module.get(), option, expected_tile,
                                           expected_last_dim_replicate);
   }
@@ -219,8 +218,8 @@ ENTRY %elementwise {
                                              AutoShardingOption option,
                                              std::vector<int64_t> expected_tile,
                                              bool expected_last_dim_replicate) {
-    TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                            AutoSharding(option, &alias_info_).Run(module));
+    ASSERT_OK_AND_ASSIGN(bool changed,
+                         AutoSharding(option, &alias_info_).Run(module));
     EXPECT_TRUE(changed);
     // To simplify the test, only checking the sharding of root.
     HloInstruction* root = FindInstruction(module, "root");
@@ -553,17 +552,16 @@ ENTRY %elementwise {
   ROOT %copy = f32[16384,16384]{0,1} copy(%add)
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kHloString));
-  TF_ASSERT_OK_AND_ASSIGN(HloSharding partial_sharding,
-                          ParseSharding("{devices=[64,1]<=[64]}"));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloString));
+  ASSERT_OK_AND_ASSIGN(HloSharding partial_sharding,
+                       ParseSharding("{devices=[64,1]<=[64]}"));
+  ASSERT_OK_AND_ASSIGN(
       int64_t partial_mesh_64x1_budget_lower_bound,
       compute_memory_budget_lower_bound(*module, /* num_devices */ 64));
   for (HloInstruction* ins : module->entry_computation()->instructions()) {
     ins->set_sharding(partial_sharding);
   }
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       int64_t full_mesh_64x8_budget_lower_bound,
       compute_memory_budget_lower_bound(*module, /* num_devices */ 512));
   CHECK_LT(full_mesh_64x8_budget_lower_bound,
@@ -584,16 +582,16 @@ ENTRY %elementwise {
   ROOT %copy = f32[128,128]{0,1} copy(%add)
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(kHloString));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHloString));
   AutoShardingOption option;
   option.enable = true;
   option.device_mesh_shape = {2, 2};
   option.device_mesh_ids = {0, 1, 2, 3};
   option.device_mesh_alpha = {1.0, 1.0};
   option.device_mesh_beta = {0.01, 1.0};
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          AutoSharding(option, &alias_info_).Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       AutoSharding(option, &alias_info_).Run(module.get()));
   VLOG(10) << module->ToString();
   EXPECT_TRUE(changed);
   const HloInstruction* instruction = FindInstruction(module.get(), "param0");
@@ -611,15 +609,15 @@ ENTRY %elementwise {
 
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(kHloString));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHloString));
   AutoShardingOption option;
   option.preserve_shardings =
       AutoShardingOption::PreserveShardingsType::kKeepAllShardings;
   option.enable = true;
   option.device_mesh_shape = {16, 8};
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          AutoSharding(option, &alias_info_).Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       AutoSharding(option, &alias_info_).Run(module.get()));
   VLOG(5) << module->ToString();
   EXPECT_TRUE(changed);
   std::vector<HloInstruction*> instructions =
@@ -638,13 +636,13 @@ ENTRY %elementwise {
   ROOT %copy = f32[512,1,1024,512]{3,2,1,0} copy(%convolution)
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(kHloString));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHloString));
   AutoShardingOption option;
   option.enable = true;
   option.device_mesh_shape = {512};
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          AutoSharding(option, &alias_info_).Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       AutoSharding(option, &alias_info_).Run(module.get()));
   VLOG(5) << module->ToString();
   EXPECT_TRUE(changed);
   const HloInstruction* convolution =
@@ -673,10 +671,10 @@ ENTRY %elementwise {
   option.device_mesh_alpha = {1.0, 1.0};
   option.device_mesh_beta = {0.01, 1.0};
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(kHloString));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          AutoSharding(option, &alias_info_).Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHloString));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       AutoSharding(option, &alias_info_).Run(module.get()));
   VLOG(10) << module->ToString();
   EXPECT_TRUE(changed);
   HloInstruction* slice = FindInstruction(module.get(), "slice");
@@ -694,9 +692,9 @@ ENTRY %elementwise {
   ROOT copy = s32[512,2048]{1,0} copy(slice)
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(kHloString));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHloString));
+  ASSERT_OK_AND_ASSIGN(
       bool changed, AutoSharding(/* option */ {.enable = true,
                                                .device_mesh_shape = {2, 2},
                                                .device_mesh_alpha = {1.0, 1.0},
@@ -724,9 +722,9 @@ ENTRY %elementwise {
   ROOT copy = s32[32,2048]{1,0} copy(slice)
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(kHloString));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHloString));
+  ASSERT_OK_AND_ASSIGN(
       bool changed, AutoSharding(/* option */ {.enable = true,
                                                .device_mesh_shape = {64, 1},
                                                .device_mesh_alpha = {1.0, 1.0},
@@ -750,9 +748,9 @@ ENTRY %elementwise {
   ROOT copy = s32[32,2048]{1,0} copy(slice)
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(kHloString));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHloString));
+  ASSERT_OK_AND_ASSIGN(
       bool changed, AutoSharding(/* option */ {.enable = true,
                                                .device_mesh_shape = {64, 1},
                                                .device_mesh_alpha = {1.0, 1.0},
@@ -777,9 +775,9 @@ ENTRY %elementwise {
   ROOT add1 = s32[11,1026]{1,0} add(copy1, param1)
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(kHloString));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHloString));
+  ASSERT_OK_AND_ASSIGN(
       bool changed,
       AutoSharding(
           /* option */ {.enable = true,
@@ -811,9 +809,9 @@ ENTRY %elementwise {
   ROOT copy = s32[512,2048]{1,0} copy(slice)
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(kHloString));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHloString));
+  ASSERT_OK_AND_ASSIGN(
       bool changed,
       AutoSharding(
           /* option */ {.enable = true,
@@ -851,9 +849,9 @@ ENTRY %slicemodule {
   ROOT copy = s32[512,2048]{1,0} copy(slice)
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(kHloString));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHloString));
+  ASSERT_OK_AND_ASSIGN(
       bool changed,
       AutoSharding(
           /* option */ {.enable = true,
@@ -889,9 +887,9 @@ ENTRY %elementwise {
   ROOT copy.45 = bf16[1,4352,8,256]{3,2,1,0} copy(pad.70)
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(kHloString));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHloString));
+  ASSERT_OK_AND_ASSIGN(
       bool changed,
       AutoSharding(
           /* option */
@@ -919,9 +917,9 @@ ENTRY %elementwise {
   ROOT copy.45 = bf16[8,1024]{1,0} copy(add.1)
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(kHloString));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHloString));
+  ASSERT_OK_AND_ASSIGN(
       bool changed,
       AutoSharding(
           /* option */
@@ -943,8 +941,8 @@ ENTRY %elementwise {
   EXPECT_THAT(add1, op::Sharding("{devices=[16,16]<=[256]}"));
 
   // Test with allow_shardings_small_dims_across_many_devices = False
-  TF_ASSERT_OK_AND_ASSIGN(module, ParseAndReturnVerifiedModule(kHloString));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(module, ParseAndReturnVerifiedModule(kHloString));
+  ASSERT_OK_AND_ASSIGN(
       changed,
       AutoSharding(
           /* option */
@@ -977,9 +975,9 @@ ENTRY %elementwise {
   ROOT copy.45 = bf16[8,1024]{1,0} copy(add.1)
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(kHloString));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHloString));
+  ASSERT_OK_AND_ASSIGN(
       bool changed,
       AutoSharding(
           /* option */
@@ -1006,8 +1004,8 @@ ENTRY %elementwise {
       op::Sharding("{devices=[16,1,16]<=[256] last_tile_dim_replicate}"));
 
   // Test with allow_shardings_small_dims_across_many_devices = False
-  TF_ASSERT_OK_AND_ASSIGN(module, ParseAndReturnVerifiedModule(kHloString));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(module, ParseAndReturnVerifiedModule(kHloString));
+  ASSERT_OK_AND_ASSIGN(
       changed,
       AutoSharding(
           /* option */
@@ -1042,16 +1040,16 @@ ENTRY %RngBitGenerator (p0: u64[2]) -> (u64[2], u32[16,16]) {
   ROOT %rand = (u64[2]{0}, u32[16,16]{1,0}) rng-bit-generator(u64[2]{0} %p0), algorithm=rng_three_fry
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(kHloString));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHloString));
   AutoShardingOption option;
   option.enable = true;
   option.device_mesh_shape = {2, 2};
   option.device_mesh_ids = {0, 1, 2, 3};
   option.device_mesh_alpha = {1.0, 1.0};
   option.device_mesh_beta = {1.0, 1.0};
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          AutoSharding(option, &alias_info_).Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       AutoSharding(option, &alias_info_).Run(module.get()));
   VLOG(10) << module->ToString();
   EXPECT_TRUE(changed);
   const HloInstruction* instruction = FindInstruction(module.get(), "p0");
@@ -1093,8 +1091,8 @@ ENTRY main {
   ROOT tuple.1 = tuple(custom-call.3)
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(kHloString));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHloString));
   AutoShardingOption option;
   option.preserve_shardings =
       AutoShardingOption::PreserveShardingsType::kRemoveAllShardings;
@@ -1102,8 +1100,8 @@ ENTRY main {
   option.device_mesh_shape = {4, 4};
   option.device_mesh_alpha = {1.0, 1.0};
   option.device_mesh_beta = {1.0, 1.0};
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          AutoSharding(option, &alias_info_).Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       AutoSharding(option, &alias_info_).Run(module.get()));
   LOG(INFO) << module->ToString();
   EXPECT_TRUE(changed);
 
@@ -1151,8 +1149,8 @@ ENTRY main {
   ROOT tuple.1 = (bf16[512,512]{1,0}, u32[512,512]{1,0}) tuple(add.2, custom-call.4)
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(kHloString));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHloString));
   AutoShardingOption option;
   // Check that custom call shardings are preserved despite us dropped user
   // shardings
@@ -1162,8 +1160,8 @@ ENTRY main {
   option.device_mesh_shape = {4, 4};
   option.device_mesh_alpha = {1.0, 1.0};
   option.device_mesh_beta = {1.0, 1.0};
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          AutoSharding(option, &alias_info_).Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       AutoSharding(option, &alias_info_).Run(module.get()));
   VLOG(10) << module->ToString();
   EXPECT_TRUE(changed);
 
@@ -1218,8 +1216,8 @@ ENTRY main {
   ROOT copy.1 = copy(custom-call.3)
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(kHloString));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHloString));
   AutoShardingOption option;
   option.preserve_shardings =
       AutoShardingOption::PreserveShardingsType::kRemoveAllShardings;
@@ -1246,16 +1244,16 @@ ENTRY %RngBitGenerator {
   ROOT rng-bit-generator = u32[100,100]{1,0:T(8,128)} rng-bit-generator(tuple.3), algorithm=rng_default
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(kHloString));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHloString));
   AutoShardingOption option;
   option.enable = true;
   option.device_mesh_shape = {2, 2};
   option.device_mesh_ids = {0, 1, 2, 3};
   option.device_mesh_alpha = {1.0, 1.0};
   option.device_mesh_beta = {0.01, 1.0};
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          AutoSharding(option, &alias_info_).Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       AutoSharding(option, &alias_info_).Run(module.get()));
   VLOG(10) << module->ToString();
   EXPECT_TRUE(changed);
   const HloInstruction* param0 = FindInstruction(module.get(), "param.0");
@@ -1276,8 +1274,8 @@ ENTRY %entry {
   ROOT %copy = f32[8192,23]{1,0} copy(%dot)
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(kHloString));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHloString));
   AutoShardingOption option;
   option.enable = true;
   option.device_mesh_shape = {2, 2};
@@ -1287,8 +1285,8 @@ ENTRY %entry {
   option.solve_nd_sharding_iteratively = false;
   option.preserve_shardings =
       AutoShardingOption::PreserveShardingsType::kKeepAllShardings;
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          AutoSharding(option, &alias_info_).Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       AutoSharding(option, &alias_info_).Run(module.get()));
   VLOG(2) << module->ToString();
   EXPECT_TRUE(changed);
   const HloInstruction* param0 = FindInstruction(module.get(), "param0");
@@ -1313,8 +1311,8 @@ ENTRY %entry {
   ROOT %copy = f32[8192,23]{1,0} copy(%dot)
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(kHloString));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHloString));
   AutoShardingOption option;
   option.enable = true;
   option.device_mesh_shape = {2, 2};
@@ -1325,8 +1323,8 @@ ENTRY %entry {
   option.solver_timeout_in_seconds = -300;
   option.preserve_shardings =
       AutoShardingOption::PreserveShardingsType::kKeepAllShardings;
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          AutoSharding(option, &alias_info_).Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       AutoSharding(option, &alias_info_).Run(module.get()));
   VLOG(2) << module->ToString();
   EXPECT_TRUE(changed);
   const HloInstruction* param0 = FindInstruction(module.get(), "param0");
@@ -1351,8 +1349,8 @@ ENTRY %entry {
   ROOT %copy = f32[256,256]{1,0} copy(%dot)
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(kHloString));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHloString));
   AutoShardingOption option;
   option.enable = true;
   option.device_mesh_shape = {2, 2};
@@ -1361,8 +1359,8 @@ ENTRY %entry {
   option.device_mesh_beta = {0.01, 1.0};
   option.preserve_shardings =
       AutoShardingOption::PreserveShardingsType::kKeepAllShardings;
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          AutoSharding(option, &alias_info_).Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       AutoSharding(option, &alias_info_).Run(module.get()));
   VLOG(2) << module->ToString();
   EXPECT_TRUE(changed);
   const HloInstruction* param0 = FindInstruction(module.get(), "param0");
@@ -1385,8 +1383,8 @@ ENTRY %entry {
   ROOT %copy = f32[4,256,32]{2,1,0} copy(%dot)
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(kHloString));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHloString));
   AutoShardingOption option;
   option.enable = true;
   option.device_mesh_shape = {2, 2};
@@ -1394,8 +1392,8 @@ ENTRY %entry {
   option.device_mesh_alpha = {1.0, 1.0};
   option.device_mesh_beta = {0.01, 1.0};
   option.allow_mixed_mesh_shape = false;
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          AutoSharding(option, &alias_info_).Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       AutoSharding(option, &alias_info_).Run(module.get()));
   VLOG(2) << module->ToString();
   EXPECT_TRUE(changed);
   const HloInstruction* param0 = FindInstruction(module.get(), "param0");
@@ -1439,8 +1437,8 @@ ENTRY %entry {
   ROOT %copy = f32[32,4,8]{2,1,0} copy(%dot)
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(kHloString));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHloString));
   AutoShardingOption option;
   option.enable = true;
   option.device_mesh_shape = {2, 2};
@@ -1448,8 +1446,8 @@ ENTRY %entry {
   option.device_mesh_alpha = {1.0, 1.0};
   option.device_mesh_beta = {0.01, 1.0};
   option.allow_mixed_mesh_shape = false;
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          AutoSharding(option, &alias_info_).Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       AutoSharding(option, &alias_info_).Run(module.get()));
   VLOG(2) << module->ToString();
   EXPECT_TRUE(changed);
   const HloInstruction* param0 = FindInstruction(module.get(), "param0");
@@ -1493,8 +1491,8 @@ ENTRY %entry {
   ROOT %copy = f32[64,32]{1,0} copy(%dot)
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(kHloString));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHloString));
   AutoShardingOption option;
   option.enable = true;
   option.device_mesh_shape = {2, 2};
@@ -1502,8 +1500,8 @@ ENTRY %entry {
   option.device_mesh_alpha = {1.0, 1.0};
   option.device_mesh_beta = {0.01, 1.0};
   option.allow_mixed_mesh_shape = false;
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          AutoSharding(option, &alias_info_).Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       AutoSharding(option, &alias_info_).Run(module.get()));
   VLOG(2) << module->ToString();
   EXPECT_TRUE(changed);
   const HloInstruction* param0 = FindInstruction(module.get(), "param0");
@@ -1537,8 +1535,8 @@ ENTRY twomatmul {
   ROOT dot.5 = f32[64,64]{1,0} dot(dot.4, parameter.3), lhs_contracting_dims={1}, rhs_contracting_dims={0}
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(kHloString));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHloString));
   AutoShardingOption option;
   option.enable = true;
   option.allow_recompute_heavy_op = false;
@@ -1547,8 +1545,8 @@ ENTRY twomatmul {
   option.device_mesh_ids = {0, 1, 2, 3};
   option.device_mesh_alpha = {1.0, 1.0};
   option.device_mesh_beta = {0.01, 1.0};
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          AutoSharding(option, &alias_info_).Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       AutoSharding(option, &alias_info_).Run(module.get()));
   VLOG(10) << module->ToString();
   EXPECT_TRUE(changed);
   const HloInstruction* param1 = FindInstruction(module.get(), "parameter.1");
@@ -1587,8 +1585,8 @@ ENTRY twomatmul {
   ROOT dot.5 = f32[64,64]{1,0} dot(dot.4, parameter.3), lhs_contracting_dims={1}, rhs_contracting_dims={0}
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(kHloString));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHloString));
   AutoShardingOption option;
   option.enable = true;
   option.allow_recompute_heavy_op = true;
@@ -1597,8 +1595,8 @@ ENTRY twomatmul {
   option.device_mesh_ids = {0, 1, 2, 3};
   option.device_mesh_alpha = {1.0, 1.0};
   option.device_mesh_beta = {0.01, 1.0};
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          AutoSharding(option, &alias_info_).Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       AutoSharding(option, &alias_info_).Run(module.get()));
   VLOG(10) << module->ToString();
   EXPECT_TRUE(changed);
   const HloInstruction* param1 = FindInstruction(module.get(), "parameter.1");
@@ -1639,15 +1637,15 @@ ENTRY %entry {
   %copy.2 = f32[6,3] copy(%annotate)
   ROOT %copy.3 = f32[6,3] copy(%copy.2)
 })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(kHloString));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHloString));
   AutoShardingOption option;
   option.enable = true;
   option.device_mesh_shape = {2, 2};
   option.preserve_shardings =
       AutoShardingOption::PreserveShardingsType::kKeepAllShardings;
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          AutoSharding(option, &alias_info_).Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       AutoSharding(option, &alias_info_).Run(module.get()));
   EXPECT_TRUE(changed);
   // %annotate's sharding is moved to %copy.
   auto* copy = FindInstruction(module.get(), "copy");
@@ -1667,8 +1665,8 @@ ENTRY %entry (param0: f32[4,256,64], param1: f32[4,256,32]) -> f32[64,32] {
   %dot = f32[64,32]{1,0} dot(f32[4,256,64]{2,1,0} %param0, f32[4,256,32]{2,1,0} %param1), lhs_contracting_dims={0,1}, rhs_contracting_dims={0,1}, sharding={devices=[2,2]0,1,2,3}
   ROOT %copy = f32[64,32]{1,0} copy(f32[64,32]{1,0} %dot), sharding={devices=[2,2]0,1,2,3}
 })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(kHloString));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHloString));
   AutoShardingOption option;
   // Keep all user shardings
   option.preserve_shardings =
@@ -1677,7 +1675,7 @@ ENTRY %entry (param0: f32[4,256,64], param1: f32[4,256,32]) -> f32[64,32] {
       module->entry_computation()->instructions().begin(),
       module->entry_computation()->instructions().end());
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       AutoShardingImplementation::SaveShardingAnnotationsResult
           saved_shardings_result,
       AutoShardingImplementation(option, &alias_info_)
@@ -1726,8 +1724,8 @@ ENTRY %entry (param0: f32[4,256,64], param1: f32[4,256,32]) -> f32[64,32] {
   %dot = f32[64,32]{1,0} dot(f32[4,256,64]{2,1,0} %param0, f32[4,256,32]{2,1,0} %param1), lhs_contracting_dims={0,1}, rhs_contracting_dims={0,1}, sharding={replicated}
   ROOT %copy = f32[64,32]{1,0} copy(f32[64,32]{1,0} %dot), sharding={devices=[2,2]0,1,2,3}
 })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(kHloString));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHloString));
   AutoShardingOption option;
   // Keep all user shardings
   option.preserve_shardings =
@@ -1735,14 +1733,13 @@ ENTRY %entry (param0: f32[4,256,64], param1: f32[4,256,32]) -> f32[64,32] {
   absl::flat_hash_set<const HloInstruction*> instructions_to_shard(
       module->entry_computation()->instructions().begin(),
       module->entry_computation()->instructions().end());
-  TF_ASSERT_OK_AND_ASSIGN(
-      AutoShardingImplementation::SaveShardingAnnotationsResult
-          saved_shardings_result,
-      AutoShardingImplementation(option, &alias_info_)
-          .SaveAndRemoveShardingAnnotation(
-              module.get(), instructions_to_shard,
-              /* replicated_small_tensors */ {"dot"},
-              /* execution_threads */ {}));
+  ASSERT_OK_AND_ASSIGN(AutoShardingImplementation::SaveShardingAnnotationsResult
+                           saved_shardings_result,
+                       AutoShardingImplementation(option, &alias_info_)
+                           .SaveAndRemoveShardingAnnotation(
+                               module.get(), instructions_to_shard,
+                               /* replicated_small_tensors */ {"dot"},
+                               /* execution_threads */ {}));
   absl::flat_hash_map<std::string, std::vector<HloSharding>> saved_shardings =
       saved_shardings_result.preserved_shardings;
   EXPECT_FALSE(saved_shardings_result.module_is_changed);
@@ -1783,8 +1780,8 @@ ENTRY %entry (param0: f32[4,256,64], param1: f32[4,256,32]) -> f32[64,32] {
   %dot = f32[64,32]{1,0} dot(f32[4,256,64]{2,1,0} %param0_copy, f32[4,256,32]{2,1,0} %param1_copy), lhs_contracting_dims={0,1}, rhs_contracting_dims={0,1}, sharding={devices=[2,2]0,1,2,3}
   ROOT %copy = f32[64,32]{1,0} copy(f32[64,32]{1,0} %dot), sharding={devices=[2,2]0,1,2,3}
 })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(kHloString));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHloString));
   AutoShardingOption option;
   option.preserve_shardings =
       AutoShardingOption::PreserveShardingsType::kKeepInputOutputShardings;
@@ -1792,7 +1789,7 @@ ENTRY %entry (param0: f32[4,256,64], param1: f32[4,256,32]) -> f32[64,32] {
       module->entry_computation()->instructions().begin(),
       module->entry_computation()->instructions().end());
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       AutoShardingImplementation::SaveShardingAnnotationsResult
           saved_shardings_result,
       AutoShardingImplementation(option, &alias_info_)
@@ -1867,8 +1864,8 @@ ENTRY %entry (param0: f32[4,256,64], param1: f32[4,256,32]) -> f32[64,32] {
   rhs_contracting_dims={0,1}, sharding={devices=[2,2]0,1,2,3} ROOT %copy =
   f32[64,32]{1,0} copy(f32[64,32]{1,0} %dot), sharding={devices=[2,2]0,1,2,3}
 })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(kHloString));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHloString));
   AutoShardingOption option;
   // Remove all user shardings
   option.preserve_shardings =
@@ -1877,7 +1874,7 @@ ENTRY %entry (param0: f32[4,256,64], param1: f32[4,256,32]) -> f32[64,32] {
       module->entry_computation()->instructions().begin(),
       module->entry_computation()->instructions().end());
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       AutoShardingImplementation::SaveShardingAnnotationsResult
           saved_shardings_result,
       AutoShardingImplementation(option, &alias_info_)
@@ -1906,8 +1903,8 @@ ENTRY %entry (param0: f32[4,256,64], param1: f32[4,256,32]) -> f32[64,32] {
   %dot = f32[64,32]{1,0} dot(f32[4,256,64]{2,1,0} %param0, f32[4,256,32]{2,1,0} %param1), lhs_contracting_dims={0,1}, rhs_contracting_dims={0,1}, sharding={replicated}
   ROOT %copy = f32[64,32]{1,0} copy(f32[64,32]{1,0} %dot), sharding={replicated}
 })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(kHloString));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHloString));
   AutoShardingOption option;
   // Remove all user shardings
   option.preserve_shardings =
@@ -1915,14 +1912,13 @@ ENTRY %entry (param0: f32[4,256,64], param1: f32[4,256,32]) -> f32[64,32] {
   absl::flat_hash_set<const HloInstruction*> instructions_to_shard(
       module->entry_computation()->instructions().begin(),
       module->entry_computation()->instructions().end());
-  TF_ASSERT_OK_AND_ASSIGN(
-      AutoShardingImplementation::SaveShardingAnnotationsResult
-          saved_shardings_result,
-      AutoShardingImplementation(option, &alias_info_)
-          .SaveAndRemoveShardingAnnotation(
-              module.get(), instructions_to_shard,
-              /* replicated_small_tensors */ {"dot", "copy"},
-              /* execution_threads */ {}));
+  ASSERT_OK_AND_ASSIGN(AutoShardingImplementation::SaveShardingAnnotationsResult
+                           saved_shardings_result,
+                       AutoShardingImplementation(option, &alias_info_)
+                           .SaveAndRemoveShardingAnnotation(
+                               module.get(), instructions_to_shard,
+                               /* replicated_small_tensors */ {"dot", "copy"},
+                               /* execution_threads */ {}));
   absl::flat_hash_map<std::string, std::vector<HloSharding>> saved_shardings =
       saved_shardings_result.preserved_shardings;
   EXPECT_TRUE(saved_shardings_result.module_is_changed);
@@ -1978,16 +1974,16 @@ ENTRY %entry {
   %constant.b = s32[] constant(0)
   %reduce = (f32[1,16]{1,0}, s32[1,16]{1,0}) reduce(f32[1,16,40]{2,1,0} %param0, s32[1,16,40]{2,1,0} %iota, f32[] %constant.a, s32[] %constant.b), dimensions={2}, to_apply=%func
 })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(kHloString));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHloString));
   AutoShardingOption option;
   option.enable = true;
   option.device_mesh_shape = {2, 2};
   option.device_mesh_ids = {0, 1, 2, 3};
   option.device_mesh_alpha = {1.0, 1.0};
   option.device_mesh_beta = {0.01, 1.0};
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          AutoSharding(option, &alias_info_).Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       AutoSharding(option, &alias_info_).Run(module.get()));
   EXPECT_TRUE(changed);
   const HloInstruction* reduce = FindInstruction(module.get(), "reduce");
   ASSERT_NE(reduce, nullptr);
@@ -2018,16 +2014,16 @@ ENTRY %entry {
   %param1 = f32[] parameter(1)
   %reduce = f32[1,16]{1,0} reduce(f32[1,16,128]{2,1,0} %param0, f32[] %param1), dimensions={2}, to_apply=%func
   })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(kHloString));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHloString));
   AutoShardingOption option;
   option.enable = true;
   option.device_mesh_shape = {2, 2};
   option.device_mesh_ids = {0, 1, 2, 3};
   option.device_mesh_alpha = {1.0, 1.0};
   option.device_mesh_beta = {0.01, 1.0};
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          AutoSharding(option, &alias_info_).Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       AutoSharding(option, &alias_info_).Run(module.get()));
   EXPECT_TRUE(changed);
   const HloInstruction* reduce = FindInstruction(module.get(), "reduce");
   const HloInstruction* param0 = FindInstruction(module.get(), "param0");
@@ -2066,8 +2062,8 @@ ENTRY %Scatter {
   ROOT scatter = s32[4,128]{1,0} scatter(call, clamp, broadcast), update_window_dims={1}, inserted_window_dims={0}, scatter_dims_to_operand_dims={0,1}, index_vector_dim=1, indices_are_sorted=true, unique_indices=true, to_apply=region
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(kHloString));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHloString));
   AutoShardingOption option;
   option.enable = true;
   option.device_mesh_shape = {2, 2};
@@ -2078,8 +2074,8 @@ ENTRY %Scatter {
   // tensors are sharded 4-ways
   option.memory_budget_per_device = 1185;  // bytes required to
 
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          AutoSharding(option, &alias_info_).Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       AutoSharding(option, &alias_info_).Run(module.get()));
   VLOG(10) << module->ToString();
   EXPECT_TRUE(changed);
   const HloInstruction* scatter = FindInstruction(module.get(), "scatter");
@@ -2104,8 +2100,8 @@ ENTRY %Scatter {
   ROOT scatter = f32[4,128,128]{2,1,0} scatter(call, clamp, multiply), update_window_dims={1,2}, inserted_window_dims={0}, scatter_dims_to_operand_dims={0,1,2}, index_vector_dim=1, indices_are_sorted=true, unique_indices=true, to_apply=region
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(kHloString));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHloString));
   AutoShardingOption option;
   option.enable = true;
   option.device_mesh_shape = {2, 2};
@@ -2116,8 +2112,8 @@ ENTRY %Scatter {
   // sharded only 2-ways
   option.memory_budget_per_device = 4 * 2 * (4 * 128 * 128 / 4) + 48 + 1024 + 1;
 
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          AutoSharding(option, &alias_info_).Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       AutoSharding(option, &alias_info_).Run(module.get()));
   VLOG(10) << module->ToString();
   EXPECT_TRUE(changed);
   const HloInstruction* scatter = FindInstruction(module.get(), "scatter");
@@ -2137,8 +2133,7 @@ ENTRY %module {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   AutoShardingOption option;
   option.enable = true;
   option.device_mesh_shape = {16, 16};
@@ -2146,8 +2141,8 @@ ENTRY %module {
   option.device_mesh_beta = {0.01, 1.0};
   option.preserve_shardings =
       AutoShardingOption::PreserveShardingsType::kKeepAllShardings;
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          AutoSharding(option, &alias_info_).Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       AutoSharding(option, &alias_info_).Run(module.get()));
   VLOG(0) << module->ToString();
   EXPECT_TRUE(changed);
   const HloInstruction* gather = FindInstruction(module.get(), "gather");
@@ -2166,8 +2161,7 @@ ENTRY %module {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   AutoShardingOption option;
   option.enable = true;
   option.device_mesh_shape = {256, 1};
@@ -2175,8 +2169,8 @@ ENTRY %module {
   option.device_mesh_beta = {0.01, 1.0};
   option.preserve_shardings =
       AutoShardingOption::PreserveShardingsType::kKeepAllShardings;
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          AutoSharding(option, &alias_info_).Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       AutoSharding(option, &alias_info_).Run(module.get()));
   VLOG(0) << module->ToString();
   EXPECT_TRUE(changed);
   const HloInstruction* gather = FindInstruction(module.get(), "gather");
@@ -2192,8 +2186,8 @@ ENTRY %entry {
   indices = s32[8,1,1]{2,1,0} parameter(1)
   gather = s8[8,1,128]{2,1,0} gather(data, indices), offset_dims={2}, collapsed_slice_dims={0}, start_index_map={0}, index_vector_dim=2, slice_sizes={1,128}
 })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(kHloString));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHloString));
   AutoShardingOption option;
   option.enable = true;
   option.device_mesh_shape = {1, 1, 8};
@@ -2201,8 +2195,8 @@ ENTRY %entry {
   option.device_mesh_alpha = {1.0, 1.0, 1.0};
   option.device_mesh_beta = {0.01, 1.0, 1.0};
   option.memory_budget_per_device = (1000 * 128 + 8 * 128) / 8 + 8;
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          AutoSharding(option, &alias_info_).Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       AutoSharding(option, &alias_info_).Run(module.get()));
   VLOG(5) << module->ToString();
   EXPECT_TRUE(changed);
   const HloInstruction* gather = FindInstruction(module.get(), "gather");
@@ -2229,8 +2223,8 @@ ENTRY %entry {
   %reshape = f32[1024,1024,1]{2,1,0} reshape(param2)
   ROOT convolution = f32[128,1024,1024]{2,1,0} convolution(gather, reshape), window={size=1}, dim_labels=b0f_io0->b0f
 })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(kHloString));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHloString));
   AutoShardingOption option;
   option.enable = true;
   option.preserve_shardings =
@@ -2239,8 +2233,8 @@ ENTRY %entry {
   option.device_mesh_ids = {0, 1, 2, 3};
   option.device_mesh_alpha = {1.0, 1.0};
   option.device_mesh_beta = {0.01, 1.0};
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          AutoSharding(option, &alias_info_).Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       AutoSharding(option, &alias_info_).Run(module.get()));
   EXPECT_TRUE(changed);
   const HloInstruction* gather = FindInstruction(module.get(), "gather");
   const HloInstruction* conv = FindInstruction(module.get(), "convolution");
@@ -2266,8 +2260,8 @@ ENTRY %entry (param0: f32[4,256,64], param1: f32[4,256,32]) -> f32[64,32] {
   ROOT %copy = f32[64,32]{1,0} copy(f32[64,32]{1,0} %dot), sharding={devices=[2,2]0,1,2,3}
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(kHloString));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHloString));
   // Remove the sharding in dot
   auto* dot = FindInstruction(module.get(), "dot");
   dot->clear_sharding();
@@ -2277,8 +2271,8 @@ ENTRY %entry (param0: f32[4,256,64], param1: f32[4,256,32]) -> f32[64,32] {
   option.device_mesh_shape = {2, 2};
   option.preserve_shardings =
       AutoShardingOption::PreserveShardingsType::kKeepInputOutputShardings;
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          AutoSharding(option, &alias_info_).Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       AutoSharding(option, &alias_info_).Run(module.get()));
   EXPECT_TRUE(changed);
   auto* dot_after = FindInstruction(module.get(), "dot");
   ASSERT_NE(dot_after, nullptr);
@@ -2297,8 +2291,8 @@ ENTRY %elementwise {
   %add = f32[128,128]{0,1} add(%param0, %param1), sharding={devices=[2,1,2]0,1,2,3 last_tile_dim_replicate}
   ROOT %copy = f32[128,128]{0,1} copy(%add)
 })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(kHloString));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHloString));
   // Run AutoSharding
   AutoShardingOption option;
   option.enable = true;
@@ -2306,8 +2300,8 @@ ENTRY %elementwise {
   option.device_mesh_shape = {2, 2};
   option.preserve_shardings =
       AutoShardingOption::PreserveShardingsType::kKeepAllShardings;
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          AutoSharding(option, &alias_info_).Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       AutoSharding(option, &alias_info_).Run(module.get()));
   EXPECT_TRUE(changed);
   LOG(INFO) << module->ToString();
   const HloInstruction* param0_after = FindInstruction(module.get(), "param0");
@@ -2336,8 +2330,8 @@ ENTRY %entry (param0: f32[4,256,64], param1: f32[4,256,32]) -> f32[64,32] {
   ROOT %copy = f32[64,32]{1,0} copy(f32[64,32]{1,0} %dot), sharding={devices=[2,2]0,1,2,3}
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(kHloString));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHloString));
   // Remove the sharding in param0, param1 and copy
   HloInstruction* param0 = FindInstruction(module.get(), "param0");
   param0->clear_sharding();
@@ -2355,8 +2349,8 @@ ENTRY %entry (param0: f32[4,256,64], param1: f32[4,256,32]) -> f32[64,32] {
   option.device_mesh_shape = {2, 2};
   option.preserve_shardings =
       AutoShardingOption::PreserveShardingsType::kKeepAllShardings;
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          AutoSharding(option, &alias_info_).Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       AutoSharding(option, &alias_info_).Run(module.get()));
   EXPECT_TRUE(changed);
   const HloInstruction* param0_after = FindInstruction(module.get(), "param0");
   ASSERT_NE(param0_after, nullptr);
@@ -2398,16 +2392,16 @@ ENTRY %entry {
   %reduce = (f32[1,16]{1,0}, s32[1,16]{1,0}) reduce(f32[1,16,40]{2,1,0} %param0, s32[1,16,40]{2,1,0} %iota, f32[] %constant.a, s32[] %constant.b), dimensions={2}, to_apply=%func,
     sharding={{devices=[1,2,2]0,1,2,3 last_tile_dim_replicate}, {devices=[1,2,2]0,1,2,3 last_tile_dim_replicate}}
 })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(kHloString));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHloString));
   AutoShardingOption option;
   option.enable = true;
   option.device_mesh_shape = {2, 2};
   // Keep all users shardings.
   option.preserve_shardings =
       AutoShardingOption::PreserveShardingsType::kKeepAllShardings;
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          AutoSharding(option, &alias_info_).Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       AutoSharding(option, &alias_info_).Run(module.get()));
   EXPECT_TRUE(changed);
   auto* reduce = FindInstruction(module.get(), "reduce");
   ASSERT_NE(reduce, nullptr);
@@ -2434,8 +2428,8 @@ ENTRY %tupleparameter {
   ROOT root = f32[32,64]{1,0} add(%first, %second)
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(kHloString));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHloString));
   AutoShardingOption option;
   option.enable = true;
   option.preserve_shardings =
@@ -2444,8 +2438,8 @@ ENTRY %tupleparameter {
   option.device_mesh_ids = {0, 1, 2, 3};
   option.device_mesh_alpha = {1.0, 1.0};
   option.device_mesh_beta = {0.01, 1.0};
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          AutoSharding(option, &alias_info_).Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       AutoSharding(option, &alias_info_).Run(module.get()));
   VLOG(10) << module->ToString();
   EXPECT_TRUE(changed);
   const HloInstruction* param1 = FindInstruction(module.get(), "param1");
@@ -2467,16 +2461,16 @@ ENTRY %tupleparameter {
   ROOT root = f32[16,32,64]{2,1,0} add(%first, %second)
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(kHloString));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHloString));
   AutoShardingOption option;
   option.enable = true;
   option.device_mesh_shape = {2, 2};
   option.device_mesh_ids = {0, 1, 2, 3};
   option.device_mesh_alpha = {1.0, 1.0};
   option.device_mesh_beta = {0.01, 1.0};
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          AutoSharding(option, &alias_info_).Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       AutoSharding(option, &alias_info_).Run(module.get()));
   VLOG(10) << module->ToString();
   EXPECT_TRUE(changed);
   const HloInstruction* tuple_param =
@@ -2539,8 +2533,8 @@ ENTRY %entry (param0: f32[16,256,256], param1: f32[16,256,256]) -> f32[16,256,25
   %tuple1 = f32[16,256,256]{2,1,0} get-tuple-element((u32[], f32[16,256,256]{2,1,0}, f32[16,256,256]{2,1,0}) %while.1), index=1, sharding={devices=[2,2,1]0,2,1,3}
   ROOT %tanh = f32[16,256,256]{2,1,0} tanh(f32[16,256,256]{2,1,0} %tuple1)
 })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(kHloString));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHloString));
   AutoShardingOption option;
   option.preserve_shardings =
       AutoShardingOption::PreserveShardingsType::kKeepAllShardings;
@@ -2549,8 +2543,8 @@ ENTRY %entry (param0: f32[16,256,256], param1: f32[16,256,256]) -> f32[16,256,25
   option.device_mesh_ids = {0, 1, 2, 3};
   option.device_mesh_alpha = {1.0, 1.0, 1.0};
   option.device_mesh_beta = {0.01, 1.0, 1.0};
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          AutoSharding(option, &alias_info_).Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       AutoSharding(option, &alias_info_).Run(module.get()));
   EXPECT_TRUE(changed);
 }
 
@@ -2591,16 +2585,16 @@ ENTRY %entry {
   ROOT %result = bf16[128,512,768] get-tuple-element(%while), index=3
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(kHloString));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHloString));
   AutoShardingOption option;
   option.enable = true;
   option.device_mesh_shape = {2, 2};
   option.device_mesh_ids = {0, 1, 2, 3};
   option.device_mesh_alpha = {1.0, 1.0};
   option.device_mesh_beta = {0.01, 1.0};
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          AutoSharding(option, &alias_info_).Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       AutoSharding(option, &alias_info_).Run(module.get()));
   VLOG(0) << module->ToString();
   EXPECT_TRUE(changed);
   auto* while_op = FindInstruction(module.get(), "while");
@@ -2651,16 +2645,16 @@ ENTRY %entry {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(kHloString));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHloString));
   AutoShardingOption option;
   option.enable = true;
   option.device_mesh_shape = {2, 2};
   option.device_mesh_ids = {0, 1, 2, 3};
   option.device_mesh_alpha = {1.0, 1.0};
   option.device_mesh_beta = {0.01, 1.0};
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          AutoSharding(option, &alias_info_).Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       AutoSharding(option, &alias_info_).Run(module.get()));
   VLOG(0) << module->ToString();
   EXPECT_TRUE(changed);
 }
@@ -2678,16 +2672,16 @@ ENTRY %entry {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(kHloString));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHloString));
   AutoShardingOption option;
   option.enable = true;
   option.device_mesh_shape = {2, 2};
   option.device_mesh_ids = {0, 1, 2, 3};
   option.device_mesh_alpha = {1.0, 1.0};
   option.device_mesh_beta = {0.01, 1.0};
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          AutoSharding(option, &alias_info_).Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       AutoSharding(option, &alias_info_).Run(module.get()));
   VLOG(0) << module->ToString();
   EXPECT_TRUE(changed);
 }
@@ -2706,16 +2700,16 @@ ENTRY %entry {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(kHloString));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHloString));
   AutoShardingOption option;
   option.enable = true;
   option.device_mesh_shape = {2, 2};
   option.device_mesh_ids = {0, 1, 2, 3};
   option.device_mesh_alpha = {1.0, 1.0};
   option.device_mesh_beta = {0.01, 1.0};
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          AutoSharding(option, &alias_info_).Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       AutoSharding(option, &alias_info_).Run(module.get()));
   VLOG(0) << module->ToString();
   EXPECT_TRUE(changed);
 }
@@ -2754,16 +2748,16 @@ ENTRY %entry {
   ROOT maximum = f32[8,512]{1,0} maximum(subtract, broadcast.d)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(kHloString));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHloString));
   AutoShardingOption option;
   option.enable = true;
   option.device_mesh_shape = {2, 2};
   option.device_mesh_ids = {0, 1, 2, 3};
   option.device_mesh_alpha = {1.0, 1.0};
   option.device_mesh_beta = {0.01, 1.0};
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          AutoSharding(option, &alias_info_).Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       AutoSharding(option, &alias_info_).Run(module.get()));
   VLOG(0) << module->ToString();
   EXPECT_TRUE(changed);
   EXPECT_TRUE(module->entry_computation()->root_instruction()->has_sharding());
@@ -2786,8 +2780,8 @@ ENTRY %entry {
   %dot = bf16[512,1024,16,128]{3,2,1,0} dot(bf16[512,1024,2048]{2,1,0} %param.2, bf16[2048,16,128]{2,1,0} %reshape), lhs_contracting_dims={2}, rhs_contracting_dims={0}
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(kHloString));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHloString));
   AutoShardingOption option;
   option.enable = true;
   option.device_mesh_shape = {64, 1};
@@ -2795,8 +2789,8 @@ ENTRY %entry {
   std::iota(option.device_mesh_ids.begin(), option.device_mesh_ids.end(), 0);
   option.device_mesh_alpha = {1.0, 1.0};
   option.device_mesh_beta = {0.01, 1.0};
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          AutoSharding(option, &alias_info_).Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       AutoSharding(option, &alias_info_).Run(module.get()));
   VLOG(1) << module->ToString();
   EXPECT_TRUE(changed);
 }
@@ -2811,8 +2805,8 @@ ENTRY %entry {
   %copy = bf16[1,24,16,16]{3,2,1,0} copy(%reshape)
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(kHloString));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHloString));
   AutoShardingOption option;
   option.enable = true;
   option.device_mesh_shape = {32, 1};
@@ -2820,8 +2814,8 @@ ENTRY %entry {
   std::iota(option.device_mesh_ids.begin(), option.device_mesh_ids.end(), 0);
   option.device_mesh_alpha = {1.0, 1.0};
   option.device_mesh_beta = {0.01, 1.0};
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          AutoSharding(option, &alias_info_).Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       AutoSharding(option, &alias_info_).Run(module.get()));
   EXPECT_TRUE(changed);
   VLOG(1) << module->ToString();
   HloInstruction* reshape = FindInstruction(module.get(), "reshape");
@@ -2838,8 +2832,8 @@ ENTRY %entry {
   ROOT copy = copy(custom-call.5828)
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(kHloString));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHloString));
   AutoShardingOption option;
   option.enable = true;
   option.preserve_shardings =
@@ -2847,8 +2841,8 @@ ENTRY %entry {
   option.device_mesh_shape = {8, 4, 8};
   option.device_mesh_alpha = {1.0, 1.0, 1.0};
   option.device_mesh_beta = {1.0, 1.0, 1.0};
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          AutoSharding(option, &alias_info_).Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       AutoSharding(option, &alias_info_).Run(module.get()));
   EXPECT_TRUE(changed);
   VLOG(1) << module->ToString();
   const HloInstruction* sharding_call_copy =
@@ -2867,14 +2861,14 @@ ENTRY %entry {
   %param.0 = s32[32]{0} parameter(0)
   ROOT broadcast = s32[512,1024,1024,32]{3,2,1,0} broadcast(s32[32]{0} %param.0), dimensions={3}
 })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(kHloString));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHloString));
   AutoShardingOption option;
   option.enable = true;
   option.device_mesh_shape = {1, 1, 64};
   option.memory_budget_per_device = 1025 * 1024 * 1024;  // 1025MB
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          AutoSharding(option, &alias_info_).Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       AutoSharding(option, &alias_info_).Run(module.get()));
   VLOG(1) << module->ToString();
   EXPECT_TRUE(changed);
 }
@@ -2889,8 +2883,8 @@ ENTRY %entry {
   %dot = f32[256,256] dot(%param0, %param1), lhs_contracting_dims={1}, rhs_contracting_dims={1}
   ROOT %result = f32[256,256] tanh(%dot), sharding={devices=[1,4]0,1,2,3}
 })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(kHloString));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHloString));
   AutoShardingOption option;
   option.enable = true;
   option.device_mesh_shape = {2, 2};
@@ -2899,7 +2893,7 @@ ENTRY %entry {
   option.preserve_shardings =
       AutoShardingOption::PreserveShardingsType::kKeepAllShardings;
   AutoSharding pass(option, &alias_info_);
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, pass.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, pass.Run(module.get()));
   EXPECT_TRUE(changed);
   LOG(INFO) << module->ToString();
   EXPECT_GT(pass.GetSolverOptimalObjectiveValue(), 0);
@@ -2918,8 +2912,8 @@ ENTRY %entry {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(kHloString));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHloString));
   AutoShardingOption option;
   option.enable = true;
   option.device_mesh_shape = {2, 2};
@@ -2927,8 +2921,8 @@ ENTRY %entry {
   option.device_mesh_alpha = {1.0, 1.0};
   option.device_mesh_beta = {0.01, 1.0};
   option.allow_alias_to_follower_conversion = true;
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          AutoSharding(option, &alias_info_).Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       AutoSharding(option, &alias_info_).Run(module.get()));
   VLOG(0) << module->ToString();
   EXPECT_TRUE(changed);
 }
@@ -2946,8 +2940,8 @@ ENTRY %entry {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(kHloString));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHloString));
   AutoShardingOption option;
   option.enable = true;
   option.device_mesh_shape = {2, 2};
@@ -2955,8 +2949,8 @@ ENTRY %entry {
   option.device_mesh_alpha = {1.0, 1.0};
   option.device_mesh_beta = {0.01, 1.0};
   option.allow_alias_to_follower_conversion = false;
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          AutoSharding(option, &alias_info_).Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       AutoSharding(option, &alias_info_).Run(module.get()));
   VLOG(0) << module->ToString();
   EXPECT_TRUE(changed);
 }
@@ -2972,8 +2966,8 @@ ENTRY entry {
   ROOT %out = (f32[], f32[]) tuple(%p0, %p1)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(kHloString));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHloString));
   AutoShardingOption option;
   option.enable = true;
   option.device_mesh_shape = {2, 2};
@@ -2981,8 +2975,8 @@ ENTRY entry {
   // auto-sharding
   const HloBufferDonorConfig buffer_donor_config_before =
       module->buffer_donor_config();
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          AutoSharding(option, &alias_info_).Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       AutoSharding(option, &alias_info_).Run(module.get()));
   EXPECT_TRUE(changed);
   const HloBufferDonorConfig& buffer_donor_config_after =
       module->buffer_donor_config();
@@ -3001,8 +2995,8 @@ ENTRY entry {
   ROOT %out = (f32[], f32[]) tuple(%p0, %p1)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(kHloString));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHloString));
   AutoShardingOption option;
   option.enable = true;
   option.device_mesh_shape = {2, 2};
@@ -3010,8 +3004,8 @@ ENTRY entry {
   // auto-sharding
   const HloInputOutputAliasConfig input_output_alias_config_before =
       module->input_output_alias_config();
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          AutoSharding(option, &alias_info_).Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       AutoSharding(option, &alias_info_).Run(module.get()));
   EXPECT_TRUE(changed);
   const HloInputOutputAliasConfig& input_output_alias_config_after =
       module->input_output_alias_config();
@@ -3038,8 +3032,7 @@ ENTRY %entry {
   ROOT %conditional = f32[16,16]{1,0} conditional(s32[] %entry_param1, f32[256,256]{1,0} %entry_param0, f32[256,256]{1,0} %entry_param0), branch_computations={%branch0, %branch1}
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kHloString));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloString));
   AutoShardingOption option;
   option.preserve_shardings =
       AutoShardingOption::PreserveShardingsType::kKeepAllShardings;
@@ -3047,8 +3040,8 @@ ENTRY %entry {
   option.device_mesh_shape = {32, 1};
   option.device_mesh_alpha = {1.0, 1.0};
   option.device_mesh_beta = {0.01, 1.0};
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          AutoSharding(option, &alias_info_).Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       AutoSharding(option, &alias_info_).Run(module.get()));
   ASSERT_TRUE(changed);
   VLOG(5) << module->ToString();
 
@@ -3086,8 +3079,7 @@ ENTRY matmul {
   ROOT root = f32[32,128]{1,0} dot(custom-call1, custom-call2), lhs_contracting_dims={1}, rhs_contracting_dims={0}
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kHloString));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloString));
   AutoShardingOption option;
   option.preserve_shardings =
       AutoShardingOption::PreserveShardingsType::kKeepAllShardings;
@@ -3113,8 +3105,7 @@ ENTRY matmul {
   ROOT root = f32[32,128]{1,0} dot(custom-call1, custom-call2), lhs_contracting_dims={1}, rhs_contracting_dims={0}
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kHloString));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloString));
   AutoShardingOption option;
   option.preserve_shardings =
       AutoShardingOption::PreserveShardingsType::kRemoveAllShardings;
@@ -3122,8 +3113,8 @@ ENTRY matmul {
   option.device_mesh_shape = {4, 1};
   option.device_mesh_alpha = {1.0, 1.0};
   option.device_mesh_beta = {0.01, 1.0};
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          AutoSharding(option, &alias_info_).Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       AutoSharding(option, &alias_info_).Run(module.get()));
   EXPECT_TRUE(changed);
 }
 
@@ -3149,10 +3140,10 @@ ENTRY %entry {
   option.device_mesh_shape = {8, 16};
   option.num_dcn_slices = 8;
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(kHloString));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          AutoSharding(option, &alias_info_).Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHloString));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       AutoSharding(option, &alias_info_).Run(module.get()));
   VLOG(5) << module->ToString();
   EXPECT_TRUE(changed);
   const HloInstruction* slice = FindInstruction(module.get(), "reduce");
@@ -3183,10 +3174,10 @@ ENTRY %entry {
   option.device_mesh_shape = {8, 16};
   option.num_dcn_slices = 4;
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(kHloString));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          AutoSharding(option, &alias_info_).Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHloString));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       AutoSharding(option, &alias_info_).Run(module.get()));
   VLOG(5) << module->ToString();
   EXPECT_TRUE(changed);
   const HloInstruction* slice = FindInstruction(module.get(), "reduce");
@@ -3211,8 +3202,8 @@ ENTRY %Scatter {
   ROOT scatter = s32[4,128]{1,0} scatter(call, clamp, broadcast), update_window_dims={1}, inserted_window_dims={0}, scatter_dims_to_operand_dims={0,1}, index_vector_dim=1, indices_are_sorted=true, unique_indices=true, to_apply=region
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(kHloString));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHloString));
   AutoShardingOption option;
   option.enable = true;
   option.device_mesh_shape = {2, 2};
@@ -3224,8 +3215,8 @@ ENTRY %Scatter {
   option.memory_budget_per_device = 0;
   option.memory_budget_ratio = -1.1;  // Disables the soft memory constraint.
 
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          AutoSharding(option, &alias_info_).Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       AutoSharding(option, &alias_info_).Run(module.get()));
   VLOG(10) << module->ToString();
   EXPECT_TRUE(changed);
   const HloInstruction* scatter = FindInstruction(module.get(), "scatter");

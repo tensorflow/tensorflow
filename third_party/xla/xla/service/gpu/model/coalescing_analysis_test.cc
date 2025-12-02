@@ -42,7 +42,6 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -636,7 +635,7 @@ class CoalescingForTiledHloTest : public CoalescingTest {
 };
 
 TEST_F(CoalescingForTiledHloTest, TiledReadCoalescedHeuristic_Transpose) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
 HloModule m
 
 ENTRY main {
@@ -657,7 +656,7 @@ ENTRY main {
 
 TEST_F(CoalescingForTiledHloTest,
        TiledReadCoalescedHeuristic_MaskingIsHandledCorrectly) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
 HloModule m
 
 ENTRY main {
@@ -685,7 +684,7 @@ ENTRY main {
 }
 
 TEST_F(CoalescingForTiledHloTest, RhsTransposedLayout) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
 HloModule m
 
 ENTRY main {
@@ -711,7 +710,7 @@ ENTRY main {
 }
 
 TEST_F(CoalescingForTiledHloTest, SmallDataTypes) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
 HloModule m
 
 ENTRY main {
@@ -741,7 +740,7 @@ ENTRY main {
 TEST_F(
     CoalescingForTiledHloTest,
     EffectiveBandwidthUtilizationRateIsComputedCorrectlyForTiledMemoryAccess) {  // NOLINT(whitespace/line_length)
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
 HloModule m
 
 ENTRY main {

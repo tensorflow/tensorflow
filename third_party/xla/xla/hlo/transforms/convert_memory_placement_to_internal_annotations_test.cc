@@ -18,13 +18,13 @@
 #include <cstdint>
 #include <memory>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/service/memory_annotations.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
@@ -239,8 +239,7 @@ ENTRY main.183 {
   get-tuple-element.182 = f32[16,16]{1,0} get-tuple-element(while.176), index=5
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
   bool changed =
       ConvertMemoryPlacementToInternalAnnotations().Run(module.get()).value();
@@ -463,8 +462,7 @@ ENTRY main.183 {
   get-tuple-element.182 = f32[16,16]{1,0} get-tuple-element(while.176), index=5
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
   bool changed =
       ConvertMemoryPlacementToInternalAnnotations().Run(module.get()).value();
@@ -494,8 +492,8 @@ TEST_F(ConvertMemoryPlacementToInternalAnnotationsTest,
     crs = f32[2,2] add(x, y)
     ROOT transfer = f32[2,2] custom-call(crs), custom_call_target="annotate_device_placement", frontend_attributes={_xla_buffer_placement="pinned_host"}
   })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
   bool changed =
       ConvertMemoryPlacementToInternalAnnotations().Run(module.get()).value();
   EXPECT_TRUE(changed);
@@ -524,8 +522,8 @@ TEST_F(ConvertMemoryPlacementToInternalAnnotationsTest,
     custom-call.6 = s32[8,2]{1,0} custom-call(custom-call.5), custom_call_target="annotate_device_placement", custom_call_has_side_effect=true, frontend_attributes={_xla_buffer_placement="vmem"}, metadata={op_name="jit(f)/jit(main)/device_put" source_file="third_party/py/jax/tests/memories_test.py" source_line=708}
     ROOT multiply.7 = s32[8,2]{1,0} multiply(custom-call.6, broadcast.3), metadata={op_name="jit(f)/jit(main)/mul" source_file="third_party/py/jax/tests/memories_test.py" source_line=709}
   } // main.8 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
   bool changed =
       ConvertMemoryPlacementToInternalAnnotations().Run(module.get()).value();
   EXPECT_TRUE(changed);
@@ -554,8 +552,8 @@ TEST_F(ConvertMemoryPlacementToInternalAnnotationsTest,
     custom-call.6 = s32[8,2]{1,0} custom-call(custom-call.5), custom_call_target="annotate_device_placement", custom_call_has_side_effect=true, frontend_attributes={_xla_buffer_placement="pinned_device"}, metadata={op_name="jit(f)/jit(main)/device_put" source_file="third_party/py/jax/tests/memories_test.py" source_line=708}
     ROOT multiply.7 = s32[8,2]{1,0} multiply(custom-call.6, broadcast.3), metadata={op_name="jit(f)/jit(main)/mul" source_file="third_party/py/jax/tests/memories_test.py" source_line=709}
   } // main.8 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
   bool changed =
       ConvertMemoryPlacementToInternalAnnotations().Run(module.get()).value();
   EXPECT_TRUE(changed);

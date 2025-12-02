@@ -27,15 +27,19 @@ limitations under the License.
 #include "absl/strings/str_replace.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/pass/hlo_pass_pipeline.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
+#include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/hlo/transforms/despecializer.h"
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/service/collective_ops_utils.h"
+#include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_verifier.h"
 #include "xla/service/spmd/spmd_partitioner.h"
 #include "xla/shape.h"
 #include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/util.h"
 
 namespace xla {
 namespace {
@@ -92,8 +96,7 @@ TEST_F(HloControlFlowFlatteningTest, WhileRoot) {
     ROOT while = (s32[], s32[3]{0}) while(tuple.1), condition=While.condition, body=While.body
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   HloControlFlowFlattening flattening(
       HloControlFlowFlattening::Options{/*while_execution_count=*/3});
   EXPECT_TRUE(flattening.Run(module.get()).value());
@@ -152,8 +155,7 @@ TEST_F(HloControlFlowFlatteningTest, WhileConditionCallComputation) {
     ROOT while = (s32[], s32[3]{0}) while(tuple.1), condition=While.condition, body=While.body
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   HloControlFlowFlattening flattening(
       HloControlFlowFlattening::Options{/*while_execution_count=*/3});
   EXPECT_TRUE(flattening.Run(module.get()).value());
@@ -207,8 +209,7 @@ TEST_F(HloControlFlowFlatteningTest, WhileRootScheduled) {
     ROOT while = (s32[], s32[3]{0}) while(tuple.1), condition=While.condition, body=While.body
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   HloControlFlowFlattening flattening(
       HloControlFlowFlattening::Options{/*while_execution_count=*/3});
   EXPECT_TRUE(flattening.Run(module.get()).value());
@@ -263,8 +264,7 @@ TEST_F(HloControlFlowFlatteningTest, WhileUser) {
     ROOT fusion = s32[3]{0} fusion(while), kind=kLoop, calls=FusedComputation
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   HloControlFlowFlattening flattening(
       HloControlFlowFlattening::Options{/*while_execution_count=*/3});
   EXPECT_TRUE(flattening.Run(module.get()).value());
@@ -287,8 +287,7 @@ TEST_F(HloControlFlowFlatteningTest, Infeed) {
     ROOT infeed.23 = ((bf16[3]{0}, s32[12,5]{0,1}), token[]) infeed(after-all)
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   HloControlFlowFlattening flattening(
       HloControlFlowFlattening::Options{/*while_execution_count=*/3});
   EXPECT_TRUE(flattening.Run(module.get()).value());
@@ -311,8 +310,7 @@ TEST_F(HloControlFlowFlatteningTest, InfeedPreserveLayout) {
     ROOT infeed = ((bf16[3]{0}, s32[12,5]{0,1:T(8,128)}), token[]) infeed(after-all)
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   Shape root_shape = module->entry_computation()->root_instruction()->shape();
   HloControlFlowFlattening flattening(
       HloControlFlowFlattening::Options{/*while_execution_count=*/3});
@@ -335,8 +333,7 @@ TEST_F(HloControlFlowFlatteningTest, OutfeedCustomCallIsPartitionable) {
     ROOT outfeed.23 = token[] outfeed(param, after-all)
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   HloControlFlowFlattening flattening(HloControlFlowFlattening::Options{
       /*while_execution_count=*/3, /*max_outer_loop_count=*/3,
       /*max_loop_count=*/3, /*remove_infeed_outfeed=*/true});
@@ -344,8 +341,8 @@ TEST_F(HloControlFlowFlatteningTest, OutfeedCustomCallIsPartitionable) {
   auto custom_call = module->entry_computation()->root_instruction();
   EXPECT_EQ(custom_call->name(), "outfeed.23");
   EXPECT_TRUE(custom_call->has_sharding());
-  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module,
-                          PartitionComputation(std::move(module)));
+  ASSERT_OK_AND_ASSIGN(auto hlo_module,
+                       PartitionComputation(std::move(module)));
 }
 
 TEST_F(HloControlFlowFlatteningTest, Outfeed) {
@@ -357,8 +354,7 @@ TEST_F(HloControlFlowFlatteningTest, Outfeed) {
     ROOT outfeed.23 = token[] outfeed(param, after-all)
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   HloControlFlowFlattening flattening(
       HloControlFlowFlattening::Options{/*while_execution_count=*/3});
   EXPECT_TRUE(flattening.Run(module.get()).value());
@@ -392,8 +388,7 @@ TEST_F(HloControlFlowFlatteningTest, PredicatedConditional) {
     constant.2 = f32[] constant(12)
     ROOT conditional = f32[] conditional(constant, constant.1, constant.2), true_computation=Negate, false_computation=Identity
   })";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   HloControlFlowFlattening flattening(HloControlFlowFlattening::Options{
       /*while_execution_count=*/3, /*max_outer_loop_count=*/3,
       /*max_loop_count=*/3, /*remove_infeed_outfeed=*/true,
@@ -443,8 +438,7 @@ TEST_F(HloControlFlowFlatteningTest, IndexedConditional) {
   }
 
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   HloControlFlowFlattening flattening(HloControlFlowFlattening::Options{
       /*while_execution_count=*/3, /*max_outer_loop_count=*/3,
       /*max_loop_count=*/3, /*remove_infeed_outfeed=*/true,
@@ -481,8 +475,7 @@ TEST_F(HloControlFlowFlatteningTest, AllReduce) {
     ROOT all-reduce = (bf16[3]{0}, bf16[12,5]{0,1}) all-reduce(param0, param1), to_apply=sum, replica_groups={}
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   HloControlFlowFlattening flattening(
       HloControlFlowFlattening::Options{/*while_execution_count=*/3});
   EXPECT_TRUE(flattening.Run(module.get()).value());
@@ -512,8 +505,7 @@ TEST_F(HloControlFlowFlatteningTest, AllReduceStartAndDone) {
     ROOT done = f32[8]{0} all-reduce-done(crs)
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   HloControlFlowFlattening flattening(
       HloControlFlowFlattening::Options{/*while_execution_count=*/3});
   EXPECT_TRUE(flattening.Run(module.get()).value());
@@ -537,8 +529,7 @@ TEST_F(HloControlFlowFlatteningTest, AllGather) {
     ROOT ag = f32[128,128]{0,1} all-gather(input), replica_groups={}, dimensions={1}
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   HloControlFlowFlattening flattening(
       HloControlFlowFlattening::Options{/*while_execution_count=*/3});
   EXPECT_TRUE(flattening.Run(module.get()).value());
@@ -560,8 +551,7 @@ TEST_F(HloControlFlowFlatteningTest, AllToAll) {
     ROOT a2a = (f32[128,32]{0,1}) all-to-all(input), replica_groups={}
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   HloControlFlowFlattening flattening(
       HloControlFlowFlattening::Options{/*while_execution_count=*/3});
   EXPECT_TRUE(flattening.Run(module.get()).value());
@@ -583,8 +573,7 @@ TEST_F(HloControlFlowFlatteningTest, CollectivePermute) {
     ROOT collective-permute = f32[128,32]{0,1} collective-permute(input), source_target_pairs={{0,1},{1,2},{2,3}}
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   HloControlFlowFlattening flattening(
       HloControlFlowFlattening::Options{/*while_execution_count=*/3});
   EXPECT_TRUE(flattening.Run(module.get()).value());
@@ -606,8 +595,8 @@ TEST_F(HloControlFlowFlatteningTest, ReplicaIdSucceedsWithChange) {
     ROOT replica-id.18600 = u32[]{:T(128)} replica-id()
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
   HloControlFlowFlattening flattening(HloControlFlowFlattening::Options{});
   EXPECT_TRUE(flattening.Run(module.get()).value());
   TF_ASSERT_OK(HloVerifier(/*layout_sensitive=*/true,
@@ -633,8 +622,8 @@ TEST_F(HloControlFlowFlatteningTest, RemoveReplicaIdButKeepAllReduce) {
     ROOT all-reduce.1 = u32[]{:T(128)} all-reduce(replica-id.1), to_apply=sum, replica_groups={}
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(kHloText));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHloText));
   HloControlFlowFlattening flattening(HloControlFlowFlattening::Options{
       /*while_execution_count=*/1, /*max_outer_loop_count=*/1,
       /*max_loop_count=*/1, /*remove_infeed_outfeed=*/false,
@@ -665,8 +654,7 @@ TEST_F(HloControlFlowFlatteningTest, CollectivePermuteInPlaceUpdate) {
     ROOT collective-permute = f32[128,128]{0,1} collective-permute(input, output, tuple.1, tuple.2), source_target_pairs={{0,1},{1,2},{2,3}}, slice_sizes={{128,32}}
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   HloControlFlowFlattening flattening(
       HloControlFlowFlattening::Options{/*while_execution_count=*/3});
   EXPECT_TRUE(flattening.Run(module.get()).value());
@@ -692,8 +680,7 @@ TEST_F(HloControlFlowFlatteningTest, CollectivePermuteStartAndDone) {
     ROOT collective-permute-done.1 = f32[128,32]{0,1} collective-permute-done(collective-permute-start.1)
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   HloControlFlowFlattening flattening(
       HloControlFlowFlattening::Options{/*while_execution_count=*/3});
   EXPECT_TRUE(flattening.Run(module.get()).value());
@@ -722,8 +709,7 @@ TEST_F(HloControlFlowFlatteningTest, Recv) {
     %send-done = token[] send-done((f32[], u32[], token[]) %send), channel_id=16
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   ControlDepRemover control_remover;
   HloControlFlowFlattening flattening(
       HloControlFlowFlattening::Options{/*while_execution_count=*/3});
@@ -754,8 +740,7 @@ TEST_F(HloControlFlowFlatteningTest, RecvHostTransfer) {
     %send-done = token[] send-done((f32[], u32[], token[]) %send), channel_id=16
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   ControlDepRemover control_remover;
   HloControlFlowFlattening flattening(HloControlFlowFlattening::Options{
       /*while_execution_count=*/3, /*max_outer_loop_count=*/3,
@@ -789,8 +774,7 @@ TEST_F(HloControlFlowFlatteningTest, Send) {
     ROOT %send-done = token[] send-done((f32[], u32[], token[]) %send), channel_id=16
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   ControlDepRemover control_remover;
   HloControlFlowFlattening flattening(
       HloControlFlowFlattening::Options{/*while_execution_count=*/3});
@@ -821,8 +805,7 @@ TEST_F(HloControlFlowFlatteningTest, SendHostTransfer) {
     ROOT %send-done = token[] send-done((f32[], u32[], token[]) %send), channel_id=16, is_host_transfer=true
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   ControlDepRemover control_remover;
   HloControlFlowFlattening flattening(HloControlFlowFlattening::Options{
       /*while_execution_count=*/3, /*max_outer_loop_count=*/3,
@@ -857,8 +840,7 @@ TEST_F(HloControlFlowFlatteningTest, AllGatherStartAndDone) {
       metadata={op_type="AllGather" op_name="ag0"}
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   HloControlFlowFlattening flattening(
       HloControlFlowFlattening::Options{/*while_execution_count=*/3});
   EXPECT_TRUE(flattening.Run(module.get()).value());
@@ -912,8 +894,7 @@ ENTRY main {
   auto hlo_string = absl::StrReplaceAll(
       hlo_template, {{"full_size", absl::StrCat(12288)},
                      {"unpadded_size", absl::StrCat(12285)}});
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   EXPECT_TRUE(IsCollective(module->entry_computation()->root_instruction()));
 
   HloControlFlowFlattening flattening({});
@@ -936,7 +917,7 @@ TEST_F(HloControlFlowFlatteningTest, AsyncAllToAll) {
   ROOT all-to-all-done = f32[4,8,128]{2,1,0} all-to-all-done(all-to-all-start)
   }
     )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
   EXPECT_TRUE(IsCollective(module->entry_computation()->root_instruction()));
   HloControlFlowFlattening flattening({});
   EXPECT_TRUE(flattening.Run(module.get()).value());
@@ -1018,8 +999,7 @@ TEST_F(HloControlFlowFlatteningTest, MaxOuterLoopCount) {
   }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   constexpr int kWhileExecutionCount = 5;
   constexpr int kExistingInnerLoopCount = 100;
   constexpr int kMaxLoopCount = 10;
@@ -1072,8 +1052,7 @@ TEST_F(HloControlFlowFlatteningTest, MatchLtUseInferedLoopCount) {
     ROOT while = (s32[], s32[3]{0}) while(tuple.1), condition=While.condition, body=While.body
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
   EXPECT_EQ(GetLoopBound(*module->entry_computation()->root_instruction(), 123,
                          kDefaultMaxLoopCount),
@@ -1105,8 +1084,7 @@ TEST_F(HloControlFlowFlatteningTest, MatchGtUseInferedLoopCount) {
     ROOT while = (s32[], s32[3]{0}) while(tuple.1), condition=While.condition, body=While.body
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
   EXPECT_EQ(GetLoopBound(*module->entry_computation()->root_instruction(), 123,
                          kDefaultMaxLoopCount),
@@ -1138,8 +1116,7 @@ TEST_F(HloControlFlowFlatteningTest, NotMatchEqUseDefaultLoopCount) {
     ROOT while = (s32[], s32[3]{0}) while(tuple.1), condition=While.condition, body=While.body
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
   EXPECT_EQ(GetLoopBound(*module->entry_computation()->root_instruction(), 123,
                          kDefaultMaxLoopCount),
@@ -1155,8 +1132,8 @@ ENTRY main {
   ROOT tuple.0 = tuple(arg.0)
 }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
 
   HloControlFlowFlattening::Options options;
   options.remove_dynamic_shapes = true;

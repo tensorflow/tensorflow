@@ -25,7 +25,6 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/service/buffer_assignment.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
 
 namespace xla::gpu {
@@ -56,7 +55,7 @@ TEST(CuDnnThunkTest, TestSerializationDeserialization) {
   BufferAllocation alloc0(/*index=*/0, /*size=*/2048, /*color=*/0);
   std::array buffer_allocations = {alloc0};
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<CuDnnThunk> thunk,
       CuDnnThunk::FromProto(thunk_info, cudnn_thunk_proto, buffer_allocations));
 

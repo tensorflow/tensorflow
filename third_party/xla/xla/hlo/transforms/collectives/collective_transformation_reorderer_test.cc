@@ -29,7 +29,6 @@ limitations under the License.
 #include "xla/service/hlo_verifier.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -56,10 +55,10 @@ TEST_F(CollectiveTransformationReordererTest,
     ROOT reshape = bf16[8,32,8,128] reshape(all-gather)
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          RunCollectiveTransformationReorderer(module.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       RunCollectiveTransformationReorderer(module.get()));
   EXPECT_TRUE(changed);
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               op::AllGather(op::Reshape(op::Parameter())));
@@ -77,10 +76,10 @@ TEST_F(CollectiveTransformationReordererTest,
     ROOT reshape = bf16[2048,32,1024] reshape(all-gather)
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          RunCollectiveTransformationReorderer(module.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       RunCollectiveTransformationReorderer(module.get()));
   EXPECT_TRUE(changed);
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               op::AllGather(op::Reshape(op::Parameter())));
@@ -98,10 +97,10 @@ TEST_F(CollectiveTransformationReordererTest,
     ROOT reshape = bf16[2048,32,8,128] reshape(all-gather)
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          RunCollectiveTransformationReorderer(module.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       RunCollectiveTransformationReorderer(module.get()));
   EXPECT_TRUE(changed);
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               op::AllGather(op::Reshape(op::Parameter())));
@@ -118,10 +117,10 @@ TEST_F(CollectiveTransformationReordererTest, ReshapeAcrossShards) {
     ROOT reshape = bf16[64,8,128] reshape(all-gather)
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          RunCollectiveTransformationReorderer(module.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       RunCollectiveTransformationReorderer(module.get()));
   EXPECT_FALSE(changed);
 }
 
@@ -134,10 +133,10 @@ TEST_F(CollectiveTransformationReordererTest, MergeAllGatherDimensionWithNext) {
     ROOT reshape = bf16[512,16,16] reshape(all-gather)
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          RunCollectiveTransformationReorderer(module.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       RunCollectiveTransformationReorderer(module.get()));
   EXPECT_FALSE(changed);
 }
 
@@ -151,10 +150,10 @@ TEST_F(CollectiveTransformationReordererTest,
     ROOT reshape = bf16[512,16,16] reshape(all-gather)
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          RunCollectiveTransformationReorderer(module.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       RunCollectiveTransformationReorderer(module.get()));
   EXPECT_FALSE(changed);
 }
 
@@ -176,10 +175,10 @@ TEST_F(CollectiveTransformationReordererTest, AllReduceSingleReshape) {
     ROOT dynamic-slice = bf16[1,16384,384] dynamic-slice(all-reduce, constant, constant, constant), dynamic_slice_sizes={1,16384,384}
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          RunCollectiveTransformationReorderer(module.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       RunCollectiveTransformationReorderer(module.get()));
   EXPECT_TRUE(changed);
   TF_ASSERT_OK(HloVerifier(/*layout_sensitive=*/false,
                            /*allow_mixed_precision=*/true)
@@ -209,10 +208,10 @@ TEST_F(CollectiveTransformationReordererTest, AllReduceTwoReshapes) {
     ROOT dynamic-slice = bf16[1,16384,384] dynamic-slice(all-reduce, constant, constant, constant), dynamic_slice_sizes={1,16384,384}
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          RunCollectiveTransformationReorderer(module.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       RunCollectiveTransformationReorderer(module.get()));
   EXPECT_TRUE(changed);
   TF_ASSERT_OK(HloVerifier(/*layout_sensitive=*/false,
                            /*allow_mixed_precision=*/true)
@@ -244,10 +243,10 @@ TEST_F(CollectiveTransformationReordererTest, AllReduceReshapeWithTwoUsers) {
     ROOT tuple = (bf16[1,16384,6144], bf16[1,16384,384]) tuple(copy, dynamic-slice)
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          RunCollectiveTransformationReorderer(module.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       RunCollectiveTransformationReorderer(module.get()));
   EXPECT_FALSE(changed);
 }
 
@@ -271,10 +270,10 @@ TEST_F(CollectiveTransformationReordererTest, AllReduceWithTwoUsersReshape) {
     ROOT tuple = (bf16[1,16384,6144], bf16[1,16384,384]) tuple(copy, dynamic-slice)
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          RunCollectiveTransformationReorderer(module.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       RunCollectiveTransformationReorderer(module.get()));
   EXPECT_FALSE(changed);
 }
 
@@ -296,10 +295,10 @@ TEST_F(CollectiveTransformationReordererTest, AllReduceConstrainLayout) {
     ROOT dynamic-slice = bf16[1,16384,384] dynamic-slice(all-reduce, constant, constant, constant), dynamic_slice_sizes={1,16384,384}
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          RunCollectiveTransformationReorderer(module.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       RunCollectiveTransformationReorderer(module.get()));
   EXPECT_FALSE(changed);
 }
 
@@ -322,8 +321,8 @@ TEST_F(CollectiveTransformationReordererTest,
     ROOT dynamic-slice = bf16[1,16384,384] dynamic-slice(all-reduce, constant, constant, constant), dynamic_slice_sizes={1,16384,384}
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kHloString));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloString));
 
   // Set a front-end attribute on the all-reduce.
   FrontendAttributes frontend_attributes;
@@ -333,8 +332,8 @@ TEST_F(CollectiveTransformationReordererTest,
   all_reduce->set_frontend_attributes(frontend_attributes);
 
   // Run the transformation.
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          RunCollectiveTransformationReorderer(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       RunCollectiveTransformationReorderer(module.get()));
 
   // Check the results.
   EXPECT_TRUE(changed);
@@ -365,8 +364,8 @@ TEST_F(CollectiveTransformationReordererTest,
     ROOT reshape = bf16[2048,32,1024] reshape(all-gather)
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
 
   // Set a front-end attribute on the all-gather.
   FrontendAttributes frontend_attributes;
@@ -376,8 +375,8 @@ TEST_F(CollectiveTransformationReordererTest,
   all_gather->set_frontend_attributes(frontend_attributes);
 
   // Run the transformation.
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          RunCollectiveTransformationReorderer(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       RunCollectiveTransformationReorderer(module.get()));
   EXPECT_TRUE(changed);
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               op::AllGather(op::Reshape(op::Parameter())));

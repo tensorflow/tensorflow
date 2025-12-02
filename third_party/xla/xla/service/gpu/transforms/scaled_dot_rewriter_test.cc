@@ -27,7 +27,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/tests/hlo_test_base.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -68,11 +67,10 @@ TEST_P(ScaledDotRewriterTestFixture, ScaledDot) {
       )",
       absl::AsciiStrToLower(PrimitiveType_Name(test_case.operand_type)),
       absl::AsciiStrToLower(PrimitiveType_Name(test_case.scale_type)));
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnUnverifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo_string));
 
   ScaledDotRewriter rewriter;
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, rewriter.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, rewriter.Run(module.get()));
   EXPECT_TRUE(changed);
 
   // Verify that the module is still valid after the rewrite.

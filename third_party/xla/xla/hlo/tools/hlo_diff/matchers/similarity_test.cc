@@ -24,7 +24,6 @@ limitations under the License.
 #include "xla/hlo/tools/hlo_diff/graph/hlo_gumgraph.h"
 #include "xla/hlo/tools/hlo_diff/graph/hlo_gumgraph_node.h"
 #include "xla/hlo/tools/hlo_diff/utils/test_util.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace hlo_diff {
@@ -41,8 +40,8 @@ TEST_F(HloSimilarityTest, AncestorSubGraphLcsSimilarity) {
   //                       | add_1 | ---> ┌-------┐      ┌------┐
   // [Constant bar_L] ---> └-------┘      | add_0 | ---> | ROOT |
   // [Param baz_L] ---------------------> └-------┘      └------┘
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> module_l,
-                          ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> module_l,
+                       ParseAndReturnVerifiedModule(R"(
   HloModule module, is_scheduled=true
 
   ENTRY entry {
@@ -53,8 +52,8 @@ TEST_F(HloSimilarityTest, AncestorSubGraphLcsSimilarity) {
     add_0 = f32[8,2048]{1,0:T(8,128)} add(add_1, baz_L)
   }
   )"));
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> graph_l,
-                          HloGumgraph::Create(module_l.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> graph_l,
+                       HloGumgraph::Create(module_l.get()));
 
   // Create right module with entry computation containing the following
   // structure:
@@ -62,8 +61,8 @@ TEST_F(HloSimilarityTest, AncestorSubGraphLcsSimilarity) {
   //                       | add_1 | ---> ┌------------┐      ┌------┐
   // [Constant bar_R] ---> └-------┘      | subtract_0 | ---> | ROOT |
   // [Param baz_R] ---------------------> └------------┘      └------┘
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> module_r,
-                          ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> module_r,
+                       ParseAndReturnVerifiedModule(R"(
   HloModule module, is_scheduled=true
 
   ENTRY entry {
@@ -74,8 +73,8 @@ TEST_F(HloSimilarityTest, AncestorSubGraphLcsSimilarity) {
     subtract_0 = f32[8,2048]{1,0:T(8,128)} subtract(add_1, baz_R)
   }
   )"));
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> graph_r,
-                          HloGumgraph::Create(module_r.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> graph_r,
+                       HloGumgraph::Create(module_r.get()));
   const HloInstructionNode* left_p1 = GetNodeByName(*graph_l, "foo_L");
   const HloInstructionNode* right_p1 = GetNodeByName(*graph_r, "foo_R");
   const HloInstructionNode* right_p2 = GetNodeByName(*graph_r, "baz_R");
@@ -97,8 +96,8 @@ TEST_F(HloSimilarityTest, NodePropertySimilarity) {
   //                       | add_1 | ---> ┌-------┐      ┌------┐
   // [Constant bar_L] ---> └-------┘      | add_0 | ---> | ROOT |
   // [Param baz_L] ---------------------> └-------┘      └------┘
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> module_l,
-                          ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> module_l,
+                       ParseAndReturnVerifiedModule(R"(
   HloModule module, is_scheduled=true
 
   ENTRY entry {
@@ -109,8 +108,8 @@ TEST_F(HloSimilarityTest, NodePropertySimilarity) {
     add_0 = f32[8,2048]{1,0:T(8,128)} add(add_1, baz_L)
   }
   )"));
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> graph_l,
-                          HloGumgraph::Create(module_l.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> graph_l,
+                       HloGumgraph::Create(module_l.get()));
 
   // Create right module with entry computation containing the following
   // structure:
@@ -118,8 +117,8 @@ TEST_F(HloSimilarityTest, NodePropertySimilarity) {
   //                       | add_1 | ---> ┌------------┐      ┌------┐
   // [Constant bar_R] ---> └-------┘      | subtract_0 | ---> | ROOT |
   // [Param baz_R] ---------------------> └------------┘      └------┘
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> module_r,
-                          ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> module_r,
+                       ParseAndReturnVerifiedModule(R"(
   HloModule module, is_scheduled=true
 
   ENTRY entry {
@@ -130,8 +129,8 @@ TEST_F(HloSimilarityTest, NodePropertySimilarity) {
     subtract_0 = f32[8,2048]{1,0:T(8,128)} subtract(add_1, baz_R)
   }
   )"));
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> graph_r,
-                          HloGumgraph::Create(module_r.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> graph_r,
+                       HloGumgraph::Create(module_r.get()));
   EXPECT_GT(NodePropertySimilarity(GetNodeByName(*graph_l, "foo_L"),
                                    GetNodeByName(*graph_r, "foo_R")),
             NodePropertySimilarity(GetNodeByName(*graph_l, "add_1"),
@@ -145,8 +144,8 @@ TEST_F(HloSimilarityTest, ParamPropertySimilarity) {
   //                       | add_1 | ---> ┌-------┐      ┌------┐
   // [Constant bar_L] ---> └-------┘      | add_0 | ---> | ROOT |
   // [Param baz_L] ---------------------> └-------┘      └------┘
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> module_l,
-                          ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> module_l,
+                       ParseAndReturnVerifiedModule(R"(
   HloModule module, is_scheduled=true
   
   ENTRY entry {
@@ -157,8 +156,8 @@ TEST_F(HloSimilarityTest, ParamPropertySimilarity) {
     add_0 = f32[8,2048]{1,0:T(8,128)} add(add_1, baz_L)
   }
   )"));
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> graph_l,
-                          HloGumgraph::Create(module_l.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> graph_l,
+                       HloGumgraph::Create(module_l.get()));
 
   // Create right module with entry computation containing the following
   // structure:
@@ -166,8 +165,8 @@ TEST_F(HloSimilarityTest, ParamPropertySimilarity) {
   //                       | add_1 | ---> ┌-------┐      ┌------┐
   // [Constant bar_R] ---> └-------┘      | add_0 | ---> | ROOT |
   // [Param baz_R] ---------------------> └-------┘      └------┘
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> module_r,
-                          ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> module_r,
+                       ParseAndReturnVerifiedModule(R"(
   HloModule module, is_scheduled=true
 
   ENTRY entry {
@@ -178,8 +177,8 @@ TEST_F(HloSimilarityTest, ParamPropertySimilarity) {
     subtract_0 = f32[8,2048]{1,0:T(8,128)} add(add_1, baz_R)
   }
   )"));
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> graph_r,
-                          HloGumgraph::Create(module_r.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> graph_r,
+                       HloGumgraph::Create(module_r.get()));
   const HloInstructionNode* left_p1 = GetNodeByName(*graph_l, "foo_L");
   const HloInstructionNode* left_p2 = GetNodeByName(*graph_l, "baz_L");
   const HloInstructionNode* right_p1 = GetNodeByName(*graph_r, "foo_R");
@@ -205,8 +204,8 @@ TEST_F(HloSimilarityTest, ConstantPropertySimilarity) {
   //                                                   |       |
   // [Const 4] --------------------------------------> └-------┘
   //
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> module_l,
-                          ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> module_l,
+                       ParseAndReturnVerifiedModule(R"(
   HloModule module, is_scheduled=true
 
   ENTRY entry {
@@ -221,8 +220,8 @@ TEST_F(HloSimilarityTest, ConstantPropertySimilarity) {
     add.4 = f32[] add(add.3, constant.4)
   }
   )"));
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> graph_l,
-                          HloGumgraph::Create(module_l.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> graph_l,
+                       HloGumgraph::Create(module_l.get()));
 
   // Create right module with entry computation containing the following
   // structure:
@@ -236,8 +235,8 @@ TEST_F(HloSimilarityTest, ConstantPropertySimilarity) {
   //                                              |       |
   // [Const 4] ---------------------------------> └-------┘
   //
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> module_r,
-                          ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> module_r,
+                       ParseAndReturnVerifiedModule(R"(
   HloModule module, is_scheduled=true
 
   ENTRY entry {
@@ -252,8 +251,8 @@ TEST_F(HloSimilarityTest, ConstantPropertySimilarity) {
     add.4 = f32[] add(add.3, constant.4)
   }
   )"));
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> graph_r,
-                          HloGumgraph::Create(module_r.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> graph_r,
+                       HloGumgraph::Create(module_r.get()));
   const HloInstructionNode* left_c1 = GetNodeByName(*graph_l, "constant.1");
   const HloInstructionNode* left_c2 = GetNodeByName(*graph_l, "constant.2");
   const HloInstructionNode* right_c1 = GetNodeByName(*graph_r, "constant.1");

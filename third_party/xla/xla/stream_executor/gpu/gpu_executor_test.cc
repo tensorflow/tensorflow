@@ -16,6 +16,7 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/statusor.h"
 #include "absl/strings/ascii.h"
@@ -41,9 +42,9 @@ using GetPointerMemorySpaceTest = GpuExecutorTest;
 
 TEST_F(GetPointerMemorySpaceTest, Host) {
   StreamExecutor* executor = GetPlatform()->ExecutorForDevice(0).value();
-  TF_ASSERT_OK_AND_ASSIGN(auto host_ptr, executor->HostMemoryAllocate(64));
-  TF_ASSERT_OK_AND_ASSIGN(auto memory_space,
-                          executor->GetPointerMemorySpace(host_ptr->opaque()));
+  ASSERT_OK_AND_ASSIGN(auto host_ptr, executor->HostMemoryAllocate(64));
+  ASSERT_OK_AND_ASSIGN(auto memory_space,
+                       executor->GetPointerMemorySpace(host_ptr->opaque()));
   EXPECT_EQ(memory_space, MemorySpace::kHost);
 }
 
@@ -52,8 +53,8 @@ TEST_F(GetPointerMemorySpaceTest, HostAllocatedWithMemoryKind) {
   DeviceAddressBase host_ptr = executor->Allocate(
       64, static_cast<int64_t>(stream_executor::MemorySpace::kHost));
   EXPECT_FALSE(host_ptr.is_null());
-  TF_ASSERT_OK_AND_ASSIGN(MemorySpace memory_space,
-                          executor->GetPointerMemorySpace(host_ptr.opaque()));
+  ASSERT_OK_AND_ASSIGN(MemorySpace memory_space,
+                       executor->GetPointerMemorySpace(host_ptr.opaque()));
   EXPECT_EQ(memory_space, MemorySpace::kHost);
   executor->Deallocate(&host_ptr);
 }
@@ -62,8 +63,8 @@ TEST_F(GetPointerMemorySpaceTest, Device) {
   StreamExecutor* executor = GetPlatform()->ExecutorForDevice(0).value();
   auto mem = executor->Allocate(64);
   ASSERT_NE(mem, nullptr);
-  TF_ASSERT_OK_AND_ASSIGN(auto memory_space,
-                          executor->GetPointerMemorySpace(mem.opaque()));
+  ASSERT_OK_AND_ASSIGN(auto memory_space,
+                       executor->GetPointerMemorySpace(mem.opaque()));
   EXPECT_EQ(memory_space, MemorySpace::kDevice);
   executor->Deallocate(&mem);
 }
@@ -75,12 +76,12 @@ TEST_F(HostMemoryAllocateTest, Numa) {
   constexpr uint64_t kSize = 1024;
   const int num_devices = platform->VisibleDeviceCount();
   for (int device = 0; device < num_devices; ++device) {
-    TF_ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,
-                            platform->ExecutorForDevice(device));
+    ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,
+                         platform->ExecutorForDevice(device));
     ASSERT_TRUE(executor);
     const DeviceDescription& device_desc = executor->GetDeviceDescription();
-    TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<MemoryAllocation> host_ptr,
-                            executor->HostMemoryAllocate(kSize));
+    ASSERT_OK_AND_ASSIGN(std::unique_ptr<MemoryAllocation> host_ptr,
+                         executor->HostMemoryAllocate(kSize));
     ASSERT_TRUE(host_ptr);
     EXPECT_NE(host_ptr->opaque(), nullptr);
     const int numa_node = tsl::port::NUMAGetMemAffinity(host_ptr->opaque());
@@ -100,8 +101,8 @@ TEST_F(HostMemoryAllocateTest, TooBig) {
   constexpr uint64_t kTooBig = 1125899906842624;  // 1 PiB
   const int num_devices = platform->VisibleDeviceCount();
   for (int device = 0; device < num_devices; ++device) {
-    TF_ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,
-                            platform->ExecutorForDevice(device));
+    ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,
+                         platform->ExecutorForDevice(device));
     ASSERT_TRUE(executor);
     auto should_fail = executor->HostMemoryAllocate(kTooBig);
     EXPECT_FALSE(should_fail.ok());

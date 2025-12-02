@@ -27,7 +27,6 @@ limitations under the License.
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace xla::gpu {
 namespace {
@@ -46,11 +45,11 @@ TEST_F(GpuMemorySpaceAssignmentTest, TestDefaultColorAssignment) {
   HloModuleConfig config;
   auto colorer = CreateColorer(DebugOptions());
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kHloModule, config));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(kHloModule, config));
   AliasInfo alias_info;
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
-                          HloAliasAnalysis::Run(module.get(), &alias_info));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
+                       HloAliasAnalysis::Run(module.get(), &alias_info));
   DependencyHloOrdering ordering(module.get());
   TF_EXPECT_OK(colorer(alias_analysis.get(), ordering));
 
@@ -101,11 +100,11 @@ TEST_P(GpuCollectiveMemorySpaceAssignmentTest,
       UseNcclSymmetricBuffers());
   auto colorer = CreateColorer(debug_options);
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kHloModule, config));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(kHloModule, config));
   AliasInfo alias_info;
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
-                          HloAliasAnalysis::Run(module.get(), &alias_info));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
+                       HloAliasAnalysis::Run(module.get(), &alias_info));
   DependencyHloOrdering ordering(module.get());
   TF_EXPECT_OK(colorer(alias_analysis.get(), ordering));
 
@@ -193,11 +192,11 @@ TEST_P(GpuMosaicMemorySpaceAssignmentTest, TestMosaicMemorySpaceAssignment) {
   debug_options.set_xla_gpu_experimental_enable_nvshmem(UseNvshmem());
   auto colorer = CreateColorer(debug_options);
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kHloModule, config));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(kHloModule, config));
   AliasInfo alias_info;
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
-                          HloAliasAnalysis::Run(module.get(), &alias_info));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
+                       HloAliasAnalysis::Run(module.get(), &alias_info));
   DependencyHloOrdering ordering(module.get());
   TF_EXPECT_OK(colorer(alias_analysis.get(), ordering));
 
@@ -257,11 +256,11 @@ TEST_F(GpuMemorySpaceAssignmentTest, TestNvshmemMemorySpaceAssignment) {
   debug_options.set_xla_gpu_experimental_enable_nvshmem(true);
   auto colorer = CreateColorer(debug_options);
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kHloModule, config));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(kHloModule, config));
   AliasInfo alias_info;
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
-                          HloAliasAnalysis::Run(module.get(), &alias_info));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
+                       HloAliasAnalysis::Run(module.get(), &alias_info));
   DependencyHloOrdering ordering(module.get());
   TF_EXPECT_OK(colorer(alias_analysis.get(), ordering));
 

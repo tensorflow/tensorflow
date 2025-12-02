@@ -13,13 +13,22 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <complex>
 #include <cstdint>
+#include <functional>
 #include <memory>
+#include <optional>
+#include <string>
+#include <tuple>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
 #include "xla/tests/xla_test_backend_predicates.h"
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
 #include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
@@ -27,12 +36,17 @@ limitations under the License.
 #include "Eigen/Core"
 #include "xla/array2d.h"
 #include "xla/array3d.h"
+#include "xla/array4d.h"
 #include "xla/client/client_library.h"
+#include "xla/client/executable_build_options.h"
 #include "xla/error_spec.h"
-#include "xla/hlo/builder/lib/arithmetic.h"
+#include "xla/executable_run_options.h"
 #include "xla/hlo/builder/lib/matrix.h"
 #include "xla/hlo/builder/xla_builder.h"
+#include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/parser/hlo_parser.h"
+#include "xla/hlo/testlib/test_helpers.h"
+#include "xla/layout.h"
 #include "xla/layout_util.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
@@ -40,14 +54,17 @@ limitations under the License.
 #include "xla/reference_util.h"
 #include "xla/service/hlo_runner_interface.h"
 #include "xla/service/platform_util.h"
+#include "xla/service/shaped_buffer.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream_executor_memory_allocator.h"
 #include "xla/tests/client_library_test_runner_mixin.h"
 #include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
 #include "xla/tests/hlo_pjrt_test_base.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/tsl/platform/test_benchmark.h"
+#include "xla/types.h"
 #include "tsl/platform/ml_dtypes.h"
 
 #if TENSORFLOW_USE_ROCM
@@ -64,19 +81,12 @@ class DotOperationTest
   ErrorSpec error_spec_{0.0001, 1e-5};
 };
 
-using TypesF16F32 = ::testing::Types<
-    Eigen::half,
-    float>;
+using TypesF16F32 = ::testing::Types<Eigen::half, float>;
 
-using TypesF16F32F64 = ::testing::Types<
-    Eigen::half,
-    double,
-    float>;
+using TypesF16F32F64 = ::testing::Types<Eigen::half, double, float>;
 
-using TypesF16F32F64CF64 = ::testing::Types<
-    Eigen::half,
-    double, complex64,
-    float>;
+using TypesF16F32F64CF64 =
+    ::testing::Types<Eigen::half, double, complex64, float>;
 
 #if GOOGLE_CUDA
 using TypesF8 = ::testing::Types<tsl::float8_e4m3fn>;
@@ -2037,8 +2047,8 @@ TEST_F(DotOperationTextTest, FPDotTestNoGEMMRewriter) {
   auto debug_options = GetDebugOptionsForTest();
   debug_options.add_xla_disable_hlo_passes("cublas-gemm-rewriter");
   mod_config.set_debug_options(debug_options);
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kHloString, mod_config));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(kHloString, mod_config));
   EXPECT_TRUE(RunAndCompare(std::move(module), ErrorSpec{4e-3, 4e-3}));
 }
 
@@ -2056,8 +2066,8 @@ ENTRY MatrixVectorComplex {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module,
-                          ParseAndReturnUnverifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto hlo_module,
+                       ParseAndReturnUnverifiedModule(hlo_string));
   EXPECT_TRUE(RunAndCompare(std::move(hlo_module), ErrorSpec{4e-3, 4e-3}));
 }
 
@@ -2121,8 +2131,8 @@ ENTRY jaxpr_computation__5.33 {
   get-tuple-element.31 = f32[] get-tuple-element(call.30), index=0
   ROOT get-tuple-element.32 = f32[2]{0} get-tuple-element(call.30), index=1
 })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(module_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(module_string));
   EXPECT_TRUE(RunAndCompare(std::move(module), /*error=*/std::nullopt));
 }
 
@@ -2305,13 +2315,12 @@ void DOT_ReorderContracting(::testing::benchmark::State& state) {
   ScopedShapedBuffer buffer0 =
       client->LiteralToShapedBuffer(input_literal, device_ordinal).value();
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto executables, client->Compile(computation, {&buffer0.on_host_shape()},
-                                        ExecutableBuildOptions()));
+  ASSERT_OK_AND_ASSIGN(auto executables,
+                       client->Compile(computation, {&buffer0.on_host_shape()},
+                                       ExecutableBuildOptions()));
   auto executable = std::move(executables[0]);
 
-  TF_ASSERT_OK_AND_ASSIGN(auto stream,
-                          executors[device_ordinal]->CreateStream());
+  ASSERT_OK_AND_ASSIGN(auto stream, executors[device_ordinal]->CreateStream());
 
   ExecutableRunOptions options;
   options.set_allocator(&allocator);

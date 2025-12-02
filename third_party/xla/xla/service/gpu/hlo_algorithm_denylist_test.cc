@@ -33,7 +33,6 @@ limitations under the License.
 #include "xla/stream_executor/dnn.h"
 #include "xla/tests/test_utils.h"
 #include "xla/tsl/platform/env.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "tsl/platform/path.h"
 
@@ -73,8 +72,8 @@ class DenylistTest : public HloHardwareIndependentTestBase {
 };
 
 TEST_F(DenylistTest, DefaultTest) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(R"hlo(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(R"hlo(
       HloModule module
       ENTRY main {
           arg1 = f16[256,224,224,4]{3,2,1,0} parameter(0)
@@ -112,8 +111,8 @@ TEST_F(DenylistTest, DefaultTest) {
 }
 
 TEST_F(DenylistTest, NoBlasVersionSet) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(R"hlo(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(R"hlo(
       HloModule module
       ENTRY main {
           arg1 = f16[256,224,224,4]{3,2,1,0} parameter(0)
@@ -142,8 +141,8 @@ TEST_F(DenylistTest, NoBlasVersionSet) {
 }
 
 TEST_F(DenylistTest, EntryFromHardcodedList) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(R"hlo(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(R"hlo(
       HloModule module
       ENTRY main {
          arg1 = f32[512,512,7,7]{3,2,1,0} parameter(0)
@@ -172,8 +171,8 @@ TEST_F(DenylistTest, EntryFromHardcodedList) {
 }
 
 TEST_F(DenylistTest, GenerateDenyListEntry) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(R"hlo(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(R"hlo(
       HloModule module
       ENTRY main {
          arg1 = f32[512,512,7,7]{3,2,1,0} parameter(0)
@@ -195,7 +194,7 @@ TEST_F(DenylistTest, GenerateDenyListEntry) {
   cudnn_version.set_patch(0);
   absl::string_view blas_version = "9000";
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::string denylist,
       GenerateDenyListEntry(
           static_cast<const HloCustomCallInstruction&>(

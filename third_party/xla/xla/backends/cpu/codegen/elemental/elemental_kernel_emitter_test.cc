@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
@@ -36,7 +37,6 @@ limitations under the License.
 #include "xla/service/cpu/cpu_executable.h"
 #include "xla/service/cpu/target_machine_features_stub.h"
 #include "xla/service/logical_buffer.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla::cpu {
@@ -80,9 +80,9 @@ TEST_F(ElementalKernelEmitterTest, EmitElementalKernel) {
       ROOT convert = s32[2,2] convert(p0)
     })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto hlo, ParseAndReturnUnverifiedModule(hlo_text));
-  TF_ASSERT_OK_AND_ASSIGN(auto buffer_assignment, RunBufferAssignment(*hlo));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(auto hlo, ParseAndReturnUnverifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(auto buffer_assignment, RunBufferAssignment(*hlo));
+  ASSERT_OK_AND_ASSIGN(
       KernelDefinition kernel_definition,
       EmitKernelDefinition(hlo->entry_computation()->root_instruction(),
                            buffer_assignment.get()));
@@ -106,9 +106,9 @@ TEST_F(ElementalKernelEmitterTest, EmitParallelKernel) {
         backend_config={"outer_dimension_partitions":["1","2","1","4"]}
     })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto hlo, ParseAndReturnUnverifiedModule(hlo_text));
-  TF_ASSERT_OK_AND_ASSIGN(auto buffer_assignment, RunBufferAssignment(*hlo));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(auto hlo, ParseAndReturnUnverifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(auto buffer_assignment, RunBufferAssignment(*hlo));
+  ASSERT_OK_AND_ASSIGN(
       KernelDefinition kernel_definition,
       EmitKernelDefinition(hlo->entry_computation()->root_instruction(),
                            buffer_assignment.get()));
@@ -139,8 +139,8 @@ TEST_F(ElementalKernelEmitterTest, EmitFastIntrinsic) {
       ROOT log = f32[1024] log(p0)
     })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto hlo, ParseAndReturnUnverifiedModule(hlo_text));
-  TF_ASSERT_OK_AND_ASSIGN(auto buffer_assignment, RunBufferAssignment(*hlo));
+  ASSERT_OK_AND_ASSIGN(auto hlo, ParseAndReturnUnverifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(auto buffer_assignment, RunBufferAssignment(*hlo));
 
   // Configure math options.
   hlo->mutable_config().mutable_debug_options().set_xla_cpu_enable_fast_math(
@@ -158,7 +158,7 @@ TEST_F(ElementalKernelEmitterTest, EmitFastIntrinsic) {
       .mutable_debug_options()
       .set_xla_cpu_fast_math_honor_functions(false);
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       KernelDefinition kernel_definition,
       EmitKernelDefinition(hlo->entry_computation()->root_instruction(),
                            buffer_assignment.get()));

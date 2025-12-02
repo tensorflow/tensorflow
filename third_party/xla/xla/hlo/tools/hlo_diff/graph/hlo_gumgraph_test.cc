@@ -26,7 +26,6 @@
 #include "xla/hlo/tools/hlo_diff/graph/hlo_gumgraph_node.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_value.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace hlo_diff {
@@ -75,8 +74,8 @@ TEST_F(HloGumgraphTest, CreateSimpleHloModuleWithoutFusionInstructionWorks) {
   // [Constant bar] ---> └-------┘      | add_0 | ---> | ROOT |
   // [Param baz] ---------------------> └-------┘      └------┘
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
 HloModule module, is_scheduled=true
 
 ENTRY entry {
@@ -88,8 +87,8 @@ ENTRY entry {
 }
 )"));
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> graph,
-                          HloGumgraph::Create(module.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> graph,
+                       HloGumgraph::Create(module.get()));
 
   const auto* entry = graph->GetRoot().children[0];
   ASSERT_NO_FATAL_FAILURE(AssertNode(entry, "add_0", 2, 1));
@@ -112,8 +111,8 @@ TEST_F(HloGumgraphTest, CreateHloModuleWithFusionInstructionWorks) {
   // [Param p0] ---> [Param p2] ---> ┌-------┐      ┌----------┐      ┌------┐
   //                                 | add.1 | ---> | fusion.1 | ---> | ROOT |
   // [Param p1] ---> [Param p3] ---> └-------┘      └----------┘      └------┘
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
 HloModule module, is_scheduled=true
 
 fused_computation.1 {
@@ -129,8 +128,8 @@ ENTRY entry {
 }
 )"));
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> graph,
-                          HloGumgraph::Create(module.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> graph,
+                       HloGumgraph::Create(module.get()));
 
   const auto* entry = graph->GetRoot().children[0];
   ASSERT_NO_FATAL_FAILURE(AssertNode(entry, "fusion.1", 1, 1));
@@ -156,8 +155,8 @@ TEST_F(HloGumgraphTest, CreateHloModuleWithConditionalInstructionWorks) {
   //                                            |             |      ┌------┐
   // [constant.1] ---> [x] ---> [negate] -----> | conditional | ---> | ROOT |
   // [constant] ------------------------------> └-------------┘      └------┘
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
 HloModule module, is_scheduled=true
 
 Negate {
@@ -178,8 +177,8 @@ ENTRY entry {
 }
 )"));
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> graph,
-                          HloGumgraph::Create(module.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> graph,
+                       HloGumgraph::Create(module.get()));
 
   const auto* entry = graph->GetRoot().children[0];
   ASSERT_NO_FATAL_FAILURE(AssertNode(entry, "conditional", 3, 1));
@@ -214,8 +213,8 @@ TEST_F(HloGumgraphTest, PreComputationsWorksWithoutShapeInFingerprint) {
   // ┌------------┐ ---> └-------┘ ---> ┌-------┐      ┌------┐
   // |Constant bar|                     | add_0 | ---> | ROOT |
   // └------------┘ ------------------> └-------┘      └------┘
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
 HloModule module, is_scheduled=true
 
 ENTRY entry {
@@ -225,7 +224,7 @@ ENTRY entry {
   add_0 = f32[8,2048]{1,0:T(8,128)} add(add_1, bar)
 }
 )"));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<const HloGumgraph> graph,
       HloGumgraph::Create(module.get(), {.ignore_shape = true}));
 
@@ -269,8 +268,8 @@ TEST_F(HloGumgraphTest, PreComputationsWorksWithShapeInFingerprint) {
   // ┌------------┐ ---> └-------┘ ---> ┌-------┐      ┌------┐
   // |Constant bar|                     | add_0 | ---> | ROOT |
   // └------------┘ ------------------> └-------┘      └------┘
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
 HloModule module, is_scheduled=true
 
 ENTRY entry {
@@ -280,7 +279,7 @@ ENTRY entry {
   add_0 = f32[8,2048]{1,0:T(8,128)} add(add_1, bar)
 }
 )"));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<const HloGumgraph> graph,
       HloGumgraph::Create(module.get(), {.ignore_shape = false}));
 
@@ -333,7 +332,7 @@ TEST_F(HloGumgraphTest, PreComputationsWorksMultiRoot) {
   // ┌----------┐         |  send  | --------> | send-done |
   // | constant | ------> └--------┘           └-----------┘
   // └----------┘
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<xla::VerifiedHloModule> module,
       ParseAndReturnVerifiedModule(
           R"(HloModule TwoSendRecvBothWayRecvFist_module, entry_computation_layout={()->(f32[], token[])}
@@ -348,8 +347,8 @@ ENTRY %TwoSendRecvBothWayRecvFist.v3 () -> (f32[], token[]) {
 }
 
 )"));
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> graph,
-                          HloGumgraph::Create(module.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> graph,
+                       HloGumgraph::Create(module.get()));
 
   EXPECT_EQ(SelectNodeByName(*graph, "recv")->props.generation, 2);
   EXPECT_EQ(SelectNodeByName(*graph, "recv-done")->props.generation, 1);
@@ -370,8 +369,8 @@ TEST_F(HloGumgraphTest, PreComputationsWorksSubgraphFingerprint) {
   //                | add_1 |
   // [Const 3] ---> └-------┘
   //
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> module_l,
-                          ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> module_l,
+                       ParseAndReturnVerifiedModule(R"(
 HloModule module, is_scheduled=true
 
 ENTRY entry {
@@ -384,8 +383,8 @@ ENTRY entry {
   add.3 = f32[] add(add.0, add.1)
 }
 )"));
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> graph_l,
-                          HloGumgraph::Create(module_l.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> graph_l,
+                       HloGumgraph::Create(module_l.get()));
 
   // Create right module with entry computation containing the following
   // structure:
@@ -397,8 +396,8 @@ ENTRY entry {
   //                | add_1 |
   // [Const 3] ---> └-------┘
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> module_r,
-                          ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> module_r,
+                       ParseAndReturnVerifiedModule(R"(
 HloModule module, is_scheduled=true
 
 ENTRY entry {
@@ -410,8 +409,8 @@ ENTRY entry {
   add.3 = f32[] add(add.0, add.1)
 }
 )"));
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> graph_r,
-                          HloGumgraph::Create(module_r.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> graph_r,
+                       HloGumgraph::Create(module_r.get()));
 
   // TODO(b/365855856): The subgraph fingerprint should not be the same.
   // EXPECT_NE(graph_l->GetRoot().props.subgraph_fingerprint,
@@ -421,8 +420,8 @@ ENTRY entry {
 }
 
 TEST_F(HloGumgraphTest, PrecomputeInstructionDependenciesWorks) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
 HloModule module, is_scheduled=true
 
 ENTRY entry {
@@ -433,8 +432,8 @@ ENTRY entry {
   add_0 = f32[8,2048]{1,0:T(8,128)} add(add_1, baz)
 }
 )"));
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> graph,
-                          HloGumgraph::Create(module.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> graph,
+                       HloGumgraph::Create(module.get()));
 
   const auto* foo_node = SelectNodeByName(*graph, "foo");
   const auto* bar_node = SelectNodeByName(*graph, "bar");
@@ -501,10 +500,10 @@ TEST_F(HloGumgraphTest, CalledComputationWithMultipleCallsitesAreNotInlined) {
       ROOT call.2 = s32[] call(parameter.4, parameter.5, call.1), to_apply=_where_26.3690
     }
     )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> graph,
-                          HloGumgraph::Create(module.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> graph,
+                       HloGumgraph::Create(module.get()));
   EXPECT_EQ(SelectNodeByName(*graph, "parameter.1")->parents.size(), 1);
   EXPECT_EQ(SelectNodeByName(*graph, "parameter.4")->parents.size(), 1);
   EXPECT_EQ(
@@ -550,15 +549,15 @@ ENTRY entry {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto first_module,
-                          ParseAndReturnVerifiedModule(hlo_string));
-  TF_ASSERT_OK_AND_ASSIGN(auto second_module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto first_module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto second_module,
+                       ParseAndReturnVerifiedModule(hlo_string));
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> first_graph,
-                          HloGumgraph::Create(first_module.get()));
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> second_graph,
-                          HloGumgraph::Create(second_module.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> first_graph,
+                       HloGumgraph::Create(first_module.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> second_graph,
+                       HloGumgraph::Create(second_module.get()));
 
   EXPECT_TRUE(FingerprintEqualTo(*first_graph, *second_graph));
 }
@@ -569,7 +568,7 @@ TEST_F(HloGumgraphTest, CheckEqualityForDifferentGraphs) {
   //                     | Add_1 | ---> ┌-------┐      ┌------┐
   // [Constant bar] ---> └-------┘      | add_0 | ---> | ROOT |
   // [Param baz] ---------------------> └-------┘      └------┘
-  TF_ASSERT_OK_AND_ASSIGN(auto first_module, ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(auto first_module, ParseAndReturnVerifiedModule(R"(
 HloModule module, is_scheduled=true
 
 ENTRY entry {
@@ -585,7 +584,7 @@ ENTRY entry {
   //                     | Add_1 | ---> ┌------------┐      ┌------┐
   // [Constant bar] ---> └-------┘      | subtract_0 | ---> | ROOT |
   // [Param baz] ---------------------> └------------┘      └------┘
-  TF_ASSERT_OK_AND_ASSIGN(auto second_module, ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(auto second_module, ParseAndReturnVerifiedModule(R"(
 HloModule module, is_scheduled=true
 
 ENTRY entry {
@@ -597,10 +596,10 @@ ENTRY entry {
 }
 )"));
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> first_graph,
-                          HloGumgraph::Create(first_module.get()));
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> second_graph,
-                          HloGumgraph::Create(second_module.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> first_graph,
+                       HloGumgraph::Create(first_module.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> second_graph,
+                       HloGumgraph::Create(second_module.get()));
 
   EXPECT_FALSE(FingerprintEqualTo(*first_graph, *second_graph));
 }

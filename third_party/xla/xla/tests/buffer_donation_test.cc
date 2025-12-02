@@ -19,6 +19,7 @@ limitations under the License.
 #include <vector>
 
 #include "xla/tests/xla_test_backend_predicates.h"
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/log/check.h"
 #include "absl/log/log.h"
@@ -53,7 +54,6 @@ limitations under the License.
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -92,17 +92,17 @@ class BufferDonationTest : public HloTestBase {
     // into the compiler and may be deallocated.
     const Shape output_shape = hlo_module->result_shape();
 
-    TF_ASSERT_OK_AND_ASSIGN(hlo_module, backend_->compiler()->RunHloPasses(
-                                            std::move(hlo_module), executor_,
-                                            /*device_allocator=*/nullptr));
+    ASSERT_OK_AND_ASSIGN(hlo_module, backend_->compiler()->RunHloPasses(
+                                         std::move(hlo_module), executor_,
+                                         /*device_allocator=*/nullptr));
     HloInputOutputAliasConfig alias_config =
         hlo_module->input_output_alias_config();
-    TF_ASSERT_OK_AND_ASSIGN(
+    ASSERT_OK_AND_ASSIGN(
         std::unique_ptr<Executable> executable,
         backend_->compiler()->RunBackend(std::move(hlo_module), executor_,
                                          /*device_allocator=*/nullptr));
 
-    TF_ASSERT_OK_AND_ASSIGN(auto stream, executor_->CreateStream());
+    ASSERT_OK_AND_ASSIGN(auto stream, executor_->CreateStream());
 
     auto& executors = backend_->stream_executors();
     se::StreamExecutorMemoryAllocator memory_allocator(platform_, executors);
@@ -122,7 +122,7 @@ class BufferDonationTest : public HloTestBase {
       const Literal& argument_literal = argument_literals[arg_num];
 
       // Allocate input buffers that will be reused as outputs.
-      TF_ASSERT_OK_AND_ASSIGN(
+      ASSERT_OK_AND_ASSIGN(
           ScopedShapedBuffer scoped_shaped_buffer,
           backend_->transfer_manager()->AllocateScopedShapedBuffer(
               argument_literal.shape(), &memory_allocator,
@@ -182,7 +182,7 @@ class BufferDonationTest : public HloTestBase {
     }
 
     TF_ASSERT_OK(run_options.stream()->BlockHostUntilDone());
-    TF_ASSERT_OK_AND_ASSIGN(
+    ASSERT_OK_AND_ASSIGN(
         Literal result_literal,
         backend_->transfer_manager()->TransferLiteralFromDevice(
             stream.get(), output.Result()));

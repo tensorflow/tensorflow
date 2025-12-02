@@ -17,7 +17,6 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
-#include "xla/tests/xla_test_backend_predicates.h"
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "xla/client/local_client.h"
@@ -32,7 +31,6 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/tests/client_library_test_base.h"
 #include "xla/tests/literal_test_util.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
 #include "xla/xla_data.pb.h"
 
@@ -49,22 +47,22 @@ TEST_F(ClientTest, ExecuteWithLayout) {
     for (const std::vector<int64_t>& transfer_layout : layouts) {
       Add(ConstantR2<int32_t>(&b, {{1, 2}, {3, 4}}),
           ConstantR2<int32_t>(&b, {{10, 20}, {30, 40}}));
-      TF_ASSERT_OK_AND_ASSIGN(auto computation, b.Build());
+      ASSERT_OK_AND_ASSIGN(auto computation, b.Build());
 
       ExecutionOptions execution_options = execution_options_;
       *execution_options.mutable_shape_with_output_layout() =
           ShapeUtil::MakeShapeWithDenseLayout(S32, /*dimensions=*/{2, 2},
                                               execute_layout)
               .ToProto();
-      TF_ASSERT_OK_AND_ASSIGN(
+      ASSERT_OK_AND_ASSIGN(
           std::unique_ptr<GlobalData> data,
           client_->Execute(computation, {}, &execution_options));
 
       Literal expected_literal = LiteralUtil::CreateR2WithLayout<int32_t>(
           {{11, 22}, {33, 44}}, LayoutUtil::MakeLayout(transfer_layout));
 
-      TF_ASSERT_OK_AND_ASSIGN(
-          auto computed, client_->Transfer(*data, &expected_literal.shape()));
+      ASSERT_OK_AND_ASSIGN(auto computed,
+                           client_->Transfer(*data, &expected_literal.shape()));
 
       ASSERT_THAT(
           computed.shape().ToProto(),
@@ -80,7 +78,7 @@ TEST_F(ClientTest, ExecuteWithTupleLayout) {
   Tuple(&b, {ConstantR2<int32_t>(&b, {{1, 2}, {3, 4}}),
              ConstantR2<int32_t>(&b, {{10, 20}, {30, 40}})});
 
-  TF_ASSERT_OK_AND_ASSIGN(auto computation, b.Build());
+  ASSERT_OK_AND_ASSIGN(auto computation, b.Build());
 
   ExecutionOptions execution_options = execution_options_;
   // Create a result shape with one element column major and the other row
@@ -93,9 +91,8 @@ TEST_F(ClientTest, ExecuteWithTupleLayout) {
                                                /*minor_to_major=*/{1, 0})})
           .ToProto();
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto result,
-      client_->ExecuteAndTransfer(computation, {}, &execution_options));
+  ASSERT_OK_AND_ASSIGN(auto result, client_->ExecuteAndTransfer(
+                                        computation, {}, &execution_options));
   LiteralTestUtil::ExpectR2Equal<int32_t>({{1, 2}, {3, 4}},
                                           LiteralSlice(result, {0}));
   LiteralTestUtil::ExpectR2Equal<int32_t>({{10, 20}, {30, 40}},

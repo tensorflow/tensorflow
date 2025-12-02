@@ -17,6 +17,7 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
@@ -25,7 +26,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/hlo/ir/hlo_module_group.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
@@ -35,7 +35,6 @@ limitations under the License.
 #include "xla/service/pattern_matcher.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
@@ -125,11 +124,11 @@ TEST_F(HloPassFixTest, RunModuleToFixedPoint) {
     }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(kModule));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kModule));
 
   HloPassFix<DecrementPositiveConstants> pass;
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, pass.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, pass.Run(module.get()));
   EXPECT_TRUE(changed);
   HloInstruction* root = module->entry_computation()->root_instruction();
   ASSERT_EQ(root->opcode(), HloOpcode::kConstant);
@@ -145,11 +144,11 @@ TEST_F(HloPassFixTest, RunModuleToDefaultEarlyExit) {
     }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(kModule));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kModule));
 
   HloPassFix<DecrementPositiveConstants> pass;
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, pass.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, pass.Run(module.get()));
   // TODO(b/395958361): HloPassFix lies about whether it changed the module if
   // it terminates due to hitting the iteration limit.
   EXPECT_FALSE(changed);
@@ -167,12 +166,12 @@ TEST_F(HloPassFixTest, RunModuleToNonDefaultEarlyExit) {
     }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(kModule));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kModule));
 
   auto pass = HloPassFix<DecrementPositiveConstants>::Create(
       /*iteration_limit=*/10);
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, pass->Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, pass->Run(module.get()));
   // TODO(b/395958361): HloPassFix lies about whether it changed the module if
   // it terminates due to hitting the iteration limit.
   EXPECT_FALSE(changed);

@@ -17,15 +17,15 @@ limitations under the License.
 
 #include <string>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/container/flat_hash_map.h"
 #include "xla/pjrt/pjrt_common.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 
 TEST(XlaCpuPjrtClientTest, GetXlaPjrtTpuClientWithDefaultOptions) {
-  TF_ASSERT_OK_AND_ASSIGN(auto client, GetXlaPjrtTpuClient());
+  ASSERT_OK_AND_ASSIGN(auto client, GetXlaPjrtTpuClient());
   EXPECT_EQ(client->platform_name(), "tpu");
 }
 
@@ -33,7 +33,7 @@ TEST(XlaCpuPjrtClientTest, GetXlaPjrtTpuClientWithInvalidOptions) {
   absl::flat_hash_map<std::string, PjRtValueType> create_options;
   create_options.insert({"invalid_option", true});
 
-  TF_ASSERT_OK_AND_ASSIGN(auto client, GetXlaPjrtTpuClient());
+  ASSERT_OK_AND_ASSIGN(auto client, GetXlaPjrtTpuClient());
   EXPECT_EQ(client->platform_name(), "tpu");
 }
 

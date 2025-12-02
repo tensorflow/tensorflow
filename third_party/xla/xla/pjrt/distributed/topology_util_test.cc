@@ -28,7 +28,6 @@ limitations under the License.
 #include "xla/pjrt/distributed/protocol.pb.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/env.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/threadpool.h"
 
 namespace xla {
@@ -45,7 +44,7 @@ TEST(TopologyTest, BuildGlobalTopology) {
   DeviceProto* d3 = locals[1].add_devices();
   d3->set_local_device_ordinal(1);
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       GlobalTopologyProto global,
       BuildGlobalTopology(absl::Span<LocalTopologyProto>(locals),
                           /*assign_global_device_ids=*/true));
@@ -69,7 +68,7 @@ TEST(TopologyTest, BuildGlobalTopologyWithFabricUuid) {
   d3->set_local_device_ordinal(1);
   d3->set_fabric_uuid("00000000-0000-0000-0000-000000000001/0");
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       GlobalTopologyProto global,
       BuildGlobalTopology(absl::Span<LocalTopologyProto>(locals),
                           /*assign_global_device_ids=*/true));
@@ -109,7 +108,7 @@ TEST(TopologyTest, BuildGlobalTopologyMultipleFabricUuid) {
   d7->set_local_device_ordinal(1);
   d7->set_fabric_uuid("00000000-0000-0000-0000-000000000002/0");
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       GlobalTopologyProto global,
       BuildGlobalTopology(absl::Span<LocalTopologyProto>(locals),
                           /*assign_global_device_ids=*/true));
@@ -271,7 +270,7 @@ TEST(TopologyTest, BuildGlobalTopologyWithExplicitSliceIndices) {
   DeviceProto* d3 = locals[1].add_devices();
   d3->set_local_device_ordinal(1);
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       GlobalTopologyProto global,
       BuildGlobalTopology(absl::Span<LocalTopologyProto>(locals),
                           /*assign_global_device_ids=*/true));
@@ -308,12 +307,12 @@ TEST(TopologyTest, BuildGpuTopology) {
   d3->set_local_device_ordinal(1);
   d3->set_core_count(20);
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       GlobalTopologyProto global,
       BuildGlobalTopology(absl::Span<LocalTopologyProto>(locals),
                           /*assign_global_device_ids=*/true));
 
-  TF_ASSERT_OK_AND_ASSIGN(auto gpu_topology, BuildGpuTopology(global));
+  ASSERT_OK_AND_ASSIGN(auto gpu_topology, BuildGpuTopology(global));
   EXPECT_EQ(gpu_topology.num_partitions(), 2);
   EXPECT_EQ(gpu_topology.num_hosts_per_partition(), 1);
   EXPECT_EQ(gpu_topology.num_devices_per_host(), 2);
@@ -337,12 +336,12 @@ TEST(TopologyTest, BuildGpuTopologyWithDifferentNumHostsPerSlice) {
   DeviceProto* d2 = locals[2].add_devices();
   d2->set_local_device_ordinal(0);
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       GlobalTopologyProto global,
       BuildGlobalTopology(absl::Span<LocalTopologyProto>(locals),
                           /*assign_global_device_ids=*/true));
 
-  TF_ASSERT_OK_AND_ASSIGN(auto gpu_topology, BuildGpuTopology(global));
+  ASSERT_OK_AND_ASSIGN(auto gpu_topology, BuildGpuTopology(global));
   EXPECT_EQ(gpu_topology.num_partitions(), -1);
   EXPECT_EQ(gpu_topology.num_hosts_per_partition(), -1);
   EXPECT_EQ(gpu_topology.num_devices_per_host(), -1);
@@ -364,12 +363,12 @@ TEST(TopologyTest, BuildGpuTopologyWithDifferentNumDevicesPerHost) {
   DeviceProto* d2 = locals[1].add_devices();
   d2->set_local_device_ordinal(0);
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       GlobalTopologyProto global,
       BuildGlobalTopology(absl::Span<LocalTopologyProto>(locals),
                           /*assign_global_device_ids=*/true));
 
-  TF_ASSERT_OK_AND_ASSIGN(auto gpu_topology, BuildGpuTopology(global));
+  ASSERT_OK_AND_ASSIGN(auto gpu_topology, BuildGpuTopology(global));
   EXPECT_EQ(gpu_topology.num_partitions(), -1);
   EXPECT_EQ(gpu_topology.num_hosts_per_partition(), -1);
   EXPECT_EQ(gpu_topology.num_devices_per_host(), -1);

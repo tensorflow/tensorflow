@@ -22,7 +22,6 @@ limitations under the License.
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/pattern_matcher_gmock.h"
 #include "xla/service/pattern_matcher.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla::gpu {
@@ -43,7 +42,7 @@ TEST_F(DotNormalizerTest, DotWithoutContractingDims) {
         lhs_batch_dims={0}, rhs_batch_dims={0}
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kHlo));
   EXPECT_THAT(DotNormalizer().Run(m.get()), absl_testing::IsOkAndHolds(true));
   EXPECT_THAT(
       m->entry_computation()->root_instruction(),
@@ -65,7 +64,7 @@ TEST_F(DotNormalizerTest, DotWithContractingDims) {
         rhs_batch_dims={0}, rhs_contracting_dims={2}
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kHlo));
   EXPECT_THAT(DotNormalizer().Run(m.get()), absl_testing::IsOkAndHolds(false));
 }
 

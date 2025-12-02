@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <utility>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
@@ -24,7 +25,6 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
 #include "xla/tests/hlo_pjrt_test_base.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 
 namespace xla {
@@ -48,8 +48,7 @@ TEST_F(StochasticConvertTest, CorrectComputation) {
 }
 
 TEST_F(StochasticConvertTest, ReturnsErrorWhenHloPassesDisabled) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kModuleStr));
 
   auto arg0_shape = ShapeUtil::MakeShape(F32, {65536});
   auto arg0 = MakeFakeLiteral(arg0_shape).value();

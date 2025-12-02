@@ -24,8 +24,6 @@ limitations under the License.
 #include "xla/service/gpu/model/hlo_op_profile.pb.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tests/hlo_test_base.h"
-#include "xla/tsl/platform/env.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
 #include "xla/xla_data.pb.h"
 
@@ -170,8 +168,8 @@ TEST_F(MatmulPerfTableGenTest, CompactsTable) {
       MatmulPerfTableGen::DataTypeSpec{"bf16", "f16", "f32"});
 
   MatmulPerfTableGen gen(cfg);
-  TF_ASSERT_OK_AND_ASSIGN(GemmPerfTable compact_table,
-                          MatmulPerfTableGen::Compact(gen.ComputeTable()));
+  ASSERT_OK_AND_ASSIGN(GemmPerfTable compact_table,
+                       MatmulPerfTableGen::Compact(gen.ComputeTable()));
 
   EXPECT_EQ(compact_table.entries_size(), 1);
   EXPECT_EQ(compact_table.entries().begin()->second.entries_size(), 1);
@@ -204,8 +202,8 @@ TEST_F(MatmulPerfTableGenTest, CompactTableInDeterministicOrder) {
       MatmulPerfTableGen::DataTypeSpec{"bf16", "bf16", "bf16"});
 
   MatmulPerfTableGen gen(cfg);
-  TF_ASSERT_OK_AND_ASSIGN(GemmPerfTable compact_table,
-                          MatmulPerfTableGen::Compact(gen.ComputeTable()));
+  ASSERT_OK_AND_ASSIGN(GemmPerfTable compact_table,
+                       MatmulPerfTableGen::Compact(gen.ComputeTable()));
 
   EXPECT_EQ(compact_table.entries_size(), 1);
   EXPECT_EQ(compact_table.entries().begin()->second.entries_size(), 8);

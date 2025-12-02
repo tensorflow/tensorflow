@@ -16,7 +16,9 @@ limitations under the License.
 #include "xla/service/hlo_graph_dumper.h"
 
 #include <string>
+#include <vector>
 
+#include <gmock/gmock.h>
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
@@ -26,8 +28,11 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/test.h"
+#include "xla/literal.h"
 #include "xla/literal_util.h"
-#include "xla/tsl/platform/statusor.h"
+#include "xla/service/hlo_module_config.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
 #include "xla/xla.pb.h"
 
 namespace xla {
@@ -84,10 +89,9 @@ TEST_F(HloGraphDumperTest, NestedFusion) {
           {fused_sums[1], fused_sums[0]}, HloInstruction::FusionKind::kLoop);
 
   // Generate the graph; all nodes should be present.
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::string graph,
-      RenderGraph(*root_computation, /*label=*/"", DebugOptions(),
-                  RenderedGraphFormat::kDot));
+  ASSERT_OK_AND_ASSIGN(std::string graph,
+                       RenderGraph(*root_computation, /*label=*/"",
+                                   DebugOptions(), RenderedGraphFormat::kDot));
   for (const HloComputation* computation :
        {root_computation,  //
         inner_fusion->fused_instructions_computation(),
@@ -109,9 +113,9 @@ TEST_F(HloGraphDumperTest, NestedFusion) {
     }
   }
   ASSERT_NE(inner_sum, nullptr);
-  TF_ASSERT_OK_AND_ASSIGN(std::string neighborhood_graph,
-                          RenderNeighborhoodAround(*inner_sum, /*radius=*/1,
-                                                   RenderedGraphFormat::kDot));
+  ASSERT_OK_AND_ASSIGN(std::string neighborhood_graph,
+                       RenderNeighborhoodAround(*inner_sum, /*radius=*/1,
+                                                RenderedGraphFormat::kDot));
   EXPECT_THAT(neighborhood_graph, HasSubstr(inner_sum->name()));
 }
 
@@ -123,7 +127,7 @@ TEST_F(HloGraphDumperTest, Constant) {
   HloModuleConfig config;
   HloModule m(TestName(), config);
   HloComputation* root_computation = m.AddEntryComputation(b.Build());
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::string graph,
       RenderGraph(*root_computation, /*label=*/"an_empty_graph", DebugOptions(),
                   RenderedGraphFormat::kDot));
@@ -142,7 +146,7 @@ TEST_F(HloGraphDumperTest, TupleConstant) {
   HloModuleConfig config;
   HloModule m(TestName(), config);
   HloComputation* root_computation = m.AddEntryComputation(b.Build(gte));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::string graph,
       RenderGraph(*root_computation, /*label=*/"tuple_constant", DebugOptions(),
                   RenderedGraphFormat::kDot));
@@ -159,9 +163,8 @@ TEST_F(HloGraphDumperTest, Compare) {
       param.1 = f32[10] parameter(1)
       ROOT lt = pred[10] compare(param.0, param.1), direction=LT
     })";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(
       std::string graph,
       RenderGraph(*module->entry_computation(), /*label=*/"tuple_constant",
                   DebugOptions(), RenderedGraphFormat::kDot));
@@ -177,11 +180,10 @@ TEST_F(HloGraphDumperTest, HasStatisticsViz) {
       param.1 = f32[10] parameter(1), statistics={visualizing_index=1,stat-0=55.5,stat-1=44.4}
       ROOT lt = pred[10] compare(param.0, param.1), direction=LT
     })";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
   // Just check that it doesn't crash.
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::string graph,
       RenderGraph(*module->entry_computation(), /*label=*/"tuple_constant",
                   DebugOptions(), RenderedGraphFormat::kDot));
@@ -207,10 +209,9 @@ ENTRY %conditional_select (constant: pred[]) -> (f32[]) {
   %conditional = f32[] conditional(pred[] %constant, () %emptytuple, () %emptytuple), true_computation=%then_branch, false_computation=%else_branch
   ROOT %t = (f32[]) tuple(f32[] %conditional)
 })";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   // Just check that it doesn't crash.
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::string graph,
       RenderGraph(*module->entry_computation(), /*label=*/"tuple_constant",
                   DebugOptions(), RenderedGraphFormat::kDot));
@@ -225,15 +226,14 @@ TEST_F(HloGraphDumperTest, ShowCallers) {
       p0 = f32[16] parameter(0)
       ROOT call.1 = f32[16] call(p0), to_apply=command_buffer
     })";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::string graph, RenderGraph(*module->entry_computation(),
-                                     /*label=*/"command_buffer", DebugOptions(),
-                                     RenderedGraphFormat::kDot));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::string graph,
+                       RenderGraph(*module->entry_computation(),
+                                   /*label=*/"command_buffer", DebugOptions(),
+                                   RenderedGraphFormat::kDot));
   EXPECT_THAT(graph, HasSubstr("ENTRY computation"));
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       graph,
       RenderGraph(*module->entry_computation()->root_instruction()->to_apply(),
                   /*label=*/"command_buffer", DebugOptions(),
@@ -250,8 +250,7 @@ TEST_F(HloGraphDumperTest, OverrideColors) {
       param.1 = f32[10] parameter(1)
       ROOT lt = pred[10] compare(param.0, param.1), direction=LT
     })";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   // Create a color map with color and stats
   absl::flat_hash_map<const HloInstruction*, ColorStats> color_map;
   ColorStats color_stats_1;
@@ -267,7 +266,7 @@ TEST_F(HloGraphDumperTest, OverrideColors) {
 
   HloRenderOptions hlo_render_options;
   hlo_render_options.override_node_colors = true;
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::string graph,
       RenderGraph(*module->entry_computation(), /*label=*/"tuple_constant",
                   DebugOptions(), RenderedGraphFormat::kDot, hlo_render_options,
@@ -304,9 +303,8 @@ TEST_F(HloGraphDumperTest, AnnotateCalledComputationsParameters) {
       bitcast.1 = f32[1024] bitcast(gte.3)
       ROOT call.1 = f32[1024] call(bitcast.1, gte.2), to_apply=command_buffer.1
     })";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(
       std::string graph,
       RenderGraph(*module->entry_computation()->root_instruction()->to_apply(),
                   /*label=*/"command buffer", DebugOptions(),
@@ -332,9 +330,8 @@ TEST_F(HloGraphDumperTest, AnnotateCalledComputationsParametersTuple) {
       tuple.1 = (f32[1024], f32[1024]) tuple(add.123, mul.456)
       call.0 = (f32[1024], f32[1024]) call(tuple.1), to_apply=command_buffer
     })";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(
       std::string graph,
       RenderGraph(*module->entry_computation()->root_instruction()->to_apply(),
                   /*label=*/"command buffer", DebugOptions(),

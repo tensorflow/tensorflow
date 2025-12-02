@@ -18,6 +18,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/strings/ascii.h"
 #include "absl/strings/escaping.h"
@@ -75,35 +76,35 @@ TEST_P(GpuAotCompilationTest, ExportAndLoadExecutable) {
       ROOT b = f32[100, 200] copy(a)
     }
 )hlo";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
 
   auto compiler = backend().compiler();
   auto name =
       absl::AsciiStrToUpper(PlatformUtil::CanonicalPlatformName("gpu").value());
-  TF_ASSERT_OK_AND_ASSIGN(se::Platform * platform,
-                          se::PlatformManager::PlatformWithName(name));
-  TF_ASSERT_OK_AND_ASSIGN(se::StreamExecutor * stream_exec,
-                          platform->ExecutorForDevice(0));
+  ASSERT_OK_AND_ASSIGN(se::Platform * platform,
+                       se::PlatformManager::PlatformWithName(name));
+  ASSERT_OK_AND_ASSIGN(se::StreamExecutor * stream_exec,
+                       platform->ExecutorForDevice(0));
 
   // Compile AOT.
   AotCompilationOptions aot_options(compiler->PlatformId());
   aot_options.set_executor(stream_exec);
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::vector<std::unique_ptr<AotCompilationResult>> aot_results,
       compiler->CompileAheadOfTime(std::move(module), aot_options));
 
   // Serialize-deserialize AOT compilation result.
-  TF_ASSERT_OK_AND_ASSIGN(std::string serialized_aot_result,
-                          aot_results[0]->SerializeAsString());
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(std::string serialized_aot_result,
+                       aot_results[0]->SerializeAsString());
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<AotCompilationResult> aot_result,
       compiler->LoadAotCompilationResult(serialized_aot_result));
 
   // Load Executable from AOT compilation result.
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Executable> executable,
-                          std::move(*aot_result).LoadExecutable(stream_exec));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<Executable> executable,
+                       std::move(*aot_result).LoadExecutable(stream_exec));
 }
 
 TEST_P(GpuAotCompilationTest, AotCompilationWithoutGpuDevice) {
@@ -115,36 +116,36 @@ TEST_P(GpuAotCompilationTest, AotCompilationWithoutGpuDevice) {
       ROOT b = f32[100, 200] copy(a)
     }
 )hlo";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
 
   auto compiler = backend().compiler();
   auto name =
       absl::AsciiStrToUpper(PlatformUtil::CanonicalPlatformName("gpu").value());
-  TF_ASSERT_OK_AND_ASSIGN(se::Platform * platform,
-                          se::PlatformManager::PlatformWithName(name));
-  TF_ASSERT_OK_AND_ASSIGN(se::StreamExecutor * stream_exec,
-                          platform->ExecutorForDevice(0));
+  ASSERT_OK_AND_ASSIGN(se::Platform * platform,
+                       se::PlatformManager::PlatformWithName(name));
+  ASSERT_OK_AND_ASSIGN(se::StreamExecutor * stream_exec,
+                       platform->ExecutorForDevice(0));
 
   // Stream executor is not passed as an option.
   Compiler::GpuTargetConfig gpu_target_config(stream_exec);
   AotCompilationOptions aot_options(compiler->PlatformId());
   aot_options.set_gpu_target_config(gpu_target_config);
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::vector<std::unique_ptr<AotCompilationResult>> aot_results,
       compiler->CompileAheadOfTime(std::move(module), aot_options));
 
   // Serialize-deserialize AOT compilation result.
-  TF_ASSERT_OK_AND_ASSIGN(std::string serialized_aot_result,
-                          aot_results[0]->SerializeAsString());
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(std::string serialized_aot_result,
+                       aot_results[0]->SerializeAsString());
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<AotCompilationResult> aot_result,
       compiler->LoadAotCompilationResult(serialized_aot_result));
 
   // Load Executable from AOT compilation result.
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Executable> executable,
-                          std::move(*aot_result).LoadExecutable(stream_exec));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<Executable> executable,
+                       std::move(*aot_result).LoadExecutable(stream_exec));
 }
 
 namespace {
@@ -228,35 +229,35 @@ TEST_P(GpuAotCompilationTest, ExportAndLoadExecutableWithTriton) {
       absl::StrFormat(hlo_string_template,
                       absl::CEscape(CreateTritonCustomCallBackendConfig()));
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
 
   auto compiler = backend().compiler();
   auto platform_name =
       absl::AsciiStrToUpper(PlatformUtil::CanonicalPlatformName("gpu").value());
-  TF_ASSERT_OK_AND_ASSIGN(se::Platform * platform,
-                          se::PlatformManager::PlatformWithName(platform_name));
-  TF_ASSERT_OK_AND_ASSIGN(se::StreamExecutor * stream_exec,
-                          platform->ExecutorForDevice(0));
+  ASSERT_OK_AND_ASSIGN(se::Platform * platform,
+                       se::PlatformManager::PlatformWithName(platform_name));
+  ASSERT_OK_AND_ASSIGN(se::StreamExecutor * stream_exec,
+                       platform->ExecutorForDevice(0));
 
   // Compile AOT.
   AotCompilationOptions aot_options(compiler->PlatformId());
   aot_options.set_executor(stream_exec);
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::vector<std::unique_ptr<AotCompilationResult>> aot_results,
       compiler->CompileAheadOfTime(std::move(module), aot_options));
 
   // Serialize-deserialize AOT compilation result.
-  TF_ASSERT_OK_AND_ASSIGN(std::string serialized_aot_result,
-                          aot_results[0]->SerializeAsString());
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(std::string serialized_aot_result,
+                       aot_results[0]->SerializeAsString());
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<AotCompilationResult> aot_result,
       compiler->LoadAotCompilationResult(serialized_aot_result));
 
   // Load Executable from AOT compilation result.
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Executable> executable,
-                          std::move(*aot_result).LoadExecutable(stream_exec));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<Executable> executable,
+                       std::move(*aot_result).LoadExecutable(stream_exec));
   std::unique_ptr<OpaqueExecutable> wrapped_executable =
       test_runner_as_hlo_runner().WrapExecutable(std::move(executable));
 
@@ -264,9 +265,9 @@ TEST_P(GpuAotCompilationTest, ExportAndLoadExecutableWithTriton) {
   const xla::Literal literal_2 = xla::LiteralUtil::CreateR0<float>(2.0f);
   const xla::Literal literal_3 = xla::LiteralUtil::CreateR0<float>(3.0f);
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      Literal result, test_runner_as_hlo_runner().ExecuteWithExecutable(
-                          wrapped_executable.get(), {&literal_1, &literal_3}));
+  ASSERT_OK_AND_ASSIGN(Literal result,
+                       test_runner_as_hlo_runner().ExecuteWithExecutable(
+                           wrapped_executable.get(), {&literal_1, &literal_3}));
 
   EXPECT_TRUE(LiteralTestUtil::Equal(
       LiteralUtil::MakeTuple({&literal_2, &literal_3}), result));

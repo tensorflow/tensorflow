@@ -26,7 +26,6 @@
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "llvm/Support/Casting.h"
 #include "google/protobuf/text_format.h"
 #include "xla/layout_util.h"
 #include "xla/pjrt/pjrt_layout.h"
@@ -51,7 +50,6 @@
 #include "xla/service/computation_placer.h"
 #include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/concurrency/ref_count.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
 #include "tsl/platform/protobuf.h"  // IWYU pragma: keep
 
@@ -249,8 +247,8 @@ class ClientTest : public ::testing::TestWithParam</*protocol_version=*/int> {
         .ToProto(*response.mutable_client_attributes(),
                  rpc_helper_->ifrt_serdes_version());
 
-    TF_ASSERT_OK_AND_ASSIGN(client_, Client::Create(rpc_helper_, response));
-    TF_ASSERT_OK_AND_ASSIGN(device_, client_->LookupDevice(DeviceId(0)));
+    ASSERT_OK_AND_ASSIGN(client_, Client::Create(rpc_helper_, response));
+    ASSERT_OK_AND_ASSIGN(device_, client_->LookupDevice(DeviceId(0)));
   }
 
   std::shared_ptr<MockClientSession> session_;
@@ -274,8 +272,7 @@ TEST_P(ClientTest, Init) {
   ASSERT_EQ(client_->device_count(), 2);
   ASSERT_EQ(client_->addressable_device_count(), 1);
 
-  TF_ASSERT_OK_AND_ASSIGN(auto* const device0,
-                          client_->LookupDevice(DeviceId(0)));
+  ASSERT_OK_AND_ASSIGN(auto* const device0, client_->LookupDevice(DeviceId(0)));
   EXPECT_EQ(device0->Id(), DeviceId(0));
   EXPECT_EQ(device0->Kind(), "mock");
   EXPECT_THAT(device0->Attributes().Get<std::string>("name"),
@@ -288,8 +285,7 @@ TEST_P(ClientTest, Init) {
   EXPECT_THAT(memory0->Devices(), UnorderedElementsAre(device0));
   EXPECT_THAT(device0->DefaultMemory(), absl_testing::IsOkAndHolds(memory0));
 
-  TF_ASSERT_OK_AND_ASSIGN(auto* const device1,
-                          client_->LookupDevice(DeviceId(1)));
+  ASSERT_OK_AND_ASSIGN(auto* const device1, client_->LookupDevice(DeviceId(1)));
   EXPECT_EQ(device1->Id(), 1);
   EXPECT_EQ(device1->Kind(), "mock");
   EXPECT_THAT(device1->Attributes().Get<std::string>("name"),
@@ -314,10 +310,9 @@ TEST_P(ClientTest, GetDefaultLayoutSuccess) {
               Enqueue(IfrtRequestOfType(IfrtRequest::kGetDefaultLayoutRequest)))
       .WillOnce(MockClientSessionReturnResponse(response));
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto resolved_layout,
-      client_->GetDefaultPjRtLayout(DType(DType::kF64), {1, 2, 3}, device_,
-                                    MemoryKind("mock")));
+  ASSERT_OK_AND_ASSIGN(auto resolved_layout, client_->GetDefaultPjRtLayout(
+                                                 DType(DType::kF64), {1, 2, 3},
+                                                 device_, MemoryKind("mock")));
   EXPECT_EQ(resolved_layout->ToString(), layout.ToString());
 }
 
@@ -329,15 +324,14 @@ TEST_P(ClientTest, GetCachedDefaultLayoutSuccess) {
               Enqueue(IfrtRequestOfType(IfrtRequest::kGetDefaultLayoutRequest)))
       .WillOnce(MockClientSessionReturnResponse(response));
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto resolved_layout,
-      client_->GetDefaultPjRtLayout(DType(DType::kF64), {1, 2, 3}, device_,
-                                    MemoryKind("mock")));
+  ASSERT_OK_AND_ASSIGN(auto resolved_layout, client_->GetDefaultPjRtLayout(
+                                                 DType(DType::kF64), {1, 2, 3},
+                                                 device_, MemoryKind("mock")));
   EXPECT_EQ(resolved_layout->ToString(), layout_1_->ToString());
 
-  TF_ASSERT_OK_AND_ASSIGN(resolved_layout, client_->GetDefaultPjRtLayout(
-                                               DType(DType::kF64), {1, 2, 3},
-                                               device_, MemoryKind("mock")));
+  ASSERT_OK_AND_ASSIGN(resolved_layout, client_->GetDefaultPjRtLayout(
+                                            DType(DType::kF64), {1, 2, 3},
+                                            device_, MemoryKind("mock")));
   EXPECT_EQ(resolved_layout->ToString(), layout_1_->ToString());
 }
 
@@ -375,18 +369,18 @@ TEST_P(ClientTest, CopyArraysDefaultLayoutSuccess) {
       .WillRepeatedly(MockClientSessionReturnResponse(IfrtResponse()));
 
   std::vector<tsl::RCReference<xla::ifrt::Array>> arrays = {array0, array1};
-  TF_ASSERT_OK_AND_ASSIGN(DeviceListRef device_list,
-                          client_->MakeDeviceList({device_}));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(DeviceListRef device_list,
+                       client_->MakeDeviceList({device_}));
+  ASSERT_OK_AND_ASSIGN(
       auto copied_arrays,
       client_->CopyArrays(absl::MakeSpan(arrays), std::move(device_list),
                           MemoryKind("mock"), ArrayCopySemantics::kAlwaysCopy));
   ASSERT_THAT(copied_arrays, SizeIs(2));
-  TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<const xla::PjRtLayout> layout_1,
-                          copied_arrays[0].get()->pjrt_layout());
+  ASSERT_OK_AND_ASSIGN(std::shared_ptr<const xla::PjRtLayout> layout_1,
+                       copied_arrays[0].get()->pjrt_layout());
   EXPECT_EQ(layout_1, nullptr);
-  TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<const xla::PjRtLayout> layout_2,
-                          copied_arrays[1].get()->pjrt_layout());
+  ASSERT_OK_AND_ASSIGN(std::shared_ptr<const xla::PjRtLayout> layout_2,
+                       copied_arrays[1].get()->pjrt_layout());
   EXPECT_EQ(layout_2, nullptr);
 }
 
@@ -413,18 +407,18 @@ TEST_P(ClientTest, CopyArraysCustomLayoutSuccess) {
       .WillRepeatedly(MockClientSessionReturnResponse(IfrtResponse()));
 
   std::vector<tsl::RCReference<xla::ifrt::Array>> arrays = {array0, array1};
-  TF_ASSERT_OK_AND_ASSIGN(DeviceListRef device_list,
-                          client_->MakeDeviceList({device_}));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(DeviceListRef device_list,
+                       client_->MakeDeviceList({device_}));
+  ASSERT_OK_AND_ASSIGN(
       auto copied_arrays,
       client_->CopyArrays(absl::MakeSpan(arrays), std::move(device_list),
                           MemoryKind("mock"), ArrayCopySemantics::kAlwaysCopy));
   ASSERT_THAT(copied_arrays, SizeIs(2));
-  TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<const xla::PjRtLayout> layout_1,
-                          copied_arrays[0].get()->pjrt_layout());
+  ASSERT_OK_AND_ASSIGN(std::shared_ptr<const xla::PjRtLayout> layout_1,
+                       copied_arrays[0].get()->pjrt_layout());
   EXPECT_EQ(layout_1->ToString(), layout_1_->ToString());
-  TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<const xla::PjRtLayout> layout_2,
-                          copied_arrays[1].get()->pjrt_layout());
+  ASSERT_OK_AND_ASSIGN(std::shared_ptr<const xla::PjRtLayout> layout_2,
+                       copied_arrays[1].get()->pjrt_layout());
   EXPECT_EQ(layout_2->ToString(), layout_2_->ToString());
 }
 
@@ -444,8 +438,8 @@ TEST_P(ClientTest, GetDefaultDeviceAssignmentSuccess) {
                              )pb")))))
       .WillOnce(MockClientSessionReturnResponse(response));
 
-  TF_ASSERT_OK_AND_ASSIGN(auto assignment_got,
-                          client_->GetDefaultDeviceAssignment(1, 3));
+  ASSERT_OK_AND_ASSIGN(auto assignment_got,
+                       client_->GetDefaultDeviceAssignment(1, 3));
   EXPECT_EQ(assignment_got.replica_count(), 1);
   EXPECT_EQ(assignment_got.computation_count(), 3);
 }

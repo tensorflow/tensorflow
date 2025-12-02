@@ -26,6 +26,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
@@ -287,7 +288,7 @@ ENTRY %module {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
   HloSchedule& module_schedule = hlo_module->schedule();
   EXPECT_TRUE(hlo_module->has_entry_computation());
   HloComputation* entry_computation = hlo_module->entry_computation();
@@ -350,7 +351,7 @@ ENTRY %module {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
   HloSchedule& module_schedule = hlo_module->schedule();
   EXPECT_TRUE(hlo_module->has_entry_computation());
   HloComputation* entry_computation = hlo_module->entry_computation();
@@ -426,7 +427,7 @@ ENTRY %module {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
   HloSchedule& module_schedule = hlo_module->schedule();
   EXPECT_TRUE(hlo_module->has_entry_computation());
   HloComputation* entry_computation = hlo_module->entry_computation();
@@ -484,7 +485,7 @@ ENTRY %module {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
   HloSchedule& module_schedule = hlo_module->schedule();
   EXPECT_TRUE(hlo_module->has_entry_computation());
   HloComputation* entry_computation = hlo_module->entry_computation();
@@ -546,7 +547,7 @@ ENTRY %module {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
   HloSchedule& module_schedule = hlo_module->schedule();
   EXPECT_TRUE(hlo_module->has_entry_computation());
   HloComputation* entry_computation = hlo_module->entry_computation();
@@ -609,7 +610,7 @@ ENTRY %module {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
   HloSchedule& module_schedule = hlo_module->schedule();
   EXPECT_TRUE(hlo_module->has_entry_computation());
   HloComputation* entry_computation = hlo_module->entry_computation();
@@ -688,7 +689,7 @@ ENTRY %module {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
   HloSchedule& module_schedule = hlo_module->schedule();
   EXPECT_TRUE(hlo_module->has_entry_computation());
   HloComputation* entry_computation = hlo_module->entry_computation();
@@ -769,7 +770,7 @@ ENTRY entry {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
   HloSchedule& module_schedule = hlo_module->schedule();
   EXPECT_TRUE(hlo_module->has_entry_computation());
   TF_EXPECT_OK(RunScheduler(hlo_module.get()));
@@ -804,7 +805,7 @@ ENTRY %module {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
   // We expect RunScheduler to return true because of the force_delay attribute,
   // even though there are no async collectives.
   auto result = RunScheduler(hlo_module.get());
@@ -841,7 +842,7 @@ ENTRY %module {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
   HloSchedule& module_schedule = hlo_module->schedule();
   EXPECT_TRUE(hlo_module->has_entry_computation());
   HloComputation* entry_computation = hlo_module->entry_computation();
@@ -908,7 +909,7 @@ ENTRY entry {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
   HloSchedule& module_schedule = hlo_module->schedule();
   EXPECT_TRUE(hlo_module->has_entry_computation());
   TF_EXPECT_OK(RunScheduler(hlo_module.get()));
@@ -941,7 +942,7 @@ TEST_F(LatencyHidingSchedulerTest, SingleCollectivePermuteTest) {
   }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
   HloSchedule& module_schedule = hlo_module->schedule();
   EXPECT_TRUE(hlo_module->has_entry_computation());
   HloComputation* entry_computation = hlo_module->entry_computation();
@@ -984,7 +985,7 @@ ENTRY %module_spmd () -> f32[4,4,128] {
   ROOT %copy.3 = f32[4,4,128]{2,1,0:T(4,128)} copy(f32[4,4,128]{2,1,0:T(4,128)} %collective-permute)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
   HloSchedule& module_schedule = hlo_module->schedule();
   EXPECT_TRUE(hlo_module->has_entry_computation());
   HloComputation* entry_computation = hlo_module->entry_computation();
@@ -1037,7 +1038,7 @@ ENTRY %module () -> f32[33708,1024] {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
   HloSchedule& module_schedule = hlo_module->schedule();
   EXPECT_TRUE(hlo_module->has_entry_computation());
   HloComputation* entry_computation = hlo_module->entry_computation();
@@ -1096,7 +1097,7 @@ ENTRY entry {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
   HloSchedule& module_schedule = hlo_module->schedule();
   EXPECT_TRUE(hlo_module->has_entry_computation());
   HloComputation* entry_computation = hlo_module->entry_computation();
@@ -1166,7 +1167,7 @@ TEST_F(LatencyHidingSchedulerTest, SerialCollectivePermutesTest) {
   }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
   HloSchedule& module_schedule = hlo_module->schedule();
   EXPECT_TRUE(hlo_module->has_entry_computation());
   HloComputation* entry_computation = hlo_module->entry_computation();
@@ -1248,7 +1249,7 @@ TEST_F(LatencyHidingSchedulerTest, BackToBackCollectivePerGmutesTest) {
   }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
   HloSchedule& module_schedule = hlo_module->schedule();
   EXPECT_TRUE(hlo_module->has_entry_computation());
   HloComputation* entry_computation = hlo_module->entry_computation();
@@ -1320,7 +1321,7 @@ TEST_F(LatencyHidingSchedulerTest, ParallelCollectivePermutesTest) {
   }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
   HloSchedule& module_schedule = hlo_module->schedule();
   EXPECT_TRUE(hlo_module->has_entry_computation());
   HloComputation* entry_computation = hlo_module->entry_computation();
@@ -1390,7 +1391,7 @@ TEST_F(LatencyHidingSchedulerTest, MaxConcurrentCollectivePermutesTest) {
   }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
   HloSchedule& module_schedule = hlo_module->schedule();
   EXPECT_TRUE(hlo_module->has_entry_computation());
   HloComputation* entry_computation = hlo_module->entry_computation();
@@ -1419,7 +1420,7 @@ ENTRY entry {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
   HloSchedule& module_schedule = hlo_module->schedule();
   EXPECT_TRUE(hlo_module->has_entry_computation());
   HloComputation* entry_computation = hlo_module->entry_computation();
@@ -1455,7 +1456,7 @@ TEST_F(LatencyHidingSchedulerTest, ExistingSingleCollectivePermuteAsyncTest) {
   }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
   HloSchedule& module_schedule = hlo_module->schedule();
   EXPECT_TRUE(hlo_module->has_entry_computation());
   HloComputation* entry_computation = hlo_module->entry_computation();
@@ -1509,7 +1510,7 @@ ENTRY entry {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
   HloSchedule& module_schedule = hlo_module->schedule();
   EXPECT_TRUE(hlo_module->has_entry_computation());
   HloComputation* entry_computation = hlo_module->entry_computation();
@@ -1713,7 +1714,7 @@ ENTRY entry {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
   HloSchedule& module_schedule = hlo_module->schedule();
   EXPECT_TRUE(hlo_module->has_entry_computation());
   HloComputation* entry_computation = hlo_module->entry_computation();
@@ -1773,7 +1774,7 @@ ENTRY entry {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
   HloSchedule& module_schedule = hlo_module->schedule();
   EXPECT_TRUE(hlo_module->has_entry_computation());
   HloComputation* entry_computation = hlo_module->entry_computation();
@@ -1966,7 +1967,7 @@ ENTRY entry {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
   HloSchedule& module_schedule = hlo_module->schedule();
   EXPECT_TRUE(hlo_module->has_entry_computation());
   HloComputation* entry_computation = hlo_module->entry_computation();
@@ -2150,7 +2151,7 @@ ENTRY entry {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
   HloSchedule& module_schedule = hlo_module->schedule();
   EXPECT_TRUE(hlo_module->has_entry_computation());
   HloComputation* entry_computation = hlo_module->entry_computation();
@@ -2208,7 +2209,7 @@ ENTRY entry {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
   HloSchedule& module_schedule = hlo_module->schedule();
   EXPECT_TRUE(hlo_module->has_entry_computation());
   HloComputation* entry_computation = hlo_module->entry_computation();
@@ -2277,7 +2278,7 @@ ENTRY entry {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
   HloSchedule& module_schedule = hlo_module->schedule();
   auto sched_config = GetDefaultSchedConfig();
 
@@ -2365,7 +2366,7 @@ ENTRY entry {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
   HloSchedule& module_schedule = hlo_module->schedule();
   EXPECT_TRUE(hlo_module->has_entry_computation());
   auto sched_config = GetDefaultSchedConfig();
@@ -2422,7 +2423,7 @@ ENTRY entry {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
   HloSchedule& module_schedule = hlo_module->schedule();
   EXPECT_TRUE(hlo_module->has_entry_computation());
   auto sched_config = GetDefaultSchedConfig();
@@ -2479,7 +2480,7 @@ ENTRY entry {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
   HloSchedule& module_schedule = hlo_module->schedule();
   EXPECT_TRUE(hlo_module->has_entry_computation());
   auto sched_config = GetDefaultSchedConfig();
@@ -2536,7 +2537,7 @@ ENTRY entry {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
   HloSchedule& module_schedule = hlo_module->schedule();
   EXPECT_TRUE(hlo_module->has_entry_computation());
   auto sched_config = GetDefaultSchedConfig();
@@ -2589,7 +2590,7 @@ TEST_F(LatencyHidingSchedulerTest, ConditionalOverlapLimit) {
     ROOT add = s8[128,128] add(cond, agd.2)
   }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
   HloSchedule& module_schedule = hlo_module->schedule();
   auto sched_config = GetDefaultSchedConfig();
   sched_config.aggressive_scheduling_policies = true;
@@ -2682,7 +2683,7 @@ ENTRY %module {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
   HloSchedule& module_schedule = hlo_module->schedule();
   EXPECT_TRUE(hlo_module->has_entry_computation());
   HloComputation* entry_computation = hlo_module->entry_computation();
@@ -2746,7 +2747,7 @@ ENTRY entry {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
   HloSchedule& module_schedule = hlo_module->schedule();
   EXPECT_TRUE(hlo_module->has_entry_computation());
   auto sched_config = GetDefaultSchedConfig();
@@ -2794,7 +2795,7 @@ ENTRY entry {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
   HloSchedule& module_schedule = hlo_module->schedule();
   EXPECT_TRUE(hlo_module->has_entry_computation());
   auto sched_config = GetDefaultSchedConfig();
@@ -3102,7 +3103,7 @@ TEST_F(LatencyHidingSchedulerTest, DepthPressureReduction) {
   }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
   HloSchedule& module_schedule = hlo_module->schedule();
   EXPECT_TRUE(hlo_module->has_entry_computation());
   HloComputation* entry_computation = hlo_module->entry_computation();
@@ -3140,7 +3141,7 @@ TEST_F(LatencyHidingSchedulerTest, RerunWithSmallerMemoryLimit) {
   }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
   HloSchedule& module_schedule = hlo_module->schedule();
   EXPECT_TRUE(hlo_module->has_entry_computation());
   HloComputation* entry_computation = hlo_module->entry_computation();
@@ -3215,7 +3216,7 @@ ENTRY main {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
   HloSchedule& module_schedule = hlo_module->schedule();
   EXPECT_TRUE(hlo_module->has_entry_computation());
   HloComputation* entry_computation = hlo_module->entry_computation();
@@ -3241,7 +3242,7 @@ ENTRY AddR2 {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
   HloSchedule& module_schedule = hlo_module->schedule();
   EXPECT_TRUE(hlo_module->has_entry_computation());
   HloComputation* entry_computation = hlo_module->entry_computation();
@@ -3278,7 +3279,7 @@ ENTRY AddR2 {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
   HloSchedule& module_schedule = hlo_module->schedule();
   EXPECT_TRUE(hlo_module->has_entry_computation());
   HloComputation* entry_computation = hlo_module->entry_computation();
@@ -3334,7 +3335,7 @@ ENTRY %entry {
   ROOT gte0 = bf16[1,1,4096,1344]{2,3,1,0:T(8,128)(2,1)} get-tuple-element(while), index=0
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
   HloSchedule& module_schedule = hlo_module->schedule();
   EXPECT_TRUE(hlo_module->has_entry_computation());
   auto sched_config = GetDefaultSchedConfig();
@@ -3451,7 +3452,7 @@ ENTRY %module {
   sched_config.enable_selective_resources = true;
   std::unique_ptr<AsyncTracker> async_tracker =
       std::make_unique<SelectiveOverlapAsyncTracker>(sched_config);
-  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
   HloSchedule& module_schedule = hlo_module->schedule();
   EXPECT_TRUE(hlo_module->has_entry_computation());
   HloComputation* entry_computation = hlo_module->entry_computation();
@@ -3508,7 +3509,7 @@ ENTRY entry {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
   HloSchedule& module_schedule = hlo_module->schedule();
   EXPECT_TRUE(hlo_module->has_entry_computation());
   auto sched_config = GetDefaultSchedConfig();
@@ -3556,7 +3557,7 @@ ENTRY entry {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
   HloSchedule& module_schedule = hlo_module->schedule();
   EXPECT_TRUE(hlo_module->has_entry_computation());
   auto sched_config = GetDefaultSchedConfig();
@@ -3604,7 +3605,7 @@ ENTRY entry {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
   HloSchedule& module_schedule = hlo_module->schedule();
   EXPECT_TRUE(hlo_module->has_entry_computation());
   auto sched_config = GetDefaultSchedConfig();
@@ -3656,7 +3657,7 @@ ENTRY entry {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
   HloSchedule& module_schedule = hlo_module->schedule();
   EXPECT_TRUE(hlo_module->has_entry_computation());
   auto sched_config = GetDefaultSchedConfig();
@@ -3704,7 +3705,7 @@ ENTRY entry {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
   HloSchedule& module_schedule = hlo_module->schedule();
   EXPECT_TRUE(hlo_module->has_entry_computation());
   auto sched_config = GetDefaultSchedConfig();
@@ -3752,7 +3753,7 @@ ENTRY entry {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
   HloSchedule& module_schedule = hlo_module->schedule();
   EXPECT_TRUE(hlo_module->has_entry_computation());
   auto sched_config = GetDefaultSchedConfig();
@@ -3801,7 +3802,7 @@ ENTRY entry {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
   HloSchedule& module_schedule = hlo_module->schedule();
   EXPECT_TRUE(hlo_module->has_entry_computation());
   auto sched_config = GetDefaultSchedConfig();
@@ -3853,7 +3854,7 @@ ENTRY entry {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
   HloSchedule& module_schedule = hlo_module->schedule();
   EXPECT_TRUE(hlo_module->has_entry_computation());
   auto sched_config = GetDefaultSchedConfig();
@@ -3916,7 +3917,7 @@ ENTRY entry {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
   HloSchedule& module_schedule = hlo_module->schedule();
   EXPECT_TRUE(hlo_module->has_entry_computation());
   auto sched_config = GetDefaultSchedConfig();
@@ -3963,7 +3964,7 @@ ENTRY entry {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
   HloSchedule& module_schedule = hlo_module->schedule();
   EXPECT_TRUE(hlo_module->has_entry_computation());
   auto sched_config = GetDefaultSchedConfig();
@@ -4011,7 +4012,7 @@ ENTRY entry {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
   HloSchedule& module_schedule = hlo_module->schedule();
   EXPECT_TRUE(hlo_module->has_entry_computation());
   auto sched_config = GetDefaultSchedConfig();
@@ -4071,7 +4072,7 @@ ENTRY main {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
   HloSchedule& module_schedule = hlo_module->schedule();
   EXPECT_TRUE(hlo_module->has_entry_computation());
   auto sched_config = GetDefaultSchedConfig();
@@ -4110,7 +4111,7 @@ ENTRY entry {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
   HloSchedule& module_schedule = hlo_module->schedule();
   EXPECT_TRUE(hlo_module->has_entry_computation());
   auto sched_config = GetDefaultSchedConfig();
@@ -4171,7 +4172,7 @@ TEST_F(LatencyHidingSchedulerTest, CrossComputationAnnotation) {
     ROOT tuple1 = (f32[16,64,256]{2,1,0}, f32[16,256,256]{2,1,0}, f32[1024,1024]{1,0}) tuple(gte, c0, agd0)
   }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
   HloSchedule& module_schedule = hlo_module->schedule();
   EXPECT_TRUE(hlo_module->has_entry_computation());
   auto sched_config = GetDefaultSchedConfig();
@@ -4236,7 +4237,7 @@ TEST_F(LatencyHidingSchedulerTest, RaggedAllToAll) {
     ROOT tuple = (f32[8,128,1024]{2,1,0:T(8,128)}, f32[1024,1024]{1,0:T(8,128)}) tuple(ra2a-done, d)
   })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
   HloSchedule& module_schedule = hlo_module->schedule();
   EXPECT_TRUE(hlo_module->has_entry_computation());
   auto sched_config = GetDefaultSchedConfig();
@@ -4297,7 +4298,7 @@ TEST_F(LatencyHidingSchedulerTest, ResourceLimitWithinAnnotationGroup) {
     ROOT tuple1 = (f32[16,64,256]{2,1,0}, f32[16,256,256]{2,1,0}, f32[1024,1024]{1,0}, f32[1024,1024]{1,0}) tuple(gte, c0, agd0, agd1)
   }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
   auto sched_config = GetDefaultSchedConfig();
   sched_config.all_gather_overlap_limit = 1;
   auto status = RunScheduler(hlo_module.get(), sched_config,
@@ -4339,7 +4340,7 @@ ENTRY entry {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
   auto sched_config = GetDefaultSchedConfig();
   sched_config.aggressive_scheduling_policies = true;
   TF_EXPECT_OK(RunScheduler(hlo_module.get(), sched_config,
@@ -4401,7 +4402,7 @@ ENTRY entry {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
   HloSchedule& module_schedule = hlo_module->schedule();
   auto sched_config = GetDefaultSchedConfig();
   sched_config.send_recv_overlap_limit = 1;
@@ -4457,7 +4458,7 @@ TEST_F(LatencyHidingSchedulerTest, WhileWithCompleteResourceList) {
     ROOT tuple1 = (f32[16,64,256]{2,1,0}, f32[64,1024]{1,0}) tuple(gte, cpd2)
   }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
   HloSchedule& module_schedule = hlo_module->schedule();
   EXPECT_TRUE(hlo_module->has_entry_computation());
   auto sched_config = GetDefaultSchedConfig();
@@ -4508,7 +4509,7 @@ ENTRY entry {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
   HloSchedule& module_schedule = hlo_module->schedule();
   EXPECT_TRUE(hlo_module->has_entry_computation());
   auto sched_config = GetDefaultSchedConfig();
@@ -4557,7 +4558,7 @@ ENTRY entry {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
   HloSchedule& module_schedule = hlo_module->schedule();
   EXPECT_TRUE(hlo_module->has_entry_computation());
   auto sched_config = GetDefaultSchedConfig();
@@ -4616,7 +4617,7 @@ ENTRY entry {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
   HloSchedule& module_schedule = hlo_module->schedule();
   EXPECT_TRUE(hlo_module->has_entry_computation());
   auto sched_config = GetDefaultSchedConfig();
@@ -4677,7 +4678,7 @@ TEST_F(LatencyHidingSchedulerTest, ValidScheduleWithRandomPreferences) {
     }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
   std::unique_ptr<LatencyHidingScheduler> scheduler =
       SetupScheduler(hlo_module.get()).value();
 
@@ -4733,7 +4734,7 @@ ENTRY entry {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
   HloSchedule& module_schedule = hlo_module->schedule();
   EXPECT_TRUE(hlo_module->has_entry_computation());
   auto sched_config = GetDefaultSchedConfig();
@@ -4788,7 +4789,7 @@ ROOT tuple.2 = (f32[16,2048,2048]{2,1,0}, f32[8,128,128]{2,1,0}, f32[16,2048,204
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
   HloSchedule& module_schedule = hlo_module->schedule();
   EXPECT_TRUE(hlo_module->has_entry_computation());
   auto sched_config = GetDefaultSchedConfig();
@@ -4831,7 +4832,7 @@ ENTRY entry {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
   HloSchedule& module_schedule = hlo_module->schedule();
   EXPECT_TRUE(hlo_module->has_entry_computation());
   auto sched_config = GetDefaultSchedConfig();
@@ -4876,7 +4877,7 @@ ENTRY entry {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
   HloSchedule& module_schedule = hlo_module->schedule();
   EXPECT_TRUE(hlo_module->has_entry_computation());
   auto sched_config = GetDefaultSchedConfig();
@@ -4922,7 +4923,7 @@ ENTRY entry {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
   HloSchedule& module_schedule = hlo_module->schedule();
   EXPECT_TRUE(hlo_module->has_entry_computation());
   auto sched_config = GetDefaultSchedConfig();
@@ -4968,7 +4969,7 @@ ENTRY entry {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
   HloSchedule& module_schedule = hlo_module->schedule();
   EXPECT_TRUE(hlo_module->has_entry_computation());
   auto sched_config = GetDefaultSchedConfig();
@@ -5065,7 +5066,7 @@ static void BM_FindAndExtractBestNodeAvailable(
                        << " sizeof(HloEdge) " << sizeof(HloEdge);
 
   BMHelper bm;
-  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module, bm.ParseForBM(hlo, config));
+  ASSERT_OK_AND_ASSIGN(auto hlo_module, bm.ParseForBM(hlo, config));
   EXPECT_TRUE(hlo_module->has_entry_computation());
   for (auto s : state) {
     auto sched_config = GetDefaultSchedConfig();

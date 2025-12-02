@@ -26,7 +26,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -280,10 +279,10 @@ ENTRY entry {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto module, ParseAndReturnVerifiedModule(module_str, /*replica_count=*/1,
                                                 /*num_partitions=*/2));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<HloValueSemanticsAnalysis> hlo_value_semantics_analysis,
       HloValueSemanticsAnalysis::Run(*module));
   EXPECT_TRUE(IsWeight(*hlo_value_semantics_analysis, module.get(), "copy"));
@@ -327,10 +326,10 @@ ENTRY entry {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto module, ParseAndReturnVerifiedModule(module_str, /*replica_count=*/1,
                                                 /*num_partitions=*/2));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<HloValueSemanticsAnalysis> hlo_value_semantics_analysis,
       HloValueSemanticsAnalysis::Run(*module));
   EXPECT_TRUE(IsWeight(*hlo_value_semantics_analysis, module.get(), "copy"));
@@ -366,10 +365,10 @@ TEST_F(HloValueSemanticsAnalysisTest, HandleConditional) {
     }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto module, ParseAndReturnVerifiedModule(module_str, /*replica_count=*/1,
                                                 /*num_partitions=*/2));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<HloValueSemanticsAnalysis> hlo_value_semantics_analysis,
       HloValueSemanticsAnalysis::Run(*module));
   EXPECT_TRUE(IsTupleOrToken(*hlo_value_semantics_analysis, module.get(),
@@ -415,10 +414,10 @@ ENTRY entry {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto module, ParseAndReturnVerifiedModule(module_str, /*replica_count=*/1,
                                                 /*num_partitions=*/2));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<HloValueSemanticsAnalysis> hlo_value_semantics_analysis,
       HloValueSemanticsAnalysis::Run(*module));
   EXPECT_FALSE(
@@ -581,10 +580,10 @@ ENTRY entry {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto module, ParseAndReturnVerifiedModule(module_str, /*replica_count=*/1,
                                                 /*num_partitions=*/2));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<HloValueSemanticsAnalysis> hlo_value_semantics_analysis,
       HloValueSemanticsAnalysis::Run(*module));
   EXPECT_TRUE(IsWeight(*hlo_value_semantics_analysis, module.get(),
@@ -644,11 +643,11 @@ ENTRY entry {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(module_str,
-                                                       /*replica_count=*/1,
-                                                       /*num_partitions=*/1));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(module_str,
+                                                    /*replica_count=*/1,
+                                                    /*num_partitions=*/1));
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<HloValueSemanticsAnalysis> hlo_value_semantics_analysis,
       HloValueSemanticsAnalysis::Run(*module));
   EXPECT_TRUE(
@@ -656,11 +655,11 @@ ENTRY entry {
 }
 
 TEST_F(HloValueSemanticsAnalysisTest, MnistTrainingLoop) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kMnistHlo,
-                                                       /*replica_count=*/1,
-                                                       /*num_partitions=*/1));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(kMnistHlo,
+                                                    /*replica_count=*/1,
+                                                    /*num_partitions=*/1));
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<HloValueSemanticsAnalysis> hlo_value_semantics_analysis,
       HloValueSemanticsAnalysis::Run(*module));
   EXPECT_TRUE(
@@ -682,11 +681,11 @@ TEST_F(HloValueSemanticsAnalysisTest, MnistTrainingLoop) {
 }
 
 TEST_F(HloValueSemanticsAnalysisTest, SparseDenseMatmul) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kSparseDenseMatmulHlo,
-                                                       /*replica_count=*/1,
-                                                       /*num_partitions=*/1));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(kSparseDenseMatmulHlo,
+                                                    /*replica_count=*/1,
+                                                    /*num_partitions=*/1));
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<HloValueSemanticsAnalysis> semantics_analysis,
       HloValueSemanticsAnalysis::Run(*module));
   EXPECT_TRUE(IsActivation(*semantics_analysis, module.get(), "sc_output"));
@@ -705,11 +704,11 @@ class EinsumDepthAnalysisTest : public HloHardwareIndependentTestBase {
 };
 
 TEST_F(EinsumDepthAnalysisTest, MnistTrainingLoop) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kMnistHlo,
-                                                       /*replica_count=*/1,
-                                                       /*num_partitions=*/1));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(kMnistHlo,
+                                                    /*replica_count=*/1,
+                                                    /*num_partitions=*/1));
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<EinsumDepthAnalysis> einsum_depth_analysis,
       EinsumDepthAnalysis::Run(*module->entry_computation(),
                                SendRecvGroupMap(*module)));
@@ -753,9 +752,8 @@ TEST_F(EinsumDepthAnalysisTest, HandleConditional) {
         branch_computations={branch0, branch1, branch2}
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<EinsumDepthAnalysis> einsum_depth_analysis,
       EinsumDepthAnalysis::Run(*module->entry_computation(),
                                SendRecvGroupMap(*module)));
@@ -776,9 +774,8 @@ TEST_F(EinsumDepthAnalysisTest, HandleAfterAll) {
       ROOT after-all.2 = token[] after-all(send-done.1), frontend_attributes={_xla_host_transfer_handler_name="tf_rendezvous",_xla_host_transfer_rendezvous="rendezvous1"}
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<EinsumDepthAnalysis> einsum_depth_analysis,
       EinsumDepthAnalysis::Run(*module->entry_computation(),
                                SendRecvGroupMap(*module)));
@@ -807,9 +804,8 @@ TEST_F(EinsumDepthAnalysisTest, SendWithRecv) {
       ROOT %after-all.2 = token[] after-all(get-tuple-element.4), frontend_attributes={_xla_host_transfer_handler_name="tf_rendezvous",_xla_host_transfer_rendezvous="host_compute_channel_0_retvals_htod_0"}
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(module_str));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(module_str));
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<EinsumDepthAnalysis> einsum_depth_analysis,
       EinsumDepthAnalysis::Run(*module->entry_computation(),
                                SendRecvGroupMap(*module)));
@@ -838,8 +834,7 @@ TEST_F(EinsumDepthAnalysisTest, SendRecvNotPair) {
       ROOT %after-all.2 = token[] after-all(get-tuple-element.4), frontend_attributes={_xla_host_transfer_handler_name="tf_rendezvous",_xla_host_transfer_rendezvous="host_compute_channel_1_retvals_htod_0"}
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(module_str));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(module_str));
   auto status = EinsumDepthAnalysis::Run(*module->entry_computation(),
                                          SendRecvGroupMap(*module))
                     .status();
@@ -849,11 +844,11 @@ TEST_F(EinsumDepthAnalysisTest, SendRecvNotPair) {
 }
 
 TEST_F(EinsumDepthAnalysisTest, SparseDenseMatmulDepth) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kSparseDenseMatmulHlo,
-                                                       /*replica_count=*/1,
-                                                       /*num_partitions=*/1));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(kSparseDenseMatmulHlo,
+                                                    /*replica_count=*/1,
+                                                    /*num_partitions=*/1));
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<EinsumDepthAnalysis> einsum_depth_analysis,
       EinsumDepthAnalysis::Run(*module->entry_computation(),
                                SendRecvGroupMap(*module)));
@@ -878,11 +873,11 @@ class EinsumHeightAnalysisTest : public HloHardwareIndependentTestBase {
 };
 
 TEST_F(EinsumHeightAnalysisTest, MnistTrainingLoop) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kMnistHlo,
-                                                       /*replica_count=*/1,
-                                                       /*num_partitions=*/1));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(kMnistHlo,
+                                                    /*replica_count=*/1,
+                                                    /*num_partitions=*/1));
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<EinsumHeightAnalysis> einsum_height_analysis,
       EinsumHeightAnalysis::Run(*module->entry_computation(),
                                 SendRecvGroupMap(*module)));
@@ -900,11 +895,11 @@ TEST_F(EinsumHeightAnalysisTest, MnistTrainingLoop) {
 }
 
 TEST_F(EinsumHeightAnalysisTest, SparseDenseMatmulDepth) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kSparseDenseMatmulHlo,
-                                                       /*replica_count=*/1,
-                                                       /*num_partitions=*/1));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(kSparseDenseMatmulHlo,
+                                                    /*replica_count=*/1,
+                                                    /*num_partitions=*/1));
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<EinsumHeightAnalysis> einsum_height_analysis,
       EinsumHeightAnalysis::Run(*module->entry_computation(),
                                 SendRecvGroupMap(*module)));
@@ -928,8 +923,8 @@ ENTRY entry {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<HloValueSemanticsAnalysis> hlo_value_semantics_analysis,
       HloValueSemanticsAnalysis::Run(
           *module,

@@ -18,17 +18,18 @@ limitations under the License.
 #include <cstring>
 #include <string>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/log/check.h"
 #include "xla/pjrt/cpu/cpu_client.h"
 #include "xla/pjrt/cpu/cpu_event.h"
 #include "xla/pjrt/cpu/raw_buffer.h"
 #include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/plugin/xla_cpu/cpu_client_options.h"
 #include "xla/tsl/concurrency/async_value.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/platform/env.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/threadpool.h"
 #include "xla/util.h"
 
@@ -40,11 +41,11 @@ using ::tsl::MakeConstructedAsyncValueRef;
 using ::tsl::thread::ThreadPool;
 
 TEST(TrackedCpuDeviceBufferTest, Basic) {
-  TF_ASSERT_OK_AND_ASSIGN(auto client, GetPjRtCpuClient(CpuClientOptions()));
+  ASSERT_OK_AND_ASSIGN(auto client, GetPjRtCpuClient(CpuClientOptions()));
   PjRtMemorySpace* memory_space = client->memory_spaces()[0];
   std::string expected = "tracked_cpu_device_buffer_test";
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto buffer, CpuRawBuffer::Allocate(memory_space, expected.size()));
+  ASSERT_OK_AND_ASSIGN(auto buffer,
+                       CpuRawBuffer::Allocate(memory_space, expected.size()));
 
   auto definition_event = MakeConstructedAsyncValueRef<CpuEvent>();
 
@@ -70,10 +71,9 @@ TEST(TrackedCpuDeviceBufferTest, Basic) {
 }
 
 TEST(TrackedCpuDeviceBufferTest, BasicError) {
-  TF_ASSERT_OK_AND_ASSIGN(auto client, GetPjRtCpuClient(CpuClientOptions()));
+  ASSERT_OK_AND_ASSIGN(auto client, GetPjRtCpuClient(CpuClientOptions()));
   PjRtMemorySpace* memory_space = client->memory_spaces()[0];
-  TF_ASSERT_OK_AND_ASSIGN(auto buffer,
-                          CpuRawBuffer::Allocate(memory_space, 64));
+  ASSERT_OK_AND_ASSIGN(auto buffer, CpuRawBuffer::Allocate(memory_space, 64));
 
   auto definition_event = MakeConstructedAsyncValueRef<CpuEvent>();
 
@@ -96,7 +96,7 @@ TEST(TrackedCpuDeviceBufferTest, BasicError) {
 }
 
 TEST(TrackedCpuDeviceBufferTest, DelayedAllocation) {
-  TF_ASSERT_OK_AND_ASSIGN(auto client, GetPjRtCpuClient(CpuClientOptions()));
+  ASSERT_OK_AND_ASSIGN(auto client, GetPjRtCpuClient(CpuClientOptions()));
   PjRtMemorySpace* memory_space = client->memory_spaces()[0];
   std::string expected = "tracked_cpu_device_buffer_test";
 

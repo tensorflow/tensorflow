@@ -46,10 +46,10 @@ ENTRY entry {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnUnverifiedModule((module_str)));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule((module_str)));
   StochasticConvertDecomposer decomposer;
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, decomposer.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, decomposer.Run(module.get()));
   EXPECT_TRUE(changed);
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               op::Select(op::Compare(), op::Broadcast(),
@@ -69,10 +69,10 @@ ENTRY entry {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnUnverifiedModule((module_str)));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule((module_str)));
   StochasticConvertDecomposer decomposer;
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, decomposer.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, decomposer.Run(module.get()));
   EXPECT_TRUE(changed);
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               op::Select(op::Compare(), op::Broadcast(),
@@ -92,8 +92,8 @@ ENTRY entry {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnUnverifiedModule((module_str)));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule((module_str)));
   StochasticConvertDecomposer decomposer;
 
   auto result = decomposer.Run(module.get());
@@ -112,8 +112,8 @@ ENTRY entry {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnUnverifiedModule((module_str)));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule((module_str)));
   StochasticConvertDecomposer decomposer;
 
   auto result = decomposer.Run(module.get());

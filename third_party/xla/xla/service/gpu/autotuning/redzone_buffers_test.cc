@@ -30,7 +30,6 @@ limitations under the License.
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor_memory_allocator.h"
 #include "xla/tests/hlo_test_base.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla::gpu {
@@ -51,28 +50,27 @@ TEST_F(RedzoneBuffersTest, VerifyOutputNotATuple) {
     p2 = f32[6,6] parameter(2)
     ROOT root = f32[1,2,3] custom-call(p0, p1, p2), custom_call_target="fake"
   })";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, GetOptimizedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(auto module, GetOptimizedModule(kHlo));
   auto& root = *module->entry_computation()->root_instruction();
-  TF_ASSERT_OK_AND_ASSIGN(se::Platform * platform,
-                          PlatformUtil::GetDefaultPlatform());
-  TF_ASSERT_OK_AND_ASSIGN(se::StreamExecutor * stream_executor,
-                          platform->ExecutorForDevice(0));
+  ASSERT_OK_AND_ASSIGN(se::Platform * platform,
+                       PlatformUtil::GetDefaultPlatform());
+  ASSERT_OK_AND_ASSIGN(se::StreamExecutor * stream_executor,
+                       platform->ExecutorForDevice(0));
   auto allocator =
       std::make_unique<se::StreamExecutorMemoryAllocator>(stream_executor);
-  TF_ASSERT_OK_AND_ASSIGN(se::Stream * stream, allocator->GetStream(0));
+  ASSERT_OK_AND_ASSIGN(se::Stream * stream, allocator->GetStream(0));
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      RedzoneBuffers rzb,
-      RedzoneBuffers::FromInstruction(root, allocator.get(), stream,
-                                      RedzoneBuffers::kAllInputs, true, true,
-                                      kRedzonePaddingBytes));
+  ASSERT_OK_AND_ASSIGN(RedzoneBuffers rzb, RedzoneBuffers::FromInstruction(
+                                               root, allocator.get(), stream,
+                                               RedzoneBuffers::kAllInputs, true,
+                                               true, kRedzonePaddingBytes));
 
   EXPECT_EQ(rzb.input_shapes().size(), 3);
   EXPECT_EQ(rzb.input_buffers().size(), 3);
   EXPECT_EQ(rzb.output_buffers().size(), 0);
   EXPECT_NE(rzb.output_shape(), root.shape());
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       RedzoneBuffers rzb2,
       RedzoneBuffers::FromInstruction(root, allocator.get(), stream,
                                       RedzoneBuffers::kAllInputsAllOutputs,
@@ -83,11 +81,11 @@ TEST_F(RedzoneBuffersTest, VerifyOutputNotATuple) {
   EXPECT_EQ(rzb2.output_buffers().size(), 1);
   EXPECT_EQ(rzb2.output_shape(), root.shape());
 
-  TF_ASSERT_OK_AND_ASSIGN(RedzoneBuffers rzb3,
-                          RedzoneBuffers::FromInstruction(
-                              root, allocator.get(), stream,
-                              RedzoneBuffers::kAllInputsOutputsNoScratch, true,
-                              true, kRedzonePaddingBytes));
+  ASSERT_OK_AND_ASSIGN(RedzoneBuffers rzb3,
+                       RedzoneBuffers::FromInstruction(
+                           root, allocator.get(), stream,
+                           RedzoneBuffers::kAllInputsOutputsNoScratch, true,
+                           true, kRedzonePaddingBytes));
 
   EXPECT_EQ(rzb3.input_shapes().size(), 3);
   EXPECT_EQ(rzb3.input_buffers().size(), 3);
@@ -104,27 +102,26 @@ TEST_F(RedzoneBuffersTest, VerifyOutputTupleOneElement) {
     p2 = f32[6,6] parameter(2)
     ROOT root = (f32[1,2,3]) custom-call(p0, p1, p2), custom_call_target="fake"
   })";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, GetOptimizedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(auto module, GetOptimizedModule(kHlo));
   auto& root = *module->entry_computation()->root_instruction();
-  TF_ASSERT_OK_AND_ASSIGN(se::Platform * platform,
-                          PlatformUtil::GetDefaultPlatform());
-  TF_ASSERT_OK_AND_ASSIGN(se::StreamExecutor * stream_executor,
-                          platform->ExecutorForDevice(0));
+  ASSERT_OK_AND_ASSIGN(se::Platform * platform,
+                       PlatformUtil::GetDefaultPlatform());
+  ASSERT_OK_AND_ASSIGN(se::StreamExecutor * stream_executor,
+                       platform->ExecutorForDevice(0));
   auto allocator =
       std::make_unique<se::StreamExecutorMemoryAllocator>(stream_executor);
-  TF_ASSERT_OK_AND_ASSIGN(se::Stream * stream, allocator->GetStream(0));
+  ASSERT_OK_AND_ASSIGN(se::Stream * stream, allocator->GetStream(0));
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      RedzoneBuffers rzb,
-      RedzoneBuffers::FromInstruction(root, allocator.get(), stream,
-                                      RedzoneBuffers::kAllInputs, true, true,
-                                      kRedzonePaddingBytes));
+  ASSERT_OK_AND_ASSIGN(RedzoneBuffers rzb, RedzoneBuffers::FromInstruction(
+                                               root, allocator.get(), stream,
+                                               RedzoneBuffers::kAllInputs, true,
+                                               true, kRedzonePaddingBytes));
   EXPECT_EQ(rzb.input_shapes().size(), 3);
   EXPECT_EQ(rzb.input_buffers().size(), 3);
   EXPECT_EQ(rzb.output_buffers().size(), 0);
   EXPECT_NE(rzb.output_shape(), root.shape());
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       RedzoneBuffers rzb2,
       RedzoneBuffers::FromInstruction(root, allocator.get(), stream,
                                       RedzoneBuffers::kAllInputsAllOutputs,
@@ -135,11 +132,11 @@ TEST_F(RedzoneBuffersTest, VerifyOutputTupleOneElement) {
   EXPECT_FALSE(rzb2.output_shape().IsTuple());
   EXPECT_EQ(rzb2.output_shape(), root.shape().tuple_shapes(0));
 
-  TF_ASSERT_OK_AND_ASSIGN(RedzoneBuffers rzb3,
-                          RedzoneBuffers::FromInstruction(
-                              root, allocator.get(), stream,
-                              RedzoneBuffers::kAllInputsOutputsNoScratch, true,
-                              true, kRedzonePaddingBytes));
+  ASSERT_OK_AND_ASSIGN(RedzoneBuffers rzb3,
+                       RedzoneBuffers::FromInstruction(
+                           root, allocator.get(), stream,
+                           RedzoneBuffers::kAllInputsOutputsNoScratch, true,
+                           true, kRedzonePaddingBytes));
 
   EXPECT_EQ(rzb3.input_shapes().size(), 3);
   EXPECT_EQ(rzb3.input_buffers().size(), 3);
@@ -156,27 +153,26 @@ TEST_F(RedzoneBuffersTest, VerifyOutputTupleTwoElements) {
     ROOT root = (f32[1,2,3], u8[1,2]) custom-call(p0, p1, p2),
     custom_call_target="fake"
   })";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, GetOptimizedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(auto module, GetOptimizedModule(kHlo));
   auto& root = *module->entry_computation()->root_instruction();
-  TF_ASSERT_OK_AND_ASSIGN(se::Platform * platform,
-                          PlatformUtil::GetDefaultPlatform());
-  TF_ASSERT_OK_AND_ASSIGN(se::StreamExecutor * stream_executor,
-                          platform->ExecutorForDevice(0));
+  ASSERT_OK_AND_ASSIGN(se::Platform * platform,
+                       PlatformUtil::GetDefaultPlatform());
+  ASSERT_OK_AND_ASSIGN(se::StreamExecutor * stream_executor,
+                       platform->ExecutorForDevice(0));
   auto allocator =
       std::make_unique<se::StreamExecutorMemoryAllocator>(stream_executor);
-  TF_ASSERT_OK_AND_ASSIGN(se::Stream * stream, allocator->GetStream(0));
+  ASSERT_OK_AND_ASSIGN(se::Stream * stream, allocator->GetStream(0));
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      RedzoneBuffers rzb,
-      RedzoneBuffers::FromInstruction(root, allocator.get(), stream,
-                                      RedzoneBuffers::kAllInputs, true, true,
-                                      kRedzonePaddingBytes));
+  ASSERT_OK_AND_ASSIGN(RedzoneBuffers rzb, RedzoneBuffers::FromInstruction(
+                                               root, allocator.get(), stream,
+                                               RedzoneBuffers::kAllInputs, true,
+                                               true, kRedzonePaddingBytes));
   EXPECT_EQ(rzb.input_shapes().size(), 3);
   EXPECT_EQ(rzb.input_buffers().size(), 3);
   EXPECT_EQ(rzb.output_buffers().size(), 0);
   EXPECT_NE(rzb.output_shape(), root.shape());
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       RedzoneBuffers rzb2,
       RedzoneBuffers::FromInstruction(root, allocator.get(), stream,
                                       RedzoneBuffers::kAllInputsAllOutputs,
@@ -187,11 +183,11 @@ TEST_F(RedzoneBuffersTest, VerifyOutputTupleTwoElements) {
   EXPECT_TRUE(rzb2.output_shape().IsTuple());
   EXPECT_EQ(rzb2.output_shape(), root.shape());
 
-  TF_ASSERT_OK_AND_ASSIGN(RedzoneBuffers rzb3,
-                          RedzoneBuffers::FromInstruction(
-                              root, allocator.get(), stream,
-                              RedzoneBuffers::kAllInputsOutputsNoScratch, true,
-                              true, kRedzonePaddingBytes));
+  ASSERT_OK_AND_ASSIGN(RedzoneBuffers rzb3,
+                       RedzoneBuffers::FromInstruction(
+                           root, allocator.get(), stream,
+                           RedzoneBuffers::kAllInputsOutputsNoScratch, true,
+                           true, kRedzonePaddingBytes));
   EXPECT_EQ(rzb3.input_shapes().size(), 3);
   EXPECT_EQ(rzb3.input_buffers().size(), 3);
   EXPECT_EQ(rzb3.output_buffers().size(), 1);
@@ -209,18 +205,18 @@ TEST_F(RedzoneBuffersTest, FromExecutable) {
     ROOT root = (f32[1,2,3], u8[1,2]) custom-call(p0, p1, p2),
     custom_call_target="fake"
   })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          GetOptimizedModule(kHlo));
-  TF_ASSERT_OK_AND_ASSIGN(se::Platform * platform,
-                          PlatformUtil::GetDefaultPlatform());
-  TF_ASSERT_OK_AND_ASSIGN(se::StreamExecutor * stream_executor,
-                          platform->ExecutorForDevice(0));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       GetOptimizedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(se::Platform * platform,
+                       PlatformUtil::GetDefaultPlatform());
+  ASSERT_OK_AND_ASSIGN(se::StreamExecutor * stream_executor,
+                       platform->ExecutorForDevice(0));
   auto allocator =
       std::make_unique<se::StreamExecutorMemoryAllocator>(stream_executor);
-  TF_ASSERT_OK_AND_ASSIGN(se::Stream * stream, allocator->GetStream(0));
+  ASSERT_OK_AND_ASSIGN(se::Stream * stream, allocator->GetStream(0));
 
   HloComputation* computation = module->entry_computation();
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       RedzoneBuffers rzb,
       RedzoneBuffers::FromComputation(*computation, allocator.get(), stream,
                                       RedzoneBuffers::kAllInputs, true, true,
@@ -242,15 +238,15 @@ TEST_F(RedzoneBuffersTest, FromProgramShape) {
   program_shape.AddParameter(ShapeUtil::MakeShape(F32, {6, 6}), "p2");
   *program_shape.mutable_result() = ShapeUtil::MakeShape(F32, {1, 2, 3});
 
-  TF_ASSERT_OK_AND_ASSIGN(se::Platform * platform,
-                          PlatformUtil::GetDefaultPlatform());
-  TF_ASSERT_OK_AND_ASSIGN(se::StreamExecutor * stream_executor,
-                          platform->ExecutorForDevice(0));
+  ASSERT_OK_AND_ASSIGN(se::Platform * platform,
+                       PlatformUtil::GetDefaultPlatform());
+  ASSERT_OK_AND_ASSIGN(se::StreamExecutor * stream_executor,
+                       platform->ExecutorForDevice(0));
   auto allocator =
       std::make_unique<se::StreamExecutorMemoryAllocator>(stream_executor);
-  TF_ASSERT_OK_AND_ASSIGN(se::Stream * stream, allocator->GetStream(0));
+  ASSERT_OK_AND_ASSIGN(se::Stream * stream, allocator->GetStream(0));
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       RedzoneBuffers rzb,
       RedzoneBuffers::FromProgramShape(
           program_shape, RedzoneBuffers::kAllInputsAllOutputs,

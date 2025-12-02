@@ -22,22 +22,31 @@ limitations under the License.
 #include <vector>
 
 #include "xla/tests/xla_test_backend_predicates.h"
+#include <gmock/gmock.h>
+#include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_map.h"
+#include "absl/strings/str_format.h"
+#include "absl/strings/str_join.h"
 #include "absl/strings/str_replace.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "ml_dtypes/include/float8.h"
+#include "xla/error_spec.h"
+#include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/primitive_util.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/hlo_module_config.h"
+#include "xla/service/hlo_runner_interface.h"
+#include "xla/shape.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tests/literal_test_util.h"
-#include "xla/tests/test_utils.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/logging.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/tsl/platform/threadpool.h"
 #include "xla/types.h"
@@ -124,11 +133,11 @@ class CollectiveOpsTest : public HloTestBase {
         /*shape=*/input_value.shape(),
         /*replica_groups=*/{}, config,
         /*op=*/op, /*datatype=*/dtype);
-    TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> results,
-                            ExecuteReplicated(std::move(module), {&input_value},
-                                              /*num_replicas=*/kNumReplicas,
-                                              /*use_threads=*/true,
-                                              /*run_hlo_passes=*/true));
+    ASSERT_OK_AND_ASSIGN(std::vector<Literal> results,
+                         ExecuteReplicated(std::move(module), {&input_value},
+                                           /*num_replicas=*/kNumReplicas,
+                                           /*use_threads=*/true,
+                                           /*run_hlo_passes=*/true));
     for (int replica_idx = 0; replica_idx < kNumReplicas; replica_idx++) {
       EXPECT_TRUE(LiteralTestUtil::NearOrEqual(
           expected_value, results[replica_idx], ErrorSpec{1e-5, 1e-5}));
@@ -326,7 +335,7 @@ TEST_F(CollectiveOpsTest, AllReduceAnd_Pred) {
 
   HloModuleConfig config = GetModuleConfigForTest(/*replica_count=*/2);
   auto module = ParseAndReturnVerifiedModule(hlo_module, config).value();
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::vector<Literal> results,
       ExecuteReplicated(std::move(module), absl::Span<Literal* const>{},
                         /*num_replicas=*/2,
@@ -367,7 +376,7 @@ TEST_F(CollectiveOpsTest, AllReduceOr_Pred) {
 
   HloModuleConfig config = GetModuleConfigForTest(/*replica_count=*/2);
   auto module = ParseAndReturnVerifiedModule(hlo_module, config).value();
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::vector<Literal> results,
       ExecuteReplicated(std::move(module), absl::Span<Literal* const>{},
                         /*num_replicas=*/2,
@@ -401,7 +410,7 @@ TEST_F(CollectiveOpsTest, AllReduce_AllCombinations) {
     auto module = MakeCrsModule(input_literal.shape(),
                                 /*replica_groups=*/{}, config);
 
-    TF_ASSERT_OK_AND_ASSIGN(
+    ASSERT_OK_AND_ASSIGN(
         std::vector<Literal> results,
         ExecuteReplicated(std::move(module), {&input_literal},
                           /*num_replicas=*/devices.size(), &device_assn,
@@ -475,15 +484,15 @@ TEST_F(CollectiveOpsTest, AllReduce_CombinableAllReduces) {
   static constexpr int kNumReplicas = 2;
   HloModuleConfig config =
       GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string, config));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string, config));
 
   std::vector<float> input0_vec = {1., 2., 3., 4., 5.};
   auto input0_literal = LiteralUtil::CreateR1<float>(input0_vec);
   std::vector<float> input1_vec = {7., 3., 4., 1., 2.};
   auto input1_literal = LiteralUtil::CreateR1<float>(input1_vec);
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::vector<Literal> results,
       ExecuteReplicated(std::move(module), {&input0_literal, &input1_literal},
                         /*num_replicas=*/kNumReplicas,
@@ -523,7 +532,7 @@ TEST_F(CollectiveOpsTest, AllReduce_ThreeReplicaGroups) {
       /*shape=*/input_literal.shape(),
       /*replica_groups=*/{{0}, {1, 2}, {3}}, config);
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::vector<Literal> results,
       ExecuteReplicated(std::move(module), {&input_literal}, /*num_replicas=*/4,
                         /*use_threads=*/true, /*run_hlo_passes=*/true));
@@ -566,9 +575,9 @@ TEST_F(CollectiveOpsTest, AllReduce_Degenerate) {
 
   HloModuleConfig config =
       GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kModuleStr, config));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kModuleStr, config));
+  ASSERT_OK_AND_ASSIGN(
       std::vector<Literal> results,
       ExecuteReplicated(std::move(module), absl::Span<Literal* const>{},
                         /*num_replicas=*/kNumReplicas,
@@ -602,9 +611,9 @@ TEST_F(CollectiveOpsTest, AsyncAllReduce) {
 
   HloModuleConfig config =
       GetModuleConfigForTest(/*replica_count=*/num_devices());
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kModuleStr, config));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kModuleStr, config));
+  ASSERT_OK_AND_ASSIGN(
       std::vector<Literal> results,
       ExecuteReplicated(std::move(module), absl::Span<Literal* const>{},
                         num_devices(),
@@ -641,9 +650,9 @@ TEST_F(CollectiveOpsTest, AsyncAllReduceTwoOperands) {
 
   HloModuleConfig config =
       GetModuleConfigForTest(/*replica_count=*/num_devices());
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kModuleStr, config));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kModuleStr, config));
+  ASSERT_OK_AND_ASSIGN(
       std::vector<Literal> results,
       ExecuteReplicated(std::move(module), absl::Span<Literal* const>{},
                         num_devices(),
@@ -673,10 +682,9 @@ TEST_F(CollectiveOpsTest, ReplicaId) {
 
   HloModuleConfig config =
       GetModuleConfigForTest(/*replica_count=*/num_devices());
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kModuleStr));
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::vector<Literal> results,
       ExecuteReplicated(std::move(module), absl::Span<Literal* const>{},
                         num_devices(),
@@ -717,10 +725,10 @@ TEST_F(CollectiveOpsTest, CollectiveBroadcast_TwoGPUs) {
 
   HloModuleConfig config =
       GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kModuleStr, config));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(kModuleStr, config));
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::vector<Literal> results,
       ExecuteReplicated(std::move(module), absl::Span<Literal* const>{},
                         kNumReplicas,
@@ -761,10 +769,10 @@ TEST_F(CollectiveOpsTest, CollectiveBroadcast_Simple) {
 
   HloModuleConfig config =
       GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kModuleStr, config));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(kModuleStr, config));
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::vector<Literal> results,
       ExecuteReplicated(std::move(module), absl::Span<Literal* const>{},
                         kNumReplicas,
@@ -800,10 +808,10 @@ TEST_F(CollectiveOpsTest, CollectivePermute_TwoGPUs) {
 
   HloModuleConfig config =
       GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kModuleStr, config));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(kModuleStr, config));
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::vector<Literal> results,
       ExecuteReplicated(std::move(module), absl::Span<Literal* const>{},
                         kNumReplicas,
@@ -835,10 +843,10 @@ TEST_F(CollectiveOpsTest, CollectivePermute_Simple) {
 
   HloModuleConfig config =
       GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kModuleStr, config));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(kModuleStr, config));
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::vector<Literal> results,
       ExecuteReplicated(std::move(module), absl::Span<Literal* const>{},
                         kNumReplicas,
@@ -875,10 +883,10 @@ TEST_F(CollectiveOpsTest, CollectivePermute_Degenerate) {
 
   HloModuleConfig config =
       GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kModuleStr, config));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(kModuleStr, config));
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::vector<Literal> results,
       ExecuteReplicated(std::move(module), absl::Span<Literal* const>{},
                         kNumReplicas,
@@ -914,10 +922,10 @@ TEST_F(CollectiveOpsTest, CollectivePermute_NotDegenerate) {
 
   HloModuleConfig config =
       GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kModuleStr, config));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(kModuleStr, config));
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::vector<Literal> results,
       ExecuteReplicated(std::move(module), absl::Span<Literal* const>{},
                         kNumReplicas,
@@ -954,10 +962,10 @@ TEST_F(CollectiveOpsTest, CollectivePermute_Rotate) {
 
   HloModuleConfig config =
       GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kModuleStr, config));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(kModuleStr, config));
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::vector<Literal> results,
       ExecuteReplicated(std::move(module), absl::Span<Literal* const>{},
                         kNumReplicas,
@@ -998,10 +1006,10 @@ TEST_F(CollectiveOpsTest, AsyncCollectivePermute) {
 
   HloModuleConfig config =
       GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kModuleStr, config));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(kModuleStr, config));
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::vector<Literal> results,
       ExecuteReplicated(std::move(module), absl::Span<Literal* const>{},
                         kNumReplicas,
@@ -1043,10 +1051,10 @@ TEST_F(CollectiveOpsTest, AllToAll_EmptyReplicaGroups) {
 
   HloModuleConfig config =
       GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kModuleStr, config));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(kModuleStr, config));
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::vector<Literal> results,
       ExecuteReplicated(std::move(module), absl::Span<Literal* const>{},
                         kNumReplicas,
@@ -1092,10 +1100,10 @@ TEST_F(CollectiveOpsTest, AllToAll_OrderedReplicaGroups) {
 
   HloModuleConfig config =
       GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kModuleStr, config));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(kModuleStr, config));
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::vector<Literal> results,
       ExecuteReplicated(std::move(module), absl::Span<Literal* const>{},
                         kNumReplicas,
@@ -1135,10 +1143,10 @@ TEST_F(CollectiveOpsTest, AllToAll_TwoReplicaGroups) {
 
   HloModuleConfig config =
       GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kModuleStr, config));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(kModuleStr, config));
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::vector<Literal> results,
       ExecuteReplicated(std::move(module), absl::Span<Literal* const>{},
                         kNumReplicas,
@@ -1173,10 +1181,10 @@ TEST_F(CollectiveOpsTest, AllToAll_SplitDimension) {
 
   HloModuleConfig config =
       GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kModuleStr, config));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(kModuleStr, config));
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::vector<Literal> results,
       ExecuteReplicated(std::move(module), absl::Span<Literal* const>{},
                         kNumReplicas,
@@ -1207,10 +1215,10 @@ TEST_F(CollectiveOpsTest, AllGather_Dim0) {
   const int64_t kNumReplicas = 2;
   HloModuleConfig config =
       GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kModuleStr, config));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(kModuleStr, config));
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::vector<Literal> results,
       ExecuteReplicated(std::move(module), absl::Span<Literal* const>{},
                         kNumReplicas,
@@ -1236,10 +1244,10 @@ TEST_F(CollectiveOpsTest, AllGather_Dim0_UseGlobalDevices) {
   const int64_t kNumReplicas = 2;
   HloModuleConfig config =
       GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kModuleStr, config));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(kModuleStr, config));
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::vector<Literal> results,
       ExecuteReplicated(std::move(module), absl::Span<Literal* const>{},
                         kNumReplicas,
@@ -1265,10 +1273,10 @@ TEST_F(CollectiveOpsTest, AllGather_Dim1) {
   const int64_t kNumReplicas = 2;
   HloModuleConfig config =
       GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kModuleStr, config));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(kModuleStr, config));
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::vector<Literal> results,
       ExecuteReplicated(std::move(module), absl::Span<Literal* const>{},
                         kNumReplicas,
@@ -1298,8 +1306,8 @@ TEST_F(CollectiveOpsTest, AllReduce_TupleAllReduce) {
   static constexpr int kNumReplicas = 2;
   HloModuleConfig config =
       GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string, config));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string, config));
 
   std::vector<float> input0_vec = {1., 2., 3., 4., 5.};
   auto input0_literal = LiteralUtil::CreateR1<float>(input0_vec);
@@ -1308,7 +1316,7 @@ TEST_F(CollectiveOpsTest, AllReduce_TupleAllReduce) {
   };
   auto input1_literal = LiteralUtil::CreateR1<float>(input1_vec);
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::vector<Literal> results,
       ExecuteReplicated(std::move(module), {&input0_literal, &input1_literal},
                         /*num_replicas=*/kNumReplicas,
@@ -1347,10 +1355,10 @@ TEST_F(CollectiveOpsTest, AllGatherMixedTypes) {
   const int64_t kNumReplicas = 2;
   HloModuleConfig config =
       GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kModuleStr, config));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(kModuleStr, config));
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::vector<Literal> results,
       ExecuteReplicated(std::move(module), absl::Span<Literal* const>{},
                         kNumReplicas,
@@ -1389,10 +1397,10 @@ TEST_F(CollectiveOpsTest, ReduceScatter) {
   const int64_t kNumReplicas = 2;
   HloModuleConfig config =
       GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kModuleStr, config));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(kModuleStr, config));
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::vector<Literal> results,
       ExecuteReplicated(std::move(module), absl::Span<Literal* const>{},
                         kNumReplicas,
@@ -1419,13 +1427,13 @@ TEST_F(CollectiveOpsTest, ReduceScatterConstrainLayout) {
   const int64_t kNumReplicas = 2;
   HloModuleConfig config =
       GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kModuleStr, config));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(kModuleStr, config));
 
   std::vector<uint32_t> input_vec = {
       {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16}};
   auto input_literal = LiteralUtil::CreateR1<uint32_t>(input_vec);
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::vector<Literal> results,
       ExecuteReplicated(std::move(module), {&input_literal}, kNumReplicas,
                         /*use_threads=*/true, /*run_hlo_passes=*/true));
@@ -1463,10 +1471,10 @@ TEST_F(CollectiveOpsTest, ReduceScatter_Dim1) {
   const int64_t kNumReplicas = 2;
   HloModuleConfig config =
       GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kModuleStr, config));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(kModuleStr, config));
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::vector<Literal> results,
       ExecuteReplicated(std::move(module), absl::Span<Literal* const>{},
                         kNumReplicas,
@@ -1509,10 +1517,10 @@ TEST_F(CollectiveOpsTest, ReduceScatterReassociate) {
   const int64_t kNumReplicas = 2;
   HloModuleConfig config =
       GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kModuleStr, config));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(kModuleStr, config));
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::vector<Literal> results,
       ExecuteReplicated(std::move(module), absl::Span<Literal* const>{},
                         kNumReplicas,
@@ -1561,10 +1569,10 @@ TEST_F(CollectiveOpsTest, ReduceScatterReassociate_ReduceScatterCreator) {
   const int64_t kNumReplicas = 2;
   HloModuleConfig config =
       GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kModuleStr, config));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(kModuleStr, config));
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::vector<Literal> results,
       ExecuteReplicated(std::move(module), absl::Span<Literal* const>{},
                         kNumReplicas,
@@ -1608,10 +1616,10 @@ TEST_F(CollectiveOpsTest, AllReduceReassociate) {
   const int64_t kNumReplicas = 2;
   HloModuleConfig config =
       GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kModuleStr, config));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(kModuleStr, config));
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::vector<Literal> results,
       ExecuteReplicated(std::move(module), absl::Span<Literal* const>{},
                         kNumReplicas,
@@ -1647,10 +1655,10 @@ TEST_F(CollectiveOpsTest, AllGatherBroadcastReorder_NonUniform) {
   const int64_t kNumReplicas = 2;
   HloModuleConfig config =
       GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kModuleStr, config));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(kModuleStr, config));
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::vector<Literal> results,
       ExecuteReplicated(std::move(module), absl::Span<Literal* const>{},
                         kNumReplicas,
@@ -1692,10 +1700,10 @@ TEST_F(CollectiveOpsTest, AllGatherBroadcastReorder_Uniform) {
   const int64_t kNumReplicas = 2;
   HloModuleConfig config =
       GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kModuleStr, config));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(kModuleStr, config));
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::vector<Literal> results,
       ExecuteReplicated(std::move(module), absl::Span<Literal* const>{},
                         kNumReplicas,
@@ -1736,10 +1744,10 @@ TEST_F(CollectiveOpsTest, AllGather16BitInt) {
   const int64_t kNumReplicas = 2;
   HloModuleConfig config =
       GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kModuleStr, config));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(kModuleStr, config));
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::vector<Literal> results,
       ExecuteReplicated(std::move(module), absl::Span<Literal* const>{},
                         kNumReplicas,
@@ -1768,10 +1776,10 @@ TEST_F(CollectiveOpsTest, AllGather4BitInt) {
   const int64_t kNumReplicas = 2;
   HloModuleConfig config =
       GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(kModuleStr, config));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kModuleStr, config));
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::vector<Literal> results,
       ExecuteReplicated(std::move(module), absl::Span<Literal* const>{},
                         kNumReplicas,
@@ -1798,10 +1806,10 @@ TEST_F(CollectiveOpsTest, AllToAll16BitInt) {
   const int64_t kNumReplicas = 2;
   HloModuleConfig config =
       GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kModuleStr, config));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(kModuleStr, config));
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::vector<Literal> results,
       ExecuteReplicated(std::move(module), absl::Span<Literal* const>{},
                         kNumReplicas,
@@ -1826,10 +1834,10 @@ TEST_F(CollectiveOpsTest, AllToAll4BitInt) {
   const int64_t kNumReplicas = 2;
   HloModuleConfig config =
       GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(kModuleStr, config));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kModuleStr, config));
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::vector<Literal> results,
       ExecuteReplicated(std::move(module), absl::Span<Literal* const>{},
                         kNumReplicas,
@@ -1854,10 +1862,10 @@ TEST_F(CollectiveOpsTest, CollectivePermute16BitInt) {
   const int64_t kNumReplicas = 2;
   HloModuleConfig config =
       GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kModuleStr, config));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(kModuleStr, config));
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::vector<Literal> results,
       ExecuteReplicated(std::move(module), absl::Span<Literal* const>{},
                         kNumReplicas,
@@ -1884,10 +1892,10 @@ TEST_F(CollectiveOpsTest, CollectivePermute4BitInt) {
   const int64_t kNumReplicas = 2;
   HloModuleConfig config =
       GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(kModuleStr, config));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kModuleStr, config));
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::vector<Literal> results,
       ExecuteReplicated(std::move(module), absl::Span<Literal* const>{},
                         kNumReplicas,
@@ -1919,10 +1927,10 @@ TEST_F(CollectiveOpsTest, AllReduce16BitInt) {
   const int64_t kNumReplicas = 2;
   HloModuleConfig config =
       GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kModuleStr, config));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(kModuleStr, config));
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::vector<Literal> results,
       ExecuteReplicated(std::move(module), absl::Span<Literal* const>{},
                         kNumReplicas,
@@ -1957,10 +1965,10 @@ TEST_F(CollectiveOpsTest, AllReduce4BitInt) {
   const int64_t kNumReplicas = 2;
   HloModuleConfig config =
       GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(kModuleStr, config));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kModuleStr, config));
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::vector<Literal> results,
       ExecuteReplicated(std::move(module), absl::Span<Literal* const>{},
                         kNumReplicas,
@@ -1993,10 +2001,10 @@ TEST_F(CollectiveOpsTest, ReduceScatter16BitInt) {
   const int64_t kNumReplicas = 2;
   HloModuleConfig config =
       GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kModuleStr, config));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(kModuleStr, config));
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::vector<Literal> results,
       ExecuteReplicated(std::move(module), absl::Span<Literal* const>{},
                         kNumReplicas,
@@ -2028,10 +2036,10 @@ TEST_F(CollectiveOpsTest, ReduceScatter4BitInt) {
   const int64_t kNumReplicas = 2;
   HloModuleConfig config =
       GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kModuleStr, config));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(kModuleStr, config));
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::vector<Literal> results,
       ExecuteReplicated(std::move(module), absl::Span<Literal* const>{},
                         kNumReplicas,
@@ -2063,10 +2071,10 @@ TEST_F(CollectiveOpsTest, AllReduceBFloat16Min) {
   const int64_t kNumReplicas = 2;
   HloModuleConfig config =
       GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kModuleStr, config));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(kModuleStr, config));
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::vector<Literal> results,
       ExecuteReplicated(std::move(module), absl::Span<Literal* const>{},
                         kNumReplicas,
@@ -2097,10 +2105,10 @@ TEST_F(CollectiveOpsTest, AsyncAllGather) {
   const int64_t kNumReplicas = 2;
   HloModuleConfig config =
       GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kModuleStr, config));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(kModuleStr, config));
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::vector<Literal> results,
       ExecuteReplicated(std::move(module), absl::Span<Literal* const>{},
                         kNumReplicas,
@@ -2148,10 +2156,10 @@ TEST_F(CollectiveOpsTest, AsyncReduceScatter) {
   const int64_t kNumReplicas = 2;
   HloModuleConfig config =
       GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kModuleStr, config));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(kModuleStr, config));
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::vector<Literal> results,
       ExecuteReplicated(std::move(module), absl::Span<Literal* const>{},
                         kNumReplicas,
@@ -2184,10 +2192,10 @@ TEST_F(CollectiveOpsTest, AsyncAllToAll) {
   const int64_t kNumReplicas = 2;
   HloModuleConfig config =
       GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kModuleStr, config));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(kModuleStr, config));
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::vector<Literal> results,
       ExecuteReplicated(std::move(module), absl::Span<Literal* const>{},
                         kNumReplicas,
@@ -2215,10 +2223,10 @@ TEST_F(CollectiveOpsTest, AllGather_Dim1UnitDimensions) {
   const int64_t kNumReplicas = 2;
   HloModuleConfig config =
       GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kModuleStr, config));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(kModuleStr, config));
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::vector<Literal> results,
       ExecuteReplicated(std::move(module), absl::Span<Literal* const>{},
                         kNumReplicas,
@@ -2264,10 +2272,10 @@ TEST_F(CollectiveOpsTest, SendRecv_Simple) {
 
   HloModuleConfig config =
       GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kModuleStr, config));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(kModuleStr, config));
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::vector<Literal> results,
       ExecuteReplicated(std::move(module), absl::Span<Literal* const>{},
                         kNumReplicas,
@@ -2350,10 +2358,10 @@ TEST_F(CollectiveOpsTest, SendRecv_TwoConcurrentChains) {
 
   HloModuleConfig config =
       GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kModuleStr, config));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(kModuleStr, config));
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::vector<Literal> results,
       ExecuteReplicated(std::move(module), absl::Span<Literal* const>{},
                         kNumReplicas,
@@ -2435,10 +2443,10 @@ TEST_F(CollectiveOpsTest, SendRecv_ValidationAttr1) {
 
   HloModuleConfig config =
       GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kModuleStr, config));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(kModuleStr, config));
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::vector<Literal> results,
       ExecuteReplicated(std::move(module), absl::Span<Literal* const>{},
                         kNumReplicas,
@@ -2542,10 +2550,10 @@ body {
 
   HloModuleConfig config =
       GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kModuleStr, config));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(kModuleStr, config));
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::vector<Literal> results,
       ExecuteReplicated(std::move(module), absl::Span<Literal* const>{},
                         kNumReplicas,
@@ -2589,10 +2597,10 @@ TEST_F(CollectiveOpsTest, SendRecvCrossReplica) {
 
   HloModuleConfig config = GetModuleConfigForTest(
       /*replica_count=*/kNumReplicas, /*num_partitions=*/1);
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kModuleStr, config));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(kModuleStr, config));
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::vector<Literal> results,
       ExecuteReplicated(std::move(module), absl::Span<Literal* const>{},
                         kNumReplicas,
@@ -2646,10 +2654,10 @@ TEST_F(CollectiveOpsTest, SendRecvCrossPartition) {
 
   HloModuleConfig config = GetModuleConfigForTest(
       /*replica_count=*/kNumReplicas, /*num_partitions=*/kNumPartitions);
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kModuleStr, config));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(kModuleStr, config));
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::vector<Literal> results,
       ExecuteReplicated(std::move(module), absl::Span<Literal* const>{},
                         kNumReplicas * kNumPartitions, &device_assignment,
@@ -2708,10 +2716,10 @@ TEST_F(Fp8CollectiveOpsTest, AllGather_8BitFloat) {
         absl::StrReplaceAll(kModuleTemplate, {{"TYPE", type}});
 
     // Parse the HLO module and execute it
-    TF_ASSERT_OK_AND_ASSIGN(
+    ASSERT_OK_AND_ASSIGN(
         auto module, ParseAndReturnVerifiedModule(
                          absl::StrReplaceAll(hlo_str, replacements_), config));
-    TF_ASSERT_OK_AND_ASSIGN(
+    ASSERT_OK_AND_ASSIGN(
         std::vector<Literal> results,
         ExecuteReplicated(std::move(module), absl::Span<Literal* const>{},
                           kNumReplicas, /*use_threads=*/true,
@@ -2743,10 +2751,10 @@ TEST_F(Fp8CollectiveOpsTest, AllToAll_8BitFloat) {
   const int64_t kNumReplicas = 2;
   HloModuleConfig config =
       GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto module, ParseAndReturnVerifiedModule(
                        absl::StrReplaceAll(kModuleStr, replacements_), config));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::vector<Literal> results,
       ExecuteReplicated(std::move(module), absl::Span<Literal* const>{},
                         kNumReplicas,
@@ -2771,10 +2779,10 @@ TEST_F(Fp8CollectiveOpsTest, CollectivePermute_8BitFloat) {
   const int64_t kNumReplicas = 2;
   HloModuleConfig config =
       GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto module, ParseAndReturnVerifiedModule(
                        absl::StrReplaceAll(kModuleStr, replacements_), config));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::vector<Literal> results,
       ExecuteReplicated(std::move(module), absl::Span<Literal* const>{},
                         kNumReplicas,

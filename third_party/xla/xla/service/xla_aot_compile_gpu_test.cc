@@ -16,6 +16,7 @@ limitations under the License.
 #include <memory>
 #include <string>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/strings/match.h"
 #include "absl/strings/string_view.h"
@@ -29,10 +30,9 @@ limitations under the License.
 #include "xla/service/platform_util.h"
 #include "xla/service/shaped_buffer.h"
 #include "xla/tsl/lib/core/status_test_util.h"
-#include "tsl/platform/env.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/test.h"
 #include "tsl/platform/path.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/test.h"
 
 namespace xla {
 namespace xla_compile {
@@ -49,39 +49,38 @@ TEST_P(XlaAotCompileTest, LoadGpuExecutable) {
       tsl::ReadFileToString(tsl::Env::Default(), path, &serialized_aot_result));
 
   // Get a LocalClient
-  TF_ASSERT_OK_AND_ASSIGN(se::Platform * platform,
-                          PlatformUtil::GetPlatform("CUDA"));
+  ASSERT_OK_AND_ASSIGN(se::Platform * platform,
+                       PlatformUtil::GetPlatform("CUDA"));
   ASSERT_GT(platform->VisibleDeviceCount(), 0);
 
   LocalClientOptions local_client_options;
   local_client_options.set_platform(platform);
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       LocalClient * client,
       ClientLibrary::GetOrCreateLocalClient(local_client_options));
 
   // Load from AOT result.
   ExecutableBuildOptions executable_build_options;
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<LocalExecutable> local_executable,
       client->Load(serialized_aot_result, executable_build_options));
 
   // Run loaded executable.
   Literal input1 = LiteralUtil::CreateR1<double>({0.0f, 1.0f, 2.0f});
   Literal input2 = LiteralUtil::CreateR1<double>({1.0f, 2.0f, 4.0f});
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       ScopedShapedBuffer array1,
       client->LiteralToShapedBuffer(input1, client->default_device_ordinal()));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       ScopedShapedBuffer array2,
       client->LiteralToShapedBuffer(input2, client->default_device_ordinal()));
   ExecutableRunOptions executable_run_options;
   executable_run_options.set_allocator(client->backend().memory_allocator());
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       ScopedShapedBuffer result,
       local_executable->Run({&array1, &array2}, executable_run_options));
 
-  TF_ASSERT_OK_AND_ASSIGN(Literal output,
-                          client->ShapedBufferToLiteral(result));
+  ASSERT_OK_AND_ASSIGN(Literal output, client->ShapedBufferToLiteral(result));
   Literal expected = LiteralUtil::CreateR1<double>({1.0f, 3.0f, 6.0f});
   EXPECT_EQ(expected, output);
 }
@@ -100,35 +99,33 @@ TEST(XlaCompileTest, LoadGpuExecutableWithConstant) {
       tsl::ReadFileToString(tsl::Env::Default(), path, &serialized_aot_result));
 
   // Get a LocalClient
-  TF_ASSERT_OK_AND_ASSIGN(se::Platform * platform,
-                          PlatformUtil::GetPlatform("CUDA"));
+  ASSERT_OK_AND_ASSIGN(se::Platform * platform,
+                       PlatformUtil::GetPlatform("CUDA"));
   ASSERT_GT(platform->VisibleDeviceCount(), 0);
 
   LocalClientOptions local_client_options;
   local_client_options.set_platform(platform);
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       LocalClient * client,
       ClientLibrary::GetOrCreateLocalClient(local_client_options));
 
   // Load from AOT result.
   ExecutableBuildOptions executable_build_options;
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<LocalExecutable> local_executable,
       client->Load(serialized_aot_result, executable_build_options));
 
   // Run loaded executable.
   Literal input = LiteralUtil::CreateR1<double>({3.0f, 3.0f, 3.0f});
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       ScopedShapedBuffer array,
       client->LiteralToShapedBuffer(input, client->default_device_ordinal()));
   ExecutableRunOptions executable_run_options;
   executable_run_options.set_allocator(client->backend().memory_allocator());
-  TF_ASSERT_OK_AND_ASSIGN(
-      ScopedShapedBuffer result,
-      local_executable->Run({&array}, executable_run_options));
+  ASSERT_OK_AND_ASSIGN(ScopedShapedBuffer result,
+                       local_executable->Run({&array}, executable_run_options));
 
-  TF_ASSERT_OK_AND_ASSIGN(Literal output,
-                          client->ShapedBufferToLiteral(result));
+  ASSERT_OK_AND_ASSIGN(Literal output, client->ShapedBufferToLiteral(result));
   Literal expected = LiteralUtil::CreateR1<double>({4.0f, 5.0f, 6.0f});
   EXPECT_EQ(expected, output);
 }
@@ -147,19 +144,19 @@ TEST(XlaCompileTest, LoadGpuExecutableWithConvolution) {
       << serialized_aot_result;
 
   // Get a LocalClient
-  TF_ASSERT_OK_AND_ASSIGN(se::Platform * platform,
-                          PlatformUtil::GetPlatform("CUDA"));
+  ASSERT_OK_AND_ASSIGN(se::Platform * platform,
+                       PlatformUtil::GetPlatform("CUDA"));
   ASSERT_GT(platform->VisibleDeviceCount(), 0);
 
   LocalClientOptions local_client_options;
   local_client_options.set_platform(platform);
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       LocalClient * client,
       ClientLibrary::GetOrCreateLocalClient(local_client_options));
 
   // Load from AOT result.
   ExecutableBuildOptions executable_build_options;
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<LocalExecutable> local_executable,
       client->Load(serialized_aot_result, executable_build_options));
 
@@ -174,21 +171,20 @@ TEST(XlaCompileTest, LoadGpuExecutableWithConvolution) {
                                     {{{5.0}, {6.0}}, {{7.0}, {8.0}}},
                                     {{{9.0}, {10.0}}, {{11.0}, {12.0}}}});
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       ScopedShapedBuffer array1,
       client->LiteralToShapedBuffer(input1, client->default_device_ordinal()));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       ScopedShapedBuffer array2,
       client->LiteralToShapedBuffer(input2, client->default_device_ordinal()));
 
   ExecutableRunOptions executable_run_options;
   executable_run_options.set_allocator(client->backend().memory_allocator());
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       ScopedShapedBuffer result,
       local_executable->Run({&array1, &array2}, executable_run_options));
 
-  TF_ASSERT_OK_AND_ASSIGN(Literal output,
-                          client->ShapedBufferToLiteral(result));
+  ASSERT_OK_AND_ASSIGN(Literal output, client->ShapedBufferToLiteral(result));
   Literal expected = LiteralUtil::CreateR4<float>({{
       {{1310.0}, {1466.0}, {1622.0}},
       {{2090.0}, {2246.0}, {2402.0}},

@@ -18,6 +18,7 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/hash/hash.h"
 #include "absl/status/status.h"
@@ -26,6 +27,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
+#include "xla/service/hlo_verifier.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 
 namespace xla {
@@ -85,11 +87,10 @@ TEST_F(MemorySpacePropagationTest, NoMemorySpace) {
     ROOT %root = s32[6]{0:T(128)} copy(%fusion)
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   MemorySpacePropagation memory_space_propagation;
   EXPECT_FALSE(memory_space_propagation.Run(module.get()).value());
-  TF_ASSERT_OK_AND_ASSIGN(auto ref, ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto ref, ParseAndReturnVerifiedModule(hlo_string));
   EXPECT_EQ(absl::HashOf(*module), absl::HashOf(*ref));
 }
 
@@ -144,13 +145,12 @@ TEST_F(MemorySpacePropagationTest, NonTupleOutput) {
     ROOT %root = s32[6]{0:T(128)} copy(%fusion)
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnUnverifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo_string));
   MemorySpacePropagation memory_space_propagation;
   EXPECT_TRUE(memory_space_propagation.Run(module.get()).value());
   TF_EXPECT_OK(Verify(module.get()));
-  TF_ASSERT_OK_AND_ASSIGN(auto ref,
-                          ParseAndReturnVerifiedModule(expected_hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto ref,
+                       ParseAndReturnVerifiedModule(expected_hlo_string));
   EXPECT_EQ(absl::HashOf(*module), absl::HashOf(*ref));
 }
 
@@ -213,13 +213,12 @@ TEST_F(MemorySpacePropagationTest, TupleOutput) {
     ROOT %root = s32[6]{0:T(128)} add(%gte0, %gte1)
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnUnverifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo_string));
   MemorySpacePropagation memory_space_propagation;
   EXPECT_TRUE(memory_space_propagation.Run(module.get()).value());
   TF_EXPECT_OK(Verify(module.get()));
-  TF_ASSERT_OK_AND_ASSIGN(auto ref,
-                          ParseAndReturnVerifiedModule(expected_hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto ref,
+                       ParseAndReturnVerifiedModule(expected_hlo_string));
   EXPECT_EQ(absl::HashOf(*module), absl::HashOf(*ref));
 }
 
@@ -287,13 +286,12 @@ TEST_F(MemorySpacePropagationTest, NestedInputFusion) {
     ROOT %root = s32[6]{0:T(128)} copy(%fusion)
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnUnverifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo_string));
   MemorySpacePropagation memory_space_propagation;
   EXPECT_TRUE(memory_space_propagation.Run(module.get()).value());
   TF_EXPECT_OK(Verify(module.get()));
-  TF_ASSERT_OK_AND_ASSIGN(auto ref,
-                          ParseAndReturnVerifiedModule(expected_hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto ref,
+                       ParseAndReturnVerifiedModule(expected_hlo_string));
   EXPECT_EQ(absl::HashOf(*module), absl::HashOf(*ref));
 }
 
@@ -361,13 +359,12 @@ TEST_F(MemorySpacePropagationTest, NestedOutputFusion) {
     ROOT %root = s32[3,2]{0,1:T(128)} copy(%fusion)
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnUnverifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo_string));
   MemorySpacePropagation memory_space_propagation;
   EXPECT_TRUE(memory_space_propagation.Run(module.get()).value());
   TF_EXPECT_OK(Verify(module.get()));
-  TF_ASSERT_OK_AND_ASSIGN(auto ref,
-                          ParseAndReturnVerifiedModule(expected_hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto ref,
+                       ParseAndReturnVerifiedModule(expected_hlo_string));
   EXPECT_EQ(absl::HashOf(*module), absl::HashOf(*ref));
 }
 
@@ -424,13 +421,12 @@ TEST_F(MemorySpacePropagationTest, BitcastInFusion) {
     ROOT %fusion = (s32[6]{0:T(128)}, s32[6]{0:T(128)}) fusion(s32[6]{0:T(128)S(1)SC(0:3)} %arg0, s32[1]{0:T(128)} %arg1, s32[5]{0:T(128)S(1)} %arg2), kind=kLoop, calls=%fused_computation
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnUnverifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo_string));
   MemorySpacePropagation memory_space_propagation;
   EXPECT_TRUE(memory_space_propagation.Run(module.get()).value());
   TF_EXPECT_OK(Verify(module.get()));
-  TF_ASSERT_OK_AND_ASSIGN(auto ref,
-                          ParseAndReturnVerifiedModule(expected_hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto ref,
+                       ParseAndReturnVerifiedModule(expected_hlo_string));
   EXPECT_EQ(absl::HashOf(*module), absl::HashOf(*ref));
 }
 
@@ -474,15 +470,14 @@ TEST_F(MemorySpacePropagationTest, RunOnComputationPropagateFromParameters) {
       ROOT %fusion = (s32[6]{0:T(128)}, s32[6]{0:T(128)}) fusion(%param0, %param1_copy), kind=kLoop, calls=%fused_computation
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   auto dataflow_analysis = GetDataflowAnalysis(*module);
   MemorySpacePropagation memory_space_propagation(std::move(dataflow_analysis));
   HloComputation* computation =
       module->GetComputationWithName("fused_computation");
   EXPECT_TRUE(memory_space_propagation.RunOnComputation(computation));
-  TF_ASSERT_OK_AND_ASSIGN(auto ref,
-                          ParseAndReturnVerifiedModule(expected_hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto ref,
+                       ParseAndReturnVerifiedModule(expected_hlo_string));
   EXPECT_EQ(absl::HashOf(*module), absl::HashOf(*ref));
 }
 
@@ -535,15 +530,14 @@ TEST_F(MemorySpacePropagationTest, RunOnComputationFromParametersNestedFusion) {
       ROOT %fusion = (s32[6]{0:T(128)}, s32[6]{0:T(128)}) fusion(%param0, %param1), kind=kLoop, calls=%fused_computation
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   auto dataflow_analysis = GetDataflowAnalysis(*module);
   MemorySpacePropagation memory_space_propagation(std::move(dataflow_analysis));
   HloComputation* computation =
       module->GetComputationWithName("fused_computation");
   EXPECT_TRUE(memory_space_propagation.RunOnComputation(computation));
-  TF_ASSERT_OK_AND_ASSIGN(auto ref,
-                          ParseAndReturnVerifiedModule(expected_hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto ref,
+                       ParseAndReturnVerifiedModule(expected_hlo_string));
   EXPECT_EQ(absl::HashOf(*module), absl::HashOf(*ref));
 }
 
@@ -580,15 +574,14 @@ TEST_F(MemorySpacePropagationTest, RunOnComputationPropagateFromOutput) {
       ROOT %fusion = (s32[6]{0:T(128)S(1)}, s32[6]{0:T(128)}) fusion(%param0, %param1), kind=kLoop, calls=%fused_computation
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   auto dataflow_analysis = GetDataflowAnalysis(*module);
   MemorySpacePropagation memory_space_propagation(std::move(dataflow_analysis));
   HloComputation* computation =
       module->GetComputationWithName("fused_computation");
   EXPECT_TRUE(memory_space_propagation.RunOnComputation(computation));
-  TF_ASSERT_OK_AND_ASSIGN(auto ref,
-                          ParseAndReturnVerifiedModule(expected_hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto ref,
+                       ParseAndReturnVerifiedModule(expected_hlo_string));
   EXPECT_EQ(absl::HashOf(*module), absl::HashOf(*ref));
 }
 

@@ -25,7 +25,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/utils/hlo_matchers.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -50,11 +49,11 @@ ENTRY %comp {
   p1 = f32[4,4] parameter(1)
   ROOT crs = (f32[128], f32[4,4]) all-reduce(p0, p1), to_apply=add
 })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
 
   AllReduceContiguous pass;
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, pass.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, pass.Run(module.get()));
   EXPECT_TRUE(changed);
 
   HloInstruction* root = module->entry_computation()->root_instruction();

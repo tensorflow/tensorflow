@@ -54,7 +54,6 @@ xla_cc_test(
         "//xla:literal",
         "//xla:literal_util",
         "//xla/mlir/tools/mlir_interpreter/framework",
-        "//xla/tsl/platform:statusor",
         "@com_google_googletest//:gtest_main",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:Support",

@@ -15,10 +15,16 @@ limitations under the License.
 
 #include "xla/backends/cpu/runtime/onednn/onednn_op_thunk.h"
 
+#include <array>
+#include <cmath>
+#include <cstdint>
 #include <vector>
+
+#include <gmock/gmock.h>
 
 // #include "gtest/gtest.h"
 #include "xla/array2d.h"
+#include "xla/array4d.h"
 #include "xla/backends/cpu/runtime/buffer_allocations.h"
 #include "xla/backends/cpu/runtime/thunk.h"
 #include "xla/backends/cpu/runtime/thunk_testlib.h"
@@ -28,7 +34,6 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/platform/env.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/tsl/platform/threadpool.h"
 
@@ -88,7 +93,7 @@ TEST(OneDnnOpThunkTest, SimpleOneDnnMatMulThunk) {
   op_buffers.results_shapes = {out_shape};
 
   // Create thunk (matmul)
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto thunk,
       OneDnnOpThunk::Create("__onednn$matmul", Thunk::Info(), op_buffers, {}));
 
@@ -214,7 +219,7 @@ TEST(OneDnnOpThunkTest, SimpleOneDnnConvolutionThunk) {
   // Wrap config in variant
   OneDnnOpThunk::OneDnnOpConfig config_variant = conv_config;
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto thunk, OneDnnOpThunk::Create("__onednn$convolution", Thunk::Info(),
                                         op_buffers, config_variant));
 
@@ -284,7 +289,7 @@ TEST(OneDnnOpThunkTest, SimpleOneDnnLayerNormThunk) {
 
   OneDnnOpThunk::OneDnnOpConfig config = ln_cfg;
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto thunk, OneDnnOpThunk::Create("__onednn$layernorm", Thunk::Info(),
                                         op_buffers, config));
 
@@ -351,9 +356,9 @@ TEST(OneDnnOpThunkTest, SimpleOneDnnSoftmaxThunk) {
   OneDnnOpThunk::OneDnnOpConfig variant_cfg = softmax_cfg;
 
   // Create thunk for Softmax
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto thunk, OneDnnOpThunk::Create("__onednn$softmax", Thunk::Info(),
-                                        op_buffers, variant_cfg));
+  ASSERT_OK_AND_ASSIGN(auto thunk,
+                       OneDnnOpThunk::Create("__onednn$softmax", Thunk::Info(),
+                                             op_buffers, variant_cfg));
 
   // Execute params
   Thunk::ExecuteParams params;

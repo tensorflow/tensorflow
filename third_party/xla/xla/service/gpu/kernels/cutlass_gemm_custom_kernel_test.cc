@@ -20,18 +20,18 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/kernel.h"
+#include "xla/stream_executor/kernel_args.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/path.h"
 
 namespace xla::gpu::kernel::gemm_universal {
 
@@ -43,7 +43,7 @@ TEST(CutlassGemmKernelTest, SimpleGemm) {
   auto stream = executor->CreateStream().value();
 
   // Load [4, 4] x [4, 4] gemm kernel written in CUDA C++ with CUTLASS.
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto custom_kernels,
       GetCutlassGemmKernels("cutlass_gemm", PrimitiveType::F32,
                             PrimitiveType::F32, PrimitiveType::F32, 4, 4, 4,
@@ -51,8 +51,8 @@ TEST(CutlassGemmKernelTest, SimpleGemm) {
                             executor->GetDeviceDescription()));
   auto custom_kernel = custom_kernels[0];
 
-  TF_ASSERT_OK_AND_ASSIGN(auto gemm,
-                          executor->LoadKernel(custom_kernel.kernel_spec()));
+  ASSERT_OK_AND_ASSIGN(auto gemm,
+                       executor->LoadKernel(custom_kernel.kernel_spec()));
 
   int64_t length = 4 * 4;
   int64_t byte_length = sizeof(float) * length;

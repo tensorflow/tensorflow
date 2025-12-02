@@ -15,9 +15,9 @@ limitations under the License.
 
 #include "xla/service/select_and_scatter_expander.h"
 
-#include <memory>
-#include <utility>
-
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
+#include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 
@@ -58,8 +58,7 @@ class SelectAndScatterExpanderTest : public HloHardwareIndependentTestBase {
 // Test for the expected primary composite ops after this transformation and
 // leave correctness to runtime tests instead of golden IR checks.
 TEST_F(SelectAndScatterExpanderTest, ReplacesSelectAndScatter) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kModuleStr));
 
   RunAndFilecheckHloRewrite(kModuleStr, SelectAndScatterExpander(), R"(
     CHECK-NOT: select-and-scatter
@@ -67,8 +66,7 @@ TEST_F(SelectAndScatterExpanderTest, ReplacesSelectAndScatter) {
 }
 
 TEST_F(SelectAndScatterExpanderTest, CreatesReduceAndScatter) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kModuleStr));
 
   RunAndFilecheckHloRewrite(kModuleStr, SelectAndScatterExpander(), R"(
     CHECK: reduce

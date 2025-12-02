@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "xla/service/platform_util.h"
 #include "xla/stream_executor/device_address.h"
@@ -20,19 +21,16 @@ limitations under the License.
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/lib/core/status_test_util.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/test.h"
 
 namespace stream_executor {
 
 TEST(MemcpyTest, PinnedHostMemory) {
-  TF_ASSERT_OK_AND_ASSIGN(Platform * platform,
-                          xla::PlatformUtil::GetPlatform("GPU"));
+  ASSERT_OK_AND_ASSIGN(Platform * platform,
+                       xla::PlatformUtil::GetPlatform("GPU"));
   StreamExecutor* executor = platform->ExecutorForDevice(0).value();
   auto stream = executor->CreateStream().value();
 
-  TF_ASSERT_OK_AND_ASSIGN(auto d_ptr,
-                          executor->HostMemoryAllocate(sizeof(int)));
+  ASSERT_OK_AND_ASSIGN(auto d_ptr, executor->HostMemoryAllocate(sizeof(int)));
   DeviceAddressBase d_mem(d_ptr->opaque(), sizeof(int));
 
   int h_ptr;

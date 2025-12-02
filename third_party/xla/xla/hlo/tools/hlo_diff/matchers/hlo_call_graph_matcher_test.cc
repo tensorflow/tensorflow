@@ -23,7 +23,6 @@
 #include "xla/hlo/tools/hlo_diff/graph/hlo_gumgraph.h"
 #include "xla/hlo/tools/hlo_diff/hlo_gumgraph_mappings.h"
 #include "xla/hlo/tools/hlo_diff/utils/test_util.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace xla::hlo_diff {
 namespace {
@@ -34,8 +33,8 @@ using ::testing::UnorderedElementsAre;
 class HloCallGraphMatcherTest : public HloHardwareIndependentTestBase {};
 
 TEST_F(HloCallGraphMatcherTest, ExactFingerprintMatches) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> left_module,
-                          ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> left_module,
+                       ParseAndReturnVerifiedModule(R"(
 HloModule module, is_scheduled=true
 
 fused_computation.1 {
@@ -59,8 +58,8 @@ ENTRY entry {
 }
 )"));
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> right_module,
-                          ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> right_module,
+                       ParseAndReturnVerifiedModule(R"(
 HloModule module, is_scheduled=true
 
 fused_computation.11 {
@@ -83,10 +82,10 @@ ENTRY entry {
   ROOT add11 = s32[32,16]{0,1:T(1,128)} add(fusion.11, fusion.21)
 }
 )"));
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> left_gumgraph,
-                          HloGumgraph::Create(left_module.get()));
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> right_gumgraph,
-                          HloGumgraph::Create(right_module.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> left_gumgraph,
+                       HloGumgraph::Create(left_module.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> right_gumgraph,
+                       HloGumgraph::Create(right_module.get()));
   auto mappings = std::make_unique<HloGumgraphMappings>();
 
   MatchCallGraphs(*left_gumgraph, *right_gumgraph, *mappings);
@@ -106,8 +105,8 @@ ENTRY entry {
 }
 
 TEST_F(HloCallGraphMatcherTest, UnequalFingerprintMatchesNotMatched) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> left_module,
-                          ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> left_module,
+                       ParseAndReturnVerifiedModule(R"(
 HloModule module, is_scheduled=true
 
 fused_computation.1 {
@@ -131,8 +130,8 @@ ENTRY entry {
 }
 )"));
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> right_module,
-                          ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> right_module,
+                       ParseAndReturnVerifiedModule(R"(
 HloModule module, is_scheduled=true
 
 fused_computation.11 {
@@ -147,10 +146,10 @@ ENTRY entry {
   ROOT fusion.11 = s32[32,16]{0,1:T(1,128)} fusion(p01,p11), kind=kLoop, calls=fused_computation.11
 }
 )"));
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> left_gumgraph,
-                          HloGumgraph::Create(left_module.get()));
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> right_gumgraph,
-                          HloGumgraph::Create(right_module.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> left_gumgraph,
+                       HloGumgraph::Create(left_module.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> right_gumgraph,
+                       HloGumgraph::Create(right_module.get()));
   auto mappings = std::make_unique<HloGumgraphMappings>();
 
   MatchCallGraphs(*left_gumgraph, *right_gumgraph, *mappings);
@@ -164,8 +163,8 @@ ENTRY entry {
 }
 
 TEST_F(HloCallGraphMatcherTest, MultipleWhileInstructionsMatched) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> left_module,
-                          ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> left_module,
+                       ParseAndReturnVerifiedModule(R"(
 HloModule module, is_scheduled=true
 
 body_1 {
@@ -214,8 +213,8 @@ ENTRY entry {
 }
 )"));
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> right_module,
-                          ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> right_module,
+                       ParseAndReturnVerifiedModule(R"(
 HloModule module, is_scheduled=true
 body_1 {
   prev_1 = s32[2] parameter(0)
@@ -262,10 +261,10 @@ ENTRY entry {
   ROOT add.2 = s32[2] add(add.1, while.3)
 }
 )"));
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> left_gumgraph,
-                          HloGumgraph::Create(left_module.get()));
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> right_gumgraph,
-                          HloGumgraph::Create(right_module.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> left_gumgraph,
+                       HloGumgraph::Create(left_module.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> right_gumgraph,
+                       HloGumgraph::Create(right_module.get()));
   auto mappings = std::make_unique<HloGumgraphMappings>();
 
   MatchCallGraphs(*left_gumgraph, *right_gumgraph, *mappings);
@@ -290,8 +289,8 @@ ENTRY entry {
 }
 
 TEST_F(HloCallGraphMatcherTest, ExactSignatureMatches) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> left_module,
-                          ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> left_module,
+                       ParseAndReturnVerifiedModule(R"(
 HloModule module, is_scheduled=true
 
 fused_computation.1 {
@@ -330,8 +329,8 @@ ENTRY entry {
 }
 )"));
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> right_module,
-                          ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> right_module,
+                       ParseAndReturnVerifiedModule(R"(
 HloModule module, is_scheduled=true
 
 fused_computation.11 {
@@ -370,10 +369,10 @@ ENTRY entry {
   
 }
 )"));
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> left_gumgraph,
-                          HloGumgraph::Create(left_module.get()));
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> right_gumgraph,
-                          HloGumgraph::Create(right_module.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> left_gumgraph,
+                       HloGumgraph::Create(left_module.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> right_gumgraph,
+                       HloGumgraph::Create(right_module.get()));
   auto mappings = std::make_unique<HloGumgraphMappings>();
 
   MatchCallGraphs(*left_gumgraph, *right_gumgraph, *mappings);

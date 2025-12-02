@@ -387,6 +387,7 @@ xla_test(
         "//xla/ffi",
         "//xla/ffi:ffi_api",
         "//xla/hlo/builder:xla_computation",
+        "//xla/hlo/ir:hlo",
         "//xla/hlo/parser:hlo_parser",
         "//xla/hlo/testlib:test",
         "//xla/hlo/utils:hlo_query",
@@ -402,7 +403,9 @@ xla_test(
         "//xla/service:platform_util",
         "//xla/tests:literal_test_util",
         "//xla/tsl/lib/core:status_test_util",
+        "//xla/tsl/platform:status",
         "//xla/tsl/platform:statusor",
+        "//xla/tsl/util:command_line_flags",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
@@ -410,6 +413,8 @@ xla_test(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -603,6 +608,7 @@ xla_test(
         ":se_gpu_pjrt_compiler_impl",
         "//xla:literal",
         "//xla:literal_util",
+        "//xla:shape_util",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/builder:xla_computation",
         "//xla/hlo/parser:hlo_parser",
@@ -671,7 +677,6 @@ xla_cc_test(
         "//xla/pjrt:pjrt_device_description",
         "//xla/pjrt:pjrt_device_dimensions",
         "//xla/pjrt:pjrt_stream_executor_device_description",
-        "//xla/tsl/platform:statusor",
         "@com_google_googletest//:gtest_main",
     ],
 )

@@ -37,7 +37,6 @@ limitations under the License.
 #include "xla/layout_util.h"
 #include "xla/shape.h"
 #include "xla/tsl/platform/env.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test_benchmark.h"
 #include "xla/tsl/platform/threadpool.h"
 #include "xla/util.h"
@@ -1305,7 +1304,7 @@ TEST(ShapeUtilTest, B_250640044) {
              is_dynamic_dimension: false
            })pb",
       &proto));
-  TF_ASSERT_OK_AND_ASSIGN(Shape shape, Shape::FromProto(proto));
+  ASSERT_OK_AND_ASSIGN(Shape shape, Shape::FromProto(proto));
   EXPECT_FALSE(ShapeUtil::ValidateShape(shape).ok());
 }
 
@@ -1339,7 +1338,7 @@ TEST(ShapeUtilTest, B_251055887) {
           physical_shape { element_type: -562 }
         })pb",
       &proto));
-  TF_ASSERT_OK_AND_ASSIGN(Shape shape, Shape::FromProto(proto));
+  ASSERT_OK_AND_ASSIGN(Shape shape, Shape::FromProto(proto));
   EXPECT_FALSE(ShapeUtil::ValidateShape(shape).ok());
 }
 
@@ -1350,14 +1349,14 @@ TEST(ShapeUtilTest, B_385192799) {
   {
     EXPECT_TRUE(tsl::protobuf::TextFormat::ParseFromString(
         R"pb(element_type: 2000)pb", &proto));
-    TF_ASSERT_OK_AND_ASSIGN(Shape shape, Shape::FromProto(proto));
+    ASSERT_OK_AND_ASSIGN(Shape shape, Shape::FromProto(proto));
     EXPECT_FALSE(ShapeUtil::ValidateShape(shape).ok());
   }
 
   {
     EXPECT_TRUE(tsl::protobuf::TextFormat::ParseFromString(
         R"pb(element_type: -1)pb", &proto));
-    TF_ASSERT_OK_AND_ASSIGN(Shape shape, Shape::FromProto(proto));
+    ASSERT_OK_AND_ASSIGN(Shape shape, Shape::FromProto(proto));
     EXPECT_FALSE(ShapeUtil::ValidateShape(shape).ok());
   }
 }

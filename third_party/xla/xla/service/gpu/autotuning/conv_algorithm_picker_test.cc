@@ -19,6 +19,7 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include "absl/strings/string_view.h"
 #include "xla/autotune_results.pb.h"
 #include "xla/debug_options_flags.h"
@@ -32,12 +33,12 @@ limitations under the License.
 #include "xla/service/gpu/transforms/cudnn_fused_conv_rewriter.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/platform_util.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
@@ -71,11 +72,11 @@ ENTRY main {
   %arg1 = f32[3,3,3,64]{2,1,0,3} parameter(1)
   ROOT %conv = f32[54,54,16,64]{1,0,3,2} convolution(%arg0, %arg1), window={size=3x3}, dim_labels=f01b_i01o->01bf
 })";
-  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kHlo));
 
   se::Platform* platform = PlatformUtil::GetDefaultPlatform().value();
-  TF_ASSERT_OK_AND_ASSIGN(std::vector<se::StreamExecutor*> executors,
-                          PlatformUtil::GetStreamExecutors(platform));
+  ASSERT_OK_AND_ASSIGN(std::vector<se::StreamExecutor*> executors,
+                       PlatformUtil::GetStreamExecutors(platform));
   ASSERT_GT(executors.size(), 0);
   se::StreamExecutor* stream_exec = executors[0];
 
@@ -84,16 +85,16 @@ ENTRY main {
                                            ->GetDeviceDescription()
                                            .gpu_compute_capability();
   bool changed = false;
-  TF_ASSERT_OK_AND_ASSIGN(changed, RunHloPass(ConvRewriter(cc), m.get()));
+  ASSERT_OK_AND_ASSIGN(changed, RunHloPass(ConvRewriter(cc), m.get()));
   changed = false;
   DebugOptions opts = DefaultDebugOptionsIgnoringFlags();
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       AutotuneConfig cfg,
       AutotuneConfig::FromDebugOptions(
           DeviceOrDevicelessConfig{DeviceConfig{stream_exec, nullptr}}, opts));
-  TF_ASSERT_OK_AND_ASSIGN(changed,
-                          RunHloPass(GpuConvAlgorithmPicker(cfg), m.get()));
+  ASSERT_OK_AND_ASSIGN(changed,
+                       RunHloPass(GpuConvAlgorithmPicker(cfg), m.get()));
   ASSERT_TRUE(changed);
 
   AutotuneResults results;
@@ -109,12 +110,12 @@ ENTRY main {
 
   // Now send the same module through GpuConvAlgorithmPicker again.  The conv
   // should have the new scratch bytes.
-  TF_ASSERT_OK_AND_ASSIGN(m, ParseAndReturnVerifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(m, ParseAndReturnVerifiedModule(kHlo));
   changed = false;
-  TF_ASSERT_OK_AND_ASSIGN(changed, RunHloPass(ConvRewriter(cc), m.get()));
+  ASSERT_OK_AND_ASSIGN(changed, RunHloPass(ConvRewriter(cc), m.get()));
   changed = false;
-  TF_ASSERT_OK_AND_ASSIGN(changed,
-                          RunHloPass(GpuConvAlgorithmPicker(cfg), m.get()));
+  ASSERT_OK_AND_ASSIGN(changed,
+                       RunHloPass(GpuConvAlgorithmPicker(cfg), m.get()));
   ASSERT_TRUE(changed);
 
   // TupleSimplifier cleans this up a bit before we pattern-match
@@ -130,7 +131,7 @@ ENTRY main {
           {1}, m::Shape().WithElementType(U8).WithDims({new_scratch_bytes}))));
 
   // Algorithm 14 is disabled for cuDNN 9 on V100
-  TF_ASSERT_OK_AND_ASSIGN(auto dnn_version, GetDnnVersionInfo(stream_exec));
+  ASSERT_OK_AND_ASSIGN(auto dnn_version, GetDnnVersionInfo(stream_exec));
   if (dnn_version.major_version() >= 9 && dnn_version.major_version() < 10 &&
       cc.IsCuda() && cc.cuda_compute_capability()->major == 7 &&
       cc.cuda_compute_capability()->minor == 0) {
@@ -181,19 +182,19 @@ ENTRY main {
   amax = f32[] reduce(abs_conv_a, c0), dimensions={0,1,2,3}, to_apply=apply
   ROOT conv_f8 = (f8e4m3fn[1,6,6,16], f32[]) tuple(conv_a_clamped_f8, amax)
 })";
-  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kHlo));
 
   se::Platform* platform = PlatformUtil::GetDefaultPlatform().value();
-  TF_ASSERT_OK_AND_ASSIGN(std::vector<se::StreamExecutor*> executors,
-                          PlatformUtil::GetStreamExecutors(platform));
+  ASSERT_OK_AND_ASSIGN(std::vector<se::StreamExecutor*> executors,
+                       PlatformUtil::GetStreamExecutors(platform));
   ASSERT_GT(executors.size(), 0);
   se::StreamExecutor* stream_exec = executors[0];
 
   const se::GpuComputeCapability& cc = GetCudaComputeCapability();
   bool changed;
-  TF_ASSERT_OK_AND_ASSIGN(changed, RunHloPass(ConvRewriter(cc), m.get()));
+  ASSERT_OK_AND_ASSIGN(changed, RunHloPass(ConvRewriter(cc), m.get()));
   ASSERT_TRUE(changed);
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       changed,
       RunHloPass(CudnnFusedConvRewriter(
                      GetCudaComputeCapability(), GetDnnVersion(),
@@ -202,12 +203,12 @@ ENTRY main {
   ASSERT_TRUE(changed);
 
   DebugOptions opts = DefaultDebugOptionsIgnoringFlags();
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       AutotuneConfig cfg,
       AutotuneConfig::FromDebugOptions(
           DeviceOrDevicelessConfig{DeviceConfig{stream_exec, nullptr}}, opts));
-  TF_ASSERT_OK_AND_ASSIGN(changed,
-                          RunHloPass(GpuConvAlgorithmPicker(cfg), m.get()));
+  ASSERT_OK_AND_ASSIGN(changed,
+                       RunHloPass(GpuConvAlgorithmPicker(cfg), m.get()));
   ASSERT_TRUE(changed);
 }
 

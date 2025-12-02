@@ -15,13 +15,13 @@ limitations under the License.
 
 #include <utility>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "xla/error_spec.h"
 #include "xla/literal_util.h"
 #include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
 #include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/tests/test_utils.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -45,11 +45,10 @@ ENTRY main {
   ROOT R = bf16[3072] reduce(prod, zero), dimensions={0}, to_apply=sum
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto fake_arguments,
-      MakeFakeArguments(module.get(), /*pseudo_random=*/true,
-                        /*use_large_range=*/false));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(auto fake_arguments,
+                       MakeFakeArguments(module.get(), /*pseudo_random=*/true,
+                                         /*use_large_range=*/false));
 
   EXPECT_TRUE(RunAndCompare(std::move(module),
                             LiteralUtil::MakePointers(fake_arguments),

@@ -24,7 +24,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -50,9 +49,9 @@ TEST_F(AllReduceReduceScatterReorderTest, KeepingReplicaGroups) {
     ROOT rs = f32[4] reduce-scatter(ar), dimensions={0}, replica_groups={{0,2}, {1,3}}, to_apply=sum
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_text));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHloPass(&pass_, module.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(bool changed, RunHloPass(&pass_, module.get()));
   EXPECT_TRUE(changed);
 
   HloInstruction* param = module->entry_computation()->parameter_instruction(0);
@@ -95,9 +94,9 @@ TEST_F(AllReduceReduceScatterReorderTest, AllReduceMultipleUsers) {
     ROOT tuple = (f32[8], f32[4]) tuple(ar, rs)
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_text));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHloPass(&pass_, module.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(bool changed, RunHloPass(&pass_, module.get()));
   EXPECT_FALSE(changed);
 }
 
@@ -121,9 +120,9 @@ TEST_F(AllReduceReduceScatterReorderTest, DifferentReductionFunctions) {
     ROOT rs = f32[4] reduce-scatter(ar), dimensions={0}, replica_groups={}, to_apply=product
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_text));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHloPass(&pass_, module.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(bool changed, RunHloPass(&pass_, module.get()));
   EXPECT_FALSE(changed);
 }
 

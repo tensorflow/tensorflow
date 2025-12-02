@@ -18,10 +18,10 @@ limitations under the License.
 #include <memory>
 #include <string>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
-#include "xla/tsl/lib/core/status_test_util.h"
-#include "tsl/platform/test.h"
 
 namespace xla {
 namespace {
@@ -40,8 +40,8 @@ I0521 12:04:45.883483    1509 service.cc:186]   ROOT rooty = (f32[4]{0}, f32[4]{
 I0521 12:04:45.883483    1509 service.cc:186] }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
-                          LoadModuleFromData(hlo_string, "txt"));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                       LoadModuleFromData(hlo_string, "txt"));
   EXPECT_NE(FindInstruction(hlo_module.get(), "p0"), nullptr);
   EXPECT_NE(FindInstruction(hlo_module.get(), "p1"), nullptr);
   EXPECT_NE(FindInstruction(hlo_module.get(), "add"), nullptr);
@@ -69,8 +69,8 @@ module @jit_slice_data attributes {mhlo.num_partitions = 1 : i32, mhlo.num_repli
     return %9 : tensor<2x5xi32>
   }
 })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
-                          LoadModuleFromData(stablehlo_string, "stablehlo"));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                       LoadModuleFromData(stablehlo_string, "stablehlo"));
   EXPECT_EQ(hlo_module->result_shape().ToString(), "s32[2,5]");
 }
 

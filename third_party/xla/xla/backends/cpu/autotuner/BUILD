@@ -71,7 +71,6 @@ xla_cc_test(
         "//xla/service:compiler",
         "//xla/service:executable",
         "//xla/service/cpu:cpu_compiler_pure",
-        "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
@@ -111,11 +110,9 @@ xla_cc_test(
         "//xla/service:compiler",
         "//xla/service/cpu:backend_config_proto_cc",
         "//xla/service/cpu:cpu_compiler",
-        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/platform:casts",
     ],
 )
 
@@ -153,7 +150,6 @@ xla_cc_test(
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/service/cpu:cpu_compiler",
-        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
     ],

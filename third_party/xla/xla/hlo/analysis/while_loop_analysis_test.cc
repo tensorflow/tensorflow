@@ -21,6 +21,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/log/check.h"
 #include "absl/log/log.h"
@@ -177,8 +178,8 @@ TEST_F(WhileLoopAnalysisTest, SingleIterationUpperBound) {
       while_init = (f32[2], s32[]) tuple(param.0, param.1)
       ROOT while = (f32[2], s32[]) while(while_init), condition=condition, body=body
     })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kHloModule));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloModule));
 
   HloInstruction* while_op = module->entry_computation()->root_instruction();
   EXPECT_EQ(*ComputeWhileLoopTripCountUpperBound(while_op), 1);
@@ -273,8 +274,8 @@ TEST_F(WhileLoopAnalysisTest, NoUpperBound) {
       while_init = (f32[2], s32[]) tuple(param.0, param.1)
       ROOT while = (f32[2], s32[]) while(while_init), condition=condition, body=body
     })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kHloModule));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloModule));
 
   HloInstruction* while_op = module->entry_computation()->root_instruction();
   EXPECT_EQ(ComputeWhileLoopTripCountUpperBound(while_op), std::nullopt);
@@ -399,8 +400,8 @@ TEST_F(WhileLoopAnalysisTest, NoAIVNoConstChain) {
       while_init = (f32[2], s32[], s32[]) tuple(param.0, param.1, param.2)
       ROOT while = (f32[2], s32[], s32[]) while(while_init), condition=condition, body=body
     })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kHloModule));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloModule));
 
   HloInstruction* while_op = module->entry_computation()->root_instruction();
   std::vector<const HloInstruction*> aux_indices =
@@ -438,8 +439,8 @@ TEST_F(WhileLoopAnalysisTest, AIVMultiChain) {
       while_init = (f32[2], s32[]) tuple(param.0, param.1)
       ROOT while = (f32[2], s32[]) while(while_init), condition=condition, body=body
     })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kHloModule));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloModule));
 
   HloInstruction* while_op = module->entry_computation()->root_instruction();
   std::vector<const HloInstruction*> aux_indices =
@@ -477,8 +478,8 @@ TEST_F(WhileLoopAnalysisTest, NoAIV) {
       while_init = (f32[2], s32[]) tuple(param.0, param.1)
       ROOT while = (f32[2], s32[]) while(while_init), condition=condition, body=body
     })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kHloModule));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloModule));
 
   HloInstruction* while_op = module->entry_computation()->root_instruction();
   std::vector<const HloInstruction*> aux_indices =
@@ -512,8 +513,8 @@ TEST_F(WhileLoopAnalysisTest, AIVNoChain) {
       while_init = (f32[2], s32[]) tuple(param.0, param.1)
       ROOT while = (f32[2], s32[]) while(while_init), condition=condition, body=body
     })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kHloModule));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloModule));
 
   HloInstruction* while_op = module->entry_computation()->root_instruction();
   std::vector<const HloInstruction*> aux_indices =
@@ -552,8 +553,8 @@ TEST_F(WhileLoopAnalysisTest, NonScalarUpdateOp) {
     }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo));
   const HloInstruction* while_op =
       module->entry_computation()->root_instruction();
   EXPECT_EQ(ComputeWhileLoopTripCount(while_op), std::nullopt);
@@ -585,8 +586,8 @@ TEST_F(WhileLoopAnalysisTest, UpdateOnIndVarCopySuccess) {
     }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo));
   const HloInstruction* while_op =
       module->entry_computation()->root_instruction();
   EXPECT_EQ(*ComputeWhileLoopTripCount(while_op), 4);
@@ -618,8 +619,8 @@ TEST_F(WhileLoopAnalysisTest, IndVarInitialiationNotConstantSuccess) {
     }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo));
   const HloInstruction* while_op =
       module->entry_computation()->root_instruction();
   EXPECT_EQ(*ComputeWhileLoopTripCount(while_op), 4);
@@ -654,8 +655,8 @@ TEST_F(WhileLoopAnalysisTest, FusedUpdateOp) {
     ROOT while = (s32[], s32[]) while(tuple), body=body, condition=condition
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo));
   HloInstruction* while_op = module->entry_computation()->root_instruction();
   std::optional<int64_t> trip_count = ComputeWhileLoopTripCount(while_op);
   ASSERT_NE(trip_count, std::nullopt);
@@ -698,8 +699,8 @@ TEST_F(WhileLoopAnalysisTest, NonScalarConditionOp) {
     }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo));
   const HloInstruction* while_op =
       module->entry_computation()->root_instruction();
   EXPECT_EQ(ComputeWhileLoopTripCount(while_op), std::nullopt);
@@ -738,8 +739,8 @@ TEST_F(WhileLoopAnalysisTest, IndvarWithNonScalarShape) {
     ROOT while = (s32[2]{0:T(128)}, s32[1,1,1,4,3,5]{5,4,3,2,1,0}) while(input), condition=loop.condition, body=loop.body
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
   const HloInstruction* while_op =
       module->entry_computation()->root_instruction();
   EXPECT_EQ(ComputeWhileLoopTripCount(while_op), std::nullopt);
@@ -779,8 +780,8 @@ TEST_F(WhileLoopAnalysisTest, FusedConditionOp) {
     ROOT while = (s32[], s32[]) while(tuple), body=body, condition=condition
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo));
   HloInstruction* while_op = module->entry_computation()->root_instruction();
   std::optional<int64_t> trip_count = ComputeWhileLoopTripCount(while_op);
   ASSERT_NE(trip_count, std::nullopt);
@@ -825,8 +826,8 @@ TEST_F(WhileLoopAnalysisTest, AvoidBruteForceForHugeParams) {
     while = while(tuple), body=body, condition=condition
     ROOT iter = s32[] get-tuple-element(while), index=1
   })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo));
   const HloInstruction* while_op =
       module->entry_computation()->root_instruction()->operand(0);
   std::optional<int64_t> trip_count = ComputeWhileLoopTripCount(while_op);
@@ -880,7 +881,7 @@ TEST_F(WhileLoopAnalysisTest, LoopFusionForLoopVariable) {
     tuple = (s32[], s32[]) tuple(c.0.loop_double_buffer_peeled, data)
     ROOT while = while(tuple), body=body, condition=condition
   })";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
   HloInstruction* while_op = module->entry_computation()->root_instruction();
   auto loop_induction_variable = GetLoopInductionVarTupleIdx(while_op);
   ASSERT_TRUE(loop_induction_variable.has_value());
@@ -911,7 +912,7 @@ TEST_F(WhileLoopAnalysisTest, UpdateIsMultipleOperationsWithConstantOperand) {
     tuple = tuple(c.0, data)
     ROOT while = while(tuple), body=body, condition=condition
   })";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
   HloInstruction* while_op = module->entry_computation()->root_instruction();
   std::optional<int64_t> indvar_idx = GetLoopInductionVarTupleIdx(while_op);
   ASSERT_NE(indvar_idx, std::nullopt);
@@ -945,7 +946,7 @@ TEST_F(WhileLoopAnalysisTest,
     tuple = tuple(c.0, data)
     ROOT while = while(tuple), body=body, condition=condition
   })";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
   HloInstruction* while_op = module->entry_computation()->root_instruction();
   std::optional<int64_t> indvar_idx = GetLoopInductionVarTupleIdx(while_op);
   ASSERT_NE(indvar_idx, std::nullopt);
@@ -979,7 +980,7 @@ TEST_F(WhileLoopAnalysisTest,
     tuple = tuple(c.0, data)
     ROOT while = while(tuple), body=body, condition=condition
   })";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
   HloInstruction* while_op = module->entry_computation()->root_instruction();
   std::optional<int64_t> indvar_idx = GetLoopInductionVarTupleIdx(while_op);
   ASSERT_NE(indvar_idx, std::nullopt);
@@ -1013,7 +1014,7 @@ TEST_F(WhileLoopAnalysisTest,
     tuple = tuple(c.0, data)
     ROOT while = while(tuple), body=body, condition=condition
   })";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
   HloInstruction* while_op = module->entry_computation()->root_instruction();
   std::optional<int64_t> indvar_idx = GetLoopInductionVarTupleIdx(while_op);
   ASSERT_NE(indvar_idx, std::nullopt);
@@ -1056,8 +1057,8 @@ TEST_F(WhileLoopAnalysisTest, GetIndvarIndexShouldWorkWhenParamIsCopied) {
     }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
-                          ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                       ParseAndReturnVerifiedModule(hlo));
   HloInstruction* while_op = m->entry_computation()->root_instruction();
   ASSERT_EQ(while_op->opcode(), HloOpcode::kWhile);
   EXPECT_EQ(GetLoopInductionVarTupleIdx(while_op), 0);
@@ -1108,10 +1109,10 @@ TEST_F(WhileLoopAnalysisTest,
     tuple = (s32[], s32[]) tuple(c1, data)
     ROOT while = (s32[], s32[]) while(tuple), body=body, condition=condition
   })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m_with_constant,
-                          ParseAndReturnVerifiedModule(hlo_with_constant));
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m_without_constant,
-                          ParseAndReturnVerifiedModule(hlo_without_constant));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m_with_constant,
+                       ParseAndReturnVerifiedModule(hlo_with_constant));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m_without_constant,
+                       ParseAndReturnVerifiedModule(hlo_without_constant));
   HloInstruction* while_op_with_constant =
       m_with_constant->entry_computation()->root_instruction();
   HloInstruction* while_op_without_constant =
@@ -1153,8 +1154,8 @@ ENTRY entry {
 }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                       ParseAndReturnVerifiedModule(hlo_string));
 
   HloInstruction* while_op = m->entry_computation()->root_instruction();
   std::optional<Range> range = MatchTrivialLoopRange(while_op);

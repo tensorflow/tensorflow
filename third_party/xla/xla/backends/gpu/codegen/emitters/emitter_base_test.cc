@@ -19,6 +19,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
 #include "absl/strings/str_replace.h"
@@ -28,7 +29,7 @@ limitations under the License.
 #include "mlir/Dialect/Bufferization/IR/BufferizableOpInterface.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
-#include "mlir/IR/ImplicitLocOpBuilder.h"
+#include "mlir/IR/Builders.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/ValueRange.h"
 #include "mlir/Pass/PassManager.h"
@@ -45,7 +46,6 @@ limitations under the License.
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -108,20 +108,19 @@ constexpr absl::string_view kModule = R"(
 TEST_F(EmitterBaseTest, CreateMlirModule) {
   auto module = ParseAndReturnVerifiedModule(kModule).value();
   DummyCopyEmitter emitter;
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto mlir_module,
-      emitter.CreateMLIRModule(
-          mlir_context_,
-          *Cast<HloFusionInstruction>(
-              module->entry_computation()->root_instruction()),
-          "fusion",
-          /*buffer_assignment=*/nullptr));
+  ASSERT_OK_AND_ASSIGN(auto mlir_module,
+                       emitter.CreateMLIRModule(
+                           mlir_context_,
+                           *Cast<HloFusionInstruction>(
+                               module->entry_computation()->root_instruction()),
+                           "fusion",
+                           /*buffer_assignment=*/nullptr));
 
   std::string out;
   llvm::raw_string_ostream stream(out);
   stream << *mlir_module;
 
-  TF_ASSERT_OK_AND_ASSIGN(auto filecheck_result, RunFileCheck(out, R"(
+  ASSERT_OK_AND_ASSIGN(auto filecheck_result, RunFileCheck(out, R"(
     // CHECK:      func.func @fusion(
     // CHECK-SAME:     %[[IN:.*]]: tensor<100xf32> {xla.slice_index = 0
     // CHECK-SAME:     %[[OUT:.*]]: tensor<100xf32> {xla.slice_index = 1
@@ -139,20 +138,19 @@ TEST_F(EmitterBaseTest, CreateLLVMModule) {
 
   auto module = ParseAndReturnVerifiedModule(kModule).value();
   DummyCopyEmitter emitter;
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto llvm_module,
-      emitter.CreateLLVMModule(
-          mlir_context_, llvm_context, device_info_,
-          *Cast<HloFusionInstruction>(
-              module->entry_computation()->root_instruction()),
-          "fusion",
-          /*buffer_assignment=*/nullptr));
+  ASSERT_OK_AND_ASSIGN(auto llvm_module,
+                       emitter.CreateLLVMModule(
+                           mlir_context_, llvm_context, device_info_,
+                           *Cast<HloFusionInstruction>(
+                               module->entry_computation()->root_instruction()),
+                           "fusion",
+                           /*buffer_assignment=*/nullptr));
 
   std::string out;
   llvm::raw_string_ostream stream(out);
   stream << *llvm_module;
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto filecheck_result,
       RunFileCheck(
           out, absl::StrReplaceAll(

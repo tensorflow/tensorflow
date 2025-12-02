@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/statusor.h"
 #include "xla/stream_executor/platform.h"
@@ -40,14 +41,14 @@ static absl::StatusOr<StreamExecutor*> NewStreamExecutor() {
 }
 
 TEST(StreamExecutorTest, HostMemoryAllocate) {
-  TF_ASSERT_OK_AND_ASSIGN(auto executor, NewStreamExecutor());
-  TF_ASSERT_OK_AND_ASSIGN(auto allocation, executor->HostMemoryAllocate(1024));
+  ASSERT_OK_AND_ASSIGN(auto executor, NewStreamExecutor());
+  ASSERT_OK_AND_ASSIGN(auto allocation, executor->HostMemoryAllocate(1024));
   EXPECT_NE(allocation->opaque(), nullptr);
   EXPECT_EQ(allocation->size(), 1024);
 }
 
 TEST(StreamExecutorTest, GetOrCreateResource) {
-  TF_ASSERT_OK_AND_ASSIGN(auto executor, NewStreamExecutor());
+  ASSERT_OK_AND_ASSIGN(auto executor, NewStreamExecutor());
 
   EXPECT_EQ(executor->GetOrNullResource<TestResource>(), nullptr);
 

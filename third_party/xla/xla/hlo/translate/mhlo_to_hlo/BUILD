@@ -61,7 +61,6 @@ xla_cc_test(
         "//xla/service/spmd/shardy:constants",
         "//xla/service/spmd/shardy:utils",
         "//xla/tsl/platform:errors",
-        "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",
         "//xla/tsl/platform:test_main",
         "//xla/tsl/util/proto:proto_matchers",

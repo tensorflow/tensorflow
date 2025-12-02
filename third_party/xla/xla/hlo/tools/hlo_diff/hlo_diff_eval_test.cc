@@ -16,6 +16,7 @@
 
 #include <memory>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
@@ -24,7 +25,6 @@
 #include "xla/hlo/tools/hlo_diff/hlo_diff_summary.h"
 #include "xla/hlo/tools/hlo_diff/hlo_gumgraph_mappings.h"
 #include "xla/hlo/tools/hlo_diff/utils/test_util.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace hlo_diff {
@@ -67,14 +67,14 @@ TEST_F(HloDiffTest, SplitAllegianceWorks) {
     ROOT add.3 = s32[32,16]{0,1:T(1,128)} add(fusion.1, fusion.2)
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> module_l,
-                          ParseAndReturnVerifiedModule(hlo_string));
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> graph_l,
-                          HloGumgraph::Create(module_l.get()));
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> module_r,
-                          ParseAndReturnVerifiedModule(hlo_string));
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> graph_r,
-                          HloGumgraph::Create(module_r.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> module_l,
+                       ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> graph_l,
+                       HloGumgraph::Create(module_l.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> module_r,
+                       ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> graph_r,
+                       HloGumgraph::Create(module_r.get()));
   HloGumgraphMappings mappings;
   // Map all nodes with the same name and then switch the mappings for add.1 and
   // add.2.
@@ -146,14 +146,14 @@ TEST_F(HloDiffTest, GraphNodeCountsWork) {
     ROOT add.3 = s32[32,16]{0,1:T(1,128)} add(fusion.1, fusion.2)
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> module_l,
-                          ParseAndReturnVerifiedModule(hlo_string));
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> graph_l,
-                          HloGumgraph::Create(module_l.get()));
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> module_r,
-                          ParseAndReturnVerifiedModule(hlo_string));
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> graph_r,
-                          HloGumgraph::Create(module_r.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> module_l,
+                       ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> graph_l,
+                       HloGumgraph::Create(module_l.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> module_r,
+                       ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> graph_r,
+                       HloGumgraph::Create(module_r.get()));
   std::unique_ptr<const DiffEval> diff_eval =
       ComputeDiffEval(*graph_l, *graph_r, {}, {}, {});
 
@@ -175,14 +175,14 @@ TEST_F(HloDiffTest, DiffSizeWorks) {
     ROOT add.1 = s32[32,16]{0,1:T(1,128)} add(p0, p1)
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> module_l,
-                          ParseAndReturnVerifiedModule(hlo_string));
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> graph_l,
-                          HloGumgraph::Create(module_l.get()));
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> module_r,
-                          ParseAndReturnVerifiedModule(hlo_string));
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> graph_r,
-                          HloGumgraph::Create(module_r.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> module_l,
+                       ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> graph_l,
+                       HloGumgraph::Create(module_l.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> module_r,
+                       ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> graph_r,
+                       HloGumgraph::Create(module_r.get()));
   DiffResult diff_result;
   diff_result.left_module_unmatched_instructions.insert(
       graph_l->GetRoot().instruction);

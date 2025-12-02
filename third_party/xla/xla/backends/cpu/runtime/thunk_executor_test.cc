@@ -28,6 +28,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include "absl/algorithm/container.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
@@ -41,6 +42,7 @@ limitations under the License.
 #include "xla/runtime/buffer_use.h"
 #include "xla/runtime/resource_use.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/shape_util.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/platform/env.h"
@@ -468,7 +470,7 @@ TEST(ThunkExecutorTest, Execute) {
   sequence.push_back(AddI32Thunk::Create("b", {slice1}, {slice1}, &trace));
   sequence.push_back(AddI32Thunk::Create("c", {slice2}, {slice2}, &trace));
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       ThunkExecutor executor,
       ThunkExecutor::Create(std::move(sequence), OptionsForTest()));
 
@@ -556,7 +558,7 @@ TEST(ThunkExecutorTest, ExecuteOnCorrectThreadPool) {
     sequence.push_back(NoOpAsyncThunk::Create(absl::StrCat(i), slices[i % 3]));
   }
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       ThunkExecutor executor,
       ThunkExecutor::Create(std::move(sequence), OptionsForTest()));
 
@@ -729,7 +731,7 @@ TEST_P(ThunkExecutorStressTest, Execute) {
   auto [num_thunks, use_task_runner, use_device, shared_resource_use,
         inject_errors, use_priority_ready_queue] = GetParam();
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<GeneratedThunkSequence> g,
       GenerateThunkSequence(/*num_elements=*/1024, num_thunks,
                             shared_resource_use, inject_errors));
@@ -739,7 +741,7 @@ TEST_P(ThunkExecutorStressTest, Execute) {
       /*use_priority_ready_queue=*/use_priority_ready_queue,
   };
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       ThunkExecutor executor,
       ThunkExecutor::Create(std::move(g->sequence), executor_options));
 

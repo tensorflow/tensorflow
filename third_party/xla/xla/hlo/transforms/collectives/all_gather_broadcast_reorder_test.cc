@@ -20,7 +20,6 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/utils/hlo_matchers.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -31,8 +30,7 @@ class AllGatherBroadcastReorderTest : public HloHardwareIndependentTestBase {
  public:
   enum class PassOutput { NoChange, NonUniformAGPattern, UniformAGPattern };
   void RunPass(absl::string_view hlo_module, PassOutput expected_output) {
-    TF_ASSERT_OK_AND_ASSIGN(auto module,
-                            ParseAndReturnVerifiedModule(hlo_module));
+    ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_module));
     auto changed = AllGatherBroadcastReorder().Run(module.get());
     ASSERT_TRUE(changed.ok());
 

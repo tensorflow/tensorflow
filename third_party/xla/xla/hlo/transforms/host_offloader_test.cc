@@ -46,7 +46,6 @@ limitations under the License.
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
-#include "tsl/platform/statusor.h"
 
 namespace m = ::xla::match;
 
@@ -134,10 +133,9 @@ ENTRY main {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
 
   EXPECT_TRUE(changed);
 
@@ -183,8 +181,7 @@ ENTRY main {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
   const absl::StatusOr<bool> result = RunHostOffloader(module.get());
   EXPECT_FALSE(result.ok());
@@ -208,10 +205,9 @@ ENTRY main {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
 
   EXPECT_TRUE(changed);
 
@@ -270,10 +266,9 @@ ENTRY main {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
 
   EXPECT_TRUE(changed);
 
@@ -323,10 +318,9 @@ ENTRY main {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
 
   EXPECT_TRUE(changed);
 
@@ -404,10 +398,9 @@ ENTRY %main (a: f32[4096]) -> f32[4096] {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
   EXPECT_TRUE(changed);
 
   HloInstruction* async_done = FindInstruction(module.get(), "async-done");
@@ -451,9 +444,8 @@ ENTRY main {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
   EXPECT_TRUE(changed);
   EXPECT_FALSE(HaveRemainingOffloadAnnotations(module.get()));
   HloVerifier verifier(/*layout_sensitive=*/true,
@@ -498,9 +490,8 @@ ENTRY main {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
   EXPECT_TRUE(changed);
   EXPECT_FALSE(HaveRemainingOffloadAnnotations(module.get()));
   HloVerifier verifier(/*layout_sensitive=*/true,
@@ -561,9 +552,8 @@ ENTRY e {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
   EXPECT_TRUE(changed);
   EXPECT_FALSE(HaveRemainingOffloadAnnotations(module.get()));
   HloVerifier verifier(/*layout_sensitive=*/true,
@@ -629,9 +619,8 @@ ENTRY e {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
   EXPECT_TRUE(changed);
   EXPECT_FALSE(HaveRemainingOffloadAnnotations(module.get()));
   HloVerifier verifier(/*layout_sensitive=*/true,
@@ -649,10 +638,9 @@ ENTRY main {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
 
   EXPECT_TRUE(changed);
 
@@ -691,10 +679,9 @@ ENTRY main {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
 
   EXPECT_TRUE(changed);
 
@@ -754,10 +741,9 @@ ENTRY main {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
 
   EXPECT_TRUE(changed);
 
@@ -829,10 +815,9 @@ ENTRY main {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
 
   EXPECT_TRUE(changed);
 
@@ -891,10 +876,9 @@ ENTRY main {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
 
   EXPECT_TRUE(changed);
 
@@ -954,10 +938,9 @@ ENTRY main {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
 
   EXPECT_TRUE(changed);
 
@@ -1037,10 +1020,9 @@ ENTRY main {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
 
   EXPECT_TRUE(changed);
 
@@ -1114,10 +1096,9 @@ ENTRY main {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
   VLOG(1) << "module after: " << module->ToString();
 
   EXPECT_TRUE(changed);
@@ -1142,10 +1123,9 @@ ENTRY main {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
 
   EXPECT_TRUE(changed);
 
@@ -1205,10 +1185,9 @@ ENTRY main {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
 
   EXPECT_TRUE(changed);
 
@@ -1304,10 +1283,9 @@ ENTRY main.24 {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
 
   EXPECT_TRUE(changed);
 
@@ -1460,10 +1438,9 @@ ENTRY main {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
 
   EXPECT_TRUE(changed);
 
@@ -1512,10 +1489,9 @@ ENTRY main {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
 
   EXPECT_TRUE(changed);
 
@@ -1578,10 +1554,9 @@ ENTRY main {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
 
   EXPECT_TRUE(changed);
 
@@ -1635,8 +1610,7 @@ ENTRY main {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
   absl::StatusOr<bool> statusOrChanged = RunHostOffloader(module.get());
   // The pass should return an error.
@@ -1660,10 +1634,9 @@ ENTRY main {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
 
   EXPECT_TRUE(changed);
 
@@ -1795,10 +1768,9 @@ ENTRY main {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
 
   EXPECT_TRUE(changed);
 
@@ -2104,10 +2076,9 @@ ENTRY main {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
 
   EXPECT_TRUE(changed);
 
@@ -2414,10 +2385,9 @@ ENTRY main {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
 
   EXPECT_TRUE(changed);
 
@@ -2720,10 +2690,9 @@ ENTRY main {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
 
   EXPECT_TRUE(changed);
 
@@ -2981,9 +2950,8 @@ ENTRY main {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
   EXPECT_TRUE(changed);
   // Finally, ensure that all annotations have been removed.
   EXPECT_FALSE(HaveRemainingOffloadAnnotations(module.get()));
@@ -3018,10 +2986,9 @@ ENTRY main {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
 
   EXPECT_TRUE(changed);
 
@@ -3089,10 +3056,9 @@ ENTRY main {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
   EXPECT_TRUE(changed);
 
   // Look for the following pattern:
@@ -3135,10 +3101,9 @@ ENTRY main {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
 
   EXPECT_TRUE(changed);
   LOG(INFO) << module->ToString();
@@ -3176,10 +3141,9 @@ TEST_F(HostOffloaderTest, OutputStreaming) {
     }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
 
   EXPECT_TRUE(changed);
 
@@ -3257,8 +3221,7 @@ TEST_F(HostOffloaderTest, InvalidOutputStreaming) {
     }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
   absl::StatusOr<bool> result = RunHostOffloader(module.get());
   EXPECT_FALSE(result.ok());
@@ -3282,10 +3245,9 @@ TEST_F(HostOffloaderTest, OutputStreamingWithoutTuple) {
     }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
 
   EXPECT_TRUE(changed);
 
@@ -3353,10 +3315,9 @@ TEST_F(HostOffloaderTest, OutputStreamingCustomCallRoot) {
     }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
 
   EXPECT_TRUE(changed);
 
@@ -3458,10 +3419,9 @@ ENTRY entry {
 } // entry
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
 
   EXPECT_TRUE(changed);
 
@@ -3494,10 +3454,9 @@ ENTRY main {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
 
   EXPECT_TRUE(changed);
   LOG(INFO) << module->ToString();
@@ -3525,10 +3484,9 @@ ENTRY main {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
 
   EXPECT_TRUE(changed);
   HloInstruction* param;
@@ -3548,10 +3506,9 @@ ENTRY main {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
 
   EXPECT_TRUE(changed);
 
@@ -3583,10 +3540,9 @@ ENTRY main {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
 
   EXPECT_TRUE(changed);
 
@@ -3610,10 +3566,9 @@ ENTRY main {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
 
   EXPECT_TRUE(changed);
 
@@ -3650,10 +3605,9 @@ ENTRY main {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
 
   EXPECT_TRUE(changed);
 
@@ -3690,10 +3644,9 @@ ENTRY main {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
 
   EXPECT_TRUE(changed);
 
@@ -3730,10 +3683,9 @@ ENTRY main {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
 
   EXPECT_TRUE(changed);
 
@@ -3780,10 +3732,10 @@ ENTRY %main {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
 
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
   EXPECT_TRUE(changed);
 
   HloInstruction* async_start = FindInstruction(module.get(), "async-start");
@@ -3831,8 +3783,8 @@ ENTRY %main {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
 
   TF_ASSERT_OK(RunHostOffloader(module.get()));
 
@@ -3878,10 +3830,10 @@ ENTRY %main {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
 
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
   EXPECT_TRUE(changed);
 
   HloInstruction* async_start = FindInstruction(module.get(), "async-start");
@@ -3938,10 +3890,10 @@ ENTRY %main {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
 
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
   EXPECT_TRUE(changed);
 
   HloInstruction* async_start = FindInstruction(module.get(), "async-start");
@@ -4008,10 +3960,10 @@ ENTRY %main {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
 
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
   EXPECT_TRUE(changed);
 
   HloInstruction* async_start = FindInstruction(module.get(), "async-start");
@@ -4097,10 +4049,10 @@ ENTRY %main {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
 
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
   EXPECT_TRUE(changed);
 
   HloInstruction* async_start = FindInstruction(module.get(), "async-start");
@@ -4129,9 +4081,9 @@ ENTRY %main {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
   EXPECT_TRUE(changed);
   VLOG(1) << "module after: " << module->ToString();
 }
@@ -4178,9 +4130,9 @@ TEST_F(HostOffloaderTest, MoveToHostInsideWhileLoopBodyShareSameBroadcast) {
       ROOT while = (f32[8,1,128,128], f32[8,1,128,128], f32[1,1,128,128], f32[1,1,128,128], s32[], s32[]) while(tuple_for_while), condition=while_condition, body=while_body
     })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
   EXPECT_TRUE(changed);
 }
 
@@ -4210,9 +4162,9 @@ TEST_F(HostOffloaderTest, RemoveRedundantCopiesBackToHostOutputIsNonTuple) {
       ROOT %output_tuple = (f32[1048576]{0:T(1024)}, f32[25769803776]{0:T(1024)}) tuple(f32[1048576]{0:T(1024)} %custom-call, f32[25769803776]{0:T(1024)} %redundant-move-to-host), sharding={{replicated}, {replicated}}
     })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
   EXPECT_TRUE(changed);
   VLOG(1) << module->ToString();
 
@@ -4299,9 +4251,9 @@ TEST_F(HostOffloaderTest, AvoidRedundantCopiesToHost) {
       ROOT custom-call.5 = bf16[65536,1024]{1,0:T(8,128)(2,1)} custom-call(get-tuple-element.9), custom_call_target="MoveToHost"
     })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
   EXPECT_TRUE(changed);
   VLOG(1) << module->ToString();
 
@@ -4321,9 +4273,9 @@ TEST_F(HostOffloaderTest, TanhOnHostMemory) {
       ROOT to_device = f32[1024]{0} custom-call(tanh), custom_call_target="MoveToDevice"
     })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
   EXPECT_TRUE(changed);
   VLOG(1) << module->ToString();
   HloInstruction* tanh = FindInstruction(module.get(), "tanh");
@@ -4343,9 +4295,9 @@ TEST_F(HostOffloaderTest, DynamicSliceOnHostMemoryParamCopied) {
       ROOT to_device = f32[256]{0} custom-call(tanh), custom_call_target="MoveToDevice"
     })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
   EXPECT_TRUE(changed);
   VLOG(1) << module->ToString();
   HloInstruction* tanh = FindInstruction(module.get(), "tanh");
@@ -4385,9 +4337,9 @@ TEST_F(HostOffloaderTest, DynamicSliceOnHostMemoryIndexCopied) {
       ROOT to_device = f32[256]{0} custom-call(tanh), custom_call_target="MoveToDevice"
     })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
   EXPECT_TRUE(changed);
   VLOG(1) << module->ToString();
   HloInstruction* dynamic_slice =
@@ -4424,9 +4376,9 @@ ENTRY main.5_spmd {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
   EXPECT_TRUE(changed);
   VLOG(1) << module->ToString();
   HloInstruction* dynamic_update_slice =
@@ -4485,9 +4437,9 @@ ENTRY %main.44_spmd (param.4: f32[1,128], param.5: f32[1,128], param.3: f32[1,12
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
   EXPECT_TRUE(changed);
   VLOG(1) << module->ToString();
 
@@ -4562,9 +4514,9 @@ ENTRY main.39_spmd (param.2: f32[16,16,16]) -> (f32[16,16,16], f32[16,16,16]) {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
   EXPECT_TRUE(changed);
   VLOG(1) << module->ToString();
 
@@ -4610,9 +4562,9 @@ ENTRY main {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
   EXPECT_TRUE(changed);
   VLOG(1) << module->ToString();
 
@@ -4648,8 +4600,8 @@ TEST_F(HostOffloaderTest, AutomaticHostComputeOffloadDisabled) {
       ROOT to_device = f32[1024]{0} custom-call(tanh), custom_call_target="MoveToDevice"
     })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
   DisableAutomaticHostComputeOffload(module.get());
   // Normally, the tanh will be offloaded to host compute, but because we have
   // disabled automatic host compute offloading, we expect an error.
@@ -4668,8 +4620,8 @@ TEST_F(HostOffloaderTest,
       ROOT a_copy = f32[1024]{0} copy(param)
     })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
   DisableAutomaticHostComputeOffload(module.get());
   // A copy on host memory exists, but we have disabled automatic host compute
   // offloading and we haven't allowed H2H copies, so we expect an error.
@@ -4688,13 +4640,13 @@ TEST_F(HostOffloaderTest,
       ROOT a_copy = f32[1024]{0} copy(param)
     })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
   DisableAutomaticHostComputeOffload(module.get());
   AllowH2hCopyWhenAutomaticHostComputeOffloadDisabled(module.get());
   // A copy on host memory exists, and we have disabled automatic host compute
   // offloading, but we have allowed H2H copies, so we expect success.
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
   EXPECT_TRUE(changed);
   VLOG(1) << module->ToString();
   HloInstruction* a_copy = FindInstruction(module.get(), "a_copy");

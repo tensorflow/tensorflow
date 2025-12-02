@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <memory>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status_matchers.h"
 #include "xla/stream_executor/gpu/gpu_test_kernels.h"
@@ -25,7 +26,6 @@ limitations under the License.
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/rocm/rocm_platform_id.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 
 namespace stream_executor::gpu {
@@ -33,14 +33,14 @@ namespace {
 using testing::Ge;
 
 TEST(RocmKernelTest, GetMaxOccupiedBlocksPerCore) {
-  TF_ASSERT_OK_AND_ASSIGN(Platform * platform,
-                          PlatformManager::PlatformWithName("ROCM"));
-  TF_ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,
-                          platform->ExecutorForDevice(0));
-  TF_ASSERT_OK_AND_ASSIGN(KernelLoaderSpec add_kernel,
-                          GetAddI32TestKernelSpec(rocm::kROCmPlatformId));
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Kernel> rocm_kernel,
-                          executor->LoadKernel(add_kernel));
+  ASSERT_OK_AND_ASSIGN(Platform * platform,
+                       PlatformManager::PlatformWithName("ROCM"));
+  ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,
+                       platform->ExecutorForDevice(0));
+  ASSERT_OK_AND_ASSIGN(KernelLoaderSpec add_kernel,
+                       GetAddI32TestKernelSpec(rocm::kROCmPlatformId));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<Kernel> rocm_kernel,
+                       executor->LoadKernel(add_kernel));
 
   EXPECT_EQ(rocm_kernel->Arity(), 3);
   EXPECT_THAT(rocm_kernel->GetMaxOccupiedBlocksPerCore(

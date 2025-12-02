@@ -22,12 +22,12 @@ limitations under the License.
 #include <memory>
 #include <string>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "tsl/platform/stacktrace_handler.h"
 
@@ -95,7 +95,7 @@ TEST_F(SubcommandTest, LogDefaultTest) {
   command += " --alsologtostderr";
 #endif
   command += " 2>&1";
-  TF_ASSERT_OK_AND_ASSIGN(std::string out, CaptureOutput(command));
+  ASSERT_OK_AND_ASSIGN(std::string out, CaptureOutput(command));
   EXPECT_THAT(out, HasSubstr("LOG INFO"));
   EXPECT_THAT(out, HasSubstr("LOG WARNING"));
   EXPECT_THAT(out, HasSubstr("LOG ERROR"));
@@ -114,7 +114,7 @@ TEST_F(SubcommandTest, MinLogLevelTest) {
   command = absl::StrFormat("TF_CPP_MIN_LOG_LEVEL=1 %s", command);
 #endif
   command += " 2>&1";
-  TF_ASSERT_OK_AND_ASSIGN(std::string out, CaptureOutput(command));
+  ASSERT_OK_AND_ASSIGN(std::string out, CaptureOutput(command));
   EXPECT_THAT(out, Not(HasSubstr("LOG INFO")));
   EXPECT_THAT(out, HasSubstr("LOG WARNING"));
   EXPECT_THAT(out, HasSubstr("LOG ERROR"));
@@ -127,7 +127,7 @@ TEST_F(SubcommandTest, VLogDefaultTest) {
   command += " --alsologtostderr";
 #endif
   command += " 2>&1";
-  TF_ASSERT_OK_AND_ASSIGN(std::string out, CaptureOutput(command));
+  ASSERT_OK_AND_ASSIGN(std::string out, CaptureOutput(command));
   EXPECT_THAT(out, Not(HasSubstr("VLevel 1")));
   EXPECT_THAT(out, Not(HasSubstr("VLevel 2")));
   EXPECT_THAT(out, Not(HasSubstr("VLevel 3")));
@@ -143,7 +143,7 @@ TEST_F(SubcommandTest, MaxVLogLevelTest) {
   command = absl::StrFormat("TF_CPP_MAX_VLOG_LEVEL=2 %s", command);
 #endif
   command += " 2>&1";
-  TF_ASSERT_OK_AND_ASSIGN(std::string out, CaptureOutput(command));
+  ASSERT_OK_AND_ASSIGN(std::string out, CaptureOutput(command));
   EXPECT_THAT(out, HasSubstr("VLevel 1"));
   EXPECT_THAT(out, HasSubstr("VLevel 2"));
   EXPECT_THAT(out, Not(HasSubstr("VLevel 3")));
@@ -164,7 +164,7 @@ TEST_F(SubcommandTest, VModuleTest) {
                             command);
 #endif
   command += " 2>&1";
-  TF_ASSERT_OK_AND_ASSIGN(std::string out, CaptureOutput(command));
+  ASSERT_OK_AND_ASSIGN(std::string out, CaptureOutput(command));
   EXPECT_THAT(out, HasSubstr("VLevel 1"));
   EXPECT_THAT(out, HasSubstr("VLevel 2"));
   EXPECT_THAT(out, Not(HasSubstr("VLevel 3")));

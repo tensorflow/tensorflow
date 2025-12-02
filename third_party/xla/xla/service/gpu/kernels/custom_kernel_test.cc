@@ -24,7 +24,6 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/service/gpu/kernels/custom_kernel.pb.h"
 #include "xla/stream_executor/launch_dim.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/util/proto/parse_text_proto.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
 
@@ -45,7 +44,7 @@ TEST(CustomKernelTest, ToProto) {
           /*arity=*/42),
       stream_executor::BlockDim(1, 2, 3), stream_executor::ThreadDim(4, 5, 6),
       /*shared_memory_bytes=*/7);
-  TF_ASSERT_OK_AND_ASSIGN(CustomKernelProto proto, custom_kernel.ToProto());
+  ASSERT_OK_AND_ASSIGN(CustomKernelProto proto, custom_kernel.ToProto());
 
   EXPECT_THAT(
       proto, tsl::proto_testing::EqualsProto(R"pb(
@@ -71,7 +70,7 @@ TEST(CustomKernelTest, ToProtoWithClusterDims) {
       stream_executor::BlockDim(1, 2, 3), stream_executor::ThreadDim(4, 5, 6),
       stream_executor::ClusterDim(7, 8, 9),
       /*shared_memory_bytes=*/10);
-  TF_ASSERT_OK_AND_ASSIGN(CustomKernelProto proto, custom_kernel.ToProto());
+  ASSERT_OK_AND_ASSIGN(CustomKernelProto proto, custom_kernel.ToProto());
 
   EXPECT_THAT(
       proto, tsl::proto_testing::EqualsProto(R"pb(
@@ -106,8 +105,8 @@ TEST(CustomKernelTest, FromProto) {
     thread_dims { coordinates { x: 4 y: 5 z: 6 } }
     shared_memory_bytes: 7
   )pb");
-  TF_ASSERT_OK_AND_ASSIGN(CustomKernel custom_kernel,
-                          CustomKernel::FromProto(proto, StaticSymbolResolver));
+  ASSERT_OK_AND_ASSIGN(CustomKernel custom_kernel,
+                       CustomKernel::FromProto(proto, StaticSymbolResolver));
   EXPECT_EQ(custom_kernel.name(), "kernel_name");
   EXPECT_EQ(custom_kernel.kernel_spec().kernel_name(), "kernel_name_in_spec");
   EXPECT_EQ(custom_kernel.kernel_spec().arity(), 42);
@@ -136,8 +135,8 @@ TEST(CustomKernelTest, FromProtoWithClusterDims) {
     cluster_dim { coordinates { x: 7 y: 8 z: 9 } }
     shared_memory_bytes: 10
   )pb");
-  TF_ASSERT_OK_AND_ASSIGN(CustomKernel custom_kernel,
-                          CustomKernel::FromProto(proto, StaticSymbolResolver));
+  ASSERT_OK_AND_ASSIGN(CustomKernel custom_kernel,
+                       CustomKernel::FromProto(proto, StaticSymbolResolver));
   EXPECT_EQ(custom_kernel.name(), "kernel_name");
   EXPECT_EQ(custom_kernel.kernel_spec().kernel_name(), "kernel_name_in_spec");
   EXPECT_EQ(custom_kernel.kernel_spec().arity(), 42);

@@ -21,6 +21,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/log/log.h"
 #include "absl/strings/string_view.h"
@@ -38,7 +39,6 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace hlo_sharding_util {
@@ -1129,8 +1129,7 @@ TEST_F(HloShardingUtilTestWithHlo, InferDotOperandShardingTest1) {
       %p1 = bf16[32,64,256,512] parameter(1), sharding={devices=[1,1,1,2,16]<=[8,2,2]T(1,0,2) last_tile_dim_replicate}
       ROOT %dot.3 = bf16[32,64,128,256] dot(%p0, %p1), lhs_batch_dims={0,1}, rhs_batch_dims={0,1}, lhs_contracting_dims={3}, rhs_contracting_dims={3}, sharding={devices=[2,2,2,2,2]<=[32] last_tile_dim_replicate}
     })";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   const HloInstruction* dot = module->entry_computation()->root_instruction();
   auto dnums = dot_as_convolution_util::ParseDotGeneralFromDot(dot);
 
@@ -1173,8 +1172,7 @@ TEST_F(HloShardingUtilTestWithHlo, InferDotOperandShardingTest2) {
       %p1 = bf16[32,64,256,512] parameter(1), sharding={devices=[1,1,1,2,16]<=[8,2,2]T(1,0,2) last_tile_dim_replicate}
       ROOT %dot.3 = bf16[32,64,128,256] dot(%p0, %p1), lhs_batch_dims={0,1}, rhs_batch_dims={0,1}, lhs_contracting_dims={3}, rhs_contracting_dims={3}, sharding={devices=[2,2,2,2,2]<=[32] last_tile_dim_replicate}
     })";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   const HloInstruction* dot = module->entry_computation()->root_instruction();
   auto dnums = dot_as_convolution_util::ParseDotGeneralFromDot(dot);
 
@@ -1229,8 +1227,7 @@ TEST_F(HloShardingUtilTestWithHlo, MultipleCallSitesForIota) {
       %call.1 = s32[4096,4096] call(%tuple), to_apply=call_computation
       ROOT %add = s32[4096,4096] add(%call.0, %call.1)
     })";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   // TODO(b/260601110): Actually recognize the iota.
   auto call_graph = CallGraph::Build(module.get());
   EXPECT_EQ(

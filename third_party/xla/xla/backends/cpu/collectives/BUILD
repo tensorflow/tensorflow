@@ -78,10 +78,10 @@ xla_cc_test(
         ":in_process_collectives",
         "//xla/core/collectives:rank_id",
         "//xla/runtime:device_id",
-        "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",
         "//xla/tsl/platform:test_main",
         "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest",
     ],
 )
 

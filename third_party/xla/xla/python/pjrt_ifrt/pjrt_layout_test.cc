@@ -32,7 +32,6 @@ limitations under the License.
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/mock.h"
 #include "xla/python/ifrt/shape.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -92,7 +91,7 @@ TEST(PjRtLayoutTest, ByteSize) {
 
 TEST(PjRtLayoutTest, ToPjRtLayout) {
   {
-    TF_ASSERT_OK_AND_ASSIGN(
+    ASSERT_OK_AND_ASSIGN(
         auto layout,
         ToPjRtLayout(DType(DType::kS32), Shape({3, 2}),
                      PjRtLayout::Create(std::make_unique<xla::PjRtLayout>(
@@ -100,9 +99,9 @@ TEST(PjRtLayoutTest, ToPjRtLayout) {
     EXPECT_EQ(layout->xla_layout(), xla::LayoutUtil::MakeDescendingLayout(2));
   }
   {
-    TF_ASSERT_OK_AND_ASSIGN(auto layout,
-                            ToPjRtLayout(DType(DType::kS32), Shape({3, 2}),
-                                         CompactLayout::CreateCOrder(2)));
+    ASSERT_OK_AND_ASSIGN(auto layout,
+                         ToPjRtLayout(DType(DType::kS32), Shape({3, 2}),
+                                      CompactLayout::CreateCOrder(2)));
     EXPECT_EQ(layout->xla_layout(), xla::LayoutUtil::MakeDescendingLayout(2));
   }
 
@@ -117,15 +116,15 @@ TEST(PjRtLayoutTest, ToPjRtLayout) {
         .WillOnce(Return(absl::StatusOr<std::shared_ptr<const xla::PjRtLayout>>(
             std::make_shared<xla::PjRtLayout>(
                 xla::LayoutUtil::MakeDescendingLayout(2)))));
-    TF_ASSERT_OK_AND_ASSIGN(
-        auto layout, ToPjRtLayout(DType(DType::kS32), shape, device.get(),
-                                  MemoryKind(), /*layout=*/nullptr));
+    ASSERT_OK_AND_ASSIGN(auto layout,
+                         ToPjRtLayout(DType(DType::kS32), shape, device.get(),
+                                      MemoryKind(), /*layout=*/nullptr));
     EXPECT_EQ(layout->xla_layout(), xla::LayoutUtil::MakeDescendingLayout(2));
   }
   {
     auto client = std::make_shared<MockClient>();
     auto device = std::make_unique<MockDevice>();
-    TF_ASSERT_OK_AND_ASSIGN(
+    ASSERT_OK_AND_ASSIGN(
         auto layout,
         ToPjRtLayout(DType(DType::kS32), Shape({3, 2}), device.get(),
                      MemoryKind(),

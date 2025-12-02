@@ -20,6 +20,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include "absl/algorithm/container.h"
 #include "absl/hash/hash.h"
 #include "absl/status/status.h"
@@ -36,7 +37,6 @@ limitations under the License.
 #include "xla/shape_tree.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
 #include "xla/xla_data.pb.h"
 
@@ -628,7 +628,7 @@ class HloParseShardingWithMetadataTest
 
 TEST_P(HloParseShardingWithMetadataTest, ParseHloString) {
   auto check = [](const HloSharding& sharding) {
-    TF_ASSERT_OK_AND_ASSIGN(
+    ASSERT_OK_AND_ASSIGN(
         auto parsed_sharding,
         ParseSharding(sharding.ToString(/*include_metadata=*/true)));
     EXPECT_EQ(sharding, parsed_sharding);

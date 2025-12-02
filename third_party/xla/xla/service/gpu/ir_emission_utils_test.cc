@@ -37,7 +37,6 @@ limitations under the License.
 #include "xla/literal_util.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/ir_emission_utils.pb.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/protobuf/dnn.pb.h"
 #include "xla/types.h"
 
@@ -68,8 +67,8 @@ ENTRY entry {
   ROOT t = f32[64,1536]{1,0} transpose(p), dimensions={1,0}
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo));
   HloInstruction* tr = module->entry_computation()->root_instruction();
 
   auto result = GetDescriptionForTiledTransposeEmitter(*tr);
@@ -88,8 +87,8 @@ ENTRY entry {
   ROOT t = f32[48,32,2]{2,1,0} transpose(p), dimensions={1,0,2}
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo));
   HloInstruction* tr = module->entry_computation()->root_instruction();
 
   auto result = GetDescriptionForTiledTransposeEmitter(*tr);
@@ -108,8 +107,8 @@ ENTRY entry {
   ROOT t = s8[48,32,9]{2,1,0} transpose(p), dimensions={1,0,2}
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo));
   HloInstruction* tr = module->entry_computation()->root_instruction();
 
   auto result = GetDescriptionForTiledTransposeEmitter(*tr);
@@ -125,8 +124,8 @@ ENTRY entry {
   ROOT t = f32[32,48,33,2]{3,2,1,0} transpose(p), dimensions={2,1,0,3}
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo));
   HloInstruction* tr = module->entry_computation()->root_instruction();
 
   auto result = GetDescriptionForTiledTransposeEmitter(*tr);
@@ -145,8 +144,8 @@ ENTRY entry {
   ROOT t = f32[48,34,32,33]{3,2,1,0} transpose(p), dimensions={1,3,2,0}
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo));
   HloInstruction* tr = module->entry_computation()->root_instruction();
 
   auto result = GetDescriptionForTiledTransposeEmitter(*tr);
@@ -165,8 +164,8 @@ ENTRY entry {
   ROOT t = f32[64,48,32]{2,1,0} transpose(p), dimensions={2,1,0}
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo));
 
   HloInstruction* r = module->entry_computation()->root_instruction();
   auto result = GetDescriptionForTiledTransposeEmitter(*r);
@@ -186,8 +185,8 @@ ENTRY entry {
   ROOT n = f32[64,48,32]{2,1,0} negate(t)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo));
 
   HloInstruction* r = module->entry_computation()->root_instruction();
   auto result = GetDescriptionForTiledTransposeEmitter(*r->operand(0));
@@ -212,8 +211,8 @@ ENTRY main {
   ROOT f = s8[64,48,32]{2,1,0} fusion(p0), kind=kInput, calls=fusion
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo));
 
   HloInstruction* r =
       module->entry_computation()->root_instruction()->fused_expression_root();
@@ -249,8 +248,8 @@ TEST_F(IrEmissionUtilsTest, FindReduceHeroEpilogueFusion) {
     }
     )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo));
 
   HloInstruction* r = module->entry_computation()->root_instruction();
   auto fusion = HloFusionAdaptor::ForInstruction(r);
@@ -283,8 +282,8 @@ TEST_F(IrEmissionUtilsTest, FindReduceHeroEpilogueFusionTwoRootUsers) {
     }
     )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo));
 
   HloInstruction* r = module->entry_computation()->root_instruction();
   auto fusion = HloFusionAdaptor::ForInstruction(r);
@@ -319,8 +318,8 @@ TEST_F(IrEmissionUtilsTest, FindReduceHeroEpilogueFusionHeroAlsoUsedAsNonHero) {
       ROOT fusion = (f32[], f32[4]{0}, f32[1]{0}) fusion(Arg0), kind=kInput, calls=fused_computation
     })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo));
 
   HloInstruction* r = module->entry_computation()->root_instruction();
   auto fusion = HloFusionAdaptor::ForInstruction(r);
@@ -343,8 +342,8 @@ ENTRY entry {
   ROOT add = f32[64,48,32]{2,1,0} add(t, p2)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo));
 
   HloInstruction* r = module->entry_computation()->root_instruction();
 
@@ -373,8 +372,8 @@ ENTRY main {
   ROOT fusion = f32[64,48,32]{2,1,0} fusion(param0, param1), kind=kInput, calls=fusion
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo));
 
   HloInstruction* r =
       module->entry_computation()->root_instruction()->fused_expression_root();
@@ -406,8 +405,8 @@ ENTRY main {
   ROOT fusion = f32[64,48,32]{2,1,0} fusion(param0, param1), kind=kInput, calls=fusion
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo));
 
   HloInstruction* r =
       module->entry_computation()->root_instruction()->fused_expression_root();
@@ -433,8 +432,8 @@ ENTRY entry {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo));
 
   HloInstruction* transpose =
       module->entry_computation()->GetInstructionWithName("t");
@@ -466,8 +465,8 @@ ENTRY entry {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo));
 
   HloInstruction* r = module->entry_computation()->root_instruction();
   HloInstruction* transpose = module->GetComputationWithName("f")
@@ -500,8 +499,8 @@ ENTRY main {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo));
 
   HloInstruction* r =
       module->entry_computation()->root_instruction()->fused_expression_root();
@@ -524,8 +523,8 @@ ENTRY main {
   ROOT fusion = f32[8,12,1100]{2,1,0} fusion(param), kind=kInput, calls=fusion
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo));
 
   HloInstruction* tr =
       module->entry_computation()->root_instruction()->fused_expression_root();
@@ -550,8 +549,8 @@ ENTRY main {
   ROOT fusion = f32[1100,12,8]{2,1,0} fusion(param), kind=kInput, calls=fusion
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo));
 
   HloInstruction* tr =
       module->entry_computation()->root_instruction()->fused_expression_root();
@@ -597,8 +596,8 @@ ENTRY entry {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo));
 
   HloInstruction* slice1 =
       module->entry_computation()->GetInstructionWithName("slice.1");
@@ -643,8 +642,8 @@ TEST_F(IrEmissionUtilsTest, LiteralToAttrToXlaFormat) {
   {
     Literal literal = LiteralUtil::CreateR2<int16_t>({{0, 1, 2}, {3, 4, 5}});
 
-    TF_ASSERT_OK_AND_ASSIGN(DenseDataIntermediate data,
-                            LiteralToXlaFormat(literal));
+    ASSERT_OK_AND_ASSIGN(DenseDataIntermediate data,
+                         LiteralToXlaFormat(literal));
     EXPECT_EQ(data.span().size(), literal.size_bytes());
     EXPECT_EQ(reinterpret_cast<const char*>(data.span().data()),
               literal.untyped_data());
@@ -655,8 +654,8 @@ TEST_F(IrEmissionUtilsTest, LiteralToAttrToXlaFormat) {
     Literal literal = LiteralUtil::CreateR2<s4>(
         {{s4(0), s4(1), s4(2)}, {s4(3), s4(4), s4(5)}});
 
-    TF_ASSERT_OK_AND_ASSIGN(DenseDataIntermediate data,
-                            LiteralToXlaFormat(literal));
+    ASSERT_OK_AND_ASSIGN(DenseDataIntermediate data,
+                         LiteralToXlaFormat(literal));
     EXPECT_EQ(data.span(), std::vector<uint8_t>({0x10, 0x32, 0x54}));
     EXPECT_NE(reinterpret_cast<const void*>(data.span().data()),
               literal.untyped_data());
@@ -667,8 +666,8 @@ TEST_F(IrEmissionUtilsTest, LiteralToAttrToXlaFormat) {
     Literal literal = LiteralUtil::CreateR2<u4>(
         {{u4(0), u4(1), u4(2)}, {u4(3), u4(4), u4(5)}, {u4(6), u4(7), u4(8)}});
 
-    TF_ASSERT_OK_AND_ASSIGN(DenseDataIntermediate data,
-                            LiteralToXlaFormat(literal));
+    ASSERT_OK_AND_ASSIGN(DenseDataIntermediate data,
+                         LiteralToXlaFormat(literal));
     EXPECT_EQ(data.span(),
               std::vector<uint8_t>({0x10, 0x32, 0x54, 0x76, 0x08}));
     EXPECT_NE(reinterpret_cast<const void*>(data.span().data()),
@@ -692,21 +691,21 @@ constexpr absl::string_view kTestProtoFingerprint =
     "gQCCIECAkQCQ";
 
 TEST_F(IrEmissionUtilsTest, ProtoFingerprintIsDeterministic) {
-  TF_ASSERT_OK_AND_ASSIGN(std::string fingerprint,
-                          GetProtoFingerprint(CreateTestProto()));
+  ASSERT_OK_AND_ASSIGN(std::string fingerprint,
+                       GetProtoFingerprint(CreateTestProto()));
   EXPECT_EQ(fingerprint, kTestProtoFingerprint);
 }
 
 TEST_F(IrEmissionUtilsTest,
        InstructionFingerprintWithBackendConfigIsDeterministic) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
 ENTRY e {
   ROOT _ = u8[0] custom-call(), custom_call_target="", backend_config={"cudnn_fmha_backend_config": {"algorithm": {"tuning_knobs": {"0": "0", "1": "1", "2": "2", "3": "3", "4": "4", "5": "5", "6": "6", "7": "7", "8": "8", "9": "9"}}}}
 })"));
   const HloInstruction& hlo = *module->entry_computation()->root_instruction();
-  TF_ASSERT_OK_AND_ASSIGN(std::string fingerprint,
-                          FingerprintWithBackendConfig<GpuBackendConfig>(hlo));
+  ASSERT_OK_AND_ASSIGN(std::string fingerprint,
+                       FingerprintWithBackendConfig<GpuBackendConfig>(hlo));
   EXPECT_EQ(fingerprint,
             absl::StrCat("u8[0]{0} custom-call(), custom_call_target=\"\", "
                          "backend_config_fingerprint=",
@@ -792,8 +791,8 @@ constexpr absl::string_view kWhileLoopTestModule = R"(
 )";
 
 TEST_F(IrEmissionUtilsTest, ResolveWhileLoopDependency) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kWhileLoopTestModule));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kWhileLoopTestModule));
 
   HloComputation* while_body = module->GetComputationWithName("while_body");
   HloComputation* plus_one = module->GetComputationWithName("plus_one");
@@ -815,8 +814,8 @@ TEST_F(IrEmissionUtilsTest, ResolveWhileLoopDependency) {
 
 TEST_F(IrEmissionUtilsTest,
        ResolveWhileLoopDependencyUnknownInductionVariable) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kWhileLoopTestModule));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kWhileLoopTestModule));
 
   HloInstruction* loop = module->entry_computation()->root_instruction();
   loop->clear_backend_config();
@@ -829,8 +828,8 @@ TEST_F(IrEmissionUtilsTest,
 TEST_F(IrEmissionUtilsTest, ResolveWhileLoopDependencySideEffect) {
   // Verifies that we detect `not_functionally_dependent` depends on an
   // instruction that has a side effect.
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kWhileLoopTestModule));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kWhileLoopTestModule));
 
   auto* while_body = module->GetComputationWithName("while_body");
   const HloInstruction* called_fusion =
@@ -891,8 +890,8 @@ TEST_F(IrEmissionUtilsTest, InternalTuple) {
       }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
   auto result = ResolveFunctionalDependencyOnInductionVariable(
       module->GetComputationWithName("call_body")->root_instruction());
 
@@ -941,8 +940,8 @@ TEST_F(IrEmissionUtilsTest, NonInductionVariableLoopCarriedVariable) {
       }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
   HloComputation* while_body = module->GetComputationWithName("while_body");
 
   // Sanity check to ensure there isn't something wrong with the loop.
@@ -1028,8 +1027,7 @@ TEST_F(IrEmissionUtilsTest, OrdinaryMatmul) {
         lhs_batch_dims={0,1}, lhs_contracting_dims={3},
         rhs_batch_dims={0,1}, rhs_contracting_dims={3}
   })";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   auto* root = module->entry_computation()->root_instruction();
   EXPECT_THAT(IsCublasSupportedMatMul(*root, true),
               absl_testing::IsOkAndHolds(true));
@@ -1048,8 +1046,7 @@ TEST_F(IrEmissionUtilsTest, SingletonNoncontractingDim) {
         lhs_batch_dims={0,1}, lhs_contracting_dims={3},
         rhs_batch_dims={0,1}, rhs_contracting_dims={3}
   })";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   auto* root = module->entry_computation()->root_instruction();
   EXPECT_THAT(IsCublasSupportedMatMul(*root, true),
               absl_testing::IsOkAndHolds(true));
@@ -1068,8 +1065,7 @@ TEST_F(IrEmissionUtilsTest, BothOperandsHaveSingletonNoncontractingDims) {
         lhs_batch_dims={0,1}, lhs_contracting_dims={3},
         rhs_batch_dims={0,1}, rhs_contracting_dims={3}
   })";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   auto* root = module->entry_computation()->root_instruction();
   EXPECT_THAT(IsCublasSupportedMatMul(*root, true),
               absl_testing::IsOkAndHolds(false));
@@ -1088,8 +1084,7 @@ TEST_F(IrEmissionUtilsTest, OneSideDoesntHaveNoncontractingDims) {
         lhs_batch_dims={0,1}, lhs_contracting_dims={2},
         rhs_batch_dims={0,1}, rhs_contracting_dims={3}
   })";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   auto* root = module->entry_computation()->root_instruction();
   EXPECT_THAT(IsCublasSupportedMatMul(*root, true),
               absl_testing::IsOkAndHolds(true));
@@ -1108,8 +1103,7 @@ TEST_F(IrEmissionUtilsTest, OneSideMissesNoncontractingDimsOtherIsSingleton) {
         lhs_batch_dims={0,1}, lhs_contracting_dims={2},
         rhs_batch_dims={0,1}, rhs_contracting_dims={3}
   })";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   auto* root = module->entry_computation()->root_instruction();
   EXPECT_THAT(IsCublasSupportedMatMul(*root, true),
               absl_testing::IsOkAndHolds(false));
@@ -1128,8 +1122,7 @@ TEST_F(IrEmissionUtilsTest, NoNonContractingDims) {
         lhs_batch_dims={0,1}, lhs_contracting_dims={2},
         rhs_batch_dims={0,1}, rhs_contracting_dims={2}
   })";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   auto* root = module->entry_computation()->root_instruction();
   EXPECT_THAT(IsCublasSupportedMatMul(*root, true),
               absl_testing::IsOkAndHolds(false));

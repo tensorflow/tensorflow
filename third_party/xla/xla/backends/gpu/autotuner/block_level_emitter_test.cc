@@ -37,7 +37,6 @@ limitations under the License.
 #include "xla/stream_executor/device_description.pb.h"
 #include "xla/stream_executor/gpu/tma_metadata.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
 #include "xla/xla.pb.h"
 
@@ -87,8 +86,8 @@ class TritonBlockLevelFusionEmitterBackendTest
 TEST_F(TritonBlockLevelFusionEmitterBackendTest, GetDefaultConfig_FromHlo) {
   // Parse an HLO module containing a kCustom Triton fusion with a backend
   // config that includes block-level tiling parameters.
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
 HloModule m
 %wrapped_transpose_computation {
   %param_0 = f32[16,64]{1,0} parameter(0)
@@ -116,10 +115,9 @@ ENTRY %main {
 )"));
 
   // Call GetDefaultConfig on the root instruction (the fusion op).
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<BackendConfig> config,
-      backend_.GetDefaultConfig(
-          *(module->entry_computation()->root_instruction())));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<BackendConfig> config,
+                       backend_.GetDefaultConfig(
+                           *(module->entry_computation()->root_instruction())));
   // Verify that the returned config is indeed a BlockLevelFusionConfig.
   BlockLevelFusionConfig block_level_fusion_config;
   ASSERT_TRUE(config->UnpackTo(&block_level_fusion_config));
@@ -140,8 +138,8 @@ ENTRY %main {
 // cost model, which has its own tests.
 TEST_F(TritonBlockLevelFusionEmitterBackendTest, GetDefaultConfig_Fallback) {
   // Parse an HLO module with a fusion instruction lacking any backend config.
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
 HloModule m
 %wrapped_transpose_computation {
   %param_0 = f32[16,1,64]{2,1,0} parameter(0)
@@ -156,10 +154,9 @@ ENTRY %main {
 )"));
 
   // Call GetDefaultConfig on the root instruction (the fusion op).
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<BackendConfig> config,
-      backend_.GetDefaultConfig(
-          *(module->entry_computation()->root_instruction())));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<BackendConfig> config,
+                       backend_.GetDefaultConfig(
+                           *(module->entry_computation()->root_instruction())));
   // Verify that the returned config is indeed a BlockLevelFusionConfig.
   BlockLevelFusionConfig block_level_fusion_config;
   ASSERT_TRUE(config->UnpackTo(&block_level_fusion_config));
@@ -178,8 +175,8 @@ ENTRY %main {
 // fixed at 1.
 TEST_F(TritonBlockLevelFusionEmitterBackendTest, GetSupportedConfigs) {
   // Build and verify an HLO module containing a fusion with a 3D transpose.
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
 HloModule m
 
 %wrapped_transpose_computation {
@@ -195,10 +192,9 @@ ENTRY %main {
 )"));
 
   // Call GetSupportedConfigs on the root instruction (the fusion op).
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::vector<std::unique_ptr<BackendConfig>> configs,
-      backend_.GetSupportedConfigs(
-          *(module->entry_computation()->root_instruction())));
+  ASSERT_OK_AND_ASSIGN(std::vector<std::unique_ptr<BackendConfig>> configs,
+                       backend_.GetSupportedConfigs(
+                           *(module->entry_computation()->root_instruction())));
 
   // Expect 35 configurations without TMA:
   // - 7 choices for d0 (output dim 0 = 64): 1, 2, 4, 8, 16, 32, 64
@@ -250,8 +246,8 @@ ENTRY %main {
 TEST_F(TritonBlockLevelFusionEmitterBackendTest,
        GetSupportedConfigs_Zero_NonPow2Dim) {
   // Build and verify an HLO module containing a fusion with a 3D transpose.
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
 HloModule m
 
 %wrapped_transpose_computation {
@@ -269,10 +265,9 @@ backend_config={"fusion_backend_config":{"kind":"__triton"}}
 )"));
 
   // Call GetSupportedConfigs on the root instruction (the fusion op).
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::vector<std::unique_ptr<BackendConfig>> configs,
-      backend_.GetSupportedConfigs(
-          *(module->entry_computation()->root_instruction())));
+  ASSERT_OK_AND_ASSIGN(std::vector<std::unique_ptr<BackendConfig>> configs,
+                       backend_.GetSupportedConfigs(
+                           *(module->entry_computation()->root_instruction())));
 
   // Expect 20 configurations without TMA:
   // - 5 choices for d0 (output dim 0 = 10): 1, 2, 4, 8, 16
@@ -319,8 +314,8 @@ backend_config={"fusion_backend_config":{"kind":"__triton"}}
 // BlockLevelFusionConfig to a fusion instruction.
 TEST_F(TritonBlockLevelFusionEmitterBackendTest, ApplyConfig) {
   // Build and verify a simple HLO module containing a 2D transpose fusion.
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
 HloModule m
 %wrapped_transpose_computation {
   %param_0 = f32[16,64]{1,0} parameter(0)
@@ -338,18 +333,17 @@ ENTRY %main {
   // Ask the backend to generate a default block-level fusion configuration
   // for this fusion operation.
   // Call GetDefaultConfig on the root instruction (the fusion op).
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<BackendConfig> config,
-      backend_.GetDefaultConfig(
-          *(module->entry_computation()->root_instruction())));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<BackendConfig> config,
+                       backend_.GetDefaultConfig(
+                           *(module->entry_computation()->root_instruction())));
   // Verify that the returned config is indeed a BlockLevelFusionConfig.
   BlockLevelFusionConfig block_level_fusion_config;
   ASSERT_TRUE(config->UnpackTo(&block_level_fusion_config));
 
   // Apply the generated config to the fusion instruction.
   EXPECT_THAT(backend_.ApplyConfig(*instr, *config), absl_testing::IsOk());
-  TF_ASSERT_OK_AND_ASSIGN(GpuBackendConfig gpu_backend_config,
-                          instr->backend_config<GpuBackendConfig>());
+  ASSERT_OK_AND_ASSIGN(GpuBackendConfig gpu_backend_config,
+                       instr->backend_config<GpuBackendConfig>());
   // Ensure that the backend config on the instruction matches what was applied.
   EXPECT_THAT(
       gpu_backend_config.fusion_backend_config().block_level_fusion_config(),
@@ -362,8 +356,8 @@ ENTRY %main {
 TEST_F(TritonBlockLevelFusionEmitterBackendTest, Compile) {
   // Parse an HLO module containing a kCustom Triton fusion with a backend
   // config that includes block-level tiling parameters.
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
 HloModule m
 %wrapped_transpose_computation {
   %param_0 = f32[16,64]{1,0} parameter(0)
@@ -390,10 +384,9 @@ ENTRY %main {
 }
 )"));
   // Call GetDefaultConfig on the root instruction (the fusion op).
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<BackendConfig> config,
-      backend_.GetDefaultConfig(
-          *(module->entry_computation()->root_instruction())));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<BackendConfig> config,
+                       backend_.GetDefaultConfig(
+                           *(module->entry_computation()->root_instruction())));
   // Attempt to compile the root instruction using the retrieved backend config.
   absl::StatusOr<std::unique_ptr<Executable>> executable = backend_.Compile(
       *(module->entry_computation()->root_instruction()), *config);
@@ -404,8 +397,8 @@ ENTRY %main {
 TEST_F(TritonBlockLevelFusionEmitterBackendTest,
        CompileThroughCostModelConfig) {
   // Parse an HLO module without any assigned backend config.
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
 HloModule m
 %wrapped_transpose_computation {
   %param_0 = f32[16,64]{1,0} parameter(0)
@@ -419,10 +412,9 @@ ENTRY %main {
 }
 )"));
   // Call GetDefaultConfig on the root instruction (the fusion op).
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<BackendConfig> config,
-      backend_.GetDefaultConfig(
-          *(module->entry_computation()->root_instruction())));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<BackendConfig> config,
+                       backend_.GetDefaultConfig(
+                           *(module->entry_computation()->root_instruction())));
   // Attempt to compile the root instruction using the retrieved backend config.
   absl::StatusOr<std::unique_ptr<Executable>> executable = backend_.Compile(
       *(module->entry_computation()->root_instruction()), *config);
@@ -436,8 +428,8 @@ TEST_F(TritonBlockLevelFusionEmitterBackendTest, UseDefaultConfigFlag) {
       &target_config_, /*use_default_config=*/true);
   // Parse an HLO module containing a kCustom Triton fusion with a backend
   // config that includes block-level tiling parameters.
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
 HloModule m
 %wrapped_transpose_computation {
   %param_0 = f32[16,64]{1,0} parameter(0)
@@ -464,10 +456,9 @@ ENTRY %main {
 }
 )"));
   // Call GetSupportedConfigs on the root instruction (the fusion op).`
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::vector<std::unique_ptr<BackendConfig>> configs,
-      backend.GetSupportedConfigs(
-          *(module->entry_computation()->root_instruction())));
+  ASSERT_OK_AND_ASSIGN(std::vector<std::unique_ptr<BackendConfig>> configs,
+                       backend.GetSupportedConfigs(
+                           *(module->entry_computation()->root_instruction())));
   // With the use_default_config flag set to true, we expect a single config
   // to be returned.
   ASSERT_EQ(configs.size(), 1);

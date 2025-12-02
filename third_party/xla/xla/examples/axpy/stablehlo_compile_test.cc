@@ -48,7 +48,6 @@ limitations under the License.
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "tsl/platform/path.h"
 
@@ -119,12 +118,12 @@ TEST_F(StableHloAxpyTest, RegisterAPIAndRetrieve) {
 TEST_F(StableHloAxpyTest, CompileCPUTestProgram) {
   std::unique_ptr<PjRtClient> client = GetCpuClient();
 
-  TF_ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> program,
-                          CreateStableHloProgram(GetTestProgramPath()));
+  ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> program,
+                       CreateStableHloProgram(GetTestProgramPath()));
 
   // Use our client to compile our StableHLO program to an executable.
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtLoadedExecutable> executable,
-                          client->CompileAndLoad(*program, CompileOptions{}));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtLoadedExecutable> executable,
+                       client->CompileAndLoad(*program, CompileOptions{}));
 }
 
 TEST_F(StableHloAxpyTest, CompileAndExecuteCPUTestProgram) {
@@ -132,15 +131,15 @@ TEST_F(StableHloAxpyTest, CompileAndExecuteCPUTestProgram) {
   // BufferFromHostLiteral.
   xla::CpuClientOptions options;
   options.cpu_device_count = 4;
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::PjRtClient> client,
-                          xla::GetXlaPjrtCpuClient(options));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::PjRtClient> client,
+                       xla::GetXlaPjrtCpuClient(options));
 
-  TF_ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> program,
-                          CreateStableHloProgram(GetTestProgramPath()));
+  ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> program,
+                       CreateStableHloProgram(GetTestProgramPath()));
 
   // Use our client to compile our StableHLO program to an executable.
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtLoadedExecutable> executable,
-                          client->CompileAndLoad(*program, CompileOptions{}));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtLoadedExecutable> executable,
+                       client->CompileAndLoad(*program, CompileOptions{}));
 
   // Create inputs to our computation.
   auto alpha_literal = xla::LiteralUtil::CreateR0<float>(3.14f);
@@ -154,29 +153,29 @@ TEST_F(StableHloAxpyTest, CompileAndExecuteCPUTestProgram) {
   std::cerr << "\ty:" << y_literal << std::endl;
 
   PjRtDevice* host_cpu = client->devices()[0];
-  TF_ASSERT_OK_AND_ASSIGN(PjRtMemorySpace * host_cpu_memory_space,
-                          host_cpu->default_memory_space());
+  ASSERT_OK_AND_ASSIGN(PjRtMemorySpace * host_cpu_memory_space,
+                       host_cpu->default_memory_space());
 
   // Transfer our literals to buffers. If we were using a GPU, these buffers
   // would correspond to device memory.
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<PjRtBuffer> alpha,
       client->BufferFromHostLiteral(alpha_literal, host_cpu_memory_space));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<PjRtBuffer> x,
       client->BufferFromHostLiteral(x_literal, host_cpu_memory_space));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<PjRtBuffer> y,
       client->BufferFromHostLiteral(y_literal, host_cpu_memory_space));
 
   // Do our computation.
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::vector<std::vector<std::unique_ptr<PjRtBuffer>>> axpy_result,
       executable->Execute({{alpha.get(), x.get(), y.get()}}, /*options=*/{}));
 
   // Convert result buffer back to literal.
-  TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<Literal> axpy_result_literal,
-                          axpy_result[0][0]->ToLiteralSync());
+  ASSERT_OK_AND_ASSIGN(std::shared_ptr<Literal> axpy_result_literal,
+                       axpy_result[0][0]->ToLiteralSync());
 
   // Check to make sure that our results match what we expect.
   xla::LiteralTestUtil::ExpectR1Near<float>({13.64f, 26.78f, 39.92f, 53.06f},

@@ -22,6 +22,7 @@ limitations under the License.
 #include <vector>
 
 #include "xla/tests/xla_test_backend_predicates.h"
+#include <gmock/gmock.h>
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
 #include "absl/types/span.h"
@@ -36,7 +37,6 @@ limitations under the License.
 #include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
 #include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/tests/literal_test_util.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/types.h"
 
 namespace xla {
@@ -53,8 +53,8 @@ class ScatterTest : public HloPjRtInterpreterReferenceMixin<HloPjRtTestBase> {
                const absl::Span<Literal* const> args) {
     HloModuleConfig config;
     config.set_debug_options(GetDebugOptionsForTest());
-    TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                            ParseAndReturnVerifiedModule(hlo_text, config));
+    ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                         ParseAndReturnVerifiedModule(hlo_text, config));
     EXPECT_TRUE(RunAndCompare(std::move(module), args, std::nullopt));
   }
 };
@@ -114,9 +114,9 @@ ENTRY main {
   Literal scatter_indices = LiteralUtil::CreateR1<int32_t>({0, 0});
   Literal updates =
       LiteralUtil::CreateR2<int32_t>({{10, 20, 30}, {70, 80, 90}});
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_text));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(
       Literal result,
       Execute(std::move(module), {&operand, &scatter_indices, &updates}));
   auto data = result.data<int32_t>();
@@ -217,10 +217,10 @@ ENTRY main {
       {{1, 3, 2, 0}, {3, 0, 2, 1}, {2, 3, 1, 0}});
   HloModuleConfig config;
   config.set_debug_options(GetDebugOptionsForTest());
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_text, config));
-  TF_ASSERT_OK_AND_ASSIGN(Literal actual,
-                          Execute(std::move(module), {&permutation}));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_text, config));
+  ASSERT_OK_AND_ASSIGN(Literal actual,
+                       Execute(std::move(module), {&permutation}));
   Literal expected = LiteralUtil::CreateR2<int32_t>(
       {{3, 0, 2, 1}, {1, 3, 2, 0}, {3, 2, 0, 1}});
   EXPECT_TRUE(LiteralTestUtil::Equal(expected, actual));
@@ -1149,8 +1149,8 @@ ENTRY main {
 
   HloModuleConfig config;
   config.set_debug_options(debug_options);
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_text, config));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_text, config));
 
   Literal scatter_indices(ShapeUtil::MakeShape(S32, {2 * n}));
   Literal updates(ShapeUtil::MakeShape(F32, {2 * n, n}));

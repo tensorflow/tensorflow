@@ -19,6 +19,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
@@ -41,7 +42,6 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -94,8 +94,7 @@ ENTRY e {
   ROOT r.1 = f32[10000000] fusion(), kind=kLoop, calls=f
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   HloInstruction* root = module->entry_computation()->root_instruction();
   ASSERT_IS_OK(module->entry_computation()->Accept(&analysis_));
 
@@ -123,8 +122,7 @@ ENTRY e {
   ROOT r.1 = f32[1000] fusion(p0, p1), kind=kLoop, calls=f
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   HloInstruction* root = module->entry_computation()->root_instruction();
   ASSERT_IS_OK(root->Accept(&analysis_));
 
@@ -158,8 +156,7 @@ ENTRY e {
  ROOT r.1 = f32[10000000] fusion(p0, p1), kind=kLoop, calls=f
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   HloInstruction* root = module->entry_computation()->root_instruction();
   ASSERT_IS_OK(root->Accept(&analysis_));
 
@@ -194,8 +191,7 @@ ENTRY e {
   ROOT r.1 = f32[10000000] fusion(p0, p1), kind=kLoop, calls=f
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   HloInstruction* root = module->entry_computation()->root_instruction();
   ASSERT_IS_OK(root->Accept(&analysis_));
 
@@ -223,8 +219,7 @@ ENTRY e {
   ROOT r.1 = f32[10000000] fusion(p0, p1), kind=kLoop, calls=f
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   HloInstruction* root = module->entry_computation()->root_instruction();
   ASSERT_IS_OK(root->Accept(&analysis_));
 
@@ -298,7 +293,7 @@ ENTRY fusion {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
   ASSERT_IS_OK(module->entry_computation()->Accept(&analysis_));
 
   auto run = [&](absl::string_view reduce_name_1,
@@ -312,10 +307,10 @@ ENTRY fusion {
     return EstimateRunTimes(producer, consumers);
   };
 
-  TF_ASSERT_OK_AND_ASSIGN(auto large_small_reduce_runtime,
-                          run("reduce.1", "reduce.2"));
-  TF_ASSERT_OK_AND_ASSIGN(auto small_large_reduce_runtime,
-                          run("reduce.3", "reduce.4"));
+  ASSERT_OK_AND_ASSIGN(auto large_small_reduce_runtime,
+                       run("reduce.1", "reduce.2"));
+  ASSERT_OK_AND_ASSIGN(auto small_large_reduce_runtime,
+                       run("reduce.3", "reduce.4"));
 
   // Ignoring memory access patterns and occupancy, the runtime should be about
   // the same.
@@ -342,7 +337,7 @@ ENTRY fusion {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
   ASSERT_IS_OK(module->entry_computation()->Accept(&analysis_));
 
   auto* producer =
@@ -384,7 +379,7 @@ ENTRY fusion {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
   ASSERT_IS_OK(module->entry_computation()->Accept(&analysis_));
 
   auto* producer =
@@ -415,7 +410,7 @@ ENTRY fusion {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
   ASSERT_IS_OK(module->entry_computation()->Accept(&analysis_));
 
   auto* producer =
@@ -469,7 +464,7 @@ ENTRY main {
   ROOT tuple = (f32[1073741824], f32[1024]) tuple(dus1, dus2)
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
   ASSERT_IS_OK(module->entry_computation()->Accept(&analysis_));
 
   auto* operand0 = module->entry_computation()->root_instruction()->operand(0);
@@ -516,8 +511,7 @@ ENTRY e2 {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
   HloComputation* computation_without_fusion =
       module->GetComputationWithName("e1");
@@ -556,7 +550,7 @@ ENTRY fusion {
   ROOT divide = f32[] divide(reduce, p1)
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
   ASSERT_IS_OK(module->entry_computation()->Accept(&analysis_));
 
   auto* producer =
@@ -603,7 +597,7 @@ ENTRY fusion {
   ROOT fusion.1 = f32[4,8,8] fusion(exp), kind=kInput, calls=fused_computation.1
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
   ASSERT_IS_OK(module->entry_computation()->Accept(&analysis_));
 
   auto* fusion_0 =
@@ -645,7 +639,7 @@ ENTRY fusion {
   ROOT reduce = f32[4,32] reduce(fusion, c0), to_apply=add, dimensions={1}
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
   ASSERT_IS_OK(module->entry_computation()->Accept(&analysis_));
 
   auto* fusion = module->entry_computation()->GetInstructionWithName("fusion");
@@ -658,7 +652,7 @@ ENTRY fusion {
 
 TEST_F(GpuPerformanceModelTest,
        EstimateRunTimeForFusion_InfiniteProducer_ReturnsInfinite) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
 HloModule testmodule
 
 ENTRY fusion {
@@ -685,7 +679,7 @@ ENTRY fusion {
 
 TEST_F(GpuPerformanceModelTest,
        EstimateRunTimeForFusion_InfiniteConsumer_ReturnsInfinite) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
 HloModule testmodule
 
 ENTRY fusion {
@@ -712,7 +706,7 @@ ENTRY fusion {
 
 TEST_F(GpuPerformanceModelTest,
        EstimateRunTimeForFusion_MultiOutputWrite_ReturnsCorrectTime) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
 HloModule m
 
 fused_power {

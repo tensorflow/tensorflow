@@ -25,10 +25,8 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/utils/hlo_matchers.h"
-#include "xla/service/hlo_verifier.h"
-#include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/service/hlo_module_config.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -52,9 +50,9 @@ TEST_F(CollectiveQuantizerTest, AllGatherConvert) {
     ROOT convert = f8e4m3fn[8,32,8,128] convert(all-gather)
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunCollectiveQuantizer(module.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(bool changed, RunCollectiveQuantizer(module.get()));
   EXPECT_TRUE(changed);
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               op::AllGather(op::Convert(op::Parameter())));
@@ -73,9 +71,9 @@ TEST_F(CollectiveQuantizerTest, AllGatherConvertUnary) {
     ROOT convert = f8e4m3fn[8,32,512] convert(slice)
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunCollectiveQuantizer(module.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(bool changed, RunCollectiveQuantizer(module.get()));
   EXPECT_TRUE(changed);
   EXPECT_THAT(
       module->entry_computation()->root_instruction(),
@@ -101,9 +99,9 @@ TEST_F(CollectiveQuantizerTest, AllGatherQuantize) {
     ROOT convert = f8e4m3fn[8,32,8,128] convert(clamp)
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunCollectiveQuantizer(module.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(bool changed, RunCollectiveQuantizer(module.get()));
   EXPECT_TRUE(changed);
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               op::AllGather(op::Convert(op::Clamp(
@@ -130,9 +128,9 @@ TEST_F(CollectiveQuantizerTest, AllToAllQuantize) {
     ROOT convert = f8e4m3fn[8,32,8,128] convert(clamp)
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunCollectiveQuantizer(module.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(bool changed, RunCollectiveQuantizer(module.get()));
   EXPECT_TRUE(changed);
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               op::AllToAll(op::Convert(op::Clamp(
@@ -159,9 +157,9 @@ TEST_F(CollectiveQuantizerTest, CollectiveBroadcastQuantize) {
     ROOT convert = f8e4m3fn[8,32,8,128] convert(clamp)
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunCollectiveQuantizer(module.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(bool changed, RunCollectiveQuantizer(module.get()));
   EXPECT_TRUE(changed);
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               op::CollectiveBroadcast(op::Convert(op::Clamp(
@@ -189,9 +187,9 @@ TEST_F(CollectiveQuantizerTest, CollectivePermuteQuantize) {
     ROOT convert = f8e4m3fn[8,32,8,128] convert(clamp)
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunCollectiveQuantizer(module.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(bool changed, RunCollectiveQuantizer(module.get()));
   EXPECT_TRUE(changed);
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               op::CollectivePermute(op::Convert(op::Clamp(
@@ -221,9 +219,9 @@ TEST_F(CollectiveQuantizerTest, AllGatherQuantizeUnary) {
     ROOT convert = f8e4m3fn[8,32,512] convert(clamp)
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunCollectiveQuantizer(module.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(bool changed, RunCollectiveQuantizer(module.get()));
   EXPECT_TRUE(changed);
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               op::Slice(op::Reshape(op::AllGather(op::Convert(op::Clamp(
@@ -251,9 +249,9 @@ TEST_F(CollectiveQuantizerTest, AllGatherQuantizeMultiUser) {
     ROOT convert = f8e4m3fn[8,32,8,128] convert(add)
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunCollectiveQuantizer(module.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(bool changed, RunCollectiveQuantizer(module.get()));
   EXPECT_FALSE(changed);
 }
 
@@ -274,9 +272,9 @@ TEST_F(CollectiveQuantizerTest, AllGatherQuantizeNonReplicatedScale) {
     ROOT convert = f8e4m3fn[8,32,8,128] convert(clamp)
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunCollectiveQuantizer(module.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(bool changed, RunCollectiveQuantizer(module.get()));
   EXPECT_FALSE(changed);
 }
 
@@ -308,9 +306,9 @@ TEST_F(CollectiveQuantizerTest, AllGatherQuantizePartialReplication) {
 
   HloModuleConfig config;
   config.set_num_partitions(8);
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string, config));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunCollectiveQuantizer(module.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string, config));
+  ASSERT_OK_AND_ASSIGN(bool changed, RunCollectiveQuantizer(module.get()));
   EXPECT_TRUE(changed);
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               op::AllGather(op::Convert(op::Clamp(
@@ -348,9 +346,9 @@ TEST_F(CollectiveQuantizerTest, AllToAllQuantizePartialReplication) {
 
   HloModuleConfig config;
   config.set_num_partitions(8);
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string, config));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunCollectiveQuantizer(module.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string, config));
+  ASSERT_OK_AND_ASSIGN(bool changed, RunCollectiveQuantizer(module.get()));
   EXPECT_TRUE(changed);
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               op::AllToAll(op::Convert(op::Clamp(
@@ -394,9 +392,9 @@ TEST_F(CollectiveQuantizerTest,
 
   HloModuleConfig config;
   config.set_num_partitions(8);
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string, config));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunCollectiveQuantizer(module.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string, config));
+  ASSERT_OK_AND_ASSIGN(bool changed, RunCollectiveQuantizer(module.get()));
   EXPECT_TRUE(changed);
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               op::AllToAll(op::Convert(op::Clamp(
@@ -437,9 +435,9 @@ TEST_F(CollectiveQuantizerTest,
 
   HloModuleConfig config;
   config.set_num_partitions(8);
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string, config));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunCollectiveQuantizer(module.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string, config));
+  ASSERT_OK_AND_ASSIGN(bool changed, RunCollectiveQuantizer(module.get()));
   EXPECT_FALSE(changed);
 }
 
@@ -479,9 +477,9 @@ TEST_F(CollectiveQuantizerTest,
 
   HloModuleConfig config;
   config.set_num_partitions(8);
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string, config));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunCollectiveQuantizer(module.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string, config));
+  ASSERT_OK_AND_ASSIGN(bool changed, RunCollectiveQuantizer(module.get()));
   EXPECT_FALSE(changed);
 }
 
@@ -494,9 +492,9 @@ TEST_F(CollectiveQuantizerTest, ConvertAllGather) {
     ROOT all-gather = bf16[8,32,8,128] all-gather(convert), dimensions={1}, replica_groups={{0,1,2,3,4,5,6,7}}, channel_id=1, use_global_device_ids=true
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunCollectiveQuantizer(module.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(bool changed, RunCollectiveQuantizer(module.get()));
   EXPECT_TRUE(changed);
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               op::Convert(op::AllGather(op::Parameter())));
@@ -516,9 +514,9 @@ TEST_F(CollectiveQuantizerTest, ConvertAllGatherUnary) {
     ROOT all-gather = bf16[8,32,512] all-gather(slice), dimensions={1}, replica_groups={{0,1,2,3,4,5,6,7}}, channel_id=1, use_global_device_ids=true
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunCollectiveQuantizer(module.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(bool changed, RunCollectiveQuantizer(module.get()));
   EXPECT_TRUE(changed);
   EXPECT_THAT(
       module->entry_computation()->root_instruction(),
@@ -540,9 +538,9 @@ TEST_F(CollectiveQuantizerTest, DequantizeAllGather) {
     ROOT all-gather = bf16[8,32,8,128] all-gather(multiply), dimensions={1}, replica_groups={{0,1,2,3,4,5,6,7}}, channel_id=1, use_global_device_ids=true
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunCollectiveQuantizer(module.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(bool changed, RunCollectiveQuantizer(module.get()));
   EXPECT_TRUE(changed);
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               op::Multiply(op::Convert(op::AllGather(op::Parameter())),
@@ -564,9 +562,9 @@ TEST_F(CollectiveQuantizerTest, DequantizeAllToAll) {
     ROOT all-to-all = bf16[8,32,8,128] all-to-all(multiply), dimensions={1}, replica_groups={{0,1,2,3,4,5,6,7}}, channel_id=1
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunCollectiveQuantizer(module.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(bool changed, RunCollectiveQuantizer(module.get()));
   EXPECT_TRUE(changed);
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               op::Multiply(op::Convert(op::AllToAll(op::Parameter())),
@@ -588,9 +586,9 @@ TEST_F(CollectiveQuantizerTest, DequantizeCollectiveBroadcast) {
     ROOT collective-broadcast = bf16[8,32,8,128] collective-broadcast(multiply), replica_groups={{0,1,2,3,4,5,6,7}}, channel_id=1
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunCollectiveQuantizer(module.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(bool changed, RunCollectiveQuantizer(module.get()));
   EXPECT_TRUE(changed);
   EXPECT_THAT(
       module->entry_computation()->root_instruction(),
@@ -613,9 +611,9 @@ TEST_F(CollectiveQuantizerTest, DequantizeCollectivePermute) {
     ROOT collective-permute = bf16[8,32,8,128] collective-permute(multiply), source_target_pairs={{0,1},{2,3},{4,5},{6,7}}, channel_id=1
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunCollectiveQuantizer(module.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(bool changed, RunCollectiveQuantizer(module.get()));
   EXPECT_TRUE(changed);
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               op::Multiply(op::Convert(op::CollectivePermute(op::Parameter())),
@@ -639,9 +637,9 @@ TEST_F(CollectiveQuantizerTest, DequantizeAllGatherUnary) {
     ROOT all-gather = bf16[8,32,512] all-gather(slice), dimensions={1}, replica_groups={{0,1,2,3,4,5,6,7}}, channel_id=1, use_global_device_ids=true
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunCollectiveQuantizer(module.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(bool changed, RunCollectiveQuantizer(module.get()));
   EXPECT_TRUE(changed);
   EXPECT_THAT(
       module->entry_computation()->root_instruction(),
@@ -678,9 +676,9 @@ TEST_F(CollectiveQuantizerTest, DequantizeAllGatherPartialReplication) {
 
   HloModuleConfig config;
   config.set_num_partitions(8);
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string, config));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunCollectiveQuantizer(module.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string, config));
+  ASSERT_OK_AND_ASSIGN(bool changed, RunCollectiveQuantizer(module.get()));
   EXPECT_TRUE(changed);
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               op::Multiply(op::Convert(op::AllGather(op::Parameter())),
@@ -713,9 +711,9 @@ TEST_F(CollectiveQuantizerTest, DequantizeAllToAllPartialReplication) {
 
   HloModuleConfig config;
   config.set_num_partitions(8);
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string, config));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunCollectiveQuantizer(module.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string, config));
+  ASSERT_OK_AND_ASSIGN(bool changed, RunCollectiveQuantizer(module.get()));
   EXPECT_TRUE(changed);
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               op::Multiply(op::Convert(op::AllToAll(op::Parameter())),
@@ -754,9 +752,9 @@ TEST_F(CollectiveQuantizerTest,
 
   HloModuleConfig config;
   config.set_num_partitions(8);
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string, config));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunCollectiveQuantizer(module.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string, config));
+  ASSERT_OK_AND_ASSIGN(bool changed, RunCollectiveQuantizer(module.get()));
   EXPECT_TRUE(changed);
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               op::Multiply(op::Convert(op::AllToAll(op::Parameter())),
@@ -792,9 +790,9 @@ TEST_F(CollectiveQuantizerTest,
 
   HloModuleConfig config;
   config.set_num_partitions(8);
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string, config));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunCollectiveQuantizer(module.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string, config));
+  ASSERT_OK_AND_ASSIGN(bool changed, RunCollectiveQuantizer(module.get()));
   EXPECT_FALSE(changed);
 }
 
@@ -829,9 +827,9 @@ TEST_F(CollectiveQuantizerTest,
 
   HloModuleConfig config;
   config.set_num_partitions(8);
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string, config));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunCollectiveQuantizer(module.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string, config));
+  ASSERT_OK_AND_ASSIGN(bool changed, RunCollectiveQuantizer(module.get()));
   EXPECT_FALSE(changed);
 }
 

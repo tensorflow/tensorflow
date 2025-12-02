@@ -23,11 +23,9 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
-#include "absl/types/span.h"
 #include "xla/python/ifrt/serdes_test_util.h"
 #include "xla/python/ifrt/serdes_version.h"
 #include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace ifrt {
@@ -118,8 +116,8 @@ TEST_P(AttributeMapSerDesTest, ToFromProto) {
       {"float", AttributeMap::FloatValue(1.23f)},
   });
 
-  TF_ASSERT_OK_AND_ASSIGN(auto map_copy,
-                          AttributeMap::FromProto(map.ToProto(version())));
+  ASSERT_OK_AND_ASSIGN(auto map_copy,
+                       AttributeMap::FromProto(map.ToProto(version())));
   EXPECT_EQ(map_copy, map) << map_copy.DebugString();
 }
 

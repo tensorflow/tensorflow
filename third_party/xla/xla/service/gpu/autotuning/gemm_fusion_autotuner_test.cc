@@ -55,6 +55,7 @@ limitations under the License.
 #include "xla/service/dump.h"
 #include "xla/service/executable.h"
 #include "xla/service/gpu/autotuning/autotune_cache_key.h"
+#include "xla/service/gpu/autotuning/autotuner_compile_util.h"
 #include "xla/service/gpu/autotuning/autotuner_util.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/matmul_utils.h"
@@ -65,6 +66,7 @@ limitations under the License.
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_description.pb.h"
+#include "xla/stream_executor/rocm/rocm_compute_capability.h"
 #include "xla/stream_executor/semantic_version.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tests/hlo_test_base.h"
@@ -298,12 +300,11 @@ TEST_F(StatelessAutotunerTest, CublasFallbackForTf32Tf32F32X3Algorithm) {
     GTEST_SKIP() << "Not supported with cuda binary libraries disabled.";
   }
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto module, ParseAndReturnVerifiedModule(absl::Substitute(
                        kHloDotFusionWithAlgorithm, "dot_tf32_tf32_f32_x3")));
 
-  TF_ASSERT_OK_AND_ASSIGN(auto configs,
-                          GetPossibleMatmulAutotuneConfigs(*module));
+  ASSERT_OK_AND_ASSIGN(auto configs, GetPossibleMatmulAutotuneConfigs(*module));
   EXPECT_TRUE(hasCublasConfig(configs))
       << "There is dot_algorithm_rewrite that supports fallback to cublas "
          "implementation for dot_tf32_tf32_f32_x3.";
@@ -315,12 +316,11 @@ TEST_F(StatelessAutotunerTest, CublasFallbackForBf16Bf16F32Algorithm) {
     GTEST_SKIP() << "Not supported with cuda binary libraries disabled.";
   }
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto module, ParseAndReturnVerifiedModule(absl::Substitute(
-                       kHloDotFusionWithAlgorithm, "dot_bf16_bf16_f32")));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(absl::Substitute(
+                           kHloDotFusionWithAlgorithm, "dot_bf16_bf16_f32")));
 
-  TF_ASSERT_OK_AND_ASSIGN(auto configs,
-                          GetPossibleMatmulAutotuneConfigs(*module));
+  ASSERT_OK_AND_ASSIGN(auto configs, GetPossibleMatmulAutotuneConfigs(*module));
   if (!GpuComputeComp().IsRocm()) {
     switch (GetCudaComputeCapability().major) {
       case se::CudaComputeCapability::kAmpere:
@@ -461,13 +461,12 @@ ENTRY e {
                                                   .value();
   const se::CudaComputeCapability compute_capability{
       se::CudaComputeCapability::kAmpere, /*minor=*/0};
-  TF_ASSERT_OK_AND_ASSIGN(
-      const std::vector<TritonGemmConfig> configs,
-      GetPossibleMatmulAutotuneTritonConfigs(
-          *Cast<HloDotInstruction>(
-              module->entry_computation()->root_instruction()),
-          compute_capability, GetToolkitVersion(), GetDebugOptionsForTest(),
-          &mlir_context_));
+  ASSERT_OK_AND_ASSIGN(const std::vector<TritonGemmConfig> configs,
+                       GetPossibleMatmulAutotuneTritonConfigs(
+                           *Cast<HloDotInstruction>(
+                               module->entry_computation()->root_instruction()),
+                           compute_capability, GetToolkitVersion(),
+                           GetDebugOptionsForTest(), &mlir_context_));
   EXPECT_TRUE(std::any_of(
       configs.begin(), configs.end(),
       [](const TritonGemmConfig& config) { return config.num_stages > 2; }));
@@ -484,13 +483,12 @@ ENTRY e {
                                                   .value();
   const se::CudaComputeCapability compute_capability{
       se::CudaComputeCapability::kAmpere, /*minor=*/0};
-  TF_ASSERT_OK_AND_ASSIGN(
-      const std::vector<TritonGemmConfig> configs,
-      GetPossibleMatmulAutotuneTritonConfigs(
-          *Cast<HloDotInstruction>(
-              module->entry_computation()->root_instruction()),
-          compute_capability, GetToolkitVersion(), GetDebugOptionsForTest(),
-          &mlir_context_));
+  ASSERT_OK_AND_ASSIGN(const std::vector<TritonGemmConfig> configs,
+                       GetPossibleMatmulAutotuneTritonConfigs(
+                           *Cast<HloDotInstruction>(
+                               module->entry_computation()->root_instruction()),
+                           compute_capability, GetToolkitVersion(),
+                           GetDebugOptionsForTest(), &mlir_context_));
   EXPECT_TRUE(std::any_of(
       configs.begin(), configs.end(),
       [](const TritonGemmConfig& config) { return config.split_k >= 4; }));
@@ -507,13 +505,12 @@ ENTRY e {
                                                   .value();
   const se::CudaComputeCapability compute_capability{
       se::CudaComputeCapability::kAmpere, /*minor=*/0};
-  TF_ASSERT_OK_AND_ASSIGN(
-      const std::vector<TritonGemmConfig> configs,
-      GetPossibleMatmulAutotuneTritonConfigs(
-          *Cast<HloDotInstruction>(
-              module->entry_computation()->root_instruction()),
-          compute_capability, GetToolkitVersion(), GetDebugOptionsForTest(),
-          &mlir_context_));
+  ASSERT_OK_AND_ASSIGN(const std::vector<TritonGemmConfig> configs,
+                       GetPossibleMatmulAutotuneTritonConfigs(
+                           *Cast<HloDotInstruction>(
+                               module->entry_computation()->root_instruction()),
+                           compute_capability, GetToolkitVersion(),
+                           GetDebugOptionsForTest(), &mlir_context_));
   EXPECT_FALSE(std::any_of(
       configs.begin(), configs.end(),
       [](const TritonGemmConfig& config) { return config.split_k > 1; }));
@@ -688,11 +685,11 @@ ENTRY main {
   ROOT %dot.0 = f32[64,64]{1,0} fusion(p0, p1), kind=kCustom, calls=gemm_fusion, backend_config={"fusion_backend_config":{"kind":"__triton_gemm"},"force_earliest_schedule":false}
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(kHloText));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHloText));
 
   DebugOptions opts;
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       AutotuneConfig autotune_config,
       AutotuneConfig::FromDebugOptions(DeviceOrDevicelessConfig{DeviceConfig{
                                            backend().default_stream_executor(),
@@ -701,16 +698,16 @@ ENTRY main {
   AutotuneCacheKey cache_key(autotune_config.GetDeviceDescription(),
                              *module->entry_computation()->root_instruction());
 
-  TF_ASSERT_OK_AND_ASSIGN(AutotuneResults autotune_results_override,
-                          ParseTextProto<AutotuneResults>(R"pb(
-                            results {
-                              device: "..."
-                              hlo: "..."
-                              result {
-                                gemm { algorithm: -1 }
-                                run_time { nanos: 14 }
-                              }
-                            })pb"));
+  ASSERT_OK_AND_ASSIGN(AutotuneResults autotune_results_override,
+                       ParseTextProto<AutotuneResults>(R"pb(
+                         results {
+                           device: "..."
+                           hlo: "..."
+                           result {
+                             gemm { algorithm: -1 }
+                             run_time { nanos: 14 }
+                           }
+                         })pb"));
   AddVersionToAutotuneResults(autotune_results_override);
   autotune_results_override.mutable_results(0)->set_device(
       std::string(cache_key.GetModelStr()));
@@ -740,7 +737,7 @@ ENTRY main {
       autotune_config.GetGpuComputeCapability()
           .cuda_compute_capability()
           ->IsAtLeastHopper();
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       bool filecheck_matches,
       RunFileCheck(module->ToString(), is_at_least_hopper
                                            ? "// CHECK: __cublas$lt"
@@ -767,8 +764,8 @@ TEST_F(GemmFusionAutotunerDumpTest, DumpingWorks) {
   // Computation is chosen such that relatively heavy math operations before the
   // GEMM are not worth fusing because they would get duplicated many times and
   // slow down execution. Therefore autotuning picks cuBLAS here.
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
 fusion1 {
   p0 = f32[333,333] parameter(0)
   s = f32[333,333] sine(p0)
@@ -784,9 +781,9 @@ ENTRY e {
   ROOT rr = f32[333,333] fusion(p0, p1), kind=kCustom, calls=fusion1,
     backend_config={"fusion_backend_config": {kind: "__triton_gemm"}}
 })",
-                                                       config));
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> optimized_module,
-                          GetOptimizedModule(std::move(module)));
+                                                    config));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> optimized_module,
+                       GetOptimizedModule(std::move(module)));
 
   std::string dump;
   TF_EXPECT_OK(tsl::ReadFileToString(
@@ -940,7 +937,7 @@ ENTRY e {
                                       tsl::port::MaxParallelism());
   DebugOptions opts;
   MultiProcessKeyValueStore key_value_store;
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       AutotuneConfig config,
       AutotuneConfig::FromDebugOptions(
           DeviceOrDevicelessConfig{DevicelessConfig{
@@ -950,11 +947,11 @@ ENTRY e {
                                         &thread_pool, key_value_store,
                                         &mlir_context_);
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(hlo));
   if (GetDebugOptionsForTest().xla_gpu_autotune_level() == 0) {
-    TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                            HloTestBase::RunHloPass(&pipeline, module.get()));
+    ASSERT_OK_AND_ASSIGN(bool changed,
+                         HloTestBase::RunHloPass(&pipeline, module.get()));
     EXPECT_TRUE(changed);
 
     // Check default configuration.
@@ -962,7 +959,7 @@ ENTRY e {
     // implementation details to succeed. Thus, it tests that there is no
     // autotuning happening in a brittle way. Fix this when refactoring the
     // autotuner.
-    TF_ASSERT_OK_AND_ASSIGN(
+    ASSERT_OK_AND_ASSIGN(
         bool filecheck_matches,
         RunFileCheck(
             module->ToString(HloPrintOptions{}.set_print_operand_shape(false)),
@@ -991,13 +988,12 @@ ENTRY e {
                                                   .value();
   const se::CudaComputeCapability compute_capability{
       se::CudaComputeCapability::kAmpere, /*minor=*/0};
-  TF_ASSERT_OK_AND_ASSIGN(
-      const std::vector<TritonGemmConfig> configs,
-      GetPossibleMatmulAutotuneTritonConfigs(
-          *Cast<HloDotInstruction>(
-              module->entry_computation()->root_instruction()),
-          compute_capability, GetToolkitVersion(), GetDebugOptionsForTest(),
-          &mlir_context_));
+  ASSERT_OK_AND_ASSIGN(const std::vector<TritonGemmConfig> configs,
+                       GetPossibleMatmulAutotuneTritonConfigs(
+                           *Cast<HloDotInstruction>(
+                               module->entry_computation()->root_instruction()),
+                           compute_capability, GetToolkitVersion(),
+                           GetDebugOptionsForTest(), &mlir_context_));
 
   if (GetDebugOptionsForTest().xla_gpu_autotune_level() == 0) {
     EXPECT_EQ(configs.size(), 1);
@@ -1058,13 +1054,12 @@ ENTRY e {
                                                   .value();
   const se::CudaComputeCapability compute_capability{
       se::CudaComputeCapability::kAmpere, /*minor=*/0};
-  TF_ASSERT_OK_AND_ASSIGN(
-      const std::vector<TritonGemmConfig> configs,
-      GetPossibleMatmulAutotuneTritonConfigs(
-          *Cast<HloDotInstruction>(
-              module->entry_computation()->root_instruction()),
-          compute_capability, GetToolkitVersion(), GetDebugOptionsForTest(),
-          &mlir_context_));
+  ASSERT_OK_AND_ASSIGN(const std::vector<TritonGemmConfig> configs,
+                       GetPossibleMatmulAutotuneTritonConfigs(
+                           *Cast<HloDotInstruction>(
+                               module->entry_computation()->root_instruction()),
+                           compute_capability, GetToolkitVersion(),
+                           GetDebugOptionsForTest(), &mlir_context_));
   EXPECT_TRUE(std::all_of(
       configs.begin(), configs.end(),
       [](const TritonGemmConfig& config) { return config.split_k == 1; }));
@@ -1082,14 +1077,14 @@ TEST_F(GemmFusionAutotunerTest, SplitKFLoatNormalization) {
   ccc->set_minor(compute_capability.minor);
   DeviceConfig test_config{backend().default_stream_executor(),
                            backend().memory_allocator()};
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       AutotuneConfig autotune_config,
       AutotuneConfig::FromDebugOptions(DeviceOrDevicelessConfig{test_config},
                                        GetDebugOptionsForTest()));
   GemmFusionAutotunerImpl autotuner(autotune_config, GetToolkitVersion(),
                                     GetDebugOptionsForTest(), nullptr,
                                     &mlir_context_);
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       AutotunerCompileUtil compile_util,
       AutotunerCompileUtil::Create(autotune_config.DeviceConfig(),
                                    GetDebugOptionsForTest()));
@@ -1151,7 +1146,7 @@ TEST_F(GemmFusionAutotunerTest, CreatesCustomKernelFusionConfigs) {
 
   const se::GpuComputeCapability compute_capability{GpuComputeComp()};
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       const std::vector<GemmFusionAutotunerImpl::BackendConfig> configs,
       GetPossibleMatmulAutotuneConfigs(
           *module, compute_capability, GetToolkitVersion(),
@@ -1194,7 +1189,7 @@ TEST_F(GemmFusionAutotunerTest, GeneratesTwoConfigsForUpcastGemmWithPrologue) {
   const se::CudaComputeCapability compute_capability{
       se::CudaComputeCapability::kAmpere, /*minor=*/0};
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       const std::vector<GemmFusionAutotunerImpl::BackendConfig> configs,
       GetPossibleMatmulAutotuneConfigs(
           *module, se::GpuComputeCapability{compute_capability},
@@ -1240,7 +1235,7 @@ TEST_F(GemmFusionAutotunerTest, GeneratesOneConfigForUpcastGemmWithPrologue) {
   const se::CudaComputeCapability compute_capability{
       se::CudaComputeCapability::kAmpere, /*minor=*/0};
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       const std::vector<GemmFusionAutotunerImpl::BackendConfig> configs,
       GetPossibleMatmulAutotuneConfigs(
           *module, se::GpuComputeCapability{compute_capability},
@@ -1289,7 +1284,7 @@ TEST_F(GemmFusionAutotunerTest,
   const se::CudaComputeCapability compute_capability{
       se::CudaComputeCapability::kAmpere, /*minor=*/0};
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       const std::vector<GemmFusionAutotunerImpl::BackendConfig> configs,
       GetPossibleMatmulAutotuneConfigs(
           *module, se::GpuComputeCapability{compute_capability},
@@ -1434,19 +1429,18 @@ TEST_F(
       backend_config={"fusion_backend_config":{"kind":"__triton_gemm"}}
   })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
 
   const int kProcessCount = 2;
   AutotuneConfig autotune_config = GetAutotuneConfigForTest();
   AutotuneCacheKey cache_key(autotune_config.GetDeviceDescription(),
                              *module->entry_computation()->root_instruction());
-  TF_ASSERT_OK_AND_ASSIGN(AutotuneResults autotune_results_override,
-                          GetDummyAutotuneResultsForCacheKey(cache_key));
-  TF_ASSERT_OK_AND_ASSIGN(
-      MultiProcessKeyValueStore multi_process_key_value_store,
-      KeyValueStoreFromAutotuneResults(autotune_results_override,
-                                       kProcessCount));
+  ASSERT_OK_AND_ASSIGN(AutotuneResults autotune_results_override,
+                       GetDummyAutotuneResultsForCacheKey(cache_key));
+  ASSERT_OK_AND_ASSIGN(MultiProcessKeyValueStore multi_process_key_value_store,
+                       KeyValueStoreFromAutotuneResults(
+                           autotune_results_override, kProcessCount));
   GemmFusionAutotuner autotuner =
       GemmFusionAutotunerForKeyValueStore(multi_process_key_value_store);
 
@@ -1515,22 +1509,21 @@ TEST_F(
     ROOT abs = f32[1024,1024]{1,0} abs(fusion)
   })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module1,
-                          ParseAndReturnVerifiedModule(kHlo1));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module1,
+                       ParseAndReturnVerifiedModule(kHlo1));
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module2,
-                          ParseAndReturnVerifiedModule(kHlo2));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module2,
+                       ParseAndReturnVerifiedModule(kHlo2));
 
   const int kProcessCount = 2;
   AutotuneConfig autotune_config = GetAutotuneConfigForTest();
   AutotuneCacheKey cache_key(autotune_config.GetDeviceDescription(),
                              *module1->entry_computation()->root_instruction());
-  TF_ASSERT_OK_AND_ASSIGN(AutotuneResults autotune_results_override,
-                          GetDummyAutotuneResultsForCacheKey(cache_key));
-  TF_ASSERT_OK_AND_ASSIGN(
-      MultiProcessKeyValueStore multi_process_key_value_store,
-      KeyValueStoreFromAutotuneResults(autotune_results_override,
-                                       kProcessCount));
+  ASSERT_OK_AND_ASSIGN(AutotuneResults autotune_results_override,
+                       GetDummyAutotuneResultsForCacheKey(cache_key));
+  ASSERT_OK_AND_ASSIGN(MultiProcessKeyValueStore multi_process_key_value_store,
+                       KeyValueStoreFromAutotuneResults(
+                           autotune_results_override, kProcessCount));
   GemmFusionAutotuner autotuner =
       GemmFusionAutotunerForKeyValueStore(multi_process_key_value_store);
 
@@ -1576,7 +1569,7 @@ TEST_F(GemmFusionAutotunerTest, RewritesGemmFusionToCustomKernelFusion) {
       ParseAndReturnVerifiedModule(kHlo).value();
 
   DebugOptions opts;
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       AutotuneConfig autotune_config,
       AutotuneConfig::FromDebugOptions(DeviceOrDevicelessConfig{DeviceConfig{
                                            backend().default_stream_executor(),
@@ -1584,8 +1577,8 @@ TEST_F(GemmFusionAutotunerTest, RewritesGemmFusionToCustomKernelFusion) {
                                        opts));
   AutotuneCacheKey cache_key(autotune_config.GetDeviceDescription(),
                              *module->entry_computation()->root_instruction());
-  TF_ASSERT_OK_AND_ASSIGN(AutotuneResults autotune_results_override,
-                          GetDummyAutotuneResultsForCacheKey(cache_key));
+  ASSERT_OK_AND_ASSIGN(AutotuneResults autotune_results_override,
+                       GetDummyAutotuneResultsForCacheKey(cache_key));
 
   GemmFusionAutotunerRewriterVisitor visitor(autotune_config);
 
@@ -1597,8 +1590,8 @@ TEST_F(GemmFusionAutotunerTest, RewritesGemmFusionToCustomKernelFusion) {
     CHECK-SAME: kind=kCustom
     CHECK-SAME: "kernel_index":1
   )";
-  TF_ASSERT_OK_AND_ASSIGN(bool file_check_matches,
-                          RunFileCheck(module->ToString(), pattern));
+  ASSERT_OK_AND_ASSIGN(bool file_check_matches,
+                       RunFileCheck(module->ToString(), pattern));
   EXPECT_TRUE(file_check_matches);
 }
 
@@ -1651,14 +1644,14 @@ TEST_F(GemmFusionAutotunerTest, VerifyHopperConfigsAreDifferentFromBlackwell) {
     })")
                                                   .value();
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       const std::vector<TritonGemmConfig> blackwell_configs,
       GetPossibleMatmulAutotuneTritonConfigs(
           *Cast<HloDotInstruction>(
               module->entry_computation()->root_instruction()),
           se::CudaComputeCapability(se::CudaComputeCapability::kBlackwell, 0),
           GetToolkitVersion(), GetDebugOptionsForTest(), &mlir_context_));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       const std::vector<TritonGemmConfig> hopper_configs,
       GetPossibleMatmulAutotuneTritonConfigs(
           *Cast<HloDotInstruction>(
@@ -1692,7 +1685,7 @@ TEST_F(GemmFusionAutotunerTest, ScaledDotConfigsAreGenerated) {
     })")
                                                   .value();
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       const std::vector<TritonGemmConfig> blackwell_configs,
       GetPossibleMatmulAutotuneTritonConfigs(
           *Cast<HloScaledDotInstruction>(
@@ -1752,7 +1745,7 @@ TEST_F(GemmFusionAutotunerTest,
     })")
                                                   .value();
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       const std::vector<TritonGemmConfig> ampere_configs,
       GetPossibleMatmulAutotuneTritonConfigs(
           *Cast<HloDotInstruction>(
@@ -1760,7 +1753,7 @@ TEST_F(GemmFusionAutotunerTest,
           se::CudaComputeCapability(se::CudaComputeCapability::kAmpere, 0),
           GetToolkitVersion(), GetDebugOptionsForTest(), &mlir_context_));
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       const std::vector<TritonGemmConfig> hopper_configs,
       GetPossibleMatmulAutotuneTritonConfigs(
           *Cast<HloDotInstruction>(
@@ -1827,13 +1820,12 @@ TEST_F(GemmFusionAutotunerTest, WarpSpecializationIsOffByDefault) {
     })")
                                                   .value();
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      const std::vector<TritonGemmConfig> configs,
-      GetPossibleMatmulAutotuneTritonConfigs(
-          *Cast<HloDotInstruction>(
-              module->entry_computation()->root_instruction()),
-          GetCudaComputeCapability(), GetToolkitVersion(),
-          GetDebugOptionsForTest(), &mlir_context_));
+  ASSERT_OK_AND_ASSIGN(const std::vector<TritonGemmConfig> configs,
+                       GetPossibleMatmulAutotuneTritonConfigs(
+                           *Cast<HloDotInstruction>(
+                               module->entry_computation()->root_instruction()),
+                           GetCudaComputeCapability(), GetToolkitVersion(),
+                           GetDebugOptionsForTest(), &mlir_context_));
 
   std::set<TritonGemmConfig> configs_set(configs.begin(), configs.end());
 
@@ -1883,13 +1875,12 @@ TEST_F(GemmFusionAutotunerTest, ReadsOverrideFile) {
 
   const se::CudaComputeCapability compute_capability{
       se::CudaComputeCapability::kAmpere, /*minor=*/0};
-  TF_ASSERT_OK_AND_ASSIGN(
-      const std::vector<TritonGemmConfig> configs,
-      GetPossibleMatmulAutotuneTritonConfigs(
-          *Cast<HloDotInstruction>(
-              module->entry_computation()->root_instruction()),
-          compute_capability, GetToolkitVersion(), debug_options,
-          &mlir_context_));
+  ASSERT_OK_AND_ASSIGN(const std::vector<TritonGemmConfig> configs,
+                       GetPossibleMatmulAutotuneTritonConfigs(
+                           *Cast<HloDotInstruction>(
+                               module->entry_computation()->root_instruction()),
+                           compute_capability, GetToolkitVersion(),
+                           debug_options, &mlir_context_));
   EXPECT_TRUE(std::any_of(
       configs.begin(), configs.end(),
       [](const TritonGemmConfig& config) { return config.block_m == 126; }));

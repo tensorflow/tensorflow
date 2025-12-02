@@ -27,7 +27,6 @@ limitations under the License.
 #include "xla/backends/gpu/codegen/triton/xtile_compiler.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instructions.h"
-#include "xla/hlo/testlib/filecheck.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
@@ -35,7 +34,6 @@ limitations under the License.
 #include "xla/service/gpu/target_constants.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/xla.pb.h"
 
 namespace xla::gpu {
@@ -71,8 +69,8 @@ ENTRY entry {
       "kind":"__triton",
       "block_level_fusion_config": {"output_tiles":[{"sizes": ["1","1"]}]}}}
 })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> hlo_module,
-                          ParseAndReturnVerifiedModule(kHloText));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(kHloText));
   const HloFusionInstruction* triton_fusion = Cast<HloFusionInstruction>(
       hlo_module->entry_computation()->root_instruction());
   const se::DeviceDescription dev_info =
@@ -153,8 +151,8 @@ ENTRY entry {
         "is_tma_allowed":false}}}
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> hlo_module,
-                          ParseAndReturnVerifiedModule(kHloText));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(kHloText));
   const HloFusionInstruction* triton_fusion = Cast<HloFusionInstruction>(
       hlo_module->entry_computation()->root_instruction());
   const se::DeviceDescription dev_info =
@@ -225,7 +223,7 @@ ENTRY entry {
 
   // Check that we extract the launch configuration correctly when warp
   // specialization is used.
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
   auto* fusion = Cast<HloFusionInstruction>(
       module->entry_computation()->root_instruction());
   const se::DeviceDescription dev_info =
@@ -234,7 +232,7 @@ ENTRY entry {
   llvm::Triple triple(nvptx::TargetTriple());
   std::string data_layout = nvptx::DataLayout();
   mlir::MLIRContext mlir_context;
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       TritonWrapperResult result,
       TritonWrapper("test_fn", fusion, se::CudaComputeCapability::Blackwell(),
                     dev_info,

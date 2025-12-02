@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "xla/service/gpu/gpu_norm_runner.h"
 
-#include "xla/tsl/platform/statusor.h"
+#include <gmock/gmock.h>
 #include "xla/tsl/platform/test.h"
 #include "xla/tsl/util/proto/parse_text_proto.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
@@ -73,8 +73,8 @@ TEST(GpuNormRunnerTest, GpuNormDescriptorToFromProto) {
     scratch_size: 1024
   )pb");
 
-  TF_ASSERT_OK_AND_ASSIGN(GpuNormDescriptor descriptor,
-                          GpuNormDescriptor::FromProto(descriptor_proto));
+  ASSERT_OK_AND_ASSIGN(GpuNormDescriptor descriptor,
+                       GpuNormDescriptor::FromProto(descriptor_proto));
   EXPECT_THAT(descriptor.ToProto(), EqualsProto(descriptor_proto));
 }
 

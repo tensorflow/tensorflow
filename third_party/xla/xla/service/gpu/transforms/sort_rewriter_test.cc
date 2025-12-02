@@ -37,7 +37,6 @@ limitations under the License.
 #include "xla/stream_executor/platform.h"
 #include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
 #include "xla/tests/hlo_pjrt_test_base.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -53,7 +52,7 @@ class SortRewriterTest
   void SetUp() override {
     HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>::SetUp();
     SortRewriter::SetSortModeForTestingOnly(SortRewriter::Mode::kAlways);
-    TF_ASSERT_OK_AND_ASSIGN(test_platform_, PlatformUtil::GetPlatform("gpu"));
+    ASSERT_OK_AND_ASSIGN(test_platform_, PlatformUtil::GetPlatform("gpu"));
   }
 
   bool RunModuleAndPass(HloModule* module) {
@@ -101,7 +100,7 @@ ENTRY %main {
   ROOT %sort = f32[1000] sort(%input), dimensions={0}, to_apply=%compare
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
   EXPECT_TRUE(RunModuleAndPass(module.get()));
   EXPECT_THAT(
       module->entry_computation()->root_instruction(),
@@ -127,7 +126,7 @@ ENTRY %main {
   ROOT %sort = f32[1000] sort(%input), dimensions={0}, to_apply=%compare
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
   EXPECT_TRUE(RunModuleAndPass(module.get()));
   EXPECT_THAT(
       module->entry_computation()->root_instruction(),
@@ -153,7 +152,7 @@ ENTRY %main {
   ROOT %sort = f32[1000] sort(%input), dimensions={0}, to_apply=%compare
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
   EXPECT_TRUE(RunModuleAndPass(module.get()));
   EXPECT_THAT(
       module->entry_computation()->root_instruction(),
@@ -183,7 +182,7 @@ ENTRY %main {
       dimensions={0}, to_apply=%compare
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
   EXPECT_TRUE(RunModuleAndPass(module.get()));
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               GmockMatch(m::Tuple(m::GetTupleElement(m::CustomCall(), 0),
@@ -210,7 +209,7 @@ ENTRY %main {
       dimensions={0}, is_stable=true, to_apply=%compare
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
   EXPECT_TRUE(RunModuleAndPass(module.get()));
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               GmockMatch(m::Tuple(m::GetTupleElement(m::CustomCall(), 0),
@@ -237,7 +236,7 @@ ENTRY %main {
       dimensions={0}, to_apply=%compare
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
   EXPECT_TRUE(RunModuleAndPass(module.get()));
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               GmockMatch(m::Tuple(m::GetTupleElement(m::CustomCall(), 1),
@@ -267,7 +266,7 @@ ENTRY %main {
       dimensions={0}, to_apply=%compare
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
   EXPECT_FALSE(RunModuleAndPass(module.get()));
 }
 
@@ -287,7 +286,7 @@ ENTRY %main {
   ROOT %sort = f32[1000,4] sort(%input), dimensions={0}, to_apply=%compare
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
   EXPECT_FALSE(RunModuleAndPass(module.get()));
 }
 
@@ -306,7 +305,7 @@ ENTRY %main {
   ROOT %sort = u8[100,<=100] sort(%input), dimensions={1}, to_apply=%compare
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
   EXPECT_FALSE(RunModuleAndPass(module.get()));
 }
 
@@ -325,7 +324,7 @@ ENTRY %main {
   ROOT %sort = u8[<=100,100] sort(%input), dimensions={1}, to_apply=%compare
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
   EXPECT_FALSE(RunModuleAndPass(module.get()));
 }
 
@@ -345,7 +344,7 @@ ENTRY %main {
   ROOT %sort = pred[1000] sort(%input), dimensions={0}, to_apply=%compare
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
   EXPECT_FALSE(RunModuleAndPass(module.get()));
 }
 
@@ -366,7 +365,7 @@ ENTRY %main {
   ROOT %sort = f32[1000] sort(%input), dimensions={0}, to_apply=%compare
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
   EXPECT_FALSE(RunModuleAndPass(module.get()));
 }
 
@@ -390,7 +389,7 @@ ENTRY %main {
       dimensions={0}, to_apply=%compare
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
   EXPECT_FALSE(RunModuleAndPass(module.get()));
 }
 
@@ -411,7 +410,7 @@ ENTRY %main {
   ROOT %sort = f32[100] sort(%input), dimensions={0}, to_apply=%compare
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
   EXPECT_FALSE(RunModuleAndPass(module.get()));
 }
 
@@ -435,21 +434,21 @@ ENTRY %main {
 
   // Batch 1
   std::string hlo = absl::Substitute(kHloTmpl, "1");
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(hlo));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHloPass(&pass, module.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(bool changed, RunHloPass(&pass, module.get()));
   EXPECT_TRUE(changed);
 
   // Batch 3
   hlo = absl::Substitute(kHloTmpl, "3");
-  TF_ASSERT_OK_AND_ASSIGN(module, ParseAndReturnVerifiedModule(hlo));
-  TF_ASSERT_OK_AND_ASSIGN(changed, RunHloPass(&pass, module.get()));
+  ASSERT_OK_AND_ASSIGN(module, ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(changed, RunHloPass(&pass, module.get()));
   EXPECT_FALSE(changed);
 
   // Batch 70
   hlo = absl::Substitute(kHloTmpl, "70");
-  TF_ASSERT_OK_AND_ASSIGN(module, ParseAndReturnVerifiedModule(hlo));
-  TF_ASSERT_OK_AND_ASSIGN(changed, RunHloPass(&pass, module.get()));
+  ASSERT_OK_AND_ASSIGN(module, ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(changed, RunHloPass(&pass, module.get()));
   EXPECT_TRUE(changed);
 }
 
@@ -473,21 +472,21 @@ ENTRY %main {
 
   // Batch 1
   std::string hlo = absl::Substitute(kHloTmpl, "1");
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(hlo));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHloPass(&pass, module.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(bool changed, RunHloPass(&pass, module.get()));
   EXPECT_TRUE(changed);
 
   // Batch 3
   hlo = absl::Substitute(kHloTmpl, "3");
-  TF_ASSERT_OK_AND_ASSIGN(module, ParseAndReturnVerifiedModule(hlo));
-  TF_ASSERT_OK_AND_ASSIGN(changed, RunHloPass(&pass, module.get()));
+  ASSERT_OK_AND_ASSIGN(module, ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(changed, RunHloPass(&pass, module.get()));
   EXPECT_FALSE(changed);
 
   // Batch 31
   hlo = absl::Substitute(kHloTmpl, "31");
-  TF_ASSERT_OK_AND_ASSIGN(module, ParseAndReturnVerifiedModule(hlo));
-  TF_ASSERT_OK_AND_ASSIGN(changed, RunHloPass(&pass, module.get()));
+  ASSERT_OK_AND_ASSIGN(module, ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(changed, RunHloPass(&pass, module.get()));
   EXPECT_TRUE(changed);
 }
 
@@ -507,7 +506,7 @@ ENTRY %main {
   ROOT %sort = f32[10,100] sort(%input), dimensions={1}, to_apply=%compare
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
   EXPECT_TRUE(RunModuleAndPass(module.get()));
   EXPECT_THAT(
       module->entry_computation()->root_instruction(),
@@ -533,7 +532,7 @@ ENTRY %main {
   ROOT %sort = f32[10,10,10] sort(%input), dimensions={2}, to_apply=%compare
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
   EXPECT_TRUE(RunModuleAndPass(module.get()));
   EXPECT_THAT(
       module->entry_computation()->root_instruction(),
@@ -597,7 +596,7 @@ ENTRY main {
       kHloTpl, primitive_util::LowercasePrimitiveTypeName(dtype),
       direction ? "LT" : "GT");
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_str));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_str));
   EXPECT_TRUE(RunModuleAndPass(module.get())) << module->ToString();
   EXPECT_THAT(
       module->entry_computation()->root_instruction(),

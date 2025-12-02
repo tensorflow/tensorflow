@@ -315,6 +315,7 @@ xla_cc_test(
         "//xla/client:local_client",
         "//xla/pjrt:pjrt_client",
         "//xla/pjrt:pjrt_common",
+        "//xla/pjrt:scoped_async_tracking_event",
         "//xla/service:gpu_plugin",
         "//xla/service:shaped_buffer",
         "//xla/stream_executor:device_address",
@@ -322,7 +323,6 @@ xla_cc_test(
         "//xla/tsl/concurrency:async_value",
         # copybara:uncomment "//xla/tsl/framework:allocator",
         "//xla/tsl/platform:env",
-        "//xla/tsl/platform:statusor",
     ],
 )
 
@@ -347,7 +347,6 @@ xla_cc_test(
         "//xla/service:gpu_plugin",
         "//xla/tsl/concurrency:async_value",
         "//xla/tsl/platform:env",
-        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/time",

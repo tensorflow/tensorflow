@@ -19,6 +19,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/string_view.h"
@@ -29,7 +30,6 @@ limitations under the License.
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/util.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -102,10 +102,10 @@ class AsyncCollectiveAnnotatorTest
 
 TEST_P(AsyncCollectiveAnnotatorTest, Test) {
   const TestCase& test_case = GetParam();
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<HloModule> module,
       ParseAndReturnVerifiedModule(kHloString, /*replica_count=*/2));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       bool changed,
       AsyncCollectiveAnnotator(test_case.is_async_predicate).Run(module.get()));
   EXPECT_TRUE(changed);

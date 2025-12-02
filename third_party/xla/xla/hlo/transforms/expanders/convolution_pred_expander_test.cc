@@ -25,7 +25,6 @@ limitations under the License.
 #include "xla/hlo/testlib/pattern_matcher_gmock.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -42,8 +41,8 @@ ENTRY convolution_computation {
   kernel = pred[10,10]{1,0} parameter(1)
   ROOT conv = pred[10,10]{1,0} convolution(input, kernel), dim_labels=bf_io->bf
 })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
 
   ConvolutionPredExpander expander_pass;
   ASSERT_TRUE(expander_pass.Run(module.get()).value());
@@ -63,8 +62,8 @@ ENTRY convolution_computation {
   kernel = s8[10,10]{1,0} parameter(1)
   ROOT conv = s8[10,10]{1,0} convolution(input, kernel), dim_labels=bf_io->bf
 })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
 
   ConvolutionPredExpander expander_pass;
   ASSERT_FALSE(expander_pass.Run(module.get()).value());

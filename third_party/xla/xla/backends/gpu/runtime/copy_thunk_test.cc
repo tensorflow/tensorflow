@@ -48,7 +48,7 @@ TEST(CopyThunkTest, ToProto) {
   Shape shape = ShapeUtil::MakeShape(S32, {64});
 
   CopyThunk thunk(thunk_info, {src_slice, shape}, {dst_slice, shape}, 256);
-  TF_ASSERT_OK_AND_ASSIGN(ThunkProto proto, thunk.ToProto());
+  ASSERT_OK_AND_ASSIGN(ThunkProto proto, thunk.ToProto());
   EXPECT_THAT(
       proto, EqualsProto(R"pb(
         thunk_info {
@@ -116,7 +116,7 @@ TEST(CopyThunkTest, FromProto) {
       BufferAllocation(/*index=*/0, /*size=*/1024, /*color=*/0),
       BufferAllocation(/*index=*/1, /*size=*/1024, /*color=*/0)};
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<CopyThunk> thunk,
       CopyThunk::FromProto(thunk_info, proto.copy_thunk(), buffer_allocations));
   Shape shape = ShapeUtil::MakeShape(S32, {64});
@@ -149,7 +149,7 @@ TEST(DeviceToHostCopyThunkProtoTest, ToProto) {
                               {dst_slice, shape}, 256,
                               /*events=*/nullptr,
                               /*instr=*/nullptr);
-  TF_ASSERT_OK_AND_ASSIGN(ThunkProto proto, thunk.ToProto());
+  ASSERT_OK_AND_ASSIGN(ThunkProto proto, thunk.ToProto());
   EXPECT_THAT(proto, EqualsProto(R"pb(
                 thunk_info {
                   profile_annotation: "profile_annotation"
@@ -232,7 +232,7 @@ TEST(DeviceToHostCopyThunkProtoTest, FromProto) {
       BufferAllocation(/*index=*/0, /*size=*/1024, /*color=*/0),
       BufferAllocation(/*index=*/1, /*size=*/1024, /*color=*/0)};
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<DeviceToHostCopyThunk> thunk,
       DeviceToHostCopyThunk::FromProto(
           thunk_info, proto.device_to_host_copy_thunk(), buffer_allocations));
@@ -269,7 +269,7 @@ TEST(HostToDeviceCopyThunkProtoTest, ToProto) {
                               /*mem_size=*/256,
                               /*events=*/nullptr,
                               /*instr=*/nullptr);
-  TF_ASSERT_OK_AND_ASSIGN(ThunkProto proto, thunk.ToProto());
+  ASSERT_OK_AND_ASSIGN(ThunkProto proto, thunk.ToProto());
   EXPECT_THAT(proto, EqualsProto(R"pb(
                 thunk_info {
                   profile_annotation: "profile_annotation"
@@ -353,7 +353,7 @@ TEST(HostToDeviceCopyThunkProtoTest, FromProto) {
       BufferAllocation(/*index=*/1, /*size=*/1024, /*color=*/0)};
   Shape shape = ShapeUtil::MakeShape(S32, {64});
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<HostToDeviceCopyThunk> thunk,
       HostToDeviceCopyThunk::FromProto(
           thunk_info, proto.host_to_device_copy_thunk(), buffer_allocations));
@@ -386,7 +386,7 @@ TEST(DeviceToDeviceCopyThunkProtoTest, ToProto) {
 
   DeviceToDeviceCopyThunk thunk(thunk_info, {src_slice, shape},
                                 {dst_slice, shape}, 256);
-  TF_ASSERT_OK_AND_ASSIGN(ThunkProto proto, thunk.ToProto());
+  ASSERT_OK_AND_ASSIGN(ThunkProto proto, thunk.ToProto());
   EXPECT_THAT(proto, EqualsProto(R"pb(
                 thunk_info {
                   profile_annotation: "profile_annotation"
@@ -469,7 +469,7 @@ TEST(DeviceToDeviceCopyThunkProtoTest, FromProto) {
       BufferAllocation(/*index=*/0, /*size=*/1024, /*color=*/0),
       BufferAllocation(/*index=*/1, /*size=*/1024, /*color=*/0)};
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<DeviceToDeviceCopyThunk> thunk,
       DeviceToDeviceCopyThunk::FromProto(
           thunk_info, proto.device_to_device_copy_thunk(), buffer_allocations));

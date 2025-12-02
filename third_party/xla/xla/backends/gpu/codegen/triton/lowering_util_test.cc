@@ -28,7 +28,6 @@ limitations under the License.
 #include "xla/backends/gpu/codegen/triton/ir/triton_xla_ops.h"
 #include "xla/stream_executor/gpu/tma_metadata.h"
 #include "xla/stream_executor/launch_dim.h"
-#include "xla/tsl/platform/statusor.h"
 #include "triton/Dialect/Triton/IR/Dialect.h"
 #include "triton/Dialect/TritonGPU/IR/Dialect.h"
 
@@ -72,8 +71,8 @@ module {
   mlir::OwningOpRef<mlir::ModuleOp> module = ParseModule(kMlirModule);
   mlir::LLVM::LLVMFuncOp func_op =
       *module->getOps<mlir::LLVM::LLVMFuncOp>().begin();
-  TF_ASSERT_OK_AND_ASSIGN(stream_executor::gpu::TmaMetadata tma_metadata,
-                          xgt::ExtractTmaMetadata(func_op));
+  ASSERT_OK_AND_ASSIGN(stream_executor::gpu::TmaMetadata tma_metadata,
+                       xgt::ExtractTmaMetadata(func_op));
 
   EXPECT_EQ(tma_metadata.arg_index_to_tma_info.size(), 2);
   EXPECT_TRUE(tma_metadata.arg_index_to_tma_info.contains(1));
@@ -108,8 +107,8 @@ module attributes {ttg.global_scratch_memory_alignment = 1 : i32, ttg.global_scr
   mlir::OwningOpRef<mlir::ModuleOp> module = ParseModule(kMlirModule);
   mlir::LLVM::LLVMFuncOp func_op =
       *module->getOps<mlir::LLVM::LLVMFuncOp>().begin();
-  TF_ASSERT_OK_AND_ASSIGN(stream_executor::ThreadDim thread_dims,
-                          xgt::ExtractThreadDims(module.get(), func_op));
+  ASSERT_OK_AND_ASSIGN(stream_executor::ThreadDim thread_dims,
+                       xgt::ExtractThreadDims(module.get(), func_op));
   EXPECT_EQ(thread_dims, stream_executor::ThreadDim(32, 1, 1));
 }
 }  // namespace

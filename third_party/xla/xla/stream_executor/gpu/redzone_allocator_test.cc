@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstdint>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
@@ -29,8 +30,6 @@ limitations under the License.
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream_executor_memory_allocator.h"
 #include "xla/tsl/lib/core/status_test_util.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/test.h"
 
 namespace stream_executor {
 namespace gpu {
@@ -62,13 +61,13 @@ TEST(RedzoneAllocatorTest, WriteToRedzone) {
   StreamExecutor* stream_exec = platform->ExecutorForDevice(0).value();
   StreamExecutorMemoryAllocator se_allocator(platform, {stream_exec});
 
-  TF_ASSERT_OK_AND_ASSIGN(auto stream, stream_exec->CreateStream());
+  ASSERT_OK_AND_ASSIGN(auto stream, stream_exec->CreateStream());
   RedzoneAllocator allocator(stream.get(), &se_allocator,
                              /*memory_limit=*/(1LL << 32),
                              /*redzone_size=*/kRedzoneSize,
                              /*redzone_pattern=*/kRedzonePattern);
-  TF_ASSERT_OK_AND_ASSIGN(DeviceAddress<uint8_t> buf,
-                          allocator.AllocateBytes(/*byte_size=*/kAllocSize));
+  ASSERT_OK_AND_ASSIGN(DeviceAddress<uint8_t> buf,
+                       allocator.AllocateBytes(/*byte_size=*/kAllocSize));
   EXPECT_REDZONE_OK(allocator.CheckRedzones());
 
   char* buf_addr = reinterpret_cast<char*>(buf.opaque());
@@ -135,7 +134,7 @@ TEST(RedzoneAllocatorTest, VeryLargeRedzone) {
       PlatformManager::PlatformWithName(GpuPlatformName()).value();
   StreamExecutor* stream_exec = platform->ExecutorForDevice(0).value();
   StreamExecutorMemoryAllocator se_allocator(platform, {stream_exec});
-  TF_ASSERT_OK_AND_ASSIGN(auto stream, stream_exec->CreateStream());
+  ASSERT_OK_AND_ASSIGN(auto stream, stream_exec->CreateStream());
   RedzoneAllocator allocator(stream.get(), &se_allocator,
                              /*memory_limit=*/(1LL << 32),
                              /*redzone_size=*/kRedzoneSize,

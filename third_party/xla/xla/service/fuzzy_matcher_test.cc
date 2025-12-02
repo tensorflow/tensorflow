@@ -15,11 +15,10 @@ limitations under the License.
 
 #include "xla/service/fuzzy_matcher.h"
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/service/pattern_matcher.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/test.h"
 
 namespace xla {
 namespace {
@@ -35,8 +34,8 @@ TEST_F(FuzzyMatcherTest, IgnoreConvert) {
       div = f16[8,3] divide(x, y)
       ROOT convert = f32[8,3] convert(div)
     })";
-  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module,
-                          ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_OK_AND_ASSIGN(auto hlo_module,
+                       ParseAndReturnVerifiedModule(kModuleStr));
   auto* root = hlo_module->entry_computation()->root_instruction();
   EXPECT_TRUE(
       Match(root, fm::Divide(match::Parameter(0), match::Parameter(1))));

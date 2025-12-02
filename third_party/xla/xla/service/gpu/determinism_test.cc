@@ -31,6 +31,7 @@ limitations under the License.
 #include "xla/service/gpu/autotuning/autotuner_util.h"
 #include "xla/service/gpu/tests/gpu_codegen_test.h"
 #include "xla/service/platform_util.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/mock_stream_executor.h"
 #include "xla/stream_executor/platform.h"
@@ -39,7 +40,6 @@ limitations under the License.
 #include "xla/tests/literal_test_util.h"
 #include "xla/tests/test_utils.h"
 #include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/xla.pb.h"
 
 namespace xla {
@@ -69,8 +69,8 @@ class DeterminismTest : public GpuCodegenTest {
       // is deterministic.
       AutotunerUtil::ClearAutotuneResults();
 
-      TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                              ParseAndReturnVerifiedModule(hlo_string));
+      ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                           ParseAndReturnVerifiedModule(hlo_string));
       if (i == 0) {
         fake_arguments = MakeFakeArguments(module.get()).value();
         for (Literal& literal : fake_arguments) {
@@ -78,8 +78,8 @@ class DeterminismTest : public GpuCodegenTest {
         }
       }
 
-      TF_ASSERT_OK_AND_ASSIGN(Literal output,
-                              Execute(std::move(module), fake_arguments_ptrs));
+      ASSERT_OK_AND_ASSIGN(Literal output,
+                           Execute(std::move(module), fake_arguments_ptrs));
       if (!canonical_output.has_value()) {
         canonical_output = std::move(output);
       } else {
@@ -112,8 +112,8 @@ class DeterminismTest : public GpuCodegenTest {
 
     // If timer creation is forbidden we inject a mock GPU executor that
     // prevents timer creation.
-    TF_ASSERT_OK_AND_ASSIGN(stream_executor::Platform * default_platform,
-                            PlatformUtil::GetDefaultPlatform());
+    ASSERT_OK_AND_ASSIGN(stream_executor::Platform * default_platform,
+                         PlatformUtil::GetDefaultPlatform());
     stream_executor::MockStreamExecutor executor;
     EXPECT_CALL(executor, GetPlatform).WillRepeatedly([&] {
       return default_platform;
@@ -140,11 +140,11 @@ class DeterminismTest : public GpuCodegenTest {
       return backend().default_stream_executor()->AsBlas();
     });
 
-    TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                            ParseAndReturnVerifiedModule(hlo_string));
-    TF_ASSERT_OK_AND_ASSIGN(auto optimized_module,
-                            backend().compiler()->RunHloPasses(
-                                std::move(module), &executor, GetAllocator()));
+    ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                         ParseAndReturnVerifiedModule(hlo_string));
+    ASSERT_OK_AND_ASSIGN(auto optimized_module,
+                         backend().compiler()->RunHloPasses(
+                             std::move(module), &executor, GetAllocator()));
     absl::StatusOr<bool> filecheck_result =
         RunFileCheck(optimized_module->ToString(), expected_hlo_regex);
     TF_ASSERT_OK(filecheck_result.status());

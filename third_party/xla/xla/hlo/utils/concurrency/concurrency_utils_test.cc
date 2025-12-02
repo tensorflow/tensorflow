@@ -33,7 +33,6 @@ limitations under the License.
 #include "xla/service/hlo_module_config.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla::concurrency {
@@ -108,7 +107,7 @@ TEST(ForEachTest, ActionReturnedValuesCollected) {
 
   std::vector<int*> v = {&v0, &v1, &v2};
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto result,
       (ForEach<int>(
           v.begin(), v.end(),

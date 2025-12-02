@@ -19,6 +19,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/array2d.h"
@@ -33,7 +34,6 @@ limitations under the License.
 #include "xla/tests/client_library_test_runner_mixin.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tests/literal_test_util.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/types.h"
 #include "xla/xla_data.pb.h"
@@ -328,14 +328,13 @@ TEST_F(TupleTest, ComplexTuples) {
                                         {{1011, 2022}, {3031, 4042}},
                                         {{10011, 20022}, {30031, 40042}}});
   Literal prod(sum.shape());
-  ASSERT_TRUE(prod.Populate<complex64>([&sum](
-                                           absl::Span<const int64_t> indexes) {
-                    return sum.Get<complex64>(indexes) *
-                           (indexes[indexes.size() - 1] == 0
-                                ? complex64(1, 2)
-                                : complex64(1, -2));
-                  })
-                  .ok());
+  ASSERT_TRUE(
+      prod.Populate<complex64>([&sum](absl::Span<const int64_t> indexes) {
+            return sum.Get<complex64>(indexes) *
+                   (indexes[indexes.size() - 1] == 0 ? complex64(1, 2)
+                                                     : complex64(1, -2));
+          })
+          .ok());
   const Literal expected = LiteralUtil::MakeTupleFromSlices(
       {LiteralUtil::MakeTupleFromSlices({prod, sum}),
        LiteralUtil::CreateR0<complex64>({123, 456})});
@@ -354,8 +353,7 @@ TEST_F(TupleHloTest, BadTupleShapeFailsGracefully) {
     }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnUnverifiedModule(testcase));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(testcase));
   auto status = verifier().Run(module.get()).status();
   EXPECT_FALSE(status.ok());
   EXPECT_THAT(
@@ -379,8 +377,8 @@ TEST_F(TupleHloTest, BitcastAfterGTE) {
   auto module = ParseAndReturnVerifiedModule(testcase).value();
   auto param =
       LiteralUtil::MakeTupleOwned(LiteralUtil::CreateR1<float>({1, 2, 3}));
-  TF_ASSERT_OK_AND_ASSIGN(Literal result, Execute(std::move(module), {&param},
-                                                  /*run_hlo_passes=*/false));
+  ASSERT_OK_AND_ASSIGN(Literal result, Execute(std::move(module), {&param},
+                                               /*run_hlo_passes=*/false));
   EXPECT_TRUE(LiteralTestUtil::Equal(
       LiteralUtil::MakeTupleOwned(LiteralUtil::CreateR2<float>({{1, 2, 3}})),
       result));

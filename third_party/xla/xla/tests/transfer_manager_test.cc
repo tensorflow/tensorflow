@@ -20,6 +20,7 @@ limitations under the License.
 #include <vector>
 
 #include "xla/tests/xla_test_backend_predicates.h"
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/log/check.h"
 #include "absl/status/statusor.h"
@@ -37,7 +38,6 @@ limitations under the License.
 #include "xla/stream_executor/device_address_allocator.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/tests/local_client_test_base.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test_benchmark.h"
 #include "xla/types.h"
 #include "xla/xla_data.pb.h"
@@ -83,7 +83,7 @@ TEST_F(TransferManagerTest, TransferR0U32) {
   // Round trip literal through device.
   ASSERT_IS_OK(transfer_manager_->TransferLiteralToDevice(stream_, literal,
                                                           device_buffer));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       Literal result,
       transfer_manager_->TransferLiteralFromDevice(stream_, device_buffer));
 
@@ -99,7 +99,7 @@ TEST_F(TransferManagerTest, TransferR1F32) {
   // Round trip literal through device.
   ASSERT_IS_OK(transfer_manager_->TransferLiteralToDevice(stream_, literal,
                                                           device_buffer));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       Literal result,
       transfer_manager_->TransferLiteralFromDevice(stream_, device_buffer));
 
@@ -121,7 +121,7 @@ TEST_F(TransferManagerTest, TransferR1F32AwkwardSizes) {
     // Round trip literal through device.
     ASSERT_IS_OK(transfer_manager_->TransferLiteralToDevice(stream_, literal,
                                                             device_buffer));
-    TF_ASSERT_OK_AND_ASSIGN(
+    ASSERT_OK_AND_ASSIGN(
         Literal result,
         transfer_manager_->TransferLiteralFromDevice(stream_, device_buffer));
 
@@ -139,7 +139,7 @@ TEST_F(TransferManagerTest, TransferR1LargeF32) {
   // Round trip literal through device.
   ASSERT_IS_OK(transfer_manager_->TransferLiteralToDevice(stream_, literal,
                                                           device_buffer));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       Literal result,
       transfer_manager_->TransferLiteralFromDevice(stream_, device_buffer));
 
@@ -157,7 +157,7 @@ TEST_F(TransferManagerTest, TransferR1LargeUnalignedF32) {
   // Round trip literal through device.
   ASSERT_IS_OK(transfer_manager_->TransferLiteralToDevice(stream_, literal,
                                                           device_buffer));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       Literal result,
       transfer_manager_->TransferLiteralFromDevice(stream_, device_buffer));
 
@@ -175,7 +175,7 @@ TEST_F(TransferManagerTest, TransferR1U8) {
   // Round trip literal through device.
   ASSERT_IS_OK(transfer_manager_->TransferLiteralToDevice(stream_, literal,
                                                           device_buffer));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       Literal result,
       transfer_manager_->TransferLiteralFromDevice(stream_, device_buffer));
 
@@ -191,7 +191,7 @@ TEST_F(TransferManagerTest, TransferR2F32) {
   // Round trip literal through device.
   ASSERT_IS_OK(transfer_manager_->TransferLiteralToDevice(stream_, literal,
                                                           device_buffer));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       Literal result,
       transfer_manager_->TransferLiteralFromDevice(stream_, device_buffer));
 
@@ -210,7 +210,7 @@ TEST_F(TransferManagerTest, TransferR2F32AndChangeLayoutTransferringToDevice) {
   // different than the literal layout.
   ASSERT_IS_OK(transfer_manager_->TransferLiteralToDevice(stream_, literal,
                                                           device_buffer));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       Literal result,
       transfer_manager_->TransferLiteralFromDevice(stream_, device_buffer));
 
@@ -230,7 +230,7 @@ TEST_F(TransferManagerTest, TransferTuple) {
   // Round trip literal through device.
   ASSERT_IS_OK(transfer_manager_->TransferLiteralToDevice(stream_, literal,
                                                           device_buffer));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       Literal result,
       transfer_manager_->TransferLiteralFromDevice(stream_, device_buffer));
 
@@ -244,7 +244,7 @@ TEST_F(TransferManagerTest, TransferEmptyTuple) {
   // Round trip literal through device.
   ASSERT_IS_OK(transfer_manager_->TransferLiteralToDevice(stream_, literal,
                                                           device_buffer));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       Literal result,
       transfer_manager_->TransferLiteralFromDevice(stream_, device_buffer));
 
@@ -263,7 +263,7 @@ TEST_F(TransferManagerTest, TransferNestedTuple) {
   // Round trip literal through device.
   ASSERT_IS_OK(transfer_manager_->TransferLiteralToDevice(stream_, literal,
                                                           device_buffer));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       Literal result,
       transfer_manager_->TransferLiteralFromDevice(stream_, device_buffer));
 
@@ -278,7 +278,7 @@ TEST_F(TransferManagerTest, TransferComplexValue) {
   // Round trip literal through device.
   ASSERT_IS_OK(transfer_manager_->TransferLiteralToDevice(stream_, literal,
                                                           device_buffer));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       Literal result,
       transfer_manager_->TransferLiteralFromDevice(stream_, device_buffer));
 
@@ -296,7 +296,7 @@ TEST_F(TransferManagerTest, TransferComplexValueInTuple) {
   // Round trip literal through device.
   ASSERT_IS_OK(transfer_manager_->TransferLiteralToDevice(stream_, literal,
                                                           device_buffer));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       Literal result,
       transfer_manager_->TransferLiteralFromDevice(stream_, device_buffer));
 
@@ -309,7 +309,7 @@ TEST_F(TransferManagerTest, TransferTokenFromDevice) {
   // TODO(b/110532604): Add transferring the token to device when this is
   // supported.
   auto device_buffer = AllocateDeviceBuffer(ShapeUtil::MakeTokenShape());
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       Literal result,
       transfer_manager_->TransferLiteralFromDevice(stream_, device_buffer));
   EXPECT_TRUE(LiteralTestUtil::Equal(LiteralUtil::CreateToken(), result));
@@ -347,10 +347,10 @@ TEST_F(TransferManagerTest, MultiStreamRoundTripSoak) {
                                                             device_buffer1));
     ASSERT_IS_OK(transfer_manager_->TransferLiteralToDevice(stream2, literal2,
                                                             device_buffer2));
-    TF_ASSERT_OK_AND_ASSIGN(
+    ASSERT_OK_AND_ASSIGN(
         Literal this_result1,
         transfer_manager_->TransferLiteralFromDevice(stream1, device_buffer1));
-    TF_ASSERT_OK_AND_ASSIGN(
+    ASSERT_OK_AND_ASSIGN(
         Literal this_result2,
         transfer_manager_->TransferLiteralFromDevice(stream2, device_buffer2));
     result1 = std::move(this_result1);
@@ -366,7 +366,7 @@ TEST_F(TransferManagerTest, TransferDynamicShape) {
   if (test::DeviceTypeIs(test::kTpu)) {
     GTEST_SKIP();
   }
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       Shape s, ParseShape("(s64[], s32[<=1048576,3], f32[<=1048576,48])"));
 
   Literal literal(s);
@@ -390,7 +390,7 @@ TEST_F(TransferManagerTest, TransferDynamicShape) {
   ScopedShapedBuffer device_buffer = AllocateDeviceBuffer(literal.shape());
   ASSERT_IS_OK(transfer_manager_->TransferLiteralToDevice(stream_, literal,
                                                           device_buffer));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       Literal result,
       transfer_manager_->TransferLiteralFromDevice(stream_, device_buffer));
 
@@ -422,7 +422,7 @@ class TransferDeviceToHostBenchmark : public TransferManagerTest {
     CHECK_OK(transfer_manager_->TransferLiteralToDevice(stream_, literal,
                                                         device_buffer));
     for (auto s : state) {
-      TF_ASSERT_OK_AND_ASSIGN(
+      ASSERT_OK_AND_ASSIGN(
           Literal result,
           transfer_manager_->TransferLiteralFromDevice(stream_, device_buffer));
     }

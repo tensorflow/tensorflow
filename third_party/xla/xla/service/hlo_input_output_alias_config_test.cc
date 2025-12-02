@@ -15,21 +15,20 @@ limitations under the License.
 
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
 
+#include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "absl/algorithm/container.h"
-#include "xla/hlo/analysis/hlo_ordering.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/test_helpers.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/types.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -79,8 +78,8 @@ ENTRY main {
   ROOT root = (f32[], f32[]) tuple(%a, %b)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(module_str));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(module_str));
 
   HloInputOutputAliasConfig config(
       module->entry_computation()->root_instruction()->shape());
@@ -110,8 +109,8 @@ ENTRY main {
   ROOT root = (f32[], f32[]) tuple(%gte1, %gte2)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(module_str));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(module_str));
 
   HloInputOutputAliasConfig config(
       module->entry_computation()->root_instruction()->shape());
@@ -147,8 +146,8 @@ ENTRY main {
   ROOT root = (f32[], f32[]) tuple(%a, %b)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(module_str));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(module_str));
 
   HloInputOutputAliasConfig config(
       module->entry_computation()->root_instruction()->shape());
@@ -176,8 +175,8 @@ ENTRY main {
   ROOT root = (f32[], f32[4096]) tuple(%a, %b)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(module_str));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(module_str));
 
   HloInputOutputAliasConfig config(
       module->entry_computation()->root_instruction()->shape());
@@ -201,8 +200,8 @@ ENTRY main {
   ROOT root = (f32[], f32[]) tuple(%a, %b)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(module_str));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(module_str));
 
   HloInputOutputAliasConfig config(
       module->entry_computation()->root_instruction()->shape());
@@ -228,8 +227,8 @@ ENTRY main {
   ROOT root = (f32[], f32[]) tuple(%a, %b)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(module_str));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(module_str));
 
   HloBufferDonorConfig config;
 
@@ -261,8 +260,8 @@ ENTRY main {
   ROOT root = (f32[], f32[]) tuple(%gte1, %gte2)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(module_str));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(module_str));
 
   HloBufferDonorConfig config;
 
@@ -294,8 +293,8 @@ ENTRY main {
   ROOT root = (f32[], f32[]) tuple(%gte1, %gte2)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(module_str));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(module_str));
 
   HloBufferDonorConfig config;
 

@@ -22,6 +22,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
@@ -42,7 +43,6 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla::gpu {
@@ -1036,7 +1036,7 @@ class CollectiveInterpolationWithDefaultProfileTest
 TEST_P(CollectiveInterpolationWithDefaultProfileTest, LoadsDefaultProfile) {
   const auto& [test_name, cc, expected_duration] = GetParam();
   auto device_info = TestGpuDeviceInfo::RTXA6000DeviceInfo(cc);
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<CollectiveInterpolator> interpolator,
       CollectiveInterpolator::Create(kNumGpusPerHost, device_info));
   absl::string_view kHlo = R"(
@@ -1054,7 +1054,7 @@ TEST_P(CollectiveInterpolationWithDefaultProfileTest, LoadsDefaultProfile) {
           replica_groups=[1,8]<=[8], use_global_device_ids=true, channel_id=1
     }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kHlo));
   HloCollectiveInstruction* instr = Cast<HloCollectiveInstruction>(
       module->entry_computation()->root_instruction());
 

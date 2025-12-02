@@ -23,7 +23,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/service/gpu/backend_configs.pb.h"
-#include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 
@@ -80,8 +79,7 @@ TEST_F(GpuConvertAsyncCollectivesToSyncTest, SimpleAllReduce) {
         ROOT done = u32[] all-reduce-done(start)
       }
     )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   ASSERT_OK(RunPass(module.get(), /*expect_change=*/true));
   EXPECT_THAT(IsSync(module.get(), "start"), IsTrue());
 }
@@ -103,8 +101,7 @@ TEST_F(GpuConvertAsyncCollectivesToSyncTest, SimpleAllReduceWithNop) {
         ROOT done = u32[] all-reduce-done(start)
       }
     )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   ASSERT_OK(RunPass(module.get(), /*expect_change=*/true));
   EXPECT_THAT(IsSync(module.get(), "start"), IsTrue());
 }
@@ -123,8 +120,7 @@ TEST_F(GpuConvertAsyncCollectivesToSyncTest, SimpleCollectiveBroadcast) {
     ROOT %ars = u32[8]{0} async-done(((u32[8]{0}), u32[8]{0}) %cb-start), calls=collective_broadcast
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   ASSERT_OK(RunPass(module.get(), /*expect_change=*/true));
   EXPECT_THAT(IsSync(module.get(), "cb-start"), IsTrue());
 }
@@ -146,8 +142,7 @@ TEST_F(GpuConvertAsyncCollectivesToSyncTest, SimpleAllReduceWithNonNop) {
         ROOT done = u32[] all-reduce-done(start)
       }
     )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   ASSERT_OK(RunPass(module.get(), /*expect_change=*/false));
 }
 
@@ -159,8 +154,7 @@ TEST_F(GpuConvertAsyncCollectivesToSyncTest, SimpleAllGather) {
     ags = (u32[1, 2], u32[2, 2]) all-gather-start(a1), dimensions={0}, channel_id=3
     ROOT allgather = u32[2,2] all-gather-done(ags)
   })";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   ASSERT_OK(RunPass(module.get(), /*expect_change=*/true));
   EXPECT_THAT(IsSync(module.get(), "ags"), IsTrue());
 }
@@ -174,8 +168,7 @@ TEST_F(GpuConvertAsyncCollectivesToSyncTest, SimpleCollectivePermute) {
     start = (u32[2], u32[2], u32[], u32[]) collective-permute-start(p), source_target_pairs={{0,1}, {1,0}}
     ROOT done = u32[2] collective-permute-done(start)
   })";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   ASSERT_OK(RunPass(module.get(), /*expect_change=*/true));
   EXPECT_THAT(IsSync(module.get(), "start"), IsTrue());
 }
@@ -202,8 +195,7 @@ TEST_F(GpuConvertAsyncCollectivesToSyncTest, SimpleReduceScatter) {
     ROOT %ars = u32[4]{0} async-done(((u32[8]{0}), u32[4]{0}) %rs-start), calls=reduce_scatter
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   ASSERT_OK(RunPass(module.get(), /*expect_change=*/true));
   EXPECT_THAT(IsSync(module.get(), "rs-start"), IsTrue());
 }
@@ -224,8 +216,7 @@ TEST_F(GpuConvertAsyncCollectivesToSyncTest, SimpleAllToAll) {
   }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   ASSERT_OK(RunPass(module.get(), /*expect_change=*/true));
   EXPECT_THAT(IsSync(module.get(), "a2a-start"), IsTrue());
 }
@@ -249,8 +240,7 @@ TEST_F(GpuConvertAsyncCollectivesToSyncTest, ControlDeps) {
         ROOT x = u32[] add(done1, done2)
       }
     )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   ASSERT_OK(RunPass(module.get(), /*expect_change=*/true));
   EXPECT_THAT(IsSync(module.get(), "start1"), IsTrue());
   EXPECT_THAT(IsSync(module.get(), "start2"), IsTrue());
@@ -277,8 +267,7 @@ TEST_F(GpuConvertAsyncCollectivesToSyncTest, MultipleInFlightStreaming) {
         ROOT x = u32[] add(done1, done2)
       }
     )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   ASSERT_OK(RunPass(module.get(), /*expect_change=*/true));
   EXPECT_THAT(IsSync(module.get(), "start1"), IsTrue());
   EXPECT_THAT(IsSync(module.get(), "start2"), IsTrue());
@@ -304,8 +293,7 @@ TEST_F(GpuConvertAsyncCollectivesToSyncTest, MultipleInFlightNested) {
         ROOT x = u32[] add(done1, done2)
       }
     )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   ASSERT_OK(RunPass(module.get(), /*expect_change=*/true));
   EXPECT_THAT(IsSync(module.get(), "start1"), IsTrue());
   EXPECT_THAT(IsSync(module.get(), "start2"), IsTrue());
@@ -333,8 +321,7 @@ TEST_F(GpuConvertAsyncCollectivesToSyncTest, MultipleInFlightNestedPartial) {
         ROOT x = u32[] add(done1, done2)
       }
     )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   ASSERT_OK(RunPass(module.get(), /*expect_change=*/true));
   EXPECT_THAT(IsSync(module.get(), "start1"), IsFalse());
   EXPECT_THAT(IsSync(module.get(), "start2"), IsTrue());
@@ -358,8 +345,7 @@ TEST_F(GpuConvertAsyncCollectivesToSyncTest,
         ROOT done = u32[] all-reduce-done(start)
       }
     )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   const HloInstruction* inst_orig = FindInstruction(module.get(), "start");
   const CollectiveBackendConfig backend_config_orig =
       inst_orig->backend_config<GpuBackendConfig>()

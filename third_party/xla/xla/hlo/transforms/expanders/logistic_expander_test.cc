@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <memory>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -29,7 +30,6 @@ limitations under the License.
 #include "xla/service/dynamic_padder.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -47,7 +47,7 @@ TEST_F(LogisticExpanderTest, ExpandWith) {
       ROOT r = f32[2,3] logistic(p)
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
 
   auto computation = m->entry_computation();
   HloInstruction* root = computation->root_instruction();
@@ -71,7 +71,7 @@ ENTRY main {
   ROOT root = f32[<=10] logistic(p)
 }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
 
   LogisticExpander logistic_expander;
   ASSERT_TRUE(logistic_expander.Run(module.get()).value());

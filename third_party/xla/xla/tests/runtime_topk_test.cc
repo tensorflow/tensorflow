@@ -16,13 +16,13 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/tests/literal_test_util.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace xla::cpu {
 namespace {
@@ -38,8 +38,8 @@ TEST_F(TopkTest, CustomCallTarget) {
     ROOT topk = (f32[10,3], s32[10,3]) custom-call(x), custom_call_target="TopK"
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_text_module));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(hlo_text_module));
 
   auto input =
       LiteralUtil::CreateR2<float>({{98, 21, 67, 27, 54, 67, 98, 84, 9, 62},
@@ -52,7 +52,7 @@ TEST_F(TopkTest, CustomCallTarget) {
                                     {26, 4, 76, 48, 88, 96, 71, 2, 58, 68},
                                     {42, 90, 38, 86, 18, 0, 22, 28, 1, 39},
                                     {90, 34, 63, 92, 30, 54, 3, 98, 85, 4}});
-  TF_ASSERT_OK_AND_ASSIGN(auto result, Execute(std::move(module), {&input}));
+  ASSERT_OK_AND_ASSIGN(auto result, Execute(std::move(module), {&input}));
   std::vector<Literal> results = result.DecomposeTuple();
   ASSERT_EQ(results.size(), 2);
   LiteralTestUtil::ExpectR2Equal<float>({{98, 98, 84},

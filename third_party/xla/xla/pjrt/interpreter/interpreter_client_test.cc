@@ -19,6 +19,7 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/types/span.h"
 #include "xla/hlo/builder/xla_builder.h"
@@ -31,7 +32,6 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -43,16 +43,16 @@ TEST(InterpreterClientTest, EvaluateOnceShouldSucceed) {
   XlaBuilder builder("test");
   Add(Parameter(&builder, 0, shape, "parameter0"),
       ConstantR1(&builder, absl::Span<const int32_t>{1, 1, 1, 1}));
-  TF_ASSERT_OK_AND_ASSIGN(XlaComputation computation, builder.Build());
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtLoadedExecutable> executable,
-                          client.CompileAndLoad(computation, CompileOptions()));
+  ASSERT_OK_AND_ASSIGN(XlaComputation computation, builder.Build());
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtLoadedExecutable> executable,
+                       client.CompileAndLoad(computation, CompileOptions()));
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<PjRtBuffer> argument,
       client.BufferFromHostLiteral(
           LiteralUtil::CreateR1(absl::Span<const int32_t>{1, 2, 3, 4}),
           client.memory_spaces().front()));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::vector<std::vector<std::unique_ptr<PjRtBuffer>>> results,
       executable->Execute({{argument.get()}}, ExecuteOptions()));
 
@@ -71,19 +71,19 @@ TEST(InterpreterClientTest, EvaluateTwiceShouldSucceed) {
   XlaBuilder builder("test");
   Add(Parameter(&builder, 0, shape, "parameter0"),
       ConstantR1(&builder, absl::Span<const int32_t>{1, 1, 1, 1}));
-  TF_ASSERT_OK_AND_ASSIGN(XlaComputation computation, builder.Build());
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtLoadedExecutable> executable,
-                          client.CompileAndLoad(computation, CompileOptions()));
+  ASSERT_OK_AND_ASSIGN(XlaComputation computation, builder.Build());
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtLoadedExecutable> executable,
+                       client.CompileAndLoad(computation, CompileOptions()));
 
   std::vector<std::vector<std::unique_ptr<PjRtBuffer>>> results;
   for (const Literal& execution_argument :
        {LiteralUtil::CreateR1(absl::Span<const int32_t>{1, 2, 3, 4}),
         LiteralUtil::CreateR1(absl::Span<const int32_t>{4, 3, 2, 1})}) {
-    TF_ASSERT_OK_AND_ASSIGN(
+    ASSERT_OK_AND_ASSIGN(
         std::unique_ptr<PjRtBuffer> argument_buffer,
         client.BufferFromHostLiteral(execution_argument,
                                      client.memory_spaces().front()));
-    TF_ASSERT_OK_AND_ASSIGN(
+    ASSERT_OK_AND_ASSIGN(
         results.emplace_back(),
         executable->ExecuteSharded({argument_buffer.get()},
                                    client.addressable_devices().front(),

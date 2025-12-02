@@ -23,11 +23,12 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/status/status_matchers.h"
 #include "absl/strings/string_view.h"
-#include "third_party/cudnn_frontend/include/cudnn_frontend.h"
+#include "third_party/cudnn_frontend/include/cudnn_frontend/graph_interface.h"
+#include "third_party/cudnn_frontend/include/cudnn_frontend/graph_properties.h"
+#include "third_party/cudnn_frontend/include/cudnn_frontend_utils.h"
 #include "json/json.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/parser/hlo_parser.h"
-#include "tsl/platform/test.h"
 
 namespace stream_executor {
 namespace gpu {
@@ -43,8 +44,7 @@ TEST(CudnnSdpaScoreModTest, CompileFwd) {
     ROOT %multiply.1 = f32[4,4,1024,1024]{3,2,1,0} multiply(%Arg_0.15, %broadcast.1)
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          xla::ParseAndReturnUnverifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto module, xla::ParseAndReturnUnverifiedModule(hlo));
   xla::HloComputation* comp = module->GetComputationWithName("fwd");
   ASSERT_NE(comp, nullptr);
   int64_t uid = 0;
@@ -93,8 +93,7 @@ TEST(CudnnSdpaScoreModTest, CompileBwd) {
     ROOT %multiply.1.0 = f32[4,4,1024,1024]{3,2,1,0} multiply(%Arg_0.2, %broadcast.1.0)
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          xla::ParseAndReturnUnverifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto module, xla::ParseAndReturnUnverifiedModule(hlo));
   xla::HloComputation* fwd_comp = module->GetComputationWithName("fwd");
   xla::HloComputation* bwd_comp = module->GetComputationWithName("bwd");
   ASSERT_NE(fwd_comp, nullptr);

@@ -10,17 +10,17 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/sycl/sycl_platform_id.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace stream_executor::sycl {
 namespace {
 
 TEST(SyclPlatformTest, TestPlatformName) {
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       Platform * platform,
       stream_executor::PlatformManager::PlatformWithId(kSyclPlatformId));
   EXPECT_EQ(platform->Name(), "SYCL");

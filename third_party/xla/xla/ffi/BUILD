@@ -92,7 +92,6 @@ xla_cc_test(
         ":execution_context",
         ":type_registry",
         "//xla/tsl/lib/core:status_test_util",
-        "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",
         "@com_google_absl//absl/status",
         "@com_google_googletest//:gtest",
@@ -348,7 +347,6 @@ xla_cc_test(
     deps = [
         ":type_registry",
         "//xla/tsl/lib/core:status_test_util",
-        "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",

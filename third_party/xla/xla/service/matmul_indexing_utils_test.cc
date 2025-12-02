@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/service/matmul_indexing_utils.h"
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status_matchers.h"
 #include "absl/strings/string_view.h"
@@ -22,7 +23,6 @@ limitations under the License.
 #include "xla/hlo/testlib/test.h"
 #include "xla/shape.h"
 #include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -69,7 +69,7 @@ TEST(DotOperandDimsTest, IntoDotDimensionNumbers) {
                           /*non_contracting_dims=*/{2, 3},
                           /*contracting_dims=*/{4, 5});
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       DotDimensionNumbers ddn,
       DotOperandDims::IntoDotDimensionNumbers(lhs_dims, rhs_dims));
 
@@ -89,7 +89,7 @@ TEST(DotOperandDimsTest, IntoOutputShape) {
   DotOperandDims rhs_dims(rhs_shape, /*batch_dims=*/{0, 1},
                           /*non_contracting_dims=*/{2, 3},
                           /*contracting_dims=*/{4, 5});
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       Shape output_shape,
       DotOperandDims::IntoOutputShape(PrimitiveType::F32, lhs_dims, rhs_dims));
   EXPECT_EQ(output_shape, ParseShape("f32[10,60,20,40,70,80]").value());

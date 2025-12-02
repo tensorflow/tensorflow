@@ -21,6 +21,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include "absl/algorithm/container.h"
 #include "absl/log/check.h"
 #include "absl/types/span.h"
@@ -36,10 +37,8 @@ limitations under the License.
 #include "xla/service/logical_buffer.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/tsl/platform/logging.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/logging.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/test.h"
 
 namespace xla {
 namespace {
@@ -372,7 +371,7 @@ TEST_F(TuplePointsToAnalysisTest, AsyncOps) {
     ROOT async-done = f32[2,3] custom-call-done(async-update)
   }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       module_, ParseAndReturnVerifiedModule(hlo_str, GetModuleConfigForTest()));
 
   HloInstruction* param =
@@ -565,7 +564,7 @@ class FusionPointsToAnalysisTest : public TuplePointsToAnalysisTest {
   // Takes a HLO string, parses it, runs points-to analysis, then checks for
   // expected results (see unit test cases for example computation graphs).
   void Run(const std::string& hlo_str, int64_t expected_num_users) {
-    TF_ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnVerifiedModule(hlo_str));
+    ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnVerifiedModule(hlo_str));
     // Get computation root instruction (should be a kFusion).
     auto* fusion = module_->entry_computation()->root_instruction();
     auto* tuple_param0 = fusion->operand(0);

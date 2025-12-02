@@ -18,6 +18,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "xla/error_spec.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -31,7 +32,6 @@ limitations under the License.
 #include "xla/tests/hlo_test_base.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -76,14 +76,14 @@ ENTRY %cluster {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> hlo_module,
-                          ParseAndReturnVerifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(hlo_text));
 
-    CompileAndVerifyIr(std::move(hlo_module),
-                       R"(CHECK:      switch {{.*}} label {{.*}} [
+  CompileAndVerifyIr(std::move(hlo_module),
+                     R"(CHECK:      switch {{.*}} label {{.*}} [
                           CHECK-NEXT:   label
                           CHECK-NEXT: ])",
-                       /*match_optimized_ir=*/false);
+                     /*match_optimized_ir=*/false);
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
 }
 
@@ -116,13 +116,13 @@ ENTRY %cluster {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> hlo_module,
-                          ParseAndReturnVerifiedModule(hlo_text));
-    CompileAndVerifyIr(std::move(hlo_module),
-                       R"(CHECK:      switch {{.*}} label {{.*}} [
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(hlo_text));
+  CompileAndVerifyIr(std::move(hlo_module),
+                     R"(CHECK:      switch {{.*}} label {{.*}} [
                           CHECK-NEXT:   label
                           CHECK-NEXT: ])",
-                       /*match_optimized_ir=*/false);
+                     /*match_optimized_ir=*/false);
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
 }
 
@@ -305,14 +305,14 @@ ENTRY %cluster {
 
   // Because of b/249976438 mul0 and mul2 will make first and last groups merge.
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> hlo_module,
-                          ParseAndReturnVerifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(hlo_text));
 
-    CompileAndVerifyIr(std::move(hlo_module),
-                       R"(CHECK:      switch {{.*}} label {{.*}} [
+  CompileAndVerifyIr(std::move(hlo_module),
+                     R"(CHECK:      switch {{.*}} label {{.*}} [
                           CHECK-NEXT:   label
                           CHECK-NEXT: ])",
-                       /*match_optimized_ir=*/false);
+                     /*match_optimized_ir=*/false);
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
 }
 
@@ -353,8 +353,8 @@ ENTRY e {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> hlo_module,
-                          ParseAndReturnVerifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(hlo_text));
   EXPECT_TRUE(
       hlo_module->input_output_alias_config().ParameterMustAlias(2, {}));
   EXPECT_TRUE(RunAndCompareNoHloPasses(hlo_text, ErrorSpec{1e-5, 1e-5}));

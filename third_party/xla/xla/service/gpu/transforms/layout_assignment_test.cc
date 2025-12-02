@@ -42,8 +42,8 @@ limitations under the License.
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/dnn.h"
+#include "xla/stream_executor/rocm/rocm_compute_capability.h"
 #include "xla/tests/hlo_test_base.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 
@@ -140,8 +140,8 @@ TEST_F(LayoutAssignmentTest, DotLayoutUnchangedIfValid) {
       rhs_batch_dims={0}, rhs_contracting_dims={1}
   })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_text));
 
   ComputationLayout computation_layout(
       module->entry_computation()->ComputeProgramShape(),
@@ -168,8 +168,8 @@ TEST_F(LayoutAssignmentTest, DotLayoutSetToDefaultIfDefaultValid) {
       rhs_batch_dims={0}, rhs_contracting_dims={2}
   })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_text));
 
   ComputationLayout computation_layout(
       module->entry_computation()->ComputeProgramShape(),
@@ -187,8 +187,8 @@ TEST_F(LayoutAssignmentTest, DotLayoutSetToDefaultIfDefaultValid) {
 }
 
 TEST_F(LayoutAssignmentTest, BitcastConvertKeepsCompatibleLayouts) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
 e {
   a = u4[5,4,3,2]{3,2,1,0} parameter(0)
   b = u8[5,4,3]{2,1,0} bitcast-convert(a)
@@ -221,8 +221,8 @@ TEST_F(LayoutAssignmentTest, DotOperandLayoutSetToBatchRowsColsOtherwise) {
       rhs_batch_dims={2}, rhs_contracting_dims={0}
   })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_text));
 
   ComputationLayout computation_layout(
       module->entry_computation()->ComputeProgramShape(),
@@ -249,8 +249,8 @@ TEST_F(LayoutAssignmentTest, DotOperandInconsistentDimLayouts) {
       rhs_batch_dims={1,0}, rhs_contracting_dims={2}
   })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_text));
 
   ComputationLayout computation_layout(
       module->entry_computation()->ComputeProgramShape(),
@@ -279,8 +279,8 @@ TEST_F(LayoutAssignmentTest, TransposedDotLayout) {
     ROOT out = f32[2,5,4,6] transpose(dot), dimensions={1,0,2,3}
   })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_text));
 
   ComputationLayout computation_layout(
       module->entry_computation()->ComputeProgramShape(),
@@ -314,8 +314,8 @@ TEST_F(LayoutAssignmentTest, TransposedDotOfDotLayout) {
     ROOT out = f32[2,50,38,4]{2,3,0,1} transpose(dot.2), dimensions={1,0,3,2}
   })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_text));
 
   ComputationLayout computation_layout(
       module->entry_computation()->ComputeProgramShape(),
@@ -352,8 +352,8 @@ TEST_F(LayoutAssignmentTest, DotLayoutS8) {
     ROOT out = s32[32,96] dot(p0, p1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
   })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_text));
 
   ComputationLayout computation_layout(
       module->entry_computation()->ComputeProgramShape(),
@@ -389,8 +389,8 @@ TEST_F(LayoutAssignmentTest, SameLayoutOnOperandsAndOutputsOfSort) {
       dimensions={1}, to_apply=compare
   })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_text));
 
   ComputationLayout computation_layout(
       module->entry_computation()->ComputeProgramShape(),
@@ -420,8 +420,8 @@ TEST_F(LayoutAssignmentTest,
         custom-call(keys, transpose), custom_call_target="__cub$DeviceRadixSort"
   })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_text));
 
   ComputationLayout computation_layout(
       module->entry_computation()->ComputeProgramShape(),
@@ -466,8 +466,8 @@ TEST_F(LayoutAssignmentTest, TopKLayout) {
     t = f32[6,2048]{0,1} transpose(Arg_0.1), dimensions={1,0}
     ROOT custom-call.1 = (f32[6,8]{1,0}, s32[6,8]{1,0}) custom-call(t), custom_call_target="__gpu$TopK", api_version=API_VERSION_TYPED_FFI, called_computations={compare-greater-than}
   })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_text));
 
   ComputationLayout computation_layout(
       module->entry_computation()->ComputeProgramShape(),
@@ -487,8 +487,8 @@ TEST_F(LayoutAssignmentTest, TopKLayout) {
 
 TEST_F(LayoutAssignmentTest,
        BitcastConvertFromNarrowerTypeGetsOptimalInputLayout) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
 e {
   a = s4[3,5,2]{0,1,2:E(4)} parameter(0)
   b = s8[3,5]{0,1} bitcast-convert(a)
@@ -510,8 +510,8 @@ e {
 
 TEST_F(LayoutAssignmentTest,
        BitcastConvertToNarrowerTypeGetsOptimalOutputLayout) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
 e {
   a = s8[3,5] parameter(0)
   b = s4[3,5,2]{0,1,2} bitcast-convert(a)
@@ -542,8 +542,8 @@ TEST_F(LayoutAssignmentTest, FftLayout) {
     ROOT transpose = c64[32,8] transpose(fft), dimensions={1,0}
   })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_text));
 
   ComputationLayout computation_layout(
       module->entry_computation()->ComputeProgramShape(),
@@ -573,8 +573,8 @@ ENTRY entry {
   ROOT get-tuple-element.0 = f32[2,5,5]{1,2,0} get-tuple-element(custom-call.0), index=0
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
-                          ParseAndReturnVerifiedModule(module_str));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                       ParseAndReturnVerifiedModule(module_str));
   ComputationLayout computation_layout(
       m->entry_computation()->ComputeProgramShape());
 
@@ -607,8 +607,8 @@ ENTRY entry {
       custom_call_target="fixed_call", operand_layout_constraints={f32[2,5,5]{1,2,0}}
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
-                          ParseAndReturnVerifiedModule(module_str));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                       ParseAndReturnVerifiedModule(module_str));
   ComputationLayout computation_layout(
       m->entry_computation()->ComputeProgramShape());
 
@@ -636,8 +636,8 @@ ENTRY entry {
       custom_call_target="fixed_call", operand_layout_constraints={f32[2,5,5]{0,1,2}}
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
-                          ParseAndReturnVerifiedModule(module_str));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                       ParseAndReturnVerifiedModule(module_str));
   ComputationLayout computation_layout(
       m->entry_computation()->ComputeProgramShape());
 
@@ -664,8 +664,8 @@ ENTRY entry {
     custom_call_target="__cudnn$convForward"
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
-                          ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(hlo));
   ComputationLayout computation_layout(
       hlo_module->entry_computation()->ComputeProgramShape());
 
@@ -703,8 +703,8 @@ ENTRY entry {
     custom_call_target="__cudnn$convForward"
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
-                          ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(hlo));
   ComputationLayout computation_layout(
       hlo_module->entry_computation()->ComputeProgramShape());
 
@@ -745,8 +745,8 @@ ENTRY entry {
     custom_call_target="__cudnn$convForward"
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
-                          ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(hlo));
   ComputationLayout computation_layout(
       hlo_module->entry_computation()->ComputeProgramShape());
 
@@ -787,8 +787,8 @@ ENTRY entry {
     custom_call_target="__cudnn$convForward"
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
-                          ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(hlo));
   ComputationLayout computation_layout(
       hlo_module->entry_computation()->ComputeProgramShape());
 
@@ -825,8 +825,8 @@ ENTRY entry {
     window={size=3x3 pad=1_1x1_1}, dim_labels=b10f_o10i->b10f,
     custom_call_target="__cudnn$convForwardGraph"
 })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
-                          ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(hlo));
   ComputationLayout computation_layout(
       hlo_module->entry_computation()->ComputeProgramShape());
 
@@ -861,8 +861,8 @@ ENTRY entry {
     window={size=3x3 pad=1_1x1_1}, dim_labels=b10f_o10i->b10f,
     custom_call_target="__cudnn$convForwardGraph"
 })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
-                          ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(hlo));
   ComputationLayout computation_layout(
       hlo_module->entry_computation()->ComputeProgramShape());
 
@@ -903,8 +903,8 @@ ENTRY main {
   ROOT reduce.2 = c64[512,1024,128]{2,1,0} reduce(negate, constant_7), dimensions={1,3}, to_apply=scalar_add_computation
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
-                          ParseAndReturnVerifiedModule(module_str));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                       ParseAndReturnVerifiedModule(module_str));
   ComputationLayout computation_layout(
       m->entry_computation()->ComputeProgramShape());
   GpuLayoutAssignment layout_assignment(
@@ -934,8 +934,8 @@ ENTRY main {
   ROOT reduce.2 = c64[512,1024,128]{2,1,0} reduce(negate, constant_7), dimensions={1}, to_apply=scalar_add_computation
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
-                          ParseAndReturnVerifiedModule(module_str));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                       ParseAndReturnVerifiedModule(module_str));
   ComputationLayout computation_layout(
       m->entry_computation()->ComputeProgramShape());
   GpuLayoutAssignment layout_assignment(
@@ -959,7 +959,7 @@ TEST_F(LayoutAssignmentTest, AutoLayoutE4M3ContractingMinorFirst) {
     ROOT dot = f32[128,10240] dot(p0, p1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<HloModule> m,
       ParseAndReturnUnverifiedModule(
           hlo, {}, HloParserOptions().set_fill_missing_layouts(false)));
@@ -988,7 +988,7 @@ TEST_F(LayoutAssignmentTest, AutoLayoutS4DotContractingMinorLhs) {
     p1 = bf16[5120,10240] parameter(1)
     ROOT dot = bf16[128,10240] dot(p0.c, p1), lhs_contracting_dims={0}, rhs_contracting_dims={0}
   })";
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<HloModule> m,
       ParseAndReturnUnverifiedModule(
           hlo, {}, HloParserOptions().set_fill_missing_layouts(false)));
@@ -1022,7 +1022,7 @@ TEST_F(LayoutAssignmentTest, AutoLayoutS4DotContractingMinorRhs) {
     p1.c = bf16[5120,10240] convert(p1)
     ROOT dot = bf16[128,10240] dot(p0, p1.c), lhs_contracting_dims={0}, rhs_contracting_dims={0}
   })";
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<HloModule> m,
       ParseAndReturnUnverifiedModule(
           hlo, {}, HloParserOptions().set_fill_missing_layouts(false)));
@@ -1058,7 +1058,7 @@ TEST_F(LayoutAssignmentTest, AutoLayoutS4DotFollowingTheChain) {
     p2 = bf16[3072,9216] parameter(2)
     ROOT dot = bf16[128,9216] dot(p0.m, p2), lhs_contracting_dims={0}, rhs_contracting_dims={0}
   })";
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<HloModule> m,
       ParseAndReturnUnverifiedModule(
           hlo, {}, HloParserOptions().set_fill_missing_layouts(false)));
@@ -1099,7 +1099,7 @@ TEST_F(LayoutAssignmentTest, DotSetsNonMandatoryConstraintIfAutoLayout) {
 
     ROOT dot = f16[300,2000] dot(p0,r1), lhs_contracting_dims={1}, rhs_contracting_dims={1}
   })";
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<HloModule> m,
       ParseAndReturnUnverifiedModule(
           hlo, {}, HloParserOptions().set_fill_missing_layouts(false)));
@@ -1140,8 +1140,8 @@ ENTRY main {
   ROOT reduce.2 = (s32[512,1024,128]{0,1,2}, f32[512,1024,128]{2,1,0}) reduce(transpose, param_0, one, zero), dimensions={1}, to_apply=reducer
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
-                          ParseAndReturnVerifiedModule(module_str));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                       ParseAndReturnVerifiedModule(module_str));
   ComputationLayout computation_layout(
       m->entry_computation()->ComputeProgramShape());
   GpuLayoutAssignment layout_assignment(
@@ -1199,8 +1199,8 @@ ENTRY %main {
     ROOT loop = while(t), condition=condition, body=body
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
-                          ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                       ParseAndReturnVerifiedModule(hlo));
   ComputationLayout computation_layout(
       m->entry_computation()->ComputeProgramShape());
 
@@ -1230,8 +1230,8 @@ TEST_F(LayoutAssignmentTest, RaggedAllToAllLayoutSetRaggedDimToMajor) {
       input_offsets, send_sizes, output_offsets, recv_sizes),
       replica_groups={{0,1}}
   })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
-                          ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                       ParseAndReturnVerifiedModule(hlo));
 
   ComputationLayout computation_layout(
       m->entry_computation()->ComputeProgramShape(), /*ignore_layouts=*/false);

@@ -55,8 +55,7 @@ TEST_F(RootInstructionSinkerTest, TupleNoChange) {
       While.condition, body=While.body
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   auto while_body =
       module->entry_computation()->root_instruction()->while_body();
   int num_body_instructions = while_body->instruction_count();
@@ -99,8 +98,7 @@ TEST_F(RootInstructionSinkerTest, Tuple) {
       While.condition, body=While.body
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   RootInstructionSinker sinker;
   EXPECT_TRUE(sinker.Run(module.get()).value());
   auto while_body =
@@ -126,8 +124,7 @@ TEST_F(RootInstructionSinkerTest, NontupleNoChange) {
     ROOT call = s32[3]{0} call(constant.4), to_apply=Call
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   auto called_computation =
       module->entry_computation()->root_instruction()->called_computations()[0];
   int num_instructions = called_computation->instruction_count();
@@ -156,8 +153,7 @@ TEST_F(RootInstructionSinkerTest, Nontuple) {
     ROOT call = s32[3]{0} call(constant.4), to_apply=Call
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   RootInstructionSinker sinker;
   EXPECT_TRUE(sinker.Run(module.get()).value());
   auto called_computation =

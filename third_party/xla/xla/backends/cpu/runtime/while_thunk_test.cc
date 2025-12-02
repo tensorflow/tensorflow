@@ -22,6 +22,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include "xla/backends/cpu/runtime/buffer_allocations.h"
 #include "xla/backends/cpu/runtime/thunk.h"
 #include "xla/backends/cpu/runtime/thunk_testlib.h"
@@ -62,7 +63,7 @@ TEST(WhileThunkTest, BufferUses) {
   body_sequence.push_back(std::make_unique<BufferUseThunk>(
       BufferUse::Read(body_read_slice, read_slice_shape)));
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto thunk,
       WhileThunk::Create({"while"}, pred_slice, std::move(cond_sequence),
                          std::move(body_sequence)));
@@ -90,7 +91,7 @@ TEST(WhileThunkTest, ResourceUses) {
   body_sequence.push_back(
       std::make_unique<ResourceUseThunk>(ResourceUse::Read(token1)));
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto thunk,
       WhileThunk::Create({"while"}, pred_slice, std::move(cond_sequence),
                          std::move(body_sequence)));
@@ -183,7 +184,7 @@ TEST(WhileThunkTest, NonBlockingExecute) {
   ThunkSequence body_sequence;
   body_sequence.push_back(std::make_unique<BodyThunk>(counter_slice));
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto thunk,
       WhileThunk::Create({"while"}, pred_slice, std::move(cond_sequence),
                          std::move(body_sequence)));
@@ -223,7 +224,7 @@ TEST(WhileThunkTest, NonBlockingExecuteWithTripCount) {
   ThunkSequence body_sequence;
   body_sequence.push_back(std::make_unique<BodyThunk>(counter_slice));
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto thunk, WhileThunk::Create(
                       {"while"}, pred_slice, std::move(cond_sequence),
                       std::move(body_sequence), /*trip_count=*/kNumIterations));

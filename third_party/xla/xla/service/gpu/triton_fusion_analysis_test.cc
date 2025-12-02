@@ -30,7 +30,6 @@ limitations under the License.
 #include "xla/service/gpu/transforms/gemm_fusion.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -42,8 +41,8 @@ using ::testing::FieldsAre;
 using TritonDotAnalysisTest = HloHardwareIndependentTestBase;
 
 TEST_F(TritonDotAnalysisTest, QueryingOutputScopeParametersAlwaysWorks) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
 triton_dot {
   p0 = f32[8,8] parameter(0)
   ROOT dot = f32[8,8] dot(p0, p0),
@@ -54,7 +53,7 @@ ENTRY e {
   p0 = f32[8,8] parameter(0)
   ROOT r = f32[8,8] fusion(p0), kind=kCustom, calls=triton_dot
 })"));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       const auto analysis,
       TritonFusionAnalysis::Execute(*module->entry_computation()
                                          ->root_instruction()
@@ -85,16 +84,16 @@ ENTRY e {
     called_computations={triton_dot}
   ROOT bitcast.2 = bf16[1,8,6,3]{3,2,1,0} bitcast(custom-call)
 })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_text));
   const HloComputation* dot_computation = module->entry_computation()
                                               ->root_instruction()
                                               ->operand(0)
                                               ->called_computations()[0];
   const HloInstruction* p0 = dot_computation->parameter_instruction(0);
   const HloInstruction* p1 = dot_computation->parameter_instruction(1);
-  TF_ASSERT_OK_AND_ASSIGN(const auto analysis,
-                          TritonFusionAnalysis::Execute(*dot_computation));
+  ASSERT_OK_AND_ASSIGN(const auto analysis,
+                       TritonFusionAnalysis::Execute(*dot_computation));
   EXPECT_EQ(*analysis.ScopeParameters(TritonFusionAnalysis::Scope::LHS).begin(),
             p0);
   EXPECT_EQ(*analysis.ScopeParameters(TritonFusionAnalysis::Scope::RHS).begin(),
@@ -142,14 +141,14 @@ ENTRY e {
                          "split_k":1,"num_stages":1,"num_warps":2,
                          "num_ctas":1}}}
 })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_text));
   const HloComputation* dot_computation =
       module->entry_computation()->root_instruction()->called_computations()[0];
   const HloInstruction* p0 = dot_computation->parameter_instruction(0);
   const HloInstruction* p1 = dot_computation->parameter_instruction(1);
-  TF_ASSERT_OK_AND_ASSIGN(const auto analysis,
-                          TritonFusionAnalysis::Execute(*dot_computation));
+  ASSERT_OK_AND_ASSIGN(const auto analysis,
+                       TritonFusionAnalysis::Execute(*dot_computation));
   EXPECT_EQ(*analysis.ScopeParameters(TritonFusionAnalysis::Scope::LHS).begin(),
             p0);
   EXPECT_EQ(*analysis.ScopeParameters(TritonFusionAnalysis::Scope::RHS).begin(),
@@ -197,16 +196,16 @@ ENTRY e {
     called_computations={triton_dot}
   ROOT bitcast.2 = bf16[1,8,6,3]{3,2,1,0} bitcast(custom-call)
 })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_text));
   const HloComputation* dot_computation = module->entry_computation()
                                               ->root_instruction()
                                               ->operand(0)
                                               ->called_computations()[0];
   const HloInstruction* p0 = dot_computation->parameter_instruction(0);
   const HloInstruction* p1 = dot_computation->parameter_instruction(1);
-  TF_ASSERT_OK_AND_ASSIGN(const auto analysis,
-                          TritonFusionAnalysis::Execute(*dot_computation));
+  ASSERT_OK_AND_ASSIGN(const auto analysis,
+                       TritonFusionAnalysis::Execute(*dot_computation));
   EXPECT_EQ(*analysis.ScopeParameters(TritonFusionAnalysis::Scope::LHS).begin(),
             p0);
   EXPECT_EQ(*analysis.ScopeParameters(TritonFusionAnalysis::Scope::RHS).begin(),
@@ -253,14 +252,14 @@ ENTRY e {
     custom_call_target="__triton",
     called_computations={triton_dot}
 })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_text));
   const HloComputation* dot_computation =
       module->entry_computation()->root_instruction()->called_computations()[0];
   const HloInstruction* p0 = dot_computation->parameter_instruction(0);
   const HloInstruction* p1 = dot_computation->parameter_instruction(1);
-  TF_ASSERT_OK_AND_ASSIGN(const auto analysis,
-                          TritonFusionAnalysis::Execute(*dot_computation));
+  ASSERT_OK_AND_ASSIGN(const auto analysis,
+                       TritonFusionAnalysis::Execute(*dot_computation));
   EXPECT_EQ(*analysis.ScopeParameters(TritonFusionAnalysis::Scope::LHS).begin(),
             p1);
   EXPECT_EQ(*analysis.ScopeParameters(TritonFusionAnalysis::Scope::RHS).begin(),
@@ -309,16 +308,16 @@ ENTRY e {
     called_computations={triton_dot}
   ROOT bitcast.2 = bf16[1,8,6,3]{3,2,1,0} bitcast(custom-call)
 })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_text));
   const HloComputation* dot_computation = module->entry_computation()
                                               ->root_instruction()
                                               ->operand(0)
                                               ->called_computations()[0];
   const HloInstruction* p0 = dot_computation->parameter_instruction(0);
   const HloInstruction* p1 = dot_computation->parameter_instruction(1);
-  TF_ASSERT_OK_AND_ASSIGN(const auto analysis,
-                          TritonFusionAnalysis::Execute(*dot_computation));
+  ASSERT_OK_AND_ASSIGN(const auto analysis,
+                       TritonFusionAnalysis::Execute(*dot_computation));
   EXPECT_EQ(*analysis.ScopeParameters(TritonFusionAnalysis::Scope::LHS).begin(),
             p0);
   EXPECT_EQ(*analysis.ScopeParameters(TritonFusionAnalysis::Scope::RHS).begin(),
@@ -368,16 +367,16 @@ ENTRY e {
     called_computations={triton_dot}
   ROOT bitcast.2 = bf16[1,8,6,3]{3,2,1,0} bitcast(custom-call)
 })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_text));
   const HloComputation* dot_computation = module->entry_computation()
                                               ->root_instruction()
                                               ->operand(0)
                                               ->called_computations()[0];
   const HloInstruction* p0 = dot_computation->parameter_instruction(0);
   const HloInstruction* p1 = dot_computation->parameter_instruction(1);
-  TF_ASSERT_OK_AND_ASSIGN(const auto analysis,
-                          TritonFusionAnalysis::Execute(*dot_computation));
+  ASSERT_OK_AND_ASSIGN(const auto analysis,
+                       TritonFusionAnalysis::Execute(*dot_computation));
   EXPECT_EQ(*analysis.ScopeParameters(TritonFusionAnalysis::Scope::LHS).begin(),
             p0);
   EXPECT_EQ(*analysis.ScopeParameters(TritonFusionAnalysis::Scope::RHS).begin(),
@@ -424,16 +423,16 @@ ENTRY e {
     custom_call_target="__triton", called_computations={triton_dot}
   ROOT bitcast.2 = bf16[3,8,1,3]{3,2,1,0} bitcast(custom-call)
 })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_text));
   const HloComputation* dot_computation = module->entry_computation()
                                               ->root_instruction()
                                               ->operand(0)
                                               ->called_computations()[0];
   const HloInstruction* p0 = dot_computation->parameter_instruction(0);
   const HloInstruction* p1 = dot_computation->parameter_instruction(1);
-  TF_ASSERT_OK_AND_ASSIGN(const auto analysis,
-                          TritonFusionAnalysis::Execute(*dot_computation));
+  ASSERT_OK_AND_ASSIGN(const auto analysis,
+                       TritonFusionAnalysis::Execute(*dot_computation));
   EXPECT_EQ(*analysis.ScopeParameters(TritonFusionAnalysis::Scope::LHS).begin(),
             p0);
   EXPECT_EQ(*analysis.ScopeParameters(TritonFusionAnalysis::Scope::RHS).begin(),
@@ -483,13 +482,13 @@ ENTRY e {
   ROOT r = bf16[3,12,2]{2,1,0} fusion(p0, p1), kind=kCustom,
     calls=triton_dot
 })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_text));
   const HloComputation* dot_computation =
       module->entry_computation()->root_instruction()->called_computations()[0];
   const HloInstruction* dot_output = dot_computation->root_instruction();
-  TF_ASSERT_OK_AND_ASSIGN(const auto analysis,
-                          TritonFusionAnalysis::Execute(*dot_computation));
+  ASSERT_OK_AND_ASSIGN(const auto analysis,
+                       TritonFusionAnalysis::Execute(*dot_computation));
   EXPECT_THAT(
       *analysis.IterSpec(TritonFusionAnalysis::Scope::OUTPUT, dot_output, 0),
       ElementsAre(FieldsAre(/*stride=*/1, /*count=*/24, /*slice_start=*/0,
@@ -505,8 +504,8 @@ ENTRY e {
 }
 
 TEST_F(TritonDotAnalysisTest, OutputParameterIsHandled) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
 HloModule t
 
 triton_dot {
@@ -531,8 +530,8 @@ ENTRY e {
       module->entry_computation()->root_instruction()->called_computations()[0];
   const HloInstruction* output_param =
       dot_computation->parameter_instruction(2);
-  TF_ASSERT_OK_AND_ASSIGN(const auto analysis,
-                          TritonFusionAnalysis::Execute(*dot_computation));
+  ASSERT_OK_AND_ASSIGN(const auto analysis,
+                       TritonFusionAnalysis::Execute(*dot_computation));
   EXPECT_EQ(
       analysis.IterSpec(TritonFusionAnalysis::Scope::OUTPUT, output_param, 0)
           ->size(),
@@ -556,8 +555,8 @@ ENTRY e {
 }
 
 TEST_F(TritonDotAnalysisTest, InputBroadcastFromScalarIsHandled) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
 HloModule t
 
 triton_dot {
@@ -577,8 +576,8 @@ ENTRY e {
   const HloComputation* dot_computation =
       module->entry_computation()->root_instruction()->called_computations()[0];
   const HloInstruction* scalar = dot_computation->parameter_instruction(1);
-  TF_ASSERT_OK_AND_ASSIGN(const auto analysis,
-                          TritonFusionAnalysis::Execute(*dot_computation));
+  ASSERT_OK_AND_ASSIGN(const auto analysis,
+                       TritonFusionAnalysis::Execute(*dot_computation));
   EXPECT_EQ(analysis.IterSpec(TritonFusionAnalysis::Scope::RHS, scalar, 0),
             nullptr);
   EXPECT_EQ(analysis.IterSpec(TritonFusionAnalysis::Scope::RHS, scalar, 1),
@@ -586,8 +585,8 @@ ENTRY e {
 }
 
 TEST_F(TritonDotAnalysisTest, InputBroadcastFromVectorIsHandled) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
 HloModule t
 
 triton_dot {
@@ -607,8 +606,8 @@ ENTRY e {
   const HloComputation* dot_computation =
       module->entry_computation()->root_instruction()->called_computations()[0];
   const HloInstruction* vector = dot_computation->parameter_instruction(1);
-  TF_ASSERT_OK_AND_ASSIGN(const auto analysis,
-                          TritonFusionAnalysis::Execute(*dot_computation));
+  ASSERT_OK_AND_ASSIGN(const auto analysis,
+                       TritonFusionAnalysis::Execute(*dot_computation));
   EXPECT_EQ(
       analysis.IterSpec(TritonFusionAnalysis::Scope::RHS, vector, 0)->size(),
       1);
@@ -620,8 +619,8 @@ ENTRY e {
 }
 
 TEST_F(TritonDotAnalysisTest, BroadcastFromTriviallySizedDimensionIsSupported) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
 f {
   p0 = f16[2] parameter(0)
   bc0 = f16[1,2] bitcast(p0)
@@ -641,8 +640,8 @@ e {
                                                ->root_instruction()
                                                ->called_computations()[0];
   const HloInstruction* p0 = dot_computation.parameter_instruction(0);
-  TF_ASSERT_OK_AND_ASSIGN(const auto analysis,
-                          TritonFusionAnalysis::Execute(dot_computation));
+  ASSERT_OK_AND_ASSIGN(const auto analysis,
+                       TritonFusionAnalysis::Execute(dot_computation));
   EXPECT_EQ(analysis.IterSpec(TritonFusionAnalysis::Scope::LHS, p0, 0)->size(),
             1);
   EXPECT_THAT(*analysis.IterSpec(TritonFusionAnalysis::Scope::LHS, p0, 0),
@@ -658,8 +657,8 @@ e {
 }
 
 TEST_F(TritonDotAnalysisTest, BroadcastWithinDimensionIsNotSupported) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
 f {
   a = f16[5,7] parameter(0)
   br = f16[2,5,7] broadcast(a), dimensions={1,2}
@@ -684,8 +683,8 @@ e {
 }
 
 TEST_F(TritonDotAnalysisTest, OutputBroadcastIsNotAccepted) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
 HloModule t
 
 ENTRY e {
@@ -705,8 +704,8 @@ ENTRY e {
 }
 
 TEST_F(TritonDotAnalysisTest, DegenerateSplitFragmentIsHandled) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
 triton_gemm_r {
   Arg_0.1 = s8[30,913,8,21]{3,2,1,0} parameter(0)
   bitcast.6 = s8[30,8,21,913]{2,1,3,0} bitcast(Arg_0.1)
@@ -730,8 +729,8 @@ ENTRY e {
 })"));
   const HloComputation* dot_computation =
       module->entry_computation()->root_instruction()->called_computations()[0];
-  TF_ASSERT_OK_AND_ASSIGN(const auto analysis,
-                          TritonFusionAnalysis::Execute(*dot_computation));
+  ASSERT_OK_AND_ASSIGN(const auto analysis,
+                       TritonFusionAnalysis::Execute(*dot_computation));
   EXPECT_THAT(*analysis.IterSpec(TritonFusionAnalysis::Scope::OUTPUT,
                                  dot_computation->root_instruction(), 0),
               ElementsAre(FieldsAre(/*stride=*/1, /*count=*/8 * 21,
@@ -748,8 +747,8 @@ TEST_F(TritonDotAnalysisTest,
        HandlesFurtherPropagationFromTrivialSizedTensorGracefully) {
   // We could probably support this better, just checking to avoid a crash for
   // now.
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
 triton_gemm_r {
   a = f32[3,3]{1,0} parameter(0)
   constant = f32[1,1]{1,0} constant({ {0} })
@@ -777,8 +776,8 @@ ENTRY e {
 }
 
 TEST_F(TritonDotAnalysisTest, DynamicSliceIsSupported) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
 triton_gemm {
   dot_lhs = f32[2,18]{1,0} parameter(0)
   dynamic_slice_input = f32[96,2]{1,0} parameter(1)
@@ -806,8 +805,8 @@ ENTRY e {
 
   const HloComputation* dot_computation =
       module->entry_computation()->root_instruction()->called_computations()[0];
-  TF_ASSERT_OK_AND_ASSIGN(const auto analysis,
-                          TritonFusionAnalysis::Execute(*dot_computation));
+  ASSERT_OK_AND_ASSIGN(const auto analysis,
+                       TritonFusionAnalysis::Execute(*dot_computation));
   const HloInstruction* p0 = dot_computation->parameter_instruction(0);
   const HloInstruction* p1 = dot_computation->parameter_instruction(1);
   EXPECT_EQ(*analysis.ScopeParameters(TritonFusionAnalysis::Scope::LHS).begin(),
@@ -837,8 +836,8 @@ ENTRY e {
 }
 
 TEST_F(TritonDotAnalysisTest, QueryScopeAlwaysWorks) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
 triton_gemm_r {
   Arg_0.1 = s8[30,913,8,21]{3,2,1,0} parameter(0)
   bitcast.6 = s8[30,8,21,913]{2,1,3,0} bitcast(Arg_0.1)
@@ -862,8 +861,8 @@ ENTRY e {
 })"));
   const HloComputation* dot_computation =
       module->entry_computation()->root_instruction()->called_computations()[0];
-  TF_ASSERT_OK_AND_ASSIGN(const auto analysis,
-                          TritonFusionAnalysis::Execute(*dot_computation));
+  ASSERT_OK_AND_ASSIGN(const auto analysis,
+                       TritonFusionAnalysis::Execute(*dot_computation));
   for (const auto& hlo : dot_computation->instructions()) {
     if (hlo->opcode() != HloOpcode::kDot) {
       EXPECT_TRUE(analysis.QueryInstructionScope(*hlo).has_value());
@@ -872,8 +871,8 @@ ENTRY e {
 }
 
 TEST_F(TritonDotAnalysisTest, PadWithTrivialDimension) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
 HloModule t
 
 triton_gemm_dot {
@@ -887,7 +886,7 @@ triton_gemm_dot {
     rhs_contracting_dims={1}
 })"));
   const HloComputation* dot_computation = *module->computations().begin();
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       TritonFusionAnalysis analysis,
       TritonFusionAnalysis::Execute(*dot_computation, /*split_k=*/4));
   const HloInstruction* p0 = dot_computation->parameter_instruction(0);
@@ -919,8 +918,8 @@ triton_gemm_dot {
 }
 
 TEST_F(TritonDotAnalysisTest, ScaledDotIsSupported) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
 HloModule test
 
 scaled_dot {
@@ -933,8 +932,8 @@ scaled_dot {
       rhs_batch_dims={0}, rhs_contracting_dims={1}
 })"));
   const HloComputation* dot_computation = *module->computations().begin();
-  TF_ASSERT_OK_AND_ASSIGN(const auto analysis,
-                          TritonFusionAnalysis::Execute(*dot_computation));
+  ASSERT_OK_AND_ASSIGN(const auto analysis,
+                       TritonFusionAnalysis::Execute(*dot_computation));
   const HloInstruction* lhs = dot_computation->parameter_instruction(0);
   const HloInstruction* rhs = dot_computation->parameter_instruction(1);
   const HloInstruction* lhs_scale = dot_computation->parameter_instruction(2);

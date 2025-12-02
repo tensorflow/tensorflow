@@ -22,7 +22,6 @@ limitations under the License.
 #include "absl/status/status_matchers.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/parser/hlo_parser.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace xla::gpu {
 namespace {
@@ -69,8 +68,7 @@ TEST(CompositeRewriterTest, ScaledDotCompositeRewrite) {
           }
     })";
   CompositeRewriter rewriter;
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnUnverifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo_string));
   EXPECT_THAT(rewriter.Run(module.get()), absl_testing::IsOkAndHolds(true));
   EXPECT_THAT(module->entry_computation()->root_instruction()->opcode(),
               HloOpcode::kScaledDot);

@@ -21,6 +21,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
@@ -37,7 +38,6 @@ limitations under the License.
 #include "xla/service/hlo_module_config.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/xla_data.pb.h"
 
@@ -83,26 +83,23 @@ TEST(KernelRunnerTest, Add) {
                                 NumWorkGroups{kNumElements},
                                 {read_arg, read_arg, write_arg});
 
-  TF_ASSERT_OK_AND_ASSIGN(KernelDefinition<LlvmKernelSource> kernel_definition,
-                          emitter.EmitKernelDefinition());
-  TF_ASSERT_OK_AND_ASSIGN(JitCompiler compiler,
-                          KernelRunner::CreateJitCompiler(HloModuleConfig()));
+  ASSERT_OK_AND_ASSIGN(KernelDefinition<LlvmKernelSource> kernel_definition,
+                       emitter.EmitKernelDefinition());
+  ASSERT_OK_AND_ASSIGN(JitCompiler compiler,
+                       KernelRunner::CreateJitCompiler(HloModuleConfig()));
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       KernelRunner runner,
       KernelRunner::Create(std::move(kernel_definition), std::move(compiler)));
 
   std::minstd_rand0 engine;
   Shape shape = ShapeUtil::MakeShape(S32, {kNumElements});
-  TF_ASSERT_OK_AND_ASSIGN(
-      Literal in_arg1,
-      LiteralUtil::CreateRandomLiteral<S32>(shape, &engine, 10, 10));
-  TF_ASSERT_OK_AND_ASSIGN(
-      Literal in_arg2,
-      LiteralUtil::CreateRandomLiteral<S32>(shape, &engine, 15, 100));
-  TF_ASSERT_OK_AND_ASSIGN(
-      Literal out_arg,
-      LiteralUtil::CreateRandomLiteral<S32>(shape, &engine, 0, 1));
+  ASSERT_OK_AND_ASSIGN(Literal in_arg1, LiteralUtil::CreateRandomLiteral<S32>(
+                                            shape, &engine, 10, 10));
+  ASSERT_OK_AND_ASSIGN(Literal in_arg2, LiteralUtil::CreateRandomLiteral<S32>(
+                                            shape, &engine, 15, 100));
+  ASSERT_OK_AND_ASSIGN(Literal out_arg, LiteralUtil::CreateRandomLiteral<S32>(
+                                            shape, &engine, 0, 1));
 
   absl::Status status =
       runner.Call({KernelRunnerUtil::CreateArgument(in_arg1),

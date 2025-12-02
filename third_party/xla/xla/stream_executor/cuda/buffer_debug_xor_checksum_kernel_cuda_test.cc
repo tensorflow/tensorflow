@@ -19,6 +19,7 @@ limitations under the License.
 #include <optional>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/cleanup/cleanup.h"
 #include "absl/log/log.h"
@@ -54,10 +55,10 @@ using xla::gpu::BufferDebugLogHeader;
 class ChecksumKernelTest : public ::testing::Test {
  protected:
   void SetUp() override {
-    TF_ASSERT_OK_AND_ASSIGN(platform_,
-                            se::PlatformManager::PlatformWithName("CUDA"));
-    TF_ASSERT_OK_AND_ASSIGN(executor_, platform_->ExecutorForDevice(0));
-    TF_ASSERT_OK_AND_ASSIGN(stream_, executor_->CreateStream(std::nullopt));
+    ASSERT_OK_AND_ASSIGN(platform_,
+                         se::PlatformManager::PlatformWithName("CUDA"));
+    ASSERT_OK_AND_ASSIGN(executor_, platform_->ExecutorForDevice(0));
+    ASSERT_OK_AND_ASSIGN(stream_, executor_->CreateStream(std::nullopt));
     allocator_ =
         std::make_unique<se::StreamExecutorMemoryAllocator>(stream_->parent());
 
@@ -131,7 +132,7 @@ TEST_F(ChecksumKernelTest, ComputesCorrectChecksumForMultipleOf32Bit) {
   input[1003] ^= 0x12;
   constexpr uint32_t kExpectedChecksum = 0x12345678;
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto device_log,
       se::gpu::BufferDebugLog<BufferDebugLogEntry>::CreateOnDevice(*stream_,
                                                                    mem));
@@ -139,7 +140,7 @@ TEST_F(ChecksumKernelTest, ComputesCorrectChecksumForMultipleOf32Bit) {
   TF_EXPECT_OK(
       AppendChecksumOnDevice(BufferDebugLogEntryId{0}, input, device_log));
 
-  TF_ASSERT_OK_AND_ASSIGN(auto host_log, device_log.ReadFromDevice(*stream_));
+  ASSERT_OK_AND_ASSIGN(auto host_log, device_log.ReadFromDevice(*stream_));
   ASSERT_GE(host_log.size(), 1);
   EXPECT_EQ(host_log[0].value, kExpectedChecksum);
 }
@@ -148,7 +149,7 @@ TEST_F(ChecksumKernelTest,
        PadsMostSignifantBitsOfIncomplete32BitInputWordWithZeros) {
   se::DeviceAddress<uint8_t> mem = executor_->AllocateArray<uint8_t>(1024);
   const std::vector<uint8_t> kInput = std::vector<uint8_t>(1023, 0x55);
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto device_log,
       se::gpu::BufferDebugLog<BufferDebugLogEntry>::CreateOnDevice(*stream_,
                                                                    mem));
@@ -156,7 +157,7 @@ TEST_F(ChecksumKernelTest,
   TF_EXPECT_OK(
       AppendChecksumOnDevice(BufferDebugLogEntryId{0}, kInput, device_log));
 
-  TF_ASSERT_OK_AND_ASSIGN(auto host_log, device_log.ReadFromDevice(*stream_));
+  ASSERT_OK_AND_ASSIGN(auto host_log, device_log.ReadFromDevice(*stream_));
   ASSERT_GE(host_log.size(), 1);
   // Assumes the device uses little-endian byte order.
   EXPECT_EQ(host_log[0].value, 0x55000000);
@@ -169,7 +170,7 @@ TEST_F(ChecksumKernelTest, ComputesCorrectChecksumInParallel) {
   // Xor with the expected checksum value.
   input[1000] ^= 0x12345678;
   constexpr uint32_t kExpectedChecksum = 0x12345678;
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto device_log,
       se::gpu::BufferDebugLog<BufferDebugLogEntry>::CreateOnDevice(*stream_,
                                                                    mem));
@@ -177,7 +178,7 @@ TEST_F(ChecksumKernelTest, ComputesCorrectChecksumInParallel) {
   TF_EXPECT_OK(AppendChecksumOnDevice(BufferDebugLogEntryId{0}, input,
                                       device_log, se::ThreadDim(2, 4, 8)));
 
-  TF_ASSERT_OK_AND_ASSIGN(auto host_log, device_log.ReadFromDevice(*stream_));
+  ASSERT_OK_AND_ASSIGN(auto host_log, device_log.ReadFromDevice(*stream_));
   ASSERT_GE(host_log.size(), 1);
   EXPECT_EQ(host_log[0].value, kExpectedChecksum);
 }
@@ -189,7 +190,7 @@ TEST_F(ChecksumKernelTest, ComputesCorrectChecksumInParallelWithMaxThreads) {
   // Xor with the expected checksum value.
   input[1000] ^= 0x12345678;
   constexpr uint32_t kExpectedChecksum = 0x12345678;
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto device_log,
       se::gpu::BufferDebugLog<BufferDebugLogEntry>::CreateOnDevice(*stream_,
                                                                    mem));
@@ -197,7 +198,7 @@ TEST_F(ChecksumKernelTest, ComputesCorrectChecksumInParallelWithMaxThreads) {
   TF_EXPECT_OK(AppendChecksumOnDevice(BufferDebugLogEntryId{0}, input,
                                       device_log, se::ThreadDim(128, 4, 2)));
 
-  TF_ASSERT_OK_AND_ASSIGN(auto host_log, device_log.ReadFromDevice(*stream_));
+  ASSERT_OK_AND_ASSIGN(auto host_log, device_log.ReadFromDevice(*stream_));
   ASSERT_GE(host_log.size(), 1);
   EXPECT_EQ(host_log[0].value, kExpectedChecksum);
 }
@@ -207,7 +208,7 @@ TEST_F(ChecksumKernelTest, AppendsChecksumsToLog) {
   constexpr std::array<uint32_t, 1> kInput123 = {0x01230123};
   constexpr std::array<uint32_t, 1> kInput456 = {0x04560456};
   constexpr std::array<uint32_t, 1> kInput789 = {0x07890789};
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto device_log,
       se::gpu::BufferDebugLog<BufferDebugLogEntry>::CreateOnDevice(*stream_,
                                                                    mem));
@@ -219,7 +220,7 @@ TEST_F(ChecksumKernelTest, AppendsChecksumsToLog) {
   TF_EXPECT_OK(AppendChecksumOnDevice(BufferDebugLogEntryId{789}, kInput789,
                                       device_log));
 
-  TF_ASSERT_OK_AND_ASSIGN(auto host_log, device_log.ReadFromDevice(*stream_));
+  ASSERT_OK_AND_ASSIGN(auto host_log, device_log.ReadFromDevice(*stream_));
   ASSERT_GE(host_log.size(), 3);
   EXPECT_EQ(host_log[0].entry_id, 123);
   EXPECT_EQ(host_log[0].value, 0x01230123);
@@ -235,7 +236,7 @@ TEST_F(ChecksumKernelTest, DiscardsOverflowingChecksums) {
   constexpr std::array<uint32_t, 1> kInput123 = {0x01230123};
   constexpr std::array<uint32_t, 1> kInput456 = {0x04560456};
   constexpr std::array<uint32_t, 1> kInput789 = {0x07890789};
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto device_log,
       se::gpu::BufferDebugLog<BufferDebugLogEntry>::CreateOnDevice(*stream_,
                                                                    mem));
@@ -248,7 +249,7 @@ TEST_F(ChecksumKernelTest, DiscardsOverflowingChecksums) {
   TF_EXPECT_OK(AppendChecksumOnDevice(BufferDebugLogEntryId{789}, kInput789,
                                       device_log));
 
-  TF_ASSERT_OK_AND_ASSIGN(auto host_log, device_log.ReadFromDevice(*stream_));
+  ASSERT_OK_AND_ASSIGN(auto host_log, device_log.ReadFromDevice(*stream_));
   ASSERT_GE(host_log.size(), 2);
   EXPECT_EQ(host_log[0].entry_id, 123);
   EXPECT_EQ(host_log[0].value, 0x01230123);

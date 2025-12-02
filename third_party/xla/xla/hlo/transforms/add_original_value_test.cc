@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <memory>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
@@ -43,11 +44,10 @@ ENTRY test {
   ROOT concatenate.8 = u32[2]{0} concatenate(reshape.5, reshape.7), dimensions={0}
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
   AddOriginalValue pass;
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, pass.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, pass.Run(module.get()));
   EXPECT_TRUE(changed);
 }
 

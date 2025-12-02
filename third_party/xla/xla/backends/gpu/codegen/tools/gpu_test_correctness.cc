@@ -17,6 +17,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/log/check.h"
 #include "absl/log/log.h"
@@ -80,7 +81,7 @@ absl::Status TestBijection(const IndexingMap& map,
 }
 
 TEST_F(CorrectnessTest, RunAndCompare) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module, LoadTestModule(flags.input_file));
+  ASSERT_OK_AND_ASSIGN(auto module, LoadTestModule(flags.input_file));
   EXPECT_TRUE(RunAndCompareNoHloPasses(
       std::move(module),
       ErrorSpec{flags.abs_error_bound, flags.rel_error_bound}));
@@ -111,11 +112,11 @@ std::pair<std::string, std::vector<int64_t>> ParseHeroAndIds(
 TEST_F(CorrectnessTest, InputIndexingIsBijection) {
   auto mlir_context = GetMlirContextForTest();
   RegisterSymbolicExprStorage(&mlir_context);
-  TF_ASSERT_OK_AND_ASSIGN(auto module, LoadTestModule(flags.input_file));
-  TF_ASSERT_OK_AND_ASSIGN(auto emitter_data, GetEmitter(*module, mlir_context));
+  ASSERT_OK_AND_ASSIGN(auto module, LoadTestModule(flags.input_file));
+  ASSERT_OK_AND_ASSIGN(auto emitter_data, GetEmitter(*module, mlir_context));
   for (const auto& [hero_name, ids] : flags.bijection_inputs) {
-    TF_ASSERT_OK_AND_ASSIGN(int64_t hero_index,
-                            GetHeroIndex(hero_name, *emitter_data->analysis));
+    ASSERT_OK_AND_ASSIGN(int64_t hero_index,
+                         GetHeroIndex(hero_name, *emitter_data->analysis));
     auto indexing = emitter_data->emitter->ComputeThreadIdToInputIndexing(
         hero_index, &mlir_context);
     ASSERT_TRUE(indexing.has_value());
@@ -134,11 +135,11 @@ TEST_F(CorrectnessTest, InputIndexingIsBijection) {
 TEST_F(CorrectnessTest, OutputIndexingIsBijection) {
   auto mlir_context = GetMlirContextForTest();
   RegisterSymbolicExprStorage(&mlir_context);
-  TF_ASSERT_OK_AND_ASSIGN(auto module, LoadTestModule(flags.input_file));
-  TF_ASSERT_OK_AND_ASSIGN(auto emitter_data, GetEmitter(*module, mlir_context));
+  ASSERT_OK_AND_ASSIGN(auto module, LoadTestModule(flags.input_file));
+  ASSERT_OK_AND_ASSIGN(auto emitter_data, GetEmitter(*module, mlir_context));
   for (const auto& hero_name : flags.bijection_outputs) {
-    TF_ASSERT_OK_AND_ASSIGN(int64_t hero_index,
-                            GetHeroIndex(hero_name, *emitter_data->analysis));
+    ASSERT_OK_AND_ASSIGN(int64_t hero_index,
+                         GetHeroIndex(hero_name, *emitter_data->analysis));
     auto indexing = emitter_data->emitter->ComputeThreadIdToOutputIndexing(
         hero_index, &mlir_context);
     ASSERT_TRUE(indexing.has_value());

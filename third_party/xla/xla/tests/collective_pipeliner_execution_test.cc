@@ -19,6 +19,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
@@ -434,8 +435,8 @@ ENTRY entry {
   ROOT gte1 = bf16[3,8,128] get-tuple-element(while), index=1
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnUnverifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(hlo_string));
   std::unique_ptr<HloModule> module1 = module->Clone("module1");
   std::unique_ptr<HloModule> module2 = module->Clone("module2");
   EXPECT_FALSE(RunOptimizer(module1.get(), /*last_run=*/true, 0).value());
@@ -566,8 +567,8 @@ TEST_F(CollectivePipelinerExecutionTest, EscapedInputNoTransform) {
  }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnUnverifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(hlo_string));
   std::unique_ptr<HloModule> module1 = module->Clone("module1");
   std::unique_ptr<HloModule> module2 = module->Clone("module2");
   EXPECT_FALSE(RunOptimizer(module1.get(), /*last_run=*/true, 0).value());
