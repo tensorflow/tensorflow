@@ -1,4 +1,4 @@
-/* Copyright 2024 The OpenXLA Authors.
+/* Copyright 2025 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,6 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#ifndef XLA_BACKENDS_GPU_CODEGEN_TRITON_TILED_EMITTER_CONSTRAINTS_H_
+#define XLA_BACKENDS_GPU_CODEGEN_TRITON_TILED_EMITTER_CONSTRAINTS_H_
+
 #include <cstdint>
 #include <memory>
 #include <utility>
@@ -20,32 +23,26 @@ limitations under the License.
 
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
-#include "llvm/ADT/SmallVector.h"
 #include "mlir/IR/AffineMap.h"
-#include "xla/backends/gpu/codegen/triton/tiled_emitter_constraints.h"
 #include "xla/codegen/tiling/constraint_expression.h"
 #include "xla/codegen/tiling/symbolic_tile_analysis.h"
 #include "xla/codegen/tiling/symbolic_tiled_hlo_instruction.h"
 #include "xla/hlo/utils/hlo_traversal.h"
-#include "xla/shape.h"
-#include "xla/stream_executor/device_description.h"
-
-#ifndef XLA_SERVICE_GPU_MODEL_TRITON_EMITTER_CONSTRAINTS_H_
-#define XLA_SERVICE_GPU_MODEL_TRITON_EMITTER_CONSTRAINTS_H_
 
 namespace xla {
-namespace gpu {
 
-// Triton-specific constraints on tile sizes.
-class TritonEmitterConstraints : public EmitterSpecificConstraints {
+// Constraints that are intrinsic to the tiled emitter itself that would
+// otherwise result in tiling that would not be possible to emit.
+class TiledEmitterConstraints : public EmitterSpecificConstraints {
  public:
-  static EmitterSpecificConstraintsBuilder GetBuilder(
-      const se::DeviceDescription& device_description);
+  static std::unique_ptr<TiledEmitterConstraints> Create(
+      const std::vector<std::unique_ptr<SymbolicTiledHloInstruction>>&,
+      const HloFusionAdaptor&);
+
+  static EmitterSpecificConstraintsBuilder GetBuilder();
 
   absl::StatusOr<bool> ParametersSatisfyConstraints(
       absl::Span<const int64_t> tile_parameters) const override;
-
-  bool HasCustomConstraints() const { return !custom_constraints_.empty(); }
 
  private:
   // Holds a constraint expression over derived parameters (d'0, ..., d'm) where
@@ -55,26 +52,9 @@ class TritonEmitterConstraints : public EmitterSpecificConstraints {
     ConstraintExpression constraints;
   };
 
-  // Holds the info needed to validate whether the tiling parameters satisfy the
-  // constraint that they are either powers of 2, or equal to the dimension
-  // size.
-  struct RootTileInfo {
-    mlir::AffineMap size_map;
-    std::vector<int64_t> dim_sizes;
-  };
-
-  explicit TritonEmitterConstraints(
-      llvm::SmallVector<mlir::AffineMap, 4> tile_size_maps,
-      llvm::SmallVector<RootTileInfo, 2> roots,
-      std::vector<CustomConstraints> custom_constraints,
-      const Shape& root_shape, const se::DeviceDescription& device_info,
-      std::unique_ptr<TiledEmitterConstraints> tiled_emitter_constraints)
-      : tile_size_maps_(std::move(tile_size_maps)),
-        roots_(std::move(roots)),
-        custom_constraints_(std::move(custom_constraints)),
-        root_shape_(root_shape),
-        device_info_(device_info),
-        tiled_emitter_constraints_(std::move(tiled_emitter_constraints)) {}
+  explicit TiledEmitterConstraints(
+      std::vector<CustomConstraints> custom_constraints)
+      : custom_constraints_(std::move(custom_constraints)) {}
 
   // Derives a vector of `CustomConstraints` to be checked within
   // `ParametersSatisfyConstraints` from a vector of
@@ -91,37 +71,18 @@ class TritonEmitterConstraints : public EmitterSpecificConstraints {
   //     from the reshape/bitcast instruction's output-to-input indexing map
   //     "in a vacuum" (i.e., without composing with any other indexing map).
   //
-  // TODO(b/365727080): move tile derivation to have powers of 2 tiles
+  // TODO(b/365727080): move tile derivation to support power of 2 tiles
   // everywhere, and deprecate this.
   static std::vector<CustomConstraints> DeriveCustomConstraints(
       const std::vector<std::unique_ptr<SymbolicTiledHloInstruction>>&
           instructions,
       const HloFusionAdaptor& fusion_adaptor);
 
-  // A collection of unique size maps from all the
-  // `SymbolicTiledHloInstruction`s.
-  //
-  // Different `TiledHloInstruction`s often have the same size map, so we keep a
-  // collection of unique maps to improve compilation time.
-  llvm::SmallVector<mlir::AffineMap, 4> tile_size_maps_;
-
-  // Holds the info for all fusion roots necessary to check whether the tile
-  // sizes evaluate to powers of 2 or have the same size as the dimension.
-  llvm::SmallVector<RootTileInfo, 2> roots_;
-
   // Custom emitter-specific constraints to check in
   // `ParametersSatisfyConstraints`.
   std::vector<CustomConstraints> custom_constraints_;
-
-  // Shape of the root instruction.
-  Shape root_shape_;
-
-  se::DeviceDescription device_info_;
-
-  std::unique_ptr<TiledEmitterConstraints> tiled_emitter_constraints_;
 };
 
-}  // namespace gpu
 }  // namespace xla
 
-#endif  // XLA_SERVICE_GPU_MODEL_TRITON_EMITTER_CONSTRAINTS_H_
+#endif  // XLA_BACKENDS_GPU_CODEGEN_TRITON_TILED_EMITTER_CONSTRAINTS_H_

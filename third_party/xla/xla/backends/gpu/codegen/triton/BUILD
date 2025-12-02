@@ -1109,3 +1109,51 @@ xla_cc_test(
         "@llvm-project//mlir:IR",
     ],
 )
+
+cc_library(
+    name = "tiled_emitter_constraints",
+    srcs = ["tiled_emitter_constraints.cc"],
+    hdrs = ["tiled_emitter_constraints.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        ":emitter_helpers",
+        "//xla:util",
+        "//xla/codegen/tiling:affine_map_evaluator",
+        "//xla/codegen/tiling:constraint_expression",
+        "//xla/codegen/tiling:symbolic_tile",
+        "//xla/codegen/tiling:symbolic_tile_analysis",
+        "//xla/codegen/tiling:symbolic_tiled_hlo_instruction",
+        "//xla/hlo/analysis:indexing_analysis",
+        "//xla/hlo/analysis:interval",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/utils:hlo_traversal",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+    ],
+)
+
+xla_cc_test(
+    name = "tiled_emitter_constraints_test",
+    srcs = ["tiled_emitter_constraints_test.cc"],
+    deps = [
+        ":tiled_emitter_constraints",
+        "//xla/codegen/tiling:symbolic_tile_analysis",
+        "//xla/codegen/tiling:tiling_specification",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/hlo/testlib:verified_hlo_module",
+        "//xla/service:instruction_fusion",
+        "//xla/tsl/platform:statusor",
+        "//xla/tsl/platform:test",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//mlir:IR",
+    ],
+)

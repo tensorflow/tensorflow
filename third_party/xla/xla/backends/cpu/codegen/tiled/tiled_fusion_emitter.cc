@@ -35,6 +35,7 @@ limitations under the License.
 #include "xla/backends/cpu/codegen/kernel_api_ir_builder.h"
 #include "xla/backends/gpu/codegen/triton/fusion_emitter.h"
 #include "xla/backends/gpu/codegen/triton/ir/triton_xla_ops.h"
+#include "xla/backends/gpu/codegen/triton/tiled_emitter_constraints.h"
 #include "xla/codegen/emitters/ir/xla_ops.h"
 #include "xla/codegen/emitters/kernel_api_builder.h"
 #include "xla/codegen/kernel_definition.h"
@@ -62,8 +63,9 @@ namespace xla::cpu {
 
 absl::StatusOr<std::vector<FlatTiling>> GetTiling(
     mlir::MLIRContext& context, const HloFusionInstruction& fusion) {
+  auto constraints_builder = TiledEmitterConstraints::GetBuilder();
   auto symbolic_tile_analysis_or = SymbolicTileAnalysis::AnalyzeComputation(
-      *fusion.fused_instructions_computation(), &context);
+      *fusion.fused_instructions_computation(), &context, constraints_builder);
   if (std::holds_alternative<FusionDecision>(symbolic_tile_analysis_or)) {
     return Internal(
         "Unsupported fusion in EmitGeneric: %s",
@@ -210,8 +212,9 @@ absl::StatusOr<KernelDefinition<MlirKernelSource>> EmitTiledFusionKernel(
                                                           tile_sizes.end());
   }
 
+  auto constraints_builder = TiledEmitterConstraints::GetBuilder();
   TF_ASSIGN_OR_RETURN(auto module,
-                      gpu::EmitXTileModule(name, nullptr, &fusion,
+                      gpu::EmitXTileModule(name, constraints_builder, &fusion,
                                            block_level_parameters, context));
   module->setName(absl::StrCat("__compute_module", "_", name));
 

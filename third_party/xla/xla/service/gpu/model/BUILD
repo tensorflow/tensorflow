@@ -614,6 +614,7 @@ cc_library(
     deps = [
         "//xla:shape_util",
         "//xla:util",
+        "//xla/backends/gpu/codegen/triton:tiled_emitter_constraints",
         "//xla/codegen/tiling:affine_map_evaluator",
         "//xla/codegen/tiling:constraint_expression",
         "//xla/codegen/tiling:symbolic_tile",
@@ -621,7 +622,6 @@ cc_library(
         "//xla/codegen/tiling:symbolic_tiled_hlo_instruction",
         "//xla/hlo/analysis:indexing_analysis",
         "//xla/hlo/analysis:interval",
-        "//xla/hlo/analysis:symbolic_expr",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/utils:hlo_traversal",
         "//xla/stream_executor:device_description",
