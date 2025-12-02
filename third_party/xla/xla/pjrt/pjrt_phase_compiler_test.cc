@@ -37,6 +37,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_phase_compile_sample_plugin.h"
 #include "xla/pjrt/plugin/xla_cpu/cpu_topology.h"
 #include "xla/pjrt/plugin/xla_cpu/cpu_topology_description.h"
+#include "xla/pjrt/proto/pjrt_partial_program.pb.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
 
