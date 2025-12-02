@@ -1554,7 +1554,8 @@ TEST_F(IndexingMapTest, ConvertRangeVariablesToDimensions) {
      d1 in [0, 3],
      to_convert_0 in [0, 2],
      range in [0, 1],
-     to_convert_1 in [0, 3]
+     to_convert_1 in [0, 3],
+     d0 + d1 * 2 + to_convert_0 * 3 + to_convert_1 * 4 + range * 5 in [0, 100]
   )");
   EXPECT_THAT(ConvertRangeVariablesToDimensions(indexing_map, {0, 2}),
               MatchIndexingMap(R"(
@@ -1565,7 +1566,8 @@ TEST_F(IndexingMapTest, ConvertRangeVariablesToDimensions) {
      d1 in [0, 3],
      to_convert_0 in [0, 2],
      to_convert_1 in [0, 3],
-     range in [0, 1]
+     range in [0, 1],
+     d0 + d1 * 2 + to_convert_0 * 3 + to_convert_1 * 4 + range * 5 in [0, 100]
   )"));
 }
 
