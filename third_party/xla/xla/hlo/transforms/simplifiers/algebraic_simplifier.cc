@@ -5107,6 +5107,10 @@ absl::Status AlgebraicSimplifierVisitor::HandleGetTupleElement(
 
 absl::Status AlgebraicSimplifierVisitor::HandleOptimizationBarrier(
     HloInstruction* barrier) {
+  if (!options_.enable_opt_barrier_simplification()) {
+    return absl::OkStatus();
+  }
+
   if (!barrier->shape().IsTuple() ||
       barrier == computation_->root_instruction()) {
     return absl::OkStatus();

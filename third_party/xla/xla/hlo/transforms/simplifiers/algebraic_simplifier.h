@@ -363,6 +363,14 @@ class AlgebraicSimplifierOptions {
     rewrite_no_op_bitcast_convert_to_bitcast_ = value;
   }
 
+  void set_enable_opt_barrier_simplification(
+      bool enable_opt_barrier_simplification) {
+    enable_opt_barrier_simplification_ = enable_opt_barrier_simplification;
+  }
+  bool enable_opt_barrier_simplification() const {
+    return enable_opt_barrier_simplification_;
+  }
+
  private:
   // Metadata struct can be used to store any metadata information encapsulated
   // with the AlgebraicSimplifierOptions that can be later used in an
@@ -410,6 +418,7 @@ class AlgebraicSimplifierOptions {
   bool rewrite_reshape_transpose_as_slice_concatenate_{true};
   bool run_to_fixed_point_{true};
   bool rewrite_no_op_bitcast_convert_to_bitcast_{false};
+  bool enable_opt_barrier_simplification_{true};
   Metadata metadata_;
 };
 
