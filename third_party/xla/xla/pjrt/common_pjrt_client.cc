@@ -39,6 +39,7 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/future.h"
+#include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/layout.h"
 #include "xla/layout_util.h"
 #include "xla/literal.h"
@@ -423,6 +424,126 @@ void CommonPjRtClient::ScheduleRemoteSend(
                    memory_space->DebugString()));
   on_done(error, /*sends_were_enqueued=*/false);
   usage_event_promise->SetError(error);
+}
+
+absl::StatusOr<absl::InlinedVector<tsl::RCReference<CommonPjRtRawBuffer>, 4>>
+CommonPjRtClient::AllocateOutputBuffersWithInputReuse(
+    const Shape& output_device_shape,
+    absl::Span<const CommonPjRtBuffer::ScopedHold> input_device_buffer_holds,
+    const HloInputOutputAliasConfig& alias_config, PjRtDevice* device,
+    absl::Span<const int> output_memory_space_kind_ids) {
+  tsl::profiler::TraceMe traceme("AllocateOutputBuffersWithInputReuse");
+  VLOG(1) << "Creating an output buffer, which may be partially donated, with "
+             "shape "
+          << output_device_shape.ToString();
+  absl::InlinedVector<tsl::RCReference<CommonPjRtRawBuffer>, 4> buffers;
+  if (output_device_shape.IsTuple() &&
+      output_device_shape.tuple_shapes().empty()) {
+    return buffers;
+  }
+  int num_input_pjrt_buffers = input_device_buffer_holds.size();
+  absl::Span<const Shape> output_leaf_shapes =
+      output_device_shape.IsTuple()
+          ? absl::MakeSpan(output_device_shape.tuple_shapes())
+          : absl::MakeSpan(&output_device_shape, 1);
+  auto get_alias = [&](int i) {
+    return output_device_shape.IsTuple() ? alias_config.GetAliasedParameter({i})
+                                         : alias_config.GetAliasedParameter({});
+  };
+  buffers.reserve(output_leaf_shapes.size());
+
+  auto should_allocate_new_buffer =
+      [&](std::optional<HloInputOutputAliasConfig::Alias> alias) -> bool {
+    if (!alias.has_value()) {
+      return true;
+    }
+    int parameter_index = alias->parameter_number;
+    // Handle "Case 3." input
+    // donation below. ^ denotes donation pair. i0,  i1^  ->   r0^ where
+    // parameter_is_tupled_arguments=true
+    //
+    // e.g. For alias: {0, {1}, may-alias}
+    // We should check the donation eligibility of the second buffer in the
+    // input list.
+    if (num_input_pjrt_buffers > 1 && alias->parameter_index.size() == 1) {
+      parameter_index = alias->parameter_index[0];
+    }
+    return input_device_buffer_holds[parameter_index].type() !=
+           CommonPjRtBuffer::ScopedHold::kDonation;
+  };
+  std::vector<size_t> output_buffer_sizes;
+  for (int i = 0; i < output_leaf_shapes.size(); ++i) {
+    std::optional<HloInputOutputAliasConfig::Alias> alias = get_alias(i);
+    if (should_allocate_new_buffer(alias)) {
+      const Shape& leaf_shape = output_leaf_shapes[i];
+      const auto& current_anno =
+          tsl::profiler::ScopedMemoryDebugAnnotation::CurrentAnnotation();
+      tsl::profiler::ScopedMemoryDebugAnnotation anno(
+          "dummy", current_anno.pending_region_type, 0, [&leaf_shape]() {
+            return ShapeUtil::HumanStringWithLayout(leaf_shape);
+          });
+      int kind_id = output_memory_space_kind_ids[i];
+      PjRtMemorySpace* memory_space = nullptr;
+      for (PjRtMemorySpace* ms : device->memory_spaces()) {
+        if (kind_id == ms->kind_id()) {
+          memory_space = ms;
+          break;
+        }
+      }
+      if (memory_space == nullptr) {
+        return absl::InternalError(
+            absl::StrCat("No memory space found (kind_id: ", kind_id, ")"));
+      }
+      TF_ASSIGN_OR_RETURN(int64_t on_device_bytes,
+                          GetOnDeviceBytesCount(memory_space, leaf_shape));
+      TF_ASSIGN_OR_RETURN(auto raw_buffer,
+                          AllocateRawBuffer(memory_space, on_device_bytes,
+                                            /*retry_on_oom=*/false,
+                                            /*allocate_after=*/{}));
+      buffers.push_back(std::move(raw_buffer));
+    } else {
+      // a tuple output element alias to input. There are 3 supported cases.
+      // Case 1: alias a non-tuple input.
+      // Case 2: alias a tuple input leaf while a single tuple PjRtBuffer is
+      // passed to PjRtLoadExecutable::Execute.
+      // Case 3: alias a tuple input leaf while individual input PjRtBuffer
+      // leaves are passed to PjRtLoadExecutable::Execute.
+      const ShapeIndex& shape_index = alias->parameter_index;
+      size_t parameter_number;
+      if (shape_index.empty()) {
+        // Case 1: (o, i, {}) alias non-tuple input i
+        CHECK_LT(alias->parameter_number, num_input_pjrt_buffers);
+        parameter_number = alias->parameter_number;
+      } else if (num_input_pjrt_buffers == 1 && shape_index.size() == 1 &&
+                 shape_index[0] != 0) {
+        // Case 2: (o, 0, {i}) alias a single tuple input's i-th element
+        //  where i > 0.
+        return Unimplemented("Alias %s not supported: found %d inputs.",
+                             alias->ToString(), num_input_pjrt_buffers);
+      } else if (shape_index.size() == 1) {
+        // Case 3: (o, 0, {i}) alias a single tuple input's i-th element but
+        // the input PjRtBuffers have not been tuplized yet
+        parameter_number = shape_index[0];
+      } else {
+        return Unimplemented("Alias %s not supported: found %d inputs.",
+                             alias->ToString(), num_input_pjrt_buffers);
+      }
+      const CommonPjRtBuffer::ScopedHold& input_hold =
+          input_device_buffer_holds[parameter_number];
+      buffers.push_back(input_hold.buffer()->raw_buffer());
+    }
+  }
+
+  if (VLOG_IS_ON(1)) {
+    int64_t total_size = 0;
+    for (const auto size : output_buffer_sizes) {
+      total_size += size;
+    }
+    LOG(INFO)
+        << "Total size of new output buffers allocated in this execution: "
+        << total_size;
+  }
+  return std::move(buffers);
 }
 
 absl::StatusOr<std::unique_ptr<PjRtBuffer>>

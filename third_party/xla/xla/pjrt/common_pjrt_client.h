@@ -235,6 +235,13 @@ class CommonPjRtClient : public PjRtClient {
       tsl::RCReference<PjRtDeviceEventPromise> usage_event_promise,
       Future<std::string> serialized_descriptor,
       PjRtBuffer::RemoteSendCallback on_done);
+
+  absl::StatusOr<absl::InlinedVector<tsl::RCReference<CommonPjRtRawBuffer>, 4>>
+  AllocateOutputBuffersWithInputReuse(
+      const Shape& output_device_shape,
+      absl::Span<const CommonPjRtBuffer::ScopedHold> input_device_buffer_holds,
+      const HloInputOutputAliasConfig& alias_config, PjRtDevice* device,
+      absl::Span<const int> output_memory_space_kind_ids);
 };
 
 // TODO(parkers): Merge everything here into CommonPjRtBuffer.
