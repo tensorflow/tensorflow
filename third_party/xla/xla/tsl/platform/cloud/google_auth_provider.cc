@@ -120,7 +120,7 @@ absl::Status GetWellKnownFileName(string* filename) {
     // Determine the home dir path.
     const char* home_dir = std::getenv("HOME");
     if (!home_dir) {
-      return errors::FailedPrecondition("Could not read $HOME.");
+      return absl::FailedPreconditionError("Could not read $HOME.");
     }
     config_dir = io::JoinPath(home_dir, kGCloudConfigFolder);
   }
@@ -240,7 +240,7 @@ absl::Status GoogleAuthProvider::GetTokenFromFiles() {
         json, kOAuthV4Url, kOAuthScope, &current_token_,
         &expiration_timestamp_sec_));
   } else {
-    return errors::FailedPrecondition(
+    return absl::FailedPreconditionError(
         "Unexpected content of the JSON credentials file.");
   }
   return absl::OkStatus();
