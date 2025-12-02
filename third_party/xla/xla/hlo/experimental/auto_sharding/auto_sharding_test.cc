@@ -2001,7 +2001,7 @@ ENTRY %entry {
             op::Sharding("{{devices=[1,4]0,1,2,3}, "
                          "{devices=[1,4]0,1,2,3}}")));
   const HloSharding& sharding = reduce->sharding();
-  TF_EXPECT_OK(sharding.Validate(reduce->shape(), 4));
+  EXPECT_OK(sharding.Validate(reduce->shape(), 4));
 }
 
 TEST_F(AutoShardingTest, ReduceTest) {
@@ -2048,7 +2048,7 @@ ENTRY %entry {
       (Matches(param0_matcher2)(param0) && Matches(reduce_matcher2)(reduce)) ||
       (Matches(param0_matcher3)(param0) && Matches(reduce_matcher3)(reduce)));
   const HloSharding& sharding = reduce->sharding();
-  TF_EXPECT_OK(sharding.Validate(reduce->shape(), 4));
+  EXPECT_OK(sharding.Validate(reduce->shape(), 4));
 }
 
 TEST_F(AutoShardingTest, ScatterTest2D) {
@@ -2086,7 +2086,7 @@ ENTRY %Scatter {
   const HloInstruction* scatter = FindInstruction(module.get(), "scatter");
   ASSERT_NE(scatter, nullptr);
   EXPECT_EQ(scatter->sharding().NumTiles(), 4);
-  TF_EXPECT_OK(scatter->sharding().Validate(scatter->shape(), 4));
+  EXPECT_OK(scatter->sharding().Validate(scatter->shape(), 4));
 }
 
 TEST_F(AutoShardingTest, ScatterTest3D) {
@@ -2124,7 +2124,7 @@ ENTRY %Scatter {
   const HloInstruction* scatter = FindInstruction(module.get(), "scatter");
   ASSERT_NE(scatter, nullptr);
   EXPECT_EQ(scatter->sharding().NumTiles(), 4);
-  TF_EXPECT_OK(scatter->sharding().Validate(scatter->shape(), 4));
+  EXPECT_OK(scatter->sharding().Validate(scatter->shape(), 4));
 }
 
 TEST_F(AutoShardingTest, GatherTest) {
@@ -2214,7 +2214,7 @@ ENTRY %entry {
                             op::Sharding("{devices=[8,1,1]<=[8]}")));
   EXPECT_THAT(data, AnyOf(op::Sharding("{devices=[1,8]<=[8]}"),
                           op::Sharding("{devices=[8,1]<=[8]}")));
-  TF_EXPECT_OK(gather->sharding().Validate(gather->shape(), 8));
+  EXPECT_OK(gather->sharding().Validate(gather->shape(), 8));
   // Ensure no resharding op is created for operand 0 of gather in this case.
   EXPECT_EQ(data, gather->operand(0));
 }
@@ -2285,7 +2285,7 @@ ENTRY %entry (param0: f32[4,256,64], param1: f32[4,256,32]) -> f32[64,32] {
   ASSERT_NE(dot_after, nullptr);
   EXPECT_THAT(dot_after, op::Sharding("{devices=[2,2]0,1,2,3}"));
   auto sharding = dot_after->sharding();
-  TF_EXPECT_OK(sharding.Validate(dot_after->shape(), 4));
+  EXPECT_OK(sharding.Validate(dot_after->shape(), 4));
 }
 
 TEST_F(AutoShardingTest, AutoShardingKeepUserShardingAdd) {
@@ -2416,7 +2416,7 @@ ENTRY %entry {
                           "{{devices=[1,2,2]0,1,2,3 last_tile_dim_replicate}, "
                           "{devices=[1,2,2]0,1,2,3 last_tile_dim_replicate}}"));
   auto sharding = reduce->sharding();
-  TF_EXPECT_OK(sharding.Validate(reduce->shape(), 4));
+  EXPECT_OK(sharding.Validate(reduce->shape(), 4));
   auto* param0 = FindInstruction(module.get(), "param0");
   ASSERT_NE(param0, nullptr);
   // There are multiple valid shardings, and we only
@@ -2504,7 +2504,7 @@ ENTRY %tupleparameter {
   EXPECT_EQ(tuple_param->sharding().tuple_elements()[0], first->sharding());
   EXPECT_EQ(tuple_param->sharding().tuple_elements()[1], second->sharding());
 
-  TF_EXPECT_OK(tuple_param->sharding().Validate(tuple_param->shape(), 4));
+  EXPECT_OK(tuple_param->sharding().Validate(tuple_param->shape(), 4));
 }
 
 TEST_F(AutoShardingTest, GetTupleElementWithUserShardingTest) {
@@ -3232,7 +3232,7 @@ ENTRY %Scatter {
   const HloInstruction* scatter = FindInstruction(module.get(), "scatter");
   ASSERT_NE(scatter, nullptr);
   EXPECT_EQ(scatter->sharding().NumTiles(), 4);
-  TF_EXPECT_OK(scatter->sharding().Validate(scatter->shape(), 4));
+  EXPECT_OK(scatter->sharding().Validate(scatter->shape(), 4));
 }
 
 TEST(NormalizeTest, NormalizeHandlesNegativeCosts) {
