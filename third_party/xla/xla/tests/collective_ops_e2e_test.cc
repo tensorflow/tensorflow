@@ -13,7 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <array>
 #include <cmath>
 #include <cstdint>
 #include <memory>
@@ -22,8 +21,6 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/container/flat_hash_map.h"
-#include "absl/functional/any_invocable.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -31,7 +28,6 @@ limitations under the License.
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
-#include "absl/strings/str_replace.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/array.h"
@@ -81,13 +77,6 @@ bool IsAsync(const HloInstruction* inst) {
 
 class CollectiveOpsTestE2E : public CollectiveOpsE2ETestBase {
  public:
-  CollectiveOpsTestE2E() {
-    replacements_[kF8E4M3DatatypePlaceholder] =
-        Capability().IsCuda() ? "f8e4m3fn" : "f8e4m3fnuz";
-    replacements_[kF8E5M2DatatypePlaceholder] =
-        Capability().IsCuda() ? "f8e5m2" : "f8e5m2fnuz";
-  }
-
   bool HasFp8Support() {
     if (Capability().IsCuda()) {
       return Capability().cuda_compute_capability()->IsAtLeast(8, 9);
@@ -123,13 +112,6 @@ class CollectiveOpsTestE2E : public CollectiveOpsE2ETestBase {
       EXPECT_EQ(gemm_op->custom_call_target(), "__cublas$lt$matmul$f8");
     }
   }
-
- protected:
-  absl::flat_hash_map<absl::string_view, absl::string_view> replacements_;
-
- private:
-  static constexpr const char* kF8E4M3DatatypePlaceholder{"<<F8E4M3>>"};
-  static constexpr const char* kF8E5M2DatatypePlaceholder{"<<F8E5M2>>"};
 };
 
 class AsyncCollectiveOps : public CollectiveOpsWithFlagsBase,
@@ -1439,9 +1421,8 @@ ENTRY main {
 
   // Disable the dot merger pass which can prevent the creation of FP8 GEMM
   // Custom Calls.
-  CollectiveOpsCompareWindowedNonWindowed(
-      absl::StrReplaceAll(kModuleReplicatedStr, replacements_),
-      /*disable_dot_merger=*/true);
+  CollectiveOpsCompareWindowedNonWindowed(kModuleReplicatedStr,
+                                          /*disable_dot_merger=*/true);
 
   // Verify the creation of FP8 GEMM Custom Calls on Hopper and newer
   // architectures.
@@ -1451,8 +1432,7 @@ ENTRY main {
   opts.set_xla_gpu_graph_min_graph_size(200);
   opts.set_xla_gpu_enable_triton_gemm(false);
   opts.add_xla_disable_hlo_passes("dot-merger");
-  CollectiveOpsVerifyF8Matmul(
-      absl::StrReplaceAll(kModuleReplicatedStr, replacements_), opts);
+  CollectiveOpsVerifyF8Matmul(kModuleReplicatedStr, opts);
 }
 
 TEST_F(CollectiveOpsTestE2EWindowedNonWindowed,
@@ -1693,8 +1673,7 @@ ENTRY entry {
       GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
   auto opts = GetDebugOptionsForTest();
   opts.set_xla_gpu_enable_triton_gemm(false);
-  CollectiveOpsVerifyF8Matmul(
-      absl::StrReplaceAll(kModuleReplicatedStr, replacements_), opts);
+  CollectiveOpsVerifyF8Matmul(kModuleReplicatedStr, opts);
 }
 
 // E2E tests comparing the results with and without pipelining of collectives.
