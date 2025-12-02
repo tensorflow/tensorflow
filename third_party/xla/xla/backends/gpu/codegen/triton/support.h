@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/instruction_fusion.h"
 #include "xla/shape.h"
@@ -65,6 +66,11 @@ CodegenDecision IsTritonSupportedComputation(
 // `backend_config<gpu::GpuBackendConfig>()` with `kind` set to
 // `kTritonGemmFusionKind`.
 bool IsTritonFusedComputation(const HloComputation& computation);
+
+// TODO(b/393299275): this function is only exposed for
+// triton_tiling_propagation.cc. If possible it should be removed.
+CodegenDecision IsTritonSupportedDynamicSlice(
+    const HloDynamicSliceInstruction& instr);
 
 namespace internal {
 // TODO(b/363981282): Remove the function below once all ops are tested via

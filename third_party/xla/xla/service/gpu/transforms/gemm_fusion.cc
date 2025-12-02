@@ -44,6 +44,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_print_options.h"
+#include "xla/layout.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/cublas_padding_requirements.h"
 #include "xla/service/gpu/ir_emission_utils.h"
@@ -273,6 +274,36 @@ std::optional<DimOrdersAndReqs> GetUserDimOrdersAndCombinedReqsIfProfitable(
       std::get<DotRequirements>(combined_reqs)};
 }
 
+// Checks if a dynamic slice can be fused.
+bool CanFuseDynamicSlice(const HloDynamicSliceInstruction& dynamic_slice,
+                         const se::GpuComputeCapability& gpu_version) {
+  if (CodegenDecision decision =
+          IsTritonSupportedInstruction(dynamic_slice, gpu_version);
+      !decision.CanFuse()) {
+    VLOG(5) << "Not fusing " << dynamic_slice.ToString()
+            << " to the output due to the decision: " << decision.Explain();
+    return false;
+  }
+  // TODO(b/417172838): this check replicates the legacy emitter behavior.
+  // New emitter might support all dimensions but we should verify that.
+  const HloInstruction* input = dynamic_slice.operand(0);
+  Layout in_layout = input->shape().layout();
+  int64_t majormost_dim_id =
+      in_layout.minor_to_major(in_layout.minor_to_major().size() - 1);
+  for (int i = 0; i < input->shape().dimensions().size(); ++i) {
+    if (i == majormost_dim_id) {
+      continue;
+    }
+    if (input->shape().dimensions(i) != dynamic_slice.slice_sizes(i)) {
+      VLOG(5) << "Not fusing " << dynamic_slice.ToString()
+              << " to the output due to the unsupported dynamic slice on "
+                 "non-major-most dimension.";
+      return false;
+    }
+  }
+  return true;
+}
+
 class FusionPlanBuilder {
  public:
   // Builds and returns the FusionPlan. Clears internal state.
@@ -414,10 +445,12 @@ FusionPlanAndRequirements BuildFusionPlanTowardOperands(
     // replaces unsupported F8E8M0FNU with u8. We should have a more principled
     // way check if we will be able to emit the triton code for the fusion.
     if (original_hlo.opcode() == HloOpcode::kDynamicSlice) {
-      // TODO(b/417172838): support dynamic slice op.
-      fusion_builder.SetShouldFuseNode(node_id, false);
-      LOG(INFO) << "Not fusing dynamic slice: " << original_hlo.ToString();
-      continue;
+      const HloDynamicSliceInstruction& dynamic_slice =
+          *Cast<HloDynamicSliceInstruction>(&original_hlo);
+      if (!CanFuseDynamicSlice(dynamic_slice, gpu_version)) {
+        fusion_builder.SetShouldFuseNode(node_id, false);
+        continue;
+      }
     }
 
     auto opt_result = GetOperandDimOrdersAndCombinedReqsIfProfitable(

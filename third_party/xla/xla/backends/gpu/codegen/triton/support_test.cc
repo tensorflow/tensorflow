@@ -156,6 +156,15 @@ std::vector<xla::PrimitiveType> AllOpSupportedTypes(HloOpcode opcode) {
   return result;
 }
 
+std::vector<xla::PrimitiveType> AllIntegralDataTypes() {
+  std::vector<xla::PrimitiveType> result;
+  absl::c_copy_if(AllXlaDataTypes(), std::back_inserter(result),
+                  [&](PrimitiveType data_type) {
+                    return primitive_util::IsIntegralType(data_type);
+                  });
+  return result;
+}
+
 std::vector<PrecisionConfig::Algorithm> AllPrecisionAlgorithms() {
   std::vector<PrecisionConfig::Algorithm> algorithms;
   const tsl::protobuf::EnumDescriptor* algorithm_descriptor =
@@ -3090,6 +3099,54 @@ INSTANTIATE_TEST_SUITE_P(SortSuite, SortTest,
                          AllTestCombinationsForOpcodes({HloOpcode::kSort}),
                          TritonSupportTestTypeAndOpcodeAndDeviceToString);
 
+using DynamicSliceTest = TritonSupportTestWithTypeAndDeviceParam;
+
+TEST_P(DynamicSliceTest, OperandTypes) {
+  auto [data_type, cc] = GetParam();
+  const std::string kHloTestTemplate = R"(
+ENTRY triton_computation {
+  operand = $0[256,256] parameter(0)
+  start_1 = s32[] parameter(1)
+  start_2 = s32[] constant(0)
+  ROOT dynamic_slice_op = $0[32,256] dynamic-slice(operand, start_1, start_2),
+                          dynamic_slice_sizes={32,256}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(TestedInstruction ti, ParseTemplateAndGetInstruction(
+                                                    kHloTestTemplate, data_type,
+                                                    HloOpcode::kDynamicSlice));
+  RunSupportTest(std::move(ti), /*output_tile_sizes=*/{2, 4}, cc);
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    DynamicSliceSuite, DynamicSliceTest,
+    ::testing::Combine(::testing::ValuesIn(AllXlaDataTypes()),
+                       ::testing::ValuesIn(AllDevicesToTest())),
+    TritonSupportTestTypeAndDeviceToString);
+
+using DynamicSliceOffsetTypesTest = TritonSupportTestWithTypeAndDeviceParam;
+
+TEST_P(DynamicSliceOffsetTypesTest, DynamicSlice2D) {
+  auto [data_type, cc] = GetParam();
+  const std::string kHloTestTemplate = R"(
+ENTRY triton_computation {
+  operand = f32[256,256] parameter(0)
+  start_1 = $0[] parameter(1)
+  start_2 = $0[] parameter(2)
+  ROOT dynamic_slice_op = f32[32,64] dynamic-slice(operand, start_1, start_2),
+                          dynamic_slice_sizes={32,64}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(TestedInstruction ti, ParseTemplateAndGetInstruction(
+                                                    kHloTestTemplate, data_type,
+                                                    HloOpcode::kDynamicSlice));
+  RunSupportTest(std::move(ti), /*output_tile_sizes=*/{2, 4}, cc);
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    DynamicSliceOffsetTypesSuite, DynamicSliceOffsetTypesTest,
+    ::testing::Combine(::testing::ValuesIn(AllIntegralDataTypes()),
+                       ::testing::ValuesIn(AllDevicesToTest())),
+    TritonSupportTestTypeAndDeviceToString);
+
 using RecvOpsTest = TritonSupportTestWithTypeAndDeviceParam;
 
 TEST_P(RecvOpsTest, RecvAndRecvDone) {
@@ -3477,7 +3534,6 @@ constexpr std::array kUnsupportedOps = {
     // clang-format off
     // go/keep-sorted start
     HloOpcode::kDynamicReshape,
-    HloOpcode::kDynamicSlice,
     HloOpcode::kDynamicUpdateSlice,
     HloOpcode::kGather,
     HloOpcode::kRaggedDot,
@@ -3537,6 +3593,7 @@ absl::flat_hash_set<HloOpcode> AllTestedOpcodes() {
   ret.emplace(HloOpcode::kCustomCall);
   ret.emplace(HloOpcode::kDomain);
   ret.emplace(HloOpcode::kDot);
+  ret.emplace(HloOpcode::kDynamicSlice);
   ret.emplace(HloOpcode::kFft);
   ret.emplace(HloOpcode::kFusion);
   ret.emplace(HloOpcode::kGetDimensionSize);
