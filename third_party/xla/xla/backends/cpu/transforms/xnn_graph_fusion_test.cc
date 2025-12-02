@@ -21,6 +21,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "xla/backends/cpu/xnn_support.h"
+#include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -37,7 +38,10 @@ namespace op = xla::testing::opcode_matchers;
 namespace xla::cpu {
 namespace {
 
-using XnnGraphFusionTest = HloHardwareIndependentTestBase;
+class XnnGraphFusionTest : public HloHardwareIndependentTestBase {
+ protected:
+  AliasInfo alias_info_;
+};
 
 TEST_F(XnnGraphFusionTest, BasicFusion) {
   std::string hlo_string = R"(
@@ -54,7 +58,8 @@ ENTRY entry {
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, XnnGraphFusion().Run(module.get()));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed,
+                          XnnGraphFusion(&alias_info_).Run(module.get()));
   ASSERT_TRUE(changed);
   EXPECT_THAT(module.get()->entry_computation()->root_instruction(),
               op::Fusion());
@@ -82,7 +87,8 @@ ENTRY entry {
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, XnnGraphFusion().Run(module.get()));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed,
+                          XnnGraphFusion(&alias_info_).Run(module.get()));
   ASSERT_FALSE(changed);
 }
 
@@ -101,7 +107,8 @@ ENTRY entry {
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, XnnGraphFusion().Run(module.get()));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed,
+                          XnnGraphFusion(&alias_info_).Run(module.get()));
   ASSERT_FALSE(changed);
 }
 
@@ -128,7 +135,8 @@ ENTRY entry {
                           ParseAndReturnVerifiedModule(hlo_string));
   SetFusionMode(module.get(),
                 DebugOptions::XNN_GRAPH_FUSION_MODE_GREEDY_SLINKY);
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, XnnGraphFusion().Run(module.get()));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed,
+                          XnnGraphFusion(&alias_info_).Run(module.get()));
   ASSERT_TRUE(changed);
   EXPECT_THAT(module.get()->entry_computation()->root_instruction(),
               op::Fusion());
@@ -158,7 +166,8 @@ ENTRY entry {
                           ParseAndReturnVerifiedModule(hlo_string));
   SetFusionMode(module.get(),
                 DebugOptions::XNN_GRAPH_FUSION_MODE_GREEDY_SLINKY);
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, XnnGraphFusion().Run(module.get()));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed,
+                          XnnGraphFusion(&alias_info_).Run(module.get()));
   ASSERT_FALSE(changed);
 }
 
@@ -179,7 +188,8 @@ ENTRY entry {
                           ParseAndReturnVerifiedModule(hlo_string));
   SetFusionMode(module.get(),
                 DebugOptions::XNN_GRAPH_FUSION_MODE_GREEDY_SLINKY);
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, XnnGraphFusion().Run(module.get()));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed,
+                          XnnGraphFusion(&alias_info_).Run(module.get()));
   ASSERT_FALSE(changed);
 }
 
@@ -199,7 +209,8 @@ ENTRY entry {
                           ParseAndReturnVerifiedModule(hlo_string));
   SetFusionMode(module.get(),
                 DebugOptions::XNN_GRAPH_FUSION_MODE_GREEDY_SLINKY);
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, XnnGraphFusion().Run(module.get()));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed,
+                          XnnGraphFusion(&alias_info_).Run(module.get()));
   ASSERT_FALSE(changed);
 }
 
@@ -215,7 +226,8 @@ ENTRY entry {
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, XnnGraphFusion().Run(module.get()));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed,
+                          XnnGraphFusion(&alias_info_).Run(module.get()));
   ASSERT_FALSE(changed);
 }
 
@@ -240,7 +252,8 @@ ENTRY main {
                           ParseAndReturnVerifiedModule(hlo_string));
   SetFusionMode(module.get(),
                 DebugOptions::XNN_GRAPH_FUSION_MODE_GREEDY_SLINKY);
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, XnnGraphFusion().Run(module.get()));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed,
+                          XnnGraphFusion(&alias_info_).Run(module.get()));
   ASSERT_TRUE(changed);
   EXPECT_THAT(module.get()->entry_computation()->root_instruction(),
               op::Fusion());
@@ -274,7 +287,8 @@ ENTRY main {
                           ParseAndReturnVerifiedModule(hlo_string));
   SetFusionMode(module.get(),
                 DebugOptions::XNN_GRAPH_FUSION_MODE_GREEDY_SLINKY);
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, XnnGraphFusion().Run(module.get()));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed,
+                          XnnGraphFusion(&alias_info_).Run(module.get()));
   ASSERT_FALSE(changed);
 }
 
@@ -299,7 +313,8 @@ ENTRY main {
                           ParseAndReturnVerifiedModule(hlo_string));
   SetFusionMode(module.get(),
                 DebugOptions::XNN_GRAPH_FUSION_MODE_GREEDY_SLINKY);
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, XnnGraphFusion().Run(module.get()));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed,
+                          XnnGraphFusion(&alias_info_).Run(module.get()));
   ASSERT_FALSE(changed);
 }
 
@@ -325,7 +340,8 @@ ENTRY main {
                           ParseAndReturnVerifiedModule(hlo_string));
   SetFusionMode(module.get(),
                 DebugOptions::XNN_GRAPH_FUSION_MODE_GREEDY_SLINKY);
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, XnnGraphFusion().Run(module.get()));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed,
+                          XnnGraphFusion(&alias_info_).Run(module.get()));
   ASSERT_FALSE(changed);
 }
 

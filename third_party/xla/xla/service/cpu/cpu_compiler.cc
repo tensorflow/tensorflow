@@ -1004,14 +1004,16 @@ absl::Status CpuCompiler::RunHloPassesAfterLayoutAssn(
     TF_RETURN_IF_ERROR(lib_pipeline.Run(module).status());
   }
 
+  AliasInfo alias_info;
   if (debug_options.xla_cpu_experimental_xnn_graph_fusion_mode() !=
       DebugOptions::XNN_GRAPH_FUSION_MODE_DISABLED) {
-    pipeline.AddPass<XnnGraphFusion>();
+    pipeline.AddPass<XnnGraphFusion>(&alias_info);
   }
 
   bool use_multi_output_fusion =
       options::UseMultiOutputFusion(module->config());
   pipeline.AddPass<CpuInstructionFusion>(
+      &alias_info,
       /*may_duplicate=*/!use_multi_output_fusion);
 
   if (is_fusion_emitters) {
@@ -1020,7 +1022,6 @@ absl::Status CpuCompiler::RunHloPassesAfterLayoutAssn(
     pipeline.AddPass<FusionWrapper>(use_experimental_loop_fusion);
   }
 
-  AliasInfo alias_info;
   if (use_multi_output_fusion) {
     pipeline.AddPass<CpuMultiOutputFusion>(&alias_info);
     pipeline.AddPass<TupleSimplifier>();

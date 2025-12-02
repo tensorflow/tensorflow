@@ -33,6 +33,7 @@ limitations under the License.
 #include "xla/hlo/testlib/filecheck.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/service/compiler.h"
+#include "xla/service/gpu/alias_info.h"
 #include "xla/service/gpu/nvptx_compiler.h"
 #include "xla/service/platform_util.h"
 #include "xla/stream_executor/device_description.pb.h"
@@ -75,6 +76,7 @@ class FissionBackendTest : public HloHardwareIndependentTestBase {
   NVPTXCompiler compiler_;
   se::StreamExecutor* stream_executor_;
   Compiler::GpuTargetConfig target_config_;
+  GpuAliasInfo alias_info_;
   FissionBackend backend_;
   mlir::MLIRContext mlir_context_;
 
@@ -84,8 +86,9 @@ class FissionBackendTest : public HloHardwareIndependentTestBase {
                              ->ExecutorForDevice(0)
                              .value()),
         target_config_(stream_executor_),
+        alias_info_(stream_executor_->GetDeviceDescription()),
         backend_(stream_executor_, &debug_options_, &compiler_, &target_config_,
-                 &mlir_context_) {}
+                 &alias_info_, &mlir_context_) {}
 };
 
 TEST_F(FissionBackendTest, CanCreateCublasBackend) {

@@ -31,8 +31,10 @@ namespace cpu {
 
 class CpuInstructionFusion : public InstructionFusion {
  public:
-  explicit CpuInstructionFusion(bool may_duplicate = true)
-      : InstructionFusion(CpuInstructionFusion::IsExpensive, may_duplicate) {}
+  explicit CpuInstructionFusion(const AliasInfo* alias_info,
+                                bool may_duplicate = true)
+      : InstructionFusion(CpuInstructionFusion::IsExpensive, alias_info,
+                          may_duplicate) {}
   ~CpuInstructionFusion() override = default;
 
   // Returns the threshold for a constant to be considered a large constant.

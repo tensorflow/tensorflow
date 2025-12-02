@@ -314,11 +314,11 @@ absl::Status AMDGPUCompiler::AddGemmFusionAutotuningPasses(
     HloPassPipeline* pipeline, HloModule* hlo_module,
     AutotuneConfig& autotune_config, tsl::thread::ThreadPool* thread_pool,
     const MultiProcessKeyValueStore& key_value_store,
-    const se::SemanticVersion& toolkit_version,
+    const se::SemanticVersion& toolkit_version, const AliasInfo* alias_info,
     se::StreamExecutor* stream_executor) {
   pipeline->AddPass<GemmFusionAutotuner>(autotune_config, toolkit_version,
                                          thread_pool, key_value_store,
-                                         mlir_context());
+                                         alias_info, mlir_context());
   return absl::OkStatus();
 }
 
