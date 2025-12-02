@@ -2961,6 +2961,33 @@ xla_test(
 )
 
 xla_test(
+    name = "collective_metadata_test",
+    srcs = ["collective_metadata_test.cc"],
+    backend_tags = {
+        "gpu": [
+            "multi_gpu",
+        ],
+        "nvgpu_any": [
+            "broken",
+            "no_oss",
+        ],
+    },
+    backends = [
+        "gpu",
+    ],
+    deps = [
+        ":collective_ops_e2e_test_base",
+        ":xla_internal_test_main",
+        "//xla:literal",
+        "//xla:literal_util",
+        "//xla/tsl/platform:statusor",
+        "//xla/tsl/platform:test",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+xla_test(
     name = "collective_ops_sharded_unsharded_e2e_test",
     srcs = ["collective_ops_sharded_unsharded_e2e_test.cc"],
     backend_tags = {
