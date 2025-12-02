@@ -61,13 +61,15 @@ class CollectiveOpsTestE2EShardedUnsharded : public CollectiveOpsE2ETestBase {
                    << " available)";
     }
 
-    TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> ref_results,
+    TF_ASSERT_OK_AND_ASSIGN(ExecutionResult ref_execution_result,
                             ExecuteUnsharded(hlo_text));
+    const std::vector<Literal>& ref_results = ref_execution_result.results;
     ASSERT_EQ(ref_results.size(), 1);
 
     TF_ASSERT_OK_AND_ASSIGN(
-        std::vector<Literal> results,
+        ExecutionResult execution_result,
         ExecuteSharded(hlo_text, num_partitions, enable_enzyme_comms_opt));
+    const std::vector<Literal>& results = execution_result.results;
     ASSERT_EQ(results.size(), num_partitions);
 
     ErrorSpec error_spec{1e-4, 1e-4};
@@ -77,7 +79,7 @@ class CollectiveOpsTestE2EShardedUnsharded : public CollectiveOpsE2ETestBase {
 
  private:
   // Execute the unsharded case.
-  absl::StatusOr<std::vector<Literal>> ExecuteUnsharded(
+  absl::StatusOr<ExecutionResult> ExecuteUnsharded(
       const std::string& hlo_text) {
     // Create the unsharded reference case by removing the sharding metadata
     // from the HLO string.
@@ -90,9 +92,12 @@ class CollectiveOpsTestE2EShardedUnsharded : public CollectiveOpsE2ETestBase {
     DebugOptions ref_opts = GetDebugOptionsForTest();
     ref_opts.set_xla_gpu_enable_triton_gemm(false);
     ref_config.set_debug_options(ref_opts);
-    ref_config.set_num_partitions(1);
     TF_ASSIGN_OR_RETURN(std::unique_ptr<VerifiedHloModule> ref_module,
                         ParseAndReturnVerifiedModule(hlo_text_ref, ref_config));
+
+    ref_module->mutable_config().set_replica_count(1);
+    ref_module->mutable_config().set_num_partitions(1);
+
     const int64_t num_params =
         ref_module->entry_computation()->num_parameters();
 
@@ -102,17 +107,11 @@ class CollectiveOpsTestE2EShardedUnsharded : public CollectiveOpsE2ETestBase {
       ref_fake_ptrs[i] = &fake_args[i];
     }
 
-    DeviceAssignment ref_assn(/*replica_count=*/1,
-                              /*computation_count=*/1);
-    ref_assn(0, 0) = 0;
-    return ExecuteReplicated(std::move(ref_module), ref_fake_ptrs,
-                             /*num_replicas=*/1, &ref_assn,
-                             /*run_hlo_passes=*/true,
-                             /*use_threads=*/true);
+    return ExecuteReplicated(std::move(ref_module), ref_fake_ptrs);
   }
 
   // Execute the sharded case.
-  absl::StatusOr<std::vector<Literal>> ExecuteSharded(
+  absl::StatusOr<ExecutionResult> ExecuteSharded(
       const std::string& hlo_text, int64_t num_partitions,
       bool enable_enzyme_comms_opt = false) {
     HloModuleConfig config = GetModuleConfigForTest();
@@ -182,21 +181,14 @@ class CollectiveOpsTestE2EShardedUnsharded : public CollectiveOpsE2ETestBase {
       }
     }
 
-    DeviceAssignment assn(/*replica_count=*/1,
-                          /*computation_count=*/num_partitions);
-    for (int64_t i = 0; i < num_partitions; ++i) {
-      assn(0, i) = i;
-    }
-    return ExecuteReplicated(std::move(module), fake_ptrs, &assn,
-                             num_partitions,
-                             /*run_hlo_passes=*/true);
+    return ExecuteReplicated(std::move(module), fake_ptrs);
   }
 
   // Slice the unsharded reference results and compare to the sharded case.
   void CompareShardedUnsharded(const std::string& hlo_text,
                                int64_t num_partitions,
-                               std::vector<Literal>& ref_results,
-                               std::vector<Literal>& results,
+                               const std::vector<Literal>& ref_results,
+                               const std::vector<Literal>& results,
                                ErrorSpec& error_spec) {
     HloModuleConfig config = GetModuleConfigForTest();
     DebugOptions opts = GetDebugOptionsForTest();

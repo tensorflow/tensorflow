@@ -116,67 +116,6 @@ CollectiveOpsE2ETestBase::CollectiveOpsE2ETestBase() {
       reference_platform, /*intra_op_parallelism_threads=*/0);
 }
 
-absl::StatusOr<std::vector<Literal>>
-CollectiveOpsE2ETestBase::ExecuteReplicated(
-    absl::AnyInvocable<OpaqueExecutable*(int64_t)> executable_provider,
-    absl::AnyInvocable<int64_t(int64_t)> argument_count_provider,
-    absl::AnyInvocable<const Literal*(int64_t, int64_t)> argument_provider,
-    const int64_t num_replicas, const bool run_hlo_passes,
-    DeviceAssignment* const device_assignment) {
-  // TODO(b/441865120): Use designated initializers this once XLA moves to
-  // C++20.
-  HloRunnerInterface::ReplicatedExecuteOptions options;
-  options.num_replicas = num_replicas;
-  options.run_hlo_passes = run_hlo_passes;
-  options.use_threads = true;
-
-  return hlo_runner_->ExecuteReplicated(
-      std::move(executable_provider), std::move(argument_count_provider),
-      std::move(argument_provider), std::move(options), device_assignment);
-}
-
-absl::StatusOr<std::vector<Literal>>
-CollectiveOpsE2ETestBase::ExecuteReplicated(
-    std::unique_ptr<HloModule> module,
-    const absl::Span<const Literal* const> arguments,
-    const int64_t num_replicas, DeviceAssignment* const device_assignment,
-    const bool run_hlo_passes, const bool use_threads) {
-  // TODO(b/441865120): Use designated initializers this once XLA moves to
-  // C++20.
-  HloRunnerInterface::ReplicatedExecuteOptions options;
-  options.num_replicas = num_replicas;
-  options.arguments = {arguments.begin(), arguments.end()};
-  options.run_hlo_passes = run_hlo_passes;
-  options.use_threads = use_threads;
-
-  return hlo_runner_->ExecuteReplicated(std::move(module), std::move(options),
-                                        device_assignment);
-}
-
-absl::StatusOr<std::vector<Literal>>
-CollectiveOpsE2ETestBase::ExecuteReplicated(
-    std::unique_ptr<HloModule> module,
-    const std::vector<std::vector<Literal*>> arguments,
-    DeviceAssignment* const device_assignment, const int64_t num_replicas,
-    const bool run_hlo_passes) {
-  CHECK(num_replicas > 0 && "expect at least one replica");
-  CHECK(num_replicas == arguments.size() &&
-        "expect arguments for each replica");
-  int64_t argument_count = arguments.front().size();
-  TF_ASSIGN_OR_RETURN(
-      const std::unique_ptr<OpaqueExecutable> executable,
-      hlo_runner_->CreateExecutable(std::move(module), run_hlo_passes));
-  return ExecuteReplicated(
-      /*executable_provider=*/[&](int64_t) { return executable.get(); },
-      /*argument_count_provider=*/[&](int64_t) { return argument_count; },
-      /*argument_provider=*/
-      [&](int64_t replica_idx, int64_t argument_idx) -> const Literal* {
-        return arguments[replica_idx][argument_idx];
-      },
-      num_replicas, /*run_hlo_passes=*/run_hlo_passes,
-      /*device_assignment=*/device_assignment);
-}
-
 absl::StatusOr<CollectiveOpsE2ETestBase::ExecutionResult>
 CollectiveOpsE2ETestBase::ExecuteReplicated(std::unique_ptr<HloModule> module) {
   return ExecuteReplicated(std::move(module),
@@ -224,9 +163,16 @@ CollectiveOpsE2ETestBase::ExecuteReplicated(
       execution_result.optimized_module,
       hlo_runner_->HloModuleFromWrapped(execution_result.executable.get()));
 
+  // TODO(b/441865120): Use designated initializers this once XLA moves to
+  // C++20.
+  HloRunnerInterface::ReplicatedExecuteOptions options;
+  options.num_replicas = num_devices;
+  options.run_hlo_passes = run_hlo_passes;
+  options.use_threads = true;
+
   TF_ASSIGN_OR_RETURN(
       execution_result.results,
-      ExecuteReplicated(
+      hlo_runner_->ExecuteReplicated(
           /*executable_provider=*/
           [&](int64_t) { return execution_result.executable.get(); },
           /*argument_count_provider=*/
@@ -235,21 +181,10 @@ CollectiveOpsE2ETestBase::ExecuteReplicated(
           [&](int64_t replica_idx, int64_t argument_idx) -> const Literal* {
             return arguments[replica_idx][argument_idx];
           },
-          /*num_replicas=*/num_devices,
-          /*run_hlo_passes=*/run_hlo_passes,
+          std::move(options),
           /*device_assignment=*/&device_assignment));
-  return execution_result;
-}
 
-absl::StatusOr<std::vector<Literal>>
-CollectiveOpsE2ETestBase::ExecuteReplicated(OpaqueExecutable* executable,
-                                            int64_t num_replicas) {
-  DeviceAssignment device_assignment = MakeDeviceAssignment(num_replicas);
-  return ExecuteReplicated(
-      /*executable_provider*/ [&](int64_t) { return executable; },
-      /*argument_count_provider*/ [](int64_t) { return 0; },
-      /*argument_provider*/ [](int64_t, int64_t) { return nullptr; },
-      num_replicas, /*run_hlo_passes=*/false, &device_assignment);
+  return execution_result;
 }
 
 DebugOptions CollectiveOpsWithFlagsBase::GetDebugOptionsForTest() const {
