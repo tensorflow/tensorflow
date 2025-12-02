@@ -2961,6 +2961,51 @@ xla_test(
 )
 
 xla_test(
+    name = "collective_ops_ffi_test",
+    srcs = ["collective_ops_ffi_test.cc"],
+    backend_tags = {
+        "gpu": [
+            "multi_gpu",
+        ],
+        "nvgpu_any": [
+            "no_oss",
+        ],
+    },
+    backends = ["gpu"],
+    deps = [
+        ":collective_ops_e2e_test_base",
+        ":literal_test_util",
+        ":test_utils",
+        ":xla_internal_test_main",
+        "//xla:future",
+        "//xla:literal",
+        "//xla:status_macros",
+        "//xla/backends/gpu:ffi",
+        "//xla/backends/gpu/collectives:gpu_clique_key",
+        "//xla/backends/gpu/collectives:gpu_collectives",
+        "//xla/backends/gpu/runtime:collective_clique_requests",
+        "//xla/backends/gpu/runtime:collective_cliques",
+        "//xla/backends/gpu/runtime:collective_execution",
+        "//xla/backends/gpu/runtime:collective_params",
+        "//xla/core/collectives:communicator",
+        "//xla/ffi",
+        "//xla/ffi:ffi_api",
+        "//xla/ffi/api:c_api",
+        "//xla/service:collective_ops_utils",
+        "//xla/stream_executor:device_memory",
+        "//xla/stream_executor:stream",
+        "//xla/tsl/lib/core:status_test_util",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:statusor",
+        "//xla/tsl/platform:test",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+xla_test(
     name = "collective_metadata_test",
     srcs = ["collective_metadata_test.cc"],
     backend_tags = {

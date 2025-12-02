@@ -688,6 +688,9 @@ cc_library(
     srcs = ["custom_call_thunk.cc"],
     hdrs = ["custom_call_thunk.h"],
     deps = [
+        ":collective_clique_requests",
+        ":collective_cliques",
+        ":collective_params",
         ":custom_call_target",
         ":shaped_slice",
         ":thunk",
@@ -1590,6 +1593,7 @@ cc_library(
     name = "collective_clique_requests",
     srcs = ["collective_clique_requests.cc"],
     hdrs = ["collective_clique_requests.h"],
+    compatible_with = get_compatible_with_portable(),
     deps = [
         "//xla/backends/gpu/collectives:gpu_clique_key",
         "@com_google_absl//absl/algorithm:container",
@@ -1617,6 +1621,7 @@ cc_library(
     name = "collective_params",
     srcs = ["collective_params.cc"],
     hdrs = ["collective_params.h"],
+    compatible_with = get_compatible_with_portable(),
     deps = [
         ":collective_clique_requests",
         "//xla:executable_run_options",
@@ -1643,6 +1648,7 @@ cc_library(
     name = "collective_cliques",
     srcs = ["collective_cliques.cc"],
     hdrs = ["collective_cliques.h"],
+    compatible_with = get_compatible_with_portable(),
     deps = [
         ":collective_clique_requests",
         ":collective_params",

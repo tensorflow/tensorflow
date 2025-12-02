@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/backends/gpu/runtime/collective_cliques.h"
 #include "xla/backends/gpu/runtime/shaped_slice.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/executable_run_options.h"
@@ -185,19 +186,26 @@ class CustomCallThunk : public Thunk {
   xla::ffi::CallOptions BuildCallOptions(
       RunId run_id, se::Stream* absl_nullable stream,
       const BufferAllocations* absl_nullable buffer_allocations,
+      const CollectiveParams* absl_nullable collective_params,
+      CollectiveCliqueRequests* absl_nullable collective_clique_requests,
+      const CollectiveCliques* absl_nullable collective_cliques,
       const ffi::ExecutionContext* absl_nullable execution_context);
 
-  absl::Status ExecuteFfiHandler(RunId run_id, XLA_FFI_Handler* handler,
-                                 XLA_FFI_ExecutionStage stage,
-                                 se::Stream* stream,
-                                 const ffi::ExecutionContext* execution_context,
-                                 const BufferAllocations* buffer_allocations);
+  absl::Status ExecuteFfiHandler(
+      RunId run_id, XLA_FFI_Handler* handler, XLA_FFI_ExecutionStage stage,
+      se::Stream* stream, const ffi::ExecutionContext* execution_context,
+      const BufferAllocations* buffer_allocations,
+      const CollectiveParams* absl_nullable collective_params,
+      CollectiveCliqueRequests* absl_nullable collective_clique_requests,
+      const CollectiveCliques* absl_nullable collective_cliques);
 
-  absl::Status ExecuteFfiHandler(RunId run_id, xla::ffi::Ffi& handler,
-                                 xla::ffi::ExecutionStage stage,
-                                 se::Stream* stream,
-                                 const ffi::ExecutionContext* execution_context,
-                                 const BufferAllocations* buffer_allocations);
+  absl::Status ExecuteFfiHandler(
+      RunId run_id, xla::ffi::Ffi& handler, xla::ffi::ExecutionStage stage,
+      se::Stream* stream, const ffi::ExecutionContext* execution_context,
+      const BufferAllocations* buffer_allocations,
+      const CollectiveParams* absl_nullable collective_params,
+      CollectiveCliqueRequests* absl_nullable collective_clique_requests,
+      const CollectiveCliques* absl_nullable collective_cliques);
 
   // API version of the custom call. If not set, it means the custom call thunk
   // was initialized from a non-registered function pointer and can't be
