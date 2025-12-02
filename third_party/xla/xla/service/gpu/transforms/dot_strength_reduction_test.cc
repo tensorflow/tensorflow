@@ -98,6 +98,38 @@ ENTRY test {
   CHECK_OK(module->Verify());
 }
 
+TEST_F(DotStrengthReductionTest, MaintainsMetadata) {
+  const char* hlo_text = R"(
+HloModule test
+
+ENTRY test {
+  p0 = bf16[6144]{0} parameter(0)
+  p1 = bf16[6144,256]{1,0} parameter(1)
+  ROOT dot = bf16[256]{0} dot(p0, p1), lhs_contracting_dims={0}, rhs_contracting_dims={0}, metadata={op_name="test"}
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_text));
+  DotStrengthReduction pass{
+      se::GpuComputeCapability(se::CudaComputeCapability::Hopper())};
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, this->RunHloPass(&pass, module.get()));
+  EXPECT_TRUE(changed);
+  CHECK_OK(module->Verify());
+
+  const char* filecheck_pattern = R"(
+// CHECK: bf16[256,6144]{1,0} multiply{{.*}}, metadata={op_name="test"}
+// CHECK: f32[256,6144]{1,0} convert{{.*}}, metadata={op_name="test"}
+// CHECK: f32[256]{0} reduce{{.*}}, metadata={op_name="test"}
+// CHECK: bf16[256]{0} convert{{.*}}, metadata={op_name="test"}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(bool filecheck_result,
+                          RunFileCheck(module->ToString(), filecheck_pattern));
+  EXPECT_TRUE(filecheck_result);
+  CHECK_OK(module->Verify());
+}
+
 TEST_F(DotStrengthReductionTest, UpcastInReductionF8E4M3FN) {
   const char* hlo_text = R"(
 HloModule test
