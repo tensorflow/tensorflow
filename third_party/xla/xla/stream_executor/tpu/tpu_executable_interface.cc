@@ -41,10 +41,9 @@ limitations under the License.
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/stream.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/logging.h"  // IWYU pragma: keep
-#include "tsl/platform/statusor.h"
 
 namespace xla::legacy {
 
@@ -218,11 +217,10 @@ absl::StatusOr<ExecutionOutput> TpuExecutableInterface::ExecuteAsyncOnStream(
   se::Stream* stream = run_options->stream();
 
   CHECK_NE(run_options->allocator(), nullptr);
-  const Shape& shape =
-      hlo_module_ == nullptr ? ShapeUtil::MakeNil() : result_shape();
+  const Shape& shape = !has_module() ? ShapeUtil::MakeNil() : result_shape();
   const HloInputOutputAliasConfig& alias_config =
-      hlo_module_ == nullptr ? HloInputOutputAliasConfig()
-                             : hlo_module_->input_output_alias_config();
+      !has_module() ? HloInputOutputAliasConfig()
+                    : module().input_output_alias_config();
   TF_ASSIGN_OR_RETURN(
       ExecutionOutput result,
       AllocateOutputMemoryWithInputReuse(
@@ -232,9 +230,9 @@ absl::StatusOr<ExecutionOutput> TpuExecutableInterface::ExecuteAsyncOnStream(
   // Address of the buffer in TPU memory that is being speculated.
   std::vector<se::DeviceMemoryBase> cross_program_prefetch_addrs;
   std::vector<uint32_t> cross_program_prefetch_offsets;
-  if (hlo_module_) {
+  if (has_module()) {
     for (const auto& [parameter, index, offset] :
-         hlo_module_->CrossProgramPrefetches()) {
+         module().CrossProgramPrefetches()) {
       CHECK_LT(parameter, arguments.size());
       // Ensure the cross program prefetched buffer doesn't alias with any
       // program outputs. If the input and output aliased, the buffer could be

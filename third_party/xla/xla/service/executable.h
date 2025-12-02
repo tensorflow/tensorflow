@@ -456,14 +456,14 @@ class Executable {
     return absl::OkStatus();
   }
 
- protected:
+ private:
   // HloModule this was compiled from. BufferAssignment keeps pointers to
   // HloInstructions owned by the HloModule so we need to keep the HloModule
   // around if we keep the BufferAssignment around.
   //
   // This member may be nullptr, if the given executable type doesn't need it
   // for execution.
-  const std::shared_ptr<HloModule> hlo_module_;
+  std::shared_ptr<HloModule> hlo_module_;
 
   // Execution count, used to generate a unique filename for each dumped
   // execution.
@@ -475,7 +475,6 @@ class Executable {
   // Generic debug information as a string.
   std::string debug_info_;
 
- private:
   // The serialized HLO proto. Non-null only if dumping snapshots is enabled.
   // This field may also be only partially set: if only
   // hlo_proto_->buffer_assignment is set and hlo_proto_->hlo_module isn't, the

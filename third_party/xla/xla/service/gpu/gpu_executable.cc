@@ -1235,8 +1235,8 @@ absl::StatusOr<GpuExecutableProto> GpuExecutable::ToProto() const {
         allocation->ToProto());
   }
 
-  if (hlo_module_ != nullptr) {
-    *proto.mutable_hlo_module_with_config() = hlo_module_->ToProtoWithConfig();
+  if (has_module()) {
+    *proto.mutable_hlo_module_with_config() = module().ToProtoWithConfig();
   }
 
   proto.mutable_output_info_map()->Reserve(output_info_.size());

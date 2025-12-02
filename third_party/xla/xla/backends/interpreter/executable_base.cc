@@ -148,8 +148,8 @@ absl::StatusOr<ExecutionOutput> InterpreterExecutableBase::ExecuteAsyncOnStream(
 
   // Transform the result literal back into a ShapedBuffer.
   const HloInputOutputAliasConfig& alias_config =
-      hlo_module_ == nullptr ? HloInputOutputAliasConfig()
-                             : hlo_module_->input_output_alias_config();
+      has_module() ? module().input_output_alias_config()
+                   : HloInputOutputAliasConfig();
   TF_ASSIGN_OR_RETURN(ExecutionOutput result,
                       AllocateOutputMemoryWithInputReuse(
                           result_literal.shape(), alias_config,
