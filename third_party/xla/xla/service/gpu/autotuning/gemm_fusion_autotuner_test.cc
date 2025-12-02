@@ -613,10 +613,10 @@ ENTRY e {
   // and the second for reduce.
   MatchOptimizedHlo(kHloText, R"(
 ; CHECK: f16[55,3,40]{2,1,0} fusion
-; CHECK-SAME: "kind":"__triton_nested_gemm_fusion"
+; CHECK-SAME: "kind":"__triton_gemm"
 ; CHECK-SAME: "sizes":["16","1","32"]
 ; CHECK: f16[3,40,20]{2,1,0} fusion
-; CHECK-SAME: "kind":"__triton_nested_gemm_fusion"
+; CHECK-SAME: "kind":"__triton_gemm"
 ; CHECK-SAME: "sizes":["1","32","64"]
 ; CHECK: ENTRY
 ; CHECK: f32[3,55,20]{2,1,0} fusion({{.*}})
@@ -643,9 +643,9 @@ lhs_computation {
   %p0 = s8[12288,1536] parameter(0)
   %p1 = f16[4,12288] parameter(1)
   %rhs = f16[12288,1536] fusion(%p0), kind=kCustom, calls=rhs_computation,
-    backend_config={"fusion_backend_config":{"kind":"__triton_nested_gemm_fusion", "block_level_fusion_config":{"output_tiles":[{"sizes":["16","16"]}]}}}
+    backend_config={"fusion_backend_config":{"kind":"__triton_gemm", "block_level_fusion_config":{"output_tiles":[{"sizes":["16","16"]}]}}}
   %lhs = f16[4,12288] fusion(%p1), kind=kCustom, calls=lhs_computation,
-    backend_config={"fusion_backend_config":{"kind":"__triton_nested_gemm_fusion", "block_level_fusion_config":{"output_tiles":[{"sizes":["16","32"]}]}}}
+    backend_config={"fusion_backend_config":{"kind":"__triton_gemm", "block_level_fusion_config":{"output_tiles":[{"sizes":["16","32"]}]}}}
   ROOT %dot = f16[4,1536] dot(%lhs, %rhs), lhs_contracting_dims={1}, rhs_contracting_dims={0}
 }
 
@@ -653,7 +653,7 @@ ENTRY %e {
   %p0 = s8[12288,1536] parameter(0)
   %p1 = f16[4,12288] parameter(1)
   ROOT %triton_dot = f16[4,1536] fusion(%p0, %p1), kind=kCustom, calls=%triton_gemm_dot,
-    backend_config={"fusion_backend_config":{"kind":"__triton_nested_gemm_fusion","block_level_fusion_config":{"output_tiles":[{"sizes":["16","32"]}],"num_stages":"1","num_warps":"2","num_ctas":"1"}}}
+    backend_config={"fusion_backend_config":{"kind":"__triton_gemm","block_level_fusion_config":{"output_tiles":[{"sizes":["16","32"]}],"num_stages":"1","num_warps":"2","num_ctas":"1"}}}
 })";
 
   auto module = ParseAndReturnVerifiedModule(kHloText).value();
@@ -910,7 +910,7 @@ ENTRY e {
 
   MatchOptimizedHlo(kHloText, R"(
 ; CHECK: kind=kCustom
-; CHECK-SAME: __triton_nested_gemm_fusion
+; CHECK-SAME: __triton_gemm
       )");
 
   EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));

@@ -157,14 +157,14 @@ fdot {
   fdot.p1 = $0[16,16] parameter(1)
   fdot.lhs = $0[16,16] fusion(fdot.p0), kind=kCustom, calls=flhs, backend_config={
     "fusion_backend_config":{
-      "kind":"__triton_nested_gemm_fusion", "block_level_fusion_config":{
+      "kind":"__triton_gemm", "block_level_fusion_config":{
         "output_tiles":[{"sizes":["16", "16"]}]
       }
     }
   }
   fdot.rhs = $0[16,16]{1,0} fusion(fdot.p1), kind=kCustom, calls=frhs, backend_config={
     "fusion_backend_config":{
-      "kind":"__triton_nested_gemm_fusion", "block_level_fusion_config":{
+      "kind":"__triton_gemm", "block_level_fusion_config":{
         "output_tiles":[{"sizes":["16", "16"]}]
       }
     }
@@ -180,7 +180,7 @@ ENTRY entry {
   ROOT fusion = $0[16,16] fusion(entry.p0, entry.p1),
     kind=kCustom, calls=fdot, backend_config={
       "fusion_backend_config":{
-        "kind":"__triton_nested_gemm_fusion",
+        "kind":"__triton_gemm",
         "block_level_fusion_config":{
           "output_tiles":[{"sizes":["16","16"]}],
           "num_warps":"1",
@@ -244,13 +244,13 @@ concat_computation (p0: bf16[128,512], p1: bf16[256,512]) -> bf16[384,512] {
     "operation_queue_id":"0",
     "wait_on_operation_queues":[],
     "fusion_backend_config":{
-      "kind":"__triton_nested_gemm_fusion"}}
+      "kind":"__triton_gemm"}}
   p1 = bf16[256,512]{1,0} parameter(1)
   rhs_f = bf16[256,512]{1,0} fusion(p1), kind=kCustom, calls=rhs_computation, backend_config={
     "operation_queue_id":"0",
     "wait_on_operation_queues":[],
     "fusion_backend_config":{
-      "kind":"__triton_nested_gemm_fusion"}}
+      "kind":"__triton_gemm"}}
   ROOT concat = bf16[384,512]{1,0} concatenate(lhs_f, rhs_f), dimensions={0}
 }
 
@@ -266,7 +266,7 @@ gemm_computation (p0: bf16[128,512], p1: bf16[256,512], p2: bf16[512,512]) -> bf
     "operation_queue_id":"0",
     "wait_on_operation_queues":[],
     "fusion_backend_config":{
-      "kind":"__triton_nested_gemm_fusion",
+      "kind":"__triton_gemm",
       "block_level_fusion_config":{
         "num_warps":"8",
         "output_tiles":[{"sizes":["128","64"]}],
@@ -279,7 +279,7 @@ gemm_computation (p0: bf16[128,512], p1: bf16[256,512], p2: bf16[512,512]) -> bf
     "operation_queue_id":"0",
     "wait_on_operation_queues":[],
     "fusion_backend_config":{
-      "kind":"__triton_nested_gemm_fusion",
+      "kind":"__triton_gemm",
       "block_level_fusion_config":{
         "num_warps":"8",
         "output_tiles":[{"sizes":["64","256"]}],
@@ -299,7 +299,7 @@ ENTRY main (p0: bf16[128,512], p1: bf16[256,512], p2: bf16[512,512]) -> bf16[384
     "operation_queue_id":"0",
     "wait_on_operation_queues":[],
     "fusion_backend_config":{
-      "kind":"__triton_nested_gemm_fusion",
+      "kind":"__triton_gemm",
       "block_level_fusion_config":{
         "num_warps":"8",
         "output_tiles":[{"sizes":["128","256"]}],

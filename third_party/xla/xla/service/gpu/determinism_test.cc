@@ -219,7 +219,7 @@ ENTRY e {
   AutotunerUtil::ClearAutotuneResults();
   MatchOptimizedHlo(kHloText, R"(
     CHECK: ENTRY
-    CHECK: __triton_nested_gemm_fusion
+    CHECK: __triton_gemm
     CHECK-SAME: "num_warps":"2","output_tiles":[{"sizes":["16","16"]}]
     CHECK-SAME: "num_ctas":1,"num_stages":4,"is_tma_allowed":false
   )",
@@ -251,7 +251,7 @@ ENTRY e {
 })",
                     R"(
     CHECK: ENTRY
-    CHECK: __triton_nested_gemm_fusion
+    CHECK: __triton_gemm
     CHECK-NOT: "output_tiles":[{"sizes":["32","32"]}]
   )",
                     TimerCreation::kAllowed);

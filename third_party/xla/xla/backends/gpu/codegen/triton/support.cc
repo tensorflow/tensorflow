@@ -296,7 +296,7 @@ bool IsInTritonNestedGemmFusion(const HloInstruction& hlo) {
     return false;
   }
   return IsGpuFusionKind(*hlo.parent()->FusionInstruction(),
-                         kTritonNestedGemmFusionKind);
+                         kTritonGemmFusionKind);
 }
 
 absl::Status CheckSupportedCheckDotDimensions(const HloDotInstruction& dot) {
@@ -508,7 +508,7 @@ CodegenDecision IsTritonSupportedDot(
 
 // Verifies that the nested fusion instruction conforms to the assumptions of
 // the emitter. Currently, we expect nested fusions:
-// - of kind `__triton_nested_gemm_fusion`;
+// - of kind `__triton_gemm`;
 // - to have a single user that is either a `dot` or a `concatenate`;
 // - calls a supported computation.
 CodegenDecision IsTritonSupportedFusion(
@@ -528,10 +528,10 @@ CodegenDecision IsTritonSupportedFusion(
   }
   if (const std::string& kind =
           backend_config.value().fusion_backend_config().kind();
-      kind != kTritonNestedGemmFusionKind) {
+      kind != kTritonGemmFusionKind) {
     return CodegenDecision::Forbid(
         absl::StrCat("Expected ", hlo.ToString(), " with fusion backend kind ",
-                     kTritonNestedGemmFusionKind, ", got ", kind));
+                     kTritonGemmFusionKind, ", got ", kind));
   }
   const HloInstruction* user = hlo.users().front();
   switch (user->opcode()) {

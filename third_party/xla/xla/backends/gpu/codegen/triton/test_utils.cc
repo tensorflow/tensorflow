@@ -326,8 +326,7 @@ absl::Status ConvertEntryToTritonFusion(HloModule* module) {
       module->entry_computation()));
 
   gpu::GpuBackendConfig gpu_config;
-  gpu_config.mutable_fusion_backend_config()->set_kind(
-      kTritonNestedGemmFusionKind);
+  gpu_config.mutable_fusion_backend_config()->set_kind(kTritonGemmFusionKind);
   TF_RETURN_IF_ERROR(fusion->set_backend_config(gpu_config));
 
   auto new_entry =

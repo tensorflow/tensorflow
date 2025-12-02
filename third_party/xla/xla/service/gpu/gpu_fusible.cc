@@ -913,7 +913,7 @@ std::vector<const HloInstruction*> GetFusionRoots(
 }
 
 bool IsGenericTritonFusion(const HloInstruction& instr) {
-  // Note that we don't accept kTritonNestedGemmFusionKind here as they should
+  // Note that we don't accept kTritonGemmFusionKind here as they should
   // not be fused with anything else.
   return instr.opcode() == HloOpcode::kFusion &&
          instr.fusion_kind() == HloInstruction::FusionKind::kCustom &&

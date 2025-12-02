@@ -62,8 +62,8 @@ MATCHER_P(OutputTileSizesIs, matcher, "") {
     *result_listener << "has no block level fusion config";
     return false;
   }
-  if (fusion_backend_config.kind() != "__triton_nested_gemm_fusion") {
-    *result_listener << "fusion kind is not __triton_nested_gemm_fusion";
+  if (fusion_backend_config.kind() != "__triton_gemm") {
+    *result_listener << "fusion kind is not __triton_gemm";
     return false;
   }
   auto output_tile_sizes =
@@ -180,7 +180,7 @@ ENTRY e {
 
 // TODO(b/393299275): update test to use a unsupported operation.
 TEST_F(NestGemmFusionTest, DISABLED_UnsupportedComputationsAreNotChanged) {
-  // Fusions other than kTritonNestedGemmFusionKind are not supported.
+  // Fusions other than kTritonGemmFusionKind are not supported.
   // In this case pass should only change the supported fusions.
   absl::string_view hlo = R"(
 identity {
@@ -243,7 +243,7 @@ ENTRY e {
                 ->backend_config<GpuBackendConfig>()
                 ->fusion_backend_config()
                 .kind(),
-            "__triton_nested_gemm_fusion");
+            "__triton_gemm");
 }
 
 class NestGemmFusionReshapeTest

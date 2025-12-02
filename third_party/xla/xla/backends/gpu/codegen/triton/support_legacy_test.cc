@@ -96,10 +96,10 @@ triton_computation {
   p0 = $0[92,11]{1,0} parameter(0)
   p1 = $1[11,63]{1,0} parameter(1)
   lhs_fusion = $0[92,11]{1,0} fusion(p0), kind=kCustom, calls=lhs,
-    backend_config={"fusion_backend_config":{"kind":"__triton_nested_gemm_fusion",
+    backend_config={"fusion_backend_config":{"kind":"__triton_gemm",
     "block_level_fusion_config":{"output_tiles":[{"sizes":[16,16]}]}}}
   rhs_fusion = $1[11,63]{1,0} fusion(p1), kind=kCustom, calls=rhs,
-    backend_config={"fusion_backend_config":{"kind":"__triton_nested_gemm_fusion",
+    backend_config={"fusion_backend_config":{"kind":"__triton_gemm",
     "block_level_fusion_config":{"output_tiles":[{"sizes":[16,32]}]}}}
   ROOT dot = $2[92,63]{1,0} $3(lhs_fusion, rhs_fusion),
     lhs_contracting_dims={1}, rhs_contracting_dims={0}
@@ -110,7 +110,7 @@ ENTRY e {
   parameter_1 = $1[11,63]{1,0} parameter(1)
   ROOT triton_op = $2[92,63]{1,0} fusion(parameter_0, parameter_1), kind=kCustom,
     calls=triton_computation,
-    backend_config={"fusion_backend_config":{"kind":"__triton_nested_gemm_fusion",
+    backend_config={"fusion_backend_config":{"kind":"__triton_gemm",
       "block_level_fusion_config":{"output_tiles":[{"sizes":[16,32]}],
        "num_stages":4,"num_warps":8,"num_ctas":1}}}
 })";
@@ -134,12 +134,16 @@ ENTRY e {
       }
       const se::DeviceDescription dev_info =
           TestGpuDeviceInfo::RTXA6000DeviceInfo(GetComputeCapability());
+      const auto& fusion_backend_config =
+          ti.TritonFusion()
+              .backend_config<GpuBackendConfig>()
+              ->fusion_backend_config();
+      if (!fusion_backend_config.has_block_level_fusion_config()) {
+        GTEST_SKIP() << "No block level fusion config.";
+      }
       auto block_level_parameters =
           BlockLevelParameters::FromBlockLevelFusionConfig(
-              ti.TritonFusion()
-                  .backend_config<GpuBackendConfig>()
-                  ->fusion_backend_config()
-                  .block_level_fusion_config());
+              fusion_backend_config.block_level_fusion_config());
       EXPECT_THAT(
           TritonWrapper("test_fn", &ti.TritonFusion(), GetComputeCapability(),
                         dev_info, block_level_parameters, target_triple_,
@@ -233,10 +237,10 @@ triton_computation {
   start_index0 = $1[] parameter(2)
   start_index1 = $1[] parameter(3)
   lhs = f32[5,2] fusion(dynamic_slice_input, start_index0, start_index1), kind=kCustom, calls=lhs,
-    backend_config={"fusion_backend_config":{"kind":"__triton_nested_gemm_fusion",
+    backend_config={"fusion_backend_config":{"kind":"__triton_gemm",
     "block_level_fusion_config":{"output_tiles":[{"sizes":[32,32]}]}}}
   rhs = f32[2,4] fusion(dot_rhs), kind=kCustom, calls=rhs,
-    backend_config={"fusion_backend_config":{"kind":"__triton_nested_gemm_fusion",
+    backend_config={"fusion_backend_config":{"kind":"__triton_gemm",
     "block_level_fusion_config":{"output_tiles":[{"sizes":[32,32]}]}}}
   ROOT dot = f32[5, 4] dot(lhs, rhs),
           lhs_contracting_dims={1}, rhs_contracting_dims={0}
@@ -251,7 +255,7 @@ ENTRY e {
        kind=kCustom, calls=triton_computation,
        backend_config={
          "fusion_backend_config":{
-           "kind":"__triton_nested_gemm_fusion",
+           "kind":"__triton_gemm",
             "block_level_fusion_config":{"output_tiles":[{"sizes":[32,32]}],
             "num_stages":1,"num_warps":4,"num_ctas":1}}}
 })";
@@ -314,10 +318,10 @@ triton_computation {
   p0 = f32[92,11]{1,0} parameter(0)
   p1 = f32[11,63]{1,0} parameter(1)
   lhs_fusion = f32[92,11]{1,0} fusion(p0), kind=kCustom, calls=lhs,
-    backend_config={"fusion_backend_config":{"kind":"__triton_nested_gemm_fusion",
+    backend_config={"fusion_backend_config":{"kind":"__triton_gemm",
     "block_level_fusion_config":{"output_tiles":[{"sizes":[16,16]}]}}}
   rhs_fusion = f32[11,63]{1,0} fusion(p1), kind=kCustom, calls=rhs,
-    backend_config={"fusion_backend_config":{"kind":"__triton_nested_gemm_fusion",
+    backend_config={"fusion_backend_config":{"kind":"__triton_gemm",
     "block_level_fusion_config":{"output_tiles":[{"sizes":[16,32]}]}}}
   ROOT dot = pred[92,63]{1,0} dot(lhs_fusion, rhs_fusion),
     lhs_contracting_dims={1}, rhs_contracting_dims={0}
@@ -327,7 +331,7 @@ ENTRY e {
   parameter_1 = f32[11,63]{1,0} parameter(1)
   ROOT triton_op = pred[92,63]{1,0} fusion(parameter_0, parameter_1), kind=kCustom,
     calls=triton_computation,
-    backend_config={"fusion_backend_config":{"kind":"__triton_nested_gemm_fusion",
+    backend_config={"fusion_backend_config":{"kind":"__triton_gemm",
       "block_level_fusion_config":{"output_tiles":[{"sizes":[16,32]}],
        "num_stages":4,"num_warps":8,"num_ctas":1}}}
 })";
@@ -353,10 +357,10 @@ triton_computation {
   p0 = s8[92,11]{1,0} parameter(0)
   p1 = s8[11,63]{1,0} parameter(1)
   lhs_fusion = s8[92,11]{1,0} fusion(p0), kind=kCustom, calls=lhs,
-    backend_config={"fusion_backend_config":{"kind":"__triton_nested_gemm_fusion",
+    backend_config={"fusion_backend_config":{"kind":"__triton_gemm",
     "block_level_fusion_config":{"output_tiles":[{"sizes":[16,16]}]}}}
   rhs_fusion = s8[11,63]{1,0} fusion(p1), kind=kCustom, calls=rhs,
-    backend_config={"fusion_backend_config":{"kind":"__triton_nested_gemm_fusion",
+    backend_config={"fusion_backend_config":{"kind":"__triton_gemm",
     "block_level_fusion_config":{"output_tiles":[{"sizes":[16,32]}]}}}
   ROOT dot = f32[92,63]{1,0} dot(lhs_fusion, rhs_fusion),
     lhs_contracting_dims={1}, rhs_contracting_dims={0}
@@ -366,7 +370,7 @@ ENTRY e {
   parameter_1 = s8[11,63]{1,0} parameter(1)
   ROOT triton_op = f32[92,63]{1,0} fusion(parameter_0, parameter_1), kind=kCustom,
     calls=triton_computation,
-    backend_config={"fusion_backend_config":{"kind":"__triton_nested_gemm_fusion",
+    backend_config={"fusion_backend_config":{"kind":"__triton_gemm",
       "block_level_fusion_config":{"output_tiles":[{"sizes":[16,32]}],
        "num_stages":4,"num_warps":8,"num_ctas":1}}}
 })";
@@ -394,10 +398,10 @@ triton_computation {
   p0 = f16[92,11]{1,0} parameter(0)
   p1 = f32[11,63]{1,0} parameter(1)
   lhs_fusion = f16[92,11]{1,0} fusion(p0), kind=kCustom, calls=lhs,
-    backend_config={"fusion_backend_config":{"kind":"__triton_nested_gemm_fusion",
+    backend_config={"fusion_backend_config":{"kind":"__triton_gemm",
     "block_level_fusion_config":{"output_tiles":[{"sizes":[16,16]}]}}}
   rhs_fusion = f32[11,63]{1,0} fusion(p1), kind=kCustom, calls=rhs,
-    backend_config={"fusion_backend_config":{"kind":"__triton_nested_gemm_fusion",
+    backend_config={"fusion_backend_config":{"kind":"__triton_gemm",
     "block_level_fusion_config":{"output_tiles":[{"sizes":[16,32]}]}}}
   ROOT dot = f32[92,63]{1,0} dot(lhs_fusion, rhs_fusion),
     lhs_contracting_dims={1}, rhs_contracting_dims={0}
@@ -407,7 +411,7 @@ ENTRY e {
   parameter_1 = f32[11,63]{1,0} parameter(1)
   ROOT triton_op = f32[92,63]{1,0} fusion(parameter_0, parameter_1), kind=kCustom,
     calls=triton_computation,
-    backend_config={"fusion_backend_config":{"kind":"__triton_nested_gemm_fusion",
+    backend_config={"fusion_backend_config":{"kind":"__triton_gemm",
       "block_level_fusion_config":{"output_tiles":[{"sizes":[16,32]}],
        "num_stages":4,"num_warps":8,"num_ctas":1}}}
 })";
@@ -434,10 +438,10 @@ triton_computation {
   p0 = f32[2,2,2,2] parameter(0)
   p1 = f32[2,2,2,2] parameter(1)
   lhs_fusion = f32[2,2,2,2] fusion(p0), kind=kCustom, calls=lhs,
-    backend_config={"fusion_backend_config":{"kind":"__triton_nested_gemm_fusion",
+    backend_config={"fusion_backend_config":{"kind":"__triton_gemm",
     "block_level_fusion_config":{"output_tiles":[{"sizes":[1,1,2,2]}]}}}
   rhs_fusion = f32[2,2,2,2] fusion(p1), kind=kCustom, calls=rhs,
-    backend_config={"fusion_backend_config":{"kind":"__triton_nested_gemm_fusion",
+    backend_config={"fusion_backend_config":{"kind":"__triton_gemm",
     "block_level_fusion_config":{"output_tiles":[{"sizes":[1,1,2,2]}]}}}
   ROOT dot = f32[2,2,2,2] dot(lhs_fusion, rhs_fusion),
     lhs_contracting_dims={3}, lhs_batch_dims={1,0},
@@ -449,7 +453,7 @@ ENTRY e {
   parameter_1 = f32[2,2,2,2] parameter(1)
   ROOT triton_op = f32[2,2,2,2] fusion(parameter_0, parameter_1),
     kind=kCustom, calls=triton_computation,
-    backend_config={"fusion_backend_config":{"kind":"__triton_nested_gemm_fusion",
+    backend_config={"fusion_backend_config":{"kind":"__triton_gemm",
       "block_level_fusion_config":{"output_tiles":[{"sizes":[1,1,2,2]}],
        "num_stages":4,"num_warps":8,"num_ctas":1}}}
 })";
@@ -462,12 +466,15 @@ ENTRY e {
                   ti.Instruction(), GetComputeCapability())
                   .Explain(),
               ::testing::HasSubstr("Multiple batch dimensions"));
+  const auto& fusion_backend_config = ti.TritonFusion()
+                                          .backend_config<GpuBackendConfig>()
+                                          ->fusion_backend_config();
+  if (!fusion_backend_config.has_block_level_fusion_config()) {
+    GTEST_SKIP() << "No block level fusion config.";
+  }
   auto block_level_parameters =
       BlockLevelParameters::FromBlockLevelFusionConfig(
-          ti.TritonFusion()
-              .backend_config<GpuBackendConfig>()
-              ->fusion_backend_config()
-              .block_level_fusion_config());
+          fusion_backend_config.block_level_fusion_config());
   TF_EXPECT_OK(TritonWrapper("test_fn", &ti.TritonFusion(),
                              GetComputeCapability(), dev_info,
                              block_level_parameters, target_triple_,
@@ -487,10 +494,10 @@ triton_computation {
   p0 = f32[2]{0} parameter(0)
   p1 = f32[2]{0} parameter(1)
   lhs_fusion = f32[2]{0} fusion(p0), kind=kCustom, calls=lhs,
-    backend_config={"fusion_backend_config":{"kind":"__triton_nested_gemm_fusion",
+    backend_config={"fusion_backend_config":{"kind":"__triton_gemm",
     "block_level_fusion_config":{"output_tiles":[{"sizes":[1,1]}]}}}
   rhs_fusion = f32[2]{0} fusion(p1), kind=kCustom, calls=rhs,
-    backend_config={"fusion_backend_config":{"kind":"__triton_nested_gemm_fusion",
+    backend_config={"fusion_backend_config":{"kind":"__triton_gemm",
     "block_level_fusion_config":{"output_tiles":[{"sizes":[1,1]}]}}}
   ROOT dot = f32[] dot(lhs_fusion, rhs_fusion),
     lhs_contracting_dims={0}, rhs_contracting_dims={0}
@@ -501,7 +508,7 @@ ENTRY e {
   parameter_1 = f32[2]{0} parameter(1)
   ROOT triton_op = f32[] fusion(parameter_0, parameter_1), kind=kCustom,
     calls=triton_computation,
-    backend_config={"fusion_backend_config":{"kind":"__triton_nested_gemm_fusion",
+    backend_config={"fusion_backend_config":{"kind":"__triton_gemm",
     "block_level_fusion_config":{"output_tiles":[{"sizes":[1,1]}]}}}
 })";
   TF_ASSERT_OK_AND_ASSIGN(TestedInstruction ti,

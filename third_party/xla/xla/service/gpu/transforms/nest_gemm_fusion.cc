@@ -132,7 +132,7 @@ absl::StatusOr<HloInstruction*> FuseInstructionsFromRoot(HloInstruction& root) {
 
 // Fuses the instructions starting from 'root' for 'consumer'. Other consumers
 // of 'root' are not affected. Annotates fusion with
-// `kTritonNestedGemmFusionKind`.
+// `kTritonGemmFusionKind`.
 absl::Status FuseInstructionsForConsumer(HloInstruction& root,
                                          HloInstruction& consumer) {
   CHECK(absl::c_count(consumer.operands(), &root) != 0)
@@ -143,8 +143,7 @@ absl::Status FuseInstructionsForConsumer(HloInstruction& root,
 
   TF_ASSIGN_OR_RETURN(auto gpu_config,
                       fusion->backend_config<GpuBackendConfig>());
-  gpu_config.mutable_fusion_backend_config()->set_kind(
-      kTritonNestedGemmFusionKind);
+  gpu_config.mutable_fusion_backend_config()->set_kind(kTritonGemmFusionKind);
   TF_RETURN_IF_ERROR(fusion->set_backend_config(gpu_config));
 
   for (int64_t operand_index : consumer.OperandIndices(&root)) {
@@ -252,7 +251,7 @@ absl::StatusOr<TritonGemmConfig> GetTritonGemmConfig(
 }
 
 // Constructs nested fusion nodes for the operands of `concatenate` instructions
-// and annotates them with `kTritonNestedGemmFusionKind`.
+// and annotates them with `kTritonGemmFusionKind`.
 absl::Status FuseAndAnnotateConcatOperands(HloComputation* computation) {
   for (HloInstruction* instr : computation->MakeInstructionPostOrder()) {
     if (instr->opcode() != HloOpcode::kConcatenate) {
@@ -324,7 +323,7 @@ absl::Status MakeNestedFusionFromGemmFusion(
   FusionBackendConfig& backend_config =
       *gpu_config.mutable_fusion_backend_config();
   backend_config.clear_triton_gemm_config();
-  backend_config.set_kind(kTritonNestedGemmFusionKind);
+  backend_config.set_kind(kTritonGemmFusionKind);
 
   TF_ASSIGN_OR_RETURN(BlockLevelParameters block_level_parameters,
                       ::xla::gpu::detail::FindBlockLevelParameters(
