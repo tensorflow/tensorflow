@@ -551,10 +551,9 @@ xla_cc_test(
     ],
 )
 
-# TODO(b/393299275): Rename this test file now that the legacy emitter is gone.
 xla_test(
-    name = "fusion_emitter_device_legacy_port_test",
-    srcs = if_gpu_is_configured(["fusion_emitter_device_legacy_port_test.cc"]),
+    name = "triton_gemm_fusion_test",
+    srcs = if_gpu_is_configured(["triton_gemm_fusion_test.cc"]),
     backends = [
         "a100",
         "h100",
