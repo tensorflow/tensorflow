@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 
 #include "xla/tsl/platform/cloud/oauth_client.h"
+
+#include "absl/status/status.h"
 #ifndef _WIN32
 #include <pwd.h>
 #include <sys/types.h>
@@ -94,7 +96,7 @@ absl::Status CreateSignature(RSA* private_key, absl::string_view to_sign,
 
   const auto md = EVP_sha256();
   if (!md) {
-    return errors::Internal("Could not get a sha256 encryptor.");
+    return absl::InternalError("Could not get a sha256 encryptor.");
   }
 
   // EVP_MD_CTX_destroy is renamed to EVP_MD_CTX_free in OpenSSL 1.1.0 but
@@ -104,7 +106,7 @@ absl::Status CreateSignature(RSA* private_key, absl::string_view to_sign,
   std::unique_ptr<EVP_MD_CTX, std::function<void(EVP_MD_CTX*)>> md_ctx(
       EVP_MD_CTX_create(), [](EVP_MD_CTX* ptr) { EVP_MD_CTX_destroy(ptr); });
   if (!md_ctx) {
-    return errors::Internal("Could not create MD_CTX.");
+    return absl::InternalError("Could not create MD_CTX.");
   }
 
   std::unique_ptr<EVP_PKEY, std::function<void(EVP_PKEY*)>> key(
@@ -112,18 +114,18 @@ absl::Status CreateSignature(RSA* private_key, absl::string_view to_sign,
   EVP_PKEY_set1_RSA(key.get(), private_key);
 
   if (EVP_DigestSignInit(md_ctx.get(), nullptr, md, nullptr, key.get()) != 1) {
-    return errors::Internal("DigestInit failed.");
+    return absl::InternalError("DigestInit failed.");
   }
   if (EVP_DigestSignUpdate(md_ctx.get(), to_sign.data(), to_sign.size()) != 1) {
-    return errors::Internal("DigestUpdate failed.");
+    return absl::InternalError("DigestUpdate failed.");
   }
   size_t sig_len = 0;
   if (EVP_DigestSignFinal(md_ctx.get(), nullptr, &sig_len) != 1) {
-    return errors::Internal("DigestFinal (get signature length) failed.");
+    return absl::InternalError("DigestFinal (get signature length) failed.");
   }
   std::unique_ptr<unsigned char[]> sig(new unsigned char[sig_len]);
   if (EVP_DigestSignFinal(md_ctx.get(), sig.get(), &sig_len) != 1) {
-    return errors::Internal("DigestFinal (signature compute) failed.");
+    return absl::InternalError("DigestFinal (signature compute) failed.");
   }
   return Base64Encode(
       absl::string_view(reinterpret_cast<char*>(sig.get()), sig_len),
@@ -198,13 +200,13 @@ absl::Status OAuthClient::GetTokenFromServiceAccountJson(
       BIO_new(BIO_s_mem()), [](BIO* ptr) { BIO_free_all(ptr); });
   if (BIO_puts(bio.get(), private_key_serialized.c_str()) !=
       static_cast<int>(private_key_serialized.size())) {
-    return errors::Internal("Could not load the private key.");
+    return absl::InternalError("Could not load the private key.");
   }
   std::unique_ptr<RSA, std::function<void(RSA*)>> private_key(
       PEM_read_bio_RSAPrivateKey(bio.get(), nullptr, nullptr, nullptr),
       [](RSA* ptr) { RSA_free(ptr); });
   if (!private_key) {
-    return errors::Internal("Could not deserialize the private key.");
+    return absl::InternalError("Could not deserialize the private key.");
   }
 
   const uint64 request_timestamp_sec = env_->NowSeconds();
@@ -278,14 +280,15 @@ absl::Status OAuthClient::ParseOAuthResponse(absl::string_view response,
   Json::Value root;
   Json::Reader reader;
   if (!reader.parse(response.data(), response.data() + response.size(), root)) {
-    return errors::Internal("Couldn't parse JSON response from OAuth server.");
+    return absl::InternalError(
+        "Couldn't parse JSON response from OAuth server.");
   }
 
   string token_type;
   TF_RETURN_IF_ERROR(ReadJsonString(root, "token_type", &token_type));
   if (token_type != "Bearer") {
-    return errors::FailedPrecondition("Unexpected Oauth token type: " +
-                                      token_type);
+    return absl::FailedPreconditionError("Unexpected Oauth token type: " +
+                                         token_type);
   }
   int64_t expires_in = 0;
   TF_RETURN_IF_ERROR(ReadJsonInt(root, "expires_in", &expires_in));
