@@ -20,6 +20,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/log.h"
@@ -375,7 +376,7 @@ TEST_P(LoadedExecutableImplTest, CompileAndExecute) {
         loaded_executable->Execute(absl::MakeSpan(&array, 1), execute_options,
                                    /*devices=*/std::nullopt));
   }
-  TF_ASSERT_OK(result.status.Await());
+  ASSERT_OK(result.status.Await());
   EXPECT_THAT(result.outputs, SizeIs(1));
   EXPECT_EQ(result.outputs[0]->user_context()->Id(), UserContextId(100));
 
@@ -383,7 +384,7 @@ TEST_P(LoadedExecutableImplTest, CompileAndExecute) {
   auto future = result.outputs[0]->CopyToHostBuffer(
       out_data.data(), /*byte_strides=*/std::nullopt,
       ArrayCopySemantics::kAlwaysCopy);
-  TF_ASSERT_OK(future.Await());
+  ASSERT_OK(future.Await());
 
   std::vector<float> expected_out_data(6);
   absl::c_iota(expected_out_data, 1);
@@ -434,7 +435,7 @@ TEST_P(LoadedExecutableImplTest, CompileAndExecutePortable) {
         loaded_executable->Execute(absl::MakeSpan(&array, 1), execute_options,
                                    /*devices=*/std::move(device_list)));
   }
-  TF_ASSERT_OK(result.status.Await());
+  ASSERT_OK(result.status.Await());
   EXPECT_THAT(result.outputs, SizeIs(1));
   EXPECT_EQ(result.outputs[0]->user_context()->Id(), UserContextId(100));
 
@@ -442,7 +443,7 @@ TEST_P(LoadedExecutableImplTest, CompileAndExecutePortable) {
   auto future = result.outputs[0]->CopyToHostBuffer(
       out_data.data(), /*byte_strides=*/std::nullopt,
       ArrayCopySemantics::kAlwaysCopy);
-  TF_ASSERT_OK(future.Await());
+  ASSERT_OK(future.Await());
 
   std::vector<float> expected_out_data(6);
   absl::c_iota(expected_out_data, 1);
@@ -490,7 +491,7 @@ TEST_P(LoadedExecutableImplTest, DoNotFillStatus) {
   auto future = result.outputs[0]->CopyToHostBuffer(
       out_data.data(), /*byte_strides=*/std::nullopt,
       ArrayCopySemantics::kAlwaysCopy);
-  TF_ASSERT_OK(future.Await());
+  ASSERT_OK(future.Await());
 
   std::vector<float> expected_out_data(6);
   absl::c_iota(expected_out_data, 1);
@@ -524,7 +525,7 @@ module @nop attributes {
       LoadedExecutable::ExecuteResult result,
       executable->Execute({}, options, /*devices=*/std::nullopt));
 
-  TF_ASSERT_OK(result.status.Await());
+  ASSERT_OK(result.status.Await());
 }
 
 TEST_P(LoadedExecutableImplTest, Donation) {
@@ -590,31 +591,31 @@ module @add_sub {
   // The second input array is marked as non-donatable in the execute option,
   // which should be respected by the execution.
   EXPECT_FALSE(arrays[1]->IsDeleted());
-  TF_EXPECT_OK(arrays[1]->GetReadyFuture().Await());
+  EXPECT_OK(arrays[1]->GetReadyFuture().Await());
 
   // Copy will succeed as long as the ordering is preserved.
-  TF_ASSERT_OK(copy_future.Await());
+  ASSERT_OK(copy_future.Await());
   EXPECT_THAT(data, ElementsAre(0, 1, 2, 3, 4, 5));
 
-  TF_ASSERT_OK(result.status.Await());
+  ASSERT_OK(result.status.Await());
   EXPECT_THAT(result.outputs, SizeIs(2));
 
   {
     std::vector<int32_t> output(6);
-    TF_ASSERT_OK(result.outputs[0]
-                     ->CopyToHostBuffer(output.data(),
-                                        /*byte_strides=*/std::nullopt,
-                                        ArrayCopySemantics::kAlwaysCopy)
-                     .Await());
+    ASSERT_OK(result.outputs[0]
+                  ->CopyToHostBuffer(output.data(),
+                                     /*byte_strides=*/std::nullopt,
+                                     ArrayCopySemantics::kAlwaysCopy)
+                  .Await());
     EXPECT_THAT(output, ElementsAre(0, 2, 4, 6, 8, 10));
   }
   {
     std::vector<int32_t> output(6);
-    TF_ASSERT_OK(result.outputs[1]
-                     ->CopyToHostBuffer(output.data(),
-                                        /*byte_strides=*/std::nullopt,
-                                        ArrayCopySemantics::kAlwaysCopy)
-                     .Await());
+    ASSERT_OK(result.outputs[1]
+                  ->CopyToHostBuffer(output.data(),
+                                     /*byte_strides=*/std::nullopt,
+                                     ArrayCopySemantics::kAlwaysCopy)
+                  .Await());
     EXPECT_THAT(output, ElementsAre(0, 0, 0, 0, 0, 0));
   }
 }
@@ -642,7 +643,7 @@ TEST(ExecutableTest, ExecutableSerialization) {
   if (absl::IsUnimplemented(serialized_executable.status())) {
     GTEST_SKIP() << "Serialization is not supported on this platform.";
   }
-  TF_ASSERT_OK(serialized_executable);
+  ASSERT_OK(serialized_executable);
 
   xla::ifrt::SerializedXlaExecutableMetadata metadata;
   tsl::protobuf::io::ArrayInputStream input_stream(
@@ -855,7 +856,7 @@ TEST(ExecutableTest, ExecutableSerialization) {
                           deserialized_executable->Execute(
                               absl::MakeSpan(input_arrays), execute_options,
                               /*devices=*/std::nullopt));
-  TF_ASSERT_OK(result.status.Await());
+  ASSERT_OK(result.status.Await());
   EXPECT_THAT(result.outputs, SizeIs(2));
 
   {
@@ -863,7 +864,7 @@ TEST(ExecutableTest, ExecutableSerialization) {
     tsl::Future<> future = result.outputs[0]->CopyToHostBuffer(
         out_data.data(), /*byte_strides=*/std::nullopt,
         xla::ifrt::ArrayCopySemantics::kAlwaysCopy);
-    TF_ASSERT_OK(future.Await());
+    ASSERT_OK(future.Await());
     EXPECT_THAT(out_data, ElementsAre(0, 2, 4, 6, 8, 10));
   }
 
@@ -879,7 +880,7 @@ TEST(ExecutableTest, ExecutableSerialization) {
       auto future = output_shards[0]->CopyToHostBuffer(
           out_data.data(), /*byte_strides=*/std::nullopt,
           xla::ifrt::ArrayCopySemantics::kAlwaysCopy);
-      TF_ASSERT_OK(future.Await());
+      ASSERT_OK(future.Await());
       EXPECT_THAT(out_data, testing::Each(0));
     }
     {
@@ -887,7 +888,7 @@ TEST(ExecutableTest, ExecutableSerialization) {
       auto future = output_shards[1]->CopyToHostBuffer(
           out_data.data(), /*byte_strides=*/std::nullopt,
           xla::ifrt::ArrayCopySemantics::kAlwaysCopy);
-      TF_ASSERT_OK(future.Await());
+      ASSERT_OK(future.Await());
       EXPECT_THAT(out_data, testing::Each(0));
     }
   }
