@@ -129,6 +129,16 @@ struct TimerStats {
   uint64_t times_called ABSL_GUARDED_BY(stats_mutex) = 0;
 };
 
+inline std::string XlaFormatDevice(int device_ordinal) {
+  return absl::StrFormat("device=[%d] ", device_ordinal);
+}
+
+#define XLA_VLOG_DEVICE(level, device_ordinal) \
+  VLOG(level) << xla::XlaFormatDevice(device_ordinal)
+
+#define XLA_LOG_DEVICE(level, device_ordinal) \
+  LOG(level) << xla::XlaFormatDevice(device_ordinal)
+
 // RAII timer for XLA_SCOPED_LOGGING_TIMER and XLA_SCOPED_LOGGING_TIMER_LEVEL
 // macros above.  Recommended usage is via the macros so you don't have to give
 // the timer a name or worry about calling VLOG_IS_ON yourself.
