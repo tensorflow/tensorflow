@@ -98,7 +98,7 @@ jobs:
             echo "Pull Request Base Ref: ${{ github.event.pull_request.base.ref }}"
           fi
       # Find the current PR number, if any, because github context doesn't have it for push events.
-      - uses: jwalton/gh-find-current-pr@2f6a0c6ed5c54c19f04d8411e0723b3de68f464a # v1.3.3
+      - uses: jwalton/gh-find-current-pr@v1.3.3
         id: find_pr
         with:
           # Can be "open", "closed", or "all".  Defaults to "open".
@@ -110,7 +110,7 @@ jobs:
           PR: ${{ steps.find_pr.outputs.pr }}
 
       - name: Checkout OpenXLA
-        uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6.0.0
+        uses: actions/checkout@v6.0.0
       - name: Wait For Connection
         uses: google-ml-infra/actions/ci_connection@7f5ca0c263a81ed09ea276524c1b9192f1304e3c
         with:
@@ -235,7 +235,7 @@ jobs:
           gsutil cp "$OUTPUT_FILE" "$GCS_BUCKET/$GCS_OBJECT_NAME"
 
       - name: Upload XSpace artifacts
-        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
+        uses: actions/upload-artifact@v5.0.0
         with:
           name: xspace-artifacts-${{ matrix.job_info.pool }}-${{ matrix.job_info.platform }}
           path: ${{ env.XSPACE_FILE }}
