@@ -236,6 +236,17 @@ class CommonPjRtClient : public PjRtClient {
       Future<std::string> serialized_descriptor,
       PjRtBuffer::RemoteSendCallback on_done);
 
+  static absl::Status PrepareArguments(
+      const ExecuteOptions& options,
+      absl::Span<PjRtBuffer* const> argument_handles,
+      absl::Span<int const> donated_params, PjRtDeviceEventSet& extra_deps,
+      PjRtDeviceEventSet& control_deps,
+      absl::InlinedVector<tsl::RCReference<CommonPjRtRawBuffer>, 4>&
+          input_buffers,
+      absl::InlinedVector<CommonPjRtBuffer::ScopedHold, 4>& device_buffers,
+      PjRtDevice* device, int replica, int partition,
+      absl::Span<const Shape> parameter_device_shapes, bool& is_error);
+
   absl::StatusOr<absl::InlinedVector<tsl::RCReference<CommonPjRtRawBuffer>, 4>>
   AllocateOutputBuffersWithInputReuse(
       const Shape& output_device_shape,

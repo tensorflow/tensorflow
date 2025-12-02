@@ -26,6 +26,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/log/check.h"
@@ -47,7 +48,9 @@ limitations under the License.
 #include "xla/pjrt/device_event.h"
 #include "xla/pjrt/host_callback.h"
 #include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/raw_buffer.h"
+#include "xla/pjrt/utils.h"
 #include "xla/primitive_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -424,6 +427,139 @@ void CommonPjRtClient::ScheduleRemoteSend(
                    memory_space->DebugString()));
   on_done(error, /*sends_were_enqueued=*/false);
   usage_event_promise->SetError(error);
+}
+
+absl::Status CommonPjRtClient::PrepareArguments(
+    const ExecuteOptions& options,
+    absl::Span<PjRtBuffer* const> argument_handles,
+    absl::Span<int const> donated_params, PjRtDeviceEventSet& extra_deps,
+    PjRtDeviceEventSet& control_deps,
+    absl::InlinedVector<tsl::RCReference<CommonPjRtRawBuffer>, 4>&
+        input_buffers,
+    absl::InlinedVector<CommonPjRtBuffer::ScopedHold, 4>& device_buffers,
+    PjRtDevice* device, int replica, int partition,
+    absl::Span<const Shape> parameter_device_shapes, bool& is_error) {
+  input_buffers.reserve(argument_handles.size());
+  device_buffers.reserve(argument_handles.size());
+  auto donate_it = donated_params.begin();
+  {
+    tsl::profiler::TraceMe t2("Handle inputs");
+    // State for `TestBufferDonationClashes`.
+    absl::flat_hash_map<const void*, std::pair<bool, int>> donation_clashes;
+    donation_clashes.reserve(argument_handles.size());
+    // The first element is the argument index of the donated buffer, and the
+    // second element is the size in bytes of the donated buffer.
+    std::vector<std::pair<int, size_t>> donated_buffer_stats;
+    for (int i = 0; i < argument_handles.size(); ++i) {
+      PjRtBuffer* handle = argument_handles[i];
+      auto* tfrt_buffer = tensorflow::down_cast<CommonPjRtBufferImpl*>(handle);
+      if (tfrt_buffer->device() != device) {
+        return InvalidArgument(
+            "Buffer passed to Execute() as argument %d to replica %d is on "
+            "device %s, but replica is assigned to device %s.",
+            i, replica, tfrt_buffer->device()->DebugString(),
+            device->DebugString());
+      }
+      const bool donated_param =
+          donate_it != donated_params.end() && *donate_it == i;
+      const bool donation_denied_at_runtime =
+          options.non_donatable_input_indices.contains(i);
+      if (donated_param && donation_denied_at_runtime &&
+          tfrt_buffer->on_device_shape().has_layout() &&
+          tfrt_buffer->on_device_shape().layout().memory_space() ==
+              Layout::kHostMemorySpace) {
+        return absl::UnimplementedError(
+            "pinned_host buffers do not support donation denial at runtime via "
+            "`ExecuteOptions::non_donatable_input_indices`");
+      }
+      bool must_donate = donated_param && !donation_denied_at_runtime;
+      if (must_donate) {
+        ++donate_it;
+        if (VLOG_IS_ON(1)) {
+          TF_ASSIGN_OR_RETURN(size_t on_device_size,
+                              tfrt_buffer->GetOnDeviceSizeInBytes());
+          donated_buffer_stats.emplace_back(std::make_pair(i, on_device_size));
+        }
+      }
+      TF_RETURN_IF_ERROR(TestBufferDonationClashes(
+          tfrt_buffer, donation_clashes, must_donate, i, replica, partition));
+      device_buffers.emplace_back(tfrt_buffer->GetBufferWithHold(
+          must_donate ? CommonPjRtBuffer::ScopedHold::kDonation
+                      : CommonPjRtBuffer::ScopedHold::kUsage));
+      CommonPjRtBuffer::ScopedHold& hold = device_buffers.back();
+      if (!hold.ok()) {
+        return InvalidArgument(
+            "Invalid buffer passed to Execute() as argument %d to replica %d: "
+            "%s",
+            i, replica, hold.status().ToString());
+      }
+      auto* device_buffer = hold.buffer();
+
+      const bool is_handle_dynamic_shape =
+          handle->on_device_shape().is_dynamic();
+
+      const Shape& expected_shape = parameter_device_shapes[i];
+      if (device_buffer->raw_buffer()) {
+        tsl::RCReference<CommonPjRtRawBuffer> actual_buffer =
+            device_buffer->raw_buffer();
+        if (is_handle_dynamic_shape && !expected_shape.is_dynamic()) {
+          TF_ASSIGN_OR_RETURN(auto handle_logical_device_shape,
+                              handle->logical_on_device_shape());
+          auto status_or_buffer =
+              actual_buffer->RemoveDynamicShapeMetadataIfPresent(
+                  handle_logical_device_shape);
+
+          if (!status_or_buffer.ok()) {
+            absl::Status status = status_or_buffer.status();
+            tsl::errors::AppendToMessage(
+                &status, absl::StrCat("; Error when preparing the input buffer "
+                                      "to Execute() as argument ",
+                                      i, " to replica ", replica));
+            return status;
+          }
+          actual_buffer = std::move(status_or_buffer).value();
+        }
+        input_buffers.push_back(std::move(actual_buffer));
+      } else {
+        is_error = true;
+      }
+
+      // Definition events are never modified after buffer construction.
+      is_error |= device_buffer->AddDefinitionEventsToSet(extra_deps);
+      // If we are trying to donate this buffer, we must wait on its usage
+      // events as well as its definition events to ensure that all reads on
+      // this buffer (e.g., d2h transfer) have been completed before it can be
+      // mutated. Usage holds on this buffer are excluded during a donation hold
+      // so we know that its usage events won't be modified while we are
+      // enqueueing, but we ignore any errors from usage events.
+      if (must_donate) {
+        device_buffer->AddUsageEventsToSet(control_deps);
+      }
+    }
+    // Debug logging of buffer donation and input buffer shapes and size.
+    if (VLOG_IS_ON(1)) {
+      // Buffer donation information.
+      if (!argument_handles.empty()) {
+        LOG(INFO) << donated_buffer_stats.size() << " arguments out of total "
+                  << argument_handles.size() << " arguments will be donated.";
+        for (auto [index, buffer_size] : donated_buffer_stats) {
+          LOG(INFO) << "Argument " << index << " with size " << buffer_size
+                    << " will be donated.";
+        }
+      }
+      // Input buffers shape and size.
+      for (int i = 0; i < input_buffers.size(); ++i) {
+        size_t buffer_size = input_buffers[i]->GetOnDeviceSizeInBytes();
+        TF_ASSIGN_OR_RETURN(Shape actual_input_shape,
+                            argument_handles[i]->logical_on_device_shape());
+        VLOG(2) << "input buffer with index " << i
+                << " has shape: " << actual_input_shape.ToString()
+                << " and size: " << buffer_size;
+      }
+    }
+  }
+
+  return absl::OkStatus();
 }
 
 absl::StatusOr<absl::InlinedVector<tsl::RCReference<CommonPjRtRawBuffer>, 4>>
