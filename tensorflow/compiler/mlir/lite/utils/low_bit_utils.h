@@ -32,6 +32,12 @@ std::vector<uint8_t> PackLowBitValuesDensely(std::vector<uint8_t> src_buffer,
 std::vector<char> UnpackDenseLowBitIntoInt8(
     const std::vector<uint8_t>& src_buffer, int64_t num_elements,
     int bit_width);
+
+// Assumes `src_buffer` contains densely packed low bit elements.
+// Returns a vector where each uint8 element contains an unpacked value.
+std::vector<char> UnpackDenseLowBitIntoUint8(
+    const std::vector<uint8_t>& src_buffer, int64_t num_elements,
+    int bit_width);
 }  // namespace tflite
 
 #endif  // TENSORFLOW_COMPILER_MLIR_LITE_UTILS_LOW_BIT_UTILS_H_
