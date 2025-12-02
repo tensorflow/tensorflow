@@ -24,6 +24,7 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
+#include "absl/base/attributes.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -89,6 +90,7 @@ class AttributeMap {
 
   explicit AttributeMap(Map map) : map_(std::move(map)) {}
 
+  ABSL_DEPRECATED("map() is not thread-safe. Use Get() function instead.")
   const Map& map() const { return map_; }
 
   template <typename T>
