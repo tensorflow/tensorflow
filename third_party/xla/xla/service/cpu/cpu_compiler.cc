@@ -2352,10 +2352,12 @@ absl::StatusOr<std::unique_ptr<BufferAssignment>>
 CpuCompiler::CreateBufferAssignment(const HloModule& module) const {
   // Run buffer allocation on the HLO graph.
   AliasInfo alias_info;
+  BufferAssigner::Options opts;
+  opts.allocate_buffers_for_constants = true;
   return BufferAssigner::Run(
       &module, std::make_unique<SequentialHloOrdering>(module.schedule()),
       BufferSizeBytesFunction(), &alias_info, memory_alignment,
-      /*allocate_buffers_for_constants=*/true);
+      std::move(opts));
 }
 
 }  // namespace cpu

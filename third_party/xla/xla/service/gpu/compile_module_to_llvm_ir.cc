@@ -206,6 +206,10 @@ absl::StatusOr<std::unique_ptr<BufferAssignment>> RunBufferAssignment(
                 (int)MemorySpaceColor::kTempBuffer)
           : std::nullopt;
 
+  BufferAssigner::Options opts;
+  opts.allocate_buffers_for_constants = true;
+  opts.colorer = CreateColorer(options);
+  opts.temp_buffer_color = color;
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<BufferAssignment> buffer_assignment,
       BufferAssigner::Run(
@@ -213,12 +217,7 @@ absl::StatusOr<std::unique_ptr<BufferAssignment>> RunBufferAssignment(
           std::move(buffer_size_bytes_function), alias_info,
           /*color_alignment=*/
           [](LogicalBuffer::Color) { return kXlaAllocatedBufferAlignBytes; },
-          /*allocate_buffers_for_constants=*/true,
-          /*colorer=*/CreateColorer(options),
-          /*must_not_live_out=*/{},
-          /*preset_assignments*/ {},
-          /*private_stack*/ {}, /*heap_buffer_interval_compare*/ nullptr,
-          /*isolation_options*/ std::nullopt, color));
+          std::move(opts)));
 
   VLOG(1) << "Buffer Assignment Stats for " << module->name() << "\n"
           << buffer_assignment->StatsString(alias_info);

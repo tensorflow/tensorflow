@@ -1166,6 +1166,8 @@ TEST(HloModuleTest, TestCreateFromProtoUpdatesBufferAssignment) {
     return ShapeUtil::ByteSizeOf(buffer.shape(), sizeof(void*));
   };
 
+  BufferAssigner::Options opts;
+  opts.allocate_buffers_for_constants = true;
   TF_ASSERT_OK_AND_ASSIGN(
       auto buffer_assignment,
       BufferAssigner::Run(
@@ -1175,7 +1177,7 @@ TEST(HloModuleTest, TestCreateFromProtoUpdatesBufferAssignment) {
           /*buffer_size=*/std::move(buffer_size_func),
           /*alias_info=*/&alias_info,
           /*color_alignment=*/[](LogicalBuffer::Color) -> int64_t { return 1; },
-          /*allocate_buffers_for_constants=*/true));
+          /*options=*/std::move(opts)));
 
   BufferAssignmentProto buffer_assignment_proto = buffer_assignment->ToProto();
   *opt_hlo_module_proto.mutable_buffer_assignment() = buffer_assignment_proto;
