@@ -1057,7 +1057,7 @@ TEST_P(IfrtBackendHandlerTest, DeleteArraySuccess) {
   TF_ASSERT_OK_AND_ASSIGN(auto resp, CallBackend(std::move(ifrt_request)));
   EXPECT_THAT(tsl::StatusFromProto(resp->response_metadata().status()),
               absl_testing::IsOk());
-  TF_EXPECT_OK(
+  EXPECT_OK(
       CheckFuture(resp->delete_array_response().deletion_future_handle()));
 }
 
@@ -1174,7 +1174,7 @@ TEST_P(IfrtBackendHandlerTest, CompileSuccess) {
                 device_ids: [ 0, 1, 2, 3 ]
                 fingerprint_value: "fingerprint"
               )pb")));
-  TF_EXPECT_OK(CheckFuture(response.ready_future_handle()));
+  EXPECT_OK(CheckFuture(response.ready_future_handle()));
 }
 
 TEST_P(IfrtBackendHandlerTest, CompileFailure) {
