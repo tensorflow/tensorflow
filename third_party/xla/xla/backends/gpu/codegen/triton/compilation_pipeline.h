@@ -18,7 +18,6 @@ limitations under the License.
 
 #include "mlir/Pass/PassManager.h"
 #include "xla/stream_executor/device_description.h"
-#include "triton/Dialect/TritonNvidiaGPU/Transforms/Passes.h"
 
 namespace xla::gpu {
 
@@ -29,19 +28,9 @@ void CreateTritonXlaPipeline(
     bool allow_tma, int num_stages);
 
 // Creates a Triton compilation pipeline.
-//
-// `out_cluster_info` must be kept alive at least until pm.run() is called.
-// It should be read after that. We have to pass the cluster dims to
-// LaunchDimensions. Triton currently uses this as an out-parameter to return
-// the cluster dims determined based on `config.num_ctas` and a heuristic. There
-// are some signs that show that this was intended to be used as an in-out
-// parameter which would give a hint to Triton which cluster dims we prefer to
-// use, but that's not the case currently.
-void CreateTritonPipeline(
-    mlir::OpPassManager* pm,
-    const stream_executor::GpuComputeCapability& gpu_cc, int num_warps,
-    int num_ctas, int num_stages,
-    mlir::triton::nvidia_gpu::ClusterInfo& out_cluster_info);
+void CreateTritonPipeline(mlir::OpPassManager* pm,
+                          const stream_executor::GpuComputeCapability& gpu_cc,
+                          int num_warps, int num_ctas, int num_stages);
 
 }  // namespace xla::gpu
 

@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/strings/str_join.h"
 #include "mlir/IR/MLIRContext.h"
+#include "mlir/Pass/Pass.h"
 #include "mlir/Pass/PassManager.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 

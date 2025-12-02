@@ -228,13 +228,12 @@ absl::StatusOr<CompilationResult> Compile(absl::string_view module,
 
   mlir::PassManager pm(&context);
   pm.enableVerifier();
-  mlir::triton::nvidia_gpu::ClusterInfo cluster_info;
   TF_ASSIGN_OR_RETURN(
       auto cuda_cc,
       stream_executor::CudaComputeCapability::FromString(arch_name));
   xla::gpu::CreateTritonPipeline(&pm,
                                  stream_executor::GpuComputeCapability(cuda_cc),
-                                 num_warps, num_ctas, num_stages, cluster_info);
+                                 num_warps, num_ctas, num_stages);
   if (failed(pm.run(*module_op))) {
     return absl::InternalError("Failed to compile Triton IR to LLVM IR");
   }
@@ -247,9 +246,6 @@ absl::StatusOr<CompilationResult> Compile(absl::string_view module,
   return CompilationResult{
       ptx,
       shared_mem_bytes,
-      cluster_info.clusterDimX,
-      cluster_info.clusterDimY,
-      cluster_info.clusterDimZ,
   };
 }
 
