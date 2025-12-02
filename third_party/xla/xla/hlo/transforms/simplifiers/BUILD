@@ -382,6 +382,7 @@ cc_library(
     hdrs = ["algebraic_simplifier.h"],
     copts = tsl_copts(),
     deps = [
+        "//third_party/cppitertools",
         "//xla:comparison_util",
         "//xla:literal",
         "//xla:literal_util",
