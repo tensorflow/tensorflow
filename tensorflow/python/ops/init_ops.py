@@ -36,7 +36,6 @@ import numpy as np
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import gen_linalg_ops
@@ -1787,41 +1786,30 @@ def he_uniform(seed=None):
 # Utility functions.
 
 
-
 def _compute_fans(shape):
-  """Returns (fan_in, fan_out) for layers.
+  """Computes the number of input and output units for a weight shape.
 
-  Handles dynamic/symbolic dimensions safely by attempting to extract a
-  constant value and otherwise raising an informative TypeError.
+  Args:
+    shape: Integer shape tuple or TF tensor shape.
+
+  Returns:
+    A tuple of integer scalars (fan_in, fan_out).
   """
-  def _to_int(value):
-    """Convert value to int, handling symbolic tensors from XLA."""
-    const_value = tensor_util.constant_value(value)
-    if const_value is not None:
-      return int(const_value)
-    try:
-      return int(value)
-    except (TypeError, ValueError):
-      raise TypeError(
-          "Cannot compute fan_in/fan_out with dynamic shape dimensions. "
-          f"Shape dimension {value!r} is symbolic/dynamic. "
-          "Use concrete shapes or compute weights outside tf.function."
-      )
-
   if len(shape) < 1:  # Just to avoid errors for constants.
     fan_in = fan_out = 1
   elif len(shape) == 1:
-    fan_in = fan_out = _to_int(shape[0])
+    fan_in = fan_out = shape[0]
   elif len(shape) == 2:
-    fan_in = _to_int(shape[0])
-    fan_out = _to_int(shape[1])
+    fan_in = shape[0]
+    fan_out = shape[1]
   else:
-    # Assuming convolution kernels (kernel spatial dims..., in_depth, out_depth)
+    # Assuming convolution kernels (2D, 3D, or more).
+    # kernel shape: (..., input_depth, depth)
     receptive_field_size = 1
     for dim in shape[:-2]:
-      receptive_field_size *= _to_int(dim)
-    fan_in = _to_int(shape[-2]) * receptive_field_size
-    fan_out = _to_int(shape[-1]) * receptive_field_size
+      receptive_field_size *= dim
+    fan_in = shape[-2] * receptive_field_size
+    fan_out = shape[-1] * receptive_field_size
   return int(fan_in), int(fan_out)
 
 
