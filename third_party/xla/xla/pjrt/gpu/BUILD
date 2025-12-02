@@ -4,7 +4,7 @@ load("//xla:xla.default.bzl", "xla_cc_test")
 load("//xla/pjrt/gpu:package_groups.bzl", "xla_gpu_internal_packages")
 load("//xla/stream_executor:build_defs.bzl", "if_cuda_or_rocm")
 load("//xla/tests:build_defs.bzl", "xla_test")
-load("//xla/tsl:tsl.bzl", "internal_visibility")
+load("//xla/tsl:tsl.bzl", "if_google", "internal_visibility")
 load("//xla/tsl/platform:build_config.bzl", "tf_proto_library")
 load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 
@@ -188,24 +188,15 @@ cc_library(
 
 xla_test(
     name = "se_gpu_pjrt_client_test",
+    size = "large",
     srcs = ["se_gpu_pjrt_client_test.cc"],
     backend_tags = {
         "gpu": [
             "multi_gpu",
-            "no_oss",
             "noasan",
             "nomsan",
         ],
-        "b200": [
-            # TODO(b/452317320): Re-enable once fixed.
-            "broken",
-            "no_oss",
-        ],
-        "h100": [
-            # TODO(b/452317320): Re-enable once fixed.
-            "broken",
-            "no_oss",
-        ],
+        # TODO(464116734): Re-enable once multi-device presubmits will be available in OSS.
         "nvgpu_any": [
             "broken",
             "no_oss",
@@ -285,7 +276,11 @@ xla_test(
         "@local_tsl//tsl/platform",
         "@local_tsl//tsl/platform:casts",
         "@local_tsl//tsl/platform:platform_port",
-    ],
+    ] + if_google([
+        # In OSS this dependency is added automatically for xla_test targets. See
+        # third_party/tensorflow/compiler/xla/xla.default.bzl.
+        "//xla/tsl/framework:allocator",
+    ]),
 )
 
 xla_test(

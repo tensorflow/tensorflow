@@ -3025,6 +3025,8 @@ static std::string SuccessfulCrossHostTransferTestName(
   return absl::StrFormat("num_arrays_%d", info.param);
 }
 
+static const char* test_binary_name;
+
 class SuccessfulCrossHostTransferTest : public ::testing::TestWithParam<int> {};
 
 TEST_P(SuccessfulCrossHostTransferTest, SuccessfulCrossHostTransfer) {
@@ -3034,22 +3036,24 @@ TEST_P(SuccessfulCrossHostTransferTest, SuccessfulCrossHostTransfer) {
   tsl::SubProcess receiver;
 
   std::vector<std::string> sender_argv;
+  sender_argv.push_back(test_binary_name);
   sender_argv.push_back("successful_cross_host_transfer_test");
   sender_argv.push_back("--test_to_run=SuccessfulCrossHostTransferHelper");
   sender_argv.push_back("--cross_host_test_role=sender");
   sender_argv.push_back(absl::StrFormat("--num_arrays=%d", num_arrays));
 
   std::vector<std::string> receiver_argv;
+  receiver_argv.push_back(test_binary_name);
   receiver_argv.push_back("successful_cross_host_transfer_test");
   receiver_argv.push_back("--test_to_run=SuccessfulCrossHostTransferHelper");
   receiver_argv.push_back("--cross_host_test_role=receiver");
   receiver_argv.push_back(absl::StrFormat("--num_arrays=%d", num_arrays));
 
-  sender.SetProgram("/proc/self/exe", sender_argv);
+  sender.SetProgram(test_binary_name, sender_argv);
   sender.SetChannelAction(tsl::CHAN_STDOUT, tsl::ACTION_PIPE);
   sender.SetChannelAction(tsl::CHAN_STDERR, tsl::ACTION_PIPE);
 
-  receiver.SetProgram("/proc/self/exe", receiver_argv);
+  receiver.SetProgram(test_binary_name, receiver_argv);
   receiver.SetChannelAction(tsl::CHAN_STDOUT, tsl::ACTION_PIPE);
   receiver.SetChannelAction(tsl::CHAN_STDERR, tsl::ACTION_PIPE);
 
@@ -3246,7 +3250,8 @@ TEST_P(ShardedAutotuningTest, ShardedAutotuningWorks) {
     tsl::SubProcess child[kNumNodes];
     for (int node_id = 0; node_id < kNumNodes; ++node_id) {
       std::vector<std::string> argv;
-      argv.reserve(6);
+      argv.reserve(7);
+      argv.push_back(test_binary_name);
       argv.push_back("sharded_autotuning_test");
       argv.push_back("--test_to_run=ShardedAutotuningWorksHelper");
       argv.push_back(absl::StrFormat("--node_id=%d", node_id));
@@ -3262,7 +3267,7 @@ TEST_P(ShardedAutotuningTest, ShardedAutotuningWorks) {
         argv.push_back("--vmodule=gemm_fusion_autotuner=1");
         argv.push_back("--logtostderr");
       }
-      child[node_id].SetProgram("/proc/self/exe", argv);
+      child[node_id].SetProgram(test_binary_name, argv);
       child[node_id].SetChannelAction(tsl::CHAN_STDOUT, tsl::ACTION_PIPE);
       child[node_id].SetChannelAction(tsl::CHAN_STDERR, tsl::ACTION_PIPE);
       ASSERT_TRUE(child[node_id].Start()) << "node " << node_id;
@@ -3407,6 +3412,7 @@ int main(int argc, char* argv[]) {
   // empty. If empty, all tests are run. Otherwise, the test body for
   // 'ShardedAutotuningWorks' or 'SuccessfulCrossHostTransfer' will be run.
   std::string test_to_run;
+  xla::test_binary_name = argv[0];
 
   // Variables used by ShardedAutotuningWorks.
   int node_id = -1;
