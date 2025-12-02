@@ -832,7 +832,6 @@ xla_test(
         ":fission_backend",
         ":gpu_codegen_backend",
         "//xla/backends/autotuner:codegen_backend",
-        "//xla/hlo/analysis:symbolic_expr",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass_pipeline",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",

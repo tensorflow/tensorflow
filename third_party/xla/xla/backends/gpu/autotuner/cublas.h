@@ -32,7 +32,8 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-// A codegen backend for cuBLAS.
+// A codegen backend for cuBLAS, with configurable fallback to cuBLAS LT for F8
+// matmuls.
 // This backend is used to autotune cuBLAS algorithms.
 //
 // Cublas calls are represented as custom-call instructions, with and
@@ -48,9 +49,11 @@ class CublasBackend : public GpuCodegenBackend {
  public:
   explicit CublasBackend(stream_executor::StreamExecutor* stream_executor,
                          const DebugOptions* debug_options, Compiler* compiler,
-                         const Compiler::GpuTargetConfig* target_config)
+                         const Compiler::GpuTargetConfig* target_config,
+                         bool fp8_lt_fallback = false)
       : GpuCodegenBackend("Cublas", debug_options, compiler, target_config,
-                          stream_executor) {}
+                          stream_executor),
+        fp8_lt_fallback_(fp8_lt_fallback) {}
 
   absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>>
   GetSupportedConfigs(const HloInstruction& instr) override;
@@ -62,7 +65,10 @@ class CublasBackend : public GpuCodegenBackend {
                            const BackendConfig& config) override;
 
  private:
+  bool ShouldUseCublasLt(const HloInstruction& instr);
+
   bool IsSupported(const HloInstruction& instr) override;
+  bool fp8_lt_fallback_;
 };
 
 }  // namespace gpu
