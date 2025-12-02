@@ -58,6 +58,7 @@ limitations under the License.
 #include "xla/status_macros.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/launch_dim.h"
+#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 
@@ -189,9 +190,14 @@ absl::StatusOr<TritonFusion::EmitResult> TritonFusion::Emit(
     TF_ASSIGN_OR_RETURN(
         llvm::Function * kernel,
         RemoveUnusedTritonAbiArguments(local_module.get(), ir_emitter_context,
-                                       sanitized_kernel_name, launch_dimensions,
-                                       kernel_arguments));
+                                       sanitized_kernel_name));
+
+    AnnotateAttrsIfUnset(kernel_arguments, *kernel);
     PopulateNvvmAnnotations(local_module.get(), kernel, triton_wrapper_result);
+
+    TF_RETURN_IF_ERROR(AnnotateKernelLaunchDimensions(
+        ir_emitter_context.gpu_device_info(), launch_dimensions, kernel,
+        local_module.get()));
 
     return {{kernel->getName().str(), launch_dimensions,
              triton_wrapper_result.cluster_dim,

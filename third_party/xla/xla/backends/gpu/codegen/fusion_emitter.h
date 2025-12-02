@@ -100,6 +100,10 @@ class KernelFusionInterface : public FusionInterface {
       const Shape& shape, mlir::MLIRContext* ctx);
 };
 
+void CopySelectAttrs(const llvm::Function& src, llvm::Function& dst);
+void AnnotateAttrsIfUnset(const emitters::KernelArguments& arguments,
+                          llvm::Function& dst);
+
 absl::StatusOr<llvm::Function*> BuildKernelPrototype(
     llvm::Module* llvm_module, const se::DeviceDescription& gpu_device_info,
     const std::string& impl_fn_name, const std::string& unique_kernel_name,
@@ -108,9 +112,7 @@ absl::StatusOr<llvm::Function*> BuildKernelPrototype(
 
 absl::StatusOr<llvm::Function*> RemoveUnusedTritonAbiArguments(
     llvm::Module* llvm_module, IrEmitterContext& ir_emitter_context,
-    const std::string& sanitized_kernel_name,
-    LaunchDimensions& launch_dimensions,
-    const emitters::KernelArguments& arguments);
+    const std::string& sanitized_kernel_name);
 
 absl::Status AnnotateKernelLaunchDimensions(
     const se::DeviceDescription& device_info,

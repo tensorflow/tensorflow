@@ -1327,10 +1327,15 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitTritonCustomCall(
             ir_emitter_context_->gpu_device_info().threads_per_warp()));
 
     if (emit_kernels) {
-      TF_RETURN_IF_ERROR(RemoveUnusedTritonAbiArguments(
-                             local_module.get(), *ir_emitter_context_,
-                             kernel_name, launch_dimensions, kernel_arguments)
-                             .status());
+      TF_ASSIGN_OR_RETURN(
+          llvm::Function * kernel,
+          RemoveUnusedTritonAbiArguments(local_module.get(),
+                                         *ir_emitter_context_, kernel_name));
+
+      AnnotateAttrsIfUnset(kernel_arguments, *kernel);
+      TF_RETURN_IF_ERROR(AnnotateKernelLaunchDimensions(
+          ir_emitter_context_->gpu_device_info(), launch_dimensions, kernel,
+          local_module.get()));
     }
 
     kernel_modules_.push_back(std::move(local_module));
