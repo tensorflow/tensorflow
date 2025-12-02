@@ -49,6 +49,7 @@ tf_cc_test(
         "//tensorflow/core/tfrt/mlrt/bytecode:executable",
         "//tensorflow/core/tfrt/mlrt/interpreter:attribute_span",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
@@ -57,8 +58,6 @@ tf_cc_test(
         "@llvm-project//mlir:Parser",
         "@llvm-project//mlir:Support",
         "@local_xla//xla/tsl/platform:resource_loader",
-        "@local_xla//xla/tsl/platform:status_matchers",
-        "@local_xla//xla/tsl/platform:test",
     ],
 )
 

@@ -29,7 +29,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/quantization/common/test_base.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/io.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/quantization_config.pb.h"
-#include "xla/tsl/platform/status_matchers.h"
 #include "tsl/platform/protobuf.h"  // IWYU pragma: keep
 
 namespace mlir::quant::stablehlo {
