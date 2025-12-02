@@ -1,1 +1,35 @@
 Auto generated patch. Do not edit or delete it, even if empty.
+diff -ruN --strip-trailing-cr a/llvm/lib/Transforms/InstCombine/InstCombineSelect.cpp b/llvm/lib/Transforms/InstCombine/InstCombineSelect.cpp
+--- a/llvm/lib/Transforms/InstCombine/InstCombineSelect.cpp
++++ b/llvm/lib/Transforms/InstCombine/InstCombineSelect.cpp
+@@ -1163,6 +1163,7 @@
+   // (X >= Y) ? INT_MAX : (X + C) --> sadd.sat(X, C)
+   // where Y is INT_MAX - C or INT_MAX - C - 1, and C > 0
+   if ((Pred == ICmpInst::ICMP_SGT || Pred == ICmpInst::ICMP_SGE) &&
++      isa<Constant>(Cmp1) &&
+       match(FVal, m_Add(m_Specific(Cmp0), m_StrictlyPositive(C)))) {
+     APInt IntMax =
+         APInt::getSignedMaxValue(Cmp1->getType()->getScalarSizeInBits());
+diff -ruN --strip-trailing-cr a/llvm/test/Transforms/InstCombine/saturating-add-sub.ll b/llvm/test/Transforms/InstCombine/saturating-add-sub.ll
+--- a/llvm/test/Transforms/InstCombine/saturating-add-sub.ll
++++ b/llvm/test/Transforms/InstCombine/saturating-add-sub.ll
+@@ -2671,3 +2671,19 @@
+   %s = select i1 %cmp, i8 127, i8 %d
+   ret i8 %s
+ }
++
++; Make sure we don't crash in this case.
++define i32 @pr153053_strict_pred_with_nonconstant_rhs(i32 %x, i32 %y) {
++; CHECK-LABEL: @pr153053_strict_pred_with_nonconstant_rhs(
++; CHECK-NEXT:  entry:
++; CHECK-NEXT:    [[CMP:%.*]] = icmp slt i32 [[X:%.*]], [[Y:%.*]]
++; CHECK-NEXT:    [[ADD:%.*]] = add i32 [[X]], 1
++; CHECK-NEXT:    [[RES:%.*]] = select i1 [[CMP]], i32 [[ADD]], i32 2147483647
++; CHECK-NEXT:    ret i32 [[RES]]
++;
++entry:
++  %cmp = icmp slt i32 %x, %y
++  %add = add i32 %x, 1
++  %res = select i1 %cmp, i32 %add, i32 2147483647
++  ret i32 %res
++}

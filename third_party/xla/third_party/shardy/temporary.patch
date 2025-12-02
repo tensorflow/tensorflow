@@ -1,72 +1,55 @@
 diff --git a/third_party/llvm/generated.patch b/third_party/llvm/generated.patch
-index 37a7256..509398d 100644
+index 509398d..f8d638a 100644
 --- a/third_party/llvm/generated.patch
 +++ b/third_party/llvm/generated.patch
-@@ -1,29 +1 @@
+@@ -1 +1,35 @@
  Auto generated patch. Do not edit or delete it, even if empty.
--diff -ruN --strip-trailing-cr a/clang/lib/Analysis/ThreadSafety.cpp b/clang/lib/Analysis/ThreadSafety.cpp
----- a/clang/lib/Analysis/ThreadSafety.cpp
--+++ b/clang/lib/Analysis/ThreadSafety.cpp
--@@ -2820,7 +2820,7 @@
--         case CFGElement::AutomaticObjectDtor: {
--           CFGAutomaticObjDtor AD = BI.castAs<CFGAutomaticObjDtor>();
--           const auto *DD = AD.getDestructorDecl(AC.getASTContext());
---          if (!DD->hasAttrs())
--+          if (!DD || !DD->hasAttrs())
--             break;
-- 
--           LocksetBuilder.handleCall(
--diff -ruN --strip-trailing-cr a/clang/test/SemaCXX/no-warn-thread-safety-analysis.cpp b/clang/test/SemaCXX/no-warn-thread-safety-analysis.cpp
----- a/clang/test/SemaCXX/no-warn-thread-safety-analysis.cpp
--+++ b/clang/test/SemaCXX/no-warn-thread-safety-analysis.cpp
--@@ -0,0 +1,12 @@
--+// RUN: %clang_cc1 -fsyntax-only -verify -std=c++11 -Wthread-safety -Wthread-safety-pointer -Wthread-safety-beta -Wno-thread-safety-negative -fcxx-exceptions -DUSE_CAPABILITY=0 %s
--+// RUN: %clang_cc1 -fsyntax-only -verify -std=c++11 -Wthread-safety -Wthread-safety-pointer -Wthread-safety-beta -Wno-thread-safety-negative -fcxx-exceptions -DUSE_CAPABILITY=1 %s
--+// RUN: %clang_cc1 -fsyntax-only -verify -std=c++17 -Wthread-safety -Wthread-safety-pointer -Wthread-safety-beta -Wno-thread-safety-negative -fcxx-exceptions -DUSE_CAPABILITY=0 %s
--+// RUN: %clang_cc1 -fsyntax-only -verify -std=c++17 -Wthread-safety -Wthread-safety-pointer -Wthread-safety-beta -Wno-thread-safety-negative -fcxx-exceptions -DUSE_CAPABILITY=1 %s
--+// expected-no-diagnostics
--+
--+struct foo {
--+  ~foo();
--+};
--+struct bar : foo {};
--+struct baz : bar {};
--+baz foobar(baz a) { return a; }
++diff -ruN --strip-trailing-cr a/llvm/lib/Transforms/InstCombine/InstCombineSelect.cpp b/llvm/lib/Transforms/InstCombine/InstCombineSelect.cpp
++--- a/llvm/lib/Transforms/InstCombine/InstCombineSelect.cpp
+++++ b/llvm/lib/Transforms/InstCombine/InstCombineSelect.cpp
++@@ -1163,6 +1163,7 @@
++   // (X >= Y) ? INT_MAX : (X + C) --> sadd.sat(X, C)
++   // where Y is INT_MAX - C or INT_MAX - C - 1, and C > 0
++   if ((Pred == ICmpInst::ICMP_SGT || Pred == ICmpInst::ICMP_SGE) &&
+++      isa<Constant>(Cmp1) &&
++       match(FVal, m_Add(m_Specific(Cmp0), m_StrictlyPositive(C)))) {
++     APInt IntMax =
++         APInt::getSignedMaxValue(Cmp1->getType()->getScalarSizeInBits());
++diff -ruN --strip-trailing-cr a/llvm/test/Transforms/InstCombine/saturating-add-sub.ll b/llvm/test/Transforms/InstCombine/saturating-add-sub.ll
++--- a/llvm/test/Transforms/InstCombine/saturating-add-sub.ll
+++++ b/llvm/test/Transforms/InstCombine/saturating-add-sub.ll
++@@ -2671,3 +2671,19 @@
++   %s = select i1 %cmp, i8 127, i8 %d
++   ret i8 %s
++ }
+++
+++; Make sure we don't crash in this case.
+++define i32 @pr153053_strict_pred_with_nonconstant_rhs(i32 %x, i32 %y) {
+++; CHECK-LABEL: @pr153053_strict_pred_with_nonconstant_rhs(
+++; CHECK-NEXT:  entry:
+++; CHECK-NEXT:    [[CMP:%.*]] = icmp slt i32 [[X:%.*]], [[Y:%.*]]
+++; CHECK-NEXT:    [[ADD:%.*]] = add i32 [[X]], 1
+++; CHECK-NEXT:    [[RES:%.*]] = select i1 [[CMP]], i32 [[ADD]], i32 2147483647
+++; CHECK-NEXT:    ret i32 [[RES]]
+++;
+++entry:
+++  %cmp = icmp slt i32 %x, %y
+++  %add = add i32 %x, 1
+++  %res = select i1 %cmp, i32 %add, i32 2147483647
+++  ret i32 %res
+++}
 diff --git a/third_party/llvm/workspace.bzl b/third_party/llvm/workspace.bzl
-index 3b35979..daf3e74 100644
+index daf3e74..807db4f 100644
 --- a/third_party/llvm/workspace.bzl
 +++ b/third_party/llvm/workspace.bzl
 @@ -4,8 +4,8 @@ load("//third_party:repo.bzl", "tf_http_archive")
  
  def repo(name):
      """Imports LLVM."""
--    LLVM_COMMIT = "4f39a4ff0ada92870ca1c2dccad382ea04947da8"
--    LLVM_SHA256 = "264c7cc3e166b840911494a2e94cff2ae8730b56239bd91dc8f65c8dc9468262"
-+    LLVM_COMMIT = "0c2701fe7fa002e1befc5f86c268a7964f96d286"
-+    LLVM_SHA256 = "50b0cb64adf161b4441ee32453f2eb9a015263e4eb3c036548f0207cbe3d0707"
+-    LLVM_COMMIT = "0c2701fe7fa002e1befc5f86c268a7964f96d286"
+-    LLVM_SHA256 = "50b0cb64adf161b4441ee32453f2eb9a015263e4eb3c036548f0207cbe3d0707"
++    LLVM_COMMIT = "0bd2f12753604cd072ae0935820ba9a23bb17ccc"
++    LLVM_SHA256 = "e60e866c649331e41907124f8b3537ecea10acf49da7c5a344d78089df492f0e"
  
      tf_http_archive(
          name = name,
-diff --git a/third_party/llvm/zstd.patch b/third_party/llvm/zstd.patch
-index 2d6f45a..39e69eb 100644
---- a/third_party/llvm/zstd.patch
-+++ b/third_party/llvm/zstd.patch
-@@ -9,7 +9,7 @@ index 37e79db376b4..058788948f94 100644
- -        # We unconditionally depend on the custom LLVM zlib wrapper. This will
- -        # be an empty library unless zlib is enabled, in which case it will
- -        # both provide the necessary dependencies and configuration defines.
---        "//third-party:zlib",
-+-        "@llvm_zlib//:zlib",
- -        # We unconditionally depend on the custom LLVM zstd wrapper. This will
- -        # be an empty library unless zstd is enabled, in which case it will
- -        # both provide the necessary dependencies and configuration defines.
-@@ -24,8 +24,8 @@ diff -u a/utils/bazel/llvm-project-overlay/lld/BUILD.bazel  b/utils/bazel/llvm-p
-          "//llvm:TargetParser",
-          "//llvm:TransformUtils",
-          "//llvm:config",
---        "//third-party:zlib",
- -        "//third-party:zstd",
-+-        "@llvm_zlib//:zlib",
-      ],
-  )
- 
