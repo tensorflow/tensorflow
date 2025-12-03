@@ -935,6 +935,7 @@ Build(
     configs=(
         "release_gpu_linux",
         "rbe_linux_cuda",
+        "hermetic_cuda_umd"
     ),
     target_patterns=(
         "//tensorflow/compiler/...",
