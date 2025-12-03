@@ -403,7 +403,7 @@ std::string Env::GetExecutablePath() {
   WCHAR wc_file_path[MAX_PATH] = {0};
   GetModuleFileNameW(hModule, wc_file_path, MAX_PATH);
   string file_path = WideCharToUtf8(wc_file_path);
-  std::copy(file_path.begin(), file_path.end(), exe_path);
+  absl::c_copy(file_path, exe_path);
 #else
   char buf[PATH_MAX] = {0};
   int path_length = readlink("/proc/self/exe", buf, sizeof(buf) - 1);
@@ -468,9 +468,8 @@ bool Env::CreateUniqueFileName(std::string* prefix, const std::string& suffix) {
   if (FileExists(*prefix).ok()) {
     prefix->clear();
     return false;
-  } else {
-    return true;
   }
+  return true;
 }
 
 int32_t Env::GetProcessId() {

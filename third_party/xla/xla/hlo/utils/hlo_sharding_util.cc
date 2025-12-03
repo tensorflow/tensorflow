@@ -60,6 +60,7 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/statusor.h"
@@ -572,7 +573,7 @@ bool MergeShardingIfCompatible(const HloSharding& to_merge,
         result.push_back(sharding.tile_assignment()
                              .Reshape(reshape_dims)
                              .Transpose(local_perm));
-      } while (std::next_permutation(iota.begin(), iota.end()));
+      } while (absl::c_next_permutation(iota));
       return result;
     };
 
@@ -676,7 +677,8 @@ bool MergeShardingIfCompatible(const HloSharding& to_merge,
               gm1.erase(it1);
               gm2.erase(it2);
               return absl::OkStatus();
-            } else if (*it1 < *it2) {
+            }
+            if (*it1 < *it2) {
               it1++;
             } else {
               it2++;
@@ -1568,16 +1570,19 @@ IdentityValueAndHloOpcodeForScatterReduceComputation(
     return std::make_pair(HloInstruction::CreateConstant(LiteralUtil::Zero(
                               scatter.shape().element_type())),
                           root_instruction->opcode());
-  } else if (root_instruction->opcode() == HloOpcode::kMultiply ||
-             root_instruction->opcode() == HloOpcode::kAnd) {
+  }
+  if (root_instruction->opcode() == HloOpcode::kMultiply ||
+      root_instruction->opcode() == HloOpcode::kAnd) {
     return std::make_pair(HloInstruction::CreateConstant(
                               LiteralUtil::One(scatter.shape().element_type())),
                           root_instruction->opcode());
-  } else if (root_instruction->opcode() == HloOpcode::kMaximum) {
+  }
+  if (root_instruction->opcode() == HloOpcode::kMaximum) {
     return std::make_pair(HloInstruction::CreateConstant(LiteralUtil::MinValue(
                               scatter.shape().element_type())),
                           root_instruction->opcode());
-  } else if (root_instruction->opcode() == HloOpcode::kMinimum) {
+  }
+  if (root_instruction->opcode() == HloOpcode::kMinimum) {
     return std::make_pair(HloInstruction::CreateConstant(LiteralUtil::MaxValue(
                               scatter.shape().element_type())),
                           root_instruction->opcode());
@@ -1626,17 +1631,16 @@ HloSharding PartiallyReplicateTiledShardingOnDims(
     new_tile_shape.back() *= group_count;
     new_tile = new_tile.Reshape(new_tile_shape);
     return HloSharding::PartialTile(new_tile, sharding.metadata());
-  } else {
-    new_tile_shape.insert(new_tile_shape.begin() + sharding.TiledDataRank(),
-                          group_count);
-    new_tile = new_tile.Reshape(new_tile_shape);
-    std::vector<OpSharding::Type> subgroup_types;
-    subgroup_types.push_back(OpSharding::REPLICATED);
-    for (OpSharding::Type type : sharding.subgroup_types()) {
-      subgroup_types.push_back(type);
-    }
-    return HloSharding::Subgroup(new_tile, subgroup_types, sharding.metadata());
   }
+  new_tile_shape.insert(new_tile_shape.begin() + sharding.TiledDataRank(),
+                        group_count);
+  new_tile = new_tile.Reshape(new_tile_shape);
+  std::vector<OpSharding::Type> subgroup_types;
+  subgroup_types.push_back(OpSharding::REPLICATED);
+  for (OpSharding::Type type : sharding.subgroup_types()) {
+    subgroup_types.push_back(type);
+  }
+  return HloSharding::Subgroup(new_tile, subgroup_types, sharding.metadata());
 }
 
 HloSharding PartiallyReplicateTiledShardingOnAllDimsExcept(
@@ -2846,9 +2850,8 @@ bool IsSpatiallyPartitioned(const HloSharding& sharding) {
                           [](const HloSharding& sub_sharding) {
                             return IsSpatiallyPartitioned(sub_sharding);
                           });
-  } else {
-    return !sharding.IsTileMaximal() || sharding.IsReplicated();
   }
+  return !sharding.IsTileMaximal() || sharding.IsReplicated();
 }
 
 // Returns
@@ -2883,7 +2886,9 @@ int MaskTupleShardingStrictlyBetter(const HloSharding& lhs,
         mask |= 2;
       }
     }
-    if (mask == 3) break;
+    if (mask == 3) {
+      break;
+    }
   }
   return mask;
 }

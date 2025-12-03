@@ -15,13 +15,16 @@ limitations under the License.
 
 #include "xla/tsl/framework/device_id_utils.h"
 
+#include <climits>
+#include <cstddef>
 #include <cstdint>
-#include <numeric>
 #include <set>
 #include <string>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/numbers.h"
@@ -29,8 +32,10 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/tsl/framework/device_id.h"
 #include "xla/tsl/framework/device_id_manager.h"
+#include "xla/tsl/framework/device_type.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/util/device_name_utils.h"
 #include "tsl/platform/str_util.h"
 
 namespace tsl {
@@ -82,7 +87,7 @@ absl::Status ParseVisibleDeviceList(
   if (visible_device_list.empty()) {
     visible_device_order->resize(visible_device_count);
     // By default, visible to virtual mapping is unchanged.
-    std::iota(visible_device_order->begin(), visible_device_order->end(), 0);
+    absl::c_iota(*visible_device_order, 0);
   } else {
     const std::vector<std::string> order_str =
         tsl::str_util::Split(visible_device_list, ',');  // non-absl ok
