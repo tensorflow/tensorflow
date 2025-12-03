@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <memory>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/log/log.h"
 #include "xla/hlo/testlib/filecheck.h"
@@ -52,8 +53,8 @@ ENTRY main {
   AllReduceDecomposer decomposer;
   TF_ASSERT_OK_AND_ASSIGN(bool changed, decomposer.Run(module.get(), {}));
   EXPECT_TRUE(changed);
-  TF_EXPECT_OK(VerifyHloModule(module.get(), true, true));
-  TF_EXPECT_OK(HloCSE(true).Run(module.get()));
+  EXPECT_OK(VerifyHloModule(module.get(), true, true));
+  EXPECT_OK(HloCSE(true).Run(module.get()));
 
   EXPECT_TRUE(*RunFileCheck(module->ToString(), R"(
     // CHECK: f32[1,16]{1,0} reshape
