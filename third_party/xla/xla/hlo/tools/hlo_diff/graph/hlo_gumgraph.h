@@ -54,7 +54,8 @@ class HloGumgraph {
   // various graph properties such as height, siblings per node etc.
   static absl::StatusOr<std::unique_ptr<const HloGumgraph>> Create(
       const HloModule* absl_nonnull hlo_module,
-      const HloGumgraphFingerprintOptions& fingerprint_options = {});
+      const HloGumgraphFingerprintOptions& fingerprint_options = {},
+      bool precompute_instruction_dependencies = true);
 
   // HloGumgraph is neither copyable nor movable as it can be really large.
   HloGumgraph(const HloGumgraph&) = delete;

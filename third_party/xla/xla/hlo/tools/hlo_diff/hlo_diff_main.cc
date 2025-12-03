@@ -250,6 +250,9 @@ int main(int argc, char** argv) {
           "ignore_shape", &opts.diff_options.fingerprint_options.ignore_shape,
           "If true, ignore array/tensor shapes when matching instructions "
           "and reporting diffs."),
+      tsl::Flag("precompute_instruction_dependencies",
+                &opts.diff_options.precompute_instruction_dependencies,
+                "If true, precompute instruction dependencies."),
       tsl::Flag("text_output", &opts.render_options.text_output,
                 "file to save diff blocks as text"),
       tsl::Flag("html_output", &opts.render_options.html_output,
@@ -258,8 +261,8 @@ int main(int argc, char** argv) {
   };
 
   std::string usage = tsl::Flags::Usage(argv[0], flag_list);
-  bool parse_ok = tsl::Flags::Parse(&argc, argv, flag_list);
   tsl::port::InitMain(xla::hlo_diff::kUsage, &argc, &argv);
+  bool parse_ok = tsl::Flags::Parse(&argc, argv, flag_list);
   LOG_IF(QFATAL, argc != 1 || !parse_ok || need_help) << usage;
   xla::hlo_diff::RealMain(opts);
   return 0;

@@ -363,7 +363,8 @@ void HloGumgraph::PrecomputeInstructionDependencies() {
 
 absl::StatusOr<std::unique_ptr<const HloGumgraph>> HloGumgraph::Create(
     const HloModule* absl_nonnull hlo_module,
-    const HloGumgraphFingerprintOptions& fingerprint_options) {
+    const HloGumgraphFingerprintOptions& fingerprint_options,
+    bool precompute_instruction_dependencies) {
   CHECK(hlo_module != nullptr) << "Expected a non-null hlo module";
   CHECK(hlo_module->entry_computation() != nullptr)
       << "Expected a non-null entry computation";
@@ -383,7 +384,9 @@ absl::StatusOr<std::unique_ptr<const HloGumgraph>> HloGumgraph::Create(
   }
   graph->PrecomputeSizeAndHeight();
   TF_RETURN_IF_ERROR(graph->PrecomputeComputationFingerprint());
-  graph->PrecomputeInstructionDependencies();
+  if (precompute_instruction_dependencies) {
+    graph->PrecomputeInstructionDependencies();
+  }
 
   return graph;
 };
