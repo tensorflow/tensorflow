@@ -58,7 +58,7 @@ class TritonFusionNumericsVerifierTest
                                          absl::string_view type) {
     auto m = ParseAndReturnVerifiedModule(
         absl::Substitute(hlo_text_template, type), GetModuleConfigForTest());
-    TF_EXPECT_OK(m);
+    EXPECT_OK(m);
     return std::move(m.value());
   }
 
@@ -79,7 +79,7 @@ class TritonFusionNumericsVerifierTest
   DeviceOrDevicelessConfig CreateDeviceOrDevicelessConfig() {
     se::Platform* platform = PlatformUtil::GetDefaultPlatform().value();
     auto executors_or = PlatformUtil::GetStreamExecutors(platform);
-    TF_EXPECT_OK(executors_or);
+    EXPECT_OK(executors_or);
     return DeviceOrDevicelessConfig{DeviceConfig{executors_or->at(0), nullptr}};
   }
 
@@ -87,7 +87,7 @@ class TritonFusionNumericsVerifierTest
       DeviceOrDevicelessConfig& config) {
     auto compile_util_or =
         AutotunerCompileUtil::Create(config, GetDebugOptionsForTest());
-    TF_EXPECT_OK(compile_util_or);
+    EXPECT_OK(compile_util_or);
     return std::move(compile_util_or).value();
   }
 
@@ -138,7 +138,7 @@ TEST_P(TritonFusionNumericsVerifierTest, VerifyExactSoftmaxFusionNumerics) {
   EXPECT_NE(TritonFusion(*module), nullptr);
   auto verifier = TritonFusionNumericsVerifier(CreateDeviceOrDevicelessConfig(),
                                                &mlir_context_);
-  TF_EXPECT_OK(verifier.Run(module.get(), /*execution_threads=*/{}));
+  EXPECT_OK(verifier.Run(module.get(), /*execution_threads=*/{}));
 }
 
 TEST_P(TritonFusionNumericsVerifierTest, VerifyNestedGemmNumerics) {
@@ -193,7 +193,7 @@ ENTRY entry {
   EXPECT_NE(TritonFusion(*module), nullptr);
   auto verifier = TritonFusionNumericsVerifier(CreateDeviceOrDevicelessConfig(),
                                                &mlir_context_);
-  TF_EXPECT_OK(verifier.Run(module.get(), /*execution_threads=*/{}));
+  EXPECT_OK(verifier.Run(module.get(), /*execution_threads=*/{}));
 }
 
 TEST_P(TritonFusionNumericsVerifierTest, VerifyMultiOutputFusionNumerics) {
@@ -224,7 +224,7 @@ ENTRY main{
   EXPECT_NE(TritonFusion(*module), nullptr);
   auto verifier = TritonFusionNumericsVerifier(CreateDeviceOrDevicelessConfig(),
                                                &mlir_context_);
-  TF_EXPECT_OK(verifier.Run(module.get(), /*execution_threads=*/{}));
+  EXPECT_OK(verifier.Run(module.get(), /*execution_threads=*/{}));
 }
 
 TEST_P(TritonFusionNumericsVerifierTest, VerifyMultipleNestedFusionNumerics) {
@@ -314,7 +314,7 @@ ENTRY main (p0: bf16[128,512], p1: bf16[256,512], p2: bf16[512,512]) -> bf16[384
   EXPECT_NE(TritonFusion(*module), nullptr);
   auto verifier = TritonFusionNumericsVerifier(CreateDeviceOrDevicelessConfig(),
                                                &mlir_context_);
-  TF_EXPECT_OK(verifier.Run(module.get(), /*execution_threads=*/{}));
+  EXPECT_OK(verifier.Run(module.get(), /*execution_threads=*/{}));
 }
 
 TEST_F(TritonFusionNumericsVerifierTest, CheckMismatch) {
@@ -346,15 +346,15 @@ TEST_F(TritonFusionNumericsVerifierTest, CheckMismatch) {
   auto f64_result = triton_fusion_numerics_pass_internal::CompileAndRunFusion(
       compile_util, *fusion_f64, autotune_config, debug_options,
       /*disable_triton=*/false, &mlir_context_);
-  TF_EXPECT_OK(f64_result);
+  EXPECT_OK(f64_result);
 
   auto f32_result = triton_fusion_numerics_pass_internal::CompileAndRunFusion(
       compile_util, *fusion_f32, autotune_config, debug_options,
       /*disable_triton=*/false, &mlir_context_);
-  TF_EXPECT_OK(f32_result);
+  EXPECT_OK(f32_result);
 
   auto stream = autotune_config.GetStream();
-  TF_EXPECT_OK(stream);
+  EXPECT_OK(stream);
 
   // Intentionally compare the fusions from the different modules, triggering a
   // mismatch.
@@ -401,7 +401,7 @@ ENTRY main {
 
   auto verifier = TritonFusionNumericsVerifier(CreateDeviceOrDevicelessConfig(),
                                                &mlir_context_);
-  TF_EXPECT_OK(verifier.Run(module.get(), /*execution_threads=*/{}));
+  EXPECT_OK(verifier.Run(module.get(), /*execution_threads=*/{}));
   auto fusion = TritonFusion(*module);
   EXPECT_NE(fusion, nullptr);
 
@@ -471,7 +471,7 @@ ENTRY main {
   std::unique_ptr<HloModule> module = Module(hlo_text, "");
   auto verifier = TritonFusionNumericsVerifier(CreateDeviceOrDevicelessConfig(),
                                                &mlir_context_);
-  TF_EXPECT_OK(verifier.Run(module.get(), /*execution_threads=*/{}));
+  EXPECT_OK(verifier.Run(module.get(), /*execution_threads=*/{}));
   EXPECT_EQ(verifier.CacheHitsForTestingOnly(), 1);
 }
 
@@ -526,7 +526,7 @@ ENTRY main {
   EXPECT_NE(TritonFusion(*module), nullptr);
   auto verifier = TritonFusionNumericsVerifier(CreateDeviceOrDevicelessConfig(),
                                                &mlir_context_);
-  TF_EXPECT_OK(verifier.Run(module.get(), /*execution_threads=*/{}));
+  EXPECT_OK(verifier.Run(module.get(), /*execution_threads=*/{}));
 }
 
 INSTANTIATE_TEST_SUITE_P(TritonFusionNumericsVerifierTestSuite,

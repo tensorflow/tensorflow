@@ -158,7 +158,7 @@ class CudnnFusedConvRewriterTest : public GpuCodegenTest {
         ParseAndReturnVerifiedModule(hlo_string, config).value(),
         backend().default_stream_executor(), backend().memory_allocator());
     if (!result.status().ok()) {
-      TF_EXPECT_OK(result.status())
+      EXPECT_OK(result.status())
           << "HLO compilation failed: " << result.status();
       return "";
     }
@@ -1622,9 +1622,9 @@ TEST_F(CudnnFusedConvRewriterHloTest, TestConvInt8ToFloat) {
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
 
   ConvRewriter rewriter = GetConvRewriter();
-  TF_ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
+  ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
   CudnnFusedConvRewriter fuser = GetCudnnFusedConvRewriter();
-  TF_ASSERT_OK(RunHloPass(&fuser, m.get()).status());
+  ASSERT_OK(RunHloPass(&fuser, m.get()).status());
 
   SCOPED_TRACE(m->ToString());
   EXPECT_THAT(m->entry_computation()->root_instruction(),
@@ -1655,13 +1655,13 @@ TEST_F(CudnnFusedConvRewriterHloTest, TestConvInt8ToInt8BiasSideInput) {
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
 
   ConvRewriter rewriter = GetConvRewriter();
-  TF_ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
+  ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
   CudnnFusedConvRewriter fuser = GetCudnnFusedConvRewriter();
-  TF_ASSERT_OK(RunHloPass(&fuser, m.get()).status());
+  ASSERT_OK(RunHloPass(&fuser, m.get()).status());
 
   // Simplify new `convert`'s that may be added to the graph.
   AlgebraicSimplifier algsimp(AlgebraicSimplifierOptions{});
-  TF_ASSERT_OK(RunHloPass(&algsimp, m.get()).status());
+  ASSERT_OK(RunHloPass(&algsimp, m.get()).status());
 
   SCOPED_TRACE(m->ToString());
   EXPECT_THAT(
@@ -1695,13 +1695,13 @@ TEST_F(CudnnFusedConvRewriterHloTest,
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
 
   ConvRewriter rewriter = GetConvRewriter();
-  TF_ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
+  ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
   CudnnFusedConvRewriter fuser = GetCudnnFusedConvRewriter();
-  TF_ASSERT_OK(RunHloPass(&fuser, m.get()).status());
+  ASSERT_OK(RunHloPass(&fuser, m.get()).status());
 
   // Simplify new `convert`'s that may be added to the graph.
   AlgebraicSimplifier algsimp(AlgebraicSimplifierOptions{});
-  TF_ASSERT_OK(RunHloPass(&algsimp, m.get()).status());
+  ASSERT_OK(RunHloPass(&algsimp, m.get()).status());
 
   SCOPED_TRACE(m->ToString());
   EXPECT_THAT(
@@ -1735,13 +1735,13 @@ TEST_F(CudnnFusedConvRewriterHloTest, TestReluAfterConvert) {
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
 
   ConvRewriter rewriter = GetConvRewriter();
-  TF_ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
+  ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
   CudnnFusedConvRewriter fuser = GetCudnnFusedConvRewriter();
-  TF_ASSERT_OK(RunHloPass(&fuser, m.get()).status());
+  ASSERT_OK(RunHloPass(&fuser, m.get()).status());
 
   // Simplify new `convert`'s that may be added to the graph.
   AlgebraicSimplifier algsimp(AlgebraicSimplifierOptions{});
-  TF_ASSERT_OK(RunHloPass(&algsimp, m.get()).status());
+  ASSERT_OK(RunHloPass(&algsimp, m.get()).status());
 
   SCOPED_TRACE(m->ToString());
   const HloInstruction* conv;
@@ -1788,13 +1788,13 @@ TEST_F(CudnnFusedConvRewriterHloTest, TestConvInt8ToFloatBiasSideInput) {
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
 
   ConvRewriter rewriter = GetConvRewriter();
-  TF_ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
+  ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
   CudnnFusedConvRewriter fuser = GetCudnnFusedConvRewriter();
-  TF_ASSERT_OK(RunHloPass(&fuser, m.get()).status());
+  ASSERT_OK(RunHloPass(&fuser, m.get()).status());
 
   // Simplify new `convert`'s that may be added to the graph.
   AlgebraicSimplifier algsimp(AlgebraicSimplifierOptions{});
-  TF_ASSERT_OK(RunHloPass(&algsimp, m.get()).status());
+  ASSERT_OK(RunHloPass(&algsimp, m.get()).status());
 
   SCOPED_TRACE(m->ToString());
   EXPECT_THAT(
@@ -1833,16 +1833,16 @@ TEST_F(CudnnFusedConvRewriterHloTest, Int8SideInputWithScaleAndReshape) {
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
 
   ConvRewriter rewriter = GetConvRewriter();
-  TF_ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
+  ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
   CudnnFusedConvRewriter fuser = GetCudnnFusedConvRewriter();
-  TF_ASSERT_OK(RunHloPass(&fuser, m.get()).status());
+  ASSERT_OK(RunHloPass(&fuser, m.get()).status());
 
   // Simplify new `convert`'s that may be added to the graph.
   HloPassFix<HloPassPipeline> simplify("simplify");
   simplify.AddPass<AlgebraicSimplifier>(AlgebraicSimplifierOptions{});
   simplify.AddPass<ReshapeMover>();
   simplify.AddPass<ConvertMover>();
-  TF_ASSERT_OK(RunHloPass(&simplify, m.get()).status());
+  ASSERT_OK(RunHloPass(&simplify, m.get()).status());
 
   SCOPED_TRACE(m->ToString());
   const HloInstruction* conv = nullptr;
@@ -1887,9 +1887,9 @@ TEST_F(CudnnFusedConvRewriterHloTest, FuseAlpha) {
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
 
   ConvRewriter rewriter = GetConvRewriter();
-  TF_ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
+  ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
   CudnnFusedConvRewriter fuser = GetCudnnFusedConvRewriter();
-  TF_ASSERT_OK(RunHloPass(&fuser, m.get()).status());
+  ASSERT_OK(RunHloPass(&fuser, m.get()).status());
 
   SCOPED_TRACE(m->ToString());
   const HloInstruction* conv = nullptr;
@@ -1926,9 +1926,9 @@ TEST_F(CudnnFusedConvRewriterHloTest, FuseRelu) {
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
 
   ConvRewriter rewriter = GetConvRewriter();
-  TF_ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
+  ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
   CudnnFusedConvRewriter fuser = GetCudnnFusedConvRewriter();
-  TF_ASSERT_OK(RunHloPass(&fuser, m.get()).status());
+  ASSERT_OK(RunHloPass(&fuser, m.get()).status());
 
   SCOPED_TRACE(m->ToString());
   const HloInstruction* conv;
@@ -1966,9 +1966,9 @@ TEST_F(CudnnFusedConvRewriterHloTest, DontFuseReluIfMultipleUses) {
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
 
   ConvRewriter rewriter = GetConvRewriter();
-  TF_ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
+  ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
   CudnnFusedConvRewriter fuser = GetCudnnFusedConvRewriter();
-  TF_ASSERT_OK(RunHloPass(&fuser, m.get()).status());
+  ASSERT_OK(RunHloPass(&fuser, m.get()).status());
 
   SCOPED_TRACE(m->ToString());
   const HloInstruction* conv;
@@ -2015,11 +2015,11 @@ TEST_F(CudnnFusedConvRewriterHloTest, FuseElu) {
   m->mutable_config().set_debug_options(debug_opts);
 
   ConvRewriter rewriter = GetConvRewriter();
-  TF_ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
+  ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
   // elu fusion is only active on Ampere+.
   CudnnFusedConvRewriter fuser{se::CudaComputeCapability(8, 0), GetDnnVersion(),
                                GetToolkitVersion()};
-  TF_ASSERT_OK(RunHloPass(&fuser, m.get()).status());
+  ASSERT_OK(RunHloPass(&fuser, m.get()).status());
 
   SCOPED_TRACE(m->ToString());
   const HloInstruction* conv;
@@ -2064,9 +2064,9 @@ TEST_F(CudnnFusedConvRewriterHloTest, DontFuseEluIfMultipleUses) {
   m->mutable_config().set_debug_options(debug_opts);
 
   ConvRewriter rewriter = GetConvRewriter();
-  TF_ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
+  ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
   CudnnFusedConvRewriter fuser = GetCudnnFusedConvRewriter();
-  TF_ASSERT_OK(RunHloPass(&fuser, m.get()).status());
+  ASSERT_OK(RunHloPass(&fuser, m.get()).status());
 
   SCOPED_TRACE(m->ToString());
   const HloInstruction* conv;
@@ -2116,11 +2116,11 @@ TEST_F(CudnnFusedConvRewriterHloTest, FuseRelu6) {
   m->mutable_config().set_debug_options(debug_opts);
 
   ConvRewriter rewriter = GetConvRewriter();
-  TF_ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
+  ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
   // relu6 fusion is only enabled on Ampere+.
   CudnnFusedConvRewriter fuser{se::CudaComputeCapability(8, 0), GetDnnVersion(),
                                GetToolkitVersion()};
-  TF_ASSERT_OK(RunHloPass(&fuser, m.get()).status());
+  ASSERT_OK(RunHloPass(&fuser, m.get()).status());
   SCOPED_TRACE(m->ToString());
   const HloInstruction* conv;
   ASSERT_THAT(
@@ -2160,9 +2160,9 @@ TEST_F(CudnnFusedConvRewriterHloTest, DontFuseRelu6IfMultipleUses) {
   m->mutable_config().set_debug_options(debug_opts);
 
   ConvRewriter rewriter = GetConvRewriter();
-  TF_ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
+  ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
   CudnnFusedConvRewriter fuser = GetCudnnFusedConvRewriter();
-  TF_ASSERT_OK(RunHloPass(&fuser, m.get()).status());
+  ASSERT_OK(RunHloPass(&fuser, m.get()).status());
 
   SCOPED_TRACE(m->ToString());
   const HloInstruction* conv;
@@ -2207,11 +2207,11 @@ TEST_F(CudnnFusedConvRewriterHloTest, FuseLeakyRelu) {
   m->mutable_config().set_debug_options(debug_opts);
 
   ConvRewriter rewriter = GetConvRewriter();
-  TF_ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
+  ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
   // Leaky-relu fusion is only enabled on Ampere+.
   CudnnFusedConvRewriter fuser{se::CudaComputeCapability(8, 0), GetDnnVersion(),
                                GetToolkitVersion()};
-  TF_ASSERT_OK(RunHloPass(&fuser, m.get()).status());
+  ASSERT_OK(RunHloPass(&fuser, m.get()).status());
 
   SCOPED_TRACE(m->ToString());
   const HloInstruction* conv;
@@ -2254,9 +2254,9 @@ TEST_F(CudnnFusedConvRewriterHloTest, DontFuseLeakyReluIfMultipleUses) {
   m->mutable_config().set_debug_options(debug_opts);
 
   ConvRewriter rewriter = GetConvRewriter();
-  TF_ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
+  ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
   CudnnFusedConvRewriter fuser = GetCudnnFusedConvRewriter();
-  TF_ASSERT_OK(RunHloPass(&fuser, m.get()).status());
+  ASSERT_OK(RunHloPass(&fuser, m.get()).status());
 
   SCOPED_TRACE(m->ToString());
   const HloInstruction* conv;
@@ -2301,9 +2301,9 @@ TEST_F(CudnnFusedConvRewriterHloTest, DontFuseAlphaIfMultipleUsers) {
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
 
   ConvRewriter rewriter = GetConvRewriter();
-  TF_ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
+  ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
   CudnnFusedConvRewriter fuser = GetCudnnFusedConvRewriter();
-  TF_ASSERT_OK(RunHloPass(&fuser, m.get()).status());
+  ASSERT_OK(RunHloPass(&fuser, m.get()).status());
 
   SCOPED_TRACE(m->ToString());
   const HloInstruction* conv1;
@@ -2340,9 +2340,9 @@ TEST_F(CudnnFusedConvRewriterHloTest, DontFuseBiasIfMultipleUsers) {
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
 
   ConvRewriter rewriter = GetConvRewriter();
-  TF_ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
+  ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
   CudnnFusedConvRewriter fuser = GetCudnnFusedConvRewriter();
-  TF_ASSERT_OK(RunHloPass(&fuser, m.get()).status());
+  ASSERT_OK(RunHloPass(&fuser, m.get()).status());
 
   SCOPED_TRACE(m->ToString());
   const HloInstruction* conv1;
@@ -2378,9 +2378,9 @@ TEST_F(CudnnFusedConvRewriterHloTest, DontFuseSideInputThroughRelu) {
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
 
   ConvRewriter rewriter = GetConvRewriter();
-  TF_ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
+  ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
   CudnnFusedConvRewriter fuser = GetCudnnFusedConvRewriter();
-  TF_ASSERT_OK(RunHloPass(&fuser, m.get()).status());
+  ASSERT_OK(RunHloPass(&fuser, m.get()).status());
 
   SCOPED_TRACE(m->ToString());
   const HloInstruction* conv;
@@ -2416,9 +2416,9 @@ TEST_F(CudnnFusedConvRewriterHloTest, DontFuseBiasThroughRelu) {
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
 
   ConvRewriter rewriter = GetConvRewriter();
-  TF_ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
+  ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
   CudnnFusedConvRewriter fuser = GetCudnnFusedConvRewriter();
-  TF_ASSERT_OK(RunHloPass(&fuser, m.get()).status());
+  ASSERT_OK(RunHloPass(&fuser, m.get()).status());
 
   SCOPED_TRACE(m->ToString());
   const HloInstruction* conv;
@@ -2451,9 +2451,9 @@ TEST_F(CudnnFusedConvRewriterHloTest, DontFuseSideInputIfMultipleUsers) {
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
 
   ConvRewriter rewriter = GetConvRewriter();
-  TF_ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
+  ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
   CudnnFusedConvRewriter fuser = GetCudnnFusedConvRewriter();
-  TF_ASSERT_OK(RunHloPass(&fuser, m.get()).status());
+  ASSERT_OK(RunHloPass(&fuser, m.get()).status());
 
   SCOPED_TRACE(m->ToString());
   const HloInstruction* conv1;
@@ -2487,9 +2487,9 @@ TEST_F(CudnnFusedConvRewriterHloTest, DontFuseConvertToF16IfMultipleUsers) {
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
 
   ConvRewriter rewriter = GetConvRewriter();
-  TF_ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
+  ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
   CudnnFusedConvRewriter fuser = GetCudnnFusedConvRewriter();
-  TF_ASSERT_OK(RunHloPass(&fuser, m.get()).status());
+  ASSERT_OK(RunHloPass(&fuser, m.get()).status());
 
   SCOPED_TRACE(m->ToString());
   const HloInstruction* conv1;
@@ -2520,9 +2520,9 @@ TEST_F(CudnnFusedConvRewriterHloTest, DontFuseToS8IfMultipleUsers) {
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
 
   ConvRewriter rewriter = GetConvRewriter();
-  TF_ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
+  ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
   CudnnFusedConvRewriter fuser = GetCudnnFusedConvRewriter();
-  TF_ASSERT_OK(RunHloPass(&fuser, m.get()).status());
+  ASSERT_OK(RunHloPass(&fuser, m.get()).status());
 
   SCOPED_TRACE(m->ToString());
   const HloInstruction* conv1;
@@ -2552,9 +2552,9 @@ TEST_F(CudnnFusedConvRewriterHloTest, RemoveConvertByFusingS32ToF32) {
 
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
   ConvRewriter rewriter = GetConvRewriter();
-  TF_ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
+  ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
   CudnnFusedConvRewriter fuser = GetCudnnFusedConvRewriter();
-  TF_ASSERT_OK(RunHloPass(&fuser, m.get()).status());
+  ASSERT_OK(RunHloPass(&fuser, m.get()).status());
   SCOPED_TRACE(m->ToString());
   HloInstruction* conv1 = nullptr;
   // Checks that it removed the Convert inside multiply around conv.
@@ -2578,9 +2578,9 @@ TEST_F(CudnnFusedConvRewriterHloTest, RemoveConvertByFusingS8ToF32) {
 
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
   ConvRewriter rewriter = GetConvRewriter();
-  TF_ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
+  ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
   CudnnFusedConvRewriter fuser = GetCudnnFusedConvRewriter();
-  TF_ASSERT_OK(RunHloPass(&fuser, m.get()).status());
+  ASSERT_OK(RunHloPass(&fuser, m.get()).status());
   SCOPED_TRACE(m->ToString());
   HloInstruction* conv1 = nullptr;
   // Checks that it removed the Convert inside multiply around conv.
@@ -2604,9 +2604,9 @@ TEST_F(CudnnFusedConvRewriterHloTest, RemoveConvertByFusingF32ToS8) {
 
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
   ConvRewriter rewriter = GetConvRewriter();
-  TF_ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
+  ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
   CudnnFusedConvRewriter fuser = GetCudnnFusedConvRewriter();
-  TF_ASSERT_OK(RunHloPass(&fuser, m.get()).status());
+  ASSERT_OK(RunHloPass(&fuser, m.get()).status());
   SCOPED_TRACE(m->ToString());
   HloInstruction* conv1 = nullptr;
   // Checks that it removed the Convert inside multiply around conv.
@@ -2631,9 +2631,9 @@ TEST_F(CudnnFusedConvRewriterHloTest, DontRemoveConvertDuetoMultpleUser) {
 
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
   ConvRewriter rewriter = GetConvRewriter();
-  TF_ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
+  ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
   CudnnFusedConvRewriter fuser = GetCudnnFusedConvRewriter();
-  TF_ASSERT_OK(RunHloPass(&fuser, m.get()).status());
+  ASSERT_OK(RunHloPass(&fuser, m.get()).status());
   SCOPED_TRACE(m->ToString());
   HloInstruction* conv1 = nullptr;
   // Checks that it removed the Convert inside multiply around conv.
@@ -2660,9 +2660,9 @@ TEST_F(CudnnFusedConvRewriterHloTest, FuseBias) {
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
 
   ConvRewriter rewriter = GetConvRewriter();
-  TF_ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
+  ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
   CudnnFusedConvRewriter fuser = GetCudnnFusedConvRewriter();
-  TF_ASSERT_OK(RunHloPass(&fuser, m.get()).status());
+  ASSERT_OK(RunHloPass(&fuser, m.get()).status());
 
   SCOPED_TRACE(m->ToString());
   ASSERT_THAT(
@@ -2691,9 +2691,9 @@ TEST_F(CudnnFusedConvRewriterHloTest, FuseSideInput) {
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
 
   ConvRewriter rewriter = GetConvRewriter();
-  TF_ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
+  ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
   CudnnFusedConvRewriter fuser = GetCudnnFusedConvRewriter();
-  TF_ASSERT_OK(RunHloPass(&fuser, m.get()).status());
+  ASSERT_OK(RunHloPass(&fuser, m.get()).status());
 
   SCOPED_TRACE(m->ToString());
   const HloInstruction* conv;
@@ -2733,9 +2733,9 @@ TEST_F(CudnnFusedConvRewriterHloTest, FuseScaledSideInput) {
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
 
   ConvRewriter rewriter = GetConvRewriter();
-  TF_ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
+  ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
   CudnnFusedConvRewriter fuser = GetCudnnFusedConvRewriter();
-  TF_ASSERT_OK(RunHloPass(&fuser, m.get()).status());
+  ASSERT_OK(RunHloPass(&fuser, m.get()).status());
 
   SCOPED_TRACE(m->ToString());
   const HloInstruction* conv;
@@ -2775,9 +2775,9 @@ TEST_F(CudnnFusedConvRewriterHloTest, FuseBiasAndSideInput) {
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
 
   ConvRewriter rewriter = GetConvRewriter();
-  TF_ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
+  ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
   CudnnFusedConvRewriter fuser = GetCudnnFusedConvRewriter();
-  TF_ASSERT_OK(RunHloPass(&fuser, m.get()).status());
+  ASSERT_OK(RunHloPass(&fuser, m.get()).status());
 
   SCOPED_TRACE(m->ToString());
   const HloInstruction* conv;
@@ -2812,9 +2812,9 @@ TEST_F(CudnnFusedConvRewriterHloTest, EffectiveScalarBias) {
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
 
   ConvRewriter rewriter = GetConvRewriter();
-  TF_ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
+  ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
   CudnnFusedConvRewriter fuser = GetCudnnFusedConvRewriter();
-  TF_ASSERT_OK(RunHloPass(&fuser, m.get()).status());
+  ASSERT_OK(RunHloPass(&fuser, m.get()).status());
 
   SCOPED_TRACE(m->ToString());
   const HloInstruction* conv;
@@ -2854,13 +2854,13 @@ TEST_F(CudnnFusedConvRewriterHloTest, StrengthReduceF32ToF16) {
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
 
   ConvRewriter rewriter = GetConvRewriter();
-  TF_ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
+  ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
   CudnnFusedConvRewriter fuser = GetCudnnFusedConvRewriter();
-  TF_ASSERT_OK(RunHloPass(&fuser, m.get()).status());
+  ASSERT_OK(RunHloPass(&fuser, m.get()).status());
 
   // Simplify new `convert`'s that may be added to the graph.
   AlgebraicSimplifier algsimp(AlgebraicSimplifierOptions{});
-  TF_ASSERT_OK(RunHloPass(&algsimp, m.get()).status());
+  ASSERT_OK(RunHloPass(&algsimp, m.get()).status());
 
   SCOPED_TRACE(m->ToString());
   const HloInstruction* conv;
@@ -2900,13 +2900,13 @@ TEST_F(CudnnFusedConvRewriterHloTest, BroadcastReshapeTransposeAfterConvert) {
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
 
   ConvRewriter rewriter = GetConvRewriter();
-  TF_ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
+  ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
   CudnnFusedConvRewriter fuser = GetCudnnFusedConvRewriter();
-  TF_ASSERT_OK(RunHloPass(&fuser, m.get()).status());
+  ASSERT_OK(RunHloPass(&fuser, m.get()).status());
 
   // Simplify new `convert`'s that may be added to the graph.
   AlgebraicSimplifier algsimp(AlgebraicSimplifierOptions{});
-  TF_ASSERT_OK(RunHloPass(&algsimp, m.get()).status());
+  ASSERT_OK(RunHloPass(&algsimp, m.get()).status());
 
   SCOPED_TRACE(m->ToString());
   const HloInstruction* conv;
@@ -2952,13 +2952,13 @@ TEST_F(CudnnFusedConvRewriterHloTest, NoStrengthReduceF32ToF16IfBiasIsF32) {
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
 
   ConvRewriter rewriter = GetConvRewriter();
-  TF_ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
+  ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
   CudnnFusedConvRewriter fuser = GetCudnnFusedConvRewriter();
-  TF_ASSERT_OK(RunHloPass(&fuser, m.get()).status());
+  ASSERT_OK(RunHloPass(&fuser, m.get()).status());
 
   // Simplify new `convert`'s that may be added to the graph.
   AlgebraicSimplifier algsimp(AlgebraicSimplifierOptions{});
-  TF_ASSERT_OK(RunHloPass(&algsimp, m.get()).status());
+  ASSERT_OK(RunHloPass(&algsimp, m.get()).status());
 
   SCOPED_TRACE(m->ToString());
   const HloInstruction* conv;
@@ -3007,16 +3007,16 @@ TEST_F(CudnnFusedConvRewriterHloTest, F32Constants) {
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
 
   ConvRewriter rewriter = GetConvRewriter();
-  TF_ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
+  ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
   CudnnFusedConvRewriter fuser = GetCudnnFusedConvRewriter();
-  TF_ASSERT_OK(RunHloPass(&fuser, m.get()).status());
+  ASSERT_OK(RunHloPass(&fuser, m.get()).status());
 
   // Simplify new `convert`'s that may be added to the graph, and fold
   // convert back into constants.
   AlgebraicSimplifier algsimp(AlgebraicSimplifierOptions{});
-  TF_ASSERT_OK(RunHloPass(&algsimp, m.get()).status());
+  ASSERT_OK(RunHloPass(&algsimp, m.get()).status());
   HloConstantFolding constant_folding;
-  TF_ASSERT_OK(RunHloPass(&constant_folding, m.get()).status());
+  ASSERT_OK(RunHloPass(&constant_folding, m.get()).status());
 
   SCOPED_TRACE(m->ToString());
   const HloInstruction* conv;
@@ -3060,16 +3060,16 @@ TEST_F(CudnnFusedConvRewriterHloTest, F32ConstantsNotLosslesslyConvertible) {
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
 
   ConvRewriter rewriter = GetConvRewriter();
-  TF_ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
+  ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
   CudnnFusedConvRewriter fuser = GetCudnnFusedConvRewriter();
-  TF_ASSERT_OK(RunHloPass(&fuser, m.get()).status());
+  ASSERT_OK(RunHloPass(&fuser, m.get()).status());
 
   // Simplify new `convert`'s that may be added to the graph, and fold
   // convert back into constants.
   AlgebraicSimplifier algsimp(AlgebraicSimplifierOptions{});
-  TF_ASSERT_OK(RunHloPass(&algsimp, m.get()).status());
+  ASSERT_OK(RunHloPass(&algsimp, m.get()).status());
   HloConstantFolding constant_folding;
-  TF_ASSERT_OK(RunHloPass(&constant_folding, m.get()).status());
+  ASSERT_OK(RunHloPass(&constant_folding, m.get()).status());
 
   SCOPED_TRACE(m->ToString());
   const HloInstruction* conv;
@@ -3123,13 +3123,13 @@ TEST_F(CudnnFusedConvRewriterHloTest, FuseReluBeforeConvert) {
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
 
   ConvRewriter rewriter = GetConvRewriter();
-  TF_ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
+  ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
   CudnnFusedConvRewriter fuser = GetCudnnFusedConvRewriter();
-  TF_ASSERT_OK(RunHloPass(&fuser, m.get()).status());
+  ASSERT_OK(RunHloPass(&fuser, m.get()).status());
 
   // Simplify new `convert`'s that may be added to the graph.
   AlgebraicSimplifier algsimp(AlgebraicSimplifierOptions{});
-  TF_ASSERT_OK(RunHloPass(&algsimp, m.get()).status());
+  ASSERT_OK(RunHloPass(&algsimp, m.get()).status());
 
   SCOPED_TRACE(m->ToString());
   const HloInstruction* conv;
@@ -3165,13 +3165,13 @@ TEST_F(CudnnFusedConvRewriterHloTest, BiasTypeMatchesConvTypeIfFp) {
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
 
   ConvRewriter rewriter = GetConvRewriter();
-  TF_ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
+  ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
   CudnnFusedConvRewriter fuser = GetCudnnFusedConvRewriter();
-  TF_ASSERT_OK(RunHloPass(&fuser, m.get()).status());
+  ASSERT_OK(RunHloPass(&fuser, m.get()).status());
 
   // Simplify new `convert`'s that may be added to the graph.
   AlgebraicSimplifier algsimp(AlgebraicSimplifierOptions{});
-  TF_ASSERT_OK(RunHloPass(&algsimp, m.get()).status());
+  ASSERT_OK(RunHloPass(&algsimp, m.get()).status());
 
   SCOPED_TRACE(m->ToString());
   const HloInstruction* conv;
