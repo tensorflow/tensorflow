@@ -545,6 +545,8 @@ common:rbe_linux_cuda --config=rbe_linux_cpu
 common:rbe_linux_cuda --repo_env=TF_SYSROOT=
 # For Remote build execution -- GPU configuration
 common:rbe_linux_cuda --repo_env=REMOTE_GPU_TESTING=1
+# Update UMD version when RBE CUDA driver is updated.
+common:rbe_linux_cuda --repo_env=HERMETIC_CUDA_UMD_VERSION="13.0.1"
 
 common:rbe_linux_cuda_nvcc --config=rbe_linux_cuda
 common:rbe_linux_cuda_nvcc --config=cuda_nvcc
