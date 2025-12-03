@@ -23,7 +23,7 @@ cc_library(
         "//xla/backends/gpu/runtime:collective_clique_requests",
         "//xla/backends/gpu/runtime:collective_cliques",
         "//xla/backends/gpu/runtime:collective_params",
-        "//xla/ffi:api",
+        "//xla/ffi",
         "//xla/ffi/api:c_api",
         "//xla/ffi/api:c_api_internal",
         "//xla/stream_executor:device_memory_allocator",
