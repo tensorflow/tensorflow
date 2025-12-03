@@ -275,6 +275,7 @@ cc_library(
     hdrs = ["split.h"],
     deps = [
         "//tensorflow/lite:string",
+        "//tensorflow/lite/types:half",
         "@eigen_archive//:eigen3",
     ],
 )
@@ -286,6 +287,7 @@ cc_test(
     deps = [
         ":split",
         "//tensorflow/lite:string",
+        "//tensorflow/lite/types:half",
         "@com_google_googletest//:gtest_main",
     ],
 )
