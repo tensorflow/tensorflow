@@ -16,12 +16,12 @@ limitations under the License.
 #include "xla/tools/collective_perf_table_gen.h"
 
 #include <memory>
-#include <variant>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/log/log.h"
 #include "xla/service/gpu/model/hlo_op_profile.pb.h"
-#include "xla/stream_executor/cuda/cuda_compute_capability.h"
+#include "xla/service/gpu/transforms/collectives/collective_ops_utils.h"
 #include "xla/tests/hlo_test_base.h"
 
 namespace xla::gpu {
@@ -76,7 +76,7 @@ TEST_F(CollectivePerfTableGenTest, ConstantStepGeneratesConfigs) {
   EXPECT_EQ(profiles.entries().begin()->second.entries_size(), 15);
 }
 
-TEST_F(CollectivePerfTableGenTest, FactorStepGeneratesConfigs) {
+TEST_F(CollectivePerfTableGenTest, FactorStepGeneratesConfigsForCollective) {
   cfg_.collective_types = {
       CollectivePerfTableGen::CollectiveType::ALL_REDUCE,
       CollectivePerfTableGen::CollectiveType::ALL_GATHER,
@@ -96,8 +96,38 @@ TEST_F(CollectivePerfTableGenTest, FactorStepGeneratesConfigs) {
       CollectivePerfTableGen::Create(cfg_);
 
   DeviceHloInstructionProfiles profiles = gen->ComputeTable();
+  for (const auto& value : profiles.entries().begin()->second.entries()) {
+    LOG(INFO) << "  value: " << value.DebugString();
+  }
   EXPECT_EQ(profiles.entries_size(), 1);
+
+  // 28 = 4 * (4 for collective + 1 for collective permute * 3)
   EXPECT_EQ(profiles.entries().begin()->second.entries_size(), 16);
+}
+
+TEST_F(CollectivePerfTableGenTest, FactorStepGeneratesConfigsForPermute) {
+  cfg_.collective_types = {
+      CollectivePerfTableGen::CollectiveType::COLLECTIVE_PERMUTE,
+  };
+  cfg_.replica_groups_list.emplace_back("[1,4]<=[4]");
+  CollectivePerfTableGen::StepSpec spec{
+      /*start=*/4,
+      /*stop=*/32,
+      /*step=*/0,
+      /*factor=*/2,
+  };
+  cfg_.tensor_size_bytes_spec = spec;
+
+  std::unique_ptr<CollectivePerfTableGen> gen =
+      CollectivePerfTableGen::Create(cfg_);
+
+  DeviceHloInstructionProfiles profiles = gen->ComputeTable();
+  for (const auto& value : profiles.entries().begin()->second.entries()) {
+    LOG(INFO) << "  value: " << value.DebugString();
+  }
+  EXPECT_EQ(profiles.entries_size(), 1);
+
+  EXPECT_EQ(profiles.entries().begin()->second.entries_size(), 12);
 }
 
 TEST_F(CollectivePerfTableGenTest, HappyPathWorks) {
@@ -123,6 +153,37 @@ TEST_F(CollectivePerfTableGenTest, HappyPathWorks) {
       profiles.entries().begin()->second.entries(),
       Each(Property(&HloInstructionProfile::network_throughput_bytes_per_sec,
                     Gt(0))));
+}
+
+TEST_F(CollectivePerfTableGenTest, BuildSourceTargetPairsOneWay) {
+  EXPECT_EQ(BuildSourceTargetPairs(
+                CollectivePermuteCostModelType::kIntraPartitionOneWay, 4),
+            "{{0,2},{1,3}}");
+  EXPECT_EQ(BuildSourceTargetPairs(
+                CollectivePermuteCostModelType::kIntraPartitionOneWay, 8),
+            "{{0,4},{1,5},{2,6},{3,7}}");
+}
+
+TEST_F(CollectivePerfTableGenTest, BuildSourceTargetPairsTwoWayAllMutual) {
+  EXPECT_EQ(
+      BuildSourceTargetPairs(
+          CollectivePermuteCostModelType::kIntraPartitionTwoWayAllMutual, 4),
+      "{{0,1},{1,0},{2,3},{3,2}}");
+  EXPECT_EQ(
+      BuildSourceTargetPairs(
+          CollectivePermuteCostModelType::kIntraPartitionTwoWayAllMutual, 8),
+      "{{0,1},{1,0},{2,3},{3,2},{4,5},{5,4},{6,7},{7,6}}");
+}
+
+TEST_F(CollectivePerfTableGenTest, BuildSourceTargetPairsTwoWayHasNonMutual) {
+  EXPECT_EQ(
+      BuildSourceTargetPairs(
+          CollectivePermuteCostModelType::kIntraPartitionTwoWayHasNonMutual, 4),
+      "{{0,1},{1,2},{2,3},{3,0}}");
+  EXPECT_EQ(
+      BuildSourceTargetPairs(
+          CollectivePermuteCostModelType::kIntraPartitionTwoWayHasNonMutual, 8),
+      "{{0,1},{1,2},{2,3},{3,4},{4,5},{5,6},{6,7},{7,0}}");
 }
 
 }  // namespace

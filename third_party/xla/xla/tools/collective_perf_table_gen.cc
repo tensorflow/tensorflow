@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -30,6 +31,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
 #include "absl/time/time.h"
@@ -43,6 +45,7 @@ limitations under the License.
 #include "xla/service/backend.h"
 #include "xla/service/gpu/model/hlo_op_profile.pb.h"
 #include "xla/service/gpu/model/hlo_op_profiles.h"
+#include "xla/service/gpu/transforms/collectives/collective_ops_utils.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/tools/multihost_hlo_runner/create_client.h"
 #include "xla/tools/multihost_hlo_runner/functional_hlo_runner.h"
@@ -64,11 +67,21 @@ constexpr uint8_t kBytesPerElem = 4;
 constexpr double kGpuMemFraction = 0.8;
 
 // # of profiling runs.
-constexpr uint8_t kNumProfilingRuns = 5;
+constexpr uint8_t kNumProfilingRuns = 20;
 
 struct StaticSpec {
   CollectivePerfTableGen::CollectiveType collective_type;
+  // For collective hlo instructions, the `replica_groups` is used to define
+  // the replica_groups attribute of collective hlo instructions.
+
+  // For collective permute hlo instructions, the `replica_groups` is used to
+  // define the number of devices participating in the collective permute.
   IotaReplicaGroupList replica_groups;
+
+  // Defines the source-target pairs of a collective permute hlo instruction.
+  // It is only used for collective permute hlo instructions, and is
+  // std::nullopt for others.
+  std::optional<CollectivePermuteCostModelType> collective_permute_pattern;
   int64_t tensor_size_bytes;
 };
 
@@ -124,6 +137,7 @@ int64_t GetInputDim(CollectivePerfTableGen::CollectiveType type,
     case CollectivePerfTableGen::CollectiveType::ALL_REDUCE:
     case CollectivePerfTableGen::CollectiveType::REDUCE_SCATTER:
     case CollectivePerfTableGen::CollectiveType::ALL_TO_ALL:
+    case CollectivePerfTableGen::CollectiveType::COLLECTIVE_PERMUTE:
       dim_size = tensor_size_bytes / kBytesPerElem;
       break;
     case CollectivePerfTableGen::CollectiveType::ALL_GATHER:
@@ -145,6 +159,7 @@ int64_t GetOutputDim(CollectivePerfTableGen::CollectiveType type,
     case CollectivePerfTableGen::CollectiveType::ALL_REDUCE:
     case CollectivePerfTableGen::CollectiveType::ALL_GATHER:
     case CollectivePerfTableGen::CollectiveType::ALL_TO_ALL:
+    case CollectivePerfTableGen::CollectiveType::COLLECTIVE_PERMUTE:
       dim_size = tensor_size_bytes / kBytesPerElem;
       break;
     case CollectivePerfTableGen::CollectiveType::REDUCE_SCATTER:
@@ -157,10 +172,13 @@ int64_t GetOutputDim(CollectivePerfTableGen::CollectiveType type,
   return dim_size;
 }
 
-std::string GetHlo(CollectivePerfTableGen::CollectiveType type,
-                   int64_t input_dim, int64_t output_dim,
-                   const IotaReplicaGroupList& replica_groups) {
+std::string GetHlo(
+    CollectivePerfTableGen::CollectiveType type, int64_t input_dim,
+    int64_t output_dim, const IotaReplicaGroupList& replica_groups,
+    std::optional<CollectivePermuteCostModelType> collective_permute_pattern) {
   CHECK_EQ(kBytesPerElem, 4);
+  CHECK(type != CollectivePerfTableGen::CollectiveType::COLLECTIVE_PERMUTE ||
+        collective_permute_pattern.has_value());
 
   std::string hlo;
   switch (type) {
@@ -229,6 +247,44 @@ std::string GetHlo(CollectivePerfTableGen::CollectiveType type,
                              "f32", input_dim, output_dim,
                              replica_groups.ToString());
       break;
+    case CollectivePerfTableGen::CollectiveType::COLLECTIVE_PERMUTE: {
+      int num_devices = replica_groups.num_devices_per_group() *
+                        replica_groups.num_replica_groups();
+      std::string source_target_pairs =
+          BuildSourceTargetPairs(*collective_permute_pattern, num_devices);
+      hlo = absl::Substitute(
+          R"(
+        HloModule collective-permute-while-loop-microbenchmark, num_partitions=$2
+
+        while_cond {
+          iter = (f32[$0], u32[]) parameter(0)
+          i = u32[] get-tuple-element(iter), index=1
+          ub = u32[] constant(100)
+          ROOT compare = pred[] compare(i, ub), direction=LT
+        }
+
+        while_body {
+          iter = (f32[$0], u32[]) parameter(0)
+          i = u32[] get-tuple-element(iter), index=1
+          arg = f32[$0] get-tuple-element(iter), index=0
+          collective-permute = f32[$0] collective-permute(arg), channel_id=1, source_target_pairs=$1
+          c1 = u32[] constant(1)
+          i_next = u32[] add(i, c1)
+          ROOT out = (f32[$0], u32[]) tuple(collective-permute, i_next)
+        }
+
+        ENTRY main {
+          arg = f32[$0] parameter(0)
+          c0 = u32[] constant(0)
+          cp_first_iter = f32[$0] collective-permute(arg), channel_id=1, source_target_pairs=$1
+          init = (f32[$0], u32[]) tuple(cp_first_iter, c0)
+          while = (f32[$0], u32[]) while(init), condition=while_cond, body=while_body
+          ROOT result = f32[$0] get-tuple-element(while), index=0
+        }
+      )",
+          input_dim, source_target_pairs, num_devices);
+      break;
+    }
     default:
       LOG(FATAL) << "Unsupported collective type.";
   }
@@ -243,7 +299,8 @@ std::unique_ptr<HloModule> CreateCollectiveModule(const StaticSpec& spec) {
       spec.collective_type, spec.tensor_size_bytes, spec.replica_groups);
 
   std::string hlo =
-      GetHlo(spec.collective_type, input_dim, output_dim, spec.replica_groups);
+      GetHlo(spec.collective_type, input_dim, output_dim, spec.replica_groups,
+             spec.collective_permute_pattern);
 
   HloModuleConfig config;
   config.set_num_partitions(spec.replica_groups.num_devices_per_group() *
@@ -275,6 +332,48 @@ IotaReplicaGroupList GetCollectiveDeviceList(
 }
 
 }  // namespace
+
+// Generates source_target_pairs based on pattern.
+std::string BuildSourceTargetPairs(CollectivePermuteCostModelType pattern,
+                                   int num_devices) {
+  std::vector<std::pair<int, int>> pairs_vec;
+  switch (pattern) {
+    case CollectivePermuteCostModelType::kIntraPartitionOneWay:
+      // Pattern: {0->n/2, 1->n/2+1, ...}
+      // Requires even number of devices.
+      CHECK_EQ(num_devices % 2, 0);
+      for (int i = 0; i < num_devices / 2; ++i) {
+        pairs_vec.push_back({i, i + num_devices / 2});
+      }
+      break;
+    case CollectivePermuteCostModelType::kIntraPartitionTwoWayAllMutual:
+      // Pattern: {0->1, 1->0, 2->3, 3->2, ...}
+      // Requires even number of devices.
+      CHECK_EQ(num_devices % 2, 0);
+      for (int i = 0; i < num_devices / 2; ++i) {
+        pairs_vec.push_back({2 * i, 2 * i + 1});
+        pairs_vec.push_back({2 * i + 1, 2 * i});
+      }
+      break;
+    case CollectivePermuteCostModelType::kIntraPartitionTwoWayHasNonMutual:
+      // Ring pattern: {0->1, 1->2, ..., n-1->0}
+      for (int i = 0; i < num_devices; ++i) {
+        pairs_vec.push_back({i, (i + 1) % num_devices});
+      }
+      break;
+    default:
+      LOG(FATAL) << "Unsupported collective permute pattern.";
+  }
+
+  return absl::StrCat(
+      "{",
+      absl::StrJoin(pairs_vec, ",",
+                    [](std::string* out, const std::pair<int, int>& pair) {
+                      absl::StrAppend(out, "{", pair.first, ",", pair.second,
+                                      "}");
+                    }),
+      "}");
+}
 
 /*static*/ std::unique_ptr<CollectivePerfTableGen>
 CollectivePerfTableGen::Create(CollectivePerfTableGen::Config config) {
@@ -348,8 +447,7 @@ CollectivePerfTableGen::ProfilingData CollectivePerfTableGen::Profile(
   if (config_.task_id == 0) {
     std::vector<ExecutionProfile> profiles = Run(*executable);
     return {
-        /*runtime=*/absl::Nanoseconds(GetMedianRuntimeNs(std::move(profiles))),
-    };
+        /*runtime=*/absl::Nanoseconds(GetMedianRuntimeNs(std::move(profiles)))};
   }
   Run(*executable);
   return {};
@@ -375,13 +473,29 @@ DeviceHloInstructionProfiles CollectivePerfTableGen::ComputeTable() {
     for (CollectiveType collective_type : config_.collective_types) {
       for (absl::string_view replica_groups_raw : config_.replica_groups_list) {
         CHECK(collective_type != CollectiveType::UNSPECIFIED);
+        IotaReplicaGroupList replica_groups =
+            GetCollectiveDeviceList(replica_groups_raw);
+        int num_devices = replica_groups.num_devices_per_group() *
+                          replica_groups.num_replica_groups();
 
-        StaticSpec spec{
-            collective_type,
-            GetCollectiveDeviceList(replica_groups_raw),
-            tensor_size,
-        };
-        static_specs.push_back(spec);
+        if (collective_type != CollectiveType::COLLECTIVE_PERMUTE) {
+          static_specs.push_back(
+              {collective_type, replica_groups, std::nullopt, tensor_size});
+          continue;
+        }
+        for (CollectivePermuteCostModelType pattern :
+             config_.collective_permute_patterns) {
+          // Skip patterns that require an even number of devices if n is odd.
+          if (num_devices % 2 != 0 &&
+              (pattern ==
+                   CollectivePermuteCostModelType::kIntraPartitionOneWay ||
+               pattern == CollectivePermuteCostModelType::
+                              kIntraPartitionTwoWayAllMutual)) {
+            continue;
+          }
+          static_specs.push_back(
+              {collective_type, replica_groups, pattern, tensor_size});
+        }
       }
     }
   }
@@ -397,7 +511,10 @@ DeviceHloInstructionProfiles CollectivePerfTableGen::ComputeTable() {
     ExplicitSpec spec = GetExplicitSpec(static_spec);
     std::string fingerprint = spec.module->GetFingerprint128();
     HloInstruction* instr =
-        spec.module->entry_computation()->root_instruction();
+        static_spec.collective_type == CollectiveType::COLLECTIVE_PERMUTE
+            ? spec.module->GetComputationWithName("while_body")
+                  ->GetInstructionWithName("collective-permute")
+            : spec.module->entry_computation()->root_instruction();
     CHECK(hlo_query::IsCollectiveCommunicationOp(instr->opcode()));
 
     HloInstructionProfile entry;
@@ -410,6 +527,12 @@ DeviceHloInstructionProfiles CollectivePerfTableGen::ComputeTable() {
     if (profiled_data.runtime == absl::ZeroDuration()) {
       VLOG(1) << "Size: " << static_spec.tensor_size_bytes << " too small.";
       continue;
+    }
+    if (static_spec.collective_type == CollectiveType::COLLECTIVE_PERMUTE) {
+      // collective permute template hlo runs in a 100x while loop to
+      // average the variance. So we would need to divide the runtime
+      // by 100 to get the runtime of a single iteration.
+      profiled_data.runtime /= 100;
     }
     entry.set_network_throughput_bytes_per_sec(GetNetworkThroughputBytesPerSec(
         profiled_data.runtime, static_spec.tensor_size_bytes));
@@ -491,17 +614,20 @@ DeviceHloInstructionProfiles CollectivePerfTableGen::Merge(
 
     for (auto& [device_descriptor, data] : partial_profile.entries()) {
       for (const HloInstructionProfile& profile : data.entries()) {
-        CHECK(!profile.fingerprint().empty())
-            << "Expected fingerprint to deduplicate: " << profile.DebugString();
+        std::string fingerprint = profile.fingerprint();
+        if (fingerprint.empty()) {
+          fingerprint =
+              absl::StrCat("no-fingerprint#", profiling_results_counter);
+        }
 
         ProfilingResult profiling_result{
             device_descriptor,
-            std::move(profile.instruction()),
+            profile.instruction(),
             {
                 profile.operands().begin(),
                 profile.operands().end(),
             },
-            std::move(profile.fingerprint()),
+            fingerprint,
             profile.clock_cycles(),
             profile.flops(),
             profile.network_throughput_bytes_per_sec(),
@@ -529,7 +655,9 @@ DeviceHloInstructionProfiles CollectivePerfTableGen::Merge(
     }
     profile_proto.set_flops(profiling_result.flops);
     profile_proto.set_clock_cycles(profiling_result.clock_cycles);
-    profile_proto.set_fingerprint(profiling_result.fingerprint);
+    if (!absl::StartsWith(profiling_result.fingerprint, "no-fingerprint#")) {
+      profile_proto.set_fingerprint(profiling_result.fingerprint);
+    }
     profile_proto.set_network_throughput_bytes_per_sec(
         profiling_result.network_throughput);
 

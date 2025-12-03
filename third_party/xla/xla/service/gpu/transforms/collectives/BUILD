@@ -94,6 +94,7 @@ cc_library(
     name = "collective_ops_utils",
     srcs = ["collective_ops_utils.cc"],
     hdrs = ["collective_ops_utils.h"],
+    # copybara:uncomment compatible_with = ["//buildenv/target:non_prod"],
     deps = [
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",

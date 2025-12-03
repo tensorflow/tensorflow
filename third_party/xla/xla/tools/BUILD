@@ -766,6 +766,7 @@ cc_library(
         "//xla/service:hlo_module_config",
         "//xla/service/gpu/model:hlo_op_profile_proto_cc",
         "//xla/service/gpu/model:hlo_op_profiles",
+        "//xla/service/gpu/transforms/collectives:collective_ops_utils",
         "//xla/tools/multihost_hlo_runner:create_client",
         "//xla/tools/multihost_hlo_runner:functional_hlo_runner",
         "//xla/tsl/platform:env",
@@ -863,8 +864,10 @@ xla_test(
     deps = [
         ":collective_perf_table_gen",
         "//xla/service/gpu/model:hlo_op_profile_proto_cc",
+        "//xla/service/gpu/transforms/collectives:collective_ops_utils",
         "//xla/stream_executor/cuda:cuda_compute_capability",
         "//xla/tests:hlo_test_base",
+        "@com_google_absl//absl/log",
         "@com_google_googletest//:gtest_main",
     ],
 )
