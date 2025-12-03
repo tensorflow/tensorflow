@@ -21,6 +21,7 @@ TF_PYTHON_VERSION = "{}"
 HERMETIC_PYTHON_VERSION = "{}"
 WHEEL_NAME = "{}"
 WHEEL_COLLAB = "{}"
+USE_PYWRAP_RULES = "False"
 """
 
 def _python_repository_impl(repository_ctx):
