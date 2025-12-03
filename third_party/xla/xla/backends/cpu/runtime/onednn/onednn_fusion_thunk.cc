@@ -154,10 +154,10 @@ OneDnnFusionThunk::~OneDnnFusionThunk() = default;
 OneDnnFusionThunk::BufferUses OneDnnFusionThunk::buffer_uses() const {
   BufferUses buffer_uses;
   for (const Argument& argument : arguments_) {
-    buffer_uses.push_back(BufferUse::Read(argument.slice));
+    buffer_uses.push_back(BufferUse::Read(argument.slice, argument.shape));
   }
   for (const Result& result : results_) {
-    buffer_uses.push_back(BufferUse::Write(result.slice));
+    buffer_uses.push_back(BufferUse::Write(result.slice, result.shape));
   }
   return buffer_uses;
 }

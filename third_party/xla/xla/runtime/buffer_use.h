@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstdint>
 #include <optional>
 #include <tuple>
+#include <vector>
 
 #include "absl/base/attributes.h"
 #include "absl/container/flat_hash_set.h"
@@ -124,8 +125,8 @@ class BufferUse {
     ReadWriteSet();
 
     void Add(BufferUse use);
-    void AddRead(BufferAllocation::Slice slice);
-    void AddWrite(BufferAllocation::Slice slice);
+    void AddRead(const BufferUse& use);
+    void AddWrite(const BufferUse& use);
 
     void AddAll(absl::Span<const BufferUse> uses);
 
@@ -135,8 +136,8 @@ class BufferUse {
     bool HasConflicts(const ReadWriteSet& other);
 
    private:
-    absl::flat_hash_set<BufferAllocation::Slice> read_;
-    absl::flat_hash_set<BufferAllocation::Slice> write_;
+    std::vector<BufferUse> read_;
+    std::vector<BufferUse> write_;
   };
 
   bool operator==(const BufferUse& other) const {
