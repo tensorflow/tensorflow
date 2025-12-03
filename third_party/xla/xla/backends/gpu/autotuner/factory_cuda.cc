@@ -1,3 +1,4 @@
+#include "xla/service/gpu/transforms/scaled_dot_rewriter.h"
 /* Copyright 2025 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -45,6 +46,7 @@ using ::mlir::MLIRContext;
 std::unique_ptr<HloPassPipeline> GetCublasRewriterPipeline(
     const se::DeviceDescription& device_description) {
   auto pipeline = std::make_unique<HloPassPipeline>("cublas_rewriter_pipeline");
+  pipeline->AddPass(std::make_unique<ScaledDotRewriter>());
   pipeline->AddPass(std::make_unique<DotAlgorithmRewriter>());
   for (GemmRewriterOptions::DType dtype :
        {GemmRewriterOptions::DType::kFp8Only,

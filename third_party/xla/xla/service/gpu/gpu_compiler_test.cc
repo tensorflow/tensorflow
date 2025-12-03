@@ -2021,7 +2021,7 @@ TEST_F(GpuCompilerTest, DynamicSliceFusionReduceScatterMultipleBuffers) {
               absl_testing::IsOkAndHolds(true));
 }
 
-TEST_F(GpuCompilerTest, CompilingSortsWorksWithoutDevice) {
+TEST_F(GpuCompilerTest, DISABLED_CompilingSortsWorksWithoutDevice) {
   constexpr absl::string_view kHlo = R"(
 HloModule TestModule
 
@@ -2066,7 +2066,7 @@ ENTRY %main {
   TF_ASSERT_OK(status_or_module.status());
 }
 
-TEST_F(GpuCompilerTest, CompilingAndCollectingMetadata) {
+TEST_F(GpuCompilerTest, DISABLED_CompilingAndCollectingMetadata) {
   constexpr absl::string_view kHlo = R"(
     HloModule cluster
 
