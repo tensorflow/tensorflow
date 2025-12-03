@@ -923,7 +923,8 @@ inline void PackIntN(int bits_per_element, absl::Span<const char> input,
 inline std::unique_ptr<char[]> PackIntN(int bits_per_element, const char* data,
                                         size_t size) {
   size_t packed_size = size * bits_per_element / 8;
-  auto buffer = std::make_unique<char[]>(packed_size);
+  // Note: we can use `std::make_unique_for_overwrite` once C++20 is supported.
+  std::unique_ptr<char[]> buffer(new char[packed_size]);
   auto src = absl::MakeSpan(data, size);
   auto dst = absl::MakeSpan(buffer.get(), packed_size);
   PackIntN(bits_per_element, src, dst);
@@ -976,7 +977,8 @@ inline void UnpackIntN(int bits_per_element, absl::Span<const char> input,
 inline std::unique_ptr<char[]> UnpackIntN(int bits_per_element,
                                           const char* data, size_t size) {
   size_t unpacked_size = size * 8 / bits_per_element;
-  auto buffer = std::make_unique<char[]>(unpacked_size);
+  // Note: we can use `std::make_unique_for_overwrite` once C++20 is supported.
+  std::unique_ptr<char[]> buffer(new char[unpacked_size]);
   auto src = absl::MakeSpan(data, size);
   auto dst = absl::MakeSpan(buffer.get(), unpacked_size);
   UnpackIntN(bits_per_element, src, dst);
