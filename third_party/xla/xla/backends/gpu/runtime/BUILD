@@ -286,6 +286,7 @@ xla_test(
         ":thunk_proto_deserialization",
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
+        "//xla/backends/gpu:ffi",
         "//xla/ffi",
         "//xla/ffi:attribute_map",
         "//xla/ffi:ffi_api",
