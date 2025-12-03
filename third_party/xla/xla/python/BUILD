@@ -102,8 +102,10 @@ cc_library(
     deps = [
         "//xla:util",
         "//xla:xla_data_proto_cc",
+        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/status:statusor",
         "@dlpack",
+        "@nanobind",
     ],
 )
 
@@ -257,6 +259,60 @@ cc_library(
     ],
     # Always register 'DebugCallbackCustomCallPartitioner' custom partitioning handler.
     alwayslink = 1,
+)
+
+nanobind_pywrap_extension(
+    name = "_xla",
+    srcs = ["xla.cc"],
+    additional_stubgen_deps = [
+        "//third_party/py/numpy",
+    ],
+    enable_stub_generation = True,
+    pytype_deps = ["//third_party/py/numpy"],
+    pytype_srcs = ["_xla.pyi"],
+    visibility = internal_visibility([
+        ":jax",
+    ]),
+    deps = [
+        ":dlpack_types",
+        # placeholder for index annotation deps
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/hash",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/types:span",
+        "@llvm-project//mlir:Support",
+        "@nanobind",
+        "//xla:array",
+        "//xla:debug_options_flags",
+        "//xla:literal",
+        "//xla:shape_util",
+        "//xla:util",
+        "//xla:xla_data_proto_cc",
+        "//xla:xla_proto_cc",
+        "//xla/client:executable_build_options",
+        "//xla/hlo/builder:xla_computation",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/parser:hlo_parser",
+        "//xla/pjrt:exceptions",
+        "//xla/pjrt:pjrt_executable",
+        "//xla/pjrt:status_casters",
+        "//xla/pjrt/proto:compile_options_proto_cc",
+        "//xla/python:nb_absl_span",
+        "//xla/python:nb_numpy",
+        "//xla/python:types",
+        "//xla/service:computation_placer",
+        "//xla/service:hlo_graph_dumper",
+        "//xla/service:hlo_module_config",
+        "//xla/service:hlo_proto_cc",
+        "//xla/service/spmd/shardy/stablehlo_round_trip:stablehlo_import",
+        "//xla/tsl/lib/strings:proto_serialization",
+        "//xla/tsl/platform:env",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:logging",
+        "//xla/tsl/platform:statusor",
+    ],
 )
 
 nanobind_pywrap_extension(

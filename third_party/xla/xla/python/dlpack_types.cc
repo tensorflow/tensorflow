@@ -17,6 +17,8 @@ limitations under the License.
 
 #include "absl/status/statusor.h"
 #include "include/dlpack/dlpack.h"
+#include "nanobind/ndarray.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
@@ -218,6 +220,18 @@ absl::StatusOr<PrimitiveType> DLDataTypeToPrimitiveType(DLDataType type) {
     default:
       return Unimplemented("Unknown or invalid DLPack type code %d", type.code);
   }
+}
+
+absl::StatusOr<nanobind::dlpack::dtype> PrimitiveTypeToNbDLDataType(
+    xla::PrimitiveType type) {
+  TF_ASSIGN_OR_RETURN(DLDataType dl_type, PrimitiveTypeToDLDataType(type));
+
+  nanobind::dlpack::dtype nb_type;
+  nb_type.lanes = dl_type.lanes;
+  nb_type.bits = dl_type.bits;
+  nb_type.code = dl_type.code;
+
+  return nb_type;
 }
 
 }  // namespace xla

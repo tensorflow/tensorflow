@@ -34,6 +34,8 @@ def nanobind_pywrap_extension(
         deps = [],
         pytype_srcs = [],
         pytype_deps = [],  # @unused
+        additional_stubgen_deps = [],  # @unused
+        enable_stub_generation = False,  # @unused
         copts = [],
         linkopts = [],
         visibility = None):
