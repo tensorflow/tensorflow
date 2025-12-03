@@ -10056,4 +10056,30 @@ absl::StatusOr<bool> AlgebraicSimplifier::RunImpl(
   return changed;
 }
 
+absl::Status AlgebraicSimplifierVisitor::HandleConditional(
+    HloInstruction* conditional) {
+  // TODO: b/427635449 - Investigate TPU regression and re-enable this pass for
+  // TPU.
+  if (!options_.enable_conditional_simplification()) {
+    return absl::OkStatus();
+  }
+  HloInstruction* pred = conditional->mutable_operand(0);
+
+  // conditional(convert(pred), a, b) => conditional(pred, a, b)
+  if (pred->opcode() == HloOpcode::kConvert &&
+      pred->operand(0)->shape().element_type() == PRED &&
+      conditional->branch_computations().size() == 2) {
+    return ReplaceWithNewInstruction(
+        conditional,
+        HloInstruction::CreateConditional(
+            conditional->shape(), pred->mutable_operand(0),
+            conditional->mutable_operand(2),          // True Op (Branch 1)
+            conditional->branch_computations()[1],    // True Comp (Branch 1)
+            conditional->mutable_operand(1),          // False Op (Branch 0)
+            conditional->branch_computations()[0]));  // False Comp (Branch 0)
+  }
+
+  return absl::OkStatus();
+}
+
 }  // namespace xla

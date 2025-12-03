@@ -321,6 +321,11 @@ absl::Status HloGumgraph::PrecomputeComputationFingerprint() {
 
 void HloGumgraph::PrecomputeInstructionDependencies() {
   LOG(INFO) << "Precomputing instruction dependencies";
+  if (hlo_value_tracing_ == nullptr) {
+    LOG(WARNING) << "Skipping PrecomputeInstructionDependencies because "
+                    "HloValueTracing failed to initialize.";
+    return;
+  }
   for (auto* computation : hlo_module_.MakeComputationPostOrder()) {
     for (auto* instruction : computation->MakeInstructionPostOrder()) {
       HloInstructionNode* node = GetNode(instruction);
@@ -363,14 +368,25 @@ void HloGumgraph::PrecomputeInstructionDependencies() {
 
 absl::StatusOr<std::unique_ptr<const HloGumgraph>> HloGumgraph::Create(
     const HloModule* absl_nonnull hlo_module,
-    const HloGumgraphFingerprintOptions& fingerprint_options) {
+    const HloGumgraphFingerprintOptions& fingerprint_options,
+    bool precompute_instruction_dependencies) {
   CHECK(hlo_module != nullptr) << "Expected a non-null hlo module";
   CHECK(hlo_module->entry_computation() != nullptr)
       << "Expected a non-null entry computation";
 
   std::unique_ptr<CallGraph> call_graph = CallGraph::Build(hlo_module);
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloValueTracing> hlo_value_tracing,
-                      HloValueTracing::Run(*hlo_module));
+  std::unique_ptr<HloValueTracing> hlo_value_tracing;
+  if (precompute_instruction_dependencies) {
+    auto hlo_value_tracing_or_status = HloValueTracing::Run(*hlo_module);
+    if (!hlo_value_tracing_or_status.ok()) {
+      LOG(ERROR) << "Failed to run HloValueTracing: "
+                 << hlo_value_tracing_or_status.status();
+      // hlo_value_tracing is left as nullptr.
+    } else {
+      hlo_value_tracing = std::move(hlo_value_tracing_or_status).value();
+    }
+  }
+
   auto graph = absl::WrapUnique(
       new HloGumgraph(*hlo_module, fingerprint_options, std::move(call_graph),
                       std::move(hlo_value_tracing)));
@@ -383,7 +399,9 @@ absl::StatusOr<std::unique_ptr<const HloGumgraph>> HloGumgraph::Create(
   }
   graph->PrecomputeSizeAndHeight();
   TF_RETURN_IF_ERROR(graph->PrecomputeComputationFingerprint());
-  graph->PrecomputeInstructionDependencies();
+  if (precompute_instruction_dependencies) {
+    graph->PrecomputeInstructionDependencies();
+  }
 
   return graph;
 };

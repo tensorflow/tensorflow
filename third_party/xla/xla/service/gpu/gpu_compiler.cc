@@ -1288,6 +1288,7 @@ AlgebraicSimplifierOptions GpuCompiler::GetAlgebraicSimplifierOptions(
   opts.set_supports_non_canonical_dots(false);
   opts.set_enable_unconditional_reduce_of_concat_replacement(false);
   opts.set_rewrite_no_op_bitcast_convert_to_bitcast(true);
+  opts.set_enable_conditional_simplification(true);
 
   switch (mode) {
     case AlgebraicSimplifierMode::kPostFusionSimplification:
@@ -3004,7 +3005,6 @@ GpuCompiler::LoadExecutableFromAotResult(
   const se::DeviceDescription& gpu_device_info =
       stream_exec.GetDeviceDescription();
   llvm::LLVMContext llvm_context;
-
 
   // Recreate BufferAssignment from proto.
   std::unique_ptr<GpuAliasInfo> alias_info = GetAliasInfo(gpu_device_info);
