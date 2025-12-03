@@ -20,7 +20,6 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
-#include "llvm/ADT/SmallVector.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/OwningOpRef.h"
@@ -31,8 +30,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/translate/stablehlo.h"
 #include "xla/mlir/utils/error_util.h"
-#include "xla/service/spmd/shardy/stablehlo_round_trip/stablehlo_export.h"
-#include "xla/service/spmd/shardy/stablehlo_round_trip/stablehlo_import.h"
+#include "xla/service/spmd/shardy/sdy_round_trip/pipelines.h"
 
 namespace xla::spmd {
 
@@ -44,12 +42,12 @@ absl::StatusOr<std::unique_ptr<xla::HloModule>> ConvertShardyToHlo(
 
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::sdy::createSinkDataFlowEdgesPass());
+  pm.addNestedPass<mlir::func::FuncOp>(
+      mlir::sdy::createDropShardingRulesPass());
   // TODO(hanruobing): This export pipeline replaces any sdy.sharding_constraint
   // with an mhlo.copy rather than a stablehlo.custom_call @Sharding, we may
   // need to add an option to to convert to custom call @Sharding.
-  xla::sdy::StablehloExportPipelineOptions options;
-  options.keepHloShardingConstraints = true;
-  xla::sdy::addStablehloExportPipeline(pm, options);
+  xla::sdy::addSdyRoundTripExportPipeline(pm);
 
   mlir::BaseScopedDiagnosticHandler diagnostic_handler(
       shardy_stablehlo_module_copy->getContext());
@@ -71,11 +69,7 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ConvertHloToShardyStablehlo(
         "Failed to verify transformed StableHLO module.");
   }
   mlir::PassManager pm(context);
-  llvm::SmallVector<bool> prop_args = {false};
-  llvm::SmallVector<bool> prop_results = {false};
-  xla::sdy::addStablehloImportPipeline(
-      pm, prop_args, prop_results,
-      /*enableStablehloCanonicalizeFromHloImport=*/false);
+  xla::sdy::addSdyRoundTripImportPipeline(pm);
   // TODO(hanruobing): Explore reinserting the original mesh and calling
   // xla::sdy::createDedupMeshesPass
   if (mlir::failed(pm.run(stablehlo_module.get()))) {
