@@ -1719,7 +1719,11 @@ class Handler : public Ffi {
                    call_frame->args.size));
       }
     } else {
-      if (XLA_FFI_PREDICT_FALSE(call_frame->args.size != kNumArgs)) {
+      // It is safe to not theck the number of arguments if we don't plan to
+      // decode any of them, i.e. for prepare/initialize stages where the FFI
+      // handler might be interested only in the attributes or context.
+      if (XLA_FFI_PREDICT_FALSE(call_frame->args.size != kNumArgs &&
+                                kNumArgs > 0)) {
         return InvalidArgument(
             call_frame->api,
             StrCat("[", call_frame->stage, "] ",
@@ -1749,7 +1753,11 @@ class Handler : public Ffi {
                    call_frame->rets.size));
       }
     } else {
-      if (XLA_FFI_PREDICT_FALSE(call_frame->rets.size != kNumRets)) {
+      // It is safe to not theck the number of results if we don't plan to
+      // decode any of them, i.e. for prepare/initialize stages where the FFI
+      // handler might be interested only in the attributes or context.
+      if (XLA_FFI_PREDICT_FALSE(call_frame->rets.size != kNumRets &&
+                                kNumRets > 0)) {
         return InvalidArgument(
             call_frame->api,
             StrCat("[", call_frame->stage, "] ",
