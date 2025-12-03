@@ -434,7 +434,7 @@ Build(
 
 nvidia_gpu_build_with_compute_capability(
     type_=BuildType.XLA_LINUX_X86_GPU_L4_GITHUB_ACTIONS,
-    configs=("warnings", "rbe_linux_cuda_nvcc"),
+    configs=("warnings", "rbe_linux_cuda_nvcc", "hermetic_cuda_umd"),
     compute_capability=75,
 )
 
@@ -509,7 +509,7 @@ Build(
     type_=BuildType.XLA_LINUX_X86_GPU_L4_16_VCPU_PRESUBMIT_GITHUB_ACTIONS,
     repo="openxla/xla",
     target_patterns=_XLA_GPU_PRESUBMIT_BENCHMARKS_DEFAULT_TARGET_PATTERNS,
-    configs=("warnings", "rbe_linux_cuda_nvcc"),
+    configs=("warnings", "rbe_linux_cuda_nvcc", "hermetic_cuda_umd"),
     test_tag_filters=(
         "-no_oss",
         "requires-gpu-nvidia",
@@ -541,7 +541,7 @@ Build(
     type_=BuildType.XLA_LINUX_X86_GPU_L4_16_VCPU_BENCHMARK_PRESUBMIT_GITHUB_ACTIONS,
     repo="openxla/xla",
     target_patterns=_XLA_GPU_PRESUBMIT_BENCHMARKS_DEFAULT_TARGET_PATTERNS,
-    configs=("warnings", "rbe_linux_cuda_nvcc"),
+    configs=("warnings", "rbe_linux_cuda_nvcc", "hermetic_cuda_umd"),
     test_tag_filters=(
         "-no_oss",
         "requires-gpu-nvidia",
@@ -573,7 +573,7 @@ Build(
 Build(
     type_=BuildType.XLA_LINUX_X86_GPU_L4_48_VCPU_PRESUBMIT_GITHUB_ACTIONS,
     repo="openxla/xla",
-    configs=("warnings", "rbe_linux_cuda_nvcc"),
+    configs=("warnings", "rbe_linux_cuda_nvcc", "hermetic_cuda_umd"),
     target_patterns=_XLA_GPU_PRESUBMIT_BENCHMARKS_DEFAULT_TARGET_PATTERNS,
     test_tag_filters=(
         "-no_oss",
@@ -605,7 +605,7 @@ Build(
 Build(
     type_=BuildType.XLA_LINUX_X86_GPU_L4_48_VCPU_BENCHMARK_PRESUBMIT_GITHUB_ACTIONS,
     repo="openxla/xla",
-    configs=("warnings", "rbe_linux_cuda_nvcc"),
+    configs=("warnings", "rbe_linux_cuda_nvcc", "hermetic_cuda_umd"),
     target_patterns=_XLA_GPU_PRESUBMIT_BENCHMARKS_DEFAULT_TARGET_PATTERNS,
     test_tag_filters=(
         "-no_oss",

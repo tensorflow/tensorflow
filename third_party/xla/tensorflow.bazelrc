@@ -200,11 +200,11 @@ common:cuda --@rules_ml_toolchain//common:enable_cuda
 common:cuda --config=cuda_version
 # This flag is needed to include CUDA libraries.
 common:cuda --@local_config_cuda//cuda:include_cuda_libs=true
-common:cuda --@cuda_driver//:include_cuda_umd_libs=true
 
 # This configuration is used for building the wheels.
 common:cuda_wheel --@local_config_cuda//cuda:include_cuda_libs=false
-common:cuda_wheel --@cuda_driver//:include_cuda_umd_libs=false
+
+common:hermetic_cuda_umd --@cuda_driver//:include_cuda_umd_libs=true
 
 # CUDA: This config refers to building CUDA op kernels with clang.
 common:cuda_clang --config=cuda
