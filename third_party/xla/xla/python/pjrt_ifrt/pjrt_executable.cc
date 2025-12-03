@@ -727,16 +727,10 @@ PjRtLoadedExecutable::Execute(absl::Span<ArrayRef> args,
   }
 
   if (options.custom_options.has_value()) {
-    const auto& attributes = options.custom_options->map();
-    // Check if the custom options contain a call location key.
-    if (auto it = attributes.find(
-            xla::ifrt::PjRtCompatibleLoadedExecutable::kCallLocation);
-        it != attributes.end()) {
-      const xla::ifrt::AttributeMap::Value& value = it->second;
-      if (const auto* call_location =
-              std::get_if<xla::ifrt::AttributeMap::StringValue>(&value)) {
-        opts.call_location = call_location->value;
-      }
+    auto call_location = options.custom_options->Get<std::string>(
+        std::string(xla::ifrt::PjRtCompatibleLoadedExecutable::kCallLocation));
+    if (call_location.ok()) {
+      opts.call_location = *call_location;
     }
   }
 

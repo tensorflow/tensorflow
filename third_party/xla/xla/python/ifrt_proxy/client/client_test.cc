@@ -268,9 +268,8 @@ TEST_P(ClientTest, Init) {
   EXPECT_EQ(client_->platform_id(), 42);
   EXPECT_EQ(client_->process_index(), 1);
   EXPECT_EQ(client_->runtime_type(), "proxy/ifrt-service");
-  EXPECT_THAT(
-      client_->Attributes().map(),
-      ElementsAre(Pair("test_key", AttributeMap::StringValue("test_value"))));
+  EXPECT_THAT(client_->Attributes().Get<std::string>("test_key"),
+              absl_testing::IsOkAndHolds("test_value"));
 
   ASSERT_EQ(client_->device_count(), 2);
   ASSERT_EQ(client_->addressable_device_count(), 1);
@@ -279,8 +278,8 @@ TEST_P(ClientTest, Init) {
                           client_->LookupDevice(DeviceId(0)));
   EXPECT_EQ(device0->Id(), DeviceId(0));
   EXPECT_EQ(device0->Kind(), "mock");
-  EXPECT_THAT(device0->Attributes().map(),
-              ElementsAre(Pair("name", AttributeMap::StringValue("device0"))));
+  EXPECT_THAT(device0->Attributes().Get<std::string>("name"),
+              absl_testing::IsOkAndHolds("device0"));
 
   ASSERT_THAT(device0->Memories(), SizeIs(1));
   auto* const memory0 = device0->Memories()[0];
@@ -293,8 +292,8 @@ TEST_P(ClientTest, Init) {
                           client_->LookupDevice(DeviceId(1)));
   EXPECT_EQ(device1->Id(), 1);
   EXPECT_EQ(device1->Kind(), "mock");
-  EXPECT_THAT(device1->Attributes().map(),
-              ElementsAre(Pair("name", AttributeMap::StringValue("device1"))));
+  EXPECT_THAT(device1->Attributes().Get<std::string>("name"),
+              absl_testing::IsOkAndHolds("device1"));
 
   ASSERT_THAT(device1->Memories(), SizeIs(1));
   auto* const memory1 = device1->Memories()[0];

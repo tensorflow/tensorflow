@@ -246,12 +246,9 @@ class IfrtToDotPass : public impl::IfrtToDotPassBase<IfrtToDotPass> {
     // Get flops from the cost analysis.
     if (auto cost_analysis = executable->GetCostAnalysis();
         cost_analysis.ok()) {
-      if (auto it = cost_analysis->map().find("flops");
-          it != cost_analysis->map().end()) {
-        if (auto flops_ptr =
-                std::get_if<xla::ifrt::AttributeMap::FloatValue>(&it->second)) {
-          stats.flops = flops_ptr->value;
-        }
+      auto flops = cost_analysis->Get<float>("flops");
+      if (flops.ok()) {
+        stats.flops = *flops;
       } else {
         LOG(WARNING) << "Cost analysis of executable " << executable->name()
                      << " does not contain flops";
