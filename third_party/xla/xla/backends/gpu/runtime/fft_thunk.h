@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
+#include "xla/runtime/buffer_use.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/shape.h"
 #include "xla/stream_executor/device_memory.h"
@@ -83,6 +84,13 @@ class FftThunk : public Thunk {
 
   // Does the FFT for the thunk on "stream".
   absl::Status ExecuteOnStream(const ExecuteParams& params) override;
+
+  BufferUses buffer_uses() const override {
+    return {
+        BufferUse::Read(input_buffer_, input_shape_),
+        BufferUse::Write(output_buffer_, output_shape_),
+    };
+  }
 
   static absl::StatusOr<std::unique_ptr<FftThunk>> FromProto(
       ThunkInfo thunk_info, const FftThunkProto& proto,
