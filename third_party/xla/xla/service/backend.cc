@@ -21,6 +21,7 @@ limitations under the License.
 #include "xla/service/stream_pool.h"
 #include "xla/service/transfer_manager.h"
 #include "xla/stream_executor/platform.h"
+#include "xla/tsl/platform/statusor.h"
 #include "tsl/platform/statusor.h"
 #define EIGEN_USE_THREADS
 
@@ -90,7 +91,7 @@ struct Backend::IntraOpThreadPool {
 /* static */ absl::StatusOr<std::unique_ptr<Backend>> Backend::CreateBackend(
     const BackendOptions& options) {
   se::Platform* platform = options.platform();
-  TF_ASSIGN_OR_RETURN(auto compiler, Compiler::GetForPlatform(platform));
+  TF_ASSIGN_OR_RETURN(auto compiler, Compiler::GetForPlatform(platform->id()));
   TF_ASSIGN_OR_RETURN(
       auto stream_executors,
       PlatformUtil::GetStreamExecutors(platform, options.allowed_devices()));

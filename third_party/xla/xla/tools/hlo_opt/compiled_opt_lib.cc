@@ -101,7 +101,7 @@ absl::StatusOr<std::unique_ptr<Compiler>> CompiledOptProvider::GetCompiler() {
                       PlatformUtil::GetPlatform(GetPlatformName()));
 
   TF_ASSIGN_OR_RETURN(std::unique_ptr<Compiler> compiler,
-                      Compiler::GetForPlatform(platform));
+                      Compiler::GetForPlatform(platform->id()));
   return compiler;
 }
 
