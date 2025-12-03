@@ -762,20 +762,6 @@ void AssignComputationDevice(HloComputation* computation, int64_t device) {
   }
 }
 
-std::optional<int64_t> GetMostOccurringDevice(
-    absl::Span<HloInstruction* const> instructions) {
-  std::map<int64_t, int64_t> device_map;
-  for (HloInstruction* instruction : instructions) {
-    if (instruction->has_sharding()) {
-      for (auto& it : instruction->sharding().UsedDevices(nullptr)) {
-        // The UsedDevices() API returns a map<device, occurrence_count>.
-        device_map[it.first] += it.second;
-      }
-    }
-  }
-  return SelectDominantDevice(device_map, nullptr);
-}
-
 std::optional<int64_t> GetDominantDevice(
     absl::Span<HloComputation* const> computations, double dominant_factor) {
   int64_t instruction_count = 0;

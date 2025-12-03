@@ -130,11 +130,6 @@ std::optional<int64_t> SelectDominantDevice(
 // instructions which already have sharding.
 void AssignComputationDevice(HloComputation* computation, int64_t device);
 
-// Given an instruction container, returns the device which is most commonly
-// occurring among the instructions.
-std::optional<int64_t> GetMostOccurringDevice(
-    absl::Span<HloInstruction* const> instructions);
-
 // Given a set of computations, tries to extract the dominant device. A device
 // is dominant if the combined occurrence among all the instructions of the
 // input computations, is greater/equal than/to dominant_factor (real number
