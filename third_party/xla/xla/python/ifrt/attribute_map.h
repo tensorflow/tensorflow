@@ -135,6 +135,8 @@ class AttributeMap {
     sink.Append(attribute_map.DebugString());
   }
 
+  bool IsEmpty() const { return map_.empty(); }
+
  private:
   template <typename T, typename V>
   absl::StatusOr<T> Get(const std::string& key) const {
