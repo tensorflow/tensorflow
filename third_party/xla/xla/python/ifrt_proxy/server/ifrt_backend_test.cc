@@ -40,6 +40,7 @@
 #include "absl/types/span.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/ExtensibleRTTI.h"
+#include "google/protobuf/text_format.h"
 #include "xla/hlo/testlib/test.h"
 #include "xla/layout_util.h"
 #include "xla/literal.h"

@@ -233,6 +233,7 @@ ifrt_proxy_cc_test(
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
+        "@com_google_protobuf//:protobuf",
         "@llvm-project//llvm:Support",
         "@local_tsl//tsl/platform:protobuf",
     ],
