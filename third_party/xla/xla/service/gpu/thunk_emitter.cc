@@ -1274,7 +1274,6 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitTritonCustomCall(
     auto kernel_name = ir_emitter_context_->GetSanitizedUniqueName(call.name);
     VLOG(3) << "Generating: " << kernel_name;
 
-    auto local_module = ir_emitter_context_->CreateLLVMModule(kernel_name);
     mlir::OwningOpRef<mlir::ModuleOp> triton_module;
     {
       mlir::BaseScopedDiagnosticHandler diagnostic_handler(&mlir_context);
@@ -1313,7 +1312,9 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitTritonCustomCall(
         CompileTritonToLLVM(kernel_name, *hlo_module,
                             ir_emitter_context_->gpu_device_info(),
                             block_level_parameters, triton_module.get(),
-                            local_module.get(), mlir_context,
+                            ir_emitter_context_->target_triple(),
+                            ir_emitter_context_->data_layout(),
+                            *ir_emitter_context_->llvm_context(), mlir_context,
                             /*is_xla_fusion=*/false, emit_kernels));
 
     TF_ASSIGN_OR_RETURN(auto kernel_arguments,
@@ -1329,16 +1330,16 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitTritonCustomCall(
     if (emit_kernels) {
       TF_ASSIGN_OR_RETURN(
           llvm::Function * kernel,
-          RemoveUnusedTritonAbiArguments(local_module.get(),
+          RemoveUnusedTritonAbiArguments(result.llvm_module.get(),
                                          *ir_emitter_context_, kernel_name));
 
       AnnotateAttrsIfUnset(kernel_arguments, *kernel);
       TF_RETURN_IF_ERROR(AnnotateKernelLaunchDimensions(
           ir_emitter_context_->gpu_device_info(), launch_dimensions, kernel,
-          local_module.get()));
+          result.llvm_module.get()));
     }
 
-    kernel_modules_.push_back(std::move(local_module));
+    kernel_modules_.push_back(std::move(result.llvm_module));
     return {{kernel_name, launch_dimensions, result.cluster_dim,
              result.shmem_bytes}};
   };

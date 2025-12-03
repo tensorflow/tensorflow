@@ -35,6 +35,7 @@ limitations under the License.
 #include "absl/strings/substitute.h"
 #include "Eigen/Core"
 #include "llvm/IR/LLVMContext.h"
+#include "llvm/TargetParser/Triple.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/Pass/PassManager.h"
 #include "xla/autotuning.pb.h"
@@ -55,6 +56,7 @@ limitations under the License.
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/model/block_level_parameters.h"
+#include "xla/service/gpu/target_constants.h"
 #include "xla/service/gpu/tests/gpu_codegen_test.h"
 #include "xla/shape.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
@@ -1659,15 +1661,16 @@ ENTRY entry {
   const se::DeviceDescription dev_info =
       TestGpuDeviceInfo::RTXA6000DeviceInfo();
   llvm::LLVMContext llvm_ctx;
-  llvm::Module llvm_module("module", llvm_ctx);
   mlir::MLIRContext mlir_context;
+  llvm::Triple target_triple(nvptx::TargetTriple());
+  std::string data_layout(nvptx::DataLayout());
 
   EXPECT_THAT(
       TritonWrapper("test_fn", triton_fusion,
                     se::CudaComputeCapability{se::CudaComputeCapability::kVolta,
                                               /*minor=*/0},
-                    dev_info, BlockLevelParameters(), &llvm_module,
-                    mlir_context),
+                    dev_info, BlockLevelParameters(), target_triple,
+                    data_layout, llvm_ctx, mlir_context),
       absl_testing::StatusIs(
           absl::StatusCode::kFailedPrecondition,
           ::testing::HasSubstr("Triton support is only enabled for Ampere GPUs "
@@ -1717,8 +1720,9 @@ ENTRY entry_computation {
   const se::DeviceDescription dev_info =
       TestGpuDeviceInfo::RTXA6000DeviceInfo(compute_capability);
   llvm::LLVMContext llvm_ctx;
-  llvm::Module llvm_module("module", llvm_ctx);
   mlir::MLIRContext mlir_context;
+  llvm::Triple target_triple(nvptx::TargetTriple());
+  std::string data_layout(nvptx::DataLayout());
 
   BlockLevelParameters block_level_parameters;
   block_level_parameters.output_tile_sizes = {{1024, 1}};
@@ -1729,7 +1733,8 @@ ENTRY entry_computation {
   // 1048576.
   EXPECT_THAT(
       TritonWrapper("test_fn", triton_fusion, compute_capability, dev_info,
-                    block_level_parameters, &llvm_module, mlir_context),
+                    block_level_parameters, target_triple, data_layout,
+                    llvm_ctx, mlir_context),
       absl_testing::StatusIs(
           absl::StatusCode::kInvalidArgument,
           ::testing::HasSubstr("Tiling does not satisfy constraints.")));
@@ -4553,8 +4558,9 @@ TEST_F(TritonEmitterTest, RocmWarpSizeIsSetCorrectly) {
       verified_module->entry_computation()->root_instruction());
 
   llvm::LLVMContext llvm_ctx;
-  llvm::Module llvm_module("module", llvm_ctx);
   mlir::MLIRContext mlir_context;
+  llvm::Triple target_triple(nvptx::TargetTriple());
+  std::string data_layout(nvptx::DataLayout());
   std::vector<std::string> paths;
   std::string triton_passes_log;
 
@@ -4564,7 +4570,8 @@ TEST_F(TritonEmitterTest, RocmWarpSizeIsSetCorrectly) {
   TF_ASSERT_OK(TritonWrapper(
       "test_fn", triton_fusion,
       se::GpuComputeCapability{se::RocmComputeCapability("gfx942")}, dev_info,
-      BlockLevelParameters(), &llvm_module, mlir_context));
+      BlockLevelParameters(), target_triple, data_layout, llvm_ctx,
+      mlir_context));
   TF_EXPECT_OK(tsl::Env::Default()->GetMatchingPaths(
       tsl::io::JoinPath(output_directory, "*.triton-passes.log"), &paths));
   EXPECT_EQ(paths.size(), 1);
@@ -4581,7 +4588,8 @@ TEST_F(TritonEmitterTest, RocmWarpSizeIsSetCorrectly) {
   TF_ASSERT_OK(TritonWrapper(
       "test_fn", triton_fusion,
       se::GpuComputeCapability{se::RocmComputeCapability("gfx1100")},
-      dev_info_n, BlockLevelParameters(), &llvm_module, mlir_context));
+      dev_info_n, BlockLevelParameters(), target_triple, data_layout, llvm_ctx,
+      mlir_context));
   TF_EXPECT_OK(tsl::Env::Default()->GetMatchingPaths(
       tsl::io::JoinPath(output_directory, "*.triton-passes.log"), &paths));
   EXPECT_EQ(paths.size(), 1);

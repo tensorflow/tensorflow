@@ -19,6 +19,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "llvm/IR/Module.h"
+#include "llvm/TargetParser/Triple.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
@@ -27,6 +28,7 @@ limitations under the License.
 #include "xla/backends/gpu/codegen/triton/xtile_compiler.h"
 #include "xla/hlo/ir/hlo_clone_context.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/service/gpu/model/block_level_parameters.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/stream_executor/device_description.h"
 #include "triton/Dialect/Triton/IR/Dialect.h"
@@ -49,7 +51,8 @@ absl::StatusOr<TritonWrapperResult> TritonWrapper(
     const se::GpuComputeCapability& cc,
     const se::DeviceDescription& device_info,
     const BlockLevelParameters& block_level_parameters,
-    llvm::Module* llvm_module, mlir::MLIRContext& mlir_context) {
+    const llvm::Triple& target_triple, const std::string& data_layout,
+    llvm::LLVMContext& llvm_context, mlir::MLIRContext& mlir_context) {
   return absl::UnimplementedError("not supported for this build configuration");
 }
 
@@ -65,7 +68,8 @@ absl::StatusOr<TritonWrapperResult> CompileTritonToLLVM(
     absl::string_view kernel_name, const HloModule& hlo_module,
     const se::DeviceDescription& device_info,
     const BlockLevelParameters& block_level_parameters,
-    mlir::ModuleOp triton_module, llvm::Module* llvm_module,
+    mlir::ModuleOp triton_module, const llvm::Triple& target_triple,
+    const std::string& data_layout, llvm::LLVMContext& llvm_context,
     mlir::MLIRContext& mlir_context, bool is_xla_fusion, bool emit_kernel) {
   return absl::UnimplementedError("not supported for this build configuration");
 }

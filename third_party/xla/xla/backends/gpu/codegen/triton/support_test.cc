@@ -43,6 +43,7 @@ limitations under the License.
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/model/block_level_parameters.h"
+#include "xla/service/gpu/target_constants.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tsl/platform/statusor.h"
@@ -268,10 +269,17 @@ class TritonSupportTest : public TritonSupportTestBase {
     const se::DeviceDescription dev_info =
         cc.IsCuda() ? TestGpuDeviceInfo::RTXA6000DeviceInfo(cc)
                     : TestGpuDeviceInfo::AMDMI210DeviceInfo();
+    if (cc.IsCuda()) {
+      data_layout_ = nvptx::DataLayout();
+      target_triple_ = llvm::Triple(nvptx::TargetTriple());
+    } else {
+      data_layout_ = amdgpu::DataLayout();
+      target_triple_ = llvm::Triple(amdgpu::TargetTriple());
+    }
     auto run_triton_codegen = [&]() {
       return TritonWrapper("test_fn", &ti.TritonFusion(), cc, dev_info,
-                           block_level_parameters, &llvm_module_,
-                           mlir_context_);
+                           block_level_parameters, target_triple_, data_layout_,
+                           llvm_ctx_, mlir_context_);
     };
 
     if (IsTritonSupportedInstruction(ti.Instruction(), cc)) {

@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
+#include "llvm/TargetParser/Triple.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
@@ -165,7 +166,8 @@ class TritonSupportTestBase : public HloTestBase {
       xla::HloOpcode opcode, bool use_nested_gemm_fusions = false);
 
   llvm::LLVMContext llvm_ctx_;
-  llvm::Module llvm_module_{"module", llvm_ctx_};
+  llvm::Triple target_triple_;
+  std::string data_layout_;
   mlir::MLIRContext mlir_context_;
   TritonGemmConfig config_{16, 32, 512, 1, 4, 8};
 };

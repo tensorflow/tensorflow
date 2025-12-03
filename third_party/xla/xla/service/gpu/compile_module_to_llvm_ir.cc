@@ -281,10 +281,10 @@ absl::StatusOr<CompileModuleResults> CompileModuleToLlvmIr(
       split_constants_module
           ? ir_emitter_context.CreateLLVMModule(hlo_module->name())
           : thunk_emitter.ConsumeConstantsModule();
+  llvm::Linker linker(*results.llvm_module);
   for (auto& kernel_module : thunk_emitter.ConsumeKernelModules()) {
-    CHECK(!llvm::Linker::linkModules(*results.llvm_module.get(),
-                                     std::move(kernel_module),
-                                     llvm::Linker::Flags::OverrideFromSrc));
+    CHECK(!linker.linkInModule(std::move(kernel_module),
+                               llvm::Linker::Flags::OverrideFromSrc));
   }
   if (split_constants_module) {
     results.llvm_module_constants = thunk_emitter.ConsumeConstantsModule();

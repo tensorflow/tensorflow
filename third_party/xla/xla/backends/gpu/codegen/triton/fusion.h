@@ -17,12 +17,13 @@ limitations under the License.
 
 #include <memory>
 #include <optional>
-#include <utility>
 
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/IR/Module.h"
+#include "llvm/TargetParser/Triple.h"
+#include "mlir/IR/MLIRContext.h"
 #include "xla/backends/gpu/codegen/fusion_emitter.h"
 #include "xla/backends/gpu/codegen/triton/xtile_compiler.h"
 #include "xla/backends/gpu/runtime/kernel_thunk.h"
@@ -31,6 +32,7 @@ limitations under the License.
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/ir_emitter_context.h"
 #include "xla/service/gpu/launch_dimensions.h"
+#include "xla/service/gpu/model/block_level_parameters.h"
 #include "xla/shape.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/launch_dim.h"
@@ -98,8 +100,9 @@ class TritonFusion : public FusionInterface {
   // generated kernel.
   absl::StatusOr<TritonWrapperResult> GenerateTritonKernelAndWrapper(
       const HloFusionInstruction& fusion, absl::string_view impl_fn_name,
-      const se::DeviceDescription& device_info, llvm::Module* llvm_module,
-      mlir::MLIRContext* mlir_context) const;
+      const se::DeviceDescription& device_info,
+      const llvm::Triple& target_triple, const std::string& data_layout,
+      llvm::LLVMContext* llvm_context, mlir::MLIRContext* mlir_context) const;
 
  private:
   const HloFusionAnalysis& analysis_;

@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
 #include "llvm/IR/LLVMContext.h"
+#include "llvm/TargetParser/Triple.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/Pass/PassManager.h"
 #include "xla/autotuning.pb.h"
@@ -47,6 +48,7 @@ limitations under the License.
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/model/block_level_parameters.h"
+#include "xla/service/gpu/target_constants.h"
 #include "xla/service/gpu/tests/gpu_codegen_test.h"
 #include "xla/service/gpu/transforms/nest_gemm_fusion.h"
 #include "xla/service/pattern_matcher.h"
@@ -458,7 +460,8 @@ TEST_F(TritonGemmTest, FailIfTooMuchShmem) {
   const se::DeviceDescription device_info =
       TestGpuDeviceInfo::RTXA6000DeviceInfo();
   llvm::LLVMContext llvm_ctx;
-  llvm::Module llvm_module("module", llvm_ctx);
+  llvm::Triple target_triple(nvptx::TargetTriple());
+  std::string data_layout(nvptx::DataLayout());
 
   constexpr absl::string_view kHloTextTemplate = R"(
 triton_gemm_dot {
@@ -488,7 +491,7 @@ ENTRY entry {
   EXPECT_THAT(
       TritonWrapper("test_fn", fusion1, se::GpuComputeCapability{cc},
                     device_info, module1_and_metadata.block_level_parameters,
-                    &llvm_module, mlir_context_),
+                    target_triple, data_layout, llvm_ctx, mlir_context_),
       absl_testing::StatusIs(
           tsl::error::RESOURCE_EXHAUSTED,
           ::testing::HasSubstr("Shared memory size limit exceeded")));
@@ -504,7 +507,7 @@ ENTRY entry {
       const auto result,
       TritonWrapper("test_fn", fusion2, se::GpuComputeCapability{cc},
                     device_info, module2_and_metadata.block_level_parameters,
-                    &llvm_module, mlir_context_));
+                    target_triple, data_layout, llvm_ctx, mlir_context_));
   // Use optin shared memory which is > shared_memory_per_block.
   EXPECT_GT(result.shmem_bytes, device_info.shared_memory_per_block());
 }
@@ -801,7 +804,8 @@ TEST_F(TritonGemmTest, DISABLED_FailForTooComplexTiling) {
   const se::DeviceDescription device_info =
       TestGpuDeviceInfo::RTXA6000DeviceInfo();
   llvm::LLVMContext llvm_ctx;
-  llvm::Module llvm_module("module", llvm_ctx);
+  llvm::Triple target_triple(nvptx::TargetTriple());
+  std::string data_layout(nvptx::DataLayout());
 
   constexpr absl::string_view kHloTextTemplate = R"(
 HloModule module
@@ -834,7 +838,7 @@ ENTRY entry {
   EXPECT_THAT(
       TritonWrapper("test_fn", fusion1, se::GpuComputeCapability{cc},
                     device_info, module1_and_metadata.block_level_parameters,
-                    &llvm_module, mlir_context_),
+                    target_triple, data_layout, llvm_ctx, mlir_context_),
       absl_testing::StatusIs(tsl::error::RESOURCE_EXHAUSTED,
                              "Tiling complexity heuristic exceeded"));
 
@@ -846,11 +850,11 @@ ENTRY entry {
   const HloFusionInstruction* fusion2 = Cast<HloFusionInstruction>(
       module1_and_metadata.computation->FusionInstruction());
 
-  TF_EXPECT_OK(TritonWrapper("test_fn", fusion2, se::GpuComputeCapability{cc},
-                             device_info,
-                             module2_and_metadata.block_level_parameters,
-                             &llvm_module, mlir_context_)
-                   .status());
+  TF_EXPECT_OK(
+      TritonWrapper("test_fn", fusion2, se::GpuComputeCapability{cc},
+                    device_info, module2_and_metadata.block_level_parameters,
+                    target_triple, data_layout, llvm_ctx, mlir_context_)
+          .status());
 }
 
 // TODO(b/393299275): this test may have some value while Triton tiling
@@ -1987,14 +1991,15 @@ ENTRY e {
   const HloFusionInstruction* triton_dot_fusion = Cast<HloFusionInstruction>(
       optin_shmem_module_and_metadata.computation->FusionInstruction());
   llvm::LLVMContext llvm_ctx;
-  llvm::Module llvm_module("module", llvm_ctx);
+  llvm::Triple target_triple(nvptx::TargetTriple());
+  std::string data_layout(nvptx::DataLayout());
 
   TF_ASSERT_OK_AND_ASSIGN(
       const auto result,
       TritonWrapper("test_fn", triton_dot_fusion, GpuComputeCapability(),
                     dev_info,
                     optin_shmem_module_and_metadata.block_level_parameters,
-                    &llvm_module, mlir_context_));
+                    target_triple, data_layout, llvm_ctx, mlir_context_));
   // The config is chosen so that the used memory size is slightly above the
   // 48 kB boundary of standard / opt-in shared memory so that any GPU that
   // has the opt-in one should be able to execute the test.

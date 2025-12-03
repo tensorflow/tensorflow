@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/status/status_matchers.h"
 #include "absl/strings/string_view.h"
 #include "llvm/IR/LLVMContext.h"
+#include "llvm/TargetParser/Triple.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/backends/gpu/codegen/triton/xtile_compiler.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -31,6 +32,7 @@ limitations under the License.
 #include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/model/block_level_parameters.h"
+#include "xla/service/gpu/target_constants.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tsl/platform/statusor.h"
@@ -77,7 +79,8 @@ ENTRY entry {
   const se::DeviceDescription dev_info =
       TestGpuDeviceInfo::RTXA6000DeviceInfo();
   llvm::LLVMContext llvm_ctx;
-  llvm::Module llvm_module("module", llvm_ctx);
+  llvm::Triple triple(nvptx::TargetTriple());
+  std::string data_layout = nvptx::DataLayout();
   mlir::MLIRContext mlir_context;
 
   BlockLevelParameters block_level_parameters;
@@ -87,7 +90,8 @@ ENTRY entry {
   EXPECT_THAT(TritonWrapper(
                   "test_fn", triton_fusion,
                   se::GpuComputeCapability{se::CudaComputeCapability::Hopper()},
-                  dev_info, block_level_parameters, &llvm_module, mlir_context),
+                  dev_info, block_level_parameters, triple, data_layout,
+                  llvm_ctx, mlir_context),
               absl_testing::StatusIs(
                   absl::StatusCode::kFailedPrecondition,
                   ::testing::HasSubstr(
@@ -156,8 +160,6 @@ ENTRY entry {
       hlo_module->entry_computation()->root_instruction());
   const se::DeviceDescription dev_info =
       TestGpuDeviceInfo::RTXA6000DeviceInfo();
-  llvm::LLVMContext llvm_ctx;
-  llvm::Module llvm_module("module", llvm_ctx);
   mlir::MLIRContext mlir_context;
 
   EXPECT_OK(
@@ -230,7 +232,8 @@ ENTRY entry {
   const se::DeviceDescription dev_info =
       TestGpuDeviceInfo::RTXB200SXMDeviceInfo();
   llvm::LLVMContext llvm_ctx;
-  llvm::Module llvm_module("module", llvm_ctx);
+  llvm::Triple triple(nvptx::TargetTriple());
+  std::string data_layout = nvptx::DataLayout();
   mlir::MLIRContext mlir_context;
   TF_ASSERT_OK_AND_ASSIGN(
       TritonWrapperResult result,
@@ -240,7 +243,7 @@ ENTRY entry {
                         fusion->backend_config<GpuBackendConfig>()
                             ->fusion_backend_config()
                             .block_level_fusion_config()),
-                    &llvm_module, mlir_context));
+                    triple, data_layout, llvm_ctx, mlir_context));
 
   // Warp specialization influences the total number of threads we end up
   // using. Usually we would expect num_warps * warp_size threads per block, but

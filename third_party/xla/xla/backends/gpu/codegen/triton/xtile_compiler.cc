@@ -288,7 +288,8 @@ absl::StatusOr<TritonWrapperResult> TritonWrapper(
     const se::GpuComputeCapability& gpu_cc,
     const se::DeviceDescription& device_info,
     const BlockLevelParameters& block_level_parameters,
-    llvm::Module* llvm_module, MLIRContext& mlir_context) {
+    const llvm::Triple& target_triple, const std::string& data_layout,
+    llvm::LLVMContext& llvm_context, MLIRContext& mlir_context) {
   TF_RETURN_IF_ERROR(CheckAtLeastAmpere(gpu_cc));
 
   TF_ASSIGN_OR_RETURN(mlir::OwningOpRef<mlir::ModuleOp> triton_module,
@@ -303,7 +304,8 @@ absl::StatusOr<TritonWrapperResult> TritonWrapper(
   const HloModule* hlo_module = fusion->GetModule();
   return CompileTritonToLLVM(fn_name, *hlo_module, device_info,
                              block_level_parameters, triton_module.get(),
-                             llvm_module, mlir_context,
+                             target_triple, data_layout, llvm_context,
+                             mlir_context,
                              /*is_xla_fusion=*/true);
 }
 
@@ -311,7 +313,8 @@ absl::StatusOr<TritonWrapperResult> CompileTritonToLLVM(
     absl::string_view kernel_name, const HloModule& hlo_module,
     const se::DeviceDescription& device_info,
     const BlockLevelParameters& block_level_parameters,
-    mlir::ModuleOp triton_module, llvm::Module* llvm_module,
+    mlir::ModuleOp triton_module, const llvm::Triple& target_triple,
+    const std::string& data_layout, llvm::LLVMContext& llvm_context,
     mlir::MLIRContext& mlir_context, bool is_xla_fusion, bool emit_kernel) {
   const auto& gpu_cc = device_info.gpu_compute_capability();
   TF_RETURN_IF_ERROR(CheckAtLeastAmpere(gpu_cc));
@@ -425,10 +428,10 @@ absl::StatusOr<TritonWrapperResult> CompileTritonToLLVM(
   }
 
   std::vector<llvm::Metadata*> captured_nvvm_annotations;
+  std::unique_ptr<llvm::Module> ll_triton_module;
   if (emit_kernel) {
-    TF_ASSIGN_OR_RETURN(
-        std::unique_ptr<llvm::Module> ll_triton_module,
-        TranslateLLVMToLLVMIR(&llvm_module->getContext(), triton_module));
+    TF_ASSIGN_OR_RETURN(ll_triton_module,
+                        TranslateLLVMToLLVMIR(&llvm_context, triton_module));
 
     XLA_VLOG_LINES(5, llvm_ir::DumpToString(ll_triton_module.get()));
     if (should_verify) {
@@ -438,16 +441,12 @@ absl::StatusOr<TritonWrapperResult> CompileTritonToLLVM(
     // Integrate LLVM matmul kernel into XLA's LLVM module.
     captured_nvvm_annotations =
         xgt::ExtractNvvmAnnotations(ll_triton_module.get());
-    ll_triton_module->setDataLayout(llvm_module->getDataLayout());
-    ll_triton_module->setTargetTriple(llvm_module->getTargetTriple());
+    ll_triton_module->setDataLayout(data_layout);
+    ll_triton_module->setTargetTriple(target_triple);
     // Use override flag because libdevice functions can be present in both.
-    TF_RET_CHECK(
-        !llvm::Linker::linkModules(*llvm_module, std::move(ll_triton_module),
-                                   llvm::Linker::Flags::OverrideFromSrc));
-
-    XLA_VLOG_LINES(5, llvm_ir::DumpToString(llvm_module));
+    XLA_VLOG_LINES(5, llvm_ir::DumpToString(ll_triton_module.get()));
     if (should_verify) {
-      VerifyModule(*llvm_module);
+      VerifyModule(*ll_triton_module);
     }
   }
 
@@ -490,10 +489,12 @@ absl::StatusOr<TritonWrapperResult> CompileTritonToLLVM(
   // - TMA metadata.
   // - Total threads per block. Computed from module attributes.
   // - Captured NVVM annotations.
-  TritonWrapperResult result = {
-      shared_mem_bytes,          cluster_dim, tma_metadata, thread_dims,
-      captured_nvvm_annotations,
-  };
+  TritonWrapperResult result = {shared_mem_bytes,
+                                cluster_dim,
+                                tma_metadata,
+                                thread_dims,
+                                captured_nvvm_annotations,
+                                std::move(ll_triton_module)};
   return result;
 }
 

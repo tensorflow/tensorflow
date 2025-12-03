@@ -29,17 +29,17 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/STLExtras.h"
-#include "llvm/IR/Constants.h"
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Metadata.h"
 #include "llvm/IR/Module.h"
 #include "llvm/Support/Casting.h"
+#include "llvm/TargetParser/Triple.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/Support/LLVM.h"
 #include "xla/backends/gpu/codegen/fusion_emitter.h"
-#include "xla/backends/gpu/codegen/triton/fusion_emitter.h"
+#include "xla/backends/gpu/codegen/triton/xtile_compiler.h"
 #include "xla/backends/gpu/runtime/kernel_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/codegen/emitters/kernel_arguments.h"
@@ -92,7 +92,8 @@ static void PopulateNvvmAnnotations(
 absl::StatusOr<TritonWrapperResult>
 TritonFusion::GenerateTritonKernelAndWrapper(
     const HloFusionInstruction& fusion, absl::string_view impl_fn_name,
-    const se::DeviceDescription& device_info, llvm::Module* llvm_module,
+    const se::DeviceDescription& device_info, const llvm::Triple& target_triple,
+    const std::string& data_layout, llvm::LLVMContext* llvm_context,
     mlir::MLIRContext* mlir_context) const {
   const se::GpuComputeCapability& cc = device_info.gpu_compute_capability();
 
@@ -105,7 +106,7 @@ TritonFusion::GenerateTritonKernelAndWrapper(
       impl_fn_name, &fusion, cc, device_info,
       BlockLevelParameters::FromBlockLevelFusionConfig(
           analysis_.fusion_backend_config().block_level_fusion_config()),
-      llvm_module, *mlir_context);
+      target_triple, data_layout, *llvm_context, *mlir_context);
 };
 
 absl::StatusOr<FusionEmissionResult> TritonFusion::Emit(
@@ -124,9 +125,7 @@ absl::StatusOr<TritonFusion::EmitResult> TritonFusion::Emit(
     const HloInstruction* instr_override,
     absl::Span<const Shape> unmanaged_arguments) const {
   std::string suggested_kernel_name = std::string(fusion.name());
-  auto local_module =
-      ir_emitter_context.CreateLLVMModule(suggested_kernel_name);
-  llvm::IRBuilder builder(local_module->getContext());
+  llvm::IRBuilder builder(*ir_emitter_context.llvm_context());
   VLOG(3) << fusion.ToString();
   TF_ASSIGN_OR_RETURN(
       auto kernel_arguments,
@@ -139,6 +138,7 @@ absl::StatusOr<TritonFusion::EmitResult> TritonFusion::Emit(
       fusion.fused_instructions_computation();
   VLOG(3) << "hlo_computation: " << hlo_computation->ToString();
 
+  std::unique_ptr<llvm::Module> local_module;
   auto generate = [&]() -> absl::StatusOr<KernelReuseCache::Entry> {
     VLOG(3) << "Generating: " << suggested_kernel_name;
 
@@ -149,7 +149,10 @@ absl::StatusOr<TritonFusion::EmitResult> TritonFusion::Emit(
         TritonWrapperResult triton_wrapper_result,
         GenerateTritonKernelAndWrapper(
             fusion, sanitized_kernel_name, ir_emitter_context.gpu_device_info(),
-            local_module.get(), ir_emitter_context.mlir_context()));
+            ir_emitter_context.target_triple(),
+            ir_emitter_context.data_layout(), ir_emitter_context.llvm_context(),
+            ir_emitter_context.mlir_context()));
+    local_module = std::move(triton_wrapper_result.llvm_module);
 
     auto backend_config =
         fusion.backend_config<GpuBackendConfig>()->fusion_backend_config();
