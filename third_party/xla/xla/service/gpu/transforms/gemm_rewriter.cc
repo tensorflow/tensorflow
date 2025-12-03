@@ -24,7 +24,6 @@ limitations under the License.
 #include <initializer_list>
 #include <limits>
 #include <memory>
-#include <numeric>
 #include <optional>
 #include <tuple>
 #include <unordered_set>
@@ -65,6 +64,7 @@ limitations under the License.
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/gpu/gpu_blas_lt.h"
+#include "xla/stream_executor/rocm/rocm_compute_capability.h"
 #include "xla/stream_executor/semantic_version.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
@@ -1388,7 +1388,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     a.fp8_input = PadOperandToMultipleOf16(a_batch_dims, a.fp8_input);
     b.fp8_input = PadOperandToMultipleOf16(b_batch_dims, b.fp8_input);
     std::vector<int64_t> out_batch_dims(num_batch_dims);
-    std::iota(out_batch_dims.begin(), out_batch_dims.end(), 0);
+    absl::c_iota(out_batch_dims, 0);
     Shape new_output_shape =
         PadShapeToMultipleOf16(instr->shape(), out_batch_dims);
 

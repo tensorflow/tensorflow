@@ -19,10 +19,10 @@ limitations under the License.
 #include <cstdint>
 #include <initializer_list>
 #include <iostream>
-#include <numeric>
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -203,7 +203,7 @@ absl::StatusOr<dnnl::memory::desc> TransposeLastTwoDims(
     return absl::InvalidArgumentError("Requires at least 2D shape.");
   }
   std::vector<int> permutation(ndims);
-  std::iota(permutation.begin(), permutation.end(), 0);
+  absl::c_iota(permutation, 0);
   std::swap(permutation[ndims - 1], permutation[ndims - 2]);
   return md.permute_axes(permutation);
 }

@@ -16,10 +16,10 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/ragged_all_to_all.h"
 
 #include <cstdint>
-#include <numeric>
 #include <vector>
 
 #include <gtest/gtest.h>
+#include "absl/algorithm/container.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/types/span.h"
@@ -109,7 +109,7 @@ TEST_F(RaggedAllToAllKernelTest, SimpleKernelTest) {
                 output_offsets_buffer.memory().is_null()));
 
   std::vector<T> input_data(n);
-  std::iota(input_data.begin(), input_data.end(), 0);
+  absl::c_iota(input_data, 0);
   TF_ASSERT_OK(stream->Memcpy(input_buffer.memory_ptr(), input_data.data(),
                               n * sizeof(T)));
 

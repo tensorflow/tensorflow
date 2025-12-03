@@ -1209,9 +1209,9 @@ cc_library(
     name = "topk_lib",
     hdrs = ["topk_lib.h"],
     deps = [
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/base:dynamic_annotations",
-        "@com_google_absl//absl/numeric:bits",
     ],
 )
 

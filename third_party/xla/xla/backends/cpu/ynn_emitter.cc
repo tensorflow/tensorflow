@@ -19,11 +19,11 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <memory>
-#include <numeric>
 #include <utility>
 #include <vector>
 
 #include "ynnpack/include/ynnpack.h"
+#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/status/statusor.h"
@@ -38,7 +38,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/literal.h"
-#include "xla/primitive_util.h"
 #include "xla/shape.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/tsl/platform/errors.h"
@@ -352,7 +351,7 @@ static ynn_status DefineBatchMatrixMultiply(ynn_subgraph_t subgraph,
   if (transpose_b) {
     uint32_t input2_id_transposed = YNN_INVALID_VALUE_ID;
     std::array<int32_t, YNN_MAX_TENSOR_RANK> perm;
-    std::iota(perm.begin(), perm.end(), 0);
+    absl::c_iota(perm, 0);
     CHECK_LT(b_rank, YNN_MAX_TENSOR_RANK);
     std::swap(perm[b_rank - 1], perm[b_rank - 2]);
     ynn_status status = ynn_define_static_transpose(
