@@ -18,18 +18,12 @@ limitations under the License.
 
 #include "absl/status/statusor.h"
 #include "include/dlpack/dlpack.h"
-#include "nanobind/ndarray.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
 
 absl::StatusOr<DLDataType> PrimitiveTypeToDLDataType(PrimitiveType type);
 absl::StatusOr<PrimitiveType> DLDataTypeToPrimitiveType(DLDataType type);
-
-// Converts a PrimitiveType to the nanobind specific implementation of
-// DLDataType.
-absl::StatusOr<nanobind::dlpack::dtype> PrimitiveTypeToNbDLDataType(
-    xla::PrimitiveType type);
 
 }  // namespace xla
 
