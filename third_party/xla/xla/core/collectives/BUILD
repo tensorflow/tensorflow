@@ -69,10 +69,10 @@ cc_library(
     hdrs = ["communicator.h"],
     deps = [
         ":rank_id",
+        ":reduction_kind",
         "//xla:future",
         "//xla:util",
         "//xla:xla_data_proto_cc",
-        "//xla/service:collective_ops_utils",
         "//xla/stream_executor:device_memory",
         "//xla/stream_executor:platform",
         "//xla/tsl/concurrency:async_value",
@@ -112,5 +112,16 @@ cc_library(
     hdrs = ["rank_id.h"],
     deps = [
         "//xla/tsl/lib/gtl:int_type",
+    ],
+)
+
+cc_library(
+    name = "reduction_kind",
+    hdrs = ["reduction_kind.h"],
+    deps = [
+        "//xla:util",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/strings:string_view",
     ],
 )

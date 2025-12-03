@@ -218,6 +218,7 @@ xla_test(
         "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla:xla_proto_cc",
+        "//xla/backends/gpu:ffi",
         "//xla/ffi",
         "//xla/ffi:ffi_api",
         "//xla/hlo/builder:xla_computation",

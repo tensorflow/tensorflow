@@ -5226,6 +5226,7 @@ cc_library(
         "//xla:status_macros",
         "//xla:util",
         "//xla:xla_data_proto_cc",
+        "//xla/core/collectives:reduction_kind",
         "//xla/hlo/ir:collective_op_group_mode",
         "//xla/hlo/ir:hlo",
         "//xla/runtime:device_id",

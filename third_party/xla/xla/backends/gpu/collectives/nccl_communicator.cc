@@ -545,11 +545,11 @@ absl::Status NcclCommunicator::LaunchAllReduce(
 
   VLOG(3) << absl::StreamFormat(
       "[%d] Launch NCCL AllReduce operation; send_buffer=%p; "
-      "recv_buffer=%p; dtype=%s; count=%d; reduction_kind=%s; comm=%p; "
+      "recv_buffer=%p; dtype=%s; count=%d; reduction_kind=%v; comm=%p; "
       "stream=%p",
       stream->parent()->device_ordinal(), send_buffer.opaque(),
       recv_buffer.opaque(), primitive_util::LowercasePrimitiveTypeName(dtype),
-      count, ReductionKindToString(reduction_kind), comm_, stream);
+      count, reduction_kind, comm_, stream);
 
   TF_ASSIGN_OR_RETURN(ncclDataType_t nccl_dtype, ToNcclDataType(dtype, false));
 
@@ -603,11 +603,11 @@ absl::Status NcclCommunicator::LaunchReduceScatter(
 
   VLOG(3) << absl::StreamFormat(
       "[%d] Launch NCCL ReduceScatter operation; send_buffer=%p; "
-      "recv_buffer=%p; dtype=%s; count=%d; reduction_kind=%s; comm=%p; "
+      "recv_buffer=%p; dtype=%s; count=%d; reduction_kind=%v; comm=%p; "
       "stream=%p",
       stream->parent()->device_ordinal(), send_buffer.opaque(),
       recv_buffer.opaque(), primitive_util::LowercasePrimitiveTypeName(dtype),
-      count, ReductionKindToString(reduction_kind), comm_, stream);
+      count, reduction_kind, comm_, stream);
 
   TF_ASSIGN_OR_RETURN(ncclDataType_t nccl_dtype, ToNcclDataType(dtype, false));
 

@@ -242,7 +242,7 @@ absl::Status RunAllReduceKernel(
                      "of ranks, elements, element type and reduction kind: ",
                      num_ranks, ", ", num_elements, ", ",
                      primitive_util::LowercasePrimitiveTypeName(element_type),
-                     ", ", ReductionKindToString(reduction_kind)));
+                     ", ", reduction_kind));
   }
 
   const auto launch_kernel_impl = [&](auto tag) -> absl::Status {

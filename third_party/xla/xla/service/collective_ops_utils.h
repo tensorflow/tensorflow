@@ -18,24 +18,21 @@ limitations under the License.
 
 #include <cstdint>
 #include <optional>
-#include <set>
 #include <string>
 #include <utility>
 #include <vector>
 
-#include "absl/functional/function_ref.h"
 #include "absl/log/log.h"
-#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/core/collectives/reduction_kind.h"
 #include "xla/executable_run_options.h"
 #include "xla/hlo/ir/collective_op_group_mode.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
-#include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/replica_group.h"
 #include "xla/literal.h"
@@ -44,25 +41,8 @@ limitations under the License.
 #include "xla/service/computation_placer.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/source_target_pairs.h"
-#include "xla/stream_executor/device_memory.h"
 
 namespace xla {
-
-enum class ReductionKind { SUM, PRODUCT, MIN, MAX };
-
-constexpr absl::string_view ReductionKindToString(
-    ReductionKind reduction_kind) {
-  switch (reduction_kind) {
-    case ReductionKind::SUM:
-      return "sum";
-    case ReductionKind::PRODUCT:
-      return "prod";
-    case ReductionKind::MIN:
-      return "min";
-    case ReductionKind::MAX:
-      return "max";
-  }
-}
 
 absl::StatusOr<ReductionKind> StringToReductionKind(
     absl::string_view reduction_kind);

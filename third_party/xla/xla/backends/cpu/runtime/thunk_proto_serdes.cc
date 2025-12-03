@@ -32,6 +32,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -408,10 +409,7 @@ static absl::Status ToProto(const AllGatherThunk& thunk,
 
 static absl::Status ToProto(const AllReduceThunk& thunk,
                             AllReduceThunkProto& proto) {
-  absl::string_view reduction_kind_as_string_view =
-      ReductionKindToString(thunk.reduction_kind());
-  std::string reduction_kind_as_string(reduction_kind_as_string_view.begin(),
-                                       reduction_kind_as_string_view.end());
+  std::string reduction_kind_as_string = absl::StrCat(thunk.reduction_kind());
   proto.set_reduction_kind(reduction_kind_as_string);
   proto.set_single_replica(thunk.single_replica());
   return absl::OkStatus();
@@ -425,10 +423,7 @@ static absl::Status ToProto(const AllToAllThunk& thunk,
 
 static absl::Status ToProto(const ReduceScatterThunk& thunk,
                             ReduceScatterThunkProto& proto) {
-  absl::string_view reduction_kind_as_string_view =
-      ReductionKindToString(thunk.reduction_kind());
-  std::string reduction_kind_as_string(reduction_kind_as_string_view.begin(),
-                                       reduction_kind_as_string_view.end());
+  std::string reduction_kind_as_string = absl::StrCat(thunk.reduction_kind());
   proto.set_reduction_kind(reduction_kind_as_string);
   return absl::OkStatus();
 }
@@ -1064,7 +1059,7 @@ static absl::StatusOr<std::unique_ptr<AllReduceThunk>> AllReduceThunkFromProto(
   const auto& [op_params, op_buffers, op_resources] = collective_thunk_params;
   TF_ASSIGN_OR_RETURN(
       ReductionKind reduction_kind,
-      StringToReductionKind(
+      ParseReductionKind(
           proto.collective_thunk().all_reduce_thunk().reduction_kind()));
 
   return AllReduceThunk::Create(
@@ -1126,7 +1121,7 @@ ReduceScatterThunkFromProto(
 
   TF_ASSIGN_OR_RETURN(
       ReductionKind reduction_kind,
-      StringToReductionKind(
+      ParseReductionKind(
           proto.collective_thunk().reduce_scatter_thunk().reduction_kind()));
   return ReduceScatterThunk::Create(info, reduction_kind, op_params, op_buffers,
                                     op_resources);

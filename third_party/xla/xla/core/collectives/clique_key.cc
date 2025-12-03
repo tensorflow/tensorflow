@@ -39,4 +39,5 @@ std::optional<RankId> CliqueKey::rank(GlobalDeviceId id) const {
   }
   return std::nullopt;
 }
+
 }  // namespace xla
