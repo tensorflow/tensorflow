@@ -38,6 +38,7 @@ limitations under the License.
 #include "xla/python/ifrt/serdes_version.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.pb.h"
+#include "xla/tsl/platform/errors.h"
 
 namespace xla {
 namespace ifrt {
@@ -169,11 +170,20 @@ class Sharding : public llvm::RTTIExtends<Sharding, Serializable> {
   static absl::StatusOr<ShardingRef> FromProto(
       Client* client, const ShardingProto& sharding_proto);
 
+  // Converts `Sharding` into a protobuf.
+  absl::Status ToProto(
+      ShardingProto& sharding_proto,
+      SerDesVersion version = SerDesDefaultVersionAccessor::Get()) const;
+
   // Serializes `Sharding` into `ShardingProto`.
   // Note that `Sharding` serialization uses `SerDes` to handle an open set of
   // `Sharding` subclasses. See `serdes.h`.
   absl::StatusOr<ShardingProto> ToProto(
-      SerDesVersion version = SerDesDefaultVersionAccessor::Get()) const;
+      SerDesVersion version = SerDesDefaultVersionAccessor::Get()) const {
+    ShardingProto proto;
+    TF_RETURN_IF_ERROR(ToProto(proto, version));
+    return proto;
+  }
 
   // TODO(hyeontaek): Remove this method in favor of AbslStringify.
   virtual std::string DebugString() const = 0;

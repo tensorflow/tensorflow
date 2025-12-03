@@ -630,6 +630,7 @@ ifrt_proxy_cc_test(
         "//xla/python/ifrt_proxy/common:types",
         "//xla/tsl/concurrency:future",
         "//xla/tsl/concurrency:ref_count",
+        "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/util/proto:proto_matchers",
         "@com_google_absl//absl/status",

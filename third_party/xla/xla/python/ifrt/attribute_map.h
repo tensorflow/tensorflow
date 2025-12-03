@@ -115,9 +115,17 @@ class AttributeMap {
   // Deserializes `AttributeMapProto` into `AttributeMap`.
   static absl::StatusOr<AttributeMap> FromProto(const AttributeMapProto& proto);
 
-  // Serializes `AttributeMap` into `AttributeMapProto`.
-  AttributeMapProto ToProto(
+  // Converts the attribute map to a protobuf.
+  void ToProto(
+      AttributeMapProto& proto,
       SerDesVersion version = SerDesDefaultVersionAccessor::Get()) const;
+
+  AttributeMapProto ToProto(
+      SerDesVersion version = SerDesDefaultVersionAccessor::Get()) const {
+    AttributeMapProto proto;
+    ToProto(proto, version);
+    return proto;
+  }
 
   std::string DebugString(size_t max_string_length = 64,
                           size_t max_int64_list_size = 16) const;

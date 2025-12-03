@@ -51,6 +51,7 @@
 #include "xla/python/ifrt_proxy/common/types.h"
 #include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/concurrency/ref_count.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
 #include "xla/xla_data.pb.h"
@@ -253,12 +254,12 @@ TEST_F(LoadedExecutableTest, Execute) {
     auto* outputs =
         execute_response.mutable_loaded_executable_execute_response()
             ->mutable_outputs();
-    TF_ASSERT_OK_AND_ASSIGN(*(*outputs)[0].mutable_sharding(),
-                            SingleDeviceSharding::Create(&device, MemoryKind())
-                                ->ToProto(rpc_helper_->ifrt_serdes_version()));
-    TF_ASSERT_OK_AND_ASSIGN(*(*outputs)[1].mutable_sharding(),
-                            SingleDeviceSharding::Create(&device, MemoryKind())
-                                ->ToProto(rpc_helper_->ifrt_serdes_version()));
+    TF_ASSERT_OK(SingleDeviceSharding::Create(&device, MemoryKind())
+                     ->ToProto(*(*outputs)[0].mutable_sharding(),
+                               rpc_helper_->ifrt_serdes_version()));
+    TF_ASSERT_OK(SingleDeviceSharding::Create(&device, MemoryKind())
+                     ->ToProto(*(*outputs)[1].mutable_sharding(),
+                               rpc_helper_->ifrt_serdes_version()));
   }
   EXPECT_CALL(*session_, Enqueue(Pointee(Partially(EquivToProto(
                              R"pb(loaded_executable_execute_request {

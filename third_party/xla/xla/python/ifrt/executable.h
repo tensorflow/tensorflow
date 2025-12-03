@@ -23,6 +23,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -40,6 +41,7 @@ limitations under the License.
 #include "xla/python/ifrt/serdes_version.h"
 #include "xla/python/ifrt/user_context.h"
 #include "xla/tsl/concurrency/future.h"
+#include "xla/tsl/platform/errors.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -145,8 +147,17 @@ struct ExecuteOptions {
   // are responsible for ensuring version compatibility.
   std::optional<AttributeMap> custom_options;
 
-  absl::StatusOr<ExecuteOptionsProto> ToProto(
+  // Converts the execute options to a protobuf.
+  absl::Status ToProto(
+      ExecuteOptionsProto& proto,
       SerDesVersion version = SerDesDefaultVersionAccessor::Get()) const;
+
+  absl::StatusOr<ExecuteOptionsProto> ToProto(
+      SerDesVersion version = SerDesDefaultVersionAccessor::Get()) const {
+    ExecuteOptionsProto proto;
+    TF_RETURN_IF_ERROR(ToProto(proto, version));
+    return proto;
+  }
 
   static absl::StatusOr<ExecuteOptions> FromProto(
       const ExecuteOptionsProto& proto);

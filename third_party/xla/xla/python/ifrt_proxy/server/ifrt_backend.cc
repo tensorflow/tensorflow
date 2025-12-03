@@ -760,8 +760,8 @@ absl::StatusOr<BackendInterface::Response> IfrtBackend::HandleInit(
                 attr));
       }
     } else {
-      *d->mutable_attributes() =
-          device->Attributes().ToProto(ifrt_serdes_version());
+      device->Attributes().ToProto(*d->mutable_attributes(),
+                                   ifrt_serdes_version());
     }
 
     if (device->IsAddressable()) {
@@ -794,8 +794,8 @@ absl::StatusOr<BackendInterface::Response> IfrtBackend::HandleInit(
     m->set_debug_string(AsProtoStringData(memory->DebugString()));
     m->set_to_string(AsProtoStringData(memory->ToString()));
   }
-  *init_resp->mutable_client_attributes() =
-      client_->Attributes().ToProto(ifrt_serdes_version());
+  client_->Attributes().ToProto(*init_resp->mutable_client_attributes(),
+                                ifrt_serdes_version());
 
   return response;
 }
@@ -1769,9 +1769,8 @@ IfrtBackend::HandleLoadedExecutableExecuteRequest(
   if (execute.result_array_handle().empty()) {
     output_sharding_protos.reserve(result.outputs.size());
     for (int i = 0; i < result.outputs.size(); ++i) {
-      TF_ASSIGN_OR_RETURN(
-          output_sharding_protos.emplace_back(),
-          result.outputs[i]->sharding().ToProto(ifrt_serdes_version()));
+      TF_RETURN_IF_ERROR(result.outputs[i]->sharding().ToProto(
+          output_sharding_protos.emplace_back(), ifrt_serdes_version()));
     }
   }
 
@@ -1803,10 +1802,10 @@ IfrtBackend::HandleLoadedExecutableExecuteRequest(
       for (int i = 0; i < result.outputs.size(); ++i) {
         LoadedExecutableExecuteResponse::Output* output =
             execute_response->add_outputs();
-        *output->mutable_dtype() =
-            result.outputs[i]->dtype().ToProto(ifrt_serdes_version());
-        *output->mutable_shape() =
-            result.outputs[i]->shape().ToProto(ifrt_serdes_version());
+        result.outputs[i]->dtype().ToProto(*output->mutable_dtype(),
+                                           ifrt_serdes_version());
+        result.outputs[i]->shape().ToProto(*output->mutable_shape(),
+                                           ifrt_serdes_version());
         *output->mutable_sharding() = std::move(output_sharding_protos[i]);
         output->set_array_handle(result_handles[i]);
       }

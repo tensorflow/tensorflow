@@ -24,6 +24,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/StringRef.h"
@@ -41,6 +42,7 @@ limitations under the License.
 #include "xla/python/ifrt/serdes.h"
 #include "xla/python/ifrt/serdes_default_version_accessor.h"
 #include "xla/python/ifrt/serdes_version.h"
+#include "xla/tsl/platform/errors.h"
 
 namespace xla {
 namespace ifrt {
@@ -163,9 +165,18 @@ struct IfrtIRCompileOptions
   static absl::StatusOr<std::unique_ptr<IfrtIRCompileOptions>> FromProto(
       const IfrtIrCompileOptionsProto& proto);
 
+  // Converts the compile options to a protobuf.
+  absl::Status ToProto(
+      IfrtIrCompileOptionsProto& proto,
+      SerDesVersion version = SerDesDefaultVersionAccessor::Get()) const;
+
   // Returns a `IfrtIrCompileOptionsProto` representation.
   absl::StatusOr<IfrtIrCompileOptionsProto> ToProto(
-      SerDesVersion version = SerDesDefaultVersionAccessor::Get()) const;
+      SerDesVersion version = SerDesDefaultVersionAccessor::Get()) const {
+    IfrtIrCompileOptionsProto proto;
+    TF_RETURN_IF_ERROR(ToProto(proto, version));
+    return proto;
+  }
 
   // Whether to propagate shardings from atom program executables for
   // unspecified shardings.

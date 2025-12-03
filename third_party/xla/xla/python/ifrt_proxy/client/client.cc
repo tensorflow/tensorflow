@@ -462,7 +462,7 @@ Client::GetDefaultPjRtLayout(xla::ifrt::DType dtype,
     }
   }
 
-  *req->mutable_dtype() = dtype.ToProto(rpc_helper_->ifrt_serdes_version());
+  dtype.ToProto(*req->mutable_dtype(), rpc_helper_->ifrt_serdes_version());
   req->mutable_dims()->Reserve(dims.size());
   for (int64_t dim : dims) {
     req->add_dims(dim);

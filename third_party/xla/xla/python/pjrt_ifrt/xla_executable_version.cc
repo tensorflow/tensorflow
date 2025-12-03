@@ -52,7 +52,8 @@ bool XlaExecutableVersion::IsCompatibleWith(
   return false;
 }
 
-absl::StatusOr<SerializedXlaExecutableVersion> XlaExecutableVersion::ToProto(
+absl::Status XlaExecutableVersion::ToProto(
+    SerializedXlaExecutableVersion& executable_version_proto,
     SerDesVersion version) const {
   if (version.version_number() < SerDesVersionNumber(0)) {
     return absl::FailedPreconditionError(
@@ -60,12 +61,12 @@ absl::StatusOr<SerializedXlaExecutableVersion> XlaExecutableVersion::ToProto(
                      " for XlaExecutableVersion serialization"));
   }
 
-  SerializedXlaExecutableVersion executable_version_proto;
+  executable_version_proto.Clear();
   executable_version_proto.set_version_number(SerDesVersionNumber(0).value());
   executable_version_proto.set_platform_id(platform_id);
   executable_version_proto.set_runtime_abi_version(runtime_abi_version);
 
-  return executable_version_proto;
+  return absl::OkStatus();
 }
 
 absl::StatusOr<std::unique_ptr<XlaExecutableVersion>>

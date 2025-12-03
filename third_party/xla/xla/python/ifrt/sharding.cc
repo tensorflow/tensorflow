@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/hash/hash.h"
 #include "absl/log/check.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
@@ -190,14 +191,13 @@ absl::StatusOr<ShardingRef> Sharding::FromProto(
       std::make_unique<DeserializeShardingOptions>(client));
 }
 
-absl::StatusOr<ShardingProto> Sharding::ToProto(SerDesVersion version) const {
-  ShardingProto sharding_proto;
+absl::Status Sharding::ToProto(ShardingProto& sharding_proto,
+                               SerDesVersion version) const {
   // `ShardingProto` does not store its own version. It delegates the details to
   // SerDes of the `Sharding` subclasses.
   auto options = std::make_unique<SerializeOptions>(version);
-  TF_ASSIGN_OR_RETURN(*sharding_proto.mutable_serialized_sharding(),
-                      Serialize(*this, std::move(options)));
-  return sharding_proto;
+  return Serialize(*this, std::move(options),
+                   *sharding_proto.mutable_serialized_sharding());
 }
 
 std::ostream& operator<<(std::ostream& os, const Sharding& sharding) {

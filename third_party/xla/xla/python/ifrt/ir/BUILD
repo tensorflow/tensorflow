@@ -174,6 +174,7 @@ cc_library(
         "//xla/python/ifrt:serdes_default_version_accessor",
         "//xla/python/ifrt:serdes_version",
         "//xla/python/pjrt_ifrt:xla_ifrt",
+        "//xla/tsl/platform:errors",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log:check",

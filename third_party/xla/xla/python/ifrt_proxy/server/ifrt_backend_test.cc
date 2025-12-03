@@ -345,9 +345,9 @@ class IfrtBackendHandlerTest : public IfrtBackendTest {
 
       TF_ASSIGN_OR_RETURN(auto* device,
                           mock_client_->LookupDevice(DeviceId(1)));
-      TF_ASSIGN_OR_RETURN(*make_array->mutable_sharding(),
-                          SingleDeviceSharding::Create(device, MemoryKind())
-                              ->ToProto(ifrt_serdes_version()));
+      TF_RETURN_IF_ERROR(SingleDeviceSharding::Create(device, MemoryKind())
+                             ->ToProto(*make_array->mutable_sharding(),
+                                       ifrt_serdes_version()));
     }
     TF_ASSIGN_OR_RETURN(auto make_array_response,
                         CallBackend(std::move(ifrt_request)));
@@ -599,9 +599,9 @@ TEST_P(IfrtBackendHandlerTest, MakeArrayFromHostBufferSuccess) {
     make_array->set_host_buffer_handle(kHostBufferHandle);
     TF_ASSERT_OK_AND_ASSIGN(auto* device,
                             mock_client_->LookupDevice(DeviceId(1)));
-    TF_ASSERT_OK_AND_ASSIGN(*make_array->mutable_sharding(),
-                            SingleDeviceSharding::Create(device, MemoryKind())
-                                ->ToProto(ifrt_serdes_version()));
+    TF_ASSERT_OK(
+        SingleDeviceSharding::Create(device, MemoryKind())
+            ->ToProto(*make_array->mutable_sharding(), ifrt_serdes_version()));
   }
 
   const Shape expected_shape({5, 3, 4});
@@ -644,9 +644,9 @@ TEST_P(IfrtBackendHandlerTest, MakeStringArrayFromHostBufferSuccess) {
   make_array->set_host_buffer_handle(kHostBufferHandle);
   TF_ASSERT_OK_AND_ASSIGN(auto* device,
                           mock_client_->LookupDevice(DeviceId(1)));
-  TF_ASSERT_OK_AND_ASSIGN(*make_array->mutable_sharding(),
-                          SingleDeviceSharding::Create(device, MemoryKind())
-                              ->ToProto(ifrt_serdes_version()));
+  TF_ASSERT_OK(
+      SingleDeviceSharding::Create(device, MemoryKind())
+          ->ToProto(*make_array->mutable_sharding(), ifrt_serdes_version()));
 
   const DType expected_dtype = DType(DType::kString);
   const Shape expected_shape({2});
@@ -686,13 +686,13 @@ TEST_P(IfrtBackendHandlerTest, AssembleArrayFromSingleDeviceArrays) {
     }
     if (Version().protocol_version() >=
         protocol_version::kAssembleArrayFromSingleDeviceArraysWithDType) {
-      *req->mutable_dtype() = dtype.ToProto(ifrt_serdes_version());
+      dtype.ToProto(*req->mutable_dtype(), ifrt_serdes_version());
     }
     TF_ASSERT_OK_AND_ASSIGN(auto* device,
                             mock_client_->LookupDevice(DeviceId(1)));
-    TF_ASSERT_OK_AND_ASSIGN(*req->mutable_sharding(),
-                            SingleDeviceSharding::Create(device, MemoryKind())
-                                ->ToProto(ifrt_serdes_version()));
+    TF_ASSERT_OK(
+        SingleDeviceSharding::Create(device, MemoryKind())
+            ->ToProto(*req->mutable_sharding(), ifrt_serdes_version()));
   }
 
   std::vector<tsl::RCReference<xla::ifrt::MockArray>> single_device_arrays;
@@ -715,8 +715,8 @@ TEST_P(IfrtBackendHandlerTest, AssembleArrayFromSingleDeviceArrays) {
     }
     if (Version().protocol_version() >=
         protocol_version::kAssembleArrayFromSingleDeviceArraysWithDType) {
-      *assemble_array_from_single_device_arrays->mutable_dtype() =
-          dtype.ToProto(ifrt_serdes_version());
+      dtype.ToProto(*assemble_array_from_single_device_arrays->mutable_dtype(),
+                    ifrt_serdes_version());
     }
   }
 
@@ -791,9 +791,9 @@ TEST_P(IfrtBackendHandlerTest, CopyToHostSuccessWithStringArray) {
   make_array->set_host_buffer_handle(kHostBufferHandle);
   TF_ASSERT_OK_AND_ASSIGN(auto* device,
                           mock_client_->LookupDevice(DeviceId(1)));
-  TF_ASSERT_OK_AND_ASSIGN(*make_array->mutable_sharding(),
-                          SingleDeviceSharding::Create(device, MemoryKind())
-                              ->ToProto(ifrt_serdes_version()));
+  TF_ASSERT_OK(
+      SingleDeviceSharding::Create(device, MemoryKind())
+          ->ToProto(*make_array->mutable_sharding(), ifrt_serdes_version()));
 
   const DType expected_dtype = DType(DType::kString);
   const Shape expected_shape({2});
@@ -1347,8 +1347,8 @@ TEST_P(IfrtBackendHandlerTest, LoadedExecutableExecute) {
   execute_request->set_loaded_executable_handle(handle);
   xla::ifrt::LoadedExecutable::ExecuteOptions execute_options;
   execute_options.fill_status = true;
-  TF_ASSERT_OK_AND_ASSIGN(*execute_request->mutable_execute_options(),
-                          execute_options.ToProto(ifrt_serdes_version()));
+  TF_ASSERT_OK(execute_options.ToProto(
+      *execute_request->mutable_execute_options(), ifrt_serdes_version()));
 
   TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<IfrtResponse> response,
                           CallBackend(std::move(request)));
@@ -1440,8 +1440,8 @@ TEST_P(IfrtBackendHandlerTest, LoadedExecutableExecuteErrorWithClientHandles) {
 
   xla::ifrt::LoadedExecutable::ExecuteOptions execute_options;
   execute_options.fill_status = true;
-  TF_ASSERT_OK_AND_ASSIGN(*execute_request->mutable_execute_options(),
-                          execute_options.ToProto(ifrt_serdes_version()));
+  TF_ASSERT_OK(execute_options.ToProto(
+      *execute_request->mutable_execute_options(), ifrt_serdes_version()));
 
   auto status_is_err = absl_testing::StatusIs(absl::StatusCode::kInternal,
                                               StrEq("injected error"));
@@ -1706,8 +1706,8 @@ TEST_P(IfrtBackendHandlerTest, GetDefaultPjRtLayoutSuccess) {
 
   auto request = NewIfrtRequest(NewOpId());
   auto* default_layout_request = request->mutable_get_default_layout_request();
-  *default_layout_request->mutable_dtype() =
-      kDType.ToProto(ifrt_serdes_version());
+  kDType.ToProto(*default_layout_request->mutable_dtype(),
+                 ifrt_serdes_version());
   default_layout_request->mutable_dims()->Reserve(kDims.size());
   for (int64_t dim : kDims) {
     default_layout_request->add_dims(dim);

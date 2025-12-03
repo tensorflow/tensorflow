@@ -245,9 +245,9 @@ class ClientTest : public ::testing::TestWithParam</*protocol_version=*/int> {
 
     AttributeMap::Map client_attributes(
         {{"test_key", AttributeMap::StringValue("test_value")}});
-    *response.mutable_client_attributes() =
-        AttributeMap(client_attributes)
-            .ToProto(rpc_helper_->ifrt_serdes_version());
+    AttributeMap(client_attributes)
+        .ToProto(*response.mutable_client_attributes(),
+                 rpc_helper_->ifrt_serdes_version());
 
     TF_ASSERT_OK_AND_ASSIGN(client_, Client::Create(rpc_helper_, response));
     TF_ASSERT_OK_AND_ASSIGN(device_, client_->LookupDevice(DeviceId(0)));

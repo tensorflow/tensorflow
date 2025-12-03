@@ -29,6 +29,7 @@ limitations under the License.
 #include "xla/python/ifrt/serdes_version.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
+#include "xla/tsl/platform/errors.h"
 
 namespace xla {
 namespace ifrt {
@@ -78,9 +79,18 @@ struct ArraySpec {
   static absl::StatusOr<ArraySpec> FromProto(Client* client,
                                              const ArraySpecProto& proto);
 
+  // Converts the array spec to a protobuf.
+  absl::Status ToProto(
+      ArraySpecProto& proto,
+      SerDesVersion version = SerDesDefaultVersionAccessor::Get()) const;
+
   // Returns a `ArraySpecProto` representation.
   absl::StatusOr<ArraySpecProto> ToProto(
-      SerDesVersion version = SerDesDefaultVersionAccessor::Get()) const;
+      SerDesVersion version = SerDesDefaultVersionAccessor::Get()) const {
+    ArraySpecProto proto;
+    TF_RETURN_IF_ERROR(ToProto(proto, version));
+    return proto;
+  }
 
   // TODO(hyeontaek): Remove this method in favor of AbslStringify.
   std::string DebugString() const;
