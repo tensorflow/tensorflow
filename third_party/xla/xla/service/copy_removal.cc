@@ -857,7 +857,13 @@ LiveRangeRegions CopyRemover::ComputeLiveRangeRegions(const ValueNode* head) {
 // and true is returned. Returns false otherwise.
 bool CopyRemover::TryElideCopy(
     const HloInstruction* copy, int64_t* region_analysis_limit,
-    bool insert_post_scheduling_control_dependencies) {
+    bool insert_post_scheduling_control_dependencies,
+    std::function<bool(const HloInstruction* copy)> should_skip_removal) {
+  if (should_skip_removal != nullptr && should_skip_removal(copy)) {
+    VLOG(2) << copy->name()
+            << " is skipped due to should_skip_removal function.";
+    return false;
+  }
   VLOG(3) << "TryElideCopy starting for: " << copy->name();
   CHECK_NE(region_analysis_limit, nullptr);
 
