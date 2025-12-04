@@ -299,8 +299,8 @@ std::vector<std::vector<int64_t>> GetPartitionGroupsForReplication(
   for (int64_t i : replication_dims) {
     group_size *= ShardCountAtDim(sharding, i);
   }
-  std::vector<std::vector<int64_t>> partition_groups(
-      sharding.tile_assignment().num_elements() / group_size);
+  std::vector<std::vector<int64_t>> partition_groups(sharding.num_devices() /
+                                                     group_size);
   sharding.tile_assignment().Each(
       [&](absl::Span<const int64_t> indices, int64_t partition) {
         int64_t group_id = 0;

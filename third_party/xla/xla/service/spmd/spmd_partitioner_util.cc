@@ -395,8 +395,7 @@ std::vector<HloInstruction*> MakePartitionOffsets(
       offsets.push_back(b->AddInstruction(
           HloInstruction::CreateConstant(LiteralUtil::Zero(S32))));
     } else {
-      std::vector<int32_t> offset_array(
-          sharding.tile_assignment().num_elements());
+      std::vector<int32_t> offset_array(sharding.num_devices());
       sharding.tile_assignment().Each(
           [&](absl::Span<const int64_t> indices, int64_t device) {
             offset_array[device] = indices[i] * shard_shape.dimensions(i);
@@ -691,8 +690,7 @@ std::optional<HloSharding> PartialReplicateReshardCompatibleSharding(
   if (!partial_sharding.ReplicateOnLastTileDim()) {
     return std::nullopt;
   }
-  if (partial_sharding.tile_assignment().num_elements() !=
-      target_sharding.tile_assignment().num_elements()) {
+  if (partial_sharding.num_devices() != target_sharding.num_devices()) {
     return std::nullopt;
   }
   const int64_t rank = partial_sharding.TiledDataRank();
@@ -2458,7 +2456,7 @@ std::optional<std::vector<int64_t>> FindMatchingPartitionedDimsForGrouping(
   if (sharding.IsTileMaximal() || device_groups.num_groups() < 2) {
     return std::nullopt;
   }
-  const int64_t num_devices = sharding.tile_assignment().num_elements();
+  const int64_t num_devices = sharding.num_devices();
   if (num_devices != device_groups.num_elements()) {
     return std::nullopt;
   }
@@ -2523,11 +2521,10 @@ HloSharding CreateMatchingShardingOnDims(
   // If there is some partition across non-parallel dimensions in the
   // other operand then partially replicate for the new
   bool to_be_partially_replicated = false;
-  if (num_tiles != source_sharding.tile_assignment().num_elements()) {
-    CHECK_EQ(source_sharding.tile_assignment().num_elements() % num_tiles, 0);
+  if (num_tiles != source_sharding.num_devices()) {
+    CHECK_EQ(source_sharding.num_devices() % num_tiles, 0);
     to_be_partially_replicated = true;
-    tile_dims.push_back(source_sharding.tile_assignment().num_elements() /
-                        num_tiles);
+    tile_dims.push_back(source_sharding.num_devices() / num_tiles);
   }
   auto tgt_tile_assignment =
       source_sharding.tile_assignment().Reshape(tile_dims);
@@ -2877,8 +2874,8 @@ std::vector<std::vector<int64_t>> GetPartitionGroupsForReplication(
     }
   }
 
-  std::vector<std::vector<int64_t>> partition_groups(
-      sharding.tile_assignment().num_elements() / group_size);
+  std::vector<std::vector<int64_t>> partition_groups(sharding.num_devices() /
+                                                     group_size);
   sharding.tile_assignment().Each(
       [&](absl::Span<const int64_t> indices, int64_t partition) {
         int64_t group_id = 0;
@@ -2901,8 +2898,8 @@ std::vector<std::vector<int64_t>> GetPartitionGroupsAcrossTargetDims(
   CHECK(target_dims.size() == group_sizes.size());
   int64_t total_group_size = std::accumulate(
       group_sizes.begin(), group_sizes.end(), 1, std::multiplies<int64_t>());
-  std::vector<std::vector<int64_t>> groups(
-      sharding.tile_assignment().num_elements() / total_group_size);
+  std::vector<std::vector<int64_t>> groups(sharding.num_devices() /
+                                           total_group_size);
   sharding.tile_assignment().Each(
       [&](absl::Span<const int64_t> indices, int64_t device) {
         int64_t group_id = 0;
@@ -2954,8 +2951,7 @@ std::optional<IotaReplicaGroupList> GetIotaPartitionGroupsAcrossTargetDims(
   //    [2,2,16,4,4]->[2x2x16, 4x4].
   int64_t total_group_size = std::accumulate(
       group_sizes.begin(), group_sizes.end(), 1, std::multiplies<int64_t>());
-  int64_t num_replica_groups =
-      sharding.tile_assignment().num_elements() / total_group_size;
+  int64_t num_replica_groups = sharding.num_devices() / total_group_size;
 
   std::vector<int64_t> reshape_dimensions;
   reshape_dimensions.reserve(sharding.num_dimensions());
@@ -3023,8 +3019,7 @@ std::optional<IotaReplicaGroupList> GetIotaPartitionGroupsForReplication(
     group_size *= sharding.dimension(i);
   }
 
-  int64_t num_replica_groups =
-      sharding.tile_assignment().num_elements() / group_size;
+  int64_t num_replica_groups = sharding.num_devices() / group_size;
 
   // The compressed replica group list involves transposing and reshaping the
   // initial tile assignment. We transpose the original tile assignment so that

@@ -3275,8 +3275,7 @@ absl::Status SpmdPartitioningVisitor::HandleReshape(HloInstruction* hlo) {
         dim->set_padding_low(0);
         if (i == input_sharded_dim) {
           dim->set_padding_high(output_shard_size * split_factor *
-                                    sharding.tile_assignment().num_elements() /
-                                    replication_count -
+                                    sharding.num_devices() / replication_count -
                                 input_dim_size);
         } else {
           dim->set_padding_high(0);
@@ -3313,8 +3312,7 @@ absl::Status SpmdPartitioningVisitor::HandleReshape(HloInstruction* hlo) {
       auto tmp_full_shape = tmp_shard_shape;
       tmp_full_shape.set_dimensions(
           output_sharded_dim, tmp_shard_shape.dimensions(output_sharded_dim) *
-                                  sharding.tile_assignment().num_elements() /
-                                  replication_count);
+                                  sharding.num_devices() / replication_count);
       auto tmp_output =
           PartitionedHlo(tmp_reshape, tmp_full_shape, operand.state());
 
@@ -3331,8 +3329,7 @@ absl::Status SpmdPartitioningVisitor::HandleReshape(HloInstruction* hlo) {
         if (i == output_sharded_dim) {
           dim->set_padding_high(output_dim_size -
                                 tmp_shard_shape.dimensions(output_sharded_dim) *
-                                    sharding.tile_assignment().num_elements() /
-                                    replication_count);
+                                    sharding.num_devices() / replication_count);
         } else {
           dim->set_padding_high(0);
         }
@@ -3544,8 +3541,7 @@ absl::Status SpmdPartitioningVisitor::HandleAllReduce(HloInstruction* hlo) {
     TF_RET_CHECK(ar->use_global_device_ids())
         << "Cross-partition allreduce in partial manual partitioning mode must "
            "use global device IDs.";
-    std::vector<int64_t> partition_to_group_id(
-        hlo->sharding().tile_assignment().num_elements());
+    std::vector<int64_t> partition_to_group_id(hlo->sharding().num_devices());
     hlo->sharding().tile_assignment().Each(
         [&](absl::Span<const int64_t> indices, int64_t partition) {
           int64_t group_id = 0;

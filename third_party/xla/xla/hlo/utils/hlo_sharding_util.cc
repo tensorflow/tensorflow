@@ -293,13 +293,13 @@ bool IsSubTilingOrEqualSharding(const Shape& potential_sharded_shape,
   }
 
   // Use one contiguous storage to reduce allocation overhead.
-  auto storage = std::make_unique<int32_t[]>(
-      sharding.tile_assignment().num_elements() * tiled_data_rank);
+  auto storage =
+      std::make_unique<int32_t[]>(sharding.num_devices() * tiled_data_rank);
   int32_t* storage_cursor = storage.get();
   // Need a map here, because the MPMD partitioner sharding annotations can have
   // non contiguous partition numbers.
   absl::flat_hash_map<int32_t, int32_t*> sharding_offsets;
-  sharding_offsets.reserve(sharding.tile_assignment().num_elements());
+  sharding_offsets.reserve(sharding.num_devices());
   auto get_sharding_offsets = [&](int64_t device) -> absl::Span<int32_t> {
     auto it = sharding_offsets.find(device);
     if (it == sharding_offsets.end()) {
@@ -406,8 +406,7 @@ bool MergeSharding(const HloSharding& to_merge, HloSharding* dst,
   }
   if (!may_combine_partial_sharding || !to_merge.HasPartialReplication() ||
       !dst->HasPartialReplication() ||
-      to_merge.tile_assignment().num_elements() !=
-          dst->tile_assignment().num_elements()) {
+      to_merge.num_devices() != dst->num_devices()) {
     goto check_if_more_specific;
   }
 
@@ -490,7 +489,7 @@ bool MergeShardingIfCompatible(const HloSharding& to_merge,
     }
   }
 
-  const int64_t num_devices = to_merge.tile_assignment().num_elements();
+  const int64_t num_devices = to_merge.num_devices();
   const int64_t new_num_tiles = Product(merged_tile_dims);
   if (num_devices % new_num_tiles != 0 || new_num_tiles < minimum_tiles) {
     return false;
@@ -1074,11 +1073,9 @@ HloSharding PropagateShardingThroughReshape(const Shape& source_shape,
         DimensionVector reshape_dims(
             reshaped->tile_assignment().dimensions().begin(),
             reshaped->tile_assignment().dimensions().end());
-        CHECK_EQ(
-            sharding.tile_assignment().num_elements() % Product(reshape_dims),
-            0);
+        CHECK_EQ(sharding.num_devices() % Product(reshape_dims), 0);
         int64_t num_replicated_dims =
-            sharding.tile_assignment().num_elements() / Product(reshape_dims);
+            sharding.num_devices() / Product(reshape_dims);
         const int64_t diff =
             reshape_dims.size() - target_shape.dimensions().size();
         CHECK(diff == 0 || diff == 1);
@@ -2182,7 +2179,7 @@ GroupedSharding GroupShardingOnDims(const HloSharding& sharding,
       sharding.tile_assignment().Reshape(reshape_dimensions).Transpose(perm);
 
   const int64_t num_device_groups = Product(group_dim_sizes);
-  const int64_t num_devices = sharding.tile_assignment().num_elements();
+  const int64_t num_devices = sharding.num_devices();
   CHECK_EQ(num_devices % num_device_groups, 0);
   const int64_t device_group_size = num_devices / num_device_groups;
 

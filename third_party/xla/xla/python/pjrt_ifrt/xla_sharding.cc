@@ -314,12 +314,12 @@ absl::StatusOr<std::vector<IndexDomain>> HloSharding::IndexDomains(
                                   single_device_shard_semantics);
     }
   }
-  if (xla_hlo_sharding_.tile_assignment().num_elements() != num_devices) {
-    return absl::InvalidArgumentError(absl::StrFormat(
-        "sharding's tile_assignment_devices and device count does not "
-        "match: %d vs. %d; shape=%s, sharding=%s",
-        xla_hlo_sharding_.tile_assignment().num_elements(), num_devices,
-        shape.DebugString(), DebugString()));
+  if (xla_hlo_sharding_.num_devices() != num_devices) {
+    return absl::InvalidArgumentError(
+        absl::StrFormat("sharding's device count (%d) does not match provided "
+                        "device count (%d); shape=%s, sharding=%s",
+                        xla_hlo_sharding_.num_devices(), num_devices,
+                        shape.DebugString(), DebugString()));
   }
 
   const int64_t tiled_data_rank = xla_hlo_sharding_.TiledDataRank();

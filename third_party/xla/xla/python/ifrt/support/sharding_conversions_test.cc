@@ -108,8 +108,7 @@ class ShardingConversionsTest : public testing::TestWithParam<int> {
 
     TF_ASSERT_OK_AND_ASSIGN(const std::vector<IndexDomain> index_domains,
                             sharding->IndexDomains(shape));
-    ASSERT_EQ(index_domains.size(),
-              hlo_sharding.tile_assignment().num_elements());
+    ASSERT_EQ(index_domains.size(), hlo_sharding.num_devices());
     const xla::Shape xla_tile_shape = hlo_sharding.TileShape(xla_shape);
     for (int i = 0; i < index_domains.size(); ++i) {
       SCOPED_TRACE(absl::StrCat("on device ", i));
