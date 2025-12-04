@@ -213,29 +213,38 @@ HloSharding::Disassemble(
     is_even_sharding = true;
   }
 
-  const absl::Span<Device* const> devices = devices_->devices();
-  if (is_even_sharding) {
-    // Fast path for even sharding.
-    TF_ASSIGN_OR_RETURN(xla::ifrt::Shape shard_shape, GetShardShape(shape));
-    std::vector<std::pair<Shape, ShardingRef>> result;
-    if (single_device_shard_semantics ==
-        SingleDeviceShardSemantics::kAllShards) {
-      result.reserve(devices_->size());
-    } else {
-      result.reserve(devices_->AddressableDeviceList()->size());
-    }
-    for (int i = 0; i < devices_->size(); ++i) {
-      if (single_device_shard_semantics ==
-              SingleDeviceShardSemantics::kAllShards ||
-          devices[i]->IsAddressable()) {
-        result.push_back({
-            shard_shape,
-            SingleDeviceSharding::Create(devices[i], memory_kind_),
-        });
-      }
-    }
-    return result;
+  return is_even_sharding
+             ? DisassembleEven(shape, single_device_shard_semantics)
+             : DisassembleUneven(shape, single_device_shard_semantics);
+}
+
+absl::StatusOr<std::vector<std::pair<Shape, ShardingRef>>>
+HloSharding::DisassembleEven(
+    const Shape& shape,
+    SingleDeviceShardSemantics single_device_shard_semantics) const {
+  // Fast path for even sharding.
+  TF_ASSIGN_OR_RETURN(xla::ifrt::Shape shard_shape, GetShardShape(shape));
+  std::vector<std::pair<Shape, ShardingRef>> result;
+  DeviceList* device_list;
+  if (single_device_shard_semantics == SingleDeviceShardSemantics::kAllShards) {
+    device_list = devices_.get();
+  } else {
+    device_list = devices_->AddressableDeviceList();
   }
+  result.reserve(device_list->size());
+  for (Device* device : device_list->devices()) {
+    result.push_back({
+        shard_shape,
+        SingleDeviceSharding::Create(device, memory_kind_),
+    });
+  }
+  return result;
+}
+
+absl::StatusOr<std::vector<std::pair<Shape, ShardingRef>>>
+HloSharding::DisassembleUneven(
+    const Shape& shape,
+    SingleDeviceShardSemantics single_device_shard_semantics) const {
   // Slow path that uses `IndexDomains()` to handle uneven sharding.
   TF_ASSIGN_OR_RETURN(
       std::vector<IndexDomain> index_domains,
@@ -247,6 +256,7 @@ HloSharding::Disassemble(
   } else {
     result.reserve(devices_->AddressableDeviceList()->size());
   }
+  const absl::Span<Device* const> devices = devices_->devices();
   for (int i = 0; i < index_domains.size(); ++i) {
     if (single_device_shard_semantics ==
             SingleDeviceShardSemantics::kAllShards ||
