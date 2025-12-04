@@ -337,6 +337,7 @@ static void AddTiledOptimizationPasses(mlir::OpPassManager& pm) {
 
   pm.addPass(CreateLinalgElementwiseToVectorPass());
 
+  pm.addPass(mlir::memref::createFoldMemRefAliasOpsPass());
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(mlir::createCSEPass());
 }
