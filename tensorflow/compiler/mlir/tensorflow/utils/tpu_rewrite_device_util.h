@@ -20,6 +20,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/base/macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/ArrayRef.h"
@@ -40,7 +41,8 @@ limitations under the License.
 #include "tsl/platform/statusor.h"
 
 namespace tensorflow {
-using tsl::StatusOr;
+template <typename T>
+using StatusOr ABSL_DEPRECATE_AND_INLINE() = ::absl::StatusOr<T>;
 
 inline constexpr absl::string_view kNumCoresPerReplicaAttr =
     "num_cores_per_replica";

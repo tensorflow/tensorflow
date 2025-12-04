@@ -74,13 +74,13 @@ namespace tensorflow {
 namespace tf2xla {
 namespace v2 {
 
+using absl::StatusOr;
 using mlir::BlockArgument;
 using mlir::Dialect;
 using mlir::Operation;
 using mlir::SymbolTable;
 using mlir::Value;
 using mlir::func::FuncOp;
-using tsl::StatusOr;
 
 namespace {
 
