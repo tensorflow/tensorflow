@@ -2857,6 +2857,17 @@ tf_cc_test(
 )
 
 tf_cc_test(
+    name = "process_util_thread_validation_test",
+    size = "small",
+    srcs = ["segementation_test.cpp"],
+    deps = [
+        ":process_util",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
+)
+
+tf_cc_test(
     name = "replicate_per_replica_nodes_test",
     size = "small",
     srcs = ["replicate_per_replica_nodes_test.cc"],
