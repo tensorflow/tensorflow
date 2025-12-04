@@ -151,6 +151,9 @@ absl::Status CublasBackend::ApplyConfig(HloInstruction& instr,
     return absl::InvalidArgumentError(
         "Failed to unpack CublasBackendConfig from Any.");
   }
+  if (ShouldUseCublasLt(instr) && gemm_key.algorithm() == -1) {
+    gemm_key.set_algorithm(0);
+  }
   TF_ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
                       instr.backend_config<GpuBackendConfig>());
   GemmBackendConfig& backend_config = *gpu_config.mutable_gemm_backend_config();
