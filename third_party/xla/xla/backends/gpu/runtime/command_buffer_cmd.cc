@@ -496,10 +496,19 @@ absl::Status CommandBufferCmdExecutor::Record(
         command_buffer->mode() == se::CommandBuffer::Mode::kPrimary) {
       int64_t input_count = 0;
       int64_t output_count = 0;
+      int64_t temp_count = 0;
       int64_t input_temp_count = 0;
       int64_t output_temp_count = 0;
       int64_t input_output_count = 0;
       int64_t input_temp_output_count = 0;
+
+      absl::flat_hash_map<std::string, int64_t> input_cmds;
+      absl::flat_hash_map<std::string, int64_t> output_cmds;
+      absl::flat_hash_map<std::string, int64_t> temp_cmds;
+      absl::flat_hash_map<std::string, int64_t> input_temp_cmds;
+      absl::flat_hash_map<std::string, int64_t> output_temp_cmds;
+      absl::flat_hash_map<std::string, int64_t> input_output_cmds;
+      absl::flat_hash_map<std::string, int64_t> input_temp_output_cmds;
 
       for (const auto& cmd : commands_) {
         bool has_input = false;
@@ -507,54 +516,76 @@ absl::Status CommandBufferCmdExecutor::Record(
         bool has_temp = false;
 
         for (const auto& buffer : cmd->buffers()) {
-          if (buffer.HasDefinedContentsOnInput()) {
+          if (buffer.slice().allocation()->IsPreallocatedTempBuffer()) {
+            has_temp = true;
+          }
+          if (buffer.slice().allocation()->is_entry_computation_parameter()) {
             has_input = true;
           }
-          if (buffer.HasDefinedContentsOnOutput()) {
+          if (buffer.slice().allocation()->maybe_live_out()) {
             has_output = true;
-          }
-          if (!buffer.HasDefinedContentsOnInput() &&
-              !buffer.HasDefinedContentsOnOutput()) {
-            has_temp = true;
           }
         }
 
+        std::string cmd_name = CommandBufferCmdString(cmd->command_type());
+
         if (has_input && !has_output && !has_temp) {
           input_count++;
+          input_cmds[cmd_name]++;
         }
         if (!has_input && has_output && !has_temp) {
           output_count++;
+          output_cmds[cmd_name]++;
+        }
+        if (!has_input && !has_output && has_temp) {
+          temp_count++;
+          temp_cmds[cmd_name]++;
         }
         if (has_input && !has_output && has_temp) {
           input_temp_count++;
+          input_temp_cmds[cmd_name]++;
         }
         if (!has_input && has_output && has_temp) {
           output_temp_count++;
+          output_temp_cmds[cmd_name]++;
         }
         if (has_input && has_output && !has_temp) {
           input_output_count++;
+          input_output_cmds[cmd_name]++;
         }
         if (has_input && has_output && has_temp) {
           input_temp_output_count++;
+          input_temp_output_cmds[cmd_name]++;
         }
       }
+
+      auto print_cmds =
+          [](const absl::flat_hash_map<std::string, int64_t>& cmds) {
+            std::string s;
+            for (const auto& [name, count] : cmds) {
+              absl::StrAppend(&s, "\n    ", name, ": ", count);
+            }
+            return s;
+          };
 
       VLOG(5) << "CommandBufferCmdExecutor allocation summary:\n"
               << "  Total commands                                 : "
               << commands_.size() << "\n"
               << "  ------------------------------------------------\n"
               << "  Commands consuming input buffer                : "
-              << input_count << "\n"
+              << input_count << print_cmds(input_cmds) << "\n"
               << "  Commands consuming output buffer               : "
-              << output_count << "\n"
+              << output_count << print_cmds(output_cmds) << "\n"
+              << "  Commands consuming temp buffer                 : "
+              << temp_count << print_cmds(temp_cmds) << "\n"
               << "  Commands consuming input, temp buffers         : "
-              << input_temp_count << "\n"
+              << input_temp_count << print_cmds(input_temp_cmds) << "\n"
               << "  Commands consuming output, temp buffers        : "
-              << output_temp_count << "\n"
+              << output_temp_count << print_cmds(output_temp_cmds) << "\n"
               << "  Commands consuming input, output buffers       : "
-              << input_output_count << "\n"
+              << input_output_count << print_cmds(input_output_cmds) << "\n"
               << "  Commands consuming input, temp, output buffers : "
-              << input_temp_output_count;
+              << input_temp_output_count << print_cmds(input_temp_output_cmds);
     }
 
     TF_RETURN_IF_ERROR(RecordCreate(execute_params, record_params,
