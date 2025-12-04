@@ -3252,53 +3252,6 @@ void MIOpenDeallocatorCallback(void* ctx, void* mem) {
   // reclaim the memory
 }
 
-absl::Status MIOpenSupport::DoPrepareForConvolution(
-    dnn::ConvolutionKind kind, dnn::DataType element_type, Stream* stream,
-    const dnn::BatchDescriptor& input_descriptor, DeviceMemoryBase input_data,
-    const dnn::FilterDescriptor& filter_descriptor,
-    DeviceMemoryBase filter_data, const dnn::BatchDescriptor& output_descriptor,
-    DeviceMemoryBase output_data,
-    const dnn::ConvolutionDescriptor& convolution_descriptor,
-    const dnn::AlgorithmConfig& algorithm_config,
-    ScratchAllocator* scratch_allocator, dnn::AlgorithmDesc* algorithm_desc,
-    DeviceMemory<uint8_t>* scratch_memory) {
-  std::optional<dnn::AlgorithmDesc> input_algo_desc =
-      algorithm_config.algorithm();
-
-  assert(input_algo_desc.has_value());
-
-  // An algorithm has been specified.
-  *algorithm_desc = *input_algo_desc;
-
-  assert(algorithm_config.scratch_size().has_value());
-
-  size_t scratch_memory_size = *(algorithm_config.scratch_size());
-
-  // allocate scratch memory
-  if (scratch_memory_size != 0) {
-    if (scratch_allocator == nullptr) {
-      return absl::InternalError(
-          "An allocator must be specified when scratch memory is needed");
-    }
-    auto allocated = scratch_allocator->AllocateBytes(scratch_memory_size);
-    if (allocated.ok()) {
-      *scratch_memory = allocated.value();
-    } else {
-      LOG(ERROR)
-          << "Failed to allocate scratch memory - "
-          << allocated.status().message() << "\n"
-          << "\tYou can set the env var TF_CUDNN_WORKSPACE_LIMIT_IN_MB to a "
-             "larger number (e.g. 8192) to increase the max memory limit.\n"
-          << "\tIncreasing the max memory limit might help resolve this "
-             "error";
-      return absl::InternalError(absl::StrCat(
-          "Failed to allocate scratch memory of size: ", scratch_memory_size));
-    }
-  }
-
-  return absl::OkStatus();
-}
-
 class RocmConvRunner : public dnn::ConvRunner {
  public:
   RocmConvRunner(StreamExecutor* parent, MIOpenAccess* miopen, int64_t algo_id,
@@ -3458,26 +3411,6 @@ class RocmConvRunner : public dnn::ConvRunner {
   ScopedFilterDescriptor filter_desc_;
   ScopedConvolutionDescriptor conv_desc_;
 };
-
-absl::Status MIOpenSupport::DoConvolve(
-    dnn::ConvolutionKind kind, dnn::DataType element_type,
-    dnn::DataType output_type, Stream* stream,
-    const dnn::BatchDescriptor& input_descriptor, DeviceMemoryBase input_data,
-    const dnn::FilterDescriptor& filter_descriptor,
-    DeviceMemoryBase filter_data, const dnn::BatchDescriptor& output_descriptor,
-    DeviceMemoryBase output_data,
-    const dnn::ConvolutionDescriptor& convolution_descriptor,
-    dnn::AlgorithmDesc algorithm_desc, DeviceMemory<uint8_t> scratch_memory,
-    dnn::ProfileResult* output_profile_result) {
-  TF_ASSIGN_OR_RETURN(
-      auto runner,
-      ConvolveRunnerFromDesc(stream, algorithm_desc, kind, element_type,
-                             output_type, input_descriptor, filter_descriptor,
-                             output_descriptor, convolution_descriptor));
-
-  return (*runner)(stream, output_profile_result, scratch_memory, input_data,
-                   filter_data, output_data);
-}
 
 absl::Status MIOpenSupport::GetConvolveRunners(
     dnn::ConvolutionKind kind, dnn::DataType input_type,

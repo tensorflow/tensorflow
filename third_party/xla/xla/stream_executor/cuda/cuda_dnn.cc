@@ -4256,20 +4256,6 @@ absl::StatusOr<CudnnGraph> GetCudnnFlashAttentionOperationGraph(
 #endif
 }
 
-absl::Status CudnnSupport::DoPrepareForConvolution(
-    dnn::ConvolutionKind kind, dnn::DataType element_type, Stream* stream,
-    const dnn::BatchDescriptor& input_descriptor, DeviceMemoryBase input_data,
-    const dnn::FilterDescriptor& filter_descriptor,
-    DeviceMemoryBase filter_data, const dnn::BatchDescriptor& output_descriptor,
-    DeviceMemoryBase output_data,
-    const dnn::ConvolutionDescriptor& convolution_descriptor,
-    const dnn::AlgorithmConfig& algorithm_config,
-    ScratchAllocator* scratch_allocator, dnn::AlgorithmDesc* algorithm_desc,
-    DeviceMemory<uint8_t>* scratch_memory) {
-  return absl::UnimplementedError(
-      "DoPrepareForConvolution is not implemented on CUDA platform.");
-}
-
 absl::StatusOr<CudnnGraph> GetCudnnFlashAttentionF8OperationGraph(
     dnn::DnnSupport& dnn_support,
     const dnn::MatmulTensorDescriptor& q_descriptor,
@@ -4994,27 +4980,6 @@ absl::StatusOr<CudnnGraph> GetCudnnFlashAttentionBackwardOperationGraph(
   return absl::UnimplementedError(
       "Cudnn flash attention only supported with Cudnn >= 9.0.0");
 #endif
-}
-
-absl::Status CudnnSupport::DoConvolve(
-    dnn::ConvolutionKind kind, dnn::DataType element_type,
-    dnn::DataType output_type, Stream* stream,
-    const dnn::BatchDescriptor& input_descriptor, DeviceMemoryBase input_data,
-    const dnn::FilterDescriptor& filter_descriptor,
-    DeviceMemoryBase filter_data, const dnn::BatchDescriptor& output_descriptor,
-    DeviceMemoryBase output_data,
-    const dnn::ConvolutionDescriptor& convolution_descriptor,
-    dnn::AlgorithmDesc algorithm_desc, DeviceMemory<uint8_t> scratch_memory,
-    dnn::ProfileResult* profile_result) {
-  TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<const dnn::ConvRunner> runner,
-      ConvolveRunnerFromDesc(stream, algorithm_desc, kind,
-                             /*input_type=*/element_type, output_type,
-                             input_descriptor, filter_descriptor,
-                             output_descriptor, convolution_descriptor));
-
-  return (*runner)(stream, profile_result, scratch_memory, input_data,
-                   filter_data, output_data);
 }
 
 // Utility for dealing with CUDA's type-erased scaling parameters, where some
