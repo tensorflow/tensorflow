@@ -371,10 +371,10 @@ mlir::LogicalResult HandleTileShardedInputsUsingXlaSplitOps(
     llvm::SmallVectorImpl<mlir::Value>* tiled_inputs,
     bool is_ici_weight_dist_spmd) {
   std::vector<int64_t> num_splits(
-      input_sharding.tile_assignment_dimensions().begin(),
+      input_sharding.dimensions().begin(),
       input_sharding.replicate_on_last_tile_dim()
-          ? std::prev(input_sharding.tile_assignment_dimensions().end())
-          : input_sharding.tile_assignment_dimensions().end());
+          ? std::prev(input_sharding.dimensions().end())
+          : input_sharding.dimensions().end());
 
   const int rank = input_sharding.replicate_on_last_tile_dim()
                        ? input_sharding.tile_assignment_dimensions_size() - 1
@@ -398,10 +398,9 @@ mlir::LogicalResult HandleTileShardedInputsUsingXlaSplitOps(
 
   tiled_inputs->clear();
   tiled_inputs->reserve(input_sharding.tile_assignment_devices_size());
-  int64_t repeat_count =
-      input_sharding.replicate_on_last_tile_dim()
-          ? *input_sharding.tile_assignment_dimensions().rbegin()
-          : 1;
+  int64_t repeat_count = input_sharding.replicate_on_last_tile_dim()
+                             ? *input_sharding.dimensions().rbegin()
+                             : 1;
   for (int i = 0; i < xla_split_op.getResults().size(); i++) {
     auto split_op_output = xla_split_op.getResults()[i];
     for (int64_t j = 0; j < repeat_count; ++j) {
@@ -487,10 +486,9 @@ mlir::LogicalResult HandleTileShardedInputsUsingTfSplitOps(
   tiled_inputs->reserve(input_sharding.tile_assignment_devices_size());
   for (auto split_op : split_ops_for_tiled_input) {
     for (auto split_op_output : split_op.getResults()) {
-      int64_t repeat_count =
-          input_sharding.replicate_on_last_tile_dim()
-              ? *input_sharding.tile_assignment_dimensions().rbegin()
-              : 1;
+      int64_t repeat_count = input_sharding.replicate_on_last_tile_dim()
+                                 ? *input_sharding.dimensions().rbegin()
+                                 : 1;
       for (int64_t i = 0; i < repeat_count; ++i) {
         tiled_inputs->push_back(split_op_output);
       }
@@ -834,7 +832,7 @@ mlir::LogicalResult GetTileShardedOutputsToMerge(
     auto core_id = core_id_and_index.value();
     auto tile_index = core_id_and_index.index();
 
-    int last_tile_dim_size = *sharding.tile_assignment_dimensions().rbegin();
+    int last_tile_dim_size = *sharding.dimensions().rbegin();
     if (sharding.replicate_on_last_tile_dim() &&
         tile_index % last_tile_dim_size != 0) {
       continue;
@@ -868,10 +866,10 @@ mlir::LogicalResult HandleTileShardedOutputsUsingXlaConcatOps(
       output_sharding_config[cluster_func_output_index];
 
   const std::vector<int64_t> num_concats(
-      sharding.tile_assignment_dimensions().begin(),
+      sharding.dimensions().begin(),
       sharding.replicate_on_last_tile_dim()
-          ? std::prev(sharding.tile_assignment_dimensions().end())
-          : sharding.tile_assignment_dimensions().end());
+          ? std::prev(sharding.dimensions().end())
+          : sharding.dimensions().end());
 
   const int rank = sharding.replicate_on_last_tile_dim()
                        ? sharding.tile_assignment_dimensions_size() - 1

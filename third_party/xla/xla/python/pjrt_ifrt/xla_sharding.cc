@@ -145,7 +145,7 @@ absl::StatusOr<Shape> HloSharding::GetShardShape(const Shape& shape) const {
         shape.dims().size(), xla_hlo_sharding_.TiledDataRank());
   }
   const absl::Span<const int64_t> tile_assignment_dims =
-      xla_hlo_sharding_.tile_assignment().dimensions();
+      xla_hlo_sharding_.dimensions();
   Shape::Dimensions tile_shape;
   tile_shape.reserve(shape.dims().size());
   for (int64_t i = 0; i < shape.dims().size(); ++i) {

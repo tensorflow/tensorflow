@@ -1043,7 +1043,7 @@ class NanoExecutable final
         continue;
       }
       int num_tiles = 1;
-      for (const auto dim : sharding.tile_assignment_dimensions()) {
+      for (const auto dim : sharding.dimensions()) {
         num_tiles *= dim;
       }
       if (ABSL_PREDICT_FALSE(num_tiles > client->devices().size())) {

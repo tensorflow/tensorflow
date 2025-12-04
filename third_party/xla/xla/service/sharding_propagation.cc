@@ -778,9 +778,8 @@ bool RefineManualAutoShardingFromAuto(
   // We are also merging the non-manual sharding into the manual sharding. To
   // leverage existing merging implementation, we treat the manual dim as a
   // data dim, and add it right before the replication dim.
-  std::vector<int64_t> partial_manual_shape(
-      partial_rep.tile_assignment().dimensions().begin(),
-      partial_rep.tile_assignment().dimensions().end());
+  std::vector<int64_t> partial_manual_shape(partial_rep.dimensions().begin(),
+                                            partial_rep.dimensions().end());
   partial_manual_shape.insert(partial_manual_shape.begin() + data_rank, 1);
   auto partial_tiling_for_manual =
       partial_rep.tile_assignment().Reshape(partial_manual_shape);
@@ -2294,7 +2293,7 @@ bool ShardingPropagation::InferShardingFromOperands(
         }
       }
       for (int64_t i = op->sharding().TiledDataRank();
-           i < op->sharding().tile_assignment().num_dimensions(); ++i) {
+           i < op->sharding().num_dimensions(); ++i) {
         target_tile_assignment_dimensions.push_back(
             op->sharding().dimension(i));
       }

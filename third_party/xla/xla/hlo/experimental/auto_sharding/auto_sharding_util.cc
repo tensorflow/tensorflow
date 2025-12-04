@@ -1082,7 +1082,7 @@ int64_t NumTileDimensions(const HloSharding& sharding) {
     return -1;
   }
   int64_t num_tile_dims = 0;
-  for (int i = 0; i < sharding.tile_assignment().num_dimensions(); i++) {
+  for (int i = 0; i < sharding.num_dimensions(); i++) {
     if (sharding.dimension(i) != 1) {
       num_tile_dims++;
     }
@@ -1093,7 +1093,7 @@ int64_t NumTileDimensions(const HloSharding& sharding) {
 bool TileAssignmentMatchesMesh(const HloSharding& sharding,
                                const DeviceMesh& mesh) {
   int sharded_dims = 0;
-  for (int i = 0; i < sharding.tile_assignment().num_dimensions(); ++i) {
+  for (int i = 0; i < sharding.num_dimensions(); ++i) {
     if (sharding.dimension(i) > 1) {
       sharded_dims++;
     }
@@ -1166,7 +1166,7 @@ GetTensorDimToMeshDimMixedMeshSharding(int64_t tensor_shape_rank,
 
   std::vector<absl::btree_set<int64_t>> tensor_dim_to_mesh_axis_mapping;
   int mesh_axis_idx = 0;
-  for (int i = 0; i < sharding.tile_assignment().num_dimensions(); ++i) {
+  for (int i = 0; i < sharding.num_dimensions(); ++i) {
     if (sharding.dimension(i) == 1) {
       tensor_dim_to_mesh_axis_mapping.push_back({});
       continue;
@@ -2189,9 +2189,8 @@ AdjustShardingWithPartialMeshShapePerElement(
           /*consider_reverse_device_meshes=*/true));
 
   int mesh_axis_idx = 0;
-  int end = sharding.ReplicateOnLastTileDim()
-                ? sharding.tile_assignment().num_dimensions() - 1
-                : sharding.tile_assignment().num_dimensions();
+  int end = sharding.ReplicateOnLastTileDim() ? sharding.num_dimensions() - 1
+                                              : sharding.num_dimensions();
   for (int i = 0; i < end; ++i) {
     if (sharding.dimension(i) == 1) {
       new_tile_assignment_dimensions.push_back(1);
@@ -2441,9 +2440,9 @@ std::vector<std::vector<int64_t>> InferMeshShapesToTry(
       return;
     }
     tiled_shardings.push_back(sharding);
-    max_tile_dimensions = std::max(
-        max_tile_dimensions, VectorGreaterThanOneElementCount(
-                                 sharding.tile_assignment().dimensions()));
+    max_tile_dimensions =
+        std::max(max_tile_dimensions,
+                 VectorGreaterThanOneElementCount(sharding.dimensions()));
     if (sharding.tile_assignment().iota().has_value()) {
       max_reshape_dims =
           std::max(max_reshape_dims,
@@ -2462,8 +2461,8 @@ std::vector<std::vector<int64_t>> InferMeshShapesToTry(
 
   std::vector<HloSharding> tiled_shardings_with_all_dims_in_order;
   for (const HloSharding& sharding : tiled_shardings) {
-    if (VectorGreaterThanOneElementCount(
-            sharding.tile_assignment().dimensions()) != max_tile_dimensions ||
+    if (VectorGreaterThanOneElementCount(sharding.dimensions()) !=
+            max_tile_dimensions ||
         !sharding.tile_assignment().iota().has_value()) {
       continue;
     }
@@ -2476,8 +2475,8 @@ std::vector<std::vector<int64_t>> InferMeshShapesToTry(
   absl::flat_hash_set<std::vector<int64_t>> mesh_shape_candidates;
   if (!tiled_shardings_with_all_dims_in_order.empty()) {
     for (const HloSharding& sharding : tiled_shardings_with_all_dims_in_order) {
-      mesh_shape_candidates.insert(VectorGreaterThanOneElements(
-          sharding.tile_assignment().dimensions()));
+      mesh_shape_candidates.insert(
+          VectorGreaterThanOneElements(sharding.dimensions()));
     }
   } else {
     for (const HloSharding& sharding : tiled_shardings) {

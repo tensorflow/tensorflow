@@ -925,10 +925,9 @@ absl::StatusOr<ShardedInputInfo> CreateOrGetSplitNodesForInputSharding(
     TF_RETURN_IF_ERROR(
         GetNodeAttr(split_node->def(), "num_split", &num_splits));
     for (int out_index = 0; out_index < num_splits; ++out_index) {
-      int64_t repeat_count =
-          sharding.replicate_on_last_tile_dim()
-              ? *sharding.tile_assignment_dimensions().rbegin()
-              : 1;
+      int64_t repeat_count = sharding.replicate_on_last_tile_dim()
+                                 ? *sharding.dimensions().rbegin()
+                                 : 1;
       for (int64_t i = 0; i < repeat_count; ++i) {
         int64_t next_core =
             sharding.tile_assignment_devices(next_core_tile_index++);
@@ -959,10 +958,10 @@ absl::StatusOr<Node*> CreateXlaSplitOp(
   AddNodeAttr("T", dtype, &xla_split_def);
   AddNodeAttr("N", num_shards, &xla_split_def);
   const std::vector<int64_t> num_splits(
-      sharding.tile_assignment_dimensions().begin(),
+      sharding.dimensions().begin(),
       sharding.replicate_on_last_tile_dim()
-          ? std::prev(sharding.tile_assignment_dimensions().end())
-          : sharding.tile_assignment_dimensions().end());
+          ? std::prev(sharding.dimensions().end())
+          : sharding.dimensions().end());
   AddNodeAttr("num_splits", num_splits, &xla_split_def);
   const int rank = sharding.replicate_on_last_tile_dim()
                        ? sharding.tile_assignment_dimensions_size() - 1
@@ -1006,7 +1005,7 @@ absl::StatusOr<std::vector<NodeOut>> ShardInputWithXlaSplitOp(
     const std::vector<Node*>& control_outputs, const DataType dtype,
     const xla::OpSharding& sharding, Graph* graph) {
   const int repeat = sharding.replicate_on_last_tile_dim()
-                         ? *sharding.tile_assignment_dimensions().rbegin()
+                         ? *sharding.dimensions().rbegin()
                          : 1;
   const int num_shards = sharding.tile_assignment_devices_size() / repeat;
 
@@ -1320,10 +1319,10 @@ absl::StatusOr<Node*> CreateXlaConcatNode(
   AddNodeAttr("T", dtype, &xla_concat_def);
   AddNodeAttr("N", static_cast<int64_t>(orig_inputs.size()), &xla_concat_def);
   const std::vector<int64_t> num_concats(
-      sharding.tile_assignment_dimensions().begin(),
+      sharding.dimensions().begin(),
       sharding.replicate_on_last_tile_dim()
-          ? std::prev(sharding.tile_assignment_dimensions().end())
-          : sharding.tile_assignment_dimensions().end());
+          ? std::prev(sharding.dimensions().end())
+          : sharding.dimensions().end());
   AddNodeAttr("num_concats", num_concats, &xla_concat_def);
   const int rank = sharding.replicate_on_last_tile_dim()
                        ? sharding.tile_assignment_dimensions_size() - 1
@@ -3121,7 +3120,7 @@ absl::Status CreatePartitionedDummyVarArgs(
     return absl::OkStatus();
   }
   const int repeat = sharding.replicate_on_last_tile_dim()
-                         ? *sharding.tile_assignment_dimensions().rbegin()
+                         ? *sharding.dimensions().rbegin()
                          : 1;
   const int num_shards = sharding.tile_assignment_devices_size() / repeat;
 
@@ -3802,8 +3801,7 @@ absl::Status DistributedTPURewritePass::BuildExecuteNodes(
           for (int64_t tile_index = 0;
                tile_index < sharding.tile_assignment_devices_size();
                ++tile_index) {
-            int64_t last_tile_dim_size =
-                *sharding.tile_assignment_dimensions().rbegin();
+            int64_t last_tile_dim_size = *sharding.dimensions().rbegin();
             if (sharding.replicate_on_last_tile_dim() &&
                 tile_index % last_tile_dim_size != 0) {
               continue;
@@ -3889,8 +3887,7 @@ absl::Status DistributedTPURewritePass::BuildExecuteNodes(
             for (int64_t tile_index = 0;
                  tile_index < sharding.tile_assignment_devices_size();
                  ++tile_index) {
-              int64_t last_tile_dim_size =
-                  *sharding.tile_assignment_dimensions().rbegin();
+              int64_t last_tile_dim_size = *sharding.dimensions().rbegin();
               if (sharding.replicate_on_last_tile_dim() &&
                   tile_index % last_tile_dim_size != 0) {
                 continue;

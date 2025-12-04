@@ -70,7 +70,7 @@ absl::StatusOr<OpSharding> ToOpSharding(
   op_sharding.set_type(OpSharding::OTHER);
 
   // Populate tile_assignment_dimensions.
-  auto* tile_assignment_dims = op_sharding.mutable_tile_assignment_dimensions();
+  auto* tile_assignment_dims = op_sharding.mutable_dimensions();
   int64_t cum_size = 1;
   tile_assignment_dims->Reserve(sharding_param.dim_shards().size() + 1);
   for (const int64_t dim_shard : sharding_param.dim_shards()) {

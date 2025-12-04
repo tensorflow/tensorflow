@@ -331,7 +331,7 @@ inline std::string ToStringSimple(const HloSharding& spec) {
   if (spec.IsReplicated()) {
     return "R";
   }
-  return ToString(spec.tile_assignment().dimensions());
+  return ToString(spec.dimensions());
 }
 
 // Insert a copy of the operand to force the sharding of the operand.

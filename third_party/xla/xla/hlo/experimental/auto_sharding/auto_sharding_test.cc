@@ -190,7 +190,7 @@ ENTRY %elementwise {
     ASSERT_NE(root, nullptr);
     EXPECT_EQ(root->sharding().NumTiles(), expected_num_tiles);
     EXPECT_EQ(VectorGreaterThanOneElementCount(
-                  root->sharding().tile_assignment().dimensions(),
+                  root->sharding().dimensions(),
                   root->sharding().ReplicateOnLastTileDim()),
               expected_sharded_dimensions);
   }
@@ -227,8 +227,7 @@ ENTRY %elementwise {
     ASSERT_NE(root, nullptr);
     EXPECT_EQ(root->sharding().ReplicateOnLastTileDim(),
               expected_last_dim_replicate);
-    EXPECT_THAT(root->sharding().tile_assignment().dimensions(),
-                ElementsAreArray(expected_tile));
+    EXPECT_THAT(root->sharding().dimensions(), ElementsAreArray(expected_tile));
   }
 
   AliasInfo alias_info_;

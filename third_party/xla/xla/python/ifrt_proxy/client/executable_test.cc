@@ -159,8 +159,7 @@ TEST_F(LoadedExecutableTest, Metadata) {
     EXPECT_EQ(param_shardings[1].tile_shape().element_type(), xla::BF16);
     EXPECT_THAT(param_shardings[1].tile_shape().dimensions(),
                 ElementsAre(2, 2));
-    EXPECT_THAT(param_shardings[1].tile_assignment_dimensions(),
-                ElementsAre(0, 1));
+    EXPECT_THAT(param_shardings[1].dimensions(), ElementsAre(0, 1));
   }
   if (executable.GetOutputShardings().has_value()) {
     std::vector<OpSharding> output_shardings =
