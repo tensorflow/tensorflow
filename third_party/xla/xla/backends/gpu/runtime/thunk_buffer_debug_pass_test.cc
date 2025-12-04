@@ -384,16 +384,21 @@ TEST_F(ThunkBufferDebugPassTest, RecursivelyInsertsBuffersDebugChecksumThunks) {
       new_thunks,
       ElementsAre(
           IsCustomCallThunkWithTargetName("xla_gpu_buffer_debug_log_init"),
-          ThunkKindIs(Thunk::Kind::kWhile),
+          ThunkKindIs(Thunk::Kind::kSequential),
           IsCustomCallThunkWithTargetName("xla_gpu_buffer_debug_log_dump")));
 
   {
-    ASSERT_EQ(new_thunks[1]->kind(), Thunk::Kind::kWhile);
+    ASSERT_EQ(new_thunks[1]->kind(), Thunk::Kind::kSequential);
+    const SequentialThunk& top_seq_thunk =
+        static_cast<const SequentialThunk&>(*new_thunks[1]);
+
+    ASSERT_EQ(top_seq_thunk.thunks()[1]->kind(), Thunk::Kind::kWhile);
     const WhileThunk& while_thunk =
-        static_cast<const WhileThunk&>(*new_thunks[1]);
+        static_cast<const WhileThunk&>(*top_seq_thunk.thunks()[1]);
+
     EXPECT_THAT(while_thunk.body_thunk_sequence()->thunks(),
                 ElementsAre(ThunkKindIs(Thunk::Kind::kSequential),
-                            Pointer(conditional_thunk_ptr)));
+                            ThunkKindIs(Thunk::Kind::kSequential)));
     const SequentialThunk& condition_fake_thunk_sequence =
         static_cast<const SequentialThunk&>(
             *while_thunk.condition_thunk_sequence()->thunks()[0]);
@@ -414,10 +419,18 @@ TEST_F(ThunkBufferDebugPassTest, RecursivelyInsertsBuffersDebugChecksumThunks) {
                     IsChecksumThunkChecking(SliceList{{0, slice_while_body}})));
 
     ASSERT_EQ(while_thunk.body_thunk_sequence()->thunks()[1]->kind(),
+              Thunk::Kind::kSequential);
+    const SequentialThunk& condition_warpper_thunk =
+        static_cast<const SequentialThunk&>(
+            *while_thunk.body_thunk_sequence()->thunks()[1]);
+
+    ASSERT_EQ(condition_warpper_thunk.thunks()[1]->kind(),
               Thunk::Kind::kConditional);
     const ConditionalThunk& conditional_thunk =
         static_cast<const ConditionalThunk&>(
-            *while_thunk.body_thunk_sequence()->thunks()[1]);
+            *condition_warpper_thunk.thunks()[1]);
+    EXPECT_EQ(&conditional_thunk, conditional_thunk_ptr);
+
     EXPECT_THAT(conditional_thunk.branch_thunks(),
                 ElementsAre(ThunkKindIs(Thunk::Kind::kSequential),
                             ThunkKindIs(Thunk::Kind::kSequential)));

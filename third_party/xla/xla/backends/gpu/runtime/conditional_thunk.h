@@ -31,6 +31,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
+#include "xla/runtime/buffer_use.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/stream_executor/stream_executor.h"
 
@@ -78,6 +79,12 @@ class ConditionalThunk : public Thunk {
           fn) override;
 
   bool branch_index_is_bool() const { return branch_index_is_bool_; }
+
+  BufferUses buffer_uses() const override {
+    return {
+        BufferUse::Read(branch_index_buffer_index_),
+    };
+  }
 
   absl::StatusOr<ThunkProto> ToProto() const override;
 
