@@ -23,11 +23,14 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/compiler.h"
 #include "xla/service/executable.h"
 #include "xla/service/gpu/gpu_executable.h"
 #include "xla/service/gpu/gpu_executable.pb.h"
+#include "xla/stream_executor/kernel_symbol_registry.h"
+#include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/platform/statusor.h"
 
@@ -62,9 +65,16 @@ class GpuAotCompilationResult : public AotCompilationResult {
   absl::StatusOr<std::unique_ptr<Executable>> LoadExecutable(
       Compiler* compiler, const se::StreamExecutor* stream_exec) &&
       final {
-    return GpuExecutable::FromProto(executable_,
-                                    stream_exec->GetDeviceDescription(),
-                                    stream_exec->GetPlatform()->Name());
+    stream_executor::Platform::Id platform_id =
+        stream_exec->GetPlatform()->id();
+    const auto symbol_resolver = [&](absl::string_view symbol_name) {
+      stream_executor::KernelSymbolRegistry& registry =
+          stream_executor::KernelSymbolRegistry::GetGlobalInstance();
+      return registry.FindSymbol(symbol_name, platform_id);
+    };
+    return GpuExecutable::FromProto(
+        executable_, stream_exec->GetDeviceDescription(),
+        stream_exec->GetPlatform()->Name(), symbol_resolver);
   }
 
   const HloModule* optimized_module() const final { return hlo_module_.get(); };

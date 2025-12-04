@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/service/gpu/gpu_executable.h"
 
 #include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
@@ -27,7 +28,9 @@ limitations under the License.
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "xla/backends/gpu/runtime/copy_thunk.h"
+#include "xla/backends/gpu/runtime/custom_kernel_thunk.h"
 #include "xla/backends/gpu/runtime/kernel_thunk.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
@@ -52,11 +55,13 @@ limitations under the License.
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/gpu/tma_metadata.h"
 #include "xla/stream_executor/semantic_version.h"
+#include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/threadpool.h"
 #include "xla/tsl/testing/temporary_directory.h"
+#include "xla/tsl/util/proto/parse_text_proto.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
 #include "tsl/platform/path.h"
 
@@ -64,12 +69,15 @@ namespace xla::gpu {
 namespace {
 using ::testing::ElementsAre;
 using ::testing::ElementsAreArray;
+using ::testing::Field;
+using ::testing::Optional;
 using ::testing::Pair;
 using ::testing::Pointee;
 using ::testing::Property;
 using ::testing::SizeIs;
 using ::testing::UnorderedElementsAre;
 using ::tsl::proto_testing::EqualsProto;
+using ::tsl::proto_testing::ParseTextProtoOrDie;
 using ::tsl::proto_testing::Partially;
 using ::tsl::testing::TemporaryDirectory;
 
@@ -569,6 +577,77 @@ TEST(GpuExecutableTest, GpuExecutableDump) {
                   }
                 }
               )pb")));
+}
+
+void* InventPointerToCudaKernel(uint64_t address) {
+  return reinterpret_cast<void*>(address);
+}
+
+TEST(GpuExecutableTest, FromProtoWithSymbolResolver) {
+  const auto proto = ParseTextProtoOrDie<GpuExecutableProto>(R"pb(
+    module_name: "test_module"
+    gpu_compute_capability: {
+      cuda_compute_capability: { major: 9 minor: 0 feature_extension: NONE }
+    }
+    thunk {
+      thunk_info { thunk_id: 1 }
+      sequential_thunk {
+        thunks {
+          thunk_info { thunk_id: 2 }
+          custom_kernel_thunk {
+            custom_kernel {
+              kernel_spec {
+                in_process_symbol { persistent_name: "persistent_kernel_name" }
+                kernel_name: "kernel_name"
+                arity: 42
+                kernel_args_packing_spec {
+                  kernel_arguments {
+                    relocations {
+                      type: TYPE_BITS64_ABSOLUTE
+                      argument_index: 0
+                      offset: 0
+                    }
+                    data: "\x00\x00\x00\x00\x00\x00\x00\x00"
+                  }
+                  kernel_arguments { data: "\x34\x12\x00\x00" }
+                }
+              }
+              block_dims { coordinates { x: 1 y: 1 z: 1 } }
+              thread_dims { coordinates { x: 1 y: 1 z: 1 } }
+              cluster_dim { coordinates { x: 1 y: 1 z: 1 } }
+            }
+          }
+        }
+      }
+    }
+  )pb");
+
+  void* const kCudaSymbol = InventPointerToCudaKernel(0x1234567890);
+
+  stream_executor::DeviceDescription device_description;
+  device_description.set_gpu_compute_capability(
+      se::GpuComputeCapability{se::CudaComputeCapability::Hopper()});
+
+  int symbol_resolver_invocations = 0;
+  const auto symbol_resolver = [&](absl::string_view name) {
+    EXPECT_EQ(name, "persistent_kernel_name");
+    ++symbol_resolver_invocations;
+    return kCudaSymbol;
+  };
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<GpuExecutable> executable,
+      GpuExecutable::FromProto(proto, device_description, "TEST_PLATFORM",
+                               symbol_resolver));
+
+  const CustomKernelThunk* custom_kernel_thunk =
+      dynamic_cast<const CustomKernelThunk*>(
+          executable->GetThunk().thunks().front().get());
+  ASSERT_NE(custom_kernel_thunk, nullptr);
+  EXPECT_THAT(
+      custom_kernel_thunk->custom_kernel().kernel_spec().in_process_symbol(),
+      Optional(Field(&stream_executor::InProcessSymbol::symbol, kCudaSymbol)));
+  EXPECT_EQ(symbol_resolver_invocations, 1);
 }
 
 }  // namespace
