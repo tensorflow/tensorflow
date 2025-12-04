@@ -46,6 +46,7 @@ template <typename T, typename Setter>
 void SetOption(absl::string_view key,
                const std::variant<bool, int, std::string>& value, Setter setter,
                tensorflow::ProfileOptions* profiler_options) {
+  LOG(INFO) << "sannidhya: SetOption called.";
   if (std::holds_alternative<T>(value)) {
     auto int_value = std::get<T>(value);
     setter(profiler_options, int_value);
@@ -57,6 +58,7 @@ void SetOption(absl::string_view key,
 
 // Sets gRPC deadline to a grace period based on the profiling duration.
 void UpdateMaxSessionDuration(RemoteProfilerSessionManagerOptions& options) {
+  LOG(INFO) << "sannidhya: UpdateMaxSessionDuration called.";
   auto local_profiler_duration = options.profiler_options().duration_ms();
   auto session_creation_ts = options.session_creation_timestamp_ns();
   auto requested_start_ts = options.profiler_options().start_timestamp_ns();
@@ -86,6 +88,7 @@ void UpdateMaxSessionDuration(RemoteProfilerSessionManagerOptions& options) {
 // service_addresses and override_hostnames must match.
 void AddServiceAddresses(absl::string_view service_addresses,
                          RemoteProfilerSessionManagerOptions* options) {
+  LOG(INFO) << "sannidhya: AddServiceAddresses called.";
   for (absl::string_view server : absl::StrSplit(service_addresses, ',')) {
     options->add_service_addresses(server.data(), server.size());
   }
@@ -97,6 +100,8 @@ RemoteProfilerSessionManagerOptions GetRemoteSessionManagerOptionsLocked(
     absl::string_view logdir,
     const absl::flat_hash_map<std::string,
                               std::variant<bool, int, std::string>>& opts) {
+  LOG(INFO) << "sannidhya: GetRemoteSessionManagerOptionsLocked(logdir, opts) "
+               "called.";
   RemoteProfilerSessionManagerOptions options;
   *options.mutable_profiler_options() = tsl::ProfilerSession::DefaultOptions();
   // Store a timestamp of when this session was created. This will be the basis
@@ -162,7 +167,7 @@ RemoteProfilerSessionManagerOptions GetRemoteSessionManagerOptionsLocked(
           },
           nullptr);
     } else {
-      LOG(WARNING) << "Unrecognised key: " << key;
+      LOG(WARNING) << "sannidhya: Unrecognised key: " << key;
     }
   }
 
@@ -176,6 +181,9 @@ RemoteProfilerSessionManagerOptions GetRemoteSessionManagerOptionsLocked(
     const absl::flat_hash_map<std::string,
                               std::variant<bool, int, std::string>>& opts,
     bool* is_cloud_tpu_session) {
+  LOG(INFO)
+      << "sannidhya: GetRemoteSessionManagerOptionsLocked(service_addresses, "
+         "...) called.";
   auto options = GetRemoteSessionManagerOptionsLocked(logdir, opts);
 
   // Remote profiling does not support any use cases where the following options
@@ -214,6 +222,7 @@ RemoteProfilerSessionManagerOptions GetRemoteSessionManagerOptionsLocked(
 
 absl::Status ValidateRemoteProfilerSessionManagerOptions(
     const RemoteProfilerSessionManagerOptions& options) {
+  LOG(INFO) << "sannidhya: ValidateRemoteProfilerSessionManagerOptions called.";
   if (options.service_addresses().empty()) {
     return absl::InvalidArgumentError("No service address provided.");
   }
@@ -237,6 +246,7 @@ absl::Status ValidateRemoteProfilerSessionManagerOptions(
 }
 
 absl::Status ValidateHostPortPair(absl::string_view host_port) {
+  LOG(INFO) << "sannidhya: ValidateHostPortPair called.";
   uint32_t port;
   std::vector<absl::string_view> parts = absl::StrSplit(host_port, ':');
   // Must be host:port, port must be a number, host must not contain a '/',
