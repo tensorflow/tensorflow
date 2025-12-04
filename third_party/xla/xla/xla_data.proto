@@ -1383,6 +1383,10 @@ message WhileLoopBackendConfig {
   // This lets us distinguish between an unknown induction variable (or none)
   // and tuple index 0.
   KnownInductionVariable known_induction_variable = 3;
+
+  // Variables that should be treated as induction variables for dynamic memcpy
+  // analysis, even though they are not the primary induction variable.
+  repeated int64 dynamic_variable_tuple_indices = 4;
 }
 
 // Specifies a pair of output/operand buffers that alias each other for
