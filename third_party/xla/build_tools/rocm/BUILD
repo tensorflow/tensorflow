@@ -77,6 +77,9 @@ sh_binary(
 sh_binary(
     name = "parallel_gpu_execute",
     srcs = ["parallel_gpu_execute.sh"],
-    data = [":sanitizer_ignore_lists"],
+    data = [
+        ":sanitizer_ignore_lists",
+        "@local_config_rocm//rocm:rocminfo",
+    ],
     visibility = ["//visibility:public"],
 )

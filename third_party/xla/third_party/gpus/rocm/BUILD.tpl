@@ -92,9 +92,9 @@ cc_library(
     strip_include_prefix = "%{rocm_root}",
     visibility = ["//visibility:public"],
     deps = [
+        ":rocm_config",
         ":rocm_headers_includes",
         ":rocm_rpath",
-        ":rocm_config",
     ],
 )
 
@@ -244,8 +244,8 @@ cc_library(
     deps = [
         ":hipblaslt",
         ":rocm_config",
-        ":roctracer",
         ":rocm_rpath",
+        ":roctracer",
     ],
 )
 
@@ -611,6 +611,17 @@ filegroup(
 filegroup(
     name = "all_files",
     srcs = glob(["%{rocm_root}/**"]),
+    visibility = ["//visibility:public"],
+)
+
+filegroup(
+    name = "rocminfo",
+    srcs = glob([
+        "%{rocm_root}/bin/rocminfo",
+        "%{rocm_root}/lib/libhsa-runtime64.so*",
+        "%{rocm_root}/lib/rocm_sysdeps/lib/*",
+        "%{rocm_root}/lib/librocprofiler-register.so.0*",
+    ]),
     visibility = ["//visibility:public"],
 )
 
