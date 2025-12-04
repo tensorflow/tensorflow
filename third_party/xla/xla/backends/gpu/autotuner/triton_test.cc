@@ -32,7 +32,6 @@ limitations under the License.
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/service/compiler.h"
 #include "xla/service/executable.h"
-#include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/gpu/nvptx_compiler.h"
 #include "xla/service/platform_util.h"
 #include "xla/stream_executor/device_description.pb.h"
@@ -47,7 +46,6 @@ namespace {
 
 using absl_testing::IsOk;
 using absl_testing::StatusIs;
-using ::tsl::proto_testing::EqualsProto;
 using TritonBackendConfig = AutotuneResult::TritonGemmKey;
 
 const char kHlo[] = R"(
@@ -69,6 +67,25 @@ const char kHlo[] = R"(
       kind=kCustom, calls=computation,
       backend_config={"fusion_backend_config":{"kind":"__triton_gemm"}}
   })";
+
+const char kScaledDotHlo[] = R"(
+HloModule ScaledDotIsFused, entry_computation_layout={(bf16[4,4]{1,0}, bf16[4,4]{1,0}, bf16[1,1]{1,0}, bf16[1,1]{1,0})->bf16[4,4]{1,0}}
+
+%fusion_dot (parameter_0: bf16[4,4], parameter_1: bf16[4,4], parameter_2: bf16[1,1], parameter_3: bf16[1,1]) -> bf16[4,4] {
+  %parameter_0 = bf16[4,4]{1,0} parameter(0)
+  %parameter_1 = bf16[4,4]{1,0} parameter(1)
+  %parameter_2 = bf16[1,1]{1,0} parameter(2)
+  %parameter_3 = bf16[1,1]{1,0} parameter(3)
+  ROOT %dot.1 = bf16[4,4]{1,0} scaled-dot(%parameter_0, %parameter_1, %parameter_2, %parameter_3), lhs_contracting_dims={1}, rhs_contracting_dims={1}, metadata={op_name="foo"}
+}
+
+ENTRY %entry (lhs: bf16[4,4], rhs: bf16[4,4], lhs_scale: bf16[1,1], rhs_scale: bf16[1,1]) -> bf16[4,4] {
+  %lhs = bf16[4,4]{1,0} parameter(0)
+  %rhs = bf16[4,4]{1,0} parameter(1)
+  %lhs_scale = bf16[1,1]{1,0} parameter(2)
+  %rhs_scale = bf16[1,1]{1,0} parameter(3)
+  ROOT %fusion = bf16[4,4]{1,0} fusion(%lhs, %rhs, %lhs_scale, %rhs_scale), kind=kCustom, calls=%fusion_dot, metadata={op_name="foo"}, backend_config={"operation_queue_id":"0","wait_on_operation_queues":[],"fusion_backend_config":{"kind":"__triton_gemm"},"force_earliest_schedule":false,"reification_cost":[],"device_type":"DEVICE_TYPE_INVALID"}
+})";
 
 class TritonBackendTest : public HloHardwareIndependentTestBase {
  protected:
@@ -113,6 +130,28 @@ TEST_F(TritonBackendTest, GetSupportedConfigs) {
                               return actual_config.is_tma_allowed();
                             }));
   }
+}
+
+TEST_F(TritonBackendTest, GetSupportedConfigsForScaledDot) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(kScaledDotHlo));
+  HloInstruction* fusion_instr =
+      module->entry_computation()->root_instruction();
+  absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>> configs =
+      backend_.GetSupportedConfigs(*fusion_instr);
+  EXPECT_THAT(configs, absl_testing::IsOk());
+  EXPECT_GT(configs.value().size(), 0);
+}
+
+TEST_F(TritonBackendTest, GetAndApplyConfigForScaledDot) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(kScaledDotHlo));
+  HloInstruction* fusion_instr =
+      module->entry_computation()->root_instruction();
+  absl::StatusOr<std::unique_ptr<BackendConfig>> config =
+      backend_.GetDefaultConfig(*fusion_instr);
+  EXPECT_THAT(config, absl_testing::IsOk());
+  EXPECT_THAT(backend_.ApplyConfig(*fusion_instr, *config.value()), IsOk());
 }
 
 TEST_F(TritonBackendTest, GetSupportedConfigsRestrictedDefaultSearch) {
