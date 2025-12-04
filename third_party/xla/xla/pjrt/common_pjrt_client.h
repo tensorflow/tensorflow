@@ -242,6 +242,14 @@ class CommonPjRtClient : public PjRtClient {
       absl::Span<const CommonPjRtBuffer::ScopedHold> input_device_buffer_holds,
       const HloInputOutputAliasConfig& alias_config, PjRtDevice* device,
       absl::Span<const int> output_memory_space_kind_ids);
+
+  std::vector<std::unique_ptr<PjRtBuffer>> CreateOutputs(
+      const Shape& output_device_shape,
+      tsl::RCReference<PjRtDeviceEvent> definition_event, PjRtDevice* device,
+      absl::Span<const int> output_memory_space_kind_ids,
+      absl::InlinedVector<tsl::RCReference<CommonPjRtRawBuffer>, 4>
+          output_leaf_buffers,
+      bool is_predetermined_error);
 };
 
 // TODO(parkers): Merge everything here into CommonPjRtBuffer.
