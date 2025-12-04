@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -27,9 +28,11 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "google/protobuf/repeated_ptr_field.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
+#include "xla/backends/gpu/runtime/collective_multimem.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/core/collectives/rank_id.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -40,8 +43,6 @@ limitations under the License.
 #include "xla/status_macros.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/gpu/collective_kernel_metadata.h"
-#include "xla/stream_executor/gpu/gpu_executor.h"
-#include "xla/stream_executor/gpu/multicast_memory.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/platform/errors.h"
@@ -241,7 +242,7 @@ absl::Status CollectiveMetadataThunk::ExecuteOnStream(
 absl::StatusOr<void*> CollectiveMetadataThunk::SetupMultimem(
     const GpuCliqueKey& clique_key, const InitializeParams& params) {
   se::DeviceMemoryBase memory_range;
-  for (const CollectiveMetadataThunk::Buffer& parameter : parameters_) {
+  for (const Buffer& parameter : parameters_) {
     if (parameter.memory_space == xla::Layout::kGenericFastMemorySpace) {
       TF_ASSIGN_OR_RETURN(
           memory_range,
@@ -252,72 +253,23 @@ absl::StatusOr<void*> CollectiveMetadataThunk::SetupMultimem(
   }
 
   // Since there is no parameter in the collective memory space, we don't need
-  // to set up the multicast memory.
+  // to set up the collective multimem.
   if (memory_range.is_null()) {
     return nullptr;
   }
 
-  if (!clique_key.is_local()) {
-    return absl::UnimplementedError(absl::StrCat(
-        XlaFormatDevice(params.executor->device_ordinal()),
-        "Multimem is not supported in multi-process mode in clique ",
-        clique_key.ToString()));
-  }
+  GlobalDeviceId global_device_id = params.collective_params->global_device_id;
 
-  return address_space_provider_.SetupMultimemAddressSpace(
-      clique_key, params.executor, memory_range);
+  std::optional<RankId> rank = clique_key.rank(global_device_id);
+  TF_ASSIGN_OR_RETURN(std::shared_ptr<CollectiveMultimem> collective_multimem,
+                      CollectiveMultimem::Allocate(params.executor, clique_key,
+                                                   *rank, memory_range));
+
+  absl::MutexLock lock(mutex_);
+  return (collective_multimem_[params.executor] =
+              std::move(collective_multimem))
+      ->mapped_ptr(*rank);
 }
-
-absl::Status Barrier(int device_number, const GpuCliqueKey& clique_key) {
-  std::string start_rendezvous_key = absl::StrFormat(
-      "Barrier for device %d, "
-      "clique %s",
-      device_number, clique_key.ToString());
-  return Rendezvous(
-      /*name=*/
-      start_rendezvous_key, /*key=*/clique_key,
-      /*num_threads=*/clique_key.num_local_participants());
-}
-
-absl::StatusOr<void*> CollectiveMetadataThunk::MultimemAddressSpaceProvider::
-    SetupMultimemAddressSpace(const GpuCliqueKey& clique_key,
-                              const se::StreamExecutor* stream_executor,
-                              se::DeviceMemoryBase mapped_memory) {
-  const auto* gpu_executor =
-      dynamic_cast<const se::gpu::GpuExecutor*>(stream_executor);
-  if (gpu_executor == nullptr) {
-    return absl::UnimplementedError("Multicast is not supported on device.");
-  }
-  int device_number = gpu_executor->device_ordinal();
-  TF_RET_CHECK(clique_key.num_local_participants() > 0)
-      << "Number of local participants must be greater than 0.";
-  int64_t first_device = clique_key.devices()[0].value();
-
-  if (device_number == first_device) {
-    TF_ASSIGN_OR_RETURN(
-        std::unique_ptr<se::gpu::MulticastMemory> multicast_memory,
-        gpu_executor->CreateMulticastMemory(
-            mapped_memory.size(), clique_key.num_local_participants()));
-    first_device_to_multicast_memory_.emplace(device_number,
-                                              std::move(multicast_memory));
-  }
-
-  // Wait for all devices to create the multicast object.
-  TF_RETURN_IF_ERROR(Barrier(device_number, clique_key));
-
-  TF_RET_CHECK(first_device_to_multicast_memory_.contains(first_device))
-      << "Multicast memory is not created for device " << first_device;
-  // Add current devices to the multicast object.
-  TF_RETURN_IF_ERROR(
-      first_device_to_multicast_memory_[first_device]->SubscribeDevice(
-          device_number));
-
-  // Wait for all devices to register the multicast object.
-  TF_RETURN_IF_ERROR(Barrier(device_number, clique_key));
-
-  return first_device_to_multicast_memory_[first_device]->MapMemory(
-      mapped_memory, gpu_executor);
-};
 
 }  // namespace gpu
 }  // namespace xla

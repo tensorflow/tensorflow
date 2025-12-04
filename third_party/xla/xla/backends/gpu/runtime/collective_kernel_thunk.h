@@ -30,10 +30,13 @@ limitations under the License.*/
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
+#include "xla/backends/gpu/runtime/collective_cliques.h"
 #include "xla/backends/gpu/runtime/collective_metadata_thunk.h"
+#include "xla/backends/gpu/runtime/collective_multimem.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/core/collectives/rank_id.h"
+#include "xla/core/collectives/reduction_kind.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/device_memory_handle.h"
@@ -127,6 +130,7 @@ class CollectiveKernelThunk : public Thunk {
     std::unique_ptr<se::Kernel> kernel;
     uint32_t invocation_count = 0;
 
+    std::shared_ptr<CollectiveMultimem> collective_multimem;
     void* multicast_device_ptr = nullptr;
 
     // Constructor to make OSS builds happy.
@@ -168,7 +172,6 @@ class CollectiveKernelThunk : public Thunk {
   // Reference to the buffer related information required for the collective.
   std::vector<CollectiveThunk::Buffer> buffers_;
 
-  CollectiveMetadataThunk::MultimemAddressSpaceProvider address_space_provider_;
   // Guard access to the stream state across different threads (which control
   // different streams).
   absl::Mutex mutex_;

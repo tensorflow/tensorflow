@@ -21,42 +21,27 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/synchronization/mutex.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
+#include "xla/backends/gpu/runtime/collective_multimem.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/stream_executor/device_memory.h"
-#include "xla/stream_executor/gpu/multicast_memory.h"
 #include "xla/stream_executor/stream.h"
-#include "xla/stream_executor/stream_executor.h"
 
-namespace xla {
-namespace gpu {
+namespace xla::gpu {
+
 class CollectiveMetadataThunk : public Thunk {
  public:
   struct Buffer {
     BufferAllocation::Slice slice;
     int64_t memory_space;
-  };
-
-  class MultimemAddressSpaceProvider {
-   public:
-    // Initializes and multimem memory. Each thunk participant should call this
-    // method once. Multimem should be setup before usage when multimem strategy
-    // is selected.
-    absl::StatusOr<void*> SetupMultimemAddressSpace(
-        const GpuCliqueKey& clique_key,
-        const se::StreamExecutor* stream_executor,
-        se::DeviceMemoryBase mapped_memory);
-
-   private:
-    absl::flat_hash_map<int,
-                        std::unique_ptr<stream_executor::gpu::MulticastMemory>>
-        first_device_to_multicast_memory_;
   };
 
   explicit CollectiveMetadataThunk(ThunkInfo thunk_info,
@@ -92,10 +77,13 @@ class CollectiveMetadataThunk : public Thunk {
  private:
   const CollectiveConfig collective_config_;
   std::vector<Buffer> parameters_;
-  MultimemAddressSpaceProvider address_space_provider_;
   BufferAllocation::Slice result_;
+
+  absl::Mutex mutex_;
+  absl::flat_hash_map<se::StreamExecutor*, std::shared_ptr<CollectiveMultimem>>
+      collective_multimem_ ABSL_GUARDED_BY(mutex_);
 };
-}  // namespace gpu
-}  // namespace xla
+
+}  // namespace xla::gpu
 
 #endif  // XLA_BACKENDS_GPU_RUNTIME_COLLECTIVE_METADATA_THUNK_H_

@@ -33,7 +33,9 @@ limitations under the License.*/
 #include "absl/types/span.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/runtime/all_reduce.h"
+#include "xla/backends/gpu/runtime/collective_cliques.h"
 #include "xla/backends/gpu/runtime/collective_metadata_thunk.h"
+#include "xla/backends/gpu/runtime/collective_multimem.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/core/collectives/rank_id.h"
@@ -155,8 +157,8 @@ absl::Status CollectiveKernelThunk::ExchangeStateMetadata(
       sizeof(CollectiveKernelMetadata) + param_to_peers_ptrs_size_bytes, 0);
   return CollectiveMetadataThunk::ConstructCollectiveMetadata(
       std::move(parameters), params.stream, clique_key,
-      state.multicast_device_ptr,
-      /* device_ordinal= */ params.executor->device_ordinal(), state.metadata);
+      state.multicast_device_ptr, params.executor->device_ordinal(),
+      state.metadata);
 }
 
 absl::Status CollectiveKernelThunk::Initialize(const InitializeParams& params) {
@@ -250,10 +252,12 @@ absl::Status CollectiveKernelThunk::Initialize(const InitializeParams& params) {
 
   if (state != nullptr) {
     if (strategy == AllReduceStrategy::kMultimem) {
-      TF_ASSIGN_OR_RETURN(state->multicast_device_ptr,
-                          address_space_provider_.SetupMultimemAddressSpace(
-                              clique_key, params.executor,
-                              state->local_buffers_handle.memory()));
+      TF_ASSIGN_OR_RETURN(
+          state->collective_multimem,
+          CollectiveMultimem::Allocate(params.executor, clique_key, *rank,
+                                       state->local_buffers_handle.memory()));
+      state->multicast_device_ptr =
+          state->collective_multimem->mapped_ptr(*rank);
     }
     TF_RETURN_IF_ERROR(ExchangeStateMetadata(clique_key, params, *state));
   }
