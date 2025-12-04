@@ -560,6 +560,56 @@ TEST_F(LiteralUtilTest, DifferentLayoutInEquality) {
   EXPECT_FALSE(colmajor.Equal(rowmajor, true));
 }
 
+TEST_F(LiteralUtilTest, LogicalInequalityFastPath) {
+  TF_ASSERT_OK_AND_ASSIGN(
+      Literal a,
+      Literal::Make(ShapeUtil::MakeShapeWithDenseLayout(F32, {2, 2}, {1, 0})));
+  a.Set<float>({0, 0}, 1.0);
+  a.Set<float>({0, 1}, 2.0);
+  a.Set<float>({1, 0}, 0.0);
+  a.Set<float>({1, 1}, 4.0);
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      Literal b,
+      Literal::Make(ShapeUtil::MakeShapeWithDenseLayout(F32, {2, 2}, {1, 0})));
+  b.Set<float>({0, 0}, 1.0);
+  b.Set<float>({0, 1}, 2.0);
+  b.Set<float>({1, 0}, -0.0);
+  b.Set<float>({1, 1}, 4.0);
+
+  EXPECT_FALSE(a.Equal(b, true));
+  EXPECT_FALSE(b.Equal(a, true));
+  EXPECT_FALSE(a.Equal(b, false));
+  EXPECT_FALSE(b.Equal(a, false));
+}
+
+TEST_F(LiteralUtilTest, LogicalInequalitySlowPath) {
+  // This test is similar to the above test, but these literals are compared
+  // using the slow path because their layouts are different. This test ensures
+  // that comparisons using the fast and slow path are equivalent.
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      Literal a,
+      Literal::Make(ShapeUtil::MakeShapeWithDenseLayout(F32, {2, 2}, {0, 1})));
+  a.Set<float>({0, 0}, 1.0);
+  a.Set<float>({0, 1}, 2.0);
+  a.Set<float>({1, 0}, 0.0);
+  a.Set<float>({1, 1}, 4.0);
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      Literal b,
+      Literal::Make(ShapeUtil::MakeShapeWithDenseLayout(F32, {2, 2}, {1, 0})));
+  b.Set<float>({0, 0}, 1.0);
+  b.Set<float>({0, 1}, 2.0);
+  b.Set<float>({1, 0}, -0.0);
+  b.Set<float>({1, 1}, 4.0);
+
+  EXPECT_FALSE(a.Equal(b, true));
+  EXPECT_FALSE(b.Equal(a, true));
+  EXPECT_FALSE(a.Equal(b, false));
+  EXPECT_FALSE(b.Equal(a, false));
+}
+
 TEST_F(LiteralUtilTest, CreateWithoutLayout) {
   Shape default_layout_shape = ShapeUtil::MakeShape(F32, {2, 1});
   Shape no_layout_shape = default_layout_shape;
