@@ -2294,7 +2294,7 @@ bool ShardingPropagation::InferShardingFromOperands(
         }
       }
       for (int64_t i = op->sharding().TiledDataRank();
-           i < op->sharding().tile_assignment().num_dimensions(); ++i) {
+           i < op->sharding().num_dimensions(); ++i) {
         target_tile_assignment_dimensions.push_back(
             op->sharding().dimension(i));
       }

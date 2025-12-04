@@ -518,6 +518,9 @@ class HloSharding {
   // REQUIRES: !IsReplicated() && !IsTuple()
   const TileAssignment& tile_assignment() const { return tile_assignment_; }
 
+  // Returns the number of dimensions.
+  int64_t num_dimensions() const { return tile_assignment().num_dimensions(); }
+
   // Returns number of shards in the given dimension.
   int64_t dimension(int64_t dim_index) const {
     return tile_assignment().dim(dim_index);

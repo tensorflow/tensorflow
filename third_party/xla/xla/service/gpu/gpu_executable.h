@@ -55,6 +55,7 @@ limitations under the License.
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/kernel_stats.h"
+#include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/scoped_module_handle.h"
 #include "xla/stream_executor/stream_executor.h"
 
@@ -222,7 +223,9 @@ class GpuExecutable : public Executable {
   static absl::StatusOr<std::unique_ptr<GpuExecutable>> FromProto(
       const GpuExecutableProto&,
       const se::DeviceDescription& device_description,
-      absl::string_view platform);
+      absl::string_view platform,
+      const std::optional<stream_executor::KernelLoaderSpec::SymbolResolver>&
+          symbol_resolver = std::nullopt);
 
   absl::StatusOr<GpuExecutableProto> ToProto() const;
 

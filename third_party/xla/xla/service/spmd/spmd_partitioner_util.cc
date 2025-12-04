@@ -929,8 +929,8 @@ std::optional<int64_t> UniqueTiledDim(const HloSharding& sharding) {
   }
   int64_t dim = -1;
   int64_t rank = sharding.ReplicateOnLastTileDim()
-                     ? sharding.tile_assignment().num_dimensions() - 1
-                     : sharding.tile_assignment().num_dimensions();
+                     ? sharding.num_dimensions() - 1
+                     : sharding.num_dimensions();
   for (int64_t i = 0; i < rank; ++i) {
     if (sharding.dimension(i) > 1) {
       if (dim != -1) {
@@ -2153,8 +2153,7 @@ std::optional<std::vector<std::pair<int64_t, int64_t>>>
 GetReshardAllToAllSourceTargetDims(const HloSharding& source,
                                    const HloSharding& target) {
   if (source.IsTileMaximal() || target.IsTileMaximal() ||
-      source.tile_assignment().num_dimensions() !=
-          target.tile_assignment().num_dimensions() ||
+      source.num_dimensions() != target.num_dimensions() ||
       source.NumTiles() != target.NumTiles()) {
     return std::nullopt;
   }
@@ -2162,7 +2161,7 @@ GetReshardAllToAllSourceTargetDims(const HloSharding& source,
   // counts on source and target.
   std::map<int64_t, std::vector<int64_t>> source_size_to_dim;
   std::map<int64_t, std::vector<int64_t>> target_size_to_dim;
-  for (int64_t i = 0; i < source.tile_assignment().num_dimensions(); ++i) {
+  for (int64_t i = 0; i < source.num_dimensions(); ++i) {
     if (source.dimension(i) == target.dimension(i)) {
       continue;
     }
@@ -2466,7 +2465,7 @@ std::optional<std::vector<int64_t>> FindMatchingPartitionedDimsForGrouping(
   std::vector<int64_t> dims;
   if (device_groups.num_devices_per_group() < 2) {
     // Trivial case: single member groups
-    for (int64_t i = 0; i < sharding.tile_assignment().num_dimensions(); ++i) {
+    for (int64_t i = 0; i < sharding.num_dimensions(); ++i) {
       if (sharding.dimension(i) > 1) {
         dims.push_back(i);
       }
@@ -2475,14 +2474,13 @@ std::optional<std::vector<int64_t>> FindMatchingPartitionedDimsForGrouping(
   }
 
   std::vector<std::vector<int64_t>> device_to_index(
-      num_devices,
-      std::vector<int64_t>(sharding.tile_assignment().num_dimensions()));
+      num_devices, std::vector<int64_t>(sharding.num_dimensions()));
   sharding.tile_assignment().Each(
       [&](absl::Span<const int64_t> index, int64_t device) {
         device_to_index[device].assign(index.begin(), index.end());
       });
   int64_t group_count = 1;
-  for (int64_t i = 0; i < sharding.tile_assignment().num_dimensions(); ++i) {
+  for (int64_t i = 0; i < sharding.num_dimensions(); ++i) {
     if (device_to_index[device_groups(0, 0)][i] ==
         device_to_index[device_groups(0, 1)][i]) {
       dims.push_back(i);
@@ -2960,10 +2958,9 @@ std::optional<IotaReplicaGroupList> GetIotaPartitionGroupsAcrossTargetDims(
       sharding.tile_assignment().num_elements() / total_group_size;
 
   std::vector<int64_t> reshape_dimensions;
-  reshape_dimensions.reserve(sharding.tile_assignment().num_dimensions());
+  reshape_dimensions.reserve(sharding.num_dimensions());
   std::vector<int64_t> target_dim_locations;
-  for (int64_t dim = 0; dim < sharding.tile_assignment().num_dimensions();
-       ++dim) {
+  for (int64_t dim = 0; dim < sharding.num_dimensions(); ++dim) {
     if (auto it = absl::c_find(target_dims, dim); it != target_dims.end()) {
       int64_t current_val = sharding.dimension(dim);
       int64_t group_size = group_sizes[std::distance(target_dims.begin(), it)];

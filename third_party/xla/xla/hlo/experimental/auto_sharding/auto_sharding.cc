@@ -1296,12 +1296,10 @@ absl::StatusOr<std::unique_ptr<StrategyGroup>> CreateAllStrategiesGroup(
 // Two shardings shard the same dimension of a given tensor.
 bool ShardingIsConsistent(const HloSharding& partial_sharding,
                           const HloSharding& complete_sharding, bool strict) {
-  if (partial_sharding.tile_assignment().num_dimensions() >
-      complete_sharding.tile_assignment().num_dimensions()) {
+  if (partial_sharding.num_dimensions() > complete_sharding.num_dimensions()) {
     return false;
   }
-  for (size_t i = 0; i < partial_sharding.tile_assignment().num_dimensions();
-       ++i) {
+  for (size_t i = 0; i < partial_sharding.num_dimensions(); ++i) {
     if (strict && partial_sharding.dimension(i) > 1 &&
         partial_sharding.dimension(i) == complete_sharding.dimension(i)) {
       return true;

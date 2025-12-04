@@ -1082,7 +1082,7 @@ int64_t NumTileDimensions(const HloSharding& sharding) {
     return -1;
   }
   int64_t num_tile_dims = 0;
-  for (int i = 0; i < sharding.tile_assignment().num_dimensions(); i++) {
+  for (int i = 0; i < sharding.num_dimensions(); i++) {
     if (sharding.dimension(i) != 1) {
       num_tile_dims++;
     }
@@ -1093,7 +1093,7 @@ int64_t NumTileDimensions(const HloSharding& sharding) {
 bool TileAssignmentMatchesMesh(const HloSharding& sharding,
                                const DeviceMesh& mesh) {
   int sharded_dims = 0;
-  for (int i = 0; i < sharding.tile_assignment().num_dimensions(); ++i) {
+  for (int i = 0; i < sharding.num_dimensions(); ++i) {
     if (sharding.dimension(i) > 1) {
       sharded_dims++;
     }
@@ -1166,7 +1166,7 @@ GetTensorDimToMeshDimMixedMeshSharding(int64_t tensor_shape_rank,
 
   std::vector<absl::btree_set<int64_t>> tensor_dim_to_mesh_axis_mapping;
   int mesh_axis_idx = 0;
-  for (int i = 0; i < sharding.tile_assignment().num_dimensions(); ++i) {
+  for (int i = 0; i < sharding.num_dimensions(); ++i) {
     if (sharding.dimension(i) == 1) {
       tensor_dim_to_mesh_axis_mapping.push_back({});
       continue;
@@ -2189,9 +2189,8 @@ AdjustShardingWithPartialMeshShapePerElement(
           /*consider_reverse_device_meshes=*/true));
 
   int mesh_axis_idx = 0;
-  int end = sharding.ReplicateOnLastTileDim()
-                ? sharding.tile_assignment().num_dimensions() - 1
-                : sharding.tile_assignment().num_dimensions();
+  int end = sharding.ReplicateOnLastTileDim() ? sharding.num_dimensions() - 1
+                                              : sharding.num_dimensions();
   for (int i = 0; i < end; ++i) {
     if (sharding.dimension(i) == 1) {
       new_tile_assignment_dimensions.push_back(1);

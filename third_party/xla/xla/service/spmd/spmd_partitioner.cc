@@ -673,8 +673,7 @@ PartitionedHlo PartitionedHlo::ReshardNoCache(
 
   // 'Replicated' to partial replicated.
   if (target.ReplicateOnLastTileDim()) {
-    std::vector<int64_t> group_dims(target.tile_assignment().num_dimensions() -
-                                    1);
+    std::vector<int64_t> group_dims(target.num_dimensions() - 1);
     absl::c_iota(group_dims, 0);
     auto target_grouped =
         hlo_sharding_util::GroupShardingOnDims(target, group_dims);
@@ -1374,8 +1373,7 @@ HloInstruction* PartitionedHlo::ReplicatePartial(
   HloInstruction* broadcast = hlo_;
   if (!broadcast_dims.empty()) {
     std::vector<int64_t> other_dims;
-    for (int64_t i = 0; i < sharding().tile_assignment().num_dimensions();
-         ++i) {
+    for (int64_t i = 0; i < sharding().num_dimensions(); ++i) {
       if (!absl::c_linear_search(broadcast_dims, i)) {
         other_dims.push_back(i);
       }
@@ -1383,8 +1381,7 @@ HloInstruction* PartitionedHlo::ReplicatePartial(
     HloSharding original_sharding = sharding();
     auto grouped =
         hlo_sharding_util::GroupShardingOnDims(original_sharding, other_dims);
-    std::vector<int64_t> dev_indices(
-        grouped.sharding.tile_assignment().num_dimensions(), 0);
+    std::vector<int64_t> dev_indices(grouped.sharding.num_dimensions(), 0);
     hlo_->set_sharding(HloSharding::AssignDevice(
         grouped.sharding.tile_assignment()(dev_indices)));
     auto per_group_partitioner_state = CreatePerGroupPartitioningState(
@@ -1558,7 +1555,7 @@ PartitionedHlo::ReshardFromPartialReplicateWithDynamicSlice(
   std::vector<int64_t> expand_tile_dims;
   std::vector<int64_t> tiling_dim_factors;
   int64_t rank = hlo_->shape().dimensions().size();
-  tiling_dim_factors.reserve(target.tile_assignment().num_dimensions());
+  tiling_dim_factors.reserve(target.num_dimensions());
   const auto& temp_target_sharding = target_compatible_sharding.value();
   for (int64_t dim = 0; dim < rank; dim++) {
     if (temp_target_sharding.dimension(dim) > sharding().dimension(dim)) {
@@ -2238,7 +2235,7 @@ std::optional<PartitionedHlo> PartitionedHlo::TryComplexReshardHandling(
     // but in the target it is not and some other dimension got moved or
     // modified. Try to remove the partial replication to simplify the step from
     // source to target sharding.
-    for (int64_t i = 0; i < target.tile_assignment().num_dimensions(); ++i) {
+    for (int64_t i = 0; i < target.num_dimensions(); ++i) {
       if (target.dimension(i) != sharding().dimension(i) &&
           sharding().dimension(i) == 1 &&
           target.dimension(i) % partial_repl_amount == 0) {
@@ -2251,8 +2248,7 @@ std::optional<PartitionedHlo> PartitionedHlo::TryComplexReshardHandling(
     }
     VLOG(5) << "Matched partially replicated to non partially replicated: "
             << sharding().ToString();
-    std::vector<int64_t> transpose_dims(
-        sharding().tile_assignment().num_dimensions(), 0);
+    std::vector<int64_t> transpose_dims(sharding().num_dimensions(), 0);
     absl::c_iota(transpose_dims, 0);
     std::swap(transpose_dims[first_different_dimension], transpose_dims.back());
     auto intermediate_sharding =
@@ -2294,14 +2290,13 @@ PartitionedHlo::ReshardPartialReplicateWithAllToAll(
   // the last tile dim will be sharded after all-to-all.
   const int num_replicas =
       partial_replicate_sharding.tile_assignment().dimensions().back();
-  if (((tile_sharding.tile_assignment().num_dimensions() + 1) !=
-       partial_replicate_sharding.tile_assignment().num_dimensions()) ||
+  if (((tile_sharding.num_dimensions() + 1) !=
+       partial_replicate_sharding.num_dimensions()) ||
       (partial_replicate_sharding.dimension(0) != 1)) {
     return std::nullopt;
   }
   int to_replicate_dim = -1;
-  for (int i = tile_sharding.tile_assignment().num_dimensions() - 1; i >= 0;
-       --i) {
+  for (int i = tile_sharding.num_dimensions() - 1; i >= 0; --i) {
     if (tile_sharding.dimension(i) > 1 && (to_replicate_dim == -1)) {
       if (tile_sharding.dimension(i) != num_replicas) {
         return std::nullopt;
@@ -4581,8 +4576,7 @@ absl::Status SpmdPartitioningVisitor::HandleRng(HloInstruction* hlo) {
                           MakePartitionedShape(hlo->shape(), hlo->sharding()),
                           hlo->random_distribution(), new_operands)));
   } else {
-    std::vector<int64_t> group_dims(
-        hlo->sharding().tile_assignment().num_dimensions() - 1);
+    std::vector<int64_t> group_dims(hlo->sharding().num_dimensions() - 1);
     absl::c_iota(group_dims, 0);
     auto sharding_grouped =
         hlo_sharding_util::GroupShardingOnDims(hlo->sharding(), group_dims);
@@ -5293,7 +5287,7 @@ SpmdPartitioner::AllGatherShardsInternal(
   ag = result;
   // If n > 1 dimensions are partitioned, split the leading dimension to n.
   std::vector<int64_t> tiled_dims;
-  for (int64_t i = 0; i < sharding.tile_assignment().num_dimensions(); ++i) {
+  for (int64_t i = 0; i < sharding.num_dimensions(); ++i) {
     if (sharding.dimension(i) > 1 && absl::c_linear_search(selected_dims, i)) {
       tiled_dims.push_back(i);
     }

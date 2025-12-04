@@ -98,6 +98,14 @@ class HloSharding final
 
   void Hash(absl::HashState state) const override;
 
+  absl::StatusOr<std::vector<std::pair<Shape, ShardingRef>>> DisassembleEven(
+      const Shape& shape,
+      SingleDeviceShardSemantics single_device_shard_semantics) const;
+
+  absl::StatusOr<std::vector<std::pair<Shape, ShardingRef>>> DisassembleUneven(
+      const Shape& shape,
+      SingleDeviceShardSemantics single_device_shard_semantics) const;
+
   xla::HloSharding xla_hlo_sharding_;
 
   // Cached hash. 0 indicates the hash needs to be computed and cached.
