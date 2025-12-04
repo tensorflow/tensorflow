@@ -148,15 +148,6 @@ HloSharding HloSharding::AssignDevice(int64_t device_id,
   return HloSharding(device_id, metadata);
 }
 
-HloSharding HloSharding::Tile1D(const Shape& input_shape, int64_t num_tiles,
-                                absl::Span<const OpMetadata> metadata) {
-  CHECK_EQ(1, input_shape.dimensions().size());
-  CHECK_GT(num_tiles, 1);
-  absl::Span<const int64_t> dimensions(&num_tiles, 1);
-  return HloSharding(TileAssignment(dimensions, dimensions, {0}),
-                     /*replicate_on_last_tile_dim=*/false, metadata);
-}
-
 HloSharding HloSharding::PartialTile(
     const TileAssignment& tile_assignment_last_dim_replicate,
     absl::Span<const OpMetadata> metadata) {
@@ -532,29 +523,6 @@ bool HloSharding::UsesDevice(int64_t device) const {
          TileAgnosticDeviceAssignment().UsesDevice(device);
 }
 
-std::map<int64_t, int64_t> HloSharding::UsedDevices(int64_t* count) const {
-  int64_t element_count = 1;
-  std::map<int64_t, int64_t> device_map;
-  if (IsTuple()) {
-    for (auto& tuple_element_sharding : tuple_elements()) {
-      auto unique_device = tuple_element_sharding.UniqueDevice();
-      if (unique_device) {
-        device_map[*unique_device] += 1;
-      }
-    }
-    element_count = tuple_elements().size();
-  } else {
-    auto unique_device = UniqueDevice();
-    if (unique_device) {
-      device_map[*unique_device] += 1;
-    }
-  }
-  if (count != nullptr) {
-    *count = element_count;
-  }
-  return device_map;
-}
-
 std::vector<int64_t> HloSharding::TileIndexForDevice(int64_t device) const {
   CHECK(!maximal_);
   CHECK(!IsManual());
@@ -569,26 +537,6 @@ std::vector<int64_t> HloSharding::TileIndexForDevice(int64_t device) const {
   CHECK(!ret_index.empty());
   ret_index.resize(TiledDataRank());
   return ret_index;
-}
-
-int64_t HloSharding::DeviceForTileIndex(absl::Span<const int64_t> index) const {
-  CHECK(!replicated_);
-  CHECK(!IsManual());
-  CHECK(!IsUnknown());
-  CHECK(!IsTuple());
-  if (maximal_) {
-    return *tile_assignment_.array().begin();
-  }
-  if (index.size() == TiledDataRank() &&
-      index.size() < tile_assignment_.num_dimensions()) {
-    std::vector<int64_t> first_subgroup_index(index.begin(), index.end());
-    for (int64_t i = 0; i < tile_assignment_.num_dimensions() - index.size();
-         ++i) {
-      first_subgroup_index.push_back(0);
-    }
-    return tile_assignment_(first_subgroup_index);
-  }
-  return tile_assignment_(index);
 }
 
 std::vector<int64_t> HloSharding::TileOffsetForDevice(const Shape& shape,

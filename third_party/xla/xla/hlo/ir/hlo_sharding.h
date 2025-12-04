@@ -154,11 +154,6 @@ class HloSharding {
         subgroup_types, metadata);
   }
 
-  // Creates a new sharding which splits a one-dimensional input shape into
-  // `num_tiles` tiles.
-  static HloSharding Tile1D(const Shape& input_shape, int64_t num_tiles,
-                            absl::Span<const OpMetadata> metadata = {});
-
   // Creates a new sharding for a tuple type. The given ShapeTree must have
   // elements for every leaf shape contained in the tuple.
   static HloSharding Tuple(const ShapeTree<HloSharding>& sub_shardings);
@@ -380,29 +375,9 @@ class HloSharding {
   // Returns true if the sharding defines an operation on the given device.
   bool UsesDevice(int64_t device) const;
 
-  // Retrieves a histogram of the devices used by the sharding. The returned
-  // map has the device number as key, and the occurrence count as value.
-  // If a sharding does not have a device, it will not be included in the
-  // histogram. The count argument, if not nullptr, will receive the total
-  // number of elements this sharding is made of (one for array, N leaves for
-  // tuples).
-  std::map<int64_t, int64_t> UsedDevices(int64_t* count) const;
-
   // Returns the tile that should be executed on the given device.
   // REQUIRES: !IsTuple()
   std::vector<int64_t> TileIndexForDevice(int64_t device) const;
-
-  // Returns the device that should execute the given tile.
-  // It is an error to call this if is_replicated() is true.
-  // When ReplicateOnLastTileDim() == true, if index.size() == data rank, it
-  // returns the first device in that replicated subgroup; otherwise,
-  // index.size() should be the same as tile_assignment()'s rank and specifies
-  // the member of the replication subgroup.
-  // REQUIRES: !IsTuple()
-  // REQUIRES: !IsManual()
-  // REQUIRES: !IsUnknown()
-  // REQUIRES: !maximal_
-  int64_t DeviceForTileIndex(absl::Span<const int64_t> index) const;
 
   // Given a device ID, returns the offset within the specified shape of the
   // tile that should be executed on the given core. This returns the lower

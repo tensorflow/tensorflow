@@ -99,10 +99,6 @@ absl::StatusOr<ynn_binary_operator> YnnBinaryOperator(const HloOpcode& opcode) {
 }
 
 bool IsLayoutSupportedByYnn(const Shape& shape) {
-  if (shape.dimensions().size() > YNN_MAX_TENSOR_RANK) {
-    // TODO(b/460602165): We should eliminate this limitation.
-    return false;
-  }
   return !shape.has_layout() || LayoutUtil::HasDescendingLayout(shape.layout());
 }
 
@@ -158,7 +154,9 @@ absl::StatusOr<bool> IsDotSupportedByYnn(
   static const absl::NoDestructor<absl::flat_hash_set<
       std::tuple<PrimitiveType, PrimitiveType, PrimitiveType>>>
       kAllowedTypes({
-          {F32, F32, F32},
+          // TODO(b/452693819): We plan to enable this in stages, starting with
+          // int8, and enable f32 later.
+          // {F32, F32, F32},
           // TODO(b/449998002): We don't have fast fp16 kernels yet.
           // {F16, F16, F32},
           {BF16, BF16, F32},

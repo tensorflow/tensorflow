@@ -182,11 +182,6 @@ TEST_F(HloShardingTest, Tile) {
     EXPECT_IS_OK(sharding.Validate(ShapeUtil::MakeShape(F32, {3, 5}),
                                    /*num_devices=*/4));
 
-    EXPECT_EQ(0, sharding.DeviceForTileIndex({0, 0}));
-    EXPECT_EQ(3, sharding.DeviceForTileIndex({0, 1}));
-    EXPECT_EQ(2, sharding.DeviceForTileIndex({1, 0}));
-    EXPECT_EQ(1, sharding.DeviceForTileIndex({1, 1}));
-
     EXPECT_EQ(sharding.TileOffsetForDevice(shape, 0),
               (std::vector<int64_t>{0, 0}));
     EXPECT_EQ(sharding.TileOffsetForDevice(shape, 3),

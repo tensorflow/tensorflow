@@ -712,22 +712,6 @@ bool MergeShardingIfCompatible(const HloSharding& to_merge,
   return true;
 }
 
-std::optional<int64_t> SelectDominantDevice(
-    const std::map<int64_t, int64_t>& device_map, int64_t* top_count) {
-  int64_t device = 0;
-  int64_t count = 0;
-  for (auto& it : device_map) {
-    if (it.second > count) {
-      count = it.second;
-      device = it.first;
-    }
-  }
-  if (top_count != nullptr) {
-    *top_count = count;
-  }
-  return count > 0 ? std::optional<int64_t>(device) : std::optional<int64_t>();
-}
-
 HloSharding FindCommonSharding(absl::Span<const HloSharding> shardings,
                                std::optional<HloSharding> default_sharding) {
   CHECK(!shardings.empty());
@@ -748,46 +732,6 @@ HloSharding FindCommonSharding(absl::Span<const HloSharding> shardings,
   // shardings are compatible, we should find a sharding that's compatible with
   // the most number of shardings instead.
   return default_sharding.has_value() ? default_sharding.value() : shardings[0];
-}
-
-void AssignComputationDevice(HloComputation* computation, int64_t device) {
-  VLOG(4) << "Assigning device " << device << " to " << computation->name()
-          << " computation";
-  for (HloInstruction* instruction : computation->instructions()) {
-    if (!instruction->has_sharding()) {
-      VLOG(4) << "Assigning device " << device << " to " << instruction->name();
-      instruction->set_device_sharding(device);
-    }
-  }
-}
-
-std::optional<int64_t> GetDominantDevice(
-    absl::Span<HloComputation* const> computations, double dominant_factor) {
-  int64_t instruction_count = 0;
-  std::map<int64_t, int64_t> device_map;
-  for (HloComputation* computation : computations) {
-    for (HloInstruction* instruction : computation->instructions()) {
-      int64_t count = 1;
-      if (instruction->has_sharding()) {
-        for (auto& it : instruction->sharding().UsedDevices(&count)) {
-          // The UsedDevices() API returns a map<device, occurrence_count>.
-          device_map[it.first] += it.second;
-        }
-      }
-      instruction_count += count;
-    }
-  }
-  int64_t count;
-  std::optional<int64_t> device = SelectDominantDevice(device_map, &count);
-  std::optional<int64_t> dominant_device;
-  if (device) {
-    double factor =
-        static_cast<double>(count) / static_cast<double>(instruction_count);
-    if (factor >= dominant_factor) {
-      dominant_device = device;
-    }
-  }
-  return dominant_device;
 }
 
 HloSharding MoveAndMergeShardingTiles(const HloSharding& sharding,
@@ -1542,47 +1486,6 @@ std::optional<HloSharding> ScatterUpdateShardingFromOutputParallelDimensions(
   return PropagateShardingAlongDimsAndReplicateOthers(
       output_sharding, parallel_dims.operand_dims, parallel_dims.output_dims,
       scatter.scatter_updates()[0]->shape().dimensions().size());
-}
-
-absl::StatusOr<std::pair<std::unique_ptr<HloInstruction>, HloOpcode>>
-IdentityValueAndHloOpcodeForScatterReduceComputation(
-    const HloScatterInstruction& scatter) {
-  auto computation = scatter.to_apply();
-  // We only handle computations with 2 parameters and only 1 calculation.
-  if (computation->instruction_count() != 3) {
-    return absl::Status(
-        absl::StatusCode::kInvalidArgument,
-        "Expected scatter reduce computation with 2 parameters and only 1 "
-        "calculation");
-  }
-
-  auto root_instruction = computation->root_instruction();
-  if (root_instruction->opcode() == HloOpcode::kAdd ||
-      root_instruction->opcode() == HloOpcode::kOr) {
-    return std::make_pair(HloInstruction::CreateConstant(LiteralUtil::Zero(
-                              scatter.shape().element_type())),
-                          root_instruction->opcode());
-  }
-  if (root_instruction->opcode() == HloOpcode::kMultiply ||
-      root_instruction->opcode() == HloOpcode::kAnd) {
-    return std::make_pair(HloInstruction::CreateConstant(
-                              LiteralUtil::One(scatter.shape().element_type())),
-                          root_instruction->opcode());
-  }
-  if (root_instruction->opcode() == HloOpcode::kMaximum) {
-    return std::make_pair(HloInstruction::CreateConstant(LiteralUtil::MinValue(
-                              scatter.shape().element_type())),
-                          root_instruction->opcode());
-  }
-  if (root_instruction->opcode() == HloOpcode::kMinimum) {
-    return std::make_pair(HloInstruction::CreateConstant(LiteralUtil::MaxValue(
-                              scatter.shape().element_type())),
-                          root_instruction->opcode());
-  }
-
-  return absl::Status(absl::StatusCode::kInvalidArgument,
-                      "Expected scatter reduce computation which is "
-                      "add/or/multiply/add/min/max");
 }
 
 HloSharding PartiallyReplicateTiledShardingOnDims(
