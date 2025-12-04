@@ -104,7 +104,7 @@ ModuleStats ExtractModuleStatsFromLog(absl::string_view log) {
 
   int spill_stores = 0;
   int spill_loads = 0;
-  absl::string_view function_name;
+  std::string function_name;
   absl::string_view search_log = log;
   while (RE2::FindAndConsume(&search_log, *kSpillRegex, &function_name,
                              &spill_stores, &spill_loads)) {

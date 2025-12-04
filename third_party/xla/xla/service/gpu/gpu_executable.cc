@@ -251,7 +251,8 @@ absl::StatusOr<std::unique_ptr<GpuExecutable>> GpuExecutable::Create(
       std::move(params.mlir_allocations), std::move(params.buffer_assignment),
       std::move(allocator.MutableAllocations()), std::move(params.alias_info),
       std::move(params.debug_options), std::move(params.constants),
-      std::move(params.output_info), params.enable_debug_info_manager));
+      std::move(params.output_info), params.enable_debug_info_manager,
+      std::move(params.module_stats)));
 }
 
 // Implementation note: HLO profiling is always enabled for GPU executables,
@@ -268,7 +269,7 @@ GpuExecutable::GpuExecutable(
     std::unique_ptr<GpuAliasInfo> alias_info, DebugOptions debug_options,
     std::vector<ConstantInfo> constants,
     absl::flat_hash_map<ShapeIndex, OutputInfo> output_info,
-    bool enable_debug_info_manager)
+    bool enable_debug_info_manager, ModuleStats module_stats)
     : Executable(std::move(debug_module)),
       text_(std::move(asm_text)),
       binary_(std::move(binary)),
@@ -300,6 +301,7 @@ GpuExecutable::GpuExecutable(
     XlaDebugInfoManager::Get()->RegisterModule(shared_module(),
                                                buffer_assignment_);
   }
+  set_module_stats(std::move(module_stats));
 }
 
 GpuExecutable::~GpuExecutable() {

@@ -24,6 +24,7 @@ limitations under the License.
 
 #include "absl/base/nullability.h"
 #include "absl/base/thread_annotations.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
@@ -45,6 +46,7 @@ limitations under the License.
 #include "xla/shape_tree.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_memory_allocator.h"
+#include "xla/stream_executor/kernel_stats.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
@@ -426,6 +428,14 @@ class Executable {
                : nullptr;
   }
 
+  // Returns a map of kernel name to relevant kernel stats.
+  const ModuleStats& module_stats() { return module_stats_; }
+
+  // Sets a module_stats map of kernel name to relevant kernel stats.
+  void set_module_stats(ModuleStats module_stats) {
+    module_stats_ = std::move(module_stats);
+  }
+
   // Gather unused but donated buffers, return them to the caller of this API.
   // We don't free buffers inside this function since the caller could have
   // different preferences for buffer deallocation. For example, in TensorFlow,
@@ -467,6 +477,9 @@ class Executable {
 
   std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data_;
   std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map_;
+
+  // A map from kernel name to relevant kernel stats.
+  ModuleStats module_stats_;
 
   // The serialized HLO proto. Non-null only if dumping snapshots is enabled.
   // This field may also be only partially set: if only

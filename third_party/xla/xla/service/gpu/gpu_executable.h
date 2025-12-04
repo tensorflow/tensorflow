@@ -54,6 +54,7 @@ limitations under the License.
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/device_memory_allocator.h"
+#include "xla/stream_executor/kernel_stats.h"
 #include "xla/stream_executor/scoped_module_handle.h"
 #include "xla/stream_executor/stream_executor.h"
 
@@ -120,6 +121,7 @@ class GpuExecutable : public Executable {
     se::DeviceDescription device_description;
     std::unique_ptr<HloModule> debug_module = nullptr;
     bool enable_debug_info_manager = true;
+    ModuleStats module_stats;
   };
 
   static absl::StatusOr<std::unique_ptr<GpuExecutable>> Create(Params params);
@@ -242,7 +244,7 @@ class GpuExecutable : public Executable {
       std::unique_ptr<GpuAliasInfo> alias_info, DebugOptions debug_options,
       std::vector<ConstantInfo> constants,
       absl::flat_hash_map<ShapeIndex, OutputInfo> output_info,
-      bool enable_debug_info_manager);
+      bool enable_debug_info_manager, ModuleStats module_stats);
 
   // GpuExecutable check with either AMD's ISA version, or Nvidia's major minor
   // version for compute capability, depending on the hardware.

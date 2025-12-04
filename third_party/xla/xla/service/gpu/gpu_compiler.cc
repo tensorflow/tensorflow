@@ -298,6 +298,7 @@ limitations under the License.
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_description.pb.h"
 #include "xla/stream_executor/dnn.h"
+#include "xla/stream_executor/kernel_stats.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/semantic_version.h"
@@ -2554,6 +2555,7 @@ absl::StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
   TF_ASSIGN_OR_RETURN(CompileResultWithMetadata res,
                       CompileToBackendResult(module.get(), &llvm_context,
                                              options, gpu_device_info));
+  ModuleStats module_stats = res.backend_result.module_stats;
 
   if (DumpingEnabledForHloModule(*module)) {
     DumpToFileInDirOrStdout(
@@ -2598,7 +2600,8 @@ absl::StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
           /*debug_module=*/options.embed_hlo_module
               ? std::move(module)
               : std::unique_ptr<HloModule>(),
-          /*enable_debug_info_manager=*/embed_debug_info}));
+          /*enable_debug_info_manager=*/embed_debug_info,
+          /*module_stats=*/std::move(module_stats)}));
 
   if (embed_ir_in_executable) {
     std::string ir_module_string_before_opt =
