@@ -30,7 +30,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/stream_executor/device_memory.h"
-#include "xla/stream_executor/gpu/gpu_executor.h"
+#include "xla/stream_executor/gpu/multicast_memory.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 
@@ -54,9 +54,8 @@ class CollectiveMetadataThunk : public Thunk {
         se::DeviceMemoryBase mapped_memory);
 
    private:
-    absl::flat_hash_map<
-        int,
-        std::unique_ptr<stream_executor::gpu::GpuExecutor::MulticastMemory>>
+    absl::flat_hash_map<int,
+                        std::unique_ptr<stream_executor::gpu::MulticastMemory>>
         first_device_to_multicast_memory_;
   };
 

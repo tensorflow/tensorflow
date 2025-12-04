@@ -41,6 +41,7 @@ limitations under the License.
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/gpu/collective_kernel_metadata.h"
 #include "xla/stream_executor/gpu/gpu_executor.h"
+#include "xla/stream_executor/gpu/multicast_memory.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/platform/errors.h"
@@ -283,7 +284,7 @@ absl::StatusOr<void*> CollectiveMetadataThunk::MultimemAddressSpaceProvider::
                               const se::StreamExecutor* stream_executor,
                               se::DeviceMemoryBase mapped_memory) {
   const auto* gpu_executor =
-      dynamic_cast<const stream_executor::gpu::GpuExecutor*>(stream_executor);
+      dynamic_cast<const se::gpu::GpuExecutor*>(stream_executor);
   if (gpu_executor == nullptr) {
     return absl::UnimplementedError("Multicast is not supported on device.");
   }
@@ -294,8 +295,7 @@ absl::StatusOr<void*> CollectiveMetadataThunk::MultimemAddressSpaceProvider::
 
   if (device_number == first_device) {
     TF_ASSIGN_OR_RETURN(
-        std::unique_ptr<stream_executor::gpu::GpuExecutor::MulticastMemory>
-            multicast_memory,
+        std::unique_ptr<se::gpu::MulticastMemory> multicast_memory,
         gpu_executor->CreateMulticastMemory(
             mapped_memory.size(), clique_key.num_local_participants()));
     first_device_to_multicast_memory_.emplace(device_number,

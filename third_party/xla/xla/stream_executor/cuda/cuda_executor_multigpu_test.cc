@@ -27,6 +27,7 @@ limitations under the License.
 #include "xla/stream_executor/cuda/cuda_executor_multigpu_test_kernels.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/gpu/gpu_init.h"
+#include "xla/stream_executor/gpu/multicast_memory.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream_executor.h"
@@ -87,7 +88,7 @@ TEST(CudaExecutorMultiGpuTest, CudaMulticastMemoryResubscriptionFails) {
   if (!executors[0]->is_multicast_supported()) {
     GTEST_SKIP() << "Test requires multicast support.";
   }
-  std::unique_ptr<CudaExecutor::MulticastMemory> multicast_memory;
+  std::unique_ptr<MulticastMemory> multicast_memory;
   TF_ASSERT_OK_AND_ASSIGN(multicast_memory,
                           executors[0]->CreateMulticastMemory(1024, 2));
   EXPECT_THAT(multicast_memory->SubscribeDevice(0), IsOk());
@@ -103,7 +104,7 @@ TEST(CudaExecutorMultiGpuTest, AllDevicesMustBeSubscribedBeforeMapping) {
   if (!executors[0]->is_multicast_supported()) {
     GTEST_SKIP() << "Test requires multicast support.";
   }
-  std::unique_ptr<CudaExecutor::MulticastMemory> multicast_memory;
+  std::unique_ptr<MulticastMemory> multicast_memory;
   TF_ASSERT_OK_AND_ASSIGN(multicast_memory,
                           executors[0]->CreateMulticastMemory(1024, 2));
   EXPECT_THAT(multicast_memory->SubscribeDevice(0), IsOk());
@@ -121,7 +122,7 @@ TEST(CudaExecutorMultiGpuTest, CudaMulticastMemorySubscribeMoreDevices) {
   if (!executors[0]->is_multicast_supported()) {
     GTEST_SKIP() << "Test requires multicast support.";
   }
-  std::unique_ptr<CudaExecutor::MulticastMemory> multicast_memory;
+  std::unique_ptr<MulticastMemory> multicast_memory;
   TF_ASSERT_OK_AND_ASSIGN(multicast_memory,
                           executors[0]->CreateMulticastMemory(1024, 2));
   EXPECT_THAT(multicast_memory->SubscribeDevice(0), IsOk());
@@ -140,7 +141,7 @@ TEST(CudaExecutorMultiGpuTest, CudaMulticastMemoryUsingNonVmmMemory) {
     GTEST_SKIP() << "Test requires multicast support.";
   }
   const int64_t kNumDevices = 2;
-  std::unique_ptr<CudaExecutor::MulticastMemory> multicast_memory;
+  std::unique_ptr<MulticastMemory> multicast_memory;
   TF_ASSERT_OK_AND_ASSIGN(
       multicast_memory, executors[0]->CreateMulticastMemory(1024, kNumDevices));
   EXPECT_THAT(multicast_memory->SubscribeDevice(0), IsOk());
@@ -164,7 +165,7 @@ TEST(CudaExecutorMultiGpuTest, CudaMulticastMemoryUsingVmmMemory) {
   const int kNumElements = 8;
   const size_t kMemorySize = kNumElements * sizeof(int);
   const int kValue = 2;
-  std::unique_ptr<CudaExecutor::MulticastMemory> multicast_memory;
+  std::unique_ptr<MulticastMemory> multicast_memory;
   TF_ASSERT_OK_AND_ASSIGN(multicast_memory, executors[0]->CreateMulticastMemory(
                                                 kMemorySize, kNumDevices));
   EXPECT_THAT(multicast_memory->SubscribeDevice(0), IsOk());
@@ -207,7 +208,7 @@ TEST(CudaExecutorMultiGpuTest, CudaMulticastMemoryMapDifferentSlicesUnaligned) {
   const int64_t kNumElements = 8;
   const int64_t kMappedMemorySize = kNumElements * sizeof(int);
   const int kValue = 2;
-  std::unique_ptr<CudaExecutor::MulticastMemory> multicast_memory;
+  std::unique_ptr<MulticastMemory> multicast_memory;
   TF_ASSERT_OK_AND_ASSIGN(
       multicast_memory,
       executors[0]->CreateMulticastMemory(kMappedMemorySize, kNumDevices));
@@ -242,7 +243,7 @@ TEST(CudaExecutorMultiGpuTest, CudaMulticastMemoryMapDifferentSlices) {
   const int64_t kNumElements = 8;
   const int64_t kMappedMemorySize = kNumElements * sizeof(int);
   const int kValue = 2;
-  std::unique_ptr<CudaExecutor::MulticastMemory> multicast_memory;
+  std::unique_ptr<MulticastMemory> multicast_memory;
   TF_ASSERT_OK_AND_ASSIGN(
       multicast_memory,
       executors[0]->CreateMulticastMemory(kMappedMemorySize, kNumDevices));

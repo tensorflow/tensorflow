@@ -170,6 +170,7 @@ cc_library(
     name = "gpu_executor_header",
     hdrs = ["gpu_executor.h"],
     deps = [
+        ":multicast_memory",
         "//xla/stream_executor:device_memory",
         "//xla/stream_executor:platform",
         "//xla/stream_executor:stream_executor_common",
@@ -178,6 +179,16 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/synchronization",
+    ],
+)
+
+cc_library(
+    name = "multicast_memory",
+    hdrs = ["multicast_memory.h"],
+    deps = [
+        "//xla/stream_executor:device_memory",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
     ],
 )
 
