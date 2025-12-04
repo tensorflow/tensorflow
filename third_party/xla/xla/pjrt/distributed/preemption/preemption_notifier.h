@@ -32,16 +32,16 @@ limitations under the License.
 namespace xla {
 
 // Static registration for preemption notifiers.
-#define REGISTER_PREEMPTION_NOTIFIER(notifier_type_name, factory_fn)        \
-  REGISTER_PREEMPTION_NOTIFIER_UNIQ_HELPER(__COUNTER__, notifier_type_name, \
-                                           factory_fn)
-#define REGISTER_PREEMPTION_NOTIFIER_UNIQ_HELPER(counter, notifier_type_name, \
-                                                 factory_fn)                  \
-  static bool static_preemption_notifier_##counter TF_ATTRIBUTE_UNUSED =      \
-      []() {                                                                  \
-        ::xla::PreemptionNotifier::RegisterPreemptionNotifier(                \
-            notifier_type_name, factory_fn);                                  \
-        return true;                                                          \
+#define REGISTER_XLA_PREEMPTION_NOTIFIER(notifier_type_name, factory_fn) \
+  REGISTER_XLA_PREEMPTION_NOTIFIER_UNIQ_HELPER(__COUNTER__,              \
+                                               notifier_type_name, factory_fn)
+#define REGISTER_XLA_PREEMPTION_NOTIFIER_UNIQ_HELPER(                    \
+    counter, notifier_type_name, factory_fn)                             \
+  static bool static_preemption_notifier_##counter TF_ATTRIBUTE_UNUSED = \
+      []() {                                                             \
+        ::xla::PreemptionNotifier::RegisterPreemptionNotifier(           \
+            notifier_type_name, factory_fn);                             \
+        return true;                                                     \
       }()
 
 // Base class for listening and propagating task preemption notices.
@@ -69,8 +69,8 @@ namespace xla {
 //
 // Users can extend this class to support custom preemption signals, by subclass
 // `PreemptionNotifier` with a custom constructor, register its creator (factory
-// function) with `REGISTER_PREEMPTION_NOTIFIER`. The custom constructor should
-// set up the communication with the cluster scheduler, and invoke the
+// function) with `REGISTER_XLA_PREEMPTION_NOTIFIER`. The custom constructor
+// should set up the communication with the cluster scheduler, and invoke the
 // `NotifyRegisteredListeners` method once a preemption signal is received.
 // See `SigtermNotifier` as an example.
 

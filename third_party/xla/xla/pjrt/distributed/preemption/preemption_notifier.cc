@@ -116,7 +116,7 @@ void PreemptionNotifier::NotifyRegisteredListeners(
   callbacks_.clear();
 }
 
-REGISTER_PREEMPTION_NOTIFIER(
+REGISTER_XLA_PREEMPTION_NOTIFIER(
     "sigterm", [](tsl::Env* env) -> std::unique_ptr<PreemptionNotifier> {
       return std::make_unique<SigtermNotifier>(env);
     });

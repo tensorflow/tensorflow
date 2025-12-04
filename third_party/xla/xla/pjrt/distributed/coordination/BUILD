@@ -56,6 +56,7 @@ cc_library(
         ":coordination_client",
         ":coordination_service_error_util",
         ":key_value_store",
+        "//xla/service:global_device_id",
         "//xla/tsl/distributed_runtime:call_options",
         "//xla/tsl/lib/gtl:int_type",
         "//xla/tsl/platform:env",

@@ -37,6 +37,7 @@ limitations under the License.
 #include "absl/time/time.h"
 #include "xla/pjrt/distributed/coordination/coordination_client.h"
 #include "xla/pjrt/distributed/coordination/key_value_store.h"
+#include "xla/service/global_device_id.h"
 #include "xla/tsl/lib/gtl/int_type.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/status.h"
@@ -45,8 +46,6 @@ limitations under the License.
 #include "tsl/platform/random.h"
 
 namespace xla {
-
-TSL_LIB_GTL_DEFINE_INT_TYPE(IncarnationId, uint64_t);
 
 // Coordination service is used for controlling and coordinating distributed
 // execution in a cluster of multiple tasks.
