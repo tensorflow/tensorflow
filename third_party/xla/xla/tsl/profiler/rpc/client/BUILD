@@ -104,7 +104,7 @@ cc_library(
     ]),
     deps = [
         ":profiler_client_impl",
-        "//xla/tsl/platform:status",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/time",
         "@local_tsl//tsl/profiler/protobuf:profiler_analysis_cc_grpc_proto",
@@ -130,7 +130,6 @@ cc_library(
     deps = [
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:logging",
-        "//xla/tsl/platform:status",
         "//xla/tsl/protobuf:error_codes_proto_impl_cc",
         "@com_github_grpc_grpc//:grpc++",
         "@com_google_absl//absl/memory",
