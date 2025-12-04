@@ -18,19 +18,12 @@ limitations under the License.
 #include <cassert>
 #include <cstdint>
 #include <string>
-#include <tuple>
 #include <utility>
 #include <vector>
 
-#include "absl/base/const_init.h"
-#include "absl/base/optimization.h"
-#include "absl/base/thread_annotations.h"
-#include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
-#include "absl/synchronization/mutex.h"
-#include "absl/types/span.h"
 #include "xla/stream_executor/cuda/cubin_or_ptx_image.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/cuda/ptx_compiler.h"
@@ -48,56 +41,19 @@ absl::StatusOr<std::vector<uint8_t>> BundleGpuAsm(
 }
 
 absl::StatusOr<std::vector<uint8_t>> CompileGpuAsm(
-    const CudaComputeCapability& cc, const std::string& ptx, GpuAsmOpts options,
-    bool cancel_if_reg_spill) {
+    const CudaComputeCapability& cc, const std::string& ptx,
+    GpuAsmOpts options) {
   if (IsLibNvPtxCompilerSupported()) {
     VLOG(3) << "Compiling GPU ASM with libnvptxcompiler";
     TF_ASSIGN_OR_RETURN(auto assembly,
-                        CompileGpuAsmUsingLibNvPtxCompiler(
-                            cc, ptx, options, cancel_if_reg_spill,
-                            /*dump_compilation_log=*/false));
+                        CompileGpuAsmUsingLibNvPtxCompiler(cc, ptx, options));
     return std::move(assembly.cubin);
   }
 
   VLOG(3) << "Compiling GPU ASM with PTXAS. Libnvptxcompiler compilation "
              "not supported.";
-  TF_ASSIGN_OR_RETURN(auto assembly, CompileGpuAsmUsingPtxAs(
-                                         cc, ptx, options, cancel_if_reg_spill,
-                                         /*dump_compilation_log=*/false));
+  TF_ASSIGN_OR_RETURN(auto assembly, CompileGpuAsmUsingPtxAs(cc, ptx, options));
   return std::move(assembly.cubin);
 }
-
-absl::StatusOr<absl::Span<const uint8_t>> CompileGpuAsmOrGetCached(
-    const CudaComputeCapability& cc, const std::string& ptx,
-    GpuAsmOpts compilation_options) {
-  using PtxCacheKey = std::tuple<CudaComputeCapability, std::string,
-                                 GpuAsmOpts::PtxOptionsTuple>;
-  using PtxCompilerResult = absl::StatusOr<std::vector<uint8_t>>;
-  static absl::Mutex ptx_cache_mutex(absl::kConstInit);
-  static auto& ptx_cache ABSL_GUARDED_BY(ptx_cache_mutex) =
-      *new absl::flat_hash_map<PtxCacheKey, PtxCompilerResult>();
-
-  absl::MutexLock lock(ptx_cache_mutex);
-  PtxCacheKey cache_key{cc, ptx, compilation_options.ToTuple()};
-  auto it = ptx_cache.find(cache_key);
-  if (it == ptx_cache.end()) {
-    PtxCompilerResult compiled = CompileGpuAsm(cc, ptx, compilation_options);
-    it = ptx_cache.emplace(cache_key, std::move(compiled)).first;
-  }
-
-  CHECK(it != ptx_cache.end());
-
-  // Failed compilation attempts are cached.
-  // Use separate status check and ValueOrDie invocation on ptx_cache
-  // entry to avoid value moving introduced by TF_ASSIGN_OR_RETURN.
-
-  if (ABSL_PREDICT_FALSE(!it->second.ok())) {
-    return it->second.status();
-  }
-
-  const std::vector<uint8_t>& compiled = it->second.value();
-  return absl::MakeSpan(compiled);
-}
-
 
 }  // namespace stream_executor
