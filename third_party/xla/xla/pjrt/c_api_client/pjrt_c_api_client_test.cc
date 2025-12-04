@@ -36,6 +36,7 @@ limitations under the License.
 #include "xla/backends/cpu/alignment.h"
 #include "xla/ffi/ffi.h"
 #include "xla/ffi/ffi_api.h"
+#include "xla/future.h"
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/parser/hlo_parser.h"
@@ -607,6 +608,35 @@ TEST(PjRtClientTest, BufferFromLiteralInt4) {
   TF_ASSERT_OK_AND_ASSIGN(auto received_literal, buffer->ToLiteral().Await());
   EXPECT_THAT(received_literal->data<s4>(),
               ElementsAreArray(literal.data<s4>()));
+}
+
+TEST(PjRtCApiClientTest, AsyncHostToDeviceTransferManagerTransferLiteral) {
+  SetUpCpuPjRtApi();
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                          GetCApiClient("cpu"));
+
+  xla::Shape shape = xla::ShapeUtil::MakeShapeWithType<int32_t>({4});
+  std::vector<int32_t> data = {1, 2, 3, 4};
+  xla::Literal literal = xla::LiteralUtil::CreateR1<int32_t>(data);
+
+  std::vector<xla::Shape> host_shapes = {shape};
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtClient::AsyncHostToDeviceTransferManager>
+          transfer_manager,
+      client->CreateBuffersForAsyncHostToDevice(absl::MakeSpan(host_shapes),
+                                                client->memory_spaces()[0]));
+
+  xla::Future<> future = transfer_manager->TransferLiteralToBuffer(
+      /*buffer_index=*/0, literal, /*on_done=*/[]() {});
+  TF_ASSERT_OK(future.Await());
+
+  std::unique_ptr<PjRtBuffer> buffer =
+      transfer_manager->RetrieveBuffer(/*buffer_index=*/0);
+
+  TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<xla::Literal> result_literal,
+                          buffer->ToLiteral().Await());
+
+  EXPECT_TRUE(LiteralTestUtil::Equal(literal, *result_literal));
 }
 
 }  // namespace

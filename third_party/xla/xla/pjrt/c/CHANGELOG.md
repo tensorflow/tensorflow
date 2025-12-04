@@ -1,5 +1,9 @@
 # PJRT C API changelog
 
+## 0.83
+
+* Add `PJRT_AsyncHostToDeviceTransferManager_TransferLiteral`.
+
 ## 0.82
 
 * Add `PJRT_Client_CreateErrorBuffer`.

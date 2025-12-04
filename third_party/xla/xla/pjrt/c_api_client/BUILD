@@ -111,6 +111,7 @@ xla_cc_test(
     ],
     deps = [
         ":pjrt_c_api_client",
+        "//xla:future",
         "//xla:literal",
         "//xla:literal_util",
         "//xla:shape_util",
