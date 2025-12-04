@@ -38,12 +38,12 @@ limitations under the License.
 #include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/iterator_range.h"
+#include "mlir/IR/MLIRContext.h"
 #include "xla/backends/gpu/codegen/triton/support.h"
 #include "xla/codegen/tiling/symbolic_tile.h"
 #include "xla/codegen/tiling/symbolic_tile_analysis.h"
 #include "xla/codegen/tiling/symbolic_tiled_hlo_instruction.h"
 #include "xla/codegen/tiling/tiling_specification.h"
-#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -65,7 +65,7 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/tools/hlo_extractor.h"
+#include "xla/tools/hlo_decomposer.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
@@ -1244,7 +1244,7 @@ absl::StatusOr<BlockLevelParameters> FindBlockLevelParameters(
           TritonEmitterConstraints::GetBuilder(device_description));
   if (std::holds_alternative<FusionDecision>(analysis_or)) {
     std::unique_ptr<HloModule> extracted_computation_module =
-        ExtractModule(computation->FusionInstruction());
+        ExtractInstructionIntoNewModule(*computation->FusionInstruction());
     return absl::InternalError(
         absl::StrCat("Failed to analyze the computation (",
                      std::get<FusionDecision>(analysis_or).Explain(),
