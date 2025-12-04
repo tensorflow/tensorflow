@@ -64,6 +64,12 @@ cc_library(
 )
 
 cc_library(
+    name = "pjrt_c_api_tpu_topology_extension_hdrs",
+    hdrs = ["pjrt_c_api_tpu_topology_extension.h"],
+    deps = [":pjrt_c_api_hdrs"],
+)
+
+cc_library(
     name = "pjrt_c_api_ffi_extension_hdrs",
     hdrs = ["pjrt_c_api_ffi_extension.h"],
     visibility = ["//visibility:public"],
@@ -531,7 +537,6 @@ cc_library(
         "//xla/pjrt:pjrt_executable",
         "//xla/pjrt/proto:compile_options_proto_cc",
         "//xla/service:computation_placer_hdr",
-        "//xla/tsl/platform:status",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
@@ -564,7 +569,6 @@ xla_test(
         "//xla:literal",
         "//xla:literal_util",
         "//xla:shape_util",
-        "//xla:util",
         "//xla/client:client_library",
         "//xla/ffi:execution_context",
         "//xla/ffi:ffi_api",
@@ -580,8 +584,6 @@ xla_test(
         "//xla/stream_executor/gpu:gpu_init",
         "//xla/tests:literal_test_util",
         "//xla/tsl/lib/core:status_test_util",
-        "//xla/tsl/platform:status",
-        "//xla/tsl/platform:status_matchers",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -639,7 +641,6 @@ cc_library(
     deps = [
         ":pjrt_c_api_hdrs",
         ":pjrt_c_api_helpers",
-        ":pjrt_c_api_memory_descriptions_extension_hdrs",
         ":pjrt_c_api_test_base",
         "//xla:future",
         "//xla:literal",
@@ -656,7 +657,6 @@ cc_library(
         "//xla/service:computation_placer_hdr",
         "//xla/service:hlo_proto_cc",
         "//xla/tests:literal_test_util",
-        "//xla/tsl/platform:status",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log",

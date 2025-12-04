@@ -35,7 +35,6 @@ limitations under the License.
 #include "xla/service/shape_inference.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/window_util.h"
@@ -213,7 +212,7 @@ bool ConvPaddingLegalization::CanonicalizeForwardConvolution(
   new_conv->set_window(new_conv_window);
   VLOG(1) << "Replacing:\n  " << conv->ToString() << "\nwith:\n  "
           << new_conv->ToString();
-  TF_CHECK_OK(conv->parent()->ReplaceInstruction(conv, new_conv));
+  CHECK_OK(conv->parent()->ReplaceInstruction(conv, new_conv));
   return true;
 }
 
@@ -295,8 +294,7 @@ bool ConvPaddingLegalization::CanonicalizeBackwardFilterConvolution(
   VLOG(1) << "Replacing:\n  " << backward_conv->ToString() << "\nwith:\n  "
           << new_backward_conv->ToString();
 
-  TF_CHECK_OK(
-      computation->ReplaceInstruction(backward_conv, new_backward_conv));
+  CHECK_OK(computation->ReplaceInstruction(backward_conv, new_backward_conv));
   return true;
 }
 
@@ -422,7 +420,7 @@ bool ConvPaddingLegalization::CanonicalizeBackwardInputConvolution(
   VLOG(1) << "Replacing:\n  " << backward_conv->ToString() << "\nwith:\n  "
           << new_tuple->ToString();
 
-  TF_CHECK_OK(computation->ReplaceInstruction(backward_conv, new_tuple));
+  CHECK_OK(computation->ReplaceInstruction(backward_conv, new_tuple));
   return true;
 }
 

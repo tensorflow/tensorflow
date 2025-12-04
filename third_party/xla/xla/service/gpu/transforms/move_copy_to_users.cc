@@ -94,6 +94,11 @@ class MoveCopyToUsersVisitor : public DfsHloRewriteVisitor {
   // Turn copy->reduce_window into reduce_window->copy, as reduce_window is
   // layout-preserving.
   absl::Status HandleReduceWindow(HloInstruction* hlo) override {
+    if (hlo->shape().IsTuple()) {
+      // TODO: Handle variadic reductions.
+      return absl::OkStatus();
+    }
+
     HloInstruction* operand = hlo->mutable_operand(0);
     if (HloPredicateIsOp<HloOpcode::kCopy>(operand)) {
       HloInstruction* copied = operand->mutable_operand(0);

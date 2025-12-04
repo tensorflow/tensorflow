@@ -17,6 +17,7 @@ limitations under the License.
 #define XLA_BACKENDS_GPU_RUNTIME_THUNK_PROTO_DESERIALIZATION_H_
 
 #include <memory>
+#include <optional>
 
 #include "absl/base/nullability.h"
 #include "absl/status/statusor.h"
@@ -26,14 +27,24 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/stream_executor/kernel_spec.h"
 
 namespace xla::gpu {
 
 // Deserializes the given `thunk_proto` into a Thunk.
+// - `buffer_allocations` is used to deserialize buffer slices.
+// - `hlo_module` is used to deserialize thunks that reference HLO instructions.
+// - `platform_name` is used to look up platform-specific kernels in the
+//   GpuKernelRegistry.
+// - `symbol_resolver` is used to deserialize custom kernels where the kernel is
+//   not inlined in the proto, but rather loaded at runtime via symbol
+//   resolution.
 absl::StatusOr<std::unique_ptr<Thunk>> DeserializeThunkProto(
     const ThunkProto& thunk_proto,
     absl::Span<const BufferAllocation> buffer_allocations,
-    const HloModule* absl_nullable hlo_module, absl::string_view platform_name);
+    const HloModule* absl_nullable hlo_module, absl::string_view platform_name,
+    const std::optional<stream_executor::KernelLoaderSpec::SymbolResolver>&
+        symbol_resolver = std::nullopt);
 
 }  // namespace xla::gpu
 

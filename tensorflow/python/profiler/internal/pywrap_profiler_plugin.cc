@@ -80,7 +80,7 @@ PYBIND11_MODULE(_pywrap_profiler_plugin, m) {
 
   m.def("monitor", [](const char* service_addr, int duration_ms,
                       int monitoring_level, bool display_timestamp) {
-    tsl::string content;
+    std::string content;
     absl::Status status;
     {
       py::gil_scoped_release release;

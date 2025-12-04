@@ -81,6 +81,20 @@ module {
 // -----
 
 module {
+  func.func @erf32_vector(%arg0: vector<4xf32>) -> vector<4xf32> {
+    %ret = math.erf %arg0 : vector<4xf32>
+    return %ret : vector<4xf32>
+  }
+}
+
+// CHECK-LABEL: @erf32_vector
+// CHECK-NOT: math.erf
+// CHECK: %[[ERF_CALL:.*]] = call @local_xla.erf.v4f32
+// CHECK: return %[[ERF_CALL]]
+
+// -----
+
+module {
   func.func @erf64(%arg0: f64) -> f64 {
     %ret = math.erf %arg0 : f64
     return %ret : f64
@@ -92,6 +106,19 @@ module {
 // CHECK: %[[ERF_CALL:.*]] = call @erf
 // CHECK: return %[[ERF_CALL]]
 
+
+// -----
+
+module {
+  func.func @erf64_vector(%arg0: vector<4xf64>) -> vector<4xf64> {
+    %ret = math.erf %arg0 : vector<4xf64>
+    return %ret : vector<4xf64>
+  }
+}
+
+// CHECK-LABEL: @erf64_vector
+// CHECK-NOT: math.erf
+// CHECK-COUNT-4: call @erf
 
 // -----
 

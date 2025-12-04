@@ -1206,8 +1206,8 @@ replicas.
 | `channel_id`          | optional `ChannelHandle` | Optional channel ID for   |
 :                       :                          : cross-module              :
 :                       :                          : communication             :
-| `inpace`              | optional `bool`          | flag whether permutation  |
-:                       :                          : should be done inplace    :
+| `inplace`             | optional `bool`          | flag whether permutation  |
+:                       :                          : should be done in place   :
 
 Note that there are the following restrictions on the `source_target_pairs`:
 

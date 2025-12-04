@@ -14,21 +14,24 @@ limitations under the License.
 ==============================================================================*/
 #include "xla/tsl/profiler/rpc/client/capture_profile.h"
 
+#include <cstdint>
 #include <iostream>
-#include <limits>
 #include <memory>
+#include <string>
 #include <variant>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
-#include "absl/strings/str_cat.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/str_split.h"
+#include "absl/strings/string_view.h"
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/status.h"
-#include "xla/tsl/platform/types.h"
 #include "xla/tsl/profiler/convert/trace_events_to_json.h"
 #include "xla/tsl/profiler/convert/xplane_to_trace_events.h"
 #include "xla/tsl/profiler/rpc/client/profiler_client.h"
@@ -115,7 +118,7 @@ NewProfileSessionRequest PopulateNewProfileSessionRequest(
 }
 
 inline bool ShouldRetryTracing(absl::Status status) {
-  return status.code() == error::Code::UNAVAILABLE ||
+  return status.code() == absl::StatusCode::kUnavailable ||
          status.code() == error::Code::ALREADY_EXISTS ||
          // When auto-reconnecting to a remote TensorFlow worker after it
          // restarts, gRPC can return an UNKNOWN error code with a "Stream
@@ -185,7 +188,7 @@ absl::Status NewSession(absl::string_view repository_root,
   std::cout << "Profile session succeed for host(s):"
             << absl::StrJoin(opts.service_addresses(), ",") << std::endl;
   if (response.empty_trace()) {
-    return errors::Unavailable("No trace event is collected");
+    return absl::UnavailableError("No trace event is collected");
   }
   return absl::OkStatus();
 }

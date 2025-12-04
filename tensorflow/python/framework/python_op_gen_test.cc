@@ -530,7 +530,7 @@ TEST(PythonOpGen, GenerateMetadataWhenOpRegOffsetsIsPresent) {
   int target_end = target_begin + 3;
 
   std::vector<string> sp = absl::StrSplit(code, '\n');
-  string last_line = sp.back();
+  std::string last_line = sp.back();
   ASSERT_TRUE(absl::StrContains(last_line,
                                 "# kythe.proto.metadata.GeneratedCodeInfo:"));
   GeneratedCodeInfo gci = DecodeAnnotation(last_line);

@@ -16,10 +16,18 @@ limitations under the License.
 #include "xla/tsl/lib/io/snappy/snappy_inputstream.h"
 
 #include <algorithm>
+#include <cstddef>
+#include <cstdint>
+#include <cstring>
 
-#include "absl/memory/memory.h"
+#include "absl/log/check.h"
+#include "absl/status/status.h"
+#include "absl/strings/cord.h"
+#include "absl/strings/str_cat.h"
+#include "xla/tsl/lib/io/inputstream_interface.h"
 #include "xla/tsl/platform/errors.h"
 #include "tsl/platform/snappy.h"
+#include "tsl/platform/tstring.h"
 
 namespace tsl {
 namespace io {
@@ -115,11 +123,10 @@ absl::Status SnappyInputStream::Inflate() {
 
   DCHECK_EQ(avail_out_, 0);
   if (output_buffer_bytes_ < uncompressed_length) {
-    return errors::ResourceExhausted(
-        "Output buffer(size: ", output_buffer_bytes_,
-        " bytes"
-        ") too small. Should be larger than ",
-        uncompressed_length, " bytes.");
+    return absl::ResourceExhaustedError(
+        absl::StrCat("Output buffer(size: ", output_buffer_bytes_,
+                     " bytes) too small. Should be larger than ",
+                     uncompressed_length, " bytes."));
   }
 
   next_out_ = output_buffer_.get();

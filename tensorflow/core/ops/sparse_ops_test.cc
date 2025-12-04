@@ -126,7 +126,7 @@ TEST(SparseOpsTest, SparseToDense_ShapeFn) {
   INFER_OK(op, "?;?;?;?", "?");
   INFER_OK(op, "?;[?];?;?", "?");
   INFER_OK(op, "?;[4];?;?", "[?,?,?,?]");
-  Tensor in_t = test::AsTensor<int32>({1, 2, 3, 4});
+  Tensor in_t = test::AsTensor<int32_t>({1, 2, 3, 4});
   op.input_tensors[1] = &in_t;
   INFER_OK(op, "?;[4];?;?", "[1,2,3,4]");
 }

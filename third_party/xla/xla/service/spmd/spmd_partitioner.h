@@ -913,6 +913,30 @@ class SpmdPartitioningVisitor : public DfsHloVisitorWithDefault {
   std::vector<PartitionedHlo::PartitioningState> visiting_state_;
   std::optional<hlo_sharding_util::DeviceGroupTileAssignment> device_groups_;
   const CallGraph& call_graph_;
+
+  // Dispatches DUS handler to one of the three implementations based on
+  // analysis.
+
+  // Method 1. Replicate the slice dimensions for all involved
+  // tensors.
+  absl::Status HandleDUSDefault(HloInstruction* hlo,
+                                const HloInstruction* input_tensor,
+                                const HloInstruction* update_tensor,
+                                std::vector<HloInstruction*>& new_indices,
+                                std::vector<int64_t> slice_dims);
+  // Method 2. Keep the sharding for input and output since the update is fully
+  // contained in a single partition.
+  absl::Status HandleDUSSinglePartitionUpdate(
+      HloInstruction* hlo, const HloInstruction* input_tensor,
+      const HloInstruction* update_tensor,
+      std::vector<HloInstruction*>& new_indices,
+      std::vector<int64_t> slice_dims,
+      std::vector<int64_t> partitioned_slice_dims);
+  // Method 3: All partitioned slice dimensions have compile-time constant
+  // indices.
+  absl::Status HandleDUSAllPartitionedSliceDimsHaveConstantIndices(
+      HloInstruction* hlo, const HloInstruction* input_tensor,
+      const HloInstruction* update_tensor);
 };
 
 }  // namespace spmd

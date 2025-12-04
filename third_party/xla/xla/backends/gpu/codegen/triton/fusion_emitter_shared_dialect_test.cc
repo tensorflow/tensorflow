@@ -20,7 +20,7 @@ limitations under the License.
 #include "xla/backends/gpu/codegen/triton/test_utils.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/gpu/model/block_level_parameters.h"
-#include "xla/tests/hlo_test_base_with_symbolic_expr_context.h"
+#include "xla/tests/hlo_test_base_with_mlir_context.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/statusor.h"
 
@@ -37,7 +37,7 @@ namespace {
 // emitter becomes a reality.
 // *****************************************************************************
 
-using XTileDialectTest = HloTestBaseWithSymbolicExprContext;
+using XTileDialectTest = HloTestBaseWithMLIRContext;
 
 TEST_F(XTileDialectTest, HloTransposeIsLoweredToStableHloTranspose) {
   constexpr absl::string_view kHloText = R"(
@@ -216,8 +216,8 @@ ENTRY e {
       block_level_parameters,
       R"(
 CHECK: %[[INIT:.*]] = arith.constant dense<0.000000e+00> : tensor<f32>
-CHECK: %[[REDUCE_INPUT:.*]] = arith.select {{.*}}
-CHECK: %[[RES:.*]] = stablehlo.reduce(%[[REDUCE_INPUT]] init: %[[INIT]]) across dimensions = [0] : (tensor<256x16xf32>, tensor<f32>) -> tensor<16xf32>
+CHECK: %[[MASKED_INPUT:.*]] = xtile.mask {{.*}}
+CHECK: %[[RES:.*]] = stablehlo.reduce(%[[MASKED_INPUT]] init: %[[INIT]]) across dimensions = [0] : (tensor<256x16xf32>, tensor<f32>) -> tensor<16xf32>
 CHECK: reducer(%[[ARG_0:.*]]: tensor<f32>, %[[ARG_1:.*]]: tensor<f32>)  {
 CHECK:   %[[SUM:.*]] = arith.addf %[[ARG_0]], %[[ARG_1]] : tensor<f32>
 CHECK:   stablehlo.return %[[SUM]] : tensor<f32>
@@ -401,7 +401,7 @@ ENTRY e {
     calls=triton_dot,
     backend_config={
       "fusion_backend_config": {
-        kind: "__triton_scaled_dot_fusion",
+        kind: "__triton_nested_gemm_fusion",
         "block_level_fusion_config":{
           "output_tiles":[{"sizes":["128", "256"]}],
           "num_warps":"4",

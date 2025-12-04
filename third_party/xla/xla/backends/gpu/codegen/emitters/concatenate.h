@@ -47,10 +47,10 @@ class ConcatenateFusion final : public EmitterBase {
   LaunchDimensions launch_dimensions() const override;
 
   std::optional<IndexingMap> ComputeThreadIdToOutputIndexing(
-      int64_t root_index, SymbolicExprContext* ctx) const override;
+      int64_t root_index, mlir::MLIRContext* ctx) const override;
 
   std::optional<std::vector<IndexingMap>> ComputeThreadIdToInputIndexing(
-      int64_t root_index, SymbolicExprContext* ctx) const override;
+      int64_t root_index, mlir::MLIRContext* ctx) const override;
 
  protected:
   absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CreateMLIRModule(

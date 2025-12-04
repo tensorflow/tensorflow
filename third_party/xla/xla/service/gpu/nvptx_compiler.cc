@@ -264,7 +264,7 @@ absl::Status NVPTXCompiler::OptimizeHloConvolutionCanonicalization(
 
 absl::Status NVPTXCompiler::OptimizeHloPostLayoutAssignment(
     HloModule* hlo_module, se::StreamExecutor* stream_exec,
-    const CompileOptions& options, const TargetConfig& gpu_target_config,
+    const CompileOptions& options, const GpuTargetConfig& gpu_target_config,
     const GpuAliasInfo* alias_info, tsl::thread::ThreadPool* thread_pool) {
   // This needs to run before GemmRewriter, which is part of
   // OptimizeHloPostLayoutAssignment().
@@ -346,7 +346,7 @@ absl::Status NVPTXCompiler::AddConvAndGemmAutotuningPasses(
     const CompileOptions& options, HloModule* hlo_module,
     AutotuneConfig& autotune_config, tsl::thread::ThreadPool* thread_pool,
     se::StreamExecutor* stream_exec,
-    const Compiler::TargetConfig* target_config) {
+    const Compiler::GpuTargetConfig* target_config) {
   const DebugOptions& debug_options = hlo_module->config().debug_options();
   if (hlo_module->config()
           .debug_options()
@@ -386,7 +386,7 @@ absl::Status NVPTXCompiler::AddGemmFusionAutotuningPasses(
     se::StreamExecutor* stream_executor) {
   pipeline->AddPass<GemmFusionAutotuner>(autotune_config, toolkit_version,
                                          thread_pool, key_value_store,
-                                         symbolic_expr_context());
+                                         mlir_context());
   return absl::OkStatus();
 }
 
@@ -422,7 +422,7 @@ absl::Status NVPTXCompiler::AddFusionAutotuningPass(
     HloPassPipeline* pipeline, HloModule* hlo_module,
     const CompileOptions& options, tsl::thread::ThreadPool* thread_pool,
     stream_executor::StreamExecutor* stream_executor,
-    const Compiler::TargetConfig* target_config,
+    const Compiler::GpuTargetConfig* target_config,
     HloCostAnalysis::ShapeSizeFunction shape_size_fn) {
   if (stream_executor == nullptr) {
     return absl::OkStatus();
@@ -636,7 +636,7 @@ NVPTXCompiler::CompileTargetBinary(
   } else {
     selected_module = llvm_module;
   }
-
+  const DebugOptions& debug_options = module_config.debug_options();
   std::string ptx;
   if (!(debug_module &&
         MaybeLoadPtxFromFile(module_config, debug_module, &ptx))) {
@@ -646,12 +646,13 @@ NVPTXCompiler::CompileTargetBinary(
         absl::StrCat(
             "NVPTXCompiler::CompileTargetBinary - CompileToPtx for ",
             (debug_module != nullptr ? debug_module->name() : "(unknown")),
-        !options.is_autotuning_compilation);
+        debug_options.xla_enable_scoped_logging_timers());
     uint64_t start_usecs = tsl::Env::Default()->NowMicros();
+
     TF_ASSIGN_OR_RETURN(
         ptx, nvptx::CompileToPtx(selected_module,
                                  device_description.gpu_compute_capability(),
-                                 module_config.debug_options()));
+                                 debug_options));
 
     uint64_t end_usecs = tsl::Env::Default()->NowMicros();
     // This won't record values for calls that error out (because if they error
@@ -659,7 +660,7 @@ NVPTXCompiler::CompileTargetBinary(
     RecordLlvmPassesAndLlvmToPtxDuration(end_usecs - start_usecs);
 
     if (DumpingEnabledForHloModule(debug_module ? debug_module->name() : "",
-                                   module_config.debug_options())) {
+                                   debug_options)) {
       if (debug_module) {
         DumpToFileInDirOrStdout(*debug_module, "",
                                 shard_number.has_value()
@@ -683,9 +684,7 @@ NVPTXCompiler::CompileTargetBinary(
                       GetCompilationProvider(module_config.debug_options()));
 
   se::cuda::CompilationOptions compilation_options =
-      PtxCompileOptionsFromDebugOptions(
-          module_config.debug_options(),
-          /*is_autotuning_compilation=*/options.is_autotuning_compilation);
+      PtxCompileOptionsFromDebugOptions(module_config.debug_options());
 
   se::CudaComputeCapability cc =
       *device_description.gpu_compute_capability().cuda_compute_capability();
@@ -697,7 +696,7 @@ NVPTXCompiler::CompileTargetBinary(
   XLA_SCOPED_LOGGING_TIMER_IF(
       absl::StrCat("NVPTXCompiler::CompileTargetBinary - PtxToCubin for ",
                    module_name),
-      !options.is_autotuning_compilation);
+      debug_options.xla_enable_scoped_logging_timers());
   tsl::profiler::ScopedAnnotation annotation([&] {
     return absl::StrFormat("XlaCompileGpuAsm:#module=%s#", module_name);
   });
@@ -760,8 +759,7 @@ absl::StatusOr<std::vector<uint8_t>> NVPTXCompiler::LinkModules(
   }
 
   se::cuda::CompilationOptions compilation_options =
-      PtxCompileOptionsFromDebugOptions(debug_options,
-                                        /*is_autotuning_compilation=*/false);
+      PtxCompileOptionsFromDebugOptions(debug_options);
 
   VLOG(1) << "Linking " << modules.size()
           << " modules with compilation provider "

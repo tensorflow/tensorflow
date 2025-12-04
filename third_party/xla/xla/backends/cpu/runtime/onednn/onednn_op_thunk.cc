@@ -142,11 +142,13 @@ OneDnnOpThunk::~OneDnnOpThunk() = default;
 
 OneDnnOpThunk::BufferUses OneDnnOpThunk::buffer_uses() const {
   BufferUses buffer_uses;
-  for (const auto& argument : op_buffers_.arguments_buffers) {
-    buffer_uses.emplace_back(BufferUse::Read(argument));
+  for (int i = 0; i < op_buffers_.arguments_buffers.size(); i++) {
+    buffer_uses.emplace_back(BufferUse::Read(op_buffers_.arguments_buffers[i],
+                                             op_buffers_.arguments_shapes[i]));
   }
-  for (const auto& result : op_buffers_.results_buffers) {
-    buffer_uses.emplace_back(BufferUse::Write(result));
+  for (int i = 0; i < op_buffers_.results_buffers.size(); i++) {
+    buffer_uses.emplace_back(BufferUse::Write(op_buffers_.results_buffers[i],
+                                              op_buffers_.results_shapes[i]));
   }
   return buffer_uses;
 }

@@ -73,10 +73,9 @@ class FissionBackendTest : public HloHardwareIndependentTestBase {
   DebugOptions debug_options_;
   NVPTXCompiler compiler_;
   se::StreamExecutor* stream_executor_;
-  Compiler::TargetConfig target_config_;
+  Compiler::GpuTargetConfig target_config_;
   FissionBackend backend_;
   mlir::MLIRContext mlir_context_;
-  SymbolicExprContext symbolic_expr_context_{&mlir_context_};
 
   FissionBackendTest()
       : stream_executor_(PlatformUtil::GetDefaultPlatform()
@@ -85,7 +84,7 @@ class FissionBackendTest : public HloHardwareIndependentTestBase {
                              .value()),
         target_config_(stream_executor_),
         backend_(stream_executor_, &debug_options_, &compiler_, &target_config_,
-                 &symbolic_expr_context_) {}
+                 &mlir_context_) {}
 };
 
 TEST_F(FissionBackendTest, CanCreateCublasBackend) {

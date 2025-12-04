@@ -37,7 +37,7 @@ absl::Status SoftmaxGrad(const AttrSlice& attrs, FunctionDef* g) {
       {
         {{"softmax"}, "Softmax", {"x"}, {{"T", "$T"}}},
         {{"n0"}, "Mul", {"grad_softmax", "softmax"}, {{"T", "$T"}}},
-        FDH::Const<int32>("indices", {-1}),
+        FDH::Const<int32_t>("indices", {-1}),
         {{"n1"}, "Sum", {"n0", "indices"}, {{"keep_dims", true}, {"T", "$T"}}},
         {{"n2"}, "Sub", {"grad_softmax", "n1"}, {{"T", "$T"}}},
         {{"grad_x"}, "Mul", {"n2", "softmax"}, {{"T", "$T"}}}
@@ -61,7 +61,7 @@ absl::Status LogSoftmaxGrad(const AttrSlice& attrs, FunctionDef* g) {
       // Based on _LogSoftmaxGrad in nn_grad.py.
       {
         {{"softmax"}, "Softmax", {"x"}, {{"T", "$T"}}},
-        FDH::Const<int32>("indices", {-1}),
+        FDH::Const<int32_t>("indices", {-1}),
         {{"n0"}, "Sum", {"grad_logsoftmax", "indices"},
          {{"keep_dims", true}, {"T", "$T"}}},
         {{"n1"}, "Mul", {"n0", "softmax"}, {{"T", "$T"}}},

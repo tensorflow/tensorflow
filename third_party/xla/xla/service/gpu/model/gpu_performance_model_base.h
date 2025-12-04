@@ -156,7 +156,7 @@ class GpuPerformanceModelBase {
   // blocks that the IR emitter will use.
   static LaunchDimensions EstimateFusionLaunchDimensions(
       const HloFusionAnalysis& fusion_analysis,
-      SymbolicExprContext* symbolic_expr_context);
+      mlir::MLIRContext* mlir_context);
 
   // Returns bytes accessed of operand output by instruction. Returns 0, if the
   // operand is not used by the instruction.

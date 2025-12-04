@@ -77,12 +77,12 @@ absl::StatusOr<mlir::Operation*> ImportOldStyleAsyncStart(
     std::function<absl::Status(sync_op)> mutate_op) {
   auto context = builder->getContext();
   if (!llvm::isa<mlir::TupleType>(result_type)) {
-    return tsl::errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "expected async_bundle tuple result type");
   }
   auto result_types = mlir::cast<mlir::TupleType>(result_type).getTypes();
   if (result_types.size() < 2) {
-    return tsl::errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "async_bundle must contain at least two values");
   }
   auto func_type = mlir::FunctionType::get(context, Untuple(result_types[0]),

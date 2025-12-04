@@ -70,6 +70,18 @@ Flag                                            | Type                 | Notes
 `xla_tpu_enable_ag_backward_pipelining`         | Boolean (true/false) | Pipelines all-gathers (currently megascale all-gathers) backwards through scan loops.
 
 ### GPU XLA flags
+
+The `-O1` optimization level enables advanced compiler passes for improved GPU
+performance, including several categories of flags below: pipelining of
+data-parallel collectives (`xla_gpu_enable_pipelined_all_gather`,
+`xla_gpu_enable_pipelined_all_reduce`,
+`xla_gpu_enable_pipelined_reduce_scatter`), while loop unrolling
+(`xla_gpu_enable_while_loop_double_buffering`), latency hiding scheduling
+(`xla_gpu_enable_latency_hiding_scheduler`), and SOL latency estimator on
+Hopper/Blackwell (`xla_gpu_enable_analytical_sol_latency_estimator`). See
+[GPU Optimization Levels](https://openxla.org/xla/gpu_optimization_levels) for
+details.
+
 | Flag | Type | Notes |
 | :---- | :---- | :----- |
 | `xla_gpu_enable_latency_hiding_scheduler` | Boolean (true/false) |This flag enables latency hiding schedulers to overlap asynchronous communication with computation efficiently. The default value is False. |

@@ -27,6 +27,8 @@ toc:
     path: /xla/copybara
   - title: Determinism
     path: /xla/determinism
+  - title: Effort Levels
+    path: /xla/effort_levels
   - title: Emitters
     path: /xla/emitters
   - title: Error Codes
@@ -59,8 +61,6 @@ toc:
     path: /xla/flags_guidance
   - title: XLA Tooling
     path: /xla/tools
-  - title: XLA:GPU optimization levels
-    path: /xla/gpu_optimization_levels
 - title: Debugging
   section:
   # This is the default tab for the Debugging section.

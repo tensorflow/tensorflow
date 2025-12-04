@@ -510,5 +510,34 @@ TEST_F(FloatSupportTest, ScaledDotIsIgnored) {
       Normalize(module.get(), se::GpuComputeCapability{cc}, BF16, F32));
 }
 
+TEST_F(FloatSupportTest, AllToAllSplitDimensionS4IsNormalized) {
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+    HloModule m
+
+    ENTRY main {
+      p0 = s4[128,128]{1,0:E(4)} parameter(0)
+      ROOT r = s4[128,128]{1,0:E(4)} all-to-all(p0), replica_groups={{0,1}}, dimensions={0}
+    }
+  )"));
+  EXPECT_TRUE(Normalize(
+      module.get(),
+      se::GpuComputeCapability{se::CudaComputeCapability::Hopper()}, S4, S8));
+}
+
+TEST_F(FloatSupportTest, AllToAllTupleShapeS4IsNormalized) {
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+    HloModule m
+
+    ENTRY main {
+      p0 = s4[128,128]{1,0:E(4)} parameter(0)
+      p1 = s4[128,128]{1,0:E(4)} parameter(1)
+      ROOT r = (s4[128,128]{1,0:E(4)}, s4[128,128]{1,0:E(4)}) all-to-all(p0, p1), replica_groups={{0,1}}
+    }
+  )"));
+  EXPECT_TRUE(Normalize(
+      module.get(),
+      se::GpuComputeCapability{se::CudaComputeCapability::Hopper()}, S4, S8));
+}
+
 }  // namespace
 }  // namespace xla::gpu

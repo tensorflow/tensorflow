@@ -52,10 +52,9 @@ CollectiveGroupThunk::CollectiveGroupThunk(
     thunks_.emplace_back(std::move(thunk));
   }
 }
-absl::Status CollectiveGroupThunk::Prepare(
-    const PrepareParams& params, ResourceRequestsInterface& resource_requests) {
+absl::Status CollectiveGroupThunk::Prepare(const PrepareParams& params) {
   for (const std::unique_ptr<Thunk>& thunk : thunks_) {
-    TF_RETURN_IF_ERROR(thunk->Prepare(params, resource_requests));
+    TF_RETURN_IF_ERROR(thunk->Prepare(params));
   }
   return absl::OkStatus();
 }

@@ -29,6 +29,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/base/optimization.h"
 #include "absl/cleanup/cleanup.h"
 #include "absl/container/flat_hash_map.h"
@@ -49,6 +50,7 @@ limitations under the License.
 #include "xla/backends/profiler/gpu/cupti_buffer_events.h"
 #include "xla/backends/profiler/gpu/cupti_collector.h"
 #include "xla/backends/profiler/gpu/cupti_interface.h"
+#include "xla/backends/profiler/gpu/cupti_marker_data_parser.h"
 #include "xla/backends/profiler/gpu/cupti_pm_sampler.h"
 #include "xla/backends/profiler/gpu/cupti_pm_sampler_factory.h"
 #include "xla/backends/profiler/gpu/cupti_utils.h"
@@ -619,11 +621,11 @@ void SetCuMemHostUnregisterEventUponApiExit(
 struct GraphResourceCreationInfo {
   uint32_t graph_id = 0;
   uint32_t orig_graph_id = 0;
-  absl::flat_hash_map<uint64_t, uint64_t> node_id_map = {};
+  absl::flat_hash_map<uint64_t, uint64_t> node_id_map;
 };
 
 static GraphResourceCreationInfo& GetGraphResourceCreationInfo() {
-  static thread_local GraphResourceCreationInfo per_thread_graph_info{};
+  static thread_local GraphResourceCreationInfo per_thread_graph_info;
   return per_thread_graph_info;
 }
 
@@ -1088,14 +1090,18 @@ absl::Status CuptiTracer::Enable(
   if (option_->enable_nvtx_tracking) {
     VLOG(1) << "NVTX tracking Enabled.";
     std::vector<CUpti_ActivityKind>& activities = option_->activities_selected;
-    if (std::find(activities.begin(), activities.end(),
-                  CUPTI_ACTIVITY_KIND_MARKER) == activities.end()) {
+    if (!absl::c_contains(activities, CUPTI_ACTIVITY_KIND_MARKER)) {
       VLOG(1) << "Adding CUPTI_ACTIVITY_KIND_MARKER to activities:"
               << (int)CUPTI_ACTIVITY_KIND_MARKER;
       activities.push_back(CUPTI_ACTIVITY_KIND_MARKER);
     }
-    // TODO: Add CUPTI_ACTIVITY_KIND_MARKER_DATA to activities after cupti
-    // more detailed data could be provided by cupti.
+    // If marker data is supported, add it to activities.
+    if (GetActivityMarkerDataKind().has_value() &&
+        !absl::c_contains(activities, CUPTI_ACTIVITY_KIND_MARKER_DATA)) {
+      VLOG(1) << "Adding CUPTI_ACTIVITY_KIND_MARKER_DATA to activities:"
+              << (int)CUPTI_ACTIVITY_KIND_MARKER_DATA;
+      activities.push_back(GetActivityMarkerDataKind().value());
+    }
   }
 
   cupti_driver_api_hook_ = std::make_unique<CuptiDriverApiHookWithActivityApi>(
@@ -1257,16 +1263,7 @@ CuptiTracer::CreateDefaultCallbackIds() {
       CUPTI_DRIVER_TRACE_CBID_cuGraphInstantiateWithFlags,
       CUPTI_DRIVER_TRACE_CBID_cuGraphInstantiateWithParams,
       CUPTI_DRIVER_TRACE_CBID_cuGraphInstantiateWithParams_ptsz,
-      // Following add-node to cuda graph events are needed to trace as they are
-      // used to create graph nodes for different Hlo operations in XLA.
       CUPTI_DRIVER_TRACE_CBID_cuGraphAddMemcpyNode,
-      CUPTI_DRIVER_TRACE_CBID_cuGraphAddKernelNode,
-      CUPTI_DRIVER_TRACE_CBID_cuGraphAddMemsetNode,
-      CUPTI_DRIVER_TRACE_CBID_cuGraphAddEmptyNode,
-      CUPTI_DRIVER_TRACE_CBID_cuGraphAddChildGraphNode,
-      CUPTI_DRIVER_TRACE_CBID_cuGraphAddKernelNode_v2,
-      CUPTI_DRIVER_TRACE_CBID_cuGraphAddNode,
-      CUPTI_DRIVER_TRACE_CBID_cuGraphAddNode_v2,
 #endif  // CUDA_VERSION >= 12080
   };
 }

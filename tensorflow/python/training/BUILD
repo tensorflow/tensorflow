@@ -75,7 +75,6 @@ py_strict_library(
         "//tensorflow_minigo:__subpackages__",
         "//tensorflow_models:__subpackages__",
         "//third_party/cloud_tpu/convergence_tools:__subpackages__",
-        "//third_party/mlperf:__subpackages__",
         "//third_party/py/tf_slim:__subpackages__",
     ],
     deps = [

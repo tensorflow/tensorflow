@@ -33,7 +33,6 @@ limitations under the License.
 #include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
 #include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/tests/literal_test_util.h"
-#include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/xla_data.pb.h"
@@ -95,8 +94,8 @@ class MultiOutputFusionTest
           HloInstruction::CreateGetTupleElement(elem_shape2, tuple, 0));
       auto gte1 = computation->AddInstruction(
           HloInstruction::CreateGetTupleElement(elem_shape2, tuple, 1));
-      TF_CHECK_OK(dot->ReplaceOperandWith(0, gte0));
-      TF_CHECK_OK(dot->ReplaceOperandWith(1, gte1));
+      CHECK_OK(dot->ReplaceOperandWith(0, gte0));
+      CHECK_OK(dot->ReplaceOperandWith(1, gte1));
 
       CHECK_NE(
           computation->CreateFusionInstruction(
@@ -159,8 +158,8 @@ class MultiOutputFusionTest
           HloInstruction::CreateGetTupleElement(elem_shape_U8, tuple, 0));
       auto gte1 = computation->AddInstruction(
           HloInstruction::CreateGetTupleElement(elem_shape_F32, tuple, 1));
-      TF_CHECK_OK(sub->ReplaceOperandWith(0, gte0));
-      TF_CHECK_OK(reshape->ReplaceOperandWith(0, gte1));
+      CHECK_OK(sub->ReplaceOperandWith(0, gte0));
+      CHECK_OK(reshape->ReplaceOperandWith(0, gte1));
 
       CHECK_NE(computation->CreateFusionInstruction(
                    {tuple, sub_U8, add, param0_U8, param1_F32},

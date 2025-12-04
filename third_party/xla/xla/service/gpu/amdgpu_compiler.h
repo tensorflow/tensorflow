@@ -53,7 +53,7 @@ class AMDGPUCompiler : public GpuCompiler {
 
   absl::Status OptimizeHloPostLayoutAssignment(
       HloModule* hlo_module, se::StreamExecutor* stream_exec,
-      const CompileOptions& options, const TargetConfig& gpu_target_config,
+      const CompileOptions& options, const GpuTargetConfig& gpu_target_config,
       const GpuAliasInfo* alias_info,
       tsl::thread::ThreadPool* thread_pool) override;
 
@@ -66,7 +66,7 @@ class AMDGPUCompiler : public GpuCompiler {
       const CompileOptions& options, HloModule* hlo_module,
       AutotuneConfig& autotune_config, tsl::thread::ThreadPool* thread_pool,
       se::StreamExecutor* stream_exec,
-      const Compiler::TargetConfig* target_config) override;
+      const Compiler::GpuTargetConfig* target_config) override;
 
   absl::StatusOr<BackendCompileResult> CompileTargetBinary(
       const HloModuleConfig& module_config, llvm::Module* llvm_module,

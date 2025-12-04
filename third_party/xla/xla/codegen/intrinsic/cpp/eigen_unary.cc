@@ -20,19 +20,28 @@ limitations under the License.
 
 namespace xla::codegen {
 
-// Using Packet over a Map'd Array yields better llvm IR on ARM.
-using Packet4f = Eigen::internal::Packet4f;
+//===--------------------------------------------------------------------===//
+// Generic conversion and operation
+//===--------------------------------------------------------------------===//
 
-Vec4f FastTanhf(const Vec4f x) {
-  Packet4f packet = static_cast<Eigen::internal::Packet4f>(x);
-  Packet4f res = Eigen::internal::ptanh_float(packet);
-  return *static_cast<Vec4f*>(&res);
+template <typename VecType>
+inline VecType VectorTanh(const VecType x) {
+  using ArrayType = typename ArrayMap<VecType>::type;
+  ArrayType x_array = *reinterpret_cast<const ArrayType*>(&x);
+  ArrayType result = x_array.tanh();
+  return *reinterpret_cast<const VecType*>(&result);
 }
 
-Vec8d FastRqsqrtf(const Vec8d x) {
-  const Eigen::Map<const Eigen::Array<double, 8, 1>> x_arr((const double*)&x);
-  const Eigen::Array<double, 8, 1> res = x_arr.rsqrt();
-  return *(Vec8d*)res.data();
-}
+//===--------------------------------------------------------------------===//
+// XLA entrypoints, renamed with asm in header file.
+//===--------------------------------------------------------------------===//
+
+// Single precision
+float tanh_f32(float x) { return Eigen::internal::ptanh_float(x); }
+Vec16f tanh_v16f32(Vec16f x) { return VectorTanh(x); }
+
+// Double precision
+double tanh_f64(double x) { return Eigen::internal::ptanh_double(x); }
+Vec8d tanh_v8f64(Vec8d x) { return VectorTanh(x); }
 
 }  // namespace xla::codegen

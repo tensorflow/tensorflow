@@ -40,9 +40,13 @@ limitations under the License.
 #include "xla/stream_executor/gpu/gpu_init.h"
 #include "xla/tsl/framework/allocator.h"
 #include "xla/tsl/framework/device_id.h"
+<<<<<<< HEAD
 #include "xla/tsl/util/env_var.h"  // IWYU pragma: keep
 #include "tsl/platform/logging.h"
 #include "tsl/platform/mutex.h"
+=======
+#include "xla/tsl/util/env_var.h"
+>>>>>>> ae0bcfbed65c9f3cf97c7714efdf69deff6507e0
 
 namespace stream_executor {
 
@@ -222,8 +226,8 @@ GpuCudaMallocAsyncAllocator::GpuCudaMallocAsyncAllocator(
   // If in TF_DETERMINISTIC_ALLOCATOR is set, then make the allocator behave
   // determistically.
   bool deterministic = false;
-  TF_CHECK_OK(tsl::ReadBoolFromEnvVar("TF_DETERMINISTIC_ALLOCATOR",
-                                      /*default_val=*/false, &deterministic));
+  CHECK_OK(tsl::ReadBoolFromEnvVar("TF_DETERMINISTIC_ALLOCATOR",
+                                   /*default_val=*/false, &deterministic));
   if (deterministic) {
     int disable = 0;
     if (auto status = cuMemPoolSetAttribute(
@@ -481,8 +485,8 @@ void GpuCudaMallocAsyncAllocator::SetStreamAndPreallocateMemory(void* stream) {
   int64_t prealloc_size = 0;
   // TF_CUDA_MALLOC_ASYNC_SUPPORTED_PREALLOC=-1 is a special value that
   // preallocates the total pool size.
-  TF_CHECK_OK(tsl::ReadInt64FromEnvVar(
-      "TF_CUDA_MALLOC_ASYNC_SUPPORTED_PREALLOC", 0, &prealloc_size));
+  CHECK_OK(tsl::ReadInt64FromEnvVar("TF_CUDA_MALLOC_ASYNC_SUPPORTED_PREALLOC",
+                                    0, &prealloc_size));
   if (prealloc_size == -1) {
     prealloc_size = pool_size_64;
   } else if (reserve_memory_) {

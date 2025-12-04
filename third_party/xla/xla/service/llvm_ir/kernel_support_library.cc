@@ -15,13 +15,13 @@ limitations under the License.
 
 #include "xla/service/llvm_ir/kernel_support_library.h"
 
-#include <algorithm>
 #include <cstdint>
 #include <functional>
 #include <iterator>
 #include <memory>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -110,9 +110,8 @@ void KernelSupportLibrary::EmitAndCallOutlinedKernel(
   if (!function) {
     VLOG(2) << "Generating kernel for " << kernel_name;
     std::vector<llvm::Type*> arg_types;
-    std::transform(sanitized_args.begin(), sanitized_args.end(),
-                   std::back_inserter(arg_types),
-                   [](llvm::Value* arg) { return arg->getType(); });
+    absl::c_transform(sanitized_args, std::back_inserter(arg_types),
+                      [](llvm::Value* arg) { return arg->getType(); });
 
     auto* function_type =
         llvm::FunctionType::get(b->getVoidTy(), arg_types, /*isVarArg=*/false);

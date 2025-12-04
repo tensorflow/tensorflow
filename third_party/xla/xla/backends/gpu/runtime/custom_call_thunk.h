@@ -124,13 +124,13 @@ class CustomCallThunk : public Thunk {
       xla::ffi::AttributesMap attributes,
       const HloComputation* called_computation);
 
-  absl::Status Prepare(const PrepareParams& params,
-                       ResourceRequestsInterface& resource_requests) override;
+  absl::Status Prepare(const PrepareParams& params) override;
   absl::Status Initialize(const InitializeParams& params) override;
   absl::Status ExecuteOnStream(const ExecuteParams& params) override;
 
   const std::string& target_name() const { return target_name_; }
   CustomCallTarget call_target() const { return call_target_; }
+
   std::optional<XLA_FFI_Handler_Bundle> bundle() const {
     if (!bundle_.has_value()) {
       return std::nullopt;
@@ -139,8 +139,13 @@ class CustomCallThunk : public Thunk {
         std::get_if<XLA_FFI_Handler_Bundle>(&bundle_.value());
     return c_bundle ? std::make_optional(*c_bundle) : std::nullopt;
   }
+
   std::optional<ffi::CallFrame> call_frame() const {
     return call_frame_ ? std::make_optional(call_frame_->Copy()) : std::nullopt;
+  }
+
+  std::shared_ptr<ffi::ExecutionState> execution_state() const {
+    return execution_state_;
   }
 
   const std::vector<NullableShapedSlice>& operands() const { return operands_; }
@@ -224,7 +229,7 @@ class CustomCallThunk : public Thunk {
   std::optional<ObjectPool<ffi::CallFrame>> call_frames_;
 
   // Execution state bound to the FFI handler. Optional.
-  std::unique_ptr<ffi::ExecutionState> execution_state_;
+  std::shared_ptr<ffi::ExecutionState> execution_state_;
 
   // TODO(ezhulenev): Currently we assume that HloModule that owns this
   // computation is owned by a GpuExecutable and stays alive for as long as

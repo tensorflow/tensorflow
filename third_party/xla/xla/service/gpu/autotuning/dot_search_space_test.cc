@@ -21,6 +21,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/log/check.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
@@ -32,7 +33,6 @@ limitations under the License.
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_description.pb.h"
-#include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/statusor.h"
 
 namespace xla::gpu {
@@ -104,7 +104,7 @@ class DefaultDeviceDotSearchSpaceTest : public HloHardwareIndependentTestBase {
   se::DeviceDescription device_description_ = []() {
     auto device_description_ = se::DeviceDescription::FromProto(
         se::GpuDeviceInfoProto::default_instance());
-    TF_CHECK_OK(device_description_.status());
+    CHECK_OK(device_description_.status());
     return *device_description_;
   }();
 

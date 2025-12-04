@@ -24,12 +24,10 @@ limitations under the License.
 #include "xla/pjrt/c_api_client/pjrt_c_api_client.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/plugin/test/plugin_test_fixture.h"
-#include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/test.h"
 
 namespace {
 
-using ::tsl::testing::StatusIs;
 using ::xla::PluginTestFixture;
 
 TEST_F(PluginTestFixture, PluginReportsValidName) {

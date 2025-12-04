@@ -91,11 +91,13 @@ CollectiveThunk::CollectiveThunk(CollectiveKind collective_kind,
 Thunk::BufferUses CollectiveThunk::buffer_uses() const {
   BufferUses uses;
   uses.reserve(source_buffers().size() + destination_buffers().size());
-  for (auto& source_buffer : source_buffers()) {
-    uses.push_back(BufferUse::Read(source_buffer));
+  for (int i = 0; i < source_buffers().size(); i++) {
+    uses.push_back(BufferUse::Read(op_buffers_.source_buffers[i],
+                                   op_buffers_.source_shapes[i]));
   }
-  for (auto& destination_buffer : destination_buffers()) {
-    uses.push_back(BufferUse::Write(destination_buffer));
+  for (int i = 0; i < destination_buffers().size(); i++) {
+    uses.push_back(BufferUse::Write(op_buffers_.destination_buffers[i],
+                                    op_buffers_.destination_shapes[i]));
   }
   return uses;
 }

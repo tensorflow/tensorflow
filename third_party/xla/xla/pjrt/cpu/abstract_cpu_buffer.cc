@@ -101,37 +101,6 @@ void PackOrCopy(PrimitiveType element_type, const LiteralSlice& literal,
   }
 }
 
-/*static*/ absl::StatusOr<std::unique_ptr<TrackedCpuDeviceBuffer>>
-AbstractCpuBuffer::AllocateTrackedDeviceBuffer(
-    const Shape& on_device_shape,
-    absl::InlinedVector<tsl::AsyncValueRef<CpuEvent>, 4> definition_events) {
-  if (on_device_shape.IsTuple()) {
-    return absl::InvalidArgumentError(
-        absl::StrCat("Tuples are not supported for cpu-buffers: ",
-                     on_device_shape.ToString()));
-  }
-  size_t byte_size = ShapeUtil::ByteSizeOf(on_device_shape);
-  TF_ASSIGN_OR_RETURN(tsl::AsyncValueRef<CpuDeviceMemory> device_buffer,
-                      CpuDeviceMemory::Allocate(byte_size));
-  return std::make_unique<TrackedCpuDeviceBuffer>(
-      /*owns_buffers=*/true, std::move(device_buffer),
-      std::move(definition_events));
-}
-
-/*static*/ void AbstractCpuBuffer::AllocateAvsAndEvents(
-    const Shape& shape,
-    absl::InlinedVector<tsl::RCReference<tsl::AsyncValue>, 4>* avs,
-    absl::InlinedVector<tsl::AsyncValueRef<CpuEvent>, 4>* definition_events) {
-  // Nested tuple shapes are not supported here.
-  int num_leaf_buffers = shape.IsTuple() ? shape.tuple_shapes().size() : 1;
-  for (int i = 0; i < num_leaf_buffers; ++i) {
-    tsl::AsyncValueRef<CpuEvent> definition_event =
-        tsl::MakeConstructedAsyncValueRef<CpuEvent>();
-    definition_events->push_back(definition_event.CopyRef());
-    avs->push_back(std::move(definition_event));
-  }
-}
-
 /*static*/ bool AbstractCpuBuffer::BufferFromHostBufferSupportsZeroCopy(
     const void* data, PrimitiveType type, absl::Span<int64_t const> dims,
     std::optional<absl::Span<int64_t const>> byte_strides, const Shape& shape) {

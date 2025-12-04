@@ -35,7 +35,7 @@ TEST(TargetConfigTest, ExecutorConstructorFillsAllFields) {
   TF_ASSERT_OK_AND_ASSIGN(
       stream_executor::StreamExecutor * executor,
       stream_executor::GPUMachineManager()->ExecutorForDevice(0));
-  Compiler::TargetConfig config(executor);
+  Compiler::GpuTargetConfig config(executor);
   stream_executor::GpuTargetConfigProto target = config.ToProto();
 
   // We don't attempt to validate values because doing so would require talking
@@ -63,7 +63,7 @@ TEST(TargetConfigTest, ProtoConstructorFillsAllFields) {
   config_proto.set_device_description_str("foo");
 
   TF_ASSERT_OK_AND_ASSIGN(auto config,
-                          Compiler::TargetConfig::FromProto(config_proto));
+                          Compiler::GpuTargetConfig::FromProto(config_proto));
   stream_executor::GpuTargetConfigProto target = config.ToProto();
 
   EXPECT_EQ(target.dnn_version_info().major(),

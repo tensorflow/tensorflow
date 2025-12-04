@@ -17,15 +17,16 @@ limitations under the License.
 #define XLA_TSL_FRAMEWORK_CANCELLATION_H_
 
 #include <atomic>
+#include <cstdint>
 #include <functional>
+#include <memory>
+#include <string>
 
+#include "absl/status/status.h"
+#include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/synchronization/notification.h"
 #include "xla/tsl/lib/gtl/flatmap.h"
-#include "xla/tsl/platform/status.h"
-#include "xla/tsl/platform/types.h"
-#include "tsl/platform/hash.h"
-#include "tsl/platform/stringpiece.h"
 #include "tsl/platform/thread_annotations.h"
 
 namespace tsl {
@@ -109,7 +110,7 @@ class CancellationManager {
   //       }
   //     }
   //     if (already_cancelled) {
-  //       callback(errors::Cancelled("Operation was cancelled"));
+  //       callback(absl::CancelledError("Operation was cancelled"));
   //     }
   //   }
   //

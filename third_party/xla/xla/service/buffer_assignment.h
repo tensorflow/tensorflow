@@ -204,6 +204,9 @@ class BufferAllocation {
     PrimitiveType element_type() const { return element_type_; }
 
     bool operator==(const Slice& other) const {
+      if (allocation_ == nullptr) {
+        return other.allocation_ == nullptr;
+      }
       // We don't compare element_type_ because it's not always set, and it's
       // not relevant for the comparison here.
       return index() == other.index() && offset_ == other.offset_ &&

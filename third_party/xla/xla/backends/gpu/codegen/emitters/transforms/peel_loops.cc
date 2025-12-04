@@ -109,8 +109,8 @@ struct PeelLoop : public OpRewritePattern<LoopOp> {
       if (indexing_map.IsKnownEmpty()) {
         continue;
       }
-      auto tail_loop = rewriter.create<LoopOp>(
-          loc, indexing_map, loop_op.getDims(), inits,
+      auto tail_loop = LoopOp::create(
+          rewriter, loc, indexing_map, loop_op.getDims(), inits,
           [&](OpBuilder& nested_b, Location nested_loc, ValueRange ivs,
               ValueRange map_results, ValueRange iter_args) {
             OpBuilder::InsertionGuard guard(nested_b);

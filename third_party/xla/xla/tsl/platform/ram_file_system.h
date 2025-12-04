@@ -26,19 +26,31 @@ limitations under the License.
 // reference a single FS location, though no thread-safety guarantees are
 // provided.
 
+#include <algorithm>
+#include <cstddef>
+#include <cstdint>
+#include <map>
+#include <memory>
 #include <string>
+#include <vector>
 
+#include "absl/status/status.h"
+#include "absl/strings/cord.h"
 #include "absl/strings/match.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/file_statistics.h"
 #include "xla/tsl/platform/file_system.h"
 #include "xla/tsl/platform/types.h"
-#include "tsl/platform/stringpiece.h"
 
 #ifdef PLATFORM_WINDOWS
 #undef DeleteFile
 #undef CopyFile
 #undef TranslateName
+#undef StrCat
 #endif
 
 namespace tsl {
@@ -114,10 +126,11 @@ class RamFileSystem : public FileSystem {
     auto fname = StripRamFsPrefix(fname_);
 
     if (fs_.find(fname) == fs_.end()) {
-      return errors::NotFound("");
+      return absl::NotFoundError("");
     }
     if (fs_[fname] == nullptr) {
-      return errors::InvalidArgument(fname_, " is a directory.");
+      return absl::InvalidArgumentError(
+          absl::StrCat(fname_, " is a directory."));
     }
     *result = std::unique_ptr<RandomAccessFile>(
         new RamRandomAccessFile(fname, fs_[fname]));
@@ -134,7 +147,8 @@ class RamFileSystem : public FileSystem {
       fs_[fname] = std::make_shared<std::string>();
     }
     if (fs_[fname] == nullptr) {
-      return errors::InvalidArgument(fname_, " is a directory.");
+      return absl::InvalidArgumentError(
+          absl::StrCat(fname_, " is a directory."));
     }
     *result = std::unique_ptr<WritableFile>(
         new RamRandomAccessFile(fname, fs_[fname]));
@@ -151,7 +165,8 @@ class RamFileSystem : public FileSystem {
       fs_[fname] = std::make_shared<std::string>();
     }
     if (fs_[fname] == nullptr) {
-      return errors::InvalidArgument(fname_, " is a directory.");
+      return absl::InvalidArgumentError(
+          absl::StrCat(fname_, " is a directory."));
     }
     *result = std::unique_ptr<WritableFile>(
         new RamRandomAccessFile(fname, fs_[fname]));
@@ -212,7 +227,7 @@ class RamFileSystem : public FileSystem {
 
     auto it = fs_.lower_bound(fname);
     if (it == fs_.end() || !StartsWith(it->first, fname)) {
-      return errors::NotFound("");
+      return absl::NotFoundError("");
     }
 
     if (it->first == fname && it->second != nullptr) {
@@ -238,7 +253,7 @@ class RamFileSystem : public FileSystem {
       return absl::OkStatus();
     }
 
-    return errors::NotFound("");
+    return absl::NotFoundError("");
   }
 
   absl::Status CreateDir(const std::string& dirname_,
@@ -248,7 +263,7 @@ class RamFileSystem : public FileSystem {
 
     auto it = fs_.find(dirname);
     if (it != fs_.end() && it->second != nullptr) {
-      return errors::AlreadyExists(
+      return absl::AlreadyExistsError(
           "cannot create directory with same name as an existing file");
     }
 
@@ -279,10 +294,10 @@ class RamFileSystem : public FileSystem {
 
     auto it = fs_.find(dirname);
     if (it == fs_.end()) {
-      return errors::NotFound("");
+      return absl::NotFoundError("");
     }
     if (it->second != nullptr) {
-      return errors::InvalidArgument("Not a directory");
+      return absl::InvalidArgumentError("Not a directory");
     }
     fs_.erase(dirname);
 
@@ -296,12 +311,12 @@ class RamFileSystem : public FileSystem {
 
     if (fs_.find(fname) != fs_.end()) {
       if (fs_[fname] == nullptr) {
-        return errors::InvalidArgument("Not a file");
+        return absl::InvalidArgumentError("Not a file");
       }
       *file_size = fs_[fname]->size();
       return absl::OkStatus();
     }
-    return errors::NotFound("");
+    return absl::NotFoundError("");
   }
 
   absl::Status RenameFile(const std::string& src_, const std::string& target_,
@@ -315,7 +330,7 @@ class RamFileSystem : public FileSystem {
       fs_.erase(fs_.find(src));
       return absl::OkStatus();
     }
-    return errors::NotFound("");
+    return absl::NotFoundError("");
   }
 
   RamFileSystem() {}

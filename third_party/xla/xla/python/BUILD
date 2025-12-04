@@ -618,6 +618,19 @@ cc_library(
 )
 
 cc_library(
+    name = "nb_status",
+    hdrs = ["nb_status.h"],
+    compatible_with = [],
+    copts = ["-fexceptions"],
+    features = ["-use_header_modules"],
+    visibility = internal_visibility([":friends"]),
+    deps = [
+        "@com_google_absl//absl/status",
+        "@nanobind",
+    ],
+)
+
+cc_library(
     name = "aggregate_profile",
     srcs = ["aggregate_profile.cc"],
     hdrs = ["aggregate_profile.h"],

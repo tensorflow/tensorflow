@@ -54,6 +54,7 @@
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/ifrt/user_context.h"
+#include "xla/python/ifrt/user_context_status_util.h"
 #include "xla/python/ifrt_proxy/client/array.h"
 #include "xla/python/ifrt_proxy/client/host_buffer.h"
 #include "xla/python/ifrt_proxy/client/rpc_helper.h"
@@ -336,7 +337,8 @@ class LoadedExecutable::OutputSpecCache {
 
 LoadedExecutable::LoadedExecutable(
     xla::ifrt::Client* client, std::shared_ptr<RpcHelper> rpc_helper,
-    uint64_t handle, std::string name, int num_devices, DeviceListRef devices,
+    uint64_t handle, std::string name, int num_devices,
+    std::optional<DeviceListRef> devices,
     std::vector<xla::ifrt::Device*> addressable_devices,
     absl::StatusOr<std::optional<std::string>> fingerprint,
     tsl::Future<> ready_future,
@@ -420,8 +422,8 @@ LoadedExecutable::LoadedExecutable(
       info->parameter_layouts =
           parse_layouts(response.value()->parameter_layouts_list());
     } else if (response.value()->has_parameter_layouts_error()) {
-      info->parameter_layouts =
-          tsl::StatusFromProto(response.value()->parameter_layouts_error());
+      info->parameter_layouts = xla::ifrt::ReattachUserContextRefs(
+          tsl::StatusFromProto(response.value()->parameter_layouts_error()));
     } else {
       info->parameter_layouts = absl::UnimplementedError(
           "IFRT Proxy server did not return parameter layouts");
@@ -430,8 +432,8 @@ LoadedExecutable::LoadedExecutable(
       info->output_layouts =
           parse_layouts(response.value()->output_layouts_list());
     } else if (response.value()->has_output_layouts_error()) {
-      info->output_layouts =
-          tsl::StatusFromProto(response.value()->output_layouts_error());
+      info->output_layouts = xla::ifrt::ReattachUserContextRefs(
+          tsl::StatusFromProto(response.value()->output_layouts_error()));
     } else {
       info->output_layouts = absl::UnimplementedError(
           "IFRT Proxy server did not return output layouts");
@@ -442,7 +444,8 @@ LoadedExecutable::LoadedExecutable(
           response.value()->compiled_memory_stats());
     } else if (response.value()->has_compiled_memory_stats_error()) {
       info->compiled_memory_stats =
-          tsl::StatusFromProto(response.value()->compiled_memory_stats_error());
+          xla::ifrt::ReattachUserContextRefs(tsl::StatusFromProto(
+              response.value()->compiled_memory_stats_error()));
     } else {
       info->compiled_memory_stats = absl::UnimplementedError(
           "IFRT Proxy server did not return compiled memory stats");
@@ -451,8 +454,9 @@ LoadedExecutable::LoadedExecutable(
     info->size_of_generated_code_in_bytes =
         response.value()->size_of_generated_code_in_bytes();
 
-    if (const absl::Status s = tsl::StatusFromProto(
-            response.value()->output_memory_kinds().status());
+    if (const absl::Status s =
+            xla::ifrt::ReattachUserContextRefs(tsl::StatusFromProto(
+                response.value()->output_memory_kinds().status()));
         !s.ok()) {
       info->output_memory_kinds = s;
     } else {
@@ -485,7 +489,8 @@ LoadedExecutable::LoadedExecutable(
                                    info->donatable_input_indices->end());
     } else if (response.value()->has_donated_input_indices_error()) {
       info->donatable_input_indices =
-          tsl::StatusFromProto(response.value()->donated_input_indices_error());
+          xla::ifrt::ReattachUserContextRefs(tsl::StatusFromProto(
+              response.value()->donated_input_indices_error()));
     } else {
       info->donatable_input_indices = absl::UnimplementedError(
           "IFRT Proxy server did not return donated input indices");
@@ -643,8 +648,8 @@ absl::StatusOr<xla::ifrt::AttributeMap> LoadedExecutable::GetCostAnalysis()
       cost_analysis_response_ =
           AttributeMap::FromProto(response.value()->attributes());
     } else {
-      cost_analysis_response_ =
-          tsl::StatusFromProto(response.value()->status());
+      cost_analysis_response_ = xla::ifrt::ReattachUserContextRefs(
+          tsl::StatusFromProto(response.value()->status()));
     }
   }
   return *cost_analysis_response_;
@@ -680,8 +685,8 @@ absl::StatusOr<std::string> LoadedExecutable::GetHumanReadableProgramText()
     } else if ((*response)->has_human_readable_program_text()) {
       human_readable_program_text_ = (*response)->human_readable_program_text();
     } else {
-      human_readable_program_text_ =
-          tsl::StatusFromProto((*response)->status());
+      human_readable_program_text_ = xla::ifrt::ReattachUserContextRefs(
+          tsl::StatusFromProto((*response)->status()));
     }
   }
   return *human_readable_program_text_;
@@ -839,7 +844,9 @@ LoadedExecutable::Execute(absl::Span<xla::ifrt::ArrayRef> args,
   return result;
 }
 
-const DeviceListRef& LoadedExecutable::devices() const { return devices_; }
+std::optional<DeviceListRef> LoadedExecutable::devices() const {
+  return devices_;
+}
 
 absl::Span<xla::ifrt::Device* const> LoadedExecutable::addressable_devices()
     const {

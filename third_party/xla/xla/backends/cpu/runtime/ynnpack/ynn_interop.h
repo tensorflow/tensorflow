@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/util.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla::cpu {
 

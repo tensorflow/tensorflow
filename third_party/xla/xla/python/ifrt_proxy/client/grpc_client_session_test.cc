@@ -53,7 +53,6 @@
 #include "xla/python/ifrt_proxy/common/test_utils.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
-#include "tsl/platform/status_matchers.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
 
@@ -64,7 +63,6 @@ namespace proxy {
 namespace {
 
 using ::testing::Not;
-using ::tsl::testing::IsOk;
 
 // Sufficient time for all processing (that are not explicitly waiting for
 // further input) to have finished.

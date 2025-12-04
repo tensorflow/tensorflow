@@ -47,6 +47,13 @@ absl::Status ClearComputeTypeFrontendAttribute(HloInstruction* instr) {
   return absl::OkStatus();
 }
 
+void ClearSideEffects(HloInstruction* instr) {
+  if (instr->opcode() == HloOpcode::kCustomCall) {
+    static_cast<HloCustomCallInstruction*>(instr)
+        ->set_custom_call_has_side_effect(false);
+  }
+}
+
 }  // namespace
 
 absl::Status RecursivelyClearComputeTypeFrontendAttribute(
@@ -126,6 +133,7 @@ FindAndWrapOffloadedComputations(
             clear_backend_config_device_type(offloaded_call_instr));
         TF_RETURN_IF_ERROR(
             ClearComputeTypeFrontendAttribute(offloaded_call_instr));
+        ClearSideEffects(instr);
         offloaded_instr = instr;
         continue;
       }
@@ -161,6 +169,7 @@ FindAndWrapOffloadedComputations(
 
           offloaded_call_instr->AppendInstructionIntoCalledComputation(
               instr, /*add_output=*/instr_escapes_offloaded_computation);
+          ClearSideEffects(instr);
           offloaded_instr = instr;
         } else {
           unmerged_ancestors.insert(instr);
@@ -176,6 +185,7 @@ FindAndWrapOffloadedComputations(
         // computation, include it anyway.
         offloaded_call_instr->AppendInstructionIntoCalledComputation(
             instr, /*add_output=*/true);
+        ClearSideEffects(instr);
         offloaded_instr = instr;
       } else {
         unmerged_ancestors.insert(instr);
@@ -191,13 +201,6 @@ FindAndWrapOffloadedComputations(
         std::pair(offloaded_instr, offloaded_call_instr));
 
     for (HloInstruction* instr : computation.instructions()) {
-      // If an offloaded instruction is a custom call marked with side effects.
-      // Remove the annotation so it can be properly removed from the
-      // original computation during DCE.
-      if (instr->opcode() == HloOpcode::kCustomCall && should_offload(instr)) {
-        static_cast<HloCustomCallInstruction*>(instr)
-            ->set_custom_call_has_side_effect(false);
-      }
       // If an offloaded instruction is a Sharding custom call or has control
       // dependencies (such as those around elided copies), remove it
       // explicitly since it won't be removed by HloDCE.

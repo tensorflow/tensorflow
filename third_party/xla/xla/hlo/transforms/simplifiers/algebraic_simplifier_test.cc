@@ -29,6 +29,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/algorithm/container.h"
 #include "absl/log/log.h"
+#include "absl/status/status_matchers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
@@ -61,7 +62,6 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/tests/test_utils.h"
 #include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/window_util.h"
@@ -71,8 +71,6 @@ namespace xla {
 namespace {
 
 using ::testing::ElementsAre;
-using ::tsl::testing::IsOk;
-using ::tsl::testing::IsOkAndHolds;
 namespace m = match;
 namespace op = xla::testing::opcode_matchers;
 
@@ -5299,6 +5297,72 @@ TEST_F(AlgebraicSimplifierTest, SliceOfSliceToSlice) {
   EXPECT_EQ(computation->root_instruction()->slice_starts(1), 5);
   EXPECT_EQ(computation->root_instruction()->slice_limits(0), dim0 - 2);
   EXPECT_EQ(computation->root_instruction()->slice_limits(1), dim1 - 4);
+}
+
+TEST_F(AlgebraicSimplifierTest, SliceWithReshape) {
+  const absl::string_view hlo_string = R"hlo(
+  HloModule SliceWithReshape
+
+  ENTRY main {
+    %arg = f32[1,2024,4,128]{3,2,1,0} parameter(0)
+    %reshape.1 = f32[2,259072,2]{2,1,0} reshape(%arg)
+    %slice = f32[2,259072,1]{2,1,0} slice(%reshape.1), slice={[0:2], [0:259072], [1:2]}
+    ROOT %reshape.2 = f32[518144]{0} reshape(%slice)
+  }
+)hlo";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(module.get()).value());
+
+  auto* root = module->entry_computation()->root_instruction();
+  LOG(INFO) << module->ToString();
+
+  // Expected: Reshape(Slice(Arg))
+  // AlgebraicSimplifier merges the two reshapes.
+  ASSERT_EQ(root->opcode(), HloOpcode::kReshape);
+  ASSERT_EQ(root->operand_count(), 1);
+  ASSERT_EQ(root->operand(0)->opcode(), HloOpcode::kSlice);
+  ASSERT_EQ(root->operand(0)->operand_count(), 1);
+  ASSERT_EQ(root->operand(0)->operand(0)->opcode(), HloOpcode::kParameter);
+
+  auto* slice = root->operand(0);
+  EXPECT_EQ(slice->slice_strides()[3], 2);
+  EXPECT_EQ(slice->slice_starts()[3], 1);
+  EXPECT_EQ(slice->slice_limits()[3], 128);
+  EXPECT_EQ(slice->shape().dimensions(3), 64);
+}
+
+TEST_F(AlgebraicSimplifierTest, SmallSliceWithReshape) {
+  const absl::string_view hlo_string = R"hlo(
+  HloModule SliceWithReshape
+
+  ENTRY main {
+    %arg = f32[2]{0} parameter(0)
+    %reshape.1 = f32[2,1]{1,0} reshape(%arg)
+    %slice = f32[1,1]{1,0} slice(%reshape.1), slice={[0:1], [0:1]}
+    ROOT %reshape.2 = f32[1]{0} reshape(%slice)
+  }
+)hlo";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(module.get()).value());
+
+  auto* root = module->entry_computation()->root_instruction();
+  LOG(INFO) << module->ToString();
+
+  // Expected: Reshape(Slice(Arg))
+  // AlgebraicSimplifier merges the two reshapes.
+  ASSERT_EQ(root->opcode(), HloOpcode::kReshape);
+  ASSERT_EQ(root->operand_count(), 1);
+  ASSERT_EQ(root->operand(0)->opcode(), HloOpcode::kSlice);
+  ASSERT_EQ(root->operand(0)->operand_count(), 1);
+  ASSERT_EQ(root->operand(0)->operand(0)->opcode(), HloOpcode::kParameter);
+
+  auto* slice = root->operand(0);
+  EXPECT_EQ(slice->slice_strides()[0], 1);
+  EXPECT_EQ(slice->slice_starts()[0], 0);
+  EXPECT_EQ(slice->slice_limits()[0], 1);
+  EXPECT_EQ(slice->shape().dimensions(0), 1);
 }
 
 TEST_F(AlgebraicSimplifierTest, SliceOfBroadcastToBroadcast) {

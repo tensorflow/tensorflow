@@ -567,10 +567,19 @@ class HloEvaluator : public ConstDfsHloVisitorWithDefault,
     TF_RET_CHECK(ShapeUtil::SameDimensions(shape, operand->shape()));
 
     Literal result(shape);
-    TF_RETURN_IF_ERROR(
-        result.PopulateLinearParallel<ReturnT>([&](int64_t linear_index, int) {
-          return unary_op(operand_literal.GetLinear<NativeT>(linear_index));
-        }));
+    bool same_layout =
+        LayoutUtil::Equal(operand->shape().layout(), shape.layout());
+    if (same_layout) {
+      TF_RETURN_IF_ERROR(result.PopulateLinearParallel<ReturnT>(
+          [&](int64_t linear_index, int /*thread_id*/) {
+            return unary_op(operand_literal.GetLinear<NativeT>(linear_index));
+          }));
+    } else {
+      TF_RETURN_IF_ERROR(result.PopulateParallel<ReturnT>(
+          [&](absl::Span<const int64_t> multi_index, int /*thread_id*/) {
+            return unary_op(operand_literal.Get<NativeT>(multi_index));
+          }));
+    }
     return result;
   }
 

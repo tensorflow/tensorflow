@@ -18,16 +18,14 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "rocm/include/hip/hip_version.h"
 #include "xla/stream_executor/semantic_version.h"
-#include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/test.h"
 
 namespace stream_executor {
 
 namespace {
-using tsl::testing::IsOkAndHolds;
-using tsl::testing::StatusIs;
 
 TEST(ParseRocmVersionTest, Simple) {
   EXPECT_THAT(stream_executor::ParseRocmVersion(60'100'002),

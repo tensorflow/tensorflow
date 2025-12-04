@@ -112,7 +112,7 @@ REGISTER_OP("RestoreV2")
               "The number of shape_and_slice doesn't match tensor outputs.");
         }
         for (int i = 0; i < shape_and_slices_flat.size(); ++i) {
-          const string& shape_and_slice = shape_and_slices_flat(i);
+          const std::string& shape_and_slice = shape_and_slices_flat(i);
           if (shape_and_slice.empty()) {
             c->set_output(i, c->UnknownShape());
             continue;

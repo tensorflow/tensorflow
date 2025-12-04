@@ -21,6 +21,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/backends/gpu/runtime/thunk_pass_pipeline.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/xla.pb.h"
 
 namespace xla::gpu {
 

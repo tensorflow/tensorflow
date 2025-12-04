@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
 #include "xla/service/maybe_owning_device_memory.h"
 #include "xla/service/service_executable_run_options.h"
@@ -60,9 +61,9 @@ ExecutionInput::ExecutionInput(ExecutionInput&& rhs) noexcept
 absl::Status ExecutionInput::SetDynamicShape(Shape dynamic_shape) {
   const Shape& input_shape = shape();
   if (!ShapeUtil::DynamicShapeIsCompatible(input_shape, dynamic_shape)) {
-    return tsl::errors::InvalidArgument(
-        "Cannot set dynamic shape: ", input_shape.ToString(), " vs. ",
-        dynamic_shape.ToString());
+    return absl::InvalidArgumentError(
+        absl::StrCat("Cannot set dynamic shape: ", input_shape.ToString(),
+                     " vs. ", dynamic_shape.ToString()));
   }
   dynamic_shape_ = std::make_unique<Shape>(std::move(dynamic_shape));
   return absl::OkStatus();

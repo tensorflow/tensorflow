@@ -35,11 +35,10 @@ limitations under the License.
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Type.h"
 #include "llvm/Support/Casting.h"
-#include "xla/codegen/intrinsic/intrinsic.h"
+#include "xla/codegen/intrinsic/type.h"
 #include "xla/primitive_util.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
@@ -378,7 +377,7 @@ absl::StatusOr<llvm::Function*> EmitFxxToF8E(llvm::Module* module,
       /*dest_exponent_bits=*/primitive_util::ExponentWidth(fx_type),
       /*dest_mantissa_bits=*/f8_mantissa_bits,
       /*quiet_nans=*/true, &b);
-  TF_CHECK_OK(fx_reduced_statusor.status());  // Crash OK
+  CHECK_OK(fx_reduced_statusor.status());  // Crash OK
   Value* fx_reduced = b.CreateBitCast(fx_reduced_statusor.value(), ix_type);
   fx_reduced = b.CreateAnd(fx_reduced, nosign_mask);
 

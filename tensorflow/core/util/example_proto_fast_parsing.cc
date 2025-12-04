@@ -1177,7 +1177,7 @@ absl::Status FastParseExample(const Config& config,
     ok = true;
   }
   if (!ok) {
-    return errors::Internal(
+    return absl::InternalError(
         "Could not avoid collision. This should not happen.");
   }
 
@@ -1493,7 +1493,7 @@ absl::Status FastParseSingleExample(const Config& config,
     ok = true;
   }
   if (!ok) {
-    return errors::Internal(
+    return absl::InternalError(
         "Could not avoid collision. This should not happen.");
   }
 
@@ -1509,7 +1509,7 @@ absl::Status FastParseSingleExample(const Config& config,
     if (!config.dense[d].variable_length) {
       TensorShape values_shape;
       if (!config.dense[d].shape.AsTensorShape(&values_shape)) {
-        return errors::Internal(
+        return absl::InternalError(
             "Fixed-length shape was not a statically defined shape.");
       }
       result->dense_values.emplace_back(config.dense[d].dtype, values_shape);

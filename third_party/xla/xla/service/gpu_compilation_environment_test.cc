@@ -24,16 +24,13 @@ limitations under the License.
 #include "xla/parse_flags_from_env.h"
 #include "xla/service/compilation_environments.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/xla.pb.h"
-#include "tsl/platform/env.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/status_matchers.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
-
-using ::tsl::testing::StatusIs;
 
 void set_xla_flags_env_var(const std::string& xla_flags) {
   int* pargc;

@@ -151,10 +151,11 @@ class CommonAsyncHostToDeviceTransferManager
       }
       definition_events.push_back(std::move(definition_event_promise));
 
-      TF_ASSIGN_OR_RETURN(auto buffer,
-                          client->DefineBuffer(device_shape, raw_buffer,
-                                               {std::move(definition_event)},
-                                               /*raw_buffer_is_mutable=*/true));
+      TF_ASSIGN_OR_RETURN(
+          auto buffer,
+          client->DefineBuffer(device_shape, memory_space, raw_buffer,
+                               {std::move(definition_event)},
+                               /*raw_buffer_is_mutable=*/true));
       device_shapes.push_back(std::move(device_shape));
       buffers.push_back(std::move(buffer));
       undispatched_buffer_refs.push_back(raw_buffer);

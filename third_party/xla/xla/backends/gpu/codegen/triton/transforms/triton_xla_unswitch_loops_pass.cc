@@ -80,13 +80,13 @@ LogicalResult UnswitchLoop(mlir::scf::ForOp for_op,
   for (int body_index : {0, 1}) {
     auto builder = OpBuilder::atBlockEnd(new_if.getBody(body_index),
                                          rewriter.getListener());
-    arith::ConstantOp condition = builder.create<arith::ConstantOp>(
-        for_op.getLoc(),
+    arith::ConstantOp condition = arith::ConstantOp::create(
+        builder, for_op.getLoc(),
         rewriter.getIntegerAttr(rewriter.getI1Type(), body_index == 0));
     IRMapping mapping;
     mapping.map(if_op.getCondition(), condition);
     Operation* new_for = builder.clone(*for_op, mapping);
-    builder.create<scf::YieldOp>(for_op.getLoc(), new_for->getResults());
+    scf::YieldOp::create(builder, for_op.getLoc(), new_for->getResults());
   }
   rewriter.replaceOp(for_op, new_if);
   return success();

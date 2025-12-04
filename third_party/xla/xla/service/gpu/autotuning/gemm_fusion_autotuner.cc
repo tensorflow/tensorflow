@@ -41,6 +41,7 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
+#include "mlir/IR/MLIRContext.h"
 #include "google/protobuf/text_format.h"
 #include "xla/autotune_results.pb.h"
 #include "xla/autotuning.pb.h"
@@ -49,7 +50,6 @@ limitations under the License.
 #include "xla/backends/gpu/autotuner/fission_backend.h"
 #include "xla/backends/gpu/autotuner/triton.h"
 #include "xla/backends/gpu/runtime/buffer_comparator.h"
-#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_clone_context.h"
@@ -68,6 +68,7 @@ limitations under the License.
 #include "xla/service/compiler.h"
 #include "xla/service/dump.h"
 #include "xla/service/executable.h"
+#include "xla/service/gpu/autotuning/autotune_cache_key.h"
 #include "xla/service/gpu/autotuning/autotuner_compile_util.h"
 #include "xla/service/gpu/autotuning/autotuner_pass.h"
 #include "xla/service/gpu/autotuning/autotuner_status_key.h"
@@ -97,12 +98,10 @@ limitations under the License.
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/matmul_indexing_utils.h"
 #include "xla/service/shaped_buffer.h"
-#include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/cuda/ptx_compiler_helpers.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/gpu/redzone_allocator.h"
 #include "xla/stream_executor/gpu/tma_metadata.h"
@@ -112,7 +111,6 @@ limitations under the License.
 #include "xla/tools/hlo_decomposer.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/threadpool.h"
 #include "xla/tsl/util/proto/proto_utils.h"
@@ -120,7 +118,6 @@ limitations under the License.
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/path.h"
-#include "tsl/platform/protobuf.h"
 #include "tsl/profiler/lib/scoped_annotation.h"
 #include "tsl/profiler/lib/traceme.h"
 
@@ -134,6 +131,8 @@ limitations under the License.
 
 namespace xla {
 namespace gpu {
+
+using ::mlir::MLIRContext;
 
 using BackendConfig = GemmFusionAutotunerImpl::BackendConfig;
 using BackendConfigs = GemmFusionAutotunerImpl::BackendConfigs;
@@ -201,8 +200,7 @@ class GemmFusionCollector : public ConstDfsHloVisitorWithDefault {
         gpu_config.fusion_backend_config();
     if (backend_config.kind() != kTritonGemmFusionKind &&
         backend_config.kind() != kCuDnnFusionKind &&
-        backend_config.kind() != kCustomFusionKind &&
-        backend_config.kind() != kTritonScaledDotFusionKind) {
+        backend_config.kind() != kCustomFusionKind) {
       return absl::OkStatus();
     }
 
@@ -299,14 +297,13 @@ absl::StatusOr<std::unique_ptr<HloModule>> TritonGemmAutotuneExtractor(
     const TritonGemmConfig& config,
     const se::DeviceDescription& gpu_device_info,
     const HloFusionInstruction* fusion, DebugOptions debug_opts,
-    SymbolicExprContext* symbolic_expr_context,
+    MLIRContext* mlir_context,
     bool allow_filtering_kernels_spilling_registers) {
   tsl::profiler::TraceMe traceme("TritonGemmAutotuneExtractor");
   std::unique_ptr<HloModule> new_module =
       ExtractInstructionIntoNewModule(*fusion);
   if (!allow_filtering_kernels_spilling_registers) {
-    debug_opts.set_xla_gpu_filter_kernels_spilling_registers_on_autotuning(
-        false);
+    debug_opts.set_xla_gpu_fail_ptx_compilation_on_register_spilling(true);
   }
   new_module->mutable_config().set_debug_options(debug_opts);
 
@@ -333,7 +330,7 @@ absl::StatusOr<std::unique_ptr<HloModule>> TritonGemmAutotuneExtractor(
 
     PriorityFusion priority_fusion(
         /*thread_pool=*/nullptr, gpu_device_info, PriorityFusionOptions(),
-        symbolic_expr_context);
+        mlir_context);
     TF_RETURN_IF_ERROR(priority_fusion.Run(new_module.get()).status());
 
     // If the priority fusion pass above skipped some instructions, turn them
@@ -342,19 +339,8 @@ absl::StatusOr<std::unique_ptr<HloModule>> TritonGemmAutotuneExtractor(
     TF_RETURN_IF_ERROR(fusion_wrapper.Run(new_module.get()).status());
   }
 
-  NestGemmFusion nest_gemm_fusion(gpu_device_info, symbolic_expr_context);
+  NestGemmFusion nest_gemm_fusion(gpu_device_info, mlir_context);
   TF_RETURN_IF_ERROR(nest_gemm_fusion.Run(new_module.get()).status());
-  bool is_legacy_gemm_disabled = absl::c_contains(
-      debug_opts.xla_gpu_unsupported_generic_triton_emitter_features(),
-      DebugOptions::GENERIC_TRITON_EMITTER_DISABLE_LEGACY_GEMM);
-  bool is_triton_gemm_fusion =
-      IsGpuFusionKind(*new_module->entry_computation()->root_instruction(),
-                      kTritonGemmFusionKind);
-  if (is_legacy_gemm_disabled && is_triton_gemm_fusion) {
-    return absl::InternalError(
-        absl::StrCat("Unexpected ", kTritonGemmFusionKind,
-                     " fusion: ", new_module->ToString()));
-  }
   return new_module;
 }
 
@@ -362,7 +348,7 @@ absl::StatusOr<std::unique_ptr<HloModule>> CublasGemmAutotuneExtractor(
     const AutotuneConfig& config, const se::DeviceDescription& gpu_device_info,
     const se::SemanticVersion& toolkit_version,
     const HloFusionInstruction* fusion, const DebugOptions& debug_opts,
-    SymbolicExprContext* symbolic_expr_context) {
+    MLIRContext* mlir_context) {
   tsl::profiler::TraceMe traceme("CublasGemmAutotuneExtractor");
   const HloComputation* fusion_computation = fusion->called_computation();
   std::unique_ptr<HloModule> new_module =
@@ -393,7 +379,7 @@ absl::StatusOr<std::unique_ptr<HloModule>> CublasGemmAutotuneExtractor(
     DotAlgorithmRewriter dot_algorithm_rewriter;
     PriorityFusion fusion_pass(
         /*thread_pool=*/nullptr, gpu_device_info, PriorityFusionOptions(),
-        symbolic_expr_context);
+        mlir_context);
     TF_RETURN_IF_ERROR(scaled_dot_rewriter.Run(new_module.get()).status());
     TF_RETURN_IF_ERROR(dot_algorithm_rewriter.Run(new_module.get()).status());
     TF_RETURN_IF_ERROR(gemm_rewriter.Run(new_module.get()).status());
@@ -418,7 +404,7 @@ absl::StatusOr<std::unique_ptr<HloModule>> CustomFusionKernelAutotuneExtractor(
     const GemmFusionAutotunerImpl::CustomKernelFusionConfig& cutlass_config,
     const AutotuneConfig& config, const se::SemanticVersion& toolkit_version,
     const HloFusionInstruction* fusion, const DebugOptions& debug_opts,
-    SymbolicExprContext* symbolic_expr_context) {
+    MLIRContext* mlir_context) {
   tsl::profiler::TraceMe traceme("CustomFusionKernelAutotuneExtractor");
   const HloComputation* fusion_computation = fusion->called_computation();
   std::unique_ptr<HloModule> new_module =
@@ -428,7 +414,7 @@ absl::StatusOr<std::unique_ptr<HloModule>> CustomFusionKernelAutotuneExtractor(
   CustomKernelFusionRewriter rewriter(&config.GetDeviceDescription());
   PriorityFusion fusion_pass(
       /*thread_pool=*/nullptr, config.GetDeviceDescription(),
-      PriorityFusionOptions(), symbolic_expr_context);
+      PriorityFusionOptions(), mlir_context);
   TF_RETURN_IF_ERROR(rewriter.Run(new_module.get()).status());
   TF_RETURN_IF_ERROR(fusion_pass.Run(new_module.get()).status());
 
@@ -471,7 +457,7 @@ absl::StatusOr<std::unique_ptr<HloModule>> CuDnnFusionExtractor(
   GpuBackendConfig gpu_config;
   FusionBackendConfig& backend_config =
       *gpu_config.mutable_fusion_backend_config();
-  backend_config.set_kind(std::string(kCuDnnFusionKind));
+  backend_config.set_kind(kCuDnnFusionKind);
   // Provided a plan ID the autotuner just compiles one plan.
   backend_config.mutable_cudnn_fusion_config()->set_plan_id(plan_id);
   TF_RETURN_IF_ERROR(root->set_backend_config(gpu_config));
@@ -536,7 +522,7 @@ absl::StatusOr<std::unique_ptr<HloModule>> GetAutotunedModule(
     const AutotuneConfig& autotune_config,
     const se::SemanticVersion& toolkit_version, AutotunerCompileUtil& util,
     const AutotuneResult result, const HloFusionInstruction* fusion,
-    int fusion_id, SymbolicExprContext* symbolic_expr_context) {
+    int fusion_id, MLIRContext* mlir_context) {
   TritonGemmConfig triton_gemm_config;
   if (result.has_triton()) {
     TF_ASSIGN_OR_RETURN(triton_gemm_config,
@@ -557,14 +543,13 @@ absl::StatusOr<std::unique_ptr<HloModule>> GetAutotunedModule(
         }
         if (result.has_triton()) {
           return TritonGemmAutotuneExtractor(
-              triton_gemm_config, device_desc, fusion, debug_opts,
-              symbolic_expr_context,
+              triton_gemm_config, device_desc, fusion, debug_opts, mlir_context,
               /*allow_filtering_kernels_spilling_registers=*/true);
         }
         if (result.has_gemm()) {
           return CublasGemmAutotuneExtractor(autotune_config, device_desc,
                                              toolkit_version, fusion,
-                                             debug_opts, symbolic_expr_context);
+                                             debug_opts, mlir_context);
         }
         LOG(FATAL) << "Unknown result type: " << result.DebugString();
       }));
@@ -607,7 +592,10 @@ bool IsScaledDotFusion(const HloInstruction* fusion_instr) {
   if (fusion_instr->fusion_kind() != HloInstruction::FusionKind::kCustom) {
     return false;
   }
-  return IsGpuFusionKind(*fusion_instr, kTritonScaledDotFusionKind);
+  return IsGpuFusionKind(*fusion_instr, kTritonGemmFusionKind) &&
+         hlo_query::GetFirstInstructionWithOpcode(
+             *fusion_instr->fused_instructions_computation(),
+             HloOpcode::kScaledDot) != nullptr;
 }
 
 absl::Status RewriteGemmFusionToCall(HloInstruction* fusion_instr) {
@@ -710,8 +698,7 @@ absl::Status GemmFusionAutotunerRewriterVisitor::HandleFusion(
   // Only autotune Triton, cuDNN, and custom kernel fusions.
   if (fusion_backend_config.kind() != kTritonGemmFusionKind &&
       fusion_backend_config.kind() != kCuDnnFusionKind &&
-      fusion_backend_config.kind() != kCustomFusionKind &&
-      fusion_backend_config.kind() != kTritonScaledDotFusionKind) {
+      fusion_backend_config.kind() != kCustomFusionKind) {
     return absl::OkStatus();
   }
 
@@ -774,7 +761,7 @@ absl::Status GemmFusionAutotunerRewriterVisitor::HandleFusion(
 
   // Autotune result has a cuDNN fusion.
   CHECK(autotune_result.has_algorithm());
-  if (fusion_backend_config.kind() == kTritonScaledDotFusionKind) {
+  if (IsScaledDotFusion(fusion_instr)) {
     TF_ASSIGN_OR_RETURN(fusion_instr,
                         CudnnScaledDotHelper::AddScaleSwizzle(
                             Cast<HloFusionInstruction>(fusion_instr)));
@@ -1031,7 +1018,17 @@ GemmFusionAutotunerImpl::GenerateTritonConfigs(const HloDotInstruction& dot) {
       /*autotune_tma=*/autotune_tma,
       /*autotune_warp_specialization=*/autotune_warp_specialization);
 
-  if (!debug_options_.xla_gpu_exhaustive_tiling_search()) {
+  if (auto overrides = config_.gemm_config_overrides(); overrides.has_value()) {
+    VLOG(1) << "Restricting configs to the overridden set.";
+    std::vector<TritonGemmConfig> allowed_configs;
+    for (const AutotuneResult::TritonGemmKey& key : *overrides) {
+      TF_ASSIGN_OR_RETURN(TritonGemmConfig config,
+                          TritonGemmConfig::FromProto(key));
+      allowed_configs.push_back(std::move(config));
+    }
+    configs =
+        search_space.OptimizeConfigSet(configs, /*hints=*/allowed_configs);
+  } else if (!debug_options_.xla_gpu_exhaustive_tiling_search()) {
     VLOG(1) << "Restricting configs to the default set.";
     configs = search_space.OptimizeConfigSet(
         configs, /*hints=*/GetDefaultTritonConfigs());
@@ -1088,16 +1085,9 @@ GemmFusionAutotunerImpl::CompileAll(AutotunerCompileUtil& compile_util,
       auto executable_or = compile_util.Compile([&](const DebugOptions& opts) {
         return TritonGemmAutotuneExtractor(
             std::get<TritonGemmConfig>(config), config_.GetDeviceDescription(),
-            fusion, opts, symbolic_expr_context_,
+            fusion, opts, mlir_context_,
             allow_filtering_kernels_spilling_registers);
       });
-      if (absl::c_contains(
-              debug_options_
-                  .xla_gpu_unsupported_generic_triton_emitter_features(),
-              DebugOptions::
-                  GENERIC_TRITON_EMITTER_MUST_ACCEPT_ALL_AUTOTUNER_CONFIGS)) {
-        return executable_or;
-      }
       absl::StatusCode code = executable_or.status().code();
       // TODO(b/447113513): we should not silently ignore that wide range of
       // errors as we might hide real regressions and drop the optimal
@@ -1127,7 +1117,7 @@ GemmFusionAutotunerImpl::CompileAll(AutotunerCompileUtil& compile_util,
       return compile_util.Compile([&](const DebugOptions& opts) {
         return CublasGemmAutotuneExtractor(
             config_, config_.GetDeviceDescription(), toolkit_version_, fusion,
-            opts, symbolic_expr_context_);
+            opts, mlir_context_);
       });
     }
 
@@ -1135,7 +1125,7 @@ GemmFusionAutotunerImpl::CompileAll(AutotunerCompileUtil& compile_util,
       return compile_util.Compile([&](const DebugOptions& opts) {
         return CustomFusionKernelAutotuneExtractor(
             std::get<CustomKernelFusionConfig>(config), config_,
-            toolkit_version_, fusion, opts, symbolic_expr_context_);
+            toolkit_version_, fusion, opts, mlir_context_);
       });
     }
 
@@ -1175,7 +1165,7 @@ GemmFusionAutotunerImpl::CompileAll(AutotunerCompileUtil& compile_util,
                   << Serialize(config) << "'";
           absl::StatusOr<std::unique_ptr<Executable>> executable =
               compile(fusion, config, gemm_config_set.size() > 1);
-          TF_CHECK_OK(executable.status())
+          CHECK_OK(executable.status())
               << " - Failure occured when compiling fusion " << fusion->name()
               << " with config '" << ConfigToString(config)
               << "'\nFused HLO computation:\n"
@@ -1446,9 +1436,8 @@ absl::Status GemmFusionAutotunerImpl::Autotune(
     if (debug_options_.xla_gpu_dump_autotuned_gemm_fusions() ||
         !debug_options_.xla_gpu_dump_autotune_logs_to().empty()) {
       TF_ASSIGN_OR_RETURN(
-          module,
-          GetAutotunedModule(config_, toolkit_version_, compile_util, best,
-                             fusion, fusion_id, symbolic_expr_context_));
+          module, GetAutotunedModule(config_, toolkit_version_, compile_util,
+                                     best, fusion, fusion_id, mlir_context_));
     }
 
     if (debug_options_.xla_gpu_dump_autotuned_gemm_fusions()) {
@@ -1573,7 +1562,7 @@ absl::StatusOr<bool> GemmFusionAutotuner::RunImpl(
   }
 
   GemmFusionAutotunerImpl autotuner(config_, toolkit_version_, debug_options,
-                                    thread_pool_, symbolic_expr_context_);
+                                    thread_pool_, mlir_context_);
   GemmFusionCollector fusion_collector(&autotuner);
   TF_ASSIGN_OR_RETURN(
       GemmFusionCollectorResult fusions,
@@ -1702,17 +1691,16 @@ absl::StatusOr<bool> GemmFusionAutotuner::RunViaNewInfra(
   TF_ASSIGN_OR_RETURN(std::unique_ptr<Compiler> compiler,
                       Compiler::GetForPlatform(stream_exec->GetPlatform()));
   se::DeviceMemoryAllocator* device_allocator = config_.GetAllocator();
-  std::unique_ptr<Compiler::TargetConfig> target_config;
-  target_config = std::make_unique<Compiler::TargetConfig>(stream_exec);
+  std::unique_ptr<Compiler::GpuTargetConfig> target_config;
+  target_config = std::make_unique<Compiler::GpuTargetConfig>(stream_exec);
   backends.push_back(std::make_unique<TritonBackend>(
-      &debug_options, compiler.get(), target_config.get(),
-      symbolic_expr_context_));
+      &debug_options, compiler.get(), target_config.get(), mlir_context_));
   backends.push_back(std::make_unique<FissionBackend>(
       &debug_options, compiler.get(), target_config.get(),
       std::make_unique<CublasBackend>(stream_exec, &debug_options,
                                       compiler.get(), target_config.get()),
       GetCublasRewriterPipeline(target_config->device_description),
-      symbolic_expr_context_));
+      mlir_context_));
   auto should_autotune = [](const HloInstruction& instruction) -> bool {
     if (instruction.opcode() != HloOpcode::kFusion) {
       return false;

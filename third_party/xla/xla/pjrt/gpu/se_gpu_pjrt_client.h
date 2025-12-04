@@ -195,8 +195,8 @@ class StreamExecutorGpuClient : public xla::PjRtStreamExecutorClient {
       bool lookup_addressable_devices) override;
 
  private:
-  absl::StatusOr<absl::flat_hash_map<GlobalDeviceId, IncarnationId>>
-  GetLatestIncarnations(const ExecuteOptions& options);
+  absl::flat_hash_map<GlobalDeviceId, IncarnationId> GetLatestIncarnations(
+      const ExecuteOptions& options);
 
   std::optional<int> num_nodes_;
   const bool abort_collectives_on_failure_ = false;

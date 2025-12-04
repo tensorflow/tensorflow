@@ -40,9 +40,9 @@ limitations under the License.
 namespace xla::cpu {
 
 absl::InlinedVector<BufferUse, 4> DotBufferUses(const DotSlices& slices) {
-  return {BufferUse::Read(slices.lhs_buffer),
-          BufferUse::Read(slices.rhs_buffer),
-          BufferUse::Write(slices.out_buffer)};
+  return {BufferUse::Read(slices.lhs_buffer, slices.lhs_shape),
+          BufferUse::Read(slices.rhs_buffer, slices.rhs_shape),
+          BufferUse::Write(slices.out_buffer, slices.out_shape)};
 }
 
 std::string MakeVectorString(absl::Span<const int64_t> values) {

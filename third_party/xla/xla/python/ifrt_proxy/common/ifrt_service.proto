@@ -166,6 +166,9 @@ message RequestMetadata {
   // resync after transient connectivity failures.
   fixed64 op_id = 1;
 
+  // User context ID of the operation.
+  fixed64 user_context_id = 5;
+
   // Implementation-specific payloads.
   repeated google.protobuf.Any payloads = 4;
 
@@ -194,6 +197,13 @@ message ResponseMetadata {
   //    specific error type or string when this is not OK, they should check the
   //    response message for individual absl::Statuses.
   tensorflow.StatusProto status = 2;
+
+  // The sequence number of the response.
+  int64 seq_num = 3;
+
+  // IDs of the destroyed user contexts since the last response identified by
+  // `seq_num` - 1.
+  repeated fixed64 destroyed_user_context_ids = 4;
 }
 
 // InitRequest allows the client to specify the optional startup configuration

@@ -14,24 +14,46 @@ limitations under the License.
 ==============================================================================*/
 
 #include <memory>
+#include <string>
 #include <utility>
 #include <vector>
 
 #include "xla/tests/xla_test_backend_predicates.h"
+#include <gtest/gtest.h>
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/match.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "xla/client/client_library.h"
 #include "xla/client/local_client.h"
+#include "xla/comparison_util.h"
+#include "xla/executable_run_options.h"
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/literal.h"
+#include "xla/literal_util.h"
 #include "xla/service/backend.h"
 #include "xla/service/executable.h"
-#include "xla/status_macros.h"
+#include "xla/service/hlo_module_config.h"
+#include "xla/service/maybe_owning_device_memory.h"
+#include "xla/service/service_executable_run_options.h"
+#include "xla/service/shaped_buffer.h"
+#include "xla/shape.h"
+#include "xla/shape_tree.h"
+#include "xla/shape_util.h"
+#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_memory_allocator.h"
+#include "xla/stream_executor/platform.h"
+#include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/stream_executor_memory_allocator.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -49,7 +71,7 @@ class BufferDonationTest : public HloTestBase {
     backend_ = client_->mutable_backend();
     platform_ = backend_->platform();
     executor_ = backend_->default_stream_executor();
-    TF_CHECK_OK(executor_->Init());
+    CHECK_OK(executor_->Init());
   }
 
  protected:
@@ -106,7 +128,7 @@ class BufferDonationTest : public HloTestBase {
               argument_literal.shape(), &memory_allocator,
               executor_->device_ordinal()));
       ShapedBuffer shaped_buffer = scoped_shaped_buffer.release();
-      TF_CHECK_OK(backend_->transfer_manager()->TransferLiteralToDevice(
+      CHECK_OK(backend_->transfer_manager()->TransferLiteralToDevice(
           stream.get(), argument_literal, shaped_buffer));
       ShapeTree<se::DeviceMemoryBase> input_buffers = shaped_buffer.buffers();
       inputs_buffers.push_back(input_buffers);

@@ -36,8 +36,20 @@ absl::Status IfrtRestoreTensorRegistry::TryRegister(
   absl::MutexLock lock(mutex_);
   auto& info = restored_tensors_[name];
   if (info.tensor_future.IsValid()) {
-    return absl::AlreadyExistsError(
-        absl::StrCat("Variable '", name, "' already registered."));
+    if (info.dtype_and_shape != restored_tensor_info.dtype_and_shape) {
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Variable '", name, "' already registered with dtype ",
+          info.dtype_and_shape.dtype, " and shape ",
+          info.dtype_and_shape.shape.DebugString(),
+          " but trying to register with dtype ",
+          restored_tensor_info.dtype_and_shape.dtype, " and shape ",
+          restored_tensor_info.dtype_and_shape.shape.DebugString()));
+    }
+    LOG(WARNING)
+        << "Variable named '" << name
+        << "' has been already registered. Ignore request of a new tensor with "
+           "same name, dtype and shape.";
+    return absl::OkStatus();
   }
   info = std::move(restored_tensor_info);
   return absl::OkStatus();

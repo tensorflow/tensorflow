@@ -33,10 +33,10 @@ limitations under the License.
 // ]
 struct CollectiveKernelMetadata {
   uint64_t rank;
-  uint64_t* param_to_peers;
+  void** param_to_peers;
 
   // Root pointer for multicast buffer for current device.
-  uint64_t multicast_buffer_ptr;
+  void* multicast_buffer_ptr;
 };
 
 #endif  // XLA_STREAM_EXECUTOR_GPU_COLLECTIVE_KERNEL_METADATA_H_

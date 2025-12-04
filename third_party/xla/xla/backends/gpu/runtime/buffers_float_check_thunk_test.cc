@@ -32,7 +32,6 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/thunk_id.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/buffer_allocations.h"
-#include "xla/service/gpu/resource_requests.h"
 #include "xla/service/service_executable_run_options.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/gpu/buffer_debug_log.h"
@@ -151,7 +150,6 @@ TEST_F(BuffersDebugFloatCheckThunkTest, CalculatesNanCounts) {
   Thunk::InitializeParams init_params;
   init_params.executor = executor_;
   init_params.stream = stream_.get();
-  ResourceRequests resource_requests;
   auto execute_params = Thunk::ExecuteParams::Create(
       ServiceExecutableRunOptions(), allocations, stream_.get(),
       /*command_buffer_trace_stream=*/stream_.get(),
@@ -165,7 +163,7 @@ TEST_F(BuffersDebugFloatCheckThunkTest, CalculatesNanCounts) {
       {{/*buffer_idx=*/0, inputs[0]}, {/*buffer_idx=*/1, inputs[1]}},
       metadata_store);
   TF_ASSERT_OK(thunk.Initialize(init_params));
-  TF_ASSERT_OK(thunk.Prepare(Thunk::PrepareParams{}, resource_requests));
+  TF_ASSERT_OK(thunk.Prepare(Thunk::PrepareParams{}));
   TF_ASSERT_OK(thunk.ExecuteOnStream(execute_params));
   TF_ASSERT_OK_AND_ASSIGN(std::vector<BufferDebugFloatCheckEntry> entries,
                           device_log.ReadFromDevice(*stream_));

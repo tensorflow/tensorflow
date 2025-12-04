@@ -68,7 +68,7 @@ class TiledHloSchedule {
   //     results are generated, but may not change the results themselves);
   virtual absl::StatusOr<IndexingMap> Schedule(
       const IndexingMap& tile_offsets_indexing, IterationSpace iteration_space,
-      SymbolicExprContext* ctx) const = 0;
+      mlir::MLIRContext* ctx) const = 0;
 };
 
 // The indexing map returned by this schedule iterates over the iteration space
@@ -79,7 +79,7 @@ class MajorToMinorTiledHloSchedule : public TiledHloSchedule {
  public:
   absl::StatusOr<IndexingMap> Schedule(const IndexingMap& tile_offsets_indexing,
                                        IterationSpace iteration_space,
-                                       SymbolicExprContext* ctx) const override;
+                                       mlir::MLIRContext* ctx) const override;
 };
 
 // Convenience function to produce a `MajorToMinorTiledHloSchedule` that
@@ -104,7 +104,7 @@ class TransposedDotTiledHloSchedule : public TiledHloSchedule {
  public:
   absl::StatusOr<IndexingMap> Schedule(const IndexingMap& tile_offsets_indexing,
                                        IterationSpace iteration_space,
-                                       SymbolicExprContext* ctx) const override;
+                                       mlir::MLIRContext* ctx) const override;
 
   static absl::StatusOr<std::unique_ptr<TransposedDotTiledHloSchedule>> Create(
       const TilingSpecification& tiling_specification);

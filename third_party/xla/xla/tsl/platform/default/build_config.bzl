@@ -311,7 +311,7 @@ def tf_proto_library(
             generate_mocks = True,
             visibility = visibility,
             compatible_with = compatible_with,
-            deps = [":{}".format(cc_proto_name)],
+            deps = [":{}".format(cc_proto_name), "@com_github_grpc_grpc//:grpc++"],
             plugin_flags = ["services_namespace=grpc"],
             grpc_only = True,
         )
@@ -419,18 +419,28 @@ def tf_fingerprint_deps():
         "@farmhash_archive//:farmhash",
     ]
 
+def _protobuf_deps():
+    return [
+        clean_dep("@com_google_protobuf//:delimited_message_util"),
+        clean_dep("@com_google_protobuf//:differencer"),
+        clean_dep("@com_google_protobuf//:json_util"),
+        clean_dep("@com_google_protobuf//:type_resolver"),
+        clean_dep("@com_google_protobuf//:protobuf"),
+        clean_dep("@com_google_protobuf//:protobuf_lite"),
+        clean_dep("@com_google_protobuf//src/google/protobuf/io"),
+        clean_dep("@com_google_protobuf//src/google/protobuf/io:tokenizer"),
+    ]
+
 def tf_protobuf_deps():
     return if_static(
-        [
-            clean_dep("@com_google_protobuf//:protobuf"),
-        ],
+        _protobuf_deps(),
         otherwise = [clean_dep("@com_google_protobuf//:protobuf_headers")],
     )
 
 # TODO(b/356020232): remove completely after migration is done
 # Link protobuf, unless the tsl_link_protobuf build flag is explicitly set to false.
 def tsl_protobuf_deps():
-    return if_tsl_link_protobuf([clean_dep("@com_google_protobuf//:protobuf")], [clean_dep("@com_google_protobuf//:protobuf_headers")])
+    return if_tsl_link_protobuf(_protobuf_deps(), [clean_dep("@com_google_protobuf//:protobuf_headers")])
 
 def strict_cc_test(
         name,

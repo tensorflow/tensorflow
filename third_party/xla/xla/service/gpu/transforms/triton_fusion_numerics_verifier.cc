@@ -64,8 +64,9 @@ limitations under the License.
 #include "xla/xla.pb.h"
 
 namespace xla::gpu {
-
 namespace {
+
+using ::mlir::MLIRContext;
 
 using ProfilingOutput = AutotunerCompileUtil::ProfilingOutput;
 
@@ -125,8 +126,7 @@ absl::Status InlineModuleFusions(HloModule* hlo_module) {
 // days instead of milliseconds).
 absl::StatusOr<std::unique_ptr<HloModule>> NewHloModuleFromFusionComputation(
     const HloFusionInstruction& fusion, const DebugOptions& debug_opts,
-    const se::DeviceDescription& gpu_device_info,
-    SymbolicExprContext* symbolic_expr_context) {
+    const se::DeviceDescription& gpu_device_info, MLIRContext* mlir_context) {
   std::unique_ptr<HloModule> new_module =
       ExtractComputationIntoNewModule(*fusion.fused_instructions_computation());
   new_module->mutable_config().set_debug_options(debug_opts);
@@ -150,7 +150,7 @@ absl::StatusOr<std::unique_ptr<HloModule>> NewHloModuleFromFusionComputation(
           .status());
   PriorityFusion fusion_pass(
       /*thread_pool=*/nullptr, gpu_device_info, HloCostAnalysis::Options{},
-      symbolic_expr_context);
+      mlir_context);
   TF_RETURN_IF_ERROR(fusion_pass.Run(new_module.get()).status());
 
   // If the priority fusion pass above skipped some instructions, turn them
@@ -176,13 +176,13 @@ namespace triton_fusion_numerics_pass_internal {
 absl::StatusOr<ScopedShapedBuffer> CompileAndRunFusion(
     AutotunerCompileUtil& util, const HloFusionInstruction& fusion,
     const DeviceOrDevicelessConfig& config, const DebugOptions& debug_opts,
-    bool disable_triton, SymbolicExprContext* symbolic_expr_context) {
+    bool disable_triton, MLIRContext* mlir_context) {
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<Executable> executable,
       util.Compile([&](const DebugOptions& opts) {
         return disable_triton ? NewHloModuleFromFusionComputation(
                                     fusion, opts, config.GetDeviceDescription(),
-                                    symbolic_expr_context)
+                                    mlir_context)
                               : NewHloModuleWithTritonFromFusion(fusion, opts);
       }));
   if (executable == nullptr) {
@@ -254,15 +254,15 @@ absl::Status VerifyTritonFusion(AutotunerCompileUtil& util,
                                 const HloFusionInstruction& fusion,
                                 const DeviceOrDevicelessConfig& config,
                                 const DebugOptions& debug_opts,
-                                SymbolicExprContext* symbolic_expr_context) {
+                                MLIRContext* mlir_context) {
   TF_ASSIGN_OR_RETURN(auto triton_result,
                       triton_fusion_numerics_pass_internal::CompileAndRunFusion(
                           util, fusion, config, debug_opts,
-                          /*disable_triton=*/false, symbolic_expr_context));
+                          /*disable_triton=*/false, mlir_context));
   TF_ASSIGN_OR_RETURN(auto emitters_result,
                       triton_fusion_numerics_pass_internal::CompileAndRunFusion(
                           util, fusion, config, debug_opts,
-                          /*disable_triton=*/true, symbolic_expr_context));
+                          /*disable_triton=*/true, mlir_context));
 
   TF_ASSIGN_OR_RETURN(auto stream, config.GetStream());
   auto status = triton_fusion_numerics_pass_internal::CompareBuffers(
@@ -325,7 +325,7 @@ absl::StatusOr<bool> TritonFusionNumericsVerifier::RunImpl(
           return it->second;
         }
         auto result = VerifyTritonFusion(compile_util, fusion, config_,
-                                         debug_options, symbolic_expr_context_);
+                                         debug_options, mlir_context_);
         fusion_result_cache_[key] = result;
         return result;
       }));

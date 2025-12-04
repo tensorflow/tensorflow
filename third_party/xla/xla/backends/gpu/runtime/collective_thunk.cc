@@ -37,12 +37,13 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
+#include "xla/backends/gpu/runtime/collective_cliques.h"
+#include "xla/backends/gpu/runtime/collective_params.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/core/collectives/communicator.h"
 #include "xla/core/collectives/rank_id.h"
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/ir/collective_op_group_mode.h"
-#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/primitive_util.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/computation_placer.h"
@@ -50,6 +51,7 @@ limitations under the License.
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/rendezvous.h"
 #include "xla/shape.h"
+#include "xla/status_macros.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/stream.h"
@@ -64,7 +66,6 @@ namespace xla::gpu {
 namespace {
 
 static constexpr int64_t kCollectiveMemorySpaceColor = 1;
-static constexpr CollectiveStreamId kNoStreamId = CollectiveStreamId(0);
 
 bool IsTypeSupportedBy(PrimitiveType element_type, Thunk::Kind reduction_op) {
   switch (element_type) {
@@ -99,7 +100,7 @@ bool IsTypeSupportedBy(PrimitiveType element_type, Thunk::Kind reduction_op) {
 }
 
 int64_t GetNumLocalParticipants(
-    const Thunk::CollectiveExecuteParams& params,
+    const CollectiveParams& params,
     const std::vector<GlobalDeviceId>& participants) {
   if (!params.global_device_id_map) {
     return participants.size();
@@ -117,19 +118,6 @@ int64_t GetNumLocalParticipants(
 }
 
 }  // namespace
-
-// This file runs collective ops (i.e. ops that communicate between multiple
-// GPUs) using NCCL.
-//
-// Here's a high-level overview of how running an op works.
-//
-//  - Multiple threads call ExecuteOnStream.
-//  - All threads that "go together" (i.e. are participating in the "same"
-//    collective op) choose the same Rendezvous object from a global map.
-//  - Once all threads have arrived at the Rendezvous, we know exactly which
-//    GPUs are participating in the op, so we get or create a NcclClique
-//    containing those GPUs.
-//  - We perform the NCCL operation using the clique.
 
 // Returns if the collective communication operation is degenerate because all
 // the groups formed by the operation are singleton. A given op can be
@@ -180,47 +168,14 @@ bool CollectiveConfig::IsDegenerate(int64_t replica_count,
   }
 }
 
-void CollectiveConfig::SetCollectiveOpKindAndID(
-    const HloCollectivePermuteInstruction* instr) {
-  if (instr->channel_id().has_value()) {
-    collective_op_kind = RendezvousKey::kCrossModule;
-    op_id = instr->channel_id().value();
-  } else {
-    collective_op_kind = RendezvousKey::kCrossReplica;
-    op_id = static_cast<int64_t>(instr->GetModule()->unique_id());
-  }
-}
-
-void CollectiveConfig::SetCollectiveOpKindAndID(
-    const HloSendRecvInstruction* instr) {
-  int64_t channel_id = instr->channel_id().value_or(0);
-  if (channel_id > 0) {
-    collective_op_kind = RendezvousKey::kCrossModule;
-    op_id = channel_id;
-  } else {
-    collective_op_kind = RendezvousKey::kCrossReplica;
-    op_id = static_cast<int64_t>(instr->GetModule()->unique_id());
-  }
-}
-
 CollectiveConfig GetCollectiveConfig(
     const HloInstruction* hlo, std::optional<bool> use_global_device_ids) {
   CollectiveConfig config;
-  config.operand_count = hlo->operands().size();
-  config.operand_element_type.reserve(config.operand_count);
-  for (int i = 0; i < config.operand_count; i++) {
-    config.operand_element_type.push_back(
-        hlo->operand(i)->shape().element_type());
+  config.operand_element_type.reserve(hlo->operands().size());
+  for (const HloInstruction* operand : hlo->operands()) {
+    config.operand_element_type.push_back(operand->shape().element_type());
   }
   config.replica_groups = hlo->replica_groups();
-
-  if (hlo->channel_id().has_value()) {
-    config.collective_op_kind = RendezvousKey::kCrossModule;
-    config.op_id = *hlo->channel_id();
-  } else {
-    config.collective_op_kind = RendezvousKey::kCrossReplica;
-    config.op_id = static_cast<int64_t>(hlo->GetModule()->unique_id());
-  }
 
   config.group_mode = GetCollectiveOpGroupMode(hlo->channel_id().has_value(),
                                                use_global_device_ids)
@@ -242,7 +197,7 @@ CollectiveThunk::CollectiveThunk(Kind kind, ThunkInfo thunk_info, bool is_sync,
       async_events_(is_sync ? nullptr : std::make_shared<AsyncEvents>()) {}
 
 absl::StatusOr<GpuCliqueKey> GetGpuCliqueKey(
-    GpuCollectives* collectives, const Thunk::CollectiveExecuteParams& params,
+    GpuCollectives* collectives, const CollectiveParams& params,
     const std::vector<ReplicaGroup>& replica_groups,
     CollectiveOpGroupMode group_mode, AsyncStreamKind stream_kind,
     bool use_nccl) {
@@ -296,7 +251,12 @@ absl::StatusOr<GpuCliqueKey> GetGpuCliqueKey(
   absl::flat_hash_set<IncarnationId> unique_incarnations;
   if (params.incarnations) {
     for (GlobalDeviceId id : participants) {
-      unique_incarnations.insert(params.incarnations->at(id));
+      auto it = params.incarnations->find(id);
+      if (it == params.incarnations->end()) {
+        return FailedPrecondition("Incarnation for device %d not found",
+                                  id.value());
+      }
+      unique_incarnations.insert(it->second);
     }
   }
   std::vector<IncarnationId> incarnations(unique_incarnations.begin(),
@@ -310,8 +270,8 @@ absl::StatusOr<GpuCliqueKey> GetGpuCliqueKey(
 }
 
 absl::StatusOr<GpuCliqueKey> GetCollectiveGpuCliqueKey(
-    const Thunk::CollectiveExecuteParams& params,
-    const CollectiveConfig& collective_config, bool use_nccl) {
+    const CollectiveParams& params, const CollectiveConfig& collective_config,
+    bool use_nccl) {
   TF_ASSIGN_OR_RETURN(GpuCollectives * collectives,
                       CollectiveThunk::GetGpuCollectives(params));
   return GetGpuCliqueKey(collectives, params, collective_config.replica_groups,
@@ -321,8 +281,8 @@ absl::StatusOr<GpuCliqueKey> GetCollectiveGpuCliqueKey(
 }
 
 absl::StatusOr<CommunicatorHandle> GetComm(
-    GpuCollectives* collectives, const Thunk::CollectiveExecuteParams& params,
-    const Thunk::CollectiveCliques& collective_cliques,
+    GpuCollectives* collectives, const CollectiveParams& params,
+    const CollectiveCliques& collective_cliques,
     const std::vector<ReplicaGroup>& replica_groups,
     CollectiveOpGroupMode group_mode, AsyncStreamKind stream_kind) {
   TF_ASSIGN_OR_RETURN(GpuCliqueKey clique_key,
@@ -348,8 +308,9 @@ absl::StatusOr<std::vector<DeviceBufferPair>> ConvertToDeviceBuffers(
     const BufferAllocations* buffer_allocations,
     const std::vector<CollectiveThunk::Buffer>& buffers,
     const std::vector<PrimitiveType>& element_types) {
-  if (buffers.size() != element_types.size())
+  if (buffers.size() != element_types.size()) {
     return FailedPrecondition("Mismatch in operand buffer counts.");
+  }
 
   std::vector<DeviceBufferPair> device_buffers;
   device_buffers.reserve(buffers.size());
@@ -368,8 +329,8 @@ absl::Status MaybeRegisterBuffer(se::StreamExecutor* executor,
                                  Communicator* comm,
                                  bool use_symmetric_buffer) {
   TF_ASSIGN_OR_RETURN(auto range, executor->GetMemoryRange(buffer));
-  VLOG(1) << "[" << executor->device_ordinal()
-          << "] Registering range: " << range.opaque()
+  VLOG(1) << "[" << executor->device_ordinal() << "] "
+          << "Registering range: " << range.opaque()
           << " with size: " << range.size()
           << " for buffer: " << buffer.opaque()
           << " with size: " << buffer.size()
@@ -400,7 +361,9 @@ absl::Status MaybeRegisterBuffers(se::StreamExecutor* executor,
 absl::Status CollectiveThunk::AsyncEvents::Initialize(
     se::StreamExecutor* executor) {
   absl::MutexLock lock(mu_);
-  if (events_.contains(executor)) return absl::OkStatus();
+  if (events_.contains(executor)) {
+    return absl::OkStatus();
+  }
 
   TF_ASSIGN_OR_RETURN(auto event, executor->CreateEvent());
 
@@ -421,15 +384,15 @@ absl::StatusOr<se::Event*> CollectiveThunk::AsyncEvents::GetEvent(
   return event->second.get();
 }
 
-absl::Status CollectiveThunk::Prepare(
-    const PrepareParams& params, ResourceRequestsInterface& resource_requests) {
+absl::Status CollectiveThunk::Prepare(const PrepareParams& params) {
+  TF_RET_CHECK(params.collective_params != nullptr);
   TF_ASSIGN_OR_RETURN(GpuCollectives * collectives, GetGpuCollectives(params));
   TF_ASSIGN_OR_RETURN(
       GpuCliqueKey clique_key,
       GetGpuCliqueKey(collectives, *params.collective_params,
                       config().replica_groups, config().group_mode,
                       GetAsyncStreamKind()));
-  return resource_requests.AddClique(clique_key);
+  return params.clique_requests->RequestClique(clique_key);
 }
 
 absl::Status CollectiveThunk::Initialize(const InitializeParams& params) {
@@ -490,16 +453,14 @@ absl::Status CollectiveThunk::ExecuteOnStream(const ExecuteParams& params) {
             << "] Do a rendezvous after a first call to "
             << Thunk::KindToString(kind())
             << "; run_id=" << params.collective_params->run_id.ToInt()
-            << "; op_id=" << config().op_id
             << "; num_local_participants=" << num_local_participants
             << "; rank=" << rank.value()
             << "; clique_key=" << clique_key.ToString();
 
     auto rendezvous_key = FirstCallRendezvousKey{std::move(clique_key)};
     auto rendezvous_name = absl::StrFormat(
-        "first call to collective operation %d; kind=%s; run_id=%ld",
-        config().op_id, Thunk::KindToString(kind()),
-        params.collective_params->run_id.ToInt());
+        "first call to collective operation: kind=%s; run_id=%ld",
+        Thunk::KindToString(kind()), params.collective_params->run_id.ToInt());
 
     const xla::DebugOptions debug_options = xla::GetDebugOptionsFromFlags();
 
@@ -534,7 +495,7 @@ absl::StatusOr<std::vector<Communicator*>> CollectiveThunk::GetCommunicators(
 }
 
 std::string CollectiveThunk::GetDeviceString(
-    const Thunk::CollectiveExecuteParams& collective_params) {
+    const CollectiveParams& collective_params) {
   GlobalDeviceId global_device_id = collective_params.global_device_id;
   DeviceAssignment::LogicalID logical_id =
       collective_params.device_assn->LogicalIdForDevice(global_device_id)
@@ -542,7 +503,7 @@ std::string CollectiveThunk::GetDeviceString(
   return absl::StrFormat("(r%d, p%d) : GlobalID %d, ord %d",
                          logical_id.replica_id, logical_id.computation_id,
                          global_device_id.value(),
-                         collective_params.local_device_ordinal);
+                         collective_params.local_device_id.value());
 }
 
 std::optional<AsyncEventsUniqueId> CollectiveThunk::GetAsyncEventsUniqueId()

@@ -19,6 +19,7 @@ limitations under the License.
 #include <string>
 
 #include <gtest/gtest.h>
+#include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
@@ -29,7 +30,6 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/platform/env.h"
-#include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/test.h"
 #include "tsl/platform/path.h"
 
@@ -51,10 +51,10 @@ void WriteLiteralToTempFile(const LiteralSlice& literal,
   auto* env = tsl::Env::Default();
   std::string filename = tsl::io::JoinPath(
       outdir, absl::StrFormat("tempfile-%d-%s", env->NowMicros(), name));
-  TF_CHECK_OK(tsl::WriteBinaryProto(env, absl::StrCat(filename, ".pb"),
-                                    literal.ToProto()));
-  TF_CHECK_OK(tsl::WriteStringToFile(env, absl::StrCat(filename, ".txt"),
-                                     literal.ToString()));
+  CHECK_OK(tsl::WriteBinaryProto(env, absl::StrCat(filename, ".pb"),
+                                 literal.ToProto()));
+  CHECK_OK(tsl::WriteStringToFile(env, absl::StrCat(filename, ".txt"),
+                                  literal.ToString()));
   LOG(ERROR) << "wrote Literal to " << name << " file: " << filename
              << ".{pb,txt}";
 }

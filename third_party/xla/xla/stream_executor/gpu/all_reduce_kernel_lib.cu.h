@@ -90,8 +90,9 @@ __device__ __forceinline__ RestrictedPtr<T> GetPeerPtr(
     const CollectiveKernelMetadata& metadata) {
   uint64_t argument_offset = num_ranks * argument_index;
   uint64_t current_base =
-      metadata.param_to_peers[argument_offset + metadata.rank];
-  uint64_t peer_base = metadata.param_to_peers[argument_offset + peer_rank];
+      (uint64_t)metadata.param_to_peers[argument_offset + metadata.rank];
+  uint64_t peer_base =
+      (uint64_t)metadata.param_to_peers[argument_offset + peer_rank];
   uint64_t offset = (uint64_t)ptr - current_base;
 
   return (RestrictedPtr<T>)(peer_base + offset);
@@ -103,10 +104,10 @@ __device__ __forceinline__ RestrictedPtr<T> GetMultimemPtr(
     const CollectiveKernelMetadata& metadata) {
   uint64_t argument_offset = num_ranks * argument_index;
   uint64_t current_base =
-      metadata.param_to_peers[argument_offset + metadata.rank];
+      (uint64_t)metadata.param_to_peers[argument_offset + metadata.rank];
   uint64_t offset = (uint64_t)ptr - current_base;
 
-  return (RestrictedPtr<T>)(metadata.multicast_buffer_ptr + offset);
+  return (RestrictedPtr<T>)((uint64_t)metadata.multicast_buffer_ptr + offset);
 }
 
 template <PlatformType T = PlatformType::NOGPU>

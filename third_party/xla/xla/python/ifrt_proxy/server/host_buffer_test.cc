@@ -27,7 +27,6 @@
 #include "absl/time/time.h"
 #include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/platform/env.h"
-#include "xla/tsl/platform/status_matchers.h"
 
 namespace xla {
 namespace ifrt {
@@ -36,9 +35,6 @@ namespace {
 
 using ::testing::Not;
 using ::testing::Pointee;
-using ::tsl::testing::IsOk;
-using ::tsl::testing::IsOkAndHolds;
-using ::tsl::testing::StatusIs;
 
 TEST(HostBufferStoreTest, ReadAfterWrite) {
   HostBufferStore store;

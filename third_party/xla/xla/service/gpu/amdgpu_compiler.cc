@@ -181,7 +181,7 @@ absl::Status AMDGPUCompiler::OptimizeHloConvolutionCanonicalization(
 
 absl::Status AMDGPUCompiler::OptimizeHloPostLayoutAssignment(
     HloModule* hlo_module, se::StreamExecutor* stream_exec,
-    const CompileOptions& options, const TargetConfig& gpu_target_config,
+    const CompileOptions& options, const GpuTargetConfig& gpu_target_config,
     const GpuAliasInfo* alias_info, tsl::thread::ThreadPool* thread_pool) {
   HloPassPipeline pre_pipeline("AMDGPU post-layout_assignment part 1");
 
@@ -243,7 +243,7 @@ absl::Status AMDGPUCompiler::AddConvAndGemmAutotuningPasses(
     const CompileOptions& options, HloModule* hlo_module,
     AutotuneConfig& autotune_config, tsl::thread::ThreadPool* thread_pool,
     se::StreamExecutor* stream_exec,
-    const Compiler::TargetConfig* target_config) {
+    const Compiler::GpuTargetConfig* target_config) {
   const DebugOptions& debug_options = hlo_module->config().debug_options();
   if (hlo_module->config()
           .debug_options()
@@ -299,7 +299,7 @@ AMDGPUCompiler::CompileTargetBinary(
     // parallelized compilation of LLVM modules.
     XLA_SCOPED_LOGGING_TIMER_IF(
         "AMDGPUCompiler::CompileTargetBinary - CompileToHsaco",
-        !options.is_autotuning_compilation);
+        module_config.debug_options().xla_enable_scoped_logging_timers());
     TF_ASSIGN_OR_RETURN(
         hsaco, amdgpu::CompileToHsaco(
                    llvm_module, device_description.gpu_compute_capability(),
@@ -318,7 +318,7 @@ absl::Status AMDGPUCompiler::AddGemmFusionAutotuningPasses(
     se::StreamExecutor* stream_executor) {
   pipeline->AddPass<GemmFusionAutotuner>(autotune_config, toolkit_version,
                                          thread_pool, key_value_store,
-                                         symbolic_expr_context());
+                                         mlir_context());
   return absl::OkStatus();
 }
 

@@ -108,15 +108,14 @@ std::pair<std::string, std::vector<int64_t>> ParseHeroAndIds(
 
 TEST_F(CorrectnessTest, InputIndexingIsBijection) {
   auto mlir_context = GetMlirContextForTest();
-  auto symbolic_expr_context = GetSymbolicExprContextForTest(&mlir_context);
+  RegisterSymbolicExprStorage(&mlir_context);
   TF_ASSERT_OK_AND_ASSIGN(auto module, LoadTestModule(flags.input_file));
-  TF_ASSERT_OK_AND_ASSIGN(auto emitter_data,
-                          GetEmitter(*module, symbolic_expr_context));
+  TF_ASSERT_OK_AND_ASSIGN(auto emitter_data, GetEmitter(*module, mlir_context));
   for (const auto& [hero_name, ids] : flags.bijection_inputs) {
     TF_ASSERT_OK_AND_ASSIGN(int64_t hero_index,
                             GetHeroIndex(hero_name, *emitter_data->analysis));
     auto indexing = emitter_data->emitter->ComputeThreadIdToInputIndexing(
-        hero_index, &symbolic_expr_context);
+        hero_index, &mlir_context);
     ASSERT_TRUE(indexing.has_value());
     for (int64_t id : ids) {
       TF_ASSERT_OK(TestBijection(indexing.value()[id],
@@ -132,15 +131,14 @@ TEST_F(CorrectnessTest, InputIndexingIsBijection) {
 
 TEST_F(CorrectnessTest, OutputIndexingIsBijection) {
   auto mlir_context = GetMlirContextForTest();
-  auto symbolic_expr_context = GetSymbolicExprContextForTest(&mlir_context);
+  RegisterSymbolicExprStorage(&mlir_context);
   TF_ASSERT_OK_AND_ASSIGN(auto module, LoadTestModule(flags.input_file));
-  TF_ASSERT_OK_AND_ASSIGN(auto emitter_data,
-                          GetEmitter(*module, symbolic_expr_context));
+  TF_ASSERT_OK_AND_ASSIGN(auto emitter_data, GetEmitter(*module, mlir_context));
   for (const auto& hero_name : flags.bijection_outputs) {
     TF_ASSERT_OK_AND_ASSIGN(int64_t hero_index,
                             GetHeroIndex(hero_name, *emitter_data->analysis));
     auto indexing = emitter_data->emitter->ComputeThreadIdToOutputIndexing(
-        hero_index, &symbolic_expr_context);
+        hero_index, &mlir_context);
     ASSERT_TRUE(indexing.has_value());
     TF_ASSERT_OK(TestBijection(
         *indexing, GetFirstArrayShape(

@@ -4111,7 +4111,7 @@ TEST_F(HloParserTest, ParseFrontendAttributes) {
 TEST_F(HloParserTest, ParseWindow) {
   Window original = window_util::MakeWindow({1, 2, 3});
   TF_ASSERT_OK_AND_ASSIGN(Window parsed,
-                          ParseWindow(window_util::ToString(original)))
+                          ParseWindow(window_util::ToString(original)));
   EXPECT_EQ(window_util::ToString(original), window_util::ToString(parsed));
 }
 

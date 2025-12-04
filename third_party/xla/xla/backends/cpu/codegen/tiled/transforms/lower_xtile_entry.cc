@@ -183,15 +183,24 @@ class LowerXTileEntryPass
       mlir::Value workgroup_id = builder.create<ExtractWorkgroupIdOp>(
           builder.getIndexType(), call_frame, WorkGroupDimension::x);
 
+      auto flags = mlir::arith::IntegerOverflowFlags::nsw |
+                   mlir::arith::IntegerOverflowFlags::nuw;
+
+      // This isn't needed for correctness as the workgroup id passed from the
+      // runtime will always be in bounds but it constrains the range which LLVM
+      // can then take advantage of.
+      mlir::Value bounded_workgroup_id = builder.create<mlir::arith::MaxSIOp>(
+          workgroup_id, builder.create<mlir::arith::ConstantIndexOp>(0));
+
       mlir::Value start_tile_id = builder.create<mlir::arith::MulIOp>(
-          builder.getIndexType(), workgroup_id, tiles_per_workgroup_value);
-      mlir::Value bounded_start_tile_id = builder.create<mlir::arith::MinSIOp>(
-          builder.getIndexType(), start_tile_id, tile_count_value);
+          bounded_workgroup_id, tiles_per_workgroup_value, flags);
+      mlir::Value bounded_start_tile_id =
+          builder.create<mlir::arith::MinSIOp>(start_tile_id, tile_count_value);
 
       mlir::Value end_tile_id = builder.create<mlir::arith::AddIOp>(
-          builder.getIndexType(), start_tile_id, tiles_per_workgroup_value);
-      mlir::Value bounded_end_tile_id = builder.create<mlir::arith::MinSIOp>(
-          builder.getIndexType(), end_tile_id, tile_count_value);
+          start_tile_id, tiles_per_workgroup_value, flags);
+      mlir::Value bounded_end_tile_id =
+          builder.create<mlir::arith::MinSIOp>(end_tile_id, tile_count_value);
 
       mlir::Value step = builder.create<mlir::arith::ConstantIndexOp>(1);
 

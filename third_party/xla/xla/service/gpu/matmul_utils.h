@@ -190,6 +190,7 @@ struct TritonGemmConfig {
         num_ctas(num_ctas),
         is_tma_allowed(is_tma_allowed),
         is_warp_specialization_allowed(is_warp_specialization_allowed) {}
+  // LINT.IfChange
   int block_m = 0;
   int block_n = 0;
   int block_k = 0;
@@ -202,6 +203,7 @@ struct TritonGemmConfig {
   bool is_tma_allowed = false;
   // Allow/disallow automatic warp specialization.
   bool is_warp_specialization_allowed = false;
+  // LINT.ThenChange(//tensorflow/compiler/xla/autotuning.proto)
 
   // When adding new members, please update all methods, such as ToTuple,
   // FromProto, ToProto, ToString, etc. Updating ToTuple is not enough.

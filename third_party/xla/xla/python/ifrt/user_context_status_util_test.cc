@@ -28,6 +28,7 @@ limitations under the License.
 #include "xla/python/ifrt/user_context_test_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/status_to_from_proto.h"
+#include "xla/tsl/protobuf/status.pb.h"
 
 namespace xla {
 namespace ifrt {

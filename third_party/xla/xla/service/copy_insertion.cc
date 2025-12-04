@@ -1183,7 +1183,7 @@ absl::Status CopyInsertion::AddCopiesToResolveInterference(
         // have been copied.
         absl::flat_hash_set<int64_t> copied_operands;
         for (const auto& operand_and_output_index :
-             HloDataflowAnalysis::GetInPlaceInputOutputPairs(
+             alias_info_->GetInPlaceInputOutputPairs(
                  // Input/output buffer aliasing analysis needs to be done
                  // directly with the wrapped instruction when the compiler sees
                  // an async box.

@@ -105,6 +105,7 @@ tf_cc_fuzz_test(
         "//tensorflow/core:portable_gif_internal",
         "//tensorflow/core/platform:str_util",
         "//tensorflow/core/platform:stringpiece",
+        "@com_google_absl//absl/strings:string_view",
     ],
 )
 
@@ -156,6 +157,7 @@ tf_cc_fuzz_test(
     deps = [
         "//tensorflow/core/platform:str_util",
         "//tensorflow/core/platform:stringpiece",
+        "@com_google_absl//absl/strings:string_view",
     ],
 )
 

@@ -21,12 +21,13 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "mlir/IR/MLIRContext.h"
 #include "xla/hlo/analysis/hlo_dfs_reachability.h"
-#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
+#include "xla/service/gpu/alias_info.h"
 #include "xla/service/gpu/gpu_fusible.h"
 #include "xla/service/gpu/model/gpu_hlo_cost_analysis.h"
 #include "xla/service/hlo_cost_analysis.h"
@@ -96,12 +97,13 @@ namespace gpu {
 class MultiOutputFusion : public HloModulePass {
  public:
   explicit MultiOutputFusion(
-      const se::DeviceDescription& device_info,
+      const se::DeviceDescription& device_info, const GpuAliasInfo* alias_info,
       HloCostAnalysis::ShapeSizeFunction shape_size_function,
-      SymbolicExprContext* symbolic_expr_context)
+      mlir::MLIRContext* mlir_context)
       : device_info_(device_info),
+        alias_info_(alias_info),
         shape_size_function_(shape_size_function),
-        symbolic_expr_context_(symbolic_expr_context) {}
+        mlir_context_(mlir_context) {}
 
   absl::string_view name() const override { return "multi_output_fusion"; }
 
@@ -129,8 +131,9 @@ class MultiOutputFusion : public HloModulePass {
   std::unique_ptr<HloDfsReachability> reachability_;
 
   se::DeviceDescription device_info_;
+  const GpuAliasInfo* alias_info_;
   HloCostAnalysis::ShapeSizeFunction shape_size_function_;
-  SymbolicExprContext* symbolic_expr_context_;
+  mlir::MLIRContext* mlir_context_;
 };
 
 }  // namespace gpu

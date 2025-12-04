@@ -16,21 +16,17 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_GPU_EXECUTABLE_RUN_OPTIONS_H_
 #define XLA_SERVICE_GPU_GPU_EXECUTABLE_RUN_OPTIONS_H_
 
-#include <cstdint>
 #include <functional>
-#include <map>
 #include <optional>
-#include <vector>
 
+#include "absl/container/btree_map.h"
 #include "absl/container/flat_hash_map.h"
-#include "absl/functional/any_invocable.h"
 #include "absl/status/statusor.h"
-#include "absl/types/span.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
 #include "xla/core/collectives/clique_id.h"
 #include "xla/core/collectives/clique_key.h"
 #include "xla/executable_run_options.h"
-#include "xla/service/global_device_id.h"
+#include "xla/runtime/device_id.h"
 
 namespace xla::gpu {
 
@@ -46,14 +42,16 @@ using CliqueIdCallback =  // NOLINT
 // dependencies to ExecutableRunOptions.
 class GpuExecutableRunOptions {
  public:
+  // A mapping from local device ordinal to global device ID.
+  using DeviceIdMap = absl::btree_map<LocalDeviceId, GlobalDeviceId>;
+
   // Sets a mapping from local device ordinals to global device IDs.
   // Used only on NVidia GPUs for cross-host NCCL collectives. If set, the
   // elements of `device_assignment` are interpreted as global device IDs, not
   // local device ordinals.
   GpuExecutableRunOptions& set_gpu_global_device_ids(
-      std::optional<std::map<int, GlobalDeviceId>> gpu_global_device_ids);
-  const std::optional<std::map<int, GlobalDeviceId>>& gpu_global_device_ids()
-      const;
+      std::optional<DeviceIdMap> device_ids);
+  const std::optional<DeviceIdMap>& gpu_global_device_ids() const;
 
   // Callback that returns a unique clieque id for a given clique key.
   GpuExecutableRunOptions& set_clique_id_callback(
@@ -92,7 +90,7 @@ class GpuExecutableRunOptions {
  private:
   bool requires_exclusive_lock_on_gpu_ = false;
   bool enable_mock_collectives_ = false;
-  std::optional<std::map<int, GlobalDeviceId>> gpu_global_device_ids_;
+  std::optional<DeviceIdMap> gpu_global_device_ids_;
   CliqueIdCallback clique_id_callback_;
   GpuCollectives* collectives_;
   std::optional<absl::flat_hash_map<GlobalDeviceId, IncarnationId>>

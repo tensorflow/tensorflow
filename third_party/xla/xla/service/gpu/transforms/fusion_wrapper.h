@@ -33,7 +33,7 @@ class FusionWrapper : public emitters::FusionWrapperBase {
 
   absl::string_view name() const override { return "fusion-wrapper"; }
 
-  bool MustWrapInstruction(HloOpcode opcode) override;
+  bool MustWrapInstruction(const HloInstruction& instruction) override;
   HloInstruction::FusionKind ChooseFusionKind(
       const HloInstruction& producer, const HloInstruction& consumer) override;
 

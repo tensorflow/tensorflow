@@ -23,9 +23,8 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "llvm/IR/LLVMContext.h"
 #include "mlir/IR/MLIRContext.h"
-#include "xla/backends/gpu/codegen/triton/fusion_emitter.h"
+#include "xla/backends/gpu/codegen/triton/xtile_compiler.h"
 #include "xla/codegen/emitter_loc_op_builder.h"
-#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/testlib/filecheck.h"
@@ -115,7 +114,6 @@ ENTRY e {
       module->entry_computation()->root_instruction());
 
   mlir::MLIRContext mlir_context;
-  SymbolicExprContext symbolic_expr_context(&mlir_context);
   TF_ASSERT_OK_AND_ASSIGN(
       auto triton_module,
       CreateTritonModule("triton_fn", fusion,
@@ -124,7 +122,7 @@ ENTRY e {
                              fusion->backend_config<GpuBackendConfig>()
                                  ->fusion_backend_config()
                                  .block_level_fusion_config()),
-                         symbolic_expr_context));
+                         mlir_context));
 
   std::string annotated_ir = DumpTritonIR(triton_module.get(), true);
 
@@ -132,7 +130,8 @@ ENTRY e {
     EXPECT_THAT(RunFileCheck(annotated_ir, R"(
       CHECK:  [[SOMETHING:.*]] "triton_dot -> [[FILE_LINE:fusion_emitter.*:.*]]"
     )"),
-                absl_testing::IsOkAndHolds(true));
+                absl_testing::IsOkAndHolds(true))
+        << annotated_ir;
   } else {
     EXPECT_THAT(RunFileCheck(annotated_ir, R"(
       CHECK:  [[SOMETHING:.*]] "triton_dot"
@@ -167,7 +166,6 @@ ENTRY entry {
   llvm::LLVMContext llvm_ctx;
   llvm::Module llvm_module("module", llvm_ctx);
   mlir::MLIRContext mlir_context;
-  SymbolicExprContext symbolic_expr_context(&mlir_context);
 
   BlockLevelParameters block_level_parameters;
   block_level_parameters.output_tile_sizes = {{1, 1}};
@@ -176,8 +174,7 @@ ENTRY entry {
   EXPECT_THAT(TritonWrapper(
                   "test_fn", triton_fusion,
                   se::GpuComputeCapability{se::CudaComputeCapability::Hopper()},
-                  dev_info, block_level_parameters, &llvm_module,
-                  symbolic_expr_context),
+                  dev_info, block_level_parameters, &llvm_module, mlir_context),
               absl_testing::StatusIs(
                   absl::StatusCode::kFailedPrecondition,
                   ::testing::HasSubstr(
@@ -249,7 +246,6 @@ ENTRY entry {
   llvm::LLVMContext llvm_ctx;
   llvm::Module llvm_module("module", llvm_ctx);
   mlir::MLIRContext mlir_context;
-  SymbolicExprContext symbolic_expr_context(&mlir_context);
 
   EXPECT_OK(
       CreateTritonModule("test_fn", triton_fusion, dev_info,
@@ -257,7 +253,7 @@ ENTRY entry {
                              triton_fusion->backend_config<GpuBackendConfig>()
                                  ->fusion_backend_config()
                                  .block_level_fusion_config()),
-                         symbolic_expr_context));
+                         mlir_context));
 }
 
 TEST_F(WarpSpecializationTritonEmitterTest,
@@ -323,7 +319,6 @@ ENTRY entry {
   llvm::LLVMContext llvm_ctx;
   llvm::Module llvm_module("module", llvm_ctx);
   mlir::MLIRContext mlir_context;
-  SymbolicExprContext symbolic_expr_context(&mlir_context);
   TF_ASSERT_OK_AND_ASSIGN(
       TritonWrapperResult result,
       TritonWrapper("test_fn", fusion, se::CudaComputeCapability::Blackwell(),
@@ -332,7 +327,7 @@ ENTRY entry {
                         fusion->backend_config<GpuBackendConfig>()
                             ->fusion_backend_config()
                             .block_level_fusion_config()),
-                    &llvm_module, symbolic_expr_context));
+                    &llvm_module, mlir_context));
 
   // Warp specialization influences the total number of threads we end up
   // using. Usually we would expect num_warps * warp_size threads per block, but

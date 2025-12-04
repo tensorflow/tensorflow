@@ -27,8 +27,6 @@ limitations under the License.
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/shape_util.h"
-#include "tsl/platform/logging.h"
-#include "tsl/platform/status.h"
 
 namespace xla {
 
@@ -54,7 +52,7 @@ absl::Status HostCallbackContext::OnSend(int arg_num,
     DCHECK_GE(data.size(), host_size);
 
     auto delinearized = PjRtChunk::AllocateDefault(host_size);
-    TF_CHECK_OK(host_memory_for_device_manager_->ToHostLayout(
+    CHECK_OK(host_memory_for_device_manager_->ToHostLayout(
         data.data(), data.size(), device_shape, delinearized.data(),
         delinearized.size(), host_shape));
 
@@ -124,7 +122,7 @@ void HostCallbackContext::Receive(int res_num,
   result_channel->Pop().OnReady(
       [this, res_num, metadata,
        stream = std::move(stream)](absl::StatusOr<PjRtChunk> chunk) mutable {
-        TF_CHECK_OK(chunk.status());
+        CHECK_OK(chunk.status());
 
         if (!use_major_to_minor_data_layout_for_callbacks_) {
           const auto& host_shape = host_callback_.results.at(res_num).shape;
@@ -136,7 +134,7 @@ void HostCallbackContext::Receive(int res_num,
         }
 
         stream->AddChunk(*std::move(chunk)).OnReady([](absl::Status s) {
-          TF_CHECK_OK(s);
+          CHECK_OK(s);
         });
       });
 }

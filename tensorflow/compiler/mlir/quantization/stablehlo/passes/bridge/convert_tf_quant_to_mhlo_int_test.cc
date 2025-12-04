@@ -246,8 +246,8 @@ class ConvertTfQuantToMhloIntTest : public Test {
     // Convert to double for comparison. This is needed for comparing integers
     // since it LiteralTestUtil asserts different integers even if it is within
     // error_spec.
-    TF_ASSERT_OK_AND_ASSIGN(auto expected_double, expected->Convert(xla::F64))
-    TF_ASSERT_OK_AND_ASSIGN(auto result_double, result->Convert(xla::F64))
+    TF_ASSERT_OK_AND_ASSIGN(auto expected_double, expected->Convert(xla::F64));
+    TF_ASSERT_OK_AND_ASSIGN(auto result_double, result->Convert(xla::F64));
     EXPECT_TRUE(xla::LiteralTestUtil::Near(expected_double, result_double,
                                            xla::ErrorSpec(error_tolerance)));
   }

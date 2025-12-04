@@ -20,6 +20,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "xla/hlo/testlib/test.h"
 #include "xla/service/test_compilation_environment.pb.h"
 #include "xla/tsl/lib/core/status_test_util.h"
@@ -29,8 +30,6 @@ limitations under the License.
 #include "tsl/platform/protobuf.h"
 
 namespace xla {
-
-using ::tsl::testing::StatusIs;
 
 // In order to use TestCompilationEnvironment* with CompilationEnvironments, we
 // must define ProcessNewEnv for them.

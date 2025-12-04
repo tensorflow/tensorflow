@@ -18,20 +18,27 @@ limitations under the License.
 #include <deque>
 #include <memory>
 #include <queue>
+#include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/memory/memory.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
+#include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/map_util.h"
+#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
-#include "tsl/platform/errors.h"
 
 namespace xla {
 
@@ -587,8 +594,7 @@ absl::flat_hash_set<const T*> CallGraph::NearestCommonAncestorsHelper(
         return nearest_common_ancestors.contains(nca);
       })) {
     absl::erase_if(nearest_common_ancestors, [&starting_nodes](const T* nca) {
-      return std::find(starting_nodes.begin(), starting_nodes.end(), nca) ==
-             starting_nodes.end();
+      return absl::c_find(starting_nodes, nca) == starting_nodes.end();
     });
   }
 

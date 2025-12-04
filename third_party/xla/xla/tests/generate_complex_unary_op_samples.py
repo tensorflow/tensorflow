@@ -57,10 +57,10 @@ def main():
   default_extra_prec_multiplier = 1
 
   blocks = []
-  for opname in ['Log1p', 'Tan', 'Asin', 'Asinh']:
+  for opname in ['Log1p', 'Tan', 'Asin', 'Asinh', 'Exp']:
     mpmath_op = opname.lower()
     mpmath_op = dict(asin='arcsin', asinh='arcsinh').get(mpmath_op, mpmath_op)
-    size_re, size_im = dict(Log1p=(7, 7), Tan=(7, 7)).get(
+    size_re, size_im = dict(Log1p=(7, 7), Tan=(7, 7), Exp=(7, 7)).get(
         opname, (default_size, default_size)
     )
     extra_prec_multiplier = dict(
@@ -70,6 +70,7 @@ def main():
         # available
         Asin=20,
         Asinh=20,
+        Exp=1,
     ).get(opname, default_extra_prec_multiplier)
     nmp = jtu.numpy_with_mpmath(
         mpmath, extra_prec_multiplier=extra_prec_multiplier

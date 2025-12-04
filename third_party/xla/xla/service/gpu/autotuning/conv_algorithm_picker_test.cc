@@ -88,8 +88,10 @@ ENTRY main {
   changed = false;
   DebugOptions opts = DefaultDebugOptionsIgnoringFlags();
 
-  AutotuneConfig cfg = AutotuneConfig::FromDebugOptions(
-      DeviceOrDevicelessConfig{DeviceConfig{stream_exec, nullptr}}, opts);
+  TF_ASSERT_OK_AND_ASSIGN(
+      AutotuneConfig cfg,
+      AutotuneConfig::FromDebugOptions(
+          DeviceOrDevicelessConfig{DeviceConfig{stream_exec, nullptr}}, opts));
   TF_ASSERT_OK_AND_ASSIGN(changed,
                           RunHloPass(GpuConvAlgorithmPicker(cfg), m.get()));
   ASSERT_TRUE(changed);
@@ -200,8 +202,10 @@ ENTRY main {
   ASSERT_TRUE(changed);
 
   DebugOptions opts = DefaultDebugOptionsIgnoringFlags();
-  AutotuneConfig cfg = AutotuneConfig::FromDebugOptions(
-      DeviceOrDevicelessConfig{DeviceConfig{stream_exec, nullptr}}, opts);
+  TF_ASSERT_OK_AND_ASSIGN(
+      AutotuneConfig cfg,
+      AutotuneConfig::FromDebugOptions(
+          DeviceOrDevicelessConfig{DeviceConfig{stream_exec, nullptr}}, opts));
   TF_ASSERT_OK_AND_ASSIGN(changed,
                           RunHloPass(GpuConvAlgorithmPicker(cfg), m.get()));
   ASSERT_TRUE(changed);

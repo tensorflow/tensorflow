@@ -99,10 +99,6 @@ inline constexpr absl::string_view kTritonNestedGemmFusionKind =
     "__triton_nested_gemm_fusion";
 
 // Fusions that use Triton have FusionBackendConfig.kind equal to this string.
-// Used for fusions that implement a scaled dot.
-inline constexpr absl::string_view kTritonScaledDotFusionKind =
-    "__triton_scaled_dot_fusion";
-
 inline constexpr absl::string_view kCuDnnFusionKind = "__cudnn$fusion";
 
 // Fusions that can be emitted using a dynamic memcpy. A dynamic memcpy depends

@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "xla/service/gpu/transforms/collectives/collective_ops_utils.h"
 
-#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <optional>
@@ -37,7 +36,6 @@ limitations under the License.
 #include "xla/hlo/ir/replica_group.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/hlo_module_config.h"
-#include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
@@ -81,8 +79,8 @@ bool SameParticipantCounts(const absl::flat_hash_map<int64_t, size_t>& lhs,
   for (const auto& [_, v] : rhs) {
     rhs_counts.push_back(v);
   }
-  std::sort(lhs_counts.begin(), lhs_counts.end());
-  std::sort(rhs_counts.begin(), rhs_counts.end());
+  absl::c_sort(lhs_counts);
+  absl::c_sort(rhs_counts);
   return lhs_counts == rhs_counts;
 }
 
@@ -155,6 +153,7 @@ struct CollectivePermuteProperty {
 std::optional<CollectivePermuteProperty> GetCollectivePermuteProperty(
     const HloCollectivePermuteInstruction& instr,
     int64_t num_devices_per_partition) {
+  CHECK_GT(num_devices_per_partition, 0);
   if (instr.source_target_pairs().empty()) {
     return std::nullopt;
   }

@@ -33,27 +33,23 @@ limitations under the License.
 #include "xla/pjrt/abstract_tracked_device_buffer.h"
 #include "xla/pjrt/buffer_sequencing_event.h"
 #include "xla/pjrt/device_event.h"
-#include "xla/pjrt/event_pool.h"
 #include "xla/pjrt/local_device_state.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_stream_executor_client.h"
+#include "xla/pjrt/raw_buffer.h"
 #include "xla/pjrt/se_raw_buffer.h"
 #include "xla/service/shaped_buffer.h"
 #include "xla/shape.h"
 #include "xla/shape_tree.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/device_memory_allocator.h"
-#include "xla/stream_executor/event.h"
 #include "xla/tsl/concurrency/async_value.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/platform/logging.h"
-#include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/threadpool.h"
 #include "tsl/platform/casts.h"
-#include "tsl/profiler/lib/connected_traceme.h"
-#include "tsl/profiler/lib/context_types.h"
 
 namespace xla {
 
@@ -143,36 +139,16 @@ tsl::AsyncValueRef<RawSEDeviceMemory> RawSEDeviceMemory::CreateForeign(
       value, std::move(on_delete_callback));
 }
 
-ShapedBuffer TrackedDeviceBuffer::AsShapedBuffer(
-    const Shape& on_device_shape) const {
-  ShapedBuffer shaped_buffer(on_device_shape,
-                             device_->local_device_id().value(),
-                             device_->local_hardware_id().value());
-  ShapeTree<se::DeviceMemoryBase>::iterator iterator =
-      shaped_buffer.buffers().begin();
-  if (device_memory_) {
-    CHECK(iterator != shaped_buffer.buffers().end());
-    iterator->second = device_memory_->mem();
-    ++iterator;
-  }
-  CHECK(iterator == shaped_buffer.buffers().end());
-  return shaped_buffer;
-}
-
 TrackedDeviceBuffer::TrackedDeviceBuffer(
-    PjRtDevice* device, tsl::AsyncValueRef<RawSEDeviceMemory> device_memory,
+    PjRtDevice* device, tsl::RCReference<CommonPjRtRawBuffer> raw_buffer,
     absl::Span<const BufferSequencingEventRef> definition_events)
-    : device_(device),
-      device_memory_(std::move(device_memory)),
+    : AbstractTrackedDeviceBuffer(std::move(raw_buffer)),
+      device_(device),
       definition_events_(std::make_move_iterator(definition_events.begin()),
                          std::make_move_iterator(definition_events.end())),
       in_use_(true) {}
 
 TrackedDeviceBuffer::~TrackedDeviceBuffer() = default;
-
-void TrackedDeviceBuffer::ReleaseDeviceMemory() {
-  device_memory_ = tsl::AsyncValueRef<RawSEDeviceMemory>();
-}
 
 void TrackedDeviceBuffer::ConfirmDonation() {
   // As a sanity check ensure no more usage events can be added to the buffer.
@@ -228,7 +204,7 @@ TrackedDeviceBuffer::CloneWithControlDependency(PjRtMemorySpace* memory_space,
                            original_definition_events.end());
 
   auto new_device_buffer = std::make_unique<TrackedDeviceBuffer>(
-      device_, device_memory(), std::move(definition_events));
+      device_, raw_buffer(), std::move(definition_events));
 
   auto* device = tensorflow::down_cast<PjRtStreamExecutorDevice*>(
       memory_space->devices()[0]);
@@ -243,8 +219,8 @@ TrackedDeviceBuffer::CloneWithControlDependency(PjRtMemorySpace* memory_space,
           return;
         }
         auto stream = local_device->BorrowStreamFromPool();
-        TF_CHECK_OK(client->AllocateAndRecordEvent(definition_event_for_status,
-                                                   local_device, stream.get()));
+        CHECK_OK(client->AllocateAndRecordEvent(definition_event_for_status,
+                                                local_device, stream.get()));
         local_device->ReturnStreamToPool(std::move(stream));
       });
   return new_device_buffer;
@@ -295,20 +271,6 @@ TrackedDeviceBuffer::GetAsyncValueDefinitionEvents() {
     avs.push_back(ev.CopyRCRef());
   }
   return avs;
-}
-
-tsl::RCReference<CommonPjRtRawBuffer> TrackedDeviceBuffer::GetRawBuffer(
-    PjRtMemorySpace* memory_space) {
-  if (!device_memory_) {
-    return tsl::RCReference<CommonPjRtRawBuffer>();
-  }
-  return tsl::MakeRef<PjRtStreamExecutorRawBuffer>(
-      tensorflow::down_cast<PjRtStreamExecutorClient*>(memory_space->client()),
-      memory_space,
-      tensorflow::down_cast<PjRtStreamExecutorDevice*>(
-          memory_space->devices()[0])
-          ->local_device_state(),
-      device_memory_);
 }
 
 absl::StatusOr<tsl::RCReference<PjRtDeviceEvent>>

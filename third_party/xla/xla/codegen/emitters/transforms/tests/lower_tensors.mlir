@@ -1106,3 +1106,30 @@ func.func @transfer_write_f4(%arg0: tensor<43xf4E2M1FN> {xla.slice_index = 1},
 // CHECK-LABEL: @transfer_write_f4
 // CHECK: %[[PTR:.*]] = llvm.getelementptr inbounds %arg0[0, 5] : (!llvm.ptr) -> !llvm.ptr, !llvm.array<22 x i8>
 // CHECK: %[[OUT:.*]] = builtin.unrealized_conversion_cast %{{.*}} : vector<2xf4E2M1FN> to vector<2xi4>
+
+// -----
+
+func.func @get_dynamic_dim_size(%arg0: tensor<512xf32>) -> i32 {
+  %0 = xla.get_dynamic_dim_size %arg0 1 : tensor<512xf32>
+  func.return %0 : i32
+}
+// CHECK-LABEL: @get_dynamic_dim_size
+// CHECK: llvm.mlir.constant(2052 : i64) : i64
+
+// -----
+
+func.func @get_dynamic_dim_size_sub_byte_width(%arg0: tensor<512xi4>) -> i32 {
+  %0 = xla.get_dynamic_dim_size %arg0 1 : tensor<512xi4>
+  func.return %0 : i32
+}
+// CHECK-LABEL: @get_dynamic_dim_size_sub_byte_width
+// CHECK: llvm.mlir.constant(260 : i64) : i64
+
+// // -----
+
+func.func @get_dynamic_dim_size_unaligned(%arg0: tensor<7xf16>) -> i32 {
+// expected-error @+1 {{'xla.get_dynamic_dim_size' op dynamic size offset is not 4-byte aligned}}
+  %0 = xla.get_dynamic_dim_size %arg0 1 : tensor<7xf16>
+  func.return %0 : i32
+}
+

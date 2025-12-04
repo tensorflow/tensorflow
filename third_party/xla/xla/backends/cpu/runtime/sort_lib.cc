@@ -27,6 +27,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/attributes.h"
+#include "absl/base/dynamic_annotations.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/types/span.h"
@@ -564,6 +565,12 @@ void SortInplace(const SortDims& sort_dims, absl::Span<std::byte* const> data,
   // Iterate over all the 1-dimensional slices of the buffers and sort them.
   int64_t num_iterations = sort_dims.outer_dim_size * sort_dims.inner_dim_size;
 
+  // Annotate memory that might have been initialized by jit-compiled code.
+  for (int64_t i = 0; i < data.size(); ++i) {
+    ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(
+        data[i], primitive_sizes[i] * sort_dims.sort_dim_size * num_iterations);
+  }
+
   for (int64_t i = 0; i < num_iterations; ++i) {
     int64_t inner_idx = i % sort_dims.inner_dim_size;
     int64_t offset = inner_idx + (i - inner_idx) * sort_dims.sort_dim_size;
@@ -671,6 +678,10 @@ void SortInplace(const SortDims& sort_dims, T* data, bool is_stable,
                  SortDirection direction) {
   // Iterate over all the 1-dimensional slices of the buffers and sort them.
   int64_t num_iterations = sort_dims.outer_dim_size * sort_dims.inner_dim_size;
+
+  // Annotate memory that might have been initialized by jit-compiled code.
+  ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(
+      data, sizeof(T) * sort_dims.sort_dim_size * num_iterations);
 
   for (int64_t i = 0; i < num_iterations; ++i) {
     int64_t inner_idx = i % sort_dims.inner_dim_size;

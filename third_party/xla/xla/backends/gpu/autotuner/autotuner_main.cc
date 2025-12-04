@@ -85,7 +85,7 @@ absl::StatusOr<std::unique_ptr<HloModule>> GetModule(
 
 absl::Status Autotune(HloModule& module, const std::string& cache_dir,
                       const std::string& autotune_cache_mode_str,
-                      SymbolicExprContext* symbolic_expr_context) {
+                      mlir::MLIRContext* mlir_context) {
   TF_ASSIGN_OR_RETURN(std::string platform_name,
                       PlatformUtil::CanonicalPlatformName("gpu"));
 
@@ -100,14 +100,14 @@ absl::Status Autotune(HloModule& module, const std::string& cache_dir,
                       xla::Compiler::GetForPlatform(platform));
   se::StreamExecutor* stream_executor = platform->ExecutorForDevice(0).value();
   DebugOptions debug_options = GetDebugOptionsFromFlags();
-  Compiler::TargetConfig target_config(stream_executor);
+  Compiler::GpuTargetConfig target_config(stream_executor);
 
   auto& registry = stream_executor::PlatformObjectRegistry::GetGlobalRegistry();
   TF_ASSIGN_OR_RETURN(const GetCodegenBackends::Type& get_codegen_backends,
                       registry.FindObject<GetCodegenBackends>(platform->id()));
   std::vector<std::unique_ptr<CodegenBackend>> backends =
       get_codegen_backends(stream_executor, &debug_options, compiler.get(),
-                           &target_config, symbolic_expr_context);
+                           &target_config, mlir_context);
 
   std::unique_ptr<se::DeviceMemoryAllocator> allocator =
       std::make_unique<stream_executor::StreamExecutorMemoryAllocator>(
@@ -182,9 +182,8 @@ int main(int argc, char* argv[]) {
   auto module = xla::gpu::GetModule(hlo_file);
   CHECK_OK(module.status());
   mlir::MLIRContext mlir_context;
-  xla::SymbolicExprContext symbolic_expr_context(&mlir_context);
   CHECK_OK(xla::gpu::Autotune(*module.value(), cache_dir, autotune_cache_mode,
-                              &symbolic_expr_context));
+                              &mlir_context));
   std::cout << module.value()->ToString() << std::endl;
   return 0;
 }

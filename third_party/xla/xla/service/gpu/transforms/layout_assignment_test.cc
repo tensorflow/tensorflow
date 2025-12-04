@@ -186,6 +186,30 @@ TEST_F(LayoutAssignmentTest, DotLayoutSetToDefaultIfDefaultValid) {
                              .WithShape(F32, {5, 2, 4}, {2, 1, 0})));
 }
 
+TEST_F(LayoutAssignmentTest, BitcastConvertKeepsCompatibleLayouts) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(R"(
+e {
+  a = u4[5,4,3,2]{3,2,1,0} parameter(0)
+  b = u8[5,4,3]{2,1,0} bitcast-convert(a)
+  c = u8[4,5,3]{2,1,0} transpose(b), dimensions={1,0,2}
+})"));
+
+  ComputationLayout computation_layout(
+      module->entry_computation()->ComputeProgramShape());
+  GpuLayoutAssignment layout_assignment(
+      &computation_layout, GetGpuComputeCapability(), GetDnnVersion(),
+      GetDeviceDescription());
+  EXPECT_THAT(layout_assignment.Run(module.get()),
+              absl_testing::IsOkAndHolds(true));
+
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::Copy(m::Transpose(
+                  m::BitcastConvert(
+                      m::Parameter().WithShape(U4, {5, 4, 3, 2}, {3, 2, 1, 0}))
+                      .WithShape(U8, {5, 4, 3}, {2, 1, 0})))));
+}
+
 TEST_F(LayoutAssignmentTest, DotOperandLayoutSetToBatchRowsColsOtherwise) {
   const char* hlo_text = R"(
   HloModule DotLayout

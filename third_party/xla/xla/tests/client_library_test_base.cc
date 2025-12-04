@@ -15,24 +15,45 @@ limitations under the License.
 
 #include "xla/tests/client_library_test_base.h"
 
+#include <cstdint>
+#include <functional>
+#include <iterator>
 #include <memory>
+#include <numeric>
+#include <optional>
 #include <string>
+#include <tuple>
 #include <utility>
+#include <vector>
 
+#include <gtest/gtest.h>
+#include "absl/algorithm/container.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "xla/client/client_library.h"
 #include "xla/client/local_client.h"
+#include "xla/error_spec.h"
 #include "xla/execution_options_util.h"
 #include "xla/hlo/builder/xla_builder.h"
+#include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/testlib/test_helpers.h"
+#include "xla/layout_util.h"
 #include "xla/literal_util.h"
 #include "xla/service/platform_util.h"
+#include "xla/service/service.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/status_macros.h"
+#include "xla/stream_executor/platform.h"
+#include "xla/tests/literal_test_util.h"
+#include "xla/tsl/lib/core/bitmap.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/logging.h"
 
 namespace xla {
 namespace {
@@ -46,14 +67,14 @@ LocalClient* GetOrCreateLocalClientOrDie(
     const LocalClientOptions& client_options) {
   absl::StatusOr<LocalClient*> result =
       ClientLibrary::GetOrCreateLocalClient(client_options);
-  TF_CHECK_OK(result.status()) << " could not create local client for testing";
+  CHECK_OK(result.status()) << " could not create local client for testing";
   return result.value();
 }
 
 // Helper functions to get the reference platform.
 se::Platform* GetReferencePlatform() {
   auto result = PlatformUtil::GetPlatform(kInterpreter);
-  TF_CHECK_OK(result.status()) << "could not get interpreter platform";
+  CHECK_OK(result.status()) << "could not get interpreter platform";
   return result.value();
 }
 
@@ -161,9 +182,8 @@ std::string ClientLibraryTestBase::ExecuteToString(
       client_->ExecuteAndTransfer(computation, arguments, &execution_options_);
   if (!result.ok()) {
     return result.status().ToString();
-  } else {
-    return result.value().ToString();
   }
+  return result.value().ToString();
 }
 
 void ClientLibraryTestBase::ComputeAndCompareR1(
@@ -211,7 +231,7 @@ ClientLibraryTestBase::ComputeAndCompareLiteralWithAllOutputLayouts(
     verify_output(actual,
                   absl::StrCat("Test with output layout: ",
                                ShapeUtil::HumanStringWithLayout(layout)));
-  } while (std::next_permutation(minor_to_major.begin(), minor_to_major.end()));
+  } while (absl::c_next_permutation(minor_to_major));
   return absl::OkStatus();
 }
 
@@ -256,8 +276,7 @@ absl::Status ClientLibraryTestBase::ComputeAndCompareLiteralWithAllInputLayouts(
         TF_RETURN_IF_ERROR(choose(index + 1));
         arguments_with_layout.pop_back();
         layout_strings.pop_back();
-      } while (
-          std::next_permutation(minor_to_major.begin(), minor_to_major.end()));
+      } while (absl::c_next_permutation(minor_to_major));
       return absl::OkStatus();
     }
 
@@ -301,15 +320,14 @@ absl::StatusOr<Literal> ClientLibraryTestBase::ComputeAndTransfer(
   return ExecuteAndTransfer(computation, arguments, shape_with_layout);
 }
 
-absl::Status ClientLibraryTestBase::ComputeAndCompareLiteralWithStatus(
-    XlaBuilder* builder, const Literal& expected,
+absl::StatusOr<std::vector<GlobalData*>>
+ClientLibraryTestBase::PrepareArguments(
     absl::Span<GlobalData* const> arguments_passed_in,
-    std::optional<ErrorSpec> error, const Shape* shape_with_layout) {
+    std::vector<std::unique_ptr<GlobalData>>& owning_arguments) {
   std::vector<GlobalData*> arguments(arguments_passed_in.begin(),
                                      arguments_passed_in.end());
 
-  // Transfer and use elements of arguments_, if the AddParam() API was used.
-  std::vector<std::unique_ptr<GlobalData>> owning_arguments;
+  // If AddParam() API was used, transfer and use elements of arguments_.
   if (!arguments_.empty()) {
     CHECK(arguments.empty());
     for (const auto& argument : arguments_) {
@@ -320,6 +338,37 @@ absl::Status ClientLibraryTestBase::ComputeAndCompareLiteralWithStatus(
       arguments.push_back(owning_arguments.back().get());
     }
   }
+  return arguments;
+}
+
+ClientLibraryTestBase::LiteralWithShape
+ClientLibraryTestBase::PrepareExpectedLiteralAndShape(
+    const Literal& expected, const Shape* shape_with_layout) {
+  ClientLibraryTestBase::LiteralWithShape out;
+  if (test_type_ != F32) {
+    // Convert literal
+    out.literal = MaybeConvertLiteralToTestType(expected);
+    // Convert shape
+    if (shape_with_layout != nullptr) {
+      out.shape = *shape_with_layout;
+      ShapeUtil::ForEachMutableSubshape(
+          &out.shape.value(), [&](Shape* subshape, const ShapeIndex&) {
+            if (subshape->element_type() == F32) {
+              subshape->set_element_type(test_type_);
+            }
+          });
+    }
+  }
+  return out;
+}
+
+absl::Status ClientLibraryTestBase::ComputeAndCompareLiteralWithStatus(
+    XlaBuilder* builder, const Literal& expected,
+    absl::Span<GlobalData* const> arguments_passed_in,
+    std::optional<ErrorSpec> error, const Shape* shape_with_layout) {
+  std::vector<std::unique_ptr<GlobalData>> owning_arguments;
+  TF_ASSIGN_OR_RETURN(std::vector<GlobalData*> arguments,
+                      PrepareArguments(arguments_passed_in, owning_arguments));
 
   TF_ASSIGN_OR_RETURN(auto computation, builder->Build());
   if (error == std::nullopt) {
@@ -330,23 +379,15 @@ absl::Status ClientLibraryTestBase::ComputeAndCompareLiteralWithStatus(
   }
   // We allow using a float expected literal for a non float outputs. In this
   // case, we need to convert the expected literal to test_type_.
-  const Literal* expected_ptr = &expected;
-  Literal converted_expected;
-  Shape layout_shape;
-  if (test_type_ != F32) {
-    converted_expected = MaybeConvertLiteralToTestType(expected);
-    expected_ptr = &converted_expected;
-    if (shape_with_layout != nullptr) {
-      layout_shape = *shape_with_layout;
-      ShapeUtil::ForEachMutableSubshape(
-          &layout_shape, [&](Shape* subshape, const ShapeIndex& /*index*/) {
-            if (subshape->element_type() == F32) {
-              subshape->set_element_type(test_type_);
-            }
-          });
-      shape_with_layout = &layout_shape;
-    }
+  LiteralWithShape expected_converted =
+      PrepareExpectedLiteralAndShape(expected, shape_with_layout);
+  const Literal* expected_ptr = expected_converted.literal.has_value()
+                                    ? &expected_converted.literal.value()
+                                    : &expected;
+  if (expected_converted.shape.has_value()) {
+    shape_with_layout = &expected_converted.shape.value();
   }
+
   auto expect = [&](const Literal& actual, const std::string& error_message) {
     if (error) {
       EXPECT_TRUE(LiteralTestUtil::Near(*expected_ptr, actual, *error))
@@ -451,14 +492,12 @@ ClientLibraryTestBase::ComputeValueAndReference(
 
   // Create raw pointers to the GlobalData for the rest of the call stack.
   std::vector<GlobalData*> argument_data_ptr;
-  std::transform(
-      argument_data.begin(), argument_data.end(),
-      std::back_inserter(argument_data_ptr),
+  absl::c_transform(
+      argument_data, std::back_inserter(argument_data_ptr),
       [](const std::unique_ptr<GlobalData>& data) { return data.get(); });
   std::vector<GlobalData*> ref_argument_data_ptr;
-  std::transform(
-      ref_argument_data.begin(), ref_argument_data.end(),
-      std::back_inserter(ref_argument_data_ptr),
+  absl::c_transform(
+      ref_argument_data, std::back_inserter(ref_argument_data_ptr),
       [](const std::unique_ptr<GlobalData>& data) { return data.get(); });
 
   TF_ASSIGN_OR_RETURN(auto computation, builder->Build());

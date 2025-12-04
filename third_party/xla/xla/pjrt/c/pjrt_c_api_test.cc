@@ -45,7 +45,6 @@ limitations under the License.
 #include "xla/literal_util.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
 #include "xla/pjrt/c/pjrt_c_api_helpers.h"
-#include "xla/pjrt/c/pjrt_c_api_memory_descriptions_extension.h"
 #include "xla/pjrt/c/pjrt_c_api_test_base.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_device_description.h"
@@ -55,7 +54,6 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tests/literal_test_util.h"
-#include "xla/tsl/platform/status.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 
@@ -664,7 +662,7 @@ TEST_F(PjrtCApiBufferTest, ReadyEvent) {
 
 TEST_F(PjrtCApiBufferTest, ToHostBufferNoHostLayout) {
   auto [buffer, buffer_future] = create_iota_buffer();
-  TF_CHECK_OK(buffer_future.Await());
+  CHECK_OK(buffer_future.Await());
 
   PJRT_Buffer_ToHostBuffer_Args args;
   args.struct_size = PJRT_Buffer_ToHostBuffer_Args_STRUCT_SIZE;
@@ -680,7 +678,7 @@ TEST_F(PjrtCApiBufferTest, ToHostBufferNoHostLayout) {
   PJRT_Error* error = api_->PJRT_Buffer_ToHostBuffer(&args);
   xla::Future<> transfer_to_host =
       ::pjrt::ConvertCEventToCppFuture(args.event, api_);
-  TF_CHECK_OK(transfer_to_host.Await());
+  CHECK_OK(transfer_to_host.Await());
 
   EXPECT_EQ(error, nullptr);
   ASSERT_EQ(literal->data<float>().size(), 4);
@@ -944,6 +942,9 @@ FieldOffsetsAndSizesForVersion(int major_version, int minor_version) {
     }
     if (minor_version >= 79) {
       add_field("PJRT_LoadedExecutable_GetDeviceAssignment", kFnPtrSize);
+    }
+    if (minor_version >= 82) {
+      add_field("PJRT_Client_CreateErrorBuffer", kFnPtrSize);
     }
     return version_offsets_and_sizes;
   }
@@ -1336,6 +1337,9 @@ TEST_F(PjrtCAbiTestBase, FieldOffsetsAndSizes) {
           {"PJRT_LoadedExecutable_GetDeviceAssignment",
            {offsetof(PJRT_Api, PJRT_LoadedExecutable_GetDeviceAssignment),
             sizeof(PJRT_Api::PJRT_LoadedExecutable_GetDeviceAssignment)}},
+          {"PJRT_Client_CreateErrorBuffer",
+           {offsetof(PJRT_Api, PJRT_Client_CreateErrorBuffer),
+            sizeof(PJRT_Api::PJRT_Client_CreateErrorBuffer)}},
       };
   ASSERT_EQ(api_->pjrt_api_version.major_version, PJRT_API_MAJOR);
   ASSERT_EQ(api_->pjrt_api_version.minor_version, PJRT_API_MINOR);

@@ -20,7 +20,6 @@ limitations under the License.
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/hlo/analysis/indexing_map.h"
-#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/layout_util.h"
 #include "xla/runtime/work_cluster.h"
 #include "xla/runtime/work_dimensions.h"
@@ -35,7 +34,6 @@ namespace {
 
 TEST(DefaultWorkItemIndexingMap, MultiDimensionTile) {
   mlir::MLIRContext mlir_context;
-  SymbolicExprContext symbolic_expr_context(&mlir_context);
   mlir_context.loadDialect<mlir::affine::AffineDialect>();
 
   WorkDimensions work_dimensions{NumWorkClusters{}, NumWorkGroups{2},
@@ -44,8 +42,8 @@ TEST(DefaultWorkItemIndexingMap, MultiDimensionTile) {
   Shape shape(PrimitiveType::F32, {6, 4, 5, 6});
   *shape.mutable_layout() = LayoutUtil::GetDefaultLayoutForShape(shape);
 
-  IndexingMap indexing_map = GetDefaultWorkItemIndexingMap(
-      work_dimensions, shape, &symbolic_expr_context);
+  IndexingMap indexing_map =
+      GetDefaultWorkItemIndexingMap(work_dimensions, shape, &mlir_context);
 
   // The shape is the same as the number of elements work dimensions, so there
   // are no constraints.

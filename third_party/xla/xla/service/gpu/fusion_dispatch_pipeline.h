@@ -30,7 +30,7 @@ namespace gpu {
 HloPassPipeline FusionDispatchPipeline(
     const se::DeviceDescription& device_description,
     HloCostAnalysis::ShapeSizeFunction shape_size_fn,
-    SymbolicExprContext* symbolic_expr_context);
+    mlir::MLIRContext* mlir_context);
 
 }  // namespace gpu
 }  // namespace xla

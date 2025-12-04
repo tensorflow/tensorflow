@@ -24,19 +24,20 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "mlir/IR/MLIRContext.h"
-#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/pattern_matcher_gmock.h"
+#include "xla/service/gpu/alias_info.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/gpu_fusible.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 
@@ -47,23 +48,22 @@ namespace m = ::xla::match;
 
 class MultiOutputFusionTest : public HloHardwareIndependentTestBase {
  public:
-  MultiOutputFusion mof_{TestGpuDeviceInfo::RTXA6000DeviceInfo(),
-                         HloCostAnalysis::DefaultShapeSize,
-                         &symbolic_expr_context_};
+  se::DeviceDescription device_info_{TestGpuDeviceInfo::RTXA6000DeviceInfo()};
+  GpuAliasInfo alias_info_{device_info_};
+  MultiOutputFusion mof_{device_info_, &alias_info_,
+                         HloCostAnalysis::DefaultShapeSize, &mlir_context_};
 
   void CheckMultiOutputFusion(absl::string_view hlo,
                               std::optional<absl::string_view> expected) {
     RunAndFilecheckHloRewrite(
         hlo,
-        MultiOutputFusion{TestGpuDeviceInfo::RTXA6000DeviceInfo(),
-                          HloCostAnalysis::DefaultShapeSize,
-                          &symbolic_expr_context_},
+        MultiOutputFusion{device_info_, &alias_info_,
+                          HloCostAnalysis::DefaultShapeSize, &mlir_context_},
         expected);
   }
 
  protected:
   mlir::MLIRContext mlir_context_;
-  SymbolicExprContext symbolic_expr_context_{&mlir_context_};
 };
 
 const char kModulePrefix[] = R"(

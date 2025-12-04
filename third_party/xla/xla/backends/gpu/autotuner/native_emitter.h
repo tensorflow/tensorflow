@@ -40,7 +40,7 @@ class NativeEmitterBackend : public GpuCodegenBackend {
  public:
   explicit NativeEmitterBackend(const DebugOptions* absl_nonnull debug_options,
                                 Compiler* absl_nonnull compiler,
-                                const Compiler::TargetConfig* target_config)
+                                const Compiler::GpuTargetConfig* target_config)
       : GpuCodegenBackend("NativeEmitter", debug_options, compiler,
                           target_config) {}
 

@@ -27,24 +27,15 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/time/time.h"
-#include "mlir/IR/MLIRContext.h"
-#include "xla/backends/gpu/codegen/triton/support.h"
-#include "xla/hlo/analysis/symbolic_expr.h"
-#include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/service/gpu/backend_configs.pb.h"
-#include "xla/service/gpu/matmul_utils.h"
-#include "xla/service/gpu/model/block_level_parameters.h"
-#include "xla/service/gpu/model/gpu_dot_fusion_cost_model.h"
 #include "xla/service/gpu/model/hlo_op_profile.pb.h"
 #include "xla/service/gpu/model/hlo_op_profiles.h"
 #include "xla/service/gpu/model/matmul_interpolator.h"
-#include "xla/service/gpu/transforms/nest_gemm_fusion.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
@@ -55,8 +46,6 @@ limitations under the License.
 namespace xla::gpu {
 
 namespace {
-
-constexpr absl::string_view kGemmCostModelName = "gemm-cost-model";
 
 constexpr absl::string_view kPerfTablesModelName = "perf-table-model";
 
@@ -76,29 +65,6 @@ absl::StatusOr<HloInstructionProfileList> CollectProfiles(
   return profile.entries().at(key);
 }
 
-HloDotInstruction* GetTritonGemmInstruction(const HloInstruction& dot_fusion) {
-  if (!(HloPredicateIsOp<HloOpcode::kFusion>(&dot_fusion) &&
-        IsTritonFusedComputation(
-            *dot_fusion.fused_instructions_computation()))) {
-    return nullptr;
-  }
-
-  HloInstruction* dot = hlo_query::GetFirstInstructionWithOpcode(
-      *dot_fusion.fused_instructions_computation(), HloOpcode::kDot);
-  if (dot == nullptr) {
-    return nullptr;
-  }
-  return DynCast<HloDotInstruction>(dot);
-}
-
-absl::StatusOr<BlockLevelParameters> GetBlockLevelParams(
-    HloDotInstruction& dot, TritonGemmConfig& config) {
-  mlir::MLIRContext ctx;
-  SymbolicExprContext symbolic_expr_context(&ctx);
-  return ::xla::gpu::detail::FindBlockLevelParameters(
-      &dot, config, &symbolic_expr_context, se::DeviceDescription());
-}
-
 absl::Status SetReificationCost(HloInstruction& instr, absl::Duration exec_time,
                                 absl::string_view reification_name) {
   TF_ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
@@ -107,32 +73,6 @@ absl::Status SetReificationCost(HloInstruction& instr, absl::Duration exec_time,
   reification_cost.set_exec_time_us(absl::ToDoubleMicroseconds(exec_time));
   *reification_cost.mutable_name() = reification_name;
   return instr.set_backend_config(gpu_config);
-}
-
-// Computes the runtime estimation via analytical GEMM cost model and adds a
-// reification cost to `instr`. We do not make any constraints on what fusions
-// do we add the cost to. In particular it can be the case there's a non trivial
-// fusion on dot operands. As of now the analytical GEMM model does not support
-// these cases so result interpretation has take this into consideration.
-absl::Status MaybeRecordGemmCostModelForGemmTritonFusion(
-    const se::DeviceDescription& device_info, HloInstruction& instr) {
-  HloDotInstruction* dot = GetTritonGemmInstruction(instr);
-  if (dot == nullptr) {
-    VLOG(2) << "Cannot get triton gemm: " << instr.ToString();
-    return absl::OkStatus();
-  }
-  auto triton_gemm_key = instr.backend_config<GpuBackendConfig>()
-                             ->fusion_backend_config()
-                             .triton_gemm_config();
-  TF_ASSIGN_OR_RETURN(TritonGemmConfig triton_gemm_config,
-                      TritonGemmConfig::FromProto(triton_gemm_key));
-  TF_ASSIGN_OR_RETURN(BlockLevelParameters block_params,
-                      GetBlockLevelParams(*dot, triton_gemm_config));
-  TF_ASSIGN_OR_RETURN(
-      absl::Duration exec_time,
-      GpuDotFusionCostModel::EstimateRunTimeForDotOpWithBlockParameters(
-          dot, block_params, device_info));
-  return SetReificationCost(instr, exec_time, kGemmCostModelName);
 }
 
 absl::Status MaybeRecordPerfTablesForDotsAndCustomCalls(
@@ -170,12 +110,6 @@ absl::StatusOr<bool> MatmulPerfTableStatsCollection::RunImpl(
                 device_info_, *instr, *interpolator);
             !status.ok()) {
           VLOG(1) << "Cannot record perf tables stats data: "
-                  << instr->ToString() << ". Status: " << status;
-        }
-        if (absl::Status status = MaybeRecordGemmCostModelForGemmTritonFusion(
-                device_info_, *instr);
-            !status.ok()) {
-          VLOG(1) << "Cannot record GEMM cost model stats data: "
                   << instr->ToString() << ". Status: " << status;
         }
       });

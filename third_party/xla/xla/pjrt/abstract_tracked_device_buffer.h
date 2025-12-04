@@ -39,16 +39,20 @@ namespace xla {
 class AbstractTrackedDeviceBuffer {
  public:
   virtual ~AbstractTrackedDeviceBuffer() = default;
+  explicit AbstractTrackedDeviceBuffer(
+      tsl::RCReference<CommonPjRtRawBuffer> raw_buffer)
+      : raw_buffer_(std::move(raw_buffer)) {}
 
   // Construct (or return) a vector of tsl::AsyncValue events which
   // will become ready when this buffer is ready.
   virtual std::vector<tsl::RCReference<tsl::AsyncValue>>
   GetAsyncValueDefinitionEvents() = 0;
 
-  // Construct (or return) a raw buffer which aliases the same
+  // Returns a raw buffer which aliases the same
   // underlying memory as this AbstractTrackedDeviceBuffer.
-  virtual tsl::RCReference<CommonPjRtRawBuffer> GetRawBuffer(
-      PjRtMemorySpace* memory_space) = 0;
+  tsl::RCReference<CommonPjRtRawBuffer> raw_buffer() const {
+    return raw_buffer_;
+  }
 
   // Only to be called via the result of
   // CommonPjRtBuffer::ScopedHold::ConvertUsageHold with an optional device
@@ -93,6 +97,14 @@ class AbstractTrackedDeviceBuffer {
     return absl::UnimplementedError(
         "WaitUntilBufferReadyOnStream is only implemented for GPU.");
   }
+
+ protected:
+  void ReleaseDeviceMemory() {
+    raw_buffer_ = tsl::RCReference<CommonPjRtRawBuffer>();
+  }
+
+ private:
+  tsl::RCReference<CommonPjRtRawBuffer> raw_buffer_;
 };
 
 class CommonPjRtBuffer : public PjRtBuffer {

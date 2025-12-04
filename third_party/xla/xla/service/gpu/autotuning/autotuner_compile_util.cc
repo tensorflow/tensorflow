@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
+#include "xla/backends/gpu/autotuner/gpu_codegen_backend.h"
 #include "xla/executable_run_options.h"
 #include "xla/hlo/ir/hlo_clone_context.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -137,7 +138,9 @@ absl::StatusOr<std::unique_ptr<Executable>> AutotunerCompileUtil::Compile(
   if (!new_hlo_module.status().ok()) {
     return new_hlo_module.status();
   }
-
+  GpuCodegenBackend::AdjustDebugOptionsForAutotuning(
+      new_hlo_module->get()->mutable_config().mutable_debug_options(),
+      /*force_allow_register_spills=*/false);
   absl::StatusOr<std::unique_ptr<Executable>> out = compiler_->RunBackend(
       std::move(*new_hlo_module), &stream_executor_,
       Compiler::CompileOptions{&allocator_, /*thread_pool=*/nullptr,

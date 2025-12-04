@@ -53,7 +53,6 @@ using ::testing::HasSubstr;
 class TiledHloScheduleTest : public HloHardwareIndependentTestBase {
  protected:
   mlir::MLIRContext mlir_context_;
-  SymbolicExprContext symbolic_expr_context_{&mlir_context_};
 };
 
 using MajorToMinorTiledHloScheduleTest = TiledHloScheduleTest;
@@ -63,7 +62,7 @@ TEST_F(MajorToMinorTiledHloScheduleTest,
   IndexingMap offsets_indexing = *ParseIndexingMap(R"(
       (d0, d1, d2, d3) -> (d2, d3),
       domain: d0 in [0, 1], d1 in [0, 2], d2 in [0, 4], d3 in [0, 6])",
-                                                   &symbolic_expr_context_);
+                                                   &mlir_context_);
   auto bound = [&offsets_indexing](int64_t dim) {
     return offsets_indexing.GetDimensionBound(dim).upper + 1;
   };
@@ -74,9 +73,9 @@ TEST_F(MajorToMinorTiledHloScheduleTest,
   };
 
   MajorToMinorTiledHloSchedule scheduler;
-  TF_ASSERT_OK_AND_ASSIGN(IndexingMap scheduled_indexing,
-                          scheduler.Schedule(offsets_indexing, iteration_space,
-                                             &symbolic_expr_context_));
+  TF_ASSERT_OK_AND_ASSIGN(
+      IndexingMap scheduled_indexing,
+      scheduler.Schedule(offsets_indexing, iteration_space, &mlir_context_));
 
   // (1) the map must have a single input whose range of values is the size of
   //     the iteration space (i.e. the product of `iteration_space`'s
@@ -94,7 +93,7 @@ TEST_F(MajorToMinorTiledHloScheduleTest,
   EXPECT_EQ(scheduled_indexing, *ParseIndexingMap(R"(
     (pid_0) -> (pid_0 floordiv 21, pid_0 mod 7), domain: pid_0 in [0, 104]
   )",
-                                                  &symbolic_expr_context_));
+                                                  &mlir_context_));
 
   // `pid_0 floordiv 21` has the same upper bound as `d2`.
   EXPECT_EQ(iteration_space_size / 21, bound(2));
@@ -104,9 +103,8 @@ TEST_F(MajorToMinorTiledHloScheduleTest,
 
 TEST_F(MajorToMinorTiledHloScheduleTest,
        MajorToMinorTiledHloScheduleFailsForInvalidIterationSpace) {
-  IndexingMap offsets_indexing =
-      *ParseIndexingMap("(d0, d1) -> (d1), domain: d0 in [0, 1], d1 in [0, 2]",
-                        &symbolic_expr_context_);
+  IndexingMap offsets_indexing = *ParseIndexingMap(
+      "(d0, d1) -> (d1), domain: d0 in [0, 1], d1 in [0, 2]", &mlir_context_);
   MajorToMinorTiledHloSchedule scheduler;
 
   // The iteration space has too many dimensions.
@@ -115,7 +113,7 @@ TEST_F(MajorToMinorTiledHloScheduleTest,
                          {{/*dimension_id=*/0, /*dimension_size=*/1},
                           {/*dimension_id=*/1, /*dimension_size=*/3},
                           {/*dimension_id=*/2, /*dimension_size=*/0}},
-                         &symbolic_expr_context_),
+                         &mlir_context_),
       StatusIs(
           absl::StatusCode::kInvalidArgument,
           HasSubstr(
@@ -125,7 +123,7 @@ TEST_F(MajorToMinorTiledHloScheduleTest,
   EXPECT_THAT(scheduler.Schedule(offsets_indexing, /*iteration_space=*/
                                  {{/*dimension_id=*/0, /*dimension_size=*/1},
                                   {/*dimension_id=*/2, /*dimension_size=*/0}},
-                                 &symbolic_expr_context_),
+                                 &mlir_context_),
               StatusIs(absl::StatusCode::kInvalidArgument,
                        HasSubstr("Dimension id 2 is out of bounds")));
 }
@@ -139,7 +137,7 @@ class TransposedDotTiledHloScheduleTest : public TiledHloScheduleTest {
             *module->entry_computation()
                  ->root_instruction()
                  ->fused_instructions_computation(),
-            &symbolic_expr_context_,
+            &mlir_context_,
             /*emitter_specific_constraints_builder=*/nullptr);
 
     if (!std::holds_alternative<SymbolicTileAnalysis>(analysis_or_error)) {
@@ -347,7 +345,7 @@ ENTRY main {
       (d0, d1, d2, d3, d4) -> (d1, d2, d3, d4),
       domain: d0 in [0, 0], d1 in [0, 1], d2 in [0, 1], d3 in [0, 3],
               d4 in [0, 7])",
-                                                   &symbolic_expr_context_);
+                                                   &mlir_context_);
 
   std::vector<DimensionInfo> iteration_space;
   iteration_space.reserve(offsets_indexing.GetDimVarsCount());
@@ -363,11 +361,11 @@ ENTRY main {
   TF_ASSERT_OK_AND_ASSIGN(
       IndexingMap major_to_minor_scheduled_indexing,
       major_to_minor_scheduler.Schedule(offsets_indexing, iteration_space,
-                                        &symbolic_expr_context_));
+                                        &mlir_context_));
   TF_ASSERT_OK_AND_ASSIGN(
       IndexingMap transposed_scheduled_indexing,
       transposed_scheduler->Schedule(offsets_indexing, iteration_space,
-                                     &symbolic_expr_context_));
+                                     &mlir_context_));
 
   int64_t m_bound = iteration_space[3].dimension_size;
   int64_t n_bound = iteration_space[4].dimension_size;

@@ -56,14 +56,19 @@ def LinalgElementwiseToVectorPass : Pass<"xtile-cpu-linalg-elementwise-to-vector
   ];
 }
 
-def TensorOpsToVectorPass : Pass<"xtile-cpu-tensor-ops-to-vector",
+def TensorOpsToBufferizablePass : Pass<"xtile-cpu-tensor-ops-to-bufferizable",
                                  "mlir::ModuleOp"> {
-  let summary = "Lowering tensor dialect ops to vector ops";
+  let summary = "Lowering tensor dialect ops to bufferizable ops";
 
-  let constructor = "CreateTensorOpsToVectorPass()";
+  let description = [{
+    Some tensor ops such as bitcast are not directly bufferizable. This pass
+    lowers such ops to ops that have bufferization support.
+  }];
+
+  let constructor = "CreateTensorOpsToBufferizablePass()";
 
   let dependentDialects = [
-    "mlir::vector::VectorDialect",
+    "mlir::arith::ArithDialect",
   ];
 }
 
@@ -75,5 +80,28 @@ def MemrefCopyToLoopsPass : Pass<"xtile-cpu-memref-copy-to-loops",
   let dependentDialects = [
     "::mlir::scf::SCFDialect",
     "::mlir::memref::MemRefDialect",
+  ];
+}
+
+def FuseElementwisePass : Pass<"xtile-cpu-fuse-elementwise"> {
+  let summary = "Fuse linalg elementwise ops.";
+
+  let description = [{
+    This pass fuses multiple linalg elementwise ops into linalg elementwise ops
+    that contain multiple instructions. This allows for fewer matrializations
+    and fewer temporary allocations in bufferization.
+  }];
+}
+
+def VectorToScalarPass : Pass<"xtile-cpu-vector-to-scalar"> {
+  let summary = "Convert vector ops to scalar ops where possible.";
+
+  let description = [{
+    This pass converts elementwise vector ops to scalar ops if the operation
+    acts on a single element.
+  }];
+
+  let dependentDialects = [
+    "::mlir::vector::VectorDialect",
   ];
 }

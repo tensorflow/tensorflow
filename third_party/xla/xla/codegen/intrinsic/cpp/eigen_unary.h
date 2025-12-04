@@ -19,8 +19,13 @@ limitations under the License.
 
 namespace xla::codegen {
 
-Vec4f FastTanhf(Vec4f x) asm("xla.tanh.v4f32");
-Vec8d FastRqsqrtf(Vec8d x) asm("xla.rsqrt.v8f64");
+// Single precision
+float tanh_f32(float x) asm("xla.tanh.f32");
+Vec16f tanh_v16f32(Vec16f x) asm("xla.tanh.v16f32");
+
+// Double precision
+double tanh_f64(double x) asm("xla.tanh.f64");
+Vec8d tanh_v8f64(Vec8d x) asm("xla.tanh.v8f64");
 
 }  // namespace xla::codegen
 

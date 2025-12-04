@@ -16,8 +16,19 @@ limitations under the License.
 #include "xla/tsl/lib/io/snappy/snappy_inputbuffer.h"
 
 #include <algorithm>
+#include <cstddef>
+#include <cstdint>
+#include <cstring>
 
+#include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/file_system.h"
+#include "tsl/platform/snappy.h"
+#include "tsl/platform/tstring.h"
 
 namespace tsl {
 namespace io {
@@ -94,10 +105,10 @@ absl::Status SnappyInputBuffer::Inflate() {
     TF_RETURN_IF_ERROR(ReadFromFile());
     if (avail_in_ < compressed_block_length) {
       if (compressed_block_length > input_buffer_capacity_) {
-        return errors::ResourceExhausted(
-            "Input buffer(size: ", input_buffer_capacity_,
-            " bytes) too small. Should be larger ", "than ",
-            compressed_block_length, " bytes.");
+        return absl::ResourceExhaustedError(
+            absl::StrCat("Input buffer(size: ", input_buffer_capacity_,
+                         " bytes) too small. Should be larger than ",
+                         compressed_block_length, " bytes."));
       } else {
         return errors::DataLoss(
             absl::StrCat("Failed to read ", compressed_block_length,

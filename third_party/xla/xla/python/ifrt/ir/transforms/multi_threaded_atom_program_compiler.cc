@@ -60,27 +60,6 @@ namespace ifrt {
 
 namespace {
 
-// Lazily initialized shared thread pool.
-tsl::thread::ThreadPool* thread_pool() {
-  static tsl::thread::ThreadPool* thread_pool = []() {
-    constexpr int kMaxParallelism = 32;
-    return new tsl::thread::ThreadPool(tsl::Env::Default(),
-                                       tsl::ThreadOptions(),
-                                       "CompileAtomPrograms", kMaxParallelism);
-  }();
-  return thread_pool;
-}
-
-void ScheduleWork(tsl::thread::ThreadPool* pool,
-                  absl::AnyInvocable<void()> callee) {
-  // ThreadPool expects std::function that must be copyable, but we can avoid
-  // this by using AnyInvocable.
-  pool->Schedule([ptr = new absl::AnyInvocable<void()>(std::move(callee))]() {
-    (*ptr)();
-    delete ptr;
-  });
-}
-
 // Construct a bool vector with a True entry for each input sharding that must
 // be inferred.
 llvm::SmallVector<bool> GetInputShardingPropagation(
@@ -125,7 +104,7 @@ absl::StatusOr<CompileFuture> MultiThreadedAtomProgramCompiler::CompileModule(
   auto module_type =
       call_op->getAttrOfType<mlir::StringAttr>(kIfrtModuleTypeAttrName);
   if (module_type == kIfrtModuleTypeXla) {
-    return CompileXla(call_op, module_op, thread_pool());
+    return CompileXla(call_op, module_op);
   } else if (module_type == kIfrtModuleTypeMpmdReshard) {
     return CompileMpmdReshard(module_op);
   } else if (module_type == nullptr) {
@@ -190,8 +169,7 @@ MultiThreadedAtomProgramCompiler::GetXlaCompileOptions(
 }
 
 absl::StatusOr<CompileFuture> MultiThreadedAtomProgramCompiler::CompileXla(
-    CallOp call_op, mlir::ModuleOp module_op,
-    tsl::thread::ThreadPool* thread_pool) {
+    CallOp call_op, mlir::ModuleOp module_op) {
   TF_ASSIGN_OR_RETURN(xla::CompileOptions compile_options,
                       GetXlaCompileOptions(call_op, module_op));
 
@@ -203,8 +181,7 @@ absl::StatusOr<CompileFuture> MultiThreadedAtomProgramCompiler::CompileXla(
       /*context=*/nullptr,  // Shares the same long-living context.
       mlir::OwningOpRef<mlir::ModuleOp>(module_op.clone()));
   auto [promise, future] = CompileFuture::MakePromise();
-  ScheduleWork(
-      thread_pool,
+  tsl::Env::Default()->SchedClosure(
       WithCurrentUserContext([this, hlo_program = std::move(hlo_program),
                               compile_options = std::move(compile_options),
                               promise = std::move(promise)]() mutable {

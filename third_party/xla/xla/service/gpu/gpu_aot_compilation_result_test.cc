@@ -127,7 +127,7 @@ TEST_F(GpuAotCompilationResultTest, CreateAndSerialize) {
 
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<GpuAotCompilationResult> result,
-      GpuAotCompilationResult::Create(reference_executable));
+      GpuAotCompilationResult::FromProto(reference_executable));
   TF_ASSERT_OK_AND_ASSIGN(std::string serialized_result,
                           result->SerializeAsString());
   GpuExecutableProto deserialized_executable;
@@ -142,7 +142,7 @@ TEST_F(GpuAotCompilationResultTest, LoadExecutable) {
                           CreateGpuExecutableProto());
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<GpuAotCompilationResult> result,
-      GpuAotCompilationResult::Create(reference_executable));
+      GpuAotCompilationResult::FromProto(reference_executable));
 
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<Executable> executable,

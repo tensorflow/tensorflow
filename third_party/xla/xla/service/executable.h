@@ -26,10 +26,12 @@ limitations under the License.
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
+#include "xla/client/executable_build_options.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/computation_layout.h"
@@ -442,6 +444,16 @@ class Executable {
   virtual absl::Span<const BufferAllocation* absl_nonnull const>
   GetAllocations() const {
     return {};
+  }
+
+  // Gives the executable a chance to dump itself with the given
+  // `ExecutableBuildOptions`
+  // Whether dumping is enabled, and how/where is determined by the
+  // `debug_options`.
+  virtual absl::Status DumpExecutableIfEnabled(
+      const ExecutableBuildOptions& options,
+      const DebugOptions& debug_options) const {
+    return absl::OkStatus();
   }
 
  protected:

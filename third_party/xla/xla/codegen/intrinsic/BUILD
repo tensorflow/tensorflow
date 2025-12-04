@@ -42,10 +42,9 @@ xla_cc_test(
     name = "intrinsic_test",
     srcs = ["intrinsic_test.cc"],
     deps = [
-        ":intrinsic",
+        ":type",
         "//xla:xla_data_proto_cc",
         "//xla/tsl/lib/core:status_test_util",
-        "//xla/tsl/platform:status_matchers",
         "@com_google_absl//absl/status:status_matchers",
         "@com_google_googletest//:gtest_main",
     ],
@@ -57,11 +56,15 @@ cc_library(
     hdrs = ["fptrunc.h"],
     deps = [
         ":intrinsic",
+<<<<<<< HEAD
+=======
+        ":type",
+        "//xla:shape_util",
+>>>>>>> ae0bcfbed65c9f3cf97c7714efdf69deff6507e0
         "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla/service/llvm_ir:llvm_util",
         "//xla/tsl/platform:errors",
-        "//xla/tsl/platform:status",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
@@ -127,8 +130,6 @@ cc_library(
     deps = [
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
-        "//xla/backends/cpu/codegen:contiguous_section_memory_manager",
-        "//xla/service/cpu:orc_jit_memory_mapper",
         "//xla/service/llvm_ir:llvm_util",
         "//xla/tsl/util:safe_reinterpret_cast",
         "@com_google_absl//absl/base",

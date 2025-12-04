@@ -74,17 +74,16 @@ limitations under the License.
 #include "xla/status_macros.h"
 #include "xla/tests/test_utils.h"
 #include "xla/tools/hlo_control_flow_flattening.h"
+#include "xla/tools/multihost_hlo_runner/hlo_input_output_format.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/file_system.h"
 #include "xla/tsl/platform/file_system_helper.h"
-#include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/util/fixed_option_set_flag.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/protobuf.h"
 #include "tsl/profiler/lib/profiler_session.h"
 #include "tsl/profiler/protobuf/profiler_options.pb.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
@@ -980,16 +979,18 @@ CreateArgumentsOnDevice(PjRtClient& client,
 
 // Creates an ExecutableBuildOptions using the specified ExecutionOptions.
 ExecutableBuildOptions CreateExecutableBuildOptionsFromExecutionOptions(
-    const ExecutionOptions& execution_options) {
+    const ExecutionOptions& execution_options, bool preserve_xla_dump_to) {
   ExecutableBuildOptions build_options;
   if (execution_options.has_debug_options()) {
     *build_options.mutable_debug_options() = execution_options.debug_options();
-    build_options.mutable_debug_options()->set_xla_dump_to("");
+    if (!preserve_xla_dump_to) {
+      build_options.mutable_debug_options()->set_xla_dump_to("");
+    }
   }
   if (execution_options.has_shape_with_output_layout()) {
     absl::StatusOr<Shape> shape =
         Shape::FromProto(execution_options.shape_with_output_layout());
-    TF_CHECK_OK(shape.status());
+    CHECK_OK(shape.status());
     build_options.set_result_layout(*shape);
   }
   build_options.set_num_replicas(execution_options.num_replicas());
@@ -1008,7 +1009,7 @@ ExecutableBuildOptions CreateExecutableBuildOptionsFromExecutionOptions(
   if (execution_options.has_device_assignment()) {
     absl::StatusOr<std::unique_ptr<DeviceAssignment>> device_assignment =
         DeviceAssignment::Deserialize(execution_options.device_assignment());
-    TF_CHECK_OK(device_assignment.status());
+    CHECK_OK(device_assignment.status());
     build_options.set_device_assignment(**device_assignment);
   }
   build_options.set_alias_passthrough_params(
@@ -1033,7 +1034,8 @@ absl::StatusOr<CompileOptions> CreateCompileOptions(
   if (raw_options.execution_options.has_value()) {
     compile_options.executable_build_options =
         CreateExecutableBuildOptionsFromExecutionOptions(
-            raw_options.execution_options.value());
+            raw_options.execution_options.value(),
+            raw_options.preserve_xla_dump_to);
   }
 
   ExecutableBuildOptions& build_options =
@@ -1567,7 +1569,7 @@ void HLORunnerProfiler::CreateSession() {
 void HLORunnerProfiler::UploadSession() {
   xspace_ = std::make_unique<tensorflow::profiler::XSpace>();
   // Stops the ProfilerSession
-  TF_CHECK_OK(session_->CollectData(xspace_.get()));
+  CHECK_OK(session_->CollectData(xspace_.get()));
 
   CHECK(!dump_path_.empty());
 
