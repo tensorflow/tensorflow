@@ -293,16 +293,15 @@ static void AddBufferizationPasses(mlir::OpPassManager& pm) {
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::bufferization::createBufferHoistingPass());
   pm.addPass(mlir::memref::createFoldMemRefAliasOpsPass());
+
   mlir::bufferization::PromoteBuffersToStackPassOptions
       buffer_promotion_options;
-  // We don't want any heap allocation for now.
-  buffer_promotion_options.maxAllocSizeInBytes =
-      std::numeric_limits<unsigned>::max();
+  // TODO(willfroom): Look at a more principled way to set this option.
+  buffer_promotion_options.maxAllocSizeInBytes = 4096;
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::bufferization::createPromoteBuffersToStackPass(
           buffer_promotion_options));
-  // This shouldn't be necessary as we promote everything to the stack, but we
-  // leave it in for now while we are experimenting.
+
   mlir::bufferization::buildBufferDeallocationPipeline(
       pm, mlir::bufferization::BufferDeallocationPipelineOptions());
 }
