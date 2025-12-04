@@ -267,14 +267,6 @@ XlaJitCompiledCpuFunction::Compile(
   XlaCompiledCpuFunction::set_static_data_program_shape(
       &jit->static_data_, jit->program_shape_.get());
 
-  if (cpu_executable->hlo_profiling_enabled()) {
-    XlaCompiledCpuFunction::set_static_data_hlo_profile_printer_data(
-        &jit->static_data_, &cpu_executable->hlo_profile_printer_data());
-    XlaCompiledCpuFunction::set_static_data_profile_counters_size(
-        &jit->static_data_,
-        cpu_executable->hlo_profile_printer_data().profile_counters_size());
-  }
-
   return std::move(jit_unique_ptr);
 }
 

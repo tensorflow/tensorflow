@@ -49,7 +49,6 @@ limitations under the License.
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/hlo_module_config.h"
-#include "xla/service/hlo_profile_printer_data.pb.h"
 #include "xla/stream_executor/host/host_platform_id.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/tsl/platform/statusor.h"
@@ -80,7 +79,6 @@ CpuAotCompilationResult::Create(
     absl::string_view function_name, std::vector<ObjFileProto> obj_files,
     std::vector<SymbolProto> symbols, const ThunkSequence& thunks,
     std::unique_ptr<FunctionLibrary> function_library,
-    std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data,
     TargetMachineOptionsProto target_machine_options) {
   ThunkSequenceSerDesProtobuf thunk_sequence_serdes(
       hlo_module, &buffer_assignment->Allocations());
@@ -110,7 +108,7 @@ CpuAotCompilationResult::Create(
       hlo_module, buffer_assignment, function_name, std::move(obj_files),
       std::move(symbols), thunk_proto, std::move(temp_allocation_index),
       std::move(buffer_allocation_infos), std::move(function_library),
-      std::move(hlo_profile_printer_data), std::move(target_machine_options)));
+      std::move(target_machine_options)));
 }
 
 CpuAotCompilationResult::CpuAotCompilationResult(
@@ -120,12 +118,10 @@ CpuAotCompilationResult::CpuAotCompilationResult(
     std::optional<size_t> temp_allocation_index,
     std::vector<BufferAllocationInfo> buffer_allocation_infos,
     std::unique_ptr<FunctionLibrary> function_library,
-    std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data,
     TargetMachineOptionsProto target_machine_options)
     : temp_allocation_index_(temp_allocation_index),
       buffer_allocation_infos_(std::move(buffer_allocation_infos)),
-      function_library_(std::move(function_library)),
-      hlo_profile_printer_data_(std::move(hlo_profile_printer_data)) {
+      function_library_(std::move(function_library)) {
   *proto_.mutable_hlo_module()->mutable_hlo_module() = hlo_module->ToProto();
   *proto_.mutable_hlo_module()->mutable_config() =
       hlo_module->config().ToProto();
