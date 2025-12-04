@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <cmath>
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <string>
@@ -77,6 +78,10 @@ bool IsAsync(const HloInstruction* inst) {
 
 class CollectiveOpsTestE2E : public CollectiveOpsE2ETestBase {
  public:
+  explicit CollectiveOpsTestE2E(size_t memory_size = 32 * kMB,
+                                size_t collectives_memory_size = 0)
+      : CollectiveOpsE2ETestBase(memory_size, collectives_memory_size) {}
+
   bool HasFp8Support() {
     if (Capability().IsCuda()) {
       return Capability().cuda_compute_capability()->IsAtLeast(8, 9);
@@ -119,7 +124,9 @@ class AsyncCollectiveOps : public CollectiveOpsWithFlagsBase,
  public:
   AsyncCollectiveOps()
       : CollectiveOpsWithFlagsBase(/*enable_async=*/GetParam(),
-                                   /*enable_p2p_memcpy=*/false) {}
+                                   /*enable_p2p_memcpy=*/false,
+                                   /*memory_size=*/8 * kGB,
+                                   /*collectives_memory_size=*/0) {}
 };
 
 class MemcpyCollectiveOps : public CollectiveOpsWithFlagsBase,
@@ -127,7 +134,9 @@ class MemcpyCollectiveOps : public CollectiveOpsWithFlagsBase,
  public:
   MemcpyCollectiveOps()
       : CollectiveOpsWithFlagsBase(/*enable_async=*/true,
-                                   /*enable_p2p_memcpy=*/GetParam()) {}
+                                   /*enable_p2p_memcpy=*/GetParam(),
+                                   /*memory_size=*/32 * kMB,
+                                   /*collectives_memory_size=*/0) {}
 };
 
 class AsyncMemcpyCollectiveOps
@@ -135,8 +144,11 @@ class AsyncMemcpyCollectiveOps
       public ::testing::WithParamInterface<std::tuple<bool, bool>> {
  public:
   AsyncMemcpyCollectiveOps()
-      : CollectiveOpsWithFlagsBase(std::get<0>(GetParam()),
-                                   std::get<1>(GetParam())) {}
+      : CollectiveOpsWithFlagsBase(
+            /*enable_async=*/std::get<0>(GetParam()),
+            /*enable_p2p_memcpy=*/std::get<1>(GetParam()),
+            /*memory_size=*/32 * kMB,
+            /*collectives_memory_size=*/0) {}
 };
 
 std::string GetAsyncTestName(bool is_async) {
@@ -1264,6 +1276,10 @@ TEST_F(CollectiveOpsTestE2E, HostMemoryOffloadingWithDonation) {
 // E2E tests comparing the results of windowed einsum and non-windowed cases.
 class CollectiveOpsTestE2EWindowedNonWindowed : public CollectiveOpsTestE2E {
  public:
+  CollectiveOpsTestE2EWindowedNonWindowed()
+      : CollectiveOpsTestE2E(/*memory_size=*/4 * kGB,
+                             /*collectives_memory_size=*/0) {}
+
   void CollectiveOpsCompareWindowedNonWindowed(
       absl::string_view hlo_text, bool disable_dot_merger = false,
       bool enable_a2a_rewrite = false) {
@@ -2375,8 +2391,10 @@ class AllReduceTest
   };
 
   AllReduceTest()
-      : CollectiveOpsWithFlagsBase(std::get<0>(GetParam()),
-                                   /*enable_p2p_memcpy=*/false) {}
+      : CollectiveOpsWithFlagsBase(/*enable_async=*/std::get<0>(GetParam()),
+                                   /*enable_p2p_memcpy=*/false,
+                                   /*memory_size=*/32 * kMB,
+                                   /*collectives_memory_size=*/0) {}
 
  protected:
   DebugOptions GetDebugOptionsForTest() const override {

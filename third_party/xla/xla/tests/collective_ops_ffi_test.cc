@@ -43,7 +43,12 @@ limitations under the License.
 
 namespace xla::gpu {
 
-class CollectiveOpsTestFFI : public CollectiveOpsE2ETestBase {};
+class CollectiveOpsTestFFI : public CollectiveOpsE2ETestBase {
+ public:
+  CollectiveOpsTestFFI()
+      : CollectiveOpsE2ETestBase(/*memory_size=*/1 * kMB,
+                                 /*collectives_memory_size=*/0) {}
+};
 
 static constexpr int64_t kNumReplicas = 2;
 

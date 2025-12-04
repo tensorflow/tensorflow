@@ -31,6 +31,10 @@ namespace {
 
 class CollectiveMetadataTest : public CollectiveOpsE2ETestBase {
  protected:
+  CollectiveMetadataTest()
+      : CollectiveOpsE2ETestBase(/*memory_size=*/32 * kMB,
+                                 /*collectives_memory_size=*/1 * kMB) {}
+
   void SetUp() override {
     CollectiveOpsE2ETestBase::SetUp();
     if (!IsHopperAndHigher()) {

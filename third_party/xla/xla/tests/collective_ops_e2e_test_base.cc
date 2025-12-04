@@ -82,26 +82,23 @@ Type CheckStatus(absl::StatusOr<Type> result) {
 
 }  // namespace
 
-CollectiveOpsE2ETestBase::CollectiveOpsE2ETestBase() {
+void CollectiveOpsE2ETestBase::SetupHloRunner(size_t memory_size,
+                                              size_t collectives_memory_size) {
   se::Platform* platform = CheckStatus(PlatformUtil::GetPlatform("GPU"));
   se::Platform* reference_platform =
       CheckStatus(PlatformUtil::GetPlatform("GPU"));
 
   std::vector<se::MultiDeviceAdapter::AllocatorInfo> allocators;
-  constexpr int64_t kGB = 1024LL * 1024LL * 1024LL;
-  size_t common_buffers_size = 8 * kGB;   // 8GB
-  size_t collectives_buffers_size = kGB;  // 1GB
   for (int64_t i = 0; i < platform->VisibleDeviceCount(); ++i) {
     se::StreamExecutor* executor = CheckStatus(platform->ExecutorForDevice(i));
     // Common memory allocator for device i.
     allocators.emplace_back(
-        CreateAllocator(executor, i, /*is_collective=*/false,
-                        common_buffers_size),
+        CreateAllocator(executor, i, /*is_collective=*/false, memory_size),
         nullptr, 0, i, platform);
 
     // Collectives and symmetric memory allocator for device i.
     allocators.emplace_back(CreateAllocator(executor, i, /*is_collective=*/true,
-                                            collectives_buffers_size),
+                                            collectives_memory_size),
                             nullptr, (int)gpu::MemorySpaceColor::kCollective, i,
                             platform);
   }
