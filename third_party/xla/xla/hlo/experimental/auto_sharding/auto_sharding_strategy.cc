@@ -651,9 +651,8 @@ BuildStrategyAndCost(
               // actually equal to the number of devices in the original
               // mesh). Below, we use the correct mesh depending on the number
               // of elements in the 1D sharding.
-              bool is_1d_sharding =
-                  VectorGreaterThanOneElementCount(
-                      input_spec.tile_assignment().dimensions()) == 1;
+              bool is_1d_sharding = VectorGreaterThanOneElementCount(
+                                        input_spec.dimensions()) == 1;
               if (is_1d_sharding &&
                   input_spec.TotalNumTiles() ==
                       cluster_env.device_mesh_1d_.num_elements()) {

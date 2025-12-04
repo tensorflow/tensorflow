@@ -648,8 +648,7 @@ absl::Status HloSharding::EachTile(
   // such as subgroups to express partial replication/sharding and other
   // semantics.  They do not participate in determining the tile origin and
   // shape.
-  const absl::Span<const int64_t> tile_assignment_dims =
-      tile_assignment().dimensions();
+  const absl::Span<const int64_t> tile_assignment_dims = dimensions();
   const int num_devices = tile_assignment().array().num_elements();
 
   if (dims.size() != TiledDataRank()) {
@@ -1178,10 +1177,10 @@ int64_t HloSharding::NumTiles(absl::Span<const int64_t> dims) const {
   }
   CHECK(!IsManual());
   CHECK(!ReplicateOnLastTileDim() ||
-        !absl::c_linear_search(dims, tile_assignment().num_dimensions() - 1));
+        !absl::c_linear_search(dims, num_dimensions() - 1));
   int64_t num_tiles = 1;
   for (auto d : dims) {
-    CHECK(d < tile_assignment().num_dimensions());
+    CHECK(d < num_dimensions());
     num_tiles *= dimension(d);
   }
   return num_tiles;

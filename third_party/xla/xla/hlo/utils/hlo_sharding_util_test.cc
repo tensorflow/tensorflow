@@ -27,6 +27,8 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/array.h"
 #include "xla/hlo/ir/hlo_sharding.h"
+#include "xla/hlo/ir/mesh_and_axis.h"
+#include "xla/hlo/ir/named_sharding.h"
 #include "xla/hlo/ir/tile_assignment.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/test.h"
@@ -566,6 +568,16 @@ TEST(HloShardingUtilTest, PropagateShardingAlongDimsAndReplicateOthers1) {
   HloSharding expected = HloSharding::PartialTile(
       TileAssignment({1, 11, 5, 3, 1, 14}, {2, 3, 5, 7, 11}, {4, 2, 1, 0, 3}));
   EXPECT_EQ(target_sharding, expected);
+
+  {
+    Mesh mesh({2, 3, 5, 7, 11}, {"a", "b", "c", "d", "e"});
+    NamedSharding source_sharding(mesh, {{"a"}, {"b"}, {"c"}, {"d"}, {"e"}});
+    HloSharding target_sharding = PropagateShardingAlongDimsAndReplicateOthers(
+        HloSharding(source_sharding), source_dims, target_dims,
+        target_shape_rank);
+    NamedSharding expected = NamedSharding(mesh, {{}, {"e"}, {"c"}, {"b"}, {}});
+    EXPECT_EQ(target_sharding.named_sharding(), expected);
+  }
 }
 
 TEST(HloShardingUtilTest, PropagateShardingAlongDimsAndReplicateOthers2) {
@@ -578,6 +590,16 @@ TEST(HloShardingUtilTest, PropagateShardingAlongDimsAndReplicateOthers2) {
   HloSharding expected = HloSharding::PartialTile(
       TileAssignment({2, 5, 11, 21}, {2, 3, 5, 7, 11}, {0, 2, 4, 1, 3}));
   EXPECT_EQ(target_sharding, expected);
+
+  {
+    Mesh mesh({2, 3, 5, 7, 11}, {"a", "b", "c", "d", "e"});
+    NamedSharding source_sharding(mesh, {{"a"}, {"b"}, {"c"}, {"d"}, {"e"}});
+    HloSharding target_sharding = PropagateShardingAlongDimsAndReplicateOthers(
+        HloSharding(source_sharding), source_dims, target_dims,
+        target_shape_rank);
+    NamedSharding expected = NamedSharding(mesh, {{"a"}, {"c"}, {"e"}});
+    EXPECT_EQ(target_sharding.named_sharding(), expected);
+  }
 }
 
 TEST(HloShardingUtilTest, PropagateShardingAlongDimsAndReplicateOthers3) {
@@ -590,6 +612,31 @@ TEST(HloShardingUtilTest, PropagateShardingAlongDimsAndReplicateOthers3) {
   HloSharding expected = HloSharding::PartialTile(
       TileAssignment({11, 7, 1, 3, 10}, {2, 3, 5, 7, 11}, {4, 3, 1, 0, 2}));
   EXPECT_EQ(target_sharding, expected);
+
+  {
+    Mesh mesh({2, 3, 5, 7, 11}, {"a", "b", "c", "d", "e"});
+    NamedSharding source_sharding(mesh, {{"a"}, {"b"}, {"c"}, {"d"}, {"e"}});
+    HloSharding target_sharding = PropagateShardingAlongDimsAndReplicateOthers(
+        HloSharding(source_sharding), source_dims, target_dims,
+        target_shape_rank);
+    NamedSharding expected = NamedSharding(mesh, {{"e"}, {"d"}, {}, {"b"}});
+    EXPECT_EQ(target_sharding.named_sharding(), expected);
+  }
+}
+
+TEST(HloShardingUtilTest, PropagateShardingAlongDimsAndReplicateOthers4) {
+  Mesh mesh({2, 3, 5, 7, 11}, {"a", "b", "c", "d", "e"});
+  NamedSharding source_sharding(mesh, {{"a"}, {"c", "b"}, {}, {"d"}, {}}, {},
+                                /*unreduced_axes=*/{"e"});
+  std::vector<int64_t> source_dims = {2, 1, 3};
+  std::vector<int64_t> target_dims = {0, 3, 1};
+  int64_t target_shape_rank = 4;
+  HloSharding target_sharding = PropagateShardingAlongDimsAndReplicateOthers(
+      HloSharding(source_sharding), source_dims, target_dims,
+      target_shape_rank);
+  NamedSharding expected = NamedSharding(mesh, {{}, {"d"}, {}, {"c", "b"}}, {},
+                                         /*unreduced_axes=*/{"e"});
+  EXPECT_EQ(target_sharding.named_sharding(), expected);
 }
 
 TEST(HloShardingUtilTest, MergeManualSubgroupSharding) {
@@ -661,10 +708,10 @@ TEST(HloShardingUtilTest, UngroupSharding_ManualOnly) {
   DimensionVector group_dims = {2};
   DimensionVector group_dim_sizes = {2};
 
-  auto grouped = GroupedSharding(
-      std::move(device_groups), std::move(group_dims),
-      std::move(group_dim_sizes), sharding.tile_assignment().num_dimensions(),
-      sharding, /*subgroup_manual=*/true);
+  auto grouped =
+      GroupedSharding(std::move(device_groups), std::move(group_dims),
+                      std::move(group_dim_sizes), sharding.num_dimensions(),
+                      sharding, /*subgroup_manual=*/true);
 
   HloSharding ungroup_sharding = UngroupSharding(grouped);
 
@@ -678,11 +725,10 @@ TEST(HloShardingUtilTest, UngroupSharding_ReplicatedAndManual) {
   DimensionVector group_dims = {3};
   DimensionVector group_dim_sizes = {2};
 
-  auto grouped =
-      GroupedSharding(std::move(device_groups), std::move(group_dims),
-                      std::move(group_dim_sizes),
-                      sharding.tile_assignment().num_dimensions() - 1, sharding,
-                      /*subgroup_manual=*/true);
+  auto grouped = GroupedSharding(
+      std::move(device_groups), std::move(group_dims),
+      std::move(group_dim_sizes), sharding.num_dimensions() - 1, sharding,
+      /*subgroup_manual=*/true);
 
   HloSharding ungroup_sharding = UngroupSharding(grouped);
   VLOG(1) << "ungroup_sharding: " << ungroup_sharding.ToString();
@@ -698,11 +744,10 @@ TEST(HloShardingUtilTest, UngroupSharding_ManualAndReplicated) {
   DimensionVector group_dims = {2};
   DimensionVector group_dim_sizes = {2};
 
-  auto grouped =
-      GroupedSharding(std::move(device_groups), std::move(group_dims),
-                      std::move(group_dim_sizes),
-                      sharding.tile_assignment().num_dimensions() - 1, sharding,
-                      /*subgroup_manual=*/true);
+  auto grouped = GroupedSharding(
+      std::move(device_groups), std::move(group_dims),
+      std::move(group_dim_sizes), sharding.num_dimensions() - 1, sharding,
+      /*subgroup_manual=*/true);
 
   HloSharding ungroup_sharding = UngroupSharding(grouped);
   VLOG(1) << "ungroup_sharding: " << ungroup_sharding.ToString();

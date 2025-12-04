@@ -508,9 +508,22 @@ class HloSharding {
   // REQUIRES: !IsReplicated() && !IsTuple()
   const TileAssignment& tile_assignment() const { return tile_assignment_; }
 
+  const NamedSharding& named_sharding() const {
+    CHECK(UseNamedShardingLeaf());
+    return named_sharding_.value();
+  }
+
+  // Returns the number of dimensions represented by sharding.
+  int64_t num_dimensions() const { return tile_assignment().num_dimensions(); }
+
   // Returns number of shards in the given dimension.
   int64_t dimension(int64_t dim_index) const {
     return tile_assignment().dim(dim_index);
+  }
+
+  // Returns all sharding dimensions.
+  absl::Span<const int64_t> dimensions() const {
+    return tile_assignment().dimensions();
   }
 
   // Gets the subgroup types array.
@@ -672,6 +685,16 @@ class HloSharding {
 
   const ShardGroup& GetShardGroup() const { return shard_group_; }
 
+  explicit HloSharding(NamedSharding named_sharding)
+      : replicated_(false),
+        maximal_(false),
+        tuple_(false),
+        manual_(false),
+        unknown_(false),
+        unreduced_(false),
+        replicate_on_last_tile_dim_(false),
+        named_sharding_(std::move(named_sharding)) {}
+
  private:
   explicit HloSharding(bool manual, bool replicated, bool unknown,
                        bool unreduced, absl::Span<const OpMetadata> metadata)
@@ -738,15 +761,6 @@ class HloSharding {
         unreduced_(false),
         replicate_on_last_tile_dim_(false),
         named_sharding_(std::nullopt) {}
-  explicit HloSharding(NamedSharding named_sharding)
-      : replicated_(false),
-        maximal_(false),
-        tuple_(false),
-        manual_(false),
-        unknown_(false),
-        unreduced_(false),
-        replicate_on_last_tile_dim_(false),
-        named_sharding_(std::move(named_sharding)) {}
 
   // Test-only constructor for sharding format code coverage. Copies the
   // original sharding with provided tile assignment.

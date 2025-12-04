@@ -130,9 +130,8 @@ absl::Status SpmdPartitioningVisitor::HandleCustomCallTopK(
     partition_state = CreatePerGroupPartitioningState(
         partitioned_input.state(), sharding_grouped.device_groups,
         partitioned_input.state().b);
-    std::vector<int64_t> reshape_dimensions(
-        sharding.tile_assignment().dimensions().begin(),
-        sharding.tile_assignment().dimensions().end());
+    std::vector<int64_t> reshape_dimensions(sharding.dimensions().begin(),
+                                            sharding.dimensions().end());
     reshape_dimensions.push_back(reshape_dimensions.back());
     reshape_dimensions[sort_dim] = 1;
     auto reshape_tile_assignment =

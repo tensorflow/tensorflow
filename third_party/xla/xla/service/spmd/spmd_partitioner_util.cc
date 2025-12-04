@@ -409,7 +409,7 @@ std::vector<HloInstruction*> MakePartitionOffsets(
 std::vector<HloInstruction*> MakeTiledPartitionOrdinals(
     const HloSharding& sharding, HloInstruction* partition_id, SpmdBuilder* b) {
   CHECK(!sharding.IsTileMaximal());
-  auto dimensions = sharding.tile_assignment().dimensions();
+  auto dimensions = sharding.dimensions();
   if (sharding.ReplicateOnLastTileDim()) {
     dimensions.remove_suffix(1);
   }
@@ -718,8 +718,8 @@ std::optional<HloSharding> PartialReplicateReshardCompatibleSharding(
   }
 
   const std::vector<int64_t> shape_dims(
-      target_sharding.tile_assignment().dimensions().begin(),
-      target_sharding.tile_assignment().dimensions().begin() + rank);
+      target_sharding.dimensions().begin(),
+      target_sharding.dimensions().begin() + rank);
   if (hlo_sharding_util::IsSubTilingOrEqualSharding(
           ShapeUtil::MakeShape(F32, shape_dims), target_sharding,
           partial_sharding)) {
@@ -730,8 +730,8 @@ std::optional<HloSharding> PartialReplicateReshardCompatibleSharding(
   // decompose partial_sharding on the last tile dimension (replicated one) and
   // move the decomposed tile dimensions to the expanded tile dimensions.
   std::vector<int64_t> reshape_dimensions(
-      partial_sharding.tile_assignment().dimensions().begin(),
-      partial_sharding.tile_assignment().dimensions().begin() + rank);
+      partial_sharding.dimensions().begin(),
+      partial_sharding.dimensions().begin() + rank);
   reshape_dimensions.insert(reshape_dimensions.end(), expand_tile_sizes.begin(),
                             expand_tile_sizes.end());
 
@@ -745,16 +745,14 @@ std::optional<HloSharding> PartialReplicateReshardCompatibleSharding(
   }
 
   if (target_sharding.ReplicateOnLastTileDim()) {
-    reshape_dimensions.push_back(
-        target_sharding.tile_assignment().dimensions().back());
+    reshape_dimensions.push_back(target_sharding.dimensions().back());
     perm.push_back(reshape_dimensions.size() - 1);
   }
 
-  auto transpose_tile_assignment =
-      partial_sharding.tile_assignment()
-          .Reshape(reshape_dimensions)
-          .Transpose(perm)
-          .Reshape(target_sharding.tile_assignment().dimensions());
+  auto transpose_tile_assignment = partial_sharding.tile_assignment()
+                                       .Reshape(reshape_dimensions)
+                                       .Transpose(perm)
+                                       .Reshape(target_sharding.dimensions());
 
   return target_sharding.ReplicateOnLastTileDim()
              ? HloSharding::PartialTile(transpose_tile_assignment)
@@ -926,8 +924,8 @@ std::optional<int64_t> UniqueTiledDim(const HloSharding& sharding) {
   }
   int64_t dim = -1;
   int64_t rank = sharding.ReplicateOnLastTileDim()
-                     ? sharding.tile_assignment().num_dimensions() - 1
-                     : sharding.tile_assignment().num_dimensions();
+                     ? sharding.num_dimensions() - 1
+                     : sharding.num_dimensions();
   for (int64_t i = 0; i < rank; ++i) {
     if (sharding.dimension(i) > 1) {
       if (dim != -1) {
@@ -2150,8 +2148,7 @@ std::optional<std::vector<std::pair<int64_t, int64_t>>>
 GetReshardAllToAllSourceTargetDims(const HloSharding& source,
                                    const HloSharding& target) {
   if (source.IsTileMaximal() || target.IsTileMaximal() ||
-      source.tile_assignment().num_dimensions() !=
-          target.tile_assignment().num_dimensions() ||
+      source.num_dimensions() != target.num_dimensions() ||
       source.NumTiles() != target.NumTiles()) {
     return std::nullopt;
   }
@@ -2159,7 +2156,7 @@ GetReshardAllToAllSourceTargetDims(const HloSharding& source,
   // counts on source and target.
   std::map<int64_t, std::vector<int64_t>> source_size_to_dim;
   std::map<int64_t, std::vector<int64_t>> target_size_to_dim;
-  for (int64_t i = 0; i < source.tile_assignment().num_dimensions(); ++i) {
+  for (int64_t i = 0; i < source.num_dimensions(); ++i) {
     if (source.dimension(i) == target.dimension(i)) {
       continue;
     }
@@ -2235,8 +2232,7 @@ GetReshardAllToAllSourceTargetDims(const HloSharding& source,
 bool CanReshardWithCollectivePermute(const HloSharding& source,
                                      const HloSharding& target) {
   return !source.IsTileMaximal() && !target.IsTileMaximal() &&
-         source.tile_assignment().dimensions() ==
-             target.tile_assignment().dimensions() &&
+         source.dimensions() == target.dimensions() &&
          source.ReplicateOnLastTileDim() == target.ReplicateOnLastTileDim() &&
          source.tile_assignment() != target.tile_assignment();
 }
@@ -2463,7 +2459,7 @@ std::optional<std::vector<int64_t>> FindMatchingPartitionedDimsForGrouping(
   std::vector<int64_t> dims;
   if (device_groups.num_devices_per_group() < 2) {
     // Trivial case: single member groups
-    for (int64_t i = 0; i < sharding.tile_assignment().num_dimensions(); ++i) {
+    for (int64_t i = 0; i < sharding.num_dimensions(); ++i) {
       if (sharding.dimension(i) > 1) {
         dims.push_back(i);
       }
@@ -2472,14 +2468,13 @@ std::optional<std::vector<int64_t>> FindMatchingPartitionedDimsForGrouping(
   }
 
   std::vector<std::vector<int64_t>> device_to_index(
-      num_devices,
-      std::vector<int64_t>(sharding.tile_assignment().num_dimensions()));
+      num_devices, std::vector<int64_t>(sharding.num_dimensions()));
   sharding.tile_assignment().Each(
       [&](absl::Span<const int64_t> index, int64_t device) {
         device_to_index[device].assign(index.begin(), index.end());
       });
   int64_t group_count = 1;
-  for (int64_t i = 0; i < sharding.tile_assignment().num_dimensions(); ++i) {
+  for (int64_t i = 0; i < sharding.num_dimensions(); ++i) {
     if (device_to_index[device_groups(0, 0)][i] ==
         device_to_index[device_groups(0, 1)][i]) {
       dims.push_back(i);
@@ -2584,8 +2579,7 @@ GatherScatterOperandsShardedAcrossParallelDims(
       return std::nullopt;
     }
     std::vector<int64_t> new_tile_assignment_dims(
-        to_adjust->tile_assignment().dimensions().begin(),
-        to_adjust->tile_assignment().dimensions().end());
+        to_adjust->dimensions().begin(), to_adjust->dimensions().end());
     for (int i = 0; i < to_adjust_dims.size(); ++i) {
       int64_t target_dim = target->dimension(target_dims[i]);
       int64_t to_adjust_dim = to_adjust->dimension(to_adjust_dims[i]);
@@ -2622,8 +2616,8 @@ GatherScatterOperandsShardedAcrossParallelDims(
   }
   // Make sure that the parallel dimensions are aligned.
   std::vector<int64_t> operand_shard_tile_dims(
-      new_operand_shard.tile_assignment().dimensions().begin(),
-      new_operand_shard.tile_assignment().dimensions().end());
+      new_operand_shard.dimensions().begin(),
+      new_operand_shard.dimensions().end());
   for (int i = 0; i < indices_parallel_dims.size(); ++i) {
     operand_shard_tile_dims[operand_parallel_dims[i]] =
         new_index_shard.dimension(indices_parallel_dims[i]);
@@ -2848,8 +2842,7 @@ HloInstruction* PadDataFromWindowReshard(
 
 std::vector<std::vector<int64_t>> GetPartitionGroupsForReplication(
     const HloSharding& sharding, absl::Span<const int64_t> replication_dims) {
-  absl::Span<const int64_t> tile_assignment_dims =
-      sharding.tile_assignment().dimensions();
+  absl::Span<const int64_t> tile_assignment_dims = sharding.dimensions();
   DCHECK_GE(tile_assignment_dims.size(), replication_dims.size());
   int64_t group_size = 1;
   for (int64_t i : replication_dims) {
@@ -2957,10 +2950,9 @@ std::optional<IotaReplicaGroupList> GetIotaPartitionGroupsAcrossTargetDims(
       sharding.tile_assignment().num_elements() / total_group_size;
 
   std::vector<int64_t> reshape_dimensions;
-  reshape_dimensions.reserve(sharding.tile_assignment().num_dimensions());
+  reshape_dimensions.reserve(sharding.num_dimensions());
   std::vector<int64_t> target_dim_locations;
-  for (int64_t dim = 0; dim < sharding.tile_assignment().num_dimensions();
-       ++dim) {
+  for (int64_t dim = 0; dim < sharding.num_dimensions(); ++dim) {
     if (auto it = absl::c_find(target_dims, dim); it != target_dims.end()) {
       int64_t current_val = sharding.dimension(dim);
       int64_t group_size = group_sizes[std::distance(target_dims.begin(), it)];
