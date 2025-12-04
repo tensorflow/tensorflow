@@ -1410,6 +1410,7 @@ TEST(TfrtGpuClientTest, ExecutePinnedHostOutputTest) {
                           executable->GetCompiledMemoryStats());
   EXPECT_EQ(memory_stats.output_size_in_bytes, 0);
   EXPECT_EQ(memory_stats.host_output_size_in_bytes, 16);
+  EXPECT_GT(memory_stats.peak_memory_in_bytes, 0);
 
   TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<Literal> literal,
                           result_buffers[0]->ToLiteralSync());
