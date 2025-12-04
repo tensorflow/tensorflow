@@ -357,8 +357,10 @@ absl::Status BlasLt::MatmulPlan::DoMatmul(
         "Algorithm must be set before calling DoMatMul!");
   }
   DeviceMemoryBase a = args.a, b = args.b;
+  DeviceMemoryBase a_scale = args.a_scale, b_scale = args.b_scale;
   if (must_swap_operands_) {
     std::swap(a, b);
+    std::swap(a_scale, b_scale);
   }
 
   auto blas_lt = static_cast<BlasLt*>(gpu::BlasLt::Get(stream));
@@ -398,15 +400,15 @@ absl::Status BlasLt::MatmulPlan::DoMatmul(
                                  args.bias.opaque()));
     }
 #if CUDA_VERSION >= 11080
-    if (args.a_scale != nullptr) {
+    if (a_scale != nullptr) {
       TF_RETURN_IF_ERROR(SetAttr(op_desc_.get(),
                                  CUBLASLT_MATMUL_DESC_A_SCALE_POINTER,
-                                 args.a_scale.opaque()));
+                                 a_scale.opaque()));
     }
-    if (args.b_scale != nullptr) {
+    if (b_scale != nullptr) {
       TF_RETURN_IF_ERROR(SetAttr(op_desc_.get(),
                                  CUBLASLT_MATMUL_DESC_B_SCALE_POINTER,
-                                 args.b_scale.opaque()));
+                                 b_scale.opaque()));
     }
     if (args.c_scale != nullptr) {
       TF_RETURN_IF_ERROR(SetAttr(op_desc_.get(),
@@ -424,9 +426,8 @@ absl::Status BlasLt::MatmulPlan::DoMatmul(
                                  args.d_amax.opaque()));
     }
 #else
-    if (!(args.a_scale == nullptr && args.b_scale == nullptr &&
-          args.c_scale == nullptr && args.d_scale == nullptr &&
-          args.d_amax == nullptr)) {
+    if (!(a_scale == nullptr && b_scale == nullptr && args.c_scale == nullptr &&
+          args.d_scale == nullptr && args.d_amax == nullptr)) {
       return absl::InternalError(
           "A/B/C/D scales and amax require cublasLt >= 11.8");
     }
@@ -464,12 +465,16 @@ absl::Status BlasLt::MatmulPlan::DoMatmul(
 
     std::unique_ptr<ActivateContext> activation = blas_lt->parent_->Activate();
 
+    void* c_ptr = args.c.opaque();
+    if (beta_ == 0.0) {
+      c_ptr = nullptr;
+    }
+
     if (palgo != nullptr) {
       SE_CUBLAS_RETURN_IF_ERROR(cublasLtMatmul(
           blas_lt->blas_lt_.get(), op_desc_.get(), alpha, a.opaque(),
-          a_desc_.get(), b.opaque(), b_desc_.get(), beta, args.c.opaque(),
-          c_desc_.get(), args.d.opaque(), d_desc_.get(), palgo, workspace_addr,
-          workspace_size,
+          a_desc_.get(), b.opaque(), b_desc_.get(), beta, c_ptr, c_desc_.get(),
+          args.d.opaque(), d_desc_.get(), palgo, workspace_addr, workspace_size,
           absl::bit_cast<CUstream>(stream->platform_specific_handle().stream)));
     } else {
       return absl::InternalError("cublaslt: Invalid algorithm type");

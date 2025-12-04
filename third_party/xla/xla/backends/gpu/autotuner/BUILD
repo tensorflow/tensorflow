@@ -257,6 +257,7 @@ xla_test(
         "//xla/hlo/testlib:filecheck",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/service:compiler",
+        "//xla/service:executable",
         "//xla/service:platform_util",
         "//xla/service/gpu:nvptx_compiler_impl",
         "//xla/stream_executor:blas",
