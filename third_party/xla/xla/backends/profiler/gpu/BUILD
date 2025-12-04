@@ -132,6 +132,7 @@ xla_cc_test(
         "cuda-only",
         "gpu",
         "no_mac",
+        "nomsan",  # Disable  msan for cuda related tests.
         "requires-gpu-nvidia",
     ],
     deps = [
