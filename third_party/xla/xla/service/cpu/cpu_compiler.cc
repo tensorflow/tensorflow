@@ -2354,10 +2354,13 @@ CpuCompiler::CreateBufferAssignment(const HloModule& module) const {
   AliasInfo alias_info;
   BufferAssigner::Options opts;
   opts.allocate_buffers_for_constants = true;
-  return BufferAssigner::Run(
-      &module, std::make_unique<SequentialHloOrdering>(module.schedule()),
-      BufferSizeBytesFunction(), &alias_info, memory_alignment,
-      std::move(opts));
+  opts.buffer_order = BufferAssigner::BufferOrder::kTopological;
+  // We use a DependencyHloOrdering rather than a SequentialHloOrdering to
+  // increase the amount of concurrency the program can execute with.
+  return BufferAssigner::Run(&module,
+                             std::make_unique<DependencyHloOrdering>(&module),
+                             BufferSizeBytesFunction(), &alias_info,
+                             memory_alignment, std::move(opts));
 }
 
 }  // namespace cpu
