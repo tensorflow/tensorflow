@@ -105,14 +105,16 @@ cc_library(
     srcs = ["execution_state.cc"],
     hdrs = ["execution_state.h"],
     deps = [
+        ":execution_state_proto_cc",
         ":type_registry",
         "//xla:util",
+        "//xla/tsl/platform:errors",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/util:safe_reinterpret_cast",
-        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
     ],
 )
 
@@ -125,6 +127,7 @@ xla_cc_test(
         "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_googletest//:gtest",
         "@com_google_googletest//:gtest_main",
     ],
@@ -271,6 +274,11 @@ xla_cc_test(
 tf_proto_library(
     name = "attribute_map_proto",
     srcs = ["attribute_map.proto"],
+)
+
+tf_proto_library(
+    name = "execution_state_proto",
+    srcs = ["execution_state.proto"],
 )
 
 xla_cc_test(

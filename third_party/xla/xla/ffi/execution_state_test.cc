@@ -17,9 +17,11 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
+#include <string>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/statusor.h"
 #include "xla/ffi/type_registry.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/statusor.h"
@@ -81,6 +83,37 @@ TEST(ExecutionStateTest, SetAndGetForExternalType) {
 
   TF_ASSERT_OK_AND_ASSIGN(void* data, state.Get(type_id));
   EXPECT_EQ(data, value);
+}
+
+TEST(ExecutionStateTest, Serialization) {
+  struct MyState {
+    std::string value;
+  };
+
+  TypeRegistry::TypeInfo type_info = {
+      /*deleter=*/
+      [](void* ptr) { delete static_cast<MyState*>(ptr); },
+      /*serializer=*/
+      [](const void* ptr) -> absl::StatusOr<std::string> {
+        return static_cast<const MyState*>(ptr)->value;
+      },
+      /*deserializer=*/
+      [](absl::string_view state) -> absl::StatusOr<void*> {
+        return new MyState{std::string(state)};
+      }};
+  TF_ASSERT_OK_AND_ASSIGN(
+      TypeRegistry::TypeId type_id,
+      TypeRegistry::AssignExternalTypeId("my_state_type", type_info));
+
+  ExecutionState state;
+  TF_ASSERT_OK(state.Set(type_id, new MyState{"some_state_data"}));
+
+  TF_ASSERT_OK_AND_ASSIGN(ExecutionStateProto proto, state.ToProto());
+
+  TF_ASSERT_OK_AND_ASSIGN(ExecutionState round_trip,
+                          ExecutionState::FromProto(proto))
+  TF_ASSERT_OK_AND_ASSIGN(void* round_trip_data, round_trip.Get(type_id));
+  EXPECT_EQ(static_cast<MyState*>(round_trip_data)->value, "some_state_data");
 }
 
 }  // namespace xla::ffi

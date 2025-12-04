@@ -108,6 +108,21 @@ absl::Status TypeRegistry::RegisterExternalTypeId(absl::string_view name,
   return absl::OkStatus();
 }
 
+absl::StatusOr<absl::string_view> TypeRegistry::GetTypeName(TypeId type_id) {
+  absl::MutexLock lock(type_registry_mutex);
+  auto& registry = StaticTypeRegistryMap();
+
+  auto it = absl::c_find_if(
+      registry, [&](const auto& kv) { return kv.second.type_id == type_id; });
+
+  if (it == registry.end()) {
+    return Internal("Type id %d is not registered with a static registry",
+                    type_id.value());
+  }
+
+  return it->first;
+}
+
 absl::StatusOr<TypeRegistry::TypeId> TypeRegistry::GetTypeId(
     absl::string_view name) {
   absl::MutexLock lock(type_registry_mutex);
