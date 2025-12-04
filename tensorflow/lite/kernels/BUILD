@@ -834,6 +834,7 @@ cc_library(
         "@ruy//ruy/profiler:instrumentation",
         "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/types:fp16",
         "//tensorflow/lite/types:half",
         "//tensorflow/lite:array",
         "//tensorflow/lite:builtin_ops",
@@ -1645,13 +1646,9 @@ cc_test(
         ":test_util",
         "//tensorflow/lite:framework_stable",
         "//tensorflow/lite/core:framework_stable",
-        "//tensorflow/lite/core/api",
-        "//tensorflow/lite/kernels/internal:types",
         "//tensorflow/lite/schema:schema_fbs",
-        "@com_google_absl//absl/memory",
+        "//tensorflow/lite/types:half",
         "@com_google_googletest//:gtest",
-        "@eigen_archive//:eigen3",
-        "@flatbuffers",
     ],
 )
 

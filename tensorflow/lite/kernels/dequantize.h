@@ -19,7 +19,6 @@ limitations under the License.
 
 #include <memory>
 
-#include "Eigen/Core"  // from @eigen_archive
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
 #include "tensorflow/lite/kernels/internal/portable_tensor_utils.h"
@@ -187,11 +186,19 @@ TfLiteStatus DequantizeImpl(TfLiteContext* context, TfLiteNode* node,
       }
       break;
     case kTfLiteFloat16: {
-      const Eigen::half* half_data = reinterpret_cast<const Eigen::half*>(
-          GetTensorData<TfLiteFloat16>(input));
-      reference_ops::Dequantize(GetTensorShape(input), half_data,
-                                GetTensorShape(output),
-                                GetTensorData<float>(output));
+      if (kernel_type == kReference) {
+        reference_ops::Dequantize(GetTensorShape(input),
+                                  reinterpret_cast<const tflite::half*>(
+                                      GetTensorData<TfLiteFloat16>(input)),
+                                  GetTensorShape(output),
+                                  GetTensorData<float>(output));
+      } else {
+        optimized_ops::Dequantize(GetTensorShape(input),
+                                  reinterpret_cast<const tflite::half*>(
+                                      GetTensorData<TfLiteFloat16>(input)),
+                                  GetTensorShape(output),
+                                  GetTensorData<float>(output));
+      }
       break;
     }
     default:
