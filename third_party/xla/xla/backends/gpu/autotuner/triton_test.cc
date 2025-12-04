@@ -70,6 +70,29 @@ const char kHlo[] = R"(
       backend_config={"fusion_backend_config":{"kind":"__triton_gemm"}}
   })";
 
+const char kScaledDotHlo[] = R"(
+HloModule ScaledDot
+
+%fusion__ (parameter_0: f8e4m3fn[3,128,128], parameter_1: f8e4m3fn[3,128,128], parameter_2: f8e8m0fnu[3,128,1], parameter_3: f8e8m0fnu[3,128,1]) -> bf16[3,128,128] {
+  %parameter_0 = f8e4m3fn[3,128,128]{2,1,0} parameter(0)
+  %parameter_1 = f8e4m3fn[3,128,128]{2,1,0} parameter(1)
+  %parameter_2 = f8e8m0fnu[3,128,1]{2,1,0} parameter(2)
+  %bitcast.2 = f8e8m0fnu[3,128]{1,0} bitcast(%parameter_2)
+  %broadcast.4 = f8e8m0fnu[3,128,4]{2,1,0} broadcast(%bitcast.2), dimensions={0,1}
+  %parameter_3 = f8e8m0fnu[3,128,1]{2,1,0} parameter(3)
+  %bitcast.3 = f8e8m0fnu[3,128]{1,0} bitcast(%parameter_3)
+  %broadcast.5 = f8e8m0fnu[3,128,4]{2,1,0} broadcast(%bitcast.3), dimensions={0,1}
+  ROOT %_.1 = bf16[3,128,128]{2,1,0} scaled-dot(%parameter_0, %parameter_1, %broadcast.4, %broadcast.5), lhs_batch_dims={0}, lhs_contracting_dims={2}, rhs_batch_dims={0}, rhs_contracting_dims={2}
+}
+
+ENTRY %e (lhs: f8e4m3fn[3,128,128], rhs: f8e4m3fn[3,128,128], lhs_scale: f8e8m0fnu[3,128,1], rhs_scale: f8e8m0fnu[3,128,1]) -> bf16[3,128,128] {
+  %lhs = f8e4m3fn[3,128,128]{2,1,0} parameter(0)
+  %rhs = f8e4m3fn[3,128,128]{2,1,0} parameter(1)
+  %lhs_scale = f8e8m0fnu[3,128,1]{2,1,0} parameter(2)
+  %rhs_scale = f8e8m0fnu[3,128,1]{2,1,0} parameter(3)
+  ROOT %fusion = bf16[3,128,128]{2,1,0} fusion(%lhs, %rhs, %lhs_scale, %rhs_scale), kind=kCustom, calls=%fusion__, backend_config={"operation_queue_id":"0","wait_on_operation_queues":[],"fusion_backend_config":{"kind":"__triton_gemm"},"force_earliest_schedule":false,"reification_cost":[],"device_type":"DEVICE_TYPE_INVALID"}
+})";
+
 class TritonBackendTest : public HloHardwareIndependentTestBase {
  protected:
   TritonBackendTest()
@@ -113,6 +136,28 @@ TEST_F(TritonBackendTest, GetSupportedConfigs) {
                               return actual_config.is_tma_allowed();
                             }));
   }
+}
+
+TEST_F(TritonBackendTest, GetSupportedConfigsForScaledDot) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(kScaledDotHlo));
+  HloInstruction* fusion_instr =
+      module->entry_computation()->root_instruction();
+  absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>> configs =
+      backend_.GetSupportedConfigs(*fusion_instr);
+  EXPECT_THAT(configs, absl_testing::IsOk());
+  EXPECT_GT(configs.value().size(), 0);
+}
+
+TEST_F(TritonBackendTest, GetAndApplyConfigForScaledDot) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(kScaledDotHlo));
+  HloInstruction* fusion_instr =
+      module->entry_computation()->root_instruction();
+  absl::StatusOr<std::unique_ptr<BackendConfig>> config =
+      backend_.GetDefaultConfig(*fusion_instr);
+  EXPECT_THAT(config, absl_testing::IsOk());
+  EXPECT_THAT(backend_.ApplyConfig(*fusion_instr, *config.value()), IsOk());
 }
 
 TEST_F(TritonBackendTest, GetSupportedConfigsRestrictedDefaultSearch) {
