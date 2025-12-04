@@ -86,6 +86,7 @@ limitations under the License.
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
+#include "xla/tsl/platform/status_macros.h"
 
 namespace xla {
 
@@ -365,8 +366,8 @@ absl::StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
                               }))
       << proto.name() << " instruction references invalid computation id(s)";
 
-  TF_ASSIGN_OR_RETURN(Shape shape, Shape::FromProto(proto.shape()));
-  TF_RETURN_IF_ERROR(ShapeUtil::ValidateShapeWithOptionalLayout(shape));
+  ASSIGN_OR_RETURN(Shape shape, Shape::FromProto(proto.shape()));
+  RETURN_IF_ERROR(ShapeUtil::ValidateShapeWithOptionalLayout(shape));
 
   std::optional<int> arity = HloOpcodeArity(opcode);
   if (arity) {
@@ -480,15 +481,15 @@ absl::StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
     case HloOpcode::kCompare: {
       // Auto-upgraded from deprecated opcode skips the following.
       if (!comparison_direction) {
-        TF_ASSIGN_OR_RETURN(
+        ASSIGN_OR_RETURN(
             comparison_direction,
             StringToComparisonDirection(proto.comparison_direction()));
       }
       auto comparison_type_str = proto.comparison_type();
       if (!comparison_type_str.empty()) {
         // If a comparison type is specified, it *must* be valid.
-        TF_ASSIGN_OR_RETURN(auto comparison_type,
-                            StringToComparisonType(comparison_type_str));
+        ASSIGN_OR_RETURN(auto comparison_type,
+                         StringToComparisonType(comparison_type_str));
         instruction = CreateCompare(shape, operands(0), operands(1),
                                     *comparison_direction, comparison_type);
       } else {
@@ -639,7 +640,7 @@ absl::StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
     case HloOpcode::kConstant: {
       // TODO(b/110214922): Revert this to CHECK(proto.has_literal()).
       if (proto.has_literal()) {
-        TF_ASSIGN_OR_RETURN(
+        ASSIGN_OR_RETURN(
             auto literal,
             Literal::CreateFromProto(proto.literal(), prohibit_empty_literal));
         instruction = CreateConstant(std::move(literal));
@@ -659,8 +660,8 @@ absl::StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
       // HloInstructionProto and do not appear as an HloComputationProto within
       // the HloModuleProto.
       TF_RET_CHECK(!proto.fusion_kind().empty());
-      TF_ASSIGN_OR_RETURN(FusionKind fusion_kind,
-                          StringToFusionKind(proto.fusion_kind()));
+      ASSIGN_OR_RETURN(FusionKind fusion_kind,
+                       StringToFusionKind(proto.fusion_kind()));
 
       // Find the fused computation and set its fusion instruction.
       TF_RET_CHECK(proto.called_computation_ids_size() == 1)
@@ -714,9 +715,9 @@ absl::StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
           CreateInfeed(data_shape, operands(0), proto.infeed_config());
     } break;
     case HloOpcode::kOutfeed: {
-      TF_ASSIGN_OR_RETURN(Shape outfeed_shape,
-                          Shape::FromProto(proto.outfeed_shape()));
-      TF_RETURN_IF_ERROR(
+      ASSIGN_OR_RETURN(Shape outfeed_shape,
+                       Shape::FromProto(proto.outfeed_shape()));
+      RETURN_IF_ERROR(
           ShapeUtil::ValidateShapeWithOptionalLayout(outfeed_shape));
       instruction = CreateOutfeed(outfeed_shape, operands(0), operands(1),
                                   proto.outfeed_config());
@@ -996,7 +997,7 @@ absl::StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
             proto.operand_shapes_with_layout();
         operand_shapes.reserve(operand_shapes_with_layout.size());
         for (const ShapeProto& shape_proto : operand_shapes_with_layout) {
-          TF_ASSIGN_OR_RETURN(Shape shape, Shape::FromProto(shape_proto));
+          ASSIGN_OR_RETURN(Shape shape, Shape::FromProto(shape_proto));
           operand_shapes.emplace_back(std::move(shape));
         }
         TF_RET_CHECK(proto.called_computation_ids_size() <= 1);
@@ -1032,7 +1033,7 @@ absl::StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
         custom_call_instr->set_window(proto.window());
       }
       if (proto.has_literal()) {
-        TF_ASSIGN_OR_RETURN(
+        ASSIGN_OR_RETURN(
             auto literal,
             Literal::CreateFromProto(proto.literal(), prohibit_empty_literal));
         custom_call_instr->set_literal(std::move(literal));
@@ -1205,15 +1206,13 @@ absl::StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
       std::shared_ptr<const HloSharding> entry_hlo_sharding;
       std::shared_ptr<const HloSharding> exit_hlo_sharding;
       if (proto.has_domain_entry_sharding()) {
-        TF_ASSIGN_OR_RETURN(
-            HloSharding sharding,
-            HloSharding::FromProto(proto.domain_entry_sharding()));
+        ASSIGN_OR_RETURN(HloSharding sharding,
+                         HloSharding::FromProto(proto.domain_entry_sharding()));
         entry_hlo_sharding = std::make_shared<const HloSharding>(sharding);
       }
       if (proto.has_domain_exit_sharding()) {
-        TF_ASSIGN_OR_RETURN(
-            HloSharding sharding,
-            HloSharding::FromProto(proto.domain_exit_sharding()));
+        ASSIGN_OR_RETURN(HloSharding sharding,
+                         HloSharding::FromProto(proto.domain_exit_sharding()));
         exit_hlo_sharding = std::make_shared<const HloSharding>(sharding);
       }
       instruction = std::make_unique<HloDomainInstruction>(
@@ -1365,8 +1364,8 @@ absl::StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
         << "No instruction with id " << predecessor_id
         << " (local id: " << local_predecessor_id << ") in computation "
         << proto.name();
-    TF_RETURN_IF_ERROR(instruction_map.at(local_predecessor_id)
-                           ->AddControlDependencyTo(instruction.get()));
+    RETURN_IF_ERROR(instruction_map.at(local_predecessor_id)
+                        ->AddControlDependencyTo(instruction.get()));
   }
 
   TF_RET_CHECK(!proto.name().empty());
@@ -1383,8 +1382,8 @@ absl::StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
   instruction->local_id_ = CalculateLocalId(proto.id());
 
   if (proto.has_sharding()) {
-    TF_ASSIGN_OR_RETURN(HloSharding sharding,
-                        HloSharding::FromProto(proto.sharding()));
+    ASSIGN_OR_RETURN(HloSharding sharding,
+                     HloSharding::FromProto(proto.sharding()));
     // To allow for existing Hlo protos to not fail verification, apply tuple
     // sharding normalization.
     sharding = sharding.NormalizeTupleSharding(instruction->shape());
@@ -3038,11 +3037,11 @@ absl::Status HloInstruction::SafelyDropAllControlDependencies() {
   if (has_rare()) {
     for (HloInstruction* predecessor : rare()->control_predecessors) {
       for (HloInstruction* successor : rare()->control_successors) {
-        TF_RETURN_IF_ERROR(predecessor->AddControlDependencyTo(successor));
+        RETURN_IF_ERROR(predecessor->AddControlDependencyTo(successor));
       }
     }
   }
-  TF_RETURN_IF_ERROR(DropAllControlDeps());
+  RETURN_IF_ERROR(DropAllControlDeps());
   return absl::OkStatus();
 }
 
@@ -3059,10 +3058,10 @@ bool HloInstruction::HasSuccessorControlDependencies() const {
 absl::Status HloInstruction::CopyAllControlDepsTo(HloInstruction* start,
                                                   HloInstruction* end) const {
   for (auto* ctrl_pred : control_predecessors()) {
-    TF_RETURN_IF_ERROR(ctrl_pred->AddControlDependencyTo(start));
+    RETURN_IF_ERROR(ctrl_pred->AddControlDependencyTo(start));
   }
   for (auto* ctrl_succ : control_successors()) {
-    TF_RETURN_IF_ERROR(end->AddControlDependencyTo(ctrl_succ));
+    RETURN_IF_ERROR(end->AddControlDependencyTo(ctrl_succ));
   }
   return absl::OkStatus();
 }
@@ -3377,7 +3376,7 @@ absl::Status HloInstruction::ReplaceUseWithDifferentShape(
   new_producer->AddUser(user);
   // Custom fusions may not be able to handle deduplicated operands.
   if (user->opcode() == HloOpcode::kFusion) {
-    TF_RETURN_IF_ERROR(
+    RETURN_IF_ERROR(
         Cast<HloFusionInstruction>(user)->DeduplicateFusionOperands());
   }
   return absl::OkStatus();
@@ -3482,11 +3481,11 @@ absl::Status HloInstruction::Defuse() {
     defused_instructions[fused_instruction] = defused_instruction;
   }
 
-  TF_RETURN_IF_ERROR(
+  RETURN_IF_ERROR(
       ReplaceAllUsesWith(defused_instructions.at(fused_expression_root())));
 
   HloModule* module = GetModule();
-  TF_RETURN_IF_ERROR(parent()->RemoveInstruction(this));
+  RETURN_IF_ERROR(parent()->RemoveInstruction(this));
   return module->RemoveEmbeddedComputation(fused_computation);
 }
 
@@ -3530,10 +3529,10 @@ absl::StatusOr<HloInstruction*> HloInstruction::UnfuseInstruction(
 
   HloInstruction* new_parameter = AddFusionOperand(unfused_instruction);
   // Replace the instruction in the fusion computation with the new parameter.
-  TF_RETURN_IF_ERROR(instruction->ReplaceAllUsesWith(new_parameter));
+  RETURN_IF_ERROR(instruction->ReplaceAllUsesWith(new_parameter));
 
   // Remove the original instruction from the fusion computation.
-  TF_RETURN_IF_ERROR(
+  RETURN_IF_ERROR(
       fusion_computation->RemoveInstructionAndUnusedOperands(instruction));
 
   return unfused_instruction;
@@ -3552,7 +3551,7 @@ absl::Status HloInstruction::ReplaceAllUsesWithDifferentShape(
   // Make a copy since users span might get mutated during the loop
   std::vector<HloInstruction*> users_vector(users.begin(), users.end());
   for (HloInstruction* user : users_vector) {
-    TF_RETURN_IF_ERROR(ReplaceUseWithDifferentShape(user, new_producer));
+    RETURN_IF_ERROR(ReplaceUseWithDifferentShape(user, new_producer));
   }
 
   if (parent_ && parent_->root_instruction() == this) {
@@ -3593,7 +3592,7 @@ absl::Status HloInstruction::ReplaceAllUsesWithDifferentShape(
                    new_producer);
       new_producer->AddUser(user);
       if (user->opcode() == HloOpcode::kFusion) {
-        TF_RETURN_IF_ERROR(
+        RETURN_IF_ERROR(
             Cast<HloFusionInstruction>(user)->DeduplicateFusionOperands());
       }
     }
@@ -4871,11 +4870,11 @@ static absl::Status PostOrderDFS(
       dfs_stack.pop_back();
 
       if (visitor->ShouldProcessNode(current_node)) {
-        TF_RETURN_IF_ERROR(visitor->Preprocess(current_node));
+        RETURN_IF_ERROR(visitor->Preprocess(current_node));
         VLOG(2) << "Visiting HLO %" << current_node->name();
-        TF_RETURN_IF_ERROR(current_node->Visit(visitor));
+        RETURN_IF_ERROR(current_node->Visit(visitor));
         visitor->SetVisitState(current_id, Visitor::kVisited);
-        TF_RETURN_IF_ERROR(visitor->Postprocess(current_node));
+        RETURN_IF_ERROR(visitor->Postprocess(current_node));
       } else {
         visitor->SetVisitState(current_id, Visitor::kVisited);
       }
@@ -4942,11 +4941,10 @@ absl::Status HloInstruction::Accept(
     DfsHloVisitorBase<HloInstructionPtr>* visitor, bool call_finish_visit,
     bool ignore_control_predecessors, bool cross_computation) {
   VLOG(3) << "HloInstruction::Accept(%" << name() << ")";
-  TF_RETURN_IF_ERROR(PostOrderDFS(this, visitor, std::nullopt,
-                                  ignore_control_predecessors,
-                                  cross_computation));
+  RETURN_IF_ERROR(PostOrderDFS(this, visitor, std::nullopt,
+                               ignore_control_predecessors, cross_computation));
   if (call_finish_visit) {
-    TF_RETURN_IF_ERROR(visitor->FinishVisit(this));
+    RETURN_IF_ERROR(visitor->FinishVisit(this));
   }
   return absl::OkStatus();
 }
@@ -4966,12 +4964,12 @@ absl::Status HloInstruction::AcceptWithOperandOrder(
     // objects (ignoring the internal ids we also have in our stack entries)
     return operand_order(a.second, b.second);
   };
-  TF_RETURN_IF_ERROR(PostOrderDFS(this, visitor, func,
-                                  /*ignore_control_predecessors=*/false,
-                                  /*cross_computation=*/false));
+  RETURN_IF_ERROR(PostOrderDFS(this, visitor, func,
+                               /*ignore_control_predecessors=*/false,
+                               /*cross_computation=*/false));
   if (call_finish_visit) {
     VLOG(3) << "HloInstruction::AcceptWithOperandOrder BEFORE FINISH VISIT";
-    TF_RETURN_IF_ERROR(visitor->FinishVisit(this));
+    RETURN_IF_ERROR(visitor->FinishVisit(this));
     VLOG(3) << "HloInstruction::AcceptWithOperandOrder AFTER FINISH VISIT";
   }
   VLOG(2) << "HloInstruction::AcceptWithOperandOrder EXIT";
