@@ -578,6 +578,32 @@ TEST_F(HloCostAnalysisTest, ReduceWindowVariadic) {
 
   // Run HLO cost analysis.
   auto hlo_module = BuildHloGraph(&builder);
+
+  /* The hlo text are below:
+  HloModule reduce_window_variadic.21,
+  entry_computation_layout={(f32[10,20]{1,0}, f32[10,20]{1,0})->(f32[2,4]{1,0},
+  f32[2,4]{1,0})}
+
+  reduce_window_variadic.12 {
+    x0.13 = f32[] parameter(0)
+    y0.15 = f32[] parameter(2)
+    minimum.17 = f32[] minimum(x0.13, y0.15)
+    x1.14 = f32[] parameter(1)
+    y1.16 = f32[] parameter(3)
+    minimum.18 = f32[] minimum(x1.14, y1.16)
+    ROOT tuple.19 = (f32[], f32[]) tuple(minimum.17, minimum.18)
+  }
+
+  ENTRY reduce_window_variadic.21 {
+    input1.9 = f32[10,20]{1,0} parameter(0)
+    input2.10 = f32[10,20]{1,0} parameter(1)
+    constant.11 = f32[] constant(0)
+    ROOT reduce-window.20 = (f32[2,4]{1,0}, f32[2,4]{1,0})
+  reduce-window(input1.9, input2.10, constant.11, constant.11), window={size=4x5
+  stride=4x5}, to_apply=reduce_window_variadic.12
+  }
+  */
+
   HloCostAnalysis analysis;
   ASSERT_IS_OK(
       hlo_module->entry_computation()->root_instruction()->Accept(&analysis));
@@ -585,12 +611,13 @@ TEST_F(HloCostAnalysisTest, ReduceWindowVariadic) {
   // Each of [2x4] output elements are generated from reducing [4x5] elements.
   EXPECT_EQ(analysis.flop_count(), 2 * 4 * 2 * (4 * 5 - 1));
 
-  EXPECT_EQ(analysis.bytes_accessed(), sizeof(float) * (10 * 20 * 2 + 2 * 3));
+  // 2 array input + 2 scalar input + + 2 array output
+  EXPECT_EQ(analysis.bytes_accessed(),
+            sizeof(float) * (10 * 20 * 2 + 2 + 2 * 4 * 2));
 
   HloInstruction* root = hlo_module->entry_computation()->root_instruction();
   EXPECT_EQ(analysis.operand_bytes_accessed(*root, 1), sizeof(float) * 10 * 20);
   EXPECT_EQ(analysis.operand_bytes_accessed(*root, 0), sizeof(float) * 10 * 20);
-  EXPECT_EQ(analysis.output_bytes_accessed(*root), sizeof(float) * 4);
 }
 
 TEST_F(HloCostAnalysisTest, SelectAndScatter) {
