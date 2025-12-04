@@ -631,30 +631,17 @@ class LoadInt4RewritePass
 
     ConversionTarget target(*ctx);
     I4ToI8Converter converter(packed_dimension);
-    target.markUnknownOpDynamicallyLegal([&](Operation* op) {
-      if (auto func_op = dyn_cast<mlir::FunctionOpInterface>(op)) {
-        VLOG(5) << "check funcOp: " << DumpToString(func_op);
-        if (func_op.getFunctionType() !=
-            converter.convertType(func_op.getFunctionType())) {
-          VLOG(5) << "funcOp not legal: " << DumpToString(func_op);
-          return false;
-        }
-      }
-      bool is_legal = converter.isLegal(op);
-      VLOG(5) << "is_legal: " << is_legal << " for " << DumpToString(op);
-      return is_legal;
+    target.addDynamicallyLegalOp<func::FuncOp>([&](func::FuncOp op) {
+      return converter.isSignatureLegal(op.getFunctionType()) &&
+             converter.isLegal(op);
     });
+    target.markUnknownOpDynamicallyLegal(
+        [&](Operation* op) { return converter.isLegal(op); });
+
     RewritePatternSet patterns(ctx);
     scf::populateSCFStructuralTypeConversions(converter, patterns);
     patterns.add<ExtSIInt4ToInt8Pattern>(converter, ctx, enable_bf16x2_);
-
     patterns.add<TritonXlaExtractOpConversionPattern>(converter, ctx);
-
-    // TODO(b/393299275): Remove mt::FuncOp once the legacy Triton emitter is
-    // deprecated.
-    populateFunctionOpInterfaceTypeConversionPattern<mt::FuncOp>(patterns,
-                                                                 converter);
-
     populateFunctionOpInterfaceTypeConversionPattern<mlir::func::FuncOp>(
         patterns, converter);
     if (failed(applyPartialConversion(module, target, std::move(patterns)))) {
