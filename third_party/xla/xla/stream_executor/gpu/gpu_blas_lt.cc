@@ -275,7 +275,7 @@ bool MakeOutputColumnMajor(MatrixLayout& lhs, MatrixLayout& rhs,
 }
 
 /*static*/ BlasLt* BlasLt::Get(const Stream* stream) {
-  auto blas = stream->parent()->AsBlas();
+  auto blas = stream->AsBlas();
   return (blas != nullptr ? blas->GetBlasLt() : nullptr);
 }
 

@@ -789,7 +789,7 @@ void LaunchConvOpImpl(OpKernelContext* context, bool cudnn_use_autotune,
     if (filter_dims[i] != in_dims[i]) filter_same_dims = false;
   }
 
-  auto* blas = stream->parent()->AsBlas();
+  auto* blas = stream->AsBlas();
   OP_REQUIRES(context, blas != nullptr,
               absl::InternalError("No BLAS for stream."));
   if (!is_grouped_convolution && one_filter && one_dilations && one_stride &&

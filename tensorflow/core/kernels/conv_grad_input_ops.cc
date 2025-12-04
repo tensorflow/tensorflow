@@ -131,7 +131,7 @@ void LaunchConv2DBackpropInputOpGpuImpl(
         "without cudnn"));
     return;
   }
-  auto* blas = stream->parent()->AsBlas();
+  auto* blas = stream->AsBlas();
   OP_REQUIRES(ctx, blas != nullptr, absl::InternalError("No BLAS for stream."));
 
   // If the filter in-depth (filter_shape.dim_size(2)) is 1 and smaller than the

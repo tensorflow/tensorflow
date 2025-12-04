@@ -24,6 +24,7 @@ limitations under the License.
 #include <utility>
 #include <variant>
 
+#include "absl/base/call_once.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
@@ -31,6 +32,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "third_party/gpus/cuda/include/cuda.h"
+#include "xla/stream_executor/cuda/cuda_blas.h"
 #include "xla/stream_executor/cuda/cuda_event.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/event.h"
@@ -63,6 +65,8 @@ class CudaStream : public StreamCommon {
   absl::Status BlockHostUntilDone() override;
 
   void SetName(std::string name) override;
+
+  cuda::CUDABlas* AsBlas() const override;
 
   Stream::PlatformSpecificHandle platform_specific_handle() const override {
     return {stream_handle_};
@@ -102,6 +106,8 @@ class CudaStream : public StreamCommon {
   CudaEvent completed_event_;
   CUstream stream_handle_;
   absl::Mutex mutex_;
+  mutable std::unique_ptr<cuda::CUDABlas> blas_;
+  mutable absl::once_flag blas_once_;
   bool no_pending_host_callbacks_ ABSL_GUARDED_BY(mutex_) = true;
   std::atomic<int> num_pending_host_callbacks_ = 0;
 };
