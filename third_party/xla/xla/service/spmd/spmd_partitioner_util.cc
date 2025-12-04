@@ -25,6 +25,7 @@ limitations under the License.
 #include <numeric>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -35,6 +36,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/array.h"
 #include "xla/comparison_util.h"
@@ -45,6 +47,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_sharding.h"
+#include "xla/hlo/ir/mesh_and_axis.h"
 #include "xla/hlo/ir/replica_group.h"
 #include "xla/hlo/utils/hlo_sharding_util.h"
 #include "xla/layout.h"
@@ -3060,6 +3063,82 @@ std::optional<IotaReplicaGroupList> GetIotaPartitionGroupsForReplication(
   return IotaReplicaGroupList(num_replica_groups, group_size,
                               transpose_iota_tile_assignment->reshape_dims(),
                               transpose_iota_tile_assignment->transpose_perm());
+}
+
+std::optional<Mesh> GetMeshFromSharding(const HloSharding& sharding) {
+  // For V3 shardings, use the mesh associated with the named sharding.
+  if (sharding.UseNamedShardingLeaf()) {
+    return sharding.named_sharding()->mesh();
+  }
+
+  // For V2 shardings, create the mesh from the tile assignment.
+  if (sharding.tile_assignment().iota().has_value()) {
+    TileAssignment device_assignment = sharding.tile_assignment();
+    std::vector<std::string> axis_names(device_assignment.dimensions().size());
+    std::vector<absl::string_view> axis_name_view;
+    for (int64_t i = 0; i < device_assignment.dimensions().size(); ++i) {
+      axis_names[i] = absl::StrCat("axis_", i);
+    }
+    axis_name_view.assign(axis_names.begin(), axis_names.end());
+    return Mesh(device_assignment, axis_name_view);
+  }
+
+  // For V1 shardings, we cannot generate a mesh.
+  return std::nullopt;
+}
+
+std::optional<MeshAxesReplicaGroupList>
+GetMeshAxesPartitionGroupsAcrossTargetDims(const HloSharding& sharding,
+                                           std::vector<int64_t> target_dims,
+                                           std::vector<int64_t> group_sizes) {
+  CHECK_EQ(target_dims.size(), group_sizes.size())
+      << "target_dims and group_sizes must have the same size.";
+  if (target_dims.empty()) {
+    return std::nullopt;
+  }
+
+  // Use the mesh with named axes if HloShardingV3 is used. Otherwise, create a
+  // mesh with generic axis names.
+  std::optional<Mesh> mesh = GetMeshFromSharding(sharding);
+  if (!mesh.has_value()) {
+    return std::nullopt;
+  }
+
+  CHECK_EQ(target_dims.size(), group_sizes.size());
+  std::vector<AxisRef> axis_refs;
+  axis_refs.reserve(target_dims.size());
+  for (int64_t i = 0; i < target_dims.size(); ++i) {
+    int64_t target_dim = target_dims[i];
+    int64_t axis_size = mesh->axis_size(target_dim);
+    int64_t group_size = group_sizes[i];
+    if (axis_size == group_size) {
+      axis_refs.push_back(AxisRef(target_dim));
+      continue;
+    }
+    axis_refs.push_back(
+        AxisRef(target_dim, {axis_size / group_size, group_size}));
+  }
+  return MeshAxesReplicaGroupList(mesh.value(), axis_refs);
+}
+
+std::optional<MeshAxesReplicaGroupList>
+GetMeshAxesPartitionGroupsForReplication(
+    const HloSharding& sharding, absl::Span<const int64_t> replication_dims) {
+  if (replication_dims.empty()) {
+    return std::nullopt;
+  }
+  // Use the mesh with named axes if HloShardingV3 is used. Otherwise, create a
+  // mesh with generic axis names.
+  std::optional<Mesh> mesh = GetMeshFromSharding(sharding);
+  if (!mesh.has_value()) {
+    return std::nullopt;
+  }
+  std::vector<AxisRef> axis_refs;
+  axis_refs.reserve(replication_dims.size());
+  for (int64_t dim : replication_dims) {
+    axis_refs.push_back(AxisRef(dim));
+  }
+  return MeshAxesReplicaGroupList(*mesh, axis_refs);
 }
 
 // Expands partition group list across all replicas. Expects that provided

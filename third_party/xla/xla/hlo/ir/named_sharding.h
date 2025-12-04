@@ -60,6 +60,8 @@ class NamedSharding {
     return !(*this == other);
   }
 
+  const Mesh& mesh() const { return mesh_; }
+
   // TODO(b/456212087): Add validation checks
   explicit NamedSharding(Mesh mesh,
                          absl::Span<const DimensionSharding> dim_shardings = {},

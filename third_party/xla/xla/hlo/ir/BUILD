@@ -206,8 +206,6 @@ cc_library(
     deps = [
         ":mesh_and_axis",
         ":tile_assignment",
-        "//xla:shape_util",
-        "//xla:util",
         "//xla:xla_data_proto_cc",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/types:span",

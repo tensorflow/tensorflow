@@ -52,6 +52,7 @@ cc_library(
         "//xla/hlo/builder:xla_computation",
         "//xla/hlo/builder/lib:comparators",
         "//xla/hlo/ir:hlo",
+        "//xla/hlo/ir:mesh_and_axis",
         "//xla/hlo/ir:tile_assignment",
         "//xla/hlo/parser:hlo_lexer",
         "//xla/hlo/pass:hlo_pass",
@@ -424,6 +425,8 @@ xla_cc_test(
     deps = [
         ":spmd_partitioner",
         "//xla/hlo/ir:hlo",
+        "//xla/hlo/ir:mesh_and_axis",
+        "//xla/hlo/ir:named_sharding",
         "//xla/hlo/ir:tile_assignment",
         "@com_google_googletest//:gtest_main",
     ],

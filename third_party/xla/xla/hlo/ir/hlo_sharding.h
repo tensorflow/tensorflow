@@ -130,6 +130,16 @@ class HloSharding {
                        metadata);
   }
 
+  explicit HloSharding(NamedSharding named_sharding)
+      : replicated_(false),
+        maximal_(false),
+        tuple_(false),
+        manual_(false),
+        unknown_(false),
+        unreduced_(false),
+        replicate_on_last_tile_dim_(false),
+        named_sharding_(std::move(named_sharding)) {}
+
   // Creates a subgroup sharding with device-level tile assignment, the
   // sharding type of each subgroup is defined by subgroup_types. When creating
   // the HloSharding, subgroup dims of the same type will be merged.
@@ -672,6 +682,10 @@ class HloSharding {
 
   const ShardGroup& GetShardGroup() const { return shard_group_; }
 
+  std::optional<NamedSharding> named_sharding() const {
+    return named_sharding_;
+  }
+
  private:
   explicit HloSharding(bool manual, bool replicated, bool unknown,
                        bool unreduced, absl::Span<const OpMetadata> metadata)
@@ -738,15 +752,6 @@ class HloSharding {
         unreduced_(false),
         replicate_on_last_tile_dim_(false),
         named_sharding_(std::nullopt) {}
-  explicit HloSharding(NamedSharding named_sharding)
-      : replicated_(false),
-        maximal_(false),
-        tuple_(false),
-        manual_(false),
-        unknown_(false),
-        unreduced_(false),
-        replicate_on_last_tile_dim_(false),
-        named_sharding_(std::move(named_sharding)) {}
 
   // Test-only constructor for sharding format code coverage. Copies the
   // original sharding with provided tile assignment.
