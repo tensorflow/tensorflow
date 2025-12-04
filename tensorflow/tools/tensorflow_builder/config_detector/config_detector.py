@@ -130,17 +130,48 @@ def run_shell_cmd(args):
   """Executes shell commands and returns output.
 
   Args:
-    args: String of shell commands to run.
+    args: String of shell commands to run, or list of command arguments.
+          If a string, it will be used with shell=True (only safe for
+          hardcoded commands, not user input). If a list, it will be used
+          without shell=True (preferred for security).
 
   Returns:
     Tuple output (stdoutdata, stderrdata) from running the shell commands.
   """
-  proc = subprocess.Popen(
-      args,
-      shell=True,
-      stdout=subprocess.PIPE,
-      stderr=subprocess.STDOUT
-  )
+  # If args is already a list, use it directly without shell (most secure)
+  if isinstance(args, list):
+    proc = subprocess.Popen(
+        args,
+        shell=False,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT
+    )
+  else:
+    # For string arguments, check if they contain shell operators
+    # If they do, we need shell=True, but this should only be used
+    # with hardcoded commands (not user input)
+    shell_operators = ['|', '>', '<', '&', ';', '`', '$', '(', ')', '{', '}']
+    needs_shell = any(op in str(args) for op in shell_operators)
+    
+    if needs_shell:
+      # Complex shell command - requires shell=True
+      # WARNING: Only use with hardcoded commands, never with user input
+      proc = subprocess.Popen(
+          args,
+          shell=True,
+          stdout=subprocess.PIPE,
+          stderr=subprocess.STDOUT
+      )
+    else:
+      # Simple command - can be split and run without shell
+      import shlex
+      cmd_list = shlex.split(str(args))
+      proc = subprocess.Popen(
+          cmd_list,
+          shell=False,
+          stdout=subprocess.PIPE,
+          stderr=subprocess.STDOUT
+      )
   return proc.communicate()
 
 

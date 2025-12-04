@@ -14,6 +14,8 @@
 # ==============================================================================
 """Converts a model's graph def into a tflite model with MLIR-based conversion."""
 import os
+import shlex
+import subprocess
 import tempfile
 
 import numpy as np
@@ -179,20 +181,51 @@ def mlir_convert_file(graph_def_filename,
                      " -tf-input-min-values='" + min_vals +
                      "' -tf-input-max-values='" + max_vals + "' " +
                      "-emit-quant-adaptor-ops ")
-    cmd = ("%s -tf-input-arrays=%s -tf-input-data-types=%s -tf-input-shapes=%s "
-           "-tf-output-arrays=%s " + quant_flags + additional_flags +
-           "%s -o %s")
-    cmd = cmd % (
-        bin_path,
-        ",".join([x[0] for x in input_tensors]),
-        input_types,
-        input_shapes_str,
-        ",".join(output_tensors),
-        graph_def_filename,
-        output_file.name,
+    # Build command arguments as a list to avoid shell injection
+    cmd_args = [bin_path]
+    
+    # Add input arrays
+    cmd_args.extend(['-tf-input-arrays', ",".join([x[0] for x in input_tensors])])
+    
+    # Add input data types
+    cmd_args.extend(['-tf-input-data-types', input_types])
+    
+    # Add input shapes
+    cmd_args.extend(['-tf-input-shapes', input_shapes_str])
+    
+    # Add output arrays
+    cmd_args.extend(['-tf-output-arrays', ",".join(output_tensors)])
+    
+    # Add quantization flags if present
+    if quant_flags:
+      # Parse quant_flags string into individual arguments
+      cmd_args.extend(shlex.split(quant_flags))
+    
+    # Add additional flags if present
+    if additional_flags:
+      # Parse additional_flags string into individual arguments
+      cmd_args.extend(shlex.split(additional_flags))
+    
+    # Add graph def filename and output file
+    cmd_args.extend([graph_def_filename, '-o', output_file.name])
+    
+    # Use subprocess.run instead of os.system to prevent shell injection
+    # Explicitly set shell=False to ensure no shell interpretation occurs
+    # Redirect stdout to capture output
+    result = subprocess.run(
+        cmd_args,
+        shell=False,  # Explicitly disable shell to prevent command injection
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True
     )
-    exit_code = os.system(cmd)
+    exit_code = result.returncode
+    
+    # Write captured output to stdout_file for logging
+    stdout_file.write(result.stdout)
+    stdout_file.seek(0)  # Reset file pointer for reading
+    
     log = (
-        cmd + "exited with code %d" % exit_code + "\n------------------\n" +
-        stdout_file.read())
+        ' '.join(cmd_args) + " exited with code %d" % exit_code + 
+        "\n------------------\n" + stdout_file.read())
     return (None if exit_code != 0 else output_file.read()), log

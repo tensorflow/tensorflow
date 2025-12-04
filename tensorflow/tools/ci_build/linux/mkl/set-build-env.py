@@ -241,11 +241,17 @@ class BuildEnvSetter(object):
     gcc_minor_version = 0
     # check to see if gcc is present
     gcc_path = ""
-    gcc_path_cmd = "command -v gcc"
+    # Use shutil.which() instead of shell command to prevent shell injection
+    import shutil
     try:
-      gcc_path = subprocess.check_output(gcc_path_cmd, shell=True,
-                                         stderr=subprocess.STDOUT).\
-        strip()
+      gcc_path = shutil.which('gcc')
+      if gcc_path is None:
+        raise ValueError("gcc not found in PATH")
+      # Handle bytes vs str type
+      if isinstance(gcc_path, bytes):
+        gcc_path = gcc_path.decode("utf-8")
+      else:
+        gcc_path = gcc_path.strip()
       print("gcc located here: {}".format(gcc_path))
       if not os.access(gcc_path, os.F_OK | os.X_OK):
         raise ValueError(
