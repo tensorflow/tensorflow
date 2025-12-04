@@ -321,6 +321,11 @@ absl::Status HloGumgraph::PrecomputeComputationFingerprint() {
 
 void HloGumgraph::PrecomputeInstructionDependencies() {
   LOG(INFO) << "Precomputing instruction dependencies";
+  if (hlo_value_tracing_ == nullptr) {
+    LOG(WARNING) << "Skipping PrecomputeInstructionDependencies because "
+                    "HloValueTracing failed to initialize.";
+    return;
+  }
   for (auto* computation : hlo_module_.MakeComputationPostOrder()) {
     for (auto* instruction : computation->MakeInstructionPostOrder()) {
       HloInstructionNode* node = GetNode(instruction);
@@ -370,11 +375,23 @@ absl::StatusOr<std::unique_ptr<const HloGumgraph>> HloGumgraph::Create(
       << "Expected a non-null entry computation";
 
   std::unique_ptr<CallGraph> call_graph = CallGraph::Build(hlo_module);
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloValueTracing> hlo_value_tracing,
-                      HloValueTracing::Run(*hlo_module));
+  precompute_instruction_dependencies = true;
+  std::unique_ptr<HloValueTracing> hlo_value_tracing_ptr = nullptr;
+  if (precompute_instruction_dependencies) {
+    absl::StatusOr<std::unique_ptr<HloValueTracing>> hlo_value_tracing =
+        HloValueTracing::Run(*hlo_module);
+    if (hlo_value_tracing.ok()) {
+      hlo_value_tracing_ptr = *std::move(hlo_value_tracing);
+    } else {
+      LOG(WARNING) << "Failed to run HloValueTracing: "
+                   << hlo_value_tracing.status();
+      // hlo_value_tracing_ptrs is left as nullptr.
+    }
+  }
+
   auto graph = absl::WrapUnique(
       new HloGumgraph(*hlo_module, fingerprint_options, std::move(call_graph),
-                      std::move(hlo_value_tracing)));
+                      std::move(hlo_value_tracing_ptr)));
 
   TF_RETURN_IF_ERROR(graph->ConstructGraph(*hlo_module));
   TF_ASSIGN_OR_RETURN(std::vector<HloInstructionNode*> zero_indegree_nodes,
