@@ -119,27 +119,6 @@ HloSharding FindCommonSharding(
     absl::Span<const HloSharding> shardings,
     std::optional<HloSharding> default_sharding = std::nullopt);
 
-// Given a map<device, occurrence_count>, selects the device with higher
-// occurrence count (if any). If top_count in not nullptr, it will receive the
-// count of the dominant device returned.
-std::optional<int64_t> SelectDominantDevice(
-    const std::map<int64_t, int64_t>& device_map, int64_t* top_count);
-
-// Assigns all the instructions of a computation, to a given device.
-// This API does not recurse into called computations, and does not assign
-// instructions which already have sharding.
-void AssignComputationDevice(HloComputation* computation, int64_t device);
-
-// Given a set of computations, tries to extract the dominant device. A device
-// is dominant if the combined occurrence among all the instructions of the
-// input computations, is greater/equal than/to dominant_factor (real number
-// from 0 to 1).
-// This API does not recurse into called computations.
-// If no device exists that satisfies the condition, the returned optional will
-// hold no value.
-std::optional<int64_t> GetDominantDevice(
-    absl::Span<HloComputation* const> computations, double dominant_factor);
-
 // Given a tiled sharding, move the tiles from source_dim and merge it into
 // target_dim. For example, given a sharding with tile assignment [a, b, c, d,
 // e], source_dim = 1, target_dim = 3, the function will return a sharding with
@@ -255,17 +234,6 @@ ScatterUpdateShardingFromOutputOperandPassthroughDimensions(
 std::optional<HloSharding> ScatterUpdateShardingFromOutputParallelDimensions(
     const HloSharding& output_sharding, const HloScatterInstruction& scatter,
     const CallGraph& call_graph);
-
-// Returns an identity value and an HloOpcode for reduce computation of scatter
-// instruction.
-// - If computation is add/or, return 0/false with corresponding op code;
-// - If computation is multiply/and, return 1/true with corresponding op code.
-// - If computation is min/max, return max value/min value with corresponding op
-//   code.
-// - Otherwise, return error status.
-absl::StatusOr<std::pair<std::unique_ptr<HloInstruction>, HloOpcode>>
-IdentityValueAndHloOpcodeForScatterReduceComputation(
-    const HloScatterInstruction& scatter);
 
 // Returns a sharding that replicates data across devices along the given
 // dimensions in the original sharding.
