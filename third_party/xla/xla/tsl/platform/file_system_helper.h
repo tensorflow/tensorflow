@@ -16,13 +16,9 @@ limitations under the License.
 #ifndef XLA_TSL_PLATFORM_FILE_SYSTEM_HELPER_H_
 #define XLA_TSL_PLATFORM_FILE_SYSTEM_HELPER_H_
 
-#include <cstdint>
+#include <algorithm>
 #include <vector>
 
-#include "absl/algorithm/container.h"
-#include "absl/status/status.h"
-#include "absl/status/statusor.h"
-#include "absl/strings/string_view.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/file_system.h"
 #include "xla/tsl/platform/status.h"
@@ -117,7 +113,7 @@ class RandomAccessFileCopyingInputStream
       if (result.size() > size) {
         return -1;
       }
-      absl::c_copy(result, static_cast<char*>(buffer));
+      std::copy(result.begin(), result.end(), static_cast<char*>(buffer));
     }
 
     position_ += result.size();

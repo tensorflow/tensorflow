@@ -18,15 +18,16 @@ limitations under the License.
 #include <algorithm>
 #include <cmath>
 #include <functional>
+#include <numeric>
 #include <unordered_map>
 #include <vector>
 
-#include "absl/algorithm/container.h"
 #include "xla/tsl/lib/math/math_util.h"
 #include "xla/tsl/lib/random/philox_random.h"
 #include "xla/tsl/lib/random/philox_random_test_utils.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/test.h"
+#include "tsl/platform/random.h"
 
 namespace tsl {
 namespace random {
@@ -170,14 +171,15 @@ void NormalMomentsTest(int count, int max_moments,
     if (n % 2 == 1) {
       // For an odd order, the moment of a unit normal distribution is zero.
       return 0.;
+    } else {
+      // For an even order, the moment of a unit normal distribution is.
+      // (n-1)!!
+      double v = 1.;
+      for (int i = n - 1; i >= 1; i -= 2) {
+        v *= i;
+      }
+      return v;
     }
-    // For an even order, the moment of a unit normal distribution is.
-    // (n-1)!!
-    double v = 1.;
-    for (int i = n - 1; i >= 1; i -= 2) {
-      v *= i;
-    }
-    return v;
   };
 
   std::vector<T> v1(count);
@@ -320,8 +322,8 @@ template <typename T>
 void SingleSampleAdapterSkipTest() {
   std::vector<uint64> skips(10);
   std::vector<uint64> skip_afters(10);
-  absl::c_iota(skips, 0);
-  absl::c_iota(skip_afters, 0);
+  std::iota(skips.begin(), skips.end(), 0);
+  std::iota(skip_afters.begin(), skip_afters.end(), 0);
   uint64 total_samples = 100;
   uint64 seed = GetTestSeed();
 
