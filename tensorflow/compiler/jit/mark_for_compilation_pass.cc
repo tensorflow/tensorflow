@@ -23,6 +23,7 @@ limitations under the License.
 #include <map>
 #include <memory>
 #include <optional>
+#include <regex>
 #include <set>
 #include <string>
 #include <unordered_map>
@@ -123,6 +124,9 @@ class MarkForCompilationPassImpl {
     std::atomic<int64_t>* fuel;
 
     bool dump_graphs;
+
+    // Enable models to influcence clustering with operator names
+    int annotate_cluster_id;
   };
 
   MarkForCompilationPassImpl(DebugOptions debug_options, Graph* graph,
@@ -245,7 +249,11 @@ class MarkForCompilationPassImpl {
                           " others #", cycles_graph_node_id(), ">");
     }
 
+    int annotated_id() const { return annotated_id_; }
+    void set_annotated_id(int id) { annotated_id_ = id; }
+
    private:
+    int annotated_id_ = -1;
     int cluster_size_ = 1;
     int cycles_graph_node_id_;
     int effective_cluster_size_;
@@ -316,6 +324,8 @@ class MarkForCompilationPassImpl {
   bool IsCompilationCandidate(Node* n) const {
     return compilation_candidates_.find(n) != compilation_candidates_.end();
   }
+
+  absl::Status AssignAnnotatedClusterIDs();
 
   // Tries to contract the edge from cluster `from` to cluster `to`.  Returns
   // true if successful.
@@ -686,6 +696,12 @@ absl::StatusOr<bool> MarkForCompilationPassImpl::Initialize() {
   // representative names the node in the 'cycles' graph that represents the
   // cluster.
   TF_RETURN_IF_ERROR(BuildInitialClusterSet());
+
+  // Source model may be annotated with preferred clusters. This function
+  // just interpreter the annotations and assign preferred IDs
+  if (debug_options_.annotate_cluster_id) {
+    TF_RETURN_IF_ERROR(AssignAnnotatedClusterIDs());
+  }
   return true;
 }
 
@@ -1548,6 +1564,45 @@ bool MarkForCompilationPassImpl::CompilationDisallowedByXlaCompileAttr(
   return false;
 }
 
+absl::Status MarkForCompilationPassImpl::AssignAnnotatedClusterIDs(void) {
+  VLOG(1) << "Run AssignAnnotatedClusterIDs";
+
+  for (Node* node : graph_->nodes()) {
+    Cluster * cluster = GetClusterForNode(node);
+    auto name = node->name();
+    if (cluster) {
+      std::string pat = "^\\.cluster\\.(\\d+|none)";
+      std::regex idPattern(pat);
+      std::smatch matched;
+      if (std::regex_search(name, matched, idPattern)) {
+	auto m = matched.str(1);
+	if (m == "none") {
+          // Prefer not to cluster
+	  VLOG(1) << name << " : Default annotated cluster id -1";
+	  cluster->set_annotated_id(-1);
+	}
+	else {
+	  try {
+	    int id = std::stoi(m);
+	    cluster->set_annotated_id(id);
+	    VLOG(1) << name << " : Set annotated cluster id " << m;
+	  }
+	  catch (...) {
+            VLOG(1) << name << " : Invalid cluster id: " << m;
+	  }
+	}
+      }
+      else {
+        VLOG(1) << "Not matched: " << name << " pattern is " << pat;
+      }
+    }
+    else {
+      VLOG(1) << name << ": Not initially clustered";
+    }
+  }
+  return absl::OkStatus();
+}
+
 bool MarkForCompilationPassImpl::LogNotContractableAndReturnFalse(
     Cluster* from, Cluster* to, absl::string_view reason) {
   VLOG(3) << EdgeContractionFailureMsg(from, to, reason);
@@ -1567,6 +1622,11 @@ absl::StatusOr<bool> MarkForCompilationPassImpl::TryToContractEdge(
             " and ",
             deadness_analysis_->DebugString(*to->deadness_predicate())));
     return false;
+  }
+
+  if (debug_options_.annotate_cluster_id && from->annotated_id() != to->annotated_id()) {
+    return LogNotContractableAndReturnFalse(
+        from, to, "the two nodes do not have same annotated ids");
   }
 
   TF_ASSIGN_OR_RETURN(bool devices_compatible,
@@ -1962,6 +2022,7 @@ absl::Status MarkForCompilationPass::Run(
   debug_options.min_cluster_size = flags->tf_xla_min_cluster_size;
   debug_options.fuel = GetPointerToFuel(flags->tf_xla_clustering_fuel);
   debug_options.dump_graphs = flags->tf_xla_clustering_debug;
+  debug_options.annotate_cluster_id = flags->tf_xla_annotate_cluster_id;
 
   return MarkForCompilation(options, debug_options);
 }
@@ -1981,6 +2042,7 @@ absl::Status MarkForCompilationPass::RunForTest(
   debug_options.min_cluster_size = flags->tf_xla_min_cluster_size;
   debug_options.fuel = GetPointerToFuel(flags->tf_xla_clustering_fuel);
   debug_options.dump_graphs = flags->tf_xla_clustering_debug;
+  debug_options.annotate_cluster_id = flags->tf_xla_annotate_cluster_id;
 
   return MarkForCompilation(options, debug_options);
 }
