@@ -395,23 +395,16 @@ class MockSharding : public llvm::RTTIExtends<MockSharding, Sharding> {
                                                   is_fully_replicated) {}
 
   MOCK_METHOD((absl::StatusOr<std::vector<std::pair<Shape, ShardingRef>>>),
-              Disassemble, (const Shape& shape), (const, final));
-  MOCK_METHOD((absl::StatusOr<std::vector<std::pair<Shape, ShardingRef>>>),
               Disassemble,
               (const Shape& shape,
                SingleDeviceShardSemantics single_device_shard_semantics),
               (const, final));
   MOCK_METHOD(
       (absl::StatusOr<std::vector<std::pair<DynamicShape, ShardingRef>>>),
-      Disassemble, (const DynamicShape& dynamic_shape), (const final));
-  MOCK_METHOD(
-      (absl::StatusOr<std::vector<std::pair<DynamicShape, ShardingRef>>>),
       Disassemble,
       (const DynamicShape& dynamic_shape,
        SingleDeviceShardSemantics single_device_shard_semantics),
       (const final));
-  MOCK_METHOD(absl::StatusOr<std::vector<IndexDomain>>, IndexDomains,
-              (const Shape& shape), (const, final));
   MOCK_METHOD(absl::StatusOr<std::vector<IndexDomain>>, IndexDomains,
               (const Shape& shape,
                SingleDeviceShardSemantics single_device_shard_semantics),

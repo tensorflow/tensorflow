@@ -24,6 +24,7 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
+#include "absl/base/macros.h"
 #include "absl/base/nullability.h"
 #include "absl/hash/hash.h"
 #include "absl/log/check.h"
@@ -125,20 +126,22 @@ class Sharding : public llvm::RTTIExtends<Sharding, Serializable> {
   // Breaks a shape up into per-device shapes and shardings. See
   // Array::DisassembleIntoSingleDeviceArrays(). It may return an error if
   // disassembly is unsupported.
-  // TODO(hyeontaek): Replace this API with the version that takes
-  // `SingleDeviceShardSemantics`.
-  virtual absl::StatusOr<std::vector<std::pair<Shape, ShardingRef>>>
-  Disassemble(const Shape& shape) const = 0;
+  ABSL_DEPRECATE_AND_INLINE()
+  absl::StatusOr<std::vector<std::pair<Shape, ShardingRef>>> Disassemble(
+      const Shape& shape) const {
+    return Disassemble(shape, SingleDeviceShardSemantics::kAllShards);
+  }
   virtual absl::StatusOr<std::vector<std::pair<Shape, ShardingRef>>>
   Disassemble(
       const Shape& shape,
       SingleDeviceShardSemantics single_device_shard_semantics) const = 0;
 
   // Variant of `Disassemble` that takes a dynamic shape.
-  // TODO(hyeontaek): Replace this API with the version that takes
-  // `SingleDeviceShardSemantics`.
-  virtual absl::StatusOr<std::vector<std::pair<DynamicShape, ShardingRef>>>
-  Disassemble(const DynamicShape& dynamic_shape) const = 0;
+  ABSL_DEPRECATE_AND_INLINE()
+  absl::StatusOr<std::vector<std::pair<DynamicShape, ShardingRef>>> Disassemble(
+      const DynamicShape& dynamic_shape) const {
+    return Disassemble(dynamic_shape, SingleDeviceShardSemantics::kAllShards);
+  }
   virtual absl::StatusOr<std::vector<std::pair<DynamicShape, ShardingRef>>>
   Disassemble(
       const DynamicShape& dynamic_shape,
@@ -150,10 +153,11 @@ class Sharding : public llvm::RTTIExtends<Sharding, Serializable> {
   // fully replicated sharding would return a vector of `[IndexDomain(shape)] *
   // devices().size()` if `single_device_shard_semantics ==
   // SingleDeviceShardSemantics::kAllShards`.
-  // TODO(hyeontaek): Replace this API with the version that takes
-  // `SingleDeviceShardSemantics`.
-  virtual absl::StatusOr<std::vector<IndexDomain>> IndexDomains(
-      const Shape& shape) const = 0;
+  ABSL_DEPRECATE_AND_INLINE()
+  absl::StatusOr<std::vector<IndexDomain>> IndexDomains(
+      const Shape& shape) const {
+    return IndexDomains(shape, SingleDeviceShardSemantics::kAllShards);
+  }
   virtual absl::StatusOr<std::vector<IndexDomain>> IndexDomains(
       const Shape& shape,
       SingleDeviceShardSemantics single_device_shard_semantics) const = 0;
@@ -249,20 +253,16 @@ class SingleDeviceSharding final
       std::optional<DeviceListRef> devices,
       std::optional<MemoryKind> memory_kind) const override;
 
-  absl::StatusOr<std::vector<std::pair<Shape, ShardingRef>>> Disassemble(
-      const Shape& shape) const override;
+  using Sharding::Disassemble;
   absl::StatusOr<std::vector<std::pair<Shape, ShardingRef>>> Disassemble(
       const Shape& shape,
       SingleDeviceShardSemantics single_device_shard_semantics) const override;
 
   absl::StatusOr<std::vector<std::pair<DynamicShape, ShardingRef>>> Disassemble(
-      const DynamicShape& dynamic_shape) const override;
-  absl::StatusOr<std::vector<std::pair<DynamicShape, ShardingRef>>> Disassemble(
       const DynamicShape& dynamic_shape,
       SingleDeviceShardSemantics single_device_shard_semantics) const override;
 
-  absl::StatusOr<std::vector<IndexDomain>> IndexDomains(
-      const Shape& shape) const override;
+  using Sharding::IndexDomains;
   absl::StatusOr<std::vector<IndexDomain>> IndexDomains(
       const Shape& shape,
       SingleDeviceShardSemantics single_device_shard_semantics) const override;
@@ -299,20 +299,16 @@ class OpaqueSharding : public llvm::RTTIExtends<OpaqueSharding, Sharding> {
       std::optional<DeviceListRef> devices,
       std::optional<MemoryKind> memory_kind) const override;
 
-  absl::StatusOr<std::vector<std::pair<Shape, ShardingRef>>> Disassemble(
-      const Shape& shape) const override;
+  using Sharding::Disassemble;
   absl::StatusOr<std::vector<std::pair<Shape, ShardingRef>>> Disassemble(
       const Shape& shape,
       SingleDeviceShardSemantics single_device_shard_semantics) const override;
 
   absl::StatusOr<std::vector<std::pair<DynamicShape, ShardingRef>>> Disassemble(
-      const DynamicShape& dynamic_shape) const override;
-  absl::StatusOr<std::vector<std::pair<DynamicShape, ShardingRef>>> Disassemble(
       const DynamicShape& dynamic_shape,
       SingleDeviceShardSemantics single_device_shard_semantics) const override;
 
-  absl::StatusOr<std::vector<IndexDomain>> IndexDomains(
-      const Shape& shape) const override;
+  using Sharding::IndexDomains;
   absl::StatusOr<std::vector<IndexDomain>> IndexDomains(
       const Shape& shape,
       SingleDeviceShardSemantics single_device_shard_semantics) const override;
@@ -396,20 +392,16 @@ class ConcreteSharding : public llvm::RTTIExtends<ConcreteSharding, Sharding> {
       std::optional<DeviceListRef> devices,
       std::optional<MemoryKind> memory_kind) const override;
 
-  absl::StatusOr<std::vector<std::pair<Shape, ShardingRef>>> Disassemble(
-      const Shape& shape) const override;
+  using Sharding::Disassemble;
   absl::StatusOr<std::vector<std::pair<Shape, ShardingRef>>> Disassemble(
       const Shape& shape,
       SingleDeviceShardSemantics single_device_shard_semantics) const override;
 
   absl::StatusOr<std::vector<std::pair<DynamicShape, ShardingRef>>> Disassemble(
-      const DynamicShape& dynamic_shape) const override;
-  absl::StatusOr<std::vector<std::pair<DynamicShape, ShardingRef>>> Disassemble(
       const DynamicShape& dynamic_shape,
       SingleDeviceShardSemantics single_device_shard_semantics) const override;
 
-  absl::StatusOr<std::vector<IndexDomain>> IndexDomains(
-      const Shape& shape) const override;
+  using Sharding::IndexDomains;
   absl::StatusOr<std::vector<IndexDomain>> IndexDomains(
       const Shape& shape,
       SingleDeviceShardSemantics single_device_shard_semantics) const override;
@@ -471,20 +463,16 @@ class ConcreteEvenSharding
       std::optional<DeviceListRef> devices,
       std::optional<MemoryKind> memory_kind) const override;
 
-  absl::StatusOr<std::vector<std::pair<Shape, ShardingRef>>> Disassemble(
-      const Shape& shape) const override;
+  using Sharding::Disassemble;
   absl::StatusOr<std::vector<std::pair<Shape, ShardingRef>>> Disassemble(
       const Shape& shape,
       SingleDeviceShardSemantics single_device_shard_semantics) const override;
 
   absl::StatusOr<std::vector<std::pair<DynamicShape, ShardingRef>>> Disassemble(
-      const DynamicShape& dynamic_shape) const override;
-  absl::StatusOr<std::vector<std::pair<DynamicShape, ShardingRef>>> Disassemble(
       const DynamicShape& dynamic_shape,
       SingleDeviceShardSemantics single_device_shard_semantics) const override;
 
-  absl::StatusOr<std::vector<IndexDomain>> IndexDomains(
-      const Shape& shape) const override;
+  using Sharding::IndexDomains;
   absl::StatusOr<std::vector<IndexDomain>> IndexDomains(
       const Shape& shape,
       SingleDeviceShardSemantics single_device_shard_semantics) const override;
@@ -523,20 +511,16 @@ class ShardingParamSharding
       std::optional<DeviceListRef> devices,
       std::optional<MemoryKind> memory_kind) const override;
 
-  absl::StatusOr<std::vector<std::pair<Shape, ShardingRef>>> Disassemble(
-      const Shape& shape) const override;
+  using Sharding::Disassemble;
   absl::StatusOr<std::vector<std::pair<Shape, ShardingRef>>> Disassemble(
       const Shape& shape,
       SingleDeviceShardSemantics single_device_shard_semantics) const override;
 
   absl::StatusOr<std::vector<std::pair<DynamicShape, ShardingRef>>> Disassemble(
-      const DynamicShape& dynamic_shape) const override;
-  absl::StatusOr<std::vector<std::pair<DynamicShape, ShardingRef>>> Disassemble(
       const DynamicShape& dynamic_shape,
       SingleDeviceShardSemantics single_device_shard_semantics) const override;
 
-  absl::StatusOr<std::vector<IndexDomain>> IndexDomains(
-      const Shape& shape) const override;
+  using Sharding::IndexDomains;
   absl::StatusOr<std::vector<IndexDomain>> IndexDomains(
       const Shape& shape,
       SingleDeviceShardSemantics single_device_shard_semantics) const override;

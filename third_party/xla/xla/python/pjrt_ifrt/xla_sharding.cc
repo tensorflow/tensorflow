@@ -181,11 +181,6 @@ absl::StatusOr<std::unique_ptr<Sharding>> HloSharding::WithDeviceAssignment(
   return Create(devices.value_or(devices_), memory_kind.value_or(memory_kind_),
                 xla_hlo_sharding_);
 }
-absl::StatusOr<std::vector<std::pair<Shape, ShardingRef>>>
-HloSharding::Disassemble(const Shape& shape) const {
-  DCHECK(this);
-  return Disassemble(shape, SingleDeviceShardSemantics::kAllShards);
-}
 
 absl::StatusOr<std::vector<std::pair<Shape, ShardingRef>>>
 HloSharding::Disassemble(
@@ -242,8 +237,9 @@ HloSharding::Disassemble(
     return result;
   }
   // Slow path that uses `IndexDomains()` to handle uneven sharding.
-  TF_ASSIGN_OR_RETURN(std::vector<IndexDomain> index_domains,
-                      IndexDomains(shape));
+  TF_ASSIGN_OR_RETURN(
+      std::vector<IndexDomain> index_domains,
+      IndexDomains(shape, SingleDeviceShardSemantics::kAllShards));
   CHECK_EQ(index_domains.size(), devices_->size());
   std::vector<std::pair<Shape, ShardingRef>> result;
   if (single_device_shard_semantics == SingleDeviceShardSemantics::kAllShards) {
@@ -265,12 +261,6 @@ HloSharding::Disassemble(
 }
 
 absl::StatusOr<std::vector<std::pair<DynamicShape, ShardingRef>>>
-HloSharding::Disassemble(const DynamicShape& dynamic_shape) const {
-  DCHECK(this);
-  return Disassemble(dynamic_shape, SingleDeviceShardSemantics::kAllShards);
-}
-
-absl::StatusOr<std::vector<std::pair<DynamicShape, ShardingRef>>>
 HloSharding::Disassemble(
     const DynamicShape& dynamic_shape,
     SingleDeviceShardSemantics single_device_shard_semantics) const {
@@ -279,12 +269,6 @@ HloSharding::Disassemble(
       "HloSharding can only disassemble static shape, but was asked "
       "to disassemble dynamic shape %s",
       dynamic_shape.DebugString());
-}
-
-absl::StatusOr<std::vector<IndexDomain>> HloSharding::IndexDomains(
-    const Shape& shape) const {
-  DCHECK(this);
-  return IndexDomains(shape, SingleDeviceShardSemantics::kAllShards);
 }
 
 absl::StatusOr<std::vector<IndexDomain>> HloSharding::IndexDomains(
