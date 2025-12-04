@@ -475,15 +475,9 @@ class TensorListSetItem : public OpKernel {
     OP_REQUIRES_OK(c, ForwardInputOrCreateNewList(c, 0, 0, *l, &output_list));
     int32_t index = c->input(1).scalar<int32>()();
     
-    // Add bounds checking to prevent integer overflow and excessive memory allocation
     OP_REQUIRES(c, index >= 0,
-                errors::InvalidArgument("Index must be non-negative, got: ", index));
-    
-    // Prevent excessive memory allocation by limiting maximum index
-    constexpr int32_t kMaxTensorListSize = 1000000000;  // 1 billion elements max
-    OP_REQUIRES(c, index < kMaxTensorListSize,
-                errors::InvalidArgument("Index too large: ", index, 
-                                        ". Maximum allowed index is ", kMaxTensorListSize - 1));
+                absl::InvalidArgumentError(absl::StrCat(
+                    "Index must be non-negative, got: ", index)));
     
     if (!resize_if_index_out_of_bounds_) {
       OP_REQUIRES(c, index < l->tensors().size(),
@@ -491,7 +485,16 @@ class TensorListSetItem : public OpKernel {
                                           " in a list with ",
                                           l->tensors().size(), " elements."));
     } else if (index >= l->tensors().size()) {
-      output_list->tensors().resize(index + 1, Tensor(DT_INVALID));
+      OP_REQUIRES(c, index < std::numeric_limits<int32_t>::max(),
+                  absl::InvalidArgumentError(absl::StrCat(
+                      "Index too large: ", index)));
+      try {
+        output_list->tensors().resize(index + 1, Tensor(DT_INVALID));
+      } catch (const std::bad_alloc&) {
+        OP_REQUIRES(c, false,
+                    absl::ResourceExhaustedError(absl::StrCat(
+                        "Failed to allocate memory for index: ", index)));
+      }
     }
     output_list->tensors()[index] = value;
   }

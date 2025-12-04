@@ -803,7 +803,7 @@ class ListOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
         errors.InvalidArgumentError,
         "Index too large"):
       l = list_ops.tensor_list_set_item(
-          l, 2000000000, 1., resize_if_index_out_of_bounds=True)
+          l, 2147483647, 1., resize_if_index_out_of_bounds=True)
       self.evaluate(l)
 
   def testUnknownShape(self):
