@@ -34,6 +34,7 @@ namespace tensorflow {
 
 namespace {
 
+// Use environment setting if specified (init once)
 constexpr int32 kMaxThreadCount = 1024;
 
 int32 ValidateThreadCount(int32 requested_threads, const char* thread_type) {
@@ -84,8 +85,26 @@ int32 DefaultNumInterOpThreads() {
     return ValidateThreadCount(env_num_threads, "inter_op_parallelism (env)");
   }
 
+  // Default to the maximum parallelism for the current process.
   return port::MaxParallelism();
 #else
+ // Historically, -D__ANDROID__ resulted in the inter-op threadpool not being
+  // used (regardless of what was chosen here); instead, all work was done on
+  // the thread(s) calling Session::Run. That's no longer the case, but we'd
+  // like to avoid suddenly higher concurrency and peak resource usage (for the
+  // same device shape, graph, and options) versus prior versions - as best we
+  // can:
+  //
+  //   - Single Session::Run (none concurrent), and default options:
+  //     Behavior is mostly the same as before.
+  //
+  //   - Concurrent Session::Runs, and default options:
+  //     Reduced concurrency versus before.
+  //
+  //   - Thread-pool size set explicitly (>1):
+  //     Increased concurrency versus before.
+  //
+  // (We assume the first case is the most common)
   return 1;
 #endif
 }
@@ -127,17 +146,21 @@ int32 NumIntraOpThreadsFromEnvironment() {
 
 #if defined(ENABLE_ONEDNN_OPENMP) && defined(ENABLE_MKL)
 int32 OMPThreadsFromEnvironment() {
+  // 1) std::getenv is thread-safe (as long as no other function modifies the
+  // host env) from C++11 onward. 2) Most of TF code (except tests and
+  // experimental code) doesn't call setenv and unsetenv
   int32 num;
   const char* val = std::getenv("OMP_NUM_THREADS");
   return (val && strings::safe_strto32(val, &num)) ? num : 0;
 }
 
 int32 DefaultNumIntraOpThreads() {
+  // Use environment setting if specified (init once)
   static int env_num_threads = NumIntraOpThreadsFromEnvironment();
   if (env_num_threads > 0) {
     return ValidateThreadCount(env_num_threads, "intra_op_parallelism (env)");
   }
-
+  // Default to the maximum parallelism for the current process.
   return port::MaxParallelism();
 }
 #endif  // defined(ENABLE_ONEDNN_OPENMP) && defined(ENABLE_MKL)
@@ -152,6 +175,10 @@ int32 NumInterOpThreadsFromSessionOptions(const SessionOptions& options) {
 
 #if defined(ENABLE_ONEDNN_OPENMP) && defined(ENABLE_MKL)
   if (IsMKLEnabled()) {
+    // MKL library executes ops in parallel using OMP threads.
+    // Setting inter_op conservatively to avoid thread oversubscription that
+    // could lead to severe perf degradations and OMP resource exhaustion.
+    // Inter ops are set such that mkl_inter_op * mkl_intra_op <= NumCores.
     const int32 intra_op = ValidateThreadCount(
         options.config.intra_op_parallelism_threads(), "intra_op_parallelism");
     const int32 omp_max_threads = OMPThreadsFromEnvironment();
