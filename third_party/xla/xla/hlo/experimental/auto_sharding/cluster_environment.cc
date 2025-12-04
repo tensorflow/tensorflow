@@ -320,8 +320,7 @@ double ClusterEnvironment::ReshardingCost(const Shape& shape,
 
   auto get_tensor_dim_to_mesh_dim = [&](int64_t rank,
                                         const HloSharding& sharding) {
-    if (VectorGreaterThanOneElementCount(
-            sharding.tile_assignment().dimensions()) == 1 &&
+    if (VectorGreaterThanOneElementCount(sharding.dimensions()) == 1 &&
         VectorGreaterThanOneElementCount(device_mesh_.dimensions()) > 1) {
       // sharding is 1D and device_mesh is 2D or 3D
       return GetTensorDimToMeshDimNoCrash(
@@ -340,8 +339,8 @@ double ClusterEnvironment::ReshardingCost(const Shape& shape,
       get_tensor_dim_to_mesh_dim(dst_rank, dst_spec);
 
   if (!src_tensor_dim_to_mesh_dim_or.ok() && dst_spec.IsReplicated()) {
-    auto equivalent_src_spec = HloSharding::IotaTile(
-        src_spec.tile_assignment().dimensions(), src_spec.metadata());
+    auto equivalent_src_spec =
+        HloSharding::IotaTile(src_spec.dimensions(), src_spec.metadata());
     if (auto equivalent_src_tensor_dim_to_mesh_dim_or =
             get_tensor_dim_to_mesh_dim(src_rank, equivalent_src_spec);
         equivalent_src_tensor_dim_to_mesh_dim_or.ok()) {

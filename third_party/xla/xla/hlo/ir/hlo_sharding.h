@@ -526,6 +526,11 @@ class HloSharding {
     return tile_assignment().dim(dim_index);
   }
 
+  // Returns all sharding dimensions.
+  absl::Span<const int64_t> dimensions() const {
+    return tile_assignment().dimensions();
+  }
+
   // Returns the total number of devices used by sharding.
   int64_t num_devices() const { return tile_assignment().num_elements(); }
 
