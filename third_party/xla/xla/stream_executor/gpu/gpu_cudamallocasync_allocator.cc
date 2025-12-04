@@ -40,13 +40,7 @@ limitations under the License.
 #include "xla/stream_executor/gpu/gpu_init.h"
 #include "xla/tsl/framework/allocator.h"
 #include "xla/tsl/framework/device_id.h"
-<<<<<<< HEAD
-#include "xla/tsl/util/env_var.h"  // IWYU pragma: keep
-#include "tsl/platform/logging.h"
-#include "tsl/platform/mutex.h"
-=======
 #include "xla/tsl/util/env_var.h"
->>>>>>> ae0bcfbed65c9f3cf97c7714efdf69deff6507e0
 
 namespace stream_executor {
 

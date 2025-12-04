@@ -417,13 +417,8 @@ tsl_gpu_library(
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",
-<<<<<<< HEAD
-        "@local_tsl//tsl/platform:logging",
-        "@local_tsl//tsl/platform:mutex",
-=======
         "@com_google_absl//absl/synchronization",
         "@local_config_cuda//cuda:cuda_headers",
->>>>>>> ae0bcfbed65c9f3cf97c7714efdf69deff6507e0
     ],
 )
 

@@ -56,11 +56,8 @@ cc_library(
     hdrs = ["fptrunc.h"],
     deps = [
         ":intrinsic",
-<<<<<<< HEAD
-=======
         ":type",
         "//xla:shape_util",
->>>>>>> ae0bcfbed65c9f3cf97c7714efdf69deff6507e0
         "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla/service/llvm_ir:llvm_util",

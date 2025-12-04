@@ -865,13 +865,7 @@ _ENVIRONS = [
     "TF_NEED_CUDA",  # Needed by the `if_gpu_is_configured` macro
     _ROCM_TOOLKIT_PATH,
     _TF_ROCM_AMDGPU_TARGETS,
-<<<<<<< HEAD
-    "CLANG_COMPILER_PATH",
-    _OS,
-    _ROCM_VERSION,
-=======
     _ROCM_DISTRO_VERSION,
->>>>>>> ae0bcfbed65c9f3cf97c7714efdf69deff6507e0
     _TF_ROCM_RBE_DOCKER_IMAGE,
     _TF_ROCM_RBE_SINGLE_GPU_POOL,
     _TF_ROCM_RBE_MULTI_GPU_POOL,

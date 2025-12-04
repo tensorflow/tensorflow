@@ -42,19 +42,11 @@ TEST_F(TooManyBlocksTest, FailsWithInvalidStatus) {
 HloModule primitive_computation_mul.8
 
 ENTRY primitive_computation_mul.8 {
-<<<<<<< HEAD
   parameter.1 = s8[131072] parameter(0)
   parameter.2 = s8[131072] parameter(1)
   broadcast.3 = s8[131072,131072,131072,128,2] broadcast(parameter.1), dimensions={0}
   broadcast.4 = s8[131072,131072,131072,128,2] broadcast(parameter.2), dimensions={1}
   ROOT multiply.5 = s8[131072,131072,131072,128,2] multiply(broadcast.3, broadcast.4)
-=======
-  parameter.1 = s8[65536] parameter(0)
-  parameter.2 = s8[65536] parameter(1)
-  broadcast.3 = s8[65536,65536,65536,128,4] broadcast(parameter.1), dimensions={0}
-  broadcast.4 = s8[65536,65536,65536,128,4] broadcast(parameter.2), dimensions={1}
-  ROOT multiply.5 = s8[65536,65536,65536,128,4] multiply(broadcast.3, broadcast.4)
->>>>>>> ae0bcfbed65c9f3cf97c7714efdf69deff6507e0
 }
 )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> optimized_module,

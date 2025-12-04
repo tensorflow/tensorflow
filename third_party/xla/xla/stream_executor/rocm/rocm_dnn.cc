@@ -5199,14 +5199,8 @@ bool UseNhwcLayoutForRocm() {
 #if TF_ROCM_VERSION >= 50100
   static bool is_enabled = [] {
     bool is_enabled = false;
-<<<<<<< HEAD
-    TF_CHECK_OK(tsl::ReadBoolFromEnvVar(
-        "TF_USE_ROCM_NHWC",
-        /*default_val=*/false, &is_enabled));
-=======
     CHECK_OK(tsl::ReadBoolFromEnvVar("TF_USE_ROCM_NHWC",
                                      /*default_val=*/false, &is_enabled));
->>>>>>> ae0bcfbed65c9f3cf97c7714efdf69deff6507e0
     return is_enabled;
   }();
   return is_enabled;

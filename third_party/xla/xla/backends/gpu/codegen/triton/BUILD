@@ -434,72 +434,6 @@ cc_library(
 )
 
 cc_library(
-<<<<<<< HEAD
-    name = "fusion_emitter_legacy_matmul",
-    srcs = if_gpu_is_configured(
-        ["fusion_emitter_legacy_matmul.cc"],
-        ["fusion_emitter_legacy_matmul_stub.cc"],
-    ),
-    hdrs = ["fusion_emitter_legacy_matmul.h"],
-    deps = [
-        ":dot_algorithms",
-        ":emitter_helpers",
-        "//xla:autotuning_proto_cc",
-        "//xla:comparison_util",
-        "//xla:literal",
-        "//xla:shape_util",
-        "//xla:status_macros",
-        "//xla:util",
-        "//xla:xla_data_proto_cc",
-        "//xla/backends/gpu/codegen/triton/ir:triton_xla",
-        "//xla/codegen:emitter_loc_op_builder",
-        "//xla/codegen/xtile/ir:xtile",
-        "//xla/hlo/ir:hlo",
-        "//xla/hlo/utils:hlo_query",
-        "//xla/hlo/utils:hlo_traversal",
-        "//xla/mlir_hlo",
-        "//xla/mlir_hlo:map_mhlo_to_scalar_op",
-        "//xla/mlir_hlo:transformation_helpers",
-        "//xla/service:algorithm_util",
-        "//xla/service:matmul_indexing_utils",
-        "//xla/service/gpu:backend_configs_cc",
-        "//xla/service/gpu:ir_emission_utils",
-        "//xla/service/gpu:launch_dimensions",
-        "//xla/service/gpu:matmul_utils",
-        "//xla/service/gpu:triton_fusion_analysis",
-        "//xla/service/gpu:triton_tiling_propagation",
-        "//xla/service/gpu/model:block_level_parameters",
-        "//xla/service/llvm_ir:llvm_util",
-        "//xla/stream_executor:device_description",
-        "//xla/stream_executor:launch_dim",
-        "//xla/tsl/platform:errors",
-        "//xla/tsl/platform:statusor",
-        "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/log",
-        "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/strings:cord",
-        "@com_google_absl//absl/strings:string_view",
-        "@com_google_absl//absl/types:span",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:ArithDialect",
-        "@llvm-project//mlir:FunctionInterfaces",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:MathDialect",
-        "@llvm-project//mlir:NVVMDialect",
-        "@llvm-project//mlir:SCFDialect",
-        "@llvm-project//mlir:Support",
-        "@triton//:TritonDialects",
-    ],
-)
-
-cc_library(
-=======
->>>>>>> ae0bcfbed65c9f3cf97c7714efdf69deff6507e0
     name = "dot_algorithms",
     srcs = ["dot_algorithms.cc"],
     hdrs = ["dot_algorithms.h"],
@@ -622,65 +556,7 @@ xla_cc_test(
     ],
 )
 
-<<<<<<< HEAD
-xla_test(
-    name = "fusion_emitter_device_legacy_test",
-    srcs = if_gpu_is_configured(["fusion_emitter_device_legacy_test.cc"]),
-    # TODO(b/372714955): Fix the memory leak!
-    backend_args = if_google(
-        {
-            "h100": ["--heap_check="],
-            "a100": ["--heap_check="],
-        },
-        {},
-    ),
-    backends = [
-        "a100",
-        "h100",
-        "b200",
-        "amdgpu_any",
-    ],
-    shard_count = 20,
-    tags = [
-        "no_mac",
-    ],
-    deps = [
-        ":fusion_emitter",
-        ":test_utils",
-        "//xla:autotuning_proto_cc",
-        "//xla:error_spec",
-        "//xla:xla_data_proto_cc",
-        "//xla:xla_proto_cc",
-        "//xla/hlo/analysis:symbolic_expr",
-        "//xla/hlo/ir:hlo",
-        "//xla/hlo/testlib:filecheck",
-        "//xla/hlo/testlib:pattern_matcher_gmock",
-        "//xla/hlo/testlib:verified_hlo_module",
-        "//xla/service:pattern_matcher",
-        "//xla/service/gpu:backend_configs_cc",
-        "//xla/service/gpu:gpu_device_info_for_tests",
-        "//xla/service/gpu/tests:gpu_codegen_test",
-        "//xla/stream_executor:device_description",
-        "//xla/tests:xla_internal_test_main",  # fixdeps: keep
-        "//xla/tsl/lib/core:status_test_util",
-        "//xla/tsl/platform:env",
-        "//xla/tsl/platform:errors",
-        "//xla/tsl/platform:status_matchers",
-        "//xla/tsl/platform:statusor",
-        "//xla/tsl/platform:test",
-        "@com_google_absl//absl/log",
-        "@com_google_absl//absl/strings",
-        "@com_google_googletest//:gtest",
-        "@llvm-project//llvm:ir_headers",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Pass",
-        "@local_tsl//tsl/platform:path",
-    ],
-)
-
-=======
 # TODO(b/393299275): Rename this test file now that the legacy emitter is gone.
->>>>>>> ae0bcfbed65c9f3cf97c7714efdf69deff6507e0
 xla_test(
     name = "fusion_emitter_device_legacy_port_test",
     srcs = if_gpu_is_configured(["fusion_emitter_device_legacy_port_test.cc"]),
@@ -772,47 +648,6 @@ xla_test(
 )
 
 xla_test(
-<<<<<<< HEAD
-    name = "fusion_emitter_legacy_int4_device_test",
-    size = "large",
-    srcs = if_gpu_is_configured(["fusion_emitter_legacy_int4_device_test.cc"]),
-    backends = [
-        "a100",
-        "h100",
-        "b200",
-        "amdgpu_any",
-    ],
-    shard_count = 10,
-    tags = [
-        "no_mac",
-    ],
-    deps = [
-        ":test_utils",
-        "//xla:autotuning_proto_cc",
-        "//xla:error_spec",
-        "//xla:literal_util",
-        "//xla:shape_util",
-        "//xla:types",
-        "//xla:xla_data_proto_cc",
-        "//xla:xla_proto_cc",
-        "//xla/hlo/ir:hlo",
-        "//xla/hlo/testlib:filecheck",
-        "//xla/service/gpu:backend_configs_cc",
-        "//xla/service/gpu/tests:gpu_codegen_test",
-        "//xla/stream_executor:device_description",
-        "//xla/stream_executor/cuda:cuda_compute_capability",
-        "//xla/tests:xla_internal_test_main",  # fixdeps: keep
-        "//xla/tsl/platform:statusor",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/types:span",
-        "@com_google_googletest//:gtest",
-        "@local_tsl//tsl/platform:path",
-    ],
-)
-
-xla_test(
-=======
->>>>>>> ae0bcfbed65c9f3cf97c7714efdf69deff6507e0
     name = "dot_algorithms_test",
     srcs = ["dot_algorithms_test.cc"],
     backend_args = if_google(
@@ -1046,42 +881,6 @@ xla_test(
     ],
 )
 
-<<<<<<< HEAD
-xla_test(
-    name = "fusion_emitter_parametrized_legacy_test",
-    srcs = if_gpu_is_configured(["fusion_emitter_parametrized_legacy_test.cc"]),
-    backend_tags = {
-        # TODO(b/445172709): Re-enable once fixed.
-        "b200": ["broken"],
-    },
-    backends = [
-        "a100",
-        "h100",
-        "b200",
-        "amdgpu_any",
-    ],
-    shard_count = 10,
-    tags = ["no_mac",
-            "cuda-only"],  # TODO(rocm) 240729
-    deps = [
-        ":support",
-        ":test_utils",
-        "//xla:comparison_util",
-        "//xla:error_spec",
-        "//xla:xla_data_proto_cc",
-        "//xla:xla_proto_cc",
-        "//xla/hlo/ir:hlo",
-        "//xla/service/gpu/tests:gpu_codegen_test",
-        "//xla/stream_executor:device_description",
-        "//xla/tests:xla_internal_test_main",  # fixdeps: keep
-        "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/strings",
-        "@com_google_googletest//:gtest",
-    ],
-)
-
-=======
->>>>>>> ae0bcfbed65c9f3cf97c7714efdf69deff6507e0
 xla_cc_test(
     name = "fusion_emitter_shared_dialect_test",
     srcs = if_gpu_is_configured(["fusion_emitter_shared_dialect_test.cc"]),
