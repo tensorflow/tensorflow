@@ -240,7 +240,7 @@ class CollectiveOpsTestE2EShardedUnsharded : public CollectiveOpsE2ETestBase {
                            std::vector<int64_t>& sharded_dims,
                            const HloSharding& sharding) {
     if (!sharding.IsReplicated()) {
-      for (int k = 0; k < sharding.tile_assignment().num_dimensions(); ++k) {
+      for (int k = 0; k < sharding.num_dimensions(); ++k) {
         if (sharding.dimension(k) > 1) {
           dims_per_shard[k] /= sharding.dimension(k);
           sharded_dims.push_back(k);

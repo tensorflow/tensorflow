@@ -661,10 +661,10 @@ TEST(HloShardingUtilTest, UngroupSharding_ManualOnly) {
   DimensionVector group_dims = {2};
   DimensionVector group_dim_sizes = {2};
 
-  auto grouped = GroupedSharding(
-      std::move(device_groups), std::move(group_dims),
-      std::move(group_dim_sizes), sharding.tile_assignment().num_dimensions(),
-      sharding, /*subgroup_manual=*/true);
+  auto grouped =
+      GroupedSharding(std::move(device_groups), std::move(group_dims),
+                      std::move(group_dim_sizes), sharding.num_dimensions(),
+                      sharding, /*subgroup_manual=*/true);
 
   HloSharding ungroup_sharding = UngroupSharding(grouped);
 
@@ -678,11 +678,10 @@ TEST(HloShardingUtilTest, UngroupSharding_ReplicatedAndManual) {
   DimensionVector group_dims = {3};
   DimensionVector group_dim_sizes = {2};
 
-  auto grouped =
-      GroupedSharding(std::move(device_groups), std::move(group_dims),
-                      std::move(group_dim_sizes),
-                      sharding.tile_assignment().num_dimensions() - 1, sharding,
-                      /*subgroup_manual=*/true);
+  auto grouped = GroupedSharding(
+      std::move(device_groups), std::move(group_dims),
+      std::move(group_dim_sizes), sharding.num_dimensions() - 1, sharding,
+      /*subgroup_manual=*/true);
 
   HloSharding ungroup_sharding = UngroupSharding(grouped);
   VLOG(1) << "ungroup_sharding: " << ungroup_sharding.ToString();
@@ -698,11 +697,10 @@ TEST(HloShardingUtilTest, UngroupSharding_ManualAndReplicated) {
   DimensionVector group_dims = {2};
   DimensionVector group_dim_sizes = {2};
 
-  auto grouped =
-      GroupedSharding(std::move(device_groups), std::move(group_dims),
-                      std::move(group_dim_sizes),
-                      sharding.tile_assignment().num_dimensions() - 1, sharding,
-                      /*subgroup_manual=*/true);
+  auto grouped = GroupedSharding(
+      std::move(device_groups), std::move(group_dims),
+      std::move(group_dim_sizes), sharding.num_dimensions() - 1, sharding,
+      /*subgroup_manual=*/true);
 
   HloSharding ungroup_sharding = UngroupSharding(grouped);
   VLOG(1) << "ungroup_sharding: " << ungroup_sharding.ToString();

@@ -906,8 +906,7 @@ absl::StatusOr<HloInstruction*> EmitWindowedDotGeneral(
   CHECK_EQ(Product(slice_sharding->tile_assignment().dimensions()),
            num_partitions);
   int64_t slice_sharding_dim = -1;
-  for (int64_t i = 0; i < slice_sharding->tile_assignment().num_dimensions();
-       ++i) {
+  for (int64_t i = 0; i < slice_sharding->num_dimensions(); ++i) {
     if (slice_sharding->dimension(i) > 1) {
       slice_sharding_dim = i;
       break;
@@ -2422,16 +2421,13 @@ GetNonContractingPartitionGroupedShardingForOtherOperand(
     // output device groups. If fails then try find a dimension to swap instead
     // of reordering the mesh with collective permutes that can create weird
     // patterns. If that fails also do the traditional replication matching.
-    for (int64_t i = other_sharding.tile_assignment().num_dimensions() - 1;
-         i >= 0; --i) {
+    for (int64_t i = other_sharding.num_dimensions() - 1; i >= 0; --i) {
       if (other_sharding.tile_assignment().dimensions()[i] % group_count == 0) {
-        std::vector<int64_t> perm(
-            other_sharding.tile_assignment().num_dimensions(), 0);
+        std::vector<int64_t> perm(other_sharding.num_dimensions(), 0);
         absl::c_iota(perm, 0);
-        std::swap(perm[i],
-                  perm[other_sharding.tile_assignment().num_dimensions() - 1]);
+        std::swap(perm[i], perm[other_sharding.num_dimensions() - 1]);
         auto sharding_to_match =
-            i == other_sharding.tile_assignment().num_dimensions() - 1
+            i == other_sharding.num_dimensions() - 1
                 ? other_sharding
                 : hlo_sharding_util::TransposeSharding(other_sharding, perm);
         if (auto grouped_sharding = hlo_sharding_util::
@@ -2444,8 +2440,7 @@ GetNonContractingPartitionGroupedShardingForOtherOperand(
         }
       }
     }
-    other_group_dims.push_back(
-        other_sharding.tile_assignment().num_dimensions() - 1);
+    other_group_dims.push_back(other_sharding.num_dimensions() - 1);
   }
   if (other_group_dims.empty()) {
     const bool may_replicate_other_contracting_dims =
@@ -2465,8 +2460,7 @@ GetNonContractingPartitionGroupedShardingForOtherOperand(
                other_sharding.tile_assignment().dimensions().back() %
                        group_count ==
                    0) {
-      other_group_dims.push_back(
-          other_sharding.tile_assignment().num_dimensions() - 1);
+      other_group_dims.push_back(other_sharding.num_dimensions() - 1);
     } else if (may_replicate_other_contracting_dims &&
                (!may_replicate_other_non_contracting_dims ||
                 ShapeUtil::ByteSizeOf(other_shape) <=
@@ -2484,8 +2478,7 @@ GetNonContractingPartitionGroupedShardingForOtherOperand(
     }
   }
   if (other_group_dims.size() == 1 &&
-      other_group_dims[0] ==
-          other_sharding.tile_assignment().num_dimensions() - 1) {
+      other_group_dims[0] == other_sharding.num_dimensions() - 1) {
     std::vector<int64_t> group_dim_shards = {
         other_sharding.tile_assignment().dimensions().back() / group_count};
     return AlignGroupsWith(
@@ -2698,8 +2691,7 @@ GetDotGroupPartitionContractingOutputShardings(
         output_sharding.tile_assignment().dimensions().back() / group_count};
     auto grouped = AlignGroupsWith(
         hlo_sharding_util::GroupShardingOnDims(
-            output_sharding,
-            {output_sharding.tile_assignment().num_dimensions() - 1},
+            output_sharding, {output_sharding.num_dimensions() - 1},
             group_dim_shards),
         lhs_grouped,
         /*ignore_group_order=*/true);
