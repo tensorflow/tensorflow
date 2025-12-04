@@ -2,7 +2,7 @@
 
 # Convenient cache configurations
 # Use a cache directory mounted to /tf/cache. Very useful!
-build:sigbuild_local_cache --disk_cache=/tf/cache
+build:sigbuild_local_cache --disk_cache=/tf/cache --experimental_disk_cache_gc_max_size=100G
 # Use the public-access TF DevInfra cache (read only)
 build:sigbuild_remote_cache --remote_cache="https://storage.googleapis.com/tensorflow-devinfra-bazel-cache/september2022" --remote_upload_local_results=false
 # Write to the TF DevInfra cache (only works for internal TF CI)
