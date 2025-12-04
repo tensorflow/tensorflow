@@ -59,14 +59,12 @@ class NvshmemCollectiveThunk : public Thunk {
   std::optional<AsyncEventsUniqueId> GetAsyncEventsUniqueId() const override;
 
   bool IsAsyncStart() const override { return async_events_ != nullptr; }
+  bool IsP2PCollective() const { return false; }
 
  protected:
   virtual absl::Status RunNvshmemCollective(const ExecuteParams& params,
                                             se::Stream& stream) = 0;
   virtual const CollectiveConfig& config() const = 0;
-  virtual AsyncStreamKind GetAsyncStreamKind() const {
-    return AsyncStreamKind::ASYNC_STREAM_KIND_COLLECTIVE;
-  }
 
  private:
   bool IsAsync() const { return async_events_ != nullptr; }
@@ -81,8 +79,7 @@ class NvshmemCollectiveDoneThunk : public Thunk {
  public:
   NvshmemCollectiveDoneThunk(
       Thunk::Kind kind, ThunkInfo thunk_info,
-      std::shared_ptr<CollectiveThunk::AsyncEvents> async_events,
-      AsyncStreamKind async_stream_kind);
+      std::shared_ptr<CollectiveThunk::AsyncEvents> async_events);
 
   absl::Status ExecuteOnStream(const ExecuteParams& params) override;
 
@@ -92,8 +89,6 @@ class NvshmemCollectiveDoneThunk : public Thunk {
 
  private:
   std::shared_ptr<CollectiveThunk::AsyncEvents> async_events_;
-  AsyncStreamKind async_stream_kind_ =
-      AsyncStreamKind::ASYNC_STREAM_KIND_COLLECTIVE;
 };
 
 //===----------------------------------------------------------------------===//

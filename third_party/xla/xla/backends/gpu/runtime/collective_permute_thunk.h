@@ -105,8 +105,7 @@ class CollectivePermuteStartThunk : public CollectiveThunk {
                               const HloCollectivePermuteInstruction* instr,
                               int64_t replica_count, int64_t partition_count,
                               const std::vector<Buffer>& buffers,
-                              bool p2p_memcpy_enabled,
-                              AsyncStreamKind stream_kind);
+                              bool p2p_memcpy_enabled);
 
   absl::Status Initialize(const InitializeParams& params) override;
 

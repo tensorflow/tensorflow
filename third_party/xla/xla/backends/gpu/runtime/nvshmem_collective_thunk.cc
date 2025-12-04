@@ -95,7 +95,7 @@ absl::Status NvshmemCollectiveThunk::Prepare(const PrepareParams& params) {
   TF_ASSIGN_OR_RETURN(
       GpuCliqueKey clique_key,
       GetGpuCliqueKey(*params.collective_params, config().replica_groups,
-                      config().group_mode, GetAsyncStreamKind(),
+                      config().group_mode, IsP2PCollective(),
                       /*include_participant_groups=*/false));
   return params.clique_requests->RequestClique(clique_key);
 }
@@ -116,14 +116,13 @@ absl::Status NvshmemCollectiveThunk::ExecuteOnStream(
     const ExecuteParams& params) {
   VLOG(1) << absl::StreamFormat("Starting %s %s.", IsAsync() ? "async" : "sync",
                                 Thunk::KindToString(kind()));
-  AsyncStreamKind stream_kind = GetAsyncStreamKind();
   se::StreamExecutor* executor = params.stream->parent();
-  int64_t async_stream_idx = static_cast<int64_t>(stream_kind);
 
   if (IsAsync()) {
-    // Launch collective operation on an async stream.
-    se::Stream& async_stream =
-        *params.collective_params->async_streams.at(async_stream_idx);
+    TF_ASSIGN_OR_RETURN(
+        se::Stream * stream_ptr,
+        GetStreamForExecution(Thunk::execution_stream_id(), params));
+    se::Stream& async_stream = *stream_ptr;
 
     // Wait for main compute stream to make sure all buffers are ready.
     TF_RETURN_IF_ERROR(async_stream.WaitFor(params.stream));
@@ -143,11 +142,8 @@ absl::Status NvshmemCollectiveThunk::ExecuteOnStream(
 
 NvshmemCollectiveDoneThunk::NvshmemCollectiveDoneThunk(
     Thunk::Kind kind, ThunkInfo thunk_info,
-    std::shared_ptr<CollectiveThunk::AsyncEvents> async_events,
-    AsyncStreamKind async_stream_kind)
-    : Thunk(kind, std::move(thunk_info)),
-      async_events_(async_events),
-      async_stream_kind_(async_stream_kind) {}
+    std::shared_ptr<CollectiveThunk::AsyncEvents> async_events)
+    : Thunk(kind, std::move(thunk_info)), async_events_(async_events) {}
 
 absl::Status NvshmemCollectiveDoneThunk::ExecuteOnStream(
     const ExecuteParams& params) {

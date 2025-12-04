@@ -1145,6 +1145,90 @@ TEST_F(CollectiveOpsTestE2E, WhileLoopReduceScatterCodeMotion) {
   LiteralTestUtil::ExpectR1Equal<uint32_t>({110}, results[1]);
 }
 
+TEST_P(AsyncCollectiveOps, SequentialAsyncCollectives) {
+  const absl::string_view kModuleStr = R"(
+  HloModule test
+  apply_op {
+    x = u32[] parameter(0)
+    y = u32[] parameter(1)
+    ROOT apply_op = u32[] add(x, y)
+  }
+
+  ENTRY test_computation {
+    id = u32[] replica-id()
+    id_bcast = u32[4] broadcast(id), dimensions={}
+    constant = u32[4] constant({1, 2, 3, 4})
+    input = u32[4] add(id_bcast, constant)
+    ar1 = u32[4] all-reduce(input), to_apply=apply_op
+    mult = u32[4] multiply(ar1, constant)
+    ROOT ar2 = u32[4] all-reduce(mult), to_apply=apply_op
+  }
+  )";
+
+  const int64_t kNumReplicas = 2;
+  if (hlo_runner_->device_count() < kNumReplicas) {
+    GTEST_SKIP() << "Test requires at least " << kNumReplicas << " devices ("
+                 << hlo_runner_->device_count() << " available)";
+  }
+  HloModuleConfig config;
+  config.set_replica_count(kNumReplicas);
+  config.set_num_partitions(1);
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kModuleStr, config));
+  TF_ASSERT_OK_AND_ASSIGN(ExecutionResult execution_result,
+                          ExecuteReplicated(std::move(module)));
+
+  const std::vector<Literal>& results = execution_result.results;
+  ASSERT_EQ(results.size(), kNumReplicas);
+  LiteralTestUtil::ExpectR1Equal<uint32_t>({6, 20, 42, 72}, results[0]);
+  LiteralTestUtil::ExpectR1Equal<uint32_t>({6, 20, 42, 72}, results[1]);
+}
+
+TEST_F(CollectiveOpsTestE2E, MultipleAsyncCollectives) {
+  const absl::string_view kModuleStr = R"(
+  HloModule test
+  apply_op {
+    x = f32[] parameter(0)
+    y = f32[] parameter(1)
+    ROOT apply_op = f32[] add(x, y)
+  }
+
+  ENTRY test_computation {
+    id = u32[] replica-id()
+    id_f32 = f32[] convert(id)
+    input1 = f32[8] broadcast(id_f32), dimensions={}
+    c1 = f32[8] constant({1, 2, 3, 4, 5, 6, 7, 8})
+    data1 = f32[8] add(input1, c1)
+    input2 = f32[8] broadcast(id_f32), dimensions={}
+    c2 = f32[8] constant({10, 20, 30, 40, 50, 60, 70, 80})
+    data2 = f32[8] add(input2, c2)
+    ar1 = f32[8] all-reduce(data1), to_apply=apply_op
+    ar2 = f32[8] all-reduce(data2), to_apply=apply_op
+    ROOT result = f32[8] add(ar1, ar2)
+  }
+  )";
+
+  const int64_t kNumReplicas = 2;
+  if (hlo_runner_->device_count() < kNumReplicas) {
+    GTEST_SKIP() << "Test requires at least " << kNumReplicas << " devices ("
+                 << hlo_runner_->device_count() << " available)";
+  }
+  HloModuleConfig config;
+  config.set_replica_count(kNumReplicas);
+  config.set_num_partitions(1);
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kModuleStr, config));
+  TF_ASSERT_OK_AND_ASSIGN(ExecutionResult execution_result,
+                          ExecuteReplicated(std::move(module)));
+
+  const std::vector<Literal>& results = execution_result.results;
+  std::vector<float> expected = {24, 46, 68, 90, 112, 134, 156, 178};
+  LiteralTestUtil::ExpectR1Near<float>(expected, results[0], ErrorSpec{1e-5});
+  LiteralTestUtil::ExpectR1Near<float>(expected, results[1], ErrorSpec{1e-5});
+}
+
 // Verify that all-to-all with split dims is not decomposed to tuples.
 TEST_F(CollectiveOpsTestE2E, NoAllToAllDecomposition) {
   const absl::string_view kModuleStr = R"(
