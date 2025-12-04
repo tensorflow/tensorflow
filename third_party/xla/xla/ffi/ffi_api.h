@@ -34,8 +34,6 @@ limitations under the License.
 #include "xla/ffi/execution_context.h"
 #include "xla/ffi/execution_state.h"
 #include "xla/hlo/ir/hlo_computation.h"
-#include "xla/stream_executor/device_memory_allocator.h"
-#include "xla/stream_executor/stream.h"
 #include "xla/tsl/concurrency/chain.h"
 
 // This is an implementation of XLA FFI API defined in `api/c_api.h` header. It
