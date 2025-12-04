@@ -41,7 +41,7 @@ namespace port {
 
 void InitMain(const char* usage, int* argc, char*** argv) {}
 
-string Hostname() {
+std::string Hostname() {
   char name[1024];
   DWORD name_size = sizeof(name);
   name[0] = 0;
@@ -51,10 +51,10 @@ string Hostname() {
   return name;
 }
 
-string JobName() {
+std::string JobName() {
   const char* job_name_cs = std::getenv("TF_JOB_NAME");
   if (job_name_cs != nullptr) {
-    return string(job_name_cs);
+    return std::string(job_name_cs);
   }
   return "";
 }
@@ -107,7 +107,7 @@ int GetCurrentCPU() {
   return GetCurrentProcessorNumber();
 }
 
-bool Snappy_Compress(const char* input, size_t length, string* output) {
+bool Snappy_Compress(const char* input, size_t length, std::string* output) {
 #ifdef TF_USE_SNAPPY
   output->resize(snappy::MaxCompressedLength(length));
   size_t outlen;
@@ -120,7 +120,7 @@ bool Snappy_Compress(const char* input, size_t length, string* output) {
 }
 
 bool Snappy_CompressFromIOVec(const struct iovec* iov,
-                              size_t uncompressed_length, string* output) {
+                              size_t uncompressed_length, std::string* output) {
 #ifdef TF_USE_SNAPPY
   output->resize(snappy::MaxCompressedLength(uncompressed_length));
   size_t outlen;
@@ -162,7 +162,7 @@ bool Snappy_UncompressToIOVec(const char* compressed, size_t compressed_length,
 #endif
 }
 
-string Demangle(const char* mangled) { return mangled; }
+std::string Demangle(const char* mangled) { return mangled; }
 
 double NominalCPUFrequency() {
   DWORD data;

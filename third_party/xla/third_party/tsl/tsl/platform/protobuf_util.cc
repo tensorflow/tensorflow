@@ -20,7 +20,7 @@ limitations under the License.
 namespace tsl {
 
 bool ParseProtoUnlimited(protobuf::MessageLite* proto,
-                         const string& serialized) {
+                         const std::string& serialized) {
   return proto->ParseFromString(serialized);
 }
 

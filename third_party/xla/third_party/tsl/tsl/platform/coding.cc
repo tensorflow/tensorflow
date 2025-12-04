@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tsl/platform/coding.h"
 
+#include <string>
+
 #include "xla/tsl/platform/byte_order.h"
 #include "xla/tsl/platform/types.h"
 #include "tsl/platform/stringpiece.h"
@@ -58,19 +60,19 @@ void EncodeFixed64(char* buf, uint64 value) {
   }
 }
 
-void PutFixed16(string* dst, uint16 value) {
+void PutFixed16(std::string* dst, uint16 value) {
   char buf[sizeof(value)];
   EncodeFixed16(buf, value);
   dst->append(buf, sizeof(buf));
 }
 
-void PutFixed32(string* dst, uint32 value) {
+void PutFixed32(std::string* dst, uint32 value) {
   char buf[sizeof(value)];
   EncodeFixed32(buf, value);
   dst->append(buf, sizeof(buf));
 }
 
-void PutFixed64(string* dst, uint64 value) {
+void PutFixed64(std::string* dst, uint64 value) {
   char buf[sizeof(value)];
   EncodeFixed64(buf, value);
   dst->append(buf, sizeof(buf));
@@ -104,7 +106,7 @@ char* EncodeVarint32(char* dst, uint32 v) {
   return reinterpret_cast<char*>(ptr);
 }
 
-void PutVarint32(string* dst, uint32 v) {
+void PutVarint32(std::string* dst, uint32 v) {
   char buf[5];
   char* ptr = EncodeVarint32(buf, v);
   dst->append(buf, ptr - buf);
@@ -127,7 +129,7 @@ char* EncodeVarint64(char* dst, uint64 v) {
   return reinterpret_cast<char*>(ptr);
 }
 
-void PutVarint64(string* dst, uint64 v) {
+void PutVarint64(std::string* dst, uint64 v) {
   char buf[10];
   char* ptr = EncodeVarint64(buf, v);
   dst->append(buf, ptr - buf);

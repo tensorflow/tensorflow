@@ -16,16 +16,18 @@ limitations under the License.
 #ifndef XLA_TSL_PLATFORM_ROCM_ROCDL_PATH_H_
 #define XLA_TSL_PLATFORM_ROCM_ROCDL_PATH_H_
 
+#include <string>
+
 #include "xla/tsl/platform/types.h"
 
 namespace tsl {
 
 // Returns the root directory of the ROCM SDK, which contains sub-folders such
 // as bin, lib, and rocdl.
-string RocmRoot();
+std::string RocmRoot();
 
 // Returns the directory that contains ROCm-Device-Libs files in the ROCm SDK.
-string RocdlRoot();
+std::string RocdlRoot();
 
 }  // namespace tsl
 
