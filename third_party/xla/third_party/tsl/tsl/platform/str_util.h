@@ -42,19 +42,6 @@ ABSL_DEPRECATE_AND_INLINE() inline std::string CEscape(absl::string_view src) {
   return absl::CEscape(src);
 }
 
-// Copies "source" to "dest", rewriting C-style escape sequences --
-// '\n', '\r', '\\', '\ooo', etc -- to their ASCII equivalents.
-//
-// Errors: Sets the description of the first encountered error in
-// 'error'. To disable error reporting, set 'error' to NULL.
-//
-// NOTE: Does not support \u or \U!
-ABSL_DEPRECATE_AND_INLINE()
-inline bool CUnescape(absl::string_view source, std::string* dest,
-                      std::string* error) {
-  return absl::CUnescape(source, dest, error);
-}
-
 // Removes any trailing whitespace from "*s".
 ABSL_DEPRECATE_AND_INLINE()
 inline void StripTrailingWhitespace(std::string* s) {
