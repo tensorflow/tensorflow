@@ -13,17 +13,19 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_STREAM_EXECUTOR_DEVICE_MEMORY_HANDLE_H_
-#define XLA_STREAM_EXECUTOR_DEVICE_MEMORY_HANDLE_H_
+#ifndef XLA_STREAM_EXECUTOR_GPU_TENSOR_MAP_H_
+#define XLA_STREAM_EXECUTOR_GPU_TENSOR_MAP_H_
 
-#include "absl/base/macros.h"
-#include "xla/stream_executor/device_address_handle.h"
+#include <cstddef>
 
-namespace stream_executor {
+namespace stream_executor::gpu {
 
-using DeviceMemoryHandle ABSL_DEPRECATE_AND_INLINE() =
-    ::stream_executor::DeviceAddressHandle;
+// TensorMap is a wrapper around a 128 bytes of storage. It is used to pass TMA
+// descriptors to the kernel.
+struct TensorMap {
+  alignas(64) std::byte storage[128];
+};
 
-}
+}  // namespace stream_executor::gpu
 
-#endif  // XLA_STREAM_EXECUTOR_DEVICE_MEMORY_HANDLE_H_
+#endif  // XLA_STREAM_EXECUTOR_GPU_TENSOR_MAP_H_

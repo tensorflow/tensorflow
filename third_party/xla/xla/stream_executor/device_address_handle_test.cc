@@ -12,50 +12,54 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "xla/stream_executor/device_memory_handle.h"
+#include "xla/stream_executor/device_address_handle.h"
 
 #include <utility>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/mock_stream_executor.h"
 #include "tsl/platform/test.h"
 
 namespace stream_executor {
 namespace {
 
-TEST(DeviceMemoryHandle, NullMemoryNoDeallocate) {
-  DeviceMemoryBase null_memory;
+TEST(DeviceAddressHandle, NullMemoryNoDeallocate) {
+  DeviceAddressBase null_address;
   MockStreamExecutor executor;
   EXPECT_CALL(executor, Deallocate).Times(0);
-  { DeviceMemoryHandle releaser(&executor, null_memory); }
-}
-
-TEST(DeviceMemoryHandle, Deallocates) {
-  MockStreamExecutor executor;
-  DeviceMemoryBase memory(&executor, sizeof(executor));
-  EXPECT_CALL(executor, Deallocate).Times(1);
-  { DeviceMemoryHandle releaser(&executor, memory); }
-}
-
-TEST(DeviceMemoryHandle, MoveDeallocatesOnce) {
-  MockStreamExecutor executor;
-  DeviceMemoryBase memory(&executor, sizeof(executor));
-  EXPECT_CALL(executor, Deallocate).Times(1);
   {
-    DeviceMemoryHandle releaser(&executor, memory);
-    DeviceMemoryHandle releaser_moved(std::move(releaser));
+    DeviceAddressHandle releaser(&executor, null_address);
   }
 }
 
-TEST(DeviceMemoryHandle, MoveAssignmentDeallocatesOnce) {
+TEST(DeviceAddressHandle, Deallocates) {
   MockStreamExecutor executor;
-  DeviceMemoryBase memory(&executor, sizeof(executor));
+  DeviceAddressBase memory(&executor, sizeof(executor));
   EXPECT_CALL(executor, Deallocate).Times(1);
   {
-    DeviceMemoryHandle releaser(&executor, memory);
-    DeviceMemoryHandle releaser2;
+    DeviceAddressHandle releaser(&executor, memory);
+  }
+}
+
+TEST(DeviceAddressHandle, MoveDeallocatesOnce) {
+  MockStreamExecutor executor;
+  DeviceAddressBase memory(&executor, sizeof(executor));
+  EXPECT_CALL(executor, Deallocate).Times(1);
+  {
+    DeviceAddressHandle releaser(&executor, memory);
+    DeviceAddressHandle releaser_moved(std::move(releaser));
+  }
+}
+
+TEST(DeviceAddressHandle, MoveAssignmentDeallocatesOnce) {
+  MockStreamExecutor executor;
+  DeviceAddressBase memory(&executor, sizeof(executor));
+  EXPECT_CALL(executor, Deallocate).Times(1);
+  {
+    DeviceAddressHandle releaser(&executor, memory);
+    DeviceAddressHandle releaser2;
     releaser2 = std::move(releaser);
   }
 }

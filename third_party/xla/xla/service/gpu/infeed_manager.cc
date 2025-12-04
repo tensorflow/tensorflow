@@ -59,7 +59,7 @@ static absl::StatusOr<se::DeviceMemoryHandle> CopyBufferToDevice(
   se::StreamExecutor* executor = stream->parent();
   se::DeviceMemoryHandle buffer(executor,
                                 executor->AllocateArray<uint8_t>(size));
-  TF_RETURN_IF_ERROR(stream->Memcpy(buffer.memory_ptr(), source, size));
+  TF_RETURN_IF_ERROR(stream->Memcpy(buffer.address_ptr(), source, size));
 
   return std::move(buffer);
 }

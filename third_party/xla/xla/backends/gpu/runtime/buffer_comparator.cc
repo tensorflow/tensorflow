@@ -65,7 +65,7 @@ static absl::StatusOr<bool> DeviceCompare(const ComparisonParams& params) {
   se::DeviceMemoryHandle out(executor, executor->AllocateScalar<uint64_t>());
 
   TF_RETURN_IF_ERROR(
-      params.stream->MemZero(out.memory_ptr(), sizeof(uint64_t)));
+      params.stream->MemZero(out.address_ptr(), sizeof(uint64_t)));
   if (params.current.size() != params.expected.size()) {
     return Internal("Mismatched buffer size: %d bytes vs. %d bytes",
                     params.current.size(), params.expected.size());
@@ -95,16 +95,16 @@ static absl::StatusOr<bool> DeviceCompare(const ComparisonParams& params) {
                    1, 1),
       dim.thread_counts_per_block());
 
-  se::DeviceMemory<uint64_t> as_uint64(out.memory());
+  se::DeviceMemory<uint64_t> as_uint64(out.address());
   TF_RETURN_IF_ERROR(comparison_kernel.Launch(
       dim.thread_counts_per_block(), dim.block_counts(), params.stream,
       current_typed, expected_typed, static_cast<float>(params.relative_tol),
       buffer_size, as_uint64));
 
   uint64_t result = -1;
-  CHECK_EQ(out.memory().size(), sizeof(result));
+  CHECK_EQ(out.address().size(), sizeof(result));
   TF_RETURN_IF_ERROR(
-      params.stream->Memcpy(&result, out.memory(), sizeof(result)));
+      params.stream->Memcpy(&result, out.address(), sizeof(result)));
   TF_RETURN_IF_ERROR(params.stream->BlockHostUntilDone());
   return result == 0;
 }
@@ -191,8 +191,7 @@ absl::StatusOr<bool> BufferComparator::CompareEqual(
   auto do_compare = [&](auto cst_type) {
     using ElementT = primitive_util::NativeTypeOf<cst_type>;
     using ComparisonT =
-        std::conditional_t<std::is_same_v<ElementT, double>,
-                           double, float>;
+        std::conditional_t<std::is_same_v<ElementT, double>, double, float>;
     return CompareEqualParameterized<ElementT, ComparisonT>(params);
   };
 

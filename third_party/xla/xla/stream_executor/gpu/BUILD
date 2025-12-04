@@ -339,6 +339,11 @@ cc_library(
 )
 
 cc_library(
+    name = "tensor_map",
+    hdrs = ["tensor_map.h"],
+)
+
+cc_library(
     name = "redzone_allocator",
     srcs = [
         "redzone_allocator.cc",

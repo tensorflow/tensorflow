@@ -12,37 +12,38 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "xla/stream_executor/device_memory_handle.h"
+
+#include "xla/stream_executor/device_address_handle.h"
 
 #include <utility>
 
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/stream_executor.h"
 
 namespace stream_executor {
 
-DeviceMemoryHandle::DeviceMemoryHandle(StreamExecutor *executor,
-                                       DeviceMemoryBase memory)
-    : memory_(std::move(memory)), executor_(executor) {}
+DeviceAddressHandle::DeviceAddressHandle(StreamExecutor* executor,
+                                         DeviceAddressBase address)
+    : address_(std::move(address)), executor_(executor) {}
 
-DeviceMemoryHandle::DeviceMemoryHandle(DeviceMemoryHandle &&other) noexcept
-    : memory_(std::move(other.memory_)), executor_(other.executor_) {
-  other.memory_ = DeviceMemoryBase();
+DeviceAddressHandle::DeviceAddressHandle(DeviceAddressHandle&& other) noexcept
+    : address_(std::move(other.address_)), executor_(other.executor_) {
+  other.address_ = DeviceAddressBase();
 }
 
-DeviceMemoryHandle::~DeviceMemoryHandle() { Free(); }
+DeviceAddressHandle::~DeviceAddressHandle() { Free(); }
 
-void DeviceMemoryHandle::Free() {
-  if (!memory_.is_null()) {
-    executor_->Deallocate(&memory_);
+void DeviceAddressHandle::Free() {
+  if (!address_.is_null()) {
+    executor_->Deallocate(&address_);
   }
 }
 
-DeviceMemoryHandle &DeviceMemoryHandle::operator=(
-    DeviceMemoryHandle &&other) noexcept {
+DeviceAddressHandle& DeviceAddressHandle::operator=(
+    DeviceAddressHandle&& other) noexcept {
   Free();
-  memory_ = std::move(other.memory_);
-  other.memory_ = DeviceMemoryBase();
+  address_ = std::move(other.address_);
+  other.address_ = DeviceAddressBase();
   executor_ = other.executor_;
   return *this;
 }

@@ -34,7 +34,7 @@ class Stream;
 class Event;
 class Platform;
 class DeviceMemoryAllocator;
-class DeviceMemoryBase;
+class DeviceAddressBase;
 }  // namespace stream_executor
 
 namespace Eigen {
@@ -108,7 +108,7 @@ using ThenExecuteFunction =
 using SendDeviceMemoryFunction = std::function<
     absl::StatusOr<tsl::AsyncValueRef<std::unique_ptr<stream_executor::Event>>>(
         int64_t channel_id, stream_executor::Stream* stream, const Shape& shape,
-        const stream_executor::DeviceMemoryBase& src,
+        const stream_executor::DeviceAddressBase& src,
         const absl::flat_hash_map<std::string, std::string>& frontend_attrs)>;
 
 // Callback for receiving device buffer from a channel. Returned event will be
@@ -118,7 +118,7 @@ using SendDeviceMemoryFunction = std::function<
 using RecvDeviceMemoryFunction = std::function<
     absl::StatusOr<tsl::AsyncValueRef<std::unique_ptr<stream_executor::Event>>>(
         int64_t channel_id, stream_executor::Stream* stream, const Shape& shape,
-        stream_executor::DeviceMemoryBase* dst,
+        stream_executor::DeviceAddressBase* dst,
         const absl::flat_hash_map<std::string, std::string>& frontend_attrs)>;
 
 // Class containing options for running a LocalExecutable.
