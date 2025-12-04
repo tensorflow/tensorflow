@@ -19,6 +19,7 @@ cc_library(
     srcs = ["attribute_exporter.cc"],
     hdrs = ["attribute_exporter.h"],
     deps = [
+        ":type_to_shape",
         "//xla:shape_util",
         "//xla:types",
         "//xla:util",
@@ -27,6 +28,7 @@ cc_library(
         "//xla/hlo/parser:hlo_parser",
         "//xla/hlo/translate/hlo_to_mhlo:hlo_utils",
         "//xla/mlir_hlo",
+        "//xla/mlir_hlo:unregistered_attributes",
         "//xla/service:hlo_proto_cc",
         "//xla/service/spmd/shardy:constants",
         "//xla/service/spmd/shardy:utils",
