@@ -228,7 +228,10 @@ def lit_test_suite_for_gpus(
             tags_override,
             hermetic_cuda_data_dir,
             exec_properties,
-            tags + ["rocm-only"] if gpu == "mi200" else ["cuda-only"],
+            # We add the tag xla_h100 to avoid that the test suite is scheduled
+            # on different GPU architectures. Technically these tests don't
+            # need a GPU, but a build with GPU configured.
+            tags + ["rocm-only"] if gpu == "mi200" else ["cuda-only", "xla_h100"],
             "_%s" % (gpu),
             **kwargs
         )
