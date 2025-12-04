@@ -19,6 +19,7 @@ limitations under the License.
 #include <array>
 #include <atomic>
 #include <cstdint>
+#include <iterator>
 #include <memory>
 #include <optional>
 #include <string>
@@ -1703,8 +1704,6 @@ absl::StatusOr<bool> GemmFusionAutotuner::RunViaNewInfra(
   se::DeviceMemoryAllocator* device_allocator = config_.GetAllocator();
   std::unique_ptr<Compiler::GpuTargetConfig> target_config;
   target_config = std::make_unique<Compiler::GpuTargetConfig>(stream_exec);
-  backends.push_back(std::make_unique<TritonBackend>(
-      &debug_options, compiler.get(), target_config.get(), mlir_context_));
   backends.push_back(std::make_unique<FissionBackend>(
       &debug_options, compiler.get(), target_config.get(),
       std::make_unique<CublasBackend>(stream_exec, &debug_options,
@@ -1712,12 +1711,21 @@ absl::StatusOr<bool> GemmFusionAutotuner::RunViaNewInfra(
                                       /*fp8_lt_fallback=*/true),
       GetCublasRewriterPipeline(&target_config->device_description),
       mlir_context_));
+  backends.push_back(std::make_unique<TritonBackend>(
+      &debug_options, compiler.get(), target_config.get(), mlir_context_));
   backends.push_back(std::make_unique<FissionBackend>(
       &debug_options, compiler.get(), target_config.get(),
       std::make_unique<CustomKernelBackend>(
           stream_exec, &debug_options, compiler.get(), target_config.get()),
       GetCustomKernelRewriterPipeline(&target_config->device_description),
       mlir_context_));
+  TF_ASSIGN_OR_RETURN(
+      std::vector<std::unique_ptr<CodegenBackend>> platform_backends,
+      GetPlatformCodegenBackends(stream_exec, compiler.get(),
+                                 target_config.get(), &debug_options));
+  backends.insert(backends.end(),
+                  std::make_move_iterator(platform_backends.begin()),
+                  std::make_move_iterator(platform_backends.end()));
   auto should_autotune = [](const HloInstruction& instruction) -> bool {
     if (instruction.opcode() != HloOpcode::kFusion) {
       return false;
@@ -1728,9 +1736,11 @@ absl::StatusOr<bool> GemmFusionAutotuner::RunViaNewInfra(
     bool is_unassigned_triton =
         backend_config.kind() == kTritonGemmFusionKind &&
         !backend_config.has_triton_gemm_config();
+    bool is_unassigned_cudnn = backend_config.kind() == kCuDnnFusionKind &&
+                               !backend_config.has_cudnn_fusion_config();
     bool is_unassigned_custom = backend_config.kind() == kCustomFusionKind &&
                                 !backend_config.has_custom_fusion_config();
-    if (is_unassigned_triton || is_unassigned_custom) {
+    if (is_unassigned_triton || is_unassigned_cudnn || is_unassigned_custom) {
       return true;
     }
     return false;

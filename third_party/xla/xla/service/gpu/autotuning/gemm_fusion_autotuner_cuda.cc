@@ -14,15 +14,20 @@ limitations under the License.
 ==============================================================================*/
 
 #include <cstdint>
+#include <memory>
 #include <vector>
 
+#include "absl/status/statusor.h"
 #include "third_party/gpus/cuda/include/cublas_v2.h"
+#include "xla/backends/autotuner/codegen_backend.h"
+#include "xla/backends/gpu/autotuner/cudnn.h"
 #include "xla/backends/gpu/codegen/triton/tma_utils.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/algorithm_util.h"
+#include "xla/service/compiler.h"
 #include "xla/service/gpu/autotuning/autotuner_util.h"
 #include "xla/service/gpu/autotuning/gemm_fusion_autotuner.h"
 #include "xla/service/gpu/autotuning/triton_configs.h"
@@ -35,6 +40,7 @@ limitations under the License.
 #include "xla/service/gpu/transforms/cudnn_fusion_compiler.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/gpu/tma_metadata.h"
+#include "xla/stream_executor/stream_executor.h"
 
 namespace xla {
 namespace gpu {
@@ -92,6 +98,17 @@ bool GemmFusionAutotunerImpl::AddLibConfigs(
     return true;
   }
   return false;
+}
+
+absl::StatusOr<std::vector<std::unique_ptr<CodegenBackend>>>
+GemmFusionAutotuner::GetPlatformCodegenBackends(
+    se::StreamExecutor* stream_exec, Compiler* compiler,
+    const Compiler::GpuTargetConfig* target_config,
+    const DebugOptions* debug_options) {
+  std::vector<std::unique_ptr<CodegenBackend>> backends;
+  backends.push_back(std::make_unique<CudnnBackend>(stream_exec, debug_options,
+                                                    compiler, target_config));
+  return backends;
 }
 
 std::vector<TritonGemmConfig> GemmFusionAutotunerImpl::GetDefaultTritonConfigs()
