@@ -219,7 +219,6 @@ limitations under the License.
 #include "xla/service/gpu/transforms/collectives/convert_async_collectives_to_sync.h"
 #include "xla/service/gpu/transforms/collectives/gpu_collective_combiner_utils.h"
 #include "xla/service/gpu/transforms/collectives/reduce_scatter_combiner.h"
-#include "xla/service/gpu/transforms/command_buffer_scheduling.h"
 #include "xla/service/gpu/transforms/composite_rewriter.h"
 #include "xla/service/gpu/transforms/conv_rewriter.h"
 #include "xla/service/gpu/transforms/cudnn_custom_call_converter.h"
@@ -2898,17 +2897,6 @@ absl::Status GpuCompiler::RunPostSchedulingPipelines(
     // that create new fusions are FusionWrapper and StreamAttributeAnnotator.
     main_pipeline.AddPass<HloPassPipeline>(FusionDispatchPipeline(
         gpu_device_info, ShapeSizeBytesFunction(), &mlir_context_));
-  }
-
-  // Pipeline with passes which wrap a scheduled module into command buffers.
-  {
-    if (!module->config()
-             .debug_options()
-             .xla_gpu_experimental_enable_command_buffer_on_thunks()) {
-      HloPassPipeline& pipeline =
-          main_pipeline.AddPass<HloPassPipeline>("command-buffer-scheduling");
-      pipeline.AddPass<CommandBufferScheduling>(gpu_device_info);
-    }
   }
 
   // Sanitize constant names. This is in its own pipeline to ensure it always

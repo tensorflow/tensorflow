@@ -652,9 +652,6 @@ message DebugOptions {
   // inputs/outputs.
   optional bool xla_gpu_experimental_enable_checksum_tracing_on_thunks = 414;
 
-  // Enables an experimental feature for command buffer conversion on thunks.
-  optional bool xla_gpu_experimental_enable_command_buffer_on_thunks = 394;
-
   // If true, enable autotuning between the native & triton fusion emitters.
   optional bool xla_gpu_experimental_enable_fusion_autotuner = 409;
 
@@ -1428,6 +1425,7 @@ message DebugOptions {
   reserved "xla_hlo_tfgraph_device_scopes";
   reserved "xla_use_shardy";
   reserved "xla_gpu_unsupported_annotate_with_emitter_loc";
+  reserved "xla_gpu_experimental_enable_command_buffer_on_thunks";
 
   reserved 5, 63, 80, 93, 94, 98, 117, 130, 133, 134, 139, 141, 143, 152, 158,
       160, 161, 162, 167, 168, 169, 171, 172, 173, 176, 177, 178, 179, 180, 183,
@@ -1435,7 +1433,7 @@ message DebugOptions {
       207, 211, 214, 218, 220, 221, 226, 229, 230, 233, 234, 238, 242, 249, 263,
       264, 266, 270, 271, 275, 276, 278, 279, 281, 282, 286, 298, 299, 302, 303,
       309, 313, 314, 319, 320, 325, 326, 332, 346, 352, 358, 361, 367, 369, 371,
-      385, 398, 402, 423;
+      385, 394, 398, 402, 423;
 }
 
 // Contains flags which affects the GPU compilation result.
