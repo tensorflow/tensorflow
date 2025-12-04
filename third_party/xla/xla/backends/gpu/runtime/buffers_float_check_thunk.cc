@@ -165,9 +165,9 @@ absl::Status BuffersDebugFloatCheckThunk::ExecuteOnStream(
       se::DeviceAddress<float> f32_buffer(device_buffer);
       const se::BlockDim block_dim = GetBlockDimForBuffer<float>(
           params.stream, f32_buffer, tmp_size_elements);
-      TF_RETURN_IF_ERROR(
-          kernels->f32.Launch(thread_dim, block_dim, params.stream, f32_buffer,
-                              f32_buffer.size(), tmp_ptr, tmp_size_elements));
+      TF_RETURN_IF_ERROR(kernels->f32.Launch(
+          thread_dim, block_dim, params.stream, f32_buffer,
+          f32_buffer.ElementCount(), tmp_ptr, tmp_size_elements));
     } else if (buffer_type == PrimitiveType::BF16) {
       VLOG(1) << "BF16 buffer detected with id: " << entry_id
               << " and size: " << device_buffer.size();
@@ -175,8 +175,8 @@ absl::Status BuffersDebugFloatCheckThunk::ExecuteOnStream(
       const se::BlockDim block_dim = GetBlockDimForBuffer<Eigen::bfloat16>(
           params.stream, bf16_buffer, tmp_size_elements);
       TF_RETURN_IF_ERROR(kernels->bf16.Launch(
-          thread_dim, block_dim, params.stream, bf16_buffer, bf16_buffer.size(),
-          tmp_ptr, tmp_size_elements));
+          thread_dim, block_dim, params.stream, bf16_buffer,
+          bf16_buffer.ElementCount(), tmp_ptr, tmp_size_elements));
     } else {
       VLOG(1) << "Unsupported primitive type for float checking: "
               << PrimitiveType_Name(buffer_type);
