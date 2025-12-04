@@ -510,17 +510,19 @@ std::optional<IotaReplicaGroupList> ExpandDeviceGroupsWithIota(
   // partition group list.
   // 2. Apply transpose to the split dimensions matching the partition group
   // list transpose perm.
-  std::vector<int64_t> reshape_dims =
-      std::vector<int64_t>(partition_group_list.reshape_dims().begin(),
-                           partition_group_list.reshape_dims().end());
-  reshape_dims.insert(reshape_dims.begin(), device_groups.num_groups());
-  std::vector<int> transpose_perm =
-      std::vector<int>(partition_group_list.transpose_perm().begin(),
-                       partition_group_list.transpose_perm().end());
-  for (int64_t i = 0; i < transpose_perm.size(); ++i) {
-    transpose_perm[i] += 1;
+  std::vector<int64_t> reshape_dims;
+  reshape_dims.reserve(1 + partition_group_list.reshape_dims().size());
+  reshape_dims.push_back(device_groups.num_groups());
+  absl::c_copy(partition_group_list.reshape_dims(),
+               std::back_inserter(reshape_dims));
+
+  std::vector<int> transpose_perm;
+  transpose_perm.reserve(1 + partition_group_list.transpose_perm().size());
+  transpose_perm.push_back(0);
+  for (int dim : partition_group_list.transpose_perm()) {
+    transpose_perm.push_back(dim + 1);
   }
-  transpose_perm.insert(transpose_perm.begin(), 0);
+
   TileAssignment processed_device_groups =
       device_groups.Reshape(reshape_dims).Transpose(transpose_perm);
   // If after transpose we don't have an iota, then we can't expand the device
@@ -528,14 +530,10 @@ std::optional<IotaReplicaGroupList> ExpandDeviceGroupsWithIota(
   if (!processed_device_groups.iota().has_value()) {
     return std::nullopt;
   }
-
-  if (processed_device_groups.iota().has_value()) {
-    return IotaReplicaGroupList(
-        final_num_replica_groups, final_num_devices_per_group,
-        processed_device_groups.iota()->reshape_dims(),
-        processed_device_groups.iota()->transpose_perm());
-  }
-  return std::nullopt;
+  return IotaReplicaGroupList(final_num_replica_groups,
+                              final_num_devices_per_group,
+                              processed_device_groups.iota()->reshape_dims(),
+                              processed_device_groups.iota()->transpose_perm());
 }
 
 SPMDCollectiveOpsCreator GetPerGroupCollectiveOpsCreator(
