@@ -36,29 +36,6 @@ limitations under the License.
 
 namespace xla::gpu {
 
-bool IsP2PStreamKind(AsyncStreamKind stream_kind) {
-  switch (stream_kind) {
-    case AsyncStreamKind::ASYNC_STREAM_KIND_P2P0:
-    case AsyncStreamKind::ASYNC_STREAM_KIND_P2P1:
-      return true;
-    default:
-      return false;
-  }
-}
-
-CollectiveStreamId GetCollectiveStreamId(bool is_async,
-                                         CollectiveStreamId stream_id,
-                                         AsyncStreamKind stream_kind) {
-  if (!is_async) {
-    return CollectiveStreamId(0);
-  }
-  // TODO: Remove this fallback once AsyncStreamId is used everywhere.
-  if (stream_id.value() == 0) {
-    return CollectiveStreamId(static_cast<int64_t>(stream_kind) + 1);
-  }
-  return stream_id;
-}
-
 GpuCliqueKey::GpuCliqueKey(
     std::vector<GlobalDeviceId> devices, int64_t num_local_participants,
     bool is_p2p, std::vector<std::vector<GlobalDeviceId>> participant_groups,

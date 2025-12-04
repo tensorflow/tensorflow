@@ -126,14 +126,12 @@ ENTRY test_computation {
   auto cp_start_thunk = std::make_unique<CollectivePermuteStartThunk>(
       Thunk::ThunkInfo{}, cp_instr, /*replica_count=*/2,
       /*partition_count=*/1, std::move(buffers),
-      /*p2p_memcpy_enabled=*/false,
-      AsyncStreamKind::ASYNC_STREAM_KIND_COLLECTIVE);
+      /*p2p_memcpy_enabled=*/false);
 
   cp_start_thunk->set_async_events(async_events);
 
   auto cp_done_thunk = std::make_unique<CollectiveDoneThunk>(
-      Kind::kCollectivePermuteDone, Thunk::ThunkInfo{}, async_events,
-      AsyncStreamKind::ASYNC_STREAM_KIND_COLLECTIVE);
+      Kind::kCollectivePermuteDone, Thunk::ThunkInfo{}, async_events);
 
   ThunkSequence thunk_sequence;
   thunk_sequence.push_back(std::move(cp_start_thunk));

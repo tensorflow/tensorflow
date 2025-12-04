@@ -58,7 +58,7 @@ NvshmemCollectivePermuteStartThunk::NvshmemCollectivePermuteStartThunk(
     ThunkInfo thunk_info, const HloCollectivePermuteInstruction* instr,
     int64_t replica_count, int64_t partition_count,
     const std::vector<CollectiveThunk::Buffer>& buffers,
-    bool p2p_memcpy_enabled, AsyncStreamKind stream_kind)
+    bool p2p_memcpy_enabled)
     : NvshmemCollectiveThunk(Thunk::kNvshmemCollectivePermuteStart, thunk_info,
                              IsGPUSyncCollective(*instr)),
       config_(GetNvshmemP2PConfig(instr, replica_count, partition_count)),
@@ -246,11 +246,9 @@ absl::Status RunCollectivePermute(P2PConfig::SourceTargetMapEntry source_target,
 
 NvshmemCollectivePermuteDoneThunk::NvshmemCollectivePermuteDoneThunk(
     ThunkInfo thunk_info,
-    std::shared_ptr<CollectiveThunk::AsyncEvents> async_events,
-    AsyncStreamKind stream_kind)
+    std::shared_ptr<CollectiveThunk::AsyncEvents> async_events)
     : NvshmemCollectiveDoneThunk(Thunk::kNvshmemCollectivePermuteDone,
-                                 std::move(thunk_info), async_events,
-                                 stream_kind) {}
+                                 std::move(thunk_info), async_events) {}
 
 absl::Status NvshmemCollectivePermuteDoneThunk::ExecuteOnStream(
     const ExecuteParams& params) {

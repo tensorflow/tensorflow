@@ -101,10 +101,12 @@ absl::StatusOr<std::vector<std::pair<int64_t, int64_t>>> GetSourceTargetPairs(
 P2PConfig GetP2PConfigForSendRecv(const HloSendRecvInstruction* instr,
                                   const Shape& shape, int64_t replica_count,
                                   int64_t partition_count);
-// Returns the stream kind for the asynchronous stream used to execute an HLO
-// Send or Recv instruction, by inspecting the frontend attributes of the
-// instruction.
-AsyncStreamKind GetStreamKindForP2P(const HloInstruction* instr);
+
+// Returns an execution stream override for P2P ops based on frontend
+// attributes of the given instruction. This should be used at thunk
+// construction time to stash the override for later use at runtime.
+std::optional<ExecutionStreamId> GetStreamIdOverride(
+    const HloInstruction* instr);
 
 absl::StatusOr<const int64_t> GetCollectiveCurrentId(
     CollectiveParams* collective_params, const P2PConfig& config);
