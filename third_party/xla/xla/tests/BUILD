@@ -3896,11 +3896,12 @@ xla_test(
     shard_count = 20,
     tags = [
         "optonly",
+        "test_migrated_to_hlo_runner_pjrt",
     ],
     deps = [
         ":client_library_test_runner_mixin",
-        ":hlo_test_base",
-        ":literal_test_util",
+        ":hlo_pjrt_interpreter_reference_mixin",
+        ":hlo_pjrt_test_base",
         ":xla_internal_test_main",
         "//xla:array2d",
         "//xla:array3d",
@@ -3913,7 +3914,6 @@ xla_test(
         "//xla/hlo/testlib:test",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",
-        "@com_google_absl//absl/status:statusor",
     ],
 )
 

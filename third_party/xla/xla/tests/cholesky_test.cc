@@ -29,14 +29,16 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tests/client_library_test_runner_mixin.h"
-#include "xla/tests/hlo_test_base.h"
+#include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
+#include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 
 namespace xla {
 namespace {
 
-using CholeskyTest = ClientLibraryTestRunnerMixin<HloTestBase>;
+using CholeskyTest = ClientLibraryTestRunnerMixin<
+    HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>>;
 
 TEST_F(CholeskyTest, NonPSDInput) {
   XlaBuilder builder(TestName());
@@ -217,7 +219,8 @@ TEST_F(CholeskyTest, SimpleBatched) {
 using CholeskyTestCase = std::tuple<int64_t, int64_t, bool>;
 
 class RandomCholeskyTest
-    : public ClientLibraryTestRunnerMixin<HloTestBase>,
+    : public ClientLibraryTestRunnerMixin<
+          HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>>,
       public ::testing::WithParamInterface<CholeskyTestCase> {};
 
 TEST_P(RandomCholeskyTest, Real) {
