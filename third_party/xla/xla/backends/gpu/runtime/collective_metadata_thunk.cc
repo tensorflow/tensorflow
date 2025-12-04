@@ -25,15 +25,16 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/types/span.h"
 #include "google/protobuf/repeated_ptr_field.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
+#include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/core/collectives/rank_id.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/layout.h"
 #include "xla/runtime/device_id.h"
-#include "xla/service/collective_ops_utils.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/rendezvous.h"
 #include "xla/status_macros.h"
@@ -44,6 +45,7 @@ limitations under the License.
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/util.h"
 
 namespace xla {
 namespace gpu {
@@ -76,47 +78,69 @@ CollectiveConfig CollectiveMetadataThunk::GetCollectiveConfig(
   return config;
 }
 
-struct CollectiveMetadataRendezvousValue {
+struct DeviceParameters {
   RankId rank;
   std::vector<se::DeviceMemoryBase> parameters;
 
-  bool operator<(const CollectiveMetadataRendezvousValue& other) const {
+  bool operator<(const DeviceParameters& other) const {
     return rank < other.rank;
   }
 };
 
-absl::Status CollectiveMetadataThunk::ConstructCollectiveMetadata(
-    std::vector<se::DeviceMemoryBase> parameters, se::Stream* stream,
-    const GpuCliqueKey& clique_key, void* multimem_address_space,
-    int device_ordinal, se::DeviceMemoryBase destination) {
-  auto rendezvous_fn =
-      [](absl::Span<const CollectiveMetadataRendezvousValue* const> values) {
-        std::vector<CollectiveMetadataRendezvousValue> values_copy;
-        for (const auto& value : values) {
-          values_copy.push_back(*value);
-        }
-        // Sort to make sure that values are in the same order as the
-        // devices are ordered in the communicator.
-        absl::c_sort(values_copy);
-        return values_copy;
-      };
+absl::StatusOr<std::vector<DeviceParameters>> SyncLocalDeviceParameters(
+    const GpuCliqueKey& clique_key, int device_ordinal,
+    const std::vector<se::DeviceMemoryBase>& parameters) {
+  std::vector<DeviceParameters> device_parameters;
+  auto rendezvous_fn = [](absl::Span<const DeviceParameters* const> values) {
+    std::vector<DeviceParameters> values_copy;
+    for (const auto& value : values) {
+      values_copy.push_back(*value);
+    }
+    // Sort to make sure that values are in the same order as the
+    // devices are ordered in the communicator.
+    absl::c_sort(values_copy);
+    return values_copy;
+  };
 
   std::string start_rendezvous_key =
       absl::StrFormat("[%d] Initializing collective metadata for clique %s",
                       device_ordinal, clique_key.ToString());
 
-  CollectiveMetadataRendezvousValue rendezvous_value;
-  rendezvous_value.rank = device_ordinal;
-  rendezvous_value.parameters = std::move(parameters);
+  DeviceParameters params;
+  params.rank = device_ordinal;
+  params.parameters = std::move(parameters);
 
   TF_ASSIGN_OR_RETURN(
-      std::shared_ptr<std::vector<CollectiveMetadataRendezvousValue>>
-          rendezvous_values,
-      Rendezvous<std::vector<CollectiveMetadataRendezvousValue>>(
+      std::shared_ptr<std::vector<DeviceParameters>> local_ranks_parameters,
+      Rendezvous<std::vector<DeviceParameters>>(
           /*name=*/start_rendezvous_key, /*key=*/clique_key,
-          /*value=*/rendezvous_value, /*num_threads=*/clique_key.num_devices(),
-          rendezvous_fn));
+          /*value=*/params,
+          /*num_threads=*/clique_key.num_local_participants(), rendezvous_fn));
+  return std::vector<DeviceParameters>(local_ranks_parameters->begin(),
+                                       local_ranks_parameters->end());
+}
 
+absl::StatusOr<std::vector<DeviceParameters>> SyncGlobalDeviceParameters(
+    const GpuCliqueKey& clique_key, int device_ordinal,
+    const std::vector<se::DeviceMemoryBase>& parameters) {
+  if (!clique_key.is_local()) {
+    return absl::UnimplementedError(absl::StrCat(
+        XlaFormatDevice(device_ordinal),
+        "Multiprocess collective metadata is not supported yet in clique ",
+        clique_key.ToString()));
+  }
+
+  TF_ASSIGN_OR_RETURN(
+      std::vector<DeviceParameters> local_ranks_parameters,
+      SyncLocalDeviceParameters(clique_key, device_ordinal, parameters));
+
+  return local_ranks_parameters;
+}
+
+absl::Status CollectiveMetadataThunk::ConstructCollectiveMetadata(
+    std::vector<se::DeviceMemoryBase> parameters, se::Stream* stream,
+    const GpuCliqueKey& clique_key, void* multimem_address_space,
+    int device_ordinal, se::DeviceMemoryBase destination) {
   CollectiveKernelMetadata metadata;
   metadata.rank = clique_key.rank(GlobalDeviceId(device_ordinal))
                       .value_or(RankId(-1))
@@ -127,19 +151,22 @@ absl::Status CollectiveMetadataThunk::ConstructCollectiveMetadata(
                         clique_key.ToString()));
   }
   metadata.multicast_buffer_ptr = multimem_address_space;
-  TF_RET_CHECK(!rendezvous_values->empty())
+  TF_ASSIGN_OR_RETURN(
+      std::vector<DeviceParameters> device_parameters,
+      SyncGlobalDeviceParameters(clique_key, device_ordinal, parameters));
+  TF_RET_CHECK(!device_parameters.empty())
       << "Not enough devices in the clique.";
-  const size_t num_parameters = (*rendezvous_values)[0].parameters.size();
-  for (const auto& value : *rendezvous_values) {
+  const size_t num_parameters = device_parameters[0].parameters.size();
+  for (const auto& value : device_parameters) {
     TF_RET_CHECK(value.parameters.size() == num_parameters);
   }
 
   std::vector<void*> param_to_peers_ptrs;
-  param_to_peers_ptrs.reserve(rendezvous_values->size() * num_parameters);
-  for (int param = 0; param < num_parameters; ++param) {
-    for (int peer = 0; peer < clique_key.num_devices(); ++peer) {
+  param_to_peers_ptrs.reserve(device_parameters.size() * num_parameters);
+  for (int peer = 0; peer < device_parameters.size(); ++peer) {
+    for (int param = 0; param < num_parameters; ++param) {
       param_to_peers_ptrs.push_back(
-          (*rendezvous_values)[peer].parameters[param].opaque());
+          device_parameters[peer].parameters[param].opaque());
     }
   }
 
@@ -228,6 +255,14 @@ absl::StatusOr<void*> CollectiveMetadataThunk::SetupMultimem(
   if (memory_range.is_null()) {
     return nullptr;
   }
+
+  if (!clique_key.is_local()) {
+    return absl::UnimplementedError(absl::StrCat(
+        XlaFormatDevice(params.executor->device_ordinal()),
+        "Multimem is not supported in multi-process mode in clique ",
+        clique_key.ToString()));
+  }
+
   return address_space_provider_.SetupMultimemAddressSpace(
       clique_key, params.executor, memory_range);
 }
