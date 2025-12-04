@@ -991,7 +991,6 @@ tsl_gpu_library(
         "//xla/hlo/builder:xla_computation",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/ir:hlo_module_group",
-        "//xla/mlir_hlo",
         "//xla/pjrt:mlir_to_hlo",
         "//xla/service:compiler",
         "//xla/service:executable",
