@@ -63,6 +63,10 @@ def compare_kernel(
   )
 
   def get_input(spec: InputSpec):
+    if dtype == np.bool:
+      return (
+          np.arange(np.prod(spec.shape), dtype=np.int8).reshape(spec.shape) % 2
+      )
     return np.arange(np.prod(spec.shape), dtype=dtype).reshape(spec.shape)
 
   inputs = [get_input(spec) for spec in input_specs]
@@ -472,6 +476,35 @@ class XtileLoweringTest(absltest.TestCase):
         (4, 32),
         np.float32,
         lambda input: np.transpose(np.broadcast_to(input, (32, 4))),
+    )
+
+  def test_i1_reshape_transpose(self):
+    ir = """
+      module @__compute_module_bitcast_copy_fusion {
+        xtile.entry_func @bitcast_copy_fusion(
+            %arg0: memref<2x3xi8>, %arg1: memref<2x3x1xi8>,
+            %arg2: index) attributes {xtile.tiling_info = #xtile.tiling_info<tile_count : 1, tiles_per_workgroup : 1>} {
+          %c0 = arith.constant 0 : index
+          %1 = xtile.extract %arg0[%c0, %c0] [2, 4] [1, 1] : memref<2x3xi8> -> tensor<2x4xi8>
+          %cst = arith.constant dense<0> : tensor<2x4xi8>
+          %2 = arith.cmpi ne, %1, %cst : tensor<2x4xi8>
+          %3 = stablehlo.reshape %2 : (tensor<2x4xi1>) -> tensor<1x2x4xi1>
+          %4 = stablehlo.transpose %3, dims = [1, 2, 0] : (tensor<1x2x4xi1>) -> tensor<2x4x1xi1>
+          %5 = arith.extui %4 : tensor<2x4x1xi1> to tensor<2x4x1xi8>
+          xtile.insert %5 into %arg1[%c0, %c0, %c0] [2, 4, 1] [1, 1, 1] : tensor<2x4x1xi8> -> memref<2x3x1xi8>
+          xtile.return
+        }
+      }
+    """
+
+    compare_kernel(
+        ir,
+        "bitcast_copy_fusion",
+        1,
+        [InputSpec((2, 3))],
+        (2, 3),
+        np.bool,
+        lambda input: input,
     )
 
 

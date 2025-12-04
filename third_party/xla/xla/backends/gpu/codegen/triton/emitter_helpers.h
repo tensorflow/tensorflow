@@ -28,10 +28,12 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
+#include "mlir/Dialect/Arith/Utils/Utils.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinTypeInterfaces.h"
+#include "mlir/IR/TypeUtilities.h"
 #include "mlir/IR/Types.h"
 #include "mlir/IR/Value.h"
 #include "mlir/IR/ValueRange.h"
@@ -197,8 +199,13 @@ inline mlir::Value ZerosLike(mlir::ImplicitLocOpBuilder& b, mlir::Value x) {
   return ConstLike(b, x, 0);
 }
 
+// Get a constant with all high bits of the same type as `x`.
 inline mlir::Value OnesLike(mlir::ImplicitLocOpBuilder& b, mlir::Value x) {
-  return ConstLike(b, x, 1);
+  mlir::Type element_type = mlir::getElementTypeOrSelf(x);
+  int64_t width = element_type.getIntOrFloatBitWidth();
+  mlir::APInt all_ones = mlir::APInt::getAllOnes(width);
+  return mlir::createScalarOrSplatConstant(b, b.getLoc(), x.getType(),
+                                           all_ones);
 }
 
 bool IsFp8Type(mlir::Type t);

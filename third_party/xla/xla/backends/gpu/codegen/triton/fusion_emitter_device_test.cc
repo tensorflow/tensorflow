@@ -420,6 +420,32 @@ CHECK: arith.divsi {{.*}} : i32
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHloText, kExactMatch));
 }
 
+TEST_F(TritonEmitterTest, BitwiseNotIsEmittedCorrectly) {
+  constexpr absl::string_view kHloText = R"(
+HloModule m
+
+fused_not {
+  param_0 = s32[100] parameter(0)
+  ROOT not = s32[100] not(param_0)
+}
+
+ENTRY main {
+  p0 = s32[100] parameter(0)
+  ROOT not = s32[100] fusion(p0), kind=kCustom, calls=fused_not,
+    backend_config={"fusion_backend_config":{
+      "kind":"__triton",
+      "block_level_fusion_config":{
+        "num_warps":"1","output_tiles":[{"sizes":[100]}],
+        "num_ctas":1,"num_stages":1,"is_tma_allowed":false}}}
+}
+)";
+  TF_EXPECT_OK(CreateTritonIrAndFileCheck(this, kHloText, "fused_not", R"(
+CHECK: arith.constant dense<-1>
+CHECK: arith.xori
+)"));
+  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloText, kExactMatch));
+}
+
 TEST_F(TritonEmitterTest, ReductionOnMinormostAxisIsEmittedCorrectly) {
   constexpr absl::string_view kHloText = R"(
 HloModule m

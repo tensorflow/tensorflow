@@ -74,6 +74,7 @@ limitations under the License.
 #include "mlir/Dialect/SCF/Transforms/BufferizableOpInterfaceImpl.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/Dialect/Tensor/Transforms/BufferizableOpInterfaceImpl.h"
+#include "mlir/Dialect/UB/IR/UBOps.h"
 #include "mlir/Dialect/Vector/IR/VectorOps.h"
 #include "mlir/Dialect/Vector/Transforms/BufferizableOpInterfaceImpl.h"
 #include "mlir/Dialect/Vector/Transforms/Passes.h"
@@ -292,16 +293,15 @@ static void AddBufferizationPasses(mlir::OpPassManager& pm) {
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::bufferization::createBufferHoistingPass());
   pm.addPass(mlir::memref::createFoldMemRefAliasOpsPass());
+
   mlir::bufferization::PromoteBuffersToStackPassOptions
       buffer_promotion_options;
-  // We don't want any heap allocation for now.
-  buffer_promotion_options.maxAllocSizeInBytes =
-      std::numeric_limits<unsigned>::max();
+  // TODO(willfroom): Look at a more principled way to set this option.
+  buffer_promotion_options.maxAllocSizeInBytes = 4096;
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::bufferization::createPromoteBuffersToStackPass(
           buffer_promotion_options));
-  // This shouldn't be necessary as we promote everything to the stack, but we
-  // leave it in for now while we are experimenting.
+
   mlir::bufferization::buildBufferDeallocationPipeline(
       pm, mlir::bufferization::BufferDeallocationPipelineOptions());
 }
@@ -337,6 +337,7 @@ static void AddTiledOptimizationPasses(mlir::OpPassManager& pm) {
 
   pm.addPass(CreateLinalgElementwiseToVectorPass());
 
+  pm.addPass(mlir::memref::createFoldMemRefAliasOpsPass());
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(mlir::createCSEPass());
 }
@@ -350,6 +351,8 @@ static void AddTiledLoweringPasses(mlir::OpPassManager& pm, bool fast_min_max) {
   pm.addPass(cpu::createLowerToLLVMPass());
   pm.addPass(mlir::createConvertVectorToSCFPass(
       mlir::VectorTransferToSCFOptions().enableFullUnroll(false)));
+  pm.addPass(cpu::CreateUnpackSubByteVectorWritePass());
+
   mlir::ConvertVectorToLLVMPassOptions options;
 
   // If the tile size is 16x16 this will generate the most efficient code for
@@ -538,7 +541,8 @@ mlir::DialectRegistry FusionCompiler::CreateDialectRegistry(
       mlir::scf::SCFDialect, mlir::LLVM::LLVMDialect,
       mlir::tensor::TensorDialect, mlir::vector::VectorDialect, xla::XlaDialect,
       xla::xtile::XTileDialect, mlir::stablehlo::StablehloDialect,
-      mlir::linalg::LinalgDialect, mlir::memref::MemRefDialect>();
+      mlir::linalg::LinalgDialect, mlir::memref::MemRefDialect,
+      mlir::ub::UBDialect>();
 
   mlir::LLVM::registerInlinerInterface(registry);
   mlir::func::registerInlinerExtension(registry);
