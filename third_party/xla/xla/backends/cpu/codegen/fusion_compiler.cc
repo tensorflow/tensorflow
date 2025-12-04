@@ -74,6 +74,7 @@ limitations under the License.
 #include "mlir/Dialect/SCF/Transforms/BufferizableOpInterfaceImpl.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/Dialect/Tensor/Transforms/BufferizableOpInterfaceImpl.h"
+#include "mlir/Dialect/UB/IR/UBOps.h"
 #include "mlir/Dialect/Vector/IR/VectorOps.h"
 #include "mlir/Dialect/Vector/Transforms/BufferizableOpInterfaceImpl.h"
 #include "mlir/Dialect/Vector/Transforms/Passes.h"
@@ -351,6 +352,8 @@ static void AddTiledLoweringPasses(mlir::OpPassManager& pm, bool fast_min_max) {
   pm.addPass(cpu::createLowerToLLVMPass());
   pm.addPass(mlir::createConvertVectorToSCFPass(
       mlir::VectorTransferToSCFOptions().enableFullUnroll(false)));
+  pm.addPass(cpu::CreateUnpackSubByteVectorWritePass());
+
   mlir::ConvertVectorToLLVMPassOptions options;
 
   // If the tile size is 16x16 this will generate the most efficient code for
@@ -539,7 +542,8 @@ mlir::DialectRegistry FusionCompiler::CreateDialectRegistry(
       mlir::scf::SCFDialect, mlir::LLVM::LLVMDialect,
       mlir::tensor::TensorDialect, mlir::vector::VectorDialect, xla::XlaDialect,
       xla::xtile::XTileDialect, mlir::stablehlo::StablehloDialect,
-      mlir::linalg::LinalgDialect, mlir::memref::MemRefDialect>();
+      mlir::linalg::LinalgDialect, mlir::memref::MemRefDialect,
+      mlir::ub::UBDialect>();
 
   mlir::LLVM::registerInlinerInterface(registry);
   mlir::func::registerInlinerExtension(registry);

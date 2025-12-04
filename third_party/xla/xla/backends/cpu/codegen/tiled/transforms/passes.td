@@ -107,3 +107,21 @@ def VectorToScalarPass : Pass<"xtile-cpu-vector-to-scalar"> {
     "::mlir::vector::VectorDialect",
   ];
 }
+
+
+def UnpackSubByteVectorWritePass : Pass<"xtile-cpu-unpack-sub-byte-vector-write"> {
+  let summary = "Unpacks sub-byte vector writes.";
+
+  let description = [{
+    The default lowering of vector.transfer_write of subbyte types reflects that
+    of llvm vector store instructions, i.e it writes the packed data directly.
+    The semantics we use in the CPU lowering is that it will unpack the data
+    into a series of bytes and store them separately. This pass implements that
+    by using unrolling the transfer_write into individual elements.
+  }];
+
+  let dependentDialects = [
+    "::mlir::memref::MemRefDialect",
+    "::mlir::scf::SCFDialect",
+  ];
+}
