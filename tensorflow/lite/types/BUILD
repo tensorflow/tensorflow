@@ -28,4 +28,5 @@ cc_library(
         "fp16.h",
         "half.h",
     ],
+    compatible_with = ["//buildenv/target:non_prod"],
 )

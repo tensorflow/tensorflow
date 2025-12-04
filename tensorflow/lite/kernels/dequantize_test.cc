@@ -19,10 +19,10 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "Eigen/Core"  // from @eigen_archive
 #include "tensorflow/lite/core/interpreter.h"
 #include "tensorflow/lite/kernels/test_util.h"
 #include "tensorflow/lite/schema/schema_generated.h"
+#include "tensorflow/lite/types/half.h"
 
 namespace tflite {
 
@@ -131,11 +131,11 @@ TEST(DequantizeOpTest, Int8) {
 TEST(DequantizeOpTest, Float16) {
   DequantizeOpModel m(TensorType_FLOAT16, {2, 3}, 1.0f, 0, 3);
 
-  std::vector<Eigen::half> half{Eigen::half{-535.54f}, Eigen::half{-100.0f},
-                                Eigen::half{-1.0f},    Eigen::half{0.f},
-                                Eigen::half{1.0f},     Eigen::half{100.32f}};
-  m.PopulateTensor(0, 0, reinterpret_cast<TfLiteFloat16*>(half.data()),
-                   reinterpret_cast<TfLiteFloat16*>(half.data()) + half.size());
+  std::vector<half> half_data{half(-535.54f), half(-100.0f), half(-1.0f),
+                              half(0.f),      half(1.0f),    half(100.32f)};
+  m.PopulateTensor(
+      0, 0, reinterpret_cast<TfLiteFloat16*>(half_data.data()),
+      reinterpret_cast<TfLiteFloat16*>(half_data.data()) + half_data.size());
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutput(), ElementsAreArray(ArrayFloatNear(
                                  {-535.54f, -100.0f, -1.0f, 0.f, 1.0f, 100.32f},
