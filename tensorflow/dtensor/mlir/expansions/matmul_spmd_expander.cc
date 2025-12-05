@@ -434,7 +434,7 @@ StatusOr<llvm::DenseMap<int, Layout>> MatMulSPMDExpander::ComputeLayoutBackward(
   // to dim - 2), one of the two inputs may have dimension 1 while the
   // other has dimension > 1 and equal to the dim of the output. Since a
   // tensor with dimension 1 cannot be sharded, we set this to unsharded.
-  auto specs_matmul_operands = [](const llvm::ArrayRef<int64>& tensor_shape,
+  auto specs_matmul_operands = [](const llvm::ArrayRef<int64_t>& tensor_shape,
                                   const Layout& layout,
                                   bool is_left_operand) -> StatusOr<Layout> {
     int contracting_dim =
