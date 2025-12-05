@@ -23,7 +23,7 @@ def safe_extract_tar(tar: tarfile.TarFile, path: str = '.'):  # pylint: disable=
     member_path = os.path.join(path, member.name)
     if not _is_within_directory(path, member_path):
       raise Exception('Attempted Path Traversal in Tar File')
-  tar.extractall(path)
+  tar.extractall(path)  # nosec B202 - safe extraction after validation
 
 
 def safe_extract_zip(zf: zipfile.ZipFile, path: str = '.'):  # pylint: disable=missing-function-docstring
@@ -31,4 +31,4 @@ def safe_extract_zip(zf: zipfile.ZipFile, path: str = '.'):  # pylint: disable=m
     member_path = os.path.join(path, member)
     if not _is_within_directory(path, member_path):
       raise Exception('Attempted Path Traversal in Zip File')
-  zf.extractall(path)
+  zf.extractall(path)  # nosec B202 - safe extraction after validation
