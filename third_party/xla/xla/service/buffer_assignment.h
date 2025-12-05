@@ -879,6 +879,11 @@ class BufferAssigner {
 // Computes the peak memory usage through the proto's heap simulator traces.
 absl::StatusOr<int64_t> ComputePeakMemory(const BufferAssignmentProto& proto);
 
+// Computes the total memory allocated by the buffer assignment for a given
+// color.
+int64_t ComputeTotalAllocationBytes(const BufferAssignmentProto& proto,
+                                    int64_t memory_color);
+
 }  // namespace xla
 
 #endif  // XLA_SERVICE_BUFFER_ASSIGNMENT_H_

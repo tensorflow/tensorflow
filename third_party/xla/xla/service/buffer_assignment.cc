@@ -2445,6 +2445,17 @@ int64_t AllocateStaticBuffers(BufferMap& buffers,
 
 }  // namespace
 
+int64_t ComputeTotalAllocationBytes(const BufferAssignmentProto& proto,
+                                    int64_t memory_color) {
+  int64_t total_allocation_bytes = 0;
+  for (const auto& alloc : proto.buffer_allocations()) {
+    if (alloc.color() == memory_color) {
+      total_allocation_bytes += alloc.size();
+    }
+  }
+  return total_allocation_bytes;
+}
+
 absl::StatusOr<int64_t> ComputePeakMemory(const BufferAssignmentProto& proto) {
   BufferMap buffers(proto);
 
