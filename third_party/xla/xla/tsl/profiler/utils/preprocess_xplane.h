@@ -431,6 +431,127 @@ class TpuModuleLineMutatorFactory : public XplaneEventMutatorFactory {
   };
 };
 
+// Line mutator for generating Producer/Consumer contexts based on provided
+// stats and associated filters for identifying producer and consumer planes.
+template <typename... StatsAccessorTypes>
+class ProducerConsumerMutatorFactory : public XplaneEventMutatorFactory {
+ public:
+  using FilterXPlaneFunc = std::function<bool(XPlaneBuilder*)>;
+
+  static std::unique_ptr<XplaneEventMutatorFactory> CreateFactory(
+      ContextType context_type, FilterXPlaneFunc is_consumer_plane,
+      FilterXPlaneFunc is_producer_plane) {
+    return absl::WrapUnique(new ProducerConsumerMutatorFactory(
+        context_type, std::move(is_consumer_plane),
+        std::move(is_producer_plane)));
+  }
+
+  using StatsAccessors = std::tuple<StatsAccessorTypes...>;
+
+  std::vector<std::unique_ptr<XplaneEventMutator>> CreateMutators(
+      XPlaneBuilder& xplane) const override {
+    // Check if all required stats exist in the current plane.
+    StatsAccessors stats_accessors;
+    bool all_required_stats_exist = true;
+    auto check_stats_meta = [&all_required_stats_exist,
+                             &xplane](auto&& accessor) {
+      all_required_stats_exist =
+          all_required_stats_exist && accessor.Initialize(xplane);
+    };
+    for_each(stats_accessors, check_stats_meta);
+    if (!all_required_stats_exist) {
+      return {};
+    }
+
+    std::vector<std::unique_ptr<XplaneEventMutator>> mutators;
+    if (is_consumer_plane_(&xplane)) {
+      XStatMetadata* type_metadata = xplane.GetOrCreateStatMetadata(
+          GetStatTypeStr(StatType::kConsumerType));
+      XStatMetadata* id_metadata =
+          xplane.GetOrCreateStatMetadata(GetStatTypeStr(StatType::kConsumerId));
+      mutators.emplace_back(std::make_unique<ProducerConsumerMutator>(
+          xplane, context_type_, *type_metadata, *id_metadata,
+          stats_accessors));
+    }
+    if (is_producer_plane_(&xplane)) {
+      XStatMetadata* type_metadata = xplane.GetOrCreateStatMetadata(
+          GetStatTypeStr(StatType::kProducerType));
+      XStatMetadata* id_metadata =
+          xplane.GetOrCreateStatMetadata(GetStatTypeStr(StatType::kProducerId));
+      mutators.emplace_back(std::make_unique<ProducerConsumerMutator>(
+          xplane, context_type_, *type_metadata, *id_metadata,
+          stats_accessors));
+    }
+    return mutators;
+  }
+
+ private:
+  explicit ProducerConsumerMutatorFactory(ContextType context_type,
+                                          FilterXPlaneFunc is_consumer_plane,
+                                          FilterXPlaneFunc is_producer_plane)
+      : context_type_(context_type),
+        is_consumer_plane_(std::move(is_consumer_plane)),
+        is_producer_plane_(std::move(is_producer_plane)) {}
+
+  ContextType context_type_;
+  FilterXPlaneFunc is_consumer_plane_;
+  FilterXPlaneFunc is_producer_plane_;
+
+  class ProducerConsumerMutator : public XplaneEventMutator {
+   public:
+    ProducerConsumerMutator(XPlaneBuilder& xplane, ContextType context_type,
+                            XStatMetadata& type_metadata,
+                            XStatMetadata& id_metadata,
+                            const StatsAccessors& accessors)
+        : XplaneEventMutator(nullptr),  // Mutates all events in lines.
+          xplane_(xplane),
+          context_type_(context_type),
+          type_metadata_(type_metadata),
+          id_metadata_(id_metadata),
+          accessors_(accessors) {}
+
+    void Mutate(XEventBuilder& event_builder) override {
+      CHECK(false);  // Crash OK - This mutator uses MutateEventsInLine.
+    }
+
+    void MutateEventsInLine(XLineBuilder& line) override {
+      line.ForEachEvent([&](XEventBuilder event) {
+        // Collect the values of the required stats.
+        bool all_required_stats_exist = true;
+        std::vector<std::variant<absl::string_view, uint64_t>> required_stats;
+        auto get_stats = [&all_required_stats_exist, &required_stats,
+                          &event](auto&& accessor) {
+          if (!all_required_stats_exist) {
+            return;
+          }
+          auto stats_data = accessor.GetStat(event);
+          if (!stats_data) {
+            all_required_stats_exist = false;
+          } else {
+            required_stats.emplace_back(*stats_data);
+          }
+        };
+        for_each(accessors_, get_stats);
+
+        // If all required stats are present, add the given context.
+        if (all_required_stats_exist) {
+          int64_t context_id = absl::HashOf(required_stats);
+          event.SetOrAddStatValue(type_metadata_,
+                                  static_cast<int64_t>(context_type_));
+          event.SetOrAddStatValue(id_metadata_, context_id);
+        }
+      });
+    }
+
+   private:
+    XPlaneBuilder& xplane_;
+    ContextType context_type_;
+    XStatMetadata& type_metadata_;
+    XStatMetadata& id_metadata_;
+    StatsAccessors accessors_;
+  };
+};
+
 // Line mutator for threadpool line.
 // Threadpool Line Mutator create a kThreadpoolListenerRegion from StartRegion
 // to StopRegion events, and propagates the context information from the

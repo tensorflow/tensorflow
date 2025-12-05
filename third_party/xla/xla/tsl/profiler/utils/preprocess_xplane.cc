@@ -21,6 +21,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "xla/tsl/profiler/utils/tpu_xplane_utils.h"
 #include "xla/tsl/profiler/utils/xplane_builder.h"
 #include "xla/tsl/profiler/utils/xplane_schema.h"
 #include "tsl/profiler/lib/context_types.h"
@@ -142,6 +143,22 @@ CreateMutatorFactories() {
           XContextStatsAccessor<uint64_t, StatType::kRunId>,
           XContextStatsAccessorWithDefault<uint64_t, StatType::kCoreType,
                                            0ULL>>::CreateFactory());
+  // TPU offload context connection (TensorCore -> SparseCore)
+  mutator_factories.push_back(
+      ProducerConsumerMutatorFactory<
+          XContextStatsAccessor<uint64_t, StatType::kTcOffloadStartId>,
+          XContextStatsAccessor<uint64_t, StatType::kOffloadCoreId>,
+          XContextStatsAccessor<uint64_t, StatType::kOffloadExecutionIndex>>::
+          CreateFactory(
+              ContextType::kScOffload,
+              [](XPlaneBuilder* xplane) {
+                return xplane != nullptr &&
+                       GetSparseCoreId(xplane->Name()).has_value();
+              },
+              [](XPlaneBuilder* xplane) {
+                return xplane != nullptr &&
+                       GetTensorCoreId(xplane->Name()).has_value();
+              }));
 
   mutator_factories.push_back(TpuModuleLineMutatorFactory::CreateFactory());
   return mutator_factories;

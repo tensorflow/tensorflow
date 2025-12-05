@@ -20,7 +20,9 @@ limitations under the License.
 #include <optional>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/hash/hash.h"
+#include "absl/strings/str_cat.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/tsl/profiler/utils/tf_xplane_visitor.h"
 #include "xla/tsl/profiler/utils/xplane_builder.h"
@@ -28,6 +30,7 @@ limitations under the License.
 #include "xla/tsl/profiler/utils/xplane_test_utils.h"
 #include "xla/tsl/profiler/utils/xplane_visitor.h"
 #include "tsl/profiler/lib/connected_traceme.h"
+#include "tsl/profiler/lib/context_types.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
 
 namespace tsl {
@@ -303,6 +306,110 @@ TEST(PreprocessXPlane, XContextStatsAccessorNPETest) {
 
   ASSERT_FALSE(run_id_accessor.Initialize(xplane_builder));
   EXPECT_EQ(run_id_accessor.GetStat(xevent_builder), std::nullopt);
+}
+
+TEST(PreprocessXPlane, SparseCoreOffloadingTest) {
+  XSpace space;
+
+  // --- TensorCore Plane ---
+  XPlane* tensorcore_plane = GetOrCreateTpuXPlane(&space, 0, "TPUv4", 0, 0);
+  XPlaneBuilder tc_plane_builder(tensorcore_plane);
+
+  // kStepLineName
+  auto tc_step_line = tc_plane_builder.GetOrCreateLine(0);
+  tc_step_line.SetName(kStepLineName);
+  CreateXEvent(&tc_plane_builder, &tc_step_line, "Step 1", 100, 100, {});
+
+  // kXlaModuleLineName
+  auto tc_module_line = tc_plane_builder.GetOrCreateLine(1);
+  tc_module_line.SetName(kXlaModuleLineName);
+  CreateXEvent(&tc_plane_builder, &tc_module_line, "Module 1", 100, 100, {});
+
+  // kXlaOpLineName
+  auto tc_op_line = tc_plane_builder.GetOrCreateLine(2);
+  tc_op_line.SetName(kXlaOpLineName);
+  CreateXEvent(&tc_plane_builder, &tc_op_line, "TC Offload 0", 100, 49,
+               {{StatType::kTcOffloadStartId, int64_t{1}},
+                {StatType::kOffloadCoreId, int64_t{0}},
+                {StatType::kOffloadExecutionIndex, int64_t{1}}});
+  CreateXEvent(&tc_plane_builder, &tc_op_line, "TC Offload 1", 150, 49,
+               {{StatType::kTcOffloadStartId, int64_t{1}},
+                {StatType::kOffloadCoreId, int64_t{0}},
+                {StatType::kOffloadExecutionIndex, int64_t{2}}});
+
+  // --- SparseCore Plane ---
+  XPlane* sparsecore_plane = space.add_planes();
+  XPlaneBuilder sc_plane_builder(sparsecore_plane);
+  sc_plane_builder.SetName(
+      absl::StrCat(tensorcore_plane->name(), " SparseCore 0"));
+
+  // kSparseCoreStepLineName
+  auto sc_step_line = sc_plane_builder.GetOrCreateLine(0);
+  sc_step_line.SetName(kSparseCoreStepLineName);
+  CreateXEvent(&sc_plane_builder, &sc_step_line, "SC Step 1", 100, 100, {});
+
+  // kSparseCoreModuleLineName
+  auto sc_module_line = sc_plane_builder.GetOrCreateLine(1);
+  sc_module_line.SetName(kSparseCoreModuleLineName);
+  CreateXEvent(&sc_plane_builder, &sc_module_line, "sc_offload(0)", 110, 38,
+               {{StatType::kTcOffloadStartId, int64_t{1}},
+                {StatType::kOffloadCoreId, int64_t{0}},
+                {StatType::kOffloadExecutionIndex, int64_t{1}}});
+  CreateXEvent(&sc_plane_builder, &sc_module_line, "sc_offload(0)", 160, 38,
+               {{StatType::kTcOffloadStartId, int64_t{1}},
+                {StatType::kOffloadCoreId, int64_t{0}},
+                {StatType::kOffloadExecutionIndex, int64_t{2}}});
+
+  // kSparseCoreOpLineName
+  auto sc_op_line = sc_plane_builder.GetOrCreateLine(2);
+  sc_op_line.SetName(kSparseCoreOpLineName);
+  // These should match the TC offload events
+  CreateXEvent(&sc_plane_builder, &sc_op_line, "sc_offload_op.1", 111, 10, {});
+  CreateXEvent(&sc_plane_builder, &sc_op_line, "sc_offload_op.1", 160, 10, {});
+
+  PreprocessXSpace(&space);
+
+  // Verify that the cross-plane offload stats are added by
+  // SparseCoreOffloadPreprocessor. TC events should gain kScOffloadStartId.
+  XPlaneVisitor tc_plane_visitor = CreateTfXPlaneVisitor(tensorcore_plane);
+  int64_t sc_offload_context_type =
+      static_cast<int64_t>(ContextType::kScOffload);
+  absl::flat_hash_set<int64_t> producer_ids;
+  tc_plane_visitor.ForEachLine([&](const XLineVisitor& line) {
+    if (line.Name() != kXlaOpLineName) {
+      return;
+    }
+    line.ForEachEvent([&](const XEventVisitor& event) {
+      SCOPED_TRACE(absl::StrCat(line.Name(), " ", event.Name()));
+      ASSERT_TRUE(event.GetStat(StatType::kProducerType).has_value());
+      ASSERT_TRUE(event.GetStat(StatType::kProducerId).has_value());
+      EXPECT_EQ(event.GetStat(StatType::kProducerType)->IntValue(),
+                sc_offload_context_type);
+      producer_ids.insert(
+          event.GetStat(StatType::kProducerId)->IntOrUintValue());
+    });
+  });
+  EXPECT_EQ(producer_ids.size(), 2);
+
+  // SC events should gain kTcOffloadStartId.
+  XPlaneVisitor sc_plane_visitor = CreateTfXPlaneVisitor(sparsecore_plane);
+  absl::flat_hash_set<int64_t> consumer_ids;
+  sc_plane_visitor.ForEachLine([&](const XLineVisitor& line) {
+    if (line.Name() != kSparseCoreModuleLineName) {
+      return;
+    }
+    line.ForEachEvent([&](const XEventVisitor& event) {
+      SCOPED_TRACE(absl::StrCat(line.Name(), " ", event.Name()));
+      ASSERT_TRUE(event.GetStat(StatType::kConsumerType).has_value());
+      ASSERT_TRUE(event.GetStat(StatType::kConsumerId).has_value());
+      EXPECT_EQ(event.GetStat(StatType::kConsumerType)->IntValue(),
+                sc_offload_context_type);
+      consumer_ids.insert(
+          event.GetStat(StatType::kConsumerId)->IntOrUintValue());
+    });
+  });
+  EXPECT_EQ(consumer_ids.size(), 2);
+  EXPECT_EQ(producer_ids, consumer_ids);
 }
 
 }  // namespace
