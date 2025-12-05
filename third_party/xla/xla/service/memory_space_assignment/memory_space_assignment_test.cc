@@ -97,6 +97,7 @@ namespace {
 namespace op = xla::testing::opcode_matchers;
 using Chunk = HeapSimulator::Chunk;
 using ::testing::_;
+using ::testing::EqualsProto;
 using ::testing::Return;
 using ::testing::UnorderedElementsAre;
 
@@ -13368,6 +13369,66 @@ ENTRY main {
 
   // Check expectations on the chunks assigned to the asynchronous sliced copy.
   TF_EXPECT_OK(CheckSliceChunks(*assignments, root->operand(1)));
+
+  LOG(INFO) << module->ToString();
+  const HeapSimulatorTrace& heap_trace =
+      assignments->assignment_information_for_space(kAlternateMemorySpace)
+          ->heap_simulator_trace;
+  EXPECT_THAT(
+      heap_trace, EqualsProto(R"pb(
+        events {
+          buffer_id: 4
+          computation_name: "main"
+          instruction_name: "copy-start"
+        }
+        events {
+          computation_name: "async_computation"
+          instruction_name: "slice.1"
+        }
+        events { buffer_id: 6 computation_name: "main" instruction_name: "a" }
+        events {
+          kind: FREE
+          buffer_id: 4
+          computation_name: "main"
+          instruction_name: "copy-start"
+        }
+        events {
+          buffer_id: 1
+          computation_name: "async_computation.1"
+          instruction_name: "slice.3"
+        }
+        events { buffer_id: 7 computation_name: "main" instruction_name: "b" }
+        events {
+          kind: FREE
+          buffer_id: 6
+          computation_name: "main"
+          instruction_name: "a"
+        }
+        events { buffer_id: 8 computation_name: "main" instruction_name: "c" }
+        events {
+          kind: FREE
+          buffer_id: 7
+          computation_name: "main"
+          instruction_name: "b"
+        }
+        events {
+          kind: FREE
+          computation_name: "async_computation"
+          instruction_name: "slice.1"
+        }
+        events {
+          kind: FREE
+          buffer_id: 1
+          computation_name: "async_computation.1"
+          instruction_name: "slice.3"
+        }
+        events {
+          kind: FREE
+          buffer_id: 8
+          computation_name: "main"
+          instruction_name: "c"
+        }
+      )pb"));
 }
 
 TEST_F(SlicedPrefetchTest, TwoSlicesWithCopyReplacement) {

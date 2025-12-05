@@ -1176,6 +1176,16 @@ absl::Status MemorySpaceAssignment::FixSchedule() {
   return absl::OkStatus();
 }
 
+namespace {
+
+bool IsConcatBitcastCustomCall(const HloInstruction* instruction) {
+  return instruction->opcode() == HloOpcode::kCustomCall &&
+         instruction->custom_call_target() ==
+             memory_space_assignment::kConcatBitcastCustomCall;
+}
+
+}  // namespace
+
 absl::Status MemorySpaceAssignment::VerifyAndExportHeapSimulatorTrace(
     const HloAliasAnalysis& alias_analysis,
     std::vector<int64_t>* alt_mem_bytes_occupied) {
@@ -1197,6 +1207,9 @@ absl::Status MemorySpaceAssignment::VerifyAndExportHeapSimulatorTrace(
   auto add_allocation_and_verify = [&](int64_t start_time, int64_t end_time,
                                        const HeapSimulator::Chunk& chunk,
                                        const HloValue* value) -> absl::Status {
+    if (IsConcatBitcastCustomCall(value->instruction())) {
+      return absl::OkStatus();
+    }
     events[std::make_tuple(start_time, /*is_free=*/false, value->id())] =
         std::make_tuple(value, chunk, HeapSimulatorTrace::Event::ALLOC);
     events[std::make_tuple(end_time, /*is_free=*/true, value->id())] =
