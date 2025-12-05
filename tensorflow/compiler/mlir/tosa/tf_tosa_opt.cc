@@ -48,7 +48,6 @@ int main(int argc, char** argv) {
   mlir::registerTensorFlowPasses();
   mlir::TFDevice::registerTensorFlowDevicePasses();
   mlir::tf_saved_model::registerTensorFlowSavedModelPasses();
-  mlir::TFL::registerTensorFlowLitePasses();
   mlir::mhlo::registerAllMhloPasses();
 
   // These are in compiler/mlir/tf2xla and not part of the above MHLO passes.
