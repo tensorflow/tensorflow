@@ -45,6 +45,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
+#include "xla/runtime/buffer_use.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/shape.h"
@@ -450,6 +451,30 @@ absl::Status DynamicSliceThunk::TransformAllNestedThunks(
                       fn(std::move(embedded_thunk_)));
   embedded_thunk_ = SequentialThunk::FromThunk(std::move(thunk));
   return absl::OkStatus();
+}
+
+Thunk::BufferUses DynamicSliceThunk::buffer_uses() const {
+  Thunk::BufferUses res;
+  res.reserve(slices_.size());
+  for (const SliceDef& slice : slices_) {
+    if (!slice.embedded_thunk_argument.has_value()) {
+      continue;
+    }
+    res.push_back(
+        BufferUse::Read(*slice.embedded_thunk_argument, *slice.orig_shape));
+
+    if (!slice.offsets.has_value()) {
+      continue;
+    }
+    for (const Offset& offset : *slice.offsets) {
+      auto* alloc_slice = std::get_if<BufferAllocation::Slice>(&offset);
+      if (!alloc_slice) {
+        continue;
+      }
+      res.push_back(BufferUse::Read(*alloc_slice));
+    }
+  }
+  return res;
 }
 
 absl::StatusOr<OptionalDynamicSliceOffsetsProto>

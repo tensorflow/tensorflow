@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/runtime/buffer_use.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/gpu_norm_runner.h"
 #include "xla/service/gpu/gpu_norm_runner.pb.h"
@@ -148,6 +149,35 @@ absl::Status NormThunk::Initialize(const InitializeParams& params) {
       GetOrCreateRunner(params.stream).AsNormRunner();
   TF_ASSIGN_OR_RETURN(auto ln_config, config_.AsDnnNormOpConfig());
   return lazy_runner->GetOrCreateRunner(ln_config, params.stream).status();
+}
+
+Thunk::BufferUses NormThunk::buffer_uses() const {
+  Thunk::BufferUses res{
+      BufferUse::Read(x_buffer_),
+      BufferUse::Read(scale_buffer_),
+      BufferUse::Write(y_or_dx_buffer_),
+  };
+  res.emplace_back(scratch_buffer_, BufferUse::MemoryAccess::kWrite,
+                   BufferUse::ContentValidity::kUndefined);
+  if (bias_buffer_.has_value()) {
+    res.push_back(BufferUse::Read(*bias_buffer_));
+  }
+  if (expectation_buffer_.has_value()) {
+    res.push_back(BufferUse::Write(*expectation_buffer_));
+  }
+  if (norm_factor_buffer_.has_value()) {
+    res.push_back(BufferUse::Write(*norm_factor_buffer_));
+  }
+  if (dy_buffer_.has_value()) {
+    res.push_back(BufferUse::Read(*dy_buffer_));
+  }
+  if (dscale_buffer_.has_value()) {
+    res.push_back(BufferUse::Write(*dscale_buffer_));
+  }
+  if (dbias_buffer_.has_value()) {
+    res.push_back(BufferUse::Write(*dbias_buffer_));
+  }
+  return res;
 }
 
 absl::StatusOr<std::unique_ptr<NormThunk>> NormThunk::FromProto(

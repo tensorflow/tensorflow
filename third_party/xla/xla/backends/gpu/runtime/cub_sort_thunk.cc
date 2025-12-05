@@ -37,6 +37,7 @@ limitations under the License.
 #include "xla/ffi/call_frame.h"
 #include "xla/ffi/ffi_api.h"
 #include "xla/primitive_util.h"
+#include "xla/runtime/buffer_use.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/stream_executor/device_memory.h"
@@ -320,6 +321,20 @@ CubSortThunk::CubSortThunk(
       value_type_(value_type),
       descending_(descending),
       batch_size_(batch_size) {}
+
+Thunk::BufferUses CubSortThunk::buffer_uses() const {
+  Thunk::BufferUses res;
+  res.reserve(operands_.size() + results_.size() + 1);
+  for (const BufferAllocation::Slice& slice : operands_) {
+    res.push_back(BufferUse::Read(slice));
+  }
+  for (const BufferAllocation::Slice& slice : results_) {
+    res.push_back(BufferUse::Write(slice));
+  }
+  res.emplace_back(scratch_, BufferUse::MemoryAccess::kWrite,
+                   BufferUse::ContentValidity::kUndefined);
+  return res;
+}
 
 absl::StatusOr<std::unique_ptr<CubSortThunk>> CubSortThunk::FromProto(
     ThunkInfo thunk_info, const CubSortThunkProto& proto,

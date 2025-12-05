@@ -68,6 +68,8 @@ class CubSortThunk : public Thunk {
     return runner_->Run(params, this);
   }
 
+  BufferUses buffer_uses() const override;
+
   static absl::StatusOr<std::unique_ptr<CubSortThunk>> FromProto(
       ThunkInfo thunk_info, const CubSortThunkProto& proto,
       absl::Span<const BufferAllocation> buffer_allocations,

@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/runtime/buffer_use.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/gpu/matmul_utils.h"
@@ -158,6 +159,17 @@ absl::Status CublasLtMatmulThunk::Initialize(const InitializeParams& params) {
     return absl::InternalError("Failed to initialize BLASLT support");
   }
   return absl::OkStatus();
+}
+
+Thunk::BufferUses CublasLtMatmulThunk::buffer_uses() const {
+  return {
+      BufferUse::Read(a_),       BufferUse::Read(b_),
+      BufferUse::Read(c_),       BufferUse::Write(d_),
+      BufferUse::Read(bias_),    BufferUse::Write(aux_),
+      BufferUse::Read(a_scale_), BufferUse::Read(b_scale_),
+      BufferUse::Read(c_scale_), BufferUse::Read(d_scale_),
+      BufferUse::Write(d_amax_),
+  };
 }
 
 absl::StatusOr<ThunkProto> CublasLtMatmulThunk::ToProto() const {
