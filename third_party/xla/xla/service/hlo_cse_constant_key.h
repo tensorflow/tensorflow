@@ -29,6 +29,7 @@ struct CseConstantKey {
   template <typename H>
   friend H AbslHashValue(H h, const CseConstantKey& key) {
     h = H::combine(std::move(h), key.domain);
+    h = Shape::Hash<H, kIsLayoutSensitive>(std::move(h), key.shape);
     return Literal::Hash<H, kIsLayoutSensitive, /*kByteLimit=*/64>(std::move(h),
                                                                    key.literal);
   }
