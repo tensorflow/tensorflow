@@ -147,7 +147,7 @@ absl::Status TPUReshardVariablesOpKernel::DoTpuExecute(
   tsl::profiler::TraceMe trace_me_init("TPUReshardVariablesOpKernel::Init",
                                        /*level=*/2);
 
-  string rendezvous_key_base;
+  std::string rendezvous_key_base;
   std::unique_ptr<tpu::CompilationCacheEntryRef> entry_ref;
   TF_RETURN_IF_ERROR(reshard_util::GetComputationCacheEntry(
       format_key, &rendezvous_key_base, &entry_ref, fetch_target));
