@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/pjrt/proto/pjrt_device_dimensions.pb.h"
 
 namespace xla {
 
