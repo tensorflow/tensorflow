@@ -72,19 +72,19 @@ struct TransposeContext {
   // of the graph, all new nodes should have a node index greater than or equal
   // to this.
   int num_nodes;
-  absl::flat_hash_set<string> nodes_to_preserve;
+  absl::flat_hash_set<std::string> nodes_to_preserve;
   std::unique_ptr<GraphProperties> graph_properties;
   std::unique_ptr<utils::MutableGraphView> graph_view;
 
-  string target_device;
-  string src_format;
-  string dst_format;
+  std::string target_device;
+  std::string src_format;
+  std::string dst_format;
   absl::flat_hash_map<char, int> src_dim_indices;
   absl::flat_hash_map<char, int> dst_dim_indices;
   std::vector<int> src_to_dst;
   std::vector<int> dst_to_src;
 
-  string enforced_layout;
+  std::string enforced_layout;
 };
 
 class Transposer {
@@ -130,7 +130,7 @@ class Transposer {
       const DataType& data_type, absl::string_view device,
       TensorShapeProto fanin_shape, absl::Span<const int> permutation,
       absl::string_view control_node_name, utils::MutationNewNode* added_node,
-      string* transpose_node_name);
+      std::string* transpose_node_name);
 
   // Update all edges between dst_node->fanin[dst_ports] and dst_node by
   // inserting an op node.
@@ -183,17 +183,18 @@ class Transposer {
                           bool is_src_format_to_dst_format, const int src_port,
                           const int dst_port, utils::MutableNodeView* src_node,
                           utils::MutableNodeView* dst_node);
-  string GetFaninNameFormat(absl::string_view node_name, int port,
-                            absl::string_view src_format,
-                            absl::string_view dst_format);
-  string GetFanoutNameFormat(absl::string_view node_name, int port, int index,
-                             absl::string_view src_format,
-                             absl::string_view dst_format);
-  string LayoutOptimizerNode(absl::string_view node_name);
-  string GetReshapeNodeNameFormat(absl::string_view node_name, int index,
-                                  absl::string_view src_format,
+  std::string GetFaninNameFormat(absl::string_view node_name, int port,
+                                 absl::string_view src_format,
+                                 absl::string_view dst_format);
+  std::string GetFanoutNameFormat(absl::string_view node_name, int port,
+                                  int index, absl::string_view src_format,
                                   absl::string_view dst_format);
-  string GetShapeConstNodeNameFormat(absl::string_view node_name, int index);
+  std::string LayoutOptimizerNode(absl::string_view node_name);
+  std::string GetReshapeNodeNameFormat(absl::string_view node_name, int index,
+                                       absl::string_view src_format,
+                                       absl::string_view dst_format);
+  std::string GetShapeConstNodeNameFormat(absl::string_view node_name,
+                                          int index);
 };
 
 class LayoutSensitiveOpTransposer : public Transposer {
@@ -622,7 +623,7 @@ absl::Status PermuteDouble(absl::string_view location,
   return absl::OkStatus();
 }
 
-string GetDeviceName(const NodeDef& node);
+std::string GetDeviceName(const NodeDef& node);
 
 bool IsDefaultLayoutSensitiveOp(const NodeDef& node);
 
