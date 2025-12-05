@@ -140,12 +140,13 @@ class tstring {
   // Ctor
   tstring();
   tstring(const std::string& str);  // NOLINT TODO(b/147740521): Make explicit.
+  explicit tstring(std::string&& str);  // Zero-copy, takes rvalue ownership.
   tstring(const char* str, size_t len);
   tstring(const char* str);  // NOLINT TODO(b/147740521): Make explicit.
   tstring(size_t n, char c);
   explicit tstring(const absl::string_view str);
 #ifdef PLATFORM_GOOGLE
-  explicit tstring(const absl::Cord& cord);
+  explicit tstring(const absl::Cord& cord);  // Zero-copy, holds reference.
 #endif  // PLATFORM_GOOGLE
 
   // Copy
@@ -160,11 +161,12 @@ class tstring {
   // Copy Assignment
   tstring& operator=(const tstring& str);
   tstring& operator=(const std::string& str);
+  tstring& operator=(std::string&& str);  // Zero-copy, takes rvalue ownership.
   tstring& operator=(const char* str);
   tstring& operator=(char ch);
   tstring& operator=(const absl::string_view str);
 #ifdef PLATFORM_GOOGLE
-  tstring& operator=(const absl::Cord& cord);
+  tstring& operator=(const absl::Cord& cord);  // Zero-copy, holds reference.
 #endif  // PLATFORM_GOOGLE
 
   // View Assignment
@@ -304,6 +306,17 @@ inline tstring::tstring(size_t n, char c) {
 inline tstring::tstring(const std::string& str)
     : tstring(str.data(), str.size()) {}
 
+inline tstring::tstring(std::string&& str) {
+  TF_TString_Init(&tstr_);
+  if (str.size() > TF_TString_SmallCapacity) {
+    auto* str_owner = new tstring::owner<std::string>(std::move(str));
+    assign_as_shared_view(absl::string_view(str_owner->value()), str_owner);
+    str_owner->Unref();
+  } else {
+    TF_TString_Copy(&tstr_, str.data(), str.size());
+  }
+}
+
 inline tstring::tstring(const absl::string_view str)
     : tstring(str.data(), str.size()) {}
 
@@ -352,6 +365,17 @@ inline tstring& tstring::operator=(const tstring& str) {
 
 inline tstring& tstring::operator=(const std::string& str) {
   TF_TString_Copy(&tstr_, str.data(), str.size());
+  return *this;
+}
+
+inline tstring& tstring::operator=(std::string&& str) {
+  if (str.size() > TF_TString_SmallCapacity) {
+    auto* str_owner = new tstring::owner<std::string>(std::move(str));
+    assign_as_shared_view(absl::string_view(str_owner->value()), str_owner);
+    str_owner->Unref();
+  } else {
+    TF_TString_Copy(&tstr_, str.data(), str.size());
+  }
   return *this;
 }
 

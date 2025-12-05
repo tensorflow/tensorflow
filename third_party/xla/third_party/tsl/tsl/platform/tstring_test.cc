@@ -111,7 +111,7 @@ TEST(TF_TStringTest, Assignment) {
   s32 = std::string(kLongString);
 
   EXPECT_EQ(kLongString, s32);
-  EXPECT_EQ(tstring::Type::LARGE, s32.type());
+  EXPECT_EQ(tstring::Type::VIEW, s32.type());
   EXPECT_EQ(kLongStringLen, s32.size());
 
   // LARGE -> SMALL
@@ -483,4 +483,64 @@ TEST(OwnerTest, Assign) {
 
   s3.clear();
   EXPECT_TRUE(deleted);
+}
+
+TEST(TStringStdStringRvalueTest, ConstructShort) {
+  std::string s = "short";
+  tsl::tstring ts(std::move(s));
+  EXPECT_EQ(ts, "short");
+  EXPECT_EQ(ts.type(), tsl::tstring::Type::SMALL);
+}
+
+TEST(TStringStdStringRvalueTest, AssignShort) {
+  std::string s = "short";
+  tsl::tstring ts;
+  ts = std::move(s);
+  EXPECT_EQ(ts, "short");
+  EXPECT_EQ(ts.type(), tsl::tstring::Type::SMALL);
+}
+
+TEST(TStringStdStringRvalueTest, ConstructLong) {
+  std::string s = "this is a long string that will not fit in small capacity";
+  tsl::tstring ts(std::move(s));
+  EXPECT_EQ(ts, "this is a long string that will not fit in small capacity");
+  EXPECT_EQ(ts.type(), tsl::tstring::Type::VIEW);
+}
+
+TEST(TStringStdStringRvalueTest, AssignLong) {
+  std::string s = "this is a long string that will not fit in small capacity";
+  tsl::tstring ts;
+  ts = std::move(s);
+  EXPECT_EQ(ts, "this is a long string that will not fit in small capacity");
+  EXPECT_EQ(ts.type(), tsl::tstring::Type::VIEW);
+}
+
+TEST(TStringStdStringLvalueTest, ConstructLvalueLong) {
+  std::string s = "this is a long string that will not fit in small capacity";
+  tsl::tstring ts(s);
+  EXPECT_EQ(ts, "this is a long string that will not fit in small capacity");
+  EXPECT_EQ(ts.type(), tsl::tstring::Type::LARGE);
+}
+
+TEST(TStringStdStringLvalueTest, AssignLvalueLong) {
+  std::string s = "this is a long string that will not fit in small capacity";
+  tsl::tstring ts;
+  ts = s;
+  EXPECT_EQ(ts, "this is a long string that will not fit in small capacity");
+  EXPECT_EQ(ts.type(), tsl::tstring::Type::LARGE);
+}
+
+TEST(TStringStdStringLvalueTest, ConstructLvalueShort) {
+  std::string s = "short";
+  tsl::tstring ts(s);
+  EXPECT_EQ(ts, "short");
+  EXPECT_EQ(ts.type(), tsl::tstring::Type::SMALL);
+}
+
+TEST(TStringStdStringLvalueTest, AssignLvalueShort) {
+  std::string s = "short";
+  tsl::tstring ts;
+  ts = s;
+  EXPECT_EQ(ts, "short");
+  EXPECT_EQ(ts.type(), tsl::tstring::Type::SMALL);
 }
