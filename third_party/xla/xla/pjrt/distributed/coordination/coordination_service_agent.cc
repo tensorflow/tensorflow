@@ -66,7 +66,7 @@ using tensorflow::KeyValueEntry;
 namespace {
 
 auto* enabled_usage_metric = tsl::monitoring::Gauge<bool, 0>::New(
-    "/coordination_service/agent/enabled",
+    "/coordination_service/v2/agent/enabled",
     "Tracks usage of coordination service.");
 
 constexpr absl::Duration kDefaultClusterRegisterTimeout = absl::Hours(1);

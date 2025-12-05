@@ -332,8 +332,8 @@ class ShloToVectorPass : public impl::ShloToVectorPassBase<ShloToVectorPass> {
   void runOnOperation() override {
     mlir::MLIRContext* context = &getContext();
     mlir::RewritePatternSet patterns(context);
-    patterns.add<LowerTranspose, LowerDotGeneral, LowerReduce,
-                 LowerBroadcastInDim, LowerIota>(context);
+    patterns.add<LowerDotGeneral, LowerReduce, LowerBroadcastInDim, LowerIota>(
+        context);
     if (mlir::failed(
             mlir::applyPatternsGreedily(getOperation(), std::move(patterns)))) {
       signalPassFailure();

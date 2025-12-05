@@ -51,20 +51,20 @@ constexpr char kPreemptionBarrier[] = "PREEMPTION_SYNC_BARRIER";
 constexpr absl::Duration kPreemptionBarrierTimeout = absl::Minutes(3);
 
 auto* sync_usage_metric = tsl::monitoring::Gauge<bool, 0>::New(
-    "/coordination_service/preempt_manager/reached_sync_point_usage",
+    "/coordination_service/v2/preempt_manager/reached_sync_point_usage",
     "Records if preempt sync manager's ReachSyncPoint() was called at least "
     "once.");
 
 auto* notified_metric = tsl::monitoring::Gauge<bool, 0>::New(
-    "/coordination_service/preempt_manager/notified",
+    "/coordination_service/v2/preempt_manager/notified",
     "Records receipt of preemption notification.");
 
 auto* set_sync_point_metric = tsl::monitoring::Gauge<bool, 0>::New(
-    "/coordination_service/preempt_manager/set_sync_point",
+    "/coordination_service/v2/preempt_manager/set_sync_point",
     "Records that sync point is set.");
 
 auto* reached_sync_point_metric = tsl::monitoring::Gauge<bool, 0>::New(
-    "/coordination_service/preempt_manager/reached_sync_point",
+    "/coordination_service/v2/preempt_manager/reached_sync_point",
     "Records that sync point is reached.");
 
 // Only start protocol if death time is within `kProtocolDuration`, so that we

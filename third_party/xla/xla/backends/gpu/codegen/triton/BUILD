@@ -277,7 +277,6 @@ cc_library(
         "//xla/service:hlo_module_config",
         "//xla/service:instruction_fusion",
         "//xla/service/gpu:backend_configs_cc",
-        "//xla/service/gpu:ir_emission_utils",
         "//xla/service/gpu/model:block_level_parameters",
         "//xla/service/llvm_ir:llvm_util",
         "//xla/tools:hlo_decomposer_lib",
