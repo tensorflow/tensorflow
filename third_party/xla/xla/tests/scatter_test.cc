@@ -1050,11 +1050,6 @@ ENTRY main {
 }
 
 TEST_F(ScatterTest, Scatter_Add_F32) {
-  if (GetDebugOptionsForTest().xla_gpu_enable_scatter_determinism_expander() &&
-      GetDebugOptionsForTest().xla_gpu_deterministic_ops()) {
-    // TODO(b/443204632): Re-enable this test.
-    GTEST_SKIP() << "Currently fails";
-  }
   const std::string hlo_text = R"(
 HloModule scatter_add
 
