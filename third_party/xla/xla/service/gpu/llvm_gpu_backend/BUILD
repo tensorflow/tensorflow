@@ -65,10 +65,7 @@ cc_library(
     name = "ptx_version_util",
     srcs = ["ptx_version_util.cc"],
     hdrs = ["ptx_version_util.h"],
-    deps = [
-        "//xla/stream_executor:semantic_version",
-        "@com_google_absl//absl/status:statusor",
-    ],
+    deps = ["//xla/stream_executor:semantic_version"],
 )
 
 cc_library(
@@ -173,6 +170,9 @@ cc_library(
         "HAS_SUPPORT_FOR_LLD_AS_A_LIBRARY=1",
         "HAS_SUPPORT_FOR_EMBEDDED_LIB_DEVICE=1",
     ]),
+    tags = [
+        "nofixdeps",  # This target crashes build_cleaner ¯\_(ツ)_/¯
+    ],
     deps = [
         ":llvm_gpu_backend",
         ":load_ir_module",
@@ -365,8 +365,16 @@ cc_library(
     ]),
     deps = [
         ":llvm_gpu_backend",
+        "//xla:xla_proto_cc",
         "//xla/service/llvm_ir:llvm_command_line_options",
+        "//xla/stream_executor:device_description",
+        "@com_google_absl//absl/status:statusor",
         "@llvm-project//llvm:SPIRVCodeGen",
+        "@llvm-project//llvm:Scalar",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//llvm:Target",
+        "@llvm-project//llvm:TransformUtils",
+        "@llvm-project//llvm:ir_headers",
         "@local_tsl//tsl/platform:errors",
     ],
 )

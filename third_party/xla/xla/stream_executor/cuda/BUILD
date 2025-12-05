@@ -458,7 +458,6 @@ cuda_library(
         "//xla/stream_executor:kernel_spec",
         "//xla/stream_executor/gpu:buffer_debug_float_check_kernel",
         "//xla/stream_executor/gpu:gpu_kernel_registry",
-        "//xla/tsl/platform:logging",
         "@com_google_absl//absl/base",
         "@local_config_cuda//cuda:cuda_headers",
     ],
@@ -1239,9 +1238,7 @@ cuda_library(
         ":cuda_status",
         "//xla/tsl/platform:errors",
         "@com_google_absl//absl/status",
-        "@local_config_cuda//cuda:cuda_headers",
         "@local_config_cuda//cuda:cuda_runtime",
-        "@local_tsl//tsl/platform:logging",
     ],
 )
 
@@ -2495,7 +2492,6 @@ cuda_library(
     ],
     deps = [
         ":cuda_platform_id",
-        "//xla/stream_executor:kernel",
         "//xla/stream_executor:kernel_argument_packing_spec",
         "//xla/stream_executor:kernel_spec",
         "//xla/stream_executor/gpu:gpu_kernel_registry",

@@ -93,9 +93,7 @@ cc_library(
         "//xla/runtime:device_id",
         "@com_google_absl//absl/container:btree",
         "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -357,7 +355,6 @@ cc_library(
         ":ir_emitter_context",
         ":kernel_call",
         "//xla/backends/gpu/runtime:custom_kernel_thunk",
-        "//xla/backends/gpu/runtime:kernel_thunk",
         "//xla/codegen/emitters:kernel_arguments",
         "//xla/hlo/ir:hlo",
         "//xla/service/gpu/kernels:custom_kernel",
@@ -396,7 +393,6 @@ cc_library(
     deps = [
         ":ir_emitter_context",
         "//xla/hlo/ir:hlo",
-        "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
     ],
 )
@@ -2764,7 +2760,6 @@ cc_library(
         "//xla/hlo/ir:hlo",
         "//xla/hlo/utils:hlo_traversal",
         "//xla/stream_executor:device_description",
-        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
@@ -3150,7 +3145,6 @@ cc_library(
     srcs = ["kernel_reuse_cache.cc"],
     hdrs = ["kernel_reuse_cache.h"],
     deps = [
-        ":gpu_executable_proto_cc",
         ":kernel_reuse_cache_proto_cc",
         ":launch_dimensions",
         "//xla:status_macros",
