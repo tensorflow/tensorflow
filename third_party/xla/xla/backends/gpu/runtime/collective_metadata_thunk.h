@@ -30,6 +30,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/collective_multimem.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/core/collectives/rank_id.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/stream_executor/device_memory.h"
@@ -62,9 +63,10 @@ class CollectiveMetadataThunk : public Thunk {
   // All participants should call this method to construct their local
   // metadata.
   static absl::Status ConstructCollectiveMetadata(
-      std::vector<se::DeviceMemoryBase> parameters, se::Stream* stream,
-      const GpuCliqueKey& clique_key, void* multimem_address_space,
-      int device_ordinal, se::DeviceMemoryBase destination);
+      const GpuCliqueKey& clique_key, RankId rank, se::Stream* stream,
+      std::vector<se::DeviceMemoryBase> parameters,
+      std::shared_ptr<CollectiveMultimem> multimem,
+      se::DeviceMemoryBase destination);
 
   // Calculate the device memory base for the given parameter index.
   // The size of the returned memory is num_devices pointers.
@@ -73,8 +75,9 @@ class CollectiveMetadataThunk : public Thunk {
       int64_t num_devices, int64_t parameter_index);
 
  private:
-  absl::StatusOr<void*> AllocateMultimem(const GpuCliqueKey& clique_key,
-                                         const InitializeParams& params);
+  absl::StatusOr<std::shared_ptr<CollectiveMultimem>> AllocateMultimem(
+      const GpuCliqueKey& clique_key, RankId rank,
+      const InitializeParams& params);
 
   const CollectiveConfig collective_config_;
   std::vector<Buffer> parameters_;

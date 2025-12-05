@@ -155,10 +155,10 @@ absl::Status CollectiveKernelThunk::ExchangeStateMetadata(
       parameters.size() * clique_key.num_devices() * sizeof(uint64_t);
   state.metadata = params.executor->Allocate(
       sizeof(CollectiveKernelMetadata) + param_to_peers_ptrs_size_bytes, 0);
+
   return CollectiveMetadataThunk::ConstructCollectiveMetadata(
-      std::move(parameters), params.stream, clique_key,
-      state.multicast_device_ptr, params.executor->device_ordinal(),
-      state.metadata);
+      clique_key, state.rank, params.stream, std::move(parameters),
+      state.collective_multimem, state.metadata);
 }
 
 absl::Status CollectiveKernelThunk::Initialize(const InitializeParams& params) {

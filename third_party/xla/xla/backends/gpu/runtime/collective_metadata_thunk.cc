@@ -90,8 +90,8 @@ struct DeviceParameters {
 };
 
 absl::StatusOr<std::vector<DeviceParameters>> SyncLocalDeviceParameters(
-    const GpuCliqueKey& clique_key, int device_ordinal,
-    const std::vector<se::DeviceMemoryBase>& parameters) {
+    const GpuCliqueKey& clique_key, RankId rank,
+    std::vector<se::DeviceMemoryBase> parameters) {
   std::vector<DeviceParameters> device_parameters;
   auto rendezvous_fn = [](absl::Span<const DeviceParameters* const> values) {
     std::vector<DeviceParameters> values_copy;
@@ -104,12 +104,12 @@ absl::StatusOr<std::vector<DeviceParameters>> SyncLocalDeviceParameters(
     return values_copy;
   };
 
-  std::string start_rendezvous_key =
-      absl::StrFormat("[%d] Initializing collective metadata for clique %s",
-                      device_ordinal, clique_key.ToString());
+  std::string start_rendezvous_key = absl::StrFormat(
+      "[rank=%d] Initializing collective metadata for clique %s", rank.value(),
+      clique_key.ToString());
 
   DeviceParameters params;
-  params.rank = device_ordinal;
+  params.rank = rank;
   params.parameters = std::move(parameters);
 
   TF_ASSIGN_OR_RETURN(
@@ -123,39 +123,34 @@ absl::StatusOr<std::vector<DeviceParameters>> SyncLocalDeviceParameters(
 }
 
 absl::StatusOr<std::vector<DeviceParameters>> SyncGlobalDeviceParameters(
-    const GpuCliqueKey& clique_key, int device_ordinal,
-    const std::vector<se::DeviceMemoryBase>& parameters) {
+    const GpuCliqueKey& clique_key, RankId rank,
+    std::vector<se::DeviceMemoryBase> parameters) {
   if (!clique_key.is_local()) {
-    return absl::UnimplementedError(absl::StrCat(
-        XlaFormatDevice(device_ordinal),
-        "Multiprocess collective metadata is not supported yet in clique ",
-        clique_key.ToString()));
+    return Unimplemented(
+        "[rank=%d] Multiprocess collective metadata is not supported yet in "
+        "clique %s",
+        rank.value(), clique_key.ToString());
   }
 
   TF_ASSIGN_OR_RETURN(
       std::vector<DeviceParameters> local_ranks_parameters,
-      SyncLocalDeviceParameters(clique_key, device_ordinal, parameters));
+      SyncLocalDeviceParameters(clique_key, rank, std::move(parameters)));
 
   return local_ranks_parameters;
 }
 
 absl::Status CollectiveMetadataThunk::ConstructCollectiveMetadata(
-    std::vector<se::DeviceMemoryBase> parameters, se::Stream* stream,
-    const GpuCliqueKey& clique_key, void* multimem_address_space,
-    int device_ordinal, se::DeviceMemoryBase destination) {
+    const GpuCliqueKey& clique_key, RankId rank, se::Stream* stream,
+    std::vector<se::DeviceMemoryBase> parameters,
+    std::shared_ptr<CollectiveMultimem> multimem,
+    se::DeviceMemoryBase destination) {
   CollectiveKernelMetadata metadata;
-  metadata.rank = clique_key.rank(GlobalDeviceId(device_ordinal))
-                      .value_or(RankId(-1))
-                      .value();
-  if (metadata.rank == -1) {
-    return absl::InternalError(
-        absl::StrFormat("Device %d not found in clique %s", device_ordinal,
-                        clique_key.ToString()));
-  }
-  metadata.multicast_buffer_ptr = multimem_address_space;
+  metadata.rank = rank.value();
+  metadata.multicast_buffer_ptr =
+      multimem ? multimem->mapped_ptr(rank) : nullptr;
   TF_ASSIGN_OR_RETURN(
       std::vector<DeviceParameters> device_parameters,
-      SyncGlobalDeviceParameters(clique_key, device_ordinal, parameters));
+      SyncGlobalDeviceParameters(clique_key, rank, std::move(parameters)));
   TF_RET_CHECK(!device_parameters.empty())
       << "Not enough devices in the clique.";
   const size_t num_parameters = device_parameters[0].parameters.size();
@@ -227,11 +222,15 @@ absl::Status CollectiveMetadataThunk::Initialize(
   se::DeviceMemoryBase result_ptr =
       params.buffer_allocations->GetDeviceAddress(result_);
 
-  TF_ASSIGN_OR_RETURN(void* multimem_address_space,
-                      AllocateMultimem(clique_key, params));
-  return ConstructCollectiveMetadata(
-      std::move(parameters), params.stream, clique_key, multimem_address_space,
-      params.executor->device_ordinal(), result_ptr);
+  GlobalDeviceId global_device_id = params.collective_params->global_device_id;
+  std::optional<RankId> rank = clique_key.rank(global_device_id);
+
+  TF_ASSIGN_OR_RETURN(auto multimem,
+                      AllocateMultimem(clique_key, *rank, params));
+
+  return ConstructCollectiveMetadata(clique_key, *rank, params.stream,
+                                     std::move(parameters), std::move(multimem),
+                                     result_ptr);
 }
 
 absl::Status CollectiveMetadataThunk::ExecuteOnStream(
@@ -239,8 +238,10 @@ absl::Status CollectiveMetadataThunk::ExecuteOnStream(
   return absl::OkStatus();
 }
 
-absl::StatusOr<void*> CollectiveMetadataThunk::AllocateMultimem(
-    const GpuCliqueKey& clique_key, const InitializeParams& params) {
+absl::StatusOr<std::shared_ptr<CollectiveMultimem>>
+CollectiveMetadataThunk::AllocateMultimem(const GpuCliqueKey& clique_key,
+                                          RankId rank,
+                                          const InitializeParams& params) {
   se::DeviceMemoryBase memory_range;
   for (const Buffer& parameter : parameters_) {
     if (parameter.memory_space == xla::Layout::kGenericFastMemorySpace) {
@@ -258,17 +259,13 @@ absl::StatusOr<void*> CollectiveMetadataThunk::AllocateMultimem(
     return nullptr;
   }
 
-  GlobalDeviceId global_device_id = params.collective_params->global_device_id;
-
-  std::optional<RankId> rank = clique_key.rank(global_device_id);
   TF_ASSIGN_OR_RETURN(std::shared_ptr<CollectiveMultimem> collective_multimem,
                       CollectiveMultimem::Allocate(params.executor, clique_key,
-                                                   *rank, memory_range));
+                                                   rank, memory_range));
 
   absl::MutexLock lock(mutex_);
   return (collective_multimem_[params.executor] =
-              std::move(collective_multimem))
-      ->mapped_ptr(*rank);
+              std::move(collective_multimem));
 }
 
 }  // namespace gpu

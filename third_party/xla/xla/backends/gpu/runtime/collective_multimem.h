@@ -16,8 +16,9 @@ limitations under the License.
 #ifndef XLA_BACKENDS_GPU_RUNTIME_COLLECTIVE_MULTIMEM_H_
 #define XLA_BACKENDS_GPU_RUNTIME_COLLECTIVE_MULTIMEM_H_
 
+#include <any>
+#include <functional>
 #include <memory>
-#include <optional>
 
 #include "absl/container/btree_map.h"
 #include "absl/status/statusor.h"
@@ -27,7 +28,7 @@ limitations under the License.
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/gpu/multicast_memory.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/util.h"
+#include "xla/util.h"  // IWYU pragma: keep
 
 namespace xla::gpu {
 
@@ -47,19 +48,28 @@ class CollectiveMultimem {
   // rank then gets a virtual memory address bound to the multicast memory, and
   // operations performed via this pointer gets broadcasted to all participating
   // devices.
+  //
+  // The optional `payload` argument is captured by the returned shared pointer
+  // to allow callers to associate arbitrary data with the collective multimem.
   static absl::StatusOr<std::shared_ptr<CollectiveMultimem>> Allocate(
       se::StreamExecutor* executor, const GpuCliqueKey& clique_key, RankId rank,
-      se::DeviceMemoryBase map_to);
+      se::DeviceMemoryBase map_to, std::any payload = {});
 
   // Allocates a CollectiveMultimem for the given global device id.
   static absl::StatusOr<std::shared_ptr<CollectiveMultimem>> Allocate(
       se::StreamExecutor* executor, const GpuCliqueKey& clique_key,
-      GlobalDeviceId global_device_id, se::DeviceMemoryBase map_to);
+      GlobalDeviceId global_device_id, se::DeviceMemoryBase map_to,
+      std::any payload = {});
 
   const GpuCliqueKey& clique_key() const { return clique_key_; }
 
   // Returns the device pointer to the multicast memory for the given rank.
   void* mapped_ptr(RankId rank) const { return mapped_ptrs_.at(rank); }
+
+  // Returns the payload associated with the given rank. If payload type is not
+  // the same as `T`, returns an error.
+  template <typename T>
+  absl::StatusOr<std::reference_wrapper<T>> payload(RankId rank) const;
 
  private:
   CollectiveMultimem(
@@ -72,9 +82,27 @@ class CollectiveMultimem {
   // A mapping from a participating rank to the mapped virtual memory pointer.
   absl::btree_map<RankId, void*> mapped_ptrs_;
 
+  // A mapping from a participating rank to the payload passed to the Allocate.
+  absl::btree_map<RankId, std::any> payload_;
+
   // All virtual memory pointers are registered with this multicast memory.
   std::unique_ptr<se::gpu::MulticastMemory> multicast_memory_;
 };
+
+template <typename T>
+absl::StatusOr<std::reference_wrapper<T>> CollectiveMultimem::payload(
+    RankId rank) const {
+  auto it = payload_.find(rank);
+  if (it == payload_.end()) {
+    return NotFound("Payload not found for rank %d", rank.value());
+  }
+
+  if (std::any_cast<T>(&it->second) == nullptr) {
+    return InvalidArgument("Payload type mismatch for rank %d", rank.value());
+  }
+
+  return std::ref(std::any_cast<T&>(&it->second));
+}
 
 }  // namespace xla::gpu
 
