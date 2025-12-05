@@ -130,6 +130,12 @@ static bool IsSupportedType(PrimitiveType type) {
     return false;
   }
 
+  // Some f8 types are not supported by the emitter, just don't support any of
+  // them for now.
+  if (primitive_util::IsF8Type(type) || primitive_util::IsMXType(type)) {
+    return false;
+  }
+
   return true;
 }
 
@@ -150,14 +156,26 @@ static bool IsSupportedShape(const Shape& shape) {
 static bool IsSupportedInstruction(const HloInstruction& inst) {
   HloOpcode opcode = inst.opcode();
   switch (opcode) {
-    case xla::HloOpcode::kBitcast:
-    case xla::HloOpcode::kIota:
-    case xla::HloOpcode::kReshape:
-    case xla::HloOpcode::kTranspose:
-    case xla::HloOpcode::kParameter:
-    case xla::HloOpcode::kConstant:
+    case HloOpcode::kBitcast:
+    case HloOpcode::kIota:
+    case HloOpcode::kReshape:
+    case HloOpcode::kTranspose:
+    case HloOpcode::kParameter:
       return true;
-    case xla::HloOpcode::kBitcastConvert:
+    case HloOpcode::kConstant:
+      return ShapeUtil::IsEffectiveScalar(inst.shape());
+    case HloOpcode::kBitcastConvert:
+    case HloOpcode::kMap:
+    case HloOpcode::kPopulationCount:
+    case HloOpcode::kReal:
+    case HloOpcode::kImag:
+    case HloOpcode::kSign:
+    case HloOpcode::kRoundNearestAfz:
+    case HloOpcode::kRoundNearestEven:
+    case HloOpcode::kShiftLeft:
+    case HloOpcode::kShiftRightArithmetic:
+    case HloOpcode::kShiftRightLogical:
+    case HloOpcode::kClz:
       return false;
       break;
     default:
