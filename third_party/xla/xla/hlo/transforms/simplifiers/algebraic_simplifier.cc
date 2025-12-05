@@ -10139,9 +10139,9 @@ absl::Status AlgebraicSimplifierVisitor::HandleConditional(
     HloInstruction* conditional) {
   // TODO: b/427635449 - Investigate TPU regression and re-enable this pass for
   // TPU.
-  if (!options_.enable_conditional_simplification()) {
-    return absl::OkStatus();
-  }
+  // if (!options_.enable_conditional_simplification()) {
+  //   return absl::OkStatus();
+  // }
   HloInstruction* pred = conditional->mutable_operand(0);
 
   // conditional(convert(pred), a, b) => conditional(pred, a, b)
