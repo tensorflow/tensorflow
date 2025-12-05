@@ -360,11 +360,6 @@ class Client : public llvm::RTTIExtends<Client, llvm::RTTIRoot> {
       DType dtype, absl::Span<const int64_t> shard_dims, Device* device,
       xla::ifrt::MemoryKind memory_kind) const;
 
-  // Returns a UserContext that captures the current context information such as
-  // the stack trace. IFRT implementations that do not support UserContext will
-  // return a nullptr.
-  virtual tsl::RCReference<UserContext> CreateUserContext() = 0;
-
   static char ID;  // NOLINT
 };
 
