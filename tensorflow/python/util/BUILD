@@ -133,6 +133,8 @@ cc_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/platform:stringpiece",
         "//tensorflow/python/lib/core:safe_pyobject_ptr",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
         "@local_xla//third_party/python_runtime:headers",
     ],
     alwayslink = 1,
