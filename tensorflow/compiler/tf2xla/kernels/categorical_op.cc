@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <array>
 #include <cstdint>
+#include <string>
 
 #include "absl/log/log.h"
 #include "tensorflow/compiler/tf2xla/kernels/random_ops_util.h"

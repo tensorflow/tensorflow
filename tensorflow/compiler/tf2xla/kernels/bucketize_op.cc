@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <algorithm>
+#include <cstdint>
 #include <vector>
 
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"

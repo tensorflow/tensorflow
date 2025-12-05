@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/kernels/case_op.h"
 
 #include <cstdint>
+#include <string>
 #include <tuple>
 #include <utility>
 #include <vector>
