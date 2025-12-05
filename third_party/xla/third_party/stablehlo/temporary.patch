@@ -1,3 +1,39 @@
+diff --ruN a/stablehlo/BUILD.bazel b/stablehlo/BUILD.bazel
+--- stablehlo/BUILD.bazel
++++ stablehlo/BUILD.bazel
+@@ -1183,6 +1183,7 @@
+         ":chlo_ops",
+         ":chlo_rewriters_inc_gen",
+         ":stablehlo_aggressive_simplification_inc_gen",
++        ":stablehlo_broadcast_lowering",
+         ":stablehlo_create_compatibility_expander_inc_gen",
+         ":stablehlo_create_complex_math_expander_inc_gen",
+         ":stablehlo_legalize_deprecated_ops_inc_gen",
+@@ -1922,6 +1923,24 @@
+     ],
+ )
+ 
++cc_test(
++    name = "chlo_builder_test",
++    srcs = ["stablehlo/integrations/cpp/builder/ChloBuilderTest.cpp"],
++    deps = [
++        ":attr_type_builder_util",
++        ":chlo_builder",
++        ":func_builder",
++        ":mlir_builder",
++        ":register",
++        ":stablehlo_builder",
++        ":stablehlo_ops",
++        "@llvm-project//mlir:IR",
++        "@llvm-project//mlir:Support",
++        "@llvm-project//third-party/unittest:gmock",
++        "@llvm-project//third-party/unittest:gtest",
++    ],
++)
++
+ gentbl_cc_library(
+     name = "func_builder_inc",
+     tbl_outs = {
 diff --ruN a/stablehlo/stablehlo/conversions/linalg/tests/miscellaneous.mlir b/stablehlo/stablehlo/conversions/linalg/tests/miscellaneous.mlir
 --- stablehlo/stablehlo/conversions/linalg/tests/miscellaneous.mlir
 +++ stablehlo/stablehlo/conversions/linalg/tests/miscellaneous.mlir
@@ -33,6 +69,67 @@ diff --ruN a/stablehlo/stablehlo/conversions/linalg/transforms/StablehloLegalize
      // If any of the output dimensions is 0, the tensor has no elements. In that
      // case, we can just replace the reshape with an empty op.
      if (llvm::is_contained(resultType.getShape(), 0)) {
+diff --ruN a/stablehlo/stablehlo/dialect/Base.cpp b/stablehlo/stablehlo/dialect/Base.cpp
+--- stablehlo/stablehlo/dialect/Base.cpp
++++ stablehlo/stablehlo/dialect/Base.cpp
+@@ -29,6 +29,7 @@
+ #include "llvm/ADT/STLExtras.h"
+ #include "llvm/ADT/Sequence.h"
+ #include "llvm/ADT/SmallVector.h"
++#include "llvm/Support/Casting.h"
+ #include "llvm/Support/Debug.h"
+ #include "llvm/Support/ErrorHandling.h"
+ #include "mlir/Dialect/Quant/IR/QuantTypes.h"
+@@ -781,6 +782,14 @@
+           numScales == rankedType.getDimSize(quantDim));
+ }
+ 
++bool isBoundedDynamic(Type type) {
++  RankedTensorType rankedType = dyn_cast<RankedTensorType>(type);
++  if (!rankedType) return false;
++  auto boundedAttr =
++      mlir::dyn_cast_if_present<BoundedAttrInterface>(rankedType.getEncoding());
++  return boundedAttr != nullptr;
++}
++
+ bool hasSingleBoundedDimension(Type type) {
+   RankedTensorType rankedType = dyn_cast<RankedTensorType>(type);
+   auto boundedAttr =
+diff --ruN a/stablehlo/stablehlo/dialect/Base.h b/stablehlo/stablehlo/dialect/Base.h
+--- stablehlo/stablehlo/dialect/Base.h
++++ stablehlo/stablehlo/dialect/Base.h
+@@ -101,6 +101,9 @@
+ // mentioned in the StableHLO specification.
+ bool isValidQuantizedDimension(Type type);
+ 
++// Returns true if the given type is a bounded dynamic tensor.
++bool isBoundedDynamic(Type type);
++
+ // Returns true if the given type has a single bounded dimension.
+ bool hasSingleBoundedDimension(Type type);
+ 
+diff --ruN a/stablehlo/stablehlo/dialect/ChloOps.cpp b/stablehlo/stablehlo/dialect/ChloOps.cpp
+--- stablehlo/stablehlo/dialect/ChloOps.cpp
++++ stablehlo/stablehlo/dialect/ChloOps.cpp
+@@ -365,11 +365,14 @@
+   Type elementType = op.getValue().getType();
+   Type operandType = op.getOperand().getType();
+   if (isa<UnrankedTensorType>(operandType)) {
++    // TODO(b/326463552): Remove unranked dynamism from CHLO.
+     inferredReturnShapes.emplace_back(elementType);
+-  } else {
+-    const auto& shape = cast<RankedTensorType>(operandType).getShape();
+-    inferredReturnShapes.emplace_back(shape, elementType);
+-  }
++    return success();
++  }
++  auto rankedType = cast<RankedTensorType>(operandType);
++  const auto& shape = rankedType.getShape();
++  Attribute encoding = rankedType.getEncoding();
++  inferredReturnShapes.emplace_back(shape, elementType, encoding);
+   return success();
+ }
+ 
 diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.cpp b/stablehlo/stablehlo/dialect/StablehloOps.cpp
 --- stablehlo/stablehlo/dialect/StablehloOps.cpp
 +++ stablehlo/stablehlo/dialect/StablehloOps.cpp
@@ -118,6 +215,205 @@ diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.h b/stablehlo/stablehlo/di
  // PrecisionConfigAttr is a constraint attribute on ArrayAttrs.
  // Create this class to allow for building this attr similar to other
  // attributes.
+diff --ruN a/stablehlo/stablehlo/integrations/cpp/builder/CMakeLists.txt b/stablehlo/stablehlo/integrations/cpp/builder/CMakeLists.txt
+--- stablehlo/stablehlo/integrations/cpp/builder/CMakeLists.txt
++++ stablehlo/stablehlo/integrations/cpp/builder/CMakeLists.txt
+@@ -137,6 +137,7 @@
+     set_target_properties(check-stablehlo-ci PROPERTIES FOLDER "Tests")
+     add_unittest(check-stablehlo-ci "unittests"
+       MlirBuilderTest.cpp
++      ChloBuilderTest.cpp
+       StablehloBuilderTest.cpp
+       AttrTypeBuilderUtilTest.cpp
+     )
+diff --ruN a/stablehlo/stablehlo/integrations/cpp/builder/ChloBuilder.cpp b/stablehlo/stablehlo/integrations/cpp/builder/ChloBuilder.cpp
+--- stablehlo/stablehlo/integrations/cpp/builder/ChloBuilder.cpp
++++ stablehlo/stablehlo/integrations/cpp/builder/ChloBuilder.cpp
+@@ -31,5 +31,15 @@
+ 
+ #include "stablehlo/integrations/cpp/builder/ChloBuilder.cpp.inc"
+ 
++/////////////////
++// MANUAL APIs
++/////////////////
++
++MlirOp ConstantLike(MlirOp input, DenseElementsAttr val) {
++  MlirBuilder& builder = input.getBuilder();
++  auto splat_val = val.getSplatValue<TypedAttr>();
++  return builder.create<chlo::ConstantLikeOp>(splat_val, input.getValue());
++}
++
+ }  // namespace chlo
+ }  // namespace mlir
+diff --ruN a/stablehlo/stablehlo/integrations/cpp/builder/ChloBuilder.h b/stablehlo/stablehlo/integrations/cpp/builder/ChloBuilder.h
+--- stablehlo/stablehlo/integrations/cpp/builder/ChloBuilder.h
++++ stablehlo/stablehlo/integrations/cpp/builder/ChloBuilder.h
+@@ -19,6 +19,7 @@
+ #include <cstdint>
+ 
+ #include "llvm/ADT/SmallVector.h"
++#include "mlir/IR/BuiltinAttributes.h"
+ #include "stablehlo/dialect/ChloOps.h"
+ #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
+ 
+@@ -31,6 +32,12 @@
+ 
+ #include "stablehlo/integrations/cpp/builder/ChloBuilder.h.inc"
+ 
++/////////////////
++// MANUAL APIs
++/////////////////
++
++MlirOp ConstantLike(MlirOp input, DenseElementsAttr val);
++
+ }  // namespace chlo
+ }  // namespace mlir
+ 
+diff --ruN a/stablehlo/stablehlo/integrations/cpp/builder/ChloBuilderTest.cpp b/stablehlo/stablehlo/integrations/cpp/builder/ChloBuilderTest.cpp
+--- stablehlo/stablehlo/integrations/cpp/builder/ChloBuilderTest.cpp
++++ stablehlo/stablehlo/integrations/cpp/builder/ChloBuilderTest.cpp
+@@ -0,0 +1,141 @@
++/* Copyright 2025 The OpenXLA Authors.
++
++Licensed under the Apache License, Version 2.0 (the "License");
++you may not use this file except in compliance with the License.
++You may obtain a copy of the License at
++
++    http://www.apache.org/licenses/LICENSE-2.0
++
++Unless required by applicable law or agreed to in writing, software
++distributed under the License is distributed on an "AS IS" BASIS,
++WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++See the License for the specific language governing permissions and
++limitations under the License.
++==============================================================================*/
++
++#include <string>
++
++#include "mlir/IR/BuiltinAttributes.h"
++#include "mlir/IR/BuiltinOps.h"
++#include "mlir/IR/DialectRegistry.h"
++#include "mlir/IR/MLIRContext.h"
++#include "mlir/IR/OwningOpRef.h"
++#include "mlir/IR/Types.h"
++#include "mlir/IR/Verifier.h"
++#include "mlir/Support/DebugStringHelper.h"
++#include "mlir/Support/LLVM.h"
++#include "stablehlo/dialect/Register.h"
++#include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
++#include "stablehlo/integrations/cpp/builder/ChloBuilder.h"
++#include "stablehlo/integrations/cpp/builder/FuncBuilder.h"
++#include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
++#include "testing/base/public/gunit.h"
++#include "stablehlo/integrations/cpp/builder/StablehloBuilder.h"
++
++namespace mlir {
++namespace chlo {
++
++namespace {
++
++// Wrap a module builder and register the classes needed
++class ChloModuleBuilder {
++ public:
++  ChloModuleBuilder()
++      : context_(), module_builder_(context_, mlir::unknownLoc(context_)) {
++    DialectRegistry registry;
++    stablehlo::registerAllDialects(registry);
++    context_.appendDialectRegistry(registry);
++    context_.loadAllAvailableDialects();
++  }
++
++  ModuleBuilder& get() { return module_builder_; }
++  ModuleBuilder* operator->() { return &module_builder_; }
++
++ private:
++  MLIRContext context_;
++  ModuleBuilder module_builder_;
++};
++
++// TODO: Make a FileCheck matcher
++
++}  // namespace
++
++TEST(ChloBuilderTest, SmokeTest) {
++  std::string expected = R"mlir(module {
++  func.func @main(%arg0: tensor<2xi64>) -> tensor<2xi64> {
++    %0 = chlo.constant dense<1> : tensor<i64>
++    %1 = chlo.broadcast_add %arg0, %0 : (tensor<2xi64>, tensor<i64>) -> tensor<2xi64>
++    return %1 : tensor<2xi64>
++  }
++})mlir";
++
++  ChloModuleBuilder mb;
++  {  // Build Main Func
++    Location funcLoc = fileLineColLoc(mb->getContext(), "main.mlir", 1, 1);
++    func::FunctionBuilder fb(mb.get(), "main", funcLoc);
++    auto type2xi64 = makeTensorType(mb->getContext(), {2}, ElementType::I64);
++    auto typeScalari64 = makeTensorType(mb->getContext(), {}, ElementType::I64);
++    auto arg0 = func::Argument(fb, type2xi64);
++    auto cst = Constant(fb, mlir::makeConstant(1L, typeScalari64));
++    auto add = BroadcastAdd(arg0, cst);
++    func::Return(fb, {add});
++  }
++
++  OwningOpRef<ModuleOp> module = mb->build();
++  EXPECT_TRUE(succeeded(mlir::verify(*module)));
++  EXPECT_EQ(expected, debugString(*module));
++}
++
++TEST(MlirBuilderTest, ConstantLike) {
++  std::string expected = R"mlir(module {
++  func.func @main(%arg0: tensor<2xi64>) -> tensor<2xi64> {
++    %0 = "chlo.constant_like"(%arg0) <{value = 1 : i64}> : (tensor<2xi64>) -> tensor<2xi64>
++    return %0 : tensor<2xi64>
++  }
++})mlir";
++
++  ChloModuleBuilder mb;
++  {  // Build Main Func
++    Location funcLoc = fileLineColLoc(mb->getContext(), "main.mlir", 1, 1);
++    func::FunctionBuilder fb(mb.get(), "main", funcLoc);
++    auto type2xi64 = makeTensorType(mb->getContext(), {2}, ElementType::I64);
++    auto typeScalari64 = makeTensorType(mb->getContext(), {}, ElementType::I64);
++    auto arg0 = func::Argument(fb, type2xi64);
++    auto cst = ConstantLike(arg0, mlir::makeConstant(1L, typeScalari64));
++    func::Return(fb, {cst});
++  }
++
++  OwningOpRef<ModuleOp> module = mb->build();
++  EXPECT_TRUE(succeeded(mlir::verify(*module)));
++  EXPECT_EQ(expected, debugString(*module));
++}
++
++TEST(MlirBuilderTest, ConstantLikeBounded) {
++  std::string expected = R"mlir(module {
++  func.func @main(%arg0: tensor<2xi64>, %arg1: tensor<i32>) -> tensor<?xi32, #stablehlo.bounds<2>> {
++    %0 = stablehlo.set_dimension_size %arg0, %arg1, dim = 0 : (tensor<2xi64>, tensor<i32>) -> tensor<?xi64, #stablehlo.bounds<2>>
++    %1 = "chlo.constant_like"(%0) <{value = 1 : i32}> : (tensor<?xi64, #stablehlo.bounds<2>>) -> tensor<?xi32, #stablehlo.bounds<2>>
++    return %1 : tensor<?xi32, #stablehlo.bounds<2>>
++  }
++})mlir";
++
++  ChloModuleBuilder mb;
++  {  // Build Main Func
++    Location funcLoc = fileLineColLoc(mb->getContext(), "main.mlir", 1, 1);
++    func::FunctionBuilder fb(mb.get(), "main", funcLoc);
++    auto type2xi64 = makeTensorType(mb->getContext(), {2}, ElementType::I64);
++    auto typei32 = makeTensorType(mb->getContext(), {}, ElementType::I32);
++    auto arg0 = func::Argument(fb, type2xi64);
++    auto arg1 = func::Argument(fb, typei32);
++    auto sds = stablehlo::SetDimensionSize(arg0, arg1, 0);
++    auto cst = ConstantLike(sds, mlir::makeConstant(1L, typei32));
++    func::Return(fb, {cst});
++  }
++
++  OwningOpRef<ModuleOp> module = mb->build();
++  EXPECT_TRUE(succeeded(mlir::verify(*module)));
++  EXPECT_EQ(expected, debugString(*module));
++}
++
++}  // namespace chlo
++}  // namespace mlir
 diff --ruN a/stablehlo/stablehlo/integrations/cpp/builder/MlirBuilderTblgen.cpp b/stablehlo/stablehlo/integrations/cpp/builder/MlirBuilderTblgen.cpp
 --- stablehlo/stablehlo/integrations/cpp/builder/MlirBuilderTblgen.cpp
 +++ stablehlo/stablehlo/integrations/cpp/builder/MlirBuilderTblgen.cpp
@@ -140,6 +436,17 @@ diff --ruN a/stablehlo/stablehlo/integrations/cpp/builder/MlirBuilderTblgen.cpp 
      }
      for (auto& operand : params.operands) {
        parameters.push_back(
+diff --ruN a/stablehlo/stablehlo/integrations/cpp/builder/StablehloBuilder.cpp b/stablehlo/stablehlo/integrations/cpp/builder/StablehloBuilder.cpp
+--- stablehlo/stablehlo/integrations/cpp/builder/StablehloBuilder.cpp
++++ stablehlo/stablehlo/integrations/cpp/builder/StablehloBuilder.cpp
+@@ -67,6 +67,7 @@
+   MlirOp operand = input;
+   auto inputType = mlir::cast<RankedTensorType>(input.getType());
+   auto resultType = inputType.clone(resultElementType);
++  if (inputType == resultType) return input;  // skip no-op convert
+   if (isa<ComplexType>(inputType.getElementType()) &&
+       !isa<ComplexType>(resultElementType)) {
+     operand = stablehlo::Real(operand);
 diff --ruN a/stablehlo/stablehlo/integrations/cpp/builder/StablehloBuilderTest.cpp b/stablehlo/stablehlo/integrations/cpp/builder/StablehloBuilderTest.cpp
 --- stablehlo/stablehlo/integrations/cpp/builder/StablehloBuilderTest.cpp
 +++ stablehlo/stablehlo/integrations/cpp/builder/StablehloBuilderTest.cpp
@@ -195,6 +502,392 @@ diff --ruN a/stablehlo/stablehlo/integrations/cpp/builder/StablehloBuilderTest.c
  ////////
  // Custom Attribute Tests
  ////////
+diff --ruN a/stablehlo/stablehlo/tests/chlo/chlo_legalize_to_stablehlo.mlir b/stablehlo/stablehlo/tests/chlo/chlo_legalize_to_stablehlo.mlir
+--- stablehlo/stablehlo/tests/chlo/chlo_legalize_to_stablehlo.mlir
++++ stablehlo/stablehlo/tests/chlo/chlo_legalize_to_stablehlo.mlir
+@@ -622,6 +622,10 @@
+   func.return %result : tensor<complex<f32>>
+ }
+ 
++//////
++// Broadcast binary elementwise ops tests are located in
++// chlo_legalize_to_stablehlo_broadcast.mlir
++
+ // -----
+ 
+ // Lower statically shaped `constant_like` to constant.
+@@ -632,6 +636,24 @@
+   %result = "chlo.constant_like"(%arg) { value = 3.2 : f32 }
+       : (tensor<1x2xi64>) -> tensor<1x2xf32>
+   func.return %result : tensor<1x2xf32>
++}
++
++// -----
++
++// Lower dynamically shaped `constant_like` to broadcasted constant.
++// CHECK-LABEL: constant_like_bounded_dynamic_shape
++// CHECK-SAME: (%[[ARG0:.*]]: tensor<2xi64>, %[[ARG1:.*]]: tensor<i32>)
++func.func @constant_like_bounded_dynamic_shape(%arg0: tensor<2xi64>, %arg1: tensor<i32>) -> tensor<?xi32, #stablehlo.bounds<2>> {
++  %0 = stablehlo.set_dimension_size %arg0, %arg1, dim = 0 : (tensor<2xi64>, tensor<i32>) -> tensor<?xi64, #stablehlo.bounds<2>>
++  // CHECK-NOT: chlo.constant_like
++  // CHECK: %[[ARG0_DYN:.*]] = stablehlo.set_dimension_size %[[ARG0]], %[[ARG1]], dim = 0 : (tensor<2xi64>, tensor<i32>) -> tensor<?xi64, #stablehlo.bounds<2>>
++  // CHECK: %[[CST:.*]] = stablehlo.constant dense<1> : tensor<i32>
++  // CHECK-NEXT: %[[BCAST:.*]] = stablehlo.broadcast_in_dim %[[CST]], dims = [] : (tensor<i32>) -> tensor<2xi32>
++  // CHECK-NEXT: %[[GDS:.*]] = stablehlo.get_dimension_size %[[ARG0_DYN]], dim = 0 : (tensor<?xi64, #stablehlo.bounds<2>>) -> tensor<i32>
++  // CHECK-NEXT: %[[SDS:.*]] = stablehlo.set_dimension_size %[[BCAST]], %[[GDS]], dim = 0 : (tensor<2xi32>, tensor<i32>) -> tensor<?xi32, #stablehlo.bounds<2>>
++  // CHECK-NEXT: return %[[SDS]] : tensor<?xi32, #stablehlo.bounds<2>>
++  %1 = "chlo.constant_like"(%0) <{value = 1 : i32}> : (tensor<?xi64, #stablehlo.bounds<2>>) -> tensor<?xi32, #stablehlo.bounds<2>>
++  return %1 : tensor<?xi32, #stablehlo.bounds<2>>
+ }
+ 
+ // -----
+diff --ruN a/stablehlo/stablehlo/tests/chlo/chlo_legalize_to_stablehlo_broadcast.mlir b/stablehlo/stablehlo/tests/chlo/chlo_legalize_to_stablehlo_broadcast.mlir
+--- stablehlo/stablehlo/tests/chlo/chlo_legalize_to_stablehlo_broadcast.mlir
++++ stablehlo/stablehlo/tests/chlo/chlo_legalize_to_stablehlo_broadcast.mlir
+@@ -3,8 +3,8 @@
+ // Check the non-broadcast case for each registered op, then just check a
+ // representative op for detailed broadcast semantics.
+ 
+-// CHECK-LABEL: @addWithoutBroadcast
+-func.func @addWithoutBroadcast(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> tensor<4xf32> {
++// CHECK-LABEL: @add_no_broadcast
++func.func @add_no_broadcast(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> tensor<4xf32> {
+   // CHECK: stablehlo.add %arg0, %arg1
+   %0 = chlo.broadcast_add %arg0, %arg1 : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xf32>
+   func.return %0 : tensor<4xf32>
+@@ -12,8 +12,8 @@
+ 
+ // -----
+ 
+-// CHECK-LABEL: @addStaticBroadcastExpanding
+-func.func @addStaticBroadcastExpanding(%arg0: tensor<4xf32>, %arg1: tensor<f32>) -> tensor<4xf32> {
++// CHECK-LABEL: @add_static_broadcast_expanding
++func.func @add_static_broadcast_expanding(%arg0: tensor<4xf32>, %arg1: tensor<f32>) -> tensor<4xf32> {
+   // CHECK:      %[[BROADCAST:.+]] = stablehlo.broadcast_in_dim %arg1, dims = [] : (tensor<f32>) -> tensor<4xf32>
+   // CHECK-NEXT: stablehlo.add %arg0, %[[BROADCAST]]
+   // CHECK-NOT: shape
+@@ -23,8 +23,8 @@
+ 
+ // -----
+ 
+-// CHECK-LABEL: @addStaticBroadcastSameRank
+-func.func @addStaticBroadcastSameRank(%arg0: tensor<1x4xf32>, %arg1: tensor<4x1xf32>) -> tensor<4x4xf32> {
++// CHECK-LABEL: @add_static_broadcast_same_rank
++func.func @add_static_broadcast_same_rank(%arg0: tensor<1x4xf32>, %arg1: tensor<4x1xf32>) -> tensor<4x4xf32> {
+   // CHECK:      %[[ARG0_B:.+]] = stablehlo.broadcast_in_dim %arg0, dims = [0, 1] : (tensor<1x4xf32>) -> tensor<4x4xf32>
+   // CHECK-NEXT: %[[ARG1_B:.+]] = stablehlo.broadcast_in_dim %arg1, dims = [0, 1] : (tensor<4x1xf32>) -> tensor<4x4xf32>
+   // CHECK-NEXT: stablehlo.add %[[ARG0_B]], %[[ARG1_B]] : tensor<4x4xf32>
+@@ -35,11 +35,33 @@
+ 
+ // -----
+ 
+-
+-// CHECK-LABEL: @dynamicBroadcast
++// [<=10] x [<=10] => [<=10]
++// CHECK-LABEL: func @add_bounded_dynamic_no_broadcast
++func.func @add_bounded_dynamic_no_broadcast(%arg0: tensor<?xf64, #stablehlo.bounds<10>>, %arg1: tensor<?xf64, #stablehlo.bounds<10>>) -> tensor<?xf64, #stablehlo.bounds<10>> {
++  // CHECK-NEXT: stablehlo.add %arg0, %arg1
++  %0 = chlo.broadcast_add %arg0, %arg1 : (tensor<?xf64, #stablehlo.bounds<10>>, tensor<?xf64, #stablehlo.bounds<10>>) -> tensor<?xf64, #stablehlo.bounds<10>>
++  return %0 : tensor<?xf64, #stablehlo.bounds<10>>
++}
++
++// -----
++
++// [<=10] x [] => [<=10]
++// CHECK-LABEL: func @add_bounded_dynamic_expanding
++func.func @add_bounded_dynamic_expanding(%arg0: tensor<?xf64, #stablehlo.bounds<10>>, %arg1: tensor<f64>) -> tensor<?xf64, #stablehlo.bounds<10>> {
++  // CHECK: %[[RHS_BCAST:.+]] = stablehlo.broadcast_in_dim %arg1, dims = [] : (tensor<f64>) -> tensor<10xf64>
++  // CHECK: %[[DIM_SIZE:.+]] = stablehlo.get_dimension_size %arg0, dim = 0
++  // CHECK: %[[RHS_BCAST_DYN:.+]] = stablehlo.set_dimension_size %[[RHS_BCAST]], %[[DIM_SIZE]], dim = 0
++  // CHECK-NEXT: stablehlo.add %arg0, %[[RHS_BCAST_DYN]]
++  %0 = chlo.broadcast_add %arg0, %arg1 : (tensor<?xf64, #stablehlo.bounds<10>>, tensor<f64>) -> tensor<?xf64, #stablehlo.bounds<10>>
++  return %0 : tensor<?xf64, #stablehlo.bounds<10>>
++}
++
++// -----
++
++// CHECK-LABEL: @add_dynamic_broadcast
+ // CHECK-SAME: %[[ARG0:.+]]: tensor<?xf32>
+ // CHECK-SAME: %[[ARG1:.+]]: tensor<?x?xf32>
+-func.func @dynamicBroadcast(%arg0: tensor<?xf32>, %arg1: tensor<?x?xf32>) -> tensor<?x?xf32> {
++func.func @add_dynamic_broadcast(%arg0: tensor<?xf32>, %arg1: tensor<?x?xf32>) -> tensor<?x?xf32> {
+   // CHECK-DAG:  %[[ARG0_S:.+]] = shape.shape_of %[[ARG0]]
+   // CHECK-DAG:  %[[ARG1_S:.+]] = shape.shape_of %[[ARG1]]
+   // CHECK-NEXT: %[[WITNESS:.+]] = shape.cstr_broadcastable %[[ARG0_S]], %[[ARG1_S]]
+@@ -57,10 +79,10 @@
+ 
+ // -----
+ 
+-// CHECK-LABEL: @dynamicBroadcastComplex
++// CHECK-LABEL: @dynamic_broadcast_complex
+ // CHECK-SAME: %[[ARG0:.+]]: tensor<?xf32>
+ // CHECK-SAME: %[[ARG1:.+]]: tensor<?x?xf32>
+-func.func @dynamicBroadcastComplex(%arg0: tensor<?xf32>, %arg1: tensor<?x?xf32>) -> tensor<?x?xcomplex<f32>> {
++func.func @dynamic_broadcast_complex(%arg0: tensor<?xf32>, %arg1: tensor<?x?xf32>) -> tensor<?x?xcomplex<f32>> {
+   // CHECK-DAG:  %[[ARG0_S:.+]] = shape.shape_of %[[ARG0]]
+   // CHECK-DAG:  %[[ARG1_S:.+]] = shape.shape_of %[[ARG1]]
+   // CHECK-NEXT: %[[WITNESS:.+]] = shape.cstr_broadcastable %[[ARG0_S]], %[[ARG1_S]]
+@@ -78,10 +100,10 @@
+ 
+ // -----
+ 
+-// CHECK-LABEL: @dynamicBroadcastCompare
++// CHECK-LABEL: @compare_dynamic_broadcast
+ // CHECK-SAME: %[[ARG0:.+]]: tensor<?xf32>
+ // CHECK-SAME: %[[ARG1:.+]]: tensor<?x?xf32>
+-func.func @dynamicBroadcastCompare(%arg0: tensor<?xf32>, %arg1: tensor<?x?xf32>) -> tensor<?x?xi1> {
++func.func @compare_dynamic_broadcast(%arg0: tensor<?xf32>, %arg1: tensor<?x?xf32>) -> tensor<?x?xi1> {
+   // CHECK-DAG: %[[ARG0_S:.+]] = shape.shape_of %[[ARG0]]
+   // CHECK-DAG: %[[ARG1_S:.+]] = shape.shape_of %[[ARG1]]
+   // CHECK: %[[WITNESS:.+]] = shape.cstr_broadcastable %[[ARG0_S]], %[[ARG1_S]]
+@@ -191,8 +213,8 @@
+ // -----
+ 
+ // Verifies that broadcast_dimensions validity checks are valid.
+-// CHECK-LABEL: @dynamicNonScalarBroadcastDimensions
+-func.func @dynamicNonScalarBroadcastDimensions(%arg0: tensor<1x4xf32>, %arg1: tensor<4xf32>) -> tensor<1x4xf32> {
++// CHECK-LABEL: @dynamic_non_scalar_broadcast_dimensions
++func.func @dynamic_non_scalar_broadcast_dimensions(%arg0: tensor<1x4xf32>, %arg1: tensor<4xf32>) -> tensor<1x4xf32> {
+   // CHECK: stablehlo.add
+   %0 = chlo.broadcast_add %arg0, %arg1 {broadcast_dimensions =  array<i64: 1> } : (tensor<1x4xf32>, tensor<4xf32>) -> tensor<1x4xf32>
+   func.return %0 : tensor<1x4xf32>
+@@ -201,8 +223,8 @@
+ // -----
+ 
+ // Verifies that broadcast_dimensions validity checks are valid.
+-// CHECK-LABEL: @dynamicNonScalarByScalarBroadcastDimensions
+-func.func @dynamicNonScalarByScalarBroadcastDimensions(%arg0: tensor<1x4xf32>, %arg1: tensor<f32>) -> tensor<1x4xf32> {
++// CHECK-LABEL: @dynamic_non_scalar_by_scalar_broadcast_dimensions
++func.func @dynamic_non_scalar_by_scalar_broadcast_dimensions(%arg0: tensor<1x4xf32>, %arg1: tensor<f32>) -> tensor<1x4xf32> {
+   // CHECK: stablehlo.add
+   %0 = chlo.broadcast_add %arg0, %arg1 : (tensor<1x4xf32>, tensor<f32>) -> tensor<1x4xf32>
+   func.return %0 : tensor<1x4xf32>
+@@ -211,7 +233,7 @@
+ // -----
+ 
+ // Verifies that invalid broadcast dimensions are rejected.
+-func.func @dynamicNonScalarBroadcastDimensionsSizeMismatch(%arg0: tensor<1x4xf32>, %arg1: tensor<4xf32>) -> tensor<1x4xf32> {
++func.func @dynamic_non_scalar_broadcast_dimensions_size_mismatch(%arg0: tensor<1x4xf32>, %arg1: tensor<4xf32>) -> tensor<1x4xf32> {
+   // expected-warning @+2 {{unsupported non prefix-padded dynamic rank broadcast_dimensions}}
+   // expected-error @+1 {{failed to legalize operation}}
+   %0 = chlo.broadcast_add %arg0, %arg1 {broadcast_dimensions = array<i64: 1, 2>} : (tensor<1x4xf32>, tensor<4xf32>) -> tensor<1x4xf32>
+@@ -221,7 +243,7 @@
+ // -----
+ 
+ // Verifies that invalid broadcast dimensions are rejected.
+-func.func @dynamicNonScalarBroadcastDimensionsMismatch(%arg0: tensor<1x4xf32>, %arg1: tensor<4xf32>) -> tensor<1x4xf32> {
++func.func @dynamic_non_scalar_broadcast_dimensions_mismatch(%arg0: tensor<1x4xf32>, %arg1: tensor<4xf32>) -> tensor<1x4xf32> {
+   // expected-warning @+2 {{unsupported non prefix-padded dynamic rank broadcast_dimensions}}
+   // expected-error @+1 {{failed to legalize operation}}
+   %0 = chlo.broadcast_add %arg0, %arg1 {broadcast_dimensions = array<i64: 2>} : (tensor<1x4xf32>, tensor<4xf32>) -> tensor<1x4xf32>
+@@ -232,8 +254,8 @@
+ // Note that broadcast_add is used as a proxy for all of the template
+ // expansions. Tests below merely verify that the op has an expansion.
+ 
+-// CHECK-LABEL: @andWithoutBroadcast
+-func.func @andWithoutBroadcast(%arg0: tensor<4xi1>, %arg1: tensor<4xi1>) -> tensor<4xi1> {
++// CHECK-LABEL: @and_no_broadcast
++func.func @and_no_broadcast(%arg0: tensor<4xi1>, %arg1: tensor<4xi1>) -> tensor<4xi1> {
+   // CHECK: stablehlo.and %arg0, %arg1
+   %0 = chlo.broadcast_and %arg0, %arg1 : (tensor<4xi1>, tensor<4xi1>) -> tensor<4xi1>
+   func.return %0 : tensor<4xi1>
+@@ -241,8 +263,8 @@
+ 
+ // -----
+ 
+-// CHECK-LABEL: @atan2WithoutBroadcast
+-func.func @atan2WithoutBroadcast(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> tensor<4xf32> {
++// CHECK-LABEL: @atan2_no_broadcast
++func.func @atan2_no_broadcast(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> tensor<4xf32> {
+   // CHECK: stablehlo.atan2 %arg0, %arg1
+   %0 = chlo.broadcast_atan2 %arg0, %arg1 : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xf32>
+   func.return %0 : tensor<4xf32>
+@@ -250,8 +272,8 @@
+ 
+ // -----
+ 
+-// CHECK-LABEL: @compareWithoutBroadcast
+-func.func @compareWithoutBroadcast(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> tensor<4xi1> {
++// CHECK-LABEL: @compare_no_broadcast
++func.func @compare_no_broadcast(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> tensor<4xi1> {
+   // CHECK: stablehlo.compare EQ, %arg0, %arg1 : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xi1>
+   %0 = chlo.broadcast_compare %arg0, %arg1 {comparison_direction = #chlo<comparison_direction EQ>} : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xi1>
+   func.return %0 : tensor<4xi1>
+@@ -259,8 +281,8 @@
+ 
+ // -----
+ 
+-// CHECK-LABEL: @complexWithoutBroadcast
+-func.func @complexWithoutBroadcast(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> tensor<4xcomplex<f32>> {
++// CHECK-LABEL: @complex_no_broadcast
++func.func @complex_no_broadcast(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> tensor<4xcomplex<f32>> {
+   // CHECK: stablehlo.complex %arg0, %arg1 : tensor<4xcomplex<f32>>
+   %0 = chlo.broadcast_complex %arg0, %arg1 : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xcomplex<f32>>
+   func.return %0 : tensor<4xcomplex<f32>>
+@@ -268,8 +290,8 @@
+ 
+ // -----
+ 
+-// CHECK-LABEL: @divideWithoutBroadcast
+-func.func @divideWithoutBroadcast(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> tensor<4xf32> {
++// CHECK-LABEL: @divide_no_broadcast
++func.func @divide_no_broadcast(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> tensor<4xf32> {
+   // CHECK: stablehlo.divide %arg0, %arg1
+   %0 = chlo.broadcast_divide %arg0, %arg1 : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xf32>
+   func.return %0 : tensor<4xf32>
+@@ -277,8 +299,8 @@
+ 
+ // -----
+ 
+-// CHECK-LABEL: @maximumWithoutBroadcast
+-func.func @maximumWithoutBroadcast(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> tensor<4xf32> {
++// CHECK-LABEL: @maximum_no_broadcast
++func.func @maximum_no_broadcast(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> tensor<4xf32> {
+   // CHECK: stablehlo.maximum %arg0, %arg1
+   %0 = chlo.broadcast_maximum %arg0, %arg1 : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xf32>
+   func.return %0 : tensor<4xf32>
+@@ -286,8 +308,8 @@
+ 
+ // -----
+ 
+-// CHECK-LABEL: @minimumWithoutBroadcast
+-func.func @minimumWithoutBroadcast(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> tensor<4xf32> {
++// CHECK-LABEL: @minimum_no_broadcast
++func.func @minimum_no_broadcast(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> tensor<4xf32> {
+   // CHECK: stablehlo.minimum %arg0, %arg1
+   %0 = chlo.broadcast_minimum %arg0, %arg1 : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xf32>
+   func.return %0 : tensor<4xf32>
+@@ -295,8 +317,8 @@
+ 
+ // -----
+ 
+-// CHECK-LABEL: @multiplyWithoutBroadcast
+-func.func @multiplyWithoutBroadcast(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> tensor<4xf32> {
++// CHECK-LABEL: @multiply_no_broadcast
++func.func @multiply_no_broadcast(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> tensor<4xf32> {
+   // CHECK: stablehlo.multiply %arg0, %arg1
+   %0 = chlo.broadcast_multiply %arg0, %arg1 : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xf32>
+   func.return %0 : tensor<4xf32>
+@@ -304,8 +326,8 @@
+ 
+ // -----
+ 
+-// CHECK-LABEL: @orWithoutBroadcast
+-func.func @orWithoutBroadcast(%arg0: tensor<4xi1>, %arg1: tensor<4xi1>) -> tensor<4xi1> {
++// CHECK-LABEL: @or_no_broadcast
++func.func @or_no_broadcast(%arg0: tensor<4xi1>, %arg1: tensor<4xi1>) -> tensor<4xi1> {
+   // CHECK: stablehlo.or %arg0, %arg1
+   %0 = chlo.broadcast_or %arg0, %arg1 : (tensor<4xi1>, tensor<4xi1>) -> tensor<4xi1>
+   func.return %0 : tensor<4xi1>
+@@ -313,8 +335,8 @@
+ 
+ // -----
+ 
+-// CHECK-LABEL: @powerWithoutBroadcast
+-func.func @powerWithoutBroadcast(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> tensor<4xf32> {
++// CHECK-LABEL: @power_no_broadcast
++func.func @power_no_broadcast(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> tensor<4xf32> {
+   // CHECK: stablehlo.power %arg0, %arg1
+   %0 = chlo.broadcast_power %arg0, %arg1 : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xf32>
+   func.return %0 : tensor<4xf32>
+@@ -322,8 +344,8 @@
+ 
+ // -----
+ 
+-// CHECK-LABEL: @remainderWithoutBroadcast
+-func.func @remainderWithoutBroadcast(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> tensor<4xf32> {
++// CHECK-LABEL: @remainder_no_broadcast
++func.func @remainder_no_broadcast(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> tensor<4xf32> {
+   // CHECK: stablehlo.remainder %arg0, %arg1
+   %0 = chlo.broadcast_remainder %arg0, %arg1 : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xf32>
+   func.return %0 : tensor<4xf32>
+@@ -331,8 +353,8 @@
+ 
+ // -----
+ 
+-// CHECK-LABEL: @shift_leftWithoutBroadcast
+-func.func @shift_leftWithoutBroadcast(%arg0: tensor<4xi32>, %arg1: tensor<4xi32>) -> tensor<4xi32> {
++// CHECK-LABEL: @shift_left_no_broadcast
++func.func @shift_left_no_broadcast(%arg0: tensor<4xi32>, %arg1: tensor<4xi32>) -> tensor<4xi32> {
+   // CHECK: stablehlo.shift_left %arg0, %arg1
+   %0 = chlo.broadcast_shift_left %arg0, %arg1 : (tensor<4xi32>, tensor<4xi32>) -> tensor<4xi32>
+   func.return %0 : tensor<4xi32>
+@@ -340,8 +362,8 @@
+ 
+ // -----
+ 
+-// CHECK-LABEL: @shift_right_arithmeticWithoutBroadcast
+-func.func @shift_right_arithmeticWithoutBroadcast(%arg0: tensor<4xi32>, %arg1: tensor<4xi32>) -> tensor<4xi32> {
++// CHECK-LABEL: @shift_right_arithmetic_no_broadcast
++func.func @shift_right_arithmetic_no_broadcast(%arg0: tensor<4xi32>, %arg1: tensor<4xi32>) -> tensor<4xi32> {
+   // CHECK: stablehlo.shift_right_arithmetic %arg0, %arg1
+   %0 = chlo.broadcast_shift_right_arithmetic %arg0, %arg1 : (tensor<4xi32>, tensor<4xi32>) -> tensor<4xi32>
+   func.return %0 : tensor<4xi32>
+@@ -349,8 +371,8 @@
+ 
+ // -----
+ 
+-// CHECK-LABEL: @shift_right_logicalWithoutBroadcast
+-func.func @shift_right_logicalWithoutBroadcast(%arg0: tensor<4xi32>, %arg1: tensor<4xi32>) -> tensor<4xi32> {
++// CHECK-LABEL: @shift_right_logical_no_broadcast
++func.func @shift_right_logical_no_broadcast(%arg0: tensor<4xi32>, %arg1: tensor<4xi32>) -> tensor<4xi32> {
+   // CHECK: stablehlo.shift_right_logical %arg0, %arg1
+   %0 = chlo.broadcast_shift_right_logical %arg0, %arg1 : (tensor<4xi32>, tensor<4xi32>) -> tensor<4xi32>
+   func.return %0 : tensor<4xi32>
+@@ -358,8 +380,8 @@
+ 
+ // -----
+ 
+-// CHECK-LABEL: @subWithoutBroadcast
+-func.func @subWithoutBroadcast(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> tensor<4xf32> {
++// CHECK-LABEL: @sub_no_broadcast
++func.func @sub_no_broadcast(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> tensor<4xf32> {
+   // CHECK: stablehlo.subtract %arg0, %arg1
+   %0 = chlo.broadcast_subtract %arg0, %arg1 : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xf32>
+   func.return %0 : tensor<4xf32>
+@@ -367,16 +389,16 @@
+ 
+ // -----
+ 
+-// CHECK-LABEL: @xorWithoutBroadcast
+-func.func @xorWithoutBroadcast(%arg0: tensor<4xi1>, %arg1: tensor<4xi1>) -> tensor<4xi1> {
++// CHECK-LABEL: @xor_no_broadcast
++func.func @xor_no_broadcast(%arg0: tensor<4xi1>, %arg1: tensor<4xi1>) -> tensor<4xi1> {
+   // CHECK: stablehlo.xor %arg0, %arg1
+   %0 = chlo.broadcast_xor %arg0, %arg1 : (tensor<4xi1>, tensor<4xi1>) -> tensor<4xi1>
+   func.return %0 : tensor<4xi1>
+ }
+ 
+ // -----
+-// CHECK-LABEL: @NextAfterWithoutBroadcast
+-func.func @NextAfterWithoutBroadcast(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>)
++// CHECK-LABEL: @next_after_no_broadcast
++func.func @next_after_no_broadcast(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>)
+     -> tensor<4xf32> {
+   // CHECK-NOT: chlo.broadcast_next_after
+   %0 = chlo.broadcast_next_after %arg0, %arg1
+@@ -386,8 +408,8 @@
+ 
+ // -----
+ 
+-// CHECK-LABEL: @PolygammaWithoutBroadcast
+-func.func @PolygammaWithoutBroadcast(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>)
++// CHECK-LABEL: @Polygamma_no_broadcast
++func.func @Polygamma_no_broadcast(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>)
+     -> tensor<4xf32> {
+   // CHECK-NOT: chlo.broadcast_polygamma
+   // CHECK-NOT: chlo.polygamma
+@@ -398,8 +420,8 @@
+ 
+ // -----
+ 
+-// CHECK-LABEL: @ZetaWithoutBroadcast
+-func.func @ZetaWithoutBroadcast(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>)
++// CHECK-LABEL: @Zeta_no_broadcast
++func.func @Zeta_no_broadcast(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>)
+     -> tensor<4xf32> {
+   // CHECK-NOT: chlo.broadcast_zeta
+   // CHECK-NOT: chlo.zeta
 diff --ruN a/stablehlo/stablehlo/tests/ops_broadcasting.mlir b/stablehlo/stablehlo/tests/ops_broadcasting.mlir
 --- stablehlo/stablehlo/tests/ops_broadcasting.mlir
 +++ stablehlo/stablehlo/tests/ops_broadcasting.mlir
@@ -387,23 +1080,205 @@ diff --ruN a/stablehlo/stablehlo/tests/transforms/stablehlo_aggressive_simplific
  }
  
  // CHECK-LABEL: func.func @broadcast_in_dim_prefer_nested_reshape
+diff --ruN a/stablehlo/stablehlo/transforms/CMakeLists.txt b/stablehlo/stablehlo/transforms/CMakeLists.txt
+--- stablehlo/stablehlo/transforms/CMakeLists.txt
++++ stablehlo/stablehlo/transforms/CMakeLists.txt
+@@ -113,6 +113,7 @@
+   MLIRTransformUtils
+   StablehloBase
+   StablehloBroadcastUtils
++  StablehloBroadcastLowering
+   StablehloLinalgTransforms
+   StablehloOps
+   StablehloOptimizationPasses
+diff --ruN a/stablehlo/stablehlo/transforms/ChloLegalizeToStablehlo.cpp b/stablehlo/stablehlo/transforms/ChloLegalizeToStablehlo.cpp
+--- stablehlo/stablehlo/transforms/ChloLegalizeToStablehlo.cpp
++++ stablehlo/stablehlo/transforms/ChloLegalizeToStablehlo.cpp
+@@ -35,7 +35,6 @@
+ #include "mlir/IR/BuiltinAttributes.h"
+ #include "mlir/IR/BuiltinTypeInterfaces.h"
+ #include "mlir/IR/BuiltinTypes.h"
+-#include "mlir/IR/ImplicitLocOpBuilder.h"
+ #include "mlir/IR/MLIRContext.h"
+ #include "mlir/IR/PatternMatch.h"
+ #include "mlir/IR/TypeUtilities.h"
+@@ -51,6 +50,7 @@
+ #include "stablehlo/transforms/ChloDecompositionUtils.h"
+ #include "stablehlo/transforms/PassUtils.h"
+ #include "stablehlo/transforms/Passes.h"
++#include "stablehlo/transforms/StablehloBroadcastLowering.h"
+ 
+ // This must precede all other headers, otherwise during Windows cross
+ // compilation, M_PI will not be defined.
+@@ -201,34 +201,13 @@
+       val);
+ }
+ 
+-// Broadcast using numpy-style broadcasting semantics.
+-// This is only valid if the CHLO op has static shaped operands, and no
+-// explicitly specified broadcast_dimensions.
+-//
+-// Asserts that input is ranked tensor type.
+-Value numpyBroadcastIfNeeded(Value op, RankedTensorType opResultType,
+-                             PatternRewriter& rewriter) {
+-  RankedTensorType inputType = cast<RankedTensorType>(op.getType());
+-  RankedTensorType broadcastedResultType =
+-      opResultType.clone(inputType.getElementType());
+-
+-  // No broadcasting needed if input type matches broadcasted result type.
+-  if (inputType == broadcastedResultType) return op;
+-
+-  // broadcast dims are the last dims for numpy style broadcasting.
+-  int64_t inputRank = inputType.getRank();
+-  int64_t resultRank = opResultType.getRank();
+-  auto broadcastDimensions =
+-      llvm::to_vector(llvm::seq<int64_t>(resultRank - inputRank, resultRank));
+-  return stablehlo::BroadcastInDimOp::create(rewriter, op.getLoc(),
+-                                             broadcastedResultType, op,
+-                                             broadcastDimensions)
+-      .getResult();
+-}
+-
+ //===----------------------------------------------------------------------===//
+ // Broadcasting Patterns.
+ //===----------------------------------------------------------------------===//
++
++bool isStaticOrBoundedDynamicTensor(RankedTensorType type) {
++  return type.hasStaticShape() || hlo::isBoundedDynamic(type);
++}
+ 
+ // Converts binary ops that statically are determined to not broadcast directly
+ // to the corresponding stablehlo non-broadcasting op.
+@@ -243,12 +222,14 @@
+     // Only rewrite for statically determinable non-broadcasting cases.
+     auto lhsType = dyn_cast<RankedTensorType>(adaptor.getLhs().getType());
+     auto rhsType = dyn_cast<RankedTensorType>(adaptor.getRhs().getType());
+-    if (!lhsType || !rhsType || lhsType.getShape() != rhsType.getShape() ||
+-        !lhsType.hasStaticShape() || !rhsType.hasStaticShape())
++    if (!lhsType || !rhsType || !isStaticOrBoundedDynamicTensor(lhsType) ||
++        !isStaticOrBoundedDynamicTensor(rhsType) ||
++        lhsType.getShape() != rhsType.getShape() ||
++        lhsType.getEncoding() != rhsType.getEncoding())
+       return rewriter.notifyMatchFailure(
+           op,
+           "expected LHS and RHS to be ranked tensors with matching shapes that "
+-          "are all static");
++          "are all static or bounded dynamic");
+ 
+     rewriter.replaceOp(
+         op, ValueRange{Adaptor::createOp(op, op.getType(),
+@@ -270,41 +251,46 @@
+     // Only rewrite for statically determinable non-broadcasting cases.
+     auto lhsType = dyn_cast<RankedTensorType>(adaptor.getLhs().getType());
+     auto rhsType = dyn_cast<RankedTensorType>(adaptor.getRhs().getType());
+-    if (!lhsType || !rhsType || !lhsType.hasStaticShape() ||
+-        !rhsType.hasStaticShape())
++    if (!lhsType || !rhsType || !isStaticOrBoundedDynamicTensor(lhsType) ||
++        !isStaticOrBoundedDynamicTensor(rhsType))
+       return rewriter.notifyMatchFailure(
+           op,
+-          "expected LHS and RHS to be ranked tensor types with static "
+-          "shape");
++          "expected LHS and RHS to be ranked tensor types with static or "
++          "bounded dynamic shape");
+ 
+     // Rely on CHLO type inference to figure out the proper broadcasted shape.
+     auto resultType = dyn_cast<RankedTensorType>(op.getResult().getType());
+-    if (!resultType || !resultType.hasStaticShape())
++    if (!resultType || !isStaticOrBoundedDynamicTensor(resultType))
+       return rewriter.notifyMatchFailure(
+-          op, "expected result to be a ranked tensor type with static shape");
++          op,
++          "expected result to be a ranked tensor type with static or bounded "
++          "dynamic shape");
+ 
+     auto lhs = adaptor.getLhs();
+     auto rhs = adaptor.getRhs();
+     auto broadcastDimensions = adaptor.getBroadcastDimensions();
+     if (broadcastDimensions &&
+-        !hlo::isLegalNumpyRankedBroadcast(lhs, rhs, *broadcastDimensions))
++        !hlo::isLegalNumpyRankedBroadcast(lhs, rhs, *broadcastDimensions)) {
+       return rewriter.notifyMatchFailure(
+           op,
+           "expected implicit broadcast_dimensions or numpy-style broadcasting");
++    }
+ 
+     LLVM_DEBUG(llvm::dbgs()
+                << "CHLO Decomposing " << op->getName() << " with broadcast "
+                << lhsType << " x " << rhsType << " -> " << resultType << "\n");
+ 
+-    // If operands are static directly create stablehlo broadcasting ops.
+-    // Use numpy-style broadcasting with using StableHLO broadcast ops,
+-    // when user didn't specify broadcast_dimensions.
+-    auto lhsBroadcast =
+-        numpyBroadcastIfNeeded(adaptor.getLhs(), resultType, rewriter);
+-    auto rhsBroadcast =
+-        numpyBroadcastIfNeeded(adaptor.getRhs(), resultType, rewriter);
+-    auto result = Adaptor::createOp(op, resultType,
+-                                    {lhsBroadcast, rhsBroadcast}, rewriter);
++    // If operands are static or bounded dynamic, directly create stablehlo
++    // broadcasting ops. Use numpy-style broadcasting with using StableHLO
++    // broadcast ops. Can leave off broadcast_dimensions since the above
++    // logic verifies that they are the default for numpy-style broadcasting.
++    mlir::SmallVector<Value> broadcastOperands = {lhs, rhs};
++    auto broadcasted_values =
++        stablehlo::numpyBroadcastIfNeeded(rewriter, broadcastOperands);
++    if (failed(broadcasted_values)) return failure();
++
++    auto result =
++        Adaptor::createOp(op, resultType, *broadcasted_values, rewriter);
+     rewriter.replaceOp(op, {result.getResult()});
+     return success();
+   }
+@@ -425,7 +411,21 @@
+       return success();
+     }
+ 
+-    // Lower to broadcasted constant.
++    // Lower to cst -> broadcast -> set_dimension_size if bounded dynamic.
++    if (hlo::isBoundedDynamic(resultTy)) {
++      Value constant = mlir::stablehlo::ConstantOp::create(
++          rewriter, op.getLoc(), op.getValue());
++      mlir::FailureOr<stablehlo::Dimensions> operandDims =
++          getDimensions(adaptor.getOperand());
++      if (failed(operandDims)) return failure();
++      mlir::FailureOr<Value> broadcast =
++          stablehlo::numpyBroadcastIfNeeded(rewriter, constant, *operandDims);
++      if (failed(broadcast)) return failure();
++      rewriter.replaceOp(op, *broadcast);
++      return success();
++    }
++
++    // Lower unbounded dynamic to broadcasted constant.
+     Location loc = op.getLoc();
+     Value constant =
+         mlir::stablehlo::ConstantOp::create(rewriter, loc, op.getValue());
 diff --ruN a/stablehlo/stablehlo/transforms/StablehloBroadcastLowering.cpp b/stablehlo/stablehlo/transforms/StablehloBroadcastLowering.cpp
 --- stablehlo/stablehlo/transforms/StablehloBroadcastLowering.cpp
 +++ stablehlo/stablehlo/transforms/StablehloBroadcastLowering.cpp
-@@ -63,7 +63,8 @@
-   // Get tensor type
-   mlir::RankedTensorType tensor_type = dyn_cast<RankedTensorType>(op.getType());
-   if (!tensor_type)
--    return emitError(op.getLoc(), "expected ranked tensor type");
-+    return emitError(op.getLoc(),
-+                     "expected ranked tensor type for broadcast inputs");
- 
-   auto encoding =
-       mlir::dyn_cast_if_present<mlir::stablehlo::TypeExtensionsAttr>(
-@@ -78,10 +79,11 @@
-   return dimensions;
+@@ -59,29 +59,11 @@
+   };
  }
  
+-FailureOr<Dimensions> getDimensions(Value op) {
+-  // Get tensor type
+-  mlir::RankedTensorType tensor_type = dyn_cast<RankedTensorType>(op.getType());
+-  if (!tensor_type)
+-    return emitError(op.getLoc(), "expected ranked tensor type");
+-
+-  auto encoding =
+-      mlir::dyn_cast_if_present<mlir::stablehlo::TypeExtensionsAttr>(
+-          tensor_type.getEncoding());
+-
+-  Dimensions dimensions;
+-  dimensions.reserve(tensor_type.getRank());
+-  for (int64_t idx = 0; idx < tensor_type.getRank(); ++idx) {
+-    auto dimInfo = getDimensionInfo(op, tensor_type, encoding, idx);
+-    dimensions.push_back(dimInfo);
+-  }
+-  return dimensions;
+-}
+-
 -FailureOr<Dimensions> getNumpyBroadcastShapeWithBounds(const Dimensions& a,
 +FailureOr<Dimensions> getNumpyBroadcastShapeWithBounds(Value op,
 +                                                       const Dimensions& a,
@@ -414,7 +1289,7 @@ diff --ruN a/stablehlo/stablehlo/transforms/StablehloBroadcastLowering.cpp b/sta
    size_t max_rank = std::max(a.size(), b.size());
    Dimensions result(max_rank);
  
-@@ -110,14 +112,14 @@
+@@ -110,14 +92,14 @@
  
      // If both LHS and RHS are not 1, dim size must match.
      if (dim_a.size != dim_b.size) {
@@ -432,21 +1307,47 @@ diff --ruN a/stablehlo/stablehlo/transforms/StablehloBroadcastLowering.cpp b/sta
                         "cannot mix bounded and static dimensions in broadcast");
      }
  
-@@ -126,7 +128,7 @@
+@@ -126,8 +108,30 @@
    }
  
    LLVM_DEBUG(llvm::dbgs() << "[getNumpyBroadcastShapeWithBounds] result: "
 -                          << toString(result));
 +                          << toString(result) << "\n");
    return result;
++}
++
++}  // namespace
++
++FailureOr<Dimensions> getDimensions(Value op) {
++  // Get tensor type
++  mlir::RankedTensorType tensor_type = dyn_cast<RankedTensorType>(op.getType());
++  if (!tensor_type)
++    return emitError(op.getLoc(),
++                     "expected ranked tensor type for broadcast inputs");
++
++  auto encoding =
++      mlir::dyn_cast_if_present<mlir::stablehlo::TypeExtensionsAttr>(
++          tensor_type.getEncoding());
++
++  Dimensions dimensions;
++  dimensions.reserve(tensor_type.getRank());
++  for (int64_t idx = 0; idx < tensor_type.getRank(); ++idx) {
++    auto dimInfo = getDimensionInfo(op, tensor_type, encoding, idx);
++    dimensions.push_back(dimInfo);
++  }
++  return dimensions;
  }
  
-@@ -155,8 +157,11 @@
+ mlir::RankedTensorType getRankedTensorType(const Dimensions& dims,
+@@ -153,10 +157,12 @@
+   return mlir::RankedTensorType::get(shape, element_type, encoding);
+ }
  
- }  // namespace
- 
+-}  // namespace
+-
 -FailureOr<Dimensions> getNumpyBroadcastShape(ArrayRef<Value> ops) {
 -  if (ops.empty()) return failure();
++
 +FailureOr<Dimensions> getNumpyBroadcastShape(OpBuilder& builder,
 +                                             ArrayRef<Value> ops) {
 +  if (ops.empty())
@@ -455,7 +1356,7 @@ diff --ruN a/stablehlo/stablehlo/transforms/StablehloBroadcastLowering.cpp b/sta
  
    Value first = ops[0];
    auto bcastShapeOrFail = getDimensions(first);
-@@ -168,7 +173,7 @@
+@@ -168,7 +174,7 @@
      auto dims = getDimensions(currOp);
      if (failed(dims)) return failure();
      auto currBcastShapeOrFail =
@@ -464,7 +1365,7 @@ diff --ruN a/stablehlo/stablehlo/transforms/StablehloBroadcastLowering.cpp b/sta
      if (failed(currBcastShapeOrFail)) return failure();
      bcastShape = std::move(*currBcastShapeOrFail);
    }
-@@ -192,7 +197,7 @@
+@@ -192,7 +198,7 @@
  FailureOr<SmallVector<Value>> numpyBroadcastIfNeeded(OpBuilder& builder,
                                                       ArrayRef<Value> operands) {
    // Figure out the broadcast shape
@@ -473,7 +1374,7 @@ diff --ruN a/stablehlo/stablehlo/transforms/StablehloBroadcastLowering.cpp b/sta
    if (failed(bcastShapeOrFail)) return failure();
    Dimensions bcastShape = std::move(*bcastShapeOrFail);
  
-@@ -208,35 +213,34 @@
+@@ -208,35 +214,34 @@
  
  FailureOr<Value> numpyBroadcastIfNeeded(OpBuilder& builder, Value input,
                                          const Dimensions& shape) {
@@ -526,7 +1427,7 @@ diff --ruN a/stablehlo/stablehlo/transforms/StablehloBroadcastLowering.cpp b/sta
  
    // Construct the result type of the broadcast
    //  - If input is static and target shape is static, use static shape.
-@@ -244,33 +248,35 @@
+@@ -244,33 +249,35 @@
    //  - If input is not bounded, but target shape is bounded, broadcast to
    //    the padded shape then call SetDimensionSize to make dynamic.
    auto bcastShape = shape;
@@ -578,7 +1479,7 @@ diff --ruN a/stablehlo/stablehlo/transforms/StablehloBroadcastLowering.cpp b/sta
  
    // Mark the padded broadcast as dynamic where the result is bounded.
    // Inserts `GetDimSize(boundOp)->SetDimSize(inputBcast)` for any bounded
-@@ -278,13 +284,13 @@
+@@ -278,13 +285,13 @@
    for (size_t i = 0; i < shape.size(); ++i) {
      if (!bcastShape[i].boundOp.has_value() && shape[i].boundOp.has_value()) {
        Value boundOp = shape[i].boundOp.value();
@@ -601,8 +1502,18 @@ diff --ruN a/stablehlo/stablehlo/transforms/StablehloBroadcastLowering.cpp b/sta
 diff --ruN a/stablehlo/stablehlo/transforms/StablehloBroadcastLowering.h b/stablehlo/stablehlo/transforms/StablehloBroadcastLowering.h
 --- stablehlo/stablehlo/transforms/StablehloBroadcastLowering.h
 +++ stablehlo/stablehlo/transforms/StablehloBroadcastLowering.h
-@@ -49,7 +49,8 @@
+@@ -47,9 +47,18 @@
+ using Dimensions = SmallVector<DimensionInfo>;
+ std::string toString(const Dimensions& dims);
  
++// Returns the dimensions of the given op, or failure if the op's type is not a
++// ranked tensor.
++FailureOr<Dimensions> getDimensions(Value op);
++
++// Returns the ranked tensor type with the given dimensions and element type.
++mlir::RankedTensorType getRankedTensorType(const Dimensions& dims,
++                                           mlir::Type element_type);
++
  // Returns the common shape these ops would broadcast to, or an error if the
  // ops are not broadcastable.
 -FailureOr<Dimensions> getNumpyBroadcastShape(ArrayRef<Value> ops);
