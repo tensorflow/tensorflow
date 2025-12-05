@@ -73,7 +73,7 @@ absl::Status CheckState(const Tensor& state) {
 absl::Status CheckPhiloxState(const Tensor& state, int64_t alg_tag_skip = 0) {
   static_assert(std::is_same<StateElementType, int64_t>::value,
                 "StateElementType must be int64");
-  static_assert(std::is_same<PhiloxRandom::ResultElementType, uint32>::value,
+  static_assert(std::is_same<PhiloxRandom::ResultElementType, uint32_t>::value,
                 "PhiloxRandom::ResultElementType must be uint32");
   auto min_size = alg_tag_skip + PHILOX_MIN_STATE_SIZE;
   if (state.NumElements() < min_size) {
@@ -277,9 +277,10 @@ namespace functor {
 template <>
 struct RngSkip_Philox<CPUDevice> {
   void operator()(const CPUDevice& device, const StateElementType* in_data,
-                  uint64 delta, StateElementType* out_data) {
+                  uint64_t delta, StateElementType* out_data) {
     // Delegates to PhiloxRandom to do the actual increasing.
-    auto counter = GetCounterFromMem(reinterpret_cast<const uint64*>(in_data));
+    auto counter =
+        GetCounterFromMem(reinterpret_cast<const uint64_t*>(in_data));
     UpdateCounterMemWithPhiloxRandom(counter, delta, out_data);
   }
 };
@@ -301,7 +302,7 @@ class RngSkipOp : public OpKernel {
     DeltaType delta_;
     OP_REQUIRES_OK(
         ctx, GetScalar(ctx->input(delta_input_idx), delta_input_idx, &delta_));
-    uint64 delta = static_cast<uint64>(delta_);
+    uint64_t delta = static_cast<uint64_t>(delta_);
     Var* var = nullptr;
     OP_REQUIRES_OK(
         ctx, LookupResource(ctx, HandleFromInput(ctx, state_input_idx), &var));

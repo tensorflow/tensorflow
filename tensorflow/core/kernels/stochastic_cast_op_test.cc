@@ -155,8 +155,8 @@ class StochasticCastOpToIntTest : public OpsTestBase {
 
     const InType value = InType(0.625);
     AddInput<InType>(TensorShape({kDim, 1}), [&value](int i) { return value; });
-    AddInput<uint64>(TensorShape({1}), [](int i) { return kRngKey; });
-    AddInput<uint64>(TensorShape({1}), [](int i) { return kRngCounter; });
+    AddInput<uint64_t>(TensorShape({1}), [](int i) { return kRngKey; });
+    AddInput<uint64_t>(TensorShape({1}), [](int i) { return kRngCounter; });
     AddInput<int>(TensorShape({}), [](int i) { return kAlgorithm; });
 
     TF_ASSERT_OK(RunOpKernel());
@@ -201,8 +201,8 @@ class StochasticCastOpToIntTest : public OpsTestBase {
 
     TensorShape shape({static_cast<int64_t>(dim)});
     Tensor* input = AddInput(in_type, shape);
-    AddInput<uint64>(TensorShape({1}), [](int i) { return kRngKey; });
-    AddInput<uint64>(TensorShape({1}), [](int i) { return kRngCounter; });
+    AddInput<uint64_t>(TensorShape({1}), [](int i) { return kRngKey; });
+    AddInput<uint64_t>(TensorShape({1}), [](int i) { return kRngCounter; });
     AddInput<int>(TensorShape({}), [](int i) { return kAlgorithm; });
 
     auto in = input->flat<InType>();
@@ -231,11 +231,11 @@ TEST_F(StochasticCastOpToIntTest, ExhaustiveTestHalfCastToInt32) {
 }
 
 TEST_F(StochasticCastOpToIntTest, ExhaustiveTestHalfCastToInt16) {
-  ExhasutiveTestHelper<half, int16>(DT_HALF, DT_INT16);
+  ExhasutiveTestHelper<half, int16_t>(DT_HALF, DT_INT16);
 }
 
 TEST_F(StochasticCastOpToIntTest, ExhaustiveTestHalfCastToInt8) {
-  ExhasutiveTestHelper<half, int8>(DT_HALF, DT_INT8);
+  ExhasutiveTestHelper<half, int8_t>(DT_HALF, DT_INT8);
 }
 
 TEST_F(StochasticCastOpToIntTest, ExhaustiveTestBf16CastToInt32) {
@@ -243,11 +243,11 @@ TEST_F(StochasticCastOpToIntTest, ExhaustiveTestBf16CastToInt32) {
 }
 
 TEST_F(StochasticCastOpToIntTest, ExhaustiveTestBf16CastToInt16) {
-  ExhasutiveTestHelper<bfloat16, int16>(DT_BFLOAT16, DT_INT16);
+  ExhasutiveTestHelper<bfloat16, int16_t>(DT_BFLOAT16, DT_INT16);
 }
 
 TEST_F(StochasticCastOpToIntTest, ExhaustiveTestBf16CastToInt8) {
-  ExhasutiveTestHelper<bfloat16, int8>(DT_BFLOAT16, DT_INT8);
+  ExhasutiveTestHelper<bfloat16, int8_t>(DT_BFLOAT16, DT_INT8);
 }
 
 TEST_F(StochasticCastOpToIntTest, ExhaustiveTestFloatCastToInt32) {
@@ -255,11 +255,11 @@ TEST_F(StochasticCastOpToIntTest, ExhaustiveTestFloatCastToInt32) {
 }
 
 TEST_F(StochasticCastOpToIntTest, ExhaustiveTestFloatCastToInt16) {
-  ExhasutiveTestHelper<float, int16>(DT_FLOAT, DT_INT16);
+  ExhasutiveTestHelper<float, int16_t>(DT_FLOAT, DT_INT16);
 }
 
 TEST_F(StochasticCastOpToIntTest, ExhaustiveTestFloatCastToInt8) {
-  ExhasutiveTestHelper<float, int8>(DT_FLOAT, DT_INT8);
+  ExhasutiveTestHelper<float, int8_t>(DT_FLOAT, DT_INT8);
 }
 
 TEST_F(StochasticCastOpToIntTest, ExhaustiveTestDoubleCastToInt32) {
@@ -267,27 +267,27 @@ TEST_F(StochasticCastOpToIntTest, ExhaustiveTestDoubleCastToInt32) {
 }
 
 TEST_F(StochasticCastOpToIntTest, ExhaustiveTestDoubleCastToInt16) {
-  ExhasutiveTestHelper<double, int16>(DT_DOUBLE, DT_INT16);
+  ExhasutiveTestHelper<double, int16_t>(DT_DOUBLE, DT_INT16);
 }
 
 TEST_F(StochasticCastOpToIntTest, ExhaustiveTestDoubleCastToInt8) {
-  ExhasutiveTestHelper<double, int8>(DT_DOUBLE, DT_INT8);
+  ExhasutiveTestHelper<double, int8_t>(DT_DOUBLE, DT_INT8);
 }
 
 TEST_F(StochasticCastOpToIntTest, CastProbabilityTestHalfToInt8) {
-  CastResultProbabilityTestHelper<half, int8>(DT_HALF, DT_INT8);
+  CastResultProbabilityTestHelper<half, int8_t>(DT_HALF, DT_INT8);
 }
 
 TEST_F(StochasticCastOpToIntTest, CastProbabilityTestBf16ToInt8) {
-  CastResultProbabilityTestHelper<bfloat16, int8>(DT_BFLOAT16, DT_INT8);
+  CastResultProbabilityTestHelper<bfloat16, int8_t>(DT_BFLOAT16, DT_INT8);
 }
 
 TEST_F(StochasticCastOpToIntTest, CastProbabilityTestFloatToInt8) {
-  CastResultProbabilityTestHelper<float, int8>(DT_FLOAT, DT_INT8);
+  CastResultProbabilityTestHelper<float, int8_t>(DT_FLOAT, DT_INT8);
 }
 
 TEST_F(StochasticCastOpToIntTest, CastProbabilityTestDoubleToInt8) {
-  CastResultProbabilityTestHelper<double, int8>(DT_DOUBLE, DT_INT8);
+  CastResultProbabilityTestHelper<double, int8_t>(DT_DOUBLE, DT_INT8);
 }
 
 }  // namespace tensorflow
