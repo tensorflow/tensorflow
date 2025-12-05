@@ -220,7 +220,7 @@ absl::Status CollectiveMetadataThunk::Initialize(
 
   std::vector<se::DeviceMemoryBase> parameters;
   parameters.reserve(parameters_.size());
-  for (const CollectiveMetadataThunk::Buffer& parameter : parameters_) {
+  for (const Buffer& parameter : parameters_) {
     parameters.push_back(
         params.buffer_allocations->GetDeviceAddress(parameter.slice));
   }
@@ -228,7 +228,7 @@ absl::Status CollectiveMetadataThunk::Initialize(
       params.buffer_allocations->GetDeviceAddress(result_);
 
   TF_ASSIGN_OR_RETURN(void* multimem_address_space,
-                      SetupMultimem(clique_key, params));
+                      AllocateMultimem(clique_key, params));
   return ConstructCollectiveMetadata(
       std::move(parameters), params.stream, clique_key, multimem_address_space,
       params.executor->device_ordinal(), result_ptr);
@@ -239,7 +239,7 @@ absl::Status CollectiveMetadataThunk::ExecuteOnStream(
   return absl::OkStatus();
 }
 
-absl::StatusOr<void*> CollectiveMetadataThunk::SetupMultimem(
+absl::StatusOr<void*> CollectiveMetadataThunk::AllocateMultimem(
     const GpuCliqueKey& clique_key, const InitializeParams& params) {
   se::DeviceMemoryBase memory_range;
   for (const Buffer& parameter : parameters_) {
