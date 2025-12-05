@@ -751,18 +751,8 @@ absl::StatusOr<BackendInterface::Response> IfrtBackend::HandleInit(
     }
     d->set_debug_string(AsProtoStringData(device->DebugString()));
     d->set_to_string(AsProtoStringData(device->ToString()));
-    if (protocol_version() <= 3) {
-      for (const auto& [name, attr] : device->Attributes().map()) {
-        TF_ASSIGN_OR_RETURN(
-            (*d->mutable_deprecated_attributes())[name],
-            std::visit(
-                [&](const auto& attr) { return ToVariantProto(attr.value); },
-                attr));
-      }
-    } else {
-      device->Attributes().ToProto(*d->mutable_attributes(),
-                                   ifrt_serdes_version());
-    }
+    device->Attributes().ToProto(*d->mutable_attributes(),
+                                 ifrt_serdes_version());
 
     if (device->IsAddressable()) {
       init_resp->add_addressable_device_ids(device->Id().value());
