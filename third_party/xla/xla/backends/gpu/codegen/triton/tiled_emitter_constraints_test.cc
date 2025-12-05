@@ -131,7 +131,7 @@ ENTRY main {
   p2 = bf16[4] parameter(2)
   ROOT fusion = bf16[20] fusion(p0, p1, p2),
     kind=kCustom, calls=concatenate, backend_config={"fusion_backend_config":{
-      "kind":"__triton_nested_gemm_fusion"}}
+      "kind":"__triton_gemm"}}
 })"));
   std::optional<SymbolicTileAnalysis> analysis_without_tiling_constraints =
       TryAnalyzeModule(module.get(),
@@ -187,7 +187,7 @@ ENTRY main {
   p2 = bf16[16] parameter(2)
   ROOT fusion = bf16[24] fusion(p0, p1, p2),
     kind=kCustom, calls=concatenate, backend_config={"fusion_backend_config":{
-      "kind":"__triton_nested_gemm_fusion"}}
+      "kind":"__triton_gemm"}}
 })"));
   std::optional<SymbolicTileAnalysis> analysis_without_tiling_constraints =
       TryAnalyzeModule(module.get(),
@@ -243,7 +243,7 @@ ENTRY main {
   p2 = bf16[16] parameter(2)
   ROOT fusion = bf16[24] fusion(p0, p1, p2),
     kind=kCustom, calls=concatenate, backend_config={"fusion_backend_config":{
-      "kind":"__triton_nested_gemm_fusion"}}
+      "kind":"__triton_gemm"}}
 })"));
   std::optional<SymbolicTileAnalysis> analysis_without_tiling_constraints =
       TryAnalyzeModule(module.get(),

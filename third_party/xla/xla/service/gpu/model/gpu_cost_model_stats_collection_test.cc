@@ -132,7 +132,7 @@ TEST_F(GpuCostModelStatsCollectionTest, GemmCostModelAddedToGemmFusion) {
       calls=gemm_fusion_dot_computation,
       backend_config={
         "fusion_backend_config": {
-          "kind":"__triton_nested_gemm_fusion",
+          "kind":"__triton_gemm",
           "block_level_fusion_config": {
             "num_warps":"4",
             "output_tiles":[{"sizes":["64","128"]}],

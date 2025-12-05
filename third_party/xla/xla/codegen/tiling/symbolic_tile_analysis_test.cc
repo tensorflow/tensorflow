@@ -2064,7 +2064,7 @@ ENTRY main {
   p2 = bf16[6] parameter(2)
   ROOT fusion = bf16[18] fusion(p0, p1, p2),
     kind=kCustom, calls=concatenate, backend_config={"fusion_backend_config":{
-      "kind":"__triton_nested_gemm_fusion"}}
+      "kind":"__triton_gemm"}}
 })"));
   std::optional<SymbolicTileAnalysis> analysis = TryAnalyzeModule(module.get());
   EXPECT_TRUE(analysis.has_value());
@@ -2126,7 +2126,7 @@ ENTRY main {
   p2 = s32[128] parameter(2)
   ROOT fusion = s32[384] fusion(p0, p1, p2),
     kind=kCustom, calls=concatenate, backend_config={"fusion_backend_config":{
-      "kind":"__triton_nested_gemm_fusion"}}
+      "kind":"__triton_gemm"}}
 })"));
   std::optional<SymbolicTileAnalysis> analysis = TryAnalyzeModule(module.get());
   ASSERT_TRUE(analysis.has_value());
@@ -2226,7 +2226,7 @@ ENTRY main {
   p2 = s32[64,128] parameter(2)
   ROOT fusion = s32[64,384] fusion(p0, p1, p2),
     kind=kCustom, calls=concatenate, backend_config={"fusion_backend_config":{
-      "kind":"__triton_nested_gemm_fusion"}}
+      "kind":"__triton_gemm"}}
 })"));
   std::optional<SymbolicTileAnalysis> analysis = TryAnalyzeModule(module.get());
   ASSERT_TRUE(analysis.has_value());
