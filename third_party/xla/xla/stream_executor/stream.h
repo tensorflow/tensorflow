@@ -38,6 +38,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
+#include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/event.h"
@@ -306,6 +307,13 @@ class Stream {
     return GetOrCreateResource<ConcreteResource>(
         [] { return std::make_unique<ConcreteResource>(); });
   }
+
+  // Gets-or-creates a BlasSupport datatype that can be used to execute BLAS
+  // routines on the current platform.
+  //
+  // Returns null if there was an error initializing the BLAS support for the
+  // underlying platform.
+  virtual blas::BlasSupport* AsBlas() const { return nullptr; }
 
  private:
   // We use ResourceTypeId to distinguish between different resource types.
