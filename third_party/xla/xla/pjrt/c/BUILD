@@ -51,16 +51,7 @@ cc_library(
 cc_library(
     name = "pjrt_c_api_callback_extension_hdrs",
     hdrs = ["pjrt_c_api_callback_extension.h"],
-    deps = [
-        "//xla:shape_util",
-        "//xla/pjrt:pjrt_client",
-        "//xla/pjrt/c:pjrt_c_api_hdrs",
-        "//xla/pjrt/c:pjrt_c_api_helpers",
-        "//xla/pjrt/c:pjrt_c_api_wrapper_impl",
-        "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/types:span",
-    ],
+    deps = ["//xla/pjrt/c:pjrt_c_api_hdrs"],
 )
 
 cc_library(
@@ -93,7 +84,6 @@ cc_library(
         "//xla/ffi:ffi_api",
         "//xla/ffi:type_registry",
         "//xla/ffi/api:c_api",
-        "//xla/ffi/api:ffi",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings:string_view",
     ],
