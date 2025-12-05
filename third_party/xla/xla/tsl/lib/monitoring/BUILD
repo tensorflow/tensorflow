@@ -200,7 +200,6 @@ cc_library(
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:status",
         "//xla/tsl/platform:statusor",
-        "//xla/tsl/platform:types",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
@@ -267,10 +266,7 @@ cc_library(
     hdrs = [
         "timed.h",
     ],
-    deps = [
-        "//xla/tsl/platform:env_time",
-        "//xla/tsl/platform:types",
-    ],
+    deps = ["//xla/tsl/platform:env_time"],
 )
 
 # Export source files needed for mobile builds, which do not use granular targets.

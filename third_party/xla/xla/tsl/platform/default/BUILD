@@ -48,6 +48,7 @@ cc_library(
         "manual",
         "no_oss",
         "nobuilder",
+        "nofixdeps",
     ],
     textual_hdrs = ["context.h"],
     deps = [
@@ -61,6 +62,7 @@ cc_library(
     tags = [
         "manual",
         "nobuilder",
+        "nofixdeps",
     ],
     textual_hdrs = ["criticality.h"],
     deps = [
@@ -107,6 +109,7 @@ cc_library(
     tags = [
         "manual",
         "nobuilder",
+        "nofixdeps",
     ],
     deps = [
         "//xla/tsl/platform:logging",
@@ -151,6 +154,7 @@ cc_library(
         "manual",
         "no_oss",
         "nobuilder",
+        "nofixdeps",
     ],
     deps = [
         "//xla/tsl/concurrency:executor",
@@ -442,6 +446,7 @@ cc_library(
         "manual",
         "no_oss",
         "nobuilder",
+        "nofixdeps",  # build_cleaner doesn't work well with the conditional includes in subprocess.h
     ],
     textual_hdrs = ["subprocess.h"],
     deps = [
@@ -466,17 +471,15 @@ cc_library(
         "manual",
         "no_oss",
         "nobuilder",
+        "nofixdeps",
     ],
     textual_hdrs = ["tracing_impl.h"],
     deps = [
-        "//xla/tsl/platform:logging",
         "//xla/tsl/platform:macros",
         "//xla/tsl/platform:types",
         "//xla/tsl/profiler/backends/cpu:threadpool_listener_state",
         "@local_tsl//tsl/platform",
         "@local_tsl//tsl/platform:hash",
-        "@local_tsl//tsl/platform:str_util",
-        "@local_tsl//tsl/platform:strcat",
         "@local_tsl//tsl/platform:stringpiece",
     ],
     alwayslink = True,
@@ -519,6 +522,7 @@ cc_library(
         "manual",
         "no_oss",
         "nobuilder",
+        "nofixdeps",
     ],
     textual_hdrs = ["crash_analysis.h"],
     visibility = internal_visibility(["//tensorflow:__subpackages__"]),
