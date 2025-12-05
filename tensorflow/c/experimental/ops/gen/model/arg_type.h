@@ -34,7 +34,7 @@ class ArgType {
   static ArgType CreateOutput(const OpDef::ArgDef& arg_def);
 
   const tensorflow::DataType data_type() const { return data_type_; }
-  const string type_attr_name() const { return type_attr_name_; }
+  const std::string type_attr_name() const { return type_attr_name_; }
   const bool is_read_only() const { return kind_ == kInput; }
   const bool is_list() const { return is_list_; }
 
@@ -45,7 +45,7 @@ class ArgType {
 
   Kind kind_;
   tensorflow::DataType data_type_;
-  string type_attr_name_;
+  std::string type_attr_name_;
   bool is_list_;
 };
 
