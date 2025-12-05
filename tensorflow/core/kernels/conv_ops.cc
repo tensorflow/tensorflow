@@ -48,7 +48,7 @@ absl::Status InitConv2DParameters(const OpKernelConstruction* context,
     TF_RETURN_IF_ERROR(
         context->GetAttr("explicit_paddings", &params->explicit_paddings));
   }
-  string data_format_string;
+  std::string data_format_string;
   TF_RETURN_IF_ERROR(context->GetAttr("data_format", &data_format_string));
   TF_REQUIRES(FormatFromString(data_format_string, &params->data_format),
               errors::InvalidArgument("Invalid data format"));
