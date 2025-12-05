@@ -77,7 +77,7 @@ class TritonFusionNumericsVerifierTest
   }
 
   DeviceOrDevicelessConfig CreateDeviceOrDevicelessConfig() {
-    se::Platform* platform = PlatformUtil::GetDefaultPlatform().value();
+    se::Platform* platform = PlatformUtil::GetPlatform("gpu").value();
     auto executors_or = PlatformUtil::GetStreamExecutors(platform);
     EXPECT_OK(executors_or);
     return DeviceOrDevicelessConfig{DeviceConfig{executors_or->at(0), nullptr}};
