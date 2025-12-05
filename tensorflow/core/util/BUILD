@@ -298,6 +298,7 @@ filegroup(
         "mkl_heuristics.h",
         "mkl_util.h",
         "onednn_env_vars.h",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@local_xla//xla/tsl/util:onednn_util_hdrs",
     ],
     visibility = ["//tensorflow/core:__pkg__"],

@@ -24,6 +24,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "oneapi/dnnl/dnnl.hpp"
 #include "oneapi/dnnl/dnnl_threadpool.hpp"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -1963,7 +1964,7 @@ class LRUCache {
   size_t capacity_;
 
   // The cache, a map from string key to a LRU entry.
-  std::unordered_map<string, Entry> cache_;
+  absl::flat_hash_map<string, Entry> cache_;
 
   // The LRU list of entries.
   // The front of the list contains the key of the most recently accessed
