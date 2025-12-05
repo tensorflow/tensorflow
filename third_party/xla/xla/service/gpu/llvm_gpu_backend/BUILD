@@ -210,6 +210,7 @@ cc_library(
         "@llvm-project//llvm:Support",
         "@llvm-project//llvm:Target",
         "@llvm-project//llvm:TargetParser",
+        "@local_config_rocm//rocm:amd_comgr",
         "@local_tsl//tsl/platform:path",
         "@local_tsl//tsl/platform:random",
         "@local_tsl//tsl/profiler/lib:traceme",
