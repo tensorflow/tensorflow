@@ -753,6 +753,9 @@ py_strict_library(
 cuda_py_benchmark_test(
     name = "benchmarks_test",
     srcs = ["benchmarks_test.py"],
+    exec_properties = {
+        "cpp_link.mem": "24g",
+    },
     deps = [
         ":backprop",
         ":benchmarks_test_base",
