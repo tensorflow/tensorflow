@@ -26,11 +26,11 @@ namespace tensorflow {
 namespace grappler {
 
 absl::Status ComputeTransitiveFanin(
-    const GraphDef& graph, const std::vector<string>& terminal_nodes,
-    std::unordered_map<string, const NodeDef*>* name_to_fanin_node,
+    const GraphDef& graph, const std::vector<std::string>& terminal_nodes,
+    std::unordered_map<std::string, const NodeDef*>* name_to_fanin_node,
     std::vector<const NodeDef*>* fanin_nodes) {
-  std::unordered_map<string, const NodeDef*> name_to_node;
-  std::unordered_map<string, const NodeDef*> name_to_send;
+  std::unordered_map<std::string, const NodeDef*> name_to_node;
+  std::unordered_map<std::string, const NodeDef*> name_to_send;
   for (const auto& node : graph.node()) {
     name_to_node[node.name()] = &node;
     if (node.op() == "_Send") {
@@ -40,7 +40,7 @@ absl::Status ComputeTransitiveFanin(
   }
 
   std::vector<const NodeDef*> queue;
-  for (const string& root : terminal_nodes) {
+  for (const std::string& root : terminal_nodes) {
     const NodeDef* node = name_to_node[NodeName(root)];
     if (!node) {
       return errors::InvalidArgument("Graph does not contain terminal node ",
@@ -61,9 +61,9 @@ absl::Status ComputeTransitiveFanin(
     fanin_nodes->push_back(node);
     if (name_to_fanin_node) {
       name_to_fanin_node->insert(
-          std::pair<string, const NodeDef*>(node->name(), node));
+          std::pair<std::string, const NodeDef*>(node->name(), node));
     }
-    for (const string& input : node->input()) {
+    for (const std::string& input : node->input()) {
       const NodeDef* in = name_to_node[NodeName(input)];
       if (!in) {
         return errors::InvalidArgument("Graph does not contain input ",
@@ -85,15 +85,15 @@ absl::Status ComputeTransitiveFanin(
   return absl::OkStatus();
 }
 
-absl::Status ComputeTransitiveFanin(const GraphDef& graph,
-                                    const std::vector<string>& terminal_nodes,
-                                    std::vector<const NodeDef*>* fanin_nodes) {
+absl::Status ComputeTransitiveFanin(
+    const GraphDef& graph, const std::vector<std::string>& terminal_nodes,
+    std::vector<const NodeDef*>* fanin_nodes) {
   return ComputeTransitiveFanin(graph, terminal_nodes, nullptr, fanin_nodes);
 }
 
 absl::Status SetTransitiveFaninGraph(
     const GraphDef& input_graph, GraphDef* output_graph,
-    const std::vector<string>& terminal_nodes) {
+    const std::vector<std::string>& terminal_nodes) {
   // Determines transitive fanin nodes from terminal nodes and add them to the
   // output graph.
   std::vector<const NodeDef*> keep;

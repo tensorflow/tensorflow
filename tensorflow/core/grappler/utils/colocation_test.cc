@@ -25,7 +25,7 @@ namespace grappler {
 
 class ColocationTest : public ::testing::Test {};
 
-bool VerifyNodeHasColocation(const NodeDef& ndef, const string& coloc) {
+bool VerifyNodeHasColocation(const NodeDef& ndef, const std::string& coloc) {
   if (ndef.attr().empty()) {
     return false;
   }
