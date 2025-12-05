@@ -62,7 +62,7 @@ struct InTopKFunctor<CPUDevice, T, TargetT> {
     int64_t k_val = k.k_value;
     if (k.k_tensor != nullptr) {
       if (k.k_tensor->dtype() == DT_INT32) {
-        k_val = k.k_tensor->scalar<int32>()();
+        k_val = k.k_tensor->scalar<int32_t>()();
       } else {
         k_val = k.k_tensor->scalar<int64_t>()();
       }
