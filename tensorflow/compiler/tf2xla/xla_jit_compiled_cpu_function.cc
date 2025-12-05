@@ -189,8 +189,7 @@ XlaJitCompiledCpuFunction::Compile(
             // owned by XlaJitCompiledCpuFunction.
             /*obj_files=*/{}, /*symbols=*/{},
             cpu_executable->thunks().thunk_sequence(),
-            /*function_library=*/nullptr,
-            /*hlo_profile_printer_data=*/nullptr));
+            /*function_library=*/nullptr));
 
     const std::optional<size_t> temp_allocation_index =
         compilation_result->temp_allocation_index();
