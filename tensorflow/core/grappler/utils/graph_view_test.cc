@@ -1020,7 +1020,7 @@ TEST_F(MutationTest, NewNodeBadFaninsAfterAdd) {
   mutation->AddOrUpdateRegularFanin(new_node, 1, {"valid", 2});
   s = mutation->Apply();
   EXPECT_FALSE(s.ok());
-  string expected_error_msg =
+  std::string expected_error_msg =
       "Mutation::Apply error: new node 'valid' is ill-formed.";
   EXPECT_EQ(s.message(), expected_error_msg);
   CompareGraphViewWithGraph(&graph_view, SimpleTestGraphForMutation());
