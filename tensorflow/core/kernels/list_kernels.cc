@@ -474,13 +474,41 @@ class TensorListSetItem : public OpKernel {
     TensorList* output_list = nullptr;
     OP_REQUIRES_OK(c, ForwardInputOrCreateNewList(c, 0, 0, *l, &output_list));
     int32_t index = c->input(1).scalar<int32>()();
+    
+    // Check for negative index
+    OP_REQUIRES(c, index >= 0,
+                errors::InvalidArgument("Index must be non-negative, got ", index));
+    
     if (!resize_if_index_out_of_bounds_) {
       OP_REQUIRES(c, index < l->tensors().size(),
                   errors::InvalidArgument("Trying to modify element ", index,
                                           " in a list with ",
                                           l->tensors().size(), " elements."));
     } else if (index >= l->tensors().size()) {
-      output_list->tensors().resize(index + 1, Tensor(DT_INVALID));
+      // Check if max_num_elements is set and would be exceeded
+      if (l->max_num_elements != -1) {
+        OP_REQUIRES(c, index < l->max_num_elements,
+                    errors::InvalidArgument(
+                        "Tried to set item at index ", index,
+                        " but max_num_elements is ", l->max_num_elements,
+                        ". Index must be in range [0, ", l->max_num_elements, ")"));
+      }
+      
+      // Calculate the new size needed and check for integer overflow
+      // Use int64 to safely check for overflow when adding 1 to int32 index
+      int64_t new_size = static_cast<int64_t>(index) + 1;
+      
+      // Check if the new size would be unreasonably large
+      // This prevents segmentation faults from excessive memory allocation
+      const int64_t kMaxReasonableSize = 1000000000;  // 1 billion elements
+      OP_REQUIRES(c, new_size <= kMaxReasonableSize,
+                  errors::InvalidArgument(
+                      "Index ", index, " is too large. TensorList cannot be "
+                      "resized to ", new_size, " elements. Maximum allowed size is ",
+                      kMaxReasonableSize, "."));
+      
+      // Safe to resize now
+      output_list->tensors().resize(static_cast<size_t>(new_size), Tensor(DT_INVALID));
     }
     output_list->tensors()[index] = value;
   }
