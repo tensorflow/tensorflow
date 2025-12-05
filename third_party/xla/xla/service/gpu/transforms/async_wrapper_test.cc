@@ -31,11 +31,9 @@ limitations under the License.
 #include "xla/literal_util.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tests/literal_test_util.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace xla::gpu {
 namespace {
-
 
 class AsyncWrapperTest : public HloTestBase {};
 
@@ -81,9 +79,8 @@ TEST_F(AsyncWrapperTest, BasicFusion) {
   Literal argument = LiteralUtil::CreateR1<float>({1.0});
   Literal expected = LiteralUtil::CreateR1<float>({4.0});
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      Literal result,
-      Execute(std::move(module), {&argument}, /*run_hlo_passes=*/false));
+  ASSERT_OK_AND_ASSIGN(Literal result, Execute(std::move(module), {&argument},
+                                               /*run_hlo_passes=*/false));
   EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
 }
 
@@ -119,12 +116,12 @@ TEST_F(AsyncWrapperTest, OpWithinWhileShouldWrapInAsync) {
     ROOT done.1 = f32[1] get-tuple-element(while), index=0
   })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo));
 
   AsyncWrapper wrapper(HloPredicateIsOp<HloOpcode::kCustomCall>);
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          wrapper.Run(module.get(), /*execution_threads=*/{}));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       wrapper.Run(module.get(), /*execution_threads=*/{}));
   EXPECT_TRUE(changed);
   EXPECT_EQ(CountAsyncInstructions(module->entry_computation()), 2);
   HloInstruction* while_op = hlo_query::FindInstruction(
@@ -154,12 +151,12 @@ TEST_F(AsyncWrapperTest, OpWithinConditionalShouldWrapInAsync) {
     ROOT done = f32[] conditional(compare, p0, p0), true_computation=true_computation, false_computation=false_computation
   })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo));
 
   AsyncWrapper wrapper(HloPredicateIsOp<HloOpcode::kCustomCall>);
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          wrapper.Run(module.get(), /*execution_threads=*/{}));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       wrapper.Run(module.get(), /*execution_threads=*/{}));
   EXPECT_TRUE(changed);
   EXPECT_EQ(CountAsyncInstructions(module->entry_computation()), 0);
   HloInstruction* conditional_op = hlo_query::FindInstruction(
@@ -182,12 +179,12 @@ TEST_F(AsyncWrapperTest, OpWithinFusionShouldNotWrapInAsync) {
     agg.2 = f32[1] custom-call(agg.1), custom_call_target="bar"
     ROOT done.1 = (f32[1], f32[1]) tuple(agg.1, agg.2)
   })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo));
 
   AsyncWrapper wrapper(HloPredicateIsOp<HloOpcode::kCustomCall>);
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          wrapper.Run(module.get(), /*execution_threads=*/{}));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       wrapper.Run(module.get(), /*execution_threads=*/{}));
   EXPECT_TRUE(changed);
   EXPECT_EQ(CountAsyncInstructions(module->entry_computation()), 2);
 

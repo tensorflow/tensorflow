@@ -22,6 +22,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -36,6 +37,7 @@ limitations under the License.
 #include "xla/pjrt/gpu/tfrt/gpu_event.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_common.h"
+#include "xla/pjrt/scoped_async_tracking_event.h"
 #include "xla/service/shaped_buffer.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -44,7 +46,6 @@ limitations under the License.
 #include "xla/tsl/concurrency/async_value.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/platform/env.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/threadpool.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
@@ -117,7 +118,7 @@ class TestDevice : public PjRtDevice {
 
 TEST(GpuDeviceMemoryTest, MoveConstructorSetOriginalToNull) {
   TestAllocator allocator;
-  TF_ASSERT_OK_AND_ASSIGN(auto owning_memory, allocator.Allocate(0, 100));
+  ASSERT_OK_AND_ASSIGN(auto owning_memory, allocator.Allocate(0, 100));
   GpuDeviceMemory memory(std::move(owning_memory));
   EXPECT_EQ(memory.buffer().opaque(), kOpaque);
 
@@ -128,7 +129,7 @@ TEST(GpuDeviceMemoryTest, MoveConstructorSetOriginalToNull) {
 
 TEST(GpuDeviceMemoryTest, OwningToNonOwning) {
   TestAllocator allocator;
-  TF_ASSERT_OK_AND_ASSIGN(auto owning_memory, allocator.Allocate(0, 100));
+  ASSERT_OK_AND_ASSIGN(auto owning_memory, allocator.Allocate(0, 100));
   GpuDeviceMemory memory(std::move(owning_memory));
   EXPECT_TRUE(memory.owns_data());
   memory.SetUnOwned();
@@ -142,8 +143,8 @@ TEST(GpuDeviceMemoryTest, AsShapeBuffer) {
   TestAllocator allocator;
   int64_t byte_size =
       client->backend().transfer_manager()->GetByteSizeRequirement(shape);
-  TF_ASSERT_OK_AND_ASSIGN(auto memory,
-                          GpuDeviceMemory::Allocate(&allocator, 0, byte_size));
+  ASSERT_OK_AND_ASSIGN(auto memory,
+                       GpuDeviceMemory::Allocate(&allocator, 0, byte_size));
   ShapedBuffer result_shaped_buffer = memory.AsShapedBuffer(
       client->backend().transfer_manager()->HostShapeToDeviceShape(shape),
       &device);
@@ -154,7 +155,7 @@ TEST(TrackedGpuDeviceBufferTest, TrackedDeviceBufferUsageEndToEnd) {
   auto usage_event = MakeConstructedAsyncValueRef<GpuEvent>();
 
   TestAllocator allocator;
-  TF_ASSERT_OK_AND_ASSIGN(auto owning_memory, allocator.Allocate(0, 100));
+  ASSERT_OK_AND_ASSIGN(auto owning_memory, allocator.Allocate(0, 100));
   GpuDeviceMemory memory(std::move(owning_memory));
   auto test_buffer =
       MakeConstructedAsyncValueRef<GpuDeviceMemory>(std::move(memory));

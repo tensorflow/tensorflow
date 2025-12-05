@@ -26,7 +26,6 @@ limitations under the License.
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/utils/hlo_matchers.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -45,10 +44,10 @@ ENTRY entry {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnUnverifiedModule((module_str)));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule((module_str)));
   AllGatherDecomposer decomposer;
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, decomposer.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, decomposer.Run(module.get()));
   EXPECT_TRUE(changed);
   EXPECT_THAT(
       module->entry_computation()->root_instruction(),
@@ -68,10 +67,10 @@ ENTRY entry {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnUnverifiedModule((module_str)));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule((module_str)));
   AllGatherDecomposer decomposer;
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, decomposer.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, decomposer.Run(module.get()));
   EXPECT_TRUE(changed);
   EXPECT_THAT(
       module->entry_computation()->root_instruction(),
@@ -91,10 +90,10 @@ ENTRY entry {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnUnverifiedModule((module_str)));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule((module_str)));
   AllGatherDecomposer decomposer;
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, decomposer.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, decomposer.Run(module.get()));
   EXPECT_TRUE(changed);
   EXPECT_THAT(
       module->entry_computation()->root_instruction(),
@@ -114,10 +113,10 @@ ENTRY entry {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnUnverifiedModule((module_str)));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule((module_str)));
   AllGatherDecomposer decomposer;
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, decomposer.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, decomposer.Run(module.get()));
   EXPECT_TRUE(changed);
   auto id =
       AllOf(op::Shape("u32[]"),
@@ -140,10 +139,10 @@ ENTRY entry {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnUnverifiedModule((module_str)));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule((module_str)));
   AllGatherDecomposer decomposer;
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, decomposer.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, decomposer.Run(module.get()));
   EXPECT_TRUE(changed);
   auto global_id =
       op::Add(op::Multiply(op::ReplicaId(), op::Constant()), op::PartitionId());
@@ -167,10 +166,10 @@ ENTRY entry {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnUnverifiedModule((module_str)));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule((module_str)));
   AllGatherDecomposer decomposer;
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, decomposer.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, decomposer.Run(module.get()));
   EXPECT_TRUE(changed);
   EXPECT_THAT(
       module->entry_computation()->root_instruction(),

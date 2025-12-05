@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/comparison_util.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -34,9 +35,10 @@ limitations under the License.
 #include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/literal_util.h"
 #include "xla/service/pattern_matcher.h"
+#include "xla/shape.h"
+#include "xla/shape_layout.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -113,7 +115,7 @@ TEST_F(HloDceTest, CustomCallInstructionsWithSideEffect) {
   module->AddEntryComputation(builder.Build());
 
   HloDCE dce;
-  TF_ASSERT_OK_AND_ASSIGN(bool result, RunHloPass(&dce, module.get()));
+  ASSERT_OK_AND_ASSIGN(bool result, RunHloPass(&dce, module.get()));
   EXPECT_FALSE(result);
 }
 
@@ -130,14 +132,14 @@ TEST_F(HloDceTest, AsyncCustomCallInstructionsWithSideEffect) {
   auto module = CreateNewVerifiedModule();
   module->AddEntryComputation(builder.Build());
 
-  TF_ASSERT_OK_AND_ASSIGN([[maybe_unused]] HloInstruction * async_done,
-                          module->entry_computation()->CreateAsyncInstructions(
-                              instr, {{ShapeUtil::MakeScalarShape(U32)}},
-                              HloInstruction::kMainExecutionThread,
-                              /*replace=*/true, /*override_names=*/true));
+  ASSERT_OK_AND_ASSIGN([[maybe_unused]] HloInstruction * async_done,
+                       module->entry_computation()->CreateAsyncInstructions(
+                           instr, {{ShapeUtil::MakeScalarShape(U32)}},
+                           HloInstruction::kMainExecutionThread,
+                           /*replace=*/true, /*override_names=*/true));
 
   HloDCE dce;
-  TF_ASSERT_OK_AND_ASSIGN(bool result, RunHloPass(&dce, module.get()));
+  ASSERT_OK_AND_ASSIGN(bool result, RunHloPass(&dce, module.get()));
   EXPECT_FALSE(result);
 }
 
@@ -154,7 +156,7 @@ TEST_F(HloDceTest, CustomCallInstructionsWithoutSideEffect) {
   module->AddEntryComputation(builder.Build());
 
   HloDCE dce;
-  TF_ASSERT_OK_AND_ASSIGN(bool result, RunHloPass(&dce, module.get()));
+  ASSERT_OK_AND_ASSIGN(bool result, RunHloPass(&dce, module.get()));
   EXPECT_TRUE(result);
 }
 
@@ -171,14 +173,14 @@ TEST_F(HloDceTest, AsyncCustomCallInstructionsWithoutSideEffect) {
   auto module = CreateNewVerifiedModule();
   module->AddEntryComputation(builder.Build());
 
-  TF_ASSERT_OK_AND_ASSIGN([[maybe_unused]] HloInstruction * async_done,
-                          module->entry_computation()->CreateAsyncInstructions(
-                              instr, {{ShapeUtil::MakeScalarShape(U32)}},
-                              HloInstruction::kMainExecutionThread,
-                              /*replace=*/true, /*override_names=*/true));
+  ASSERT_OK_AND_ASSIGN([[maybe_unused]] HloInstruction * async_done,
+                       module->entry_computation()->CreateAsyncInstructions(
+                           instr, {{ShapeUtil::MakeScalarShape(U32)}},
+                           HloInstruction::kMainExecutionThread,
+                           /*replace=*/true, /*override_names=*/true));
 
   HloDCE dce;
-  TF_ASSERT_OK_AND_ASSIGN(bool result, RunHloPass(&dce, module.get()));
+  ASSERT_OK_AND_ASSIGN(bool result, RunHloPass(&dce, module.get()));
   EXPECT_TRUE(result);
 }
 
@@ -201,7 +203,7 @@ TEST_F(HloDceTest, ShardingCustomCallInstruction) {
   module->AddEntryComputation(builder.Build());
 
   HloDCE dce;
-  TF_ASSERT_OK_AND_ASSIGN(bool result, RunHloPass(&dce, module.get()));
+  ASSERT_OK_AND_ASSIGN(bool result, RunHloPass(&dce, module.get()));
   EXPECT_FALSE(result);
 }
 
@@ -634,8 +636,7 @@ TEST_F(HloDceTest, MultiOutputFusionRemoveUnusedTupleElementsRemoveTuple) {
     gte.0 = f32[32,32]{1,0} get-tuple-element(fusion), index=0  // dead
     ROOT gte.1 = f32[32,32]{1,0} get-tuple-element(fusion), index=1
   })";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kHloString));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloString));
   HloDCE dce;
   auto changed = dce.Run(module.get());
   ASSERT_TRUE(changed.ok());
@@ -673,8 +674,7 @@ TEST_F(
     gte.1.again = f32[32,32]{1,0} get-tuple-element(fusion), index=1
     ROOT res = (f32[32,32]{1,0}, f32[32,32]{1,0}) tuple(gte.1, gte.1.again)
   })";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kHloString));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloString));
   HloDCE dce;
   auto changed = dce.Run(module.get());
   ASSERT_TRUE(changed.ok());
@@ -722,8 +722,7 @@ TEST_F(
     gte.3 = f32[32,32]{1,0} get-tuple-element(fusion), index=3
     ROOT res = (f32[32,32]{1,0}, f32[32,32]{1,0}, f32[32,32]{1,0}) tuple(gte.1, gte.1.again, gte.3)
   })";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kHloString));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloString));
   HloDCE dce;
   auto changed = dce.Run(module.get());
   ASSERT_TRUE(changed.ok());
@@ -779,8 +778,7 @@ TEST_F(HloDceTest, MultiOutputFusionRemoveUnusedTupleElementAdjustTuple) {
     gte.2 = f32[32,32]{1,0} get-tuple-element(fusion), index=2
     ROOT add = f32[32,32]{1,0} add(gte.0, gte.2)
   })";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kHloString));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloString));
   HloDCE dce;
   auto changed = dce.Run(module.get());
   ASSERT_TRUE(changed.ok());
@@ -819,8 +817,7 @@ TEST_F(HloDceTest,
     add.2 = f32[32,32]{1,0} add(param0, param1), control-predecessors={gte.1}
     ROOT add = f32[32,32]{1,0} add(add.2, gte.1)
   })";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kHloString));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloString));
   HloDCE dce;
   auto changed = dce.Run(module.get());
   ASSERT_TRUE(changed.ok());
@@ -848,11 +845,11 @@ ENTRY main {
   }
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
   HloDCE dce(/*remove_cross_partition_collective_ops=*/false,
              /*use_call_analysis=*/true);
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, dce.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, dce.Run(module.get()));
   EXPECT_TRUE(changed);
 
   HloComputation* main = module->entry_computation();
@@ -883,11 +880,11 @@ ENTRY main {
   ROOT call-done.0 = (s32[]) call-done(call-start.0)
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
   HloDCE dce(/*remove_cross_partition_collective_ops=*/false,
              /*use_call_analysis=*/true);
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, dce.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, dce.Run(module.get()));
   EXPECT_TRUE(changed);
 
   HloComputation* main = module->entry_computation();
@@ -927,11 +924,11 @@ ENTRY main {
   }
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
   HloDCE dce(/*remove_cross_partition_collective_ops=*/false,
              /*use_call_analysis=*/true);
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, dce.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, dce.Run(module.get()));
   EXPECT_TRUE(changed);
 
   // call.0 should be removed.
@@ -961,11 +958,10 @@ dangling_computation {
   ROOT add = s32[] add(param0, param1)
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   HloDCE dce;
   // Remove dangling computation on a different execution thread.
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       bool changed,
       dce.Run(module.get(),
               /*execution_threads=*/{std::string("other_thread")}));
@@ -973,8 +969,8 @@ dangling_computation {
   EXPECT_NE(module->GetComputationWithName("dangling_computation"), nullptr);
 
   // Remove dangling computation on all execution threads.
-  TF_ASSERT_OK_AND_ASSIGN(changed, dce.Run(module.get(),
-                                           /*execution_threads=*/{}));
+  ASSERT_OK_AND_ASSIGN(changed, dce.Run(module.get(),
+                                        /*execution_threads=*/{}));
   EXPECT_TRUE(changed);
   EXPECT_EQ(module->GetComputationWithName("dangling_computation"), nullptr);
 }
@@ -990,8 +986,8 @@ ENTRY entry_computation {
   ROOT add = f32[2,3]{1,0} add(p0, p2)
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
   HloComputation* computation = module->entry_computation();
 
   EXPECT_EQ(computation->num_parameters(), 3);

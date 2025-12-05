@@ -16,6 +16,7 @@ limitations under the License.
 #include <cstdint>
 #include <utility>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
@@ -25,7 +26,6 @@ limitations under the License.
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/tests/hlo_pjrt_test_base.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 
 namespace xla {
@@ -62,8 +62,7 @@ TEST_F(RngTest, ReturnsErrorWhenExpanderPassDisabled) {
       ROOT result = f32[] rng(p0, p1), distribution=rng_uniform
     })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kModuleStr));
 
   DisableRngExpanderPass(*module);
 
@@ -87,8 +86,7 @@ TEST_F(RngBitGeneratorTest, ReturnsErrorWhenExpanderPassDisabled_Default) {
       ROOT result = (u64[3]{0}, u32[11,17]{1,0}) rng-bit-generator(p0), algorithm=rng_default
     })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kModuleStr));
 
   DisableRngBitGeneratorExpanderPass(*module);
 
@@ -110,8 +108,7 @@ TEST_F(RngBitGeneratorTest, ReturnsErrorWhenExpanderPassDisabled_ThreeFry) {
       ROOT result = (u64[2]{0}, u32[11,17]{1,0}) rng-bit-generator(p0), algorithm=rng_three_fry
     })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kModuleStr));
 
   DisableRngBitGeneratorExpanderPass(*module);
 
@@ -133,8 +130,7 @@ TEST_F(RngBitGeneratorTest, ReturnsErrorWhenExpanderPassDisabled_Philox) {
       ROOT result = (u64[3]{0}, u32[11,17]{1,0}) rng-bit-generator(p0), algorithm=rng_philox
     })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kModuleStr));
 
   DisableRngBitGeneratorExpanderPass(*module);
 

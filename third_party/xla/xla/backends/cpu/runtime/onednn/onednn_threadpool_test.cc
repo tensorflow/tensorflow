@@ -19,15 +19,14 @@ limitations under the License.
 #include <cstdint>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include "absl/status/statusor.h"
 #include "oneapi/dnnl/dnnl.hpp"
 #include "oneapi/dnnl/dnnl_common.hpp"
 #include "oneapi/dnnl/dnnl_graph.hpp"
 #include "oneapi/dnnl/dnnl_threadpool.hpp"
 #include "xla/backends/cpu/runtime/onednn/onednn_interop.h"
-#include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/platform/env.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/tsl/platform/threadpool.h"
 
@@ -77,8 +76,8 @@ TEST(OneDnnThreadPoolTest, Binary) {
       1, dnnl::graph::logical_tensor::data_type::f32, dst_dims, dst_strides);
 
   // Compile oneDNN graph with a single Exp operation.
-  TF_ASSERT_OK_AND_ASSIGN(dnnl::graph::graph g,
-                          CreateExpGraph(src_tensor, dst_tensor));
+  ASSERT_OK_AND_ASSIGN(dnnl::graph::graph g,
+                       CreateExpGraph(src_tensor, dst_tensor));
   std::vector<dnnl::graph::partition> partitions = g.get_partitions();
 
   // Create oneDNN engine for running the graph on CPU.

@@ -27,7 +27,6 @@ limitations under the License.
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/primitive_util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -61,9 +60,9 @@ TEST_P(OperandUpcasterTest, ConvertInserted) {
       module_tmpl, primitive_util::LowercasePrimitiveTypeName(lhs_type),
       primitive_util::LowercasePrimitiveTypeName(rhs_type),
       primitive_util::LowercasePrimitiveTypeName(result_type));
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(module_string));
-  TF_ASSERT_OK_AND_ASSIGN(bool upcasted, OperandUpcaster().Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(module_string));
+  ASSERT_OK_AND_ASSIGN(bool upcasted, OperandUpcaster().Run(module.get()));
   EXPECT_EQ(upcasted, ShouldUpcast(lhs_type, result_type) ||
                           ShouldUpcast(rhs_type, result_type));
   auto original_lhs = op::Parameter(0);

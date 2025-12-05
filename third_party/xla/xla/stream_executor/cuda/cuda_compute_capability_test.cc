@@ -21,7 +21,6 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.pb.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace stream_executor {
 namespace {
@@ -119,7 +118,7 @@ TEST(CudaComputeCapabilityTest, FromProtoWithFeatureExtensionUnspecified) {
   CudaComputeCapabilityProto proto;
   proto.set_major(100);
   proto.set_minor(5);
-  TF_ASSERT_OK_AND_ASSIGN(auto cc, CudaComputeCapability::FromProto(proto));
+  ASSERT_OK_AND_ASSIGN(auto cc, CudaComputeCapability::FromProto(proto));
   EXPECT_EQ(cc.major, 100);
   EXPECT_EQ(cc.minor, 5);
   EXPECT_EQ(cc.feature_extension, FeatureExtension::kNone);
@@ -129,7 +128,7 @@ TEST(CudaComputeCapabilityTest, FromProtoWithFeatureExtensionUnspecified) {
   // explicitly.
   proto.set_major(9);
   proto.set_minor(5);
-  TF_ASSERT_OK_AND_ASSIGN(cc, CudaComputeCapability::FromProto(proto));
+  ASSERT_OK_AND_ASSIGN(cc, CudaComputeCapability::FromProto(proto));
   EXPECT_EQ(cc.major, 9);
   EXPECT_EQ(cc.minor, 5);
   EXPECT_EQ(cc.feature_extension, FeatureExtension::kAcceleratedFeatures);
@@ -139,14 +138,14 @@ TEST(CudaComputeCapabilityTest, FromProtoWithFeatureExtensionUnspecified) {
   // explicitly.
   proto.set_major(10);
   proto.set_minor(2);
-  TF_ASSERT_OK_AND_ASSIGN(cc, CudaComputeCapability::FromProto(proto));
+  ASSERT_OK_AND_ASSIGN(cc, CudaComputeCapability::FromProto(proto));
   EXPECT_EQ(cc.major, 10);
   EXPECT_EQ(cc.minor, 2);
   EXPECT_EQ(cc.feature_extension, FeatureExtension::kAcceleratedFeatures);
 
   proto.set_major(12);
   proto.set_minor(0);
-  TF_ASSERT_OK_AND_ASSIGN(cc, CudaComputeCapability::FromProto(proto));
+  ASSERT_OK_AND_ASSIGN(cc, CudaComputeCapability::FromProto(proto));
   EXPECT_EQ(cc.major, 12);
   EXPECT_EQ(cc.minor, 0);
   EXPECT_NE(cc.feature_extension, FeatureExtension::kAcceleratedFeatures);
@@ -204,7 +203,7 @@ TEST(CudaComputeCapabilityTest, FromProtoWithFeatureExtensionSpecified) {
   proto.set_major(100);
   proto.set_minor(5);
   proto.set_feature_extension(CudaComputeCapabilityProto::ACCELERATED_FEATURES);
-  TF_ASSERT_OK_AND_ASSIGN(auto cc, CudaComputeCapability::FromProto(proto));
+  ASSERT_OK_AND_ASSIGN(auto cc, CudaComputeCapability::FromProto(proto));
   EXPECT_EQ(cc.major, 100);
   EXPECT_EQ(cc.minor, 5);
   EXPECT_EQ(cc.feature_extension, FeatureExtension::kAcceleratedFeatures);

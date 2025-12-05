@@ -14,8 +14,11 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/types/span.h"
+#include "xla/stream_executor/kernel.h"
+#include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/sycl/sycl_platform_id.h"
@@ -24,11 +27,11 @@ namespace stream_executor::sycl {
 namespace {
 
 TEST(SyclKernelTest, CheckKernelLoading) {
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       Platform * platform,
       stream_executor::PlatformManager::PlatformWithId(kSyclPlatformId));
-  TF_ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,
-                          platform->ExecutorForDevice(0));
+  ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,
+                       platform->ExecutorForDevice(0));
 
   // TODO(intel-tf): This is a temporary workaround to get the test working.
   // This will be replaced with hlo-based spv binary generation once MLIR
@@ -132,8 +135,8 @@ TEST(SyclKernelTest, CheckKernelLoading) {
                                 kAddSpvSize),
       "wrapped_add", 3);
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Kernel> sycl_kernel,
-                          executor->LoadKernel(spec));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<Kernel> sycl_kernel,
+                       executor->LoadKernel(spec));
 
   EXPECT_EQ(sycl_kernel->Arity(), 3);
   // TODO(intel-tf): Add check for GetMaxOccupiedBlocksPerCore

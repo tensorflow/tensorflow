@@ -18,6 +18,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/functional/function_ref.h"
 #include "llvm/Support/raw_ostream.h"
@@ -25,7 +26,6 @@ limitations under the License.
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/primitive_util.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -73,8 +73,8 @@ TEST_P(TypeUtilTest, PrimitiveTypeToMLIRTypeConversionTest) {
   mlir::Builder b = mlir::Builder(&context);
   xla::PrimitiveType xla_type = GetParam().xla_t;
   mlir::Type mlir_type_expected = GetParam().mlir_t(b);
-  TF_ASSERT_OK_AND_ASSIGN(mlir::Type mlir_type_actual,
-                          ConvertPrimitiveTypeToMlirType(xla_type, b));
+  ASSERT_OK_AND_ASSIGN(mlir::Type mlir_type_actual,
+                       ConvertPrimitiveTypeToMlirType(xla_type, b));
   EXPECT_EQ(mlir_type_actual, mlir_type_expected)
       << "Expected: " << mlirTypeToString(mlir_type_expected)
       << ". Actual: " << mlirTypeToString(mlir_type_actual) << ".";
@@ -84,8 +84,8 @@ TEST_P(TypeUtilTest, BidirectionalConversionTest) {
   mlir::MLIRContext context = mlir::MLIRContext();
   mlir::Builder b = mlir::Builder(&context);
   xla::PrimitiveType xla_type_expected = GetParam().xla_t;
-  TF_ASSERT_OK_AND_ASSIGN(mlir::Type mlir_type_actual,
-                          ConvertPrimitiveTypeToMlirType(xla_type_expected, b));
+  ASSERT_OK_AND_ASSIGN(mlir::Type mlir_type_actual,
+                       ConvertPrimitiveTypeToMlirType(xla_type_expected, b));
   xla::PrimitiveType xla_type_actual =
       ConvertMlirTypeToPrimitiveType(mlir_type_actual);
   EXPECT_EQ(xla_type_actual, xla_type_expected)

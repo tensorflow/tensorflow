@@ -62,7 +62,6 @@ limitations under the License.
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/file_system.h"
 #include "xla/tsl/platform/logging.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/tsl/platform/test_benchmark.h"
 #include "xla/types.h"
@@ -96,26 +95,26 @@ XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test$$TestError", "Host",
 
 TEST(PjRtCpuClientTest, MemorySpace) {
   CpuClientOptions options;
-  TF_ASSERT_OK_AND_ASSIGN(auto client, GetPjRtCpuClient(std::move(options)));
+  ASSERT_OK_AND_ASSIGN(auto client, GetPjRtCpuClient(std::move(options)));
   ASSERT_GE(client->devices().size(), 1);
 
   ASSERT_EQ(client->memory_spaces().size(),
             client->addressable_devices().size() * 3);
   for (auto* device : client->devices()) {
-    TF_ASSERT_OK_AND_ASSIGN(auto* default_memory_space,
-                            device->default_memory_space());
+    ASSERT_OK_AND_ASSIGN(auto* default_memory_space,
+                         device->default_memory_space());
     EXPECT_EQ(default_memory_space->kind(), CpuDeviceMemorySpace::kKind);
     EXPECT_EQ(default_memory_space->kind_id(), CpuDeviceMemorySpace::kKindId);
     EXPECT_THAT(device->memory_space_by_kind(CpuDeviceMemorySpace::kKind),
                 absl_testing::IsOkAndHolds(default_memory_space));
 
-    TF_ASSERT_OK_AND_ASSIGN(
+    ASSERT_OK_AND_ASSIGN(
         auto cpu_device_memory_space,
         device->memory_space_by_kind(CpuDeviceMemorySpace::kKind));
-    TF_ASSERT_OK_AND_ASSIGN(
+    ASSERT_OK_AND_ASSIGN(
         auto pinned_host_memory_space,
         device->memory_space_by_kind(PinnedHostMemorySpace::kKind));
-    TF_ASSERT_OK_AND_ASSIGN(
+    ASSERT_OK_AND_ASSIGN(
         auto unpinned_host_memory_space,
         device->memory_space_by_kind(UnpinnedHostMemorySpace::kKind));
     device->memory_spaces(),
@@ -139,21 +138,21 @@ ENTRY DonationWithExecutionError() -> f32[2, 2] {
     ROOT %result = f32[2, 2] get-tuple-element(%custom-call), index=0
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto client, GetPjRtCpuClient(CpuClientOptions()));
+  ASSERT_OK_AND_ASSIGN(auto client, GetPjRtCpuClient(CpuClientOptions()));
 
-  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module,
-                          ParseAndReturnUnverifiedModule(kProgram, {}));
+  ASSERT_OK_AND_ASSIGN(auto hlo_module,
+                       ParseAndReturnUnverifiedModule(kProgram, {}));
   XlaComputation xla_computation(hlo_module->ToProto());
-  TF_ASSERT_OK_AND_ASSIGN(auto pjrt_executable,
-                          client->CompileAndLoad(xla_computation, {}));
+  ASSERT_OK_AND_ASSIGN(auto pjrt_executable,
+                       client->CompileAndLoad(xla_computation, {}));
 
-  TF_ASSERT_OK_AND_ASSIGN(auto fingerprint,
-                          pjrt_executable->FingerprintExecutable());
+  ASSERT_OK_AND_ASSIGN(auto fingerprint,
+                       pjrt_executable->FingerprintExecutable());
   ASSERT_TRUE(!fingerprint.empty());
 
   std::vector<float> data(4, 0);
   Shape shape = ShapeUtil::MakeShape(F32, {2, 2});
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto buffer,
       client->BufferFromHostBuffer(
           data.data(), shape.element_type(), shape.dimensions(),
@@ -183,21 +182,21 @@ ENTRY RuntimeDonationDenial() -> f32[2, 2] {
     ROOT %param = f32[2, 2] parameter(0)
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto client, GetPjRtCpuClient(CpuClientOptions()));
+  ASSERT_OK_AND_ASSIGN(auto client, GetPjRtCpuClient(CpuClientOptions()));
 
-  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module,
-                          ParseAndReturnUnverifiedModule(kProgram, {}));
+  ASSERT_OK_AND_ASSIGN(auto hlo_module,
+                       ParseAndReturnUnverifiedModule(kProgram, {}));
   XlaComputation xla_computation(hlo_module->ToProto());
-  TF_ASSERT_OK_AND_ASSIGN(auto pjrt_executable,
-                          client->CompileAndLoad(xla_computation, {}));
+  ASSERT_OK_AND_ASSIGN(auto pjrt_executable,
+                       client->CompileAndLoad(xla_computation, {}));
 
-  TF_ASSERT_OK_AND_ASSIGN(auto fingerprint,
-                          pjrt_executable->FingerprintExecutable());
+  ASSERT_OK_AND_ASSIGN(auto fingerprint,
+                       pjrt_executable->FingerprintExecutable());
   ASSERT_TRUE(!fingerprint.empty());
 
   std::vector<float> data(4, 0);
   Shape shape = ShapeUtil::MakeShape(F32, {2, 2});
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto buffer,
       client->BufferFromHostBuffer(
           data.data(), shape.element_type(), shape.dimensions(),
@@ -236,10 +235,9 @@ TEST(PjRtCpuClientTest, HloSnapshot) {
 
   CpuClientOptions cpu_options;
   cpu_options.cpu_device_count = 1;
-  TF_ASSERT_OK_AND_ASSIGN(auto client,
-                          GetPjRtCpuClient(std::move(cpu_options)));
-  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module,
-                          ParseAndReturnUnverifiedModule(kProgram, {}));
+  ASSERT_OK_AND_ASSIGN(auto client, GetPjRtCpuClient(std::move(cpu_options)));
+  ASSERT_OK_AND_ASSIGN(auto hlo_module,
+                       ParseAndReturnUnverifiedModule(kProgram, {}));
 
   std::string dir = tsl::io::JoinPath(tsl::testing::TmpDir(), "HloSnapshot");
   xla::CompileOptions options;
@@ -247,20 +245,20 @@ TEST(PjRtCpuClientTest, HloSnapshot) {
   debug_opts->set_xla_dump_to(dir);
   debug_opts->set_xla_dump_hlo_snapshots(true);
   XlaComputation xla_computation(hlo_module->ToProto());
-  TF_ASSERT_OK_AND_ASSIGN(auto pjrt_executable,
-                          client->CompileAndLoad(xla_computation, options));
+  ASSERT_OK_AND_ASSIGN(auto pjrt_executable,
+                       client->CompileAndLoad(xla_computation, options));
 
   std::vector<float> data1{1.0, 2.0, 3.0, 4.0, 5.0, 6.0};
   std::vector<float> data2{10.0, 20.0, 30.0, 40.0, 50.0, 60.0};
   Shape shape = ShapeUtil::MakeShape(F32, {3, 2});
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto buffer1,
       client->BufferFromHostBuffer(
           data1.data(), shape.element_type(), shape.dimensions(),
           /*byte_strides=*/std::nullopt,
           PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall, nullptr,
           client->memory_spaces()[0], /*device_layout=*/nullptr));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto buffer2,
       client->BufferFromHostBuffer(
           data2.data(), shape.element_type(), shape.dimensions(),
@@ -305,8 +303,7 @@ TEST(PjRtCpuClientTest, UnoptimizedHloSnapshot) {
 
   CpuClientOptions cpu_options;
   cpu_options.cpu_device_count = 1;
-  TF_ASSERT_OK_AND_ASSIGN(auto client,
-                          GetPjRtCpuClient(std::move(cpu_options)));
+  ASSERT_OK_AND_ASSIGN(auto client, GetPjRtCpuClient(std::move(cpu_options)));
 
   std::string dir =
       tsl::io::JoinPath(tsl::testing::TmpDir(), "UnoptimizedHloSnapshot");
@@ -321,20 +318,20 @@ TEST(PjRtCpuClientTest, UnoptimizedHloSnapshot) {
   auto mlir_module =
       mlir::parseSourceString<mlir::ModuleOp>(kProgram, &context);
 
-  TF_ASSERT_OK_AND_ASSIGN(auto pjrt_executable,
-                          client->CompileAndLoad(mlir_module.get(), options));
+  ASSERT_OK_AND_ASSIGN(auto pjrt_executable,
+                       client->CompileAndLoad(mlir_module.get(), options));
 
   std::vector<float> data1{1.0, 2.0, 3.0, 4.0, 5.0, 6.0};
   std::vector<float> data2{10.0, 20.0, 30.0, 40.0, 50.0, 60.0};
   Shape shape = ShapeUtil::MakeShape(F32, {3, 2});
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto buffer1,
       client->BufferFromHostBuffer(
           data1.data(), shape.element_type(), shape.dimensions(),
           /*byte_strides=*/std::nullopt,
           PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall, nullptr,
           client->memory_spaces()[0], /*device_layout=*/nullptr));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto buffer2,
       client->BufferFromHostBuffer(
           data2.data(), shape.element_type(), shape.dimensions(),
@@ -374,9 +371,9 @@ TEST(PjRtCpuClientTest, DumpOnDeserialize) {
       y = f32[3,2] parameter(1)
       ROOT add = f32[3,2] add(x, y)
     })";
-  TF_ASSERT_OK_AND_ASSIGN(auto client, GetPjRtCpuClient(CpuClientOptions()));
-  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module,
-                          ParseAndReturnUnverifiedModule(kProgram, {}));
+  ASSERT_OK_AND_ASSIGN(auto client, GetPjRtCpuClient(CpuClientOptions()));
+  ASSERT_OK_AND_ASSIGN(auto hlo_module,
+                       ParseAndReturnUnverifiedModule(kProgram, {}));
   XlaComputation xla_computation(hlo_module->ToProto());
 
   tsl::Env* env = tsl::Env::Default();
@@ -386,9 +383,8 @@ TEST(PjRtCpuClientTest, DumpOnDeserialize) {
   CompileOptions compile_options;
   compile_options.executable_build_options.mutable_debug_options()
       ->set_xla_dump_to(compile_dump_dir);
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto executable,
-      client->CompileAndLoad(xla_computation, compile_options));
+  ASSERT_OK_AND_ASSIGN(auto executable, client->CompileAndLoad(
+                                            xla_computation, compile_options));
   std::string compile_dump_name, compile_dump_contents;
   {
     std::vector<std::string> matches;
@@ -401,8 +397,8 @@ TEST(PjRtCpuClientTest, DumpOnDeserialize) {
         tsl::ReadFileToString(env, compile_dump_name, &compile_dump_contents));
   }
 
-  TF_ASSERT_OK_AND_ASSIGN(std::string serialized,
-                          executable->SerializeExecutable());
+  ASSERT_OK_AND_ASSIGN(std::string serialized,
+                       executable->SerializeExecutable());
 
   std::string deserialize_dump_dir;
   EXPECT_TRUE(env->LocalTempFilename(&deserialize_dump_dir));
@@ -411,7 +407,7 @@ TEST(PjRtCpuClientTest, DumpOnDeserialize) {
   deserialize_options.executable_build_options.mutable_debug_options()
       ->set_xla_dump_to(deserialize_dump_dir);
   LoadOptions load_options;
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<PjRtLoadedExecutable> reloaded_executable,
       client->LoadSerializedExecutable(serialized, deserialize_options,
                                        load_options));
@@ -430,11 +426,11 @@ TEST(PjRtCpuClientTest, DumpOnDeserialize) {
 }
 
 TEST(PjRtCpuClientTest, AsyncTransferRawData) {
-  TF_ASSERT_OK_AND_ASSIGN(auto client, GetPjRtCpuClient(CpuClientOptions()));
+  ASSERT_OK_AND_ASSIGN(auto client, GetPjRtCpuClient(CpuClientOptions()));
   xla::Shape shape = ShapeUtil::MakeShape(U32, {3, 2});
-  TF_ASSERT_OK_AND_ASSIGN(auto transfer_manager,
-                          client->CreateBuffersForAsyncHostToDevice(
-                              {shape}, client->memory_spaces()[0]));
+  ASSERT_OK_AND_ASSIGN(auto transfer_manager,
+                       client->CreateBuffersForAsyncHostToDevice(
+                           {shape}, client->memory_spaces()[0]));
   auto buffer = transfer_manager->RetrieveBuffer(0);
   auto ready_future = buffer->GetReadyFuture();
   EXPECT_THAT(ready_future.IsReady(), IsFalse());
@@ -444,15 +440,15 @@ TEST(PjRtCpuClientTest, AsyncTransferRawData) {
   absl::string_view raw_data_view(raw_data, raw_data_size);
   TF_ASSERT_OK(transfer_manager->TransferRawDataToBuffer(
       0, absl::string_view(raw_data, raw_data_size), []() {}));
-  TF_ASSERT_OK_AND_ASSIGN(auto literal, buffer->ToLiteralSync());
+  ASSERT_OK_AND_ASSIGN(auto literal, buffer->ToLiteralSync());
   ASSERT_EQ(literal->element_count(), 3 * 2);
   EXPECT_THAT(literal->data<uint32_t>(), Each(0x42424242));
 }
 
 TEST(PjRtCpuClientTest, AsyncTransferWithSpecs) {
-  TF_ASSERT_OK_AND_ASSIGN(auto client, GetPjRtCpuClient(CpuClientOptions()));
+  ASSERT_OK_AND_ASSIGN(auto client, GetPjRtCpuClient(CpuClientOptions()));
   PjRtClient::ShapeSpec shape_spec{U32, {3, 2}};
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto transfer_manager,
       client->CreateBuffersForAsyncHostToDevice({shape_spec}, std::nullopt,
                                                 client->memory_spaces()[0]));
@@ -465,75 +461,73 @@ TEST(PjRtCpuClientTest, AsyncTransferWithSpecs) {
   absl::string_view raw_data_view(raw_data, raw_data_size);
   TF_ASSERT_OK(transfer_manager->TransferRawDataToBuffer(
       0, absl::string_view(raw_data, raw_data_size), []() {}));
-  TF_ASSERT_OK_AND_ASSIGN(auto literal, buffer->ToLiteralSync());
+  ASSERT_OK_AND_ASSIGN(auto literal, buffer->ToLiteralSync());
   ASSERT_EQ(literal->element_count(), 3 * 2);
   EXPECT_THAT(literal->data<uint32_t>(), Each(0x42424242));
 }
 
 TEST(PjRtCpuClientTest, AsyncTransferLiteral) {
-  TF_ASSERT_OK_AND_ASSIGN(auto client, GetPjRtCpuClient(CpuClientOptions()));
+  ASSERT_OK_AND_ASSIGN(auto client, GetPjRtCpuClient(CpuClientOptions()));
   xla::Shape shape = xla::ShapeUtil::MakeShape(F32, {128, 256});
-  TF_ASSERT_OK_AND_ASSIGN(auto transfer_manager,
-                          client->CreateBuffersForAsyncHostToDevice(
-                              {shape}, client->memory_spaces()[0]));
+  ASSERT_OK_AND_ASSIGN(auto transfer_manager,
+                       client->CreateBuffersForAsyncHostToDevice(
+                           {shape}, client->memory_spaces()[0]));
   auto buffer = transfer_manager->RetrieveBuffer(0);
   auto ready_future = buffer->GetReadyFuture();
   EXPECT_THAT(ready_future.IsReady(), IsFalse());
-  TF_ASSERT_OK_AND_ASSIGN(auto literal, xla::MakeFakeLiteral(shape));
+  ASSERT_OK_AND_ASSIGN(auto literal, xla::MakeFakeLiteral(shape));
   TF_ASSERT_OK(transfer_manager->TransferLiteralToBuffer(0, literal, []() {}));
-  TF_ASSERT_OK_AND_ASSIGN(auto received_literal, buffer->ToLiteralSync());
+  ASSERT_OK_AND_ASSIGN(auto received_literal, buffer->ToLiteralSync());
   EXPECT_THAT(received_literal->data<float>(),
               ElementsAreArray(literal.data<float>()));
 }
 
 TEST(PjRtCpuClientTest, AsyncTransferLiteralInt4) {
-  TF_ASSERT_OK_AND_ASSIGN(auto client, GetPjRtCpuClient(CpuClientOptions()));
+  ASSERT_OK_AND_ASSIGN(auto client, GetPjRtCpuClient(CpuClientOptions()));
   xla::Shape shape = xla::ShapeUtil::MakeShape(S4, {128, 256});
-  TF_ASSERT_OK_AND_ASSIGN(auto transfer_manager,
-                          client->CreateBuffersForAsyncHostToDevice(
-                              {shape}, client->memory_spaces()[0]));
+  ASSERT_OK_AND_ASSIGN(auto transfer_manager,
+                       client->CreateBuffersForAsyncHostToDevice(
+                           {shape}, client->memory_spaces()[0]));
   auto buffer = transfer_manager->RetrieveBuffer(0);
   auto ready_future = buffer->GetReadyFuture();
   EXPECT_THAT(ready_future.IsReady(), IsFalse());
-  TF_ASSERT_OK_AND_ASSIGN(auto literal, xla::MakeFakeLiteral(shape));
+  ASSERT_OK_AND_ASSIGN(auto literal, xla::MakeFakeLiteral(shape));
   TF_ASSERT_OK(transfer_manager->TransferLiteralToBuffer(0, literal, []() {}));
-  TF_ASSERT_OK_AND_ASSIGN(auto received_literal, buffer->ToLiteralSync());
+  ASSERT_OK_AND_ASSIGN(auto received_literal, buffer->ToLiteralSync());
   EXPECT_THAT(received_literal->data<s4>(),
               ElementsAreArray(literal.data<s4>()));
 }
 
 TEST(PjRtCpuClientTest, BufferFromLiteralInt4) {
-  TF_ASSERT_OK_AND_ASSIGN(auto client, GetPjRtCpuClient(CpuClientOptions()));
+  ASSERT_OK_AND_ASSIGN(auto client, GetPjRtCpuClient(CpuClientOptions()));
   xla::Shape shape = xla::ShapeUtil::MakeShape(S4, {128, 256});
-  TF_ASSERT_OK_AND_ASSIGN(auto literal, xla::MakeFakeLiteral(shape));
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto buffer,
-      client->BufferFromHostLiteral(literal, client->memory_spaces()[0]));
-  TF_ASSERT_OK_AND_ASSIGN(auto received_literal, buffer->ToLiteralSync());
+  ASSERT_OK_AND_ASSIGN(auto literal, xla::MakeFakeLiteral(shape));
+  ASSERT_OK_AND_ASSIGN(auto buffer, client->BufferFromHostLiteral(
+                                        literal, client->memory_spaces()[0]));
+  ASSERT_OK_AND_ASSIGN(auto received_literal, buffer->ToLiteralSync());
   EXPECT_THAT(received_literal->data<s4>(),
               ElementsAreArray(literal.data<s4>()));
 }
 
 TEST(PjRtCpuClientTest, CopyToMemorySpace) {
-  TF_ASSERT_OK_AND_ASSIGN(auto client, GetPjRtCpuClient(CpuClientOptions()));
+  ASSERT_OK_AND_ASSIGN(auto client, GetPjRtCpuClient(CpuClientOptions()));
   xla::Shape shape = xla::ShapeUtil::MakeShape(S32, {128, 256});
-  TF_ASSERT_OK_AND_ASSIGN(auto literal, xla::MakeFakeLiteral(shape));
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto buffer,
-      client->BufferFromHostLiteral(literal, client->memory_spaces()[0]));
-  TF_ASSERT_OK_AND_ASSIGN(buffer,
-                          buffer->CopyToMemorySpace(buffer->memory_space()));
-  TF_ASSERT_OK_AND_ASSIGN(auto received_literal, buffer->ToLiteralSync());
+  ASSERT_OK_AND_ASSIGN(auto literal, xla::MakeFakeLiteral(shape));
+  ASSERT_OK_AND_ASSIGN(auto buffer, client->BufferFromHostLiteral(
+                                        literal, client->memory_spaces()[0]));
+  ASSERT_OK_AND_ASSIGN(buffer,
+                       buffer->CopyToMemorySpace(buffer->memory_space()));
+  ASSERT_OK_AND_ASSIGN(auto received_literal, buffer->ToLiteralSync());
   EXPECT_THAT(received_literal->data<int32_t>(),
               ElementsAreArray(literal.data<int32_t>()));
 }
 
 TEST(PjRtCpuClientTest, AsyncTransferCallsOnDone) {
-  TF_ASSERT_OK_AND_ASSIGN(auto client, GetPjRtCpuClient(CpuClientOptions()));
+  ASSERT_OK_AND_ASSIGN(auto client, GetPjRtCpuClient(CpuClientOptions()));
   xla::Shape shape = ShapeUtil::MakeShape(F32, {3, 2});
-  TF_ASSERT_OK_AND_ASSIGN(auto transfer_manager,
-                          client->CreateBuffersForAsyncHostToDevice(
-                              {shape}, client->memory_spaces()[0]));
+  ASSERT_OK_AND_ASSIGN(auto transfer_manager,
+                       client->CreateBuffersForAsyncHostToDevice(
+                           {shape}, client->memory_spaces()[0]));
   auto buffer = transfer_manager->RetrieveBuffer(0);
   auto ready_future = buffer->GetReadyFuture();
   EXPECT_THAT(ready_future.IsReady(), IsFalse());
@@ -547,11 +541,11 @@ TEST(PjRtCpuClientTest, AsyncTransferCallsOnDone) {
 }
 
 TEST(PjRtCpuClientTest, AsyncTransferNeverTransferred) {
-  TF_ASSERT_OK_AND_ASSIGN(auto client, GetPjRtCpuClient(CpuClientOptions()));
+  ASSERT_OK_AND_ASSIGN(auto client, GetPjRtCpuClient(CpuClientOptions()));
   xla::Shape shape = ShapeUtil::MakeShape(U32, {3, 2});
-  TF_ASSERT_OK_AND_ASSIGN(auto transfer_manager,
-                          client->CreateBuffersForAsyncHostToDevice(
-                              {shape}, client->memory_spaces()[0]));
+  ASSERT_OK_AND_ASSIGN(auto transfer_manager,
+                       client->CreateBuffersForAsyncHostToDevice(
+                           {shape}, client->memory_spaces()[0]));
   auto buffer = transfer_manager->RetrieveBuffer(0);
   transfer_manager.reset();
   EXPECT_THAT(
@@ -562,43 +556,43 @@ TEST(PjRtCpuClientTest, AsyncTransferNeverTransferred) {
 }
 
 TEST(PjRtCpuClientTest, AsyncTransferBufferCount) {
-  TF_ASSERT_OK_AND_ASSIGN(auto client, GetPjRtCpuClient(CpuClientOptions()));
+  ASSERT_OK_AND_ASSIGN(auto client, GetPjRtCpuClient(CpuClientOptions()));
   xla::Shape shape = ShapeUtil::MakeShape(U32, {3, 2});
-  TF_ASSERT_OK_AND_ASSIGN(auto transfer_manager,
-                          client->CreateBuffersForAsyncHostToDevice(
-                              {shape}, client->memory_spaces()[0]));
+  ASSERT_OK_AND_ASSIGN(auto transfer_manager,
+                       client->CreateBuffersForAsyncHostToDevice(
+                           {shape}, client->memory_spaces()[0]));
   EXPECT_EQ(transfer_manager->buffer_count(), 1);
-  TF_ASSERT_OK_AND_ASSIGN(transfer_manager,
-                          client->CreateBuffersForAsyncHostToDevice(
-                              {shape, shape}, client->memory_spaces()[0]));
+  ASSERT_OK_AND_ASSIGN(transfer_manager,
+                       client->CreateBuffersForAsyncHostToDevice(
+                           {shape, shape}, client->memory_spaces()[0]));
   EXPECT_EQ(transfer_manager->buffer_count(), 2);
 }
 
 TEST(PjRtCpuClientTest, AsyncTransferBufferSize) {
-  TF_ASSERT_OK_AND_ASSIGN(auto client, GetPjRtCpuClient(CpuClientOptions()));
+  ASSERT_OK_AND_ASSIGN(auto client, GetPjRtCpuClient(CpuClientOptions()));
   xla::Shape shape = ShapeUtil::MakeShape(U32, {3, 2});
-  TF_ASSERT_OK_AND_ASSIGN(auto transfer_manager,
-                          client->CreateBuffersForAsyncHostToDevice(
-                              {shape}, client->memory_spaces()[0]));
+  ASSERT_OK_AND_ASSIGN(auto transfer_manager,
+                       client->CreateBuffersForAsyncHostToDevice(
+                           {shape}, client->memory_spaces()[0]));
   EXPECT_EQ(transfer_manager->buffer_size(0), 3 * 2 * 4);
 }
 
 TEST(PjRtCpuClientTest, AsyncTransferDevice) {
-  TF_ASSERT_OK_AND_ASSIGN(auto client, GetPjRtCpuClient(CpuClientOptions()));
+  ASSERT_OK_AND_ASSIGN(auto client, GetPjRtCpuClient(CpuClientOptions()));
   xla::Shape shape = ShapeUtil::MakeShape(U32, {3, 2});
   auto* device = client->addressable_devices()[0];
-  TF_ASSERT_OK_AND_ASSIGN(auto transfer_manager,
-                          client->CreateBuffersForAsyncHostToDevice(
-                              {shape}, *device->default_memory_space()));
+  ASSERT_OK_AND_ASSIGN(auto transfer_manager,
+                       client->CreateBuffersForAsyncHostToDevice(
+                           {shape}, *device->default_memory_space()));
   EXPECT_EQ(transfer_manager->device(), device);
 }
 
 TEST(PjRtCpuClientTest, AsyncTransferSetBufferError) {
-  TF_ASSERT_OK_AND_ASSIGN(auto client, GetPjRtCpuClient(CpuClientOptions()));
+  ASSERT_OK_AND_ASSIGN(auto client, GetPjRtCpuClient(CpuClientOptions()));
   xla::Shape shape = ShapeUtil::MakeShape(U32, {3, 2});
-  TF_ASSERT_OK_AND_ASSIGN(auto transfer_manager,
-                          client->CreateBuffersForAsyncHostToDevice(
-                              {shape}, client->memory_spaces()[0]));
+  ASSERT_OK_AND_ASSIGN(auto transfer_manager,
+                       client->CreateBuffersForAsyncHostToDevice(
+                           {shape}, client->memory_spaces()[0]));
   auto buffer = transfer_manager->RetrieveBuffer(0);
   transfer_manager->SetBufferError(0, Internal("foobar"));
   EXPECT_THAT(
@@ -607,10 +601,10 @@ TEST(PjRtCpuClientTest, AsyncTransferSetBufferError) {
 }
 
 TEST(PjRtCpuClientTest, CreateErrorBuffer) {
-  TF_ASSERT_OK_AND_ASSIGN(auto client, GetPjRtCpuClient(CpuClientOptions()));
+  ASSERT_OK_AND_ASSIGN(auto client, GetPjRtCpuClient(CpuClientOptions()));
   xla::Shape shape = ShapeUtil::MakeShape(U32, {3, 2});
   for (PjRtMemorySpace* memory_space : client->memory_spaces()) {
-    TF_ASSERT_OK_AND_ASSIGN(
+    ASSERT_OK_AND_ASSIGN(
         auto buffer,
         client->CreateErrorBuffer(Internal("foobar"), shape, memory_space));
     EXPECT_THAT(
@@ -621,11 +615,11 @@ TEST(PjRtCpuClientTest, CreateErrorBuffer) {
 }
 
 TEST(PjRtCpuClientTest, AsyncTransferRawDataToSubBuffer) {
-  TF_ASSERT_OK_AND_ASSIGN(auto client, GetPjRtCpuClient(CpuClientOptions()));
+  ASSERT_OK_AND_ASSIGN(auto client, GetPjRtCpuClient(CpuClientOptions()));
   xla::Shape shape = ShapeUtil::MakeShape(U32, {3, 2});
-  TF_ASSERT_OK_AND_ASSIGN(auto transfer_manager,
-                          client->CreateBuffersForAsyncHostToDevice(
-                              {shape}, client->memory_spaces()[0]));
+  ASSERT_OK_AND_ASSIGN(auto transfer_manager,
+                       client->CreateBuffersForAsyncHostToDevice(
+                           {shape}, client->memory_spaces()[0]));
   auto buffer = transfer_manager->RetrieveBuffer(0);
   auto ready_future = buffer->GetReadyFuture();
   EXPECT_THAT(ready_future.IsReady(), IsFalse());
@@ -639,7 +633,7 @@ TEST(PjRtCpuClientTest, AsyncTransferRawDataToSubBuffer) {
   TF_ASSERT_OK(transfer_manager->TransferRawDataToSubBuffer(
       0, raw_data_view.data(), raw_data_size - 1, 1, /*is_last_transfer=*/true,
       []() {}));
-  TF_ASSERT_OK_AND_ASSIGN(auto literal, buffer->ToLiteralSync());
+  ASSERT_OK_AND_ASSIGN(auto literal, buffer->ToLiteralSync());
   ASSERT_EQ(literal->element_count(), 3 * 2);
   EXPECT_THAT(literal->data<uint32_t>(), Each(0x42424242));
 }
@@ -652,23 +646,23 @@ ENTRY Identity() -> f32[2, 2] {
     ROOT %result = f32[2, 2] parameter(0)
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto client, GetPjRtCpuClient(CpuClientOptions()));
+  ASSERT_OK_AND_ASSIGN(auto client, GetPjRtCpuClient(CpuClientOptions()));
 
-  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module,
-                          ParseAndReturnUnverifiedModule(kProgram, {}));
+  ASSERT_OK_AND_ASSIGN(auto hlo_module,
+                       ParseAndReturnUnverifiedModule(kProgram, {}));
   XlaComputation xla_computation(hlo_module->ToProto());
-  TF_ASSERT_OK_AND_ASSIGN(auto pjrt_executable,
-                          client->CompileAndLoad(xla_computation, {}));
+  ASSERT_OK_AND_ASSIGN(auto pjrt_executable,
+                       client->CompileAndLoad(xla_computation, {}));
 
-  TF_ASSERT_OK_AND_ASSIGN(auto fingerprint,
-                          pjrt_executable->FingerprintExecutable());
+  ASSERT_OK_AND_ASSIGN(auto fingerprint,
+                       pjrt_executable->FingerprintExecutable());
   ASSERT_TRUE(!fingerprint.empty());
 
   Shape shape = ShapeUtil::MakeShape(F32, {2, 2});
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto* memory_space,
       client->addressable_devices()[0]->default_memory_space());
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto buffer,
       client->CreateErrorBuffer(Internal("foobar"), shape, memory_space));
 
@@ -690,22 +684,22 @@ ENTRY Identity() -> f32[2, 2] {
     ROOT %result = f32[2, 2] parameter(0)
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto client, GetPjRtCpuClient(CpuClientOptions()));
+  ASSERT_OK_AND_ASSIGN(auto client, GetPjRtCpuClient(CpuClientOptions()));
 
-  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module,
-                          ParseAndReturnUnverifiedModule(kProgram, {}));
+  ASSERT_OK_AND_ASSIGN(auto hlo_module,
+                       ParseAndReturnUnverifiedModule(kProgram, {}));
   XlaComputation xla_computation(hlo_module->ToProto());
-  TF_ASSERT_OK_AND_ASSIGN(auto pjrt_executable,
-                          client->CompileAndLoad(xla_computation, {}));
+  ASSERT_OK_AND_ASSIGN(auto pjrt_executable,
+                       client->CompileAndLoad(xla_computation, {}));
 
-  TF_ASSERT_OK_AND_ASSIGN(auto fingerprint,
-                          pjrt_executable->FingerprintExecutable());
+  ASSERT_OK_AND_ASSIGN(auto fingerprint,
+                       pjrt_executable->FingerprintExecutable());
   ASSERT_TRUE(!fingerprint.empty());
 
   Shape shape = ShapeUtil::MakeShape(F32, {2, 2});
-  TF_ASSERT_OK_AND_ASSIGN(auto transfer_manager,
-                          client->CreateBuffersForAsyncHostToDevice(
-                              {shape}, client->memory_spaces()[0]));
+  ASSERT_OK_AND_ASSIGN(auto transfer_manager,
+                       client->CreateBuffersForAsyncHostToDevice(
+                           {shape}, client->memory_spaces()[0]));
   auto buffer = transfer_manager->RetrieveBuffer(0);
   transfer_manager->SetBufferError(0, Internal("foobar"));
 
@@ -732,32 +726,32 @@ ENTRY Identity() -> f32[2, 2] {
   CpuClientOptions options;
   options.asynchronous = true;
   options.max_inflight_computations_per_device = 32;
-  TF_ASSERT_OK_AND_ASSIGN(auto client, GetPjRtCpuClient(options));
+  ASSERT_OK_AND_ASSIGN(auto client, GetPjRtCpuClient(options));
 
-  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module,
-                          ParseAndReturnUnverifiedModule(kProgram, {}));
+  ASSERT_OK_AND_ASSIGN(auto hlo_module,
+                       ParseAndReturnUnverifiedModule(kProgram, {}));
   XlaComputation xla_computation(hlo_module->ToProto());
-  TF_ASSERT_OK_AND_ASSIGN(auto pjrt_executable,
-                          client->CompileAndLoad(xla_computation, {}));
+  ASSERT_OK_AND_ASSIGN(auto pjrt_executable,
+                       client->CompileAndLoad(xla_computation, {}));
 
-  TF_ASSERT_OK_AND_ASSIGN(auto fingerprint,
-                          pjrt_executable->FingerprintExecutable());
+  ASSERT_OK_AND_ASSIGN(auto fingerprint,
+                       pjrt_executable->FingerprintExecutable());
   ASSERT_TRUE(!fingerprint.empty());
 
   Shape shape = ShapeUtil::MakeShape(F32, {2, 2});
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto* memory_space,
       client->addressable_devices()[0]->default_memory_space());
 
   std::vector<float> data(4, 0);
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto valid_buffer,
       client->BufferFromHostBuffer(
           data.data(), shape.element_type(), shape.dimensions(),
           /*byte_strides=*/std::nullopt,
           PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall, nullptr,
           memory_space, /*device_layout=*/nullptr));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto error_buffer,
       client->CreateErrorBuffer(Internal("foobar"), shape, memory_space));
 
@@ -793,22 +787,22 @@ ENTRY Identity() -> f32[2, 2] {
     ROOT %result = f32[2, 2] parameter(0)
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto client, GetPjRtCpuClient(CpuClientOptions()));
+  ASSERT_OK_AND_ASSIGN(auto client, GetPjRtCpuClient(CpuClientOptions()));
 
-  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module,
-                          ParseAndReturnUnverifiedModule(kProgram, {}));
+  ASSERT_OK_AND_ASSIGN(auto hlo_module,
+                       ParseAndReturnUnverifiedModule(kProgram, {}));
   XlaComputation xla_computation(hlo_module->ToProto());
-  TF_ASSERT_OK_AND_ASSIGN(auto pjrt_executable,
-                          client->CompileAndLoad(xla_computation, {}));
+  ASSERT_OK_AND_ASSIGN(auto pjrt_executable,
+                       client->CompileAndLoad(xla_computation, {}));
 
-  TF_ASSERT_OK_AND_ASSIGN(auto fingerprint,
-                          pjrt_executable->FingerprintExecutable());
+  ASSERT_OK_AND_ASSIGN(auto fingerprint,
+                       pjrt_executable->FingerprintExecutable());
   ASSERT_TRUE(!fingerprint.empty());
 
   Shape shape = ShapeUtil::MakeShape(F32, {2, 2});
-  TF_ASSERT_OK_AND_ASSIGN(auto transfer_manager,
-                          client->CreateBuffersForAsyncHostToDevice(
-                              {shape}, client->memory_spaces()[0]));
+  ASSERT_OK_AND_ASSIGN(auto transfer_manager,
+                       client->CreateBuffersForAsyncHostToDevice(
+                           {shape}, client->memory_spaces()[0]));
   auto buffer = transfer_manager->RetrieveBuffer(0);
 
   const int32_t kLaunchId = 123;
@@ -882,13 +876,13 @@ TEST(PjRtCpuClientTest, ForwardUserDataToFfiHandler) {
                           api_version=API_VERSION_TYPED_FFI
     })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto client, GetPjRtCpuClient(CpuClientOptions()));
+  ASSERT_OK_AND_ASSIGN(auto client, GetPjRtCpuClient(CpuClientOptions()));
 
-  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module,
-                          ParseAndReturnUnverifiedModule(kProgram, {}));
+  ASSERT_OK_AND_ASSIGN(auto hlo_module,
+                       ParseAndReturnUnverifiedModule(kProgram, {}));
   XlaComputation xla_computation(hlo_module->ToProto());
-  TF_ASSERT_OK_AND_ASSIGN(auto executable,
-                          client->CompileAndLoad(xla_computation, {}));
+  ASSERT_OK_AND_ASSIGN(auto executable,
+                       client->CompileAndLoad(xla_computation, {}));
 
   ExecuteContext context;
   TF_ASSERT_OK(context.ffi_context().Emplace<MemsetValue>(42.0f));
@@ -898,8 +892,8 @@ TEST(PjRtCpuClientTest, ForwardUserDataToFfiHandler) {
 
   auto result = executable->Execute(/*argument_handles=*/{{}}, opts);
 
-  TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<xla::Literal> result_literal,
-                          result->at(0).at(0)->ToLiteralSync());
+  ASSERT_OK_AND_ASSIGN(std::shared_ptr<xla::Literal> result_literal,
+                       result->at(0).at(0)->ToLiteralSync());
   EXPECT_TRUE(LiteralTestUtil::Equal(
       LiteralUtil::CreateR1<float>({42.0f, 42.0f, 42.0f, 42.0f}),
       *result_literal));
@@ -931,29 +925,29 @@ TEST(PjRtCpuClientTest, PassAttrToFfiHandler) {
           backend_config={"custom_call_config": {"attributes": "{attr = 3.0 : f32}"}}
     })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto client, GetPjRtCpuClient(CpuClientOptions()));
+  ASSERT_OK_AND_ASSIGN(auto client, GetPjRtCpuClient(CpuClientOptions()));
 
-  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module,
-                          ParseAndReturnUnverifiedModule(kProgram, {}));
+  ASSERT_OK_AND_ASSIGN(auto hlo_module,
+                       ParseAndReturnUnverifiedModule(kProgram, {}));
   XlaComputation xla_computation(hlo_module->ToProto());
-  TF_ASSERT_OK_AND_ASSIGN(auto executable,
-                          client->CompileAndLoad(xla_computation, {}));
+  ASSERT_OK_AND_ASSIGN(auto executable,
+                       client->CompileAndLoad(xla_computation, {}));
 
   ExecuteOptions opts;
   auto result = executable->Execute(/*argument_handles=*/{{}}, opts);
 
-  TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<xla::Literal> result_literal,
-                          result->at(0).at(0)->ToLiteralSync());
+  ASSERT_OK_AND_ASSIGN(std::shared_ptr<xla::Literal> result_literal,
+                       result->at(0).at(0)->ToLiteralSync());
   EXPECT_TRUE(LiteralTestUtil::Equal(
       LiteralUtil::CreateR1<float>({3.0f, 3.0f, 3.0f, 3.0f}), *result_literal));
 }
 
 TEST(PjRtCpuClientTest, CopyRawToHost) {
-  TF_ASSERT_OK_AND_ASSIGN(auto client, GetPjRtCpuClient(CpuClientOptions()));
+  ASSERT_OK_AND_ASSIGN(auto client, GetPjRtCpuClient(CpuClientOptions()));
   xla::Shape shape = ShapeUtil::MakeShape(U32, {3, 2});
-  TF_ASSERT_OK_AND_ASSIGN(auto transfer_manager,
-                          client->CreateBuffersForAsyncHostToDevice(
-                              {shape}, client->memory_spaces()[0]));
+  ASSERT_OK_AND_ASSIGN(auto transfer_manager,
+                       client->CreateBuffersForAsyncHostToDevice(
+                           {shape}, client->memory_spaces()[0]));
   auto buffer = transfer_manager->RetrieveBuffer(0);
   auto ready_future = buffer->GetReadyFuture();
   EXPECT_THAT(ready_future.IsReady(), IsFalse());
@@ -973,22 +967,22 @@ TEST(PjRtCpuClientTest, CopyRawToHost) {
 }
 
 TEST(PjRtCpuClientTest, SubByteLiteralToBufferRoundtrip) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
-                          GetXlaPjrtCpuClient(CpuClientOptions()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                       GetXlaPjrtCpuClient(CpuClientOptions()));
   ASSERT_NE(client->addressable_device_count(), 0)
       << "No addressable devices available.";
   PjRtDevice* const device = client->addressable_devices().front();
   ASSERT_NE(device, nullptr) << "Found device but it is null.";
-  TF_ASSERT_OK_AND_ASSIGN(PjRtMemorySpace * memory_space,
-                          device->default_memory_space());
+  ASSERT_OK_AND_ASSIGN(PjRtMemorySpace * memory_space,
+                       device->default_memory_space());
 
   const Literal literal =
       LiteralUtil::CreateR1<s4>({s4(0), s4(1), s4(2), s4(-8)});
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtBuffer> buffer,
-                          client->BufferFromHostLiteral(literal, memory_space));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtBuffer> buffer,
+                       client->BufferFromHostLiteral(literal, memory_space));
   TF_ASSERT_OK(buffer->GetReadyFuture().Await());
-  TF_ASSERT_OK_AND_ASSIGN(const size_t on_device_size,
-                          buffer->GetOnDeviceSizeInBytes());
+  ASSERT_OK_AND_ASSIGN(const size_t on_device_size,
+                       buffer->GetOnDeviceSizeInBytes());
   EXPECT_EQ(on_device_size, 2);
 
   Literal literal_result(literal.shape());
@@ -1018,14 +1012,13 @@ TEST(PjRtCpuClientTest, CustomAllocator) {
     return std::make_unique<CustomMemory>(&data, sizeof(data));
   };
 
-  TF_ASSERT_OK_AND_ASSIGN(auto client, GetPjRtCpuClient(options));
+  ASSERT_OK_AND_ASSIGN(auto client, GetPjRtCpuClient(options));
   xla::Shape shape = xla::ShapeUtil::MakeShape(F32, {4});
-  TF_ASSERT_OK_AND_ASSIGN(auto literal, xla::MakeFakeLiteral(shape));
+  ASSERT_OK_AND_ASSIGN(auto literal, xla::MakeFakeLiteral(shape));
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto buffer,
-      client->BufferFromHostLiteral(literal, client->memory_spaces()[0]));
-  TF_ASSERT_OK_AND_ASSIGN(auto received_literal, buffer->ToLiteralSync());
+  ASSERT_OK_AND_ASSIGN(auto buffer, client->BufferFromHostLiteral(
+                                        literal, client->memory_spaces()[0]));
+  ASSERT_OK_AND_ASSIGN(auto received_literal, buffer->ToLiteralSync());
 
   // Check that buffer was constructed in the data array provided by the custom
   // allocator.
@@ -1050,36 +1043,36 @@ TEST(PjRtCpuClientTest, SerializeYnnFusions) {
         backend_config={"fusion_config": {kind: "__ynn_fusion"}}
     })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto client, GetPjRtCpuClient(CpuClientOptions()));
-  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnUnverifiedModule(kProgram, {}));
+  ASSERT_OK_AND_ASSIGN(auto client, GetPjRtCpuClient(CpuClientOptions()));
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnUnverifiedModule(kProgram, {}));
 
   XlaComputation xla_computation(m->ToProto());
-  TF_ASSERT_OK_AND_ASSIGN(auto executable,
-                          client->CompileAndLoad(xla_computation, {}));
+  ASSERT_OK_AND_ASSIGN(auto executable,
+                       client->CompileAndLoad(xla_computation, {}));
 
   Literal literal = LiteralUtil::CreateR1<float>({1.0f, 2.0f, 3.0f, 4.0f});
-  TF_ASSERT_OK_AND_ASSIGN(auto buf, client->BufferFromHostLiteral(
-                                        literal, client->memory_spaces()[0]));
+  ASSERT_OK_AND_ASSIGN(auto buf, client->BufferFromHostLiteral(
+                                     literal, client->memory_spaces()[0]));
 
   ExecuteOptions opts;
   auto result = executable->Execute({{buf.get(), buf.get()}}, opts);
 
-  TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<xla::Literal> result_literal,
-                          result->at(0).at(0)->ToLiteralSync());
+  ASSERT_OK_AND_ASSIGN(std::shared_ptr<xla::Literal> result_literal,
+                       result->at(0).at(0)->ToLiteralSync());
   EXPECT_TRUE(LiteralTestUtil::Equal(
       LiteralUtil::CreateR1<float>({4.0f, 16.0f, 36.0f, 64.0f}),
       *result_literal));
 
   // Check that serialized/deserialized executable works and produces the same
   // result.
-  TF_ASSERT_OK_AND_ASSIGN(std::string serialized,
-                          executable->SerializeExecutable());
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(std::string serialized,
+                       executable->SerializeExecutable());
+  ASSERT_OK_AND_ASSIGN(
       auto reloaded_executable,
       client->LoadSerializedExecutable(serialized, std::nullopt, {}));
 
   result = executable->Execute({{buf.get(), buf.get()}}, opts);
-  TF_ASSERT_OK_AND_ASSIGN(result_literal, result->at(0).at(0)->ToLiteralSync());
+  ASSERT_OK_AND_ASSIGN(result_literal, result->at(0).at(0)->ToLiteralSync());
   EXPECT_TRUE(LiteralTestUtil::Equal(
       LiteralUtil::CreateR1<float>({4.0f, 16.0f, 36.0f, 64.0f}),
       *result_literal));

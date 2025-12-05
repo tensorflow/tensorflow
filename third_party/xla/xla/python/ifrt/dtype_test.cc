@@ -18,12 +18,12 @@
 #include <tuple>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status_matchers.h"
 #include "xla/python/ifrt/dtype.pb.h"
 #include "xla/python/ifrt/serdes_test_util.h"
 #include "xla/python/ifrt/serdes_version.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 
 namespace xla {
@@ -56,10 +56,10 @@ TEST_P(DTypeSerDesTest, FromToFromProto) {
     proto.set_version_number(version().version_number().value());
     proto.set_kind(static_cast<DTypeProto::Kind>(
         DTypeProto::Kind_descriptor()->value(i)->number()));
-    TF_ASSERT_OK_AND_ASSIGN(DType dtype, DType::FromProto(proto));
+    ASSERT_OK_AND_ASSIGN(DType dtype, DType::FromProto(proto));
     EXPECT_NE(dtype.kind(), DType::kInvalid);
-    TF_ASSERT_OK_AND_ASSIGN(DType dtype_copy,
-                            DType::FromProto(dtype.ToProto(version())));
+    ASSERT_OK_AND_ASSIGN(DType dtype_copy,
+                         DType::FromProto(dtype.ToProto(version())));
     EXPECT_EQ(dtype_copy, dtype);
   }
 }

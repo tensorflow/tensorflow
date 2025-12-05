@@ -42,7 +42,6 @@ limitations under the License.
 #include "xla/pjrt/proto/topology_description.pb.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/env.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/path.h"
@@ -110,16 +109,16 @@ TEST(DumpTest, ResolveSpongeDumpPath) {
 
 TEST(DumpTest, GetDumpSubdirPath) {
   const std::string temp_dir = tsl::testing::TmpDir();
-  TF_ASSERT_OK_AND_ASSIGN(std::string dump_subdir,
-                          pjrt::GetDumpSubdirPath(temp_dir, "my_module"));
+  ASSERT_OK_AND_ASSIGN(std::string dump_subdir,
+                       pjrt::GetDumpSubdirPath(temp_dir, "my_module"));
   EXPECT_THAT(dump_subdir, HasSubstr(temp_dir));
   EXPECT_THAT(dump_subdir, HasSubstr("my_module"));
   EXPECT_THAT(tsl::Env::Default()->IsDirectory(dump_subdir), IsOk());
 }
 
 TEST(DumpTest, GetDumpSubdirPathEmptyPath) {
-  TF_ASSERT_OK_AND_ASSIGN(std::string dump_subdir,
-                          pjrt::GetDumpSubdirPath("", "my_module"));
+  ASSERT_OK_AND_ASSIGN(std::string dump_subdir,
+                       pjrt::GetDumpSubdirPath("", "my_module"));
   EXPECT_EQ(dump_subdir, "");
 }
 

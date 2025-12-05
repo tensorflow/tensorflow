@@ -16,11 +16,11 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "xla/error_spec.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/service/gpu/tests/gpu_codegen_test.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -30,8 +30,7 @@ namespace {
 // WARNING: This tests must be alone in its file!  Otherwise, the
 // error isn't caught. We expect and CUDA_ERROR_ILLEGAL_ADDRESS to be
 // thrown with the old buggy code.
-class CopyAloneNoOptTest : public GpuCodegenTest {
-};
+class CopyAloneNoOptTest : public GpuCodegenTest {};
 
 TEST_F(CopyAloneNoOptTest, CopyTranspose) {
   const char* hlo_text = R"(
@@ -41,8 +40,8 @@ ENTRY main {
   ROOT %copy = f32[8,32,32,32,16]{3,2,1,4,0} copy(f32[8,32,32,32,16]{4,3,2,1,0} %param)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> optimized_module,
-                          ParseAndReturnVerifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> optimized_module,
+                       ParseAndReturnVerifiedModule(hlo_text));
 
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
 

@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "llvm/IR/Module.h"
+#include "llvm/TargetParser/Triple.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/backends/gpu/codegen/fusion_emitter.h"
 #include "xla/backends/gpu/codegen/fusions.h"
@@ -186,11 +187,11 @@ class CollectiveBlockLevelConfigParameterizedTest
 
 TEST_P(CollectiveBlockLevelConfigParameterizedTest, AllReduceBlockLevelConfig) {
   const auto& param = GetParam();
-  TF_ASSERT_OK_AND_ASSIGN(const auto module_with_fusion,
-                          BuildModuleWithFusion(GetModuleStr(param.shape)));
-  TF_ASSERT_OK_AND_ASSIGN(const auto block_level_config,
-                          GetCollectiveBlockLevelFusionConfig(
-                              device_info_, module_with_fusion.FusionInstr()));
+  ASSERT_OK_AND_ASSIGN(const auto module_with_fusion,
+                       BuildModuleWithFusion(GetModuleStr(param.shape)));
+  ASSERT_OK_AND_ASSIGN(const auto block_level_config,
+                       GetCollectiveBlockLevelFusionConfig(
+                           device_info_, module_with_fusion.FusionInstr()));
   EXPECT_THAT(block_level_config, Optional(EqualsProto(param.expected_proto)));
 }
 
@@ -221,21 +222,21 @@ INSTANTIATE_TEST_SUITE_P(
     });
 
 TEST_F(CollectiveEmitterTest, AllReduceBlockLevelConfigNoReplicaGroups) {
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       const auto module_with_fusion,
       BuildModuleWithFusion(GetModuleStr(ShapeUtil::MakeShape(F32, {65536}),
                                          /* replica_groups= */ "")));
-  TF_ASSERT_OK_AND_ASSIGN(const auto block_level_config,
-                          GetCollectiveBlockLevelFusionConfig(
-                              device_info_, module_with_fusion.FusionInstr()));
+  ASSERT_OK_AND_ASSIGN(const auto block_level_config,
+                       GetCollectiveBlockLevelFusionConfig(
+                           device_info_, module_with_fusion.FusionInstr()));
   EXPECT_EQ(block_level_config, std::nullopt);
 }
 
 TEST_F(CollectiveEmitterTest, AllReduceGetCollectiveUnmanagedKernelArguments) {
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       const auto module_with_fusion,
       BuildModuleWithFusion(GetModuleStr(ShapeUtil::MakeShape(F32, {65536}))));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       const auto unmanaged_arguments,
       GetCollectiveUnmanagedKernelArguments(module_with_fusion.FusionInstr()));
   ASSERT_EQ(unmanaged_arguments.size(), 4);
@@ -251,7 +252,7 @@ TEST_F(CollectiveEmitterTest, AllReduceGetCollectiveUnmanagedKernelArguments) {
 }
 
 TEST_F(CollectiveEmitterTest, AllReduceWithTritonGetLaunchConfig) {
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<ModuleWithEmitter> result_ptr,
       BuildModuleWithEmitter(GetModuleStr(ShapeUtil::MakeShape(F32, {65536})),
                              device_info_));
@@ -270,12 +271,12 @@ class CollectiveEmitterParameterizedTest
 
 TEST_P(CollectiveEmitterParameterizedTest,
        AllReduceWithTritonGenerateTritonKernelSanity) {
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<ModuleWithEmitter> result,
       BuildModuleWithEmitter(GetModuleStr(GetParam()), device_info_));
   const TritonFusion* triton_fusion = result->emitter.get();
   ASSERT_NE(triton_fusion, nullptr);
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       TritonWrapperResult triton_kernel,
       triton_fusion->GenerateTritonKernelAndWrapper(
           *result->FusionInstr(), "test-all-reduce-start", device_info_,

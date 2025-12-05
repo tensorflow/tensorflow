@@ -19,6 +19,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/algorithm/container.h"
 #include "absl/status/statusor.h"
@@ -28,7 +29,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/test.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -58,10 +58,9 @@ HloModule NoChange
   }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   ASSERT_EQ(module->computation_count(), 2);
-  TF_ASSERT_OK_AND_ASSIGN(bool result, RunUnflattenCallGraph(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool result, RunUnflattenCallGraph(module.get()));
   EXPECT_FALSE(result);
   ASSERT_EQ(module->computation_count(), 2);
 }
@@ -94,10 +93,9 @@ TEST_F(UnflattenCallGraphTest, SimpleDuplicates) {
   }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   ASSERT_EQ(module->computation_count(), 3);
-  TF_ASSERT_OK_AND_ASSIGN(bool result, RunUnflattenCallGraph(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool result, RunUnflattenCallGraph(module.get()));
   EXPECT_TRUE(result);
   ASSERT_EQ(module->computation_count(), 2);
 
@@ -169,10 +167,9 @@ ENTRY %main (a: f32[4096], b: f32[4096]) -> f32[4096] {
   ROOT %multiply = f32[4096]{0} multiply(%call0, %call1)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   ASSERT_EQ(module->computation_count(), 7);
-  TF_ASSERT_OK_AND_ASSIGN(bool result, RunUnflattenCallGraph(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool result, RunUnflattenCallGraph(module.get()));
   EXPECT_TRUE(result);
   ASSERT_EQ(module->computation_count(), 4);
 
@@ -238,10 +235,9 @@ ENTRY %FlattenCalls.Entry (param0.2: f32[]) -> f32[] {
   ROOT %call.3 = f32[] call(%call.2), to_apply=%A.2
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   ASSERT_EQ(module->computation_count(), 7);
-  TF_ASSERT_OK_AND_ASSIGN(bool result, RunUnflattenCallGraph(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool result, RunUnflattenCallGraph(module.get()));
   EXPECT_TRUE(result);
   ASSERT_EQ(module->computation_count(), 3);
 
@@ -328,10 +324,9 @@ ENTRY %main (param0: f32[]) -> f32[] {
   ROOT %call2 = f32[] call(%param0), to_apply=%B
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   ASSERT_EQ(module->computation_count(), 8);
-  TF_ASSERT_OK_AND_ASSIGN(bool result, RunUnflattenCallGraph(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool result, RunUnflattenCallGraph(module.get()));
 
   EXPECT_TRUE(result);
   ASSERT_EQ(module->computation_count(), 5);
@@ -379,10 +374,9 @@ TEST_F(UnflattenCallGraphTest, DifferentArgumentNames) {
   }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   ASSERT_EQ(module->computation_count(), 3);
-  TF_ASSERT_OK_AND_ASSIGN(bool result, RunUnflattenCallGraph(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool result, RunUnflattenCallGraph(module.get()));
   EXPECT_TRUE(result);
   ASSERT_EQ(module->computation_count(), 2);
 
@@ -420,10 +414,9 @@ HloModule DuplicatesInConditional
   }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   ASSERT_EQ(module->computation_count(), 3);
-  TF_ASSERT_OK_AND_ASSIGN(bool result, RunUnflattenCallGraph(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool result, RunUnflattenCallGraph(module.get()));
   // No change expected.
   EXPECT_FALSE(result);
 }
@@ -468,10 +461,9 @@ HloModule OnlyDeduplicateCalledComputations
   }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   ASSERT_EQ(module->computation_count(), 3);
-  TF_ASSERT_OK_AND_ASSIGN(bool result, RunUnflattenCallGraph(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool result, RunUnflattenCallGraph(module.get()));
   EXPECT_TRUE(result);
 
   // Check that computations did not get removed.

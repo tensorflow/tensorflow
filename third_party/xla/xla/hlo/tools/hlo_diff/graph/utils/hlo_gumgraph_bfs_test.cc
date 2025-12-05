@@ -24,7 +24,6 @@
 #include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/hlo/tools/hlo_diff/graph/hlo_gumgraph.h"
 #include "xla/hlo/tools/hlo_diff/graph/hlo_gumgraph_node.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace hlo_diff {
@@ -40,8 +39,8 @@ TEST_F(HloGumgraphBfsTest, BfsForwardWorks) {
   //                     | add_1 | ---> ┌-------┐      ┌------┐
   // [Constant bar] ---> └-------┘      | add_0 | ---> | ROOT |
   // [Param baz] ---------------------> └-------┘      └------┘
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
   HloModule module, is_scheduled=true
   
   ENTRY entry {
@@ -52,8 +51,8 @@ TEST_F(HloGumgraphBfsTest, BfsForwardWorks) {
     add_0 = f32[8,2048]{1,0:T(8,128)} add(add_1, baz)
   }
   )"));
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> graph,
-                          HloGumgraph::Create(module.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> graph,
+                       HloGumgraph::Create(module.get()));
 
   std::vector<absl::string_view> visited_nodes;
   const auto root = graph->GetRoot();
@@ -74,8 +73,8 @@ TEST_F(HloGumgraphBfsTest, BfsReverseWorks) {
   // [Param foo] ------> ┌-------┐      ┌-------┐      ┌------┐
   //                     | add_0 | ---> | abs_0 | ---> | ROOT |
   // [Constant bar] ---> └-------┘      └-------┘      └------┘
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
   HloModule module, is_scheduled=true
   
   ENTRY entry {
@@ -85,8 +84,8 @@ TEST_F(HloGumgraphBfsTest, BfsReverseWorks) {
     abs_0 = f32[8,2048]{1,0:T(8,128)} abs(f32[8,2048]{1,0:T(8,128)} %add_0)
   }
   )"));
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> graph,
-                          HloGumgraph::Create(module.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> graph,
+                       HloGumgraph::Create(module.get()));
 
   std::vector<absl::string_view> visited_nodes;
   const auto root = graph->GetRoot();
@@ -107,8 +106,8 @@ TEST_F(HloGumgraphBfsTest, GetAllNodesWorks) {
   //                     | add_1 | ---> ┌-------┐      ┌------┐
   // [Constant bar] ---> └-------┘      | add_0 | ---> | ROOT |
   // [Param baz] ---------------------> └-------┘      └------┘
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
   HloModule module, is_scheduled=true
   
   ENTRY entry {
@@ -119,8 +118,8 @@ TEST_F(HloGumgraphBfsTest, GetAllNodesWorks) {
     add_0 = f32[8,2048]{1,0:T(8,128)} add(add_1, baz)
   }
   )"));
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> graph,
-                          HloGumgraph::Create(module.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> graph,
+                       HloGumgraph::Create(module.get()));
   const auto root = graph->GetRoot();
   std::vector<const HloInstructionNode*> visited_nodes =
       GetAllNodesInBfsOrder(root, BfsTraversalDirection::kForward);
@@ -140,8 +139,8 @@ TEST_F(HloGumgraphBfsTest, BfsFromMultipleNodesWorks) {
   //                     | add_1 | ---> ┌-------┐      ┌------┐
   // [Constant bar] ---> └-------┘      | add_0 | ---> | ROOT |
   // [Param baz] ---------------------> └-------┘      └------┘
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
   HloModule module, is_scheduled=true
   
   ENTRY entry {
@@ -152,8 +151,8 @@ TEST_F(HloGumgraphBfsTest, BfsFromMultipleNodesWorks) {
     add_0 = f32[8,2048]{1,0:T(8,128)} add(add_1, baz)
   }
   )"));
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> graph,
-                          HloGumgraph::Create(module.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> graph,
+                       HloGumgraph::Create(module.get()));
 
   std::vector<absl::string_view> visited_nodes;
   const auto root = graph->GetRoot();
@@ -176,8 +175,8 @@ TEST_F(HloGumgraphBfsTest, BfsStopExpandingWorks) {
   //                     | add_1 | ---> ┌-------┐      ┌------┐
   // [Constant bar] ---> └-------┘      | add_0 | ---> | ROOT |
   // [Param baz] ---------------------> └-------┘      └------┘
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
   HloModule module, is_scheduled=true
   
   ENTRY entry {
@@ -188,8 +187,8 @@ TEST_F(HloGumgraphBfsTest, BfsStopExpandingWorks) {
     add_0 = f32[8,2048]{1,0:T(8,128)} add(add_1, baz)
   }
   )"));
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> graph,
-                          HloGumgraph::Create(module.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> graph,
+                       HloGumgraph::Create(module.get()));
 
   std::vector<absl::string_view> visited_nodes;
   HloGumgraphBfs(
@@ -212,8 +211,8 @@ TEST_F(HloGumgraphBfsTest, BfsEarlyTerminationWorks) {
   //                     | add_1 | ---> ┌-------┐      ┌------┐
   // [Constant bar] ---> └-------┘      | add_0 | ---> | ROOT |
   // [Param baz] ---------------------> └-------┘      └------┘
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
   HloModule module, is_scheduled=true
   
   ENTRY entry {
@@ -224,8 +223,8 @@ TEST_F(HloGumgraphBfsTest, BfsEarlyTerminationWorks) {
     add_0 = f32[8,2048]{1,0:T(8,128)} add(add_1, baz)
   }
   )"));
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> graph,
-                          HloGumgraph::Create(module.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> graph,
+                       HloGumgraph::Create(module.get()));
 
   std::vector<absl::string_view> visited_nodes;
   // This is an example of how to use per_node_fn return value to limit a BFS
@@ -248,8 +247,8 @@ TEST_F(HloGumgraphBfsTest, BfsLimitDistanceWorks) {
   //                     | add_1 | ---> ┌-------┐      ┌------┐
   // [Constant bar] ---> └-------┘      | add_0 | ---> | ROOT |
   // [Param baz] ---------------------> └-------┘      └------┘
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
 HloModule module, is_scheduled=true
 
 ENTRY entry {
@@ -260,8 +259,8 @@ ENTRY entry {
   add_0 = f32[8,2048]{1,0:T(8,128)} add(add_1, baz)
 }
 )"));
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> graph,
-                          HloGumgraph::Create(module.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> graph,
+                       HloGumgraph::Create(module.get()));
 
   std::vector<absl::string_view> visited_nodes;
   // This is an example of how to use per_node_fn return value to limit a BFS
@@ -286,8 +285,8 @@ TEST_F(HloGumgraphBfsTest, BfsLimitDistanceFromMultipleNodesWorks) {
   //                     | add_1 | ---> ┌-------┐      ┌------┐
   // [Constant bar] ---> └-------┘      | add_0 | ---> | ROOT |
   // [Param baz] ---------------------> └-------┘      └------┘
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
 HloModule module, is_scheduled=true
 
 ENTRY entry {
@@ -298,8 +297,8 @@ ENTRY entry {
   add_0 = f32[8,2048]{1,0:T(8,128)} add(add_1, baz)
 }
 )"));
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> graph,
-                          HloGumgraph::Create(module.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> graph,
+                       HloGumgraph::Create(module.get()));
 
   std::vector<absl::string_view> visited_nodes;
   // This is an example of how to use per_node_fn return value to limit a BFS

@@ -19,6 +19,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/statusor.h"
 #include "absl/strings/str_replace.h"
@@ -30,7 +31,6 @@ limitations under the License.
 #include "xla/service/gpu/gpu_executable.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/shape_util.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -53,7 +53,7 @@ GpuCodegenTest::CreateNewVerifiedModuleWithFTZ(bool ftz) {
 void GpuCodegenTest::CompileAndOptionallyVerifyPtx(
     std::unique_ptr<VerifiedHloModule> hlo_module, absl::string_view pattern,
     bool run_optimization_passes) {
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<Executable> executable,
       CompileToExecutable(std::move(hlo_module), run_optimization_passes));
   std::string ptx_str(static_cast<GpuExecutable*>(executable.get())->text());

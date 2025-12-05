@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/backends/gpu/host_offloading/gpu_host_offloading_allocator.h"
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -22,7 +23,6 @@ limitations under the License.
 #include "xla/service/platform_util.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace xla::gpu {
 
@@ -38,18 +38,17 @@ se::StreamExecutor* GpuExecutor() {
 TEST(GpuHostOffloadingAllocatorTest, AllocateTransferBuffer) {
   se::StreamExecutor* stream_executor = GpuExecutor();
   auto allocator = CreateGpuHostOffloadingAllocator(stream_executor);
-  TF_ASSERT_OK_AND_ASSIGN(auto buffer, allocator->AllocateTransferBuffer(1024));
+  ASSERT_OK_AND_ASSIGN(auto buffer, allocator->AllocateTransferBuffer(1024));
   EXPECT_EQ(buffer->size_bytes(), 1024);
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto memory_type,
-      stream_executor->GetPointerMemorySpace(buffer->untyped_data()));
+  ASSERT_OK_AND_ASSIGN(auto memory_type, stream_executor->GetPointerMemorySpace(
+                                             buffer->untyped_data()));
   EXPECT_EQ(memory_type, se::MemoryType::kHost);
 }
 
 TEST(GpuHostOffloadingAllocatorTest, AllocateStagingBuffer) {
   se::StreamExecutor* stream_executor = GpuExecutor();
   auto allocator = CreateGpuHostOffloadingAllocator(stream_executor);
-  TF_ASSERT_OK_AND_ASSIGN(auto buffer, allocator->AllocateStagingBuffer(1024));
+  ASSERT_OK_AND_ASSIGN(auto buffer, allocator->AllocateStagingBuffer(1024));
   EXPECT_EQ(buffer->size_bytes(), 1024);
 
   auto memory_type_or_status =

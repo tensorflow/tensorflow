@@ -46,7 +46,6 @@ limitations under the License.
 #include "xla/shape_tree.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
-#include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test_benchmark.h"
 #include "xla/xla_data.pb.h"
@@ -114,9 +113,8 @@ TEST_P(HostOffloadingRuntimeExecutableTest, NonAliasedOutput) {
   HostOffloadingExecutableProto::ExecutableType
       host_offloading_executable_type = GetParam();
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto computation,
-      CompileFromString(str, host_offloading_executable_type));
+  ASSERT_OK_AND_ASSIGN(auto computation,
+                       CompileFromString(str, host_offloading_executable_type));
 
   Shape shape = ShapeUtil::MakeShape(xla::PrimitiveType::F32, {4});
 
@@ -151,9 +149,8 @@ TEST_P(HostOffloadingRuntimeExecutableTest, AliasedOutput) {
   HostOffloadingExecutableProto::ExecutableType
       host_offloading_executable_type = GetParam();
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto computation,
-      CompileFromString(str, host_offloading_executable_type));
+  ASSERT_OK_AND_ASSIGN(auto computation,
+                       CompileFromString(str, host_offloading_executable_type));
 
   Shape shape = ShapeUtil::MakeShape(xla::PrimitiveType::F32, {4});
 
@@ -192,9 +189,8 @@ TEST_P(HostOffloadingRuntimeExecutableTest, TwoOutputsOneAliased) {
   HostOffloadingExecutableProto::ExecutableType
       host_offloading_executable_type = GetParam();
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto computation,
-      CompileFromString(str, host_offloading_executable_type));
+  ASSERT_OK_AND_ASSIGN(auto computation,
+                       CompileFromString(str, host_offloading_executable_type));
 
   Shape shape = ShapeUtil::MakeShape(xla::PrimitiveType::F32, {4});
 
@@ -250,9 +246,8 @@ TEST_P(HostOffloadingRuntimeExecutableTest, NonAliasedTupleOutput) {
   HostOffloadingExecutableProto::ExecutableType
       host_offloading_executable_type = GetParam();
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto computation,
-      CompileFromString(str, host_offloading_executable_type));
+  ASSERT_OK_AND_ASSIGN(auto computation,
+                       CompileFromString(str, host_offloading_executable_type));
 
   Shape shape = ShapeUtil::MakeShape(xla::PrimitiveType::F32, {4});
   Shape tuple_shape = ShapeUtil::MakeTupleShape({shape, shape});
@@ -297,9 +292,8 @@ TEST_P(HostOffloadingRuntimeExecutableTest, TupleParameter) {
   HostOffloadingExecutableProto::ExecutableType
       host_offloading_executable_type = GetParam();
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto computation,
-      CompileFromString(str, host_offloading_executable_type));
+  ASSERT_OK_AND_ASSIGN(auto computation,
+                       CompileFromString(str, host_offloading_executable_type));
 
   Shape shape = ShapeUtil::MakeShape(xla::PrimitiveType::F32, {4});
   Shape tuple_shape = ShapeUtil::MakeTupleShape(
@@ -347,9 +341,8 @@ TEST_P(HostOffloadingRuntimeExecutableTest, TupleParameterWithAliasedOutput) {
   HostOffloadingExecutableProto::ExecutableType
       host_offloading_executable_type = GetParam();
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto computation,
-      CompileFromString(str, host_offloading_executable_type));
+  ASSERT_OK_AND_ASSIGN(auto computation,
+                       CompileFromString(str, host_offloading_executable_type));
 
   Shape shape = ShapeUtil::MakeShape(xla::PrimitiveType::F32, {4});
   Shape tuple_shape = ShapeUtil::MakeTupleShape(
@@ -413,9 +406,8 @@ TEST_P(HostOffloadingRuntimeExecutableTest, FfiWithThreadpool) {
   HostOffloadingExecutableProto::ExecutableType
       host_offloading_executable_type = GetParam();
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto computation,
-      CompileFromString(hlo, host_offloading_executable_type));
+  ASSERT_OK_AND_ASSIGN(auto computation,
+                       CompileFromString(hlo, host_offloading_executable_type));
 
   Shape shape = ShapeUtil::MakeShape(xla::PrimitiveType::F32, {1});
   auto result_literal = LiteralUtil::CreateR0<int32_t>(0);
@@ -450,9 +442,8 @@ TEST_P(HostOffloadingRuntimeExecutableTest, Int4) {
     GTEST_SKIP() << "Int4 is not supported in PJRT executable";
   }
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto computation,
-      CompileFromString(hlo, host_offloading_executable_type));
+  ASSERT_OK_AND_ASSIGN(auto computation,
+                       CompileFromString(hlo, host_offloading_executable_type));
 
   Shape shape = ShapeUtil::MakeShape(xla::PrimitiveType::S4, {4});
   shape.mutable_layout()->set_element_size_in_bits(4);
@@ -505,7 +496,7 @@ TEST(HostOffloadingNanortTest, DeviceAssignment) {
     }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto computation,
       CompileFromString(str,
                         HostOffloadingExecutableProto::EXECUTABLE_TYPE_NANORT));
@@ -541,8 +532,8 @@ void BM_HostOffloadingExecutableAddScalars(
           }
           )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto computation,
-                          CompileFromString(hlo, executable_type));
+  ASSERT_OK_AND_ASSIGN(auto computation,
+                       CompileFromString(hlo, executable_type));
 
   auto input_0 = LiteralUtil::CreateR0<float>(3);
   auto input_1 = LiteralUtil::CreateR0<float>(2);

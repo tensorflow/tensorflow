@@ -15,13 +15,13 @@ limitations under the License.
 
 #include "xla/service/gpu/fusion_deduplication_cache.h"
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/log/check.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -66,7 +66,7 @@ bool IsFusible(const HloInstruction& instruction) { return true; }
 using FusionDeduplicationCacheTest = HloHardwareIndependentTestBase;
 
 TEST_F(FusionDeduplicationCacheTest, IdenticalInstructions_EqualId) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
     HloModule test_module
 
     ENTRY main {
@@ -86,7 +86,7 @@ TEST_F(FusionDeduplicationCacheTest, IdenticalInstructions_EqualId) {
 
 TEST_F(FusionDeduplicationCacheTest,
        IdenticalInstructionsInDifferentComputations_EqualId) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
     HloModule test_module
 
     computation.1 {
@@ -111,7 +111,7 @@ TEST_F(FusionDeduplicationCacheTest,
 }
 
 TEST_F(FusionDeduplicationCacheTest, IdenticalFusionInstructions_EqualId) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
     HloModule test_module
 
     ENTRY main {
@@ -150,7 +150,7 @@ TEST_F(FusionDeduplicationCacheTest, IdenticalFusionInstructions_EqualId) {
 
 TEST_F(FusionDeduplicationCacheTest,
        IdenticalMultiOutputFusionInstructions_EqualId) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
     HloModule test_module
 
     ENTRY main {
@@ -192,7 +192,7 @@ TEST_F(FusionDeduplicationCacheTest,
 
 TEST_F(FusionDeduplicationCacheTest,
        MultiOutputFusionVsSingleOutputFusion_DifferentId) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
     HloModule test_module
 
     ENTRY main {
@@ -234,7 +234,7 @@ TEST_F(FusionDeduplicationCacheTest,
 
 TEST_F(FusionDeduplicationCacheTest,
        DifferentConsumerOperandIndex_DifferentId) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
     HloModule test_module
 
     ENTRY main {
@@ -269,7 +269,7 @@ TEST_F(FusionDeduplicationCacheTest,
 }
 
 TEST_F(FusionDeduplicationCacheTest, OnlyFusibleInstructionsAreCached) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
     HloModule test_module
 
     ENTRY main {

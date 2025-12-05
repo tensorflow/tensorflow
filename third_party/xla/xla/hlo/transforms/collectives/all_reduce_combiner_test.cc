@@ -36,7 +36,6 @@ limitations under the License.
 #include "xla/literal_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -282,8 +281,7 @@ ENTRY entry {
     sharding={{maximal device=0}, {maximal device=1}}
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   LOG(INFO) << "Original module:\n" << module->ToString();
 
   AllReduceCombiner combine(1024 * 1024, kMaxCombineCount);
@@ -327,8 +325,7 @@ ENTRY entry {
     sharding={{maximal device=0}, {maximal device=1}, {maximal device=0}}
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
   AllReduceCombiner combine(1024 * 1024, kMaxCombineCount);
   ASSERT_EQ(AllReduceCount(*module), 3);
@@ -365,8 +362,7 @@ ENTRY entry {
   ROOT tuple = (f32[128], f32[128]) tuple(cross_shard_ar, cross_replica_ar)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
   AllReduceCombiner combine(1024 * 1024, kMaxCombineCount);
   ASSERT_EQ(AllReduceCount(*module), 2);
@@ -403,8 +399,7 @@ ENTRY entry {
   ROOT tuple = (f32[128], f32[128]) tuple(ar0, ar1)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
   AllReduceCombiner combine(1024 * 1024, kMaxCombineCount);
   ASSERT_EQ(AllReduceCount(*module), 3);
@@ -442,8 +437,7 @@ ENTRY entry {
   ROOT add = f32[128] add(domain0, crs11),
     sharding={maximal device=1}
 })";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
   AllReduceCombiner combine(1024 * 1024, kMaxCombineCount);
   ASSERT_EQ(AllReduceCount(*module), 4);
@@ -489,8 +483,7 @@ ENTRY %comp {
   crs12 = f32[128] all-reduce(crs11), to_apply=add
   ROOT tuple = (f32[128], f32[128]) tuple(crs02, crs12)
 })";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
   AllReduceCombiner combine(1024 * 1024, kMaxCombineCount);
   ASSERT_EQ(AllReduceCount(*module), 6);
@@ -526,8 +519,8 @@ TEST_F(AllReduceCombinerTest, PreservesMetadata) {
       ROOT tuple = (f32[32], f32[32]) tuple(%all-reduce.0, %all-reduce.1)
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_text));
   AllReduceCombiner combine(1024 * 1024, kMaxCombineCount);
   EXPECT_THAT(combine.Run(module.get()), absl_testing::IsOkAndHolds(true));
   OpMetadata metadata;

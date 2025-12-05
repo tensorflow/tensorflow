@@ -18,6 +18,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include "absl/log/check.h"
 #include "absl/strings/str_cat.h"
 #include "xla/array2d.h"
@@ -32,7 +33,6 @@ limitations under the License.
 #include "xla/tests/client_library_test_runner_mixin.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/platform/env.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/tsl/platform/threadpool.h"
 
@@ -853,18 +853,16 @@ TEST_F(ConditionalOpHloTest, ParallelExecution) {
   }
   Literal input_literal = LiteralUtil::CreateR2FromArray2D(input_array);
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(
       auto executable,
       CreateExecutable(std::move(module), /*run_hlo_passes=*/true));
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      Literal true_result,
-      test_runner().ExecuteWithExecutable(
-          executable.get(),
-          {LiteralUtil::CreateR0<bool>(true), input_literal.Clone()}));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(Literal true_result,
+                       test_runner().ExecuteWithExecutable(
+                           executable.get(), {LiteralUtil::CreateR0<bool>(true),
+                                              input_literal.Clone()}));
+  ASSERT_OK_AND_ASSIGN(
       Literal false_result,
       test_runner().ExecuteWithExecutable(
           executable.get(),
@@ -877,7 +875,7 @@ TEST_F(ConditionalOpHloTest, ParallelExecution) {
                                         "conditional_test_pool", kNumThreads);
     for (int i = 0; i < kNumThreads; ++i) {
       thread_pool.Schedule([this, i, &input_literal, &executable, &results]() {
-        TF_ASSERT_OK_AND_ASSIGN(
+        ASSERT_OK_AND_ASSIGN(
             results[i],
             test_runner().ExecuteWithExecutable(
                 executable.get(), {LiteralUtil::CreateR0<bool>(i % 2 == 1),

@@ -145,7 +145,6 @@ ifrt_proxy_cc_test(
         ":types",
         ":types_proto_cc",
         "//xla/pjrt:pjrt_common",
-        "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",
         "@com_google_absl//absl/status:status_matchers",
         "@com_google_googletest//:gtest_main",
@@ -180,7 +179,6 @@ ifrt_proxy_cc_test(
     deps = [
         ":array_util",
         "//xla/python/ifrt",
-        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/strings:cord",
         "@com_google_absl//absl/strings:string_view",

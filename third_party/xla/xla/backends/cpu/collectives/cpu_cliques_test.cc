@@ -17,12 +17,12 @@ limitations under the License.
 
 #include <memory>
 
+#include <gmock/gmock.h>
 #include "absl/types/span.h"
 #include "xla/backends/cpu/collectives/cpu_clique_key.h"
 #include "xla/backends/cpu/collectives/in_process_collectives.h"
 #include "xla/core/collectives/rank_id.h"
 #include "xla/runtime/device_id.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 
 namespace xla::cpu {
@@ -38,9 +38,9 @@ TEST(CpuCliques, InvalidateAcquiredCommunicators) {
   auto collectives1 = std::make_unique<InProcessCollectives>();
 
   // Check that communicator instance is cached.
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto* comm0, AcquireCommunicator(&*collectives0, clique_key, RankId(0)));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto* comm1, AcquireCommunicator(&*collectives0, clique_key, RankId(0)));
   EXPECT_EQ(comm0, comm1);
 
@@ -48,9 +48,9 @@ TEST(CpuCliques, InvalidateAcquiredCommunicators) {
   collectives0.reset();
 
   // Acquire communicator from a new instance of collectives.
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto* comm2, AcquireCommunicator(&*collectives1, clique_key, RankId(0)));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto* comm3, AcquireCommunicator(&*collectives1, clique_key, RankId(0)));
   EXPECT_EQ(comm2, comm3);
 

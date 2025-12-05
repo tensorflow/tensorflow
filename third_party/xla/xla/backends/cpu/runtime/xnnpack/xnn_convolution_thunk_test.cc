@@ -23,6 +23,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include "absl/log/check.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/substitute.h"
@@ -48,7 +49,6 @@ limitations under the License.
 #include "xla/tests/literal_test_util.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/platform/env.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/tsl/platform/threadpool.h"
 #include "xla/xla_data.pb.h"
@@ -117,13 +117,13 @@ TEST_P(XnnConvolutionThunkTest, SimpleConvolution) {
       absl::StrCat(kernel_h, "x", kernel_w),
       absl::StrCat(padding_h, "_", padding_h, "x", padding_w, "_", padding_w));
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<HloModule> module,
       ParseAndReturnUnverifiedModule(hlo_module, HloModuleConfig()));
 
   HloEvaluator evaluator;
-  TF_ASSERT_OK_AND_ASSIGN(Literal expected_result,
-                          evaluator.Evaluate(*module, {&input, &kernel}));
+  ASSERT_OK_AND_ASSIGN(Literal expected_result,
+                       evaluator.Evaluate(*module, {&input, &kernel}));
 
   HloInstruction* conv =
       hlo_query::FindInstruction(module->entry_computation(), "conv");
@@ -158,7 +158,7 @@ TEST_P(XnnConvolutionThunkTest, SimpleConvolution) {
   dnums.set_kernel_spatial_dimensions(0, 1);
   dnums.set_output_spatial_dimensions(1, 2);
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto thunk,
       XnnConvolutionThunk::Create(
           XnnConvolutionThunk::Options{use_threadpool()}, {"convolution"},
@@ -168,7 +168,7 @@ TEST_P(XnnConvolutionThunkTest, SimpleConvolution) {
 
   XnnThreadpool threadpool;
   if (use_threadpool()) {
-    TF_ASSERT_OK_AND_ASSIGN(threadpool, CreateXnnThreadpool(&device));
+    ASSERT_OK_AND_ASSIGN(threadpool, CreateXnnThreadpool(&device));
   }
   Thunk::XnnParams xnn_params(std::move(threadpool));
 

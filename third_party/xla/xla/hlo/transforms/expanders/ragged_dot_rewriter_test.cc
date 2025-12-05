@@ -24,7 +24,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/utils/hlo_matchers.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -46,9 +45,9 @@ TEST_F(RaggedDotRewriterTest, DontDoAnythingIfNoRaggedDot) {
                                        rhs_contracting_dims={1}
   })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(module_string));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RaggedDotRewriter().Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(module_string));
+  ASSERT_OK_AND_ASSIGN(bool changed, RaggedDotRewriter().Run(module.get()));
   EXPECT_FALSE(changed);
 }
 
@@ -65,12 +64,12 @@ TEST_F(RaggedDotRewriterTest, DontRewriteIfUsingRaggedDotFusion) {
                       lhs_ragged_dims={0}, rhs_group_dims={0}
   })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(module_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(module_string));
   module->mutable_config()
       .mutable_debug_options()
       .set_xla_gpu_experimental_use_ragged_dot_fusion(true);
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RaggedDotRewriter().Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, RaggedDotRewriter().Run(module.get()));
   EXPECT_FALSE(changed);
 }
 
@@ -87,9 +86,9 @@ TEST_F(RaggedDotRewriterTest, RaggedNonContracting) {
                       lhs_ragged_dims={0}, rhs_group_dims={0}
   })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(module_string));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RaggedDotRewriter().Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(module_string));
+  ASSERT_OK_AND_ASSIGN(bool changed, RaggedDotRewriter().Run(module.get()));
   EXPECT_TRUE(changed);
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               op::Dot(op::Select(), op::Parameter()));
@@ -113,9 +112,9 @@ TEST_F(RaggedDotRewriterTest, RaggedNonContractingWithBatchDimensions) {
                       lhs_ragged_dims={1}, rhs_group_dims={1}
   })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(module_string));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RaggedDotRewriter().Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(module_string));
+  ASSERT_OK_AND_ASSIGN(bool changed, RaggedDotRewriter().Run(module.get()));
   EXPECT_TRUE(changed);
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               op::Dot(op::Select(), op::Parameter()));
@@ -140,9 +139,9 @@ TEST_F(RaggedDotRewriterTest, RaggedContracting) {
                                       lhs_ragged_dims={1}
   })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(module_string));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RaggedDotRewriter().Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(module_string));
+  ASSERT_OK_AND_ASSIGN(bool changed, RaggedDotRewriter().Run(module.get()));
   EXPECT_TRUE(changed);
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               op::Dot(op::Select(), op::Select()));
@@ -169,9 +168,9 @@ TEST_F(RaggedDotRewriterTest, RaggedContractingWithBatchDims) {
                                       lhs_ragged_dims={2}
   })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(module_string));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RaggedDotRewriter().Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(module_string));
+  ASSERT_OK_AND_ASSIGN(bool changed, RaggedDotRewriter().Run(module.get()));
   EXPECT_TRUE(changed);
   EXPECT_THAT(
       module->entry_computation()->root_instruction(),
@@ -197,9 +196,9 @@ TEST_F(RaggedDotRewriterTest, BatchContracting) {
                       lhs_ragged_dims={0}
   })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(module_string));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RaggedDotRewriter().Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(module_string));
+  ASSERT_OK_AND_ASSIGN(bool changed, RaggedDotRewriter().Run(module.get()));
   EXPECT_TRUE(changed);
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               op::Dot(op::Parameter(0), op::Parameter(1),

@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/stream_executor/sycl/sycl_event.h"
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/sycl/sycl_platform_id.h"
@@ -27,11 +28,11 @@ const int kDefaultDeviceOrdinal = 0;
 class SyclEventTest : public ::testing::Test {
  protected:
   void SetUp() override {
-    TF_ASSERT_OK_AND_ASSIGN(
+    ASSERT_OK_AND_ASSIGN(
         Platform * platform,
         stream_executor::PlatformManager::PlatformWithId(kSyclPlatformId));
-    TF_ASSERT_OK_AND_ASSIGN(executor_,
-                            platform->ExecutorForDevice(kDefaultDeviceOrdinal));
+    ASSERT_OK_AND_ASSIGN(executor_,
+                         platform->ExecutorForDevice(kDefaultDeviceOrdinal));
   }
 
   StreamExecutor* executor_;
@@ -40,7 +41,7 @@ class SyclEventTest : public ::testing::Test {
 // TODO (intel-tf): Add a test for events with dependencies once SyclStream
 // class is supported.
 TEST_F(SyclEventTest, CreateEvent) {
-  TF_ASSERT_OK_AND_ASSIGN(SyclEvent event, SyclEvent::Create(executor_));
+  ASSERT_OK_AND_ASSIGN(SyclEvent event, SyclEvent::Create(executor_));
 
   ::sycl::event sycl_event = event.GetEvent();
 
@@ -50,8 +51,7 @@ TEST_F(SyclEventTest, CreateEvent) {
 }
 
 TEST_F(SyclEventTest, MoveEvent) {
-  TF_ASSERT_OK_AND_ASSIGN(SyclEvent orig_sycl_event,
-                          SyclEvent::Create(executor_));
+  ASSERT_OK_AND_ASSIGN(SyclEvent orig_sycl_event, SyclEvent::Create(executor_));
 
   // Make a copy of the event wrapper handle to check after move.
   ::sycl::event orig_event = orig_sycl_event.GetEvent();

@@ -33,7 +33,6 @@ limitations under the License.
 #include "xla/stream_executor/device_description.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/env.h"
-#include "xla/tsl/platform/statusor.h"
 #include "tsl/platform/path.h"
 
 namespace xla {
@@ -130,7 +129,7 @@ MATCHER_P(ConfigEq, expected_config, "") {
 }
 
 TEST_F(FileBasedAutotunerCacheTest, CreateEmpty) {
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto cache, FileBasedAutotunerCache::Create(
                       GetConfig(CreateDummyDeviceDescription(),
                                 FileBasedCacheConfig::CacheMode::READ_WRITE)));
@@ -139,7 +138,7 @@ TEST_F(FileBasedAutotunerCacheTest, CreateEmpty) {
 }
 
 TEST_F(FileBasedAutotunerCacheTest, InsertAndLookup) {
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto cache, FileBasedAutotunerCache::Create(
                       GetConfig(CreateDummyDeviceDescription(),
                                 FileBasedCacheConfig::CacheMode::READ_WRITE)));
@@ -160,19 +159,19 @@ TEST_F(FileBasedAutotunerCacheTest, SaveAndLoad) {
 
   // Create cache, insert, and let it save.
   {
-    TF_ASSERT_OK_AND_ASSIGN(auto cache,
-                            FileBasedAutotunerCache::Create(GetConfig(
-                                CreateDummyDeviceDescription(),
-                                FileBasedCacheConfig::CacheMode::READ_WRITE)));
+    ASSERT_OK_AND_ASSIGN(auto cache,
+                         FileBasedAutotunerCache::Create(GetConfig(
+                             CreateDummyDeviceDescription(),
+                             FileBasedCacheConfig::CacheMode::READ_WRITE)));
     TF_ASSERT_OK(cache->Insert(instr.get(), config));
   }
 
   // Create a new cache, which should load from disk.
   {
-    TF_ASSERT_OK_AND_ASSIGN(auto cache,
-                            FileBasedAutotunerCache::Create(GetConfig(
-                                CreateDummyDeviceDescription(),
-                                FileBasedCacheConfig::CacheMode::READ_WRITE)));
+    ASSERT_OK_AND_ASSIGN(auto cache,
+                         FileBasedAutotunerCache::Create(GetConfig(
+                             CreateDummyDeviceDescription(),
+                             FileBasedCacheConfig::CacheMode::READ_WRITE)));
     EXPECT_THAT(cache->Lookup(instr.get()), Optional(ConfigEq(config)));
   }
 }
@@ -185,19 +184,19 @@ TEST_F(FileBasedAutotunerCacheTest, LoadWithDifferentDevice) {
 
   // Create cache, insert, and let it save.
   {
-    TF_ASSERT_OK_AND_ASSIGN(auto cache,
-                            FileBasedAutotunerCache::Create(GetConfig(
-                                CreateDummyDeviceDescription(),
-                                FileBasedCacheConfig::CacheMode::READ_WRITE)));
+    ASSERT_OK_AND_ASSIGN(auto cache,
+                         FileBasedAutotunerCache::Create(GetConfig(
+                             CreateDummyDeviceDescription(),
+                             FileBasedCacheConfig::CacheMode::READ_WRITE)));
     TF_ASSERT_OK(cache->Insert(instr.get(), config));
   }
 
   // Create a new cache with different device, should not load the entry.
   {
-    TF_ASSERT_OK_AND_ASSIGN(auto cache,
-                            FileBasedAutotunerCache::Create(GetConfig(
-                                CreateDummyDeviceDescription("other_device"),
-                                FileBasedCacheConfig::CacheMode::READ_WRITE)));
+    ASSERT_OK_AND_ASSIGN(auto cache,
+                         FileBasedAutotunerCache::Create(GetConfig(
+                             CreateDummyDeviceDescription("other_device"),
+                             FileBasedCacheConfig::CacheMode::READ_WRITE)));
     EXPECT_THAT(cache->Lookup(instr.get()), Eq(std::nullopt));
   }
 }
@@ -210,10 +209,10 @@ TEST_F(FileBasedAutotunerCacheTest, LoadWithDifferentVersion) {
 
   // Create cache, insert, and let it save.
   {
-    TF_ASSERT_OK_AND_ASSIGN(auto cache,
-                            FileBasedAutotunerCache::Create(GetConfig(
-                                CreateDummyDeviceDescription(),
-                                FileBasedCacheConfig::CacheMode::READ_WRITE)));
+    ASSERT_OK_AND_ASSIGN(auto cache,
+                         FileBasedAutotunerCache::Create(GetConfig(
+                             CreateDummyDeviceDescription(),
+                             FileBasedCacheConfig::CacheMode::READ_WRITE)));
     TF_ASSERT_OK(cache->Insert(instr.get(), config));
   }
 
@@ -222,8 +221,8 @@ TEST_F(FileBasedAutotunerCacheTest, LoadWithDifferentVersion) {
     auto cache_config = GetConfig(CreateDummyDeviceDescription(),
                                   FileBasedCacheConfig::CacheMode::READ_WRITE);
     cache_config.cache_version = "2";
-    TF_ASSERT_OK_AND_ASSIGN(auto cache,
-                            FileBasedAutotunerCache::Create(cache_config));
+    ASSERT_OK_AND_ASSIGN(auto cache,
+                         FileBasedAutotunerCache::Create(cache_config));
     EXPECT_THAT(cache->Lookup(instr.get()), Eq(std::nullopt));
   }
 }
@@ -236,18 +235,17 @@ TEST_F(FileBasedAutotunerCacheTest, ReadOnlyMode) {
 
   // Create in READ_WRITE mode to pre-populate the cache file.
   {
-    TF_ASSERT_OK_AND_ASSIGN(auto cache,
-                            FileBasedAutotunerCache::Create(GetConfig(
-                                CreateDummyDeviceDescription(),
-                                FileBasedCacheConfig::CacheMode::READ_WRITE)));
+    ASSERT_OK_AND_ASSIGN(auto cache,
+                         FileBasedAutotunerCache::Create(GetConfig(
+                             CreateDummyDeviceDescription(),
+                             FileBasedCacheConfig::CacheMode::READ_WRITE)));
     TF_ASSERT_OK(cache->Insert(instr.get(), config));
   }
 
   // Create in READ mode.
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto cache, FileBasedAutotunerCache::Create(
-                      GetConfig(CreateDummyDeviceDescription(),
-                                FileBasedCacheConfig::CacheMode::READ)));
+  ASSERT_OK_AND_ASSIGN(auto cache, FileBasedAutotunerCache::Create(GetConfig(
+                                       CreateDummyDeviceDescription(),
+                                       FileBasedCacheConfig::CacheMode::READ)));
   // Lookup should work.
   EXPECT_THAT(cache->Lookup(instr.get()), Optional(ConfigEq(config)));
 
@@ -261,17 +259,17 @@ TEST_F(FileBasedAutotunerCacheTest, ReadOnlyMode) {
 
   // Create a new cache, key2 should not be present as it wasn't saved.
   {
-    TF_ASSERT_OK_AND_ASSIGN(auto cache2,
-                            FileBasedAutotunerCache::Create(GetConfig(
-                                CreateDummyDeviceDescription(),
-                                FileBasedCacheConfig::CacheMode::READ_WRITE)));
+    ASSERT_OK_AND_ASSIGN(auto cache2,
+                         FileBasedAutotunerCache::Create(GetConfig(
+                             CreateDummyDeviceDescription(),
+                             FileBasedCacheConfig::CacheMode::READ_WRITE)));
     EXPECT_THAT(cache2->Lookup(instr.get()), Optional(ConfigEq(config)));
     EXPECT_THAT(cache2->Lookup(instr2.get()), Eq(std::nullopt));
   }
 }
 
 TEST_F(FileBasedAutotunerCacheTest, OverwriteEntry) {
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto cache, FileBasedAutotunerCache::Create(
                       GetConfig(CreateDummyDeviceDescription(),
                                 FileBasedCacheConfig::CacheMode::READ_WRITE)));

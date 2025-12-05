@@ -30,7 +30,6 @@ limitations under the License.
 #include "xla/literal_util.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/shape_util.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
 #include "xla/xla_data.pb.h"
 
@@ -69,7 +68,7 @@ TEST(SelectKThunkTest, ToProto) {
 
   SelectKThunk thunk(std::move(thunk_info), 1, 5, 3, F32, kernel_arguments);
 
-  TF_ASSERT_OK_AND_ASSIGN(ThunkProto proto, thunk.ToProto());
+  ASSERT_OK_AND_ASSIGN(ThunkProto proto, thunk.ToProto());
   EXPECT_THAT(proto, EqualsProto(R"pb(
                 thunk_info { profile_annotation: "custom-call" thunk_id: 456 }
                 select_k_thunk {
@@ -83,7 +82,7 @@ TEST(SelectKThunkTest, ToProto) {
                 }
               )pb"));
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<SelectKThunk> deserialized,
       SelectKThunk::FromProto(thunk.thunk_info(), proto.select_k_thunk(),
                               buffer_allocations));

@@ -31,7 +31,6 @@ limitations under the License.
 #include "xla/service/spmd/shardy/utils.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -64,14 +63,14 @@ class ZeroSizedHloEliminationTest : public HloHardwareIndependentTestBase {
 TEST_F(ZeroSizedHloEliminationTest, EliminatedZeroSizedOp) {
   builder_.AddInstruction(HloInstruction::CreateUnary(
       zero_sized_param_->shape(), HloOpcode::kTanh, zero_sized_param_));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunZeroSizedElimination());
+  ASSERT_OK_AND_ASSIGN(bool changed, RunZeroSizedElimination());
   EXPECT_TRUE(changed);
   EXPECT_EQ(module_->entry_computation()->root_instruction()->opcode(),
             HloOpcode::kConstant);
 }
 
 TEST_F(ZeroSizedHloEliminationTest, ReplacesParameterUsesWithConstant) {
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunZeroSizedElimination());
+  ASSERT_OK_AND_ASSIGN(bool changed, RunZeroSizedElimination());
   EXPECT_TRUE(changed);
   const HloComputation* entry = module_->entry_computation();
   ASSERT_EQ(entry->num_parameters(), 1);
@@ -100,7 +99,7 @@ TEST_F(ZeroSizedHloEliminationTest,
           zero_sized_param_->shape(), {zero_sized_param_},
           sdy::toStringView(sdy::kLocalToGlobalShapeCallTargetName))));
   custom_call->set_custom_call_has_side_effect(true);
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunZeroSizedElimination());
+  ASSERT_OK_AND_ASSIGN(bool changed, RunZeroSizedElimination());
   EXPECT_TRUE(changed);
   EXPECT_EQ(module_->entry_computation()->root_instruction()->opcode(),
             HloOpcode::kConstant);
@@ -109,7 +108,7 @@ TEST_F(ZeroSizedHloEliminationTest,
 TEST_F(ZeroSizedHloEliminationTest, DoesNotEliminateConstant) {
   builder_.AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR1({})));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunZeroSizedElimination());
+  ASSERT_OK_AND_ASSIGN(bool changed, RunZeroSizedElimination());
   EXPECT_FALSE(changed);
 }
 
@@ -122,7 +121,7 @@ TEST_F(ZeroSizedHloEliminationTest, ZeroSizedInstructionWithoutLayoutFolded) {
       HloInstruction::CreateParameter(2, op_shape, "zero sized param 2"));
   builder_.AddInstruction(
       HloInstruction::CreateBinary(op_shape, HloOpcode::kAdd, param1, param2));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunZeroSizedElimination());
+  ASSERT_OK_AND_ASSIGN(bool changed, RunZeroSizedElimination());
   EXPECT_TRUE(changed);
   const HloComputation* entry = module_->entry_computation();
   EXPECT_THAT(entry->parameter_instructions(),

@@ -50,7 +50,6 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/platform.h"
@@ -190,8 +189,7 @@ TEST_F(HloVerifierTest, CheckCallOperandParameterShapesMismatch) {
     ROOT mycall = (s32[], f32[4]) call(p0), to_apply=callme
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnUnverifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo_string));
 
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
@@ -211,7 +209,7 @@ TEST_F(HloVerifierTest, CheckCallThreadMismatch) {
       ROOT mycall = (s32[], f32[4]) call(p0), to_apply=callme
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
 
   auto status =
       HloVerifier{HloVerifierOpts{}.VerifyCallNestedComputationThreadName()}
@@ -236,7 +234,7 @@ TEST_F(HloVerifierTest, CheckCallOperandOutputAliasing) {
       ROOT mycall = (s32[], f32[4]) call(p0), to_apply=callme
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
 
   // We have to set the `output_to_operand_aliasing` attribute manually,
   // because, even though the internal representation supports it for kCall, the
@@ -260,7 +258,7 @@ TEST_F(HloVerifierTest, CheckCustomCallOperandOutputAliasing) {
       ROOT mycall = (s32[], f32[4]) custom-call(p0), custom_call_target="CallMe", output_to_operand_aliasing={{0}: (0, {0})}
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
   TF_EXPECT_OK(verifier().Run(module.get()).status());
 }
 
@@ -279,7 +277,7 @@ TEST_F(HloVerifierTest, CompositeCall) {
     ROOT mycall = f32[] call(constant), is_composite=true, to_apply=add_n, frontend_attributes={composite.name="foo.bar",composite.attributes={n = 1 : i32, tensor = dense<1> : tensor<i32>},composite.version="1"}
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
 
   auto status = verifier().Run(module.get()).status();
   EXPECT_TRUE(status.ok());
@@ -300,7 +298,7 @@ TEST_F(HloVerifierTest, CompositeCallMissingFrontendAttributes) {
     ROOT mycall = f32[] call(constant), is_composite=true, to_apply=add_n
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
 
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
@@ -323,7 +321,7 @@ TEST_F(HloVerifierTest, CompositeCallOptionalAttributesAndVersion) {
     ROOT mycall = f32[] call(constant), is_composite=true, to_apply=add_n, frontend_attributes={composite.name="foo.bar"}
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
 
   auto status = verifier().Run(module.get()).status();
   EXPECT_TRUE(status.ok());
@@ -344,7 +342,7 @@ TEST_F(HloVerifierTest, CompositeCallOptionalAttributes) {
     ROOT mycall = f32[] call(constant), is_composite=true, to_apply=add_n, frontend_attributes={composite.name="foo.bar",composite.version="1"}
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
 
   auto status = verifier().Run(module.get()).status();
   EXPECT_TRUE(status.ok());
@@ -365,7 +363,7 @@ TEST_F(HloVerifierTest, CompositeCallMissingName) {
     ROOT mycall = f32[] call(constant), is_composite=true, to_apply=add_n, frontend_attributes={composite.attributes={n = 1 : i32, tensor = dense<1> : tensor<i32>},composite.version="1"}
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
 
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
@@ -389,7 +387,7 @@ TEST_F(HloVerifierTest, CompositeCallOptionalVersion) {
     ROOT mycall = f32[] call(constant), is_composite=true, to_apply=add_n, frontend_attributes={composite.attributes={n = 1 : i32, tensor = dense<1> : tensor<i32>},composite.name="foo.bar"}
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
 
   auto status = verifier().Run(module.get()).status();
   EXPECT_TRUE(status.ok());
@@ -410,7 +408,7 @@ TEST_F(HloVerifierTest, CompositeCallNonNegativeVersion) {
     ROOT mycall = f32[] call(constant), is_composite=true, to_apply=add_n, frontend_attributes={composite.attributes={n = 1 : i32, tensor = dense<1> : tensor<i32>},composite.name="foo.bar",composite.version="-1"}
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
 
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
@@ -441,8 +439,7 @@ TEST_F(HloVerifierTest, CheckConditionalOperandParameterShapesMismatch) {
       true_computation=true_branch, false_computation=false_branch
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnUnverifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo_string));
 
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
@@ -475,8 +472,7 @@ TEST_F(HloVerifierTest, CheckConditionalBranchIndexOperandShape) {
       branch_computations={branch0, branch1, branch2}
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnUnverifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo_string));
   auto status = verifier().Run(module.get()).status();
 
   HloInstruction* condition = FindInstruction(module.get(), "b0");
@@ -521,8 +517,7 @@ TEST_F(HloVerifierTest, CheckConditionalBranchThread) {
         branch_computations={branch0, branch1, branch2}
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnUnverifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo_string));
   auto status = verifier().Run(module.get()).status();
   EXPECT_THAT(status.message(),
               HasSubstr("expects parent computation thread name same as called "
@@ -556,8 +551,7 @@ TEST_F(HloVerifierTest, CheckConditionalBranchContainsAsyncThread) {
         branch_computations={branch0, branch1, branch2}
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnUnverifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo_string));
   TF_ASSERT_OK(verifier().Run(module.get()).status());
 }
 
@@ -572,8 +566,7 @@ TEST_F(HloVerifierTest, RngOpnd0NotScalar) {
     distribution=rng_uniform
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnUnverifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo_string));
 
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
@@ -591,8 +584,7 @@ TEST_F(HloVerifierTest, RngOperandElementTypesDoNotMatch) {
     distribution=rng_normal
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnUnverifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo_string));
 
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
@@ -610,8 +602,7 @@ TEST_F(HloVerifierTest, RngMixedPrecisionNotAllowed) {
     distribution=rng_normal
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnUnverifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo_string));
 
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
@@ -629,8 +620,7 @@ TEST_F(HloVerifierTestAllowMixedPrecision, RngMixedPrecisionAllowed) {
     distribution=rng_normal
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
   auto status = verifier().Run(module.get()).status();
   ASSERT_TRUE(status.ok());
@@ -647,8 +637,7 @@ TEST_F(HloVerifierTest, RngElementTypeNotSupported) {
     distribution=rng_normal
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnUnverifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo_string));
 
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
@@ -709,8 +698,8 @@ ENTRY entry_computation {
   b = bf16[10,2] parameter(1)
   ROOT dot = f32[2,2] dot(a, b), lhs_contracting_dims={1}, rhs_contracting_dims={0}
 })";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kDotHloString));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(kDotHloString));
 
   auto status = verifier().Run(module.get()).status();
   EXPECT_TRUE(status.ok()) << status;
@@ -728,8 +717,8 @@ ENTRY entry_computation {
 })";
 
 TEST_F(HloVerifierTest, ConvNegativeWindowDilationNotAllowed) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnUnverifiedModule(kConvHloString));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnUnverifiedModule(kConvHloString));
   auto* conv = module->entry_computation()->root_instruction();
   Window w = conv->window();
   w.mutable_dimensions(0)->set_window_dilation(-1);
@@ -740,8 +729,8 @@ TEST_F(HloVerifierTest, ConvNegativeWindowDilationNotAllowed) {
 }
 
 TEST_F(HloVerifierTest, ConvNegativeBaseDilationNotAllowed) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnUnverifiedModule(kConvHloString));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnUnverifiedModule(kConvHloString));
   auto* conv = module->entry_computation()->root_instruction();
   Window w = conv->window();
   w.mutable_dimensions(0)->set_base_dilation(-1);
@@ -761,8 +750,8 @@ static const char* const kAddWithLayoutChangeHlo = R"(
   )";
 
 TEST_F(HloVerifierTest, AddWithLayoutChange) {
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto module, ParseAndReturnVerifiedModule(kAddWithLayoutChangeHlo));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(kAddWithLayoutChangeHlo));
   auto status = verifier().Run(module.get()).status();
   ASSERT_TRUE(status.ok());
 }
@@ -784,8 +773,8 @@ TEST_F(HloVerifierTest, ScalarIndexDynamicSlice) {
   debug_options.set_xla_allow_scalar_index_dynamic_ops(true);
   config.set_debug_options(debug_options);
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(
-                                           kScalarIndexDynamicSlice, config));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(
+                                        kScalarIndexDynamicSlice, config));
   auto status = verifier().Run(module.get()).status();
   ASSERT_TRUE(status.ok());
 }
@@ -810,8 +799,8 @@ TEST_F(HloVerifierTest, ScalarIndexDynamicUpdateSlice) {
   debug_options.set_xla_allow_scalar_index_dynamic_ops(true);
   config.set_debug_options(debug_options);
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(
-                                           kScalarIndexDynamicSlice, config));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(
+                                        kScalarIndexDynamicSlice, config));
   auto status = verifier().Run(module.get()).status();
   ASSERT_TRUE(status.ok());
 }
@@ -829,8 +818,8 @@ TEST_F(HloVerifierTestAllowMixedPrecision, DynamicUpdateSliceMixedPrecision) {
       ROOT %dus = bf16[32,511,2048] dynamic-update-slice(f32[32,511,2048] %parameter.0, bf16[32,511,512] %parameter.1, s32[] %parameter.2, s32[] %parameter.3, s32[] %parameter.4)
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(
-                                           kDynamicUpdateSliceMixedPrecision));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(
+                                        kDynamicUpdateSliceMixedPrecision));
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
   EXPECT_THAT(status.message(),
@@ -839,8 +828,8 @@ TEST_F(HloVerifierTestAllowMixedPrecision, DynamicUpdateSliceMixedPrecision) {
 }
 
 TEST_F(HloVerifierTestLayoutSensitive, AddWithLayoutChangeNotAllowed) {
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto module, ParseAndReturnUnverifiedModule(kAddWithLayoutChangeHlo));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnUnverifiedModule(kAddWithLayoutChangeHlo));
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
   EXPECT_THAT(status.message(),
@@ -858,7 +847,7 @@ TEST_F(HloVerifierTestLayoutSensitive, SliceWithLayoutChangeNotAllowed) {
         dynamic_slice_sizes={3,4}
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto module, ParseAndReturnUnverifiedModule(kSliceWithLayoutChangeHlo));
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
@@ -876,7 +865,7 @@ TEST_F(HloVerifierTestLayoutSensitive, ConcatWithLayoutChangeNotAllowed) {
         dimensions={1}
    }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto module, ParseAndReturnUnverifiedModule(kConcatWithLayoutChangeHlo));
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
@@ -913,8 +902,8 @@ TEST_F(HloVerifierTestLayoutSensitive,
         to_apply=overwrite
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnUnverifiedModule(kScatterHlo));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnUnverifiedModule(kScatterHlo));
   auto status = verifier().Run(module.get()).status();
   EXPECT_TRUE(status.ok());
 }
@@ -928,8 +917,7 @@ TEST_F(HloVerifierTestLayoutSensitive, BitcastNeedsSameNumberOfElements) {
    ROOT bitcast = f32[3] bitcast(constant.0)
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnUnverifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo_string));
 
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
@@ -949,8 +937,7 @@ TEST_F(HloVerifierTest, SelectMixedPrecisionNotAllowed) {
    ROOT select = f32[32] select(p0, p1, p2)
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnUnverifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo_string));
 
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
@@ -969,8 +956,7 @@ TEST_F(HloVerifierTestAllowMixedPrecision, SelectMixedPrecisionAllowed) {
    ROOT select = f32[32] select(p0, p1, p2)
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
   auto status = verifier().Run(module.get()).status();
   ASSERT_TRUE(status.ok());
@@ -987,8 +973,7 @@ TEST_F(HloVerifierTest, SelectTupleNotAllowed) {
     ROOT select = (f32[], f32[]) select(p2, p0, p1)
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnUnverifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo_string));
 
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
@@ -1006,8 +991,7 @@ TEST_F(HloVerifierTestLayoutSensitive, CopyStartAndCopyDone) {
     ROOT copy-done = f32[2,3]{1,0:S(2)} copy-done(copy-start)
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
   auto status = verifier().Run(module.get()).status();
   ASSERT_TRUE(status.ok());
@@ -1023,8 +1007,7 @@ TEST_F(HloVerifierTestLayoutSensitive, CopyStartAndCopyDoneWrongLayout) {
     ROOT copy-done = f32[2,3]{1,0:S(2)} copy-done(copy-start)
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnUnverifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo_string));
 
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
@@ -1042,8 +1025,7 @@ TEST_F(HloVerifierTest, CopyStartAndCopyDoneWrongType) {
     ROOT copy-done = f32[2,3] copy-done(copy-start)
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnUnverifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo_string));
 
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
@@ -1064,8 +1046,7 @@ TEST_F(HloVerifierTest, CopyStartMultipleCopyDone) {
     ROOT tuple = (f32[2,3], f32[2,3]) tuple(copy-done.1, copy-done.2)
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnUnverifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo_string));
 
   absl::Status status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
@@ -1085,8 +1066,7 @@ TEST_F(HloVerifierTest, CopyDoneNoCopyStart) {
     ROOT copy-done = f32[2,3] copy-done(tuple)
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnUnverifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo_string));
 
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
@@ -1105,8 +1085,7 @@ TEST_F(HloVerifierTestLayoutSensitive, AsyncStartAndAsyncDone) {
     ROOT async-done = f32[2,3]{1,0:S(2)} custom-call-done(async-start)
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
   auto status = verifier().Run(module.get()).status();
   ASSERT_TRUE(status.ok());
@@ -1124,8 +1103,7 @@ TEST_F(HloVerifierTestLayoutSensitive, AsyncStartAndAsyncUpdateAndAsyncDone) {
     ROOT async-done = f32[2,3]{1,0:S(2)} custom-call-done(async-update.2)
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
   auto status = verifier().Run(module.get()).status();
   ASSERT_TRUE(status.ok());
@@ -1144,8 +1122,7 @@ TEST_F(HloVerifierTestLayoutSensitive,
     ROOT async-done = f32[2,3]{1,0:S(2)} custom-call-done(async-update.2)
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
   auto status = verifier().Run(module.get()).status();
   ASSERT_TRUE(status.ok());
@@ -1161,8 +1138,7 @@ TEST_F(HloVerifierTest, AsyncStartAndAsyncDoneWrongType) {
     ROOT async-done = f32[2,3] custom-call-done(async-start)
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnUnverifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo_string));
 
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
@@ -1183,8 +1159,7 @@ TEST_F(HloVerifierTest, AsyncStartMultipleAsyncDone) {
     ROOT tuple = (f32[2,3], f32[2,3]) tuple(async-done.1, async-done.2)
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnUnverifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo_string));
 
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
@@ -1202,8 +1177,7 @@ TEST_F(HloVerifierTest, AsyncStartNoAsyncDone) {
     ROOT async-start = ((f32[2,3]), f32[2,3], u32[]) custom-call-start(p0), custom_call_target="foo"
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnUnverifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo_string));
 
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
@@ -1222,8 +1196,7 @@ TEST_F(HloVerifierTest, AsyncStartAndAsyncUpdateNoAsyncDone) {
     ROOT async-update = ((f32[2,3]), f32[2,3], u32[]) custom-call-update(async-start)
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnUnverifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo_string));
 
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
@@ -1244,8 +1217,7 @@ TEST_F(HloVerifierTest, AsyncDoneNoAsyncStart) {
     ROOT async-done = f32[2,3] custom-call-done(async-start)
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnUnverifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo_string));
 
   // The parser checks that the async-{update,done} operand is an async op,
   // so we need to invalidate it in the C++ representation.
@@ -1277,8 +1249,7 @@ TEST_F(HloVerifierTest, AsyncUpdateAndAsyncDoneNoAsyncStart) {
     ROOT async-done = f32[2,3] custom-call-done(async-update)
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnUnverifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo_string));
 
   // The parser checks that the async-{update,done} operand is an async op,
   // so we need to invalidate it in the C++ representation.
@@ -1315,8 +1286,7 @@ TEST_F(HloVerifierTest, AsyncOpComputationParamWrongType) {
     ROOT async-done = f32[3,2] async-done(async-start), calls=async_computation
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnUnverifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo_string));
 
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
@@ -1341,8 +1311,7 @@ TEST_F(HloVerifierTest, AsyncOpComputationRootWrongType) {
     ROOT async-done = f32[3,2] async-done(async-start), calls=async_computation
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnUnverifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo_string));
 
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
@@ -1366,8 +1335,7 @@ TEST_F(HloVerifierTest, AsyncOpTupleWrongType) {
     ROOT async-done = f32[3,2] async-done(async-start), calls=async_computation
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnUnverifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo_string));
 
   // The parser checks that the async op's shape type is valid, so we need to
   // invalidate it in the C++ representation.
@@ -1396,8 +1364,7 @@ TEST_F(HloVerifierTest, AsyncStartOperandWrongType) {
     ROOT async-done = f32[3,2] async-done(async-start), calls=async_computation
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnUnverifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo_string));
 
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
@@ -1421,8 +1388,7 @@ TEST_F(HloVerifierTest, AsyncDoneOutputWrongType) {
     ROOT async-done = f32[2,3] async-done(async-start), calls=async_computation
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnUnverifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo_string));
 
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
@@ -1447,8 +1413,7 @@ TEST_F(HloVerifierTest, AsyncUpdateWrongType) {
     ROOT async-done = f32[3,2] async-done(async-update), calls=async_computation
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnUnverifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo_string));
 
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
@@ -1474,8 +1439,7 @@ TEST_F(HloVerifierTest, AsyncOpComputationNotTrivial) {
     ROOT async-done = f32[3,2] async-done(async-start), calls=async_computation
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnUnverifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo_string));
 
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
@@ -1532,8 +1496,7 @@ TEST_F(HloVerifierTest, AsyncMultiOpComputationSendRecvOnly) {
     gte.3 = token[] get-tuple-element(gte.2), index=2
   }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
   auto status = verifier().Run(module.get()).status();
   ASSERT_TRUE(status.ok());
@@ -1548,8 +1511,7 @@ TEST_F(HloVerifierTest, IotaNonArrayResult) {
   }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnUnverifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo_string));
 
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
@@ -1565,8 +1527,7 @@ TEST_F(HloVerifierTest, IotaNegativeDimension) {
   }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnUnverifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo_string));
 
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
@@ -1582,8 +1543,7 @@ TEST_F(HloVerifierTest, IotaPredResultNotAllowed) {
   }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnUnverifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo_string));
 
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
@@ -1605,8 +1565,8 @@ static const char* const kMapOperandComputationMismatchHlo = R"(
 })";
 
 TEST_F(HloVerifierTest, MapOperandComputationMismatch) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(
-                                           kMapOperandComputationMismatchHlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(
+                                        kMapOperandComputationMismatchHlo));
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
   EXPECT_THAT(
@@ -1616,8 +1576,8 @@ TEST_F(HloVerifierTest, MapOperandComputationMismatch) {
 }
 
 TEST_F(HloVerifierTestAllowMixedPrecision, MapOperandComputationMismatch) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(
-                                           kMapOperandComputationMismatchHlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(
+                                        kMapOperandComputationMismatchHlo));
   auto status = verifier().Run(module.get()).status();
   ASSERT_TRUE(status.ok());
 }
@@ -1637,9 +1597,8 @@ static const char* const kReduceOperandComputationMismatchHlo = R"(
   })";
 
 TEST_F(HloVerifierTest, ReduceOperandComputationMismatch) {
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto module,
-      ParseAndReturnUnverifiedModule(kReduceOperandComputationMismatchHlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(
+                                        kReduceOperandComputationMismatchHlo));
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
   EXPECT_THAT(status.message(),
@@ -1647,9 +1606,8 @@ TEST_F(HloVerifierTest, ReduceOperandComputationMismatch) {
 }
 
 TEST_F(HloVerifierTestAllowMixedPrecision, ReduceOperandComputationMismatch) {
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto module,
-      ParseAndReturnVerifiedModule(kReduceOperandComputationMismatchHlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(
+                                        kReduceOperandComputationMismatchHlo));
   auto status = verifier().Run(module.get()).status();
   ASSERT_TRUE(status.ok());
 }
@@ -1713,53 +1671,53 @@ absl::StatusOr<std::unique_ptr<HloModule>> MakeAllReduceComputation(
 }
 
 TEST_F(HloVerifierTest, AllReduce_NoReplicaGroupsOK) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module, MakeAllReduceComputation({}));
+  ASSERT_OK_AND_ASSIGN(auto module, MakeAllReduceComputation({}));
   TF_ASSERT_OK(verifier().Run(module.get()).status());
 }
 
 TEST_F(HloVerifierTest, AllReduce_DifferentGroupSizesOk) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          MakeAllReduceComputation({{0}, {1, 3}, {2}}));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       MakeAllReduceComputation({{0}, {1, 3}, {2}}));
   TF_ASSERT_OK(verifier().Run(module.get()).status());
 }
 
 TEST_F(HloVerifierTest, AllReduce_EmptyReplicaGroup) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module, MakeAllReduceComputation({{0}, {}}));
+  ASSERT_OK_AND_ASSIGN(auto module, MakeAllReduceComputation({{0}, {}}));
   EXPECT_THAT(verifier().Run(module.get()).status().message(),
               HasSubstr("empty replica group"));
 }
 
 TEST_F(HloVerifierTest, AllReduce_RepeatedReplicaId) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          MakeAllReduceComputation({{0, 1}, {2, 3}, {4, 0}}));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       MakeAllReduceComputation({{0, 1}, {2, 3}, {4, 0}}));
   EXPECT_THAT(verifier().Run(module.get()).status().message(),
               HasSubstr("Replica 0 is repeated"));
 }
 
 TEST_F(HloVerifierTest, AllReduce_MissingReplicaId) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          MakeAllReduceComputation({{0, 1}, {2, 3}, {5, 6}}));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       MakeAllReduceComputation({{0, 1}, {2, 3}, {5, 6}}));
   EXPECT_THAT(verifier().Run(module.get()).status().message(),
               HasSubstr("Replica 6 is out of range"));
 }
 
 TEST_F(HloVerifierTest, AllReduce_NotEnougReplicasInGroupConfig) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module, MakeAllReduceComputation({{0, 1}}, 8));
+  ASSERT_OK_AND_ASSIGN(auto module, MakeAllReduceComputation({{0, 1}}, 8));
   EXPECT_THAT(verifier().Run(module.get()).status().message(),
               HasSubstr("In cross_replica mode, replica groups should contain "
                         "8 replicas, but found 2"));
 }
 
 TEST_F(HloVerifierTest, AllReduce_TooManyReplicasInGroupConfig) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          MakeAllReduceComputation({{0, 1}, {2, 3}}, 2));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       MakeAllReduceComputation({{0, 1}, {2, 3}}, 2));
   EXPECT_THAT(verifier().Run(module.get()).status().message(),
               HasSubstr("In cross_replica mode, replica groups should contain "
                         "2 replicas, but found 4"));
 }
 
 TEST_F(HloVerifierTest, AllReduce_CrossReplicaAndPartition_Invalid) {
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto module,
       MakeAllReduceComputation({{0, 1}, {2, 3}}, 2, 1, "channel_id=1"));
   EXPECT_THAT(
@@ -1770,14 +1728,14 @@ TEST_F(HloVerifierTest, AllReduce_CrossReplicaAndPartition_Invalid) {
 }
 
 TEST_F(HloVerifierTest, AllReduce_CrossReplicaAndPartition_Valid) {
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto module,
       MakeAllReduceComputation({{0, 1}, {2, 3}}, 4, 1, "channel_id=1"));
   TF_ASSERT_OK(verifier().Run(module.get()).status());
 }
 
 TEST_F(HloVerifierTest, AllReduce_FlattenedID_Invalid) {
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto module,
       MakeAllReduceComputation({{0, 1}, {2, 3}}, 1, 2,
                                "channel_id=1, use_global_device_ids=true"));
@@ -1787,7 +1745,7 @@ TEST_F(HloVerifierTest, AllReduce_FlattenedID_Invalid) {
 }
 
 TEST_F(HloVerifierTest, AllReduce_FlattenedID_Valid) {
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto module,
       MakeAllReduceComputation({{0, 1}, {2, 3}}, 2, 2,
                                "channel_id=1, use_global_device_ids=true"));
@@ -1808,8 +1766,8 @@ TEST_F(HloVerifierTest, AllReduceStartAndDone) {
     ROOT done = f32[2,3] all-reduce-done(start)
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnUnverifiedModule(kModuleStr));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(kModuleStr));
 
   auto status = verifier().Run(module.get()).status();
   ASSERT_TRUE(status.ok());
@@ -1829,8 +1787,8 @@ TEST_F(HloVerifierTest, AllReduceStartAndDoneWrongType) {
     ROOT done = f32[2,3] all-reduce-done(start)
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnUnverifiedModule(kModuleStr));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(kModuleStr));
 
   auto status = verifier().Run(module.get()).status();
   EXPECT_THAT(status.message(),
@@ -1853,8 +1811,8 @@ TEST_F(HloVerifierTest, AllReduceStartAndMultipleDone) {
     ROOT done2 = f32[2,3] all-reduce-done(start)
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnUnverifiedModule(kModuleStr));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(kModuleStr));
 
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
@@ -1873,8 +1831,8 @@ TEST_F(HloVerifierTest, AllReduceDoneWithoutStart) {
     ROOT done = f32[2,3] all-reduce-done(tuple)
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnUnverifiedModule(kModuleStr));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(kModuleStr));
 
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
@@ -1902,50 +1860,48 @@ absl::StatusOr<std::unique_ptr<HloModule>> MakeAllToAllComputation(
 }
 
 TEST_F(HloVerifierTest, AllToAll_NoReplicaGroupsOK) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module, MakeAllToAllComputation({}, 2));
+  ASSERT_OK_AND_ASSIGN(auto module, MakeAllToAllComputation({}, 2));
   TF_ASSERT_OK(verifier().Run(module.get()).status());
 }
 
 TEST_F(HloVerifierTest, AllToAll_EmptyReplicaGroup) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module, MakeAllToAllComputation({{0, 1}, {}}));
+  ASSERT_OK_AND_ASSIGN(auto module, MakeAllToAllComputation({{0, 1}, {}}));
   EXPECT_THAT(verifier().Run(module.get()).status().message(),
               HasSubstr("cannot have an empty replica group"));
 }
 
 TEST_F(HloVerifierTest, AllToAll_RepeatedReplicaId) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          MakeAllToAllComputation({{0, 1}, {2, 3}, {4, 0}}));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       MakeAllToAllComputation({{0, 1}, {2, 3}, {4, 0}}));
   EXPECT_THAT(verifier().Run(module.get()).status().message(),
               HasSubstr("Replica 0 is repeated"));
 }
 
 TEST_F(HloVerifierTest, AllToAll_MissingReplicaId) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          MakeAllToAllComputation({{0, 1}, {2, 3}, {5, 6}}));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       MakeAllToAllComputation({{0, 1}, {2, 3}, {5, 6}}));
   EXPECT_THAT(verifier().Run(module.get()).status().message(),
               HasSubstr("Replica 6 is out of range"));
 }
 
 TEST_F(HloVerifierTest, AllToAll_UniformSizeOfReplicasInGroup) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          MakeAllToAllComputation({{0, 1}, {2}, {3, 4}}));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       MakeAllToAllComputation({{0, 1}, {2}, {3, 4}}));
   EXPECT_THAT(verifier().Run(module.get()).status().message(),
               HasSubstr("Replica groups expected to be of uniform size"));
 }
 
 TEST_F(HloVerifierTest, AllToAll_CrossPartition_Invalid) {
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto module,
-      MakeAllToAllComputation({{0, 1}, {2, 3}}, 1, 2, "channel_id=1"));
+  ASSERT_OK_AND_ASSIGN(auto module, MakeAllToAllComputation({{0, 1}, {2, 3}}, 1,
+                                                            2, "channel_id=1"));
   EXPECT_THAT(verifier().Run(module.get()).status().message(),
               HasSubstr("In cross_partition mode, replica groups should "
                         "contain 2 partitions, but found 4"));
 }
 
 TEST_F(HloVerifierTest, AllToAll_CrossPartition_Valid) {
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto module,
-      MakeAllToAllComputation({{0, 1}, {2, 3}}, 1, 4, "channel_id=1"));
+  ASSERT_OK_AND_ASSIGN(auto module, MakeAllToAllComputation({{0, 1}, {2, 3}}, 1,
+                                                            4, "channel_id=1"));
   TF_ASSERT_OK(verifier().Run(module.get()).status());
 }
 
@@ -1961,8 +1917,8 @@ TEST_F(HloVerifierTest, AllToAll_LayoutConstrained) {
   )";
   HloModuleConfig config;
   config.set_replica_count(2);
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnUnverifiedModule(kModuleStr, config));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnUnverifiedModule(kModuleStr, config));
   EXPECT_THAT(verifier().Run(module.get()).status().message(),
               HasSubstr("HLO all-to-all has operands with different shapes"));
 }
@@ -1979,8 +1935,8 @@ TEST_F(HloVerifierTest, AllToAll_OperandCountMismatchWithReplicaGroupSize) {
   )";
   HloModuleConfig config;
   config.set_replica_count(2);
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnUnverifiedModule(kModuleStr, config));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnUnverifiedModule(kModuleStr, config));
   EXPECT_THAT(verifier().Run(module.get()).status().message(),
               HasSubstr("hlo->operand_count() == split_count"));
 }
@@ -1996,8 +1952,8 @@ TEST_F(HloVerifierTest, CollectivePermuteSameSourceTwice) {
   )";
   HloModuleConfig config;
   config.set_replica_count(3);
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnUnverifiedModule(kModuleStr, config));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnUnverifiedModule(kModuleStr, config));
   EXPECT_THAT(verifier().Run(module.get()).status().message(),
               HasSubstr("Source 0 appears more than once"));
 }
@@ -2011,8 +1967,7 @@ TEST_F(HloVerifierTest, CollectivePermuteSameTargetTwice) {
       source_target_pairs={{0,2}, {1,2}, {2,0}}
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnUnverifiedModule(kModuleStr));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kModuleStr));
   EXPECT_THAT(verifier().Run(module.get()).status().message(),
               HasSubstr("Target 2 appears more than once"));
 }
@@ -2029,8 +1984,7 @@ TEST_F(HloVerifierTest, CollectivePermuteMultipeOperands) {
       p0, p1, p2, p3), source_target_pairs={{0,1}, {1,2}, {2,0}}
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnUnverifiedModule(kModuleStr));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kModuleStr));
   TF_EXPECT_OK(verifier().Run(module.get()).status());
 }
 
@@ -2050,8 +2004,7 @@ TEST_F(HloVerifierTest, CollectivePermuteSameSourceTooManyTimes) {
     ROOT collective-permute = u32[2,8,128]{2,1,0:T(2,128)} collective-permute(u32[2,8,128] broadcast.0, u32[2,8,128] broadcast.1, ((s32[],s32[],s32[]), (s32[],s32[],s32[])) tuple.4, ((s32[],s32[],s32[]), (s32[],s32[],s32[])) tuple.4), source_target_pairs={{0,1},{1,2},{2,3},{3,0},{0,3},{0,2},{2,1},{1,0}}, slice_sizes={{1,8,128},{1,8,128}}
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnUnverifiedModule(kModuleStr));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kModuleStr));
   EXPECT_THAT(verifier().Run(module.get()).status().message(),
               HasSubstr("Source 0 appears more than 2 times in instruction's "
                         "source-target pairs:"));
@@ -2073,8 +2026,7 @@ TEST_F(HloVerifierTest, CollectivePermuteSameTargetTooManyTimes) {
     ROOT collective-permute = u32[2,8,128]{2,1,0:T(2,128)} collective-permute(u32[2,8,128] broadcast.0, u32[2,8,128] broadcast.1, ((s32[],s32[],s32[]), (s32[],s32[],s32[])) tuple.4, ((s32[],s32[],s32[]), (s32[],s32[],s32[])) tuple.4), source_target_pairs={{0,1},{1,2},{2,3},{3,0},{0,3},{3,2},{2,3},{1,0}}, slice_sizes={{1,8,128},{1,8,128}}
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnUnverifiedModule(kModuleStr));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kModuleStr));
   EXPECT_THAT(verifier().Run(module.get()).status().message(),
               HasSubstr("Target 3 appears more than 2 times in instruction's "
                         "source-target pairs:"));
@@ -2102,8 +2054,7 @@ TEST_F(HloVerifierTest, CollectivePermuteUnmatchingSourceTarget) {
     ROOT collective-permute.53 = (u32[2,8,128]{2,1,0:T(2,128)}, u32[4,8,128]{2,1,0:T(2,128)}) collective-permute(u32[2,8,128]{2,1,0:T(2,128)} broadcast.0, (u32[2,8,128]{2,1,0:T(2,128)}, u32[4,8,128]{2,1,0:T(2,128)}) tuple.output, ((s32[],s32[],s32[]), (s32[],s32[],s32[])) tuple.4, (((s32[],s32[],s32[]), (s32[],s32[],s32[])), ((s32[],s32[],s32[]), (s32[],s32[],s32[]))) tuple.9), source_target_pairs={{0,1},{1,2},{2,3},{3,0},{0,3},{3,2},{2,1},{1,0}}, slice_sizes={{1,8,128},{1,8,128},{2,8,128},{2,8,128}}
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnUnverifiedModule(kModuleStr));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kModuleStr));
   EXPECT_THAT(verifier().Run(module.get()).status().message(),
               HasSubstr("Unmatching input buffers and output buffers"));
 }
@@ -2131,8 +2082,7 @@ TEST_F(HloVerifierTest, CollectivePermuteUnmatchingInputAndInputOffset) {
     ROOT collective-permute.53 = (u32[2,8,128]{2,1,0:T(2,128)}, u32[4,8,128]{2,1,0:T(2,128)}) collective-permute((u32[2,8,128]{2,1,0:T(2,128)}, u32[2,8,128]{2,1,0:T(2,128)}) tuple.input, (u32[2,8,128]{2,1,0:T(2,128)}, u32[4,8,128]{2,1,0:T(2,128)}) tuple.output, (s32[],s32[],s32[]) tuple.3, (((s32[],s32[],s32[]), (s32[],s32[],s32[])), ((s32[],s32[],s32[]), (s32[],s32[],s32[]))) tuple.9), source_target_pairs={{0,1},{1,2},{2,3},{3,0},{0,3},{3,2},{2,1},{1,0}}, slice_sizes={{1,8,128},{1,8,128},{2,8,128},{2,8,128}}
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnUnverifiedModule(kModuleStr));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kModuleStr));
   EXPECT_THAT(verifier().Run(module.get()).status().message(),
               HasSubstr("Unmatching input buffers and input offset."));
 }
@@ -2160,8 +2110,7 @@ TEST_F(HloVerifierTest, CollectivePermuteUnmatchingOutputAndOutputOffset) {
       ROOT collective-permute.53 = (u32[2,8,128]{2,1,0:T(2,128)}, u32[4,8,128]{2,1,0:T(2,128)}) collective-permute((u32[2,8,128]{2,1,0:T(2,128)}, u32[2,8,128]{2,1,0:T(2,128)}) tuple.input, (u32[2,8,128]{2,1,0:T(2,128)}, u32[4,8,128]{2,1,0:T(2,128)}) tuple.output, (((s32[],s32[],s32[]), (s32[],s32[],s32[])), ((s32[],s32[],s32[]), (s32[],s32[],s32[]))) tuple.8, (s32[],s32[],s32[]) tuple.2), source_target_pairs={{0,1},{1,2},{2,3},{3,0},{0,3},{3,2},{2,1},{1,0}}, slice_sizes={{1,8,128},{1,8,128},{2,8,128},{2,8,128}}
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnUnverifiedModule(kModuleStr));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kModuleStr));
   EXPECT_THAT(verifier().Run(module.get()).status().message(),
               HasSubstr("Unmatching output buffers and output offset."));
 }
@@ -2177,8 +2126,8 @@ TEST_F(HloVerifierTest, CollectivePermuteCrossReplicaSourceOOR) {
   )";
   HloModuleConfig config;
   config.set_replica_count(3);
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnUnverifiedModule(kModuleStr, config));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnUnverifiedModule(kModuleStr, config));
   const std::string error_message(
       verifier().Run(module.get()).status().message());
   EXPECT_THAT(error_message, HasSubstr("Source 5"));
@@ -2196,8 +2145,8 @@ TEST_F(HloVerifierTest, CollectivePermuteCrossReplicaTargetOOR) {
   )";
   HloModuleConfig config;
   config.set_replica_count(3);
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnUnverifiedModule(kModuleStr, config));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnUnverifiedModule(kModuleStr, config));
   const std::string error_message(
       verifier().Run(module.get()).status().message());
   EXPECT_THAT(error_message, HasSubstr("Target 7"));
@@ -2215,8 +2164,8 @@ TEST_F(HloVerifierTest, CollectivePermuteCrossPartitionSourceOOR) {
   )";
   HloModuleConfig config;
   config.set_num_partitions(3);
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnUnverifiedModule(kModuleStr, config));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnUnverifiedModule(kModuleStr, config));
   const std::string error_message(
       verifier().Run(module.get()).status().message());
   EXPECT_THAT(error_message, HasSubstr("Source 5"));
@@ -2234,8 +2183,8 @@ TEST_F(HloVerifierTest, CollectivePermuteCrossPartitionTargetOOR) {
   )";
   HloModuleConfig config;
   config.set_num_partitions(3);
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnUnverifiedModule(kModuleStr, config));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnUnverifiedModule(kModuleStr, config));
   const std::string error_message(
       verifier().Run(module.get()).status().message());
   EXPECT_THAT(error_message, HasSubstr("Target 7"));
@@ -2255,8 +2204,8 @@ TEST_F(HloVerifierTest, CollectivePermuteAsyncMixedPrecisionOperandsAllowed) {
     )";
   HloModuleConfig config;
   config.set_num_partitions(2);
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnUnverifiedModule(kModuleStr, config));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnUnverifiedModule(kModuleStr, config));
   auto status = verifier().Run(module.get()).status();
   ASSERT_TRUE(status.ok());
 }
@@ -2273,8 +2222,8 @@ TEST_F(HloVerifierTest, CollectivePermuteMixedPrecisionOperandsAllowed) {
     )";
   HloModuleConfig config;
   config.set_num_partitions(2);
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnUnverifiedModule(kModuleStr, config));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnUnverifiedModule(kModuleStr, config));
   auto status = verifier().Run(module.get()).status();
   ASSERT_TRUE(status.ok());
 }
@@ -2293,8 +2242,7 @@ TEST_F(HloVerifierTest, FusionMoreOperandsThanParameters) {
     ROOT out = f32[10] fusion(p0, p1), kind=kInput, calls=fused_computation
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnUnverifiedModule(kModuleStr));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kModuleStr));
   auto status = verifier().Run(module.get()).status();
   ASSERT_TRUE(status.ok());
 }
@@ -2314,8 +2262,7 @@ TEST_F(HloVerifierTest, FusionLessOperandsThanParameters) {
     ROOT out = f32[10] fusion(p0), kind=kInput, calls=fused_computation
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnUnverifiedModule(kModuleStr));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kModuleStr));
   EXPECT_THAT(verifier().Run(module.get()).status().message(),
               HasSubstr("greater than the number of operands"));
 }
@@ -2333,8 +2280,7 @@ TEST_F(HloVerifierTest, FusionShapeVerifier) {
     ROOT out = f32[10] fusion(p0), kind=kInput, calls=fused_computation
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnUnverifiedModule(kModuleStr));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kModuleStr));
   EXPECT_THAT(verifier().Run(module.get()).status().message(),
               HasSubstr("Fused computation shape"));
 }
@@ -2352,8 +2298,7 @@ TEST_F(HloVerifierTest, FusionThreadVerifier) {
     ROOT out = f32[8,12] fusion(p0), kind=kInput, calls=fused_computation
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnUnverifiedModule(kModuleStr));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kModuleStr));
   EXPECT_THAT(verifier().Run(module.get()).status().message(),
               HasSubstr("expects parent computation thread name same as called "
                         "computation's thread name"));
@@ -2382,8 +2327,7 @@ TEST_F(HloVerifierTest, FusionNestedComputationThreadVerifier) {
     ROOT out = f32[8,12] fusion(p0, p1), kind=kInput, calls=fused_computation
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnUnverifiedModule(kModuleStr));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kModuleStr));
 
   absl::Status status =
       HloVerifier{HloVerifierOpts{}.VerifyCallNestedComputationThreadName()}
@@ -2415,8 +2359,7 @@ TEST_F(HloVerifierTest, AllReduceVerifier) {
     ROOT result = (f32[8,12]{0,1}, f32[8,12]{0,1}) tuple(crs0, crs1)
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnUnverifiedModule(kModuleStr));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kModuleStr));
   EXPECT_THAT(
       verifier().Run(module.get()).status().message(),
       HasSubstr("mix of layout constrained and unconstrained AllReduce"));
@@ -2442,8 +2385,7 @@ TEST_F(HloVerifierTest, ChannelVerifier) {
     ROOT result = (f32[8,12]{0,1}, f32[8,12]{0,1}) tuple(%input, %crs)
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnUnverifiedModule(kModuleStr));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kModuleStr));
   TF_ASSERT_OK(verifier().Run(module.get()));
 }
 
@@ -2480,8 +2422,7 @@ TEST_F(HloVerifierTest, ChannelVerifierPartiallyPipelinedAsyncRecv) {
       recv_done = (f32[16], token[]) recv-done(recv_ctx), channel_id=1
       ROOT result = f32[16] get-tuple-element(recv_done), index=0
     })";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnUnverifiedModule(kModuleStr));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kModuleStr));
   TF_ASSERT_OK(verifier().Run(module.get()));
 }
 
@@ -2519,8 +2460,7 @@ TEST_F(HloVerifierTest, ChannelVerifierPartiallyPipelinedAsyncSend) {
       send_ctx = (f32[16], u32[], token[]) get-tuple-element(while), index=0
       ROOT send_done = (f32[16], token[]) send-done(send_ctx), channel_id=1
     })";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnUnverifiedModule(kModuleStr));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kModuleStr));
   TF_ASSERT_OK(verifier().Run(module.get()));
 }
 
@@ -2536,8 +2476,7 @@ TEST_F(HloVerifierTest, ChannelVerifierAsyncSend) {
             _xla_send_send_source_target_pairs={{0,1},{1,2},{2,3}}}
       ROOT send_done = (f32[16], token[]) send-done(send), channel_id=1
     })";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnUnverifiedModule(kModuleStr));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kModuleStr));
   TF_ASSERT_OK(verifier().Run(module.get()));
 }
 
@@ -2564,8 +2503,7 @@ TEST_F(HloVerifierTest, SingleUserExceptionForWrappedSendRecv) {
     ROOT out = f32[] get-tuple-element((f32[], u32[], token[]) async-recv-done), index=0
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnUnverifiedModule(kModuleStr));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kModuleStr));
   TF_ASSERT_OK(verifier().Run(module.get()));
 }
 
@@ -2581,8 +2519,7 @@ TEST_F(HloVerifierTest, ChannelVerifierAsyncRecv) {
       recv_done = (f32[16], token[]) recv-done(recv), channel_id=1
       ROOT result = f32[16] get-tuple-element(recv_done), index=0
     })";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnUnverifiedModule(kModuleStr));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kModuleStr));
   TF_ASSERT_OK(verifier().Run(module.get()));
 }
 
@@ -2599,8 +2536,7 @@ TEST_F(HloVerifierTest, ChannelVerifierMultipleSendUsers) {
       send_done = (f32[16], token[]) send-done(send), channel_id=1
       ROOT result = ((f32[16], u32[], token[]), f32[16]) tuple(send, send_done)
     })";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnUnverifiedModule(kModuleStr));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kModuleStr));
   EXPECT_THAT(verifier().Run(module.get()).status().message(),
               HasSubstr("send instruction requires one consumer, found 2"));
 }
@@ -2618,8 +2554,7 @@ TEST_F(HloVerifierTest, ChannelVerifierMultipleRecvUsers) {
       ROOT result = (((f32[16], u32[], token[])), f32[16])
           tuple(recv, recv_done)
     })";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnUnverifiedModule(kModuleStr));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kModuleStr));
   EXPECT_THAT(verifier().Run(module.get()).status().message(),
               HasSubstr("recv instruction requires one consumer, found 2"));
 }
@@ -2643,8 +2578,7 @@ TEST_F(HloVerifierTest, CollectiveChannelVerifier) {
     ROOT result = (f32[8,12]{0,1}, f32[8,12]{0,1}) tuple(%permute, %crs)
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnUnverifiedModule(kModuleStr));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kModuleStr));
   TF_ASSERT_OK(verifier().Run(module.get()));
 }
 
@@ -2658,8 +2592,7 @@ TEST_F(HloVerifierTestLayoutSensitive, CollectivePermuteStartAndDone) {
     ROOT collective-permute-done.1 = f32[2,3]{1,0:S(1)} collective-permute-done(collective-permute-start.1)
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnUnverifiedModule(kModuleStr));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kModuleStr));
 
   auto status = verifier().Run(module.get()).status();
   ASSERT_TRUE(status.ok());
@@ -2677,8 +2610,7 @@ TEST_F(HloVerifierTestLayoutSensitive, CombinedCollectivePermuteStartAndDone) {
     ROOT get-tuple-element.1 = f32[2,3]{1,0:S(1)} get-tuple-element((f32[2,3]{1,0:S(1)}, f32[2,3]{1,0:S(1)}) collective-permute-done.1), index=1
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnUnverifiedModule(kModuleStr));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kModuleStr));
 
   auto status = verifier().Run(module.get()).status();
   ASSERT_TRUE(status.ok());
@@ -2694,8 +2626,7 @@ TEST_F(HloVerifierTest, CollectivePermuteStartAndDoneWrongType) {
     ROOT collective-permute-done.1 = f32[2,3]{1,0:S(1)} collective-permute-done(collective-permute-start.1)
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnUnverifiedModule(kModuleStr));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kModuleStr));
 
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
@@ -2715,8 +2646,7 @@ TEST_F(HloVerifierTest, CollectivePermuteStartAndMultipleDone) {
     ROOT collective-permute-done.2 = f32[2,3]{1,0:S(1)} collective-permute-done(collective-permute-start.1)
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnUnverifiedModule(kModuleStr));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kModuleStr));
 
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
@@ -2739,8 +2669,7 @@ TEST_F(HloVerifierTest, CollectivePermuteDoneNoCollectivePermuteStart) {
     ROOT collective-permute-done.1 = f32[2,3]{1,0:S(1)} collective-permute-done(tuple.1)
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnUnverifiedModule(kModuleStr));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kModuleStr));
 
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
@@ -2758,8 +2687,7 @@ TEST_F(HloVerifierTest, ComparisonTypeFloat) {
    ROOT cmp = pred[] compare(f32[] p0, f32[] p0), direction=LT, type=UNSIGNED
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnUnverifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo_string));
 
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
@@ -2776,8 +2704,7 @@ TEST_F(HloVerifierTest, ComparisonTypeSigned) {
    ROOT cmp = pred[] compare(s32[] p0, s32[] p0), direction=LT, type=UNSIGNED
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnUnverifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo_string));
 
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
@@ -2793,8 +2720,7 @@ TEST_F(HloVerifierTest, ComparisonTypeUnsigned) {
    ROOT cmp = pred[] compare(u32[] p0, u32[] p0), direction=LT, type=SIGNED
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnUnverifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo_string));
 
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
@@ -2810,8 +2736,7 @@ TEST_F(HloVerifierTest, ComparisonTypePred) {
    ROOT cmp = pred[] compare(pred[] p0, pred[] p0), direction=LT, type=SIGNED
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnUnverifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo_string));
 
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
@@ -2832,8 +2757,7 @@ TEST_F(HloVerifierTest, UseGlobalDeviceIdsEmptyReplicaGroup) {
     ROOT crs = f32[8]{0} all-reduce(input), replica_groups={}, channel_id=1,
                          use_global_device_ids=true, to_apply=add
   })";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnUnverifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo_string));
 
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
@@ -2877,8 +2801,7 @@ TEST_F(HloVerifierTest, ReduceScatterInvalidOutputSize0) {
     ROOT crs = f32[8]{0} reduce-scatter(input), replica_groups={{0,1}},
                          to_apply=add, dimensions={0}
   })";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnUnverifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo_string));
 
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
@@ -2900,8 +2823,7 @@ TEST_F(HloVerifierTest, ReduceScatterInvalidScatterDim) {
     ROOT crs = f32[4]{0} reduce-scatter(input), replica_groups={{0,1}},
                          to_apply=add, dimensions={1}
   })";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnUnverifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo_string));
 
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
@@ -2924,8 +2846,7 @@ TEST_F(HloVerifierTest, ReduceScatterNonUniformGroups) {
     ROOT crs = f32[4]{0} reduce-scatter(input), replica_groups={{0,1}, {2,3,4}},
                          to_apply=add, dimensions={0}
   })";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnUnverifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo_string));
 
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
@@ -2951,8 +2872,7 @@ TEST_F(HloVerifierTest, ScatterInvalidScatterDim) {
   abs = s8[11,6]{1,0} abs(scatter)
   ROOT tuple = (s8[11,6]{1,0}) tuple(abs)
   })";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnUnverifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo_string));
 
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
@@ -2970,7 +2890,7 @@ ENTRY computation {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
   auto status = HloVerifier{HloVerifierOpts{}.VerifyBroadcastDimensionsOrder()}
                     .Run(module.get())
                     .status();
@@ -2989,7 +2909,7 @@ ENTRY computation {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
   TF_ASSERT_OK(HloVerifier{HloVerifierOpts{}.VerifyBroadcastDimensionsOrder()}
                    .Run(module.get())
                    .status());
@@ -3006,7 +2926,7 @@ ENTRY computation {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
   auto status = HloVerifier{HloVerifierOpts{}.VerifyInstructionNameUnchanged()}
                     .Run(module.get())
                     .status();
@@ -3026,7 +2946,7 @@ ENTRY computation {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
   TF_ASSERT_OK(HloVerifier{HloVerifierOpts{}.VerifyInstructionNameUnchanged()}
                    .Run(module.get())
                    .status());
@@ -3043,7 +2963,7 @@ ENTRY computation {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
   TF_ASSERT_OK(HloVerifier{HloVerifierOpts{}.VerifyInstructionNameUnchanged()}
                    .Run(module.get())
                    .status());
@@ -3061,7 +2981,7 @@ ENTRY computation {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
   auto status = HloVerifier{HloVerifierOpts{}.VerifyInstructionNameUnchanged()}
                     .Run(module.get())
                     .status();
@@ -3080,7 +3000,7 @@ ENTRY main {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
   auto status =
       HloVerifier{
           HloVerifierOpts{}.MakeLayoutSensitive().VerifyReshapeIsBitcast()}
@@ -3101,7 +3021,7 @@ ENTRY main {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
   TF_ASSERT_OK(HloVerifier{
       HloVerifierOpts{}.MakeLayoutSensitive().VerifyReshapeIsBitcast()}
                    .Run(module.get())
@@ -3123,7 +3043,7 @@ TEST_F(HloVerifierTest, VerifyCustomCallThread) {
     }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
   auto status =
       HloVerifier{HloVerifierOpts{}.VerifyCallNestedComputationThreadName()}
           .Run(module.get())
@@ -3156,8 +3076,7 @@ TEST_F(HloVerifierTest, CheckWhileThread) {
       ROOT %while = s32[] while(s32[] %constant.2), condition=%condition.v3, body=%body.v3
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnUnverifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo_string));
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
   EXPECT_THAT(status.message(),
@@ -3194,8 +3113,7 @@ TEST_F(HloVerifierTest, CheckWhileContainsAsyncThread) {
       ROOT %while = s32[] while(s32[] %constant.2), condition=%condition.v3, body=%body.v3
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnUnverifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo_string));
   auto status = verifier().Run(module.get()).status();
   ASSERT_TRUE(status.ok());
 }
@@ -3219,8 +3137,7 @@ ENTRY entry (parameter.0: bf16[1,8,1,8,320], parameter.1: bf16[1,8,6,8,320]) -> 
   %p1 = bf16[1,8,6,8,320]{4,0,3,2,1:T(2,128)(2,1)S(3)} parameter(1)
   ROOT out = bf16[1,8,6,8,320]{4,0,3,2,1:T(2,128)(2,1)S(3)} fusion(p0, p1), kind=kLoop, calls=fused_computation
 })";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnUnverifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo_string));
 
   auto status = verifier().Run(module.get()).status();
   ASSERT_TRUE(status.ok());
@@ -3236,7 +3153,7 @@ ENTRY main {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
 
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
@@ -3258,8 +3175,8 @@ ENTRY main {
   HloModuleConfig config;
   config.set_num_partitions(2);
   config.set_use_spmd_partitioning(true);
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnUnverifiedModule(hlo, config));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnUnverifiedModule(hlo, config));
   ASSERT_TRUE(module->config().use_spmd_partitioning());
 
   auto status = verifier().Run(module.get()).status();
@@ -3281,8 +3198,8 @@ ENTRY main {
   HloModuleConfig config;
   config.set_num_partitions(2);
   config.set_use_spmd_partitioning(true);
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnUnverifiedModule(hlo, config));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnUnverifiedModule(hlo, config));
   ASSERT_TRUE(module->config().use_spmd_partitioning());
 
   auto status = verifier().Run(module.get()).status();
@@ -3313,7 +3230,7 @@ TEST_F(HloVerifierTest, InconsistentWhileSharding) {
     }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
   EXPECT_THAT(status.message(),
@@ -3342,7 +3259,7 @@ TEST_F(HloVerifierTest, InconsistentConditionSharding) {
       sharding={maximal device=0}
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
   EXPECT_THAT(
@@ -3362,7 +3279,7 @@ TEST(MetadataTrackerTest, MetadataTrackerLogsInfo) {
       ROOT sum = s32[] add(p0, p1)
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
 
   ::absl::ScopedMockLog log(::absl::MockLogDefault::kIgnoreUnexpected);
   EXPECT_CALL(
@@ -3388,7 +3305,7 @@ ENTRY TopK {
   ROOT topk = (f32[10,2]{0,1}, s32[10,2]{0,1}) topk(x), k=2, largest=true
 }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
   auto status = verifier().Run(module.get()).status();
   ASSERT_TRUE(status.ok());
 }
@@ -3407,8 +3324,8 @@ ENTRY entry {
              lhs_contracting_dims={1}, rhs_contracting_dims={0}
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnUnverifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(kHlo));
   absl::Status status = verifier().Run(module.get()).status();
 
   TF_ASSERT_OK(status);
@@ -3425,8 +3342,8 @@ ENTRY entry {
              lhs_contracting_dims={1}, rhs_contracting_dims={0}
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnUnverifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(kHlo));
   absl::Status status = verifier().Run(module.get()).status();
 
   ASSERT_FALSE(status.ok());
@@ -3444,8 +3361,8 @@ ENTRY entry {
              lhs_contracting_dims={1}, rhs_contracting_dims={0}
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnUnverifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(kHlo));
   absl::Status status = verifier().Run(module.get()).status();
 
   TF_ASSERT_OK(status);
@@ -3462,8 +3379,8 @@ ENTRY entry {
              lhs_contracting_dims={1}, rhs_contracting_dims={0}
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnUnverifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(kHlo));
   absl::Status status = verifier().Run(module.get()).status();
 
   ASSERT_FALSE(status.ok());
@@ -3480,8 +3397,8 @@ ENTRY entry {
   ROOT add = f32[10]{0} add(x, x)
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnUnverifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(kHlo));
   absl::Status status = verifier().Run(module.get()).status();
 
   ASSERT_FALSE(status.ok());
@@ -3505,7 +3422,7 @@ TEST_F(HloVerifierTestLayoutSensitive,
         output_to_operand_aliasing={{}: (0, {})}
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
   TF_EXPECT_OK(verifier().Run(module.get()).status());
 }
 
@@ -3520,8 +3437,8 @@ ENTRY entry {
              lhs_contracting_dims={1}, rhs_contracting_dims={0}
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnUnverifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(kHlo));
   absl::Status status = verifier().Run(module.get()).status();
 
   TF_ASSERT_OK(status);
@@ -3537,8 +3454,8 @@ ENTRY entry {
   ROOT ag = (f32[20], bf16[20]) all-gather(p0, p1), dimensions={0}
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnUnverifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(kHlo));
   absl::Status status = verifier().Run(module.get()).status();
 
   TF_ASSERT_OK(status);
@@ -3552,7 +3469,7 @@ TEST_F(HloVerifierTest, UnboundedDynamism) {
     ROOT param0 = f32[?,784] parameter(0)
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
   EXPECT_THAT(status.message(), HasSubstr("Unbounded dynamism is disabled"));
@@ -3566,7 +3483,7 @@ TEST_F(HloVerifierTest, EnableUnboundedDynamism) {
     ROOT param0 = f32[?,784] parameter(0)
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
   HloVerifier verifier{HloVerifierOpts{}.WithAllowUnboundedDynamism(true)};
   auto status = verifier.Run(module.get()).status();
   ASSERT_TRUE(status.ok());
@@ -3586,8 +3503,7 @@ TEST_F(HloVerifierTestLayoutSensitive,
     dynamic_update_slice = f32[2,2048,2048]{2,1,0:S(5)} dynamic-update-slice(custom-call, data_param, index_param, constant_s32_0, constant_s32_0)
     ROOT dynamic_slice = f32[1,2048,2048]{2,1,0} dynamic-slice(f32[2,2048,2048]{2,1,0:S(5)} dynamic_update_slice, index_param, constant_s32_0, constant_s32_0), dynamic_slice_sizes={1,2048,2048}
   })";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnUnverifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo_string));
 
   auto status = verifier().Run(module.get()).status();
   ASSERT_TRUE(status.ok());
@@ -3603,8 +3519,7 @@ TEST_F(HloVerifierTestLayoutSensitive,
     copy_0 = f32[2048]{0:S(5)} copy(f32[2048]{0} data_param)
     ROOT copy_1 = f32[2048]{0} copy(f32[2048]{0:S(5)} copy_0)
   })";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnUnverifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo_string));
 
   auto status = verifier().Run(module.get()).status();
   ASSERT_TRUE(status.ok());
@@ -3624,8 +3539,7 @@ TEST_F(HloVerifierTestLayoutSensitive,
     dynamic_update_slice = f32[2,2048,2048]{2,1,0} dynamic-update-slice(custom-call, data_param, index_param, constant_s32_0, constant_s32_0)
     ROOT dynamic_slice = f32[1,2048,2048]{2,1,0:S(5)} dynamic-slice(f32[2,2048,2048]{2,1,0} dynamic_update_slice, index_param, constant_s32_0, constant_s32_0), dynamic_slice_sizes={1,2048,2048}
   })";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnUnverifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo_string));
 
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
@@ -3645,8 +3559,7 @@ ENTRY main {
   ROOT dot = f32[1024,1024]{1,0:T(8,128)} dot(copy, copy), lhs_contracting_dims={1}, rhs_contracting_dims={0}
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnUnverifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo_string));
 
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
@@ -3666,8 +3579,7 @@ ENTRY main {
   ROOT copy = f32[1024,1024]{0,1:T(8,128)} copy(param)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnUnverifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo_string));
 
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
@@ -3687,8 +3599,7 @@ TEST_F(HloVerifierTestLayoutSensitive,
     add = f32[2048,2048]{1,0} add(data_param, data_param)
     ROOT const = f32[] constant(0)
   })";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnUnverifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo_string));
   // Programmatically mess up the minor-to-major rather than in the raw string,
   // because the hlo parser fails if the minor-to-major is not the same size as
   // the dimensions.
@@ -3715,8 +3626,7 @@ TEST_F(HloVerifierTest, NoErrorOnDuplicateChannelId) {
 
     ROOT tuple = (f32[2048,2048]{1,0}, f32[2048,2048]{1,0}) tuple(cp1, cp2)
   })";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnUnverifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo_string));
   HloVerifierOpts opts{};
   HloVerifier verifier(std::move(opts));
   ASSERT_IS_OK(verifier.Run(module.get()).status());
@@ -3732,8 +3642,7 @@ TEST_F(HloVerifierTestLayoutSensitive, Int4CompareSelect) {
       less = pred[10] compare(a, b), direction=LT
       ROOT result = select(less, a, b)
     })";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnUnverifiedModule(kModuleStr));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kModuleStr));
   TF_ASSERT_OK(verifier().Run(module.get()));
 }
 
@@ -3746,8 +3655,8 @@ ENTRY entry_computation {
   c = u32[3] parameter(2)
   ROOT dot = f32[11,7] ragged-dot(a, b, c), lhs_contracting_dims={1}, rhs_contracting_dims={1}, lhs_ragged_dims={0}, rhs_group_dims={0}
 })";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kRaggedDotHloString));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(kRaggedDotHloString));
 
   auto status = verifier().Run(module.get()).status();
   EXPECT_TRUE(status.ok()) << status;
@@ -3762,8 +3671,8 @@ ENTRY entry_computation {
   c = u32[3] parameter(2)
   ROOT dot = f32[3,11,7] ragged-dot(a, b, c), lhs_contracting_dims={1}, rhs_contracting_dims={0}, lhs_ragged_dims={1}
 })";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kRaggedDotHloString));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(kRaggedDotHloString));
 
   auto status = verifier().Run(module.get()).status();
   EXPECT_TRUE(status.ok()) << status;
@@ -3778,8 +3687,8 @@ ENTRY entry_computation {
   c = u32[19,3] parameter(2)
   ROOT dot = f32[19,11,7] ragged-dot(a, b, c), lhs_batch_dims={0}, lhs_contracting_dims={2}, rhs_batch_dims={1}, rhs_contracting_dims={2}, lhs_ragged_dims={1}, rhs_group_dims={0}
 })";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kRaggedDotHloString));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(kRaggedDotHloString));
 
   auto status = verifier().Run(module.get()).status();
   EXPECT_TRUE(status.ok()) << status;
@@ -3794,8 +3703,7 @@ TEST_F(HloVerifierTest, UnaryOpWithResultAccuracy) {
     ROOT %exponential = f32[] exponential(f32[] %exponent), result_accuracy={mode=highest}
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   auto status = verifier().Run(module.get()).status();
   EXPECT_TRUE(status.ok()) << status;
 }
@@ -3807,8 +3715,7 @@ ENTRY %entry_computation {
   ROOT op = ((f32[], f32[3]{0}), f32[2,3]) parameter(0),  origin={(({}, {"v2"}), {"v3"})}
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnUnverifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo_string));
 
   auto status = verifier().Run(module.get()).status();
   EXPECT_TRUE(status.ok());
@@ -3821,8 +3728,7 @@ ENTRY %entry_computation {
   ROOT op = f32[] parameter(0),  origin={(({}, {"v2"}), {"v3"})}
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnUnverifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo_string));
 
   auto status = verifier().Run(module.get()).status();
   EXPECT_FALSE(status.ok());
@@ -3842,8 +3748,7 @@ TEST_F(HloVerifierTest, RaggedAllToAllWithRank1OffsetsSizes) {
       ROOT ra2a = bf16[4,1024,4096] ragged-all-to-all(input, output, input_offsets, send_sizes, output_offsets, recv_sizes), replica_groups={{0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63}}
     }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnUnverifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo_string));
 
   auto status = verifier().Run(module.get()).status();
   EXPECT_TRUE(status.ok()) << status;
@@ -3862,8 +3767,7 @@ TEST_F(HloVerifierTest, RaggedAllToAllWithRank2OffsetsSizes) {
       ROOT ra2a = bf16[4,1024,4096] ragged-all-to-all(input, output, input_offsets, send_sizes, output_offsets, recv_sizes), replica_groups={{0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63}}
     }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnUnverifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo_string));
 
   auto status = verifier().Run(module.get()).status();
   EXPECT_TRUE(status.ok()) << status;
@@ -3882,8 +3786,7 @@ TEST_F(HloVerifierTest, RaggedAllToAllWithInvalidOffsetsRanks) {
       ROOT ra2a = bf16[4,1024,4096] ragged-all-to-all(input, output, input_offsets, send_sizes, output_offsets, recv_sizes), replica_groups={{0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63}}
     }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnUnverifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo_string));
 
   auto status = verifier().Run(module.get()).status();
   EXPECT_FALSE(status.ok()) << status;
@@ -3904,8 +3807,7 @@ TEST_F(HloVerifierTest, RaggedAllToAllWithRank2OffsetsShapes) {
       ROOT ra2a = bf16[4,1024,4096] ragged-all-to-all(input, output, input_offsets, send_sizes, output_offsets, recv_sizes), replica_groups={{0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63}}
     }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnUnverifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo_string));
 
   auto status = verifier().Run(module.get()).status();
   EXPECT_FALSE(status.ok()) << status;
@@ -3922,8 +3824,8 @@ ENTRY main {
   ROOT z = f32[] add(f32[] x, f32[] y)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(
-                                           hlo_no_host_memory_space_shape));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(
+                                        hlo_no_host_memory_space_shape));
 
   auto status = HloVerifier{HloVerifierOpts{}.VerifyNoHostMemorySpace()}
                     .Run(module.get())
@@ -3940,8 +3842,8 @@ ENTRY main {
   ROOT bitcast.3 = bf16[8,1,64]{2,1,0:S(5)} bitcast(custom-call.2)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(
-                                           hlo_with_host_memory_space_shape));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(
+                                        hlo_with_host_memory_space_shape));
 
   auto status = HloVerifier{HloVerifierOpts{}.VerifyNoHostMemorySpace()}
                     .Run(module.get())
@@ -3962,7 +3864,7 @@ TEST_F(HloVerifierTest, VerifyBuffersEntryParameterCannotHaveBuffers) {
       output_to_operand_aliasing={{}:(0, {})}
   })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
   EXPECT_THAT(status.message(),
@@ -3979,7 +3881,7 @@ TEST_F(HloVerifierTest, VerifyBuffersPinMissingAlias) {
       output_to_operand_aliasing={{}:(0, {})}
   })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
   EXPECT_THAT(
@@ -3998,7 +3900,7 @@ TEST_F(HloVerifierTest, VerifyBuffersUnpinMissingAlias) {
     ROOT b = f32[32] custom-call(a), custom_call_target="Unpin"
   })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
   EXPECT_THAT(
@@ -4020,7 +3922,7 @@ TEST_F(HloVerifierTest, VerifyBuffersAddOpCannotHaveBuffers) {
       output_to_operand_aliasing={{}:(0, {})}
   })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
   EXPECT_THAT(status.message(), HasSubstr("Expected array argument"));
@@ -4038,7 +3940,7 @@ TEST_F(HloVerifierTest, VerifyBuffersSpecialCustomCallTargets) {
       output_to_operand_aliasing={{}:(0, {})}
   })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
   auto status = verifier().Run(module.get()).status();
   ASSERT_TRUE(status.ok());
 }
@@ -4061,7 +3963,7 @@ TEST_F(HloVerifierTest, VerifyBuffersResultBufferNotInOperands) {
     ROOT c = copy(a)
   })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
   EXPECT_THAT(status.message(),
@@ -4086,7 +3988,7 @@ TEST_F(HloVerifierTest, VerifyBuffersBufferInResultMultipleTimes) {
     ROOT c = copy(a)
   })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
   EXPECT_THAT(status.message(),
@@ -4117,7 +4019,7 @@ TEST_F(HloVerifierTest, VerifyBuffersBufferWithTwoWritesStraightLine) {
       output_to_operand_aliasing={{}:(0, {})}
   })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
   EXPECT_THAT(status.message(),
@@ -4155,7 +4057,7 @@ TEST_F(HloVerifierTest, VerifyBuffersBufferWithTwoWritesWhileRelated1) {
       output_to_operand_aliasing={{}:(0, {})}
   })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
   EXPECT_THAT(status.message(),
@@ -4196,7 +4098,7 @@ TEST_F(HloVerifierTest, VerifyBuffersBufferWithTwoWritesWhileRelated2) {
       output_to_operand_aliasing={{}:(0, {})}
   })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
   EXPECT_THAT(status.message(),
@@ -4236,7 +4138,7 @@ TEST_F(HloVerifierTest, VerifyBuffersBufferWithTwoWritesWhileBodyParam) {
       output_to_operand_aliasing={{}:(0, {})}
   })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
   EXPECT_THAT(status.message(),
@@ -4276,7 +4178,7 @@ TEST_F(HloVerifierTest, VerifyBuffersBufferWithTwoWritesWhileBody) {
       output_to_operand_aliasing={{}:(0, {})}
   })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
   EXPECT_THAT(status.message(),
@@ -4300,7 +4202,7 @@ TEST_F(HloVerifierTest, VerifyBuffersOperandBufferNotInResult) {
     ROOT c = copy(a)
   })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
   EXPECT_THAT(status.message(),
@@ -4322,7 +4224,7 @@ TEST_F(HloVerifierTest, VerifyBuffersNestedInOperands) {
       output_to_operand_aliasing={{}:(0, {})}
   })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
   auto status = verifier().Run(module.get()).status();
   ASSERT_TRUE(status.ok());
 }
@@ -4344,7 +4246,7 @@ TEST_F(HloVerifierTest, VerifyBuffersNestedInResults) {
       output_to_operand_aliasing={{}:(0, {})}
   })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
   auto status = verifier().Run(module.get()).status();
   ASSERT_TRUE(status.ok());
 }
@@ -4371,7 +4273,7 @@ TEST_F(HloVerifierTest, VerifyBuffersStraightLineChain) {
     ROOT c = copy(a)
   })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
   auto status = verifier().Run(module.get()).status();
   ASSERT_TRUE(status.ok());
 }
@@ -4420,7 +4322,7 @@ TEST_F(HloVerifierTest, VerifyBuffersRotatedChain) {
       output_to_operand_aliasing={{}:(0, {})}
   })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
   auto status = verifier().Run(module.get()).status();
   ASSERT_TRUE(status.ok());
 }
@@ -4445,8 +4347,8 @@ TEST_F(HloVerifierTestForCollectiveDeadlocks,
     p1 = bf16[10] parameter(1)
     ROOT ag = (f32[20], bf16[20]) all-gather(p0, p1), dimensions={0}
   })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
-                          ParseAndReturnUnverifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                       ParseAndReturnUnverifiedModule(hlo));
   EXPECT_THAT(verifier().Run(module.get()), IsOkAndHolds(false));
 }
 
@@ -4463,8 +4365,8 @@ TEST_F(HloVerifierTestForCollectiveDeadlocks, VerifySendRecvDeadlockOnRecv) {
             _xla_send_recv_source_target_pairs="{{0,1}}"}
     ROOT recv2-done = (f32[], token[]) recv-done(recv2), channel_id=2
   })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
-                          ParseAndReturnUnverifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                       ParseAndReturnUnverifiedModule(hlo));
   EXPECT_THAT(verifier().Run(module.get()),
               StatusIs(absl::StatusCode::kInternal,
                        HasSubstr("Expected send to match recv")));
@@ -4484,8 +4386,8 @@ TEST_F(HloVerifierTestForCollectiveDeadlocks, VerifySendRecvDeadlockOnSend) {
             _xla_send_recv_source_target_pairs="{{0,1}}"}
     ROOT send2-done = token[] send-done(send2), channel_id=2
   })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
-                          ParseAndReturnUnverifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                       ParseAndReturnUnverifiedModule(hlo));
   EXPECT_THAT(verifier().Run(module.get()),
               StatusIs(absl::StatusCode::kInternal,
                        HasSubstr("Expected recv to match send")));
@@ -4506,8 +4408,8 @@ TEST_F(HloVerifierTestForCollectiveDeadlocks,
     p1 = bf16[10] parameter(1)
     ROOT ag = (f32[20], bf16[20]) all-gather(p0, p1), dimensions={0}
   })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
-                          ParseAndReturnUnverifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                       ParseAndReturnUnverifiedModule(hlo));
   EXPECT_THAT(
       verifier().Run(module.get()),
       StatusIs(
@@ -4559,8 +4461,8 @@ TEST_F(HloVerifierTestForCollectiveDeadlocks,
     ROOT another_recv_done = (f32[], token[]) recv-done(another_recv), channel_id=2
   })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
-                          ParseAndReturnUnverifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                       ParseAndReturnUnverifiedModule(hlo));
   EXPECT_THAT(
       verifier().Run(module.get()),
       StatusIs(
@@ -4590,8 +4492,8 @@ TEST_F(HloVerifierTestForCollectiveDeadlocks,
     p1 = bf16[10] parameter(1)
     ROOT ag = (f32[20], bf16[20]) all-gather(p0, p1), dimensions={0}
   })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
-                          ParseAndReturnUnverifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                       ParseAndReturnUnverifiedModule(hlo));
   EXPECT_THAT(
       verifier().Run(module.get()),
       StatusIs(absl::StatusCode::kInternal,
@@ -4619,8 +4521,8 @@ TEST_F(HloVerifierTestForCollectiveDeadlocks,
     p1 = bf16[10] parameter(1)
     ROOT ag = (f32[20], bf16[20]) all-gather(p0, p1), dimensions={0}
   })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
-                          ParseAndReturnUnverifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                       ParseAndReturnUnverifiedModule(hlo));
   EXPECT_THAT(
       verifier().Run(module.get()),
       StatusIs(absl::StatusCode::kInternal,
@@ -4648,8 +4550,8 @@ TEST_F(HloVerifierTestForCollectiveDeadlocks,
     p1 = bf16[10] parameter(1)
     ROOT ag = (f32[20], bf16[20]) all-gather(p0, p1), dimensions={0}
   })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
-                          ParseAndReturnUnverifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                       ParseAndReturnUnverifiedModule(hlo));
   EXPECT_THAT(
       verifier().Run(module.get()),
       StatusIs(absl::StatusCode::kInternal,
@@ -4676,8 +4578,8 @@ TEST_F(HloVerifierTestForCollectiveDeadlocks, VerifySendRecvDeadlockOnCycle) {
     p1 = bf16[10] parameter(1)
     ROOT ag = (f32[20], bf16[20]) all-gather(p0, p1), dimensions={0}
   })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
-                          ParseAndReturnUnverifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                       ParseAndReturnUnverifiedModule(hlo));
   EXPECT_THAT(verifier().Run(module.get()),
               StatusIs(absl::StatusCode::kInternal,
                        HasSubstr("Expected send and recv instructions to have "
@@ -4703,8 +4605,8 @@ TEST_F(HloVerifierTestForCollectiveDeadlocks, VerifySendRecvNoDeadlocks) {
     p1 = bf16[10] parameter(1)
     ROOT ag = (f32[20], bf16[20]) all-gather(p0, p1), dimensions={0}
   })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
-                          ParseAndReturnUnverifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                       ParseAndReturnUnverifiedModule(hlo));
   EXPECT_THAT(verifier().Run(module.get()), IsOkAndHolds(false));
 }
 TEST_F(HloVerifierTestForCollectiveDeadlocks,
@@ -4742,8 +4644,8 @@ TEST_F(HloVerifierTestForCollectiveDeadlocks,
             _xla_send_recv_source_target_pairs="{{1,0}}"}
     send1-done = token[] send-done(send1), channel_id=1
   })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
-                          ParseAndReturnUnverifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                       ParseAndReturnUnverifiedModule(hlo));
   EXPECT_THAT(verifier().Run(module.get()), IsOkAndHolds(false));
 }
 
@@ -4802,8 +4704,8 @@ ENTRY main {
   send-done2 = token[] get-tuple-element(unpack-send-done2), index=2
 }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
-                          ParseAndReturnUnverifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                       ParseAndReturnUnverifiedModule(hlo));
   EXPECT_THAT(verifier().Run(module.get()), IsOkAndHolds(false));
 }
 
@@ -4870,8 +4772,8 @@ ENTRY main {
   send-done2 = token[] get-tuple-element(unpack-send-done2), index=2
 }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
-                          ParseAndReturnUnverifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                       ParseAndReturnUnverifiedModule(hlo));
   EXPECT_THAT(verifier().Run(module.get()), IsOkAndHolds(false));
 }
 
@@ -4888,8 +4790,8 @@ TEST_F(HloVerifierTest, VerifyMatchingSendSameChannel) {
     ROOT send1-done = token[] send-done(send1), channel_id=1, is_host_transfer=true
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
-                          ParseAndReturnUnverifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                       ParseAndReturnUnverifiedModule(hlo));
   EXPECT_THAT(verifier().Run(module.get()), absl_testing::IsOkAndHolds(false));
 }
 
@@ -4906,8 +4808,8 @@ TEST_F(HloVerifierTest, VerifyMatchingSendSameChannelDifferentShape) {
     ROOT send1-done = token[] send-done(send1), channel_id=1, is_host_transfer=true
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
-                          ParseAndReturnUnverifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                       ParseAndReturnUnverifiedModule(hlo));
   EXPECT_THAT(verifier().Run(module.get()),
               absl_testing::StatusIs(
                   absl::StatusCode::kInternal,
@@ -4928,8 +4830,8 @@ TEST_F(HloVerifierTest, VerifyMatchingSendSameChannelDifferentAttributes) {
     ROOT send1-done = token[] send-done(send1), channel_id=1, is_host_transfer=true, frontend_attributes={_xla_host_transfer_rendezvous="_bar"}
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
-                          ParseAndReturnUnverifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                       ParseAndReturnUnverifiedModule(hlo));
   EXPECT_THAT(verifier().Run(module.get()),
               absl_testing::StatusIs(
                   absl::StatusCode::kInternal,
@@ -4949,8 +4851,8 @@ ENTRY main {
     use_global_device_ids=true, channel_id=1
 }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
-                          ParseAndReturnUnverifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                       ParseAndReturnUnverifiedModule(hlo));
   module->mutable_config().set_replica_count(1);
   module->mutable_config().set_num_partitions(8);
   EXPECT_THAT(
@@ -4971,8 +4873,8 @@ ENTRY main {
     use_global_device_ids=true, channel_id=1
 }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
-                          ParseAndReturnUnverifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                       ParseAndReturnUnverifiedModule(hlo));
   module->mutable_config().set_replica_count(1);
   module->mutable_config().set_num_partitions(8);
   EXPECT_THAT(verifier().Run(module.get()), absl_testing::IsOk());
@@ -4991,8 +4893,8 @@ TEST_F(HloVerifierTest, ScaledDotWithNoScalesFails) {
         rhs_contracting_dims={0}
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnUnverifiedModule(kScaledDotHloString));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnUnverifiedModule(kScaledDotHloString));
 
   auto status = verifier().Run(module.get()).status();
   EXPECT_THAT(
@@ -5015,8 +4917,8 @@ TEST_F(HloVerifierTest, ScaledDotWithBothScalesSucceeds) {
         rhs_contracting_dims={0}
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kScaledDotHloString));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(kScaledDotHloString));
   EXPECT_THAT(verifier().Run(module.get()), absl_testing::IsOkAndHolds(false));
 }
 
@@ -5033,8 +4935,8 @@ TEST_F(HloVerifierTest, ScaledDotInvalidScaleShapeFails) {
         rhs_contracting_dims={0}
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnUnverifiedModule(kScaledDotHloString));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnUnverifiedModule(kScaledDotHloString));
 
   auto status = verifier().Run(module.get()).status();
   EXPECT_THAT(status,
@@ -5057,8 +4959,8 @@ TEST_F(HloVerifierTest, ScaledDotWithInvalidScaleContractingDimSizeFails) {
         rhs_contracting_dims={0}
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnUnverifiedModule(kScaledDotHloString));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnUnverifiedModule(kScaledDotHloString));
 
   auto status = verifier().Run(module.get()).status();
   EXPECT_THAT(status, absl_testing::StatusIs(
@@ -5080,8 +4982,8 @@ TEST_F(HloVerifierTest, ScaledDotWithScaleNonContractingDimSucceeds) {
         rhs_contracting_dims={0}
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnUnverifiedModule(kScaledDotHloString));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnUnverifiedModule(kScaledDotHloString));
 
   EXPECT_THAT(verifier().Run(module.get()), absl_testing::IsOkAndHolds(false));
 }
@@ -5098,7 +5000,7 @@ TEST_F(HloVerifierTest, VerifyBuffersLayoutChangeInPinAllowed) {
       output_to_operand_aliasing={{}:(0, {})}
   })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
   auto status = verifier().Run(module.get()).status();
   ASSERT_TRUE(status.ok());
 }
@@ -5116,7 +5018,7 @@ TEST_F(HloVerifierTestLayoutSensitive,
       output_to_operand_aliasing={{}:(0, {})}
   })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
   EXPECT_THAT(status.message(), HasSubstr("Different aliasing shapes"));

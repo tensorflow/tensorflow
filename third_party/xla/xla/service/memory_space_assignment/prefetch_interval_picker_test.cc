@@ -18,6 +18,7 @@ limitations under the License.
 #include <memory>
 #include <optional>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/log/log.h"
 #include "absl/strings/string_view.h"
@@ -31,7 +32,6 @@ limitations under the License.
 #include "xla/service/memory_space_assignment/testing_utils.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace memory_space_assignment {
@@ -69,8 +69,7 @@ TEST_F(CostAnalysisPrefetchIntervalPickerTest, PrefetchIntervalOrder) {
     ROOT v = f32[2,4] add(u, param0)
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
   HloCostAnalysis hlo_cost_analysis;
   auto hlo_cost_analysis_wrapper =
@@ -85,7 +84,7 @@ TEST_F(CostAnalysisPrefetchIntervalPickerTest, PrefetchIntervalOrder) {
           CreateHloCostAnalysisCalculator(*hlo_cost_analysis_wrapper),
           /*enable_cache=*/false));
   CostAnalysisOptions options;
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto cost_analysis,
       FakeCostAnalysis::Create(*op_cost_manager, *module, options));
   CostAnalysisPrefetchIntervalPicker interval_picker(
@@ -179,8 +178,7 @@ TEST_F(CostAnalysisPrefetchIntervalPickerTest, PrefetchIntervalOrderWhile) {
     ROOT v = f32[2,4] add(u, param0)  // 31
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
   HloCostAnalysis hlo_cost_analysis;
   auto hlo_cost_analysis_wrapper =
@@ -195,7 +193,7 @@ TEST_F(CostAnalysisPrefetchIntervalPickerTest, PrefetchIntervalOrderWhile) {
           CreateHloCostAnalysisCalculator(*hlo_cost_analysis_wrapper),
           /*enable_cache=*/false));
   CostAnalysisOptions options;
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto cost_analysis,
       FakeCostAnalysis::Create(*op_cost_manager, *module, options));
   CostAnalysisPrefetchIntervalPicker interval_picker(
@@ -273,8 +271,7 @@ TEST_F(CostAnalysisPrefetchIntervalPickerTest, NestedWhile) {
     ROOT root = f32[2,4] add(gte1, param0)  // 23
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
   CostAnalysisOptions options;
   HloCostAnalysis hlo_cost_analysis;
@@ -289,7 +286,7 @@ TEST_F(CostAnalysisPrefetchIntervalPickerTest, NestedWhile) {
           "HloCostAnalysis",
           CreateHloCostAnalysisCalculator(*hlo_cost_analysis_wrapper),
           /*enable_cache=*/false));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto cost_analysis,
       FakeCostAnalysis::Create(*op_cost_manager, *module, options));
   CostAnalysisPrefetchIntervalPicker interval_picker(
@@ -352,8 +349,7 @@ TEST_F(CostAnalysisPrefetchIntervalPickerTest, ConsecutiveConditionals) {
     ROOT tuple2 = (f32[3]{0}, f32[3]{0}) tuple(conditional0, conditional1)  // 19
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
   CostAnalysisOptions options;
   HloCostAnalysis hlo_cost_analysis;
@@ -368,7 +364,7 @@ TEST_F(CostAnalysisPrefetchIntervalPickerTest, ConsecutiveConditionals) {
           "HloCostAnalysis",
           CreateHloCostAnalysisCalculator(*hlo_cost_analysis_wrapper),
           /*enable_cache=*/false));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto cost_analysis,
       FakeCostAnalysis::Create(*op_cost_manager, *module, options));
   CostAnalysisPrefetchIntervalPicker interval_picker(
@@ -408,8 +404,7 @@ TEST_F(CostAnalysisPrefetchIntervalPickerTest, EarliestLatestWindowTooSmall) {
     ROOT add = f32[2,4] add(tanh, negate)
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
   CostAnalysisOptions options;
   HloCostAnalysis hlo_cost_analysis;
@@ -424,7 +419,7 @@ TEST_F(CostAnalysisPrefetchIntervalPickerTest, EarliestLatestWindowTooSmall) {
           "HloCostAnalysis",
           CreateHloCostAnalysisCalculator(*hlo_cost_analysis_wrapper),
           /*enable_cache=*/false));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto cost_analysis,
       FakeCostAnalysis::Create(*op_cost_manager, *module, options));
   cost_analysis->SetOverrideForGetInstructionElapsed(

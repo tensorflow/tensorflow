@@ -24,6 +24,7 @@ limitations under the License.
 #include <optional>
 #include <string>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/log/check.h"
 #include "absl/log/log.h"
@@ -33,7 +34,6 @@ limitations under the License.
 #include "absl/synchronization/notification.h"
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
-#include "tsl/platform/statusor.h"
 
 namespace aux {
 namespace {
@@ -102,7 +102,7 @@ TEST(EventLoopTest, TestSocketListen) {
   memset(&addr, 0, sizeof(sockaddr_in6));
   addr.sin6_family = AF_INET6;
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto listener,
       SocketListener::Listen(
           SocketAddress(addr), [](int sockfd, const SocketAddress& addr) {
@@ -130,7 +130,7 @@ TEST(EventLoopTest, TestSocketListenIPV4) {
   memset(&addr, 0, sizeof(sockaddr_in));
   addr.sin_family = AF_INET;
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto listener,
       SocketListener::Listen(
           SocketAddress(addr), [](int sockfd, const SocketAddress& addr) {

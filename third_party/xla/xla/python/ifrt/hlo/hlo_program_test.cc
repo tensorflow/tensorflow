@@ -18,6 +18,7 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
@@ -57,7 +58,7 @@ module attributes {mhlo.num_partitions = 1 : i32, mhlo.num_replicas = 1 : i32} {
   }
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto program1, ParseHloProgramString(kModule1));
+  ASSERT_OK_AND_ASSIGN(auto program1, ParseHloProgramString(kModule1));
 
   static constexpr absl::string_view kModule2 = R"(
 module attributes {mhlo.num_partitions = 1 : i32, mhlo.num_replicas = 1 : i32} {
@@ -68,14 +69,14 @@ module attributes {mhlo.num_partitions = 1 : i32, mhlo.num_replicas = 1 : i32} {
   }
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto program2, ParseHloProgramString(kModule2));
+  ASSERT_OK_AND_ASSIGN(auto program2, ParseHloProgramString(kModule2));
 
   EXPECT_EQ(program1->Fingerprint(), program1->Fingerprint());
   EXPECT_NE(program1->Fingerprint(), program2->Fingerprint());
 }
 
 TEST(HloProgramTest, FingerprintIgnoresDebugInfo) {
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       const std::unique_ptr<xla::ifrt::HloProgram> hlo_program1,
       ParseHloProgramString(R"(
 module @foo {
@@ -83,7 +84,7 @@ module @foo {
     return %arg0 : tensor<2x3xi32> loc("foo")
   }
 })"));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       const std::unique_ptr<xla::ifrt::HloProgram> hlo_program2,
       ParseHloProgramString(R"(
 module @foo {
@@ -105,9 +106,9 @@ module @hlo_module attributes {mhlo.num_partitions = 1 : i32, mhlo.num_replicas 
   }
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto program, ParseHloProgramString(kModule));
-  TF_ASSERT_OK_AND_ASSIGN(auto serialized, program->ToBytes());
-  TF_ASSERT_OK_AND_ASSIGN(auto deserialized, HloProgram::FromBytes(serialized));
+  ASSERT_OK_AND_ASSIGN(auto program, ParseHloProgramString(kModule));
+  ASSERT_OK_AND_ASSIGN(auto serialized, program->ToBytes());
+  ASSERT_OK_AND_ASSIGN(auto deserialized, HloProgram::FromBytes(serialized));
   EXPECT_EQ(program->Fingerprint(), deserialized->Fingerprint());
 }
 

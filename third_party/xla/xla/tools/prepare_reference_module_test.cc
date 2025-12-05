@@ -15,10 +15,10 @@ limitations under the License.
 
 #include "xla/tools/prepare_reference_module.h"
 
+#include <gmock/gmock.h>
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/test.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -46,13 +46,12 @@ using PrepareReferenceModuleTest = HloHardwareIndependentTestBase;
 // Despecializer's implementation (Despecializer removes fusion op from the
 // module).
 TEST_F(PrepareReferenceModuleTest, PerformDespecialization) {
-  TF_ASSERT_OK_AND_ASSIGN(auto test_module,
-                          ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_OK_AND_ASSIGN(auto test_module,
+                       ParseAndReturnVerifiedModule(kModuleStr));
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto reference_module,
-      PrepareReferenceModule(*test_module, nullptr, {}, {},
-                             /*skip_despecialization=*/false));
+  ASSERT_OK_AND_ASSIGN(auto reference_module,
+                       PrepareReferenceModule(*test_module, nullptr, {}, {},
+                                              /*skip_despecialization=*/false));
 
   // Fusion op should have been removed.
   EXPECT_THAT(reference_module->ToString(),
@@ -60,13 +59,12 @@ TEST_F(PrepareReferenceModuleTest, PerformDespecialization) {
 }
 
 TEST_F(PrepareReferenceModuleTest, SkipDespecialization) {
-  TF_ASSERT_OK_AND_ASSIGN(auto test_module,
-                          ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_OK_AND_ASSIGN(auto test_module,
+                       ParseAndReturnVerifiedModule(kModuleStr));
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto reference_module,
-      PrepareReferenceModule(*test_module, nullptr, {}, {},
-                             /*skip_despecialization=*/true));
+  ASSERT_OK_AND_ASSIGN(auto reference_module,
+                       PrepareReferenceModule(*test_module, nullptr, {}, {},
+                                              /*skip_despecialization=*/true));
 
   // Fusion op should be there.
   EXPECT_THAT(reference_module->ToString(), ::testing::HasSubstr("fusion"));

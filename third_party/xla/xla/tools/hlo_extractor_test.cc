@@ -27,7 +27,6 @@ limitations under the License.
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/shape_util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -47,8 +46,8 @@ ENTRY %entry {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(hlo_string));
 
   {
     auto extracted_module =
@@ -85,8 +84,8 @@ ENTRY %entry {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(hlo_string));
 
   {
     auto extracted_module =
@@ -131,8 +130,8 @@ ENTRY %entry {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(hlo_string));
 
   {
     auto extracted_module =
@@ -170,8 +169,8 @@ TEST_F(HloExtractorTest, ExtractFromMultipleComputation) {
     }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(hlo_string));
 
   HloInstruction* inst = FindInstruction(hlo_module.get(), "add.0");
   EXPECT_THAT(inst, op::Add());
@@ -246,8 +245,8 @@ TEST_F(HloExtractorTest, HloSelector) {
     }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(hlo_string));
 
   // Find the kSubtract instruction in ENTRY computation
   HloInstruction* inst =
@@ -359,8 +358,8 @@ ENTRY %entry {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(hlo_string));
 
   // Testing kReplaceConst.
   {
@@ -473,7 +472,7 @@ TEST_F(HloExtractorTest, TestWithCalledComputationsAndFusion) {
     gte.2 = get-tuple-element(fused.1), index=0
     ROOT tuple = tuple(gte.1, gte.2)
   })";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
   auto extracted =
       ExtractModule(module->entry_computation()->root_instruction(), -1,
                     nullptr, nullptr, false, true);
@@ -493,7 +492,7 @@ ENTRY main {
   arg.0 = s32[16] parameter(0)
   ROOT call.0 = call(arg.0), to_apply=computation
 })";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
 
   HloInstruction* arg0 =
       FindComputation(module.get(), "computation")->root_instruction();

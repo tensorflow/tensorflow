@@ -15,21 +15,25 @@ limitations under the License.
 
 #include "xla/service/conditional_simplifier.h"
 
+#include <cstdint>
+#include <memory>
 #include <string>
 #include <utility>
 
+#include <gmock/gmock.h>
+#include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/test.h"
+#include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/literal_util.h"
+#include "xla/service/hlo_verifier.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/types.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/status.h"
 
 namespace xla {
 namespace {
@@ -501,8 +505,8 @@ ENTRY entry {
   ROOT conditional.5 = (token[]) conditional(parameter.29, tuple.3, tuple.4), true_computation=true_comp, false_computation=false_comp
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
   HloVerifier v(/*layout_sensitive=*/false, /*allow_mixed_precision=*/false);
   TF_ASSERT_OK(v.Run(module.get()).status());
   EXPECT_TRUE(ConditionalSimplifier().Run(module.get()).value());

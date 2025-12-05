@@ -36,7 +36,6 @@ limitations under the License.
 #include "xla/service/transpose_folding.h"
 #include "xla/shape.h"
 #include "xla/tests/test_utils.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 
 namespace op = xla::testing::opcode_matchers;
@@ -191,11 +190,10 @@ ENTRY DotOperationFusion_TransposeFusion {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   HloComputation* computation = module->entry_computation();
 
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, TransposeFolding().Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, TransposeFolding().Run(module.get()));
   ASSERT_TRUE(changed);
   ASSERT_THAT(computation->root_instruction(),
               op::Dot(op::Parameter(0), op::Exp(op::Parameter(1)),
@@ -215,11 +213,10 @@ ENTRY DotOperationFusion_TransposeFusion {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   HloComputation* computation = module->entry_computation();
 
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, TransposeFolding().Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, TransposeFolding().Run(module.get()));
   ASSERT_TRUE(changed);
   ASSERT_THAT(computation->root_instruction(),
               op::Dot(op::Parameter(0), op::Exp(op::Parameter(1)),
@@ -240,11 +237,10 @@ ENTRY DotOperationFusion_TransposeFusion {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   HloComputation* computation = module->entry_computation();
 
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, TransposeFolding().Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, TransposeFolding().Run(module.get()));
   ASSERT_TRUE(changed);
   ASSERT_THAT(computation->root_instruction(),
               op::Dot(op::Parameter(0), op::Exp(op::Parameter(1)),
@@ -704,8 +700,8 @@ TEST_F(OpcodeFusionTest, DotAddOutputFusion_19x50x19) {
                                              /*k=*/50, /*n=*/19,
                                              /*add_extra_use_for_dot=*/false);
 
-  TF_ASSERT_OK_AND_ASSIGN(bool fused_something,
-                          CpuInstructionFusion().Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool fused_something,
+                       CpuInstructionFusion().Run(module.get()));
   EXPECT_FALSE(fused_something);
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               Not(op::Fusion()));
@@ -717,8 +713,8 @@ TEST_F(OpcodeFusionTest, DotAddOutputFusion_19x50x1_multi_use) {
                                              /*k=*/50, /*n=*/1,
                                              /*add_extra_use_for_dot=*/true);
 
-  TF_ASSERT_OK_AND_ASSIGN(bool fused_something,
-                          CpuInstructionFusion().Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool fused_something,
+                       CpuInstructionFusion().Run(module.get()));
   EXPECT_FALSE(fused_something);
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               Not(op::Fusion()));
@@ -737,10 +733,10 @@ ENTRY main {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(module_string));
-  TF_ASSERT_OK_AND_ASSIGN(bool fused_something,
-                          CpuInstructionFusion().Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(module_string));
+  ASSERT_OK_AND_ASSIGN(bool fused_something,
+                       CpuInstructionFusion().Run(module.get()));
   EXPECT_FALSE(fused_something);
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               Not(op::Fusion()));
@@ -764,8 +760,7 @@ TEST_P(GatherLoopFusionTest, GatherLoopFusion) {
   const GatherLoopFusionTestSpec& spec = GetParam();
   std::string hlo_string = absl::StrCat("HloModule ", spec.test_name, "\n\n",
                                         spec.hlo_computation_text);
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
   RunFusionAndCheckOpcodesWereFused(
       module.get(),
@@ -915,10 +910,10 @@ ENTRY main {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(module_string));
-  TF_ASSERT_OK_AND_ASSIGN(bool fused_something,
-                          CpuInstructionFusion().Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(module_string));
+  ASSERT_OK_AND_ASSIGN(bool fused_something,
+                       CpuInstructionFusion().Run(module.get()));
   EXPECT_TRUE(fused_something);
   EXPECT_THAT(module->entry_computation()->root_instruction(), op::Fusion());
 }
@@ -942,10 +937,10 @@ ENTRY main {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(module_string));
-  TF_ASSERT_OK_AND_ASSIGN(bool fused_something,
-                          CpuInstructionFusion().Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(module_string));
+  ASSERT_OK_AND_ASSIGN(bool fused_something,
+                       CpuInstructionFusion().Run(module.get()));
   EXPECT_TRUE(fused_something);
   EXPECT_THAT(module->entry_computation()->root_instruction(), op::Fusion());
 }
@@ -963,8 +958,8 @@ ENTRY main {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(module_string));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(module_string));
   RunFusionAndCheckOpcodesWereFused(
       module.get(), {HloOpcode::kParameter, HloOpcode::kParameter,
                      HloOpcode::kParameter, HloOpcode::kAdd, HloOpcode::kAdd});
@@ -983,8 +978,8 @@ ENTRY main {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(module_string));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(module_string));
   RunFusionAndCheckOpcodesWereFused(
       module.get(), {HloOpcode::kParameter, HloOpcode::kConstant,
                      HloOpcode::kConstant, HloOpcode::kAdd, HloOpcode::kAdd});
@@ -1009,10 +1004,9 @@ ENTRY %main (Arg_0: f32[10,10], Arg_1: f32[10,10]) -> f32[10,10] {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(module_string));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          CpuInstructionFusion().Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(module_string));
+  ASSERT_OK_AND_ASSIGN(bool changed, CpuInstructionFusion().Run(module.get()));
   EXPECT_FALSE(changed);
 }
 
@@ -1037,10 +1031,9 @@ ENTRY %main (Arg_0: f32[10,10], Arg_1: f32[10,10]) -> f32[10,10] {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(module_string));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          CpuInstructionFusion().Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(module_string));
+  ASSERT_OK_AND_ASSIGN(bool changed, CpuInstructionFusion().Run(module.get()));
   EXPECT_FALSE(changed);
 }
 
@@ -1063,10 +1056,9 @@ ENTRY %main (Arg_0: f32[10,10], Arg_1: f32[10,10]) -> f32[10,10] {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(module_string));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          CpuInstructionFusion().Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(module_string));
+  ASSERT_OK_AND_ASSIGN(bool changed, CpuInstructionFusion().Run(module.get()));
   EXPECT_FALSE(changed);
 }
 
@@ -1100,10 +1092,9 @@ TEST_F(InstructionFusionTest, SkipScatterComputationsIfFusionEmitters) {
   auto debug_options = GetDebugOptionsForTest();
   debug_options.set_xla_cpu_use_fusion_emitters(true);
   mod_config.set_debug_options(debug_options);
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(
-                                           kScatterModuleString, mod_config));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          CpuInstructionFusion().Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(
+                                        kScatterModuleString, mod_config));
+  ASSERT_OK_AND_ASSIGN(bool changed, CpuInstructionFusion().Run(module.get()));
   EXPECT_FALSE(changed);
 }
 
@@ -1112,10 +1103,9 @@ TEST_F(InstructionFusionTest, NoSkipScatterComputationsIfNoFusionEmitters) {
   auto debug_options = GetDebugOptionsForTest();
   debug_options.set_xla_cpu_use_fusion_emitters(false);
   mod_config.set_debug_options(debug_options);
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(
-                                           kScatterModuleString, mod_config));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          CpuInstructionFusion().Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(
+                                        kScatterModuleString, mod_config));
+  ASSERT_OK_AND_ASSIGN(bool changed, CpuInstructionFusion().Run(module.get()));
   EXPECT_TRUE(changed);
 }
 
@@ -1140,10 +1130,9 @@ static constexpr absl::string_view kReduceModuleString = R"(
 )";
 
 TEST_F(InstructionFusionTest, SkipReduceComputationsIfFusionEmitters) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kReduceModuleString));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          CpuInstructionFusion().Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(kReduceModuleString));
+  ASSERT_OK_AND_ASSIGN(bool changed, CpuInstructionFusion().Run(module.get()));
   EXPECT_FALSE(changed);
 }
 
@@ -1153,10 +1142,9 @@ TEST_F(InstructionFusionTest, NoSkipReduceComputationsIfNoFusionEmitters) {
   (*debug_options.mutable_xla_backend_extra_options())
       [options::kDisableNewFusionEmitters] = "true";
   mod_config.set_debug_options(debug_options);
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(
-                                           kReduceModuleString, mod_config));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          CpuInstructionFusion().Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(
+                                        kReduceModuleString, mod_config));
+  ASSERT_OK_AND_ASSIGN(bool changed, CpuInstructionFusion().Run(module.get()));
   EXPECT_TRUE(changed);
 }
 

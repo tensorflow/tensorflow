@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <sys/types.h>
 
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <utility>
@@ -27,6 +28,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/strings/match.h"
 #include "absl/strings/numbers.h"
+#include "google/protobuf/io/zero_copy_stream_impl_lite.h"
 #include "google/protobuf/text_format.h"
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/analysis/alias_info.h"
@@ -35,17 +37,18 @@ limitations under the License.
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/runtime/large_hlo_snapshot_serialization/serialization.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/service/buffer_value.h"
 #include "xla/service/hlo_module_config.h"
+#include "xla/service/logical_buffer.h"
+#include "xla/shape_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/env.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/tsl/testing/temporary_directory.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
 #include "xla/xla.pb.h"
 #include "tsl/platform/path.h"
 #include "tsl/platform/platform.h"
-#include "tsl/platform/protobuf.h"
 
 namespace xla {
 namespace {
@@ -73,8 +76,8 @@ TEST(DumpHloIfEnabled, LargeConstantElided) {
       ROOT x = s32[11] multiply(p0, c)
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto m,
-                          ParseAndReturnUnverifiedModule(kModuleStr, config));
+  ASSERT_OK_AND_ASSIGN(auto m,
+                       ParseAndReturnUnverifiedModule(kModuleStr, config));
   std::string dump_name = "dump";
   auto paths = DumpHloModuleIfEnabled(*m, dump_name);
   EXPECT_EQ(paths.size(), 2);  // debug options dump + HLO dump.
@@ -103,8 +106,8 @@ TEST(DumpHloIfEnabled, LargeConstantPrinted) {
       ROOT x = s32[11] multiply(p0, c)
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto m,
-                          ParseAndReturnUnverifiedModule(kModuleStr, config));
+  ASSERT_OK_AND_ASSIGN(auto m,
+                       ParseAndReturnUnverifiedModule(kModuleStr, config));
   std::string dump_name = "dump";
   auto paths = DumpHloModuleIfEnabled(*m, dump_name);
   EXPECT_EQ(paths.size(), 2);
@@ -133,8 +136,8 @@ TEST(DumpHloModule, WithBufferAssignment) {
       ROOT x = s32[11] multiply(p0, c)
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
-                          ParseAndReturnUnverifiedModule(kModuleStr, config));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                       ParseAndReturnUnverifiedModule(kModuleStr, config));
   AliasInfo alias_info;
   BufferAssigner::Options opts;
   opts.allocate_buffers_for_constants = true;
@@ -248,8 +251,8 @@ TEST(DumpTest, DumpFdoProfileToFileWhenEnabled) {
       ROOT x = s32[11] multiply(p0, c)
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto m,
-                          ParseAndReturnUnverifiedModule(kModuleStr, config));
+  ASSERT_OK_AND_ASSIGN(auto m,
+                       ParseAndReturnUnverifiedModule(kModuleStr, config));
   std::string dump_name = "dump";
   auto paths = DumpHloModuleIfEnabled(*m, dump_name);
   EXPECT_EQ(paths.size(), 3);
@@ -318,8 +321,8 @@ TEST(DumpHloIfEnabled, DumpsBuildClNumber) {
       ROOT x = s32[11] multiply(p0, c)
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto m,
-                          ParseAndReturnUnverifiedModule(kModuleStr, config));
+  ASSERT_OK_AND_ASSIGN(auto m,
+                       ParseAndReturnUnverifiedModule(kModuleStr, config));
 
   std::string dump_name = "dump";
   auto paths = DumpHloModuleIfEnabled(*m, dump_name);
@@ -360,8 +363,8 @@ TEST(DumpTest, DumpHloUnoptimizedSnapshotProtoBinary) {
                                      &file_contents));
   tsl::protobuf::io::ArrayInputStream input_stream(file_contents.data(),
                                                    file_contents.size());
-  TF_ASSERT_OK_AND_ASSIGN(HloUnoptimizedSnapshot hlo_snapshot_loaded,
-                          DeserializeHloUnoptimizedSnapshot(&input_stream));
+  ASSERT_OK_AND_ASSIGN(HloUnoptimizedSnapshot hlo_snapshot_loaded,
+                       DeserializeHloUnoptimizedSnapshot(&input_stream));
   EXPECT_EQ(hlo_snapshot_loaded.hlo_module().name(), module.name());
 }
 
@@ -471,8 +474,8 @@ TEST(DumpTest, GetNonDefaultDebugOptions) {
 
   HloModuleConfig config;
   config.set_debug_options(options);
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
-                          ParseAndReturnUnverifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                       ParseAndReturnUnverifiedModule(R"(
     HloModule test
     ENTRY test {
       p0 = s32[11] parameter(0)
@@ -480,7 +483,7 @@ TEST(DumpTest, GetNonDefaultDebugOptions) {
       ROOT x = s32[11] multiply(p0, c)
     }
   )",
-                                                         config));
+                                                      config));
   DumpNonDefaultDebugOptions(*m, kNonDefaultDebugOptionsDumpSuffix);
   std::string real_contents;
   TF_ASSERT_OK(tsl::ReadFileToString(
@@ -502,7 +505,7 @@ TEST(DumpTest, DumpRepeatedStringTest) {
 }
 
 TEST(DumpTest, DumpPerExecutionProtoToFile) {
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       tsl::testing::TemporaryDirectory dump_folder,
       tsl::testing::TemporaryDirectory::CreateForCurrentTestcase());
   const HloModule hlo_module("test_module", HloModuleConfig());

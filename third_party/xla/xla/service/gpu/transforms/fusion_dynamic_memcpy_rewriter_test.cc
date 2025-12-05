@@ -27,7 +27,6 @@ limitations under the License.
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/ir_emission_utils.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -69,8 +68,8 @@ constexpr char kSliceMemcpyModule[] = R"(
     })";
 
 TEST_F(FusionDynamicMemcpyRewriterTest, AnnotatesMemcpyFusion) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kSliceMemcpyModule));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kSliceMemcpyModule));
   EXPECT_THAT(FusionDynamicMemcpyRewriter().Run(module.get()),
               absl_testing::IsOkAndHolds(true));
 
@@ -97,8 +96,8 @@ constexpr char kSliceCallModule[] = R"(
     })";
 
 TEST_F(FusionDynamicMemcpyRewriterTest, DoesNotAnnotateCall) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kSliceCallModule));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kSliceCallModule));
   EXPECT_THAT(FusionDynamicMemcpyRewriter().Run(module.get()),
               absl_testing::IsOkAndHolds(false))
       << module->ToString();
@@ -151,7 +150,7 @@ constexpr char kLoopUpdateSliceMemcpyModule[] = R"(
 
 TEST_F(FusionDynamicMemcpyRewriterTest,
        AnnotatesDusMemcpyFusionWithIterations) {
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<HloModule> module,
       ParseAndReturnVerifiedModule(kLoopUpdateSliceMemcpyModule));
   EXPECT_THAT(FusionDynamicMemcpyRewriter().Run(module.get()),

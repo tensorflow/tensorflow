@@ -14,31 +14,35 @@ limitations under the License.
 ==============================================================================*/
 
 #include <algorithm>
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <tuple>
+#include <type_traits>
 #include <utility>
-#include <variant>
+#include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
+#include "Eigen/Core"
 #include "xla/array2d.h"
 #include "xla/client/local_client.h"
+#include "xla/error_spec.h"
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/testlib/test_helpers.h"
+#include "xla/layout_util.h"
 #include "xla/literal.h"
-#include "xla/reference_util.h"
+#include "xla/literal_util.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tests/client_library_test_base.h"
-#include "xla/tests/literal_test_util.h"
-#include "xla/tests/test_utils.h"
+#include "xla/types.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/test.h"
 
 namespace xla {
 namespace {
@@ -207,11 +211,11 @@ class MatOpsDotAddTest
     Shape rhs_shape =
         ShapeUtil::MakeShape(prim_type, {rhs.height(), rhs.width()});
 
-    TF_ASSERT_OK_AND_ASSIGN(
+    ASSERT_OK_AND_ASSIGN(
         auto lhs_handle,
         client_->TransferToServer(LiteralUtil::CreateR2FromArray2DWithLayout<T>(
             lhs, LayoutUtil::MakeLayout(minor_to_major(row_major)))));
-    TF_ASSERT_OK_AND_ASSIGN(
+    ASSERT_OK_AND_ASSIGN(
         auto rhs_handle,
         client_->TransferToServer(LiteralUtil::CreateR2FromArray2DWithLayout<T>(
             rhs, LayoutUtil::MakeLayout(minor_to_major(row_major)))));
@@ -299,11 +303,11 @@ class MatOpsDotAddTest
     XlaBuilder builder(TestName());
     auto result = generate_dot_add(builder, lhs, rhs, transpose, 2);
     (void)result;
-    TF_ASSERT_OK_AND_ASSIGN(
+    ASSERT_OK_AND_ASSIGN(
         auto lhs_handle,
         client_->TransferToServer(LiteralUtil::CreateR2FromArray2DWithLayout<T>(
             lhs, LayoutUtil::MakeLayout(minor_to_major(row_major)))));
-    TF_ASSERT_OK_AND_ASSIGN(
+    ASSERT_OK_AND_ASSIGN(
         auto rhs_handle,
         client_->TransferToServer(LiteralUtil::CreateR2FromArray2DWithLayout<T>(
             rhs, LayoutUtil::MakeLayout(minor_to_major(row_major)))));
@@ -313,8 +317,8 @@ class MatOpsDotAddTest
     std::vector<T> bias_elems(ShapeUtil::ElementsIn(bias_shape));
     iota_int_init_value(bias_elems, 1);
     auto bias_literal = LiteralUtil::CreateR1<T>(bias_elems);
-    TF_ASSERT_OK_AND_ASSIGN(auto bias_handle,
-                            client_->TransferToServer(bias_literal));
+    ASSERT_OK_AND_ASSIGN(auto bias_handle,
+                         client_->TransferToServer(bias_literal));
     Array2D<T> expected;
 
     if (transpose) {
@@ -348,11 +352,11 @@ class MatOpsDotAddTest
     auto constant_zero_bcast = BroadcastInDim(constant_zero, {2, 2}, {});
     result = Max(result, constant_zero_bcast);
 
-    TF_ASSERT_OK_AND_ASSIGN(
+    ASSERT_OK_AND_ASSIGN(
         auto lhs_handle,
         client_->TransferToServer(LiteralUtil::CreateR2FromArray2DWithLayout<T>(
             lhs, LayoutUtil::MakeLayout(minor_to_major(row_major)))));
-    TF_ASSERT_OK_AND_ASSIGN(
+    ASSERT_OK_AND_ASSIGN(
         auto rhs_handle,
         client_->TransferToServer(LiteralUtil::CreateR2FromArray2DWithLayout<T>(
             rhs, LayoutUtil::MakeLayout(minor_to_major(row_major)))));
@@ -389,11 +393,11 @@ class MatOpsDotAddTest
     auto constant_bcast = BroadcastInDim(constant, {2, 2}, {});
     result = Max(result, constant_bcast);
 
-    TF_ASSERT_OK_AND_ASSIGN(
+    ASSERT_OK_AND_ASSIGN(
         auto lhs_handle,
         client_->TransferToServer(LiteralUtil::CreateR2FromArray2DWithLayout<T>(
             lhs, LayoutUtil::MakeLayout(minor_to_major(row_major)))));
-    TF_ASSERT_OK_AND_ASSIGN(
+    ASSERT_OK_AND_ASSIGN(
         auto rhs_handle,
         client_->TransferToServer(LiteralUtil::CreateR2FromArray2DWithLayout<T>(
             rhs, LayoutUtil::MakeLayout(minor_to_major(row_major)))));
@@ -403,8 +407,8 @@ class MatOpsDotAddTest
     std::vector<T> bias_elems(ShapeUtil::ElementsIn(bias_shape));
     iota_int_init_value(bias_elems, 1);
     auto bias_literal = LiteralUtil::CreateR1<T>(bias_elems);
-    TF_ASSERT_OK_AND_ASSIGN(auto bias_handle,
-                            client_->TransferToServer(bias_literal));
+    ASSERT_OK_AND_ASSIGN(auto bias_handle,
+                         client_->TransferToServer(bias_literal));
     Array2D<T> expected;
 
     if (transpose) {

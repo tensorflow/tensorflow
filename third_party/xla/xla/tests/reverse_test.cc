@@ -20,6 +20,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
@@ -34,7 +35,6 @@ limitations under the License.
 #include "xla/tests/client_library_test_runner_utils.h"
 #include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
 #include "xla/tests/hlo_pjrt_test_base.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/xla_data.pb.h"
 
@@ -95,8 +95,8 @@ TEST_P(FloatReverseTest, Reverses) {
       ShapeUtil::ElementsIn(ShapeUtil::MakeShape(F32, spec.input_dims)));
   std::iota(input_vector.begin(), input_vector.end(), 0.0);
   const Literal r1_literal = LiteralUtil::CreateR1<float>(input_vector);
-  TF_ASSERT_OK_AND_ASSIGN(const Literal input_literal,
-                          r1_literal.Reshape(spec.input_dims));
+  ASSERT_OK_AND_ASSIGN(const Literal input_literal,
+                       r1_literal.Reshape(spec.input_dims));
   const Literal conv_input_literal =
       MaybeConvertLiteralToTestType(input_literal);
 

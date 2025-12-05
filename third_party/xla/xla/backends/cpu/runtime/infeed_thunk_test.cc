@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <memory>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "xla/backends/cpu/runtime/thunk.h"
 #include "xla/runtime/buffer_use.h"
@@ -24,8 +25,6 @@ limitations under the License.
 #include "xla/service/buffer_assignment.h"
 #include "xla/shape_util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/test.h"
 
 namespace xla::cpu {
 namespace {
@@ -42,9 +41,9 @@ TEST(InfeedThunkTest, BufferAndResourceUses) {
   auto consume_token = Resource::Create(Resource::kToken);
   auto produce_token = Resource::Create(Resource::kToken);
 
-  TF_ASSERT_OK_AND_ASSIGN(auto thunk,
-                          InfeedThunk::Create({"infeed"}, {infeed_buffer},
-                                              {consume_token, produce_token}));
+  ASSERT_OK_AND_ASSIGN(auto thunk,
+                       InfeedThunk::Create({"infeed"}, {infeed_buffer},
+                                           {consume_token, produce_token}));
 
   EXPECT_EQ(thunk->buffer_uses().size(), 1);
   EXPECT_EQ(thunk->buffer_uses()[0], BufferUse::Write(infeed_slice));

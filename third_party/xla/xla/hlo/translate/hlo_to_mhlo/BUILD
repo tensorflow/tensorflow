@@ -206,7 +206,6 @@ xla_cc_test(
         ":hlo_utils",
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
-        "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test_main",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest",

@@ -23,7 +23,6 @@
 #include "absl/status/status_matchers.h"
 #include "absl/strings/str_cat.h"
 #include "xla/python/ifrt_proxy/common/grpc_ifrt_service.grpc.pb.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 
 namespace xla {
@@ -60,8 +59,8 @@ TEST(GrpcServerTest, CreationFailsWithInvalidAddress) {
 TEST(GrpcServerTest, RetrievingServerAddressWorks) {
   auto addr = absl::StrCat("[::1]:", tsl::testing::PickUnusedPortOrDie());
   auto grpc_service_impl = std::make_unique<FakeIfrtService>();
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto grpc_server, GrpcServer::Create(addr, std::move(grpc_service_impl)));
+  ASSERT_OK_AND_ASSIGN(auto grpc_server,
+                       GrpcServer::Create(addr, std::move(grpc_service_impl)));
   EXPECT_EQ(grpc_server->address(), addr);
 }
 

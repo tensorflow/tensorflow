@@ -26,7 +26,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/utils/hlo_matchers.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -47,8 +46,8 @@ TEST_F(SimplifyFPConversionsTest, DoesNotChangeSingleConvert) {
       ROOT ret = (bf16[2,3]) tuple(c0)
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kModuleStr));
 
   SimplifyFPConversions simplifier;
   EXPECT_THAT(simplifier.Run(module.get()), absl_testing::IsOkAndHolds(false));
@@ -65,8 +64,8 @@ TEST_F(SimplifyFPConversionsTest, SimplifiesF32ToBF16ToF32) {
       ROOT ret = (f32[2,3]) tuple(c1)
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kModuleStr));
 
   SimplifyFPConversions simplifier;
   EXPECT_THAT(simplifier.Run(module.get()), absl_testing::IsOkAndHolds(true));
@@ -86,8 +85,8 @@ TEST_F(SimplifyFPConversionsTest, SimplifiesF64ToF16ToF32ToBF16) {
       ROOT ret = (bf16[2,3]) tuple(c2)
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kModuleStr));
 
   SimplifyFPConversions simplifier;
   EXPECT_THAT(simplifier.Run(module.get()), absl_testing::IsOkAndHolds(true));

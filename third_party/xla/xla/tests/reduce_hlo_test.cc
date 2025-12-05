@@ -19,8 +19,9 @@ limitations under the License.
 #include <ostream>
 #include <string>
 #include <utility>
-#include <vector>
 
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
@@ -34,9 +35,6 @@ limitations under the License.
 #include "xla/literal_util.h"
 #include "xla/shape.h"
 #include "xla/tests/hlo_test_base.h"
-#include "xla/tests/test_utils.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/test.h"
 
 // Tests the Reduce HLO in ways that can't be done using the ComputationBuilder
 // API.
@@ -91,7 +89,7 @@ ENTRY reduce.1 {
 };
 
 TEST_P(ReduceWithLayoutTest, Reduce) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module, GetParsedModule());
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module, GetParsedModule());
   HloInstruction* reduce_instruction = module->entry_computation()
                                            ->root_instruction()
                                            ->mutable_operand(0)

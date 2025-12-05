@@ -16,6 +16,7 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "xla/error_spec.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -25,9 +26,8 @@ limitations under the License.
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/service/gpu/tests/gpu_codegen_test.h"
+#include "xla/service/hlo_module_config.h"
 #include "xla/xla.pb.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/test.h"
 
 namespace xla {
 namespace gpu {
@@ -69,8 +69,8 @@ TEST_F(GpuCopyTest, CopyTranspose) {
       a = f32[100, 200, 300]{2,1,0} parameter(0)
       ROOT wrapped_b = f32[100,200,300]{2,0,1} fusion(f32[100,200,300]{2,1,0} %a), kind=kLoop, calls=fused_computation
     })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> optimized_module,
-                          ParseAndReturnVerifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> optimized_module,
+                       ParseAndReturnVerifiedModule(hlo_text));
 
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
 }
@@ -182,8 +182,8 @@ constexpr char kSliceMemcpyModule[] = R"(
 TEST_F(GpuCopyTest, UseMemcpyForDynamicSlice) {
   // This verifies that dynamic slices can be implemented using memcpy in
   // certain conditions.
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> hlo_module,
-                          ParseAndReturnVerifiedModule(kSliceMemcpyModule));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(kSliceMemcpyModule));
 
   // There should not be a kernel for `dynamic_slice`.
   CompileAndVerifyIr(std::move(hlo_module), "; CHECK-NOT: void @slice",
@@ -269,9 +269,8 @@ constexpr char kDynamicUpdateSliceModule[] = R"(
     })";
 
 TEST_F(GpuCopyTest, UseMemcpyForDynamicUpdateSlice) {
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<VerifiedHloModule> hlo_module,
-      ParseAndReturnVerifiedModule(kDynamicUpdateSliceModule));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(kDynamicUpdateSliceModule));
 
   CompileAndVerifyIr(std::move(hlo_module), "; CHECK-NOT: void @updated",
                      /*match_optimized_ir=*/false,
@@ -349,7 +348,7 @@ constexpr char kDynamicUpdateSliceWithBitcastModule[] = R"(
     })";
 
 TEST_F(GpuCopyTest, UseMemcpyForDynamicUpdateSliceWithBitcasts) {
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<VerifiedHloModule> hlo_module,
       ParseAndReturnVerifiedModule(kDynamicUpdateSliceWithBitcastModule));
 
@@ -419,9 +418,8 @@ TEST_F(GpuCopyTest, UseDynamicMemcpyIntegrationTest) {
   // This is an integration test to verify that the pipeline for replacing
   // dynamic-slices that depend on while loop iteration variables with memcpy
   // works as a whole.
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<VerifiedHloModule> hlo_module,
-      ParseAndReturnVerifiedModule(kSliceMemcpyModuleUnfused));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(kSliceMemcpyModuleUnfused));
 
   // Check that there are exactly two fusions:
   // 1. A `compare` fusion for the loop condition.
@@ -461,7 +459,7 @@ TEST_F(GpuCopyTest, UseDynamicMemcpyIntegrationTestControl) {
   options.add_xla_disable_hlo_passes("fusion-dynamic-memcpy-rewriter");
   config.set_debug_options(options);
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<VerifiedHloModule> hlo_module,
       ParseAndReturnVerifiedModule(kSliceMemcpyModuleUnfused, config));
   CompileAndVerifyIr(std::move(hlo_module), R"(

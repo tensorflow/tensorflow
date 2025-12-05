@@ -80,11 +80,11 @@ TEST_F(AllGatherPermutedDsSimplifierTest,
         dynamic_slice_sizes={32,8,128}
     }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          RunPass(hlo_string,
-                                  /*num_replicas=*/1,
-                                  /*num_partitions=*/8,
-                                  /*expect_change=*/true));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       RunPass(hlo_string,
+                               /*num_replicas=*/1,
+                               /*num_partitions=*/8,
+                               /*expect_change=*/true));
 
   HloInstruction* root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, op::CollectivePermute(op::Parameter(0)));
@@ -113,11 +113,11 @@ TEST_F(AllGatherPermutedDsSimplifierTest,
       dynamic_slice_sizes={32,8,128}
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          RunPass(hlo_string,
-                                  /*num_replicas=*/1,
-                                  /*num_partitions=*/8,
-                                  /*expect_change=*/true));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       RunPass(hlo_string,
+                               /*num_replicas=*/1,
+                               /*num_partitions=*/8,
+                               /*expect_change=*/true));
 
   HloInstruction* root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, op::CollectivePermute(op::Parameter(0)));
@@ -145,11 +145,11 @@ TEST_F(AllGatherPermutedDsSimplifierTest,
         dynamic_slice_sizes={1,4,32}
     }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          RunPass(hlo_string,
-                                  /*num_replicas=*/1,
-                                  /*num_partitions=*/8,
-                                  /*expect_change=*/true));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       RunPass(hlo_string,
+                               /*num_replicas=*/1,
+                               /*num_partitions=*/8,
+                               /*expect_change=*/true));
 
   HloInstruction* root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, op::CollectivePermute(op::Parameter(0)));
@@ -179,11 +179,11 @@ TEST_F(AllGatherPermutedDsSimplifierTest,
         dynamic_slice_sizes={1,4,32}
     }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          RunPass(hlo_string,
-                                  /*num_replicas=*/1,
-                                  /*num_partitions=*/8,
-                                  /*expect_change=*/true));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       RunPass(hlo_string,
+                               /*num_replicas=*/1,
+                               /*num_partitions=*/8,
+                               /*expect_change=*/true));
 
   HloInstruction* root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, op::CollectivePermute(op::Parameter(0)));
@@ -212,11 +212,11 @@ TEST_F(AllGatherPermutedDsSimplifierTest,
         dynamic_slice_sizes={32,8,128}
     }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          RunPass(hlo_string,
-                                  /*num_replicas=*/1,
-                                  /*num_partitions=*/8,
-                                  /*expect_change=*/false));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       RunPass(hlo_string,
+                               /*num_replicas=*/1,
+                               /*num_partitions=*/8,
+                               /*expect_change=*/false));
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               op::DynamicSlice(op::AllGather(op::Parameter(0)), _, _, _));
 }
@@ -239,11 +239,11 @@ TEST_F(AllGatherPermutedDsSimplifierTest, NoChangeWithMultipleReplicas) {
         dynamic_slice_sizes={32,8,128}
     }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          RunPass(hlo_string,
-                                  /*num_replicas=*/8,
-                                  /*num_partitions=*/1,
-                                  /*expect_change=*/false));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       RunPass(hlo_string,
+                               /*num_replicas=*/8,
+                               /*num_partitions=*/1,
+                               /*expect_change=*/false));
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               op::DynamicSlice(op::AllGather(op::Parameter(0)), _, _, _));
 }
@@ -268,11 +268,11 @@ TEST_F(AllGatherPermutedDsSimplifierTest, NoChangeWhenSliceDimMismatch) {
         dynamic_slice_sizes={32,8,128}
     }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          RunPass(hlo_string,
-                                  /*num_replicas=*/1,
-                                  /*num_partitions=*/8,
-                                  /*expect_change=*/false));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       RunPass(hlo_string,
+                               /*num_replicas=*/1,
+                               /*num_partitions=*/8,
+                               /*expect_change=*/false));
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               op::DynamicSlice(op::AllGather(op::Parameter(0)), _, _, _));
 }
@@ -295,11 +295,11 @@ TEST_F(AllGatherPermutedDsSimplifierTest, NoChangeWhenShapeMismatch) {
         dynamic_slice_sizes={16,8,128}
     }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          RunPass(hlo_string,
-                                  /*num_replicas=*/1,
-                                  /*num_partitions=*/8,
-                                  /*expect_change=*/false));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       RunPass(hlo_string,
+                               /*num_replicas=*/1,
+                               /*num_partitions=*/8,
+                               /*expect_change=*/false));
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               op::DynamicSlice(op::AllGather(op::Parameter(0)), _, _, _));
 }

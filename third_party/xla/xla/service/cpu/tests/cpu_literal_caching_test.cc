@@ -17,12 +17,12 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/service/cpu/cpu_compiler.h"
+#include "xla/service/cpu/cpu_aot_compilation_result.h"
 #include "xla/service/cpu/test_target_triple_helper.h"
 #include "xla/service/cpu/tests/cpu_codegen_test.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace cpu {
@@ -67,8 +67,8 @@ CHECK: private unnamed_addr constant [48 x i8]
 CHECK-NOT: private unnamed_addr constant [48 x i8]
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_text));
 
   CpuAotCompilationOptions options{
       /*triple=*/kTargetTripleForHost, /*cpu_name=*/kTargetCpuForHost,
@@ -116,8 +116,8 @@ CHECK-NOT: private unnamed_addr constant [4 x i8]
 CHECK-NOT: private unnamed_addr constant [8 x i8]
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_text));
 
   CpuAotCompilationOptions options{
       /*triple=*/kTargetTripleForHost, /*cpu_name=*/kTargetCpuForHost,

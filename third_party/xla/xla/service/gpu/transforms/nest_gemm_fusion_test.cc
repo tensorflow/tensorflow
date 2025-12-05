@@ -24,7 +24,6 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
 #include "mlir/IR/MLIRContext.h"
-#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_print_options.h"
@@ -36,8 +35,6 @@ limitations under the License.
 #include "xla/service/pattern_matcher.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/xla.pb.h"
 
 using ::testing::ElementsAre;
@@ -102,7 +99,7 @@ ENTRY entry {
     }
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
   ASSERT_THAT(
       NestGemmFusion(device_description_, &mlir_context_).Run(module.get()),
       absl_testing::IsOkAndHolds(true));
@@ -161,7 +158,7 @@ ENTRY e {
                          "split_k":1,"num_stages":1,"num_warps":2,
                          "num_ctas":1}}}
 })";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
   EXPECT_THAT(
       NestGemmFusion(device_description_, &mlir_context_).Run(module.get()),
       absl_testing::IsOkAndHolds(true));
@@ -225,8 +222,8 @@ ENTRY e {
   ROOT result = (f32[128,128], f32[8192,512]) tuple(r1, r2)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(
       bool updated,
       NestGemmFusion(device_description_, &mlir_context_).Run(module.get()));
   EXPECT_TRUE(updated);
@@ -278,9 +275,9 @@ ENTRY entry {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(
-                              absl::Substitute(hlo, HloOpcodeString(opcode))));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(
+                           absl::Substitute(hlo, HloOpcodeString(opcode))));
   ASSERT_THAT(
       NestGemmFusion(device_description_, &mlir_context_).Run(module.get()),
       absl_testing::IsOkAndHolds(true));
@@ -325,9 +322,9 @@ ENTRY entry {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(
-                              absl::Substitute(hlo, HloOpcodeString(opcode))));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(
+                           absl::Substitute(hlo, HloOpcodeString(opcode))));
   ASSERT_THAT(
       NestGemmFusion(device_description_, &mlir_context_).Run(module.get()),
       absl_testing::IsOkAndHolds(true));
@@ -372,9 +369,9 @@ ENTRY entry {
     }
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(
-                              absl::Substitute(hlo, HloOpcodeString(opcode))));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(
+                           absl::Substitute(hlo, HloOpcodeString(opcode))));
   EXPECT_THAT(
       NestGemmFusion(device_description_, &mlir_context_).Run(module.get()),
       absl_testing::IsOkAndHolds(true));
@@ -407,9 +404,9 @@ ENTRY entry {
       }
     }
 })";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(
-                              absl::Substitute(hlo, HloOpcodeString(opcode))));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(
+                           absl::Substitute(hlo, HloOpcodeString(opcode))));
   EXPECT_THAT(
       NestGemmFusion(device_description_, &mlir_context_).Run(module.get()),
       absl_testing::IsOkAndHolds(true));
@@ -441,9 +438,9 @@ ENTRY entry {
       }
     }
 })";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(
-                              absl::Substitute(hlo, HloOpcodeString(opcode))));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(
+                           absl::Substitute(hlo, HloOpcodeString(opcode))));
   EXPECT_THAT(
       NestGemmFusion(device_description_, &mlir_context_).Run(module.get()),
       absl_testing::IsOkAndHolds(true));
@@ -487,9 +484,9 @@ ENTRY entry {
       }
     }
 })";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(
-                              absl::Substitute(hlo, HloOpcodeString(opcode))));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(
+                           absl::Substitute(hlo, HloOpcodeString(opcode))));
   EXPECT_THAT(
       NestGemmFusion(device_description_, &mlir_context_).Run(module.get()),
       absl_testing::IsOkAndHolds(true));
@@ -523,9 +520,9 @@ ENTRY entry {
       }
     }
 })";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(
-                              absl::Substitute(hlo, HloOpcodeString(opcode))));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(
+                           absl::Substitute(hlo, HloOpcodeString(opcode))));
   EXPECT_THAT(
       NestGemmFusion(device_description_, &mlir_context_).Run(module.get()),
       absl_testing::IsOkAndHolds(true));
@@ -567,9 +564,9 @@ ENTRY entry {
       }
     }
 })";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(
-                              absl::Substitute(hlo, HloOpcodeString(opcode))));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(
+                           absl::Substitute(hlo, HloOpcodeString(opcode))));
   EXPECT_THAT(
       NestGemmFusion(device_description_, &mlir_context_).Run(module.get()),
       absl_testing::IsOkAndHolds(true));
@@ -606,9 +603,9 @@ ENTRY entry_computation {
     }
 })";
   // Note: block sizes were 16,16,32, but that now fails to satisfy constraints.
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(
-                              absl::Substitute(hlo, HloOpcodeString(opcode))));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(
+                           absl::Substitute(hlo, HloOpcodeString(opcode))));
   EXPECT_THAT(
       NestGemmFusion(device_description_, &mlir_context_).Run(module.get()),
       absl_testing::IsOkAndHolds(true));
@@ -642,9 +639,9 @@ ENTRY entry_computation {
       }
     }
 })";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(
-                              absl::Substitute(hlo, HloOpcodeString(opcode))));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(
+                           absl::Substitute(hlo, HloOpcodeString(opcode))));
   EXPECT_THAT(
       NestGemmFusion(device_description_, &mlir_context_).Run(module.get()),
       absl_testing::IsOkAndHolds(true));
@@ -677,9 +674,9 @@ ENTRY e {
       "block_m":32,"block_n":16,"block_k":128,
       "split_k":1,"num_stages":1,"num_warps":4, "num_ctas":1}}}}
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(
-                              absl::Substitute(hlo, HloOpcodeString(opcode))));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(
+                           absl::Substitute(hlo, HloOpcodeString(opcode))));
   EXPECT_THAT(
       NestGemmFusion(device_description_, &mlir_context_).Run(module.get()),
       absl_testing::IsOkAndHolds(true));
@@ -709,9 +706,9 @@ ENTRY e {
     triton_gemm_config: {"block_m":32,"block_n":16,"block_k":8,
     "split_k":1,"num_stages":1,"num_warps":4,"num_ctas":1}}}}
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(
-                              absl::Substitute(hlo, HloOpcodeString(opcode))));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(
+                           absl::Substitute(hlo, HloOpcodeString(opcode))));
   EXPECT_THAT(
       NestGemmFusion(device_description_, &mlir_context_).Run(module.get()),
       absl_testing::IsOkAndHolds(true));
@@ -754,9 +751,9 @@ ENTRY e {
     triton_gemm_config: {"block_m":32,"block_n":16,"block_k":8,
     "split_k":1,"num_stages":1,"num_warps":4,"num_ctas":1}}}}
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(
-                              absl::Substitute(hlo, HloOpcodeString(opcode))));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(
+                           absl::Substitute(hlo, HloOpcodeString(opcode))));
   // We can nest the fusion including the broadcast.
   EXPECT_TRUE(NestGemmFusion(device_description_, &mlir_context_)
                   .Run(module.get())
@@ -796,9 +793,9 @@ ENTRY e {
     triton_gemm_config: {"block_m":32,"block_n":16,"block_k":8,
     "split_k":1,"num_stages":1,"num_warps":4,"num_ctas":1}}}}
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(
-                              absl::Substitute(hlo, HloOpcodeString(opcode))));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(
+                           absl::Substitute(hlo, HloOpcodeString(opcode))));
   // We can nest the fusion including the broadcast.
   EXPECT_TRUE(NestGemmFusion(device_description_, &mlir_context_)
                   .Run(module.get())
@@ -840,9 +837,9 @@ ENTRY e {
     triton_gemm_config: {"block_m":32,"block_n":16,"block_k":8,
     "split_k":1,"num_stages":1,"num_warps":4,"num_ctas":1}}}}
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(
-                              absl::Substitute(hlo, HloOpcodeString(opcode))));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(
+                           absl::Substitute(hlo, HloOpcodeString(opcode))));
   EXPECT_THAT(
       NestGemmFusion(device_description_, &mlir_context_).Run(module.get()),
       absl_testing::IsOkAndHolds(true));
@@ -880,9 +877,9 @@ ENTRY e {
     triton_gemm_config: {"block_m":32,"block_n":16,"block_k":8,
     "split_k":1,"num_stages":1,"num_warps":4,"num_ctas":1}}}}
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(
-                              absl::Substitute(hlo, HloOpcodeString(opcode))));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(
+                           absl::Substitute(hlo, HloOpcodeString(opcode))));
   EXPECT_THAT(
       NestGemmFusion(device_description_, &mlir_context_).Run(module.get()),
       absl_testing::IsOkAndHolds(true));
@@ -931,9 +928,9 @@ ENTRY e {
     "split_k":1,"num_stages":1,"num_warps":4,"num_ctas":1}}}
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(
-                              absl::Substitute(hlo, HloOpcodeString(opcode))));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(
+                           absl::Substitute(hlo, HloOpcodeString(opcode))));
   EXPECT_THAT(
       NestGemmFusion(device_description_, &mlir_context_).Run(module.get()),
       absl_testing::IsOkAndHolds(true));
@@ -982,9 +979,9 @@ ENTRY entry {
     "split_k":1,"num_stages":1,"num_warps":4,"num_ctas":1}}}
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(
-                              absl::Substitute(hlo, HloOpcodeString(opcode))));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(
+                           absl::Substitute(hlo, HloOpcodeString(opcode))));
   EXPECT_THAT(
       NestGemmFusion(device_description_, &mlir_context_).Run(module.get()),
       absl_testing::IsOkAndHolds(true));
@@ -1018,9 +1015,9 @@ ENTRY e {
     triton_gemm_config: {"block_m":16,"block_n":16,"block_k":8,
     "split_k":1,"num_stages":1,"num_warps":1,"num_ctas":1}}}}
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(
-                              absl::Substitute(hlo, HloOpcodeString(opcode))));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(
+                           absl::Substitute(hlo, HloOpcodeString(opcode))));
   EXPECT_THAT(
       NestGemmFusion(device_description_, &mlir_context_).Run(module.get()),
       absl_testing::IsOkAndHolds(true));
@@ -1055,9 +1052,9 @@ ENTRY e {
     triton_gemm_config: {"block_m":16,"block_n":16,"block_k":8,
     "split_k":1,"num_stages":1,"num_warps":1,"num_ctas":1}}}}
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(
-                              absl::Substitute(hlo, HloOpcodeString(opcode))));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(
+                           absl::Substitute(hlo, HloOpcodeString(opcode))));
   EXPECT_THAT(
       NestGemmFusion(device_description_, &mlir_context_).Run(module.get()),
       absl_testing::IsOkAndHolds(true));
@@ -1092,9 +1089,9 @@ ENTRY e {
     triton_gemm_config: {"block_m":16,"block_n":16,"block_k":8,
     "split_k":1,"num_stages":1,"num_warps":1,"num_ctas":1}}}}
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(
-                              absl::Substitute(hlo, HloOpcodeString(opcode))));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(
+                           absl::Substitute(hlo, HloOpcodeString(opcode))));
   EXPECT_THAT(
       NestGemmFusion(device_description_, &mlir_context_).Run(module.get()),
       absl_testing::IsOkAndHolds(true));
@@ -1131,9 +1128,9 @@ ENTRY e {
     "split_k":1,"num_stages":1,"num_warps":4,"num_ctas":1}}}
 }
           )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(
-                              absl::Substitute(hlo, HloOpcodeString(opcode))));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(
+                           absl::Substitute(hlo, HloOpcodeString(opcode))));
   EXPECT_THAT(
       NestGemmFusion(device_description_, &mlir_context_).Run(module.get()),
       absl_testing::IsOkAndHolds(true));
@@ -1170,9 +1167,9 @@ ENTRY e {
     triton_gemm_config: {"block_m":16,"block_n":16,"block_k":8,
     "split_k":1,"num_stages":1,"num_warps":1,"num_ctas":1}}}}
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(
-                              absl::Substitute(hlo, HloOpcodeString(opcode))));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(
+                           absl::Substitute(hlo, HloOpcodeString(opcode))));
   EXPECT_THAT(
       NestGemmFusion(device_description_, &mlir_context_).Run(module.get()),
       absl_testing::IsOkAndHolds(true));
@@ -1206,9 +1203,9 @@ ENTRY e {
     triton_gemm_config: {"block_m":16,"block_n":16,"block_k":8,
     "split_k":1,"num_stages":1,"num_warps":1,"num_ctas":1}}}}
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(
-                              absl::Substitute(hlo, HloOpcodeString(opcode))));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(
+                           absl::Substitute(hlo, HloOpcodeString(opcode))));
   EXPECT_THAT(
       NestGemmFusion(device_description_, &mlir_context_).Run(module.get()),
       absl_testing::IsOkAndHolds(true));
@@ -1243,9 +1240,9 @@ ENTRY e {
     triton_gemm_config: {"block_m":16,"block_n":16,"block_k":8,
     "split_k":1,"num_stages":1,"num_warps":1,"num_ctas":1}}}}
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(
-                              absl::Substitute(hlo, HloOpcodeString(opcode))));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(
+                           absl::Substitute(hlo, HloOpcodeString(opcode))));
   EXPECT_THAT(
       NestGemmFusion(device_description_, &mlir_context_).Run(module.get()),
       absl_testing::IsOkAndHolds(true));
@@ -1278,9 +1275,9 @@ ENTRY e {
     triton_gemm_config: {"block_m":16,"block_n":16,"block_k":8,
     "split_k":1,"num_stages":1,"num_warps":1,"num_ctas":1}}}}
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(
-                              absl::Substitute(hlo, HloOpcodeString(opcode))));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(
+                           absl::Substitute(hlo, HloOpcodeString(opcode))));
   EXPECT_THAT(
       NestGemmFusion(device_description_, &mlir_context_).Run(module.get()),
       absl_testing::IsOkAndHolds(true));
@@ -1315,9 +1312,9 @@ ENTRY e {
     triton_gemm_config: {"block_m":16,"block_n":16,"block_k":8,
     "split_k":1,"num_stages":1,"num_warps":1,"num_ctas":1}}}}
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(
-                              absl::Substitute(hlo, HloOpcodeString(opcode))));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(
+                           absl::Substitute(hlo, HloOpcodeString(opcode))));
   EXPECT_THAT(
       NestGemmFusion(device_description_, &mlir_context_).Run(module.get()),
       absl_testing::IsOkAndHolds(true));
@@ -1356,9 +1353,9 @@ ENTRY e {
     triton_gemm_config: {"block_m":32,"block_n":16,"block_k":8,
     "split_k":1,"num_stages":1,"num_warps":4,"num_ctas":1}}}}
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(
-                              absl::Substitute(hlo, HloOpcodeString(opcode))));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(
+                           absl::Substitute(hlo, HloOpcodeString(opcode))));
   EXPECT_THAT(
       NestGemmFusion(device_description_, &mlir_context_).Run(module.get()),
       absl_testing::IsOkAndHolds(true));
@@ -1407,9 +1404,9 @@ ENTRY e {
     triton_gemm_config: {"block_m":32,"block_n":16,"block_k":8,
     "split_k":1,"num_stages":1,"num_warps":4,"num_ctas":1}}}}
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(
-                              absl::Substitute(hlo, HloOpcodeString(opcode))));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(
+                           absl::Substitute(hlo, HloOpcodeString(opcode))));
   EXPECT_THAT(
       NestGemmFusion(device_description_, &mlir_context_).Run(module.get()),
       absl_testing::IsOkAndHolds(true));
@@ -1455,9 +1452,9 @@ ENTRY e {
     triton_gemm_config: {"block_m":32,"block_n":16,"block_k":8,
     "split_k":1,"num_stages":1,"num_warps":4,"num_ctas":1}}}}
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(
-                              absl::Substitute(hlo, HloOpcodeString(opcode))));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(
+                           absl::Substitute(hlo, HloOpcodeString(opcode))));
   EXPECT_THAT(
       NestGemmFusion(device_description_, &mlir_context_).Run(module.get()),
       absl_testing::IsOkAndHolds(true));
@@ -1497,9 +1494,9 @@ ENTRY e {
     triton_gemm_config: {"block_m":32,"block_n":16,"block_k":8,
     "split_k":1,"num_stages":1,"num_warps":4,"num_ctas":1}}}}
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(
-                              absl::Substitute(hlo, HloOpcodeString(opcode))));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(
+                           absl::Substitute(hlo, HloOpcodeString(opcode))));
   EXPECT_THAT(RunFileCheck(module->ToString(HloPrintOptions::ShortParsable()),
                            absl::Substitute(R"(
 CHECK: $0.1 = f32[2,7]{0,1} $0

@@ -27,7 +27,6 @@
 #include "absl/strings/string_view.h"
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/shape.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace ifrt {
@@ -107,18 +106,18 @@ TEST_P(ArrayMemRegionSuccess, TestCase) {
       dtype.byte_size().value() * shape.num_elements());
   std::string data(expected_size, 'a');
 
-  TF_ASSERT_OK_AND_ASSIGN(auto mem_region1,
-                          ArrayMemRegion::FromZerothElementPointer(
-                              data.data(), dtype, shape, tc.byte_strides));
+  ASSERT_OK_AND_ASSIGN(auto mem_region1,
+                       ArrayMemRegion::FromZerothElementPointer(
+                           data.data(), dtype, shape, tc.byte_strides));
   EXPECT_EQ(mem_region1.zeroth_element(), data.data());
   // Note: `EXPECT_EQ(mem_region.mem_region(), absl::string_view(data))` can
   // cause asan to complain if the expectation fails.
   EXPECT_EQ(mem_region1.mem_region().data(), data.data());
   EXPECT_EQ(mem_region1.mem_region().size(), data.size());
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto mem_region2, ArrayMemRegion::FromMinimalMemRegion(data, dtype, shape,
-                                                             tc.byte_strides));
+  ASSERT_OK_AND_ASSIGN(auto mem_region2,
+                       ArrayMemRegion::FromMinimalMemRegion(data, dtype, shape,
+                                                            tc.byte_strides));
   EXPECT_EQ(mem_region2.zeroth_element(), data.data());
   EXPECT_EQ(mem_region2.mem_region().data(), data.data());
   EXPECT_EQ(mem_region2.mem_region().size(), data.size());
@@ -166,7 +165,7 @@ TEST(ArrayMemRegion, FromBadMemRegionSizeFails) {
   // If we know that the zeroth_element is at the beginning, then we
   // can construct the ArrayMemoryRegion; the constructed ArrayMemoryRegion
   // will not contain the suffix.
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto mem_region1,
       ArrayMemRegion::FromZerothElementPointer(
           /*zeroth_element=*/data_with_extra_suffix.data(), kDType, kShape,
@@ -196,16 +195,16 @@ TEST(ArrayMemRegion, FromBadMemRegionSizeFails) {
 
 TEST(StringHostBufferTest, SerializeDeserializeWithString) {
   std::vector<absl::Cord> input = {absl::Cord("foo"), absl::Cord("bar")};
-  TF_ASSERT_OK_AND_ASSIGN(auto serialized, SerializeStringHostBuffer(input));
-  TF_ASSERT_OK_AND_ASSIGN(auto deserialized,
-                          DeserializeStringHostBufferFromString(*serialized));
+  ASSERT_OK_AND_ASSIGN(auto serialized, SerializeStringHostBuffer(input));
+  ASSERT_OK_AND_ASSIGN(auto deserialized,
+                       DeserializeStringHostBufferFromString(*serialized));
   EXPECT_EQ(deserialized, input);
 }
 
 TEST(StringHostBufferTest,
      DeserializeFromCordIntoPreallocatedStringHostBuffer) {
   std::vector<absl::Cord> input = {absl::Cord("foo"), absl::Cord("bar")};
-  TF_ASSERT_OK_AND_ASSIGN(auto serialized, SerializeStringHostBuffer(input));
+  ASSERT_OK_AND_ASSIGN(auto serialized, SerializeStringHostBuffer(input));
 
   std::vector<absl::Cord> deserialized(input.size());
   ASSERT_THAT(DeserializeFromCordIntoPreallocatedStringHostBuffer(

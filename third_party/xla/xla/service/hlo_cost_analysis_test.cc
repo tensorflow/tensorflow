@@ -45,7 +45,6 @@ limitations under the License.
 #include "xla/service/service.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -567,7 +566,7 @@ TEST_F(HloCostAnalysisTest, ReduceWindowVariadic) {
   auto p5 = Parameter(&builder, 3, elem_shape, "y1");
   absl::InlinedVector<XlaOp, 2> compute_vec = {Min(p2, p4), Min(p3, p5)};
   Tuple(&builder, compute_vec);
-  TF_ASSERT_OK_AND_ASSIGN(auto compute_tuple, builder.Build());
+  ASSERT_OK_AND_ASSIGN(auto compute_tuple, builder.Build());
   auto input1 =
       Parameter(&builder, 0, ShapeUtil::MakeShape(F32, {10, 20}), "input1");
   auto input2 =
@@ -746,8 +745,7 @@ TEST_F(HloCostAnalysisTest, LatencyBoundedOptimalTime) {
     ROOT add = f32[1,1] add(param0, param1)
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnUnverifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo_string));
 
   const HloInstruction* add = module->entry_computation()->root_instruction();
   HloCostAnalysis::Options options;
@@ -788,8 +786,8 @@ TEST_F(FusionCostAnalysis, LoopFusionDynUpdateSlice) {
   }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_fusion_module_str));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(hlo_fusion_module_str));
   HloCostAnalysis fusion_analysis;
 
   HloInstruction* fusion = module->entry_computation()->root_instruction();
@@ -805,8 +803,8 @@ TEST_F(FusionCostAnalysis, LoopFusionDynUpdateSlice) {
     ROOT _ = bf16[50,32,256,1152]{3,2,1,0:T(8,128)(2,1)} dynamic-update-slice(_0, _2, _1, _1, _1, _1)
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto dus_module,
-                          ParseAndReturnVerifiedModule(hlo_dus_module_str));
+  ASSERT_OK_AND_ASSIGN(auto dus_module,
+                       ParseAndReturnVerifiedModule(hlo_dus_module_str));
   HloCostAnalysis dus_analysis;
   auto dus = dus_module->entry_computation()->root_instruction();
   ASSERT_IS_OK(dus->Accept(&dus_analysis));
@@ -931,14 +929,14 @@ ENTRY temp {
   ROOT fusion.85943 = s8[2,384,2,256]{3,1,0,2:T(8,128)(4,1)} fusion(param_2.123719, param_3.66279), kind=kLoop, calls=fused_computation.4150.clone
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto nested_fusion_module,
-                          ParseAndReturnVerifiedModule(nested_fusion_text));
+  ASSERT_OK_AND_ASSIGN(auto nested_fusion_module,
+                       ParseAndReturnVerifiedModule(nested_fusion_text));
   HloCostAnalysis nested_analysis;
   auto* nested_root =
       nested_fusion_module->entry_computation()->root_instruction();
   ASSERT_IS_OK(nested_root->Accept(&nested_analysis));
-  TF_ASSERT_OK_AND_ASSIGN(auto fusion_module,
-                          ParseAndReturnVerifiedModule(fusion_text));
+  ASSERT_OK_AND_ASSIGN(auto fusion_module,
+                       ParseAndReturnVerifiedModule(fusion_text));
   HloCostAnalysis fusion_analysis;
   auto* fusion_root = fusion_module->entry_computation()->root_instruction();
   ASSERT_IS_OK(fusion_root->Accept(&fusion_analysis));
@@ -999,14 +997,14 @@ ENTRY temp {
   ROOT fusion.85943 = s8[2,6144,2,256]{3,1,0,2:T(8,128)(4,1)} fusion(param_2.123719, param_3.66279, param_1.123719), kind=kLoop, calls=fused_computation.4150.clone
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto nested_fusion_module,
-                          ParseAndReturnVerifiedModule(nested_fusion_text));
+  ASSERT_OK_AND_ASSIGN(auto nested_fusion_module,
+                       ParseAndReturnVerifiedModule(nested_fusion_text));
   HloCostAnalysis nested_analysis;
   auto* nested_root =
       nested_fusion_module->entry_computation()->root_instruction();
   ASSERT_IS_OK(nested_root->Accept(&nested_analysis));
-  TF_ASSERT_OK_AND_ASSIGN(auto fusion_module,
-                          ParseAndReturnVerifiedModule(fusion_text));
+  ASSERT_OK_AND_ASSIGN(auto fusion_module,
+                       ParseAndReturnVerifiedModule(fusion_text));
   HloCostAnalysis fusion_analysis;
   auto* fusion_root = fusion_module->entry_computation()->root_instruction();
   ASSERT_IS_OK(fusion_root->Accept(&fusion_analysis));
@@ -1042,8 +1040,8 @@ ENTRY temp {
   ROOT result = bf16[64,16,512,512]{2,3,1,0:T(8,128)(2,1)} fusion(tmp_0), kind=kLoop, calls=fused_computation.1
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto fusion_module,
-                          ParseAndReturnVerifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(auto fusion_module,
+                       ParseAndReturnVerifiedModule(hlo_text));
   HloCostAnalysis fusion_analysis;
   auto* fusion_root = fusion_module->entry_computation()->root_instruction();
   ASSERT_IS_OK(fusion_root->Accept(&fusion_analysis));
@@ -1076,8 +1074,8 @@ ENTRY temp {
   ROOT result = bf16[64,16,512,512]{2,3,1,0:T(8,128)(2,1)} fusion(tmp_0), kind=kLoop, calls=fused_computation.1
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto fusion_module,
-                          ParseAndReturnVerifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(auto fusion_module,
+                       ParseAndReturnVerifiedModule(hlo_text));
   HloCostAnalysis fusion_analysis;
   auto* fusion_root = fusion_module->entry_computation()->root_instruction();
   ASSERT_IS_OK(fusion_root->Accept(&fusion_analysis));
@@ -1206,8 +1204,7 @@ ENTRY entry {
   ROOT fusion = f32[3,2]{1,0} fusion(tuple), kind=kLoop, calls=fused_computation
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
   HloInstruction* fusion = module->entry_computation()->root_instruction();
 
@@ -1241,8 +1238,7 @@ ENTRY entry {
   ROOT fusion = (f32[2,2]{1,0}, f32[2,2]{1,0}) fusion(tuple), kind=kLoop, calls=fused_computation
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
   HloInstruction* fusion = module->entry_computation()->root_instruction();
 
@@ -1273,8 +1269,7 @@ ENTRY e {
   ROOT r0 = s8[3] fusion(param0), kind=kInput, calls=f
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
   HloInstruction* root = module->entry_computation()->root_instruction();
 
@@ -1307,8 +1302,7 @@ ENTRY entry {
   ROOT outfeed = token[] outfeed(tuple, tok)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
   HloInstruction* infeed =
       module->entry_computation()->GetInstructionWithName("infeed");
@@ -1345,8 +1339,7 @@ ENTRY entry {
   ROOT all-reduce = (f32[2,2]{1,0}, f32[2,2]{1,0}) all-reduce(param0, param1), replica_groups={{0,1}}, to_apply=sum
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
   HloInstruction* all_reduce = module->entry_computation()->root_instruction();
 
@@ -1700,8 +1693,7 @@ ENTRY e {
   ROOT r0 = s8[10000] fusion(param0), kind=kInput, calls=f
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
   HloInstruction* root = module->entry_computation()->root_instruction();
 
@@ -1793,8 +1785,7 @@ ENTRY e {
   p0 = s8[10] parameter(0)
   ROOT r = s8[1] fusion(p0), kind=kLoop, calls=f
 })";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
   HloInstruction* root = module->entry_computation()->root_instruction();
 
@@ -1839,8 +1830,7 @@ ENTRY e {
   r1 = f32[127] reduce(p0, constant_zero), dimensions={1}, to_apply=add_computation
   ROOT _ = f32[127] add(r0, r1)
 })";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
   HloInstruction* root = module->entry_computation()->root_instruction();
   HloCostAnalysis analysis;

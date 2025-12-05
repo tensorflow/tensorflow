@@ -15,10 +15,10 @@ limitations under the License.
 
 #include <optional>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "xla/literal_util.h"
 #include "xla/service/gpu/tests/gpu_codegen_test.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -31,8 +31,7 @@ class PredArithmeticTest : public GpuCodegenTest {
     auto false_literal = LiteralUtil::CreateR0(false);
     auto true_literal = LiteralUtil::CreateR0(true);
 
-    TF_ASSERT_OK_AND_ASSIGN(auto module,
-                            ParseAndReturnVerifiedModule(hlo_text));
+    ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
 
     // Each call to RunAndCompareNoHloPasses insists on taking ownership and
     // deleting the module, so just Clone it.

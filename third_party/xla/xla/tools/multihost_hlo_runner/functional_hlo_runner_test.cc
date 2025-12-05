@@ -20,6 +20,7 @@ limitations under the License.
 #include <memory>
 #include <random>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "xla/tests/xla_test_backend_predicates.h"
@@ -30,24 +31,34 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/ascii.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/time/time.h"
+#include "absl/types/span.h"
+#include "google/protobuf/io/zero_copy_stream_impl_lite.h"
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/testlib/filecheck.h"
+#include "xla/layout.h"
+#include "xla/literal.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_executable.h"
+#include "xla/pjrt/plugin/xla_gpu/xla_gpu_allocator_config.h"
 #include "xla/pjrt/plugin/xla_gpu/xla_gpu_client_options.h"
+#include "xla/primitive_util.h"
 #include "xla/runtime/large_hlo_snapshot_serialization/serialization.h"
 #include "xla/service/computation_layout.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/platform_util.h"
+#include "xla/shape.h"
+#include "xla/shape_layout.h"
+#include "xla/shape_util.h"
 #include "xla/status_macros.h"
+#include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
-#include "xla/tests/test_utils.h"
 #include "xla/tools/multihost_hlo_runner/create_client.h"
 #include "xla/tools/multihost_hlo_runner/hlo_input_output_format.h"
 #include "xla/tools/multihost_hlo_runner/profiler_interface.h"
@@ -63,7 +74,6 @@ limitations under the License.
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/path.h"
-#include "tsl/platform/protobuf.h"
 
 namespace xla {
 namespace {
@@ -91,8 +101,8 @@ absl::StatusOr<std::unique_ptr<xla::PjRtClient>> GetPjRtClient() {
 using FunctionalHloRunnerTest = ::testing::Test;
 
 TEST_F(FunctionalHloRunnerTest, SingleDeviceHlo) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::PjRtClient> client,
-                          GetPjRtClient());
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::PjRtClient> client,
+                       GetPjRtClient());
 
   // Options corresponding to --num_replicas=1 --num_partitions=1
   xla::DebugOptions debug_options;
@@ -112,15 +122,15 @@ TEST_F(FunctionalHloRunnerTest, SingleDevicePinnedHostZeroInputs) {
     GTEST_SKIP() << "This test is specialized for GPU platform!";
   }
 
-  TF_ASSERT_OK_AND_ASSIGN(std::string platform_name,
-                          PlatformUtil::CanonicalPlatformName("gpu"));
+  ASSERT_OK_AND_ASSIGN(std::string platform_name,
+                       PlatformUtil::CanonicalPlatformName("gpu"));
 
-  TF_ASSERT_OK_AND_ASSIGN(se::Platform * platform,
-                          se::PlatformManager::PlatformWithName(
-                              absl::AsciiStrToUpper(platform_name)));
+  ASSERT_OK_AND_ASSIGN(se::Platform * platform,
+                       se::PlatformManager::PlatformWithName(
+                           absl::AsciiStrToUpper(platform_name)));
 
-  TF_ASSERT_OK_AND_ASSIGN(auto executors,
-                          PlatformUtil::GetStreamExecutors(platform));
+  ASSERT_OK_AND_ASSIGN(auto executors,
+                       PlatformUtil::GetStreamExecutors(platform));
   EXPECT_TRUE(!executors.empty());
   const auto& desc = executors[0]->GetDeviceDescription();
   if (platform_name == "rocm") {
@@ -133,8 +143,8 @@ TEST_F(FunctionalHloRunnerTest, SingleDevicePinnedHostZeroInputs) {
   gpu_opts.allocator_config.kind = GpuAllocatorConfig::Kind::kPlatform;
   gpu_opts.should_stage_host_to_device_transfers = false;
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::PjRtClient> client,
-                          CreateGpuClient(gpu_opts));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::PjRtClient> client,
+                       CreateGpuClient(gpu_opts));
 
   xla::DebugOptions debug_options;
   FunctionalHloRunner::PreprocessingOptions preproc_options;
@@ -153,7 +163,7 @@ TEST_F(FunctionalHloRunnerTest, SingleDevicePinnedHostZeroInputs) {
     *layout = ShapeLayout(shape);
   };
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto hlo_module_and_arguments,
       FunctionalHloRunner::LoadHloModuleAndArguments(
           {GetHloPath("fp8_gemm_loop.hlo")}, InputFormat::kText));
@@ -191,11 +201,11 @@ TEST_F(FunctionalHloRunnerTest, SingleDevicePinnedHostZeroInputs) {
   set_host_memory_space(entry_layout.mutable_parameter_layout(2));
 
   FunctionalHloRunner::RunningOptions running_options;
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       CompileOptions compile_options,
       FunctionalHloRunner::CreateCompileOptions(*client, raw_compile_options));
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto output, FunctionalHloRunner::CompileAndRun(
                        *client, debug_options, preproc_options, compile_options,
                        running_options, hlo_module.get(), arguments));
@@ -213,8 +223,8 @@ TEST_F(FunctionalHloRunnerTest, SingleDevicePinnedHostZeroInputs) {
 }
 
 TEST_F(FunctionalHloRunnerTest, SingleDeviceHloWithRandomEngine) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::PjRtClient> client,
-                          GetPjRtClient());
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::PjRtClient> client,
+                       GetPjRtClient());
 
   // Options corresponding to --num_replicas=1 --num_partitions=1
   xla::DebugOptions debug_options;
@@ -233,8 +243,8 @@ TEST_F(FunctionalHloRunnerTest, SingleDeviceHloWithRandomEngine) {
 }
 
 TEST_F(FunctionalHloRunnerTest, SingleDeviceHloThroughStableHlo) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::PjRtClient> client,
-                          GetPjRtClient());
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::PjRtClient> client,
+                       GetPjRtClient());
 
   xla::DebugOptions debug_options;
   FunctionalHloRunner::PreprocessingOptions preproc_options;
@@ -250,8 +260,8 @@ TEST_F(FunctionalHloRunnerTest, SingleDeviceHloThroughStableHlo) {
 }
 
 TEST_F(FunctionalHloRunnerTest, SingleDeviceHloWithExecutionProfile) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::PjRtClient> client,
-                          GetPjRtClient());
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::PjRtClient> client,
+                       GetPjRtClient());
   std::vector<ExecutionProfile> profiles;
   FunctionalHloRunner::RunningOptions running_options;
   running_options.num_repeats = 2;
@@ -290,7 +300,7 @@ TEST_F(FunctionalHloRunnerTest, GPUProfilerKeepXSpaceReturnsNonNullXSpace) {
   TF_ASSERT_OK(env->GetFileSystemForFile(profile_dump_path, &fs));
 
   FunctionalHloRunner::RunningOptions running_options;
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto profiler,
       HLORunnerProfiler::Create(profile_dump_path, /*keep_xspace=*/true));
   running_options.profiler = profiler.get();
@@ -304,16 +314,15 @@ TEST_F(FunctionalHloRunnerTest, GPUProfilerKeepXSpaceReturnsNonNullXSpace) {
 
 TEST_F(FunctionalHloRunnerTest,
        SingleDeviceHloWithGPUProfilerSavesXSpaceToDisk) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::PjRtClient> client,
-                          GetPjRtClient());
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::PjRtClient> client,
+                       GetPjRtClient());
   std::string profile_dump_path =
       tsl::io::JoinPath(testing::TempDir(), "xspace.pb");
 
   std::unique_ptr<HLORunnerProfiler> profiler;
   FunctionalHloRunner::RunningOptions running_options;
-  TF_ASSERT_OK_AND_ASSIGN(
-      profiler,
-      HLORunnerProfiler::Create(profile_dump_path, /*keep_xspace=*/true));
+  ASSERT_OK_AND_ASSIGN(profiler, HLORunnerProfiler::Create(
+                                     profile_dump_path, /*keep_xspace=*/true));
   running_options.profiler = profiler.get();
 
   running_options.num_repeats = 2;
@@ -330,8 +339,8 @@ TEST_F(FunctionalHloRunnerTest,
 }
 
 TEST_F(FunctionalHloRunnerTest, Sharded2Devices) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::PjRtClient> client,
-                          GetPjRtClient());
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::PjRtClient> client,
+                       GetPjRtClient());
 
   constexpr int kRequiredDeviceCount = 2;
   const int kDeviceCount = client->device_count();
@@ -357,8 +366,8 @@ TEST_F(FunctionalHloRunnerTest, Sharded2Devices) {
 }
 
 TEST_F(FunctionalHloRunnerTest, UseZerosAsInputs) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::PjRtClient> client,
-                          GetPjRtClient());
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::PjRtClient> client,
+                       GetPjRtClient());
 
   constexpr int kRequiredDeviceCount = 2;
   const int kDeviceCount = client->device_count();
@@ -387,8 +396,8 @@ TEST_F(FunctionalHloRunnerTest, UseZerosAsInputs) {
 }
 
 TEST_F(FunctionalHloRunnerTest, UseUninitializedInputs) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::PjRtClient> client,
-                          GetPjRtClient());
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::PjRtClient> client,
+                       GetPjRtClient());
 
   constexpr int kRequiredDeviceCount = 2;
   const int kDeviceCount = client->device_count();
@@ -421,8 +430,8 @@ TEST_F(FunctionalHloRunnerTest, UseUninitializedInputs) {
 // Execution of replica 0 failed: INTERNAL: Failed to end stream capture:
 // hipError_t(901)
 TEST_F(FunctionalHloRunnerTest, ShardedComputationUnderStreamCapture) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::PjRtClient> client,
-                          GetPjRtClient());
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::PjRtClient> client,
+                       GetPjRtClient());
 
   constexpr int kRequiredDeviceCount = 2;
   const int kDeviceCount = client->device_count();
@@ -453,8 +462,8 @@ TEST_F(FunctionalHloRunnerTest, ShardedComputationUnderStreamCapture) {
 }
 
 TEST_F(FunctionalHloRunnerTest, UseUninitializedInputsWithTupledArguments) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::PjRtClient> client,
-                          GetPjRtClient());
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::PjRtClient> client,
+                       GetPjRtClient());
 
   // Options corresponding to:
   // --num_replicas=1 --num_partitions=1
@@ -486,8 +495,8 @@ void CompileAndFilecheck(
   ASSERT_TRUE(env->LocalTempFilename(&dump_dir));
   tsl::FileSystem* fs = nullptr;
   TF_ASSERT_OK(env->GetFileSystemForFile(dump_dir, &fs));
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::PjRtClient> client,
-                          GetPjRtClient());
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::PjRtClient> client,
+                       GetPjRtClient());
   FunctionalHloRunner::RawCompileOptions opts;
   opts.hlo_passes_mode = hlo_passes_mode;
   opts.num_partitions = num_partitions;
@@ -685,7 +694,7 @@ absl::Status RunShardedHloWithClient(xla::PjRtClient& client) {
 }
 
 TEST_F(FunctionalHloRunnerTest, PreservesAutoLayout) {
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       HloModuleAndArguments hlo_module_and_arguments,
       FunctionalHloRunner::LoadHloModuleAndArguments(
           GetHloPath("single_gemm_fusion.hlo"), InputFormat::kText));
@@ -702,7 +711,7 @@ TEST_F(FunctionalHloRunnerTest, MakeFakeLiteralWithSameValue) {
     GTEST_SKIP() << "GPU-only test";
   }
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       HloModuleAndArguments hlo_module_and_arguments,
       FunctionalHloRunner::LoadHloModuleAndArguments(
           GetHloPath("dynamic_shaped_arguments.hlo"), InputFormat::kText));
@@ -715,8 +724,8 @@ TEST_F(FunctionalHloRunnerTest, MakeFakeLiteralWithSameValue) {
     CHECK_EQ(param->shape().is_dynamic(), true);
   }
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::PjRtClient> client,
-                          GetPjRtClient());
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::PjRtClient> client,
+                       GetPjRtClient());
 
   // Options corresponding to --num_replicas=1 --num_partitions=1
   xla::DebugOptions debug_options;
@@ -737,8 +746,8 @@ TEST_F(FunctionalHloRunnerTest, CanRunWithMockCollectives) {
   if (test::DeviceTypeIs(test::kCpu)) {
     GTEST_SKIP() << "GPU-only test";
   }
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::PjRtClient> client,
-                          CreateMockGpuClient(16));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::PjRtClient> client,
+                       CreateMockGpuClient(16));
 
   TF_EXPECT_OK(RunShardedHloWithClient(*client));
 }
@@ -754,7 +763,7 @@ TEST_F(FunctionalHloRunnerTest, CanCreateMockClientInPjRtEnv) {
   gpu_options.node_id = 0;
   gpu_options.num_nodes = 16;
   gpu_options.enable_mock_nccl = true;
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       xla::PjRtEnvironment env,
       GetPjRtEnvironmentForGpu("", gpu_options, absl::Seconds(120)));
 
@@ -762,8 +771,8 @@ TEST_F(FunctionalHloRunnerTest, CanCreateMockClientInPjRtEnv) {
 }
 
 TEST_F(FunctionalHloRunnerTest, Sharded2DevicesHloUnoptimizedSnapshot) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::PjRtClient> client,
-                          GetPjRtClient());
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::PjRtClient> client,
+                       GetPjRtClient());
 
   constexpr int kRequiredDeviceCount = 2;
   int device_count = client->device_count();
@@ -844,12 +853,12 @@ TEST_F(FunctionalHloRunnerTest, ReadHloUnoptimizedSnapshotCustomSerialization) {
   TF_ASSERT_OK(file->Close());
 
   // Read HloModuleAndArguments from text dump.
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       HloModuleAndArguments hlo_module_and_arguments_from_text,
       FunctionalHloRunner::LoadHloModuleAndArguments(
           path_to_text_hlo, InputFormat::kUnoptimizedSnapshotProtoText));
   // Read HloModuleAndArguments from binary dump.
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       HloModuleAndArguments hlo_module_and_arguments_from_binary,
       FunctionalHloRunner::LoadHloModuleAndArguments(
           path_to_binary_hlo, InputFormat::kUnoptimizedSnapshotProtoBinary));
@@ -889,12 +898,12 @@ TEST_F(FunctionalHloRunnerTest, ReadHloUnoptimizedSnapshot) {
   TF_ASSERT_OK(file->Close());
 
   // Read HloModuleAndArguments from text dump.
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       HloModuleAndArguments hlo_module_and_arguments_from_text,
       FunctionalHloRunner::LoadHloModuleAndArguments(
           path_to_text_hlo, InputFormat::kUnoptimizedSnapshotProtoText));
   // Read HloModuleAndArguments from binary dump.
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       HloModuleAndArguments hlo_module_and_arguments_from_binary,
       FunctionalHloRunner::LoadHloModuleAndArguments(
           path_to_binary_hlo, InputFormat::kUnoptimizedSnapshotProtoBinary));
@@ -951,7 +960,7 @@ TEST_F(FunctionalHloRunnerTest,
   TF_ASSERT_OK(file->Close());
 
   // Read HloModuleAndArguments from binary dump.
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       HloModuleAndArguments hlo_module_and_arguments_from_binary,
       FunctionalHloRunner::LoadHloModuleAndArguments(
           path_to_binary_hlo, InputFormat::kUnoptimizedSnapshotProtoBinary));
@@ -975,8 +984,8 @@ TEST_F(FunctionalHloRunnerTest,
 }
 
 TEST_F(FunctionalHloRunnerTest, FixFakeArguments) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::PjRtClient> client,
-                          GetPjRtClient());
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::PjRtClient> client,
+                       GetPjRtClient());
 
   // Options corresponding to --num_replicas=1 --num_partitions=1
   xla::DebugOptions debug_options;
@@ -1029,10 +1038,10 @@ TEST(FunctionalHloRunnerTest, TestDebugOptionsAreNotOverwrittenByRawOptions) {
   *raw_compile_options.execution_options->mutable_debug_options() =
       debug_options;
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::PjRtClient> client,
-                          GetPjRtClient());
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::PjRtClient> client,
+                       GetPjRtClient());
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       CompileOptions compile_options,
       FunctionalHloRunner::CreateCompileOptions(*client, raw_compile_options,
                                                 /*task_id=*/0, /*num_nodes=*/1,
@@ -1055,10 +1064,10 @@ TEST(FunctionalHloRunnerTest, TestDebugOptionsDumpToIsRespected) {
   *raw_compile_options.execution_options->mutable_debug_options() =
       debug_options;
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::PjRtClient> client,
-                          GetPjRtClient());
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::PjRtClient> client,
+                       GetPjRtClient());
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       CompileOptions compile_options,
       FunctionalHloRunner::CreateCompileOptions(*client, raw_compile_options,
                                                 /*task_id=*/0, /*num_nodes=*/1,
@@ -1076,9 +1085,9 @@ TEST(FunctionalHloRunnerTest, RespectUseSpmdPartitioning) {
   raw_compile_options.num_replicas = 1;
   raw_compile_options.num_partitions = 16;
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::PjRtClient> client,
-                          GetPjRtClient());
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::PjRtClient> client,
+                       GetPjRtClient());
+  ASSERT_OK_AND_ASSIGN(
       CompileOptions compile_options,
       FunctionalHloRunner::CreateCompileOptions(*client, raw_compile_options,
                                                 /*task_id=*/0, /*num_nodes=*/1,
@@ -1093,8 +1102,8 @@ TEST_F(FunctionalHloRunnerTest, DumpsUnoptimizedHLOInUnoptimizedSnapshot) {
     GTEST_SKIP() << "GPU-only test";
   }
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::PjRtClient> client,
-                          GetPjRtClient());
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::PjRtClient> client,
+                       GetPjRtClient());
 
   DebugOptions debug_options = xla::DefaultDebugOptionsIgnoringFlags();
   debug_options.set_xla_dump_to(std::getenv("TEST_UNDECLARED_OUTPUTS_DIR"));
@@ -1133,8 +1142,8 @@ TEST_F(FunctionalHloRunnerTest, DumpsUnoptimizedHLOInUnoptimizedSnapshot) {
   tsl::protobuf::io::ArrayInputStream input_stream(output.data(),
                                                    output.size());
 
-  TF_ASSERT_OK_AND_ASSIGN(HloUnoptimizedSnapshot snapshot,
-                          DeserializeHloUnoptimizedSnapshot(&input_stream));
+  ASSERT_OK_AND_ASSIGN(HloUnoptimizedSnapshot snapshot,
+                       DeserializeHloUnoptimizedSnapshot(&input_stream));
 
   // The HLO module should be unoptimized, therefore it should not have a
   // schedule.
@@ -1148,8 +1157,8 @@ class MockProfiler : public ProfilerInterface {
 };
 
 TEST_F(FunctionalHloRunnerTest, ProfileMultipleRepeatsSingleSession) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::PjRtClient> client,
-                          GetPjRtClient());
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::PjRtClient> client,
+                       GetPjRtClient());
   xla::DebugOptions debug_options;
   FunctionalHloRunner::PreprocessingOptions preproc_options;
   CompileOptions compile_options;
@@ -1170,8 +1179,8 @@ TEST_F(FunctionalHloRunnerTest, ProfileMultipleRepeatsSingleSession) {
 }
 
 TEST_F(FunctionalHloRunnerTest, ProfileMultipleRepeatsSessionPerRepeat) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::PjRtClient> client,
-                          GetPjRtClient());
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::PjRtClient> client,
+                       GetPjRtClient());
   xla::DebugOptions debug_options;
   FunctionalHloRunner::PreprocessingOptions preproc_options;
   CompileOptions compile_options;

@@ -20,6 +20,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include "absl/strings/str_replace.h"
 #include "absl/strings/string_view.h"
 #include "xla/array4d.h"
@@ -40,7 +41,6 @@ limitations under the License.
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/types.h"
 #include "xla/xla.pb.h"
@@ -1551,7 +1551,7 @@ class FlashAttentionBMMScaleSoftmaxDropoutBMM
     auto do_literal =
         GetInput4DLiteral<bfloat16>({4, 1024, 4, 64}, {3, 2, 1, 0});
 
-    TF_ASSERT_OK_AND_ASSIGN(
+    ASSERT_OK_AND_ASSIGN(
         std::unique_ptr<HloModule> module,
         ParseAndReturnVerifiedModule(
             kModuleFlashAttentionTrainingBMM1SoftmaxDropoutBMM2HloStringBF16));

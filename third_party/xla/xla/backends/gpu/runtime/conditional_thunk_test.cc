@@ -138,7 +138,7 @@ TEST(ConditionalThunkTest, ToProto) {
   constexpr bool kBranchIndexIsBool = true;
   std::unique_ptr<ConditionalThunk> thunk = CreateConditionalThunk(
       thunk_info, slice, std::move(branch_thunk_seq), kBranchIndexIsBool);
-  TF_ASSERT_OK_AND_ASSIGN(ThunkProto proto, thunk->ToProto());
+  ASSERT_OK_AND_ASSIGN(ThunkProto proto, thunk->ToProto());
 
   std::string expected = R"pb(
     thunk_info {
@@ -230,7 +230,7 @@ TEST(ConditionalThunkTest, FromProto) {
   std::vector<BufferAllocation> buffer_allocations = {
       BufferAllocation(/*index=*/0, /*size=*/1024, /*color=*/0)};
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<ConditionalThunk> thunk,
       ConditionalThunk::FromProto(
           thunk_info, proto.conditional_thunk(), buffer_allocations,
@@ -239,7 +239,7 @@ TEST(ConditionalThunkTest, FromProto) {
             return DummyThunk::FromProto(proto, Kind::kCustomCall);
           }));
   ASSERT_NE(thunk, nullptr);
-  TF_ASSERT_OK_AND_ASSIGN(ThunkProto round_trip_proto, thunk->ToProto());
+  ASSERT_OK_AND_ASSIGN(ThunkProto round_trip_proto, thunk->ToProto());
   EXPECT_THAT(round_trip_proto, EqualsProto(proto));
 }
 

@@ -22,6 +22,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "llvm/ADT/STLExtras.h"
 #include "mlir/Support/LLVM.h"
@@ -29,7 +30,6 @@ limitations under the License.
 #include "xla/literal_util.h"
 #include "xla/mlir/tools/mlir_interpreter/framework/interpreter_value.h"
 #include "xla/mlir/tools/mlir_interpreter/framework/tensor_or_memref.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace mlir {
 namespace interpreter {
@@ -40,7 +40,7 @@ class TracedValueRoundTripTest
 
 TEST_P(TracedValueRoundTripTest, Run) {
   auto traced_value = ValueToTracedValue(GetParam());
-  TF_ASSERT_OK_AND_ASSIGN(auto value, TracedValueToValue(traced_value));
+  ASSERT_OK_AND_ASSIGN(auto value, TracedValueToValue(traced_value));
   EXPECT_EQ(GetParam(), value) << GetParam().ToString();
 }
 
@@ -88,7 +88,7 @@ class FromLiteralTest
           std::pair<std::shared_ptr<xla::Literal>, InterpreterValue>> {};
 
 TEST_P(FromLiteralTest, Run) {
-  TF_ASSERT_OK_AND_ASSIGN(auto value, LiteralToValue(*GetParam().first));
+  ASSERT_OK_AND_ASSIGN(auto value, LiteralToValue(*GetParam().first));
   EXPECT_EQ(value, GetParam().second)
       << value.ToString() << " vs " << GetParam().second.ToString();
 }

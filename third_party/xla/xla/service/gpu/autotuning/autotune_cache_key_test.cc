@@ -30,10 +30,8 @@ limitations under the License.
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_description.pb.h"
 #include "xla/tsl/platform/env.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "tsl/platform/path.h"
-#include "tsl/platform/protobuf.h"
 
 namespace xla {
 namespace gpu {
@@ -95,8 +93,8 @@ TEST(AutotuneCacheKeyTest, DeviceDescriptionToCacheKey) {
 
 TEST(AutotuneCacheKeyTest, VersionIsIncludedInCacheKey) {
   stream_executor::DeviceDescription empty_device_description;
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnUnverifiedModule(kDotFusionHloText));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(kDotFusionHloText));
   AutotuneCacheKey key =
       AutotuneCacheKey(empty_device_description,
                        *module->entry_computation()->root_instruction());
@@ -105,8 +103,8 @@ TEST(AutotuneCacheKeyTest, VersionIsIncludedInCacheKey) {
 }
 
 TEST(AutotuneCacheKeyTest, VersionChangeInvalidateCacheKey) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnUnverifiedModule(kDotFusionHloText));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(kDotFusionHloText));
   stream_executor::DeviceDescription empty_device_description;
 
   AutotuneCacheKey key0 = AutotuneCacheKey(

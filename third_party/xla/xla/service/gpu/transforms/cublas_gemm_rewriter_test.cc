@@ -18,6 +18,7 @@ limitations under the License.
 #include <tuple>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/str_replace.h"
@@ -31,11 +32,11 @@ limitations under the License.
 #include "xla/hlo/testlib/test.h"
 #include "xla/service/gpu/transforms/gemm_rewriter.h"
 #include "xla/service/gpu/transforms/gemm_rewriter_test_lib.h"
+#include "xla/service/hlo_module_config.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/semantic_version.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 
@@ -578,8 +579,8 @@ ENTRY test {
       continue;
     }
 
-    TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> optimized_module,
-                            GetOptimizedModule(hlo_text));
+    ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> optimized_module,
+                         GetOptimizedModule(hlo_text));
     EXPECT_THAT(optimized_module->entry_computation()->root_instruction(),
                 GmockMatch(m::GetTupleElement(
                     m::CustomCall(m::Parameter(0), m::Parameter(1),
@@ -620,8 +621,8 @@ ENTRY test {
       continue;
     }
 
-    TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> optimized_module,
-                            GetOptimizedModule(hlo_text));
+    ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> optimized_module,
+                         GetOptimizedModule(hlo_text));
     EXPECT_THAT(optimized_module->entry_computation()->root_instruction(),
                 GmockMatch(m::GetTupleElement(
                     m::CustomCall(m::Parameter(0), m::Parameter(1),
@@ -654,8 +655,8 @@ ENTRY test {
 )";
 
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-3, 1e-3}));
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> optimized_module,
-                          GetOptimizedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> optimized_module,
+                       GetOptimizedModule(hlo_text));
   MatchOptimizedHlo(hlo_text, R"(
 ; CHECK:        %[[custom_call:.*]] = {{.*}} custom-call{{.*}}__cublas$gemm
 ; CHECK:        %[[gte:.*]] = {{.*}} get-tuple-element{{.*}}%[[custom_call]]
@@ -689,8 +690,8 @@ ENTRY test {
     GTEST_SKIP() << "Pre-Ampere casts up bf16 to fp32";
   }
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> optimized_module,
-                          GetOptimizedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> optimized_module,
+                       GetOptimizedModule(hlo_text));
   MatchOptimizedHlo(hlo_text, R"(
 ; CHECK:        %[[custom_call:.*]] = {{.*}} custom-call{{.*}}__cublas$gemm
 ; CHECK:        %[[gte:.*]] = {{.*}} get-tuple-element{{.*}}%[[custom_call]]
@@ -710,10 +711,10 @@ ENTRY test {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_text));
   GemmRewriter pass(Capability(), GetToolkitVersion());
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, this->RunHloPass(&pass, module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, this->RunHloPass(&pass, module.get()));
   EXPECT_TRUE(changed);
 
   EXPECT_THAT(
@@ -760,10 +761,10 @@ ENTRY test {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_text));
   GemmRewriter pass(Capability(), GetToolkitVersion());
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, this->RunHloPass(&pass, module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, this->RunHloPass(&pass, module.get()));
   SCOPED_TRACE(module->ToString());
   EXPECT_TRUE(changed);
 
@@ -2465,10 +2466,10 @@ ENTRY test {
 
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_text));
   GemmRewriter pass(Capability(), GetToolkitVersion());
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, this->RunHloPass(&pass, module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, this->RunHloPass(&pass, module.get()));
   EXPECT_TRUE(changed);
 
   EXPECT_THAT(
@@ -2542,10 +2543,10 @@ ENTRY test {
 
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_text));
   GemmRewriter pass(Capability(), GetToolkitVersion());
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, this->RunHloPass(&pass, module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, this->RunHloPass(&pass, module.get()));
   EXPECT_TRUE(changed);
 
   EXPECT_THAT(
@@ -2825,10 +2826,10 @@ ENTRY test {
 
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_text));
   GemmRewriter pass(Capability(), GetToolkitVersion());
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, this->RunHloPass(&pass, module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, this->RunHloPass(&pass, module.get()));
   EXPECT_TRUE(changed);
 
   EXPECT_THAT(
@@ -3143,10 +3144,10 @@ ENTRY test {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_text));
   GemmRewriter pass(Capability(), GetToolkitVersion());
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, this->RunHloPass(&pass, module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, this->RunHloPass(&pass, module.get()));
   SCOPED_TRACE(module->ToString());
   EXPECT_TRUE(changed);
 
@@ -3240,8 +3241,8 @@ ENTRY test {
       continue;
     }
 
-    TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> optimized_module,
-                            GetOptimizedModule(hlo_text));
+    ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> optimized_module,
+                         GetOptimizedModule(hlo_text));
     EXPECT_THAT(
         optimized_module->entry_computation()->root_instruction(),
         GmockMatch(m::GetTupleElement(
@@ -3285,8 +3286,8 @@ ENTRY test {
       continue;
     }
 
-    TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> optimized_module,
-                            GetOptimizedModule(hlo_text));
+    ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> optimized_module,
+                         GetOptimizedModule(hlo_text));
     EXPECT_THAT(
         optimized_module->entry_computation()->root_instruction(),
         GmockMatch(m::GetTupleElement(
@@ -3330,8 +3331,8 @@ ENTRY test {
       continue;
     }
 
-    TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> optimized_module,
-                            GetOptimizedModule(hlo_text));
+    ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> optimized_module,
+                         GetOptimizedModule(hlo_text));
     EXPECT_THAT(optimized_module->entry_computation()->root_instruction(),
                 GmockMatch(m::GetTupleElement(
                     m::CustomCall(m::Parameter(0), m::Parameter(1),
@@ -3364,8 +3365,8 @@ ENTRY test {
     GTEST_SKIP() << "Pre-Ampere casts up bf16 to fp32";
   }
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> optimized_module,
-                          GetOptimizedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> optimized_module,
+                       GetOptimizedModule(hlo_text));
   MatchOptimizedHlo(hlo_text, R"(
 ; CHECK:        %[[custom_call:.*]] = {{.*}} custom-call{{.*}}__cublas$lt$matmul
 ; CHECK:        %[[tuple:.*]] = bf16[16,16]{1,0} get-tuple-element(%[[custom_call]]), index=0
@@ -3431,15 +3432,15 @@ ENTRY %test (x: f32[2,3,4], y: f32[4,5,7], z: f32[7]) -> f32[2,3,5,7] {
   HloModuleConfig config;
   DebugOptions debug_options = GetDebugOptionsForTest();
   config.set_debug_options(debug_options);
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_text, config));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_text, config));
 
   GemmRewriter pass(Capability(), GetToolkitVersion());
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHloPass(&pass, module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, RunHloPass(&pass, module.get()));
   EXPECT_TRUE(changed);
 
-  TF_ASSERT_OK_AND_ASSIGN(bool filecheck_result,
-                          RunFileCheck(module->ToString(), R"(
+  ASSERT_OK_AND_ASSIGN(bool filecheck_result,
+                       RunFileCheck(module->ToString(), R"(
 ; CHECK:           custom_call_target="__cublas$lt$matmul",
 ; CHECK-DAG:         "epilogue":"DEFAULT"
       )"));

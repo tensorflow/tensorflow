@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <memory>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
 #include "xla/backends/gpu/codegen/triton/test_utils.h"
@@ -22,7 +23,6 @@ limitations under the License.
 #include "xla/service/gpu/model/block_level_parameters.h"
 #include "xla/tests/hlo_test_base_with_mlir_context.h"
 #include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -54,8 +54,8 @@ ENTRY e {
     calls=transpose_fusion,
     backend_config={"fusion_backend_config": {kind: "__triton"}}
 })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kHloText));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloText));
 
   BlockLevelParameters block_level_parameters;
   block_level_parameters.output_tile_sizes = {{16, 32}};
@@ -83,8 +83,8 @@ ENTRY e {
     calls=bitcast_fusion,
     backend_config={"fusion_backend_config": {kind: "__triton"}}
 })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kHloText));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloText));
 
   BlockLevelParameters block_level_parameters;
   block_level_parameters.output_tile_sizes = {{16, 32}};
@@ -110,8 +110,8 @@ ENTRY e {
     calls=iota_fusion,
     backend_config={"fusion_backend_config": {kind: "__triton"}}
 })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kHloText));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloText));
 
   BlockLevelParameters block_level_parameters;
   block_level_parameters.output_tile_sizes = {{16}};
@@ -139,8 +139,8 @@ ENTRY e {
     calls=broadcast_in_dim_fusion,
     backend_config={"fusion_backend_config": {kind: "__triton"}}
 })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kHloText));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloText));
 
   BlockLevelParameters block_level_parameters;
   block_level_parameters.output_tile_sizes = {{16, 32, 8}};
@@ -169,8 +169,8 @@ ENTRY e {
     calls=broadcast_in_dim_fusion,
     backend_config={"fusion_backend_config": {kind: "__triton"}}
 })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kHloText));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloText));
 
   BlockLevelParameters block_level_parameters;
   block_level_parameters.output_tile_sizes = {{16, 32, 8}};
@@ -205,8 +205,8 @@ ENTRY e {
     calls=reduce_fusion,
     backend_config={"fusion_backend_config": {kind: "__triton"}}
 })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kHloText));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloText));
 
   BlockLevelParameters block_level_parameters;
   block_level_parameters.output_tile_sizes = {{16}};
@@ -240,8 +240,8 @@ ENTRY e {
     calls=reshape_fusion,
     backend_config={"fusion_backend_config": {kind: "__triton"}}
 })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kHloText));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloText));
 
   BlockLevelParameters block_level_parameters;
   block_level_parameters.output_tile_sizes = {{1, 16}};
@@ -294,8 +294,8 @@ ENTRY e {
     calls=dot_fusion,
     backend_config={"fusion_backend_config": {kind: "__triton"}}
 })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kHloText));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloText));
 
   BlockLevelParameters block_level_parameters;
   block_level_parameters.output_tile_sizes = {{32, 8}};
@@ -413,8 +413,8 @@ ENTRY e {
 }
 
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kHloText));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloText));
 
   auto& debug_options = module->mutable_config().mutable_debug_options();
   debug_options.set_xla_gpu_experimental_scaled_dot_with_triton(true);

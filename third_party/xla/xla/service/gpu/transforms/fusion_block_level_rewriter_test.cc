@@ -37,7 +37,6 @@ License.
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/xla.pb.h"
 
 namespace xla {
@@ -85,8 +84,8 @@ ENTRY entry {
     backend_config={"fusion_backend_config":
       {"kind":"__triton", "block_level_fusion_config":{}}}
 })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_text));
   EXPECT_THAT(
       FusionBlockLevelRewriter(device_info_, HloCostAnalysis::DefaultShapeSize,
                                &mlir_context_)
@@ -106,8 +105,8 @@ ENTRY entry {
   ROOT fusion = f32[10,10] fusion(param_0), kind=kLoop,
     calls=fusion_computation
 })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_text));
 
   EXPECT_THAT(
       FusionBlockLevelRewriter(device_info_, HloCostAnalysis::DefaultShapeSize,
@@ -133,8 +132,8 @@ ENTRY entry {
   ROOT fusion = f32[25,4] fusion(param_0), kind=kLoop,
     calls=fusion_computation
 })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_text));
 
   ASSERT_FALSE(std::holds_alternative<SymbolicTileAnalysis>(
       SymbolicTileAnalysis::AnalyzeComputation(
@@ -160,8 +159,8 @@ ENTRY entry {
   ROOT fusion = f8e4m3fn[10,10] fusion(param_0), kind=kLoop,
     calls=fusion_computation
 })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_text));
   ASSERT_FALSE(IsTritonSupportedComputation(
       *module->GetComputationWithName("fusion_computation"),
       device_info_.gpu_compute_capability()));
@@ -198,8 +197,8 @@ ENTRY entry  {
 }
 
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kHloText));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloText));
   se::DeviceDescription device_info{TestGpuDeviceInfo::RTXA6000DeviceInfo(
       se::CudaComputeCapability::Ampere())};
   FusionBlockLevelRewriter rewriter(

@@ -18,6 +18,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
@@ -163,8 +164,8 @@ TEST_F(ComputeConstantTest, GetDimensionSize) {
     auto get_dimension_size = GetDimensionSize(add, 0);
     EXPECT_TRUE(IsConstant(get_dimension_size, &b));
 
-    TF_ASSERT_OK_AND_ASSIGN(auto value, ComputeConstantScalar<int32_t>(
-                                            client, get_dimension_size, &b));
+    ASSERT_OK_AND_ASSIGN(auto value, ComputeConstantScalar<int32_t>(
+                                         client, get_dimension_size, &b));
     EXPECT_EQ(value, 1);
   }
 }
@@ -180,8 +181,8 @@ TEST_F(ComputeConstantTest, MultipleGetDimensionSize) {
     auto add_2 = Add(get_dimension_size, get_dimension_size_2);
     EXPECT_TRUE(IsConstant(add_2, &b));
 
-    TF_ASSERT_OK_AND_ASSIGN(auto value,
-                            ComputeConstantScalar<int32_t>(client, add_2, &b));
+    ASSERT_OK_AND_ASSIGN(auto value,
+                         ComputeConstantScalar<int32_t>(client, add_2, &b));
     EXPECT_EQ(value, 2);
   }
 }
@@ -208,8 +209,8 @@ TEST_F(ComputeConstantTest, UnrelatedParam) {
 
     EXPECT_TRUE(IsConstant(constant_13, &b));
 
-    TF_ASSERT_OK_AND_ASSIGN(
-        auto value, ComputeConstantScalar<float>(client, constant_13, &b));
+    ASSERT_OK_AND_ASSIGN(auto value,
+                         ComputeConstantScalar<float>(client, constant_13, &b));
     EXPECT_EQ(value, 13.0f);
   }
 }
@@ -223,8 +224,8 @@ TEST_F(ComputeConstantTest, NonScalarAdd) {
         Add(ConstantR1<int32_t>(&b, {1, 2}), ConstantR1<int32_t>(&b, {3, 4}));
     EXPECT_TRUE(IsConstant(computation, &b));
 
-    TF_ASSERT_OK_AND_ASSIGN(auto computed,
-                            ComputeConstantLiteral(client, computation, &b));
+    ASSERT_OK_AND_ASSIGN(auto computed,
+                         ComputeConstantLiteral(client, computation, &b));
     Literal expected_literal = LiteralUtil::CreateR1<int32_t>({4, 6});
     EXPECT_TRUE(LiteralTestUtil::Equal(expected_literal, computed));
   }
@@ -238,8 +239,8 @@ TEST_F(ComputeConstantTest, IntegerDivide) {
         Div(ConstantR0<int32_t>(&b, 15), ConstantR0<int32_t>(&b, 3));
     EXPECT_TRUE(IsConstant(computation, &b));
 
-    TF_ASSERT_OK_AND_ASSIGN(auto computed,
-                            ComputeConstantLiteral(client, computation, &b));
+    ASSERT_OK_AND_ASSIGN(auto computed,
+                         ComputeConstantLiteral(client, computation, &b));
     Literal expected_literal = LiteralUtil::CreateR0<int32_t>(5);
     EXPECT_TRUE(LiteralTestUtil::Equal(expected_literal, computed));
   }
@@ -253,7 +254,7 @@ TEST_F(ComputeConstantTest, Layout) {
     std::vector<std::vector<int64_t>> layouts = {{0, 1}, {1, 0}};
     for (const std::vector<int64_t>& layout : layouts) {
       auto layout_proto = LayoutUtil::MakeLayout(layout);
-      TF_ASSERT_OK_AND_ASSIGN(
+      ASSERT_OK_AND_ASSIGN(
           auto computed, ComputeConstantLiteral(
                              client,
                              Add(ConstantR2<int32_t>(&b, {{1, 2}, {3, 4}}),

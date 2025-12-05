@@ -15,14 +15,14 @@ limitations under the License.
 
 #include "xla/hlo/transforms/expanders/dynamic_index_splitter.h"
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/test.h"
-#include "xla/hlo/testlib/test_helpers.h"
 #include "xla/hlo/utils/hlo_matchers.h"
+#include "xla/service/hlo_module_config.h"
 #include "xla/xla.pb.h"
 
 namespace xla {
@@ -47,10 +47,9 @@ TEST_F(DynamicIndexSplitterTest, DynamicSlice) {
   debug_options.set_xla_allow_scalar_index_dynamic_ops(true);
   config.set_debug_options(debug_options);
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kDynamicSlice, config));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          DynamicIndexSplitter().Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(kDynamicSlice, config));
+  ASSERT_OK_AND_ASSIGN(bool changed, DynamicIndexSplitter().Run(module.get()));
   EXPECT_TRUE(changed);
   ASSERT_THAT(module->entry_computation()->root_instruction(),
               op::DynamicSlice(op::Parameter(0),
@@ -85,10 +84,9 @@ TEST_F(DynamicIndexSplitterTest, DynamicUpdateSlice) {
   debug_options.set_xla_allow_scalar_index_dynamic_ops(true);
   config.set_debug_options(debug_options);
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto module, ParseAndReturnVerifiedModule(kDynamicUpdateSlice, config));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          DynamicIndexSplitter().Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, DynamicIndexSplitter().Run(module.get()));
   EXPECT_TRUE(changed);
   ASSERT_THAT(module->entry_computation()->root_instruction(),
               op::DynamicUpdateSlice(op::Parameter(0), op::Parameter(2),
@@ -124,10 +122,9 @@ TEST_F(DynamicIndexSplitterTest, AlreadyScalar) {
   debug_options.set_xla_allow_scalar_index_dynamic_ops(true);
   config.set_debug_options(debug_options);
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kDynamicSlice, config));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          DynamicIndexSplitter().Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(kDynamicSlice, config));
+  ASSERT_OK_AND_ASSIGN(bool changed, DynamicIndexSplitter().Run(module.get()));
   EXPECT_FALSE(changed);
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               op::DynamicSlice(op::Parameter(0), op::Parameter(1),

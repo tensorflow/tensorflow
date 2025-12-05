@@ -25,8 +25,8 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include "absl/algorithm/container.h"
-#include "absl/base/dynamic_annotations.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
@@ -52,8 +52,6 @@ limitations under the License.
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/primitive_util.h"
-#include "xla/service/custom_call_status.h"
-#include "xla/service/custom_call_target_registry.h"
 #include "xla/service/platform_util.h"
 #include "xla/service/service.h"
 #include "xla/service/shaped_buffer.h"
@@ -183,7 +181,7 @@ TEST_F(CustomCallTest, CustomCallR0F32Add2) {
 
   module->AddEntryComputation(builder.Build());
 
-  TF_ASSERT_OK_AND_ASSIGN(auto result, Execute(std::move(module), {}));
+  ASSERT_OK_AND_ASSIGN(auto result, Execute(std::move(module), {}));
   LiteralTestUtil::ExpectR0Near<float>(44.0f, result, kDefaultErrorSpec);
 }
 
@@ -202,7 +200,7 @@ TEST_F(CustomCallTest, CustomCallR0F32Add2Aliased) {
 
   module->AddEntryComputation(builder.Build());
 
-  TF_ASSERT_OK_AND_ASSIGN(auto result, Execute(std::move(module), {}));
+  ASSERT_OK_AND_ASSIGN(auto result, Execute(std::move(module), {}));
   LiteralTestUtil::ExpectR0Near<float>(44.0f, result, kDefaultErrorSpec);
 }
 
@@ -224,7 +222,7 @@ TEST_F(CustomCallTest, CustomCallR2F32Reduce) {
 
   module->AddEntryComputation(builder.Build());
 
-  TF_ASSERT_OK_AND_ASSIGN(auto result, Execute(std::move(module), {}));
+  ASSERT_OK_AND_ASSIGN(auto result, Execute(std::move(module), {}));
   LiteralTestUtil::ExpectR0Near<float>(10.0f, result, kDefaultErrorSpec);
 }
 
@@ -818,8 +816,7 @@ TEST_F(FfiCustomCallTest, FfiTransitiveCustomCallReportsOneOfFailures) {
       ROOT sum = f32[] add(%call0, %call1)
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kModuleStr));
 
   // Execution order is undefined because custom calls do not have data
   // dependency, and we check that the error message contains one of the two
@@ -896,7 +893,7 @@ TEST_F(FfiCustomCallTest, FfiHandleTypedBuffers) {
 
   module->AddEntryComputation(builder.Build());
 
-  TF_ASSERT_OK_AND_ASSIGN(auto result, Execute(std::move(module), {}));
+  ASSERT_OK_AND_ASSIGN(auto result, Execute(std::move(module), {}));
   LiteralTestUtil::ExpectR0Near<float>(44.0f, result, kDefaultErrorSpec);
 }
 
@@ -914,7 +911,7 @@ TEST_F(FfiCustomCallTest, FfiHandleInputAsParameters) {
 
   Literal argument = LiteralUtil::CreateR0<float>(42.0f);
 
-  TF_ASSERT_OK_AND_ASSIGN(auto result, Execute(std::move(module), {&argument}));
+  ASSERT_OK_AND_ASSIGN(auto result, Execute(std::move(module), {&argument}));
   LiteralTestUtil::ExpectR0Near<float>(44.0f, result, kDefaultErrorSpec);
 }
 
@@ -930,7 +927,7 @@ TEST_F(FfiCustomCallTest, FfiHandleBufferBaseFloat) {
 
   module->AddEntryComputation(builder.Build());
 
-  TF_ASSERT_OK_AND_ASSIGN(auto result, Execute(std::move(module), {}));
+  ASSERT_OK_AND_ASSIGN(auto result, Execute(std::move(module), {}));
   LiteralTestUtil::ExpectR0Near<float>(44.0f, result, kDefaultErrorSpec);
 }
 
@@ -947,7 +944,7 @@ TEST_F(FfiCustomCallTest, FfiHandleBufferBaseDouble) {
 
   module->AddEntryComputation(builder.Build());
 
-  TF_ASSERT_OK_AND_ASSIGN(auto result, Execute(std::move(module), {}));
+  ASSERT_OK_AND_ASSIGN(auto result, Execute(std::move(module), {}));
   LiteralTestUtil::ExpectR0Near<double>(44.0f, result, kDefaultErrorSpec);
 }
 
@@ -964,7 +961,7 @@ TEST_F(FfiCustomCallTest, FfiHandleAttr) {
 
   module->AddEntryComputation(builder.Build());
 
-  TF_ASSERT_OK_AND_ASSIGN(auto result, Execute(std::move(module), {}));
+  ASSERT_OK_AND_ASSIGN(auto result, Execute(std::move(module), {}));
   LiteralTestUtil::ExpectR0Near<float>(45.0f, result, kDefaultErrorSpec);
 }
 
@@ -983,7 +980,7 @@ TEST_F(FfiCustomCallTest, FfiHandleAttrPointer) {
 
   module->AddEntryComputation(builder.Build());
 
-  TF_ASSERT_OK_AND_ASSIGN(auto result, Execute(std::move(module), {}));
+  ASSERT_OK_AND_ASSIGN(auto result, Execute(std::move(module), {}));
   LiteralTestUtil::ExpectR0Near<float>(46.0f, result, kDefaultErrorSpec);
 }
 
@@ -1006,7 +1003,7 @@ TEST_F(FfiCustomCallTest, FfiHandleR2Vector) {
 
   module->AddEntryComputation(builder.Build());
 
-  TF_ASSERT_OK_AND_ASSIGN(auto result, Execute(std::move(module), {}));
+  ASSERT_OK_AND_ASSIGN(auto result, Execute(std::move(module), {}));
   LiteralTestUtil::ExpectR0Near<float>(10.0f, result, kDefaultErrorSpec);
 }
 
@@ -1069,7 +1066,7 @@ TEST_P(FfiCustomCallEnumTest, FfiHandleEnumAttr) {
 
   module->AddEntryComputation(builder.Build());
 
-  TF_ASSERT_OK_AND_ASSIGN(auto result, Execute(std::move(module), {}));
+  ASSERT_OK_AND_ASSIGN(auto result, Execute(std::move(module), {}));
 
   // Init method is an artificial enum to demonstrate handling enums with
   // different underlying types. Normally it would be just a float scalar.
@@ -1117,7 +1114,7 @@ TEST_F(FfiCustomCallTest, FfiUsedInOtherComputations) {
 
   module->AddEntryComputation(builder.Build());
 
-  TF_ASSERT_OK_AND_ASSIGN(auto result, Execute(std::move(module), {}));
+  ASSERT_OK_AND_ASSIGN(auto result, Execute(std::move(module), {}));
   LiteralTestUtil::ExpectR3EqualArray3D<float>(
       Array3D<float>{{{2, 3}, {4, 5}}, {{3, 4}, {5, 6}}}, result);
 }
@@ -1142,7 +1139,7 @@ TEST_F(FfiCustomCallTest, FfiInputAndOutputLayoutDiffer) {
   // Note, the expected result is transposed! This is because the input and
   // output layouts of the custom call differ and the called function just
   // blindly adds one to each element.
-  TF_ASSERT_OK_AND_ASSIGN(auto result, Execute(std::move(module), {&argument}));
+  ASSERT_OK_AND_ASSIGN(auto result, Execute(std::move(module), {&argument}));
   LiteralTestUtil::ExpectR2Equal<float>({{2.f, 4.f}, {3.f, 5.f}}, result);
 }
 
@@ -1172,7 +1169,7 @@ TEST_F(FfiCustomCallTest, FfiLayoutConstrained) {
 
   Literal argument = LiteralUtil::CreateR2<float>({{1.f, 2.f}, {3.f, 4.f}});
 
-  TF_ASSERT_OK_AND_ASSIGN(auto result, Execute(std::move(module), {&argument}));
+  ASSERT_OK_AND_ASSIGN(auto result, Execute(std::move(module), {&argument}));
   LiteralTestUtil::ExpectR2Equal<float>({{3.f, 4.f}, {5.f, 6.f}}, result);
 }
 
@@ -1195,8 +1192,7 @@ TEST_F(FfiCustomCallTest, FfiTupleOutput) {
   Literal arg1 = LiteralUtil::CreateR0<float>(42.f);
 
   Literal expected = LiteralUtil::MakeTuple({&arg1, &arg0});
-  TF_ASSERT_OK_AND_ASSIGN(auto result,
-                          Execute(std::move(module), {&arg0, &arg1}));
+  ASSERT_OK_AND_ASSIGN(auto result, Execute(std::move(module), {&arg0, &arg1}));
   EXPECT_EQ(result, expected);
 }
 
@@ -1219,8 +1215,7 @@ TEST_F(FfiCustomCallTest, FfiNestedTupleOutput) {
       ROOT tuple = (f32[], f32[], f32[], f32[]) tuple(t00, t01, t10, t11)
     })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kModuleStr));
 
   const Literal arg0 = LiteralUtil::CreateR0<float>(7.f);
   const Literal arg1 = LiteralUtil::CreateR0<float>(42.f);
@@ -1228,7 +1223,7 @@ TEST_F(FfiCustomCallTest, FfiNestedTupleOutput) {
   const Literal arg3 = LiteralUtil::CreateR0<float>(43.f);
 
   const Literal expected = LiteralUtil::MakeTuple({&arg1, &arg2, &arg3, &arg0});
-  TF_ASSERT_OK_AND_ASSIGN(const Literal result, Execute(std::move(module), {}));
+  ASSERT_OK_AND_ASSIGN(const Literal result, Execute(std::move(module), {}));
   EXPECT_EQ(result, expected);
 }
 
@@ -1241,14 +1236,13 @@ TEST_F(FfiCustomCallTest, FfiTupleInput) {
       ROOT custom-call = (f32[], f32[]) custom-call(c0), custom_call_target="__xla_test$$FfiF32TupleSwap", api_version=API_VERSION_TYPED_FFI
     })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kModuleStr));
 
   Literal arg0 = LiteralUtil::CreateR0<float>(7.f);
   Literal arg1 = LiteralUtil::CreateR0<float>(42.f);
 
   Literal expected = LiteralUtil::MakeTuple({&arg1, &arg0});
-  TF_ASSERT_OK_AND_ASSIGN(auto result, Execute(std::move(module), {}));
+  ASSERT_OK_AND_ASSIGN(auto result, Execute(std::move(module), {}));
   EXPECT_EQ(result, expected);
 }
 
@@ -1261,8 +1255,7 @@ TEST_F(FfiCustomCallTest, FfiNestedTupleInput) {
       ROOT custom-call = (f32[], f32[], f32[], f32[]) custom-call(c0), custom_call_target="__xla_test$$FfiTupleRotate", api_version=API_VERSION_TYPED_FFI
     })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kModuleStr));
 
   Literal arg0 = LiteralUtil::CreateR0<float>(7.f);
   Literal arg1 = LiteralUtil::CreateR0<float>(42.f);
@@ -1270,7 +1263,7 @@ TEST_F(FfiCustomCallTest, FfiNestedTupleInput) {
   Literal arg3 = LiteralUtil::CreateR0<float>(43.f);
 
   Literal expected = LiteralUtil::MakeTuple({&arg1, &arg2, &arg3, &arg0});
-  TF_ASSERT_OK_AND_ASSIGN(auto result, Execute(std::move(module), {}));
+  ASSERT_OK_AND_ASSIGN(auto result, Execute(std::move(module), {}));
   EXPECT_EQ(result, expected);
 }
 
@@ -1283,15 +1276,14 @@ TEST_F(FfiCustomCallTest, SwapTupleAnyBuffersToS16U32) {
       ROOT custom-call = (s16[], u32[]) custom-call(p0), custom_call_target="__xla_test$$SwapTupleAnyBuffersToS16U32", api_version=API_VERSION_TYPED_FFI
     })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kModuleStr));
 
   Literal arg0 = LiteralUtil::CreateR0<uint32_t>(0xDEADC0DE);
   Literal arg1 = LiteralUtil::CreateR0<int16_t>(29);
   Literal argument = LiteralUtil::MakeTuple({&arg0, &arg1});
   Literal expected = LiteralUtil::MakeTuple({&arg1, &arg0});
 
-  TF_ASSERT_OK_AND_ASSIGN(auto result, Execute(std::move(module), {&argument}));
+  ASSERT_OK_AND_ASSIGN(auto result, Execute(std::move(module), {&argument}));
   EXPECT_EQ(result, expected);
 }
 
@@ -1308,15 +1300,14 @@ TEST_F(FfiCustomCallTest, IgnoresEmptyTupleParameter) {
       ROOT custom-call = (s16[], u32[]) custom-call(p0), custom_call_target="__xla_test$$SwapTupleAnyBuffersToS16U32", api_version=API_VERSION_TYPED_FFI
     })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kModuleStr));
 
   Literal arg0 = LiteralUtil::CreateR0<uint32_t>(0xDEADC0DE);
   Literal arg1 = LiteralUtil::CreateR0<int16_t>(29);
   const Literal expected = LiteralUtil::MakeTuple({&arg1, &arg0});
 
-  TF_ASSERT_OK_AND_ASSIGN(const Literal result,
-                          Execute(std::move(module), {&arg0, &arg1}));
+  ASSERT_OK_AND_ASSIGN(const Literal result,
+                       Execute(std::move(module), {&arg0, &arg1}));
   EXPECT_EQ(result, expected);
 }
 
@@ -1329,15 +1320,14 @@ TEST_F(FfiCustomCallTest, SwapTupleU32S16ToS16U32) {
       ROOT custom-call = (s16[], u32[]) custom-call(p0), custom_call_target="__xla_test$$SwapTupleU32S16ToS16U32", api_version=API_VERSION_TYPED_FFI
     })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kModuleStr));
 
   Literal arg0 = LiteralUtil::CreateR0<uint32_t>(0xDEADC0DE);
   Literal arg1 = LiteralUtil::CreateR0<int16_t>(29);
   Literal argument = LiteralUtil::MakeTuple({&arg0, &arg1});
   Literal expected = LiteralUtil::MakeTuple({&arg1, &arg0});
 
-  TF_ASSERT_OK_AND_ASSIGN(auto result, Execute(std::move(module), {&argument}));
+  ASSERT_OK_AND_ASSIGN(auto result, Execute(std::move(module), {&argument}));
   EXPECT_EQ(result, expected);
 }
 
@@ -1350,16 +1340,14 @@ TEST_F(FfiCustomCallTest, HandleR2Tuple) {
       ROOT custom-call = f32[2, 3] custom-call(p0), custom_call_target="__xla_test$$Concat3Vectors", api_version=API_VERSION_TYPED_FFI
     })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kModuleStr));
 
   Literal arg_0 = LiteralUtil::CreateR2<float>({{1.f}, {2.f}});
   Literal arg_1 = LiteralUtil::CreateR2<float>({{3.f}, {4.f}});
   Literal arg_2 = LiteralUtil::CreateR2<float>({{5.f}, {6.f}});
   Literal tuple_arg = LiteralUtil::MakeTuple({&arg_0, &arg_1, &arg_2});
 
-  TF_ASSERT_OK_AND_ASSIGN(auto result,
-                          Execute(std::move(module), {&tuple_arg}));
+  ASSERT_OK_AND_ASSIGN(auto result, Execute(std::move(module), {&tuple_arg}));
 
   LiteralTestUtil::ExpectR2Equal<float>({{1.f, 3.f, 5.f},   //
                                          {2.f, 4.f, 6.f}},  //
@@ -1381,8 +1369,7 @@ TEST_F(FfiCustomCallTest, HandleTupleDifferentRanks) {
       ROOT custom-call = (s32[5], f32[5, 2, 2]) custom-call(p0), custom_call_target="__xla_test$$HandleTupleDifferentRanks", api_version=API_VERSION_TYPED_FFI
     })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kModuleStr));
 
   Literal arg_0 = LiteralUtil::CreateR0<uint32_t>(100);
   Literal arg_1 = LiteralUtil::CreateR1<int16_t>({29, 30, 31, 32, 33});
@@ -1392,7 +1379,7 @@ TEST_F(FfiCustomCallTest, HandleTupleDifferentRanks) {
                                                 {{9.f, 10.f}, {11.f, 12.f}},
                                                 {{13.f, 14.f}, {15.f, 16.f}}});
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       const Literal result,
       Execute(std::move(module), {&arg_0, &arg_1, &arg_2, &arg_3}));
 
@@ -1425,8 +1412,7 @@ TEST_F(FfiCustomCallTest, FfiNestedTupleInputAndOutput) {
       ROOT result = (f32[], f32[], f32[], f32[]) tuple(t00, t10, t11, t20)
     })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kModuleStr));
 
   Literal arg0 = LiteralUtil::CreateR0<float>(7.f);
   Literal arg1 = LiteralUtil::CreateR0<float>(42.f);
@@ -1434,7 +1420,7 @@ TEST_F(FfiCustomCallTest, FfiNestedTupleInputAndOutput) {
   Literal arg3 = LiteralUtil::CreateR0<float>(43.f);
 
   const Literal expected = LiteralUtil::MakeTuple({&arg1, &arg2, &arg3, &arg0});
-  TF_ASSERT_OK_AND_ASSIGN(const Literal result, Execute(std::move(module), {}));
+  ASSERT_OK_AND_ASSIGN(const Literal result, Execute(std::move(module), {}));
   EXPECT_EQ(result, expected);
 }
 
@@ -1542,8 +1528,7 @@ TEST_F(CustomCallTest, FfiExecutionStateInstantiate) {
         "__xla_test$$ffi_execution_state", api_version=API_VERSION_TYPED_FFI
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kModuleStr));
 
   // Execute the module, but don't verify the results.
   instantiate_called_counter = 0;
@@ -1584,14 +1569,13 @@ TEST_F(CustomCallTest, FfiExecutionStateExecute) {
       ROOT result = f32[] get-tuple-element(while), index=1
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kModuleStr));
 
   // Custom call called twice, starting value is hardcoded in the instantiate
   // callback as 42.0, so we expect 44.0 as a result.
   Literal expected = LiteralUtil::CreateR0<float>(44.f);
 
-  TF_ASSERT_OK_AND_ASSIGN(auto result, Execute(std::move(module), {}));
+  ASSERT_OK_AND_ASSIGN(auto result, Execute(std::move(module), {}));
   EXPECT_EQ(result, expected);
 }
 
@@ -1608,8 +1592,7 @@ TEST_F(CustomCallTest, FfiExecutionStateInstantiateWithAttribute) {
         backend_config="{initial_value = 43.0 : f32}"
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kModuleStr));
 
   // Execute the module, but don't verify the results.
   last_value = 0;
@@ -1654,14 +1637,13 @@ TEST_F(CustomCallTest, FfiExecutionStateExecuteWithAttribute) {
       ROOT result = f32[] get-tuple-element(while), index=1
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kModuleStr));
 
   // Custom call called three times, with initial value set to 43.0. So we
   // expect 46.0 as a result.
   Literal expected = LiteralUtil::CreateR0<float>(46.f);
 
-  TF_ASSERT_OK_AND_ASSIGN(auto result, Execute(std::move(module), {}));
+  ASSERT_OK_AND_ASSIGN(auto result, Execute(std::move(module), {}));
   EXPECT_EQ(result, expected);
 }
 
@@ -1720,11 +1702,11 @@ TEST_F(CustomCallClientAPITest, FfiExecutionContext) {
              /*schedule=*/CustomCallSchedule::SCHEDULE_NONE,
              /*api_version=*/CustomCallApiVersion::API_VERSION_TYPED_FFI);
 
-  TF_ASSERT_OK_AND_ASSIGN(auto local_client, CreateClient());
+  ASSERT_OK_AND_ASSIGN(auto local_client, CreateClient());
   EXPECT_NE(local_client->device_count(), 0);
 
-  TF_ASSERT_OK_AND_ASSIGN(auto computation, b.Build());
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(auto computation, b.Build());
+  ASSERT_OK_AND_ASSIGN(
       auto executable,
       local_client->Compile(computation, /*argument_layouts=*/{},
                             /*options=*/{}));
@@ -1737,9 +1719,9 @@ TEST_F(CustomCallClientAPITest, FfiExecutionContext) {
   run_options.set_ffi_execution_context(&execution_context);
 
   std::vector<const xla::ShapedBuffer*> args;
-  TF_ASSERT_OK_AND_ASSIGN(auto result, executable[0]->Run(args, run_options));
-  TF_ASSERT_OK_AND_ASSIGN(auto* user_context,
-                          execution_context.Lookup<SomeExtraContext>());
+  ASSERT_OK_AND_ASSIGN(auto result, executable[0]->Run(args, run_options));
+  ASSERT_OK_AND_ASSIGN(auto* user_context,
+                       execution_context.Lookup<SomeExtraContext>());
   EXPECT_TRUE(user_context->executed);
 }
 

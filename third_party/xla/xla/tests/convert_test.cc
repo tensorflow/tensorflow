@@ -23,6 +23,8 @@ limitations under the License.
 #include <vector>
 
 #include "xla/tests/xla_test_backend_predicates.h"
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
 #include "absl/algorithm/container.h"
 #include "absl/base/casts.h"
 #include "xla/error_spec.h"
@@ -34,7 +36,6 @@ limitations under the License.
 #include "xla/tests/client_library_test_runner_mixin.h"
 #include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
 #include "xla/tests/hlo_pjrt_test_base.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/types.h"
 #include "xla/util.h"
@@ -665,7 +666,7 @@ TEST_F(ConvertTest, ConvertBF16F32) {
   xla::XlaOp all_bfloats_f32 = ConvertElementType(all_bfloats_bf16, F32);
   BitcastConvertType(all_bfloats_f32, U32);
 
-  TF_ASSERT_OK_AND_ASSIGN(const auto results, ExecuteAndTransfer(&builder, {}));
+  ASSERT_OK_AND_ASSIGN(const auto results, ExecuteAndTransfer(&builder, {}));
   for (int i = 0; i < expected.size(); ++i) {
     const auto result = results.Get<uint32_t>({i});
     const auto correct = expected[i];
@@ -720,7 +721,7 @@ TEST_F(ConvertTest, ConvertF32BF16) {
   xla::XlaOp lit_bf16 = ConvertElementType(lit_f32, BF16);
   BitcastConvertType(lit_bf16, U16);
 
-  TF_ASSERT_OK_AND_ASSIGN(const auto results, ExecuteAndTransfer(&builder, {}));
+  ASSERT_OK_AND_ASSIGN(const auto results, ExecuteAndTransfer(&builder, {}));
   for (int i = 0; i < expected.size(); ++i) {
     const auto result = results.Get<uint16_t>({i});
     const auto correct = absl::bit_cast<uint16_t>(expected[i]);

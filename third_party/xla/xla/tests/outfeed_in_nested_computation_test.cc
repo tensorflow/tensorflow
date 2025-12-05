@@ -16,6 +16,7 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 
+#include <gmock/gmock.h>
 #include "absl/log/log.h"
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/hlo/builder/xla_computation.h"
@@ -26,7 +27,6 @@ limitations under the License.
 #include "xla/tests/local_client_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/env.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 
 namespace xla {
@@ -50,7 +50,7 @@ TEST_F(OutfeedInNestedComputationTest, OutfeedInWhile) {
   XlaOp num_iter = Infeed(&b, int_shape);
   XlaOp init_tuple = Tuple(&b, {num_iter, some_buffer});
 
-  TF_ASSERT_OK_AND_ASSIGN(XlaComputation loop_cond, [&] {
+  ASSERT_OK_AND_ASSIGN(XlaComputation loop_cond, [&] {
     // Condition: iteration variable > 0
     XlaBuilder cond_builder("loop_condition");
     XlaOp state_tuple = Parameter(&cond_builder, 0, state_tuple_shape, "state");
@@ -60,7 +60,7 @@ TEST_F(OutfeedInNestedComputationTest, OutfeedInWhile) {
     return cond_builder.Build();
   }());
 
-  TF_ASSERT_OK_AND_ASSIGN(XlaComputation loop_body, [&] {
+  ASSERT_OK_AND_ASSIGN(XlaComputation loop_body, [&] {
     XlaBuilder body_builder("loop_body");
     XlaOp state_tuple = Parameter(&body_builder, 0, state_tuple_shape, "state");
     XlaOp loop_counter = GetTupleElement(state_tuple, 0);
@@ -80,7 +80,7 @@ TEST_F(OutfeedInNestedComputationTest, OutfeedInWhile) {
   // Build loop.
   XlaOp result_tuple = While(loop_cond, loop_body, init_tuple);
   GetTupleElement(result_tuple, 0);
-  TF_ASSERT_OK_AND_ASSIGN(XlaComputation computation, b.Build());
+  ASSERT_OK_AND_ASSIGN(XlaComputation computation, b.Build());
 
   Literal comp_result;
   std::unique_ptr<tsl::Thread> thread(tsl::Env::Default()->StartThread(
@@ -97,8 +97,8 @@ TEST_F(OutfeedInNestedComputationTest, OutfeedInWhile) {
   // Pick up value from outfeed
   {
     VLOG(1) << "Reading from condition outfeed";
-    TF_ASSERT_OK_AND_ASSIGN(Literal r,
-                            local_client_->TransferFromOutfeed(&int_shape));
+    ASSERT_OK_AND_ASSIGN(Literal r,
+                         local_client_->TransferFromOutfeed(&int_shape));
     EXPECT_EQ(r.Get<int32_t>({}), 1);
   }
 
@@ -110,16 +110,16 @@ TEST_F(OutfeedInNestedComputationTest, OutfeedInWhile) {
   // Pick up value from outfeed
   {
     VLOG(1) << "Reading from body outfeed";
-    TF_ASSERT_OK_AND_ASSIGN(Literal r,
-                            local_client_->TransferFromOutfeed(&xfeed_shape));
+    ASSERT_OK_AND_ASSIGN(Literal r,
+                         local_client_->TransferFromOutfeed(&xfeed_shape));
     EXPECT_EQ(r.Get<int32_t>({0}), 11);
     EXPECT_EQ(r.Get<int32_t>({1}), 21);
   }
 
   {
     VLOG(1) << "Reading from condition outfeed";
-    TF_ASSERT_OK_AND_ASSIGN(Literal r,
-                            local_client_->TransferFromOutfeed(&int_shape));
+    ASSERT_OK_AND_ASSIGN(Literal r,
+                         local_client_->TransferFromOutfeed(&int_shape));
     EXPECT_EQ(r.Get<int32_t>({}), 0);
   }
 
@@ -135,7 +135,7 @@ TEST_F(OutfeedInNestedComputationTest, OutfeedInConditional) {
   Shape condition_shape = ShapeUtil::MakeShape(xla::PRED, {});
   Shape result_shape = ShapeUtil::MakeShape(xla::PRED, {});
 
-  TF_ASSERT_OK_AND_ASSIGN(XlaComputation true_computation, [&] {
+  ASSERT_OK_AND_ASSIGN(XlaComputation true_computation, [&] {
     XlaBuilder inner_builder("true_computation");
     XlaOp param = Parameter(&inner_builder, 0, result_shape, "param");
     Outfeed(param, result_shape, "");
@@ -143,7 +143,7 @@ TEST_F(OutfeedInNestedComputationTest, OutfeedInConditional) {
     return inner_builder.Build();
   }());
 
-  TF_ASSERT_OK_AND_ASSIGN(XlaComputation false_computation, [&] {
+  ASSERT_OK_AND_ASSIGN(XlaComputation false_computation, [&] {
     XlaBuilder inner_builder("false_computation");
     Parameter(&inner_builder, 0, result_shape, "param");
     return inner_builder.Build();
@@ -154,7 +154,7 @@ TEST_F(OutfeedInNestedComputationTest, OutfeedInConditional) {
               /*true_computation=*/true_computation, /*false_operand=*/pred,
               /*false_computation=*/false_computation);
 
-  TF_ASSERT_OK_AND_ASSIGN(XlaComputation computation, b.Build());
+  ASSERT_OK_AND_ASSIGN(XlaComputation computation, b.Build());
 
   Literal comp_result;
   std::unique_ptr<tsl::Thread> thread(tsl::Env::Default()->StartThread(
@@ -166,8 +166,8 @@ TEST_F(OutfeedInNestedComputationTest, OutfeedInConditional) {
   TF_ASSERT_OK(
       local_client_->TransferToInfeed(LiteralUtil::CreateR0<bool>(true)));
 
-  TF_ASSERT_OK_AND_ASSIGN(Literal r,
-                          local_client_->TransferFromOutfeed(&result_shape));
+  ASSERT_OK_AND_ASSIGN(Literal r,
+                       local_client_->TransferFromOutfeed(&result_shape));
 
   EXPECT_EQ(r.Get<bool>({}), true);
 

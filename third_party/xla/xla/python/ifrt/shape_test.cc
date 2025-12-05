@@ -29,7 +29,6 @@ limitations under the License.
 #include "xla/python/ifrt/serdes_test_util.h"
 #include "xla/python/ifrt/serdes_version.h"
 #include "xla/python/ifrt/shape.pb.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace ifrt {
@@ -101,13 +100,13 @@ TEST_P(ShapeSerDesTest, ToFromProto) {
   {
     Shape shape({});
     ShapeProto proto = shape.ToProto(version());
-    TF_ASSERT_OK_AND_ASSIGN(Shape shape_copy, shape.FromProto(proto));
+    ASSERT_OK_AND_ASSIGN(Shape shape_copy, shape.FromProto(proto));
     EXPECT_EQ(shape_copy, shape);
   }
   {
     Shape shape({1, 2});
     ShapeProto proto = shape.ToProto(version());
-    TF_ASSERT_OK_AND_ASSIGN(Shape shape_copy, shape.FromProto(proto));
+    ASSERT_OK_AND_ASSIGN(Shape shape_copy, shape.FromProto(proto));
     EXPECT_EQ(shape_copy, shape);
   }
 }
@@ -139,8 +138,7 @@ class BoundedDynamicShapeTagSerDesTest : public ShapeSerDesTest {};
 TEST_P(BoundedDynamicShapeTagSerDesTest, ToFromProto) {
   BoundedDynamicShapeTag tag({true, false});
   BoundedDynamicShapeTagProto proto = tag.ToProto(version());
-  TF_ASSERT_OK_AND_ASSIGN(BoundedDynamicShapeTag tag_copy,
-                          tag.FromProto(proto));
+  ASSERT_OK_AND_ASSIGN(BoundedDynamicShapeTag tag_copy, tag.FromProto(proto));
   EXPECT_EQ(tag_copy, tag);
 }
 
@@ -158,19 +156,19 @@ TEST(DynamicShapeTest, SizeMismatch) {
 }
 
 TEST(DynamicShapeTest, Equality) {
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       DynamicShape shape1,
       DynamicShape::Create(Shape({2, 4}),
                            BoundedDynamicShapeTag({true, false})));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       DynamicShape shape2,
       DynamicShape::Create(Shape({3, 4}),
                            BoundedDynamicShapeTag({true, false})));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       DynamicShape shape3,
       DynamicShape::Create(Shape({2, 4}),
                            BoundedDynamicShapeTag({true, true})));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       DynamicShape shape4,
       DynamicShape::Create(Shape({2, 4, 3}),
                            BoundedDynamicShapeTag({true, false, true})));
@@ -183,8 +181,8 @@ TEST(DynamicShapeTest, Equality) {
 TEST(DynamicShapeTest, IsDynamicDim) {
   Shape shape({1, 2, 3});
   BoundedDynamicShapeTag tag({true, false, true});
-  TF_ASSERT_OK_AND_ASSIGN(DynamicShape dynamic_shape,
-                          DynamicShape::Create(shape, tag));
+  ASSERT_OK_AND_ASSIGN(DynamicShape dynamic_shape,
+                       DynamicShape::Create(shape, tag));
   EXPECT_TRUE(dynamic_shape.IsDynamicDim(0));
   EXPECT_FALSE(dynamic_shape.IsDynamicDim(1));
   EXPECT_TRUE(dynamic_shape.IsDynamicDim(2));
@@ -193,21 +191,21 @@ TEST(DynamicShapeTest, IsDynamicDim) {
 TEST(DynamicShapeTest, GetPaddedShape) {
   Shape shape({1, 2, 3});
   BoundedDynamicShapeTag tag({true, true, true});
-  TF_ASSERT_OK_AND_ASSIGN(DynamicShape dynamic_shape,
-                          DynamicShape::Create(shape, tag));
-  TF_ASSERT_OK_AND_ASSIGN(Shape padded_shape, dynamic_shape.GetPaddedShape());
+  ASSERT_OK_AND_ASSIGN(DynamicShape dynamic_shape,
+                       DynamicShape::Create(shape, tag));
+  ASSERT_OK_AND_ASSIGN(Shape padded_shape, dynamic_shape.GetPaddedShape());
   EXPECT_EQ(padded_shape, shape);
 }
 
 class DynamicShapeSerDesTest : public ShapeSerDesTest {};
 
 TEST_P(DynamicShapeSerDesTest, ToFromProto) {
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       DynamicShape shape,
       DynamicShape::Create(Shape({2, 4}),
                            BoundedDynamicShapeTag({true, false})));
   DynamicShapeProto proto = shape.ToProto(version());
-  TF_ASSERT_OK_AND_ASSIGN(DynamicShape shape_copy, shape.FromProto(proto));
+  ASSERT_OK_AND_ASSIGN(DynamicShape shape_copy, shape.FromProto(proto));
   EXPECT_EQ(shape_copy, shape);
 }
 
@@ -217,7 +215,7 @@ INSTANTIATE_TEST_SUITE_P(
 
 TEST(DynamicShapeTest, ToString) {
   {
-    TF_ASSERT_OK_AND_ASSIGN(
+    ASSERT_OK_AND_ASSIGN(
         DynamicShape shape,
         DynamicShape::Create(Shape({2, 4}),
                              BoundedDynamicShapeTag({true, true})));
@@ -226,7 +224,7 @@ TEST(DynamicShapeTest, ToString) {
     EXPECT_EQ(output.str(), "[<=2,<=4]");
   }
   {
-    TF_ASSERT_OK_AND_ASSIGN(
+    ASSERT_OK_AND_ASSIGN(
         DynamicShape shape,
         DynamicShape::Create(Shape({2, 4}),
                              BoundedDynamicShapeTag({false, true})));

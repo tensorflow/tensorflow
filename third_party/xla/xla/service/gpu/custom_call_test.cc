@@ -21,6 +21,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include "absl/base/no_destructor.h"
 #include "absl/container/flat_hash_map.h"
 #include "xla/literal_util.h"
@@ -65,7 +66,6 @@ limitations under the License.
 #include "xla/tests/client_library_test_runner_mixin.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/xla_data.pb.h"
 
@@ -304,7 +304,7 @@ TEST_F(CustomCallTest, ExportedFfiMemcpy) {
              /*output_operand_aliasing=*/{}, /*literal=*/nullptr,
              /*schedule=*/CustomCallSchedule::SCHEDULE_NONE,
              /*api_version=*/CustomCallApiVersion::API_VERSION_TYPED_FFI);
-  TF_ASSERT_OK_AND_ASSIGN(auto result, ExecuteAndTransfer(&b, {}));
+  ASSERT_OK_AND_ASSIGN(auto result, ExecuteAndTransfer(&b, {}));
   EXPECT_THAT(result.data<float>(), ::testing::Each(42));
 }
 
@@ -359,7 +359,7 @@ TEST_F(CustomCallTest, ExportedFfiIsInvoked) {
              /*output_operand_aliasing=*/{}, /*literal=*/nullptr,
              /*schedule=*/CustomCallSchedule::SCHEDULE_NONE,
              /*api_version=*/CustomCallApiVersion::API_VERSION_TYPED_FFI);
-  TF_ASSERT_OK_AND_ASSIGN(auto result, ExecuteAndTransfer(&b, {}));
+  ASSERT_OK_AND_ASSIGN(auto result, ExecuteAndTransfer(&b, {}));
   EXPECT_TRUE(is_ffi_invoked);
 }
 
@@ -621,7 +621,7 @@ TEST_F(CustomCallTest, WithCalledComputation) {
       /*output_operand_aliasing=*/{}, /*literal=*/nullptr,
       /*schedule=*/CustomCallSchedule::SCHEDULE_NONE,
       /*api_version=*/CustomCallApiVersion::API_VERSION_TYPED_FFI);
-  TF_ASSERT_OK_AND_ASSIGN(auto result, ExecuteAndTransfer(&b, {}));
+  ASSERT_OK_AND_ASSIGN(auto result, ExecuteAndTransfer(&b, {}));
   EXPECT_THAT(result.data<float>(), ::testing::Each(42));
 }
 
@@ -641,7 +641,7 @@ TEST_F(CustomCallTest, WithCalledComputationAndLayouts) {
       /*has_side_effect=*/false, /*output_operand_aliasing=*/{},
       /*literal=*/nullptr, /*schedule=*/CustomCallSchedule::SCHEDULE_NONE,
       /*api_version=*/CustomCallApiVersion::API_VERSION_TYPED_FFI);
-  TF_ASSERT_OK_AND_ASSIGN(auto result, ExecuteAndTransfer(&b, {}, &shape));
+  ASSERT_OK_AND_ASSIGN(auto result, ExecuteAndTransfer(&b, {}, &shape));
   EXPECT_THAT(result.data<float>(), ::testing::Each(42));
 }
 //===----------------------------------------------------------------------===//
@@ -723,8 +723,8 @@ TEST_F(CustomCallTest, FfiExecutionContext) {
   TF_ASSERT_OK(ExecuteAndTransfer(&b, {}).status());
 
   // Check that FFI handler was called during initialization and execution.
-  TF_ASSERT_OK_AND_ASSIGN(auto* user_context,
-                          execution_context.Lookup<SomeExtraContext>());
+  ASSERT_OK_AND_ASSIGN(auto* user_context,
+                       execution_context.Lookup<SomeExtraContext>());
   EXPECT_TRUE(user_context->prepared);
   EXPECT_TRUE(user_context->initialized);
   EXPECT_TRUE(user_context->executed);
@@ -916,7 +916,7 @@ TEST_F(CustomCallHloTest, HloBufferStraightLine) {
       GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
   auto module = ParseAndReturnUnverifiedModule(kModuleStr, config);
   EXPECT_TRUE(module.ok());
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::vector<Literal> results,
       ExecuteReplicated(std::move(module.value()), absl::Span<Literal* const>{},
                         kNumReplicas,
@@ -977,7 +977,7 @@ TEST_F(CustomCallHloTest, HloBufferRotated) {
       GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
   auto module = ParseAndReturnUnverifiedModule(kModuleStr, config);
   EXPECT_TRUE(module.ok());
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::vector<Literal> results,
       ExecuteReplicated(std::move(module.value()), absl::Span<Literal* const>{},
                         kNumReplicas,

@@ -18,10 +18,10 @@ limitations under the License.
 #include <memory>
 #include <string>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/container/flat_hash_map.h"
 #include "xla/backends/cpu/runtime/function_library.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace xla::cpu {
 
@@ -41,7 +41,7 @@ TEST(AotCompiledFunctionLibraryTest, ResolveFunction) {
                               AotCompiledFunctionLibrary::FunctionPtr>{
               {function_ptr_name, function_ptr}});
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto add_function,
       function_library->ResolveFunction<decltype(add)>(function_ptr_name));
 

@@ -26,7 +26,6 @@ limitations under the License.
 #include "xla/hlo/testlib/pattern_matcher_gmock.h"
 #include "xla/service/hlo_cse.h"
 #include "xla/service/pattern_matcher.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -50,12 +49,11 @@ TEST_F(SliceHoisterTest, HoistSliceThroughAdd) {
       ROOT slice_op = f32[2,9] slice(f32[8,9] add_op), slice={[0:2], [0:9]}
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(module_str));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(module_str));
 
   SliceHoister slice_hoister;
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          RunHloPass(&slice_hoister, module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, RunHloPass(&slice_hoister, module.get()));
 
   SCOPED_TRACE(module->ToString());
   EXPECT_TRUE(changed);
@@ -88,19 +86,18 @@ TEST_F(SliceHoisterTest, HoistSliceThroughMultipleElementwiseBinaryOperations) {
       ROOT slice_op = f32[2,9] slice(f32[8,9] power_op), slice={[0:2], [0:9]}
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(module_str));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(module_str));
 
   SliceHoister slice_hoister;
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          RunHloPass(&slice_hoister, module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, RunHloPass(&slice_hoister, module.get()));
 
   SCOPED_TRACE(module->ToString());
   EXPECT_TRUE(changed);
 
   HloCSE cse = HloCSE(
       false);  // CSE to remove the redundant slices of param_1 and param_2.
-  TF_ASSERT_OK_AND_ASSIGN(changed, RunHloPass(&cse, module.get()));
+  ASSERT_OK_AND_ASSIGN(changed, RunHloPass(&cse, module.get()));
 
   SCOPED_TRACE(module->ToString());
   EXPECT_TRUE(changed);
@@ -146,12 +143,11 @@ TEST_F(SliceHoisterTest, DoesNotHoistSliceThroughDot) {
       ROOT slice_op = f32[2,9] slice(f32[8,9] dot_op), slice={[0:2], [0:9]}
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(module_str));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(module_str));
 
   SliceHoister slice_hoister;
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          RunHloPass(&slice_hoister, module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, RunHloPass(&slice_hoister, module.get()));
 
   SCOPED_TRACE(module->ToString());
   EXPECT_FALSE(changed);
@@ -168,12 +164,11 @@ TEST_F(SliceHoisterTest, DoesNotHoistSliceThroughNegate) {
       ROOT slice_op = f32[2,9] slice(f32[8,9] neg_op), slice={[0:2], [0:9]}
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(module_str));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(module_str));
 
   SliceHoister slice_hoister;
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          RunHloPass(&slice_hoister, module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, RunHloPass(&slice_hoister, module.get()));
 
   SCOPED_TRACE(module->ToString());
   EXPECT_FALSE(changed);
@@ -188,12 +183,11 @@ TEST_F(SliceHoisterTest, HoistSliceThroughTranspose) {
       ROOT slice = f32[2,1,2] slice(transpose_op), slice={[1:3], [0:1:2], [0:4:3]}
     }
     )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
 
   SliceHoister slice_hoister;
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          RunHloPass(&slice_hoister, module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, RunHloPass(&slice_hoister, module.get()));
 
   SCOPED_TRACE(module->ToString());
   EXPECT_TRUE(changed);
@@ -219,12 +213,11 @@ TEST_F(SliceHoisterTest, HoistSliceThroughTransposeAndAdd) {
       ROOT slice_op = f32[2,1,2] slice(transpose_op), slice={[1:3], [0:1:2], [0:4:3]}
     }
     )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
 
   SliceHoister slice_hoister;
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          RunHloPass(&slice_hoister, module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, RunHloPass(&slice_hoister, module.get()));
 
   SCOPED_TRACE(module->ToString());
   EXPECT_TRUE(changed);

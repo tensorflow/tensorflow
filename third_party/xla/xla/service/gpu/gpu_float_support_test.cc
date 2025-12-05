@@ -18,6 +18,7 @@ limitations under the License.
 #include <memory>
 #include <string>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/log/check.h"
 #include "absl/status/statusor.h"
@@ -37,7 +38,7 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/tsl/platform/statusor.h"
+#include "xla/stream_executor/rocm/rocm_compute_capability.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla::gpu {
@@ -304,8 +305,7 @@ ENTRY main {
   ROOT r = bf16[] reduce-precision(p0), exponent_bits=8, mantissa_bits=7
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kHloModule));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloModule));
   EXPECT_FALSE(
       Normalize(module.get(), se::GpuComputeCapability{cc}, BF16, F32));
 }
@@ -336,7 +336,7 @@ ENTRY sort {
   ROOT sort = bf16[1024]{0} sort(p0), dimensions={0}, is_stable=false, to_apply=total_order_comparator
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
   EXPECT_FALSE(Normalize(
       module.get(),
       se::GpuComputeCapability{se::CudaComputeCapability::Volta()}, BF16, F32));
@@ -360,8 +360,7 @@ ENTRY main {
   ROOT r = bf16[] exponential(p0)
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kHloModule));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloModule));
   EXPECT_FALSE(
       Normalize(module.get(), se::GpuComputeCapability{cc}, BF16, F32));
 }
@@ -376,8 +375,7 @@ ENTRY main {
   ROOT r = bf16[] log(p0)
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kHloModule));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloModule));
   EXPECT_FALSE(
       Normalize(module.get(), se::GpuComputeCapability{cc}, BF16, F32));
 }
@@ -392,8 +390,7 @@ ENTRY main {
   ROOT r = bf16[] minimum(p0, p1)
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kHloModule));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloModule));
   EXPECT_FALSE(
       Normalize(module.get(),
                 se::GpuComputeCapability{se::CudaComputeCapability::Hopper()},
@@ -417,8 +414,7 @@ ENTRY main {
   ROOT r = bf16[] maximum(p0, p1)
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kHloModule));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloModule));
   EXPECT_FALSE(
       Normalize(module.get(),
                 se::GpuComputeCapability{se::CudaComputeCapability::Hopper()},
@@ -451,16 +447,16 @@ ENTRY main {
 })";
 
   // add.bf16 was added in Hopper.
-  TF_ASSERT_OK_AND_ASSIGN(auto module_with_supported_reducer,
-                          ParseAndReturnVerifiedModule(
-                              absl::Substitute(kHloModuleTemplate, "add")));
+  ASSERT_OK_AND_ASSIGN(auto module_with_supported_reducer,
+                       ParseAndReturnVerifiedModule(
+                           absl::Substitute(kHloModuleTemplate, "add")));
   EXPECT_FALSE(Normalize(module_with_supported_reducer.get(),
                          se::GpuComputeCapability{cc}, BF16, F32));
 
   // There is no bf16 instruction for divide, however.
-  TF_ASSERT_OK_AND_ASSIGN(auto module_with_unsupported_reducer,
-                          ParseAndReturnVerifiedModule(
-                              absl::Substitute(kHloModuleTemplate, "divide")));
+  ASSERT_OK_AND_ASSIGN(auto module_with_unsupported_reducer,
+                       ParseAndReturnVerifiedModule(
+                           absl::Substitute(kHloModuleTemplate, "divide")));
   EXPECT_TRUE(Normalize(module_with_unsupported_reducer.get(),
                         se::GpuComputeCapability{cc}, BF16, F32));
 }
@@ -475,15 +471,15 @@ ENTRY main {
       ROOT r = bf16[4] $0(p0)
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto module_log,
       ParseAndReturnVerifiedModule(absl::Substitute(kHloModule, "log")));
   EXPECT_TRUE(
       Normalize(module_log.get(), se::GpuComputeCapability{cc}, BF16, F32));
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module_exp,
-                          ParseAndReturnVerifiedModule(
-                              absl::Substitute(kHloModule, "exponential")));
+  ASSERT_OK_AND_ASSIGN(auto module_exp,
+                       ParseAndReturnVerifiedModule(
+                           absl::Substitute(kHloModule, "exponential")));
   EXPECT_TRUE(
       Normalize(module_exp.get(), se::GpuComputeCapability{cc}, BF16, F32));
 }
@@ -504,14 +500,13 @@ TEST_F(FloatSupportTest, ScaledDotIsIgnored) {
     }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kHloModule));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloModule));
   EXPECT_FALSE(
       Normalize(module.get(), se::GpuComputeCapability{cc}, BF16, F32));
 }
 
 TEST_F(FloatSupportTest, AllToAllSplitDimensionS4IsNormalized) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
     HloModule m
 
     ENTRY main {
@@ -525,7 +520,7 @@ TEST_F(FloatSupportTest, AllToAllSplitDimensionS4IsNormalized) {
 }
 
 TEST_F(FloatSupportTest, AllToAllTupleShapeS4IsNormalized) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
     HloModule m
 
     ENTRY main {

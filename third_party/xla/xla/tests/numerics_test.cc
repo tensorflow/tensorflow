@@ -18,6 +18,7 @@ limitations under the License.
 #include <utility>
 
 #include "xla/tests/xla_test_backend_predicates.h"
+#include <gmock/gmock.h>
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "xla/error_spec.h"
@@ -26,7 +27,6 @@ limitations under the License.
 #include "xla/literal_util.h"
 #include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
 #include "xla/tests/hlo_pjrt_test_base.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/types.h"
 
@@ -126,14 +126,14 @@ TEST_F(NumericsTest, MultiplySubtractConcatTest) {
     } // main
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto test_module,
-                          ParseAndReturnVerifiedModule(test_hlo));
+  ASSERT_OK_AND_ASSIGN(auto test_module,
+                       ParseAndReturnVerifiedModule(test_hlo));
   auto argument = LiteralUtil::CreateR2<float>(
       {{0.261473775, -0.642940283, -0.719902277, 0.712947428, 0.543724537}});
 
-  TF_ASSERT_OK_AND_ASSIGN(auto test_result,
-                          Execute(std::move(test_module), {&argument},
-                                  /*run_hlo_passes=*/false));
+  ASSERT_OK_AND_ASSIGN(auto test_result,
+                       Execute(std::move(test_module), {&argument},
+                               /*run_hlo_passes=*/false));
 
   // Reference HLO module. It's a subgraph of the test module, it performs only
   // the calculations needed for the first output element from the test module.
@@ -158,11 +158,11 @@ TEST_F(NumericsTest, MultiplySubtractConcatTest) {
     } // main
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto reference_module,
-                          ParseAndReturnVerifiedModule(reference_hlo));
-  TF_ASSERT_OK_AND_ASSIGN(auto reference_result,
-                          Execute(std::move(reference_module), {&argument},
-                                  /*run_hlo_passes=*/false));
+  ASSERT_OK_AND_ASSIGN(auto reference_module,
+                       ParseAndReturnVerifiedModule(reference_hlo));
+  ASSERT_OK_AND_ASSIGN(auto reference_result,
+                       Execute(std::move(reference_module), {&argument},
+                               /*run_hlo_passes=*/false));
 
   // Only compare the first element.
   EXPECT_FLOAT_EQ(reference_result.data<float>()[0],

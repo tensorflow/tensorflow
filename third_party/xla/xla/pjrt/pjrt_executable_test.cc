@@ -27,7 +27,6 @@ limitations under the License.
 #include "xla/service/computation_placer.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -45,10 +44,9 @@ TEST(CompileOptionsTest, Serialization) {
   build_option.set_device_assignment(DeviceAssignment(1, 1));
   src.executable_build_options = build_option;
 
-  TF_ASSERT_OK_AND_ASSIGN(CompileOptionsProto proto, src.ToProto());
-  TF_ASSERT_OK_AND_ASSIGN(CompileOptions output,
-                          CompileOptions::FromProto(proto));
-  TF_ASSERT_OK_AND_ASSIGN(CompileOptionsProto output_proto, src.ToProto());
+  ASSERT_OK_AND_ASSIGN(CompileOptionsProto proto, src.ToProto());
+  ASSERT_OK_AND_ASSIGN(CompileOptions output, CompileOptions::FromProto(proto));
+  ASSERT_OK_AND_ASSIGN(CompileOptionsProto output_proto, src.ToProto());
 
   EXPECT_EQ(proto.SerializeAsString(), output_proto.SerializeAsString());
 }
@@ -58,8 +56,7 @@ TEST(CompileOptionsTest, DeserializeSerializedMultiSliceConfig) {
   std::string serialized_config = "multi_size_config";
   *proto.mutable_serialized_multi_slice_config() = serialized_config;
 
-  TF_ASSERT_OK_AND_ASSIGN(CompileOptions option,
-                          CompileOptions::FromProto(proto));
+  ASSERT_OK_AND_ASSIGN(CompileOptions option, CompileOptions::FromProto(proto));
 
   EXPECT_EQ(option.multi_slice_config, nullptr);
   EXPECT_EQ(option.serialized_multi_slice_config, serialized_config);
@@ -81,10 +78,9 @@ TEST(ExecuteOptionsTest, Serialization) {
   src.non_donatable_input_indices = {2, 3};
   src.call_location = "foo:1";
 
-  TF_ASSERT_OK_AND_ASSIGN(ExecuteOptionsProto proto, src.ToProto());
-  TF_ASSERT_OK_AND_ASSIGN(ExecuteOptions output,
-                          ExecuteOptions::FromProto(proto));
-  TF_ASSERT_OK_AND_ASSIGN(ExecuteOptionsProto output_proto, src.ToProto());
+  ASSERT_OK_AND_ASSIGN(ExecuteOptionsProto proto, src.ToProto());
+  ASSERT_OK_AND_ASSIGN(ExecuteOptions output, ExecuteOptions::FromProto(proto));
+  ASSERT_OK_AND_ASSIGN(ExecuteOptionsProto output_proto, src.ToProto());
 
   EXPECT_EQ(proto.SerializeAsString(), output_proto.SerializeAsString());
 }

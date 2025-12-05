@@ -16,10 +16,10 @@
 
 #include <memory>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace hlo_diff {
@@ -41,14 +41,14 @@ ENTRY entry {
   ROOT add.1 = s32[32,16]{0,1:T(1,128)} add(p0, p1)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> module_l,
-                          ParseAndReturnVerifiedModule(hlo_string));
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> module_r,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> module_l,
+                       ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> module_r,
+                       ParseAndReturnVerifiedModule(hlo_string));
   DiffOptions options;
   options.run_eval = false;
-  TF_ASSERT_OK_AND_ASSIGN(auto diff_result,
-                          ComputeDiff(*module_l, *module_r, options));
+  ASSERT_OK_AND_ASSIGN(auto diff_result,
+                       ComputeDiff(*module_l, *module_r, options));
 
   EXPECT_NE(diff_result.diff_result, nullptr);
   EXPECT_NE(diff_result.diff_summary, nullptr);
@@ -69,14 +69,14 @@ ENTRY entry {
   ROOT add.1 = s32[32,16]{0,1:T(1,128)} add(p0, p1)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> module_l,
-                          ParseAndReturnVerifiedModule(hlo_string));
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> module_r,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> module_l,
+                       ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> module_r,
+                       ParseAndReturnVerifiedModule(hlo_string));
   DiffOptions options;
   options.run_eval = true;
-  TF_ASSERT_OK_AND_ASSIGN(auto diff_result,
-                          ComputeDiff(*module_l, *module_r, options));
+  ASSERT_OK_AND_ASSIGN(auto diff_result,
+                       ComputeDiff(*module_l, *module_r, options));
 
   EXPECT_NE(diff_result.diff_result, nullptr);
   EXPECT_NE(diff_result.diff_summary, nullptr);

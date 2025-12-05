@@ -22,6 +22,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/algorithm/container.h"
 #include "absl/base/nullability.h"
@@ -46,7 +47,6 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -113,7 +113,7 @@ TEST_F(HloSchedulingTest, LastUseScheduledFirst) {
     return ShapeUtil::ByteSizeOf(buffer.shape());
   });
   ASSERT_FALSE(module->has_schedule());
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, scheduler.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, scheduler.Run(module.get()));
   EXPECT_TRUE(changed);
   ASSERT_TRUE(module->has_schedule());
   TF_ASSERT_OK(module->schedule().Verify());
@@ -133,8 +133,7 @@ TEST_F(HloSchedulingTest, LastUseScheduledFirst) {
   // Clear the schedule using the descheduling pass.
   HloDescheduler descheduler;
   EXPECT_TRUE(module->has_schedule());
-  TF_ASSERT_OK_AND_ASSIGN(bool descheduler_changed,
-                          descheduler.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool descheduler_changed, descheduler.Run(module.get()));
   EXPECT_TRUE(descheduler_changed);
   EXPECT_FALSE(module->has_schedule());
 }
@@ -157,14 +156,14 @@ ENTRY root {
   ROOT result = (s32[1000], s32[1000], s32[1000]) tuple(d, e, f)
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(module_str));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(module_str));
 
   BufferValue::SizeFunction size_fn = [](const BufferValue& buffer) {
     return ShapeUtil::ByteSizeOf(buffer.shape(), /*pointer_size=*/8);
   };
   int64_t peak_memory;
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       HloSchedule schedule,
       ScheduleModule(module.get(), ListMemoryScheduler(&alias_info_, &size_fn),
                      /*execution_threads=*/{}, &peak_memory));
@@ -209,14 +208,14 @@ ENTRY entry {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(module_str));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(module_str));
 
   auto size_fn = [](const BufferValue& buffer) {
     return ShapeUtil::ByteSizeOf(buffer.shape(), /*pointer_size=*/8);
   };
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       HloSchedule schedule,
       ScheduleModule(module.get(), ListMemoryScheduler(&alias_info_, size_fn)));
   // Verify that all instructions are in the sequence.
@@ -259,7 +258,7 @@ TEST_F(HloSchedulingTest, TuplesAreAccountedCorrectly) {
 
   auto module = CreateNewVerifiedModule();
   module->AddEntryComputation(builder.Build());
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       HloSchedule schedule,
       ScheduleModule(
           module.get(),
@@ -309,7 +308,7 @@ TEST_F(HloSchedulingTest, MultiOutputFusionAccountedCorrectly) {
   auto fusion = computation->CreateFusionInstruction(
       {tuple, mul, add}, HloInstruction::FusionKind::kLoop);
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       HloSchedule schedule,
       ScheduleModule(
           module.get(),
@@ -348,8 +347,8 @@ ENTRY main {
   ROOT while = (s32[], s32[]) while(init), condition=cond, body=body
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
   EXPECT_FALSE(module->has_schedule());
   TF_ASSERT_OK(HloTrivialScheduler().Run(module.get()).status());
   ASSERT_TRUE(module->has_schedule());
@@ -413,10 +412,10 @@ TEST_F(HloSchedulingTest, BFSScheduler) {
     }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       HloSchedule schedule,
       ScheduleModule(module.get(),
                      BFScheduler(&alias_info_, [](const BufferValue& buffer) {

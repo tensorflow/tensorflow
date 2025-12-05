@@ -17,13 +17,13 @@ limitations under the License.
 #include <utility>
 
 #include "xla/tests/xla_test_backend_predicates.h"
+#include <gmock/gmock.h>
 #include "absl/status/status.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/testlib/test.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/tests/hlo_pjrt_test_base.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -48,15 +48,13 @@ void DisableAllHloPasses(HloModule& module) {
 class SetDimensionSizeTest : public HloPjRtTestBase {};
 
 TEST_F(SetDimensionSizeTest, CorrectComputation) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kModuleStr));
 
   Literal arg0 =
       LiteralUtil::CreateR2<float>({{0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0}});
   Literal arg1 = LiteralUtil::CreateR0<int32_t>(5);
 
-  TF_ASSERT_OK_AND_ASSIGN(auto result,
-                          Execute(std::move(module), {&arg0, &arg1}));
+  ASSERT_OK_AND_ASSIGN(auto result, Execute(std::move(module), {&arg0, &arg1}));
 
   Literal expected = LiteralUtil::CreateR2<float>({{0.0, 1.0, 2.0, 3.0, 4.0}});
   EXPECT_EQ(result, expected);
@@ -66,8 +64,7 @@ TEST_F(SetDimensionSizeTest, ReturnsErrorWhenHloPassesDisabled) {
   if (test::DeviceTypeIsOneOf({test::kGpu, test::kInterpreter, test::kTpu})) {
     GTEST_SKIP();
   }
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kModuleStr));
 
   DisableAllHloPasses(*module);
 

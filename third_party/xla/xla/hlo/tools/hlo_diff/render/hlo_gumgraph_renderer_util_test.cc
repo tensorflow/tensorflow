@@ -25,7 +25,6 @@
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/hlo/tools/hlo_diff/hlo_diff_result.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace hlo_diff {
@@ -70,8 +69,8 @@ ENTRY test_computation {
   ROOT tuple = (s32[10], s32[10], f32[5], s32[], s32[], s32[10], f32[10]) tuple(add_s32_10, sub_s32_10, add_f32_5, const_42, const_99, clamp_s32_10, add_with_f32_operands)
 }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
   HloComputation* computation = module->entry_computation();
 
   EXPECT_THAT(GetChangedInstructionDiffTypes(
@@ -107,8 +106,8 @@ ENTRY test_computation {
 }
 
 TEST_F(HloDiffRendererUtilTest, GroupInstructionsByOpcode) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
 HloModule test_module
 
 ENTRY test_computation {
@@ -132,8 +131,8 @@ ENTRY test_computation {
 }
 
 TEST_F(HloDiffRendererUtilTest, GroupInstructionPairsByOpcode) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
 HloModule test_module
 
 ENTRY test_computation {
@@ -158,8 +157,8 @@ ENTRY test_computation {
 }
 
 TEST_F(HloDiffRendererUtilTest, FilterDiffResultByOpcode) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
 HloModule test_module
 
 ENTRY test_computation {

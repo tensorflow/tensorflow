@@ -21,6 +21,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -28,10 +29,10 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/literal_util.h"
+#include "xla/service/hlo_module_config.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/platform/logging.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -95,7 +96,7 @@ TEST_F(CollectivePermuteCombinerTest, CombineCollectivePermutes) {
   // Run the CollectivePermute combiner optimization pass.
   CollectivePermuteCombiner combine(10 * 1024 * 1024, kMaxCombineCount);
   ASSERT_EQ(CollectivePermuteCount(*module), inputs.size());
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, combine.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, combine.Run(module.get()));
   ASSERT_EQ(CollectivePermuteCount(*module), 1);
   EXPECT_TRUE(changed);
 
@@ -142,7 +143,7 @@ TEST_F(CollectivePermuteCombinerTest, RespectThreshold) {
   {
     CollectivePermuteCombiner combine((2 + 10) * 1024 - 1, kMaxCombineCount);
     ASSERT_EQ(CollectivePermuteCount(*module), inputs.size());
-    TF_ASSERT_OK_AND_ASSIGN(bool changed, combine.Run(module.get()));
+    ASSERT_OK_AND_ASSIGN(bool changed, combine.Run(module.get()));
     EXPECT_EQ(CollectivePermuteCount(*module), inputs.size());
     EXPECT_FALSE(changed);
   }
@@ -152,7 +153,7 @@ TEST_F(CollectivePermuteCombinerTest, RespectThreshold) {
   {
     CollectivePermuteCombiner combine((2 + 10 + 7) * 1024, kMaxCombineCount);
     ASSERT_EQ(CollectivePermuteCount(*module), inputs.size());
-    TF_ASSERT_OK_AND_ASSIGN(bool changed, combine.Run(module.get()));
+    ASSERT_OK_AND_ASSIGN(bool changed, combine.Run(module.get()));
     EXPECT_EQ(CollectivePermuteCount(*module), 1);
     EXPECT_TRUE(changed);
   }
@@ -177,7 +178,7 @@ TEST_F(CollectivePermuteCombinerTest, NoDependentCombination) {
 
   CollectivePermuteCombiner combine(1024 * 1024, kMaxCombineCount);
   ASSERT_EQ(CollectivePermuteCount(*module), 2);
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, combine.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, combine.Run(module.get()));
   EXPECT_EQ(CollectivePermuteCount(*module), 2);
   EXPECT_FALSE(changed);
 }
@@ -209,13 +210,12 @@ ENTRY %CombineCollectivePermutes () -> (f32[256], f32[512], f32[2560], f32[1792]
   
   ROOT %tuple = (f32[256]{0}, f32[512]{0}, f32[2560]{0}, f32[1792]{0}, f32[1536]{0}) tuple(f32[256]{0} %collective-permute, f32[512]{0} %collective-permute.1, f32[2560]{0} %collective-permute.2, f32[1792]{0} %collective-permute.3, f32[1536]{0} %collective-permute.4)
 })";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
   const int64_t total_count = 5;
   CollectivePermuteCombiner combine(1024 * 1024, kMaxCombineCount);
   ASSERT_EQ(CollectivePermuteCount(*module), total_count);
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, combine.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, combine.Run(module.get()));
   EXPECT_EQ(CollectivePermuteCount(*module), 1);
   EXPECT_TRUE(changed);
 }
@@ -247,14 +247,13 @@ ENTRY %CombineCollectivePermutes () -> (f32[256], f32[512], f32[2560], f32[1792]
   
   ROOT %tuple = (f32[256]{0}, f32[512]{0}, f32[2560]{0}, f32[1792]{0}, f32[1536]{0}) tuple(f32[256]{0} %collective-permute, f32[512]{0} %collective-permute.1, f32[2560]{0} %collective-permute.2, f32[1792]{0} %collective-permute.3, f32[1536]{0} %collective-permute.4)
 })";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
   const int64_t total_count = 5;
   const int64_t max_count = 3;
   CollectivePermuteCombiner combine(1024 * 1024, max_count);
   ASSERT_EQ(CollectivePermuteCount(*module), total_count);
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, combine.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, combine.Run(module.get()));
   // Expect (total_count // max_count) combined collective permute ops
   EXPECT_EQ(CollectivePermuteCount(*module),
             (total_count + max_count - 1) / max_count);
@@ -288,13 +287,12 @@ ENTRY %CombineCollectivePermutes () -> (f32[256], f32[512], f32[2560], f32[1792]
   
   ROOT %tuple = (f32[256]{0}, f32[512]{0}, f32[2560]{0}, f32[1792]{0}, f32[1536]{0}) tuple(f32[256]{0} %collective-permute, f32[512]{0} %collective-permute.1, f32[2560]{0} %collective-permute.2, f32[1792]{0} %collective-permute.3, f32[1536]{0} %collective-permute.4)
 })";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
   const int64_t total_count = 5;
   CollectivePermuteCombiner combine(1024 * 1024, kMaxCombineCount);
   ASSERT_EQ(CollectivePermuteCount(*module), total_count);
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, combine.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, combine.Run(module.get()));
   // Expect two combined collective permute ops since there are two types of
   // source_target_paris in HLO
   EXPECT_EQ(CollectivePermuteCount(*module), 2);
@@ -332,13 +330,13 @@ ENTRY %CombineCollectivePermutes () -> (f32[256], f32[512], f32[2560], f32[1792]
   auto opts = GetDebugOptionsForTest();
   opts.set_xla_ignore_channel_id(true);
   config.set_debug_options(opts);
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string, config));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(hlo_string, config));
 
   const int64_t total_count = 5;
   CollectivePermuteCombiner combine(1024 * 1024, kMaxCombineCount);
   ASSERT_EQ(CollectivePermuteCount(*module), total_count);
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, combine.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, combine.Run(module.get()));
   // Expect one combined collective permute op since channel_id is ignored
   EXPECT_EQ(CollectivePermuteCount(*module), 1);
   EXPECT_TRUE(changed);

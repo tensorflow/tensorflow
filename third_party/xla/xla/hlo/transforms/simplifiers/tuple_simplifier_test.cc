@@ -17,17 +17,16 @@ limitations under the License.
 
 #include <memory>
 
+#include <gmock/gmock.h>
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/test.h"
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -65,8 +64,7 @@ TEST_F(TupleSimplifierTest, TupleOfParameters) {
       ROOT %tuple = (f32[], f32[], f32[]) tuple(f32[] %param0, f32[] %param1, f32[] %param2)
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kModuleStr));
 
   Run(module.get(), /*change_expected=*/false);
 }
@@ -81,8 +79,7 @@ TEST_F(TupleSimplifierTest, GteOfTupleOfParameter) {
       ROOT %get-tuple-element = f32[] get-tuple-element((f32[], f32[], f32[]) %param), index=1
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kModuleStr));
 
   Run(module.get(), /*change_expected=*/false);
 }
@@ -100,8 +97,7 @@ TEST_F(TupleSimplifierTest, GteOfTuple) {
       ROOT %get-tuple-element = f32[] get-tuple-element((f32[], f32[], f32[]) %tuple), index=1
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kModuleStr));
 
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               op::GetTupleElement(op::Tuple()));
@@ -142,8 +138,7 @@ TEST_F(TupleSimplifierTest, GteOfTupleChain) {
       ROOT %negate = f32[] negate(f32[] %get-tuple-element.9)
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kModuleStr));
 
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               op::Negate(op::GetTupleElement(op::Tuple())));
@@ -211,8 +206,7 @@ TEST_F(TupleSimplifierTest, NestedGteOfTuples) {
       ROOT %get-tuple-element.4 = f32[] get-tuple-element((f32[], f32[]) %get-tuple-element.3), index=0
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kModuleStr));
 
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               op::GetTupleElement());
@@ -237,8 +231,7 @@ TEST_F(TupleSimplifierTest, TupleOfGteInstructions) {
       ROOT %tuple = (f32[], f32[], f32[]) tuple(f32[] %get-tuple-element, f32[] %get-tuple-element.1, f32[] %get-tuple-element.2)
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kModuleStr));
 
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               op::Tuple(op::GetTupleElement(), op::GetTupleElement(),
@@ -267,8 +260,7 @@ TEST_F(TupleSimplifierTest, TupleOfGteNotRemovedIfOrderIsNotPreserved) {
       ROOT %tuple = (f32[], f32[], f32[]) tuple(f32[] %get-tuple-element, f32[] %get-tuple-element.2, f32[] %get-tuple-element.1)
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kModuleStr));
 
   Run(module.get(), /*change_expected=*/false);
 }
@@ -286,8 +278,7 @@ TEST_F(TupleSimplifierTest, IncompatibleTuples) {
       ROOT %tuple = (f32[], f32[]) tuple(f32[] %get-tuple-element, f32[] %get-tuple-element.1)
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kModuleStr));
 
   Run(module.get(), /*change_expected=*/false);
 }
@@ -325,8 +316,7 @@ TEST_F(TupleSimplifierTest, CanExcludeEntryComputation) {
       ROOT %tuple.3 = (f32[], f32[]) tuple(f32[] %get-tuple-element.8, f32[] %get-tuple-element.9)
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kModuleStr));
 
   Run(module.get(), /*change_expected=*/true, /*exclude_entry=*/true);
 
@@ -349,8 +339,7 @@ TEST_F(TupleSimplifierTest, ShardingInfoIsNotBeLost) {
       ROOT %gte = s32[10] get-tuple-element(t), index=0, sharding={replicated}
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kModuleStr));
 
   // Expect no change because the sharding in the root instruction is not the
   // same as that of the parameter instruction.
@@ -376,8 +365,7 @@ TEST_F(TupleSimplifierTest, NestedTuple) {
       ROOT to = (s32[10], s32[10]) tuple(gte2, gte3)
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kModuleStr));
   Run(module.get(), /*change_expected=*/true);
   auto* p1 = FindInstruction(module.get(), "p1");
   auto* gte3 = FindInstruction(module.get(), "gte3");
@@ -400,8 +388,7 @@ TEST_F(TupleSimplifierTest, SimplifyWithControlPredecessors) {
        %added = f32[]{:T(256)} add(%get-tuple-element.8507, %get-tuple-element.8508)
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kModuleStr));
   Run(module.get(), /*change_expected=*/true);
 }
 

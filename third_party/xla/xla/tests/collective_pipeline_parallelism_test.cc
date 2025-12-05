@@ -19,6 +19,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/log/log.h"
 #include "absl/strings/string_view.h"
@@ -32,7 +33,6 @@ limitations under the License.
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/tests/test_utils.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -120,8 +120,8 @@ TEST_P(CollectivePipelineParallelismTest,
   HloModuleConfig config = GetModuleConfigForTest(
       /*replica_count=*/kNumReplicas, /*num_partitions=*/kNumPartitions);
   std::unique_ptr<VerifiedHloModule> module;
-  TF_ASSERT_OK_AND_ASSIGN(module,
-                          ParseAndReturnVerifiedModule(kModuleStr, config));
+  ASSERT_OK_AND_ASSIGN(module,
+                       ParseAndReturnVerifiedModule(kModuleStr, config));
 
   // Inputs for replica i are
   // A = {{i+1, i+1},
@@ -134,11 +134,11 @@ TEST_P(CollectivePipelineParallelismTest,
     inputs_a.push_back(LiteralUtil::CreateR2<float>({{val, val}, {val, val}}));
   }
   Literal input_b_replicated = LiteralUtil::CreateR2<float>({{0, 0}, {0, 1}});
-  std::vector<std::vector<Literal *>> inputs;
+  std::vector<std::vector<Literal*>> inputs;
   for (int64_t i = 0; i < kNumReplicas; ++i) {
     inputs.push_back({&inputs_a[i], &input_b_replicated});
   }
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::vector<Literal> results,
       ExecuteReplicated(std::move(module), inputs, kNumReplicas,
                         /*run_hlo_passes=*/true));
@@ -315,7 +315,7 @@ TEST_P(CollectivePipelineParallelismTest, NaiveBFSMicrobatch4Replica4) {
   // Parse HLO module.
   HloModuleConfig config = GetModuleConfigForTest(
       /*replica_count=*/kNumReplicas, /*num_partitions=*/kNumPartitions);
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto module,
       ParseAndReturnVerifiedModule(GetModuleStrWithCommonComputations(
                                        /*name=*/"test", kMoreComputationsStr),
@@ -340,14 +340,13 @@ TEST_P(CollectivePipelineParallelismTest, NaiveBFSMicrobatch4Replica4) {
   Literal fake_input =
       LiteralUtil::CreateFull<float>({kMicrobatches, kInputSize}, 0.0);
 
-  std::vector<std::vector<Literal *>> args = {{&weights_r0, &real_input},
-                                              {&weights_r1, &fake_input},
-                                              {&weights_r2, &fake_input},
-                                              {&weights_r3, &fake_input}};
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::vector<Literal> results,
-      ExecuteReplicated(std::move(module), args, kNumReplicas,
-                        /*run_hlo_passes=*/true));
+  std::vector<std::vector<Literal*>> args = {{&weights_r0, &real_input},
+                                             {&weights_r1, &fake_input},
+                                             {&weights_r2, &fake_input},
+                                             {&weights_r3, &fake_input}};
+  ASSERT_OK_AND_ASSIGN(std::vector<Literal> results,
+                       ExecuteReplicated(std::move(module), args, kNumReplicas,
+                                         /*run_hlo_passes=*/true));
 
   // Check pipeline output for last replica.
   // The combined effect of the pipeline is to scale the input data by 24.0.
@@ -439,7 +438,7 @@ TEST_P(CollectivePipelineParallelismTest, NaiveBFSMicrobatch5Replica4) {
   // Parse HLO module.
   HloModuleConfig config = GetModuleConfigForTest(
       /*replica_count=*/kNumReplicas, /*num_partitions=*/kNumPartitions);
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto module,
       ParseAndReturnVerifiedModule(GetModuleStrWithCommonComputations(
                                        /*name=*/"test", kMoreComputationsStr),
@@ -468,14 +467,13 @@ TEST_P(CollectivePipelineParallelismTest, NaiveBFSMicrobatch5Replica4) {
   const float kExpectedFactor = 1.0 * 2.0 * 3.0 * 4.0;
   Literal expected_output = LiteralUtil::CreateFingerprintMatixR2<float>(
       kMicrobatches, kInputSize, /*scale=*/kExpectedFactor);
-  std::vector<std::vector<Literal *>> args = {{&weights_r0, &real_input},
-                                              {&weights_r1, &fake_input},
-                                              {&weights_r2, &fake_input},
-                                              {&weights_r3, &fake_input}};
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::vector<Literal> results,
-      ExecuteReplicated(std::move(module), args, kNumReplicas,
-                        /*run_hlo_passes=*/true));
+  std::vector<std::vector<Literal*>> args = {{&weights_r0, &real_input},
+                                             {&weights_r1, &fake_input},
+                                             {&weights_r2, &fake_input},
+                                             {&weights_r3, &fake_input}};
+  ASSERT_OK_AND_ASSIGN(std::vector<Literal> results,
+                       ExecuteReplicated(std::move(module), args, kNumReplicas,
+                                         /*run_hlo_passes=*/true));
   EXPECT_TRUE(LiteralTestUtil::NearOrEqual(expected_output, results[3],
                                            ErrorSpec{1e-5, 1e-5}));
 }
@@ -562,7 +560,7 @@ TEST_P(CollectivePipelineParallelismTest,
   // Parse HLO module.
   HloModuleConfig config = GetModuleConfigForTest(
       /*replica_count=*/kNumReplicas, /*num_partitions=*/kNumPartitions);
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto module,
       ParseAndReturnVerifiedModule(GetModuleStrWithCommonComputations(
                                        /*name=*/"test", kMoreComputationsStr),
@@ -593,14 +591,13 @@ TEST_P(CollectivePipelineParallelismTest,
   const float kExpectedFactor = 1.0 * 2.0 * 3.0 * 4.0 * 1.0 * 2.0 * 3.0 * 4.0;
   Literal expected_output = LiteralUtil::CreateFingerprintMatixR2<float>(
       kMicrobatches, kInputSize, /*scale=*/kExpectedFactor);
-  std::vector<std::vector<Literal *>> args = {{&weights_r0, &real_input},
-                                              {&weights_r1, &fake_input},
-                                              {&weights_r2, &fake_input},
-                                              {&weights_r3, &fake_input}};
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::vector<Literal> results,
-      ExecuteReplicated(std::move(module), args, kNumReplicas,
-                        /*run_hlo_passes=*/true));
+  std::vector<std::vector<Literal*>> args = {{&weights_r0, &real_input},
+                                             {&weights_r1, &fake_input},
+                                             {&weights_r2, &fake_input},
+                                             {&weights_r3, &fake_input}};
+  ASSERT_OK_AND_ASSIGN(std::vector<Literal> results,
+                       ExecuteReplicated(std::move(module), args, kNumReplicas,
+                                         /*run_hlo_passes=*/true));
   EXPECT_TRUE(LiteralTestUtil::NearOrEqual(expected_output, results[3],
                                            ErrorSpec{1e-5, 1e-5}));
 }
@@ -703,7 +700,7 @@ TEST_P(CollectivePipelineParallelismTest,
   // Parse HLO module.
   HloModuleConfig config = GetModuleConfigForTest(
       /*replica_count=*/kNumReplicas, /*num_partitions=*/kNumPartitions);
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto module,
       ParseAndReturnVerifiedModule(GetModuleStrWithCommonComputations(
                                        /*name=*/"test", kMoreComputationsStr),
@@ -734,14 +731,13 @@ TEST_P(CollectivePipelineParallelismTest,
   const float kExpectedFactor = 1.0 * 2.0 * 3.0 * 4.0 * 1.0 * 2.0 * 3.0 * 4.0;
   Literal expected_output = LiteralUtil::CreateFingerprintMatixR2<float>(
       kMicrobatches, kInputSize, /*scale=*/kExpectedFactor);
-  std::vector<std::vector<Literal *>> args = {{&weights_r0, &real_input},
-                                              {&weights_r1, &fake_input},
-                                              {&weights_r2, &fake_input},
-                                              {&weights_r3, &fake_input}};
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::vector<Literal> results,
-      ExecuteReplicated(std::move(module), args, kNumReplicas,
-                        /*run_hlo_passes=*/true));
+  std::vector<std::vector<Literal*>> args = {{&weights_r0, &real_input},
+                                             {&weights_r1, &fake_input},
+                                             {&weights_r2, &fake_input},
+                                             {&weights_r3, &fake_input}};
+  ASSERT_OK_AND_ASSIGN(std::vector<Literal> results,
+                       ExecuteReplicated(std::move(module), args, kNumReplicas,
+                                         /*run_hlo_passes=*/true));
   EXPECT_TRUE(LiteralTestUtil::NearOrEqual(expected_output, results[3],
                                            ErrorSpec{1e-5, 1e-5}));
 }
@@ -846,7 +842,7 @@ TEST_P(CollectivePipelineParallelismTest,
   // Parse HLO module.
   HloModuleConfig config = GetModuleConfigForTest(
       /*replica_count=*/kNumReplicas, /*num_partitions=*/kNumPartitions);
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto module,
       ParseAndReturnVerifiedModule(GetModuleStrWithCommonComputations(
                                        /*name=*/"test", kMoreComputationsStr),
@@ -877,14 +873,13 @@ TEST_P(CollectivePipelineParallelismTest,
   const float kExpectedFactor = 1.0 * 2.0 * 3.0 * 4.0 * 1.0 * 2.0 * 3.0 * 4.0;
   Literal expected_output = LiteralUtil::CreateFingerprintMatixR2<float>(
       kMicrobatches, kInputSize, /*scale=*/kExpectedFactor);
-  std::vector<std::vector<Literal *>> args = {{&weights_r0, &real_input},
-                                              {&weights_r1, &fake_input},
-                                              {&weights_r2, &fake_input},
-                                              {&weights_r3, &fake_input}};
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::vector<Literal> results,
-      ExecuteReplicated(std::move(module), args, kNumReplicas,
-                        /*run_hlo_passes=*/true));
+  std::vector<std::vector<Literal*>> args = {{&weights_r0, &real_input},
+                                             {&weights_r1, &fake_input},
+                                             {&weights_r2, &fake_input},
+                                             {&weights_r3, &fake_input}};
+  ASSERT_OK_AND_ASSIGN(std::vector<Literal> results,
+                       ExecuteReplicated(std::move(module), args, kNumReplicas,
+                                         /*run_hlo_passes=*/true));
   EXPECT_TRUE(LiteralTestUtil::NearOrEqual(expected_output, results[3],
                                            ErrorSpec{1e-5, 1e-5}));
 }
@@ -946,8 +941,8 @@ TEST_P(CollectivePipelineParallelismTest, SendRecvLoop) {
   HloModuleConfig config = GetModuleConfigForTest(
       /*replica_count=*/kNumReplicas, /*num_partitions=*/kNumPartitions);
   std::unique_ptr<VerifiedHloModule> module;
-  TF_ASSERT_OK_AND_ASSIGN(module,
-                          ParseAndReturnVerifiedModule(kModuleStr, config));
+  ASSERT_OK_AND_ASSIGN(module,
+                       ParseAndReturnVerifiedModule(kModuleStr, config));
 
   // Create input data.
   std::vector<Literal> literals;
@@ -955,7 +950,7 @@ TEST_P(CollectivePipelineParallelismTest, SendRecvLoop) {
     float val = i + 1;
     literals.push_back(LiteralUtil::CreateR2<float>({{val, val}, {val, val}}));
   }
-  std::vector<std::vector<Literal *>> inputs;
+  std::vector<std::vector<Literal*>> inputs;
   for (int64_t i = 0; i < kNumPartitions; ++i) {
     inputs.push_back({&literals[i]});
   }
@@ -968,7 +963,7 @@ TEST_P(CollectivePipelineParallelismTest, SendRecvLoop) {
   }
 
   // Execute and check results.
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::vector<Literal> results,
       ExecuteReplicated(std::move(module), inputs,
                         /*num_replicas=*/kNumPartitions,
@@ -1037,8 +1032,8 @@ TEST_P(CollectivePipelineParallelismTest, SendRecvLoop2Devices) {
   HloModuleConfig config = GetModuleConfigForTest(
       /*replica_count=*/kNumReplicas, /*num_partitions=*/kNumPartitions);
   std::unique_ptr<VerifiedHloModule> module;
-  TF_ASSERT_OK_AND_ASSIGN(module,
-                          ParseAndReturnVerifiedModule(kModuleStr, config));
+  ASSERT_OK_AND_ASSIGN(module,
+                       ParseAndReturnVerifiedModule(kModuleStr, config));
 
   // Create input data.
   std::vector<Literal> literals;
@@ -1046,7 +1041,7 @@ TEST_P(CollectivePipelineParallelismTest, SendRecvLoop2Devices) {
     float val = i + 1;
     literals.push_back(LiteralUtil::CreateR2<float>({{val, val}, {val, val}}));
   }
-  std::vector<std::vector<Literal *>> inputs;
+  std::vector<std::vector<Literal*>> inputs;
   for (int64_t i = 0; i < kNumPartitions; ++i) {
     inputs.push_back({&literals[i]});
   }
@@ -1059,7 +1054,7 @@ TEST_P(CollectivePipelineParallelismTest, SendRecvLoop2Devices) {
   }
 
   // Execute and check results.
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::vector<Literal> results,
       ExecuteReplicated(std::move(module), inputs,
                         /*num_replicas=*/kNumPartitions,
@@ -1138,8 +1133,8 @@ TEST_P(CollectivePipelineParallelismTest, PartiallyPipelinedAsyncSendRecvLoop) {
   HloModuleConfig config = GetModuleConfigForTest(
       /*replica_count=*/kNumReplicas, /*num_partitions=*/kNumPartitions);
   std::unique_ptr<VerifiedHloModule> module;
-  TF_ASSERT_OK_AND_ASSIGN(module,
-                          ParseAndReturnVerifiedModule(kModuleStr, config));
+  ASSERT_OK_AND_ASSIGN(module,
+                       ParseAndReturnVerifiedModule(kModuleStr, config));
 
   // Create input data.
   std::vector<Literal> literals;
@@ -1147,7 +1142,7 @@ TEST_P(CollectivePipelineParallelismTest, PartiallyPipelinedAsyncSendRecvLoop) {
     float val = i + 1;
     literals.push_back(LiteralUtil::CreateR2<float>({{val, val}, {val, val}}));
   }
-  std::vector<std::vector<Literal *>> inputs;
+  std::vector<std::vector<Literal*>> inputs;
   for (int64_t i = 0; i < kNumPartitions; ++i) {
     inputs.push_back({&literals[i]});
   }
@@ -1160,7 +1155,7 @@ TEST_P(CollectivePipelineParallelismTest, PartiallyPipelinedAsyncSendRecvLoop) {
   }
 
   // Execute and check results.
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::vector<Literal> results,
       ExecuteReplicated(std::move(module), inputs,
                         /*num_replicas=*/kNumPartitions,
@@ -1241,8 +1236,8 @@ TEST_P(CollectivePipelineParallelismTest,
   HloModuleConfig config = GetModuleConfigForTest(
       /*replica_count=*/kNumReplicas, /*num_partitions=*/kNumPartitions);
   std::unique_ptr<VerifiedHloModule> module;
-  TF_ASSERT_OK_AND_ASSIGN(module,
-                          ParseAndReturnVerifiedModule(kModuleStr, config));
+  ASSERT_OK_AND_ASSIGN(module,
+                       ParseAndReturnVerifiedModule(kModuleStr, config));
 
   // Create input data.
   std::vector<Literal> literals;
@@ -1250,7 +1245,7 @@ TEST_P(CollectivePipelineParallelismTest,
     float val = i + 1;
     literals.push_back(LiteralUtil::CreateR2<float>({{val, val}, {val, val}}));
   }
-  std::vector<std::vector<Literal *>> inputs;
+  std::vector<std::vector<Literal*>> inputs;
   for (int64_t i = 0; i < kNumPartitions; ++i) {
     inputs.push_back({&literals[i]});
   }
@@ -1263,7 +1258,7 @@ TEST_P(CollectivePipelineParallelismTest,
   }
 
   // Execute and check results.
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::vector<Literal> results,
       ExecuteReplicated(std::move(module), inputs,
                         /*num_replicas=*/kNumPartitions,
@@ -1471,7 +1466,7 @@ TEST_P(CollectivePipelineParallelismTest,
 
   HloModuleConfig config =
       GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<VerifiedHloModule> module,
       ParseAndReturnVerifiedModule(GetModuleStrWithCommonComputations(
                                        /*name=*/"test", kMoreComputationsStr),
@@ -1492,15 +1487,14 @@ TEST_P(CollectivePipelineParallelismTest,
   const float kExpectedFactor = 1.0 * 2.0 * 3.0 * 4.0 * 1.0 * 2.0 * 3.0 * 4.0;
   Literal expected_output = LiteralUtil::CreateFingerprintMatixR2<float>(
       kMicrobatches, kInputSize, /*scale=*/kExpectedFactor);
-  std::vector<std::vector<Literal *>> args = {{&weights_r0, &real_input},
-                                              {&weights_r1, &fake_input},
-                                              {&weights_r2, &fake_input},
-                                              {&weights_r3, &fake_input}};
+  std::vector<std::vector<Literal*>> args = {{&weights_r0, &real_input},
+                                             {&weights_r1, &fake_input},
+                                             {&weights_r2, &fake_input},
+                                             {&weights_r3, &fake_input}};
   // TODO(rosiezou): enable send/recv combiner pass.
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::vector<Literal> results,
-      ExecuteReplicated(std::move(module), args, kNumReplicas,
-                        /*run_hlo_passes=*/true));
+  ASSERT_OK_AND_ASSIGN(std::vector<Literal> results,
+                       ExecuteReplicated(std::move(module), args, kNumReplicas,
+                                         /*run_hlo_passes=*/true));
   EXPECT_TRUE(LiteralTestUtil::NearOrEqual(expected_output, results[3],
                                            ErrorSpec{1e-5, 1e-5}));
 }
@@ -1657,7 +1651,7 @@ TEST_P(CollectivePipelineParallelismTest,
 
   HloModuleConfig config =
       GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto module,
       ParseAndReturnVerifiedModule(GetModuleStrWithCommonComputations(
                                        /*name=*/"test", kMoreComputationsStr),
@@ -1678,14 +1672,13 @@ TEST_P(CollectivePipelineParallelismTest,
   const float kExpectedFactor = 1.0 * 2.0 * 3.0 * 4.0 * 1.0 * 2.0 * 3.0 * 4.0;
   Literal expected_output = LiteralUtil::CreateFingerprintMatixR2<float>(
       kMicrobatches, kInputSize, /*scale=*/kExpectedFactor);
-  std::vector<std::vector<Literal *>> args = {{&weights_r0, &real_input},
-                                              {&weights_r1, &fake_input},
-                                              {&weights_r2, &fake_input},
-                                              {&weights_r3, &fake_input}};
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::vector<Literal> results,
-      ExecuteReplicated(std::move(module), args, kNumReplicas,
-                        /*run_hlo_passes=*/true));
+  std::vector<std::vector<Literal*>> args = {{&weights_r0, &real_input},
+                                             {&weights_r1, &fake_input},
+                                             {&weights_r2, &fake_input},
+                                             {&weights_r3, &fake_input}};
+  ASSERT_OK_AND_ASSIGN(std::vector<Literal> results,
+                       ExecuteReplicated(std::move(module), args, kNumReplicas,
+                                         /*run_hlo_passes=*/true));
   EXPECT_TRUE(LiteralTestUtil::NearOrEqual(
       expected_output, results[3],
       ErrorSpec{/*abs_error=*/1e-5, /*rel_error=*/1e-5}));
@@ -1999,8 +1992,8 @@ ENTRY %main.204 (Arg_0.1: f32[4,4096,4096], Arg_1.2: f32[4,5,4096,8192])
 
   HloModuleConfig config = GetModuleConfigForTest(
       /*replica_count=*/kNumReplicas, /*num_partitions=*/kNumPartitions);
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kModuleStr, config));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(kModuleStr, config));
 
   // Create device assignment running across partitions.
   DeviceAssignment device_assignment(/*replica_count=*/kNumReplicas,
@@ -2009,13 +2002,13 @@ ENTRY %main.204 (Arg_0.1: f32[4,4096,4096], Arg_1.2: f32[4,5,4096,8192])
     device_assignment(0, i) = i;
   }
 
-  TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> fake_args,
-                          MakeFakeArguments(module.get()));
-  std::vector<Literal *> args;
-  for (auto &arg : fake_args) {
+  ASSERT_OK_AND_ASSIGN(std::vector<Literal> fake_args,
+                       MakeFakeArguments(module.get()));
+  std::vector<Literal*> args;
+  for (auto& arg : fake_args) {
     args.push_back(&arg);
   }
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::vector<Literal> results,
       ExecuteReplicated(std::move(module), args,
                         /*num_replicas=*/kNumPartitions, &device_assignment,

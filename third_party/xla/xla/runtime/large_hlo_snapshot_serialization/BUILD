@@ -56,6 +56,7 @@ xla_cc_test(
     srcs = ["serialization_test.cc"],
     deps = [
         ":serialization",
+        "//third_party/protobuf/io",
         "//xla:literal",
         "//xla:literal_util",
         "//xla:shape_util",
@@ -63,12 +64,10 @@ xla_cc_test(
         "//xla/service:hlo_proto_cc",
         "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/platform:errors",
-        "//xla/tsl/platform:statusor",
         "//xla/tsl/util/proto:proto_matchers",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest",
         "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/platform:protobuf",
     ],
 )

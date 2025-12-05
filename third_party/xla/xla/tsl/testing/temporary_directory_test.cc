@@ -24,7 +24,6 @@ limitations under the License.
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/file_statistics.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace tsl::testing {
 namespace {
@@ -32,7 +31,7 @@ namespace {
 TEST(TemporaryDirectoryTest, CreateForCurrentTestcase) {
   std::string path;
   {
-    TF_ASSERT_OK_AND_ASSIGN(
+    ASSERT_OK_AND_ASSIGN(
         TemporaryDirectory temp_dir,
         TemporaryDirectory::CreateForTestcase(
             *::testing::UnitTest::GetInstance()->current_test_info()));

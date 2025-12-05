@@ -32,7 +32,6 @@ limitations under the License.
 #include "xla/python/ifrt/serdes_version.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace ifrt {
@@ -66,10 +65,10 @@ TEST_P(ShardingSerDesTest, SingleDeviceShardingRoundTrip) {
       GetDevices({0})->devices().front(), MemoryKind("abc"));
 
   auto options = std::make_unique<SerializeOptions>(version());
-  TF_ASSERT_OK_AND_ASSIGN(auto serialized,
-                          Serialize(*sharding, std::move(options)));
+  ASSERT_OK_AND_ASSIGN(auto serialized,
+                       Serialize(*sharding, std::move(options)));
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto out_sharding,
       Deserialize<SingleDeviceSharding>(
           serialized, std::make_unique<DeserializeShardingOptions>(client())));
@@ -82,10 +81,10 @@ TEST_P(ShardingSerDesTest, OpaqueShardingRoundTrip) {
   auto sharding = OpaqueSharding::Create(GetDevices({0, 1}), MemoryKind("abc"));
 
   auto options = std::make_unique<SerializeOptions>(version());
-  TF_ASSERT_OK_AND_ASSIGN(auto serialized,
-                          Serialize(*sharding, std::move(options)));
+  ASSERT_OK_AND_ASSIGN(auto serialized,
+                       Serialize(*sharding, std::move(options)));
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto out_sharding,
       Deserialize<OpaqueSharding>(
           serialized, std::make_unique<DeserializeShardingOptions>(client())));
@@ -101,10 +100,10 @@ TEST_P(ShardingSerDesTest, ConcreteShardingRoundTrip) {
       /*shard_shapes=*/{Shape({3, 20}), Shape({7, 20})});
 
   auto options = std::make_unique<SerializeOptions>(version());
-  TF_ASSERT_OK_AND_ASSIGN(auto serialized,
-                          Serialize(*sharding, std::move(options)));
+  ASSERT_OK_AND_ASSIGN(auto serialized,
+                       Serialize(*sharding, std::move(options)));
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto out_sharding,
       Deserialize<ConcreteSharding>(
           serialized, std::make_unique<DeserializeShardingOptions>(client())));
@@ -117,15 +116,15 @@ TEST_P(ShardingSerDesTest, ConcreteShardingRoundTrip) {
 }
 
 TEST_P(ShardingSerDesTest, ConcreteShardingWithDynamicShapeRoundTrip) {
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       DynamicShape dynamic_shape,
       DynamicShape::Create(Shape({10, 20}),
                            BoundedDynamicShapeTag({false, true})));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       DynamicShape shard_dynamic_shape1,
       DynamicShape::Create(Shape({3, 20}),
                            BoundedDynamicShapeTag({false, true})));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       DynamicShape shard_dynamic_shape2,
       DynamicShape::Create(Shape({7, 20}),
                            BoundedDynamicShapeTag({false, true})));
@@ -135,10 +134,10 @@ TEST_P(ShardingSerDesTest, ConcreteShardingWithDynamicShapeRoundTrip) {
       /*shard_dynamic_shapes=*/{shard_dynamic_shape1, shard_dynamic_shape2});
 
   auto options = std::make_unique<SerializeOptions>(version());
-  TF_ASSERT_OK_AND_ASSIGN(Serialized serialized,
-                          Serialize(*sharding, std::move(options)));
+  ASSERT_OK_AND_ASSIGN(Serialized serialized,
+                       Serialize(*sharding, std::move(options)));
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto out_sharding,
       Deserialize<ConcreteSharding>(
           serialized, std::make_unique<DeserializeShardingOptions>(client())));
@@ -157,10 +156,10 @@ TEST_P(ShardingSerDesTest, ConcreteEvenShardingRoundTrip) {
       /*shard_shape=*/Shape({5, 20}), /*is_fully_replicated=*/true);
 
   auto options = std::make_unique<SerializeOptions>(version());
-  TF_ASSERT_OK_AND_ASSIGN(auto serialized,
-                          Serialize(*sharding, std::move(options)));
+  ASSERT_OK_AND_ASSIGN(auto serialized,
+                       Serialize(*sharding, std::move(options)));
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto out_sharding,
       Deserialize<ConcreteEvenSharding>(
           serialized, std::make_unique<DeserializeShardingOptions>(client())));
@@ -173,15 +172,15 @@ TEST_P(ShardingSerDesTest, ConcreteEvenShardingRoundTrip) {
 }
 
 TEST_P(ShardingSerDesTest, ShardingParamShardingRoundTrip) {
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto sharding,
       ShardingParamSharding::Create(ShardingParam({2, 1}, {{0}, {2}}),
                                     GetDevices({0, 1}), MemoryKind("abc")));
 
   auto options = std::make_unique<SerializeOptions>(version());
-  TF_ASSERT_OK_AND_ASSIGN(auto serialized,
-                          Serialize(*sharding, std::move(options)));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(auto serialized,
+                       Serialize(*sharding, std::move(options)));
+  ASSERT_OK_AND_ASSIGN(
       auto out_sharding,
       Deserialize<ShardingParamSharding>(
           serialized, std::make_unique<DeserializeShardingOptions>(client())));

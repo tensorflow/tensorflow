@@ -37,7 +37,6 @@ limitations under the License.
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/types.h"
 #include "xla/xla_data.pb.h"
@@ -114,8 +113,8 @@ TEST_P(TopKKernelTest, TopKFloat) {
   auto custom_kernel = GetTopKKernel("topk", PrimitiveType::F32, n, k,
                                      batch_size, platform->Name(), 32);
 
-  TF_ASSERT_OK_AND_ASSIGN(auto kernel,
-                          executor->LoadKernel(custom_kernel->kernel_spec()));
+  ASSERT_OK_AND_ASSIGN(auto kernel,
+                       executor->LoadKernel(custom_kernel->kernel_spec()));
 
   // Launch topk kernel with device memory arguments.
   se::KernelArgsDeviceMemoryArray arr(
@@ -168,8 +167,8 @@ TEST_P(TopKKernelTest, TopKPackedNegative) {
   auto custom_kernel = GetTopKKernel("topk", PrimitiveType::F32, n, k,
                                      batch_size, platform->Name(), 32);
 
-  TF_ASSERT_OK_AND_ASSIGN(auto kernel,
-                          executor->LoadKernel(custom_kernel->kernel_spec()));
+  ASSERT_OK_AND_ASSIGN(auto kernel,
+                       executor->LoadKernel(custom_kernel->kernel_spec()));
 
   // Launch topk kernel with device memory arguments.
   se::KernelArgsDeviceMemoryArray arr(

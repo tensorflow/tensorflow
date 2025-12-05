@@ -22,13 +22,13 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include "absl/algorithm/container.h"
 #include "absl/log/check.h"
 #include "absl/status/statusor.h"
 #include "absl/synchronization/blocking_counter.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/tsl/platform/env.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/tsl/platform/test_benchmark.h"
 #include "xla/tsl/platform/threadpool.h"
@@ -44,17 +44,17 @@ TEST(ObjectPoolTest, GetOrCreate) {
     return std::make_unique<int32_t>(counter++);
   });
 
-  TF_ASSERT_OK_AND_ASSIGN(auto obj0, pool.GetOrCreate());
+  ASSERT_OK_AND_ASSIGN(auto obj0, pool.GetOrCreate());
   ASSERT_EQ(**obj0, 0);
 
-  TF_ASSERT_OK_AND_ASSIGN(auto obj1, pool.GetOrCreate());
+  ASSERT_OK_AND_ASSIGN(auto obj1, pool.GetOrCreate());
   ASSERT_EQ(**obj1, 1);
 
   auto destroy = [](IntPool::BorrowedObject obj) {};
   destroy(std::move(obj0));
   destroy(std::move(obj1));
 
-  TF_ASSERT_OK_AND_ASSIGN(auto obj2, pool.GetOrCreate());
+  ASSERT_OK_AND_ASSIGN(auto obj2, pool.GetOrCreate());
   ASSERT_EQ(**obj2, 1);
   ASSERT_EQ(counter, 2);
 }
@@ -88,7 +88,7 @@ TEST(ObjectPoolTest, GetOrCreateUnderContention) {
   for (int32_t t = 0; t < num_tasks; ++t) {
     threads.Schedule([&] {
       for (int32_t i = 0; i < num_iters; ++i) {
-        TF_ASSERT_OK_AND_ASSIGN(auto obj, pool.GetOrCreate());
+        ASSERT_OK_AND_ASSIGN(auto obj, pool.GetOrCreate());
         CHECK_EQ((*obj)->users.fetch_add(1), 0);
         ASSERT_GE((*obj)->counter++, 0);
         CHECK_EQ((*obj)->users.fetch_sub(1), 1);

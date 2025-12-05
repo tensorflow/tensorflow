@@ -28,7 +28,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -47,8 +46,8 @@ TEST_F(CheckUniformReplicaGroupsTest, CheckUniformReplicaGroupsUniform) {
           replica_groups={{0,1},{2,3}}
     }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnUnverifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(hlo_string));
   const HloAllGatherInstruction* ag = Cast<HloAllGatherInstruction>(
       module->entry_computation()->root_instruction());
   EXPECT_TRUE(CheckUniformReplicaGroups(ag));
@@ -63,8 +62,8 @@ TEST_F(CheckUniformReplicaGroupsTest, CheckUniformReplicaGroupsNonUniform) {
           replica_groups={{0,1},{2}}
     }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnUnverifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(hlo_string));
   const HloAllGatherInstruction* ag = Cast<HloAllGatherInstruction>(
       module->entry_computation()->root_instruction());
   EXPECT_FALSE(CheckUniformReplicaGroups(ag));
@@ -79,8 +78,8 @@ TEST_F(CheckUniformReplicaGroupsTest, CheckUniformReplicaGroupsSingleGroup) {
         replica_groups={{0,1,2,3}}
     }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnUnverifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(hlo_string));
   const HloAllGatherInstruction* ag = Cast<HloAllGatherInstruction>(
       module->entry_computation()->root_instruction());
   EXPECT_TRUE(CheckUniformReplicaGroups(ag));
@@ -99,8 +98,8 @@ TEST_F(ExtractSplitDimSpecTest, SingleDim) {
         dynamic_slice_sizes={8,10}
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnUnverifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(hlo_string));
   HloInstruction* ds = module->entry_computation()->root_instruction();
   ASSERT_THAT(ds, testing::NotNull());
 
@@ -123,8 +122,8 @@ TEST_F(ExtractSplitDimSpecTest, MultipleDimOffsets) {
         dynamic_slice_sizes={8,10}
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnUnverifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(hlo_string));
   HloInstruction* ds = module->entry_computation()->root_instruction();
   ASSERT_THAT(ds, testing::NotNull());
 
@@ -148,8 +147,8 @@ TEST_F(ExtractSplitDimSpecTest, MultipleSplitDimsAllowed) {
         dynamic_slice_sizes={16,10,15}
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnUnverifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(hlo_string));
   HloInstruction* ds = module->entry_computation()->root_instruction();
   ASSERT_THAT(ds, testing::NotNull());
 
@@ -173,8 +172,8 @@ TEST_F(ExtractSplitDimSpecTest, MultipleSplitDimsNonConsecutive) {
         dynamic_slice_sizes={8,20,15}
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnUnverifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(hlo_string));
   HloInstruction* ds = module->entry_computation()->root_instruction();
   ASSERT_THAT(ds, testing::NotNull());
 
@@ -196,8 +195,8 @@ TEST_F(ExtractSplitDimSpecTest, MultipleSplitDimsNotAllowed) {
         dynamic_slice_sizes={16,10,15}
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnUnverifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(hlo_string));
   HloInstruction* ds = module->entry_computation()->root_instruction();
   ASSERT_THAT(ds, testing::NotNull());
 
@@ -217,8 +216,8 @@ TEST_F(ExtractSplitDimSpecTest, NoSplitDimFound) {
         dynamic_slice_sizes={16,10}
     }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnUnverifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(hlo_string));
   HloInstruction* ds = module->entry_computation()->root_instruction();
   ASSERT_THAT(ds, testing::NotNull());
 
@@ -246,8 +245,8 @@ TEST_F(FindUniqueDynamicSliceUserFromCollectiveTest, CaptureDsAllGatger) {
         dynamic_slice_sizes={16,10}
     }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnUnverifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(hlo_string));
   HloAllGatherInstruction* ag = Cast<HloAllGatherInstruction>(
       module->entry_computation()->GetInstructionWithName("ag"));
   ASSERT_THAT(ag, testing::NotNull());
@@ -279,8 +278,8 @@ TEST_F(FindUniqueDynamicSliceUserFromCollectiveTest,
         dynamic_slice_sizes={160}
     }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnUnverifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(hlo_string));
   HloAllGatherInstruction* ag = Cast<HloAllGatherInstruction>(
       module->entry_computation()->GetInstructionWithName("ag"));
   ASSERT_THAT(ag, testing::NotNull());
@@ -311,8 +310,8 @@ TEST_F(FindUniqueDynamicSliceUserFromCollectiveTest, WithBitcast) {
         dynamic_slice_sizes={16,10}
     }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnUnverifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(hlo_string));
   HloAllGatherInstruction* ag = Cast<HloAllGatherInstruction>(
       module->entry_computation()->GetInstructionWithName("ag"));
   ASSERT_THAT(ag, testing::NotNull());
@@ -344,8 +343,8 @@ TEST_F(FindUniqueDynamicSliceUserFromCollectiveTest, WithReshapeAndBitcast) {
         dynamic_slice_sizes={160}
     }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnUnverifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(hlo_string));
   HloAllGatherInstruction* ag = Cast<HloAllGatherInstruction>(
       module->entry_computation()->GetInstructionWithName("ag"));
   ASSERT_THAT(ag, testing::NotNull());
@@ -379,8 +378,8 @@ TEST_F(FindUniqueDynamicSliceUserFromCollectiveTest, MultipleUsersWithReshape) {
         dynamic_slice_sizes={160}
     }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnUnverifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(hlo_string));
   HloAllGatherInstruction* ag = Cast<HloAllGatherInstruction>(
       module->entry_computation()->GetInstructionWithName("ag"));
   ASSERT_THAT(ag, testing::NotNull());
@@ -408,8 +407,8 @@ TEST_F(FindUniqueDynamicSliceUserFromCollectiveTest, NoDynamicSlice) {
       ROOT neg = f32[32,10] negate(ag)
     }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnUnverifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(hlo_string));
   HloAllGatherInstruction* ag = Cast<HloAllGatherInstruction>(
       module->entry_computation()->GetInstructionWithName("ag"));
   ASSERT_THAT(ag, testing::NotNull());
@@ -437,8 +436,8 @@ TEST_F(FindUniqueDynamicSliceUserFromCollectiveTest,
         dynamic_slice_sizes={160}
     }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnUnverifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(hlo_string));
   HloAllGatherInstruction* ag = Cast<HloAllGatherInstruction>(
       module->entry_computation()->GetInstructionWithName("ag"));
   ASSERT_THAT(ag, testing::NotNull());
@@ -468,8 +467,8 @@ TEST_F(GetIndicesSpecForDynamicSliceWithMultiplyTest, SingleRgMatch) {
         s32[] constant(0)), dynamic_slice_sizes={1,1,1024}
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnUnverifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(hlo_string));
   HloInstruction* ag =
       module->entry_computation()->GetInstructionWithName("ag");
   ASSERT_NE(ag, nullptr);
@@ -505,8 +504,8 @@ TEST_F(GetIndicesSpecForDynamicSliceWithMultiplyTest, SingleRgWithReshape) {
         s32[] constant(0)), dynamic_slice_sizes={1,1,1024}
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnUnverifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(hlo_string));
   HloInstruction* ag =
       module->entry_computation()->GetInstructionWithName("ag");
   ASSERT_NE(ag, nullptr);
@@ -542,8 +541,8 @@ TEST_F(GetIndicesSpecForDynamicSliceWithMultiplyTest, MultiRgsUnordered) {
         s32[] constant(0), s32[] constant(0)), dynamic_slice_sizes={1,1,1024}
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnUnverifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(hlo_string));
   HloInstruction* ag =
       module->entry_computation()->GetInstructionWithName("ag");
   HloInstruction* ds_offset =
@@ -582,8 +581,8 @@ TEST_F(GetIndicesSpecForDynamicSliceWithMultiplyTest, SingleRg8Replicas) {
         dynamic_slice_sizes={32,8,128}
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnUnverifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(hlo_string));
   HloInstruction* ag =
       module->entry_computation()->GetInstructionWithName("ag");
   HloInstruction* ds_offset =
@@ -620,8 +619,8 @@ TEST_F(GetIndicesSpecForDynamicSliceWithMultiplyTest, SingleRgMultiply) {
         s32[] constant(0)), dynamic_slice_sizes={2,1,1024}
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnUnverifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(hlo_string));
   HloInstruction* ag =
       module->entry_computation()->GetInstructionWithName("ag");
   ASSERT_NE(ag, nullptr);
@@ -659,8 +658,8 @@ TEST_F(GetIndicesSpecForDynamicSliceWithMultiplyTest, UnmatchedNotMultiply) {
         s32[] constant(0)), dynamic_slice_sizes={2,1,1024}
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnUnverifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(hlo_string));
   HloInstruction* ag =
       module->entry_computation()->GetInstructionWithName("ag");
   ASSERT_NE(ag, nullptr);
@@ -694,8 +693,8 @@ TEST_F(GetIndicesSpecForDynamicSliceWithMultiplyTest, MultiRgsWithMultiply) {
         s32[] constant(0), s32[] constant(0)), dynamic_slice_sizes={4,1,1024}
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnUnverifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(hlo_string));
   HloInstruction* ag =
       module->entry_computation()->GetInstructionWithName("ag");
   HloInstruction* ds_offset =
@@ -736,8 +735,8 @@ TEST_F(GetIndicesSpecForDynamicSliceWithMultiplyTest,
         s32[] constant(0)), dynamic_slice_sizes={2,1,1024}
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnUnverifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(hlo_string));
   HloInstruction* ag =
       module->entry_computation()->GetInstructionWithName("ag");
   ASSERT_NE(ag, nullptr);
@@ -772,8 +771,8 @@ TEST_F(GetIndicesSpecForDynamicSliceWithMultiplyTest,
         s32[] constant(0)), dynamic_slice_sizes={2,1,1024}
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnUnverifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(hlo_string));
   HloInstruction* ag =
       module->entry_computation()->GetInstructionWithName("ag");
   ASSERT_NE(ag, nullptr);
@@ -811,8 +810,8 @@ TEST_F(MatchPermutedSliceAndPartitionOffsetTest,
         dynamic_slice_sizes={32,8,128}
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnUnverifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(hlo_string));
   const HloInstruction* ag =
       module->entry_computation()->GetInstructionWithName("ag");
   const HloAllGatherInstruction* ag_instr = Cast<HloAllGatherInstruction>(ag);
@@ -847,8 +846,8 @@ TEST_F(MatchPermutedSliceAndPartitionOffsetTest,
         dynamic_slice_sizes={1,4,32}
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnUnverifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(hlo_string));
   const HloInstruction* ag =
       module->entry_computation()->GetInstructionWithName("ag");
   const HloAllGatherInstruction* ag_instr = Cast<HloAllGatherInstruction>(ag);
@@ -889,8 +888,8 @@ TEST_F(MatchDsPadAllGatherTest, MatchDsPadAllGather) {
         reshape.15, zero_idx), dynamic_slice_sizes={1,24,40}
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnUnverifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(hlo_string));
   HloInstruction* root = module->entry_computation()->root_instruction();
   ASSERT_EQ(root->name(), "ds");
   HloInstruction* pad_hlo = nullptr;
@@ -923,8 +922,8 @@ TEST_F(MatchDsPadAllGatherTest, MatchDsPadAllGatherNoPad) {
         zero_idx, reshape.15, zero_idx), dynamic_slice_sizes={1,2,40}
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnUnverifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(hlo_string));
   HloInstruction* root = module->entry_computation()->root_instruction();
   ASSERT_EQ(root->name(), "ds");
   HloInstruction* pad_hlo = nullptr;
@@ -952,8 +951,8 @@ TEST_F(MatchDsPadAllGatherTest, MatchDsPadAllGatherNoAllGather) {
         reshape.15, zero_idx), dynamic_slice_sizes={1,24,40}
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnUnverifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(hlo_string));
   HloInstruction* root = module->entry_computation()->root_instruction();
   ASSERT_EQ(root->name(), "ds");
   HloInstruction* pad_hlo = nullptr;

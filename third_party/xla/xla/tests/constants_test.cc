@@ -23,6 +23,7 @@ limitations under the License.
 #include <vector>
 
 #include "xla/tests/xla_test_backend_predicates.h"
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "xla/array2d.h"
 #include "xla/array3d.h"
@@ -36,7 +37,6 @@ limitations under the License.
 #include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/types.h"
 #include "tsl/platform/ml_dtypes.h"
@@ -62,14 +62,10 @@ class ConstantsFloatTest : public ConstantsTest {
   }
 };
 
-using FloatTypes =
-    ::testing::Types<float, half, tsl::float8_e3m4, tsl::float8_e4m3,
-                     tsl::float8_e4m3fn, tsl::float8_e4m3b11fnuz,
-                     tsl::float8_e4m3fnuz, tsl::float8_e5m2,
-                     tsl::float8_e5m2fnuz
-                     ,
-                     tsl::float4_e2m1fn, tsl::float8_e8m0fnu
-                     >;
+using FloatTypes = ::testing::Types<
+    float, half, tsl::float8_e3m4, tsl::float8_e4m3, tsl::float8_e4m3fn,
+    tsl::float8_e4m3b11fnuz, tsl::float8_e4m3fnuz, tsl::float8_e5m2,
+    tsl::float8_e5m2fnuz, tsl::float4_e2m1fn, tsl::float8_e8m0fnu>;
 
 TYPED_TEST_SUITE(ConstantsFloatTest, FloatTypes);
 
@@ -298,8 +294,8 @@ TEST_F(ConstantsHloTest, BitcastOfConstant) {
   )";
   auto module = ParseAndReturnVerifiedModule(testcase).value();
   auto param = LiteralUtil::CreateR0<int32_t>(1);
-  TF_ASSERT_OK_AND_ASSIGN(Literal result, Execute(std::move(module), {&param},
-                                                  /*run_hlo_passes=*/false));
+  ASSERT_OK_AND_ASSIGN(Literal result, Execute(std::move(module), {&param},
+                                               /*run_hlo_passes=*/false));
   EXPECT_TRUE(LiteralTestUtil::Equal(param, result));
 }
 

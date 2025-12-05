@@ -23,7 +23,6 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -66,7 +65,7 @@ ENTRY main {
   ROOT out = f32[32,64,128]{0,1,2} transpose(input), dimensions={0,2,1}
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
   TransposeDimensionGrouper dimension_grouper;
   EXPECT_THAT(dimension_grouper.Run(module.get()),
               absl_testing::StatusIs(tsl::error::FAILED_PRECONDITION,
@@ -82,7 +81,7 @@ ENTRY main {
   ROOT out = f32[32,64,128]{2,1,0} transpose(input), dimensions={0,2,1}
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
   TransposeDimensionGrouper dimension_grouper;
   EXPECT_THAT(dimension_grouper.Run(module.get()),
               absl_testing::StatusIs(tsl::error::FAILED_PRECONDITION,

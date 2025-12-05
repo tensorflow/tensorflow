@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/backends/cpu/runtime/copy_thunk.h"
 
+#include <gmock/gmock.h>
 #include "xla/backends/cpu/runtime/buffer_allocations.h"
 #include "xla/backends/cpu/runtime/thunk.h"
 #include "xla/backends/cpu/runtime/thunk_testlib.h"
@@ -24,7 +25,6 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/xla_data.pb.h"
 
@@ -45,9 +45,8 @@ TEST(CopyThunkTest, CopyEmptyShape) {
 
   Shape shape = ShapeUtil::MakeShape(F32, {0, 2});
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto thunk,
-      CopyThunk::Create({"copy"}, src_slice, shape, dst_slice, shape));
+  ASSERT_OK_AND_ASSIGN(auto thunk, CopyThunk::Create({"copy"}, src_slice, shape,
+                                                     dst_slice, shape));
 
   Thunk::ExecuteParams params = {nullptr, &allocations};
 
@@ -66,7 +65,7 @@ TEST(CopyThunkTest, CopySameShape) {
   auto [src_slice, dst_slice] =
       CreateBufferAllocationSlice(src_alloc, dst_alloc);
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto thunk, CopyThunk::Create({"copy"}, src_slice, src.shape(), dst_slice,
                                     dst.shape()));
 
@@ -92,9 +91,9 @@ TEST(CopyThunkTest, CopyTransposed) {
   Shape transposed_shape = src.shape();
   *transposed_shape.mutable_layout() = LayoutUtil::MakeLayout({0, 1});
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto thunk, CopyThunk::Create({"copy"}, src_slice, transposed_shape,
-                                    dst_slice, dst.shape()));
+  ASSERT_OK_AND_ASSIGN(auto thunk,
+                       CopyThunk::Create({"copy"}, src_slice, transposed_shape,
+                                         dst_slice, dst.shape()));
 
   Thunk::ExecuteParams params = {nullptr, &allocations};
 
@@ -122,9 +121,9 @@ TEST(CopyThunkTest, CopyTransposedEmptyShape) {
   Shape transposed_shape = shape;
   *transposed_shape.mutable_layout() = LayoutUtil::MakeLayout({0, 1});
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto thunk, CopyThunk::Create({"copy"}, src_slice, transposed_shape,
-                                    dst_slice, shape));
+  ASSERT_OK_AND_ASSIGN(auto thunk,
+                       CopyThunk::Create({"copy"}, src_slice, transposed_shape,
+                                         dst_slice, shape));
 
   Thunk::ExecuteParams params = {nullptr, &allocations};
 

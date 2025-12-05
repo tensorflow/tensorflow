@@ -30,7 +30,6 @@ limitations under the License.
 #include "xla/service/gpu/model/hlo_op_profile.pb.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tsl/platform/env.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "tsl/platform/path.h"
 
@@ -141,9 +140,9 @@ TEST_F(MatmulStatsCollectionTest,
         }
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       bool changed, MatmulPerfTableStatsCollection(profiles_path_, device_info_)
                         .Run(module.get()));
 
@@ -194,8 +193,8 @@ TEST_F(MatmulStatsCollectionTest,
         }
     }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(
       bool changed, MatmulPerfTableStatsCollection(profiles_path_, device_info_)
                         .Run(module.get()));
 

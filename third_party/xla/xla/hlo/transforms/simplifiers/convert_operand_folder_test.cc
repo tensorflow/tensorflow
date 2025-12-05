@@ -23,7 +23,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/utils/hlo_matchers.h"
-#include "tsl/platform/statusor.h"
 namespace xla {
 namespace {
 
@@ -43,10 +42,9 @@ TEST_F(ConvertOperandFoldingTest, IntegralUpcastConvertFolded) {
     ROOT dot = s16[2,2]{1,0} dot(c0, c1), lhs_contracting_dims={1},
                                           rhs_contracting_dims={0}
   })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(module_string));
-  TF_ASSERT_OK_AND_ASSIGN(bool folded,
-                          ConvertOperandFolding().Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(module_string));
+  ASSERT_OK_AND_ASSIGN(bool folded, ConvertOperandFolding().Run(module.get()));
   EXPECT_TRUE(folded);
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               AllOf(op::Dot(op::Parameter(0), op::Parameter(1)),
@@ -65,10 +63,9 @@ TEST_F(ConvertOperandFoldingTest, FloatingUpcastConvertFolded) {
     ROOT dot = f32[2,2]{1,0} dot(c0, c1), lhs_contracting_dims={1},
                                           rhs_contracting_dims={0}
   })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(module_string));
-  TF_ASSERT_OK_AND_ASSIGN(bool folded,
-                          ConvertOperandFolding().Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(module_string));
+  ASSERT_OK_AND_ASSIGN(bool folded, ConvertOperandFolding().Run(module.get()));
   EXPECT_TRUE(folded);
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               AllOf(op::Dot(op::Parameter(0), op::Parameter(1)),
@@ -87,10 +84,9 @@ TEST_F(ConvertOperandFoldingTest, IntegralToFloatingConvertFolded) {
     ROOT dot = f32[2,2]{1,0} dot(c0, c1), lhs_contracting_dims={1},
                                           rhs_contracting_dims={0}
   })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(module_string));
-  TF_ASSERT_OK_AND_ASSIGN(bool folded,
-                          ConvertOperandFolding().Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(module_string));
+  ASSERT_OK_AND_ASSIGN(bool folded, ConvertOperandFolding().Run(module.get()));
   EXPECT_TRUE(folded);
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               AllOf(op::Dot(op::Parameter(0), op::Parameter(1)),
@@ -109,10 +105,9 @@ TEST_F(ConvertOperandFoldingTest, DowncastConvertNotFolded) {
     ROOT dot = s16[2,2]{1,0} dot(c0, c1), lhs_contracting_dims={1},
                                           rhs_contracting_dims={0}
   })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(module_string));
-  TF_ASSERT_OK_AND_ASSIGN(bool folded,
-                          ConvertOperandFolding().Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(module_string));
+  ASSERT_OK_AND_ASSIGN(bool folded, ConvertOperandFolding().Run(module.get()));
   EXPECT_FALSE(folded);
   EXPECT_THAT(
       module->entry_computation()->root_instruction(),
@@ -135,10 +130,9 @@ TEST_F(ConvertOperandFoldingTest, OneOperandFolded) {
     ROOT dot = s16[2,2]{1,0} dot(c0, c1), lhs_contracting_dims={1},
                                           rhs_contracting_dims={0}
   })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(module_string));
-  TF_ASSERT_OK_AND_ASSIGN(bool folded,
-                          ConvertOperandFolding().Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(module_string));
+  ASSERT_OK_AND_ASSIGN(bool folded, ConvertOperandFolding().Run(module.get()));
   EXPECT_TRUE(folded);
   EXPECT_THAT(
       module->entry_computation()->root_instruction(),
@@ -171,10 +165,9 @@ TEST_F(ConvertOperandFoldingTest, FoldedWithFormatting) {
     ROOT dot = s16[2,2] dot(rs0, rr1), lhs_contracting_dims={1},
                                           rhs_contracting_dims={0}
   })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(module_string));
-  TF_ASSERT_OK_AND_ASSIGN(bool folded,
-                          ConvertOperandFolding().Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(module_string));
+  ASSERT_OK_AND_ASSIGN(bool folded, ConvertOperandFolding().Run(module.get()));
   EXPECT_TRUE(folded);
   EXPECT_THAT(
       module->entry_computation()->root_instruction(),
@@ -203,10 +196,9 @@ TEST_F(ConvertOperandFoldingTest, FoldedWithDSAndGather) {
     ROOT dot = s16[3,3] dot(t, ds), lhs_contracting_dims={1},
                                           rhs_contracting_dims={0}
   })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(module_string));
-  TF_ASSERT_OK_AND_ASSIGN(bool folded,
-                          ConvertOperandFolding().Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(module_string));
+  ASSERT_OK_AND_ASSIGN(bool folded, ConvertOperandFolding().Run(module.get()));
   EXPECT_TRUE(folded);
   EXPECT_THAT(
       module->entry_computation()->root_instruction(),

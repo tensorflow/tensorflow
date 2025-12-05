@@ -17,12 +17,12 @@ limitations under the License.
 
 #include <cstdint>
 
+#include <gmock/gmock.h>
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/pattern_matcher_gmock.h"
 #include "xla/hlo/testlib/test.h"
 #include "xla/service/pattern_matcher.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -50,8 +50,7 @@ TEST_F(SortSimplifierTest, RemoveUnusedSortOperandArrayResult) {
        dimensions={1}, to_apply=compare
      ROOT gte = f32[64,8732]{1,0} get-tuple-element(sort), index=0
    })";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
   SortSimplifier simplifier;
   uint64_t num_executions = 0;
@@ -88,8 +87,7 @@ TEST_F(SortSimplifierTest, RemoveUnusedSortOperandTuple) {
      gte.1 = u32[64,87] get-tuple-element(sort), index=2
      ROOT tuple = (f32[64,87], u32[64,87]) tuple(gte.0, gte.1)
    })";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
   SortSimplifier simplifier;
   EXPECT_TRUE(simplifier.Run(module.get()).value());
@@ -119,8 +117,7 @@ TEST_F(SortSimplifierTest, DontRemoveUnusedSortKey) {
      sort = (f32[64,8732]{1,0}, s32[64,8732]{1,0}) sort(keys, values), dimensions={1}, to_apply=compare
      ROOT gte = s32[64,8732]{1,0} get-tuple-element(sort), index=1
    })";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
   SortSimplifier simplifier;
   EXPECT_FALSE(simplifier.Run(module.get()).value());
@@ -145,8 +142,7 @@ TEST_F(SortSimplifierTest, RemoveUnusedFirstOperand) {
        dimensions={1}, to_apply=compare
      ROOT gte = s32[64,8732]{1,0} get-tuple-element(sort), index=1
    })";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
   SortSimplifier simplifier;
   uint64_t num_executions = 0;

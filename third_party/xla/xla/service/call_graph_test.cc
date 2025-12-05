@@ -37,10 +37,9 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/errors.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -546,8 +545,8 @@ TEST_F(CallGraphTest, NearestCommonAncestorInstructions) {
     }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(hlo_string));
 
   namespace op = testing::opcode_matchers;
   auto p0 = FindInstruction(hlo_module.get(), "p.0");
@@ -803,7 +802,7 @@ TEST_F(CallGraphTest, ExecutionThread) {
       kScalarShape, HloOpcode::kAdd, constant1, constant2));
   auto module = CreateNewVerifiedModule();
   auto* main_thread_computation = module->AddEntryComputation(builder.Build());
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto* async_done,
       main_thread_computation->CreateAsyncInstructions(
           add, {ShapeUtil::MakeScalarShape(U32)}, kParallelThreadName));

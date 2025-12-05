@@ -22,6 +22,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
@@ -29,11 +30,13 @@ limitations under the License.
 #include "xla/array2d.h"
 #include "xla/array3d.h"
 #include "xla/error_spec.h"
+#include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/literal_util.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/kernels/custom_kernel_fusion_pattern.h"
 #include "xla/service/gpu/kernels/cutlass_gemm_custom_kernel.h"
 #include "xla/service/gpu/transforms/custom_kernel_fusion_rewriter.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/platform/test.h"
@@ -293,9 +296,8 @@ TEST_F(CutlassFusionTest, DoNotRewriteOnV100) {
       stream_executor::GpuComputeCapability{CudaComputeCapability{
           CudaComputeCapability::CudaComputeCapabilities::kVolta, 0}});
   CustomKernelFusionRewriter pass(&device, /*kernel_index=*/0, &patterns);
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          RunHloPass(std::move(pass), module.get()));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(bool changed, RunHloPass(std::move(pass), module.get()));
   EXPECT_FALSE(changed);
 }
 

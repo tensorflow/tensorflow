@@ -36,7 +36,6 @@ limitations under the License.
 #include "xla/python/ifrt/serdes.pb.h"
 #include "xla/python/ifrt/serdes_test_util.h"
 #include "xla/python/ifrt/serdes_version.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace ifrt {
@@ -69,23 +68,21 @@ module {
   Serialized serialized;
   {
     auto context = std::make_unique<mlir::MLIRContext>();
-    TF_ASSERT_OK_AND_ASSIGN(
-        mlir::OwningOpRef<mlir::ModuleOp> module,
-        xla::ParseMlirModuleString(kMlirModuleStr, *context));
+    ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> module,
+                         xla::ParseMlirModuleString(kMlirModuleStr, *context));
     auto program =
         std::make_unique<HloProgram>(std::move(context), std::move(module));
     auto options = std::make_unique<SerializeOptions>(version());
-    TF_ASSERT_OK_AND_ASSIGN(serialized,
-                            Serialize(*program, std::move(options)));
+    ASSERT_OK_AND_ASSIGN(serialized, Serialize(*program, std::move(options)));
   }
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<HloProgram> xla_program,
       Deserialize<HloProgram>(serialized, /*options=*/nullptr));
 
   // Verify that the deserialized program has no MHLO ops.
   bool has_unsupported_dialect = false;
-  xla_program->mlir_module()->walk([&](mlir::Operation *op) {
+  xla_program->mlir_module()->walk([&](mlir::Operation* op) {
     if (!llvm::isa<mlir::BuiltinDialect, mlir::func::FuncDialect,
                    mlir::stablehlo::StablehloDialect>(op->getDialect())) {
       LOG(ERROR) << "Found an op with an unsupported dialect: "
@@ -109,9 +106,8 @@ module {
   {
     auto context = std::make_unique<mlir::MLIRContext>();
     context->allowUnregisteredDialects();
-    TF_ASSERT_OK_AND_ASSIGN(
-        mlir::OwningOpRef<mlir::ModuleOp> module,
-        xla::ParseMlirModuleString(kMlirModuleStr, *context));
+    ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> module,
+                         xla::ParseMlirModuleString(kMlirModuleStr, *context));
     auto program =
         std::make_unique<HloProgram>(std::move(context), std::move(module));
     auto options = std::make_unique<SerializeOptions>(version());
@@ -133,14 +129,12 @@ module {
   Serialized serialized;
   {
     auto context = std::make_unique<mlir::MLIRContext>();
-    TF_ASSERT_OK_AND_ASSIGN(
-        mlir::OwningOpRef<mlir::ModuleOp> module,
-        xla::ParseMlirModuleString(kMlirModuleStr, *context));
+    ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> module,
+                         xla::ParseMlirModuleString(kMlirModuleStr, *context));
     auto program =
         std::make_unique<HloProgram>(std::move(context), std::move(module));
     auto options = std::make_unique<SerializeOptions>(version());
-    TF_ASSERT_OK_AND_ASSIGN(serialized,
-                            Serialize(*program, std::move(options)));
+    ASSERT_OK_AND_ASSIGN(serialized, Serialize(*program, std::move(options)));
   }
 
   serialized.set_data("invalid data");

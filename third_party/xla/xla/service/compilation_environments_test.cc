@@ -21,13 +21,13 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
+#include "google/protobuf/descriptor.h"
+#include "google/protobuf/dynamic_message.h"
 #include "xla/hlo/testlib/test.h"
 #include "xla/service/test_compilation_environment.pb.h"
 #include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/xla.pb.h"
 #include "tsl/platform/casts.h"
-#include "tsl/platform/protobuf.h"
 
 namespace xla {
 
@@ -249,8 +249,8 @@ TEST_F(CompilationEnvironmentsTest, ProtoRoundTrip) {
   envs->GetMutableEnv<TestCompilationEnvironment2>().set_some_other_flag(20);
 
   auto proto = envs->ToProto();
-  TF_ASSERT_OK_AND_ASSIGN(auto envs_deserialized,
-                          CompilationEnvironments::CreateFromProto(proto));
+  ASSERT_OK_AND_ASSIGN(auto envs_deserialized,
+                       CompilationEnvironments::CreateFromProto(proto));
 
   // Verify that envs_deserialized has the same values with which envs was
   // initialized.

@@ -31,11 +31,9 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/env.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/threadpool.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/protobuf.h"
 
 namespace xla {
 namespace {
@@ -92,10 +90,9 @@ TEST(ExecutableBuildOptionsTest, ProtoRoundTripWorks) {
   p.set_process_count(14);
   p.set_slice_size(15);
 
-  TF_ASSERT_OK_AND_ASSIGN(const ExecutableBuildOptions options,
-                          ExecutableBuildOptionsFromProto(p));
-  TF_ASSERT_OK_AND_ASSIGN(const ExecutableBuildOptionsProto p2,
-                          options.ToProto());
+  ASSERT_OK_AND_ASSIGN(const ExecutableBuildOptions options,
+                       ExecutableBuildOptionsFromProto(p));
+  ASSERT_OK_AND_ASSIGN(const ExecutableBuildOptionsProto p2, options.ToProto());
   EXPECT_THAT(p2, EqualsProto(p));
 }
 

@@ -205,7 +205,7 @@ TEST_F(PtxCompilerTest, CancelsOnRegSpill) {
 }
 
 TEST_F(PtxCompilerTest, RecordsRegisterSpillStats) {
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       stream_executor::cuda::Assembly assembly,
       CompileGpuAsmUsingLibNvPtxCompiler(
           kDefaultComputeCapability, kSpillingPtx,

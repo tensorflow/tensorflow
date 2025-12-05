@@ -98,10 +98,10 @@ TEST_F(AllGatherPadDsSimplifierTest, MultiReplicaGenericCaseLowPad) {
         zero_idx), dynamic_slice_sizes={1,24,40}
     }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, RunPass(hlo_string,
-                                               /*num_replicas=*/1,
-                                               /*num_partitions=*/8,
-                                               /*expect_change=*/true));
+  ASSERT_OK_AND_ASSIGN(auto module, RunPass(hlo_string,
+                                            /*num_replicas=*/1,
+                                            /*num_partitions=*/8,
+                                            /*expect_change=*/true));
   HloInstruction* root = module->entry_computation()->root_instruction();
   EXPECT_THAT(
       root, op::Select(op::Compare(op::Reshape(op::DynamicSlice(
@@ -167,10 +167,10 @@ TEST_F(AllGatherPadDsSimplifierTest,
         zero_idx), dynamic_slice_sizes={1,24,40}
     }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, RunPass(hlo_string,
-                                               /*num_replicas=*/1,
-                                               /*num_partitions=*/8,
-                                               /*expect_change=*/true));
+  ASSERT_OK_AND_ASSIGN(auto module, RunPass(hlo_string,
+                                            /*num_replicas=*/1,
+                                            /*num_partitions=*/8,
+                                            /*expect_change=*/true));
   HloInstruction* root = module->entry_computation()->root_instruction();
   EXPECT_THAT(
       root, op::Select(op::Compare(op::Reshape(op::DynamicSlice(
@@ -234,10 +234,10 @@ TEST_F(AllGatherPadDsSimplifierTest, 4ReplicaGenericCaseLowPad) {
         zero_idx), dynamic_slice_sizes={1,6,40}
     }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, RunPass(hlo_string,
-                                               /*num_replicas=*/1,
-                                               /*num_partitions=*/8,
-                                               /*expect_change=*/true));
+  ASSERT_OK_AND_ASSIGN(auto module, RunPass(hlo_string,
+                                            /*num_replicas=*/1,
+                                            /*num_partitions=*/8,
+                                            /*expect_change=*/true));
   HloInstruction* root = module->entry_computation()->root_instruction();
   EXPECT_THAT(
       root, op::Select(op::Compare(op::Reshape(op::DynamicSlice(
@@ -295,10 +295,10 @@ TEST_F(AllGatherPadDsSimplifierTest, MultiReplicaGenericCaseHighPad) {
         zero_idx), dynamic_slice_sizes={1,24,40}
     }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, RunPass(hlo_string,
-                                               /*num_replicas=*/1,
-                                               /*num_partitions=*/8,
-                                               /*expect_change=*/true));
+  ASSERT_OK_AND_ASSIGN(auto module, RunPass(hlo_string,
+                                            /*num_replicas=*/1,
+                                            /*num_partitions=*/8,
+                                            /*expect_change=*/true));
   HloInstruction* root = module->entry_computation()->root_instruction();
   EXPECT_THAT(
       root,
@@ -363,10 +363,10 @@ TEST_F(AllGatherPadDsSimplifierTest, MultiReplicaGenericCaseLowPadNoGap) {
         zero_idx), dynamic_slice_sizes={1,8,40}
     }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, RunPass(hlo_string,
-                                               /*num_replicas=*/1,
-                                               /*num_partitions=*/8,
-                                               /*expect_change=*/true));
+  ASSERT_OK_AND_ASSIGN(auto module, RunPass(hlo_string,
+                                            /*num_replicas=*/1,
+                                            /*num_partitions=*/8,
+                                            /*expect_change=*/true));
   HloInstruction* root = module->entry_computation()->root_instruction();
   EXPECT_THAT(
       root, op::Select(op::Compare(op::Reshape(op::DynamicSlice(
@@ -428,10 +428,10 @@ TEST_F(AllGatherPadDsSimplifierTest, SingleReplicaGenericCaseLowPad) {
         zero_idx), dynamic_slice_sizes={1,16,40}
     }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, RunPass(hlo_string,
-                                               /*num_replicas=*/1,
-                                               /*num_partitions=*/8,
-                                               /*expect_change=*/true));
+  ASSERT_OK_AND_ASSIGN(auto module, RunPass(hlo_string,
+                                            /*num_replicas=*/1,
+                                            /*num_partitions=*/8,
+                                            /*expect_change=*/true));
   HloInstruction* root = module->entry_computation()->root_instruction();
   EXPECT_THAT(
       root, op::Select(op::Compare(op::Reshape(op::DynamicSlice(
@@ -505,10 +505,10 @@ TEST_F(AllGatherPadDsSimplifierTest, SingleReplicaGenericCaseLowPadUnordered) {
         zero_idx), dynamic_slice_sizes={1,16,40}
     }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, RunPass(hlo_string,
-                                               /*num_replicas=*/1,
-                                               /*num_partitions=*/8,
-                                               /*expect_change=*/false));
+  ASSERT_OK_AND_ASSIGN(auto module, RunPass(hlo_string,
+                                            /*num_replicas=*/1,
+                                            /*num_partitions=*/8,
+                                            /*expect_change=*/false));
 }
 
 TEST_F(AllGatherPadDsSimplifierTest, NotMatchInValidPadSmallPad) {
@@ -541,10 +541,10 @@ TEST_F(AllGatherPadDsSimplifierTest, NotMatchInValidPadSmallPad) {
         zero_idx), dynamic_slice_sizes={1,3,40}
     }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, RunPass(hlo_string_small_pad,
-                                               /*num_replicas=*/1,
-                                               /*num_partitions=*/8,
-                                               /*expect_change=*/false));
+  ASSERT_OK_AND_ASSIGN(auto module, RunPass(hlo_string_small_pad,
+                                            /*num_replicas=*/1,
+                                            /*num_partitions=*/8,
+                                            /*expect_change=*/false));
 }
 
 TEST_F(AllGatherPadDsSimplifierTest, NotMatchInValidPadInteriorPad) {
@@ -577,10 +577,10 @@ TEST_F(AllGatherPadDsSimplifierTest, NotMatchInValidPadInteriorPad) {
         zero_idx), dynamic_slice_sizes={1,16,40}
     }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, RunPass(hlo_string_interior_padding,
-                                               /*num_replicas=*/1,
-                                               /*num_partitions=*/8,
-                                               /*expect_change=*/false));
+  ASSERT_OK_AND_ASSIGN(auto module, RunPass(hlo_string_interior_padding,
+                                            /*num_replicas=*/1,
+                                            /*num_partitions=*/8,
+                                            /*expect_change=*/false));
 }
 
 TEST_F(AllGatherPadDsSimplifierTest, NotMatchShortSlice) {
@@ -613,10 +613,10 @@ TEST_F(AllGatherPadDsSimplifierTest, NotMatchShortSlice) {
         zero_idx), dynamic_slice_sizes={1,8,40}
     }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, RunPass(hlo_string,
-                                               /*num_replicas=*/1,
-                                               /*num_partitions=*/8,
-                                               /*expect_change=*/false));
+  ASSERT_OK_AND_ASSIGN(auto module, RunPass(hlo_string,
+                                            /*num_replicas=*/1,
+                                            /*num_partitions=*/8,
+                                            /*expect_change=*/false));
 }
 
 class ExtractValidPadSpecTest : public HloHardwareIndependentTestBase {};
@@ -647,8 +647,8 @@ TEST_F(ExtractValidPadSpecTest, SuccessHighPad) {
     }
   )";
   HloModuleConfig config = GetModuleConfigForTest();
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string, config));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string, config));
   HloInstruction* pad =
       module->entry_computation()->GetInstructionWithName("pad");
   ASSERT_NE(pad, nullptr);
@@ -694,8 +694,8 @@ TEST_F(ExtractValidPadSpecTest, PadOnMultipleDims) {
     }
   )";
   HloModuleConfig config = GetModuleConfigForTest();
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string, config));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string, config));
   HloInstruction* pad =
       module->entry_computation()->GetInstructionWithName("pad");
   ASSERT_NE(pad, nullptr);
@@ -738,8 +738,8 @@ TEST_F(ExtractValidPadSpecTest, PadOnBothSides) {
     }
   )";
   HloModuleConfig config = GetModuleConfigForTest();
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string, config));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string, config));
   HloInstruction* pad =
       module->entry_computation()->GetInstructionWithName("pad");
   ASSERT_NE(pad, nullptr);
@@ -782,8 +782,8 @@ TEST_F(ExtractValidPadSpecTest, InteriorPadding) {
     }
   )";
   HloModuleConfig config = GetModuleConfigForTest();
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string, config));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string, config));
   HloInstruction* pad =
       module->entry_computation()->GetInstructionWithName("pad");
   ASSERT_NE(pad, nullptr);

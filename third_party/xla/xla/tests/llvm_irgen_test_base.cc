@@ -16,13 +16,22 @@ limitations under the License.
 #include "xla/tests/llvm_irgen_test_base.h"
 
 #include <functional>
+#include <memory>
+#include <string>
 #include <utility>
 
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "llvm/IR/Module.h"
+#include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/testlib/filecheck.h"
+#include "xla/service/compiler.h"
+#include "xla/service/hlo_module_config.h"
+#include "xla/service/llvm_compiler.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
-#include "tsl/platform/test.h"
 
 namespace xla {
 
@@ -68,8 +77,8 @@ void LlvmIrGenTestBase::CompileAndVerifyIr(const std::string& hlo_text,
                                            bool run_optimization_passes) {
   HloModuleConfig config;
   config.set_debug_options(GetDebugOptionsForTest());
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_text, config));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_text, config));
   CompileAndVerifyIr(std::move(module), expected_llvm_ir, match_optimized_ir,
                      run_optimization_passes);
 }

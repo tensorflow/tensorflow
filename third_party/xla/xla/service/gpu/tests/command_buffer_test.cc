@@ -19,6 +19,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/log/check.h"
 #include "absl/status/statusor.h"
@@ -44,7 +45,6 @@ limitations under the License.
 #include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/tests/test_utils.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/xla.pb.h"
 
@@ -91,20 +91,17 @@ class CommandBufferTest
                                    absl::Span<const Literal* const> arguments,
                                    const Literal& expected,
                                    bool run_hlo_passes) {
-    TF_ASSERT_OK_AND_ASSIGN(
-        std::unique_ptr<OpaqueExecutable> executable,
-        CreateExecutable(std::move(module), run_hlo_passes));
+    ASSERT_OK_AND_ASSIGN(std::unique_ptr<OpaqueExecutable> executable,
+                         CreateExecutable(std::move(module), run_hlo_passes));
 
     // 1) Warm-up (may run thunks)
-    TF_ASSERT_OK_AND_ASSIGN(
-        Literal result1,
-        test_runner().ExecuteWithExecutable(executable.get(), arguments));
+    ASSERT_OK_AND_ASSIGN(Literal result1, test_runner().ExecuteWithExecutable(
+                                              executable.get(), arguments));
     EXPECT_TRUE(LiteralTestUtil::Equal(expected, result1));
 
     // 2) Create (record and execute command buffer)
-    TF_ASSERT_OK_AND_ASSIGN(
-        Literal result2,
-        test_runner().ExecuteWithExecutable(executable.get(), arguments));
+    ASSERT_OK_AND_ASSIGN(Literal result2, test_runner().ExecuteWithExecutable(
+                                              executable.get(), arguments));
     EXPECT_TRUE(LiteralTestUtil::Equal(expected, result2));
 
     // 3) Update (execute with cloned arguments to attempt buffer changes)
@@ -117,9 +114,9 @@ class CommandBufferTest
       cloned_args.push_back(&cloned_args_storage.back());
     }
 
-    TF_ASSERT_OK_AND_ASSIGN(Literal result3,
-                            test_runner().ExecuteWithExecutable(
-                                executable.get(), absl::MakeSpan(cloned_args)));
+    ASSERT_OK_AND_ASSIGN(Literal result3,
+                         test_runner().ExecuteWithExecutable(
+                             executable.get(), absl::MakeSpan(cloned_args)));
     EXPECT_TRUE(LiteralTestUtil::Equal(expected, result3));
   }
 
@@ -232,7 +229,7 @@ TEST_P(CommandBufferTest, Fusions) {
     ROOT call = f32[2,2] call(p0), to_apply=command_buffer
   })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
 
   Literal argument = LiteralUtil::CreateR2<float>({{1.0, 2.0}, {3.0, 4.0}});
   Literal expected = LiteralUtil::CreateR2<float>({{3.0, 8.0}, {15.0, 24.0}});
@@ -287,7 +284,7 @@ TEST_P(CommandBufferTest, TracedCustomCalls) {
     ROOT call = f32[2,2] call(p0), to_apply=command_buffer
   })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
 
   Literal argument = LiteralUtil::CreateR2<float>({{1.0, 2.0}, {3.0, 4.0}});
   Literal expected = LiteralUtil::CreateR2<float>({{1.0, 2.0}, {3.0, 4.0}});
@@ -337,7 +334,7 @@ TEST_P(CommandBufferTest, TrueFalseConditional) {
   Literal p1 = LiteralUtil::CreateR2<float>({{1.0, 2.0}, {3.0, 4.0}});
 
   {  // Execute `true` branch.
-    TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_text));
+    ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_text));
 
     Literal pred = LiteralUtil::CreateR0<bool>(true);
     Literal expected = LiteralUtil::CreateR2<float>({{2.0, 4.0}, {6.0, 8.0}});
@@ -346,7 +343,7 @@ TEST_P(CommandBufferTest, TrueFalseConditional) {
   }
 
   {  // Execute `false` branch.
-    TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_text));
+    ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_text));
 
     Literal pred = LiteralUtil::CreateR0<bool>(false);
     Literal expected = LiteralUtil::CreateR2<float>({{1.0, 4.0}, {9.0, 16.0}});
@@ -395,7 +392,7 @@ TEST_P(CommandBufferTest, IndexConditional) {
   Literal p1 = LiteralUtil::CreateR2<float>({{1.0, 2.0}, {3.0, 4.0}});
 
   {  // Execute `0` branch.
-    TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_text));
+    ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_text));
 
     Literal index = LiteralUtil::CreateR0<int32_t>(0);
     Literal expected = LiteralUtil::CreateR2<float>({{2.0, 4.0}, {6.0, 8.0}});
@@ -404,7 +401,7 @@ TEST_P(CommandBufferTest, IndexConditional) {
   }
 
   {  // Execute `1` branch.
-    TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_text));
+    ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_text));
 
     Literal index = LiteralUtil::CreateR0<int32_t>(1);
     Literal expected = LiteralUtil::CreateR2<float>({{1.0, 4.0}, {9.0, 16.0}});
@@ -413,7 +410,7 @@ TEST_P(CommandBufferTest, IndexConditional) {
   }
 
   {  // Execute `1024` branch (our of bound index executes N-1 branch).
-    TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_text));
+    ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_text));
 
     Literal index = LiteralUtil::CreateR0<int32_t>(1024);
     Literal expected = LiteralUtil::CreateR2<float>({{1.0, 4.0}, {9.0, 16.0}});
@@ -469,7 +466,7 @@ TEST_P(CommandBufferTest, WhileLoop) {
     ROOT call = (s32[], f32[]) call(p0), to_apply=command_buffer
   })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
 
   Literal cnt = LiteralUtil::CreateR0<int32_t>(0);
   Literal value = LiteralUtil::CreateR0<float>(0.0);
@@ -521,8 +518,8 @@ ENTRY %e (m: f32[3200,6400], n: f32[3200,6400]) -> (f32[3200,6400], f32[3200,640
   debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::FUSION);
   config.set_debug_options(debug_options);
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(module_str, config));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(module_str, config));
   EXPECT_TRUE(RunAndCompare(std::move(module), ErrorSpec{1e-3, 2e-3}));
 }
 
@@ -611,14 +608,14 @@ ENTRY main.49 {
   debug_options.add_xla_gpu_enable_command_buffer(
       DebugOptions::DYNAMIC_SLICE_FUSION);
   config.set_debug_options(debug_options);
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(module_str, config));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(module_str, config));
   EXPECT_TRUE(RunAndCompare(std::move(module), ErrorSpec{1e-3, 2e-3}));
 
   debug_options.set_xla_gpu_require_exclusive_lock(true);
   config.set_debug_options(debug_options);
-  TF_ASSERT_OK_AND_ASSIGN(module,
-                          ParseAndReturnVerifiedModule(module_str, config));
+  ASSERT_OK_AND_ASSIGN(module,
+                       ParseAndReturnVerifiedModule(module_str, config));
   EXPECT_TRUE(RunAndCompare(std::move(module), ErrorSpec{1e-3, 2e-3}));
 }
 
@@ -735,8 +732,8 @@ TEST_P(CommandBufferTest, DynamicSliceCopyFusionCmd) {
       DebugOptions::DYNAMIC_SLICE_COPY_FUSION);
   config.set_debug_options(debug_options);
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_text, config));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(hlo_text, config));
 
   EXPECT_TRUE(RunAndCompareThreeIterations(
       std::move(module), /*run_hlo_passes=*/false, ErrorSpec{1e-3, 2e-3}));
@@ -757,8 +754,8 @@ TEST_P(CommandBufferTest, DynamicSliceCopyFusionCmd) {
   debug_options.set_xla_gpu_command_buffer_unroll_loops(true);
   config.set_debug_options(debug_options);
 
-  TF_ASSERT_OK_AND_ASSIGN(auto unrolled_module,
-                          ParseAndReturnVerifiedModule(hlo_text, config));
+  ASSERT_OK_AND_ASSIGN(auto unrolled_module,
+                       ParseAndReturnVerifiedModule(hlo_text, config));
 
   EXPECT_TRUE(RunAndCompareThreeIterations(std::move(unrolled_module),
                                            /*run_hlo_passes=*/false,
@@ -818,7 +815,7 @@ TEST_P(CommandBufferUnrollTest, WhileLoop) {
     ROOT call = (s32[], f32[]) call(p0), to_apply=command_buffer
   })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
 
   Literal cnt = LiteralUtil::CreateR0<int32_t>(0);
   Literal value = LiteralUtil::CreateR0<float>(0.0);
@@ -898,8 +895,8 @@ TEST_P(CommandBufferUnrollTest, WhileLoopMultiDevice) {
 
   // Parse with replica_count=2 to run on two devices.
   HloModuleConfig config = GetModuleConfigForTest(/*replica_count=*/2);
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_text, config));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(hlo_text, config));
 
   Literal cnt = LiteralUtil::CreateR0<int32_t>(0);
   Literal value = LiteralUtil::CreateR0<float>(0.0);
@@ -909,7 +906,7 @@ TEST_P(CommandBufferUnrollTest, WhileLoopMultiDevice) {
   Literal expected = LiteralUtil::MakeTuple({&expected_cnt, &expected_value});
 
   // Flatten tuple parameter into individual leaves for PJRT replicated execute.
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::vector<Literal> results,
       ExecuteReplicated(std::move(module), {&cnt, &value}, /*num_replicas=*/2,
                         /*use_threads=*/true, /*run_hlo_passes=*/false));

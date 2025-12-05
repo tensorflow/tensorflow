@@ -28,7 +28,6 @@ limitations under the License.
 #include "xla/codegen/llvm_kernel_source.h"
 #include "xla/runtime/buffer_use.h"
 #include "xla/service/buffer_assignment.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 
 namespace xla::cpu {
@@ -46,8 +45,7 @@ TEST(LlvmIrKernelEmitterTest, ParseLlvmIr) {
   LlvmTestKernelEmitter::KernelArg arg{1024, BufferUse::MemoryAccess::kWrite};
   LlvmTestKernelEmitter emitter(kLlvmIr, "noop", {}, {arg});
 
-  TF_ASSERT_OK_AND_ASSIGN(auto kernel_definition,
-                          emitter.EmitKernelDefinition());
+  ASSERT_OK_AND_ASSIGN(auto kernel_definition, emitter.EmitKernelDefinition());
 
   // Check that LLVM IR was parsed and loaded as a LLVM IR kernel source.
   const KernelSpec& kernel_spec = kernel_definition.spec();

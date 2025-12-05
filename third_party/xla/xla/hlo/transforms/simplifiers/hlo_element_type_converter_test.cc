@@ -19,8 +19,12 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/utils/hlo_matchers.h"
+#include "xla/shape.h"
+#include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -47,7 +51,7 @@ TEST_F(HloElementTypeConverterTest, CustomCallsNotConverted) {
   )";
   auto module = ParseAndReturnVerifiedModule(hlo_string).value();
   HloElementTypeConverter type_converter(BF16, F32);
-  TF_ASSERT_OK_AND_ASSIGN(bool converted, type_converter.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool converted, type_converter.Run(module.get()));
   EXPECT_FALSE(converted);
 }
 
@@ -63,7 +67,7 @@ TEST_F(HloElementTypeConverterTest, InfeedsOutfeedsNotConverted) {
   )";
   auto module = ParseAndReturnVerifiedModule(hlo_string).value();
   HloElementTypeConverter type_converter(BF16, F32);
-  TF_ASSERT_OK_AND_ASSIGN(bool converted, type_converter.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool converted, type_converter.Run(module.get()));
   EXPECT_FALSE(converted);
 }
 
@@ -82,7 +86,7 @@ TEST_F(HloElementTypeConverterTest, OperationsInNestedTuplesConverted) {
 
   auto module = ParseAndReturnVerifiedModule(hlo_string).value();
   HloElementTypeConverter type_converter(BF16, F32);
-  TF_ASSERT_OK_AND_ASSIGN(bool converted, type_converter.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool converted, type_converter.Run(module.get()));
   EXPECT_TRUE(converted);
   const HloInstruction* bf16_op =
       module->entry_computation()->root_instruction()->operand(0)->operand(1);
@@ -110,7 +114,7 @@ TEST_F(HloElementTypeConverterTest, BatchNormGradBF16Converted) {
 
   auto module = ParseAndReturnVerifiedModule(hlo_string).value();
   HloElementTypeConverter type_converter(BF16, F32);
-  TF_ASSERT_OK_AND_ASSIGN(bool converted, type_converter.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool converted, type_converter.Run(module.get()));
   EXPECT_TRUE(converted);
   const HloInstruction* tuple_instr =
       module->entry_computation()->root_instruction();
@@ -134,7 +138,7 @@ ENTRY main {
   )";
   auto module = ParseAndReturnVerifiedModule(hlo_string).value();
   HloElementTypeConverter type_converter(BF16, F32);
-  TF_ASSERT_OK_AND_ASSIGN(bool converted, type_converter.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool converted, type_converter.Run(module.get()));
   EXPECT_TRUE(converted);
 
   HloPredicate is_bf16_rng = [](const HloInstruction* inst) {
@@ -160,7 +164,7 @@ ENTRY main {
   auto module = ParseAndReturnVerifiedModule(hlo_string).value();
 
   HloElementTypeConverter type_converter(BF16, F32);
-  TF_ASSERT_OK_AND_ASSIGN(bool converted, type_converter.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool converted, type_converter.Run(module.get()));
   EXPECT_TRUE(converted);
 
   HloInstruction *rng0, *rng1;
@@ -191,7 +195,7 @@ TEST_F(HloElementTypeConverterTest, BitcastConvertIsUnmodified) {
   })";
   auto module = ParseAndReturnVerifiedModule(hlo_string).value();
   HloElementTypeConverter converter(BF16, F32);
-  TF_ASSERT_OK_AND_ASSIGN(bool converted, RunHloPass(&converter, module.get()));
+  ASSERT_OK_AND_ASSIGN(bool converted, RunHloPass(&converter, module.get()));
   EXPECT_FALSE(converted);
 }
 

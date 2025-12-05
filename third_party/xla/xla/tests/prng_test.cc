@@ -23,6 +23,7 @@ limitations under the License.
 #include <vector>
 
 #include "xla/tests/xla_test_backend_predicates.h"
+#include <gmock/gmock.h>
 #include "absl/log/log.h"
 #include "absl/types/span.h"
 #include "Eigen/Core"
@@ -37,7 +38,6 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/tests/client_library_test_base.h"
 #include "xla/tests/literal_test_util.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/types.h"
 #include "xla/xla_data.pb.h"
 
@@ -254,18 +254,18 @@ TEST_F(PrngTest, MapUsingRng) {
   XlaBuilder builder(TestName());
   Literal param0_literal =
       LiteralUtil::CreateR1<float>({2.2f, 5.3f, 4.4f, 5.5f});
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<GlobalData> param0_data,
-                          client_->TransferToServer(param0_literal));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<GlobalData> param0_data,
+                       client_->TransferToServer(param0_literal));
 
   auto param0 = Parameter(&builder, 0, param0_literal.shape(), "param0");
   auto fn = build_sum_rng(builder);
   Map(&builder, {param0}, fn, {0});
 
-  TF_ASSERT_OK_AND_ASSIGN(auto computation, builder.Build());
+  ASSERT_OK_AND_ASSIGN(auto computation, builder.Build());
 
   ExecutionOptions execution_options = execution_options_;
   execution_options.set_seed(125);
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto actual, client_->ExecuteAndTransfer(
                        computation,
                        /*arguments=*/{param0_data.get()}, &execution_options));
@@ -300,19 +300,19 @@ TEST_F(PrngTest, PassInGlobalRngSeed) {
 
   Literal result1;
   {
-    TF_ASSERT_OK_AND_ASSIGN(auto computation, build_computation());
-    TF_ASSERT_OK_AND_ASSIGN(
+    ASSERT_OK_AND_ASSIGN(auto computation, build_computation());
+    ASSERT_OK_AND_ASSIGN(
         result1, client_->ExecuteAndTransfer(computation, /*arguments=*/{},
                                              &execution_options1));
   }
   Literal result2;
   Literal result3;
   {
-    TF_ASSERT_OK_AND_ASSIGN(auto computation, build_computation());
-    TF_ASSERT_OK_AND_ASSIGN(
+    ASSERT_OK_AND_ASSIGN(auto computation, build_computation());
+    ASSERT_OK_AND_ASSIGN(
         result2, client_->ExecuteAndTransfer(computation, /*arguments=*/{},
                                              &execution_options1));
-    TF_ASSERT_OK_AND_ASSIGN(
+    ASSERT_OK_AND_ASSIGN(
         result3, client_->ExecuteAndTransfer(computation, /*arguments=*/{},
                                              &execution_options1));
   }
@@ -321,14 +321,14 @@ TEST_F(PrngTest, PassInGlobalRngSeed) {
   Literal result5;
   Literal result6;
   {
-    TF_ASSERT_OK_AND_ASSIGN(auto computation, build_computation());
-    TF_ASSERT_OK_AND_ASSIGN(
+    ASSERT_OK_AND_ASSIGN(auto computation, build_computation());
+    ASSERT_OK_AND_ASSIGN(
         result4, client_->ExecuteAndTransfer(computation, /*arguments=*/{},
                                              &execution_options2));
-    TF_ASSERT_OK_AND_ASSIGN(
+    ASSERT_OK_AND_ASSIGN(
         result5, client_->ExecuteAndTransfer(computation, /*arguments=*/{},
                                              &execution_options_));
-    TF_ASSERT_OK_AND_ASSIGN(
+    ASSERT_OK_AND_ASSIGN(
         result6, client_->ExecuteAndTransfer(computation, /*arguments=*/{},
                                              &execution_options_));
   }
@@ -361,8 +361,8 @@ TEST_F(PrngTest, DifferentValuesForIdenticalRngNodesInSameComputation) {
 
   Literal result_tuple;
   {
-    TF_ASSERT_OK_AND_ASSIGN(auto computation, build_computation());
-    TF_ASSERT_OK_AND_ASSIGN(
+    ASSERT_OK_AND_ASSIGN(auto computation, build_computation());
+    ASSERT_OK_AND_ASSIGN(
         result_tuple, client_->ExecuteAndTransfer(computation, /*arguments=*/{},
                                                   &execution_options));
   }

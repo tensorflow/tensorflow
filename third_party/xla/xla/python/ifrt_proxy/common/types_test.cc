@@ -23,7 +23,6 @@
 #include "absl/status/status_matchers.h"
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/python/ifrt_proxy/common/types.pb.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 
 namespace xla {
@@ -35,8 +34,7 @@ class VariantTest : public testing::TestWithParam<xla::PjRtValueType> {};
 
 TEST_P(VariantTest, ToFromVariantProto) {
   const auto& variant = GetParam();
-  TF_ASSERT_OK_AND_ASSIGN(proto::Variant variant_proto,
-                          ToVariantProto(variant));
+  ASSERT_OK_AND_ASSIGN(proto::Variant variant_proto, ToVariantProto(variant));
   EXPECT_THAT(FromVariantProto(variant_proto),
               absl_testing::IsOkAndHolds(variant));
 }
@@ -68,9 +66,9 @@ TEST(ArrayCopySemanticsTest, FromToFromProto) {
     if (proto_enum == proto::ARRAY_COPY_SEMANTICS_UNSPECIFIED) {
       continue;
     }
-    TF_ASSERT_OK_AND_ASSIGN(const auto cpp_enum,
-                            FromArrayCopySemanticsProto(proto_enum));
-    TF_ASSERT_OK_AND_ASSIGN(
+    ASSERT_OK_AND_ASSIGN(const auto cpp_enum,
+                         FromArrayCopySemanticsProto(proto_enum));
+    ASSERT_OK_AND_ASSIGN(
         const auto cpp_enum_copy,
         FromArrayCopySemanticsProto(ToArrayCopySemanticsProto(cpp_enum)));
     EXPECT_EQ(cpp_enum_copy, cpp_enum);

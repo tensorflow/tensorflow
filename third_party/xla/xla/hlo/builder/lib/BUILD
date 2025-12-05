@@ -439,7 +439,6 @@ xla_test(
         "//xla/hlo/testlib:test",
         "//xla/tests:client_library_test_base",
         "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
@@ -518,7 +517,6 @@ xla_test(
         "//xla/hlo/builder:xla_builder",
         "//xla/tests:client_library_test_base",
         "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
@@ -745,7 +743,6 @@ xla_test(
         "//xla/tests:client_library_test_runner_mixin",
         "//xla/tests:hlo_pjrt_interpreter_reference_mixin",
         "//xla/tests:hlo_pjrt_test_base",
-        "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",
         "@com_google_absl//absl/status",
         "@com_google_googletest//:gtest_main",
@@ -819,7 +816,6 @@ xla_test(
         "//xla/service",
         "//xla/tests:client_library_test_runner_mixin",
         "//xla/tests:hlo_test_base",
-        "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",
         "@com_google_googletest//:gtest_main",
     ],

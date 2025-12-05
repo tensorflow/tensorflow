@@ -45,7 +45,6 @@
 #include "xla/python/ifrt_proxy/common/ifrt_service.pb.h"
 #include "xla/python/ifrt_proxy/common/test_utils.h"
 #include "xla/tsl/concurrency/future.h"
-#include "xla/tsl/platform/statusor.h"
 #include "tsl/platform/protobuf.h"  // IWYU pragma: keep
 
 namespace xla {
@@ -198,7 +197,7 @@ TEST_F(CompilerTest, Compile) {
               Enqueue(IfrtRequestOfType(IfrtRequest::kCheckFutureRequest)))
       .WillOnce(MockClientCaptureAndReturn(&requests_queue, response));
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto executable,
       compiler.CompileAndLoad(std::make_unique<TestProgram>(),
                               std::make_unique<TestCompileOptions>()));

@@ -14,13 +14,17 @@ limitations under the License.
 ==============================================================================*/
 #include "xla/hlo/transforms/simplifiers/computation_canonicalizers.h"
 
+#include <memory>
+
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/status_matchers.h"
+#include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/testlib/filecheck.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -60,8 +64,8 @@ TEST_F(ComputationCanonicalizersTest, MoveParametersToFront) {
 // CHECK:   ROOT %fusion.1 = s32[] fusion(%a, %c), kind=kLoop, calls=%fused_computation.1
 // CHECK: })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(hlo));
   TF_ASSERT_OK(MoveParametersAndConstantsToFront(*module->entry_computation()));
   EXPECT_THAT(
       RunFileCheck(
@@ -71,8 +75,8 @@ TEST_F(ComputationCanonicalizersTest, MoveParametersToFront) {
 }
 
 TEST_F(ComputationCanonicalizersTest, MoveGTEsRightAfterTupleDefinition) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
 HloModule m, is_scheduled=true
 e {
   a = s32[] parameter(0)

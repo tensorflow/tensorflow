@@ -114,7 +114,7 @@ TEST(FfiTest, StaticHandlerRegistration) {
 
   // Check that platform name was canonicalized an we can find handlers
   // registered for "Host" platform as "Cpu" handlers.
-  TF_ASSERT_OK_AND_ASSIGN(auto handlers, StaticRegisteredHandlers("Cpu"));
+  ASSERT_OK_AND_ASSIGN(auto handlers, StaticRegisteredHandlers("Cpu"));
   EXPECT_THAT(handlers,
               UnorderedElementsAre(Pair("no-op-0", _), Pair("no-op-1", _)));
 }
@@ -1027,7 +1027,7 @@ TEST(FfiTest, UpdateBufferArgumentsAndResults) {
 
   {  // Call `fn1` with swapped buffers for argument and result.
     auto handler = bind.To(fn1);
-    TF_ASSERT_OK_AND_ASSIGN(
+    ASSERT_OK_AND_ASSIGN(
         CallFrame updated_call_frame,
         std::move(call_frame)->CopyWithBuffers({memory1}, {memory0}));
     auto status = Call(*handler, updated_call_frame);

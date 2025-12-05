@@ -35,7 +35,6 @@ limitations under the License.
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/topk_rewriter.h"
 #include "xla/tests/hlo_test_base.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace m = ::xla::match;
 
@@ -66,8 +65,7 @@ ENTRY cluster {
   ROOT %cc.2 = (f32[1,5], s32[1,5]) custom-call(%arg.1), custom_call_target= "TopK", to_apply=%compare
 })",
                                                   kComparator);
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   EXPECT_THAT(RunHloPass(TopKSplitter(), module.get()),
               absl_testing::IsOkAndHolds(true));
   auto first_topk = m::CustomCall(m::Reshape(m::Parameter(0)));
@@ -93,8 +91,7 @@ ENTRY cluster {
   ROOT %cc.2 = (f32[5], s32[5]) custom-call(%arg.1), custom_call_target= "TopK", to_apply=%compare
 })",
                                                   kComparator);
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   EXPECT_THAT(RunHloPass(TopKSplitter(), module.get()),
               absl_testing::IsOkAndHolds(true));
   auto first_topk = m::CustomCall(m::Reshape(m::Parameter(0)));
@@ -120,8 +117,7 @@ ENTRY cluster {
   ROOT %cc.2 = (f32[1,5], s32[1,5]) custom-call(%arg.1), custom_call_target= "TopK", to_apply=%compare
 })",
                                                   kComparator);
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   EXPECT_THAT(
       RunHloPass(TopKSplitter(/*split_threshold=*/1048576), module.get()),
       absl_testing::IsOkAndHolds(false));
@@ -136,8 +132,7 @@ ENTRY cluster {
   ROOT %cc.2 = (f32[1,5], s32[1,5]) custom-call(%arg.1), custom_call_target= "TopK", to_apply=%compare
 })",
                                                   kComparator);
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   EXPECT_THAT(RunHloPass(TopKSplitter(/*split_threshold=*/1024), module.get()),
               absl_testing::IsOkAndHolds(false));
 }
@@ -151,8 +146,7 @@ ENTRY cluster {
   ROOT %cc.2 = (f32[1,1024], s32[1,1024]) custom-call(%arg.1), custom_call_target= "TopK", to_apply=%compare
 })",
                                                   kComparator);
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   EXPECT_THAT(RunHloPass(TopKSplitter(/*split_threshold=*/1024), module.get()),
               absl_testing::IsOkAndHolds(false));
 }
@@ -166,8 +160,7 @@ ENTRY cluster {
   ROOT %cc.2 = (f32[1,5], s32[1,5]) custom-call(%arg.1), custom_call_target= "TopK", to_apply=%compare
 })",
                                                   kComparator);
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   EXPECT_THAT(TopkDecomposer().Run(module.get()),
               absl_testing::IsOkAndHolds(true));
   auto round_trip = [](HloModule* module) {
@@ -193,8 +186,7 @@ ENTRY cluster {
   ROOT %cc.3 = (f32[1,5], s32[1,5]) custom-call(%broadcast.2), custom_call_target= "TopK", to_apply=%compare
 })",
                                                   kComparator);
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   EXPECT_THAT(TopkDecomposer().Run(module.get()),
               absl_testing::IsOkAndHolds(true));
   auto round_trip = [](HloModule* module) {
@@ -222,8 +214,7 @@ ENTRY cluster {
   ROOT %topk.1 = (f32[1,5], s32[1,5]) custom-call(%arg.1), custom_call_target= "TopK", to_apply=%compare
 })",
                                                   kComparator);
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   EXPECT_THAT(RunHloPass(TopKSplitter(1024), module.get()),
               absl_testing::IsOk());
   // We expect idempotency - No change on the second run.

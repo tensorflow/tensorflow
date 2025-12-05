@@ -85,7 +85,6 @@ xla_cc_test(
         "//xla/pjrt:pjrt_executable",
         "//xla/tests:literal_test_util",
         "//xla/tsl/lib/core:status_test_util",
-        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
     ],

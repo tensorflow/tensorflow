@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/time/time.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -28,7 +29,6 @@ limitations under the License.
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/model/block_level_parameters.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -40,8 +40,8 @@ class GpuDotFusionCostModelTest : public HloHardwareIndependentTestBase {
 };
 
 TEST_F(GpuDotFusionCostModelTest, GpuDotComputeBoundBf16) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
 ENTRY e {
 p0 = bf16[8192,8192] parameter(0)
 p1 = bf16[8192,8192] parameter(1)
@@ -69,8 +69,8 @@ lhs_contracting_dims={1}, rhs_contracting_dims={0}, algorithm=dot_bf16_bf16_bf16
 }
 
 TEST_F(GpuDotFusionCostModelTest, GpuDotMemoryBoundBf16) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
 ENTRY e {
 p0 = bf16[4,4096] parameter(0)
 p1 = bf16[4096,4096] parameter(1)

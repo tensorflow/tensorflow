@@ -35,7 +35,6 @@ limitations under the License.
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/service/gpu/transforms/reduce_scatter_creator.h"
 #include "xla/service/hlo_module_config.h"
-#include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/statusor.h"
 
 namespace xla {
@@ -106,7 +105,7 @@ ENTRY main {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<HloModule> module,
       PrepareModule(hlo_string, /*num_replicas=*/1, /*num_partitions=*/8));
 
@@ -154,7 +153,7 @@ ENTRY main {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<HloModule> module,
       PrepareModule(hlo_string, /*num_replicas=*/1, /*num_partitions=*/8));
 
@@ -194,7 +193,7 @@ ENTRY main {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<HloModule> module,
       PrepareModule(hlo_string, /*num_replicas=*/1, /*num_partitions=*/8));
 
@@ -249,7 +248,7 @@ ENTRY main {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<HloModule> module,
       PrepareModule(hlo_string, /*num_replicas=*/1, /*num_partitions=*/8));
 
@@ -285,7 +284,7 @@ ENTRY main {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<HloModule> module,
       PrepareModule(hlo_string, /*num_replicas=*/1, /*num_partitions=*/8));
 
@@ -324,8 +323,8 @@ ENTRY main {
       GetModuleConfigForTest(/*replica_count=*/1, /*num_partitions=*/8);
   config.set_use_spmd_partitioning(false);
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string, config));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string, config));
 
   EXPECT_THAT(AllReduceSplitter().Run(module.get()),
               absl_testing::IsOkAndHolds(false));
@@ -359,7 +358,7 @@ ENTRY main {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<HloModule> module,
       PrepareModule(hlo_string, /*num_replicas=*/1, /*num_partitions=*/8));
 
@@ -396,7 +395,7 @@ ENTRY main {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<HloModule> module,
       PrepareModule(hlo_string, /*num_replicas=*/1, /*num_partitions=*/8));
 
@@ -434,7 +433,7 @@ ENTRY main {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<HloModule> module,
       PrepareModule(hlo_string, /*num_replicas=*/1, /*num_partitions=*/8));
 
@@ -485,7 +484,7 @@ ENTRY main {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<HloModule> module,
       PrepareModule(hlo_string, /*num_replicas=*/1, /*num_partitions=*/8));
 

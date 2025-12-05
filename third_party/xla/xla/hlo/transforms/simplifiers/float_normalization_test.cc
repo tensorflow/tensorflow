@@ -21,6 +21,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
@@ -29,6 +30,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/ir/replica_group.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/pattern_matcher_gmock.h"
 #include "xla/hlo/testlib/test.h"
@@ -39,9 +41,7 @@ limitations under the License.
 #include "xla/service/pattern_matcher.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -230,7 +230,7 @@ ENTRY main {
   }
 }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
 
   EXPECT_TRUE(Normalize(module.get()));
 
@@ -264,7 +264,7 @@ ENTRY main {
   ROOT call-done.0 = bf16[2,4] call-done(call-start.0)
 }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
 
   EXPECT_TRUE(Normalize(module.get()));
   HloInstruction* call_start0 = FindInstruction(module.get(), "call-start.0");
@@ -477,7 +477,7 @@ TEST_F(FloatNormalizationTest, ResolveMixedPrecisionTupleSort) {
   HloInstruction* value = builder.AddInstruction(
       HloInstruction::CreateParameter(1, s32_shape, "value"));
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto* sort,
       MakeSortHlo(ShapeUtil::MakeTupleShape({bf16_shape, s32_shape}),
                   {key, value}, 0, /*is_stable=*/false, &builder,
@@ -505,7 +505,7 @@ TEST_F(FloatNormalizationTest, ResolveMixedPrecisionTupleSortRoot) {
   HloInstruction* value = builder.AddInstruction(
       HloInstruction::CreateParameter(1, bf16_shape, "value"));
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto* sort,
       MakeSortHlo(ShapeUtil::MakeTupleShape({bf16_shape, f32_shape}),
                   {key, value}, 0, /*is_stable=*/false, &builder,
@@ -584,8 +584,8 @@ TEST_F(FloatNormalizationTest, DoNotChangeBitcastConvert) {
 }
 
 TEST_F(FloatNormalizationTest, DoNotChangeBitcast) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
 m {
   a = s4[4,2]{1,0:E(4)} parameter(0)
   b = s8[4] bitcast(a)
@@ -865,8 +865,8 @@ TEST_F(FloatNormalizationTest, KeepEntryInputOutputAlias) {
       ROOT multiply = bf16[1,64] multiply(arg_0, broadcast)
     })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_text));
 
   EXPECT_TRUE(Normalize(module.get(), BF16));
 
@@ -889,8 +889,8 @@ TEST_F(FloatNormalizationTest, AllowExcessPrecisionTrue) {
       convert = f32[2,2]{1,0} convert(dot)
       ROOT tuple = (f32[2,2]{1,0}, bf16[2,2]{1,0}) tuple(convert, dot)
     })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_text));
   module->mutable_config()
       .mutable_debug_options()
       .set_xla_allow_excess_precision(true);
@@ -910,8 +910,8 @@ TEST_F(FloatNormalizationTest, AllowExcessPrecisionFalse) {
       convert = f32[2,2]{1,0} convert(dot)
       ROOT tuple = (f32[2,2]{1,0}, bf16[2,2]{1,0}) tuple(convert, dot)
     })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_text));
   module->mutable_config()
       .mutable_debug_options()
       .set_xla_allow_excess_precision(false);

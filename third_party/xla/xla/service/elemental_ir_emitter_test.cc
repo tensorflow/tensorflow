@@ -13,8 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/elemental_ir_emitter.h"
-
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -22,6 +20,7 @@ limitations under the License.
 #include <type_traits>
 #include <utility>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_replace.h"
@@ -33,6 +32,7 @@ limitations under the License.
 #include "xla/hlo/testlib/test.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
+#include "xla/primitive_util.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/types.h"
@@ -48,8 +48,8 @@ class ElementalIrEmitterExecutionTest : public HloTestBase {
   void RunTest(const std::string& hlo_text, absl::Span<Literal* const> args) {
     HloModuleConfig config;
     config.set_debug_options(GetDebugOptionsForTest());
-    TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                            ParseAndReturnVerifiedModule(hlo_text, config));
+    ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                         ParseAndReturnVerifiedModule(hlo_text, config));
     EXPECT_TRUE(RunAndCompareNoHloPasses(std::move(module), args, nullopt));
   }
 
@@ -59,8 +59,8 @@ class ElementalIrEmitterExecutionTest : public HloTestBase {
     debug_options.set_xla_cpu_fast_math_honor_nans(true);
     debug_options.set_xla_cpu_fast_math_honor_infs(true);
     config.set_debug_options(debug_options);
-    TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                            ParseAndReturnVerifiedModule(hlo_text, config));
+    ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                         ParseAndReturnVerifiedModule(hlo_text, config));
     EXPECT_TRUE(RunAndCompare(std::move(module), ErrorSpec{(0.)}));
   }
 };
@@ -171,8 +171,8 @@ ENTRY resampler_Resampler.49 {
   // in the fusion computation, but not recreate them.
   debug_options.add_xla_disable_hlo_passes("layout-assignment");
   config.set_debug_options(debug_options);
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_text, config));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_text, config));
   EXPECT_TRUE(RunAndCompare(std::move(module), ErrorSpec{4e-3, 4e-3}));
 }
 
@@ -195,8 +195,8 @@ TEST_F(ElementalIrEmitterExecutionTest,
   debug_options.set_xla_cpu_fast_math_honor_nans(true);
   debug_options.set_xla_cpu_fast_math_honor_infs(true);
   config.set_debug_options(debug_options);
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_text, config));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_text, config));
   EXPECT_TRUE(RunAndCompare(std::move(module), ErrorSpec{(0.)}));
 }
 
@@ -217,8 +217,8 @@ TEST_F(ElementalIrEmitterExecutionTest, DivideComplexNumbersWithFiniteNormRhs) {
   debug_options.set_xla_cpu_fast_math_honor_nans(true);
   debug_options.set_xla_cpu_fast_math_honor_infs(true);
   config.set_debug_options(debug_options);
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_text, config));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_text, config));
   EXPECT_TRUE(RunAndCompare(std::move(module), ErrorSpec{(0.)}));
 }
 
@@ -240,8 +240,8 @@ TEST_F(ElementalIrEmitterExecutionTest, DivideComplexNumbersWithZeroNormRhs) {
   debug_options.set_xla_cpu_fast_math_honor_nans(true);
   debug_options.set_xla_cpu_fast_math_honor_infs(true);
   config.set_debug_options(debug_options);
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_text, config));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_text, config));
   EXPECT_TRUE(RunAndCompare(std::move(module), ErrorSpec{(0.)}));
 }
 
@@ -452,7 +452,7 @@ TYPED_TEST(ElementalIrEmitterExecutionTypedTest, BatchDotFloat) {
   DebugOptions debug_options = HloTestBase::GetDebugOptionsForTest();
   config.set_debug_options(debug_options);
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<HloModule> module,
       HloTestBase::ParseAndReturnVerifiedModule(hlo_text, config));
   EXPECT_TRUE(

@@ -23,6 +23,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -123,7 +124,7 @@ TEST_P(ObjectLoaderTest, Load) {
                           TargetMachineOptions(GetDebugOptionsFromFlags())},
       ir_compiler_hooks);
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto compiler,
       JitCompiler::Create(std::move(options), std::move(ir_compiler)));
 
@@ -143,10 +144,10 @@ TEST_P(ObjectLoaderTest, Load) {
       FunctionLibrary::Sym<ScalarFn>("AddInplace")};
 
   llvm::DataLayout data_layout = compiler.target_machine()->createDataLayout();
-  TF_ASSERT_OK_AND_ASSIGN(auto function_library_compiled,
-                          Compile(std::move(compiler), symbols));
+  ASSERT_OK_AND_ASSIGN(auto function_library_compiled,
+                       Compile(std::move(compiler), symbols));
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       ScalarFn * add_in_place_compiled,
       function_library_compiled->ResolveFunction<ScalarFn>("AddInplace"));
 
@@ -163,10 +164,10 @@ TEST_P(ObjectLoaderTest, Load) {
     }
   }
 
-  TF_ASSERT_OK_AND_ASSIGN(auto loaded_function_library,
-                          std::move(*object_loader).Load(symbols));
+  ASSERT_OK_AND_ASSIGN(auto loaded_function_library,
+                       std::move(*object_loader).Load(symbols));
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       ScalarFn * loaded_add_in_place,
       loaded_function_library->ResolveFunction<ScalarFn>("AddInplace"));
 

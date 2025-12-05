@@ -20,7 +20,6 @@ limitations under the License.
 #include "absl/status/status_matchers.h"
 #include "google/protobuf/text_format.h"
 #include "xla/stream_executor/launch_dim.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
 
 namespace xla::gpu {
@@ -79,8 +78,8 @@ TEST(LaunchDimensionsTest, FromAndToProto) {
       )pb",
       &proto));
 
-  TF_ASSERT_OK_AND_ASSIGN(LaunchDimensions launch_dimensions,
-                          LaunchDimensions::FromProto(proto));
+  ASSERT_OK_AND_ASSIGN(LaunchDimensions launch_dimensions,
+                       LaunchDimensions::FromProto(proto));
   EXPECT_THAT(launch_dimensions.ToProto(), EqualsProto(proto));
 }
 

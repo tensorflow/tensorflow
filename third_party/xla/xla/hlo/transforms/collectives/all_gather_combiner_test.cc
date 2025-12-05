@@ -31,7 +31,6 @@ limitations under the License.
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -74,13 +73,13 @@ ENTRY entry {
   ROOT tuple = (f32[128], f32[128]) tuple(allgather0, allgather1)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
 
   AllGatherCombiner combine(1024 * 1024, kMaxCombineCount,
                             /*combine_by_dim=*/true);
   ASSERT_EQ(AllGatherCount(*module), 2);
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, combine.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, combine.Run(module.get()));
   EXPECT_TRUE(changed);
 
   Matcher<const HloInstruction*> combined_all_gather =
@@ -104,14 +103,14 @@ ENTRY entry {
   ROOT tuple = (f32[128], s32[128]) tuple(allgather0, allgather1)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
 
   AllGatherCombiner combine(1024 * 1024, kMaxCombineCount,
                             /*combine_by_dim=*/true,
                             /*combine_different_dtypes=*/false);
   ASSERT_EQ(AllGatherCount(*module), 2);
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, combine.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, combine.Run(module.get()));
   EXPECT_FALSE(changed);
 
   EXPECT_THAT(module->entry_computation()->root_instruction(),
@@ -147,14 +146,14 @@ ENTRY entry {
   ROOT gte = f32[32] get-tuple-element(while_loop), index=0
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
 
   AllGatherCombiner combine(1024 * 1024, kMaxCombineCount,
                             /*combine_by_dim=*/true,
                             /*combine_different_dtypes=*/true,
                             /*combine_while_loops=*/false);
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, combine.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, combine.Run(module.get()));
   EXPECT_FALSE(changed);
 }
 
@@ -179,13 +178,13 @@ ENTRY entry {
     tuple(allgather0, allgather1, allgather2, allgather3, allgather4)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
 
   AllGatherCombiner combine(1024 * 1024, kMaxCombineCount,
                             /*combine_by_dim=*/true);
   ASSERT_EQ(AllGatherCount(*module), 5);
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, combine.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, combine.Run(module.get()));
   EXPECT_TRUE(changed);
 
   Matcher<const HloInstruction*> combined_all_gather0 =
@@ -213,8 +212,8 @@ ENTRY entry {
   ROOT tuple = (f32[32], f32[32]) tuple(allgather0, allgather1)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
 
   // Run the AllGather combiner optimization pass with threshold less than
   // the combined size of the all gather ops so that the combination
@@ -222,7 +221,7 @@ ENTRY entry {
   AllGatherCombiner combine(255, kMaxCombineCount,
                             /*combine_by_dim=*/true);
   ASSERT_EQ(AllGatherCount(*module), 2);
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, combine.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, combine.Run(module.get()));
   EXPECT_EQ(AllGatherCount(*module), 2);
   EXPECT_FALSE(changed);
 }
@@ -240,15 +239,15 @@ ENTRY entry {
   ROOT tuple = (f32[32], f32[32]) tuple(allgather0, allgather1)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
 
   // Run the AllGather combiner optimization pass with a threshold just higher
   // than that required such that the combination can occur.
   AllGatherCombiner combine(256, kMaxCombineCount,
                             /*combine_by_dim=*/true);
   ASSERT_EQ(AllGatherCount(*module), 2);
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, combine.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, combine.Run(module.get()));
   EXPECT_EQ(AllGatherCount(*module), 1);
   EXPECT_TRUE(changed);
 }
@@ -265,13 +264,13 @@ ENTRY entry {
       dimensions={0}
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
 
   AllGatherCombiner combine(1024 * 1024, kMaxCombineCount,
                             /*combine_by_dim=*/true);
   ASSERT_EQ(AllGatherCount(*module), 2);
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, combine.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, combine.Run(module.get()));
   EXPECT_EQ(AllGatherCount(*module), 2);
   EXPECT_FALSE(changed);
 }
@@ -291,13 +290,13 @@ ENTRY entry {
   ROOT tuple = (f32[64], f32[64]) tuple(allgather0, allgather1)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
 
   AllGatherCombiner combine(1024 * 1024, kMaxCombineCount,
                             /*combine_by_dim=*/true);
   ASSERT_EQ(AllGatherCount(*module), 2);
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, combine.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, combine.Run(module.get()));
   EXPECT_EQ(AllGatherCount(*module), 2);
   EXPECT_FALSE(changed);
 }
@@ -323,13 +322,13 @@ ENTRY entry {
     sharding={{maximal device=0}, {maximal device=1}}
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
 
   AllGatherCombiner combine(1024 * 1024, kMaxCombineCount,
                             /*combine_by_dim=*/true);
   ASSERT_EQ(AllGatherCount(*module), 2);
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, combine.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, combine.Run(module.get()));
   EXPECT_EQ(AllGatherCount(*module), 2);
   EXPECT_FALSE(changed);
 }
@@ -364,13 +363,13 @@ ENTRY entry {
     sharding={{maximal device=0}, {maximal device=1}, {maximal device=0}}
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
 
   AllGatherCombiner combine(1024 * 1024, kMaxCombineCount,
                             /*combine_by_dim=*/true);
   ASSERT_EQ(AllGatherCount(*module), 3);
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, combine.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, combine.Run(module.get()));
   EXPECT_EQ(AllGatherCount(*module), 2);
   EXPECT_TRUE(changed);
 
@@ -398,13 +397,13 @@ ENTRY entry {
   ROOT tuple = (f32[8,3]{1,0}, f32[2,12]{0,1}) tuple(allgather0, allgather1)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
 
   AllGatherCombiner combine(1024 * 1024, kMaxCombineCount,
                             /*combine_by_dim=*/false);
   ASSERT_EQ(AllGatherCount(*module), 2);
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, combine.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, combine.Run(module.get()));
   EXPECT_TRUE(changed);
 
   Matcher<const HloInstruction*> combined_all_gather =
@@ -440,13 +439,13 @@ ENTRY entry {
       allgather4)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
 
   AllGatherCombiner combine(1024 * 1024, kMaxCombineCount,
                             /*combine_by_dim=*/false);
   ASSERT_EQ(AllGatherCount(*module), 5);
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, combine.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, combine.Run(module.get()));
   EXPECT_TRUE(changed);
 
   Matcher<const HloInstruction*> combined_all_gather = op::AllGather(
@@ -490,13 +489,13 @@ ENTRY entry {
       allgather3, allgather4)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
 
   AllGatherCombiner combine(1024 * 1024, kMaxCombineCount,
                             /*combine_by_dim=*/false);
   ASSERT_EQ(AllGatherCount(*module), 5);
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, combine.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, combine.Run(module.get()));
   EXPECT_TRUE(changed);
 
   Matcher<const HloInstruction*> combined_all_gather = op::AllGather(
@@ -539,13 +538,13 @@ ENTRY entry {
       allgather4)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
 
   AllGatherCombiner combine(1024 * 1024, kMaxCombineCount,
                             /*combine_by_dim=*/false);
   ASSERT_EQ(AllGatherCount(*module), 5);
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, combine.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, combine.Run(module.get()));
   EXPECT_TRUE(changed);
 
   Matcher<const HloInstruction*> combined_all_gather = op::AllGather(
@@ -592,13 +591,13 @@ ENTRY entry {
       allgather4)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
 
   AllGatherCombiner combine(1024 * 1024, kMaxCombineCount,
                             /*combine_by_dim=*/true);
   ASSERT_EQ(AllGatherCount(*module), 5);
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, combine.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, combine.Run(module.get()));
   EXPECT_TRUE(changed);
 
   Matcher<const HloInstruction*> combined_all_gather_0 =
@@ -629,13 +628,13 @@ TEST_F(AllGatherCombinerTest, PreservesMetadata) {
       ROOT tuple = (f32[128], f32[128]) tuple(allgather0, allgather1)
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
 
   AllGatherCombiner combine(1024 * 1024, kMaxCombineCount,
                             /*combine_by_dim=*/true);
   ASSERT_EQ(AllGatherCount(*module), 2);
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, combine.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, combine.Run(module.get()));
   EXPECT_TRUE(changed);
 
   OpMetadata metadata;

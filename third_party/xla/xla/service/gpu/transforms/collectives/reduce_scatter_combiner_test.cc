@@ -29,7 +29,6 @@ limitations under the License.
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/service/collective_utils.h"
 #include "xla/service/gpu/transforms/collectives/collective_combiner_annotator.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace xla::gpu {
 namespace {
@@ -119,8 +118,7 @@ ENTRY entry {
   // Combine at most 4 pipelined collectives.
   int suggested_threshold_bytes = 4 * collective_size;
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kHloString));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloString));
   AnnotateWithSuggestedCombinerThreshold(module.get(),
                                          suggested_threshold_bytes);
   EXPECT_THAT(RunCombiner(module.get(), default_threshold_bytes,
@@ -207,8 +205,7 @@ ENTRY entry {
   ROOT _ = bf16[6,8,128] get-tuple-element(while), index=1
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kHloString));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloString));
   EXPECT_THAT(RunCombiner(module.get(), kDefaultReduceScatterCombineThreshold),
               absl_testing::IsOkAndHolds(true));
 
@@ -298,8 +295,7 @@ ENTRY entry {
   int collective_size = 2 * 6 * 8 * 128;
   int threshold_bytes = 2 * collective_size;
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kHloString));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloString));
   EXPECT_THAT(RunCombiner(module.get(), threshold_bytes),
               absl_testing::IsOkAndHolds(true));
 
@@ -349,7 +345,7 @@ TEST_F(GpuReduceScatterCombinerTest,
       ROOT result = tuple(rs0, rs1)
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
   int64_t suggested_threshold_bytes = 10000000000;  // 10GB
   AnnotateWithSuggestedCombinerThreshold(module.get(),
                                          suggested_threshold_bytes);
@@ -386,7 +382,7 @@ TEST_F(GpuReduceScatterCombinerTest,
       ROOT result = tuple(rs0, rs1)
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
   int64_t suggested_threshold_bytes = 10000000000;  // 10GB
   AnnotateWithSuggestedCombinerThreshold(module.get(),
                                          suggested_threshold_bytes);
