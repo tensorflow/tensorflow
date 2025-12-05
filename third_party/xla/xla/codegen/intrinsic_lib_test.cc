@@ -20,6 +20,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "llvm/Analysis/TargetLibraryInfo.h"
@@ -44,7 +45,7 @@ TEST(IntrinsicLibTest, ExpVectorizations) {
   std::vector<llvm::VecDesc> vec_descs = lib.Vectorizations();
   std::vector<std::string> vec_descs_str;
   for (const auto& vec_desc : vec_descs) {
-    if (vec_desc.getScalarFnName().starts_with("xla.exp")) {
+    if (absl::StrContains(vec_desc.getScalarFnName().str(), "xla.exp")) {
       vec_descs_str.push_back(ToString(vec_desc));
     }
   }
@@ -54,6 +55,7 @@ TEST(IntrinsicLibTest, ExpVectorizations) {
                                  "xla.exp.f64:xla.exp.v4f64:4:_ZGV_LLVM_N4v",
                                  "xla.exp.f64:xla.exp.v8f64:8:_ZGV_LLVM_N8v"));
 }
+
 }  // namespace
 
 }  // namespace xla::codegen::intrinsics
