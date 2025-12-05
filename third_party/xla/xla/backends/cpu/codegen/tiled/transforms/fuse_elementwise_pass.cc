@@ -56,8 +56,12 @@ class FuseElementwisePass
     mlir::linalg::populateElementwiseOpsFusionPatterns(patterns,
                                                        fuse_control_fn);
 
-    if (mlir::failed(
-            mlir::applyPatternsGreedily(getOperation(), std::move(patterns)))) {
+    // Long chains of elementwise ops can require many iterations, so we have to
+    // increase the limit from the default 10.
+    mlir::GreedyRewriteConfig config;
+    config.setMaxIterations(1000);
+    if (mlir::failed(mlir::applyPatternsGreedily(
+            getOperation(), std::move(patterns), config))) {
       signalPassFailure();
       return;
     }
