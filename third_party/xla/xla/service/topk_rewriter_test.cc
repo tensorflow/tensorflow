@@ -186,7 +186,7 @@ ENTRY cluster {
     TopkRewriter rewriter(
         [](const HloSortInstruction*, int64_t) { return true; });
     TF_ASSERT_OK_AND_ASSIGN(bool changed, rewriter.Run(module.get()));
-    TF_ASSERT_OK(HloDCE().Run(module.get()).status());
+    ASSERT_OK(HloDCE().Run(module.get()).status());
     EXPECT_TRUE(changed);
     EXPECT_THAT(module->entry_computation()->root_instruction(),
                 GmockMatch(m::Tuple(
@@ -221,7 +221,7 @@ ENTRY cluster {
     TopkRewriter rewriter(
         [](const HloSortInstruction*, int64_t) { return true; });
     TF_ASSERT_OK_AND_ASSIGN(bool changed, rewriter.Run(module.get()));
-    TF_ASSERT_OK(HloDCE().Run(module.get()).status());
+    ASSERT_OK(HloDCE().Run(module.get()).status());
     EXPECT_TRUE(changed);
     EXPECT_THAT(module->entry_computation()->root_instruction(),
                 GmockMatch(m::Tuple(
@@ -253,7 +253,7 @@ ENTRY cluster {
   TopkRewriter rewriter(
       [](const HloSortInstruction*, int64_t) { return true; });
   TF_ASSERT_OK_AND_ASSIGN(bool changed, rewriter.Run(module.get()));
-  TF_ASSERT_OK(HloDCE().Run(module.get()).status());
+  ASSERT_OK(HloDCE().Run(module.get()).status());
   EXPECT_TRUE(changed);
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               GmockMatch(m::Tuple(
@@ -284,7 +284,7 @@ ENTRY cluster {
   TopkRewriter rewriter(
       [](const HloSortInstruction*, int64_t) { return true; });
   TF_ASSERT_OK_AND_ASSIGN(bool changed, rewriter.Run(module.get()));
-  TF_ASSERT_OK(HloDCE().Run(module.get()).status());
+  ASSERT_OK(HloDCE().Run(module.get()).status());
   EXPECT_TRUE(changed);
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               GmockMatch(m::Tuple(
@@ -315,7 +315,7 @@ ENTRY cluster {
   TopkRewriter rewriter(
       [](const HloSortInstruction*, int64_t) { return true; });
   TF_ASSERT_OK_AND_ASSIGN(bool changed, rewriter.Run(module.get()));
-  TF_ASSERT_OK(HloDCE().Run(module.get()).status());
+  ASSERT_OK(HloDCE().Run(module.get()).status());
   EXPECT_TRUE(changed);
   LOG(INFO) << module->entry_computation()->ToString();
   EXPECT_THAT(module->entry_computation()->root_instruction(),
@@ -352,7 +352,7 @@ ENTRY cluster {
   TopkRewriter rewriter(
       [](const HloSortInstruction*, int64_t) { return true; });
   TF_ASSERT_OK_AND_ASSIGN(bool changed, rewriter.Run(module.get()));
-  TF_ASSERT_OK(HloDCE().Run(module.get()).status());
+  ASSERT_OK(HloDCE().Run(module.get()).status());
   EXPECT_TRUE(changed);
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               GmockMatch(m::Tuple(
@@ -382,7 +382,7 @@ ENTRY cluster {
   TopkRewriter rewriter(
       [](const HloSortInstruction*, int64_t) { return true; });
   TF_ASSERT_OK_AND_ASSIGN(bool changed, rewriter.Run(module.get()));
-  TF_ASSERT_OK(HloDCE().Run(module.get()).status());
+  ASSERT_OK(HloDCE().Run(module.get()).status());
   EXPECT_TRUE(changed);
   EXPECT_THAT(
       module->entry_computation()->root_instruction(),
@@ -407,7 +407,7 @@ ENTRY cluster {
     TopkRewriter rewriter(
         [](const HloSortInstruction*, int64_t) { return true; });
     TF_ASSERT_OK_AND_ASSIGN(bool changed, rewriter.Run(module.get()));
-    TF_ASSERT_OK(HloDCE().Run(module.get()).status());
+    ASSERT_OK(HloDCE().Run(module.get()).status());
     ASSERT_TRUE(changed);
     auto root = module->entry_computation()->root_instruction();
     ASSERT_THAT(root, GmockMatch(m::GetTupleElement(
@@ -424,7 +424,7 @@ ENTRY cluster {
   TF_ASSERT_OK_AND_ASSIGN(bool decomposer_changed,
                           TopkDecomposer().Run(module.get()));
   EXPECT_TRUE(decomposer_changed);
-  TF_ASSERT_OK(HloDCE().Run(module.get()).status());
+  ASSERT_OK(HloDCE().Run(module.get()).status());
   auto root = module->entry_computation()->root_instruction();
   HloInstruction* sort;
   EXPECT_THAT(
@@ -457,7 +457,7 @@ ENTRY cluster {
     TopkRewriter rewriter(
         [](const HloSortInstruction*, int64_t) { return true; });
     TF_ASSERT_OK_AND_ASSIGN(bool changed, rewriter.Run(module.get()));
-    TF_ASSERT_OK(HloDCE().Run(module.get()).status());
+    ASSERT_OK(HloDCE().Run(module.get()).status());
     ASSERT_TRUE(changed);
     EXPECT_THAT(
         module->entry_computation()->root_instruction(),
@@ -472,8 +472,8 @@ ENTRY cluster {
   TF_ASSERT_OK_AND_ASSIGN(bool decomposer_changed,
                           TopkDecomposer().Run(module.get()));
   EXPECT_TRUE(decomposer_changed);
-  TF_ASSERT_OK(TupleSimplifier().Run(module.get()).status());
-  TF_ASSERT_OK(HloDCE().Run(module.get()).status());
+  ASSERT_OK(TupleSimplifier().Run(module.get()).status());
+  ASSERT_OK(HloDCE().Run(module.get()).status());
   EXPECT_THAT(
       module->entry_computation()->root_instruction(),
       GmockMatch(m::Slice(m::GetTupleElement(
@@ -504,7 +504,7 @@ ENTRY cluster {
     TopkRewriter rewriter(
         [](const HloSortInstruction*, int64_t) { return true; });
     TF_ASSERT_OK_AND_ASSIGN(bool changed, rewriter.Run(module.get()));
-    TF_ASSERT_OK(HloDCE().Run(module.get()).status());
+    ASSERT_OK(HloDCE().Run(module.get()).status());
     ASSERT_TRUE(changed);
     ASSERT_THAT(module->entry_computation()->root_instruction(),
                 GmockMatch(m::Tuple(
@@ -520,8 +520,8 @@ ENTRY cluster {
   TF_ASSERT_OK_AND_ASSIGN(bool decomposer_changed,
                           TopkDecomposer().Run(module.get()));
   EXPECT_TRUE(decomposer_changed);
-  TF_ASSERT_OK(HloDCE().Run(module.get()).status());
-  TF_ASSERT_OK(TupleSimplifier().Run(module.get()).status());
+  ASSERT_OK(HloDCE().Run(module.get()).status());
+  ASSERT_OK(TupleSimplifier().Run(module.get()).status());
   auto sort_matcher =
       m::Sort(m::Parameter(0), m::Iota()).WithPredicate(IsStableSort);
   EXPECT_THAT(
@@ -551,7 +551,7 @@ ENTRY cluster {
     TopkRewriter rewriter(
         [](const HloSortInstruction*, int64_t) { return true; });
     TF_ASSERT_OK_AND_ASSIGN(bool changed, rewriter.Run(module.get()));
-    TF_ASSERT_OK(HloDCE().Run(module.get()).status());
+    ASSERT_OK(HloDCE().Run(module.get()).status());
     ASSERT_TRUE(changed);
     ASSERT_THAT(
         module->entry_computation()->root_instruction(),
@@ -566,8 +566,8 @@ ENTRY cluster {
   TF_ASSERT_OK_AND_ASSIGN(bool decomposer_changed,
                           TopkDecomposer().Run(module.get()));
   EXPECT_TRUE(decomposer_changed);
-  TF_ASSERT_OK(HloDCE().Run(module.get()).status());
-  TF_ASSERT_OK(TupleSimplifier().Run(module.get()).status());
+  ASSERT_OK(HloDCE().Run(module.get()).status());
+  ASSERT_OK(TupleSimplifier().Run(module.get()).status());
   auto sort_matcher =
       m::Sort(m::Parameter(0), m::Iota()).WithPredicate(IsStableSort);
   EXPECT_THAT(module->entry_computation()->root_instruction(),
@@ -688,8 +688,8 @@ ENTRY TopK {
   TF_ASSERT_OK_AND_ASSIGN(bool decomposer_changed,
                           TopkDecomposer().Run(module.get()));
   EXPECT_TRUE(decomposer_changed);
-  TF_ASSERT_OK(HloDCE().Run(module.get()).status());
-  TF_ASSERT_OK(TupleSimplifier().Run(module.get()).status());
+  ASSERT_OK(HloDCE().Run(module.get()).status());
+  ASSERT_OK(TupleSimplifier().Run(module.get()).status());
   auto sort_matcher = op::Sort(op::Parameter(0), op::Iota());
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               op::Tuple(op::Slice(op::GetTupleElement(sort_matcher, 0)),
@@ -699,7 +699,7 @@ ENTRY TopK {
   TopkRewriter rewriter(
       [](const HloSortInstruction*, int64_t) { return true; });
   TF_ASSERT_OK_AND_ASSIGN(bool changed, rewriter.Run(module.get()));
-  TF_ASSERT_OK(HloDCE().Run(module.get()).status());
+  ASSERT_OK(HloDCE().Run(module.get()).status());
   EXPECT_TRUE(changed);
 }
 

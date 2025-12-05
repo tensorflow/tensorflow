@@ -117,8 +117,8 @@ TEST(HostExecuteStartThunkTest, SingleArgSingleResult) {
   se::DeviceMemoryBase arg = stream_executor->Allocate(1 * sizeof(int32_t));
   se::DeviceMemoryBase result = stream_executor->Allocate(1 * sizeof(int32_t));
 
-  TF_ASSERT_OK(stream->Memset32(&arg, 5, 4));
-  TF_ASSERT_OK(stream->MemZero(&result, 4));
+  ASSERT_OK(stream->Memset32(&arg, 5, 4));
+  ASSERT_OK(stream->MemZero(&result, 4));
 
   // Prepare buffer allocations for recording command buffer.
   BufferAllocation alloc_arg(/*index=*/0, 4, /*color=*/0);
@@ -146,9 +146,9 @@ TEST(HostExecuteStartThunkTest, SingleArgSingleResult) {
       service_executable_run_options, allocations, stream.get(), stream.get(),
       nullptr, nullptr);
 
-  TF_ASSERT_OK(
+  ASSERT_OK(
       thunk->Initialize(Thunk::InitializeParams{/*executor=*/stream_executor}));
-  TF_ASSERT_OK(thunk->ExecuteOnStream(params));
+  ASSERT_OK(thunk->ExecuteOnStream(params));
 
   TF_ASSERT_OK_AND_ASSIGN(auto execute_event,
                           thunk->async_events()->ExtractEvent(
@@ -156,11 +156,11 @@ TEST(HostExecuteStartThunkTest, SingleArgSingleResult) {
 
   tsl::BlockUntilReady(execute_event);
   EXPECT_FALSE(execute_event.IsError());
-  TF_ASSERT_OK(stream->WaitFor(execute_event.get().get()));
-  TF_ASSERT_OK(stream->BlockHostUntilDone());
+  ASSERT_OK(stream->WaitFor(execute_event.get().get()));
+  ASSERT_OK(stream->BlockHostUntilDone());
 
   xla::Literal result_literal(ShapeUtil::MakeShape(S32, {}));
-  TF_ASSERT_OK(
+  ASSERT_OK(
       stream->Memcpy(result_literal.untyped_data(), result, result.size()));
   EXPECT_TRUE(LiteralTestUtil::Equal(LiteralUtil::CreateR0<int32_t>(10),
                                      result_literal));
@@ -189,10 +189,10 @@ TEST(HostExecuteStartThunkTest, MultiArgMultipleResult) {
   se::DeviceMemoryBase result0 = stream_executor->Allocate(1 * sizeof(int32_t));
   se::DeviceMemoryBase result1 = stream_executor->Allocate(1 * sizeof(int32_t));
 
-  TF_ASSERT_OK(stream->Memset32(&arg0, 5, 4));
-  TF_ASSERT_OK(stream->Memset32(&arg1, 3, 4));
-  TF_ASSERT_OK(stream->MemZero(&result0, 4));
-  TF_ASSERT_OK(stream->MemZero(&result1, 4));
+  ASSERT_OK(stream->Memset32(&arg0, 5, 4));
+  ASSERT_OK(stream->Memset32(&arg1, 3, 4));
+  ASSERT_OK(stream->MemZero(&result0, 4));
+  ASSERT_OK(stream->MemZero(&result1, 4));
 
   // Prepare buffer allocations for recording command buffer.
   BufferAllocation alloc_arg0(/*index=*/0, 4, /*color=*/0);
@@ -225,9 +225,9 @@ TEST(HostExecuteStartThunkTest, MultiArgMultipleResult) {
       service_executable_run_options, allocations, stream.get(), stream.get(),
       nullptr, nullptr);
 
-  TF_ASSERT_OK(
+  ASSERT_OK(
       thunk->Initialize(Thunk::InitializeParams{/*executor=*/stream_executor}));
-  TF_ASSERT_OK(thunk->ExecuteOnStream(params));
+  ASSERT_OK(thunk->ExecuteOnStream(params));
 
   TF_ASSERT_OK_AND_ASSIGN(auto execute_event,
                           thunk->async_events()->ExtractEvent(
@@ -235,17 +235,17 @@ TEST(HostExecuteStartThunkTest, MultiArgMultipleResult) {
 
   tsl::BlockUntilReady(execute_event);
   EXPECT_FALSE(execute_event.IsError());
-  TF_ASSERT_OK(stream->WaitFor(execute_event.get().get()));
-  TF_ASSERT_OK(stream->BlockHostUntilDone());
+  ASSERT_OK(stream->WaitFor(execute_event.get().get()));
+  ASSERT_OK(stream->BlockHostUntilDone());
 
   xla::Literal result_literal0(ShapeUtil::MakeShape(S32, {}));
-  TF_ASSERT_OK(
+  ASSERT_OK(
       stream->Memcpy(result_literal0.untyped_data(), result0, result0.size()));
   EXPECT_TRUE(LiteralTestUtil::Equal(LiteralUtil::CreateR0<int32_t>(8),
                                      result_literal0));
 
   xla::Literal result_literal1(ShapeUtil::MakeShape(S32, {}));
-  TF_ASSERT_OK(
+  ASSERT_OK(
       stream->Memcpy(result_literal1.untyped_data(), result1, result1.size()));
   EXPECT_TRUE(LiteralTestUtil::Equal(LiteralUtil::CreateR0<int32_t>(15),
                                      result_literal1));
@@ -307,17 +307,17 @@ TEST(HostExecuteStartThunkTest, ArgAndResultPinnedOnHost) {
       service_executable_run_options, allocations, stream.get(), stream.get(),
       nullptr, nullptr);
 
-  TF_ASSERT_OK(
+  ASSERT_OK(
       thunk->Initialize(Thunk::InitializeParams{/*executor=*/stream_executor}));
-  TF_ASSERT_OK(thunk->ExecuteOnStream(params));
+  ASSERT_OK(thunk->ExecuteOnStream(params));
 
   TF_ASSERT_OK_AND_ASSIGN(auto execute_event,
                           thunk->async_events()->ExtractEvent(
                               stream_executor, RunId(params.execution_id)));
   tsl::BlockUntilReady(execute_event);
   EXPECT_FALSE(execute_event.IsError());
-  TF_ASSERT_OK(stream->WaitFor(execute_event.get().get()));
-  TF_ASSERT_OK(stream->BlockHostUntilDone());
+  ASSERT_OK(stream->WaitFor(execute_event.get().get()));
+  ASSERT_OK(stream->BlockHostUntilDone());
 
   EXPECT_EQ(*static_cast<int32_t*>(result_memory_allocation->opaque()), 10);
 }
@@ -382,17 +382,17 @@ TEST(HostExecuteStartThunkTest, ArgAndResultInSharedMemory) {
       service_executable_run_options, allocations, stream.get(), stream.get(),
       nullptr, nullptr);
 
-  TF_ASSERT_OK(
+  ASSERT_OK(
       thunk->Initialize(Thunk::InitializeParams{/*executor=*/stream_executor}));
-  TF_ASSERT_OK(thunk->ExecuteOnStream(params));
+  ASSERT_OK(thunk->ExecuteOnStream(params));
 
   TF_ASSERT_OK_AND_ASSIGN(auto execute_event,
                           thunk->async_events()->ExtractEvent(
                               stream_executor, RunId(params.execution_id)));
   tsl::BlockUntilReady(execute_event);
   EXPECT_FALSE(execute_event.IsError());
-  TF_ASSERT_OK(stream->WaitFor(execute_event.get().get()));
-  TF_ASSERT_OK(stream->BlockHostUntilDone());
+  ASSERT_OK(stream->WaitFor(execute_event.get().get()));
+  ASSERT_OK(stream->BlockHostUntilDone());
 
   EXPECT_EQ(*static_cast<int32_t*>(result_memory_allocation->opaque()), 10);
 }
@@ -443,17 +443,17 @@ TEST(HostExecuteStartThunkTest, ArgAndResultNonRegisteredHostMemory) {
       service_executable_run_options, allocations, stream.get(), stream.get(),
       nullptr, nullptr);
 
-  TF_ASSERT_OK(
+  ASSERT_OK(
       thunk->Initialize(Thunk::InitializeParams{/*executor=*/stream_executor}));
-  TF_ASSERT_OK(thunk->ExecuteOnStream(params));
+  ASSERT_OK(thunk->ExecuteOnStream(params));
 
   TF_ASSERT_OK_AND_ASSIGN(auto execute_event,
                           thunk->async_events()->ExtractEvent(
                               stream_executor, RunId(params.execution_id)));
   tsl::BlockUntilReady(execute_event);
   EXPECT_FALSE(execute_event.IsError());
-  TF_ASSERT_OK(stream->WaitFor(execute_event.get().get()));
-  TF_ASSERT_OK(stream->BlockHostUntilDone());
+  ASSERT_OK(stream->WaitFor(execute_event.get().get()));
+  ASSERT_OK(stream->BlockHostUntilDone());
 
   EXPECT_EQ(result_value, 10);
 }
@@ -512,9 +512,9 @@ TEST(HostExecuteStartThunkTest, TestErrorPropagationFromExecuteEvent) {
       service_executable_run_options, allocations, stream.get(), stream.get(),
       nullptr, nullptr);
 
-  TF_ASSERT_OK(
+  ASSERT_OK(
       thunk->Initialize(Thunk::InitializeParams{/*executor=*/stream_executor}));
-  TF_ASSERT_OK(thunk->ExecuteOnStream(params));
+  ASSERT_OK(thunk->ExecuteOnStream(params));
 
   TF_ASSERT_OK_AND_ASSIGN(auto execute_event,
                           thunk->async_events()->ExtractEvent(
@@ -549,9 +549,9 @@ TEST(HostExecuteDoneThunkTest, WaitingOnAvailableEvent) {
     available_event.SetStateConcrete();
   }
 
-  TF_ASSERT_OK(
+  ASSERT_OK(
       thunk.Initialize(Thunk::InitializeParams{/*executor=*/stream_executor}));
-  TF_ASSERT_OK(thunk.ExecuteOnStream(params));
+  ASSERT_OK(thunk.ExecuteOnStream(params));
 }
 
 TEST(HostExecuteDoneThunkTest, WaitingOnErrorEvent) {
@@ -579,7 +579,7 @@ TEST(HostExecuteDoneThunkTest, WaitingOnErrorEvent) {
     error_event.SetError(Internal("Test error"));
   }
 
-  TF_ASSERT_OK(
+  ASSERT_OK(
       thunk.Initialize(Thunk::InitializeParams{/*executor=*/stream_executor}));
   EXPECT_THAT(thunk.ExecuteOnStream(params),
               absl_testing::StatusIs(absl::StatusCode::kInternal));

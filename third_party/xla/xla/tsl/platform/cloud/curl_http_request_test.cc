@@ -18,6 +18,7 @@ limitations under the License.
 #include <fstream>
 #include <string>
 
+#include <gmock/gmock.h>
 #include "absl/algorithm/container.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
@@ -283,7 +284,7 @@ TEST(CurlHttpRequestTest, GetRequest) {
   http_request.AddAuthBearerHeader("fake-bearer");
   http_request.SetRange(100, 199);
   http_request.SetResultBuffer(&scratch);
-  TF_EXPECT_OK(http_request.Send());
+  EXPECT_OK(http_request.Send());
 
   EXPECT_EQ("get response", string(scratch.begin(), scratch.end()));
 
@@ -309,7 +310,7 @@ TEST(CurlHttpRequestTest, GetRequest_Direct) {
   http_request.AddAuthBearerHeader("fake-bearer");
   http_request.SetRange(100, 199);
   http_request.SetResultBufferDirect(scratch.data(), scratch.capacity());
-  TF_EXPECT_OK(http_request.Send());
+  EXPECT_OK(http_request.Send());
 
   string expected_response = "get response";
   size_t response_bytes_transferred =
@@ -345,7 +346,7 @@ TEST(CurlHttpRequestTest, GetRequest_CustomCaInfoFlag) {
   http_request.AddAuthBearerHeader("fake-bearer");
   http_request.SetRange(100, 199);
   http_request.SetResultBuffer(&scratch);
-  TF_EXPECT_OK(http_request.Send());
+  EXPECT_OK(http_request.Send());
 
   EXPECT_EQ("get response", string(scratch.begin(), scratch.end()));
 
@@ -393,7 +394,7 @@ TEST(CurlHttpRequestTest, GetRequest_Direct_RangeOutOfBound) {
   http_request.SetUri("http://www.testuri.com");
   http_request.SetRange(0, 4);
   http_request.SetResultBufferDirect(scratch.data(), scratch.size());
-  TF_EXPECT_OK(http_request.Send());
+  EXPECT_OK(http_request.Send());
   EXPECT_EQ(416, http_request.GetResponseCode());
 
   // Some servers (in particular, GCS) return an error message payload with a
@@ -414,7 +415,7 @@ TEST(CurlHttpRequestTest, GetRequest_Empty) {
   http_request.AddAuthBearerHeader("fake-bearer");
   http_request.SetRange(100, 199);
   http_request.SetResultBuffer(&scratch);
-  TF_EXPECT_OK(http_request.Send());
+  EXPECT_OK(http_request.Send());
 
   EXPECT_TRUE(scratch.empty());
 
@@ -440,7 +441,7 @@ TEST(CurlHttpRequestTest, GetRequest_RangeOutOfBound) {
   http_request.AddAuthBearerHeader("fake-bearer");
   http_request.SetRange(100, 199);
   http_request.SetResultBuffer(&scratch);
-  TF_EXPECT_OK(http_request.Send());
+  EXPECT_OK(http_request.Send());
 
   // Some servers (in particular, GCS) return an error message payload with a
   // 416 Range Not Satisfiable response. We should pretend it's not there.
@@ -533,7 +534,7 @@ TEST(CurlHttpRequestTest, ResponseHeaders) {
   CurlHttpRequest http_request(&libcurl);
 
   http_request.SetUri("http://www.testuri.com");
-  TF_EXPECT_OK(http_request.Send());
+  EXPECT_OK(http_request.Send());
 
   EXPECT_EQ("abcd", http_request.GetResponseHeader("Location"));
   EXPECT_EQ("text", http_request.GetResponseHeader("Content-Type"));
@@ -551,8 +552,8 @@ TEST(CurlHttpRequestTest, PutRequest_WithBody_FromFile) {
 
   http_request.SetUri("http://www.testuri.com");
   http_request.AddAuthBearerHeader("fake-bearer");
-  TF_EXPECT_OK(http_request.SetPutFromFile(content_filename, 0));
-  TF_EXPECT_OK(http_request.Send());
+  EXPECT_OK(http_request.SetPutFromFile(content_filename, 0));
+  EXPECT_OK(http_request.Send());
 
   // Check interactions with libcurl.
   EXPECT_TRUE(libcurl.is_initialized_);
@@ -578,8 +579,8 @@ TEST(CurlHttpRequestTest, PutRequest_WithBody_FromFile_NonZeroOffset) {
 
   http_request.SetUri("http://www.testuri.com");
   http_request.AddAuthBearerHeader("fake-bearer");
-  TF_EXPECT_OK(http_request.SetPutFromFile(content_filename, 7));
-  TF_EXPECT_OK(http_request.Send());
+  EXPECT_OK(http_request.SetPutFromFile(content_filename, 7));
+  EXPECT_OK(http_request.Send());
 
   // Check interactions with libcurl.
   EXPECT_EQ("dy content", libcurl.posted_content_);
@@ -594,7 +595,7 @@ TEST(CurlHttpRequestTest, PutRequest_WithoutBody) {
   http_request.SetUri("http://www.testuri.com");
   http_request.AddAuthBearerHeader("fake-bearer");
   http_request.SetPutEmptyBody();
-  TF_EXPECT_OK(http_request.Send());
+  EXPECT_OK(http_request.Send());
 
   // Check interactions with libcurl.
   EXPECT_TRUE(libcurl.is_initialized_);
@@ -617,7 +618,7 @@ TEST(CurlHttpRequestTest, PostRequest_WithBody_FromMemory) {
   http_request.SetUri("http://www.testuri.com");
   http_request.AddAuthBearerHeader("fake-bearer");
   http_request.SetPostFromBuffer(content.c_str(), content.size());
-  TF_EXPECT_OK(http_request.Send());
+  EXPECT_OK(http_request.Send());
 
   // Check interactions with libcurl.
   EXPECT_TRUE(libcurl.is_initialized_);
@@ -636,7 +637,7 @@ TEST(CurlHttpRequestTest, PostRequest_WithoutBody) {
   http_request.SetUri("http://www.testuri.com");
   http_request.AddAuthBearerHeader("fake-bearer");
   http_request.SetPostEmptyBody();
-  TF_EXPECT_OK(http_request.Send());
+  EXPECT_OK(http_request.Send());
 
   // Check interactions with libcurl.
   EXPECT_TRUE(libcurl.is_initialized_);
@@ -656,7 +657,7 @@ TEST(CurlHttpRequestTest, DeleteRequest) {
   http_request.SetUri("http://www.testuri.com");
   http_request.AddAuthBearerHeader("fake-bearer");
   http_request.SetDeleteRequest();
-  TF_EXPECT_OK(http_request.Send());
+  EXPECT_OK(http_request.Send());
 
   // Check interactions with libcurl.
   EXPECT_TRUE(libcurl.is_initialized_);
@@ -677,7 +678,7 @@ TEST(CurlHttpRequestTest, WrongSequenceOfCalls_TwoSends) {
   FakeLibCurl libcurl("", 200);
   CurlHttpRequest http_request(&libcurl);
   http_request.SetUri("http://www.google.com");
-  TF_EXPECT_OK(http_request.Send());
+  EXPECT_OK(http_request.Send());
   ASSERT_DEATH((void)http_request.Send(), "The request has already been sent");
 }
 
@@ -685,7 +686,7 @@ TEST(CurlHttpRequestTest, WrongSequenceOfCalls_ReusingAfterSend) {
   FakeLibCurl libcurl("", 200);
   CurlHttpRequest http_request(&libcurl);
   http_request.SetUri("http://www.google.com");
-  TF_EXPECT_OK(http_request.Send());
+  EXPECT_OK(http_request.Send());
   ASSERT_DEATH(http_request.SetUri("http://mail.google.com"),
                "The request has already been sent");
 }
@@ -735,7 +736,7 @@ TEST(CurlHttpRequestTest, ProgressIsOk) {
       &env);
   CurlHttpRequest http_request(&libcurl, &env);
   http_request.SetUri("http://www.testuri.com");
-  TF_EXPECT_OK(http_request.Send());
+  EXPECT_OK(http_request.Send());
 }
 
 TEST(CurlHttpRequestTest, ProgressIsStuck) {
@@ -830,7 +831,7 @@ TEST(CurlHttpRequestTest, StatsGetSuccessful) {
   http_request.AddAuthBearerHeader("fake-bearer");
   http_request.SetRange(100, 199);
   http_request.SetResultBuffer(&scratch);
-  TF_EXPECT_OK(http_request.Send());
+  EXPECT_OK(http_request.Send());
 
   EXPECT_EQ("get response", string(scratch.begin(), scratch.end()));
 
@@ -844,7 +845,7 @@ TEST(CurlHttpRequestTest, StatsGetSuccessful) {
   EXPECT_EQ(&http_request, stats.record_response_request_);
   EXPECT_EQ("http://www.testuri.com", stats.record_response_uri_);
   EXPECT_EQ(HttpRequest::RequestMethod::kGet, stats.record_response_method_);
-  TF_EXPECT_OK(stats.record_response_result_);
+  EXPECT_OK(stats.record_response_result_);
 
   // Check interaction with libcurl.
   EXPECT_TRUE(libcurl.performed_request_);
@@ -900,7 +901,7 @@ TEST(CurlHttpRequestTest, StatsPost) {
 
   http_request.SetUri("http://www.testuri.com");
   http_request.SetPostFromBuffer(content.c_str(), content.size());
-  TF_EXPECT_OK(http_request.Send());
+  EXPECT_OK(http_request.Send());
 
   // Check interaction with stats.
   ASSERT_TRUE(stats.has_recorded_request_);
@@ -912,7 +913,7 @@ TEST(CurlHttpRequestTest, StatsPost) {
   EXPECT_EQ(&http_request, stats.record_response_request_);
   EXPECT_EQ("http://www.testuri.com", stats.record_response_uri_);
   EXPECT_EQ(HttpRequest::RequestMethod::kPost, stats.record_response_method_);
-  TF_EXPECT_OK(stats.record_response_result_);
+  EXPECT_OK(stats.record_response_result_);
 }
 
 TEST(CurlHttpRequestTest, StatsDelete) {
@@ -923,7 +924,7 @@ TEST(CurlHttpRequestTest, StatsDelete) {
   http_request.SetRequestStats(&stats);
   http_request.SetUri("http://www.testuri.com");
   http_request.SetDeleteRequest();
-  TF_EXPECT_OK(http_request.Send());
+  EXPECT_OK(http_request.Send());
 
   // Check interaction with stats.
   ASSERT_TRUE(stats.has_recorded_request_);
@@ -935,7 +936,7 @@ TEST(CurlHttpRequestTest, StatsDelete) {
   EXPECT_EQ(&http_request, stats.record_response_request_);
   EXPECT_EQ("http://www.testuri.com", stats.record_response_uri_);
   EXPECT_EQ(HttpRequest::RequestMethod::kDelete, stats.record_response_method_);
-  TF_EXPECT_OK(stats.record_response_result_);
+  EXPECT_OK(stats.record_response_result_);
 }
 
 TEST(CurlHttpRequestTest, StatsPut) {
@@ -947,7 +948,7 @@ TEST(CurlHttpRequestTest, StatsPut) {
   http_request.SetUri("http://www.testuri.com");
   http_request.AddAuthBearerHeader("fake-bearer");
   http_request.SetPutEmptyBody();
-  TF_EXPECT_OK(http_request.Send());
+  EXPECT_OK(http_request.Send());
 
   // Check interaction with stats.
   ASSERT_TRUE(stats.has_recorded_request_);
@@ -959,7 +960,7 @@ TEST(CurlHttpRequestTest, StatsPut) {
   EXPECT_EQ(&http_request, stats.record_response_request_);
   EXPECT_EQ("http://www.testuri.com", stats.record_response_uri_);
   EXPECT_EQ(HttpRequest::RequestMethod::kPut, stats.record_response_method_);
-  TF_EXPECT_OK(stats.record_response_result_);
+  EXPECT_OK(stats.record_response_result_);
 }
 
 }  // namespace

@@ -34,7 +34,7 @@ TEST(PjRtApiTest, SetAndGetGlobalPjRtApi) {
   api.pjrt_api_version.major_version = PJRT_API_MAJOR;
   api.pjrt_api_version.minor_version = PJRT_API_MINOR;
 
-  TF_ASSERT_OK(pjrt::SetPjrtApi("CPU", &api));
+  ASSERT_OK(pjrt::SetPjrtApi("CPU", &api));
   TF_ASSERT_OK_AND_ASSIGN(const PJRT_Api* output, pjrt::PjrtApi("CPU"));
   TF_ASSERT_OK_AND_ASSIGN(const PJRT_Api* output_lowercase,
                           pjrt::PjrtApi("cpu"));
@@ -61,12 +61,12 @@ TEST(PjRtApiTest, InitPjRtPlugin) {
   api.pjrt_api_version.minor_version = PJRT_API_MINOR;
   api.PJRT_Plugin_Initialize = pjrt::PJRT_Plugin_Initialize_NoOp;
   std::string plugin_name = "plugin";
-  TF_ASSERT_OK(pjrt::SetPjrtApi(plugin_name, &api));
+  ASSERT_OK(pjrt::SetPjrtApi(plugin_name, &api));
   TF_ASSERT_OK_AND_ASSIGN(bool is_initialized,
                           pjrt::IsPjrtPluginInitialized(plugin_name));
   EXPECT_FALSE(is_initialized);
 
-  TF_ASSERT_OK(pjrt::InitializePjrtPlugin(plugin_name));
+  ASSERT_OK(pjrt::InitializePjrtPlugin(plugin_name));
 
   TF_ASSERT_OK_AND_ASSIGN(is_initialized,
                           pjrt::IsPjrtPluginInitialized(plugin_name));

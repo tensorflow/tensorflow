@@ -20,6 +20,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/statusor.h"
 #include "xla/tsl/lib/core/status_test_util.h"
@@ -99,11 +100,11 @@ std::vector<TestCase> GetTestCases() {
 class GetCollectOpGroupModeTest : public testing::TestWithParam<TestCase> {};
 
 TEST_P(GetCollectOpGroupModeTest, Test) {
-  const TestCase &tc = GetParam();
+  const TestCase& tc = GetParam();
   absl::StatusOr<CollectiveOpGroupMode> actual =
       GetCollectiveOpGroupMode(tc.has_channel_id, tc.use_global_device_ids);
   if (tc.expected) {
-    TF_ASSERT_OK(actual.status());
+    ASSERT_OK(actual.status());
     EXPECT_EQ(*actual, *tc.expected);
   } else {
     EXPECT_FALSE(actual.ok());

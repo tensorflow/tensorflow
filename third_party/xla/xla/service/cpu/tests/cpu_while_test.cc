@@ -17,6 +17,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -281,7 +282,7 @@ TEST_F(CpuCodegenTest, WhileDotDoesNotError) {
 
   // No need to check the values of the Literal, just that it returns a valid
   // result.
-  TF_EXPECT_OK(Execute(module->Clone(), {&input_real, &input_imag}));
+  EXPECT_OK(Execute(module->Clone(), {&input_real, &input_imag}));
 }
 
 }  // namespace

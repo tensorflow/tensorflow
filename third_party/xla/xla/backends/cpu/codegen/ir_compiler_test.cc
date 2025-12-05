@@ -133,14 +133,14 @@ TEST(IrCompilerTest, OverrideIrCompilerCompileOptions) {
     LlvmKernelOptions override_options;
     override_options.set_optimize_for_size(false);
 
-    TF_ASSERT_OK(
+    ASSERT_OK(
         add_module_with_options(kUnoptimizedIr, kModuleName, override_options));
   }
 
   {
     LlvmKernelOptions override_options;
     override_options.set_optimize_for_size(true);
-    TF_ASSERT_OK(
+    ASSERT_OK(
         add_module_with_options(kUnoptimizedIr, kModuleName, override_options));
   }
 

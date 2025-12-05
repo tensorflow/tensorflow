@@ -19,6 +19,7 @@ limitations under the License.
 #include <optional>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/cleanup/cleanup.h"
 #include "absl/log/log.h"
@@ -134,7 +135,7 @@ TEST_F(FloatCheckKernelTest, ChecksFloatsForF32) {
       se::gpu::BufferDebugLog<BufferDebugFloatCheckEntry>::CreateOnDevice(
           *stream_, mem));
 
-  TF_EXPECT_OK(AppendFloatCheckOnDevice<gpu::BufferDebugFloatCheckF32Kernel>(
+  EXPECT_OK(AppendFloatCheckOnDevice<gpu::BufferDebugFloatCheckF32Kernel>(
       BufferDebugLogEntryId{123}, input, device_log));
 
   TF_ASSERT_OK_AND_ASSIGN(auto host_log, device_log.ReadFromDevice(*stream_));
@@ -159,7 +160,7 @@ TEST_F(FloatCheckKernelTest, ChecksFloatsForBf16) {
       se::gpu::BufferDebugLog<BufferDebugFloatCheckEntry>::CreateOnDevice(
           *stream_, mem));
 
-  TF_EXPECT_OK(AppendFloatCheckOnDevice<gpu::BufferDebugFloatCheckBf16Kernel>(
+  EXPECT_OK(AppendFloatCheckOnDevice<gpu::BufferDebugFloatCheckBf16Kernel>(
       BufferDebugLogEntryId{0}, input, device_log));
 
   TF_ASSERT_OK_AND_ASSIGN(auto host_log, device_log.ReadFromDevice(*stream_));
@@ -184,9 +185,9 @@ TEST_F(FloatCheckKernelTest, ChecksFloatsInParallel) {
       se::gpu::BufferDebugLog<BufferDebugFloatCheckEntry>::CreateOnDevice(
           *stream_, mem));
 
-  TF_EXPECT_OK(AppendFloatCheckOnDevice<gpu::BufferDebugFloatCheckF32Kernel>(
+  EXPECT_OK(AppendFloatCheckOnDevice<gpu::BufferDebugFloatCheckF32Kernel>(
       BufferDebugLogEntryId{0}, input, device_log, se::ThreadDim(2, 4, 8)));
-  TF_EXPECT_OK(AppendFloatCheckOnDevice<gpu::BufferDebugFloatCheckF32Kernel>(
+  EXPECT_OK(AppendFloatCheckOnDevice<gpu::BufferDebugFloatCheckF32Kernel>(
       BufferDebugLogEntryId{0}, input, device_log, se::ThreadDim(2, 4, 8)));
 
   TF_ASSERT_OK_AND_ASSIGN(auto host_log, device_log.ReadFromDevice(*stream_));

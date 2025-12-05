@@ -57,7 +57,6 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tests/literal_test_util.h"
-#include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/file_system.h"
@@ -210,7 +209,7 @@ ENTRY RuntimeDonationDenial() -> f32[2, 2] {
     options.non_donatable_input_indices.insert(0);
     auto result = pjrt_executable->Execute(
         /*argument_handles=*/{{buffer.get()}}, options);
-    TF_ASSERT_OK(result);
+    ASSERT_OK(result);
 
     EXPECT_FALSE(buffer->IsDeleted());
   }
@@ -219,7 +218,7 @@ ENTRY RuntimeDonationDenial() -> f32[2, 2] {
     ExecuteOptions options;
     auto result = pjrt_executable->Execute(
         /*argument_handles=*/{{buffer.get()}}, options);
-    TF_ASSERT_OK(result);
+    ASSERT_OK(result);
 
     EXPECT_TRUE(buffer->IsDeleted());
   }
@@ -392,12 +391,12 @@ TEST(PjRtCpuClientTest, DumpOnDeserialize) {
   std::string compile_dump_name, compile_dump_contents;
   {
     std::vector<std::string> matches;
-    TF_ASSERT_OK(env->GetMatchingPaths(
+    ASSERT_OK(env->GetMatchingPaths(
         tsl::io::JoinPath(compile_dump_dir, "*after_optimizations.txt"),
         &matches));
     EXPECT_THAT(matches, ::testing::SizeIs(1));
     compile_dump_name = std::move(matches.front());
-    TF_ASSERT_OK(
+    ASSERT_OK(
         tsl::ReadFileToString(env, compile_dump_name, &compile_dump_contents));
   }
 
@@ -418,13 +417,13 @@ TEST(PjRtCpuClientTest, DumpOnDeserialize) {
   std::string deserialize_dump_name, deserialize_dump_contents;
   {
     std::vector<std::string> matches;
-    TF_ASSERT_OK(env->GetMatchingPaths(
+    ASSERT_OK(env->GetMatchingPaths(
         tsl::io::JoinPath(deserialize_dump_dir, "*after_optimizations.txt"),
         &matches));
     EXPECT_THAT(matches, ::testing::SizeIs(1));
     deserialize_dump_name = std::move(matches.front());
-    TF_ASSERT_OK(tsl::ReadFileToString(env, deserialize_dump_name,
-                                       &deserialize_dump_contents));
+    ASSERT_OK(tsl::ReadFileToString(env, deserialize_dump_name,
+                                    &deserialize_dump_contents));
   }
   EXPECT_EQ(compile_dump_contents, deserialize_dump_contents);
 }
@@ -442,7 +441,7 @@ TEST(PjRtCpuClientTest, AsyncTransferRawData) {
   char raw_data[raw_data_size];
   std::fill(raw_data, raw_data + raw_data_size, 0x42);
   absl::string_view raw_data_view(raw_data, raw_data_size);
-  TF_ASSERT_OK(transfer_manager->TransferRawDataToBuffer(
+  ASSERT_OK(transfer_manager->TransferRawDataToBuffer(
       0, absl::string_view(raw_data, raw_data_size), []() {}));
   TF_ASSERT_OK_AND_ASSIGN(auto literal, buffer->ToLiteralSync());
   ASSERT_EQ(literal->element_count(), 3 * 2);
@@ -463,7 +462,7 @@ TEST(PjRtCpuClientTest, AsyncTransferWithSpecs) {
   char raw_data[raw_data_size];
   std::fill(raw_data, raw_data + raw_data_size, 0x42);
   absl::string_view raw_data_view(raw_data, raw_data_size);
-  TF_ASSERT_OK(transfer_manager->TransferRawDataToBuffer(
+  ASSERT_OK(transfer_manager->TransferRawDataToBuffer(
       0, absl::string_view(raw_data, raw_data_size), []() {}));
   TF_ASSERT_OK_AND_ASSIGN(auto literal, buffer->ToLiteralSync());
   ASSERT_EQ(literal->element_count(), 3 * 2);
@@ -480,7 +479,7 @@ TEST(PjRtCpuClientTest, AsyncTransferLiteral) {
   auto ready_future = buffer->GetReadyFuture();
   EXPECT_THAT(ready_future.IsReady(), IsFalse());
   TF_ASSERT_OK_AND_ASSIGN(auto literal, xla::MakeFakeLiteral(shape));
-  TF_ASSERT_OK(transfer_manager->TransferLiteralToBuffer(0, literal, []() {}));
+  ASSERT_OK(transfer_manager->TransferLiteralToBuffer(0, literal, []() {}));
   TF_ASSERT_OK_AND_ASSIGN(auto received_literal, buffer->ToLiteralSync());
   EXPECT_THAT(received_literal->data<float>(),
               ElementsAreArray(literal.data<float>()));
@@ -496,7 +495,7 @@ TEST(PjRtCpuClientTest, AsyncTransferLiteralInt4) {
   auto ready_future = buffer->GetReadyFuture();
   EXPECT_THAT(ready_future.IsReady(), IsFalse());
   TF_ASSERT_OK_AND_ASSIGN(auto literal, xla::MakeFakeLiteral(shape));
-  TF_ASSERT_OK(transfer_manager->TransferLiteralToBuffer(0, literal, []() {}));
+  ASSERT_OK(transfer_manager->TransferLiteralToBuffer(0, literal, []() {}));
   TF_ASSERT_OK_AND_ASSIGN(auto received_literal, buffer->ToLiteralSync());
   EXPECT_THAT(received_literal->data<s4>(),
               ElementsAreArray(literal.data<s4>()));
@@ -541,7 +540,7 @@ TEST(PjRtCpuClientTest, AsyncTransferCallsOnDone) {
   absl::string_view raw_data_view(raw_data, sizeof(raw_data));
   absl::Notification done;
   auto mark_done = [&]() { done.Notify(); };
-  TF_ASSERT_OK(
+  ASSERT_OK(
       transfer_manager->TransferRawDataToBuffer(0, raw_data_view, mark_done));
   done.WaitForNotification();
 }
@@ -633,10 +632,10 @@ TEST(PjRtCpuClientTest, AsyncTransferRawDataToSubBuffer) {
   char raw_data[raw_data_size];
   std::fill(raw_data, raw_data + raw_data_size, 0x42);
   absl::string_view raw_data_view(raw_data, raw_data_size);
-  TF_ASSERT_OK(transfer_manager->TransferRawDataToSubBuffer(
+  ASSERT_OK(transfer_manager->TransferRawDataToSubBuffer(
       0, raw_data_view.data(), 0, raw_data_size - 1, /*is_last_transfer=*/false,
       []() {}));
-  TF_ASSERT_OK(transfer_manager->TransferRawDataToSubBuffer(
+  ASSERT_OK(transfer_manager->TransferRawDataToSubBuffer(
       0, raw_data_view.data(), raw_data_size - 1, 1, /*is_last_transfer=*/true,
       []() {}));
   TF_ASSERT_OK_AND_ASSIGN(auto literal, buffer->ToLiteralSync());
@@ -820,7 +819,7 @@ ENTRY Identity() -> f32[2, 2] {
 
   auto result =
       pjrt_executable->Execute(/*argument_handles=*/{{buffer.get()}}, opts);
-  TF_ASSERT_OK(result);
+  ASSERT_OK(result);
 
   // Poisoning the execution should succeed because the execution has not
   // started with the input buffer not defined yet.
@@ -891,7 +890,7 @@ TEST(PjRtCpuClientTest, ForwardUserDataToFfiHandler) {
                           client->CompileAndLoad(xla_computation, {}));
 
   ExecuteContext context;
-  TF_ASSERT_OK(context.ffi_context().Emplace<MemsetValue>(42.0f));
+  ASSERT_OK(context.ffi_context().Emplace<MemsetValue>(42.0f));
 
   ExecuteOptions opts;
   opts.context = &context;
@@ -961,11 +960,11 @@ TEST(PjRtCpuClientTest, CopyRawToHost) {
   char raw_data[raw_data_size];
   std::fill(raw_data, raw_data + raw_data_size, 0x42);
   absl::string_view raw_data_view(raw_data, raw_data_size);
-  TF_ASSERT_OK(transfer_manager->TransferRawDataToBuffer(
+  ASSERT_OK(transfer_manager->TransferRawDataToBuffer(
       0, absl::string_view(raw_data, raw_data_size), []() {}));
 
   char raw_data_result[raw_data_size];
-  TF_ASSERT_OK(
+  ASSERT_OK(
       buffer->CopyRawToHost(&raw_data_result[0], 0, raw_data_size).Await());
 
   ASSERT_EQ(absl::string_view(raw_data, raw_data_size),
@@ -986,13 +985,13 @@ TEST(PjRtCpuClientTest, SubByteLiteralToBufferRoundtrip) {
       LiteralUtil::CreateR1<s4>({s4(0), s4(1), s4(2), s4(-8)});
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtBuffer> buffer,
                           client->BufferFromHostLiteral(literal, memory_space));
-  TF_ASSERT_OK(buffer->GetReadyFuture().Await());
+  ASSERT_OK(buffer->GetReadyFuture().Await());
   TF_ASSERT_OK_AND_ASSIGN(const size_t on_device_size,
                           buffer->GetOnDeviceSizeInBytes());
   EXPECT_EQ(on_device_size, 2);
 
   Literal literal_result(literal.shape());
-  TF_ASSERT_OK(buffer->ToLiteralSync(&literal_result));
+  ASSERT_OK(buffer->ToLiteralSync(&literal_result));
 
   EXPECT_TRUE(LiteralTestUtil::Equal(literal, literal_result));
 }

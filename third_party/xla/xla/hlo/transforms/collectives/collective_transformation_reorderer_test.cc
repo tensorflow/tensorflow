@@ -181,10 +181,10 @@ TEST_F(CollectiveTransformationReordererTest, AllReduceSingleReshape) {
   TF_ASSERT_OK_AND_ASSIGN(bool changed,
                           RunCollectiveTransformationReorderer(module.get()));
   EXPECT_TRUE(changed);
-  TF_ASSERT_OK(HloVerifier(/*layout_sensitive=*/false,
-                           /*allow_mixed_precision=*/true)
-                   .Run(module.get())
-                   .status());
+  ASSERT_OK(HloVerifier(/*layout_sensitive=*/false,
+                        /*allow_mixed_precision=*/true)
+                .Run(module.get())
+                .status());
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               op::DynamicSlice(op::Reshape(op::AllReduce(op::Parameter())),
                                op::Constant(), op::Constant(), op::Constant()));
@@ -214,10 +214,10 @@ TEST_F(CollectiveTransformationReordererTest, AllReduceTwoReshapes) {
   TF_ASSERT_OK_AND_ASSIGN(bool changed,
                           RunCollectiveTransformationReorderer(module.get()));
   EXPECT_TRUE(changed);
-  TF_ASSERT_OK(HloVerifier(/*layout_sensitive=*/false,
-                           /*allow_mixed_precision=*/true)
-                   .Run(module.get())
-                   .status());
+  ASSERT_OK(HloVerifier(/*layout_sensitive=*/false,
+                        /*allow_mixed_precision=*/true)
+                .Run(module.get())
+                .status());
   EXPECT_THAT(
       module->entry_computation()->root_instruction(),
       op::DynamicSlice(op::Reshape(op::Reshape(op::AllReduce(op::Parameter()))),
@@ -338,10 +338,10 @@ TEST_F(CollectiveTransformationReordererTest,
 
   // Check the results.
   EXPECT_TRUE(changed);
-  TF_ASSERT_OK(HloVerifier(/*layout_sensitive=*/false,
-                           /*allow_mixed_precision=*/true)
-                   .Run(module.get())
-                   .status());
+  ASSERT_OK(HloVerifier(/*layout_sensitive=*/false,
+                        /*allow_mixed_precision=*/true)
+                .Run(module.get())
+                .status());
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               op::DynamicSlice(op::Reshape(op::AllReduce(op::Parameter())),
                                op::Constant(), op::Constant(), op::Constant()));

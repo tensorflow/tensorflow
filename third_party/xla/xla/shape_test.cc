@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstdint>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/hash/hash_testing.h"
 #include "absl/log/check.h"
@@ -80,7 +81,7 @@ TEST_F(ShapeTest, ShapeToFromProto) {
        {opaque_, token_, scalar_, matrix_, matrix2_, matrix_buffer_, tuple_,
         nested_tuple_, dynamic_matrix_, unbounded_}) {
     auto shape_copy = Shape::FromProto(shape.ToProto());
-    TF_ASSERT_OK(shape_copy);
+    ASSERT_OK(shape_copy);
     EXPECT_TRUE(ShapeUtil::Equal(shape, *shape_copy))
         << shape << " != " << *shape_copy;
   }
@@ -96,7 +97,7 @@ TEST_F(ShapeTest, ShapeToFromProtoInplace) {
     shape_proto.set_element_type(F32);
     shape.ToProto(shape_proto);
     auto shape_copy = Shape::FromProto(shape_proto);
-    TF_ASSERT_OK(shape_copy);
+    ASSERT_OK(shape_copy);
     EXPECT_TRUE(ShapeUtil::Equal(shape, *shape_copy))
         << shape_proto.DebugString();
   }
@@ -391,7 +392,7 @@ void BM_ShapeProtoCopy(::testing::benchmark::State& state) {
 
   for (auto s : state) {
     auto copy = Shape::FromProto(shape.ToProto());
-    TF_ASSERT_OK(copy);
+    ASSERT_OK(copy);
     CHECK(ShapeUtil::Equal(shape, *copy));
   }
 }

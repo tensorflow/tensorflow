@@ -22,6 +22,7 @@ limitations under the License.
 #include <tuple>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/cleanup/cleanup.h"
 #include "absl/log/log.h"
@@ -211,7 +212,7 @@ TEST_P(CubPrefixSumKernelCudaTest, TestPrefixSum) {
     default:
       status = absl::OkStatus();
   }
-  TF_EXPECT_OK(status);
+  EXPECT_OK(status);
 }
 
 std::string ParametersToString(

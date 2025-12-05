@@ -301,7 +301,7 @@ TEST(ConditionalThunkTest, TransformAllNestedThunks) {
       Thunk::ThunkInfo(), slice, std::move(branch_thunks),
       /*branch_index_is_bool=*/false);
 
-  TF_EXPECT_OK(conditional_thunk->TransformAllNestedThunks([](auto) {
+  EXPECT_OK(conditional_thunk->TransformAllNestedThunks([](auto) {
     return std::make_unique<DummyThunk>(Kind::kCustomCall, Thunk::ThunkInfo());
   }));
 

@@ -173,7 +173,7 @@ TEST(SequentialThunkTest, TransformAllNestedThunks) {
       std::make_unique<DummyThunk>(Thunk::Kind::kGemm, make_info(3)));
   SequentialThunk sequential_thunk(Thunk::ThunkInfo(), std::move(thunks));
 
-  TF_EXPECT_OK(sequential_thunk.TransformAllNestedThunks(
+  EXPECT_OK(sequential_thunk.TransformAllNestedThunks(
       [&](std::unique_ptr<Thunk> thunk) -> std::unique_ptr<Thunk> {
         return std::make_unique<DummyThunk>(
             Thunk::Kind::kCopy,

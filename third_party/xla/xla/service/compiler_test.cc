@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/service/compiler.h"
 
 #include "xla/tests/xla_test_backend_predicates.h"
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "xla/autotune_results.pb.h"
 #include "xla/stream_executor/device_description.pb.h"
@@ -31,7 +32,7 @@ TEST(TargetConfigTest, ExecutorConstructorFillsAllFields) {
   if (test::DeviceIs(test::kCpu)) {
     GTEST_SKIP();
   }
-  TF_ASSERT_OK(stream_executor::ValidateGPUMachineManager());
+  ASSERT_OK(stream_executor::ValidateGPUMachineManager());
   TF_ASSERT_OK_AND_ASSIGN(
       stream_executor::StreamExecutor * executor,
       stream_executor::GPUMachineManager()->ExecutorForDevice(0));

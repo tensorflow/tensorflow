@@ -22,6 +22,7 @@ limitations under the License.
 #include <vector>
 
 #include "xla/tests/xla_test_backend_predicates.h"
+#include <gmock/gmock.h>
 #include "absl/strings/str_replace.h"
 #include "absl/types/span.h"
 #include "ml_dtypes/include/float8.h"
@@ -443,7 +444,7 @@ TEST_F(CollectiveOpsTest, AllReduce_ManyConcurrentAllReduces) {
   tsl::thread::ThreadPool pool(tsl::Env::Default(), TestName(), kNumThreads);
   for (int64_t i = 0; i < kNumThreads * kRunsPerThread; ++i) {
     pool.Schedule([&] {
-      TF_ASSERT_OK(
+      ASSERT_OK(
           ExecuteReplicatedWithHloRunner(executable.get(), opts, &device_assn)
               .status());
       done.DecrementCount();

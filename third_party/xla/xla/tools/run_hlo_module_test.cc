@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <string>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "xla/literal.h"
 #include "xla/literal_util.h"
@@ -46,7 +47,7 @@ TEST(ReadInputLiteralsFromFile, ReadRunHloModuleLiteralsBinaryProto) {
   auto proto = GetTestProto();
   RunHloModuleLiterals wrapped_proto;
   *wrapped_proto.add_iterations() = proto;
-  TF_ASSERT_OK(tsl::WriteBinaryProto(env, file_path, wrapped_proto));
+  ASSERT_OK(tsl::WriteBinaryProto(env, file_path, wrapped_proto));
   RunHloModuleLiterals result;
   ReadInputLiteralsFromFile(file_path, &result);
   EXPECT_EQ(result.SerializeAsString(), wrapped_proto.SerializeAsString());
@@ -59,7 +60,7 @@ TEST(ReadInputLiteralsFromFile, ReadRunHloModuleLiteralsTextProto) {
   auto proto = GetTestProto();
   RunHloModuleLiterals wrapped_proto;
   *wrapped_proto.add_iterations() = proto;
-  TF_ASSERT_OK(tsl::WriteTextProto(env, file_path, wrapped_proto));
+  ASSERT_OK(tsl::WriteTextProto(env, file_path, wrapped_proto));
   RunHloModuleLiterals result;
   ReadInputLiteralsFromFile(file_path, &result);
   EXPECT_EQ(result.SerializeAsString(), wrapped_proto.SerializeAsString());
@@ -70,7 +71,7 @@ TEST(ReadInputLiteralsFromFile, ReadRunHloModuleIterationLiteralsBinaryProto) {
   auto env = tsl::Env::Default();
   EXPECT_TRUE(env->LocalTempFilename(&file_path));
   auto proto = GetTestProto();
-  TF_ASSERT_OK(tsl::WriteBinaryProto(env, file_path, proto));
+  ASSERT_OK(tsl::WriteBinaryProto(env, file_path, proto));
   RunHloModuleLiterals result;
   ReadInputLiteralsFromFile(file_path, &result);
   EXPECT_EQ(result.iterations_size(), 1);
@@ -83,7 +84,7 @@ TEST(ReadInputLiteralsFromFile, ReadRunHloModuleIterationLiteralsTextProto) {
   auto env = tsl::Env::Default();
   EXPECT_TRUE(env->LocalTempFilename(&file_path));
   auto proto = GetTestProto();
-  TF_ASSERT_OK(tsl::WriteTextProto(env, file_path, proto));
+  ASSERT_OK(tsl::WriteTextProto(env, file_path, proto));
   RunHloModuleLiterals result;
   ReadInputLiteralsFromFile(file_path, &result);
   EXPECT_EQ(result.iterations_size(), 1);

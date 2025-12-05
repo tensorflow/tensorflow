@@ -16,6 +16,7 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 
+#include <gmock/gmock.h>
 #include "absl/log/log.h"
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/hlo/builder/xla_computation.h"
@@ -91,8 +92,7 @@ TEST_F(OutfeedInNestedComputationTest, OutfeedInWhile) {
 
   VLOG(1) << "Transferring trip count to computation";
   // Transfer number of iterations to Infeed.
-  TF_ASSERT_OK(
-      local_client_->TransferToInfeed(LiteralUtil::CreateR0<int32_t>(1)));
+  ASSERT_OK(local_client_->TransferToInfeed(LiteralUtil::CreateR0<int32_t>(1)));
 
   // Pick up value from outfeed
   {
@@ -104,7 +104,7 @@ TEST_F(OutfeedInNestedComputationTest, OutfeedInWhile) {
 
   VLOG(1) << "Writing data to infeed";
   // Transfer some stuff to Infeed for use inside of loop.
-  TF_ASSERT_OK(local_client_->TransferToInfeed(
+  ASSERT_OK(local_client_->TransferToInfeed(
       LiteralUtil::CreateR1<int32_t>({10, 20})));
 
   // Pick up value from outfeed
@@ -163,8 +163,7 @@ TEST_F(OutfeedInNestedComputationTest, OutfeedInConditional) {
             local_client_->ExecuteAndTransfer(computation, {}).value();
       }));
 
-  TF_ASSERT_OK(
-      local_client_->TransferToInfeed(LiteralUtil::CreateR0<bool>(true)));
+  ASSERT_OK(local_client_->TransferToInfeed(LiteralUtil::CreateR0<bool>(true)));
 
   TF_ASSERT_OK_AND_ASSIGN(Literal r,
                           local_client_->TransferFromOutfeed(&result_shape));

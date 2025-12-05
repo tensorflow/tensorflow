@@ -600,7 +600,7 @@ TEST_P(IfrtBackendHandlerTest, MakeArrayFromHostBufferSuccess) {
     make_array->set_host_buffer_handle(kHostBufferHandle);
     TF_ASSERT_OK_AND_ASSIGN(auto* device,
                             mock_client_->LookupDevice(DeviceId(1)));
-    TF_ASSERT_OK(
+    ASSERT_OK(
         SingleDeviceSharding::Create(device, MemoryKind())
             ->ToProto(*make_array->mutable_sharding(), ifrt_serdes_version()));
   }
@@ -645,7 +645,7 @@ TEST_P(IfrtBackendHandlerTest, MakeStringArrayFromHostBufferSuccess) {
   make_array->set_host_buffer_handle(kHostBufferHandle);
   TF_ASSERT_OK_AND_ASSIGN(auto* device,
                           mock_client_->LookupDevice(DeviceId(1)));
-  TF_ASSERT_OK(
+  ASSERT_OK(
       SingleDeviceSharding::Create(device, MemoryKind())
           ->ToProto(*make_array->mutable_sharding(), ifrt_serdes_version()));
 
@@ -691,9 +691,8 @@ TEST_P(IfrtBackendHandlerTest, AssembleArrayFromSingleDeviceArrays) {
     }
     TF_ASSERT_OK_AND_ASSIGN(auto* device,
                             mock_client_->LookupDevice(DeviceId(1)));
-    TF_ASSERT_OK(
-        SingleDeviceSharding::Create(device, MemoryKind())
-            ->ToProto(*req->mutable_sharding(), ifrt_serdes_version()));
+    ASSERT_OK(SingleDeviceSharding::Create(device, MemoryKind())
+                  ->ToProto(*req->mutable_sharding(), ifrt_serdes_version()));
   }
 
   std::vector<tsl::RCReference<xla::ifrt::MockArray>> single_device_arrays;
@@ -792,7 +791,7 @@ TEST_P(IfrtBackendHandlerTest, CopyToHostSuccessWithStringArray) {
   make_array->set_host_buffer_handle(kHostBufferHandle);
   TF_ASSERT_OK_AND_ASSIGN(auto* device,
                           mock_client_->LookupDevice(DeviceId(1)));
-  TF_ASSERT_OK(
+  ASSERT_OK(
       SingleDeviceSharding::Create(device, MemoryKind())
           ->ToProto(*make_array->mutable_sharding(), ifrt_serdes_version()));
 
@@ -1058,7 +1057,7 @@ TEST_P(IfrtBackendHandlerTest, DeleteArraySuccess) {
   TF_ASSERT_OK_AND_ASSIGN(auto resp, CallBackend(std::move(ifrt_request)));
   EXPECT_THAT(tsl::StatusFromProto(resp->response_metadata().status()),
               absl_testing::IsOk());
-  TF_EXPECT_OK(
+  EXPECT_OK(
       CheckFuture(resp->delete_array_response().deletion_future_handle()));
 }
 
@@ -1175,7 +1174,7 @@ TEST_P(IfrtBackendHandlerTest, CompileSuccess) {
                 device_ids: [ 0, 1, 2, 3 ]
                 fingerprint_value: "fingerprint"
               )pb")));
-  TF_EXPECT_OK(CheckFuture(response.ready_future_handle()));
+  EXPECT_OK(CheckFuture(response.ready_future_handle()));
 }
 
 TEST_P(IfrtBackendHandlerTest, CompileFailure) {
@@ -1348,8 +1347,8 @@ TEST_P(IfrtBackendHandlerTest, LoadedExecutableExecute) {
   execute_request->set_loaded_executable_handle(handle);
   xla::ifrt::LoadedExecutable::ExecuteOptions execute_options;
   execute_options.fill_status = true;
-  TF_ASSERT_OK(execute_options.ToProto(
-      *execute_request->mutable_execute_options(), ifrt_serdes_version()));
+  ASSERT_OK(execute_options.ToProto(*execute_request->mutable_execute_options(),
+                                    ifrt_serdes_version()));
 
   TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<IfrtResponse> response,
                           CallBackend(std::move(request)));
@@ -1441,8 +1440,8 @@ TEST_P(IfrtBackendHandlerTest, LoadedExecutableExecuteErrorWithClientHandles) {
 
   xla::ifrt::LoadedExecutable::ExecuteOptions execute_options;
   execute_options.fill_status = true;
-  TF_ASSERT_OK(execute_options.ToProto(
-      *execute_request->mutable_execute_options(), ifrt_serdes_version()));
+  ASSERT_OK(execute_options.ToProto(*execute_request->mutable_execute_options(),
+                                    ifrt_serdes_version()));
 
   auto status_is_err = absl_testing::StatusIs(absl::StatusCode::kInternal,
                                               StrEq("injected error"));

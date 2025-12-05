@@ -21,6 +21,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -133,7 +134,7 @@ TEST(StreamExecutorGpuClientTest, NvshmemMemoryTest) {
   shape.mutable_layout()->set_memory_space(Layout::kDefaultMemorySpace);
 
   PjRtDevice* const device = client->addressable_devices()[0];
-  TF_EXPECT_OK(device->default_memory_space());
+  EXPECT_OK(device->default_memory_space());
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<PjRtBuffer> input,
       client->BufferFromHostBuffer(
@@ -155,7 +156,7 @@ TEST(StreamExecutorGpuClientTest, NvshmemMemoryTest) {
       std::vector<std::vector<std::unique_ptr<PjRtBuffer>>> result,
       executable->Execute({{input.get()}}, ExecuteOptions()));
   std::vector<std::unique_ptr<xla::PjRtBuffer>>& result_buffers = result[0];
-  TF_ASSERT_OK(result_buffers[0]->GetReadyFuture().Await());
+  ASSERT_OK(result_buffers[0]->GetReadyFuture().Await());
   EXPECT_EQ(result_buffers[0]->memory_space()->kind(), "device");
   Shape result_shape = result_buffers[0]->on_device_shape();
   int64_t memory_space = result_shape.layout().memory_space();

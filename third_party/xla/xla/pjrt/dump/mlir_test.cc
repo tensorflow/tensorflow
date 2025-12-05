@@ -41,10 +41,10 @@ TEST(MlirTest, MlirModuleToFile) {
 
   std::string file_path =
       tsl::io::JoinPath(tsl::testing::TmpDir(), "test_mlir_module.mlir");
-  TF_ASSERT_OK(MlirModuleToFile(module.get(), file_path));
+  ASSERT_OK(MlirModuleToFile(module.get(), file_path));
 
   std::string file_content;
-  TF_ASSERT_OK(
+  ASSERT_OK(
       tsl::ReadFileToString(tsl::Env::Default(), file_path, &file_content));
   EXPECT_THAT(file_content, ::testing::HasSubstr("module"));
 }

@@ -21,6 +21,7 @@ limitations under the License.
 #include <utility>
 
 #include "xla/tests/xla_test_backend_predicates.h"
+#include <gmock/gmock.h>
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -211,7 +212,7 @@ TEST_F(DynamicPadderTest, ReduceTest) {
   EXPECT_FALSE(module_->is_dynamic());
   module_->AddEntryComputation(builder.Build());
 
-  TF_ASSERT_OK(RunPadder().status());
+  ASSERT_OK(RunPadder().status());
 
   ExpectPadded(reduce->operand(0));
   EXPECT_TRUE(module_->is_dynamic());
@@ -237,7 +238,7 @@ ENTRY main {
 
   module_ = GetHloModule(hlo_text);
 
-  TF_ASSERT_OK(RunPadder(/*slice_dynamic_output=*/true).status());
+  ASSERT_OK(RunPadder(/*slice_dynamic_output=*/true).status());
   // After rewrite, we should have :
   //
   //   param
@@ -293,7 +294,7 @@ ENTRY main {
 
   module_ = GetHloModule(hlo_text);
 
-  TF_ASSERT_OK(RunPadder(/*slice_dynamic_output=*/true).status());
+  ASSERT_OK(RunPadder(/*slice_dynamic_output=*/true).status());
   // After rewrite, we should have :
   //
   //   param
@@ -351,8 +352,8 @@ ENTRY main {
 
   module_ = GetHloModule(hlo_text);
 
-  TF_ASSERT_OK(RunPadder(/*slice_dynamic_output=*/true).status());
-  TF_ASSERT_OK(TupleSimplifier().Run(module_.get()).status());
+  ASSERT_OK(RunPadder(/*slice_dynamic_output=*/true).status());
+  ASSERT_OK(TupleSimplifier().Run(module_.get()).status());
   XLA_LOG_LINES(INFO, module_->ToString());
 
   auto* root = module_->entry_computation()->root_instruction();
@@ -400,7 +401,7 @@ TEST_F(DynamicPadderTest, ConvolutionTest) {
 
   module_->AddEntryComputation(builder.Build());
 
-  TF_ASSERT_OK(RunPadder().status());
+  ASSERT_OK(RunPadder().status());
 
   ExpectPadded(conv->operand(0));
 }
@@ -443,7 +444,7 @@ TEST_F(DynamicPadderTest, ConvolutionNoPad) {
 
   module_->AddEntryComputation(builder.Build());
 
-  TF_ASSERT_OK(RunPadder().status());
+  ASSERT_OK(RunPadder().status());
 
   EXPECT_THAT(conv->operand(0), op::Parameter());
 }
@@ -470,7 +471,7 @@ TEST_F(DynamicPadderTest, ReduceWindowNoPadForTrivialWindow) {
 
   module_->AddEntryComputation(builder.Build());
 
-  TF_ASSERT_OK(RunPadder().status());
+  ASSERT_OK(RunPadder().status());
 
   EXPECT_THAT(output->operand(0), op::Parameter());
 }
@@ -505,7 +506,7 @@ ENTRY main {
   const int kNumParams = 2;
   module_ = ParseAndReturnVerifiedModule(hlo_text).value();
 
-  TF_ASSERT_OK(RunPadder().status());
+  ASSERT_OK(RunPadder().status());
 
   for (int i = 0; i < kNumParams; ++i) {
     EXPECT_THAT(module_->entry_computation()->root_instruction()->operand(i),
@@ -523,7 +524,7 @@ ENTRY test {
 }
 )";
   module_ = GetHloModule(hlo_text);
-  TF_ASSERT_OK(RunPadder(/*slice_dynamic_output=*/true).status());
+  ASSERT_OK(RunPadder(/*slice_dynamic_output=*/true).status());
 
   EXPECT_THAT(module_->entry_computation()->root_instruction(),
               GmockMatch(m::CustomCall({"SliceToDynamic"},
@@ -544,7 +545,7 @@ ENTRY test {
 )";
 
   module_ = GetHloModule(hlo_text);
-  TF_ASSERT_OK(RunPadder(/*slice_dynamic_output=*/true).status());
+  ASSERT_OK(RunPadder(/*slice_dynamic_output=*/true).status());
 
   EXPECT_THAT(module_->entry_computation()->root_instruction(),
               GmockMatch(m::CustomCall({"UnknownOp"})));
@@ -588,7 +589,7 @@ ENTRY main {
 
   module_ = GetHloModule(hlo_text);
 
-  TF_ASSERT_OK(RunPadder(/*slice_dynamic_output=*/true).status());
+  ASSERT_OK(RunPadder(/*slice_dynamic_output=*/true).status());
   XLA_LOG_LINES(INFO, module_->ToString());
   auto* root = module_->entry_computation()->root_instruction();
   EXPECT_EQ(root->shape(), ShapeUtil::MakeShape(F32, {32, 216}, {true, false}));
@@ -693,7 +694,7 @@ ENTRY main {
                                 DynamicDimensionInference* inference) {
     return false;
   };
-  TF_ASSERT_OK(
+  ASSERT_OK(
       RunPadder(
           /*slice_dynamic_output=*/true,
           /*op_supports_dynamism_handler=*/std::move(op_supports_dynamism),
@@ -736,7 +737,7 @@ ENTRY main {
 })";
   module_ = GetHloModule(hlo_text);
   // Set up dynamic parameter binding.
-  TF_ASSERT_OK(RunPadder(/*slice_dynamic_output=*/true).status());
+  ASSERT_OK(RunPadder(/*slice_dynamic_output=*/true).status());
   VLOG(3) << module_->ToString();
   CHECK(module_->is_dynamic());
   CHECK(module_->entry_computation()

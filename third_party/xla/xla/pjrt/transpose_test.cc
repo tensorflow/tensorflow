@@ -26,6 +26,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include "absl/algorithm/container.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
@@ -159,7 +160,7 @@ TEST(TransposeTest, LargeDimensions) {
   options.input_layout = TransposePlan::Tiling{};
   options.output_tiling = TransposePlan::Tiling{};
   options.transformation = TransposePlan::Transformation::kNone;
-  TF_EXPECT_OK(TransposePlan::Create(options).status());
+  EXPECT_OK(TransposePlan::Create(options).status());
 }
 
 // Computes the size in elements of a tiled array.

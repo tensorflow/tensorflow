@@ -114,7 +114,7 @@ TEST_F(DecomposerTest, WithCycleNotTransformed) {
     ROOT result = tuple(i, cp)
   }
   )");
-  TF_ASSERT_OK(RunAndCheckHloRewrite(
+  ASSERT_OK(RunAndCheckHloRewrite(
       hlo,
       Pass(/*threshold_in_bytes=*/0,
            DebugOptions::PIPELINE_PARALLELISM_OPT_LEVEL_ENABLE),
@@ -133,7 +133,7 @@ TEST_F(DecomposerTest, ThresholdNotTransformed) {
     ROOT result = tuple(i, cp)
   }
   )");
-  TF_ASSERT_OK(RunAndCheckHloRewrite(
+  ASSERT_OK(RunAndCheckHloRewrite(
       hlo,
       Pass(/*threshold_in_bytes=*/kThreshold,
            DebugOptions::PIPELINE_PARALLELISM_OPT_LEVEL_DISABLE),
@@ -152,7 +152,7 @@ TEST_F(DecomposerTest, ThresholdIgnoredWhenPipelineParallelismOptEnabled) {
     ROOT result = tuple(i, cp)
   }
   )");
-  TF_ASSERT_OK(RunAndCheckHloRewrite(
+  ASSERT_OK(RunAndCheckHloRewrite(
       hlo,
       Pass(/*threshold_in_bytes=*/kThreshold,
            DebugOptions::PIPELINE_PARALLELISM_OPT_LEVEL_ENABLE),
@@ -170,7 +170,7 @@ TEST_F(DecomposerTest, Basic) {
     ROOT result = tuple(i, cp)
   }
   )");
-  TF_ASSERT_OK(RunAndCheckHloRewrite(
+  ASSERT_OK(RunAndCheckHloRewrite(
       hlo,
       Pass(/*threshold_in_bytes=*/0,
            DebugOptions::PIPELINE_PARALLELISM_OPT_LEVEL_ENABLE),
@@ -187,7 +187,7 @@ TEST_F(DecomposerTest, NoChannelId) {
     ROOT result = tuple(i, cp)
   }
   )");
-  TF_ASSERT_OK(RunAndCheckHloRewrite(
+  ASSERT_OK(RunAndCheckHloRewrite(
       hlo,
       Pass(/*threshold_in_bytes=*/0,
            DebugOptions::PIPELINE_PARALLELISM_OPT_LEVEL_ENABLE),
@@ -201,7 +201,7 @@ TEST_F(DecomposerTest, OutsideOfWhileLoop) {
       ROOT cp = u32[] collective-permute(data), channel_id=1,
           source_target_pairs={{0,1}, {1,2}}
     })";
-  TF_ASSERT_OK(RunAndCheckHloRewrite(
+  ASSERT_OK(RunAndCheckHloRewrite(
       hlo,
       Pass(/*threshold_in_bytes=*/0,
            DebugOptions::PIPELINE_PARALLELISM_OPT_LEVEL_ENABLE),

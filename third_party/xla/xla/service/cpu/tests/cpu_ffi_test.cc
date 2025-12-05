@@ -16,6 +16,7 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include <gmock/gmock.h>
 #include "absl/status/status.h"
 #include "xla/debug_options_flags.h"
 #include "xla/ffi/ffi.h"
@@ -67,7 +68,7 @@ TEST_F(CpuFFITest, EmulateImpureCallbackWithTokens) {
   instr->set_custom_call_has_side_effect(true);
   module->AddEntryComputation(builder.Build());
 
-  TF_EXPECT_OK(Execute(std::move(module), {}));
+  EXPECT_OK(Execute(std::move(module), {}));
 }
 
 }  // namespace

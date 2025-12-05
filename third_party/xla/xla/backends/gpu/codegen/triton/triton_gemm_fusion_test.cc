@@ -196,7 +196,7 @@ ENTRY e {
 })";
   TF_ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata module_and_metadata,
                           GetModuleAndNestedFusionMetadata(kHloText));
-  TF_EXPECT_OK(
+  EXPECT_OK(
       CreateTritonIrAndFileCheck(*module_and_metadata.computation,
                                  module_and_metadata.block_level_parameters,
                                  R"(
@@ -238,7 +238,7 @@ ENTRY e {
 })";
   TF_ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata module_and_metadata,
                           GetModuleAndNestedFusionMetadata(kHloText));
-  TF_EXPECT_OK(
+  EXPECT_OK(
       CreateTritonIrAndFileCheck(*module_and_metadata.computation,
                                  module_and_metadata.block_level_parameters,
                                  R"(
@@ -276,7 +276,7 @@ ENTRY e {
 
   TF_ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata module_and_metadata,
                           GetModuleAndNestedFusionMetadata(kHloText));
-  TF_EXPECT_OK(
+  EXPECT_OK(
       CreateTritonIrAndFileCheck(*module_and_metadata.computation,
                                  module_and_metadata.block_level_parameters, R"(
 CHECK: scf.if {{.*}} -> (tensor<1x32x64xf32>)
@@ -324,7 +324,7 @@ ENTRY e {
   EXPECT_TRUE(
       RunAndCompareNoHloPasses(module_and_metadata.module->ToString(),
                                ErrorSpec{/*aabs=*/1e-4, /*arel=*/1e-6}));
-  TF_EXPECT_OK(
+  EXPECT_OK(
       CreateTritonIrAndFileCheck(*module_and_metadata.computation,
                                  module_and_metadata.block_level_parameters, R"(
     CHECK: func.func @triton_fn(%[[ARG0:.*]]: tensor<2x4xf32>, %[[ARG1:.*]]: tensor<4x5x2xf32>, %[[ARG2:.*]]: tensor<i32>, %[[ARG3:.*]]: tensor<i32>, %[[ARG4:.*]]: tensor<i32>, %[[ARG5:.*]]: tensor<4x5xf32>) -> tensor<4x5xf32> {
@@ -394,7 +394,7 @@ ENTRY e {
                             ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 
   std::vector<std::string> paths;
-  TF_EXPECT_OK(tsl::Env::Default()->GetMatchingPaths(
+  EXPECT_OK(tsl::Env::Default()->GetMatchingPaths(
       tsl::io::JoinPath(output_directory, "*.triton-passes.log"), &paths));
   EXPECT_EQ(paths.size(), 1);
 }
@@ -850,11 +850,11 @@ ENTRY entry {
   const HloFusionInstruction* fusion2 = Cast<HloFusionInstruction>(
       module1_and_metadata.computation->FusionInstruction());
 
-  TF_EXPECT_OK(
-      TritonWrapper("test_fn", fusion2, se::GpuComputeCapability{cc},
-                    device_info, module2_and_metadata.block_level_parameters,
-                    target_triple, data_layout, llvm_ctx, mlir_context_)
-          .status());
+  EXPECT_OK(TritonWrapper("test_fn", fusion2, se::GpuComputeCapability{cc},
+                          device_info,
+                          module2_and_metadata.block_level_parameters,
+                          target_triple, data_layout, llvm_ctx, mlir_context_)
+                .status());
 }
 
 // TODO(b/393299275): this test may have some value while Triton tiling
@@ -3012,7 +3012,7 @@ ENTRY e {
 })";
   TF_ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata module_and_metadata,
                           GetModuleAndNestedFusionMetadata(kHloText));
-  TF_ASSERT_OK(
+  ASSERT_OK(
       CreateTritonIrAndFileCheck(*module_and_metadata.computation,
                                  module_and_metadata.block_level_parameters,
                                  R"(

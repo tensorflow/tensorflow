@@ -1,5 +1,5 @@
 diff --git a/BUILD.bazel b/BUILD.bazel
-index cc254457..49120384 100644
+index 5ee92939..a122fa28 100644
 --- a/BUILD.bazel
 +++ b/BUILD.bazel
 @@ -142,16 +142,16 @@ cc_library(
@@ -29,7 +29,7 @@ index cc254457..49120384 100644
          ],
          "//conditions:default": [],
      }) + select({
-@@ -160,9 +160,6 @@ cc_library(
+@@ -160,14 +160,11 @@ cc_library(
          # so that's why these libraries are needed.
          # Otherwise, builds targeting Fuchsia would fail to compile.
          ":fuchsia": [
@@ -38,4 +38,11 @@ index cc254457..49120384 100644
 -            "@fuchsia_sdk//pkg/zx",
          ],
          "//conditions:default": [],
-     }),
+     }) + [
+-        "@abseil-cpp//absl/status",
+-        "@abseil-cpp//absl/status:statusor",
++        "@com_google_absl//absl/status",
++        "@com_google_absl//absl/status:statusor",
+     ],
+ )
+ 

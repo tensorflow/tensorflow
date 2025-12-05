@@ -144,7 +144,7 @@ TEST_F(SamplePhaseCompilerTest, TestSamplePhaseCompilerRunPhases) {
       phase_compiler_->RunPhases(xla::CompileOptions(), partial_programs_in,
                                  *topology_description_, phases_to_run);
 
-  TF_ASSERT_OK(partial_programs_out);
+  ASSERT_OK(partial_programs_out);
 
   // Verify that the output programs are deserializable.
   for (auto& partial_program : *partial_programs_out) {
@@ -152,7 +152,7 @@ TEST_F(SamplePhaseCompilerTest, TestSamplePhaseCompilerRunPhases) {
     auto deserialized_module =
         phase_compile_sample_plugin::StablehloTypeSerialization::Deserialize(
             partial_program.program(), context);
-    TF_EXPECT_OK(deserialized_module);
+    EXPECT_OK(deserialized_module);
   }
 }
 
@@ -172,7 +172,7 @@ TEST_F(SamplePhaseCompilerTest,
       phase_compiler_->RunPhases(xla::CompileOptions(), partial_programs_in,
                                  *topology_description_, phases_to_run);
 
-  TF_ASSERT_OK(partial_programs_out);
+  ASSERT_OK(partial_programs_out);
 
   for (size_t i = 0; i < partial_programs_in.size(); ++i) {
     EXPECT_THAT(partial_programs_out->at(i),

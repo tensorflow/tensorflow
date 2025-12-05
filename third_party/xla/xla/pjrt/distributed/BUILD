@@ -153,7 +153,6 @@ xla_cc_test(
         ":topology_util",
         "//xla:status_macros",
         "//xla/runtime:device_id",
-        "//xla/tsl/distributed_runtime/coordination:coordination_service_agent",
         "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:errors",
@@ -170,10 +169,6 @@ xla_cc_test(
         "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/platform:env",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:statusor",
-        "@local_tsl//tsl/platform:test",
     ],
 )
 

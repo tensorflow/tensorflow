@@ -18,6 +18,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
 #include "absl/strings/str_cat.h"
@@ -151,7 +152,7 @@ using EpilogueFromProtoTest =
     ::testing::TestWithParam<xla::BlasLtEpilogueProto>;
 
 TEST_P(EpilogueFromProtoTest, SucceedsForValidValue) {
-  TF_EXPECT_OK(BlasLt::EpilogueFromProto(GetParam()));
+  EXPECT_OK(BlasLt::EpilogueFromProto(GetParam()));
 }
 
 std::vector<xla::BlasLtEpilogueProto> EnumerateBlasLtEpilogueProtoValues() {

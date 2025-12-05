@@ -47,7 +47,7 @@ PlatformDeviceId TfToPlatformDeviceId(TfDeviceId tf_device_id) {
 TEST(DeviceIdUtilsTest, CheckValidTfDeviceIdPass) {
   TfDeviceId tf_device_id(0);
   PlatformDeviceId platform_device_id(1);
-  TF_EXPECT_OK(DeviceIdManager::InsertTfPlatformDeviceIdPair(
+  EXPECT_OK(DeviceIdManager::InsertTfPlatformDeviceIdPair(
       DeviceType(kTestDeviceType), tf_device_id, platform_device_id));
   tsl::CheckValidTfDeviceId("CPU", /*visible_device_count=*/2, tf_device_id);
   DeviceIdManager::TestOnlyReset();
@@ -64,7 +64,7 @@ TEST(DeviceIdUtilsTest, CheckValidTfDeviceIdNotFound) {
 TEST(DeviceIdUtilsTest, CheckValidTfDeviceIdOutsideVisibleDeviceRange) {
   TfDeviceId tf_device_id(0);
   PlatformDeviceId platform_device_id(1);
-  TF_EXPECT_OK(DeviceIdManager::InsertTfPlatformDeviceIdPair(
+  EXPECT_OK(DeviceIdManager::InsertTfPlatformDeviceIdPair(
       DeviceType(kTestDeviceType), tf_device_id, platform_device_id));
   EXPECT_DEATH(tsl::CheckValidTfDeviceId("CPU", /*visible_device_count=*/1,
                                          tf_device_id),
@@ -74,7 +74,7 @@ TEST(DeviceIdUtilsTest, CheckValidTfDeviceIdOutsideVisibleDeviceRange) {
 
 TEST(DeviceIdUtilsTest, ParseEmptyVisibleDeviceList) {
   std::vector<PlatformDeviceId> visible_device_order;
-  TF_EXPECT_OK(ParseVisibleDeviceList("", 2, &visible_device_order));
+  EXPECT_OK(ParseVisibleDeviceList("", 2, &visible_device_order));
   PlatformDeviceId platform_device_id0(0), platform_device_id1(1);
   std::vector<PlatformDeviceId> expected = {platform_device_id0,
                                             platform_device_id1};
@@ -83,7 +83,7 @@ TEST(DeviceIdUtilsTest, ParseEmptyVisibleDeviceList) {
 
 TEST(DeviceIdUtilsTest, ParseVisibleDeviceList) {
   std::vector<PlatformDeviceId> visible_device_order;
-  TF_EXPECT_OK(ParseVisibleDeviceList("2,1", 3, &visible_device_order));
+  EXPECT_OK(ParseVisibleDeviceList("2,1", 3, &visible_device_order));
   PlatformDeviceId platform_device_id2(2), platform_device_id1(1);
   std::vector<PlatformDeviceId> expected = {platform_device_id2,
                                             platform_device_id1};
@@ -111,7 +111,7 @@ TEST(DeviceIdUtilsTest, ParseDuplicateVisibleDeviceList) {
 TEST(DeviceIdUtilsTest, ParseMultiplePluggableVisibleDeviceList) {
   {
     std::vector<PlatformDeviceId> visible_device_order;
-    TF_EXPECT_OK(
+    EXPECT_OK(
         ParseVisibleDeviceList("A:0,A:1,B:0", 3, &visible_device_order, "A"));
     PlatformDeviceId platform_device_id0(0), platform_device_id1(1);
     std::vector<PlatformDeviceId> expected = {platform_device_id0,
@@ -121,7 +121,7 @@ TEST(DeviceIdUtilsTest, ParseMultiplePluggableVisibleDeviceList) {
 
   {
     std::vector<PlatformDeviceId> visible_device_order;
-    TF_EXPECT_OK(
+    EXPECT_OK(
         ParseVisibleDeviceList("A:0,A:1,B:0", 3, &visible_device_order, "B"));
     PlatformDeviceId platform_device_id0(0);
     std::vector<PlatformDeviceId> expected = {platform_device_id0};
@@ -132,7 +132,7 @@ TEST(DeviceIdUtilsTest, ParseMultiplePluggableVisibleDeviceList) {
 TEST(DeviceIdUtilsTest, ParseMultiplePluggableOutOfOrderVisibleDeviceList) {
   {
     std::vector<PlatformDeviceId> visible_device_order;
-    TF_EXPECT_OK(
+    EXPECT_OK(
         ParseVisibleDeviceList("A:1,B:0,A:0", 3, &visible_device_order, "A"));
     PlatformDeviceId platform_device_id0(0), platform_device_id1(1);
     std::vector<PlatformDeviceId> expected = {platform_device_id1,
@@ -142,7 +142,7 @@ TEST(DeviceIdUtilsTest, ParseMultiplePluggableOutOfOrderVisibleDeviceList) {
 
   {
     std::vector<PlatformDeviceId> visible_device_order;
-    TF_EXPECT_OK(
+    EXPECT_OK(
         ParseVisibleDeviceList("A:1,B:0,A:0", 3, &visible_device_order, "B"));
     PlatformDeviceId platform_device_id0(0);
     std::vector<PlatformDeviceId> expected = {platform_device_id0};
@@ -199,7 +199,7 @@ TEST(DeviceIdUtilsTest, GetNumberTfDevicesWithSessionOptionDeviceCount) {
 TEST(DeviceIdUtilsTest, GetPlatformDeviceId) {
   TfDeviceId tf_device_id(0);
   PlatformDeviceId platform_device_id(1);
-  TF_EXPECT_OK(DeviceIdManager::InsertTfPlatformDeviceIdPair(
+  EXPECT_OK(DeviceIdManager::InsertTfPlatformDeviceIdPair(
       DeviceType(kTestDeviceType), tf_device_id, platform_device_id));
   DeviceNameUtils::ParsedName device_name;
   device_name.id = 0;
@@ -226,7 +226,7 @@ TEST(DeviceIdUtilsTest, GetPlatformDeviceIdNotFound) {
 TEST(DeviceIdUtilsTest, GetDeviceIdWithPlatformDeviceId) {
   TfDeviceId tf_device_id(0);
   PlatformDeviceId platform_device_id(1);
-  TF_EXPECT_OK(DeviceIdManager::InsertTfPlatformDeviceIdPair(
+  EXPECT_OK(DeviceIdManager::InsertTfPlatformDeviceIdPair(
       DeviceType(kTestDeviceType), tf_device_id, platform_device_id));
   DeviceNameUtils::ParsedName device_name;
   device_name.id = 0;

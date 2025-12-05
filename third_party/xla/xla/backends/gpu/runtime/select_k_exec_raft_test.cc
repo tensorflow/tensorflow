@@ -20,6 +20,7 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/base/casts.h"
 #include "absl/log/check.h"
@@ -122,20 +123,20 @@ void RunSelectKTest() {
       stream_executor->AllocateArray<uint32_t>(batch * k, 0);
 
   // Copy host to device
-  TF_ASSERT_OK(stream->MemcpyH2D(absl::Span<const T>(h_data_in), &d_data_in));
+  ASSERT_OK(stream->MemcpyH2D(absl::Span<const T>(h_data_in), &d_data_in));
 
   // Run raft select_k
-  TF_ASSERT_OK(select_k_exec<T>(device_ordinal, &allocator, stream.get(),
-                                d_data_in, d_data_out, d_indices_out, batch, n,
-                                k));
+  ASSERT_OK(select_k_exec<T>(device_ordinal, &allocator, stream.get(),
+                             d_data_in, d_data_out, d_indices_out, batch, n,
+                             k));
 
   // Copy results back to host
   std::vector<T> h_data_out(batch * k);
   std::vector<uint32_t> h_indices_out(batch * k);
-  TF_ASSERT_OK(stream->MemcpyD2H(d_data_out, absl::Span<T>(h_data_out)));
-  TF_ASSERT_OK(
+  ASSERT_OK(stream->MemcpyD2H(d_data_out, absl::Span<T>(h_data_out)));
+  ASSERT_OK(
       stream->MemcpyD2H(d_indices_out, absl::Span<uint32_t>(h_indices_out)));
-  TF_ASSERT_OK(stream->BlockHostUntilDone());
+  ASSERT_OK(stream->BlockHostUntilDone());
 
   // Verify Top-K values and corresponding indices
   for (int j = 0; j < batch; ++j) {

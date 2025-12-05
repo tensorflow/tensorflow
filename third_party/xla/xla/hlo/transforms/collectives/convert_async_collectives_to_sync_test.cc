@@ -47,7 +47,7 @@ namespace m = xla::testing::opcode_matchers;
 class ConvertAsyncCollectivesToSyncTest
     : public HloHardwareIndependentTestBase {
  public:
-  absl::Status RunPass(HloModule *module, bool expect_change,
+  absl::Status RunPass(HloModule* module, bool expect_change,
                        HloPredicate is_nop = {}) {
     TF_ASSIGN_OR_RETURN(bool changed,
                         ConvertAsyncCollectivesToSync{is_nop}.Run(module));
@@ -55,8 +55,8 @@ class ConvertAsyncCollectivesToSyncTest
     return absl::OkStatus();
   }
 
-  absl::string_view GetAsyncName(const HloInstruction *inst) {
-    const auto &map = inst->frontend_attributes().map();
+  absl::string_view GetAsyncName(const HloInstruction* inst) {
+    const auto& map = inst->frontend_attributes().map();
     return map.at(
         ConvertAsyncCollectivesToSync::kAsyncCollectiveNameAttributeName);
   }
@@ -84,10 +84,10 @@ TEST_F(ConvertAsyncCollectivesToSyncTest, SimpleAllReduce) {
     )";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
-  TF_ASSERT_OK(RunPass(module.get(), /*expect_change=*/true));
-  const HloInstruction *root = module->entry_computation()->root_instruction();
+  ASSERT_OK(RunPass(module.get(), /*expect_change=*/true));
+  const HloInstruction* root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, m::AllReduce(m::ReplicaId()));
-  const auto *ar = Cast<HloAllReduceInstruction>(root);
+  const auto* ar = Cast<HloAllReduceInstruction>(root);
   EXPECT_TRUE(ar->channel_id().has_value());
   EXPECT_EQ(ar->channel_id().value(), 3);
   EXPECT_EQ(GetAsyncName(ar), "start");
@@ -112,10 +112,10 @@ TEST_F(ConvertAsyncCollectivesToSyncTest, SimpleAllReduceWithNop) {
     )";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
-  TF_ASSERT_OK(RunPass(module.get(), /*expect_change=*/true, is_nop_simple_));
-  const HloInstruction *root = module->entry_computation()->root_instruction();
+  ASSERT_OK(RunPass(module.get(), /*expect_change=*/true, is_nop_simple_));
+  const HloInstruction* root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, m::AllReduce(m::ReplicaId()));
-  const auto *ar = Cast<HloAllReduceInstruction>(root);
+  const auto* ar = Cast<HloAllReduceInstruction>(root);
   EXPECT_TRUE(ar->channel_id().has_value());
   EXPECT_EQ(ar->channel_id().value(), 3);
   EXPECT_THAT(ar, m::ReplicaGroups({{0, 1}, {2, 3}}));
@@ -141,7 +141,7 @@ TEST_F(ConvertAsyncCollectivesToSyncTest, SimpleAllReduceWithNonNop) {
     )";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
-  TF_ASSERT_OK(RunPass(module.get(), /*expect_change=*/false));
+  ASSERT_OK(RunPass(module.get(), /*expect_change=*/false));
 }
 
 TEST_F(ConvertAsyncCollectivesToSyncTest, SimpleAllGather) {
@@ -154,10 +154,10 @@ TEST_F(ConvertAsyncCollectivesToSyncTest, SimpleAllGather) {
   })";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
-  TF_ASSERT_OK(RunPass(module.get(), /*expect_change=*/true));
-  const HloInstruction *root = module->entry_computation()->root_instruction();
+  ASSERT_OK(RunPass(module.get(), /*expect_change=*/true));
+  const HloInstruction* root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, m::AllGather(m::Parameter(0)));
-  const auto *ag = Cast<HloAllGatherInstruction>(root);
+  const auto* ag = Cast<HloAllGatherInstruction>(root);
   EXPECT_TRUE(ag->channel_id().has_value());
   EXPECT_EQ(ag->channel_id().value(), 3);
   EXPECT_EQ(ag->all_gather_dimension(), 0);
@@ -174,7 +174,7 @@ TEST_F(ConvertAsyncCollectivesToSyncTest, PreserveFrontendAttributes) {
   })";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
-  TF_ASSERT_OK(RunPass(module.get(), /*expect_change=*/true));
+  ASSERT_OK(RunPass(module.get(), /*expect_change=*/true));
   const HloInstruction* root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, m::AllGather(m::Parameter(0)));
   EXPECT_TRUE(root->has_frontend_attributes());
@@ -195,10 +195,10 @@ TEST_F(ConvertAsyncCollectivesToSyncTest, SimpleCollectivePermute) {
   })";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
-  TF_ASSERT_OK(RunPass(module.get(), /*expect_change=*/true));
-  const HloInstruction *root = module->entry_computation()->root_instruction();
+  ASSERT_OK(RunPass(module.get(), /*expect_change=*/true));
+  const HloInstruction* root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, m::CollectivePermute(m::Parameter(0)));
-  const auto *cp = Cast<HloCollectivePermuteInstruction>(root);
+  const auto* cp = Cast<HloCollectivePermuteInstruction>(root);
   EXPECT_THAT(cp, m::SourceTargetPairs({{0, 1}, {1, 0}}));
   EXPECT_EQ(GetAsyncName(cp), "start");
 }
@@ -215,10 +215,10 @@ TEST_F(ConvertAsyncCollectivesToSyncTest, CombinedCollectivePermute) {
   })";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
-  TF_ASSERT_OK(RunPass(module.get(), /*expect_change=*/true));
-  const HloInstruction *root = module->entry_computation()->root_instruction();
+  ASSERT_OK(RunPass(module.get(), /*expect_change=*/true));
+  const HloInstruction* root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, m::CollectivePermute(m::Parameter(0), m::Parameter(1)));
-  const auto *cp = Cast<HloCollectivePermuteInstruction>(root);
+  const auto* cp = Cast<HloCollectivePermuteInstruction>(root);
   EXPECT_THAT(cp, m::SourceTargetPairs({{0, 1}, {1, 0}}));
   EXPECT_EQ(GetAsyncName(cp), "start");
 }
@@ -247,10 +247,10 @@ TEST_F(ConvertAsyncCollectivesToSyncTest, SimpleReduceScatter) {
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
-  TF_ASSERT_OK(RunPass(module.get(), /*expect_change=*/true));
-  const HloInstruction *root = module->entry_computation()->root_instruction();
+  ASSERT_OK(RunPass(module.get(), /*expect_change=*/true));
+  const HloInstruction* root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, m::ReduceScatter(m::Parameter(0)));
-  const auto *rs = Cast<HloReduceScatterInstruction>(root);
+  const auto* rs = Cast<HloReduceScatterInstruction>(root);
   EXPECT_THAT(rs, m::ReplicaGroups({{0, 3}, {1, 2}}));
   EXPECT_EQ(rs->scatter_dimension(), 0);
   EXPECT_EQ(GetAsyncName(rs), "rs-start");
@@ -274,10 +274,10 @@ TEST_F(ConvertAsyncCollectivesToSyncTest, SimpleAllToAll) {
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
-  TF_ASSERT_OK(RunPass(module.get(), /*expect_change=*/true));
-  const HloInstruction *root = module->entry_computation()->root_instruction();
+  ASSERT_OK(RunPass(module.get(), /*expect_change=*/true));
+  const HloInstruction* root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, m::AllToAll(m::Parameter(0)));
-  const auto *a2a = Cast<HloAllToAllInstruction>(root);
+  const auto* a2a = Cast<HloAllToAllInstruction>(root);
   EXPECT_THAT(a2a, m::ReplicaGroups({{0, 1}, {2, 3}}));
   EXPECT_TRUE(a2a->split_dimension().has_value());
   EXPECT_EQ(a2a->split_dimension().value(), 0);
@@ -305,8 +305,8 @@ TEST_F(ConvertAsyncCollectivesToSyncTest, ControlDeps) {
     )";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
-  TF_ASSERT_OK(RunPass(module.get(), /*expect_change=*/true));
-  const HloInstruction *root = module->entry_computation()->root_instruction();
+  ASSERT_OK(RunPass(module.get(), /*expect_change=*/true));
+  const HloInstruction* root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, m::Add(m::AllReduce(), m::AllReduce()));
 }
 
@@ -333,8 +333,8 @@ TEST_F(ConvertAsyncCollectivesToSyncTest, MultipleInFlightStreaming) {
     )";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
-  TF_ASSERT_OK(RunPass(module.get(), /*expect_change=*/true));
-  const HloInstruction *root = module->entry_computation()->root_instruction();
+  ASSERT_OK(RunPass(module.get(), /*expect_change=*/true));
+  const HloInstruction* root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, m::Add(m::AllReduce(), m::AllReduce()));
 }
 
@@ -360,8 +360,8 @@ TEST_F(ConvertAsyncCollectivesToSyncTest, MultipleInFlightNested) {
     )";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
-  TF_ASSERT_OK(RunPass(module.get(), /*expect_change=*/true));
-  const HloInstruction *root = module->entry_computation()->root_instruction();
+  ASSERT_OK(RunPass(module.get(), /*expect_change=*/true));
+  const HloInstruction* root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, m::Add(m::AllReduce(), m::AllReduce()));
 }
 
@@ -389,8 +389,8 @@ TEST_F(ConvertAsyncCollectivesToSyncTest, MultipleInFlightNestedPartial) {
     )";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
-  TF_ASSERT_OK(RunPass(module.get(), /*expect_change=*/true));
-  const HloInstruction *root = module->entry_computation()->root_instruction();
+  ASSERT_OK(RunPass(module.get(), /*expect_change=*/true));
+  const HloInstruction* root = module->entry_computation()->root_instruction();
   // We expect start2/done2 to be converted to async, start1/done1 will stay
   // unchanged.
   EXPECT_THAT(root, m::Add(m::AllReduceDone(), m::AllReduce()));
