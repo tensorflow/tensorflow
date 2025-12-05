@@ -16,6 +16,12 @@
 source "${BASH_SOURCE%/*}/utilities/setup.sh"
 
 if [[ `uname -s | grep -P '^MSYS_NT'` ]]; then
+  tfrun powershell -command "Get-ComputerInfo" || true
+  tfrun powershell -Command '$PSVersionTable.PSVersion' || true
+  tfrun powershell -NoProfile -command 'Get-Service | Where-Object {$_.Status -eq "Running"}'
+  tfrun powershell -command 'Get-Service -Name WinDefend' || true
+  tfrun powershell -command 'Get-MpPreference' || true
+
   PROFILE_JSON_PATH=$(replace_drive_letter_with_prefix "$TFCI_OUTPUT_WIN_DOCKER_DIR")
   PROFILE_JSON_PATH="$PROFILE_JSON_PATH/profile.json.gz"
 else
