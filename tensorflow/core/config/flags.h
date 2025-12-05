@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_CONFIG_FLAGS_H_
 #define TENSORFLOW_CORE_CONFIG_FLAGS_H_
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/platform/stringpiece.h"
 
 namespace tensorflow {
