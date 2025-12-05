@@ -26,7 +26,7 @@ namespace tensorflow {
 void CustomDeviceOpHandler::Clear() { custom_devices_.clear(); }
 
 absl::Status CustomDeviceOpHandler::RegisterCustomDevice(
-    const string& device_name, std::unique_ptr<CustomDevice> device) {
+    const std::string& device_name, std::unique_ptr<CustomDevice> device) {
   DeviceNameUtils::ParsedName parsed;
   if (!DeviceNameUtils::ParseFullName(device_name, &parsed) ||
       !parsed.has_job || !parsed.has_replica || !parsed.has_task ||
@@ -46,7 +46,7 @@ absl::Status CustomDeviceOpHandler::RegisterCustomDevice(
 }
 
 bool CustomDeviceOpHandler::FindCustomDeviceFromName(
-    const string& name, CustomDevice** device) const {
+    const std::string& name, CustomDevice** device) const {
   auto dev_it = custom_devices_.find(name);
   if (dev_it == custom_devices_.end()) {
     return false;
