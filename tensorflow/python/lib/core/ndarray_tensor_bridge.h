@@ -17,6 +17,7 @@ limitations under the License.
 
 // Must be included first
 // clang-format off
+#include "absl/status/status.h"
 #include "xla/tsl/python/lib/core/numpy.h" //NOLINT
 // clang-format on
 
