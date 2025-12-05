@@ -17,6 +17,7 @@ limitations under the License.
 #define XLA_TSL_UTIL_STATS_CALCULATOR_H_
 
 #include <stdlib.h>
+#include <stdint.h>
 
 #include <algorithm>
 #include <cmath>
