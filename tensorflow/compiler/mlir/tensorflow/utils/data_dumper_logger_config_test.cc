@@ -15,6 +15,9 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tensorflow/utils/data_dumper_logger_config.h"
 
+#include <memory>
+#include <string>
+
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
