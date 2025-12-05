@@ -37,9 +37,11 @@ namespace xla::cpu {
 class KernelRunner final : public xla::KernelRunner {
  public:
   static absl::StatusOr<KernelRunner> Create(
-      KernelDefinition<LlvmKernelSource> kernel, JitCompiler compiler);
+      KernelDefinition<LlvmKernelSource> kernel, JitCompiler compiler,
+      const HloModuleConfig& config);
   static absl::StatusOr<KernelRunner> Create(
-      KernelDefinition<MlirKernelSource> kernel, JitCompiler compiler);
+      KernelDefinition<MlirKernelSource> kernel, JitCompiler compiler,
+      const HloModuleConfig& config);
 
   KernelRunner(KernelRunner&&) = default;
   KernelRunner& operator=(KernelRunner&&) = default;
@@ -52,13 +54,15 @@ class KernelRunner final : public xla::KernelRunner {
   KernelRunner(std::unique_ptr<FunctionLibrary> library, Kernel kernel,
                NumWorkGroups num_workgroups);
 
+ private:
   std::unique_ptr<FunctionLibrary> library_;
   Kernel kernel_;
   NumWorkGroups num_workgroups_;
 };
 
 absl::StatusOr<LlvmKernelSource> LowerToLlvm(
-    MlirKernelSource& mlir_kernel_source);
+    MlirKernelSource& mlir_kernel_source,
+    const HloModuleConfig& config = HloModuleConfig());
 
 }  // namespace xla::cpu
 

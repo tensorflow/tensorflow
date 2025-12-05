@@ -90,7 +90,8 @@ TEST(KernelRunnerTest, Add) {
 
   TF_ASSERT_OK_AND_ASSIGN(
       KernelRunner runner,
-      KernelRunner::Create(std::move(kernel_definition), std::move(compiler)));
+      KernelRunner::Create(std::move(kernel_definition), std::move(compiler),
+                           HloModuleConfig()));
 
   std::minstd_rand0 engine;
   Shape shape = ShapeUtil::MakeShape(S32, {kNumElements});

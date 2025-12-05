@@ -78,6 +78,12 @@ void ImportBaseClasses(const nb::module_& kernel_runner_module) {
   nb::module_::import_(absl::StrCat(xla_module, ".codegen.testlib").c_str());
 }
 
+static HloModuleConfig DefaultHloModuleConfigWithDebugOptions() {
+  HloModuleConfig config;
+  config.set_debug_options(GetDebugOptionsFromFlags());
+  return config;
+}
+
 NB_MODULE(_extension, kernel_runner_module) {
   // We depend on the base classes so must import them before python tries to
   // register the derived versions.
@@ -241,32 +247,40 @@ NB_MODULE(_extension, kernel_runner_module) {
                              nb::deleter<KernelDefinition<MlirKernelSource>>>
                  kernel_definition,
              std::unique_ptr<JitCompiler, nb::deleter<JitCompiler>>
-                 jit_compiler) {
-            absl::StatusOr<KernelRunner> runner = KernelRunner::Create(
-                std::move(*kernel_definition), std::move(*jit_compiler));
+                 jit_compiler,
+             const HloModuleConfig& config) {
+            absl::StatusOr<KernelRunner> runner =
+                KernelRunner::Create(std::move(*kernel_definition),
+                                     std::move(*jit_compiler), config);
 
             if (!runner.ok()) {
               throw std::runtime_error(std::string(runner.status().ToString()));
             }
 
             return *std::move(runner);
-          })
+          },
+          nb::arg("kernel_definition"), nb::arg("jit_compiler"),
+          nb::arg("config") = DefaultHloModuleConfigWithDebugOptions())
       .def_static(
           "create",
           [](std::unique_ptr<KernelDefinition<LlvmKernelSource>,
                              nb::deleter<KernelDefinition<LlvmKernelSource>>>
                  kernel_definition,
              std::unique_ptr<JitCompiler, nb::deleter<JitCompiler>>
-                 jit_compiler) {
-            absl::StatusOr<KernelRunner> runner = KernelRunner::Create(
-                std::move(*kernel_definition), std::move(*jit_compiler));
+                 jit_compiler,
+             const HloModuleConfig& config) {
+            absl::StatusOr<KernelRunner> runner =
+                KernelRunner::Create(std::move(*kernel_definition),
+                                     std::move(*jit_compiler), config);
 
             if (!runner.ok()) {
               throw std::runtime_error(std::string(runner.status().ToString()));
             }
 
             return *std::move(runner);
-          });
+          },
+          nb::arg("kernel_definition"), nb::arg("jit_compiler"),
+          nb::arg("config") = DefaultHloModuleConfigWithDebugOptions());
 
   kernel_runner_module.def(
       "run_fusion_wrapper_pass",

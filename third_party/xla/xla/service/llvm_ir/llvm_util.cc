@@ -737,12 +737,20 @@ std::map<int, llvm::MDNode*> MergeMetadata(
 void DumpIrIfEnabled(const HloModule& hlo_module,
                      const llvm::Module& llvm_module, bool optimized,
                      absl::string_view filename_suffix) {
-  if (!DumpingEnabledForHloModule(hlo_module)) {
+  DumpIrIfEnabled(hlo_module.config().debug_options(), hlo_module.name(),
+                  hlo_module.unique_id(), llvm_module, optimized,
+                  filename_suffix);
+}
+
+void DumpIrIfEnabled(DebugOptions debug_options, absl::string_view module_name,
+                     int unique_id, const llvm::Module& llvm_module,
+                     bool optimized, absl::string_view filename_suffix) {
+  if (!DumpingEnabledForHloModule(module_name, debug_options)) {
     return;
   }
   tsl::profiler::ScopedAnnotation annotation([&] {
     return absl::StrFormat("XlaDumpLlvmIr:#module=%s,program_id=%d#",
-                           hlo_module.name(), hlo_module.unique_id());
+                           module_name, unique_id);
   });
   // We can end up compiling different modules with the same name when using
   // XlaJitCompiledCpuFunction::Compile.  Avoid overwriting IR files previously
@@ -750,7 +758,8 @@ void DumpIrIfEnabled(const HloModule& hlo_module,
   std::string suffix =
       absl::StrCat(filename_suffix, filename_suffix.empty() ? "" : ".", "ir-",
                    optimized ? "with" : "no", "-opt");
-  DumpToFileInDirOrStdout(hlo_module, "", absl::StrCat(suffix, ".ll"),
+  DumpToFileInDirOrStdout(debug_options, unique_id, module_name, "",
+                          absl::StrCat(suffix, ".ll"),
                           DumpToString(&llvm_module));
 }
 
