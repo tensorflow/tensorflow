@@ -50,8 +50,8 @@ limitations under the License.
 #include "xla/stream_executor/activate_context.h"
 #include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/command_buffer.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/event_based_timer.h"
@@ -105,12 +105,12 @@ namespace {
 // N.B. we must lose constness in order to pass a suitable type to the existing
 // librocm APIs, so the caller should take care to only pass the result of const
 // GPU memory conversions to librocm functions which will honor constness.
-hipDeviceptr_t AsROCmDevicePtr(const DeviceMemoryBase& gpu_mem) {
+hipDeviceptr_t AsROCmDevicePtr(const DeviceAddressBase& gpu_mem) {
   return const_cast<hipDeviceptr_t>(gpu_mem.opaque());
 }
 
 // See description on const version above.
-hipDeviceptr_t AsROCmDevicePtr(DeviceMemoryBase* gpu_mem) {
+hipDeviceptr_t AsROCmDevicePtr(DeviceAddressBase* gpu_mem) {
   return AsROCmDevicePtr(*gpu_mem);
 }
 
@@ -530,14 +530,14 @@ bool RocmExecutor::UnloadModule(ModuleHandle module_handle) {
   return UnloadGpuBinary(module_handle);
 }
 
-absl::StatusOr<DeviceMemoryBase> RocmExecutor::GetMemoryRange(
-    const DeviceMemoryBase& location) const {
+absl::StatusOr<DeviceAddressBase> RocmExecutor::GetMemoryRange(
+    const DeviceAddressBase& location) const {
   hipDeviceptr_t device_pointer;
   size_t size;
   hipError_t result = wrap::hipMemGetAddressRange(
       &device_pointer, &size, const_cast<void*>(location.opaque()));
   if (result == hipSuccess) {
-    return DeviceMemoryBase(device_pointer, size);
+    return DeviceAddressBase(device_pointer, size);
   } else if (result == hipErrorNotFound) {
     // We differentiate between "this pointer is unknown" (return here) and
     // "there was an internal error while performing this operation" (return
@@ -552,7 +552,7 @@ absl::StatusOr<DeviceMemoryBase> RocmExecutor::GetMemoryRange(
                       location.opaque(), ToString(result).c_str()));
 }
 
-absl::StatusOr<std::shared_ptr<DeviceMemoryBase>>
+absl::StatusOr<std::shared_ptr<DeviceAddressBase>>
 RocmExecutor::CreateOrShareConstant(Stream* stream,
                                     absl::Span<const uint8_t> content) {
   absl::MutexLock lock{shared_constants_mu_};
@@ -564,10 +564,10 @@ RocmExecutor::CreateOrShareConstant(Stream* stream,
       reinterpret_cast<const char*>(content.data()), content.size()));
   // Must insert nullptr first to get an iterator to the insertion point.
   auto insert_result = shared_constants_.insert(
-      {fingerprint, std::weak_ptr<DeviceMemoryBase>()});
+      {fingerprint, std::weak_ptr<DeviceAddressBase>()});
   auto it = insert_result.first;
   bool was_already_in_cache = !insert_result.second;
-  std::shared_ptr<DeviceMemoryBase> shared_constant;
+  std::shared_ptr<DeviceAddressBase> shared_constant;
 
   if (was_already_in_cache) {
     shared_constant = it->second.lock();
@@ -576,8 +576,8 @@ RocmExecutor::CreateOrShareConstant(Stream* stream,
   if (shared_constant == nullptr) {
     // Either the constant wasn't found in the cache, or it was but its
     // weak_ptr had expired.
-    DeviceMemoryBase* new_constant =
-        new DeviceMemoryBase(Allocate(content.size(), /*memory_space=*/0));
+    DeviceAddressBase* new_constant =
+        new DeviceAddressBase(Allocate(content.size(), /*memory_space=*/0));
     if (new_constant->opaque() == nullptr) {
       return absl::InternalError(absl::StrFormat(
           "Failed to allocate %d bytes for new constant", content.size()));
@@ -595,12 +595,12 @@ RocmExecutor::CreateOrShareConstant(Stream* stream,
 
     // Capturing 'this' in the custom deleter means this executor must
     // outlive all shared uses of this constant.
-    shared_constant = std::shared_ptr<DeviceMemoryBase>(
-        new_constant, [this](DeviceMemoryBase* p) {
+    shared_constant = std::shared_ptr<DeviceAddressBase>(
+        new_constant, [this](DeviceAddressBase* p) {
           Deallocate(p);
           delete p;
         });
-    it->second = std::weak_ptr<DeviceMemoryBase>(shared_constant);
+    it->second = std::weak_ptr<DeviceAddressBase>(shared_constant);
   }
 
   return shared_constant;
@@ -733,7 +733,7 @@ absl::StatusOr<std::unique_ptr<Kernel>> RocmExecutor::LoadKernel(
     rocm_kernel->set_args_packing([packing_spec](const Kernel& kernel,
                                                  const KernelArgs& args) {
       const auto& mem_args =
-          stream_executor::Cast<stream_executor::KernelArgsDeviceMemoryArray>(
+          stream_executor::Cast<stream_executor::KernelArgsDeviceAddressArray>(
               &args);
       return packing_spec.BuildArguments(mem_args->device_memory_args(),
                                          args.number_of_shared_bytes());
@@ -778,11 +778,11 @@ absl::StatusOr<ModuleHandle> RocmExecutor::LoadModuleFromHsaco(
   return module_handle;
 }
 
-DeviceMemoryBase RocmExecutor::Allocate(uint64_t size, int64_t memory_space) {
+DeviceAddressBase RocmExecutor::Allocate(uint64_t size, int64_t memory_space) {
   switch (static_cast<MemoryType>(memory_space)) {
     case MemoryType::kCollective:
     case MemoryType::kDevice:
-      return DeviceMemoryBase(
+      return DeviceAddressBase(
           DeviceAllocate(rocm_context_, size, /*is_fine_grained*/ false), size);
     case MemoryType::kP2P:
       // On the ROCm platform, differences in cache design (e.g., coherence
@@ -790,13 +790,13 @@ DeviceMemoryBase RocmExecutor::Allocate(uint64_t size, int64_t memory_space) {
       // when using normal device memory. To avoid these problems, we use
       // fine-grained memory in P2P communication for all archs to make sure of
       // the correctness.
-      return DeviceMemoryBase(
+      return DeviceAddressBase(
           DeviceAllocate(rocm_context_, size, /*is_fine_grained*/ true), size);
     case MemoryType::kHost:
       if (auto result = HostAllocate(rocm_context_, size); result.ok()) {
-        return DeviceMemoryBase(*result, size);
+        return DeviceAddressBase(*result, size);
       }
-      return DeviceMemoryBase(nullptr, 0);
+      return DeviceAddressBase(nullptr, 0);
     default:
       LOG(FATAL) << "Unsupported memory space: " << memory_space;
   }
@@ -806,7 +806,7 @@ RocmExecutor::HostMemoryAllocate(uint64_t size) {
   return AllocateHostMemory(rocm_context_, size);
 }
 
-void RocmExecutor::Deallocate(DeviceMemoryBase* mem) {
+void RocmExecutor::Deallocate(DeviceAddressBase* mem) {
   DeviceDeallocate(rocm_context_, mem->opaque());
 }
 
@@ -911,7 +911,7 @@ bool RocmExecutor::HostMemoryUnregister(void* location) {
   return true;
 }
 
-absl::Status RocmExecutor::SynchronousMemZero(DeviceMemoryBase* location,
+absl::Status RocmExecutor::SynchronousMemZero(DeviceAddressBase* location,
                                               uint64_t size) {
   std::unique_ptr<ActivateContext> activation = Activate();
   hipDeviceptr_t rocm_location = AsROCmDevicePtr(location);
@@ -925,7 +925,7 @@ absl::Status RocmExecutor::SynchronousMemZero(DeviceMemoryBase* location,
                   "Failed to memset memory");
 }
 
-absl::Status RocmExecutor::SynchronousMemcpy(DeviceMemoryBase* gpu_dst,
+absl::Status RocmExecutor::SynchronousMemcpy(DeviceAddressBase* gpu_dst,
                                              const void* host_src,
                                              uint64_t size) {
   std::unique_ptr<ActivateContext> activation = Activate();
@@ -941,7 +941,7 @@ absl::Status RocmExecutor::SynchronousMemcpy(DeviceMemoryBase* gpu_dst,
 }
 
 absl::Status RocmExecutor::SynchronousMemcpy(void* host_dst,
-                                             const DeviceMemoryBase& gpu_src,
+                                             const DeviceAddressBase& gpu_src,
                                              uint64_t size) {
   std::unique_ptr<ActivateContext> activation = Activate();
   TF_RETURN_IF_ERROR(ToStatus(
@@ -1036,7 +1036,7 @@ bool RocmExecutor::DeviceMemoryUsage(int64_t* free, int64_t* total) const {
   return rocm_context_->GetDeviceMemoryUsage(free, total);
 }
 
-absl::StatusOr<DeviceMemoryBase> RocmExecutor::GetSymbol(
+absl::StatusOr<DeviceAddressBase> RocmExecutor::GetSymbol(
     const std::string& symbol_name, ModuleHandle module_handle) {
   void* mem = nullptr;
   size_t bytes = 0;
@@ -1048,14 +1048,14 @@ absl::StatusOr<DeviceMemoryBase> RocmExecutor::GetSymbol(
     TF_RETURN_IF_ERROR(
         GetModuleSymbol(rocm_context_, it->second.first, symbol_name.c_str(),
                         reinterpret_cast<hipDeviceptr_t*>(&mem), &bytes));
-    return DeviceMemoryBase(mem, bytes);
+    return DeviceAddressBase(mem, bytes);
   }
 
   for (auto& it : gpu_binary_to_module_) {
     TF_RETURN_IF_ERROR(
         GetModuleSymbol(rocm_context_, it.second.first, symbol_name.c_str(),
                         reinterpret_cast<hipDeviceptr_t*>(&mem), &bytes));
-    return DeviceMemoryBase(mem, bytes);
+    return DeviceAddressBase(mem, bytes);
   }
 
   LOG(INFO) << "Falied to find symbol in any modules: " << symbol_name;

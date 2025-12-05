@@ -108,7 +108,7 @@ absl::Status BuffersDebugChecksumThunk::ExecuteOnStream(
   se::DeviceMemory<uint8_t> log_ptr(
       params.buffer_allocations->GetDeviceAddress(log_slice_));
   auto buffer_debug_log =
-      se::gpu::BufferDebugLog<BufferDebugLogEntry>::FromDeviceMemoryUnchecked(
+      se::gpu::BufferDebugLog<BufferDebugLogEntry>::FromDeviceAddressUnchecked(
           log_ptr);
 
   for (const auto& [buffer_idx, buffer] : checked_thunk_buffers_) {

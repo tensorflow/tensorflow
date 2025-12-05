@@ -31,7 +31,7 @@ limitations under the License.
 #include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/cuda/cuda_dnn.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/engine_options.h"
 #include "xla/stream_executor/platform.h"
@@ -101,12 +101,12 @@ TEST(CudaCommandBufferTest, CuDnnExplicitConstructionAndUpdateWork) {
   EXPECT_THAT(graph.SupportsExplicitCommandBufferConstruction(),
               absl_testing::IsOkAndHolds(true));
 
-  DeviceMemory<int8_t> input = executor->AllocateArray<int8_t>(kTotalElements);
+  DeviceAddress<int8_t> input = executor->AllocateArray<int8_t>(kTotalElements);
   TF_ASSERT_OK(stream->MemZero(&input, input.size()));
-  DeviceMemory<int32_t> output0 =
+  DeviceAddress<int32_t> output0 =
       executor->AllocateArray<int32_t>(kTotalElements);
-  DeviceMemoryBase workspace;
-  std::vector<DeviceMemoryBase> operands;
+  DeviceAddressBase workspace;
+  std::vector<DeviceAddressBase> operands;
   operands.reserve(4);
   operands.push_back(input);  // multiplying the input by itself
   operands.push_back(input);
@@ -120,7 +120,7 @@ TEST(CudaCommandBufferTest, CuDnnExplicitConstructionAndUpdateWork) {
   TF_ASSERT_OK_AND_ASSIGN(
       auto* dnn_command,
       cmd_buffer->CreateDnnGraphCommand(
-          graph, *stream, absl::Span<DeviceMemoryBase>(operands), {}));
+          graph, *stream, absl::Span<DeviceAddressBase>(operands), {}));
   TF_ASSERT_OK(cmd_buffer->Finalize());
 
   std::vector<int32_t> host_buffer(output0.ElementCount());
@@ -140,7 +140,7 @@ TEST(CudaCommandBufferTest, CuDnnExplicitConstructionAndUpdateWork) {
   EXPECT_THAT(host_buffer, Each(0));
 
   // Swap the output buffer.
-  DeviceMemory<int32_t> output1 =
+  DeviceAddress<int32_t> output1 =
       executor->AllocateArray<int32_t>(kTotalElements);
   operands[2] = output1;
   executor->Deallocate(&output0);
@@ -154,7 +154,7 @@ TEST(CudaCommandBufferTest, CuDnnExplicitConstructionAndUpdateWork) {
   // Update the command buffer to write into the new output buffer.
   TF_ASSERT_OK(cmd_buffer->Update());
   TF_ASSERT_OK(cmd_buffer->UpdateDnnGraphCommand(
-      dnn_command, graph, *stream, absl::Span<DeviceMemoryBase>(operands)));
+      dnn_command, graph, *stream, absl::Span<DeviceAddressBase>(operands)));
   TF_ASSERT_OK(cmd_buffer->Finalize());
 
   // Run the computation.

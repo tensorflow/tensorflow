@@ -29,7 +29,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/service/platform_util.h"
 #include "xla/stream_executor/command_buffer.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/gpu/gpu_test_kernels.h"
 #include "xla/stream_executor/gpu/gpu_test_kernels_fatbin.h"
 #include "xla/stream_executor/gpu/tma_metadata.h"
@@ -55,8 +55,8 @@ using ::testing::Each;
 using tsl::proto_testing::ParseTextProtoOrDie;
 
 using AddI32Kernel =
-    TypedKernelFactory<DeviceMemory<int32_t>, DeviceMemory<int32_t>,
-                       DeviceMemory<int32_t>>;
+    TypedKernelFactory<DeviceAddress<int32_t>, DeviceAddress<int32_t>,
+                       DeviceAddress<int32_t>>;
 using TmaKernel = TypedKernelFactory<TensorMap, TensorMap, TensorMap>;
 
 class GpuKernelTest : public ::testing::Test {
@@ -76,9 +76,9 @@ class GpuKernelTest : public ::testing::Test {
     int64_t byte_length = sizeof(int32_t) * length;
 
     // Prepare arguments: a=1, b=2, c=0
-    DeviceMemory<int32_t> a = executor_->AllocateArray<int32_t>(length, 0);
-    DeviceMemory<int32_t> b = executor_->AllocateArray<int32_t>(length, 0);
-    DeviceMemory<int32_t> c = executor_->AllocateArray<int32_t>(length, 0);
+    DeviceAddress<int32_t> a = executor_->AllocateArray<int32_t>(length, 0);
+    DeviceAddress<int32_t> b = executor_->AllocateArray<int32_t>(length, 0);
+    DeviceAddress<int32_t> c = executor_->AllocateArray<int32_t>(length, 0);
 
     TF_ASSERT_OK(stream->Memset32(&a, 1, byte_length));
     TF_ASSERT_OK(stream->Memset32(&b, 2, byte_length));
@@ -128,9 +128,9 @@ TEST_F(GpuKernelTest, LoadAndRunKernelFromSymbolWithCustomArgsPacking) {
   constexpr int64_t kArraySizeBytes = sizeof(int32_t) * kArraySize;
 
   // Prepare arguments: in=10, out=0
-  DeviceMemory<int32_t> in =
+  DeviceAddress<int32_t> in =
       executor_->AllocateArray<int32_t>(kArraySize, /*memory_space=*/0);
-  DeviceMemory<int32_t> out =
+  DeviceAddress<int32_t> out =
       executor_->AllocateArray<int32_t>(kArraySize, /*memory_space=*/0);
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Stream> stream,
@@ -145,7 +145,7 @@ TEST_F(GpuKernelTest, LoadAndRunKernelFromSymbolWithCustomArgsPacking) {
   TF_ASSERT_OK(kernel->Launch(
       ThreadDim(), BlockDim(4),
       /*cluster_dims=*/std::nullopt, stream.get(),
-      KernelArgsDeviceMemoryArray({in, out}, /*shared_memory_bytes=*/0)));
+      KernelArgsDeviceAddressArray({in, out}, /*shared_memory_bytes=*/0)));
 
   // Copy data back to host and verify that the output is 5 + 10 = 15.
   std::vector<int32_t> dst(4, 0);
@@ -159,7 +159,7 @@ TEST_F(GpuKernelTest, ArrayArgByValue) {
 
   constexpr int64_t kLength = 16;
 
-  DeviceMemory<char> dst = executor_->AllocateArray<char>(kLength, 0);
+  DeviceAddress<char> dst = executor_->AllocateArray<char>(kLength, 0);
   TF_ASSERT_OK(stream->MemZero(&dst, kLength));
 
   std::array<std::byte, 16> storage;
@@ -240,9 +240,9 @@ TEST_F(GpuKernelTest, TmaLoadAndRunKernelFromPtx) {
                                 l2_promotion: L2_PROMOTION_BYTES128
                               )pb"));
 
-  DeviceMemory<int16_t> mem0 = executor_->AllocateArray<int16_t>(512 * 1024);
-  DeviceMemory<int16_t> mem1 = executor_->AllocateArray<int16_t>(1024 * 512);
-  DeviceMemory<int32_t> mem2 = executor_->AllocateArray<int32_t>(1024 * 1024);
+  DeviceAddress<int16_t> mem0 = executor_->AllocateArray<int16_t>(512 * 1024);
+  DeviceAddress<int16_t> mem1 = executor_->AllocateArray<int16_t>(1024 * 512);
+  DeviceAddress<int32_t> mem2 = executor_->AllocateArray<int32_t>(1024 * 1024);
 
   TF_ASSERT_OK_AND_ASSIGN(auto tma0,
                           executor_->CreateTensorMap(arg0_desc, mem0.opaque()));

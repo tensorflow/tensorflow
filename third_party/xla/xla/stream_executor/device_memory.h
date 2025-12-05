@@ -28,7 +28,7 @@ limitations under the License.
 
 #include "absl/base/macros.h"
 #include "xla/stream_executor/device_address.h"
-#include "xla/stream_executor/gpu/tensor_map.h"
+#include "xla/stream_executor/tensor_map.h"  // IWYU pragma: keep
 
 namespace stream_executor {
 
@@ -38,8 +38,6 @@ using DeviceMemoryBase ABSL_DEPRECATE_AND_INLINE() =
 template <typename T>
 using DeviceMemory ABSL_DEPRECATE_AND_INLINE() =
     ::stream_executor::DeviceAddress<T>;
-
-using TensorMap ABSL_DEPRECATE_AND_INLINE() = ::stream_executor::gpu::TensorMap;
 
 }  // namespace stream_executor
 

@@ -34,8 +34,8 @@ class SyclTimerTest : public ::testing::Test {
  public:
   void LaunchSomeKernel(StreamExecutor* executor, Stream* stream) {
     using AddKernel =
-        TypedKernelFactory<DeviceMemory<float>, DeviceMemory<float>,
-                           DeviceMemory<float>>;
+        TypedKernelFactory<DeviceAddress<float>, DeviceAddress<float>,
+                           DeviceAddress<float>>;
 
     // TODO(intel-tf): This is a temporary workaround to get the test working.
     // This will be replaced with hlo-based spv binary generation once MLIR
@@ -196,9 +196,9 @@ class SyclTimerTest : public ::testing::Test {
     const int64_t kByteLength = sizeof(float) * kLength;
 
     // Prepare arguments: a=1.0, b=2.0, c=0.0
-    DeviceMemory<float> a = executor->AllocateArray<float>(kLength, 0);
-    DeviceMemory<float> b = executor->AllocateArray<float>(kLength, 0);
-    DeviceMemory<float> c = executor->AllocateArray<float>(kLength, 0);
+    DeviceAddress<float> a = executor->AllocateArray<float>(kLength, 0);
+    DeviceAddress<float> b = executor->AllocateArray<float>(kLength, 0);
+    DeviceAddress<float> c = executor->AllocateArray<float>(kLength, 0);
 
     ASSERT_THAT(stream->Memset32(&a, 1.0, kByteLength), IsOk());
     ASSERT_THAT(stream->Memset32(&b, 2.0, kByteLength), IsOk());

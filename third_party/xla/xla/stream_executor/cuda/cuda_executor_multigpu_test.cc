@@ -25,7 +25,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "xla/stream_executor/cuda/cuda_executor.h"
 #include "xla/stream_executor/cuda/cuda_executor_multigpu_test_kernels.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/gpu/gpu_init.h"
 #include "xla/stream_executor/gpu/multicast_memory.h"
 #include "xla/stream_executor/platform.h"
@@ -42,9 +42,9 @@ using ::absl_testing::StatusIs;
 using ::testing::NotNull;
 
 template <typename T>
-absl::StatusOr<stream_executor::DeviceMemoryBase> AllocateInitializedMemory(
+absl::StatusOr<stream_executor::DeviceAddressBase> AllocateInitializedMemory(
     CudaExecutor* executor, size_t size, size_t offset, T value) {
-  stream_executor::DeviceMemoryBase device_memory = executor->Allocate(
+  stream_executor::DeviceAddressBase device_memory = executor->Allocate(
       size + offset, static_cast<int64_t>(stream_executor::MemoryType::kP2P));
   if (device_memory.opaque() == nullptr) {
     return absl::InternalError("Failed to allocate memory.");
@@ -61,7 +61,7 @@ absl::StatusOr<stream_executor::DeviceMemoryBase> AllocateInitializedMemory(
 
 template <typename T>
 absl::Status CheckMemory(CudaExecutor* executor,
-                         stream_executor::DeviceMemoryBase device_memory,
+                         stream_executor::DeviceAddressBase device_memory,
                          T expected_value) {
   size_t num_elements = device_memory.size() / sizeof(T);
   std::vector<T> device_memory_vector(num_elements, 0);
@@ -108,7 +108,7 @@ TEST(CudaExecutorMultiGpuTest, AllDevicesMustBeSubscribedBeforeMapping) {
   TF_ASSERT_OK_AND_ASSIGN(multicast_memory,
                           executors[0]->CreateMulticastMemory(1024, 2));
   EXPECT_THAT(multicast_memory->SubscribeDevice(0), IsOk());
-  DeviceMemoryBase device_memory(reinterpret_cast<void*>(1), 1);
+  DeviceAddressBase device_memory(reinterpret_cast<void*>(1), 1);
   EXPECT_THAT(multicast_memory->MapMemory(device_memory, executors[0]),
               StatusIs(absl::StatusCode::kFailedPrecondition,
                        "All devices should be subscribed."));
@@ -147,7 +147,7 @@ TEST(CudaExecutorMultiGpuTest, CudaMulticastMemoryUsingNonVmmMemory) {
   EXPECT_THAT(multicast_memory->SubscribeDevice(0), IsOk());
   EXPECT_THAT(multicast_memory->SubscribeDevice(1), IsOk());
 
-  DeviceMemoryBase device_memory = executors[0]->Allocate(8, 0);
+  DeviceAddressBase device_memory = executors[0]->Allocate(8, 0);
   EXPECT_THAT(
       multicast_memory->MapMemory(device_memory, executors[0]),
       StatusIs(absl::StatusCode::kInternal,
@@ -172,17 +172,17 @@ TEST(CudaExecutorMultiGpuTest, CudaMulticastMemoryUsingVmmMemory) {
   EXPECT_THAT(multicast_memory->SubscribeDevice(1), IsOk());
 
   TF_ASSERT_OK_AND_ASSIGN(
-      stream_executor::DeviceMemoryBase first_device_memory,
+      stream_executor::DeviceAddressBase first_device_memory,
       AllocateInitializedMemory(executors[0], kMemorySize, 0, kValue));
 
   TF_ASSERT_OK_AND_ASSIGN(
-      stream_executor::DeviceMemoryBase output_device_memory,
+      stream_executor::DeviceAddressBase output_device_memory,
       AllocateInitializedMemory(executors[0], kMemorySize, 0, 0));
   TF_ASSERT_OK_AND_ASSIGN(
       void* first_device_multicast_ptr,
       multicast_memory->MapMemory(first_device_memory, executors[0]));
   TF_ASSERT_OK_AND_ASSIGN(
-      stream_executor::DeviceMemoryBase second_device_memory,
+      stream_executor::DeviceAddressBase second_device_memory,
       AllocateInitializedMemory(executors[1], kMemorySize, 0, kValue));
   EXPECT_THAT(multicast_memory->MapMemory(second_device_memory, executors[1]),
               IsOkAndHolds(NotNull()));
@@ -219,7 +219,7 @@ TEST(CudaExecutorMultiGpuTest, CudaMulticastMemoryMapDifferentSlicesUnaligned) {
                           executors[0]->GetVmmGranularity());
   // Allocate memory with unaligned offset.
   TF_ASSERT_OK_AND_ASSIGN(
-      stream_executor::DeviceMemoryBase first_device_mapped_memory,
+      stream_executor::DeviceAddressBase first_device_mapped_memory,
       AllocateInitializedMemory(
           executors[0],
           // Add granularity to make sure that there is
@@ -253,18 +253,18 @@ TEST(CudaExecutorMultiGpuTest, CudaMulticastMemoryMapDifferentSlices) {
   TF_ASSERT_OK_AND_ASSIGN(size_t vmm_granularity,
                           executors[0]->GetVmmGranularity());
   TF_ASSERT_OK_AND_ASSIGN(
-      stream_executor::DeviceMemoryBase first_device_mapped_memory,
+      stream_executor::DeviceAddressBase first_device_mapped_memory,
       AllocateInitializedMemory(executors[0], kMappedMemorySize,
                                 vmm_granularity, kValue));
   TF_ASSERT_OK_AND_ASSIGN(
-      stream_executor::DeviceMemoryBase output_device_memory,
+      stream_executor::DeviceAddressBase output_device_memory,
       AllocateInitializedMemory(executors[0], kMappedMemorySize, 0, 0));
   TF_ASSERT_OK_AND_ASSIGN(
       void* first_device_multicast_ptr,
       multicast_memory->MapMemory(first_device_mapped_memory, executors[0]));
 
   TF_ASSERT_OK_AND_ASSIGN(
-      stream_executor::DeviceMemoryBase second_device_mapped_memory,
+      stream_executor::DeviceAddressBase second_device_mapped_memory,
       AllocateInitializedMemory(executors[1], kMappedMemorySize, 0, kValue));
   EXPECT_THAT(
       multicast_memory->MapMemory(second_device_mapped_memory, executors[1]),

@@ -91,7 +91,7 @@ class ROCMFftPlan : public fft::Plan {
   StreamExecutor *parent_;
   hipfftHandle plan_;
   fft::Type fft_type_;
-  DeviceMemory<uint8_t> scratch_;
+  DeviceAddress<uint8_t> scratch_;
   size_t scratch_size_bytes_;
   bool is_initialized_;
 };
@@ -121,17 +121,17 @@ class ROCMFft : public fft::FftSupport {
 
   // This is for complex to complex FFT, when the direction is required.
   template <typename FuncT, typename InputT, typename OutputT>
-  bool DoFftWithDirectionInternal(Stream *stream, fft::Plan *plan,
+  bool DoFftWithDirectionInternal(Stream* stream, fft::Plan* plan,
                                   FuncT hipfft_exec,
-                                  const DeviceMemory<InputT> &input,
-                                  DeviceMemory<OutputT> *output);
+                                  const DeviceAddress<InputT>& input,
+                                  DeviceAddress<OutputT>* output);
 
   // This is for complex to real or real to complex FFT, when the direction
   // is implied.
   template <typename FuncT, typename InputT, typename OutputT>
-  bool DoFftInternal(Stream *stream, fft::Plan *plan, FuncT hipfft_exec,
-                     const DeviceMemory<InputT> &input,
-                     DeviceMemory<OutputT> *output);
+  bool DoFftInternal(Stream* stream, fft::Plan* plan, FuncT hipfft_exec,
+                     const DeviceAddress<InputT>& input,
+                     DeviceAddress<OutputT>* output);
 
   ROCMFft(const ROCMFft &) = delete;
   void operator=(const ROCMFft &) = delete;

@@ -53,8 +53,8 @@ absl::StatusOr<KernelLoaderSpec> GetAddI32TestKernelSpec(
 // int32_t* b, int32_t* c)` under the hood and implements `c[i] = a + b[i]`.
 // It uses a custom argument packing that supplies a constant scalar value of 5
 // to the kernel for `a`, therefore it appears as if the the kernel had the
-// function signature `void IncI32(DeviceMemory<int32_t> in,
-// DeviceMemory<int32_t> out)`.
+// function signature `void IncI32(DeviceAddress<int32_t> in,
+// DeviceAddress<int32_t> out)`.
 //
 // The main purpose is the testing of the custom argument packing feature.
 absl::StatusOr<KernelLoaderSpec>

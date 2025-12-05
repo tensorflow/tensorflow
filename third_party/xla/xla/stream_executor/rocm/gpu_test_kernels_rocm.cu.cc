@@ -76,9 +76,10 @@ GPU_KERNEL_REGISTRY_REGISTER_KERNEL_STATICALLY(
           "AddI32Ptrs3", arity,
           [&](const stream_executor::Kernel& kernel,
               const stream_executor::KernelArgs& args) {
-            auto bufs = stream_executor::Cast<
-                            stream_executor::KernelArgsDeviceMemoryArray>(&args)
-                            ->device_memory_args();
+            auto bufs =
+                stream_executor::Cast<
+                    stream_executor::KernelArgsDeviceAddressArray>(&args)
+                    ->device_memory_args();
             auto cast = [](auto m) {
               return reinterpret_cast<int32_t*>(m.opaque());
             };

@@ -176,7 +176,7 @@ absl::Status BufferDebugFloatCheck(
       DebugOptions::DETECTION_MODE_NONE;
 
   auto buffer_debug_log = se::gpu::BufferDebugLog<BufferDebugFloatCheckEntry>::
-      FromDeviceMemoryUnchecked(log_buffer.device_memory());
+      FromDeviceAddressUnchecked(log_buffer.device_memory());
   TF_ASSIGN_OR_RETURN(std::vector<BufferDebugFloatCheckEntry> entries,
                       buffer_debug_log.ReadFromDevice(*stream));
 

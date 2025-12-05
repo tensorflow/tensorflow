@@ -35,7 +35,7 @@ limitations under the License.
 #include "rocm/include/hip/hip_runtime.h"
 #include "rocm/rocm_config.h"
 #include "xla/stream_executor/activate_context.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/launch_dim.h"
@@ -238,7 +238,7 @@ RocmStream::~RocmStream() {
   DestroyStream(executor_, stream_handle_);
 }
 
-absl::Status RocmStream::Memset32(DeviceMemoryBase* location, uint32_t pattern,
+absl::Status RocmStream::Memset32(DeviceAddressBase* location, uint32_t pattern,
                                   uint64_t size) {
   if (absl::bit_cast<uintptr_t>(location->opaque()) % alignof(uint32_t) != 0) {
     return absl::InvalidArgumentError("location must be 4 byte aligned.");
@@ -251,7 +251,7 @@ absl::Status RocmStream::Memset32(DeviceMemoryBase* location, uint32_t pattern,
                   "Failed to memset memory");
 }
 
-absl::Status RocmStream::MemZero(DeviceMemoryBase* location, uint64_t size) {
+absl::Status RocmStream::MemZero(DeviceAddressBase* location, uint64_t size) {
   if (absl::bit_cast<uintptr_t>(location->opaque()) % alignof(uint32_t) == 0 &&
       size % sizeof(uint32_t) == 0) {
     return Memset32(location, 0x0, size);
@@ -263,22 +263,23 @@ absl::Status RocmStream::MemZero(DeviceMemoryBase* location, uint64_t size) {
   }
 }
 
-absl::Status RocmStream::Memcpy(DeviceMemoryBase* gpu_dst,
-                                const DeviceMemoryBase& gpu_src,
+absl::Status RocmStream::Memcpy(DeviceAddressBase* gpu_dst,
+                                const DeviceAddressBase& gpu_src,
                                 uint64_t size) {
   return AsynchronousMemcpyD2D(
       executor_, absl::bit_cast<hipDeviceptr_t>(gpu_dst->opaque()),
       absl::bit_cast<hipDeviceptr_t>(gpu_src.opaque()), size, stream_handle_);
 }
 
-absl::Status RocmStream::Memcpy(DeviceMemoryBase* gpu_dst, const void* host_src,
-                                uint64_t size) {
+absl::Status RocmStream::Memcpy(DeviceAddressBase* gpu_dst,
+                                const void* host_src, uint64_t size) {
   return AsynchronousMemcpyH2D(
       executor_, absl::bit_cast<hipDeviceptr_t>(gpu_dst->opaque()), host_src,
       size, stream_handle_);
 }
 
-absl::Status RocmStream::Memcpy(void* host_dst, const DeviceMemoryBase& gpu_src,
+absl::Status RocmStream::Memcpy(void* host_dst,
+                                const DeviceAddressBase& gpu_src,
                                 uint64_t size) {
   return AsynchronousMemcpyD2H(executor_, host_dst,
                                absl::bit_cast<hipDeviceptr_t>(gpu_src.opaque()),

@@ -182,6 +182,7 @@ cc_library(
         "//xla/ffi/api:c_api_internal",
         "//xla/hlo/ir:hlo",
         "//xla/service:platform_util",
+        "//xla/stream_executor:device_address_allocator",
         "//xla/stream_executor:device_memory",
         "//xla/tsl/concurrency:async_value",
         "//xla/tsl/platform:logging",

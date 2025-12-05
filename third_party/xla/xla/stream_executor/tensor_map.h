@@ -13,12 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_STREAM_EXECUTOR_GPU_TENSOR_MAP_H_
-#define XLA_STREAM_EXECUTOR_GPU_TENSOR_MAP_H_
+#ifndef XLA_STREAM_EXECUTOR_TENSOR_MAP_H_
+#define XLA_STREAM_EXECUTOR_TENSOR_MAP_H_
 
 #include <cstddef>
 
-namespace stream_executor::gpu {
+namespace stream_executor {
 
 // TensorMap is a wrapper around a 128 bytes of storage. It is used to pass TMA
 // descriptors to the kernel.
@@ -26,6 +26,6 @@ struct TensorMap {
   alignas(64) std::byte storage[128];
 };
 
-}  // namespace stream_executor::gpu
+}  // namespace stream_executor
 
-#endif  // XLA_STREAM_EXECUTOR_GPU_TENSOR_MAP_H_
+#endif  // XLA_STREAM_EXECUTOR_TENSOR_MAP_H_

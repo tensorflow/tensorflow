@@ -151,7 +151,7 @@ absl::Status DumpBufferDebugChecksumLog(
   const DebugOptions& debug_options = hlo_module->config().debug_options();
 
   auto buffer_debug_log =
-      se::gpu::BufferDebugLog<BufferDebugLogEntry>::FromDeviceMemoryUnchecked(
+      se::gpu::BufferDebugLog<BufferDebugLogEntry>::FromDeviceAddressUnchecked(
           log_buffer.device_memory());
   TF_ASSIGN_OR_RETURN(std::vector<BufferDebugLogEntry> log_entries,
                       buffer_debug_log.ReadFromDevice(*stream));

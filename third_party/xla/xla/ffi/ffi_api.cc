@@ -47,6 +47,7 @@ limitations under the License.
 #include "xla/ffi/ffi_structs.h"
 #include "xla/ffi/type_registry.h"
 #include "xla/service/platform_util.h"
+#include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/concurrency/chain.h"
@@ -760,7 +761,7 @@ static XLA_FFI_Error* XLA_FFI_DeviceMemory_Allocate(
         InvalidArgument("Unsupported alignment: %d", args->alignment)};
   }
 
-  absl::StatusOr<stream_executor::OwningDeviceMemory> memory =
+  absl::StatusOr<stream_executor::ScopedDeviceAddress<uint8_t>> memory =
       gpu->allocator->Allocate(args->ctx->device_ordinal, args->size);
   if (!memory.ok()) {
     return new XLA_FFI_Error{std::move(memory).status()};

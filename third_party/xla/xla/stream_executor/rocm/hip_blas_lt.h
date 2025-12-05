@@ -19,7 +19,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "rocm/rocm_config.h"
 #include "xla/stream_executor/blas.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/gpu/gpu_blas_lt.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/types.h"

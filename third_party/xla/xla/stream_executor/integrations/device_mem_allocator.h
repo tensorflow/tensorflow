@@ -61,7 +61,7 @@ class DeviceMemAllocator : public tsl::SubAllocator {
 
     if (ptr != nullptr) {
       VisitFree(ptr, device_id_.value(), num_bytes);
-      DeviceMemoryBase device_ptr(ptr);
+      DeviceAddressBase device_ptr(ptr);
       stream_exec_->Deallocate(&device_ptr);
     }
   }

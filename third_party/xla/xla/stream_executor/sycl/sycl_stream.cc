@@ -141,7 +141,7 @@ absl::Status SyclStream::WaitFor(Event* event) {
       static_cast<SyclEvent*>(event)->GetEvent());
 }
 
-absl::Status SyclStream::Memset32(DeviceMemoryBase* location, uint32_t pattern,
+absl::Status SyclStream::Memset32(DeviceAddressBase* location, uint32_t pattern,
                                   uint64_t size) {
   VLOG(2) << "Enqueuing memset32 operation onto stream " << stream_handle_.get()
           << " at location " << reinterpret_cast<const void*>(location)
@@ -163,7 +163,7 @@ absl::Status SyclStream::Memset32(DeviceMemoryBase* location, uint32_t pattern,
   return absl::OkStatus();
 }
 
-absl::Status SyclStream::MemZero(DeviceMemoryBase* location, uint64_t size) {
+absl::Status SyclStream::MemZero(DeviceAddressBase* location, uint64_t size) {
   if (absl::bit_cast<uintptr_t>(location->opaque()) % alignof(uint32_t) == 0 &&
       size % sizeof(uint32_t) == 0) {
     return SyclStream::Memset32(location, 0x0, size);
@@ -175,8 +175,8 @@ absl::Status SyclStream::MemZero(DeviceMemoryBase* location, uint64_t size) {
   return absl::OkStatus();
 }
 
-absl::Status SyclStream::Memcpy(DeviceMemoryBase* gpu_dst, const void* host_src,
-                                uint64_t size) {
+absl::Status SyclStream::Memcpy(DeviceAddressBase* gpu_dst,
+                                const void* host_src, uint64_t size) {
   TF_RETURN_IF_ERROR(SyclMemcpyHostToDeviceAsync(
       stream_handle_.get(), const_cast<void*>(gpu_dst->opaque()), host_src,
       size));
@@ -186,7 +186,8 @@ absl::Status SyclStream::Memcpy(DeviceMemoryBase* gpu_dst, const void* host_src,
   return absl::OkStatus();
 }
 
-absl::Status SyclStream::Memcpy(void* host_dst, const DeviceMemoryBase& gpu_src,
+absl::Status SyclStream::Memcpy(void* host_dst,
+                                const DeviceAddressBase& gpu_src,
                                 uint64_t size) {
   TF_RETURN_IF_ERROR(
       SyclMemcpyDeviceToHostAsync(stream_handle_.get(), host_dst,
@@ -197,8 +198,8 @@ absl::Status SyclStream::Memcpy(void* host_dst, const DeviceMemoryBase& gpu_src,
   return absl::OkStatus();
 }
 
-absl::Status SyclStream::Memcpy(DeviceMemoryBase* gpu_dst,
-                                const DeviceMemoryBase& gpu_src,
+absl::Status SyclStream::Memcpy(DeviceAddressBase* gpu_dst,
+                                const DeviceAddressBase& gpu_src,
                                 uint64_t size) {
   TF_RETURN_IF_ERROR(SyclMemcpyDeviceToDeviceAsync(
       stream_handle_.get(), const_cast<void*>(gpu_dst->opaque()),

@@ -27,7 +27,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/service_executable_run_options.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/tpu/c_api_conversions.h"  // IWYU pragma: keep
 #include "xla/stream_executor/tpu/c_api_decl.h"
 #include "xla/stream_executor/tpu/proto_helper.h"
@@ -54,25 +54,25 @@ TpuOpExecutable::TpuOpExecutable(
 
 absl::Status TpuOpExecutable::LoadProgramAndEnqueueToStream(
     const xla::ServiceExecutableRunOptions& run_options,
-    absl::Span<const se::DeviceMemoryBase> arguments,
-    se::DeviceMemoryBase result,
-    const std::vector<se::DeviceMemoryBase>& cross_program_prefetch_addrs,
+    absl::Span<const se::DeviceAddressBase> arguments,
+    se::DeviceAddressBase result,
+    const std::vector<se::DeviceAddressBase>& cross_program_prefetch_addrs,
     const std::vector<uint32_t>& cross_program_prefetch_offsets) {
-  auto DeviceMemoryBaseToC = [](const se::DeviceMemoryBase& addr) {
-    return SE_DeviceMemoryBase{const_cast<void*>(addr.opaque()), addr.size(),
-                               addr.payload()};
+  auto DeviceAddressBaseToC = [](const se::DeviceAddressBase& addr) {
+    return SE_DeviceAddressBase{const_cast<void*>(addr.opaque()), addr.size(),
+                                addr.payload()};
   };
 
-  std::vector<SE_DeviceMemoryBase> arguments_bases;
+  std::vector<SE_DeviceAddressBase> arguments_bases;
   arguments_bases.resize(arguments.size());
-  absl::c_transform(arguments, arguments_bases.begin(), DeviceMemoryBaseToC);
+  absl::c_transform(arguments, arguments_bases.begin(), DeviceAddressBaseToC);
 
-  SE_DeviceMemoryBase result_base = DeviceMemoryBaseToC(result);
+  SE_DeviceAddressBase result_base = DeviceAddressBaseToC(result);
 
-  std::vector<SE_DeviceMemoryBase> prefetch_bases;
+  std::vector<SE_DeviceAddressBase> prefetch_bases;
   prefetch_bases.resize(cross_program_prefetch_addrs.size());
   absl::c_transform(cross_program_prefetch_addrs, prefetch_bases.begin(),
-                    DeviceMemoryBaseToC);
+                    DeviceAddressBaseToC);
   int32_t rng_seed = run_options.run_options().rng_seed();
 
   XLA_DeviceAssignment c_dev_assign{/*bytes=*/nullptr, /*size=*/0};

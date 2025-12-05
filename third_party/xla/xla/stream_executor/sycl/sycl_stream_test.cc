@@ -30,7 +30,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/backends/gpu/runtime/kernel_thunk.h"
 #include "xla/service/gpu/gpu_executable.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/sycl/sycl_event.h"
 #include "xla/stream_executor/sycl/sycl_platform_id.h"
@@ -76,7 +76,7 @@ TEST_F(SyclStreamTest, CreateWithNonDefaultPriority) {
 
 TEST_F(SyclStreamTest, Memset32) {
   constexpr int kBufferNumElements = 42;
-  DeviceMemory<uint32_t> device_buffer =
+  DeviceAddress<uint32_t> device_buffer =
       executor_->AllocateArray<uint32_t>(kBufferNumElements, 0);
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<SyclStream> stream,
@@ -92,7 +92,7 @@ TEST_F(SyclStreamTest, Memset32) {
       absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
 
   // Should fail due to the non-4-byte-aligned pointer.
-  DeviceMemoryBase unaligned_device_memory =
+  DeviceAddressBase unaligned_device_memory =
       device_buffer.GetByteSlice(/*offset_bytes=*/1, /*size_bytes=*/0);
   EXPECT_THAT(stream->Memset32(&unaligned_device_memory, 0xDEADBEEF,
                                kBufferSizeBytes + 1),
@@ -113,7 +113,7 @@ TEST_F(SyclStreamTest, Memset32) {
 
 TEST_F(SyclStreamTest, MemZero) {
   constexpr int kBufferNumElements = 42;
-  DeviceMemory<uint32_t> device_buffer =
+  DeviceAddress<uint32_t> device_buffer =
       executor_->AllocateArray<uint32_t>(kBufferNumElements, 0);
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<SyclStream> stream,
@@ -149,7 +149,7 @@ TEST_F(SyclStreamTest, MemZero) {
 
 TEST_F(SyclStreamTest, MemcpyHostToDeviceAndBack) {
   constexpr int kBufferNumElements = 42;
-  DeviceMemory<uint32_t> device_buffer =
+  DeviceAddress<uint32_t> device_buffer =
       executor_->AllocateArray<uint32_t>(kBufferNumElements, 0);
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<SyclStream> stream,
@@ -178,9 +178,9 @@ TEST_F(SyclStreamTest, MemcpyHostToDeviceAndBack) {
 
 TEST_F(SyclStreamTest, MemcpyDeviceToDevice) {
   constexpr int kBufferNumElements = 42;
-  DeviceMemory<uint32_t> device_buffer1 =
+  DeviceAddress<uint32_t> device_buffer1 =
       executor_->AllocateArray<uint32_t>(kBufferNumElements, 0);
-  DeviceMemory<uint32_t> device_buffer2 =
+  DeviceAddress<uint32_t> device_buffer2 =
       executor_->AllocateArray<uint32_t>(kBufferNumElements, 0);
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<SyclStream> stream,
@@ -227,8 +227,8 @@ TEST_F(SyclStreamTest, LaunchKernel) {
                                              /*priority=*/std::nullopt));
 
   using AddKernel =
-      TypedKernelFactory<DeviceMemory<int32_t>, DeviceMemory<int32_t>,
-                         DeviceMemory<int32_t>>;
+      TypedKernelFactory<DeviceAddress<int32_t>, DeviceAddress<int32_t>,
+                         DeviceAddress<int32_t>>;
 
   absl::string_view hlo_ir = R"(
     ENTRY e {
@@ -273,9 +273,9 @@ TEST_F(SyclStreamTest, LaunchKernel) {
   constexpr int64_t kByteLength = sizeof(int32_t) * kLength;
 
   // Prepare arguments: a=3, b=2, c=0
-  DeviceMemory<int32_t> a = executor_->AllocateArray<int32_t>(kLength, 0);
-  DeviceMemory<int32_t> b = executor_->AllocateArray<int32_t>(kLength, 0);
-  DeviceMemory<int32_t> c = executor_->AllocateArray<int32_t>(kLength, 0);
+  DeviceAddress<int32_t> a = executor_->AllocateArray<int32_t>(kLength, 0);
+  DeviceAddress<int32_t> b = executor_->AllocateArray<int32_t>(kLength, 0);
+  DeviceAddress<int32_t> c = executor_->AllocateArray<int32_t>(kLength, 0);
 
   EXPECT_THAT(stream->Memset32(&a, 3, kByteLength), absl_testing::IsOk());
   EXPECT_THAT(stream->Memset32(&b, 2, kByteLength), absl_testing::IsOk());

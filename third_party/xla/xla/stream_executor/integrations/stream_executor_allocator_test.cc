@@ -74,7 +74,7 @@ TEST(StreamExecutorAllocatorTest, GetMemoryTypeReturnsHostPinnedForHostMemory) {
             stream_executor_allocator.GetMemoryType());
 }
 
-TEST(StreamExecutorAllocatorTest, GetMemoryTypeReturnsDeviceForDeviceMemory) {
+TEST(StreamExecutorAllocatorTest, GetMemoryTypeReturnsDeviceForDeviceAddress) {
   auto allocator = std::make_unique<GenericMemoryAllocator>(
       [](uint64_t size) -> absl::StatusOr<std::unique_ptr<MemoryAllocation>> {
         return absl::InternalError("Failed to allocate memory");

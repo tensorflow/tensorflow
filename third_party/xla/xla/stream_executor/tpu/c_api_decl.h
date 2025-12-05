@@ -66,16 +66,20 @@ typedef struct SE_PlatformId {
 } SE_PlatformId;
 typedef TF_Status* (*SE_StatusCallback)(void*);
 
-typedef struct SE_DeviceMemoryBase {
+typedef struct SE_DeviceAddressBase {
   void* opaque;
   uint64_t size;
   uint64_t payload;
-} SE_DeviceMemoryBase;
+} SE_DeviceAddressBase;
 
-typedef struct SE_ScopedDeviceMemory {
-  SE_DeviceMemoryBase wrapped;
+typedef SE_DeviceAddressBase SE_DeviceMemoryBase;
+
+typedef struct SE_ScopedDeviceAddress {
+  SE_DeviceAddressBase wrapped;
   int device_ordinal;
-} SE_ScopedDeviceMemory;
+} SE_ScopedDeviceAddress;
+
+typedef SE_ScopedDeviceAddress SE_ScopedDeviceMemory;
 
 typedef struct SE_AllocatorStats {
   int64_t num_allocs;
@@ -95,22 +99,25 @@ typedef struct SE_AllocatorStats {
   int64_t largest_free_block_bytes;
 } SE_AllocatorStats;
 
-// Note, due to the... odd way in which DeviceMemoryAllocator is used in TF, we
+// Note, due to the... odd way in which DeviceAddressAllocator is used in TF, we
 // cannot simply wrap an underlying pointer. Instead, we reverse the call
 // direction and request memory via a callback.
 typedef void (*SE_AllocateFn)(void* ctx, int device_ordinal, uint64_t size,
                               bool retry_on_failure, int64_t memory_space,
-                              SE_ScopedDeviceMemory* result, TF_Status* status);
+                              SE_ScopedDeviceAddress* result,
+                              TF_Status* status);
 
-typedef void (*SE_DeallocateFn)(void* ctx, SE_DeviceMemoryBase* base,
+typedef void (*SE_DeallocateFn)(void* ctx, SE_DeviceAddressBase* base,
                                 int device_ordinal, TF_Status* status);
 
-typedef struct SE_DeviceMemoryAllocator {
+typedef struct SE_DeviceAddressAllocator {
   SE_Platform* platform;
   void* ctx;
   SE_AllocateFn allocate;
   SE_DeallocateFn deallocate;
-} SE_DeviceMemoryAllocator;
+} SE_DeviceAddressAllocator;
+
+typedef SE_DeviceAddressAllocator SE_DeviceMemoryAllocator;
 
 typedef struct SE_DeviceDescription {
   char* device_vendor;
@@ -155,7 +162,7 @@ typedef struct Tpu_Compiler Tpu_Compiler;
 typedef struct SE_Executable SE_Executable;
 
 typedef struct SE_ExecutableRunOptions {
-  SE_DeviceMemoryAllocator allocator;
+  SE_DeviceAddressAllocator allocator;
   int device_ordinal;
   SE_Stream* stream;
   SE_Stream* host_to_device_stream;
@@ -169,12 +176,12 @@ typedef struct SE_ExecutableSerializationHandle
     SE_ExecutableSerializationHandle;
 
 typedef struct SE_MaybeOwningDeviceMemory {
-  SE_DeviceMemoryBase memory;
+  SE_DeviceAddressBase memory;
   bool owned;
 
   // Set if owned
   int device_ordinal;
-  SE_DeviceMemoryAllocator allocator;
+  SE_DeviceAddressAllocator allocator;
 } SE_MaybeOwningDeviceMemory;
 
 typedef struct IntList {
@@ -258,7 +265,7 @@ typedef struct XLA_ShapedBuffer {
   XLA_Shape on_device_shape;
   int device_ordinal;
 
-  SE_DeviceMemoryBase* bases;
+  SE_DeviceAddressBase* bases;
   size_t count;
 } XLA_ShapedBuffer;
 

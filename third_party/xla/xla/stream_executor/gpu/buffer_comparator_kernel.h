@@ -20,7 +20,7 @@ limitations under the License.
 
 #include <cstdint>
 
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/kernel.h"
 
 namespace stream_executor::gpu {
@@ -30,10 +30,10 @@ namespace stream_executor::gpu {
 template <typename ElementT>
 struct BufferComparatorKernel {
   using KernelType =
-      stream_executor::TypedKernel<stream_executor::DeviceMemory<ElementT>,
-                                   stream_executor::DeviceMemory<ElementT>,
+      stream_executor::TypedKernel<stream_executor::DeviceAddress<ElementT>,
+                                   stream_executor::DeviceAddress<ElementT>,
                                    float, uint64_t,
-                                   stream_executor::DeviceMemory<uint64_t>>;
+                                   stream_executor::DeviceAddress<uint64_t>>;
 };
 
 }  // namespace stream_executor::gpu

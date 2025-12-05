@@ -18,7 +18,7 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/event_based_timer.h"
 #include "xla/stream_executor/stream.h"
@@ -45,24 +45,24 @@ class SyclStream : public StreamCommon {
 
   // Enqueues an asynchronous operation to set the specified device memory
   // region to the given value.
-  absl::Status Memset32(DeviceMemoryBase* location, uint32_t pattern,
+  absl::Status Memset32(DeviceAddressBase* location, uint32_t pattern,
                         uint64_t size) override;
 
   // Enqueues an asynchronous operation to zero out the specified device memory
   // region.
-  absl::Status MemZero(DeviceMemoryBase* location, uint64_t size) override;
+  absl::Status MemZero(DeviceAddressBase* location, uint64_t size) override;
 
   // Enqueues an asynchronous copy from host memory to device memory.
-  absl::Status Memcpy(DeviceMemoryBase* gpu_dst, const void* host_src,
+  absl::Status Memcpy(DeviceAddressBase* gpu_dst, const void* host_src,
                       uint64_t size) override;
 
   // Enqueues an asynchronous copy from device memory to host memory.
-  absl::Status Memcpy(void* host_dst, const DeviceMemoryBase& gpu_src,
+  absl::Status Memcpy(void* host_dst, const DeviceAddressBase& gpu_src,
                       uint64_t size) override;
 
   // Enqueues an asynchronous copy from one device memory region to another.
-  absl::Status Memcpy(DeviceMemoryBase* gpu_dst,
-                      const DeviceMemoryBase& gpu_src, uint64_t size) override;
+  absl::Status Memcpy(DeviceAddressBase* gpu_dst,
+                      const DeviceAddressBase& gpu_src, uint64_t size) override;
 
   // Enqueues a host callback to be executed after all previously enqueued
   // operations on the current stream have completed.

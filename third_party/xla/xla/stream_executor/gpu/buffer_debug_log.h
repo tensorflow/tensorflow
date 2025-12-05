@@ -23,7 +23,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "xla/backends/gpu/runtime/buffer_debug_log.pb.h"
 #include "xla/backends/gpu/runtime/buffer_debug_log_structs.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/tsl/platform/statusor.h"
 
@@ -35,15 +35,15 @@ namespace stream_executor::gpu {
 class BufferDebugLogBase {
  protected:
   absl::StatusOr<xla::gpu::BufferDebugLogHeader> ReadHeaderFromDevice(
-      Stream& stream, DeviceMemory<uint8_t> memory) const;
+      Stream& stream, DeviceAddress<uint8_t> memory) const;
 
   absl::StatusOr<size_t> ReadFromDevice(Stream& stream,
-                                        DeviceMemory<uint8_t> memory,
+                                        DeviceAddress<uint8_t> memory,
                                         size_t entry_size,
                                         void* entries_data) const;
 
-  static absl::StatusOr<DeviceMemory<uint8_t>> CreateOnDevice(
-      Stream& stream, DeviceMemory<uint8_t> memory, size_t entry_size);
+  static absl::StatusOr<DeviceAddress<uint8_t>> CreateOnDevice(
+      Stream& stream, DeviceAddress<uint8_t> memory, size_t entry_size);
 };
 
 // A wrapper over a device memory buffer used to store debug info about contents
@@ -70,7 +70,7 @@ class BufferDebugLog : public BufferDebugLogBase {
   // Fails with `absl::StatusCode::kInvalidArgument` if `log_buffer` is too
   // small to hold any entries.
   static absl::StatusOr<BufferDebugLog<Entry>> CreateOnDevice(
-      Stream& stream, DeviceMemory<uint8_t> log_buffer) {
+      Stream& stream, DeviceAddress<uint8_t> log_buffer) {
     TF_ASSIGN_OR_RETURN(auto memory, BufferDebugLogBase::CreateOnDevice(
                                          stream, log_buffer, sizeof(Entry)));
     return BufferDebugLog<Entry>(memory);
@@ -80,8 +80,8 @@ class BufferDebugLog : public BufferDebugLogBase {
   // buffer.
   //
   // `log_buffer` must contain an initialized `BufferDebugLogHeader`.
-  static BufferDebugLog FromDeviceMemoryUnchecked(
-      DeviceMemory<uint8_t> memory) {
+  static BufferDebugLog FromDeviceAddressUnchecked(
+      DeviceAddress<uint8_t> memory) {
     return BufferDebugLog<Entry>(memory);
   }
 
@@ -112,27 +112,27 @@ class BufferDebugLog : public BufferDebugLogBase {
 
   // Returns a view of the `BufferDebugLogHeader`.
   //
-  // The returned `DeviceMemory` gets invalidated when the `BufferDebugLog` is
+  // The returned `DeviceAddress` gets invalidated when the `BufferDebugLog` is
   // destroyed.
-  DeviceMemory<xla::gpu::BufferDebugLogHeader> GetDeviceHeader() const {
-    return DeviceMemory<xla::gpu::BufferDebugLogHeader>(
+  DeviceAddress<xla::gpu::BufferDebugLogHeader> GetDeviceHeader() const {
+    return DeviceAddress<xla::gpu::BufferDebugLogHeader>(
         memory_.GetByteSlice(0, sizeof(xla::gpu::BufferDebugLogHeader)));
   }
 
   // Returns a view of the `Entry` array.
   //
-  // The returned `DeviceMemory` gets invalidated when the `BufferDebugLog` is
+  // The returned `DeviceAddress` gets invalidated when the `BufferDebugLog` is
   // destroyed.
-  DeviceMemory<Entry> GetDeviceEntries() const {
-    return DeviceMemory<Entry>(memory_.GetByteSlice(
+  DeviceAddress<Entry> GetDeviceEntries() const {
+    return DeviceAddress<Entry>(memory_.GetByteSlice(
         sizeof(xla::gpu::BufferDebugLogHeader),
         memory_.size() - sizeof(xla::gpu::BufferDebugLogHeader)));
   }
 
  private:
-  explicit BufferDebugLog(DeviceMemory<uint8_t> memory) : memory_(memory) {}
+  explicit BufferDebugLog(DeviceAddress<uint8_t> memory) : memory_(memory) {}
 
-  DeviceMemory<uint8_t> memory_;
+  DeviceAddress<uint8_t> memory_;
 };
 
 }  // namespace stream_executor::gpu

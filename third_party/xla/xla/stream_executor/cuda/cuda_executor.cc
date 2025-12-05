@@ -68,8 +68,8 @@ limitations under the License.
 #include "xla/stream_executor/cuda/cuda_version_parser.h"
 #include "xla/stream_executor/cuda/cudnn_api_wrappers.h"
 #include "xla/stream_executor/cuda/tma_util.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/event_based_timer.h"
@@ -828,22 +828,22 @@ bool CudaExecutor::MemoryTracker::Remove(CUdeviceptr ptr) {
 // N.B. we must lose constness in order to pass a suitable type to the existing
 // libcuda APIs, so the caller should take care to only pass the result of const
 // GPU memory conversions to libcuda functions which will honor constness.
-static CUdeviceptr AsCudaDevicePtr(const DeviceMemoryBase& gpu_mem) {
+static CUdeviceptr AsCudaDevicePtr(const DeviceAddressBase& gpu_mem) {
   return reinterpret_cast<CUdeviceptr>(gpu_mem.opaque());
 }
 
 // See description on const version above.
-static CUdeviceptr AsCudaDevicePtr(DeviceMemoryBase* gpu_mem) {
+static CUdeviceptr AsCudaDevicePtr(DeviceAddressBase* gpu_mem) {
   return AsCudaDevicePtr(*gpu_mem);
 }
 
-absl::StatusOr<DeviceMemoryBase> CudaExecutor::GetMemoryRange(
-    const DeviceMemoryBase& location) const {
+absl::StatusOr<DeviceAddressBase> CudaExecutor::GetMemoryRange(
+    const DeviceAddressBase& location) const {
   CUdeviceptr device_pointer;
   size_t size;
   TF_RETURN_IF_ERROR(cuda::ToStatus(
       cuMemGetAddressRange(&device_pointer, &size, AsCudaDevicePtr(location))));
-  return DeviceMemoryBase(reinterpret_cast<void*>(device_pointer), size);
+  return DeviceAddressBase(reinterpret_cast<void*>(device_pointer), size);
 }
 
 std::unique_ptr<ActivateContext> CudaExecutor::Activate() {
@@ -1239,7 +1239,7 @@ absl::StatusOr<std::unique_ptr<Kernel>> CudaExecutor::LoadKernel(
         std::get<KernelArgumentsPackingSpec>(spec.kernel_args_packing());
     cuda_kernel->set_args_packing(
         [packing_spec](const Kernel& kernel, const KernelArgs& args) {
-          const auto& mem_args = Cast<KernelArgsDeviceMemoryArray>(&args);
+          const auto& mem_args = Cast<KernelArgsDeviceAddressArray>(&args);
           return packing_spec.BuildArguments(mem_args->device_memory_args(),
                                              args.number_of_shared_bytes());
         });
@@ -1348,7 +1348,7 @@ int fpus_per_core(int cc_major, int cc_minor) {
 
 }  // namespace
 
-absl::StatusOr<std::shared_ptr<DeviceMemoryBase>>
+absl::StatusOr<std::shared_ptr<DeviceAddressBase>>
 CudaExecutor::CreateOrShareConstant(Stream* stream,
                                     absl::Span<const uint8_t> content) {
   absl::MutexLock lock{shared_constants_mu_};
@@ -1360,10 +1360,10 @@ CudaExecutor::CreateOrShareConstant(Stream* stream,
       reinterpret_cast<const char*>(content.data()), content.size()));
   // Must insert nullptr first to get an iterator to the insertion point.
   auto insert_result = shared_constants_.insert(
-      {fingerprint, std::weak_ptr<DeviceMemoryBase>()});
+      {fingerprint, std::weak_ptr<DeviceAddressBase>()});
   auto it = insert_result.first;
   bool was_already_in_cache = !insert_result.second;
-  std::shared_ptr<DeviceMemoryBase> shared_constant;
+  std::shared_ptr<DeviceAddressBase> shared_constant;
 
   if (was_already_in_cache) {
     shared_constant = it->second.lock();
@@ -1372,7 +1372,7 @@ CudaExecutor::CreateOrShareConstant(Stream* stream,
   if (shared_constant == nullptr) {
     // Either the constant wasn't found in the cache, or it was but its
     // weak_ptr had expired.
-    auto new_constant = std::make_unique<DeviceMemoryBase>(
+    auto new_constant = std::make_unique<DeviceAddressBase>(
         Allocate(content.size(), /*memory_space=*/0));
     if (new_constant->opaque() == nullptr) {
       return absl::InternalError(absl::StrFormat(
@@ -1391,18 +1391,18 @@ CudaExecutor::CreateOrShareConstant(Stream* stream,
 
     // Capturing 'this' in the custom deleter means this executor must
     // outlive all shared uses of this constant.
-    shared_constant = std::shared_ptr<DeviceMemoryBase>(
-        new_constant.release(), [this](DeviceMemoryBase* p) {
+    shared_constant = std::shared_ptr<DeviceAddressBase>(
+        new_constant.release(), [this](DeviceAddressBase* p) {
           Deallocate(p);
           delete p;
         });
-    it->second = std::weak_ptr<DeviceMemoryBase>(shared_constant);
+    it->second = std::weak_ptr<DeviceAddressBase>(shared_constant);
   }
 
   return shared_constant;
 }
 
-DeviceMemoryBase CudaExecutor::Allocate(uint64_t size, int64_t memory_space) {
+DeviceAddressBase CudaExecutor::Allocate(uint64_t size, int64_t memory_space) {
   XLA_VLOG_DEVICE(1, device_ordinal())
       << "CudaExecutor::Allocate size: " << size
       << " memory_space: " << memory_space;
@@ -1415,7 +1415,7 @@ DeviceMemoryBase CudaExecutor::Allocate(uint64_t size, int64_t memory_space) {
     }
     XLA_VLOG_DEVICE(1, device_ordinal())
         << "CudaExecutor::Allocate returns " << result.value();
-    return DeviceMemoryBase(result.value(), size);
+    return DeviceAddressBase(result.value(), size);
   }
 
   if (memory_space == static_cast<int64_t>(MemoryType::kHost)) {
@@ -1423,11 +1423,11 @@ DeviceMemoryBase CudaExecutor::Allocate(uint64_t size, int64_t memory_space) {
     if (!result.ok()) {
       XLA_LOG_DEVICE(ERROR, device_ordinal())
           << "Failed to allocate host memory: " << result.status();
-      return DeviceMemoryBase(nullptr, 0);
+      return DeviceAddressBase(nullptr, 0);
     }
     XLA_VLOG_DEVICE(1, device_ordinal())
         << "CudaExecutor::Allocate returns " << result.value();
-    return DeviceMemoryBase(result.value(), size);
+    return DeviceAddressBase(result.value(), size);
   }
 
   if (memory_space == static_cast<int64_t>(MemoryType::kP2P) &&
@@ -1435,13 +1435,13 @@ DeviceMemoryBase CudaExecutor::Allocate(uint64_t size, int64_t memory_space) {
     auto device_buf_base = VmmAllocateMemory(size);
 
     if (device_buf_base.ok()) {
-      return DeviceMemoryBase(device_buf_base.value(), size);
+      return DeviceAddressBase(device_buf_base.value(), size);
     }
 
     XLA_LOG_DEVICE(ERROR, device_ordinal())
         << "Failed to allocate memory with VMM: " << device_buf_base.status();
 
-    return DeviceMemoryBase(nullptr, 0);
+    return DeviceAddressBase(nullptr, 0);
   }
 
   CHECK(memory_space == static_cast<int64_t>(MemoryType::kDevice) ||
@@ -1450,7 +1450,7 @@ DeviceMemoryBase CudaExecutor::Allocate(uint64_t size, int64_t memory_space) {
   auto device_buf_base = DeviceAllocate(cuda_context_, size);
   XLA_VLOG_DEVICE(1, device_ordinal())
       << "CudaExecutor::Allocate returns " << device_buf_base;
-  return DeviceMemoryBase(device_buf_base, size);
+  return DeviceAddressBase(device_buf_base, size);
 }
 
 absl::StatusOr<std::unique_ptr<MemoryAllocation>>
@@ -1458,7 +1458,7 @@ CudaExecutor::HostMemoryAllocate(uint64_t size) {
   return AllocateHostMemory(cuda_context_, numa_node_, size);
 }
 
-void CudaExecutor::Deallocate(DeviceMemoryBase* mem) {
+void CudaExecutor::Deallocate(DeviceAddressBase* mem) {
   XLA_VLOG_DEVICE(1, device_ordinal())
       << "CudaExecutor::Deallocate mem: " << mem->opaque();
 
@@ -1500,7 +1500,7 @@ bool CudaExecutor::HostMemoryUnregister(void* location) {
   return HostUnregister(cuda_context_, location);
 }
 
-absl::Status CudaExecutor::SynchronousMemZero(DeviceMemoryBase* location,
+absl::Status CudaExecutor::SynchronousMemZero(DeviceAddressBase* location,
                                               uint64_t size) {
   std::unique_ptr<ActivateContext> activation = Activate();
   CUdeviceptr cuda_location = AsCudaDevicePtr(location);
@@ -1514,7 +1514,7 @@ absl::Status CudaExecutor::SynchronousMemZero(DeviceMemoryBase* location,
                         "Failed to memset memory");
 }
 
-absl::Status CudaExecutor::SynchronousMemcpy(DeviceMemoryBase* gpu_dst,
+absl::Status CudaExecutor::SynchronousMemcpy(DeviceAddressBase* gpu_dst,
                                              const void* host_src,
                                              uint64_t size) {
   std::unique_ptr<ActivateContext> activation = Activate();
@@ -1531,7 +1531,7 @@ absl::Status CudaExecutor::SynchronousMemcpy(DeviceMemoryBase* gpu_dst,
 }
 
 absl::Status CudaExecutor::SynchronousMemcpy(void* host_dst,
-                                             const DeviceMemoryBase& gpu_src,
+                                             const DeviceAddressBase& gpu_src,
                                              uint64_t size) {
   std::unique_ptr<ActivateContext> activation = Activate();
   TF_RETURN_IF_ERROR(cuda::ToStatus(
@@ -1643,7 +1643,7 @@ bool CudaExecutor::DeviceMemoryUsage(int64_t* free_out,
   return true;
 }
 
-absl::StatusOr<DeviceMemoryBase> CudaExecutor::GetSymbol(
+absl::StatusOr<DeviceAddressBase> CudaExecutor::GetSymbol(
     const std::string& symbol_name, ModuleHandle module_handle) {
   void* mem = nullptr;
   size_t bytes = 0;
@@ -1659,7 +1659,7 @@ absl::StatusOr<DeviceMemoryBase> CudaExecutor::GetSymbol(
     TF_RETURN_IF_ERROR(
         GetModuleSymbol(cuda_context_, gpu_module_handle, symbol_name.c_str(),
                         reinterpret_cast<CUdeviceptr*>(&mem), &bytes));
-    return DeviceMemoryBase(mem, bytes);
+    return DeviceAddressBase(mem, bytes);
   }
 
   return absl::NotFoundError(
@@ -2087,7 +2087,7 @@ absl::Status CudaExecutor::CudaMulticastMemory::SubscribeDevice(
 }
 
 absl::StatusOr<void*> CudaExecutor::CudaMulticastMemory::MapMemory(
-    const DeviceMemoryBase& location, const GpuExecutor* gpu_executor) {
+    const DeviceAddressBase& location, const GpuExecutor* gpu_executor) {
   const CudaExecutor* cuda_executor =
       dynamic_cast<const CudaExecutor*>(gpu_executor);
   if (cuda_executor == nullptr) {

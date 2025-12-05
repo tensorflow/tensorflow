@@ -23,7 +23,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "rocm/include/hipfft/hipfft.h"
 #include "xla/stream_executor/activate_context.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/fft.h"
 #include "xla/stream_executor/gpu/gpu_helpers.h"
 #include "xla/stream_executor/platform/initialize.h"
@@ -409,9 +409,9 @@ void ROCMFft::UpdatePlanWithScratchAllocator(
 }
 
 template <typename FuncT, typename InputT, typename OutputT>
-bool ROCMFft::DoFftInternal(Stream *stream, fft::Plan *plan, FuncT hipfftExec,
-                            const DeviceMemory<InputT> &input,
-                            DeviceMemory<OutputT> *output) {
+bool ROCMFft::DoFftInternal(Stream* stream, fft::Plan* plan, FuncT hipfftExec,
+                            const DeviceAddress<InputT>& input,
+                            DeviceAddress<OutputT>* output) {
   ROCMFftPlan *rocm_fft_plan = dynamic_cast<ROCMFftPlan *>(plan);
   if (rocm_fft_plan == nullptr) {
     LOG(ERROR) << "the passed-in plan is not a ROCMFftPlan object.";
@@ -431,14 +431,14 @@ bool ROCMFft::DoFftInternal(Stream *stream, fft::Plan *plan, FuncT hipfftExec,
   // see ROCm TF issue # 1150
   //
   // Hence for all those transforms, copy the input buffer
-  DeviceMemory<InputT> input_maybe_copy = input;
+  DeviceAddress<InputT> input_maybe_copy = input;
   if (input.opaque() != output->opaque() && (input.size() > 0)) {
     auto *allocator = rocm_fft_plan->GetScratchAllocator();
     if (allocator) {
       auto allocated = allocator->AllocateBytes(input.size());
       if (allocated.ok()) {
         if (stream->Memcpy(&allocated.value(), input, input.size()).ok()) {
-          input_maybe_copy = DeviceMemory<InputT>(allocated.value());
+          input_maybe_copy = DeviceAddress<InputT>(allocated.value());
         } else {
           LOG(ERROR) << "failed to copy input buffer for rocFFT.";
         }
@@ -459,10 +459,10 @@ bool ROCMFft::DoFftInternal(Stream *stream, fft::Plan *plan, FuncT hipfftExec,
 }
 
 template <typename FuncT, typename InputT, typename OutputT>
-bool ROCMFft::DoFftWithDirectionInternal(Stream *stream, fft::Plan *plan,
+bool ROCMFft::DoFftWithDirectionInternal(Stream* stream, fft::Plan* plan,
                                          FuncT hipfftExec,
-                                         const DeviceMemory<InputT> &input,
-                                         DeviceMemory<OutputT> *output) {
+                                         const DeviceAddress<InputT>& input,
+                                         DeviceAddress<OutputT>* output) {
   ROCMFftPlan *rocm_fft_plan = dynamic_cast<ROCMFftPlan *>(plan);
   if (rocm_fft_plan == nullptr) {
     LOG(ERROR) << "the passed-in plan is not a ROCMFftPlan object.";
@@ -488,21 +488,21 @@ bool ROCMFft::DoFftWithDirectionInternal(Stream *stream, fft::Plan *plan,
 
 #define STREAM_EXECUTOR_ROCM_DEFINE_FFT(__type, __fft_type1, __fft_type2,    \
                                         __fft_type3)                         \
-  bool ROCMFft::DoFft(Stream *stream, fft::Plan *plan,                       \
-                      const DeviceMemory<std::complex<__type>> &input,       \
-                      DeviceMemory<std::complex<__type>> *output) {          \
+  bool ROCMFft::DoFft(Stream* stream, fft::Plan* plan,                       \
+                      const DeviceAddress<std::complex<__type>>& input,      \
+                      DeviceAddress<std::complex<__type>>* output) {         \
     return DoFftWithDirectionInternal(                                       \
         stream, plan, wrap::hipfftExec##__fft_type1, input, output);         \
   }                                                                          \
-  bool ROCMFft::DoFft(Stream *stream, fft::Plan *plan,                       \
-                      const DeviceMemory<__type> &input,                     \
-                      DeviceMemory<std::complex<__type>> *output) {          \
+  bool ROCMFft::DoFft(Stream* stream, fft::Plan* plan,                       \
+                      const DeviceAddress<__type>& input,                    \
+                      DeviceAddress<std::complex<__type>>* output) {         \
     return DoFftInternal(stream, plan, wrap::hipfftExec##__fft_type2, input, \
                          output);                                            \
   }                                                                          \
-  bool ROCMFft::DoFft(Stream *stream, fft::Plan *plan,                       \
-                      const DeviceMemory<std::complex<__type>> &input,       \
-                      DeviceMemory<__type> *output) {                        \
+  bool ROCMFft::DoFft(Stream* stream, fft::Plan* plan,                       \
+                      const DeviceAddress<std::complex<__type>>& input,      \
+                      DeviceAddress<__type>* output) {                       \
     return DoFftInternal(stream, plan, wrap::hipfftExec##__fft_type3, input, \
                          output);                                            \
   }

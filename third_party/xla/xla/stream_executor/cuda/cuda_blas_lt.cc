@@ -42,7 +42,7 @@ limitations under the License.
 #include "xla/stream_executor/activate_context.h"
 #include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/cuda/cuda_blas_utils.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/event_based_timer.h"
 #include "xla/stream_executor/gpu/gpu_blas_lt.h"
 #include "xla/stream_executor/gpu/gpu_helpers.h"
@@ -356,8 +356,8 @@ absl::Status BlasLt::MatmulPlan::DoMatmul(
     return absl::InternalError(
         "Algorithm must be set before calling DoMatMul!");
   }
-  DeviceMemoryBase a = args.a, b = args.b;
-  DeviceMemoryBase a_scale = args.a_scale, b_scale = args.b_scale;
+  DeviceAddressBase a = args.a, b = args.b;
+  DeviceAddressBase a_scale = args.a_scale, b_scale = args.b_scale;
   if (must_swap_operands_) {
     std::swap(a, b);
     std::swap(a_scale, b_scale);
@@ -377,7 +377,7 @@ absl::Status BlasLt::MatmulPlan::DoMatmul(
   if (workspace_size > 0) {
     if (args.scratch_allocator != nullptr) {
       TF_ASSIGN_OR_RETURN(
-          DeviceMemory<uint8_t> alloc,
+          DeviceAddress<uint8_t> alloc,
           args.scratch_allocator->AllocateBytes(workspace_size));
       workspace_addr = gpu::GpuMemoryMutable(&alloc);
     } else {

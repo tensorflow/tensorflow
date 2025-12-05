@@ -47,7 +47,7 @@ limitations under the License.
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/cuda/cuda_helpers.h"
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/engine_options.h"
 #include "xla/stream_executor/event_based_timer.h"
 #include "xla/stream_executor/gpu/gpu_helpers.h"
@@ -420,77 +420,78 @@ absl::Status CUDABlas::DoBlasInternalImpl(FuncT cublas_func, Stream *stream,
     return func(std::forward<decltype(args)>(args)...);            \
   }
 
-bool CUDABlas::DoBlasScal(Stream *stream, uint64_t elem_count, float alpha,
-                          DeviceMemory<float> *x, int incx) {
+bool CUDABlas::DoBlasScal(Stream* stream, uint64_t elem_count, float alpha,
+                          DeviceAddress<float>* x, int incx) {
   return DoBlasInternal(cublasSscal, stream, true /* = pointer_mode_host */,
                         elem_count, &alpha, GpuMemoryMutable(x), incx);
 }
 
-bool CUDABlas::DoBlasScal(Stream *stream, uint64_t elem_count, double alpha,
-                          DeviceMemory<double> *x, int incx) {
+bool CUDABlas::DoBlasScal(Stream* stream, uint64_t elem_count, double alpha,
+                          DeviceAddress<double>* x, int incx) {
   return DoBlasInternal(cublasDscal, stream, true /* = pointer_mode_host */,
                         elem_count, &alpha, GpuMemoryMutable(x), incx);
 }
 
-bool CUDABlas::DoBlasScal(Stream *stream, uint64_t elem_count, float alpha,
-                          DeviceMemory<std::complex<float>> *x, int incx) {
+bool CUDABlas::DoBlasScal(Stream* stream, uint64_t elem_count, float alpha,
+                          DeviceAddress<std::complex<float>>* x, int incx) {
   return DoBlasInternal(cublasCsscal, stream, true /* = pointer_mode_host */,
                         elem_count, &alpha, CUDAComplex(GpuMemoryMutable(x)),
                         incx);
 }
 
-bool CUDABlas::DoBlasScal(Stream *stream, uint64_t elem_count, double alpha,
-                          DeviceMemory<std::complex<double>> *x, int incx) {
+bool CUDABlas::DoBlasScal(Stream* stream, uint64_t elem_count, double alpha,
+                          DeviceAddress<std::complex<double>>* x, int incx) {
   return DoBlasInternal(cublasZdscal, stream, true /* = pointer_mode_host */,
                         elem_count, &alpha, CUDAComplex(GpuMemoryMutable(x)),
                         incx);
 }
 
-bool CUDABlas::DoBlasScal(Stream *stream, uint64_t elem_count,
+bool CUDABlas::DoBlasScal(Stream* stream, uint64_t elem_count,
                           std::complex<float> alpha,
-                          DeviceMemory<std::complex<float>> *x, int incx) {
+                          DeviceAddress<std::complex<float>>* x, int incx) {
   auto cb_alpha = CUDAComplexValue(alpha);
   return DoBlasInternal(cublasCscal, stream, true /* = pointer_mode_host */,
                         elem_count, CUDAComplex(&cb_alpha),
                         CUDAComplex(GpuMemoryMutable(x)), incx);
 }
 
-bool CUDABlas::DoBlasScal(Stream *stream, uint64_t elem_count,
+bool CUDABlas::DoBlasScal(Stream* stream, uint64_t elem_count,
                           std::complex<double> alpha,
-                          DeviceMemory<std::complex<double>> *x, int incx) {
+                          DeviceAddress<std::complex<double>>* x, int incx) {
   auto cb_alpha = CUDAComplexValue(alpha);
   return DoBlasInternal(cublasZscal, stream, true /* = pointer_mode_host */,
                         elem_count, CUDAComplex(&cb_alpha),
                         CUDAComplex(GpuMemoryMutable(x)), incx);
 }
 
-bool CUDABlas::DoBlasGemv(Stream *stream, blas::Transpose trans, uint64_t m,
-                          uint64_t n, float alpha, const DeviceMemory<float> &a,
-                          int lda, const DeviceMemory<float> &x, int incx,
-                          float beta, DeviceMemory<float> *y, int incy) {
+bool CUDABlas::DoBlasGemv(Stream* stream, blas::Transpose trans, uint64_t m,
+                          uint64_t n, float alpha,
+                          const DeviceAddress<float>& a, int lda,
+                          const DeviceAddress<float>& x, int incx, float beta,
+                          DeviceAddress<float>* y, int incy) {
   return DoBlasInternal(cublasSgemv, stream, true /* = pointer_mode_host */,
                         AsCublasOperation(trans), m, n, &alpha, GpuMemory(a),
                         lda, GpuMemory(x), incx, &beta, GpuMemoryMutable(y),
                         incy);
 }
 
-bool CUDABlas::DoBlasGemv(Stream *stream, blas::Transpose trans, uint64_t m,
+bool CUDABlas::DoBlasGemv(Stream* stream, blas::Transpose trans, uint64_t m,
                           uint64_t n, double alpha,
-                          const DeviceMemory<double> &a, int lda,
-                          const DeviceMemory<double> &x, int incx, double beta,
-                          DeviceMemory<double> *y, int incy) {
+                          const DeviceAddress<double>& a, int lda,
+                          const DeviceAddress<double>& x, int incx, double beta,
+                          DeviceAddress<double>* y, int incy) {
   return DoBlasInternal(cublasDgemv, stream, true /* = pointer_mode_host */,
                         AsCublasOperation(trans), m, n, &alpha, GpuMemory(a),
                         lda, GpuMemory(x), incx, &beta, GpuMemoryMutable(y),
                         incy);
 }
 
-bool CUDABlas::DoBlasGemv(Stream *stream, blas::Transpose trans, uint64_t m,
+bool CUDABlas::DoBlasGemv(Stream* stream, blas::Transpose trans, uint64_t m,
                           uint64_t n, std::complex<float> alpha,
-                          const DeviceMemory<std::complex<float>> &a, int lda,
-                          const DeviceMemory<std::complex<float>> &x, int incx,
+                          const DeviceAddress<std::complex<float>>& a, int lda,
+                          const DeviceAddress<std::complex<float>>& x, int incx,
                           std::complex<float> beta,
-                          DeviceMemory<std::complex<float>> *y, int incy) {
+                          DeviceAddress<std::complex<float>>* y, int incy) {
   auto cb_alpha = CUDAComplexValue(alpha);
   auto cb_beta = CUDAComplexValue(beta);
   return DoBlasInternal(cublasCgemv, stream, true /* = pointer_mode_host */,
@@ -500,12 +501,12 @@ bool CUDABlas::DoBlasGemv(Stream *stream, blas::Transpose trans, uint64_t m,
                         CUDAComplex(GpuMemoryMutable(y)), incy);
 }
 
-bool CUDABlas::DoBlasGemv(Stream *stream, blas::Transpose trans, uint64_t m,
+bool CUDABlas::DoBlasGemv(Stream* stream, blas::Transpose trans, uint64_t m,
                           uint64_t n, std::complex<double> alpha,
-                          const DeviceMemory<std::complex<double>> &a, int lda,
-                          const DeviceMemory<std::complex<double>> &x, int incx,
-                          std::complex<double> beta,
-                          DeviceMemory<std::complex<double>> *y, int incy) {
+                          const DeviceAddress<std::complex<double>>& a, int lda,
+                          const DeviceAddress<std::complex<double>>& x,
+                          int incx, std::complex<double> beta,
+                          DeviceAddress<std::complex<double>>* y, int incy) {
   auto cb_alpha = CUDAComplexValue(alpha);
   auto cb_beta = CUDAComplexValue(beta);
   return DoBlasInternal(cublasZgemv, stream, true /* = pointer_mode_host */,
@@ -518,9 +519,9 @@ bool CUDABlas::DoBlasGemv(Stream *stream, blas::Transpose trans, uint64_t m,
 absl::Status CUDABlas::DoBlasGemm(Stream* stream, blas::Transpose transa,
                                   blas::Transpose transb, uint64_t m,
                                   uint64_t n, uint64_t k, blas::DataType dtype,
-                                  const void* alpha, const DeviceMemoryBase& a,
-                                  int lda, const DeviceMemoryBase& b, int ldb,
-                                  const void* beta, DeviceMemoryBase* c,
+                                  const void* alpha, const DeviceAddressBase& a,
+                                  int lda, const DeviceAddressBase& b, int ldb,
+                                  const void* beta, DeviceAddressBase* c,
                                   int ldc, const EngineOptions& engine_options,
                                   blas::CallContext context) {
   cublasMath_t math_type = CUBLAS_DEFAULT_MATH;
@@ -712,9 +713,9 @@ static absl::Status PopulateProfileFromTimer(
 
 absl::Status CUDABlas::DoBlasGemmWithAlgorithm(
     Stream* stream, blas::Transpose transa, blas::Transpose transb, uint64_t m,
-    uint64_t n, uint64_t k, const void* alpha, const DeviceMemoryBase& a,
-    blas::DataType type_a, int lda, const DeviceMemoryBase& b,
-    blas::DataType type_b, int ldb, const void* beta, DeviceMemoryBase* c,
+    uint64_t n, uint64_t k, const void* alpha, const DeviceAddressBase& a,
+    blas::DataType type_a, int lda, const DeviceAddressBase& b,
+    blas::DataType type_b, int ldb, const void* beta, DeviceAddressBase* c,
     blas::DataType type_c, int ldc, blas::ComputationType computation_type,
     blas::AlgorithmType algorithm, const EngineOptions& engine_options,
     blas::ProfileResult* output_profile_result, blas::CallContext context) {
@@ -747,12 +748,13 @@ absl::Status CUDABlas::DoBlasGemmWithAlgorithm(
 
 absl::Status CUDABlas::DoBlasGemmStridedBatchedWithAlgorithm(
     Stream* stream, blas::Transpose transa, blas::Transpose transb, uint64_t m,
-    uint64_t n, uint64_t k, const void* alpha, const DeviceMemoryBase& a,
-    blas::DataType type_a, int lda, int64_t stride_a, const DeviceMemoryBase& b,
-    blas::DataType type_b, int ldb, int64_t stride_b, const void* beta,
-    DeviceMemoryBase* c, blas::DataType type_c, int ldc, int64_t stride_c,
-    int batch_count, blas::ComputationType computation_type,
-    blas::AlgorithmType algorithm, const EngineOptions& engine_options,
+    uint64_t n, uint64_t k, const void* alpha, const DeviceAddressBase& a,
+    blas::DataType type_a, int lda, int64_t stride_a,
+    const DeviceAddressBase& b, blas::DataType type_b, int ldb,
+    int64_t stride_b, const void* beta, DeviceAddressBase* c,
+    blas::DataType type_c, int ldc, int64_t stride_c, int batch_count,
+    blas::ComputationType computation_type, blas::AlgorithmType algorithm,
+    const EngineOptions& engine_options,
     blas::ProfileResult* output_profile_result, blas::CallContext context) {
   TF_ASSIGN_OR_RETURN(
       cublasMath_t math_type,
@@ -916,9 +918,9 @@ template <typename T, typename Scalar, typename FuncT>
 absl::Status CUDABlas::DoBlasGemmBatchedInternal(
     FuncT cublas_func, Stream* stream, blas::Transpose transa,
     blas::Transpose transb, uint64_t m, uint64_t n, uint64_t k, Scalar alpha,
-    const DeviceMemorySlice<T>& a_ptrs_to_wrappers, int lda,
-    const DeviceMemorySlice<T>& b_ptrs_to_wrappers, int ldb, Scalar beta,
-    const DeviceMemorySlice<T>& c_ptrs_to_wrappers, int ldc, int batch_count,
+    const DeviceAddressSlice<T>& a_ptrs_to_wrappers, int lda,
+    const DeviceAddressSlice<T>& b_ptrs_to_wrappers, int ldb, Scalar beta,
+    const DeviceAddressSlice<T>& c_ptrs_to_wrappers, int ldc, int batch_count,
     const EngineOptions& engine_options, ScratchAllocator* scratch_allocator) {
   std::vector<T *> a_raw_ptrs, b_raw_ptrs, c_raw_ptrs;
   for (int i = 0; i < batch_count; ++i) {
@@ -934,15 +936,15 @@ absl::Status CUDABlas::DoBlasGemmBatchedInternal(
   if (scratch_allocator == nullptr) {
     return absl::InternalError("scratch_allocator is null");
   }
-  TF_ASSIGN_OR_RETURN(DeviceMemory<uint8_t> a_bytes,
+  TF_ASSIGN_OR_RETURN(DeviceAddress<uint8_t> a_bytes,
                       scratch_allocator->AllocateBytes(size));
-  TF_ASSIGN_OR_RETURN(DeviceMemory<uint8_t> b_bytes,
+  TF_ASSIGN_OR_RETURN(DeviceAddress<uint8_t> b_bytes,
                       scratch_allocator->AllocateBytes(size));
-  TF_ASSIGN_OR_RETURN(DeviceMemory<uint8_t> c_bytes,
+  TF_ASSIGN_OR_RETURN(DeviceAddress<uint8_t> c_bytes,
                       scratch_allocator->AllocateBytes(size));
-  DeviceMemory<CUDA_T *> a(a_bytes);
-  DeviceMemory<CUDA_T *> b(b_bytes);
-  DeviceMemory<CUDA_T *> c(c_bytes);
+  DeviceAddress<CUDA_T*> a(a_bytes);
+  DeviceAddress<CUDA_T*> b(b_bytes);
+  DeviceAddress<CUDA_T*> c(c_bytes);
 
   TF_RETURN_IF_ERROR(stream->Memcpy(&a, a_raw_ptrs.data(), size));
   TF_RETURN_IF_ERROR(stream->Memcpy(&b, b_raw_ptrs.data(), size));
@@ -1012,9 +1014,9 @@ absl::Status CUDABlas::DoBlasGemmBatchedInternal(
   } else {
     // Fall back to a loop for fp16
     for (int b = 0; b < batch_count; ++b) {
-      const DeviceMemory<T> &a_matrix = *a_ptrs_to_wrappers[b];
-      const DeviceMemory<T> &b_matrix = *b_ptrs_to_wrappers[b];
-      DeviceMemory<T> *c_matrix = c_ptrs_to_wrappers[b];
+      const DeviceAddress<T>& a_matrix = *a_ptrs_to_wrappers[b];
+      const DeviceAddress<T>& b_matrix = *b_ptrs_to_wrappers[b];
+      DeviceAddress<T>* c_matrix = c_ptrs_to_wrappers[b];
       TF_RETURN_IF_ERROR(DoBlasGemm(
           stream, transa, transb, m, n, k, blas::ToDataType<T>::value, &alpha,
           a_matrix, lda, b_matrix, ldb, &beta, c_matrix, ldc, engine_options,
@@ -1026,9 +1028,10 @@ absl::Status CUDABlas::DoBlasGemmBatchedInternal(
 
 bool CUDABlas::DoBlasGemmBatched(
     Stream* stream, blas::Transpose transa, blas::Transpose transb, uint64_t m,
-    uint64_t n, uint64_t k, float alpha, DeviceMemorySlice<Eigen::half> a_array,
-    int lda, DeviceMemorySlice<Eigen::half> b_array, int ldb, float beta,
-    DeviceMemorySlice<Eigen::half> c_array, int ldc, int batch_count,
+    uint64_t n, uint64_t k, float alpha,
+    DeviceAddressSlice<Eigen::half> a_array, int lda,
+    DeviceAddressSlice<Eigen::half> b_array, int ldb, float beta,
+    DeviceAddressSlice<Eigen::half> c_array, int ldc, int batch_count,
     const EngineOptions& engine_options, ScratchAllocator* scratch_allocator,
     blas::CallContext context) {
   // Note: The func passed here (cublasSgemmBatched) is not actually called,
@@ -1046,9 +1049,9 @@ bool CUDABlas::DoBlasGemmBatched(
 bool CUDABlas::DoBlasGemmBatched(
     Stream* stream, blas::Transpose transa, blas::Transpose transb, uint64_t m,
     uint64_t n, uint64_t k, float alpha,
-    DeviceMemorySlice<Eigen::bfloat16> a_array, int lda,
-    DeviceMemorySlice<Eigen::bfloat16> b_array, int ldb, float beta,
-    DeviceMemorySlice<Eigen::bfloat16> c_array, int ldc, int batch_count,
+    DeviceAddressSlice<Eigen::bfloat16> a_array, int lda,
+    DeviceAddressSlice<Eigen::bfloat16> b_array, int ldb, float beta,
+    DeviceAddressSlice<Eigen::bfloat16> c_array, int ldc, int batch_count,
     const EngineOptions& engine_options, ScratchAllocator* scratch_allocator,
     blas::CallContext context) {
   // Note: The func passed here (cublasSgemmBatched) is not actually called,
@@ -1065,9 +1068,9 @@ bool CUDABlas::DoBlasGemmBatched(
 
 bool CUDABlas::DoBlasGemmBatched(
     Stream* stream, blas::Transpose transa, blas::Transpose transb, uint64_t m,
-    uint64_t n, uint64_t k, float alpha, DeviceMemorySlice<float> a_array,
-    int lda, DeviceMemorySlice<float> b_array, int ldb, float beta,
-    DeviceMemorySlice<float> c_array, int ldc, int batch_count,
+    uint64_t n, uint64_t k, float alpha, DeviceAddressSlice<float> a_array,
+    int lda, DeviceAddressSlice<float> b_array, int ldb, float beta,
+    DeviceAddressSlice<float> c_array, int ldc, int batch_count,
     const EngineOptions& engine_options, ScratchAllocator* scratch_allocator,
     blas::CallContext context) {
   absl::Status status = DoBlasGemmBatchedInternal(
@@ -1082,9 +1085,9 @@ bool CUDABlas::DoBlasGemmBatched(
 
 bool CUDABlas::DoBlasGemmBatched(
     Stream* stream, blas::Transpose transa, blas::Transpose transb, uint64_t m,
-    uint64_t n, uint64_t k, double alpha, DeviceMemorySlice<double> a_array,
-    int lda, DeviceMemorySlice<double> b_array, int ldb, double beta,
-    DeviceMemorySlice<double> c_array, int ldc, int batch_count,
+    uint64_t n, uint64_t k, double alpha, DeviceAddressSlice<double> a_array,
+    int lda, DeviceAddressSlice<double> b_array, int ldb, double beta,
+    DeviceAddressSlice<double> c_array, int ldc, int batch_count,
     const EngineOptions& engine_options, ScratchAllocator* scratch_allocator,
     blas::CallContext context) {
   absl::Status status = DoBlasGemmBatchedInternal(
@@ -1101,9 +1104,9 @@ bool CUDABlas::DoBlasGemmBatched(
 bool CUDABlas::DoBlasGemmBatched(
     Stream* stream, blas::Transpose transa, blas::Transpose transb, uint64_t m,
     uint64_t n, uint64_t k, std::complex<float> alpha,
-    DeviceMemorySlice<std::complex<float>> a_array, int lda,
-    DeviceMemorySlice<std::complex<float>> b_array, int ldb,
-    std::complex<float> beta, DeviceMemorySlice<std::complex<float>> c_array,
+    DeviceAddressSlice<std::complex<float>> a_array, int lda,
+    DeviceAddressSlice<std::complex<float>> b_array, int ldb,
+    std::complex<float> beta, DeviceAddressSlice<std::complex<float>> c_array,
     int ldc, int batch_count, const EngineOptions& engine_options,
     ScratchAllocator* scratch_allocator, blas::CallContext context) {
   absl::Status status = DoBlasGemmBatchedInternal(
@@ -1120,9 +1123,9 @@ bool CUDABlas::DoBlasGemmBatched(
 bool CUDABlas::DoBlasGemmBatched(
     Stream* stream, blas::Transpose transa, blas::Transpose transb, uint64_t m,
     uint64_t n, uint64_t k, std::complex<double> alpha,
-    DeviceMemorySlice<std::complex<double>> a_array, int lda,
-    DeviceMemorySlice<std::complex<double>> b_array, int ldb,
-    std::complex<double> beta, DeviceMemorySlice<std::complex<double>> c_array,
+    DeviceAddressSlice<std::complex<double>> a_array, int lda,
+    DeviceAddressSlice<std::complex<double>> b_array, int ldb,
+    std::complex<double> beta, DeviceAddressSlice<std::complex<double>> c_array,
     int ldc, int batch_count, const EngineOptions& engine_options,
     ScratchAllocator* scratch_allocator, blas::CallContext context) {
   absl::Status status = DoBlasGemmBatchedInternal(
@@ -1138,9 +1141,9 @@ bool CUDABlas::DoBlasGemmBatched(
 absl::Status CUDABlas::DoBlasGemmStridedBatched(
     Stream* stream, blas::Transpose transa, blas::Transpose transb, uint64_t m,
     uint64_t n, uint64_t k, blas::DataType dtype, const void* alpha,
-    const DeviceMemoryBase& a, int lda, int64_t stride_a,
-    const DeviceMemoryBase& b, int ldb, int64_t stride_b, const void* beta,
-    DeviceMemoryBase* c, int ldc, int64_t stride_c, int batch_count,
+    const DeviceAddressBase& a, int lda, int64_t stride_a,
+    const DeviceAddressBase& b, int ldb, int64_t stride_b, const void* beta,
+    DeviceAddressBase* c, int ldc, int64_t stride_c, int batch_count,
     const EngineOptions& engine_options, blas::CallContext context) {
   cublasMath_t math_type = CUBLAS_DEFAULT_MATH;
 #if CUDA_VERSION < 11000
@@ -1273,34 +1276,34 @@ absl::Status CUDABlas::DoBlasGemmStridedBatched(
   }
 }
 
-bool CUDABlas::DoBlasTrsm(Stream *stream, blas::Side side,
+bool CUDABlas::DoBlasTrsm(Stream* stream, blas::Side side,
                           blas::UpperLower uplo, blas::Transpose transa,
                           blas::Diagonal diag, uint64_t m, uint64_t n,
-                          float alpha, const DeviceMemory<float> &a, int lda,
-                          DeviceMemory<float> *b, int ldb) {
+                          float alpha, const DeviceAddress<float>& a, int lda,
+                          DeviceAddress<float>* b, int ldb) {
   return DoBlasInternal(cublasStrsm, stream, true /* = pointer_mode_host */,
                         CUDABlasSide(side), CUDABlasUpperLower(uplo),
                         AsCublasOperation(transa), CUDABlasDiagonal(diag), m, n,
                         &alpha, GpuMemory(a), lda, GpuMemoryMutable(b), ldb);
 }
 
-bool CUDABlas::DoBlasTrsm(Stream *stream, blas::Side side,
+bool CUDABlas::DoBlasTrsm(Stream* stream, blas::Side side,
                           blas::UpperLower uplo, blas::Transpose transa,
                           blas::Diagonal diag, uint64_t m, uint64_t n,
-                          double alpha, const DeviceMemory<double> &a, int lda,
-                          DeviceMemory<double> *b, int ldb) {
+                          double alpha, const DeviceAddress<double>& a, int lda,
+                          DeviceAddress<double>* b, int ldb) {
   return DoBlasInternal(cublasDtrsm, stream, true /* = pointer_mode_host */,
                         CUDABlasSide(side), CUDABlasUpperLower(uplo),
                         AsCublasOperation(transa), CUDABlasDiagonal(diag), m, n,
                         &alpha, GpuMemory(a), lda, GpuMemoryMutable(b), ldb);
 }
 
-bool CUDABlas::DoBlasTrsm(Stream *stream, blas::Side side,
+bool CUDABlas::DoBlasTrsm(Stream* stream, blas::Side side,
                           blas::UpperLower uplo, blas::Transpose transa,
                           blas::Diagonal diag, uint64_t m, uint64_t n,
                           std::complex<float> alpha,
-                          const DeviceMemory<std::complex<float>> &a, int lda,
-                          DeviceMemory<std::complex<float>> *b, int ldb) {
+                          const DeviceAddress<std::complex<float>>& a, int lda,
+                          DeviceAddress<std::complex<float>>* b, int ldb) {
   auto cb_alpha = CUDAComplexValue(alpha);
   return DoBlasInternal(cublasCtrsm, stream, true /* = pointer_mode_host */,
                         CUDABlasSide(side), CUDABlasUpperLower(uplo),
@@ -1309,12 +1312,12 @@ bool CUDABlas::DoBlasTrsm(Stream *stream, blas::Side side,
                         CUDAComplex(GpuMemoryMutable(b)), ldb);
 }
 
-bool CUDABlas::DoBlasTrsm(Stream *stream, blas::Side side,
+bool CUDABlas::DoBlasTrsm(Stream* stream, blas::Side side,
                           blas::UpperLower uplo, blas::Transpose transa,
                           blas::Diagonal diag, uint64_t m, uint64_t n,
                           std::complex<double> alpha,
-                          const DeviceMemory<std::complex<double>> &a, int lda,
-                          DeviceMemory<std::complex<double>> *b, int ldb) {
+                          const DeviceAddress<std::complex<double>>& a, int lda,
+                          DeviceAddress<std::complex<double>>* b, int ldb) {
   auto cb_alpha = CUDAComplexValue(alpha);
   return DoBlasInternal(cublasZtrsm, stream, true /* = pointer_mode_host */,
                         CUDABlasSide(side), CUDABlasUpperLower(uplo),
@@ -1323,11 +1326,11 @@ bool CUDABlas::DoBlasTrsm(Stream *stream, blas::Side side,
                         CUDAComplex(GpuMemoryMutable(b)), ldb);
 }
 
-bool CUDABlas::DoBlasTrsmBatched(Stream *stream, blas::Side side,
+bool CUDABlas::DoBlasTrsmBatched(Stream* stream, blas::Side side,
                                  blas::UpperLower uplo, blas::Transpose transa,
                                  blas::Diagonal diag, uint64_t m, uint64_t n,
-                                 float alpha, const DeviceMemory<float *> &as,
-                                 int lda, DeviceMemory<float *> *bs, int ldb,
+                                 float alpha, const DeviceAddress<float*>& as,
+                                 int lda, DeviceAddress<float*>* bs, int ldb,
                                  int batch_count) {
   return DoBlasInternal(cublasStrsmBatched, stream,
                         true /* = pointer_mode_host */, CUDABlasSide(side),
@@ -1336,11 +1339,11 @@ bool CUDABlas::DoBlasTrsmBatched(Stream *stream, blas::Side side,
                         lda, GpuMemoryMutable(bs), ldb, batch_count);
 }
 
-bool CUDABlas::DoBlasTrsmBatched(Stream *stream, blas::Side side,
+bool CUDABlas::DoBlasTrsmBatched(Stream* stream, blas::Side side,
                                  blas::UpperLower uplo, blas::Transpose transa,
                                  blas::Diagonal diag, uint64_t m, uint64_t n,
-                                 double alpha, const DeviceMemory<double *> &as,
-                                 int lda, DeviceMemory<double *> *bs, int ldb,
+                                 double alpha, const DeviceAddress<double*>& as,
+                                 int lda, DeviceAddress<double*>* bs, int ldb,
                                  int batch_count) {
   return DoBlasInternal(cublasDtrsmBatched, stream,
                         true /* = pointer_mode_host */, CUDABlasSide(side),
@@ -1349,13 +1352,13 @@ bool CUDABlas::DoBlasTrsmBatched(Stream *stream, blas::Side side,
                         lda, GpuMemoryMutable(bs), ldb, batch_count);
 }
 
-bool CUDABlas::DoBlasTrsmBatched(Stream *stream, blas::Side side,
+bool CUDABlas::DoBlasTrsmBatched(Stream* stream, blas::Side side,
                                  blas::UpperLower uplo, blas::Transpose transa,
                                  blas::Diagonal diag, uint64_t m, uint64_t n,
                                  std::complex<float> alpha,
-                                 const DeviceMemory<std::complex<float> *> &as,
+                                 const DeviceAddress<std::complex<float>*>& as,
                                  int lda,
-                                 DeviceMemory<std::complex<float> *> *bs,
+                                 DeviceAddress<std::complex<float>*>* bs,
                                  int ldb, int batch_count) {
   auto cb_alpha = CUDAComplexValue(alpha);
   return DoBlasInternal(
@@ -1366,13 +1369,13 @@ bool CUDABlas::DoBlasTrsmBatched(Stream *stream, blas::Side side,
       reinterpret_cast<float2 **>(GpuMemoryMutable(bs)), ldb, batch_count);
 }
 
-bool CUDABlas::DoBlasTrsmBatched(Stream *stream, blas::Side side,
+bool CUDABlas::DoBlasTrsmBatched(Stream* stream, blas::Side side,
                                  blas::UpperLower uplo, blas::Transpose transa,
                                  blas::Diagonal diag, uint64_t m, uint64_t n,
                                  std::complex<double> alpha,
-                                 const DeviceMemory<std::complex<double> *> &as,
+                                 const DeviceAddress<std::complex<double>*>& as,
                                  int lda,
-                                 DeviceMemory<std::complex<double> *> *bs,
+                                 DeviceAddress<std::complex<double>*>* bs,
                                  int ldb, int batch_count) {
   auto cb_alpha = CUDAComplexValue(alpha);
   return DoBlasInternal(

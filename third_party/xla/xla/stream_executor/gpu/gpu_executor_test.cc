@@ -49,7 +49,7 @@ TEST_F(GetPointerMemorySpaceTest, Host) {
 
 TEST_F(GetPointerMemorySpaceTest, HostAllocatedWithMemoryKind) {
   StreamExecutor* executor = GetPlatform()->ExecutorForDevice(0).value();
-  DeviceMemoryBase host_ptr = executor->Allocate(
+  DeviceAddressBase host_ptr = executor->Allocate(
       64, static_cast<int64_t>(stream_executor::MemoryType::kHost));
   EXPECT_FALSE(host_ptr.is_null());
   TF_ASSERT_OK_AND_ASSIGN(MemoryType memory_space,

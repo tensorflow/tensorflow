@@ -109,7 +109,7 @@ absl::Status BuffersDebugFloatCheckThunk::ExecuteOnStream(
       params.buffer_allocations->GetDeviceAddress(log_slice_));
   se::gpu::BufferDebugLog<BufferDebugFloatCheckEntry> buffer_debug_log =
       se::gpu::BufferDebugLog<
-          BufferDebugFloatCheckEntry>::FromDeviceMemoryUnchecked(log_ptr);
+          BufferDebugFloatCheckEntry>::FromDeviceAddressUnchecked(log_ptr);
   const uint32_t execution_id = execution_count_.fetch_add(1);
 
   for (const auto& [buffer_idx, buffer] : checked_thunk_buffers_) {

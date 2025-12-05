@@ -18,7 +18,7 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 
 namespace stream_executor::gpu {
 
@@ -33,7 +33,7 @@ class MulticastMemory {
     return absl::UnimplementedError("SubscribeDevice is not implemented.");
   }
 
-  virtual absl::StatusOr<void*> MapMemory(const DeviceMemoryBase& location,
+  virtual absl::StatusOr<void*> MapMemory(const DeviceAddressBase& location,
                                           const GpuExecutor* gpu_executor) {
     return absl::UnimplementedError("MapMemory is not implemented.");
   }

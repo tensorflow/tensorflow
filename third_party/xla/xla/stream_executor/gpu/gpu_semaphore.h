@@ -20,7 +20,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/status/statusor.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/memory_allocation.h"
 #include "xla/stream_executor/stream_executor.h"
 
@@ -44,7 +44,7 @@ class GpuSemaphore {
   GpuSemaphoreState& operator*() {
     return *static_cast<GpuSemaphoreState*>(ptr_->opaque());
   }
-  DeviceMemory<GpuSemaphoreState> device();
+  DeviceAddress<GpuSemaphoreState> device();
 
  private:
   explicit GpuSemaphore(std::unique_ptr<MemoryAllocation> alloc)

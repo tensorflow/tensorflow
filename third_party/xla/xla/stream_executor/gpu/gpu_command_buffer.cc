@@ -37,7 +37,7 @@ limitations under the License.
 #include "xla/service/dump.h"
 #include "xla/stream_executor/bit_pattern.h"
 #include "xla/stream_executor/command_buffer.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/kernel_spec.h"
@@ -177,7 +177,7 @@ absl::StatusOr<const CommandBuffer::Command*> GpuCommandBuffer::CreateLaunch(
   }
 
   // For device memory array we rely on a custom kernel arguments packing.
-  if (auto* device_mem = DynCast<KernelArgsDeviceMemoryArray>(&args)) {
+  if (auto* device_mem = DynCast<KernelArgsDeviceAddressArray>(&args)) {
     auto& pack = kernel.args_packing();
     if (!pack) {
       return absl::InternalError(
@@ -207,7 +207,7 @@ absl::Status GpuCommandBuffer::UpdateLaunch(const Command* command,
   }
 
   // For device memory array we rely on a custom kernel arguments packing.
-  if (auto* device_mem = DynCast<KernelArgsDeviceMemoryArray>(&args)) {
+  if (auto* device_mem = DynCast<KernelArgsDeviceAddressArray>(&args)) {
     auto& pack = kernel.args_packing();
     if (!pack) {
       return absl::InternalError(
@@ -269,7 +269,7 @@ absl::Status GpuCommandBuffer::UpdateChildCommand(
 }
 
 absl::StatusOr<const CommandBuffer::Command*> GpuCommandBuffer::CreateMemcpyD2D(
-    DeviceMemoryBase* dst, const DeviceMemoryBase& src, uint64_t size,
+    DeviceAddressBase* dst, const DeviceAddressBase& src, uint64_t size,
     absl::Span<const Command* const> dependencies) {
   TF_RETURN_IF_ERROR(CheckInState(State::kCreate));
 
@@ -281,8 +281,8 @@ absl::StatusOr<const CommandBuffer::Command*> GpuCommandBuffer::CreateMemcpyD2D(
 }
 
 absl::Status GpuCommandBuffer::UpdateMemcpyD2D(const Command* command,
-                                               DeviceMemoryBase* dst,
-                                               const DeviceMemoryBase& src,
+                                               DeviceAddressBase* dst,
+                                               const DeviceAddressBase& src,
                                                uint64_t size) {
   TF_RETURN_IF_ERROR(CheckInState(State::kUpdate));
   auto* gpu_command = tsl::down_cast<const GpuCommand*>(command);
@@ -290,7 +290,7 @@ absl::Status GpuCommandBuffer::UpdateMemcpyD2D(const Command* command,
 }
 
 absl::StatusOr<const CommandBuffer::Command*> GpuCommandBuffer::CreateMemset(
-    DeviceMemoryBase* dst, BitPattern bit_pattern, size_t num_elements,
+    DeviceAddressBase* dst, BitPattern bit_pattern, size_t num_elements,
     absl::Span<const Command* const> dependencies) {
   TF_RETURN_IF_ERROR(CheckInState(State::kCreate));
 
@@ -302,7 +302,7 @@ absl::StatusOr<const CommandBuffer::Command*> GpuCommandBuffer::CreateMemset(
 }
 
 absl::Status GpuCommandBuffer::UpdateMemset(const Command* command,
-                                            DeviceMemoryBase* dst,
+                                            DeviceAddressBase* dst,
                                             const BitPattern& bit_pattern,
                                             size_t num_elements) {
   TF_RETURN_IF_ERROR(CheckInState(State::kUpdate));
@@ -317,7 +317,7 @@ absl::Status GpuCommandBuffer::UpdateMemset(const Command* command,
 absl::StatusOr<const CommandBuffer::Command*>
 GpuCommandBuffer::CreateDnnGraphCommand(
     dnn::DnnGraph& dnn_graph, Stream& stream,
-    absl::Span<DeviceMemoryBase> operands,
+    absl::Span<DeviceAddressBase> operands,
     absl::Span<const Command* const> dependencies) {
   TF_RETURN_IF_ERROR(CheckInState(State::kCreate));
 
@@ -338,7 +338,7 @@ GpuCommandBuffer::CreateDnnGraphCommand(
 
 absl::Status GpuCommandBuffer::UpdateDnnGraphCommand(
     const Command* command, dnn::DnnGraph& dnn_graph, Stream& stream,
-    absl::Span<DeviceMemoryBase> operands) {
+    absl::Span<DeviceAddressBase> operands) {
   TF_RETURN_IF_ERROR(CheckInState(State::kUpdate));
   return UpdateDnnGraphNode(dnn_graph, stream, operands,
                             tsl::down_cast<const GpuCommand*>(command)->handle);
@@ -359,7 +359,7 @@ GpuCommandBuffer::CreateConditionalHandles(size_t num_handles) {
 }
 
 absl::StatusOr<const CommandBuffer::Command*> GpuCommandBuffer::CreateCase(
-    DeviceMemory<uint8_t> index, bool index_is_bool,
+    DeviceAddress<uint8_t> index, bool index_is_bool,
     std::vector<CreateCommands> create_branches,
     absl::Span<const Command* const> dependencies) {
   TF_RETURN_IF_ERROR(CheckInState(State::kCreate));
@@ -429,7 +429,7 @@ absl::StatusOr<const CommandBuffer::Command*> GpuCommandBuffer::CreateCase(
 }
 
 absl::Status GpuCommandBuffer::UpdateCase(
-    const Command* command, DeviceMemory<uint8_t> index, bool index_is_bool,
+    const Command* command, DeviceAddress<uint8_t> index, bool index_is_bool,
     std::vector<UpdateCommands> update_branches) {
   TF_RETURN_IF_ERROR(CheckInState(State::kUpdate));
 
@@ -475,41 +475,41 @@ absl::Status GpuCommandBuffer::UpdateCase(
 }
 
 absl::StatusOr<const CommandBuffer::Command*> GpuCommandBuffer::CreateCase(
-    DeviceMemory<int32_t> index, std::vector<CreateCommands> create_branches,
+    DeviceAddress<int32_t> index, std::vector<CreateCommands> create_branches,
     absl::Span<const Command* const> dependencies) {
   return CreateCase(
-      DeviceMemory<uint8_t>::MakeFromByteSize(index.opaque(), index.size()),
+      DeviceAddress<uint8_t>::MakeFromByteSize(index.opaque(), index.size()),
       /*index_is_bool=*/false, std::move(create_branches), dependencies);
 }
 
 absl::StatusOr<const CommandBuffer::Command*> GpuCommandBuffer::CreateCase(
-    DeviceMemory<bool> index, std::vector<CreateCommands> create_branches,
+    DeviceAddress<bool> index, std::vector<CreateCommands> create_branches,
     absl::Span<const Command* const> dependencies) {
   return CreateCase(
-      DeviceMemory<uint8_t>::MakeFromByteSize(index.opaque(), index.size()),
+      DeviceAddress<uint8_t>::MakeFromByteSize(index.opaque(), index.size()),
       /*index_is_bool=*/true, std::move(create_branches), dependencies);
 }
 
 absl::Status GpuCommandBuffer::UpdateCase(
-    const Command* command, DeviceMemory<int32_t> index,
+    const Command* command, DeviceAddress<int32_t> index,
     std::vector<UpdateCommands> update_branches) {
   return UpdateCase(
       command,
-      DeviceMemory<uint8_t>::MakeFromByteSize(index.opaque(), index.size()),
+      DeviceAddress<uint8_t>::MakeFromByteSize(index.opaque(), index.size()),
       /*index_is_bool=*/false, std::move(update_branches));
 }
 
 absl::Status GpuCommandBuffer::UpdateCase(
-    const Command* command, DeviceMemory<bool> index,
+    const Command* command, DeviceAddress<bool> index,
     std::vector<UpdateCommands> update_branches) {
   return UpdateCase(
       command,
-      DeviceMemory<uint8_t>::MakeFromByteSize(index.opaque(), index.size()),
+      DeviceAddress<uint8_t>::MakeFromByteSize(index.opaque(), index.size()),
       /*index_is_bool=*/true, std::move(update_branches));
 }
 
 absl::StatusOr<const CommandBuffer::Command*> GpuCommandBuffer::CreateWhile(
-    DeviceMemory<bool> pred, CreateCommands create_cond,
+    DeviceAddress<bool> pred, CreateCommands create_cond,
     CreateCommands create_body, absl::Span<const Command* const> dependencies) {
   TF_RETURN_IF_ERROR(CheckInState(State::kCreate));
 
@@ -541,7 +541,7 @@ absl::StatusOr<const CommandBuffer::Command*> GpuCommandBuffer::CreateWhile(
 }
 
 absl::Status GpuCommandBuffer::UpdateWhile(const Command* command,
-                                           DeviceMemory<bool> pred,
+                                           DeviceAddress<bool> pred,
                                            UpdateCommands update_cond,
                                            UpdateCommands update_body) {
   TF_RETURN_IF_ERROR(CheckInState(State::kUpdate));

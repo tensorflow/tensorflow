@@ -28,7 +28,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/backends/gpu/runtime/buffer_debug_log_structs.h"
 #include "xla/backends/gpu/runtime/thunk_id.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/gpu/buffer_debug_float_check_kernel.h"
 #include "xla/stream_executor/gpu/buffer_debug_log.h"
 #include "xla/stream_executor/gpu/gpu_kernel_registry.h"
@@ -73,8 +73,8 @@ class FloatCheckKernelTest : public ::testing::Test {
   }
 
   template <typename T>
-  absl::StatusOr<se::DeviceMemory<T>> CheckNotNull(
-      se::DeviceMemory<T> device_memory, absl::string_view name) {
+  absl::StatusOr<se::DeviceAddress<T>> CheckNotNull(
+      se::DeviceAddress<T> device_memory, absl::string_view name) {
     if (device_memory.is_null()) {
       return absl::InternalError(
           absl::StrFormat("Device memory for %s is null", name));
@@ -94,7 +94,7 @@ class FloatCheckKernelTest : public ::testing::Test {
 
     // Setup device buffers
     TF_ASSIGN_OR_RETURN(
-        se::DeviceMemory<InputType> device_input,
+        se::DeviceAddress<InputType> device_input,
         CheckNotNull(executor_->AllocateArray<InputType>(input.size()),
                      "input"));
     auto cleanup_input =
@@ -121,7 +121,7 @@ class FloatCheckKernelTest : public ::testing::Test {
 };
 
 TEST_F(FloatCheckKernelTest, ChecksFloatsForF32) {
-  se::DeviceMemory<uint8_t> mem = executor_->AllocateArray<uint8_t>(1024);
+  se::DeviceAddress<uint8_t> mem = executor_->AllocateArray<uint8_t>(1024);
   std::vector<float> input(1024, 1.0f);
   input[100] = std::numeric_limits<float>::quiet_NaN();
   input[200] = std::numeric_limits<float>::quiet_NaN();
@@ -153,7 +153,7 @@ TEST_F(FloatCheckKernelTest, ChecksFloatsForBf16) {
   input[50] = xla::bfloat16(std::numeric_limits<float>::infinity());
   input[60] = xla::bfloat16(std::numeric_limits<float>::infinity());
 
-  se::DeviceMemory<uint8_t> mem = executor_->AllocateArray<uint8_t>(1024);
+  se::DeviceAddress<uint8_t> mem = executor_->AllocateArray<uint8_t>(1024);
   TF_ASSERT_OK_AND_ASSIGN(
       auto device_log,
       se::gpu::BufferDebugLog<BufferDebugFloatCheckEntry>::CreateOnDevice(
@@ -170,7 +170,7 @@ TEST_F(FloatCheckKernelTest, ChecksFloatsForBf16) {
 }
 
 TEST_F(FloatCheckKernelTest, ChecksFloatsInParallel) {
-  se::DeviceMemory<uint8_t> mem = executor_->AllocateArray<uint8_t>(1024);
+  se::DeviceAddress<uint8_t> mem = executor_->AllocateArray<uint8_t>(1024);
   std::vector<float> input(1024, 1.0f);
   input[100] = std::numeric_limits<float>::quiet_NaN();
   input[200] = std::numeric_limits<float>::quiet_NaN();
