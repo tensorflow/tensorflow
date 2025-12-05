@@ -101,7 +101,7 @@ absl::Status NewThreadPoolFromThreadPoolOptions(
   if (num_threads == 0) {
     num_threads = NumInterOpThreadsFromSessionOptions(options);
   }
-  const string& name = thread_pool_options.global_name();
+  const std::string& name = thread_pool_options.global_name();
   if (name.empty()) {
     // Session-local threadpool.
     VLOG(1) << "Direct session inter op parallelism threads for pool "
@@ -115,9 +115,9 @@ absl::Status NewThreadPoolFromThreadPoolOptions(
   }
 
   // Global, named threadpool.
-  typedef std::pair<int32, thread::ThreadPool*> MapValue;
-  static std::map<string, MapValue>* global_pool_map =
-      new std::map<string, MapValue>;
+  typedef std::pair<int32_t, thread::ThreadPool*> MapValue;
+  static std::map<std::string, MapValue>* global_pool_map =
+      new std::map<std::string, MapValue>;
   static mutex* mu = new mutex();
   mutex_lock l(*mu);
   MapValue* mvalue = &(*global_pool_map)[name];
@@ -154,9 +154,9 @@ thread::ThreadPool* GlobalThreadPool(const SessionOptions& options,
 // TODO(vrv): Figure out how to unify the many different functions
 // that generate RendezvousKey, since many of them have to be
 // consistent with each other.
-string GetRendezvousKey(const string& tensor_name,
-                        const DeviceAttributes& device_info,
-                        const FrameAndIter& frame_iter) {
+std::string GetRendezvousKey(const std::string& tensor_name,
+                             const DeviceAttributes& device_info,
+                             const FrameAndIter& frame_iter) {
   return strings::StrCat(device_info.name(), ";",
                          strings::FpToString(device_info.incarnation()), ";",
                          device_info.name(), ";", tensor_name, ";",
@@ -184,7 +184,8 @@ class DirectSessionFactory : public SessionFactory {
             "Session version shouldn't be negative: ",
             experimental_config.session_metadata().DebugString());
       }
-      const string key = GetMetadataKey(experimental_config.session_metadata());
+      const std::string key =
+          GetMetadataKey(experimental_config.session_metadata());
       mutex_lock l(sessions_lock_);
       if (!session_metadata_keys_.insert(key).second) {
         return errors::InvalidArgument(
@@ -213,7 +214,7 @@ class DirectSessionFactory : public SessionFactory {
   }
 
   absl::Status Reset(const SessionOptions& options,
-                     const std::vector<string>& containers) override {
+                     const std::vector<std::string>& containers) override {
     std::vector<DirectSession*> sessions_to_reset;
     {
       mutex_lock l(sessions_lock_);
@@ -245,13 +246,13 @@ class DirectSessionFactory : public SessionFactory {
   }
 
  private:
-  static string GetMetadataKey(const SessionMetadata& metadata) {
+  static std::string GetMetadataKey(const SessionMetadata& metadata) {
     return absl::StrCat(metadata.name(), "/", metadata.version());
   }
 
   mutex sessions_lock_;
   std::vector<DirectSession*> sessions_ TF_GUARDED_BY(sessions_lock_);
-  absl::flat_hash_set<string> session_metadata_keys_
+  absl::flat_hash_set<std::string> session_metadata_keys_
       TF_GUARDED_BY(sessions_lock_);
 };
 
@@ -371,8 +372,8 @@ DirectSession::DirectSession(const SessionOptions& options,
   session_handle_ =
       absl::StrCat("direct", strings::FpToString(random::New64()));
   if (options.config.log_device_placement()) {
-    const string mapping_str = device_mgr_->DeviceMappingString();
-    string msg;
+    const std::string mapping_str = device_mgr_->DeviceMappingString();
+    std::string msg;
     if (mapping_str.empty()) {
       msg = "Device mapping: no known devices.";
     } else {
@@ -472,8 +473,8 @@ absl::Status DirectSession::ExtendLocked(GraphDef&& graph) {
 }
 
 absl::Status DirectSession::Run(const NamedTensorList& inputs,
-                                const std::vector<string>& output_names,
-                                const std::vector<string>& target_nodes,
+                                const std::vector<std::string>& output_names,
+                                const std::vector<std::string>& target_nodes,
                                 std::vector<Tensor>* outputs) {
   RunMetadata run_metadata;
   return Run(RunOptions(), inputs, output_names, target_nodes, outputs,
@@ -486,12 +487,12 @@ absl::Status DirectSession::CreateDebuggerState(
     std::unique_ptr<DebuggerStateInterface>* debugger_state) {
   TF_RETURN_IF_ERROR(DebuggerStateRegistry::CreateState(
       callable_options.run_options().debug_options(), debugger_state));
-  std::vector<string> input_names(callable_options.feed().begin(),
-                                  callable_options.feed().end());
-  std::vector<string> output_names(callable_options.fetch().begin(),
-                                   callable_options.fetch().end());
-  std::vector<string> target_names(callable_options.target().begin(),
-                                   callable_options.target().end());
+  std::vector<std::string> input_names(callable_options.feed().begin(),
+                                       callable_options.feed().end());
+  std::vector<std::string> output_names(callable_options.fetch().begin(),
+                                        callable_options.fetch().end());
+  std::vector<std::string> target_names(callable_options.target().begin(),
+                                        callable_options.target().end());
 
   TF_RETURN_IF_ERROR(debugger_state->get()->PublishDebugMetadata(
       global_step, session_run_index, executor_step_index, input_names,
@@ -515,7 +516,7 @@ absl::Status DirectSession::RunInternal(
     CallFrameInterface* call_frame, ExecutorsAndKeys* executors_and_keys,
     RunMetadata* run_metadata,
     const thread::ThreadPoolOptions& threadpool_options) {
-  const uint64 start_time_usecs = options_.env->NowMicros();
+  const uint64_t start_time_usecs = options_.env->NowMicros();
   const int64_t executor_step_count =
       executors_and_keys->step_count.fetch_add(1);
   RunState run_state(step_id, &devices_);
@@ -527,8 +528,8 @@ absl::Status DirectSession::RunInternal(
         if (options_.config.experimental().has_session_metadata()) {
           const auto& model_metadata =
               options_.config.experimental().session_metadata();
-          string model_id = absl::StrCat(model_metadata.name(), ":",
-                                         model_metadata.version());
+          std::string model_id = absl::StrCat(model_metadata.name(), ":",
+                                              model_metadata.version());
           return tsl::profiler::TraceMeEncode("SessionRun",
                                               {{"id", step_id},
                                                {"_r", 1} /*root_event*/,
@@ -605,7 +606,7 @@ absl::Status DirectSession::RunInternal(
   } else {
     if (run_options.inter_op_thread_pool() < -1 ||
         run_options.inter_op_thread_pool() >=
-            static_cast<int32>(thread_pools_.size())) {
+            static_cast<int32_t>(thread_pools_.size())) {
       return errors::InvalidArgument("Invalid inter_op_thread_pool: ",
                                      run_options.inter_op_thread_pool());
     }
@@ -802,11 +803,11 @@ absl::Status DirectSession::RunInternal(
   // Build and return the cost model as instructed.
   if (update_cost_model) {
     // Build the cost model
-    std::unordered_map<string, const Graph*> device_to_graph;
+    std::unordered_map<std::string, const Graph*> device_to_graph;
     for (const PerPartitionExecutorsAndLib& partition :
          executors_and_keys->items) {
       const Graph* graph = partition.graph.get();
-      const string& device = partition.flib->device()->name();
+      const std::string& device = partition.flib->device()->name();
       device_to_graph[device] = graph;
     }
 
@@ -846,8 +847,8 @@ absl::Status DirectSession::RunInternal(
 
 absl::Status DirectSession::Run(const RunOptions& run_options,
                                 const NamedTensorList& inputs,
-                                const std::vector<string>& output_names,
-                                const std::vector<string>& target_nodes,
+                                const std::vector<std::string>& output_names,
+                                const std::vector<std::string>& target_nodes,
                                 std::vector<Tensor>* outputs,
                                 RunMetadata* run_metadata) {
   return Run(run_options, inputs, output_names, target_nodes, outputs,
@@ -856,8 +857,8 @@ absl::Status DirectSession::Run(const RunOptions& run_options,
 
 absl::Status DirectSession::Run(
     const RunOptions& run_options, const NamedTensorList& inputs,
-    const std::vector<string>& output_names,
-    const std::vector<string>& target_nodes, std::vector<Tensor>* outputs,
+    const std::vector<std::string>& output_names,
+    const std::vector<std::string>& target_nodes, std::vector<Tensor>* outputs,
     RunMetadata* run_metadata,
     const thread::ThreadPoolOptions& threadpool_options) {
   TF_RETURN_IF_ERROR(CheckNotClosed());
@@ -865,7 +866,7 @@ absl::Status DirectSession::Run(
   direct_session_runs->GetCell()->IncrementBy(1);
 
   // Extract the inputs names for this run of the session.
-  std::vector<string> input_tensor_names;
+  std::vector<std::string> input_tensor_names;
   input_tensor_names.reserve(inputs.size());
   size_t input_size = 0;
   for (const auto& it : inputs) {
@@ -948,7 +949,7 @@ absl::Status DirectSession::Run(
     size_t output_size = 0;
     outputs->reserve(sorted_outputs.size());
     for (int i = 0; i < output_names.size(); ++i) {
-      const string& output_name = output_names[i];
+      const std::string& output_name = output_names[i];
       if (first_indices.empty() || first_indices[i] == i) {
         outputs->emplace_back(
             std::move(sorted_outputs[executors_and_keys
@@ -964,10 +965,10 @@ absl::Status DirectSession::Run(
   return absl::OkStatus();
 }
 
-absl::Status DirectSession::PRunSetup(const std::vector<string>& input_names,
-                                      const std::vector<string>& output_names,
-                                      const std::vector<string>& target_nodes,
-                                      string* handle) {
+absl::Status DirectSession::PRunSetup(
+    const std::vector<std::string>& input_names,
+    const std::vector<std::string>& output_names,
+    const std::vector<std::string>& target_nodes, std::string* handle) {
   TF_RETURN_IF_ERROR(CheckNotClosed());
   TF_RETURN_IF_ERROR(CheckGraphCreated("PRunSetup()"));
 
@@ -1045,13 +1046,13 @@ absl::Status DirectSession::PRunSetup(const std::vector<string>& input_names,
   return absl::OkStatus();
 }
 
-absl::Status DirectSession::PRun(const string& handle,
+absl::Status DirectSession::PRun(const std::string& handle,
                                  const NamedTensorList& inputs,
-                                 const std::vector<string>& output_names,
+                                 const std::vector<std::string>& output_names,
                                  std::vector<Tensor>* outputs) {
   TF_RETURN_IF_ERROR(CheckNotClosed());
-  std::vector<string> parts = str_util::Split(handle, ';');
-  const string& key = parts[0];
+  std::vector<std::string> parts = str_util::Split(handle, ';');
+  const std::string& key = parts[0];
   // Get the executors for this partial run.
   ExecutorsAndKeys* executors_and_keys;
   PartialRunState* run_state;
@@ -1186,7 +1187,7 @@ absl::Status DirectSession::SendPRunInputs(
     if (it == executors_and_keys->input_name_to_rendezvous_key.end()) {
       return errors::Internal("'", input.first, "' is not a pre-defined feed.");
     }
-    const string& input_key = it->second;
+    const std::string& input_key = it->second;
 
     s = Rendezvous::ParseKey(input_key, &parsed);
     if (!s.ok()) {
@@ -1213,7 +1214,7 @@ absl::Status DirectSession::SendPRunInputs(
 }
 
 absl::Status DirectSession::RecvPRunOutputs(
-    const std::vector<string>& output_names,
+    const std::vector<std::string>& output_names,
     const ExecutorsAndKeys* executors_and_keys, PartialRunState* run_state,
     std::vector<Tensor>* outputs) {
   absl::Status s;
@@ -1225,14 +1226,14 @@ absl::Status DirectSession::RecvPRunOutputs(
   // Get the outputs from the rendezvous
   for (size_t output_offset = 0; output_offset < output_names.size();
        ++output_offset) {
-    const string& output_name = output_names[output_offset];
+    const std::string& output_name = output_names[output_offset];
     auto it =
         executors_and_keys->output_name_to_rendezvous_key.find(output_name);
     if (it == executors_and_keys->output_name_to_rendezvous_key.end()) {
       return errors::Internal("'", output_name,
                               "' is not a pre-defined fetch.");
     }
-    const string& output_key = it->second;
+    const std::string& output_key = it->second;
     Tensor output_tensor;
     bool is_dead;
 
@@ -1258,7 +1259,7 @@ absl::Status DirectSession::RecvPRunOutputs(
 }
 
 absl::Status DirectSession::CheckFetch(
-    const NamedTensorList& feeds, const std::vector<string>& fetches,
+    const NamedTensorList& feeds, const std::vector<std::string>& fetches,
     const ExecutorsAndKeys* executors_and_keys,
     const PartialRunState* run_state) {
   const Graph* graph = executors_and_keys->graph.get();
@@ -1286,7 +1287,7 @@ absl::Status DirectSession::CheckFetch(
 
   // Initialize the stack with the fetch nodes.
   std::vector<const Node*> stack;
-  for (const string& fetch : fetches) {
+  for (const std::string& fetch : fetches) {
     TensorId id(ParseTensorName(fetch));
     auto it = name_to_node->find(id.first);
     if (it == name_to_node->end()) {
@@ -1340,7 +1341,7 @@ absl::Status DirectSession::CreateExecutors(
 
   ek->callable_options = callable_options;
 
-  std::unordered_map<string, std::unique_ptr<Graph>> graphs;
+  std::unordered_map<std::string, std::unique_ptr<Graph>> graphs;
   TF_RETURN_IF_ERROR(CreateGraphs(
       options, &graphs, &func_info->flib_def, run_state_args, &ek->input_types,
       &ek->output_types, &ek->collective_graph_key));
@@ -1348,11 +1349,11 @@ absl::Status DirectSession::CreateExecutors(
   if (run_state_args->is_partial_run) {
     ek->graph = std::move(run_state_args->graph);
     std::unordered_set<absl::string_view, StringPieceHasher> names;
-    for (const string& input : callable_options.feed()) {
+    for (const std::string& input : callable_options.feed()) {
       TensorId id(ParseTensorName(input));
       names.emplace(id.first);
     }
-    for (const string& output : callable_options.fetch()) {
+    for (const std::string& output : callable_options.fetch()) {
       TensorId id(ParseTensorName(output));
       names.emplace(id.first);
     }
@@ -1385,7 +1386,7 @@ absl::Status DirectSession::CreateExecutors(
 
   GraphOptimizer optimizer(optimizer_opts);
   for (auto iter = graphs.begin(); iter != graphs.end(); ++iter) {
-    const string& partition_name = iter->first;
+    const std::string& partition_name = iter->first;
     std::unique_ptr<Graph>& partition_graph = iter->second;
 
     Device* device;
@@ -1461,11 +1462,11 @@ absl::Status DirectSession::CreateExecutors(
     // maintain a mapping from input/output names to
     // argument/return-value ordinal index.
     for (int i = 0; i < callable_options.feed().size(); ++i) {
-      const string& input = callable_options.feed(i);
+      const std::string& input = callable_options.feed(i);
       ek->input_name_to_index[input] = i;
     }
     for (int i = 0; i < callable_options.fetch().size(); ++i) {
-      const string& output = callable_options.fetch(i);
+      const std::string& output = callable_options.fetch(i);
       ek->output_name_to_index[output] = i;
     }
   } else {
@@ -1475,12 +1476,12 @@ absl::Status DirectSession::CreateExecutors(
     // We always use the first device as the device name portion of the
     // key, even if we're feeding another graph.
     for (int i = 0; i < callable_options.feed().size(); ++i) {
-      const string& input = callable_options.feed(i);
+      const std::string& input = callable_options.feed(i);
       ek->input_name_to_rendezvous_key[input] = GetRendezvousKey(
           input, device_set_.client_device()->attributes(), FrameAndIter(0, 0));
     }
     for (int i = 0; i < callable_options.fetch().size(); ++i) {
-      const string& output = callable_options.fetch(i);
+      const std::string& output = callable_options.fetch(i);
       ek->output_name_to_rendezvous_key[output] =
           GetRendezvousKey(output, device_set_.client_device()->attributes(),
                            FrameAndIter(0, 0));
@@ -1493,22 +1494,22 @@ absl::Status DirectSession::CreateExecutors(
 }
 
 absl::Status DirectSession::GetOrCreateExecutors(
-    absl::Span<const string> inputs, absl::Span<const string> outputs,
-    absl::Span<const string> target_nodes,
+    absl::Span<const std::string> inputs, absl::Span<const std::string> outputs,
+    absl::Span<const std::string> target_nodes,
     ExecutorsAndKeys** executors_and_keys, RunStateArgs* run_state_args) {
   int64_t handle_name_counter_value = -1;
   if (LogMemory::IsEnabled() || run_state_args->is_partial_run) {
     handle_name_counter_value = handle_name_counter_.fetch_add(1);
   }
 
-  string debug_tensor_watches_summary;
+  std::string debug_tensor_watches_summary;
   if (!run_state_args->debug_options.debug_tensor_watch_opts().empty()) {
     debug_tensor_watches_summary = SummarizeDebugTensorWatches(
         run_state_args->debug_options.debug_tensor_watch_opts());
   }
 
   // Fast lookup path, no sorting.
-  const string key = strings::StrCat(
+  const std::string key = strings::StrCat(
       absl::StrJoin(inputs, ","), "->", absl::StrJoin(outputs, ","), "/",
       absl::StrJoin(target_nodes, ","), "/", run_state_args->is_partial_run,
       "/", debug_tensor_watches_summary);
@@ -1533,14 +1534,14 @@ absl::Status DirectSession::GetOrCreateExecutors(
   //
   // We could consider some other signature instead of sorting that
   // preserves the same property to avoid the sort in the future.
-  std::vector<string> inputs_sorted(inputs.begin(), inputs.end());
+  std::vector<std::string> inputs_sorted(inputs.begin(), inputs.end());
   std::sort(inputs_sorted.begin(), inputs_sorted.end());
-  std::vector<string> outputs_sorted(outputs.begin(), outputs.end());
+  std::vector<std::string> outputs_sorted(outputs.begin(), outputs.end());
   std::sort(outputs_sorted.begin(), outputs_sorted.end());
-  std::vector<string> tn_sorted(target_nodes.begin(), target_nodes.end());
+  std::vector<std::string> tn_sorted(target_nodes.begin(), target_nodes.end());
   std::sort(tn_sorted.begin(), tn_sorted.end());
 
-  const string sorted_key = strings::StrCat(
+  const std::string sorted_key = strings::StrCat(
       absl::StrJoin(inputs_sorted, ","), "->",
       absl::StrJoin(outputs_sorted, ","), "/", absl::StrJoin(tn_sorted, ","),
       "/", run_state_args->is_partial_run, "/", debug_tensor_watches_summary);
@@ -1565,15 +1566,15 @@ absl::Status DirectSession::GetOrCreateExecutors(
   // being created.
   CallableOptions callable_options;
   callable_options.mutable_feed()->Reserve(inputs_sorted.size());
-  for (const string& input : inputs_sorted) {
+  for (const std::string& input : inputs_sorted) {
     callable_options.add_feed(input);
   }
   callable_options.mutable_fetch()->Reserve(outputs_sorted.size());
-  for (const string& output : outputs_sorted) {
+  for (const std::string& output : outputs_sorted) {
     callable_options.add_fetch(output);
   }
   callable_options.mutable_target()->Reserve(tn_sorted.size());
-  for (const string& target : tn_sorted) {
+  for (const std::string& target : tn_sorted) {
     callable_options.add_target(target);
   }
   *callable_options.mutable_run_options()->mutable_debug_options() =
@@ -1607,7 +1608,7 @@ absl::Status DirectSession::GetOrCreateExecutors(
 
 absl::Status DirectSession::CreateGraphs(
     const BuildGraphOptions& subgraph_options,
-    std::unordered_map<string, std::unique_ptr<Graph>>* outputs,
+    std::unordered_map<std::string, std::unique_ptr<Graph>>* outputs,
     std::unique_ptr<FunctionLibraryDefinition>* flib_def,
     RunStateArgs* run_state_args, DataTypeVector* input_types,
     DataTypeVector* output_types, int64_t* collective_graph_key) {
@@ -1662,8 +1663,8 @@ absl::Status DirectSession::CreateGraphs(
   // placements.  If there are any mismatches for a node,
   // we should fail, as this should never happen.
   for (const auto& placement_pair : current_stateful_placements) {
-    const string& node_name = placement_pair.first;
-    const string& placement = placement_pair.second;
+    const std::string& node_name = placement_pair.first;
+    const std::string& placement = placement_pair.second;
     auto iter = stateful_placements_.find(node_name);
     if (iter == stateful_placements_.end()) {
       stateful_placements_.insert(std::make_pair(node_name, placement));
@@ -1688,10 +1689,10 @@ absl::Status DirectSession::CreateGraphs(
   popts.node_to_loc = [](const Node* node) {
     return node->assigned_device_name();
   };
-  popts.new_name = [this](const string& prefix) {
+  popts.new_name = [this](const std::string& prefix) {
     return absl::StrCat(prefix, "/_", edge_name_counter_.fetch_add(1));
   };
-  popts.get_incarnation = [](const string& name) {
+  popts.get_incarnation = [](const std::string& name) {
     // The direct session does not have changing incarnation numbers.
     // Just return '1'.
     return 1;
@@ -1699,10 +1700,10 @@ absl::Status DirectSession::CreateGraphs(
   popts.flib_def = flib_def->get();
   popts.control_flow_added = false;
 
-  std::unordered_map<string, GraphDef> partitions;
+  std::unordered_map<std::string, GraphDef> partitions;
   TF_RETURN_IF_ERROR(Partition(popts, &client_graph->graph, &partitions));
 
-  std::vector<string> device_names;
+  std::vector<std::string> device_names;
   device_names.reserve(devices_.size());
   for (auto device : devices_) {
     // Extract the LocalName from the device.
@@ -1711,7 +1712,7 @@ absl::Status DirectSession::CreateGraphs(
 
   // Check for valid partitions.
   for (const auto& partition : partitions) {
-    const string local_partition_name =
+    const std::string local_partition_name =
         DeviceNameUtils::LocalName(partition.first);
     if (std::count(device_names.begin(), device_names.end(),
                    local_partition_name) == 0) {
@@ -1745,7 +1746,7 @@ absl::Status DirectSession::CreateGraphs(
 
   absl::Status s;
   for (auto& partition : *outputs) {
-    const string& partition_name = partition.first;
+    const std::string& partition_name = partition.first;
     std::unique_ptr<Graph>* graph = &partition.second;
 
     VLOG(2) << "Created " << DebugString(graph->get()) << " for "
@@ -1777,7 +1778,7 @@ absl::Status DirectSession::ListDevices(
   return absl::OkStatus();
 }
 
-absl::Status DirectSession::Reset(const std::vector<string>& containers) {
+absl::Status DirectSession::Reset(const std::vector<std::string>& containers) {
   device_mgr_->ClearContainers(containers);
   return absl::OkStatus();
 }
@@ -1795,7 +1796,7 @@ absl::Status DirectSession::Close() {
 
 DirectSession::RunState::RunState(int64_t step_id,
                                   const std::vector<Device*>* devices)
-    : step_container(step_id, [devices, step_id](const string& name) {
+    : step_container(step_id, [devices, step_id](const std::string& name) {
         for (auto d : *devices) {
           if (!d->resource_manager()->Cleanup(name).ok()) {
             // Do nothing...
@@ -1806,8 +1807,8 @@ DirectSession::RunState::RunState(int64_t step_id,
       }) {}
 
 DirectSession::PartialRunState::PartialRunState(
-    const std::vector<string>& pending_input_names,
-    const std::vector<string>& pending_output_names, int64_t step_id,
+    const std::vector<std::string>& pending_input_names,
+    const std::vector<std::string>& pending_output_names, int64_t step_id,
     const std::vector<Device*>* devices)
     : RunState(step_id, devices) {
   // Initially all the feeds and fetches are pending.
