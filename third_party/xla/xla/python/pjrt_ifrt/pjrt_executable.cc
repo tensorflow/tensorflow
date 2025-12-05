@@ -268,6 +268,15 @@ absl::StatusOr<ExecutableRef> PjRtExecutable::Create(
   return ExecutableRef(new PjRtExecutable(std::move(pjrt_executable)));
 }
 
+absl::StatusOr<ExecutableRef> PjRtExecutable::Create(
+    mlir::ModuleOp module, xla::CompileOptions compile_options,
+    const xla::PjRtTopologyDescription& topology) {
+  TF_ASSIGN_OR_RETURN(auto pjrt_executable,
+                      PjRtCompile(std::move(compile_options), std::move(module),
+                                  topology, /*client=*/nullptr));
+  return ExecutableRef(new PjRtExecutable(std::move(pjrt_executable)));
+}
+
 absl::StatusOr<std::optional<std::string>> PjRtExecutable::Fingerprint() const {
   DCHECK(this);
   return pjrt_executable_->FingerprintExecutable();
