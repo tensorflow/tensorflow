@@ -290,6 +290,10 @@ absl::StatusOr<std::vector<IndexDomain>> HloSharding::IndexDomains(
     return absl::InvalidArgumentError(
         "Manual sharding does not support IndexDomains");
   }
+  if (xla_hlo_sharding_.IsUnreduced()) {
+    return absl::InvalidArgumentError(
+        "Unreduced sharding does not support IndexDomains");
+  }
   if (xla_hlo_sharding_.IsReplicated() || xla_hlo_sharding_.IsTileMaximal()) {
     // Fast path for a fully replicated or maximal sharding.
     IndexDomain element(shape);
