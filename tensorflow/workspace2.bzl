@@ -923,10 +923,10 @@ def _tf_repositories():
 
     tf_http_archive(
         name = "org_xprof",
-        sha256 = "d27bcd502a0843e463fc4eb7d3532d0d720ddd6af6e39942846f1aa769352625",
-        strip_prefix = "xprof-c695e43eba127a74a67263775ab611bded7fba34",
+        sha256 = "1a08a475eaf314ee198e5c06dcf53f8b6c2c9d2ed667f92200dc3c1ca448c625",
+        strip_prefix = "xprof-b4258967d569afd9c6a842e35b1b2f07b92f568a",
         patch_file = ["//third_party/xprof:xprof.patch"],
-        urls = tf_mirror_urls("https://github.com/openxla/xprof/archive/c695e43eba127a74a67263775ab611bded7fba34.zip"),
+        urls = tf_mirror_urls("https://github.com/openxla/xprof/archive/b4258967d569afd9c6a842e35b1b2f07b92f568a.zip"),
         repo_mapping = {
             "@xla": "@local_xla",
             "@tsl": "@local_tsl",
