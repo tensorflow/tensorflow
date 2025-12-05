@@ -41,8 +41,8 @@ class RaggedTensorVariant {
       : values_(std::move(values)), nested_splits_(nested_splits) {}
 
   // Variant support methods.
-  string TypeName() const;
-  string DebugString() const;
+  std::string TypeName() const;
+  std::string DebugString() const;
   void Encode(VariantTensorData* data) const;
   bool Decode(const VariantTensorData& data);
 
