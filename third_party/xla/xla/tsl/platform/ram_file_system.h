@@ -66,13 +66,13 @@ class RamRandomAccessFile : public RandomAccessFile, public WritableFile {
     return absl::OkStatus();
   }
 
-  absl::Status Read(uint64 offset, size_t n, absl::string_view* result,
+  absl::Status Read(uint64_t offset, size_t n, absl::string_view* result,
                     char* scratch) const override {
     if (offset >= data_->size()) {
       return absl::OutOfRangeError("");
     }
 
-    uint64 left = std::min(static_cast<uint64>(n), data_->size() - offset);
+    uint64_t left = std::min(static_cast<uint64_t>(n), data_->size() - offset);
     auto start = data_->begin() + offset;
     auto end = data_->begin() + offset + left;
 
@@ -305,7 +305,7 @@ class RamFileSystem : public FileSystem {
   }
 
   absl::Status GetFileSize(const std::string& fname_, TransactionToken* token,
-                           uint64* file_size) override {
+                           uint64_t* file_size) override {
     absl::MutexLock m(mu_);
     auto fname = StripRamFsPrefix(fname_);
 
@@ -355,14 +355,14 @@ class RamFileSystem : public FileSystem {
     return absl::StartsWith(s, prefix);
   }
 
-  string StripPrefix(std::string s, std::string prefix) {
+  std::string StripPrefix(std::string s, std::string prefix) {
     if (absl::StartsWith(s, prefix)) {
       return s.erase(0, prefix.size());
     }
     return s;
   }
 
-  string StripRamFsPrefix(std::string name) {
+  std::string StripRamFsPrefix(std::string name) {
     std::string s = StripPrefix(name, "ram://");
     if (*(s.rbegin()) == '/') {
       s.pop_back();
