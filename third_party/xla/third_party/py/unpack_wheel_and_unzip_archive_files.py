@@ -18,6 +18,25 @@ import os
 import pathlib
 import shutil
 import zipfile
+import os
+
+
+def _is_within_directory(directory, target):
+  abs_directory = os.path.abspath(directory)
+  abs_target = os.path.abspath(target)
+  try:
+    common = os.path.commonpath([abs_directory, abs_target])
+  except Exception:
+    return False
+  return common == abs_directory
+
+
+def safe_extract_zip(zf: zipfile.ZipFile, path: str = '.'):
+  for member in zf.namelist():
+    member_path = os.path.join(path, member)
+    if not _is_within_directory(path, member_path):
+      raise Exception('Attempted Path Traversal in Zip File')
+  zf.extractall(path)
 
 parser = argparse.ArgumentParser(fromfile_prefix_chars="@")
 parser.add_argument(
@@ -80,11 +99,11 @@ def prepare_outputs(
     output_dir: target directory where files are copied to.
   """
   with zipfile.ZipFile(wheel, "r") as zip_ref:
-    zip_ref.extractall(output_dir)
+    safe_extract_zip(zip_ref, output_dir)
   if zip_files:
     for archive in zip_files:
       with zipfile.ZipFile(archive, "r") as zip_ref:
-        zip_ref.extractall(output_dir)
+        safe_extract_zip(zip_ref, output_dir)
 
   if wheel_files:
     for f in wheel_files:

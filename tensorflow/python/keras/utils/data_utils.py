@@ -41,6 +41,7 @@ from six.moves.urllib.request import urlopen
 from tensorflow.python.keras.utils import tf_inspect
 from tensorflow.python.keras.utils.generic_utils import Progbar
 from tensorflow.python.keras.utils.io_utils import path_to_string
+from tensorflow.python.util import safe_extract
 
 # Required to support google internal urlretrieve
 if sys.version_info[0] == 2:
@@ -132,7 +133,10 @@ def _extract_archive(file_path, path='.', archive_format='auto'):
     if is_match_fn(file_path):
       with open_fn(file_path) as archive:
         try:
-          archive.extractall(path)
+          if archive_type == 'tar':
+            safe_extract.safe_extract_tar(archive, path)
+          else:
+            safe_extract.safe_extract_zip(archive, path)
         except (tarfile.TarError, RuntimeError, KeyboardInterrupt):
           if os.path.exists(path):
             if os.path.isfile(path):

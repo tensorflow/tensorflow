@@ -31,6 +31,7 @@ import re
 import shutil
 import tempfile
 import zipfile
+from tensorflow.python.util import safe_extract
 
 TF_NIGHTLY_REGEX = (r"(.+)(tf_nightly.*)-(\d\.[\d]{1,2}"
                     r"\.\d.dev[\d]{0,8})-(.+)\.whl")
@@ -63,7 +64,7 @@ def copy_binary(directory, origin_tag, new_tag, version, package):
     tmpdir = tempfile.mkdtemp()
     os.chdir(tmpdir)
 
-    zip_ref.extractall()
+    safe_extract.safe_extract_zip(zip_ref, tmpdir)
     zip_ref.close()
     old_py_ver = re.search(r"(cp\d\d-cp\d\d)", origin_tag).group(1)
     new_py_ver = re.search(r"(cp\d\d-cp\d\d)", new_tag).group(1)
