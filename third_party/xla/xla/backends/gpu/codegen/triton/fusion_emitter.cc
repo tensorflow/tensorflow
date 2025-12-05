@@ -17,7 +17,6 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <optional>
-#include <string>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -95,7 +94,6 @@ limitations under the License.
 #include "xla/permutation_util.h"
 #include "xla/primitive_util.h"
 #include "xla/service/gpu/backend_configs.pb.h"
-#include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/model/block_level_parameters.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/instruction_fusion.h"
@@ -1486,7 +1484,7 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> EmitXTileModule(
     EmitterSpecificConstraintsBuilder emitter_specific_constraints_builder,
     const HloFusionInstruction* fusion,
     const BlockLevelParameters& block_level_parameters,
-    MLIRContext& mlir_context) {
+    MLIRContext& mlir_context, absl::Span<mlir::Type> opaque_args_types) {
   const auto debug_options = fusion->GetModule()->config().debug_options();
 
   const HloComputation* hlo_computation =
@@ -1499,32 +1497,6 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> EmitXTileModule(
   mlir::OwningOpRef<mlir::ModuleOp> triton_module =
       llvm_ir::CreateMlirModuleOp(loc);
   b.setInsertionPointToEnd(triton_module->getBody());
-
-  std::string fusion_kind(kTritonFusionKind);
-  if (fusion->has_backend_config()) {
-    auto backend_config = fusion->backend_config<GpuBackendConfig>();
-    if (backend_config.ok()) {
-      fusion_kind = backend_config->fusion_backend_config().kind();
-    }
-  }
-
-  if (fusion_kind == kTritonGemmFusionKind) {
-    return Internal(
-        "Attempted to emit a GEMM fusion through the legacy Triton "
-        "emitter, but it has been deleted. This is a bug.");
-  }
-
-  // TODO(bchetioui,pifon): this list should be consolidated; why do we need so
-  // many different fusion kinds?
-  const std::vector<absl::string_view> kSupportedFusionKinds = {
-      kTritonFusionKind,
-      kTritonNestedGemmFusionKind,
-      kTritonCollectiveFusionKind,
-  };
-
-  if (!absl::c_linear_search(kSupportedFusionKinds, fusion_kind)) {
-    return Internal("Unsupported fusion kind: %s", fusion_kind);
-  }
 
   // Build Triton kernel.
   SmallVector<Type> fn_arg_types;
@@ -1547,18 +1519,16 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> EmitXTileModule(
     fn_arg_types.push_back(GetMemRefType(shape, triton_ty));
   }
 
-  // Add metadata arguments for collectives.
-  // This is done after the input and output arguments but before the tile
-  // index.
-  int32_t num_metadata_arguments = 0;
-  if (fusion_kind == kTritonCollectiveFusionKind) {
-    TF_ASSIGN_OR_RETURN(
-        num_metadata_arguments,
-        AddCollectiveMetadataArguments(fn_arg_types, b, hlo_computation));
+  // Add opaque arguments.
+  fn_arg_types.reserve(fn_arg_types.size() + opaque_args_types.size());
+
+  for (const auto& type : opaque_args_types) {
+    fn_arg_types.push_back(type);
   }
+
   // Metadata arguments are opaque to the tiling infra.
   llvm::SmallVector<mlir::NamedAttribute> named_attributes{b.getNamedAttr(
-      "num_opaque_args", b.getI32IntegerAttr(num_metadata_arguments))};
+      "num_opaque_args", b.getI32IntegerAttr(opaque_args_types.size()))};
 
   auto fn = xtile::EntryFuncOp::create(b, fn_name, fn_arg_types,
                                        named_attributes, {});
