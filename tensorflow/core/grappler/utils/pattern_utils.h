@@ -207,7 +207,7 @@ class SubGraphMatcher {
     for (const auto& node_idx : remove_node_indices_) {
       auto node_view = graph_view_->GetNode(node_idx);
       // Check if the node to be removed is in the nodes to be preserved.
-      string node_name = node_view->GetName();
+      std::string node_name = node_view->GetName();
       if (nodes_to_preserve.count(node_name) > 0) return false;
       // Traverse all the Regular Fanouts. Fanouts are stored as vector of
       // vector, std::vector<std::vector<MutableFaninView>>. Note that
