@@ -55,12 +55,12 @@ int ExecutableRunOptions::physical_device_ordinal() const {
 }
 
 ExecutableRunOptions& ExecutableRunOptions::set_allocator(
-    stream_executor::DeviceMemoryAllocator* allocator) {
+    stream_executor::DeviceAddressAllocator* allocator) {
   allocator_ = allocator;
   return *this;
 }
 
-stream_executor::DeviceMemoryAllocator* ExecutableRunOptions::allocator()
+stream_executor::DeviceAddressAllocator* ExecutableRunOptions::allocator()
     const {
   return allocator_;
 }

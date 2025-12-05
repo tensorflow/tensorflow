@@ -33,7 +33,7 @@ namespace stream_executor {
 class Stream;
 class Event;
 class Platform;
-class DeviceMemoryAllocator;
+class DeviceAddressAllocator;
 class DeviceAddressBase;
 }  // namespace stream_executor
 
@@ -126,8 +126,8 @@ class ExecutableRunOptions {
  public:
   // Specifies the allocator to use during execution.
   ExecutableRunOptions& set_allocator(
-      stream_executor::DeviceMemoryAllocator* allocator);
-  stream_executor::DeviceMemoryAllocator* allocator() const;
+      stream_executor::DeviceAddressAllocator* allocator);
+  stream_executor::DeviceAddressAllocator* allocator() const;
 
   // If set, this is the device to run the computation on. Valid device_ordinal
   // values are: 0 to # of devices - 1. These are the logical device ordinals,
@@ -261,7 +261,7 @@ class ExecutableRunOptions {
   std::vector<std::unique_ptr<CliqueKey>>* clique_keys() const;
 
  private:
-  stream_executor::DeviceMemoryAllocator* allocator_ = nullptr;
+  stream_executor::DeviceAddressAllocator* allocator_ = nullptr;
   int device_ordinal_ = -1;
   int local_device_count_ = 0;
   int physical_device_ordinal_ = -1;

@@ -107,6 +107,20 @@ xla_cc_test(
 )
 
 cc_library(
+    name = "device_address_allocator",
+    hdrs = ["device_address_allocator.h"],
+    deps = [
+        ":device_address",
+        ":platform",
+        "//xla/tsl/platform:errors",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+    ],
+)
+
+cc_library(
     name = "device_memory",
     hdrs = ["device_memory.h"],
     deps = [
@@ -121,6 +135,15 @@ cc_library(
     hdrs = ["device_memory_handle.h"],
     deps = [
         ":device_address_handle",
+        "@com_google_absl//absl/base:core_headers",
+    ],
+)
+
+cc_library(
+    name = "device_memory_allocator",
+    hdrs = ["device_memory_allocator.h"],
+    deps = [
+        ":device_address_allocator",
         "@com_google_absl//absl/base:core_headers",
     ],
 )
@@ -243,19 +266,6 @@ cc_library(
     deps = [
         "//xla/tsl/protobuf:dnn_proto_cc",
         "@local_tsl//tsl/platform:ml_dtypes",
-    ],
-)
-
-cc_library(
-    name = "device_memory_allocator",
-    hdrs = ["device_memory_allocator.h"],
-    deps = [
-        ":device_memory",
-        ":platform",
-        "//xla/tsl/platform:errors",
-        "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
     ],
 )
 
