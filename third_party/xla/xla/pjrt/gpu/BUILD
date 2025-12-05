@@ -23,6 +23,7 @@ cc_library(
     hdrs = ["gpu_helpers.h"],
     visibility = internal_visibility(["//xla/pjrt:friends"]),
     deps = [
+        "//base:examine_stack",
         "//xla:types",
         "//xla:util",
         "//xla/client:client_library",

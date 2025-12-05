@@ -25,6 +25,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "base/examine_stack.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -140,6 +141,14 @@ absl::StatusOr<std::unique_ptr<tsl::BFCAllocator>> CreateBFCAllocator(
   if (preallocate) {
     LOG(INFO) << "XLA backend allocating " << allocator_memory
               << " bytes on device " << device_ordinal << " for BFCAllocator.";
+    std::string trace;
+    DumpStackTrace(1, DebugWriteToString, &trace);
+    LOG(INFO) << "[clin-pjrt] TRACE:\n" << trace;
+
+    if (allocator_memory < 60707234304) {
+      return Unavailable(
+          "[clin-pjrt] allocating a small size of memory < 60707234304");
+    }
   } else {
     LOG(INFO) << "XLA backend will use up to " << allocator_memory
               << " bytes on device " << device_ordinal << " for BFCAllocator.";

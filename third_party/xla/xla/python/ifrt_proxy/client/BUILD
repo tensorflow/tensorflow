@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("//xla/python/ifrt_proxy/common:ifrt_proxy.bzl", "default_ifrt_proxy_visibility", "ifrt_proxy_cc_test")
 load("//xla/tsl:tsl.bzl", "if_google", "internal_visibility")
@@ -362,9 +363,11 @@ cc_library(
     name = "compiler",
     srcs = ["compiler.cc"],
     hdrs = ["compiler.h"],
+    defines = if_cuda(["GOOGLE_CUDA=1"]),
     deps = [
         ":executable",
         ":rpc_helper",
+        "//base:examine_stack",
         "//xla:debug_options_flags",
         "//xla/pjrt:host_callback",
         "//xla/python/ifrt",

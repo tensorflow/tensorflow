@@ -21,6 +21,7 @@
 #include <utility>
 #include <vector>
 
+#include "base/examine_stack.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
@@ -118,8 +119,20 @@ absl::StatusOr<xla::ifrt::LoadedExecutableRef> Compiler::CompileAndLoad(
     // both should be set at the proxy client.
     auto& build_options = xla_options->compile_options.executable_build_options;
     *build_options.mutable_debug_options() = xla::GetDebugOptionsFromFlags();
+
+    std::string trace;
+    DumpStackTrace(1, DebugWriteToString, &trace);
+    LOG(ERROR) << "[clin-ifrt] TRACE:\n" << trace;
+
+#if !defined(GOOGLE_CUDA)
+    // TODO(b/284274097): Support GPU compilation environment when it is ready.
+    LOG(ERROR) << "[clin-ifrt] Setting compilation environment";
     TF_RETURN_IF_ERROR(
         build_options.mutable_comp_envs()->InitializeAllKnownEnvs());
+#else
+    LOG(ERROR) << "[clin-ifrt] NOT setting compilation environment";
+#endif
+
 #endif
   }
 
