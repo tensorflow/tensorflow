@@ -103,8 +103,8 @@ class RandomAccessFileCopyingInputStream
     }
 
     absl::string_view result;
-    auto status =
-        file_->Read(position_, size, &result, static_cast<char*>(buffer));
+    auto status = file_->Read(position_, result,
+                              absl::MakeSpan(static_cast<char*>(buffer), size));
 
     if (!status.ok() && status.code() != absl::StatusCode::kOutOfRange) {
       return -1;
