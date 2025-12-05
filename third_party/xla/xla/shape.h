@@ -691,9 +691,9 @@ class ProgramShape {
   ~ProgramShape();
 
   ProgramShape(const ProgramShape&);
-  ProgramShape(ProgramShape&&);
+  ProgramShape(ProgramShape&&) noexcept;
   ProgramShape& operator=(const ProgramShape&);
-  ProgramShape& operator=(ProgramShape&&);
+  ProgramShape& operator=(ProgramShape&&) noexcept;
 
   // Creates a ProgramShape from a ProgramShapeProto protobuf.
   static absl::StatusOr<ProgramShape> FromProto(
