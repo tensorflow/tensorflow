@@ -32,17 +32,19 @@ using GraphTypes =
 template <typename T>
 class FrameViewTest : public ::testing::Test {
  protected:
-  NodeDef CreateNode(const string& name, const std::vector<string>& inputs) {
+  NodeDef CreateNode(const std::string& name,
+                     const std::vector<std::string>& inputs) {
     return CreateNode(name, "", "", inputs);
   }
 
-  NodeDef CreateNode(const string& name, const string& op,
-                     const std::vector<string>& inputs) {
+  NodeDef CreateNode(const std::string& name, const std::string& op,
+                     const std::vector<std::string>& inputs) {
     return CreateNode(name, op, "", inputs);
   }
 
-  NodeDef CreateNode(const string& name, const string& op, const string& frame,
-                     const std::vector<string>& inputs) {
+  NodeDef CreateNode(const std::string& name, const std::string& op,
+                     const std::string& frame,
+                     const std::vector<std::string>& inputs) {
     NodeDef node;
     node.set_name(name);
     if (!op.empty()) {
@@ -53,7 +55,7 @@ class FrameViewTest : public ::testing::Test {
       frame_name.set_s(frame);
       node.mutable_attr()->insert({"frame_name", frame_name});
     }
-    for (const string& input : inputs) {
+    for (const std::string& input : inputs) {
       node.add_input(input);
     }
     return node;
@@ -111,7 +113,7 @@ TYPED_TEST(FrameViewTest, NestedLoop) {
   FrameView frame_view;
   InferFromGraph<TypeParam>(&frame_view, &graph, /*valid=*/true);
 
-  std::unordered_map<string, std::vector<int>> expected = {
+  std::unordered_map<std::string, std::vector<int>> expected = {
       {"0", {}},      {"1", {0}},     {"2", {0}},     {"3", {0}},
       {"4", {0}},     {"5", {0}},     {"6", {0}},     {"7", {0, 1}},
       {"8", {0, 1}},  {"9", {0, 1}},  {"10", {0, 1}}, {"11", {0, 1}},
@@ -137,7 +139,7 @@ TYPED_TEST(FrameViewTest, MultipleInputsToEnter) {
   FrameView frame_view;
   InferFromGraph<TypeParam>(&frame_view, &graph, /*valid=*/true);
 
-  std::unordered_map<string, std::vector<int>> expected = {
+  std::unordered_map<std::string, std::vector<int>> expected = {
       {"0", {}}, {"1", {}}, {"2", {0}}, {"3", {0}}};
 
   EXPECT_EQ(frame_view.num_frames(), 1);
@@ -159,7 +161,7 @@ TYPED_TEST(FrameViewTest, ExitOutput) {
   FrameView frame_view;
   InferFromGraph<TypeParam>(&frame_view, &graph, /*valid=*/true);
 
-  std::unordered_map<string, std::vector<int>> expected = {
+  std::unordered_map<std::string, std::vector<int>> expected = {
       {"0", {}}, {"1", {0}}, {"2", {0}}, {"3", {}}, {"4", {}}};
 
   EXPECT_EQ(frame_view.num_frames(), 1);
@@ -186,7 +188,7 @@ TYPED_TEST(FrameViewTest, MultipleEnterNodes) {
   FrameView frame_view;
   InferFromGraph<TypeParam>(&frame_view, &graph, /*valid=*/true);
 
-  std::unordered_map<string, std::vector<int>> expected = {
+  std::unordered_map<std::string, std::vector<int>> expected = {
       {"0", {}}, {"1", {0}}, {"2", {0}}, {"3", {0}}, {"4", {0}},
       {"5", {}}, {"6", {0}}, {"7", {0}}, {"8", {0}}, {"9", {0}}};
 
