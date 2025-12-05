@@ -58,7 +58,7 @@ class FewerArgsForCompiler {
  public:
   FewerArgsForCompiler(int datasize, const UncompressFlags& flags,
                        int64_t* nwarn,
-                       std::function<uint8*(int, int, int)> allocate_output)
+                       std::function<uint8_t*(int, int, int)> allocate_output)
       : datasize_(datasize),
         flags_(flags),
         pnwarn_(nwarn),
@@ -72,7 +72,7 @@ class FewerArgsForCompiler {
   const int datasize_;
   const UncompressFlags flags_;
   int64_t* const pnwarn_;
-  std::function<uint8*(int, int, int)> allocate_output_;
+  std::function<uint8_t*(int, int, int)> allocate_output_;
   int height_read_;  // number of scanline lines successfully read
   int height_;
   int stride_;
@@ -95,7 +95,7 @@ bool IsCropWindowValid(const UncompressFlags& flags, int input_image_width,
 void no_print(j_common_ptr cinfo) {}
 #endif
 
-uint8* UncompressLow(const void* srcdata, FewerArgsForCompiler* argball) {
+uint8_t* UncompressLow(const void* srcdata, FewerArgsForCompiler* argball) {
   // unpack the argball
   const int datasize = argball->datasize_;
   const auto& flags = argball->flags_;
@@ -252,8 +252,8 @@ uint8* UncompressLow(const void* srcdata, FewerArgsForCompiler* argball) {
                                         target_output_height, components);
   }
 #else
-  uint8* dstdata = argball->allocate_output_(target_output_width,
-                                             target_output_height, components);
+  uint8_t* dstdata = argball->allocate_output_(
+      target_output_width, target_output_height, components);
 #endif
   if (dstdata == nullptr) {
     jpeg_destroy_decompress(&cinfo);
@@ -509,12 +509,12 @@ uint8* UncompressLow(const void* srcdata, FewerArgsForCompiler* argball) {
 //  associated libraries aren't good enough to guarantee that 7
 //  parameters won't get clobbered by the longjmp.  So we help
 //  it out a little.
-uint8* Uncompress(const void* srcdata, int datasize,
-                  const UncompressFlags& flags, int64_t* nwarn,
-                  std::function<uint8*(int, int, int)> allocate_output) {
+uint8_t* Uncompress(const void* srcdata, int datasize,
+                    const UncompressFlags& flags, int64_t* nwarn,
+                    std::function<uint8_t*(int, int, int)> allocate_output) {
   FewerArgsForCompiler argball(datasize, flags, nwarn,
                                std::move(allocate_output));
-  uint8* const dstdata = UncompressLow(srcdata, &argball);
+  uint8_t* const dstdata = UncompressLow(srcdata, &argball);
 
   const float fraction_read =
       argball.height_ == 0
@@ -530,7 +530,7 @@ uint8* Uncompress(const void* srcdata, int datasize,
   // set the unread pixels to black
   if (argball.height_read_ != argball.height_) {
     const int first_bad_line = argball.height_read_;
-    uint8* start = dstdata + first_bad_line * argball.stride_;
+    uint8_t* start = dstdata + first_bad_line * argball.stride_;
     const int nbytes = (argball.height_ - first_bad_line) * argball.stride_;
     memset(static_cast<void*>(start), 0, nbytes);
   }
@@ -538,17 +538,17 @@ uint8* Uncompress(const void* srcdata, int datasize,
   return dstdata;
 }
 
-uint8* Uncompress(const void* srcdata, int datasize,
-                  const UncompressFlags& flags, int* pwidth, int* pheight,
-                  int* pcomponents, int64_t* nwarn) {
-  uint8* buffer = nullptr;
-  uint8* result =
+uint8_t* Uncompress(const void* srcdata, int datasize,
+                    const UncompressFlags& flags, int* pwidth, int* pheight,
+                    int* pcomponents, int64_t* nwarn) {
+  uint8_t* buffer = nullptr;
+  uint8_t* result =
       Uncompress(srcdata, datasize, flags, nwarn,
                  [=, &buffer](int width, int height, int components) {
                    if (pwidth != nullptr) *pwidth = width;
                    if (pheight != nullptr) *pheight = height;
                    if (pcomponents != nullptr) *pcomponents = components;
-                   buffer = new uint8[height * width * components];
+                   buffer = new uint8_t[height * width * components];
                    return buffer;
                  });
   if (!result) delete[] buffer;
@@ -599,7 +599,7 @@ bool GetImageInfo(const void* srcdata, int datasize, int* width, int* height,
 // Compression
 
 namespace {
-bool CompressInternal(const uint8* srcdata, int width, int height,
+bool CompressInternal(const uint8_t* srcdata, int width, int height,
                       const CompressFlags& flags, tstring* output) {
   if (output == nullptr) {
     LOG(ERROR) << "Output buffer is null: ";
@@ -711,7 +711,7 @@ bool CompressInternal(const uint8* srcdata, int width, int height,
   if (!flags.xmp_metadata.empty()) {
     // XMP metadata is embedded in the APP1 tag of JPEG and requires this
     // namespace header string (null-terminated)
-    const string name_space = "http://ns.adobe.com/xap/1.0/";
+    const std::string name_space = "http://ns.adobe.com/xap/1.0/";
     const int name_space_length = name_space.size();
     const int metadata_length = flags.xmp_metadata.size();
     const int packet_length = metadata_length + name_space_length + 1;
@@ -736,8 +736,8 @@ bool CompressInternal(const uint8* srcdata, int width, int height,
       new JSAMPLE[width * cinfo.input_components]);
   while (cinfo.next_scanline < cinfo.image_height) {
     JSAMPROW row_pointer[1];  // pointer to JSAMPLE row[s]
-    const uint8* r = &srcdata[cinfo.next_scanline * in_stride];
-    uint8* p = static_cast<uint8*>(row_temp.get());
+    const uint8_t* r = &srcdata[cinfo.next_scanline * in_stride];
+    uint8_t* p = static_cast<uint8_t*>(row_temp.get());
     switch (flags.format) {
       case FORMAT_RGBA: {
         for (int i = 0; i < width; ++i, p += 3, r += 4) {
@@ -777,14 +777,14 @@ bool CompressInternal(const uint8* srcdata, int width, int height,
 
 bool Compress(const void* srcdata, int width, int height,
               const CompressFlags& flags, tstring* output) {
-  return CompressInternal(static_cast<const uint8*>(srcdata), width, height,
+  return CompressInternal(static_cast<const uint8_t*>(srcdata), width, height,
                           flags, output);
 }
 
 tstring Compress(const void* srcdata, int width, int height,
                  const CompressFlags& flags) {
   tstring temp;
-  CompressInternal(static_cast<const uint8*>(srcdata), width, height, flags,
+  CompressInternal(static_cast<const uint8_t*>(srcdata), width, height, flags,
                    &temp);
   // If CompressInternal fails, temp will be empty.
   return temp;
