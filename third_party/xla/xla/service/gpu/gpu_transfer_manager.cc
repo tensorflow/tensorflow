@@ -131,7 +131,8 @@ absl::Status GpuTransferManager::ReadDynamicShapes(
   Shape original_device_shape = *device_shape;
 
   TF_ASSIGN_OR_RETURN(
-      auto compiler, Compiler::GetForPlatform(stream->parent()->GetPlatform()));
+      auto compiler,
+      Compiler::GetForPlatform(stream->parent()->GetPlatform()->id()));
   auto shape_size_fn = compiler->ShapeSizeBytesFunction();
 
   // First, figure out which parts of `device_shape` are dynamic and where the

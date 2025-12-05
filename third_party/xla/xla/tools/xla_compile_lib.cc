@@ -90,7 +90,8 @@ static absl::StatusOr<std::string> CompileGpuExecutable(
       stream_executor::PlatformManager::PlatformWithName(platform_name));
   const bool aot = target_config.has_value();
 
-  TF_ASSIGN_OR_RETURN(auto gpu_compiler, Compiler::GetForPlatform(platform));
+  TF_ASSIGN_OR_RETURN(auto gpu_compiler,
+                      Compiler::GetForPlatform(platform->id()));
 
   if (aot) {
     AotCompilationOptions aot_options(platform->id());

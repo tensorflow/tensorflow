@@ -89,7 +89,7 @@ absl::StatusOr<std::unique_ptr<xla::Compiler>>
 GetCompilerForDefaultGpuPlatform() {
   TF_ASSIGN_OR_RETURN(stream_executor::Platform * platform,
                       PlatformUtil::GetPlatform("gpu"));
-  return Compiler::GetForPlatform(platform);
+  return Compiler::GetForPlatform(platform->id());
 }
 
 absl::StatusOr<std::unique_ptr<xla::Compiler>> GetCompilerForPlatform(
@@ -101,7 +101,7 @@ absl::StatusOr<std::unique_ptr<xla::Compiler>> GetCompilerForPlatform(
   TF_ASSIGN_OR_RETURN(
       stream_executor::Platform * platform,
       stream_executor::PlatformManager::PlatformWithId(platform_id.value()));
-  return Compiler::GetForPlatform(platform);
+  return Compiler::GetForPlatform(platform->id());
 }
 
 }  // namespace

@@ -478,7 +478,7 @@ absl::StatusOr<std::unique_ptr<LocalExecutable>> LocalClient::Load(
     const std::string& serialized_aot_result,
     const ExecutableBuildOptions& options) {
   TF_ASSIGN_OR_RETURN(std::unique_ptr<Compiler> compiler,
-                      Compiler::GetForPlatform(platform()));
+                      Compiler::GetForPlatform(platform()->id()));
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<xla::AotCompilationResult> aot_result,
       compiler->LoadAotCompilationResult(serialized_aot_result));
@@ -489,7 +489,7 @@ absl::StatusOr<std::unique_ptr<LocalExecutable>> LocalClient::Load(
     std::unique_ptr<xla::AotCompilationResult> aot_result,
     const ExecutableBuildOptions& options) {
   TF_ASSIGN_OR_RETURN(std::unique_ptr<Compiler> compiler,
-                      Compiler::GetForPlatform(platform()));
+                      Compiler::GetForPlatform(platform()->id()));
   return LoadInternal(std::move(aot_result), compiler.get(), options);
 }
 

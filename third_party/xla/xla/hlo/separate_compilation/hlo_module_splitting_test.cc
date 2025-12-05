@@ -225,7 +225,7 @@ ENTRY %main() -> f32[] {
   TF_ASSERT_OK_AND_ASSIGN(stream_executor::Platform * platform,
                           PlatformUtil::GetPlatform("cpu"));
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Compiler> compiler,
-                          Compiler::GetForPlatform(platform));
+                          Compiler::GetForPlatform(platform->id()));
   TF_ASSERT_OK(compiler->RunHloPasses(module->Clone(), /*executor=*/nullptr,
                                       Compiler::CompileOptions{}));
   for (auto& split : module_split_group->module_splits) {
@@ -288,7 +288,7 @@ TEST_F(SplittingTest, SplitDiamondGraphModule) {
   TF_ASSERT_OK_AND_ASSIGN(stream_executor::Platform * platform,
                           PlatformUtil::GetPlatform("cpu"));
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Compiler> compiler,
-                          Compiler::GetForPlatform(platform));
+                          Compiler::GetForPlatform(platform->id()));
   TF_ASSERT_OK(compiler->RunHloPasses(module->Clone(), /*executor=*/nullptr,
                                       Compiler::CompileOptions{}));
   for (auto& split : module_split_group->module_splits) {
@@ -362,7 +362,7 @@ ENTRY %main() -> f32[] {
   TF_ASSERT_OK_AND_ASSIGN(stream_executor::Platform * platform,
                           PlatformUtil::GetPlatform("cpu"));
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Compiler> compiler,
-                          Compiler::GetForPlatform(platform));
+                          Compiler::GetForPlatform(platform->id()));
   TF_ASSERT_OK(compiler->RunHloPasses(module->Clone(), /*executor=*/nullptr,
                                       Compiler::CompileOptions{}));
   for (auto& split : module_split_group->module_splits) {

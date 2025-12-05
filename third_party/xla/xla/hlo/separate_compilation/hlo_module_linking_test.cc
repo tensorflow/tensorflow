@@ -160,7 +160,7 @@ TEST_F(LinkingTest, SingleCallLinking) {
   TF_ASSERT_OK_AND_ASSIGN(stream_executor::Platform * platform,
                           PlatformUtil::GetPlatform("cpu"));
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Compiler> compiler,
-                          Compiler::GetForPlatform(platform));
+                          Compiler::GetForPlatform(platform->id()));
   TF_EXPECT_OK(compiler->RunHloPasses(original_module->Clone(),
                                       /*executor=*/nullptr,
                                       Compiler::CompileOptions{}));
@@ -220,7 +220,7 @@ TEST_F(LinkingTest, ChainGraphLinking) {
   TF_ASSERT_OK_AND_ASSIGN(stream_executor::Platform * platform,
                           PlatformUtil::GetPlatform("cpu"));
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Compiler> compiler,
-                          Compiler::GetForPlatform(platform));
+                          Compiler::GetForPlatform(platform->id()));
   VLOG(6) << linked_module->ToString();
   TF_EXPECT_OK(compiler->RunHloPasses(std::move(linked_module),
                                       /*executor=*/nullptr,
@@ -295,7 +295,7 @@ TEST_F(LinkingTest, DiamondGraphLinking) {
   TF_ASSERT_OK_AND_ASSIGN(stream_executor::Platform * platform,
                           PlatformUtil::GetPlatform("cpu"));
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Compiler> compiler,
-                          Compiler::GetForPlatform(platform));
+                          Compiler::GetForPlatform(platform->id()));
   TF_EXPECT_OK(compiler->RunHloPasses(original_module->Clone(),
                                       /*executor=*/nullptr,
                                       Compiler::CompileOptions{}));

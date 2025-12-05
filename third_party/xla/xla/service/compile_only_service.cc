@@ -49,7 +49,7 @@ CompileOnlyService::NewService(const ServiceOptions& options) {
     TF_ASSIGN_OR_RETURN(platform, PlatformUtil::GetDefaultPlatform());
   }
 
-  TF_ASSIGN_OR_RETURN(auto compiler, Compiler::GetForPlatform(platform));
+  TF_ASSIGN_OR_RETURN(auto compiler, Compiler::GetForPlatform(platform->id()));
 
   std::unique_ptr<CompileOnlyService> service(
       new CompileOnlyService(options, std::move(compiler)));
