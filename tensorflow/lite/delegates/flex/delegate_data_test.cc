@@ -15,15 +15,17 @@ limitations under the License.
 #include "tensorflow/lite/delegates/flex/delegate_data.h"
 
 #include <memory>
+#include <set>
 #include <string>
 #include <utility>
 #include <vector>
 
-#include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "absl/memory/memory.h"
-#include "absl/strings/string_view.h"
+#include "absl/status/status.h"
+#include "third_party/protobuf/text_format.h"
+#include "third_party/protobuf/util/message_differencer.h"
 #include "tensorflow/core/common_runtime/eager/context.h"
+#include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/status.h"
