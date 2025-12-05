@@ -1170,3 +1170,105 @@ class DepthwiseConv2DBase(test.TestCase):
         self._CompareForward(
             input_size, filter_size, output_size, stride, padding, "float64"
         )
+
+  def testDepthwiseConv2dNativeBackpropInputInvalidStrides(self):
+    """Verify InvalidArgumentError for strides with wrong length."""
+    input_sizes = constant_op.constant([1, 2, 2, 1], dtype=dtypes.int32)
+    filter_val = constant_op.constant([[[[1.0]]]], dtype=dtypes.float32)
+    out_backprop = constant_op.constant([[[[1.0]]]], dtype=dtypes.float32)
+
+    with self.assertRaisesRegex(
+        (ValueError, errors.InvalidArgumentError),
+        r"(strides|stride).*(4|values)"):
+      self.evaluate(
+          nn_ops.depthwise_conv2d_native_backprop_input(
+              input_sizes=input_sizes,
+              filter=filter_val,
+              out_backprop=out_backprop,
+              strides=[1, 1],  # Should be 4 elements
+              padding="SAME"))
+
+  def testDepthwiseConv2dNativeBackpropInputInvalidFilterDims(self):
+    """Verify InvalidArgumentError for non-4D filter."""
+    input_sizes = constant_op.constant([1, 2, 2, 1], dtype=dtypes.int32)
+    filter_val = constant_op.constant([1.0], dtype=dtypes.float32)  # 1D
+    out_backprop = constant_op.constant([[[[1.0]]]], dtype=dtypes.float32)
+
+    with self.assertRaisesRegex(
+        (ValueError, errors.InvalidArgumentError),
+        r"(filter|shape).*(4|4-dimensional|rank)"):
+      self.evaluate(
+          nn_ops.depthwise_conv2d_native_backprop_input(
+              input_sizes=input_sizes,
+              filter=filter_val,
+              out_backprop=out_backprop,
+              strides=[1, 1, 1, 1],
+              padding="SAME"))
+
+  def testDepthwiseConv2dNativeBackpropInputInvalidOutBackpropDims(self):
+    """Verify InvalidArgumentError for non-4D out_backprop."""
+    input_sizes = constant_op.constant([1, 2, 2, 1], dtype=dtypes.int32)
+    filter_val = constant_op.constant([[[[1.0]]]], dtype=dtypes.float32)
+    out_backprop = constant_op.constant([1.0], dtype=dtypes.float32)  # 1D
+
+    with self.assertRaisesRegex(
+        (ValueError, errors.InvalidArgumentError),
+        r"(out_backprop|shape).*(4|4-dimensional|rank)"):
+      self.evaluate(
+          nn_ops.depthwise_conv2d_native_backprop_input(
+              input_sizes=input_sizes,
+              filter=filter_val,
+              out_backprop=out_backprop,
+              strides=[1, 1, 1, 1],
+              padding="SAME"))
+
+  def testDepthwiseConv2dNativeBackpropFilterInvalidStrides(self):
+    """Verify InvalidArgumentError for strides with wrong length."""
+    input_val = constant_op.constant([[[[1.0]]]], dtype=dtypes.float32)
+    filter_sizes = constant_op.constant([1, 1, 1, 1], dtype=dtypes.int32)
+    out_backprop = constant_op.constant([[[[1.0]]]], dtype=dtypes.float32)
+
+    with self.assertRaisesRegex(
+        (ValueError, errors.InvalidArgumentError),
+        r"(strides|stride).*(4|values)"):
+      self.evaluate(
+          nn_ops.depthwise_conv2d_native_backprop_filter(
+              input=input_val,
+              filter_sizes=filter_sizes,
+              out_backprop=out_backprop,
+              strides=[1, 1],  # Should be 4 elements
+              padding="SAME"))
+
+  def testDepthwiseConv2dNativeBackpropFilterInvalidInputDims(self):
+    """Verify InvalidArgumentError for non-4D input."""
+    input_val = constant_op.constant([1.0], dtype=dtypes.float32)  # 1D
+    filter_sizes = constant_op.constant([1, 1, 1, 1], dtype=dtypes.int32)
+    out_backprop = constant_op.constant([[[[1.0]]]], dtype=dtypes.float32)
+
+    with self.assertRaisesRegex(
+        (ValueError, errors.InvalidArgumentError),
+        r"(input|shape).*(4|4-dimensional|rank)"):
+      self.evaluate(
+          nn_ops.depthwise_conv2d_native_backprop_filter(
+              input=input_val,
+              filter_sizes=filter_sizes,
+              out_backprop=out_backprop,
+              strides=[1, 1, 1, 1],
+              padding="SAME"))
+
+  def testDepthwiseConv2dNativeBackpropFilterInvalidOutBackpropDims(self):
+    """Verify InvalidArgumentError for non-4D out_backprop."""
+    input_val = constant_op.constant([[[[1.0]]]], dtype=dtypes.float32)
+    filter_sizes = constant_op.constant([1, 1, 1, 1], dtype=dtypes.int32)
+    out_backprop = constant_op.constant([1.0], dtype=dtypes.float32)  # 1D
+
+    with self.assertRaisesRegex(
+        (ValueError, errors.InvalidArgumentError),
+        r"(out_backprop|shape).*(4|4-dimensional|rank)"):
+      self.evaluate(
+          nn_ops.depthwise_conv2d_native_backprop_filter(
+              input=input_val,
+              filter_sizes=filter_sizes,
+              out_backprop=out_backprop,
+              strides=[1, 1, 1, 1],
+              padding="SAME"))

@@ -684,6 +684,25 @@ REGISTER_OP("DepthwiseConv2dNativeBackpropInput")
     .Attr(GetConvnetDataFormatAttrString())
     .Attr("dilations: list(int) = [1, 1, 1, 1]")
     .SetShapeFn([](InferenceContext* c) {
+      // Validate strides attribute has exactly 4 elements
+      std::vector<int32> strides;
+      TF_RETURN_IF_ERROR(c->GetAttr("strides", &strides));
+      if (strides.size() != 4) {
+        return errors::InvalidArgument(
+            "DepthwiseConv2dNativeBackpropInput requires the stride attribute "
+            "to contain 4 values, but got: ",
+            strides.size());
+      }
+
+      // Validate filter is 4-dimensional
+      ShapeHandle filter_shape;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 4, &filter_shape));
+
+      // Validate out_backprop is 4-dimensional
+      ShapeHandle out_backprop_shape;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 4, &out_backprop_shape));
+
+      // Validate and set output shape from input_sizes
       ShapeHandle s;
       TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(0, &s));
       TF_RETURN_IF_ERROR(c->WithRank(s, 4, &s));
@@ -703,6 +722,25 @@ REGISTER_OP("DepthwiseConv2dNativeBackpropFilter")
     .Attr(GetConvnetDataFormatAttrString())
     .Attr("dilations: list(int) = [1, 1, 1, 1]")
     .SetShapeFn([](InferenceContext* c) {
+      // Validate strides attribute has exactly 4 elements
+      std::vector<int32> strides;
+      TF_RETURN_IF_ERROR(c->GetAttr("strides", &strides));
+      if (strides.size() != 4) {
+        return errors::InvalidArgument(
+            "DepthwiseConv2dNativeBackpropFilter requires the stride attribute "
+            "to contain 4 values, but got: ",
+            strides.size());
+      }
+
+      // Validate input is 4-dimensional
+      ShapeHandle input_shape;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 4, &input_shape));
+
+      // Validate out_backprop is 4-dimensional
+      ShapeHandle out_backprop_shape;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 4, &out_backprop_shape));
+
+      // Validate and set output shape from filter_sizes
       ShapeHandle s;
       TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(1, &s));
       TF_RETURN_IF_ERROR(c->WithRank(s, 4, &s));
