@@ -55,7 +55,7 @@ class OptionalVariant {
 
   // Implementations of the necessary methods for using `OptionalVariant`
   // objects in DT_VARIANT tensors.
-  string TypeName() const { return kOptionalVariantTypeName; }
+  std::string TypeName() const { return kOptionalVariantTypeName; }
   void Encode(VariantTensorData* data) const {
     data->set_metadata(values_ != nullptr);
     if (values_ != nullptr) {
@@ -81,11 +81,11 @@ class OptionalVariant {
     return true;
   }
 
-  string DebugString() const {
+  std::string DebugString() const {
     if (values_) {
       return absl::StrCat("OptionalVariant<", "values: (",
                           absl::StrJoin(*values_, ", ",
-                                        [](string* s, const Tensor& elem) {
+                                        [](std::string* s, const Tensor& elem) {
                                           *s = elem.DebugString();
                                         }),
                           ")>");
