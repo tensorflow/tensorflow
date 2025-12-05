@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/numbers.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -904,6 +905,22 @@ bool HasDuplicateSourcesOrTargets(const SourceTargetPairs& pairs) {
     return true;
   }
   return false;
+}
+
+std::optional<double> GetCustomCallLatencyMetadata(
+    const HloInstruction* instr) {
+  if (instr->opcode() == HloOpcode::kCustomCall &&
+      instr->has_frontend_attributes()) {
+    auto it = instr->frontend_attributes().map().find("latency_metadata");
+    if (it != instr->frontend_attributes().map().end()) {
+      int64_t latency_metadata_ns = 0;
+      CHECK(absl::SimpleAtoi(it->second, &latency_metadata_ns))
+          << "Failed to parse latency from custom call for " << instr->name()
+          << " from latency_metadata:" << it->second;
+      return static_cast<double>(latency_metadata_ns) / 1000.0;
+    }
+  }
+  return std::nullopt;
 }
 
 int64_t GetSubgroupSize(const HloCollectiveInstruction* hlo,

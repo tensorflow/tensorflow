@@ -427,6 +427,11 @@ LatencyEstimator::TimeCost SolLatencyEstimator::GetLatencyBetween(
 
 LatencyEstimator::TimeCost SolLatencyEstimator::NodeCost(
     const HloInstruction* instr) const {
+  if (std::optional<double> latency = GetCustomCallLatencyMetadata(instr)) {
+    VLOG(10) << "NodeCost: Returning latency from custom call for "
+             << instr->name() << ": " << *latency << " us";
+    return *latency;
+  }
   if (hlo_query::IsAsyncCollectiveStartOp(instr, /*include_send_recv=*/true) ||
       hlo_query::IsAsyncCollectiveDoneOp(instr, /*include_send_recv=*/true)) {
     VLOG(10) << "NodeCost: Returning kLowCost for async start/done op "

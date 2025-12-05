@@ -504,6 +504,22 @@ ENTRY e {
       /*expected_latency=*/absl::Microseconds(8),
   };
 
+  EstimatorTestCase pallas_custom_call = {
+      /*test_name=*/"pallas_custom_call",
+      /*module_string=*/R"(
+HloModule m
+
+ENTRY e {
+  p0 = bf16[128,128] parameter(0)
+  ROOT _ =  bf16[128,128] custom-call(p0),
+    custom_call_target="mosaic_gpu_v2",
+    frontend_attributes={latency_metadata="30000"}
+})",
+      /*opcode_to_find=*/HloOpcode::kCustomCall,
+      /*cost_type=*/CostType::kNodeCost,
+      /*expected_latency=*/absl::Microseconds(30),
+  };
+
   EstimatorTestCase noop = {
       /*test_name=*/"noop",
       /*module_string=*/R"(
@@ -527,6 +543,7 @@ ENTRY e {
           triton_matmul_bf16_batch1_1024_1024_1024,
           cublas_matmul_bf16_batch1_1024_1024_1024,
           simple_fusion_elementwise,
+          pallas_custom_call,
           noop};
 }
 
