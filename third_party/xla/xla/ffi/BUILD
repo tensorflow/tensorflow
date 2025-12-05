@@ -263,6 +263,7 @@ xla_cc_test(
     srcs = ["attribute_map_test.cc"],
     deps = [
         ":attribute_map",
+        ":attribute_map_proto_cc",
         "//xla/tsl/util/proto:parse_text_proto",
         "//xla/tsl/util/proto:proto_matchers",
         "@com_google_absl//absl/status",
