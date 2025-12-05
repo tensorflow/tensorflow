@@ -40,7 +40,7 @@ class GeneratedCodeAnnotator {
   // Updates base cursor.
   void SetBase(uint32_t pos) { base_pos_ = pos; }
   // Builds Kythe metadata from the offset map.
-  string BuildKytheMetadata();
+  std::string BuildKytheMetadata();
   // Fills the source offsets from OpRegOffsets.
   void FillSourceOffsets(const OpRegOffsets& op_reg_offsets);
 
@@ -54,12 +54,12 @@ class GeneratedCodeAnnotator {
     uint32_t generated_start = 0;
     uint32_t generated_end = 0;
     // The file path of the source file.
-    string file_path;
+    std::string file_path;
   };
 
  private:
   uint32_t base_pos_ = 0;
-  std::unordered_map<string, ByteOffsets> byte_offsets_map_;
+  std::unordered_map<std::string, ByteOffsets> byte_offsets_map_;
 };
 
 }  // namespace python_op_gen_internal
