@@ -19,6 +19,7 @@ limitations under the License.
 #include <string>
 
 #include "absl/status/status.h"
+#include "absl/strings/string_view.h"
 #include "xla/tsl/platform/status.h"
 #include "tsl/platform/stringpiece.h"
 

@@ -49,6 +49,8 @@ namespace xla {
 namespace gpu {
 namespace {
 
+using ::mlir::MLIRContext;
+
 class GpuPerformanceModelTest : public HloHardwareIndependentTestBase {
  public:
   GpuPerformanceModel::RunTimes EstimateRunTimes(
@@ -63,8 +65,7 @@ class GpuPerformanceModelTest : public HloHardwareIndependentTestBase {
                                                    fused_consumers);
   }
 
-  mlir::MLIRContext mlir_context_;
-  SymbolicExprContext symbolic_expr_context_{&mlir_context_};
+  MLIRContext mlir_context_;
   GpuHloCostAnalysis::Options options_{.count_multiple_input_accesses = true};
   // The reference times in the test cases below are measured
   // on A6000 by profiling the execution of the HLOs.
@@ -74,11 +75,11 @@ class GpuPerformanceModelTest : public HloHardwareIndependentTestBase {
   GpuPerformanceModelCache gpu_performance_model_cache_;
   GpuPerformanceModel gpu_performance_model_{
       device_info_, fusion_analysis_cache_, gpu_performance_model_cache_,
-      &symbolic_expr_context_};
+      &mlir_context_};
 
   GpuPerformanceModelWithIndexingAnalysis indexing_cost_model_{
       &device_info_, &fusion_analysis_cache_, HloCostAnalysis::DefaultShapeSize,
-      &symbolic_expr_context_};
+      &mlir_context_};
 };
 
 TEST_F(GpuPerformanceModelTest, LargeWrite) {

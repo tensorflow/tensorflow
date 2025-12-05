@@ -37,6 +37,7 @@ limitations under the License.
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/concurrency/ref_count.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/statusor.h"
@@ -82,8 +83,8 @@ class TestDevice : public PjRtDevice {
   }
 };
 
-absl::StatusOr<std::shared_ptr<TrackedDeviceBuffer>> MakeArray(
-    const Shape& shape, LocalClient* client, PjRtDevice* device) {
+absl::StatusOr<tsl::AsyncValueRef<RawSEDeviceMemory>> MakeArray(
+    const Shape& shape, LocalClient* client) {
   std::vector<tsl::AsyncValueRef<RawSEDeviceMemory>> device_buffers;
   TF_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
       client->backend().transfer_manager()->HostShapeToDeviceShape(shape),
@@ -99,8 +100,7 @@ absl::StatusOr<std::shared_ptr<TrackedDeviceBuffer>> MakeArray(
             se_mem, [device_memory = std::move(device_memory)]() {}));
         return absl::OkStatus();
       }));
-  return std::make_shared<TrackedDeviceBuffer>(
-      device, device_buffers[0], absl::Span<const BufferSequencingEventRef>());
+  return device_buffers[0];
 }
 
 TEST(TrackedDeviceBufferTest, AsShapedBuffer) {
@@ -110,18 +110,20 @@ TEST(TrackedDeviceBufferTest, AsShapedBuffer) {
   Shape a_shape = ShapeUtil::MakeShape(F32, {3, 101, 4});
   Shape b_shape = ShapeUtil::MakeShape(S8, {77});
   Shape c_shape = ShapeUtil::MakeShape(S64, {});
-  TF_ASSERT_OK_AND_ASSIGN(auto a_buffer, MakeArray(a_shape, client, &device));
-  TF_ASSERT_OK_AND_ASSIGN(auto b_buffer, MakeArray(b_shape, client, &device));
-  TF_ASSERT_OK_AND_ASSIGN(auto c_buffer, MakeArray(c_shape, client, &device));
+  TF_ASSERT_OK_AND_ASSIGN(auto a_buffer, MakeArray(a_shape, client));
+  TF_ASSERT_OK_AND_ASSIGN(auto b_buffer, MakeArray(b_shape, client));
+  TF_ASSERT_OK_AND_ASSIGN(auto c_buffer, MakeArray(c_shape, client));
 
   std::vector<se::DeviceMemoryBase> expected_buffer_sequence = {
-      a_buffer->device_memory()->mem(), b_buffer->device_memory()->mem(),
-      c_buffer->device_memory()->mem()};
+      a_buffer->mem(), b_buffer->mem(), c_buffer->mem()};
   ShapedBuffer shaped_a = a_buffer->AsShapedBuffer(
+      &device,
       client->backend().transfer_manager()->HostShapeToDeviceShape(a_shape));
   ShapedBuffer shaped_b = b_buffer->AsShapedBuffer(
+      &device,
       client->backend().transfer_manager()->HostShapeToDeviceShape(b_shape));
   ShapedBuffer shaped_c = c_buffer->AsShapedBuffer(
+      &device,
       client->backend().transfer_manager()->HostShapeToDeviceShape(c_shape));
   auto expected_it = expected_buffer_sequence.begin();
   for (auto it = shaped_a.buffers().begin(); it != shaped_a.buffers().end();

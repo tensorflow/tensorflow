@@ -84,17 +84,6 @@ class BufferUse {
                      ContentValidity::kDefinedOnOutput);
   }
 
-  ABSL_DEPRECATED("Please provide shape as well.")
-  static BufferUse Scratch(BufferAllocation::Slice slice) {
-    return BufferUse(slice, MemoryAccess::kWrite, ContentValidity::kUndefined);
-  }
-
-  ABSL_DEPRECATED("Please provide shape as well.")
-  static BufferUse Consume(BufferAllocation::Slice slice) {
-    return BufferUse(slice, MemoryAccess::kWrite,
-                     ContentValidity::kDefinedOnInput);
-  }
-
   static BufferUse Read(BufferAllocation::Slice slice, Shape shape) {
     return BufferUse(slice, MemoryAccess::kRead,
                      ContentValidity::kDefinedOnInputAndOutput, shape);

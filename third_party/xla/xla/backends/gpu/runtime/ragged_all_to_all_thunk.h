@@ -35,6 +35,7 @@ limitations under the License.
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/memory_allocation.h"
 #include "xla/stream_executor/stream.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace gpu {
@@ -100,22 +101,15 @@ class RaggedAllToAllStartThunk : public CollectiveThunk {
         : device_ordinal(device_ordinal), rank(rank) {}
   };
 
-  absl::Status RunMemCpyRaggedAllToAll(
-      const GpuCliqueKey& clique_key, se::Stream& stream,
-      const StreamState& state, absl::Span<DeviceBufferPair const> buffers,
-      absl::Span<int64_t* const> ragged_metadata_allocs);
-
   absl::Status RunOneShotRaggedAllToAll(
       const GpuCliqueKey& clique_key, se::Stream& stream,
       const StreamState& state, absl::Span<DeviceBufferPair const> buffers);
 
   bool is_local() const;
-  bool should_use_memcpy() const { return p2p_memcpy_enabled_ && is_local(); }
 
   const RaggedAllToAllConfig config_;
   const std::vector<Buffer> buffers_;
   int64_t device_count_ = -1;
-  const bool p2p_memcpy_enabled_;
   const bool one_shot_kernel_enabled_;
 
   absl::Mutex mutex_;

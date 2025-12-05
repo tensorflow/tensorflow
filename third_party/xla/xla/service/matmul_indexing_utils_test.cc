@@ -16,19 +16,19 @@ limitations under the License.
 #include "xla/service/matmul_indexing_utils.h"
 
 #include <gtest/gtest.h>
+#include "absl/status/status_matchers.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/testlib/test.h"
 #include "xla/shape.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/status_matchers.h"
 
 namespace xla {
 namespace {
 
 using ::testing::ElementsAre;
-using ::tsl::testing::IsOkAndHolds;
 
 TEST(GetNonContractingDimsTest, Valid) {
   Shape shape = ParseShape("f32[1,2,3,4,5,6]").value();

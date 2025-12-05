@@ -233,7 +233,7 @@ absl::Status ResolveDeviceAssignment(
     // For GPU collectives, `xla_global_id`s are arbitrary integers, and XLA
     // requires a mapping from local device IDs to global device IDs.
     const DeviceMgr* device_mgr = ctx->function_library()->device_mgr();
-    std::map<int, xla::GlobalDeviceId> global_device_ids;
+    absl::btree_map<xla::LocalDeviceId, xla::GlobalDeviceId> global_device_ids;
 
     for (int device_idx = 0; device_idx < params->group.group_size;
          device_idx++) {
@@ -246,8 +246,8 @@ absl::Status ResolveDeviceAssignment(
         // This is a local device, so include it in the mapping.
         const DeviceBase::AcceleratorDeviceInfo* accelerator_device_info =
             resolved_device->tensorflow_accelerator_device_info();
-        global_device_ids[accelerator_device_info->stream->parent()
-                              ->device_ordinal()] =
+        global_device_ids[xla::LocalDeviceId(
+            accelerator_device_info->stream->parent()->device_ordinal())] =
             device_attributes.xla_global_id();
       }
     }

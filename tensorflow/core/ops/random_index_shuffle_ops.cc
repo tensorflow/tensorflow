@@ -38,9 +38,9 @@ static absl::Status StatelessRandomPermuteShape(InferenceContext* c) {
   TF_RETURN_IF_ERROR(c->WithRankAtMost(c->input(2), 1, &max_index_shape));
 
   // Figure out if the output is a scalar or tensor.
-  const int32 index_rank = c->Rank(index_shape);
-  const int32 seed_rank = c->Rank(seed_shape);
-  const int32 max_index_rank = c->Rank(max_index_shape);
+  const int32_t index_rank = c->Rank(index_shape);
+  const int32_t seed_rank = c->Rank(seed_shape);
+  const int32_t max_index_rank = c->Rank(max_index_shape);
 
   // Check that last dimension of seed is 3.
   if (seed_rank == 1 && c->Value(c->Dim(seed_shape, 0)) != 3) {

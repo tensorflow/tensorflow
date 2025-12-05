@@ -35,7 +35,6 @@ limitations under the License.
 #include "xla/python/ifrt/serdes_test_util.h"
 #include "xla/python/ifrt/serdes_version.h"
 #include "xla/python/ifrt/support/module_parsing.h"
-#include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/statusor.h"
 
 namespace xla {
@@ -44,7 +43,6 @@ namespace {
 
 using ::testing::HasSubstr;
 using ::testing::Not;
-using ::tsl::testing::StatusIs;
 
 std::string PrintModule(mlir::ModuleOp module) {
   std::string module_str;

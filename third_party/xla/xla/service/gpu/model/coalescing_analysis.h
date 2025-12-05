@@ -43,16 +43,14 @@ class CoalescingAnalysis {
       const HloInstruction* instr,
       absl::Span<const HloInstruction* const> operands,
       const HloFusionAnalysis& fusion_analysis,
-      SymbolicExprContext* symbolic_expr_context = nullptr,
-      bool use_heuristic = true);
+      mlir::MLIRContext* mlir_context = nullptr, bool use_heuristic = true);
 
   // Computes read coalescing for operands of fused `producer` and `consumer`.
   static CoalescingAnalysis Create(
       const HloInstruction* producer, const HloInstruction* consumer,
       absl::Span<const HloInstruction* const> operands,
       const HloFusionAnalysis& fusion_analysis,
-      SymbolicExprContext* symbolic_expr_context = nullptr,
-      bool use_heuristic = true);
+      mlir::MLIRContext* mlir_context = nullptr, bool use_heuristic = true);
 
   // Returns true if the operand is read coalesced.
   bool IsReadCoalesced(const HloInstruction* operand) const;

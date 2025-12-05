@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <optional>
+#include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/statusor.h"
@@ -32,6 +33,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/model/block_level_parameters.h"
+#include "xla/shape.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/types.h"  // IWYU pragma: keep
 
@@ -63,6 +65,11 @@ absl::StatusOr<bool> TrySetGpuBackendConfigForCollective(
 absl::StatusOr<int32_t> AddCollectiveMetadataArguments(
     llvm::SmallVector<mlir::Type>& fn_arg_types, EmitterLocOpBuilder& b,
     const HloComputation* hlo_computation);
+
+// Version of [AddCollectiveMetadataArguments] that does the same for
+// [emitters::KernelArgument] structure.
+absl::StatusOr<std::vector<Shape>> GetCollectiveUnmanagedKernelArguments(
+    const HloFusionInstruction* fusion);
 
 // Emits tiled XTile/Triton IR for a collective op.
 // See [EmitTiledHloInstruction] for an overview of how this fits into the

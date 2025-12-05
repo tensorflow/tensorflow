@@ -31,11 +31,11 @@ limitations under the License.
 #include "mlir/Dialect/Vector/IR/VectorOps.h"
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/Attributes.h"
+#include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/BuiltinTypeInterfaces.h"
 #include "mlir/IR/BuiltinTypes.h"
-#include "mlir/IR/ImplicitLocOpBuilder.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/TypeRange.h"
@@ -46,11 +46,12 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/LogicalResult.h"
+#include "mlir/Support/WalkResult.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "xla/backends/cpu/codegen/emitters/ir/xla_cpu_ops.h"
 #include "xla/backends/gpu/codegen/emitters/ir/xla_gpu_ops.h"
+#include "xla/codegen/emitters/ir/xla_ops.h"
 #include "xla/hlo/analysis/indexing_analysis.h"
-#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/layout_util.h"
 #include "xla/shape_util.h"
 #include "xla/xla_data.pb.h"
@@ -228,10 +229,9 @@ Value LinearizeIndex(Location loc, ShapedType type, ValueRange indices,
   }
   auto linear_shape =
       ShapeUtil::MakeShape(U8, {ShapeUtil::ElementsIn(byte_shape)});
-  // TODO(b/446856820): Get SymbolicExprContext from a different source..
-  SymbolicExprContext symbolic_expr_context(rewriter.getContext());
+  // TODO(b/446856820): Get MLIRContext from a different source..
   auto linearized_map =
-      GetBitcastMap(byte_shape, linear_shape, &symbolic_expr_context);
+      GetBitcastMap(byte_shape, linear_shape, rewriter.getContext());
   mlir::SmallVector<Value> result;
   rewriter.createOrFold<ApplyIndexingOp>(result, loc, indices, ValueRange{},
                                          linearized_map);
@@ -749,6 +749,28 @@ struct RewriteSyncThreads : OpRewritePattern<gpu::SyncThreadsOp> {
   }
 };
 
+struct RewriteGetDynamicDimSizeOp : OpRewritePattern<GetDynamicDimSizeOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(GetDynamicDimSizeOp op,
+                                PatternRewriter& rewriter) const override {
+    auto tensor = op.getTensor();
+    auto tensor_type = tensor.getType();
+    if (tensor_type.getRank() < 2) {
+      return rewriter.notifyMatchFailure(op, "the tensor is already flat");
+    }
+
+    auto tensor_1D = rewriter
+                         .create<UnrealizedConversionCastOp>(
+                             op.getLoc(), GetFlattenedType(tensor_type), tensor)
+                         .getResult(0);
+    rewriter.replaceOpWithNewOp<GetDynamicDimSizeOp>(op, tensor_1D,
+                                                     op.getDim());
+
+    return mlir::success();
+  }
+};
+
 class FlattenTensorsPass
     : public impl::FlattenTensorsPassBase<FlattenTensorsPass> {
  public:
@@ -761,8 +783,10 @@ class FlattenTensorsPass
         RewriteAllocateShared,
         RewriteAtomicRMW,
         RewriteConstant,
+        RewriteCpuLoad,
         RewriteFor,
         RewriteFunctionSignatures,
+        RewriteGetDynamicDimSizeOp,
         RewriteIf,
         RewriteIndexSwitch,
         RewritePureCall,
@@ -772,8 +796,7 @@ class FlattenTensorsPass
         RewriteVectorExtract,
         RewriteVectorFromElements,
         RewriteVectorInsert,
-        RewriteVectorTransferRead,
-        RewriteCpuLoad
+        RewriteVectorTransferRead
     >(mlir_context);
     // clang-format on
     ApplyIndexingOp::getCanonicalizationPatterns(patterns, mlir_context);

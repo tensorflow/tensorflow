@@ -326,15 +326,6 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
       DebugOptions::PARTITIONING_ALGORITHM_NOOP);
 
   opts.set_xla_gpu_enable_triton_gemm(true);
-  opts.clear_xla_gpu_unsupported_generic_triton_emitter_features();
-  opts.add_xla_gpu_unsupported_generic_triton_emitter_features(
-      DebugOptions::GENERIC_TRITON_EMITTER_ENABLE_NESTED_GEMM);
-  opts.add_xla_gpu_unsupported_generic_triton_emitter_features(
-      DebugOptions::GENERIC_TRITON_EMITTER_ALLOW_ALL_GEMM_SHAPES);
-  opts.add_xla_gpu_unsupported_generic_triton_emitter_features(
-      DebugOptions::GENERIC_TRITON_EMITTER_ALLOW_ALL_OPS_IN_GEMM_FUSION);
-  opts.add_xla_gpu_unsupported_generic_triton_emitter_features(
-      DebugOptions::GENERIC_TRITON_EMITTER_DISABLE_LEGACY_GEMM);
   opts.set_xla_gpu_unsupported_enable_triton_multi_output_fusion(true);
   opts.set_xla_gpu_enable_cudnn_int8x32_convolution_reordering(true);
   opts.set_xla_gpu_triton_gemm_any(true);
@@ -464,12 +455,15 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_experimental_enable_heuristic_collective_combining(true);
   opts.set_xla_unsupported_crash_on_hlo_pass_silent_hlo_change(false);
   opts.set_xla_disable_automatic_host_compute_offload(false);
+  opts.set_xla_enable_scoped_logging_timers(true);
   opts.set_xla_unsupported_crash_on_hlo_pass_noop_change(false);
   opts.set_xla_gpu_experimental_enable_split_k_rewrite(false);
-  opts.set_xla_gpu_experimental_enable_triton_tma(false);
+  opts.set_xla_gpu_experimental_enable_triton_tma(true);
   opts.set_xla_gpu_experimental_enable_triton_warp_specialization(false);
   opts.set_xla_gpu_experimental_enable_command_buffer_on_thunks(true);
   opts.set_xla_detect_unstable_reductions(DebugOptions::DETECTION_MODE_NONE);
+  opts.set_xla_detect_unstable_reductions_post_optimizations(
+      DebugOptions::DETECTION_MODE_NONE);
   opts.set_xla_gpu_experimental_scaled_dot_with_triton(false);
   opts.set_xla_gpu_experimental_use_raft_select_k(false);
 
@@ -478,6 +472,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
 
   opts.set_xla_keep_shardings_after_spmd(false);
   opts.set_xla_gpu_experimental_enable_checksum_tracing_on_thunks(false);
+  opts.set_xla_gpu_experimental_enable_buffer_saver_on_thunks(false);
   opts.set_xla_gpu_detect_nan(DebugOptions::DETECTION_MODE_NONE);
   opts.set_xla_gpu_detect_inf(DebugOptions::DETECTION_MODE_NONE);
   return opts;
@@ -868,17 +863,6 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
         return true;
       };
 
-  auto xla_gpu_generic_triton_emitter_features_to_string =
-      [](google::protobuf::RepeatedField<int> values) -> std::string {
-    struct Formatter {
-      void operator()(std::string* out, int type) const {
-        absl::StrAppend(out,
-                        DebugOptions::GenericTritonEmitterFeature_Name(type));
-      }
-    };
-    return absl::StrJoin(values, ",", Formatter());
-  };
-
   // Custom "sub-parser" for xla_gpu_experimental_autotune_cache_mode.
   auto detection_mode = [](DebugOptions* debug_options,
                            const std::string& value)
@@ -898,6 +882,16 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       [debug_options, detection_mode](const std::string& value) {
         if (auto mode = detection_mode(debug_options, value)) {
           debug_options->set_xla_detect_unstable_reductions(mode.value());
+          return true;
+        }
+        return false;
+      };
+
+  auto setter_for_xla_detect_unstable_reductions_post_optimizations =
+      [debug_options, detection_mode](const std::string& value) {
+        if (auto mode = detection_mode(debug_options, value)) {
+          debug_options->set_xla_detect_unstable_reductions_post_optimizations(
+              mode.value());
           return true;
         }
         return false;
@@ -1435,6 +1429,13 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       "If specified, dumps HLO before and after optimization passes which "
       "match this regular expression, in addition to dumping at the very "
       "beginning and end of compilation."));
+  flag_list->push_back(tsl::Flag(
+      "xla_dump_emitter_re",
+      string_setter_for(&DebugOptions::set_xla_dump_emitter_re),
+      debug_options->xla_dump_emitter_re(),
+      "If specified, dumps debug logs (e.g. IR like LLVM or MLIR) before and "
+      "after emitters which match this regular expression, in addition to "
+      "dumping at the very beginning and end of compilation."));
   flag_list->push_back(
       tsl::Flag("xla_dump_include_timestamp",
                 bool_setter_for(&DebugOptions::set_xla_dump_include_timestamp),
@@ -1796,6 +1797,15 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
               set_xla_gpu_experimental_enable_nccl_symmetric_buffers),
       debug_options->xla_gpu_experimental_enable_nccl_symmetric_buffers(),
       "Enables NCCL symmetric buffer registration."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_experimental_aot_compiled_thunks",
+      bool_setter_for(
+          &DebugOptions::set_xla_gpu_experimental_aot_compiled_thunks),
+      debug_options->xla_gpu_experimental_aot_compiled_thunks(),
+      "Enables an Ahead-of-Time (AOT) compilation flow where the compiled "
+      "binary includes the generated Thunks. In contrast, the legacy flow "
+      "only compiles up to the HLO optimization stage, before Thunk "
+      "generation."));
 
   flag_list->push_back(tsl::Flag(
       "xla_gpu_experimental_enable_nvshmem",
@@ -1978,19 +1988,6 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
                 debug_options->xla_gpu_enable_triton_gemm(),
                 "[Stable] Whether to use Triton-based matrix multiplication."));
   flag_list->push_back(tsl::Flag(
-      "xla_gpu_unsupported_generic_triton_emitter_features",
-      SetterForRepeatedEnum<DebugOptions::GenericTritonEmitterFeature>(
-          "xla_gpu_unsupported_generic_triton_emitter_features",
-          /*enum_prefix=*/"GENERIC_TRITON_EMITTER_",
-          &DebugOptions::GenericTritonEmitterFeature_Parse,
-          debug_options
-              ->mutable_xla_gpu_unsupported_generic_triton_emitter_features()),
-      xla_gpu_generic_triton_emitter_features_to_string(
-          debug_options->xla_gpu_unsupported_generic_triton_emitter_features()),
-      "Comma-separated list of individual features of generic Triton emitter. "
-      "Use +/- prefix to modify the default list, or list features to enable "
-      "explicitly - that will override the defaults."));
-  flag_list->push_back(tsl::Flag(
       "xla_gpu_unsupported_enable_triton_multi_output_fusion",
       bool_setter_for(
           &DebugOptions::
@@ -2161,7 +2158,8 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
           &DebugOptions::
               set_xla_gpu_filter_kernels_spilling_registers_on_autotuning),
       debug_options->xla_gpu_filter_kernels_spilling_registers_on_autotuning(),
-      "Filter out kernels that spill registers during autotuning"));
+      "Filter out kernels that spill registers during autotuning. Default is "
+      "true."));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_fail_ptx_compilation_on_register_spilling",
       bool_setter_for(
@@ -2366,6 +2364,13 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
           &DebugOptions::set_xla_gpu_experimental_autotuner_cache_dir),
       debug_options->xla_gpu_experimental_autotuner_cache_dir(),
       "Experimental: Specify the directory to read/write autotuner cache to."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_gemm_autotuner_override_file",
+      string_setter_for(
+          &DebugOptions::set_xla_gpu_gemm_autotuner_override_file),
+      debug_options->xla_gpu_gemm_autotuner_override_file(),
+      "A textproto file to override autotune results. See also "
+      "`xla_gpu_override_gemm_autotuner` to override with a single config."));
   flag_list->push_back(tsl::Flag(
       "xla_enable_command_buffers_during_profiling",
       bool_setter_for(
@@ -2617,6 +2622,11 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       "Return an error if HostOffloader would have automatically offloaded some"
       " compute to the host."));
   flag_list->push_back(tsl::Flag(
+      "xla_enable_scoped_logging_timers",
+      bool_setter_for(&DebugOptions::set_xla_enable_scoped_logging_timers),
+      debug_options->xla_enable_scoped_logging_timers(),
+      "Do not run scoped logging timers (only supported in some places)."));
+  flag_list->push_back(tsl::Flag(
       "xla_gpu_experimental_matmul_perf_table_path",
       string_setter_for(
           &DebugOptions::set_xla_gpu_experimental_matmul_perf_table_path),
@@ -2675,6 +2685,15 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
                 "Acceptable values are: 'none', 'log', and 'crash'. 'none' is "
                 "the default."));
   flag_list->push_back(tsl::Flag(
+      "xla_detect_unstable_reductions_post_optimizations",
+      setter_for_xla_detect_unstable_reductions_post_optimizations,
+      DebugOptions::DetectionMode_Name(
+          debug_options->xla_detect_unstable_reductions_post_optimizations()),
+      "Controls the behavior of the unstable reduction detector pass "
+      "that checks for unstable reductions in HLO computations after "
+      "optimizations. Acceptable values are: 'none', 'log', and "
+      "'crash'. 'none' is the default."));
+  flag_list->push_back(tsl::Flag(
       "xla_gpu_experimental_use_raft_select_k",
       bool_setter_for(
           &DebugOptions::set_xla_gpu_experimental_use_raft_select_k),
@@ -2712,6 +2731,14 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       debug_options->xla_gpu_experimental_enable_checksum_tracing_on_thunks(),
       "Enables an experimental feature to record checksums of selected thunk "
       "inputs/outputs."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_experimental_enable_buffer_saver_on_thunks",
+      bool_setter_for(
+          &DebugOptions::
+              set_xla_gpu_experimental_enable_buffer_saver_on_thunks),
+      debug_options->xla_gpu_experimental_enable_buffer_saver_on_thunks(),
+      "When provided, enables an experimental feature to save results of "
+      "selected thunks."));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_experimental_thunk_buffer_debug_filter_by_thunk_id_ranges",
       setter_for_thunk_buffer_debug_filter_by_thunk_id, "(none)",

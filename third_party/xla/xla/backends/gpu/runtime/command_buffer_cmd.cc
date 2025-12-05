@@ -52,10 +52,12 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/all_to_all_thunk.h"
 #include "xla/backends/gpu/runtime/annotation.h"
 #include "xla/backends/gpu/runtime/collective_broadcast_thunk.h"
+#include "xla/backends/gpu/runtime/collective_permute_thunk.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/backends/gpu/runtime/copy_thunk.h"
 #include "xla/backends/gpu/runtime/dynamic_slice_thunk.h"
 #include "xla/backends/gpu/runtime/gpublas_lt_matmul_thunk.h"
+#include "xla/backends/gpu/runtime/p2p_thunk_common.h"
 #include "xla/backends/gpu/runtime/shaped_slice.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/while_thunk.h"
@@ -87,6 +89,7 @@ limitations under the License.
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/gpu/tma_metadata.h"
 #include "xla/stream_executor/kernel.h"
+#include "xla/stream_executor/kernel_args.h"
 #include "xla/stream_executor/memory_allocation.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream.h"
@@ -454,10 +457,9 @@ CommandBufferCmdExecutor::CommandBufferCmdExecutor(
 }
 
 absl::Status CommandBufferCmdExecutor::Prepare(
-    const Thunk::PrepareParams& params,
-    Thunk::ResourceRequestsInterface& resource_requests) {
+    const Thunk::PrepareParams& params) {
   for (auto& command : commands_) {
-    TF_RETURN_IF_ERROR(command->Prepare(params, resource_requests));
+    TF_RETURN_IF_ERROR(command->Prepare(params));
   }
   return absl::OkStatus();
 }
@@ -488,6 +490,60 @@ absl::Status CommandBufferCmdExecutor::Record(
   } else {
     auto* create = std::get_if<CommandBufferCmd::RecordCreate>(&record_action);
     CHECK(create);
+
+    if (VLOG_IS_ON(5) &&
+        command_buffer->mode() == se::CommandBuffer::Mode::kPrimary) {
+      int64_t input_count = 0;
+      int64_t output_count = 0;
+      int64_t input_temp_count = 0;
+      int64_t output_temp_count = 0;
+      int64_t input_output_count = 0;
+      int64_t input_temp_output_count = 0;
+
+      for (const auto& cmd : commands_) {
+        bool has_input = false;
+        bool has_output = false;
+        bool has_temp = false;
+
+        for (const auto& buffer : cmd->buffers()) {
+          if (buffer.HasDefinedContentsOnInput()) {
+            has_input = true;
+          }
+          if (buffer.HasDefinedContentsOnOutput()) {
+            has_output = true;
+          }
+          if (!buffer.HasDefinedContentsOnInput() &&
+              !buffer.HasDefinedContentsOnOutput()) {
+            has_temp = true;
+          }
+        }
+
+        if (has_input && !has_output && !has_temp) input_count++;
+        if (!has_input && has_output && !has_temp) output_count++;
+        if (has_input && !has_output && has_temp) input_temp_count++;
+        if (!has_input && has_output && has_temp) output_temp_count++;
+        if (has_input && has_output && !has_temp) input_output_count++;
+        if (has_input && has_output && has_temp) input_temp_output_count++;
+      }
+
+      VLOG(5) << "CommandBufferCmdExecutor allocation summary:\n"
+              << "  Total commands                                 : "
+              << commands_.size() << "\n"
+              << "  ------------------------------------------------\n"
+              << "  Commands consuming input buffer                : "
+              << input_count << "\n"
+              << "  Commands consuming output buffer               : "
+              << output_count << "\n"
+              << "  Commands consuming input, temp buffers         : "
+              << input_temp_count << "\n"
+              << "  Commands consuming output, temp buffers        : "
+              << output_temp_count << "\n"
+              << "  Commands consuming input, output buffers       : "
+              << input_output_count << "\n"
+              << "  Commands consuming input, temp, output buffers : "
+              << input_temp_output_count;
+    }
+
     TF_RETURN_IF_ERROR(RecordCreate(execute_params, record_params,
                                     command_buffer, create->dependencies)
                            .status());
@@ -1495,11 +1551,9 @@ absl::Status WhileCmd::Initialize(const Thunk::InitializeParams& params,
   return absl::OkStatus();
 }
 
-absl::Status WhileCmd::Prepare(
-    const Thunk::PrepareParams& params,
-    Thunk::ResourceRequestsInterface& resource_requests) {
-  TF_RETURN_IF_ERROR(cond_commands_.Prepare(params, resource_requests));
-  TF_RETURN_IF_ERROR(body_commands_.Prepare(params, resource_requests));
+absl::Status WhileCmd::Prepare(const Thunk::PrepareParams& params) {
+  TF_RETURN_IF_ERROR(cond_commands_.Prepare(params));
+  TF_RETURN_IF_ERROR(body_commands_.Prepare(params));
   return absl::OkStatus();
 }
 
@@ -1800,7 +1854,7 @@ absl::StatusOr<const se::CommandBuffer::Command*> CuDnnCmd::Record(
       [&](se::Stream* stream) {
         return graph_->get()->Execute(
             *stream, absl::Span<se::DeviceMemoryBase>(operands),
-            execute_params.collective_params->local_device_ordinal);
+            execute_params.collective_params->local_device_id.value());
       });
 }
 
@@ -1960,12 +2014,14 @@ CustomCallCmd::RecordXlaFfiCall(const Thunk::ExecuteParams& execute_params,
           execute_params.stream->parent(),
           execute_params.command_buffer_trace_stream, [&](se::Stream* stream) {
             ffi::CallOptions options = {
-                run_id, execute_params.buffer_allocations->device_ordinal(),
+                run_id,
+                execute_params.buffer_allocations->device_ordinal(),
                 ffi::CallOptions::GpuOptions{
                     stream,
                     execute_params.buffer_allocations->memory_allocator()},
                 /*called_computation=*/nullptr,  // TODO(b/342285364)
-                execute_params.ffi_execution_context};
+                execute_params.ffi_execution_context,
+                execution_state_.get()};
             return ffi::Call(handler_, *call_frame, options);
           }));
 
@@ -2005,9 +2061,8 @@ CollectiveCmd::CollectiveCmd(
       config_(std::move(config)),
       async_events_(std::move(async_events)) {}
 
-absl::Status CollectiveCmd::Prepare(
-    const Thunk::PrepareParams& params,
-    Thunk::ResourceRequestsInterface& resource_requests) {
+absl::Status CollectiveCmd::Prepare(const Thunk::PrepareParams& params) {
+  TF_RET_CHECK(params.collective_params != nullptr);
   TF_ASSIGN_OR_RETURN(GpuCollectives * collectives,
                       Thunk::GetGpuCollectives(params));
   TF_ASSIGN_OR_RETURN(
@@ -2015,7 +2070,7 @@ absl::Status CollectiveCmd::Prepare(
       GetGpuCliqueKey(collectives, *params.collective_params,
                       config().replica_groups, config().group_mode,
                       AsyncStreamKind::ASYNC_STREAM_KIND_COLLECTIVE));
-  return resource_requests.AddClique(clique_key);
+  return params.clique_requests->RequestClique(clique_key);
 }
 
 absl::StatusOr<const se::CommandBuffer::Command*>
@@ -2227,6 +2282,7 @@ absl::StatusOr<const se::CommandBuffer::Command*> AllToAllCmd::Record(
               config().group_mode,
               AsyncStreamKind::ASYNC_STREAM_KIND_COLLECTIVE));  // Use constant
 
+  // MemCpy case is not currently supported in CommandBuffer.
   return RecordTracedCommand(
       execute_params, record_params, std::move(record_action), command_buffer,
       [&](se::Stream* stream) {
@@ -2372,6 +2428,86 @@ CommandBufferCmd::BufferUseVector CollectiveBroadcastCmd::buffers() const {
 }
 
 //===----------------------------------------------------------------------===//
+// CollectivePermuteCmd
+//===----------------------------------------------------------------------===//
+
+CollectivePermuteCmd::CollectivePermuteCmd(
+    CollectiveConfig config, P2PConfig p2p_config,
+    absl::Span<const CollectiveThunk::Buffer> buffers,
+    std::shared_ptr<CollectiveThunk::AsyncEvents> async_events)
+    : CollectiveCmd(CommandBufferCmdType::kCollectivePermuteCmd,
+                    std::move(config), std::move(async_events)),
+      p2p_config_(std::move(p2p_config)),
+      buffers_(buffers.begin(), buffers.end()) {}
+
+absl::StatusOr<const se::CommandBuffer::Command*> CollectivePermuteCmd::Record(
+    const Thunk::ExecuteParams& execute_params,
+    const RecordParams& record_params, RecordAction record_action,
+    se::CommandBuffer* command_buffer) {
+  TF_ASSIGN_OR_RETURN(
+      std::vector<DeviceBufferPair> device_buffers,
+      ConvertToDeviceBuffers(execute_params.buffer_allocations, buffers_,
+                             config().operand_element_type));
+
+  int device_ordinal = execute_params.stream->parent()->device_ordinal();
+  VLOG(5) << "[" << device_ordinal << "] CollectivePermuteCmd:";
+
+  for (size_t i = 0; i < device_buffers.size(); ++i) {
+    VLOG(5) << "[" << device_ordinal << "]  Src: " << buffers_[i].source_buffer
+            << " (" << device_buffers[i].source_buffer.opaque() << ")";
+    VLOG(5) << "[" << device_ordinal
+            << "]  Dst: " << buffers_[i].destination_buffer << " ("
+            << device_buffers[i].destination_buffer.opaque() << ")";
+  }
+
+  if (!execute_params.collective_params || !execute_params.collective_cliques) {
+    return absl::InvalidArgumentError(
+        "CollectivePermuteCmd requires collective parameters and cliques");
+  }
+
+  TF_ASSIGN_OR_RETURN(GpuCollectives * collectives,
+                      Thunk::GetGpuCollectives(execute_params));
+
+  TF_ASSIGN_OR_RETURN(
+      CommunicatorHandle comm_handle,
+      GetComm(collectives, *execute_params.collective_params,
+              *execute_params.collective_cliques, config().replica_groups,
+              config().group_mode,
+              AsyncStreamKind::ASYNC_STREAM_KIND_COLLECTIVE));  // Use constant
+
+  std::string device_string =
+      CollectiveThunk::GetDeviceString(*execute_params.collective_params);
+  bool use_symmetric_buffer = config().use_symmetric_buffer;
+
+  TF_ASSIGN_OR_RETURN(
+      const int64_t current_id,
+      GetCollectiveCurrentId(execute_params.collective_params, p2p_config_));
+
+  const P2PConfig::SourceTargetMapEntry source_target =
+      P2PConfig::GetSourceTarget(p2p_config_.id_to_source_target, current_id);
+
+  // MemCpy case is not currently supported in CommandBuffer.
+  return RecordTracedCommand(
+      execute_params, record_params, std::move(record_action), command_buffer,
+      [&](se::Stream* stream) {
+        return RunCollectivePermute(source_target, device_buffers, *stream,
+                                    comm_handle.comm, device_string, current_id,
+                                    /*use_memcpy=*/false,
+                                    /*recv_ptr_map=*/nullptr,
+                                    use_symmetric_buffer);
+      });
+}
+
+CommandBufferCmd::BufferUseVector CollectivePermuteCmd::buffers() const {
+  BufferUseVector buffer_usage;
+  for (const CollectiveThunk::Buffer& buffer : buffers_) {
+    buffer_usage.emplace_back(BufferUse::Read(buffer.source_buffer));
+    buffer_usage.emplace_back(BufferUse::Write(buffer.destination_buffer));
+  }
+  return buffer_usage;
+}
+
+//===----------------------------------------------------------------------===//
 // DynamicSliceFusionCmd
 //===----------------------------------------------------------------------===//
 
@@ -2454,8 +2590,7 @@ absl::Status DynamicSliceFusionCmd::Initialize(
 }
 
 absl::Status DynamicSliceFusionCmd::Prepare(
-    const Thunk::PrepareParams& params,
-    Thunk::ResourceRequestsInterface& resource_requests) {
+    const Thunk::PrepareParams& params) {
   for (DynamicSliceThunk::SliceDef& slice : slices_) {
     VLOG(3) << "DynamicSliceFusionCmd: slice: " << slice.ToString();
     if (slice.offsets.has_value()) {
@@ -2471,7 +2606,7 @@ absl::Status DynamicSliceFusionCmd::Prepare(
                    slice.orig_shape->dimensions().size());
     }
   }
-  TF_RETURN_IF_ERROR(embedded_commands_.Prepare(params, resource_requests));
+  TF_RETURN_IF_ERROR(embedded_commands_.Prepare(params));
   if (offset_as_function_of_indvar_metadata_ != std::nullopt) {
     Indvar(this) =
         HloEvaluator()

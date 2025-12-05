@@ -26,6 +26,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
+#include "xla/service/gpu/alias_info.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/instruction_fusion.h"
 #include "xla/stream_executor/device_description.h"
@@ -51,12 +52,14 @@ class SoftmaxRewriterTriton : public HloModulePass {
  public:
   explicit SoftmaxRewriterTriton(const se::DeviceDescription& device_info,
                                  HloCostAnalysis::ShapeSizeFunction shape_size,
-                                 SymbolicExprContext* symbolic_expr_context,
+                                 const GpuAliasInfo* alias_info,
+                                 mlir::MLIRContext* mlir_context,
                                  bool only_fuse_if_profitable = false)
       : device_info_(device_info),
         shape_size_(shape_size),
+        alias_info_(alias_info),
         use_cost_model_to_evaluate_fusions_(only_fuse_if_profitable),
-        symbolic_expr_context_(symbolic_expr_context) {}
+        mlir_context_(mlir_context) {}
 
   absl::string_view name() const override { return "triton-softmax-rewriter"; }
 
@@ -105,8 +108,9 @@ class SoftmaxRewriterTriton : public HloModulePass {
  private:
   const se::DeviceDescription& device_info_;
   const HloCostAnalysis::ShapeSizeFunction shape_size_;
+  const GpuAliasInfo* alias_info_;
   bool use_cost_model_to_evaluate_fusions_;
-  SymbolicExprContext* symbolic_expr_context_;
+  mlir::MLIRContext* mlir_context_;
 };
 
 }  // namespace gpu

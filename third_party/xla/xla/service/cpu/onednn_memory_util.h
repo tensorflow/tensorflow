@@ -20,6 +20,7 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "absl/log/check.h"
 #include "absl/status/statusor.h"
 #include "oneapi/dnnl/dnnl.hpp"
 #include "oneapi/dnnl/dnnl_common_types.h"
@@ -27,7 +28,6 @@ limitations under the License.
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/Value.h"
 #include "xla/literal.h"
-#include "xla/service/cpu/runtime_lightweight_check.h"
 #include "xla/service/llvm_ir/ir_array.h"
 #include "xla/shape.h"
 #include "xla/xla_data.pb.h"
@@ -127,7 +127,7 @@ absl::StatusOr<dnnl::memory::desc> TransposeLastTwoDims(
 #define TRANSPOSE_LAST_TWO_DIMS_IF(pred, mem_desc)        \
   if (pred) {                                             \
     auto trans_mem_desc = TransposeLastTwoDims(mem_desc); \
-    XLA_LIGHTWEIGHT_CHECK(trans_mem_desc.ok());           \
+    CHECK(trans_mem_desc.ok());                           \
     mem_desc = *trans_mem_desc;                           \
   }
 

@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "llvm/ADT/STLExtras.h"
 #include "google/protobuf/repeated_field.h"
+#include "xla/backends/gpu/codegen/triton/tma_utils.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -645,8 +646,11 @@ void TritonDotFusionSearchSpace::AddTmaParameter(
   ConfigWithNotes new_config = config;
   new_config.config.is_tma_allowed = false;
   updated_configs.push_back(new_config);
-  new_config.config.is_tma_allowed = true;
-  updated_configs.push_back(new_config);
+
+  if (IsTmaRecommended(config.config)) {
+    new_config.config.is_tma_allowed = true;
+    updated_configs.push_back(new_config);
+  }
 }
 
 void TritonDotFusionSearchSpace::AddWarpSpecializationParameter(

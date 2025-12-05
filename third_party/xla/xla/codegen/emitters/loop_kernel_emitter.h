@@ -40,7 +40,7 @@ namespace xla::emitters {
 // Generic loop fusion.
 class LoopFusionKernelEmitter final : public KernelEmitter<MlirKernelSource> {
  public:
-  LoopFusionKernelEmitter(SymbolicExprContext& symbolic_expr_context,
+  LoopFusionKernelEmitter(mlir::MLIRContext& mlir_context,
                           const HloFusionInstruction& fusion,
                           const HloFusionSpec& fusion_spec,
                           const BufferAssignment* buffer_assignment,
@@ -54,14 +54,14 @@ class LoopFusionKernelEmitter final : public KernelEmitter<MlirKernelSource> {
 
   static IndexingMap ComputeWorkItemIdToOutputIndexing(
       const WorkDimensions& work_dimensions, const Shape& root_shape,
-      SymbolicExprContext* ctx);
+      mlir::MLIRContext* ctx);
 
   // Get the shape that will be used for loop indexing for the given fusion
   // specification.
   static Shape GetIndexingShape(const HloFusionSpec& fusion_spec);
 
  private:
-  IndexingMap ComputeWorkItemIdToOutputIndexing(SymbolicExprContext* ctx) const;
+  IndexingMap ComputeWorkItemIdToOutputIndexing(mlir::MLIRContext* ctx) const;
 
   absl::Status EmitEntryFunction(
       const emitters::PartitionedComputations& computations,
@@ -70,7 +70,7 @@ class LoopFusionKernelEmitter final : public KernelEmitter<MlirKernelSource> {
       const HloFusionInstruction& fusion) const;
 
  private:
-  SymbolicExprContext& symbolic_expr_context_;
+  mlir::MLIRContext& mlir_context_;
   const HloFusionInstruction& fusion_;
   const HloFusionSpec& fusion_spec_;
   const BufferAssignment* buffer_assignment_;

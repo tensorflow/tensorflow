@@ -15,11 +15,11 @@ limitations under the License.
 
 #include "xla/service/scatter_determinism_expander.h"
 
-#include <algorithm>
 #include <cstdint>
 #include <optional>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/strings/str_format.h"
@@ -38,10 +38,9 @@ limitations under the License.
 #include "xla/service/scatter_utils.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/logging.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 
@@ -736,9 +735,8 @@ absl::StatusOr<HloInstruction*> ScatterDeterminismExpander::ExpandInstruction(
     std::vector<int64_t> actual_update_window_dims(num_operand_dims);
     int update_dim_index = 0;
     for (int i = 0; i < num_operand_dims; ++i) {
-      if (std::find(dim_numbers.inserted_window_dims().begin(),
-                    dim_numbers.inserted_window_dims().end(),
-                    i) != dim_numbers.inserted_window_dims().end()) {
+      if (absl::c_find(dim_numbers.inserted_window_dims(), i) !=
+          dim_numbers.inserted_window_dims().end()) {
         actual_update_window_dims[i] = 1;
       } else {
         actual_update_window_dims[i] =

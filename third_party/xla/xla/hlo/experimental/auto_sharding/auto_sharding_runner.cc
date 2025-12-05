@@ -22,8 +22,12 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding.h"
+#include "xla/hlo/experimental/auto_sharding/auto_sharding_option.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/tools/hlo_module_loader.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "tsl/platform/init_main.h"
 
 namespace xla {
@@ -58,6 +62,6 @@ absl::Status RunAutoShardingPassFromFile(const std::string& file_name) {
 int main(int argc, char** argv) {
   tsl::port::InitMain("Run AutoSharding Pass", &argc, &argv);
   QCHECK(argc == 2) << "Must specify a single input file";
-  TF_CHECK_OK(xla::spmd::RunAutoShardingPassFromFile(argv[1]));
+  CHECK_OK(xla::spmd::RunAutoShardingPassFromFile(argv[1]));
   return 0;
 }

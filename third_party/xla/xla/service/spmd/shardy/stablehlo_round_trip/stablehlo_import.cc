@@ -751,12 +751,13 @@ void registerStablehloImportShardingsPass() {
 void addStablehloImportPipeline(mlir::OpPassManager& pm,
                                 ArrayRef<bool> allowPropagationToArgs,
                                 ArrayRef<bool> allowPropagationToResults,
-                                bool importFuncCalls) {
-  addCommonPreImportPasses(pm);
+                                bool enableStablehloCanonicalizeFromHloImport) {
+  addCommonPreImportPasses(pm, /*enableConstantImport=*/true,
+                           enableStablehloCanonicalizeFromHloImport);
   pm.addPass(createImportShardingsPass(allowPropagationToArgs,
                                        allowPropagationToResults));
   pm.addPass(createStablehloRoundTripShardMapImportPass());
-  addCommonPostImportPasses(pm, importFuncCalls);
+  addCommonPostImportPasses(pm, /*importFuncCalls=*/true);
 }
 
 void registerStablehloImportPipeline() {

@@ -24,6 +24,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/status.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/c/experimental/filesystem/filesystem_interface.h"
 #include "xla/tsl/platform/file_system.h"
 #include "tensorflow/core/platform/file_statistics.h"

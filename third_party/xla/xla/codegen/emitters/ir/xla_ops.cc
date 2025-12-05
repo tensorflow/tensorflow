@@ -297,7 +297,7 @@ struct IndexingMapWithAdditions {
 absl::StatusOr<IndexingMapWithAdditions> GetNewIndexingMapAfterFoldingSequence(
     IndexingMap indexing_map,
     SmallVector<std::pair<int, ApplyIndexingOp>, 2> apply_indexing_ops,
-    mlir::DenseMap<Value, AffineExpr> operand_exprs, SymbolicExprContext* ctx) {
+    mlir::DenseMap<Value, AffineExpr> operand_exprs, MLIRContext* ctx) {
   int num_dims = indexing_map.GetDimensionCount();
 
   SmallVector<Value> added_dim_args;
@@ -324,8 +324,8 @@ absl::StatusOr<IndexingMapWithAdditions> GetNewIndexingMapAfterFoldingSequence(
       auto& replacement_expr = operand_exprs[producer_operand.get()];
       if (!replacement_expr) {
         int dim_num = producer_operand_number;
-        replacement_expr = getAffineDimExpr(num_dims + added_dim_args.size(),
-                                            ctx->GetMLIRContext());
+        replacement_expr =
+            getAffineDimExpr(num_dims + added_dim_args.size(), ctx);
         added_dim_args.push_back(producer_operand.get());
         new_dim_vars.push_back(producer_map.GetDimVar(dim_num));
       }
@@ -448,11 +448,9 @@ struct FoldApplyIndexingSequence
               : getAffineSymbolExpr(operand_number - num_dims, ctx);
     }
 
-    // TODO(b/446856303): Get SymbolicExprContext from IndexingMap.
-    SymbolicExprContext symbolic_expr_context(ctx);
+    // TODO(b/446856303): Get MLIRContext from IndexingMap.
     auto replacement = GetNewIndexingMapAfterFoldingSequence(
-        indexing_map, apply_indexing_ops, operand_exprs,
-        &symbolic_expr_context);
+        indexing_map, apply_indexing_ops, operand_exprs, ctx);
 
     if (!replacement.ok()) {
       return rewriter.notifyMatchFailure(indexing_op,
@@ -938,7 +936,6 @@ struct SimplifyLoopOfApplyIndexing : public mlir::OpRewritePattern<LoopOp> {
     auto loop_indexing_map = loop_op.getIndexingMap();
     MLIRContext* mlir_context = loop_op.getContext();
     // TODO(b/446856303): Get context from IndexingMap instead.
-    SymbolicExprContext symbolic_expr_context(mlir_context);
     int num_dims = loop_indexing_map.GetDimVarsCount();
 
     SmallVector<std::pair<int, ApplyIndexingOp>, 2> apply_indexing_ops;
@@ -971,8 +968,7 @@ struct SimplifyLoopOfApplyIndexing : public mlir::OpRewritePattern<LoopOp> {
     }
 
     auto replacement = GetNewIndexingMapAfterFoldingSequence(
-        loop_indexing_map, apply_indexing_ops, operand_exprs,
-        &symbolic_expr_context);
+        loop_indexing_map, apply_indexing_ops, operand_exprs, mlir_context);
 
     if (!replacement.ok()) {
       return rewriter.notifyMatchFailure(loop_op,
@@ -1115,8 +1111,7 @@ std::optional<IndexingMap> parseChainOfStringsAsIndexingMap(
   while (parser.parseOptionalAttribute(indexing_map_attr).has_value()) {
     indexing_map_str.append(indexing_map_attr.getValue());
   }
-  SymbolicExprContext symbolic_expr_context(parser.getContext());
-  return ParseIndexingMap(indexing_map_str, &symbolic_expr_context);
+  return ParseIndexingMap(indexing_map_str, parser.getContext());
 }
 
 void LoopOp::getCanonicalizationPatterns(mlir::RewritePatternSet& results,

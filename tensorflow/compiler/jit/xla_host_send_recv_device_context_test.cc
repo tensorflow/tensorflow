@@ -34,8 +34,12 @@ namespace {
 
 class XlaHostSendRecvDeviceContextTest : public ::testing::Test {
  public:
-  void SetDevice(const string& device_type) {
+  absl::Status SetDevice(const string& device_type) {
     auto device_factory = DeviceFactory::GetFactory(device_type);
+    if (device_factory == nullptr) {
+      return absl::NotFoundError(
+          "Failed to get DeviceFactory for device_type: " + device_type);
+    }
     SessionOptions options;
     std::vector<std::unique_ptr<Device>> devices;
     Status s = device_factory->CreateDevices(
@@ -49,6 +53,7 @@ class XlaHostSendRecvDeviceContextTest : public ::testing::Test {
     AllocatorAttributes device_alloc_attr;
     device_alloc_attr.set_on_host(false);
     device_allocator_ = device_->GetAllocator(device_alloc_attr);
+    return absl::OkStatus();
   }
 
  protected:
@@ -58,7 +63,7 @@ class XlaHostSendRecvDeviceContextTest : public ::testing::Test {
 };
 
 TEST_F(XlaHostSendRecvDeviceContextTest, CopyDeviceTensorToCPU) {
-  SetDevice("GPU");
+  TF_ASSERT_OK(SetDevice("GPU"));
   Tensor origin_cpu_tensor(host_allocator_, DT_FLOAT, TensorShape({2, 2}));
   test::FillValues<float>(&origin_cpu_tensor, {1.2, 2.3, 3.4, 4.5});
   Tensor device_tensor(device_allocator_, DT_FLOAT, TensorShape({2, 2}));
@@ -93,7 +98,7 @@ TEST_F(XlaHostSendRecvDeviceContextTest, CopyDeviceTensorToCPU) {
 }
 
 TEST_F(XlaHostSendRecvDeviceContextTest, CopyCPUTensorToDevice) {
-  SetDevice("GPU");
+  TF_ASSERT_OK(SetDevice("GPU"));
   Tensor origin_cpu_tensor(host_allocator_, DT_FLOAT, TensorShape({2, 2}));
   test::FillValues<float>(&origin_cpu_tensor, {1.2, 2.3, 3.4, 4.5});
   Tensor device_tensor(device_allocator_, DT_FLOAT, TensorShape({2, 2}));
@@ -127,7 +132,7 @@ TEST_F(XlaHostSendRecvDeviceContextTest, CopyCPUTensorToDevice) {
 }
 
 TEST_F(XlaHostSendRecvDeviceContextTest, RoundTrip) {
-  SetDevice("GPU");
+  TF_ASSERT_OK(SetDevice("GPU"));
   Tensor origin_cpu_tensor(host_allocator_, DT_FLOAT, TensorShape({2, 2}));
   test::FillValues<float>(&origin_cpu_tensor, {1.2, 2.3, 3.4, 4.5});
   Tensor device_tensor(device_allocator_, DT_FLOAT, TensorShape({2, 2}));

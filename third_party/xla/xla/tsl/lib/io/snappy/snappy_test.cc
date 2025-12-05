@@ -13,16 +13,29 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <memory>
+#include "tsl/platform/snappy.h"
 
-#include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/tsl/lib/io/inputbuffer.h"
+#include <cstddef>
+#include <cstdio>
+#include <cstring>
+#include <memory>
+#include <string>
+
+#include "absl/log/check.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "xla/tsl/lib/io/random_inputstream.h"
 #include "xla/tsl/lib/io/snappy/snappy_inputbuffer.h"
 #include "xla/tsl/lib/io/snappy/snappy_inputstream.h"
 #include "xla/tsl/lib/io/snappy/snappy_outputbuffer.h"
 #include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/file_system.h"
+#include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/test.h"
+#include "tsl/platform/tstring.h"
 
 namespace tsl {
 
@@ -341,9 +354,9 @@ TEST(SnappyBuffers, SmallUncompressInputStream) {
     return;
   }
   CHECK_EQ(TestMultipleWritesInputStream(10000, 10000, 10000, 10, 2, true),
-           errors::ResourceExhausted(
+           absl::ResourceExhaustedError(absl::StrCat(
                "Output buffer(size: 10 bytes) too small. ",
-               "Should be larger than ", GetRecord().size(), " bytes."));
+               "Should be larger than ", GetRecord().size(), " bytes.")));
 }
 
 TEST(SnappyBuffers, CorruptBlock) {

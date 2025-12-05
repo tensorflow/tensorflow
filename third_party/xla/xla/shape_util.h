@@ -827,6 +827,10 @@ class ShapeUtil {
   // Drops any degenerate dimensions (i.e. dimensions of size 1)
   static Shape DropDegenerateDimensions(const Shape& shape);
 
+  // Permutes the dimensions of `shape` without changing the layout, if present.
+  static Shape PermuteDimensionsIgnoringLayout(
+      absl::Span<const int64_t> permutation, const Shape& shape);
+
   // Permutes the dimensions by the given permutation, so
   // return_value.dimensions[i] = argument.dimensions[permutation[i]].
   //

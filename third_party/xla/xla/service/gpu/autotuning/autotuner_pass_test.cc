@@ -108,7 +108,7 @@ TEST_F(AutotunerPassTest, CublasGemmIsAutotuned) {
   tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), "autotuning",
                                       /*num_threads=*/4);
   std::vector<std::unique_ptr<CodegenBackend>> backends;
-  GpuCompiler::TargetConfig target_config(stream_executor_);
+  GpuCompiler::GpuTargetConfig target_config(stream_executor_);
   backends.push_back(std::make_unique<CublasBackend>(
       stream_executor_, &module->config().debug_options(), &compiler_,
       &target_config));
@@ -136,7 +136,7 @@ TEST_F(AutotunerPassTest, CublasGemmIsNotAutotunedWhenFilterReturnsFalse) {
 
   tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), "autotuning",
                                       /*num_threads=*/4);
-  GpuCompiler::TargetConfig target_config(stream_executor_);
+  GpuCompiler::GpuTargetConfig target_config(stream_executor_);
   std::vector<std::unique_ptr<CodegenBackend>> backends;
   backends.push_back(std::make_unique<CublasBackend>(
       stream_executor_, &module->config().debug_options(), &compiler_,
@@ -174,7 +174,7 @@ TEST_F(AutotunerPassTest, CublasGemmIsAutotunedAndCached) {
 
   tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), "autotuning",
                                       /*num_threads=*/4);
-  GpuCompiler::TargetConfig target_config(stream_executor_);
+  GpuCompiler::GpuTargetConfig target_config(stream_executor_);
 
   // Run the pass for the first time, this should populate the cache.
   {
@@ -257,7 +257,7 @@ TEST_F(AutotunerPassTest, CublasGemmIsAutotunedWithCacheOnly) {
 
   tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), "autotuning",
                                       /*num_threads=*/4);
-  GpuCompiler::TargetConfig target_config(stream_executor_);
+  GpuCompiler::GpuTargetConfig target_config(stream_executor_);
 
   // Run the pass for the first time, this should populate the cache.
   {
@@ -321,7 +321,7 @@ TEST_F(AutotunerPassTest, DevicelessUsesDefaultConfigIfNoCache) {
 
   tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), "autotuning",
                                       /*num_threads=*/4);
-  GpuCompiler::TargetConfig target_config(stream_executor_);
+  GpuCompiler::GpuTargetConfig target_config(stream_executor_);
 
   std::vector<std::unique_ptr<CodegenBackend>> backends;
   backends.push_back(std::make_unique<CublasBackend>(
@@ -378,7 +378,7 @@ ENTRY %main (arg0: f32[100,100], arg1: f32[100,100]) -> f32[100,100] {
   tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), "autotuning",
                                       /*num_threads=*/4);
   std::vector<std::unique_ptr<CodegenBackend>> backends;
-  GpuCompiler::TargetConfig target_config(stream_executor_);
+  GpuCompiler::GpuTargetConfig target_config(stream_executor_);
 
   backends.push_back(std::make_unique<CublasBackend>(
       stream_executor_, &module->config().debug_options(), &compiler_,

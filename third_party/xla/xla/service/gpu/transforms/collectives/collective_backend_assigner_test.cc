@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "xla/service/gpu/transforms/collectives/collective_backend_assigner.h"
 
+#include <cstdint>
 #include <memory>
 
 #include <gmock/gmock.h>
@@ -27,14 +28,11 @@ limitations under the License.
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
 namespace {
-
-using ::tsl::testing::IsOkAndHolds;
 
 class CollectiveBackendAssignerTest : public HloHardwareIndependentTestBase {
  protected:

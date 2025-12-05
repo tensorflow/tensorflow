@@ -24,6 +24,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
+#include "xla/hlo/testlib/pattern_matcher_gmock.h"
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/tsl/platform/statusor.h"
@@ -99,13 +100,21 @@ TEST_F(DotDecomposerTest, TransposeContractingDimsUponCanonicalization) {
   TF_ASSERT_OK_AND_ASSIGN(bool canonicalized,
                           DotDecomposer().Run(module.get()));
   EXPECT_TRUE(canonicalized) << module->ToString();
-  EXPECT_THAT(module->entry_computation()->root_instruction(),
-              op::Reshape(AllOf(op::Dot(op::Reshape(op::Transpose()),
-                                        op::Reshape(op::Transpose()),
-                                        /*lhs_contracting_dim=*/1,
-                                        /*rhs_contracting_dim=*/0),
-                                op::Shape("f32[1024,1024]"))))
-      << module->ToString();
+  const HloInstruction* dot = nullptr;
+  const HloInstruction* lhs_transpose = nullptr;
+  const HloInstruction* rhs_transpose = nullptr;
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      GmockMatch(m::Reshape(
+          m::Op(&dot)
+              .WithOperand(0, m::Reshape(m::Transpose(&lhs_transpose)))
+              .WithOperand(1, m::Reshape(m::Transpose(&rhs_transpose))))));
+  EXPECT_THAT(dot, AllOf(op::Dot(op::Reshape(), op::Reshape(),
+                                 /*lhs_contracting_dim=*/1,
+                                 /*rhs_contracting_dim=*/0),
+                         op::Shape("f32[1024,1024]")));
+  EXPECT_THAT(lhs_transpose, op::ShapeWithLayout("f32[32,32,512]"));
+  EXPECT_THAT(rhs_transpose, op::ShapeWithLayout("f32[512,1024]"));
 }
 
 TEST_F(DotDecomposerTest, DontCanonicalizeIfNoNoncontractingDims) {

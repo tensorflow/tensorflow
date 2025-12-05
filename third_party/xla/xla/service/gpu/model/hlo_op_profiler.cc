@@ -252,7 +252,7 @@ class CuptiKernelTracer : public HloOpProfiler::KernelTracer,
       LOG(ERROR) << "No kernel events";
       return 0;
     }
-    std::sort(kernel_times_ns_.begin(), kernel_times_ns_.end());
+    absl::c_sort(kernel_times_ns_);
     auto i = kernel_times_ns_.size() / 2;
     // Return median value if number of values is odd.
     if (kernel_times_ns_.size() % 2 != 0) {

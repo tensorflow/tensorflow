@@ -66,6 +66,8 @@ absl::StatusOr<bool> CanonicalizeRaggedAllToAll(
           ragged_all_to_all->shape(), new_operands,
           ragged_all_to_all->device_list(),
           /*channel_id=*/ragged_all_to_all->channel_id()));
+  new_ragged_all_to_all->set_frontend_attributes(
+      ragged_all_to_all->frontend_attributes());
   TF_RETURN_IF_ERROR(
       ragged_all_to_all->ReplaceAllUsesWith(new_ragged_all_to_all));
   TF_RETURN_IF_ERROR(

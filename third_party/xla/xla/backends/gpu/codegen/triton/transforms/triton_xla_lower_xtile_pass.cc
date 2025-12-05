@@ -45,6 +45,7 @@ limitations under the License.
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "mlir/Transforms/Inliner.h"
 #include "mlir/Transforms/InliningUtils.h"
+#include "stablehlo/dialect/StablehloOps.h"
 #include "xla/backends/gpu/codegen/triton/emitter_helpers.h"
 #include "xla/backends/gpu/codegen/triton/ir/triton_xla_ops.h"
 #include "xla/codegen/xtile/ir/xtile_ops.h"
@@ -71,7 +72,7 @@ llvm::SmallVector<mlir::Type> GetTransformedArgTypes(
   for (const auto& arg : entry_op.getBufferArgs()) {
     mlir::MemRefType memref_type = mlir::cast<mlir::MemRefType>(arg.getType());
     arg_types.push_back(
-        ::xla::gpu::triton::GetGlobalPointerType(memref_type.getElementType()));
+        ttir::getPointerTypeToElement(memref_type.getElementType()));
   }
   mlir::TypeRange opaque_args(entry_op.getOpaqueArgs());
   arg_types.append(opaque_args.begin(), opaque_args.end());
@@ -130,9 +131,9 @@ absl::StatusOr<llvm::SmallVector<int64_t>> getPermutationMinorToMajor(
 
 MemrefToPtrOp CreateMemrefToPtr(mlir::OpBuilder& builder,
                                 mlir::TypedValue<mlir::MemRefType> memref) {
-  PointerType ptr_type = ::xla::gpu::triton::GetGlobalPointerType(
-      memref.getType().getElementType());
-  return builder.create<MemrefToPtrOp>(memref.getLoc(), ptr_type, memref);
+  mlir::Type ptr_type =
+      ttir::getPointerTypeToElement(memref.getType().getElementType());
+  return MemrefToPtrOp::create(builder, memref.getLoc(), ptr_type, memref);
 }
 
 // Rewrite a xtile entry to a func.func with the same body, but with memref
@@ -151,8 +152,9 @@ class XTileEntryToTriton
 
     const int64_t num_buffer_args = entry_op.getBufferArgs().size();
     auto new_arg_types = GetTransformedArgTypes(entry_op);
-    auto new_func_op = builder.create<mlir::func::FuncOp>(
-        entry_op.getName(), builder.getFunctionType(new_arg_types, {}));
+    auto new_func_op =
+        mlir::func::FuncOp::create(builder, entry_op.getName(),
+                                   builder.getFunctionType(new_arg_types, {}));
 
     // Move the old function's body to the new function
     rewriter.inlineRegionBefore(
@@ -168,9 +170,9 @@ class XTileEntryToTriton
 
     BlockArgument tile_id_arg = old_args.back();
 
-    auto pid = builder.create<ttir::GetProgramIdOp>(ttir::ProgramIDDim::X);
+    auto pid = ttir::GetProgramIdOp::create(builder, ttir::ProgramIDDim::X);
     Value pid_idx =
-        builder.create<ma::IndexCastOp>(builder.getIndexType(), pid);
+        ma::IndexCastOp::create(builder, builder.getIndexType(), pid);
     rewriter.replaceAllUsesWith(tile_id_arg, pid_idx);
 
     // Handle memref arguments.
@@ -181,7 +183,7 @@ class XTileEntryToTriton
           mlir::cast<mlir::MemRefType>(old_arg.getType());
 
       mlir::Value memref_cast =
-          builder.create<PtrToMemrefOp>(memref_type, new_arg);
+          PtrToMemrefOp::create(builder, memref_type, new_arg);
 
       // Replace all uses of the old argument with the result of the cast.
       rewriter.replaceAllUsesWith(old_arg, memref_cast);
@@ -222,9 +224,10 @@ class XTileExtractToTriton
         CreateMemrefToPtr(rewriter, extract_op.getSource());
 
     if (result_type.getRank() == 0) {
-      mlir::Value scalar_value = rewriter.create<ttir::LoadOp>(
-          extract_op->getLoc(), memref_to_ptr, ttir::CacheModifier::NONE,
-          ttir::EvictionPolicy::NORMAL, /*isVolatile=*/false);
+      mlir::Value scalar_value = ttir::LoadOp::create(
+          rewriter, extract_op->getLoc(), memref_to_ptr,
+          ttir::CacheModifier::NONE, ttir::EvictionPolicy::NORMAL,
+          /*isVolatile=*/false);
 
       rewriter.replaceOpWithNewOp<mlir::tensor::FromElementsOp>(
           extract_op, result_type, scalar_value);
@@ -238,8 +241,8 @@ class XTileExtractToTriton
                                          minor_to_major_or.status().ToString());
     }
     const SmallVector<int64_t>& minor_to_major = *minor_to_major_or;
-    auto triton_extract_op = rewriter.create<ExtractOp>(
-        extract_op.getLoc(), result_type, memref_to_ptr,
+    auto triton_extract_op = ExtractOp::create(
+        rewriter, extract_op.getLoc(), result_type, memref_to_ptr,
         extract_op.getOffsets(), extract_op.getFullTileShape(),
         extract_op.getStrides(), source_type.getShape(), minor_to_major);
 
@@ -279,12 +282,56 @@ class XTileInsertToTriton
                                          minor_to_major_or.status().ToString());
     }
     const SmallVector<int64_t>& minor_to_major = *minor_to_major_or;
-    auto triton_insert_op = rewriter.create<InsertOp>(
-        insert_op.getLoc(), insert_op.getSource(), memref_to_ptr,
+    auto triton_insert_op = InsertOp::create(
+        rewriter, insert_op.getLoc(), insert_op.getSource(), memref_to_ptr,
         insert_op.getOffsets(), insert_op.getFullTileShape(),
         insert_op.getStrides(), destination_type.getShape(), minor_to_major);
 
     rewriter.replaceOp(insert_op, triton_insert_op);
+
+    return mlir::success();
+  }
+};
+
+class XTileMaskToTriton : public mlir::OpRewritePattern<::xla::xtile::MaskOp> {
+ public:
+  using OpRewritePattern::OpRewritePattern;
+
+  mlir::LogicalResult matchAndRewrite(
+      ::xla::xtile::MaskOp op, mlir::PatternRewriter& rewriter) const override {
+    llvm::SmallVector<int64_t> masked_dimensions = op.getMaskedDimensions();
+    if (masked_dimensions.size() != 1) {
+      return rewriter.notifyMatchFailure(
+          op, "triton masking only supports masking over a single dimension");
+    }
+
+    int64_t mask_dimension = masked_dimensions.front();
+    int64_t mask_bound = op.getBounds()[mask_dimension];
+    int64_t masked_dim_size = op.getType().getDimSize(mask_dimension);
+    auto iota_type =
+        mlir::RankedTensorType::get(masked_dim_size, rewriter.getI32Type());
+    auto range = stablehlo::IotaOp::create(rewriter, op.getLoc(), iota_type, 0);
+    auto bcast_type = mlir::RankedTensorType::get(op.getType().getShape(),
+                                                  iota_type.getElementType());
+    auto bcast = stablehlo::BroadcastInDimOp::create(
+        rewriter, op.getLoc(), bcast_type, range, {mask_dimension});
+    auto constant = mlir::arith::ConstantOp::create(
+        rewriter, op.getLoc(),
+        mlir::DenseElementsAttr::get(bcast_type,
+                                     rewriter.getI32IntegerAttr(mask_bound)));
+    Value mask = arith::CmpIOp::create(
+        rewriter, op.getLoc(), arith::CmpIPredicate::slt, bcast, constant);
+
+    auto mask_value_tensor = mlir::tensor::FromElementsOp::create(
+        rewriter, op.getLoc(),
+        mlir::RankedTensorType::get({}, op.getValue().getType()),
+        op.getValue());
+    auto neutral = stablehlo::BroadcastInDimOp::create(
+        rewriter, op.getLoc(), op.getType(), mask_value_tensor,
+        ArrayRef<int64_t>{});
+
+    rewriter.replaceOpWithNewOp<arith::SelectOp>(op, mask, op.getSource(),
+                                                 neutral);
 
     return mlir::success();
   }
@@ -321,7 +368,7 @@ class TritonXLALowerXTilePass
     mlir::RewritePatternSet patterns(context);
 
     patterns.add<XTileEntryToTriton, XTileExtractToTriton, XTileInsertToTriton,
-                 FoldIntoMemrefToPtr>(context);
+                 XTileMaskToTriton, FoldIntoMemrefToPtr>(context);
     if (mlir::failed(
             mlir::applyPatternsGreedily(module, std::move(patterns)))) {
       signalPassFailure();

@@ -27,7 +27,6 @@ limitations under the License.
 #include "xla/stream_executor/platform/initialize.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/sycl/sycl_platform_id.h"
-#include "xla/tsl/platform/status.h"
 
 namespace stream_executor {
 namespace sycl {
@@ -66,7 +65,7 @@ SyclPlatform::GetUncachedExecutor(int ordinal) {
 }  // namespace sycl
 
 static void InitializeSyclPlatform() {
-  TF_CHECK_OK(PlatformManager::RegisterPlatform(
+  CHECK_OK(PlatformManager::RegisterPlatform(
       std::make_unique<sycl::SyclPlatform>()));
 }
 

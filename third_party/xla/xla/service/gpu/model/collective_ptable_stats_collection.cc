@@ -93,13 +93,13 @@ absl::StatusOr<bool> CollectivePerfTableStatsCollection::RunImpl(
 
         // Set it in the `CollectiveBackendConfig`.
         auto gpu_config = instr->backend_config<GpuBackendConfig>();
-        TF_CHECK_OK(gpu_config.status())
+        CHECK_OK(gpu_config.status())
             << "Cannot parse backend config: " << instr->ToString();
         auto reification_cost = gpu_config->add_reification_cost();
         reification_cost->set_exec_time_us(
             absl::ToDoubleMicroseconds(exec_time));
         *reification_cost->mutable_name() = name();
-        TF_CHECK_OK(instr->set_backend_config(*gpu_config));
+        CHECK_OK(instr->set_backend_config(*gpu_config));
       });
 
   return false;

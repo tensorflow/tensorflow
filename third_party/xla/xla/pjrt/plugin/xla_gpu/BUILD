@@ -39,6 +39,7 @@ cc_library(
     srcs = [],
     hdrs = ["xla_gpu_allocator_config.h"],
     deps = [
+        "//xla/tsl/framework:allocator",
     ],
 )
 

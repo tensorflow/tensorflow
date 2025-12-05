@@ -12,6 +12,7 @@ bazel_dep(name = "curl", version = "8.11.0")
 bazel_dep(name = "google_benchmark", version = "1.8.5", repo_name = "com_google_benchmark")
 bazel_dep(name = "googletest", version = "1.17.0", repo_name = "com_google_googletest")
 bazel_dep(name = "grpc", version = "1.74.1", repo_name = "com_github_grpc_grpc")
+bazel_dep(name = "gutil", version = "20250502.0", repo_name = "com_google_gutil");
 bazel_dep(name = "jsoncpp", version = "1.9.6", repo_name = "jsoncpp_git")
 bazel_dep(name = "or-tools", version = "9.12", repo_name = "com_google_ortools")
 bazel_dep(name = "platforms", version = "1.0.0")
@@ -40,9 +41,9 @@ bazel_dep(name = "rules_ml_toolchain")
 # echo "sha256-${HASH}"
 archive_override(
     module_name = "rules_ml_toolchain",
-    integrity = "sha256-p5UahsTpeDMCIwuFkjfZU6bIwwGyGdNE4F1wSW7u+lI=",
-    strip_prefix = "rules_ml_toolchain-0d383c69076f637d55eaae0b6e0ee2980b1345a9",
-    urls = ["https://github.com/google-ml-infra/rules_ml_toolchain/archive/0d383c69076f637d55eaae0b6e0ee2980b1345a9.tar.gz"],
+    integrity = "sha256-XxcnU5d1K2Zq2/jwqBo+v7HiapcLRZysM6BqjwPKpTc=",
+    strip_prefix = "rules_ml_toolchain-a2626615e1277a635b43dd268e1d4bc892afea10",
+    urls = ["https://github.com/google-ml-infra/rules_ml_toolchain/archive/a2626615e1277a635b43dd268e1d4bc892afea10.tar.gz"],
 )
 
 # TODO: Upstream the patch?

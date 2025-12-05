@@ -85,13 +85,13 @@ class RewriteIndexBinaryElementwiseOp
 
     Type index_type = IndexType::get(op->getContext());
     Type dst_type = b.getIntegerType(index_bitwidth_);
-    auto lhs = b.create<arith::IndexCastOp>(dst_type, op->getOperand(0));
-    auto rhs = b.create<arith::IndexCastOp>(dst_type, op->getOperand(1));
-    auto new_op = b.create<BinaryElementwiseOp>(lhs, rhs);
+    auto lhs = arith::IndexCastOp::create(b, dst_type, op->getOperand(0));
+    auto rhs = arith::IndexCastOp::create(b, dst_type, op->getOperand(1));
+    auto new_op = BinaryElementwiseOp::create(b, lhs, rhs);
 
     rewriter.replaceAllUsesWith(
         op.getResult(),
-        b.create<arith::IndexCastOp>(index_type, new_op.getResult()));
+        arith::IndexCastOp::create(b, index_type, new_op.getResult()));
 
     return mlir::success();
   }

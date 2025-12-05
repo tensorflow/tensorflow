@@ -16,6 +16,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/status/status.h"
+#include "xla/backends/gpu/ffi.h"
 #include "xla/error_spec.h"
 #include "xla/ffi/ffi.h"
 #include "xla/ffi/ffi_api.h"

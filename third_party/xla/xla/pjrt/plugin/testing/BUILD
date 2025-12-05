@@ -28,7 +28,6 @@ xla_cc_test(
     deps = [
         ":testing_cpp_pjrt",
         "//xla/tests:xla_internal_test_main",
-        "//xla/tsl/platform:status_matchers",
         "@com_google_absl//absl/status:status_matchers",
         "@com_google_googletest//:gtest",
     ],
@@ -41,14 +40,11 @@ cc_library(
     ],
     hdrs = ["testing_c_pjrt_internal.h"],
     deps = [
+        ":testing_cpp_pjrt",
         "//xla/pjrt:pjrt_client",
         "//xla/pjrt/c:pjrt_c_api_hdrs",
         "//xla/pjrt/c:pjrt_c_api_layouts_extension_hdrs",
         "//xla/pjrt/c:pjrt_c_api_wrapper_impl",
-        "//xla/pjrt/extensions/example:example_extension",
-        "//xla/pjrt/extensions/example:example_extension_cpp",
-        "//xla/pjrt/extensions/example:example_extension_private",
-        "//xla/pjrt/plugin/testing:testing_cpp_pjrt",
         "@com_google_absl//absl/status",
     ],
     alwayslink = 1,

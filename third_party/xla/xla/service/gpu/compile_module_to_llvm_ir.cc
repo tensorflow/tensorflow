@@ -47,8 +47,8 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/LogicalResult.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
+#include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/hlo/analysis/hlo_ordering.h"
-#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/buffer_assignment.h"
@@ -60,8 +60,8 @@ limitations under the License.
 #include "xla/service/gpu/gpu_executable.h"
 #include "xla/service/gpu/gpu_memory_space_assignment.h"
 #include "xla/service/gpu/ir_emitter_context.h"
-#include "xla/service/gpu/ir_emitter_unnested.h"
 #include "xla/service/gpu/metrics.h"
+#include "xla/service/gpu/thunk_emitter.h"
 #include "xla/service/logical_buffer.h"
 #include "xla/shape.h"
 #include "xla/status_macros.h"
@@ -80,8 +80,9 @@ limitations under the License.
 #include "tsl/profiler/lib/traceme.h"
 
 namespace xla::gpu {
-
 namespace {
+
+using ::mlir::MLIRContext;
 
 using tsl::profiler::ScopedAnnotation;
 
@@ -190,14 +191,13 @@ absl::StatusOr<std::unique_ptr<SequentialThunk>> LowerHlo(
     TF_RETURN_IF_ERROR(
         LoadCache(ir_emitter_context, options.xla_gpu_kernel_cache_file()));
   }
-  std::unique_ptr<IrEmitterUnnested> ir_emitter =
-      IrEmitterUnnested::Create(&ir_emitter_context);
-  {
+  std::unique_ptr<ThunkEmitter> thunk_emitter =
+      ThunkEmitter::Create(&ir_emitter_context);
     XLA_SCOPED_LOGGING_TIMER(absl::StrCat(
         "GpuCompiler::RunBackend - IR emission for ", hlo_module->name()));
 
-    TF_RETURN_IF_ERROR(
-        ir_emitter->EmitHloComputation(hlo_module->entry_computation()));
+    TF_ASSIGN_OR_RETURN(auto thunks,
+                        thunk_emitter->EmitHloEntryComputation(hlo_module));
 
     RemoveUnusedAndUninitializedGlobals(
         platform_id, options, ir_emitter_context.llvm_module_constants(),
@@ -207,8 +207,8 @@ absl::StatusOr<std::unique_ptr<SequentialThunk>> LowerHlo(
     // out we have no way of telling how far through the process we got).
     uint64_t end_usecs = tsl::Env::Default()->NowMicros();
     RecordHloToLlvmDuration(end_usecs - start_usecs);
-  }
-  return ir_emitter->ConsumeThunkSequence();
+    return std::make_unique<SequentialThunk>(Thunk::ThunkInfo{},
+                                             std::move(thunks));
 }
 
 }  // namespace
@@ -308,8 +308,6 @@ absl::StatusOr<CompileModuleResults> CompileModuleToLlvmIr(
           << ": " << hlo_module->GetFingerprint128();
 
   std::unique_ptr<mlir::MLIRContext> mlir_context = CreateMlirContext();
-  auto symbolic_expr_context =
-      std::make_unique<SymbolicExprContext>(mlir_context.get());
   IrEmitterContext ir_emitter_context(
       hlo_module, results.buffer_assignment.get(),
       results.execution_stream_assignment.get(), platform->Name(), device_desc,

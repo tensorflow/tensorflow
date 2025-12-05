@@ -20,7 +20,6 @@ limitations under the License.
 #include <deque>
 #include <functional>
 #include <memory>
-#include <numeric>
 #include <optional>
 #include <string>
 #include <tuple>
@@ -732,7 +731,7 @@ std::optional<WindowedEinsumConfig> GetWindowedEinsumConfiguration(
     lhs_tile_assignment_array->Reshape(lhs_tile_assignment_dimensions);
 
     std::vector<int64_t> transpose_order(lhs_tile_assignment_dimensions.size());
-    std::iota(transpose_order.begin(), transpose_order.end(), 0);
+    absl::c_iota(transpose_order, 0);
     transpose_order.back() = lhs_windowing_dim;
     transpose_order[lhs_windowing_dim] =
         lhs_tile_assignment_dimensions.size() - 1;

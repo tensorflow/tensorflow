@@ -60,6 +60,7 @@ cc_library(
         "//xla/core/collectives:collectives_registry",
         "//xla/hlo/builder:xla_computation",
         "//xla/hlo/ir:hlo",
+        "//xla/mlir_hlo:mhlo_passes",
         "//xla/pjrt:abstract_tracked_device_buffer",
         "//xla/pjrt:device_event",
         "//xla/pjrt:host_callback",
@@ -89,6 +90,7 @@ cc_library(
         "//xla/pjrt/gpu:se_gpu_topology_description",
         "//xla/pjrt/plugin/xla_gpu:xla_gpu_allocator_config",
         "//xla/pjrt/plugin/xla_gpu:xla_gpu_client_options",
+        "//xla/pjrt/profiling:device_time_measurement",
         "//xla/pjrt/proto:compile_options_proto_cc",
         "//xla/runtime:device_id",
         "//xla/service:buffer_assignment",
@@ -152,7 +154,6 @@ cc_library(
         "@local_config_cuda//cuda:cuda_headers",
     ]) + if_rocm([
         # keep sorted
-        "@local_config_rocm//rocm:rocm_config",
         "@local_config_rocm//rocm:rocm_headers",
     ]),
 )
@@ -173,7 +174,6 @@ xla_test(
         ":gpu_event",
         ":tfrt_gpu_client",
         ":tracked_gpu_device_buffer",
-        "@com_google_googletest//:gtest",
         "@com_google_googletest//:gtest_main",
         "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -188,6 +188,7 @@ xla_test(
         "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:span",
         "@llvm-project//mlir:IR",
+        "@com_google_protobuf//:protobuf",
         "//xla:future",
         "//xla:literal",
         "//xla:literal_util",
@@ -253,7 +254,6 @@ xla_cc_test(
     deps = [
         ":gpu_event",
         "//xla/tsl/concurrency:async_value",
-        "//xla/tsl/platform:status_matchers",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_matchers",
         "@com_google_googletest//:gtest_main",
@@ -348,6 +348,7 @@ xla_cc_test(
         "//xla/tsl/concurrency:async_value",
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:span",

@@ -132,7 +132,7 @@ absl::StatusOr<bool> TupleSimplifier::RunImpl(
     if (module->has_schedule()) {
       for (HloInstruction* instr : replaced_instrs) {
         // Remove the replaced instructions from the schedule since we did not
-        // create new insructions for them, but their properties such as their
+        // create new instructions for them, but their properties such as their
         // control predecessors may have changed, so we want to reschedule them.
         module->schedule().remove_instruction(computation, instr);
       }

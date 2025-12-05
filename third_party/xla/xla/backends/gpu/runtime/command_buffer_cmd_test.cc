@@ -22,6 +22,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/functional/function_ref.h"
+#include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/ascii.h"
@@ -45,7 +46,6 @@ limitations under the License.
 #include "xla/stream_executor/stream_executor_memory_allocator.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/tsl/platform/test_benchmark.h"
@@ -880,10 +880,10 @@ static void BM_GetOrTraceCommandBuffer(benchmark::State& state) {
   absl::FunctionRef<absl::Status(se::Stream*)> trace_ref(trace);
 
   for (auto s : state) {
-    TF_CHECK_OK(traced_cmd_buffer
-                    .GetOrTraceCommandBuffer(&allocations[index++ % 4],
-                                             executor, stream.get(), trace_ref)
-                    .status());
+    CHECK_OK(traced_cmd_buffer
+                 .GetOrTraceCommandBuffer(&allocations[index++ % 4], executor,
+                                          stream.get(), trace_ref)
+                 .status());
   }
 }
 

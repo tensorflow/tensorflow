@@ -23,6 +23,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/attributes.h"
+#include "absl/log/check.h"
 #include "absl/status/statusor.h"
 #include "unsupported/Eigen/CXX11/Tensor"
 #include "oneapi/dnnl/dnnl.hpp"
@@ -38,7 +39,6 @@ limitations under the License.
 #include "xla/service/cpu/onednn_config.pb.h"
 #include "xla/service/cpu/onednn_memory_util.h"
 #include "xla/service/cpu/onednn_util.h"
-#include "xla/service/cpu/runtime_lightweight_check.h"
 #include "xla/shape.h"
 #include "xla/tsl/util/onednn_threadpool.h"
 
@@ -330,12 +330,12 @@ void ExecuteOneDnnConvolution(absl::Span<MemrefInfoHandler> arguments,
       {DNNL_ARG_DST, resources.dst_mem}};
 
   if (conv_config.optimization_config().user_scratchpad()) {
-    XLA_LIGHTWEIGHT_CHECK(results.size() > 1);
+    CHECK_GT(results.size(), 1);
     MemrefInfo scratch_minfo(results[1].get());
 
     size_t required_size = conv_pd->scratchpad_desc().get_size();
     size_t provided_size = scratch_minfo.GetOneDnnDims()[0];  // bytes (u8)
-    XLA_LIGHTWEIGHT_CHECK(required_size <= provided_size);
+    CHECK_LE(required_size, provided_size);
 
     resources.scratch_mem =
         memory(conv_pd->scratchpad_desc(), cpu_engine, scratch_minfo.Data());

@@ -32,7 +32,6 @@ limitations under the License.
 #include "xla/executable_run_options.h"
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/hlo/ir/hlo_module_group.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/service/backend.h"
@@ -50,7 +49,6 @@ limitations under the License.
 #include "xla/shape_tree.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
-#include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/device_memory_allocator.h"
@@ -59,7 +57,6 @@ limitations under the License.
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"
-#include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/threadpool.h"
 
@@ -564,7 +561,7 @@ absl::StatusOr<std::vector<Literal>> HloRunner::ExecuteReplicatedImpl(
         VLOG(1) << "Starting infeed on device " << device;
         for (int64_t step = 1;
              options.infeed_steps < 0 || step <= options.infeed_steps; ++step) {
-          TF_CHECK_OK(backend().transfer_manager()->TransferLiteralToInfeed(
+          CHECK_OK(backend().transfer_manager()->TransferLiteralToInfeed(
               executor, *options.infeed_values[i]));
           if (step % 100 == 0) {
             VLOG(1) << "Infeed step " << step;
@@ -587,7 +584,7 @@ absl::StatusOr<std::vector<Literal>> HloRunner::ExecuteReplicatedImpl(
         for (int64_t step = 1;
              options.infeed_steps < 0 || step <= options.infeed_steps; ++step) {
           Literal literal(options.outfeed_shape);
-          TF_CHECK_OK(backend().transfer_manager()->TransferLiteralFromOutfeed(
+          CHECK_OK(backend().transfer_manager()->TransferLiteralFromOutfeed(
               executor, &literal));
           if (options.outfeed_values) {
             options.outfeed_values->at(i) = std::move(literal);

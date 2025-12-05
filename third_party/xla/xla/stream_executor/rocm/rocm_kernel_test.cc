@@ -16,6 +16,7 @@ limitations under the License.
 #include <memory>
 
 #include <gtest/gtest.h>
+#include "absl/status/status_matchers.h"
 #include "xla/stream_executor/gpu/gpu_test_kernels.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/kernel_spec.h"
@@ -24,14 +25,12 @@ limitations under the License.
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/rocm/rocm_platform_id.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 
 namespace stream_executor::gpu {
 namespace {
 using testing::Ge;
-using tsl::testing::IsOkAndHolds;
 
 TEST(RocmKernelTest, GetMaxOccupiedBlocksPerCore) {
   TF_ASSERT_OK_AND_ASSIGN(Platform * platform,

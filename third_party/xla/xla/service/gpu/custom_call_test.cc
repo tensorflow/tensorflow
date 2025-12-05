@@ -42,6 +42,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/backends/gpu/ffi.h"
 #include "xla/ffi/execution_context.h"
 #include "xla/ffi/ffi.h"
 #include "xla/ffi/ffi_api.h"

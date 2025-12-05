@@ -48,9 +48,9 @@ limitations under the License.
 #include "xla/status_macros.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace interpreter {
@@ -162,7 +162,7 @@ absl::StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
 InterpreterCompiler::CompileAheadOfTime(
     std::unique_ptr<HloModule> hlo_module,
     const AotCompilationOptions& aot_options) {
-  return tsl::errors::InvalidArgument(
+  return absl::InvalidArgumentError(
       "AOT compilation not supported on Interpreter");
 }
 

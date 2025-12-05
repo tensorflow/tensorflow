@@ -21,7 +21,8 @@ limitations under the License.
 namespace xla {
 namespace cpu {
 
-bool FusionWrapper::MustWrapInstruction(HloOpcode opcode) {
+bool FusionWrapper::MustWrapInstruction(const HloInstruction& instruction) {
+  const HloOpcode opcode = instruction.opcode();
   switch (opcode) {
     case HloOpcode::kScatter:
       return true;

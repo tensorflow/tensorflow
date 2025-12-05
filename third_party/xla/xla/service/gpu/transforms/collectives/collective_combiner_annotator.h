@@ -39,11 +39,11 @@ class CollectiveCombinerAnnotator : public HloModulePass {
   CollectiveCombinerAnnotator(se::DeviceDescription device_info,
                               const GpuAliasInfo* alias_info,
                               int64_t pointer_size,
-                              SymbolicExprContext* symbolic_expr_context)
+                              mlir::MLIRContext* mlir_context)
       : device_info_(std::move(device_info)),
         alias_info_(alias_info),
         pointer_size_(pointer_size),
-        symbolic_expr_context_(symbolic_expr_context) {}
+        mlir_context_(mlir_context) {}
 
   absl::string_view name() const override {
     return "collective-combiner-annotator";
@@ -58,7 +58,7 @@ class CollectiveCombinerAnnotator : public HloModulePass {
   const se::DeviceDescription device_info_;
   const GpuAliasInfo* alias_info_;
   const int64_t pointer_size_;
-  SymbolicExprContext* symbolic_expr_context_;
+  mlir::MLIRContext* mlir_context_;
 };
 
 // Returns true if `instr` is a combinable sync collective. False otherwise.

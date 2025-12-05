@@ -35,7 +35,6 @@ limitations under the License.
 #include "xla/stream_executor/platform/initialize.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/status.h"
 
 namespace stream_executor {
 namespace gpu {
@@ -129,7 +128,7 @@ CudaPlatform::GetUncachedExecutor(int ordinal) {
 }  // namespace gpu
 
 static void InitializeCudaPlatform() {
-  TF_CHECK_OK(
+  CHECK_OK(
       PlatformManager::RegisterPlatform(std::make_unique<gpu::CudaPlatform>()));
 }
 

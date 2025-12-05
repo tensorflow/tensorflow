@@ -211,6 +211,7 @@ struct CanonicalDebugOptions {
         return RE2::PartialMatch(module_name, pattern);
       };
     } else if (!opts.xla_dump_hlo_pass_re().empty() ||
+               !opts.xla_dump_emitter_re().empty() ||
                !opts.xla_dump_to().empty() || output_format_specified) {
       should_dump_module = [](string_view) { return true; };
     } else {
@@ -226,6 +227,15 @@ struct CanonicalDebugOptions {
       };
     } else {
       should_dump_pass = [](string_view) { return false; };
+    }
+
+    if (!opts.xla_dump_emitter_re().empty()) {
+      std::string pattern = opts.xla_dump_emitter_re();
+      should_dump_emitter = [pattern](string_view emitter_name) {
+        return RE2::PartialMatch(emitter_name, pattern);
+      };
+    } else {
+      should_dump_emitter = [](string_view) { return false; };
     }
 
     // Initialize should_dump_pipeline. If the option was not specified, dump
@@ -252,6 +262,7 @@ struct CanonicalDebugOptions {
                       "is not set, so cannot dump anywhere.";
         should_dump_module = [](string_view) { return false; };
         should_dump_pass = [](string_view) { return false; };
+        should_dump_emitter = [](string_view) { return false; };
         should_dump_pipeline = [](string_view) { return false; };
       }
     }
@@ -270,6 +281,7 @@ struct CanonicalDebugOptions {
   std::string dump_to;
   std::function<bool(string_view module_name)> should_dump_module;
   std::function<bool(string_view pass_name)> should_dump_pass;
+  std::function<bool(string_view emitter_name)> should_dump_emitter;
   std::function<bool(string_view pipeline_name)> should_dump_pipeline;
 
   // dump_ir isn't present here because this file is mostly concerned with
@@ -1014,6 +1026,11 @@ bool DumpingEnabledForHloModule(string_view hlo_module_name,
 bool DumpingEnabledForHloPass(string_view hlo_pass_name,
                               const DebugOptions& opts) {
   return CanonicalDebugOptions(opts).should_dump_pass(hlo_pass_name);
+}
+
+bool DumpingEnabledForEmitter(string_view emitter_name,
+                              const DebugOptions& opts) {
+  return CanonicalDebugOptions(opts).should_dump_emitter(emitter_name);
 }
 
 bool DumpingToStdout(const DebugOptions& opts) {

@@ -30,14 +30,14 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-void WriteUpdateTo(const string& directory) {
+void WriteUpdateTo(const std::string& directory) {
   OpCompatibilityLib compatibility(
       directory, absl::StrCat("v", TF_MAJOR_VERSION), nullptr);
 
   // Write full copy of all ops to ops.pbtxt.
   Env* env = Env::Default();
   {
-    const string& ops_file = compatibility.ops_file();
+    const std::string& ops_file = compatibility.ops_file();
     printf("Writing ops to %s...\n", ops_file.c_str());
     TF_QCHECK_OK(WriteStringToFile(env, ops_file, compatibility.OpsString()));
   }
@@ -52,7 +52,7 @@ void WriteUpdateTo(const string& directory) {
                                                 &out_op_history));
   printf("%d changed ops\n%d added ops\n", changed_ops, added_ops);
 
-  const string& history_dir = compatibility.op_history_directory();
+  const std::string& history_dir = compatibility.op_history_directory();
   absl::Status status = env->CreateDir(history_dir);
   if (!absl::IsAlreadyExists(status)) {
     TF_QCHECK_OK(status);

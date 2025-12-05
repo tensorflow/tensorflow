@@ -98,7 +98,6 @@ limitations under the License.
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/macros.h"
-#include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/threadpool.h"
 #include "xla/util.h"
@@ -849,7 +848,7 @@ absl::StatusOr<xla::gpu::GpuCollectives*> GetGpuCollectives(
   return tsl::down_cast<xla::gpu::GpuCollectives*>(collectives);
 }
 
-CudaExecutor::VmmMemoryHandle::~VmmMemoryHandle() { TF_CHECK_OK(Release()); }
+CudaExecutor::VmmMemoryHandle::~VmmMemoryHandle() { CHECK_OK(Release()); }
 
 absl::Status CudaExecutor::VmmMemoryHandle::Release() {
   if (handle_ != 0) {
@@ -869,7 +868,7 @@ CudaExecutor::VmmMemoryHandle::VmmMemoryHandle(VmmMemoryHandle&& other) {
 CudaExecutor::VmmMemoryHandle& CudaExecutor::VmmMemoryHandle::operator=(
     VmmMemoryHandle&& other) {
   if (this != &other) {
-    TF_CHECK_OK(Release());
+    CHECK_OK(Release());
     handle_ = other.handle_;
     other.handle_ = 0;
   }
@@ -1975,18 +1974,18 @@ CudaExecutor::CudaMulticastMemory::~CudaMulticastMemory() {
   if (handle_ != 0) {
     for (auto const& [device_ordinal, mapped_memory_ptr] : mapped_devices_) {
       VLOG(3) << "[" << device_ordinal << "] Unbind multicast: " << handle_;
-      TF_CHECK_OK(stream_executor::cuda::ToStatus(cuMulticastUnbind(
+      CHECK_OK(stream_executor::cuda::ToStatus(cuMulticastUnbind(
           handle_, device_ordinal, /*mcOffset=*/0, padded_size_)));
 
       VLOG(3) << "[" << device_ordinal << "] Unmap ptr: " << mapped_memory_ptr;
-      TF_CHECK_OK(stream_executor::cuda::ToStatus(
+      CHECK_OK(stream_executor::cuda::ToStatus(
           cuMemUnmap(mapped_memory_ptr, padded_size_)));
       VLOG(3) << "[" << device_ordinal
               << "] Release address space: " << mapped_memory_ptr;
-      TF_CHECK_OK(stream_executor::cuda::ToStatus(
+      CHECK_OK(stream_executor::cuda::ToStatus(
           cuMemAddressFree(mapped_memory_ptr, padded_size_)));
     }
-    TF_CHECK_OK(stream_executor::cuda::ToStatus(
+    CHECK_OK(stream_executor::cuda::ToStatus(
         cuMemRelease(static_cast<CUmemGenericAllocationHandle>(handle_))));
   }
 }

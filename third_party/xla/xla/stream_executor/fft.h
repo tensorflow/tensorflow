@@ -34,7 +34,7 @@ limitations under the License.
 //  stream
 //    .Init()
 //    .ThenFft(plan.get(), x, &y);
-//  TF_CHECK_OK(stream.BlockHostUntilDone());
+//  CHECK_OK(stream.BlockHostUntilDone());
 //
 // By using stream operations in this manner the user can easily intermix custom
 // kernel launches with these pre-canned FFT routines.

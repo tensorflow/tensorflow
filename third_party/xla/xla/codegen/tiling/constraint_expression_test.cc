@@ -42,7 +42,7 @@ class ConstraintExpressionTest : public IndexingTestBase {
  public:
   ConstraintExpression::Constraint GetConstraint(const std::string& string_expr,
                                                  int64_t lower, int64_t upper) {
-    return {ParseAffineExpr(string_expr, &symbolic_expr_context_),
+    return {ParseAffineExpr(string_expr, &mlir_context_),
             Interval{lower, upper}};
   }
   ConstraintExpression Simplify(ConstraintExpression constraints) {

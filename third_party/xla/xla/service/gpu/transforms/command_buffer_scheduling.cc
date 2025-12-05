@@ -22,14 +22,12 @@ limitations under the License.
 #include <memory>
 #include <string>
 #include <utility>
-#include <variant>
 #include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
-#include "absl/functional/overload.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -54,7 +52,6 @@ limitations under the License.
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/rocm/rocm_compute_capability.h"
 #include "xla/stream_executor/semantic_version.h"
@@ -462,7 +459,7 @@ CommandBufferScheduling::CollectCommandBufferSequences(
   // are captured by the same command buffer.
   auto collect_async_region = [&](const HloInstruction* start) {
     auto get_index = [&](const HloInstruction* inst) -> size_t {
-      auto it = std::find(instructions.begin(), instructions.end(), inst);
+      auto it = absl::c_find(instructions, inst);
       return std::distance(instructions.begin(), it);
     };
 

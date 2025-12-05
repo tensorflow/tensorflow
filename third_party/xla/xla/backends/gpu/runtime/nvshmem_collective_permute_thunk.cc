@@ -71,11 +71,9 @@ NvshmemCollectivePermuteStartThunk::NvshmemCollectivePermuteStartThunk(
   P2PConfig collective_permute_config;
   auto& config = collective_permute_config.config;
 
-  config.operand_count = instr->operand_count();
   for (const HloInstruction* operand : instr->operands()) {
     config.operand_element_type.push_back(operand->shape().element_type());
   }
-  config.SetCollectiveOpKindAndID(instr);
   config.group_mode = GetGroupMode(instr);
 
   // With a collective permute, all execution instances together form one

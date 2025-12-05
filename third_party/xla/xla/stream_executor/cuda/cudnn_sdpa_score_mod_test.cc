@@ -27,13 +27,10 @@ limitations under the License.
 #include "json/json.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/parser/hlo_parser.h"
-#include "tsl/platform/status_matchers.h"
 #include "tsl/platform/test.h"
 
 namespace stream_executor {
 namespace gpu {
-
-using tsl::testing::IsOk;
 
 TEST(CudnnSdpaScoreModTest, CompileFwd) {
   absl::string_view hlo = R"(

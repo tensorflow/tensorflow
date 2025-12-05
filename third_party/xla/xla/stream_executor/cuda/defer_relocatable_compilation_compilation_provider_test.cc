@@ -26,11 +26,9 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/stream_executor/cuda/compilation_options.h"
 #include "xla/stream_executor/cuda/compilation_provider.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/cuda/mock_compilation_provider.h"
-#include "xla/stream_executor/device_description.h"
-#include "tsl/platform/status_matchers.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/test.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace stream_executor::cuda {
 namespace {
@@ -41,8 +39,6 @@ using ::testing::Field;
 using ::testing::FieldsAre;
 using ::testing::Return;
 using ::testing::VariantWith;
-using ::tsl::testing::IsOk;
-using ::tsl::testing::StatusIs;
 
 TEST(DeferRelocatableCompilationCompilationProviderTest,
      CreateFailsIfDelegateDoesNotSupportCompileAndLink) {

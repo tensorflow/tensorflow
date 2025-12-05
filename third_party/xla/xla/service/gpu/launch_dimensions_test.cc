@@ -17,16 +17,15 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/status_matchers.h"
+#include "google/protobuf/text_format.h"
 #include "xla/stream_executor/launch_dim.h"
-#include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
-#include "tsl/platform/protobuf.h"
 
 namespace xla::gpu {
 namespace {
 using ::tsl::proto_testing::EqualsProto;
-using ::tsl::testing::IsOkAndHolds;
 
 TEST(LaunchDimensionsTest, DefaultConstruction) {
   LaunchDimensions dimensions{};

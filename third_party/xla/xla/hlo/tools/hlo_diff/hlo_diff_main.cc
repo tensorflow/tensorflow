@@ -38,7 +38,6 @@ limitations under the License.
 #include "xla/service/hlo_module_util.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/util/command_line_flags.h"
 #include "tsl/platform/init_main.h"
@@ -120,8 +119,8 @@ absl::StatusOr<std::unique_ptr<HloModule>> LoadHLOModule(
     const Options::HloPath& hlo_path) {
   if (!hlo_path.hlo_snapshot.empty()) {
     HloSnapshot snapshot;
-    TF_CHECK_OK(tsl::ReadBinaryProto(tsl::Env::Default(), hlo_path.hlo_snapshot,
-                                     &snapshot))
+    CHECK_OK(tsl::ReadBinaryProto(tsl::Env::Default(), hlo_path.hlo_snapshot,
+                                  &snapshot))
         << "Can't open, read, or parse HloSnapshot proto at "
         << hlo_path.hlo_snapshot;
     return BuildHloModule(snapshot.hlo().hlo_module());
@@ -200,23 +199,23 @@ absl::Status RunGumgraphDiff(HloModule& first_module, HloModule& second_module,
 }
 
 void RealMain(const Options& opts) {
-  TF_CHECK_OK(CheckGroupFlags(opts.first))
+  CHECK_OK(CheckGroupFlags(opts.first))
       << "Can only specify one and ony one of --first_hlo_snapshot, "
          "--first_hlo_proto, --first_hlo_module_proto, --first_hlo_text";
-  TF_CHECK_OK(CheckGroupFlags(opts.second))
+  CHECK_OK(CheckGroupFlags(opts.second))
       << "Can only specify one and ony one of --second_hlo_snapshot, "
          "--second_hlo_proto, --second_hlo_module_proto, --second_hlo_text";
 
   LOG(INFO) << "Loading first module";
   absl::StatusOr<std::unique_ptr<HloModule>> first_module =
       LoadHLOModule(opts.first);
-  TF_CHECK_OK(first_module.status()) << "Failed to build first HLO module";
+  CHECK_OK(first_module.status()) << "Failed to build first HLO module";
   LOG(INFO) << "Loaded first module";
 
   LOG(INFO) << "Loading second module";
   absl::StatusOr<std::unique_ptr<HloModule>> second_module =
       LoadHLOModule(opts.second);
-  TF_CHECK_OK(second_module.status()) << "Failed to build second HLO module";
+  CHECK_OK(second_module.status()) << "Failed to build second HLO module";
   LOG(INFO) << "Loaded second module";
 
   CHECK_OK(

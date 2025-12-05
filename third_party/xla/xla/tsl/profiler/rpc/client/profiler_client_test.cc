@@ -17,13 +17,14 @@ limitations under the License.
 #include <memory>
 #include <string>
 
+#include "absl/status/status.h"
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
-#include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/status.h"
+#include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/test.h"
-#include "xla/tsl/platform/types.h"
 #include "xla/tsl/profiler/rpc/client/profiler_client_test_util.h"
+#include "xla/tsl/profiler/rpc/profiler_server.h"
+#include "xla/tsl/profiler/utils/file_system_utils.h"
 #include "tsl/profiler/protobuf/profiler_service.pb.h"
 
 namespace tsl {
@@ -31,6 +32,7 @@ namespace profiler {
 namespace {
 
 using tensorflow::ProfileRequest;
+using tensorflow::ProfileResponse;
 using ::tsl::profiler::test::DurationApproxLess;
 using ::tsl::profiler::test::DurationNear;
 using ::tsl::profiler::test::StartServer;
@@ -146,6 +148,27 @@ TEST(RemoteProfilerSession, LongDuration) {
   EXPECT_EQ(response->tool_data_size(), 0);
   // Elapsed time takes longer to complete for larger traces.
   EXPECT_THAT(elapsed, DurationApproxLess(max_duration));
+}
+
+TEST(ProfileGrpcTest, ProfileWithOverrideHostname) {
+  absl::Duration duration = absl::Milliseconds(100);
+  ProfileRequest request;
+  std::string service_addr;
+  std::unique_ptr<ProfilerServer> server =
+      StartServer(duration, &service_addr, &request);
+
+  (*request.mutable_opts()
+        ->mutable_advanced_configuration())["override_hostname"]
+      .set_string_value("testhost");
+
+  tensorflow::ProfileResponse response;
+  absl::Status status = ProfileGrpc(service_addr, request, &response);
+  EXPECT_TRUE(status.ok());
+
+  std::string expected_filepath = ProfilerJoinPath(
+      request.repository_root(), request.session_id(), "testhost.xplane.pb");
+
+  EXPECT_TRUE(Env::Default()->FileExists(expected_filepath).ok());
 }
 
 }  // namespace

@@ -274,7 +274,6 @@ class ThunkEmitter {
   std::vector<EmittedKernel> kernels_;
 
   std::unique_ptr<mlir::MLIRContext> mlir_context_;
-  SymbolicExprContext symbolic_expr_context_{mlir_context_.get()};
   FusionCompiler fusion_compiler_;
 
   absl::flat_hash_map<std::string, KernelSpec> kernel_spec_cache_;

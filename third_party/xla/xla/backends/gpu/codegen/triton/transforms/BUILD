@@ -31,6 +31,7 @@ gentbl_cc_library(
 cc_library(
     name = "passes",
     srcs = [
+        "arith_fp8_conversion_to_triton.cc",
         "extract_tma_info_pass.cc",
         "generalize_kernel_signature.cc",
         "int4_passes.cc",
@@ -55,6 +56,7 @@ cc_library(
         ":passes_inc_gen",
         "//xla:permutation_util",
         "//xla:util",
+        "//xla:xla_data_proto_cc",
         "//xla/backends/gpu/codegen/triton:dot_algorithms",
         "//xla/backends/gpu/codegen/triton:emitter_helpers",
         "//xla/backends/gpu/codegen/triton/ir:triton_xla",
@@ -69,7 +71,6 @@ cc_library(
         "//xla/stream_executor/gpu:tma_metadata",
         "//xla/tsl/platform:errors",
         "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",

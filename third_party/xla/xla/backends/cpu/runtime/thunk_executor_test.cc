@@ -242,10 +242,14 @@ tsl::AsyncValueRef<Thunk::ExecuteEvent> AddI32Thunk::Execute(
 AddI32Thunk::BufferUses AddI32Thunk::buffer_uses() const {
   BufferUses buffer_uses;
   for (const auto& src : srcs_) {
-    buffer_uses.push_back(BufferUse::Read(src));
+    buffer_uses.push_back(BufferUse::Read(
+        src, ShapeUtil::MakeShape(
+                 S32, {src.size() / ShapeUtil::ByteSizeOfPrimitiveType(S32)})));
   }
   for (const auto& dst : dsts_) {
-    buffer_uses.push_back(BufferUse::Write(dst));
+    buffer_uses.push_back(BufferUse::Write(
+        dst, ShapeUtil::MakeShape(
+                 S32, {dst.size() / ShapeUtil::ByteSizeOfPrimitiveType(S32)})));
   }
   return buffer_uses;
 }

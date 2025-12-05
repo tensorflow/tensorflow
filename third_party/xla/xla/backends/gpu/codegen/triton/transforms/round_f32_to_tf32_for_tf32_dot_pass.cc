@@ -56,10 +56,10 @@ class Tf32DotPattern : public OpRewritePattern<mt::DotOp> {
     if (op->hasAttr(tf32_args_rounded)) return failure();
 
     auto f32ToTF32 = [&](Value value) -> Value {
-      return rewriter
-          .create<ElementwiseInlineAsmOp>(
-              op.getLoc(), value.getType(), "cvt.rna.tf32.f32 $0, $1;", "=r,r",
-              /*isPure=*/true, /*pack=*/1, ArrayRef<Value>{value})
+      return ElementwiseInlineAsmOp::create(
+                 rewriter, op.getLoc(), value.getType(),
+                 "cvt.rna.tf32.f32 $0, $1;", "=r,r",
+                 /*isPure=*/true, /*pack=*/1, ArrayRef<Value>{value})
           ->getResult(0);
     };
     auto lhs = f32ToTF32(op.getA());

@@ -33,9 +33,9 @@ namespace xla::cpu {
 
 absl::InlinedVector<BufferUse, 4> ConvolutionBufferUses(
     const ConvolutionSlices& slices) {
-  return {BufferUse::Read(slices.input_buffer),
-          BufferUse::Read(slices.kernel_buffer),
-          BufferUse::Write(slices.output_buffer)};
+  return {BufferUse::Read(slices.input_buffer, slices.input_shape),
+          BufferUse::Read(slices.kernel_buffer, slices.kernel_shape),
+          BufferUse::Write(slices.output_buffer, slices.output_shape)};
 }
 
 ConvolutionCanonicalDims::Dims::Dims(absl::Span<const int64_t> dims)

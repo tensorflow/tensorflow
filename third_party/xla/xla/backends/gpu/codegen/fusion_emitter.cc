@@ -15,6 +15,7 @@ limitations under the License.
 #include "xla/backends/gpu/codegen/fusion_emitter.h"
 
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/log/check.h"
@@ -27,6 +28,7 @@ limitations under the License.
 #include "llvm/IR/Argument.h"
 #include "llvm/IR/Attributes.h"
 #include "llvm/IR/BasicBlock.h"
+#include "llvm/IR/Constants.h"
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/GlobalValue.h"
@@ -34,14 +36,12 @@ limitations under the License.
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/Metadata.h"
 #include "llvm/IR/Type.h"
+#include "llvm/Support/Casting.h"
 #include "llvm/TargetParser/Triple.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
-#include "mlir/IR/AffineExpr.h"
-#include "mlir/IR/AffineMap.h"
 #include "xla/codegen/emitters/kernel_api_builder.h"
 #include "xla/codegen/emitters/kernel_arguments.h"
 #include "xla/hlo/analysis/indexing_map.h"
-#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/runtime/work_dimensions.h"
 #include "xla/service/gpu/ir_emitter_context.h"
 #include "xla/service/gpu/launch_dimensions.h"
@@ -51,6 +51,7 @@ limitations under the License.
 #include "xla/status_macros.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -101,11 +102,11 @@ absl::Status AnnotateKernelLaunchDimensions(
 
 IndexingMap KernelFusionInterface::GetDefaultThreadIdIndexingMap(
     const LaunchDimensions& launch_dims, int unroll_factor, const Shape& shape,
-    SymbolicExprContext* symbolic_expr_context) {
+    mlir::MLIRContext* mlir_context) {
   WorkDimensions work_dimensions = launch_dims.AsWorkDimensions();
   work_dimensions.work_tile_size.dimensions.push_back(unroll_factor);
   return emitters::GetDefaultWorkItemIndexingMap(work_dimensions, shape,
-                                                 symbolic_expr_context);
+                                                 mlir_context);
 }
 
 std::string GetSanitizedUniqueName(IrEmitterContext& ir_emitter_context,
@@ -114,40 +115,45 @@ std::string GetSanitizedUniqueName(IrEmitterContext& ir_emitter_context,
       llvm_ir::SanitizeFunctionName(suggested_name));
 }
 
-absl::StatusOr<llvm::Function*> BuildKernelPrototype(
-    IrEmitterContext& ir_emitter_context, const std::string& impl_fn_name,
-    const std::string& suggested_name,
-    const emitters::KernelArguments& arguments,
-    const LaunchDimensions& launch_dimensions, llvm::IRBuilderBase* builder) {
-  return BuildKernelPrototypeFromUniqueName(
-      ir_emitter_context, impl_fn_name,
-      GetSanitizedUniqueName(ir_emitter_context, suggested_name), arguments,
-      launch_dimensions, builder);
-}
-
 absl::StatusOr<llvm::Function*> BuildKernelPrototypeFromUniqueName(
-    IrEmitterContext& ir_emitter_context, const std::string& impl_fn_name,
-    const std::string& unique_kernel_name,
+    llvm::Module* llvm_module, const se::DeviceDescription& gpu_device_info,
+    const std::string& impl_fn_name, const std::string& unique_kernel_name,
     const emitters::KernelArguments& arguments,
     const LaunchDimensions& launch_dimensions, llvm::IRBuilderBase* builder) {
   // Create the kernel and add it to the module.
-  auto* llvm_module = ir_emitter_context.llvm_module();
   llvm::LLVMContext& context = llvm_module->getContext();
   // Explicitly set global addrspace for SPIR backend.
   int addrspace = llvm::Triple(llvm_module->getTargetTriple()).isSPIR() ? 1 : 0;
+  std::vector<llvm::Type*> kernel_args;
+  kernel_args.reserve(arguments.args().size());
+  for (const auto& arg : arguments.args()) {
+    // Handle pointer arguments.
+    // Either managed OR unmanaged with non-scalar shape.
+    if (arg.kind() == emitters::KernelArgument::Kind::kManaged ||
+        !arg.shape().dimensions().empty()) {
+      kernel_args.push_back(builder->getPtrTy(addrspace));
+      continue;
+    }
+    // Handle scalars.
+    llvm::Type* ir_type =
+        llvm_ir::PrimitiveTypeToIrType(arg.shape().element_type(), context);
+    if (!ir_type) {
+      return absl::InvalidArgumentError(
+          absl::StrCat("Unsupported scalar type: ",
+                       PrimitiveType_Name(arg.shape().element_type())));
+    }
+    kernel_args.push_back(ir_type);
+  }
   llvm::FunctionType* kernel_type = llvm::FunctionType::get(
-      /*Result=*/llvm::Type::getVoidTy(context),
-      std::vector<llvm::Type*>(arguments.args().size(),
-                               builder->getPtrTy(addrspace)),
+      /*Result=*/llvm::Type::getVoidTy(context), std::move(kernel_args),
       /*isVarArg=*/false);
   llvm::Function* kernel =
       llvm::Function::Create(kernel_type, llvm::GlobalValue::ExternalLinkage,
                              unique_kernel_name, llvm_module);
 
   AnnotateFunctionAsGpuKernel(llvm_module, kernel, builder);
-  TF_RETURN_IF_ERROR(
-      AnnotateKernelLaunchDimensions(ir_emitter_context.gpu_device_info(),
-                                     launch_dimensions, kernel, llvm_module));
+  TF_RETURN_IF_ERROR(AnnotateKernelLaunchDimensions(
+      gpu_device_info, launch_dimensions, kernel, llvm_module));
 
   // Update the insert point to the entry basic block.
   llvm::BasicBlock* entry_bb =
@@ -177,7 +183,8 @@ absl::StatusOr<llvm::Function*> BuildKernelPrototypeFromUniqueName(
     if (impl_arg && impl_arg->hasAttribute(llvm::Attribute::Alignment)) {
       kernel->addParamAttr(arg_idx,
                            impl_arg->getAttribute(llvm::Attribute::Alignment));
-    } else {
+    } else if (kernel_argument.alignment() > 0) {
+      // Scalars don't need an alignment attribute.
       kernel->addParamAttr(arg_idx,
                            llvm::Attribute::get(llvm_arg.getContext(),
                                                 llvm::Attribute::Alignment,
@@ -193,6 +200,64 @@ absl::StatusOr<llvm::Function*> BuildKernelPrototypeFromUniqueName(
                                                          "nvvm.grid_constant"));
     }
   }
+  return kernel;
+}
+
+absl::StatusOr<llvm::Function*> BuildKernelPrototype(
+    llvm::Module* llvm_module, const se::DeviceDescription& gpu_device_info,
+    const std::string& impl_fn_name, const std::string& unique_kernel_name,
+    const emitters::KernelArguments& arguments,
+    const LaunchDimensions& launch_dimensions, llvm::IRBuilderBase* builder) {
+  return BuildKernelPrototypeFromUniqueName(
+      llvm_module, gpu_device_info, impl_fn_name, unique_kernel_name, arguments,
+      launch_dimensions, builder);
+}
+
+// Triton's kernel ABI expects additional scratchpad global memory for
+// TMA and profiling information.
+// For now it is only used for on-device creation of TMA descriptors, which
+// we do not use yet, so we are just replacing this argument with a null
+// pointer.
+// TODO: b/381242007 - Allocate a proper buffer if we want to use
+// device-side TMA APIs.
+absl::StatusOr<llvm::Function*> RemoveUnusedTritonAbiArguments(
+    IrEmitterContext& ir_emitter_context,
+    const std::string& sanitized_kernel_name,
+    LaunchDimensions& launch_dimensions,
+    const emitters::KernelArguments& kernel_arguments) {
+  llvm::Function* impl_fn =
+      ir_emitter_context.llvm_module()->getFunction(sanitized_kernel_name);
+  TF_RET_CHECK(impl_fn);
+  impl_fn->setName(ir_emitter_context.name_uniquer()->GetUniqueName(
+      sanitized_kernel_name + "_impl"));
+
+  llvm::IRBuilder builder(ir_emitter_context.llvm_module()->getContext());
+
+  TF_ASSIGN_OR_RETURN(llvm::Function * kernel,
+                      BuildKernelPrototypeFromUniqueName(
+                          ir_emitter_context.llvm_module(),
+                          ir_emitter_context.gpu_device_info(),
+                          impl_fn->getName().str(), sanitized_kernel_name,
+                          kernel_arguments, launch_dimensions, &builder));
+
+  // Move function body into kernel prototype.
+  llvm::Function* prototype_func = builder.GetInsertBlock()->getParent();
+  prototype_func->splice(prototype_func->begin(), impl_fn);
+  for (const auto& [impl_fn_arg, kernel_arg] :
+       llvm::zip(impl_fn->args(), kernel->args())) {
+    impl_fn_arg.replaceAllUsesWith(&kernel_arg);
+  }
+  CHECK_EQ(impl_fn->arg_size(), kernel->arg_size() + 2);
+
+  auto tma_scratchpad_arg = impl_fn->getArg(impl_fn->arg_size() - 2);
+  tma_scratchpad_arg->replaceAllUsesWith(llvm::ConstantPointerNull::get(
+      llvm::cast<llvm::PointerType>(tma_scratchpad_arg->getType())));
+  auto profiling_scratchpad_arg = impl_fn->getArg(impl_fn->arg_size() - 1);
+  profiling_scratchpad_arg->replaceAllUsesWith(llvm::ConstantPointerNull::get(
+      llvm::cast<llvm::PointerType>(profiling_scratchpad_arg->getType())));
+
+  impl_fn->eraseFromParent();
+
   return kernel;
 }
 

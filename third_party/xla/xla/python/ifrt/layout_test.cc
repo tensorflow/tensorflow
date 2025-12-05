@@ -35,7 +35,6 @@ limitations under the License.
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
 #include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/statusor.h"
 
 namespace xla {
@@ -47,8 +46,6 @@ using ::testing::HasSubstr;
 using ::testing::Optional;
 using ::testing::Return;
 using ::testing::ReturnRef;
-using ::tsl::testing::IsOkAndHolds;
-using ::tsl::testing::StatusIs;
 
 TEST(CompactLayoutTest, Create) {
   {

@@ -1157,7 +1157,8 @@ TEST_P(IfrtBackendHandlerTest, CompileSuccess) {
   auto executable = std::make_unique<MockLoadedExecutable>();
   EXPECT_CALL(*executable, name()).WillOnce(Return("executable_name"));
   EXPECT_CALL(*executable, num_devices()).WillOnce(Return(4));
-  EXPECT_CALL(*executable, devices()).WillOnce(ReturnRef(device_list));
+  EXPECT_CALL(*executable, devices())
+      .WillOnce(Return(std::make_optional(device_list)));
   EXPECT_CALL(*executable, addressable_devices())
       .WillOnce(Return(absl::MakeSpan(addressable_devices)));
   EXPECT_CALL(*executable, Fingerprint()).WillOnce(Return("fingerprint"));

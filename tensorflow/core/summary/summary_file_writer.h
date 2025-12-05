@@ -35,9 +35,9 @@ namespace tensorflow {
 /// returned status is ok. The Env object must not be destroyed until
 /// after the returned writer.
 absl::Status CreateSummaryFileWriter(int max_queue, int flush_millis,
-                                     const string& logdir,
-                                     const string& filename_suffix, Env* env,
-                                     SummaryWriterInterface** result);
+                                     const std::string& logdir,
+                                     const std::string& filename_suffix,
+                                     Env* env, SummaryWriterInterface** result);
 
 }  // namespace tensorflow
 

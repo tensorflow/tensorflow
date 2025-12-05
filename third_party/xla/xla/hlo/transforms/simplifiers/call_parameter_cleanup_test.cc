@@ -20,6 +20,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -30,7 +31,6 @@ limitations under the License.
 #include "xla/hlo/transforms/simplifiers/hlo_dce.h"
 #include "xla/hlo/transforms/simplifiers/tuple_simplifier.h"
 #include "xla/service/pattern_matcher.h"
-#include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
@@ -77,8 +77,8 @@ ENTRY entry {
 
   HloDCE dce;
   TupleSimplifier tuple_simplifier;
-  TF_CHECK_OK(dce.Run(module.get()).status());
-  TF_CHECK_OK(tuple_simplifier.Run(module.get()).status());
+  CHECK_OK(dce.Run(module.get()).status());
+  CHECK_OK(tuple_simplifier.Run(module.get()).status());
 
   // We expect the parameter at index 1 to be removed.
   HloInstruction* call;
@@ -116,8 +116,8 @@ ENTRY entry {
 
   HloDCE dce;
   TupleSimplifier tuple_simplifier;
-  TF_CHECK_OK(dce.Run(module.get()).status());
-  TF_CHECK_OK(tuple_simplifier.Run(module.get()).status());
+  CHECK_OK(dce.Run(module.get()).status());
+  CHECK_OK(tuple_simplifier.Run(module.get()).status());
 
   // We expect the parameter at index 1 to be passed through directly from the
   // entry computation parameter, and removed from the call parameters.
@@ -159,8 +159,8 @@ ENTRY entry {
 
   HloDCE dce;
   TupleSimplifier tuple_simplifier;
-  TF_CHECK_OK(dce.Run(module.get()).status());
-  TF_CHECK_OK(tuple_simplifier.Run(module.get()).status());
+  CHECK_OK(dce.Run(module.get()).status());
+  CHECK_OK(tuple_simplifier.Run(module.get()).status());
 
   // We expect the parameter at index 2 to be passed through directly from the
   // entry computation parameter, but not removed from the call parameters.
@@ -203,8 +203,8 @@ ENTRY entry {
 
   HloDCE dce;
   TupleSimplifier tuple_simplifier;
-  TF_CHECK_OK(dce.Run(module.get()).status());
-  TF_CHECK_OK(tuple_simplifier.Run(module.get()).status());
+  CHECK_OK(dce.Run(module.get()).status());
+  CHECK_OK(tuple_simplifier.Run(module.get()).status());
 
   HloInstruction* call;
   EXPECT_THAT(module->entry_computation()->root_instruction(),
@@ -243,8 +243,8 @@ ENTRY entry {
 
   HloDCE dce;
   TupleSimplifier tuple_simplifier;
-  TF_CHECK_OK(dce.Run(module.get()).status());
-  TF_CHECK_OK(tuple_simplifier.Run(module.get()).status());
+  CHECK_OK(dce.Run(module.get()).status());
+  CHECK_OK(tuple_simplifier.Run(module.get()).status());
 
   // We expect the parameter at index 1 to be passed through directly from the
   // entry computation parameter, but not removed from the call parameters.
@@ -297,8 +297,8 @@ ENTRY entry {
 
   HloDCE dce;
   TupleSimplifier tuple_simplifier;
-  TF_CHECK_OK(dce.Run(module.get()).status());
-  TF_CHECK_OK(tuple_simplifier.Run(module.get()).status());
+  CHECK_OK(dce.Run(module.get()).status());
+  CHECK_OK(tuple_simplifier.Run(module.get()).status());
 
   // We expect both call sites to use the same computation, for 3 computations
   // total, rather than 4.

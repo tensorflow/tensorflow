@@ -48,11 +48,11 @@ GpuPerformanceModel::GpuPerformanceModel(
     const se::DeviceDescription& device_info,
     HloFusionAnalysisCache& fusion_analysis_cache,
     GpuPerformanceModelCache& gpu_performance_model_cache,
-    SymbolicExprContext* symbolic_expr_context)
+    mlir::MLIRContext* mlir_context)
     : device_info_(device_info),
       fusion_analysis_cache_(fusion_analysis_cache),
       gpu_performance_model_cache_(gpu_performance_model_cache),
-      symbolic_expr_context_(symbolic_expr_context) {};
+      mlir_context_(mlir_context) {};
 
 EstimateRunTimeData GpuPerformanceModel::EstimateRunTimeForInstructionImpl(
     const HloInstruction* instr, const GpuHloCostAnalysis* cost_analysis) {
@@ -63,7 +63,7 @@ EstimateRunTimeData GpuPerformanceModel::EstimateRunTimeForInstructionImpl(
 
   const auto& fusion_analysis = fusion_analysis_cache_.Get(*instr);
   LaunchDimensions launch_dimensions =
-      EstimateFusionLaunchDimensions(fusion_analysis, symbolic_expr_context_);
+      EstimateFusionLaunchDimensions(fusion_analysis, mlir_context_);
   int64_t num_blocks = launch_dimensions.num_blocks();
 
   absl::Duration compute_time =
@@ -145,7 +145,7 @@ absl::Duration GpuPerformanceModel::EstimateRunTimeForFusionImpl(
       fusion_analysis_cache_.Get(*producer, *consumer);
 
   LaunchDimensions launch_dimensions =
-      EstimateFusionLaunchDimensions(fusion_analysis, symbolic_expr_context_);
+      EstimateFusionLaunchDimensions(fusion_analysis, mlir_context_);
 
   int64_t flops = producer_runtime.flops * utilization_by_this_consumer +
                   consumer_runtime.flops;
@@ -305,7 +305,7 @@ void GpuPerformanceModel::RecordEstimatedRunTime(
       absl::ToDoubleNanoseconds(data.exec_time) * device_info_.clock_rate_ghz();
 
   auto gpu_config = instruction->backend_config<GpuBackendConfig>();
-  TF_CHECK_OK(gpu_config.status()) << instruction->ToString();
+  CHECK_OK(gpu_config.status()) << instruction->ToString();
   auto reification_cost = gpu_config->add_reification_cost();
   reification_cost->set_end_to_end_cycles(cycles);
   reification_cost->set_compute_time_us(
@@ -314,7 +314,7 @@ void GpuPerformanceModel::RecordEstimatedRunTime(
       absl::ToDoubleMicroseconds(data.read_time + data.write_time));
   reification_cost->set_exec_time_us(
       absl::ToDoubleMicroseconds(data.exec_time));
-  TF_CHECK_OK(instruction->set_backend_config(*gpu_config));
+  CHECK_OK(instruction->set_backend_config(*gpu_config));
 
   VLOG(8) << "RecordEstimatedRunTime: " << instruction->ToString();
 }

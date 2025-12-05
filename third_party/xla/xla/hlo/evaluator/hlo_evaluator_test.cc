@@ -50,6 +50,7 @@ limitations under the License.
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/test.h"
 #include "xla/hlo/transforms/simplifiers/hlo_element_type_converter.h"
+#include "xla/layout.h"
 #include "xla/layout_util.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
@@ -376,6 +377,17 @@ TEST_F(HloEvaluatorTest, DoesAdd) {
                std::move(rhs));
 }
 // Verifies that HloEvaluator evaluates a HLO instruction that performs
+// element-wise addition with 2 operands and a different result layout.
+TEST_F(HloEvaluatorTest, DoesAddDifferentResultLayout) {
+  auto lhs = LiteralUtil::CreateR2<int64_t>({{1, 0}, {-100, 4}});
+  auto rhs = LiteralUtil::CreateR2<int64_t>({{2, 4}, {4, 4}});
+  Layout layout({0, 1});
+  auto expected =
+      LiteralUtil::CreateR2WithLayout<int64_t>({{3, 4}, {-96, 8}}, layout);
+  TestBinaryOp(HloOpcode::kAdd, std::move(expected), std::move(lhs),
+               std::move(rhs));
+}
+// Verifies that HloEvaluator evaluates a HLO instruction that performs
 // element-wise and with 2 operands.
 TEST_P(HloEvaluatorBf16Test, DoesAnd) {
   auto lhs = LiteralUtil::CreateR2<int64_t>({{1, 0}, {-100, 4}});
@@ -436,6 +448,25 @@ TEST_F(HloEvaluatorTest, DoesClampS64) {
                 std::move(value), std::move(high));
 }
 
+TEST_F(HloEvaluatorTest, DoesClampS64DifferentResultLayout) {
+  auto low = LiteralUtil::CreateR2<int64_t>(
+      {{-8616761059752331528LL, 6780561065411491190LL},
+       {-8616761059752331528LL, 0LL}});
+  auto value = LiteralUtil::CreateR2<int64_t>(
+      {{-6780561065411491190LL, 6780561065411491180LL},
+       {4241131823772864090LL, -1LL}});
+  auto high = LiteralUtil::CreateR2<int64_t>(
+      {{-6780561065411491180LL, 8616761059752331528LL},
+       {3832151243857508051LL, 1LL}});
+  Layout layout({0, 1});
+  auto expected = LiteralUtil::CreateR2WithLayout<int64_t>(
+      {{-6780561065411491190LL, 6780561065411491190LL},
+       {3832151243857508051LL, 0}},
+      layout);
+  TestTernaryOp(HloOpcode::kClamp, std::move(expected), std::move(low),
+                std::move(value), std::move(high));
+}
+
 TEST_P(HloEvaluatorBf16Test, DoesDivideDouble) {
   auto lhs = LiteralUtil::CreateR2<double>({{1.0, 0.0}, {-100.0, 4.0}});
   auto rhs = LiteralUtil::CreateR2<double>({{2.2, 4.0}, {4.0, 4.0}});
@@ -474,6 +505,14 @@ TEST_F(HloEvaluatorTest, DoesNegateR2) {
       {{0, std::numeric_limits<int32_t>::min()}, {-1, 4}});
   auto expected = LiteralUtil::CreateR2<int32_t>(
       {{0, std::numeric_limits<int>::min()}, {1, -4}});
+  TestUnaryOp(HloOpcode::kNegate, std::move(expected), std::move(operand));
+}
+TEST_F(HloEvaluatorTest, DoesNegateR2DifferentResultLayout) {
+  auto operand = LiteralUtil::CreateR2<int32_t>(
+      {{0, std::numeric_limits<int32_t>::min()}, {-1, 4}});
+  Layout layout({0, 1});
+  auto expected = LiteralUtil::CreateR2WithLayout<int32_t>(
+      {{0, std::numeric_limits<int>::min()}, {1, -4}}, layout);
   TestUnaryOp(HloOpcode::kNegate, std::move(expected), std::move(operand));
 }
 TEST_P(HloEvaluatorBf16Test, DoesCosR2) {

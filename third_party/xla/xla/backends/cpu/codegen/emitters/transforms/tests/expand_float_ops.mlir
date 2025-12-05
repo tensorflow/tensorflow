@@ -31,10 +31,35 @@ func.func @cbrt(%arg0: f64) -> f64 {
 
 // -----
 
+func.func @cbrt_vector(%arg0: vector<8xf64>) -> vector<8xf64> {
+  %ret = math.cbrt %arg0 fastmath<reassoc> : vector<8xf64>
+  return %ret : vector<8xf64>
+}
+
+// CHECK: @cbrt_vector(%[[ARG:.*]]: vector<8xf64>) -> vector<8xf64>
+// CHECK-NOT: math.cbrt
+// CHECK-DAG: %[[CONSTANT:.*]] = arith.constant dense<0.33333333333333331> : vector<8xf64>
+// CHECK: %[[ABS:.*]] = math.absf %[[ARG]] fastmath<reassoc> : vector<8xf64>
+// CHECK: %[[CBRT_ABS:.*]] = math.powf %[[ABS]], %[[CONSTANT]] fastmath<reassoc> : vector<8xf64>
+// CHECK: %[[CBRT_SIGNED:.*]] = math.copysign %[[CBRT_ABS]], %[[ARG]] fastmath<reassoc> : vector<8xf64>
+// CHECK: return %[[CBRT_SIGNED]]
+
+// -----
+
 func.func @expm1(%arg0: f64) -> f64 {
   %ret = math.expm1 %arg0 : f64
   return %ret : f64
 }
 
 // CHECK-LABEL: @expm1
+// CHECK-NOT: math.expm1
+
+// -----
+
+func.func @expm1_vector(%arg0: vector<4xf64>) -> vector<4xf64> {
+  %ret = math.expm1 %arg0 : vector<4xf64>
+  return %ret : vector<4xf64>
+}
+
+// CHECK-LABEL: @expm1_vector
 // CHECK-NOT: math.expm1

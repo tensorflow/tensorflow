@@ -15,11 +15,15 @@ limitations under the License.
 
 #include "xla/tsl/distributed_runtime/rpc/grpc_util.h"
 
-#include <algorithm>
+#include <string>
 #include <vector>
 
-#include "grpcpp/impl/codegen/proto_utils.h"
-#include "tsl/platform/protobuf.h"
+#include "grpcpp/impl/proto_utils.h"
+#include "grpcpp/support/byte_buffer.h"
+#include "grpcpp/support/slice.h"
+#include "grpcpp/support/status.h"
+#include "google/protobuf/message.h"
+#include "tsl/platform/tstring.h"
 
 namespace tsl {
 

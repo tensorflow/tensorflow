@@ -95,12 +95,10 @@ def create_scatter_runner(
   hlo_module, buffer_assignment = utilities.annotate_hlo_module(hlo_module)
 
   mlir_context = testlib_cpu.MLIRContext()
-  symbolic_expr_context = testlib_cpu.SymbolicExprContext(mlir_context)
-
   scatter_emitter = testlib_cpu.ScatterKernelEmitter(
       hlo_module.get_root_instruction(),
       buffer_assignment,
-      symbolic_expr_context,
+      mlir_context,
   )
   kernel_definition = scatter_emitter.emit_kernel_definition()
 

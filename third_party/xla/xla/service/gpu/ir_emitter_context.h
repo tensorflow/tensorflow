@@ -41,6 +41,7 @@ limitations under the License.
 #include "xla/service/gpu/gpu_executable.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/kernel_reuse_cache.h"
+#include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/service/name_uniquer.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
@@ -78,7 +79,6 @@ class IrEmitterContext {
         platform_name_(std::move(platform_name)),
         gpu_device_info_(gpu_device_info),
         mlir_context_(mlir_context),
-        expr_context_(mlir_context_),
         llvm_module_(llvm_module),
         llvm_module_constants_(llvm_module_constants),
         emit_kernels_(emit_kernels) {}
@@ -103,13 +103,8 @@ class IrEmitterContext {
   }
 
   mlir::MLIRContext* mlir_context() { return mlir_context_; }
-
-  // TODO: b/451959933 - Add nullability annotation to be explicit about this
-  // pointer: go/totw/230. Alternatively, return by reference instead of pointer
-  // (and require reference in ctor) to signal that it is always present.
-  SymbolicExprContext* expr_context() { return &expr_context_; }
-
   llvm::Module* llvm_module() { return llvm_module_; }
+
   // A separate module can optionally be used to emit constants.
   llvm::Module* llvm_module_constants() {
     return (llvm_module_constants_ == nullptr) ? llvm_module_
@@ -129,12 +124,6 @@ class IrEmitterContext {
 
   std::vector<GpuExecutable::ConstantInfo>& constants() { return constants_; }
 
-  // Emit a constant with a given number of element, given byte size of the
-  // element, given symbol name and content.
-  void emit_constant(int64_t num_elements, int64_t bytes_per_element,
-                     absl::string_view symbol_name, int allocation_idx,
-                     DenseDataIntermediate content, llvm::IRBuilderBase* b);
-
   const DebugOptions& debug_options() const {
     return hlo_module_->config().debug_options();
   }
@@ -153,6 +142,11 @@ class IrEmitterContext {
 
   ThunkId GetNextThunkId() { return thunk_id_generator_.GetNextThunkId(); }
 
+  std::string GetSanitizedUniqueName(const std::string& suggested_name) {
+    return name_uniquer_.GetUniqueName(
+        llvm_ir::SanitizeFunctionName(suggested_name));
+  }
+
  private:
   const HloModule* hlo_module_;
   const BufferAssignment* buffer_assignment_;
@@ -160,7 +154,7 @@ class IrEmitterContext {
   std::string platform_name_;
   const se::DeviceDescription& gpu_device_info_;
   mlir::MLIRContext* mlir_context_;
-  SymbolicExprContext expr_context_;
+  mlir::MLIRContext expr_context_;
   llvm::Module* llvm_module_;
   llvm::Module* llvm_module_constants_;
   NameUniquer name_uniquer_;

@@ -36,6 +36,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/array2d.h"
 #include "xla/array3d.h"
+#include "xla/backends/cpu/ffi.h"
 #include "xla/client/client_library.h"
 #include "xla/client/local_client.h"
 #include "xla/executable_run_options.h"
@@ -226,7 +227,6 @@ TEST_F(CustomCallTest, CustomCallR2F32Reduce) {
   TF_ASSERT_OK_AND_ASSIGN(auto result, Execute(std::move(module), {}));
   LiteralTestUtil::ExpectR0Near<float>(10.0f, result, kDefaultErrorSpec);
 }
-
 
 class CustomCallClientAPITest
     : public ClientLibraryTestRunnerMixin<

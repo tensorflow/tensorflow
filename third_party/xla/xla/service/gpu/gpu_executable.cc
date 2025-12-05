@@ -40,7 +40,11 @@ limitations under the License.
 #include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
+#include "xla/backends/gpu/collectives/gpu_collectives.h"
 #include "xla/backends/gpu/runtime/annotation.h"
+#include "xla/backends/gpu/runtime/collective_clique_requests.h"
+#include "xla/backends/gpu/runtime/collective_cliques.h"
+#include "xla/backends/gpu/runtime/collective_params.h"
 #include "xla/backends/gpu/runtime/command_buffer_conversion_pass.h"
 #include "xla/backends/gpu/runtime/nvshmem_collective_thunk.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
@@ -48,12 +52,15 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/thunk_buffer_debug_pass.h"
 #include "xla/backends/gpu/runtime/thunk_pass_pipeline.h"
 #include "xla/backends/gpu/runtime/thunk_proto_deserialization.h"
+#include "xla/client/executable_build_options.h"
 #include "xla/core/collectives/clique_key.h"
+#include "xla/core/collectives/communicator.h"
 #include "xla/executable_run_options.h"
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/map_util.h"
+#include "xla/runtime/device_id.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/dump.h"
 #include "xla/service/executable.h"
@@ -62,7 +69,6 @@ limitations under the License.
 #include "xla/service/gpu/gpu_constants.h"
 #include "xla/service/gpu/gpu_executable_run_options.h"
 #include "xla/service/gpu/ir_emission_utils.h"
-#include "xla/service/gpu/resource_requests.h"
 #include "xla/service/gpu/stream_executor_util.h"
 #include "xla/service/hlo_value.h"
 #include "xla/service/maybe_owning_device_memory.h"
@@ -91,7 +97,6 @@ limitations under the License.
 #include "xla/tsl/platform/env_time.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"
-#include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "tsl/platform/random.h"
@@ -181,6 +186,10 @@ static absl::Status RunThunkPasses(const DebugOptions& debug_options,
   if (debug_options.xla_gpu_experimental_enable_checksum_tracing_on_thunks()) {
     pipeline.AddPass(std::make_unique<ThunkBufferDebugPass>(
         ThunkBufferDebugPass::Mode::kChecksum));
+  }
+  if (debug_options.xla_gpu_experimental_enable_buffer_saver_on_thunks()) {
+    pipeline.AddPass(std::make_unique<ThunkBufferDebugPass>(
+        ThunkBufferDebugPass::Mode::kBufferSaver));
   }
   if ((debug_options.xla_gpu_detect_nan() !=
        DebugOptions::DETECTION_MODE_NONE) ||
@@ -415,37 +424,37 @@ absl::Status ExecuteThunksImpl(
   }
 
   // Parameters for executing collective operations.
-  TF_ASSIGN_OR_RETURN(Thunk::CollectiveExecuteParams collective_params,
-                      Thunk::CollectiveExecuteParams::Create(
-                          *run_options, async_comms_streams,
-                          main_stream->parent()->device_ordinal(),
-                          collective_max_nchannels, p2p_max_nchannels));
+  TF_ASSIGN_OR_RETURN(
+      CollectiveParams collective_params,
+      CollectiveParams::Create(
+          *run_options, async_comms_streams,
+          LocalDeviceId(main_stream->parent()->device_ordinal()),
+          collective_max_nchannels, p2p_max_nchannels));
 
-  ResourceRequests resource_requests;
+  CollectiveCliqueRequests clique_requests;
 
-  {  // Collect resource requirements from thunks.
-    Thunk::PrepareParams prepare_params{&collective_params};
+  {  // Prepare thunks for execution and collect requested GPU cliques.
+    Thunk::PrepareParams prepare_params{&collective_params, &clique_requests};
 
     tsl::profiler::TraceMe trace_prepare("Thunks::Prepare");
-    TF_RETURN_IF_ERROR(
-        thunk_sequence.Prepare(prepare_params, resource_requests));
+    TF_RETURN_IF_ERROR(thunk_sequence.Prepare(prepare_params));
   }
 
   std::vector<std::unique_ptr<CliqueKey>>* clique_keys =
       run_options->run_options().clique_keys();
   if (clique_keys != nullptr) {
-    for (const GpuCliqueKey& clique_key : resource_requests.CliqueKeys()) {
+    for (const GpuCliqueKey& clique_key : clique_requests.RequestedCliques()) {
       clique_keys->push_back(std::make_unique<GpuCliqueKey>(clique_key));
     }
   }
 
   // Acquire collective cliques requested by thunks.
-  Thunk::CollectiveCliques collective_cliques;
+  CollectiveCliques collective_cliques;
   if (!mock_collectives) {
     TF_ASSIGN_OR_RETURN(
         collective_cliques,
-        resource_requests.AcquireCollectiveCliques(
-            collective_params,
+        AcquireCollectiveCliques(
+            collective_params, clique_requests,
             debug_options
                 ? debug_options->xla_gpu_collectives_use_persistent_cliques()
                 : false));
@@ -700,7 +709,7 @@ GpuExecutable::ResolveConstantGlobals(se::Stream* stream) {
   // destructor will not race with any operations in flight (deallocate
   // xla::Literal owned by the HLO module).
   if (submitted_mem_copies) {
-    TF_CHECK_OK(stream->BlockHostUntilDone());
+    CHECK_OK(stream->BlockHostUntilDone());
   }
 
   module_handles_.emplace(executor,
@@ -1301,5 +1310,48 @@ absl::StatusOr<std::unique_ptr<GpuExecutable>> GpuExecutable::FromProto(
 
   return Create(std::move(params));
 }
+
+static absl::StatusOr<ExecutableBuildOptionsProto>
+CreateSerializableBuildOptionsProto(const ExecutableBuildOptions& options) {
+  ExecutableBuildOptions serializable_opts = options;
+  // These fields are not serializable, and the toProto will fail if they are
+  // set, but we also don't need them for the dump so just clear them.
+  serializable_opts.set_layout_canonicalization_callback(nullptr);
+  serializable_opts.set_compile_thread_pool(nullptr);
+
+  return serializable_opts.ToProto();
+}
+
+absl::Status GpuExecutable::DumpExecutableIfEnabled(
+    const ExecutableBuildOptions& options,
+    const DebugOptions& debug_options) const {
+  if (!debug_options.has_xla_dump_to() ||
+      !debug_options.xla_gpu_experimental_dump_gpu_executable()) {
+    return absl::OkStatus();
+  }
+
+  TF_ASSIGN_OR_RETURN(GpuExecutableProto gpu_executable_proto, ToProto());
+  std::string serialized_proto = gpu_executable_proto.SerializeAsString();
+  if (serialized_proto.empty()) {
+    return absl::InternalError("Failed to serialize GPU executable proto");
+  }
+
+  ExecutableAndOptionsProto dump_proto;
+  *dump_proto.mutable_serialized_executable() = std::move(serialized_proto);
+  TF_ASSIGN_OR_RETURN(
+      *dump_proto.mutable_compile_options()->mutable_executable_build_options(),
+      CreateSerializableBuildOptionsProto(options));
+
+  constexpr absl::string_view kDumpFilename = "gpu_executable";
+  if (has_module()) {
+    DumpPerModuleProtobufToFile(module(), dump_proto, debug_options,
+                                kDumpFilename);
+  } else {
+    DumpProtobufToFile(dump_proto, debug_options, kDumpFilename);
+  }
+
+  return absl::OkStatus();
+}
+
 }  // namespace gpu
 }  // namespace xla

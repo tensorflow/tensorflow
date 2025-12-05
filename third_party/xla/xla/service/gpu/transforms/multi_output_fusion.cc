@@ -34,6 +34,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/service/gpu/alias_info.h"
 #include "xla/service/gpu/gpu_fusible.h"
 #include "xla/service/gpu/model/gpu_hlo_cost_analysis.h"
 #include "xla/service/gpu/model/gpu_performance_model.h"
@@ -43,7 +44,6 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/statusor.h"
 
 namespace xla {
@@ -231,7 +231,7 @@ FusionDecision ProducerCandidateIsFusible(
 std::vector<HloInstruction*> GetProducerConsumerMultiOutputFusionCandidates(
     const HloInstruction* producer, const HloDfsReachability& reachability,
     FusionInfoCache* fusion_info_cache,
-    const se::DeviceDescription& device_info,
+    const se::DeviceDescription& device_info, const GpuAliasInfo* alias_info,
     GpuPerformanceModelOwning& gpu_performance_model,
     GpuHloCostAnalysis* cost_analysis) {
   std::vector<HloInstruction*> fusion_candidates;
@@ -242,7 +242,7 @@ std::vector<HloInstruction*> GetProducerConsumerMultiOutputFusionCandidates(
 
   // If the producer is not a valid candidate for MOF, no need to check any of
   // its users.
-  if (!IsProducerMultiOutputFusible(*producer, device_info)) {
+  if (!IsProducerMultiOutputFusible(*producer, alias_info, device_info)) {
     return fusion_candidates;
   }
 
@@ -387,8 +387,8 @@ bool MultiOutputFusion::FuseSiblings(HloInstruction* parent,
       fusion_info_cache->Invalidate(*j);
       HloInstruction* remaining = *i;
       HloInstruction* fused = *j;
-      TF_CHECK_OK(cost_analysis->RemoveInstruction(remaining));
-      TF_CHECK_OK(cost_analysis->RemoveInstruction(fused));
+      CHECK_OK(cost_analysis->RemoveInstruction(remaining));
+      CHECK_OK(cost_analysis->RemoveInstruction(fused));
 
       DumpFusionState(*remaining,
                       absl::StrCat("About to fuse sibling |", fused->name(),
@@ -404,12 +404,12 @@ bool MultiOutputFusion::FuseSiblings(HloInstruction* parent,
       } else {
         remaining->FuseInstructionIntoMultiOutput(fused);
         CHECK_EQ(0, fused->user_count());
-        TF_CHECK_OK(computation_->RemoveInstruction(fused));
+        CHECK_OK(computation_->RemoveInstruction(fused));
       }
       DumpFusionState(*remaining,
                       absl::StrCat("Fused into |", remaining->name(),
                                    "| inside multi-output fusion"));
-      TF_CHECK_OK(cost_analysis->RevisitInstruction(remaining));
+      CHECK_OK(cost_analysis->RevisitInstruction(remaining));
       changed = true;
       siblings.erase(j);
       RecomputeReachability();
@@ -431,8 +431,7 @@ absl::StatusOr<bool> MultiOutputFusion::DoMultiOutputFusion() {
       computation_->MakeInstructionPostOrder();
 
   FusionInfoCache fusion_info_cache(device_info_);
-  GpuPerformanceModelOwning gpu_performance_model(device_info_,
-                                                  symbolic_expr_context_);
+  GpuPerformanceModelOwning gpu_performance_model(device_info_, mlir_context_);
   // Traverse the HLO in uses-before-defs order.
   for (auto it = defs_before_uses.rbegin(); it != defs_before_uses.rend();
        ++it) {
@@ -455,7 +454,7 @@ absl::StatusOr<bool> MultiOutputFusion::DoMultiOutputFusion() {
     // multi-output fusion will occur before the current op in the order of
     // traversal, and hence, not get into the way of subsequent fusion attempts.
     const auto candidates = GetProducerConsumerMultiOutputFusionCandidates(
-        producer, *reachability_, &fusion_info_cache, device_info_,
+        producer, *reachability_, &fusion_info_cache, device_info_, alias_info_,
         gpu_performance_model, &cost_analysis);
     auto* consumer_for_fusion = SelectPreferredFusionCandidate(candidates);
     if (consumer_for_fusion == nullptr) {
@@ -486,7 +485,7 @@ absl::StatusOr<bool> MultiOutputFusion::DoMultiOutputFusion() {
       VLOG(2) << "Fuse producer " << producer->name() << " and its consumer "
               << consumer_for_fusion->name() << " into "
               << input_fusion->name();
-      TF_CHECK_OK(
+      CHECK_OK(
           computation_->ReplaceInstruction(consumer_for_fusion, input_fusion));
     }
 
@@ -501,7 +500,7 @@ absl::StatusOr<bool> MultiOutputFusion::DoMultiOutputFusion() {
     } else {
       input_fusion->FuseInstructionIntoMultiOutput(producer);
       CHECK_EQ(0, producer->user_count());
-      TF_CHECK_OK(computation_->RemoveInstruction(producer));
+      CHECK_OK(computation_->RemoveInstruction(producer));
     }
     TF_RETURN_IF_ERROR(cost_analysis.RevisitInstruction(input_fusion));
 

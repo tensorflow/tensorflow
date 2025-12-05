@@ -27,13 +27,13 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/string_view.h"
 #include "llvm/IR/Module.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/backends/gpu/codegen/fusion_emitter.h"
 #include "xla/backends/gpu/codegen/fusions.h"
 #include "xla/backends/gpu/codegen/triton/fusion.h"
-#include "xla/backends/gpu/codegen/triton/fusion_emitter.h"
-#include "xla/hlo/analysis/symbolic_expr.h"
+#include "xla/backends/gpu/codegen/triton/xtile_compiler.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -71,7 +71,6 @@ struct ModuleWithFusion {
 
 struct ModuleWithEmitter : public ModuleWithFusion {
   mlir::MLIRContext mlir_context;
-  SymbolicExprContext symbolic_expr_context{&mlir_context};
   std::optional<HloFusionAnalysis> analysis;
   std::unique_ptr<TritonFusion> emitter;
   llvm::LLVMContext llvm_context;
@@ -87,8 +86,7 @@ class CollectiveBlockLevelConfigTest : public HloHardwareIndependentTestBase {
       : device_info_{TestGpuDeviceInfo::RTXH100SXMDeviceInfo()} {}
 
   absl::StatusOr<ModuleWithFusion> BuildModuleWithFusion(
-      const Shape& shape) const {
-    const std::string module_str = GetModuleStr(shape);
+      std::string module_str) const {
     TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
                         ParseAndReturnVerifiedModule(module_str));
     const HloInstruction* instr = hlo_query::GetFirstInstructionWithOpcode(
@@ -102,7 +100,8 @@ class CollectiveBlockLevelConfigTest : public HloHardwareIndependentTestBase {
   }
 
  protected:
-  static std::string GetModuleStr(const Shape& shape) {
+  static std::string GetModuleStr(const Shape& shape,
+                                  absl::string_view replica_groups = "{0,1}") {
     return absl::StrFormat(R"(
       HloModule test
       apply_op {
@@ -113,11 +112,11 @@ class CollectiveBlockLevelConfigTest : public HloHardwareIndependentTestBase {
 
       ENTRY test_computation {
         param_0 = %1$s parameter(0)
-        all-reduce-start = %1$s all-reduce-start(param_0), to_apply=apply_op, replica_groups={{0,1}}
+        all-reduce-start = %1$s all-reduce-start(param_0), to_apply=apply_op, replica_groups={%2$s}
         ROOT all-reduce-done = %1$s all-reduce-done(all-reduce-start)
       }
     )",
-                           shape.ToString());
+                           shape.ToString(), replica_groups);
   }
 
   const se::DeviceDescription device_info_;
@@ -126,9 +125,9 @@ class CollectiveBlockLevelConfigTest : public HloHardwareIndependentTestBase {
 class CollectiveEmitterTest : public CollectiveBlockLevelConfigTest {
  public:
   absl::StatusOr<std::unique_ptr<ModuleWithEmitter>> BuildModuleWithEmitter(
-      const Shape& shape, const se::DeviceDescription& device_info) const {
+      std::string module_str, const se::DeviceDescription& device_info) const {
     TF_ASSIGN_OR_RETURN(ModuleWithFusion module_with_fusion,
-                        BuildModuleWithFusion(shape));
+                        BuildModuleWithFusion(std::move(module_str)));
     TF_ASSIGN_OR_RETURN(
         bool collective_fusion_config_set,
         TrySetGpuBackendConfigForCollective(
@@ -144,7 +143,7 @@ class CollectiveEmitterTest : public CollectiveBlockLevelConfigTest {
         HloFusionAnalysis::Create(*result->FusionInstr(), device_info);
     std::unique_ptr<FusionInterface> fusion_emitter =
         GetFusionEmitter(PreBufferAssignmentFusionInfo{*result->analysis},
-                         &result->symbolic_expr_context);
+                         &result->mlir_context);
     TritonFusion* triton_emitter =
         dynamic_cast<TritonFusion*>(fusion_emitter.get());
     TF_RET_CHECK(triton_emitter != nullptr);
@@ -176,7 +175,7 @@ class CollectiveEmitterParameterizedTest
 TEST_P(CollectiveEmitterParameterizedTest, AllReduceBlockLevelConfig) {
   const auto& param = GetParam();
   TF_ASSERT_OK_AND_ASSIGN(const auto module_with_fusion,
-                          BuildModuleWithFusion(param.shape));
+                          BuildModuleWithFusion(GetModuleStr(param.shape)));
   TF_ASSERT_OK_AND_ASSIGN(const auto block_level_config,
                           GetCollectiveBlockLevelFusionConfig(
                               device_info_, module_with_fusion.FusionInstr()));
@@ -209,10 +208,41 @@ INSTANTIATE_TEST_SUITE_P(
       return info.param.test_name;
     });
 
+TEST_F(CollectiveEmitterTest, AllReduceBlockLevelConfigNoReplicaGroups) {
+  TF_ASSERT_OK_AND_ASSIGN(
+      const auto module_with_fusion,
+      BuildModuleWithFusion(GetModuleStr(ShapeUtil::MakeShape(F32, {65536}),
+                                         /* replica_groups= */ "")));
+  TF_ASSERT_OK_AND_ASSIGN(const auto block_level_config,
+                          GetCollectiveBlockLevelFusionConfig(
+                              device_info_, module_with_fusion.FusionInstr()));
+  EXPECT_EQ(block_level_config, std::nullopt);
+}
+
+TEST_F(CollectiveEmitterTest, AllReduceGetCollectiveUnmanagedKernelArguments) {
+  TF_ASSERT_OK_AND_ASSIGN(
+      const auto module_with_fusion,
+      BuildModuleWithFusion(GetModuleStr(ShapeUtil::MakeShape(F32, {65536}))));
+  TF_ASSERT_OK_AND_ASSIGN(
+      const auto unmanaged_arguments,
+      GetCollectiveUnmanagedKernelArguments(module_with_fusion.FusionInstr()));
+  ASSERT_EQ(unmanaged_arguments.size(), 4);
+  EXPECT_EQ(unmanaged_arguments[0].dimensions().size(), 0);
+  EXPECT_EQ(unmanaged_arguments[1].dimensions().size(), 0);
+  // num_devices x input_shape
+  ASSERT_EQ(unmanaged_arguments[2].dimensions().size(), 2);
+  EXPECT_EQ(unmanaged_arguments[2].dimensions()[0], 2);  // num_devices
+
+  ASSERT_EQ(unmanaged_arguments[3].dimensions().size(), 2);
+  EXPECT_EQ(unmanaged_arguments[3].dimensions()[0], 2);      // num_devices
+  EXPECT_EQ(unmanaged_arguments[3].dimensions()[1], 65536);  // input_shape[0]
+}
+
 TEST_F(CollectiveEmitterTest, AllReduceWithTritonGetLaunchConfig) {
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<ModuleWithEmitter> result_ptr,
-      BuildModuleWithEmitter(ShapeUtil::MakeShape(F32, {65536}), device_info_));
+      BuildModuleWithEmitter(GetModuleStr(ShapeUtil::MakeShape(F32, {65536})),
+                             device_info_));
   auto& result = *result_ptr;
   const TritonFusion* triton_fusion = result.emitter.get();
   ASSERT_NE(triton_fusion, nullptr);
@@ -225,14 +255,15 @@ TEST_F(CollectiveEmitterTest, AllReduceWithTritonGetLaunchConfig) {
 TEST_F(CollectiveEmitterTest, AllReduceWithTritonGenerateTritonKernel) {
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<ModuleWithEmitter> result,
-      BuildModuleWithEmitter(ShapeUtil::MakeShape(F32, {65536}), device_info_));
+      BuildModuleWithEmitter(GetModuleStr(ShapeUtil::MakeShape(F32, {65536})),
+                             device_info_));
   const TritonFusion* triton_fusion = result->emitter.get();
   ASSERT_NE(triton_fusion, nullptr);
   TF_ASSERT_OK_AND_ASSIGN(
       TritonWrapperResult triton_kernel,
       triton_fusion->GenerateTritonKernelAndWrapper(
           *result->FusionInstr(), "test-all-reduce-start", device_info_,
-          &result->llvm_module, &result->symbolic_expr_context));
+          &result->llvm_module, &result->mlir_context));
 }
 
 }  // namespace

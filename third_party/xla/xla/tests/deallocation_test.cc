@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <memory>
 
+#include "absl/log/check.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/client/local_client.h"
@@ -22,6 +23,7 @@ limitations under the License.
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/testlib/test.h"
 #include "xla/hlo/testlib/test_helpers.h"
+#include "xla/service/service.h"
 #include "xla/tests/client_library_test_base.h"
 
 namespace xla {
@@ -38,7 +40,7 @@ class DeallocationTest : public ClientLibraryTestBase {
     XlaComputation computation = builder->Build().value();
     auto global_data =
         client_->Execute(computation, arguments, &execution_options_).value();
-    TF_CHECK_OK(client_->Transfer(*global_data).status());
+    CHECK_OK(client_->Transfer(*global_data).status());
     return global_data;
   }
 };

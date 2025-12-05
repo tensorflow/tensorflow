@@ -35,7 +35,6 @@ limitations under the License.
 #include "xla/codegen/kernel_spec.h"
 #include "xla/codegen/llvm_kernel_source.h"
 #include "xla/codegen/mlir_kernel_source.h"
-#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/tsl/platform/statusor.h"
@@ -45,7 +44,6 @@ namespace xla::cpu {
 
 struct ParallelFusionEmitter::CompilerInstance {
   std::unique_ptr<mlir::MLIRContext> mlir_context;
-  std::unique_ptr<SymbolicExprContext> symbolic_expr_context;
   std::unique_ptr<FusionCompiler> compiler;
 };
 
@@ -101,14 +99,10 @@ auto ParallelFusionEmitter::FusionCompilerPool::GetInstance()
   std::unique_ptr<mlir::MLIRContext> mlir_context =
       FusionCompiler::CreateContext();
 
-  auto symbolic_expr_context =
-      std::make_unique<SymbolicExprContext>(mlir_context.get());
-
   auto compiler = std::make_unique<FusionCompiler>(mlir_context.get(), options_,
                                                    GetNestedHooks());
 
   return CreateSharedInstance({std::move(mlir_context),
-                               std::move(symbolic_expr_context),
                                std::move(compiler)});
 }
 
@@ -149,12 +143,14 @@ ParallelFusionEmitter::FusionCompilerPool::GetNestedHooks() const {
 ParallelFusionEmitter::ParallelFusionEmitter(
     tsl::thread::ThreadPool& thread_pool, FusionCompiler::Options options,
     FusionCompiler::CompilationHooks hooks,
-    const BufferAssignment* buffer_assignment, bool use_unique_c_name)
+    const BufferAssignment* buffer_assignment, bool use_unique_c_name,
+    bool enable_tiled_emitter)
     : thread_pool_(thread_pool),
       fusion_compiler_pool_(
           std::make_unique<FusionCompilerPool>(options, std::move(hooks))),
       buffer_assignment_(buffer_assignment),
-      use_unique_c_name_(use_unique_c_name) {}
+      use_unique_c_name_(use_unique_c_name),
+      enable_tiled_emitter_(enable_tiled_emitter) {}
 
 ParallelFusionEmitter::~ParallelFusionEmitter() {
   absl::MutexLock lock(kernels_mutex_);
@@ -172,9 +168,9 @@ absl::StatusOr<KernelSpec> ParallelFusionEmitter::AddFusion(
   auto compiler_instance = fusion_compiler_pool_->GetInstance();
   TF_ASSIGN_OR_RETURN(
       KernelDefinition mlir_kernel_definition,
-      EmitFusionKernel(*compiler_instance->mlir_context,
-                       *compiler_instance->symbolic_expr_context, *fusion,
-                       buffer_assignment_, use_unique_c_name_));
+      EmitFusionKernel(*compiler_instance->mlir_context, *fusion,
+                       buffer_assignment_, use_unique_c_name_,
+                       enable_tiled_emitter_));
 
   {
     absl::MutexLock lock(kernels_mutex_);

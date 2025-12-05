@@ -36,7 +36,6 @@ limitations under the License.
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/semantic_version.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/statusor.h"
 
 namespace stream_executor::gpu {
@@ -48,9 +47,6 @@ using ::testing::HasSubstr;
 using testing::IsEmpty;
 using testing::Not;
 using testing::VariantWith;
-using ::tsl::testing::IsOk;
-using ::tsl::testing::IsOkAndHolds;
-using ::tsl::testing::StatusIs;
 
 TEST(CudaExecutorTest, CreateDeviceDescription) {
   CudaPlatform platform;

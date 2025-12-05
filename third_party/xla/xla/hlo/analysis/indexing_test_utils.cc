@@ -72,19 +72,19 @@ HloInstruction* IndexingTestBase::ParseAndGetRoot(
 HloInstructionIndexing IndexingTestBase::GetOutputToInputIndexing(
     const HloInstruction* instr, int output_id, bool use_physical_layout) {
   HloInstructionIndexing indexing =
-      ComputeOutputToInputIndexing(instr, output_id, &symbolic_expr_context_);
+      ComputeOutputToInputIndexing(instr, output_id, &mlir_context_);
 
   if (!use_physical_layout) {
     return indexing;
   }
 
   IndexingMap output_permutation = GetIndexingMapFromPhysicalLayoutToLogical(
-      GetOutputShape(instr, output_id), &symbolic_expr_context_);
+      GetOutputShape(instr, output_id), &mlir_context_);
 
   for (const auto& [operand_id, indexing_maps] :
        llvm::enumerate(indexing.indexing_maps)) {
     IndexingMap operand_permutation = GetIndexingMapFromLogicalToPhysicalLayout(
-        instr->operand(operand_id)->shape(), &symbolic_expr_context_);
+        instr->operand(operand_id)->shape(), &mlir_context_);
 
     OperandIndexingSet operand_indexing_maps;
     for (const OperandIndexing& indexing_map : indexing_maps) {
@@ -107,7 +107,7 @@ HloInstructionIndexing IndexingTestBase::GetOutputToInputIndexing(
 HloInstructionIndexing IndexingTestBase::GetInputToOutputIndexing(
     const HloInstruction* instr, int input_id, bool use_physical_layout) {
   HloInstructionIndexing indexing =
-      ComputeInputToOutputIndexing(instr, input_id, &symbolic_expr_context_);
+      ComputeInputToOutputIndexing(instr, input_id, &mlir_context_);
 
   if (!use_physical_layout) {
     return indexing;
@@ -115,13 +115,13 @@ HloInstructionIndexing IndexingTestBase::GetInputToOutputIndexing(
 
   OperandIndexing input_permutation =
       OperandIndexing(GetIndexingMapFromPhysicalLayoutToLogical(
-          instr->operand(input_id)->shape(), &symbolic_expr_context_));
+          instr->operand(input_id)->shape(), &mlir_context_));
 
   for (const auto& [output_id, indexing_maps] :
        llvm::enumerate(indexing.indexing_maps)) {
     OperandIndexing operand_permutation =
         OperandIndexing(GetIndexingMapFromLogicalToPhysicalLayout(
-            GetOutputShape(instr, output_id), &symbolic_expr_context_));
+            GetOutputShape(instr, output_id), &mlir_context_));
 
     OperandIndexingSet operand_indexing_maps;
     for (const OperandIndexing& indexing_map : indexing_maps) {
@@ -142,26 +142,24 @@ HloInstructionIndexing IndexingTestBase::GetInputToOutputIndexing(
 }
 
 AffineMap ParseAffineMap(absl::string_view serialized_affine_map,
-                         SymbolicExprContext* symbolic_expr_context) {
+                         mlir::MLIRContext* mlir_context) {
   std::string full_affine_map_string =
       absl::StrCat("affine_map<", serialized_affine_map, ">");
   return mlir::cast<mlir::AffineMapAttr>(
-             mlir::parseAttribute(full_affine_map_string,
-                                  symbolic_expr_context->GetMLIRContext()))
+             mlir::parseAttribute(full_affine_map_string, mlir_context))
       .getValue();
 }
 
 // Since MLIR does not have AffineExprAttr, we construct an AffineMap and then
 // retrieve its first result.
 AffineExpr ParseAffineExpr(absl::string_view serialized_affine_expr,
-                           SymbolicExprContext* symbolic_expr_context) {
+                           mlir::MLIRContext* mlir_context) {
   std::string full_affine_map_string = absl::StrCat(
       "affine_map<(d0, d1, d2, d3, d4, d5, d6, d7, d8, d9)"
       "[s0, s1, s2, s3, s4, s5, s6, s7, s8, s9] -> (",
       serialized_affine_expr, ")>");
   return mlir::cast<mlir::AffineMapAttr>(
-             mlir::parseAttribute(full_affine_map_string,
-                                  symbolic_expr_context->GetMLIRContext()))
+             mlir::parseAttribute(full_affine_map_string, mlir_context))
       .getValue()
       .getResult(0);
 }

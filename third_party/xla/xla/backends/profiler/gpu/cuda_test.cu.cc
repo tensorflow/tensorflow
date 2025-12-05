@@ -24,13 +24,10 @@ limitations under the License.
 #include "third_party/gpus/cuda/include/cuda_runtime_api.h"
 #include "third_party/gpus/cuda/include/driver_types.h"
 #include "xla/backends/profiler/gpu/cuda_test.h"
-#include "tsl/profiler/lib/scoped_annotation.h"
 
 namespace xla {
 namespace profiler {
 namespace test {
-
-using tsl::profiler::ScopedAnnotation;
 
 namespace {
 
@@ -41,9 +38,9 @@ __global__ void simple_print() { printf("hello, world!\n"); }
 __global__ void empty() {}
 
 // Simple kernel accesses memory.
-__global__ void access(int* addr) { *addr = *addr * 2; }
+__global__ void access(int *addr) { *addr = *addr * 2; }
 
-unsigned* g_device_copy;
+unsigned *g_device_copy;
 
 unsigned *gpu0_buf, *gpu1_buf;
 
@@ -61,13 +58,13 @@ void EmptyKernel(int iters) {
   }
 }
 
-void AccessKernel(int* addr) { access<<<1, 1>>>(addr); }
+void AccessKernel(int *addr) { access<<<1, 1>>>(addr); }
 
 void Synchronize() { cudaDeviceSynchronize(); }
 
 void UnifiedMemoryHtoDAndDtoH() {
-  int* addr = nullptr;
-  cudaMallocManaged(reinterpret_cast<void**>(&addr), sizeof(int));
+  int *addr = nullptr;
+  cudaMallocManaged(reinterpret_cast<void **>(&addr), sizeof(int));
   // The page is now in host memory.
   *addr = 1;
   // The kernel wants to access the page. HtoD transfer happens.
@@ -80,21 +77,21 @@ void UnifiedMemoryHtoDAndDtoH() {
 
 void MemCopyH2D() {
   unsigned host_val = 0x12345678;
-  cudaMalloc(reinterpret_cast<void**>(&g_device_copy), sizeof(unsigned));
+  cudaMalloc(reinterpret_cast<void **>(&g_device_copy), sizeof(unsigned));
   cudaMemcpy(g_device_copy, &host_val, sizeof(unsigned),
              cudaMemcpyHostToDevice);
 }
 
 void MemCopyH2D_Async() {
   unsigned host_val = 0x12345678;
-  cudaMalloc(reinterpret_cast<void**>(&g_device_copy), sizeof(unsigned));
+  cudaMalloc(reinterpret_cast<void **>(&g_device_copy), sizeof(unsigned));
   cudaMemcpyAsync(g_device_copy, &host_val, sizeof(unsigned),
                   cudaMemcpyHostToDevice);
 }
 
 void MemCopyD2H() {
   unsigned host_val = 0;
-  cudaMalloc(reinterpret_cast<void**>(&g_device_copy), sizeof(unsigned));
+  cudaMalloc(reinterpret_cast<void **>(&g_device_copy), sizeof(unsigned));
   cudaMemcpy(&host_val, g_device_copy, sizeof(unsigned),
              cudaMemcpyDeviceToHost);
 }
@@ -104,10 +101,10 @@ namespace {
 // Helper function to set up memory buffers on two devices.
 void P2PMemcpyHelper() {
   cudaSetDevice(0);
-  cudaMalloc(reinterpret_cast<void**>(&gpu0_buf), sizeof(unsigned));
+  cudaMalloc(reinterpret_cast<void **>(&gpu0_buf), sizeof(unsigned));
   cudaDeviceEnablePeerAccess(/*peerDevice=*/1, /*flags=*/0);
   cudaSetDevice(1);
-  cudaMalloc(reinterpret_cast<void**>(&gpu1_buf), sizeof(unsigned));
+  cudaMalloc(reinterpret_cast<void **>(&gpu1_buf), sizeof(unsigned));
   cudaDeviceEnablePeerAccess(/*peerDevice=*/0, /*flags=*/0);
 }
 
@@ -134,12 +131,12 @@ void MemCopyP2PExplicit() {
 
 // The test about cuda graph is based on Nvidia's CUPTI sample code
 // under extras/CUPTI/samples/cuda_graphs_trace/ dir of CUDA distribution.
-__global__ void VecAdd(const int* a, const int* b, int* c, int n) {
+__global__ void VecAdd(const int *a, const int *b, int *c, int n) {
   int i = blockDim.x * blockIdx.x + threadIdx.x;
   if (i < n) c[i] = a[i] + b[i];
 }
 
-__global__ void VecSub(const int* a, const int* b, int* c, int n) {
+__global__ void VecSub(const int *a, const int *b, int *c, int n) {
   int i = blockDim.x * blockIdx.x + threadIdx.x;
   if (i < n) c[i] = a[i] - b[i];
 }
@@ -165,12 +162,9 @@ void CudaGraphCreateAndExecute() {
 
   // Allocates vectors in device memory.
   int *d_a, *d_b, *d_c;
-  cudaMalloc((void**)&d_a, kNumBytes);
-  cudaMalloc((void**)&d_b, kNumBytes);
-  cudaMalloc((void**)&d_c, kNumBytes);
-
-  ScopedAnnotation module_annotation(
-      "XlaModule:#hlo_module=my_module,program_id=1#");
+  cudaMalloc((void **)&d_a, kNumBytes);
+  cudaMalloc((void **)&d_b, kNumBytes);
+  cudaMalloc((void **)&d_c, kNumBytes);
 
   cudaGraphCreate(&graph, 0);
 
@@ -181,61 +175,41 @@ void CudaGraphCreateAndExecute() {
   memcpy_params.extent.width = kNumBytes;
   memcpy_params.extent.height = 1;
   memcpy_params.extent.depth = 1;
-  {
-    ScopedAnnotation memcpy_1_annotation(
-        "Thunk:#name=my_module/prep,hlo_op=memcpy.1#");
-    cudaGraphAddMemcpyNode(&nodes[0], graph, nullptr, 0, &memcpy_params);
-  }
+  cudaGraphAddMemcpyNode(&nodes[0], graph, nullptr, 0, &memcpy_params);
 
   memcpy_params.srcPtr.ptr = vec_b.data();
   memcpy_params.dstPtr.ptr = d_b;
-  {
-    ScopedAnnotation memcpy_2_annotation(
-        "Thunk:#name=my_module/prep,hlo_op=memcpy.2#");
-    cudaGraphAddMemcpyNode(&nodes[1], graph, nullptr, 0, &memcpy_params);
-  }
+  cudaGraphAddMemcpyNode(&nodes[1], graph, nullptr, 0, &memcpy_params);
 
   // Init kernel params.
   int num = kNumElements;
-  void* kernelArgs[] = {(void*)&d_a, (void*)&d_b, (void*)&d_c, (void*)&num};
+  void *kernelArgs[] = {(void *)&d_a, (void *)&d_b, (void *)&d_c, (void *)&num};
   blocks_per_grid = (kNumElements + kThreadsPerBlock - 1) / kThreadsPerBlock;
-  kernel_params.func = (void*)VecAdd;
+  kernel_params.func = (void *)VecAdd;
   kernel_params.gridDim = dim3(blocks_per_grid, 1, 1);
   kernel_params.blockDim = dim3(kThreadsPerBlock, 1, 1);
   kernel_params.sharedMemBytes = 0;
-  kernel_params.kernelParams = (void**)kernelArgs;
+  kernel_params.kernelParams = (void **)kernelArgs;
   kernel_params.extra = nullptr;
-  {
-    ScopedAnnotation add_1_annotation(
-        "Thunk:#name=my_module/body,hlo_op=add.1#");
-    cudaGraphAddKernelNode(&nodes[2], graph, &nodes[0], 2, &kernel_params);
-  }
 
-  kernel_params.func = (void*)VecSub;
-  {
-    ScopedAnnotation sub_1_annotation(
-        "Thunk:#name=my_module/body,hlo_op=sub.1#");
-    cudaGraphAddKernelNode(&nodes[3], graph, &nodes[2], 1, &kernel_params);
-  }
+  cudaGraphAddKernelNode(&nodes[2], graph, &nodes[0], 2, &kernel_params);
+
+  kernel_params.func = (void *)VecSub;
+  cudaGraphAddKernelNode(&nodes[3], graph, &nodes[2], 1, &kernel_params);
+
   memcpy_params.kind = cudaMemcpyDeviceToHost;
   memcpy_params.srcPtr.ptr = d_c;
   memcpy_params.dstPtr.ptr = vec_c.data();
   memcpy_params.extent.width = kNumBytes;
   memcpy_params.extent.height = 1;
   memcpy_params.extent.depth = 1;
-  {
-    ScopedAnnotation memcpy_3_annotation(
-        "Thunk:#name=my_module/post,hlo_op=memcpy.3#");
-    cudaGraphAddMemcpyNode(&nodes[4], graph, &nodes[3], 1, &memcpy_params);
-  }
+  cudaGraphAddMemcpyNode(&nodes[4], graph, &nodes[3], 1, &memcpy_params);
+
   cudaGraphClone(&cloned_graph, graph);
 
-  cudaGraphInstantiate(&graph_exec, graph, nullptr, nullptr, 0);
+  cudaGraphInstantiate(&graph_exec, cloned_graph, nullptr, nullptr, 0);
 
-  {
-    ScopedAnnotation module_annotation("Thunk:#name=my_module,hlo_op=call.1#");
-    cudaGraphLaunch(graph_exec, stream);
-  }
+  cudaGraphLaunch(graph_exec, stream);
 
   cudaStreamSynchronize(stream);
 

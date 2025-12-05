@@ -47,7 +47,7 @@ absl::StatusOr<bool> FusionWrapperBase::RunImpl(
       }
       return absl::OkStatus();
     }
-    if (!MustWrapInstruction(opcode)) {
+    if (!MustWrapInstruction(*instruction)) {
       return absl::OkStatus();
     }
     auto* computation = instruction->parent();

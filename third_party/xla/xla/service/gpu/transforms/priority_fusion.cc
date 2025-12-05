@@ -40,10 +40,10 @@ limitations under the License.
 #include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/STLExtras.h"
+#include "mlir/IR/MLIRContext.h"
 #include "xla/backends/gpu/codegen/triton/support.h"
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/analysis/hlo_dfs_reachability.h"
-#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instruction_utils.h"
@@ -58,6 +58,7 @@ limitations under the License.
 #include "xla/service/gpu/gpu_fusible.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/ir_emission_utils.h"
+#include "xla/service/gpu/model/block_level_parameters.h"
 #include "xla/service/gpu/model/fusion_analysis_cache.h"
 #include "xla/service/gpu/model/gpu_hlo_cost_analysis.h"
 #include "xla/service/gpu/model/gpu_indexing_performance_model.h"
@@ -71,7 +72,6 @@ limitations under the License.
 #include "xla/stream_executor/device_description.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"
-#include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/threadpool.h"
 #include "xla/xla_data.pb.h"
@@ -159,7 +159,7 @@ class PriorityFusionQueue {
                       const se::DeviceDescription* device_info,
                       FusionProcessDumpProto* fusion_process_dump,
                       tsl::thread::ThreadPool* thread_pool,
-                      SymbolicExprContext* symbolic_expr_context,
+                      mlir::MLIRContext* mlir_context,
                       HloFusionAnalysisCache& fusion_analysis_cache,
                       FusionDeduplicationCache& fusion_deduplication_cache,
                       bool triton_heroless_fusion_enabled)
@@ -168,19 +168,18 @@ class PriorityFusionQueue {
         cost_analysis_(cost_analysis_options, *device_info),
         gpu_indexing_performance_model_(device_info, &fusion_analysis_cache,
                                         cost_analysis_options.shape_size,
-                                        symbolic_expr_context),
+                                        mlir_context),
         fusion_process_dump_(fusion_process_dump),
         thread_pool_(thread_pool),
         fusion_analysis_cache_(fusion_analysis_cache),
         gpu_performance_model_(*device_info, fusion_analysis_cache,
-                               gpu_performance_model_cache_,
-                               symbolic_expr_context),
+                               gpu_performance_model_cache_, mlir_context),
         fusion_deduplication_cache_(fusion_deduplication_cache),
         fusion_info_cache_(*device_info_),
         reachability_(HloDfsReachability::Build(computation)),
         triton_heroless_fusion_enabled_(triton_heroless_fusion_enabled) {
     VLOG(2) << "Running full HLO cost analysis for " << computation_->name();
-    TF_CHECK_OK(computation_->Accept(&cost_analysis_));
+    CHECK_OK(computation_->Accept(&cost_analysis_));
 
     dump_fusion_visualization_ = computation->parent()
                                      ->config()
@@ -190,7 +189,7 @@ class PriorityFusionQueue {
     // Initializes the priority queue.
     std::vector<HloInstruction*> instructions;
     for (auto* instruction : computation->MakeInstructionPostOrder()) {
-      TF_CHECK_OK(UpdatePerformanceModelCache(instruction));
+      CHECK_OK(UpdatePerformanceModelCache(instruction));
       if (HloPredicateIsOp<HloOpcode::kParameter>(instruction) ||
           instruction->user_count() == 0 || !instruction->IsFusible() ||
           HloPredicateIsOp<HloOpcode::kTuple, HloOpcode::kGetTupleElement>(
@@ -1170,7 +1169,7 @@ absl::StatusOr<bool> PriorityFusion::RunImpl(
 
     auto fusion_queue = std::make_unique<PriorityFusionQueue>(
         computation, cost_analysis_options_, &device_info_,
-        fusion_process_dump_.get(), thread_pool_, symbolic_expr_context_,
+        fusion_process_dump_.get(), thread_pool_, mlir_context_,
         fusion_analysis_cache_, fusion_deduplication_cache,
         triton_heroless_fusion_enabled);
 
@@ -1318,7 +1317,7 @@ HloInstruction* PriorityFusion::Fuse(HloInstruction* producer,
   if (HloPredicateIsNotOp<HloOpcode::kFusion>(fusion_instruction)) {
     fusion_instruction = computation->AddInstruction(
         HloInstruction::CreateFusion(consumer->shape(), kind, consumer));
-    TF_CHECK_OK(computation->ReplaceInstruction(consumer, fusion_instruction));
+    CHECK_OK(computation->ReplaceInstruction(consumer, fusion_instruction));
   } else if (kind != fusion_instruction->fusion_kind()) {
     fusion_instruction->set_fusion_kind(kind);
   }
@@ -1339,7 +1338,7 @@ HloInstruction* PriorityFusion::Fuse(HloInstruction* producer,
       // the computation. Do the same here, so that we have the invariant that
       // the producer has been cleaned up when multi-output fusion is used.
       CHECK_EQ(0, producer->user_count());
-      TF_CHECK_OK(producer->parent()->RemoveInstruction(producer));
+      CHECK_OK(producer->parent()->RemoveInstruction(producer));
     } else {
       fusion_instruction->FuseInstruction(producer);
     }

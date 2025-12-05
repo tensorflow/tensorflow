@@ -692,6 +692,50 @@ TEST_F(HloDiffTest, DiffSummaryToProtoWorks) {
               2))));
 }
 
+TEST_F(HloDiffTest, DiffSummaryFromProtoWorks) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> module_l,
+                          ParseAndReturnVerifiedModule(R"(
+  HloModule module, is_scheduled=true
+
+  ENTRY entry {
+    parameter.0 = f32[] parameter(0)
+    parameter.1 = f32[] parameter(1)
+    add.0 = f32[] add(parameter.0, parameter.1)
+  }
+  )"));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> graph_l,
+                          HloGumgraph::Create(module_l.get()));
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> module_r,
+                          ParseAndReturnVerifiedModule(R"(
+  HloModule module, is_scheduled=true
+
+  ENTRY entry {
+    parameter.0 = f32[] parameter(0)
+    parameter.1 = f32[] parameter(1)
+    add.0 = f32[] add(parameter.1, parameter.0)
+  }
+  )"));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> graph_r,
+                          HloGumgraph::Create(module_r.get()));
+  HloGumgraphMappings mappings;
+  ASSERT_NO_FATAL_FAILURE(OverwriteMapInstructions(
+      GetNodeByName(*graph_l, "add.0"), GetNodeByName(*graph_r, "add.0"),
+      mappings, true));
+  std::unique_ptr<const DiffResult> diff_result =
+      ConstructDiffResult(*graph_l, *graph_r, mappings);
+  std::unique_ptr<const DiffSummary> diff_summary =
+      ConstructDiffSummary(*graph_l, *graph_r, *diff_result);
+
+  DiffSummaryProto proto = diff_summary->ToProto();
+  DiffSummary summary_from_proto =
+      DiffSummary::FromProto(proto, *module_l, *module_r);
+
+  EXPECT_THAT(summary_from_proto.computation_diff_patterns,
+              UnorderedPointwise(EqualsComputationDiffPattern(),
+                                 diff_summary->computation_diff_patterns));
+}
+
 }  // namespace
 }  // namespace hlo_diff
 }  // namespace xla

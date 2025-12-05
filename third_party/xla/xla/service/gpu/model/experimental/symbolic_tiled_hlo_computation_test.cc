@@ -18,10 +18,10 @@ limitations under the License.
 #include <memory>
 #include <utility>
 #include <variant>
-#include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/log/check.h"
 #include "absl/strings/string_view.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -30,22 +30,10 @@ limitations under the License.
 #include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/service/gpu/model/experimental/test_utils.h"
-#include "xla/tsl/platform/status_matchers.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 
 namespace xla::gpu::experimental {
 namespace {
-
-using ::testing::ElementsAre;
-using ::testing::ElementsAreArray;
-using ::testing::ExplainMatchResult;
-using ::testing::IsEmpty;
-using ::testing::Matcher;
-using ::testing::Not;
-using ::tsl::testing::IsOkAndHolds;
-using ::tsl::testing::StatusIs;
-
 
 class SymbolicTileAnalysisTest : public HloHardwareIndependentTestBase {
  public:

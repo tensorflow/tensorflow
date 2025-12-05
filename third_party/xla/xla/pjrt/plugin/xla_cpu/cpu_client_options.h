@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "xla/backends/cpu/collectives/cpu_collectives.h"
 #include "xla/pjrt/plugin/xla_cpu/cpu_memory.h"
+#include "xla/pjrt/plugin/xla_cpu/cpu_topology_description.h"
 #include "xla/service/hlo_module_config.h"
 
 namespace xla {
@@ -60,6 +61,15 @@ struct CpuClientOptions {
   std::function<absl::StatusOr<std::unique_ptr<CpuMemory>>(size_t size_bytes,
                                                            size_t alignment)>
       allocator;
+
+  // Maximum number of threads to use for any one transpose. We will use the
+  // the lesser of this number and the thread pool size. 1 = no threading.
+  int max_transpose_threads = 8;
+
+  // CPU topology description. Optional. If not provided, the topology will be
+  // detected from the host and will try to use cpu_device_count and process_id
+  // to build the topology.
+  const CpuTopologyDescription* topology = nullptr;
 };
 
 }  // namespace xla

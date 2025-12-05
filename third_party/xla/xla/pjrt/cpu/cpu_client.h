@@ -78,6 +78,16 @@ limitations under the License.
 
 namespace xla {
 
+namespace cpu {
+
+PjRtPlatformId PlatformId();
+
+absl::string_view PlatformName();
+
+absl::string_view PlatformVersion();
+
+}  // namespace cpu
+
 class PjRtCpuClient final : public CommonPjRtClient {
  public:
   ~PjRtCpuClient() override;
@@ -104,13 +114,15 @@ class PjRtCpuClient final : public CommonPjRtClient {
 
   absl::Span<PjRtMemorySpace* const> memory_spaces() const override;
 
-  PjRtPlatformId platform_id() const override {
-    return tsl::Fingerprint64(CpuName());
+  PjRtPlatformId platform_id() const override { return cpu::PlatformId(); }
+
+  absl::string_view platform_name() const override {
+    return cpu::PlatformName();
   }
 
-  absl::string_view platform_name() const override { return CpuName(); }
-
-  absl::string_view platform_version() const override { return CpuName(); }
+  absl::string_view platform_version() const override {
+    return cpu::PlatformVersion();
+  }
 
   absl::StatusOr<DeviceAssignment> GetDefaultDeviceAssignment(
       int num_replicas, int num_partitions) const override;
@@ -172,6 +184,10 @@ class PjRtCpuClient final : public CommonPjRtClient {
     return async_work_runner_.get();
   }
 
+  tsl::thread::ThreadPool* eigen_intraop_pool() const {
+    return eigen_intraop_pool_.get();
+  }
+
   Eigen::ThreadPoolDevice* eigen_intraop_device() const {
     return eigen_intraop_device_.get();
   }
@@ -197,7 +213,7 @@ class PjRtCpuClient final : public CommonPjRtClient {
 
   absl::StatusOr<const xla::PjRtTopologyDescription*> GetTopologyDescription()
       const override {
-    return &topology_;
+    return topology_.get();
   }
 
   absl::StatusOr<std::pair<tsl::RCReference<CommonPjRtRawBuffer>,
@@ -214,7 +230,7 @@ class PjRtCpuClient final : public CommonPjRtClient {
                            absl::string_view debug_info) override;
 
   absl::StatusOr<std::unique_ptr<PjRtBuffer>> DefineBuffer(
-      const Shape& on_device_shape,
+      const Shape& on_device_shape, PjRtMemorySpace* memory_space,
       tsl::RCReference<CommonPjRtRawBuffer> raw_buffer,
       absl::InlinedVector<tsl::RCReference<PjRtDeviceEvent>, 4>
           definition_device_events,
@@ -256,7 +272,9 @@ class PjRtCpuClient final : public CommonPjRtClient {
       std::shared_ptr<CpuDeviceMemory::Allocator> allocator,
       std::shared_ptr<cpu::CpuCollectives> collectives, size_t num_threads,
       bool asynchronous,
-      std::function<void(HloModuleConfig&)> customize_hlo_module_config);
+      std::function<void(HloModuleConfig&)> customize_hlo_module_config,
+      int max_transpose_threads,
+      std::unique_ptr<CpuTopologyDescription> topology);
 
   absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> CompileInternal(
       const XlaComputation& computation,
@@ -309,7 +327,7 @@ class PjRtCpuClient final : public CommonPjRtClient {
 
   std::shared_ptr<cpu::CpuCollectives> collectives_;
 
-  xla::CpuTopologyDescription topology_;
+  std::unique_ptr<xla::CpuTopologyDescription> topology_;
 
   // Used to control whether asynchronous computation dispatch is available for
   // this client. Only applies to non-parallel computations.
@@ -330,6 +348,10 @@ class PjRtCpuClient final : public CommonPjRtClient {
   // Thread pool for running PjRtClient tasks.
   std::unique_ptr<tsl::thread::ThreadPool> pjrt_client_thread_pool_;
   std::unique_ptr<AsyncWorkRunner> async_work_runner_;
+
+  // Maximum number of threads to use for any one transpose. We will use the
+  // the lesser of this number and the thread pool size. 1 = no threading.
+  int max_transpose_threads_;
 };
 
 class PjRtCpuExecutable final : public PjRtLoadedExecutable {
@@ -497,18 +519,6 @@ inline absl::StatusOr<std::unique_ptr<PjRtClient>> ABSL_DEPRECATED(
     GetPjRtCpuClient(bool asynchronous) {
   CpuClientOptions options;
   options.asynchronous = asynchronous;
-  return GetPjRtCpuClient(std::move(options));
-}
-
-// Deprecated. Use the overload that takes 'options' instead.
-inline absl::StatusOr<std::unique_ptr<PjRtClient>> GetPjRtCpuClient(
-    bool asynchronous, int cpu_device_count,
-    int max_inflight_computations_per_device = 32) {
-  CpuClientOptions options;
-  options.asynchronous = asynchronous;
-  options.cpu_device_count = cpu_device_count;
-  options.max_inflight_computations_per_device =
-      max_inflight_computations_per_device;
   return GetPjRtCpuClient(std::move(options));
 }
 

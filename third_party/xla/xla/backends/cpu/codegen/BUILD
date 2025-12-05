@@ -101,12 +101,14 @@ cc_library(
         ":polynomial_approximations",
         "//xla:util",
         "//xla:xla_proto_cc",
+        "//xla/backends/cpu:target_machine_options",
         "//xla/codegen:intrinsic_lib",
         "//xla/codegen/intrinsic",
         "//xla/codegen/intrinsic:intrinsic_compiler_lib",
         "//xla/service:hlo_module_config",
         "//xla/service/cpu:backend_config_proto_cc",
         "//xla/service/cpu:cpu_options",
+        "//xla/service/cpu:executable_proto_cc",
         "//xla/service/llvm_ir:llvm_util",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/algorithm:container",
@@ -143,8 +145,12 @@ xla_cc_test(
     deps = [
         ":ir_compiler",
         ":kernel_api_ir_builder",
+        "//xla:debug_options_flags",
         "//xla:util",
+        "//xla/backends/cpu:target_machine_options",
         "//xla/service/cpu:backend_config_proto_cc",
+        "//xla/service/cpu:cpu_compiler_pure",
+        "//xla/service/cpu:test_header_helper",
         "//xla/service/llvm_ir:llvm_util",
         "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/platform:statusor",
@@ -251,6 +257,7 @@ cc_library(
         "@stablehlo//:linalg_passes",
         "@stablehlo//:stablehlo_ops",
         "@stablehlo//:stablehlo_passes",
+        "@stablehlo//:stablehlo_passes_optimization",
     ],
 )
 
@@ -264,10 +271,10 @@ cc_library(
         ":cpu_features",
         ":execution_engine",
         ":ir_compiler",
+        ":jit_memory_mapper",
         ":object_loader",
         "//xla:util",
         "//xla/backends/cpu/runtime:function_library",
-        "//xla/service/cpu:orc_jit_memory_mapper",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/base",
@@ -305,7 +312,7 @@ cc_library(
         "@llvm-project//llvm:SystemZCodeGen",  # fixdeps: keep
     ]) + if_llvm_x86_available([
         "@llvm-project//llvm:X86CodeGen",  # fixdeps: keep
-    ]) + xla_internal(["service/cpu:named_orc_jit_memory_mapper"]),
+    ]) + xla_internal(["service/cpu:named_jit_memory_mapper"]),
 )
 
 xla_cc_test(
@@ -315,7 +322,9 @@ xla_cc_test(
         ":ir_compiler",
         ":jit_compiler",
         ":kernel_api_ir_builder",
+        "//xla:debug_options_flags",
         "//xla:util",
+        "//xla/backends/cpu:target_machine_options",
         "//xla/backends/cpu/runtime:function_library",
         "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/platform:env",
@@ -332,6 +341,22 @@ xla_cc_test(
         "@llvm-project//llvm:OrcShared",
         "@llvm-project//llvm:Support",
         "@llvm-project//llvm:Target",
+    ],
+)
+
+cc_library(
+    name = "jit_memory_mapper",
+    srcs = ["jit_memory_mapper.cc"],
+    hdrs = ["jit_memory_mapper.h"],
+    deps = [
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/base:no_destructor",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/functional:any_invocable",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/synchronization",
+        "@llvm-project//llvm:ExecutionEngine",
     ],
 )
 
@@ -535,8 +560,8 @@ cc_library(
         ":compiled_function_library",
         ":contiguous_section_memory_manager",
         ":execution_engine",
+        ":jit_memory_mapper",
         "//xla/backends/cpu/runtime:function_library",
-        "//xla/service/cpu:orc_jit_memory_mapper",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log",
@@ -559,7 +584,7 @@ cc_library(
     hdrs = ["execution_engine.h"],
     deps = [
         ":contiguous_section_memory_manager",
-        "//xla/service/cpu:orc_jit_memory_mapper",
+        ":jit_memory_mapper",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
@@ -632,10 +657,12 @@ xla_cc_test(
         ":execution_engine",
         ":ir_compiler",
         ":jit_compiler",
+        ":kernel_api_ir_builder",
         ":object_loader",
+        "//xla:debug_options_flags",
         "//xla:util",
         "//xla:xla_data_proto_cc",
-        "//xla/backends/cpu/codegen:kernel_api_ir_builder",
+        "//xla/backends/cpu:target_machine_options",
         "//xla/backends/cpu/runtime:function_library",
         "//xla/service:cpu_plugin",
         "//xla/service/cpu:executable_proto_cc",
@@ -680,6 +707,7 @@ cc_library(
         "//xla:shape_util",
         "//xla:util",
         "//xla/backends/cpu:alignment",
+        "//xla/backends/cpu/codegen/tiled:tiled_fusion_emitter",
         "//xla/codegen:hlo_fusion_spec",
         "//xla/codegen:ir_emission_utils",
         "//xla/codegen:kernel_definition",

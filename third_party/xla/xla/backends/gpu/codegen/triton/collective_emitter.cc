@@ -19,9 +19,11 @@ limitations under the License.
 #include <optional>
 #include <type_traits>
 #include <utility>
+#include <vector>
 
 #include "absl/base/casts.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
@@ -30,6 +32,7 @@ limitations under the License.
 #include "mlir/Dialect/LLVMIR/NVVMDialect.h"
 #include "mlir/IR/BuiltinTypeInterfaces.h"
 #include "mlir/IR/BuiltinTypes.h"
+#include "mlir/IR/TypeUtilities.h"
 #include "mlir/IR/Types.h"
 #include "mlir/IR/Value.h"
 #include "mlir/Interfaces/FunctionInterfaces.h"
@@ -79,32 +82,68 @@ static constexpr auto kGlobalAddressSpace =
         mlir::NVVM::NVVMMemorySpace::Global);
 
 // Metadata arguments for the collective emitter.
-// device_rank, signal-value, signal_buffers.
+// device_rank, signal_value, signal_buffers.
 static constexpr int32_t kNumCollectiveMetadataArgs = 3;
 
-bool CanAllReduceBeEmitted(const HloAllReduceInstruction* all_reduce,
-                           ReductionKind reduction_kind, int64_t num_devices,
-                           int64_t num_elements, PrimitiveType element_type,
-                           AllReduceStrategy all_reduce_strategy) {
+struct AllReduceInfo {
+  ReductionKind reduction_kind;
+  int64_t num_devices;
+  int64_t num_elements;
+  PrimitiveType element_type;
+  AllReduceStrategy all_reduce_strategy;
+};
+
+// Returns the AllReduceInfo for the given all-reduce instruction if the
+// instruction is supported by the codegen.
+std::optional<AllReduceInfo> MaybeBuildAllReduceInfo(
+    const HloAllReduceInstruction* all_reduce) {
   if (!all_reduce->GetModule()
            ->config()
            .debug_options()
            .xla_gpu_unsupported_use_all_reduce_one_shot_kernel()) {
-    return false;
+    return std::nullopt;
   }
+  if (all_reduce->device_list().replica_groups().empty()) {
+    VLOG(1) << "Replica groups are empty for " << all_reduce->name()
+            << ". Codegen will not be supported.";
+    return std::nullopt;
+  }
+  const int64_t num_devices = all_reduce->device_list().num_devices_per_group();
+  const std::optional<ReductionKind> reduction_kind =
+      MatchReductionComputation(all_reduce->called_computations().front());
+  if (!reduction_kind.has_value()) {
+    return std::nullopt;
+  }
+  const int64_t num_elements =
+      ShapeUtil::ElementsIn(all_reduce->operand(0)->shape());
+  const PrimitiveType element_type =
+      all_reduce->operand(0)->shape().element_type();
+  // NB: We do not codegen multimem kernels for now.
+  const AllReduceStrategy all_reduce_strategy =
+      GetAllReduceStrategy(num_elements, /*is_multimem_enabled=*/false);
   // TODO(b/383125489): Support variadic all-reduce.
   if (all_reduce->operand_count() > 1) {
-    return false;
+    return std::nullopt;
   }
   const int64_t byte_size =
       num_elements * ShapeUtil::ByteSizeOfPrimitiveType(element_type);
   // TODO(b/457333991): Support twoShot for codegen.
   if (byte_size >
       GetMaxSupportedAllReduceSizeBytes(AllReduceStrategy::kOneShot)) {
-    return false;
+    return std::nullopt;
   }
-  return IsAllReduceKernelSupported(num_devices, num_elements, element_type,
-                                    reduction_kind, all_reduce_strategy);
+  if (!IsAllReduceKernelSupported(num_devices, num_elements, element_type,
+                                  reduction_kind.value(),
+                                  all_reduce_strategy)) {
+    return std::nullopt;
+  }
+  return AllReduceInfo{
+      /* .reduction_kind= */ reduction_kind.value(),
+      /* .num_devices= */ num_devices,
+      /* .num_elements= */ num_elements,
+      /* .element_type= */ element_type,
+      /* .all_reduce_strategy= */ all_reduce_strategy,
+  };
 }
 
 // The logic here is very naive and assumes a monotonic layout
@@ -113,27 +152,15 @@ absl::StatusOr<std::optional<BlockLevelFusionConfig>>
 GetBlockLevelFusionConfigForAllReduce(
     const se::DeviceDescription& device_info,
     const HloAllReduceInstruction* all_reduce) {
-  const std::optional<ReductionKind> reduction_kind =
-      MatchReductionComputation(all_reduce->called_computations().front());
-  if (!reduction_kind.has_value()) {
-    return absl::InternalError(
-        "Reduction computation not found for all-reduce.");
-  }
-  const int64_t num_devices = all_reduce->device_list().num_devices_per_group();
-  const int64_t num_elements =
-      ShapeUtil::ElementsIn(all_reduce->operand(0)->shape());
-  const PrimitiveType element_type =
-      all_reduce->operand(0)->shape().element_type();
-  // NB: We do not codegen multimem kernels for now.
-  const AllReduceStrategy all_reduce_strategy =
-      GetAllReduceStrategy(num_elements, /*is_multimem_enabled=*/false);
-  if (!CanAllReduceBeEmitted(all_reduce, reduction_kind.value(), num_devices,
-                             num_elements, element_type, all_reduce_strategy)) {
+  const std::optional<AllReduceInfo> all_reduce_info =
+      MaybeBuildAllReduceInfo(all_reduce);
+  if (!all_reduce_info.has_value()) {
     return std::nullopt;
   }
   const Shape& output_shape = all_reduce->shape();
-  const LaunchDimensions launch_dims =
-      AllReduceLaunchDimensions(num_elements, num_devices, all_reduce_strategy);
+  const LaunchDimensions launch_dims = AllReduceLaunchDimensions(
+      all_reduce_info->num_elements, all_reduce_info->num_devices,
+      all_reduce_info->all_reduce_strategy);
   BlockLevelFusionConfig block_level_config;
   block_level_config.set_num_warps(launch_dims.num_threads_per_block() /
                                    WarpSize(device_info));
@@ -142,8 +169,8 @@ GetBlockLevelFusionConfigForAllReduce(
   Tile* output_tile = block_level_config.add_output_tiles();
   const int64_t rank = output_shape.dimensions().size();
 
-  // Tile sizes are rolled up to power of 2 because this is what the triton
-  // expects (and consequently the tiling infra).
+  // Tile sizes are rolled up to power of 2 because this is what triton expects
+  // and consequently the tiling infra.
   for (int i = 0; i < rank - 1; ++i) {
     output_tile->add_sizes(llvm::PowerOf2Ceil(output_shape.dimensions(i)));
   }
@@ -195,33 +222,32 @@ absl::StatusOr<TensorValue> EmitAllReduce(
   const auto ptr_to_i64_type =
       ttir::PointerType::get(b.getI64Type(), kGlobalAddressSpace);
   auto remote_input_buffers_i64 =
-      b.create<ttir::BitcastOp>(ptr_to_i64_type, remote_input_buffers);
-  Value remote_buf_ptr_addr = b.create<ttir::AddPtrOp>(
-      ptr_to_i64_type, remote_input_buffers_i64, device_rank);
-  Value remote_buf_i64 =
-      b.create<ttir::LoadOp>(remote_buf_ptr_addr,
-                             ttir::CacheModifier::NONE,     //
-                             ttir::EvictionPolicy::NORMAL,  //
-                             false);                        // isVolatile
+      ttir::BitcastOp::create(b, ptr_to_i64_type, remote_input_buffers);
+  Value remote_buf_ptr_addr = ttir::AddPtrOp::create(
+      b, ptr_to_i64_type, remote_input_buffers_i64, device_rank);
+  Value remote_buf_i64 = ttir::LoadOp::create(b, remote_buf_ptr_addr,
+                                              ttir::CacheModifier::NONE,     //
+                                              ttir::EvictionPolicy::NORMAL,  //
+                                              false);  // isVolatile
   const auto elem_type =
       mlir::cast<ShapedType>(input_tile.getType()).getElementType();
   const auto ptr_to_elem_type =
       ttir::PointerType::get(elem_type, kGlobalAddressSpace);
   Value remote_buf_ptr =
-      b.create<ttir::IntToPtrOp>(ptr_to_elem_type, remote_buf_i64);
+      ttir::IntToPtrOp::create(b, ptr_to_elem_type, remote_buf_i64);
   mlir::ArrayRef<int64_t> remote_shape = tile_info.original_shape();
   const mlir::MemRefType remote_memref_type =
       mlir::MemRefType::get(remote_shape, elem_type);
   mlir::Value remote_buf_memref =
-      b.create<mtx::PtrToMemrefOp>(remote_memref_type, remote_buf_ptr);
-  b.create<xtile::InsertTileOp>(
-      input_tile, remote_buf_memref, tile_info.offsets(),
+      mtx::PtrToMemrefOp::create(b, remote_memref_type, remote_buf_ptr);
+  xtile::InsertTileOp::create(
+      b, input_tile, remote_buf_memref, tile_info.offsets(),
       tile_info.padded_tile_sizes(), tile_info.tile_strides());
 
   // 2. Synchronization phase: Wait for all ranks to complete the scatter.
   int64_t world_size = all_reduce.device_list().num_devices_per_group();
-  b.create<mtx::BlockBarrierOp>(signal_buffers, device_rank, signal_value,
-                                b.getI32IntegerAttr(world_size));
+  mtx::BlockBarrierOp::create(b, signal_buffers, device_rank, signal_value,
+                              b.getI32IntegerAttr(world_size));
 
   // 3. Reduce phase: Load tiles from all ranks and reduce them.
   HloComputation* reduction_computation = all_reduce.to_apply();
@@ -234,23 +260,23 @@ absl::StatusOr<TensorValue> EmitAllReduce(
   }
   // Set accumulator zero.
   mlir::Value accumulator_zero =
-      b.create<arith::ConstantOp>(elem_type, b.getZeroAttr(elem_type));
+      arith::ConstantOp::create(b, elem_type, b.getZeroAttr(elem_type));
   TensorValue accumulator =
-      b.create<ttir::SplatOp>(input_tile.getType(), accumulator_zero);
+      triton::Splat(b, accumulator_zero, input_tile.getType().getShape());
   for (int rank = 0; rank < world_size; ++rank) {
     Value rank_idx =
-        b.create<arith::ConstantOp>(b.getI64Type(), b.getI64IntegerAttr(rank));
-    Value remote_buf_ptr_addr = b.create<ttir::AddPtrOp>(
-        ptr_to_i64_type, remote_input_buffers_i64, rank_idx);
+        arith::ConstantOp::create(b, b.getI64Type(), b.getI64IntegerAttr(rank));
+    Value remote_buf_ptr_addr = ttir::AddPtrOp::create(
+        b, ptr_to_i64_type, remote_input_buffers_i64, rank_idx);
     Value remote_buf_i64 =
-        b.create<ttir::LoadOp>(remote_buf_ptr_addr,
-                               ttir::CacheModifier::NONE,     //
-                               ttir::EvictionPolicy::NORMAL,  //
-                               false);                        // isVolatile
+        ttir::LoadOp::create(b, remote_buf_ptr_addr,
+                             ttir::CacheModifier::NONE,     //
+                             ttir::EvictionPolicy::NORMAL,  //
+                             false);                        // isVolatile
     Value remote_buf_ptr =
-        b.create<ttir::IntToPtrOp>(ptr_to_elem_type, remote_buf_i64);
+        ttir::IntToPtrOp::create(b, ptr_to_elem_type, remote_buf_i64);
     Value remote_buf_memref =
-        b.create<mtx::PtrToMemrefOp>(remote_memref_type, remote_buf_ptr);
+        mtx::PtrToMemrefOp::create(b, remote_memref_type, remote_buf_ptr);
     TensorValue next_tile =
         EmitParameterExtract(b, tile_info, remote_buf_memref);
 
@@ -258,13 +284,43 @@ absl::StatusOr<TensorValue> EmitAllReduce(
     region_values[reduction_computation->parameter_instruction(0)] =
         accumulator;
     region_values[reduction_computation->parameter_instruction(1)] = next_tile;
-    TF_ASSIGN_OR_RETURN(
-        accumulator,
-        triton::EmitScope(b,
-                          /*analysis=*/nullptr, /*instructions=*/to_emit,
-                          /*values=*/region_values));
+    TF_ASSIGN_OR_RETURN(accumulator,
+                        triton::EmitScope(b,
+                                          /*instructions=*/to_emit,
+                                          /*values=*/region_values));
   }
   return accumulator;
+}
+
+absl::StatusOr<std::vector<Shape>> GetAllReduceUnmanagedKernelArguments(
+    const HloComputation* computation,
+    const HloAllReduceInstruction* all_reduce) {
+  const int32_t num_devices = all_reduce->device_list().num_devices_per_group();
+  std::vector<Shape> unmanaged_arguments;
+  unmanaged_arguments.reserve(computation->num_parameters() +
+                              kNumCollectiveMetadataArgs);
+
+  // rank and signal_value
+  unmanaged_arguments.push_back(ShapeUtil::MakeShape(S32, {}));
+  unmanaged_arguments.push_back(ShapeUtil::MakeShape(S32, {}));
+  // The shape for signal and scratch buffers does not really matter in the end
+  // because this would just be a pointer. For documentation purposes we add
+  // the correct shape which would be
+  // - num_devices * num_blocks for the signal buffer.
+  // - num_devices * shape of the parameter for scratch buffers.
+  // Since number of blocks is not known in this context we use a constant.
+  static constexpr int32_t kMaxBlocksPerGrid = 24;
+  unmanaged_arguments.push_back(
+      ShapeUtil::MakeShape(S32, {num_devices, kMaxBlocksPerGrid}));
+  // Scratch buffers
+  for (const HloInstruction* instr : computation->parameter_instructions()) {
+    Shape shape =
+        ShapeUtil::InsertDimensionAtIndex(instr->shape(), 0, num_devices);
+    unmanaged_arguments.push_back(shape);
+  }
+  TF_RET_CHECK(unmanaged_arguments.size() ==
+               computation->num_parameters() + kNumCollectiveMetadataArgs);
+  return unmanaged_arguments;
 }
 
 }  // namespace
@@ -300,6 +356,19 @@ absl::StatusOr<bool> TrySetGpuBackendConfigForCollective(
   TF_RETURN_IF_ERROR(
       fusion_instr->set_backend_config(std::move(gpu_backend_config)));
   return true;
+}
+
+absl::StatusOr<std::vector<Shape>> GetCollectiveUnmanagedKernelArguments(
+    const HloFusionInstruction* fusion) {
+  const HloComputation* computation = fusion->fused_instructions_computation();
+  const HloInstruction* root = computation->root_instruction();
+  switch (root->opcode()) {
+    case HloOpcode::kAllReduceStart:
+      return GetAllReduceUnmanagedKernelArguments(
+          computation, Cast<HloAllReduceInstruction>(root));
+    default:
+      return std::vector<Shape>();
+  }
 }
 
 absl::StatusOr<int32_t> AddCollectiveMetadataArguments(

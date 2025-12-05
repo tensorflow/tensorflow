@@ -35,6 +35,7 @@
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
+#include "xla/future.h"
 #include "xla/pjrt/plugin/xla_cpu/cpu_client_options.h"
 #include "xla/pjrt/plugin/xla_cpu/xla_cpu_pjrt_client.h"
 #include "xla/python/ifrt/array.h"
@@ -53,7 +54,6 @@
 #include "xla/python/pjrt_ifrt/pjrt_client.h"
 #include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/concurrency/ref_count.h"
-#include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 
@@ -61,9 +61,6 @@ namespace xla {
 namespace ifrt {
 namespace proxy {
 namespace {
-
-using ::tsl::testing::IsOk;
-using ::tsl::testing::StatusIs;
 
 constexpr absl::StatusCode kInternal = absl::StatusCode::kInternal;
 

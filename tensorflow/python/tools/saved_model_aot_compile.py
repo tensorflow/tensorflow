@@ -367,6 +367,7 @@ def aot_compile_cpu_meta_graph_def(checkpoint_path,
     else:
       xla_flags += ' --xla_cpu_multi_thread_eigen={}'.format(
           'true' if multithreading else 'false')
+    xla_flags += ' --xla_cpu_experimental_ynn_fusion_type= '
     os.environ['XLA_FLAGS'] = xla_flags
 
   temp_dir = test.get_temp_dir()

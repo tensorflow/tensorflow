@@ -233,6 +233,13 @@ class ThunkSequenceSerdesTest : public ::testing::Test {
 
     return absl::OkStatus();
   }
+  absl::Status AddPredBufferAllocation() {
+    literals_.push_back(LiteralUtil::CreateFull<bool>({1}, false));
+    TF_RETURN_IF_ERROR(buffer_allocations_.push_back(
+        CreateBufferAllocation(buffer_allocations_.size(), literals_.back())));
+
+    return absl::OkStatus();
+  }
 
   // Thunk creation helper functions.
   absl::StatusOr<std::unique_ptr<Thunk>> CreateAllGatherThunk(
@@ -424,7 +431,7 @@ class ThunkSequenceSerdesTest : public ::testing::Test {
       branch_sequences.push_back(std::move(called_sequence));
     }
 
-    TF_RETURN_IF_ERROR(AddBufferAllocations(1));
+    TF_RETURN_IF_ERROR(AddPredBufferAllocation());
 
     return ConditionalThunk::Create(
         Thunk::Info(),
@@ -435,7 +442,8 @@ class ThunkSequenceSerdesTest : public ::testing::Test {
   }
 
   absl::StatusOr<std::unique_ptr<Thunk>> CreateCustomCallThunk() {
-    TF_RETURN_IF_ERROR(AddBufferAllocations(2));
+    TF_RETURN_IF_ERROR(AddPredBufferAllocation());
+    TF_RETURN_IF_ERROR(AddBufferAllocations(1));
 
     return CustomCallThunk::Create(
         Thunk::Info(), "no_op",
@@ -575,7 +583,6 @@ class ThunkSequenceSerdesTest : public ::testing::Test {
         /*batch_size=*/1,
         /*input_size=*/1,
         /*k=*/2
-
     );
   }
 
@@ -588,7 +595,7 @@ class ThunkSequenceSerdesTest : public ::testing::Test {
     TF_ASSIGN_OR_RETURN(body_sequence.emplace_back(), CreateAllReduceThunk());
     TF_ASSIGN_OR_RETURN(body_sequence.emplace_back(), CreateAllToAllThunk());
 
-    TF_RETURN_IF_ERROR(AddBufferAllocations(1));
+    TF_RETURN_IF_ERROR(AddPredBufferAllocation());
     return WhileThunk::Create(
         Thunk::Info(),
         /*cond_buffer=*/

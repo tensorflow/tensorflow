@@ -145,8 +145,8 @@ REGISTER_OP("StringFormat")
     .Attr("placeholder: string = '%s'")
     .Attr("summarize: int = 3")
     .SetShapeFn([](InferenceContext* c) {
-      string template_;
-      string placeholder;
+      std::string template_;
+      std::string placeholder;
       TF_RETURN_IF_ERROR(c->GetAttr("template", &template_));
       TF_RETURN_IF_ERROR(c->GetAttr("placeholder", &placeholder));
 
@@ -154,7 +154,7 @@ REGISTER_OP("StringFormat")
       split_template = absl::StrSplit(template_, placeholder);
       int64_t num_placeholders = split_template.size() - 1;
       if (c->num_inputs() != num_placeholders) {
-        return errors::InvalidArgument(strings::StrCat(
+        return errors::InvalidArgument(absl::StrCat(
             "num placeholders in template and num inputs must match: ",
             num_placeholders, " vs. ", c->num_inputs()));
       }

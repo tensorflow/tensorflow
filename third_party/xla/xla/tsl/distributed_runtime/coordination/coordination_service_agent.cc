@@ -1042,6 +1042,7 @@ CoordinationServiceAgent::GetAliveTasks(
 
   // Parse the response.
   absl::MutexLock lock(incarnations_mu_);
+  incarnations_.clear();
   std::vector<AliveTask> alive_tasks;
   for (int i = 0; i < response->alive_tasks_size(); ++i) {
     int task_id = response->alive_tasks(i).task_id();

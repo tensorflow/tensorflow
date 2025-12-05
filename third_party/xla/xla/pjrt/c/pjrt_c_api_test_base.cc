@@ -38,7 +38,6 @@ limitations under the License.
 #include "xla/service/computation_placer.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/tsl/platform/status.h"
 #include "xla/xla_data.pb.h"
 
 namespace pjrt {
@@ -135,7 +134,7 @@ std::string PjrtCApiTestBase::BuildSingleDeviceCompileOptionStr() {
   xla::CompileOptions options;
   options.executable_build_options = build_options;
   absl::StatusOr<xla::CompileOptionsProto> options_proto = options.ToProto();
-  TF_CHECK_OK(options_proto.status());
+  CHECK_OK(options_proto.status());
   return options_proto->SerializeAsString();
 }
 

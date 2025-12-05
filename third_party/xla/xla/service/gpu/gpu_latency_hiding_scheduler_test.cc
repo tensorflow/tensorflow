@@ -22,7 +22,9 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/algorithm/container.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -39,17 +41,14 @@ limitations under the License.
 #include "xla/service/latency_hiding_scheduler.h"
 #include "xla/service/profile_guided_latency_estimator.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/logging.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla::gpu {
 namespace {
 
 using ::testing::Property;
 using ::testing::UnorderedElementsAre;
-using ::tsl::testing::StatusIs;
 
 int GetIndexByName(absl::Span<HloInstruction* const> instruction_sequence,
                    absl::string_view hlo_name) {
@@ -79,8 +78,8 @@ class GpuLatencyHidingSchedulerBaseTest
     options.set_xla_gpu_pgle_accuracy_checker(strictness);
 
     TF_RETURN_IF_ERROR(ScheduleGpuModule(module, /*pointer_size=*/8,
-                                         gpu_device_info,
-                                         &symbolic_expr_context_, &alias_info)
+                                         gpu_device_info, &mlir_context_,
+                                         &alias_info)
                            .status());
     return module;
   }
@@ -100,7 +99,6 @@ class GpuLatencyHidingSchedulerBaseTest
   }
 
   mlir::MLIRContext mlir_context_;
-  SymbolicExprContext symbolic_expr_context_{&mlir_context_};
 };
 
 TEST_F(GpuLatencyHidingSchedulerBaseTest,

@@ -33,8 +33,9 @@ class DeviceMemAllocator : public tsl::SubAllocator {
   // Note: stream_exec cannot be null.
   DeviceMemAllocator(StreamExecutor* stream_exec,
                      tsl::PlatformDeviceId device_id,
-                     const std::vector<Visitor>& alloc_visitors = {})
-      : SubAllocator(alloc_visitors, {}),
+                     const std::vector<Visitor>& alloc_visitors = {},
+                     const std::vector<Visitor>& free_visitors = {})
+      : SubAllocator(alloc_visitors, free_visitors),
         stream_exec_(stream_exec),
         device_id_(device_id) {
     CHECK(stream_exec_ != nullptr);

@@ -103,9 +103,11 @@ LogicalResult LowerAtomicWriteOp(AtomicWriteOp atomic_write,
   // Even though we don't care about result($0) in this case it must be there
   // for ElementwiseInlineAsmOp verifiers to work
   constexpr absl::string_view kAtomicWriteAsmWithMaskTemplate = R"(
+    {
     .reg .pred %%p<>;
     setp.ne.u32 %%p<>, $3, 0;
     @%%p st.global.%s.%s.u32 [$1], $2;
+    }
   )";
   constexpr absl::string_view kAtomicWriteAsmTemplate = R"(
     st.global.%s.%s.u32 [$1], $2;
@@ -116,7 +118,8 @@ LogicalResult LowerAtomicWriteOp(AtomicWriteOp atomic_write,
   if (mask) {
     const std::string atomic_write_asm_with_mask = absl::StrFormat(
         kAtomicWriteAsmWithMaskTemplate, scope, memory_semantic);
-    builder.create<triton::ElementwiseInlineAsmOp>(
+    triton::ElementwiseInlineAsmOp::create(
+        builder,
         /*result_types=*/result_type,
         /*asm_string=*/rewriter.getStringAttr(atomic_write_asm_with_mask),
         /*constraints=*/rewriter.getStringAttr("=r,l,r,r"),
@@ -126,7 +129,8 @@ LogicalResult LowerAtomicWriteOp(AtomicWriteOp atomic_write,
   } else {
     const std::string atomic_write_asm =
         absl::StrFormat(kAtomicWriteAsmTemplate, scope, memory_semantic);
-    builder.create<triton::ElementwiseInlineAsmOp>(
+    triton::ElementwiseInlineAsmOp::create(
+        builder,
         /*result_types=*/result_type,
         /*asm_string=*/rewriter.getStringAttr(atomic_write_asm),
         /*constraints=*/rewriter.getStringAttr("=r,l,r"),
@@ -157,14 +161,17 @@ LogicalResult LowerAtomicSpinWaitOp(AtomicSpinWaitOp atomic_wait,
 
   absl::string_view comparator = GetComparatorStr(atomic_wait.getComparator());
   constexpr absl::string_view kAtomicSpinWaitAsmTemplate = R"(
+    {
     .reg .pred %%p<1>;
     .reg .b32 %%r<1>;
     wait:
       ld.global.%s.%s.u32 %%r0, [$1];
       setp.%s.u32 %%p0, %%r0, $2;
       @%%p0 bra wait;
+    }
   )";
   constexpr absl::string_view kAtomicSpinWaitAsmWithMaskTemplate = R"(
+    {
     .reg .pred %%p<2>;
     .reg .b32 %%r<1>;
     setp.ne.u32 %%p0, $3, 0;
@@ -174,13 +181,15 @@ LogicalResult LowerAtomicSpinWaitOp(AtomicSpinWaitOp atomic_wait,
       setp.%s.u32 %%p1, %%r0, $2;
       @%%p1 bra wait;
     done:
+    }
   )";
   mlir::Type result_type = GetResultType(ptr.getType(), rewriter);
   Value mask = atomic_wait.getMask();
   if (mask) {
     const std::string atomic_wait_asm_with_mask = absl::StrFormat(
         kAtomicSpinWaitAsmWithMaskTemplate, scope, memory_semantic, comparator);
-    builder.create<triton::ElementwiseInlineAsmOp>(
+    triton::ElementwiseInlineAsmOp::create(
+        builder,
         /*result_types=*/result_type,
         /*asm_string=*/rewriter.getStringAttr(atomic_wait_asm_with_mask),
         /*constraints=*/rewriter.getStringAttr("=r,l,r,r"),
@@ -190,7 +199,8 @@ LogicalResult LowerAtomicSpinWaitOp(AtomicSpinWaitOp atomic_wait,
   } else {
     const std::string atomic_wait_asm = absl::StrFormat(
         kAtomicSpinWaitAsmTemplate, scope, memory_semantic, comparator);
-    builder.create<triton::ElementwiseInlineAsmOp>(
+    triton::ElementwiseInlineAsmOp::create(
+        builder,
         /*result_types=*/result_type,
         /*asm_string=*/rewriter.getStringAttr(atomic_wait_asm),
         /*constraints=*/rewriter.getStringAttr("=r,l,r"),

@@ -15,7 +15,20 @@ limitations under the License.
 
 #include "xla/tsl/lib/io/zlib_outputbuffer.h"
 
+#include <cstddef>
+#include <cstdint>
+#include <cstring>
+#include <string>
+
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/strings/cord.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
+#include "xla/tsl/lib/io/zlib_compression_options.h"
 #include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/file_system.h"
 
 namespace tsl {
 namespace io {
@@ -45,9 +58,8 @@ absl::Status ZlibOutputBuffer::Init() {
   // Output buffer size should be greater than 1 because deflation needs at
   // least one byte for book keeping etc.
   if (output_buffer_capacity_ <= 1) {
-    return errors::InvalidArgument(
-        "output_buffer_bytes should be greater than "
-        "1");
+    return absl::InvalidArgumentError(
+        "output_buffer_bytes should be greater than 1");
   }
   memset(z_stream_.get(), 0, sizeof(z_stream));
   z_stream_->zalloc = Z_NULL;
@@ -59,7 +71,8 @@ absl::Status ZlibOutputBuffer::Init() {
                    zlib_options_.mem_level, zlib_options_.compression_strategy);
   if (status != Z_OK) {
     z_stream_.reset(nullptr);
-    return errors::InvalidArgument("deflateInit failed with status", status);
+    return absl::InvalidArgumentError(
+        absl::StrCat("deflateInit failed with status", status));
   }
   z_stream_->next_in = z_stream_input_.get();
   z_stream_->next_out = z_stream_output_.get();

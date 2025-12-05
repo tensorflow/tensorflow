@@ -15,9 +15,11 @@ limitations under the License.
 
 #include "xla/pjrt/cpu/raw_buffer.h"
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <utility>
@@ -54,6 +56,7 @@ limitations under the License.
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/threadpool.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/casts.h"
@@ -199,7 +202,8 @@ CpuRawBuffer::CopyFromHostBuffer(
     PjRtClient::HostBufferSemantics host_buffer_semantics,
     absl::AnyInvocable<void() &&> on_done_with_host_buffer, const Shape& shape,
     AsyncWorkRunner* async_work_runner, absl::Mutex* transpose_mu,
-    TransposePlanCache* transpose_cache) {
+    TransposePlanCache* transpose_cache, tsl::thread::ThreadPool* thread_pool,
+    int max_transpose_threads) {
   tsl::AsyncValueRef<CpuDeviceMemory> device_buffer = buffer_;
   bool has_default_layout =
       !byte_strides || HasMajorToMinorLayout(type, dims, *byte_strides);
@@ -230,18 +234,28 @@ CpuRawBuffer::CopyFromHostBuffer(
       if (byte_strides) {
         options.input_layout = TransposePlan::Striding{*byte_strides};
       }
+      if (thread_pool) {
+        options.num_threads =
+            std::min(thread_pool->NumThreads(), max_transpose_threads);
+      }
       absl::MutexLock lock(*transpose_mu);
       TF_ASSIGN_OR_RETURN(transpose, transpose_cache->GetOrCreate(options));
     }
+    std::optional<std::function<void(std::function<void(void)>)>> schedule_work;
+    if (thread_pool && max_transpose_threads > 1) {
+      schedule_work = [thread_pool](std::function<void(void)> work) {
+        thread_pool->Schedule(std::move(work));
+      };
+    }
     if (!is_packed) {
-      transpose->Execute(data, dst_data_ptr);
+      transpose->Execute(data, dst_data_ptr, schedule_work);
     } else {
       // First transpose the unpacked data into a new temporary buffer, then
       // pack the data.
       // TODO(reedwm): Fuse the transpose and packing by having TransposePlan
       // support packing.
       auto data_transposed = std::make_unique<char[]>(byte_size);
-      transpose->Execute(data, data_transposed.get());
+      transpose->Execute(data, data_transposed.get(), schedule_work);
       absl::Span<const char> src_data_span(data_transposed.get(), byte_size);
       absl::Span<char> dst_data_span(static_cast<char*>(dst_data_ptr),
                                      dst_byte_size);

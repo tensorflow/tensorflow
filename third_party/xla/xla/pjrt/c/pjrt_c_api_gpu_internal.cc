@@ -248,7 +248,7 @@ absl::StatusOr<TargetConfigAndDevices> GetTargetConfigFromOptions(
        xla_client->backend().stream_executors()) {
     device_ids.push_back(executor->device_ordinal());
   }
-  auto gpu_target_config = xla::Compiler::TargetConfig(executor);
+  auto gpu_target_config = xla::Compiler::GpuTargetConfig(executor);
   return {{gpu_target_config.ToProto(), device_ids}};
 }
 

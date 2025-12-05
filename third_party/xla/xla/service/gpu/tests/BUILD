@@ -86,6 +86,7 @@ xla_test(
         [
             "//xla:error_spec",
             "//xla:shape_util",
+            "//xla/backends/gpu:ffi",
             "//xla/ffi",
             "//xla/ffi:ffi_api",
             "@com_google_absl//absl/algorithm:container",
@@ -156,12 +157,21 @@ xla_test(
     env = {"TSAN_OPTIONS": "ignore_noninstrumented_modules=1"},
     tags = ["test_migrated_to_hlo_runner_pjrt"],
     deps = [
+        "//xla:error_spec",
         "//xla:literal",
         "//xla:literal_util",
         "//xla:xla_proto_cc",
+        "//xla/backends/gpu:ffi",
+        "//xla/ffi",
+        "//xla/ffi:ffi_api",
+        "//xla/hlo/ir:hlo",
         "//xla/service:hlo_module_config",
+        "//xla/service:hlo_runner_interface",
         "//xla/service:platform_util",
+        "//xla/stream_executor:device_memory",
         "//xla/stream_executor:platform_manager",
+        "//xla/stream_executor:semantic_version",
+        "//xla/stream_executor:stream",
         "//xla/stream_executor:stream_executor_h",
         "//xla/stream_executor/cuda:cuda_compute_capability",
         "//xla/tests:hlo_pjrt_interpreter_reference_mixin",
@@ -170,6 +180,8 @@ xla_test(
         "//xla/tests:test_utils",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
@@ -396,6 +408,7 @@ xla_test(
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/stream_executor:device_description",
+        "//xla/stream_executor/cuda:cuda_compute_capability",
         "//xla/tests:hlo_test_base",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_matchers",
@@ -404,7 +417,6 @@ xla_test(
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
-        "@local_tsl//tsl/platform:status_matchers",
     ],
 )
 
@@ -610,7 +622,7 @@ xla_test(
         "//xla:types",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
-        "//xla/stream_executor/cuda:cuda_compute_capability",
+        "//xla/service/gpu/transforms:sort_rewriter",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",
@@ -644,7 +656,7 @@ lit_test_suite_for_gpus(
         ],
     ),
     cfg = "//xla:lit.cfg.py",
-    default_tags = tf_gpu_tests_tags(),
+    default_tags = ["gpu"],  # Needs to run in a build with a gpu configured.
     disabled_on_gpus = {
         "v100": [
             "kernel_reuse.hlo",

@@ -21,7 +21,6 @@ limitations under the License.
 
 #include "absl/status/statusor.h"
 #include "absl/time/time.h"
-#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/gpu/model/collective_interpolator.h"
@@ -66,8 +65,7 @@ class SolLatencyEstimator : public LatencyEstimator {
   static absl::StatusOr<absl::Duration> ComputeCollectiveTime(
       const HloInstruction& instr, const se::DeviceDescription& gpu_device_info,
       HloCostAnalysis::ShapeSizeFunction shape_size_fn,
-      const SolGPUCostModel::Config& sol_flags,
-      SymbolicExprContext* symbolic_expr_context,
+      const SolGPUCostModel::Config& sol_flags, mlir::MLIRContext* mlir_context,
       const CollectiveInterpolator* collective_interpolator = nullptr);
 
   // Computes the time it takes to execute the given collective instruction.
@@ -79,8 +77,7 @@ class SolLatencyEstimator : public LatencyEstimator {
       const HloInstruction& instr, const se::DeviceDescription& gpu_device_info,
       HloCostAnalysis::ShapeSizeFunction shape_size_fn,
       const SolGPUCostModel::Config& sol_flags,
-      const GpuHloCostAnalysis& cost_analysis,
-      SymbolicExprContext* symbolic_expr_context,
+      const GpuHloCostAnalysis& cost_analysis, mlir::MLIRContext* mlir_context,
       const CollectiveInterpolator* collective_interpolator = nullptr);
 
   // Factory method to create a `SolLatencyEstimator`.
@@ -89,8 +86,7 @@ class SolLatencyEstimator : public LatencyEstimator {
       std::unique_ptr<LatencyEstimator> latency_estimator,
       const se::DeviceDescription& gpu_info,
       HloCostAnalysis::ShapeSizeFunction shape_size_function,
-      const HloComputation* computation,
-      SymbolicExprContext* symbolic_expr_context,
+      const HloComputation* computation, mlir::MLIRContext* mlir_context,
       std::unique_ptr<GpuHloCostAnalysis> cost_analysis = nullptr);
 
   // Returns true if the module is supported by the SoL latency estimator.
@@ -112,7 +108,7 @@ class SolLatencyEstimator : public LatencyEstimator {
       SolGPUCostModel::Config sol_flags,
       std::unique_ptr<CollectiveInterpolator> collective_interpolator,
       std::unique_ptr<MatmulInterpolator> matmul_interpolator,
-      SymbolicExprContext* symbolic_expr_context);
+      mlir::MLIRContext* mlir_context);
 
   const SchedulerConfig config_;
   const se::DeviceDescription& gpu_info_;
@@ -123,7 +119,7 @@ class SolLatencyEstimator : public LatencyEstimator {
   const SolGPUCostModel::Config sol_flags_;
   const std::unique_ptr<const CollectiveInterpolator> collective_interpolator_;
   const std::unique_ptr<const MatmulInterpolator> matmul_interpolator_;
-  SymbolicExprContext* symbolic_expr_context_;
+  mlir::MLIRContext* mlir_context_;
 };
 
 }  // namespace gpu

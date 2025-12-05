@@ -24,6 +24,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/container/inlined_vector.h"
+#include "absl/status/status_matchers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -34,11 +35,8 @@ limitations under the License.
 #include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
-#include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/ir_emission_utils.pb.h"
-#include "xla/shape_util.h"
-#include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/protobuf/dnn.pb.h"
 #include "xla/types.h"
@@ -49,7 +47,6 @@ namespace gpu {
 using ::testing::ElementsAre;
 using ::testing::ElementsAreArray;
 using ::testing::SizeIs;
-using ::tsl::testing::IsOkAndHolds;
 
 class IrEmissionUtilsTest : public HloHardwareIndependentTestBase {
  public:

@@ -223,10 +223,6 @@ tsl::AsyncValueRef<SortThunk::ExecuteEvent> SortThunk::Execute(
         params.buffer_allocations->GetDeviceAddress(input.slice));
     shapes.push_back(input.shape);
 
-    // Annotate memory that might have been initialized by jit-compiled code.
-    ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(data.back().opaque(),
-                                        data.back().size());
-
     VLOG(3) << absl::StreamFormat("  sort input #%d: %s in slice %s (%p)", idx,
                                   input.shape.ToString(/*print_layout=*/true),
                                   input.slice.ToString(), data.back().opaque());

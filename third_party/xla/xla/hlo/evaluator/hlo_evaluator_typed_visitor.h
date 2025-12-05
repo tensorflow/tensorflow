@@ -54,7 +54,6 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/types.h"
 #include "xla/util.h"
@@ -878,8 +877,8 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
     const Shape& lhs_shape = lhs_literal.shape();
     const Shape& rhs_shape = rhs_literal.shape();
 
-    TF_CHECK_OK(ShapeUtil::ValidateShape(lhs_shape));
-    TF_CHECK_OK(ShapeUtil::ValidateShape(rhs_shape));
+    CHECK_OK(ShapeUtil::ValidateShape(lhs_shape));
+    CHECK_OK(ShapeUtil::ValidateShape(rhs_shape));
     CHECK(lhs_shape.IsArray());
     CHECK(rhs_shape.IsArray());
     CHECK(ShapeUtil::SameElementType(lhs_shape, rhs_shape));
@@ -1075,8 +1074,8 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
     Shape lhs_shape = GetShapeWithLayout(lhs->shape());
     Shape rhs_shape = GetShapeWithLayout(rhs->shape());
 
-    TF_CHECK_OK(ShapeUtil::ValidateShape(lhs_shape));
-    TF_CHECK_OK(ShapeUtil::ValidateShape(rhs_shape));
+    CHECK_OK(ShapeUtil::ValidateShape(lhs_shape));
+    CHECK_OK(ShapeUtil::ValidateShape(rhs_shape));
     CHECK(lhs_shape.IsArray());
     CHECK(rhs_shape.IsArray());
 
@@ -2376,7 +2375,8 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
     // If layout is the same, we can use linear indexing into the literals.
     const Layout& lhs_layout = lhs_literal.shape().layout();
     const Layout& rhs_layout = rhs_literal.shape().layout();
-    bool same_layout = LayoutUtil::Equal(lhs_layout, rhs_layout);
+    bool same_layout = LayoutUtil::Equal(lhs_layout, rhs_layout) &&
+                       LayoutUtil::Equal(lhs_layout, shape.layout());
 
     if (same_layout) {
       TF_RETURN_IF_ERROR(result.PopulateLinearParallel<ReturnT>(
@@ -2424,7 +2424,8 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
     const Layout& rhs_layout = rhs_literal.shape().layout();
     const Layout& ehs_layout = ehs_literal.shape().layout();
     bool same_layout = LayoutUtil::Equal(lhs_layout, rhs_layout) &&
-                       LayoutUtil::Equal(rhs_layout, ehs_layout);
+                       LayoutUtil::Equal(rhs_layout, ehs_layout) &&
+                       LayoutUtil::Equal(lhs_layout, shape.layout());
 
     if (same_layout) {
       TF_RETURN_IF_ERROR(result.PopulateLinearParallel<ReturnT>(

@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/service/hlo_runner_pjrt.h"
 
 #include <array>
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -490,6 +491,12 @@ HloRunnerPjRt::CreateExecutable(std::unique_ptr<HloModule> module,
   absl::StatusOr<std::unique_ptr<PjRtExecutable>> pjrt_executable =
       pjrt_client_->Compile(computation, compile_options);
   if (pjrt_executable.ok()) {
+    absl::StatusOr<std::vector<std::shared_ptr<HloModule>>> hlo_modules =
+        pjrt_executable->get()->GetHloModules();
+    if (hlo_modules.ok() && !hlo_modules->empty()) {
+      std::shared_ptr<HloModule> exe_module = (*hlo_modules)[0];
+      exe_module->mutable_config().set_seed(module->config().seed());
+    }
     return std::make_unique<HloRunnerPjRtExecutable>(
         this, *std::move(pjrt_executable));
   }
@@ -501,6 +508,14 @@ HloRunnerPjRt::CreateExecutable(std::unique_ptr<HloModule> module,
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<PjRtLoadedExecutable> pjrt_loaded_executable,
       pjrt_client_->CompileAndLoad(computation, std::move(compile_options)));
+  if (pjrt_loaded_executable != nullptr) {
+    absl::StatusOr<std::vector<std::shared_ptr<HloModule>>> hlo_modules =
+        pjrt_loaded_executable->GetHloModules();
+    if (hlo_modules.ok() && !hlo_modules->empty()) {
+      std::shared_ptr<HloModule> exe_module = (*hlo_modules)[0];
+      exe_module->mutable_config().set_seed(module->config().seed());
+    }
+  }
   return std::make_unique<HloRunnerPjRtExecutable>(
       this, std::move(pjrt_loaded_executable));
 }
@@ -891,20 +906,33 @@ absl::StatusOr<DeviceAssignment> HloRunnerPjRt::GetDefaultDeviceAssignment(
 // Split-phase HloRunnerPjRt implementations:
 
 namespace {
+
+std::string SerializeDeterministically(const tsl::protobuf::Message& message) {
+  const size_t size = message.ByteSizeLong();
+  std::string buffer;
+  buffer.resize(size);
+  tsl::protobuf::io::StringOutputStream string_stream(&buffer);
+  tsl::protobuf::io::CodedOutputStream coded_stream(&string_stream);
+  coded_stream.SetSerializationDeterministic(true);
+  message.SerializeWithCachedSizes(&coded_stream);
+  return buffer;
+}
+
 std::string MakeFilename(const HloModule& module, const bool run_hlo_passes) {
-  // TODO: b/415841352 - We need a better way to calculate this fingerprint.
-  // Right now, this fingerprint does not take into account the compilation
-  // environment, flags, etc. Since we don't intend to re-use the compilation
-  // artifacts across test runs, this should probably be fine. Each environment
-  // gets a fresh artifact directory. The fingerprint may need to be generated
-  // within PjRt itself since the environment is not easily accessed at this
-  // level of abstraction.
-  const tsl::Fprint128 module_fingerprint =
+  // Fingerprint the HLO module, including its names.
+  tsl::Fprint128 fingerprint =
       tsl::Fingerprint128(module.ToString(HloPrintOptions::Default()));
-  const tsl::Fprint128 run_hlo_passes_fingerprint =
-      tsl::Fingerprint128(run_hlo_passes ? "true" : "false");
-  const tsl::Fprint128 fingerprint =
-      tsl::FingerprintCat128(module_fingerprint, run_hlo_passes_fingerprint);
+  // Fingerprint the run_hlo_passes flag, as this is an input from the test.
+  fingerprint = tsl::FingerprintCat128(
+      fingerprint, tsl::Fingerprint128(run_hlo_passes ? "true" : "false"));
+  // Fingerprint the HLO module's compilation environment, as this is not
+  // captured in the HLO module fingerprint.
+  fingerprint = tsl::FingerprintCat128(
+      fingerprint, tsl::Fingerprint128(SerializeDeterministically(
+                       module.comp_envs().ToProto())));
+
+  // Convert the fingerprint into a hex string and concatenate it with the .bin
+  // extension.
   const std::array<char, 16> fingerprint_bytes =
       tsl::Fprint128ToBytes(fingerprint);
   const absl::string_view fingerprint_bytes_view(fingerprint_bytes.data(),

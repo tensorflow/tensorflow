@@ -22,12 +22,9 @@ limitations under the License.
 #include "absl/status/status_matchers.h"
 #include "absl/time/time.h"
 #include "xla/hlo/experimental/auto_sharding/solver.h"
-#include "xla/tsl/platform/status_matchers.h"
 
 namespace iopddl {
 namespace {
-
-using ::tsl::testing::IsOkAndHolds;
 
 Problem GetExampleProblem() {
   return {

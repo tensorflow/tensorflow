@@ -44,6 +44,7 @@ limitations under the License.
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/layout_util.h"
+#include "xla/service/gpu/alias_info.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/fusion_pipeline.h"
 #include "xla/service/gpu/ir_emission_utils.h"
@@ -69,6 +70,8 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 namespace {
+
+using ::mlir::MLIRContext;
 
 using hlo_query::IsBroadcastOfParameter;
 using hlo_query::IsBroadcastOfScalarConstant;
@@ -267,7 +270,7 @@ absl::StatusOr<HloFusionInstruction*> MakeFusionForDiamond(
 absl::Status RunFusionPipeline(
     HloModule* module, const se::DeviceDescription& device_info,
     const HloCostAnalysis::ShapeSizeFunction& shape_size,
-    SymbolicExprContext* symbolic_expr_context) {
+    const GpuAliasInfo* alias_info, MLIRContext* mlir_context) {
   HloPassPipeline reduction_pipeline("reduction_pipeline");
   // Passes that run after SoftmaxRewriterTriton and before PriorityFusion and
   // transform reductions.
@@ -280,8 +283,8 @@ absl::Status RunFusionPipeline(
   TF_RETURN_IF_ERROR(reduction_pipeline.Run(module).status());
 
   return FusionPipeline(module->config().debug_options(), shape_size,
-                        /*thread_pool=*/nullptr, device_info,
-                        symbolic_expr_context)
+                        alias_info, /*thread_pool=*/nullptr, device_info,
+                        mlir_context)
       .Run(module)
       .status();
 }
@@ -300,14 +303,14 @@ EstimateOptimizedHloRunTimeWithoutSoftMaxRewriterTriton(
     const HloFusionInstruction* fusion,
     const se::DeviceDescription& device_info,
     const HloCostAnalysis::ShapeSizeFunction& shape_size,
-    SymbolicExprContext* symbolic_expr_context) {
+    const GpuAliasInfo* alias_info, MLIRContext* mlir_context) {
   auto new_module = ExtractComputationIntoNewModule(
       *fusion->fused_instructions_computation());
 
   // After this call, the `new_module` will have instruction fused without
   // SoftmaxRewriterTriton.
   TF_RETURN_IF_ERROR(RunFusionPipeline(new_module.get(), device_info,
-                                       shape_size, symbolic_expr_context));
+                                       shape_size, alias_info, mlir_context));
 
   VLOG(3) << "priority fusion module: " << new_module->ToString();
 
@@ -322,8 +325,7 @@ EstimateOptimizedHloRunTimeWithoutSoftMaxRewriterTriton(
 
   absl::Duration total_run_time = absl::ZeroDuration();
 
-  GpuPerformanceModelOwning gpu_performance_model(device_info,
-                                                  symbolic_expr_context);
+  GpuPerformanceModelOwning gpu_performance_model(device_info, mlir_context);
   for (const HloInstruction* instr : entry_computation->instructions()) {
     total_run_time += gpu_performance_model.Get()
                           .EstimateRunTimeForInstruction(instr, &cost_analysis)
@@ -348,7 +350,7 @@ DecideIfShouldFuseAndMaybeSetBlockLevelParameters(
     GpuPerformanceModelWithIndexingAnalysis& indexing_performance_model,
     const se::DeviceDescription& device_info,
     const HloCostAnalysis::ShapeSizeFunction& shape_size,
-    SymbolicExprContext* symbolic_expr_context,
+    const GpuAliasInfo* alias_info, MLIRContext* mlir_context,
     bool use_cost_model_to_evaluate_fusions) {
   auto fusion_adaptor = HloFusionAdaptor::ForInstruction(normalization_fusion);
 
@@ -369,7 +371,7 @@ DecideIfShouldFuseAndMaybeSetBlockLevelParameters(
     TF_ASSIGN_OR_RETURN(absl::Duration run_time_without_softmax_rewriter,
                         EstimateOptimizedHloRunTimeWithoutSoftMaxRewriterTriton(
                             normalization_fusion, device_info, shape_size,
-                            symbolic_expr_context));
+                            alias_info, mlir_context));
 
     VLOG(2) << "run time estimate if normalization diamond fused together: "
             << tiled_runtime_data.runtime_data.exec_time;
@@ -401,7 +403,7 @@ absl::StatusOr<bool> MaybeFuseDiamondImpl(
     GpuPerformanceModelWithIndexingAnalysis& indexing_performance_model,
     const se::DeviceDescription& device_info,
     const HloCostAnalysis::ShapeSizeFunction& shape_size,
-    SymbolicExprContext* symbolic_expr_context,
+    const GpuAliasInfo* alias_info, MLIRContext* mlir_context,
     bool use_cost_model_to_evaluate_fusions) {
   TF_ASSIGN_OR_RETURN(HloFusionInstruction * normalization_fusion,
                       MakeFusionForDiamond(diamond));
@@ -412,7 +414,7 @@ absl::StatusOr<bool> MaybeFuseDiamondImpl(
   TF_ASSIGN_OR_RETURN(FusionDecision fusion_decision,
                       DecideIfShouldFuseAndMaybeSetBlockLevelParameters(
                           normalization_fusion, indexing_performance_model,
-                          device_info, shape_size, symbolic_expr_context,
+                          device_info, shape_size, alias_info, mlir_context,
                           use_cost_model_to_evaluate_fusions));
 
   if (!fusion_decision.CanFuse()) {
@@ -441,11 +443,10 @@ absl::StatusOr<bool> CanSymbolicTileAnalysisTileDiamond(
     const se::DeviceDescription& device_info) {
   TF_ASSIGN_OR_RETURN(HloFusionInstruction * normalization_fusion,
                       MakeFusionForDiamond(diamond));
-  mlir::MLIRContext context;
-  SymbolicExprContext symbolic_expr_context(&context);
+  mlir::MLIRContext mlir_context;
   SymbolicTileAnalysisOrError symbolic_tile_analysis_or_error =
       SymbolicTileAnalysis::AnalyzeComputation(
-          *normalization_fusion->called_computation(), &symbolic_expr_context,
+          *normalization_fusion->called_computation(), &mlir_context,
           TritonEmitterConstraints::GetBuilder(device_info));
 
   bool can_tile = std::holds_alternative<SymbolicTileAnalysis>(
@@ -639,11 +640,10 @@ absl::StatusOr<bool> SoftmaxRewriterTriton::MaybeFuseNormalizationDiamond(
     const DiamondDescriptor& diamond) {
   HloFusionAnalysisCache fusion_analysis_cache(device_info_);
   GpuPerformanceModelWithIndexingAnalysis indexing_performance_model(
-      &device_info_, &fusion_analysis_cache, shape_size_,
-      symbolic_expr_context_);
+      &device_info_, &fusion_analysis_cache, shape_size_, mlir_context_);
 
   return MaybeFuseDiamondImpl(diamond, indexing_performance_model, device_info_,
-                              shape_size_, symbolic_expr_context_,
+                              shape_size_, alias_info_, mlir_context_,
                               use_cost_model_to_evaluate_fusions_);
 }
 

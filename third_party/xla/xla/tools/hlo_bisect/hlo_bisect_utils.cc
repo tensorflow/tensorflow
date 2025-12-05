@@ -15,26 +15,47 @@ limitations under the License.
 
 #include "xla/tools/hlo_bisect/hlo_bisect_utils.h"
 
+#include <cstdint>
 #include <memory>
 #include <random>
 #include <string>
+#include <tuple>
 #include <utility>
 #include <vector>
 
+#include <gtest/gtest.h>
 #include "absl/cleanup/cleanup.h"
+#include "absl/container/flat_hash_map.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
+#include "xla/debug_options_flags.h"
 #include "xla/error_spec.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/hlo/parser/hlo_parser.h"
+#include "xla/layout_util.h"
+#include "xla/literal.h"
 #include "xla/service/dump.h"
 #include "xla/service/hlo.pb.h"
+#include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_module_util.h"
 #include "xla/service/hlo_proto_util.h"
 #include "xla/service/hlo_runner.h"
+#include "xla/service/hlo_runner_interface.h"
 #include "xla/service/hlo_verifier.h"
 #include "xla/service/platform_util.h"
+#include "xla/stream_executor/platform.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/tests/test_utils.h"
+#include "xla/tools/hlo_bisect/hlo_bisect_state.h"
 #include "xla/tools/prepare_reference_module.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/subprocess.h"
 #include "xla/util.h"
 #include "tsl/platform/path.h"
@@ -51,8 +72,7 @@ Literal ExecuteWithRunnerAndRetrieveResult(std::unique_ptr<HloModule> module,
                                            bool run_hlo_passes) {
   auto result_status =
       runner->Execute(std::move(module), input_data, run_hlo_passes);
-  TF_CHECK_OK(result_status.status())
-      << "Failed to execute on " << runner->Name();
+  CHECK_OK(result_status.status()) << "Failed to execute on " << runner->Name();
   return std::move(result_status).value();
 }
 
@@ -260,7 +280,7 @@ absl::StatusOr<bool> ScriptChecker::Run(const HloModule& module) {
   }
 
   absl::Cleanup hlo_cleaner = [&] {
-    TF_CHECK_OK(tsl::Env::Default()->DeleteFile(hlo_path));
+    CHECK_OK(tsl::Env::Default()->DeleteFile(hlo_path));
   };
 
   std::string hlo_contents =

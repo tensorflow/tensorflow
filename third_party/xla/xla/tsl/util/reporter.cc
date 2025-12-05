@@ -15,7 +15,14 @@ limitations under the License.
 
 #include "xla/tsl/util/reporter.h"
 
+#include <cstdint>
+
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
+#include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/types.h"
 #include "tsl/platform/str_util.h"
 
 namespace tsl {
@@ -46,8 +53,8 @@ absl::Status TestReportFile::Initialize() {
       fname_, absl::StrJoin(str_util::Split(test_name_, '/'), "__"));
   Env* env = Env::Default();
   if (env->FileExists(mangled_fname).ok()) {
-    return errors::InvalidArgument(
-        "Cannot create TestReportFile, file exists: ", mangled_fname);
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Cannot create TestReportFile, file exists: ", mangled_fname));
   }
   TF_RETURN_IF_ERROR(env->NewWritableFile(mangled_fname, &log_file_));
   TF_RETURN_IF_ERROR(log_file_->Flush());
