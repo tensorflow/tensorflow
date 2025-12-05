@@ -13,8 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstddef>
 #include <string>
 
+#include "third_party/protobuf/message.h"
+#include "third_party/protobuf/message_lite.h"
+#include "third_party/protobuf/text_format.h"
 #include "tsl/platform/protobuf.h"
 
 namespace tsl {
