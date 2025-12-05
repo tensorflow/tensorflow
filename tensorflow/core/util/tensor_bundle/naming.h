@@ -40,9 +40,9 @@ limitations under the License.
 
 namespace tensorflow {
 
-string MetaFilename(absl::string_view prefix);
-string DataFilename(absl::string_view prefix, int32_t shard_id,
-                    int32_t num_shards);
+std::string MetaFilename(absl::string_view prefix);
+std::string DataFilename(absl::string_view prefix, int32_t shard_id,
+                         int32_t num_shards);
 
 }  // namespace tensorflow
 
