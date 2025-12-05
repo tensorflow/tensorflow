@@ -365,6 +365,7 @@ cc_library(
     deps = [
         ":executable",
         ":rpc_helper",
+        "//base:examine_stack",
         "//xla:debug_options_flags",
         "//xla/pjrt:host_callback",
         "//xla/python/ifrt",
