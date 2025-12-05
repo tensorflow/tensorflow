@@ -484,7 +484,9 @@ class TestUtilTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     # With each item changed.
     with self.assertRaisesRegex(AssertionError, r"Not equal to tolerance"):
       self.assertAllClose(expected, {"a": a + 1e-5, "b": b, "c": c})
-    with self.assertRaisesRegex(AssertionError, r"Shape mismatch"):
+    with self.assertRaisesRegex(
+        AssertionError, r"a\[b\] is different from b\[b\].*Shape mismatch"
+    ):
       self.assertAllClose(expected, {"a": a, "b": b + (4.,), "c": c})
     c_copy = np.array(c)
     c_copy[1, 1, 1] += 1e-5
