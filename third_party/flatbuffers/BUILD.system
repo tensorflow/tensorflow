@@ -1,43 +1,47 @@
 licenses(["notice"])  # Apache 2.0
 
+# Export the FlatBuffers license file
 filegroup(
     name = "LICENSE.txt",
     visibility = ["//visibility:public"],
 )
 
-# Public flatc library to compile flatbuffer files at runtime.
+# Public flatbuffers runtime library (C++)
 cc_library(
     name = "flatbuffers",
     linkopts = ["-lflatbuffers"],
     visibility = ["//visibility:public"],
 )
 
-# Public flatc compiler library.
+# Public flatc compiler library (same system lib)
 cc_library(
     name = "flatc_library",
     linkopts = ["-lflatbuffers"],
     visibility = ["//visibility:public"],
 )
 
-genrule(
-    name = "lnflatc",
-    outs = ["flatc.bin"],
-    cmd = "ln -s $$(which flatc) $@",
+genrule( 
+    name = "lnflatc", 
+    outs = ["flatc.bin"], 
+    cmd = "ln -s $$(which flatc) $@", 
 )
-
-# Public flatc compiler.
 sh_binary(
     name = "flatc",
     srcs = ["flatc.bin"],
     visibility = ["//visibility:public"],
 )
 
+# C++ Runtime: previously empty → added structure
 cc_library(
     name = "runtime_cc",
+    hdrs = glob(["include/flatbuffers/*.h"]),
+    includes = ["include"],  # makes <flatbuffers/...> work
     visibility = ["//visibility:public"],
 )
 
+# Python Runtime: supports imports like `import flatbuffers`
 py_library(
     name = "runtime_py",
+    srcs = glob(["python/flatbuffers/**/*.py"]),
     visibility = ["//visibility:public"],
 )
