@@ -2269,6 +2269,14 @@ auto DictionaryDecoder(Members... m) {
 // Following two APIs are intended for users who want to export XLA FFI handler
 // from a shared library as a C function symbol.
 
+// Declares C function that returns FFI type id.
+#define XLA_FFI_DECLARE_TYPE_ID_SYMBOL(type_id_fn) \
+  extern "C" XLA_FFI_TypeId* type_id_fn()
+
+// Declares C function that returns FFI type info.
+#define XLA_FFI_DECLARE_TYPE_INFO_SYMBOL(type_info_fn) \
+  extern "C" const XLA_FFI_TypeInfo* type_info_fn()
+
 // Declares C function that implements FFI handler.
 #define XLA_FFI_DECLARE_HANDLER_SYMBOL(fn) \
   extern "C" XLA_FFI_Error* fn(XLA_FFI_CallFrame* call_frame)
