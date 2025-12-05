@@ -36,7 +36,7 @@ class Remapper : public GraphOptimizer {
 
   ~Remapper() override {}
 
-  string name() const override { return "remapper"; };
+  std::string name() const override { return "remapper"; };
 
   bool UsesFunctionLibrary() const override { return false; }
 
