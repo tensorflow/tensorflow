@@ -15,13 +15,11 @@ limitations under the License.
 
 #include "xla/stream_executor/cuda/cuda_command_buffer.h"
 
-#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
 #include <memory>
 #include <string>
-#include <utility>
 #include <vector>
 
 #include "absl/base/casts.h"
@@ -44,6 +42,7 @@ limitations under the License.
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/gpu/gpu_command_buffer.h"
 #include "xla/stream_executor/kernel.h"
+#include "xla/stream_executor/kernel_args.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/semantic_version.h"
@@ -183,11 +182,10 @@ static std::unique_ptr<KernelArgsPackedArrayBase> PackCaseConditionKernelArgs(
   // Pad handles up to size 8 with a default initialized handle.
   std::vector<CUgraphConditionalHandle> padded_handles{};
   padded_handles.resize(kCaseBranchBatchSize);
-  std::transform(conditionals.begin(), conditionals.end(),
-                 padded_handles.begin(),
-                 [](GraphConditionalHandle conditional) {
-                   return ToCudaGraphHandle(conditional);
-                 });
+  absl::c_transform(conditionals, padded_handles.begin(),
+                    [](GraphConditionalHandle conditional) {
+                      return ToCudaGraphHandle(conditional);
+                    });
 
   return PackKernelArgs(
       kernel, padded_handles[0], padded_handles[1], padded_handles[2],

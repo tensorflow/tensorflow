@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "xla/backends/cpu/codegen/vector_ir_builder.h"
 
-#include <algorithm>
 #include <cstdint>
 #include <initializer_list>
 #include <iterator>
@@ -364,8 +363,8 @@ std::vector<llvm::Value*> VectorIrBuilder::ComputeHorizontalSums(
   }
 
   std::vector<llvm::Value*> result;
-  std::transform(vectors.begin(), vectors.end(), std::back_inserter(result),
-                 [this](llvm::Value* vector) { return AddReduce(vector); });
+  absl::c_transform(vectors, std::back_inserter(result),
+                    [this](llvm::Value* vector) { return AddReduce(vector); });
   if (init_values) {
     for (int64_t i = 0, e = result.size(); i < e; i++) {
       result[i] = Add(result[i],

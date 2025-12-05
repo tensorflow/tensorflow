@@ -19,7 +19,6 @@ limitations under the License.
 #include <array>
 #include <cstddef>
 #include <cstdint>
-#include <functional>
 #include <iterator>
 #include <limits>
 #include <memory>
@@ -648,10 +647,10 @@ class CudnnTensorDescriptor {
         // cuDNN requires arrays of ints.
         std::vector<int> strides(nd);
         std::vector<int> dims(nd);
-        std::transform(strides64.cbegin(), strides64.cend(), strides.begin(),
-                       &CheckedNarrowing<int64_t, int>);
-        std::transform(dims64.cbegin(), dims64.cend(), dims.begin(),
-                       &CheckedNarrowing<int64_t, int>);
+        absl::c_transform(strides64, strides.begin(),
+                          &CheckedNarrowing<int64_t, int>);
+        absl::c_transform(dims64, dims.begin(),
+                          &CheckedNarrowing<int64_t, int>);
         CHECK_CUDNN_OK(cudnnSetTensorNdDescriptor(handle_.get(), elem_type, nd,
                                                   dims.data(), strides.data()))
             << "batch_descriptor: " << batch_descriptor.ToString();
@@ -725,7 +724,7 @@ class CudnnFilterDescriptor {
     dims[1] = filter_descriptor.input_feature_map_count();
     absl::Span<const int64_t> spatial_dims =
         filter_descriptor.input_filter_dims();
-    std::copy(spatial_dims.begin(), spatial_dims.end(), dims.begin() + 2);
+    absl::c_copy(spatial_dims, dims.begin() + 2);
 
     CHECK_CUDNN_OK(cudnnSetFilterNdDescriptor(handle_.get(), elem_type, format,
                                               dims.size(), dims.data()));
@@ -879,14 +878,14 @@ class CudnnConvolutionDescriptor {
     std::vector<int> strides(convolution_descriptor.ndims());
     std::vector<int> padding(convolution_descriptor.ndims());
     std::vector<int> dilations(convolution_descriptor.ndims());
-    std::transform(strides64.cbegin(), strides64.cend(), strides.begin(),
-                   &CheckedNarrowing<int64_t, int>);
-    std::transform(padding64.cbegin(), padding64.cend(), padding.begin(),
-                   &CheckedNarrowing<int64_t, int>);
+    absl::c_transform(strides64, strides.begin(),
+                      &CheckedNarrowing<int64_t, int>);
+    absl::c_transform(padding64, padding.begin(),
+                      &CheckedNarrowing<int64_t, int>);
     // TODO(yangzihao): Test with negative dilation to make sure that cudnn
     // doesn't crash.
-    std::transform(dilations64.cbegin(), dilations64.cend(), dilations.begin(),
-                   &CheckedNarrowing<int64_t, int>);
+    absl::c_transform(dilations64, dilations.begin(),
+                      &CheckedNarrowing<int64_t, int>);
 
     CHECK_CUDNN_OK(cudnnSetConvolutionNdDescriptor(
         handle_.get(), convolution_descriptor.ndims(), padding.data(),
@@ -954,12 +953,11 @@ class CudnnPoolingDescriptor {
     std::vector<int> shape(nd);
     std::vector<int> padding(nd);
     std::vector<int> strides(nd);
-    std::transform(strides64.cbegin(), strides64.cend(), strides.begin(),
-                   &CheckedNarrowing<int64_t, int>);
-    std::transform(padding64.cbegin(), padding64.cend(), padding.begin(),
-                   &CheckedNarrowing<int64_t, int>);
-    std::transform(shape64.cbegin(), shape64.cend(), shape.begin(),
-                   &CheckedNarrowing<int64_t, int>);
+    absl::c_transform(strides64, strides.begin(),
+                      &CheckedNarrowing<int64_t, int>);
+    absl::c_transform(padding64, padding.begin(),
+                      &CheckedNarrowing<int64_t, int>);
+    absl::c_transform(shape64, shape.begin(), &CheckedNarrowing<int64_t, int>);
     bool propagate_nans = pooling_descriptor.propagate_nans();
     const auto cudnn_max_pooling_mode = engine_options.require_determinism
                                             ? CUDNN_POOLING_MAX_DETERMINISTIC

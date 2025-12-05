@@ -915,10 +915,9 @@ absl::StatusOr<ScopedTensorDescriptor> scope(
       // MIOpen requires arrays of ints.
       std::vector<int> strides(nd);
       std::vector<int> dims(nd);
-      std::transform(strides64.cbegin(), strides64.cend(), strides.begin(),
-                     &CheckedNarrowing<int64_t, int>);
-      std::transform(dims64.cbegin(), dims64.cend(), dims.begin(),
-                     &CheckedNarrowing<int64_t, int>);
+      absl::c_transform(strides64, strides.begin(),
+                        &CheckedNarrowing<int64_t, int>);
+      absl::c_transform(dims64, dims.begin(), &CheckedNarrowing<int64_t, int>);
       status = wrap::miopenSetTensorDescriptor(obj.handle_, data_type, nd,
                                                dims.data(), strides.data());
 #endif
@@ -1032,15 +1031,15 @@ absl::StatusOr<ScopedConvolutionDescriptor> scope(
   // MIOpen requires arrays of ints.
   std::vector<int> strides(convolution_descriptor.ndims());
   std::vector<int> padding(convolution_descriptor.ndims());
-  std::transform(strides64.cbegin(), strides64.cend(), strides.begin(),
-                 &CheckedNarrowing<int64_t, int>);
-  std::transform(padding64.cbegin(), padding64.cend(), padding.begin(),
-                 &CheckedNarrowing<int64_t, int>);
+  absl::c_transform(strides64, strides.begin(),
+                    &CheckedNarrowing<int64_t, int>);
+  absl::c_transform(padding64, padding.begin(),
+                    &CheckedNarrowing<int64_t, int>);
 
   std::vector<int> upscale(convolution_descriptor.ndims());
   const auto& dilations64 = convolution_descriptor.dilations();
-  std::transform(dilations64.cbegin(), dilations64.cend(), upscale.begin(),
-                 &CheckedNarrowing<int64_t, int>);
+  absl::c_transform(dilations64, upscale.begin(),
+                    &CheckedNarrowing<int64_t, int>);
 
   status = wrap::miopenInitConvolutionNdDescriptor(
       obj.handle_, convolution_descriptor.ndims(), padding.data(),
@@ -1089,12 +1088,11 @@ absl::StatusOr<ScopedPoolingDescriptor> scope(
   std::vector<int> shape(nd);
   std::vector<int> padding(nd);
   std::vector<int> strides(nd);
-  std::transform(strides64.cbegin(), strides64.cend(), strides.begin(),
-                 &CheckedNarrowing<int64_t, int>);
-  std::transform(padding64.cbegin(), padding64.cend(), padding.begin(),
-                 &CheckedNarrowing<int64_t, int>);
-  std::transform(shape64.cbegin(), shape64.cend(), shape.begin(),
-                 &CheckedNarrowing<int64_t, int>);
+  absl::c_transform(strides64, strides.begin(),
+                    &CheckedNarrowing<int64_t, int>);
+  absl::c_transform(padding64, padding.begin(),
+                    &CheckedNarrowing<int64_t, int>);
+  absl::c_transform(shape64, shape.begin(), &CheckedNarrowing<int64_t, int>);
 
   status = wrap::miopenSetNdPoolingDescriptor(
       obj.handle_,
@@ -4698,8 +4696,7 @@ bool MIOpenSupport::DoNormalizeBackwardWithDimensions(
   // miopen does not use strides and must have 4D tensor.
   std::vector<int> dimsint(4);
 
-  std::transform(dims64.cbegin(), dims64.cend(), dimsint.begin(),
-                 &CheckedNarrowing<int64_t, int>);
+  absl::c_transform(dims64, dimsint.begin(), &CheckedNarrowing<int64_t, int>);
 
   dest2_size =
       dimsint[0] * dimsint[1] * dimsint[2] * dimsint[3] * sizeof(float);

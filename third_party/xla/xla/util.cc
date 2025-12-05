@@ -24,7 +24,6 @@ limitations under the License.
 #include <functional>
 #include <iterator>
 #include <limits>
-#include <memory>
 #include <sstream>
 #include <string>
 #include <tuple>
@@ -338,8 +337,8 @@ std::vector<int64_t> ElemwiseProduct(absl::Span<const int64_t> a,
                                      absl::Span<const int64_t> b) {
   CHECK_EQ(a.size(), b.size());
   std::vector<int64_t> result;
-  std::transform(a.begin(), a.end(), b.begin(), std::back_inserter(result),
-                 std::multiplies<int64_t>());
+  absl::c_transform(a, b, std::back_inserter(result),
+                    std::multiplies<int64_t>());
   return result;
 }
 

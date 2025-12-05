@@ -13,7 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <algorithm>
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -21,6 +20,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
@@ -165,9 +165,8 @@ class CollectiveOpsTestE2EShardedUnsharded : public CollectiveOpsE2ETestBase {
             upper[param_sharded_dims[k][m]] =
                 param_dims_per_shard[k][param_sharded_dims[k][m]];
           }
-          std::transform(upper.begin(), upper.end(),
-                         param_dims_per_shard[k].begin(), lower.begin(),
-                         std::minus<int64_t>());
+          absl::c_transform(upper, param_dims_per_shard[k], lower.begin(),
+                            std::minus<int64_t>());
         }
       } else {
         fake_args_sliced[k].push_back(fake_args[k].Clone());
@@ -227,8 +226,8 @@ class CollectiveOpsTestE2EShardedUnsharded : public CollectiveOpsE2ETestBase {
           upper[root_sharded_dims[m]] =
               root_dims_per_shard[root_sharded_dims[m]];
         }
-        std::transform(upper.begin(), upper.end(), root_dims_per_shard.begin(),
-                       lower.begin(), std::minus<int64_t>());
+        absl::c_transform(upper, root_dims_per_shard, lower.begin(),
+                          std::minus<int64_t>());
       }
     } else {
       EXPECT_TRUE(

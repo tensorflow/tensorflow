@@ -81,9 +81,7 @@ limitations under the License.
 #include "xla/status_macros.h"
 #include "xla/tsl/lib/gtl/iterator_range.h"
 #include "xla/tsl/lib/gtl/map_util.h"
-#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"  // IWYU pragma: keep
-#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "xla/tsl/platform/status_macros.h"
@@ -321,10 +319,10 @@ absl::StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
   };
   const auto all_operands = [&instruction_map, &proto]() {
     std::vector<HloInstruction*> result(proto.operand_ids_size());
-    std::transform(proto.operand_ids().begin(), proto.operand_ids().end(),
-                   result.begin(), [&instruction_map](int64_t operand_id) {
-                     return instruction_map.at(CalculateLocalId(operand_id));
-                   });
+    absl::c_transform(proto.operand_ids(), result.begin(),
+                      [&instruction_map](int64_t operand_id) {
+                        return instruction_map.at(CalculateLocalId(operand_id));
+                      });
     return result;
   };
   const auto output_to_operand_aliasing = [&proto]() {
@@ -345,11 +343,10 @@ absl::StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
   };
   const auto all_computations = [&computation_map, &proto]() {
     std::vector<HloComputation*> result(proto.called_computation_ids_size());
-    std::transform(proto.called_computation_ids().begin(),
-                   proto.called_computation_ids().end(), result.begin(),
-                   [&computation_map](int64_t computation_id) {
-                     return computation_map.at(computation_id);
-                   });
+    absl::c_transform(proto.called_computation_ids(), result.begin(),
+                      [&computation_map](int64_t computation_id) {
+                        return computation_map.at(computation_id);
+                      });
     return result;
   };
 

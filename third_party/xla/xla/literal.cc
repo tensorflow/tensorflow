@@ -29,6 +29,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/base/casts.h"
 #include "absl/base/no_destructor.h"
 #include "absl/container/inlined_vector.h"
@@ -455,11 +456,11 @@ absl::Status MutableLiteralBase::CopySliceFromInternal(
 
     auto copy_proc = [&](absl::Span<const int64_t> indexes) {
       // Map from multi-dimensional index, to source index.
-      std::transform(indexes.begin(), indexes.end(), src_base.begin(),
-                     src_indexes.begin(), std::plus<int64_t>());
+      absl::c_transform(indexes, src_base, src_indexes.begin(),
+                        std::plus<int64_t>());
       // Map from multi-dimensional index, to destination index.
-      std::transform(indexes.begin(), indexes.end(), dest_base.begin(),
-                     dest_indexes.begin(), std::plus<int64_t>());
+      absl::c_transform(indexes, dest_base, dest_indexes.begin(),
+                        std::plus<int64_t>());
 
       int64_t src_index = linear_index(src_literal.shape(), src_indexes);
       int64_t dest_index = linear_index(shape(), dest_indexes);

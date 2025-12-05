@@ -28,6 +28,7 @@ limitations under the License.
 #include <vector>
 
 #include <gtest/gtest.h>
+#include "absl/algorithm/container.h"
 #include "absl/base/casts.h"
 #include "absl/hash/hash.h"
 #include "absl/random/random.h"
@@ -1425,11 +1426,11 @@ TEST_F(LiteralUtilTest, CopySliceFrom) {
     bool matched = true;
     auto check_proc = [&](absl::Span<const int64_t> indexes) {
       std::copy(indexes.begin(), indexes.end(), source_indexes.begin());
-      std::transform(source_indexes.begin(), source_indexes.end(), src_base,
-                     source_indexes.begin(), std::plus<int64_t>());
+      absl::c_transform(source_indexes, src_base, source_indexes.begin(),
+                        std::plus<int64_t>());
       std::copy(indexes.begin(), indexes.end(), blank_indexes.begin());
-      std::transform(blank_indexes.begin(), blank_indexes.end(), dest_base,
-                     blank_indexes.begin(), std::plus<int64_t>());
+      absl::c_transform(blank_indexes, dest_base, blank_indexes.begin(),
+                        std::plus<int64_t>());
       auto bval = blank.Get<uint32_t>(blank_indexes);
       matched = (bval != 0 && bval == source.Get<uint32_t>(source_indexes));
       return matched;
