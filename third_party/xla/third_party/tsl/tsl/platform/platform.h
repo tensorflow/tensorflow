@@ -62,6 +62,10 @@ limitations under the License.
 #define PLATFORM_POSIX
 #define PLATFORM_PORTABLE_GOOGLE
 
+#elif defined(PIE_EXTERNAL)
+#define PLATFORM_POSIX
+#define PLATFORM_PORTABLE_GOOGLE
+
 #else
 // If no platform specified, use:
 #define PLATFORM_POSIX
