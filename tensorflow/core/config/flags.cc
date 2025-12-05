@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/config/flags.h"
 
 #include "absl/strings/ascii.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/platform/stringpiece.h"
 #include "tensorflow/core/util/env_var.h"
 
