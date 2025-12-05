@@ -32,6 +32,7 @@ limitations under the License.
 #include "absl/strings/match.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
@@ -84,7 +85,6 @@ limitations under the License.
 #include "tsl/platform/path.h"
 #include "tsl/platform/retrying_utils.h"
 #include "tsl/platform/str_util.h"
-#include "tsl/platform/stringprintf.h"
 #include "tsl/platform/thread_annotations.h"
 #include "tsl/profiler/lib/traceme.h"
 
@@ -1183,7 +1183,7 @@ absl::Status GcsFileSystem::LoadBufferFromGCS(const string& fname,
     GcsFileStat stat;
     if (stat_cache_->Lookup(fname, &stat)) {
       if (offset + bytes_read < stat.base.length) {
-        return absl::InternalError(strings::Printf(
+        return absl::InternalError(absl::StrFormat(
             "File contents are inconsistent for file: %s @ %lu.", fname.c_str(),
             offset));
       }
@@ -1607,7 +1607,7 @@ absl::Status GcsFileSystem::StatForObject(const string& fname,
                                           const string& object,
                                           GcsFileStat* stat) {
   if (object.empty()) {
-    return absl::InvalidArgumentError(strings::Printf(
+    return absl::InvalidArgumentError(absl::StrFormat(
         "'object' must be a non-empty string. (File: %s)", fname.c_str()));
   }
 
@@ -1652,7 +1652,7 @@ absl::Status GcsFileSystem::CheckBucketLocationConstraint(
     return absl::OkStatus();
   }
 
-  return absl::FailedPreconditionError(strings::Printf(
+  return absl::FailedPreconditionError(absl::StrFormat(
       "Bucket '%s' is in '%s' location, allowed locations are: (%s).",
       bucket.c_str(), location.c_str(),
       absl::StrJoin(allowed_locations_, ", ").c_str()));

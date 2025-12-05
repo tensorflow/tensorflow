@@ -42,10 +42,10 @@ cc_library(
         "@com_github_grpc_grpc//:grpc++_codegen_proto",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings:cord",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_protobuf//:protobuf",
         "@local_tsl//tsl/platform:protobuf",
-        "@local_tsl//tsl/platform:stringpiece",
-        "@local_tsl//tsl/platform:stringprintf",
         "@local_tsl//tsl/platform:tstring",
     ],
 )

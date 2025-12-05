@@ -114,13 +114,13 @@ cc_library(
         ":type_traits",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
     ] + if_static(
         extra_deps = [
             ":allocator_registry_impl",
             "@com_google_absl//absl/synchronization",
             "//xla/tsl/lib/gtl:inlined_vector",
             "@local_tsl//tsl/platform:strcat",
-            "@local_tsl//tsl/platform:stringprintf",
             "//xla/tsl/platform:env",
             "//xla/tsl/platform:env_impl",
             "//xla/tsl/platform:logging",
@@ -171,8 +171,6 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
         "@local_tsl//tsl/platform:platform_port",
-        "@local_tsl//tsl/platform:strcat",
-        "@local_tsl//tsl/platform:stringprintf",
         "@local_tsl//tsl/platform:thread_annotations",
         "@local_tsl//tsl/profiler/lib:scoped_memory_debug_annotation",
         "@local_tsl//tsl/profiler/lib:traceme",

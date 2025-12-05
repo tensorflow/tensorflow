@@ -15,19 +15,21 @@ limitations under the License.
 
 #include "xla/tsl/framework/allocator.h"
 
-#include <atomic>
+#include <cstddef>
+#include <string>
+#include <vector>
 
+#include "absl/strings/str_format.h"
 #include "xla/tsl/framework/allocator_registry.h"
 #include "xla/tsl/framework/tracking_allocator.h"
 #include "xla/tsl/platform/types.h"
 #include "tsl/platform/mem.h"
 #include "tsl/platform/strcat.h"
-#include "tsl/platform/stringprintf.h"
 
 namespace tsl {
 
 std::string AllocatorStats::DebugString() const {
-  return strings::Printf(
+  return absl::StrFormat(
       "Limit:            %20lld\n"
       "InUse:            %20lld\n"
       "MaxInUse:         %20lld\n"

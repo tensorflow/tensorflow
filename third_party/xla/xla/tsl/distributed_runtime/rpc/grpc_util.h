@@ -21,13 +21,14 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/strings/cord.h"
+#include "absl/strings/str_format.h"
+#include "absl/strings/string_view.h"
 #include "grpcpp/grpcpp.h"
 #include "grpcpp/support/byte_buffer.h"
 #include "xla/tsl/platform/status.h"
 #include "xla/tsl/protobuf/distributed_runtime_payloads.pb.h"
 #include "tsl/platform/protobuf.h"
-#include "tsl/platform/stringpiece.h"
-#include "tsl/platform/stringprintf.h"
+#include "tsl/platform/tstring.h"
 
 namespace tsl {
 
@@ -98,7 +99,7 @@ inline ::grpc::Status ToGrpcStatus(const absl::Status& s) {
   } else {
     if (s.message().size() > 3072 /* 3k bytes */) {
       // TODO(b/62947679): Remove truncation once the gRPC issue is resolved.
-      std::string scratch = strings::Printf("%.3072s ... [truncated]",
+      std::string scratch = absl::StrFormat("%.3072s ... [truncated]",
                                             absl::StatusMessageAsCStr(s));
       LOG(ERROR) << "Truncated error message: " << s;
       return ::grpc::Status(static_cast<::grpc::StatusCode>(s.code()), scratch,
