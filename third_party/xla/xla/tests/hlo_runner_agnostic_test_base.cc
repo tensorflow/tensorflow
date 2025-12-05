@@ -34,6 +34,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/STLExtras.h"
+#include "google/protobuf/message.h"
 #include "xla/error_spec.h"
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/hlo/builder/xla_computation.h"
@@ -218,7 +219,8 @@ HloRunnerAgnosticTestBase::ExecuteReplicated(
 
 ::testing::AssertionResult HloRunnerAgnosticTestBase::Run(
     std::unique_ptr<HloModule> module, const bool run_hlo_passes,
-    const std::function<void(HloModule*)>& test_preprocessor) {
+    const std::function<void(HloModule*)>& test_preprocessor,
+    BufferAssignmentProto* buffer_assignment_proto) {
   const std::vector<Literal> fake_arguments =
       MakeFakeArguments(module.get()).value();
   if (const absl::StatusOr<bool> change = verifier().Run(module.get());
@@ -234,7 +236,13 @@ HloRunnerAgnosticTestBase::ExecuteReplicated(
   }
 
   const absl::StatusOr<Literal> output =
-      test_runner_->Execute(std::move(module), fake_arguments, run_hlo_passes);
+      buffer_assignment_proto == nullptr
+          ? test_runner_->Execute(std::move(module), fake_arguments,
+                                  run_hlo_passes)
+          : test_runner_->ExecuteWithBufferAssignment(
+                std::move(module), buffer_assignment_proto, fake_arguments,
+                run_hlo_passes);
+
   return swallow_execution_errors_ || output.ok()
              ? ::testing::AssertionSuccess()
              : ::testing::AssertionFailure() << output.status().message();
@@ -459,7 +467,8 @@ HloRunnerAgnosticTestBase::RunAndCompareTwoModulesReplicated(
 
 ::testing::AssertionResult HloRunnerAgnosticTestBase::Run(
     const absl::string_view hlo_string, const bool run_hlo_passes,
-    const tsl::protobuf::Message* backend_config, const bool use_random_data) {
+    const tsl::protobuf::Message* backend_config, const bool use_random_data,
+    BufferAssignmentProto* buffer_assignment_proto) {
   absl::StatusOr<std::unique_ptr<VerifiedHloModule>> module =
       ParseAndReturnVerifiedModule(hlo_string);
   if (!module.ok()) {
@@ -490,8 +499,12 @@ HloRunnerAgnosticTestBase::RunAndCompareTwoModulesReplicated(
   }
 
   const absl::StatusOr<Literal> output =
-      test_runner_->Execute(*std::move(module), fake_argument_ptrs,
-                            /*run_hlo_passes=*/run_hlo_passes);
+      buffer_assignment_proto == nullptr
+          ? test_runner_->Execute(*std::move(module), fake_argument_ptrs,
+                                  /*run_hlo_passes=*/run_hlo_passes)
+          : test_runner_->ExecuteWithBufferAssignment(
+                *std::move(module), buffer_assignment_proto, fake_argument_ptrs,
+                /*run_hlo_passes=*/run_hlo_passes);
   return swallow_execution_errors_ || output.ok()
              ? ::testing::AssertionSuccess()
              : ::testing::AssertionFailure() << output.status().message();

@@ -223,6 +223,7 @@ cc_library(
         "//xla/service:computation_placer_hdr",
         "//xla/service:hlo_module_config",
         "//xla/service:hlo_module_util",
+        "//xla/service:hlo_proto_cc",
         "//xla/service:hlo_runner_interface",
         "//xla/service:hlo_verifier",
         "//xla/service:interpreter_plugin",  # reference backend
@@ -241,6 +242,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
+        "@com_google_protobuf//:protobuf",
         "@llvm-project//llvm:Support",
         "@local_tsl//tsl/platform:protobuf",
     ],
