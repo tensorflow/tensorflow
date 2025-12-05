@@ -128,7 +128,6 @@ cc_library(
         "//xla/tsl/concurrency:async_value",
         "//xla/tsl/concurrency:ref_count",
         "//xla/tsl/distributed_runtime/coordination:coordination_service",
-        "//xla/tsl/distributed_runtime/coordination:coordination_service_agent",
         "//xla/tsl/framework:allocator",
         "//xla/tsl/framework:bfc_allocator",
         "//xla/tsl/framework:device_id",

@@ -111,7 +111,6 @@ limitations under the License.
 #include "xla/tsl/concurrency/async_value.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/concurrency/ref_count.h"
-#include "xla/tsl/distributed_runtime/coordination/coordination_service_agent.h"
 #include "xla/tsl/framework/allocator.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/status.h"
