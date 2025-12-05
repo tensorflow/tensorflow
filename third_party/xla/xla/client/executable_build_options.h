@@ -16,16 +16,19 @@ limitations under the License.
 #ifndef XLA_CLIENT_EXECUTABLE_BUILD_OPTIONS_H_
 #define XLA_CLIENT_EXECUTABLE_BUILD_OPTIONS_H_
 
+#include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <memory>
 #include <optional>
 #include <string>
+#include <tuple>
 #include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/hash/hash.h"
 #include "absl/log/check.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
@@ -293,6 +296,30 @@ class ExecutableBuildOptions {
     process_count_ = process_count;
   }
 
+  struct ProcessInfo {
+    // Virtual slice id.
+    int slice_index = 0;
+    // May not be one-to-one to assigned Pathways tasks
+    int virtual_task_id = 0;
+    ProcessInfo(int slice_index, int virtual_task_id)
+        : slice_index(slice_index), virtual_task_id(virtual_task_id) {}
+    ProcessInfo() = default;
+
+    bool operator()(const ProcessInfo& a, const ProcessInfo& b) const {
+      return a.slice_index == b.slice_index &&
+             a.virtual_task_id == b.virtual_task_id;
+    }
+    std::size_t operator()(const ProcessInfo& process_info) const {
+      return absl::Hash<std::tuple<int, int>>{}(std::make_tuple(
+          process_info.slice_index, process_info.virtual_task_id));
+    }
+  };
+
+  void set_process_infos(std::vector<ProcessInfo> process_infos) {
+    process_infos_ = std::move(process_infos);
+  }
+  absl::Span<const ProcessInfo> process_infos() const { return process_infos_; }
+
   std::shared_ptr<KeyValueStoreInterface> key_value_store() const {
     return key_value_store_;
   }
@@ -339,6 +366,7 @@ class ExecutableBuildOptions {
   bool use_shardy_partitioner_ = false;
   int process_index_ = 0;
   int process_count_ = 1;
+  std::vector<ProcessInfo> process_infos_;
   std::shared_ptr<KeyValueStoreInterface> key_value_store_;
   int64_t slice_size_ = 0;
 };

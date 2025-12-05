@@ -90,6 +90,14 @@ TEST(ExecutableBuildOptionsTest, ProtoRoundTripWorks) {
   p.set_use_shardy_partitioner(true);
   p.set_process_index(13);
   p.set_process_count(14);
+  {
+    auto* process_info0 = p.add_process_infos();
+    process_info0->set_slice_index(1);
+    process_info0->set_virtual_task_id(0);
+    auto* process_info1 = p.add_process_infos();
+    process_info1->set_slice_index(1);
+    process_info1->set_virtual_task_id(1);
+  }
   p.set_slice_size(15);
 
   TF_ASSERT_OK_AND_ASSIGN(const ExecutableBuildOptions options,
