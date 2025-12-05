@@ -36,12 +36,10 @@ xla_cc_test(
     deps = [
         ":error_util",
         "//xla/tsl/lib/core:status_test_util",
-        "//xla/tsl/platform:status",
         "//xla/tsl/platform:test_main",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest",
-        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
     ],
 )
