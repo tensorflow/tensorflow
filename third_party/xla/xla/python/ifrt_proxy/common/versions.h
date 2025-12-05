@@ -70,7 +70,7 @@ enum {
 inline constexpr int kClientMin = kSerDesVersioning;
 
 // The minimum protocol_version that the current server code understands.
-inline constexpr int kServerMin = 3;
+inline constexpr int kServerMin = kMakeArraysFromHostBufferShards;
 
 // The maximum protocol_version that the current client and server code
 // understand.
