@@ -42,7 +42,7 @@ class WindowDatasetParams : public DatasetParams {
                       int64_t stride, bool drop_remainder,
                       DataTypeVector output_dtypes,
                       std::vector<PartialTensorShape> output_shapes,
-                      string node_name)
+                      std::string node_name)
       : DatasetParams(std::move(output_dtypes), std::move(output_shapes),
                       std::move(node_name)),
         size_(size),
@@ -62,7 +62,8 @@ class WindowDatasetParams : public DatasetParams {
             CreateTensor<bool>(TensorShape({}), {drop_remainder_})};
   }
 
-  absl::Status GetInputNames(std::vector<string>* input_names) const override {
+  absl::Status GetInputNames(
+      std::vector<std::string>* input_names) const override {
     input_names->clear();
     input_names->emplace_back(WindowDatasetOp::kInputDataset);
     input_names->emplace_back(WindowDatasetOp::kSize);
@@ -80,7 +81,9 @@ class WindowDatasetParams : public DatasetParams {
     return absl::OkStatus();
   }
 
-  string dataset_type() const override { return WindowDatasetOp::kDatasetType; }
+  std::string dataset_type() const override {
+    return WindowDatasetOp::kDatasetType;
+  }
 
  private:
   int64_t size_;
