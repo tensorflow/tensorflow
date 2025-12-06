@@ -272,8 +272,14 @@ def _tf_core_sorted(dict_):
   try:
     return sorted(dict_.keys())
   except TypeError:
-    # pylint: disable=raise-missing-from
-    raise TypeError("nest only supports dicts with sortable keys.")
+    # If direct sorting fails (e.g., mixed types like int and str),
+    # try sorting by (type name, key) to group by type first, then by value
+    try:
+      return sorted(dict_.keys(), key=lambda x: (type(x).__name__, x))
+    except TypeError:
+      # If that still fails, fall back to sorting by string representation
+      # This ensures deterministic ordering even with complex mixed types
+      return sorted(dict_.keys(), key=lambda x: (type(x).__name__, str(x)))
 
 
 def _tf_data_sorted(dict_):
@@ -281,10 +287,14 @@ def _tf_data_sorted(dict_):
   try:
     return sorted(list(dict_))
   except TypeError as e:
-    # pylint: disable=raise-missing-from
-    raise TypeError(
-        f"nest only supports dicts with sortable keys. Error: {e.message}"
-    )
+    # If direct sorting fails (e.g., mixed types like int and str),
+    # try sorting by (type name, key) to group by type first, then by value
+    try:
+      return sorted(list(dict_), key=lambda x: (type(x).__name__, x))
+    except TypeError:
+      # If that still fails, fall back to sorting by string representation
+      # This ensures deterministic ordering even with complex mixed types
+      return sorted(list(dict_), key=lambda x: (type(x).__name__, str(x)))
 
 
 def yield_value(modality, iterable):
