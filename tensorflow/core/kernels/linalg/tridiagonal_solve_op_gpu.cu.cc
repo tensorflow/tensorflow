@@ -15,6 +15,11 @@ limitations under the License.
 
 // See docs in ../ops/linalg_ops.cc.
 
+#include <cstddef>
+#include <memory>
+#include <vector>
+
+#include "tensorflow/core/framework/types.pb.h"
 #ifdef GOOGLE_CUDA
 
 #define EIGEN_USE_GPU
