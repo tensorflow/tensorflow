@@ -377,6 +377,11 @@ class MaxPooling3dGradOp : public OpKernel {
     OP_REQUIRES_OK(context, ShapeFromFormatWithStatus(
                                 data_format_, in_batch,
                                 {{out[2], out[1], out[0]}}, depth, &out_shape));
+  // Validate that all output dimensions are positive.
+  OP_REQUIRES(context, out[0] > 0 && out[1] > 0 && out[2] > 0,
+      absl::InvalidArgument(absl::StrCat(
+          "MaxPool3D output dimensions must be positive, got: ", out[2],
+          " (depth), ", out[1], " (rows), ", out[0], " (cols)")));
     OP_REQUIRES(
         context, tensor_out.shape() == out_shape,
         errors::InvalidArgument("Expected orig_output shape to be ", out_shape,
