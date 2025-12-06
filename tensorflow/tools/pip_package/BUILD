@@ -360,6 +360,9 @@ tf_wheel(
                 "//tensorflow/python:pywrap_tensorflow_binaries",
             ],
         ),
+    }) + select({
+        "@local_xla//xla/tsl/mkl:hermetic_build_with_mkl_aarch64": ["@rules_ml_toolchain//cc/sysroots:openmp_libs"],
+        "//conditions:default": [],
     }) + if_mkl_ml(["@local_xla//xla/tsl/mkl:intel_binary_blob"]),
     xla_aot_compiled = [
         "//tensorflow/compiler/tf2xla:xla_compiled_cpu_runtime_srcs",
@@ -441,7 +444,7 @@ py_test(
 
 verify_manylinux_compliance_test(
     name = "manylinux_compliance_test",
-    aarch64_compliance_tag = "manylinux_2_17_aarch64",
+    aarch64_compliance_tag = "manylinux_2_27_aarch64",
     ppc64le_compliance_tag = "manylinux_2_17_ppc64le",
     test_tags = [
         "manual",

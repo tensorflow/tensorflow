@@ -206,6 +206,11 @@ def prepare_srcs(
       "external/local_tsl/": "tensorflow",
   }
 
+  file_to_copy = {
+      "libomp-hermetic.so": "tensorflow/_tensorflow.libs",
+      "libomp-copyright": "tensorflow/_tensorflow.libs",
+  }
+
   deps_mapping_dict = {}
   for deps_destination in deps_destinations:
     with open(deps_destination, "r") as deps_destination_file:
@@ -216,6 +221,12 @@ def prepare_srcs(
       if path in file:
         copy_file(file, os.path.join(srcs_dir, val), path)
         break
+
+    for external_file, val in file_to_copy.items():
+      if external_file in file:
+        copy_file(file, os.path.join(srcs_dir, val), None, external_file)
+        break
+
     else:
       # exclude external py files
       if "external" not in file:
@@ -289,6 +300,10 @@ def prepare_wheel_srcs(
 
   update_xla_tsl_imports(os.path.join(srcs_dir, "tensorflow"))
 
+  if not is_macos() and not is_windows():
+    create_init_files(os.path.join(srcs_dir, "tensorflow/_tensorflow.libs"))
+    patch_so_with_external_libs(srcs_dir)
+
   # Means the wheel is built with pywrap rules
   if dests:
     return
@@ -353,6 +368,19 @@ def patch_so(srcs_dir: str) -> None:
     )
     subprocess.run(
         ["patchelf", "--shrink-rpath", "{}/{}".format(srcs_dir, file)],
+        check=True,
+    )
+
+
+def patch_so_with_external_libs(srcs_dir: str) -> None:
+  to_patch = {
+      "tensorflow/libtensorflow_cc.so.2": "$ORIGIN/_tensorflow.libs",
+      "tensorflow/libtensorflow_framework.so.2": "$ORIGIN/_tensorflow.libs",
+  }
+
+  for file, rpath in to_patch.items():
+    subprocess.run(
+        ["patchelf", "--add-rpath", rpath, "{}/{}".format(srcs_dir, file)],
         check=True,
     )
 
