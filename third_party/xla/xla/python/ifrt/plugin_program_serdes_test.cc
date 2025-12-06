@@ -15,6 +15,7 @@
 #include <memory>
 #include <utility>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "xla/python/ifrt/plugin_program.h"
 #include "xla/python/ifrt/serdes.h"
@@ -47,9 +48,8 @@ TEST(PluginCompileOptionsSerDesTest, RoundTrip) {
   auto options = std::make_unique<SerializeOptions>(SerDesVersion::current());
   TF_ASSERT_OK_AND_ASSIGN(Serialized serialized,
                           Serialize(orig, std::move(options)));
-  TF_EXPECT_OK(
-      Deserialize<PluginCompileOptions>(serialized, /*options=*/nullptr)
-          .status());
+  EXPECT_OK(Deserialize<PluginCompileOptions>(serialized, /*options=*/nullptr)
+                .status());
 }
 
 }  // namespace

@@ -162,7 +162,7 @@ TEST_P(CustomCallCompileOptionsSerDesTest, RoundTrip) {
   auto serialize_options = std::make_unique<SerializeOptions>(version());
   TF_ASSERT_OK_AND_ASSIGN(Serialized serialized,
                           Serialize(orig, std::move(serialize_options)));
-  TF_EXPECT_OK(
+  EXPECT_OK(
       Deserialize<CustomCallCompileOptions>(serialized, /*options=*/nullptr)
           .status());
 }
