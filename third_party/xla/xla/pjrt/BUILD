@@ -144,6 +144,7 @@ cc_library(
         ":host_callback",
         ":pjrt_client",
         ":raw_buffer",
+        ":utils",
         "//xla:future",
         "//xla:literal",
         "//xla:shape_util",
