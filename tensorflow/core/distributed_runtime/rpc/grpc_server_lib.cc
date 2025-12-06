@@ -138,7 +138,8 @@ GrpcServer::~GrpcServer() {
 
 // Look up the requested host name and port for this task in `server_def`.
 absl::Status GrpcServer::GetHostAndPort(const ServerDef& server_def,
-                                        string* host_name, int* port) const {
+                                        std::string* host_name,
+                                        int* port) const {
   *port = -1;
   *host_name = "localhost";
   for (const auto& job : server_def.cluster().job()) {
@@ -166,7 +167,7 @@ absl::Status GrpcServer::GetHostAndPort(const ServerDef& server_def,
               "\".");
         }
 
-        if (colon_index != string::npos &&
+        if (colon_index != std::string::npos &&
             !iter->second.substr(0, colon_index).empty()) {
           *host_name = iter->second.substr(0, colon_index);
         }
@@ -207,9 +208,9 @@ absl::Status GrpcServer::Init(const GrpcServerOptions& opts) {
       server_def_.task_index());
 
   // Configure shared devices between master and worker.
-  string name_prefix = strings::StrCat("/job:", server_def_.job_name(),
-                                       "/replica:", server_def_.replica(),
-                                       "/task:", server_def_.task_index());
+  std::string name_prefix = strings::StrCat("/job:", server_def_.job_name(),
+                                            "/replica:", server_def_.replica(),
+                                            "/task:", server_def_.task_index());
   if (opts.local_device_mgr == nullptr) {
     std::vector<std::unique_ptr<Device>> devices;
     TF_RETURN_IF_ERROR(
@@ -232,8 +233,8 @@ absl::Status GrpcServer::Init(const GrpcServerOptions& opts) {
   worker_env_.rendezvous_mgr = opts.rendezvous_mgr_func == nullptr
                                    ? new RpcRendezvousMgr(&worker_env_)
                                    : opts.rendezvous_mgr_func(&worker_env_);
-  string unused;
-  string default_worker_name;
+  std::string unused;
+  std::string default_worker_name;
   if (!DeviceNameUtils::SplitDeviceName(master_env_.local_devices[0]->name(),
                                         &default_worker_name, &unused)) {
     return errors::Internal("Could not parse worker name.");
@@ -256,7 +257,7 @@ absl::Status GrpcServer::Init(const GrpcServerOptions& opts) {
   ::grpc::ServerBuilder builder;
   builder.AddListeningPort(absl::StrCat("0.0.0.0:", requested_port),
                            GetServerCredentials(server_def_), &bound_port_);
-  builder.SetMaxMessageSize(std::numeric_limits<int32>::max());
+  builder.SetMaxMessageSize(std::numeric_limits<int32_t>::max());
 
   bool reuse_port = false;
   const absl::Status status =
@@ -348,7 +349,7 @@ absl::Status GrpcServer::Init(const GrpcServerOptions& opts) {
           std::unique_ptr<std::vector<std::unique_ptr<Device>>> remote_devs,
           std::unique_ptr<WorkerCacheInterface> worker_cache,
           std::unique_ptr<DeviceSet> device_set,
-          std::vector<string> filtered_worker_list) {
+          std::vector<std::string> filtered_worker_list) {
         options.config.MergeFrom(config);
         return new MasterSession(options, env, std::move(remote_devs),
                                  std::move(worker_cache), std::move(device_set),
@@ -371,7 +372,7 @@ absl::Status GrpcServer::Init(const GrpcServerOptions& opts) {
 absl::Status GrpcServer::ParseChannelSpec(
     const WorkerCacheFactoryOptions& options, GrpcChannelSpec* channel_spec) {
   for (const auto& job : options.cluster_def.job()) {
-    std::map<int, string> host_ports;
+    std::map<int, std::string> host_ports;
     for (const auto& task : job.tasks()) {
       std::vector<std::string> parts = absl::StrSplit(task.second, ':');
       int port = -1;
@@ -413,11 +414,11 @@ absl::Status GrpcServer::WorkerCacheFactory(
   std::shared_ptr<GrpcChannelCache> channel_cache(NewGrpcChannelCache(
       channel_spec, GetChannelCreationFunction(), options.rpc_options));
 
-  string name_prefix = strings::StrCat("/job:", options.job_name,
-                                       "/replica:", options.replica_index,
-                                       "/task:", options.task_index);
+  std::string name_prefix = strings::StrCat("/job:", options.job_name,
+                                            "/replica:", options.replica_index,
+                                            "/task:", options.task_index);
 
-  const string host_port = channel_cache->TranslateTask(name_prefix);
+  const std::string host_port = channel_cache->TranslateTask(name_prefix);
   int requested_port;
 
   auto colon_index = host_port.find_last_of(':');
@@ -477,7 +478,7 @@ absl::Status GrpcServer::Start() {
 }
 
 absl::Status GrpcServer::AddMasterEagerContextToEagerService(
-    const tensorflow::uint64 context_id, tensorflow::EagerContext* context) {
+    const uint64_t context_id, tensorflow::EagerContext* context) {
   auto* eager_service =
       static_cast<eager::GrpcEagerServiceImpl*>(eager_service_);
   return eager_service->CreateMasterContext(context_id, context);
@@ -497,8 +498,8 @@ absl::Status GrpcServer::UpdateServerDef(const ServerDef& server_def) {
   // Transfer ownership of worker_cache to worker_env_.session_mgr.
   worker_env_.session_mgr->ResetDefaultWorkerCache(worker_cache);
 
-  string default_worker_name;
-  string unused;
+  std::string default_worker_name;
+  std::string unused;
   if (!DeviceNameUtils::SplitDeviceName(master_env_.local_devices[0]->name(),
                                         &default_worker_name, &unused)) {
     return errors::Internal("Could not parse worker name.");
@@ -584,7 +585,7 @@ absl::Status GrpcServer::Join() {
   }
 }
 
-const string GrpcServer::target() const {
+const std::string GrpcServer::target() const {
   return absl::StrCat("grpc://", host_name_, ":", bound_port_);
 }
 
