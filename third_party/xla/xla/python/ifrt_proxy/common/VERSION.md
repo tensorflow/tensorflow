@@ -116,3 +116,11 @@
 *   Added date: 2025-10-01
 *   Changes:
     *   Added support for `LoadedExecutable::GetHumanReadableProgramText()`.
+
+## Version kMpmdLoadedExecutableMethods
+
+*   Added date: 2025-12-05
+*   Changes:
+    *   Added support for `MpmdLoadedExecutable::GetMpmdAddressableDevices()`.
+    *   Added support for `MpmdLoadedExecutable::GetMpmdCompiledMemoryStats()`.
+    *   Added support for `MpmdLoadedExecutable::GetMpmdCostAnalysis()`.

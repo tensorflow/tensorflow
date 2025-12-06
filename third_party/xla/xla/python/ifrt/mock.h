@@ -50,6 +50,7 @@ limitations under the License.
 #include "xla/python/ifrt/index_domain.h"
 #include "xla/python/ifrt/layout.h"
 #include "xla/python/ifrt/memory.h"
+#include "xla/python/ifrt/mpmd_executable.h"
 #include "xla/python/ifrt/program.h"
 #include "xla/python/ifrt/remap_plan.h"
 #include "xla/python/ifrt/shape.h"
@@ -345,6 +346,72 @@ class MockLoadedExecutable
   MOCK_METHOD(absl::StatusOr<std::vector<std::vector<absl::string_view>>>,
               GetOutputMemoryKinds, (), (const, final));
   MOCK_METHOD(absl::StatusOr<std::vector<std::shared_ptr<HloModule>>>,
+              GetHloModules, (), (const, final));
+  MOCK_METHOD(absl::StatusOr<xla::ifrt::AttributeMap>, GetCostAnalysis, (),
+              (const, final));
+  MOCK_METHOD(absl::StatusOr<ExecuteResult>, Execute,
+              (absl::Span<ArrayRef> args, const ExecuteOptions& options,
+               std::optional<DeviceListRef> devices),
+              (final));
+  MOCK_METHOD(absl::Span<Device* const>, addressable_devices, (),
+              (const, final));
+  MOCK_METHOD(std::optional<DeviceListRef>, devices, (), (const, final));
+
+  static char ID;  // NOLINT
+};
+
+class MockMpmdLoadedExecutable
+    : public llvm::RTTIExtends<MockMpmdLoadedExecutable, MpmdLoadedExecutable> {
+ public:
+  MockMpmdLoadedExecutable() {
+    static absl::NoDestructor<DeviceListRef> kEmptyDeviceList(
+        BasicDeviceList::Create({}));
+    ON_CALL(*this, devices()).WillByDefault(testing::Return(*kEmptyDeviceList));
+  }
+
+  MOCK_METHOD((absl::StatusOr<absl::flat_hash_map<
+                   std::string, absl::Span<xla::ifrt::Device* const>>>),
+              GetMpmdAddressableDevices, (), (const, final));
+  MOCK_METHOD(
+      (absl::StatusOr<absl::flat_hash_map<std::string, CompiledMemoryStats>>),
+      GetMpmdCompiledMemoryStats, (), (const, final));
+  MOCK_METHOD((absl::StatusOr<
+                  absl::flat_hash_map<std::string, xla::ifrt::AttributeMap>>),
+              GetMpmdCostAnalysis, (), (const, final));
+  MOCK_METHOD((absl::StatusOr<absl::flat_hash_map<
+                   std::string, std::vector<std::shared_ptr<HloModule>>>>),
+              GetMpmdHloModules, (), (const, final));
+
+  MOCK_METHOD(Client*, client, (), (const, final));
+  MOCK_METHOD(absl::string_view, name, (), (const, final));
+  MOCK_METHOD(absl::StatusOr<std::optional<std::string>>, Fingerprint, (),
+              (const, final));
+  MOCK_METHOD(absl::StatusOr<std::unique_ptr<xla::ifrt::ExecutableVersion>>,
+              executable_version, (), (const, final));
+  MOCK_METHOD(absl::StatusOr<std::string>, Serialize, (), (const, final));
+  MOCK_METHOD(absl::StatusOr<std::string>, GetHumanReadableProgramText, (),
+              (const, final));
+  MOCK_METHOD(UserContextRef, user_context, (), (const, final));
+  MOCK_METHOD(tsl::Future<>, GetReadyFuture, (), (const, override));
+  MOCK_METHOD(int, num_devices, (), (const, final));
+  MOCK_METHOD(int64_t, SizeOfGeneratedCodeInBytes, (), (const, final));
+  MOCK_METHOD(absl::StatusOr<CompiledMemoryStats>, GetCompiledMemoryStats, (),
+              (const, final));
+  MOCK_METHOD(std::optional<std::vector<xla::OpSharding>>,
+              GetParameterShardings, (), (const, final));
+  MOCK_METHOD(std::optional<std::vector<xla::OpSharding>>, GetOutputShardings,
+              (), (const, final));
+  MOCK_METHOD(
+      absl::StatusOr<std::vector<std::shared_ptr<const xla::PjRtLayout>>>,
+      GetParameterLayouts, (), (const, final));
+  MOCK_METHOD(absl::StatusOr<absl::Span<const int>>, GetDonatableInputIndices,
+              (), (const, final));
+  MOCK_METHOD(
+      absl::StatusOr<std::vector<std::shared_ptr<const xla::PjRtLayout>>>,
+      GetOutputLayouts, (), (const, final));
+  MOCK_METHOD(absl::StatusOr<std::vector<std::vector<absl::string_view>>>,
+              GetOutputMemoryKinds, (), (const, final));
+  MOCK_METHOD(absl::StatusOr<std::vector<std::shared_ptr<xla::HloModule>>>,
               GetHloModules, (), (const, final));
   MOCK_METHOD(absl::StatusOr<xla::ifrt::AttributeMap>, GetCostAnalysis, (),
               (const, final));

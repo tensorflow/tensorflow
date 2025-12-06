@@ -61,6 +61,11 @@ enum {
   // GetHumanReadableProgramText in Executable.
   kLoadedExecutableGetHumanReadableProgramText = 19,
 
+  // kMpmdLoadedExecutableMethods implements MpmdLoadedExecutable methods such
+  // as GetMpmdAddressableDevices, GetMpmdCompiledMemoryStats, and
+  // GetMpmdCostAnalysis.
+  kMpmdLoadedExecutableMethods = 20,
+
   // kSentiel is used to derive kCurrent below. Keep this as the last value of
   // the enum.
   kSentiel,
