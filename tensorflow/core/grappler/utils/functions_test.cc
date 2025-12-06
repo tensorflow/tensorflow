@@ -97,7 +97,7 @@ TEST_F(FunctionsTest, InstantiationParameters) {
   EXPECT_EQ(DT_INT32, type_parameters["C:1"]);
   EXPECT_EQ(DT_DOUBLE, type_parameters["D"]);
 
-  absl::flat_hash_map<string, AttrValue> body_parameters;
+  absl::flat_hash_map<std::string, AttrValue> body_parameters;
   TF_EXPECT_OK(InstantiationBodyParameters(
       func, AttrSlice(&func_instantiation_attr), &body_parameters));
 

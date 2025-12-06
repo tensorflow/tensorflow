@@ -144,7 +144,8 @@ std::vector<Tensor> GrapplerTest::EvaluateFetchNodes(
 }
 
 NodeDef* GrapplerTest::AddNode(
-    const string& name, const string& op, const std::vector<string>& inputs,
+    const string& name, const string& op,
+    const std::vector<std::string>& inputs,
     const std::vector<std::pair<string, AttrValue>>& attributes,
     GraphDef* graph) const {
   NodeDef* node = graph->add_node();
