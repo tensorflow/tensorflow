@@ -118,11 +118,11 @@ std::vector<TritonGemmConfig> GemmFusionAutotunerImpl::GetDefaultTritonConfigs()
   std::vector<TritonGemmConfig> configs;
 
   if (compute_capability.IsAtLeastBlackwell()) {
-    configs = *kBlackwellConfigs;
+    configs = GetTritonConfigsForPlatform(TritonConfigsPlatform::kBlackwell);
   } else if (compute_capability.IsHopper() || compute_capability.IsAmpere()) {
-    configs = *kHopperAmpereConfigs;
+    configs = GetTritonConfigsForPlatform(TritonConfigsPlatform::kHopperAmpere);
   } else {
-    configs = *kDefaultCudaConfigs;
+    configs = GetTritonConfigsForPlatform(TritonConfigsPlatform::kDefaultCuda);
   }
 
   if (!debug_options_.xla_gpu_experimental_enable_triton_tma() ||
