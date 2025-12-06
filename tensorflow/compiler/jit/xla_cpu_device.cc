@@ -36,14 +36,14 @@ using tensorflow::IdentityShapeRepresentationFn;
 
 class XlaCpuDeviceFactory : public DeviceFactory {
  public:
-  absl::Status ListPhysicalDevices(std::vector<string>* devices) override;
+  absl::Status ListPhysicalDevices(std::vector<std::string>* devices) override;
   absl::Status CreateDevices(
-      const SessionOptions& options, const string& name_prefix,
+      const SessionOptions& options, const std::string& name_prefix,
       std::vector<std::unique_ptr<Device>>* devices) override;
 };
 
 absl::Status XlaCpuDeviceFactory::ListPhysicalDevices(
-    std::vector<string>* devices) {
+    std::vector<std::string>* devices) {
   XlaDeviceFlags* flags = GetXlaDeviceFlags();
   if (!flags->tf_xla_enable_xla_devices && !XlaDevicesCreationRequired()) {
     VLOG(1) << "Not creating XLA devices, tf_xla_enable_xla_devices not set "
@@ -56,7 +56,7 @@ absl::Status XlaCpuDeviceFactory::ListPhysicalDevices(
 }
 
 absl::Status XlaCpuDeviceFactory::CreateDevices(
-    const SessionOptions& session_options, const string& name_prefix,
+    const SessionOptions& session_options, const std::string& name_prefix,
     std::vector<std::unique_ptr<Device>>* devices) {
   XlaDeviceFlags* flags = GetXlaDeviceFlags();
   if (!flags->tf_xla_enable_xla_devices && !XlaDevicesCreationRequired()) {

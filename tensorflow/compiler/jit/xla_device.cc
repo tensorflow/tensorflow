@@ -133,8 +133,8 @@ XlaDeviceAllocator* XlaDeviceAllocatorState::GetOrCreateXlaDeviceAllocator(
 
 namespace {
 
-static DeviceAttributes BuildXlaDeviceAttributes(const string& name_prefix,
-                                                 const string& device_name,
+static DeviceAttributes BuildXlaDeviceAttributes(const std::string& name_prefix,
+                                                 const std::string& device_name,
                                                  int device_ordinal) {
   return Device::BuildDeviceAttributes(
       absl::StrCat(name_prefix, "/device:", device_name, ":", device_ordinal),
@@ -293,7 +293,7 @@ absl::Status XlaDevice::EnsureDeviceContextOk() {
 }
 
 absl::Status XlaDevice::EnsureStreamOkLocked(
-    xla::Backend* backend, const string& name,
+    xla::Backend* backend, const std::string& name,
     std::shared_ptr<se::Stream>* stream, bool* stream_was_changed) {
   if (!(*stream) || !(*stream)->ok()) {
     xla::StreamPool::Ptr ptr;
