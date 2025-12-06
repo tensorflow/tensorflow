@@ -24,6 +24,8 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "xla/error_spec.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/literal.h"
