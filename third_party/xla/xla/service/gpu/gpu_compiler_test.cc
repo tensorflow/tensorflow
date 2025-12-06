@@ -1797,12 +1797,6 @@ TEST_F(PassOrderTest, GemmRewriterRunsAfterDotNormalizer) {
   VerifyNotRunInBetween(pass_range, /*pass_regex=*/"algsimp");
 }
 
-TEST_F(PassOrderTest, NestGemmFusionRunsAfterGemmFusionAutotuner) {
-  // NestGemmFusion expect to see __triton_gemm custom call with a backend
-  // config created by gemm_fusion_autotuner.
-  VerifyPassOrder("gemm-fusion-autotuner", "nest_gemm_fusion");
-}
-
 TEST_F(PassOrderTest, TransposeDimensionGrouperRunsBeforeGemmRewriter) {
   if (!get_cuda_cc().IsAtLeastAmpere()) {
     GTEST_SKIP() << "triton-gemm-rewriter requires at least Ampere to run.";
