@@ -30,7 +30,8 @@ namespace tensorflow {
 namespace {
 
 absl::Status BuildNoopNode(const Node& source, absl::string_view name,
-                           const string& device, Graph* graph, Node** node) {
+                           const std::string& device, Graph* graph,
+                           Node** node) {
   NodeDefBuilder builder(name, "NoOp", NodeDebugInfo(source));
   if (!device.empty()) {
     builder.Device(device);
@@ -46,7 +47,7 @@ absl::Status BuildNoopNode(const Node& source, absl::string_view name,
 }
 
 absl::Status BuildIdentityNNode(const Node& source, absl::string_view name,
-                                const string& device, Graph* graph,
+                                const std::string& device, Graph* graph,
                                 std::vector<NodeDefBuilder::NodeOut>& inputs,
                                 Node** node) {
   NodeDefBuilder builder(name, "IdentityN", NodeDebugInfo(source));
@@ -66,7 +67,7 @@ absl::Status BuildIdentityNNode(const Node& source, absl::string_view name,
 }
 
 absl::Status BuildIdentityNode(const Node& source, absl::string_view name,
-                               const string& device, Graph* graph,
+                               const std::string& device, Graph* graph,
                                std::vector<NodeDefBuilder::NodeOut>& inputs,
                                Node** node) {
   NodeDefBuilder builder(name, "Identity", NodeDebugInfo(source));
@@ -85,7 +86,7 @@ absl::Status BuildIdentityNode(const Node& source, absl::string_view name,
   return absl::OkStatus();
 }
 
-const string& RequestedOrAssignedDevice(const Node* n) {
+const std::string& RequestedOrAssignedDevice(const Node* n) {
   if (!n->assigned_device_name().empty()) {
     return n->assigned_device_name();
   }
@@ -101,7 +102,7 @@ class DeviceLookup {
   static absl::StatusOr<DeviceLookup> FromGraph(Graph* graph) {
     DeviceLookup lookup;
     for (Node* n : graph->op_nodes()) {
-      string device;
+      std::string device;
       TF_RETURN_IF_ERROR(DeviceNameUtils::DeviceNameToCpuDeviceName(
           RequestedOrAssignedDevice(n), &device));
       auto iter = lookup.device_name_to_id_.find(device);
@@ -128,15 +129,15 @@ class DeviceLookup {
     return node_to_device_id_[node];
   }
 
-  inline string DeviceIdToName(int id) { return device_id_to_name_[id]; }
+  inline std::string DeviceIdToName(int id) { return device_id_to_name_[id]; }
 
   inline bool IsSameAddressSpace(int id1, int id2) {
     return is_same_address_space_[std::make_pair(id1, id2)];
   }
 
  private:
-  absl::flat_hash_map<int, string> device_id_to_name_;
-  absl::flat_hash_map<string, int> device_name_to_id_;
+  absl::flat_hash_map<int, std::string> device_id_to_name_;
+  absl::flat_hash_map<std::string, int> device_name_to_id_;
   absl::flat_hash_map<const Node*, int> node_to_device_id_;
   absl::flat_hash_map<std::pair<int, int>, bool> is_same_address_space_;
 };
@@ -174,7 +175,7 @@ absl::Status OptimizeCrossHostControlOutputEdges(
       if (pair.second.size() < cross_host_edges_threshold) {
         continue;
       }
-      string device = lookup.DeviceIdToName(pair.first);
+      std::string device = lookup.DeviceIdToName(pair.first);
       VLOG(1) << "Optmize cross host output control edge, src node: "
               << n->name()
               << " src device: " << lookup.DeviceIdToName(src_device_id)
@@ -182,7 +183,7 @@ absl::Status OptimizeCrossHostControlOutputEdges(
               << " edges size: " << pair.second.size();
       Node* control_after;
       TF_RETURN_IF_ERROR(BuildNoopNode(
-          *n, graph->NewName(strings::StrCat(n->name(), "/", "control_after")),
+          *n, graph->NewName(absl::StrCat(n->name(), "/", "control_after")),
           device, graph, &control_after));
 
       // When adding control edges, set `allow_duplicates` to true since the
@@ -243,7 +244,7 @@ absl::Status OptimizeCrossHostDataOutputEdges(Graph* graph,
                       [node0](const Edge* e) { return e->dst() == node0; })) {
         continue;
       }
-      string device = lookup.DeviceIdToName(device_id);
+      std::string device = lookup.DeviceIdToName(device_id);
       VLOG(1) << "Optimize cross host output edge, src node: " << n->name()
               << " src device: " << lookup.DeviceIdToName(src_id)
               << " dst host device: " << device
@@ -265,7 +266,7 @@ absl::Status OptimizeCrossHostDataOutputEdges(Graph* graph,
         inputs.emplace_back(edge0->src()->name(), edge0->src_output(),
                             edge0->src()->output_type(edge0->src_output()));
         TF_RETURN_IF_ERROR(BuildIdentityNode(
-            *n, graph->NewName(strings::StrCat(n->name(), "/", "data_after")),
+            *n, graph->NewName(absl::StrCat(n->name(), "/", "data_after")),
             device, graph, inputs, &data_after));
 
         graph->AddEdge(edge0->src(), edge0->src_output(), data_after, 0);
@@ -281,7 +282,7 @@ absl::Status OptimizeCrossHostDataOutputEdges(Graph* graph,
                               edge->src()->output_type(edge->src_output()));
         }
         TF_RETURN_IF_ERROR(BuildIdentityNNode(
-            *n, graph->NewName(strings::StrCat(n->name(), "/", "data_after")),
+            *n, graph->NewName(absl::StrCat(n->name(), "/", "data_after")),
             device, graph, inputs, &data_after));
 
         int i = 0;
@@ -344,7 +345,7 @@ absl::Status OptimizeCrossHostControlInputEdges(
       if (pair.second.size() < cross_host_edges_threshold) {
         continue;
       }
-      string src_device = lookup.DeviceIdToName(pair.first);
+      std::string src_device = lookup.DeviceIdToName(pair.first);
       VLOG(1) << "Optmize cross host input control edge, dst node: "
               << dst->name()
               << " dst device: " << lookup.DeviceIdToName(dst_device_id)
@@ -353,7 +354,7 @@ absl::Status OptimizeCrossHostControlInputEdges(
       Node* control_before;
       TF_RETURN_IF_ERROR(BuildNoopNode(
           *dst,
-          graph->NewName(strings::StrCat(dst->name(), "/", "control_before")),
+          graph->NewName(absl::StrCat(dst->name(), "/", "control_before")),
           /*device=*/src_device, graph, &control_before));
 
       // When adding control edges, set `allow_duplicates` to true since the

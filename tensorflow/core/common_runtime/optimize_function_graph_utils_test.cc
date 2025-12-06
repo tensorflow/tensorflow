@@ -132,12 +132,12 @@ TEST(OptimizeFunctionGraphTest, OptimizeFunctionGraphAndWriteToCache) {
   Env* env = Env::Default();
 
   // Create a temp directory and set to env variable for the purpose of testing.
-  const string temp_dir = "/tmp/testing_cache_direcroty";
+  const std::string temp_dir = "/tmp/testing_cache_direcroty";
   EXPECT_TRUE(env->RecursivelyCreateDir(temp_dir).ok());
   setenv(kGraphCachingEnvVariableName, temp_dir.c_str(), 1);
 
   // Check that no file exists before caching.
-  std::vector<string> empty_file_list;
+  std::vector<std::string> empty_file_list;
   TF_ASSERT_OK(
       env->GetMatchingPaths(absl::StrCat(temp_dir, "/*"), &empty_file_list));
   ASSERT_TRUE(empty_file_list.empty());
@@ -173,7 +173,7 @@ TEST(OptimizeFunctionGraphTest, OptimizeFunctionGraphAndWriteToCache) {
           /*composite_devices=*/{}, devices[0].get(), devices[1].get(),
           Env::Default(), /*caching_threshold_duration=*/absl::Hours(48));
   TF_ASSERT_OK(optimized_info.status());
-  std::vector<string> file_list;
+  std::vector<std::string> file_list;
   TF_ASSERT_OK(env->GetMatchingPaths(absl::StrCat(temp_dir, "/*"), &file_list));
   EXPECT_EQ(file_list.size(), 0);
   EXPECT_EQ(metrics::GetFunctionGraphOptimizationSavingTimeUsecs(
