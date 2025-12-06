@@ -56,9 +56,6 @@ namespace tsl {
 // - Use `absl::OkStatus()` instead of `tsl::OkStatus()`.
 typedef absl::Status Status ABSL_DEPRECATE_AND_INLINE();
 
-namespace errors {
-typedef absl::StatusCode Code ABSL_DEPRECATE_AND_INLINE();
-}  // namespace errors
 namespace error {
 typedef ::tensorflow::error::Code Code;
 }  // namespace error
