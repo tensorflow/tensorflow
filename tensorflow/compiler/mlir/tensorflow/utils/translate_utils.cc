@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <optional>
+#include <string>
 #include <type_traits>
 
 #include "absl/container/flat_hash_set.h"
