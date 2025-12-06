@@ -149,7 +149,7 @@ void ScalarAddition(OpKernelContext* context, const quint8* full_input,
     full_input_in_output_range_64 =
         std::min(full_input_in_output_range_64, highest_quantized);
     const int32_t full_input_in_output_range =
-        static_cast<int32>(full_input_in_output_range_64);
+        static_cast<int32_t>(full_input_in_output_range_64);
     output[i] = full_input_in_output_range + scalar_in_output_range;
   }
 }
@@ -272,13 +272,15 @@ void VectorAddition(OpKernelContext* context, const quint8* x_data, float min_x,
     int64_t x_in_output_range_64 = x_0_int64 + (x_value * x_mult_int32);
     x_in_output_range_64 = std::max(x_in_output_range_64, lowest_quantized);
     x_in_output_range_64 = std::min(x_in_output_range_64, highest_quantized);
-    const int32_t x_in_output_range = static_cast<int32>(x_in_output_range_64);
+    const int32_t x_in_output_range =
+        static_cast<int32_t>(x_in_output_range_64);
 
     const int64_t y_value = static_cast<int64_t>(y_data[i]);
     int64_t y_in_output_range_64 = y_0_int64 + (y_value * y_mult_int32);
     y_in_output_range_64 = std::max(y_in_output_range_64, lowest_quantized);
     y_in_output_range_64 = std::min(y_in_output_range_64, highest_quantized);
-    const int32_t y_in_output_range = static_cast<int32>(y_in_output_range_64);
+    const int32_t y_in_output_range =
+        static_cast<int32_t>(y_in_output_range_64);
 
     output[i] = x_in_output_range + y_in_output_range;
   }
@@ -430,7 +432,7 @@ void VectorTensorAddition(const quint8* vector_data, float min_vector,
     vector_in_output_range_64 =
         std::min(vector_in_output_range_64, highest_quantized);
     const int32_t vector_in_output_range =
-        static_cast<int32>(vector_in_output_range_64);
+        static_cast<int32_t>(vector_in_output_range_64);
 
     const int64_t tensor_value = static_cast<int64_t>(tensor_data[i]);
     int64_t tensor_in_output_range_64 =
@@ -440,7 +442,7 @@ void VectorTensorAddition(const quint8* vector_data, float min_vector,
     tensor_in_output_range_64 =
         std::min(tensor_in_output_range_64, highest_quantized);
     const int32_t tensor_in_output_range =
-        static_cast<int32>(tensor_in_output_range_64);
+        static_cast<int32_t>(tensor_in_output_range_64);
 
     output[i] = vector_in_output_range + tensor_in_output_range;
   }

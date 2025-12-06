@@ -46,7 +46,7 @@ class QueueBase : public QueueInterface {
   //   name: A name to use for the queue.
   QueueBase(int32_t capacity, const DataTypeVector& component_dtypes,
             const std::vector<TensorShape>& component_shapes,
-            const string& name);
+            const std::string& name);
 
   // Implementations of QueueInterface methods --------------------------------
   const DataTypeVector& component_dtypes() const override {
@@ -64,7 +64,7 @@ class QueueBase : public QueueInterface {
     return component_shapes_;
   }
 
-  int32 capacity() const { return capacity_; }
+  int32_t capacity() const { return capacity_; }
 
   bool is_closed() const override {
     mutex_lock lock(mu_);
@@ -103,7 +103,7 @@ class QueueBase : public QueueInterface {
   };
 
   // Returns the number of components in a queue-element tuple.
-  int32 num_components() const { return component_dtypes_.size(); }
+  int32_t num_components() const { return component_dtypes_.size(); }
 
   // True if shapes were specified.  If so, inputs will be validated
   // against them, etc.
@@ -135,26 +135,27 @@ class QueueBase : public QueueInterface {
   ~QueueBase() override;
 
   // Helpers for implementing MatchesNodeDef().
-  static string ShapeListString(const absl::Span<const TensorShape>& shapes);
+  static std::string ShapeListString(
+      const absl::Span<const TensorShape>& shapes);
   absl::Status MatchesNodeDefOp(const NodeDef& node_def,
-                                const string& op) const;
+                                const std::string& op) const;
   absl::Status MatchesNodeDefCapacity(const NodeDef& node_def,
                                       int32_t capacity) const;
   absl::Status MatchesNodeDefTypes(const NodeDef& node_def) const;
   absl::Status MatchesNodeDefShapes(const NodeDef& node_def) const;
 
  protected:
-  const int32 capacity_;
+  const int32_t capacity_;
   const DataTypeVector component_dtypes_;
   const std::vector<TensorShape> component_shapes_;
-  const string name_;
+  const std::string name_;
   mutable mutex mu_;
   bool closed_ TF_GUARDED_BY(mu_);
 
   struct Attempt;
   typedef std::function<RunResult(Attempt*)> RunCallback;
   struct Attempt {
-    int32 elements_requested;
+    int32_t elements_requested;
     DoneCallback done_callback;  // must be run outside mu_
     OpKernelContext* context;
     CancellationManager* cancellation_manager;  // not owned

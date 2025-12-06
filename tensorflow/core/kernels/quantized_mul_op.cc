@@ -38,9 +38,9 @@ void ScalarMultiply(OpKernelContext* context, const T* full_input,
                     T scalar_input, int32_t scalar_input_offset,
                     Toutput* output) {
   const int32_t scalar_minus_offset =
-      static_cast<int32>(scalar_input) - scalar_input_offset;
+      static_cast<int32_t>(scalar_input) - scalar_input_offset;
   for (int i = 0; i < num_elements; ++i) {
-    output[i] = (static_cast<int32>(full_input[i]) - full_input_offset) *
+    output[i] = (static_cast<int32_t>(full_input[i]) - full_input_offset) *
                 scalar_minus_offset;
   }
 }
@@ -115,8 +115,8 @@ void VectorMultiply(OpKernelContext* context, const T* x_data, int32_t offset_x,
                     const T* y_data, int32_t offset_y, int64_t num_elements,
                     Toutput* output) {
   for (int i = 0; i < num_elements; ++i) {
-    output[i] = (static_cast<int32>(x_data[i]) - offset_x) *
-                (static_cast<int32>(y_data[i]) - offset_y);
+    output[i] = (static_cast<int32_t>(x_data[i]) - offset_x) *
+                (static_cast<int32_t>(y_data[i]) - offset_y);
   }
 }
 
@@ -193,8 +193,8 @@ void VectorTensorMultiply(const T* vector_data, int32_t vector_offset,
                           Toutput* output) {
   for (int i = 0; i < tensor_num_elements; ++i) {
     const int64_t vector_i = i % vector_num_elements;
-    output[i] = (static_cast<int32>(vector_data[vector_i]) - vector_offset) *
-                (static_cast<int32>(tensor_data[i]) - tensor_offset);
+    output[i] = (static_cast<int32_t>(vector_data[vector_i]) - vector_offset) *
+                (static_cast<int32_t>(tensor_data[i]) - tensor_offset);
   }
 }
 

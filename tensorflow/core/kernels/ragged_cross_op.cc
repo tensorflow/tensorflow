@@ -51,7 +51,7 @@ class FeatureReader {
   virtual int64_t FeatureCount(int64_t batch) const = 0;
 
   // Copies the value for the specified feature to `out`.
-  virtual void ReadValue(int64_t batch, int64_t n, uint64* out) const = 0;
+  virtual void ReadValue(int64_t batch, int64_t n, uint64_t* out) const = 0;
   virtual void ReadValue(int64_t batch, int64_t n, tstring* out) const = 0;
 
   virtual ~FeatureReader() {}
@@ -70,10 +70,10 @@ void CopyToString(const tstring& src, tstring* dst) {
 void CopyToString(int64_t src, tstring* dst) { *dst = std::to_string(src); }
 
 // Copies a feature value `src` to an int64 fingerprint `dst`.
-void CopyToFingerprint(const tstring& feature, uint64* dst) {
+void CopyToFingerprint(const tstring& feature, uint64_t* dst) {
   *dst = Fingerprint64(feature);
 }
-void CopyToFingerprint(int64_t feature, uint64* dst) { *dst = feature; }
+void CopyToFingerprint(int64_t feature, uint64_t* dst) { *dst = feature; }
 
 // A FeatureReader that is backed by a ragged tensor.
 template <typename ValuesType, typename SplitsType>
@@ -87,7 +87,7 @@ class RaggedFeatureReader : public FeatureReader {
     return row_splits_(batch + 1) - row_splits_(batch);
   }
 
-  void ReadValue(int64_t batch, int64_t n, uint64* out) const override {
+  void ReadValue(int64_t batch, int64_t n, uint64_t* out) const override {
     CopyToFingerprint(values_(row_splits_(batch) + n), out);
   }
 
@@ -110,7 +110,7 @@ class DenseFeatureReader : public FeatureReader {
 
   int64_t FeatureCount(int64_t batch) const override { return feature_count_; }
 
-  void ReadValue(int64_t batch, int64_t n, uint64* out) const override {
+  void ReadValue(int64_t batch, int64_t n, uint64_t* out) const override {
     CopyToFingerprint(values_(batch, n), out);
   }
 
@@ -145,7 +145,7 @@ class SparseFeatureReader : public FeatureReader {
     return row_splits_[batch + 1] - row_splits_[batch];
   }
 
-  void ReadValue(int64_t batch, int64_t n, uint64* out) const override {
+  void ReadValue(int64_t batch, int64_t n, uint64_t* out) const override {
     CopyToFingerprint(values_(row_splits_[batch] + n), out);
   }
 
@@ -179,7 +179,7 @@ class OutputWriterImpl : public OutputWriter {
   using FlatSplits = typename TTypes<SplitsType>::ConstFlat;
 
   OutputWriterImpl(const FeatureReaders& features, int64_t num_buckets,
-                   uint64 hash_key, const Tensor* splits_out,
+                   uint64_t hash_key, const Tensor* splits_out,
                    Tensor* values_out)
       : features_(features),
         num_buckets_(num_buckets),
@@ -220,9 +220,9 @@ class OutputWriterImpl : public OutputWriter {
   void WriteCombination(int64_t batch_index,
                         const std::vector<int>& combination, int64_t* out) {
     // Do the fingerprint concatenation on uint64.
-    uint64 hashed_output = hash_key_;
+    uint64_t hashed_output = hash_key_;
     for (size_t i = 0; i < combination.size(); ++i) {
-      uint64 hash_i;
+      uint64_t hash_i;
       features_[i]->ReadValue(batch_index, combination[i], &hash_i);
       hashed_output = FingerprintCat64(hashed_output, hash_i);
     }
@@ -254,7 +254,7 @@ class OutputWriterImpl : public OutputWriter {
 
   const FeatureReaders& features_;
   const int64_t num_buckets_;
-  const uint64 hash_key_;
+  const uint64_t hash_key_;
   FlatSplits splits_out_;
   FlatValues values_out_;
 };
@@ -263,7 +263,7 @@ class OutputWriterImpl : public OutputWriter {
 // given tensors.
 std::unique_ptr<OutputWriter> MakeOutputWriter(const FeatureReaders& features,
                                                int64_t num_buckets,
-                                               uint64 hash_key,
+                                               uint64_t hash_key,
                                                const Tensor* splits_out,
                                                Tensor* values_out) {
   if (values_out->dtype() == DT_INT64) {
@@ -271,7 +271,7 @@ std::unique_ptr<OutputWriter> MakeOutputWriter(const FeatureReaders& features,
       return std::make_unique<OutputWriterImpl<int64_t, int64_t>>(
           features, num_buckets, hash_key, splits_out, values_out);
     } else {
-      return std::make_unique<OutputWriterImpl<int64_t, int32>>(
+      return std::make_unique<OutputWriterImpl<int64_t, int32_t>>(
           features, num_buckets, hash_key, splits_out, values_out);
     }
   } else {
@@ -279,7 +279,7 @@ std::unique_ptr<OutputWriter> MakeOutputWriter(const FeatureReaders& features,
       return std::make_unique<OutputWriterImpl<tstring, int64_t>>(
           features, num_buckets, hash_key, splits_out, values_out);
     } else {
-      return std::make_unique<OutputWriterImpl<tstring, int32>>(
+      return std::make_unique<OutputWriterImpl<tstring, int32_t>>(
           features, num_buckets, hash_key, splits_out, values_out);
     }
   }
@@ -298,7 +298,7 @@ class RaggedCrossOp : public OpKernel {
     // supported by REGISTER_OP.
     int64_t signed_hash_key_;
     OP_REQUIRES_OK(context, context->GetAttr("hash_key", &signed_hash_key_));
-    hash_key_ = static_cast<uint64>(signed_hash_key_);
+    hash_key_ = static_cast<uint64_t>(signed_hash_key_);
 
     int num_sparse;
     OP_REQUIRES_OK(context, context->GetAttr("Nsparse", &num_sparse));
@@ -542,7 +542,7 @@ class RaggedCrossOp : public OpKernel {
             new RaggedFeatureReader<int64_t, int64_t>(values, splits));
       } else {
         features->emplace_back(
-            new RaggedFeatureReader<int64_t, int32>(values, splits));
+            new RaggedFeatureReader<int64_t, int32_t>(values, splits));
       }
     } else {
       if (splits.dtype() == DT_INT64) {
@@ -550,7 +550,7 @@ class RaggedCrossOp : public OpKernel {
             new RaggedFeatureReader<tstring, int64_t>(values, splits));
       } else {
         features->emplace_back(
-            new RaggedFeatureReader<tstring, int32>(values, splits));
+            new RaggedFeatureReader<tstring, int32_t>(values, splits));
       }
     }
     return absl::OkStatus();
@@ -632,7 +632,7 @@ class RaggedCrossOp : public OpKernel {
   }
 
   int64_t num_buckets_;
-  uint64 hash_key_;
+  uint64_t hash_key_;
   std::vector<DataType> ragged_values_types_;
   std::vector<DataType> ragged_splits_types_;
   std::vector<DataType> sparse_values_types_;
@@ -642,8 +642,8 @@ class RaggedCrossOp : public OpKernel {
 
 REGISTER_KERNEL_BUILDER(Name("RaggedCross")
                             .Device(DEVICE_CPU)
-                            .TypeConstraint<int32>("out_row_splits_type"),
-                        RaggedCrossOp<int32>);
+                            .TypeConstraint<int32_t>("out_row_splits_type"),
+                        RaggedCrossOp<int32_t>);
 REGISTER_KERNEL_BUILDER(Name("RaggedCross")
                             .Device(DEVICE_CPU)
                             .TypeConstraint<int64_t>("out_row_splits_type"),
