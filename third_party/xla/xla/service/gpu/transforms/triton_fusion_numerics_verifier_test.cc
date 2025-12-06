@@ -393,7 +393,7 @@ ENTRY main {
         "kind":"__triton",
         "block_level_fusion_config":{
           "output_tiles":[{"sizes":["1","256000"]}],
-          "num_warps":"32",
+          "num_warps":"16",
           "num_ctas":"1",
           "num_stages":"1"}}}
 })",
