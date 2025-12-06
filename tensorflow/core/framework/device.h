@@ -32,6 +32,7 @@ limitations under the License.
 #include <memory>
 #include <string>
 
+#include "absl/status/status.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/control_flow.h"
 #include "tensorflow/core/framework/device_attributes.pb.h"
