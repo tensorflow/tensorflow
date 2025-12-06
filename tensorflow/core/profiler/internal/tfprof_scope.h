@@ -50,10 +50,10 @@ class TFScope : public TFShow {
   const ShowNode* ShowInternal(const Options& opts,
                                Timeline* timeline) override;
 
-  ScopeNode* CreateParentNode(const string& name);
+  ScopeNode* CreateParentNode(const std::string& name);
 
   std::vector<ScopeNode*> SearchRoot(std::vector<ScopeNode*> roots,
-                                     const std::vector<string>& regexes);
+                                     const std::vector<std::string>& regexes);
 
   std::vector<ScopeNode*> PrintScope(std::vector<ScopeNode*> roots,
                                      const Options& opts, int depth,
@@ -62,13 +62,13 @@ class TFScope : public TFShow {
   std::vector<ScopeNode*> Account(const std::vector<ScopeNode*>& roots,
                                   const Options& opts);
 
-  void Format(std::vector<ScopeNode*> roots, string* display_str,
+  void Format(std::vector<ScopeNode*> roots, std::string* display_str,
               GraphNodeProto* proto);
 
   ScopeNode* root_;
   std::vector<std::unique_ptr<NodeDef>> node_defs_;
-  std::map<string, std::unique_ptr<TFGraphNode>> parent_nodes_;
-  std::map<string, std::unique_ptr<ScopeNode>> nodes_map_;
+  std::map<std::string, std::unique_ptr<TFGraphNode>> parent_nodes_;
+  std::map<std::string, std::unique_ptr<ScopeNode>> nodes_map_;
 };
 }  // namespace tfprof
 }  // namespace tensorflow
