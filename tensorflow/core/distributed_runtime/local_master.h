@@ -89,12 +89,12 @@ class LocalMaster : public MasterInterface {
   // any LocalMaster objects that may wrap this master. There is no
   // corresponding deregister method, since clean server shutdown is
   // not currently implemented for any server type.
-  static void Register(const string& target, Master* master,
+  static void Register(const std::string& target, Master* master,
                        int64_t default_timeout_in_ms);
 
   // Returns a pointer to the local master associated with the given
   // `target`, or nullptr if none exists.
-  static std::unique_ptr<LocalMaster> Lookup(const string& target);
+  static std::unique_ptr<LocalMaster> Lookup(const std::string& target);
 
  private:
   Master* master_impl_;  // Not owned.

@@ -44,7 +44,7 @@ namespace tensorflow {
 class MasterTest : public ::testing::Test {
  protected:
   MasterTest() {
-    std::vector<string> targets;
+    std::vector<std::string> targets;
     SessionOptions options;
     (*options.config.mutable_device_count())["CPU"] = 1;
     (*options.config.mutable_device_count())["GPU"] = 0;
@@ -64,7 +64,7 @@ class MasterTest : public ::testing::Test {
   // Helpers for MasterService.{CreateSession,RunStep,CloseSession}
   // rpc calls.
 
-  absl::Status CreateSession(const GraphDef& def, string* handle,
+  absl::Status CreateSession(const GraphDef& def, std::string* handle,
                              int64_t* initial_version) {
     ::grpc::ClientContext ctx;
     CreateSessionRequest req;
@@ -81,7 +81,7 @@ class MasterTest : public ::testing::Test {
     return s;
   }
 
-  absl::Status ExtendSession(const string& handle, const GraphDef& def,
+  absl::Status ExtendSession(const std::string& handle, const GraphDef& def,
                              int64_t current_version, int64_t* new_version) {
     ::grpc::ClientContext ctx;
     ExtendSessionRequest req;
@@ -98,21 +98,21 @@ class MasterTest : public ::testing::Test {
   }
 
   absl::Status RunStep(
-      const string& handle,
-      const std::vector<std::pair<string, const Tensor*> >& feed,
-      const std::map<string, Tensor*>& fetch) {
+      const std::string& handle,
+      const std::vector<std::pair<std::string, const Tensor*> >& feed,
+      const std::map<std::string, Tensor*>& fetch) {
     ::grpc::ClientContext ctx;
     RunStepRequest req;
     req.set_session_handle(handle);
     for (const auto& p : feed) {
-      const string& feed_name = p.first;
+      const std::string& feed_name = p.first;
       const Tensor* feed_tensor = p.second;
       auto f = req.add_feed();
       f->set_name(feed_name);
       feed_tensor->AsProtoTensorContent(f->mutable_tensor());
     }
     for (const auto& p : fetch) {
-      const string& fetch_name = p.first;
+      const std::string& fetch_name = p.first;
       req.add_fetch(fetch_name);
     }
     RunStepResponse resp;
@@ -127,7 +127,7 @@ class MasterTest : public ::testing::Test {
     return s;
   }
 
-  absl::Status CloseSession(const string& handle) {
+  absl::Status CloseSession(const std::string& handle) {
     ::grpc::ClientContext ctx;
     CloseSessionRequest req;
     req.set_session_handle(handle);
@@ -145,7 +145,7 @@ class MasterTest : public ::testing::Test {
 
 TEST_F(MasterTest, CreateClose) {
   GraphDef def;  // Empty.
-  string handle;
+  std::string handle;
   int64_t initial_version;
   TF_ASSERT_OK(CreateSession(def, &handle, &initial_version));
   EXPECT_TRUE(absl::IsAborted(CloseSession("randombits")));
@@ -164,7 +164,7 @@ TEST_F(MasterTest, ListDevices) {
 
 TEST_F(MasterTest, Reset) {
   GraphDef def;  // Empty.
-  string s1, s2;
+  std::string s1, s2;
   int64_t initial_version1, initial_version2;
   TF_ASSERT_OK(CreateSession(def, &s1, &initial_version1));
   TF_ASSERT_OK(CreateSession(def, &s2, &initial_version2));
@@ -175,7 +175,7 @@ TEST_F(MasterTest, Reset) {
 
 TEST_F(MasterTest, Extend) {
   GraphDef def_0;  // Empty.
-  string handle;
+  std::string handle;
   int64_t initial_version;
   TF_ASSERT_OK(CreateSession(def_0, &handle, &initial_version));
 
@@ -216,7 +216,7 @@ TEST_F(MasterTest, Extend) {
 
 TEST_F(MasterTest, ExtendUpdateStatefulFails) {
   GraphDef def_0;  // Empty.
-  string handle;
+  std::string handle;
   int64_t initial_version;
   TF_ASSERT_OK(CreateSession(def_0, &handle, &initial_version));
 
@@ -235,7 +235,7 @@ TEST_F(MasterTest, ExtendUpdateStatefulFails) {
 
 TEST_F(MasterTest, ExtendTwiceFails) {
   GraphDef def_0;  // Empty.
-  string handle;
+  std::string handle;
   int64_t initial_version;
   TF_ASSERT_OK(CreateSession(def_0, &handle, &initial_version));
 
@@ -254,7 +254,7 @@ TEST_F(MasterTest, ExtendTwiceFails) {
 
 TEST_F(MasterTest, ConcurrentExtendOnlyOneSucceeds) {
   GraphDef def_0;  // Empty.
-  string handle;
+  std::string handle;
   int64_t initial_version;
   TF_ASSERT_OK(CreateSession(def_0, &handle, &initial_version));
 
@@ -306,7 +306,7 @@ TEST_F(MasterTest, ConcurrentExtendAndRun) {
   GraphDef def_0;
   test::graph::ToGraphDef(&graph_0, &def_0);
 
-  string handle;
+  std::string handle;
   int64_t initial_version;
   TF_ASSERT_OK(CreateSession(def_0, &handle, &initial_version));
 
@@ -388,7 +388,7 @@ TEST_F(MasterTest, EigenProblem) {
   GraphDef def;
   test::graph::ToGraphDef(&graph, &def);
 
-  string handle;
+  std::string handle;
   int64_t initial_version;
   TF_CHECK_OK(CreateSession(def, &handle, &initial_version));
 

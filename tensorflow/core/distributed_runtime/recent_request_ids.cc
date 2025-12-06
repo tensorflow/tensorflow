@@ -61,7 +61,7 @@ bool RecentRequestIds::Insert(int64_t request_id) {
 }
 
 absl::Status RecentRequestIds::TrackUnique(int64_t request_id,
-                                           const string& method_name,
+                                           const std::string& method_name,
                                            const protobuf::Message& request) {
   if (Insert(request_id)) {
     return absl::OkStatus();

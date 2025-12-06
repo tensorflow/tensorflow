@@ -52,7 +52,7 @@ class MasterSession : public core::RefCounted {
       std::unique_ptr<std::vector<std::unique_ptr<Device>>> remote_devs,
       std::unique_ptr<WorkerCacheInterface> worker_cache,
       std::unique_ptr<DeviceSet> device_set,
-      std::vector<string> filtered_worker_list,
+      std::vector<std::string> filtered_worker_list,
       StatsPublisherFactory stats_publisher_factory);
 
   // Initialize the MasterSession for "def".  Must be called before Extend(),
@@ -60,11 +60,13 @@ class MasterSession : public core::RefCounted {
   absl::Status Create(GraphDef&& def, const ClusterDef& cluster_def);
 
   // Returns the session handle.
-  const string& handle() const { return handle_; }
+  const std::string& handle() const { return handle_; }
 
   // Returns the last access time (the number of micro-seconds since
   // some fixed point in time) of this session.
-  uint64 last_access_time_usec() const { return last_access_time_usec_.load(); }
+  uint64_t last_access_time_usec() const {
+    return last_access_time_usec_.load();
+  }
 
   // Attempt to extend the graph according to the given "req".
   // (See master.proto for details of valid extensions.)
@@ -117,7 +119,7 @@ class MasterSession : public core::RefCounted {
   const MasterEnv* env_;
 
   // The opaque session handle.
-  const string handle_;
+  const std::string handle_;
 
   std::unique_ptr<std::vector<std::unique_ptr<Device>>> remote_devs_;
 
@@ -132,7 +134,7 @@ class MasterSession : public core::RefCounted {
 
   // The (partial device) names of remote worker tasks that this
   // session will contact.
-  const std::vector<string> filtered_worker_list_;
+  const std::vector<std::string> filtered_worker_list_;
 
   StatsPublisherFactory stats_publisher_factory_;
 
@@ -140,7 +142,7 @@ class MasterSession : public core::RefCounted {
 
   std::atomic<int64_t> partial_run_handle_counter_ = {0};
 
-  uint64 NewStepId(int64_t graph_key);
+  uint64_t NewStepId(int64_t graph_key);
 
   mutex mu_;
   std::unique_ptr<GraphExecutionState> execution_state_ TF_GUARDED_BY(mu_);
@@ -152,7 +154,7 @@ class MasterSession : public core::RefCounted {
   // before a new substitute has been created, Variables can go out of
   // scope and lose their state.
   class ReffedClientGraph;
-  typedef std::unordered_map<uint64, ReffedClientGraph*> RCGMap;
+  typedef std::unordered_map<uint64_t, ReffedClientGraph*> RCGMap;
   RCGMap run_graphs_ TF_GUARDED_BY(mu_);
   RCGMap partial_run_graphs_ TF_GUARDED_BY(mu_);
   int64_t next_callable_handle_ TF_GUARDED_BY(mu_) = 0;
@@ -172,35 +174,36 @@ class MasterSession : public core::RefCounted {
   };
 
   struct RunState {
-    std::unordered_map<string, bool> pending_inputs;   // true if fed
-    std::unordered_map<string, bool> pending_outputs;  // true if fetched
+    std::unordered_map<std::string, bool> pending_inputs;   // true if fed
+    std::unordered_map<std::string, bool> pending_outputs;  // true if fetched
     ReffedClientGraph* rcg = nullptr;
-    uint64 step_id;
+    uint64_t step_id;
     int64_t collective_graph_key;
     int64_t count = 0;
     PerStepState pss;
     std::unique_ptr<ProfileHandler> ph;
     bool step_started = false;
 
-    RunState(const std::vector<string>& input_names,
-             const std::vector<string>& output_names, ReffedClientGraph* rcg,
-             const uint64 step_id, const int64_t count);
+    RunState(const std::vector<std::string>& input_names,
+             const std::vector<std::string>& output_names,
+             ReffedClientGraph* rcg, const uint64_t step_id,
+             const int64_t count);
 
     bool PendingDone() const;
 
     ~RunState();
   };
-  std::unordered_map<string, std::unique_ptr<RunState>> partial_runs_
+  std::unordered_map<std::string, std::unique_ptr<RunState>> partial_runs_
       TF_GUARDED_BY(mu_);
 
   // Active RunStep calls.
   condition_variable num_running_is_zero_;
-  int32 num_running_ TF_GUARDED_BY(mu_) = 0;
+  int32_t num_running_ TF_GUARDED_BY(mu_) = 0;
 
   bool closed_ TF_GUARDED_BY(mu_) = false;
   bool garbage_collected_ TF_GUARDED_BY(mu_) = false;
 
-  std::unordered_map<uint64, int64_t> subgraph_execution_counts_
+  std::unordered_map<uint64_t, int64_t> subgraph_execution_counts_
       TF_GUARDED_BY(mu_);
 
   // We need to ensure that certain nodes added (e.g., send and recv
@@ -228,7 +231,7 @@ class MasterSession : public core::RefCounted {
   void ClearRunsTable(std::vector<ReffedClientGraph*>* to_unref,
                       RCGMap* rcg_map) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
   void FillPerStepState(MasterSession::ReffedClientGraph* rcg,
-                        const RunOptions& run_options, uint64 step_id,
+                        const RunOptions& run_options, uint64_t step_id,
                         int64_t count, PerStepState* out_pss,
                         std::unique_ptr<ProfileHandler>* out_ph);
   absl::Status DoRunWithLocalExecution(CallOptions* opts,
@@ -240,7 +243,7 @@ class MasterSession : public core::RefCounted {
                              const RunCallableRequest& req,
                              RunCallableResponse* resp);
   absl::Status PostRunCleanup(MasterSession::ReffedClientGraph* rcg,
-                              uint64 step_id, const RunOptions& run_options,
+                              uint64_t step_id, const RunOptions& run_options,
                               PerStepState* pss,
                               const std::unique_ptr<ProfileHandler>& ph,
                               const absl::Status& run_status,

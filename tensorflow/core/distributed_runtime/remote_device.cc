@@ -53,7 +53,7 @@ class RemoteDevice : public Device {
   bool IsRemoteCallAllowed() const override { return true; }
 
  private:
-  const string local_dev_name_;
+  const std::string local_dev_name_;
 
   RemoteDevice(const RemoteDevice&) = delete;
   void operator=(const RemoteDevice&) = delete;
@@ -78,7 +78,8 @@ void AsRemoteDevices(
 }
 
 void NewRemoteDevices(Env* env, WorkerCacheInterface* worker_cache,
-                      const string& worker_name, NewRemoteDevicesDone done) {
+                      const std::string& worker_name,
+                      NewRemoteDevicesDone done) {
   WorkerInterface* wi = worker_cache->GetOrCreateWorker(worker_name);
   if (wi == nullptr) {
     std::vector<Device*> empty;
