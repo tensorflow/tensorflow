@@ -44,7 +44,7 @@ namespace {
 // the list of devices that are a part of the same reduction group.
 template <class ReduceOpType>
 mlir::LogicalResult GetAllReduceGroupSize(ReduceOpType reduce_op,
-                                          int32* group_size) {
+                                          int32_t* group_size) {
   mlir::DenseIntElementsAttr group_assignment_attr;
   if (!matchPattern(reduce_op.getGroupAssignment(),
                     m_Constant(&group_assignment_attr)))
@@ -80,7 +80,7 @@ mlir::LogicalResult MaybeUpcastForReduction(ReduceOpType reduce_op,
   mlir::OpBuilder builder(reduce_op);
   const mlir::Location loc = reduce_op.getLoc();
 
-  int32 group_size;
+  int32_t group_size;
   if (mlir::failed(GetAllReduceGroupSize(reduce_op, &group_size)))
     return mlir::failure();
   if (group_size <= ReduceInBfloat16MaxGroupSize())
