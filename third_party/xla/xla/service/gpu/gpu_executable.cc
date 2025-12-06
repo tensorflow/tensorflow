@@ -1062,7 +1062,14 @@ absl::Status GpuExecutable::ExecuteThunks(
         }
         module_allocations_[executor][i] =
             buffer_allocations.GetDeviceAddress(i);
-        VLOG(5) << "Gpu address changed for module " << module_name_;
+        const BufferAllocation& allocation =
+            buffer_assignment_->GetAllocation(i);
+        const char* allocation_type =
+            allocation.is_entry_computation_parameter() ? "parameter"
+            : allocation.maybe_live_out()               ? "live-out"
+                                                        : "temp";
+        VLOG(5) << "Gpu address changed for module " << module_name_
+                << ", allocation " << i << " (" << allocation_type << ")";
       }
     }
   }
