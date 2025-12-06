@@ -215,6 +215,7 @@ def StableHLOLowerToTritonPass
   let dependentDialects = [
     "::mlir::stablehlo::StablehloDialect",
     "::mlir::triton::TritonDialect",
+    "::mlir::triton::xla::XlaTritonDialect",
     "::xla::xtile::XTileDialect",
   ];
   let constructor = "CreateStableHLOLowerToTritonPass()";

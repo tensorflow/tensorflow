@@ -39,6 +39,10 @@ limitations under the License.
 
 namespace xla::gpu {
 
+// Metadata arguments for the collective emitter.
+// device_rank, signal_value, signal_buffers.
+static constexpr int32_t kNumCollectiveMetadataArgs = 3;
+
 // Returns the block level fusion config for the collective kernel.
 // For now only all-reduce is supported.
 // If an std::nullopt is returned, it implies that the collective kernel is
@@ -70,17 +74,6 @@ absl::StatusOr<int32_t> AddCollectiveMetadataArguments(
 // [emitters::KernelArgument] structure.
 absl::StatusOr<std::vector<Shape>> GetCollectiveUnmanagedKernelArguments(
     const HloFusionInstruction* fusion);
-
-// Emits tiled XTile/Triton IR for a collective op.
-// See [EmitTiledHloInstruction] for an overview of how this fits into the
-// emitter.
-absl::StatusOr<xtile::TensorValue> EmitCollective(
-    mlir::ImplicitLocOpBuilder& b, const HloFusionInstruction* fusion,
-    const TiledHloInstruction& tiled_hlo_reduce,
-    const BlockLevelParameters& block_level_parameters,
-    mlir::FunctionOpInterface fn, mlir::Value pid,
-    absl::flat_hash_map<const TiledHloInstruction*, xtile::TensorValue>&
-        values);
 
 }  // namespace xla::gpu
 #endif  // XLA_BACKENDS_GPU_CODEGEN_TRITON_COLLECTIVE_EMITTER_H_
