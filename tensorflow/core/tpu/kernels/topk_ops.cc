@@ -51,21 +51,21 @@ xla::XlaOp CreateKthOrderStatisticComputation(xla::XlaBuilder* builder,
   const int64_t width = input_shape.dim_size(1);
 
   xla::XlaOp input_sm32 = xla::BitcastConvertType(input, xla::S32);
-  xla::XlaOp zero_r0 = xla::ConstantR0<int32>(builder, 0);
+  xla::XlaOp zero_r0 = xla::ConstantR0<int32_t>(builder, 0);
   xla::XlaOp zero_r1 = xla::Broadcast(zero_r0, {height});
   xla::XlaOp zero_r2 = xla::Broadcast(zero_r0, {height, width});
 
-  xla::XlaOp max_r0 = xla::ConstantR0<int32>(builder, 0x7FFFFFFF);
+  xla::XlaOp max_r0 = xla::ConstantR0<int32_t>(builder, 0x7FFFFFFF);
   xla::XlaOp max_r1 = xla::Broadcast(max_r0, {height});
 
   // Start at positive zero, so that pivot is always less than top.
-  xla::XlaOp negative_zero_r0 = xla::ConstantR0<int32>(builder, 0x80000000);
+  xla::XlaOp negative_zero_r0 = xla::ConstantR0<int32_t>(builder, 0x80000000);
   xla::XlaOp negative_zero_r1 = xla::Broadcast(negative_zero_r0, {height});
   xla::XlaOp top_r1 = zero_r1;
 
-  for (uint32 mask = 1U << 31; mask; mask >>= 1) {
+  for (uint32_t mask = 1U << 31; mask; mask >>= 1) {
     xla::XlaOp broadcast_mask_r1 =
-        xla::Broadcast(xla::ConstantR0<int32>(builder, mask), {height});
+        xla::Broadcast(xla::ConstantR0<int32_t>(builder, mask), {height});
 
     // The first iteration of the loop determines if the kth element
     // is positive or negative. If the kth element is negative, we
@@ -111,14 +111,14 @@ class KthOrderStatistic : public XlaOpKernel {
         ctx, input_shape.dims() == 2,
         InvalidArgument("input must be rank-2: ", input_shape.DebugString()));
 
-    xla::XlaOp k = xla::ConstantR0<int32>(builder, k_);
+    xla::XlaOp k = xla::ConstantR0<int32_t>(builder, k_);
     xla::XlaOp kth_order_statistics =
         CreateKthOrderStatisticComputation(builder, input_shape, input, k);
     ctx->SetOutput(0, kth_order_statistics);
   }
 
  private:
-  int32 k_;
+  int32_t k_;
 };
 
 REGISTER_XLA_OP(Name("KthOrderStatistic"), KthOrderStatistic);
@@ -269,21 +269,21 @@ xla::XlaOp CreateMakeUnique(xla::XlaBuilder* builder, const xla::XlaOp input,
   // count_mask is used to mask away the low order bits to ensure
   // that every element is distinct.
   uint32_t next_power_of_two = absl::bit_ceil<uint64_t>(width);
-  uint32 count_mask = ~(next_power_of_two - 1);
+  uint32_t count_mask = ~(next_power_of_two - 1);
   xla::XlaOp count_mask_r0 = xla::ConstantR0(builder, count_mask);
   xla::XlaOp count_mask_r2 = xla::Broadcast(count_mask_r0, {height, width});
 
   // smallest_normal is the bit representation of the smallest
   // positive normal floating point number. The sign is zero,
   // exponent is one, and the fraction is zero.
-  uint32 smallest_normal = 1U << 23;
+  uint32_t smallest_normal = 1U << 23;
   xla::XlaOp smallest_normal_r0 = xla::ConstantR0(builder, smallest_normal);
   xla::XlaOp smallest_normal_r2 =
       xla::Broadcast(smallest_normal_r0, {height, width});
 
   // Used to mask away the sign bit when computing the absolute
   // value.
-  uint32 low_bit_mask = ~(1U << 31);
+  uint32_t low_bit_mask = ~(1U << 31);
   xla::XlaOp low_bit_mask_r0 = xla::ConstantR0(builder, low_bit_mask);
   xla::XlaOp low_bit_mask_r2 = xla::Broadcast(low_bit_mask_r0, {height, width});
 

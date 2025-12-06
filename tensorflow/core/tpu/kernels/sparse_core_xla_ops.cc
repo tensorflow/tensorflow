@@ -143,7 +143,7 @@ class XlaSparseDenseMatmulOp : public XlaOpKernel {
   void Compile(XlaOpKernelContext* ctx) override {
     xla::XlaBuilder* builder = ctx->builder();
 
-    const int32 num_physical_replica =
+    const int32_t num_physical_replica =
         stream_executor::tpu::OpsApiFn()->TpuTopology_AvailableCoreCountFn(
             /*mesh_state=*/nullptr,
             /*tpu_core_type=*/TpuCoreTypeEnum::kEmbeddingV2);
@@ -662,7 +662,7 @@ class XlaSparseDenseMatmulGradWithCsrInputBase : public XlaOpKernel {
                 errors::InvalidArgument(
                     "activations input has non static or non-rank 2 shape: ",
                     activation_shape.ToString()));
-    int64 num_samples_per_chip = activation_shape.dimensions(0);
+    int64_t num_samples_per_chip = activation_shape.dimensions(0);
     OP_REQUIRES(ctx, num_samples_per_chip % num_sparsecores_per_device_ == 0,
                 errors::InvalidArgument(
                     "num_samples_per_chip ", num_samples_per_chip,
