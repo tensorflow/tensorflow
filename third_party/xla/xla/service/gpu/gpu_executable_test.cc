@@ -649,5 +649,77 @@ TEST(GpuExecutableTest, FromProtoWithSymbolResolver) {
   EXPECT_EQ(symbol_resolver_invocations, 1);
 }
 
+TEST(GpuExecutableTest, ToProtoReturnsUnchangedThunkGraph) {
+  DebugOptions debug_options;
+  debug_options.set_xla_gpu_graph_min_graph_size(1);
+  debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::FUSION);
+
+  auto create_executable = [&]() {
+    ThunkSequence thunk_sequence;
+    thunk_sequence.push_back(std::make_unique<KernelThunk>(
+        ThunkInfoWithId(1),
+        /*kernel_name=*/"test_kernel_0",
+        /*kernel_arguments=*/emitters::KernelArguments({}),
+        /*launch_dimensions=*/LaunchDimensions(),
+        /*cluster_dim=*/std::nullopt,
+        /*shmem_bytes=*/0,
+        /*tma_metadata=*/se::gpu::TmaMetadata()));
+    thunk_sequence.push_back(std::make_unique<KernelThunk>(
+        ThunkInfoWithId(2),
+        /*kernel_name=*/"test_kernel_1",
+        /*kernel_arguments=*/emitters::KernelArguments({}),
+        /*launch_dimensions=*/LaunchDimensions(),
+        /*cluster_dim=*/std::nullopt,
+        /*shmem_bytes=*/0,
+        /*tma_metadata=*/se::gpu::TmaMetadata()));
+    thunk_sequence.push_back(std::make_unique<KernelThunk>(
+        ThunkInfoWithId(3),
+        /*kernel_name=*/"test_kernel_2",
+        /*kernel_arguments=*/emitters::KernelArguments({}),
+        /*launch_dimensions=*/LaunchDimensions(),
+        /*cluster_dim=*/std::nullopt,
+        /*shmem_bytes=*/0,
+        /*tma_metadata=*/se::gpu::TmaMetadata()));
+    thunk_sequence.push_back(std::make_unique<KernelThunk>(
+        ThunkInfoWithId(4),
+        /*kernel_name=*/"test_kernel_3",
+        /*kernel_arguments=*/emitters::KernelArguments({}),
+        /*launch_dimensions=*/LaunchDimensions(),
+        /*cluster_dim=*/std::nullopt,
+        /*shmem_bytes=*/0,
+        /*tma_metadata=*/se::gpu::TmaMetadata()));
+    thunk_sequence.push_back(std::make_unique<KernelThunk>(
+        ThunkInfoWithId(5),
+        /*kernel_name=*/"test_kernel_4",
+        /*kernel_arguments=*/emitters::KernelArguments({}),
+        /*launch_dimensions=*/LaunchDimensions(),
+        /*cluster_dim=*/std::nullopt,
+        /*shmem_bytes=*/0,
+        /*tma_metadata=*/se::gpu::TmaMetadata()));
+
+    GpuExecutable::Params params;
+    params.executable = std::make_unique<SequentialThunk>(
+        ThunkInfoWithId(20), std::move(thunk_sequence));
+    params.debug_options = debug_options;
+
+    params.module_name = "test_module";
+    return GpuExecutable::Create(std::move(params));
+  };
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<GpuExecutable> executable,
+                          create_executable());
+
+  // We expect our 5 kernel launches got wrapped in a command buffer thunk.
+  // If this assertion fails, you might need to either adjust the thunk graph or
+  // the debug options such that we do some kind of thunk graph transformation
+  // that we can test for.
+  ASSERT_THAT(executable->GetThunk().thunks(), SizeIs(1));
+
+  // The proto should be a straight dump of the thunk graph, without any
+  // transformation.
+  TF_ASSERT_OK_AND_ASSIGN(GpuExecutableProto proto, executable->ToProto());
+  ASSERT_TRUE(proto.thunk().has_sequential_thunk());
+  EXPECT_THAT(proto.thunk().sequential_thunk().thunks(), SizeIs(5));
+}
+
 }  // namespace
 }  // namespace xla::gpu
