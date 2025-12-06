@@ -367,6 +367,7 @@ cc_library(
         ":rpc_helper",
         "//xla:debug_options_flags",
         "//xla/pjrt:host_callback",
+        "//xla/pjrt:pjrt_compiler",
         "//xla/python/ifrt",
         "//xla/python/ifrt:serdes",
         "//xla/python/ifrt:user_context_status_util",
