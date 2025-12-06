@@ -91,12 +91,15 @@ class ExtractionVisitor : public ConstDfsHloVisitorWithDefault {
     return ReplaceWithParameter(parameter);
   }
 
+  bool ShouldVisitOperands(const HloInstruction* hlo) override {
+    return !IsAtBoundary(hlo);
+  }
+
   absl::Status DefaultAction(const HloInstruction* hlo) override {
     // Replace the following two types of instructions with parameters/constants
     // (1) the instructions at the boundary with (2) the instructions that are
     // not selected by the hlo_selector.
-    if ((boundary_ != nullptr && boundary_->contains(hlo) > 0) ||
-        (extract_selector_ != nullptr && !extract_selector_(hlo))) {
+    if (IsAtBoundary(hlo)) {
       if (replace_type_selector_ != nullptr) {
         switch (replace_type_selector_(hlo)) {
           case ReplaceType::kReplaceConst:
@@ -175,6 +178,11 @@ class ExtractionVisitor : public ConstDfsHloVisitorWithDefault {
   std::unique_ptr<HloModule> ConsumeModule() { return std::move(module_); }
 
  private:
+  bool IsAtBoundary(const HloInstruction* hlo) {
+    return (boundary_ != nullptr && boundary_->contains(hlo)) ||
+           (extract_selector_ != nullptr && !extract_selector_(hlo));
+  }
+
   // Replace the `hlo` with Constant of the same shape.
   absl::Status ReplaceWithConstant(const HloInstruction* hlo) {
     absl::StatusOr<Literal> literal_status = MakeFakeLiteral(hlo->shape());
