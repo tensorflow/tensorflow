@@ -46,6 +46,11 @@ def parse_args():
       required=True,
       help="ManyLinux compliance tag for ppc64le",
   )
+  parser.add_argument(
+      "--riscv64-compliance-tag",
+      required=True,
+      help="ManyLinux compliance tag for riscv64",
+  )
   return parser.parse_args()
 
 
@@ -106,7 +111,7 @@ def verify_manylinux_compliance(
 
 def test_manylinux_compliance(args):
   machine_type = platform.uname().machine
-  supported_machine_types = ["x86_64", "aarch64", "ppc64le"]
+  supported_machine_types = ["x86_64", "aarch64", "ppc64le", "riscv64"]
   if machine_type not in supported_machine_types:
     raise RuntimeError(
         "Unsupported machine type {machine_type}. The supported are:"
@@ -118,8 +123,10 @@ def test_manylinux_compliance(args):
     compliance_tag = args.x86_64_compliance_tag
   elif machine_type == "aarch64":
     compliance_tag = args.aarch64_compliance_tag
-  else:
+  elif machine_type == "ppc64le":
     compliance_tag = args.ppc64le_compliance_tag
+  else:  # machine_type == "riscv64"
+    compliance_tag = args.riscv64_compliance_tag
   auditwheel_output = get_auditwheel_output(args.wheel_path)
   verify_manylinux_compliance(
       auditwheel_output,
