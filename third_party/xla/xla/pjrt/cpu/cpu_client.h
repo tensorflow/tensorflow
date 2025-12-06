@@ -138,6 +138,11 @@ class PjRtCpuClient final : public CommonPjRtClient {
   absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> CompileAndLoad(
       mlir::ModuleOp module, CompileOptions options) override;
 
+  absl::StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
+      const XlaComputation& computation, CompileOptions options) override;
+  absl::StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
+      mlir::ModuleOp module, CompileOptions options) override;
+
   // TODO(b/403584258): PJRT wants to have just one simple Compile API. When the
   // CPU runtime stops supporting the legacy runtime we will unify our compile
   // paths better and this will be redundant.
