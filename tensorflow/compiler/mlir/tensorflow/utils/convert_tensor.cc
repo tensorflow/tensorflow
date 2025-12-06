@@ -43,6 +43,7 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "third_party/protobuf/repeated_ptr_field.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_attributes.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_type.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dynamic_shape_utils.h"
@@ -56,6 +57,7 @@ limitations under the License.
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/bfloat16.h"
 #include "tensorflow/core/platform/tstring.h"
+#include "tensorflow/core/protobuf/struct.pb.h"
 #include "tsl/platform/ml_dtypes.h"
 #include "tsl/platform/statusor.h"
 
