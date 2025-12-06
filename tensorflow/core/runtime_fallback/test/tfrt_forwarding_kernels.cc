@@ -28,7 +28,7 @@ namespace tensorflow {
 static void TFDConstantTensor5D(tfrt::Argument<int32_t> value,
                                 tfrt::Result<Tensor> tensor) {
   Tensor out(DT_INT32, TensorShape({1, 1, 1, 1, 1}));
-  out.flat<int32>()(0) = value.get();
+  out.flat<int32_t>()(0) = value.get();
   tensor.Emplace(out);
 }
 
