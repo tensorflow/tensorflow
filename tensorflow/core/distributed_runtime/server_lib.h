@@ -64,7 +64,7 @@ class ServerInterface {
 
   // Returns a target string that can be used to connect to this server using
   // `tensorflow::NewSession()`.
-  virtual const string target() const = 0;
+  virtual const std::string target() const = 0;
 
   virtual WorkerEnv* worker_env() = 0;
   virtual MasterEnv* master_env() = 0;
@@ -77,7 +77,7 @@ class ServerInterface {
   // Add master eager context to local eager service in order to handle enqueue
   // requests from remote workers.
   virtual absl::Status AddMasterEagerContextToEagerService(
-      const tensorflow::uint64 context_id, EagerContext* context) = 0;
+      const uint64_t context_id, EagerContext* context) = 0;
   // Set coordination service agent instance to coordination service RPC handler
   virtual absl::Status SetCoordinationServiceAgentInstance(
       tsl::CoordinationServiceAgent* agent) = 0;
@@ -113,7 +113,7 @@ class ServerFactory {
   // be registered by calling this method.
   //
   // The `server_type` must be unique to the server factory.
-  static void Register(const string& server_type, ServerFactory* factory);
+  static void Register(const std::string& server_type, ServerFactory* factory);
 
   // Looks up a factory that can create a server based on the given
   // `server_def`, and stores it in `*out_factory`. Returns OK on

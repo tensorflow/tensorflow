@@ -42,7 +42,7 @@ static const int kWorkers = 60;
 static thread::ThreadPool* worker_threads;
 
 void MakeGRPCCluster(const SessionOptions& options, int n,
-                     std::vector<string>* workers,
+                     std::vector<std::string>* workers,
                      std::vector<DeviceAttributes>* devices) {
   CHECK_GE(n, 1);
 
@@ -100,7 +100,7 @@ void MakeGRPCCluster(const SessionOptions& options, int n,
 
 struct Cluster {
   SessionOptions options;
-  std::vector<string> workers;
+  std::vector<std::string> workers;
   std::vector<DeviceAttributes> devices;  // One per process
 
   Cluster() {
@@ -153,7 +153,7 @@ GraphDef CreateGraphDef(int num_stages, int width, int tensor_size,
   return def;
 }
 
-string DebugString(const Tensor& x, const Tensor& y, int tensor_size) {
+std::string DebugString(const Tensor& x, const Tensor& y, int tensor_size) {
   CHECK_EQ(x.NumElements(), tensor_size);
   CHECK_EQ(y.NumElements(), tensor_size);
   auto x_flat = x.flat<float>();
