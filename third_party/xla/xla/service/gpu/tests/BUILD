@@ -19,6 +19,7 @@ load("//xla/tsl:tsl.bzl", "if_google", "if_oss")
 load("//xla/tsl:tsl.default.bzl", "filegroup")
 load(
     "//xla/tsl/platform:build_config_root.bzl",
+    "tf_exec_properties",
     "tf_gpu_tests_tags",
 )
 load(
@@ -669,7 +670,7 @@ lit_test_suite_for_gpus(
         ],
     ),
     cfg = "//xla:lit.cfg.py",
-    default_tags = ["gpu"],  # Needs to run in a build with a gpu configured.
+    default_tags = tf_gpu_tests_tags(),
     disabled_on_gpus = {
         "v100": [
             "kernel_reuse.hlo",
@@ -687,6 +688,7 @@ lit_test_suite_for_gpus(
             "reduction_vectorization_sm_all.hlo",
         ],
     },
+    exec_properties = tf_exec_properties({"tags": tf_gpu_tests_tags()}),
     gpus = [
         "a100_pcie_80",
         "a6000",

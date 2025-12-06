@@ -1,4 +1,5 @@
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library")
+load("//xla/tsl:tsl.bzl", "if_cuda_or_rocm")
 load("//xla/tsl:tsl.default.bzl", "get_compatible_with_portable")
 load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 
@@ -26,6 +27,60 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:LLVMDialect",
         "@llvm-project//mlir:Support",
+    ],
+)
+
+cc_library(
+    name = "gpu_conversion_patterns",
+    hdrs = ["gpu_conversion_patterns.h"],
+    deps = [
+        "//xla/codegen:device_spec",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:LLVMCommonConversion",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TransformUtils",
+    ] + if_cuda_or_rocm(
+        [":gpu_conversion_patterns_impl"],
+        [":gpu_conversion_patterns_stub"],
+    ),
+)
+
+cc_library(
+    name = "gpu_conversion_patterns_stub",
+    srcs = [
+        "gpu_conversion_patterns.h",
+        "gpu_conversion_patterns_stub.cc",
+    ],
+    deps = [
+        "//xla/codegen:device_spec",
+        "//xla/tsl/platform:logging",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:LLVMCommonConversion",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TransformUtils",
+    ],
+)
+
+cc_library(
+    name = "gpu_conversion_patterns_impl",
+    srcs = [
+        "gpu_conversion_patterns.cc",
+        "gpu_conversion_patterns.h",
+    ],
+    tags = ["manual"],
+    deps = [
+        "//xla/codegen:device_spec",
+        "//xla/stream_executor:device_description",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:AMDGPUUtils",
+        "@llvm-project//mlir:GPUToLLVMSPVTransforms",
+        "@llvm-project//mlir:GPUToNVVMTransforms",
+        "@llvm-project//mlir:GPUToROCDLTransforms",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:LLVMCommonConversion",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TransformUtils",
     ],
 )
 
@@ -62,6 +117,7 @@ cc_library(
     deps = [
         ":atomic_rmw_utils",
         ":convert_pure_call_ops_pass",
+        ":gpu_conversion_patterns",
         ":passes_inc_gen",
         ":simplify_affine_pass",
         ":simplify_arith_pass",
@@ -100,7 +156,6 @@ cc_library(
         "@com_google_absl//absl/types:span",
         "@com_google_protobuf//:protobuf",
         "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:AMDGPUUtils",
         "@llvm-project//mlir:AffineToStandard",
         "@llvm-project//mlir:ArithDialect",
         "@llvm-project//mlir:ArithToLLVM",
@@ -113,9 +168,6 @@ cc_library(
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:FuncToLLVM",
         "@llvm-project//mlir:GPUDialect",
-        "@llvm-project//mlir:GPUToLLVMSPVTransforms",
-        "@llvm-project//mlir:GPUToNVVMTransforms",
-        "@llvm-project//mlir:GPUToROCDLTransforms",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:LLVMCommonConversion",
         "@llvm-project//mlir:LLVMDialect",

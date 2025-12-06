@@ -1,5 +1,6 @@
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("//xla:xla.default.bzl", "xla_cc_test")
+load("//xla/tests:build_defs.bzl", "xla_test")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -129,9 +130,10 @@ cc_library(
     ],
 )
 
-xla_cc_test(
+xla_test(
     name = "emitter_base_test",
     srcs = ["emitter_base_test.cc"],
+    backends = ["gpu"],
     deps = [
         ":emitter_base",
         "//xla/codegen/emitters:computation_partitioner",

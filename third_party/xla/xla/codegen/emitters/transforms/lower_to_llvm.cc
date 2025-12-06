@@ -24,9 +24,6 @@ limitations under the License.
 #include "mlir/Conversion/ComplexToLLVM/ComplexToLLVM.h"
 #include "mlir/Conversion/ControlFlowToLLVM/ControlFlowToLLVM.h"
 #include "mlir/Conversion/FuncToLLVM/ConvertFuncToLLVM.h"
-#include "mlir/Conversion/GPUToLLVMSPV/GPUToLLVMSPVPass.h"
-#include "mlir/Conversion/GPUToNVVM/GPUToNVVMPass.h"
-#include "mlir/Conversion/GPUToROCDL/GPUToROCDLPass.h"
 #include "mlir/Conversion/LLVMCommon/ConversionTarget.h"
 #include "mlir/Conversion/LLVMCommon/TypeConverter.h"
 #include "mlir/Conversion/MathToLLVM/MathToLLVM.h"
@@ -34,7 +31,6 @@ limitations under the License.
 #include "mlir/Conversion/SCFToControlFlow/SCFToControlFlow.h"
 #include "mlir/Conversion/UBToLLVM/UBToLLVM.h"
 #include "mlir/Conversion/VectorToLLVM/ConvertVectorToLLVM.h"
-#include "mlir/Dialect/AMDGPU/Utils/Chipset.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Arith/Transforms/Passes.h"
 #include "mlir/Dialect/Complex/IR/Complex.h"
@@ -51,6 +47,7 @@ limitations under the License.
 #include "mlir/Transforms/DialectConversion.h"
 #include "google/protobuf/text_format.h"
 #include "xla/codegen/device_spec.h"
+#include "xla/codegen/emitters/transforms/gpu_conversion_patterns.h"
 #include "xla/codegen/emitters/transforms/passes.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_description.pb.h"
@@ -100,21 +97,7 @@ class LowerToLLVMPass : public impl::LowerToLLVMPassBase<LowerToLLVMPass> {
     mlir::arith::populateArithToLLVMConversionPatterns(type_converter,
                                                        patterns);
     if (device_spec_.IsGpu()) {
-      if (device_spec_.IsAmdGpu()) {
-        std::string chipset =
-            device_spec_.gpu().rocm_compute_capability().gfx_version();
-        llvm::FailureOr<mlir::amdgpu::Chipset> maybeChipset =
-            mlir::amdgpu::Chipset::parse(chipset);
-        if (failed(maybeChipset)) {
-          mlir::emitError(mlir::UnknownLoc::get(&getContext()),
-                          "Invalid chipset name: " + chipset);
-          return signalPassFailure();
-        }
-        mlir::populateGpuToROCDLConversionPatterns(
-            type_converter, patterns, mlir::gpu::amd::Runtime::Unknown,
-            *maybeChipset);
-        mlir::configureGpuToROCDLConversionLegality(target);
-      } else if (device_spec_.IsIntelGpu()) {
+      if (device_spec_.IsIntelGpu()) {
         // Add sub-group-size attribute to functions.
         int32_t sub_group_size = device_spec_.gpu().threads_per_warp();
         if (auto module_op = mlir::dyn_cast<mlir::ModuleOp>(getOperation())) {
@@ -126,11 +109,10 @@ class LowerToLLVMPass : public impl::LowerToLLVMPassBase<LowerToLLVMPass> {
             }
           });
         }
-        populateGpuToLLVMSPVConversionPatterns(type_converter, patterns);
-        populateGpuMemorySpaceAttributeConversions(type_converter);
-      } else {
-        mlir::populateGpuToNVVMConversionPatterns(type_converter, patterns);
-        mlir::configureGpuToNVVMConversionLegality(target);
+      }
+      if (mlir::failed(PopulateGpuDialectConversionPatterns(
+              device_spec_, type_converter, patterns, target, &getContext()))) {
+        return signalPassFailure();
       }
     }
     mlir::populateFuncToLLVMConversionPatterns(type_converter, patterns);
