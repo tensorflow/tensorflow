@@ -36,8 +36,8 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/service/compiler.h"
+#include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
@@ -94,7 +94,7 @@ absl::StatusOr<std::unique_ptr<AutotunerPass>> AutotunerPass::Create(
     stream_executor::StreamExecutor* stream_executor,
     tsl::thread::ThreadPool* thread_pool, InstructionFilterFn should_autotune,
     const Compiler::GpuTargetConfig* target_config,
-    se::DeviceMemoryAllocator* allocator, bool optimize_scratch_bytes,
+    se::DeviceAddressAllocator* allocator, bool optimize_scratch_bytes,
     MultiProcessKeyValueStore key_value_store) {
   std::unique_ptr<Profiler> profiler = nullptr;
   bool is_deviceless = stream_executor == nullptr;

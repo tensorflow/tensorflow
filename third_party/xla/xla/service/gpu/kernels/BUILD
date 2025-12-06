@@ -211,7 +211,7 @@ xla_test(
     deps = [
         ":cutlass_gemm_custom_kernel",
         "//xla:xla_data_proto_cc",
-        "//xla/stream_executor:device_memory",
+        "//xla/stream_executor:device_address",
         "//xla/stream_executor:kernel",
         "//xla/stream_executor:platform",
         "//xla/stream_executor:platform_manager",
@@ -239,8 +239,8 @@ xla_cc_binary(
         ":cutlass_gemm_custom_kernel",
         "//xla:xla_data_proto_cc",
         "//xla/service:gpu_plugin",
+        "//xla/stream_executor:device_address",
         "//xla/stream_executor:device_description",
-        "//xla/stream_executor:device_memory",
         "//xla/stream_executor:kernel",
         "//xla/stream_executor:kernel_args",
         "//xla/stream_executor:platform",
@@ -413,7 +413,7 @@ cc_library(
     visibility = [":friends"],
     deps = [
         ":custom_kernel",
-        "//xla/stream_executor:device_memory",
+        "//xla/stream_executor:device_address",
         "//xla/stream_executor:kernel",
         "//xla/stream_executor:kernel_args",
         "//xla/stream_executor:kernel_spec",
@@ -431,7 +431,7 @@ xla_test(
     deps = [
         ":custom_kernel",
         ":ptx_custom_kernel",
-        "//xla/stream_executor:device_memory",
+        "//xla/stream_executor:device_address",
         "//xla/stream_executor:kernel",
         "//xla/stream_executor:kernel_args",
         "//xla/stream_executor:launch_dim",

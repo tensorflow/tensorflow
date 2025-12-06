@@ -35,7 +35,7 @@ limitations under the License.
 #include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/gpu/gpu_conv_runner.pb.h"
 #include "xla/shape.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/lazy_op_runner.h"
 #include "xla/stream_executor/stream.h"
@@ -91,21 +91,21 @@ struct GpuConvConfig {
 struct GpuConvParams {
   const GpuConvConfig* config;  // Not owned
   struct FusionParams {
-    se::DeviceMemoryBase bias_buf;
-    se::DeviceMemoryBase side_input_buf;  // nullable
+    se::DeviceAddressBase bias_buf;
+    se::DeviceAddressBase side_input_buf;  // nullable
   };
 
-  se::DeviceMemoryBase input_buf;
-  se::DeviceMemoryBase filter_buf;
-  se::DeviceMemoryBase output_buf;
+  se::DeviceAddressBase input_buf;
+  se::DeviceAddressBase filter_buf;
+  se::DeviceAddressBase output_buf;
 
   // Buffers for operands of ops to be fused into the cuDNN
   // convolution Custom Call.
-  std::vector<se::DeviceMemoryBase> operand_bufs;
+  std::vector<se::DeviceAddressBase> operand_bufs;
 
   // Buffers for additional outputs of ops to be fused into the cuDNN
   // convolution Custom Call.
-  std::vector<se::DeviceMemoryBase> aux_bufs;
+  std::vector<se::DeviceAddressBase> aux_bufs;
 
   std::optional<FusionParams> fusion;
 };
@@ -222,10 +222,10 @@ struct RunConvOptions {
 // the same conv, you can provide an explicitly preallocated scratch buffer of
 // that size, if you like.
 absl::Status RunGpuConv(const GpuConvConfig& conv_config,
-                        absl::Span<const se::DeviceMemoryBase> operand_buffers,
-                        absl::Span<const se::DeviceMemoryBase> result_buffers,
-                        se::DeviceMemoryBase scratch_memory, se::Stream* stream,
-                        RunConvOptions = {});
+                        absl::Span<const se::DeviceAddressBase> operand_buffers,
+                        absl::Span<const se::DeviceAddressBase> result_buffers,
+                        se::DeviceAddressBase scratch_memory,
+                        se::Stream* stream, RunConvOptions = {});
 
 // Struct to describe properties of a convolution without being tied to specific
 // IR. Will be used to help build Convolution thunks from either XLA HLO or
@@ -260,8 +260,8 @@ absl::StatusOr<GpuConvConfig> GetGpuConvConfig(
 // Implementation details exposed for debugging and log analysis.
 absl::StatusOr<GpuConvParams> GetGpuConvParams(
     const GpuConvConfig& conv_config,
-    absl::Span<const se::DeviceMemoryBase> operand_buffers,
-    absl::Span<const se::DeviceMemoryBase> result_buffers);
+    absl::Span<const se::DeviceAddressBase> operand_buffers,
+    absl::Span<const se::DeviceAddressBase> result_buffers);
 
 inline se::dnn::DataType BiasTypeForInputType(se::dnn::DataType input_type) {
   switch (input_type) {

@@ -23,7 +23,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/service/gpu/kernels/custom_kernel.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/kernel_args.h"
 #include "xla/stream_executor/kernel_spec.h"
@@ -37,7 +37,7 @@ absl::StatusOr<std::unique_ptr<se::KernelArgsPackedArrayBase>>
 KernelArgsPacking(const se::Kernel& kernel, const se::KernelArgs& args) {
   auto* mem_args = se::Cast<se::KernelArgsDeviceAddressArray>(&args);
 
-  return se::PackKernelArgs<se::DeviceMemoryBase>(
+  return se::PackKernelArgs<se::DeviceAddressBase>(
       mem_args->device_memory_args(), mem_args->number_of_shared_bytes());
 }
 

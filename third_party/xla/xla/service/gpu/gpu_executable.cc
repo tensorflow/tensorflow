@@ -84,9 +84,9 @@ limitations under the License.
 #include "xla/status_macros.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
+#include "xla/stream_executor/device_address.h"
+#include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/stream_executor/device_memory.h"
-#include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/event_based_timer.h"
 #include "xla/stream_executor/module_spec.h"
 #include "xla/stream_executor/platform.h"
@@ -685,12 +685,12 @@ GpuExecutable::ResolveConstantGlobals(se::Stream* stream) {
   int submitted_mem_copies = 0;
 
   for (const ConstantInfo& info : constants_) {
-    absl::StatusOr<stream_executor::DeviceMemoryBase> global_status;
+    absl::StatusOr<stream_executor::DeviceAddressBase> global_status;
     if (static_cast<bool>(module_handle)) {
       global_status = executor->GetSymbol(info.symbol_name, module_handle);
     }
 
-    se::DeviceMemoryBase global;
+    se::DeviceAddressBase global;
     if (static_cast<bool>(module_handle) && global_status.ok()) {
       // The constant was defined in the PTX and has been allocated by the CUDA
       // driver.
@@ -739,17 +739,17 @@ GpuExecutable::ResolveConstantGlobals(se::Stream* stream) {
       .first->second.get();
 }
 
-absl::StatusOr<se::DeviceMemoryBase> GpuExecutable::BufferForAllocation(
+absl::StatusOr<se::DeviceAddressBase> GpuExecutable::BufferForAllocation(
     VariantArguments arguments,
     const GpuExecutable::BufferAllocToDeviceMemoryMap* globals,
     const BufferAllocation& allocation,
-    se::DeviceMemoryAllocator* const memory_allocator, int device_ordinal,
+    se::DeviceAddressAllocator* const memory_allocator, int device_ordinal,
     int64_t arg_idx) {
   if (allocation.is_thread_local()) {
-    return se::DeviceMemoryBase{};
+    return se::DeviceAddressBase{};
   } else if (allocation.is_entry_computation_parameter()) {
     int64_t param_no = allocation.parameter_number();
-    se::DeviceMemoryBase registered_buffer = [&] {
+    se::DeviceAddressBase registered_buffer = [&] {
       if (auto unowned_shapedbuffers =
               std::get_if<absl::Span<const ShapedBuffer* const>>(&arguments)) {
         return (*unowned_shapedbuffers)[param_no]->buffers().element(
@@ -772,17 +772,17 @@ absl::StatusOr<se::DeviceMemoryBase> GpuExecutable::BufferForAllocation(
   } else if (allocation.is_constant()) {
     auto it = globals->find(arg_idx);
     if (it == globals->end()) {
-      return se::DeviceMemoryBase();
+      return se::DeviceAddressBase();
     }
     return it->second;
   } else {
     // Allocate each allocation that might escape, or is the temp buffer.
     CHECK(allocation.maybe_live_out() || allocation.IsPreallocatedTempBuffer());
     const int64_t buffer_size = allocation.size();
-    se::DeviceMemoryBase buffer_address;
+    se::DeviceAddressBase buffer_address;
     if (buffer_size > 0) {
       TF_ASSIGN_OR_RETURN(
-          se::OwningDeviceMemory buffer,
+          se::ScopedDeviceAddress<uint8_t> buffer,
           memory_allocator->Allocate(device_ordinal, buffer_size,
                                      /*retry_on_failure=*/true,
                                      /*memory_space=*/allocation.color()));
@@ -793,7 +793,7 @@ absl::StatusOr<se::DeviceMemoryBase> GpuExecutable::BufferForAllocation(
 }
 
 static absl::Status CheckAlignment(const BufferAllocation& allocation,
-                                   se::DeviceMemoryBase buffer, int arg_idx) {
+                                   se::DeviceAddressBase buffer, int arg_idx) {
   const int64_t expected_alignment = [&] {
     if (allocation.is_entry_computation_parameter()) {
       return kEntryParameterAlignBytes;
@@ -816,14 +816,14 @@ static absl::Status CheckAlignment(const BufferAllocation& allocation,
 absl::StatusOr<BufferAllocations> GpuExecutable::GenerateBufferAllocations(
     VariantArguments arguments,
     const GpuExecutable::BufferAllocToDeviceMemoryMap* globals,
-    se::DeviceMemoryAllocator* const memory_allocator, int device_ordinal) {
+    se::DeviceAddressAllocator* const memory_allocator, int device_ordinal) {
   tsl::profiler::TraceMe hlo_module_activity(
       [&] { return std::string("Build buffer allocations"); },
       tsl::profiler::TraceMeLevel::kInfo);
 
   absl::Span<const BufferAllocation* const> allocations = GetAllocations();
   const int64_t num_buffers = allocations.size();
-  std::vector<se::DeviceMemoryBase> buffers;
+  std::vector<se::DeviceAddressBase> buffers;
   buffers.reserve(num_buffers);
   for (int64_t i = 0; i < num_buffers; ++i) {
     const BufferAllocation& allocation = *allocations[i];
@@ -855,7 +855,7 @@ absl::StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStreamImpl(
     VariantArguments arguments) {
   XLA_SCOPED_LOGGING_TIMER(absl::StrCat(
       "GpuExecutable::ExecuteAsyncOnStreamImpl(", module_name_, ")"));
-  se::DeviceMemoryAllocator* const memory_allocator = run_options->allocator();
+  se::DeviceAddressAllocator* const memory_allocator = run_options->allocator();
   se::StreamExecutor* executor = run_options->stream()->parent();
 
   // GpuExecutable always bound to a single GpuContext during its execution, so
@@ -901,7 +901,7 @@ absl::StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStreamImpl(
   VLOG(3) << buffer_allocations.ToString();
   absl::Span<const BufferAllocation* const> allocations = GetAllocations();
 
-  std::set<se::DeviceMemoryBase> buffers_in_result;
+  std::set<se::DeviceAddressBase> buffers_in_result;
 
   const bool is_entire_tuple_contents_aliased = [&] {
     for (auto& p : result.MutableResult()->buffers().leaves()) {
@@ -924,7 +924,7 @@ absl::StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStreamImpl(
     const OutputInfo& output_info = output_info_.at(index);
     const BufferAllocation* allocation =
         allocations[output_info.allocation_index];
-    se::DeviceMemoryBase& result_buffer = p.second;
+    se::DeviceAddressBase& result_buffer = p.second;
 
     VLOG(4) << "Looking at: allocation " << output_info.allocation_index
             << " @ index: " << index.ToString();
@@ -952,13 +952,13 @@ absl::StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStreamImpl(
             output_info.allocation_index);
       }
       if (maybe_owning_memory && maybe_owning_memory->HasOwnership()) {
-        std::optional<tensorflow::se::OwningDeviceMemory> owning =
+        std::optional<tensorflow::se::ScopedDeviceAddress<uint8_t>> owning =
             maybe_owning_memory->Release();
         // If the caller passes the ownership of the device memory, reuse it
         // as the output buffer. It is up to the caller whether or not to
         // donate a buffer; the aliasing information describes which buffers
         // may alias, not buffers that must alias.
-        se::DeviceMemoryBase argument_buffer = owning->Release();
+        se::DeviceAddressBase argument_buffer = owning->Release();
         *maybe_owning_memory = argument_buffer;
         result_buffer = argument_buffer;
         // The caller is giving us the
@@ -980,7 +980,7 @@ absl::StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStreamImpl(
                    "buffer is not donated; allocating a fresh buffer";
         int64_t allocation_size = ShapeUtil::ByteSizeOf(
             ShapeUtil::GetSubshape(program_shape_.result(), index));
-        absl::StatusOr<se::OwningDeviceMemory> allocated_buffer =
+        absl::StatusOr<se::ScopedDeviceAddress<uint8_t>> allocated_buffer =
             memory_allocator->Allocate(device_ordinal, allocation_size,
                                        /*retry_on_failure=*/true,
                                        /*memory_space=*/allocation->color());
@@ -988,7 +988,7 @@ absl::StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStreamImpl(
           return VerboseAllocationError(allocated_buffer.status());
         }
         result_buffer = allocated_buffer->Release();
-        se::DeviceMemoryBase& aliased_buffer =
+        se::DeviceAddressBase& aliased_buffer =
             buffer_allocations.GetMutableDeviceAddress(
                 output_info.allocation_index);
         CHECK_EQ(aliased_buffer.size(), result_buffer.size());
@@ -1048,7 +1048,7 @@ absl::Status GpuExecutable::ExecuteThunks(
     // (no command buffer update cost).
     absl::MutexLock lock(module_handle_mutex_);
     if (module_allocations_.find(executor) == module_allocations_.end()) {
-      std::vector<se::DeviceMemoryBase> allocs_addr;
+      std::vector<se::DeviceAddressBase> allocs_addr;
       allocs_addr.reserve(buffer_allocations.size());
       for (int i = 0; i < buffer_allocations.size(); i++) {
         allocs_addr.push_back(buffer_allocations.GetDeviceAddress(i));
@@ -1067,7 +1067,7 @@ absl::Status GpuExecutable::ExecuteThunks(
     }
   }
 
-  se::DeviceMemoryAllocator* const memory_allocator = run_options->allocator();
+  se::DeviceAddressAllocator* const memory_allocator = run_options->allocator();
   // Force synchronous execution if the allocator requires it.
   const bool block_host_until_done =
       !memory_allocator->AllowsAsynchronousDeallocation();

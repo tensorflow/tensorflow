@@ -29,8 +29,8 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "xla/service/backend.h"
 #include "xla/service/shaped_buffer.h"
-#include "xla/stream_executor/device_memory.h"
-#include "xla/stream_executor/device_memory_allocator.h"
+#include "xla/stream_executor/device_address.h"
+#include "xla/stream_executor/device_address_allocator.h"
 #include "xla/types.h"
 #include "xla/xla_data.pb.h"
 
@@ -80,7 +80,7 @@ class AllocationTracker {
   // Data structure encapsulating single memory allocation on the device.
   struct Allocation {
     // The pointer to this allocation.
-    se::OwningDeviceMemory device_memory;
+    se::ScopedDeviceAddress<uint8_t> device_memory;
 
     // This is the number of times this memory allocation is referred to by
     // registered data handles.
@@ -103,13 +103,13 @@ class AllocationTracker {
 
   // Adds the given device address to the allocation tracker, or if it already
   // exists, then increment its reference count.
-  void AddAllocationOrIncrementRefCount(se::DeviceMemoryBase device_memory,
+  void AddAllocationOrIncrementRefCount(se::DeviceAddressBase device_memory,
                                         int device_ordinal)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   // Decrements the reference count of the given device memory. Then, if it is
   // zero, deallocate the memory.
-  absl::Status DecrementRefCount(se::DeviceMemoryBase device_memory,
+  absl::Status DecrementRefCount(se::DeviceAddressBase device_memory,
                                  int device_ordinal)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 

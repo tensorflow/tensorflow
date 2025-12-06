@@ -20,7 +20,7 @@ limitations under the License.
 #include "xla/error_spec.h"
 #include "xla/ffi/ffi.h"
 #include "xla/ffi/ffi_api.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/tsl/platform/test.h"
@@ -145,8 +145,8 @@ TEST_F(DynamicSliceFusionTest, GemmSlice) {
 
 static absl::Status Memcpy(se::Stream* stream, ffi::AnyBuffer src,
                            ffi::Result<ffi::AnyBuffer> dst) {
-  se::DeviceMemoryBase dst_mem = dst->device_memory();
-  se::DeviceMemoryBase src_mem = src.device_memory();
+  se::DeviceAddressBase dst_mem = dst->device_memory();
+  se::DeviceAddressBase src_mem = src.device_memory();
   return stream->MemcpyD2D(&dst_mem, src_mem, src_mem.size());
 }
 

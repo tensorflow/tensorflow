@@ -45,7 +45,7 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_tree.h"
 #include "xla/shape_util.h"
-#include "xla/stream_executor/device_memory_allocator.h"
+#include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/kernel_stats.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
@@ -62,10 +62,12 @@ namespace xla {
 // 2) Donated by the caller but returned on error.
 // 3) Donated by the caller and freed on error.
 //
-// Case (1) buffers are stored as MaybeOwningDeviceMemory(DeviceMemoryBase).
-// Case (2) buffers are stored as MaybeOwningDeviceMemory(OwningDeviceMemory),
+// Case (1) buffers are stored as
+// MaybeOwningDeviceMemory(DeviceAddressBase). Case (2) buffers are
+// stored as MaybeOwningDeviceMemory(ScopedDeviceAddress<uint8_t>),
 //   with their indices present in unowned_indices_.
-// Case (3) buffers are stored as MaybeOwningDeviceMemory(OwningDeviceMemory),
+// Case (3) buffers are stored as
+// MaybeOwningDeviceMemory(ScopedDeviceAddress<uint8_t>),
 //   with their indices absent from unowned_indices_.
 class ExecutionInput {
  public:
@@ -174,16 +176,16 @@ class ExecutionOutput {
   explicit ExecutionOutput(ScopedShapedBuffer result)
       : result_(std::move(result)) {}
   ExecutionOutput(ScopedShapedBuffer result,
-                  std::vector<se::OwningDeviceMemory> to_be_released)
+                  std::vector<se::ScopedDeviceAddress<uint8_t>> to_be_released)
       : result_(std::move(result)),
         to_be_released_(std::move(to_be_released)) {}
   // TODO(b/170310047): remove this overload.
   ExecutionOutput(Shape on_host_shape, Shape on_device_shape,
-                  se::DeviceMemoryAllocator* allocator, int device_ordinal,
+                  se::DeviceAddressAllocator* allocator, int device_ordinal,
                   int physical_device_ordinal = -1)
       : result_(std::move(on_device_shape), allocator, device_ordinal,
                 physical_device_ordinal) {}
-  ExecutionOutput(Shape on_device_shape, se::DeviceMemoryAllocator* allocator,
+  ExecutionOutput(Shape on_device_shape, se::DeviceAddressAllocator* allocator,
                   int device_ordinal, int physical_device_ordinal = -1)
       : result_(std::move(on_device_shape), allocator, device_ordinal,
                 physical_device_ordinal) {}
@@ -195,7 +197,7 @@ class ExecutionOutput {
     // indices, clear them off the ScopedShapedBuffer to prevent them to be
     // released.
     for (auto& index : aliased_indices_) {
-      result_.set_buffer(se::OwningDeviceMemory(), index);
+      result_.set_buffer(se::ScopedDeviceAddress<uint8_t>(), index);
     }
   }
 
@@ -203,7 +205,7 @@ class ExecutionOutput {
     aliased_indices_.push_back(std::move(index));
   }
 
-  void AddToBeReleased(se::OwningDeviceMemory mem) {
+  void AddToBeReleased(se::ScopedDeviceAddress<uint8_t> mem) {
     to_be_released_.push_back(std::move(mem));
   }
 
@@ -223,11 +225,11 @@ class ExecutionOutput {
     return std::move(result_);
   }
 
-  const std::vector<se::OwningDeviceMemory>& ToBeReleased() const {
+  const std::vector<se::ScopedDeviceAddress<uint8_t>>& ToBeReleased() const {
     return to_be_released_;
   }
 
-  std::vector<se::OwningDeviceMemory> ConsumeToBeReleased() {
+  std::vector<se::ScopedDeviceAddress<uint8_t>> ConsumeToBeReleased() {
     return std::move(to_be_released_);
   }
 
@@ -242,7 +244,7 @@ class ExecutionOutput {
 
   // Leftover buffers for the caller to release. Elements in this list are
   // donated input memory buffers that are not reused by XLA as outputs.
-  std::vector<se::OwningDeviceMemory> to_be_released_;
+  std::vector<se::ScopedDeviceAddress<uint8_t>> to_be_released_;
 
   // These are the indices in result_ which have been aliased from the caller.
   // If the execution operation fails, the caller should maintain ownership of
@@ -252,7 +254,7 @@ class ExecutionOutput {
 
   // A shape table is a continuous region in memory that is used to hold the
   // runtime dimension sizes of dynamic output shapes.
-  se::OwningDeviceMemory output_shape_table_;
+  se::ScopedDeviceAddress<uint8_t> output_shape_table_;
 };
 
 // A given platform's compiler will produce an Executable -- this is a uniform
@@ -373,7 +375,7 @@ class Executable {
   }
 
   // The shape (including layout) that results from this execution. This is the
-  // shape of the DeviceMemoryBase result value in ExecuteOnStream above.
+  // shape of the DeviceAddressBase result value in ExecuteOnStream above.
   virtual Shape result_shape() const {
     CHECK(hlo_module_ != nullptr);
     return hlo_module_->config().entry_computation_layout().result_shape();

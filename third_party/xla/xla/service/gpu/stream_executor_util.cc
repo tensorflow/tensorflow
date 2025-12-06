@@ -51,7 +51,7 @@ limitations under the License.
 #include "xla/service/hlo_module_config.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/data_type.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/gpu/gpu_kernel_registry.h"
 #include "xla/stream_executor/gpu/repeat_buffer_kernel.h"
@@ -447,7 +447,7 @@ typename std::enable_if<std::is_floating_point<T>::value,
 
 template <typename T>
 static void InitializeTypedBuffer(se::Stream* stream,
-                                  se::DeviceMemoryBase buffer,
+                                  se::DeviceAddressBase buffer,
                                   int64_t* rng_state) {
   // Accesses to static variables are not locked, since the caller is already
   // in a critical section.
@@ -501,7 +501,7 @@ static void InitializeTypedBuffer(se::Stream* stream,
   // Issue a second host->device copy to transfer the rest of host_buffer
   int64_t second_size = std::min<int64_t>(host_index, elements_to_fill);
   CHECK_LE(first_size + second_size, host_buffer_size);
-  se::DeviceMemoryBase mem =
+  se::DeviceAddressBase mem =
       buffer.GetByteSlice(first_size * sizeof(T), second_size * sizeof(T));
   CHECK_OK(stream->Memcpy(&mem, host_buffer->data(), mem.size()));
   elements_to_fill -= second_size;
@@ -532,7 +532,7 @@ static void InitializeTypedBuffer(se::Stream* stream,
 }
 
 void InitializeBuffer(se::Stream* stream, PrimitiveType buffer_type,
-                      int64_t* rng_state, se::DeviceMemoryBase buffer) {
+                      int64_t* rng_state, se::DeviceAddressBase buffer) {
   return primitive_util::PrimitiveTypeSwitch<void>(
       [&](auto primitive_type_constant) -> void {
         if constexpr (primitive_util::IsFloatingPointType(

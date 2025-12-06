@@ -35,7 +35,7 @@ limitations under the License.
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_runner_interface.h"
 #include "xla/service/platform_util.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/semantic_version.h"
 #include "xla/stream_executor/stream.h"
@@ -252,8 +252,8 @@ static absl::Status Memcpy(se::Stream* stream, MemcpyState* state,
                            ffi::AnyBuffer src,
                            ffi::Result<ffi::AnyBuffer> dst) {
   EXPECT_NE(state, nullptr);
-  se::DeviceMemoryBase dst_mem = dst->device_memory();
-  se::DeviceMemoryBase src_mem = src.device_memory();
+  se::DeviceAddressBase dst_mem = dst->device_memory();
+  se::DeviceAddressBase src_mem = src.device_memory();
   return stream->MemcpyD2D(&dst_mem, src_mem, src_mem.size());
 }
 

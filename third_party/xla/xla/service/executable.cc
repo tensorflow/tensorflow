@@ -33,8 +33,8 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
-#include "xla/stream_executor/device_memory.h"
-#include "xla/stream_executor/device_memory_allocator.h"
+#include "xla/stream_executor/device_address.h"
+#include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
@@ -90,7 +90,7 @@ static ExecutionInput MakeMaybeOwningDeviceMemoryTree(
     const ShapedBuffer& shaped_buffer) {
   ExecutionInput result(shaped_buffer.on_device_shape());
   shaped_buffer.buffers().ForEachElement(
-      [&](const ShapeIndex& index, const se::DeviceMemoryBase& mem) {
+      [&](const ShapeIndex& index, const se::DeviceAddressBase& mem) {
         result.SetBuffer(index, MaybeOwningDeviceMemory(mem));
       });
   return result;
@@ -253,7 +253,7 @@ void Executable::MarkToBeReleasedArguments(absl::Span<ExecutionInput> arguments,
                                            ExecutionOutput& result) {
   for (ExecutionInput& argument : arguments) {
     for (auto& index_buffer : *argument.MutableBuffers()) {
-      if (std::optional<se::OwningDeviceMemory> maybe_owning_buffer =
+      if (std::optional<se::ScopedDeviceAddress<uint8_t>> maybe_owning_buffer =
               index_buffer.second.Release()) {
         result.AddToBeReleased(std::move(*maybe_owning_buffer));
       }

@@ -44,8 +44,8 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/blas.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/engine_options.h"
 #include "xla/stream_executor/gpu/gpu_blas_lt.h"
 #include "xla/stream_executor/stream.h"
@@ -478,10 +478,10 @@ bool IsTf32Allowed(PrecisionConfig::Algorithm algorithm,
 }
 
 absl::StatusOr<GemmConfig::DescriptorsTuple> GemmConfig::GetMatrixDescriptors(
-    se::DeviceMemoryBase lhs_buf, se::DeviceMemoryBase rhs_buf,
-    se::DeviceMemoryBase out_buf) const {
+    se::DeviceAddressBase lhs_buf, se::DeviceAddressBase rhs_buf,
+    se::DeviceAddressBase out_buf) const {
   auto create_matrix_desc = [](const se::gpu::MatrixLayout& layout,
-                               se::DeviceMemoryBase data)
+                               se::DeviceAddressBase data)
       -> absl::StatusOr<se::gpu::MatrixDescriptor> {
     TF_ASSIGN_OR_RETURN(se::blas::DataType type,
                         se::gpu::AsBlasDataType(layout.dtype));
@@ -528,7 +528,7 @@ template <typename Scale, typename Input, typename Output>
 absl::Status DoGemmWithAlgorithm(const se::gpu::MatrixDescriptor& lhs,
                                  const se::gpu::MatrixDescriptor& rhs,
                                  const se::gpu::OutputMatrixDescriptor& output,
-                                 se::DeviceMemoryBase workspace, Scale alpha,
+                                 se::DeviceAddressBase workspace, Scale alpha,
                                  Scale beta, se::Stream* stream,
                                  PrecisionConfig::Algorithm precision_algorithm,
                                  se::blas::AlgorithmType algorithm,
@@ -543,7 +543,7 @@ absl::Status DoGemmWithAlgorithm(const se::gpu::MatrixDescriptor& lhs,
       se::blas::ComputationType computation_type,
       se::gpu::GetBlasComputationType(precision_algorithm, lhs_type,
                                       output_type, compute_precision));
-  se::DeviceMemory<Output> output_data(output.data);
+  se::DeviceAddress<Output> output_data(output.data);
 
   // Set a workspace for all Blas operations launched below.
   auto* blas = stream->parent()->AsBlas();
@@ -573,7 +573,7 @@ template <typename Scale, typename Input, typename Output>
 absl::Status DoGemm(const se::gpu::MatrixDescriptor& lhs,
                     const se::gpu::MatrixDescriptor& rhs,
                     const se::gpu::OutputMatrixDescriptor& output,
-                    se::DeviceMemoryBase workspace, Scale alpha, Scale beta,
+                    se::DeviceAddressBase workspace, Scale alpha, Scale beta,
                     se::Stream* stream,
                     PrecisionConfig::Algorithm precision_algorithm,
                     std::optional<se::blas::AlgorithmType> algorithm,
@@ -582,7 +582,7 @@ absl::Status DoGemm(const se::gpu::MatrixDescriptor& lhs,
                     se::blas::ProfileResult* profile_result,
                     se::blas::CallContext context) {
   CHECK(output.transpose == se::blas::Transpose::kNoTranspose);
-  se::DeviceMemory<Output> output_data(output.data);
+  se::DeviceAddress<Output> output_data(output.data);
   auto* blas = stream->parent()->AsBlas();
   if (blas == nullptr) {
     return absl::InternalError("No Blas support for stream");
@@ -615,10 +615,10 @@ absl::Status DoGemm(const se::gpu::MatrixDescriptor& lhs,
 
 }  // namespace
 
-absl::Status RunGemm(const GemmConfig& config, se::DeviceMemoryBase lhs_buffer,
-                     se::DeviceMemoryBase rhs_buffer,
-                     se::DeviceMemoryBase output_buffer,
-                     se::DeviceMemoryBase workspace_buffer,
+absl::Status RunGemm(const GemmConfig& config, se::DeviceAddressBase lhs_buffer,
+                     se::DeviceAddressBase rhs_buffer,
+                     se::DeviceAddressBase output_buffer,
+                     se::DeviceAddressBase workspace_buffer,
                      bool deterministic_ops, se::Stream* stream,
                      std::optional<se::blas::AlgorithmType> algorithm,
                      se::blas::ProfileResult* profile_result) {
