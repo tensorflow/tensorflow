@@ -1,22 +1,23 @@
 // RUN: mlir-hlo-opt %s -mhlo-sink-constants-to-control-flow | FileCheck %s
 
-// Tests sinking constants to a while loop.
+// Tests that constants are not sunk to while loops, HLO lowerinh converts these
+// to input parameters which results in faster execution.
 
-// CHECK-LABEL: func @sink_const_to_while
-func.func @sink_const_to_while(%arg0: tensor<i64>) -> tensor<i64> {
+// CHECK-LABEL: func @skip_sink_const_to_while
+func.func @skip_sink_const_to_while(%arg0: tensor<i64>) -> tensor<i64> {
+  // CHECK: %[[C0:.+]] = mhlo.constant dense<1> : tensor<i64>
+  // CHECK-DAG: %[[C1:.+]] = mhlo.constant dense<2> : tensor<i64>
   // CHECK-NEXT: mhlo.while
   // CHECK-SAME: (%[[ITER_ARG:.*]] = %[[ARG1A:.+]]
   %c0 = mhlo.constant dense<1> : tensor<i64>
   %c1 = mhlo.constant dense<2> : tensor<i64>
   %0 = "mhlo.while"(%arg0) ({
   ^bb0(%arg1: tensor<i64>):
-    // CHECK: %[[C0:.+]] = mhlo.constant dense<1> : tensor<i64>
     // CHECK: mhlo.compare LT, %[[C0]], %[[ITER_ARG]]
     %1 = "mhlo.compare"(%c0, %arg1) {comparison_direction = #mhlo<comparison_direction LT>} : (tensor<i64>, tensor<i64>) -> tensor<i1>
     "mhlo.return"(%1) : (tensor<i1>) -> ()
   },  {
   ^bb0(%arg1: tensor<i64>):
-    // CHECK-DAG: %[[C1:.+]] = mhlo.constant dense<2> : tensor<i64>
     // CHECK-DAG: %[[ADD0:.+]] = mhlo.add %[[ITER_ARG]], %[[ITER_ARG]]
     %2 = mhlo.add %arg1, %arg1 : tensor<i64>
     // CHECK: %[[ADD1:.+]] = mhlo.add %[[C1]], %[[ADD0]]

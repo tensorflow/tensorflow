@@ -189,14 +189,14 @@ func.func @main(
     %arg1: tensor<32x96xf32> {sdy.sharding = #sdy.sharding<@mesh, [{}, {}]>})
     -> tensor<32x96xf32> {
   // CHECK-NEXT: %[[C0:.*]] = sdy.constant dense<0>
+  // CHECK-NEXT: %[[C32:.*]] = sdy.constant dense<32>
+  // CHECK-DAG:  %[[C1:.*]] = sdy.constant dense<1>
   // CHECK-NEXT: %[[SC:.*]] = sdy.sharding_constraint %arg1 <@mesh, [{?}, {?}]>
   // CHECK-NEXT: %[[WHILE:.*]]:2 = stablehlo.while(%iterArg = %arg0, %iterArg_0 = %[[C0]])
   // CHECK-NEXT:   cond {
-  // CHECK-NEXT:   %[[C32:.*]] = sdy.constant dense<32>
   // CHECK-NEXT:   %[[COND:.*]] = stablehlo.compare LT, %iterArg_0, %[[C32]]
   // CHECK-NEXT:   stablehlo.return %[[COND]]
   // CHECK-NEXT: } do {
-  // CHECK-DAG:    %[[C1:.*]] = sdy.constant dense<1>
   // CHECK-DAG:    %[[ADD_0:.*]] = stablehlo.add %iterArg_0, %[[C1]]
   // CHECK-DAG:    %[[ADD_1:.*]] = stablehlo.add %iterArg, %[[SC]]
   // CHECK-NEXT:   stablehlo.return %[[ADD_1]], %[[ADD_0]]

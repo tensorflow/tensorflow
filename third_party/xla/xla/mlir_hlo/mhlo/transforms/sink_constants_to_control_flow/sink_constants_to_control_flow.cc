@@ -48,6 +48,9 @@ class SinkConstantsToControlFlowPass
           SinkConstantsToControlFlowPass> {
   void runOnOperation() override {
     getOperation().walk([](Operation* op) {
+      // Skip sink to WhileOp since HLO lowering converts captured constants
+      // to input parameters instead which results in faster execution.
+      if (llvm::isa<mhlo::WhileOp>(op)) return;
       for (Region& region : op->getRegions()) sinkToRegion(&region);
     });
   }
