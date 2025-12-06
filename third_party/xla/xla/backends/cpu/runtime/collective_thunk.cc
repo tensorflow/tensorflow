@@ -52,7 +52,7 @@ limitations under the License.
 #include "xla/service/hlo.pb.h"
 #include "xla/shape.h"
 #include "xla/status_macros.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
@@ -136,14 +136,14 @@ CollectiveThunk::GetOpDeviceMemory(const ExecuteParams& params) {
   size_t num_dsts = destination_buffers().size();
   DCHECK_EQ(num_srcs, num_dsts) << "Number of src and dst buffers must match";
 
-  absl::InlinedVector<se::DeviceMemoryBase, 4> source_data(num_srcs);
+  absl::InlinedVector<se::DeviceAddressBase, 4> source_data(num_srcs);
   for (int i = 0; i < num_srcs; ++i) {
     TF_ASSIGN_OR_RETURN(
         source_data[i],
         params.buffer_allocations->GetDeviceAddress(source_buffer(i)));
   }
 
-  absl::InlinedVector<se::DeviceMemoryBase, 4> destination_data(num_dsts);
+  absl::InlinedVector<se::DeviceAddressBase, 4> destination_data(num_dsts);
   for (int i = 0; i < num_dsts; ++i) {
     TF_ASSIGN_OR_RETURN(
         destination_data[i],

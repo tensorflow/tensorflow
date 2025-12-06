@@ -29,7 +29,7 @@ limitations under the License.
 #include "xla/backends/cpu/runtime/kernel_c_api.h"
 #include "xla/backends/cpu/runtime/work_queue.h"
 #include "xla/runtime/work_group.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/util.h"
@@ -52,7 +52,7 @@ static tsl::AsyncValueRef<LaunchEvent> OkLaunchEvent() {
 }
 
 static absl::InlinedVector<XLA_CPU_KernelArg, 8> ConvertBuffersToKernelArgs(
-    absl::Span<const Kernel::DeviceMemoryBase> buffers) {
+    absl::Span<const Kernel::DeviceAddressBase> buffers) {
   absl::InlinedVector<XLA_CPU_KernelArg, 8> args(buffers.size());
   for (size_t i = 0; i < buffers.size(); ++i) {
     args[i].data = buffers[i].opaque();
@@ -140,7 +140,7 @@ Kernel::Kernel(unsigned arity, XLA_CPU_Kernel* kernel)
       arity_(arity) {}
 
 absl::Status Kernel::Launch(const NumWorkGroups& num_workgroups,
-                            absl::Span<const DeviceMemoryBase> buffers) const {
+                            absl::Span<const DeviceAddressBase> buffers) const {
   return Launch(num_workgroups, ConvertBuffersToKernelArgs(buffers));
 }
 
@@ -171,7 +171,7 @@ absl::Status Kernel::Launch(const NumWorkGroups& num_workgroups,
 
 tsl::AsyncValueRef<LaunchEvent> Kernel::Launch(
     const NumWorkGroups& num_workgroups,
-    absl::Span<const DeviceMemoryBase> buffers,
+    absl::Span<const DeviceAddressBase> buffers,
     const Eigen::ThreadPoolDevice* device) const {
   return Launch(num_workgroups, ConvertBuffersToKernelArgs(buffers), device);
 }

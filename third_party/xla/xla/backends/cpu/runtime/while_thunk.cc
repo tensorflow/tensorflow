@@ -38,7 +38,7 @@ limitations under the License.
 #include "xla/service/buffer_assignment.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
@@ -86,7 +86,7 @@ tsl::AsyncValueRef<Thunk::ExecuteEvent> WhileThunk::Execute(
 
   const BufferAllocations* allocations = params.buffer_allocations;
 
-  se::DeviceMemoryBase cond_data;
+  se::DeviceAddressBase cond_data;
   if (ShouldCheckBufferSlices()) {
     TF_ASSIGN_OR_RETURN(cond_data, allocations->GetDeviceAddress(cond_buffer_));
   } else {

@@ -75,7 +75,7 @@ limitations under the License.
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/shape.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
@@ -1600,7 +1600,7 @@ static absl::StatusOr<std::unique_ptr<YnnFusionThunk>> YnnFusionThunkFromProto(
   }
 
   absl::AnyInvocable<absl::StatusOr<YnnSubgraph>(
-      absl::Span<const se::DeviceMemoryBase> arguments_buffers)>
+      absl::Span<const se::DeviceAddressBase> arguments_buffers)>
       builder;
   absl::Span<const int64_t> captured_arguments_ids;
   if (hlo->opcode() == HloOpcode::kDot) {
