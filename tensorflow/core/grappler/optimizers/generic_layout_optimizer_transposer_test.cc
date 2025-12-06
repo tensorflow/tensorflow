@@ -534,8 +534,8 @@ TEST_F(TransposerTest, CreateConstPermNode) {
   Tensor tensor;
   ASSERT_TRUE(tensor.FromProto(value_attr->tensor()));
   Tensor expected(DT_INT32, {4});
-  ::tensorflow::test::FillValues<int32>(&expected, {0, 3, 1, 2});
-  ExpectTensorEqual<int32>(tensor, expected);
+  ::tensorflow::test::FillValues<int32_t>(&expected, {0, 3, 1, 2});
+  ExpectTensorEqual<int32_t>(tensor, expected);
 }
 
 TensorShapeProto MakeTensorShapeFromDimensions(absl::Span<const int> dims) {
@@ -566,7 +566,7 @@ TEST_F(TransposerTest, CreateTransposeNode) {
   TensorShapeProto input_shape = MakeTensorShapeFromDimensions({1, 2, 3, 4});
   TensorShapeProto expected_shape = MakeTensorShapeFromDimensions({1, 4, 2, 3});
   utils::MutationNewNode added_node;
-  string transpose_node_name;
+  std::string transpose_node_name;
   TF_ASSERT_OK(transposer.CreateTransposeNode(
       &context, kNodeNameFormat, DT_DOUBLE, kDevice, input_shape, {0, 3, 1, 2},
       "", &added_node, &transpose_node_name));
@@ -3768,12 +3768,12 @@ TEST_F(TransposerTest, StridedSliceTransposerConstFaninBadRank) {
 }
 
 TEST_F(TransposerTest, ReduceTransposerKeepDims) {
-  ReduceTransposerKeepDims<int32>();
+  ReduceTransposerKeepDims<int32_t>();
   ReduceTransposerKeepDims<int64_t>();
 }
 
 TEST_F(TransposerTest, ReduceTransposerValidAxisNode) {
-  ReduceTransposerValidAxisNode<int32>();
+  ReduceTransposerValidAxisNode<int32_t>();
   ReduceTransposerValidAxisNode<int64_t>();
 }
 
@@ -3818,21 +3818,21 @@ TEST(PermutationTest, PermutesDoubleRepeatedField) {
 }
 
 TEST(PermutationTest, PermutesDataFormat) {
-  string input = "NHWC";
-  string expected = "NCHW";
+  std::string input = "NHWC";
+  std::string expected = "NCHW";
   TF_ASSERT_OK(PermuteSingle("test", {0, 3, 1, 2}, &input));
   EXPECT_EQ(input, expected);
 }
 
 TEST(PermutationTest, PermutesString) {
-  string input = "ABCD";
-  string expected = "ACBD";
+  std::string input = "ABCD";
+  std::string expected = "ACBD";
   TF_ASSERT_OK(PermuteSingle("test", {0, 2, 1, 3}, &input));
   EXPECT_EQ(input, expected);
 }
 
 TEST(PermutationTest, GetNHWCToNCHWPermutation) {
-  string src_format = "NHWC";
+  std::string src_format = "NHWC";
   absl::flat_hash_map<char, int> src_dim_indices =
       GetDimensionIndices(src_format);
   EXPECT_EQ(src_dim_indices.size(), 4);
@@ -3840,7 +3840,7 @@ TEST(PermutationTest, GetNHWCToNCHWPermutation) {
   EXPECT_EQ(src_dim_indices['H'], 1);
   EXPECT_EQ(src_dim_indices['W'], 2);
   EXPECT_EQ(src_dim_indices['C'], 3);
-  string dst_format = "NCHW";
+  std::string dst_format = "NCHW";
   std::vector<int> permutation = GetPermutation(src_dim_indices, dst_format);
   ASSERT_EQ(permutation.size(), 4);
   EXPECT_EQ(permutation[0], 0);
@@ -3850,7 +3850,7 @@ TEST(PermutationTest, GetNHWCToNCHWPermutation) {
 }
 
 TEST(PermutationTest, GetNCHWToNHWCPermutation) {
-  string src_format = "NCHW";
+  std::string src_format = "NCHW";
   absl::flat_hash_map<char, int> src_dim_indices =
       GetDimensionIndices(src_format);
   EXPECT_EQ(src_dim_indices.size(), 4);
@@ -3858,7 +3858,7 @@ TEST(PermutationTest, GetNCHWToNHWCPermutation) {
   EXPECT_EQ(src_dim_indices['C'], 1);
   EXPECT_EQ(src_dim_indices['H'], 2);
   EXPECT_EQ(src_dim_indices['W'], 3);
-  string dst_format = "NHWC";
+  std::string dst_format = "NHWC";
   std::vector<int> permutation = GetPermutation(src_dim_indices, dst_format);
   ASSERT_EQ(permutation.size(), 4);
   EXPECT_EQ(permutation[0], 0);

@@ -33,7 +33,7 @@ class DependencyOptimizer : public GraphOptimizer {
   explicit DependencyOptimizer(RewriterConfig::Toggle opt_level) {}
   ~DependencyOptimizer() override {}
 
-  string name() const override { return "dependency_optimizer"; };
+  std::string name() const override { return "dependency_optimizer"; };
 
   bool UsesFunctionLibrary() const override { return false; }
 
@@ -73,7 +73,7 @@ class DependencyOptimizer : public GraphOptimizer {
   void GroupCrossDeviceControlEdges(bool host_granularity);
 
   bool fetch_nodes_known_;
-  std::unordered_set<string> nodes_to_preserve_;
+  std::unordered_set<std::string> nodes_to_preserve_;
   std::unique_ptr<NodeMap> node_map_;
   std::unordered_map<const NodeDef*, int> node_to_idx_;
   GraphDef* optimized_graph_;  // Not owned.
