@@ -43,7 +43,7 @@ limitations under the License.
 // Note: branched from tensorflow/lite/tools/optimize/quantize_weights_test.cc
 
 namespace {
-tensorflow::string* g_test_model_dir = nullptr;
+std::string* g_test_model_dir = nullptr;
 }  // namespace
 
 namespace tflite {
@@ -766,7 +766,7 @@ TEST_F(QuantizeWeightsTest, DequantizeConvBlocklisted) {
 }  // namespace tflite
 
 int main(int argc, char** argv) {
-  tensorflow::string model_file;
+  std::string model_file;
   const std::vector<tensorflow::Flag> flag_list = {
       tensorflow::Flag("test_model_file", &model_file,
                        "Path to test tflite model file."),
@@ -777,8 +777,7 @@ int main(int argc, char** argv) {
     std::cerr << "Required test_model_file\n";
     std::abort();
   }
-  g_test_model_dir =
-      new tensorflow::string(tensorflow::io::Dirname(model_file));
+  g_test_model_dir = new std::string(tensorflow::io::Dirname(model_file));
   ::tensorflow::port::InitMain(argv[0], &argc, &argv);
   return RUN_ALL_TESTS();
 }
