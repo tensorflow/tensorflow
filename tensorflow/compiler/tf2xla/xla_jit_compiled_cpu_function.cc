@@ -16,12 +16,15 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_jit_compiled_cpu_function.h"
 
 #include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <optional>
+#include <string>
 #include <utility>
 #include <vector>
 
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/tf2xla/tf2xla.h"
 #include "tensorflow/compiler/tf2xla/tf2xla.pb.h"

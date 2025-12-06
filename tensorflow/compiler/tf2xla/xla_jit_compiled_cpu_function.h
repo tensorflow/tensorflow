@@ -28,6 +28,7 @@ limitations under the License.
 #include "xla/backends/cpu/buffer_allocation_info.h"
 #include "xla/client/local_client.h"
 #include "xla/service/cpu/executable.pb.h"
+#include "xla/xla_data.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/platform/types.h"
 
