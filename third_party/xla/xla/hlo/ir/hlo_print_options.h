@@ -96,7 +96,6 @@ class HloPrintOptions {
         .set_print_large_constants(true)
         .set_print_subcomputation_mode(PrintSubcomputationMode::kNameOnly)
         .set_print_metadata(false)
-        .set_print_backend_config(false)
         .set_print_operand_shape(false)
         .set_print_operand_index_annotation_interval(0)
         .set_print_program_shape(false)
