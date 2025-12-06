@@ -71,8 +71,8 @@ class DestroyTensorHandleNode : public tensorflow::AsyncEagerNode {
   // Remote node deletions are best effort
   bool Fatal() const override { return false; }
 
-  string DebugString() const override {
-    string out = "[DestroyTensorHandleNode]";
+  std::string DebugString() const override {
+    std::string out = "[DestroyTensorHandleNode]";
     absl::StrAppend(&out, " request: ", request_->DebugString());
     return out;
   }
@@ -80,7 +80,7 @@ class DestroyTensorHandleNode : public tensorflow::AsyncEagerNode {
  private:
   std::unique_ptr<EnqueueRequest> request_;
   core::RefCountPtr<EagerClient> eager_client_;
-  const string remote_task_;
+  const std::string remote_task_;
   bool ready_;
 };
 
