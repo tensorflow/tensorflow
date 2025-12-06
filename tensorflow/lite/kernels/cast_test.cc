@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/kernels/test_util.h"
 #include "tensorflow/lite/schema/schema_generated.h"
+#include "tensorflow/lite/types/half.h"
 
 namespace tflite {
 namespace {
@@ -460,6 +461,60 @@ TEST(CastOpModel, CastBFloat16ToFloat) {
               ElementsAreArray(ArrayFloatNear(
                   {100.f, 1.0f, 0.f, 0.400390625f, 2.f, 1.1015625f},
                   /*max_abs_err=*/0.05f)));
+}
+
+TEST(CastOpModel, CastFloat16ToInt32) {
+  CastOpModel m({TensorType_FLOAT16, {1, 6}}, {TensorType_INT32, {1, 6}});
+  m.PopulateTensor<half>(m.input(),
+                         {static_cast<half>(100.f), static_cast<half>(20.f),
+                          static_cast<half>(3.f), static_cast<half>(0.4f),
+                          static_cast<half>(0.999f), static_cast<half>(1.1f)});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.ExtractVector<int32_t>(m.output()),
+              ElementsAreArray({100, 20, 3, 0, 0, 1}));
+}
+
+TEST(CastOpModel, CastInt32ToFloat16) {
+  CastOpModel m({TensorType_INT32, {1, 6}}, {TensorType_FLOAT16, {1, 6}});
+  m.PopulateTensor<int32_t>(m.input(), {100, 20, 3, 0, 1, -1});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(
+      m.ExtractVector<half>(m.output()),
+      ElementsAreArray({static_cast<half>(100.f), static_cast<half>(20.f),
+                        static_cast<half>(3.f), static_cast<half>(0.f),
+                        static_cast<half>(1.f), static_cast<half>(-1.f)}));
+}
+
+TEST(CastOpModel, CastFloat16ToBFloat16) {
+  CastOpModel m({TensorType_FLOAT16, {1, 6}}, {TensorType_BFLOAT16, {1, 6}});
+  m.PopulateTensor<half>(m.input(),
+                         {static_cast<half>(100.f), static_cast<half>(20.f),
+                          static_cast<half>(3.f), static_cast<half>(0.4f),
+                          static_cast<half>(0.999f), static_cast<half>(1.1f)});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.ExtractVector<Eigen::bfloat16>(m.output()),
+              ElementsAreArray({static_cast<Eigen::bfloat16>(100.f),
+                                static_cast<Eigen::bfloat16>(20.f),
+                                static_cast<Eigen::bfloat16>(3.f),
+                                static_cast<Eigen::bfloat16>(0.4f),
+                                static_cast<Eigen::bfloat16>(0.999f),
+                                static_cast<Eigen::bfloat16>(1.1f)}));
+}
+
+TEST(CastOpModel, CastBFloat16ToFloat16) {
+  CastOpModel m({TensorType_BFLOAT16, {1, 6}}, {TensorType_FLOAT16, {1, 6}});
+  m.PopulateTensor<Eigen::bfloat16>(
+      m.input(),
+      {static_cast<Eigen::bfloat16>(100.f), static_cast<Eigen::bfloat16>(20.f),
+       static_cast<Eigen::bfloat16>(3.f), static_cast<Eigen::bfloat16>(0.4f),
+       static_cast<Eigen::bfloat16>(0.999f),
+       static_cast<Eigen::bfloat16>(1.1f)});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(
+      m.ExtractVector<half>(m.output()),
+      ElementsAreArray({static_cast<half>(100.f), static_cast<half>(20.f),
+                        static_cast<half>(3.f), static_cast<half>(0.4f),
+                        static_cast<half>(0.999f), static_cast<half>(1.1f)}));
 }
 
 TEST(CastOpModel, CastConstInputCachingWorks) {
