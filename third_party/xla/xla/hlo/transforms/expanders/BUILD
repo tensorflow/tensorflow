@@ -372,6 +372,35 @@ xla_cc_test(
 )
 
 cc_library(
+    name = "permutation_sort_expander",
+    srcs = ["permutation_sort_expander.cc"],
+    hdrs = ["permutation_sort_expander.h"],
+    deps = [
+        ":op_expander_pass",
+        "//xla:comparison_util",
+        "//xla:literal_util",
+        "//xla:shape_util",
+        "//xla:util",
+        "//xla/hlo/ir:hlo",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+    ],
+)
+
+xla_cc_test(
+    name = "permutation_sort_expander_test",
+    srcs = ["permutation_sort_expander_test.cc"],
+    deps = [
+        ":permutation_sort_expander",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/hlo/utils:hlo_matchers",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
     name = "reshape_decomposer",
     srcs = ["reshape_decomposer.cc"],
     hdrs = ["reshape_decomposer.h"],
