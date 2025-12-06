@@ -36,7 +36,7 @@ limitations under the License.
 #include "xla/backends/cpu/runtime/xnnpack/xnn_interop.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/shape.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/statusor.h"
@@ -47,7 +47,7 @@ namespace xla::cpu {
 
 absl::StatusOr<XnnSubgraph> XnnConvolutionThunk::BuildConvolutionSubgraph(
     absl::Span<const Argument> arguments, absl::Span<const Result> results,
-    absl::Span<const se::DeviceMemoryBase> arguments_buffers) {
+    absl::Span<const se::DeviceAddressBase> arguments_buffers) {
   TF_ASSIGN_OR_RETURN(XnnSubgraph subgraph,
                       CreateXnnSubgraph([&](xnn_subgraph_t* subgraph) {
                         return xnn_create_subgraph(
