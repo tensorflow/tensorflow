@@ -53,7 +53,7 @@ absl::Status XlaTensor::AllocateShapedBuffer(DataType dtype,
   for (auto& index_to_buffer : shaped_buffer.buffers()) {
     xla::Shape subshape =
         xla::ShapeUtil::GetSubshape(on_device_shape, index_to_buffer.first);
-    uint64 size =
+    uint64_t size =
         client->backend().transfer_manager()->GetByteSizeRequirement(subshape);
     TF_ASSIGN_OR_RETURN(se::OwningDeviceMemory buffer,
                         client->backend().memory_allocator()->Allocate(

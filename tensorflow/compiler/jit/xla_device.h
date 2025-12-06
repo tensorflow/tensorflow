@@ -110,16 +110,16 @@ class XlaDevice : public LocalDevice {
     se::Platform* platform = nullptr;
 
     // The device name's prefix (e.g., "/task:7")
-    string device_name_prefix;
+    std::string device_name_prefix;
 
     // The name of the XLA device (e.g., "XLA_CPU")
-    string device_name;
+    std::string device_name;
 
     // The number of the device.
     int device_ordinal = -1;
 
     // The name of the compilation device (e.g., "XLA_CPU_JIT");
-    string compilation_device_name;
+    std::string compilation_device_name;
 
     // If 'use_multiple_streams' is true, we create separate streams for
     // compute, host-to-device, and device-to-host communication.
@@ -209,7 +209,8 @@ class XlaDevice : public LocalDevice {
   absl::StatusOr<xla::LocalClient*> GetOrCreateClient() const;
   Allocator* GetAllocatorLocked(AllocatorAttributes attr)
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
-  absl::Status EnsureStreamOkLocked(xla::Backend* backend, const string& name,
+  absl::Status EnsureStreamOkLocked(xla::Backend* backend,
+                                    const std::string& name,
                                     std::shared_ptr<se::Stream>* stream,
                                     bool* stream_was_changed)
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
