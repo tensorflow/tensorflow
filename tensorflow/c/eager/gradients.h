@@ -65,7 +65,7 @@ class GradientFunction {
 // gradient registerer to instantiate a GradientFunction.
 struct ForwardOperation {
  public:
-  string op_name;
+  std::string op_name;
   std::vector<AbstractTensorHandle*> inputs;
   std::vector<AbstractTensorHandle*> outputs;
   std::vector<int64_t> skip_input_indices;
@@ -78,14 +78,14 @@ using GradientFunctionFactory =
 // Map from op name to a `GradientFunctionFactory`.
 class GradientRegistry {
  public:
-  absl::Status Register(const string& op,
+  absl::Status Register(const std::string& op,
                         GradientFunctionFactory gradient_function_factory);
   absl::Status Lookup(
       const ForwardOperation& op,
       std::unique_ptr<GradientFunction>* gradient_function) const;
 
  private:
-  absl::flat_hash_map<string, GradientFunctionFactory> registry_;
+  absl::flat_hash_map<std::string, GradientFunctionFactory> registry_;
 };
 
 // TODO(srbs): Figure out if we can avoid declaring this in the public header.
@@ -151,7 +151,7 @@ class Tape : protected eager::GradientTape<AbstractTensorHandle,
   void RecordOperation(absl::Span<AbstractTensorHandle* const> inputs,
                        absl::Span<AbstractTensorHandle* const> outputs,
                        GradientFunction* gradient_function,
-                       const string& op_name = "");
+                       const std::string& op_name = "");
   // Returns whether any tensor in a list of tensors is being watched and has
   // a trainable dtype.
   bool ShouldRecord(
