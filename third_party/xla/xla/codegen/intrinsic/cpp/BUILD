@@ -89,3 +89,37 @@ xla_cc_test(
         "@com_google_googletest//:gtest_main",
     ],
 )
+
+cc_library(
+    name = "_cpp_gen_intrinsics",
+    srcs = ["cpp_gen_intrinsics.cc"],
+    hdrs = ["cpp_gen_intrinsics.h"],
+    deps = [
+        ":eigen_unary_ll",
+        "//xla/codegen/intrinsic",
+        "//xla/service/llvm_ir:llvm_util",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/strings:string_view",
+        "@llvm-project//llvm:IRReader",
+        "@llvm-project//llvm:Linker",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//llvm:Target",
+        "@llvm-project//llvm:TransformUtils",
+        "@llvm-project//llvm:ir_headers",
+    ],
+)
+
+cc_library(
+    name = "_intrinsic_declarations",
+    hdrs = ["intrinsic_declarations.h"],
+    deps = [
+        ":_cpp_gen_intrinsics",
+        "//xla:xla_data_proto_cc",
+        "//xla/codegen/intrinsic",
+        "//xla/codegen/intrinsic:type",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/strings:string_view",
+        "@llvm-project//llvm:ir_headers",
+    ],
+)
