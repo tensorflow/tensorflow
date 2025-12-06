@@ -190,7 +190,7 @@ absl::Status HloCostAnalysis::HandleElementwiseOp(
     const HloToProperties& hlo_to_properties) {
   auto it = hlo_to_properties.find(&hlo);
   if (it == hlo_to_properties.end()) {
-    return 0.0f;
+    return 0.00001f;
   }
   return it->second[key];
 }
