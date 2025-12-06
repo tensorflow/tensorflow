@@ -30,12 +30,12 @@ template struct Conv2DOp<CPUDevice, int32>;
 // CPU implementation, don't register this EigenTensor-based version.
 #if !defined(USE_GEMM_FOR_CONV)
 REGISTER_KERNEL_BUILDER(
-    Name("Conv2D").Device(DEVICE_CPU).TypeConstraint<int32>("T"),
-    Conv2DOp<CPUDevice, int32>);
+    Name("Conv2D").Device(DEVICE_CPU).TypeConstraint<int32_t>("T"),
+    Conv2DOp<CPUDevice, int32_t>);
 #endif  // USE_GEMM_FOR_CONV
 REGISTER_KERNEL_BUILDER(
-    Name("Conv").Device(DEVICE_CPU).TypeConstraint<int32>("T"),
-    ConvOp<CPUDevice, int32>);
+    Name("Conv").Device(DEVICE_CPU).TypeConstraint<int32_t>("T"),
+    ConvOp<CPUDevice, int32_t>);
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 template <>
