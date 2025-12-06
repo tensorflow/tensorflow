@@ -201,24 +201,4 @@ TEST(GpuCliqueIdStringTest, ToString) {
   }
 }
 
-TEST(GpuCliqueKeyTest, GetCollectiveStreamId) {
-  EXPECT_EQ(GetCollectiveStreamId(false, CollectiveStreamId(0),
-                                  AsyncStreamKind::ASYNC_STREAM_KIND_P2P0),
-            CollectiveStreamId(0));
-  EXPECT_EQ(
-      GetCollectiveStreamId(true, CollectiveStreamId(0),
-                            AsyncStreamKind::ASYNC_STREAM_KIND_COLLECTIVE),
-      CollectiveStreamId(1));
-  EXPECT_EQ(GetCollectiveStreamId(true, CollectiveStreamId(0),
-                                  AsyncStreamKind::ASYNC_STREAM_KIND_P2P0),
-            CollectiveStreamId(2));
-  EXPECT_EQ(
-      GetCollectiveStreamId(true, CollectiveStreamId(2),
-                            AsyncStreamKind::ASYNC_STREAM_KIND_COLLECTIVE),
-      CollectiveStreamId(2));
-  EXPECT_EQ(GetCollectiveStreamId(true, CollectiveStreamId(1),
-                                  AsyncStreamKind::ASYNC_STREAM_KIND_P2P0),
-            CollectiveStreamId(1));
-}
-
 }  // namespace xla::gpu

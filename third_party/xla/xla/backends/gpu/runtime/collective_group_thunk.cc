@@ -43,10 +43,8 @@ namespace gpu {
 
 CollectiveGroupThunk::CollectiveGroupThunk(
     const HloInstruction* instruction, Thunk::Kind kind,
-    std::vector<std::unique_ptr<Thunk>> thunks, AsyncStreamKind stream_kind,
-    ThunkId thunk_id)
+    std::vector<std::unique_ptr<Thunk>> thunks, ThunkId thunk_id)
     : Thunk(kind, ThunkInfo::WithProfileAnnotation(instruction, thunk_id)),
-      stream_kind_(stream_kind),
       async_events_(new CollectiveThunk::AsyncEvents()) {
   for (auto& thunk : thunks) {
     thunks_.emplace_back(std::move(thunk));
@@ -70,10 +68,7 @@ absl::Status CollectiveGroupThunk::Initialize(const InitializeParams& params) {
 
 absl::Status CollectiveGroupThunk::ExecuteOnStream(
     const Thunk::ExecuteParams& params) {
-  int64_t async_stream_idx = static_cast<int64_t>(stream_kind_);
-  // Async streams are already assigned in gpu_executable.cc::ExecuteThunks.
-  // async_streams is therefore guaranteed to be non-null and to have enough
-  // elements to index by the AsyncStreamKind enum.
+  int64_t async_stream_idx = Thunk::execution_stream_id().value();
   se::Stream* async_stream =
       params.collective_params->async_streams.at(async_stream_idx);
   TF_RETURN_IF_ERROR(async_stream->WaitFor(params.stream));

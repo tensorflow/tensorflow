@@ -29,20 +29,11 @@ limitations under the License.
 
 namespace xla::gpu {
 
-bool IsP2PStreamKind(AsyncStreamKind stream_kind);
-
-inline constexpr int64_t kAsyncStreamTotal =
-    static_cast<int64_t>(AsyncStreamKind::ASYNC_STREAM_KIND_MEMCPYP2P) + 1;
+// Upper limit of total number of streams for main, compute, and collectives.
+inline constexpr int64_t kAsyncStreamTotal = 16;
 
 // Strongly-typed wrapper to represent collective stream ID.
 TSL_LIB_GTL_DEFINE_INT_TYPE(CollectiveStreamId, uint64_t);
-
-// Assigns a unique ID to a stream for asynchronous or synchronous execution.
-// These IDs can be used, for example, to look up the NCCL communicator.
-CollectiveStreamId GetCollectiveStreamId(
-    bool is_async, CollectiveStreamId stream_id = CollectiveStreamId(1),
-    AsyncStreamKind stream_kind =
-        AsyncStreamKind::ASYNC_STREAM_KIND_COLLECTIVE);
 
 // Clique key for identifying a particular collectives clique on a GPU backend.
 class GpuCliqueKey : public CliqueKey {
