@@ -984,6 +984,10 @@ class HloComputation {
 
   void ClearCalledComputations();
 
+  // Permutes the parameter numbers of this computation according to the
+  // provided permutation.
+  absl::Status PermuteParameters(absl::Span<const int64_t> permutation);
+
  private:
   friend class HloModule;
 
