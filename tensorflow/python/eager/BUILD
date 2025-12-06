@@ -134,7 +134,7 @@ filegroup(
 # Transitive dependencies of this target will be included in the pip package.
 py_strict_library(
     name = "eager_pip",
-    visibility = ["//tensorflow:internal"],
+    visibility = ["//visibility:private"],
     deps = [
         ":backprop",
         ":benchmarks_test_base",
