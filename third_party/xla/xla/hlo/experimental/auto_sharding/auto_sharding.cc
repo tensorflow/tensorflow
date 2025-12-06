@@ -16,7 +16,6 @@ limitations under the License.
 #include "xla/hlo/experimental/auto_sharding/auto_sharding.h"
 
 #include <algorithm>
-#include <climits>
 #include <cstddef>
 #include <cstdint>
 #include <cstdlib>
@@ -50,6 +49,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/analysis/hlo_alias_analysis.h"
+#include "xla/hlo/experimental/auto_sharding/auto_sharding.pb.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_cost_graph.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_device_mesh.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_iopddl.h"
@@ -1090,8 +1090,7 @@ void EnumerateAll1DPartitionReshape(const HloInstruction* ins,
       }
 
       if (cluster_env.IsDeviceMesh1D() &&
-          VectorGreaterThanOneElementCount(
-              input_spec->tile_assignment().dimensions()) > 1) {
+          VectorGreaterThanOneElementCount(input_spec->dimensions()) > 1) {
         continue;
       }
 
@@ -1296,19 +1295,16 @@ absl::StatusOr<std::unique_ptr<StrategyGroup>> CreateAllStrategiesGroup(
 // Two shardings shard the same dimension of a given tensor.
 bool ShardingIsConsistent(const HloSharding& partial_sharding,
                           const HloSharding& complete_sharding, bool strict) {
-  if (partial_sharding.tile_assignment().num_dimensions() >
-      complete_sharding.tile_assignment().num_dimensions()) {
+  if (partial_sharding.num_dimensions() > complete_sharding.num_dimensions()) {
     return false;
   }
-  for (size_t i = 0; i < partial_sharding.tile_assignment().num_dimensions();
-       ++i) {
-    if (strict && partial_sharding.tile_assignment().dim(i) > 1 &&
-        partial_sharding.tile_assignment().dim(i) ==
-            complete_sharding.tile_assignment().dim(i)) {
+  for (size_t i = 0; i < partial_sharding.num_dimensions(); ++i) {
+    if (strict && partial_sharding.dimension(i) > 1 &&
+        partial_sharding.dimension(i) == complete_sharding.dimension(i)) {
       return true;
     }
-    if (!strict && partial_sharding.tile_assignment().dim(i) > 1 &&
-        complete_sharding.tile_assignment().dim(i) > 1) {
+    if (!strict && partial_sharding.dimension(i) > 1 &&
+        complete_sharding.dimension(i) > 1) {
       return true;
     }
   }
@@ -1462,7 +1458,7 @@ void TrimOrGenerateStrategiesBasedOnExistingSharding(
           ShardingIsConsistent(existing_sharding, strategy.output_sharding,
                                strict) ||
           (VectorGreaterThanOneElementCount(
-               strategy.output_sharding.tile_assignment().dimensions()) == 1 &&
+               strategy.output_sharding.dimensions()) == 1 &&
            spmd::ShardingIsComplete(
                strategy.output_sharding,
                cluster_env.original_device_mesh_.num_elements()))) {
@@ -2031,11 +2027,11 @@ void CheckHloSharding(
           }
           const std::vector<int64_t> ins_sharded_dims =
               VectorGreaterThanOneElementIndices(
-                  ins->sharding().tile_assignment().dimensions(),
+                  ins->sharding().dimensions(),
                   ins->sharding().ReplicateOnLastTileDim());
           const std::vector<int64_t> op_sharded_dims =
               VectorGreaterThanOneElementIndices(
-                  op->sharding().tile_assignment().dimensions(),
+                  op->sharding().dimensions(),
                   op->sharding().ReplicateOnLastTileDim());
           bool not_consistent = false;
           if (ins_sharded_dims.size() != op_sharded_dims.size()) {
@@ -3559,13 +3555,14 @@ absl::StatusOr<bool> AutoShardingImplementation::RunAutoSharding(
   TF_ASSIGN_OR_RETURN(
       bool changed,
       ProcessShardingInstruction(
-          module, execution_threads, /*replace_sharding_with_copy=*/true,
+          module, execution_threads,
+          /*replace_sharding_with_copy=*/option_.replace_sharding_with_copy,
           &unspecified_dims, /*saved_root_shardings=*/nullptr,
           /*saved_parameter_shardings=*/nullptr,
           /*instruction_to_shard_group_id=*/nullptr,
           /*shard_group_id_to_shard_as_group=*/nullptr,
           /*shard_group_id_to_shard_like_group=*/nullptr,
-          /*allow_spmd_sharding_propagation_to_parameters_vector=*/nullptr,
+          /*allow_spmd_sharding_propagation_to_parameters_vector=*/{},
           /*remove_unknown_shardings=*/true));
 
   DumpHloModuleIfEnabled(*module, "after_spmd_calls");
@@ -3824,7 +3821,8 @@ absl::StatusOr<bool> AutoShardingImplementation::RunAutoSharding(
       CHECK(instruction->has_sharding());
       CHECK(instruction->sharding().IsManual());
       CHECK(instruction->operand(0)->has_sharding());
-      CHECK(!instruction->operand(0)->sharding().IsManual());
+      CHECK(spmd::IsShardingCustomCall(instruction->operand(0)) ||
+            !instruction->operand(0)->sharding().IsManual());
     } else if (spmd::IsSPMDShardToFullShapeCustomCall(instruction)) {
       CHECK(instruction->has_sharding());
       CHECK(!instruction->sharding().IsManual());
@@ -3954,7 +3952,7 @@ std::vector<int> FindAllIndices(std::vector<int64_t> vec, int64_t element) {
   return result;
 }
 
-absl::StatusOr<bool> AutoSharding::Run(
+absl::StatusOr<bool> AutoSharding::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   if (!option_.enable) {

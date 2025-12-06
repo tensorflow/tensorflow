@@ -23,6 +23,9 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
+#include "absl/status/status_matchers.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -32,9 +35,7 @@ limitations under the License.
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/topk_rewriter.h"
 #include "xla/tests/hlo_test_base.h"
-#include "tsl/platform/status_matchers.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/test.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace m = ::xla::match;
 
@@ -42,8 +43,6 @@ namespace xla {
 namespace gpu {
 namespace {
 
-using ::tsl::testing::IsOk;
-using ::tsl::testing::IsOkAndHolds;
 using TopkSplitterTest = HloTestBase;
 
 constexpr absl::string_view kComparator = R"(

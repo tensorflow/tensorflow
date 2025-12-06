@@ -1,3 +1,4 @@
+#include "xla/backends/gpu/collectives/gpu_clique_key.h"
 /* Copyright 2024 The OpenXLA Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -26,7 +27,6 @@ limitations under the License.
 #include "xla/core/collectives/communicator.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
-#include "xla/service/collective_ops_utils.h"
 #include "xla/stream_executor/stream.h"
 
 namespace xla::gpu {
@@ -53,8 +53,9 @@ class CollectiveBroadcastStartThunk : public CollectiveThunk {
 
  protected:
   absl::StatusOr<bool> RunCollective(const ExecuteParams& params,
+                                     const GpuCliqueKey& clique_key,
                                      se::Stream& stream,
-                                     CommunicatorHandle comm_handle) override;
+                                     Communicator& comm) override;
 
  private:
   const CollectiveConfig config_;
@@ -62,7 +63,7 @@ class CollectiveBroadcastStartThunk : public CollectiveThunk {
 };
 
 absl::Status RunCollectiveBroadcast(std::vector<DeviceBufferPair>& buffers,
-                                    se::Stream& stream, Communicator* comm);
+                                    se::Stream& stream, Communicator& comm);
 
 }  // namespace xla::gpu
 

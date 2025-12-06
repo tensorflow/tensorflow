@@ -31,6 +31,7 @@
 #include "absl/log/log.h"
 #include "absl/log/log_sink_registry.h"
 #include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/synchronization/mutex.h"
@@ -52,7 +53,6 @@
 #include "xla/python/ifrt_proxy/common/test_utils.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
-#include "tsl/platform/status_matchers.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
 
@@ -63,7 +63,6 @@ namespace proxy {
 namespace {
 
 using ::testing::Not;
-using ::tsl::testing::IsOk;
 
 // Sufficient time for all processing (that are not explicitly waiting for
 // further input) to have finished.
@@ -132,7 +131,7 @@ class SimpleIfrtService : public grpc::GrpcIfrtService::Service {
     }
 
     {
-      absl::MutexLock l(&mu_);
+      absl::MutexLock l(mu_);
       CHECK(contexts_.insert(context).second);
     }
 
@@ -154,7 +153,7 @@ class SimpleIfrtService : public grpc::GrpcIfrtService::Service {
       }
     }
     {
-      absl::MutexLock l(&mu_);
+      absl::MutexLock l(mu_);
       CHECK_EQ(contexts_.erase(context), 1);
     }
 
@@ -163,7 +162,7 @@ class SimpleIfrtService : public grpc::GrpcIfrtService::Service {
   }
 
   void CancelAllServerSessions() {
-    absl::MutexLock l(&mu_);
+    absl::MutexLock l(mu_);
     for (const auto& context : contexts_) {
       context->TryCancel();
     }

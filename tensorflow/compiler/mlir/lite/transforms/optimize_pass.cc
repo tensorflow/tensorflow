@@ -121,6 +121,31 @@ bool L2NormalizeReduceAxis(Value sq_op, DenseElementsAttr axis) {
   return true;
 }
 
+// Checks if a ReshapeOp is equivalent to a `keep_dims=true` reduction by
+// adding a trailing dimension of size 1. In the L2 normalization pattern, a
+// `Sum` op reduces along the last axis, and this reshape is used to add back
+// the reduced dimension to keep the original rank. This is used in declarative
+// patterns to fuse L2 normalization operations.
+bool IsL2NormalizationKeepDimsReshape(Value reshape_output) {
+  auto producer = reshape_output.getDefiningOp<TFL::ReshapeOp>();
+  if (!producer) {
+    return false;
+  }
+
+  auto input_type = mlir::dyn_cast<ShapedType>(producer.getInput().getType());
+  auto output_type = mlir::dyn_cast<ShapedType>(reshape_output.getType());
+  if (!input_type || !output_type || !input_type.hasRank() ||
+      !output_type.hasRank()) {
+    return false;
+  }
+
+  const auto input_shape = input_type.getShape();
+  const auto output_shape = output_type.getShape();
+
+  return output_shape.size() == input_shape.size() + 1 &&
+         output_shape.back() == 1 && output_shape.drop_back() == input_shape;
+}
+
 // Is rankx2xi32 padding array "balanced"
 // i.e. 0 <= [d][1] - [d][0] <= 1 for all spatial dims d (and 0 elsewhere).
 template <typename T>
@@ -413,7 +438,7 @@ bool CanOptimizeIdentityGatherNdOrScatterNdOp(Value params,
 
   // Checks the value in `indices` is from 0 to n-1.
   int cur_value = 0;
-  for (const auto &v : indices.getValues<APInt>()) {
+  for (const auto& v : indices.getValues<APInt>()) {
     if (v.getSExtValue() != cur_value) return false;
     ++cur_value;
   }
@@ -469,7 +494,7 @@ bool CanOptimizeIdentitySliceOp(Value input, Attribute begin, Attribute size) {
 // the element type of the returned constant to the same of the `base` argument.
 // This is used when fusing an Add or a Sub into the bias parameter of a
 // convolution.
-Value GetBiasMultiplier(OpBuilder &builder, Value binary_op,
+Value GetBiasMultiplier(OpBuilder& builder, Value binary_op,
                         DenseFPElementsAttr base) {
   Type element_type = base.getType().getElementType();
 
@@ -527,8 +552,8 @@ TypeAttr RescaleQtype(Type input, Attribute factor) {
 // Returns `true` if reducing `axes` in `input` with `keep_dims=true` results
 // in the specified `shape` and `false` otherwise.
 static bool ShapeMatchesReduceWithKeepAxes(Value input,
-                                           const mlir::Attribute &axes,
-                                           const mlir::Attribute &shape) {
+                                           const mlir::Attribute& axes,
+                                           const mlir::Attribute& shape) {
   RankedTensorType type =
       mlir::dyn_cast_or_null<RankedTensorType>(input.getType());
   if (!type) return false;
@@ -559,7 +584,7 @@ static bool ShapeMatchesReduceWithKeepAxes(Value input,
 
 // Returns `true` if all the `axes` dimensions of `input` are 1.
 static bool AreInputDimensionsOneInAxes(Value input,
-                                        const mlir::Attribute &axes) {
+                                        const mlir::Attribute& axes) {
   RankedTensorType input_type =
       mlir::dyn_cast_or_null<RankedTensorType>(input.getType());
   if (!input_type) return false;
@@ -586,14 +611,14 @@ static bool AreInputDimensionsOneInAxes(Value input,
   return true;
 }
 
-static bool FloatValueEquals(const Attribute &attr, double value) {
+static bool FloatValueEquals(const Attribute& attr, double value) {
   auto fp_attr = mlir::dyn_cast_or_null<DenseFPElementsAttr>(attr);
   if (!fp_attr) return false;
 
   if (fp_attr.isSplat()) {
     return fp_attr.getSplatValue<APFloat>().isExactlyValue(value);
   }
-  return llvm::all_of(fp_attr.getValues<APFloat>(), [value](const APFloat &f) {
+  return llvm::all_of(fp_attr.getValues<APFloat>(), [value](const APFloat& f) {
     return f.isExactlyValue(value);
   });
 }
@@ -614,7 +639,7 @@ bool IsConstantValueOf(mlir::TypedAttr value, T raw_value) {
       return int_attr.getSplatValue<APInt>() == raw_value;
     }
     return llvm::all_of(int_attr.getValues<APInt>(),
-                        [raw_value](const APInt &f) { return f == raw_value; });
+                        [raw_value](const APInt& f) { return f == raw_value; });
   }
 
   return false;
@@ -640,7 +665,7 @@ TypedAttr GetNumElementsOrOne(Type type) {
 }
 
 // Reshapes value to a given shape.
-Value ReshapeValueDroppingLastDim(OpBuilder &builder, Value value) {
+Value ReshapeValueDroppingLastDim(OpBuilder& builder, Value value) {
   // This function is always guarded with
   // HasTrivialShapeExceptSecondLastDim(), so we could cast safely here.
   auto type = mlir::cast<ShapedType>(value.getType());
@@ -679,8 +704,8 @@ bool HasOneUseOrUsedByOnlyBinaryOps(Value out_value) {
     return true;
   }
 
-  for (auto &use : out_value.getUses()) {
-    mlir::Operation *owner = use.getOwner();
+  for (auto& use : out_value.getUses()) {
+    mlir::Operation* owner = use.getOwner();
     if (!llvm::isa<mlir::TFL::AddOp>(owner) &&
         !llvm::isa<mlir::TFL::SubOp>(owner) &&
         !llvm::isa<mlir::TFL::DivOp>(owner) &&
@@ -722,7 +747,7 @@ bool IsOneHotIndexAttribute(Attribute attr) {
   return true;
 }
 
-Value Get1DShapeValue(OpBuilder &builder, Value value) {
+Value Get1DShapeValue(OpBuilder& builder, Value value) {
   auto type = mlir::cast<ShapedType>(value.getType());
   if (!type.hasStaticShape()) {
     return nullptr;
@@ -749,7 +774,7 @@ Type GetEmbeddingLookupShape(Value lookup, Value value) {
 }
 
 // Creates FullyConnected op from params and returns the output.
-mlir::Value GetFcOutput(OpBuilder *builder,
+mlir::Value GetFcOutput(OpBuilder* builder,
                         ::mlir::Operation::result_range result, Value input,
                         Value filter, Value bias,
                         StringAttr fused_activation_function,
@@ -817,7 +842,7 @@ bool IsPermutationNCHW(Value perm) {
   if (!matchPattern(perm, m_Constant(&perm_const))) return false;
 
   SmallVector<int64_t, 4> axes;
-  for (const auto &axis_int : perm_const.getValues<APInt>()) {
+  for (const auto& axis_int : perm_const.getValues<APInt>()) {
     axes.push_back(axis_int.getSExtValue());
   }
 
@@ -878,7 +903,7 @@ struct SqueezeReshapesAroundBroadcastOp
   using OpRewritePattern<TFL::BroadcastToOp>::OpRewritePattern;
 
   LogicalResult matchAndRewrite(TFL::BroadcastToOp tfl_broadcast_to_op,
-                                PatternRewriter &rewriter) const override {
+                                PatternRewriter& rewriter) const override {
     auto loc = tfl_broadcast_to_op->getLoc();
 
     // Match the
@@ -983,7 +1008,7 @@ struct FuseAddAndStridedSlice : public OpRewritePattern<TFL::StridedSliceOp> {
   using OpRewritePattern<TFL::StridedSliceOp>::OpRewritePattern;
 
   LogicalResult matchAndRewrite(TFL::StridedSliceOp strided_slice_op,
-                                PatternRewriter &rewriter) const override {
+                                PatternRewriter& rewriter) const override {
     // Match Add
     mlir::TFL::AddOp add_op =
         dyn_cast_or_null<TFL::AddOp>(strided_slice_op.getEnd().getDefiningOp());
@@ -1071,7 +1096,7 @@ struct Convert2DUpscalingToResizeNearestNeighor
   //
   // Note the current pattern matching logic only handles when width == height.
   LogicalResult matchAndRewrite(TFL::GatherNdOp gather_nd_first,
-                                PatternRewriter &rewriter) const override {
+                                PatternRewriter& rewriter) const override {
     auto result_value = gather_nd_first.getResult();
     auto params_value = gather_nd_first.getParams();
     auto indices_value = gather_nd_first.getIndices();
@@ -1118,7 +1143,7 @@ struct Convert2DUpscalingToResizeNearestNeighor
     if (!matchPattern(gather_nd_first.getIndices(), m_Constant(&indices)))
       return failure();
     int i = 0;
-    for (const auto &axis_int : indices.getValues<APInt>()) {
+    for (const auto& axis_int : indices.getValues<APInt>()) {
       const int64_t axis = axis_int.getSExtValue();
       if (axis != i / 2) return failure();
       ++i;
@@ -1126,7 +1151,7 @@ struct Convert2DUpscalingToResizeNearestNeighor
     if (!matchPattern(gather_nd_second.getIndices(), m_Constant(&indices)))
       return failure();
     i = 0;
-    for (const auto &axis_int : indices.getValues<APInt>()) {
+    for (const auto& axis_int : indices.getValues<APInt>()) {
       const int64_t axis = axis_int.getSExtValue();
       if (axis != i / 2) return failure();
       ++i;
@@ -1137,7 +1162,7 @@ struct Convert2DUpscalingToResizeNearestNeighor
     if (!matchPattern(transpose_first.getPerm(), m_Constant(&perm)))
       return failure();
     SmallVector<int64_t, 4> axes;
-    for (const auto &axis_int : perm.getValues<APInt>()) {
+    for (const auto& axis_int : perm.getValues<APInt>()) {
       axes.push_back(axis_int.getSExtValue());
     }
     if (axes != SmallVector<int64_t>({2, 1, 0, 3})) return failure();
@@ -1146,7 +1171,7 @@ struct Convert2DUpscalingToResizeNearestNeighor
     if (!matchPattern(transpose_second.getPerm(), m_Constant(&perm)))
       return failure();
     axes.clear();
-    for (const auto &axis_int : perm.getValues<APInt>()) {
+    for (const auto& axis_int : perm.getValues<APInt>()) {
       axes.push_back(axis_int.getSExtValue());
     }
     if (axes != SmallVector<int64_t>({1, 2, 0, 3})) return failure();
@@ -1189,7 +1214,7 @@ struct Convert2DUpscalingToResizeNearestNeighor
 // This is possible if `value` is already a 1D tensor of the correct size, or
 // if it is a constant that is either a scalar or has a shape that is
 // broadcastable to a 1D tensor of the correct size (e.g. [1, 1, C]).
-static std::optional<Value> GetAs1DValue(PatternRewriter &rewriter, Value value,
+static std::optional<Value> GetAs1DValue(PatternRewriter& rewriter, Value value,
                                          int64_t num_channels) {
   auto type = mlir::dyn_cast<RankedTensorType>(value.getType());
   if (!type) return std::nullopt;
@@ -1222,16 +1247,17 @@ static std::optional<Value> GetAs1DValue(PatternRewriter &rewriter, Value value,
 }
 
 // Tries to get the given `bias` as a 1D tensor of `num_channels` elements.
-// If `bias` is a `NoneType`, a 1D tensor of zeros is created.
+// If `bias` is a `NoneType`, a 1D tensor of zeros is created with the given
+// `fallback_element_type`.
 // Otherwise, it uses `GetAs1DValue` to handle scalar constants and other
 // broadcastable shapes.
-static std::optional<Value> GetBiasIn1D(PatternRewriter &rewriter, Value bias,
+static std::optional<Value> GetBiasIn1D(PatternRewriter& rewriter, Value bias,
                                         int num_channels,
-                                        Type filter_element_type) {
+                                        Type fallback_element_type) {
   // If it's none, create a zero tensor with shape {num_channels}.
   if (mlir::isa<NoneType>(bias.getType())) {
     RankedTensorType type =
-        RankedTensorType::get({num_channels}, filter_element_type);
+        RankedTensorType::get({num_channels}, fallback_element_type);
     auto attr = rewriter.getZeroAttr(type);
     return rewriter.create<arith::ConstantOp>(bias.getLoc(), type, attr);
   }
@@ -1260,7 +1286,7 @@ static RankedTensorType GetRankedTensorType(Value value) {
 
   // The filter may be unranked after quantization. In that case, we
   // recursively look for the ranked tensor type.
-  Operation *op = value.getDefiningOp();
+  Operation* op = value.getDefiningOp();
   while (op != nullptr && op->getNumOperands() > 0) {
     filter_type = mlir::dyn_cast<RankedTensorType>(op->getOperand(0).getType());
     if (filter_type) return filter_type;
@@ -1269,45 +1295,13 @@ static RankedTensorType GetRankedTensorType(Value value) {
   return nullptr;
 }
 
-// Gets the number of channels and filter element type for a FullyConnected op.
-// This is used to determine the shape of the bias tensor when fusing an Add op.
-// It first tries to get this information from the filter tensor. If the filter
-// is unranked, it falls back to using the output tensor of the FullyConnected
-// op.
-static std::optional<std::pair<int, Type>> GetFcNumChannelsAndFilterType(
-    TFL::FullyConnectedOp fc_op) {
-  Value filter = fc_op.getFilter();
-  if (auto filter_type = GetRankedTensorType(filter);
-      filter_type && filter_type.getRank() == 2 &&
-      !mlir::isa<quant::QuantizedType>(filter_type.getElementType())) {
-    // Get the number of channels from the filter's shape if it's a ranked
-    // 2D tensor. Filter must be a `2D` tensor with `{num_channels,
-    // num_features}` shape.
-    int num_channels = filter_type.getShape()[0];
-    Type filter_element_type = filter_type.getElementType();
-    return {{num_channels, filter_element_type}};
-  }
-
-  // Fallback to using the FC op's output shape to determine the number of
-  // channels. This is useful when the filter is unranked.
-  auto fc_output_type =
-      mlir::dyn_cast<RankedTensorType>(fc_op.getOutput()[0].getType());
-  if (!fc_output_type || !fc_output_type.hasStaticShape() ||
-      fc_output_type.getRank() == 0) {
-    return std::nullopt;
-  }
-  int num_channels = fc_output_type.getShape().back();
-  Type filter_element_type = fc_output_type.getElementType();
-  return {{num_channels, filter_element_type}};
-}
-
 // Fuse Add with proceeding FullyConnected.
 // TODO(b/136285429): Move to tablegen when variadic is supported
 struct FuseFullyConnectedAndAdd : public OpRewritePattern<TFL::AddOp> {
   using OpRewritePattern<TFL::AddOp>::OpRewritePattern;
 
   LogicalResult matchAndRewrite(TFL::AddOp add_op,
-                                PatternRewriter &rewriter) const override {
+                                PatternRewriter& rewriter) const override {
     // Match Add.
     DenseElementsAttr added_value;
     Value add_rhs = add_op.getRhs();
@@ -1344,20 +1338,42 @@ struct FuseFullyConnectedAndAdd : public OpRewritePattern<TFL::AddOp> {
     ElementsAttr bias_value;
     if (fc_op.getFusedActivationFunction() != "NONE") return failure();
 
-    // Get the number of channels if possible.
-    auto fc_info = GetFcNumChannelsAndFilterType(fc_op);
-    if (!fc_info) {
+    auto fc_output_type =
+        mlir::dyn_cast<RankedTensorType>(fc_op.getOutput()[0].getType());
+    auto add_output_type =
+        mlir::dyn_cast<RankedTensorType>(add_op.getOutput().getType());
+    if (!fc_output_type || !add_output_type ||
+        (fc_output_type.getShape() != add_output_type.getShape() &&
+         !add_output_type.hasStaticShape())) {
+      // The Add op changes the output shape of the FC op, and the bias has
+      // dynamic shape. In this case we cannot create the following ReshapeOp to
+      // ensure output shapes after rewrite match.
       return failure();
     }
-    const auto &[num_channels, filter_element_type] = *fc_info;
 
-    auto bias_1d =
-        GetBiasIn1D(rewriter, bias, num_channels, filter_element_type);
+    // Get the number of output channels.
+    if (fc_output_type.getShape().empty()) {
+      return failure();
+    }
+    const int64_t num_channels = fc_output_type.getShape().back();
+    if (::mlir::ShapedType::isDynamic(num_channels)) {
+      return failure();
+    }
+
+    auto bias_1d = GetBiasIn1D(rewriter, bias, num_channels,
+                               add_output_type.getElementType());
     // Get the added value as a 1D tensor.
     auto add_rhs_1d = GetAs1DValue(rewriter, add_rhs, num_channels);
 
     if (!bias_1d.has_value() || !add_rhs_1d.has_value()) {
       return failure();
+    }
+    // Sanity check that bias and add_rhs can be broadcasted together (shapes
+    // should be broadcastable and element types must match).
+    if (!IsBroadcastableElementsAttrAndType(bias_1d->getType(),
+                                            add_rhs_1d->getType())) {
+      return rewriter.notifyMatchFailure(
+          add_op, "Bias and add_rhs are not broadcastable");
     }
 
     auto new_bias =
@@ -1365,19 +1381,32 @@ struct FuseFullyConnectedAndAdd : public OpRewritePattern<TFL::AddOp> {
             .create<AddOp>(add_op.getLoc(), bias_1d.value(), add_rhs_1d.value(),
                            rewriter.getStringAttr("NONE"))
             .getOutput();
-    auto fc = rewriter.create<TFL::FullyConnectedOp>(
-        FusedLoc::get(fc_op.getContext(), {fc_op.getLoc(), add_op.getLoc()}),
-        add_op.getType(),
-        /*input=*/fc_op.getInput(),
-        /*filter=*/filter,
-        /*bias=*/new_bias,
-        /*fused_activation_function=*/
-        rewriter.getStringAttr(add_op.getFusedActivationFunction()),
-        /*weights_format=*/rewriter.getStringAttr(fc_op.getWeightsFormat()),
-        /*keep_num_dims=*/rewriter.getBoolAttr(fc_op.getKeepNumDims()),
-        /*asymmetric_quantize_inputs=*/
-        fc_op.getAsymmetricQuantizeInputsAttr());
-    rewriter.replaceOp(add_op, fc.getOutput());
+    mlir::Value out =
+        rewriter
+            .create<TFL::FullyConnectedOp>(
+                mlir::FusedLoc::get(fc_op.getContext(),
+                                    {fc_op.getLoc(), add_op.getLoc()}),
+                fc_output_type,
+                /*input=*/fc_op.getInput(),
+                /*filter=*/filter,
+                /*bias=*/new_bias,
+                /*fused_activation_function=*/
+                rewriter.getStringAttr(add_op.getFusedActivationFunction()),
+                /*weights_format=*/
+                rewriter.getStringAttr(fc_op.getWeightsFormat()),
+                /*keep_num_dims=*/rewriter.getBoolAttr(fc_op.getKeepNumDims()),
+                /*asymmetric_quantize_inputs=*/
+                fc_op.getAsymmetricQuantizeInputsAttr())
+            .getOutput()[0];
+
+    if (fc_output_type.getShape() != add_output_type.getShape()) {
+      auto target_shape = rewriter.create<arith::ConstantOp>(
+          add_op.getLoc(), rewriter.getI32TensorAttr(llvm::SmallVector<int32_t>(
+                               add_output_type.getShape())));
+      out = rewriter.create<ReshapeOp>(add_op.getLoc(), add_output_type, out,
+                                       target_shape);
+    }
+    rewriter.replaceOp(add_op, out);
 
     return success();
   }
@@ -1395,7 +1424,7 @@ struct FuseAddAndFullyConnected
   using OpRewritePattern<TFL::FullyConnectedOp>::OpRewritePattern;
 
   LogicalResult matchAndRewrite(TFL::FullyConnectedOp fc_op,
-                                PatternRewriter &rewriter) const override {
+                                PatternRewriter& rewriter) const override {
     // This only works with default format.
     if (fc_op.getWeightsFormat() != "DEFAULT") return failure();
 
@@ -1425,6 +1454,21 @@ struct FuseAddAndFullyConnected
       if (!IsF32Value(add_op.getRhs()) || !IsF32Value(fc_op.getFilter()) ||
           !IsF32Value(old_bias))
         return failure();
+    }
+
+    // Checks the constant requirements. Only apply this optimization if rhs,
+    // filter, and bias are constant foldable. Otherwise, the generated FC bias
+    // operand will not be folded to a single vector.
+    if (!matchPattern(add_op.getRhs(), m_Constant())) {
+      return failure();
+    }
+
+    if (!matchPattern(fc_op.getFilter(), m_Constant())) {
+      return failure();
+    }
+
+    if (!matchPattern(old_bias, m_Constant())) {
+      return failure();
     }
 
     auto new_bias = rewriter.create<TFL::FullyConnectedOp>(
@@ -1466,7 +1510,7 @@ struct FuseMulAndFullyConnected
   using OpRewritePattern<TFL::FullyConnectedOp>::OpRewritePattern;
 
   LogicalResult matchAndRewrite(TFL::FullyConnectedOp fc_op,
-                                PatternRewriter &rewriter) const override {
+                                PatternRewriter& rewriter) const override {
     // This only works with default format.
     if (fc_op.getWeightsFormat() != "DEFAULT") return failure();
 
@@ -1536,13 +1580,13 @@ struct FuseMulAndFullyConnected
 };
 
 // TODO(b/136285429): Move to tablegen when variadic is supported.
-template <typename ReluXOp, char const *Act>
+template <typename ReluXOp, char const* Act>
 struct FuseFullyConnectedAndReluX : public OpRewritePattern<ReluXOp> {
   using OpRewritePattern<ReluXOp>::OpRewritePattern;
 
   LogicalResult matchAndRewrite(ReluXOp relu_op,
-                                PatternRewriter &rewriter) const override {
-    Operation *input = relu_op.getOperand().getDefiningOp();
+                                PatternRewriter& rewriter) const override {
+    Operation* input = relu_op.getOperand().getDefiningOp();
     if (!isa_and_nonnull<FullyConnectedOp>(input)) return failure();
     auto fully_connected_op = cast<FullyConnectedOp>(input);
     if (fully_connected_op.getFusedActivationFunction() != "NONE")
@@ -1582,7 +1626,7 @@ struct FuseFullyConnectedAndMul : public OpRewritePattern<TFL::MulOp> {
   using OpRewritePattern<TFL::MulOp>::OpRewritePattern;
 
   LogicalResult matchAndRewrite(TFL::MulOp mul_op,
-                                PatternRewriter &rewriter) const override {
+                                PatternRewriter& rewriter) const override {
     // If we are broadcasting on the lhs then don't fold the multiply as it
     // would increase the amount of compute done by the fully connected op.
     if (mul_op.getLhs().getType() != mul_op.getType()) return failure();
@@ -1702,7 +1746,7 @@ struct FuseAffinOpAndMulWithQDQs : public OpRewritePattern<TFL::MulOp> {
   using OpRewritePattern<TFL::MulOp>::OpRewritePattern;
 
   LogicalResult matchAndRewrite(TFL::MulOp mul_op,
-                                PatternRewriter &rewriter) const override {
+                                PatternRewriter& rewriter) const override {
     // Mul. Required 1-D or squeezable to 1-D rhs for batch normalization.
     DenseElementsAttr gamma_cst;
     Value gamma = mul_op.getRhs();
@@ -1712,7 +1756,7 @@ struct FuseAffinOpAndMulWithQDQs : public OpRewritePattern<TFL::MulOp> {
     }
 
     // Affine op
-    Operation *mul_op_lhs = mul_op.getLhs().getDefiningOp();
+    Operation* mul_op_lhs = mul_op.getLhs().getDefiningOp();
     auto affine_op = dyn_cast_or_null<AffineOpType>(mul_op_lhs);
     if (!affine_op) {
       return failure();
@@ -1849,9 +1893,9 @@ struct FuseBinaryOpToFollowingAffineOp : public OpRewritePattern<AffineOpType> {
   using OpRewritePattern<AffineOpType>::OpRewritePattern;
 
   LogicalResult matchAndRewrite(AffineOpType fc_op,
-                                PatternRewriter &rewriter) const override {
+                                PatternRewriter& rewriter) const override {
     // Binary op.
-    Operation *binary_op = fc_op.getInput().getDefiningOp();
+    Operation* binary_op = fc_op.getInput().getDefiningOp();
     if (!binary_op || binary_op->getNumOperands() != 2) return failure();
     // We only handle the cases the RHS is a scalar.
     // TODO(fengliuai): Currently the canonicalizer pass couldn't guarantee that
@@ -2003,7 +2047,7 @@ struct RemoveReshapeBeforeFullyConnected
   using OpRewritePattern<TFL::FullyConnectedOp>::OpRewritePattern;
 
   LogicalResult matchAndRewrite(TFL::FullyConnectedOp fully_connected_op,
-                                PatternRewriter &) const override {
+                                PatternRewriter&) const override {
     auto input = fully_connected_op.getInput();
     auto input_ty = mlir::dyn_cast<ShapedType>(input.getType());
     auto output_ty =
@@ -2053,7 +2097,7 @@ struct RemoveReshapeAfterFullyConnected
   using OpRewritePattern::OpRewritePattern;
 
   LogicalResult matchAndRewrite(TFL::ReshapeOp reshape_op,
-                                PatternRewriter &rewriter) const override {
+                                PatternRewriter& rewriter) const override {
     auto fully_connected_op = llvm::dyn_cast_or_null<TFL::FullyConnectedOp>(
         reshape_op.getInput().getDefiningOp());
     if (!fully_connected_op || fully_connected_op.getNumResults() != 1 ||
@@ -2111,7 +2155,7 @@ struct FuseUnpackAndConcatToReshape
   using OpRewritePattern::OpRewritePattern;
 
   LogicalResult matchAndRewrite(TFL::ConcatenationOp concat_op,
-                                PatternRewriter &rewriter) const override {
+                                PatternRewriter& rewriter) const override {
     if (concat_op.getFusedActivationFunction() != "NONE") {
       return failure();
     }
@@ -2123,7 +2167,7 @@ struct FuseUnpackAndConcatToReshape
     if (!unpack_op || unpack_op.getNumResults() != concat_op.getNumOperands()) {
       return failure();
     }
-    for (const auto &index_and_value : llvm::enumerate(concat_op.getValues())) {
+    for (const auto& index_and_value : llvm::enumerate(concat_op.getValues())) {
       if (index_and_value.value() !=
           unpack_op.getResult(index_and_value.index())) {
         return failure();
@@ -2209,7 +2253,7 @@ struct OptimizeTopK : public OpRewritePattern<TFL::TopKV2Op> {
   }
 
   LogicalResult matchAndRewrite(TFL::TopKV2Op op,
-                                PatternRewriter &rewriter) const override {
+                                PatternRewriter& rewriter) const override {
     auto values = op.getValues();
     auto indices = op.getIndices();
     // op.getValues() and op.getIndices() cannot be used more than once.
@@ -2277,7 +2321,7 @@ struct FuseReshapeAndTransposeAroundBatchMatmul
   using OpRewritePattern::OpRewritePattern;
 
   LogicalResult matchAndRewrite(TFL::TransposeOp op,
-                                PatternRewriter &rewriter) const override {
+                                PatternRewriter& rewriter) const override {
     TensorType transpose_input_type = op.getInput().getType();
     // TODO(chhe): to support more than 3D in this pattern.
     if (!transpose_input_type.hasStaticShape() ||
@@ -2289,7 +2333,7 @@ struct FuseReshapeAndTransposeAroundBatchMatmul
       return failure();
     }
     const SmallVector<int64_t, 3> match_perm = {1, 2, 0};
-    for (const auto &[perm_index, match_perm_index] :
+    for (const auto& [perm_index, match_perm_index] :
          llvm::zip(transpose_perm.getValues<APInt>(), match_perm)) {
       if (perm_index != match_perm_index) {
         return failure();
@@ -2373,7 +2417,7 @@ struct FuseTransposeReshapeIntoBatchMatmul
   using OpRewritePattern::OpRewritePattern;
 
   LogicalResult matchAndRewrite(TFL::BatchMatMulOp op,
-                                PatternRewriter &rewriter) const override {
+                                PatternRewriter& rewriter) const override {
     auto reshape_op = op.getY().getDefiningOp<ReshapeOp>();
     if (!reshape_op || !ReshapeFirstTwoDim(reshape_op.getInput().getType(),
                                            reshape_op.getType())) {
@@ -2429,7 +2473,7 @@ struct FuseTransposeReshapeIntoBatchMatmul
 struct FuseLogSoftmax : public OpRewritePattern<TFL::SubOp> {
   using OpRewritePattern::OpRewritePattern;
   LogicalResult matchAndRewrite(TFL::SubOp sub_op,
-                                PatternRewriter &rewriter) const override {
+                                PatternRewriter& rewriter) const override {
     if (sub_op.getFusedActivationFunction() != "NONE") {
       return failure();
     }
@@ -2518,7 +2562,7 @@ struct FuseLogSoftmax : public OpRewritePattern<TFL::SubOp> {
 struct EliminateQDQPairs : public OpRewritePattern<TFL::QuantizeOp> {
   using OpRewritePattern::OpRewritePattern;
   LogicalResult matchAndRewrite(TFL::QuantizeOp q_op,
-                                PatternRewriter &rewriter) const override {
+                                PatternRewriter& rewriter) const override {
     if (auto dq_op = dyn_cast_or_null<TFL::DequantizeOp>(
             q_op.getInput().getDefiningOp())) {
       if (tflite::NotFromQuantOpOrSameQuantType(dq_op.getInput(),
@@ -2562,7 +2606,7 @@ struct UndoBroadcastFullyConnectedBiasAddWithQDQs
   using OpRewritePattern::OpRewritePattern;
 
   LogicalResult matchAndRewrite(TFL::AddOp add_op,
-                                PatternRewriter &rewriter) const override {
+                                PatternRewriter& rewriter) const override {
     if (!add_op->hasOneUse()) {
       return failure();
     }
@@ -2635,11 +2679,11 @@ struct UndoBroadcastFullyConnectedBiasAddWithQDQs
 // (Reshape-Reshape)-FC.
 struct MoveReshapeAfterFullyConnected
     : public OpRewritePattern<TFL::ReshapeOp> {
-  explicit MoveReshapeAfterFullyConnected(MLIRContext *context)
+  explicit MoveReshapeAfterFullyConnected(MLIRContext* context)
       : OpRewritePattern<TFL::ReshapeOp>(context, /*benefit=*/0) {}
 
   LogicalResult matchAndRewrite(TFL::ReshapeOp reshape,
-                                PatternRewriter &rewriter) const override {
+                                PatternRewriter& rewriter) const override {
     auto fc = llvm::dyn_cast_or_null<TFL::FullyConnectedOp>(
         reshape.getInput().getDefiningOp());
 
@@ -2695,11 +2739,11 @@ struct MoveReshapeAfterFullyConnected
 // layout planning.
 struct EnableFullyConnectedKeepNumDimsBeforeReshape
     : public OpRewritePattern<TFL::ReshapeOp> {
-  explicit EnableFullyConnectedKeepNumDimsBeforeReshape(MLIRContext *context)
+  explicit EnableFullyConnectedKeepNumDimsBeforeReshape(MLIRContext* context)
       : OpRewritePattern<TFL::ReshapeOp>(context, /*benefit=*/0) {}
 
   LogicalResult matchAndRewrite(TFL::ReshapeOp reshape,
-                                PatternRewriter &rewriter) const override {
+                                PatternRewriter& rewriter) const override {
     auto fc = llvm::dyn_cast_or_null<TFL::FullyConnectedOp>(
         reshape.getInput().getDefiningOp());
 
@@ -2738,12 +2782,12 @@ struct EnableFullyConnectedKeepNumDimsBeforeReshape
 // while the push may still happen if the transpose could be fused with
 // downstream optimization phases or passe..
 struct PushTransposeThroughSqueeze : public RewritePattern {
-  explicit PushTransposeThroughSqueeze(MLIRContext *context)
+  explicit PushTransposeThroughSqueeze(MLIRContext* context)
       : RewritePattern(TFL::SqueezeOp::getOperationName(), /*benefit=*/0,
                        context) {}
 
-  LogicalResult matchAndRewrite(mlir::Operation *op,
-                                PatternRewriter &rewriter) const override {
+  LogicalResult matchAndRewrite(mlir::Operation* op,
+                                PatternRewriter& rewriter) const override {
     TFL::SqueezeOp squeeze = cast<TFL::SqueezeOp>(op);
     auto transpose = llvm::dyn_cast_or_null<TFL::TransposeOp>(
         squeeze.getInput().getDefiningOp());
@@ -2755,7 +2799,7 @@ struct PushTransposeThroughSqueeze : public RewritePattern {
 
     llvm::SmallVector<int32_t, 4> squeeze_dims;
     if (squeeze->hasAttr("squeeze_dims")) {
-      for (const auto &squeeze_dim : squeeze.getSqueezeDimsAttr()) {
+      for (const auto& squeeze_dim : squeeze.getSqueezeDimsAttr()) {
         squeeze_dims.push_back(
             mlir::dyn_cast<IntegerAttr>(squeeze_dim).getInt());
       }
@@ -2773,7 +2817,7 @@ struct PushTransposeThroughSqueeze : public RewritePattern {
       return failure();
     }
     llvm::SmallVector<int32_t, 4> perm;
-    for (const auto &dim : perm_attr.getValues<APInt>()) {
+    for (const auto& dim : perm_attr.getValues<APInt>()) {
       perm.push_back(dim.getSExtValue());
     }
 
@@ -2809,7 +2853,7 @@ struct PushTransposeThroughSqueeze : public RewritePattern {
     }
 
     llvm::SmallVector<int32_t> new_perm;
-    for (const auto &original_dim : filtered_perm_original_indices) {
+    for (const auto& original_dim : filtered_perm_original_indices) {
       new_perm.push_back(original_to_new_index_map[original_dim]);
     }
 
@@ -2863,14 +2907,14 @@ bool matchConstantIntPermutation(Value permValue,
 }
 
 inline DenseIntElementsAttr GetI32ElementsAttr(ArrayRef<int32_t> values,
-                                               Builder *builder) {
+                                               Builder* builder) {
   RankedTensorType ty = mlir::RankedTensorType::get(
       {static_cast<int32_t>(values.size())}, builder->getIntegerType(32));
   return DenseIntElementsAttr::get(ty, values);
 }
 
 inline DenseIntElementsAttr GetI32ElementsAttr(ArrayRef<int64_t> values,
-                                               Builder *builder) {
+                                               Builder* builder) {
   llvm::SmallVector<int32_t> new_values;
   for (auto el : values) {
     new_values.push_back(static_cast<int32_t>(el));
@@ -2893,11 +2937,11 @@ inline DenseIntElementsAttr GetI32ElementsAttr(ArrayRef<int64_t> values,
 // reshapes and transposes.
 struct ReorderTransposeReshapeTranspose
     : public OpRewritePattern<TFL::TransposeOp> {
-  explicit ReorderTransposeReshapeTranspose(MLIRContext *context)
+  explicit ReorderTransposeReshapeTranspose(MLIRContext* context)
       : OpRewritePattern<TFL::TransposeOp>(context, /*benefit=*/0) {}
 
   LogicalResult matchAndRewrite(TFL::TransposeOp outer_tpose,
-                                PatternRewriter &rewriter) const override {
+                                PatternRewriter& rewriter) const override {
     auto reshape = outer_tpose.getInput().getDefiningOp<TFL::ReshapeOp>();
     if (!reshape) return failure();
 
@@ -2999,11 +3043,11 @@ struct ReorderTransposeReshapeTranspose
 //   FinalOutput[B, O]   = Transpose(Intermediate[O, B], perm=[1, 0])
 struct FullyConnectedSwapOperandsWhenLHSIsConst
     : public OpRewritePattern<TFL::FullyConnectedOp> {
-  explicit FullyConnectedSwapOperandsWhenLHSIsConst(MLIRContext *context)
+  explicit FullyConnectedSwapOperandsWhenLHSIsConst(MLIRContext* context)
       : OpRewritePattern<TFL::FullyConnectedOp>(context, /*benefit=*/0) {}
 
   LogicalResult matchAndRewrite(TFL::FullyConnectedOp fc,
-                                PatternRewriter &rewriter) const override {
+                                PatternRewriter& rewriter) const override {
     if (!mlir::isa<NoneType>(fc.getBias().getType())) return failure();
 
     auto input = fc.getInput();
@@ -3064,8 +3108,8 @@ struct FullyConnectedSwapOperandsWhenLHSIsConst
 };
 
 // Adds canonicalization patterns to the list of patterns.
-void AddCanonicalizationPatterns(MLIRContext *context,
-                                 RewritePatternSet *patterns) {
+void AddCanonicalizationPatterns(MLIRContext* context,
+                                 RewritePatternSet* patterns) {
   for (auto op : context->getRegisteredOperations())
     op.getCanonicalizationPatterns(*patterns, context);
 }
@@ -3073,7 +3117,7 @@ void AddCanonicalizationPatterns(MLIRContext *context,
 
 void OptimizePass::runOnOperation() {
   RewritePatternSet patterns(&getContext());
-  auto *ctx = &getContext();
+  auto* ctx = &getContext();
   auto func = getOperation();
 
   // Merge reshapes into fully connected ops before we start moving them past

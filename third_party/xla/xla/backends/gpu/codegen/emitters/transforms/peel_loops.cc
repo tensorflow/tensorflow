@@ -33,6 +33,7 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "xla/backends/gpu/codegen/emitters/ir/xla_gpu_ops.h"
+#include "xla/codegen/emitters/ir/xla_ops.h"
 #include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/analysis/indexing_map_serialization.h"
 
@@ -78,7 +79,9 @@ struct PeelLoop : public OpRewritePattern<LoopOp> {
       peeled_map.Simplify();
 
       // If the symbol is still constrained, peeling does not help.
-      if (peeled_map.IsSymbolConstrained(sym_index)) continue;
+      if (peeled_map.IsSymbolConstrained(sym_index)) {
+        continue;
+      }
 
       // Create remainder indexing map.
       IndexingMap tail_map = indexing_map;
@@ -103,9 +106,11 @@ struct PeelLoop : public OpRewritePattern<LoopOp> {
     Location loc = loop_op.getLoc();
     SmallVector<Value, 4> inits = loop_op.getInits();
     for (const auto& indexing_map : llvm::reverse(indexing_maps)) {
-      if (indexing_map.IsKnownEmpty()) continue;
-      auto tail_loop = rewriter.create<LoopOp>(
-          loc, indexing_map, loop_op.getDims(), inits,
+      if (indexing_map.IsKnownEmpty()) {
+        continue;
+      }
+      auto tail_loop = LoopOp::create(
+          rewriter, loc, indexing_map, loop_op.getDims(), inits,
           [&](OpBuilder& nested_b, Location nested_loc, ValueRange ivs,
               ValueRange map_results, ValueRange iter_args) {
             OpBuilder::InsertionGuard guard(nested_b);

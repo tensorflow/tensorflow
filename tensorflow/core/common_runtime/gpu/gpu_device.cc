@@ -44,6 +44,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/str_split.h"
+#include "absl/synchronization/notification.h"
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "xla/stream_executor/gpu/gpu_init.h"
 #include "xla/tsl/framework/allocator.h"
@@ -958,14 +959,14 @@ Status BaseGPUDevice::MakeTensorFromProto(const TensorProto& tensor_proto,
     Tensor copy(cpu_allocator(numa_node), DT_VARIANT, parsed.shape());
     Variant* copy_variant = copy.flat<Variant>().data();
 
-    std::list<Notification> notifications;
+    std::list<absl::Notification> notifications;
     Status copy_status;
     auto copier = [this, &alloc_attrs, &notifications, &copy_status](
                       const Tensor& from, Tensor* to) {
       // Copier isn't run in a multithreaded environment, so we don't
       // have to worry about the notifications list being modified in parallel.
       notifications.emplace_back();
-      Notification& n = *notifications.rbegin();
+      absl::Notification& n = *notifications.rbegin();
       return MaybeCopyTensorToGPU(alloc_attrs, from, to,
                                   [&n, &copy_status](const Status& s) {
                                     if (copy_status.ok()) {
@@ -991,7 +992,7 @@ Status BaseGPUDevice::MakeTensorFromProto(const TensorProto& tensor_proto,
     *tensor = std::move(copy);
     return copy_status;
   } else {
-    Notification n;
+    absl::Notification n;
     Status status;
     TF_RETURN_IF_ERROR(MaybeCopyTensorToGPU(alloc_attrs, parsed, tensor,
                                             [&n, &status](const Status& s) {
@@ -1384,7 +1385,10 @@ Status BaseGPUDeviceFactory::GetDeviceDetails(
   auto desc = std::move(desc_status).value();
   (*details)["device_name"] = desc->name();
 #if GOOGLE_CUDA
-  (*details)["compute_capability"] = desc->cuda_compute_capability().ToString();
+  // Some users of this API expect the compute capability to be in the format
+  // X.Y. Therefore we don't expose the feature extension here.
+  (*details)["compute_capability"] =
+      desc->cuda_compute_capability().WithoutAnyFeatureExtension().ToString();
 #endif  // GOOGLE_CUDA
   return OkStatus();
 }
@@ -1943,7 +1947,7 @@ Status BaseGPUDeviceFactory::CreateDevices(
               /*host_memory_allocator=*/std::move(pjrt_gpu_host_allocator),
               /*should_stage_host_to_device_transfers=*/true,
               /*gpu_run_options=*/std::move(gpu_run_options),
-              /*kv_store=*/nullptr, /*distributed_client=*/nullptr,
+              /*kv_store=*/nullptr,
               /*abort_collectives_on_failure=*/false, /*gpu_topology=*/nullptr,
               /*num_nodes=*/std::nullopt);
 
@@ -2373,7 +2377,11 @@ Status BaseGPUDeviceFactory::GetValidDeviceIds(
         "No supported cuda capabilities in binary.");
   }
   se::CudaComputeCapability min_supported_capability = *std::min_element(
-      cuda_supported_capabilities.begin(), cuda_supported_capabilities.end());
+      cuda_supported_capabilities.begin(), cuda_supported_capabilities.end(),
+      [](const stream_executor::CudaComputeCapability& a,
+         const stream_executor::CudaComputeCapability& b) {
+        return std::tie(a.major, a.minor) < std::tie(b.major, b.minor);
+      });
 #endif
 
   int min_gpu_core_count =
@@ -2396,7 +2404,8 @@ Status BaseGPUDeviceFactory::GetValidDeviceIds(
 #if GOOGLE_CUDA
     // Only GPUs with no less than the minimum supported compute capability is
     // accepted.
-    if (desc->cuda_compute_capability() < min_supported_capability) {
+    if (!desc->cuda_compute_capability().SupportsAllFeaturesOf(
+            min_supported_capability)) {
       LOG(INFO) << "Ignoring visible gpu device " << "("
                 << GetShortDeviceDescription(visible_gpu_id, *desc) << ") "
                 << "with Cuda compute capability "

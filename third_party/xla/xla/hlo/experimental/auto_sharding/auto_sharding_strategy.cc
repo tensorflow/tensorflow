@@ -16,7 +16,6 @@ limitations under the License.
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_strategy.h"
 
 #include <algorithm>
-#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
@@ -30,7 +29,6 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
-#include "absl/container/inlined_vector.h"
 #include "absl/functional/function_ref.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
@@ -364,6 +362,13 @@ BuildStrategyAndCost(
                               {}, *strategy_group);
         break;
       }
+      case HloOpcode::kGetDimensionSize: {
+        strategy_group = CreateLeafStrategyGroupWithoutInNodes(instruction_id,
+                                                               strategy_groups);
+        AddReplicatedStrategy(ins, ins->shape(), cluster_env, strategy_map, 0,
+                              {}, *strategy_group);
+        break;
+      }
       case HloOpcode::kScatter: {
         strategy_group = CreateLeafStrategyGroup(instruction_id, ins,
                                                  strategy_map, strategy_groups);
@@ -646,9 +651,8 @@ BuildStrategyAndCost(
               // actually equal to the number of devices in the original
               // mesh). Below, we use the correct mesh depending on the number
               // of elements in the 1D sharding.
-              bool is_1d_sharding =
-                  VectorGreaterThanOneElementCount(
-                      input_spec.tile_assignment().dimensions()) == 1;
+              bool is_1d_sharding = VectorGreaterThanOneElementCount(
+                                        input_spec.dimensions()) == 1;
               if (is_1d_sharding &&
                   input_spec.TotalNumTiles() ==
                       cluster_env.device_mesh_1d_.num_elements()) {
@@ -949,6 +953,8 @@ BuildStrategyAndCost(
                 "An SPMDShardToFullShape custom call found without a sharding "
                 "annotation.");
           }
+          generate_non_following_strategies(false);
+        } else if (IsShardingCustomCall(ins)) {
           generate_non_following_strategies(false);
         } else if (IsTopKCustomCall(ins)) {
           generate_non_following_strategies(false, {0});

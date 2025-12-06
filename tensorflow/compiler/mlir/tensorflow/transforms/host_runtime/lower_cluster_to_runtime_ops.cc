@@ -79,7 +79,6 @@ void AddTPULowerClusterToRuntimeOpsPassPipeline(OpPassManager& pm,
   pm.addPass(mlir::createSymbolDCEPass());
   pm.addNestedPass<FuncOp>(
       mlir::TFDevice::CreateReplicateInvariantOpHoistingPass());
-  pm.addPass(mlir::TF::CreateOrderForProgramKeyPass());
   pm.addNestedPass<FuncOp>(mlir::TFDevice::CreateEmbeddingProgramKeyPass());
   pm.addPass(mlir::TFTPU::CreateTPUMergeVariablesWithExecutePass());
   pm.addNestedPass<FuncOp>(

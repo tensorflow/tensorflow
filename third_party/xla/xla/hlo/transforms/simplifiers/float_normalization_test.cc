@@ -583,6 +583,16 @@ TEST_F(FloatNormalizationTest, DoNotChangeBitcastConvert) {
   EXPECT_EQ(root->operand(0)->shape().element_type(), U16);
 }
 
+TEST_F(FloatNormalizationTest, DoNotChangeBitcast) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(R"(
+m {
+  a = s4[4,2]{1,0:E(4)} parameter(0)
+  b = s8[4] bitcast(a)
+})"));
+  EXPECT_FALSE(Normalize(module.get(), S4));
+}
+
 TEST_P(FloatNormalizationF8Test, ResolveIfUnsupportedF8) {
   PrimitiveType f8_type = GetParam();
   auto builder = HloComputation::Builder(TestName());

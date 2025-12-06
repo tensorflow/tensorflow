@@ -16,6 +16,11 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_TRANSFORMS_COLLECTIVES_COLLECTIVE_OPS_UTILS_H_
 #define XLA_SERVICE_GPU_TRANSFORMS_COLLECTIVES_COLLECTIVE_OPS_UTILS_H_
 
+#include <cstdint>
+#include <optional>
+#include <vector>
+
+#include "absl/container/flat_hash_map.h"
 #include "absl/status/statusor.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -26,35 +31,60 @@ namespace xla {
 namespace gpu {
 
 enum class GPUCommunicationType {
+  // The communication type could not be determined.
   UNDEFINED = 0,
-  RAIL_ALIGNED = 1,
-  NON_RAIL_ALIGNED = 2,
-  SINGLE_HOST = 3
+  // Communication involves devices from multiple hosts, and every host
+  // involved in the communication pattern has all of its devices participating.
+  MULTI_HOST_WORLD_LEVEL = 1,
+  // Communication involves devices from multiple hosts, but at least one of
+  // the involved hosts has only a subset of its devices participating.
+  MULTI_HOST_NON_WORLD_LEVEL = 2,
+  // All devices participating in the collective operation reside on the same
+  // fast-interconnect domain.
+  SINGLE_PARTITION = 3
 };
 
 // Returns the type of communication pattern for a channel instruction.
 absl::StatusOr<GPUCommunicationType> CommunicationType(
-    int num_devices_per_host, const HloChannelInstruction& instr,
+    int partition_size, const HloChannelInstruction& instr,
     const se::GpuComputeCapability& gpu_version);
+
+// Enum to categorize collective-permute cost models based on communication
+// patterns. The cost model is determined by the highest-latency pattern
+// present in any device: TwoWayHasNonMutual > TwoWayAllMutual > OneWay.
+enum class CollectivePermuteCostModelType {
+  // This is currently only used for CollectivePermute instructions with empty
+  // source-target pairs.
+  // TODO(b/460155942): Remove this field once the HLO verifier stop supporting
+  // empty source-target pairs.
+  kUnknown,
+  // Intra-partition: All devices only send or only receive data.
+  kIntraPartitionOneWay,
+  // Intra-partition: Devices send/receive, but only with the same peer
+  // (e.g., {{0,1},{1,0}}).
+  kIntraPartitionTwoWayAllMutual,
+  // Intra-partition: At least one device sends to one peer and receives from
+  // another (e.g., {{0,1},{1,2}}).
+  kIntraPartitionTwoWayHasNonMutual,
+  // Inter-partition: All devices only send or only receive data.
+  kInterPartitionOneWay,
+  // Inter-partition: Devices send/receive, but only with the same peer.
+  kInterPartitionTwoWayAllMutual,
+  // Inter-partition: At least one device sends to one peer and receives from
+  // another.
+  kInterPartitionTwoWayHasNonMutual,
+};
+
+// Returns cost model type based on collective-permute properties.
+CollectivePermuteCostModelType GetCollectivePermuteCostModelType(
+    const HloCollectivePermuteInstruction& instr,
+    int64_t num_devices_per_partition);
 
 // Returns true if instruction is a synchronous collective op.
 bool IsGPUSyncCollective(const HloInstruction& instr);
 
-enum class GPUTopologyType {
-  UNKNOWN = 0,
-  SINGLE_HOST = 1,
-  MULTI_HOST = 2,
-};
-
-// Returns the given device topology. Currently this function is
-// heuristic based: it can be the case it will not detect a multi host case when
-// a user decides to use < 8 GPUs per host. Moreover it tells nothing about how
-// fast the interconnect between hosts is (Infiniband, NVLINK, DCN, etc.).
-//
-// Will return `UNKNOWN` on any platform other than Hopper and Ampere.
-GPUTopologyType GetTopologyType(
-    const HloModuleConfig& config,
-    const se::DeviceDescription& device_description);
+// Returns true if all devices are within the same NVLink domain (slice).
+bool IsIntraNVLinkDomain(const HloModuleConfig& config, int64_t slice_size);
 
 }  // namespace gpu
 }  // namespace xla

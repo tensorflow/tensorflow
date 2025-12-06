@@ -1,6 +1,6 @@
 /* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
 
-Licensed under the Apache License, Version 2.0 (the "License");;
+Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
 
@@ -18,10 +18,10 @@ limitations under the License.
 #include <cstdint>
 #include <exception>
 #include <string>
-#include <utility>
 
 // Placeholder for lineage logging import.
 // Placeholder for lineage logging additional import.
+#include "absl/base/call_once.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
@@ -36,6 +36,8 @@ namespace tensorflow {
 namespace saved_model {
 namespace python {
 
+// Helper variable for logging.
+
 namespace py = pybind11;
 
 class MetricException : public std::exception {
@@ -47,10 +49,9 @@ class MetricException : public std::exception {
   std::string message_ = "";
 };
 
+// Placeholder for a helper function for logging.
+
 void DefineMetricsModule(py::module main_module) {
-  // Deduplicate writes from lineage log. This should reduce the number of
-  // outgoing calls to UMB from lineage log. See b/415794129 for details.
-  // Placeholder for lineage logging enable dedupe call.
   auto m = main_module.def_submodule("metrics");
 
   m.doc() = "Python bindings for TensorFlow SavedModel and Checkpoint Metrics.";
@@ -207,6 +208,7 @@ void DefineMetricsModule(py::module main_module) {
         }
         metrics::SavedModelReadPathAndSingleprint().Set(
             path_and_singleprint.value());
+        // Placeholder for lineage logging dedup setup.
         // Placeholder for lineage logging input call.
       },
       py::kw_only(), py::arg("path"), py::arg("singleprint"),
@@ -243,6 +245,7 @@ void DefineMetricsModule(py::module main_module) {
         }
         metrics::SavedModelWritePathAndSingleprint().Set(
             path_and_singleprint.value());
+        // Placeholder for lineage logging dedup setup.
         // Placeholder for lineage logging output call.
       },
       py::kw_only(), py::arg("path"), py::arg("singleprint"),
@@ -385,7 +388,7 @@ void DefineMetricsModule(py::module main_module) {
       "CalculateFileSize",
       [](const char* filename) {
         Env* env = Env::Default();
-        uint64 filesize = 0;
+        uint64_t filesize = 0;
         if (!env->GetFileSize(filename, &filesize).ok()) {
           return (int64_t)-1;
         }
@@ -414,7 +417,7 @@ void DefineMetricsModule(py::module main_module) {
 
   m.def(
       "GetCheckpointSize",
-      [](const char* api_label, uint64 filesize) {
+      [](const char* api_label, uint64_t filesize) {
         return metrics::CheckpointSize(api_label, filesize).value();
       },
       py::kw_only(), py::arg("api_label"), py::arg("filesize"),

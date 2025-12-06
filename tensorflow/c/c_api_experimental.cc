@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/c/c_api_experimental.h"
 
 #include "absl/strings/substitute.h"
+#include "absl/synchronization/notification.h"
 #include "tensorflow/c/c_api.h"
 #include "tensorflow/c/c_api_internal.h"
 #include "tensorflow/c/checkpoint_reader.h"
@@ -248,8 +249,7 @@ TF_Tensor* TF_DequeueNamedTensor(TF_Session* session, int tensor_id,
   }
 
   TF_Operation* dequeue_op = TF_GraphOperationByName(
-      session->graph,
-      tensorflow::strings::StrCat("fifo_queue_dequeue_", tensor_id).c_str());
+      session->graph, absl::StrCat("fifo_queue_dequeue_", tensor_id).c_str());
   if (dequeue_op == nullptr) {
     status->status = tensorflow::errors::Internal(
         "Unable to find the dequeue node in the TF graph.");
@@ -294,8 +294,7 @@ void TF_EnqueueNamedTensor(TF_Session* session, int tensor_id,
   }
 
   TF_Operation* enqueue_op = TF_GraphOperationByName(
-      session->graph,
-      tensorflow::strings::StrCat("fifo_queue_enqueue_", tensor_id).c_str());
+      session->graph, absl::StrCat("fifo_queue_enqueue_", tensor_id).c_str());
   if (enqueue_op == nullptr) {
     status->status = tensorflow::errors::Internal(
         "Unable to find the enqueue node in the TF graph.");
@@ -303,8 +302,7 @@ void TF_EnqueueNamedTensor(TF_Session* session, int tensor_id,
   }
 
   TF_Operation* placeholder_op = TF_GraphOperationByName(
-      session->graph,
-      tensorflow::strings::StrCat("arg_tensor_enqueue_", tensor_id).c_str());
+      session->graph, absl::StrCat("arg_tensor_enqueue_", tensor_id).c_str());
   if (placeholder_op == nullptr) {
     status->status = tensorflow::errors::Internal(
         "Unable to find the placeholder node as input to enqueue in the TF "
@@ -533,7 +531,7 @@ TF_CAPI_EXPORT extern void TFE_CollectiveOpsCheckPeerHealth(
   tensorflow::EagerContext* context =
       tensorflow::ContextFromInterface(tensorflow::unwrap(ctx));
   auto collective_executor_handle = context->GetCollectiveExecutorHandle();
-  tensorflow::Notification done;
+  absl::Notification done;
   collective_executor_handle->get()->remote_access()->CheckPeerHealth(
       task, timeout_in_ms, [&done, status](const Status& s) {
         status->status = s;

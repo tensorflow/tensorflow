@@ -18,50 +18,31 @@ limitations under the License.
 
 #include <cstdint>
 #include <optional>
-#include <set>
 #include <string>
 #include <utility>
 #include <vector>
 
-#include "absl/functional/function_ref.h"
 #include "absl/log/log.h"
-#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/core/collectives/reduction_kind.h"
 #include "xla/executable_run_options.h"
-#include "xla/hlo/ir/collective_device_list.h"
 #include "xla/hlo/ir/collective_op_group_mode.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
-#include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/ir/replica_group.h"
 #include "xla/literal.h"
+#include "xla/runtime/device_id.h"
 #include "xla/service/collective_permute_cycle.h"
 #include "xla/service/computation_placer.h"
-#include "xla/service/global_device_id.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/source_target_pairs.h"
-#include "xla/stream_executor/device_memory.h"
 
 namespace xla {
-
-enum class ReductionKind { SUM, PRODUCT, MIN, MAX };
-
-constexpr absl::string_view ReductionKindToString(
-    ReductionKind reduction_kind) {
-  switch (reduction_kind) {
-    case ReductionKind::SUM:
-      return "sum";
-    case ReductionKind::PRODUCT:
-      return "prod";
-    case ReductionKind::MIN:
-      return "min";
-    case ReductionKind::MAX:
-      return "max";
-  }
-}
 
 absl::StatusOr<ReductionKind> StringToReductionKind(
     absl::string_view reduction_kind);
@@ -201,6 +182,8 @@ bool IsExclusivelyCrossReplica(absl::Span<const ReplicaGroup> replica_groups,
                                bool use_global_ids, bool has_channel_id,
                                const DeviceAssignment& device_assignment);
 
+bool HasDuplicateSourcesOrTargets(const SourceTargetPairs& pairs);
+
 // A custom call target that can be used to create a nop that can legally
 // replace a collective op.
 inline constexpr absl::string_view kNopCustomCallTarget = "AllocateBuffer";
@@ -222,7 +205,6 @@ absl::StatusOr<bool> IsAsyncCollective(const HloInstruction* instruction);
 // Returns the collective instruction if argument is a collective op (or a
 // collective fusion) with channel_id.
 HloInstruction* IsOrHasCollectiveWithChannelId(HloInstruction* instruction);
-
 
 // Key that identifies a particular Rendezvous object in our global hashtable.
 // This determines which calls to ExecuteOnStream communicate with each other.
@@ -291,7 +273,7 @@ struct RendezvousKey {
     return absl::StrFormat(
         "RendezvousKey{run_id=%s, global_devices=[%s], "
         "num_local_participants=%d, collective_op_kind=%s, op_id=%d}",
-        run_id.ToString(), GlobalDeviceIdsToString(global_devices),
+        run_id.ToString(), absl::StrJoin(global_devices, ", "),
         num_local_participants, CollectiveOpKindString(), op_id);
   }
 
@@ -308,9 +290,6 @@ struct RendezvousKey {
 inline bool MayPipelineSendRecvChannel(int64_t channel_id) {
   return channel_id > 0;
 }
-
-constexpr char kSendRecvSourceTargetPairsAttr[] =
-    "_xla_send_recv_source_target_pairs";
 
 // When a Send or Recv is annotated with frontend attribute
 // _xla_send_recv_pipeline="1", asynchronous stream kP2P1 is used to execute the
@@ -344,6 +323,14 @@ constexpr char kSendRecvValidationAttr[] = "_xla_send_recv_validation";
 inline constexpr absl::string_view kCollectiveStreamAttrName =
     "_xla_gpu_collective_stream";
 inline constexpr absl::string_view kCollectiveStreamP2P = "p2p";
+
+// Returns latency metadata in microseconds(us) if the instruction is a custom
+// call with latency metadata. Returns `std::nullopt` if the instruction is not
+// a custom call with latency metadata or invalid latency metadata is provided.
+std::optional<double> GetCustomCallLatencyMetadata(const HloInstruction* instr);
+
+int64_t GetSubgroupSize(const HloCollectiveInstruction* hlo,
+                        CollectiveOpGroupMode group_mode);
 
 }  // end namespace xla
 

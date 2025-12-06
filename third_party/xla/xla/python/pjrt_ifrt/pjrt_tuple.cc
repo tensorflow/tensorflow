@@ -29,7 +29,7 @@ limitations under the License.
 #include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/client.h"
-#include "xla/python/ifrt/future.h"
+#include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/concurrency/ref_count.h"
 
 namespace xla {
@@ -40,8 +40,8 @@ namespace ifrt {
   return tsl::MakeRef<PjRtTuple>(client, values);
 }
 
-Future<> PjRtTuple::GetReadyFuture() const {
-  std::vector<Future<>> futures;
+tsl::Future<> PjRtTuple::GetReadyFuture() const {
+  std::vector<tsl::Future<>> futures;
   futures.reserve(values_.size());
   for (const auto& value : values_) {
     futures.push_back(value->GetReadyFuture());
@@ -49,14 +49,14 @@ Future<> PjRtTuple::GetReadyFuture() const {
   return JoinFutures(absl::MakeSpan(futures));
 }
 
-Future<> PjRtTuple::Delete() {
+tsl::Future<> PjRtTuple::Delete() {
   {
-    absl::MutexLock lock(&mu_);
+    absl::MutexLock lock(mu_);
     if (!is_deleted_.HasBeenNotified()) {
       is_deleted_.Notify();
     }
   }
-  std::vector<Future<>> futures;
+  std::vector<tsl::Future<>> futures;
   futures.reserve(values_.size());
   for (const auto& value : values_) {
     futures.push_back(value->Delete());

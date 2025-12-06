@@ -21,10 +21,10 @@
 
 #include <gmock/gmock.h>
 #include "absl/status/status.h"
-#include "xla/python/ifrt/future.h"
 #include "xla/python/ifrt_proxy/client/client_session.h"
 #include "xla/python/ifrt_proxy/common/ifrt_service.pb.h"
 #include "xla/python/ifrt_proxy/common/test_utils.h"
+#include "xla/tsl/concurrency/future.h"
 
 namespace xla {
 namespace ifrt {
@@ -32,8 +32,8 @@ namespace proxy {
 
 class MockClientSession final : public ClientSession {
  public:
-  MOCK_METHOD(Future<Response>, Enqueue, (std::unique_ptr<IfrtRequest> req),
-              (override));
+  MOCK_METHOD(tsl::Future<Response>, Enqueue,
+              (std::unique_ptr<IfrtRequest> req), (override));
   MOCK_METHOD(void, Finish, (const absl::Status& s), (override));
 };
 
@@ -51,14 +51,14 @@ ACTION_P(MockClientCaptureAndReturn, requests_queue_param,
   requests_queue->Push(*req);
   response->mutable_response_metadata()->set_op_id(
       arg0->request_metadata().op_id());
-  return Future<ClientSession::Response>(std::move(response));
+  return tsl::Future<ClientSession::Response>(std::move(response));
 }
 
 ACTION_P(MockClientSessionReturnResponse, response_proto) {
   auto response = std::make_unique<IfrtResponse>(response_proto);
   response->mutable_response_metadata()->set_op_id(
       arg0->request_metadata().op_id());
-  return Future<ClientSession::Response>(std::move(response));
+  return tsl::Future<ClientSession::Response>(std::move(response));
 }
 
 }  // namespace proxy

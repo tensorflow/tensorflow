@@ -31,6 +31,8 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/escaping.h"
+#include "absl/strings/match.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
@@ -56,6 +58,7 @@ limitations under the License.
 #include "xla/primitive_util.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/backend_configs.pb.h"
+#include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu/target_util.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/service/matmul_indexing_utils.h"
@@ -132,18 +135,22 @@ absl::StatusOr<bool> IsCublasSupportedMatMul(
       return false;
   }
 }
-const char* const kCusolverCholeskyCallTarget = "__cusolver$cholesky";
-
-bool IsCustomCallToCusolver(const HloInstruction& hlo) {
-  if (hlo.opcode() != HloOpcode::kCustomCall) {
-    return false;
-  }
-  return hlo.custom_call_target() == kCusolverCholeskyCallTarget;
-}
 
 bool IsCustomCallToTopK(const HloInstruction& hlo) {
   return hlo.opcode() == HloOpcode::kCustomCall &&
          hlo.custom_call_target() == kTopKCustomCallTarget;
+}
+
+bool IsCustomCallToPtxKernel(const HloInstruction& hlo) {
+  return hlo.opcode() == HloOpcode::kCustomCall &&
+         hlo.custom_call_target() == "__gpu$xla.gpu.ptx";
+}
+
+bool IsCollectiveMosaicGpuInstruction(const HloInstruction& hlo) {
+  return hlo.opcode() == HloOpcode::kCustomCall &&
+         (hlo.custom_call_target() == "mosaic_gpu" ||
+          hlo.custom_call_target() == "mosaic_gpu_v2") &&
+         absl::StrContains(hlo.raw_backend_config_string(), "nvshmem");
 }
 
 static bool IsContiguousSlice(
@@ -204,174 +211,6 @@ absl::StatusOr<BufferAllocation::Slice> GetAllocationSlice(
     const BufferAssignment& buffer_assignment, const HloInstruction* instr,
     const ShapeIndex& index) {
   return buffer_assignment.GetUniqueSlice(instr, index);
-}
-
-std::vector<HloInstructionAdaptor> GetOutputDefiningDynamicUpdateSlices(
-    absl::Span<HloInstructionAdaptor const> roots) {
-  std::vector<HloInstructionAdaptor> dus_ops;
-  for (HloInstructionAdaptor root : roots) {
-    while (root.opcode() == HloOpcode::kBitcast) {
-      root = root.GetOperand(0);
-    }
-
-    if (root.opcode() == HloOpcode::kDynamicUpdateSlice) {
-      dus_ops.push_back(root);
-    }
-  }
-  return dus_ops;
-}
-
-template <typename T>
-absl::InlinedVector<const HloInstruction*, 4> GetStartIndices(T instr) {
-  absl::InlinedVector<const HloInstruction*, 4> result;
-  for (int i = instr->first_index_operand_number(); i < instr->operand_count();
-       i++) {
-    const HloInstruction* index = instr->operand(i);
-    result.push_back(index);
-  }
-  return result;
-}
-
-absl::StatusOr<bool> CanEmitFusedDynamicUpdateSliceInPlaceForGpu(
-    const HloFusionAdaptor& fusion_adaptor,
-    std::function<absl::StatusOr<BufferAllocation::Slice>(
-        const HloInstruction* instr, const ShapeIndex& index)>
-        get_allocation_slice,
-    const HloInstruction* fusion) {
-  std::vector<HloInstructionAdaptor> dus_instrs =
-      GetOutputDefiningDynamicUpdateSlices(fusion_adaptor.GetRoots());
-
-  // This check could probably be relaxed: if code generation is made to use a
-  // separate parallel loop for each dynamic slice update, then it shouldn't be
-  // necessary for every output to be a dynamic slice update, nor to have the
-  // same shape.
-  if (dus_instrs.size() != fusion_adaptor.GetRoots().size()) {
-    return false;
-  }
-
-  Shape update_shape = dus_instrs[0].GetOperand(1).shape();
-
-  for (int i = 0; i < dus_instrs.size(); ++i) {
-    const auto& dus = dus_instrs[i];
-
-    // DynamicUpdateSlice ops should have a single path to the root to avoid
-    // allowing a dynamic slice update to depend on another, as this would not
-    // be guaranteed to work with the current codegen.
-    // We follow DUS users until we find an instruction without users. We
-    // support only few patterns:
-    //
-    //   (1) ROOT dynamic-update-slice
-    //   (2) ROOT tuple(dynamic-update-slice)
-    //   (3) ROOT bitcast(dynamic-update-slice)
-    //   (4) ROOT tuple(bitcast(dynamic-update-slice))
-    //
-    // In case there is a root tuple, the search will stop at the tuple operand,
-    // as the root tuple is not considered a real user by HloInstructionAdaptor.
-    // Note that due to AlgebraicSimplifier we will never have a chain of
-    // bitcasts.
-    HloInstructionAdaptor real_root = dus;
-    auto users = real_root.GetUsers();
-    while (!users.empty()) {
-      if (users.size() > 1) {
-        return false;
-      }
-      real_root = users.front();
-      if (real_root.opcode() != HloOpcode::kBitcast) {
-        return false;
-      }
-      users = real_root.GetUsers();
-    }
-
-    // Find "real" DUS operand by skipping bitcasted operands.
-    HloInstructionAdaptor operand = dus.GetOperand(0);
-    if (fusion_adaptor.ContainsInstruction(operand) &&
-        operand.opcode() == HloOpcode::kBitcast) {
-      operand = operand.GetOperand(0);
-    }
-
-    // Operand to a DUS (or Bitcast) must be a fusion parameter.
-    // HloInstructionAdaptor skips parameters, so we need to check whether
-    // 'operand' is outside of the fusion.
-    if (fusion_adaptor.ContainsInstruction(operand)) {
-      return false;
-    }
-
-    // We require that the parameter being updated is only read at the same
-    // index positions by all users, since we otherwise risk a race condition
-    // when updating the parameter inplace.
-    std::queue<HloInstructionAdaptor> q;
-    absl::flat_hash_set<const HloInstruction*> visited;
-    q.push(operand);
-    visited.insert(&operand.instruction());
-    // We have already checked above that the DUS only has one user. So we don't
-    // need to visit it during the breadth-first search.
-    visited.insert(&dus.instruction());
-    while (!q.empty()) {
-      HloInstructionAdaptor instr = q.front();
-      q.pop();
-      for (const HloInstructionAdaptor& user : instr.GetUsers()) {
-        if (user.opcode() == HloOpcode::kDynamicSlice &&
-            dus.GetOperand(0) == user.GetOperand(0) &&
-            update_shape == user.shape()) {
-          // We can still emit in-place in this case if the same slice is
-          // accessed by the DUS and the DS. If they don't access the same
-          // slice, the two slices might partially overlap and read/write the
-          // same index at different times, and then we cannot guarantee that we
-          // read before it is overwritten. However if both access only a single
-          // element, there also can be no race condition.
-          absl::InlinedVector<const HloInstruction*, 4> user_start_indices =
-              GetStartIndices(
-                  Cast<HloDynamicSliceInstruction>(&user.instruction()));
-          absl::InlinedVector<const HloInstruction*, 4> dus_start_indices =
-              GetStartIndices(
-                  Cast<HloDynamicUpdateSliceInstruction>(&dus.instruction()));
-          if (ShapeUtil::ElementsIn(update_shape) != 1 &&
-              user_start_indices != dus_start_indices) {
-            return false;
-          }
-        } else if (user != dus &&
-                   user.opcode() == HloOpcode::kDynamicUpdateSlice) {
-          return false;
-        } else if (user != dus && !user.instruction().IsElementwise() &&
-                   user.opcode() != HloOpcode::kBitcast &&
-                   user.opcode() != HloOpcode::kTuple) {
-          return false;
-        }
-        if (visited.insert(&user.instruction()).second) {
-          q.push(user);
-        }
-      }
-    }
-
-    // This check could probably be relaxed: if code generation is made to use a
-    // separate parallel loop for each dynamic slice update, then it shouldn't
-    // be necessary for the shape to be the same for all the dynamic slice
-    // updates. Note that this equality check purposefully ignores the element
-    // type.
-    if (Cast<HloDynamicUpdateSliceInstruction>(&dus.instruction())
-            ->update()
-            ->shape() != update_shape) {
-      return false;
-    }
-
-    if (fusion != nullptr) {
-      ShapeIndex root_index = {};
-      if (fusion->IsMultiOutputFusion()) {
-        root_index = {i};
-      }
-      // Get output buffer for the fusion root.
-      TF_ASSIGN_OR_RETURN(BufferAllocation::Slice output_buffer,
-                          get_allocation_slice(fusion, root_index));
-
-      TF_ASSIGN_OR_RETURN(BufferAllocation::Slice lhs_buffer,
-                          get_allocation_slice(&operand.instruction(), {}));
-      if (lhs_buffer != output_buffer) {
-        return false;
-      }
-    }
-  }
-
-  return true;
 }
 
 bool IsNormalized(const HloTransposeInstruction& transpose) {
@@ -712,14 +551,6 @@ bool IsDynamicSliceFusion(const HloInstruction* instr) {
          name == kDynamicSliceFusionWithDynamicAddressComputationConfigName;
 }
 
-bool IsDynamicMemcpyFusion(const HloInstruction* instr) {
-  absl::StatusOr<GpuBackendConfig> backend_config =
-      instr->backend_config<GpuBackendConfig>();
-  return backend_config.ok() &&
-         backend_config->fusion_backend_config().kind() ==
-             kDynamicMemcpyFusionKind;
-}
-
 namespace {
 
 // Whether the instruction is semantically a call.
@@ -930,5 +761,6 @@ DenseDataIntermediate DenseDataIntermediate::FromProto(
   return DenseDataIntermediate::Own(
       std::vector<uint8_t>(data.begin(), data.end()));
 }
+
 }  // namespace gpu
 }  // namespace xla

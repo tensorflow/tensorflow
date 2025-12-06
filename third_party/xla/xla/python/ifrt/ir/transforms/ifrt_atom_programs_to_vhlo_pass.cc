@@ -35,6 +35,7 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/TypeID.h"
 #include "mlir/Support/WalkResult.h"
+#include "google/protobuf/repeated_ptr_field.h"
 #include "stablehlo/dialect/Register.h"
 #include "stablehlo/dialect/Serialization.h"
 #include "stablehlo/dialect/Version.h"
@@ -71,7 +72,6 @@ class IfrtAtomProgramsToVhloPass
   }
 
   void getDependentDialects(::mlir::DialectRegistry& registry) const override {
-    mlir::registerAllDialects(registry);
     mlir::stablehlo::registerAllDialects(registry);
   }
 

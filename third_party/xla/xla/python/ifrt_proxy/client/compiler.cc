@@ -32,11 +32,11 @@
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/executable.h"
-#include "xla/python/ifrt/future.h"
 #include "xla/python/ifrt/host_callback.h"
 #include "xla/python/ifrt/program.h"
 #include "xla/python/ifrt/serdes.h"
 #include "xla/python/ifrt/topology.h"
+#include "xla/python/ifrt/user_context_status_util.h"
 #include "xla/python/ifrt_proxy/client/executable.h"
 #include "xla/python/ifrt_proxy/client/rpc_helper.h"
 #include "xla/python/ifrt_proxy/common/ifrt_service.pb.h"
@@ -44,6 +44,7 @@
 #include "xla/python/ifrt_proxy/server/host_callback.h"
 #include "xla/python/pjrt_ifrt/pjrt_host_callback.h"
 #include "xla/python/pjrt_ifrt/xla_compiler.h"
+#include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/status_to_from_proto.h"
@@ -145,14 +146,15 @@ absl::StatusOr<xla::ifrt::LoadedExecutableRef> Compiler::CompileAndLoad(
       fingerprint = response->fingerprint_value();
       break;
     case CompileResponse::kFingerprintError:
-      fingerprint = tsl::StatusFromProto(response->fingerprint_error());
+      fingerprint = xla::ifrt::ReattachUserContextRefs(
+          tsl::StatusFromProto(response->fingerprint_error()));
       break;
     default:
       fingerprint = std::nullopt;
       break;
   }
 
-  Future<> ready_future =
+  tsl::Future<> ready_future =
       rpc_helper_->CheckFuture(response->ready_future_handle());
 
   std::vector<uint64_t> loaded_host_callback_handles(
@@ -175,8 +177,10 @@ absl::StatusOr<xla::ifrt::LoadedExecutableRef> Compiler::CompileAndLoad(
       devices.push_back(device);
     }
   }
-  TF_ASSIGN_OR_RETURN(DeviceListRef device_list,
-                      client_->MakeDeviceList(devices));
+  std::optional<DeviceListRef> device_list;
+  if (!devices.empty()) {
+    TF_ASSIGN_OR_RETURN(device_list, client_->MakeDeviceList(devices));
+  }
 
   return std::make_unique<LoadedExecutable>(
       client_, rpc_helper_, response->loaded_executable_handle(),

@@ -57,6 +57,8 @@ using tensorflow::GetTaskStateRequest;
 using tensorflow::GetTaskStateResponse;
 using tensorflow::HeartbeatRequest;
 using tensorflow::HeartbeatResponse;
+using tensorflow::IncrementKeyValueRequest;
+using tensorflow::IncrementKeyValueResponse;
 using tensorflow::InsertKeyValueRequest;
 using tensorflow::InsertKeyValueResponse;
 using tensorflow::PollForErrorRequest;
@@ -247,6 +249,16 @@ class GrpcCoordinationClient : public CoordinationClient {
         &target_);
   }
 
+  void IncrementKeyValueAsync(const IncrementKeyValueRequest* request,
+                              IncrementKeyValueResponse* response,
+                              StatusCallback done) override {
+    new RPCState<protobuf::Message>(
+        &stub_, cq_, "/tensorflow.CoordinationService/IncrementKeyValue",
+        *request, response, std::move(done), /*call_opts=*/nullptr,
+        /*threadpool=*/nullptr, /*max_retries=*/0, /*fail_fast=*/true,
+        &target_);
+  }
+
   void GetKeyValueDirAsync(const GetKeyValueDirRequest* request,
                            GetKeyValueDirResponse* response,
                            StatusCallback done) override {
@@ -325,7 +337,7 @@ class GrpcCoordinationClientCache : public CoordinationClientCache {
   ~GrpcCoordinationClientCache() override = default;
 
   CoordinationClient* GetClient(const std::string& target) override {
-    absl::MutexLock l(&clients_mu_);
+    absl::MutexLock l(clients_mu_);
     auto it = clients_.find(target);
     if (it == clients_.end()) {
       SharedGrpcChannelPtr channel = channel_cache_->FindWorkerChannel(target);
@@ -358,7 +370,7 @@ class GrpcCoordinationClientCache : public CoordinationClientCache {
   size_t AssignClientToThread(const std::string& target) {
     // Round-robin target assignment, but keeps the same target on the same
     // polling thread always, as this is important for gRPC performance
-    absl::MutexLock l(&assignment_mu_);
+    absl::MutexLock l(assignment_mu_);
     auto it = target_assignments_.find(target);
     if (it == target_assignments_.end()) {
       it = target_assignments_

@@ -7,10 +7,9 @@ load(
     "if_cuda_is_configured",
 )
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
+load("@rules_python//python:proto.bzl", "py_proto_library")
 load("//tensorflow:pytype.default.bzl", "pytype_strict_library")
 load("//tensorflow:strict.default.bzl", "py_strict_library")
-
-# Placeholder: load py_proto_library
 load(
     "//tensorflow:tensorflow.bzl",
     "VERSION",
@@ -616,7 +615,7 @@ py_strict_library(
     deps = [
         ":keras_lib",
         "//third_party/py/numpy",
-        "@pypi_scipy//:pkg",
+        "@pypi//scipy",
         "@six_archive//:six",
     ],
 )
@@ -768,7 +767,6 @@ pywrap_tensorflow_macro(
         "//tensorflow/c:env",
         "//tensorflow/c:kernels",
         "//tensorflow/c:kernels_experimental",
-        "//tensorflow/c:logging",
         "//tensorflow/c:ops",
         "//tensorflow/c:python_api",
         "//tensorflow/c:safe_ptr",

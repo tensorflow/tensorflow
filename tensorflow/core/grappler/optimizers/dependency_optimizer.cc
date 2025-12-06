@@ -691,7 +691,7 @@ void DependencyOptimizer::GroupCrossDeviceControlEdges(bool host_granularity) {
             do {
               group_name = AddPrefixToNodeName(
                   node->name(),
-                  strings::StrCat("GroupCrossDeviceControlEdges_", num_noops));
+                  absl::StrCat("GroupCrossDeviceControlEdges_", num_noops));
               noop = node_map_->GetNode(group_name);
               ++num_noops;
             } while (noop != nullptr);

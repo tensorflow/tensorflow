@@ -5,14 +5,14 @@ load(
     "xla_cc_test",
     "xla_py_test_deps",
 )
-load("//xla/python:package_groups.bzl", "XLA_PYTHON_XLA_CLIENT_USERS", "XLA_PYTHON_XLA_EXTENSION_USERS")
+load("//xla/python:package_groups.bzl", "XLA_PYTHON_PROFILER_USERS", "XLA_PYTHON_XLA_CLIENT_USERS", "XLA_PYTHON_XLA_EXTENSION_USERS")
 load("//xla/python:pywrap.bzl", "nanobind_pywrap_extension")
 load(
     "//xla/tsl:tsl.bzl",
     "if_google",
     "internal_visibility",
 )
-load("//xla/tsl:tsl.default.bzl", "get_compatible_with_portable", "tsl_pybind_extension")
+load("//xla/tsl:tsl.default.bzl", "get_compatible_with_libtpu_portable", "get_compatible_with_portable", "tsl_pybind_extension")
 load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
@@ -89,6 +89,25 @@ py_strict_test(
 )
 
 cc_library(
+    name = "dlpack_types",
+    srcs = ["dlpack_types.cc"],
+    hdrs = ["dlpack_types.h"],
+    compatible_with = get_compatible_with_libtpu_portable(),
+    copts = [
+        "-fexceptions",
+        "-fno-strict-aliasing",
+    ],
+    features = ["-use_header_modules"],
+    visibility = internal_visibility([":friends"]),
+    deps = [
+        "//xla:util",
+        "//xla:xla_data_proto_cc",
+        "@com_google_absl//absl/status:statusor",
+        "@dlpack",
+    ],
+)
+
+cc_library(
     name = "types",
     srcs = ["types.cc"],
     hdrs = [
@@ -105,6 +124,7 @@ cc_library(
     deps = [
         ":nb_numpy",
         ":safe_static_init",
+        ":strides",
         "//xla:literal",
         "//xla:shape_util",
         "//xla:status_macros",
@@ -121,8 +141,22 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
-        "@local_config_python//:python_headers",  # buildcleaner: keep
         "@nanobind",
+        "@rules_python//python/cc:current_py_cc_headers",  # buildcleaner: keep
+    ],
+)
+
+cc_library(
+    name = "strides",
+    srcs = ["strides.cc"],
+    hdrs = ["strides.h"],
+    compatible_with = get_compatible_with_libtpu_portable(),
+    visibility = internal_visibility([":friends"]),
+    deps = [
+        "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
+        "//xla/tsl/platform:logging",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -156,6 +190,7 @@ cc_library(
         "//xla/service:custom_call_sharding_helper",
         "//xla/service/spmd:spmd_partitioner",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings:string_view",
     ],
     # Always register 'InspectSharding' custom partitioning handler.
     alwayslink = 1,
@@ -335,6 +370,7 @@ cc_library(
     hdrs = ["safe_static_init.h"],
     copts = ["-fexceptions"],
     features = ["-use_header_modules"],
+    visibility = internal_visibility([":friends"]),
     deps = [
         "@com_google_absl//absl/synchronization",
         "@nanobind",
@@ -364,6 +400,10 @@ nanobind_pywrap_extension(
     name = "_profiler",
     srcs = ["profiler.cc"],
     pytype_srcs = ["_profiler.pyi"],
+    visibility = internal_visibility([
+        ":jax",
+        "//third_party/py/torch_tpu:__subpackages__",
+    ]),
     deps = [
         ":aggregate_profile",
         ":profiler_utils",
@@ -400,6 +440,10 @@ nanobind_pywrap_extension(
         "-fno-strict-aliasing",
     ],
     pytype_srcs = ["_profile_data.pyi"],
+    visibility = internal_visibility([
+        ":jax",
+        "//third_party/py/torch_tpu:__subpackages__",
+    ]),
     deps = [
         "//xla/python/profiler:profile_data_lib",
         "@local_tsl//tsl/platform:protobuf",
@@ -422,6 +466,18 @@ py_strict_test(
             "//pyglib:gfile",
             "@absl_py//absl/testing:absltest",
         ]),
+)
+
+nanobind_pywrap_extension(
+    name = "_gpu_ondevice_tracing",
+    srcs = ["gpu_ondevice_tracing.cc"],
+    pytype_srcs = ["_gpu_ondevice_tracing.pyi"],
+    visibility = internal_visibility([":jax"] + XLA_PYTHON_PROFILER_USERS),
+    deps = [
+        "//xla/tsl/profiler/backends/gpu:ondevice_event_receiver",
+        "//xla/tsl/profiler/backends/gpu:ondevice_trace_event",
+        "@nanobind",
+    ],
 )
 
 cc_library(
@@ -485,8 +541,8 @@ cc_library(
     features = ["-use_header_modules"],
     deps = [
         "@com_google_absl//absl/strings:str_format",
-        "@local_config_python//:python_headers",
         "@nanobind",
+        "@rules_python//python/cc:current_py_cc_headers",
     ],
 )
 
@@ -505,7 +561,7 @@ cc_library(
         # copybara:uncomment_begin
         # "//third_party/py/numpy:multiarray",  # build_cleaner: keep
         # copybara:uncomment_end
-        "@local_config_python//:python_headers",
+        "@rules_python//python/cc:current_py_cc_headers",
         "//xla/tsl/python/lib/core:numpy",
     ],
 )
@@ -558,6 +614,19 @@ cc_library(
     visibility = internal_visibility([":friends"]),
     deps = [
         "@com_google_absl//absl/container:flat_hash_set",
+        "@nanobind",
+    ],
+)
+
+cc_library(
+    name = "nb_status",
+    hdrs = ["nb_status.h"],
+    compatible_with = [],
+    copts = ["-fexceptions"],
+    features = ["-use_header_modules"],
+    visibility = internal_visibility([":friends"]),
+    deps = [
+        "@com_google_absl//absl/status",
         "@nanobind",
     ],
 )

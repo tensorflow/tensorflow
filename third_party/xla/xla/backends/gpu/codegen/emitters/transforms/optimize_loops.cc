@@ -18,25 +18,17 @@ limitations under the License.
 #include <optional>
 #include <utility>
 
-#include "absl/algorithm/container.h"
-#include "absl/log/check.h"
 #include "llvm/ADT/APInt.h"
-#include "llvm/ADT/SmallVector.h"
-#include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Math/IR/Math.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/SCF/Utils/Utils.h"
-#include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/Dialect/Vector/IR/VectorOps.h"
-#include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinTypes.h"
-#include "mlir/IR/ImplicitLocOpBuilder.h"
 #include "mlir/IR/Matchers.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/Value.h"
-#include "mlir/IR/ValueRange.h"
 #include "mlir/IR/Visitors.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Support/LLVM.h"
@@ -53,6 +45,23 @@ namespace gpu {
 #include "xla/backends/gpu/codegen/emitters/transforms/passes.h.inc"
 
 namespace {
+
+bool IsExpensiveToUnroll(mlir::Operation* op) {
+  return mlir::isa<
+      // clang-format off
+      // go/keep-sorted start
+      mlir::func::CallOp,
+      mlir::math::AcosOp,
+      mlir::math::AcoshOp,
+      mlir::math::AsinOp,
+      mlir::math::AsinhOp,
+      mlir::math::AtanhOp,
+      mlir::math::SinhOp,
+      mlir::scf::ForOp
+      // go/keep-sorted end
+      // clang-format on
+      >(op);
+}
 
 int GetUnrollingFactor(mlir::scf::ForOp op) {
   // We only unroll loops with a step of 1 and a lower bound of 0. That's the
@@ -76,7 +85,7 @@ int GetUnrollingFactor(mlir::scf::ForOp op) {
   int64_t size = 0;
   bool can_unroll = true;
   op.getBodyRegion().walk([&](mlir::Operation* op) {
-    if (mlir::isa<mlir::func::CallOp, mlir::scf::ForOp>(op)) {
+    if (IsExpensiveToUnroll(op)) {
       can_unroll = false;
       return;
     }

@@ -160,7 +160,7 @@ absl::Status CreateTFExecutorToTFPipeline(mlir::PassManager& pm,
 // TODO(deqiangc): refactor below helpers once mlrt is OSSed.
 void CreateTFExecutorToTFPreInvariantOptimizationPipelineHelper(
     mlir::OpPassManager& pm, const TfrtPipelineOptions& options);
-void CreateTFExecutorToTFInvariantOptimizationPipelineHelper(
+void CreateTFInvariantOptimizationPipelineHelper(
     mlir::OpPassManager& pm, const TfrtPipelineOptions& options);
 
 absl::Status CreateTFExecutorToTFPreInvariantOptimizationPipeline(

@@ -32,8 +32,8 @@ absl::Status SetupTensorboardSqliteDb(Sqlite* db) {
   // Note: GCC raw strings macros are broken.
   // https://gcc.gnu.org/bugzilla/show_bug.cgi?id=55971
   TF_RETURN_IF_ERROR(
-      db->PrepareOrDie(strings::StrCat("PRAGMA application_id=",
-                                       kTensorboardSqliteApplicationId))
+      db->PrepareOrDie(absl::StrCat("PRAGMA application_id=",
+                                    kTensorboardSqliteApplicationId))
           .StepAndReset());
   db->PrepareOrDie("PRAGMA user_version=0").StepAndResetOrDie();
   absl::Status s;

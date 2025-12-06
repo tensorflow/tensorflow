@@ -22,6 +22,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
@@ -306,6 +307,27 @@ TEST(TfrtGpuBufferTest, IsDeviceShapeWhenStaticShape) {
             client->memory_spaces()[0], /*device_layout=*/nullptr));
     EXPECT_EQ(buffer->on_device_shape(), shape);
     EXPECT_EQ(*buffer->logical_on_device_shape(), shape);
+  }
+}
+
+TEST(TfrtGpuBufferTest, CopyPoisonedBuffer) {
+  TF_ASSERT_OK_AND_ASSIGN(auto client, GetTfrtGpuClient(GpuClientOptions()));
+  Shape shape = ShapeUtil::MakeShape(F32, {8});
+  const char* errmsg = "injected error";
+
+  for (auto src_memory_space : client->memory_spaces()) {
+    for (auto dst_memory_space : client->memory_spaces()) {
+      TF_ASSERT_OK_AND_ASSIGN(auto src_buffer, client->CreateErrorBuffer(
+                                                   absl::InternalError(errmsg),
+                                                   shape, src_memory_space));
+
+      TF_ASSERT_OK_AND_ASSIGN(auto dst_buffer,
+                              src_buffer->CopyToMemorySpace(dst_memory_space));
+
+      EXPECT_THAT(
+          dst_buffer->GetReadyFuture().Await(),
+          testing::status::StatusIs(absl::StatusCode::kInternal, errmsg));
+    }
   }
 }
 

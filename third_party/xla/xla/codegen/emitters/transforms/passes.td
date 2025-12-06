@@ -27,6 +27,7 @@ def LowerXlaIntrinsicLibPass : Pass<"xla-lower-xla-intrinsic-lib", "mlir::Module
   }];
   let dependentDialects = [
     "mlir::func::FuncDialect",
+    "mlir::vector::VectorDialect",
   ];
   let constructor = "CreateLowerXlaIntrinsicLibPass()";
 }
@@ -203,20 +204,6 @@ def MergePointersToSameSlicePass :
   let constructor = "CreateMergePointersToSameSlicePass()";
 }
 
-def PropagateAliasScopesPass :
-   Pass<"xla-propagate-alias-scopes", "mlir::ModuleOp"> {
-  let summary = "Propagates alias scopes from function args to tensor modifications.";
-
-  let description = [{
-      Propagates alias scopes from function args to tensor modifications.
-  }];
-
-  let dependentDialects = [
-    "mlir::func::FuncDialect",
-    "mlir::LLVM::LLVMDialect",
-  ];
-}
-
 def PropagateSliceIndicesPass :
    Pass<"xla-propagate-slice-indices", "mlir::ModuleOp"> {
   let summary = "Propagates slice indices from the entry function to all callees.";
@@ -343,6 +330,16 @@ def VectorizeLoadsAndStoresPass :
   ];
 
   let constructor = "CreateVectorizeLoadsAndStoresPass()";
+}
+
+def SafeIntegerArithmeticPass : Pass<"xla-safe-integer-arithmetic"> {
+  let summary = "Make integer arithmetics safe.";
+
+  let description = [{
+    This pass converts integer division and remainder to ones that do not cause
+    undefined behavior. It only converts operations that are marked with the
+    attribute "xla.guard_ub".
+  }];
 }
 
 #endif  // XLA_CODEGEN_EMITTERS_TRANSFORMS_PASSES_TD_

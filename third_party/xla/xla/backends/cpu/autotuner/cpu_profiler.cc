@@ -71,8 +71,6 @@ absl::StatusOr<std::unique_ptr<InputBuffers>> CpuProfiler::CreateInputBuffers(
 }
 
 std::unique_ptr<Profiler> CpuProfiler::Create(ProfileOptions options) {
-  CHECK(options.should_populate_output_buffer == false)
-      << "Output buffer is not supported on CPU.";
   return absl::WrapUnique(new CpuProfiler(options));
 }
 

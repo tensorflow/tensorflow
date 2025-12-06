@@ -47,6 +47,7 @@ limitations under the License.
 #include "xla/codegen/emitters/type_util.h"
 #include "xla/hlo/analysis/indexing_analysis.h"
 #include "xla/hlo/analysis/indexing_map.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -58,6 +59,8 @@ namespace xla {
 namespace emitters {
 namespace {
 
+using ::mlir::MLIRContext;
+
 int Arity(const Shape& shape) {
   return shape.IsTuple() ? shape.tuple_shapes().size() : 1;
 }
@@ -67,7 +70,7 @@ const Shape& TupleShape(const Shape& shape, int index) {
 }
 
 std::vector<IndexingMapSet> ComputeOperandIndexingMaps(
-    const HloInstruction* instr, mlir::MLIRContext* mlir_context) {
+    const HloInstruction* instr, MLIRContext* mlir_context) {
   std::vector<IndexingMapSet> indexing_maps_per_operand;
   // For some ops, there is no indexing map implemented for the operands (e.g.
   // scatter) or there are multiple results and the common iteration space is
@@ -104,7 +107,7 @@ bool HasNoCompute(const HloInstruction* instr) {
 
 EpilogueSpecification EpilogueSpecification::FromIdentityIndexing(
     const HloInstruction* hero, const HloInstruction* root,
-    mlir::MLIRContext* mlir_context) {
+    MLIRContext* mlir_context) {
   EpilogueSpecification result;
   if (root->shape().IsArray()) {
     absl::c_copy(root->shape().dimensions(),
@@ -203,7 +206,7 @@ struct HloSubgraphData {
 };
 
 PartitionedComputation::PartitionedComputation(
-    const HloComputation* computation, mlir::MLIRContext* mlir_context,
+    const HloComputation* computation, MLIRContext* mlir_context,
     std::function<bool(const HloInstruction*)> is_subgraph_root)
     : computation_(computation) {
   CHECK_NE(computation, nullptr);
@@ -388,15 +391,17 @@ PartitionedComputation::Subgraph PartitionedComputation::Subgraph::ForEpilogue(
 }
 
 PartitionedComputations::PartitionedComputations(
-    const HloComputation* fusion, mlir::MLIRContext* mlir_context,
+    const HloComputation* fusion, MLIRContext* mlir_context,
     std::vector<EpilogueSpecification> epilogues)
-    : fusion_(fusion) {
+    : fusion_(fusion), mlir_context_(mlir_context) {
   // Collect all transitively called computations (including the fusion itself).
   absl::flat_hash_set<const HloComputation*> seen;
   std::vector<const HloComputation*> computations;
   std::function<void(const HloComputation*)> visit;
   visit = [&](const HloComputation* computation) {
-    if (!seen.insert(computation).second) return;
+    if (!seen.insert(computation).second) {
+      return;
+    }
     computations.push_back(computation);
     for (auto* instr : computation->instructions()) {
       absl::c_for_each(instr->called_computations(), visit);

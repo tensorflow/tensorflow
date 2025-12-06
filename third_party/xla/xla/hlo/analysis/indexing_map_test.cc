@@ -15,8 +15,6 @@ limitations under the License.
 
 #include "xla/hlo/analysis/indexing_map.h"
 
-#include <cstdint>
-#include <limits>
 #include <memory>
 #include <optional>
 #include <sstream>
@@ -34,6 +32,8 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"
 #include "xla/hlo/analysis/indexing_map_serialization.h"
 #include "xla/hlo/analysis/indexing_test_utils.h"
+#include "xla/hlo/analysis/interval.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
 #include "tsl/platform/statusor.h"
@@ -336,6 +336,24 @@ TEST_F(IndexingMapTest, Composition_OnlyRTVars) {
     d0 + cs_0 * 2 in [0, 24],
     d1 + cs_1 * 3 in [0, 15]
   )"));
+}
+
+TEST_F(IndexingMapTest, ComposeIndexingMapsComputationPartitionerTestCrash) {
+  // This is a simplification of a test case taken from ComputationPartitioner
+  // that used to crash when calling ComposeIndexingMaps.
+  auto indexing_map_identity_7_variables = Parse(R"(
+    (d0, d1, d2, d3, d4, d5, d6)->(d0, d1, d2, d3, d4, d5, d6),
+        domain : d0 in[0, 3],
+                d1 in[0, 3],
+                d2 in[0, 3],
+                d3 in[0, 3],
+                d4 in[0, 3],
+                d5 in[0, 3],
+                d6 in[0, 3]
+  )");
+  auto composed = ComposeIndexingMaps(indexing_map_identity_7_variables,
+                                      indexing_map_identity_7_variables);
+  EXPECT_EQ(composed, indexing_map_identity_7_variables);
 }
 
 TEST_F(IndexingMapTest, KnownEmpty_CreatingIndexingMapWithInfeasibleRange) {
@@ -1380,137 +1398,10 @@ TEST_F(IndexingMapTest, RangeEvaluatorTest) {
   // d3 is always 0.
   EXPECT_TRUE(range_evaluator.IsAlwaysPositiveOrZero(d3));
   EXPECT_TRUE(range_evaluator.IsAlwaysNegativeOrZero(d3));
-}
 
-TEST(IntervalComparisonTest, PointComparisons) {
-  Interval interval{12, 64};
-  auto point = [](int64_t n) { return Interval{n, n}; };
-  EXPECT_EQ(interval.Gt(point(11)), true);
-  EXPECT_EQ(interval.Gt(point(12)), std::nullopt);
-  EXPECT_EQ(interval.Gt(point(65)), false);
-
-  EXPECT_EQ(interval.Lt(point(65)), true);
-  EXPECT_EQ(interval.Lt(point(64)), std::nullopt);
-  EXPECT_EQ(interval.Lt(point(10)), false);
-
-  EXPECT_EQ(interval.Eq(point(11)), false);
-  EXPECT_EQ(interval.Eq(point(12)), std::nullopt);
-  EXPECT_EQ(interval.Eq(point(15)), std::nullopt);
-  EXPECT_EQ(interval.Eq(point(65)), false);
-
-  EXPECT_EQ(interval.Ne(point(11)), true);
-  EXPECT_EQ(interval.Ne(point(15)), std::nullopt);
-  EXPECT_EQ(interval.Ne(point(65)), true);
-
-  EXPECT_EQ(interval.Ge(point(12)), true);
-  EXPECT_EQ(interval.Ge(point(64)), std::nullopt);
-  EXPECT_EQ(interval.Ge(point(65)), false);
-
-  EXPECT_EQ(interval.Le(point(11)), false);
-  EXPECT_EQ(interval.Le(point(64)), true);
-  EXPECT_EQ(interval.Le(point(63)), std::nullopt);
-  EXPECT_EQ(interval.Le(point(65)), true);
-
-  EXPECT_EQ(point(15).Eq(point(15)), true);
-  EXPECT_EQ(point(15).Eq(point(16)), false);
-
-  EXPECT_EQ(point(15).Ne(point(15)), false);
-  EXPECT_EQ(point(15).Ne(point(16)), true);
-}
-
-TEST(IntervalComparisonTest, RangeComparisons) {
-  Interval interval{12, 64};
-  auto range = [](int64_t l, int64_t u) { return Interval{l, u}; };
-  EXPECT_EQ(interval.Gt(range(-10, 11)), true);
-  EXPECT_EQ(interval.Gt(range(-10, 12)), std::nullopt);
-  EXPECT_EQ(interval.Gt(interval), std::nullopt);
-  EXPECT_EQ(interval.Gt(range(10, 20)), std::nullopt);
-  EXPECT_EQ(interval.Gt(range(50, 60)), std::nullopt);
-  EXPECT_EQ(interval.Gt(range(64, 100)), false);
-  EXPECT_EQ(interval.Gt(range(65, 100)), false);
-
-  EXPECT_EQ(interval.Lt(range(65, 100)), true);
-  EXPECT_EQ(interval.Lt(range(64, 100)), std::nullopt);
-  EXPECT_EQ(interval.Lt(interval), std::nullopt);
-  EXPECT_EQ(interval.Lt(range(50, 60)), std::nullopt);
-  EXPECT_EQ(interval.Lt(range(10, 20)), std::nullopt);
-  EXPECT_EQ(interval.Lt(range(-10, 12)), false);
-  EXPECT_EQ(interval.Lt(range(-10, 11)), false);
-
-  EXPECT_EQ(interval.Eq(interval), std::nullopt);
-  EXPECT_EQ(interval.Eq(range(65, 100)), false);
-  EXPECT_EQ(interval.Eq(range(0, 11)), false);
-}
-
-MATCHER_P(IntervalIs, interval, "") {
-  std::pair<int64_t, int64_t> arg_pair{arg.lower, arg.upper};
-  return ::testing::ExplainMatchResult(
-      ::testing::Pair(interval.lower, interval.upper), arg_pair,
-      result_listener);
-}
-
-TEST(IntervalMathTest, Addition) {
-  Interval a{12, 64};
-  Interval b{-100, 120};
-  Interval sum{12 - 100, 64 + 120};
-  EXPECT_THAT(a + b, IntervalIs(sum));
-}
-
-TEST(IntervalMathTest, AdditionSaturating) {
-  Interval a{12, 64};
-  Interval b{-100, 120};
-  Interval c{100, std::numeric_limits<int64_t>::max() - 80};
-  Interval any{std::numeric_limits<int64_t>::min(),
-               std::numeric_limits<int64_t>::max()};
-  Interval positive{0, std::numeric_limits<int64_t>::max()};
-  Interval negative{std::numeric_limits<int64_t>::min(), 0};
-  auto range = [](int64_t l, int64_t u) { return Interval{l, u}; };
-
-  EXPECT_THAT(positive + negative, IntervalIs(any));
-  EXPECT_THAT(any + any, IntervalIs(any));
-  EXPECT_THAT(b + any, IntervalIs(any));
-
-  EXPECT_THAT(c + any, IntervalIs(any));
-  EXPECT_THAT(c + positive,
-              IntervalIs(range(100, std::numeric_limits<int64_t>::max())));
-  Interval c_plus_negative{negative.lower, c.upper};
-  EXPECT_THAT(c + negative, IntervalIs(c_plus_negative));
-
-  Interval a_plus_c{112, std::numeric_limits<int64_t>::max() - 16};
-  EXPECT_THAT(a + c, IntervalIs(a_plus_c));
-  Interval b_plus_c{0, std::numeric_limits<int64_t>::max()};
-  EXPECT_THAT(b + c, IntervalIs(b_plus_c));
-}
-
-TEST(IntervalMathTest, Multiplication) {
-  Interval pos{10, 100};
-  Interval neg{-10, -1};
-  Interval both_small{-5, 6};
-  Interval both_large{-20, 1000};
-
-  auto range = [](int64_t l, int64_t u) { return Interval{l, u}; };
-  EXPECT_THAT(pos * neg, IntervalIs(range(-1000, -10)));
-  EXPECT_THAT(pos * both_small, IntervalIs(range(-500, 600)));
-  EXPECT_THAT(pos * both_large, IntervalIs(range(-2000, 100000)));
-  EXPECT_THAT(neg * both_small, IntervalIs(range(-60, 50)));
-  EXPECT_THAT(neg * both_large, IntervalIs(range(-10000, 200)));
-  EXPECT_THAT(both_small * both_large, IntervalIs(range(-5000, 6000)));
-}
-
-TEST(IntervalMathTest, MultiplicationSaturating) {
-  Interval any{std::numeric_limits<int64_t>::min(),
-               std::numeric_limits<int64_t>::max()};
-  Interval bit33{42, std::numeric_limits<uint32_t>::max()};
-  Interval bit33_sq{42 * 42, std::numeric_limits<int64_t>::max()};
-  EXPECT_THAT(bit33 * bit33, IntervalIs(bit33_sq));
-  EXPECT_THAT(any * any, IntervalIs(any));
-
-  Interval greater_41{42, std::numeric_limits<int64_t>::max()};
-  Interval neg_one{-1, -1};
-  Interval less_neg_41{std::numeric_limits<int64_t>::min(), -42};
-  EXPECT_THAT(greater_41 * neg_one, IntervalIs(less_neg_41));
-  EXPECT_THAT(less_neg_41 * neg_one, IntervalIs(greater_41));
-  EXPECT_THAT(any * neg_one, IntervalIs(any));
+  // d0 * 2 + d1 between [-10, 17].
+  EXPECT_EQ(range_evaluator.ComputeExpressionRange(d0 * 2 + d1),
+            (Interval{-10, 17}));
 }
 
 template <typename T>
@@ -1663,7 +1554,8 @@ TEST_F(IndexingMapTest, ConvertRangeVariablesToDimensions) {
      d1 in [0, 3],
      to_convert_0 in [0, 2],
      range in [0, 1],
-     to_convert_1 in [0, 3]
+     to_convert_1 in [0, 3],
+     d0 + d1 * 2 + to_convert_0 * 3 + to_convert_1 * 4 + range * 5 in [0, 100]
   )");
   EXPECT_THAT(ConvertRangeVariablesToDimensions(indexing_map, {0, 2}),
               MatchIndexingMap(R"(
@@ -1674,7 +1566,8 @@ TEST_F(IndexingMapTest, ConvertRangeVariablesToDimensions) {
      d1 in [0, 3],
      to_convert_0 in [0, 2],
      to_convert_1 in [0, 3],
-     range in [0, 1]
+     range in [0, 1],
+     d0 + d1 * 2 + to_convert_0 * 3 + to_convert_1 * 4 + range * 5 in [0, 100]
   )"));
 }
 

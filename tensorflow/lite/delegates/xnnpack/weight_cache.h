@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_DELEGATES_XNNPACK_WEIGHT_CACHE_H_
 #define TENSORFLOW_LITE_DELEGATES_XNNPACK_WEIGHT_CACHE_H_
 
+#include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
@@ -121,6 +122,11 @@ class WeightCacheBuilder {
     return fd_.IsValid();
   }
 
+  [[nodiscard]]
+  bool IsBuilding() const {
+    return is_build_step_;
+  }
+
   // Reopens the given file to add data to it.
   //
   // This should be only called from the weight cache provider.
@@ -200,7 +206,7 @@ class WeightCacheBuilder {
   FileDescriptorView fd_;
   std::string file_path_;
 
-  bool is_build_step_ = false;
+  std::atomic<bool> is_build_step_ = false;
 };
 
 // Allows XNNPack to directly load packed weights from disk instead of having to
@@ -242,6 +248,11 @@ class MMapWeightCacheProvider {
 
   [[nodiscard /*Starting to build a cache file may fail.*/]]
   bool StartBuild(const char* file_path, FileDescriptor fd = FileDescriptor());
+
+  // If the cache is still being built, this signals that all of the building
+  // operations are done and that `CanStartBuildStep()` should now return
+  // `false`.
+  void StopBuild() { building_run_ = false; }
 
   // Sets the weight file path and loads it.
   [[nodiscard /*Loading a cache file may fail.*/]]
@@ -311,7 +322,7 @@ class MMapWeightCacheProvider {
   // Returns true if any weights have been added to the underlying builder.
   [[nodiscard]]
   bool IsBuilding() const {
-    return is_build_step_;
+    return builder_.IsBuilding();
   };
 
   // Returns true if a file is mapped or a file path is set.
@@ -392,12 +403,6 @@ class MMapWeightCacheProvider {
   // fully done. To detect misuse, we still want to raise an error when XNNPack
   // tries to append data to an existing file (i.e. when this is `false`).
   bool building_run_ = false;
-
-  // True between StartBuildStep and StopBuildStep.
-  //
-  // This is used to check whether the builder is active, which means that some
-  // of the buffers are not available/can't be retrieved.
-  bool is_build_step_ = false;
 
   // Stores the loaded buffer addresses corresponding to the given offset in the
   // cache file.

@@ -20,6 +20,7 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
+#include <tuple>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -65,7 +66,6 @@ limitations under the License.
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/executable.h"
-#include "xla/python/ifrt/future.h"
 #include "xla/python/ifrt/hlo/hlo_program.h"
 #include "xla/python/ifrt/host_callback.h"
 #include "xla/python/ifrt/program.h"
@@ -75,6 +75,7 @@ limitations under the License.
 #include "xla/service/computation_placer.h"
 #include "xla/service/dump.h"
 #include "xla/shape.h"
+#include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/framework/serving_device_selector.h"
 #include "xla/tsl/platform/errors.h"
@@ -225,29 +226,6 @@ GetHostCallbackModulesAndRemoveHostFuncs(mlir::ModuleOp module) {
   return host_callback_modules;
 }
 
-absl::StatusOr<bool> GetUseShardyPartitioner(mlir::ModuleOp module) {
-  std::optional<bool> use_shardy_partitioner;
-  mlir::WalkResult result = module->walk([&](mlir::TF::XlaCallModuleOp op) {
-    if (!use_shardy_partitioner.has_value()) {
-      use_shardy_partitioner = op.getUseShardyPartitioner();
-    } else if (*use_shardy_partitioner != op.getUseShardyPartitioner()) {
-      return mlir::WalkResult::interrupt();
-    }
-    return mlir::WalkResult::advance();
-  });
-  if (result.wasInterrupted()) {
-    return absl::FailedPreconditionError(
-        "use_shardy_partitioner is not consistent across XlaCallModuleOps");
-  }
-
-  if (!use_shardy_partitioner.has_value()) {
-    // If the module doesn't contain any XlaCallModuleOp, disable Shardy.
-    use_shardy_partitioner = false;
-  }
-  VLOG(2) << "use_shardy_partitioner: " << *use_shardy_partitioner;
-  return *use_shardy_partitioner;
-}
-
 }  // namespace
 
 absl::StatusOr<std::unique_ptr<IfrtServingExecutable>>
@@ -288,19 +266,6 @@ IfrtServingExecutable::Create(
       persistent_compilation_cache));
 
   return executable;
-}
-
-absl::StatusOr<xla::ifrt::ArrayRef> IfrtServingExecutable::ConvertTensorToArray(
-    const tensorflow::Tensor& tensor,
-    const xla::ifrt::DeviceListRef& device_list,
-    const xla::OpSharding& sharding) {
-  xla::ifrt::Shape input_shape = ToIfrtShape(tensor.shape());
-  VLOG(2) << "Converting tensor of shape " << input_shape;
-
-  TF_ASSIGN_OR_RETURN(auto hlo_sharding, xla::HloSharding::FromProto(sharding));
-
-  return MakeArrayFromTensor(*ifrt_client_, tensor, device_list,
-                             std::move(hlo_sharding), thread_pool_);
 }
 
 absl::StatusOr<std::vector<tensorflow::FunctionDef>> BuildFunctionDef(
@@ -452,9 +417,6 @@ IfrtServingExecutable::CreateExecutableSynchronously(
     tensorflow::DumpMlirOpToFile("module_for_bridge_phase2", *module_copy);
   }
 
-  TF_ASSIGN_OR_RETURN(bool use_shardy_partitioner,
-                      GetUseShardyPartitioner(module_copy.get()));
-
   Tf2HloArg tf2hlo_arg{
       .module = module_copy.get(),
       .input_dtypes_and_shapes = std::vector<DtypeAndShape>(
@@ -539,7 +501,7 @@ IfrtServingExecutable::CreateExecutableSynchronously(
   xla_compile_options.executable_build_options.set_use_spmd_partitioning(
       original_compile_metadata_.use_spmd_for_xla_partitioning());
   xla_compile_options.executable_build_options.set_use_shardy_partitioner(
-      use_shardy_partitioner);
+      compile_metadata.use_shardy_partitioner());
   xla_compile_options.parameter_is_tupled_arguments = false;
   // Use portable execution for single device + core selection.
   if (UsePortableExecution(compile_metadata)) {
@@ -593,7 +555,7 @@ IfrtServingExecutable::CreateExecutableSynchronously(
   return executable_bundle;
 }
 
-xla::ifrt::Future<IfrtServingExecutable::SharedCachedExecutableBundle>
+tsl::Future<IfrtServingExecutable::SharedCachedExecutableBundle>
 IfrtServingExecutable::LookUpOrCreateExecutable(
     const tensorflow::tpu::TPUCompileMetadataProto& compile_metadata,
     absl::Span<const DtypeAndShape> dtypes_and_shapes,
@@ -604,28 +566,31 @@ IfrtServingExecutable::LookUpOrCreateExecutable(
   }
   Key key = {.input_shapes = std::move(input_shapes)};
 
-  xla::ifrt::Promise<SharedCachedExecutableBundle> promise;
-  xla::ifrt::Future<SharedCachedExecutableBundle> future;
+  tsl::Promise<SharedCachedExecutableBundle> promise;
+  tsl::Future<SharedCachedExecutableBundle> future;
   mlir::OwningOpRef<mlir::ModuleOp> module_copy;
   {
-    absl::MutexLock lock(&mutex_);
+    absl::MutexLock lock(mutex_);
 
     const auto it = executable_bundles_.find(key);
     if (it != executable_bundles_.end()) {
       return it->second;
     }
 
-    if (is_frozen_) {
-      xla::ifrt::Future<SharedCachedExecutableBundle> frozen_future(
-          absl::FailedPreconditionError(
-              "Cannot compile for new input shapes after the executable is "
-              "already frozen."));
+    if (is_frozen_ || tf_to_hlo_compiler_->IsXlaCompilationDisabled()) {
+      tsl::Future<SharedCachedExecutableBundle> frozen_future(
+          absl::FailedPreconditionError(absl::StrCat(
+              "Cannot compile for new input shapes. Either the executable is "
+              "already frozen: ",
+              is_frozen_,
+              " or XLA compilation disabled by ScopedTpuCompileDisabler: ",
+              tf_to_hlo_compiler_->IsXlaCompilationDisabled())));
       return frozen_future;
     }
 
     // Only create promise and future when cache missed.
-    promise = xla::ifrt::Future<SharedCachedExecutableBundle>::CreatePromise();
-    future = xla::ifrt::Future<SharedCachedExecutableBundle>(promise);
+    std::tie(promise, future) =
+        tsl::Future<SharedCachedExecutableBundle>::MakePromise();
 
     executable_bundles_.emplace(key, future);
     // Clone the module to avoid race condition between Freeze() and
@@ -643,7 +608,7 @@ IfrtServingExecutable::LookUpOrCreateExecutable(
 
 void IfrtServingExecutable::Freeze() {
   LOG(INFO) << "Freezing executable. Program id: " << program_id_;
-  absl::MutexLock lock(&mutex_);
+  absl::MutexLock lock(mutex_);
   is_frozen_ = true;
   module_ = nullptr;
 }
@@ -728,7 +693,7 @@ absl::StatusOr<std::vector<tensorflow::Tensor>> IfrtServingExecutable::Execute(
 
   {
     tsl::profiler::TraceMe traceme("AsyncRestoreVariables");
-    absl::ReaderMutexLock lock(&mutex_);
+    absl::ReaderMutexLock lock(mutex_);
     if (!is_frozen_) {
       // Asynchronously load the restored variable tensors to Ifrt array.
       TF_RETURN_IF_ERROR(AsyncLoadIfrtArray(inputs, variable_arg_indices,
@@ -743,9 +708,19 @@ absl::StatusOr<std::vector<tensorflow::Tensor>> IfrtServingExecutable::Execute(
   for (xla::ifrt::Device* device : device_list->devices()) {
     device_ids.push_back(device->Id().value());
   }
-  std::vector<xla::ifrt::ArrayRef> args;
+  std::vector<tsl::Future<xla::ifrt::ArrayRef>> args;
   args.reserve(inputs.size());
   int variable_arg_index = 0;
+  // TODO(b/445201291): Plumb the H2DTransferExecutorFactory from the
+  // IfrtServingExecutable constructor.
+  absl::StatusOr<std::unique_ptr<H2DTransferExecutor>>
+      user_inputs_h2d_transfer_executor =
+          h2d_transfer_executor_factory_ != nullptr
+              ? h2d_transfer_executor_factory_->CreateH2DTransferExecutor(
+                    *ifrt_client_)
+              : std::make_unique<H2DTransferExecutor>(*ifrt_client_);
+  TF_RETURN_IF_ERROR(user_inputs_h2d_transfer_executor.status());
+
   for (int i = 0; i < inputs.size(); i++) {
     if (variable_arg_index < variable_arg_indices.size() &&
         i == variable_arg_indices[variable_arg_index]) {
@@ -761,9 +736,7 @@ absl::StatusOr<std::vector<tensorflow::Tensor>> IfrtServingExecutable::Execute(
       TF_ASSIGN_OR_RETURN(
           auto loaded_variable,
           ifrt_loaded_variable_registry_.GetLoadedVariable(key));
-      TF_ASSIGN_OR_RETURN(xla::ifrt::ArrayRef single_array,
-                          loaded_variable.array.Await());
-      args.push_back(std::move(single_array));
+      args.push_back(std::move(loaded_variable.array));
       variable_arg_index++;
     } else {
       // If the input shape is not the same as the shape after Tf2Hlo
@@ -778,16 +751,26 @@ absl::StatusOr<std::vector<tensorflow::Tensor>> IfrtServingExecutable::Execute(
           !reshaped.CopyFrom(inputs[i], reshaped_shape)) {
         return absl::InternalError("Failed to reshape tensor");
       }
-
       TF_ASSIGN_OR_RETURN(
-          auto single_array,
-          ConvertTensorToArray(
-              reshaped, device_list,
-              executable_bundle->compile_metadata.args()[i].sharding()));
-      args.push_back(single_array);
+          tsl::Future<xla::ifrt::ArrayRef> array_ref,
+          (*user_inputs_h2d_transfer_executor)
+              ->ScheduledH2DTransfer(
+                  reshaped, device_list,
+                  executable_bundle->compile_metadata.args()[i].sharding(),
+                  thread_pool_));
+      args.push_back(std::move(array_ref));
     }
   }
   DCHECK_EQ(args.size(), executable_bundle->compile_metadata.args().size());
+
+  TF_RETURN_IF_ERROR((*user_inputs_h2d_transfer_executor)->RunH2DTransfers());
+
+  std::vector<xla::ifrt::ArrayRef> transfer_result;
+  transfer_result.reserve(args.size());
+  for (auto& arg : args) {
+    TF_ASSIGN_OR_RETURN(auto array_ref, arg.Await());
+    transfer_result.push_back(std::move(array_ref));
+  }
 
   VLOG(2) << "Start Execution";
 
@@ -800,7 +783,7 @@ absl::StatusOr<std::vector<tensorflow::Tensor>> IfrtServingExecutable::Execute(
   {
     tsl::profiler::TraceMe traceme("Execute");
     execution_result = executable_bundle->ifrt_executable->Execute(
-        absl::MakeSpan(args), /*options=*/{.fill_status = true},
+        absl::MakeSpan(transfer_result), /*options=*/{.fill_status = true},
         std::move(execution_device_list));
     TF_RETURN_IF_ERROR(execution_result.status());
   }
@@ -815,7 +798,7 @@ absl::StatusOr<std::vector<tensorflow::Tensor>> IfrtServingExecutable::Execute(
         " but got ", execution_result->outputs.size(), " outputs"));
   }
 
-  std::vector<xla::ifrt::Future<tensorflow::Tensor>> output_futures;
+  std::vector<tsl::Future<tensorflow::Tensor>> output_futures;
   output_futures.reserve(execution_result->outputs.size());
   for (int i = 0; i < execution_result->outputs.size(); ++i) {
     tensorflow::TensorShape tensor_shape;

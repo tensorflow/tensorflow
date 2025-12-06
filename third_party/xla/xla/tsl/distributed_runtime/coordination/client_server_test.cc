@@ -13,7 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <algorithm>
 #include <cassert>
 #include <functional>
 #include <memory>
@@ -23,6 +22,7 @@ limitations under the License.
 
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
@@ -60,7 +60,6 @@ using ::testing::ElementsAre;
 using ::testing::HasSubstr;
 using ::testing::IsEmpty;
 using ::testing::UnorderedElementsAre;
-using ::tsl::testing::StatusIs;
 
 constexpr absl::Duration kBarrierTimeout = absl::Milliseconds(200);
 constexpr absl::Duration kHeartbeatTimeout = absl::Seconds(3);
@@ -252,7 +251,7 @@ TEST_F(ClientServerTest, ConnectAndShutdownAreBarriers) {
       return connect_count == node_id;
     };
     {
-      absl::MutexLock lock(&mu);
+      absl::MutexLock lock(mu);
       mu.Await(absl::Condition(&my_connect_turn));
       ++connect_count;
     }
@@ -260,7 +259,7 @@ TEST_F(ClientServerTest, ConnectAndShutdownAreBarriers) {
     // Verify that all of the threads have called Connect() by the time we get
     // here.
     {
-      absl::MutexLock lock(&mu);
+      absl::MutexLock lock(mu);
       if (connect_count != num_nodes) {
         return absl::InternalError(absl::StrCat(
             "Connect count is ", connect_count, " but expected ", num_nodes));
@@ -273,13 +272,13 @@ TEST_F(ClientServerTest, ConnectAndShutdownAreBarriers) {
       return shutdown_count == node_id;
     };
     {
-      absl::MutexLock lock(&mu);
+      absl::MutexLock lock(mu);
       mu.Await(absl::Condition(&my_shutdown_turn));
       ++shutdown_count;
     }
     TF_RETURN_IF_ERROR(client->Shutdown());
     {
-      absl::MutexLock lock(&mu);
+      absl::MutexLock lock(mu);
       if (shutdown_count != num_nodes) {
         return absl::InternalError(absl::StrCat(
             "Shutdown count is ", shutdown_count, " but expected ", num_nodes));
@@ -1062,8 +1061,8 @@ TEST_F(ClientServerTest, GetAliveTasks_Succeed) {
   auto thread_fn = [&](int node_id) -> absl::Status {
     auto client = GetClient(node_id);
     TF_RETURN_IF_ERROR(client->Connect());
-    absl::StatusOr<std::vector<tensorflow::CoordinatedTask>> alive_tasks =
-        client->GetAliveTasks({GetTask(0), GetTask(1)});
+    absl::StatusOr<std::vector<CoordinationServiceAgent::AliveTask>>
+        alive_tasks = client->GetAliveTasks({GetTask(0), GetTask(1)});
     if (!alive_tasks.ok()) {
       return alive_tasks.status();
     }

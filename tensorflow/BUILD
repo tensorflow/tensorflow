@@ -3,6 +3,13 @@
 # learning applications.
 
 load("@rules_cc//cc:cc_import.bzl", "cc_import")
+
+# buildifier: disable=out-of-order-load
+# copybara:comment_begin(oss-only)
+load("//tensorflow:strict.default.bzl", "py_strict_library")
+
+# copybara:comment_end
+# buildifier: enable=out-of-order-load
 load("@bazel_skylib//lib:selects.bzl", "selects")
 load("@bazel_skylib//rules:common_settings.bzl", "bool_flag", "bool_setting")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
@@ -1026,6 +1033,7 @@ package_group(
         "//tensorflow_models/google/recml/...",
         "//third_party/cloud_tpu/convergence_tools/sdc_monitoring/...",
         "//third_party/cloud_tpu/inference_converter/...",
+        "//third_party/pathways/...",
         "//third_party/py/cloud_ml_autoflow/...",
         "//third_party/py/envlogger/...",
         "//third_party/py/gldm/...",
@@ -1084,20 +1092,22 @@ bzl_library(
     visibility = ["//visibility:public"],
     deps = [
         ":tf_version_bzl",
+        # copybara:uncomment "//devtools/build_cleaner/skylark:build_defs_lib",
+        "@rules_cc//cc/common",
+        "@rules_java//java:rules",
+        "@local_xla//xla/tsl:tsl_bzl",
+        "@local_xla//xla/tsl:tsl_default_bzl",
+        "@local_xla//xla/tsl/mkl:build_defs_bzl",
         "//tensorflow/core/platform:build_config_root_bzl",
         "//tensorflow/core/platform:rules_cc_bzl",
+        "@local_xla//third_party/py/rules_pywrap:pywrap_bzl",
+        "@local_xla//third_party/compute_library:build_defs_bzl",
+        "@local_xla//third_party/llvm_openmp:openmp_bzl",
         "@bazel_skylib//lib:new_sets",
         "@bazel_skylib//rules:common_settings",
         "@local_config_cuda//cuda:build_defs_bzl",
         "@local_config_rocm//rocm:build_defs_bzl",
         "@local_config_tensorrt//:build_defs_bzl",
-        "@local_xla//third_party/compute_library:build_defs_bzl",
-        "@local_xla//third_party/llvm_openmp:openmp_bzl",
-        "@local_xla//third_party/py/rules_pywrap:pywrap_bzl",
-        "@local_xla//xla/tsl:tsl_bzl",
-        "@local_xla//xla/tsl:tsl_default_bzl",
-        "@local_xla//xla/tsl/mkl:build_defs_bzl",
-        "@rules_java//java:rules",
     ],
 )
 
@@ -1171,38 +1181,31 @@ tf_cc_shared_library(
     linkstatic = 1,
     per_os_targets = True,
     roots = [
-                "//tensorflow/c/experimental/filesystem:filesystem_interface",
-                "//tensorflow/c/experimental/stream_executor:stream_executor",
-                "//tensorflow/c:env",
-                "//tensorflow/c:kernels",
-                "//tensorflow/c:kernels_experimental",
-                "//tensorflow/c:logging",
-                "//tensorflow/c:ops",
-                "//tensorflow/cc/saved_model:fingerprinting_impl",
-                "//tensorflow/cc/saved_model:loader_lite_impl",
-                "//tensorflow/cc/saved_model:metrics_impl",
-                "//tensorflow/compiler/tf2tensorrt:op_converter_registry_impl",
-                "//tensorflow/core/common_runtime:core_cpu_impl",
-                "//tensorflow/core/common_runtime/gpu:gpu_runtime_impl",
-                "//tensorflow/core/common_runtime/pluggable_device:pluggable_device_runtime_impl",
-                "//tensorflow/core:framework_internal_impl",
-                "//tensorflow/core/framework:tensor",
-                "//tensorflow/core/grappler/optimizers:custom_graph_optimizer_registry_impl",
-                "//tensorflow/core:lib_internal_impl",
-                "//tensorflow/core/profiler:profiler_impl",
-                "//tensorflow/core/util:determinism",  # Must be linked and exported to libtensorflow_framework.so.
-                "//tensorflow/lite/kernels/shim:tf_kernel_shim",
-                "@local_xla//xla/stream_executor:stream_executor_impl",
-                "@local_xla//xla/tsl/framework:bfc_allocator",
-                "@local_xla//xla/tsl/framework:metrics",
-            ] + tf_additional_binary_deps() +
-            # TODO(b/259305727): Remove this select and include captured_function in macos builds.
-            select({
-                "//tensorflow:macos": [],
-                "//conditions:default": [
-                    "//tensorflow/core/data:captured_function",
-                ],
-            }),
+        "//tensorflow/c/experimental/filesystem:filesystem_interface",
+        "//tensorflow/c/experimental/stream_executor:stream_executor",
+        "//tensorflow/c:env",
+        "//tensorflow/c:kernels",
+        "//tensorflow/c:kernels_experimental",
+        "//tensorflow/c:ops",
+        "//tensorflow/cc/saved_model:fingerprinting_impl",
+        "//tensorflow/cc/saved_model:loader_lite_impl",
+        "//tensorflow/cc/saved_model:metrics_impl",
+        "//tensorflow/compiler/tf2tensorrt:op_converter_registry_impl",
+        "//tensorflow/core/common_runtime:core_cpu_impl",
+        "//tensorflow/core/common_runtime/gpu:gpu_runtime_impl",
+        "//tensorflow/core/common_runtime/pluggable_device:pluggable_device_runtime_impl",
+        "//tensorflow/core:framework_internal_impl",
+        "//tensorflow/core/framework:tensor",
+        "//tensorflow/core/grappler/optimizers:custom_graph_optimizer_registry_impl",
+        "//tensorflow/core:lib_internal_impl",
+        "//tensorflow/core/profiler:profiler_impl",
+        "//tensorflow/core/util:determinism",  # Must be linked and exported to libtensorflow_framework.so.
+        "//tensorflow/lite/kernels/shim:tf_kernel_shim",
+        "@local_xla//xla/stream_executor:stream_executor_impl",
+        "@local_xla//xla/tsl/framework:bfc_allocator",
+        "@local_xla//xla/tsl/framework:metrics",
+        "//tensorflow/core/data:captured_function",
+    ] + tf_additional_binary_deps(),
     soversion = VERSION,
     static_deps = PACKAGE_STATIC_DEPS,
     visibility = ["//visibility:public"],
@@ -1693,7 +1696,7 @@ generate_apis(
     visibility = ["//visibility:public"],
 )
 
-py_library(
+py_strict_library(
     name = "tensorflow_py",
     srcs_version = "PY3",
     visibility = ["//visibility:public"],
@@ -1705,7 +1708,7 @@ py_library(
     ],
 )
 
-py_library(
+py_strict_library(
     name = "tensorflow_py_no_contrib",
     srcs = select({
         "api_version_2": [":tf_python_api_gen_v2"],

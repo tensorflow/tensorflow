@@ -23,6 +23,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -35,10 +36,12 @@ limitations under the License.
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/execute_options.pb.h"
-#include "xla/python/ifrt/future.h"
+#include "xla/python/ifrt/serdes.h"
 #include "xla/python/ifrt/serdes_default_version_accessor.h"
 #include "xla/python/ifrt/serdes_version.h"
 #include "xla/python/ifrt/user_context.h"
+#include "xla/tsl/concurrency/future.h"
+#include "xla/tsl/platform/errors.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -47,6 +50,15 @@ namespace ifrt {
 class Client;
 struct CompileOptions;
 struct DeserializeExecutableOptions;
+
+struct ExecutableVersion : llvm::RTTIExtends<ExecutableVersion, Serializable> {
+  // Returns true iff this version is compatible with `other`. The logic for
+  // checking the version compatibility is an implementation detail of
+  // `ExecutableVersion` subclasses.
+  virtual bool IsCompatibleWith(const ExecutableVersion& other) const = 0;
+
+  static char ID;  // NOLINT
+};
 
 // Wraps a computation that has been partially compiled and can be loaded.
 class Executable : public llvm::RTTIExtends<Executable, llvm::RTTIRoot> {
@@ -135,8 +147,17 @@ struct ExecuteOptions {
   // are responsible for ensuring version compatibility.
   std::optional<AttributeMap> custom_options;
 
-  absl::StatusOr<ExecuteOptionsProto> ToProto(
+  // Converts the execute options to a protobuf.
+  absl::Status ToProto(
+      ExecuteOptionsProto& proto,
       SerDesVersion version = SerDesDefaultVersionAccessor::Get()) const;
+
+  absl::StatusOr<ExecuteOptionsProto> ToProto(
+      SerDesVersion version = SerDesDefaultVersionAccessor::Get()) const {
+    ExecuteOptionsProto proto;
+    TF_RETURN_IF_ERROR(ToProto(proto, version));
+    return proto;
+  }
 
   static absl::StatusOr<ExecuteOptions> FromProto(
       const ExecuteOptionsProto& proto);
@@ -158,9 +179,19 @@ class LoadedExecutable
   // Returns a fingerprint of this executable.
   virtual absl::StatusOr<std::optional<std::string>> Fingerprint() const = 0;
 
+  // Returns the executable version that can be used for verifying the
+  // compatibility with a runtime.
+  virtual absl::StatusOr<std::unique_ptr<ExecutableVersion>>
+  executable_version() const = 0;
+
   // Serializes this executable into a string. The compatibility of the
   // serialized executable is implementation-specific.
   virtual absl::StatusOr<std::string> Serialize() const = 0;
+
+  // Returns the program text in a format that can be used for easy debugging.
+  // The return value is meant to be consumed only by humans (not automated
+  // parsing), since there are no guarantees on how the value is formatted.
+  virtual absl::StatusOr<std::string> GetHumanReadableProgramText() const = 0;
 
   // Returns the user context associated with the creation of this executable.
   // May be `nullptr` if the user context is unset or the runtime does not
@@ -175,7 +206,7 @@ class LoadedExecutable
   // compilation work in the background. Implementations must still ensure that
   // all other methods can be used even without explicitly waiting for the ready
   // future (e.g., via blocking).
-  virtual Future<> GetReadyFuture() const = 0;
+  virtual tsl::Future<> GetReadyFuture() const = 0;
 
   // The following APIs are taken from `xla::PjRtExecutable` for fast
   // prototyping.
@@ -232,7 +263,7 @@ class LoadedExecutable
   struct ExecuteResult {
     // Resulting status of the execution. Filled only if
     // `ExecuteOptions::fill_status` is true.
-    Future<> status;
+    tsl::Future<> status;
     // Output arrays.
     std::vector<ArrayRef> outputs;
   };
@@ -259,8 +290,9 @@ class LoadedExecutable
       std::optional<DeviceListRef> devices) = 0;
 
   // Returns the list of devices where the executable has been compiled and
-  // loaded onto.
-  virtual const DeviceListRef& devices() const = 0;
+  // loaded onto. Returns `std::nullopt` if the executable is not bound to a
+  // particular device list, e.g., portable executables.
+  virtual std::optional<DeviceListRef> devices() const = 0;
 
   // The following APIs are taken from xla::PjRtLoadedExecutable for fast
   // prototyping.

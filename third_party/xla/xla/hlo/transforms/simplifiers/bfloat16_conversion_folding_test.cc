@@ -19,11 +19,12 @@ limitations under the License.
 #include <optional>
 
 #include "absl/status/statusor.h"
-#include "xla/hlo/ir/collective_device_list.h"
+#include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/ir/replica_group.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/test_helpers.h"
 #include "xla/service/float_support.h"
@@ -80,11 +81,12 @@ class BFloat16ConversionFoldingTest : public HloHardwareIndependentTestBase {
 
   bool FoldConversions(HloModule* module) {
     TestBFloat16Support bfloat16_support_;
-    BFloat16ConversionFolding fold(&bfloat16_support_);
+    BFloat16ConversionFolding fold(&bfloat16_support_, &alias_info_);
     absl::StatusOr<bool> result = fold.Run(module);
     EXPECT_IS_OK(result.status());
     return result.value();
   }
+  AliasInfo alias_info_;
 };
 
 TEST_F(BFloat16ConversionFoldingTest, FoldIfSupported) {

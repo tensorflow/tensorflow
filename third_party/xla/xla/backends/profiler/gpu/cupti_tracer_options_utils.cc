@@ -15,14 +15,19 @@ limitations under the License.
 
 #include "xla/backends/profiler/gpu/cupti_tracer_options_utils.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <functional>
+#include <limits>
 #include <string>
+#include <vector>
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
+#include "absl/strings/ascii.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
+#include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
 #include "third_party/gpus/cuda/extras/CUPTI/include/cupti_activity.h"
 #include "xla/backends/profiler/gpu/cupti_collector.h"
@@ -34,6 +39,9 @@ limitations under the License.
 namespace xla {
 namespace profiler {
 using tsl::profiler::SetValue;
+
+constexpr int64_t kMinBufferSize = 64;    // 64MB
+constexpr int64_t kMaxBufferSize = 4096;  // 4GB
 
 absl::Status UpdateCuptiTracerOptionsFromProfilerOptions(
     const tensorflow::ProfileOptions& profile_options,
@@ -62,9 +70,13 @@ absl::Status UpdateCuptiTracerOptionsFromProfilerOptions(
                           collector_options.max_annotation_strings = value;
                         }));
 
-  TF_RETURN_IF_ERROR(SetValue<bool>(
-      profile_options, "gpu_dump_graph_node_mapping", input_keys,
-      [&](bool value) { collector_options.dump_graph_nope_mapping = value; }));
+  TF_RETURN_IF_ERROR(SetValue<int64_t>(
+      profile_options, "gpu_num_chips_to_profile_per_task", input_keys,
+      [&](int64_t value) {
+        if (value >= 0 && value <= std::numeric_limits<uint32_t>::max()) {
+          collector_options.num_gpus = static_cast<uint32_t>(value);
+        }
+      }));
 
   TF_RETURN_IF_ERROR(SetValue<bool>(
       profile_options, "gpu_enable_nvtx_tracking", input_keys,
@@ -78,6 +90,32 @@ absl::Status UpdateCuptiTracerOptionsFromProfilerOptions(
                              CUPTI_ACTIVITY_KIND_GRAPH_TRACE);
                        }
                      }));
+
+  TF_RETURN_IF_ERROR(SetValue<std::string>(
+      profile_options, "gpu_pm_sample_counters", input_keys,
+      [&](const std::string& value) {
+        std::vector<std::string> metrics;
+        for (absl::string_view metric :
+             absl::StrSplit(value, ',', absl::SkipEmpty())) {
+          metrics.push_back(std::string(absl::StripAsciiWhitespace(metric)));
+        }
+        tracer_options.pm_sampler_options.metrics = metrics;
+        tracer_options.pm_sampler_options.enable = !metrics.empty();
+      }));
+
+  TF_RETURN_IF_ERROR(SetValue<int64_t>(
+      profile_options, "gpu_pm_sample_interval_us", input_keys,
+      [&](int64_t value) {
+        tracer_options.pm_sampler_options.sample_interval_ns = value * 1000;
+      }));
+
+  TF_RETURN_IF_ERROR(SetValue<int64_t>(
+      profile_options, "gpu_pm_sample_buffer_size_per_gpu_mb", input_keys,
+      [&](int64_t value) {
+        tracer_options.pm_sampler_options.hw_buf_size =
+            std::clamp(value, kMinBufferSize, kMaxBufferSize) * 1024ULL *
+            1024ULL;
+      }));
 
   if (!input_keys.empty()) {
     return absl::InvalidArgumentError(absl::StrCat(

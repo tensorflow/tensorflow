@@ -48,9 +48,9 @@ static bool Initialized = [] {
 class UnaryOpsCompositionTest : public OpsTestBase {
  protected:
   template <typename T>
-  void RunComposedOp(const std::vector<string> op_names, T input_scalar_value,
-                     T expected_scalar_value) {
-    string xla_device_name =
+  void RunComposedOp(const std::vector<std::string> op_names,
+                     T input_scalar_value, T expected_scalar_value) {
+    std::string xla_device_name =
         tensorflow::IsGoogleCudaEnabled() ? DEVICE_XLA_GPU : DEVICE_XLA_CPU;
     SetDevice(DeviceType(xla_device_name),
               std::unique_ptr<tensorflow::Device>(DeviceFactory::NewDevice(

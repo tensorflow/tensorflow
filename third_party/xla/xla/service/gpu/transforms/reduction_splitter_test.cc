@@ -18,6 +18,8 @@ limitations under the License.
 #include <cstdint>
 #include <vector>
 
+#include <gtest/gtest.h>
+#include "absl/status/statusor.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
@@ -26,6 +28,9 @@ limitations under the License.
 #include "xla/service/pattern_matcher.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/device_description.pb.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace gpu {
@@ -33,9 +38,10 @@ namespace {
 
 namespace m = ::xla::match;
 
-auto MakeDeviceDescription() {
-  stream_executor::DeviceDescription device_description{
-      stream_executor::GpuDeviceInfoProto{}};
+absl::StatusOr<stream_executor::DeviceDescription> MakeDeviceDescription() {
+  TF_ASSIGN_OR_RETURN(stream_executor::DeviceDescription device_description,
+                      stream_executor::DeviceDescription::FromProto(
+                          stream_executor::GpuDeviceInfoProto{}));
   device_description.set_threads_per_warp(32);
   return device_description;
 }
@@ -48,8 +54,11 @@ class ReductionSplitterTest : public HloHardwareIndependentTestBase {
   }
 
  private:
-  const stream_executor::DeviceDescription device_description_{
-      MakeDeviceDescription()};
+  void SetUp() override {
+    TF_ASSERT_OK_AND_ASSIGN(device_description_, MakeDeviceDescription());
+  }
+
+  stream_executor::DeviceDescription device_description_;
 };
 
 TEST_F(ReductionSplitterTest, SplitReductionAtDimensionTwo) {

@@ -1107,5 +1107,8 @@ LogicalResult IslandOp::fold(FoldAdaptor,
 // TableGen'd op method definitions
 //===----------------------------------------------------------------------===//
 
+using mlir::tf_executor::ControlType;
+using mlir::tf_executor::TokenType;
+
 #define GET_OP_CLASSES
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.cc.inc"

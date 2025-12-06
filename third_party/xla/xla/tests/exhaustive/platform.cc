@@ -15,89 +15,37 @@ limitations under the License.
 
 #include "xla/tests/exhaustive/platform.h"
 
-#include <memory>
-#include <utility>
-#include <variant>
-
 #include "absl/log/check.h"
 #include "absl/log/log.h"
-#include "xla/stream_executor/device_description.h"
-#include "xla/stream_executor/platform.h"
+#include "xla/service/hlo_runner_interface.h"
 
 namespace xla {
 namespace exhaustive_op_test {
+namespace {
 
-Platform::Value GetPlatformValue(const stream_executor::Platform& platform) {
-  if (platform.Name() == "Host") {
+Platform::Value GetPlatformValue(const HloRunnerInterface& runner) {
+  if (runner.HasProperty(HloRunnerPropertyTag::kCpu)) {
 // We process these copts in a library instead of the final exhaustive_xla_test
 // target because we assume the final target will use the same target CPU arch
 // as this target.
 #ifdef __x86_64__
-    return Platform::CpuValue::X86_64;
+    return Platform::Value::kX86_64;
 #endif
 #ifdef __aarch64__
-    return Platform::CpuValue::AARCH64;
+    return Platform::Value::kAarch64;
 #endif
-  } else if (platform.Name() == "CUDA") {
-    auto device_descriptor_status = platform.DescriptionForDevice(0);
-    CHECK_OK(device_descriptor_status);
-    std::unique_ptr<stream_executor::DeviceDescription> device_descriptor =
-        std::move(*device_descriptor_status);
-
-    auto cuda_compute_compatibility =
-        device_descriptor->cuda_compute_capability();
-    // If not available, CudaComputeCompatibility will have major version 0.
-    if (cuda_compute_compatibility.IsAtLeast(1, 0)) {
-      return cuda_compute_compatibility;
-    }
-  } else if (platform.Name() == "ROCM") {
-    auto device_descriptor_status = platform.DescriptionForDevice(0);
-    CHECK_OK(device_descriptor_status);
-    std::unique_ptr<stream_executor::DeviceDescription> device_descriptor =
-        std::move(*device_descriptor_status);
-
-    auto rocm_compute_compatibility =
-        device_descriptor->rocm_compute_capability();
-    // If not available, RocmComputeCompatibility will be an invalid platform
-    // value.
-    if (rocm_compute_compatibility.gfx_version() == "gfx000") {
-      return rocm_compute_compatibility;
-    }
+  } else if (runner.HasProperty(HloRunnerPropertyTag::kUsingGpuCuda)) {
+    return Platform::Value::kCuda;
+  } else if (runner.HasProperty(HloRunnerPropertyTag::kUsingGpuRocm)) {
+    return Platform::Value::kRocm;
   }
-  LOG(FATAL) << "Unhandled stream_executor::Platform: " << platform.Name()
+  LOG(FATAL) << "Unhandled platform: " << runner.Name()
              << ". Please add support to " __FILE__ ".";
 }
+}  // namespace
 
-bool Platform::IsNvidiaP100() const {
-  return std::holds_alternative<stream_executor::CudaComputeCapability>(
-             value_) &&
-         !std::get<stream_executor::CudaComputeCapability>(value_).IsAtLeast(
-             stream_executor::CudaComputeCapability::Volta());
-}
-
-bool Platform::IsNvidiaV100() const {
-  return std::holds_alternative<stream_executor::CudaComputeCapability>(
-             value_) &&
-         std::get<stream_executor::CudaComputeCapability>(value_) ==
-             stream_executor::CudaComputeCapability::Volta();
-}
-
-bool Platform::IsNvidiaA100() const {
-  return std::holds_alternative<stream_executor::CudaComputeCapability>(
-             value_) &&
-         std::get<stream_executor::CudaComputeCapability>(value_) ==
-             stream_executor::CudaComputeCapability::Ampere();
-}
-
-bool Platform::IsNvidiaH100() const {
-  return std::holds_alternative<stream_executor::CudaComputeCapability>(
-             value_) &&
-         std::get<stream_executor::CudaComputeCapability>(value_) ==
-             stream_executor::CudaComputeCapability::Hopper();
-}
-
-Platform::Platform(const stream_executor::Platform& platform)
-    : value_(GetPlatformValue(platform)) {}
+Platform::Platform(const HloRunnerInterface& runner)
+    : value_(GetPlatformValue(runner)) {}
 
 }  // namespace exhaustive_op_test
 }  // namespace xla

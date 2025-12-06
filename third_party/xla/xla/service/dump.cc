@@ -32,6 +32,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/functional/any_invocable.h"
+#include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -44,6 +45,8 @@ limitations under the License.
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/IR/OperationSupport.h"
 #include "mlir/Transforms/LocationSnapshot.h"
+#include "google/protobuf/descriptor.h"
+#include "google/protobuf/text_format.h"
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -63,7 +66,6 @@ limitations under the License.
 #include "xla/util.h"
 #include "tsl/platform/path.h"
 #include "tsl/platform/platform.h"
-#include "tsl/platform/protobuf.h"
 #include "tsl/platform/regexp.h"
 #include "tsl/profiler/lib/scoped_annotation.h"
 
@@ -99,7 +101,7 @@ static auto& module_id_to_timestamp ABSL_GUARDED_BY(mu) =
     *new absl::flat_hash_map<int64_t, uint64_t>();
 
 int64_t StepNumberForModule(const HloModule& module) {
-  absl::MutexLock lock(&mu);
+  absl::MutexLock lock(mu);
   return module_id_to_step_number[module.unique_id()]++;
 }
 
@@ -124,12 +126,14 @@ absl::Status CreateDirIfNeeded(const std::string& dir, tsl::Env* env) {
 
 std::string RenderGraph(absl::string_view label, const HloModule& module,
                         RenderedGraphFormat format,
-                        bool show_fusion_subcomputations) {
+                        bool show_fusion_subcomputations,
+                        const DebugOptions* dump_options) {
   HloRenderOptions hlo_render_options;
   hlo_render_options.show_fusion_subcomputations = show_fusion_subcomputations;
-  absl::StatusOr<std::string> rendered_graph =
-      RenderGraph(*module.entry_computation(), label,
-                  module.config().debug_options(), format, hlo_render_options);
+  const DebugOptions& opts =
+      dump_options ? *dump_options : module.config().debug_options();
+  absl::StatusOr<std::string> rendered_graph = RenderGraph(
+      *module.entry_computation(), label, opts, format, hlo_render_options);
   if (rendered_graph.ok()) {
     return std::move(rendered_graph).value();
   }
@@ -207,6 +211,7 @@ struct CanonicalDebugOptions {
         return RE2::PartialMatch(module_name, pattern);
       };
     } else if (!opts.xla_dump_hlo_pass_re().empty() ||
+               !opts.xla_dump_emitter_re().empty() ||
                !opts.xla_dump_to().empty() || output_format_specified) {
       should_dump_module = [](string_view) { return true; };
     } else {
@@ -222,6 +227,15 @@ struct CanonicalDebugOptions {
       };
     } else {
       should_dump_pass = [](string_view) { return false; };
+    }
+
+    if (!opts.xla_dump_emitter_re().empty()) {
+      std::string pattern = opts.xla_dump_emitter_re();
+      should_dump_emitter = [pattern](string_view emitter_name) {
+        return RE2::PartialMatch(emitter_name, pattern);
+      };
+    } else {
+      should_dump_emitter = [](string_view) { return false; };
     }
 
     // Initialize should_dump_pipeline. If the option was not specified, dump
@@ -248,6 +262,7 @@ struct CanonicalDebugOptions {
                       "is not set, so cannot dump anywhere.";
         should_dump_module = [](string_view) { return false; };
         should_dump_pass = [](string_view) { return false; };
+        should_dump_emitter = [](string_view) { return false; };
         should_dump_pipeline = [](string_view) { return false; };
       }
     }
@@ -266,6 +281,7 @@ struct CanonicalDebugOptions {
   std::string dump_to;
   std::function<bool(string_view module_name)> should_dump_module;
   std::function<bool(string_view pass_name)> should_dump_pass;
+  std::function<bool(string_view emitter_name)> should_dump_emitter;
   std::function<bool(string_view pipeline_name)> should_dump_pipeline;
 
   // dump_ir isn't present here because this file is mostly concerned with
@@ -365,7 +381,7 @@ static std::optional<std::string> GetDumpFilePath(
 
   // Make sure we are not going to dump more modules than the user has asked.
   if (opts.dump_max_hlo_modules > 0) {
-    absl::MutexLock lock(&mu);
+    absl::MutexLock lock(mu);
     if (module_id_to_timestamp.size() >= opts.dump_max_hlo_modules) {
       LOG(ERROR) << "Have already dumped " << module_id_to_timestamp.size()
                  << " modules, more than the limit of "
@@ -422,7 +438,7 @@ static std::optional<std::string> DumpToFileInDirOrStdoutImpl(
     const CanonicalDebugOptions& opts) {
   // Dump to stdout if that's called for.
   if (opts.dumping_to_stdout()) {
-    absl::MutexLock lock(&stdout_dump_mutex);
+    absl::MutexLock lock(stdout_dump_mutex);
     std::cout << "*** Begin " << filename << " ***\n"
               << contents << "\n*** End " << filename << " ***" << std::endl;
     return std::nullopt;
@@ -437,7 +453,7 @@ static std::optional<std::string> DumpToFileInDirOrStdoutImpl(
     const CanonicalDebugOptions& opts) {
   // Dump to stdout if that's called for.
   if (opts.dumping_to_stdout()) {
-    absl::MutexLock lock(&stdout_dump_mutex);
+    absl::MutexLock lock(stdout_dump_mutex);
     std::cout << "*** Begin " << filename << " ***\n";
     while (auto next_producer = data_producer.Next()) {
       std::cout << next_producer();
@@ -465,7 +481,8 @@ static bool IsTrivial(const HloComputation& computation) {
 // Returns full file paths of all dumps of the module.
 static std::vector<std::string> DumpHloModuleImpl(
     const HloModule& module, const BufferAssignment* buffer_assn,
-    string_view prefix, string_view suffix, const CanonicalDebugOptions& opts) {
+    string_view prefix, string_view suffix, const CanonicalDebugOptions& opts,
+    const DebugOptions& debug_options) {
   tsl::profiler::ScopedAnnotation annotation([&] {
     return absl::StrFormat("XlaDumpHloModule:#module=%s,program_id=%d#",
                            module.name(), module.unique_id());
@@ -507,17 +524,22 @@ static std::vector<std::string> DumpHloModuleImpl(
   if (opts.dump_as_dot) {
     file_paths.push_back(DumpToFileInDirImpl(
         StrFormat("%s.dot", filename),
-        RenderGraph(filename, module, RenderedGraphFormat::kDot), opts));
+        RenderGraph(filename, module, RenderedGraphFormat::kDot,
+                    /*show_fusion_subcomputations=*/true, &debug_options),
+        opts));
   }
 
   if (opts.dump_as_html) {
     file_paths.push_back(DumpToFileInDirImpl(
         StrFormat("%s.html", filename),
-        RenderGraph(filename, module, RenderedGraphFormat::kHtml), opts));
+        RenderGraph(filename, module, RenderedGraphFormat::kHtml,
+                    /*show_fusion_subcomputations=*/true, &debug_options),
+        opts));
     if (absl::StrContains(filename, kAfterOptimizationsDumpName)) {
       file_paths.push_back(DumpToFileInDirImpl(
           StrFormat("%s.top_level.html", filename),
-          RenderGraph(filename, module, RenderedGraphFormat::kHtml, false),
+          RenderGraph(filename, module, RenderedGraphFormat::kHtml,
+                      /*show_fusion_subcomputations=*/false, &debug_options),
           opts));
     }
   }
@@ -554,7 +576,9 @@ static std::vector<std::string> DumpHloModuleImpl(
   // Special case for rendering graphs as URLs.  We'll dump them to a file
   // because why not, but we always log them to stdout as well.
   if (opts.dump_as_url) {
-    std::string url = RenderGraph(filename, module, RenderedGraphFormat::kUrl);
+    std::string url =
+        RenderGraph(filename, module, RenderedGraphFormat::kUrl,
+                    /*show_fusion_subcomputations=*/true, &debug_options);
     std::cout << filename << " --> " << url << std::endl;
     if (!opts.dumping_to_stdout()) {
       file_paths.push_back(
@@ -572,7 +596,7 @@ static std::vector<std::string> DumpHloModuleImpl(
     LOG_FIRST_N(INFO, 1) << "HloModule dump enabled with path prefix: "
                          << prefix << ", suffix: " << suffix;
     if (opts.dump_max_hlo_modules > 0) {
-      absl::MutexLock lock(&mu);
+      absl::MutexLock lock(mu);
       // Try to record the time we dumped this module to keep track of total
       // module count.
       module_id_to_timestamp.try_emplace(module.unique_id(),
@@ -601,13 +625,18 @@ static void DumpHloModuleMetadata(
 
 std::vector<std::string> DumpHloModuleIfEnabledImpl(
     const HloModule& module, const BufferAssignment* buffer_assn,
-    string_view name) {
-  CanonicalDebugOptions opts(module.config().debug_options());
+    const DebugOptions* maybe_dump_options, string_view name) {
+  const DebugOptions& dump_options = maybe_dump_options
+                                         ? *maybe_dump_options
+                                         : module.config().debug_options();
+  CanonicalDebugOptions opts(dump_options);
   if (opts.should_dump_module(module.name())) {
     std::vector<std::string> filepaths = DumpHloModuleImpl(
-        module, /*buffer_assn=*/buffer_assn, TimestampFor(module), name, opts);
+        module, /*buffer_assn=*/buffer_assn,
+        TimestampFor(module, &dump_options), name, opts, dump_options);
     std::optional<std::string> maybe_debug_options_filepath =
-        DumpNonDefaultDebugOptions(module, kNonDefaultDebugOptionsDumpSuffix);
+        DumpNonDefaultDebugOptions(module, kNonDefaultDebugOptionsDumpSuffix,
+                                   maybe_dump_options);
     if (maybe_debug_options_filepath.has_value()) {
       filepaths.push_back(*maybe_debug_options_filepath);
     }
@@ -620,11 +649,15 @@ std::vector<std::string> DumpHloModuleIfEnabledImpl(
 
 // Get a timestamp which we can use as a filename prefix specific to this
 // module.
-std::string TimestampFor(const HloModule& module) {
-  if (!module.config().debug_options().xla_dump_include_timestamp()) {
+std::string TimestampFor(const HloModule& module,
+                         const DebugOptions* debug_options_override) {
+  const DebugOptions& opts = debug_options_override
+                                 ? *debug_options_override
+                                 : module.config().debug_options();
+  if (!opts.xla_dump_include_timestamp()) {
     return "";
   }
-  absl::MutexLock lock(&mu);
+  absl::MutexLock lock(mu);
   auto timestamp_emplace = module_id_to_timestamp.try_emplace(
       module.unique_id(), tsl::Env::Default()->NowMicros());
   return std::to_string(timestamp_emplace.first->second);
@@ -755,6 +788,25 @@ void DumpPerModuleProtobufToFile(const HloModule& module,
                                      tsl::Env*, const tsl::protobuf::Message&)>
                                      text_formatter) {
   const std::string filename = FilenameFor(module, TimestampFor(module), name);
+  DumpProtobufToFile(proto, debug_options, filename, std::move(text_formatter));
+}
+
+void DumpPerExecutionProtobufToFile(
+    const HloModule& module, const tsl::protobuf::Message& proto,
+    const DebugOptions& debug_options, absl::string_view name,
+    absl::AnyInvocable<
+        absl::StatusOr<std::string>(tsl::Env*, const tsl::protobuf::Message&)>
+        text_formatter) {
+  int64_t execution_count = 0;
+  {
+    static auto& module_id_to_execution_count ABSL_GUARDED_BY(mu) =
+        *new absl::flat_hash_map<int64_t, int64_t>();
+    absl::MutexLock lock(mu);
+    execution_count = module_id_to_execution_count[module.unique_id()]++;
+  }
+
+  const std::string filename = FilenameFor(
+      module, name, absl::StrFormat("execution_%04d", execution_count));
   DumpProtobufToFile(proto, debug_options, filename, std::move(text_formatter));
 }
 
@@ -901,23 +953,30 @@ std::string GetNonDefaultDebugOptions(const DebugOptions& debug_options) {
 }
 
 std::optional<std::string> DumpNonDefaultDebugOptions(
-    const HloModule& module, absl::string_view suffix) {
+    const HloModule& module, absl::string_view suffix,
+    const DebugOptions* dump_options) {
+  // Substance of the which-options-have-non-default-values logic always based
+  // on the options embedded in the HloModule
   const DebugOptions& debug_options = module.config().debug_options();
   std::string filename = FilenameFor(module, "", suffix);
   std::string nonDefaultDebugOptions = GetNonDefaultDebugOptions(debug_options);
-  return DumpToFileInDirImpl(filename, nonDefaultDebugOptions,
-                             CanonicalDebugOptions(debug_options));
+  // Options steering where the dump is actually written to can be overriden
+  CanonicalDebugOptions opts(dump_options ? *dump_options : debug_options);
+  return DumpToFileInDirImpl(filename, nonDefaultDebugOptions, opts);
 }
 
-std::vector<std::string> DumpHloModuleIfEnabled(const HloModule& module,
-                                                string_view name) {
-  return DumpHloModuleIfEnabledImpl(module, /*buffer_assn=*/nullptr, name);
+std::vector<std::string> DumpHloModuleIfEnabled(
+    const HloModule& module, string_view name,
+    const DebugOptions* dump_options) {
+  return DumpHloModuleIfEnabledImpl(module, /*buffer_assn=*/nullptr,
+                                    dump_options, name);
 }
 
 std::vector<std::string> DumpHloModuleIfEnabled(
     const HloModule& module, const BufferAssignment& buffer_assn,
     string_view name) {
-  return DumpHloModuleIfEnabledImpl(module, &buffer_assn, name);
+  return DumpHloModuleIfEnabledImpl(module, &buffer_assn,
+                                    /*maybe_dump_options=*/nullptr, name);
 }
 
 std::vector<std::string> DumpHloModuleProtoIfEnabled(
@@ -931,7 +990,8 @@ std::vector<std::string> DumpHloModuleProtoIfEnabled(
   CanonicalDebugOptions opts(module->config().debug_options());
   if (opts.should_dump_module(module->name())) {
     return DumpHloModuleImpl(*module, /*buffer_assn=*/nullptr,
-                             TimestampFor(*module), name, opts);
+                             TimestampFor(*module), name, opts,
+                             module->config().debug_options());
   }
   return {};
 }
@@ -968,6 +1028,11 @@ bool DumpingEnabledForHloPass(string_view hlo_pass_name,
   return CanonicalDebugOptions(opts).should_dump_pass(hlo_pass_name);
 }
 
+bool DumpingEnabledForEmitter(string_view emitter_name,
+                              const DebugOptions& opts) {
+  return CanonicalDebugOptions(opts).should_dump_emitter(emitter_name);
+}
+
 bool DumpingToStdout(const DebugOptions& opts) {
   return CanonicalDebugOptions(opts).dumping_to_stdout();
 }
@@ -996,7 +1061,8 @@ std::vector<std::string> DumpHloModuleBetweenPassesIfEnabled(
       StrFormat("%04d.%s.after_%s.before_%s", step_number, pipeline_name,
                 after_pass_name, before_pass_name);
   return DumpHloModuleImpl(module, /*buffer_assn=*/nullptr, timestamp,
-                           filename_suffix, opts);
+                           filename_suffix, opts,
+                           module.config().debug_options());
 }
 
 void DumpHloModuleDuringPassIfEnabled(string_view pass_name,
@@ -1014,7 +1080,7 @@ void DumpHloModuleDuringPassIfEnabled(string_view pass_name,
   std::string filename_suffix =
       StrFormat("%04d.%s.%s", step_number, pass_name, step_name);
   DumpHloModuleImpl(module, /*buffer_assn=*/nullptr, timestamp, filename_suffix,
-                    opts);
+                    opts, module.config().debug_options());
 }
 
 void DumpHloSnapshotIfEnabled(const HloModule& module,
@@ -1028,7 +1094,7 @@ void DumpHloSnapshotIfEnabled(const HloModule& module,
   {
     static auto& module_id_to_execution_count ABSL_GUARDED_BY(mu) =
         *new absl::flat_hash_map<int64_t, int64_t>();
-    absl::MutexLock lock(&mu);
+    absl::MutexLock lock(mu);
     execution_count = module_id_to_execution_count[module.unique_id()]++;
     auto timestamp_emplace = module_id_to_timestamp.try_emplace(
         module.unique_id(), tsl::Env::Default()->NowMicros());
@@ -1065,7 +1131,7 @@ void DumpHloSnapshotIfEnabled(const HloSnapshot& snapshot,
   {
     static auto& module_name_to_execution_count ABSL_GUARDED_BY(mu) =
         *new absl::flat_hash_map<std::string, int64_t>();
-    absl::MutexLock lock(&mu);
+    absl::MutexLock lock(mu);
     execution_count = module_name_to_execution_count[name]++;
   }
   std::string filename = StrFormat("module_%s.execution_%04d.hlo_snapshot.pb",
@@ -1100,7 +1166,7 @@ void DumpHloUnoptimizedSnapshotIfEnabled(
     static absl::Mutex mu(absl::kConstInit);
     static auto& module_id_to_execution_count ABSL_GUARDED_BY(mu) =
         *new absl::flat_hash_map<int64_t, int64_t>();
-    absl::MutexLock lock(&mu);
+    absl::MutexLock lock(mu);
     execution_count =
         module_id_to_execution_count[hlo_snapshot.hlo_module().id()]++;
   }
@@ -1128,6 +1194,8 @@ void DumpHloUnoptimizedSnapshotIfEnabled(
       return;
     }
     tsl::WritableFileCopyingOutputStream output_stream(file.get());
+    // TODO - b/457711066: Add missing include once capybara can re-write the
+    // dependency correctly.
     tsl::protobuf::io::CopyingOutputStreamAdaptor adaptor(&output_stream);
     if (!SerializeHloUnoptimizedSnapshot(hlo_snapshot, &adaptor).ok()) {
       LOG(ERROR) << "Failed to serialize HLO unoptimized snapshot proto";
@@ -1141,20 +1209,17 @@ void DumpHloUnoptimizedSnapshotIfEnabled(
   }
 }
 
-void DumpHloModuleMetadataIfEnabled(const std::vector<HloModule*>& modules) {
+void DumpHloModuleMetadataIfEnabled(HloModule* module) {
   absl::flat_hash_set<int64_t> dumped_module_ids;
-  for (const HloModule* module : modules) {
-    CanonicalDebugOptions opts(module->config().debug_options());
-    if (!module->config().debug_options().xla_dump_module_metadata()) {
-      continue;
-    }
-    DumpHloModuleMetadata(module->metadata().proto(), opts, &dumped_module_ids);
-    const std::optional<HloModuleMetadataProto>& prepartitioning_metadata =
-        module->metadata().prepartitioning_metadata();
-    if (prepartitioning_metadata.has_value()) {
-      DumpHloModuleMetadata(*prepartitioning_metadata, opts,
-                            &dumped_module_ids);
-    }
+  CanonicalDebugOptions opts(module->config().debug_options());
+  if (!module->config().debug_options().xla_dump_module_metadata()) {
+    return;
+  }
+  DumpHloModuleMetadata(module->metadata()->proto(), opts, &dumped_module_ids);
+  const std::optional<HloModuleMetadataProto>& prepartitioning_metadata =
+      module->metadata()->prepartitioning_metadata();
+  if (prepartitioning_metadata.has_value()) {
+    DumpHloModuleMetadata(*prepartitioning_metadata, opts, &dumped_module_ids);
   }
 }
 

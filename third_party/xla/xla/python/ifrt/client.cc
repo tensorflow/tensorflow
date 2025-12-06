@@ -15,10 +15,28 @@ limitations under the License.
 
 #include "xla/python/ifrt/client.h"
 
+#include <cstdint>
+
+#include "absl/status/statusor.h"
+#include "absl/types/span.h"
+#include "xla/python/ifrt/device.h"
+#include "xla/python/ifrt/dtype.h"
+#include "xla/python/ifrt/layout.h"
+#include "xla/python/ifrt/memory.h"
+#include "xla/python/ifrt/shape.h"
+#include "xla/python/ifrt/sharding.h"
+
 namespace xla {
 namespace ifrt {
 
 char Client::ID = 0;
+
+absl::StatusOr<CustomLayoutRef> Client::GetDefaultLayout(
+    DType dtype, absl::Span<const int64_t> shard_dims, Device* device,
+    xla::ifrt::MemoryKind memory_kind) const {
+  return GetDefaultLayout(dtype, Shape(shard_dims),
+                          SingleDeviceSharding::Create(device, memory_kind));
+}
 
 }  // namespace ifrt
 }  // namespace xla

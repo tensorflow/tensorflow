@@ -36,14 +36,11 @@ limitations under the License.
 #include "xla/service/gpu/transforms/reduce_scatter_creator.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/tsl/lib/core/status_test_util.h"
-#include "tsl/platform/status_matchers.h"
-#include "tsl/platform/statusor.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
 namespace {
-
-using ::tsl::testing::IsOkAndHolds;
 
 class AllReduceSplitterTest : public HloHardwareIndependentTestBase {
  public:
@@ -57,21 +54,21 @@ class AllReduceSplitterTest : public HloHardwareIndependentTestBase {
     return ParseAndReturnVerifiedModule(hlo_module, config);
   }
 
-  size_t AllReduceCount(const HloModule &module) {
+  size_t AllReduceCount(const HloModule& module) {
     return CollectiveCount(module, HloOpcode::kAllReduce);
   }
 
  private:
-  size_t CollectiveCount(const HloModule &module, HloOpcode opcode) {
+  size_t CollectiveCount(const HloModule& module, HloOpcode opcode) {
     return absl::c_count_if(
         module.entry_computation()->instructions(),
-        [&opcode](HloInstruction *instr) { return instr->opcode() == opcode; });
+        [&opcode](HloInstruction* instr) { return instr->opcode() == opcode; });
   }
 };
 
 class AllReduceSplitterFilecheckTest : public AllReduceSplitterTest {
  public:
-  absl::Status FileCheck(const std::string &hlo_text,
+  absl::Status FileCheck(const std::string& hlo_text,
                          absl::string_view pattern) {
     TF_ASSIGN_OR_RETURN(bool matched, RunFileCheck(hlo_text, pattern));
     if (!matched) {
@@ -115,7 +112,7 @@ ENTRY main {
 
   EXPECT_THAT(AllReduceSplitter().Run(module.get()),
               absl_testing::IsOkAndHolds(true));
-  TF_EXPECT_OK(FileCheck(module->ToString(), R"(
+  EXPECT_OK(FileCheck(module->ToString(), R"(
     CHECK-DAG:    %[[P0:.*]] = bf16[2,4096,4096]{2,1,0} parameter(0)
     CHECK:        %[[AR0:.*]] = bf16[2,4096,4096]{2,1,0} all-reduce(%[[P0]])
     CHECK-SAME:   replica_groups={[[DESIRED_RGS:.*]]}
@@ -203,7 +200,7 @@ ENTRY main {
 
   EXPECT_THAT(AllReduceSplitter().Run(module.get()),
               absl_testing::IsOkAndHolds(true));
-  TF_EXPECT_OK(FileCheck(module->ToString(), R"(
+  EXPECT_OK(FileCheck(module->ToString(), R"(
     CHECK-DAG:    %[[P0:.*]] = bf16[2,4096,4096]{2,1,0} parameter(0)
     CHECK-DAG:    %[[ZERO:.*]] = bf16[] constant(0)
     CHECK-DAG:    %[[LOCAL_REDUCE:.*]] = bf16[4096]{0} reduce(%[[P0]], %[[ZERO]])
@@ -445,7 +442,7 @@ ENTRY main {
   pipeline.AddPass<AllReduceSplitter>();
   pipeline.AddPass<ReduceScatterCreator>();
   EXPECT_THAT(pipeline.Run(module.get()), absl_testing::IsOkAndHolds(true));
-  TF_EXPECT_OK(FileCheck(module->ToString(), R"(
+  EXPECT_OK(FileCheck(module->ToString(), R"(
     CHECK-DAG:    %[[P0:.*]] = bf16[2,4096,4096]{2,1,0} parameter(0)
     CHECK:        %[[AR0:.*]] = bf16[2,4096,4096]{2,1,0} all-reduce(%[[P0]])
     CHECK-SAME:   replica_groups={[[DESIRED_RGS:.*]]}
@@ -496,7 +493,7 @@ ENTRY main {
   pipeline.AddPass<AllReduceSplitter>();
   pipeline.AddPass<ReduceScatterCreator>();
   EXPECT_THAT(pipeline.Run(module.get()), absl_testing::IsOkAndHolds(true));
-  TF_EXPECT_OK(FileCheck(module->ToString(), R"(
+  EXPECT_OK(FileCheck(module->ToString(), R"(
     CHECK-DAG:    %[[P0:.*]] = bf16[2,4096,4096]{2,1,0} parameter(0)
     CHECK-DAG:    %[[ZERO:.*]] = bf16[] constant(0)
     CHECK-DAG:    %[[LOCAL_REDUCE:.*]] = bf16[4096]{0} reduce(%[[P0]], %[[ZERO]])

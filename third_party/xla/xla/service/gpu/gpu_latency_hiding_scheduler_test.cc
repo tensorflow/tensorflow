@@ -22,10 +22,14 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/algorithm/container.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "mlir/IR/MLIRContext.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -37,17 +41,14 @@ limitations under the License.
 #include "xla/service/latency_hiding_scheduler.h"
 #include "xla/service/profile_guided_latency_estimator.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/logging.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla::gpu {
 namespace {
 
 using ::testing::Property;
 using ::testing::UnorderedElementsAre;
-using ::tsl::testing::StatusIs;
 
 int GetIndexByName(absl::Span<HloInstruction* const> instruction_sequence,
                    absl::string_view hlo_name) {
@@ -77,7 +78,8 @@ class GpuLatencyHidingSchedulerBaseTest
     options.set_xla_gpu_pgle_accuracy_checker(strictness);
 
     TF_RETURN_IF_ERROR(ScheduleGpuModule(module, /*pointer_size=*/8,
-                                         gpu_device_info, &alias_info)
+                                         gpu_device_info, &mlir_context_,
+                                         &alias_info)
                            .status());
     return module;
   }
@@ -95,6 +97,8 @@ class GpuLatencyHidingSchedulerBaseTest
     config.set_fdo_profile(fdo_profile);
     return config;
   }
+
+  mlir::MLIRContext mlir_context_;
 };
 
 TEST_F(GpuLatencyHidingSchedulerBaseTest,
@@ -1008,6 +1012,33 @@ ENTRY main {
   EXPECT_FALSE(async_tracker.IsSupportedAsyncDone(*dynamic_slice_start));
   EXPECT_TRUE(async_tracker.IsSupportedAsyncDone(*dynamic_slice_done));
   EXPECT_FALSE(async_tracker.IsSupportedAsyncStart(*dynamic_slice_done));
+}
+
+TEST_F(GpuLatencyHidingSchedulerBaseTest, ParallelThreadsShouldBeScheduled) {
+  absl::string_view kHloModule = R"(
+    HloModule Test1
+
+    custom_call_F32 {
+      lhs = f32[2,2]{1,0} parameter(0)
+      rhs = f32[2,2]{1,0} parameter(1)
+      ROOT custom_call = f32[2,2]{1,0} custom-call(lhs, rhs), custom_call_target="random"
+    }
+
+    ENTRY Test1 {
+      a = f32[2,2]{1,0} parameter(0)
+      b = f32[2,2]{1,0} parameter(1)
+      start = ((f32[2,2]{1,0}, f32[2,2]{1,0}), f32[2,2]{1,0}) async-start(a, b), calls=custom_call_F32, async_execution_thread="parallel"
+      ROOT done = f32[2,2]{1,0} async-done(start)
+    }
+  )";
+
+  absl::string_view kFdoProfile = "";
+  auto config = GetModuleConfig(kFdoProfile);
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kHloModule, config));
+
+  // It should compile without any issues.
+  TF_EXPECT_OK(ScheduleModule(module.get()));
 }
 
 }  // namespace

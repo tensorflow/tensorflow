@@ -15,22 +15,19 @@ limitations under the License.
 
 #include "xla/service/gpu/transforms/algebraic_simplifier.h"
 
+#include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
-#include "xla/backends/gpu/codegen/triton/support_legacy.h"
-#include "xla/hlo/ir/hlo_casting_utils.h"
+#include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/transforms/simplifiers/algebraic_simplifier.h"
 #include "xla/service/gpu/matmul_utils.h"
-#include "xla/service/gpu/transforms/dot_algorithm_rewriter.h"
-#include "xla/service/hlo_creation_utils.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/shape_util.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla::gpu {
 
@@ -102,6 +99,23 @@ GpuAlgebraicSimplifierVisitor::MakeMultiplyForPrecisionAlgorithm(
     HloInstruction* dot, HloInstruction* lhs, HloInstruction* rhs) {
   return MakeMultiplyForDotPrecisionAlgorithm(
       lhs, rhs, dot->precision_config().algorithm());
+}
+
+absl::StatusOr<bool> GpuAlgebraicSimplifier::RunImpl(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
+  XLA_VLOG_LINES(
+      2, "GpuAlgebraicSimplifier::RunImpl(), before:\n" + module->ToString());
+  bool changed = false;
+  GpuAlgebraicSimplifierVisitor visitor(options_, compute_capability_, this);
+  for (auto* comp : module->MakeNonfusionComputations(execution_threads)) {
+    if (visitor.Run(comp, options_, this)) {
+      changed = true;
+    }
+  }
+  XLA_VLOG_LINES(
+      2, "GpuAlgebraicSimplifier::RunImpl(), after:\n" + module->ToString());
+  return changed;
 }
 
 }  // namespace xla::gpu

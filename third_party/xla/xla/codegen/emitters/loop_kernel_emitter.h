@@ -16,23 +16,20 @@ limitations under the License.
 #ifndef XLA_CODEGEN_EMITTERS_LOOP_KERNEL_EMITTER_H_
 #define XLA_CODEGEN_EMITTERS_LOOP_KERNEL_EMITTER_H_
 
-#include <cstdint>
 #include <string>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
-#include "mlir/IR/MLIRContext.h"
 #include "xla/codegen/emitters/computation_partitioner.h"
 #include "xla/codegen/emitters/ir/xla_ops.h"
 #include "xla/codegen/emitters/kernel_arguments.h"
 #include "xla/codegen/hlo_fusion_spec.h"
-#include "xla/codegen/kernel_definition.h"
-#include "xla/codegen/kernel_spec.h"
-#include "xla/codegen/mlir_kernel_definition.h"
-#include "xla/codegen/mlir_kernel_emitter.h"
+#include "xla/codegen/kernel_emitter.h"
+#include "xla/codegen/mlir_kernel_source.h"
 #include "xla/hlo/analysis/indexing_map.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/runtime/work_dimensions.h"
 #include "xla/service/buffer_assignment.h"
@@ -41,7 +38,7 @@ limitations under the License.
 namespace xla::emitters {
 
 // Generic loop fusion.
-class LoopFusionKernelEmitter final : public MlirKernelEmitter {
+class LoopFusionKernelEmitter final : public KernelEmitter<MlirKernelSource> {
  public:
   LoopFusionKernelEmitter(mlir::MLIRContext& mlir_context,
                           const HloFusionInstruction& fusion,
@@ -52,7 +49,8 @@ class LoopFusionKernelEmitter final : public MlirKernelEmitter {
                           absl::string_view entry_function_name,
                           BackendKind backend_kind);
 
-  absl::StatusOr<MlirKernelDefinition> EmitKernelDefinition() override;
+  absl::string_view name() const final { return "loop_fusion_kernel_emitter"; }
+  absl::StatusOr<KernelDefinition> EmitKernelDefinition() override;
 
   static IndexingMap ComputeWorkItemIdToOutputIndexing(
       const WorkDimensions& work_dimensions, const Shape& root_shape,
@@ -61,8 +59,6 @@ class LoopFusionKernelEmitter final : public MlirKernelEmitter {
   // Get the shape that will be used for loop indexing for the given fusion
   // specification.
   static Shape GetIndexingShape(const HloFusionSpec& fusion_spec);
-
-  std::string name() const final { return "loop_fusion_kernel_emitter"; }
 
  private:
   IndexingMap ComputeWorkItemIdToOutputIndexing(mlir::MLIRContext* ctx) const;

@@ -82,13 +82,13 @@ void DispatchParallelRun(tsl::thread::ThreadPool* thread_pool,
       // Cancellation complexity is O(#tasks).
       absl::Status current_status = absl::OkStatus();
       {
-        absl::ReaderMutexLock reader_lock{&mu_final_status};
+        absl::ReaderMutexLock reader_lock{mu_final_status};
         current_status = final_status;
       }
       if (current_status.ok()) {
         auto action_status = std::move(action)();
         if (!action_status.ok()) {
-          absl::MutexLock write_lock{&mu_final_status};
+          absl::MutexLock write_lock{mu_final_status};
           final_status = action_status;
         }
       }

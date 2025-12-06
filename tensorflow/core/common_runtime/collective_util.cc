@@ -59,26 +59,26 @@ string SubdivPermDebugString(const CollectiveParams& col_params) {
       col_params.instance.impl_details.subdiv_permutations;
   string buf;
   for (int sdi = 0; sdi < subdiv_perms.size(); ++sdi) {
-    strings::StrAppend(&buf, "Subdiv ", sdi, " device order:\n");
+    absl::StrAppend(&buf, "Subdiv ", sdi, " device order:\n");
     for (int di = 0; di < subdiv_perms[sdi].size(); ++di) {
       int idx = subdiv_perms[sdi][di];
       if (idx >= 0) {
         CHECK_GT(col_params.group.members.size(), idx);
-        strings::StrAppend(&buf, col_params.group.members[idx].device.name(),
-                           "\n");
+        absl::StrAppend(&buf, col_params.group.members[idx].device.name(),
+                        "\n");
       }
     }
-    strings::StrAppend(&buf, " subdiv_offsets: ");
+    absl::StrAppend(&buf, " subdiv_offsets: ");
     for (auto o : col_params.instance.impl_details.subdiv_offsets)
-      strings::StrAppend(&buf, o, " ");
-    strings::StrAppend(&buf, " SubdivRank: ");
-    for (auto d : col_params.subdiv_rank) strings::StrAppend(&buf, d, " ");
+      absl::StrAppend(&buf, o, " ");
+    absl::StrAppend(&buf, " SubdivRank: ");
+    for (auto d : col_params.subdiv_rank) absl::StrAppend(&buf, d, " ");
     if (col_params.instance.type == BROADCAST_COLLECTIVE) {
-      strings::StrAppend(&buf, " subdiv_source_rank: ");
+      absl::StrAppend(&buf, " subdiv_source_rank: ");
       for (auto src : col_params.instance.impl_details.subdiv_source_rank)
-        strings::StrAppend(&buf, src, " ");
+        absl::StrAppend(&buf, src, " ");
     }
-    strings::StrAppend(&buf, "\n");
+    absl::StrAppend(&buf, "\n");
   }
   return buf;
 }

@@ -20,6 +20,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/no_destructor.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/log/check.h"
@@ -28,17 +29,19 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/types/span.h"
 #include "xla/backends/cpu/alignment.h"
+#include "xla/future.h"
+#include "xla/pjrt/abstract_tracked_device_buffer.h"
 #include "xla/pjrt/common_pjrt_client.h"
 #include "xla/pjrt/cpu/cpu_event.h"
 #include "xla/pjrt/cpu/raw_buffer.h"
 #include "xla/pjrt/device_event.h"
 #include "xla/pjrt/pjrt_client.h"
-#include "xla/pjrt/pjrt_future.h"
 #include "xla/pjrt/raw_buffer.h"
 #include "xla/tsl/concurrency/async_value.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "tsl/platform/casts.h"
 #include "tsl/platform/mem.h"
@@ -67,23 +70,73 @@ tsl::AsyncValueRef<CpuEvent> AfterAll(
 
   return std::move(after_all).AsRef();
 }
+
+//===----------------------------------------------------------------------===//
+// Default CpuDeviceMemory::RawMemory allocator.
+//===----------------------------------------------------------------------===//
+
+class AlignedMemory final : public CpuDeviceMemory::RawMemory {
+ public:
+  AlignedMemory(void* base, size_t size_bytes)
+      : base_(base), size_bytes_(size_bytes) {}
+
+  ~AlignedMemory() final {
+    tsl::port::AlignedSizedFree(base_, cpu::MinAlign(), size_bytes_);
+  }
+
+  void* base() const final { return base_; }
+  size_t size_bytes() const final { return size_bytes_; }
+
+ private:
+  void* base_;
+  size_t size_bytes_;
+};
+
+class AlignedAllocator final : public CpuDeviceMemory::Allocator {
+ public:
+  absl::StatusOr<std::unique_ptr<CpuDeviceMemory::RawMemory>> Allocate(
+      size_t size_bytes, size_t alignment) const final {
+    if (void* base = tsl::port::AlignedMalloc(size_bytes, alignment)) {
+      return std::make_unique<AlignedMemory>(base, size_bytes);
+    }
+    return ResourceExhausted("Out of memory allocating %d bytes.", size_bytes);
+  }
+};
+
 }  // namespace
+
+CpuDeviceMemory::Allocator& CpuDeviceMemory::DefaultAllocator() {
+  static absl::NoDestructor<AlignedAllocator> allocator;
+  return *allocator;
+}
+
+std::unique_ptr<CpuDeviceMemory::Allocator>
+CpuDeviceMemory::MakeDefaultAllocator() {
+  return std::make_unique<AlignedAllocator>();
+}
+
+//===----------------------------------------------------------------------===//
+// CpuDeviceMemory implementations.
+//===----------------------------------------------------------------------===//
 
 class CpuDeviceMemoryOwned final : public CpuDeviceMemory {
  public:
-  CpuDeviceMemoryOwned(void* base, size_t size) : CpuDeviceMemory(base, size) {}
+  explicit CpuDeviceMemoryOwned(std::unique_ptr<RawMemory> mem)
+      : mem_(std::move(mem)) {}
 
-  ~CpuDeviceMemoryOwned() final {
-    CHECK_NE(untyped_data(), nullptr);
-    tsl::port::AlignedSizedFree(untyped_data(), cpu::MinAlign(), size_bytes());
-  }
+  void* untyped_data() const final { return mem_->base(); }
+  size_t size_bytes() const final { return mem_->size_bytes(); }
+
+ private:
+  std::unique_ptr<RawMemory> mem_;
 };
 
 class CpuDeviceMemoryForeign final : public CpuDeviceMemory {
  public:
   CpuDeviceMemoryForeign(void* base, size_t size,
                          absl::AnyInvocable<void() &&> on_delete_callback)
-      : CpuDeviceMemory(base, size),
+      : base_(base),
+        size_bytes_(size),
         on_delete_callback_(std::move(on_delete_callback)) {}
 
   ~CpuDeviceMemoryForeign() final {
@@ -92,14 +145,26 @@ class CpuDeviceMemoryForeign final : public CpuDeviceMemory {
     }
   }
 
+  void* untyped_data() const final { return base_; }
+  size_t size_bytes() const final { return size_bytes_; }
+
  private:
+  void* base_;
+  size_t size_bytes_;
   absl::AnyInvocable<void() &&> on_delete_callback_;
 };
 
 class CpuDeviceMemoryConstant final : public CpuDeviceMemory {
  public:
   CpuDeviceMemoryConstant(void* base, size_t size)
-      : CpuDeviceMemory(base, size) {}
+      : base_(base), size_bytes_(size) {}
+
+  void* untyped_data() const final { return base_; }
+  size_t size_bytes() const final { return size_bytes_; }
+
+ private:
+  void* base_;
+  size_t size_bytes_;
 };
 
 tsl::AsyncValueRef<CpuDeviceMemory> CpuDeviceMemory::CreateDelayedMemory() {
@@ -119,62 +184,76 @@ tsl::AsyncValueRef<CpuDeviceMemory> CpuDeviceMemory::CreateConstantMemory(
 
 // Allocates owning memory wrapped in an available `AsyncValueRef`.
 absl::StatusOr<tsl::AsyncValueRef<CpuDeviceMemory>> CpuDeviceMemory::Allocate(
-    size_t size_bytes) {
-  if (void* data = tsl::port::AlignedMalloc(size_bytes, cpu::MinAlign())) {
-    return tsl::MakeAvailableAsyncValueRef<CpuDeviceMemoryOwned>(data,
-                                                                 size_bytes);
-  }
-  return ResourceExhausted("Out of memory allocating %d bytes.", size_bytes);
+    size_t size_bytes, const Allocator& allocator) {
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<RawMemory> mem,
+                      allocator.Allocate(size_bytes, cpu::MinAlign()));
+  return tsl::MakeAvailableAsyncValueRef<CpuDeviceMemoryOwned>(std::move(mem));
 }
 
 absl::Status CpuDeviceMemory::AllocateInto(
-    size_t size_bytes, tsl::AsyncValuePtr<CpuDeviceMemory> delayed_memory) {
+    size_t size_bytes, tsl::AsyncValuePtr<CpuDeviceMemory> delayed_memory,
+    const Allocator& allocator) {
   auto owned_memory = delayed_memory.DynCast<CpuDeviceMemoryOwned>();
   if (!owned_memory) {
     return Internal("Delayed memory is not a CpuDeviceMemoryOwned");
   }
-  if (void* data = tsl::port::AlignedMalloc(size_bytes, cpu::MinAlign())) {
-    owned_memory.emplace(data, size_bytes);
-    return absl::OkStatus();
-  }
-  return ResourceExhausted("Out of memory allocating %d bytes.", size_bytes);
+
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<RawMemory> mem,
+                      allocator.Allocate(size_bytes, cpu::MinAlign()));
+  owned_memory.emplace(std::move(mem));
+  return absl::OkStatus();
 }
 
+//===----------------------------------------------------------------------===//
+// TrackedCpuDeviceBuffer.
+//===----------------------------------------------------------------------===//
+
 TrackedCpuDeviceBuffer::TrackedCpuDeviceBuffer(
-    bool owns_buffers, tsl::AsyncValueRef<CpuDeviceMemory> buffer,
+    bool owns_buffers, tsl::RCReference<CommonPjRtRawBuffer> raw_buffer,
     absl::InlinedVector<tsl::AsyncValueRef<CpuEvent>, 4> definition_events)
-    : TrackedCpuDeviceBuffer(owns_buffers, std::move(buffer),
+    : TrackedCpuDeviceBuffer(owns_buffers, std::move(raw_buffer),
                              AfterAll(definition_events)) {}
 
 TrackedCpuDeviceBuffer::TrackedCpuDeviceBuffer(
-    bool owns_buffers, tsl::AsyncValueRef<CpuDeviceMemory> buffer,
+    bool owns_buffers, tsl::RCReference<CommonPjRtRawBuffer> raw_buffer,
     size_t buffer_size,
     absl::InlinedVector<tsl::AsyncValueRef<CpuEvent>, 4> definition_events)
-    : TrackedCpuDeviceBuffer(owns_buffers, std::move(buffer), buffer_size,
+    : TrackedCpuDeviceBuffer(owns_buffers, std::move(raw_buffer), buffer_size,
                              AfterAll(definition_events)) {}
 
 TrackedCpuDeviceBuffer::TrackedCpuDeviceBuffer(
-    bool owns_buffers, tsl::AsyncValueRef<CpuDeviceMemory> buffer,
+    bool owns_buffers, tsl::RCReference<CommonPjRtRawBuffer> raw_buffer,
     tsl::AsyncValueRef<CpuEvent> definition_event)
-    : owns_buffers_(owns_buffers),
-      buffer_(std::move(buffer)),
+    : AbstractTrackedDeviceBuffer(std::move(raw_buffer)),
+      owns_buffers_(owns_buffers),
       definition_event_(std::move(definition_event)) {
   DCHECK(definition_event_);
-  CHECK(buffer_.IsConcrete());
-  buffer_size_ = buffer_->size_bytes();
+  CHECK(tensorflow::down_cast<CpuRawBuffer*>(this->raw_buffer().get())
+            ->buffer()
+            .IsConcrete());
+  buffer_size_ = this->raw_buffer()->GetOnDeviceSizeInBytes();
 }
 
 TrackedCpuDeviceBuffer::TrackedCpuDeviceBuffer(
-    bool owns_buffers, tsl::AsyncValueRef<CpuDeviceMemory> buffer,
+    bool owns_buffers, tsl::RCReference<CommonPjRtRawBuffer> raw_buffer,
     size_t buffer_size, tsl::AsyncValueRef<CpuEvent> definition_event)
-    : owns_buffers_(owns_buffers),
-      buffer_(std::move(buffer)),
+    : AbstractTrackedDeviceBuffer(std::move(raw_buffer)),
+      owns_buffers_(owns_buffers),
       buffer_size_(buffer_size),
       definition_event_(std::move(definition_event)) {
   DCHECK(definition_event_);
 }
 
-TrackedCpuDeviceBuffer::~TrackedCpuDeviceBuffer() { ReleaseDeviceMemory(); }
+TrackedCpuDeviceBuffer::~TrackedCpuDeviceBuffer() = default;
+
+const tsl::AsyncValueRef<CpuDeviceMemory>& TrackedCpuDeviceBuffer::buffer() {
+  if (raw_buffer()) {
+    return tensorflow::down_cast<CpuRawBuffer*>(this->raw_buffer().get())
+        ->buffer();
+  }
+  static absl::NoDestructor<tsl::AsyncValueRef<CpuDeviceMemory>> missing_buffer;
+  return *missing_buffer;
+}
 
 size_t TrackedCpuDeviceBuffer::BufferSize() { return buffer_size_; }
 
@@ -204,8 +283,8 @@ TrackedCpuDeviceBuffer::LockUseAndTransferUsageEvents() {
   return std::move(usage_events_);
 }
 
-void TrackedCpuDeviceBuffer::ReleaseDeviceMemory() {
-  buffer_ = tsl::AsyncValueRef<CpuDeviceMemory>();
+void TrackedCpuDeviceBuffer::ConfirmDonation() {
+  ReleaseDeviceMemory();
   definition_event_.reset();
   usage_events_.clear();
 }
@@ -215,14 +294,6 @@ TrackedCpuDeviceBuffer::GetAsyncValueDefinitionEvents() {
   std::vector<tsl::RCReference<tsl::AsyncValue>> result;
   result.push_back(definition_event_.CopyRCRef());
   return result;
-}
-
-tsl::RCReference<CommonPjRtRawBuffer> TrackedCpuDeviceBuffer::GetRawBuffer(
-    PjRtMemorySpace* memory_space) {
-  if (!buffer_) {
-    return tsl::RCReference<CommonPjRtRawBuffer>();
-  }
-  return tsl::MakeRef<CpuRawBuffer>(memory_space, buffer_);
 }
 
 void TrackedCpuDeviceBuffer::AddUsageEvent(
@@ -255,22 +326,34 @@ void TrackedCpuDeviceBuffer::Delete(PjRtMemorySpace* memory_space) {
   });
 }
 
-PjRtFuture<>::Promise TrackedCpuDeviceBuffer::GetReadyFuturePromise(
-    PjRtMemorySpace* memory_space) {
-  PjRtFuture<>::Promise promise =
-      tensorflow::down_cast<CommonPjRtClient*>(memory_space->client())
-          ->CreateUserPromise(memory_space, "BufferDefinitionEvent");
-  definition_event().AndThen(
-      [definition_event = definition_event().AsPtr(), promise]() mutable {
-        if (definition_event.IsError()) {
-          const absl::Status& s = definition_event.GetError();
-          promise.Set(tsl::errors::CreateWithUpdatedMessage(
-              s, absl::StrCat("Buffer Definition Event: ", s.message())));
-        } else {
-          promise.Set();
-        }
-      });
-  return promise;
+Future<> TrackedCpuDeviceBuffer::GetReadyFuture(PjRtMemorySpace* memory_space) {
+  auto [promise, future] = Future<>::MakePromise();
+
+  tensorflow::down_cast<CommonPjRtClient*>(memory_space->client())
+      ->TrackFuture(memory_space, "BufferDefinitionEvent", future);
+
+  definition_event().AndThen([definition_event = definition_event().AsPtr(),
+                              promise = std::move(promise)]() mutable {
+    if (definition_event.IsError()) {
+      const absl::Status& s = definition_event.GetError();
+      promise.Set(tsl::errors::CreateWithUpdatedMessage(
+          s, absl::StrCat("Buffer Definition Event: ", s.message())));
+    } else {
+      promise.Set();
+    }
+  });
+
+  return future;
+}
+
+absl::StatusOr<tsl::RCReference<PjRtDeviceEvent>>
+TrackedCpuDeviceBuffer::GetDefinitionEvent(PjRtMemorySpace* memory_space) {
+  if (!definition_event_) {
+    return absl::InternalError(
+        "GetDefinitionEvent only supported on CPU for buffers with "
+        "exactly 1 definition event.");
+  }
+  return tsl::MakeRef<CpuTrackedDeviceEvent>(definition_event_);
 }
 
 absl::Status TrackedCpuDeviceBuffer::BlockForOperationsToComplete(

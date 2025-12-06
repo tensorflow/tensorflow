@@ -164,18 +164,35 @@ def call_compiler(argv, link = False, sycl_compile = True):
         else:
             expanded_flags.append(s)
 
-    # Deduplicate flags
     seen = set()
-    deduped_flags = []
+    ordered_flags = []
+    
+    # Track the type of each unique flag and preserve order
     for s in expanded_flags:
         if s not in seen:
             seen.add(s)
-            if s.endswith(".o"):
+            flag_type = "whole" if s.endswith((".o", ".lo")) else "regular"
+            ordered_flags.append((flag_type, shlex.quote(s)))
+    
+    deduped_flags = []
+    in_whole_archive = False
+    
+    for flag_type, flag in ordered_flags:
+        if flag_type == "whole":
+            if not in_whole_archive:
                 deduped_flags.append("-Wl,--whole-archive")
-            deduped_flags.append(shlex.quote(s))
-            if s.endswith(".o"):
+                in_whole_archive = True
+            deduped_flags.append(flag)
+        else:
+            if in_whole_archive:
                 deduped_flags.append("-Wl,--no-whole-archive")
-
+                in_whole_archive = False
+            deduped_flags.append(flag)
+    
+    # Close any open --whole-archive section
+    if in_whole_archive:
+        deduped_flags.append("-Wl,--no-whole-archive")
+    
     # Output file
     if args.o:
         out_files.append('-o')
@@ -199,10 +216,15 @@ def call_compiler(argv, link = False, sycl_compile = True):
       out_files.append('-o')
       out_files.extend(args.o[0])
     flags += (common_flags + in_files + out_files)
+    VERBOSE = os.environ.get("VERBOSE", "0") == "1"
     if USE_ICPX_CLANG:
-       return subprocess.call([CPU_COMPILER] + flags)
+      if VERBOSE:
+        print(' '.join([CPU_COMPILER] + flags))
+      return subprocess.call([CPU_COMPILER] + flags)
     else:
-       return subprocess.call([SYCL_PATH] + flags)
+      if VERBOSE:
+        print(' '.join([SYCL_PATH] + flags))
+      return subprocess.call([SYCL_PATH] + flags)
 
 def main():
   parser = ArgumentParser()

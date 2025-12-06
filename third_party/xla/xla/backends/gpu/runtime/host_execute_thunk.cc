@@ -19,21 +19,25 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include "absl/base/call_once.h"
-#include "absl/container/flat_hash_map.h"
+#include "absl/base/casts.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/memory/memory.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/backends/gpu/host_offloading/gpu_host_offloading_allocator.h"
+#include "xla/backends/gpu/runtime/shaped_slice.pb.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/core/host_offloading/host_offloading_allocator.h"
 #include "xla/core/host_offloading/host_offloading_buffer.h"
@@ -64,18 +68,47 @@ namespace gpu {
 
 namespace {
 
-tsl::thread::ThreadPool* GetHostExecuteThreadPool() {
-  constexpr int kMaxNumHostExecuteThreads = 32;
-  static tsl::thread::ThreadPool* host_offloading_thread_pool =
-      new tsl::thread::ThreadPool(
-          tsl::Env::Default(), "host-offloading",
-          std::min(tsl::port::MaxParallelism(), kMaxNumHostExecuteThreads));
-  return host_offloading_thread_pool;
+class ThreadPoolResource : public se::StreamExecutor::Resource {
+ public:
+  explicit ThreadPoolResource(
+      std::unique_ptr<tsl::thread::ThreadPool> thread_pool)
+      : thread_pool_(std::move(thread_pool)) {}
+
+  tsl::thread::ThreadPool* thread_pool() const { return thread_pool_.get(); }
+
+ private:
+  std::unique_ptr<tsl::thread::ThreadPool> thread_pool_;
+};
+
+tsl::thread::ThreadPool* GetHostExecuteThreadPool(
+    se::StreamExecutor* stream_executor) {
+  return stream_executor
+      ->GetOrCreateResource<ThreadPoolResource>([stream_executor]() {
+        constexpr int kMaxNumHostExecuteThreads = 8;
+        return std::make_unique<ThreadPoolResource>(
+            std::make_unique<tsl::thread::ThreadPool>(
+                tsl::Env::Default(),
+                absl::StrCat("host-offloading-device-id-",
+                             stream_executor->device_ordinal()),
+                std::min(tsl::port::MaxParallelism(),
+                         kMaxNumHostExecuteThreads)));
+      })
+      ->thread_pool();
 }
 
 bool IsBufferOnDevice(se::Stream* stream, const void* ptr) {
   auto memory_type = stream->parent()->GetPointerMemorySpace(ptr);
   return memory_type.ok() && *memory_type == se::MemoryType::kDevice;
+}
+
+// We ignore memory spaces in shape comparison since the memory can be on
+// device or host, and both are valid for the host offloading case. If the
+// memory is on device we copy it to host memory, and if it is on host memory
+// we use it as is.
+bool CompareShapesIgnoringMemorySpace(const Shape& shape1,
+                                      const Shape& shape2) {
+  auto eq = Shape::Equal().IgnoreMemorySpaceInLayout();
+  return eq(shape1, shape2);
 }
 
 class HostExecuteCallFrame {
@@ -127,12 +160,14 @@ absl::Status HostExecuteCallFrame::ValidateArgsAndResults(
     absl::Span<const HostExecuteStartThunk::SliceAndShape> args,
     absl::Span<const HostExecuteStartThunk::SliceAndShape> results,
     const ProgramShape& program_shape) {
+  tsl::profiler::TraceMe trace("HostExecuteCallFrame::ValidateArgsAndResults");
   if (args.size() != program_shape.parameters_size()) {
     return InvalidArgument("Number of arguments does not match program shape.");
   }
 
   for (int i = 0; i < args.size(); ++i) {
-    if (args[i].shape != program_shape.parameters(i)) {
+    if (!CompareShapesIgnoringMemorySpace(args[i].shape,
+                                          program_shape.parameters(i))) {
       return InvalidArgument(
           "Argument shape %s does not match program shape %s.",
           args[i].shape.ToString(/*print_layout=*/true),
@@ -144,7 +179,8 @@ absl::Status HostExecuteCallFrame::ValidateArgsAndResults(
 
   if (program_result_shape.IsTuple()) {
     for (int i = 0; i < results.size(); ++i) {
-      if (results[i].shape != program_result_shape.tuple_shapes(i)) {
+      if (!CompareShapesIgnoringMemorySpace(
+              results[i].shape, program_result_shape.tuple_shapes(i))) {
         return InvalidArgument(
             "Result shape %s does not match program shape %s at index %d.",
             results[i].shape.ToString(/*print_layout=*/true),
@@ -166,7 +202,8 @@ absl::Status HostExecuteCallFrame::ValidateArgsAndResults(
         program_result_shape.ToString(/*print_layout=*/true), results.size());
   }
 
-  if (results[0].shape != program_shape.result()) {
+  if (!CompareShapesIgnoringMemorySpace(results[0].shape,
+                                        program_shape.result())) {
     return InvalidArgument(
         "Result shape %s does not match program shape %s.",
         results[0].shape.ToString(/*print_layout=*/true),
@@ -183,6 +220,7 @@ absl::StatusOr<HostExecuteCallFrame> HostExecuteCallFrame::Create(
     absl::Span<HostExecuteStartThunk::SliceAndShape> args,
     absl::Span<HostExecuteStartThunk::SliceAndShape> results,
     const ProgramShape& program_shape) {
+  tsl::profiler::TraceMe trace("HostExecuteCallFrame::Create");
   TF_RETURN_IF_ERROR(ValidateArgsAndResults(args, results, program_shape));
 
   std::vector<ShapeTree<HostOffloadingBuffer>> parameters;
@@ -190,26 +228,30 @@ absl::StatusOr<HostExecuteCallFrame> HostExecuteCallFrame::Create(
   parameters.reserve(args.size());
   buffers.reserve(args.size() + results.size());
 
-  for (const auto& [slice, shape] : args) {
-    auto buffer_allocation = buffer_allocations->GetDeviceAddress(slice);
-    if (IsBufferOnDevice(device_to_host_stream, buffer_allocation.opaque())) {
-      // Copy device memory to host memory.
-      TF_ASSIGN_OR_RETURN(
-          buffers.emplace_back(),
-          allocator.AllocateTransferBuffer(ShapeUtil::ByteSizeOf(shape)));
+  {
+    tsl::profiler::TraceMe trace(
+        "HostExecuteCallFrame::Create Allocating Args");
+    for (const auto& [slice, shape] : args) {
+      auto buffer_allocation = buffer_allocations->GetDeviceAddress(slice);
+      if (IsBufferOnDevice(device_to_host_stream, buffer_allocation.opaque())) {
+        // Copy device memory to host memory.
+        TF_ASSIGN_OR_RETURN(
+            buffers.emplace_back(),
+            allocator.AllocateTransferBuffer(ShapeUtil::ByteSizeOf(shape)));
 
-      parameters.push_back(ShapeTree<HostOffloadingBuffer>(
-          shape, HostOffloadingBuffer(buffers.back()->untyped_data(),
-                                      buffers.back()->size_bytes())));
+        parameters.push_back(ShapeTree<HostOffloadingBuffer>(
+            shape, HostOffloadingBuffer(buffers.back()->untyped_data(),
+                                        buffers.back()->size_bytes())));
 
-      TF_RETURN_IF_ERROR(device_to_host_stream->Memcpy(
-          buffers.back()->untyped_data(), buffer_allocation,
-          buffers.back()->size_bytes()));
-    } else {
-      // We don't allocate as buffer is already in host memory.
-      parameters.push_back(ShapeTree<HostOffloadingBuffer>(
-          shape, HostOffloadingBuffer(buffer_allocation.opaque(),
-                                      buffer_allocation.size())));
+        TF_RETURN_IF_ERROR(device_to_host_stream->Memcpy(
+            buffers.back()->untyped_data(), buffer_allocation,
+            buffers.back()->size_bytes()));
+      } else {
+        // We don't allocate as buffer is already in host memory.
+        parameters.push_back(ShapeTree<HostOffloadingBuffer>(
+            shape, HostOffloadingBuffer(buffer_allocation.opaque(),
+                                        buffer_allocation.size())));
+      }
     }
   }
 
@@ -217,20 +259,24 @@ absl::StatusOr<HostExecuteCallFrame> HostExecuteCallFrame::Create(
 
   size_t result_leaf_index = 0;
 
-  for (auto& [index, result_buffer] : result.leaves()) {
-    const auto& [slice, shape] = results[result_leaf_index++];
-    auto buffer_allocation = buffer_allocations->GetDeviceAddress(slice);
+  {
+    tsl::profiler::TraceMe trace(
+        "HostExecuteCallFrame::Create Allocating Results");
+    for (auto& [index, result_buffer] : result.leaves()) {
+      const auto& [slice, shape] = results[result_leaf_index++];
+      auto buffer_allocation = buffer_allocations->GetDeviceAddress(slice);
 
-    if (IsBufferOnDevice(host_to_device_stream, buffer_allocation.opaque())) {
-      TF_ASSIGN_OR_RETURN(
-          buffers.emplace_back(),
-          allocator.AllocateTransferBuffer(ShapeUtil::ByteSizeOf(shape)));
-      result_buffer = HostOffloadingBuffer(buffers.back()->untyped_data(),
-                                           buffers.back()->size_bytes());
-    } else {
-      // We don't allocate as buffer is already in host memory.
-      result_buffer = HostOffloadingBuffer(buffer_allocation.opaque(),
-                                           buffer_allocation.size());
+      if (IsBufferOnDevice(host_to_device_stream, buffer_allocation.opaque())) {
+        TF_ASSIGN_OR_RETURN(
+            buffers.emplace_back(),
+            allocator.AllocateTransferBuffer(ShapeUtil::ByteSizeOf(shape)));
+        result_buffer = HostOffloadingBuffer(buffers.back()->untyped_data(),
+                                             buffers.back()->size_bytes());
+      } else {
+        // We don't allocate as buffer is already in host memory.
+        result_buffer = HostOffloadingBuffer(buffer_allocation.opaque(),
+                                             buffer_allocation.size());
+      }
     }
   }
 
@@ -254,6 +300,7 @@ HostExecuteCallFrame::HostExecuteCallFrame(
       allocated_buffers_(std::move(buffers)) {}
 
 absl::Status HostExecuteCallFrame::PublishResult() && {
+  tsl::profiler::TraceMe trace("HostExecuteCallFrame::PublishResult");
   size_t result_leaf_index = 0;
   for (const auto& [index, buffer] : result_.leaves()) {
     auto result_buffer = buffer_allocations_->GetDeviceAddress(
@@ -287,6 +334,7 @@ absl::Status HostExecuteCallFrame::PublishResult() && {
 absl::StatusOr<HostExecuteAsyncEvents::HostExecuteEvent>
 HostExecuteAsyncEvents::CreateEvent(se::StreamExecutor* executor,
                                     RunId run_id) {
+  tsl::profiler::TraceMe trace("HostExecuteAsyncEvents::CreateEvent");
   VLOG(6) << "Adding event for executor at address " << executor
           << " and event id " << run_id.ToInt();
 
@@ -296,7 +344,7 @@ HostExecuteAsyncEvents::CreateEvent(se::StreamExecutor* executor,
   auto event = tsl::MakeConstructedAsyncValueRef<std::unique_ptr<se::Event>>(
       std::move(host_to_device_stream_event));
 
-  absl::MutexLock lock(&events_mu_);
+  absl::MutexLock lock(events_mu_);
   auto [it, inserted] =
       events_.emplace(std::make_pair(executor, run_id), event);
 
@@ -311,10 +359,11 @@ HostExecuteAsyncEvents::CreateEvent(se::StreamExecutor* executor,
 absl::StatusOr<HostExecuteAsyncEvents::HostExecuteEvent>
 HostExecuteAsyncEvents::ExtractEvent(se::StreamExecutor* executor,
                                      RunId run_id) {
+  tsl::profiler::TraceMe trace("HostExecuteAsyncEvents::ExtractEvent");
   VLOG(6) << "Extracting event for executor at address " << executor
           << " and event id " << run_id.ToInt();
 
-  absl::MutexLock lock(&events_mu_);
+  absl::MutexLock lock(events_mu_);
   auto it = events_.find(std::make_pair(executor, run_id));
   if (it == events_.end()) {
     return FailedPrecondition(
@@ -327,6 +376,37 @@ HostExecuteAsyncEvents::ExtractEvent(se::StreamExecutor* executor,
 }
 
 // HostExecuteStartThunk
+
+absl::StatusOr<std::unique_ptr<HostExecuteStartThunk>>
+HostExecuteStartThunk::Create(
+    Thunk::ThunkInfo thunk_info,
+    const HostOffloadingExecutableProto& host_offloading_executable_proto,
+    absl::InlinedVector<HostExecuteStartThunk::SliceAndShape, 4> args,
+    absl::InlinedVector<HostExecuteStartThunk::SliceAndShape, 4> results) {
+  auto thunk = std::make_unique<HostExecuteStartThunk>(
+      std::move(thunk_info), host_offloading_executable_proto, std::move(args),
+      std::move(results));
+  if (host_offloading_executable_proto.has_aot_compilation_result()) {
+    TF_RETURN_IF_ERROR(thunk->LoadExecutable());
+  }
+  return thunk;
+}
+
+absl::Status HostExecuteStartThunk::LoadExecutable() {
+  if (executable_ != nullptr) {
+    return Internal("Host offloading executable was already loaded.");
+  }
+  if (!executable_proto_.has_aot_compilation_result()) {
+    return Internal(
+        "Host offloading executable proto does not have aot "
+        "compilation result.");
+  }
+
+  TF_ASSIGN_OR_RETURN(
+      executable_,
+      HostOffloadingNanoRtExecutable::LoadFromProto(executable_proto_));
+  return absl::OkStatus();
+}
 
 HostExecuteStartThunk::HostExecuteStartThunk(
     Thunk::ThunkInfo thunk_info, const HloModule& hlo_module,
@@ -343,17 +423,88 @@ HostExecuteStartThunk::HostExecuteStartThunk(
   executable_proto_ = std::move(host_offloading_executable_proto);
 }
 
+HostExecuteStartThunk::HostExecuteStartThunk(
+    Thunk::ThunkInfo thunk_info,
+    const HostOffloadingExecutableProto& host_offloading_executable_proto,
+    absl::InlinedVector<HostExecuteStartThunk::SliceAndShape, 4> args,
+    absl::InlinedVector<HostExecuteStartThunk::SliceAndShape, 4> results,
+    std::shared_ptr<HostExecuteAsyncEvents> async_events)
+    : Thunk(Thunk::Kind::kHostExecuteStart, std::move(thunk_info)),
+      args_(std::move(args)),
+      results_(std::move(results)),
+      executable_proto_(host_offloading_executable_proto) {
+  async_events_ =
+      async_events ? async_events : std::make_shared<HostExecuteAsyncEvents>();
+}
+
 std::string HostExecuteStartThunk::ToString(int indent) const { return ""; }
 
 absl::StatusOr<ThunkProto> HostExecuteStartThunk::ToProto() const {
-  return Unimplemented("Not implemented yet.");
+  ThunkProto proto;
+  *proto.mutable_thunk_info() = thunk_info().ToProto();
+  HostExecuteStartThunkProto* host_execute_start_thunk_proto =
+      proto.mutable_host_execute_start_thunk();
+
+  *host_execute_start_thunk_proto->mutable_executable_proto() =
+      executable_proto_;
+
+  for (const auto& [slice, shape] : args_) {
+    ShapedSliceProto* arg_proto = host_execute_start_thunk_proto->add_args();
+    TF_ASSIGN_OR_RETURN(*arg_proto->mutable_slice(), slice.ToProto());
+    *arg_proto->mutable_shape() = shape.ToProto();
+  }
+
+  for (const auto& [slice, shape] : results_) {
+    ShapedSliceProto* result_proto =
+        host_execute_start_thunk_proto->add_results();
+    TF_ASSIGN_OR_RETURN(*result_proto->mutable_slice(), slice.ToProto());
+    *result_proto->mutable_shape() = shape.ToProto();
+  }
+
+  auto async_events_unique_id = GetAsyncEventsUniqueId();
+  // By design, async_events_unique_id should always be present for
+  // HostExecuteStartThunk.
+  CHECK_NE(async_events_unique_id, std::nullopt);
+
+  host_execute_start_thunk_proto->set_async_events_unique_id(
+      async_events_unique_id.value().value());
+
+  return proto;
 }
 
 absl::StatusOr<std::unique_ptr<HostExecuteStartThunk>>
 HostExecuteStartThunk::FromProto(
     ThunkInfo thunk_info, const HostExecuteStartThunkProto& proto,
-    absl::Span<const BufferAllocation> buffer_allocations) {
-  return Unimplemented("Not implemented yet.");
+    absl::Span<const BufferAllocation> buffer_allocations,
+    HostExecuteAsyncEventsMap& async_events_map) {
+  absl::InlinedVector<HostExecuteStartThunk::SliceAndShape, 4> args, results;
+  auto shaped_slice_from_proto =
+      [&](const auto& shaped_slice_protos,
+          absl::InlinedVector<HostExecuteStartThunk::SliceAndShape, 4>&
+              slices_and_shapes) -> absl::Status {
+    for (const auto& shaped_slice_proto : shaped_slice_protos) {
+      TF_ASSIGN_OR_RETURN(auto slice,
+                          BufferAllocation::Slice::FromProto(
+                              shaped_slice_proto.slice(), buffer_allocations));
+      TF_ASSIGN_OR_RETURN(auto shape,
+                          Shape::FromProto(shaped_slice_proto.shape()));
+      slices_and_shapes.push_back({slice, shape});
+    }
+    return absl::OkStatus();
+  };
+
+  TF_RETURN_IF_ERROR(shaped_slice_from_proto(proto.args(), args));
+  TF_RETURN_IF_ERROR(shaped_slice_from_proto(proto.results(), results));
+
+  // If async_events_map already contains an entry for the given unique id,
+  // that means that the pairing done thunk is already serialized and we reuse
+  // the id to connect them. Otherwise, create a new entry.
+  auto [async_event_it, _] = async_events_map.try_emplace(
+      AsyncEventsUniqueId(proto.async_events_unique_id()),
+      std::make_shared<HostExecuteAsyncEvents>());
+  return std::make_unique<HostExecuteStartThunk>(
+      thunk_info, proto.executable_proto(), std::move(args), std::move(results),
+      async_event_it->second);
 }
 
 static HostOffloadingAllocator* GetHostOffloadingAllocator(
@@ -371,11 +522,13 @@ absl::Status HostExecuteStartThunk::Initialize(const InitializeParams& params) {
   // when locking llvm command line options.
   absl::Status initialization_status = absl::OkStatus();
   absl::call_once(executable_init_flag_, [this, &initialization_status]() {
-    auto executable_or_status =
-        HostOffloadingNanoRtExecutable::LoadFromProto(executable_proto_);
-    initialization_status = executable_or_status.status();
-    if (initialization_status.ok()) {
-      executable_ = std::move(executable_or_status.value());
+    if (executable_ == nullptr) {
+      auto executable_or_status =
+          HostOffloadingNanoRtExecutable::LoadFromProto(executable_proto_);
+      initialization_status = executable_or_status.status();
+      if (initialization_status.ok()) {
+        executable_ = std::move(executable_or_status.value());
+      }
     }
   });
 
@@ -414,7 +567,10 @@ absl::Status HostExecuteStartThunk::ExecuteOnStream(
       std::make_shared<HostExecuteCallFrame>(std::move(tmp_call_frame));
 
   auto execute = [this, call_frame = std::move(call_frame), params,
-                  shared_execute_event = std::move(execute_event)]() mutable {
+                  // We skip reference counting because destroying the event
+                  // would trigger a CUDA API call which is not allowed in host
+                  // callbacks.
+                  execute_event_ptr = execute_event.AsPtr()]() mutable {
     tsl::profiler::TraceMe trace(
         "HostExecuteStartThunk::ExecuteOnStream::execute (host_callback)");
     HostOffloadingExecutable::ExecuteOptions execute_options{
@@ -426,33 +582,48 @@ absl::Status HostExecuteStartThunk::ExecuteOnStream(
     auto execute_event = executable_->Execute(
         call_frame->parameters(), call_frame->result(), execute_options);
 
-    tsl::BlockUntilReady(execute_event);
-    if (execute_event.IsError()) {
-      shared_execute_event.SetError(execute_event.GetError());
-      return;
+    {
+      tsl::profiler::TraceMe block_until_ready_trace(
+          "HostExecuteStartThunk::ExecuteOnStream::execute BlockUntilReady");
+
+      tsl::BlockUntilReady(execute_event);
+      if (execute_event.IsError()) {
+        execute_event_ptr.SetError(execute_event.GetError());
+        return;
+      }
     }
     auto publish_result_status = std::move(*call_frame).PublishResult();
     if (!publish_result_status.ok()) {
-      shared_execute_event.SetError(publish_result_status);
+      execute_event_ptr.SetError(publish_result_status);
       return;
     }
     auto record_event_status = params.host_to_device_stream->RecordEvent(
-        shared_execute_event.get().get());
+        execute_event_ptr.get().get());
     if (!record_event_status.ok()) {
-      shared_execute_event.SetError(record_event_status);
+      execute_event_ptr.SetError(record_event_status);
       return;
     }
 
-    shared_execute_event.SetStateConcrete();
+    execute_event_ptr.SetStateConcrete();
   };
 
   TF_RETURN_IF_ERROR(device_to_host_stream->DoHostCallbackWithStatus(
-      [execute = std::move(execute)] {
-        GetHostExecuteThreadPool()->Schedule(std::move(execute));
+      [execute = std::move(execute),
+       d2h_stream_executor = device_to_host_stream->parent()] {
+        GetHostExecuteThreadPool(d2h_stream_executor)
+            ->Schedule(std::move(execute));
         return absl::OkStatus();
       }));
 
   return absl::OkStatus();
+}
+
+std::optional<AsyncEventsUniqueId>
+HostExecuteStartThunk::GetAsyncEventsUniqueId() const {
+  CHECK(async_events_)
+      << "async_events_ must not be null in HostExecuteStartThunk";
+  // We rely on the fact that the pointer to async_events_ is unique.
+  return absl::bit_cast<AsyncEventsUniqueId>(async_events_.get());
 }
 
 // HostExecuteDoneThunk
@@ -468,14 +639,35 @@ HostExecuteDoneThunk::HostExecuteDoneThunk(
 std::string HostExecuteDoneThunk::ToString(int indent) const { return ""; }
 
 absl::StatusOr<ThunkProto> HostExecuteDoneThunk::ToProto() const {
-  return Unimplemented("Not implemented yet.");
+  ThunkProto proto;
+  *proto.mutable_thunk_info() = thunk_info().ToProto();
+  HostExecuteDoneThunkProto* host_execute_done_thunk_proto =
+      proto.mutable_host_execute_done_thunk();
+
+  auto async_events_unique_id = GetAsyncEventsUniqueId();
+  // By design, async_events_unique_id should always be present for
+  // HostExecuteDoneThunk.
+  CHECK_NE(async_events_unique_id, std::nullopt);
+
+  host_execute_done_thunk_proto->set_async_events_unique_id(
+      async_events_unique_id.value().value());
+
+  return proto;
 }
 
 absl::StatusOr<std::unique_ptr<HostExecuteDoneThunk>>
 HostExecuteDoneThunk::FromProto(
     ThunkInfo thunk_info, const HostExecuteDoneThunkProto& proto,
-    absl::Span<const BufferAllocation> buffer_allocations) {
-  return Unimplemented("Not implemented yet.");
+    absl::Span<const BufferAllocation> buffer_allocations,
+    HostExecuteAsyncEventsMap& async_events_map) {
+  // If async_events_map already contains an entry for the given unique id,
+  // that means that the pairing start thunk is already serialized and we reuse
+  // the id to connect them. Otherwise, create a new entry.
+  auto [async_event_it, _] = async_events_map.try_emplace(
+      AsyncEventsUniqueId(proto.async_events_unique_id()),
+      std::make_shared<HostExecuteAsyncEvents>());
+  return std::make_unique<HostExecuteDoneThunk>(thunk_info,
+                                                async_event_it->second);
 }
 
 absl::Status HostExecuteDoneThunk::Initialize(const InitializeParams& params) {
@@ -495,9 +687,20 @@ absl::Status HostExecuteDoneThunk::ExecuteOnStream(
   if (event.IsError()) {
     return event.GetError();
   }
+
+  // We queue this event on the compute stream so that the host to device copy
+  // finishes before the consumer of the data can start.
   TF_RETURN_IF_ERROR(stream->WaitFor(event.get().get()));
 
   return absl::OkStatus();
+}
+
+std::optional<AsyncEventsUniqueId>
+HostExecuteDoneThunk::GetAsyncEventsUniqueId() const {
+  CHECK(async_events_)
+      << "async_events_ must not be null in HostExecuteDoneThunk";
+  // We rely on the fact that the pointer to async_events_ is unique.
+  return absl::bit_cast<AsyncEventsUniqueId>(async_events_.get());
 }
 
 }  // namespace gpu

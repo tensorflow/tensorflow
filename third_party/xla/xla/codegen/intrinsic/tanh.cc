@@ -26,10 +26,24 @@ limitations under the License.
 #include "llvm/IR/Value.h"
 #include "xla/codegen/intrinsic/intrinsic.h"
 #include "xla/service/llvm_ir/llvm_util.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla::codegen::intrinsics {
 
 namespace {
+
+llvm::Value* HandleLargeInputs(llvm::IRBuilderBase* b, llvm::Value* input,
+                               llvm::Value* result) {
+  llvm::Type* type = input->getType();
+  llvm::Value* abs_input =
+      llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::fabs, {input}, {type}, b);
+  llvm::Value* is_large_mask =
+      b->CreateFCmpOGE(abs_input, llvm::ConstantFP::get(type, 20.0));
+  llvm::Value* one = llvm::ConstantFP::get(type, 1.0);
+  llvm::Value* inf_result = llvm_ir::EmitCallToIntrinsic(
+      llvm::Intrinsic::copysign, {one, input}, {type}, b);
+  return b->CreateSelect(is_large_mask, inf_result, result);
+}
 
 llvm::Value* EmitFastTanh(llvm::IRBuilderBase* b, llvm::Value* input,
                           bool with_fma) {
@@ -85,8 +99,10 @@ llvm::Value* EmitFastTanh(llvm::IRBuilderBase* b, llvm::Value* input,
                       llvm::ConstantFP::get(type, denominator_coeffs[i]));
   }
 
-  return b->CreateSelect(use_aprox, input,
-                         b->CreateFDiv(numerator, denominator));
+  llvm::Value* result =
+      b->CreateSelect(use_aprox, input, b->CreateFDiv(numerator, denominator));
+
+  return HandleLargeInputs(b, input, result);
 }
 
 llvm::Value* EmitFastTanhF64(llvm::IRBuilderBase* b, llvm::Value* input,
@@ -141,7 +157,9 @@ llvm::Value* EmitFastTanhF64(llvm::IRBuilderBase* b, llvm::Value* input,
   }
 
   // Divide the numerator by the denominator.
-  return b->CreateFDiv(numerator, denominator);
+  llvm::Value* result = b->CreateFDiv(numerator, denominator);
+
+  return HandleLargeInputs(b, input, result);
 }
 
 }  // namespace

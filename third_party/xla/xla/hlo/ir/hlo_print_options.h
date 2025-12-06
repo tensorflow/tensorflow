@@ -82,7 +82,8 @@ class HloPrintOptions {
         syntax_sugar_async_ops_(true),
         print_name_after_closing_brace_(false),
         print_full_replica_group_list_(false),
-        print_parameter_number_(true) {}
+        print_parameter_number_(true),
+        print_channel_id_(true) {}
   // Static reference to a default construction HloPrintOptions, to avoid
   // constructing a new one each time default is needed.
   static const HloPrintOptions& Default() {
@@ -375,6 +376,13 @@ class HloPrintOptions {
     return *this;
   }
 
+  // If false, the presence of a channel id will still be printed but the
+  // actual value will not be printed.
+  HloPrintOptions& set_print_channel_id(bool value) {
+    print_channel_id_ = value;
+    return *this;
+  }
+
   bool print_large_constants() const { return print_large_constants_; }
   bool print_only_essential_constants() const {
     return print_only_essential_constants_;
@@ -424,6 +432,7 @@ class HloPrintOptions {
     return print_full_replica_group_list_;
   }
   bool print_parameter_number() const { return print_parameter_number_; }
+  bool print_channel_id() const { return print_channel_id_; }
 
  private:
   // The interval between the /*index=*/ annotated operands. 0 means never print
@@ -457,6 +466,7 @@ class HloPrintOptions {
   bool print_name_after_closing_brace_;
   bool print_full_replica_group_list_;
   bool print_parameter_number_;
+  bool print_channel_id_;
 };
 
 // For canonical string output, we need to have a canonical way to rename
@@ -464,7 +474,7 @@ class HloPrintOptions {
 // where <xxx> is an index starting from 0.
 class CanonicalNameMap {
  public:
-  const std::string& LookupOrInsert(int unique_id) {
+  const std::string& LookupOrInsert(int64_t unique_id) {
     std::string& canonical_name = canonical_name_map_[unique_id];
     if (canonical_name.empty()) {
       absl::StrAppend(&canonical_name, "tmp_", canonical_name_map_.size() - 1);
@@ -475,7 +485,7 @@ class CanonicalNameMap {
   void Reserve(size_t size) { canonical_name_map_.reserve(size); }
 
  private:
-  absl::flat_hash_map<int, std::string> canonical_name_map_;
+  absl::flat_hash_map<int64_t, std::string> canonical_name_map_;
 };
 
 }  // namespace xla

@@ -48,7 +48,18 @@ enum {
   kSerDesVersioning = 15,
 
   // kExecutableDevices adds a devices() method to Executable.
-  kExecutableDevices,
+  kExecutableDevices = 16,
+
+  // Optimize large transfers with the proxy-server and client in the same
+  // machine to by using the file system.
+  kGrpcAllowLargeTransferOptimizationViaSharedDirectory = 17,
+
+  // kLoadedExecutableGetCostAnalysis implements GetCostAnalysis in Executable.
+  kLoadedExecutableGetCostAnalysis = 18,
+
+  // kLoadedExecutableGetHumanReadableProgramText implements
+  // GetHumanReadableProgramText in Executable.
+  kLoadedExecutableGetHumanReadableProgramText = 19,
 
   // kSentiel is used to derive kCurrent below. Keep this as the last value of
   // the enum.
@@ -59,7 +70,7 @@ enum {
 inline constexpr int kClientMin = kSerDesVersioning;
 
 // The minimum protocol_version that the current server code understands.
-inline constexpr int kServerMin = 3;
+inline constexpr int kServerMin = kMakeArraysFromHostBufferShards;
 
 // The maximum protocol_version that the current client and server code
 // understand.

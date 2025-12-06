@@ -19,6 +19,7 @@ limitations under the License.
 
 #include "xla/tests/xla_test_backend_predicates.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "xla/error_spec.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/testlib/test.h"
@@ -47,6 +48,7 @@ ENTRY entry {
   auto abs_of_complex_x = [&hlo, this](float x) {
     std::unique_ptr<HloModule> module =
         ParseAndReturnVerifiedModule(hlo).value();
+    module->set_name(absl::StrCat(module->name(), "_", x));
     auto x_lit = LiteralUtil::CreateR0<complex64>(x);
     return RunAndCompare(std::move(module), {&x_lit}, ErrorSpec{1e-5, 1e-5});
   };
@@ -70,6 +72,7 @@ ENTRY entry {
   auto complex_a_raised_to_complex_b = [&hlo, this](float num, float exp) {
     std::unique_ptr<HloModule> module =
         ParseAndReturnVerifiedModule(hlo).value();
+    module->set_name(absl::StrCat(module->name(), "_", num, "_", exp));
     auto num_lit = LiteralUtil::CreateR0<complex64>(num);
     auto exp_lit = LiteralUtil::CreateR0<complex64>(exp);
     return RunAndCompare(std::move(module), {&num_lit, &exp_lit},

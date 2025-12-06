@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/cleanup/cleanup.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -40,6 +41,7 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
+#include "absl/strings/strip.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/status_macros.h"
@@ -48,10 +50,10 @@ limitations under the License.
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/cuda/ptx_compiler_helpers.h"
 #include "xla/stream_executor/gpu/gpu_asm_opts.h"
+#include "xla/stream_executor/kernel_stats.h"
 #include "xla/stream_executor/semantic_version.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/subprocess.h"
 #include "xla/util.h"
@@ -122,7 +124,7 @@ absl::StatusOr<SemanticVersion> GetToolVersion(absl::string_view tool_path) {
       new absl::flat_hash_map<std::string, absl::StatusOr<SemanticVersion>>
           ABSL_GUARDED_BY(mutex);
 
-  absl::MutexLock lock(&mutex);
+  absl::MutexLock lock(mutex);
   auto it = cache->find(tool_path);
   if (it != cache->end()) {
     return it->second;
@@ -232,7 +234,7 @@ static void LogPtxasTooOld(const std::string& ptxas_path, int cc_major,
   static absl::Mutex* const mutex = new absl::Mutex;
   static AlreadyLoggedSetTy* const already_logged = new AlreadyLoggedSetTy;
 
-  absl::MutexLock lock(mutex);
+  absl::MutexLock lock(*mutex);
 
   if (already_logged->insert(std::make_tuple(ptxas_path, cc_major, cc_minor))
           .second) {
@@ -280,7 +282,7 @@ absl::StatusOr<cuda::Assembly> CompileGpuAsmUsingPtxAs(
   VLOG(2) << "ptx written to: " << ptx_path;
 
   absl::Cleanup ptx_cleaner = [&ptx_path] {
-    TF_CHECK_OK(tsl::Env::Default()->DeleteFile(ptx_path));
+    CHECK_OK(tsl::Env::Default()->DeleteFile(ptx_path));
   };
 
   // Invoke ptxas and collect its output.
@@ -294,16 +296,13 @@ absl::StatusOr<cuda::Assembly> CompileGpuAsmUsingPtxAs(
     tsl::Env::Default()->DeleteFile(cubin_path).IgnoreError();
   };
   tsl::SubProcess ptxas_info_dumper;
-  // On Hopper, default to sm_90a so that all instructions can be used. But
-  // only sm_90 is forward compatible, so don't use sm_90a with newer hardware:
-  // https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#ptx-compatibility
-  std::string extension = ShouldUsePtxExtension(cc) ? "a" : "";
   std::vector<std::string> ptxas_args = {
       std::string{ptxas_path},
       ptx_path,
       "-o",
       cubin_path,
-      absl::StrCat("-arch=sm_", cc.major, cc.minor, extension),
+      absl::StrCat("-arch=", cc.GetPtxAsTargetName(
+                                 CudaComputeCapability::CompileMode::kSass)),
       "--warn-on-spills"};
   if (VLOG_IS_ON(2) || dump_compilation_log) {
     ptxas_args.push_back("-v");
@@ -356,6 +355,7 @@ absl::StatusOr<cuda::Assembly> CompileGpuAsmUsingPtxAs(
       VLOG(2) << stderr_output;
     }
   }
+  ModuleStats module_stats = ExtractModuleStatsFromLog(stderr_output);
 
   // Read in the result of compilation and return it as a byte vector.
   std::string cubin;
@@ -366,7 +366,8 @@ absl::StatusOr<cuda::Assembly> CompileGpuAsmUsingPtxAs(
   if (dump_compilation_log) {
     maybe_compilation_error_log = std::move(stderr_output);
   }
-  return cuda::Assembly{cubin_vector, maybe_compilation_error_log};
+  return cuda::Assembly{cubin_vector, maybe_compilation_error_log,
+                        std::move(module_stats)};
 }
 
 absl::StatusOr<SemanticVersion> GetAsmCompilerVersion(
@@ -398,7 +399,7 @@ absl::StatusOr<std::vector<uint8_t>> BundleGpuAsmUsingFatbin(
   }
   absl::Cleanup image_files_cleaner = [&image_paths] {
     for (const auto& path : image_paths) {
-      TF_CHECK_OK(tsl::Env::Default()->DeleteFile(path));
+      CHECK_OK(tsl::Env::Default()->DeleteFile(path));
     }
   };
 
@@ -429,8 +430,13 @@ absl::StatusOr<std::vector<uint8_t>> BundleGpuAsmUsingFatbin(
   }
   assert(images.size() == image_paths.size());
   for (int i = 0; i < images.size(); i++) {
+    absl::string_view kind = images[i].is_ptx ? "ptx" : "elf";
     fatbinary_args.push_back(absl::StrFormat(
-        "--image=profile=%s,file=%s", images[i].profile, image_paths[i]));
+        "--image3=kind=%s,sm=%s,file=%s", kind,
+        absl::StripPrefix(images[i].cc.GetPtxAsTargetName(
+                              CudaComputeCapability::CompileMode::kSass),
+                          "sm_"),
+        image_paths[i]));
   }
   if (VLOG_IS_ON(3)) {
     VLOG(3) << absl::StrJoin(fatbinary_args, " ");
@@ -501,7 +507,7 @@ absl::StatusOr<std::vector<uint8_t>> LinkUsingNvlink(
   std::vector<std::string> temp_files;
   absl::Cleanup cleaners = [&] {
     for (auto& f : temp_files) {
-      TF_CHECK_OK(tsl::Env::Default()->DeleteFile(f));
+      CHECK_OK(tsl::Env::Default()->DeleteFile(f));
     }
   };
   for (int i = 0; i < images.size(); i++) {
@@ -522,8 +528,7 @@ absl::StatusOr<std::vector<uint8_t>> LinkUsingNvlink(
   };
   std::vector<std::string> args;
   args.push_back(std::string{nvlink_path});
-  absl::string_view extension = ShouldUsePtxExtension(cc) ? "a" : "";
-  args.push_back(absl::StrCat("-arch=sm_", cc.major, cc.minor, extension));
+  args.push_back(absl::StrCat("-arch=", cc.GetPtxAsTargetName()));
   for (int i = 0; i < images.size(); i++) {
     args.push_back(temp_files[i]);
   }

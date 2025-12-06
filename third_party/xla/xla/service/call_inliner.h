@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_SERVICE_CALL_INLINER_H_
 #define XLA_SERVICE_CALL_INLINER_H_
 
+#include <cstdint>
 #include <functional>
 #include <optional>
 #include <string>
@@ -26,6 +27,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/hlo/ir/hlo_clone_context.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
@@ -37,6 +39,13 @@ namespace xla {
 // called function, and proceed recursively.
 class CallInliner : public HloModulePass {
  public:
+  enum class InlineOverridePolicy {
+    kAllowInline,                    // Allow inlining as normal.
+    kProhibitInline,                 // Prohibit inlining of this callsite.
+    kAllowIgnoreFrontendAttributes,  // Allow even with the 'inlineable'
+                                     // frontend attribute is set != 'true'.
+  };
+
   using InlinedInstructionMap =
       absl::flat_hash_map<HloInstruction*, HloInstruction*>;
 
@@ -50,26 +59,26 @@ class CallInliner : public HloModulePass {
   // are being inlined if necessary.
   // If `uniquify_channel_ids` is true, the channel ids of the resulting
   // computation will be uniquified.
-  // If the callback `should_inline` is provided, only functions callsite for
-  // which it returns true will be inlined.
+  // If the callback `override_policy` is provided, callsites will be inlined
+  // according to the policy returned.
   explicit CallInliner(
       bool single_call_site = false, bool update_domain = false,
       absl::flat_hash_set<std::string> composites_to_preserve = {},
       bool uniquify_channel_ids = false,
-      std::optional<std::function<bool(const CallGraph&, HloInstruction*)>>
-          should_inline = std::nullopt)
+      std::optional<std::function<InlineOverridePolicy(const CallGraph&,
+                                                       const HloInstruction*)>>
+          override_policy = std::nullopt)
       : single_call_site_(single_call_site),
         update_domain_(update_domain),
         uniquify_channel_ids_(uniquify_channel_ids),
         composites_to_preserve_(std::move(composites_to_preserve)),
-        should_inline_(std::move(should_inline)) {}
+        override_policy_(std::move(override_policy)) {}
   ~CallInliner() override = default;
   absl::string_view name() const override { return "call-inliner"; }
 
-  using HloPassInterface::Run;
-  absl::StatusOr<bool> Run(
-      HloModule* module,
-      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
+  absl::StatusOr<bool> RunWithInlineMap(
+      HloModule* module, std::optional<InlinedInstructionMap*> inline_map,
+      const absl::flat_hash_set<absl::string_view>& execution_threads);
 
   // Returns true if the instruction is a kCall operation and is eligible for
   // inlining.
@@ -78,10 +87,16 @@ class CallInliner : public HloModulePass {
   // Maximum length of an op_name that can be formed during inlining.
   static constexpr int kMaxOpNameSize = 1024;
 
+ protected:
+  absl::StatusOr<bool> RunImpl(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
+
  private:
   absl::StatusOr<bool> InlineAndLegalize(
       const CallGraph& call_graph, HloComputation* computation,
-      absl::Span<HloInstruction* const> instruction_sequence) const;
+      absl::Span<HloInstruction* const> instruction_sequence,
+      std::optional<InlinedInstructionMap*> inline_map);
 
   bool ShouldInline(const CallGraph& call_graph,
                     HloInstruction* instruction) const;
@@ -90,10 +105,26 @@ class CallInliner : public HloModulePass {
   bool update_domain_;
   bool uniquify_channel_ids_;
   absl::flat_hash_set<std::string> composites_to_preserve_;
-  std::optional<
-      std::function<bool(const CallGraph& call_graph, HloInstruction*)>>
-      should_inline_;
+  std::optional<std::function<InlineOverridePolicy(const CallGraph& call_graph,
+                                                   const HloInstruction*)>>
+      override_policy_;
+  int64_t next_unique_channel_id_ = 1;
 };
+
+// Returns true if the computation has instructions that are inlinable.
+bool IsInlineableComputation(HloComputation* computation);
+
+struct InlinedModule {
+  std::unique_ptr<HloModule> module;
+  std::unique_ptr<HloCloneContext> clone_context;
+  CallInliner::InlinedInstructionMap clone_inlined_map;
+  const HloInstruction* get_inlined_inst(const HloInstruction* inst);
+};
+
+// Given a module, this function first clones the module, then inlines the
+// module, and returns the inlined module, clone context and inlined map in
+// InlinedModule struct.
+absl::StatusOr<InlinedModule> GetInlinedModule(const HloModule* module);
 
 }  // namespace xla
 

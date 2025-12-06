@@ -29,27 +29,30 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "absl/strings/match.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/backends/cpu/ffi.h"
+#include "xla/backends/gpu/ffi.h"
 #include "xla/executable_run_options.h"
 #include "xla/ffi/api/c_api.h"
+#include "xla/ffi/attribute_map.h"
 #include "xla/ffi/call_frame.h"
 #include "xla/ffi/execution_context.h"
 #include "xla/ffi/execution_state.h"
 #include "xla/ffi/ffi_api.h"
+#include "xla/ffi/type_registry.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/concurrency/chain.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/test_benchmark.h"
+#include "xla/tsl/platform/threadpool.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/env.h"
-#include "tsl/platform/status_matchers.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/test.h"
-#include "tsl/platform/test_benchmark.h"
-#include "tsl/platform/threadpool.h"
 
 #define EIGEN_USE_THREADS
 #include "unsupported/Eigen/CXX11/Tensor"
@@ -85,7 +88,6 @@ using ::testing::_;
 using ::testing::HasSubstr;
 using ::testing::Pair;
 using ::testing::UnorderedElementsAre;
-using ::tsl::testing::StatusIs;
 
 TEST(FfiTest, StaticHandlerRegistration) {
   static constexpr auto* noop = +[] { return absl::OkStatus(); };
@@ -106,8 +108,9 @@ TEST(FfiTest, StaticHandlerRegistration) {
   TF_ASSERT_OK(handler0.status());
   TF_ASSERT_OK(handler1.status());
 
-  ASSERT_EQ(handler0->traits, XLA_FFI_HANDLER_TRAITS_COMMAND_BUFFER_COMPATIBLE);
-  ASSERT_EQ(handler1->traits, 0);
+  ASSERT_EQ(handler0->metadata.traits,
+            XLA_FFI_HANDLER_TRAITS_COMMAND_BUFFER_COMPATIBLE);
+  ASSERT_EQ(handler1->metadata.traits, 0);
 
   // Check that platform name was canonicalized an we can find handlers
   // registered for "Host" platform as "Cpu" handlers.
@@ -123,7 +126,8 @@ TEST(FfiTest, RegistrationTraitsBackwardsCompatibility) {
                            XLA_FFI_HANDLER_TRAITS_COMMAND_BUFFER_COMPATIBLE);
   auto handler = FindHandler("traits-bwd-compat", "Host");
   TF_ASSERT_OK(handler.status());
-  ASSERT_EQ(handler->traits, XLA_FFI_HANDLER_TRAITS_COMMAND_BUFFER_COMPATIBLE);
+  ASSERT_EQ(handler->metadata.traits,
+            XLA_FFI_HANDLER_TRAITS_COMMAND_BUFFER_COMPATIBLE);
 }
 
 // Declare XLA FFI handler as a function (extern "C" declaration).
@@ -140,7 +144,7 @@ TEST(FfiTest, StaticHandlerSymbolRegistration) {
   auto handler0 = FindHandler("no-op-sym-0", "Cpu");
 
   TF_ASSERT_OK(handler0.status());
-  ASSERT_EQ(handler0->traits, 0);
+  ASSERT_EQ(handler0->metadata.traits, 0);
 }
 
 TEST(FfiTest, ForwardError) {
@@ -183,8 +187,12 @@ TEST(FfiTest, WrongNumArgs) {
 
   auto status = Call(*handler, call_frame);
 
-  ASSERT_EQ(status.message(),
-            "Wrong number of arguments: expected 2 but got 1");
+  EXPECT_THAT(
+      status,
+      absl_testing::StatusIs(
+          absl::StatusCode::kInvalidArgument,
+          HasSubstr(
+              "[execute] Wrong number of arguments: expected 2 but got 1")));
 }
 
 TEST(FfiTest, WrongNumAttrs) {
@@ -205,23 +213,42 @@ TEST(FfiTest, WrongNumAttrs) {
       status,
       absl_testing::StatusIs(
           absl::StatusCode::kInvalidArgument,
-          HasSubstr("Wrong number of attributes: expected 1 but got 2")));
+          HasSubstr(
+              "[execute] Wrong number of attributes: expected 1 but got 2")));
+}
+
+TEST(FfiTest, IgnoreAttrs) {
+  CallFrameBuilder::AttributesBuilder attrs;
+  attrs.Insert("i32", 42);
+  attrs.Insert("f32", 42.0f);
+
+  CallFrameBuilder builder(/*num_args=*/0, /*num_rets=*/0);
+  builder.AddAttributes(attrs.Build());
+  auto call_frame = builder.Build();
+
+  // If signature doesn't have attributes, then we can safely ignore them.
+  auto handler = Ffi::Bind().To([]() { return absl::OkStatus(); });
+
+  auto status = Call(*handler, call_frame);
+  TF_ASSERT_OK(status);
 }
 
 TEST(FfiTest, RunId) {
   CallFrameBuilder builder(/*num_args=*/0, /*num_rets=*/0);
   auto call_frame = builder.Build();
 
-  auto handler = Ffi::Bind().Ctx<RunId>().To([&](RunId run_id) {
-    EXPECT_EQ(run_id.ToInt(), 42);
-    return absl::OkStatus();
-  });
+  auto handler = Ffi::Bind().Ctx<RunId>().Ctx().To(
+      [&](RunId run_id, Context context) -> absl::Status {
+        EXPECT_EQ(run_id.ToInt(), 42);
+        TF_ASSIGN_OR_RETURN(RunId run_id_from_context, context.get<RunId>());
+        EXPECT_EQ(run_id_from_context.ToInt(), 42);
+        return absl::OkStatus();
+      });
 
   CallOptions options;
   options.run_id = RunId{42};
 
   auto status = Call(*handler, call_frame, options);
-
   TF_ASSERT_OK(status);
 }
 
@@ -384,9 +411,15 @@ TEST(FfiTest, AttrsAsDictionary) {
     EXPECT_TRUE(f32.ok());
     EXPECT_TRUE(str.ok());
 
-    if (i32.ok()) EXPECT_EQ(*i32, 42);
-    if (f32.ok()) EXPECT_EQ(*f32, 42.0f);
-    if (str.ok()) EXPECT_EQ(*str, "foo");
+    if (i32.ok()) {
+      EXPECT_EQ(*i32, 42);
+    }
+    if (f32.ok()) {
+      EXPECT_EQ(*f32, 42.0f);
+    }
+    if (str.ok()) {
+      EXPECT_EQ(*str, "foo");
+    }
 
     EXPECT_FALSE(dict.contains("i64"));
     EXPECT_FALSE(dict.get<int64_t>("i32").ok());
@@ -402,10 +435,10 @@ TEST(FfiTest, AttrsAsDictionary) {
 }
 
 TEST(FfiTest, DictionaryAttr) {
-  CallFrameBuilder::AttributesMap dict0;
+  AttributesMap dict0;
   dict0.try_emplace("i32", 42);
 
-  CallFrameBuilder::AttributesMap dict1;
+  AttributesMap dict1;
   dict1.try_emplace("f32", 42.0f);
 
   CallFrameBuilder::AttributesBuilder attrs;
@@ -429,8 +462,12 @@ TEST(FfiTest, DictionaryAttr) {
     EXPECT_TRUE(i32.ok());
     EXPECT_TRUE(f32.ok());
 
-    if (i32.ok()) EXPECT_EQ(*i32, 42);
-    if (f32.ok()) EXPECT_EQ(*f32, 42.0f);
+    if (i32.ok()) {
+      EXPECT_EQ(*i32, 42);
+    }
+    if (f32.ok()) {
+      EXPECT_EQ(*f32, 42.0f);
+    }
 
     return absl::OkStatus();
   };
@@ -444,7 +481,7 @@ TEST(FfiTest, DictionaryAttr) {
 }
 
 TEST(FfiTest, StructAttr) {
-  CallFrameBuilder::AttributesMap dict;
+  AttributesMap dict;
   dict.try_emplace("i32", 42);
   dict.try_emplace("f32", 42.0f);
 
@@ -1046,7 +1083,7 @@ TEST(FfiTest, AsyncHandler) {
   auto fn = [&](const Eigen::ThreadPoolDevice* device) {
     auto async_value = tsl::MakeConstructedAsyncValueRef<tsl::Chain>();
 
-    device->enqueueNoNotification([&, async_value]() mutable {
+    device->enqueueNoNotification([&value, async_value]() {
       value = 42;
       async_value.SetStateConcrete();
     });
@@ -1079,26 +1116,37 @@ TEST(FfiTest, AsyncHandler) {
 }
 
 TEST(FfiTest, Metadata) {
-  static constexpr auto* noop = +[] { return absl::OkStatus(); };
-  XLA_FFI_DEFINE_HANDLER(handler, noop, Ffi::Bind());
-  auto maybe_metadata = GetMetadata(handler);
+  static constexpr auto* instantiate =
+      +[]() -> absl::StatusOr<std::unique_ptr<StrState>> {
+    return std::make_unique<StrState>("");
+  };
+  XLA_FFI_DEFINE_HANDLER(handler, instantiate, Ffi::BindInstantiate());
+
+  absl::StatusOr<XLA_FFI_Metadata> maybe_metadata = GetMetadata(handler);
   EXPECT_TRUE(maybe_metadata.ok());
-  auto metadata = maybe_metadata.value();
+
+  XLA_FFI_Metadata metadata = maybe_metadata.value();
   EXPECT_EQ(metadata.traits, 0);
   EXPECT_EQ(metadata.api_version.major_version, XLA_FFI_API_MAJOR);
   EXPECT_EQ(metadata.api_version.minor_version, XLA_FFI_API_MINOR);
+
+  TypeRegistry::TypeId type_id = TypeRegistry::GetTypeId<StrState>();
+  EXPECT_EQ(metadata.state_type_id.type_id, type_id);
 }
 
 TEST(FfiTest, MetadataTraits) {
   static constexpr auto* noop = +[] { return absl::OkStatus(); };
   XLA_FFI_DEFINE_HANDLER(handler, noop, Ffi::Bind(),
                          {Traits::kCmdBufferCompatible});
-  auto maybe_metadata = GetMetadata(handler);
+
+  absl::StatusOr<XLA_FFI_Metadata> maybe_metadata = GetMetadata(handler);
   EXPECT_TRUE(maybe_metadata.ok());
-  auto metadata = maybe_metadata.value();
+
+  XLA_FFI_Metadata metadata = maybe_metadata.value();
   EXPECT_EQ(metadata.traits, XLA_FFI_HANDLER_TRAITS_COMMAND_BUFFER_COMPATIBLE);
   EXPECT_EQ(metadata.api_version.major_version, XLA_FFI_API_MAJOR);
   EXPECT_EQ(metadata.api_version.minor_version, XLA_FFI_API_MINOR);
+  EXPECT_EQ(metadata.state_type_id.type_id, XLA_FFI_UNKNOWN_TYPE_ID.type_id);
 }
 
 // Use opaque struct to define a platform stream type just like platform
@@ -1114,13 +1162,6 @@ struct CtxBinding<TestStream> {
 TEST(FfiTest, PlatformStream) {
   // We only check that it compiles.
   (void)Ffi::BindTo(+[](TestStream stream) { return absl::OkStatus(); });
-}
-
-TEST(FfiTest, BindFfiInternals) {
-  (void)Ffi::Bind().Ctx<FfiApi>().Ctx<FfiExecutionContext>().To(
-      +[](const XLA_FFI_Api* api, XLA_FFI_ExecutionContext* ctx) {
-        return absl::OkStatus();
-      });
 }
 
 //===----------------------------------------------------------------------===//

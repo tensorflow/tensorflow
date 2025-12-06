@@ -25,7 +25,6 @@ limitations under the License.
 #include <string>
 #include <tuple>
 #include <utility>
-#include <variant>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -52,17 +51,17 @@ limitations under the License.
 #include "xla/service/pattern_matcher.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/semantic_version.h"
-#include "xla/stream_executor/stream_executor.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/protobuf/dnn.pb.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/errors.h"
 #include "tsl/platform/ml_dtypes.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -97,10 +96,6 @@ bool IsNonDepthwiseConvCustomCall(const HloInstruction* instr) {
   return IsConvCustomCall(instr) && !IsConvDepthwise(instr);
 }
 
-bool IsROCm(se::GpuComputeCapability cc) {
-  return std::holds_alternative<se::RocmComputeCapability>(cc);
-}
-
 // elu, relu6, and leaky-relu activations are supported in cudnn via the
 // "runtime fusion" engine, which JIT compiles C++ code.  This can be slow to
 // compile, so we guard it with a debug option.
@@ -112,7 +107,7 @@ bool IsROCm(se::GpuComputeCapability cc) {
 // due to apparent bugs in cudnn 8.9.0.  See debug_options_flags.cc for details.
 bool ShouldUseCudnnRuntimeFusion(const DebugOptions& debug_opts,
                                  se::GpuComputeCapability cc) {
-  const auto* cuda_cc = std::get_if<se::CudaComputeCapability>(&cc);
+  const auto* cuda_cc = cc.cuda_compute_capability();
   if (cuda_cc != nullptr)
     return debug_opts.xla_gpu_use_runtime_fusion() && cuda_cc->IsAtLeast(7, 5);
   else
@@ -390,11 +385,9 @@ class GraphString {
 
     // Insert op in front of its first use as an operand in graph_ or at the end
     // of graph_ if not an operand of another op.
-    auto pos = std::find_if(
-        graph_.begin(), graph_.end(), [op](OpDescriptor graph_op) -> bool {
-          return std::find(graph_op.operands.begin(), graph_op.operands.end(),
-                           op) != graph_op.operands.end();
-        });
+    auto pos = absl::c_find_if(graph_, [op](OpDescriptor graph_op) -> bool {
+      return absl::c_find(graph_op.operands, op) != graph_op.operands.end();
+    });
     pos = graph_.insert(pos, OpDescriptor{op, element_type, op_name, operands});
 
     // If necessary, move the operands of the op already in the graph in front
@@ -454,19 +447,17 @@ class GraphString {
     auto op_filter = [&](OpDescriptor graph_op) -> bool {
       if (op_name.empty()) {
         return graph_op.instr->unique_id() == op->unique_id();
-      } else {
-        return graph_op.instr->unique_id() == op->unique_id() &&
-               graph_op.name == op_name;
       }
+      return graph_op.instr->unique_id() == op->unique_id() &&
+             graph_op.name == op_name;
     };
-    return std::find_if(graph_.begin(), graph_.end(), op_filter) !=
-           graph_.end();
+    return absl::c_find_if(graph_, op_filter) != graph_.end();
   }
 
   std::vector<HloInstruction*> Operands(HloInstruction* op) const {
-    auto op_it = std::find_if(
-        graph_.begin(), graph_.end(),
-        [op](OpDescriptor graph_op) -> bool { return op == graph_op.instr; });
+    auto op_it = absl::c_find_if(graph_, [op](OpDescriptor graph_op) -> bool {
+      return op == graph_op.instr;
+    });
     if (op_it != graph_.end()) {
       return op_it->operands;
     }
@@ -1454,7 +1445,7 @@ absl::StatusOr<bool> FuseConvertToF16(HloComputation* comp) {
 
 absl::StatusOr<bool> FuseConvertToS8(HloComputation* comp,
                                      se::GpuComputeCapability cc) {
-  if (IsROCm(cc)) return false;
+  if (cc.IsRocm()) return false;
   bool changed = false;
   for (HloInstruction* instr : comp->MakeInstructionPostOrder()) {
     HloInstruction* gte = nullptr;
@@ -1686,7 +1677,7 @@ void VlogStats(HloModule* module) {
 
 }  // namespace
 
-absl::StatusOr<bool> CudnnFusedConvRewriter::Run(
+absl::StatusOr<bool> CudnnFusedConvRewriter::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool any_changed = false;
@@ -1696,10 +1687,10 @@ absl::StatusOr<bool> CudnnFusedConvRewriter::Run(
     bool changed = false;
     // Rewrite FP8 convolutions and supported adjacent pointwise ops into a
     // ForwardGraph Custom Call.
-    if (!IsROCm(compute_capability_)) {
-      auto cc = std::get<se::CudaComputeCapability>(compute_capability_);
+    if (!compute_capability_.IsRocm()) {
+      auto* cc = compute_capability_.cuda_compute_capability();
       TF_ASSIGN_OR_RETURN(
-          changed, F8GraphConv(comp, cc, dnn_version_, toolkit_version_));
+          changed, F8GraphConv(comp, *cc, dnn_version_, toolkit_version_));
       if (changed) {
         return changed;
       }

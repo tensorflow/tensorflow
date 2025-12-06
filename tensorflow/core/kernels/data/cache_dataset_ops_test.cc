@@ -84,7 +84,7 @@ class CacheDatasetOpTest : public DatasetOpsTestBase {
     if (!cache_filename_.empty()) {
       std::vector<string> cache_files;
       absl::Status s = device_->env()->GetMatchingPaths(
-          strings::StrCat(cache_filename_, "*"), &cache_files);
+          absl::StrCat(cache_filename_, "*"), &cache_files);
       if (!s.ok()) {
         LOG(WARNING) << "Failed to get matching files on " << cache_filename_
                      << "* : " << s;

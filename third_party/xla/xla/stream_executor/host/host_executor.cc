@@ -33,8 +33,8 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/generic_memory_allocation.h"
 #include "xla/stream_executor/generic_memory_allocator.h"
@@ -79,26 +79,26 @@ bool HostExecutor::DeviceMemoryUsage(int64_t* free, int64_t* total) const {
   return true;
 }
 
-DeviceMemoryBase HostExecutor::Allocate(uint64_t size, int64_t memory_space) {
+DeviceAddressBase HostExecutor::Allocate(uint64_t size, int64_t memory_space) {
   CHECK_EQ(memory_space, 0);
   // Use a minimum alignment of 64 bytes to be friendly to AVX512 code.
   // This should probably be kept in sync with
   // tsl::Allocator::kAllocatorAlignment.
-  return DeviceMemoryBase(
+  return DeviceAddressBase(
       tsl::port::AlignedMalloc(size, /*minimum_alignment=*/64), size);
 }
 
-void HostExecutor::Deallocate(DeviceMemoryBase* mem) {
+void HostExecutor::Deallocate(DeviceAddressBase* mem) {
   tsl::port::AlignedFree(mem->opaque());
 }
 
-absl::Status HostExecutor::SynchronousMemZero(DeviceMemoryBase* location,
+absl::Status HostExecutor::SynchronousMemZero(DeviceAddressBase* location,
                                               uint64_t size) {
   memset(location->opaque(), 0, size);
   return absl::OkStatus();
 }
 
-absl::Status HostExecutor::SynchronousMemcpy(DeviceMemoryBase* gpu_dst,
+absl::Status HostExecutor::SynchronousMemcpy(DeviceAddressBase* gpu_dst,
                                              const void* host_src,
                                              uint64_t size) {
   memcpy(gpu_dst->opaque(), host_src, size);
@@ -106,7 +106,7 @@ absl::Status HostExecutor::SynchronousMemcpy(DeviceMemoryBase* gpu_dst,
 }
 
 absl::Status HostExecutor::SynchronousMemcpy(void* host_dst,
-                                             const DeviceMemoryBase& gpu_src,
+                                             const DeviceAddressBase& gpu_src,
                                              uint64_t size) {
   memcpy(host_dst, gpu_src.opaque(), size);
   return absl::OkStatus();

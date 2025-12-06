@@ -24,6 +24,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/match.h"
@@ -77,12 +78,9 @@ limitations under the License.
 #include "xla/codegen/emitters/kernel_arguments.h"
 #include "xla/codegen/kernel_definition.h"
 #include "xla/codegen/kernel_spec.h"
-#include "xla/codegen/llvm_ir_kernel_source.h"
-#include "xla/codegen/llvm_kernel_definition.h"
-#include "xla/codegen/mlir_kernel_definition.h"
+#include "xla/codegen/llvm_kernel_source.h"
 #include "xla/codegen/mlir_kernel_source.h"
 #include "xla/comparison_util.h"
-#include "xla/cpu_function_runtime.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -103,10 +101,12 @@ limitations under the License.
 #include "xla/service/dump.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_module_config.h"
+#include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
+#include "xla/stream_executor/device_memory.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/statusor.h"
@@ -115,100 +115,26 @@ limitations under the License.
 #include "xla/xla_data.pb.h"
 #include "tsl/profiler/lib/traceme.h"
 
+#ifdef XLA_ONEDNN
+#include "xla/backends/cpu/runtime/onednn/onednn_op_thunk.h"
+#endif  // XLA_ONEDNN
+
 #if XLA_ONEDNN_USE_GRAPH_API
 #include "xla/backends/cpu/onednn_emitter.h"
 #include "xla/backends/cpu/onednn_support.h"
 #include "xla/backends/cpu/runtime/onednn/onednn_fusion_thunk.h"
 #endif  // XLA_ONEDNN_USE_GRAPH_API
 
+#ifdef XLA_YNNPACK
+#include "xla/backends/cpu/runtime/ynnpack/ynn_fusion_thunk.h"
+#include "xla/backends/cpu/runtime/ynnpack/ynn_interop.h"
+#include "xla/backends/cpu/ynn_emitter.h"
+#include "xla/backends/cpu/ynn_support.h"
+#endif  // XLA_YNNPACK
+
 namespace xla::cpu {
 
 namespace {
-
-bool ShouldDisableLoopUnrollingForReduce(const HloInstruction* instruction) {
-  bool disable_loop_unrolling = true;
-  auto* reduce = Cast<HloReduceInstruction>(instruction);
-  auto reduce_dimensions = reduce->dimensions();
-  // All inputs have the same shape.
-  auto reduce_input_shape = reduce->inputs()[0]->shape();
-  auto reduce_input_rank = reduce_input_shape.dimensions().size();
-
-  // If reduce happens over outer dimensions we turn on loop unrolling.
-  for (auto it = reduce_dimensions.rbegin(); it != reduce_dimensions.rend();
-       ++it) {
-    if (*it != --reduce_input_rank) {
-      disable_loop_unrolling = false;
-      break;
-    }
-  }
-
-  return disable_loop_unrolling;
-}
-
-bool ShouldDisableLoopUnrollingForReduceWindow(
-    const HloInstruction* instruction,
-    const TargetMachineFeatures& target_machine_features) {
-  bool disable_loop_unrolling = true;
-  auto* reduce_window = Cast<HloReduceWindowInstruction>(instruction);
-
-  auto max_simd_width_bytes = [&]() -> std::optional<int> {
-    auto features = target_machine_features.get_target_feature_string();
-    constexpr int kAvx512 = 512;
-    constexpr int kAvx = 256;
-    constexpr int kSse = 128;
-    constexpr int kBitsInByte = 8;
-    if (absl::StrContains(features, "+avx512")) {
-      return kAvx512 / kBitsInByte;
-    }
-    if (absl::StrContains(features, "+avx")) {
-      return kAvx / kBitsInByte;
-    }
-    if (absl::StrContains(features, "+sse")) {
-      return kSse / kBitsInByte;
-    }
-    return std::nullopt;
-  }();
-
-  std::vector<int64_t> strides;
-  strides.reserve(reduce_window->window().dimensions_size());
-
-  for (const auto& dim : reduce_window->window().dimensions()) {
-    strides.push_back(dim.stride());
-  }
-
-  auto input_type = reduce_window->inputs()[0]->shape().element_type();
-  // If the innermost stride is lesser than the size of the vectorization
-  // for the given platform we turn on loop unrolling.
-  if (max_simd_width_bytes.has_value() &&
-      *max_simd_width_bytes >
-          strides.back() * ShapeUtil::ByteSizeOfPrimitiveType(input_type)) {
-    disable_loop_unrolling = false;
-  }
-
-  return disable_loop_unrolling;
-}
-
-absl::Status HandleReduceAndReduceWindowElementalKernelCompilationOptions(
-    const HloInstruction* instruction, llvm::Module& llvm_module,
-    const TargetMachineFeatures& target_machine_features) {
-  bool disable_loop_unrolling = true;
-
-  if (instruction->opcode() == HloOpcode::kReduce) {
-    disable_loop_unrolling = ShouldDisableLoopUnrollingForReduce(instruction);
-  } else if (instruction->opcode() == HloOpcode::kReduceWindow) {
-    disable_loop_unrolling = ShouldDisableLoopUnrollingForReduceWindow(
-        instruction, target_machine_features);
-  } else {
-    return absl::InvalidArgumentError(
-        absl::StrCat("Unsupported HLO instruction: ", instruction->ToString()));
-  }
-
-  LlvmKernelOptions llvm_kernel_options;
-  llvm_kernel_options.set_disable_loop_unrolling(disable_loop_unrolling);
-  SetXlaCpuBackendOptions(llvm_module, llvm_kernel_options);
-
-  return absl::OkStatus();
-}
 
 absl::StatusOr<std::string> GetFusionFingerprint(
     const HloFusionInstruction& fusion,
@@ -258,7 +184,8 @@ static FusionCompiler::Options FusionCompilerOptions(
   return FusionCompiler::Options{
       debug_options.xla_cpu_prefer_vector_width(),
       debug_options.xla_cpu_emitter_verification_level(),
-      debug_options.xla_cpu_enable_fast_min_max()};
+      debug_options.xla_cpu_enable_fast_min_max(),
+      llvm_ir::GetCpuFastMathFlags(config)};
 }
 
 static FusionCompiler FusionCompilerFactory(mlir::MLIRContext* context,
@@ -287,7 +214,8 @@ ThunkEmitter::ThunkEmitter(IrEmitter2& ir_emitter,
           thread_pool, FusionCompilerOptions(hlo_module_config_),
           FusionCompilerHooks(hlo_module), &buffer_assignment,
           hlo_module_config_.debug_options()
-              .xla_cpu_generate_unique_c_style_kernel_entry_points()) {}
+              .xla_cpu_generate_unique_c_style_kernel_entry_points(),
+          options::EnableTiledEmitter(hlo_module_config_)) {}
 
 static Thunk::Info ThunkInfo(const HloInstruction* instruction) {
   const HloModule* module = instruction->GetModule();
@@ -306,13 +234,16 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitEntryComputation(
 
 absl::StatusOr<std::vector<ThunkEmitter::EmittedKernel>>
 ThunkEmitter::ConsumeKernels() {
-  TF_ASSIGN_OR_RETURN(std::vector<LlvmKernelDefinition> fusion_kernels,
-                      parallel_fusion_emitter_.ConsumeKernels());
+  tsl::profiler::TraceMe trace("ThunkEmitter::ConsumeKernels");
+  TF_ASSIGN_OR_RETURN(
+      std::vector<KernelDefinition<LlvmKernelSource>> fusion_kernels,
+      parallel_fusion_emitter_.ConsumeKernels());
 
   kernels_.reserve(kernels_.size() + fusion_kernels.size());
-  for (LlvmKernelDefinition& kernel : fusion_kernels) {
-    auto [spec, source] = std::move(kernel).ReleaseStorage();
-    kernels_.push_back({spec.name(), std::move(source).thread_safe_module()});
+  for (KernelDefinition<LlvmKernelSource>& kernel : fusion_kernels) {
+    std::string name(kernel.spec().name());
+    auto source = std::move(kernel).TakeSource();
+    kernels_.push_back({name, std::move(source).thread_safe_module()});
   }
 
   return std::move(kernels_);
@@ -405,9 +336,14 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitHloInstruction(
     // Simple HLO instructions lowered to elemental host kernels (plain loops
     // behind the HostKernel API).
     case HloOpcode::kAbs:
+    case HloOpcode::kAcos:
+    case HloOpcode::kAcosh:
+    case HloOpcode::kAsin:
+    case HloOpcode::kAsinh:
     case HloOpcode::kAdd:
     case HloOpcode::kAnd:
     case HloOpcode::kAtan2:
+    case HloOpcode::kAtanh:
     case HloOpcode::kBroadcast:
     case HloOpcode::kBitcastConvert:
     case HloOpcode::kCbrt:
@@ -418,6 +354,7 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitHloInstruction(
     case HloOpcode::kComplex:
     case HloOpcode::kConvert:
     case HloOpcode::kCos:
+    case HloOpcode::kCosh:
     case HloOpcode::kDivide:
     case HloOpcode::kErf:
     case HloOpcode::kExp:
@@ -452,6 +389,7 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitHloInstruction(
     case HloOpcode::kShiftRightLogical:
     case HloOpcode::kSign:
     case HloOpcode::kSin:
+    case HloOpcode::kSinh:
     case HloOpcode::kSqrt:
     case HloOpcode::kSubtract:
     case HloOpcode::kTranspose:
@@ -510,6 +448,12 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitHloInstruction(
         if (backend_config.fusion_config().kind() == kXnnFusionKind) {
           return EmitXnnFusionThunk(instruction);
         }
+
+#ifdef XLA_YNNPACK
+        if (backend_config.fusion_config().kind() == kYnnFusionKind) {
+          return EmitYnnFusionThunk(instruction);
+        }
+#endif  // XLA_YNNPACK
 
         return Internal("Unsupported custom fusion kind: %s",
                         backend_config.DebugString());
@@ -746,11 +690,11 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCallThunk(
       maybe_small_call.has_value() && *maybe_small_call == "true") {
     ComputationKernelEmitter emitter(instruction, &buffer_assignment_,
                                      &target_machine_features_);
-    TF_ASSIGN_OR_RETURN(LlvmKernelDefinition kernel_definition,
+    TF_ASSIGN_OR_RETURN(KernelDefinition kernel_definition,
                         emitter.EmitKernelDefinition());
 
-    auto [kernel_spec, kernel_source] =
-        std::move(kernel_definition).ReleaseStorage();
+    auto kernel_spec = kernel_definition.spec();
+    auto kernel_source = std::move(kernel_definition).TakeSource();
 
     kernels_.push_back(
         {kernel_spec.name(), std::move(kernel_source).thread_safe_module()});
@@ -770,11 +714,11 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitConcatenateKernelThunk(
     const HloInstruction* instruction) {
   ConcatenateKernelEmitter emitter(instruction, &buffer_assignment_,
                                    &target_machine_features_);
-  TF_ASSIGN_OR_RETURN(LlvmKernelDefinition kernel_definition,
+  TF_ASSIGN_OR_RETURN(KernelDefinition kernel_definition,
                       emitter.EmitKernelDefinition());
 
-  auto [kernel_spec, kernel_source] =
-      std::move(kernel_definition).ReleaseStorage();
+  auto kernel_spec = kernel_definition.spec();
+  auto kernel_source = std::move(kernel_definition).TakeSource();
 
   TF_ASSIGN_OR_RETURN(auto backend_config,
                       instruction->backend_config<BackendConfig>());
@@ -842,8 +786,6 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitConvolutionThunk(
       TF_ASSIGN_OR_RETURN(auto output_buffer, GetAllocationSlice(instruction));
 
       ConvolutionThunk::Options options;
-      options.multi_threaded =
-          hlo_module_config_.debug_options().xla_cpu_multi_thread_eigen();
       return ThunkSequence::Of<ConvolutionThunk>(
           ThunkInfo(instruction), options, input_buffer, input_shape,
           kernel_buffer, kernel_shape, output_buffer, output_shape,
@@ -876,25 +818,14 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitElementalKernelThunk(
     const HloInstruction* instruction) {
   ElementalKernelEmitter emitter(instruction, &buffer_assignment_,
                                  &target_machine_features_);
-  TF_ASSIGN_OR_RETURN(LlvmKernelDefinition kernel_definition,
+  TF_ASSIGN_OR_RETURN(KernelDefinition kernel_definition,
                       emitter.EmitKernelDefinition());
 
-  auto [kernel_spec, kernel_source] =
-      std::move(kernel_definition).ReleaseStorage();
+  auto kernel_spec = kernel_definition.spec();
+  auto kernel_source = std::move(kernel_definition).TakeSource();
 
   kernels_.push_back(
       {kernel_spec.name(), std::move(kernel_source).thread_safe_module()});
-
-  // AOT compiled kernels get linked together, so we aren't allowed to change
-  // module flags as that will break linking.
-  if (!options_.is_aot_compilation &&
-      (instruction->opcode() == HloOpcode::kReduce ||
-       instruction->opcode() == HloOpcode::kReduceWindow)) {
-    TF_RETURN_IF_ERROR(
-        HandleReduceAndReduceWindowElementalKernelCompilationOptions(
-            instruction, *kernels_.back().module.getModuleUnlocked(),
-            target_machine_features_));
-  }
 
   return MakeKernelThunkSequence(instruction, std::move(kernel_spec),
                                  /*min_alignment=*/MinAlign());
@@ -919,17 +850,17 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitFusionKernelThunk(
     auto kernel_emitter = std::make_unique<CpuScatterFusion>(
         buffer_assignment_, fusion, mlir_context_.get());
 
-    TF_ASSIGN_OR_RETURN(MlirKernelDefinition kernel_definition,
+    TF_ASSIGN_OR_RETURN(KernelDefinition kernel_definition,
                         kernel_emitter->EmitKernelDefinition());
 
-    auto [kernel_spec, kernel_source] =
-        std::move(kernel_definition).ReleaseStorage();
+    auto kernel_spec = kernel_definition.spec();
+    auto kernel_source = std::move(kernel_definition).TakeSource();
 
-    TF_ASSIGN_OR_RETURN(LlvmIrKernelSource llvm_ir_kernel_source,
+    TF_ASSIGN_OR_RETURN(LlvmKernelSource llvm_kernel_source,
                         fusion_compiler_.Compile(std::move(kernel_source)));
 
     kernels_.push_back({kernel_spec.name(),
-                        std::move(llvm_ir_kernel_source).thread_safe_module()});
+                        std::move(llvm_kernel_source).thread_safe_module()});
 
     return MakeKernelThunkSequence(instruction, std::move(kernel_spec),
                                    /*min_alignment=*/MinAlign());
@@ -954,9 +885,8 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitFusionKernelThunk(
                           emitters::GetKernelSpec(
                               kernel_spec.name(), *fusion, &buffer_assignment_,
                               kernel_spec.work_dimensions()));
-      return MakeKernelThunkSequence(
-          instruction, new_kernel_spec,
-          /*min_alignment=*/cpu_function_runtime::MinAlign());
+      return MakeKernelThunkSequence(instruction, new_kernel_spec,
+                                     /*min_alignment=*/MinAlign());
     }
 
     TF_ASSIGN_OR_RETURN(KernelSpec kernel_spec,
@@ -1132,11 +1062,11 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitDotThunk(
     case DotImplementationStrategy::kTiledLlvmIrGemv: {
       DotKernelEmitter emitter(instruction, &buffer_assignment_,
                                &target_machine_features_);
-      TF_ASSIGN_OR_RETURN(LlvmKernelDefinition kernel_definition,
+      TF_ASSIGN_OR_RETURN(KernelDefinition kernel_definition,
                           emitter.EmitKernelDefinition());
 
-      auto [kernel_spec, kernel_source] =
-          std::move(kernel_definition).ReleaseStorage();
+      auto kernel_spec = kernel_definition.spec();
+      auto kernel_source = std::move(kernel_definition).TakeSource();
 
       kernels_.push_back(
           {kernel_spec.name(), std::move(kernel_source).thread_safe_module()});
@@ -1154,20 +1084,40 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitDotThunk(
       TF_ASSIGN_OR_RETURN(BufferAllocation::Slice out_slice,
                           GetAllocationSlice(instruction));
 
+#ifdef XLA_YNNPACK
+      const bool use_ynn = absl::c_linear_search(
+          hlo_module_config_.debug_options()
+              .xla_cpu_experimental_ynn_fusion_type(),
+          DebugOptions::LIBRARY_FUSION_TYPE_INDIVIDUAL_DOT);
+      if (use_ynn) {
+        TF_ASSIGN_OR_RETURN(
+            auto is_dot_supported,
+            IsDotSupportedByYnn(dnums, lhs->shape(), rhs->shape(),
+                                instruction->shape()));
+        if (is_dot_supported) {
+          return EmitYnnFusionThunk(instruction);
+        }
+      }
+#endif  // XLA_YNNPACK
+
       // Decide whether to use XNNPACK or Eigen.
       bool use_xnn = hlo_module_config_.debug_options().xla_cpu_use_xnnpack();
       if (use_xnn) {
+        const bool use_cost_model =
+            hlo_module_config_.debug_options()
+                .xla_cpu_experimental_xnn_graph_fusion_mode() !=
+            DebugOptions::XNN_GRAPH_FUSION_MODE_BYPASS_COST_MODEL;
         TF_ASSIGN_OR_RETURN(
-            use_xnn, IsDotSupportedByXnn(dnums, lhs->shape(), rhs->shape(),
-                                         instruction->shape(),
-                                         &target_machine_features_));
+            use_xnn,
+            IsDotSupportedByXnn(dnums, lhs->shape(), rhs->shape(),
+                                instruction->shape(), &target_machine_features_,
+                                use_cost_model));
       }
 
       if (use_xnn) {
-        XnnDotThunk::Options options = {XnnShouldUseThreadPool(instruction)};
         bool capture_rhs = HloPredicateIsOp<HloOpcode::kParameter>(rhs);
         return ThunkSequence::Of<XnnDotThunk>(
-            std::move(options), ThunkInfo(instruction), dnums, lhs_slice,
+            XnnDotThunk::Options{}, ThunkInfo(instruction), dnums, lhs_slice,
             lhs->shape(), rhs_slice, rhs->shape(), out_slice,
             instruction->shape(), capture_rhs);
       } else {
@@ -1249,7 +1199,9 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitFftThunk(
       /*output_shape=*/instruction->shape());
 }
 
-static absl::StatusOr<CustomCallThunk::OpBuffers> GetCustomCallOpBuffers(
+// Generic helper to collect argument/result slices for different OpBuffers
+template <typename OpBuffers>
+static absl::StatusOr<OpBuffers> GetOpBuffers(
     const HloInstruction* instruction,
     const BufferAssignment& buffer_assignment) {
   // Collect buffer slices for all operands.
@@ -1274,7 +1226,7 @@ static absl::StatusOr<CustomCallThunk::OpBuffers> GetCustomCallOpBuffers(
     results_shapes.push_back(indexed.shape);
   }
 
-  return CustomCallThunk::OpBuffers{
+  return OpBuffers{
       /*arguments_buffers=*/std::move(arguments_buffers),
       /*arguments_shapes=*/std::move(arguments_shapes),
       /*results_buffers=*/std::move(results_buffers),
@@ -1282,6 +1234,35 @@ static absl::StatusOr<CustomCallThunk::OpBuffers> GetCustomCallOpBuffers(
       /*is_tuple_result=*/instruction->shape().IsTuple(),
   };
 }
+
+#ifdef XLA_ONEDNN
+absl::StatusOr<ThunkSequence> ThunkEmitter::EmitOneDnnOpThunk(
+    const HloInstruction* instruction) {
+  auto custom_call = Cast<HloCustomCallInstruction>(instruction);
+  auto custom_call_target = custom_call->custom_call_target();
+  auto backend_config = custom_call->backend_config<BackendConfig>();
+
+  OneDnnOpThunk::OneDnnOpConfig config;
+  if (custom_call_target == "__onednn$matmul") {
+    config = backend_config->onednn_matmul_config();
+  } else if (custom_call_target == "__onednn$convolution") {
+    config = backend_config->onednn_conv_config();
+  } else if (custom_call_target == "__onednn$layernorm") {
+    config = backend_config->onednn_layer_norm_config();
+  } else if (custom_call_target == "__onednn$softmax") {
+    config = backend_config->onednn_softmax_config();
+  } else {
+    return Unimplemented(
+        "Custom call target %s is not supported in thunk runtime",
+        custom_call_target);
+  }
+
+  TF_ASSIGN_OR_RETURN(auto op_buffers, GetOpBuffers<OneDnnOpThunk::OpBuffers>(
+                                           instruction, buffer_assignment_));
+  return ThunkSequence::Of<OneDnnOpThunk>(
+      custom_call_target, ThunkInfo(custom_call), op_buffers, config);
+}
+#endif  // XLA_ONEDNN
 
 static bool IsValidCustomCallApiVersion(CustomCallApiVersion api_version) {
   switch (api_version) {
@@ -1301,11 +1282,7 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCustomCallThunk(
 
   // TODO(penporn): Support these existing targets.
   auto custom_call_target = custom_call->custom_call_target();
-  if (custom_call_target == "PadToStatic" ||
-      custom_call_target == "__onednn$matmul" ||
-      custom_call_target == "__onednn$softmax" ||
-      custom_call_target == "__onednn$layernorm" ||
-      custom_call_target == "__onednn$matmul_reorder") {
+  if (custom_call_target == "PadToStatic") {
     return Unimplemented("Custom call target %s is not implemented.",
                          custom_call_target);
   }
@@ -1313,6 +1290,12 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCustomCallThunk(
     return EmitTopKThunk(custom_call);
   } else if (custom_call_target == "SliceToDynamic") {
     return EmitSliceToDynamicThunk(instruction);
+  } else if (absl::StartsWith(custom_call->custom_call_target(), "__onednn$")) {
+#ifdef XLA_ONEDNN
+    return EmitOneDnnOpThunk(instruction);
+#else
+    return Unimplemented("XLA is not built with oneDNN.");
+#endif  // XLA_ONEDNN
   }
 
   // Check the API version.
@@ -1336,8 +1319,8 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCustomCallThunk(
           : ((version == API_VERSION_TYPED_FFI)
                  ? backend_config->custom_call_config().attributes()
                  : backend_config->custom_call_config().opaque());
-  TF_ASSIGN_OR_RETURN(auto op_buffers,
-                      GetCustomCallOpBuffers(instruction, buffer_assignment_));
+  TF_ASSIGN_OR_RETURN(auto op_buffers, GetOpBuffers<CustomCallThunk::OpBuffers>(
+                                           instruction, buffer_assignment_));
 
   return ThunkSequence::Of<CustomCallThunk>(ThunkInfo(instruction),
                                             custom_call_target, op_buffers,
@@ -1534,11 +1517,68 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitXnnFusionThunk(
   // Construct XNNPACK subgraph builder from the fusion computation.
   TF_ASSIGN_OR_RETURN(auto builder, EmitXnnFusionBuilder(computation));
 
-  XnnFusionThunk::Options options = {XnnShouldUseThreadPool(computation)};
   return ThunkSequence::Of<XnnFusionThunk>(
-      std::move(options), ThunkInfo(instruction), std::move(arguments),
+      XnnFusionThunk::Options{}, ThunkInfo(instruction), std::move(arguments),
       std::move(results),
       [b = std::move(builder)](auto, auto) mutable { return b(); });
+}
+
+absl::StatusOr<ThunkSequence> ThunkEmitter::EmitYnnFusionThunk(
+    const HloInstruction* instruction) {
+#ifdef XLA_YNNPACK
+  // Collect YNNPACK fusion arguments.
+  std::vector<YnnFusionThunk::Argument> arguments;
+  for (HloInstruction* operand : instruction->operands()) {
+    for (auto& indexed : ShapeUtil::GetLeafShapes(operand->shape())) {
+      TF_ASSIGN_OR_RETURN(
+          BufferAllocation::Slice slice,
+          buffer_assignment_.GetUniqueSlice(operand, indexed.index));
+      arguments.push_back(YnnFusionThunk::Argument{slice, indexed.shape});
+    }
+  }
+
+  // Collect YNNPACK fusion results.
+  std::vector<YnnFusionThunk::Result> results;
+  for (auto& indexed : ShapeUtil::GetLeafShapes(instruction->shape())) {
+    TF_ASSIGN_OR_RETURN(
+        BufferAllocation::Slice slice,
+        buffer_assignment_.GetUniqueSlice(instruction, indexed.index));
+    results.push_back(YnnFusionThunk::Result{slice, indexed.shape});
+  }
+
+  absl::AnyInvocable<absl::StatusOr<YnnSubgraph>(
+      absl::Span<const se::DeviceMemoryBase> arguments_buffers)>
+      builder;
+  absl::Span<const int64_t> captured_arguments_ids;
+  if (instruction->opcode() == HloOpcode::kDot) {
+    const HloDotInstruction* dot = Cast<HloDotInstruction>(instruction);
+    // TODO(b/455903737): If we know the RHS is a constant, we should capture it
+    // here.
+    bool capture_rhs = false;
+    // Construct YNNPACK subgraph builder from the dot instruction.
+    TF_ASSIGN_OR_RETURN(builder, EmitYnnDotBuilder(dot, capture_rhs));
+    static constexpr int64_t kCapturedIds[1] = {1};
+    if (capture_rhs) {
+      captured_arguments_ids = kCapturedIds;
+    }
+  } else {
+    auto* fusion = Cast<HloFusionInstruction>(instruction);
+    const HloComputation* computation =
+        fusion->fused_instructions_computation();
+    // Construct YNNPACK subgraph builder from the fusion computation.
+    TF_ASSIGN_OR_RETURN(builder, EmitYnnFusionBuilder(computation));
+  }
+
+  return ThunkSequence::Of<YnnFusionThunk>(
+      YnnFusionThunk::Options{}, ThunkInfo(instruction), instruction,
+      std::move(arguments), std::move(results),
+      [b = std::move(builder)](auto, auto, auto arg_buffers) mutable {
+        return b(arg_buffers);
+      },
+      captured_arguments_ids);
+#else
+  return Unimplemented("XLA is not built with YNNPACK.");
+#endif  // XLA_YNNPACK
 }
 
 absl::StatusOr<ThunkEmitter::HostKernelAllocationSlices>

@@ -18,7 +18,6 @@ limitations under the License.
 #include <optional>
 #include <utility>
 
-#include "absl/algorithm/container.h"
 #include "absl/strings/string_view.h"
 #include "xla/backends/gpu/codegen/copy.h"
 #include "xla/backends/gpu/codegen/cudnn.h"
@@ -31,6 +30,7 @@ limitations under the License.
 #include "xla/backends/gpu/codegen/emitters/transpose.h"
 #include "xla/backends/gpu/codegen/fusion_emitter.h"
 #include "xla/backends/gpu/codegen/triton/fusion.h"
+#include "xla/codegen/ir_emission_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_traversal.h"
@@ -39,28 +39,15 @@ limitations under the License.
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/shape.h"
-#include "xla/shape_util.h"
 
 namespace xla {
 namespace gpu {
-namespace {
-
-bool IsDynamicUpdateSliceFusion(const HloFusionAnalysis& analysis) {
-  return absl::c_all_of(
-      analysis.fusion_roots(), [](const HloInstructionAdaptor& root) {
-        return root.opcode() == HloOpcode::kDynamicUpdateSlice ||
-               (root.opcode() == HloOpcode::kBitcast &&
-                root.GetOperand(0).opcode() == HloOpcode::kDynamicUpdateSlice);
-      });
-}
-
-}  // namespace
 
 std::optional<std::unique_ptr<FusionInterface>> HloFusionInfo::GetCopyFusion()
     const {
   if (analysis().emitter_fusion_kind() ==
       HloFusionAnalysis::EmitterFusionKind::kDynamicMemcpy) {
-    if (IsDynamicUpdateSliceFusion(analysis()) &&
+    if (IsDynamicUpdateSliceFusion(analysis().fusion_spec()) &&
         !CanEmitDynamicUpdateSliceInPlace()) {
       // We currently only implement in-place DUSes as memcpys.
       return std::nullopt;
@@ -84,17 +71,13 @@ std::optional<std::unique_ptr<FusionInterface>> HloFusionInfo::GetCopyFusion()
 }
 
 bool HloFusionInfo::CanEmitDynamicUpdateSliceInPlace() const {
-  auto ret = CanEmitFusedDynamicUpdateSliceInPlaceForGpu(
-      analysis().fusion(),
-      [this](const HloInstruction* instruction, const ShapeIndex& index) {
-        return GetAllocationSlice(*buffer_assignment_, instruction, index);
-      },
-      instr_);
+  auto ret = CanEmitFusedDynamicUpdateSliceInPlace(analysis().fusion(),
+                                                   buffer_assignment_, instr_);
   return ret.ok() && *ret;
 }
 
 std::unique_ptr<FusionInterface> GetFusionEmitter(
-    const FusionInfo& fusion_info) {
+    const FusionInfo& fusion_info, mlir::MLIRContext* mlir_context) {
   const auto& analysis = fusion_info.analysis();
   const FusionBackendConfig& backend_config = analysis.fusion_backend_config();
 
@@ -121,20 +104,20 @@ std::unique_ptr<FusionInterface> GetFusionEmitter(
       if (auto copy_fusion = fusion_info.GetCopyFusion()) {
         return *std::move(copy_fusion);
       }
-      if (IsDynamicUpdateSliceFusion(analysis) &&
+      if (IsDynamicUpdateSliceFusion(analysis.fusion_spec()) &&
           fusion_info.CanEmitDynamicUpdateSliceInPlace()) {
         return std::make_unique<InPlaceDynamicUpdateSliceFusion>(analysis);
       }
-      return std::make_unique<LoopFusion>(analysis);
+      return std::make_unique<LoopFusion>(analysis, mlir_context);
     }
     case HloFusionAnalysis::EmitterFusionKind::kReduction: {
-      return CreateReductionFusion(analysis);
+      return CreateReductionFusion(analysis, mlir_context);
     }
     case HloFusionAnalysis::EmitterFusionKind::kScatter: {
-      return CreateScatterFusion(analysis);
+      return CreateScatterFusion(analysis, mlir_context);
     }
     case HloFusionAnalysis::EmitterFusionKind::kTranspose: {
-      return CreateTransposeFusion(analysis);
+      return CreateTransposeFusion(analysis, mlir_context);
     }
     case HloFusionAnalysis::EmitterFusionKind::kConcatenate: {
       return std::make_unique<ConcatenateFusion>(analysis);

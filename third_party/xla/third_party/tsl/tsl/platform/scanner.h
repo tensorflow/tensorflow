@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/strings/ascii.h"
 #include "xla/tsl/platform/macros.h"
 #include "tsl/platform/str_util.h"
 #include "tsl/platform/stringpiece.h"
@@ -174,58 +175,43 @@ class Scanner {
     return *this;
   }
 
-  static bool IsLetter(char ch) {
-    return (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z');
-  }
-
-  static bool IsLowerLetter(char ch) { return ch >= 'a' && ch <= 'z'; }
-
-  static bool IsDigit(char ch) { return ch >= '0' && ch <= '9'; }
-
-  static bool IsSpace(char ch) {
-    return (ch == ' ' || ch == '\t' || ch == '\n' || ch == '\v' || ch == '\f' ||
-            ch == '\r');
-  }
-
   static bool Matches(CharClass clz, char ch) {
     switch (clz) {
       case ALL:
         return true;
       case DIGIT:
-        return IsDigit(ch);
+        return absl::ascii_isdigit(ch);
       case LETTER:
-        return IsLetter(ch);
+        return absl::ascii_isalpha(ch);
       case LETTER_DIGIT:
-        return IsLetter(ch) || IsDigit(ch);
+        return absl::ascii_isalnum(ch);
       case LETTER_DIGIT_DASH_UNDERSCORE:
-        return (IsLetter(ch) || IsDigit(ch) || ch == '-' || ch == '_');
+        return (absl::ascii_isalnum(ch) || ch == '-' || ch == '_');
       case LETTER_DIGIT_DASH_DOT_SLASH:
-        return IsLetter(ch) || IsDigit(ch) || ch == '-' || ch == '.' ||
-               ch == '/';
+        return absl::ascii_isalnum(ch) || ch == '-' || ch == '.' || ch == '/';
       case LETTER_DIGIT_DASH_DOT_SLASH_UNDERSCORE:
-        return (IsLetter(ch) || IsDigit(ch) || ch == '-' || ch == '.' ||
+        return (absl::ascii_isalnum(ch) || ch == '-' || ch == '.' ||
                 ch == '/' || ch == '_');
       case LETTER_DIGIT_DOT:
-        return IsLetter(ch) || IsDigit(ch) || ch == '.';
+        return absl::ascii_isalnum(ch) || ch == '.';
       case LETTER_DIGIT_DOT_PLUS_MINUS:
-        return IsLetter(ch) || IsDigit(ch) || ch == '+' || ch == '-' ||
-               ch == '.';
+        return absl::ascii_isalnum(ch) || ch == '+' || ch == '-' || ch == '.';
       case LETTER_DIGIT_DOT_UNDERSCORE:
-        return IsLetter(ch) || IsDigit(ch) || ch == '.' || ch == '_';
+        return absl::ascii_isalnum(ch) || ch == '.' || ch == '_';
       case LETTER_DIGIT_UNDERSCORE:
-        return IsLetter(ch) || IsDigit(ch) || ch == '_';
+        return absl::ascii_isalnum(ch) || ch == '_';
       case LOWERLETTER:
-        return ch >= 'a' && ch <= 'z';
+        return absl::ascii_islower(ch);
       case LOWERLETTER_DIGIT:
-        return IsLowerLetter(ch) || IsDigit(ch);
+        return absl::ascii_islower(ch) || absl::ascii_isdigit(ch);
       case LOWERLETTER_DIGIT_UNDERSCORE:
-        return IsLowerLetter(ch) || IsDigit(ch) || ch == '_';
+        return absl::ascii_islower(ch) || absl::ascii_isdigit(ch) || ch == '_';
       case NON_ZERO_DIGIT:
-        return IsDigit(ch) && ch != '0';
+        return absl::ascii_isdigit(ch) && ch != '0';
       case SPACE:
-        return IsSpace(ch);
+        return absl::ascii_isspace(ch);
       case UPPERLETTER:
-        return ch >= 'A' && ch <= 'Z';
+        return absl::ascii_isupper(ch);
       case RANGLE:
         return ch == '>';
     }

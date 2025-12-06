@@ -13,20 +13,41 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#if defined(INTEL_MKL)
+#include <algorithm>
+#include <cstdint>
+#include <cstdlib>
+#include <limits>
+#include <memory>
+#include <optional>
+#include <type_traits>
+#include <vector>
 
 #define EIGEN_USE_THREADS
 
-#include "xla/service/cpu/onednn_contraction_rewriter.h"
-
+#include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_set.h"
+#include "absl/container/inlined_vector.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
+#include "Eigen/Core"
+#include "oneapi/dnnl/dnnl.hpp"
+#include "oneapi/dnnl/dnnl_common.hpp"
+#include "oneapi/dnnl/dnnl_threadpool.hpp"
+#include "xla/backends/cpu/runtime/onednn/onednn_threadpool.h"
 #include "xla/executable_run_options.h"
 #include "xla/hlo/evaluator/hlo_evaluator.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/layout_util.h"
+#include "xla/literal.h"
 #include "xla/service/cpu/backend_config.pb.h"
 #include "xla/service/cpu/onednn_config.pb.h"
+#include "xla/service/cpu/onednn_contraction_rewriter.h"
 #include "xla/service/cpu/onednn_convolution.h"
 #include "xla/service/cpu/onednn_matmul.h"
 #include "xla/service/cpu/onednn_memory_util.h"
@@ -34,14 +55,21 @@ limitations under the License.
 #include "xla/service/cpu/onednn_util.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/pattern_matcher.h"
+#include "xla/shape_util.h"
 #include "xla/status_macros.h"
-#include "xla/tsl/util/onednn_threadpool.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/threadpool.h"
+#include "xla/types.h"
+#include "xla/util.h"
+#include "tsl/platform/cpu_info.h"
 #include "tsl/platform/logging.h"  // IWYU pragma: keep
 
 namespace xla {
 namespace cpu {
 
 namespace {
+
 namespace m = match;
 namespace pu = ::xla::cpu::onednn_pattern_utils_internal;
 
@@ -49,9 +77,9 @@ inline absl::Status ValidateDotDimensionNumbers(
     const DotDimensionNumbers& dim_numbers) {
   // Checks some invariants that do not hold in general, but DotDecomposer
   // should have established for us.
-  TF_RET_CHECK(dim_numbers.lhs_contracting_dimensions_size() == 1);
+  TF_RET_CHECK(dim_numbers.lhs_contracting_dimensions().size() == 1);
   std::vector<int64_t> batch_dim_numbers(
-      dim_numbers.lhs_batch_dimensions_size());
+      dim_numbers.lhs_batch_dimensions().size());
   absl::c_iota(batch_dim_numbers, 0);
   TF_RET_CHECK(
       absl::c_equal(batch_dim_numbers, dim_numbers.lhs_batch_dimensions()));
@@ -61,7 +89,7 @@ inline absl::Status ValidateDotDimensionNumbers(
 }
 
 // Whether the element type of instr is compatible with oneDNN kernels.
-// TODO(intel-tf): Restict compatible types based on instruction kind.
+// TODO(intel-tf): Restrict compatible types based on instruction kind.
 inline bool CompatibleElementType(const HloInstruction* instr) {
   PrimitiveType element_type = instr->shape().element_type();
   return element_type == BF16 || element_type == F32 || element_type == F16;
@@ -79,7 +107,9 @@ inline auto BitcastWithReshapeSemantics(HloInstruction** bitcast,
   // the layouts are checked to be rowmajor since the current pass runs after
   // the layout assignment and oneDNN matmul is enabled for rowmajor layouts.
   auto is_reshape = [](const HloInstruction* instr) -> bool {
-    if (!instr) return false;
+    if (!instr) {
+      return false;
+    }
     auto input_shape = instr->operand(0)->shape();
     auto output_shape = instr->shape();
     bool is_same_type = ShapeUtil::SameElementType(input_shape, output_shape);
@@ -148,7 +178,7 @@ inline auto BcastConvertConstScalar(double value) {
 
 inline bool IsBatchDot(const HloInstruction& instr) {
   if (auto* dot_instr = DynCast<HloDotInstruction>(&instr)) {
-    return dot_instr->dot_dimension_numbers().lhs_batch_dimensions_size() > 0;
+    return !dot_instr->dot_dimension_numbers().lhs_batch_dimensions().empty();
   }
   return false;
 }
@@ -162,7 +192,9 @@ auto ConstScalarNear(double value) {
             static_cast<const HloConstantInstruction*>(instr)
                 ->literal()
                 .GetAsDouble({});
-        if (!actual.has_value()) return false;
+        if (!actual.has_value()) {
+          return false;
+        }
         double epsilon;
         switch (instr->shape().element_type()) {
           case F16:
@@ -312,11 +344,10 @@ auto GELUActivation(HloInstruction* instr, HloInstruction** src) {
                        .WithOneUser())
             .WithOneUser();
 
-    if (Match(errf, errf_apprx_pattern)) {
-      // Matched Gelu-approximate pattern
+    if (Match(errf, errf_apprx_pattern)) {  // Gelu-approximate pattern.
       return OneDnnFusionConfig::GELU_TANH;
-    } else if (Match(errf, errf_exact_pattern)) {
-      // Matched Gelu-exact pattern
+    }
+    if (Match(errf, errf_exact_pattern)) {  // Gelu-exact pattern.
       return OneDnnFusionConfig::GELU_ERF;
     }
   }
@@ -335,7 +366,7 @@ absl::StatusOr<Shape> AdjustAddendShape(const HloInstruction* contraction,
     // Add is enabled.
     if (IsOneDnnConvolutionInstr(contraction) &&
         ShapeUtil::TrueNumDimensions(addend->shape()) == 1 &&
-        addend->shape().dimensions_size() != 1) {
+        addend->shape().dimensions().size() != 1) {
       return ShapeUtil::FilterDimensions(
           [&addend](int64_t dim) {
             return ShapeUtil::GetDimension(addend->shape(), dim) != 1;
@@ -361,7 +392,7 @@ absl::StatusOr<Shape> AdjustAddendShape(const HloInstruction* contraction,
   //      bitcast = f32[3,1,1,6]{3,2,1,0} bitcast(arg)
   //      fused = f32[3,4,5,6]{3,2,1,0} custom-call((..., bitcast)
   auto kept_dimensions = bcast->dimensions();
-  for (int i = 0; i < new_shape.dimensions_size(); i++) {
+  for (int i = 0; i < new_shape.dimensions().size(); i++) {
     if (!absl::c_linear_search(kept_dimensions, i)) {
       new_shape.set_dimensions(i, 1);
     }
@@ -370,8 +401,14 @@ absl::StatusOr<Shape> AdjustAddendShape(const HloInstruction* contraction,
   // If rank(new_shape) > rank(instr), extra dimensions with value = 1 can be
   // deleted from the new_shape.
   auto instr_shape = contraction->shape();
-  int64_t rank_difference =
-      new_shape.dimensions_size() - instr_shape.dimensions_size();
+  int64_t rank_difference = 0;
+  // Since the absl APIs return unsigned dimension sizes, compute the rank
+  // difference only when LHS > RHS. Performing an unconditional subtraction
+  // could cause an unsigned underflow.
+  if (new_shape.dimensions().size() > instr_shape.dimensions().size()) {
+    rank_difference =
+        new_shape.dimensions().size() - instr_shape.dimensions().size();
+  }
   auto new_dims = new_shape.dimensions();
   std::vector<int64_t> dims_to_delete;
   for (int i = 0; i < rank_difference; ++i) {
@@ -383,7 +420,7 @@ absl::StatusOr<Shape> AdjustAddendShape(const HloInstruction* contraction,
 
   // New shape for bias should satisfy the condition:
   //   rank(new_shape) <= rank(instr).
-  if (new_shape.dimensions_size() > instr_shape.dimensions_size()) {
+  if (new_shape.dimensions().size() > instr_shape.dimensions().size()) {
     return absl::CancelledError(
         "Bias shape could not be adjusted for a fusion.");
   }
@@ -406,19 +443,22 @@ absl::StatusOr<Shape> AdjustBinaryOperandShape(
 
 inline bool IsOperandFusible(HloInstruction* operand, HloInstruction* instr) {
   // Check if the operand's shape is compatible for fusion.
-  // An operand is fusable if
+  // An operand is fusible if
   //    1. rank(operand) <= rank(instr) and
   //    2. Starting from the last dim in backward direction, the dimension
   //       size of operand is either 1 or same to dot.
   auto operand_dims = operand->shape().dimensions();
   auto instr_dims = instr->shape().dimensions();
-  if (operand_dims.size() > instr_dims.size()) return false;
-  int operand_idx = operand_dims.size() - 1;
-  int instr_idx = instr_dims.size() - 1;
+  if (operand_dims.size() > instr_dims.size()) {
+    return false;
+  }
+  int operand_idx = static_cast<int>(operand_dims.size()) - 1;
+  int instr_idx = static_cast<int>(instr_dims.size()) - 1;
   for (; operand_idx >= 0; --operand_idx, --instr_idx) {
     if (operand_dims[operand_idx] != 1 &&
-        operand_dims[operand_idx] != instr_dims[instr_idx])
+        operand_dims[operand_idx] != instr_dims[instr_idx]) {
       return false;
+    }
   }
   return true;
 }
@@ -446,56 +486,64 @@ inline auto OptionalConvertAndBitcast(HloInstruction** optional_convert,
 
 bool OneDnnContractionRewriter::ShouldRewriteDot(
     const HloInstruction* dot_instr, bool before_layout_assignment) {
-  if (dot_instr->opcode() != HloOpcode::kDot) return false;
-  // Currently, blocking control dependencies
-  if (dot_instr->HasControlDependencies()) return false;
-  if (!IsSupportedType(dot_instr->shape().element_type())) return false;
-  if (dot_instr->operands().size() != 2) return false;
+  if (dot_instr->opcode() != HloOpcode::kDot) {
+    return false;
+  }
+  // Blocking control dependencies.
+  if (dot_instr->HasControlDependencies() ||
+      !IsSupportedType(dot_instr->shape().element_type()) ||
+      dot_instr->operands().size() != 2) {
+    return false;
+  }
 
-  // Currently, we rewrite when the data type is F32 or BF16. Note we do not
-  // need to check equality of contraction dim-size of the operands. HLO
-  // verifier already does the job. We, however, need to check if contraction
-  // is over only 1 dimension (a.k.a. K dimension in matrix-multiplication
-  // parlance). We also restrict that batch dimensions of the operands
-  // match.
+  // We rewrite when the data type is F32 or BF16. We do not need to check
+  // equality of contraction dim-size of the operands. HLO verifier already does
+  // the job. We, however, need to check if contraction is over only 1 dimension
+  // (i.e., K dimension in matrix-multiplication parlance). We also restrict
+  // that batch dimensions of the operands match.
   const Shape& lhs_shape = dot_instr->operand(0)->shape();
   const Shape& rhs_shape = dot_instr->operand(1)->shape();
   const Shape& output_shape = dot_instr->shape();
+
   // None of the operands and result should be ZeroElementArray.
   if (ShapeUtil::IsZeroElementArray(lhs_shape) ||
       ShapeUtil::IsZeroElementArray(rhs_shape) ||
       ShapeUtil::IsZeroElementArray(output_shape)) {
     return false;
   }
+
   // OneDNN only supports rank <= kOneDnnMaxNDims and singular non-contracting
   // dimensions. We should not rewrite if any of these conditions are violated.
-  if (lhs_shape.dimensions_size() <= 0 ||
-      lhs_shape.dimensions_size() > kOneDnnMaxNDims ||
-      rhs_shape.dimensions_size() <= 0 ||
-      rhs_shape.dimensions_size() > kOneDnnMaxNDims ||
-      output_shape.dimensions_size() >
-          std::min({lhs_shape.dimensions_size(), rhs_shape.dimensions_size(),
-                    kOneDnnMaxNDims})) {
+  if (lhs_shape.dimensions().empty() ||
+      lhs_shape.dimensions().size() > kOneDnnMaxNDims ||
+      rhs_shape.dimensions().empty() ||
+      rhs_shape.dimensions().size() > kOneDnnMaxNDims ||
+      output_shape.dimensions().size() >
+          std::min<uint64_t>({lhs_shape.dimensions().size(),
+                              rhs_shape.dimensions().size(),
+                              kOneDnnMaxNDims})) {
     return false;
   }
 
-  // Layout should be row-major, contraction dimensions captures transpose
-  // scenarios in last two dimensions.
-  // Col-major layouts are corrected to row-major for BatchDot operation as
-  // part of the layout-assignment pass.
-  // Skip row-major layout check before layout-assignment pass
+  // Layout should be row-major, contraction dimensions capture transpose
+  // scenarios in the last two dimensions. Col-major layouts are corrected to
+  // row-major for BatchDot operation as part of the layout-assignment pass.
+  // Skip row-major layout check before layout-assignment pass.
   if (!before_layout_assignment) {
     bool row_major = IsRowMajor(lhs_shape) && IsRowMajor(rhs_shape) &&
                      IsRowMajor(output_shape);
-    if (!row_major) return false;
+    if (!row_major) {
+      return false;
+    }
   }
 
   auto dot_dim_numbers = dot_instr->dot_dimension_numbers();
   int64_t lhs_dim_k = dot_dim_numbers.lhs_contracting_dimensions(0);
   int64_t rhs_dim_k = dot_dim_numbers.rhs_contracting_dimensions(0);
+
   // Supported contraction is only in one of last two dimensions.
-  if (lhs_dim_k < lhs_shape.dimensions_size() - 2 ||
-      rhs_dim_k < rhs_shape.dimensions_size() - 2) {
+  if (lhs_dim_k + 2 < lhs_shape.dimensions().size() ||
+      rhs_dim_k + 2 < rhs_shape.dimensions().size()) {
     return false;
   }
 
@@ -506,21 +554,25 @@ bool OneDnnContractionRewriter::ShouldRewriteDot(
   // matmul is achieved.
   auto num_flops = xla::HloCostAnalysis::GetDotFlops(lhs_shape, output_shape,
                                                      dot_dim_numbers);
-  auto rank = output_shape.dimensions_size();
+  auto rank = output_shape.dimensions().size();
   auto flops_threshold = (rank <= 2) ? (1 << 24) : (1 << 19);
   return (num_flops >= flops_threshold);
 }
 
 bool OneDnnContractionRewriter::ShouldRewriteConv(
     const HloInstruction* conv_instr) {
-  if (conv_instr->opcode() != HloOpcode::kConvolution) return false;
-  if (conv_instr->HasControlDependencies()) return false;
-  if (!IsSupportedType(conv_instr->shape().element_type())) return false;
-  if (conv_instr->batch_group_count() != 1) return false;
+  if (conv_instr->opcode() != HloOpcode::kConvolution ||
+      conv_instr->HasControlDependencies() ||
+      !IsSupportedType(conv_instr->shape().element_type()) ||
+      conv_instr->batch_group_count() != 1) {
+    return false;
+  }
 
   // TODO(intel-tf): Remove this restriction after enabling backward weights
   // support
-  if (conv_instr->operand(1)->opcode() == HloOpcode::kReverse) return false;
+  if (conv_instr->operand(1)->opcode() == HloOpcode::kReverse) {
+    return false;
+  }
 
   const Shape& inp_shape = conv_instr->operand(0)->shape();
   const Shape& ker_shape = conv_instr->operand(1)->shape();
@@ -532,10 +584,12 @@ bool OneDnnContractionRewriter::ShouldRewriteConv(
   }
 
   auto dims = conv_instr->window().dimensions().size();
-  if (dims >= 4 || dims <= 0) return false;
+  if (dims >= 4 || dims <= 0) {
+    return false;
+  }
 
-  if (inp_shape.dimensions_size() != ker_shape.dimensions_size() ||
-      inp_shape.dimensions_size() != out_shape.dimensions_size()) {
+  if (inp_shape.dimensions().size() != ker_shape.dimensions().size() ||
+      inp_shape.dimensions().size() != out_shape.dimensions().size()) {
     return false;
   }
 
@@ -544,12 +598,20 @@ bool OneDnnContractionRewriter::ShouldRewriteConv(
 
 class OneDnnContractionRewriteVisitor : public DfsHloRewriteVisitor {
  public:
+  OneDnnContractionRewriteVisitor(bool graph_enabled)
+      : graph_enabled_(graph_enabled) {}
+
   // Matches patterns for possible MatMul fusions that are supported by oneDNN
   // library. Matched HLO instruction(s) are replaced by custom call.
   absl::Status HandleDot(HloInstruction* instr) override {
+    // When oneDNN graph is enabled, dot will be handled via DotLibraryRewriter
+    if (graph_enabled_) return absl::OkStatus();
+
     HloInstruction* dot_instr;
     auto pattern = m::Op(&dot_instr).WithOpcode(HloOpcode::kDot);
-    if (!Match(instr, pattern)) return absl::OkStatus();
+    if (!Match(instr, pattern)) {
+      return absl::OkStatus();
+    }
 
     TF_RETURN_IF_ERROR(
         ValidateDotDimensionNumbers(dot_instr->dot_dimension_numbers()));
@@ -571,12 +633,13 @@ class OneDnnContractionRewriteVisitor : public DfsHloRewriteVisitor {
             output_shape,
             {dot_instr->mutable_operand(0), dot_instr->mutable_operand(1)},
             "__onednn$matmul"));
+
     // Set additional info via config, e.g., transpose and fusion info.
     BackendConfig backend_config;
     OneDnnMatMulConfig* matmul_config =
         backend_config.mutable_onednn_matmul_config();
-    bool transpose_a = (lhs_dim_k != lhs_shape.dimensions_size() - 1);
-    bool transpose_b = (rhs_dim_k != rhs_shape.dimensions_size() - 2);
+    bool transpose_a = (lhs_dim_k + 1 != lhs_shape.dimensions().size());
+    bool transpose_b = (rhs_dim_k + 2 != rhs_shape.dimensions().size());
     matmul_config->set_transpose_a(transpose_a);
     matmul_config->set_transpose_b(transpose_b);
     TF_RETURN_IF_ERROR(matmul_call->set_backend_config(backend_config));
@@ -598,7 +661,7 @@ class OneDnnContractionRewriteVisitor : public DfsHloRewriteVisitor {
     OneDnnConvolutionConfig* conv_config =
         backend_config.mutable_onednn_conv_config();
 
-    conv_config->set_dims(conv_shape.dimensions_size());
+    conv_config->set_dims(conv_shape.dimensions().size());
     conv_config->set_feature_groups(conv->feature_group_count());
     conv_config->mutable_input()->mutable_data()->set_batch_dim(
         conv_dims.input_batch_dimension());
@@ -622,22 +685,20 @@ class OneDnnContractionRewriteVisitor : public DfsHloRewriteVisitor {
           (*it).window_reversal()) {
         return absl::OkStatus();
       }
-      // Changing the input subspace of uint repeated fields from whole numbers
-      // to natural nummbers to avoid misinterpretation of buffer values.
-      conv_config->mutable_window()->add_pad_left((*it).padding_low() + 1);
-      conv_config->mutable_window()->add_pad_right((*it).padding_high() + 1);
-      conv_config->mutable_window()->add_strides((*it).stride() + 1);
+      conv_config->mutable_window()->add_pad_left((*it).padding_low());
+      conv_config->mutable_window()->add_pad_right((*it).padding_high());
+      conv_config->mutable_window()->add_strides((*it).stride());
       conv_config->mutable_window()->add_window_dilations(
-          (*it).window_dilation() + 1);
+          (*it).window_dilation());
     }
 
     for (int i = 0; i < dims; i++) {
       conv_config->mutable_input()->mutable_data()->add_spatial_dims(
-          conv_dims.input_spatial_dimensions()[i] + 1);
+          conv_dims.input_spatial_dimensions()[i]);
       conv_config->mutable_kernel()->mutable_filter()->add_spatial_dims(
-          conv_dims.kernel_spatial_dimensions()[i] + 1);
+          conv_dims.kernel_spatial_dimensions()[i]);
       conv_config->mutable_output()->mutable_data()->add_spatial_dims(
-          conv_dims.output_spatial_dimensions()[i] + 1);
+          conv_dims.output_spatial_dimensions()[i]);
     }
 
     HloInstruction* custom_call =
@@ -684,8 +745,9 @@ class OneDnnContractionRewriteVisitor : public DfsHloRewriteVisitor {
         m::Op(&addend_intermediate));
 
     if (Match(instr, pattern)) {
-      if (!IsSupportedType(contraction->shape().element_type()))
+      if (!IsSupportedType(contraction->shape().element_type())) {
         return absl::OkStatus();
+      }
 
       std::vector<HloInstruction*> new_operands;
       for (auto operand : contraction->operands()) {
@@ -717,13 +779,14 @@ class OneDnnContractionRewriteVisitor : public DfsHloRewriteVisitor {
       // oneDNN library requires Convolution biases to always have rank 1.
       // Therefore, these bias shapes should remain unchanged.
       if (IsOneDnnMatmulInstr(contraction) ||
-          addend->shape().dimensions_size() != 1) {
+          addend->shape().dimensions().size() != 1) {
         auto new_shape =
             AdjustAddendShape(contraction, addend, optional_addend_broadcast);
         if (!new_shape.ok()) {
           VLOG(2) << new_shape.status();
           return absl::OkStatus();
-        } else if (!ShapeUtil::Equal(*new_shape, addend->shape())) {
+        }
+        if (!ShapeUtil::Equal(*new_shape, addend->shape())) {
           addend = addend->AddInstruction(
               HloInstruction::CreateBitcast(new_shape.value(), addend));
         }
@@ -1006,10 +1069,7 @@ class OneDnnContractionRewriteVisitor : public DfsHloRewriteVisitor {
       auto backend_config = custom_call->backend_config<BackendConfig>();
       auto fusions_config = GetFusionsConfig(&backend_config);
       fusions_config->add_ops(OneDnnFusionConfig::LINEAR);
-      // Casting to int32 because of issues in proto config for decimal types
-      // handling.
-      fusions_config->add_alpha_typecast(
-          *(reinterpret_cast<int32_t*>(&constant_value.value())));
+      fusions_config->add_alpha(constant_value.value());
       TF_RETURN_IF_ERROR(custom_call->set_backend_config(*backend_config));
       HloInstruction* new_instr;
       if (optional_convert != nullptr &&
@@ -1136,12 +1196,12 @@ class OneDnnContractionRewriteVisitor : public DfsHloRewriteVisitor {
 
     auto lhs_batch_dims = dim_numbers.lhs_batch_dimensions();
     auto lhs_contraction_dims = dim_numbers.lhs_contracting_dimensions();
-    bool is_lhs_vector = lhs->shape().dimensions_size() ==
+    bool is_lhs_vector = lhs->shape().dimensions().size() ==
                          (lhs_batch_dims.size() + lhs_contraction_dims.size());
 
     auto rhs_batch_dims = dim_numbers.rhs_batch_dimensions();
     auto rhs_contraction_dims = dim_numbers.rhs_contracting_dimensions();
-    bool is_rhs_vector = rhs->shape().dimensions_size() ==
+    bool is_rhs_vector = rhs->shape().dimensions().size() ==
                          (rhs_batch_dims.size() + rhs_contraction_dims.size());
 
     if (!is_lhs_vector && !is_rhs_vector) return dot_instr;
@@ -1217,6 +1277,9 @@ class OneDnnContractionRewriteVisitor : public DfsHloRewriteVisitor {
     TF_RETURN_IF_ERROR(ReplaceInstruction(dot_instr, replacement_instr));
     return absl::OkStatus();
   }
+
+ private:
+  bool graph_enabled_;
 };
 
 class OneDnnPostRewriteVisitor : public DfsHloRewriteVisitor {
@@ -1241,7 +1304,7 @@ class OneDnnPostRewriteVisitor : public DfsHloRewriteVisitor {
 
 #ifndef ENABLE_ONEDNN_OPENMP
     // Set oneDNN concurrency settings (which is thread-local)
-    tsl::OneDnnThreadPool::set_onednn_max_threads(intra_op_parallelism_);
+    OneDnnThreadPool::set_onednn_max_threads(intra_op_parallelism_);
 #endif
   }
 
@@ -1354,7 +1417,7 @@ class OneDnnPostRewriteVisitor : public DfsHloRewriteVisitor {
     auto weights = custom_call->operand(1);
     auto weights_shape = weights->shape();
     Literal weights_literal;
-    if (!(weights_shape.dimensions_size() == 2 &&
+    if (!(weights_shape.dimensions().size() == 2 &&
           evaluator_.TryEvaluate(weights, &weights_literal, true))) {
       return absl::CancelledError(
           "Cannot prepack weights. Not constant 2D weights.");
@@ -1401,13 +1464,16 @@ class OneDnnPostRewriteVisitor : public DfsHloRewriteVisitor {
 
   void ReorderWeight(const dnnl::memory::desc& src_md, void* src_buf,
                      const dnnl::memory::desc& dst_md, void* dst_buf) {
-    auto onednn_threadpool = CreateOneDnnThreadPool(threadpool_device_.get());
+    auto onednn_threadpool = std::make_unique<OneDnnThreadPool>(
+        threadpool_device_->getPool(), /*is_async=*/true);
     dnnl::engine cpu_engine(dnnl::engine::kind::cpu, 0);
-    auto onednn_stream = MakeOneDnnStream(cpu_engine, onednn_threadpool.get());
+    auto onednn_stream = dnnl::threadpool_interop::make_stream(
+        cpu_engine, onednn_threadpool.get());
     auto src_mem = dnnl::memory(src_md, cpu_engine, src_buf);
     auto dst_mem = dnnl::memory(dst_md, cpu_engine, dst_buf);
     dnnl::reorder reorder_prim{src_mem, dst_mem};
     reorder_prim.execute(onednn_stream, src_mem, dst_mem);
+    // Wait for the reorder to finish before destroying the threadpool.
     onednn_stream.wait();
   }
 
@@ -1465,12 +1531,12 @@ EMIT_SET_BACKEND_CONFIG_SPECIALIZATION(
     OneDnnConvolutionConfig, onednn_conv_config, optimization_config,
     user_scratchpad);
 
-absl::StatusOr<bool> OneDnnContractionRewriter::Run(
+absl::StatusOr<bool> OneDnnContractionRewriter::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
-  XLA_VLOG_LINES(
-      3, "OneDnnContractionRewriter::Run(), before:\n" + module->ToString());
-  OneDnnContractionRewriteVisitor visitor;
+  XLA_VLOG_LINES(3, "OneDnnContractionRewriter::RunImpl(), before:\n" +
+                        module->ToString());
+  OneDnnContractionRewriteVisitor visitor(graph_enabled_);
   TF_ASSIGN_OR_RETURN(auto result,
                       visitor.RunOnModule(module, execution_threads));
 
@@ -1479,11 +1545,9 @@ absl::StatusOr<bool> OneDnnContractionRewriter::Run(
   TF_ASSIGN_OR_RETURN(auto result2,
                       reorder_visitor.RunOnModule(module, execution_threads));
   XLA_VLOG_LINES(
-      3, "OneDnnContractionRewriter::Run(), after:\n" + module->ToString());
+      3, "OneDnnContractionRewriter::RunImpl(), after:\n" + module->ToString());
   return {result || result2};
 }
 
 }  // namespace cpu
 }  // namespace xla
-
-#endif  // INTEL_MKL

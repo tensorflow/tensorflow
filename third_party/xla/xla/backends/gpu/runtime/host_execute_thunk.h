@@ -17,6 +17,7 @@ limitations under the License.
 #define XLA_BACKENDS_GPU_RUNTIME_HOST_EXECUTE_THUNK_H_
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 
@@ -70,6 +71,10 @@ class HostExecuteAsyncEvents {
       events_ ABSL_GUARDED_BY(events_mu_);
 };
 
+using HostExecuteAsyncEventsMap =
+    absl::flat_hash_map<AsyncEventsUniqueId,
+                        std::shared_ptr<HostExecuteAsyncEvents>>;
+
 class HostExecuteStartThunk : public Thunk {
  public:
   struct SliceAndShape {
@@ -81,6 +86,13 @@ class HostExecuteStartThunk : public Thunk {
                         const HloModule& hlo_module,
                         absl::InlinedVector<SliceAndShape, 4> args,
                         absl::InlinedVector<SliceAndShape, 4> results);
+
+  static absl::StatusOr<std::unique_ptr<HostExecuteStartThunk>> Create(
+      Thunk::ThunkInfo thunk_info,
+      const HostOffloadingExecutableProto& host_offloading_executable_proto,
+      absl::InlinedVector<SliceAndShape, 4> args,
+      absl::InlinedVector<SliceAndShape, 4> results);
+
   HostExecuteStartThunk(const HostExecuteStartThunk&) = delete;
   HostExecuteStartThunk& operator=(const HostExecuteStartThunk&) = delete;
   ~HostExecuteStartThunk() override = default;
@@ -88,9 +100,14 @@ class HostExecuteStartThunk : public Thunk {
   std::string ToString(int indent) const override;
 
   absl::StatusOr<ThunkProto> ToProto() const override;
+
+  // If async_events_map already contains an entry for the given unique id, we
+  // reuse the id to connect the start and done thunks. Otherwise, insert a new
+  // entry into the map.
   static absl::StatusOr<std::unique_ptr<HostExecuteStartThunk>> FromProto(
       ThunkInfo thunk_info, const HostExecuteStartThunkProto& proto,
-      absl::Span<const BufferAllocation> buffer_allocations);
+      absl::Span<const BufferAllocation> buffer_allocations,
+      HostExecuteAsyncEventsMap& async_events_map);
 
   absl::Status Initialize(const InitializeParams& params) override;
   absl::Status ExecuteOnStream(const ExecuteParams& params) override;
@@ -100,6 +117,25 @@ class HostExecuteStartThunk : public Thunk {
   std::shared_ptr<HostExecuteAsyncEvents> async_events() const {
     return async_events_;
   }
+
+  absl::Status LoadExecutable();
+
+  const HostOffloadingExecutableProto& executable_proto() const {
+    return executable_proto_;
+  }
+
+  HostOffloadingExecutableProto* mutable_executable_proto() {
+    return &executable_proto_;
+  }
+
+  std::optional<AsyncEventsUniqueId> GetAsyncEventsUniqueId() const override;
+
+  HostExecuteStartThunk(
+      Thunk::ThunkInfo thunk_info,
+      const HostOffloadingExecutableProto& host_offloading_executable_proto,
+      absl::InlinedVector<SliceAndShape, 4> args,
+      absl::InlinedVector<SliceAndShape, 4> results,
+      std::shared_ptr<HostExecuteAsyncEvents> async_events = nullptr);
 
  private:
   absl::once_flag executable_init_flag_;
@@ -125,10 +161,13 @@ class HostExecuteDoneThunk : public Thunk {
   absl::StatusOr<ThunkProto> ToProto() const override;
   static absl::StatusOr<std::unique_ptr<HostExecuteDoneThunk>> FromProto(
       ThunkInfo thunk_info, const HostExecuteDoneThunkProto& proto,
-      absl::Span<const BufferAllocation> buffer_allocations);
+      absl::Span<const BufferAllocation> buffer_allocations,
+      HostExecuteAsyncEventsMap& async_events_map);
 
   absl::Status Initialize(const InitializeParams& params) override;
   absl::Status ExecuteOnStream(const ExecuteParams& params) override;
+
+  std::optional<AsyncEventsUniqueId> GetAsyncEventsUniqueId() const override;
 
  private:
   std::shared_ptr<HostExecuteAsyncEvents> async_events_;

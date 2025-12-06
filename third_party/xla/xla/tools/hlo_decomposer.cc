@@ -119,7 +119,8 @@ absl::StatusOr<std::vector<std::unique_ptr<HloModule>>> DecomposeHloModule(
 std::unique_ptr<HloModule> ExtractCollectiveOperationsIntoNewModule(
     const std::vector<HloInstruction*>& instructions,
     const absl::flat_hash_set<HloOpcode>& done_ops,
-    const absl::flat_hash_set<HloOpcode>& non_optimized_ops) {
+    const absl::flat_hash_set<HloOpcode>& non_optimized_ops,
+    bool return_tuple) {
   CHECK(!instructions.empty());
   HloInstruction& first_instruction = *instructions[0];
   auto new_hlo_module = std::make_unique<HloModule>(
@@ -164,9 +165,11 @@ std::unique_ptr<HloModule> ExtractCollectiveOperationsIntoNewModule(
     }
   }
 
-  std::unique_ptr<HloInstruction> tuple_instruction =
-      HloInstruction::CreateTuple(result_instructions);
-  builder.AddInstruction(std::move(tuple_instruction));
+  if (return_tuple) {
+    std::unique_ptr<HloInstruction> tuple_instruction =
+        HloInstruction::CreateTuple(result_instructions);
+    builder.AddInstruction(std::move(tuple_instruction));
+  }
   new_hlo_module->AddEntryComputationWithLayouts(builder.Build());
   return new_hlo_module;
 }

@@ -261,7 +261,7 @@ func.func @mul_one_quant(%arg0: tensor<32x!quant.uniform<u8:f32, 1.0>>) -> tenso
 
 
 // CHECK-LABEL: @elementwise_unary_ops
-func.func @elementwise_unary_ops() -> (tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>) {
+func.func @elementwise_unary_ops() -> (tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>) {
   %0 = arith.constant dense<-1.0> : tensor<f32>
   %1 = arith.constant dense<1.0> : tensor<f32>
   %2 = arith.constant dense<1.0> : tensor<f32>
@@ -269,6 +269,7 @@ func.func @elementwise_unary_ops() -> (tensor<f32>, tensor<f32>, tensor<f32>, te
   %4 = arith.constant dense<4.0> : tensor<f32>
   %5 = arith.constant dense<4.0> : tensor<f32>
   %6 = arith.constant dense<2.0> : tensor<f32>
+  %one = arith.constant dense<1.0> : tensor<f32>
 
   // CHECK-DAG: [[cst0:%.*]] = arith.constant dense<1.000000e+00> : tensor<f32>
   // CHECK-DAG: [[cst1:%.*]] = arith.constant dense<0.841470957> : tensor<f32>
@@ -277,7 +278,8 @@ func.func @elementwise_unary_ops() -> (tensor<f32>, tensor<f32>, tensor<f32>, te
   // CHECK-DAG: [[cst4:%.*]] = arith.constant dense<2.000000e+00> : tensor<f32>
   // CHECK-DAG: [[cst5:%.*]] = arith.constant dense<5.000000e-01> : tensor<f32>
   // CHECK-DAG: [[cst6:%.*]] = arith.constant dense<4.000000e+00> : tensor<f32>
-  // CHECK: return [[cst0]], [[cst1]], [[cst2]], [[cst3]], [[cst4]], [[cst5]], [[cst6]]
+  // CHECK-DAG: [[cst7:%.*]] = arith.constant dense<0.761594176> : tensor<f32>
+  // CHECK: return [[cst0]], [[cst1]], [[cst2]], [[cst3]], [[cst4]], [[cst5]], [[cst6]], [[cst7]]
 
   %7 = "tfl.abs"(%0) : (tensor<f32>) -> tensor<f32>
   %8 = "tfl.sin"(%1) : (tensor<f32>) -> tensor<f32>
@@ -286,8 +288,9 @@ func.func @elementwise_unary_ops() -> (tensor<f32>, tensor<f32>, tensor<f32>, te
   %11 = "tfl.sqrt"(%4) : (tensor<f32>) -> tensor<f32>
   %12 = "tfl.rsqrt"(%5) : (tensor<f32>) -> tensor<f32>
   %13 = "tfl.square"(%6) : (tensor<f32>) -> tensor<f32>
+  %14 = "tfl.tanh"(%one) : (tensor<f32>) -> tensor<f32>
 
-  func.return %7, %8, %9, %10, %11, %12, %13 : tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>
+  func.return %7, %8, %9, %10, %11, %12, %13, %14 : tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>
 }
 
 // CHECK-LABEL: @max_with_neg_f32_max_val
@@ -1126,6 +1129,15 @@ func.func @cast_f32_to_f64() -> tensor<4xf64> {
 
 // CHECK: %cst = arith.constant dense<[-1.000000e+00, 0.000000e+00, 1.500000e+00, 1.000000e+02]> : tensor<4xf64>
 
+// CHECK-LABEL: @cast_f32_to_f16
+func.func @cast_f32_to_f16() -> tensor<4xf16> {
+  %cst = arith.constant dense<[-1.0, 0.0, 1.5, 100.0]> : tensor<4xf32>
+  %0 = "tfl.cast"(%cst) : (tensor<4xf32>) -> tensor<4xf16>
+  func.return %0 : tensor<4xf16>
+}
+
+// CHECK: %cst = arith.constant dense<[-1.000000e+00, 0.000000e+00, 1.500000e+00, 1.000000e+02]> : tensor<4xf16>
+
 // CHECK-LABEL: @ConstantFoldFullyConnectedSmall
 func.func @ConstantFoldFullyConnectedSmall() -> tensor<3xf32> {
   %cst_input = arith.constant dense<[2.0, 3.0]> : tensor<2xf32>
@@ -1186,8 +1198,8 @@ func.func @NoFoldFullyConnectedNonFloat() -> tensor<1024xf32> {
   // CHECK: return %[[VAL]] : tensor<1024xf32>
 }
 
-// CHECK-LABEL: @NoFoldFullyConnectedHighRank
-func.func @NoFoldFullyConnectedHighRank() -> tensor<2x1024xf32> {
+// CHECK-LABEL: @ConstantFoldFullyConnectedHighRank
+func.func @ConstantFoldFullyConnectedHighRank() -> tensor<2x1024xf32> {
   %cst_input = arith.constant dense<1.0> : tensor<2x512xf32>
   %cst_weights = arith.constant dense<2.0> : tensor<1024x512xf32>
   %cst_bias = arith.constant dense<4.0> : tensor<1024xf32>
@@ -1195,11 +1207,9 @@ func.func @NoFoldFullyConnectedHighRank() -> tensor<2x1024xf32> {
   %0 = "tfl.fully_connected" (%cst_input, %cst_weights, %cst_bias) {fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"} : (tensor<2x512xf32>, tensor<1024x512xf32>, tensor<1024xf32>) -> tensor<2x1024xf32>
 
   func.return %0 : tensor<2x1024xf32>
-  // CHECK-DAG: %[[CST:.*]] = arith.constant dense<1.000000e+00> : tensor<2x512xf32>
-  // CHECK-DAG: %[[CST_0:.*]] = arith.constant dense<2.000000e+00> : tensor<1024x512xf32>
-  // CHECK-DAG: %[[CST_1:.*]] = arith.constant dense<4.000000e+00> : tensor<1024xf32>
-  // CHECK: %[[VAL:.*]] = "tfl.fully_connected"(%[[CST]], %[[CST_0]], %[[CST_1]]) <{fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"}> : (tensor<2x512xf32>, tensor<1024x512xf32>, tensor<1024xf32>) -> tensor<2x1024xf32>
-  // CHECK: return %[[VAL]] : tensor<2x1024xf32>
+  // 1.0 * 2.0 * 512 + 4.0 = 1028.0
+  // CHECK: %[[CST:.*]] = arith.constant dense<1.028000e+03> : tensor<2x1024xf32>
+  // CHECK:  return %[[CST]]
 }
 
 // CHECK-LABEL: @ConstantFoldFullyConnectedCheckPrecision
@@ -1226,6 +1236,20 @@ func.func @fully_connected_with_unit_dim() -> tensor<1x5xf32> {
 
 // CHECK:     %cst = arith.constant dense<6.000000e+00> : tensor<1x5xf32>
 // CHECK-NOT: fully_connected
+
+// CHECK-LABEL: @ConstantFoldFullyConnectedBatched
+func.func @ConstantFoldFullyConnectedBatched() -> tensor<13x1536xf32> {
+  %cst_input = arith.constant dense<1.0> : tensor<13x1536xf32>
+  %cst_weights = arith.constant dense<1.0> : tensor<1536x1536xf32>
+  %cst_bias = "tfl.no_value"() {value = unit} : () -> none
+
+  %0 = "tfl.fully_connected" (%cst_input, %cst_weights, %cst_bias) {fused_activation_function = "NONE", keep_num_dims = true, weights_format = "DEFAULT"} : (tensor<13x1536xf32>, tensor<1536x1536xf32>, none) -> tensor<13x1536xf32>
+  func.return %0 : tensor<13x1536xf32>
+
+  // 1.0 * 1.0 * 1536 = 1536.0
+  // CHECK: %[[CST:.*]] = arith.constant dense<1.536000e+03> : tensor<13x1536xf32>
+  // CHECK:  return %[[CST]]
+}
 
 // CHECK-LABEL: @ShapeOpI32
 func.func @ShapeOpI32(%arg0 : tensor<576x72xf32>) -> tensor<2xi32> {
@@ -1602,8 +1626,23 @@ func.func @select_float() -> tensor<4xf32> {
 
   func.return %2 : tensor<4xf32>
 }
-
 // CHECK: %cst = arith.constant dense<[1.000000e+00, 2.000000e+00, -3.000000e+00, -4.000000e+00]> : tensor<4xf32
+
+// CHECK-LABEL: ceil
+func.func @ceil() -> tensor<3xf32> {
+  %cst = arith.constant dense<[-1.0, 0.0, 0.99]> : tensor<3xf32>
+  %0 = "tfl.ceil"(%cst) : (tensor<3xf32>) -> tensor<3xf32>
+  func.return %0 : tensor<3xf32>
+}
+// CHECK: %cst = arith.constant dense<[-1.000000e+00, 0.000000e+00, 1.000000e+00]> : tensor<3xf32>
+
+// CHECK-LABEL: ceil_f64
+func.func @ceil_f64() -> tensor<3xf64> {
+  %cst = arith.constant dense<[-1.0, 0.0, 0.99]> : tensor<3xf64>
+  %0 = "tfl.ceil"(%cst) : (tensor<3xf64>) -> tensor<3xf64>
+  func.return %0 : tensor<3xf64>
+}
+// CHECK: tfl.ceil
 
 // CHECK-LABEL: floor
 func.func @floor() -> tensor<3xf32> {
@@ -1611,7 +1650,6 @@ func.func @floor() -> tensor<3xf32> {
   %0 = "tfl.floor"(%cst) : (tensor<3xf32>) -> tensor<3xf32>
   func.return %0 : tensor<3xf32>
 }
-
 // CHECK: %cst = arith.constant dense<[-1.000000e+00, 0.000000e+00, 0.000000e+00]> : tensor<3xf32>
 
 // CHECK-LABEL: floor_f64
@@ -1620,7 +1658,6 @@ func.func @floor_f64() -> tensor<3xf64> {
   %0 = "tfl.floor"(%cst) : (tensor<3xf64>) -> tensor<3xf64>
   func.return %0 : tensor<3xf64>
 }
-
 // CHECK: tfl.floor
 
 // CHECK-LABEL: exp

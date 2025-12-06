@@ -13,6 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <string>
+
+#include "xla/error_spec.h"
 #include "xla/hlo/testlib/test.h"
 #include "xla/service/cpu/onednn_util.h"
 #include "xla/tests/hlo_test_base.h"
@@ -20,13 +23,11 @@ limitations under the License.
 namespace xla {
 namespace {
 
-#if defined(INTEL_MKL)
-
 class LayerNormTest : public HloTestBase {
  protected:
   DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options = HloTestBase::GetDebugOptionsForTest();
-    debug_options.set_xla_cpu_use_thunk_runtime(false);
+    debug_options.set_xla_cpu_experimental_onednn_custom_call(true);
     return debug_options;
   }
 
@@ -57,7 +58,8 @@ class LayerNormTest : public HloTestBase {
     convert.290 = f32[84,197,768]{2,1,0} convert(Arg_0.1)
     constant.291 = f32[] constant(0)
     convert.292 = f32[] convert(constant.291)
-    reduce.297 = f32[84,197]{1,0} reduce(convert.290, convert.292), dimensions={2}, to_apply=region_add
+    reduce.297 = f32[84,197]{1,0} reduce(convert.290, convert.292),
+                 dimensions={2}, to_apply=region_add
     constant.298 = s32[] constant(768)
     convert.299 = f32[] convert(constant.298)
     broadcast.300 = f32[84,197]{1,0} broadcast(convert.299), dimensions={}
@@ -65,13 +67,15 @@ class LayerNormTest : public HloTestBase {
     convert.302 = f32[84,197]{1,0} convert(divide.301)
     reshape.303 = f32[84,197,1]{2,1,0} reshape(convert.302)
     reshape.304 = f32[84,197]{1,0} reshape(reshape.303)
-    broadcast.305 = f32[84,197,768]{2,1,0} broadcast(reshape.304), dimensions={0,1}
+    broadcast.305 = f32[84,197,768]{2,1,0} broadcast(reshape.304),
+                    dimensions={0,1}
     subtract.306 = f32[84,197,768]{2,1,0} subtract(Arg_0.1, broadcast.305)
     multiply.307 = f32[84,197,768]{2,1,0} multiply(subtract.306, subtract.306)
     convert.308 = f32[84,197,768]{2,1,0} convert(multiply.307)
     constant.309 = f32[] constant(0)
     convert.310 = f32[] convert(constant.309)
-    reduce.315 = f32[84,197]{1,0} reduce(convert.308, convert.310), dimensions={2}, to_apply=region_add
+    reduce.315 = f32[84,197]{1,0} reduce(convert.308, convert.310),
+                 dimensions={2}, to_apply=region_add
     constant.316 = s32[] constant(768)
     convert.317 = f32[] convert(constant.316)
     broadcast.318 = f32[84,197]{1,0} broadcast(convert.317), dimensions={}
@@ -83,27 +87,29 @@ class LayerNormTest : public HloTestBase {
     add.324 = f32[84,197,1]{2,1,0} add(reshape.321, broadcast.323)
     rsqrt.325 = f32[84,197,1]{2,1,0} rsqrt(add.324)
     reshape.328 = f32[84,197]{1,0} reshape(rsqrt.325)
-    broadcast.329 = f32[84,197,768]{2,1,0} broadcast(reshape.328), dimensions={0,1}
+    broadcast.329 = f32[84,197,768]{2,1,0} broadcast(reshape.328),
+                    dimensions={0,1}
     broadcast.327 = f32[84,197,768]{2,1,0} broadcast(Arg_0.2), dimensions={2}
     multiply.330 = f32[84,197,768]{2,1,0} multiply(broadcast.329, broadcast.327)
     multiply.331 = f32[84,197,768]{2,1,0} multiply(Arg_0.1, multiply.330)
     broadcast.336 = f32[84,197,768]{2,1,0} broadcast(Arg_0.3), dimensions={2}
     reshape.332 = f32[84,197]{1,0} reshape(reshape.303)
-    broadcast.333 = f32[84,197,768]{2,1,0} broadcast(reshape.332), dimensions={0,1}
+    broadcast.333 = f32[84,197,768]{2,1,0} broadcast(reshape.332),
+                    dimensions={0,1}
     multiply.334 = f32[84,197,768]{2,1,0} multiply(multiply.330, broadcast.333)
     subtract.337 = f32[84,197,768]{2,1,0} subtract(broadcast.336, multiply.334)
 )";
 };
 
 TEST_F(LayerNormTest, LayerNormTest0_FP32) {
-  std::string layer_norm_module_str =
-      R"(HloModule layer_norm.test, entry_computation_layout={(f32[84,197,768]{2,1,0}, f32[768]{0}, f32[768]{0})->f32[84,197,768]{2,1,0}})" +
-      common_hlo_region_ + R"(
+  std::string layer_norm_module_str = R"(
+      HloModule layer_norm.test, entry_computation_layout={(f32[84,197,768]{2,1,0}, f32[768]{0}, f32[768]{0})->f32[84,197,768]{2,1,0}})" +
+                                      common_hlo_region_ + R"(
   ENTRY main {
     Arg_0.1 = f32[84,197,768]{2,1,0} parameter(0), sharding={replicated}
 
   )" + common_hlo_entry_computation_block_ +
-      R"(
+                                      R"(
     ROOT add.338 = f32[84,197,768]{2,1,0} add(multiply.331, subtract.337)
   }
   )";
@@ -170,7 +176,8 @@ TEST_F(LayerNormTest, LayerNormTest1_F16) {
     convert_0 = f32[2,4,8] convert(Arg_2)
     constant_0 = f32[] constant(0)
     convert_1 = f32[] convert(constant_0)
-    reduce_0 = f32[2,4] reduce(convert_0, convert_1), dimensions={2}, to_apply=region_add
+    reduce_0 = f32[2,4] reduce(convert_0, convert_1), dimensions={2},
+               to_apply=region_add
     constant_1 = s32[] constant(8)
     convert_2 = f32[] convert(constant_1)
     broadcast_0 = f32[2,4] broadcast(convert_2), dimensions={}
@@ -184,7 +191,8 @@ TEST_F(LayerNormTest, LayerNormTest1_F16) {
     convert_4 = f32[2,4,8] convert(multiply_0)
     constant_2 = f32[] constant(0)
     convert_5 = f32[] convert(constant_2)
-    reduce_2 = f32[2,4] reduce(convert_4, convert_5), dimensions={2}, to_apply=region_add
+    reduce_2 = f32[2,4] reduce(convert_4, convert_5), dimensions={2},
+               to_apply=region_add
     constant_3 = s32[] constant(8)
     convert_6 = f32[] convert(constant_3)
     broadcast_2 = f32[2,4] broadcast(convert_6), dimensions={}
@@ -229,7 +237,8 @@ TEST_F(LayerNormTest, LayerNormTest2_F16) {
     convert_0 = f32[2,4,8] convert(Arg_2)
     constant_0 = f32[] constant(0)
     convert_1 = f32[] convert(constant_0)
-    reduce_0 = f32[2,4] reduce(convert_0, convert_1), dimensions={2}, to_apply=region_add
+    reduce_0 = f32[2,4] reduce(convert_0, convert_1), dimensions={2},
+               to_apply=region_add
     constant_1 = s32[] constant(8)
     convert_2 = f32[] convert(constant_1)
     broadcast_0 = f32[2,4] broadcast(convert_2), dimensions={}
@@ -243,7 +252,8 @@ TEST_F(LayerNormTest, LayerNormTest2_F16) {
     convert_4 = f32[2,4,8] convert(multiply_0)
     constant_2 = f32[] constant(0)
     convert_5 = f32[] convert(constant_2)
-    reduce_1 = f32[2,4] reduce(convert_4, convert_5), dimensions={2}, to_apply=region_add
+    reduce_1 = f32[2,4] reduce(convert_4, convert_5), dimensions={2},
+               to_apply=region_add
     constant_3 = s32[] constant(8)
     convert_6 = f32[] convert(constant_3)
     broadcast_2 = f32[2,4] broadcast(convert_6), dimensions={}
@@ -292,7 +302,8 @@ TEST_F(LayerNormTest, LayerNormTest1_BF16) {
     convert.80 = f32[160,197,768] convert(Arg_0.1)
     constant.81 = f32[] constant(0)
     convert.82 = f32[] convert(constant.81)
-    reduce.87 = f32[160,197] reduce(convert.80, convert.82), dimensions={2}, to_apply=region_add
+    reduce.87 = f32[160,197] reduce(convert.80, convert.82), dimensions={2},
+                to_apply=region_add
     constant.88 = s32[] constant(768)
     convert.89 = f32[] convert(constant.88)
     broadcast.90 = f32[160,197] broadcast(convert.89), dimensions={}
@@ -306,7 +317,8 @@ TEST_F(LayerNormTest, LayerNormTest1_BF16) {
     convert.98 = f32[160,197,768] convert(multiply.97)
     constant.99 = f32[] constant(0)
     convert.100 = f32[] convert(constant.99)
-    reduce.105 = f32[160,197] reduce(convert.98, convert.100), dimensions={2}, to_apply=region_add
+    reduce.105 = f32[160,197] reduce(convert.98, convert.100), dimensions={2},
+                 to_apply=region_add
     constant.106 = s32[] constant(768)
     convert.107 = f32[] convert(constant.106)
     broadcast.108 = f32[160,197] broadcast(convert.107), dimensions={}
@@ -334,11 +346,6 @@ TEST_F(LayerNormTest, LayerNormTest1_BF16) {
   EXPECT_TRUE(RunAndCompare(layer_norm_module_str, ErrorSpec{1e-2, 1e-2}));
   MatchOptimizedHlo(layer_norm_module_str, onednn_layer_norm_);
 }
-
-#endif  // INTEL_MKL
-
-// Ensure at least one test case is linked to avoid test failures.
-TEST(Dummy, Test) {}
 
 }  // namespace
 }  // namespace xla

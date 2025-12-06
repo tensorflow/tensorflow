@@ -28,6 +28,7 @@ limitations under the License.
 #include <vector>
 
 #include "google/protobuf/any.pb.h"
+#include "absl/synchronization/notification.h"
 #include "absl/time/time.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/macros.h"
@@ -153,7 +154,7 @@ class ClientCreationState : public ResourceBase {
   // false after the first call). This modifies internal state (i.e. the first
   // call clears `first_task_`).
   bool FirstThread() ABSL_LOCKS_EXCLUDED(mu_) {
-    absl::MutexLock lock(&mu_);
+    absl::MutexLock lock(mu_);
     if (first_task_) {
       first_task_ = false;
       return true;
@@ -205,13 +206,13 @@ class ClientCreationState : public ResourceBase {
   // codepath in the first thread, esp. every early return for errors, etc.,
   // i.e. an error might need to notify both ready_notification_ and
   // done_notification_.
-  Notification ready_notification_;
+  absl::Notification ready_notification_;
 
   // The first task notifies after the PjRT GPU client is created or if
   // there is an error. It must notify every codepath in the first
   // thread, esp. every early return for errors, etc., i.e. an error might need
   // to notify both ready_notification_ and done_notification_.
-  Notification done_notification_;
+  absl::Notification done_notification_;
 };
 
 absl::StatusOr<ClientCreationState*> GetOrCreateClientCreationState() {
@@ -320,7 +321,6 @@ absl::Status CreateClientOnce(
             /*host_memory_allocator=*/std::move(info->host_memory_allocator),
             /*should_stage_host_to_device_transfers=*/true,
             /*gpu_run_options=*/std::move(gpu_run_options), kv_store,
-            /*distributed_client=*/nullptr,
             /*abort_collectives_on_failure=*/false,
             /*gpu_topology=*/
             xla::GpuTopology::FromProto(device_topology_pair->second),
@@ -1174,7 +1174,7 @@ absl::Status EagerContextDistributedManager::CheckRemoteAlive(
   GetStatusRequest request;
   GetStatusResponse response;
   absl::Status remote_status;
-  Notification done;
+  absl::Notification done;
   wi->GetStatusAsync(/*opts_=*/nullptr, &request, &response, /*fail_fast=*/true,
                      [&remote_status, &done](const absl::Status& s) {
                        remote_status = s;

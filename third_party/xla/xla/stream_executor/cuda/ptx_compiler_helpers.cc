@@ -27,7 +27,9 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
+#include "re2/re2.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
+#include "xla/stream_executor/kernel_stats.h"
 #include "xla/stream_executor/semantic_version.h"
 
 namespace stream_executor {
@@ -91,6 +93,26 @@ absl::StatusOr<int> GetLatestPtxIsaVersionFromUnsupportedVersionErrorLog(
   return major * 10 + minor;
 }
 
+ModuleStats ExtractModuleStatsFromLog(absl::string_view log) {
+  // Reads the log for registers spilled and adds up the count. An example of
+  // this line is:
+  // "Registers are spilled to local memory in function 'rr', 1080 bytes spill
+  // stores, 968 bytes spill loads"
+  static constexpr LazyRE2 kSpillRegex{
+      R"(function\s+'(\w+)',\s*(\d+)\s+bytes\s+spill\s+stores,\s*(\d+)\s+bytes\s+spill\s+loads)"};
+  ModuleStats kernel_stats_map;
+
+  int spill_stores = 0;
+  int spill_loads = 0;
+  std::string function_name;
+  absl::string_view search_log = log;
+  while (RE2::FindAndConsume(&search_log, *kSpillRegex, &function_name,
+                             &spill_stores, &spill_loads)) {
+    kernel_stats_map[function_name] = {spill_stores, spill_loads};
+  }
+  return kernel_stats_map;
+}
+
 absl::Status CreateErrorFromPTXASLog(absl::string_view log,
                                      absl::string_view architecture,
                                      bool cancel_if_reg_spill) {
@@ -143,15 +165,6 @@ void WarnIfBadPtxasVersion(absl::string_view method,
       }
     }
   });
-}
-
-// Extension is used for compute capabilities 9.0, 10.0/10.1/10.3 and 12.0/12.1
-// https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#ptx-compatibility
-bool ShouldUsePtxExtension(const CudaComputeCapability& cc) {
-  return (cc.major == 9 && cc.minor == 0) ||
-         (cc.major == 10 &&
-          (cc.minor == 0 || cc.minor == 1 || cc.minor == 3)) ||
-         (cc.major == 12 && (cc.minor == 0 || cc.minor == 1));
 }
 
 }  // namespace stream_executor

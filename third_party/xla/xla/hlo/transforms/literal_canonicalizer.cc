@@ -60,7 +60,7 @@ LiteralCanonicalizer::LiteralCanonicalizer(LiteralPool* literal_pool,
                                            size_t min_size_bytes)
     : literal_pool_(literal_pool), min_size_bytes_(min_size_bytes) {}
 
-absl::StatusOr<bool> LiteralCanonicalizer::Run(
+absl::StatusOr<bool> LiteralCanonicalizer::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   // Every time we canonicalize literals in a module, we garbage collect expired

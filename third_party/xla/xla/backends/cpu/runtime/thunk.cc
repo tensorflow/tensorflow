@@ -32,8 +32,8 @@ limitations under the License.
 #include "xla/backends/cpu/runtime/xnnpack/xnn_interop.h"
 #include "xla/backends/cpu/runtime/xnnpack/xnn_threadpool.h"
 #include "xla/executable_run_options.h"
+#include "xla/runtime/device_id.h"
 #include "xla/service/cpu/cpu_executable_run_options.h"
-#include "xla/service/global_device_id.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
@@ -42,6 +42,11 @@ limitations under the License.
 #include "xla/tsl/platform/statusor.h"
 #include "tsl/profiler/lib/traceme.h"
 #include "tsl/profiler/lib/traceme_encode.h"
+
+#ifdef XLA_YNNPACK
+#include "xla/backends/cpu/runtime/ynnpack/ynn_interop.h"
+#include "xla/backends/cpu/runtime/ynnpack/ynn_threadpool.h"
+#endif  // XLA_YNNPACK
 
 namespace xla::cpu {
 
@@ -88,6 +93,8 @@ absl::string_view Thunk::KindToString(Kind kind) {
       return "while";
     case Kind::kXnnFusion:
       return "xnn-fusion";
+    case Kind::kYnnFusion:
+      return "ynn-fusion";
     case Kind::kOneDnnFusion:
       return "onednn-fusion";
   }
@@ -168,6 +175,18 @@ absl::StatusOr<Thunk::XnnParams> Thunk::XnnParams::Create(
 Thunk::XnnParams::XnnParams(XnnThreadpool threadpool)
     : threadpool(std::move(threadpool)) {}
 
+#ifdef XLA_YNNPACK
+absl::StatusOr<Thunk::YnnParams> Thunk::YnnParams::Create(
+    const ExecutableRunOptions* run_options) {
+  TF_ASSIGN_OR_RETURN(YnnThreadpool threadpool,
+                      CreateYnnThreadpool(run_options->intra_op_thread_pool()));
+  return YnnParams(std::move(threadpool));
+}
+
+Thunk::YnnParams::YnnParams(YnnThreadpool threadpool)
+    : threadpool(std::move(threadpool)) {}
+#endif  // XLA_YNNPACK
+
 Thunk::ExecuteSession::ExecuteSession(int64_t max_workers,
                                       int64_t split_threshold)
     : lock_(std::make_shared<std::nullopt_t>(std::nullopt)),
@@ -175,11 +194,13 @@ Thunk::ExecuteSession::ExecuteSession(int64_t max_workers,
       split_threshold_(split_threshold) {}
 
 // Encodes thunk info into the TraceMe compatible format.
-std::string Thunk::TraceMeEncode() const {
+std::string Thunk::TraceMeEncode(int64_t run_id, int64_t device_ordinal) const {
   return tsl::profiler::TraceMeEncode(info_.op_name,
                                       {{"hlo_op", info_.op_name},
                                        {"hlo_module", info_.module_name},
-                                       {"program_id", info_.module_id}});
+                                       {"program_id", info_.module_id},
+                                       {"run_id", run_id},
+                                       {"device_ordinal", device_ordinal}});
 }
 
 std::ostream& operator<<(std::ostream& os, Thunk::Kind kind) {

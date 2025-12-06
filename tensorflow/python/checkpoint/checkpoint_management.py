@@ -611,7 +611,8 @@ class CheckpointManager(object):
         default setting of `None` does not preserve any checkpoints in this way.
       checkpoint_name: Custom name for the checkpoint file.
       step_counter: A `tf.Variable` instance for checking the current step
-        counter value, in case users want to save checkpoints every N steps.
+        counter value, in case users want to save checkpoints every N steps. It
+        should be passed if `checkpoint_interval` is not None.
       checkpoint_interval: An integer, indicates the minimum step interval
         between two checkpoints.
       init_fn: Callable. A function to do customized initialization if no
@@ -643,7 +644,7 @@ class CheckpointManager(object):
       if step_counter is None:
         raise ValueError("`step_counter` should be passed if "
                          "`checkpoint_interval` is not None.")
-      self._last_checkpoint_step = last_checkpoint_step or None
+      self._last_checkpoint_step = last_checkpoint_step
       self._step_counter = step_counter
     self._checkpoint_interval = checkpoint_interval
 

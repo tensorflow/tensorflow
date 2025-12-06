@@ -23,7 +23,7 @@ namespace xla::gpu {
 
 // Infers the compilation options from the given debug options.
 stream_executor::cuda::CompilationOptions PtxCompileOptionsFromDebugOptions(
-    const DebugOptions& debug_options, bool is_autotuning_compilation);
+    const DebugOptions& debug_options);
 
 }  // namespace xla::gpu
 

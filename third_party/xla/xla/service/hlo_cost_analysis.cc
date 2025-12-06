@@ -62,8 +62,12 @@ absl::Status HloCostAnalysis::Preprocess(const HloInstruction* hlo) {
   // The default number of bytes accessed for an instruction is the sum of the
   // sizes of the inputs and outputs. The default ShapeUtil::ByteSizeOf does not
   // handle opaque types.
-  float bytes_accessed = GetShapeSize(hlo->shape());
-  current_properties_.set_output_bytes_accessed(GetShapeSize(hlo->shape()));
+  float bytes_accessed = 0;
+  ShapeUtil::ForEachLeafShape(
+      hlo->shape(), [&](const Shape& sub_shape, const ShapeIndex& index) {
+        bytes_accessed += GetShapeSize(sub_shape);
+      });
+  current_properties_.set_output_bytes_accessed(bytes_accessed);
   for (int64_t i = 0; i < hlo->operand_count(); ++i) {
     const HloInstruction* operand = hlo->operand(i);
     bytes_accessed += GetShapeSize(operand->shape());
@@ -144,14 +148,34 @@ absl::Status HloCostAnalysis::HandleElementwiseOp(
   // operation can correspond to several floating point ops.
   // kLogistic is included in "trascendental" as it is implemented using
   // trascendental ops (tanh or exp).
-  if (opcode == HloOpcode::kErf || opcode == HloOpcode::kExp ||
-      opcode == HloOpcode::kLog || opcode == HloOpcode::kLogistic ||
-      opcode == HloOpcode::kPower || opcode == HloOpcode::kSqrt ||
-      opcode == HloOpcode::kCbrt || opcode == HloOpcode::kRsqrt ||
-      opcode == HloOpcode::kTanh || opcode == HloOpcode::kSin ||
-      opcode == HloOpcode::kCos || opcode == HloOpcode::kExpm1 ||
-      opcode == HloOpcode::kLog1p || opcode == HloOpcode::kAtan2 ||
-      opcode == HloOpcode::kTan) {
+  if (
+      // clang-format off
+      // go/keep-sorted start
+      opcode == HloOpcode::kAcos ||
+      opcode == HloOpcode::kAcosh ||
+      opcode == HloOpcode::kAsin ||
+      opcode == HloOpcode::kAsinh ||
+      opcode == HloOpcode::kAtan2 ||
+      opcode == HloOpcode::kAtanh ||
+      opcode == HloOpcode::kCbrt ||
+      opcode == HloOpcode::kCos ||
+      opcode == HloOpcode::kCosh ||
+      opcode == HloOpcode::kErf ||
+      opcode == HloOpcode::kExp ||
+      opcode == HloOpcode::kExpm1 ||
+      opcode == HloOpcode::kLog ||
+      opcode == HloOpcode::kLog1p ||
+      opcode == HloOpcode::kLogistic ||
+      opcode == HloOpcode::kPower ||
+      opcode == HloOpcode::kRsqrt ||
+      opcode == HloOpcode::kSin ||
+      opcode == HloOpcode::kSinh ||
+      opcode == HloOpcode::kSqrt ||
+      opcode == HloOpcode::kTan ||
+      opcode == HloOpcode::kTanh
+      // go/keep-sorted end
+      // clang-format on
+  ) {
     current_properties_[kTranscendentalsKey] = computation_count;
   } else {
     // Note: transcendental operations are considered a separate category from

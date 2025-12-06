@@ -41,7 +41,8 @@ struct GpuInputBuffers : public InputBuffers {
 class GpuProfiler : public Profiler {
  public:
   static std::unique_ptr<GpuProfiler> Create(
-      stream_executor::StreamExecutor* stream_executor, ProfileOptions options);
+      stream_executor::StreamExecutor* stream_executor, ProfileOptions options,
+      se::DeviceMemoryAllocator* external_allocator = nullptr);
 
   // The input buffers shapes are taken from the attatched HloModule to the
   // executable.
@@ -60,21 +61,23 @@ class GpuProfiler : public Profiler {
 
  private:
   explicit GpuProfiler(
-      stream_executor::StreamExecutor* stream_executor,
-      std::unique_ptr<stream_executor::DeviceMemoryAllocator> allocator,
-      std::unique_ptr<stream_executor::Stream> stream, ProfileOptions options)
+      se::StreamExecutor* stream_executor, se::DeviceMemoryAllocator* allocator,
+      std::unique_ptr<se::DeviceMemoryAllocator> owned_allocator,
+      se::Stream* stream, ProfileOptions options)
       : stream_executor_(stream_executor),
-        allocator_(std::move(allocator)),
-        stream_(std::move(stream)),
+        allocator_(allocator),
+        owned_allocator_(std::move(owned_allocator)),
+        stream_(stream),
         options_(options) {}
 
   absl::StatusOr<ExecutionOutput> Execute(Executable* executable,
                                           std::vector<ExecutionInput> inputs,
                                           ExecutionProfile* profile);
 
-  stream_executor::StreamExecutor* stream_executor_;
-  std::unique_ptr<stream_executor::DeviceMemoryAllocator> allocator_;
-  std::unique_ptr<stream_executor::Stream> stream_;
+  se::StreamExecutor* stream_executor_;
+  se::DeviceMemoryAllocator* allocator_;
+  std::unique_ptr<se::DeviceMemoryAllocator> owned_allocator_;
+  se::Stream* stream_;
   ProfileOptions options_;
 };
 

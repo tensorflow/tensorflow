@@ -13,17 +13,30 @@
 # limitations under the License.
 # ==============================================================================
 
-load("@python//:defs.bzl", "compile_pip_requirements")
 load("@python_version_repo//:py_version.bzl", "REQUIREMENTS")
+load("@rules_python//python:pip.bzl", "compile_pip_requirements")
+
+# TODO(ybaturina): Remove once TF is migrated to CUDA 12.9.
+genrule(
+    name = "nvidia_constraints",
+    srcs = ["nvidia-requirements.txt"],
+    outs = ["nvidia-constraints.txt"],
+    cmd = """sed -E "s/>=/==/" $(location nvidia-requirements.txt) > $@;""",
+)
 
 compile_pip_requirements(
     name = "requirements",
+    srcs = [
+        "nvidia-requirements.txt",
+        "requirements.in",
+        ":nvidia_constraints",
+    ],
     extra_args = [
         "--allow-unsafe",
         "--build-isolation",
         "--rebuild",
+        "-c $(location :nvidia_constraints)",
     ],
     generate_hashes = True,
-    requirements_in = "requirements.in",
     requirements_txt = REQUIREMENTS,
 )

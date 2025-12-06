@@ -29,8 +29,9 @@ limitations under the License.
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/core/collectives/communicator.h"
+#include "xla/core/collectives/rank_id.h"
 #include "xla/hlo/ir/hlo_instructions.h"
-#include "xla/service/collective_ops_utils.h"
+#include "xla/stream_executor/event.h"
 #include "xla/stream_executor/memory_allocation.h"
 #include "xla/stream_executor/stream.h"
 
@@ -67,8 +68,9 @@ class AllToAllStartThunk : public CollectiveThunk {
 
  protected:
   absl::StatusOr<bool> RunCollective(const ExecuteParams& params,
+                                     const GpuCliqueKey& clique_key,
                                      se::Stream& stream,
-                                     CommunicatorHandle comm) override;
+                                     Communicator& comm) override;
 
   AsyncStreamKind GetAsyncStreamKind() const override;
 
@@ -98,12 +100,12 @@ class AllToAllStartThunk : public CollectiveThunk {
 
 absl::Status RunAllToAll(bool has_split_dimension,
                          std::vector<DeviceBufferPair>& buffers,
-                         se::Stream& stream, Communicator* comm,
+                         se::Stream& stream, Communicator& comm,
                          bool use_symmetric_buffer = false);
 
 absl::Status RunMemCpyAllToAll(bool has_split_dimension,
                                std::vector<DeviceBufferPair>& buffers,
-                               se::Stream& stream, Communicator* comm,
+                               se::Stream& stream, Communicator& comm,
                                uint64_t receive_pointer_map[],
                                const GpuCliqueKey& clique_key, RankId rank,
                                se::Event* event,

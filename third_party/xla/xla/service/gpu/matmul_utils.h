@@ -179,7 +179,8 @@ struct TritonGemmConfig {
   constexpr TritonGemmConfig() = default;
   constexpr TritonGemmConfig(int block_m, int block_n, int block_k, int split_k,
                              int num_stages, int num_warps, int num_ctas = 1,
-                             bool is_tma_allowed = false)
+                             bool is_tma_allowed = false,
+                             bool is_warp_specialization_allowed = false)
       : block_m(block_m),
         block_n(block_n),
         block_k(block_k),
@@ -187,7 +188,9 @@ struct TritonGemmConfig {
         num_stages(num_stages),
         num_warps(num_warps),
         num_ctas(num_ctas),
-        is_tma_allowed(is_tma_allowed) {}
+        is_tma_allowed(is_tma_allowed),
+        is_warp_specialization_allowed(is_warp_specialization_allowed) {}
+  // LINT.IfChange
   int block_m = 0;
   int block_n = 0;
   int block_k = 0;
@@ -198,6 +201,9 @@ struct TritonGemmConfig {
   int num_ctas = 0;
   // Allow/disallow TMA usage for all arguments of the kernel (where possible).
   bool is_tma_allowed = false;
+  // Allow/disallow automatic warp specialization.
+  bool is_warp_specialization_allowed = false;
+  // LINT.ThenChange(//tensorflow/compiler/xla/autotuning.proto)
 
   // When adding new members, please update all methods, such as ToTuple,
   // FromProto, ToProto, ToString, etc. Updating ToTuple is not enough.
@@ -209,7 +215,8 @@ struct TritonGemmConfig {
  private:
   auto ToTuple() const {
     return std::make_tuple(block_m, block_n, block_k, split_k, num_stages,
-                           num_warps, num_ctas, is_tma_allowed);
+                           num_warps, num_ctas, is_tma_allowed,
+                           is_warp_specialization_allowed);
   }
 
  public:

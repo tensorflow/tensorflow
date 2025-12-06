@@ -29,6 +29,7 @@ limitations under the License.
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace gpu {
@@ -65,6 +66,8 @@ absl::StatusOr<bool> CanonicalizeRaggedAllToAll(
           ragged_all_to_all->shape(), new_operands,
           ragged_all_to_all->device_list(),
           /*channel_id=*/ragged_all_to_all->channel_id()));
+  new_ragged_all_to_all->set_frontend_attributes(
+      ragged_all_to_all->frontend_attributes());
   TF_RETURN_IF_ERROR(
       ragged_all_to_all->ReplaceAllUsesWith(new_ragged_all_to_all));
   TF_RETURN_IF_ERROR(
@@ -72,7 +75,7 @@ absl::StatusOr<bool> CanonicalizeRaggedAllToAll(
   return true;
 }
 
-absl::StatusOr<bool> RaggedAllToAllCanonicalizer::Run(
+absl::StatusOr<bool> RaggedAllToAllCanonicalizer::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;

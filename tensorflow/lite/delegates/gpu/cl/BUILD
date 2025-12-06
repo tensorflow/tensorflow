@@ -484,8 +484,9 @@ cc_library(
     hdrs = ["opencl_wrapper.h"],
     linkopts = select({
         "//tensorflow:android": ["-lm"],
-        "//conditions:default": [],
-    }) + ["-ldl"],  # opencl_wrapper calls dlopen()
+        "//tensorflow:windows": [],  # Windows does not support dlopen().
+        "//conditions:default": ["-ldl"],  # opencl_wrapper calls dlopen()
+    }),
     local_defines = select({
         # copybara:uncomment_begin(google-only)
         # "//tools/cc_target_os:linux-google": ["__LINUX_GOOGLE__"],

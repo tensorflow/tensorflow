@@ -122,7 +122,7 @@ TypeInferenceFn MapCovariant(FullTypeId t, FullTypeId u, int input_idx);
 // Helper for ops with semantics of calling a function. The function is
 // specified indirectly, as the name of an attribute that holds the actual
 // function name.
-TypeInferenceFn FunctionCall(const string& func_attr_name);
+TypeInferenceFn FunctionCall(const std::string& func_attr_name);
 
 // Compose the type of a function by concatenating the outputs of multiple
 // type inference functions. If func_list is {type inference function 1, type

@@ -16,6 +16,7 @@ limitations under the License.
 #include <atomic>
 #include <utility>
 
+#include "absl/synchronization/notification.h"
 #include "tensorflow/cc/ops/array_ops_internal.h"
 #include "tensorflow/cc/ops/function_ops.h"
 #include "tensorflow/cc/ops/functional_ops.h"
@@ -80,7 +81,7 @@ class FunctionLibraryRuntimeTest : public ::testing::Test {
                    FunctionLibraryRuntime::Options opts,
                    const std::vector<Tensor>& args, std::vector<Tensor*> rets,
                    bool add_runner = true) {
-    std::atomic<int32> call_count(0);
+    std::atomic<int32_t> call_count(0);
     std::function<void(std::function<void()>)> runner =
         [&call_count](std::function<void()> fn) {
           ++call_count;
@@ -91,7 +92,7 @@ class FunctionLibraryRuntimeTest : public ::testing::Test {
     } else {
       opts.runner = nullptr;
     }
-    Notification done;
+    absl::Notification done;
     std::vector<Tensor> out;
     absl::Status status;
     flr->Run(opts, handle, args, &out, [&status, &done](const absl::Status& s) {
@@ -114,14 +115,14 @@ class FunctionLibraryRuntimeTest : public ::testing::Test {
     return absl::OkStatus();
   }
 
-  absl::Status Instantiate(FunctionLibraryRuntime* flr, const string& name,
+  absl::Status Instantiate(FunctionLibraryRuntime* flr, const std::string& name,
                            test::function::Attrs attrs,
                            FunctionLibraryRuntime::Handle* handle) {
     return flr->Instantiate(name, attrs, handle);
   }
 
   absl::Status Instantiate(
-      FunctionLibraryRuntime* flr, const string& name,
+      FunctionLibraryRuntime* flr, const std::string& name,
       test::function::Attrs attrs,
       const FunctionLibraryRuntime::InstantiateOptions& options,
       FunctionLibraryRuntime::Handle* handle) {
@@ -129,7 +130,7 @@ class FunctionLibraryRuntimeTest : public ::testing::Test {
   }
 
   absl::Status InstantiateAndRun(FunctionLibraryRuntime* flr,
-                                 const string& name,
+                                 const std::string& name,
                                  test::function::Attrs attrs,
                                  const std::vector<Tensor>& args,
                                  std::vector<Tensor*> rets,
@@ -140,7 +141,7 @@ class FunctionLibraryRuntimeTest : public ::testing::Test {
   }
 
   absl::Status InstantiateAndRun(
-      FunctionLibraryRuntime* flr, const string& name,
+      FunctionLibraryRuntime* flr, const std::string& name,
       test::function::Attrs attrs,
       const FunctionLibraryRuntime::InstantiateOptions& options,
       const std::vector<Tensor>& args, std::vector<Tensor*> rets,
@@ -170,7 +171,7 @@ class FunctionLibraryRuntimeTest : public ::testing::Test {
                    FunctionLibraryRuntime::Handle handle,
                    FunctionLibraryRuntime::Options opts,
                    CallFrameInterface* frame, bool add_runner = true) {
-    std::atomic<int32> call_count(0);
+    std::atomic<int32_t> call_count(0);
     std::function<void(std::function<void()>)> runner =
         [&call_count](std::function<void()> fn) {
           ++call_count;
@@ -181,7 +182,7 @@ class FunctionLibraryRuntimeTest : public ::testing::Test {
     } else {
       opts.runner = nullptr;
     }
-    Notification done;
+    absl::Notification done;
     absl::Status status;
     flr->Run(opts, handle, frame, [&status, &done](const absl::Status& s) {
       status = s;
@@ -231,7 +232,7 @@ TEST_F(FunctionLibraryRuntimeTest, DefaultThreadpool) {
   TF_CHECK_OK(Instantiate(flr0_, "XTimesTwo", {{"T", DT_FLOAT}}, &h));
 
   auto x1 = test::AsTensor<float>({1, 2, 3, 4});
-  std::atomic<int32> num_done(0);
+  std::atomic<int32_t> num_done(0);
   FunctionLibraryRuntime::Options opts;
   for (int i = 0; i < 4; ++i) {
     tp1->Schedule([&h, &x1, &opts, &num_done, this]() {

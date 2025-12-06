@@ -38,9 +38,13 @@ limitations under the License.
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "llvm/Support/Casting.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/BuiltinAttributes.h"
+#include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/BuiltinTypes.h"
+#include "mlir/IR/Types.h"
 #include "mlir/Support/LLVM.h"
 #include "xla/client/executable_build_options.h"
 #include "xla/hlo/builder/xla_computation.h"
@@ -57,12 +61,12 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/cpu_info.h"
-#include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"  // IWYU pragma: keep
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 
@@ -81,9 +85,8 @@ absl::StatusOr<Shape> GetShardedShape(const Shape& shape,
           }
         });
     return sharded_shape;
-  } else {
-    return hlo_sharding.TileShape(shape);
   }
+  return hlo_sharding.TileShape(shape);
 }
 
 absl::StatusOr<Shape> GetShardedShape(const HloInstructionProto& instr) {
@@ -119,7 +122,8 @@ absl::StatusOr<std::pair<std::vector<Shape>, Shape>> GetShardedProgramShapes(
         TF_ASSIGN_OR_RETURN(arg_shapes[instr.parameter_number()],
                             GetShardedShape(instr));
       }
-      if (instr.id() == comp.root_id()) {
+      if (HloInstruction::CalculateLocalId(instr.id()) ==
+          HloInstruction::CalculateLocalId(comp.root_id())) {
         if (result_shape.element_type() != PRIMITIVE_TYPE_INVALID) {
           return InvalidArgument("Found multiple root instructions");
         }
@@ -221,11 +225,11 @@ absl::StatusOr<MemorySpaceColor> GetMemorySpaceColor(
   // unpinned_host?
   if (memory_kind == "unpinned_host" || memory_kind == "pinned_host") {
     return xla::Layout::kHostMemorySpace;
-  } else if (memory_kind == "device") {
-    return xla::Layout::kDefaultMemorySpace;
-  } else {
-    return InvalidArgument("Unknown memory kind %s", memory_kind);
   }
+  if (memory_kind == "device") {
+    return xla::Layout::kDefaultMemorySpace;
+  }
+  return InvalidArgument("Unknown memory kind %s", memory_kind);
 }
 
 // Helper method that takes an ArrayAttr of DictionaryAttrs for each arg or
@@ -325,7 +329,9 @@ absl::StatusOr<std::vector<LayoutMode>> GetArgLayoutModes(
   TF_ASSIGN_OR_RETURN(std::optional<std::vector<LayoutMode>> maybe_result,
                       GetTupleLayoutModes(main.getFunctionType().getInputs(),
                                           main.getAllArgAttrs()));
-  if (maybe_result) return *maybe_result;
+  if (maybe_result) {
+    return *maybe_result;
+  }
 
   return MlirAttrsToLayoutModes(main.getAllArgAttrs(), main.getNumArguments());
 }
@@ -342,7 +348,9 @@ absl::StatusOr<std::vector<LayoutMode>> GetOutputLayoutModes(
   TF_ASSIGN_OR_RETURN(std::optional<std::vector<LayoutMode>> maybe_tuple_result,
                       GetTupleLayoutModes(main.getFunctionType().getResults(),
                                           main.getAllResultAttrs()));
-  if (maybe_tuple_result) return *maybe_tuple_result;
+  if (maybe_tuple_result) {
+    return *maybe_tuple_result;
+  }
 
   return MlirAttrsToLayoutModes(main.getAllResultAttrs(), main.getNumResults());
 }
@@ -360,7 +368,9 @@ absl::StatusOr<std::vector<MemorySpaceColor>> GetArgMemoryKinds(
       std::optional<std::vector<MemorySpaceColor>> maybe_tuple_result,
       GetTupleMemoryKinds(main.getFunctionType().getInputs(),
                           main.getAllArgAttrs()));
-  if (maybe_tuple_result) return *maybe_tuple_result;
+  if (maybe_tuple_result) {
+    return *maybe_tuple_result;
+  }
 
   return MlirAttrsToMemoryKinds(main.getAllArgAttrs(), main.getNumArguments());
 }
@@ -378,7 +388,9 @@ absl::StatusOr<std::vector<MemorySpaceColor>> GetOutputMemoryKinds(
       std::optional<std::vector<MemorySpaceColor>> maybe_tuple_result,
       GetTupleMemoryKinds(main.getFunctionType().getResults(),
                           main.getAllResultAttrs()));
-  if (maybe_tuple_result) return *maybe_tuple_result;
+  if (maybe_tuple_result) {
+    return *maybe_tuple_result;
+  }
 
   return MlirAttrsToMemoryKinds(main.getAllResultAttrs(), main.getNumResults());
 }
@@ -766,9 +778,8 @@ absl::StatusOr<std::vector<int>> ComputeParametersThatMustBeDonated(
           computation->parameter_instruction(0)->shape();
       CHECK(input_tuple_shape.IsTuple());
       return input_tuple_shape.tuple_shapes().size();
-    } else {
-      return computation->num_parameters();
     }
+    return computation->num_parameters();
   }();
   // If any buffer in a parameter is aliased we will donate the entire input
   // parameter.
@@ -898,20 +909,20 @@ absl::Status TestBufferDonationClashes(
           "Toy "
           "example for this bug: `f(donate(a), donate(a))`.",
           arg_idx, replica, partition, prev_arg_idx);
-    } else if (is_donated) {
+    }
+    if (is_donated) {
       return InvalidArgument(
           "Attempt to donate a buffer which is also used by the same call "
           "to Execute() (flattened argument %d, replica %d, partition %d, "
           "first use: %d). Toy example for this bug: `f(a, donate(a))`.",
           arg_idx, replica, partition, prev_arg_idx);
-    } else {
-      return InvalidArgument(
-          "Attempt to use a buffer that was previously donated in the same "
-          "call to Execute() (flattened argument %d, replica %d, partition "
-          "%d, first use: %d). Toy example for this bug: `f(donate(a), "
-          "a)`.",
-          arg_idx, replica, partition, prev_arg_idx);
     }
+    return InvalidArgument(
+        "Attempt to use a buffer that was previously donated in the same "
+        "call to Execute() (flattened argument %d, replica %d, partition "
+        "%d, first use: %d). Toy example for this bug: `f(donate(a), "
+        "a)`.",
+        arg_idx, replica, partition, prev_arg_idx);
   }
   return absl::OkStatus();
 }

@@ -118,20 +118,19 @@ CommandBufferThunk::ExecutorCommandBuffer::UpdateBufferAllocations(
   return updated_allocs;
 }
 
-absl::Status CommandBufferThunk::Prepare(
-    const PrepareParams& params, ResourceRequestsInterface& resource_requests) {
+absl::Status CommandBufferThunk::Prepare(const PrepareParams& params) {
   // We might end up with empty command sequence if all of the captured fusions
   // are no-op (e.g. memcpy of size 0) and we have no emitted thunks for them.
   if (commands_.empty()) {
     return absl::OkStatus();
   }
 
-  TF_RETURN_IF_ERROR(commands_.Prepare(params, resource_requests));
+  TF_RETURN_IF_ERROR(commands_.Prepare(params));
 
   // Always prepare thunks if they are present so we are ready to fall back
   // on them if we detect profiling activity.
   if (thunks_) {
-    TF_RETURN_IF_ERROR(thunks_->Prepare(params, resource_requests));
+    TF_RETURN_IF_ERROR(thunks_->Prepare(params));
   }
 
   return absl::OkStatus();
@@ -146,7 +145,7 @@ absl::Status CommandBufferThunk::Initialize(const InitializeParams& params) {
 
   TF_ASSIGN_OR_RETURN(std::shared_ptr<ExecutorCommandBuffer> cmd_buffer,
                       GetOrCreateCommandBuffer(params.executor));
-  absl::MutexLock lock(&cmd_buffer->mutex);
+  absl::MutexLock lock(cmd_buffer->mutex);
 
   // Initialize commands.
   TF_RETURN_IF_ERROR(commands_.Initialize(params, cmd_buffer->state));
@@ -155,6 +154,13 @@ absl::Status CommandBufferThunk::Initialize(const InitializeParams& params) {
   // on them if we detect profiling activity.
   if (thunks_) {
     TF_RETURN_IF_ERROR(thunks_->Initialize(params));
+  }
+
+  // If there are no thunks, or command buffer does not require initialization,
+  // we can mark warm up as done immediately.
+  if ((!thunks_ || !commands_.requires_initialization()) &&
+      !cmd_buffer->warmup_done) {
+    cmd_buffer->warmup_done = true;
   }
 
   // Construct ExecuteParams with empty fields for everything that is not needed
@@ -177,9 +183,9 @@ absl::Status CommandBufferThunk::Initialize(const InitializeParams& params) {
   // If commands require initialization, we also record them into the command
   // buffer before execution. This is required to guarantee that collective
   // commands recorded on all participating ranks to avoid deadlocks.
-  if (cmd_buffer->command_buffer->state() ==
-          se::CommandBuffer::State::kCreate ||
-      commands_.requires_initialization()) {
+  if (cmd_buffer->warmup_done && (cmd_buffer->command_buffer->state() ==
+                                      se::CommandBuffer::State::kCreate ||
+                                  commands_.requires_initialization())) {
     VLOG(3) << "Initialize command buffer on device #"
             << params.executor->device_ordinal()
             << " by recoding command buffer cmd sequence"
@@ -201,6 +207,7 @@ absl::Status CommandBufferThunk::Initialize(const InitializeParams& params) {
                                                     std::move(updated_allocs),
                                                     /*is_initialization=*/true};
     TF_RETURN_IF_ERROR(commands_.Record(execute_params, record_params,
+                                        CommandBufferCmd::RecordCreate{},
                                         cmd_buffer->command_buffer.get()));
 
     uint64_t end_micros = tsl::Env::Default()->NowMicros();
@@ -228,6 +235,7 @@ absl::Status CommandBufferThunk::ExecuteOnStream(const ExecuteParams& params) {
       !enable_command_buffers_during_profiling_) {
     VLOG(1) << "Execute command buffer thunk as a regular thunk sequence "
                "because we detected active profiling session";
+    TraceMe trace("WARNING: CommandBuffer disabled when profiling");
     return thunks_->ExecuteOnStream(params);
   }
 
@@ -235,7 +243,15 @@ absl::Status CommandBufferThunk::ExecuteOnStream(const ExecuteParams& params) {
   TF_ASSIGN_OR_RETURN(std::shared_ptr<ExecutorCommandBuffer> cmd_buffer,
                       GetOrCreateCommandBuffer(executor));
 
-  absl::MutexLock lock(&cmd_buffer->mutex);
+  absl::MutexLock lock(cmd_buffer->mutex);
+
+  // warm up iteration, run through thunks if they are present.
+  if (!cmd_buffer->warmup_done && thunks_) {
+    VLOG(2) << "Executing warm up iteration of command buffer thunk";
+    TF_RETURN_IF_ERROR(thunks_->ExecuteOnStream(params));
+    cmd_buffer->warmup_done = true;
+    return absl::OkStatus();
+  }
 
   // Update buffer allocations and collect all allocations that changed since
   // the last command buffer execution.
@@ -261,6 +277,7 @@ absl::Status CommandBufferThunk::ExecuteOnStream(const ExecuteParams& params) {
     CommandBufferCmd::RecordParams record_params = {cmd_buffer->state,
                                                     std::move(updated_allocs)};
     TF_RETURN_IF_ERROR(commands_.Record(params, record_params,
+                                        CommandBufferCmd::RecordCreate{},
                                         cmd_buffer->command_buffer.get()));
 
     uint64_t end_micros = tsl::Env::Default()->NowMicros();
@@ -287,7 +304,7 @@ absl::Status CommandBufferThunk::ExecuteOnStream(const ExecuteParams& params) {
 
 absl::StatusOr<std::shared_ptr<CommandBufferThunk::ExecutorCommandBuffer>>
 CommandBufferThunk::GetOrCreateCommandBuffer(se::StreamExecutor* executor) {
-  absl::MutexLock lock(&state_->mutex);
+  absl::MutexLock lock(state_->mutex);
 
   // Check if command buffer already exists
   if (auto it = state_->command_buffers.find(executor);
@@ -324,15 +341,15 @@ CommandBufferThunk::GlobalState* CommandBufferThunk::GetGlobalState() {
 void CommandBufferThunk::TrackCommandBuffers(
     std::weak_ptr<CommandBufferThunk::State> state) {
   auto* global_state = GetGlobalState();
-  absl::MutexLock global_state_lock(&global_state->mutex);
+  absl::MutexLock global_state_lock(global_state->mutex);
   global_state->state.push_back(state);
 }
 
 void CommandBufferThunk::EvictCommandBuffers() {
-  TraceMe trace([&] { return "EvictCommandBuffers"; });
+  TraceMe trace("EvictCommandBuffers");
 
   auto* global_state = GetGlobalState();
-  absl::MutexLock global_state_lock(&global_state->mutex);
+  absl::MutexLock global_state_lock(global_state->mutex);
   VLOG(3) << "Evict command buffer thunk command buffers; tracked thunks = "
           << global_state->state.size();
 
@@ -351,7 +368,7 @@ void CommandBufferThunk::EvictCommandBuffers() {
     }
 
     // Evict all command buffers.
-    absl::MutexLock state_lock(&ptr->mutex);
+    absl::MutexLock state_lock(ptr->mutex);
     num_evicted += ptr->command_buffers.size();
     ptr->command_buffers.clear();
   }
@@ -367,6 +384,14 @@ void CommandBufferThunk::ForAllThunks(
   fn(this);
   if (thunks_ != nullptr) {
     thunks_->ForAllThunks(fn);
+  }
+}
+
+void CommandBufferThunk::ForAllThunksMutable(
+    absl::FunctionRef<void(Thunk*)> fn) {
+  fn(this);
+  if (thunks_ != nullptr) {
+    thunks_->ForAllThunksMutable(fn);
   }
 }
 

@@ -28,7 +28,6 @@ xla_cc_test(
     deps = [
         ":myplugin_cpp_pjrt",
         "//xla/tests:xla_internal_test_main",
-        "//xla/tsl/platform:status_matchers",
         "@com_google_absl//absl/status:status_matchers",
         "@com_google_googletest//:gtest",
     ],

@@ -89,16 +89,21 @@ Percentiles GetValue(const Point& point);
 
 // Returns the latest value for `metric_name`, associated with the `labels`. If
 // the metric has not collected any data, it returns a default value appropriate
-// for `ValueType`. If the metric does not exist, or the wrong number of labels
-// is provided, it will crash.
+// for `ValueType`. If a wrong number of labels is provided, it will crash. If
+// the metric does not exist, it will crash if `return_default_on_not_found` is
+// false, otherwise it will return a default value.
 template <typename ValueType>
 ValueType GetLatestValueOrDefault(const CollectedMetrics& metrics,
                                   const std::string& metric_name,
                                   const std::vector<std::string>& labels,
-                                  const ValueType default_value = ValueType()) {
+                                  bool return_default_on_not_found = false,
+                                  ValueType default_value = ValueType()) {
   absl::StatusOr<Point> latest_point =
       GetLatestPoint(metrics, metric_name, labels);
   if (absl::IsUnavailable(latest_point.status())) {
+    return std::move(default_value);
+  }
+  if (return_default_on_not_found && absl::IsNotFound(latest_point.status())) {
     return std::move(default_value);
   }
   if (!latest_point.ok()) {

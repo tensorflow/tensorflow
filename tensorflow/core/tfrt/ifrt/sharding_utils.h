@@ -17,9 +17,11 @@ limitations under the License.
 #define TENSORFLOW_CORE_TFRT_IFRT_SHARDING_UTILS_H_
 
 #include <cstdint>
+#include <memory>
 #include <optional>
 
 #include "absl/container/inlined_vector.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_sharding.h"
@@ -27,15 +29,49 @@ limitations under the License.
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device_list.h"
-#include "xla/python/ifrt/future.h"
-#include "xla/tsl/concurrency/ref_count.h"
+#include "xla/python/ifrt/dtype.h"
+#include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/platform/threadpool.h"
+#include "xla/xla_data.pb.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.pb.h"
 
 namespace tensorflow {
 namespace ifrt_serving {
+
+// A per-request H2D transfer executor. The caller should call
+// `RegisterH2DTransfer` to register tensors to be transferred, and then call
+// `RunH2DTransfers` to start the transfers. The futures returned by
+// `RegisterH2DTransfer` will only be guaranteed to be fulfilled after
+// `RunH2DTransfers` returns OK.
+class H2DTransferExecutor {
+ public:
+  // TODO(b/445201291): Make the constructor private once the
+  // H2DTransferExecutorFactory is plumbed through the stack.
+  explicit H2DTransferExecutor(xla::ifrt::Client& ifrt_client);
+  virtual ~H2DTransferExecutor() = default;
+
+  // Registers a tensor to be transferred to devices. The H2D transfer can be
+  // started in this call or in a later call of `RunH2DTransfers`.
+  virtual absl::StatusOr<tsl::Future<xla::ifrt::ArrayRef>> ScheduledH2DTransfer(
+      const tensorflow::Tensor& tensor,
+      const xla::ifrt::DeviceListRef& device_list,
+      const xla::OpSharding& sharding, tsl::thread::ThreadPool& thread_pool);
+
+  // Executes the H2D transfers for all registered tensors.
+  virtual absl::Status RunH2DTransfers();
+
+ protected:
+  xla::ifrt::Client& ifrt_client_;
+};
+
+class H2DTransferExecutorFactory {
+ public:
+  virtual ~H2DTransferExecutorFactory() = default;
+  virtual absl::StatusOr<std::unique_ptr<H2DTransferExecutor>>
+  CreateH2DTransferExecutor(xla::ifrt::Client& ifrt_client) = 0;
+};
 
 // Create a tensor from the given host tensor based on given device ids and
 // sharding information.
@@ -63,7 +99,7 @@ absl::StatusOr<xla::ifrt::ArrayRef> MakeArrayFromTensor(
 // device_list: list of devices that is aligned with the order of device buffers
 // in the `input_array`.
 //
-xla::ifrt::Future<tensorflow::Tensor> MakeTensorFromArray(
+tsl::Future<tensorflow::Tensor> MakeTensorFromArray(
     xla::ifrt::Client& ifrt_client, xla::ifrt::Array& input_array,
     const xla::HloSharding& hlo_sharding,
     const xla::ifrt::DeviceListRef& device_list,

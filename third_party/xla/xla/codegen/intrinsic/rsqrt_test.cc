@@ -23,6 +23,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/base/no_destructor.h"
 #include "absl/log/log.h"
 #include "llvm/ADT/StringMap.h"
 #include "llvm/ExecutionEngine/Orc/CompileUtils.h"
@@ -72,6 +73,12 @@ void AddOneOverSqrt(llvm::LLVMContext& context, llvm::Module& module,
   builder.CreateRet(one_over_sqrt);
 }
 
+llvm::StringMap<bool> GetHostCPUFeatures() {
+  static const absl::NoDestructor<llvm::StringMap<bool>> features(
+      llvm::sys::getHostCPUFeatures());
+  return *features;
+}
+bool isAmd() { return GetHostCPUFeatures().lookup("sse4a"); }
 JitRunner CreateJitRunnerWithRsqrt(
     Type type, bool disable_platform_dependent_math = false) {
   auto context = std::make_unique<llvm::LLVMContext>();
@@ -79,10 +86,12 @@ JitRunner CreateJitRunnerWithRsqrt(
 
   std::unique_ptr<llvm::TargetMachine> target_machine =
       xla::codegen::intrinsic::CreateHostTargetMachine();
+  DeviceType device_type =
+      isAmd() ? DeviceType::kAmdCpu : DeviceType::kIntelCpu;
   llvm::Function* rsqrt_func =
       Rsqrt::CreateDefinition(module.get(),
                               {target_machine->getTargetFeatureString().str(),
-                               disable_platform_dependent_math},
+                               device_type, disable_platform_dependent_math},
                               type)
           .value();
   rsqrt_func->setLinkage(llvm::Function::ExternalLinkage);
@@ -92,19 +101,15 @@ JitRunner CreateJitRunnerWithRsqrt(
   return JitRunner(std::move(module), std::move(context));
 }
 
-bool hasAvx() {
-  llvm::StringMap<bool> HostFeatures = llvm::sys::getHostCPUFeatures();
-  return HostFeatures.lookup("avx");
-}
-
-bool hasAvx512Support() {
-  llvm::StringMap<bool> HostFeatures = llvm::sys::getHostCPUFeatures();
-  return HostFeatures.lookup("avx512f");
-}
+bool hasAvx() { return GetHostCPUFeatures().lookup("avx"); }
+bool hasAvx512Support() { return GetHostCPUFeatures().lookup("avx512f"); }
 
 TEST(FeaturesTest, HostFeatures) {
+  std::cout << "CPU: " << llvm::sys::getHostCPUName().str() << "\n";
+  const llvm::StringMap<bool> features = llvm::sys::getHostCPUFeatures();
   std::cout << "Host features x86:" << hasAvx()
-            << ", avx512f:" << hasAvx512Support() << "\n";
+            << ", avx512f:" << hasAvx512Support() << ", IsAmd: " << isAmd()
+            << "\n";
 }
 
 TEST(RsqrtTest, EmitRsqrtF32) {
@@ -329,6 +334,32 @@ TEST(RsqrtTest, DisablePlatformDependentMath) {
   EXPECT_EQ(rsqrt(inf), one_over_sqrt(inf));
   EXPECT_EQ(rsqrt(1.0), one_over_sqrt(1.0));
   EXPECT_EQ(rsqrt(13.0), one_over_sqrt(13.0));
+}
+
+TEST(RsqrtTest, AmdRsqrtF64) {
+  if (isAmd()) {
+    Type type = Type::S(F64);
+    JitRunner jit = CreateJitRunnerWithRsqrt(type);
+    auto rsqrt = jit.GetScalarFn<double(double)>(Rsqrt::Name(type));
+    double inf = std::numeric_limits<double>::infinity();
+    EXPECT_THAT(rsqrt(inf), NearUlps<double>(0.0, kF64UlpsPrecision));
+    EXPECT_THAT(rsqrt(1.0), NearUlps<double>(1.0, kF64UlpsPrecision));
+    EXPECT_THAT(rsqrt(13.0),
+                NearUlps<double>(1.0 / std::sqrt(13.0), kF64UlpsPrecision));
+  }
+}
+
+TEST(RsqrtTest, AmdRsqrtF32) {
+  if (isAmd()) {
+    Type type = Type::S(F32);
+    JitRunner jit = CreateJitRunnerWithRsqrt(type);
+    auto rsqrt = jit.GetScalarFn<float(float)>(Rsqrt::Name(type));
+    float inf = std::numeric_limits<float>::infinity();
+    EXPECT_THAT(rsqrt(inf), NearUlps<float>(0.0, kF32UlpsPrecision));
+    EXPECT_THAT(rsqrt(1.0), NearUlps<float>(1.0, kF32UlpsPrecision));
+    EXPECT_THAT(rsqrt(13.0),
+                NearUlps<float>(1.0 / std::sqrt(13.0), kF32UlpsPrecision));
+  }
 }
 
 }  // namespace

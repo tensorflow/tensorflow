@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
+#include <iostream>
 #include <memory>
 #include <string>
 #include <utility>
@@ -110,6 +111,11 @@ std::vector<CollectivePerfTableGen::CollectiveType> ParseCollectives(
       types.push_back(CollectivePerfTableGen::CollectiveType::ALL_TO_ALL);
       continue;
     }
+    if (token == "COLLECTIVE_PERMUTE") {
+      types.push_back(
+          CollectivePerfTableGen::CollectiveType::COLLECTIVE_PERMUTE);
+      continue;
+    }
   }
   CHECK_GT(types.size(), 0);
   return types;
@@ -157,8 +163,6 @@ std::string DefaultCollectiveDevicesIfEmpty(
 
 }  // namespace
 
-// TODO(b/390097558): Add an option to generate perf table for collective which
-// gets overlap to model resource contention.
 int main(int argc, char* argv[]) {
   // Default args.
   int32_t num_nodes = 1;
@@ -173,6 +177,7 @@ int main(int argc, char* argv[]) {
   std::string coordinator_address = std::string(kDefaultCoordinatorAddress);
   std::string output = std::string(CollectivePerfTableGen::Config::kStdout);
   std::string merge_path;
+  std::vector<std::string> merge_files;
 
   // Parse flags.
   std::vector<tsl::Flag> flag_list = {
@@ -186,7 +191,7 @@ int main(int argc, char* argv[]) {
       tsl::Flag("collectives", &collectives_unparsed,
                 "Comma separated list of collectives to generate perf table "
                 "for. Allowed values: ALL_REDUCE, ALL_GATHER, REDUCE_SCATTER, "
-                "ALL_TO_ALL."),
+                "ALL_TO_ALL, COLLECTIVE_PERMUTE."),
       tsl::Flag("tensor_size_bytes_spec", &tensor_size_bytes_spec_unparsed,
                 "Spec for a search sweep over transfer sizes. Format example: "
                 "start=1,stop=8,factor=2 generates {1,2,4,8}."),
@@ -205,12 +210,23 @@ int main(int argc, char* argv[]) {
                 "Path to DeviceHloInstructionProfiles files. When specified it "
                 "will merge all of the profiled files and write them to a "
                 "single file specified by `output`."),
+      tsl::Flag(
+          "merge",
+          [&merge_files](std::string file) {
+            merge_files.push_back(file);
+            return true;
+          },
+          "none",
+          "Path to individual DeviceHloInstructionProfiles files. If "
+          "specified, these files will be merged into a single one."),
   };
 
   std::string kUsageString =
       absl::StrCat(kUsageText, "\n\n", tsl::Flags::Usage(argv[0], flag_list));
   if (!tsl::Flags::Parse(&argc, argv, flag_list)) {
-    LOG(QFATAL) << kUsageString;
+    // Print the usage using cerr to avoid truncation by LOG.
+    std::cerr << kUsageString;
+    return 1;
   }
   tsl::port::InitMain(kUsageString.c_str(), &argc, &argv);
 
@@ -229,11 +245,13 @@ int main(int argc, char* argv[]) {
   std::unique_ptr<CollectivePerfTableGen> gen =
       CollectivePerfTableGen::Create(cfg);
   DeviceHloInstructionProfiles profiles;
-  if (merge_path.empty()) {
-    profiles = gen->ComputeTable();
-  } else {
+  if (!merge_path.empty()) {
     profiles = gen->Merge(merge_path);
-  };
+  } else if (!merge_files.empty()) {
+    profiles = gen->Merge(merge_files);
+  } else {
+    profiles = gen->ComputeTable();
+  }
   CHECK_OK(gen->Dump(profiles));
   return 0;
 }

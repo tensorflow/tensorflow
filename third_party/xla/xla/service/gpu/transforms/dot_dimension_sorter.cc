@@ -34,10 +34,9 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/layout_util.h"
 #include "xla/permutation_util.h"
+#include "xla/tsl/platform/errors.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/logging.h"
 
 namespace xla {
 namespace gpu {
@@ -82,7 +81,7 @@ absl::Status SortDotDimensions(HloDotInstruction* dot) {
 
 }  // namespace
 
-absl::StatusOr<bool> DotDimensionSorter::Run(
+absl::StatusOr<bool> DotDimensionSorter::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   std::vector<HloInstruction*> dots_to_process;

@@ -20,8 +20,8 @@
 #include <memory>
 
 #include "absl/status/status.h"
-#include "xla/python/ifrt/future.h"
 #include "xla/python/ifrt_proxy/common/ifrt_service.pb.h"
+#include "xla/tsl/concurrency/future.h"
 
 namespace xla {
 namespace ifrt {
@@ -42,7 +42,8 @@ class ClientSession {
   // FIFO order. The caller must ensure that `request->op_id()` is unique
   // throughout the stream's lifetime. The returned future becomes ready when a
   // response for the given op id becomes ready.
-  virtual Future<Response> Enqueue(std::unique_ptr<IfrtRequest> request) = 0;
+  virtual tsl::Future<Response> Enqueue(
+      std::unique_ptr<IfrtRequest> request) = 0;
 
   // Terminates the `ClientSession` if it has not already been terminated.
   virtual void Finish(const absl::Status& s) {}

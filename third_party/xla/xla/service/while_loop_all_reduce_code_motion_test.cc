@@ -30,6 +30,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/status_matchers.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
@@ -42,8 +43,8 @@ limitations under the License.
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/service/hlo_verifier.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -53,7 +54,6 @@ using ::testing::Ne;
 using ::testing::NotNull;
 using ::testing::Property;
 using ::testing::SizeIs;
-using ::tsl::testing::IsOkAndHolds;
 
 class WhileLoopAllReduceCodeMotionTest : public HloHardwareIndependentTestBase {
  public:

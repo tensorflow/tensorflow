@@ -21,7 +21,6 @@ limitations under the License.
 #include <utility>
 
 #include "xnnpack.h"
-#include "absl/algorithm/container.h"
 #include "absl/base/no_destructor.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
@@ -30,7 +29,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/backends/cpu/codegen/target_machine_features.h"
-#include "xla/backends/cpu/runtime/dot_lib.h"
+#include "xla/backends/cpu/runtime/dot_dims.h"
 #include "xla/backends/cpu/runtime/xnnpack/xnn_interop.h"
 #include "xla/backends/cpu/xnn_gemm_config.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -48,51 +47,6 @@ limitations under the License.
 #include "xla/xla_data.pb.h"
 
 namespace xla::cpu {
-
-// Thresholds for when to use thread pool for XNNPACK fusions for different
-// HLOs. These numbers picked up randomly and need benchmarks to tune.
-static constexpr int64_t kDotThreshold = 10 * 1000;
-static constexpr int64_t kDefaultThreshold = 100 * 1000;
-
-static int64_t MaxElementsCount(const Shape& shape) {
-  int64_t ret = 0;
-  ShapeUtil::ForEachSubshape(
-      shape, [&](const Shape& shape, const ShapeIndex& index) {
-        ret = std::max(ret, ShapeUtil::ElementsIn(shape));
-      });
-  return ret;
-}
-
-// We rely on a very simple heuristic to determine if thread pool is beneficial
-// for XNNPACK fusions. We assume that if the HLO produces a large result (or
-// has large operands), thread pool will be beneficial for running operation in
-// parallel. For small operations, thread pool overheads are higher than the
-// actual computation.
-static int64_t MaxElementsCount(const HloInstruction* hlo,
-                                bool include_operands = true) {
-  int64_t ret = MaxElementsCount(hlo->shape());
-  if (include_operands) {
-    for (auto* operand : hlo->operands()) {
-      ret = std::max(ret, MaxElementsCount(operand->shape()));
-    }
-  }
-  return ret;
-}
-
-bool XnnShouldUseThreadPool(const HloInstruction* hlo) {
-  switch (hlo->opcode()) {
-    case HloOpcode::kDot:
-      return MaxElementsCount(hlo) > kDotThreshold;
-    default:
-      return MaxElementsCount(hlo) > kDefaultThreshold;
-  }
-}
-
-bool XnnShouldUseThreadPool(const HloComputation* computation) {
-  return absl::c_any_of(
-      computation->instructions(),
-      [](const HloInstruction* hlo) { return XnnShouldUseThreadPool(hlo); });
-}
 
 bool AreDtypesSupported(const Shape& lhs_shape, const Shape& rhs_shape,
                         const Shape& out_shape,
@@ -124,6 +78,11 @@ absl::StatusOr<bool> IsDotSupportedByXnn(
     const TargetMachineFeatures* cpu_features, bool use_cost_model) {
   // Check data types.
   if (!AreDtypesSupported(lhs_shape, rhs_shape, out_shape, cpu_features)) {
+    return false;
+  }
+  if (!IsLayoutSupportedByXnn(lhs_shape) ||
+      !IsLayoutSupportedByXnn(rhs_shape) ||
+      !IsLayoutSupportedByXnn(out_shape)) {
     return false;
   }
 

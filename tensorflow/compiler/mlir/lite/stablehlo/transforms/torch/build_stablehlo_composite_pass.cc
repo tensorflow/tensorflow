@@ -215,8 +215,8 @@ class BuildStableHLOCompositePass
     mlir::OpBuilder builder(&getContext());
 
     builder.setInsertionPointAfter(composite_op);
-    auto dummy_op = builder.create<mlir::stablehlo::CustomCallOp>(
-        composite_op.getLoc(), composite_op.getResultTypes(),
+    auto dummy_op = mlir::stablehlo::CustomCallOp::create(
+        builder, composite_op.getLoc(), composite_op.getResultTypes(),
         composite_op.getOperands(),
         llvm::SmallVector<NamedAttribute>{
             builder.getNamedAttr("call_target_name",
@@ -567,8 +567,8 @@ class BuildStableHLOCompositePass
                           op->getResultTypes().end());
     }
 
-    mlir::func::FuncOp impl_func = builder.create<mlir::func::FuncOp>(
-        module_op.getLoc(), func_name,
+    mlir::func::FuncOp impl_func = mlir::func::FuncOp::create(
+        builder, module_op.getLoc(), func_name,
         mlir::FunctionType::get(context, arg_types, result_types));
     mlir::IRMapping mapping;
     builder.createBlock(&impl_func.getBody(), impl_func.begin(), arg_types,
@@ -591,7 +591,8 @@ class BuildStableHLOCompositePass
       results.append(mapping.lookup(op)->getResults().begin(),
                      mapping.lookup(op)->getResults().end());
     }
-    builder.create<mlir::func::ReturnOp>(impl_func.getBody().getLoc(), results);
+    mlir::func::ReturnOp::create(builder, impl_func.getBody().getLoc(),
+                                 results);
 
     // Adds the new function to symbol table.
     mlir::SymbolTable symbol_table(module_op);
@@ -619,11 +620,10 @@ class BuildStableHLOCompositePass
 
     // Creates and inserts composite call op.
     builder.setInsertionPointAfter(boundary_output_op);
-    mlir::Operation* composite_op =
-        builder.create<mlir::stablehlo::CompositeOp>(
-            boundary_output_op->getLoc(),
-            impl_func.getFunctionType().getResults(), args, metadata.name,
-            *attributes_or, impl_func.getSymName());
+    mlir::Operation* composite_op = mlir::stablehlo::CompositeOp::create(
+        builder, boundary_output_op->getLoc(),
+        impl_func.getFunctionType().getResults(), args, metadata.name,
+        *attributes_or, impl_func.getSymName());
     return composite_op;
   }
 };

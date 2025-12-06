@@ -24,11 +24,12 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/comparison_util.h"
-#include "xla/hlo/ir/collective_device_list.h"
+#include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/ir/replica_group.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/test.h"
 #include "xla/hlo/testlib/test_helpers.h"
@@ -82,7 +83,7 @@ class BFloat16PropagationTest : public HloHardwareIndependentTestBase {
   // module is changed after this pass.
   bool PropagatePrecision(HloModule* module) {
     TestBFloat16Support bfloat16_support;
-    BFloat16Propagation propagation(&bfloat16_support);
+    BFloat16Propagation propagation(&bfloat16_support, &alias_info_);
     absl::StatusOr<bool> result = propagation.Run(module);
     EXPECT_IS_OK(result.status());
     return result.value();
@@ -108,6 +109,7 @@ class BFloat16PropagationTest : public HloHardwareIndependentTestBase {
     return HloInstruction::CreateDot(shape, lhs, rhs, dot_dnums,
                                      DefaultPrecisionConfig(2));
   }
+  AliasInfo alias_info_;
 };
 
 // Tests that BF16 can propagate through select over non-tuple buffers, but not

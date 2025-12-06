@@ -307,7 +307,7 @@ TEST(XlaHloModule, ToAndFromC) {
   Destroy(&c_module);
 }
 
-// TODO(b/290654348): SE_DeviceMemoryBase, SE_DeviceMemoryAllocator,
+// TODO(b/290654348): SE_DeviceAddressBase, SE_DeviceAddressAllocator,
 // SE_MaybeOwningDeviceMemory
 
 }  // namespace

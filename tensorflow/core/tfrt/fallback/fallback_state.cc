@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/base/nullability.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/strip.h"
 #include "xla/tsl/platform/errors.h"
@@ -62,7 +63,7 @@ DeviceAttributes BuildDeviceAttributes(absl::string_view name_prefix,
   const DeviceAttributes attrs = Device::BuildDeviceAttributes(
       DeviceName(name_prefix, device_type, task_id, device_id),
       DeviceType(device_type), Bytes(16ULL << 30), DeviceLocality(),
-      strings::StrCat("device: ", device_type, " device"));
+      absl::StrCat("device: ", device_type, " device"));
   return attrs;
 }
 

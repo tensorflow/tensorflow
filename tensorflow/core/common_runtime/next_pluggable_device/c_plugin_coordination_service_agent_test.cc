@@ -102,6 +102,10 @@ class TestCoordinationClient : public CoordinationClient {
               (const TryGetKeyValueRequest*, TryGetKeyValueResponse*,
                StatusCallback),
               (override));
+  MOCK_METHOD(void, IncrementKeyValueAsync,
+              (const IncrementKeyValueRequest*, IncrementKeyValueResponse*,
+               StatusCallback),
+              (override));
   MOCK_METHOD(void, InsertKeyValueAsync,
               (const InsertKeyValueRequest*, InsertKeyValueResponse*,
                StatusCallback),

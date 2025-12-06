@@ -119,6 +119,9 @@ class HloModuleMetadata {
         });
   }
 
+  // Clears all pass metadata.
+  void ClearPassMetadata() { module_metadata_.clear_pass_metadata(); }
+
  private:
   // Gets mutable metadata for the currently running pass. If passes are nested,
   // finds the deepest one still running. Returns NotFound if metadata for the

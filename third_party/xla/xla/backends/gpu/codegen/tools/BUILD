@@ -32,28 +32,13 @@ cc_library(
         "//xla:status_macros",
         "//xla/backends/gpu/codegen:fusions",
         "//xla/backends/gpu/codegen/emitters:emitter_base",
-        "//xla/backends/gpu/codegen/emitters/ir:xla_gpu",
+        "//xla/hlo/analysis:symbolic_expr",
         "//xla/hlo/ir:hlo",
-        "//xla/mlir_hlo",
         "//xla/service/gpu:gpu_device_info_for_tests",
         "//xla/service/gpu:hlo_fusion_analysis",
         "//xla/stream_executor:device_description",
-        "//xla/tools:hlo_module_loader",
-        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings:string_view",
-        "@llvm-project//mlir:AffineDialect",
-        "@llvm-project//mlir:ArithDialect",
-        "@llvm-project//mlir:ComplexDialect",
-        "@llvm-project//mlir:DLTIDialect",
-        "@llvm-project//mlir:FuncDialect",
-        "@llvm-project//mlir:FuncExtensions",
-        "@llvm-project//mlir:GPUDialect",
         "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:MathDialect",
-        "@llvm-project//mlir:MlirOptLib",
-        "@llvm-project//mlir:SCFDialect",
-        "@llvm-project//mlir:TensorDialect",
         "@llvm-project//mlir:VectorDialect",
     ],
 )
@@ -70,6 +55,7 @@ xla_cc_binary(
     deps = [
         ":test_lib",
         "//xla/codegen/tools:test_lib",
+        "//xla/hlo/analysis:symbolic_expr",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@llvm-project//llvm:Support",
@@ -79,9 +65,9 @@ xla_cc_binary(
 )
 
 xla_cc_binary(
-    name = "test_correctness",
+    name = "gpu_test_correctness",
     testonly = 1,
-    srcs = ["test_correctness.cc"],
+    srcs = ["gpu_test_correctness.cc"],
     # We want to use this tool for lit tests. Due to hermetic cuda, we need to
     # set linkopts in such a way that dynamic libraries are found, which are
     # symlinked from the lit_lib directory.
@@ -123,7 +109,7 @@ xla_cc_binary(
     name = "fusion_wrapper",
     testonly = 1,
     srcs = ["fusion_wrapper.cc"],
-    visibility = [":codegen_tests"],
+    visibility = ["//visibility:private"],
     deps = [
         "//xla/codegen/tools:test_lib",
         "//xla/tsl/platform:statusor",

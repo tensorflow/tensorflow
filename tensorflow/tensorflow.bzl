@@ -1,5 +1,7 @@
 """Provides build configuration for TensorFlow."""
 
+load("@rules_cc//cc:cc_library.bzl", _cc_library = "cc_library")
+load("@rules_cc//cc/common:cc_info.bzl", "CcInfo")
 load("@rules_java//java:defs.bzl", "java_test")
 load(
     "//tensorflow:py.default.bzl",
@@ -21,7 +23,6 @@ load(
     "if_mkl",
     "if_mkl_ml",
     "if_mkldnn_aarch64_acl",
-    "if_mkldnn_aarch64_acl_openmp",
     "if_mkldnn_openmp",
     "onednn_v3_define",
 )
@@ -467,7 +468,6 @@ def tf_copts(
         if_mkldnn_openmp(["-DENABLE_ONEDNN_OPENMP"]) +
         onednn_v3_define() +
         if_mkldnn_aarch64_acl(["-DDNNL_AARCH64_USE_ACL=1"]) +
-        if_mkldnn_aarch64_acl_openmp(["-DENABLE_ONEDNN_OPENMP"]) +
         if_zendnn(["-DAMD_ZENDNN"]) +
         if_enable_acl(["-DXLA_CPU_USE_ACL=1", "-fexceptions"]) +
         if_llvm_aarch32_available(["-DTF_LLVM_AARCH32_AVAILABLE=1"]) +
@@ -3098,8 +3098,7 @@ def pybind_library(
         **kwargs):
     # Mark common dependencies as required for build_cleaner.
     tags = tags + ["req_dep=" + clean_dep("//third_party/pybind11"), "req_dep=@local_config_python//:python_headers"]
-
-    native.cc_library(
+    _cc_library(
         name = name,
         copts = copts + ["-fexceptions"],
         features = features + [

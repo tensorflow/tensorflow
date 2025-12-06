@@ -37,6 +37,10 @@ tf_module {
     mtype: "<type \'module\'>"
   }
   member {
+    name: "float4_e2m1fn"
+    mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
+  }
+  member {
     name: "float8_e4m3b11fnuz"
     mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
   }

@@ -50,7 +50,7 @@ ZeroCopySendAckTable::ZeroCopySendAckTable() {
 }
 
 void ZeroCopySendAckTable::Send() {
-  absl::MutexLock l(&mu_);
+  absl::MutexLock l(mu_);
   ++n_acks_in_batch_;
   ack_ids_.push_back(acks_start_ + static_cast<uint32_t>(acks_.size() - 1));
 }
@@ -58,7 +58,7 @@ void ZeroCopySendAckTable::Send() {
 uint32_t ZeroCopySendAckTable::Seal(absl::AnyInvocable<void() &&> on_done) {
   uint32_t ack_id;
   {
-    absl::MutexLock l(&mu_);
+    absl::MutexLock l(mu_);
     ++n_acks_in_batch_;
     auto& ack = acks_.back();
     ack_id = static_cast<uint32_t>(ack_ids_.size() - 1) + ack_ids_start_;
@@ -81,7 +81,7 @@ uint32_t ZeroCopySendAckTable::Seal(absl::AnyInvocable<void() &&> on_done) {
 void ZeroCopySendAckTable::HandleAck(uint32_t v) {
   absl::AnyInvocable<void() &&> on_done;
   {
-    absl::MutexLock l(&mu_);
+    absl::MutexLock l(mu_);
     v -= ack_ids_start_;
     auto& ack_id = ack_ids_[v];
     auto& ack = acks_[*ack_id - acks_start_];
@@ -100,7 +100,7 @@ void ZeroCopySendAckTable::HandleAck(uint32_t v) {
 }
 
 void ZeroCopySendAckTable::PretendCloseToRolloverForTests(uint32_t bump) {
-  absl::MutexLock l(&mu_);
+  absl::MutexLock l(mu_);
   for (auto& ack : ack_ids_) {
     if (ack.has_value()) {
       *ack += bump;
@@ -111,7 +111,7 @@ void ZeroCopySendAckTable::PretendCloseToRolloverForTests(uint32_t bump) {
 }
 
 std::pair<size_t, size_t> ZeroCopySendAckTable::GetTableSizes() {
-  absl::MutexLock l(&mu_);
+  absl::MutexLock l(mu_);
   // Always 1 ahead.
   return std::make_pair(acks_.size() - 1, ack_ids_.size() - 1);
 }
@@ -158,7 +158,7 @@ absl::Status ZeroCopySendAckTable::HandleSocketErrors(int fd) {
 }
 
 void ZeroCopySendAckTable::ClearAll() {
-  absl::MutexLock l(&mu_);
+  absl::MutexLock l(mu_);
   for (auto& ack : acks_) {
     if (ack.on_done) {
       std::move(ack.on_done)();
@@ -169,7 +169,7 @@ void ZeroCopySendAckTable::ClearAll() {
 
 class SendConnectionHandler : public PollEventLoop::Handler {
  public:
-  SendConnectionHandler(int fd, int bond_id,
+  SendConnectionHandler(std::shared_ptr<int> fd, int bond_id,
                         std::shared_ptr<SharedSendMsgQueue> msg_queue,
                         std::shared_ptr<SharedSendWorkQueue> work_queue,
                         size_t artificial_send_limit)
@@ -180,10 +180,10 @@ class SendConnectionHandler : public PollEventLoop::Handler {
         artificial_send_limit_(artificial_send_limit) {}
 
   ~SendConnectionHandler() override {
+    msg_queue_->Poison(absl::InternalError("A send connection has failed."));
 #ifdef MSG_ZEROCOPY
     table_.ClearAll();
 #endif
-    close(fd_);
   }
 
   void ScheduleSendWork(aux::BulkTransportInterface::SendMessage msg) {
@@ -197,7 +197,7 @@ class SendConnectionHandler : public PollEventLoop::Handler {
     size_t offset = 0;
     while (offset < msg.size) {
       ssize_t send_count =
-          send(fd_, reinterpret_cast<char*>(msg.data) + offset,
+          send(*fd_, reinterpret_cast<char*>(msg.data) + offset,
                std::min(msg.size - offset, artificial_send_limit_), 0);
       if (send_count <= 0) {
         break;
@@ -214,7 +214,7 @@ class SendConnectionHandler : public PollEventLoop::Handler {
     size_t offset = 0;
     while (offset < msg.size) {
       ssize_t send_count = send(
-          fd_, reinterpret_cast<char*>(msg.data) + offset,
+          *fd_, reinterpret_cast<char*>(msg.data) + offset,
           std::min(msg.size - offset, artificial_send_limit_), MSG_ZEROCOPY);
       if (send_count <= 0) {
         break;
@@ -253,7 +253,7 @@ class SendConnectionHandler : public PollEventLoop::Handler {
   }
 
   void PopulatePollInfo(pollfd& events) override {
-    events.fd = fd_;
+    events.fd = *fd_;
     events.events = POLLERR | POLLRDHUP;
     if (state_.load() == SocketState::kNotReady) {
       events.events |= POLLOUT;
@@ -262,11 +262,18 @@ class SendConnectionHandler : public PollEventLoop::Handler {
 
   bool HandleEvents(const pollfd& events) override {
     if (events.revents & POLLRDHUP) {
-      HandleRdHup();
+      TransitionToErrorState();
       return false;
     } else if (events.revents & POLLERR) {
 #ifdef MSG_ZEROCOPY
-      CHECK_OK(table_.HandleSocketErrors(fd_));
+      auto status = table_.HandleSocketErrors(*fd_);
+      if (!status.ok()) {
+        TransitionToErrorState();
+        return false;
+      }
+#else
+      TransitionToErrorState();
+      return false;
 #endif
     } else if (events.revents & POLLOUT) {
       if (no_more_messages_.load() == true) {
@@ -280,7 +287,7 @@ class SendConnectionHandler : public PollEventLoop::Handler {
     return true;
   }
 
-  void HandleRdHup() {
+  void TransitionToErrorState() {
     while (true) {
       auto state = state_.load();
       if (state == SocketState::kNotReady) {
@@ -312,7 +319,7 @@ class SendConnectionHandler : public PollEventLoop::Handler {
 #ifdef MSG_ZEROCOPY
   ZeroCopySendAckTable table_;
 #endif
-  int fd_;
+  std::shared_ptr<int> fd_;
   int bond_id_;
   std::shared_ptr<SharedSendMsgQueue> msg_queue_;
   std::shared_ptr<SharedSendWorkQueue> work_queue_;
@@ -322,7 +329,7 @@ class SendConnectionHandler : public PollEventLoop::Handler {
 void SharedSendWorkQueue::ScheduleWork(
     SendConnectionHandler* handler,
     aux::BulkTransportInterface::SendMessage msg) {
-  absl::MutexLock l(&mu_);
+  absl::MutexLock l(mu_);
   work_items_.push_back({handler, std::move(msg)});
 }
 
@@ -331,12 +338,12 @@ void SharedSendWorkQueue::Run() {
     auto cond = [this]() { return !work_items_.empty() || shutdown_; };
     mu_.LockWhen(absl::Condition(&cond));
     if (work_items_.empty() && shutdown_) {
-      mu_.Unlock();
+      mu_.unlock();
       break;
     }
     auto work = std::move(work_items_.front());
     work_items_.pop_front();
-    mu_.Unlock();
+    mu_.unlock();
     work.handler->DoSend(std::move(work.msg));
   }
   aux::PollEventLoop::GetDefault()->Schedule(
@@ -347,7 +354,7 @@ void SharedSendWorkQueue::Run() {
 std::shared_ptr<SharedSendWorkQueue> SharedSendWorkQueue::Start() {
   auto result = std::shared_ptr<SharedSendWorkQueue>(
       new SharedSendWorkQueue(), [](SharedSendWorkQueue* result) {
-        absl::MutexLock l(&result->mu_);
+        absl::MutexLock l(result->mu_);
         result->shutdown_ = true;
       });
   result->thread_ =
@@ -356,41 +363,61 @@ std::shared_ptr<SharedSendWorkQueue> SharedSendWorkQueue::Start() {
   return result;
 }
 
+void SharedSendMsgQueue::Poison(absl::Status s) {
+  mu_.lock();
+  poison_status_ = s;
+  auto work_items = std::move(work_items_);
+  mu_.unlock();
+  while (!work_items.empty()) {
+    auto work = std::move(work_items.front());
+    work_items.pop_front();
+    std::move(work.on_send)(s, work.size);
+    std::move(work.on_done)();
+  }
+}
+
 void SharedSendMsgQueue::ReportReadyToSend(SendConnectionHandler* handler) {
-  mu_.Lock();
+  mu_.lock();
   if (!work_items_.empty()) {
     auto msg = std::move(work_items_.front());
     work_items_.pop_front();
-    mu_.Unlock();
+    mu_.unlock();
     handler->ScheduleSendWork(std::move(msg));
   } else if (shutdown_) {
-    mu_.Unlock();
+    mu_.unlock();
     handler->NoMoreMessages();
   } else {
     handlers_.push_back(handler);
-    mu_.Unlock();
+    mu_.unlock();
   }
 }
 
 void SharedSendMsgQueue::ScheduleSendWork(
     aux::BulkTransportInterface::SendMessage msg) {
-  mu_.Lock();
+  mu_.lock();
+  if (!poison_status_.ok()) {
+    auto s = poison_status_;
+    mu_.unlock();
+    std::move(msg.on_send)(std::move(s), msg.size);
+    std::move(msg.on_done)();
+    return;
+  }
   DCHECK(!shutdown_);
   if (work_items_.empty() && !handlers_.empty()) {
     auto* handler = handlers_.front();
     handlers_.pop_front();
-    mu_.Unlock();
+    mu_.unlock();
     handler->ScheduleSendWork(std::move(msg));
   } else {
     work_items_.push_back(std::move(msg));
-    mu_.Unlock();
+    mu_.unlock();
   }
 }
 
 void SharedSendMsgQueue::NoMoreMessages() {
   std::deque<SendConnectionHandler*> handlers;
   {
-    absl::MutexLock l(&mu_);
+    absl::MutexLock l(mu_);
     shutdown_ = true;
     if (work_items_.empty()) {
       std::swap(handlers_, handlers);
@@ -402,7 +429,8 @@ void SharedSendMsgQueue::NoMoreMessages() {
 }
 
 void SharedSendMsgQueue::StartSubConnectionSender(
-    int fd, int bond_id, std::shared_ptr<SharedSendMsgQueue> msg_queue,
+    std::shared_ptr<int> fd, int bond_id,
+    std::shared_ptr<SharedSendMsgQueue> msg_queue,
     std::shared_ptr<SharedSendWorkQueue> work_queue,
     size_t artificial_send_limit) {
   auto* handler =
@@ -425,12 +453,12 @@ void RecvThreadState::DoRecvWork() {
     };
     recv_mu_.LockWhen(absl::Condition(&cond));
     if (recv_work_items_.empty() && recv_shutdown_) {
-      recv_mu_.Unlock();
+      recv_mu_.unlock();
       break;
     }
     auto work = std::move(recv_work_items_.front());
     recv_work_items_.pop_front();
-    recv_mu_.Unlock();
+    recv_mu_.unlock();
     auto status = HandleRecvItem(work, zc_send_count, non_zc_send_count);
     if (!status.ok()) {
       std::move(work.on_recv)(status);
@@ -443,11 +471,11 @@ void RecvThreadState::DoRecvWork() {
 }
 
 void RecvThreadState::ScheduleRecvWork(
-    size_t recv_size, int fd,
+    size_t recv_size, std::shared_ptr<int> fd,
     absl::AnyInvocable<
         void(absl::StatusOr<aux::BulkTransportInterface::Message> msg) &&>
         on_recv) {
-  absl::MutexLock l(&recv_mu_);
+  absl::MutexLock l(recv_mu_);
   recv_work_item work;
   work.recv_size = recv_size;
   work.fd = fd;
@@ -460,7 +488,7 @@ std::shared_ptr<RecvThreadState> RecvThreadState::Create(
   auto result = std::shared_ptr<RecvThreadState>(
       new RecvThreadState(allocator, uallocator), [](RecvThreadState* result) {
         {
-          absl::MutexLock l(&result->recv_mu_);
+          absl::MutexLock l(result->recv_mu_);
           result->recv_shutdown_ = true;
         }
       });
@@ -496,11 +524,11 @@ absl::Status RecvThreadState::HandleRecvItem(recv_work_item& work,
       zc.length = work.recv_size - offset;
 
       struct pollfd fds[1];
-      fds[0] = {.fd = work.fd, .events = POLLIN, .revents = 0};
+      fds[0] = {.fd = *work.fd, .events = POLLIN, .revents = 0};
       poll(&fds[0], 1, -1);
 
       res =
-          getsockopt(work.fd, IPPROTO_TCP, TCP_ZEROCOPY_RECEIVE, &zc, &zc_len);
+          getsockopt(*work.fd, IPPROTO_TCP, TCP_ZEROCOPY_RECEIVE, &zc, &zc_len);
       if (res == -1) {
         std::move(alloc.on_done)();
         return absl::ErrnoToStatus(errno, "zero-copy-recv");
@@ -528,8 +556,13 @@ absl::Status RecvThreadState::HandleRecvItem(recv_work_item& work,
     }
     while (offset != work.recv_size) {
       ssize_t recv_count =
-          recv(work.fd, reinterpret_cast<char*>(alloc.data) + offset,
+          recv(*work.fd, reinterpret_cast<char*>(alloc.data) + offset,
                work.recv_size - offset, 0);
+      if (recv_count == 0) {
+        std::move(alloc.on_done)();
+        return absl::InternalError(
+            "RecvThreadState::HandleRecvItem -> recv_count == 0");
+      }
       if (recv_count < 0) {
         std::move(alloc.on_done)();
         return absl::ErrnoToStatus(errno, "recv-fallback");
@@ -572,8 +605,8 @@ class SocketBulkTransport : public BulkTransportInterface {
             absl::AnyInvocable<void(absl::StatusOr<Message> msg) &&> on_recv)
       override {
     auto& conn = connections_[bond_id];
-    absl::MutexLock l(&conn->mu);
-    if (conn->fd == -1) {
+    absl::MutexLock l(conn->mu);
+    if (!conn->fd) {
       conn->pending_recvs.push_back({size, std::move(on_recv)});
     } else {
       conn->thread_state->ScheduleRecvWork(size, conn->fd, std::move(on_recv));
@@ -591,16 +624,21 @@ class SocketBulkTransport : public BulkTransportInterface {
     std::shared_ptr<SharedSendMsgQueue> send_msg_queue;
     std::shared_ptr<SharedSendWorkQueue> send_work_queue;
     std::vector<PendingRecv> pending_recvs;
-    int fd = -1;
+    std::shared_ptr<int> fd;
 
     void AcceptSock(int accept_fd) {
+      auto shared_fd =
+          std::shared_ptr<int>(new int{accept_fd}, [](int* fd_ptr) {
+            close(*fd_ptr);
+            delete fd_ptr;
+          });
       SharedSendMsgQueue::StartSubConnectionSender(
-          accept_fd, connection_id, send_msg_queue, send_work_queue);
+          shared_fd, connection_id, send_msg_queue, send_work_queue);
       {
-        absl::MutexLock l(&mu);
-        fd = accept_fd;
+        absl::MutexLock l(mu);
+        fd = shared_fd;
         for (auto& pending_recv : pending_recvs) {
-          thread_state->ScheduleRecvWork(pending_recv.size, accept_fd,
+          thread_state->ScheduleRecvWork(pending_recv.size, fd,
                                          std::move(pending_recv.on_recv));
         }
       }
@@ -725,7 +763,7 @@ class SocketBulkTransportFactory : public BulkTransportFactory {
     absl::flat_hash_map<uint64_t, std::shared_ptr<SocketBulkTransport::Conn>>
         waiting_for_connect;
     void DoAccept(int sockfd, uint64_t uuid) {
-      absl::MutexLock l(&mu);
+      absl::MutexLock l(mu);
       auto it = waiting_for_connect.find(uuid);
       if (it == waiting_for_connect.end()) {
         close(sockfd);
@@ -737,7 +775,7 @@ class SocketBulkTransportFactory : public BulkTransportFactory {
     }
     uint64_t AllocateUUIDs(
         std::vector<std::shared_ptr<SocketBulkTransport::Conn>> connections) {
-      absl::MutexLock l(&mu);
+      absl::MutexLock l(mu);
       uint64_t result = next_id;
       next_id += connections.size();
       for (uint64_t i = 0; i < connections.size(); ++i) {

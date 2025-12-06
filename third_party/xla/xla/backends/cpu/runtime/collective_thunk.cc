@@ -40,17 +40,19 @@ limitations under the License.
 #include "xla/backends/cpu/runtime/thunk.h"
 #include "xla/core/collectives/communicator.h"
 #include "xla/core/collectives/rank_id.h"
+#include "xla/debug_options_flags.h"
+#include "xla/future.h"
+#include "xla/hlo/ir/collective_op_group_mode.h"
 #include "xla/runtime/buffer_use.h"
+#include "xla/runtime/device_id.h"
 #include "xla/runtime/resource_use.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/computation_placer.h"
-#include "xla/service/global_device_id.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/shape.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/device_memory.h"
-#include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
@@ -90,11 +92,13 @@ CollectiveThunk::CollectiveThunk(CollectiveKind collective_kind,
 Thunk::BufferUses CollectiveThunk::buffer_uses() const {
   BufferUses uses;
   uses.reserve(source_buffers().size() + destination_buffers().size());
-  for (auto& source_buffer : source_buffers()) {
-    uses.push_back(BufferUse::Read(source_buffer));
+  for (int i = 0; i < source_buffers().size(); i++) {
+    uses.push_back(BufferUse::Read(op_buffers_.source_buffers[i],
+                                   op_buffers_.source_shapes[i]));
   }
-  for (auto& destination_buffer : destination_buffers()) {
-    uses.push_back(BufferUse::Write(destination_buffer));
+  for (int i = 0; i < destination_buffers().size(); i++) {
+    uses.push_back(BufferUse::Write(op_buffers_.destination_buffers[i],
+                                    op_buffers_.destination_shapes[i]));
   }
   return uses;
 }
@@ -150,6 +154,11 @@ CollectiveThunk::GetOpDeviceMemory(const ExecuteParams& params) {
 }
 
 absl::Duration CollectiveThunk::DefaultCollectiveTimeout() {
+  static const int64_t timeout =
+      xla::GetDebugOptionsFromFlags().xla_cpu_collective_timeout_seconds();
+  if (timeout > 0) {
+    return absl::Seconds(timeout);
+  }
   return absl::Minutes(30);
 }
 
@@ -191,8 +200,7 @@ absl::StatusOr<int32_t> CollectiveThunk::RankInGlobalDevices(
   return std::distance(key.global_devices.begin(), it);
 }
 
-tsl::AsyncValueRef<CollectiveThunk::ExecuteEvent>
-CollectiveThunk::ExecuteWithCommunicator(
+Future<> CollectiveThunk::ExecuteWithCommunicator(
     const Thunk::CollectiveExecuteParams* params, Callback callback) {
   // Check that we have access to collectives interface implementation and
   // parameters that define our "position" in a collective clique.

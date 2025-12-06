@@ -22,6 +22,7 @@ limitations under the License.
 #include <list>
 #include <memory>
 
+#include "absl/strings/str_cat.h"
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/run_handler_util.h"
 #include "tensorflow/core/lib/core/threadpool_interface.h"
@@ -47,7 +48,7 @@ typedef Eigen::RunQueue<Task, 1024> Queue;
 
 namespace internal {
 RunHandlerEnvironment::RunHandlerEnvironment(
-    Env* env, const ThreadOptions& thread_options, const string& name)
+    Env* env, const ThreadOptions& thread_options, const std::string& name)
     : env_(env), thread_options_(thread_options), name_(name) {}
 
 RunHandlerEnvironment::EnvThread* RunHandlerEnvironment::CreateThread(
@@ -66,7 +67,7 @@ RunHandlerEnvironment::EnvThread* RunHandlerEnvironment::CreateThread(
 
 RunHandlerEnvironment::Task RunHandlerEnvironment::CreateTask(
     std::function<void()> f) {
-  uint64 id = 0;
+  uint64_t id = 0;
   if (tsl::tracing::EventCollector::IsEnabled()) {
     id = tsl::tracing::GetUniqueArg();
     tsl::tracing::RecordEvent(tsl::tracing::EventCategory::kScheduleClosure,
@@ -125,7 +126,7 @@ void WaitOnWaiter(Waiter* waiter, Waiter* queue_head, mutex* mutex,
 
 ThreadWorkSource::ThreadWorkSource()
     : non_blocking_work_sharding_factor_(
-          static_cast<int32>(ParamFromEnvWithDefault(
+          static_cast<int32_t>(ParamFromEnvWithDefault(
               "TF_RUN_HANDLER_NUM_OF_NON_BLOCKING_QUEUES", 1))),
       non_blocking_work_queues_(non_blocking_work_sharding_factor_),
       blocking_inflight_(0),
@@ -260,7 +261,8 @@ int64_t ThreadWorkSource::GetTracemeId() {
 
 void ThreadWorkSource::SetTracemeId(int64_t value) { traceme_id_ = value; }
 
-void ThreadWorkSource::SetWaiter(uint64 version, Waiter* waiter, mutex* mutex) {
+void ThreadWorkSource::SetWaiter(uint64_t version, Waiter* waiter,
+                                 mutex* mutex) {
   {
     tf_shared_lock lock(run_handler_waiter_mu_);
     // Most of the request won't change sub pool for recomputation.
@@ -303,16 +305,16 @@ unsigned ThreadWorkSource::NonBlockingWorkShardingFactor() {
 }
 
 std::string ThreadWorkSource::ToString() {
-  return strings::StrCat("traceme_id = ", GetTracemeId(),
-                         ", inter queue size = ", TaskQueueSize(true),
-                         ", inter inflight = ", GetInflightTaskCount(true),
-                         ", intra queue size = ", TaskQueueSize(false),
-                         ", intra inflight = ", GetInflightTaskCount(false));
+  return absl::StrCat("traceme_id = ", GetTracemeId(),
+                      ", inter queue size = ", TaskQueueSize(true),
+                      ", inter inflight = ", GetInflightTaskCount(true),
+                      ", intra queue size = ", TaskQueueSize(false),
+                      ", intra inflight = ", GetInflightTaskCount(false));
 }
 
 RunHandlerThreadPool::RunHandlerThreadPool(
     int num_blocking_threads, int num_non_blocking_threads, Env* env,
-    const ThreadOptions& thread_options, const string& name,
+    const ThreadOptions& thread_options, const std::string& name,
     Eigen::MaxSizeVector<mutex>* waiters_mu,
     Eigen::MaxSizeVector<Waiter>* queue_waiters)
     : num_threads_(num_blocking_threads + num_non_blocking_threads),
@@ -376,8 +378,8 @@ void RunHandlerThreadPool::Start() {
           WorkerLoop(i, is_blocking_thread);
         },
         is_blocking_thread
-            ? strings::StrCat(name_, "_blocking_thread_", sub_thread_pool_id)
-            : strings::StrCat(name_, "_non_blocking_thread")));
+            ? absl::StrCat(name_, "_blocking_thread_", sub_thread_pool_id)
+            : absl::StrCat(name_, "_non_blocking_thread")));
   }
 }
 
@@ -406,7 +408,7 @@ void RunHandlerThreadPool::AddWorkToQueue(ThreadWorkSource* tws,
 // provide better performance due to less lock retention. The drawback is that
 // the profiler will be a bit harder to read.
 void RunHandlerThreadPool::SetThreadWorkSources(
-    int tid, int start_request_idx, uint64 version,
+    int tid, int start_request_idx, uint64_t version,
     const Eigen::MaxSizeVector<ThreadWorkSource*>& thread_work_sources) {
   mutex_lock l(thread_data_[tid].mu);
   if (version > thread_data_[tid].new_version) {
@@ -477,12 +479,12 @@ RunHandlerThreadPool::ThreadData::ThreadData()
     : new_version(0),
       current_index(0),
       new_thread_work_sources(
-          new Eigen::MaxSizeVector<ThreadWorkSource*>(static_cast<int32>(
+          new Eigen::MaxSizeVector<ThreadWorkSource*>(static_cast<int32_t>(
               ParamFromEnvWithDefault("TF_RUN_HANDLER_MAX_CONCURRENT_HANDLERS",
                                       kMaxConcurrentHandlers)))),
       current_version(0),
       current_thread_work_sources(
-          new Eigen::MaxSizeVector<ThreadWorkSource*>(static_cast<int32>(
+          new Eigen::MaxSizeVector<ThreadWorkSource*>(static_cast<int32_t>(
               ParamFromEnvWithDefault("TF_RUN_HANDLER_MAX_CONCURRENT_HANDLERS",
                                       kMaxConcurrentHandlers)))) {}
 
@@ -625,9 +627,9 @@ void RunHandlerThreadPool::WorkerLoop(int thread_id,
     if (t.f) {
       tsl::profiler::TraceMe activity(
           [=] {
-            return strings::StrCat(task_from_blocking_queue ? "inter" : "intra",
-                                   " #id = ", tws->GetTracemeId(), " ",
-                                   thread_id, "#");
+            return absl::StrCat(task_from_blocking_queue ? "inter" : "intra",
+                                " #id = ", tws->GetTracemeId(), " ", thread_id,
+                                "#");
           },
           tsl::profiler::TraceMeLevel::kInfo);
       VLOG(2) << "Running " << (task_from_blocking_queue ? "inter" : "intra")
@@ -637,9 +639,7 @@ void RunHandlerThreadPool::WorkerLoop(int thread_id,
       tws->DecrementInflightTaskCount(task_from_blocking_queue);
     } else {
       tsl::profiler::TraceMe activity(
-          [=] {
-            return strings::StrCat("Sleeping#thread_id=", thread_id, "#");
-          },
+          [=] { return absl::StrCat("Sleeping#thread_id=", thread_id, "#"); },
           tsl::profiler::TraceMeLevel::kInfo);
       if (VLOG_IS_ON(4)) {
         for (int i = 0; i < thread_work_sources->size(); ++i) {
@@ -735,7 +735,7 @@ class RunHandler::Impl {
 
   // Stores now time (in microseconds) since unix epoch when the handler is
   // requested via RunHandlerPool::Get().
-  uint64 start_time_us() const { return start_time_us_; }
+  uint64_t start_time_us() const { return start_time_us_; }
   int64_t step_id() const { return step_id_; }
   void ScheduleInterOpClosure(std::function<void()> fn);
   void ScheduleIntraOpClosure(std::function<void()> fn);
@@ -764,7 +764,7 @@ class RunHandler::Impl {
   };
 
   RunHandlerPool::Impl* pool_impl_;  // NOT OWNED.
-  uint64 start_time_us_;
+  uint64_t start_time_us_;
   int64_t step_id_;
   std::unique_ptr<thread::ThreadPoolInterface> thread_pool_interface_;
   internal::ThreadWorkSource tws_;
@@ -777,7 +777,7 @@ class RunHandler::Impl {
 class RunHandlerPool::Impl {
  public:
   explicit Impl(int num_inter_op_threads, int num_intra_op_threads)
-      : max_handlers_(static_cast<int32>(ParamFromEnvWithDefault(
+      : max_handlers_(static_cast<int32_t>(ParamFromEnvWithDefault(
             "TF_RUN_HANDLER_MAX_CONCURRENT_HANDLERS", kMaxConcurrentHandlers))),
         waiters_mu_(
             ParamFromEnvWithDefault("TF_RUN_HANDLER_NUM_SUB_THREAD_POOL", 2)),
@@ -839,10 +839,10 @@ class RunHandlerPool::Impl {
         thread_work_sources =
             std::make_unique<Eigen::MaxSizeVector<internal::ThreadWorkSource*>>(
 
-                static_cast<int32>(ParamFromEnvWithDefault(
+                static_cast<int32_t>(ParamFromEnvWithDefault(
                     "TF_RUN_HANDLER_MAX_CONCURRENT_HANDLERS",
                     kMaxConcurrentHandlers)));
-    uint64 version;
+    uint64_t version;
     int num_active_requests;
     RunHandler::Impl* handler_impl;
     {
@@ -850,14 +850,13 @@ class RunHandlerPool::Impl {
       if (!has_free_handler()) {
         tsl::profiler::TraceMe activity(
             [&] {
-              return strings::StrCat("WaitingForHandler#step_id=", step_id,
-                                     "#");
+              return absl::StrCat("WaitingForHandler#step_id=", step_id, "#");
             },
             tsl::profiler::TraceMeLevel::kInfo);
         TRACESTRING(
-            strings::StrCat("RunHandlerPool::Impl::Get waiting for a handler "
-                            "with timeout in millisecond",
-                            timeout_in_ms));
+            absl::StrCat("RunHandlerPool::Impl::Get waiting for a handler "
+                         "with timeout in millisecond",
+                         timeout_in_ms));
         if (timeout_in_ms == 0) {
           mu_.Await(Condition(this, &Impl::has_free_handler));
         } else if (!mu_.AwaitWithDeadline(
@@ -901,7 +900,7 @@ class RunHandlerPool::Impl {
     CHECK_EQ(handler->tws()->TaskQueueSize(true), 0);   // Crash OK.
     CHECK_EQ(handler->tws()->TaskQueueSize(false), 0);  // Crash OK.
 
-    uint64 now = tensorflow::EnvTime::NowMicros();
+    uint64_t now = tensorflow::EnvTime::NowMicros();
     double elapsed = (now - handler->start_time_us()) / 1000.0;
     time_hist_.Add(elapsed);
 
@@ -937,7 +936,7 @@ class RunHandlerPool::Impl {
 
  private:
   void RecomputePoolStats(
-      int num_active_requests, uint64 version,
+      int num_active_requests, uint64_t version,
       const Eigen::MaxSizeVector<internal::ThreadWorkSource*>&
           thread_work_sources);
 
@@ -973,7 +972,7 @@ class RunHandlerPool::Impl {
 };
 
 void RunHandlerPool::Impl::RecomputePoolStats(
-    int num_active_requests, uint64 version,
+    int num_active_requests, uint64_t version,
     const Eigen::MaxSizeVector<internal::ThreadWorkSource*>&
         thread_work_sources) {
   if (num_active_requests == 0) return;
@@ -1021,9 +1020,9 @@ void RunHandlerPool::Impl::LogInfo() {
     int num_active_requests = sorted_active_handlers_.size();
     VLOG(1) << "Printing time histogram: " << time_hist_.ToString();
     VLOG(1) << "Active session runs: " << num_active_requests;
-    uint64 now = tensorflow::Env::Default()->NowMicros();
-    string times_str = "";
-    string ids_str = "";
+    uint64_t now = tensorflow::Env::Default()->NowMicros();
+    std::string times_str = "";
+    std::string ids_str = "";
     auto it = sorted_active_handlers_.cbegin();
     for (int i = 0; i < num_active_requests; ++i) {
       if (i > 0) {
@@ -1031,9 +1030,9 @@ void RunHandlerPool::Impl::LogInfo() {
         ids_str += " ";
       }
 
-      times_str +=
-          strings::StrCat((now - (*it)->start_time_us()) / 1000.0, " ms.");
-      ids_str += strings::StrCat((*it)->tws()->GetTracemeId());
+      absl::StrAppend(&times_str, (now - (*it)->start_time_us()) / 1000.0,
+                      " ms.");
+      absl::StrAppend(&ids_str, (*it)->tws()->GetTracemeId());
       ++it;
     }
     VLOG(1) << "Elapsed times are: " << times_str;

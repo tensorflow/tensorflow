@@ -20,9 +20,9 @@
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/status_matchers.h"
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/python/ifrt_proxy/common/types.pb.h"
-#include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 
@@ -30,8 +30,6 @@ namespace xla {
 namespace ifrt {
 namespace proxy {
 namespace {
-
-using ::tsl::testing::IsOkAndHolds;
 
 class VariantTest : public testing::TestWithParam<xla::PjRtValueType> {};
 

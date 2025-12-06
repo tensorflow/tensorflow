@@ -85,12 +85,12 @@ class QueueInterface : public ResourceBase {
   virtual absl::Status MatchesNodeDef(const NodeDef& node_def) = 0;
 
   // Returns the number of elements in the queue.
-  virtual int32 size() const = 0;
+  virtual int32_t size() const = 0;
 
   virtual const DataTypeVector& component_dtypes() const = 0;
 
-  string DebugString() const override {
-    return strings::StrCat("A Queue of size: ", size());
+  std::string DebugString() const override {
+    return absl::StrCat("A Queue of size: ", size());
   }
 
  protected:

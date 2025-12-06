@@ -20,8 +20,8 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "absl/synchronization/notification.h"
 #include "tensorflow/core/framework/thread_factory.h"
-#include "tensorflow/core/lib/core/notification.h"
 #include "tensorflow/core/lib/core/threadpool_interface.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/unbounded_work_queue.h"
@@ -35,9 +35,9 @@ namespace data {
 // `UnboundedWorkQueue`.
 class UnboundedThreadPool : public thread::ThreadPoolInterface {
  public:
-  UnboundedThreadPool(Env* env, const string& thread_name)
+  UnboundedThreadPool(Env* env, const std::string& thread_name)
       : unbounded_work_queue_(env, thread_name) {}
-  UnboundedThreadPool(Env* env, const string& thread_name,
+  UnboundedThreadPool(Env* env, const std::string& thread_name,
                       const ThreadOptions& thread_options)
       : unbounded_work_queue_(env, thread_name, thread_options) {}
   ~UnboundedThreadPool() override = default;
@@ -55,7 +55,7 @@ class UnboundedThreadPool : public thread::ThreadPoolInterface {
   class LogicalThreadWrapper;
 
   void ScheduleOnWorkQueue(std::function<void()> fn,
-                           std::shared_ptr<Notification> done);
+                           std::shared_ptr<absl::Notification> done);
 
   UnboundedWorkQueue unbounded_work_queue_;
 };

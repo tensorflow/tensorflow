@@ -29,9 +29,7 @@ limitations under the License.
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/service/compiler.h"
 #include "xla/service/cpu/backend_config.pb.h"
-#include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/statusor.h"
-#include "tsl/platform/casts.h"
 
 namespace xla::cpu {
 namespace {
@@ -77,10 +75,10 @@ TEST_F(XnnpackBackendTest, GetDefaultConfigTest) {
   TF_ASSERT_OK_AND_ASSIGN(
       auto config, backend_->GetDefaultConfig(
                        *module->entry_computation()->root_instruction()));
-  XnnFusionBackendConfig xnnpack_config;
-  config->UnpackTo(&xnnpack_config);
+  XnnFusionOptions xnn_fusion_options;
+  config->UnpackTo(&xnn_fusion_options);
 
-  EXPECT_TRUE(xnnpack_config.use_threadpool());
+  EXPECT_TRUE(xnn_fusion_options.use_threadpool());
 }
 
 TEST_F(XnnpackBackendTest, InvalidFusionKind) {
@@ -123,12 +121,12 @@ TEST_F(XnnpackBackendTest, GetSupportedConfigsTest) {
                         *module->entry_computation()->root_instruction()));
 
   EXPECT_EQ(configs.size(), 2);
-  XnnFusionBackendConfig xnnpack_config0;
-  configs[0]->UnpackTo(&xnnpack_config0);
-  EXPECT_TRUE(xnnpack_config0.use_threadpool());
-  XnnFusionBackendConfig xnnpack_config1;
-  configs[1]->UnpackTo(&xnnpack_config1);
-  EXPECT_FALSE(xnnpack_config1.use_threadpool());
+  XnnFusionOptions xnn_fusion_options0;
+  configs[0]->UnpackTo(&xnn_fusion_options0);
+  EXPECT_TRUE(xnn_fusion_options0.use_threadpool());
+  XnnFusionOptions xnn_fusion_options1;
+  configs[1]->UnpackTo(&xnn_fusion_options1);
+  EXPECT_FALSE(xnn_fusion_options1.use_threadpool());
 }
 
 TEST_F(XnnpackBackendTest, CompileSupportedBackends) {
@@ -153,8 +151,8 @@ TEST_F(XnnpackBackendTest, EnsureConfigIsApplied) {
                           backend_->GetSupportedConfigs(*fusion_instruction));
 
   for (const auto& config : configs) {
-    XnnFusionBackendConfig xnnpack_config;
-    config->UnpackTo(&xnnpack_config);
+    XnnFusionOptions xnn_fusion_options;
+    config->UnpackTo(&xnn_fusion_options);
     EXPECT_TRUE(backend_->ApplyConfig(*fusion_instruction, *config).ok());
 
     TF_ASSERT_OK_AND_ASSIGN(
@@ -162,9 +160,9 @@ TEST_F(XnnpackBackendTest, EnsureConfigIsApplied) {
         fusion_instruction->backend_config<BackendConfig>());
 
     EXPECT_EQ(instruction_backend_config.fusion_config()
-                  .xnn_fusion_config()
+                  .xnn_fusion_options()
                   .use_threadpool(),
-              xnnpack_config.use_threadpool());
+              xnn_fusion_options.use_threadpool());
   }
 }
 

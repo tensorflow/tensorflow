@@ -1878,7 +1878,7 @@ void CreateTfToTfrtPipeline(mlir::OpPassManager &pm,
 static void CreateTfExecutorToTfrtPipelineHelper(
     mlir::OpPassManager &pm, const TfrtPipelineOptions &options) {
   CreateTFExecutorToTFPreInvariantOptimizationPipelineHelper(pm, options);
-  CreateTFExecutorToTFInvariantOptimizationPipelineHelper(pm, options);
+  CreateTFInvariantOptimizationPipelineHelper(pm, options);
   CreateTfToTfrtPipeline(pm, options);
 }
 
@@ -1889,7 +1889,7 @@ absl::Status CreateTfExecutorToTfrtPipeline(
     mlir::PassManager &pm, const TfrtPipelineOptions &options) {
   TF_RETURN_IF_ERROR(
       CreateTFExecutorToTFPreInvariantOptimizationPipeline(pm, options));
-  CreateTFExecutorToTFInvariantOptimizationPipelineHelper(pm, options);
+  CreateTFInvariantOptimizationPipelineHelper(pm, options);
   CreateTfToTfrtPipeline(pm, options);
   return absl::OkStatus();
 }
@@ -1898,7 +1898,7 @@ absl::Status CreateTFExecutorToTFPipeline(mlir::PassManager &pm,
                                           const TfrtPipelineOptions &options) {
   TF_RETURN_IF_ERROR(
       CreateTFExecutorToTFPreInvariantOptimizationPipeline(pm, options));
-  CreateTFExecutorToTFInvariantOptimizationPipelineHelper(pm, options);
+  CreateTFInvariantOptimizationPipelineHelper(pm, options);
   return absl::OkStatus();
 }
 

@@ -139,18 +139,16 @@ absl::StatusOr<std::unique_ptr<GlobalData>> Client::Execute(
     *options_storage->add_device_handles() = std::move(device_handles[0]);
   }
 
-  std::vector<XlaComputationInstance> computation_instances = {
-      XlaComputationInstance{
-          computation,
-          std::vector<GlobalData*>(arguments.begin(), arguments.end()),
-          *execution_options, execution_profile}};
+  XlaComputationInstance computation_instance{
+      computation, std::vector<GlobalData*>(arguments.begin(), arguments.end()),
+      *execution_options, execution_profile};
 
   // Instead of invoking Compile() and Execute(), invoke
   // Service::ExecuteParallel() to execute our one computation.  Compile()
   // caches the executable forever, which isn't what we want.
   VLOG(1) << "Making ExecuteParallel request: "
           << execution_options->DebugString();
-  TF_ASSIGN_OR_RETURN(auto results, ExecuteParallel(computation_instances));
+  TF_ASSIGN_OR_RETURN(auto results, stub_->ExecuteGraph(computation_instance));
   VLOG(1) << "ExecuteParallel request done.";
 
   // The result selection is a bit hacky, but better than assuming it is
@@ -168,11 +166,6 @@ absl::StatusOr<std::unique_ptr<GlobalData>> Client::Execute(
   TF_RET_CHECK(!results.empty());
   VLOG(1) << "Defaulting to device 0 result";
   return std::move(results[0]);
-}
-
-absl::StatusOr<std::vector<std::unique_ptr<GlobalData>>>
-Client::ExecuteParallel(absl::Span<const XlaComputationInstance> computations) {
-  return stub_->ExecuteGraphParallel(computations);
 }
 
 absl::StatusOr<std::vector<DeviceHandle>> Client::GetDeviceHandles(

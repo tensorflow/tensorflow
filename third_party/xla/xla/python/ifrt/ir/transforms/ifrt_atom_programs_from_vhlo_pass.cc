@@ -24,6 +24,7 @@ limitations under the License.
 #include "mlir/InitAllDialects.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Support/TypeID.h"
+#include "google/protobuf/repeated_ptr_field.h"
 #include "stablehlo/dialect/Register.h"
 #include "stablehlo/dialect/Serialization.h"
 #include "xla/python/ifrt/ir/ifrt_ir_program.pb.h"
@@ -54,7 +55,6 @@ class IfrtAtomProgramsFromVhloPass
   }
 
   void getDependentDialects(::mlir::DialectRegistry& registry) const override {
-    mlir::registerAllDialects(registry);
     mlir::stablehlo::registerAllDialects(registry);
   }
 

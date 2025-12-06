@@ -15,24 +15,26 @@ limitations under the License.
 
 #include "xla/service/transpose_folding.h"
 
-#include <algorithm>
+#include <cstdint>
 #include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_set.h"
+#include "absl/log/check.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/shape_util.h"
 #include "xla/status_macros.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/logging.h"
-#include "tsl/platform/status.h"
 
 namespace xla {
 namespace {
@@ -174,7 +176,7 @@ bool FoldTransposeIntoConvolution(InstructionOperandsPair& pair) {
       convolution.shape(), new_lhs, new_rhs, convolution.feature_group_count(),
       convolution.batch_group_count(), convolution.window(), new_dnums,
       convolution.precision_config());
-  TF_CHECK_OK(convolution.parent()->ReplaceWithNewInstruction(
+  CHECK_OK(convolution.parent()->ReplaceWithNewInstruction(
       &convolution, std::move(new_conv)));
 
   return true;
@@ -189,7 +191,7 @@ TransposeFolding::TransposeFolding(
           std::move(dot_can_fold_transpose_operand)),
       transposable_conv_operands_(std::move(transposable_conv_operands)) {}
 
-absl::StatusOr<bool> TransposeFolding::Run(
+absl::StatusOr<bool> TransposeFolding::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   // Modifying the graph while traversing is dangerous, so we find all folding

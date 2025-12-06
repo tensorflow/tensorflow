@@ -23,7 +23,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
-#include "tensorflow/core/lib/core/notification.h"
+#include "absl/synchronization/notification.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/platform/mutex.h"
@@ -83,7 +83,7 @@ class EventMgr {
   friend class EventMgrFactory;
 
   se::StreamExecutor* const exec_;
-  const int32 polling_active_delay_usecs_;
+  const int32_t polling_active_delay_usecs_;
   mutex mu_;
   condition_variable events_pending_ TF_GUARDED_BY(mu_);
 
@@ -134,7 +134,7 @@ class EventMgr {
       callbacks_ TF_GUARDED_BY(mu_);
 
   bool stop_polling_ TF_GUARDED_BY(mu_);
-  std::unique_ptr<Notification> polling_stopped_;
+  std::unique_ptr<absl::Notification> polling_stopped_;
 
   // The main PollLoop for the event manager runs in this threadpool.
   thread::ThreadPool threadpool_;

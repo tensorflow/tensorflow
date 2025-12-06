@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/analysis/alias_info.h"
@@ -43,6 +44,7 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "tsl/platform/statusor.h"
 
@@ -53,7 +55,7 @@ namespace {
 
 class HostOffloaderTest : public HloHardwareIndependentTestBase {
  protected:
-  absl::StatusOr<bool> RunHostOffloader(HloModule* module) {
+  absl::StatusOr<bool> RunHostOffloader(HloModule* module) const {
     TF_EXPECT_OK(verifier().Run(module).status());
     if (module->has_schedule()) {
       return absl::InternalError("Expected a non-scheduled module");
@@ -68,12 +70,13 @@ class HostOffloaderTest : public HloHardwareIndependentTestBase {
     return changed;
   }
 
-  void TestShapeHasMemorySpace(const Shape& shape, int64_t memory_space) {
+  static void TestShapeHasMemorySpace(const Shape& shape,
+                                      int64_t memory_space) {
     ASSERT_TRUE(shape.has_layout());
     EXPECT_EQ(shape.layout().memory_space(), memory_space);
   }
 
-  bool HaveRemainingOffloadAnnotations(const HloModule* module) {
+  static bool HaveRemainingOffloadAnnotations(const HloModule* module) {
     for (const HloComputation* computation : module->computations()) {
       for (const HloInstruction* instruction : computation->instructions()) {
         if (instruction->IsCustomCall(
@@ -84,6 +87,12 @@ class HostOffloaderTest : public HloHardwareIndependentTestBase {
       }
     }
     return false;
+  }
+
+  static void DisableAutomaticHostComputeOffload(HloModule* module) {
+    module->mutable_config()
+        .mutable_debug_options()
+        .set_xla_disable_automatic_host_compute_offload(true);
   }
 
   AliasInfo alias_info_;
@@ -1066,6 +1075,50 @@ ENTRY main {
   TestShapeHasMemorySpace(while_body_param->shape(), Layout::kHostMemorySpace);
 
   EXPECT_FALSE(HaveRemainingOffloadAnnotations(module.get()));
+}
+
+TEST_F(HostOffloaderTest, DsWithMoveToDeviceInWhileBody) {
+  const std::string& hlo_string = R"(
+HloModule my_module, entry_computation_layout={(f32[1024,2048]{1,0:T(8,128)S(5)})->f32[8,2048]{1,0:T(8,128)}}
+while_body {
+  param = (s32[], f32[8,2048]) parameter(0)
+  current_iteration_index.0 = s32[] get-tuple-element(param), index=0
+  gte.1 = f32[8,2048] get-tuple-element(param), index=1
+  offload_custom_call = f32[8,2048] custom-call(gte.1), custom_call_target="MoveToDevice"
+  double = f32[8,2048] add(offload_custom_call, offload_custom_call)
+  constant_1 = s32[] constant(1)
+  incremented_index.0 = s32[] add(current_iteration_index.0, constant_1)
+  ROOT tuple = (s32[], f32[8,2048]) tuple(incremented_index.0, double)
+}
+while_condition {
+  param = (s32[], f32[8,2048]) parameter(0)
+  current_iteration_index.0 = get-tuple-element(param), index=0
+  constant_2 = s32[] constant(2)
+  ROOT pred_result = pred[] compare(current_iteration_index.0, constant_2), direction=LT
+}
+ENTRY main {
+  data_param = f32[1024,2048] parameter(0)
+  constant = s32[] constant(0)
+  ds = f32[8,2048] slice(data_param), slice={[0:8], [0:2048]}
+  tuple = (s32[], f32[8,2048]) tuple(constant, ds)
+  while = (s32[], f32[8,2048]) while(tuple), condition=while_condition, body=while_body
+  ROOT gte = f32[8,2048] get-tuple-element(while), index=1
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
+  VLOG(1) << "module after: " << module->ToString();
+
+  EXPECT_TRUE(changed);
+  // ds should be rewritten into a dynamic-slice.
+  HloInstruction* ds = FindInstruction(module.get(), "dynamic-slice");
+  EXPECT_NE(ds, nullptr);
+  EXPECT_TRUE(ds->shape().layout().memory_space() ==
+              Layout::kDefaultMemorySpace);
+  EXPECT_FALSE(ds->has_frontend_attributes());
 }
 
 TEST_F(HostOffloaderTest, NoCopyWithOptBarrier) {
@@ -4437,6 +4490,164 @@ ENTRY %main.44_spmd (param.4: f32[1,128], param.5: f32[1,128], param.3: f32[1,12
       conditional->shape(), [](const Shape& shape, const ShapeIndex& index) {
         EXPECT_EQ(shape.layout().memory_space(), Layout::kHostMemorySpace);
       });
+}
+
+TEST_F(HostOffloaderTest, PreExistingAllocateBufferMultipleUsers) {
+  const absl::string_view hlo_string = R"(
+HloModule module, entry_computation_layout={(f32[16,16,16]{2,1,0:T(8,128)})->(f32[16,16,16]{2,1,0:T(8,128)S(5)}, f32[16,16,16]{2,1,0:T(8,128)})}, num_partitions=4
+
+region_0.24_spmd.clone (loop_peel_param: (s32[], f32[16,16,16], f32[16,16,16], f32[16,16,16], s32[], /*index=5*/f32[16,16])) -> (s32[], f32[16,16,16], f32[16,16,16], f32[16,16,16], s32[], /*index=5*/f32[16,16]) {
+  loop_peel_param = (s32[]{:T(256)}, f32[16,16,16]{2,1,0:T(8,128)}, f32[16,16,16]{2,1,0:T(8,128)}, f32[16,16,16]{2,1,0:T(8,128)}, s32[]{:T(256)}, /*index=5*/f32[16,16]{1,0:T(8,128)}) parameter(0)
+  get-tuple-element.25 = s32[]{:T(256)} get-tuple-element(loop_peel_param), index=0
+  constant.17 = s32[]{:T(256)} constant(1)
+  add.7 = s32[]{:T(256)} add(get-tuple-element.25, constant.17)
+  get-tuple-element.31 = f32[16,16,16]{2,1,0:T(8,128)} get-tuple-element(loop_peel_param), index=1
+  get-tuple-element.32 = f32[16,16,16]{2,1,0:T(8,128)} get-tuple-element(loop_peel_param), index=3
+  constant.18 = s32[]{:T(256)} constant(0)
+  dynamic-slice.2 = f32[1,16,16]{2,1,0:T(8,128)} dynamic-slice(get-tuple-element.32, get-tuple-element.25, constant.18, constant.18), dynamic_slice_sizes={1,16,16}
+  constant.19 = f32[]{:T(256)} constant(1)
+  broadcast.5 = f32[1,16,16]{2,1,0:T(8,128)} broadcast(constant.19), dimensions={}
+  add.8 = f32[1,16,16]{2,1,0:T(8,128)} add(dynamic-slice.2, broadcast.5)
+  sine.4 = f32[1,16,16]{2,1,0:T(8,128)} sine(add.8)
+  dynamic-update-slice.4 = f32[16,16,16]{2,1,0:T(8,128)} dynamic-update-slice(get-tuple-element.31, sine.4, get-tuple-element.25, constant.18, constant.18)
+  get-tuple-element.33 = f32[16,16,16]{2,1,0:T(8,128)} get-tuple-element(loop_peel_param), index=2
+  get-tuple-element.41 = f32[16,16]{1,0:T(8,128)} get-tuple-element(loop_peel_param), index=5
+  custom-call.6 = f32[16,16]{1,0:T(8,128)} custom-call(get-tuple-element.41), custom_call_target="MoveToHost"
+  bitcast.2 = f32[1,16,16]{2,1,0:T(8,128)} bitcast(custom-call.6)
+  get-tuple-element.34 = s32[]{:T(256)} get-tuple-element(loop_peel_param), index=4
+  dynamic-update-slice.6 = f32[16,16,16]{2,1,0:T(8,128)} dynamic-update-slice(get-tuple-element.33, bitcast.2, get-tuple-element.34, constant.18, constant.18), backend_config={"flag_configs":[],"scoped_memory_configs":[],"indices_config":{"index_known_bits":[{"zeroes":"0","ones":"0","bitwidth":"32"},{"zeroes":"4294967295","ones":"0","bitwidth":"32"},{"zeroes":"4294967295","ones":"0","bitwidth":"32"}],"is_index_aligned":[true,true,false]},"used_scoped_memory_configs":[]}
+  cosine.3 = f32[1,16,16]{2,1,0:T(8,128)} cosine(add.8)
+  bitcast.3 = f32[16,16]{1,0:T(8,128)} bitcast(cosine.3)
+  ROOT tuple.4 = (s32[]{:T(256)}, f32[16,16,16]{2,1,0:T(8,128)}, f32[16,16,16]{2,1,0:T(8,128)}, f32[16,16,16]{2,1,0:T(8,128)}, s32[]{:T(256)}, /*index=5*/f32[16,16]{1,0:T(8,128)}) tuple(add.7, dynamic-update-slice.4, dynamic-update-slice.6, get-tuple-element.32, get-tuple-element.25, /*index=5*/bitcast.3)
+}
+
+region_1.32_spmd.clone (loop_peel_cond_param: (s32[], f32[16,16,16], f32[16,16,16], f32[16,16,16], s32[], /*index=5*/f32[16,16])) -> pred[] {
+  loop_peel_cond_param = (s32[]{:T(256)}, f32[16,16,16]{2,1,0:T(8,128)}, f32[16,16,16]{2,1,0:T(8,128)}, f32[16,16,16]{2,1,0:T(8,128)}, s32[]{:T(256)}, /*index=5*/f32[16,16]{1,0:T(8,128)}) parameter(0)
+  get-tuple-element.24 = s32[]{:T(256)} get-tuple-element(loop_peel_cond_param), index=0
+  constant.16 = s32[]{:T(256)} constant(16)
+  ROOT compare.1 = pred[]{:T(1024)} compare(get-tuple-element.24, constant.16), direction=LT
+}
+
+ENTRY main.39_spmd (param.2: f32[16,16,16]) -> (f32[16,16,16], f32[16,16,16]) {
+  constant.8 = s32[]{:T(256)} constant(1)
+  custom-call.4 = f32[16,16,16]{2,1,0:T(8,128)} custom-call(), custom_call_target="AllocateBuffer"
+  param.2 = f32[16,16,16]{2,1,0:T(8,128)} parameter(0), sharding={replicated}
+  slice = f32[1,16,16]{2,1,0:T(8,128)} slice(param.2), slice={[0:1], [0:16], [0:16]}
+  constant.15 = f32[]{:T(256)} constant(1)
+  broadcast.4 = f32[1,16,16]{2,1,0:T(8,128)} broadcast(constant.15), dimensions={}
+  add.6 = f32[1,16,16]{2,1,0:T(8,128)} add(slice, broadcast.4)
+  sine.3 = f32[1,16,16]{2,1,0:T(8,128)} sine(add.6)
+  constant.7 = s32[]{:T(256)} constant(0)
+  dynamic-update-slice.3 = f32[16,16,16]{2,1,0:T(8,128)} dynamic-update-slice(custom-call.4, sine.3, constant.7, constant.7, constant.7)
+  cosine.2 = f32[1,16,16]{2,1,0:T(8,128)} cosine(add.6)
+  bitcast = f32[16,16]{1,0:T(8,128)} bitcast(cosine.2)
+  tuple.5 = (s32[]{:T(256)}, f32[16,16,16]{2,1,0:T(8,128)}, f32[16,16,16]{2,1,0:T(8,128)}, f32[16,16,16]{2,1,0:T(8,128)}, s32[]{:T(256)}, /*index=5*/f32[16,16]{1,0:T(8,128)}) tuple(constant.8, dynamic-update-slice.3, custom-call.4, param.2, constant.7, /*index=5*/bitcast)
+  while.1 = (s32[]{:T(256)}, f32[16,16,16]{2,1,0:T(8,128)}, f32[16,16,16]{2,1,0:T(8,128)}, f32[16,16,16]{2,1,0:T(8,128)}, s32[]{:T(256)}, /*index=5*/f32[16,16]{1,0:T(8,128)}) while(tuple.5), condition=region_1.32_spmd.clone, body=region_0.24_spmd.clone
+  get-tuple-element.40 = f32[16,16,16]{2,1,0:T(8,128)} get-tuple-element(while.1), index=2
+  get-tuple-element.42 = f32[16,16]{1,0:T(8,128)} get-tuple-element(while.1), index=5
+  custom-call.7 = f32[16,16]{1,0:T(8,128)} custom-call(get-tuple-element.42), custom_call_target="MoveToHost"
+  bitcast.1 = f32[1,16,16]{2,1,0:T(8,128)} bitcast(custom-call.7)
+  get-tuple-element.39 = s32[]{:T(256)} get-tuple-element(while.1), index=4
+  dynamic-update-slice.7 = f32[16,16,16]{2,1,0:T(8,128)} dynamic-update-slice(get-tuple-element.40, bitcast.1, get-tuple-element.39, constant.7, constant.7), backend_config={"flag_configs":[],"scoped_memory_configs":[],"indices_config":{"index_known_bits":[{"zeroes":"0","ones":"0","bitwidth":"32"},{"zeroes":"4294967295","ones":"0","bitwidth":"32"},{"zeroes":"4294967295","ones":"0","bitwidth":"32"}],"is_index_aligned":[true,true,false]},"used_scoped_memory_configs":[]}
+  get-tuple-element.44 = f32[16,16,16]{2,1,0:T(8,128)} get-tuple-element(while.1), index=1
+  ROOT tuple.6 = (f32[16,16,16]{2,1,0:T(8,128)}, f32[16,16,16]{2,1,0:T(8,128)}) tuple(dynamic-update-slice.7, get-tuple-element.44)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
+  EXPECT_TRUE(changed);
+  VLOG(1) << module->ToString();
+
+  // We expect there to be two AllocateBuffer instructions, one in host memory
+  // and one in default memory.
+  int host_memory_space_count = 0;
+  int default_memory_space_count = 0;
+  for (HloComputation* computation : module->computations()) {
+    for (HloInstruction* instruction : computation->instructions()) {
+      if (instruction->IsCustomCall("AllocateBuffer")) {
+        if (instruction->shape().layout().memory_space() ==
+            Layout::kHostMemorySpace) {
+          host_memory_space_count++;
+        } else if (instruction->shape().layout().memory_space() ==
+                   Layout::kDefaultMemorySpace) {
+          default_memory_space_count++;
+        }
+      }
+    }
+  }
+  EXPECT_EQ(host_memory_space_count, 1);
+  EXPECT_EQ(default_memory_space_count, 1);
+}
+
+TEST_F(HostOffloaderTest, PreExistingAllocateBufferMultipleUsersDuplicated) {
+  const absl::string_view hlo_string = R"(
+HloModule module, entry_computation_layout={(f32[1,10], s32[])->(f32[1,10], f32[2,10])}
+
+ENTRY main {
+  p0 = f32[1,10] parameter(0)
+  p1 = s32[] parameter(1)
+  c0 = s32[] constant(0)
+  alloc = f32[2,10] custom-call(), custom_call_target="AllocateBuffer"
+  mth = f32[1,10] custom-call(p0), custom_call_target="MoveToHost"
+  tuple = (f32[2,10], f32[2,10]) tuple(alloc, alloc)
+  gte0 = f32[2,10] get-tuple-element(tuple), index=0
+  dus = f32[2,10] dynamic-update-slice(gte0, mth, p1, c0)
+  ds = f32[1,10] dynamic-slice(dus, p1, c0), dynamic_slice_sizes={1,10}
+  mtd = f32[1,10] custom-call(ds), custom_call_target="MoveToDevice"
+  gte1 = f32[2,10] get-tuple-element(tuple), index=1
+  add = f32[2,10] add(gte1, gte1)
+  ROOT root_tuple = (f32[1,10], f32[2,10]) tuple(mtd, add)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
+  EXPECT_TRUE(changed);
+  VLOG(1) << module->ToString();
+
+  // We expect there to be two AllocateBuffer instructions, one in host memory
+  // and one in default memory.
+  int host_memory_space_count = 0;
+  int default_memory_space_count = 0;
+  for (HloComputation* computation : module->computations()) {
+    for (HloInstruction* instruction : computation->instructions()) {
+      if (instruction->IsCustomCall("AllocateBuffer")) {
+        if (instruction->shape().layout().memory_space() ==
+            Layout::kHostMemorySpace) {
+          host_memory_space_count++;
+        } else if (instruction->shape().layout().memory_space() ==
+                   Layout::kDefaultMemorySpace) {
+          default_memory_space_count++;
+        }
+      }
+    }
+  }
+  EXPECT_EQ(host_memory_space_count, 1);
+  EXPECT_EQ(default_memory_space_count, 1);
+}
+
+TEST_F(HostOffloaderTest, AutomaticHostComputeOffloadDisabled) {
+  const absl::string_view hlo_string = R"(
+    HloModule module, entry_computation_layout={(f32[1024]{0})->f32[1024]{0}}
+
+    ENTRY main {
+      param = f32[1024]{0} parameter(0)
+      to_host = f32[1024]{0} custom-call(param), custom_call_target="MoveToHost"
+      tanh = f32[1024]{0} tanh(to_host)
+      ROOT to_device = f32[1024]{0} custom-call(tanh), custom_call_target="MoveToDevice"
+    })";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  DisableAutomaticHostComputeOffload(module.get());
+  // Normally, the tanh will be offloaded to host compute, but because we have
+  // disabled automatic host compute offloading, we expect an error.
+  absl::StatusOr<bool> changed = RunHostOffloader(module.get());
+  EXPECT_THAT(changed,
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
 }  // namespace

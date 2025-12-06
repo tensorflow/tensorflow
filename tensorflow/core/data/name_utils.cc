@@ -17,6 +17,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/attributes.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 
 namespace tensorflow {
@@ -36,16 +37,16 @@ string OpName(const string& dataset_type) {
 
 string OpName(const string& dataset_type, const OpNameParams& params) {
   if (params.op_version == 1) {
-    return strings::StrCat(dataset_type, kDataset);
+    return absl::StrCat(dataset_type, kDataset);
   }
-  return strings::StrCat(dataset_type, kDataset, kVersion, params.op_version);
+  return absl::StrCat(dataset_type, kDataset, kVersion, params.op_version);
 }
 
 string ArgsToString(const std::vector<string>& args) {
   if (args.empty()) {
     return "";
   }
-  return strings::StrCat("(", absl::StrJoin(args, ", "), ")");
+  return absl::StrCat("(", absl::StrJoin(args, ", "), ")");
 }
 
 string DatasetDebugString(const string& dataset_type) {
@@ -68,8 +69,8 @@ string IteratorPrefix(const string& dataset_type, const string& prefix) {
 string IteratorPrefix(const string& dataset_type, const string& prefix,
                       const IteratorPrefixParams& params) {
   if (params.op_version == 1) {
-    return strings::StrCat(prefix, kDelimiter, params.dataset_prefix,
-                           dataset_type);
+    return absl::StrCat(prefix, kDelimiter, params.dataset_prefix,
+                        dataset_type);
   }
   return strings::StrCat(prefix, kDelimiter, params.dataset_prefix,
                          dataset_type, kVersion, params.op_version);

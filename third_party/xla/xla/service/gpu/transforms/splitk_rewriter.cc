@@ -56,6 +56,8 @@ struct DotDimensions {
   int64_t m;  // lhs non-contracting dimensions
   int64_t n;  // rhs non-contracting dimensions
   int64_t k;  // contracting dimensions
+  // LHS and RHS element sizes, after going up the chain of elementwise
+  // operations. That approximates what will be fused.
   int64_t lhs_element_bits;
   int64_t rhs_element_bits;
   int64_t acc_element_bits;
@@ -219,24 +221,32 @@ HloInstruction* PadInstruction(HloInstruction* instr, int64_t dimension_idx,
   PaddingConfig padding_config =
       MakeNoPaddingConfig(instr->shape().dimensions().size());
   padding_config.mutable_dimensions(dimension_idx)
-      ->set_edge_padding_low(new_dimension_size -
-                             instr->shape().dimensions(dimension_idx));
+      ->set_edge_padding_high(new_dimension_size -
+                              instr->shape().dimensions(dimension_idx));
   Shape new_shape = instr->shape();
   new_shape.set_dimensions(dimension_idx, new_dimension_size);
   return computation->AddInstruction(
       HloInstruction::CreatePad(new_shape, instr, zero, padding_config));
 }
 
+// Returns the padded K dimension so that it is a multiple of split_k and 16B.
+int64_t GetPaddedK(HloInstruction& dot, int64_t split_k) {
+  DotDimensions dims = GetDotDimensions(&dot);
+  const int64_t alignment_in_bits = 16 * 8;
+  int64_t min_element_size_in_bits = std::min(
+      {alignment_in_bits, dims.lhs_element_bits, dims.rhs_element_bits});
+  return RoundUpTo(dims.k,
+                   split_k * alignment_in_bits / min_element_size_in_bits);
+}
+
 // The contracting dimension index becomes new batch (split) dimension, and all
 // dimensions after it are shifted by 1.
 HloInstruction* SplitKOperand(HloInstruction* operand,
                               int64_t contracting_dimension_idx,
-                              int64_t split_k) {
+                              int64_t split_k, int64_t padded_k) {
   // if the K dimension is not divisible by split_k, we need to pad it.
   const int64_t src_k = operand->shape().dimensions(contracting_dimension_idx);
-  const bool needs_padding = src_k % split_k != 0;
-  if (needs_padding) {
-    const int64_t padded_k = RoundUpTo(src_k, split_k);
+  if (padded_k != src_k) {
     operand = PadInstruction(operand, contracting_dimension_idx, padded_k);
   }
   const Shape& old_shape = operand->shape();
@@ -296,12 +306,13 @@ absl::StatusOr<HloInstruction*> SplitKDimensionOfDot(HloDotInstruction* src_dot,
       src_dot->dot_dimension_numbers().lhs_contracting_dimensions(0);
   const int64_t rhs_k_idx =
       src_dot->dot_dimension_numbers().rhs_contracting_dimensions(0);
+  const int64_t padded_k = GetPaddedK(*src_dot, split_k);
   // The operands' K dimension are split into [split_k, K/split_k] (shifting
   // right all the dimensions after it).
   HloInstruction* lhs =
-      SplitKOperand(src_dot->mutable_operand(0), lhs_k_idx, split_k);
+      SplitKOperand(src_dot->mutable_operand(0), lhs_k_idx, split_k, padded_k);
   HloInstruction* rhs =
-      SplitKOperand(src_dot->mutable_operand(1), rhs_k_idx, split_k);
+      SplitKOperand(src_dot->mutable_operand(1), rhs_k_idx, split_k, padded_k);
 
   // Update the dot's dimension numbers accordingly (shifting right all the
   // dimensions starting from the K dimension and inserting new batch dims).
@@ -309,7 +320,9 @@ absl::StatusOr<HloInstruction*> SplitKDimensionOfDot(HloDotInstruction* src_dot,
   auto shift_dimension = [](tsl::protobuf::RepeatedField<int64_t>* dims,
                             int64_t idx) {
     absl::c_for_each(*dims, [idx](int64_t& dim) {
-      if (dim >= idx) dim++;
+      if (dim >= idx) {
+        dim++;
+      }
     });
   };
   shift_dimension(new_dnums.mutable_lhs_contracting_dimensions(), lhs_k_idx);
@@ -371,7 +384,7 @@ class SplitkRewriterVisitor : public DfsHloRewriteVisitor {
 
 }  // namespace
 
-absl::StatusOr<bool> SplitkRewriter::Run(
+absl::StatusOr<bool> SplitkRewriter::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   if (!module->config()

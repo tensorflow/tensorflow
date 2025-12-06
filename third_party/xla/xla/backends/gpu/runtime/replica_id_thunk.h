@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
+#include "xla/runtime/buffer_use.h"
 #include "xla/service/buffer_assignment.h"
 
 namespace xla {
@@ -39,6 +40,12 @@ class ReplicaOrPartitionIdThunk : public Thunk {
   ReplicaOrPartitionIdThunk(Kind kind, ThunkInfo thunk_info,
                             const BufferAllocation::Slice& dest)
       : Thunk(kind, thunk_info), dest_(dest) {}
+
+  BufferUses buffer_uses() const override {
+    return {
+        BufferUse::Write(dest_),
+    };
+  }
 
  private:
   const BufferAllocation::Slice dest_;

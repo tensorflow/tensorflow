@@ -15,13 +15,17 @@ limitations under the License.
 
 #include "xla/tsl/framework/device_id_manager.h"
 
+#include <cstdint>
+#include <string>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/tsl/framework/device_id.h"
+#include "xla/tsl/framework/device_type.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/macros.h"
@@ -44,23 +48,24 @@ class TfToPlatformDeviceIdMap {
       TF_LOCKS_EXCLUDED(mu_) {
     std::pair<IdMapType::iterator, bool> result;
     {
-      absl::MutexLock lock(&mu_);
+      absl::MutexLock lock(mu_);
       TypeIdMapType::iterator device_id_map_iter =
           id_map_.insert({type.type_string(), IdMapType()}).first;
       result = device_id_map_iter->second.insert(
           {tf_device_id.value(), platform_device_id.value()});
     }
     if (!result.second && platform_device_id.value() != result.first->second) {
-      return errors::AlreadyExists(
-          "TensorFlow device (", type, ":", tf_device_id.value(),
+      return absl::AlreadyExistsError(absl::StrCat(
+          "TensorFlow device (", type.type_string(), ":", tf_device_id.value(),
           ") is being mapped to multiple devices (", platform_device_id.value(),
           " now, and ", result.first->second,
           " previously), which is not supported. "
           "This may be the result of providing different ",
-          type, " configurations (ConfigProto.gpu_options, for example ",
+          type.type_string(),
+          " configurations (ConfigProto.gpu_options, for example ",
           "different visible_device_list) when creating multiple Sessions in ",
           "the same process. This is not currently supported, see ",
-          "https://github.com/tensorflow/tensorflow/issues/19083");
+          "https://github.com/tensorflow/tensorflow/issues/19083"));
     }
     return absl::OkStatus();
   }
@@ -69,7 +74,7 @@ class TfToPlatformDeviceIdMap {
             PlatformDeviceId* platform_device_id) const TF_LOCKS_EXCLUDED(mu_) {
     // TODO(mrry): Consider replacing this with an atomic `is_initialized` bit,
     // to avoid writing to a shared cache line in the tf_shared_lock.
-    absl::ReaderMutexLock lock(&mu_);
+    absl::ReaderMutexLock lock(mu_);
     auto type_id_map_iter = id_map_.find(type.type_string());
     if (type_id_map_iter == id_map_.end()) return false;
     auto id_map_iter = type_id_map_iter->second.find(tf_device_id.value());
@@ -81,7 +86,7 @@ class TfToPlatformDeviceIdMap {
   absl::StatusOr<std::vector<TfDeviceId>> GetTfDevicesOnPlatform(
       const DeviceType& type, PlatformDeviceId platform_device_id) const
       TF_LOCKS_EXCLUDED(mu_) {
-    absl::ReaderMutexLock lock(&mu_);
+    absl::ReaderMutexLock lock(mu_);
     auto type_id_map_iter = id_map_.find(type.type_string());
     if (type_id_map_iter == id_map_.end()) {
       return absl::NotFoundError(
@@ -101,12 +106,12 @@ class TfToPlatformDeviceIdMap {
   TfToPlatformDeviceIdMap() = default;
 
   void TestOnlyReset() TF_LOCKS_EXCLUDED(mu_) {
-    absl::MutexLock lock(&mu_);
+    absl::MutexLock lock(mu_);
     id_map_.clear();
   }
 
   // Map from physical device id to platform device id.
-  using IdMapType = std::unordered_map<int32, int32>;
+  using IdMapType = std::unordered_map<int32_t, int32_t>;
   // Map from DeviceType to IdMapType.
   // We use std::string instead of DeviceType because the key should
   // be default-initializable.
@@ -134,8 +139,9 @@ absl::Status DeviceIdManager::TfToPlatformDeviceId(
                                                  platform_device_id)) {
     return absl::OkStatus();
   }
-  return errors::NotFound("TensorFlow device ", type, ":", tf_device_id.value(),
-                          " was not registered");
+  return absl::NotFoundError(
+      absl::StrCat("TensorFlow device ", type.type_string(), ":",
+                   tf_device_id.value(), " was not registered"));
 }
 
 absl::StatusOr<std::vector<TfDeviceId>> DeviceIdManager::GetTfDevicesOnPlatform(

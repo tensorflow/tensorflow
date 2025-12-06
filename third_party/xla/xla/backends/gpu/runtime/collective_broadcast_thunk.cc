@@ -29,12 +29,12 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/core/collectives/communicator.h"
 #include "xla/core/collectives/rank_id.h"
+#include "xla/future.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/gpu/transforms/collectives/collective_ops_utils.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/stream.h"
-#include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
@@ -47,7 +47,7 @@ CollectiveBroadcastStartThunk::CollectiveBroadcastStartThunk(
     std::vector<Buffer> buffers, bool p2p_memcpy_enabled)
     : CollectiveThunk(Thunk::kCollectiveBroadcastStart, thunk_info,
                       IsGPUSyncCollective(*instr),
-                      AsyncStreamKind::kCollective),
+                      AsyncStreamKind::ASYNC_STREAM_KIND_COLLECTIVE),
       config_(GetCollectiveConfig(instr, std::nullopt)),
       buffers_(std::move(buffers)) {}
 
@@ -63,20 +63,20 @@ CollectiveBroadcastStartThunk::CollectiveBroadcastStartThunk(
 }
 
 absl::StatusOr<bool> CollectiveBroadcastStartThunk::RunCollective(
-    const ExecuteParams& params, se::Stream& stream,
-    CommunicatorHandle comm_handle) {
+    const ExecuteParams& params, const GpuCliqueKey& clique_key,
+    se::Stream& stream, Communicator& comm) {
   TF_ASSIGN_OR_RETURN(
       std::vector<DeviceBufferPair> device_buffers,
       ConvertToDeviceBuffers(params, buffers_, config_.operand_element_type));
-  TF_RETURN_IF_ERROR(::xla::gpu::RunCollectiveBroadcast(device_buffers, stream,
-                                                        comm_handle.comm));
+  TF_RETURN_IF_ERROR(
+      ::xla::gpu::RunCollectiveBroadcast(device_buffers, stream, comm));
   return true;
 }
 
 absl::Status RunCollectiveBroadcast(std::vector<DeviceBufferPair>& buffers,
-                                    se::Stream& stream, Communicator* comm) {
-  auto* gpu_comm = tsl::down_cast<GpuCommunicator*>(comm);
-  tsl::AsyncValueRef<Communicator::Event> event = gpu_comm->GroupExecute(
+                                    se::Stream& stream, Communicator& comm) {
+  auto* gpu_comm = tsl::down_cast<GpuCommunicator*>(&comm);
+  Future<> future = gpu_comm->GroupExecute(
       [&buffers, &stream](GpuCommunicator* comm) -> absl::Status {
         for (auto buffer : buffers) {
           se::DeviceMemoryBase src_addr = buffer.source_buffer;
@@ -89,11 +89,7 @@ absl::Status RunCollectiveBroadcast(std::vector<DeviceBufferPair>& buffers,
         }
         return absl::OkStatus();
       });
-  tsl::BlockUntilReady(event);
-  if (event.IsError()) {
-    return event.GetError();
-  }
-  return absl::OkStatus();
+  return future.Await();
 }
 
 }  // namespace xla::gpu

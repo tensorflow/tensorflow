@@ -31,11 +31,11 @@ limitations under the License.
 #include "mlir/Dialect/Vector/IR/VectorOps.h"
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/Attributes.h"
+#include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/BuiltinTypeInterfaces.h"
 #include "mlir/IR/BuiltinTypes.h"
-#include "mlir/IR/ImplicitLocOpBuilder.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/TypeRange.h"
@@ -46,9 +46,11 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/LogicalResult.h"
+#include "mlir/Support/WalkResult.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "xla/backends/cpu/codegen/emitters/ir/xla_cpu_ops.h"
 #include "xla/backends/gpu/codegen/emitters/ir/xla_gpu_ops.h"
+#include "xla/codegen/emitters/ir/xla_ops.h"
 #include "xla/hlo/analysis/indexing_analysis.h"
 #include "xla/layout_util.h"
 #include "xla/shape_util.h"
@@ -227,6 +229,7 @@ Value LinearizeIndex(Location loc, ShapedType type, ValueRange indices,
   }
   auto linear_shape =
       ShapeUtil::MakeShape(U8, {ShapeUtil::ElementsIn(byte_shape)});
+  // TODO(b/446856820): Get MLIRContext from a different source..
   auto linearized_map =
       GetBitcastMap(byte_shape, linear_shape, rewriter.getContext());
   mlir::SmallVector<Value> result;
@@ -350,7 +353,7 @@ struct RewriteVectorExtract : OpRewritePattern<mv::ExtractOp> {
 
   LogicalResult matchAndRewrite(mv::ExtractOp op,
                                 PatternRewriter& rewriter) const override {
-    auto vector = op.getVector();
+    auto vector = op.getSource();
     auto vector_type = vector.getType();
     if (vector_type.getRank() < 2) {
       return rewriter.notifyMatchFailure(op, "the vector is already flat");
@@ -415,6 +418,27 @@ struct RewriteVectorInsert : OpRewritePattern<mv::InsertOp> {
         b.create<mv::InsertOp>(op.getValueToStore(), vector_1D, linear_index);
     auto cast_to_orig_type = b.create<UnrealizedConversionCastOp>(
         vector_type, new_insert.getResult());
+    rewriter.replaceOp(op, cast_to_orig_type.getResult(0));
+    return mlir::success();
+  }
+};
+
+struct RewriteVectorFromElements : OpRewritePattern<mv::FromElementsOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(mv::FromElementsOp op,
+                                PatternRewriter& rewriter) const override {
+    auto vector = op.getDest();
+    auto vector_type = vector.getType();
+    if (vector_type.getRank() < 2) {
+      return rewriter.notifyMatchFailure(op, "the vector is already flat");
+    }
+    auto loc = op.getLoc();
+    mlir::ImplicitLocOpBuilder b(loc, rewriter);
+    auto new_from_elements = b.create<mv::FromElementsOp>(
+        GetFlattenedType(vector_type), op.getElements());
+    auto cast_to_orig_type = b.create<UnrealizedConversionCastOp>(
+        vector_type, new_from_elements.getResult());
     rewriter.replaceOp(op, cast_to_orig_type.getResult(0));
     return mlir::success();
   }
@@ -725,6 +749,28 @@ struct RewriteSyncThreads : OpRewritePattern<gpu::SyncThreadsOp> {
   }
 };
 
+struct RewriteGetDynamicDimSizeOp : OpRewritePattern<GetDynamicDimSizeOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(GetDynamicDimSizeOp op,
+                                PatternRewriter& rewriter) const override {
+    auto tensor = op.getTensor();
+    auto tensor_type = tensor.getType();
+    if (tensor_type.getRank() < 2) {
+      return rewriter.notifyMatchFailure(op, "the tensor is already flat");
+    }
+
+    auto tensor_1D = rewriter
+                         .create<UnrealizedConversionCastOp>(
+                             op.getLoc(), GetFlattenedType(tensor_type), tensor)
+                         .getResult(0);
+    rewriter.replaceOpWithNewOp<GetDynamicDimSizeOp>(op, tensor_1D,
+                                                     op.getDim());
+
+    return mlir::success();
+  }
+};
+
 class FlattenTensorsPass
     : public impl::FlattenTensorsPassBase<FlattenTensorsPass> {
  public:
@@ -737,8 +783,10 @@ class FlattenTensorsPass
         RewriteAllocateShared,
         RewriteAtomicRMW,
         RewriteConstant,
+        RewriteCpuLoad,
         RewriteFor,
         RewriteFunctionSignatures,
+        RewriteGetDynamicDimSizeOp,
         RewriteIf,
         RewriteIndexSwitch,
         RewritePureCall,
@@ -746,9 +794,9 @@ class FlattenTensorsPass
         RewriteTensorExtract,
         RewriteTensorInsert,
         RewriteVectorExtract,
+        RewriteVectorFromElements,
         RewriteVectorInsert,
-        RewriteVectorTransferRead,
-        RewriteCpuLoad
+        RewriteVectorTransferRead
     >(mlir_context);
     // clang-format on
     ApplyIndexingOp::getCanonicalizationPatterns(patterns, mlir_context);

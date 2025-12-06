@@ -32,10 +32,12 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/strings/ascii.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 // Needed for encoding and decoding ResourceDeleter Variant.
 #include "absl/strings/str_join.h"
+#include "absl/synchronization/notification.h"
 #include "tensorflow/core/common_runtime/input_colocation_exemption_registry.h"
 #include "tensorflow/core/data/dataset_utils.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_client_cq_tag.h"
@@ -277,7 +279,7 @@ class RpcServiceImpl : public grpc::RpcService::Service {
     }
 
     std::vector<Tensor>* rets = new std::vector<Tensor>;
-    Notification notification;
+    absl::Notification notification;
     fn_lib->Run(
         opts, handle, args, rets,
         [rets, response, &notification, &status](const absl::Status& st) {
@@ -374,10 +376,11 @@ class GrpcPollingThread {
   explicit GrpcPollingThread(std::string thread_name) {
     // Thread name can only have alpha numeric characters. Remove special
     // characters from input thread_name.
-    thread_name.erase(
-        std::remove_if(thread_name.begin(), thread_name.end(),
-                       [](auto const c) -> bool { return !std::isalnum(c); }),
-        thread_name.end());
+    thread_name.erase(std::remove_if(thread_name.begin(), thread_name.end(),
+                                     [](unsigned char const c) -> bool {
+                                       return !absl::ascii_isalnum(c);
+                                     }),
+                      thread_name.end());
     thread_.reset(Env::Default()->StartThread(
         ThreadOptions(), absl::StrCat("GrpcPollingThread", thread_name),
         [this]() {
@@ -405,7 +408,7 @@ class GrpcPollingThread {
 class RpcClient : public ResourceBase {
  public:
   explicit RpcClient(std::string address, std::string resource_name,
-                     int64 timeout_in_ms)
+                     int64_t timeout_in_ms)
       : server_address_(address),
         thread_(resource_name),
         timeout_in_ms_(timeout_in_ms) {
@@ -427,7 +430,7 @@ class RpcClient : public ResourceBase {
 
   void CallAsync(const std::string& method_name,
                  const std::vector<Tensor>& inputs, CallResponse* response,
-                 StatusCallback callback, int64 timeout_in_ms) {
+                 StatusCallback callback, int64_t timeout_in_ms) {
     CallRequest request;
     request.set_method(method_name);
     for (const auto& t : inputs) {
@@ -435,7 +438,7 @@ class RpcClient : public ResourceBase {
     }
     ::grpc::ClientContext context;
     // Use per call timeout if specified, otherwise use default client timeout.
-    int64 timeout = timeout_in_ms > 0 ? timeout_in_ms : timeout_in_ms_;
+    int64_t timeout = timeout_in_ms > 0 ? timeout_in_ms : timeout_in_ms_;
     new RPCState<CallResponse>(
         stub_.get(), cq_, "/tensorflow.rpc.RpcService/Call", request, response,
         /*done=*/std::move(callback),
@@ -467,7 +470,7 @@ class RpcClient : public ResourceBase {
   ::grpc::CompletionQueue* cq_;
   GrpcPollingThread thread_;
   std::unique_ptr<thread::ThreadPool> callback_threadpool_;
-  int64 timeout_in_ms_;
+  int64_t timeout_in_ms_;
 };
 
 class RpcFutureResource : public ResourceBase {
@@ -684,7 +687,7 @@ void RpcServerRegisterOp::Compute(OpKernelContext* ctx) {
     instantiate_opts.input_devices.push_back(ctx->device()->name());
   }
 
-  absl::flat_hash_map<string, std::vector<string>> composite_devices;
+  absl::flat_hash_map<std::string, std::vector<std::string>> composite_devices;
   for (int i = 0; i < captured.size(); ++i) {
     if (captured[i].dtype() == DT_RESOURCE) {
       instantiate_opts.input_devices.push_back(GetFunctionResourceInputDevice(

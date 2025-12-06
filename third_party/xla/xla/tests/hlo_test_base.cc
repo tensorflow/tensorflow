@@ -24,7 +24,6 @@ limitations under the License.
 
 #include "absl/base/nullability.h"
 #include "absl/log/check.h"
-#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/error_spec.h"
@@ -47,7 +46,6 @@ limitations under the License.
 #include "xla/tests/hlo_runner_agnostic_test_base.h"
 #include "xla/tests/pjrt_client_registry.h"
 #include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/util.h"
@@ -140,13 +138,13 @@ HloTestBase::HloTestBase(
 
 /*static*/ se::Platform* HloTestBase::GetReferencePlatform() {
   auto result = PlatformUtil::GetPlatform(kInterpreter);
-  TF_CHECK_OK(result.status()) << "could not get interpreter platform";
+  CHECK_OK(result.status()) << "could not get interpreter platform";
   return result.value();
 }
 
 /*static*/ se::Platform* HloTestBase::GetTestPlatform() {
   auto result = PlatformUtil::GetDefaultPlatform();
-  TF_CHECK_OK(result.status()) << "could not get test platform";
+  CHECK_OK(result.status()) << "could not get test platform";
   return result.value();
 }
 

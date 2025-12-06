@@ -20,6 +20,7 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
+#include "xla/backends/gpu/ffi.h"
 #include "xla/ffi/ffi.h"
 #include "xla/ffi/ffi_api.h"
 #include "xla/hlo/builder/lib/constants.h"
@@ -35,10 +36,9 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/stream.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/test.h"
 
 namespace xla::gpu {
 
@@ -1006,7 +1006,7 @@ TEST_F(DynamicSliceFusionRewriterTest, SimpleCustomCallLegacy) {
   //     ScheduleModule(hlo.get(), [](const BufferValue& buffer) {
   //       return ShapeUtil::ByteSizeOf(buffer.shape(), /*pointer_size=*/8);
   //     }));
-  // TF_CHECK_OK(hlo->set_schedule(std::move(schedule)));
+  // CHECK_OK(hlo->set_schedule(std::move(schedule)));
 
   const char* expected = R"(
     ; CHECK:     %dynamic-slice-fusion{{.*}} {
@@ -1068,7 +1068,7 @@ TEST_F(DynamicSliceFusionRewriterTest, TupleSliceCustomCallLegacy) {
   //     ScheduleModule(hlo.get(), [](const BufferValue& buffer) {
   //       return ShapeUtil::ByteSizeOf(buffer.shape(), /*pointer_size=*/8);
   //     }));
-  // TF_CHECK_OK(hlo->set_schedule(std::move(schedule)));
+  // CHECK_OK(hlo->set_schedule(std::move(schedule)));
 
   const char* expected = R"(
     ; CHECK:     %dynamic-slice-fusion{{.*}} {
@@ -1142,7 +1142,7 @@ TEST_F(DynamicSliceFusionRewriterTest, TupledOutputCustomCallLegacy) {
   //     ScheduleModule(hlo.get(), [](const BufferValue& buffer) {
   //       return ShapeUtil::ByteSizeOf(buffer.shape(), /*pointer_size=*/8);
   //     }));
-  // TF_CHECK_OK(hlo->set_schedule(std::move(schedule)));
+  // CHECK_OK(hlo->set_schedule(std::move(schedule)));
 
   const char* expected = R"(
     ; CHECK:     %dynamic-slice-fusion{{.*}} {
@@ -1205,7 +1205,7 @@ TEST_F(DynamicSliceFusionRewriterTest, UnalignedSlice) {
   //     ScheduleModule(hlo.get(), [](const BufferValue& buffer) {
   //       return ShapeUtil::ByteSizeOf(buffer.shape(), /*pointer_size=*/8);
   //     }));
-  // TF_CHECK_OK(hlo->set_schedule(std::move(schedule)));
+  // CHECK_OK(hlo->set_schedule(std::move(schedule)));
 
   auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
   RunAndFilecheckHloRewrite(hlo->ToString(), DynamicSliceFusionRewriter("gpu"),

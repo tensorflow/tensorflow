@@ -34,14 +34,14 @@ limitations under the License.
 #include "xla/service/hlo_module_config.h"
 #include "xla/shape.h"
 #include "xla/status_macros.h"
-#include "tsl/platform/errors.h"
+#include "xla/tsl/platform/errors.h"
 
 namespace xla {
 namespace gpu {
 
-absl::StatusOr<bool> ReduceScatterCreator::Run(
-    HloModule *module,
-    const absl::flat_hash_set<absl::string_view> &execution_threads) {
+absl::StatusOr<bool> ReduceScatterCreator::RunImpl(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   const HloModuleConfig &config = module->config();
   int64_t next_channel_id = hlo_query::NextChannelId(*module);
 

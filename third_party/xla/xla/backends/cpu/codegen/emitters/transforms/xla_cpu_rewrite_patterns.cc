@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/backends/cpu/codegen/emitters/transforms/xla_cpu_rewrite_patterns.h"
 
+#include <array>
 #include <cstdint>
 #include <string>
 
@@ -22,15 +23,19 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
+#include "mlir/Conversion/LLVMCommon/MemRefBuilder.h"
+#include "mlir/Conversion/LLVMCommon/TypeConverter.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/LLVMIR/LLVMAttrs.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Dialect/LLVMIR/LLVMTypes.h"
+#include "mlir/Dialect/UB/IR/UBOps.h"
+#include "mlir/Dialect/Vector/IR/VectorOps.h"
+#include "mlir/Dialect/Vector/Utils/VectorUtils.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinOps.h"
-#include "mlir/IR/ImplicitLocOpBuilder.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/Value.h"
 #include "mlir/Interfaces/DataLayoutInterfaces.h"
@@ -112,9 +117,73 @@ struct LowerLoadOp : public mlir::OpRewritePattern<LoadOp> {
               dereferenceable.getInt(), false));
     }
 
-    auto arg_ptr_cast = b.create<mlir::UnrealizedConversionCastOp>(
-        op.getLoc(), op->getResult(0).getType(), arg_ptr.getResult());
-    rewriter.replaceOp(op, arg_ptr_cast.getResult(0));
+    if (auto memref_type = mlir::dyn_cast<mlir::MemRefType>(op.getType())) {
+      mlir::LLVMTypeConverter converter(rewriter.getContext());
+      mlir::Value memref_desc = mlir::MemRefDescriptor::fromStaticShape(
+          b, op.getLoc(), converter, memref_type, arg_ptr);
+      auto memref_cast = b.create<mlir::UnrealizedConversionCastOp>(
+          op.getLoc(), op.getResult().getType(), memref_desc);
+      rewriter.replaceOp(op, memref_cast);
+    } else {
+      auto arg_ptr_cast = b.create<mlir::UnrealizedConversionCastOp>(
+          op.getLoc(), op.getResult().getType(), arg_ptr.getResult());
+      rewriter.replaceOp(op, arg_ptr_cast.getResult(0));
+    }
+    return mlir::success();
+  }
+};
+
+struct LowerExtractWorkgroupIdOp
+    : public mlir::OpRewritePattern<ExtractWorkgroupIdOp> {
+ public:
+  using OpRewritePattern::OpRewritePattern;
+
+  mlir::LogicalResult matchAndRewrite(
+      ExtractWorkgroupIdOp op, mlir::PatternRewriter& rewriter) const override {
+    mlir::MLIRContext* context = rewriter.getContext();
+    mlir::ImplicitLocOpBuilder builder(op.getLoc(), rewriter);
+
+    auto ptr_type = builder.getType<mlir::LLVM::LLVMPointerType>();
+    auto kernel_call_frame = KernelCallFrameType(context);
+    auto kernel_dim = KernelDim3Type(context);
+    auto i64_ty = builder.getI64Type();
+
+    // Get a pointer to the `WorkGroupThread` struct.
+    auto cast = builder
+                    .create<mlir::UnrealizedConversionCastOp>(ptr_type,
+                                                              op.getCallFrame())
+                    .getResult(0);
+    auto workgroup_gep = builder.create<mlir::LLVM::GEPOp>(
+        ptr_type, kernel_call_frame, cast,
+        mlir::ArrayRef<mlir::LLVM::GEPArg>{mlir::LLVM::GEPArg(0),
+                                           mlir::LLVM::GEPArg(1)},
+        mlir::LLVM::GEPNoWrapFlags::inbounds);
+    auto workgroup_ptr =
+        builder.create<mlir::LLVM::LoadOp>(ptr_type, workgroup_gep);
+
+    int32_t workgroup_dim_idx = static_cast<int32_t>(op.getDimension());
+    auto workgroup_dim_gep = builder.create<mlir::LLVM::GEPOp>(
+        ptr_type, kernel_dim, workgroup_ptr,
+        mlir::ArrayRef<mlir::LLVM::GEPArg>{
+            mlir::LLVM::GEPArg(0), mlir::LLVM::GEPArg(workgroup_dim_idx)},
+        mlir::LLVM::GEPNoWrapFlags::inbounds);
+    auto workgroup_dim_load =
+        builder.create<mlir::LLVM::LoadOp>(i64_ty, workgroup_dim_gep);
+    workgroup_dim_load.setInvariant(true);
+
+    mlir::Value workgroup_dim = workgroup_dim_load.getResult();
+    auto index_ty = builder.getIntegerType(
+        mlir::DataLayout::closest(builder.getInsertionBlock()->getParentOp())
+            .getTypeSizeInBits(mlir::IndexType::get(context)));
+    if (index_ty != i64_ty) {
+      workgroup_dim = builder.create<mlir::LLVM::TruncOp>(
+          index_ty, workgroup_dim, mlir::LLVM::IntegerOverflowFlags::nsw);
+    }
+    auto workgroup_dim_cast = builder.create<mlir::UnrealizedConversionCastOp>(
+        mlir::IndexType::get(context), workgroup_dim);
+
+    rewriter.replaceOp(op, workgroup_dim_cast.getResult(0));
+
     return mlir::success();
   }
 };
@@ -253,7 +322,12 @@ class WrapEntryWithCallFrame
       }
       call_args.push_back(load);
     }
-    call_args.append(GetWorkGroupIds(call_frame_arg, builder));
+
+    for (auto workgroup_id : {WorkGroupDimension::x, WorkGroupDimension::y,
+                              WorkGroupDimension::z}) {
+      call_args.push_back(builder.create<ExtractWorkgroupIdOp>(
+          mlir::IndexType::get(context), call_frame_arg, workgroup_id));
+    }
 
     // Use func::call here rather than pure call to avoid the entry function
     // being DCEd.
@@ -300,56 +374,6 @@ class WrapEntryWithCallFrame
     }
   }
 
-  static llvm::SmallVector<mlir::Value, 3> GetWorkGroupIds(
-      mlir::Value call_frame, mlir::ImplicitLocOpBuilder& builder) {
-    mlir::MLIRContext* context = builder.getContext();
-    auto ptr = builder.getType<mlir::LLVM::LLVMPointerType>();
-    auto kernel_call_frame = KernelCallFrameType(context);
-    auto kernel_dim = KernelDim3Type(context);
-    auto i64_ty = builder.getIntegerType(
-        mlir::DataLayout::closest(builder.getInsertionBlock()->getParentOp())
-            .getTypeSizeInBits(builder.getI64Type()));
-
-    // Get a pointer to the `WorkGroupThread` struct.
-    auto cast =
-        builder.create<mlir::UnrealizedConversionCastOp>(ptr, call_frame)
-            .getResult(0);
-    auto workgroup_gep = builder.create<mlir::LLVM::GEPOp>(
-        ptr, kernel_call_frame, cast,
-        mlir::ArrayRef<mlir::LLVM::GEPArg>{mlir::LLVM::GEPArg(0),
-                                           mlir::LLVM::GEPArg(1)},
-        mlir::LLVM::GEPNoWrapFlags::inbounds);
-    auto workgroup_ptr = builder.create<mlir::LLVM::LoadOp>(ptr, workgroup_gep);
-
-    llvm::SmallVector<mlir::Value, 3> workgroup_ids;
-    for (int32_t workgroup_dim_idx : {0, 1, 2}) {
-      auto workgroup_dim_gep = builder.create<mlir::LLVM::GEPOp>(
-          ptr, kernel_dim, workgroup_ptr,
-          mlir::ArrayRef<mlir::LLVM::GEPArg>{
-              mlir::LLVM::GEPArg(0), mlir::LLVM::GEPArg(workgroup_dim_idx)},
-          mlir::LLVM::GEPNoWrapFlags::inbounds);
-      auto workgroup_dim_load =
-          builder.create<mlir::LLVM::LoadOp>(i64_ty, workgroup_dim_gep);
-      workgroup_dim_load.setInvariant(true);
-
-      mlir::Value workgroup_dim = workgroup_dim_load.getResult();
-      auto index_ty = builder.getIntegerType(
-          mlir::DataLayout::closest(builder.getInsertionBlock()->getParentOp())
-              .getTypeSizeInBits(mlir::IndexType::get(context)));
-      if (index_ty != i64_ty) {
-        workgroup_dim = builder.create<mlir::LLVM::TruncOp>(
-            index_ty, workgroup_dim, mlir::LLVM::IntegerOverflowFlags::nsw);
-      }
-      auto workgroup_dim_cast =
-          builder.create<mlir::UnrealizedConversionCastOp>(
-              mlir::IndexType::get(context), workgroup_dim);
-
-      workgroup_ids.push_back(workgroup_dim_cast.getResult(0));
-    }
-
-    return workgroup_ids;
-  }
-
   static void SetKernelFunctionAttributes(mlir::Builder& builder,
                                           mlir::func::FuncOp& func,
                                           int32_t vector_width) {
@@ -371,12 +395,166 @@ class WrapEntryWithCallFrame
   int32_t vector_width_;
 };
 
+// Implementation similar to https://gudok.xyz/transpose/#_64_bit_simd_0_74.
+
+// Example that follows changes in the first row.
+// Let rows[i][j] = i * 8 + j
+
+// Round 1: Transpose 2x2 blocks
+
+// rows[0]: [0, 1, 2, 3, 4, 5, 6, 7]
+// rows[1]: [8, 9, 10, 11, 12, 13, 14, 15]
+
+// maps to:
+
+// t0: [0, 8, 2, 10, 4, 12, 6, 14]
+// t1: [1, 9, 3, 11, 5, 13, 7, 15]
+
+// Round 2: Transpose 4x4 blocks (Swapping 2-element pairs).
+
+// t0: [0, 8, 2, 10, 4, 12, 6, 14]
+// t2: [16, 24, 18, 26, 20, 28, 22, 30]
+
+// maps to:
+
+// u0: [0, 8, 16, 24, 4, 12, 20, 28]
+// u2: [2, 10, 18, 26, 6, 14, 22, 30]
+
+// Round 3: Transpose 8x8 blocks (Swapping 4-element groups across
+// 128-bit lanes).
+
+// u0: [0, 8, 16, 24, 4, 12, 20, 28]
+// u4: [32, 40, 48, 56, 36, 44, 52, 60]
+
+// maps to:
+
+// w0: [0, 8, 16, 24, 32, 40, 48, 56]     // Result row 0
+// w4: [4, 12, 20, 28, 36, 44, 52, 60]    // Result row 4
+mlir::Value Shuffle8x8(mlir::PatternRewriter& rewriter, mlir::Location loc,
+                       mlir::Type result_type, mlir::Value source, int m,
+                       int n) {
+  llvm::SmallVector<mlir::Value> rows;
+
+  for (int row = 0; row < m; ++row) {
+    rows.push_back(mlir::vector::ExtractOp::create(rewriter, loc, source, row));
+  }
+
+  // Round 1
+
+  llvm::SmallVector<mlir::Value> rows_round1(rows.size());
+
+  // Interleave inside the 2x2 blocks.
+  for (const auto i : {0, 2, 4, 6}) {
+    constexpr int64_t kRound1Step = 1;
+    constexpr std::array<int64_t, 8> kUpperBlockMask = {0, 8,  2, 10,
+                                                        4, 12, 6, 14};
+    constexpr std::array<int64_t, 8> kLowerBlockMask = {1, 9,  3, 11,
+                                                        5, 13, 7, 15};
+
+    rows_round1[i] = mlir::vector::ShuffleOp::create(
+        rewriter, loc, rows[i], rows[i + kRound1Step], kUpperBlockMask);
+
+    rows_round1[i + kRound1Step] = mlir::vector::ShuffleOp::create(
+        rewriter, loc, rows[i], rows[i + kRound1Step], kLowerBlockMask);
+  }
+
+  // Round 2
+
+  llvm::SmallVector<mlir::Value> rows_round2(rows.size());
+
+  // Interleave adjacent 2x2 blocks.
+  for (const auto i : {0, 1, 4, 5}) {
+    constexpr int64_t kRound2Step = 2;
+    constexpr std::array<int64_t, 8> kUpperBlockMask = {0, 1, 8,  9,
+                                                        4, 5, 12, 13};
+    constexpr std::array<int64_t, 8> kLowerBlockMask = {2, 3, 10, 11,
+                                                        6, 7, 14, 15};
+    rows_round2[i] = mlir::vector::ShuffleOp::create(
+        rewriter, loc, rows_round1[i], rows_round1[i + kRound2Step],
+        kUpperBlockMask);
+
+    rows_round2[i + kRound2Step] = mlir::vector::ShuffleOp::create(
+        rewriter, loc, rows_round1[i], rows_round1[i + kRound2Step],
+        kLowerBlockMask);
+  }
+
+  // Round 3
+
+  llvm::SmallVector<mlir::Value> rows_round3(rows.size());
+
+  // Interleave adjacent 4x4 blocks.
+  for (const auto i : {0, 1, 2, 3}) {
+    constexpr int64_t kRound3Step = 4;
+    constexpr std::array<int64_t, 8> kUpperBlockMask = {0, 1, 2,  3,
+                                                        8, 9, 10, 11};
+    constexpr std::array<int64_t, 8> kLowerBlockMask = {4,  5,  6,  7,
+                                                        12, 13, 14, 15};
+    rows_round3[i] = mlir::vector::ShuffleOp::create(
+        rewriter, loc, rows_round2[i], rows_round2[i + kRound3Step],
+        kUpperBlockMask);
+
+    rows_round3[i + kRound3Step] = mlir::vector::ShuffleOp::create(
+        rewriter, loc, rows_round2[i], rows_round2[i + kRound3Step],
+        kLowerBlockMask);
+  }
+
+  mlir::Value result = mlir::ub::PoisonOp::create(rewriter, loc, result_type);
+
+  for (int row_index = 0; row_index < rows_round3.size(); ++row_index) {
+    result = mlir::vector::InsertOp::create(
+        rewriter, loc, rows_round3[row_index], result, row_index);
+  }
+
+  return result;
+}
+
+struct LowerVector2DTransposeOp
+    : public mlir::OpRewritePattern<mlir::vector::TransposeOp> {
+  using OpRewritePattern::OpRewritePattern;
+  mlir::LogicalResult matchAndRewrite(
+      mlir::vector::TransposeOp op,
+      mlir::PatternRewriter& rewriter) const override {
+    auto src_gt_one_dims = isTranspose2DSlice(op);
+    if (mlir::failed(src_gt_one_dims)) {
+      return rewriter.notifyMatchFailure(
+          op, "expected transposition on a 2D slice");
+    }
+
+    mlir::VectorType srcType = op.getSourceVectorType();
+    int64_t m = srcType.getDimSize(std::get<0>(src_gt_one_dims.value()));
+    int64_t n = srcType.getDimSize(std::get<1>(src_gt_one_dims.value()));
+
+    if (!(m == 8 && n == 8)) {
+      return rewriter.notifyMatchFailure(
+          op, "expected transposition on a 8x8 vector");
+    }
+
+    // Reshape the n-D input vector with only two dimensions greater than one
+    // to a 2-D vector.
+    mlir::Location loc = op.getLoc();
+    auto reshInputType =
+        mlir::VectorType::get({m, n}, srcType.getElementType());
+    auto reshInput = mlir::vector::ShapeCastOp::create(
+        rewriter, loc, reshInputType, op.getVector());
+
+    auto output_type = mlir::VectorType::get({n, m}, srcType.getElementType());
+
+    auto res = Shuffle8x8(rewriter, loc, output_type, reshInput, m, n);
+
+    rewriter.replaceOpWithNewOp<mlir::vector::ShapeCastOp>(
+        op, op.getResultVectorType(), res);
+
+    return mlir::success();
+  }
+};
+
 }  // namespace
 
 void PopulateXlaCpuConversionPatterns(mlir::RewritePatternSet& patterns,
                                       int32_t vector_width) {
   patterns.add<LowerLoadOp, LowerWorkGroupIdOp, LowerSuccessOp,
-               RewriteFunctionSignatures>(patterns.getContext());
+               RewriteFunctionSignatures, LowerExtractWorkgroupIdOp,
+               LowerVector2DTransposeOp>(patterns.getContext());
   patterns.add<WrapEntryWithCallFrame>(patterns.getContext(), vector_width);
 }
 

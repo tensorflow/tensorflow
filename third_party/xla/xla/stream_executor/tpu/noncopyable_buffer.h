@@ -72,6 +72,10 @@ class NoncopyableBuffer {
     std::fill_n(data_u32, size_in_u32s, v);
   }
 
+  // Takes ownership of an OwnedDataPtr.
+  NoncopyableBuffer(OwnedDataPtr data, size_t size)
+      : data_(std::move(data)), buf_(data_.get()), size_(size) {}
+
   // Directly use buf pointer without copying it to owning data_. This delays
   // the memcpy until mutable access is requested. "buf" is not owned by this
   // data structure, so it is the user's duty to ensure the live range of "buf"
@@ -143,9 +147,6 @@ class NoncopyableBuffer {
   }
 
  private:
-  NoncopyableBuffer(OwnedDataPtr data, size_t size)
-      : data_(std::move(data)), buf_(data_.get()), size_(size) {}
-
   // If data_ != nullptr then buf_ == data_.get()
   OwnedDataPtr data_{nullptr, free};  // Owning data pointer.
   const void* buf_;                   // Non-owning data pointer.

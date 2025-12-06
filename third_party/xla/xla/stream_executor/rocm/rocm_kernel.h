@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "rocm/include/hip/hip_runtime.h"
 #include "xla/stream_executor/kernel.h"
+#include "xla/stream_executor/kernel_metadata.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/platform/logging.h"
@@ -60,9 +61,9 @@ class RocmKernel : public Kernel {
   absl::StatusOr<KernelMetadata> GetKernelMetadata();
 
  private:
-  absl::Status Launch(const ThreadDim &thread_dims, const BlockDim &block_dims,
-                      const std::optional<ClusterDim> &cluster_dims,
-                      Stream *stream, const KernelArgs &args) override;
+  absl::Status Launch(const ThreadDim& thread_dims, const BlockDim& block_dims,
+                      const std::optional<ClusterDim>& cluster_dims,
+                      Stream* stream, const KernelArgs& args) override;
 
   StreamExecutor* executor_ = nullptr;
 

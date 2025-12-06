@@ -45,8 +45,9 @@ class RecvThunk : public CollectiveThunk {
  protected:
   const CollectiveConfig& config() const override { return config_.config; }
   absl::StatusOr<bool> RunCollective(const ExecuteParams& params,
+                                     const GpuCliqueKey& clique_key,
                                      se::Stream& stream,
-                                     CommunicatorHandle comm_handle) override;
+                                     Communicator& comm) override;
 
  private:
   const P2PConfig config_;
@@ -54,12 +55,6 @@ class RecvThunk : public CollectiveThunk {
   std::shared_ptr<ExecutionCounters> execution_counters_;
   std::string hlo_name_;
 };
-
-absl::Status RunRecv(GpuCollectives* collectives,
-                     P2PConfig::SourceTargetMapEntry source_target,
-                     DeviceBufferPair& buffer, se::Stream& stream,
-                     Communicator* comm, absl::string_view device_string,
-                     int64_t current_id);
 
 }  // namespace gpu
 }  // namespace xla

@@ -29,13 +29,13 @@ limitations under the License.
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/ImplicitLocOpBuilder.h"
-#include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Value.h"
 #include "mlir/IR/ValueRange.h"
 #include "mlir/Support/LLVM.h"
 #include "xla/backends/gpu/codegen/emitters/emitter_base.h"
 #include "xla/codegen/emitters/computation_partitioner.h"
 #include "xla/hlo/analysis/indexing_map.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
@@ -49,8 +49,9 @@ namespace gpu {
 
 class TransposeFusionBase : public EmitterBase {
  public:
-  explicit TransposeFusionBase(const HloFusionAnalysis& analysis)
-      : analysis_(analysis) {}
+  explicit TransposeFusionBase(const HloFusionAnalysis& analysis,
+                               mlir::MLIRContext* mlir_context)
+      : analysis_(analysis), mlir_context_(mlir_context) {}
 
  protected:
   absl::Status EmitEntryFunction(
@@ -86,6 +87,7 @@ class TransposeFusionBase : public EmitterBase {
       mlir::ValueRange thread_and_block_ids) const = 0;
 
   const HloFusionAnalysis& analysis_;
+  mlir::MLIRContext* mlir_context_;
 
   // Transpose instructions that require shared memory. Note that not all
   // transposes require shared memory, e.g. the ones with a large innermost
@@ -115,15 +117,15 @@ class TransposeFusionBase : public EmitterBase {
 // https://goo.gl/MStRV6.
 class TransposeFusion : public TransposeFusionBase {
  public:
-  explicit TransposeFusion(const HloFusionAnalysis& analysis);
+  explicit TransposeFusion(const HloFusionAnalysis& analysis,
+                           mlir::MLIRContext* mlir_context);
   LaunchDimensions launch_dimensions() const override;
 
   std::optional<IndexingMap> ComputeThreadIdToOutputIndexing(
       int64_t root_index, mlir::MLIRContext* mlir_context) const override;
 
-  std::optional<IndexingMap> ComputeThreadIdToInputIndexing(
-      int64_t root_index, int64_t hero_operand_index,
-      mlir::MLIRContext* mlir_context) const override;
+  std::optional<std::vector<IndexingMap>> ComputeThreadIdToInputIndexing(
+      int64_t root_index, mlir::MLIRContext* mlir_context) const override;
 
  protected:
   WriteResult EmitWriteToShMemMlir(
@@ -142,11 +144,12 @@ class TransposeFusion : public TransposeFusionBase {
 
  private:
   IndexingMap GetIndexing(bool input, const xla::Shape& shape,
-                          mlir::MLIRContext* ctx) const;
-  IndexingMap GetSharedMemoryIndexing(bool read, mlir::MLIRContext* ctx) const;
+                          mlir::MLIRContext* mlir_context) const;
+  IndexingMap GetSharedMemoryIndexing(bool read,
+                                      mlir::MLIRContext* mlir_context) const;
 
   llvm::SmallVector<mlir::AffineExpr, 4> GetThreadOffsets(
-      bool read, mlir::MLIRContext* ctx) const;
+      bool read, mlir::MLIRContext* mlir_context) const;
   bool MostMinorDimensionUnchanged() const;
 
   TransposeDescription transpose_;
@@ -196,19 +199,24 @@ class TransposeFusion : public TransposeFusionBase {
 //    slice of shared memory.
 //
 // 5. Every GPU block gets a single 64 x 10 x 6 x bf16 tile.
-//    The tile is read by `num_warps_per_block` warps.
-//    Let's assume that there are 4 warps per block. In this case, on every
-//    iteration each warp will read 10 x 6 x bf16 elements, i.e. every thread
-//    (30 out of 32) performs a vector load of 2 x bf16 and stores it to the
-//    shared memory. In total, there will be 16 iterations performed by each
-//    block.
+//    The tile is read by `num_shmem_groups_per_block` shmem groups.
+//    Let's assume that there are 4 shmem groups per block. In this case, on
+//    every iteration each shmem group will read 10 x 6 x bf16 elements, i.e.
+//    every thread (30 out of 32) performs a vector load of 2 x bf16 and stores
+//    it to the shared memory. In total, there will be 16 iterations performed
+//    by each block.
+//
+//    Note: When the hardware warp size equals kNumShmemBanks (32), then
+//    num_shmem_groups_per_block equals the number of warps per block. This is
+//    the case for NVIDIA GPUs, but not always for AMD GPUs where warp size
+//    can differ (64).
 //
 //    The following code snippet shows how the data is read from the input
 //    tensor into the shared memory:
 //
-//    for I = 0 to CEIL(shmem_rows, num_warps_per_block):
+//    for I = 0 to CEIL(shmem_rows, num_shmem_groups_per_block):
 //      for J = 0 to VECTOR_SIZE:
-//        ROW = WARP_ID + NUM_WARPS * I
+//        ROW = SHMEM_GROUP_ID + NUM_SHMEM_GROUPS * I
 //        COL = LANE_ID * VECTOR_SIZE + J
 //        SHMEM[ROW, COL] = INPUT[ROW, COL / 10, COL % 10]
 //
@@ -217,7 +225,7 @@ class TransposeFusion : public TransposeFusionBase {
 // 6. Each thread reads a VECTOR_SIZE x VECTOR_SIZE x bf16 tile from the shared
 //    memory and performs the write of each of the columns of the tile.
 //
-//    for I = 0 to CEIL(shmem_cols, VECTOR_SIZE * num_warps_per_block):
+//    for I = 0 to CEIL(shmem_cols, VECTOR_SIZE * num_shmem_groups_per_block):
 //      VECTOR_2D = arith.constant dense<0>
 //        : vector<VECTOR_SIZE x VECTOR_SIZE x bf16>
 //      for J = 0 to VECTOR_SIZE:
@@ -231,16 +239,16 @@ class PackedTranspose : public TransposeFusionBase {
   explicit PackedTranspose(const HloFusionAnalysis& analysis,
                            const TransposeSpec& spec,
                            absl::Span<const int64_t> output_block_tile,
-                           int64_t num_warps);
+                           int64_t num_shmem_groups,
+                           mlir::MLIRContext* mlir_context);
 
   LaunchDimensions launch_dimensions() const override;
 
   std::optional<IndexingMap> ComputeThreadIdToOutputIndexing(
       int64_t root_index, mlir::MLIRContext* mlir_context) const override;
 
-  std::optional<IndexingMap> ComputeThreadIdToInputIndexing(
-      int64_t root_index, int64_t hero_operand_index,
-      mlir::MLIRContext* mlir_context) const override;
+  std::optional<std::vector<IndexingMap>> ComputeThreadIdToInputIndexing(
+      int64_t root_index, mlir::MLIRContext* mlir_context) const override;
 
  protected:
   WriteResult EmitWriteToShMemMlir(
@@ -279,8 +287,10 @@ class PackedTranspose : public TransposeFusionBase {
   // Vector size in elements.
   int64_t vector_size_;
 
-  // Number of warps per block.
-  int64_t num_warps_per_block_;
+  // Number of shmem groups per block. Each shmem group consists of 32 threads
+  // (kNumShmemBanks), chosen to match the number of shared memory banks for
+  // optimal memory access patterns. This is independent of hardware warp size.
+  int64_t num_shmem_groups_per_block_;
 
   // Tile sizes for the canonicalical dimensions
   // [T2, A, T1, 1] -> [T1, A, T2, 1].
@@ -296,7 +306,7 @@ class PackedTranspose : public TransposeFusionBase {
 };
 
 std::unique_ptr<EmitterBase> CreateTransposeFusion(
-    const HloFusionAnalysis& analysis);
+    const HloFusionAnalysis& analysis, mlir::MLIRContext* mlir_context);
 
 }  // namespace gpu
 }  // namespace xla

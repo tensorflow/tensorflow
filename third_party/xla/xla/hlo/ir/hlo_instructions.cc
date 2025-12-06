@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "xla/hlo/ir/hlo_instructions.h"
 
-#include <algorithm>
 #include <cstdint>
 #include <deque>
 #include <functional>
@@ -38,7 +37,6 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/comparison_util.h"
-#include "xla/hlo/ir/collective_device_list.h"
 #include "xla/hlo/ir/dfs_hlo_visitor.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_clone_context.h"
@@ -47,9 +45,11 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/ir/hlo_original_value.h"
 #include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/ir/hlo_sharding_metadata.h"
+#include "xla/hlo/ir/replica_group.h"
 #include "xla/layout.h"
 #include "xla/layout_util.h"
 #include "xla/literal.h"
@@ -63,11 +63,9 @@ limitations under the License.
 #include "xla/tsl/lib/gtl/iterator_range.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"  // IWYU pragma: keep
-#include "xla/tsl/platform/status.h"
 #include "xla/util.h"
 #include "xla/window_util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/protobuf.h"
 
 namespace xla {
 namespace {
@@ -112,22 +110,17 @@ void PrintPrecisionConfig(HloInstruction::AttributePrinter& printer,
 }
 
 void SetThreadName(HloComputation* called_computation,
-                   absl::string_view execution_thread,
-                   bool skip_async_execution_thread_overwrite) {
+                   absl::string_view execution_thread) {
   called_computation->SetExecutionThread(execution_thread);
   for (HloInstruction* instr : called_computation->instructions()) {
     if (instr->IsAsynchronous()) {
-      if (!skip_async_execution_thread_overwrite) {
-        // Set async instruction thread name and also recursively set async
-        // computations.
-        instr->set_async_execution_thread(execution_thread);
-      }
-      continue;
+      // Set async instruction thread name and also recursively set async
+      // computations.
+      instr->set_async_execution_thread(execution_thread);
     }
     for (HloComputation* nested_called_computation :
          instr->called_computations()) {
-      SetThreadName(nested_called_computation, execution_thread,
-                    skip_async_execution_thread_overwrite);
+      SetThreadName(nested_called_computation, execution_thread);
     }
   }
 }
@@ -423,8 +416,7 @@ HloInstruction* HloAsyncStartInstruction::AddCallOperand(
 void HloAsyncStartInstruction::set_async_execution_thread(
     absl::string_view async_execution_thread) {
   async_execution_thread_ = std::string(async_execution_thread);
-  SetThreadName(async_wrapped_computation(), async_execution_thread,
-                /*skip_async_execution_thread_overwrite=*/false);
+  SetThreadName(async_wrapped_computation(), async_execution_thread);
 }
 
 HloInstructionProto HloAsyncStartInstruction::ToProto() const {
@@ -713,12 +705,17 @@ HloInstructionProto HloChannelInstruction::ToProto() const {
 }
 
 void HloChannelInstruction::PrintExtraAttributesImpl(
-    AttributePrinter& printer, const HloPrintOptions& /*options*/) const {
+    AttributePrinter& printer, const HloPrintOptions& options) const {
   if (!channel_id_) {
     return;
   }
-  printer.Next([this](Printer* printer) {
-    AppendCat(printer, "channel_id=", *channel_id_);
+  printer.Next([this, &options](Printer* printer) {
+    printer->Append("channel_id=");
+    if (options.print_channel_id()) {
+      printer->Append(*channel_id_);
+    } else {
+      printer->Append("_");
+    }
   });
 }
 
@@ -850,7 +847,7 @@ HloSendDoneInstruction::CloneWithNewOperandsImpl(
     const Shape& shape, absl::Span<HloInstruction* const> new_operands,
     HloCloneContext* context) const {
   CHECK_EQ(new_operands.size(), 1);
-  HloSendInstruction* send = dynamic_cast<HloSendInstruction*>(new_operands[0]);
+  HloSendInstruction* send = DynCast<HloSendInstruction>(new_operands[0]);
   if (send != nullptr) {
     return std::make_unique<HloSendDoneInstruction>(send, is_host_transfer());
   }
@@ -909,7 +906,7 @@ HloRecvDoneInstruction::CloneWithNewOperandsImpl(
     const Shape& shape, absl::Span<HloInstruction* const> new_operands,
     HloCloneContext* context) const {
   CHECK_EQ(new_operands.size(), 1);
-  HloRecvInstruction* recv = dynamic_cast<HloRecvInstruction*>(new_operands[0]);
+  HloRecvInstruction* recv = DynCast<HloRecvInstruction>(new_operands[0]);
   if (recv != nullptr) {
     return std::make_unique<HloRecvDoneInstruction>(recv, is_host_transfer());
   }
@@ -1364,9 +1361,7 @@ HloCollectivePermuteInstruction::CloneWithNewOperandsImpl(
     HloCloneContext* /*context*/) const {
   if (dynamic_slice_sizes_list().empty()) {
     return std::make_unique<HloCollectivePermuteInstruction>(
-        opcode(), shape,
-        absl::Span<HloInstruction* const>(new_operands.subspan(0, 1)),
-        source_target_pairs(), channel_id());
+        opcode(), shape, new_operands, source_target_pairs(), channel_id());
   }
   return std::make_unique<HloCollectivePermuteInstruction>(
       opcode(), shape, new_operands[0], new_operands[1], new_operands[2],
@@ -2014,11 +2009,11 @@ HloCallableInstruction::CloneAndAppendInstructionIntoCalledComputation(
         // the clone.
         HloInstruction* called_computation_parameter =
             called_computation_parameters[operand_num];
-        TF_CHECK_OK(called_computation_parameter->ReplaceAllUsesWith(clone));
+        CHECK_OK(called_computation_parameter->ReplaceAllUsesWith(clone));
 
         // Remove the corresponding called computation parameter and operand
         // from their respective vectors.
-        TF_CHECK_OK(called_computation()->RemoveParameter(operand_num));
+        CHECK_OK(called_computation()->RemoveParameter(operand_num));
         RemoveOperandAt(operand_num);
         break;
       }
@@ -2065,7 +2060,7 @@ HloCallableInstruction::CloneAndAppendInstructionIntoCalledComputation(
       // original value is saved in the corresponding argument.
       called_computation_parameter = AddCallOperand(operand);
     }
-    TF_CHECK_OK(
+    CHECK_OK(
         clone->ReplaceOperandWith(operand_num, called_computation_parameter));
   }
 
@@ -2086,7 +2081,7 @@ HloCallableInstruction::CloneAndAppendInstructionIntoCalledComputation(
         if (root->operand(i) == clone) {
           HloInstruction* new_gte = AddInstruction(
               HloInstruction::CreateGetTupleElement(clone->shape(), this, i));
-          TF_CHECK_OK(instruction_to_append->ReplaceAllUsesWith(new_gte));
+          CHECK_OK(instruction_to_append->ReplaceAllUsesWith(new_gte));
           return clone;
         }
       }
@@ -2110,18 +2105,26 @@ HloCallableInstruction::CloneAndAppendInstructionIntoCalledComputation(
     }
     HloInstruction* new_root = called_computation()->AddInstruction(
         HloInstruction::CreateTuple(tuple_elements));
+    new_root->set_original_value(
+        xla::OriginalValue::CreateFromInstruction(new_root));
 
     // No need to create an original value for a new root with added outputs
     // as the original value is saved in the get-tuple-element instructions
     // that use it.
     called_computation()->set_root_instruction(new_root,
                                                /*accept_different_shape=*/true);
+
+    // Update the shape of the fusion instruction to the shape of the new root.
     *mutable_shape() = new_root->shape();
+    // Update the original value of the fusion instruction to the original value
+    // of the new root.
+    set_original_value(new_root->original_value());
+
     // The instruction might have an existing sharding, which will no longer
     // be valid after we change the shape. So clear the sharding.
     clear_sharding();
     if (root->opcode() == HloOpcode::kTuple) {
-      TF_CHECK_OK(called_computation()->RemoveInstruction(root));
+      CHECK_OK(called_computation()->RemoveInstruction(root));
     }
 
     // If this is a newly created multioutput instruction, we need to update
@@ -2129,7 +2132,7 @@ HloCallableInstruction::CloneAndAppendInstructionIntoCalledComputation(
     if (newly_created_tuple_instr) {
       HloInstruction* new_instr = AddInstruction(
           HloInstruction::CreateGetTupleElement(root->shape(), this, 0));
-      TF_CHECK_OK(ReplaceAllUsesWithDifferentShape(new_instr));
+      CHECK_OK(ReplaceAllUsesWithDifferentShape(new_instr));
     }
     int64_t index = tuple_elements.size();
     if (do_not_clone) {
@@ -2144,17 +2147,17 @@ HloCallableInstruction::CloneAndAppendInstructionIntoCalledComputation(
         HloInstruction* new_gte =
             AddInstruction(HloInstruction::CreateGetTupleElement(
                 old_gte->shape(), this, index + old_tuple_index));
-        TF_CHECK_OK(old_gte->ReplaceAllUsesWith(new_gte));
+        CHECK_OK(old_gte->ReplaceAllUsesWith(new_gte));
         to_be_removed.push_back(old_gte);
       }
       for (auto old_gte : to_be_removed) {
-        TF_CHECK_OK(parent()->RemoveInstruction(old_gte));
+        CHECK_OK(parent()->RemoveInstruction(old_gte));
       }
     } else {
       HloInstruction* new_gte =
           AddInstruction(HloInstruction::CreateGetTupleElement(
               clone->shape(), this, index - 1));
-      TF_CHECK_OK(instruction_to_append->ReplaceAllUsesWith(new_gte));
+      CHECK_OK(instruction_to_append->ReplaceAllUsesWith(new_gte));
     }
   }
 
@@ -2181,11 +2184,9 @@ HloCallableInstruction::GetOrCloneCalledComputations(
 }
 
 void HloCallableInstruction::RecursivelySetComputationsThreadName(
-    absl::string_view execution_thread,
-    bool skip_async_execution_thread_overwrite) {
+    absl::string_view execution_thread) {
   for (HloComputation* comp : called_computations()) {
-    SetThreadName(comp, execution_thread,
-                  skip_async_execution_thread_overwrite);
+    SetThreadName(comp, execution_thread);
   }
 }
 
@@ -2337,7 +2338,7 @@ void HloFusionInstruction::MergeFusionInstruction(
        fused_it != fused_instructions.rend(); ++fused_it) {
     auto fused_instruction = *fused_it;
     if (fused_instruction->opcode() == HloOpcode::kParameter) {
-      TF_CHECK_OK(
+      CHECK_OK(
           fused_instruction->ReplaceAllUsesWith(cloned_fusion->mutable_operand(
               fused_instruction->parameter_number())));
     } else {
@@ -2358,7 +2359,7 @@ void HloFusionInstruction::MergeFusionInstruction(
   CHECK(unfused_root == cloned_fusion->fused_expression_root() ||
         unfused_instructions.empty());
   // Replace instruction_to_merge use of 'this' with unfused_root.
-  TF_CHECK_OK(instruction_to_merge->ReplaceUseWith(this, unfused_root));
+  CHECK_OK(instruction_to_merge->ReplaceUseWith(this, unfused_root));
 
   // Build a dummy root for the cloned fusion as we may remove the original
   // root in the fusion process.
@@ -2376,11 +2377,11 @@ void HloFusionInstruction::MergeFusionInstruction(
   // decide if a side-effectful instruction is fusible).
   for (auto& instruction : unfused_instructions) {
     auto* fused = FuseInstruction(instruction);
-    TF_CHECK_OK(instruction->ReplaceAllUsesWith(fused));
-    TF_CHECK_OK(instruction->parent()->RemoveInstruction(instruction));
+    CHECK_OK(instruction->ReplaceAllUsesWith(fused));
+    CHECK_OK(instruction->parent()->RemoveInstruction(instruction));
   }
   CHECK_EQ(0, cloned_fusion->user_count());
-  TF_CHECK_OK(GetModule()->RemoveEmbeddedComputation(
+  CHECK_OK(GetModule()->RemoveEmbeddedComputation(
       cloned_fusion->fused_instructions_computation()));
 }
 
@@ -2454,8 +2455,8 @@ void HloFusionInstruction::MergeFusionInstructionIntoMultiOutput(
       for (HloInstruction* gte : instruction_to_merge->users()) {
         if (gte->opcode() == HloOpcode::kGetTupleElement &&
             gte->tuple_index() == tuple_index) {
-          TF_CHECK_OK(gte->ReplaceAllUsesWith(new_root));
-          TF_CHECK_OK(gte->parent()->RemoveInstruction(gte));
+          CHECK_OK(gte->ReplaceAllUsesWith(new_root));
+          CHECK_OK(gte->parent()->RemoveInstruction(gte));
         }
       }
     }
@@ -2471,12 +2472,12 @@ void HloFusionInstruction::MergeFusionInstructionIntoMultiOutput(
                       ->parameter_number())
             : unfused_instructions.back();
     new_roots.insert(unfused_root);
-    TF_CHECK_OK(instruction_to_merge->ReplaceAllUsesWith(unfused_root));
+    CHECK_OK(instruction_to_merge->ReplaceAllUsesWith(unfused_root));
   }
-  TF_CHECK_OK(
+  CHECK_OK(
       instruction_to_merge->parent()->RemoveInstruction(instruction_to_merge));
   if (GetModule()) {
-    TF_CHECK_OK(GetModule()->RemoveEmbeddedComputation(computation_to_merge));
+    CHECK_OK(GetModule()->RemoveEmbeddedComputation(computation_to_merge));
   }
   for (int64_t i = unfused_instructions.size() - 1; i >= 0; --i) {
     HloInstruction* instruction = unfused_instructions[i];
@@ -2485,7 +2486,7 @@ void HloFusionInstruction::MergeFusionInstructionIntoMultiOutput(
     } else {
       FuseInstruction(instruction);
     }
-    TF_CHECK_OK(instruction->parent()->RemoveInstruction(instruction));
+    CHECK_OK(instruction->parent()->RemoveInstruction(instruction));
   }
 }
 
@@ -3950,16 +3951,16 @@ HloRaggedDotInstruction::CloneWithNewOperandsImpl(
 }
 
 HloScaledDotInstruction::HloScaledDotInstruction(
-    const Shape& shape, HloInstruction* lhs, HloInstruction* lhs_scale,
-    HloInstruction* rhs, HloInstruction* rhs_scale,
+    const Shape& shape, HloInstruction* lhs, HloInstruction* rhs,
+    HloInstruction* lhs_scale, HloInstruction* rhs_scale,
     const DotDimensionNumbers& dimension_numbers,
     const PrecisionConfig& precision_config)
     : HloInstruction(HloOpcode::kScaledDot, shape),
       dot_dimension_numbers_(dimension_numbers),
       precision_config_(precision_config) {
   AppendOperand(lhs);
-  AppendOperand(lhs_scale);
   AppendOperand(rhs);
+  AppendOperand(lhs_scale);
   AppendOperand(rhs_scale);
 }
 

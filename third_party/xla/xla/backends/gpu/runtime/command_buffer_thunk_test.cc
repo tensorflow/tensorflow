@@ -23,13 +23,12 @@ limitations under the License.
 #include <string>
 #include <thread>  // NOLINT
 #include <utility>
-#include <variant>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/statusor.h"
 #include "absl/strings/ascii.h"
-#include "absl/strings/match.h"
 #include "absl/types/span.h"
 #include "xla/backends/gpu/runtime/command_buffer_cmd.h"
 #include "xla/backends/gpu/runtime/dynamic_slice_thunk.h"
@@ -37,22 +36,18 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/memset_thunk.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
-#include "xla/error_spec.h"
-#include "xla/hlo/ir/hlo_module.h"
 #include "xla/runtime/buffer_use.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/gpu/kernels/custom_kernel.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu/matmul_utils.h"
-#include "xla/service/hlo_module_config.h"
 #include "xla/service/platform_util.h"
 #include "xla/service/service_executable_run_options.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/command_buffer.h"
-#include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/device_memory_allocator.h"
@@ -66,8 +61,6 @@ limitations under the License.
 #include "xla/stream_executor/semantic_version.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/stream_executor_memory_allocator.h"
-#include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
-#include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla.pb.h"
@@ -75,6 +68,7 @@ limitations under the License.
 #include "tsl/profiler/lib/profiler_lock.h"
 
 namespace xla::gpu {
+using ::testing::HasSubstr;
 
 using MemoryAccess = BufferUse::MemoryAccess;
 using KernelArgsPacking = se::KernelLoaderSpec::KernelArgsPacking;
@@ -117,10 +111,14 @@ KernelArgsPacking CreateDefaultArgsPacking() {
 // Some of the tests rely on CUDA 12.3+ features.
 bool IsAtLeastCuda12300(const se::StreamExecutor* stream_executor) {
   const auto& device_description = stream_executor->GetDeviceDescription();
-  const auto* cuda_cc = std::get_if<se::CudaComputeCapability>(
-      &device_description.gpu_compute_capability());
+  const auto* cuda_cc =
+      device_description.gpu_compute_capability().cuda_compute_capability();
   if (cuda_cc != nullptr) {
-    if (device_description.driver_version() >=
+    // We need a recent driver to support the feature at runtime and we need a
+    // recent version of the toolkit at compile time, so that we have access to
+    // the driver's headers.
+    if (std::min(device_description.driver_version(),
+                 device_description.compile_time_toolkit_version()) >=
         stream_executor::SemanticVersion(12, 3, 0)) {
       return true;
     }
@@ -131,10 +129,14 @@ bool IsAtLeastCuda12300(const se::StreamExecutor* stream_executor) {
 
 bool IsAtLeastCuda12900(const se::StreamExecutor* stream_executor) {
   const auto& device_description = stream_executor->GetDeviceDescription();
-  const auto* cuda_cc = std::get_if<se::CudaComputeCapability>(
-      &device_description.gpu_compute_capability());
+  const auto* cuda_cc =
+      device_description.gpu_compute_capability().cuda_compute_capability();
   if (cuda_cc != nullptr) {
-    if (device_description.driver_version() >=
+    // We need a recent driver to support the feature at runtime and we need a
+    // recent version of the toolkit at compile time, so that we have access to
+    // the driver's headers.
+    if (std::min(device_description.driver_version(),
+                 device_description.compile_time_toolkit_version()) >=
         stream_executor::SemanticVersion(12, 9, 0)) {
       return true;
     }
@@ -409,6 +411,11 @@ TEST(CommandBufferThunkTest, Memset32CmdCommandBuffersEnabledDuringProfiling) {
 
   TF_ASSERT_OK_AND_ASSIGN(auto profiler_lock,
                           tsl::profiler::ProfilerLock::Acquire());
+
+  // skip warm up iteration
+  TF_ASSERT_OK(thunk.ExecuteOnStream(params));
+  TF_ASSERT_OK(stream->BlockHostUntilDone());
+
   // Execute command buffer thunk and verify that it set the memory.
   TF_ASSERT_OK(thunk.ExecuteOnStream(params));
   TF_ASSERT_OK(stream->BlockHostUntilDone());
@@ -846,7 +853,7 @@ TEST(CommandBufferThunkTest, ChildGemmCmd) {
       CommandBufferCmdExecutor::Create(std::move(child_commands), serialize));
 
   CommandBufferCmdSequence commands;
-  commands.Emplace<ChildCmd>(std::move(child_executor), ResourceUseVector{});
+  commands.Emplace<ChildCmd>(std::move(child_executor));
 
   TF_ASSERT_OK_AND_ASSIGN(
       CommandBufferCmdExecutor executor,
@@ -863,15 +870,12 @@ TEST(CommandBufferThunkTest, ChildGemmCmd) {
       run_options, allocations, stream.get(), stream.get(), nullptr, nullptr);
 
   Thunk::ExecutableSource source = {/*text=*/"", /*binary=*/{}};
-  VLOG(0) << "Initialize thunk";
   TF_ASSERT_OK(thunk.Initialize(
       {stream_executor, source, &allocations, stream.get(), stream.get()}));
 
-  VLOG(0) << "Initialize done";
   // Execute command buffer thunk and verify that it executed a GEMM.
   TF_ASSERT_OK(thunk.ExecuteOnStream(params));
 
-  VLOG(0) << "Execute thunk done";
   TF_ASSERT_OK(stream->BlockHostUntilDone());
 
   // Copy `out` data back to host.
@@ -950,24 +954,22 @@ TEST(CommandBufferThunkTest, DISABLED_DynamicSliceFusionCmd) {
   TF_ASSERT_OK(stream->MemZero(&workspace, 1024 * 1024));
 
   // Prepare buffer allocations for recording command buffer.
-  std::vector<std::unique_ptr<BufferAllocation>> fake_allocations(4);
-  fake_allocations[0] = std::make_unique<BufferAllocation>(
+  std::vector<BufferAllocation> fake_allocations;
+  fake_allocations.reserve(4);
+  fake_allocations.emplace_back(
       /*index=*/0, fake_lhs_length, /*color=*/0);
-  fake_allocations[1] =
-      std::make_unique<BufferAllocation>(/*index=*/1, rhs_length, /*color=*/0);
-  fake_allocations[2] =
-      std::make_unique<BufferAllocation>(/*index=*/2, out_length,
-                                         /*color=*/0);
+  fake_allocations.emplace_back(
+      /*index=*/1, rhs_length, /*color=*/0);
+  fake_allocations.emplace_back(/*index=*/2, out_length,
+                                /*color=*/0);
 
-  fake_allocations[3] =
-      std::make_unique<BufferAllocation>(/*index=*/3, 1024 * 1024,
-                                         /*color=*/0);
-  BufferAllocation::Slice fake_slice_lhs(fake_allocations[0].get(), 0,
+  fake_allocations.emplace_back(/*index=*/3, 1024 * 1024,
+                                /*color=*/0);
+  BufferAllocation::Slice fake_slice_lhs(&fake_allocations[0], 0,
                                          fake_lhs_length);
-  BufferAllocation::Slice slice_rhs(fake_allocations[1].get(), 0, rhs_length);
-  BufferAllocation::Slice slice_out(fake_allocations[2].get(), 0, out_length);
-  BufferAllocation::Slice slice_workspace(fake_allocations[3].get(), 0,
-                                          1024 * 1024);
+  BufferAllocation::Slice slice_rhs(&fake_allocations[1], 0, rhs_length);
+  BufferAllocation::Slice slice_out(&fake_allocations[2], 0, out_length);
+  BufferAllocation::Slice slice_workspace(&fake_allocations[3], 0, 1024 * 1024);
   auto config = GemmConfig::For(
       ShapeUtil::MakeShape(PrimitiveType::F32, {2, 4}), {}, {1},
       ShapeUtil::MakeShape(PrimitiveType::F32, {4, 3}), {}, {0},
@@ -1125,11 +1127,12 @@ TEST(CommandBufferThunkTest, CublasLtCmd) {
   // Prepare commands sequence for constructing command buffer.
   CommandBufferCmdSequence commands;
   commands.Emplace<CublasLtCmd>(CublasLtMatmulThunk(
-      nullptr, config.value(), se::gpu::BlasLt::Epilogue::kDefault, 0, slice_a,
-      slice_b, slice_c, slice_d, BufferAllocation::Slice(),
+      Thunk::ThunkInfo(), /*canonical_hlo=*/"", config.value(),
+      se::gpu::BlasLt::Epilogue::kDefault, 0, slice_a, slice_b, slice_c,
+      slice_d, BufferAllocation::Slice(), BufferAllocation::Slice(),
       BufferAllocation::Slice(), BufferAllocation::Slice(),
       BufferAllocation::Slice(), BufferAllocation::Slice(),
-      BufferAllocation::Slice(), BufferAllocation::Slice(), slice_workspace));
+      BufferAllocation::Slice(), slice_workspace));
   TF_ASSERT_OK_AND_ASSIGN(
       CommandBufferCmdExecutor executor,
       CommandBufferCmdExecutor::Create(std::move(commands), serialize));
@@ -1561,114 +1564,6 @@ TEST(CommandBufferThunkTest, WhileCmd) {
   ASSERT_EQ(dst, std::vector<int32_t>(4, 15));
 }
 
-class CmdBufferTest : public HloPjRtInterpreterReferenceMixin<HloPjRtTestBase> {
- public:
-  DebugOptions GetDebugOptionsForTest() const override {
-    DebugOptions debug_options = HloPjRtTestBase::GetDebugOptionsForTest();
-    debug_options.set_xla_gpu_autotune_level(0);
-    debug_options.set_xla_gpu_enable_dynamic_slice_fusion(true);
-    debug_options.set_xla_gpu_graph_min_graph_size(1);
-    debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::FUSION);
-    debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::CUBLAS);
-    debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::CUBLASLT);
-    debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::CUSTOM_CALL);
-    debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::CUDNN);
-    debug_options.add_xla_gpu_enable_command_buffer(
-        DebugOptions::DYNAMIC_SLICE_FUSION);
-    return debug_options;
-  }
-};
-
-TEST_F(CmdBufferTest, DynamicSliceFusionCmd) {
-  // Hlo generated by below jax code
-  // def scan_body(carry, x):
-  //     sliced_x = lax.slice(x, (0, 0), (128, 128))
-  //     result = jnp.dot(carry, sliced_x)
-  //     new_carry = result
-  //     return new_carry, result
-  // @jax.jit
-  // def run_scan(initial_carry, xs):
-  //     final_carry, outputs = lax.scan(scan_body, initial_carry, xs, length=2)
-  //     return final_carry, outputs
-
-  const char* module_str = R"(
-HloModule jit_run_scan
-
-None.7 {
-  Arg_0.8 = f32[128,128]{1,0} parameter(0)
-  Arg_1.9 = f32[128,128]{1,0} parameter(1)
-  dot.10 = f32[128,128]{1,0} dot(Arg_0.8, Arg_1.9), lhs_contracting_dims={1}, rhs_contracting_dims={0}
-  ROOT tuple.11 = (f32[128,128]{1,0}, f32[128,128]{1,0}) tuple(dot.10, dot.10)
-}
-
-region_0.12 {
-  arg_tuple.13 = (s32[], f32[128,128]{1,0}, f32[2,128,128]{2,1,0}, f32[2,128,128]{2,1,0}) parameter(0)
-  get-tuple-element.14 = s32[] get-tuple-element(arg_tuple.13), index=0
-  constant.18 = s32[] constant(1)
-  add.34 = s32[] add(get-tuple-element.14, constant.18)
-  get-tuple-element.15 = f32[128,128]{1,0} get-tuple-element(arg_tuple.13), index=1
-  get-tuple-element.17 = f32[2,128,128]{2,1,0} get-tuple-element(arg_tuple.13), index=3
-  constant.20 = s32[] constant(0)
-  compare.21 = pred[] compare(get-tuple-element.14, constant.20), direction=LT
-  constant.19 = s32[] constant(2)
-  add.22 = s32[] add(get-tuple-element.14, constant.19)
-  select.23 = s32[] select(compare.21, add.22, get-tuple-element.14)
-  dynamic-slice.24 = f32[1,128,128]{2,1,0} dynamic-slice(get-tuple-element.17, select.23, constant.20, constant.20), dynamic_slice_sizes={1,128,128}
-  reshape.25 = f32[128,128]{1,0} reshape(dynamic-slice.24)
-  call.26 = (f32[128,128]{1,0}, f32[128,128]{1,0}) call(get-tuple-element.15, reshape.25), to_apply=None.7
-  get-tuple-element.27 = f32[128,128]{1,0} get-tuple-element(call.26), index=0
-  get-tuple-element.16 = f32[2,128,128]{2,1,0} get-tuple-element(arg_tuple.13), index=2
-  get-tuple-element.28 = f32[128,128]{1,0} get-tuple-element(call.26), index=1
-  reshape.29 = f32[1,128,128]{2,1,0} reshape(get-tuple-element.28)
-  compare.30 = pred[] compare(get-tuple-element.14, constant.20), direction=LT
-  add.31 = s32[] add(get-tuple-element.14, constant.19)
-  select.32 = s32[] select(compare.30, add.31, get-tuple-element.14)
-  dynamic-update-slice.33 = f32[2,128,128]{2,1,0} dynamic-update-slice(get-tuple-element.16, reshape.29, select.32, constant.20, constant.20)
-  ROOT tuple.35 = (s32[], f32[128,128]{1,0}, f32[2,128,128]{2,1,0}, f32[2,128,128]{2,1,0}) tuple(add.34, get-tuple-element.27, dynamic-update-slice.33, get-tuple-element.17)
-} // region_0.12
-
-region_1.36 {
-  arg_tuple.37 = (s32[], f32[128,128]{1,0}, f32[2,128,128]{2,1,0}, f32[2,128,128]{2,1,0}) parameter(0)
-  get-tuple-element.39 = f32[128,128]{1,0} get-tuple-element(arg_tuple.37), index=1
-  get-tuple-element.40 = f32[2,128,128]{2,1,0} get-tuple-element(arg_tuple.37), index=2
-  get-tuple-element.41 = f32[2,128,128]{2,1,0} get-tuple-element(arg_tuple.37), index=3
-  get-tuple-element.38 = s32[] get-tuple-element(arg_tuple.37), index=0
-  constant.42 = s32[] constant(2)
-  ROOT compare.43 = pred[] compare(get-tuple-element.38, constant.42), direction=LT
-} // region_1.36
-
-ENTRY main.49 {
-  constant.3 = s32[] constant(0)
-  Arg_0.1 = f32[128,128]{1,0} parameter(0)
-  constant.4 = f32[] constant(0)
-  broadcast.5 = f32[2,128,128]{2,1,0} broadcast(constant.4), dimensions={}
-  Arg_1.2 = f32[2,128,128]{2,1,0} parameter(1)
-  tuple.6 = (s32[], f32[128,128]{1,0}, f32[2,128,128]{2,1,0}, f32[2,128,128]{2,1,0}) tuple(constant.3, Arg_0.1, broadcast.5, Arg_1.2)
-  while.44 = (s32[], f32[128,128]{1,0}, f32[2,128,128]{2,1,0}, f32[2,128,128]{2,1,0}) while(tuple.6), condition=region_1.36, body=region_0.12
-  get-tuple-element.45 = s32[] get-tuple-element(while.44), index=0
-  get-tuple-element.46 = f32[128,128]{1,0} get-tuple-element(while.44), index=1
-  get-tuple-element.47 = f32[2,128,128]{2,1,0} get-tuple-element(while.44), index=2
-  ROOT tuple.48 = (f32[128,128]{1,0}, f32[2,128,128]{2,1,0}) tuple(get-tuple-element.46, get-tuple-element.47)
-}
-)";
-
-  // running with module without exclusive lock on GpuExecutable
-  HloModuleConfig config;
-  auto debug_options = GetDebugOptionsForTest();
-  debug_options.set_xla_gpu_require_exclusive_lock(false);
-  config.set_debug_options(debug_options);
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(module_str, config));
-  EXPECT_TRUE(RunAndCompare(std::move(module), ErrorSpec{1e-3, 2e-3}));
-
-  // running with module with exclusive lock on GpuExecutable
-  debug_options.set_xla_gpu_require_exclusive_lock(true);
-  config.set_debug_options(debug_options);
-  TF_ASSERT_OK_AND_ASSIGN(module,
-                          ParseAndReturnVerifiedModule(module_str, config));
-  EXPECT_TRUE(RunAndCompare(std::move(module), ErrorSpec{1e-3, 2e-3}));
-}
-
 TEST(CommandBufferThunkTest, ToStringPrintsNestedThunks) {
   BufferAllocation alloc_a(/*index=*/0, /*size=*/4, /*color=*/0);
   BufferAllocation::Slice slice_a(&alloc_a, /*offset=*/0, /*size=*/4);
@@ -1683,169 +1578,8 @@ TEST(CommandBufferThunkTest, ToStringPrintsNestedThunks) {
   CommandBufferThunk thunk(
       std::move(executor), Thunk::ThunkInfo(),
       std::make_unique<SequentialThunk>(Thunk::ThunkInfo(), std::move(thunks)));
-  EXPECT_TRUE(
-      absl::StrContains(thunk.ToString(/*indent=*/1), "    kMemset32BitValue"));
-}
-
-TEST_F(CmdBufferTest, ControlDependencyTest) {
-  const char* module_str = R"(
-HloModule m
-
-%x (a: f32[3200,6400]) -> f32[3200,6400] {
-  %a = f32[3200,6400]{1,0} parameter(0)
-  ROOT %b = f32[3200,6400]{1,0} negate(%a)
-}
-
-%y (a.1: f32[3200,6400]) -> f32[3200,6400] {
-  %a.1 = f32[3200,6400]{1,0} parameter(0)
-  ROOT %b.1 = f32[3200,6400]{1,0} add(%a.1, %a.1)
-}
-
-%command_buffer (p: f32[3200,6400], p.1: f32[3200,6400]) -> (f32[3200,6400], f32[3200,6400]) {
-  %p = f32[3200,6400]{1,0} parameter(0)
-  %p.1 = f32[3200,6400]{1,0} parameter(1)
-  %b.2 = f32[3200,6400]{1,0} fusion(%p), kind=kLoop, calls=%x
-  %c = f32[3200,6400]{1,0} fusion(%p.1), kind=kLoop, calls=%y, control-predecessors={%b.2}
-  ROOT %tuple = (f32[3200,6400]{1,0}, f32[3200,6400]{1,0}) tuple(%b.2, %c)
-}
-
-ENTRY %e (m: f32[3200,6400], n: f32[3200,6400]) -> (f32[3200,6400], f32[3200,6400]) {
-  %m = f32[3200,6400]{1,0} parameter(0)
-  %n = f32[3200,6400]{1,0} parameter(1)
-  %call = (f32[3200,6400]{1,0}, f32[3200,6400]{1,0}) call(%m, %n), to_apply=%command_buffer
-  %get-tuple-element = f32[3200,6400]{1,0} get-tuple-element(%call), index=0
-  %get-tuple-element.1 = f32[3200,6400]{1,0} get-tuple-element(%call), index=1
-  ROOT %t = (f32[3200,6400]{1,0}, f32[3200,6400]{1,0}) tuple(%get-tuple-element, %get-tuple-element.1)
-}
-)";
-
-  // running with module without exclusive lock on GpuExecutable
-  HloModuleConfig config;
-  auto debug_options = GetDebugOptionsForTest();
-  debug_options.set_xla_disable_all_hlo_passes(true);
-  config.set_debug_options(debug_options);
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(module_str, config));
-  EXPECT_TRUE(RunAndCompare(std::move(module), ErrorSpec{1e-3, 2e-3}));
-}
-
-TEST_F(CmdBufferTest, DynamicSliceCopyFusionCmd) {
-  const char* module_str = R"(
-    dynamic_slice {
-      p0 = s32[4,8,8]{2,1,0} parameter(0)
-      p1 = s32[] parameter(1)
-      c1 = s32[] constant(1)
-      p2 = s32[] parameter(2)
-
-      p1p1 = s32[] add(p1, c1)
-
-      // Test all supported kinds of offsets: derived from the while loop's
-      // induction variable (p1p1), constant (c1) and always clamped to 0, so
-      // the value is irrelevant (p2).
-      ROOT slice = s32[1,1,8] dynamic-slice(p0, p1p1, c1, p2),
-          dynamic_slice_sizes={1,1,8}
-    }
-
-    remainder {
-      p0 = s32[] parameter(0)
-      c5 = s32[] constant(5)
-      // We take the value modulo 5 to test for correct clamping (the offset 4
-      // must get clamped to 3, since it's greater or equal than the dimension
-      // size).
-      ROOT remainder = s32[] remainder(p0, c5)
-    }
-
-    add {
-      p0 = s32[] parameter(0)
-      c1 = s32[] constant(1)
-      ROOT sum = s32[] add(p0, c1)
-    }
-
-    add_slices {
-      p0 = s32[1,1,8] parameter(0)
-      p1 = s32[1,1,8] parameter(1)
-      ROOT sum = s32[1,1,8] add(p0, p1)
-    }
-
-    times_two {
-      p0 = s32[] parameter(0)
-      ROOT sum = s32[] add(p0, p0)
-    }
-
-    body {
-      p0 = (s32[], s32[4,8,8]{2,1,0}, s32[1,1,8], s32[]) parameter(0)
-      ivar = s32[] get-tuple-element(p0), index=0
-      input = s32[4,8,8]{2,1,0} get-tuple-element(p0), index=1
-
-      ivar_copy = s32[] copy(ivar)
-      acc = s32[1,1,8] get-tuple-element(p0), index=2
-      acc_copy = s32[1,1,8] copy(acc)
-
-      offset1 = s32[] fusion(ivar_copy), kind=kLoop, calls=remainder
-      offset2 = s32[] get-tuple-element(p0), index=3
-
-      slice = s32[1,1,8] fusion(input, offset1, offset2), kind=kLoop, calls=dynamic_slice,
-          backend_config={"fusion_backend_config":{
-              "kind":"__dynamic_memcpy",
-              "dynamic_memcpy_config":{
-                  "depends_on_loop":true,
-                  "src_offset_bytes":["288","544","800","800","800","288"],
-                  "dst_offset_bytes":["0","0","0","0","0","0"]}}}
-      next_ivar = s32[] fusion(ivar_copy), kind=kLoop, calls=add
-      next_offset_2 = s32[] fusion(offset2), kind=kLoop, calls=times_two
-
-      next_acc = s32[1,1,8] fusion(acc_copy, slice), kind=kLoop, calls=add_slices
-      ROOT result = (s32[], s32[4,8,8]{2,1,0}, s32[1,1,8], s32[])
-          tuple(next_ivar, input, next_acc, next_offset_2)
-    }
-
-    compare {
-      p0 = s32[] parameter(0)
-      c6 = s32[] constant(6)
-      ROOT cmp = pred[] compare(p0, c6), direction=LT
-    }
-
-    condition {
-      p0 = (s32[], s32[4,8,8]{2,1,0}, s32[1,1,8], s32[]) parameter(0)
-      ivar = s32[] get-tuple-element(p0), index=0
-      ROOT cmp = pred[] fusion(ivar), kind=kLoop, calls=compare
-    }
-
-    zero {
-      c0 = s32[] constant(0)
-      ROOT bc = s32[1,1,8] broadcast(c0), dimensions={}
-    }
-
-    input {
-      iota = s32[256] iota(), iota_dimension=0
-      ROOT bc = s32[4,8,8]{2,1,0} bitcast(iota)
-    }
-
-    ENTRY main {
-      input = s32[4,8,8]{2,1,0} fusion(), kind=kLoop, calls=input
-      init_acc = s32[1,1,8] fusion(), kind=kLoop, calls=zero
-      c0 = s32[] constant(0)
-      c1 = s32[] constant(1)
-      tuple = (s32[], s32[4,8,8]{2,1,0}, s32[1,1,8], s32[]) tuple(c0, input, init_acc, c1)
-      ROOT while = (s32[], s32[4,8,8]{2,1,0}, s32[1,1,8], s32[]) while(tuple),
-          condition=condition, body=body,
-          backend_config={"known_trip_count":{"n":"6"},
-                          "known_init_step":{"init":"0","step":"1"},
-                          "known_induction_variable":{"tuple_index":"0"}}
-    }
-)";
-
-  // running with module without exclusive lock on GpuExecutable
-  HloModuleConfig config;
-  auto debug_options = GetDebugOptionsForTest();
-  debug_options.set_xla_gpu_require_exclusive_lock(false);
-  debug_options.add_xla_gpu_enable_command_buffer(
-      DebugOptions::DYNAMIC_SLICE_COPY_FUSION);
-  config.set_debug_options(debug_options);
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(module_str, config));
-  EXPECT_TRUE(
-      RunAndCompareNoHloPasses(std::move(module), ErrorSpec{1e-3, 2e-3}));
+  EXPECT_THAT(thunk.ToString(/*indent=*/1),
+              HasSubstr("    000: kMemset32BitValue"));
 }
 
 }  // namespace xla::gpu

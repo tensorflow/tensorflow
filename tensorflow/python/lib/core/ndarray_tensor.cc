@@ -225,6 +225,9 @@ absl::Status PyArray_TYPE_to_TF_DataType(PyArrayObject* array,
       } else if (pyarray_type == custom_dtypes.float8_e5m2fnuz) {
         *out_tf_datatype = TF_FLOAT8_E5M2FNUZ;
         break;
+      } else if (pyarray_type == custom_dtypes.float4_e2m1fn) {
+        *out_tf_datatype = TF_FLOAT4_E2M1FN;
+        break;
       } else if (pyarray_type == custom_dtypes.int4) {
         *out_tf_datatype = TF_INT4;
         break;

@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/grappler/optimizers/scoped_allocator_optimizer.h"
 
+#include "absl/strings/ascii.h"
 #include "tensorflow/core/common_runtime/scoped_allocator.h"
 #include "tensorflow/core/common_runtime/scoped_allocator_mgr.h"
 #include "tensorflow/core/framework/graph.pb.h"
@@ -58,7 +59,7 @@ bool HasOpName(const string& node_name, const string& op_name) {
   if (end != string::npos) {
     size_t p = end + 1;
     while (p < node_name.size()) {
-      if (!isdigit(node_name[p])) {
+      if (!absl::ascii_isdigit(node_name[p])) {
         end = node_name.size();
         break;
       }
@@ -233,8 +234,8 @@ absl::Status MaybeRewriteInput(ScopedAllocatorOptimizer* sa_opti,
   // Create new Identity op.
   int unique_id;
   LOG_WARNING_AND_RETURN_IF_ERROR(sa_opti->NewIdentityId(&unique_id));
-  string identity_name = strings::StrCat("scoped_allocator_identity_",
-                                         unique_id, "_", invocation_count);
+  string identity_name = absl::StrCat("scoped_allocator_identity_", unique_id,
+                                      "_", invocation_count);
   NodeDefBuilder identity_builder(identity_name, "Identity");
   identity_builder.Device(op->device());
   identity_builder.Attr("T", dtype);
@@ -556,7 +557,7 @@ class UnaryElementwiseRewriter : public ScopedAllocatorOptimizer::Rewriter {
       VLOG(2) << "To input " << i << ": " << nd.from_node_def->name()
               << " add control input "
               << "^" << sa_name;
-      nd.from_node_def->add_input(strings::StrCat("^", sa_name));
+      nd.from_node_def->add_input(absl::StrCat("^", sa_name));
       // This attribute says: allocate output_slot from
       // ScopedAllocator instance sa_id + 1 + i.
       ScopedAllocatorOptimizer::ExtendNodeAttr(kScopedAllocatorAttrName,
@@ -580,7 +581,7 @@ class UnaryElementwiseRewriter : public ScopedAllocatorOptimizer::Rewriter {
           continue;
         }
         sa_node->add_input(
-            strings::StrCat("^", inputs_to_first[i].from_node_def->name()));
+            absl::StrCat("^", inputs_to_first[i].from_node_def->name()));
         node_map->AddOutput(inputs_to_first[i].from_node_def->name(), sa_name);
         added_delay_edge = true;
         VLOG(2) << "Adding control dependency from "
@@ -754,7 +755,7 @@ class UnaryElementwiseRewriter : public ScopedAllocatorOptimizer::Rewriter {
                   << n->name();
           // However, we may already have dropped it at the clear() below,
           // so if we fail to find it, that's okay.
-          absl::Status ignore = RemoveEdge(strings::StrCat("^", old_op->name()),
+          absl::Status ignore = RemoveEdge(absl::StrCat("^", old_op->name()),
                                            old_op->name(), n, node_map);
           continue;
         }
@@ -769,11 +770,11 @@ class UnaryElementwiseRewriter : public ScopedAllocatorOptimizer::Rewriter {
             VLOG(3) << "match pos=" << position;
             if (position == -1) {
               // It was a control edge
-              *n->mutable_input(i) = strings::StrCat("^", sas_name);
+              *n->mutable_input(i) = absl::StrCat("^", sas_name);
             } else {
               CHECK_EQ(0, position)
                   << "name " << n->input(i) << " pos " << position;
-              *n->mutable_input(i) = strings::StrCat(sas_name, ":", op_idx);
+              *n->mutable_input(i) = absl::StrCat(sas_name, ":", op_idx);
             }
             node_map->UpdateInput(n->name(), old_op->name(), sas_name);
             VLOG(3) << "breaking on success";
@@ -833,7 +834,7 @@ class UnaryElementwiseRewriter : public ScopedAllocatorOptimizer::Rewriter {
       VLOG(1) << "Rewrite";
       string op_names;
       for (auto& nd : ops) {
-        strings::StrAppend(&op_names, nd->name(), ", ");
+        absl::StrAppend(&op_names, nd->name(), ", ");
       }
       VLOG(1) << "UnaryElementwiseRewriter::Rewrite " << op_name
               << " to: " << op_names;
@@ -858,29 +859,29 @@ class UnaryElementwiseRewriter : public ScopedAllocatorOptimizer::Rewriter {
 
     int sa_id = sa_opti->NewScopedAllocatorId(input_shapes.size());
     string sa_name =
-        strings::StrCat("scoped_allocator_", sa_id, "_", invocation_count);
+        absl::StrCat("scoped_allocator_", sa_id, "_", invocation_count);
     TF_RETURN_IF_ERROR(ConstructScopedAllocatorNode(
         sa_opti, graph, node_map, ops, device_name, dtype, sa_id, sa_name,
         input_shapes, inputs, sa_shape));
 
     // Build a ScopedAllocatorConcat below all of the input nodes.
     std::vector<NodeDefBuilder::NodeOut> sac_inputs;
-    string sac_name = strings::StrCat("scoped_allocator_concat_", sa_id, "_",
-                                      invocation_count);
+    string sac_name =
+        absl::StrCat("scoped_allocator_concat_", sa_id, "_", invocation_count);
     TF_RETURN_IF_ERROR(BuildSAConcatNode(
         graph, node_map, ops, op_instance_names, device_name, dtype, sa_id,
         sa_name, sac_name, sa_shape, &sac_inputs));
 
     // Construct a new instance of the parallel op and insert it
     // immediately below the new ScopedAllocatorConcat.
-    string sa_op_name = strings::StrCat(sa_name, "_", op_name);
+    string sa_op_name = absl::StrCat(sa_name, "_", op_name);
     TF_RETURN_IF_ERROR(BuildReplacementOp(graph, node_map, ops, device_name,
                                           dtype, op_name, sac_name,
                                           sa_op_name));
 
     // Build a ScopedAllocatorSplit split below the new Op.
-    string sas_name = strings::StrCat("scoped_allocator_split_", sa_id, "_",
-                                      invocation_count);
+    string sas_name =
+        absl::StrCat("scoped_allocator_split_", sa_id, "_", invocation_count);
     TF_RETURN_IF_ERROR(BuildSplitNode(graph, node_map, ops, input_shapes,
                                       sac_inputs, device_name, dtype, op_name,
                                       sa_id, sas_name, sa_name, sa_op_name));

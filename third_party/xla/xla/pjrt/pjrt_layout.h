@@ -61,6 +61,8 @@ class PjRtLayout {
     return xla_layout_ == other.xla_layout_;
   }
 
+  bool operator!=(const PjRtLayout& other) const { return !(*this == other); }
+
   template <typename H>
   friend H AbslHashValue(H state, const PjRtLayout& layout) {
     return H::combine(std::move(state), layout.xla_layout_);

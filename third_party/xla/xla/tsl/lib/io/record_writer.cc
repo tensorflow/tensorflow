@@ -33,7 +33,7 @@ bool IsSnappyCompressed(const RecordWriterOptions& options) {
 }  // namespace
 
 RecordWriterOptions RecordWriterOptions::CreateRecordWriterOptions(
-    const string& compression_type) {
+    const std::string& compression_type) {
   RecordWriterOptions options;
 #if defined(IS_SLIM_BUILD)
   if (compression_type != compression::kNone) {

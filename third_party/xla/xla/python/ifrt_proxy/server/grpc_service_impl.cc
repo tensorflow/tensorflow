@@ -69,9 +69,9 @@ namespace proxy {
     ::grpc::ServerReaderWriter<IfrtResponse, IfrtRequest>* stream) {
   GrpcIfrtSessionMetadata metadata;
   {
-    const auto it = context->client_metadata().find(
+    const auto [it, end] = context->client_metadata().equal_range(
         "ifrt-proxy-grpc-ifrt-session-metadata-bin");
-    if (it == context->client_metadata().end()) {
+    if (it == end) {
       return ::grpc::Status(::grpc::StatusCode::INVALID_ARGUMENT,
                             "Missing metadata for GrpcIfrtService.IfrtSession: "
                             "ifrt-proxy-grpc-ifrt-session-metadata-bin");
@@ -94,11 +94,11 @@ namespace proxy {
   auto host_buffer_store =
       std::make_shared<xla::ifrt::proxy::HostBufferStore>();
   {
-    absl::MutexLock l(&host_buffer_store_mu_);
+    absl::MutexLock l(host_buffer_store_mu_);
     CHECK(host_buffer_stores_.insert({session_id, host_buffer_store}).second);
   }
   absl::Cleanup cleanup = [&] {
-    absl::MutexLock l(&host_buffer_store_mu_);
+    absl::MutexLock l(host_buffer_store_mu_);
     CHECK_GT(host_buffer_stores_.erase(session_id), 0);
   };
 
@@ -135,7 +135,7 @@ namespace proxy {
     response.OnReady(
         [op_id, stream,
          &writer_mu](absl::StatusOr<std::shared_ptr<IfrtResponse>> response) {
-          absl::MutexLock l(&writer_mu);
+          absl::MutexLock l(writer_mu);
           if (response.ok()) {
             stream->Write(**response);
           } else {
@@ -158,9 +158,9 @@ namespace proxy {
     ::grpc::ServerReader<GrpcHostBufferStoreRequest>* stream,
     GrpcHostBufferStoreResponse* response) {
   tsl::profiler::TraceMe traceme("HostBufferStore");
-  const auto it = context->client_metadata().find(
+  const auto [it, end] = context->client_metadata().equal_range(
       "ifrt-proxy-grpc-host-buffer-store-metadata-bin");
-  if (it == context->client_metadata().end()) {
+  if (it == end) {
     LOG(WARNING) << "Missing gRPC metadata for GrpcHostBufferService.Store";
     return ::grpc::Status(
         ::grpc::StatusCode::INTERNAL,
@@ -269,21 +269,34 @@ namespace proxy {
   return xla::ToGrpcStatus((*store)->Delete(request->handle()));
 }
 
+::grpc::Status GrpcServiceImpl::HostBufferReadFromDisk(
+    ::grpc::ServerContext* context,
+    const GrpcHostBufferReadFromDiskRequest* request,
+    GrpcHostBufferReadFromDiskResponse* response) {
+  tsl::profiler::TraceMe traceme("HostBufferReadFromDisk");
+  auto store = GetHostBufferStore(request->metadata().session_id());
+  if (!store.ok()) {
+    return xla::ToGrpcStatus(store.status());
+  }
+  return xla::ToGrpcStatus(
+      (*store)->ReadFromDisk(request->metadata().handle()));
+}
+
 bool GrpcServiceImpl::Test_InsertHostBufferStore(
     uint64_t session_id,
     std::shared_ptr<xla::ifrt::proxy::HostBufferStore> store) {
-  absl::MutexLock l(&host_buffer_store_mu_);
+  absl::MutexLock l(host_buffer_store_mu_);
   return host_buffer_stores_.insert({session_id, std::move(store)}).second;
 }
 
 bool GrpcServiceImpl::Test_DeleteHostBufferStore(uint64_t session_id) {
-  absl::MutexLock l(&host_buffer_store_mu_);
+  absl::MutexLock l(host_buffer_store_mu_);
   return host_buffer_stores_.erase(session_id) > 0;
 }
 
 absl::StatusOr<std::shared_ptr<xla::ifrt::proxy::HostBufferStore>>
 GrpcServiceImpl::GetHostBufferStore(uint64_t session_id) {
-  absl::MutexLock l(&host_buffer_store_mu_);
+  absl::MutexLock l(host_buffer_store_mu_);
   const auto it = host_buffer_stores_.find(session_id);
   if (it == host_buffer_stores_.end()) {
     return absl::NotFoundError(

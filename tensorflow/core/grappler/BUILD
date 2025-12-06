@@ -29,6 +29,7 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -71,6 +72,7 @@ tf_cc_test(
         "//tensorflow/core:testlib",
         "//tensorflow/core/framework:tensor_testutil",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
     ],
 )
 

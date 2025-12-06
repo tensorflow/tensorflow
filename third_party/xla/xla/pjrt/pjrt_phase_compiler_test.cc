@@ -23,7 +23,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/log/check.h"
 #include "absl/status/status.h"
-#include "absl/status/statusor.h"
+#include "absl/status/status_matchers.h"
 #include "absl/strings/string_view.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
@@ -38,7 +38,6 @@ limitations under the License.
 #include "xla/pjrt/plugin/xla_cpu/cpu_topology.h"
 #include "xla/pjrt/plugin/xla_cpu/cpu_topology_description.h"
 #include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
 
 namespace pjrt {
@@ -47,8 +46,6 @@ namespace {
 using ::testing::ElementsAre;
 using ::testing::HasSubstr;
 using ::tsl::proto_testing::EqualsProto;
-using ::tsl::testing::IsOkAndHolds;
-using ::tsl::testing::StatusIs;
 
 constexpr absl::string_view kStablehloModuleStr = R"(
   module {
@@ -60,8 +57,10 @@ constexpr absl::string_view kStablehloModuleStr = R"(
   }
   )";
 
+constexpr absl::string_view kStablehloBytecodeFormat = "bytecode";
+
 std::vector<xla::PjRtPartialProgramProto> PrepareInputPartialPrograms(
-    const std::string& next_phase, size_t program_format) {
+    const std::string& next_phase, absl::string_view program_format) {
   std::string program_code{kStablehloModuleStr};
 
   mlir::MLIRContext context;
@@ -77,8 +76,8 @@ std::vector<xla::PjRtPartialProgramProto> PrepareInputPartialPrograms(
   xla::PjRtPartialProgramProto partial_program;
   partial_program.set_program(*bytecode_status);
   partial_program.set_program_format(program_format);
-  partial_program.set_generating_phase("n/a");
-  partial_program.add_next_phases({next_phase});
+  partial_program.set_producer_phase("n/a");
+  partial_program.add_consumer_phases({next_phase});
   partial_program.set_version("1.0");
 
   return {partial_program};
@@ -136,7 +135,7 @@ TEST_F(SamplePhaseCompilerTest, TestSamplePhaseCompilerRunPhases) {
   // Prepare the input programs.
   auto partial_programs_in = PrepareInputPartialPrograms(
       /*next_phase=*/std::string(phase_compile_sample_plugin::kPhaseName),
-      /*program_format=*/0);
+      /*program_format=*/kStablehloBytecodeFormat);
 
   // Run the partial compile phase.
   std::vector<std::string> phases_to_run = {
@@ -165,7 +164,7 @@ TEST_F(SamplePhaseCompilerTest,
   std::vector<xla::PjRtPartialProgramProto> partial_programs_in =
       PrepareInputPartialPrograms(
           /*next_phase=*/std::string(phase_compile_sample_plugin::kPhaseName),
-          /*program_format=*/0);
+          /*program_format=*/kStablehloBytecodeFormat);
 
   // Run the partial compile phase.
   std::vector<std::string> phases_to_run = {};
@@ -189,7 +188,7 @@ TEST_F(SamplePhaseCompilerTest,
   std::vector<xla::PjRtPartialProgramProto> partial_programs_in =
       PrepareInputPartialPrograms(
           /*next_phase=*/std::string(phase_compile_sample_plugin::kPhaseName),
-          /*program_format=*/0);
+          /*program_format=*/kStablehloBytecodeFormat);
 
   // Run the partial compile phase.
   std::vector<std::string> phases_to_run = {"unregistered_phase_name"};
@@ -226,10 +225,7 @@ TEST_F(SamplePhaseCompilerTest, PluginSpecificValidationWithUnexpectedFormat) {
   std::vector<xla::PjRtPartialProgramProto> partial_programs_in =
       PrepareInputPartialPrograms(
           /*next_phase=*/std::string(phase_compile_sample_plugin::kPhaseName),
-          /*program_format=*/1  // 1 expresses some format which is not expected
-                                // by the sample plugin for the kPhaseName
-                                // phase.
-      );
+          /*program_format=*/"unexpected_format");
 
   // Run the partial compile phase.
   std::vector<std::string> phases_to_run = {

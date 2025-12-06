@@ -117,29 +117,6 @@ struct LowerForall : mlir::OpRewritePattern<mlir::scf::ForallOp> {
           return new_results;
         });
 
-    // Disable unrolling for all loops except the innermost.
-    auto loop_unroll = rewriter.getAttr<mlir::LLVM::LoopUnrollAttr>(
-        /*disable=*/rewriter.getBoolAttr(true), /*count=*/nullptr,
-        /*runtimeDisable=*/nullptr,
-        /*full=*/nullptr,
-        /*followupUnrolled=*/nullptr, /*followupRemainder=*/nullptr,
-        /*followupAll=*/nullptr);
-    auto loop_annotation = rewriter.getAttr<mlir::LLVM::LoopAnnotationAttr>(
-        /*disableNonforced=*/nullptr, /*vectorize=*/nullptr,
-        /*interleave=*/nullptr, loop_unroll,
-        /*unrollAndJam=*/nullptr, /*licm=*/nullptr, /*distribute=*/nullptr,
-        /*pipeline=*/nullptr, /*peeled=*/nullptr, /*unswitch=*/nullptr,
-        /*mustProgress=*/nullptr,
-        /*isVectorized=*/nullptr,
-        /*startLoc=*/nullptr,
-        /*endLoc=*/nullptr,
-        /*parallelAccesses=*/llvm::ArrayRef<mlir::LLVM::AccessGroupAttr>());
-
-    for (auto& for_op : absl::MakeSpan(loop_nest.loops).first(num_dims - 1)) {
-      for_op->setAttr(mlir::LLVM::LoopAnnotationAttr::getMnemonic(),
-                      loop_annotation);
-    }
-
     rewriter.replaceOp(op, loop_nest.results);
     return mlir::success();
   }

@@ -417,8 +417,14 @@ void PopulateWithRandomIntegralDataWithBounds(Literal* literal,
            primitive_util::NativeToPrimitiveType<IntT>());
   if (no_duplicates &&
       ShapeUtil::ElementsIn(literal->shape()) < static_cast<int64_t>(max)) {
+    int32_t start = 0;
+    if (primitive_util::IsSignedIntegralType(literal->shape().element_type())) {
+      // Generate negative numbers also.
+      auto size = literal->data<IntT>().size();
+      start = size / 2 - size;
+    }
     std::iota(literal->data<IntT>().begin(), literal->data<IntT>().end(),
-              static_cast<IntT>(0));
+              static_cast<IntT>(start));
     std::shuffle(literal->data<IntT>().begin(), literal->data<IntT>().end(),
                  *engine);
   } else {

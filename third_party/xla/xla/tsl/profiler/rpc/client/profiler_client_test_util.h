@@ -20,13 +20,11 @@ limitations under the License.
 #include <memory>
 #include <string>
 
-#include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/test.h"
-#include "xla/tsl/platform/types.h"
 #include "xla/tsl/profiler/rpc/profiler_server.h"
 #include "tsl/profiler/lib/profiler_session.h"
 #include "tsl/profiler/protobuf/profiler_options.pb.h"
@@ -41,7 +39,7 @@ using tensorflow::ProfileRequest;
 inline std::unique_ptr<ProfilerServer> StartServer(
     absl::Duration duration, std::string* service_address,
     ProfileRequest* request = nullptr) {
-  auto profiler_server = absl::make_unique<ProfilerServer>();
+  auto profiler_server = std::make_unique<ProfilerServer>();
   int port = testing::PickUnusedPortOrDie();
   profiler_server->StartProfilerServer(port);
 

@@ -57,7 +57,7 @@ std::string StripLogHeaders(absl::string_view hlo_string);
 // and the hlo module format is proto, it loads buffer assignment from the
 // proto.
 absl::StatusOr<std::unique_ptr<HloModule>> LoadModuleFromData(
-    const std::string& data, absl::string_view format,
+    absl::string_view data, absl::string_view format,
     const hlo_module_loader_details::Config& ovr_config =
         hlo_module_loader_details::Config(),
     const std::function<void(HloModuleConfig*)>& config_modifier_hook = {},
@@ -92,7 +92,7 @@ absl::StatusOr<std::unique_ptr<HloModule>> LoadModuleFromFile(
 // 1) A binary proto (format "pb")
 // 2) A text proto (format "pbtxt")
 absl::StatusOr<std::unique_ptr<RunHloModuleIterationLiterals>>
-LoadInputFromData(const std::string& data, absl::string_view format);
+LoadInputFromData(absl::string_view data, absl::string_view format);
 
 // Loads an HLO snapshot from file, only for its inputs
 // The file must be one of the following:

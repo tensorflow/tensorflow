@@ -85,7 +85,7 @@ string RunProfile(const string& command, const string& options,
 }  // namespace
 
 bool NewProfiler(const string* graph, const string* op_log) {
-  std::unique_ptr<GraphDef> graph_ptr(new GraphDef());
+  std::unique_ptr<GraphDef> graph_ptr = std::make_unique<GraphDef>();
   if (graph && !graph->empty()) {
     if (!graph_ptr->ParseFromString(*graph)) {
       if (!protobuf::TextFormat::ParseFromString(*graph, graph_ptr.get())) {
@@ -126,7 +126,7 @@ double AddStep(int64_t step, const string* graph, const string* run_meta,
   CHECK(tf_stat);
 
   if (graph && !graph->empty()) {
-    std::unique_ptr<GraphDef> graph_ptr(new GraphDef());
+    std::unique_ptr<GraphDef> graph_ptr = std::make_unique<GraphDef>();
     if (!graph_ptr->ParseFromString(*graph)) {
       if (!protobuf::TextFormat::ParseFromString(*graph, graph_ptr.get())) {
         absl::FPrintF(stderr, "Failed to parse graph\n");
@@ -137,7 +137,7 @@ double AddStep(int64_t step, const string* graph, const string* run_meta,
 
   CHECK(run_meta && !run_meta->empty());
   // TODO(xpan): Better error handling.
-  std::unique_ptr<RunMetadata> run_meta_ptr(new RunMetadata());
+  std::unique_ptr<RunMetadata> run_meta_ptr = std::make_unique<RunMetadata>();
   run_meta_ptr->ParseFromString(*run_meta);
   tf_stat->AddRunMeta(step, std::move(run_meta_ptr));
 
@@ -175,7 +175,7 @@ string PrintModelAnalysis(const string* graph, const string* run_meta,
                           const string* options) {
   CHECK(command) << "command mustn't be null";
   CHECK(options) << "options mustn't be null";
-  std::unique_ptr<GraphDef> graph_ptr(new GraphDef());
+  std::unique_ptr<GraphDef> graph_ptr = std::make_unique<GraphDef>();
   if (graph && !graph->empty()) {
     graph_ptr->ParseFromString(*graph);
   }

@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <utility>
@@ -23,12 +24,15 @@ limitations under the License.
 #include "mlir/Conversion/ComplexToLLVM/ComplexToLLVM.h"
 #include "mlir/Conversion/ControlFlowToLLVM/ControlFlowToLLVM.h"
 #include "mlir/Conversion/FuncToLLVM/ConvertFuncToLLVM.h"
+#include "mlir/Conversion/GPUToLLVMSPV/GPUToLLVMSPVPass.h"
 #include "mlir/Conversion/GPUToNVVM/GPUToNVVMPass.h"
 #include "mlir/Conversion/GPUToROCDL/GPUToROCDLPass.h"
 #include "mlir/Conversion/LLVMCommon/ConversionTarget.h"
 #include "mlir/Conversion/LLVMCommon/TypeConverter.h"
 #include "mlir/Conversion/MathToLLVM/MathToLLVM.h"
+#include "mlir/Conversion/MemRefToLLVM/MemRefToLLVM.h"
 #include "mlir/Conversion/SCFToControlFlow/SCFToControlFlow.h"
+#include "mlir/Conversion/UBToLLVM/UBToLLVM.h"
 #include "mlir/Conversion/VectorToLLVM/ConvertVectorToLLVM.h"
 #include "mlir/Dialect/AMDGPU/Utils/Chipset.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
@@ -37,12 +41,15 @@ limitations under the License.
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"  // IWYU pragma: keep
 #include "mlir/Dialect/LLVMIR/NVVMDialect.h"  // IWYU pragma: keep
-#include "mlir/Dialect/LLVMIR/ROCDLDialect.h"
 #include "mlir/Dialect/Math/IR/Math.h"
+#include "mlir/IR/Diagnostics.h"
+#include "mlir/IR/Location.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Interfaces/DataLayoutInterfaces.h"
 #include "mlir/Pass/Pass.h"
+#include "mlir/Support/LLVM.h"
 #include "mlir/Transforms/DialectConversion.h"
+#include "google/protobuf/text_format.h"
 #include "xla/codegen/device_spec.h"
 #include "xla/codegen/emitters/transforms/passes.h"
 #include "xla/stream_executor/device_description.h"
@@ -72,7 +79,10 @@ class LowerToLLVMPass : public impl::LowerToLLVMPassBase<LowerToLLVMPass> {
       se::GpuDeviceInfoProto device_info;
       CHECK(tsl::protobuf::TextFormat::ParseFromString(gpu_device_info_,
                                                        &device_info));
-      *device_spec_.mutable_type() = se::DeviceDescription(device_info);
+      absl::StatusOr<se::DeviceDescription> device_description =
+          se::DeviceDescription::FromProto(device_info);
+      CHECK_OK(device_description.status());
+      *device_spec_.mutable_type() = *device_description;
     } else if (target_type_ == "cpu") {
       CHECK(gpu_device_info_.empty());
       *device_spec_.mutable_type() = CpuDeviceSpec{};
@@ -104,12 +114,29 @@ class LowerToLLVMPass : public impl::LowerToLLVMPassBase<LowerToLLVMPass> {
             type_converter, patterns, mlir::gpu::amd::Runtime::Unknown,
             *maybeChipset);
         mlir::configureGpuToROCDLConversionLegality(target);
+      } else if (device_spec_.IsIntelGpu()) {
+        // Add sub-group-size attribute to functions.
+        int32_t sub_group_size = device_spec_.gpu().threads_per_warp();
+        if (auto module_op = mlir::dyn_cast<mlir::ModuleOp>(getOperation())) {
+          module_op.walk([sub_group_size](mlir::func::FuncOp func) {
+            if (!func.getBody().empty()) {
+              mlir::OpBuilder b(func.getContext());
+              auto sub_group_attr = b.getI32IntegerAttr(sub_group_size);
+              func->setAttr("intel_reqd_sub_group_size", sub_group_attr);
+            }
+          });
+        }
+        populateGpuToLLVMSPVConversionPatterns(type_converter, patterns);
+        populateGpuMemorySpaceAttributeConversions(type_converter);
       } else {
         mlir::populateGpuToNVVMConversionPatterns(type_converter, patterns);
         mlir::configureGpuToNVVMConversionLegality(target);
       }
     }
     mlir::populateFuncToLLVMConversionPatterns(type_converter, patterns);
+    mlir::populateFinalizeMemRefToLLVMConversionPatterns(type_converter,
+                                                         patterns);
+    mlir::ub::populateUBToLLVMConversionPatterns(type_converter, patterns);
     mlir::populateVectorToLLVMConversionPatterns(type_converter, patterns);
     mlir::cf::populateControlFlowToLLVMConversionPatterns(type_converter,
                                                           patterns);

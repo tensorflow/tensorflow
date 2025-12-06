@@ -161,11 +161,15 @@ def linspace_nd(start, stop, num, name=None, axis=0):
     num: A `Tensor`. Must be one of the following types: `int32`, `int64`. 0-D
       tensor. Number of values to generate.
     name: A name for the operation (optional).
-    axis: Axis along which the operation is performed (used only when N-D
-      tensors are provided).
+    axis: Axis along which the operation is performed (can be specified to
+      non-zero only when N-D tensors are provided).
 
   Returns:
     A `Tensor`. Has the same type as `start`.
+
+  Raises:
+    InvalidArgumentError: If `axis` is specified to non-zero when 1-D tensor
+      is provided.
   """
 
   with ops.name_scope(name, "linspace", [start, stop]):
@@ -298,6 +302,24 @@ def argmax_v2(input, axis=None, output_type=dtypes.int64, name=None):
   """
   if axis is None:
     axis = 0
+
+  if hasattr(axis, "dtype"):
+    allowed_dtypes = {
+        dtypes.int8,
+        dtypes.uint8,
+        dtypes.int16,
+        dtypes.uint16,
+        dtypes.int32,
+        dtypes.int64,
+    }
+    if axis.dtype not in allowed_dtypes:
+      raise TypeError(f"axis tensor dtypes {axis.dtype} is not supported")
+    castable_types = {dtypes.int8, dtypes.int16, dtypes.uint8, dtypes.uint16}
+    if axis.dtype in castable_types:
+      axis = cast(axis, dtypes.int32)
+  elif not isinstance(axis, int):
+    raise TypeError("axis must be int or Tensor with integer datatype")
+
   return gen_math_ops.arg_max(input, axis, name=name, output_type=output_type)
 
 

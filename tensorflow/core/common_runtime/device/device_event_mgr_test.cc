@@ -19,6 +19,7 @@ limitations under the License.
 
 #include <atomic>
 
+#include "absl/synchronization/notification.h"
 #include "xla/stream_executor/gpu/gpu_init.h"
 #include "xla/tsl/framework/device_id.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
@@ -128,7 +129,7 @@ TEST(EventMgr, WarnIfInCallback) {
   th.StartPollingLoop();
   device_event_mgr::WarnIfInCallback([&hit] { hit = true; });
   EXPECT_FALSE(hit);
-  Notification note;
+  absl::Notification note;
   em.ThenExecute(stream.get(), [&hit, &note]() {
     device_event_mgr::WarnIfInCallback([&hit, &note] {
       hit = true;

@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "xla/service/cpu/cpu_instruction_fusion.h"
 
-#include <algorithm>
 #include <memory>
 #include <set>
 #include <string>
@@ -23,6 +22,8 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/algorithm/container.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -35,8 +36,8 @@ limitations under the License.
 #include "xla/service/transpose_folding.h"
 #include "xla/shape.h"
 #include "xla/tests/test_utils.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/statusor.h"
 
 namespace op = xla::testing::opcode_matchers;
 
@@ -276,9 +277,8 @@ class OpcodeFusionTest : public InstructionFusionTest {
     EXPECT_EQ(root->fusion_kind(), fusion_kind);
 
     std::vector<HloOpcode> fused_opcodes(root->fused_instruction_count());
-    std::transform(root->fused_instructions().begin(),
-                   root->fused_instructions().end(), fused_opcodes.begin(),
-                   [](const HloInstruction* hlo) { return hlo->opcode(); });
+    absl::c_transform(root->fused_instructions(), fused_opcodes.begin(),
+                      [](const HloInstruction* hlo) { return hlo->opcode(); });
 
     EXPECT_EQ(
         std::multiset<HloOpcode>(fused_opcodes.begin(), fused_opcodes.end()),
@@ -1098,7 +1098,6 @@ ENTRY %main (arg0: f32[13,5,10,62], arg1: s32[3,1], arg2: f32[3,1,5,10,62])
 TEST_F(InstructionFusionTest, SkipScatterComputationsIfFusionEmitters) {
   auto mod_config = GetModuleConfigForTest();
   auto debug_options = GetDebugOptionsForTest();
-  debug_options.set_xla_cpu_use_thunk_runtime(true);
   debug_options.set_xla_cpu_use_fusion_emitters(true);
   mod_config.set_debug_options(debug_options);
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(

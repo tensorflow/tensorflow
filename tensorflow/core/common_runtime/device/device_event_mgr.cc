@@ -19,6 +19,7 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include "absl/synchronization/notification.h"
 #include "tensorflow/core/platform/stacktrace.h"
 #include "tensorflow/core/platform/stream_executor.h"
 #include "tensorflow/core/protobuf/config.pb.h"
@@ -123,7 +124,7 @@ void EventMgr::StartPollingLoop() {
     mutex_lock l(mu_);
     stop_polling_ = false;
   }
-  polling_stopped_ = std::make_unique<Notification>();
+  polling_stopped_ = std::make_unique<absl::Notification>();
   threadpool_.Schedule([this]() { PollLoop(); });
 }
 

@@ -19,7 +19,6 @@ limitations under the License.
 #include <cstdint>
 
 #include "absl/status/status.h"
-#include "absl/types/span.h"
 #include "xla/core/collectives/rank_id.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/gpu/launch_dimensions.h"
@@ -30,6 +29,16 @@ limitations under the License.
 #include "xla/xla_data.pb.h"
 
 namespace xla::gpu {
+
+// Returns the all-reduce strategy for the given input size.
+// If `is_multimem_enabled` is true, then multimem strategies are also
+// considered.
+se::gpu::AllReduceStrategy GetAllReduceStrategy(int64_t input_size_bytes,
+                                                bool is_multimem_enabled);
+
+// Returns the maximum supported all-reduce size in bytes for the given
+// strategy.
+int64_t GetMaxSupportedAllReduceSizeBytes(se::gpu::AllReduceStrategy strategy);
 
 // Returns the launch dimensions for the all-reduce kernel.
 // The launch dimensions are determined by the number of elements and the
@@ -74,19 +83,20 @@ bool IsAllReduceKernelSupported(int64_t num_ranks, int64_t num_elements,
 //    different for different invocations of the kernel with the same signal
 //    buffer.
 absl::Status RunAllReduceKernel(
-    se::Stream* stream,                                           //
-    const LaunchDimensions& launch_dimensions,                    //
-    PrimitiveType element_type,                                   //
-    ReductionKind reduction_kind,                                 //
-    se::gpu::AllReduceStrategy all_reduce_strategy,               //
-    absl::Span<const se::DeviceMemoryBase> remote_input_buffers,  //
-    se::DeviceMemoryBase local_input_buffer,                      //
-    se::DeviceMemoryBase output_buffer,                           //
-    RankId rank,                                                  //
-    int64_t num_ranks,                                            //
-    int64_t num_elements,                                         //
-    absl::Span<const se::DeviceMemoryBase> signal_flags_buffers,  //
-    uint32_t signal_value                                         //
+    se::Stream* stream,                              //
+    const LaunchDimensions& launch_dimensions,       //
+    PrimitiveType element_type,                      //
+    ReductionKind reduction_kind,                    //
+    se::gpu::AllReduceStrategy all_reduce_strategy,  //
+    se::DeviceMemoryBase symmetric_input_buffer,     //
+    se::DeviceMemoryBase local_input_buffer,         //
+    se::DeviceMemoryBase output_buffer,              //
+    RankId rank,                                     //
+    int64_t num_ranks,                               //
+    int64_t num_elements,                            //
+    se::DeviceMemoryBase symmetric_signal_buffer,    //
+    uint32_t signal_value,                           //
+    se::DeviceMemoryBase metadata                    //
 );
 
 }  // namespace xla::gpu

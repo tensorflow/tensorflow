@@ -22,9 +22,11 @@
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "llvm/Support/Casting.h"
+#include "google/protobuf/text_format.h"
 #include "xla/layout_util.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/basic_device_list.h"
@@ -32,7 +34,6 @@
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/executable.h"
-#include "xla/python/ifrt/future.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/mock.h"
 #include "xla/python/ifrt/serdes_version.h"
@@ -48,25 +49,22 @@
 #include "xla/python/ifrt_proxy/common/ifrt_service.pb.h"
 #include "xla/python/ifrt_proxy/common/test_utils.h"
 #include "xla/python/ifrt_proxy/common/types.h"
+#include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/concurrency/ref_count.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/util/proto/proto_matchers.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/protobuf.h"  // IWYU pragma: keep
-#include "tsl/platform/status_matchers.h"
 
 using ::testing::_;
 using ::testing::ElementsAre;
 using ::testing::Pointee;
 using ::testing::Return;
 using ::testing::SizeIs;
+using ::tsl::proto_testing::EquivToProto;
+using ::tsl::proto_testing::Partially;
 using ::tsl::protobuf::TextFormat;
-using ::tsl::testing::IsOkAndHolds;
-using ::tsl::testing::StatusIs;
-
-#if defined(PLATFORM_GOOGLE)
-using ::testing::EquivToProto;
-using ::testing::proto::Partially;
-#endif
 
 namespace xla {
 namespace ifrt {
@@ -93,7 +91,7 @@ class LoadedExecutableTest : public ::testing::Test {
     // Default handler that ignores all uninteresting requests, but still
     // invokes the callback in order to avoid hanging the caller forever.
     EXPECT_CALL(*session_, Enqueue(_))
-        .WillRepeatedly(Return(Future<ClientSession::Response>(
+        .WillRepeatedly(Return(tsl::Future<ClientSession::Response>(
             absl::InternalError("Request has no mock handlers"))));
   }
 
@@ -145,7 +143,7 @@ TEST_F(LoadedExecutableTest, Metadata) {
       /*num_devices=*/2, /*devices=*/{},
       /*addressable_devices=*/{},
       /*fingerprint=*/"fingerprint",
-      /*ready_future=*/Future<>(absl::OkStatus()),
+      /*ready_future=*/tsl::Future<>(absl::OkStatus()),
       /*loaded_host_callbacks=*/{}, /*loaded_host_callback_handles=*/{});
 
   EXPECT_EQ(requests_queue.Pop()
@@ -185,8 +183,6 @@ TEST_F(LoadedExecutableTest, Metadata) {
               absl_testing::IsOkAndHolds(ElementsAre(ElementsAre("foo"))));
 }
 
-// TODO(b/315809436): Test needs rewrite because protobuf matchers are not OSS
-#if defined(PLATFORM_GOOGLE)
 TEST_F(LoadedExecutableTest, Execute) {
   MockClient client;
 
@@ -229,7 +225,7 @@ TEST_F(LoadedExecutableTest, Execute) {
       &client, rpc_helper_, /*handle=*/1234, /*name=*/"foo",
       /*num_devices=*/2, /*devices=*/{}, /*addressable_devices=*/{},
       /*fingerprint=*/"fingerprint",
-      /*ready_future=*/Future<>(absl::OkStatus()),
+      /*ready_future=*/tsl::Future<>(absl::OkStatus()),
       /*loaded_host_callbacks=*/{}, /*loaded_host_callback_handles=*/{});
 
   xla::ifrt::LoadedExecutable::ExecuteOptions exec_options;
@@ -258,12 +254,12 @@ TEST_F(LoadedExecutableTest, Execute) {
     auto* outputs =
         execute_response.mutable_loaded_executable_execute_response()
             ->mutable_outputs();
-    TF_ASSERT_OK_AND_ASSIGN(*(*outputs)[0].mutable_sharding(),
-                            SingleDeviceSharding::Create(&device, MemoryKind())
-                                ->ToProto(rpc_helper_->ifrt_serdes_version()));
-    TF_ASSERT_OK_AND_ASSIGN(*(*outputs)[1].mutable_sharding(),
-                            SingleDeviceSharding::Create(&device, MemoryKind())
-                                ->ToProto(rpc_helper_->ifrt_serdes_version()));
+    TF_ASSERT_OK(SingleDeviceSharding::Create(&device, MemoryKind())
+                     ->ToProto(*(*outputs)[0].mutable_sharding(),
+                               rpc_helper_->ifrt_serdes_version()));
+    TF_ASSERT_OK(SingleDeviceSharding::Create(&device, MemoryKind())
+                     ->ToProto(*(*outputs)[1].mutable_sharding(),
+                               rpc_helper_->ifrt_serdes_version()));
   }
   EXPECT_CALL(*session_, Enqueue(Pointee(Partially(EquivToProto(
                              R"pb(loaded_executable_execute_request {
@@ -364,7 +360,6 @@ TEST_F(LoadedExecutableTest, Execute) {
                 ->handle,
             execute_req.result_array_handle()[1]);
 }
-#endif
 
 }  // namespace
 }  // namespace proxy

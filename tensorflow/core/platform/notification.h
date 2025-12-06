@@ -16,13 +16,4 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PLATFORM_NOTIFICATION_H_
 #define TENSORFLOW_CORE_PLATFORM_NOTIFICATION_H_
 
-#include "tensorflow/core/platform/platform.h"
-#include "tsl/platform/notification.h"
-
-namespace tensorflow {
-// NOLINTBEGIN(misc-unused-using-decls)
-using tsl::Notification;
-// NOLINTEND(misc-unused-using-decls)
-}  // namespace tensorflow
-
 #endif  // TENSORFLOW_CORE_PLATFORM_NOTIFICATION_H_

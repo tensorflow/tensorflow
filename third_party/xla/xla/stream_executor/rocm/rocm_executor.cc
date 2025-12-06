@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <unistd.h>
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -49,8 +50,8 @@ limitations under the License.
 #include "xla/stream_executor/activate_context.h"
 #include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/command_buffer.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/event_based_timer.h"
@@ -61,6 +62,9 @@ limitations under the License.
 #include "xla/stream_executor/gpu/read_numa_node.h"
 #include "xla/stream_executor/gpu/scoped_activate_context.h"
 #include "xla/stream_executor/kernel.h"
+#include "xla/stream_executor/kernel_args.h"
+#include "xla/stream_executor/kernel_argument_packing_spec.h"
+#include "xla/stream_executor/kernel_metadata.h"
 #include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/memory_allocation.h"
@@ -87,8 +91,8 @@ limitations under the License.
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/threadpool.h"
-#include "tsl/platform/casts.h"
 #include "tsl/platform/fingerprint.h"
+#include "tsl/platform/numa.h"
 #include "tsl/platform/numbers.h"
 
 namespace stream_executor {
@@ -101,12 +105,12 @@ namespace {
 // N.B. we must lose constness in order to pass a suitable type to the existing
 // librocm APIs, so the caller should take care to only pass the result of const
 // GPU memory conversions to librocm functions which will honor constness.
-hipDeviceptr_t AsROCmDevicePtr(const DeviceMemoryBase& gpu_mem) {
+hipDeviceptr_t AsROCmDevicePtr(const DeviceAddressBase& gpu_mem) {
   return const_cast<hipDeviceptr_t>(gpu_mem.opaque());
 }
 
 // See description on const version above.
-hipDeviceptr_t AsROCmDevicePtr(DeviceMemoryBase* gpu_mem) {
+hipDeviceptr_t AsROCmDevicePtr(DeviceAddressBase* gpu_mem) {
   return AsROCmDevicePtr(*gpu_mem);
 }
 
@@ -312,6 +316,11 @@ absl::Status GetGridLimits(int* x, int* y, int* z, hipDevice_t device) {
   return absl::OkStatus();
 }
 
+absl::StatusOr<int64_t> GetMaxRegistersPerMultiprocessor(hipDevice_t device) {
+  return GetSimpleAttribute<int64_t>(
+      device, hipDeviceAttributeMaxRegistersPerMultiprocessor);
+}
+
 // Returns the device associated with the given device_ordinal.
 absl::StatusOr<hipDevice_t> GetDevice(int device_ordinal) {
   hipDevice_t device;
@@ -372,13 +381,19 @@ absl::Status EnablePeerAccess(Context* from, Context* to) {
   }
 
   ScopedActivateContext activated(from);
-  hipError_t result = wrap::hipCtxEnablePeerAccess(
-      tensorflow::down_cast<RocmContext*>(to)->context(), 0 /* = flags */);
-  if (result != hipSuccess && result != hipErrorPeerAccessAlreadyEnabled) {
+  hipError_t result =
+      wrap::hipDeviceEnablePeerAccess(to->device_ordinal(), 0 /* = flags */);
+
+  if (result == hipErrorPeerAccessAlreadyEnabled) {
+    // hipGetLastError is used to reset per thread error state,
+    // as hipGetLastError would get the recent error code since rocm7 even the
+    // last call is successful.
+    (void)wrap::hipGetLastError();
+  } else if (result != hipSuccess) {
     return absl::InternalError(
         absl::StrFormat("failed to enable peer access from %d to %d: %s",
                         from->device_ordinal(), to->device_ordinal(),
-                        ToString(result).c_str()));
+                        wrap::hipGetErrorString(result)));
   }
 
   return absl::OkStatus();
@@ -399,6 +414,14 @@ std::string GetPCIBusID(hipDevice_t device) {
   return pci_bus_id;
 }
 
+absl::StatusOr<bool> IsEccEnabled(hipDevice_t device) {
+  int value = 0;
+  TF_RETURN_IF_ERROR(ToStatus(
+      wrap::hipDeviceGetAttribute(&value, hipDeviceAttributeEccEnabled, device),
+      "hipDeviceGetAttribute(hipDeviceAttributeEccEnabled) failed"));
+  return value != 0;
+}
+
 bool GetDeviceProperties(hipDeviceProp_t* device_properties,
                          int device_ordinal) {
   hipError_t res =
@@ -412,14 +435,25 @@ bool GetDeviceProperties(hipDeviceProp_t* device_properties,
 }
 
 // Allocates memory on the GPU device.
-void* DeviceAllocate(Context* context, uint64_t bytes) {
+void* DeviceAllocate(Context* context, uint64_t bytes,
+                     bool is_fine_grained = false) {
   if (bytes == 0) {
     return nullptr;
   }
 
   ScopedActivateContext activated(context);
-  hipDeviceptr_t result = nullptr;
-  hipError_t res = wrap::hipMalloc(&result, bytes);
+  hipDeviceptr_t device_mem = nullptr;
+  hipError_t res;
+  if (is_fine_grained) {
+    // Fine-grained memory, which has better coherence during the kernel
+    // execution. This type of memory is only used in P2P communication to solve
+    // the cache coherence issue for some archs (e.g., MI200); most of the time,
+    // you don't have to use it.
+    res = wrap::hipExtMallocWithFlags(&device_mem, bytes,
+                                      hipDeviceMallocFinegrained);
+  } else {
+    res = wrap::hipMalloc(&device_mem, bytes);
+  }
   if (res != hipSuccess) {
     // LOG(INFO) because this isn't always important to users (e.g. BFCAllocator
     // implements a retry if the first allocation fails).
@@ -428,7 +462,7 @@ void* DeviceAllocate(Context* context, uint64_t bytes) {
               << " bytes) from device: " << ToString(res);
     return nullptr;
   }
-  void* ptr = reinterpret_cast<void*>(result);
+  void* ptr = reinterpret_cast<void*>(device_mem);
   VLOG(2) << "allocated " << ptr << " for device " << context->device_ordinal()
           << " of " << bytes << " bytes";
   return ptr;
@@ -457,14 +491,14 @@ absl::StatusOr<void*> HostAllocate(Context* context, uint64_t bytes) {
   TF_RETURN_IF_ERROR(
       ToStatus(wrap::hipHostMalloc(&host_mem, bytes, hipHostMallocPortable),
                "failed to allocate host memory"));
+  VLOG(2) << "allocated " << host_mem << " for context " << context << " of "
+          << bytes << " bytes of host memory";
   return host_mem;
 }
 
 absl::StatusOr<std::unique_ptr<MemoryAllocation>> AllocateHostMemory(
     RocmContext* rocm_context, uint64_t size) {
   TF_ASSIGN_OR_RETURN(void* ptr, HostAllocate(rocm_context, size));
-  VLOG(2) << "allocated " << ptr << " for context " << rocm_context << " of "
-          << size << " bytes of host memory";
   return std::make_unique<GenericMemoryAllocation>(
       ptr, size, [rocm_context](void* location, uint64_t size) {
         hipError_t res = wrap::hipHostFree(location);
@@ -492,18 +526,18 @@ std::unique_ptr<ActivateContext> RocmExecutor::Activate() {
 }
 
 bool RocmExecutor::UnloadModule(ModuleHandle module_handle) {
-  absl::MutexLock lock{&in_memory_modules_mu_};
+  absl::MutexLock lock{in_memory_modules_mu_};
   return UnloadGpuBinary(module_handle);
 }
 
-absl::StatusOr<DeviceMemoryBase> RocmExecutor::GetMemoryRange(
-    const DeviceMemoryBase& location) {
+absl::StatusOr<DeviceAddressBase> RocmExecutor::GetMemoryRange(
+    const DeviceAddressBase& location) const {
   hipDeviceptr_t device_pointer;
   size_t size;
   hipError_t result = wrap::hipMemGetAddressRange(
       &device_pointer, &size, const_cast<void*>(location.opaque()));
   if (result == hipSuccess) {
-    return DeviceMemoryBase(device_pointer, size);
+    return DeviceAddressBase(device_pointer, size);
   } else if (result == hipErrorNotFound) {
     // We differentiate between "this pointer is unknown" (return here) and
     // "there was an internal error while performing this operation" (return
@@ -518,10 +552,10 @@ absl::StatusOr<DeviceMemoryBase> RocmExecutor::GetMemoryRange(
                       location.opaque(), ToString(result).c_str()));
 }
 
-absl::StatusOr<std::shared_ptr<DeviceMemoryBase>>
+absl::StatusOr<std::shared_ptr<DeviceAddressBase>>
 RocmExecutor::CreateOrShareConstant(Stream* stream,
                                     absl::Span<const uint8_t> content) {
-  absl::MutexLock lock{&shared_constants_mu_};
+  absl::MutexLock lock{shared_constants_mu_};
   // We assume all constants are uniquely identified by this hash. In the
   // (highly unlikely) event of a hash collision, the program will likely crash
   // (because the cached constant that will be returned by mistake is unlikely
@@ -530,10 +564,10 @@ RocmExecutor::CreateOrShareConstant(Stream* stream,
       reinterpret_cast<const char*>(content.data()), content.size()));
   // Must insert nullptr first to get an iterator to the insertion point.
   auto insert_result = shared_constants_.insert(
-      {fingerprint, std::weak_ptr<DeviceMemoryBase>()});
+      {fingerprint, std::weak_ptr<DeviceAddressBase>()});
   auto it = insert_result.first;
   bool was_already_in_cache = !insert_result.second;
-  std::shared_ptr<DeviceMemoryBase> shared_constant;
+  std::shared_ptr<DeviceAddressBase> shared_constant;
 
   if (was_already_in_cache) {
     shared_constant = it->second.lock();
@@ -542,8 +576,8 @@ RocmExecutor::CreateOrShareConstant(Stream* stream,
   if (shared_constant == nullptr) {
     // Either the constant wasn't found in the cache, or it was but its
     // weak_ptr had expired.
-    DeviceMemoryBase* new_constant =
-        new DeviceMemoryBase(Allocate(content.size(), /*memory_space=*/0));
+    DeviceAddressBase* new_constant =
+        new DeviceAddressBase(Allocate(content.size(), /*memory_space=*/0));
     if (new_constant->opaque() == nullptr) {
       return absl::InternalError(absl::StrFormat(
           "Failed to allocate %d bytes for new constant", content.size()));
@@ -561,12 +595,12 @@ RocmExecutor::CreateOrShareConstant(Stream* stream,
 
     // Capturing 'this' in the custom deleter means this executor must
     // outlive all shared uses of this constant.
-    shared_constant = std::shared_ptr<DeviceMemoryBase>(
-        new_constant, [this](DeviceMemoryBase* p) {
+    shared_constant = std::shared_ptr<DeviceAddressBase>(
+        new_constant, [this](DeviceAddressBase* p) {
           Deallocate(p);
           delete p;
         });
-    it->second = std::weak_ptr<DeviceMemoryBase>(shared_constant);
+    it->second = std::weak_ptr<DeviceAddressBase>(shared_constant);
   }
 
   return shared_constant;
@@ -603,7 +637,7 @@ bool RocmExecutor::UnloadGpuBinary(ModuleHandle module_handle) {
 void RocmExecutor::UnloadKernel(const Kernel* kernel) {
   VLOG(3) << "Unloading kernel " << kernel << " : " << kernel->name();
 
-  absl::MutexLock lock{&in_memory_modules_mu_};
+  absl::MutexLock lock{in_memory_modules_mu_};
   loaded_kernels_.erase(kernel);
   auto gpu_binary_it = kernel_to_gpu_binary_.find(kernel);
   if (kernel_to_gpu_binary_.end() == gpu_binary_it) {
@@ -639,7 +673,7 @@ absl::StatusOr<std::unique_ptr<Kernel>> RocmExecutor::LoadKernel(
   if (spec.has_cuda_cubin_in_memory()) {
     const char* hsaco = reinterpret_cast<const char*>(
         spec.cuda_cubin_in_memory()->cubin_bytes.data());
-    absl::MutexLock lock{&in_memory_modules_mu_};
+    absl::MutexLock lock{in_memory_modules_mu_};
     ModuleHandle module_handle{hsaco};
     hipModule_t& module = in_memory_modules_[module_handle];
 
@@ -674,7 +708,7 @@ absl::StatusOr<std::unique_ptr<Kernel>> RocmExecutor::LoadKernel(
     return absl::InternalError("No method of loading ROCM kernel provided");
   }
 
-  absl::MutexLock lock{&in_memory_modules_mu_};
+  absl::MutexLock lock{in_memory_modules_mu_};
   loaded_kernels_.insert(rocm_kernel.get());
 
   // We have to trust the kernel loader spec arity because there doesn't appear
@@ -688,7 +722,23 @@ absl::StatusOr<std::unique_ptr<Kernel>> RocmExecutor::LoadKernel(
     rocm_kernel->set_metadata(kernel_metadata);
   }
   rocm_kernel->set_name(kernel_name);
-  rocm_kernel->set_args_packing(spec.kernel_args_packing());
+  if (std::holds_alternative<KernelLoaderSpec::KernelArgsPackingFunc>(
+          spec.kernel_args_packing())) {
+    rocm_kernel->set_args_packing(
+        std::get<KernelLoaderSpec::KernelArgsPackingFunc>(
+            spec.kernel_args_packing()));
+  } else {
+    const auto& packing_spec =
+        std::get<KernelArgumentsPackingSpec>(spec.kernel_args_packing());
+    rocm_kernel->set_args_packing([packing_spec](const Kernel& kernel,
+                                                 const KernelArgs& args) {
+      const auto& mem_args =
+          stream_executor::Cast<stream_executor::KernelArgsDeviceAddressArray>(
+              &args);
+      return packing_spec.BuildArguments(mem_args->device_memory_args(),
+                                         args.number_of_shared_bytes());
+    });
+  }
   return std::move(rocm_kernel);
 }
 
@@ -698,7 +748,7 @@ absl::StatusOr<ModuleHandle> RocmExecutor::LoadModule(
 
   // TODO(ROCm): Need  generic term instead of cubin/cuda/ptx
   if (spec.has_cuda_cubin_in_memory()) {
-    absl::MutexLock lock{&in_memory_modules_mu_};
+    absl::MutexLock lock{in_memory_modules_mu_};
     return LoadModuleFromHsaco(
         reinterpret_cast<const char*>(spec.cuda_cubin_in_memory().data()));
   } else {
@@ -728,16 +778,25 @@ absl::StatusOr<ModuleHandle> RocmExecutor::LoadModuleFromHsaco(
   return module_handle;
 }
 
-DeviceMemoryBase RocmExecutor::Allocate(uint64_t size, int64_t memory_space) {
+DeviceAddressBase RocmExecutor::Allocate(uint64_t size, int64_t memory_space) {
   switch (static_cast<MemoryType>(memory_space)) {
     case MemoryType::kCollective:
     case MemoryType::kDevice:
-      return DeviceMemoryBase(DeviceAllocate(rocm_context_, size), size);
+      return DeviceAddressBase(
+          DeviceAllocate(rocm_context_, size, /*is_fine_grained*/ false), size);
+    case MemoryType::kP2P:
+      // On the ROCm platform, differences in cache design (e.g., coherence
+      // protocol) can cause cache coherence issues for some archs (e.g., MI200)
+      // when using normal device memory. To avoid these problems, we use
+      // fine-grained memory in P2P communication for all archs to make sure of
+      // the correctness.
+      return DeviceAddressBase(
+          DeviceAllocate(rocm_context_, size, /*is_fine_grained*/ true), size);
     case MemoryType::kHost:
       if (auto result = HostAllocate(rocm_context_, size); result.ok()) {
-        return DeviceMemoryBase(*result, size);
+        return DeviceAddressBase(*result, size);
       }
-      return DeviceMemoryBase(nullptr, 0);
+      return DeviceAddressBase(nullptr, 0);
     default:
       LOG(FATAL) << "Unsupported memory space: " << memory_space;
   }
@@ -747,7 +806,7 @@ RocmExecutor::HostMemoryAllocate(uint64_t size) {
   return AllocateHostMemory(rocm_context_, size);
 }
 
-void RocmExecutor::Deallocate(DeviceMemoryBase* mem) {
+void RocmExecutor::Deallocate(DeviceAddressBase* mem) {
   DeviceDeallocate(rocm_context_, mem->opaque());
 }
 
@@ -852,7 +911,7 @@ bool RocmExecutor::HostMemoryUnregister(void* location) {
   return true;
 }
 
-absl::Status RocmExecutor::SynchronousMemZero(DeviceMemoryBase* location,
+absl::Status RocmExecutor::SynchronousMemZero(DeviceAddressBase* location,
                                               uint64_t size) {
   std::unique_ptr<ActivateContext> activation = Activate();
   hipDeviceptr_t rocm_location = AsROCmDevicePtr(location);
@@ -866,7 +925,7 @@ absl::Status RocmExecutor::SynchronousMemZero(DeviceMemoryBase* location,
                   "Failed to memset memory");
 }
 
-absl::Status RocmExecutor::SynchronousMemcpy(DeviceMemoryBase* gpu_dst,
+absl::Status RocmExecutor::SynchronousMemcpy(DeviceAddressBase* gpu_dst,
                                              const void* host_src,
                                              uint64_t size) {
   std::unique_ptr<ActivateContext> activation = Activate();
@@ -882,7 +941,7 @@ absl::Status RocmExecutor::SynchronousMemcpy(DeviceMemoryBase* gpu_dst,
 }
 
 absl::Status RocmExecutor::SynchronousMemcpy(void* host_dst,
-                                             const DeviceMemoryBase& gpu_src,
+                                             const DeviceAddressBase& gpu_src,
                                              uint64_t size) {
   std::unique_ptr<ActivateContext> activation = Activate();
   TF_RETURN_IF_ERROR(ToStatus(
@@ -897,18 +956,18 @@ absl::Status RocmExecutor::SynchronousMemcpy(void* host_dst,
 
 void RocmExecutor::DeallocateStream(Stream* stream) {
   {
-    absl::MutexLock lock(&mu_);
+    absl::MutexLock lock(mu_);
     if (dnn_ != nullptr) {
       dnn_->NotifyStreamDestroyed(stream);
     }
   }
   RocmStream* rocm_stream = static_cast<RocmStream*>(stream);
-  absl::MutexLock l(&alive_gpu_streams_mu_);
+  absl::MutexLock l(alive_gpu_streams_mu_);
   alive_gpu_streams_.erase(rocm_stream->stream_handle());
 }
 
 absl::Status RocmExecutor::InitBlas() {
-  absl::MutexLock lock(&mu_);
+  absl::MutexLock lock(mu_);
   PluginRegistry* registry = PluginRegistry::Instance();
   TF_ASSIGN_OR_RETURN(
       auto factory,
@@ -918,12 +977,12 @@ absl::Status RocmExecutor::InitBlas() {
 }
 
 blas::BlasSupport* RocmExecutor::AsBlas() {
-  absl::MutexLock lock(&mu_);
+  absl::MutexLock lock(mu_);
   return blas_.get();
 }
 
 dnn::DnnSupport* RocmExecutor::AsDnn() {
-  absl::MutexLock lock(&mu_);
+  absl::MutexLock lock(mu_);
   if (dnn_ != nullptr) {
     return dnn_.get();
   }
@@ -944,7 +1003,7 @@ dnn::DnnSupport* RocmExecutor::AsDnn() {
 }
 
 fft::FftSupport* RocmExecutor::AsFft() {
-  absl::MutexLock lock(&mu_);
+  absl::MutexLock lock(mu_);
   if (fft_ != nullptr) {
     return fft_.get();
   }
@@ -977,26 +1036,26 @@ bool RocmExecutor::DeviceMemoryUsage(int64_t* free, int64_t* total) const {
   return rocm_context_->GetDeviceMemoryUsage(free, total);
 }
 
-absl::StatusOr<DeviceMemoryBase> RocmExecutor::GetSymbol(
+absl::StatusOr<DeviceAddressBase> RocmExecutor::GetSymbol(
     const std::string& symbol_name, ModuleHandle module_handle) {
   void* mem = nullptr;
   size_t bytes = 0;
 
-  absl::MutexLock lock{&in_memory_modules_mu_};
+  absl::MutexLock lock{in_memory_modules_mu_};
   if (static_cast<bool>(module_handle)) {
     auto it = gpu_binary_to_module_.find(module_handle);
     CHECK(it != gpu_binary_to_module_.end());
     TF_RETURN_IF_ERROR(
         GetModuleSymbol(rocm_context_, it->second.first, symbol_name.c_str(),
                         reinterpret_cast<hipDeviceptr_t*>(&mem), &bytes));
-    return DeviceMemoryBase(mem, bytes);
+    return DeviceAddressBase(mem, bytes);
   }
 
   for (auto& it : gpu_binary_to_module_) {
     TF_RETURN_IF_ERROR(
         GetModuleSymbol(rocm_context_, it.second.first, symbol_name.c_str(),
                         reinterpret_cast<hipDeviceptr_t*>(&mem), &bytes));
-    return DeviceMemoryBase(mem, bytes);
+    return DeviceAddressBase(mem, bytes);
   }
 
   LOG(INFO) << "Falied to find symbol in any modules: " << symbol_name;
@@ -1031,7 +1090,7 @@ absl::StatusOr<std::unique_ptr<Event>> RocmExecutor::CreateEvent() {
 absl::StatusOr<std::unique_ptr<Stream>> RocmExecutor::CreateStream(
     std::optional<std::variant<StreamPriority, int>> priority) {
   TF_ASSIGN_OR_RETURN(auto stream, RocmStream::Create(this, priority));
-  absl::MutexLock l(&alive_gpu_streams_mu_);
+  absl::MutexLock l(alive_gpu_streams_mu_);
   alive_gpu_streams_[stream->stream_handle()] = stream.get();
   return std::move(stream);
 }
@@ -1040,6 +1099,20 @@ absl::StatusOr<std::unique_ptr<CommandBuffer>>
 RocmExecutor::CreateCommandBuffer(CommandBuffer::Mode mode) {
   VLOG(2) << "Create ROCm command buffer (ROCm graph)";
   return RocmCommandBuffer::Create(mode, this);
+}
+
+int RocmExecutor::GetGpuStreamPriority(StreamPriority priority) {
+  if (priority == StreamPriority::Default) {
+    return 0;
+  }
+  std::unique_ptr<ActivateContext> activation = Activate();
+  int lowest, highest;
+  auto status = wrap::hipDeviceGetStreamPriorityRange(&lowest, &highest);
+  if (status != hipSuccess) {
+    LOG(ERROR) << "Failed to get stream priority range: " << ToString(status);
+    return 0;
+  }
+  return priority == StreamPriority::Highest ? highest : lowest;
 }
 
 absl::StatusOr<std::unique_ptr<DeviceDescription>>
@@ -1087,8 +1160,18 @@ RocmExecutor::CreateDeviceDescription(int device_ordinal) {
     desc.set_l2_cache_size(prop.l2CacheSize);
   }
 
-  // No way to query ECC status from the API.
-  desc.set_ecc_enabled(false);
+  // PCIe bandwidth for PCI Gen4 x16 (approximate)
+  desc.set_pcie_bandwidth(32LL * 1024 * 1024 * 1024);
+
+  {
+    auto ecc_enabled_or = IsEccEnabled(device);
+    if (!ecc_enabled_or.ok()) {
+      LOG(ERROR) << "Device " << device_ordinal
+                 << ": ECC status query failed: " << ecc_enabled_or.status();
+      return ecc_enabled_or.status();
+    }
+    desc.set_ecc_enabled(*ecc_enabled_or);
+  }
 
   uint64_t device_memory_size = -1;
   (void)RocmContext::GetDeviceTotalMemory(device, &device_memory_size);
@@ -1126,7 +1209,11 @@ RocmExecutor::CreateDeviceDescription(int device_ordinal) {
       GetMaxThreadsPerMultiprocessor(device).value());
   desc.set_registers_per_block_limit(GetMaxRegistersPerBlock(device).value());
   desc.set_threads_per_warp(GetThreadsPerWarp(device).value());
-  desc.set_registers_per_core_limit(64 * 1024);
+  {
+    TF_ASSIGN_OR_RETURN(int64_t regs_per_mp,
+                        GetMaxRegistersPerMultiprocessor(device));
+    desc.set_registers_per_core_limit(regs_per_mp);
+  }
   desc.set_compile_time_toolkit_version(
       SemanticVersion{HIP_VERSION_MAJOR, HIP_VERSION_MINOR, HIP_VERSION_PATCH});
   int32_t runtime_version;
@@ -1180,7 +1267,7 @@ absl::StatusOr<MemoryType> RocmExecutor::GetPointerMemorySpace(
 
 absl::StatusOr<const RocmKernel*> RocmExecutor::GetRocmKernel(
     const Kernel* kernel) {
-  absl::MutexLock lock{&in_memory_modules_mu_};
+  absl::MutexLock lock{in_memory_modules_mu_};
   auto it = loaded_kernels_.find(kernel);
   if (it == loaded_kernels_.end()) {
     return absl::NotFoundError("Kernel not loaded in this executor.");

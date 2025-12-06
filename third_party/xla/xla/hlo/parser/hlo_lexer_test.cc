@@ -167,5 +167,29 @@ TEST(HloLexerTest, NegativeNumberWithoutNullTerminatingCharacter) {
   EXPECT_EQ(lexer.GetInt64Val(), -123);
 }
 
+TEST(HloLexerTest, FileLocationsKeyword) {
+  HloLexer lexer("FileLocations");
+  EXPECT_EQ(lexer.Lex(), TokKind::kw_FileLocations)
+      << "Didn't get FileLocations keyword";
+}
+
+TEST(HloLexerTest, FileNamesKeyword) {
+  HloLexer lexer("FileNames");
+  EXPECT_EQ(lexer.Lex(), TokKind::kw_FileNames)
+      << "Didn't get FileNames keyword";
+}
+
+TEST(HloLexerTest, FunctionNamesKeyword) {
+  HloLexer lexer("FunctionNames");
+  EXPECT_EQ(lexer.Lex(), TokKind::kw_FunctionNames)
+      << "Didn't get FunctionNames keyword";
+}
+
+TEST(HloLexerTest, StackFramesKeyword) {
+  HloLexer lexer("StackFrames");
+  EXPECT_EQ(lexer.Lex(), TokKind::kw_StackFrames)
+      << "Didn't get StackFrames keyword";
+}
+
 }  // namespace
 }  // namespace xla

@@ -646,8 +646,7 @@ absl::Status QuantizeNodes(const GraphDef& input_graph_def,
   std::map<string, QuantizedOpInfo> op_map;
   for (const QuantizedOpInfo& op_info : op_list) {
     if (ops_to_ignore.count(op_info.float_name) == 0) {
-      strings::StrAppend(&op_pattern, (is_first ? "" : "|"),
-                         op_info.float_name);
+      absl::StrAppend(&op_pattern, is_first ? "" : "|", op_info.float_name);
       op_map.insert({op_info.float_name, op_info});
       is_first = false;
     }

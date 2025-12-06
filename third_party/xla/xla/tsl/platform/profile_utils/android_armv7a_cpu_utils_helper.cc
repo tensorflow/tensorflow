@@ -29,8 +29,8 @@ limitations under the License.
 #include <sys/types.h>
 #include <unistd.h>
 
+#include "absl/strings/str_format.h"
 #include "xla/tsl/platform/logging.h"
-#include "tsl/platform/stringprintf.h"
 
 namespace tsl {
 namespace profile_utils {
@@ -113,7 +113,7 @@ int AndroidArmV7ACpuUtilsHelper::OpenPerfEvent(perf_event_attr *const hw_event,
 
 int64 AndroidArmV7ACpuUtilsHelper::ReadCpuFrequencyFile(
     const int cpu_id, const char *const type) {
-  const string file_path = strings::Printf(
+  const string file_path = absl::StrFormat(
       "/sys/devices/system/cpu/cpu%d/cpufreq/%s_freq", cpu_id, type);
   FILE *fp = fopen(file_path.c_str(), "r");
   if (fp == nullptr) {

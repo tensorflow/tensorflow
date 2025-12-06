@@ -135,7 +135,7 @@ absl::StatusOr<int64_t> FindLibtpuProcess() {
 
 absl::Status TryAcquireTpuLock() {
   static absl::Mutex* const mu = new absl::Mutex();
-  absl::MutexLock l(mu);
+  absl::MutexLock l(*mu);
 
   std::string load_library_override = absl::StrCat(getenv("TPU_LOAD_LIBRARY"));
 

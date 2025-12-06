@@ -15,7 +15,9 @@ limitations under the License.
 
 #include "xla/hlo/transforms/collectives/convert_async_collectives_to_sync.h"
 
+#include <cstdint>
 #include <memory>
+#include <optional>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
@@ -27,7 +29,9 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/utils/hlo_matchers.h"
+#include "xla/service/scheduling_annotations_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "tsl/platform/statusor.h"
 
@@ -158,6 +162,26 @@ TEST_F(ConvertAsyncCollectivesToSyncTest, SimpleAllGather) {
   EXPECT_EQ(ag->channel_id().value(), 3);
   EXPECT_EQ(ag->all_gather_dimension(), 0);
   EXPECT_EQ(GetAsyncName(ag), "ags");
+}
+
+TEST_F(ConvertAsyncCollectivesToSyncTest, PreserveFrontendAttributes) {
+  const absl::string_view hlo_string = R"(
+  HloModule test, is_scheduled=true
+  ENTRY test_computation {
+    a1 = u32[1, 2] parameter(0)
+    ags = (u32[1, 2], u32[2, 2]) all-gather-start(a1), dimensions={0}, channel_id=3, frontend_attributes={_scheduling_group_id="127"}
+    ROOT allgather = u32[2,2] all-gather-done(ags), frontend_attributes={_scheduling_group_id="127"}
+  })";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK(RunPass(module.get(), /*expect_change=*/true));
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, m::AllGather(m::Parameter(0)));
+  EXPECT_TRUE(root->has_frontend_attributes());
+  TF_ASSERT_OK_AND_ASSIGN(std::optional<int64_t> group_id,
+                          GetSchedulingAnnotationGroupId(root));
+  EXPECT_TRUE(group_id.has_value());
+  EXPECT_EQ(*group_id, 127);
 }
 
 TEST_F(ConvertAsyncCollectivesToSyncTest, SimpleCollectivePermute) {

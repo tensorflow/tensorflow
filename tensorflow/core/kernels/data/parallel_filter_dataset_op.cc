@@ -18,6 +18,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/status/status.h"
+#include "absl/synchronization/notification.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/input_colocation_exemption_registry.h"
 #include "tensorflow/core/data/dataset_utils.h"
@@ -296,7 +297,7 @@ class ParallelFilterDatasetOp::Dataset : public DatasetBase {
     struct InvocationResult {
       InvocationResult() : uid(tensorflow::EnvTime::NowNanos()) {}
 
-      Notification notification;
+      absl::Notification notification;
       absl::Status status;
       std::vector<Tensor> return_values;
       std::vector<Tensor> predicate_values;

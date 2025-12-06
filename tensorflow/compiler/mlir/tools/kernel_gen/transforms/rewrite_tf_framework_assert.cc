@@ -60,8 +60,8 @@ class TFAssertOpConverter : public OpConversionPattern<TFAssertOp> {
 
     rewriter.restoreInsertionPoint(ip);
     rewriter.replaceOpWithNewOp<cf::CondBranchOp>(
-        op, adaptor.getArg(), split_block, std::nullopt, error_reporting_block,
-        std::nullopt);
+        op, adaptor.getArg(), split_block, mlir::ValueRange(),
+        error_reporting_block, mlir::ValueRange());
     return success();
   }
 };

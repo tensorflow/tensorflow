@@ -28,6 +28,8 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/nullability.h"
+
 // TODO(b/210891274): Use btree_map after build issue in Windows is resolved.
 #if defined(__GNUC__) || defined(__clang__)
 #include "absl/container/btree_map.h"
@@ -146,14 +148,14 @@ class HeapSimulator {
   static absl::StatusOr<int64_t> MinimumMemoryForModule(
       const HloSchedule& schedule, const HloAliasAnalysis& alias_analysis,
       const AliasInfo* alias_info,
-      const LogicalBuffer::SizeFunction& size_function);
+      const LogicalBuffer::SizeFunction* absl_nonnull size_function);
 
   // Returns the minimum memory required to compute the given computation,
   // assuming no fragmentation.
   static absl::StatusOr<int64_t> MinimumMemoryForComputation(
       const HloComputation& computation, const HloInstructionSequence& sequence,
       const HloAliasAnalysis& alias_analysis, const AliasInfo* alias_info,
-      const LogicalBuffer::SizeFunction& size_function);
+      const LogicalBuffer::SizeFunction* absl_nonnull size_function);
 
   // Run the heap simulation with the given algorithm, assuming the given
   // schedule, which must contain a topologically-consistent total
@@ -168,7 +170,7 @@ class HeapSimulator {
       std::unique_ptr<HeapAlgorithm<HloValue>> algorithm,
       const HloModule& module, const HloSchedule& schedule,
       const HloAliasAnalysis& alias_analysis, const AliasInfo* alias_info,
-      const BufferValue::SizeFunction& size_fn,
+      const BufferValue::SizeFunction* absl_nonnull size_fn,
       const Options& options = Options());
 
   // Same as above, but runs on a single computation. The 'instruction_sequence'
@@ -180,7 +182,7 @@ class HeapSimulator {
       const HloComputation& computation,
       const HloInstructionSequence& instruction_sequence,
       const HloAliasAnalysis& alias_analysis, const AliasInfo* alias_info,
-      const BufferValue::SizeFunction& size_fn,
+      const BufferValue::SizeFunction* absl_nonnull size_fn,
       const Options& options = Options());
 
   // Same as above, but runs on with a schedule that covers all nested
@@ -190,15 +192,15 @@ class HeapSimulator {
       const HloComputation& computation,
       const HloInstructionSequence& instruction_sequence,
       const HloAliasAnalysis& alias_analysis, const AliasInfo* alias_info,
-      const BufferValue::SizeFunction& size_fn, const HloSchedule* schedule,
-      const Options& options = Options());
+      const BufferValue::SizeFunction* absl_nonnull size_fn,
+      const HloSchedule* schedule, const Options& options = Options());
 
  private:
   // If 'schedule' is non-null, it is used to find kCall and kWhile
   // sub-computations, and the heap simulation for those sub-computations will
   // be run recursively. I.e. the simulation is run over the whole module.
   HeapSimulator(std::unique_ptr<HeapAlgorithm<HloValue>> algorithm,
-                const BufferValue::SizeFunction& size_fn,
+                const BufferValue::SizeFunction* absl_nonnull size_fn,
                 const Options& options, const HloSchedule* schedule = nullptr);
   ~HeapSimulator();
 
@@ -236,7 +238,7 @@ class HeapSimulator {
   const std::unique_ptr<NoFragmentationStatsHeap<HloValue>>
       no_fragmentation_stats_;
   const std::unique_ptr<HeapAlgorithm<HloValue>> algorithm_;
-  const BufferValue::SizeFunction size_fn_;
+  const BufferValue::SizeFunction* absl_nonnull size_fn_;
   const Options options_;
   // schedule_ is set by buffer assignment. Then, in RunComputation, we check
   // both in order to handle subcomputations. It would be good to unify the
@@ -366,6 +368,13 @@ class BufferIntervalTree {
   void ApplyToNodesOverlappingInTime(
       int64_t start, int64_t end,
       absl::FunctionRef<void(const BufferIntervalTreeNode*)> fn) const;
+
+  // Apply fn to the nodes that overlap with the given time interval. It is
+  // guaranteed that fn is called for non-null nodes in order of non-decreasing
+  // start time. If fn returns true, then no more nodes are visited.
+  void ApplyToSortedNodesOverlapping(
+      int64_t start, int64_t end,
+      absl::FunctionRef<bool(const BufferIntervalTreeNode*)> fn) const;
 
   // Returns the number of allocated chunks that overlap with the given time
   // interval.
@@ -898,6 +907,11 @@ class GlobalDecreasingSizeBestFitHeap : public HeapAlgorithm<BufferType> {
   FreeChunks MakeFreeChunks(const BufferInterval& buffer_interval,
                             int64_t max_colocation_size) const;
 
+  // Finds the latest value <= buffer_interval.end such that that no chunk
+  // intersects [preferred_offset, preferred_offset + buffer_interval.size).
+  int64_t FindLatestEndWithFreeChunkAtPreferredOffset(
+      const BufferInterval& buffer_interval, int64_t preferred_offset) const;
+
   // These two methods below are exposed to other heap algorithms that inherit
   // from this class. The Finish() method tries to find a candidate chunk for
   // each BufferInterval, after calling GetSortedBufferIntervals. If a
@@ -969,6 +983,9 @@ class GlobalDecreasingSizeBestFitHeap : public HeapAlgorithm<BufferType> {
   // returns all three of them.
   absl::flat_hash_set<const BufferType*> GetTransitiveColocations(
       const BufferInterval& interval) const;
+
+  // Returns the aligned chunk end.
+  int64_t ComputeAlignedChunkEnd(int64_t chunk_end) const;
 };
 
 // This class implements an algorithm that will produce multiple heaps, where

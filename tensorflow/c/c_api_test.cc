@@ -2026,9 +2026,8 @@ class CApiAttributesTest : public ::testing::Test {
       type = type.replace(type.size() - 1, 1, "");
     }
     op_name += type;
-    return TF_NewOperation(
-        graph_, op_name.c_str(),
-        ::tensorflow::strings::StrCat("name", counter_++).c_str());
+    return TF_NewOperation(graph_, op_name.c_str(),
+                           absl::StrCat("name", counter_++).c_str());
   }
 
   TF_Status* s_;
@@ -2479,7 +2478,7 @@ TEST_F(CApiAttributesTest, Names) {
 
   TF_OperationGetAttrName(oper, 0, value.get(), s_);
   EXPECT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
-  EXPECT_EQ("v", string(static_cast<const char*>(value.get()), 1));
+  EXPECT_EQ("v", std::string(static_cast<const char*>(value.get()), 1));
 }
 
 TEST_F(CApiAttributesTest, Errors) {

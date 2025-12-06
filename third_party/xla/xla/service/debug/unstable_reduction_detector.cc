@@ -32,6 +32,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/debug/unstable_reduction_finder.h"
+#include "xla/xla.pb.h"
 
 namespace xla {
 
@@ -73,11 +74,11 @@ std::string UniqueReductionOpsAsString(
   return result;
 }
 
-absl::StatusOr<bool> UnstableReductionDetector::Run(
+absl::StatusOr<bool> UnstableReductionDetector::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   if (module->config().debug_options().xla_detect_unstable_reductions() ==
-      DebugOptions::UNSTABLE_REDUCTION_DETECTION_MODE_NONE) {
+      DebugOptions::DETECTION_MODE_NONE) {
     return false;
   }
   std::vector<const HloInstruction*> unstable_reductions =
@@ -93,7 +94,7 @@ absl::StatusOr<bool> UnstableReductionDetector::Run(
     LOG(WARNING) << "Unstable reduction: " << reduction->ToString();
   }
   if (module->config().debug_options().xla_detect_unstable_reductions() ==
-      DebugOptions::UNSTABLE_REDUCTION_DETECTION_MODE_FAIL) {
+      DebugOptions::DETECTION_MODE_FAIL) {
     std::string reduction_ops_string =
         UniqueReductionOpsAsString(unstable_reductions);
     return absl::FailedPreconditionError(absl::StrFormat(

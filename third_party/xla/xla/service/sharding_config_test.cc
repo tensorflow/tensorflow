@@ -15,22 +15,49 @@ limitations under the License.
 
 #include "xla/service/sharding_config.h"
 
+#include <string>
+
 #include <gtest/gtest.h>
 #include "xla/hlo/ir/hlo_sharding.h"
-#include "xla/shape.h"
-#include "xla/shape_util.h"
 
 namespace xla {
 namespace {
 
-TEST(ShardingConfigTest, ConfigToProtoToConfigMatchesOriginal) {
-  const Shape shape = ShapeUtil::MakeShape(F32, {1024});
-  const ShardingConfig config = {
+class ShardingConfigTest : public ::testing::Test {
+ protected:
+  const ShardingConfig kTestConfig{
       {{HloSharding::Manual()},
        {HloSharding::Replicate()},
-       {{},
-        {{HloSharding::Tile1D(shape, 2)}, {HloSharding::Tile1D(shape, 4)}}}}};
-  EXPECT_EQ(ShardingConfig::FromProto(ShardingConfig::ToProto(config)), config);
+       {{}, {{HloSharding::IotaTile({2})}, {HloSharding::IotaTile({4})}}}}};
+};
+
+TEST_F(ShardingConfigTest, ConfigToProtoToConfigMatchesOriginal) {
+  EXPECT_EQ(ShardingConfig::FromProto(ShardingConfig::ToProto(kTestConfig)),
+            kTestConfig);
+}
+
+TEST_F(ShardingConfigTest, ConfigToString) {
+  const std::string kExpectedConfigStr = R"(ShardingConfig {
+  NodeShardingConfig {
+    sharding: {manual}
+  }
+  NodeShardingConfig {
+    sharding: {replicated}
+  }
+  NodeShardingConfig {
+    sharding: nullopt
+    nodes: [
+      NodeShardingConfig {
+        sharding: {devices=[2]<=[2]}
+      }
+      NodeShardingConfig {
+        sharding: {devices=[4]<=[4]}
+      }
+    ]
+  }
+}
+)";
+  EXPECT_EQ(kTestConfig.ToString(), kExpectedConfigStr);
 }
 
 }  // namespace

@@ -18,6 +18,8 @@ limitations under the License.
 #include <utility>
 
 #include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "pybind11/pybind11.h"  // from @pybind11
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
@@ -295,8 +297,8 @@ PYBIND11_MODULE(_pywrap_record_io, m) {
                status = self->ReadRecord(&temp_offset, &record);
              }
              if (absl::IsOutOfRange(status)) {
-               throw py::index_error(tensorflow::strings::StrCat(
-                   "Out of range at reading offset ", offset));
+               throw py::index_error(
+                   absl::StrCat("Out of range at reading offset ", offset));
              }
              tsl::MaybeRaiseRegisteredFromStatus(status);
              return py::make_tuple(py::bytes(record), temp_offset);

@@ -166,7 +166,7 @@ TEST_F(ConstantFoldingTest, DeterministicFolding) {
     bool was_mutated;
     int64_t unique_id = 0;
     auto generate_new_name = [&unique_id](Graph* graph, string old_name) {
-      return strings::StrCat(graph->NewName(old_name), "__cf__", unique_id++);
+      return absl::StrCat(graph->NewName(old_name), "__cf__", unique_id++);
     };
     ConstantFoldingOptions opt{};
     opt.generate_new_name = generate_new_name;

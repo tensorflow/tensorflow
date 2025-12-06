@@ -17,7 +17,9 @@ limitations under the License.
 
 #include <chrono>
 #include <cstddef>
+#include <cstdint>
 #include <functional>
+#include <limits>
 #include <memory>
 
 #include "absl/log/log.h"
@@ -70,7 +72,7 @@ absl::Status QueueRunner::Init(const QueueRunnerDef& queue_runner_def) {
                            queue_runner_def.enqueue_op_name().begin(),
                            queue_runner_def.enqueue_op_name().end());
   size_t op_names_size = enqueue_op_names_.size();
-  if (op_names_size > kint32max) {
+  if (op_names_size > std::numeric_limits<int32_t>::max()) {
     return absl::Status(absl::StatusCode::kInvalidArgument,
                         "Enqueue ops to run cannot exceed kint32max");
   }

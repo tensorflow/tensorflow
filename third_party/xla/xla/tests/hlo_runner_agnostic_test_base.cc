@@ -26,6 +26,7 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/base/nullability.h"
+#include "absl/functional/any_invocable.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -33,7 +34,10 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/STLExtras.h"
+#include "google/protobuf/message.h"
 #include "xla/error_spec.h"
+#include "xla/hlo/builder/xla_builder.h"
+#include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
@@ -103,6 +107,22 @@ HloRunnerAgnosticTestBase::ParseAndReturnVerifiedModule(
       hlo_text, config, parser_options, device_shape_size_fn_);
 }
 
+absl::StatusOr<std::unique_ptr<HloModule>>
+HloRunnerAgnosticTestBase::HloModuleFromXlaBuilder(
+    XlaBuilder* builder, const ExecutionOptions& execution_options) const {
+  TF_ASSIGN_OR_RETURN(XlaComputation computation, builder->Build());
+  TF_ASSIGN_OR_RETURN(
+      HloModuleConfig module_config,
+      HloModule::CreateModuleConfigFromProto(computation.proto(),
+                                             execution_options.debug_options(),
+                                             &execution_options));
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<HloModule> module,
+      HloModule::CreateFromProto(computation.proto(), module_config));
+  TF_RETURN_IF_ERROR(verifier().Run(module.get()).status());
+  return module;
+}
+
 HloComputation*
 HloRunnerAgnosticTestBase::AddEntryComputationAndUpdateEntryComputationLayout(
     HloModule* const module, std::unique_ptr<HloComputation> computation) {
@@ -123,25 +143,6 @@ absl::StatusOr<Literal> HloRunnerAgnosticTestBase::Execute(
     absl::Span<const Literal* const> arguments, bool run_hlo_passes) {
   TF_RETURN_IF_ERROR(PreprocessModuleForTestRunner(module.get()));
   return test_runner_->Execute(std::move(module), arguments, run_hlo_passes);
-}
-
-Literal HloRunnerAgnosticTestBase::ExecuteNoHloPasses(
-    std::unique_ptr<HloModule> module,
-    absl::Span<const Literal* const> arguments) {
-  absl::StatusOr<Literal> result = Execute(std::move(module), arguments,
-                                           /*run_hlo_passes=*/false);
-  CHECK_OK(result.status());
-  return *std::move(result);
-}
-
-Literal HloRunnerAgnosticTestBase::ExecuteAndTransfer(
-    std::unique_ptr<HloModule> module,
-    absl::Span<const Literal* const> arguments) {
-  CHECK_OK(PreprocessModuleForTestRunner(module.get()));
-  absl::StatusOr<Literal> result = test_runner_->Execute(
-      std::move(module), arguments, /*run_hlo_passes=*/true);
-  CHECK_OK(result.status());
-  return *std::move(result);
 }
 
 absl::StatusOr<std::vector<Literal>>
@@ -177,9 +178,9 @@ HloRunnerAgnosticTestBase::ExecuteReplicated(
 
 absl::StatusOr<std::vector<Literal>>
 HloRunnerAgnosticTestBase::ExecuteReplicated(
-    const std::function<OpaqueExecutable*(int64_t)> executable_provider,
-    const std::function<int64_t(int64_t)> argument_count_provider,
-    const std::function<const Literal*(int64_t, int64_t)> argument_provider,
+    absl::AnyInvocable<OpaqueExecutable*(int64_t)> executable_provider,
+    absl::AnyInvocable<int64_t(int64_t)> argument_count_provider,
+    absl::AnyInvocable<const Literal*(int64_t, int64_t)> argument_provider,
     const int64_t num_replicas, const bool run_hlo_passes,
     DeviceAssignment* const device_assignment) {
   HloRunnerInterface::ReplicatedExecuteOptions options;
@@ -187,8 +188,8 @@ HloRunnerAgnosticTestBase::ExecuteReplicated(
   options.run_hlo_passes = run_hlo_passes;
   options.use_threads = true;
   return test_runner_->ExecuteReplicated(
-      executable_provider, argument_count_provider, argument_provider,
-      std::move(options), device_assignment);
+      std::move(executable_provider), std::move(argument_count_provider),
+      std::move(argument_provider), std::move(options), device_assignment);
 }
 
 absl::StatusOr<std::vector<Literal>>
@@ -218,7 +219,8 @@ HloRunnerAgnosticTestBase::ExecuteReplicated(
 
 ::testing::AssertionResult HloRunnerAgnosticTestBase::Run(
     std::unique_ptr<HloModule> module, const bool run_hlo_passes,
-    const std::function<void(HloModule*)>& test_preprocessor) {
+    const std::function<void(HloModule*)>& test_preprocessor,
+    BufferAssignmentProto* buffer_assignment_proto) {
   const std::vector<Literal> fake_arguments =
       MakeFakeArguments(module.get()).value();
   if (const absl::StatusOr<bool> change = verifier().Run(module.get());
@@ -234,7 +236,13 @@ HloRunnerAgnosticTestBase::ExecuteReplicated(
   }
 
   const absl::StatusOr<Literal> output =
-      test_runner_->Execute(std::move(module), fake_arguments, run_hlo_passes);
+      buffer_assignment_proto == nullptr
+          ? test_runner_->Execute(std::move(module), fake_arguments,
+                                  run_hlo_passes)
+          : test_runner_->ExecuteWithBufferAssignment(
+                std::move(module), buffer_assignment_proto, fake_arguments,
+                run_hlo_passes);
+
   return swallow_execution_errors_ || output.ok()
              ? ::testing::AssertionSuccess()
              : ::testing::AssertionFailure() << output.status().message();
@@ -459,7 +467,8 @@ HloRunnerAgnosticTestBase::RunAndCompareTwoModulesReplicated(
 
 ::testing::AssertionResult HloRunnerAgnosticTestBase::Run(
     const absl::string_view hlo_string, const bool run_hlo_passes,
-    const tsl::protobuf::Message* backend_config, const bool use_random_data) {
+    const tsl::protobuf::Message* backend_config, const bool use_random_data,
+    BufferAssignmentProto* buffer_assignment_proto) {
   absl::StatusOr<std::unique_ptr<VerifiedHloModule>> module =
       ParseAndReturnVerifiedModule(hlo_string);
   if (!module.ok()) {
@@ -490,8 +499,12 @@ HloRunnerAgnosticTestBase::RunAndCompareTwoModulesReplicated(
   }
 
   const absl::StatusOr<Literal> output =
-      test_runner_->Execute(*std::move(module), fake_argument_ptrs,
-                            /*run_hlo_passes=*/run_hlo_passes);
+      buffer_assignment_proto == nullptr
+          ? test_runner_->Execute(*std::move(module), fake_argument_ptrs,
+                                  /*run_hlo_passes=*/run_hlo_passes)
+          : test_runner_->ExecuteWithBufferAssignment(
+                *std::move(module), buffer_assignment_proto, fake_argument_ptrs,
+                /*run_hlo_passes=*/run_hlo_passes);
   return swallow_execution_errors_ || output.ok()
              ? ::testing::AssertionSuccess()
              : ::testing::AssertionFailure() << output.status().message();

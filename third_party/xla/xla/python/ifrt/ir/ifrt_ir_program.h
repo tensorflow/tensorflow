@@ -16,27 +16,36 @@ limitations under the License.
 #ifndef XLA_PYTHON_IFRT_IR_IFRT_IR_PROGRAM_H_
 #define XLA_PYTHON_IFRT_IR_IFRT_IR_PROGRAM_H_
 
+#include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "llvm/ADT/StringRef.h"
+#include "llvm/Support/CommandLine.h"
 #include "llvm/Support/ExtensibleRTTI.h"
+#include "llvm/Support/raw_ostream.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
 #include "xla/python/ifrt/compiler.h"
 #include "xla/python/ifrt/device.h"
+#include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/executable.h"
+#include "xla/python/ifrt/executable_serdes.h"
 #include "xla/python/ifrt/ir/ifrt_ir_compile_options.pb.h"
 #include "xla/python/ifrt/program.h"
 #include "xla/python/ifrt/serdes.h"
 #include "xla/python/ifrt/serdes_default_version_accessor.h"
 #include "xla/python/ifrt/serdes_version.h"
+#include "xla/tsl/platform/errors.h"
 
 namespace xla {
 namespace ifrt {
@@ -54,6 +63,9 @@ struct IfrtIRProgram : llvm::RTTIExtends<IfrtIRProgram, Program> {
   static absl::string_view type_name() { return "xla::ifrt::IfrtIRProgram"; }
 
   mlir::ModuleOp mlir_module;
+
+  // Returns true if the program exclusively owns the MLIR context.
+  bool OwnsMlirContext() const { return mlir_context != nullptr; }
 
   static char ID;  // NOLINT
 
@@ -95,9 +107,16 @@ struct SerializeIfrtIRProgramOptions
 // deserialization will use the provided MLIR context and the returned program
 // will not own a MLIR context.
 struct DeserializeIfrtIRProgramOptions
-    : llvm::RTTIExtends<DeserializeIfrtIRProgramOptions, DeserializeOptions> {
+    : llvm::RTTIExtends<DeserializeIfrtIRProgramOptions,
+                        DeserializeExecutableOptions> {
   explicit DeserializeIfrtIRProgramOptions(mlir::MLIRContext* context)
       : context(context) {}
+  DeserializeIfrtIRProgramOptions(
+      mlir::MLIRContext* context,
+      std::optional<xla::ifrt::DeviceListRef> device_list)
+      : llvm::RTTIExtends<DeserializeIfrtIRProgramOptions,
+                          DeserializeExecutableOptions>(device_list),
+        context(context) {}
 
   static char ID;  // NOLINT
 
@@ -156,9 +175,18 @@ struct IfrtIRCompileOptions
   static absl::StatusOr<std::unique_ptr<IfrtIRCompileOptions>> FromProto(
       const IfrtIrCompileOptionsProto& proto);
 
+  // Converts the compile options to a protobuf.
+  absl::Status ToProto(
+      IfrtIrCompileOptionsProto& proto,
+      SerDesVersion version = SerDesDefaultVersionAccessor::Get()) const;
+
   // Returns a `IfrtIrCompileOptionsProto` representation.
   absl::StatusOr<IfrtIrCompileOptionsProto> ToProto(
-      SerDesVersion version = SerDesDefaultVersionAccessor::Get()) const;
+      SerDesVersion version = SerDesDefaultVersionAccessor::Get()) const {
+    IfrtIrCompileOptionsProto proto;
+    TF_RETURN_IF_ERROR(ToProto(proto, version));
+    return proto;
+  }
 
   // Whether to propagate shardings from atom program executables for
   // unspecified shardings.
@@ -176,11 +204,39 @@ struct IfrtIRCompileOptions
   static char ID;  // NOLINT
 };
 
+llvm::raw_ostream& operator<<(llvm::raw_ostream& os,
+                              const IfrtIRCompileOptions& options);
+
+llvm::raw_ostream& operator<<(llvm::raw_ostream& os,
+                              std::shared_ptr<IfrtIRCompileOptions> options);
+
 // Gets `xla::ifrt::IfrtIRCompileOptions` from `xla::ifrt::CompileOptions`.
 absl::StatusOr<std::unique_ptr<IfrtIRCompileOptions>> GetIfrtIRCompileOptions(
     std::unique_ptr<CompileOptions> options);
 
 }  // namespace ifrt
 }  // namespace xla
+
+namespace llvm::cl {
+
+extern template class basic_parser<
+    std::shared_ptr<xla::ifrt::IfrtIRCompileOptions>>;
+
+template <>
+class parser<std::shared_ptr<xla::ifrt::IfrtIRCompileOptions>>
+    : public basic_parser<std::shared_ptr<xla::ifrt::IfrtIRCompileOptions>> {
+ public:
+  explicit parser(Option& opt) : basic_parser(opt) {}
+  bool parse(Option& opt, StringRef argName, StringRef arg,
+             std::shared_ptr<xla::ifrt::IfrtIRCompileOptions>& value);
+  StringRef getValueName() const override { return "ifrt-ir-compile-options"; }
+  void printOptionDiff(
+      const Option& opt,
+      const std::shared_ptr<xla::ifrt::IfrtIRCompileOptions>& value,
+      const OptVal& defaultValue, size_t globalWidth) const;
+  void anchor() override;
+};
+
+}  // namespace llvm::cl
 
 #endif  // XLA_PYTHON_IFRT_IR_IFRT_IR_PROGRAM_H_

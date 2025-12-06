@@ -47,7 +47,7 @@ constexpr char kBatchTimeoutMicrosAttr[] = "batch_timeout_micros";
 constexpr char kAllowedBatchSizesAttr[] = "allowed_batch_sizes";
 constexpr char kMaxEnqueuedBatchesAttr[] = "max_enqueued_batches";
 constexpr char kEnableLargeBatchSplitting[] = "enable_large_batch_splitting";
-constexpr int64 kBoostMicrosNotSet = -1;
+constexpr int64_t kBoostMicrosNotSet = -1;
 
 using BatchOpRewriteFunction = std::function<void(NodeDef* batch_op)>;
 
@@ -61,10 +61,10 @@ using ::tensorflow::grappler::GrapplerItem;
 namespace {
 // Parameters for adaptive batch scheduler only.
 struct AdaptiveBatchSchedulerParams {
-  int32 initial_inflight_batches;
-  int32 min_inflight_batches;
-  int32 max_inflight_batches;
-  int32 batches_to_average_over;
+  int32_t initial_inflight_batches;
+  int32_t min_inflight_batches;
+  int32_t max_inflight_batches;
+  int32_t batches_to_average_over;
   int64_t full_batch_scheduling_boost_micros;
 };
 
@@ -175,7 +175,7 @@ Status BatchOpRewriter::Optimize(Cluster* cluster, const GrapplerItem& item,
   bool asbs_overridden = false;
   if (config_proto_.has_experimental() &&
       config_proto_.experimental().has_session_metadata()) {
-    const string model_name =
+    const std::string model_name =
         config_proto_.experimental().session_metadata().name();
 
     if (!config_.model_scheduler_options().empty()) {

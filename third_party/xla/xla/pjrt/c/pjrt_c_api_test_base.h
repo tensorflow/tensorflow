@@ -22,11 +22,11 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/future.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
 #include "xla/pjrt/c/pjrt_c_api_helpers.h"
 #include "xla/pjrt/pjrt_client.h"
-#include "xla/pjrt/pjrt_future.h"
 #include "xla/shape.h"
 
 #ifndef XLA_PJRT_C_PJRT_C_API_TEST_BASE_H_
@@ -86,14 +86,14 @@ class PjrtCApiTestBase : public ::testing::Test {
       PJRT_Device* device = nullptr);
 
   std::pair<std::unique_ptr<PJRT_Buffer, ::pjrt::PJRT_BufferDeleter>,
-            xla::PjRtFuture<>>
+            xla::Future<>>
   create_buffer_from_data(const std::vector<float>& float_data,
                           const xla::Shape& shape,
                           PJRT_Device* device = nullptr);
 
   // Create a buffer with shape 4xf32 and with values {41, 42, 43, 44}.
   std::pair<std::unique_ptr<PJRT_Buffer, ::pjrt::PJRT_BufferDeleter>,
-            xla::PjRtFuture<>>
+            xla::Future<>>
   create_iota_buffer(PJRT_Device* device = nullptr);
 
   // Create an uninitialized buffer with shape 4xf32.

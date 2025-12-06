@@ -20,10 +20,12 @@ limitations under the License.
 #include <cstdint>
 #include <cstdlib>
 #include <memory>
+#include <new>
 #include <optional>
 #include <utility>
 #include <vector>
 
+#include "absl/base/dynamic_annotations.h"
 #include "absl/container/fixed_array.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
@@ -32,6 +34,7 @@ limitations under the License.
 #include "xla/ffi/execution_context.h"
 #include "xla/runtime/device_id.h"
 #include "xla/service/computation_placer.h"
+#include "xla/service/cpu/executable.pb.h"
 #include "xla/service/executable.h"
 #include "xla/shape.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
@@ -50,6 +53,12 @@ class NanoRtExecutable {
   // executable.
   static absl::StatusOr<std::unique_ptr<NanoRtExecutable>> Create(
       std::unique_ptr<Executable> executable,
+      std::optional<ProgramShape> program_shape = std::nullopt);
+
+  // Creates a new instance of the NanoRtExecutable from an AOT compilation
+  // result.
+  static absl::StatusOr<std::unique_ptr<NanoRtExecutable>> Create(
+      CompilationResultProto aot_compilation_result,
       std::optional<ProgramShape> program_shape = std::nullopt);
 
   // NanoRtExecutable can be asynchronous and return unavailable async value
@@ -155,7 +164,9 @@ class NanoRtExecutable {
   template <size_t n>
   class ManagedTemp {
    public:
-    explicit ManagedTemp(size_t size) : data_(size) {}
+    explicit ManagedTemp(size_t size) : data_(size) {
+      ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(data_.data(), data_.memsize());
+    }
 
     ManagedTemp(const ManagedTemp&) = delete;
     ManagedTemp& operator=(const ManagedTemp&) = delete;
@@ -164,7 +175,9 @@ class NanoRtExecutable {
 
    private:
     friend class NanoRtExecutable;
-    using Allocator = tsl::port::AlignedAllocator<std::byte, Align()>;
+    using Allocator =
+        tsl::port::AlignedAllocator<std::byte,
+                                    static_cast<std::align_val_t>(Align())>;
     alignas(Align()) absl::FixedArray<std::byte, n, Allocator> data_;
   };
 
@@ -185,6 +198,8 @@ class NanoRtExecutable {
   size_t temp_buffer_size() const;
 
   std::optional<ProgramShape> program_shape() const { return program_shape_; }
+
+  Executable* executable() const { return executable_.get(); }
 
  private:
   NanoRtExecutable(std::unique_ptr<Executable> executable,

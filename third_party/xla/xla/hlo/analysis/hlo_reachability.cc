@@ -15,7 +15,9 @@ limitations under the License.
 
 #include "xla/hlo/analysis/hlo_reachability.h"
 
+#include <algorithm>
 #include <cstddef>
+#include <cstring>
 #include <memory>
 #include <queue>
 #include <vector>
@@ -30,10 +32,26 @@ namespace xla {
 
 HloReachabilityMap::HloReachabilityMap(
     absl::Span<const HloInstruction* const> instructions)
-    : bit_sets_(instructions.size(), BitSet(instructions.size())) {
+    : bits_per_bitset_(instructions.size()),
+      words_per_bitset_((bits_per_bitset_ + BitSet::kBits - 1) / BitSet::kBits),
+      total_words_((instructions.size() + 1 /*for tmp_bit_set_*/) *
+                   words_per_bitset_) {
+  int row = 0;
+  int total_rows = instructions.size() + 1;  // for tmp_bit_set_
+  while (row < total_rows) {
+    const int rows_to_allocate = std::min(kRowsPerAllocation, total_rows - row);
+    size_t words_to_allocate = rows_to_allocate * words_per_bitset_;
+    bit_storage_.push_back(std::make_unique<BitSet::Word[]>(words_to_allocate));
+    // Initialize all the bitsets to 0
+    memset(bit_storage_.back().get(), 0,
+           words_to_allocate * sizeof(BitSet::Word));
+    row += rows_to_allocate;
+  }
+
+  tmp_bit_set_ = BitSetFromIndex(instructions.size());
   indices_.reserve(instructions.size());
   for (size_t i = 0; i < instructions.size(); ++i) {
-    bit_sets_[i].Set(i);  // Instructions are reachable from themselves.
+    BitSetFromIndex(i).Set(i);  // Instructions are reachable from themselves.
     indices_[GetKey(instructions[i])] = i;
   }
 }
@@ -42,8 +60,8 @@ bool HloReachabilityMap::SetReachabilityToUnion(
     absl::Span<const HloInstruction* const> inputs,
     const HloInstruction* instruction) {
   Index index = GetIndex(instruction);
-  BitSet& bit_set = bit_sets_[index];
-  tmp_bit_set_ = bit_set;
+  BitSet bit_set = BitSetFromIndex(index);
+  tmp_bit_set_.CopyBitSet(bit_set);
   SetReachabilityToUnionHelper(inputs, index);
   return bit_set != tmp_bit_set_;
 }
@@ -71,7 +89,7 @@ void HloReachabilityMap::SetReachabilityToUnionHelper(
 
 void HloReachabilityMap::SetReachabilityToUnionHelper(
     absl::Span<const Index> input_indices, Index index) {
-  BitSet& bit_set = bit_sets_[index];
+  BitSet bit_set = BitSetFromIndex(index);
   // If instruction is part of inputs, don't reset the bit-set.
   if (!absl::c_linear_search(input_indices, index)) {
     bit_set.SetToZero();
@@ -79,7 +97,7 @@ void HloReachabilityMap::SetReachabilityToUnionHelper(
   bit_set.Set(index);
   for (Index input_index : input_indices) {
     if (input_index != index) {
-      bit_set |= bit_sets_[input_index];
+      bit_set |= BitSetFromIndex(input_index);
     }
   }
 }
@@ -117,12 +135,12 @@ std::unique_ptr<HloReachabilityMap> HloReachabilityMap::Build(
       computation->MakeInstructionPostOrder(channel_dependencies);
   auto result = std::make_unique<HloReachabilityMap>(instructions);
 
-  auto get_bit_set = [&](const HloInstruction* instruction) -> BitSet& {
-    return result->bit_sets_[result->GetIndex(instruction)];
+  auto get_bit_set = [&](const HloInstruction* instruction) -> BitSet {
+    return result->BitSetFromIndex(result->GetIndex(instruction));
   };
 
   for (const HloInstruction* instruction : instructions) {
-    BitSet& bit_set = get_bit_set(instruction);
+    BitSet bit_set = get_bit_set(instruction);
 
     auto add_dependencies = [&](const HloInstruction* instruction) {
       for (const HloInstruction* operand : instruction->operands()) {

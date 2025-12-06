@@ -32,7 +32,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/synchronization/mutex.h"
-#include "xla/service/global_device_id.h"
+#include "xla/runtime/device_id.h"
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
 #include "xla/stream_executor/host/host_platform_id.h"
 #include "xla/stream_executor/platform.h"
@@ -178,7 +178,7 @@ PlacerFactoryMap& GetPlatformComputationPlacers() {
 /* static */
 void ComputationPlacer::RegisterComputationPlacer(
     se::Platform::Id id, CreationFunction creation_function) {
-  absl::MutexLock lock(&placer_mutex);
+  absl::MutexLock lock(placer_mutex);
   PlacerFactoryMap& placers = GetPlatformComputationPlacers();
   if (placers.find(id) != placers.end()) {
     LOG(WARNING) << "Computation placer creation function is already "
@@ -190,7 +190,7 @@ void ComputationPlacer::RegisterComputationPlacer(
 /* static */
 absl::StatusOr<ComputationPlacer*> ComputationPlacer::GetForPlatform(
     const se::Platform* platform) {
-  absl::MutexLock lock(&placer_mutex);
+  absl::MutexLock lock(placer_mutex);
   PlacerFactoryMap& placers = GetPlatformComputationPlacers();
 
   auto it = placers.find(platform->id());

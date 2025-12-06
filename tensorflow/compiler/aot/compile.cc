@@ -107,14 +107,14 @@ absl::Status CompileXla(xla::CompileOnlyClient* client,
                       xla::Shape::FromProto(pshape->result()));
   instance.result_layout = &result_shape;
   absl::StatusOr<std::vector<std::unique_ptr<xla::AotCompilationResult>>>
-      aot_or = client->CompileAheadOfTime({instance}, aot_opts);
+      aot_or = client->CompileAheadOfTime(instance, aot_opts);
   if (!aot_or.ok()) {
     return errors::Unknown("XLA compilation failed: ",
                            aot_or.status().message());
   }
-  compile_result->set_aot(
+  compile_result->aot =
       xla::unique_ptr_down_cast<xla::cpu::CpuAotCompilationResult>(
-          std::move(aot_or.value().back())));
+          std::move(aot_or.value().back()));
   compile_result->entry_point = aot_opts.entry_point_name();
   compile_result->pointer_size =
       xla::CompileOnlyClient::PointerSizeForTriple(aot_opts.triple());
@@ -212,7 +212,7 @@ absl::Status CompileGraph(GraphDef graph_def, const tf2xla::Config& config,
   return CompileXla(client, computation, aot_opts, compile_result);
 }
 
-static absl::Status ReadProtoFile(const string& fname,
+static absl::Status ReadProtoFile(const std::string& fname,
                                   protobuf::Message* proto) {
   if (absl::EndsWith(fname, ".pbtxt")) {
     return ReadTextProto(Env::Default(), fname, proto);
@@ -297,7 +297,7 @@ absl::Status Main(const MainFlags& flags) {
   TF_RETURN_IF_ERROR(ReadProtoFile(flags.config, &config));
   TF_RETURN_IF_ERROR(ValidateConfig(config));
   if (flags.dump_fetch_nodes) {
-    std::set<string> nodes;
+    std::set<std::string> nodes;
     for (const tf2xla::Fetch& fetch : config.fetch()) {
       nodes.insert(fetch.id().node_name());
     }
@@ -323,7 +323,7 @@ absl::Status Main(const MainFlags& flags) {
   // Write output files.
   Env* env = Env::Default();
 
-  const auto obj_files = compile_result.get_aot_thunks().value()->obj_files();
+  const auto obj_files = compile_result.aot->obj_files();
   DCHECK_EQ(obj_files.size(), 1);
   const absl::string_view obj_file = obj_files[0];
   TF_RETURN_IF_ERROR(
@@ -368,7 +368,7 @@ absl::Status Main(const MainFlags& flags) {
       GenerateMetadata(codegen_opts, compile_result, &metadata_result));
   TF_RETURN_IF_ERROR(WriteStringToFile(env, flags.out_metadata_object,
                                        metadata_result.object_file_data));
-  string header;
+  std::string header;
   TF_RETURN_IF_ERROR(GenerateHeader(codegen_opts, config, compile_result,
                                     metadata_result, embedded_constant_buffers,
                                     &header));

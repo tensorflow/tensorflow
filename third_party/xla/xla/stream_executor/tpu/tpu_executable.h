@@ -30,7 +30,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/executable.h"
 #include "xla/service/service_executable_run_options.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/tpu/c_api_decl.h"
 #include "xla/stream_executor/tpu/tpu_executable_interface.h"
 #include "xla/stream_executor/tpu/tpu_executor_c_api.h"
@@ -62,9 +62,9 @@ class TpuExecutable : public TpuExecutableInterface {
  private:
   absl::Status LoadProgramAndEnqueueToStream(
       const ServiceExecutableRunOptions& run_options,
-      absl::Span<const stream_executor::DeviceMemoryBase> arguments,
-      stream_executor::DeviceMemoryBase result,
-      const std::vector<stream_executor::DeviceMemoryBase>&
+      absl::Span<const stream_executor::DeviceAddressBase> arguments,
+      stream_executor::DeviceAddressBase result,
+      const std::vector<stream_executor::DeviceAddressBase>&
           cross_program_prefetch_addrs,
       const std::vector<uint32_t>& cross_program_prefetch_offsets) override {
     LOG(FATAL) << "LoadProgramAndEnqueueToStream unimplemented";

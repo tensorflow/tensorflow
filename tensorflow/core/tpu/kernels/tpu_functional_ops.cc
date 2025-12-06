@@ -37,6 +37,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/strip.h"
 #include "absl/synchronization/mutex.h"
+#include "absl/synchronization/notification.h"
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/compiler/jit/shape_inference.h"
 #include "tensorflow/compiler/tf2xla/sharding_util.h"
@@ -1258,7 +1259,7 @@ void TPUPartitionedCallOp::ComputeAsync(OpKernelContext* ctx,
   // Initialize the ordinal selector with information from the graph if it is
   // the first time we are running this op.
   absl::call_once(ordinal_selector_once_, [&]() {
-    std::unique_ptr<Graph> graph(new Graph(flib_def_.get()));
+    std::unique_ptr<Graph> graph = std::make_unique<Graph>(flib_def_.get());
     bool enable_spmd_xla_partitioning = false;
     TPUMetadata tpu_metadata;
     {
@@ -1312,7 +1313,7 @@ void TPUPartitionedCallOp::ComputeAsync(OpKernelContext* ctx,
 
     tsl::profiler::TraceMe trace_me(
         "TPUPartitionedCallOp-RewriteAndInstantiateFunctions");
-    std::unique_ptr<Graph> graph(new Graph(flib_def_.get()));
+    std::unique_ptr<Graph> graph = std::make_unique<Graph>(flib_def_.get());
     bool enable_spmd_xla_partitioning = false;
     TPUMetadata tpu_metadata;
     OP_REQUIRES_OK_ASYNC(
@@ -1414,7 +1415,8 @@ absl::Status TPUPartitionedCallOp::InitializeVarOnTPU(
     OpKernelContext* ctx, const core::RefCountPtr<Var>& var, NodeDef* ndef,
     int device_ordinal, bool fast_mem) {
   const string device = strings::StrCat(kTPUDeviceNamePrefix, device_ordinal);
-  std::unique_ptr<Graph> init_graph(new Graph(OpRegistry::Global()));
+  std::unique_ptr<Graph> init_graph =
+      std::make_unique<Graph>(OpRegistry::Global());
   TF_ASSIGN_OR_RETURN(Node * init_handle, init_graph->AddNode(*ndef));
   init_handle->set_assigned_device_name(device);
 
@@ -1467,7 +1469,7 @@ absl::Status TPUPartitionedCallOp::InitializeVarOnTPU(
 
   std::vector<Tensor> dummy_args;
   std::vector<Tensor>* dummy_rets = new std::vector<Tensor>;
-  Notification done;
+  absl::Notification done;
   absl::Status status;
   tsl::profiler::TraceMe trace_me("TPUPartitionedCallOp-InitializeVarOnTPU");
   library_runtime_->Run(opts, fhandle, dummy_args, dummy_rets,
@@ -1495,7 +1497,8 @@ absl::Status TPUPartitionedCallOp::InitializeShardedVarOnTPU(
     OpKernelContext* ctx, const core::RefCountPtr<Var>& var,
     std::vector<NodeDef>& ndefs, int split_dim,
     const std::vector<string>& tpu_devices) {
-  std::unique_ptr<Graph> init_graph(new Graph(OpRegistry::Global()));
+  std::unique_ptr<Graph> init_graph =
+      std::make_unique<Graph>(OpRegistry::Global());
   int num_cores = ndefs.size();
   string cpu_device = "/device:CPU:0";
 
@@ -2511,7 +2514,7 @@ absl::Status TPUPartitionedCallOp::PartitionHelper(
 
   const FunctionLibraryDefinition* flib_def = &graph->flib_def();
   for (auto& partition : partitions) {
-    std::unique_ptr<Graph> subgraph(new Graph(flib_def));
+    std::unique_ptr<Graph> subgraph = std::make_unique<Graph>(flib_def);
     GraphConstructorOptions opts;
     opts.allow_internal_ops = true;
     opts.expect_device_spec = true;

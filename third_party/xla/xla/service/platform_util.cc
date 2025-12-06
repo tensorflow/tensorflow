@@ -46,8 +46,8 @@ limitations under the License.
 namespace xla {
 
 // Minimum supported CUDA compute capability is 3.5.
-constexpr int kMinCudaComputeCapabilityMajor = 3;
-constexpr int kMinCudaComputeCapabilityMinor = 5;
+constexpr se::CudaComputeCapability kMinCudaComputeCapability(
+    3, 5, se::CudaComputeCapability::FeatureExtension::kNone);
 
 // The name of the interpreter platform.
 constexpr char kInterpreter[] = "interpreter";
@@ -160,12 +160,10 @@ static bool IsDeviceSupported(se::StreamExecutor* executor) {
   if (executor->GetPlatform()->id() == se::cuda::kCudaPlatformId) {
     // CUDA devices must have a minimum compute capability.
     se::CudaComputeCapability cc = description.cuda_compute_capability();
-    if (!cc.IsAtLeast(kMinCudaComputeCapabilityMajor,
-                      kMinCudaComputeCapabilityMinor)) {
+    if (!cc.SupportsAllFeaturesOf(kMinCudaComputeCapability)) {
       LOG(INFO) << "StreamExecutor cuda device (" << executor->device_ordinal()
                 << ") is of insufficient compute capability: "
-                << kMinCudaComputeCapabilityMajor << "."
-                << kMinCudaComputeCapabilityMinor << " required, "
+                << kMinCudaComputeCapability.ToString() << " required, "
                 << "device is " << cc.ToString();
       return false;
     }

@@ -51,7 +51,6 @@ limitations under the License.
 #endif
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-#include "xla/stream_executor/host_or_device_scalar.h"
 #include "tensorflow/core/kernels/gpu_utils.h"
 #include "tensorflow/core/kernels/matmul_util.h"
 #include "tensorflow/core/kernels/numeric_options_utils.h"
@@ -604,7 +603,7 @@ struct LaunchBatchMatMul<GPUDevice, Scalar> {
 
     const auto& cc =
         stream->parent()->GetDeviceDescription().gpu_compute_capability();
-    if (auto* procm = std::get_if<se::RocmComputeCapability>(&cc)) {
+    if (auto* procm = cc.rocm_compute_capability()) {
       bCublasLtSupport = procm->gfx9_mi200_or_later();
     }
 

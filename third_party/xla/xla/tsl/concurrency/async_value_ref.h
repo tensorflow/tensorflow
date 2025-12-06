@@ -36,6 +36,7 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/tsl/concurrency/async_value.h"
+#include "xla/tsl/concurrency/executor.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/platform/logging.h"
 
@@ -252,13 +253,15 @@ class AsyncValueRef {
 
   T& operator*() const { return get(); }
 
+  bool HasWaiter() const { return AsPtr().HasWaiter(); }
+
   template <typename Waiter>
   void AndThen(Waiter&& waiter) const {
     AsPtr().AndThen(std::forward<Waiter>(waiter));
   }
 
   template <typename Waiter>
-  void AndThen(AsyncValue::Executor& executor, Waiter&& waiter) const {
+  void AndThen(Executor& executor, Waiter&& waiter) const {
     AsPtr().AndThen(executor, std::forward<Waiter>(waiter));
   }
 
@@ -268,7 +271,7 @@ class AsyncValueRef {
   }
 
   template <typename R, typename F>
-  AsyncValueRef<R> Map(AsyncValue::Executor& executor, F&& f) {
+  AsyncValueRef<R> Map(Executor& executor, F&& f) {
     return AsPtr().template Map<R>(executor, std::forward<F>(f));
   }
 
@@ -278,7 +281,7 @@ class AsyncValueRef {
   }
 
   template <typename F>
-  auto Map(AsyncValue::Executor& executor, F&& f) {
+  auto Map(Executor& executor, F&& f) {
     return AsPtr().template Map<F>(executor, std::forward<F>(f));
   }
 
@@ -288,7 +291,7 @@ class AsyncValueRef {
   }
 
   template <typename R, typename F>
-  AsyncValueRef<R> TryMap(AsyncValue::Executor& executor, F&& f) {
+  AsyncValueRef<R> TryMap(Executor& executor, F&& f) {
     return AsPtr().template TryMap<R>(executor, std::forward<F>(f));
   }
 
@@ -298,7 +301,7 @@ class AsyncValueRef {
   }
 
   template <typename F>
-  auto TryMap(AsyncValue::Executor& executor, F&& f) {
+  auto TryMap(Executor& executor, F&& f) {
     return AsPtr().TryMap(executor, std::forward<F>(f));
   }
 
@@ -308,7 +311,7 @@ class AsyncValueRef {
   }
 
   template <typename F>
-  auto FlatMap(AsyncValue::Executor& executor, F&& f) {
+  auto FlatMap(Executor& executor, F&& f) {
     return AsPtr().FlatMap(executor, std::forward<F>(f));
   }
 
@@ -449,6 +452,8 @@ class AsyncValuePtr {
 
   AsyncValueRef<T> CopyRef() const { return AsyncValueRef<T>(FormRef(value_)); }
 
+  RCReference<AsyncValue> CopyRCRef() const { return FormRef(value_); }
+
   T& get() const { return value_->template get<T>(); }
   T* operator->() const { return &get(); }
   T& operator*() const { return get(); }
@@ -511,6 +516,10 @@ class AsyncValuePtr {
     return value_->SetError(std::move(status));
   }
 
+  // Returns true if and only if there are any waiters waiting for this value to
+  // become available.
+  bool HasWaiter() const { return value_->HasWaiter(); }
+
   // If the AsyncValueRef is available, invokes the `waiter` immediately.
   // Otherwise, invokes the `waiter` when the AsyncValueRef becomes available.
   //
@@ -526,7 +535,7 @@ class AsyncValuePtr {
 
   // An overload that executes `waiter` on a user-provided executor.
   template <typename Waiter, SimpleWaiter<Waiter>* = nullptr>
-  void AndThen(AsyncValue::Executor& executor, Waiter&& waiter) const {
+  void AndThen(Executor& executor, Waiter&& waiter) const {
     value_->AndThen(executor, std::forward<Waiter>(waiter));
   }
 
@@ -557,15 +566,13 @@ class AsyncValuePtr {
 
   // An overload that executes `waiter` on a user-provided executor.
   template <typename Waiter, StatusOrWaiter<Waiter>* = nullptr>
-  void AndThen(AsyncValue::Executor& executor, Waiter&& waiter) const {
-    // We don't know when the executor will run the callback, so we need to
-    // copy the AsyncValueRef to keep the underlying value alive.
+  void AndThen(Executor& executor, Waiter&& waiter) const {
     AndThen(executor,
-            [waiter = std::forward<Waiter>(waiter), ref = CopyRef()]() mutable {
-              if (ABSL_PREDICT_FALSE(ref.IsError())) {
-                return waiter(ref.GetError());
+            [waiter = std::forward<Waiter>(waiter), ptr = *this]() mutable {
+              if (ABSL_PREDICT_FALSE(ptr.IsError())) {
+                return waiter(ptr.GetError());
               }
-              return waiter(&ref.get());
+              return waiter(&ptr.get());
             });
   }
 
@@ -598,13 +605,11 @@ class AsyncValuePtr {
 
   // An overload that executes `waiter` on a user-provided executor.
   template <typename Waiter, StatusWaiter<Waiter>* = nullptr>
-  void AndThen(AsyncValue::Executor& executor, Waiter&& waiter) const {
-    // We don't know when the executor will run the callback, so we need to
-    // copy the AsyncValueRef to keep the underlying value alive.
+  void AndThen(Executor& executor, Waiter&& waiter) const {
     AndThen(executor,
-            [waiter = std::forward<Waiter>(waiter), ref = CopyRef()]() mutable {
-              if (ABSL_PREDICT_FALSE(ref.IsError())) {
-                return waiter(ref.GetError());
+            [waiter = std::forward<Waiter>(waiter), ptr = *this]() mutable {
+              if (ABSL_PREDICT_FALSE(ptr.IsError())) {
+                return waiter(ptr.GetError());
               }
               return waiter(absl::OkStatus());
             });
@@ -635,18 +640,15 @@ class AsyncValuePtr {
 
   // An overload that executes `f` on a user-provided executor.
   template <typename R, typename F, MapFunctor<R, F>* = nullptr>
-  AsyncValueRef<R> Map(AsyncValue::Executor& executor, F&& f) {
+  AsyncValueRef<R> Map(Executor& executor, F&& f) {
     auto result = MakeUnconstructedAsyncValueRef<R>();
-    // We don't know when the executor will run the callback, so we need to
-    // copy the AsyncValueRef to keep the underlying value alive.
-    AndThen(executor,
-            [f = std::forward<F>(f), result, ref = CopyRef()]() mutable {
-              if (ABSL_PREDICT_FALSE(ref.IsError())) {
-                result.SetError(ref.GetError());
-              } else {
-                result.emplace(f(*ref));
-              }
-            });
+    AndThen(executor, [f = std::forward<F>(f), result, ptr = *this]() mutable {
+      if (ABSL_PREDICT_FALSE(ptr.IsError())) {
+        result.SetError(ptr.GetError());
+      } else {
+        result.emplace(f(*ptr));
+      }
+    });
     return result;
   }
 
@@ -684,23 +686,20 @@ class AsyncValuePtr {
 
   // An overload that executes `f` on a user-provided executor.
   template <typename R, typename F, TryMapFunctor<R, F>* = nullptr>
-  AsyncValueRef<R> TryMap(AsyncValue::Executor& executor, F&& f) {
+  AsyncValueRef<R> TryMap(Executor& executor, F&& f) {
     auto result = MakeUnconstructedAsyncValueRef<R>();
-    // We don't know when the executor will run the callback, so we need to
-    // copy the AsyncValueRef to keep the underlying value alive.
-    AndThen(executor,
-            [f = std::forward<F>(f), result, ref = CopyRef()]() mutable {
-              if (ABSL_PREDICT_FALSE(ref.IsError())) {
-                result.SetError(ref.GetError());
-              } else {
-                auto status_or = f(*ref);
-                if (status_or.ok()) {
-                  result.emplace(std::move(status_or.value()));
-                } else {
-                  result.SetError(status_or.status());
-                }
-              }
-            });
+    AndThen(executor, [f = std::forward<F>(f), result, ptr = *this]() mutable {
+      if (ABSL_PREDICT_FALSE(ptr.IsError())) {
+        result.SetError(ptr.GetError());
+      } else {
+        auto status_or = f(*ptr);
+        if (status_or.ok()) {
+          result.emplace(std::move(status_or.value()));
+        } else {
+          result.SetError(status_or.status());
+        }
+      }
+    });
     return result;
   }
 
@@ -713,7 +712,7 @@ class AsyncValuePtr {
   // A `Map` overload that automatically infers the type of result from `f` and
   // executes `f` on user-provided executor.
   template <typename F, typename R = std::invoke_result_t<F, T&>>
-  auto Map(AsyncValue::Executor& executor, F&& f) {
+  auto Map(Executor& executor, F&& f) {
     return Map<R>(executor, std::forward<F>(f));
   }
 
@@ -728,7 +727,7 @@ class AsyncValuePtr {
   // and executes `f` on user-provided executor.
   template <typename F, typename R = std::invoke_result_t<F, T&>,
             std::enable_if_t<internal::is_status_or_v<R>>* = nullptr>
-  auto TryMap(AsyncValue::Executor& executor, F&& f) {
+  auto TryMap(Executor& executor, F&& f) {
     return TryMap<typename R::value_type>(executor, std::forward<F>(f));
   }
 
@@ -779,25 +778,22 @@ class AsyncValuePtr {
 
   // An overload that executes `f` on a user-provided executor.
   template <typename F, typename R = FlatMapFunctor<F>>
-  AsyncValueRef<R> FlatMap(AsyncValue::Executor& executor, F&& f) {
+  AsyncValueRef<R> FlatMap(Executor& executor, F&& f) {
     // We don't have a special handling for concrete values here because
     // we must execute user functor on a separate executor and can't call it in
     // the caller thread.
     auto promise = MakePromise<R>();
-    // We don't know when the executor will run the callback, so we need to
-    // copy the AsyncValueRef to keep the underlying value alive.
-    AndThen(executor,
-            [f = std::forward<F>(f), promise, ref = CopyRef()]() mutable {
-              if (ABSL_PREDICT_FALSE(ref.IsError())) {
-                promise->SetError(ref.GetError());
-              } else {
-                if constexpr (std::is_invocable_v<F, T&>) {
-                  promise->ForwardTo(f(*ref));
-                } else {
-                  promise->ForwardTo(f(ref.AsPtr()));
-                }
-              }
-            });
+    AndThen(executor, [f = std::forward<F>(f), promise, ptr = *this]() mutable {
+      if (ABSL_PREDICT_FALSE(ptr.IsError())) {
+        promise->SetError(ptr.GetError());
+      } else {
+        if constexpr (std::is_invocable_v<F, T&>) {
+          promise->ForwardTo(f(*ptr));
+        } else {
+          promise->ForwardTo(f(ptr));
+        }
+      }
+    });
     return AsyncValueRef<R>(promise);
   }
 
@@ -1107,7 +1103,7 @@ AsyncValueRef<T> MakeAvailableAsyncValueRef(Args&&... args) {
 //
 template <typename T, typename F, typename R = std::invoke_result_t<F>,
           std::enable_if_t<std::is_constructible_v<T, R>>* = nullptr>
-AsyncValueRef<T> MakeAsyncValueRef(AsyncValue::Executor& executor, F&& f) {
+AsyncValueRef<T> MakeAsyncValueRef(Executor& executor, F&& f) {
   auto result = MakeUnconstructedAsyncValueRef<T>();
   executor.Execute(
       [result, f = std::forward<F>(f)]() mutable { result.emplace(f()); });
@@ -1117,7 +1113,7 @@ AsyncValueRef<T> MakeAsyncValueRef(AsyncValue::Executor& executor, F&& f) {
 // A `MakeAsyncValueRef` overload that automatically infers the type of result
 // from `f`.
 template <typename F, typename R = std::invoke_result_t<F>>
-AsyncValueRef<R> MakeAsyncValueRef(AsyncValue::Executor& executor, F&& f) {
+AsyncValueRef<R> MakeAsyncValueRef(Executor& executor, F&& f) {
   return MakeAsyncValueRef<R>(executor, std::forward<F>(f));
 }
 
@@ -1134,7 +1130,7 @@ template <typename T, typename F, typename R = std::invoke_result_t<F>,
           std::enable_if_t<
               internal::is_status_or_v<R> &&
               std::is_constructible_v<T, typename R::value_type>>* = nullptr>
-AsyncValueRef<T> TryMakeAsyncValueRef(AsyncValue::Executor& executor, F&& f) {
+AsyncValueRef<T> TryMakeAsyncValueRef(Executor& executor, F&& f) {
   auto result = MakeUnconstructedAsyncValueRef<T>();
   executor.Execute([result, f = std::forward<F>(f)]() mutable {
     absl::StatusOr<typename R::value_type> status_or = f();
@@ -1151,8 +1147,8 @@ AsyncValueRef<T> TryMakeAsyncValueRef(AsyncValue::Executor& executor, F&& f) {
 // result from `f`.
 template <typename F, typename R = std::invoke_result_t<F>,
           std::enable_if_t<internal::is_status_or_v<R>>* = nullptr>
-AsyncValueRef<typename R::value_type> TryMakeAsyncValueRef(
-    AsyncValue::Executor& executor, F&& f) {
+AsyncValueRef<typename R::value_type> TryMakeAsyncValueRef(Executor& executor,
+                                                           F&& f) {
   return TryMakeAsyncValueRef<typename R::value_type>(executor,
                                                       std::forward<F>(f));
 }

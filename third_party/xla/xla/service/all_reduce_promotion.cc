@@ -73,7 +73,7 @@ AllReducePromotion::AllReducePromotion(
     absl::Span<std::pair<PrimitiveType, PrimitiveType> const> from_to_types)
     : pass_(from_to_types, IsAllReduce, CloneAllReduce) {}
 
-absl::StatusOr<bool> AllReducePromotion::Run(
+absl::StatusOr<bool> AllReducePromotion::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   return pass_.Run(module, execution_threads);

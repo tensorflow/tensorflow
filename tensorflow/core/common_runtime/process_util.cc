@@ -85,7 +85,7 @@ int32 ValidateThreadCount(int32 requested_threads, const char* thread_type) {
 }
 
 // Use environment setting if specified (init once)
-int32 GetEnvNumInterOpThreads() {
+int32_t GetEnvNumInterOpThreads() {
   static int32_t env_num_threads = NumInterOpThreadsFromEnvironment();
   return env_num_threads;
 }

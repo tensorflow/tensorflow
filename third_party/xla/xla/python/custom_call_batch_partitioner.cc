@@ -72,9 +72,8 @@ HloSharding GetBatchSharding(const HloSharding& sharding,
     return batch_sharding;
   }
 
-  std::vector<int64_t> dimensions(
-      batch_sharding.tile_assignment().dimensions().begin(),
-      batch_sharding.tile_assignment().dimensions().end());
+  std::vector<int64_t> dimensions(batch_sharding.dimensions().begin(),
+                                  batch_sharding.dimensions().end());
   dimensions.erase(
       dimensions.begin() + batch_sharding.TiledDataRank() - num_replicate_dims,
       dimensions.begin() + batch_sharding.TiledDataRank());
@@ -96,9 +95,8 @@ HloSharding InsertNonBatchSharding(const HloSharding& sharding,
   if (num_replicate_dims == 0) {
     return sharding;
   }
-  std::vector<int64_t> dimensions(
-      sharding.tile_assignment().dimensions().begin(),
-      sharding.tile_assignment().dimensions().end());
+  std::vector<int64_t> dimensions(sharding.dimensions().begin(),
+                                  sharding.dimensions().end());
   for (int64_t i = 0; i < num_replicate_dims; ++i) {
     dimensions.insert(dimensions.begin() + sharding.TiledDataRank(), 1);
   }

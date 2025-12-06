@@ -1070,8 +1070,8 @@ absl::Status MatMulGradHelper(const Scope& scope, const bool is_batch,
 absl::Status MatMulGradCommon(const Scope& scope, const Operation& op,
                               const bool is_batch,
                               const std::vector<Output>& grad_inputs,
-                              const string& attr_adj_x,
-                              const string& attr_adj_y,
+                              const std::string& attr_adj_x,
+                              const std::string& attr_adj_y,
                               std::vector<Output>* grad_outputs) {
   auto a = op.input(0);
   auto b = op.input(1);

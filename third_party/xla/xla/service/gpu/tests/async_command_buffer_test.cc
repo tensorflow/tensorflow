@@ -22,6 +22,8 @@ limitations under the License.
 #include "xla/service/hlo_module_config.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tests/literal_test_util.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/xla.pb.h"
 
 namespace xla::gpu {
 namespace {
@@ -83,7 +85,9 @@ TEST_F(AsyncCommandBufferTest, CommandBuffer) {
   Literal argument = LiteralUtil::CreateR2<float>({{1.0, 2.0}, {3.0, 4.0}});
   Literal expected = LiteralUtil::CreateR2<float>({{4.0, 8.0}, {12.0, 16.0}});
 
-  Literal result = ExecuteNoHloPasses(std::move(module), {&argument});
+  TF_ASSERT_OK_AND_ASSIGN(
+      Literal result,
+      Execute(std::move(module), {&argument}, /*run_hlo_passes=*/false));
   EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
 }
 

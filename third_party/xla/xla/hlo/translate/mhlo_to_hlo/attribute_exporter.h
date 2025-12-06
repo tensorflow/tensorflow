@@ -31,6 +31,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/service/hlo.pb.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/types.h"
@@ -96,10 +97,14 @@ std::optional<xla::OpSharding> ExtractShardyResultShardingFromFrontendAttrs(
     mlir::func::FuncOp function, int64_t res_num,
     std::optional<mlir::DictionaryAttr> sdy_meshes);
 
+// Returns a failure or a valid XLA shape corresponding to the given op's
+// results.
+mlir::FailureOr<xla::Shape> ExtractXlaShape(mlir::Operation* op);
+
 // Returns an OriginalValueProto that represents a value in the unoptimized HLO
 // graph.
 std::optional<xla::OriginalValueProto> ConvertOriginalValue(
-    llvm::StringRef original_value, const xla::Shape& shape);
+    llvm::StringRef original_value);
 
 std::optional<xla::HloInputOutputAliasProto> ConvertInputOutputAlias(
     llvm::ArrayRef<mlir::Attribute> aliasing);

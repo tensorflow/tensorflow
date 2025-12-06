@@ -44,6 +44,7 @@ tf_proto_library(
     protodeps = [
         ":profiler_options_proto",
         ":profiler_service_monitor_result_proto",
+        ":xplane_proto",
     ],
     use_grpc_namespace = True,
     visibility = ["//visibility:public"],

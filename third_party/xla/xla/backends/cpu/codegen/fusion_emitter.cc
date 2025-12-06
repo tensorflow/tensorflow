@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 
@@ -36,12 +37,17 @@ limitations under the License.
 #include "xla/backends/cpu/alignment.h"
 #include "xla/backends/cpu/codegen/kernel_api_ir_builder.h"
 #include "xla/backends/cpu/codegen/symbol_name_util.h"
+#include "xla/backends/cpu/codegen/tiled/tiled_fusion_emitter.h"
 #include "xla/codegen/emitters/concatenate_kernel_emitter.h"
+#include "xla/codegen/emitters/dynamic_update_slice_kernel_emitter.h"
 #include "xla/codegen/emitters/ir/xla_ops.h"
 #include "xla/codegen/emitters/kernel_arguments.h"
 #include "xla/codegen/emitters/loop_kernel_emitter.h"
 #include "xla/codegen/hlo_fusion_spec.h"
-#include "xla/codegen/mlir_kernel_definition.h"
+#include "xla/codegen/ir_emission_utils.h"
+#include "xla/codegen/kernel_definition.h"
+#include "xla/codegen/mlir_kernel_source.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -54,13 +60,14 @@ limitations under the License.
 #include "xla/runtime/work_tile_size.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/cpu/backend_config.pb.h"
-#include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 
 namespace xla::cpu {
+
+using ::mlir::MLIRContext;
 
 static absl::StatusOr<std::string> GetName(const HloFusionInstruction& fusion,
                                            bool use_unique_c_name) {
@@ -179,6 +186,14 @@ static WorkDimensions GetConcatenateEmitterWorkDims(
   return GetWorkDimensions(indexing_shape, fusion);
 }
 
+static WorkDimensions GetDynamicUpdateSliceEmitterWorkDims(
+    const HloFusionInstruction& fusion, const HloFusionSpec& fusion_spec) {
+  Shape indexing_shape =
+      emitters::DynamicUpdateSliceKernelEmitter::GetIndexingShape(fusion_spec);
+
+  return GetWorkDimensions(indexing_shape, fusion);
+}
+
 static HloFusionSpec GetLoopFusionSpec(const HloFusionInstruction& fusion) {
   // Crash OK, this is checked in the caller.
   CHECK(fusion.fusion_kind() == HloFusionInstruction::FusionKind::kLoop);
@@ -197,8 +212,8 @@ static HloFusionSpec GetLoopFusionSpec(const HloFusionInstruction& fusion) {
                        std::move(heroes));
 }
 
-static absl::StatusOr<MlirKernelDefinition> EmitLoopFusionKernel(
-    mlir::MLIRContext& context, const HloFusionInstruction& fusion,
+static absl::StatusOr<KernelDefinition<MlirKernelSource>> EmitLoopFusionKernel(
+    MLIRContext& context, const HloFusionInstruction& fusion,
     const BufferAssignment* buffer_assignment, absl::string_view name) {
   VLOG(2) << "Emitting loop fusion kernel: " << name;
   HloFusionSpec fusion_spec = GetLoopFusionSpec(fusion);
@@ -210,22 +225,20 @@ static absl::StatusOr<MlirKernelDefinition> EmitLoopFusionKernel(
   TF_ASSIGN_OR_RETURN(auto mlir_kernel_definition,
                       loop_fusion_emitter.EmitKernelDefinition());
 
-  // We have to release otherwise the source wouldn't be mutable, and we
-  // wouldn't be able to set the CpuMemoryRegionNameAttr.
-  auto [kernel_spec, kernel_source] =
-      std::move(mlir_kernel_definition).ReleaseStorage();
-
   mlir::OpBuilder builder(&context);
-  kernel_source.module().getOperation()->setAttr(
+  mlir_kernel_definition.source().module().getOperation()->setAttr(
       xla::CpuMemoryRegionNameAttr::name,
       builder.getStringAttr(
           BuildModuleMemoryRegionName(loop_fusion_emitter.name(), &fusion)));
-  return MlirKernelDefinition(std::move(kernel_spec), std::move(kernel_source));
+
+  return mlir_kernel_definition;
 }
 
-static absl::StatusOr<MlirKernelDefinition> EmitConcatenateFusionKernel(
-    mlir::MLIRContext& context, const HloFusionInstruction& fusion,
-    const BufferAssignment* buffer_assignment, absl::string_view name) {
+static absl::StatusOr<KernelDefinition<MlirKernelSource>>
+EmitConcatenateFusionKernel(MLIRContext& context,
+                            const HloFusionInstruction& fusion,
+                            const BufferAssignment* buffer_assignment,
+                            absl::string_view name) {
   VLOG(2) << "Emitting concatenate fusion kernel: " << name;
   HloFusionSpec fusion_spec = GetLoopFusionSpec(fusion);
   auto work_dimensions = GetConcatenateEmitterWorkDims(fusion, fusion_spec);
@@ -236,31 +249,74 @@ static absl::StatusOr<MlirKernelDefinition> EmitConcatenateFusionKernel(
   TF_ASSIGN_OR_RETURN(auto mlir_kernel_definition,
                       concatenate_fusion_emitter.EmitKernelDefinition());
 
-  // We have to release otherwise the source wouldn't be mutable, and we
-  // wouldn't be able to set the CpuMemoryRegionNameAttr.
-  auto [kernel_spec, kernel_source] =
-      std::move(mlir_kernel_definition).ReleaseStorage();
-
   mlir::OpBuilder builder(&context);
-  kernel_source.module().getOperation()->setAttr(
+  mlir_kernel_definition.source().module().getOperation()->setAttr(
       xla::CpuMemoryRegionNameAttr::name,
       builder.getStringAttr(BuildModuleMemoryRegionName(
           concatenate_fusion_emitter.name(), &fusion)));
-  return MlirKernelDefinition(std::move(kernel_spec), std::move(kernel_source));
+
+  return mlir_kernel_definition;
 }
 
-absl::StatusOr<MlirKernelDefinition> EmitFusionKernel(
-    mlir::MLIRContext& context, const HloFusionInstruction& fusion,
-    const BufferAssignment* buffer_assignment, bool use_unique_c_name) {
+static absl::StatusOr<KernelDefinition<MlirKernelSource>>
+EmitDynamicUpdateSliceFusionKernel(MLIRContext& context,
+                                   const HloFusionInstruction& fusion,
+                                   const BufferAssignment* buffer_assignment,
+                                   absl::string_view name) {
+  VLOG(2) << "Emitting dynamic update slice fusion kernel: " << name;
+  HloFusionSpec fusion_spec = GetLoopFusionSpec(fusion);
+  auto work_dimensions =
+      GetDynamicUpdateSliceEmitterWorkDims(fusion, fusion_spec);
+
+  emitters::DynamicUpdateSliceKernelEmitter emitter(
+      context, fusion, std::move(fusion_spec), buffer_assignment,
+      GetDefaultBufferAlignment(), work_dimensions, name, BackendKind::kCpu);
+  TF_ASSIGN_OR_RETURN(auto mlir_kernel_definition,
+                      emitter.EmitKernelDefinition());
+
+  mlir::OpBuilder builder(&context);
+  mlir_kernel_definition.source().module().getOperation()->setAttr(
+      xla::CpuMemoryRegionNameAttr::name,
+      builder.getStringAttr(
+          BuildModuleMemoryRegionName(emitter.name(), &fusion)));
+
+  return mlir_kernel_definition;
+}
+
+absl::StatusOr<KernelDefinition<MlirKernelSource>> EmitFusionKernel(
+    MLIRContext& mlir_context, const HloFusionInstruction& fusion,
+    const BufferAssignment* buffer_assignment, bool use_unique_c_name,
+    bool enable_tiled_emitter) {
+  TF_ASSIGN_OR_RETURN(std::string name, GetName(fusion, use_unique_c_name));
+
+  if (enable_tiled_emitter) {
+    if (auto tiling_or = GetTilingIfSupported(mlir_context, fusion);
+        tiling_or.ok()) {
+      return EmitTiledFusionKernel(mlir_context, fusion, buffer_assignment,
+                                   name, GetWorkGroupCount(fusion),
+                                   std::move(*tiling_or));
+    }
+  }
+
   if (fusion.fusion_kind() == HloFusionInstruction::FusionKind::kLoop) {
-    TF_ASSIGN_OR_RETURN(std::string name, GetName(fusion, use_unique_c_name));
     const HloInstruction& hero =
         FindNonTrivialHero(*fusion.fused_expression_root());
     if (hero.opcode() == HloOpcode::kConcatenate) {
-      return EmitConcatenateFusionKernel(context, fusion, buffer_assignment,
-                                         name);
+      return EmitConcatenateFusionKernel(mlir_context, fusion,
+                                         buffer_assignment, name);
     }
-    return EmitLoopFusionKernel(context, fusion, buffer_assignment, name);
+    auto fusion_spec = GetLoopFusionSpec(fusion);
+    if (IsDynamicUpdateSliceFusion(fusion_spec)) {
+      TF_ASSIGN_OR_RETURN(
+          bool dus_inplace,
+          CanEmitFusedDynamicUpdateSliceInPlace(fusion_spec.fusion(),
+                                                buffer_assignment, &fusion));
+      if (dus_inplace) {
+        return EmitDynamicUpdateSliceFusionKernel(mlir_context, fusion,
+                                                  buffer_assignment, name);
+      }
+    }
+    return EmitLoopFusionKernel(mlir_context, fusion, buffer_assignment, name);
   }
 
   return absl::UnimplementedError("Fusion kind not supported.");

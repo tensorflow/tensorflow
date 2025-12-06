@@ -46,21 +46,15 @@ CompileOnlyClient::CreateModuleConfig(
 
 absl::StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
 CompileOnlyClient::CompileAheadOfTime(
-    const absl::Span<const AotXlaComputationInstance> computations,
+    const AotXlaComputationInstance& computation,
     const AotCompilationOptions& options,
     std::unique_ptr<AotCompilationMetadata>* metadata) {
-  std::vector<CompileOnlyService::AotXlaComputationInstance> service_instances;
-  service_instances.reserve(computations.size());
-  for (const AotXlaComputationInstance& instance : computations) {
-    service_instances.emplace_back();
-    CompileOnlyService::AotXlaComputationInstance& service_instance =
-        service_instances.back();
-    TF_RET_CHECK(instance.computation != nullptr);
-    service_instance.computation = instance.computation->proto();
-    service_instance.argument_layouts = instance.argument_layouts;
-    service_instance.result_layout = *instance.result_layout;
-  }
-  return compiler_service_->CompileAheadOfTime(service_instances, options,
+  CompileOnlyService::AotXlaComputationInstance service_instance;
+  TF_RET_CHECK(computation.computation != nullptr);
+  service_instance.computation = computation.computation->proto();
+  service_instance.argument_layouts = computation.argument_layouts;
+  service_instance.result_layout = *computation.result_layout;
+  return compiler_service_->CompileAheadOfTime(service_instance, options,
                                                metadata);
 }
 

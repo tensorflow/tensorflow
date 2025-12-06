@@ -1463,14 +1463,6 @@ absl::StatusOr<DotOpWorkGroupDim> EmitDotOperation(
     const HloModuleConfig& hlo_module_config,
     const TargetMachineFeatures& target_machine_features,
     bool allow_runtime_calls, bool allow_parallelism) {
-  // This routine assumes that the dot operation is not in a parallelized
-  // enclosing computation.
-  CHECK(dot.parent()
-            ->root_instruction()
-            ->backend_config<BackendConfig>()
-            ->outer_dimension_partitions()
-            .empty());
-
   if (IsBatchDot(dot)) {
     TF_RET_CHECK(addend_array == nullptr);
     return EmitBatchDotOperation(dot, target_array, lhs_array, rhs_array,

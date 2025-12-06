@@ -16,6 +16,8 @@ limitations under the License.
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+#include <new>
 #ifdef TF_USE_SNAPPY
 #include "snappy.h"
 #endif
@@ -105,25 +107,6 @@ int GetCurrentCPU() {
   return GetCurrentProcessorNumber();
 }
 
-bool NUMAEnabled() {
-  // Not yet implemented: coming soon.
-  return false;
-}
-
-int NUMANumNodes() { return 1; }
-
-void NUMASetThreadNodeAffinity(int node) {}
-
-int NUMAGetThreadNodeAffinity() { return kNUMANoAffinity; }
-
-void* NUMAMalloc(int node, size_t size, int minimum_alignment) {
-  return tsl::port::AlignedMalloc(size, minimum_alignment);
-}
-
-void NUMAFree(void* ptr, size_t size) { tsl::port::Free(ptr); }
-
-int NUMAGetMemAffinity(const void* addr) { return kNUMANoAffinity; }
-
 bool Snappy_Compress(const char* input, size_t length, string* output) {
 #ifdef TF_USE_SNAPPY
   output->resize(snappy::MaxCompressedLength(length));
@@ -205,13 +188,14 @@ int NumHyperthreadsPerCore() {
 namespace tsl {
 namespace port {
 
-void* AlignedMalloc(size_t size, int minimum_alignment) {
-  return _aligned_malloc(size, minimum_alignment);
+void* AlignedMalloc(size_t size, std::align_val_t minimum_alignment) {
+  return _aligned_malloc(size, static_cast<size_t>(minimum_alignment));
 }
 
 void AlignedFree(void* aligned_memory) { _aligned_free(aligned_memory); }
 
-void AlignedSizedFree(void* aligned_memory, size_t alignment, size_t size) {
+void AlignedSizedFree(void* aligned_memory, size_t size,
+                      std::align_val_t alignment) {
   (void)alignment;
   (void)size;
 

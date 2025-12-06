@@ -38,7 +38,6 @@ pytype_strict_library(
     deps = [
         "//tensorflow/dtensor/python:api",
         "//tensorflow/dtensor/python:config",
-        "//tensorflow/dtensor/python:dtensor_device",
         "//tensorflow/dtensor/python:layout",
         "//tensorflow/dtensor/python:numpy_util",
         "//tensorflow/dtensor/python:tpu_util",
@@ -65,6 +64,7 @@ pytype_strict_library(
         "//tensorflow/python/util:numpy_compat",
         "//third_party/py/numpy",
         "@absl_py//absl/flags",
+        "@absl_py//absl/logging",
         "@absl_py//absl/testing:parameterized",
     ],
 )
@@ -486,7 +486,7 @@ pytype_strict_library(
         ":test_util",
         "//tensorflow/python/platform:client_testlib",
         "@absl_py//absl/flags",
-        "@pypi_portpicker//:pkg",
+        "@pypi//portpicker",
     ],
 )
 
@@ -724,6 +724,7 @@ dtensor_test(
         "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/util:nest",
         "//third_party/py/numpy",
+        "@absl_py//absl/logging",
         "@absl_py//absl/testing:parameterized",
     ],
 )

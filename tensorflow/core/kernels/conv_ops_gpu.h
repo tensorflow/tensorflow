@@ -16,19 +16,34 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_CONV_OPS_GPU_H_
 #define TENSORFLOW_CORE_KERNELS_CONV_OPS_GPU_H_
 
+#include <cstdint>
+#include <memory>
+#include <utility>
+#include <vector>
+
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #include <tuple>
-#include <unordered_map>
 
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
-#include "absl/strings/str_format.h"
+#include "xla/stream_executor/data_type.h"
+#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/dnn.h"
+#include "xla/stream_executor/scratch_allocator.h"
+#include "xla/stream_executor/stream.h"
+#include "xla/tsl/platform/status.h"
+#include "xla/tsl/platform/statusor.h"
+#include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/kernels/gpu_utils.h"
-#include "tensorflow/core/lib/gtl/inlined_vector.h"
-#include "tensorflow/core/lib/hash/hash.h"
+#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/statusor.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/autotune_maps/conv_parameters.h"
-#include "tensorflow/core/util/tensor_format.h"
 
 namespace tensorflow {
 
@@ -199,10 +214,35 @@ Status LaunchAutotunedConv(const AutotuneEntry<se::dnn::ConvOp>& autotune_entry,
     if (dnn == nullptr) {
       return absl::InternalError("No DNN for stream.");
     }
-    return dnn->ConvolveWithAlgorithm(
-        stream, kind, input_desc, in_ptr, filter_desc, filter_ptr, output_desc,
-        out_ptr, conv_desc, scratch_allocator,
-        autotune_entry.GetAlgorithmConfig(), nullptr);
+    se::dnn::DataType element_type = se::dnn::ToDataType<T>::value;
+    const se::dnn::AlgorithmConfig& algo_config =
+        autotune_entry.GetAlgorithmConfig();
+    auto algo_desc = algo_config.algorithm();
+    if (!algo_desc.has_value()) {
+      return absl::InternalError("No algorithm in AlgorithmConfig");
+    }
+
+    auto runner_or = dnn->ConvolveRunnerFromDesc(
+        stream, *algo_desc, kind, element_type, element_type, input_desc,
+        filter_desc, output_desc, conv_desc);
+    if (!runner_or.ok()) {
+      return runner_or.status();
+    }
+    std::unique_ptr<const se::dnn::ConvRunner> runner =
+        std::move(runner_or).value();
+
+    se::DeviceMemoryBase scratch_memory;
+    int64_t workspace_size = runner->GetWorkspaceSize();
+    if (workspace_size > 0) {
+      auto scratch_or = scratch_allocator->AllocateBytes(workspace_size);
+      if (!scratch_or.ok()) {
+        return absl::InternalError(
+            "CUDNN failed to allocate the scratch space for the runner");
+      }
+      scratch_memory = scratch_or.value();
+    }
+    return (*runner)(stream, nullptr, scratch_memory, in_ptr, filter_ptr,
+                     out_ptr);
   }
 }
 

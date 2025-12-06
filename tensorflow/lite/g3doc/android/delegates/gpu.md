@@ -38,8 +38,8 @@ file:
 ```
 dependencies {
     ...
-    implementation 'com.google.android.gms:play-services-tflite-java:16.0.1'
-    implementation 'com.google.android.gms:play-services-tflite-gpu:16.1.0'
+    implementation 'com.google.android.gms:play-services-tflite-java:16.4.0'
+    implementation 'com.google.android.gms:play-services-tflite-gpu:16.4.0'
 }
 ```
 

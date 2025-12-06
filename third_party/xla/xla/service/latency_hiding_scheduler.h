@@ -142,6 +142,7 @@ struct SchedulerConfig {
   int64_t rerun = 0;
   int64_t parallel_collective_overlap_limit = 1;
   bool schedule_send_recvs = false;
+  bool deannotate_group_if_blocked = false;
   // Consider send recv as the same resource. Some platforms do not take well
   // overlapping the send/recv ops between themselves.
   bool force_send_recv_to_use_same_resource = false;
@@ -160,9 +161,15 @@ struct SchedulerConfig {
   // If the above flag is also set, force the scheduler to provide maximum delay
   // to nodes at the stat of a scheduling group.
   bool aggressive_flexible_annotation_scheduling = false;
+  // Prioritize  flexible annotation scheduling over memory pressure; this is
+  // useful when the memory pressure is high. Without this, under high memory
+  // pressure, aggressive_flexible_annotation_scheduling is not respected.
+  bool force_delay_over_memory_pressure = false;
   // If true, estimate the fragmentation size of the module by running the heap
   // simulator.
   bool estimate_fragmentation_size = false;
+  // If true, track the resource usage of sync ops in latency hiding scheduler.
+  bool track_sync_op_resource_usage = false;
 };
 
 // Class used estimate latency between instructions and cost of HLOs.
@@ -237,6 +244,9 @@ class AsyncTracker {
   // Returns resources used (i.e., occupied or released) by this instruction
   virtual ResourcesVector GetResourcesFromInstructionImpl(
       const HloInstruction& hlo) const;
+
+  // Gets the resource type associated with the given op.
+  static ResourceType GetResourceTypeForOp(HloOpcode op);
 
   // Returns resources used (i.e., occupied or released) by this instruction
   absl::Span<const ResourcePair> GetResourcesFromInstruction(
@@ -695,6 +705,10 @@ class HloGraphNode {
   void SetGraphDepth(TimeCost graph_depth) { graph_depth_ = graph_depth; }
   bool GetForceDelay() const { return force_delay_; }
   void SetForceDelay(bool force_delay) { force_delay_ = force_delay; }
+  int GetForceDelayPriority() const { return force_delay_priority_; }
+  void SetForceDelayPriority(int force_delay_priority) {
+    force_delay_priority_ = force_delay_priority;
+  }
   bool GetForceEarly() const { return force_early_; }
   void SetForceEarly(bool force_early) { force_early_ = force_early; }
   bool GetForceDelayAfterTarget() const { return force_delay_after_target_; }
@@ -937,6 +951,9 @@ class HloGraphNode {
   // bitfields
   // Force the scheduling of the nodes with attribute set as late as possible.
   bool force_delay_ = false;
+  // If multiple nodes are there with force_delay_ = true, the one with the
+  // lowest delay priority will be scheduled first.
+  int force_delay_priority_ = 0;
   // Force the scheduling of the nodes with attribute set as early as possible.
   bool force_early_ = false;
   // If has_rare_ is false, then all the fields in rare can assumed to be
@@ -1513,7 +1530,6 @@ class DefaultSchedulerCore : public SchedulerCore {
     bool has_pressure_change = false;
     bool has_estimated_connected_send_ready_time = false;
     bool has_resource_constrained = false;
-    bool unused = false;
 
     int64_t pressure_change_first;
     int64_t pressure_change_second;
@@ -1693,12 +1709,34 @@ class DefaultSchedulerCore : public SchedulerCore {
     this->config_.memory_limit = new_limit;
   }
   int64_t GetRerunTimes() override { return config_.rerun; }
-  bool SchedulingAnnotationCrossesOverlapLimit(
-      const SchedulingState& sched_state, int64_t annotation);
+
+  // Returns the amount of resources an annotation group needs. The amount of
+  // resources needed is schedule-order dependent. This function returns the
+  // minimum or the maximum amount of resources needed for the given annotation
+  // group based on the value of get_max_resources.
   absl::flat_hash_map<int64_t, int64_t> GetNumResourcesNeededForAnnotation(
-      const SchedulingState& sched_state, int64_t annotation);
+      const SchedulingState& sched_state, int64_t annotation,
+      bool get_max_resources = false);
+
+  // Returns true if the given annotation group crosses the overlap limit.
+  // If use_max_resources is true, the maximum amount of resources needed for
+  // the annotation group is used to compare against the overlap limit.
+  // Otherwise, the minimum amount of resources needed for the annotation group
+  // is used.
+  bool SchedulingAnnotationCrossesOverlapLimit(
+      const SchedulingState& sched_state, int64_t annotation,
+      bool use_max_resources = false);
+
   int64_t GetNumSuccessorsForAnnotation(const SchedulingState& sched_state,
                                         int64_t annotation) const;
+
+  // Tries to schedule any of the ready annotation groups using either the
+  // maximum or minimum amount of resources needed for the annotation group
+  // based on value of use_max_resources. Returns true if any annotation group
+  // is scheduled, false otherwise.
+  absl::StatusOr<bool> TryScheduleOneAnnotationGroup(
+      DefaultSchedulerCore::SchedulingState* sched_state,
+      const HloComputation* computation, bool use_max_resources);
 
   ScheduleProto::ComputationScheduleProto ComputationScheduleToProto(
       const HloComputation* computation, const SchedulingState& sched_state,
@@ -1755,6 +1793,7 @@ class LatencyHidingScheduler : public HloModulePass {
     double reduce_scatter_wasted_cycles = 0;
     double send_wasted_cycles = 0;
     double recv_wasted_cycles = 0;
+    double call_wasted_cycles = 0;
     double total_cycles = 0;
     int64_t memory_pressure_peak = 0;
 
@@ -1763,7 +1802,7 @@ class LatencyHidingScheduler : public HloModulePass {
              collective_broadcast_wasted_cycles +
              collective_permute_wasted_cycles + all_to_all_wasted_cycles +
              ragged_all_to_all_wasted_cycles + reduce_scatter_wasted_cycles +
-             send_wasted_cycles + recv_wasted_cycles;
+             send_wasted_cycles + recv_wasted_cycles + call_wasted_cycles;
     }
 
     ScheduleProto::SchedulerStatisticsProto ToProto() const;
@@ -1799,13 +1838,12 @@ class LatencyHidingScheduler : public HloModulePass {
                           const std::vector<double>& preferences,
                           const HloComputation* computation);
 
-  using HloPassInterface::Run;
+  virtual void LogScheduleStatistics(const HloComputation* computation);
 
-  absl::StatusOr<bool> Run(
+ protected:
+  absl::StatusOr<bool> RunImpl(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
-
-  virtual void LogScheduleStatistics(const HloComputation* computation);
 
  protected:
   std::shared_ptr<const SchedulingContext> scheduling_context_;

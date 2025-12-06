@@ -16,14 +16,27 @@ limitations under the License.
 #include "xla/tsl/platform/cloud/curl_http_request.h"
 
 #include <algorithm>
+#include <cerrno>
+#include <cstddef>
+#include <cstdint>
+#include <cstdio>
+#include <cstring>
+#include <string>
+#include <vector>
 
-#include "xla/tsl/lib/gtl/map_util.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/strings/ascii.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
+#include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/macros.h"
+#include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/types.h"
 #include "xla/tsl/util/env_var.h"
 #include "tsl/platform/scanner.h"
-#include "tsl/platform/str_util.h"
+#include "tsl/platform/strcat.h"
 
 #define CHECK_CURL_OK(expr) CHECK_EQ(expr, CURLE_OK)
 
@@ -173,7 +186,7 @@ CurlHttpRequest::~CurlHttpRequest() {
   }
 }
 
-string CurlHttpRequest::EscapeString(const string& str) {
+string CurlHttpRequest::EscapeString(const std::string& str) {
   char* out_char_str = libcurl_->curl_easy_escape(curl_, str.c_str(), 0);
   string out_str(out_char_str);
   libcurl_->curl_free(out_char_str);
@@ -190,13 +203,13 @@ void CurlHttpRequest::SetUri(const string& uri) {
 void CurlHttpRequest::SetRange(uint64 start, uint64 end) {
   CheckNotSent();
   CHECK_CURL_OK(libcurl_->curl_easy_setopt(
-      curl_, CURLOPT_RANGE, strings::StrCat(start, "-", end).c_str()));
+      curl_, CURLOPT_RANGE, absl::StrCat(start, "-", end).c_str()));
 }
 
 void CurlHttpRequest::AddHeader(const string& name, const string& value) {
   CheckNotSent();
   curl_headers_ = libcurl_->curl_slist_append(
-      curl_headers_, strings::StrCat(name, ": ", value).c_str());
+      curl_headers_, absl::StrCat(name, ": ", value).c_str());
 }
 
 void CurlHttpRequest::AddResolveOverride(const string& hostname, int64_t port,
@@ -211,7 +224,7 @@ void CurlHttpRequest::AddResolveOverride(const string& hostname, int64_t port,
 void CurlHttpRequest::AddAuthBearerHeader(const string& auth_token) {
   CheckNotSent();
   if (!auth_token.empty()) {
-    AddHeader("Authorization", strings::StrCat("Bearer ", auth_token));
+    AddHeader("Authorization", absl::StrCat("Bearer ", auth_token));
   }
 }
 
@@ -243,15 +256,15 @@ absl::Status CurlHttpRequest::SetPutFromFile(const string& body_filepath,
   }
   put_body_ = fopen(body_filepath.c_str(), "r");
   if (!put_body_) {
-    return errors::InvalidArgument("Couldn't open the specified file: " +
-                                   body_filepath);
+    return absl::InvalidArgumentError(
+        absl::StrCat("Couldn't open the specified file: ", body_filepath));
   }
   fseek(put_body_, 0, SEEK_END);
   const auto size = ftell(put_body_) - offset;
   fseek(put_body_, offset, SEEK_SET);
 
   curl_headers_ = libcurl_->curl_slist_append(
-      curl_headers_, strings::StrCat("Content-Length: ", size).c_str());
+      curl_headers_, absl::StrCat("Content-Length: ", size).c_str());
   CHECK_CURL_OK(libcurl_->curl_easy_setopt(curl_, CURLOPT_PUT, 1));
   CHECK_CURL_OK(libcurl_->curl_easy_setopt(curl_, CURLOPT_READDATA,
                                            reinterpret_cast<void*>(put_body_)));
@@ -280,7 +293,7 @@ void CurlHttpRequest::SetPostFromBuffer(const char* buffer, size_t size) {
   is_method_set_ = true;
   method_ = RequestMethod::kPost;
   curl_headers_ = libcurl_->curl_slist_append(
-      curl_headers_, strings::StrCat("Content-Length: ", size).c_str());
+      curl_headers_, absl::StrCat("Content-Length: ", size).c_str());
   CHECK_CURL_OK(libcurl_->curl_easy_setopt(curl_, CURLOPT_POST, 1));
   CHECK_CURL_OK(libcurl_->curl_easy_setopt(curl_, CURLOPT_READDATA,
                                            reinterpret_cast<void*>(this)));
@@ -455,11 +468,11 @@ absl::Status CurlHttpRequest::Send() {
                                             &response_code_));
 
   auto get_error_message = [this]() -> string {
-    string error_message = strings::StrCat(
+    string error_message = absl::StrCat(
         "Error executing an HTTP request: HTTP response code ", response_code_);
     absl::string_view body = GetResponse();
     if (!body.empty()) {
-      return strings::StrCat(
+      return absl::StrCat(
           error_message, " with body '",
           body.substr(0, std::min(body.size(), response_to_error_limit_)), "'");
     }
@@ -493,20 +506,20 @@ absl::Status CurlHttpRequest::Send() {
     case 406:  // Not Acceptable
     case 411:  // Length Required
     case 414:  // URI Too Long
-      result = errors::InvalidArgument(get_error_message());
+      result = absl::InvalidArgumentError(get_error_message());
       break;
 
     // PERMISSION_DENIED indicates an authentication or an authorization issue.
     case 401:  // Unauthorized
     case 403:  // Forbidden
     case 407:  // Proxy Authorization Required
-      result = errors::PermissionDenied(get_error_message());
+      result = absl::PermissionDeniedError(get_error_message());
       break;
 
     // NOT_FOUND indicates that the requested resource does not exist.
     case 404:  // Not found
     case 410:  // Gone
-      result = errors::NotFound(get_error_message());
+      result = absl::NotFoundError(get_error_message());
       break;
 
     // FAILED_PRECONDITION indicates that the request failed because some
@@ -518,7 +531,7 @@ absl::Status CurlHttpRequest::Send() {
     case 307:  // Temporary Redirect
     case 412:  // Precondition Failed
     case 413:  // Payload Too Large
-      result = errors::FailedPrecondition(get_error_message());
+      result = absl::FailedPreconditionError(get_error_message());
       break;
 
     // UNAVAILABLE indicates a problem that can go away if the request
@@ -534,7 +547,7 @@ absl::Status CurlHttpRequest::Send() {
     case 502:  // Bad Gateway
     case 503:  // Service Unavailable
     default:   // All other HTTP response codes also should be retried.
-      result = errors::Unavailable(get_error_message());
+      result = absl::UnavailableError(get_error_message());
       break;
   }
   if (!result.ok()) {
@@ -651,20 +664,20 @@ absl::Status CurlHttpRequest::CURLcodeToStatus(CURLcode code,
     if (get_response_result == CURLE_OK && response_code == 416) {
       return absl::OkStatus();
     }
-    return errors::FailedPrecondition(
-        strings::StrCat(error_message, overflow_message));
+    return absl::FailedPreconditionError(
+        absl::StrCat(error_message, overflow_message));
   }
   // Domain resolution errors and certificate problems aren't going to improve
   // on retry, so we return a FailedPrecondition (as the caller must take action
   // before this can succeed).
   if (code == CURLE_COULDNT_RESOLVE_HOST || code == CURLE_SSL_CACERT_BADFILE) {
-    return errors::FailedPrecondition(
-        strings::StrCat(error_message, error_buffer));
+    return absl::FailedPreconditionError(
+        absl::StrCat(error_message, error_buffer));
   }
   // Return Unavailable to retry by default. There may be other permanent
   // failures that should be distinguished.
-  return errors::Unavailable(
-      strings::StrCat(error_message, *error_buffer ? error_buffer : "(none)"));
+  return absl::UnavailableError(
+      absl::StrCat(error_message, *error_buffer ? error_buffer : "(none)"));
 }
 
 }  // namespace tsl

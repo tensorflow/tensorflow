@@ -24,6 +24,7 @@ package_group(
 
 cc_library(
     name = "hlo_pass",
+    srcs = ["hlo_pass_interface.cc"],
     hdrs = [
         "hlo_pass_fix.h",
         "hlo_pass_interface.h",
@@ -59,7 +60,6 @@ xla_cc_test(
         "//xla/hlo/ir:hlo_module_group",
         "//xla/hlo/parser:hlo_parser",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
-        "//xla/hlo/testlib:test_helpers",
         "//xla/service:hlo_proto_cc",
         "//xla/service:pattern_matcher",
         "//xla/tsl/platform:errors",
@@ -88,13 +88,11 @@ cc_library(
         "//xla:util",
         "//xla:xla_proto_cc",
         "//xla/hlo/ir:hlo",
-        "//xla/hlo/ir:hlo_module_group",
         "//xla/service:compilation_stats",
         "//xla/service:dump",
         "//xla/service:hlo_graph_dumper",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:logging",
-        "//xla/tsl/platform:status",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/hash",
@@ -105,6 +103,26 @@ cc_library(
         "@com_google_absl//absl/strings:str_format",
         "@local_tsl//tsl/profiler/lib:scoped_annotation",
         "@local_tsl//tsl/profiler/lib:traceme",
+    ],
+)
+
+cc_library(
+    name = "hlo_pass_interface",
+    srcs = ["hlo_pass_interface.cc"],
+    hdrs = ["hlo_pass_interface.h"],
+    deps = [
+        "//xla:shape_util",
+        "//xla:status_macros",
+        "//xla:types",
+        "//xla:util",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/ir:hlo_module_group",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
     ],
 )
 
@@ -128,7 +146,6 @@ xla_cc_test(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
-        "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest",
     ],
 )

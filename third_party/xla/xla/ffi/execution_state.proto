@@ -1,0 +1,11 @@
+syntax = "proto3";
+
+package xla.ffi;
+
+option java_multiple_files = true;
+option java_outer_classname = "ExecutionState";
+
+message ExecutionStateProto {
+  string type_name = 1;
+  bytes state = 2;
+}

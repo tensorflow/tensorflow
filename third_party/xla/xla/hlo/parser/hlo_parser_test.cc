@@ -34,7 +34,6 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/array.h"
 #include "xla/hlo/builder/xla_builder.h"
-#include "xla/hlo/ir/collective_device_list.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -42,6 +41,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/hlo/ir/hlo_sharding.h"
+#include "xla/hlo/ir/replica_group.h"
 #include "xla/hlo/parser/hlo_lexer.h"
 #include "xla/hlo/testlib/pattern_matcher_gmock.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
@@ -53,7 +53,6 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
@@ -1549,26 +1548,107 @@ ENTRY %test (v1: f32[], v2: f32[3], v3: f32[2,3]) -> ((f32[], f32[3]), f32[2,3])
 },
 
 {
-"OriginalValueRecoveryTable",
-R"(HloModule test, entry_computation_layout={(f32[192]{0})->f32[1,17,17,192]{3,2,1,0}}, origin_recovery_table={
-  {"broadcast.2340"} : {"reshape.2341"}
-  {"reshape.2341"} : {"placeholder_reshape.201"},
-  "
-    ENTRY %recovery_computation.3 (p.1: f32[192]) -> f32[1,192] {
-      %p.1 = f32[192]{0} parameter(0)
-      ROOT %reshape.2 = f32[1,192]{1,0} reshape(%p.1)
-    }
-  "
-}
+"OriginalValueSynthetic",
+R"(HloModule test, entry_computation_layout={(f32[])->f32[]}
 
-
-ENTRY %main (Arg_0: f32[192]) -> f32[1,17,17,192] {
-  %Arg_0 = f32[192]{0} parameter(0)
-  ROOT %broadcast.2342 = f32[1,17,17,192]{3,2,1,0} broadcast(f32[192]{0} %Arg_0), dimensions={3}, origin={{"broadcast.2342"}}
+ENTRY %test (v1: f32[]) -> f32[] {
+  %v1 = f32[] parameter(0), origin={[synthetic_call]}
+  ROOT %add = f32[] add(f32[] %v1, f32[] %v1), origin={[synthetic_call]}
 }
 
 )"
 },
+
+{
+"OriginalValueRecoveryTable",
+R"(HloModule module, entry_computation_layout={()->s32[1,3]{1,0}}, num_partitions=2, origin_recovery_table={
+  {"constant"} : {"constant__ovp0"},
+  "
+    HloModule recovery_module, entry_computation_layout={(s32[2,3]{1,0})->s32[2,3]{1,0}}
+
+    %add (x: s32[], y: s32[]) -> s32[] {
+      %x = s32[] parameter(0)
+      %y = s32[] parameter(1)
+      ROOT %add = s32[] add(%x, %y)
+    }
+
+    %add.clone (x.1: s32[], y.1: s32[]) -> s32[] {
+      %x.1 = s32[] parameter(0)
+      %y.1 = s32[] parameter(1)
+      ROOT %add.1 = s32[] add(%x.1, %y.1)
+    }
+
+    ENTRY %recovery_computation (param: s32[2,3]) -> s32[2,3] {
+      %partition-id = u32[] partition-id()
+      %constant = u32[] constant(0)
+      %compare = pred[] compare(%partition-id, %constant), direction=EQ
+      %broadcast = pred[2,3]{1,0} broadcast(%compare), dimensions={}
+      %param = s32[2,3]{1,0} parameter(0), sharding={maximal device=0}
+      %constant.1 = s32[] constant(0)
+      %broadcast.1 = s32[2,3]{1,0} broadcast(%constant.1), dimensions={}
+      %select = s32[2,3]{1,0} select(%broadcast, %param, %broadcast.1)
+      ROOT %all-reduce = s32[2,3]{1,0} all-reduce(%select), channel_id=1, replica_groups={{0,1}}, use_global_device_ids=true, to_apply=%add.clone, sharding={replicated}
+    }
+
+
+  "
+}
+
+
+%add.clone (x.1: s32[], y.1: s32[]) -> s32[] {
+  %x.1 = s32[] parameter(0)
+  %y.1 = s32[] parameter(1)
+  ROOT %add.1 = s32[] add(s32[] %x.1, s32[] %y.1)
+}
+
+ENTRY %entry_spmd () -> s32[1,3] {
+  %partition-id = u32[] partition-id()
+  %constant.2 = u32[] constant(0)
+  %compare = pred[] compare(u32[] %partition-id, u32[] %constant.2), direction=EQ
+  %broadcast = pred[2,3]{1,0} broadcast(pred[] %compare), dimensions={}
+  %constant.1 = s32[2,3]{1,0} constant({ { 1, 1, 1 }, { 1, 1, 1 } }), origin={{"constant__ovp0"}}
+  %constant.3 = s32[] constant(0)
+  %broadcast.1 = s32[2,3]{1,0} broadcast(s32[] %constant.3), dimensions={}
+  %select = s32[2,3]{1,0} select(pred[2,3]{1,0} %broadcast, s32[2,3]{1,0} %constant.1, s32[2,3]{1,0} %broadcast.1)
+  %all-reduce = s32[2,3]{1,0} all-reduce(s32[2,3]{1,0} %select), channel_id=1, replica_groups={{0,1}}, use_global_device_ids=true, to_apply=%add.clone
+  %constant.4 = s32[2]{0} constant({1, 0})
+  %dynamic-slice = s32[1]{0} dynamic-slice(s32[2]{0} %constant.4, u32[] %partition-id), dynamic_slice_sizes={1}
+  %reshape = s32[] reshape(s32[1]{0} %dynamic-slice)
+  %dynamic-slice.1 = s32[1,3]{1,0} dynamic-slice(s32[2,3]{1,0} %all-reduce, s32[] %reshape, s32[] %constant.3), dynamic_slice_sizes={1,3}
+  ROOT %copy.1 = s32[1,3]{1,0} copy(s32[1,3]{1,0} %dynamic-slice.1)
+}
+
+)"
+},
+{
+  "StackFrameIndex",
+R"(HloModule m, entry_computation_layout={()->pred[]}
+
+FileNames
+1 "<embedded module>"
+2 "experimental/module.py"
+3 "yet/another/test.py"
+
+FunctionNames
+1 "main"
+2 "method"
+
+FileLocations
+1 {file_name_id=1 function_name_id=1 line=153 end_line=153 column=2 end_column=31}
+2 {file_name_id=3 function_name_id=2 line=35 end_line=35 column=2 end_column=24}
+3 {file_name_id=2 function_name_id=2 line=83 end_line=83 column=2 end_column=15}
+
+StackFrames
+1 {file_location_id=1 parent_frame_id=1}
+2 {file_location_id=2 parent_frame_id=2}
+
+
+ENTRY %constant_pred () -> pred[] {
+  ROOT %constant = pred[] constant(true), metadata={op_type="const" op_name="opname" stack_frame_id=1}
+}
+
+)"
+}
 });
   // clang-format on
 }
@@ -4060,7 +4140,7 @@ TEST_F(HloParserTest, ParseFrontendAttributes) {
 TEST_F(HloParserTest, ParseWindow) {
   Window original = window_util::MakeWindow({1, 2, 3});
   TF_ASSERT_OK_AND_ASSIGN(Window parsed,
-                          ParseWindow(window_util::ToString(original)))
+                          ParseWindow(window_util::ToString(original)));
   EXPECT_EQ(window_util::ToString(original), window_util::ToString(parsed));
 }
 
@@ -5646,9 +5726,11 @@ ENTRY %test {
 
 
 )";
-  EXPECT_THAT(ParseAndReturnUnverifiedModule(hlo_string).status(),
-              absl_testing::StatusIs(tsl::error::INVALID_ARGUMENT,
-                                     HasSubstr("expects instruction shape")));
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(hlo_string));
+
+  ExpectHasSubstr(module->ToString(HloPrintOptions::ShortParsable()),
+                  "origin={{\"v\"}}");
 }
 
 TEST_F(HloParserTest, EmptyLeafInOriginalValue) {

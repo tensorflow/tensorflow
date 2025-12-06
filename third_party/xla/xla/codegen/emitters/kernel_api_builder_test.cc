@@ -33,8 +33,8 @@ namespace xla::emitters {
 namespace {
 
 TEST(DefaultWorkItemIndexingMap, MultiDimensionTile) {
-  mlir::MLIRContext context;
-  context.loadDialect<mlir::affine::AffineDialect>();
+  mlir::MLIRContext mlir_context;
+  mlir_context.loadDialect<mlir::affine::AffineDialect>();
 
   WorkDimensions work_dimensions{NumWorkClusters{}, NumWorkGroups{2},
                                  NumWorkItems{3}, WorkTileSize{{4, 5, 6}}};
@@ -43,7 +43,7 @@ TEST(DefaultWorkItemIndexingMap, MultiDimensionTile) {
   *shape.mutable_layout() = LayoutUtil::GetDefaultLayoutForShape(shape);
 
   IndexingMap indexing_map =
-      GetDefaultWorkItemIndexingMap(work_dimensions, shape, &context);
+      GetDefaultWorkItemIndexingMap(work_dimensions, shape, &mlir_context);
 
   // The shape is the same as the number of elements work dimensions, so there
   // are no constraints.
@@ -57,18 +57,18 @@ TEST(DefaultWorkItemIndexingMap, MultiDimensionTile) {
 
   mlir::AffineMap affine_map = indexing_map.GetAffineMap();
 
-  mlir::AffineExpr work_item_sym = mlir::getAffineDimExpr(0, &context);
-  mlir::AffineExpr work_group_sym = mlir::getAffineDimExpr(3, &context);
+  mlir::AffineExpr work_item_sym = mlir::getAffineDimExpr(0, &mlir_context);
+  mlir::AffineExpr work_group_sym = mlir::getAffineDimExpr(3, &mlir_context);
 
   EXPECT_EQ(affine_map.getResult(0), 3 * work_group_sym + work_item_sym);
 
-  mlir::AffineExpr tile_sym_x = mlir::getAffineSymbolExpr(0, &context);
+  mlir::AffineExpr tile_sym_x = mlir::getAffineSymbolExpr(0, &mlir_context);
   EXPECT_EQ(affine_map.getResult(1), tile_sym_x);
 
-  mlir::AffineExpr tile_sym_y = mlir::getAffineSymbolExpr(1, &context);
+  mlir::AffineExpr tile_sym_y = mlir::getAffineSymbolExpr(1, &mlir_context);
   EXPECT_EQ(affine_map.getResult(2), tile_sym_y);
 
-  mlir::AffineExpr tile_sym_z = mlir::getAffineSymbolExpr(2, &context);
+  mlir::AffineExpr tile_sym_z = mlir::getAffineSymbolExpr(2, &mlir_context);
   EXPECT_EQ(affine_map.getResult(3), tile_sym_z);
 }
 

@@ -29,8 +29,8 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/python/ifrt/future.h"
 #include "xla/python/ifrt/test_util.h"
+#include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/framework/serving_device_selector.h"
 #include "xla/tsl/framework/test_util/mock_serving_device_selector.h"
 #include "xla/tsl/lib/core/status_test_util.h"
@@ -233,35 +233,12 @@ TEST_F(IfrtServingExecutableTest, SpmdTwoReturns) {
               ElementsAre(TensorEq(expected_out0), TensorEq(expected_out1)));
 }
 
-TEST_F(IfrtServingExecutableTest, SpmdXlaCallModuleInconsistentShardy) {
+TEST_F(IfrtServingExecutableTest, SpmdXlaCallModuleShardy) {
   int64_t program_id = 111111;
   EXPECT_CALL(selector_, ReserveDevice(absl::StrCat(program_id))).Times(0);
   auto executable = helper_->MakeExecutable(
       program_id,
-      GetMlirModulePath(
-          "spmd_executable_xla_call_module_inconsistent_shardy.mlir"));
-
-  auto x = AsTensor<int32_t>({11, 12, 13, 14, 15, 16, 17, 18},
-                             tensorflow::TensorShape({4, 2}));
-  auto y = AsTensor<int32_t>({8, 7, 6, 5, 4, 3, 2, 1},
-                             tensorflow::TensorShape({4, 2}));
-
-  std::vector<tensorflow::Tensor> inputs{x, y};
-  auto result = executable->Execute(absl::MakeSpan(inputs), {});
-
-  EXPECT_THAT(result, absl_testing::StatusIs(
-                          absl::StatusCode::kFailedPrecondition,
-                          ::testing::HasSubstr(
-                              "use_shardy_partitioner is not consistent "
-                              "across XlaCallModuleOps")));
-}
-
-TEST_F(IfrtServingExecutableTest, SpmdXlaCallModuleNoShardy) {
-  int64_t program_id = 111111;
-  EXPECT_CALL(selector_, ReserveDevice(absl::StrCat(program_id))).Times(0);
-  auto executable = helper_->MakeExecutable(
-      program_id,
-      GetMlirModulePath("spmd_executable_xla_call_module_no_shardy.mlir"));
+      GetMlirModulePath("spmd_executable_xla_call_module_shardy.mlir"));
 
   auto x = AsTensor<int32_t>({11, 12, 13, 14, 15, 16, 17, 18},
                              tensorflow::TensorShape({4, 2}));
@@ -322,10 +299,8 @@ TEST_P(VariableInputTest, InterleaveVariable) {
   std::vector<int> loaded_variable_indices;
   for (int i = 0; i < GetParam().in_tensors.size(); i++) {
     if (GetParam().is_variable[i]) {
-      auto input_tensor_promise =
-          xla::ifrt::Future<tensorflow::Tensor>::CreatePromise();
-      auto input_tensor_future =
-          xla::ifrt::Future<tensorflow::Tensor>(input_tensor_promise);
+      auto [input_tensor_promise, input_tensor_future] =
+          tsl::Future<tensorflow::Tensor>::MakePromise();
       IfrtRestoreTensorRegistry::RestoredTensorInfo restore_tensor_info = {
           .dtype_and_shape{.dtype = GetParam().in_tensors[i].dtype(),
                            .shape = GetParam().in_tensors[i].shape()},

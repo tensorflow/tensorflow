@@ -37,7 +37,9 @@ limitations under the License.
 #include "absl/base/attributes.h"
 #include "absl/base/nullability.h"
 #include "absl/base/optimization.h"
+#include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/executable_run_options.h"
@@ -45,33 +47,21 @@ limitations under the License.
 #include "xla/ffi/api/c_api_internal.h"  // IWYU pragma: keep
 #include "xla/ffi/execution_context.h"
 #include "xla/ffi/execution_state.h"
+#include "xla/ffi/type_registry.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/primitive_util.h"
 #include "xla/stream_executor/device_memory.h"
-#include "xla/stream_executor/device_memory_allocator.h"
-#include "xla/stream_executor/scratch_allocator.h"
-#include "xla/stream_executor/stream.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/concurrency/chain.h"
 #include "xla/types.h"  // IWYU pragma: keep
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/logging.h"
 
 namespace xla::ffi {
 
 // Type tags to bind parameters passed via execution context to FFI handler.
-struct Stream {};               // binds `se::Stream*`
-struct DeviceOrdinal {};        // binds `int32_t` with device ordinal
-struct Allocator {};            // binds `se::DeviceMemoryAllocator*`
-struct ScratchAllocator {};     // binds `se::OwningScratchAllocator`
-struct CalledComputation {};    // binds `HloComputation*`
-struct IntraOpThreadPool {};    // binds `const Eigen::ThreadPoolDevice*`
-struct FfiApi {};               // binds `const XLA_FFI_Api*`
-struct FfiExecutionContext {};  // binds `XLA_FFI_ExecutionContext*`
-
-template <typename T>
-struct PlatformStream {};  // binds a platform stream, e.g. `cudaStream_t`
+struct DeviceOrdinal {};      // binds `int32_t` with device ordinal
+struct CalledComputation {};  // binds `HloComputation*`
 
 //===----------------------------------------------------------------------===//
 // Arguments
@@ -247,6 +237,20 @@ struct ArgBinding<AnyBuffer> {
 template <PrimitiveType dtype, size_t rank>
 struct ArgBinding<Buffer<dtype, rank>> {
   using Arg = Buffer<dtype, rank>;
+};
+
+//===----------------------------------------------------------------------===//
+// Results binding
+//===----------------------------------------------------------------------===//
+
+template <>
+struct RetBinding<Result<AnyBuffer>> {
+  using Ret = AnyBuffer;
+};
+
+template <PrimitiveType dtype, size_t rank>
+struct RetBinding<Result<Buffer<dtype, rank>>> {
+  using Ret = Buffer<dtype, rank>;
 };
 
 //===----------------------------------------------------------------------===//
@@ -426,7 +430,7 @@ struct AttrDecoding<absl::string_view> {
   static std::optional<absl::string_view> Decode(XLA_FFI_AttrType type,
                                                  void* attr,
                                                  DiagnosticEngine& diagnostic) {
-    if (XLA_FFI_PREDICT_FALSE(type != XLA_FFI_AttrType_STRING)) {
+    if (ABSL_PREDICT_FALSE(type != XLA_FFI_AttrType_STRING)) {
       return diagnostic.Emit("Wrong attribute type: expected ")
              << XLA_FFI_AttrType_STRING << " but got " << type;
     }
@@ -470,8 +474,8 @@ class Dictionary : public internal::DictionaryBase {
   template <typename T>
   absl::StatusOr<T> get(absl::string_view name) const {
     DiagnosticEngine diagnostic;
-    std::optional<T> value = internal::DictionaryBase::get<T>(name, diagnostic);
-    if (!value.has_value()) {
+    auto value = internal::DictionaryBase::get<T>(name, diagnostic);
+    if (ABSL_PREDICT_FALSE(!value.has_value())) {
       return Internal("%s", diagnostic.Result());
     }
     return *value;
@@ -494,7 +498,7 @@ struct AttrDecoding<Dictionary> {
   using Type = Dictionary;
   static std::optional<Dictionary> Decode(XLA_FFI_AttrType type, void* attr,
                                           DiagnosticEngine& diagnostic) {
-    if (XLA_FFI_PREDICT_FALSE(type != XLA_FFI_AttrType_DICTIONARY)) {
+    if (ABSL_PREDICT_FALSE(type != XLA_FFI_AttrType_DICTIONARY)) {
       return diagnostic.Emit("Wrong attribute type: expected ")
              << XLA_FFI_AttrType_DICTIONARY << " but got " << type;
     }
@@ -503,23 +507,61 @@ struct AttrDecoding<Dictionary> {
 };
 
 //===----------------------------------------------------------------------===//
+// Type-safe wrapper for accessing context.
+//===----------------------------------------------------------------------===//
+
+class Context : public internal::ContextBase {
+ public:
+  using internal::ContextBase::ContextBase;
+
+  template <typename T>
+  absl::StatusOr<typename CtxDecoding<T>::Type> get() const {
+    DiagnosticEngine diagnostic;
+    auto value = internal::ContextBase::get<T>(diagnostic);
+    if (ABSL_PREDICT_FALSE(!value.has_value())) {
+      return Internal("%s", diagnostic.Result());
+    }
+    return *value;
+  }
+};
+
+// Context decoding for catch-all `Context` type.
+template <>
+struct CtxDecoding<Context> {
+  using Type = Context;
+
+  XLA_FFI_ATTRIBUTE_ALWAYS_INLINE
+  static std::optional<Context> Decode(const XLA_FFI_Api* api,
+                                       XLA_FFI_ExecutionContext* ctx,
+                                       DiagnosticEngine&) {
+    return Context(api, ctx);
+  }
+};
+
+//===----------------------------------------------------------------------===//
 // Context decoding
 //===----------------------------------------------------------------------===//
 
-template <>
-struct CtxDecoding<Stream> {
-  using Type = se::Stream*;
+namespace internal {
 
-  static std::optional<Type> Decode(const XLA_FFI_Api* api,
-                                    XLA_FFI_ExecutionContext* ctx,
-                                    DiagnosticEngine& diagnostic) {
-    void* ptr = api->internal_api->XLA_FFI_INTERNAL_Stream_Get(ctx);
-    if (ABSL_PREDICT_FALSE(ptr == nullptr)) {
-      return diagnostic.Emit("Failed to decode stream");
-    }
-    return reinterpret_cast<Type>(ptr);
+// A helper function to decode context value of type `T` using provided
+// `func` and name for error reporting.
+template <typename T, typename F>
+static std::optional<T> DecodeInternalCtx(const XLA_FFI_Api* api,
+                                          XLA_FFI_ExecutionContext* ctx,
+                                          DiagnosticEngine& diagnostic, F func,
+                                          const char* name) {
+  void* result = nullptr;
+  if (XLA_FFI_Error* error = func(ctx, &result); ABSL_PREDICT_FALSE(error)) {
+    diagnostic.Emit("Failed to get ")
+        << name << ": " << internal::GetErrorMessage(api, error);
+    internal::DestroyError(api, error);
+    return std::nullopt;
   }
-};
+  return reinterpret_cast<T>(result);
+}
+
+}  // namespace internal
 
 template <>
 struct CtxDecoding<DeviceOrdinal> {
@@ -533,37 +575,6 @@ struct CtxDecoding<DeviceOrdinal> {
 };
 
 template <>
-struct CtxDecoding<Allocator> {
-  using Type = se::DeviceMemoryAllocator*;
-
-  static std::optional<Type> Decode(const XLA_FFI_Api* api,
-                                    XLA_FFI_ExecutionContext* ctx,
-                                    DiagnosticEngine&) {
-    void* device_allocator =
-        api->internal_api->XLA_FFI_INTERNAL_DeviceMemoryAllocator_Get(ctx);
-    return reinterpret_cast<Type>(device_allocator);
-  }
-};
-
-template <>
-struct CtxDecoding<ScratchAllocator> {
-  using Type = se::OwningScratchAllocator<>;
-
-  static std::optional<Type> Decode(const XLA_FFI_Api* api,
-                                    XLA_FFI_ExecutionContext* ctx,
-                                    DiagnosticEngine&) {
-    int32_t device_ordinal =
-        api->internal_api->XLA_FFI_INTERNAL_DeviceOrdinal_Get(ctx);
-    void* device_allocator =
-        api->internal_api->XLA_FFI_INTERNAL_DeviceMemoryAllocator_Get(ctx);
-
-    return se::OwningScratchAllocator<>(
-        device_ordinal,
-        reinterpret_cast<se::DeviceMemoryAllocator*>(device_allocator));
-  }
-};
-
-template <>
 struct CtxDecoding<CalledComputation> {
   using Type = const HloComputation*;
 
@@ -572,57 +583,6 @@ struct CtxDecoding<CalledComputation> {
                                     DiagnosticEngine&) {
     void* ptr = api->internal_api->XLA_FFI_INTERNAL_CalledComputation_Get(ctx);
     return reinterpret_cast<Type>(ptr);
-  }
-};
-
-template <>
-struct CtxDecoding<IntraOpThreadPool> {
-  using Type = const Eigen::ThreadPoolDevice*;
-
-  static std::optional<Type> Decode(const XLA_FFI_Api* api,
-                                    XLA_FFI_ExecutionContext* ctx,
-                                    DiagnosticEngine&) {
-    void* intra_op_thread_pool =
-        api->internal_api->XLA_FFI_INTERNAL_IntraOpThreadPool_Get(ctx);
-    return reinterpret_cast<Type>(intra_op_thread_pool);
-  }
-};
-
-template <>
-struct CtxDecoding<FfiApi> {
-  using Type = const XLA_FFI_Api*;
-
-  static std::optional<Type> Decode(const XLA_FFI_Api* api,
-                                    XLA_FFI_ExecutionContext* ctx,
-                                    DiagnosticEngine&) {
-    return api;
-  }
-};
-
-template <>
-struct CtxDecoding<FfiExecutionContext> {
-  using Type = XLA_FFI_ExecutionContext*;
-
-  static std::optional<Type> Decode(const XLA_FFI_Api* api,
-                                    XLA_FFI_ExecutionContext* ctx,
-                                    DiagnosticEngine&) {
-    return ctx;
-  }
-};
-
-template <typename T>
-struct CtxDecoding<PlatformStream<T>> {
-  using Type = T;
-  static_assert(std::is_pointer_v<T>, "platform stream type must be a pointer");
-
-  static std::optional<Type> Decode(const XLA_FFI_Api* api,
-                                    XLA_FFI_ExecutionContext* ctx,
-                                    DiagnosticEngine& diagnostic) {
-    if (auto stream = CtxDecoding<Stream>::Decode(api, ctx, diagnostic)) {
-      return reinterpret_cast<Type>(
-          stream.value()->platform_specific_handle().stream);
-    }
-    return std::nullopt;
   }
 };
 
@@ -722,6 +682,10 @@ struct ResultEncoding<stage, absl::Status> {
 template <typename T>
 struct ResultEncoding<ExecutionStage::kInstantiate,
                       absl::StatusOr<std::unique_ptr<T>>> {
+  static XLA_FFI_TypeId state_type_id() {
+    return XLA_FFI_TypeId{TypeRegistry::GetTypeId<T>().value()};
+  }
+
   static XLA_FFI_Error* Encode(const XLA_FFI_Api* api,
                                XLA_FFI_ExecutionContext* ctx,
                                absl::StatusOr<std::unique_ptr<T>> state) {

@@ -220,7 +220,7 @@ void SetIndexDataLayout(mlir::ModuleOp module,
 
 IndexingMap GetDefaultWorkItemIndexingMap(const WorkDimensions& work_dimensions,
                                           const Shape& shape,
-                                          mlir::MLIRContext* ctx) {
+                                          mlir::MLIRContext* mlir_context) {
   std::vector<mlir::AffineExpr> output_dims(shape.dimensions().size());
 
   const NumWorkItems& num_work_items = work_dimensions.num_work_items;
@@ -235,13 +235,13 @@ IndexingMap GetDefaultWorkItemIndexingMap(const WorkDimensions& work_dimensions,
       num_work_items.y * num_work_groups.y,
       num_work_items.z * num_work_groups.z};
 
-  mlir::AffineExpr c0 = mlir::getAffineConstantExpr(0, ctx);
+  mlir::AffineExpr c0 = mlir::getAffineConstantExpr(0, mlir_context);
   uint64_t stride = 1;
   mlir::AffineExpr linear_index = c0;
   // Reverse to get minor to major order.
   for (auto [idx, dim] : llvm::enumerate(llvm::reverse(work_tile_dimensions))) {
     uint64_t symbol_index = work_tile_dimensions.size() - idx;
-    auto tile_coord = mlir::getAffineSymbolExpr(symbol_index, ctx);
+    auto tile_coord = mlir::getAffineSymbolExpr(symbol_index, mlir_context);
     auto tile_component = tile_coord * stride;
 
     linear_index = linear_index + tile_component;
@@ -258,9 +258,10 @@ IndexingMap GetDefaultWorkItemIndexingMap(const WorkDimensions& work_dimensions,
   // loop emitter doesn't support. This is safe, since the latter CHECK fails
   // if its assumptions are not fulfilled.
   for (int i = 0; i < 3; ++i) {
-    auto coord = mlir::getAffineDimExpr(kIndexingMapWorkItemDims[i], ctx) +
-                 mlir::getAffineDimExpr(kIndexingMapWorkGroupDims[i], ctx) *
-                     work_item_array[i];
+    auto coord =
+        mlir::getAffineDimExpr(kIndexingMapWorkItemDims[i], mlir_context) +
+        mlir::getAffineDimExpr(kIndexingMapWorkGroupDims[i], mlir_context) *
+            work_item_array[i];
     auto linear_component = coord * stride;
     linear_index = linear_index + linear_component;
     stride *= total_item_array[i];
@@ -270,7 +271,7 @@ IndexingMap GetDefaultWorkItemIndexingMap(const WorkDimensions& work_dimensions,
   // chunk.
   uint64_t items_per_chunk = stride;
 
-  mlir::AffineExpr chunk_id = mlir::getAffineSymbolExpr(0, ctx);
+  mlir::AffineExpr chunk_id = mlir::getAffineSymbolExpr(0, mlir_context);
   linear_index = chunk_id * items_per_chunk + linear_index;
 
   // See IndexUtil::LinearIndexToMultidimensionalIndex.
@@ -294,10 +295,11 @@ IndexingMap GetDefaultWorkItemIndexingMap(const WorkDimensions& work_dimensions,
 
   size_t range_vars_size = range_vars.size();
 
-  IndexingMap indexing_map(
-      mlir::AffineMap::get(/*dimCount=*/6,
-                           /*symbolCount=*/range_vars_size, output_dims, ctx),
-      std::move(dim_vars), std::move(range_vars), /*rt_vars=*/{});
+  IndexingMap indexing_map(mlir::AffineMap::get(/*dimCount=*/6,
+                                                /*symbolCount=*/range_vars_size,
+                                                output_dims, mlir_context),
+                           std::move(dim_vars), std::move(range_vars),
+                           /*rt_vars=*/{});
   indexing_map.AddConstraint(linear_index, Interval{0, num_elements - 1});
   indexing_map.Simplify();
   indexing_map.RemoveUnusedSymbols();
@@ -363,7 +365,8 @@ absl::StatusOr<CallTargetProvider> EmitPartitionedComputations(
     for (const auto& subgraph : comp.subgraphs()) {
       if (subgraph_to_mlir_fn.contains(&subgraph)) {
         TF_RETURN_IF_ERROR(SubgraphToMlirFunction(
-            comp, subgraph, subgraph_to_mlir_fn[&subgraph], call_targets));
+            comp, subgraph, subgraph_to_mlir_fn[&subgraph], call_targets,
+            computations.mlir_context()));
       }
     }
   }
@@ -375,7 +378,8 @@ absl::StatusOr<CallTargetProvider> EmitPartitionedComputations(
     }
     TF_RETURN_IF_ERROR(SubgraphToMlirFunction(
         computations.FindPartitionedComputation(fused_computation), epilogue,
-        subgraph_to_mlir_fn[&epilogue], call_targets));
+        subgraph_to_mlir_fn[&epilogue], call_targets,
+        computations.mlir_context()));
   }
 
   return call_targets;

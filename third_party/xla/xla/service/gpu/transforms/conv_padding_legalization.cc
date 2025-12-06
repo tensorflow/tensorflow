@@ -35,11 +35,10 @@ limitations under the License.
 #include "xla/service/shape_inference.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/window_util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/status.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -52,7 +51,7 @@ bool IsForwardConvolutionCanonical(const HloInstruction& conv) {
         conv.custom_call_target() == kCudnnConvForwardGraphCallTarget);
   return window_util::HasSymmetricPadding(conv.window()) &&
          !window_util::HasNegativePadding(conv.window()) &&
-         !window_util::HasDilation(conv.window());
+         !window_util::HasBaseDilation(conv.window());
 }
 
 // If the (positive and negative) padding on the input operand of a convolution
@@ -139,8 +138,10 @@ HloInstruction* MaybePaddedAndSlicedInput(
 // operand.
 HloInstruction* MaybePaddedKernel(const Window& conv_window,
                                   const ConvolutionDimensionNumbers& conv_dnums,
-                                  HloInstruction* kernel) {
-  if (!window_util::HasWindowDilation(conv_window)) {
+                                  HloInstruction* kernel,
+                                  bool preserve_window_dilation = false) {
+  if (!window_util::HasWindowDilation(conv_window) ||
+      preserve_window_dilation) {
     return kernel;
   }
 
@@ -172,6 +173,12 @@ bool ConvPaddingLegalization::CanonicalizeForwardConvolution(
     return false;
   }
 
+  bool has_window_dilation = window_util::HasWindowDilation(conv->window());
+  bool preserve_window_dilation =
+      has_window_dilation && window_util::HasSymmetricPadding(conv->window()) &&
+      !window_util::HasNegativePadding(conv->window()) &&
+      !window_util::HasBaseDilation(conv->window());
+
   // Insert slices and/or pads between the convolution and its input and/or
   // kernel operand.
   Window new_conv_window = conv->window();
@@ -180,17 +187,17 @@ bool ConvPaddingLegalization::CanonicalizeForwardConvolution(
       conv->mutable_operand(0));
   HloInstruction* new_kernel =
       MaybePaddedKernel(new_conv_window, conv->convolution_dimension_numbers(),
-                        conv->mutable_operand(1));
+                        conv->mutable_operand(1), preserve_window_dilation);
 
-  // Remove the window dilation from convolution's window field. These paddings
-  // are made explicit with the pads inserted by MaybePaddedKernel().
   for (size_t i = 0; i < new_conv_window.dimensions_size(); ++i) {
     WindowDimension* dim = new_conv_window.mutable_dimensions(i);
 
     // The size of the kernel may have changed so update the Window to match.
     dim->set_size(new_kernel->shape().dimensions(
         conv->convolution_dimension_numbers().kernel_spatial_dimensions(i)));
-    dim->set_window_dilation(1);
+    if (!preserve_window_dilation) {
+      dim->set_window_dilation(1);
+    }
   }
 
   // The conv CustomCall returns a tuple (conv_result, scratch_buffer).  Extract
@@ -205,7 +212,7 @@ bool ConvPaddingLegalization::CanonicalizeForwardConvolution(
   new_conv->set_window(new_conv_window);
   VLOG(1) << "Replacing:\n  " << conv->ToString() << "\nwith:\n  "
           << new_conv->ToString();
-  TF_CHECK_OK(conv->parent()->ReplaceInstruction(conv, new_conv));
+  CHECK_OK(conv->parent()->ReplaceInstruction(conv, new_conv));
   return true;
 }
 
@@ -287,8 +294,7 @@ bool ConvPaddingLegalization::CanonicalizeBackwardFilterConvolution(
   VLOG(1) << "Replacing:\n  " << backward_conv->ToString() << "\nwith:\n  "
           << new_backward_conv->ToString();
 
-  TF_CHECK_OK(
-      computation->ReplaceInstruction(backward_conv, new_backward_conv));
+  CHECK_OK(computation->ReplaceInstruction(backward_conv, new_backward_conv));
   return true;
 }
 
@@ -414,7 +420,7 @@ bool ConvPaddingLegalization::CanonicalizeBackwardInputConvolution(
   VLOG(1) << "Replacing:\n  " << backward_conv->ToString() << "\nwith:\n  "
           << new_tuple->ToString();
 
-  TF_CHECK_OK(computation->ReplaceInstruction(backward_conv, new_tuple));
+  CHECK_OK(computation->ReplaceInstruction(backward_conv, new_tuple));
   return true;
 }
 
@@ -445,7 +451,7 @@ absl::StatusOr<bool> ConvPaddingLegalization::RunOnComputation(
   return changed;
 }
 
-absl::StatusOr<bool> ConvPaddingLegalization::Run(
+absl::StatusOr<bool> ConvPaddingLegalization::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;

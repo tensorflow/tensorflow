@@ -41,7 +41,7 @@ module @composite {
   //CHECK: }
   //CHECK: ENTRY %main.{{[0-9]+}} () -> () {
   //CHECK:   %[[CONSTANT:constant.[0-9]+]] = f32[] constant(42)
-  //CHECK:   %call.5 = () call(%[[CONSTANT]]), to_apply=%[[RETURN]], is_composite=true, frontend_attributes={composite.attributes={n = 1 : i32, tensor = dense<1> : tensor<i32>},composite.name="foo.bar",composite.version="1"}
+  //CHECK:   %call.{{[0-9]+}} = () call(%[[CONSTANT]]), to_apply=%[[RETURN]], is_composite=true, frontend_attributes={composite.attributes={n = 1 : i32, tensor = dense<1> : tensor<i32>},composite.name="foo.bar",composite.version="1"}
   //CHECK:   ROOT %tuple.{{[0-9]+}} = () tuple()
   //CHECK: }
   func.func @main() -> () {

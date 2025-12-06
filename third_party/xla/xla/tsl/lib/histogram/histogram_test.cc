@@ -36,7 +36,7 @@ static void Validate(const Histogram& h) {
   h.EncodeToProto(&proto_no_zeroes, false);
   Histogram h3;
   EXPECT_TRUE(h3.DecodeFromProto(proto_no_zeroes));
-  string s3 = h3.ToString();
+  std::string s3 = h3.ToString();
   LOG(ERROR) << s3;
 
   EXPECT_EQ(h3.ToString(), h.ToString());

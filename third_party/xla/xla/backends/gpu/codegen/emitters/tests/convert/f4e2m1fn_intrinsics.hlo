@@ -1,0 +1,11 @@
+// RUN: fusion_to_mlir %s | emitters_opt -xla-gpu-convert-float-nvidia='compute_capability_major=10 compute_capability_minor=0 ptx_version_major=8 ptx_version_minor=6' | FileCheck %s
+// RUN: gpu_test_correctness %s
+
+f {
+  a = f32[15,20] parameter(0)
+  b = f4e2m1fn[15,20] convert(a)
+  c = f32[15,20] convert(b)
+}
+
+// CHECK: llvm.nvvm.ff.to.e2m1x2.rn
+// CHECK: llvm.nvvm.e2m1x2.to.f16x2.rn

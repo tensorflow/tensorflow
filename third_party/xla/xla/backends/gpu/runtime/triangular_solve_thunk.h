@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
+#include "xla/runtime/buffer_use.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/device_memory.h"
@@ -52,6 +53,15 @@ class TriangularSolveThunk : public Thunk {
   TriangularSolveThunk& operator=(const TriangularSolveThunk&) = delete;
 
   absl::Status ExecuteOnStream(const ExecuteParams& params) override;
+
+  BufferUses buffer_uses() const override {
+    return {
+        BufferUse::Read(a_buffer_),
+        BufferUse::Write(b_buffer_),
+        BufferUse(temp_buffer_, BufferUse::MemoryAccess::kWrite,
+                  BufferUse::ContentValidity::kUndefined),
+    };
+  };
 
   static absl::StatusOr<std::unique_ptr<TriangularSolveThunk>> FromProto(
       ThunkInfo thunk_info, const TriangularSolveThunkProto& proto,

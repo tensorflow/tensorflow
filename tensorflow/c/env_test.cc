@@ -35,14 +35,12 @@ TEST(TestEnv, TestDirHandling) {
 
     TF_Status* s = TF_NewStatus();
 
-    ::tensorflow::string dirpath =
-        ::tensorflow::io::JoinPath(tempdir, "somedir");
+    std::string dirpath = ::tensorflow::io::JoinPath(tempdir, "somedir");
     TF_CreateDir(dirpath.c_str(), s);
     ASSERT_TF_OK(s) << "TF_CreateDir failed for " << dirpath << ": "
                     << TF_Message(s);
 
-    ::tensorflow::string filepath =
-        ::tensorflow::io::JoinPath(dirpath, "somefile.txt");
+    std::string filepath = ::tensorflow::io::JoinPath(dirpath, "somefile.txt");
     TF_WritableFileHandle* handle;
     TF_NewWritableFile(filepath.c_str(), &handle, s);
     ASSERT_TF_OK(s) << "NewWritableFile failed for " << filepath << ": "
@@ -61,7 +59,7 @@ TEST(TestEnv, TestDirHandling) {
     ASSERT_TF_OK(s) << "TF_GetChildren failed for " << dirpath;
     const char* childpath;
     ASSERT_TRUE(TF_StringStreamNext(children, &childpath));
-    ASSERT_EQ(::tensorflow::string(childpath), "somefile.txt");
+    ASSERT_EQ(std::string(childpath), "somefile.txt");
     // There should only be one file in this directory.
     ASSERT_FALSE(TF_StringStreamNext(children, &childpath));
     ASSERT_EQ(childpath, nullptr);

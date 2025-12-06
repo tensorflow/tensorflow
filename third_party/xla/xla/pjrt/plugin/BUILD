@@ -98,8 +98,8 @@ xla_cc_test(
     deps = [
         ":dynamic_registration",
         ":dynamic_registration_test_helper",
-        "//xla/pjrt:pjrt_c_api_client",
         "//xla/pjrt:pjrt_client",
+        "//xla/pjrt/c_api_client:pjrt_c_api_client",
         "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/platform:test",
         "@com_google_absl//absl/log",

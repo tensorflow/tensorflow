@@ -460,11 +460,14 @@ absl::StatusOr<TmaMetadata> TmaMetadata::FromProto(
   return metadata;
 }
 
+// TODO(b/463912789): Re-enable TMA for Blackwell once the bug is fixed.
 bool IsTmaAvailableForDevice(
     const stream_executor::DeviceDescription& device_info) {
-  bool is_cuda = std::holds_alternative<stream_executor::CudaComputeCapability>(
-      device_info.gpu_compute_capability());
-  return is_cuda && device_info.cuda_compute_capability().IsAtLeastHopper();
+  if (auto* cuda_cc =
+          device_info.gpu_compute_capability().cuda_compute_capability()) {
+    return cuda_cc->IsAtLeastHopper();
+  }
+  return false;
 }
 
 // Limitations of TMA:

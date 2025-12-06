@@ -65,7 +65,7 @@ static const std::vector<TritonGemmConfig>* const kHopperAmpereConfigs =
          Config(128, 16, 32, 8, 4, 2),   Config(128, 16, 64, 16, 3, 2),
          Config(128, 16, 64, 16, 1, 4),  Config(128, 32, 32, 8, 4, 2),
          Config(128, 128, 32, 8, 4, 8),  Config(128, 256, 32, 1, 4, 8),
-         Config(128, 256, 64, 1, 4, 8)});
+         Config(128, 256, 64, 1, 4, 8),  Config(64, 8, 128, 2, 3, 4, 1)});
 
 static const std::vector<TritonGemmConfig>* const kDefaultCudaConfigs =
     new std::vector<TritonGemmConfig>(

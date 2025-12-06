@@ -17,37 +17,28 @@ limitations under the License.
 #define XLA_SERVICE_SPMD_SPMD_PARTITIONER_UTIL_H_
 
 #include <algorithm>
-#include <cstddef>
 #include <cstdint>
 #include <initializer_list>
 #include <limits>
 #include <memory>
 #include <optional>
 #include <string>
-#include <tuple>
 #include <type_traits>
 #include <utility>
 #include <vector>
 
-#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
-#include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
-#include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/str_replace.h"
 #include "absl/types/span.h"
-#include "absl/utility/utility.h"
-#include "xla/hlo/ir/collective_device_list.h"
-#include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_sharding.h"
+#include "xla/hlo/ir/replica_group.h"
 #include "xla/hlo/transforms/simplifiers/hlo_dce.h"
-#include "xla/hlo/utils/hlo_query.h"
 #include "xla/hlo/utils/hlo_sharding_util.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
@@ -55,7 +46,6 @@ limitations under the License.
 #include "xla/service/spmd/spmd_partitioner.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
@@ -620,7 +610,7 @@ std::vector<std::vector<int64_t>> GetPartitionGroupsAcrossTargetDims(
 // format from sharding.
 std::optional<IotaReplicaGroupList> GetIotaPartitionGroupsAcrossTargetDims(
     const HloSharding& sharding, std::vector<int64_t> target_dims,
-    std::vector<int64_t> group_sizes, int64_t num_partitions);
+    std::vector<int64_t> group_sizes);
 
 // Generates partition groups (groups of devices that will communicate via a
 // collective) in iota format from sharding and provided replication_dims.
@@ -634,14 +624,31 @@ std::optional<IotaReplicaGroupList> GetIotaPartitionGroupsAcrossTargetDims(
 // The generated device list can cover all partitions if the provided
 // sharding covers all partitions.
 std::optional<IotaReplicaGroupList> GetIotaPartitionGroupsForReplication(
-    const HloSharding& sharding, absl::Span<const int64_t> replication_dims,
-    int64_t num_partitions);
+    const HloSharding& sharding, absl::Span<const int64_t> replication_dims);
+
+// Generates mesh-based (V3) partition groups across the provided target dims
+// with the provided group sizes. The group sizes must divide their
+// corresponding target dims. Assuming that the hlo sharding has mesh axis
+// sizes [d1,d2,...dn], the target dims are [a,b,...d] and the group sizes are
+// [ga,gb,...gd] then ga must divide da, gb must divide db, etc. This is
+// equivalent to replicating across the list of sub-axes
+// [a:(da/ga)ga, b:(db/gb)gb, ... d:(dn/gd)gd].
+std::optional<MeshAxesReplicaGroupList>
+GetMeshAxesPartitionGroupsAcrossTargetDims(const HloSharding& sharding,
+                                           std::vector<int64_t> target_dims,
+                                           std::vector<int64_t> group_sizes);
+
+// Generates mesh-based (V3) partition groups for replication across the axes
+// corresponding to the provided replication dims.
+std::optional<MeshAxesReplicaGroupList>
+GetMeshAxesPartitionGroupsForReplication(
+    const HloSharding& sharding, absl::Span<const int64_t> replication_dims);
 
 // Expands partition group list across all replicas. Expects that provided
 // partition_group_list utilizes all the partitions.
 CollectiveDeviceList ExpandPartitionGroupListAcrossReplicas(
-    IotaReplicaGroupList partition_group_list, int num_replicas,
-    int num_partitions);
+    IotaReplicaGroupList partition_group_list, int64_t num_replicas,
+    int64_t num_partitions);
 
 namespace detail {
 
@@ -822,9 +829,6 @@ template <typename Arg, IsHloModulePointer<Arg> = 0>
 std::decay_t<Arg> FakeHloModule(Arg&& module, HloModule* fake_module) {
   return fake_module;
 }
-template <class T>
-using decay_rvalue_reference_t =
-    std::conditional_t<std::is_rvalue_reference<T>::value, std::decay_t<T>, T>;
 
 // Modifies SpmdPartitioningVisitor* type objects.
 template <typename Arg, IsSpmdPartitioningVisitorPointer<Arg> = 0>

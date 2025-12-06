@@ -218,6 +218,70 @@ def MHLO_AbsOp: MHLO_UnaryElementwiseOp<"abs",
   let hasFolder = 1;
 }
 
+def MHLO_AcosOp : MHLO_UnaryElementwiseOp<"acos",
+    [HLO_CompatibleOperandsAndResultType], HLO_AnyFpOrComplexTensor> {
+  let summary = "Acos operation";
+
+  let description = [{
+     Performs element-wise acos operation on `operand` tensor and produces a
+    `result` tensor.
+
+    Example:
+    ```mlir
+    %result = mhlo.acos %operand : tensor<2x2xf32>
+    ```
+  }];
+  let hasFolder = 1;
+}
+
+def MHLO_AcoshOp : MHLO_UnaryElementwiseOp<"acosh",
+    [HLO_CompatibleOperandsAndResultType], HLO_AnyFpOrComplexTensor> {
+  let summary = "Acosh operation";
+
+  let description = [{
+     Performs element-wise acosh operation on `operand` tensor and produces a
+    `result` tensor.
+
+    Example:
+    ```mlir
+    %result = mhlo.acosh %operand : tensor<2x2xf32>
+    ```
+  }];
+  let hasFolder = 1;
+}
+
+def MHLO_AsinOp : MHLO_UnaryElementwiseOp<"asin",
+    [HLO_CompatibleOperandsAndResultType], HLO_AnyFpOrComplexTensor> {
+  let summary = "Asin operation";
+
+  let description = [{
+     Performs element-wise asin operation on `operand` tensor and produces a
+    `result` tensor.
+
+    Example:
+    ```mlir
+    %result = mhlo.asin %operand : tensor<2x2xf32>
+    ```
+  }];
+  let hasFolder = 1;
+}
+
+def MHLO_AsinhOp : MHLO_UnaryElementwiseOp<"asinh",
+    [HLO_CompatibleOperandsAndResultType], HLO_AnyFpOrComplexTensor> {
+  let summary = "Asinh operation";
+
+  let description = [{
+     Performs element-wise asinh operation on `operand` tensor and produces a
+    `result` tensor.
+
+    Example:
+    ```mlir
+    %result = mhlo.asinh %operand : tensor<2x2xf32>
+    ```
+  }];
+  let hasFolder = 1;
+}
+
 def MHLO_CbrtOp: MHLO_UnaryElementwiseOp<"cbrt",
     [Pure, HLO_CompatibleOperandsAndResultType], MHLO_FpComplexOrQuantizedIntTensor> {
   let summary = "Cbrt operation";
@@ -320,15 +384,28 @@ def MHLO_CosineOp: MHLO_UnaryElementwiseOp<"cosine",
   let hasCustomHLOConverter = 1;
 }
 
+def MHLO_CoshOp : MHLO_UnaryElementwiseOp<"cosh",
+    [HLO_CompatibleOperandsAndResultType], HLO_AnyFpOrComplexTensor> {
+  let summary = "Cosh operation";
+
+  let description = [{
+     Performs element-wise cosh operation on `operand` tensor and produces a
+    `result` tensor.
+
+    Example:
+    ```mlir
+    %result = mhlo.cosh %operand : tensor<2x2xf32>
+    ```
+  }];
+  let hasFolder = 1;
+}
+
 def MHLO_ErfOp: MHLO_UnaryElementwiseOp<"erf",
     [Pure, HLO_CompatibleOperandsAndResultType], MHLO_FpTensor> {
   let summary = "Erf operation";
   let description = [{
     Performs element-wise erf operation on `operand` tensor and produces a
     `result` tensor.
-
-    See:
-    https://github.com/openxla/stablehlo/blob/main/docs/spec.md#erf
 
     Example:
     ```mlir
@@ -680,6 +757,22 @@ def MHLO_SineOp: MHLO_UnaryElementwiseOp<"sine",
   let hasCustomHLOConverter = 1;
 }
 
+def MHLO_SinhOp : MHLO_UnaryElementwiseOp<"sinh",
+    [HLO_CompatibleOperandsAndResultType], HLO_AnyFpOrComplexTensor> {
+  let summary = "Sinh operation";
+
+  let description = [{
+     Performs element-wise sinh operation on `operand` tensor and produces a
+    `result` tensor.
+
+    Example:
+    ```mlir
+    %result = mhlo.sinh %operand : tensor<2x2xf32>
+    ```
+  }];
+  let hasFolder = 1;
+}
+
 def MHLO_TanOp: MHLO_UnaryElementwiseOp<"tan",
     [Pure, HLO_CompatibleOperandsAndResultType], MHLO_FpOrComplexTensor> {
   let summary = "Tan operation";
@@ -818,6 +911,23 @@ def MHLO_Atan2Op : MHLO_BinaryElementwiseOp<"atan2",
     ```
   }];
 }
+
+def MHLO_AtanhOp : MHLO_UnaryElementwiseOp<"atanh",
+    [HLO_CompatibleOperandsAndResultType], HLO_AnyFpOrComplexTensor> {
+  let summary = "Atanh operation";
+
+  let description = [{
+     Performs element-wise atanh operation on `operand` tensor and produces a
+    `result` tensor.
+
+    Example:
+    ```mlir
+    %result = mhlo.atanh %operand : tensor<2x2xf32>
+    ```
+  }];
+  let hasFolder = 1;
+}
+
 
 def MHLO_ComplexOp: MHLO_BinaryElementwiseOp<"complex", [Pure,
     SameOperandsElementType, SameOperandsAndResultShape,
@@ -1339,7 +1449,7 @@ def MHLO_AsyncStartOp : MHLO_Op<"async_start", []> {
   }];
 
   let arguments = (ins
-    Variadic<MHLO_TensorOrTokenOrTuple>:$inputs,
+    Variadic<MHLO_TensorOrAnyTokenOrTuple>:$inputs,
     FlatSymbolRefAttr:$called_computation,
     StrAttr:$execution_thread
   );
@@ -1383,7 +1493,7 @@ def MHLO_AsyncDoneOp : MHLO_Op<"async_done", [DeclareOpInterfaceMethods<InferTyp
 
   let arguments = (ins MHLO_AsyncBundle:$bundle);
 
-  let results = (outs Variadic<MHLO_TensorOrTokenOrTuple>);
+  let results = (outs Variadic<MHLO_TensorOrAnyTokenOrTuple>);
   let hasVerifier = 1;
   let hasCustomHLOConverter = 1;
 }
@@ -1494,11 +1604,11 @@ def MHLO_WhileOp: MHLO_Op<"while", [
     }) : (tensor<i32>, tensor<i32>) -> (tensor<i32>, tensor<i32>)
     ```
   }];
-  let arguments = (ins Variadic<MHLO_TensorOrToken>:$operand);
+  let arguments = (ins Variadic<MHLO_TensorOrTokenOrBuffer>:$operand);
 
   let regions = (region SizedRegion<1>:$cond, SizedRegion<1>:$body);
 
-  let results = (outs Variadic<MHLO_TensorOrToken>);
+  let results = (outs Variadic<MHLO_TensorOrTokenOrBuffer>);
 
   let extraClassDeclaration = [{
     // Method of OpAsmOpInterface used during custom printing to name the block
@@ -1800,7 +1910,7 @@ def MHLO_GetTupleElementOp: MHLO_Op<"get_tuple_element", [Pure,
     ConfinedAttr<I32Attr, [IntNonNegative]>:$index
   );
 
-  let results = (outs MHLO_TensorOrTokenOrTuple);
+  let results = (outs MHLO_TensorOrTokenOrTupleOrBuffer);
 
   let hasFolder = 1;
 
@@ -1823,7 +1933,7 @@ def MHLO_TupleOp : MHLO_Op<"tuple", [Pure,
     %result = mhlo.tuple %val0, %val1 : tuple<tensor<2xf32>, tuple<tensor<i32>>>
     ```
    }];
-  let arguments = (ins Variadic<MHLO_TensorOrTokenOrTuple>:$val);
+  let arguments = (ins Variadic<MHLO_TensorOrTokenOrTupleOrBuffer>:$val);
   let results = (outs MHLO_Tuple:$result);
 
   let hasCanonicalizer = 1;
@@ -3467,7 +3577,7 @@ def MHLO_ReturnOp : MHLO_Op<"return", [Pure, Terminator]> {
   }];
 
   let arguments = (ins
-    Variadic<MHLO_TensorOrTokenOrTuple >:$results
+    Variadic<MHLO_TensorOrTokenOrTupleOrBuffer >:$results
   );
 
   // Disable conversion operator for return op as the op is not an actual XLA

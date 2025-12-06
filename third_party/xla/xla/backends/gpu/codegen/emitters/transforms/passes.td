@@ -43,6 +43,16 @@ def ConvertFloatNvidiaPass : Pass<"xla-gpu-convert-float-nvidia", "mlir::ModuleO
     "mlir::LLVM::LLVMDialect",
     "mlir::arith::ArithDialect",
   ];
+  let options = [
+    Option<"compute_capability_major_", "compute_capability_major", "int", /*default=*/"0",
+           "CUDA compute capability major version.">,
+    Option<"compute_capability_minor_", "compute_capability_minor", "int", /*default=*/"0",
+           "CUDA compute capability minor version.">,
+    Option<"ptx_version_major_", "ptx_version_major", "int", /*default=*/"0",
+           "PTX version major.">,
+    Option<"ptx_version_minor_", "ptx_version_minor", "int", /*default=*/"0",
+           "PTX version minor.">
+  ];
   let constructor = "CreateConvertFloatNvidiaPass()";
 }
 

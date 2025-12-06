@@ -61,7 +61,7 @@ struct EdgeSpec : public std::pair<string, string> {
   // Inherit the set of constructors
   using Base::pair;
 
-  string ToString() const { return strings::StrCat(first, "->", second); }
+  string ToString() const { return absl::StrCat(first, "->", second); }
 };
 
 class CApiFunctionTest : public ::testing::Test {
@@ -312,9 +312,9 @@ class CApiFunctionTest : public ::testing::Test {
       for (int i = 0; i < node_def.input_size(); ++i) {
         const string& in = node_def.input(i);
         const auto& v =
-            a_edges.insert({in, strings::StrCat(node_def.name(), ":", i)});
+            a_edges.insert({in, absl::StrCat(node_def.name(), ":", i)});
         ASSERT_TRUE(v.second) << "Duplicate edge " << in << " -> "
-                              << strings::StrCat(node_def.name(), ":", i)
+                              << absl::StrCat(node_def.name(), ":", i)
                               << ". fdef: " << fdef.DebugString();
       }
     }
@@ -1171,7 +1171,7 @@ TEST_F(CApiFunctionTest, InvalidOutputTensor_BadNodePtr) {
   EXPECT_EQ(TF_INVALID_ARGUMENT, TF_GetCode(s_));
   EXPECT_EQ(string("Node is null\n\tEncountered while processing output 0 "
                    "from function 'MyFunc'"),
-            string(TF_Message(s_)));
+            std::string(TF_Message(s_)));
 }
 
 TEST_F(CApiFunctionTest, NodeMissingInput) {

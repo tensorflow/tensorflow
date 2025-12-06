@@ -22,10 +22,10 @@ limitations under the License.
 #include "xla/runtime/buffer_use.h"
 #include "xla/runtime/resource_use.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/test.h"
 
 namespace xla::cpu {
 namespace {
@@ -33,10 +33,11 @@ namespace {
 TEST(OutfeedThunkTest, BufferAndResourceUses) {
   BufferAllocation alloc(0, 1024, 0);
   BufferAllocation::Slice outfeed_slice(&alloc, 10, 40);
+  Shape outfeed_shape = ShapeUtil::MakeShape(F32, {10});
 
   OutfeedThunk::OutfeedBuffer outfeed_buffer = {
       outfeed_slice,
-      ShapeUtil::MakeShape(F32, {10}),
+      outfeed_shape,
   };
 
   auto consume_token = Resource::Create(Resource::kToken);
@@ -47,7 +48,8 @@ TEST(OutfeedThunkTest, BufferAndResourceUses) {
                                                {consume_token, produce_token}));
 
   EXPECT_EQ(thunk->buffer_uses().size(), 1);
-  EXPECT_EQ(thunk->buffer_uses()[0], BufferUse::Read(outfeed_slice));
+  EXPECT_EQ(thunk->buffer_uses()[0],
+            BufferUse::Read(outfeed_slice, outfeed_shape));
 
   EXPECT_EQ(thunk->resource_uses().size(), 2);
   EXPECT_EQ(thunk->resource_uses()[0], ResourceUse::Read(consume_token));

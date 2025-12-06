@@ -80,6 +80,13 @@ bool hasKey(mlir::DictionaryAttr dictAttr, mlir::StringRef key);
 
 void loadAllRequiredDialects(mlir::MLIRContext* context);
 
+// Adjusts the input sharding based on allowSpmdShardingPropagationToParameters
+// flag.
+void adjustInputSharding(
+    mlir::func::FuncOp func, int idx, mlir::sdy::TensorShardingAttr sharding,
+    int64_t rank,
+    absl::Span<const bool> allowSpmdShardingPropagationToParameters);
+
 // Adjusts the output sharding based on allowSpmdShardingPropagationToOutput
 // flag.
 void adjustOutputSharding(
@@ -140,9 +147,10 @@ std::string duplicateShardingsAtIndices(
     const llvm::BitVector& indicesToDuplicate);
 
 // Return all axes or sub-axes in the `mesh`, such that sub-axes are derived
-// from `shardingOrAxisList` and sorted by their order in the mesh. For example,
-// given mesh <"x"=2, "y"=16, "z"=4> and axis refs [{"x"}, {"y":2(2)}], we
-// would return ["x", "y":1(2), "y":2(2), "y":4(4), "z"].
+// from `shardingOrAxisList` (including unreduced axes but not replicated)
+// and sorted by their order in the mesh. For example, given mesh <"x"=2,
+// "y"=16, "z"=4> and axis refs [{"x"}, {"y":2(2)}], we would return ["x",
+// "y":1(2), "y":2(2), "y":4(4), "z"].
 mlir::SmallVector<mlir::sdy::AxisRefAttr> getOrderedAxisRefs(
     mlir::Attribute shardingOrAxisList, mlir::sdy::MeshAttr mesh);
 
@@ -157,6 +165,12 @@ bool hasGspmdAttrsOrOps(mlir::ModuleOp module);
 // - `empty_mesh`
 // TODO(b/420837831): delete this once we don't fall back to GSPMD.
 bool hasShardyMesh(mlir::ModuleOp module);
+
+// Returns the func result shardings of `funcOp`, with fully-replicated
+// shardings for empty shardings on `funcOp`, by using the ranks from `callOp`.
+mlir::sdy::TensorShardingPerValueAttr getFuncResultShardings(
+    mlir::func::CallOp callOp, mlir::func::FuncOp funcOp,
+    const mlir::SymbolTable& symbolTable);
 
 }  // namespace sdy
 }  // namespace xla

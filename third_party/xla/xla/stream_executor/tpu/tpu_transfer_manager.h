@@ -27,7 +27,7 @@ limitations under the License.
 #include "xla/service/shaped_buffer.h"
 #include "xla/service/transfer_manager.h"
 #include "xla/shape.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
@@ -86,13 +86,13 @@ class TpuTransferManager : public xla::TpuTransferManagerInterface {
 
   bool CanBufferBeAccessedNow(
       se::StreamExecutor* executor,
-      const se::DeviceMemoryBase& device_buffer) const override;
+      const se::DeviceAddressBase& device_buffer) const override;
 
   absl::Status WriteSingleTupleIndexTable(
       stream_executor::Stream* stream,
-      absl::Span<const stream_executor::DeviceMemoryBase> elements,
+      absl::Span<const stream_executor::DeviceAddressBase> elements,
       const xla::Shape& shape,
-      stream_executor::DeviceMemoryBase* region) override;
+      stream_executor::DeviceAddressBase* region) override;
 
   absl::Status LinearizeToBuffers(
       const xla::LiteralSlice& literal, const xla::Shape& device_shape,

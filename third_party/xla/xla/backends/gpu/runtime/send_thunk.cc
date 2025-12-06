@@ -25,21 +25,23 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
+#include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/backends/gpu/runtime/p2p_thunk_common.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/core/collectives/communicator.h"
 #include "xla/core/collectives/rank_id.h"
+#include "xla/hlo/ir/collective_op_group_mode.h"
 #include "xla/hlo/ir/hlo_instructions.h"
-#include "xla/service/collective_ops_utils.h"
+#include "xla/runtime/device_id.h"
 #include "xla/service/computation_placer.h"
-#include "xla/service/global_device_id.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/stream.h"
-#include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace gpu {
@@ -68,8 +70,9 @@ absl::Status SendThunk::Initialize(const InitializeParams& params) {
 }
 
 absl::StatusOr<bool> SendThunk::RunCollective(const ExecuteParams& params,
+                                              const GpuCliqueKey&,
                                               se::Stream& stream,
-                                              CommunicatorHandle comm_handle) {
+                                              Communicator& comm) {
   TF_ASSIGN_OR_RETURN(
       std::vector<DeviceBufferPair> device_buffers,
       ConvertToDeviceBuffers(params, {buffer_},
@@ -82,7 +85,8 @@ absl::StatusOr<bool> SendThunk::RunCollective(const ExecuteParams& params,
                       params.collective_params->device_assn->LogicalIdForDevice(
                           global_device_id));
   const int64_t current_id =
-      config_.config.group_mode == CollectiveOpGroupMode::kCrossReplica
+      config_.config.group_mode ==
+              CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_CROSS_REPLICA
           ? current_logical_id.replica_id
           : current_logical_id.computation_id;
   std::string device_string = GetDeviceString(*params.collective_params);
@@ -94,19 +98,17 @@ absl::StatusOr<bool> SendThunk::RunCollective(const ExecuteParams& params,
   // Determine the target IDs for this instance. The target ID is the ID
   // to which this instance will copy its data.
   int device_ordinal = stream.parent()->device_ordinal();
-  VLOG(3) << "Performing Send from device ordinal: " << device_ordinal
+  VLOG(3) << "[" << device_ordinal << "] Performing Send "
           << ", current_id: " << current_id << ", group mode: "
           << CollectiveOpGroupModeToString(config_.config.group_mode) << " ("
           << hlo_name_ << ")";
 
-  TF_RETURN_IF_ERROR(
-      MaybeRegisterBuffers(stream.parent(), {buffer}, comm_handle.comm));
-
   const std::optional<int64_t> target_id = source_target.target;
   se::DeviceMemoryBase src_addr = buffer.source_buffer;
 
-  VLOG(3) << absl::StreamFormat("%s : id = %d, target_id = %d", device_string,
-                                current_id, target_id.value_or(-1));
+  VLOG(3) << absl::StreamFormat("[%d] %s : id = %d, target_id = %d",
+                                device_ordinal, device_string, current_id,
+                                target_id.value_or(-1));
 
   // Send source buffer to target peer if needed.
   if (target_id) {
@@ -126,21 +128,20 @@ absl::StatusOr<bool> SendThunk::RunCollective(const ExecuteParams& params,
       if (*counter < it->second.first || *counter > it->second.second) {
         should_run = false;
       }
-      VLOG(3) << "RunCollective counter " << *counter << " " << should_run;
+      VLOG(3) << "[" << device_ordinal << "] RunCollective counter " << *counter
+              << " " << should_run;
       ++(*counter);
     }
 
     if (should_run) {
-      auto event = comm_handle.comm->Send(
-          src_addr, buffer.element_type, buffer.element_count,
-          RankId(*target_id), GpuCollectives::On(stream));
-
-      tsl::BlockUntilReady(event);
-      if (event.IsError()) {
-        return event.GetError();
-      }
+      TF_RETURN_IF_ERROR(
+          MaybeRegisterBuffers(stream.parent(), {buffer}, &comm));
+      auto future =
+          comm.Send(src_addr, buffer.element_type, buffer.element_count,
+                    RankId(*target_id), GpuCollectives::On(stream));
+      TF_RETURN_IF_ERROR(future.Await());
     } else {
-      VLOG(3) << "Skipping Send";
+      VLOG(3) << "[" << device_ordinal << "] Skipping Send";
     }
   }
 

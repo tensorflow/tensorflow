@@ -96,6 +96,7 @@ cc_library(
     deps = [
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/common_runtime:core_cpu_headers_lib",
+        "@com_google_absl//absl/status",
         "@local_xla//third_party/python_runtime:headers",
         "@pybind11",
     ],
@@ -112,6 +113,7 @@ cc_library(
     deps = [
         ":pybind11_status_headers",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/status",
     ],
 )
 

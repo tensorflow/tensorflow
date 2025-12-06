@@ -15,9 +15,11 @@ limitations under the License.
 
 #include "xla/pjrt/cpu/raw_buffer.h"
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <utility>
@@ -33,7 +35,8 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
-#include "xla/cpu_function_runtime.h"
+#include "xla/backends/cpu/alignment.h"
+#include "xla/future.h"
 #include "xla/layout.h"
 #include "xla/layout_util.h"
 #include "xla/literal.h"
@@ -43,7 +46,6 @@ limitations under the License.
 #include "xla/pjrt/cpu/tracked_cpu_device_buffer.h"
 #include "xla/pjrt/device_event.h"
 #include "xla/pjrt/pjrt_client.h"
-#include "xla/pjrt/pjrt_future.h"
 #include "xla/pjrt/raw_buffer.h"
 #include "xla/pjrt/transpose.h"
 #include "xla/pjrt/utils.h"
@@ -54,6 +56,7 @@ limitations under the License.
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/threadpool.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/casts.h"
@@ -75,9 +78,9 @@ void CpuTrackedDeviceEventPromise::SetReady() {
   av_->ForwardTo(tsl::MakeAvailableAsyncValueRef<CpuEvent>());
 }
 
-PjRtFuture<> CpuTrackedDeviceEvent::GetReadyFuture() {
-  PjRtFuture<>::Promise promise = PjRtFuture<>::CreatePromise();
-  event_.AndThen([promise, event = event_]() mutable {
+Future<> CpuTrackedDeviceEvent::GetReadyFuture() {
+  auto [promise, future] = Future<>::MakePromise();
+  event_.AndThen([promise = std::move(promise), event = event_]() mutable {
     if (auto* error = event.GetErrorIfPresent()) {
       promise.Set(*error);
     } else {
@@ -85,18 +88,17 @@ PjRtFuture<> CpuTrackedDeviceEvent::GetReadyFuture() {
     }
   });
 
-  return PjRtFuture<>(
-      promise,
+  return FutureHelpers::WithProfiling(
+      std::move(future),
       /*on_block_start=*/
-      [ready_event = FormRef(promise.async_value()),
-       callee_method = callee_method_, callee_type = callee_type_]() {
+      [callee_method = callee_method_, callee_type = callee_type_]() {
         tsl::profiler::TraceMeProducer traceme(
             [&] { return absl::StrCat(callee_type, "::", callee_method); });
-        return PjRtFutureHelpers::ProfilingKeys({traceme.GetContextId()});
+        return FutureHelpers::ProfilingKeys({traceme.GetContextId()});
       },
       /*on_block_end=*/
       [callee_method = callee_method_,
-       callee_type = callee_type_](PjRtFutureHelpers::ProfilingKeys keys) {
+       callee_type = callee_type_](FutureHelpers::ProfilingKeys keys) {
         tsl::profiler::TraceMeConsumer traceme(
             [&] { return absl::StrCat(callee_type, "::", callee_method); },
             keys.traceme_context_id);
@@ -104,8 +106,10 @@ PjRtFuture<> CpuTrackedDeviceEvent::GetReadyFuture() {
 }
 
 /*static*/ absl::StatusOr<tsl::RCReference<CpuRawBuffer>>
-CpuRawBuffer::Allocate(PjRtMemorySpace* memory_space, size_t size_bytes) {
-  TF_ASSIGN_OR_RETURN(auto memory, CpuDeviceMemory::Allocate(size_bytes));
+CpuRawBuffer::Allocate(PjRtMemorySpace* memory_space, size_t size_bytes,
+                       const CpuDeviceMemory::Allocator& allocator) {
+  TF_ASSIGN_OR_RETURN(auto memory,
+                      CpuDeviceMemory::Allocate(size_bytes, allocator));
   return tsl::MakeRef<CpuRawBuffer>(memory_space, std::move(memory));
 }
 
@@ -198,7 +202,8 @@ CpuRawBuffer::CopyFromHostBuffer(
     PjRtClient::HostBufferSemantics host_buffer_semantics,
     absl::AnyInvocable<void() &&> on_done_with_host_buffer, const Shape& shape,
     AsyncWorkRunner* async_work_runner, absl::Mutex* transpose_mu,
-    TransposePlanCache* transpose_cache) {
+    TransposePlanCache* transpose_cache, tsl::thread::ThreadPool* thread_pool,
+    int max_transpose_threads) {
   tsl::AsyncValueRef<CpuDeviceMemory> device_buffer = buffer_;
   bool has_default_layout =
       !byte_strides || HasMajorToMinorLayout(type, dims, *byte_strides);
@@ -229,18 +234,28 @@ CpuRawBuffer::CopyFromHostBuffer(
       if (byte_strides) {
         options.input_layout = TransposePlan::Striding{*byte_strides};
       }
-      absl::MutexLock lock(transpose_mu);
+      if (thread_pool) {
+        options.num_threads =
+            std::min(thread_pool->NumThreads(), max_transpose_threads);
+      }
+      absl::MutexLock lock(*transpose_mu);
       TF_ASSIGN_OR_RETURN(transpose, transpose_cache->GetOrCreate(options));
     }
+    std::optional<std::function<void(std::function<void(void)>)>> schedule_work;
+    if (thread_pool && max_transpose_threads > 1) {
+      schedule_work = [thread_pool](std::function<void(void)> work) {
+        thread_pool->Schedule(std::move(work));
+      };
+    }
     if (!is_packed) {
-      transpose->Execute(data, dst_data_ptr);
+      transpose->Execute(data, dst_data_ptr, schedule_work);
     } else {
       // First transpose the unpacked data into a new temporary buffer, then
       // pack the data.
       // TODO(reedwm): Fuse the transpose and packing by having TransposePlan
       // support packing.
       auto data_transposed = std::make_unique<char[]>(byte_size);
-      transpose->Execute(data, data_transposed.get());
+      transpose->Execute(data, data_transposed.get(), schedule_work);
       absl::Span<const char> src_data_span(data_transposed.get(), byte_size);
       absl::Span<char> dst_data_span(static_cast<char*>(dst_data_ptr),
                                      dst_byte_size);
@@ -347,8 +362,7 @@ CpuRawBuffer::MakeAllocationReadyEvent() {
 }
 
 void CpuRawBuffer::CopyToLiteralAsync(
-    PjRtFuture<>::Promise promise,
-    tsl::RCReference<PjRtDeviceEventPromise> device_promise,
+    Promise<> promise, tsl::RCReference<PjRtDeviceEventPromise> device_promise,
     MutableLiteralBase* literal, xla::Shape shape) {
   absl::Span<const char> input_span{
       static_cast<const char*>(buffer_->untyped_data()), buffer_->size_bytes()};

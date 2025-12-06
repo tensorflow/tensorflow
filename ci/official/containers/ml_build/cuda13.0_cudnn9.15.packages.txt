@@ -1,0 +1,23 @@
+# All required CUDA packages
+cuda-compat-13-0
+cuda-command-line-tools-13-0
+cuda-cudart-dev-13-0
+cuda-nvcc-13-0
+cuda-cupti-13-0
+cuda-nvprune-13-0
+cuda-libraries-13-0
+cuda-libraries-dev-13-0
+cuda-nvml-dev-13-0
+libcufft-13-0
+libcurand-13-0
+libcusolver-dev-13-0
+libcusparse-dev-13-0
+libcublas-13-0
+libcublas-dev-13-0
+libnccl-dev=2.27.7-1+cuda13.0
+libnccl2=2.27.7-1+cuda13.0
+# CuDNN: https://docs.nvidia.com/deeplearning/sdk/cudnn-install/index.html#ubuntu-network-installation
+libcudnn9-headers-cuda-13=9.15.1.9-1
+libcudnn9-static-cuda-13=9.15.1.9-1
+libcudnn9-dev-cuda-13=9.15.1.9-1
+libcudnn9-cuda-13=9.15.1.9-1

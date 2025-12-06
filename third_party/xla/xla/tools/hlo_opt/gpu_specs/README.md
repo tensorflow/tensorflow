@@ -1,5 +1,5 @@
 The specs in this folder are obtained by calling
-`Compiler::TargetConfig::ToString()`, which turns the config into a
+`Compiler::GpuTargetConfig::ToString()`, which turns the config into a
 `GpuTargetConfigProto`, and then to a `std::string`. Most of the spec is the
 device description as a proto `GpuDeviceInfoProto`.
 

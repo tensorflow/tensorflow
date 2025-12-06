@@ -40,6 +40,8 @@ using tensorflow::GetTaskStateRequest;
 using tensorflow::GetTaskStateResponse;
 using tensorflow::HeartbeatRequest;
 using tensorflow::HeartbeatResponse;
+using tensorflow::IncrementKeyValueRequest;
+using tensorflow::IncrementKeyValueResponse;
 using tensorflow::InsertKeyValueRequest;
 using tensorflow::InsertKeyValueResponse;
 using tensorflow::PollForErrorRequest;
@@ -124,6 +126,10 @@ class CoordinationClient {
   virtual void GetKeyValueDirAsync(const GetKeyValueDirRequest* request,
                                    GetKeyValueDirResponse* response,
                                    StatusCallback done) = 0;
+
+  virtual void IncrementKeyValueAsync(const IncrementKeyValueRequest* request,
+                                      IncrementKeyValueResponse* response,
+                                      StatusCallback done) = 0;
 
   virtual void DeleteKeyValueAsync(const DeleteKeyValueRequest* request,
                                    DeleteKeyValueResponse* response,

@@ -219,7 +219,6 @@ py_strict_library(
     # copybara:uncomment_begin(google-only)
     # visibility = visibility + [
     # "//third_party/cloud_tpu/convergence_tools:__subpackages__",
-    # "//third_party/mlperf:__subpackages__",
     # "//third_party/py/tf_slim:__subpackages__",
     # "//tensorflow:internal",
     # "//tensorflow_models:__subpackages__",

@@ -28,14 +28,14 @@ namespace tensorflow {
 
 class SummaryImageOp : public OpKernel {
  public:
-  typedef Eigen::Tensor<uint8, 2, Eigen::RowMajor> Uint8Image;
+  typedef Eigen::Tensor<uint8_t, 2, Eigen::RowMajor> Uint8Image;
 
   explicit SummaryImageOp(OpKernelConstruction* context) : OpKernel(context) {
     int64_t max_images_tmp;
     OP_REQUIRES_OK(context, context->GetAttr("max_images", &max_images_tmp));
     OP_REQUIRES(context, max_images_tmp < (1LL << 31),
                 errors::InvalidArgument("max_images must be < 2^31"));
-    max_images_ = static_cast<int32>(max_images_tmp);
+    max_images_ = static_cast<int32_t>(max_images_tmp);
     const TensorProto* proto;
     OP_REQUIRES_OK(context, context->GetAttr("bad_color", &proto));
     OP_REQUIRES_OK(context, context->device()->MakeTensorFromProto(
@@ -61,7 +61,7 @@ class SummaryImageOp : public OpKernel {
                 errors::InvalidArgument(
                     "Tensor must be 4-D with last dim 1, 3, or 4, not ",
                     tensor.shape().DebugString()));
-    const string& base_tag = tags.scalar<tstring>()();
+    const std::string& base_tag = tags.scalar<tstring>()();
 
     OP_REQUIRES(c,
                 tensor.dim_size(0) < (1LL << 31) &&
@@ -87,8 +87,8 @@ class SummaryImageOp : public OpKernel {
     if (tensor.dtype() == DT_UINT8) {
       // For uint8 input, no normalization is necessary
       auto ith_image = [&tensor, batch_size, hw, depth](int i) {
-        auto values = tensor.shaped<uint8, 3>({batch_size, hw, depth});
-        return typename TTypes<uint8>::ConstMatrix(
+        auto values = tensor.shaped<uint8_t, 3>({batch_size, hw, depth});
+        return typename TTypes<uint8_t>::ConstMatrix(
             &values(i, 0, 0), Eigen::DSizes<Eigen::DenseIndex, 2>(hw, depth));
       };
       OP_REQUIRES_OK(
@@ -112,14 +112,14 @@ class SummaryImageOp : public OpKernel {
   template <class T>
   void NormalizeAndAddImages(OpKernelContext* c, const Tensor& tensor, int h,
                              int w, int hw, int depth, int batch_size,
-                             const string& base_tag, Summary* s) {
+                             const std::string& base_tag, Summary* s) {
     // For float and half images, nans and infs are replaced with bad_color.
     OP_REQUIRES(c, bad_color_.dim_size(0) >= depth,
                 errors::InvalidArgument(
                     "expected depth <= bad_color.size, got depth = ", depth,
                     ", bad_color.size = ", bad_color_.dim_size(0)));
-    auto bad_color_full = bad_color_.vec<uint8>();
-    typename TTypes<uint8>::ConstVec bad_color(bad_color_full.data(), depth);
+    auto bad_color_full = bad_color_.vec<uint8_t>();
+    typename TTypes<uint8_t>::ConstVec bad_color(bad_color_full.data(), depth);
 
     // Float images must be scaled and translated.
     Uint8Image image(hw, depth);
@@ -142,7 +142,7 @@ class SummaryImageOp : public OpKernel {
   // differently in the float and uint8 cases: the float case needs a temporary
   // buffer which can be shared across calls to ith_image, but the uint8 case
   // does not.
-  absl::Status AddImages(const string& tag, int batch_size, int w, int h,
+  absl::Status AddImages(const std::string& tag, int batch_size, int w, int h,
                          int depth,
                          const std::function<Uint8Image(int)>& ith_image,
                          Summary* s) {
@@ -156,9 +156,9 @@ class SummaryImageOp : public OpKernel {
       // convention for display, so we append "/image" to guarantee that the
       // image(s) won't be displayed in the global scope with no name.
       if (max_images_ > 1) {
-        v->set_tag(strings::StrCat(tag, "/image/", i));
+        v->set_tag(absl::StrCat(tag, "/image/", i));
       } else {
-        v->set_tag(strings::StrCat(tag, "/image"));
+        v->set_tag(absl::StrCat(tag, "/image"));
       }
 
       auto image = ith_image(i);
@@ -180,7 +180,7 @@ class SummaryImageOp : public OpKernel {
   template <class T>
   static void NormalizeFloatImage(int hw, int depth,
                                   typename TTypes<T>::ConstMatrix values,
-                                  typename TTypes<uint8>::ConstVec bad_color,
+                                  typename TTypes<uint8_t>::ConstVec bad_color,
                                   Uint8Image* image) {
     if (!image->size()) return;  // Nothing to do for empty images
 
@@ -241,7 +241,7 @@ class SummaryImageOp : public OpKernel {
       }
       if (finite) {
         image->chip<0>(i) = (values.template chip<0>(i) * scale + offset)
-                                .template cast<uint8>();
+                                .template cast<uint8_t>();
       } else {
         image->chip<0>(i) = bad_color;
       }
@@ -249,7 +249,7 @@ class SummaryImageOp : public OpKernel {
   }
 
  private:
-  int32 max_images_;
+  int32_t max_images_;
   Tensor bad_color_;
 };
 

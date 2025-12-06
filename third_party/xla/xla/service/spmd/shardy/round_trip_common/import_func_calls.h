@@ -26,24 +26,11 @@ namespace sdy {
 // Creates a pass that converts a `CallOp` to a `NamedComputationOp` with the
 // function body inlined and name of the callee.
 //
-// 1. In case `onlyIninlineable` is true (which is the default):
-//
-// Creates a pass that only converts a `CallOp` with a `backend_config` or
-// `inlineable=false` frontend attr to a `NamedComputationOp` with the function
-// body inlined and name of the callee.
-//
-// This pass is used to handle host offloading and GPU stream calls which are
-// non inlined functions that require the callee to be propagated through.
-//
 // NOTE: In case there are multiple call ops for the same callee, we will clone
 // the function body for each call op and emit a warning.
-//
-// 2. The case `onlyUninlineable` is false is not ready yet.
-// TODO(enver): Support also for all func calls.
-std::unique_ptr<mlir::Pass> createImportFuncCallsPass(bool onlyUninlineable);
+std::unique_ptr<mlir::Pass> createImportFuncCallsPass();
 
-// Register the xla-sdy-import-calls pass with `onlyUninlineable` is true.
-// TODO(enver): Support also for all func calls.
+// Register the xla-sdy-import-calls pass.
 void registerImportFuncCallsPass();
 
 }  // namespace sdy

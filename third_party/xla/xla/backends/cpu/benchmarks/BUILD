@@ -1,5 +1,6 @@
 load("//xla:xla.default.bzl", "xla_cc_test")
 load("//xla/tsl:tsl.bzl", "tsl_copts")
+load("//xla/tsl/mkl:graph.bzl", "onednn_cc_test")
 load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
@@ -61,6 +62,7 @@ cc_library(
         "//xla/pjrt/plugin/xla_cpu:xla_cpu_pjrt_client",
         "//xla/service:compiler",
         "//xla/service:hlo_module_config",
+        "//xla/service:hlo_proto_cc",
         "//xla/tests:test_utils",
         "//xla/tools:hlo_module_loader",
         "//xla/tools:run_hlo_module_proto_cc",
@@ -473,12 +475,10 @@ xla_cc_test(
     ],
 )
 
-xla_cc_test(
+onednn_cc_test(
     name = "onednn_matmul_benchmark_test",
     srcs = ["onednn_matmul_benchmark_test.cc"],
     copts = tsl_copts(),
-    fail_if_no_test_linked = False,  # NOLINT=This contains benchmarks only, no tests.
-    fail_if_no_test_selected = False,  # NOLINT=This contains benchmarks only, no tests.
     deps = [
         ":hlo_benchmark_runner",
         "//xla:literal",
@@ -488,6 +488,8 @@ xla_cc_test(
         "//xla/service/cpu:onednn_util",
         "//xla/tsl/platform:test",
         "//xla/tsl/platform:test_benchmark",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
@@ -514,7 +516,6 @@ xla_cc_test(
         "//xla/tsl/platform:test_main",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
-        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -537,6 +538,7 @@ xla_cc_test(
         "//xla/tsl/platform:logging",
         "//xla/tsl/platform:test_benchmark",
         "//xla/tsl/platform:test_main",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
     ],
@@ -616,6 +618,7 @@ xla_cc_test(
         "//xla:xla_data_proto_cc",
         "//xla/hlo/parser:hlo_parser",
         "//xla/service:hlo_module_config",
+        "//xla/service:hlo_proto_cc",
         "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:statusor",

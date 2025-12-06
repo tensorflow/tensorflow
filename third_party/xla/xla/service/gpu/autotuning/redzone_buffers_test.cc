@@ -18,11 +18,13 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/platform_util.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream.h"
@@ -33,6 +35,8 @@ limitations under the License.
 
 namespace xla::gpu {
 namespace {
+using ::testing::ElementsAre;
+using ::testing::SizeIs;
 
 using RedzoneBuffersTest = HloTestBase;
 
@@ -229,6 +233,37 @@ TEST_F(RedzoneBuffersTest, FromExecutable) {
   EXPECT_EQ(rzb.input_buffers().size(), 3);
   EXPECT_EQ(rzb.output_buffers().size(), 0);
   EXPECT_NE(rzb.output_shape(), ShapeUtil::MakeShape(F32, {1, 2, 3}));
+}
+
+TEST_F(RedzoneBuffersTest, FromProgramShape) {
+  ProgramShape program_shape;
+  program_shape.AddParameter(ShapeUtil::MakeShape(F32, {2, 2}), "p0");
+  program_shape.AddParameter(ShapeUtil::MakeShape(F32, {4, 4}), "p1");
+  program_shape.AddParameter(ShapeUtil::MakeShape(F32, {6, 6}), "p2");
+  *program_shape.mutable_result() = ShapeUtil::MakeShape(F32, {1, 2, 3});
+
+  TF_ASSERT_OK_AND_ASSIGN(se::Platform * platform,
+                          PlatformUtil::GetDefaultPlatform());
+  TF_ASSERT_OK_AND_ASSIGN(se::StreamExecutor * stream_executor,
+                          platform->ExecutorForDevice(0));
+  auto allocator =
+      std::make_unique<se::StreamExecutorMemoryAllocator>(stream_executor);
+  TF_ASSERT_OK_AND_ASSIGN(se::Stream * stream, allocator->GetStream(0));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      RedzoneBuffers rzb,
+      RedzoneBuffers::FromProgramShape(
+          program_shape, RedzoneBuffers::kAllInputsAllOutputs,
+          /*should_init_buffers=*/true, /*should_check_correctness=*/true,
+          kRedzonePaddingBytes, allocator.get(), stream));
+
+  EXPECT_THAT(rzb.input_shapes(),
+              ElementsAre(ShapeUtil::MakeShape(F32, {2, 2}),
+                          ShapeUtil::MakeShape(F32, {4, 4}),
+                          ShapeUtil::MakeShape(F32, {6, 6})));
+  EXPECT_THAT(rzb.input_buffers(), SizeIs(3));
+  EXPECT_THAT(rzb.output_buffers(), SizeIs(1));
+  EXPECT_EQ(rzb.output_shape(), ShapeUtil::MakeShape(F32, {1, 2, 3}));
 }
 
 }  // namespace

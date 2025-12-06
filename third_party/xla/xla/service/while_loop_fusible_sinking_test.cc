@@ -21,6 +21,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/log/check.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/transforms/simplifiers/flatten_call_graph.h"
@@ -427,6 +428,101 @@ TEST_F(WhileLoopFusibleSinkingTest, TestNoPlumbWithUnknonwnTripCount) {
   TF_ASSERT_OK_AND_ASSIGN(bool changed,
                           WhileLoopFusibleSinking{}.Run(module_before.get()));
   EXPECT_FALSE(changed);
+}
+
+TEST_F(WhileLoopFusibleSinkingTest, SinkMaskWithOriginalValue) {
+  const char* const hlo_string = R"(
+HloModule ModuleWithWhile
+
+body {
+  p_body = (f32[5,7],f32[5,7]) parameter(0)
+  p_body.0 = get-tuple-element(p_body), index=0
+  p_body.1 = get-tuple-element(p_body), index=1
+
+  add.0 = add(p_body.0, p_body.1)
+  ROOT root = tuple(add.0, p_body.1)
+}
+
+condition {
+  p_cond = (f32[5,7],f32[5,7]) parameter(0)
+  ROOT result = pred[] constant(true)
+}
+
+ENTRY entry {
+  const_0 = f32[5,7] parameter(0), origin={{"constant"}}
+  p = f32[5] parameter(1), origin={{"parameter"}}
+  a = f32[5,7] iota(), iota_dimension=0
+  b = f32[5,7] iota(), iota_dimension=1
+  c = add(a, b)
+  d = f32[5,7] broadcast(p), dimensions={0}
+  mask = multiply(c,d), origin={{"mask"}}
+  while_init = tuple(const_0, mask), origin={({"constant"}, {"mask"})}
+  ROOT while = while(while_init), condition=condition, body=body, origin={({"while" {0}}, {"while" {1}})}
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  TF_ASSERT_OK_AND_ASSIGN(bool changed,
+                          WhileLoopFusibleSinking{}.Run(module.get()));
+  ASSERT_TRUE(changed);
+
+  HloInstruction* while_instr = FindInstruction(module.get(), "while");
+  ASSERT_NE(while_instr->original_value(), nullptr);
+  EXPECT_EQ(while_instr->original_value()->ToString(),
+            R"(({"while" {0}}, {"while" {1}}, {"parameter"}))");
+  HloInstruction* while_init = while_instr->while_init();
+  ASSERT_NE(while_init->original_value(), nullptr);
+  EXPECT_EQ(while_init->original_value()->ToString(),
+            R"(({"constant"}, {"mask"}, {"parameter"}))");
+}
+
+TEST_F(WhileLoopFusibleSinkingTest, PlumbSingleBroadcastWithOriginalValue) {
+  const std::string hlo_string_before = R"(
+  HloModule test
+
+  loop.body {
+    loop_var.1 = (s32[]{:T(128)}, s32[1,1,1,4,3,5]{5,4,3,2,1,0}, s32[4,3,5]{2,1,0}) parameter(0)
+    get-tuple-element.1 = s32[]{:T(128)} get-tuple-element(loop_var.1), index=0
+    get-tuple-element.2 = s32[1,1,1,4,3,5]{5,4,3,2,1,0} get-tuple-element(loop_var.1), index=1
+    get-tuple-element.3 = s32[4,3,5]{2,1,0} get-tuple-element(loop_var.1), index=2
+    bitcast.12855 = s32[1,1,1,4,3,5]{5,4,3,2,1,0} bitcast(get-tuple-element.3)
+    add.40974 = s32[1,1,1,4,3,5]{5,4,3,2,1,0} add(get-tuple-element.2, bitcast.12855)
+    constant.1 = s32[]{:T(128)} constant(1)
+    idx = s32[]{:T(128)} add(get-tuple-element.1, constant.1)
+    ROOT tuple = (s32[]{:T(128)}, s32[1,1,1,4,3,5]{5,4,3,2,1,0}, s32[4,3,5]{2,1,0}) tuple(idx, add.40974, get-tuple-element.3)
+  }
+
+  loop.condition {
+    loop_var.2 = (s32[]{:T(128)}, s32[1,1,1,4,3,5]{5,4,3,2,1,0}, s32[4,3,5]{2,1,0}) parameter(0)
+    get-tuple-element.3 = s32[]{:T(128)} get-tuple-element(loop_var.2), index=0
+    constant.2 = s32[]{:T(128)} constant(4)
+    ROOT less-than = pred[] compare(get-tuple-element.3, constant.2), direction=LT
+  }
+
+  ENTRY %main {
+    param.1 = s32[4,3,5]{2,1,0} iota(), iota_dimension=0
+    zero = s32[]{:T(128)} constant(0), origin={{"zero"}}
+    zeros32 = s32[]{:T(128)} constant(0), origin={{"zeros32"}}
+    broadcast = s32[1,1,1,4,3,5]{5,4,3,2,1,0} broadcast(zeros32), origin={{"broadcast"}}
+    input = (s32[]{:T(128)}, s32[1,1,1,4,3,5]{5,4,3,2,1,0}, s32[4,3,5]{2,1,0}) tuple(zero, broadcast, param.1), origin={({"zero"}, {"zeros32"}, {"broadcast"})}
+    ROOT while = (s32[]{:T(128)}, s32[1,1,1,4,3,5]{5,4,3,2,1,0}, s32[4,3,5]{2,1,0}) while(input), condition=loop.condition, body=loop.body, origin={({"while" {0}}, {"while" {1}}, {"while" {2}})}
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string_before));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed,
+                          WhileLoopFusibleSinking{}.Run(module.get()));
+  EXPECT_TRUE(changed);
+  HloInstruction* while_instr = FindInstruction(module.get(), "while");
+  ASSERT_NE(while_instr->original_value(), nullptr);
+  EXPECT_EQ(while_instr->original_value()->ToString(),
+            R"(({"while" {0}}, {"while" {1}}, {"while" {2}}, {"zero"}))");
+  HloInstruction* while_init = while_instr->while_init();
+  ASSERT_NE(while_init->original_value(), nullptr);
+  EXPECT_EQ(while_init->original_value()->ToString(),
+            R"(({"zero"}, {"zeros32"}, {"broadcast"}, {"zero"}))");
 }
 
 }  // namespace

@@ -22,7 +22,7 @@ limitations under the License.
 #include <optional>
 #include <string>
 #include <tuple>
-#include <type_traits>
+#include <utility>
 #include <vector>
 
 #include <gmock/gmock.h>
@@ -30,18 +30,20 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/base/log_severity.h"
 #include "absl/log/log.h"
-#include "absl/log/log_sink.h"
 #include "absl/log/scoped_mock_log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "absl/strings/string_view.h"
+#include "absl/strings/substitute.h"
+#include "google/protobuf/text_format.h"
 #include "xla/hlo/analysis/hlo_ordering.h"
-#include "xla/hlo/ir/collective_device_list.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
+#include "xla/hlo/ir/replica_group.h"
 #include "xla/hlo/testlib/filecheck.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/hlo/utils/hlo_query.h"
@@ -56,7 +58,6 @@ limitations under the License.
 #include "xla/tests/test_utils.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/logging.h"
-#include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/statusor.h"
 #include "tsl/profiler/protobuf/profiled_instructions.pb.h"
 
@@ -66,7 +67,6 @@ namespace gpu {
 using ::testing::_;
 using ::testing::ElementsAre;
 using ::testing::EndsWith;
-using ::tsl::testing::StatusIs;
 
 class GpuHloScheduleTest : public HloTestBase {
  protected:
@@ -83,11 +83,12 @@ class GpuHloScheduleTest : public HloTestBase {
         gpu_compiler->GetAliasInfo(gpu_device_info);
     int64_t pointer_size = gpu_compiler->GetPointerSize();
     return xla::gpu::ScheduleGpuModule(module, pointer_size, gpu_device_info,
+                                       gpu_compiler->mlir_context(),
                                        alias_info.get());
   }
 
   SequentialHloOrdering BuildHloOrdering(HloModule* module) {
-    TF_CHECK_OK(ScheduleGpuModule(module).status());
+    CHECK_OK(ScheduleGpuModule(module).status());
     return SequentialHloOrdering{module->schedule()};
   }
 
@@ -224,7 +225,7 @@ TEST_P(GpuHloScheduleParameterizedTest, AsyncCustomCall) {
   static_cast<HloCustomCallInstruction*>(nonblocking_call)
       ->set_custom_call_schedule(SCHEDULE_EARLIEST);
   // In addition, add control_dependency: add1->nonblocking_call.
-  TF_CHECK_OK(add1->AddControlDependencyTo(nonblocking_call));
+  CHECK_OK(add1->AddControlDependencyTo(nonblocking_call));
   // Blocking call, which only add4 depends on.
   HloInstruction* blocking_call =
       builder.AddInstruction(HloInstruction::CreateCustomCall(
@@ -295,7 +296,7 @@ TEST_P(GpuHloScheduleParameterizedTest, AsyncCollectivePermute) {
           collective_permute_start_shape, add0,
           /*source_target_pairs=*/{{0, 1}}, /*channel_id=*/std::nullopt));
   // In addition, add control_dependency: add1->nonblocking_call.
-  TF_CHECK_OK(add1->AddControlDependencyTo(collective_permute_start));
+  CHECK_OK(add1->AddControlDependencyTo(collective_permute_start));
   // Blocking call, which only add4 depends on.
   HloInstruction* collective_permute_done = builder.AddInstruction(
       HloInstruction::CreateUnary(f32_2x2_, HloOpcode::kCollectivePermuteDone,
@@ -381,9 +382,11 @@ TEST_P(GpuHloScheduleParameterizedTest, LHSCostModel) {
   for (const HloInstruction* inst :
        order.SequentialOrder(*entry)->instructions()) {
     if (inst->opcode() == HloOpcode::kAllReduceStart) {
+      ASSERT_FALSE(in_between);
       in_between = true;
       count_between_pairs.push_back(0);
     } else if (inst->opcode() == HloOpcode::kAllReduceDone) {
+      ASSERT_TRUE(in_between);
       in_between = false;
     } else if (in_between && inst->opcode() == HloOpcode::kCustomCall) {
       count_between_pairs.back()++;
@@ -393,6 +396,89 @@ TEST_P(GpuHloScheduleParameterizedTest, LHSCostModel) {
   EXPECT_EQ(count_between_pairs.size(), 2);
   EXPECT_TRUE(count_between_pairs[0] > 0 || count_between_pairs[1] > 0);
   EXPECT_TRUE(HasValidFingerprint(module.get()));
+}
+
+TEST_P(GpuHloScheduleParameterizedTest,
+       LHSCostModelWithCustomCallLatencyAnnotationDiffScheduling) {
+  const char* hlo_text = R"(
+  HloModule AsyncAR
+  apply_op {
+    x = f32[] parameter(0)
+    y = f32[] parameter(1)
+    ROOT apply_op = f32[] add(x, y)
+  }
+
+  ENTRY ar {
+    p0 = f32[16] parameter(0)
+    p1 = f32[16, 16] parameter(1)
+    p2 = f32[16, 16] parameter(2)
+    p3 = f32[16] parameter(3)
+
+    dot0 = f32[16,16]{1,0} custom-call(p1, p2), custom_call_target="__cublas$$gemm", frontend_attributes={latency_metadata="$0"}
+    dot1 = f32[16,16]{1,0} custom-call(dot0, p2), custom_call_target="__cublas$$gemm", frontend_attributes={latency_metadata="$0"}
+    dot2 = f32[16,16]{1,0} custom-call(dot1, p2), custom_call_target="__cublas$$gemm", frontend_attributes={latency_metadata="$0"}
+    dot3 = f32[16,16]{1,0} custom-call(dot2, p2), custom_call_target="__cublas$$gemm", frontend_attributes={latency_metadata="$0"}
+    dot4 = f32[16,16]{1,0} custom-call(dot3, p2), custom_call_target="__cublas$$gemm", frontend_attributes={latency_metadata="$0"}
+    dot5 = f32[16,16]{1,0} custom-call(dot4, p2), custom_call_target="__cublas$$gemm", frontend_attributes={latency_metadata="$0"}
+    dot6 = f32[16,16]{1,0} custom-call(dot5, p2), custom_call_target="__cublas$$gemm", frontend_attributes={latency_metadata="$0"}
+
+    ar-start = f32[16] all-reduce-start(p0), to_apply=apply_op
+    ar-done = f32[16] all-reduce-done(ar-start)
+
+    ar-start1 = f32[16] all-reduce-start(p3), to_apply=apply_op
+    ar-done1 = f32[16] all-reduce-done(ar-start1)
+
+    add0 = f32[16,16] add(dot0, dot1)
+    add1 = f32[16,16] add(add0, dot2)
+    add2 = f32[16,16] add(add1, dot3)
+    add3 = f32[16,16] add(add2, dot4)
+    add4 = f32[16,16] add(add3, dot5)
+    add5 = f32[16,16] add(add4, dot6)
+
+    ROOT t = (f32[16], f32[16], f32[16,16]) tuple(ar-done, ar-done1, add5)
+  })";
+
+  auto get_count_between_pairs =
+      [&](const std::string& hlo_latency) -> std::vector<int64_t> {
+    TestConfig test_config;
+    test_config.enable_latency_hiding_scheduler = true;
+    test_config.enable_sol_latency_estimator = std::get<1>(GetParam());
+    auto module_or = ParseAndReturnVerifiedModule(
+        absl::Substitute(hlo_text, hlo_latency), GetModuleConfig(test_config));
+    CHECK_OK(module_or.status());
+    auto module = std::move(module_or.value());
+    SequentialHloOrdering order = BuildHloOrdering(module.get());
+
+    HloComputation* entry = module->entry_computation();
+    std::vector<int64_t> count_between_pairs;
+    bool in_between = false;
+    for (const HloInstruction* inst :
+         order.SequentialOrder(*entry)->instructions()) {
+      if (inst->opcode() == HloOpcode::kAllReduceStart) {
+        CHECK(!in_between);
+        in_between = true;
+        count_between_pairs.push_back(0);
+      } else if (inst->opcode() == HloOpcode::kAllReduceDone) {
+        CHECK(in_between);
+        in_between = false;
+      } else if (in_between && inst->opcode() == HloOpcode::kCustomCall) {
+        count_between_pairs.back()++;
+      }
+    }
+    return count_between_pairs;
+  };
+
+  std::vector<int64_t> count_between_pairs_high_latency =
+      get_count_between_pairs("100000000000");
+  std::vector<int64_t> count_between_pairs_low_latency =
+      get_count_between_pairs("1");
+
+  EXPECT_EQ(count_between_pairs_high_latency.size(), 2);
+  EXPECT_EQ(count_between_pairs_low_latency.size(), 2);
+  EXPECT_NE(count_between_pairs_high_latency[0],
+            count_between_pairs_low_latency[0]);
+  EXPECT_NE(count_between_pairs_high_latency[1],
+            count_between_pairs_low_latency[1]);
 }
 
 TEST_P(GpuHloScheduleParameterizedTest,
@@ -460,9 +546,11 @@ TEST_P(GpuHloScheduleParameterizedTest, LHSCostModelCostlyAR) {
   for (const HloInstruction* inst :
        order.SequentialOrder(*entry)->instructions()) {
     if (inst->opcode() == HloOpcode::kAllReduceStart) {
+      ASSERT_FALSE(in_between);
       in_between = true;
       count_between_pairs.push_back(0);
     } else if (inst->opcode() == HloOpcode::kAllReduceDone) {
+      ASSERT_TRUE(in_between);
       in_between = false;
     } else if (in_between && inst->opcode() == HloOpcode::kCustomCall) {
       count_between_pairs.back()++;
@@ -1388,7 +1476,7 @@ ENTRY e {
   ROOT t = (f32[1024,1024]{1,0}, f32[1024,1024]{1,0}) tuple(wrapped_exponential, wrapped_negate)
 })")
                     .value();
-  TF_CHECK_OK(ScheduleGpuModule(module.get()).status());
+  CHECK_OK(ScheduleGpuModule(module.get()).status());
   EXPECT_TRUE(*RunFileCheck(module->ToString(), R"(
 // CHECK: ENTRY
 // CHECK: wrapped_negate = f32[1024,1024]{1,0}
@@ -1514,7 +1602,7 @@ TEST_P(GpuHloScheduleParameterizedTest, AsyncAllReduce) {
           /*constrain_layout=*/false,
           /*channel_id=*/std::nullopt, /*use_global_device_ids=*/true));
   // In addition, add control_dependency: add1->nonblocking_call.
-  TF_CHECK_OK(add1->AddControlDependencyTo(all_reduce_start));
+  CHECK_OK(add1->AddControlDependencyTo(all_reduce_start));
   // Blocking call, which only add4 depends on.
   HloInstruction* all_reduce_done =
       builder.AddInstruction(HloInstruction::CreateUnary(
@@ -1725,7 +1813,7 @@ TEST_P(GpuHloScheduleParameterizedTest, CopyStartDoneScheduled) {
   TF_ASSERT_OK_AND_ASSIGN(
       auto module, ParseAndReturnVerifiedModule(kHloCopyStartDone,
                                                 GetModuleConfig(test_config)));
-  TF_CHECK_OK(ScheduleGpuModule(module.get()).status());
+  CHECK_OK(ScheduleGpuModule(module.get()).status());
   EXPECT_TRUE(*RunFileCheck(module->ToString(), R"(
 // CHECK: ENTRY
 // CHECK: copy-start.3 = (f32[512,1024]{1,0}, f32[512,1024]{1,0:S(5)}, u32[]) copy-start
@@ -1809,15 +1897,10 @@ TEST_F(GpuHloScheduleTest, LogAnErrorWhenArgumentSizeExceedsMemoryLimit) {
       auto module, ParseAndReturnVerifiedModule(kHloText, module_config));
 
   absl::ScopedMockLog mock_log(absl::MockLogDefault::kIgnoreUnexpected);
-  // absl::ScopedMockLog only works if we're actually using ABSL logging, and
-  // TSL supports a homegrown logging implementation, so we should only check
-  // the log is emitted when ABSL logging is used.
-  if constexpr (std::is_same_v<absl::LogSink, tsl::TFLogSink>) {
-    EXPECT_CALL(mock_log,
-                Log(absl::LogSeverity::kError, _,
-                    EndsWith("This indicates an error in the calculation!")))
-        .Times(1);
-  }
+  EXPECT_CALL(mock_log,
+              Log(absl::LogSeverity::kError, _,
+                  EndsWith("This indicates an error in the calculation!")))
+      .Times(1);
   mock_log.StartCapturingLogs();
   TF_ASSERT_OK_AND_ASSIGN(auto metadata, ScheduleGpuModule(module.get()));
   EXPECT_EQ(metadata.scheduler_mem_limit, 0);

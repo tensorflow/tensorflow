@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <utility>
 
 #include "absl/functional/any_invocable.h"
@@ -26,18 +27,20 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
+#include "xla/future.h"
 #include "xla/layout.h"
 #include "xla/literal.h"
 #include "xla/pjrt/async_work_runner.h"
 #include "xla/pjrt/cpu/cpu_event.h"
 #include "xla/pjrt/cpu/tracked_cpu_device_buffer.h"
 #include "xla/pjrt/device_event.h"
-#include "xla/pjrt/pjrt_future.h"
+#include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/raw_buffer.h"
 #include "xla/pjrt/transpose.h"
 #include "xla/tsl/concurrency/async_value.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/concurrency/ref_count.h"
+#include "xla/tsl/platform/threadpool.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -78,7 +81,7 @@ class CpuTrackedDeviceEvent : public PjRtDeviceEvent {
     return event_.GetAsyncValue();
   }
 
-  PjRtFuture<> GetReadyFuture() override;
+  Future<> GetReadyFuture() override;
 
  private:
   tsl::AsyncValueRef<CpuEvent> event_;
@@ -96,7 +99,9 @@ class CpuRawBuffer : public CommonPjRtRawBuffer {
 
   // Allocates owning memory.
   static absl::StatusOr<tsl::RCReference<CpuRawBuffer>> Allocate(
-      PjRtMemorySpace* memory_space, size_t size_bytes);
+      PjRtMemorySpace* memory_space, size_t size_bytes,
+      const CpuDeviceMemory::Allocator& allocator =
+          CpuDeviceMemory::DefaultAllocator());
 
   // Imports foreign memory.
   static absl::StatusOr<tsl::RCReference<CpuRawBuffer>> ImportForeignMemory(
@@ -140,13 +145,14 @@ class CpuRawBuffer : public CommonPjRtRawBuffer {
       PjRtClient::HostBufferSemantics host_buffer_semantics,
       absl::AnyInvocable<void() &&> on_done_with_host_buffer,
       const Shape& shape, AsyncWorkRunner* async_work_runner,
-      absl::Mutex* transpose_mu, TransposePlanCache* transpose_cache);
+      absl::Mutex* transpose_mu, TransposePlanCache* transpose_cache,
+      tsl::thread::ThreadPool* thread_pool, int max_transpose_threads);
 
   void ReadDynamicShape(tsl::AsyncValueRef<xla::Shape> output_shape,
                         xla::Shape shape) override;
 
   void CopyToLiteralAsync(
-      PjRtFuture<>::Promise promise,
+      Promise<> promise,
       tsl::RCReference<PjRtDeviceEventPromise> device_promise,
       MutableLiteralBase* literal, xla::Shape shape) override;
 
@@ -154,6 +160,11 @@ class CpuRawBuffer : public CommonPjRtRawBuffer {
               tsl::RCReference<PjRtDeviceEventPromise> definition_event_promise,
               tsl::RCReference<PjRtDeviceEventPromise> src_usage_event_promise,
               ::tsl::AsyncValueRef<bool> allocation_event) override;
+
+  absl::StatusOr<tsl::RCReference<tsl::AsyncValue>> GetRawBufferAsyncValue()
+      override {
+    return buffer_.CopyRCRef();
+  }
 
  private:
   PjRtMemorySpace* const memory_space_;

@@ -191,7 +191,7 @@ TEST_F(LowerClusterToRuntimeOpsTest, DumpsPipelinePasses) {
       *mlir_module_, DeviceType(DEVICE_TPU_XLA_JIT)));
 
   TF_ASSERT_OK(env_->GetChildren(test_dir_, &files));
-  EXPECT_THAT(files, ::testing::SizeIs(16));
+  EXPECT_THAT(files, ::testing::SizeIs(15));
 }
 
 }  // namespace

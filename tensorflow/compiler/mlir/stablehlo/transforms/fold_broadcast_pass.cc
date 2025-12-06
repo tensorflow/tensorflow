@@ -206,7 +206,7 @@ class FoldBroadcastInDimBeforeBinaryElementwiseOp
       return rewriter.notifyMatchFailure(bcast_op, "Unsupported element type.");
     }
     Value new_const_op =
-        rewriter.create<mhlo::ConstantOp>(bcast_op.getLoc(), result);
+        mhlo::ConstantOp::create(rewriter, bcast_op.getLoc(), result);
     rewriter.replaceOp(bcast_op, {new_const_op});
     return success();
   }
@@ -231,7 +231,7 @@ LogicalResult ConstantFoldMul(mhlo::MulOp op, PatternRewriter &rewriter) {
             &op);
   }
   if (result == Attribute()) return failure();
-  Value new_const_op = rewriter.create<mhlo::ConstantOp>(op.getLoc(), result);
+  Value new_const_op = mhlo::ConstantOp::create(rewriter, op.getLoc(), result);
   rewriter.replaceOp(op, {new_const_op});
   return success();
 }

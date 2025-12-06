@@ -26,12 +26,14 @@ limitations under the License.
 
 #include "absl/base/attributes.h"
 #include "absl/base/nullability.h"
+#include "absl/functional/any_invocable.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/error_spec.h"
+#include "xla/hlo/builder/xla_builder.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -41,6 +43,7 @@ limitations under the License.
 #include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/literal.h"
 #include "xla/service/computation_placer.h"
+#include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_runner_interface.h"
 #include "xla/shape.h"
@@ -136,6 +139,11 @@ class HloRunnerAgnosticTestBase : public HloHardwareIndependentTestBase {
       absl::string_view hlo_text, const HloModuleConfig& config,
       const HloParserOptions& parser_options = HloParserOptions()) const;
 
+  // Builds an HLO module from the given XlaBuilder using the given
+  // execution options.
+  absl::StatusOr<std::unique_ptr<HloModule>> HloModuleFromXlaBuilder(
+      XlaBuilder* builder, const ExecutionOptions& execution_options) const;
+
   HloComputation* AddEntryComputationAndUpdateEntryComputationLayout(
       HloModule*, std::unique_ptr<HloComputation> computation);
   void UpdateEntryComputationLayout(HloModule* module) const;
@@ -144,18 +152,6 @@ class HloRunnerAgnosticTestBase : public HloHardwareIndependentTestBase {
   absl::StatusOr<Literal> Execute(std::unique_ptr<HloModule> module,
                                   absl::Span<const Literal* const> arguments,
                                   bool run_hlo_passes = true);
-
-  // Same as above, except the module will be executed without running any HLO
-  // passes on it.
-  ABSL_DEPRECATED(
-      "Use Execute() or another alternative that returns a StatusOr.")
-  Literal ExecuteNoHloPasses(std::unique_ptr<HloModule> module,
-                             absl::Span<const Literal* const> arguments);
-
-  ABSL_DEPRECATED(
-      "Use Execute() or another alternative that returns a StatusOr.")
-  Literal ExecuteAndTransfer(std::unique_ptr<HloModule> module,
-                             absl::Span<const Literal* const> arguments);
 
   // Compile the given module to an executable.
   absl::StatusOr<std::unique_ptr<OpaqueExecutable>> CreateExecutable(
@@ -182,9 +178,9 @@ class HloRunnerAgnosticTestBase : public HloHardwareIndependentTestBase {
 
   // Same as above, but allows passing different programs for replicas.
   absl::StatusOr<std::vector<Literal>> ExecuteReplicated(
-      std::function<OpaqueExecutable*(int64_t)> executable_provider,
-      std::function<int64_t(int64_t)> argument_count_provider,
-      std::function<const Literal*(int64_t, int64_t)> argument_provider,
+      absl::AnyInvocable<OpaqueExecutable*(int64_t)> executable_provider,
+      absl::AnyInvocable<int64_t(int64_t)> argument_count_provider,
+      absl::AnyInvocable<const Literal*(int64_t, int64_t)> argument_provider,
       int64_t num_replicas, bool run_hlo_passes,
       DeviceAssignment* device_assignment = nullptr);
 
@@ -199,7 +195,8 @@ class HloRunnerAgnosticTestBase : public HloHardwareIndependentTestBase {
   // successful.
   ::testing::AssertionResult Run(
       std::unique_ptr<HloModule> module, bool run_hlo_passes,
-      const std::function<void(HloModule*)>& test_preprocessor = nullptr);
+      const std::function<void(HloModule*)>& test_preprocessor = nullptr,
+      BufferAssignmentProto* buffer_assignment_proto = nullptr);
 
   // Convenient wrapper for executing and comparing an hlo module with fake
   // input. Module can be passed in directly, or parsed from an hlo_string,
@@ -207,7 +204,8 @@ class HloRunnerAgnosticTestBase : public HloHardwareIndependentTestBase {
   ::testing::AssertionResult Run(
       absl::string_view hlo_string, bool run_hlo_passes = true,
       const tsl::protobuf::Message* backend_config = nullptr,
-      bool use_random_data = true);
+      bool use_random_data = true,
+      BufferAssignmentProto* buffer_assignment_proto = nullptr);
 
   // Same as below, except that it requires all the options to be passed.
   ::testing::AssertionResult RunAndCompareTwoModulesReplicated(

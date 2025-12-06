@@ -61,6 +61,7 @@ cc_library(
         "@llvm-project//mlir:Support",
         "@local_tsl//tsl/platform:path",
         "@shardy//shardy/common:file_utils",
+        "@shardy//shardy/dialect/sdy/transforms/common:propagation_options",
         "@shardy//shardy/dialect/sdy/transforms/propagation:passes",
     ],
 )
@@ -121,7 +122,6 @@ xla_cc_test(
         "//xla/hlo/utils:hlo_matchers",
         "//xla/service:computation_layout",
         "//xla/tsl/platform:statusor",
-        "@com_google_absl//absl/log",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -159,7 +159,7 @@ xla_cc_binary(
         "@llvm-project//mlir:FuncExtensions",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:MlirOptLib",
-        "@llvm-project//mlir:RegisterAllPasses",
+        "@llvm-project//mlir:RegisterAllPasses",  # build_cleaner: keep
         "@shardy//shardy/dialect/sdy/ir:register",
         "@shardy//shardy/dialect/sdy/transforms:passes",
     ],

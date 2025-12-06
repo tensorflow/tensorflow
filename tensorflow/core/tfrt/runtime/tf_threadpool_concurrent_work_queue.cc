@@ -37,7 +37,8 @@ namespace tfrt_stub {
 using ::tensorflow::thread::ThreadPoolInterface;
 
 absl::StatusOr<std::unique_ptr<WorkQueueInterface>>
-TfThreadPoolWorkQueue::InitializeRequest(int64_t request_id) const {
+TfThreadPoolWorkQueue::InitializeRequest(int64_t request_id,
+                                         int priority) const {
   return {std::make_unique<TfThreadPoolWorkQueue>(
       request_id, intra_op_threadpool_, inter_op_threadpool_)};
 }

@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <utility>
 
+#include "absl/strings/ascii.h"
 #include "absl/strings/str_replace.h"
 #include "xla/hlo/testlib/filecheck.h"
 #include "xla/hlo/testlib/test.h"
@@ -30,14 +31,12 @@ limitations under the License.
 namespace xla {
 namespace cpu {
 
-#if defined(INTEL_MKL)
-
 class ConvolutionTest : public HloTestBase,
                         public ::testing::WithParamInterface<PrimitiveType> {
  protected:
   DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options = HloTestBase::GetDebugOptionsForTest();
-    debug_options.set_xla_cpu_use_thunk_runtime(false);
+    debug_options.set_xla_cpu_experimental_onednn_custom_call(true);
     return debug_options;
   }
 
@@ -302,20 +301,20 @@ TEST_P(ConvolutionTest, ConvInsufficientScratchTest) {
             "dims":"3",
             "input":{
               "dims":"3",
-              "data":{"batch_dim":"0","feature_dim":"2","spatial_dims":["2"]}
+              "data":{"batch_dim":"0","feature_dim":"2","spatial_dims":["1"]}
             },
             "kernel":{
               "dims":"3",
               "filter":{"input_feature_dim":"1","output_feature_dim":"2",
-                "spatial_dims":["1"],"shape":[]}
+                "spatial_dims":["0"],"shape":[]}
             },
             "output":{
               "dims":"3",
-              "data":{"batch_dim":"0","feature_dim":"2","spatial_dims":["2"]}
+              "data":{"batch_dim":"0","feature_dim":"2","spatial_dims":["1"]}
             },
             "window":{
-              "size":[],"pad_left":["1"],"pad_right":["1"],
-              "strides":["2"],"window_dilations":["2"]
+              "size":[],"pad_left":["0"],"pad_right":["0"],
+              "strides":["1"],"window_dilations":["1"]
             },
             "feature_groups":"1",
             "optimization_config":{"user_scratchpad":true}
@@ -758,12 +757,9 @@ INSTANTIATE_TEST_SUITE_P(
     ::testing::Values(F32, BF16, F16),
     [](const ::testing::TestParamInfo<ConvolutionTest::ParamType>& info) {
       auto test_name = primitive_util::LowercasePrimitiveTypeName(info.param);
-      std::transform(test_name.begin(), test_name.end(), test_name.begin(),
-                     [](auto c) { return std::toupper(c); });
+      absl::AsciiStrToUpper(&test_name);
       return test_name;
     });
-
-#endif  // INTEL_MKL
 
 // Ensure at least one test case is linked to avoid test failures.
 TEST(Dummy, Test) {}

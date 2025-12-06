@@ -60,7 +60,7 @@ class GlobalCompEnvStats {
   void DefaultEnvCreatedByCompilationEnvironments(absl::string_view env_type)
       ABSL_LOCKS_EXCLUDED(mu_) {
     {
-      absl::MutexLock l(&mu_);
+      absl::MutexLock l(mu_);
       ++stats_[std::string(env_type)]
             .default_env_created_by_compilation_environments;
     }
@@ -69,14 +69,14 @@ class GlobalCompEnvStats {
 
   void EnvAdded(absl::string_view env_type) ABSL_LOCKS_EXCLUDED(mu_) {
     {
-      absl::MutexLock l(&mu_);
+      absl::MutexLock l(mu_);
       ++stats_[std::string(env_type)].env_added;
     }
     VLOG(1) << "New GlobalCompEnvStats value: " << ToString();
   }
 
   std::string ToString() const ABSL_LOCKS_EXCLUDED(mu_) {
-    absl::ReaderMutexLock l(&mu_);
+    absl::ReaderMutexLock l(mu_);
     return absl::StrJoin(
         stats_, "; ",
         [](std::string* out, const StatMap::value_type& env_stats_pair) {
@@ -135,16 +135,16 @@ CompilationEnvironments::CreateFromProto(
     std::string fullname;
     if (!google::protobuf::Any::ParseAnyTypeUrl(env_proto.type_url(),
                                                 &fullname)) {
-      return tsl::errors::DataLoss(
-          "Invalid CompilationEnvironment message type url: %s",
-          env_proto.type_url());
+      return absl::DataLossError(
+          absl::StrCat("Invalid CompilationEnvironment message type url: ",
+                       env_proto.type_url()));
     }
 
     const tsl::protobuf::Descriptor* const descriptor =
         pool->FindMessageTypeByName(fullname);
     if (descriptor == nullptr) {
-      return tsl::errors::DataLoss(
-          "Unknown CompilationEnvironment message type: %s", fullname);
+      return absl::DataLossError(absl::StrCat(
+          "Unknown CompilationEnvironment message type: ", fullname));
     }
 
     const tsl::protobuf::Message* const prototype =
@@ -157,9 +157,9 @@ CompilationEnvironments::CreateFromProto(
 
     std::unique_ptr<tsl::protobuf::Message> env(prototype->New());
     if (!env_proto.UnpackTo(env.get())) {
-      return tsl::errors::DataLoss(
-          "Unable to unpack CompilationEnvironment message of type '%s'",
-          fullname);
+      return absl::DataLossError(absl::StrCat(
+          "Unable to unpack CompilationEnvironment message of type '", fullname,
+          "'"));
     }
 
     TF_RETURN_IF_ERROR(envs->AddEnv(std::move(env)));
@@ -171,7 +171,7 @@ CompilationEnvironments::CreateFromProto(
 void CompilationEnvironments::RegisterProcessNewEnvFn(
     const tsl::protobuf::Descriptor* descriptor,
     ProcessNewEnvFn process_new_env) {
-  absl::MutexLock l(&process_new_env_fns_mu);
+  absl::MutexLock l(process_new_env_fns_mu);
   if (process_new_env_fns == nullptr) {
     process_new_env_fns =
         new absl::flat_hash_map<const tsl::protobuf::Descriptor*,
@@ -187,7 +187,7 @@ void CompilationEnvironments::RegisterProcessNewEnvFn(
 absl::Status CompilationEnvironments::InitializeAllKnownEnvs() {
   std::vector<const tsl::protobuf::Descriptor*> descriptors;
   {
-    absl::MutexLock l(&process_new_env_fns_mu);
+    absl::MutexLock l(process_new_env_fns_mu);
     if (process_new_env_fns == nullptr) {
       return absl::OkStatus();
     }
@@ -210,7 +210,7 @@ absl::Status CompilationEnvironments::InitializeAllKnownEnvs() {
 absl::Status CompilationEnvironments::AddEnv(
     std::unique_ptr<tsl::protobuf::Message> env) {
   if (!env) {
-    return tsl::errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "Can not add a null compilation environment.");
   }
   const tsl::protobuf::Descriptor& descriptor = *env->GetDescriptor();
@@ -240,7 +240,7 @@ CompilationEnvironmentsProto CompilationEnvironments::ToProto() const {
 CompilationEnvironments::ProcessNewEnvFn
 CompilationEnvironments::GetProcessNewEnvFn(
     const tsl::protobuf::Descriptor& descriptor) {
-  absl::MutexLock l(&process_new_env_fns_mu);
+  absl::MutexLock l(process_new_env_fns_mu);
   if (process_new_env_fns == nullptr) {
     return nullptr;
   }

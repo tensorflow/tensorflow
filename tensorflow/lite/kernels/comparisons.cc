@@ -95,7 +95,8 @@ void QuantizeMultiplier(double double_multiplier, int32_t* quantized_multiplier,
 template <typename input_dtype, reference_ops::ComparisonFn<int32> opname>
 void ComparisonQuantized(const TfLiteTensor* input1, const TfLiteTensor* input2,
                          TfLiteTensor* output, bool requires_broadcast) {
-  if (input1->type == kTfLiteUInt8 || input1->type == kTfLiteInt8) {
+  if (input1->type == kTfLiteUInt8 || input1->type == kTfLiteInt8 ||
+      input1->type == kTfLiteInt16) {
     auto input1_offset = -input1->params.zero_point;
     auto input2_offset = -input2->params.zero_point;
     const int left_shift = 8;
@@ -180,8 +181,13 @@ TfLiteStatus EqualEval(TfLiteContext* context, TfLiteNode* node) {
                                                 requires_broadcast);
       break;
     case kTfLiteInt16:
-      Comparison<int16_t, reference_ops::EqualFn>(input1, input2, output,
-                                                  requires_broadcast);
+      if (input1->quantization.type == kTfLiteNoQuantization) {
+        Comparison<int16_t, reference_ops::EqualFn>(input1, input2, output,
+                                                    requires_broadcast);
+      } else {
+        ComparisonQuantized<int16_t, reference_ops::EqualFn>(
+            input1, input2, output, requires_broadcast);
+      }
       break;
     case kTfLiteInt32:
       Comparison<int32_t, reference_ops::EqualFn>(input1, input2, output,
@@ -204,10 +210,10 @@ TfLiteStatus EqualEval(TfLiteContext* context, TfLiteNode* node) {
                        requires_broadcast);
       break;
     default:
-      TF_LITE_KERNEL_LOG(
-          context,
-          "Does not support type %d, requires bool|float|int|uint8|string",
-          input1->type);
+      TF_LITE_KERNEL_LOG(context,
+                         "Does not support type %d, requires "
+                         "bool|float|int|uint8|int16|string",
+                         input1->type);
       return kTfLiteError;
   }
   return kTfLiteOk;
@@ -249,15 +255,21 @@ TfLiteStatus NotEqualEval(TfLiteContext* context, TfLiteNode* node) {
       ComparisonQuantized<int8_t, reference_ops::NotEqualFn>(
           input1, input2, output, requires_broadcast);
       break;
+    case kTfLiteInt16:
+      if (input1->quantization.type != kTfLiteNoQuantization) {
+        ComparisonQuantized<int16_t, reference_ops::NotEqualFn>(
+            input1, input2, output, requires_broadcast);
+      }
+      break;
     case kTfLiteString:
       ComparisonString(reference_ops::StringRefNotEqualFn, input1, input2,
                        output, requires_broadcast);
       break;
     default:
-      TF_LITE_KERNEL_LOG(
-          context,
-          "Does not support type %d, requires bool|float|int|uint8|string",
-          input1->type);
+      TF_LITE_KERNEL_LOG(context,
+                         "Does not support type %d, requires "
+                         "bool|float|int|uint8|qint16|string",
+                         input1->type);
       return kTfLiteError;
   }
   return kTfLiteOk;

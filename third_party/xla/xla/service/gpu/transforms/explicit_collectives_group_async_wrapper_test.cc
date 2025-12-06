@@ -17,14 +17,13 @@ limitations under the License.
 
 #include <memory>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/testlib/filecheck.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/service/gpu/backend_configs.pb.h"
-#include "xla/side_effect_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/statusor.h"
 
@@ -59,7 +58,7 @@ TEST_F(ExplicitCollectivesGroupAsyncWrapperTest, AnnotatedOpIsWrapped) {
   // CHECK: %tuple-start = ((f32[1]{0}), (f32[1]{0}, f32[1]{0})) async-start(%b), calls=%comms.collectives_group, frontend_attributes={_collectives_group=""}
   // CHECK: ROOT %tuple-done = (f32[1]{0}, f32[1]{0}) async-done(%tuple-start), frontend_attributes={_collectives_group=""}
   )");
-  TF_ASSERT_OK(filecheck_result.status());
+  ASSERT_OK(filecheck_result.status());
   EXPECT_TRUE(*filecheck_result);
   ASSERT_TRUE(mutated);
 }
@@ -98,7 +97,7 @@ TEST_F(ExplicitCollectivesGroupAsyncWrapperTest,
   // CHECK-NEXT: %[[P1:.*]] = {{.*}} async-start(%[[P0]]), calls=%comms.collectives_group, frontend_attributes={_collectives_group="",_scheduling_group_id="1"}  
   // CHECK-NEXT: ROOT %{{.*}} async-done(%[[P1]]), frontend_attributes={_collectives_group="",_scheduling_group_id="1"}
   )");
-  TF_ASSERT_OK(filecheck_result.status());
+  ASSERT_OK(filecheck_result.status());
   EXPECT_TRUE(*filecheck_result);
   ASSERT_TRUE(mutated);
 }
@@ -136,7 +135,7 @@ TEST_F(ExplicitCollectivesGroupAsyncWrapperTest, ManyCollectivesGroups) {
   // CHECK: %tuple-start.1 = ((f32[1]{0}), (f32[1]{0}, f32[1]{0})) async-start(%c), calls=%comms.collectives_group.1, frontend_attributes={_collectives_group=""}
   // CHECK: ROOT %tuple-done.1 = (f32[1]{0}, f32[1]{0}) async-done(%tuple-start.1), frontend_attributes={_collectives_group=""}
   )");
-  TF_ASSERT_OK(filecheck_result.status());
+  ASSERT_OK(filecheck_result.status());
   EXPECT_TRUE(*filecheck_result);
   ASSERT_TRUE(mutated);
 }

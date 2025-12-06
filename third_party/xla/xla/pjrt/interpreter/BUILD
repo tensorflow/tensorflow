@@ -14,6 +14,7 @@ cc_library(
     hdrs = ["interpreter_client.h"],
     visibility = internal_visibility(["//xla:friends"]),
     deps = [
+        "//xla:future",
         "//xla:literal",
         "//xla:shape_util",
         "//xla:util",
@@ -37,7 +38,6 @@ cc_library(
         "//xla/pjrt:pjrt_compiler",
         "//xla/pjrt:pjrt_device_description",
         "//xla/pjrt:pjrt_executable",
-        "//xla/pjrt:pjrt_future",
         "//xla/pjrt:utils",
         "//xla/service:batchnorm_expander",
         "//xla/service:computation_placer_hdr",

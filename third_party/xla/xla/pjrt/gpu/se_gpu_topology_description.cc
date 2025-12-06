@@ -27,13 +27,20 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/layout.h"
 #include "xla/layout_util.h"
+#include "xla/pjrt/gpu/gpu_topology.h"
+#include "xla/pjrt/gpu/gpu_topology.pb.h"
+#include "xla/pjrt/pjrt_common.h"
+#include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_device_description.h"
+#include "xla/pjrt/pjrt_device_dimensions.h"
 #include "xla/pjrt/pjrt_stream_executor_device_description.h"
+#include "xla/pjrt/proto/topology_description.pb.h"
 #include "xla/primitive_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/lib/strings/proto_serialization.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/casts.h"
 
 namespace xla {
 
@@ -72,61 +79,65 @@ StreamExecutorGpuTopologyDescription::DeviceDescriptions() const {
     return devices;
   }
   devices.reserve(gpu_topology_->number_of_devices());
+  for (int device_id = 0; device_id < gpu_topology_->number_of_devices();
+       ++device_id) {
+    devices.push_back(CreateDeviceDescription(device_id));
+  }
+  return devices;
+}
+
+std::unique_ptr<PjRtStreamExecutorDeviceDescription>
+StreamExecutorGpuTopologyDescription::CreateDeviceDescription(
+    int device_id) const {
   // Instead of "host", we use "process", as it's more accurate and consistent
   // with PjRt terminology. In a multi-process setting, a host can have multiple
   // processes, e.g., one process per GPU.
   const int32_t num_devices_per_process = gpu_topology_->num_devices_per_host();
   const int32_t num_processes_per_partition =
       gpu_topology_->num_hosts_per_partition();
-  for (int device_id = 0; device_id < gpu_topology_->number_of_devices();
-       ++device_id) {
-    // The local_device_id, process_index and partition_index are inferred from
-    // the global device id. It requires the global topology is symmetric:
-    //  - all partitions have the same number of processes.
-    //  - all processes have the same number of devices.
-    //  - processes of the same partition are adjacent to each other.
-    //
-    // And it also requires the ids assignments follows the PjRt topology
-    // exchange protocol in xla/pjrt/distributed/topology_util.cc:
-    //  - ids are densely assigned and start from 0
-    //  - from lower process index to higher process index
-    //  - within the process, from lower device ordinal to higher device ordinal
-    //
-    // If the above requirements are not met, users should get the device
-    // description by looking up individual device from PjRt client.
-    const int local_device_id = num_devices_per_process == -1
-                                    ? 0
-                                    : (device_id % num_devices_per_process);
-    const int process_index = num_devices_per_process == -1
-                                  ? 0
-                                  : (device_id / num_devices_per_process);
-    const int process_index_in_partition =
-        process_index == -1 ? 0 : (process_index % num_processes_per_partition);
-    const int partition_index =
-        num_processes_per_partition == -1
-            ? 0
-            : (process_index / num_processes_per_partition);
-    auto description = std::make_unique<PjRtStreamExecutorDeviceDescription>(
-        device_id, local_device_id, process_index, process_index_in_partition,
-        partition_index, std::string(platform_version()));
-    if (target_config_.has_value()) {
-      std::string compute_capability = "<unknown compute-capability>";
-      std::string gpu_vendor = "<unknown gpu vendor>";
-      if (target_config_->gpu_device_info().has_cuda_compute_capability()) {
-        const auto& cap =
-            target_config_->gpu_device_info().cuda_compute_capability();
-        compute_capability = absl::StrCat(cap.major(), ".", cap.minor());
-        gpu_vendor = "NVIDIA Corporation";
-      }
-
-      StreamExecutorGpuTopologyDescription::SetupDeviceDescription(
-          *description, gpu_vendor, compute_capability,
-          target_config_->gpu_device_info().core_count(),
-          target_config_->gpu_device_info().shared_memory_per_block_optin(), 0);
+  // The local_device_id, process_index and partition_index are inferred from
+  // the global device id. It requires the global topology is symmetric:
+  //  - all partitions have the same number of processes.
+  //  - all processes have the same number of devices.
+  //  - processes of the same partition are adjacent to each other.
+  //
+  // And it also requires the ids assignments follows the PjRt topology
+  // exchange protocol in xla/pjrt/distributed/topology_util.cc:
+  //  - ids are densely assigned and start from 0
+  //  - from lower process index to higher process index
+  //  - within the process, from lower device ordinal to higher device ordinal
+  //
+  // If the above requirements are not met, users should get the device
+  // description by looking up individual device from PjRt client.
+  const int local_device_id =
+      num_devices_per_process == -1 ? 0 : (device_id % num_devices_per_process);
+  const int process_index =
+      num_devices_per_process == -1 ? 0 : (device_id / num_devices_per_process);
+  const int process_index_in_partition =
+      process_index == -1 ? 0 : (process_index % num_processes_per_partition);
+  const int partition_index =
+      num_processes_per_partition == -1
+          ? 0
+          : (process_index / num_processes_per_partition);
+  auto description = std::make_unique<PjRtStreamExecutorDeviceDescription>(
+      device_id, local_device_id, process_index, process_index_in_partition,
+      partition_index, std::string(platform_version()));
+  if (target_config_.has_value()) {
+    std::string compute_capability = "<unknown compute-capability>";
+    std::string gpu_vendor = "<unknown gpu vendor>";
+    if (target_config_->gpu_device_info().has_cuda_compute_capability()) {
+      const auto& cap =
+          target_config_->gpu_device_info().cuda_compute_capability();
+      compute_capability = absl::StrCat(cap.major(), ".", cap.minor());
+      gpu_vendor = "NVIDIA Corporation";
     }
-    devices.push_back(std::move(description));
+
+    StreamExecutorGpuTopologyDescription::SetupDeviceDescription(
+        *description, gpu_vendor, compute_capability,
+        target_config_->gpu_device_info().core_count(),
+        target_config_->gpu_device_info().shared_memory_per_block_optin(), 0);
   }
-  return devices;
+  return description;
 }
 
 absl::StatusOr<std::string> StreamExecutorGpuTopologyDescription::Serialize()
@@ -136,6 +147,26 @@ absl::StatusOr<std::string> StreamExecutorGpuTopologyDescription::Serialize()
     return absl::InternalError("Failed to serialize gpu_topology");
   }
   return result;
+}
+
+absl::StatusOr<std::pair<PjRtDeviceDimensions, int32_t>>
+StreamExecutorGpuTopologyDescription::
+    ChipCoordAndCoreIndexForLogicalDeviceOfDefaultType(
+        xla::PjRtGlobalDeviceId device_id) const {
+  if (device_id.value() < 0 ||
+      device_id.value() >= gpu_topology_->number_of_devices()) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("Chip id ", device_id.value(), " is out of range [0, ",
+                     gpu_topology_->number_of_devices(), ")"));
+  }
+  auto device_desc = CreateDeviceDescription(device_id.value());
+  const auto& coords = device_desc->coords();
+  if (coords.size() != 3) {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "GPU topology must have 3 dimensions, but got ", coords.size()));
+  }
+  return std::make_pair(PjRtDeviceDimensions{coords[0], coords[1], coords[2]},
+                        0);
 }
 
 absl::StatusOr<Layout> StreamExecutorGpuTopologyDescription::GetDefaultLayout(
@@ -150,6 +181,40 @@ absl::StatusOr<Layout> StreamExecutorGpuTopologyDescription::GetDefaultLayout(
     layout.set_element_size_in_bits(primitive_util::BitWidth(element_type));
   }
   return layout;
+}
+
+absl::StatusOr<xla::PjRtTopologyDescriptionProto>
+StreamExecutorGpuTopologyDescription::ToProto() const {
+  PjRtTopologyDescriptionProto proto;
+  proto.set_platform_id(platform_id());
+  proto.set_platform_name(platform_name());
+  proto.set_platform_version(platform_version());
+  proto.set_is_subslice_topology(is_subslice_topology());
+
+  GpuTopologyProto gpu_topology_proto = gpu_topology_->ToProto();
+  proto.mutable_platform_specific_topology()->PackFrom(gpu_topology_proto);
+  return proto;
+}
+
+absl::StatusOr<std::unique_ptr<StreamExecutorGpuTopologyDescription>>
+StreamExecutorGpuTopologyDescription::FromProto(
+    const xla::PjRtTopologyDescriptionProto& proto) {
+  if (proto.platform_id() != xla::CudaId() &&
+      proto.platform_id() != xla::RocmId()) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("The platform_id is not a GPU platform. platform_id: ",
+                     proto.platform_id()));
+  }
+  if (!proto.platform_specific_topology().Is<GpuTopologyProto>()) {
+    return absl::InvalidArgumentError(
+        "The platform_specific_topology is not a GpuTopologyProto.");
+  }
+  GpuTopologyProto gpu_topology_proto;
+  proto.platform_specific_topology().UnpackTo(&gpu_topology_proto);
+  auto gpu_topology = std::shared_ptr<const GpuTopology>(
+      GpuTopology::FromProto(gpu_topology_proto));
+  return std::make_unique<StreamExecutorGpuTopologyDescription>(
+      proto.platform_id(), proto.platform_name(), std::move(gpu_topology));
 }
 
 }  // namespace xla

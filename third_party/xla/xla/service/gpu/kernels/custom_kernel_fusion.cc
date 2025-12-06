@@ -19,7 +19,6 @@ limitations under the License.
 #include <string>
 #include <utility>
 
-#include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
@@ -38,7 +37,7 @@ CustomKernelFusionRegistry* CustomKernelFusionRegistry::Default() {
 
 absl::Status CustomKernelFusionRegistry::Register(
     std::string name, std::unique_ptr<CustomKernelFusion> fusion) {
-  absl::MutexLock lock(&mutex_);
+  absl::MutexLock lock(mutex_);
   if (auto it = registry_.try_emplace(name, std::move(fusion)); it.second)
     return absl::OkStatus();
   return absl::InternalError(
@@ -47,7 +46,7 @@ absl::Status CustomKernelFusionRegistry::Register(
 
 CustomKernelFusion* CustomKernelFusionRegistry::Lookup(
     absl::string_view name) const {
-  absl::MutexLock lock(&mutex_);
+  absl::MutexLock lock(mutex_);
   if (auto it = registry_.find(name); it != registry_.end())
     return it->second.get();
   return nullptr;

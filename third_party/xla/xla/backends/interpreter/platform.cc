@@ -19,6 +19,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
@@ -27,7 +28,6 @@ limitations under the License.
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform/initialize.h"
 #include "xla/stream_executor/platform_manager.h"
-#include "tsl/platform/status.h"
 
 namespace stream_executor {
 namespace interpreter {
@@ -77,7 +77,7 @@ XlaInterpreterPlatform::GetUncachedExecutor(int ordinal) {
 
 static void InitializeXlaInterpreterPlatform() {
   std::unique_ptr<Platform> platform(new XlaInterpreterPlatform);
-  TF_CHECK_OK(PlatformManager::RegisterPlatform(std::move(platform)));
+  CHECK_OK(PlatformManager::RegisterPlatform(std::move(platform)));
 }
 
 }  // namespace interpreter

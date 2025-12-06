@@ -1,5 +1,6 @@
 /* Copyright 2020 The OpenXLA Authors.
 
+
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
@@ -17,10 +18,12 @@ limitations under the License.
 
 #include <optional>
 
+#include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/stream_executor/device_description.h"
-#include "tsl/platform/test.h"
+#include "xla/stream_executor/device_description.pb.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 
@@ -30,8 +33,10 @@ class TreeReductionRewriterTest : public HloHardwareIndependentTestBase {
  public:
   void CheckTreeRewriter(absl::string_view hlo,
                          std::optional<absl::string_view> expected) {
-    stream_executor::DeviceDescription device_description{
-        stream_executor::GpuDeviceInfoProto{}};
+    TF_ASSERT_OK_AND_ASSIGN(
+        stream_executor::DeviceDescription device_description,
+        stream_executor::DeviceDescription::FromProto(
+            stream_executor::GpuDeviceInfoProto{}));
     device_description.set_threads_per_warp(32);
     RunAndFilecheckHloRewrite(
         hlo, gpu::TreeReductionRewriter{device_description}, expected);

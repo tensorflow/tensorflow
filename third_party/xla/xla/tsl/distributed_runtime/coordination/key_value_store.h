@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_TSL_DISTRIBUTED_RUNTIME_COORDINATION_KEY_VALUE_STORE_H_
 #define XLA_TSL_DISTRIBUTED_RUNTIME_COORDINATION_KEY_VALUE_STORE_H_
 
+#include <cstdint>
 #include <optional>
 #include <string>
 #include <vector>
@@ -54,6 +55,15 @@ class KeyValueStore {
 
   // Returns the value associated with the provided key, if one exists.
   std::optional<std::string> Get(absl::string_view key);
+
+  // Increments the value associated with the provided key by the provided
+  // increment. If the key does not exist, the value is initialized to 0. And
+  // then incremented.
+  //
+  // The value string is interpreted as a big-endian 64-bit integer. An error is
+  // returned if the value string is not exactly 8 bytes.
+  absl::StatusOr<std::string> IncrementBy(absl::string_view key,
+                                          int64_t increment);
 
   // Returns all key-value pairs where the key has the provided prefix.
   //

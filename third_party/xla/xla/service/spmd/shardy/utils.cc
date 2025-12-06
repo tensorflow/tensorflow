@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 
 #include "mhlo/IR/register.h"
@@ -39,6 +40,7 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Operation.h"
 #include "mlir/IR/PatternMatch.h"
+#include "mlir/IR/SymbolTable.h"
 #include "mlir/IR/TypeRange.h"
 #include "mlir/IR/Visitors.h"
 #include "mlir/Support/LLVM.h"
@@ -157,6 +159,31 @@ void setFuncArgFrontendAttrs(FuncOp funcOp, unsigned int index,
                     DictionaryAttr::get(funcOp.getContext(), frontendAttrs));
 }
 
+std::optional<TensorShardingAttr> adjustShardingInternal(
+    mlir::MLIRContext* context, int idx, TensorShardingAttr sharding,
+    int64_t rank, absl::Span<const bool> allowSpmdShardingPropagation) {
+  bool allowPropagation = false;
+  if (!allowSpmdShardingPropagation.empty()) {
+    allowPropagation = allowSpmdShardingPropagation.size() == 1
+                           ? allowSpmdShardingPropagation[0]
+                           : allowSpmdShardingPropagation[idx];
+  }
+
+  if (allowPropagation) {
+    return std::nullopt;
+  }
+
+  // Close all dimensions if sharding propagation is not allowed.
+  if (sharding) {
+    sharding = sharding.getClosedLike(sharding);
+  } else {
+    sharding = TensorShardingAttr::getFullyClosed(context, rank,
+                                                  MeshAttr::get(context, {}));
+  }
+
+  return sharding;
+}
+
 }  // namespace
 
 void setFrontendAttribute(Operation* op, StringRef name, Attribute value) {
@@ -210,29 +237,24 @@ void loadAllRequiredDialects(mlir::MLIRContext* context) {
   context->loadAllAvailableDialects();
 }
 
+void adjustInputSharding(
+    FuncOp func, int idx, TensorShardingAttr sharding, int64_t rank,
+    absl::Span<const bool> allowSpmdShardingPropagationToParameters) {
+  if (std::optional<TensorShardingAttr> adjustedSharding =
+          adjustShardingInternal(func.getContext(), idx, sharding, rank,
+                                 allowSpmdShardingPropagationToParameters)) {
+    mlir::sdy::setSharding(func.getArgument(idx), *adjustedSharding);
+  }
+}
+
 void adjustOutputSharding(
     FuncOp func, int idx, TensorShardingAttr sharding, int64_t rank,
     absl::Span<const bool> allowSpmdShardingPropagationToOutput) {
-  bool allowPropagation = false;
-  if (!allowSpmdShardingPropagationToOutput.empty()) {
-    allowPropagation = allowSpmdShardingPropagationToOutput.size() == 1
-                           ? allowSpmdShardingPropagationToOutput[0]
-                           : allowSpmdShardingPropagationToOutput[idx];
+  if (std::optional<TensorShardingAttr> adjustedSharding =
+          adjustShardingInternal(func.getContext(), idx, sharding, rank,
+                                 allowSpmdShardingPropagationToOutput)) {
+    setFuncResultSharding(func, idx, *adjustedSharding);
   }
-
-  if (allowPropagation) {
-    return;
-  }
-
-  // Close all dimensions if sharding propagation to outputs is not allowed.
-  if (sharding) {
-    sharding = sharding.getClosedLike(sharding);
-  } else {
-    sharding = TensorShardingAttr::getFullyClosed(
-        func.getContext(), rank,
-        MeshAttr::get(func.getContext(), mlir::ArrayRef<MeshAxisAttr>{}));
-  }
-  setFuncResultSharding(func, idx, sharding);
 }
 
 CustomCallOp cloneCustomCallWithNewResultTypes(CustomCallOp op,
@@ -305,6 +327,7 @@ SmallVector<AxisRefAttr> getOrderedAxisRefs(Attribute shardingOrAxisList,
     for (DimensionShardingAttr dimSharding : sharding.getDimShardings()) {
       consumeAxisRefList(dimSharding.getAxes());
     }
+    consumeAxisRefList(sharding.getUnreducedAxes());
   } else {
     consumeAxisRefList(
         mlir::cast<AxisRefListAttr>(shardingOrAxisList).getValue());
@@ -415,6 +438,48 @@ bool hasGspmdAttrsOrOps(mlir::ModuleOp module) {
 
 bool hasShardyMesh(mlir::ModuleOp module) {
   return !module.getOps<mlir::sdy::MeshOp>().empty();
+}
+
+namespace {
+// Returns the first non-maximal mesh on the result shardings, if there is
+// one. Otherwise returns `std::nullopt`.
+// TODO(enver): Use a common helper that takes an std::function to get the
+// sharding given an index.
+std::optional<Attribute> getMeshOrRefOnResults(
+    mlir::func::FuncOp funcOp, const mlir::SymbolTable& symbolTable) {
+  for (int64_t resultNum = 0; resultNum < funcOp.getNumResults(); ++resultNum) {
+    if (mlir::sdy::TensorShardingAttr sdySharding =
+            mlir::sdy::getFuncResultSharding(funcOp, resultNum);
+        sdySharding && !sdySharding.getMesh(symbolTable).isMaximal()) {
+      return std::make_optional(sdySharding.getMeshOrRef());
+    }
+  }
+  return std::nullopt;
+}
+}  // namespace
+
+mlir::sdy::TensorShardingPerValueAttr getFuncResultShardings(
+    mlir::func::CallOp callOp, mlir::func::FuncOp funcOp,
+    const mlir::SymbolTable& symbolTable) {
+  std::optional<mlir::Attribute> meshOrRef =
+      getMeshOrRefOnResults(funcOp, symbolTable);
+  if (!meshOrRef) {
+    return nullptr;
+  }
+  SmallVector<mlir::sdy::TensorShardingAttr> resultShardings;
+  resultShardings.reserve(funcOp.getNumResults());
+  for (int64_t resultNum = 0; resultNum < funcOp.getNumResults(); ++resultNum) {
+    mlir::sdy::TensorShardingAttr sdySharding =
+        mlir::sdy::getFuncResultSharding(funcOp, resultNum);
+    resultShardings.push_back(
+        sdySharding ? sdySharding
+                    : mlir::sdy::TensorShardingAttr::getFullyOpen(
+                          funcOp.getContext(),
+                          mlir::sdy::getTensorRank(callOp.getResult(resultNum)),
+                          *meshOrRef));
+  }
+  return mlir::sdy::TensorShardingPerValueAttr::get(funcOp.getContext(),
+                                                    resultShardings);
 }
 
 }  // namespace sdy

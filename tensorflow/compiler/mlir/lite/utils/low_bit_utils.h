@@ -20,17 +20,18 @@ limitations under the License.
 #include <vector>
 
 namespace tflite {
-// Assumes that `src_tensor` is a buffer where each element is a 4-bit value
-// stored in 8-bit.
-// Returns a new buffer that is packed densely with 2 4-bit values in a byte.
-// The packing format is low-bits-first, i.e. the lower nibble of a byte is
-// filled first, followed by the upper nibble.
-std::vector<uint8_t> PackInt4ValuesDensely(std::vector<uint8_t> src_buffer);
+// Assumes that `src_tensor` is a buffer where each element is a low bit value
+// (e.g. 2 or 4-bit) stored in 8-bit.
+// Returns a new buffer that is packed densely.
+// The packing format is low-bits-first.
+std::vector<uint8_t> PackLowBitValuesDensely(std::vector<uint8_t> src_buffer,
+                                             int bit_width);
 
-// Assumes `src_buffer` contains 2 4-bit elements packed in 8-bit.
-// Returns a vector where each int8 element contains a int4 sign-extended value.
-std::vector<char> UnpackDenseInt4IntoInt8(
-    const std::vector<uint8_t>& src_buffer, int64_t num_elements);
+// Assumes `src_buffer` contains densely packed low bit elements.
+// Returns a vector where each int8 element contains a sign-extended value.
+std::vector<char> UnpackDenseLowBitIntoInt8(
+    const std::vector<uint8_t>& src_buffer, int64_t num_elements,
+    int bit_width);
 }  // namespace tflite
 
 #endif  // TENSORFLOW_COMPILER_MLIR_LITE_UTILS_LOW_BIT_UTILS_H_

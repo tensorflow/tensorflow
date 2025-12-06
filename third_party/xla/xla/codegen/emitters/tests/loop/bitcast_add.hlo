@@ -1,0 +1,12 @@
+// RUN: gpu_fusion_to_mlir %s | emitters_opt -xla-test-optimize | FileCheck %s
+// RUN: cpu_fusion_to_mlir %s | emitters_opt -xla-test-optimize | FileCheck %s
+// RUN: gpu_test_correctness %s
+// RUN: cpu_test_correctness %s
+
+fusion {
+  input = f16[20] parameter(0)
+  bitcast = s16[4,5] bitcast(input)
+  ROOT add = s16[4,5] add(bitcast, bitcast)
+}
+// CHECK: arith.bitcast
+// CHECK: arith.addi

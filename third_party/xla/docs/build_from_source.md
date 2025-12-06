@@ -114,7 +114,7 @@ bazel build \
 ```
 
 For more details regarding
-[hermetic CUDA you can check out this document.](hermetic_cuda.md)
+[hermetic CUDA you can check out this document.](https://github.com/google-ml-infra/rules_ml_toolchain/blob/main/gpu)
 
 ### Build XLA with CUDA/cuDNN Support Using the JAX CI/Release Container
 

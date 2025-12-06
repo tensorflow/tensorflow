@@ -15,19 +15,21 @@ limitations under the License.
 
 #include "xla/tsl/framework/allocator.h"
 
-#include <atomic>
+#include <cstddef>
+#include <string>
+#include <vector>
 
+#include "absl/strings/str_format.h"
 #include "xla/tsl/framework/allocator_registry.h"
 #include "xla/tsl/framework/tracking_allocator.h"
 #include "xla/tsl/platform/types.h"
 #include "tsl/platform/mem.h"
 #include "tsl/platform/strcat.h"
-#include "tsl/platform/stringprintf.h"
 
 namespace tsl {
 
-string AllocatorStats::DebugString() const {
-  return strings::Printf(
+std::string AllocatorStats::DebugString() const {
+  return absl::StrFormat(
       "Limit:            %20lld\n"
       "InUse:            %20lld\n"
       "MaxInUse:         %20lld\n"
@@ -56,7 +58,7 @@ static bool cpu_allocator_collect_full_stats = false;
 void EnableCPUAllocatorFullStats() { cpu_allocator_collect_full_stats = true; }
 bool CPUAllocatorFullStatsEnabled() { return cpu_allocator_collect_full_stats; }
 
-string AllocatorAttributes::DebugString() const {
+std::string AllocatorAttributes::DebugString() const {
   return strings::StrCat("AllocatorAttributes(on_host=", on_host(),
                          " nic_compatible=", nic_compatible(),
                          " gpu_compatible=", gpu_compatible(), ")");

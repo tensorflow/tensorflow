@@ -37,7 +37,7 @@ namespace tensorflow {
 namespace {
 
 static void EXPECT_SummaryMatches(const Summary& actual,
-                                  const string& expected_str) {
+                                  const std::string& expected_str) {
   Summary expected;
   CHECK(protobuf::TextFormat::ParseFromString(expected_str, &expected));
   EXPECT_EQ(expected.DebugString(), actual.DebugString());
@@ -67,7 +67,7 @@ class SummaryAudioOpTest : public OpsTestBase {
       if (VLOG_IS_ON(2)) {
         // When LOGGING, output the audio to disk for manual inspection.
         TF_CHECK_OK(WriteStringToFile(
-            Env::Default(), strings::StrCat("/tmp/", value->tag(), ".wav"),
+            Env::Default(), absl::StrCat("/tmp/", value->tag(), ".wav"),
             value->audio().encoded_audio_string()));
       }
       value->mutable_audio()->clear_encoded_audio_string();

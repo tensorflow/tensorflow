@@ -23,12 +23,11 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/file_system.h"
-#include "xla/tsl/platform/status_matchers.h"
-#include "xla/tsl/platform/types.h"
 
 namespace stablehlo::quantization::io {
 namespace {
@@ -39,8 +38,6 @@ using ::testing::IsEmpty;
 using ::testing::Not;
 using ::testing::SizeIs;
 using ::testing::UnorderedElementsAre;
-using ::tsl::testing::IsOk;
-using ::tsl::testing::StatusIs;
 
 // A test-only derived class of `tsl::Env` which is broken. Used to cause
 // failure for the `CreateTmpDir` function. Each of the overridden member
@@ -50,23 +47,23 @@ class TestEnvBrokenFileSystem : public tsl::Env {
  public:
   TestEnvBrokenFileSystem() = default;
 
-  bool MatchPath(const tsl::string& path, const tsl::string& pattern) override {
+  bool MatchPath(const std::string& path, const std::string& pattern) override {
     return false;
   }
 
   void SleepForMicroseconds(int64_t micros) override {}
 
-  tsl::string GetRunfilesDir() override { return tsl::string("dummy_path"); }
+  std::string GetRunfilesDir() override { return std::string("dummy_path"); }
 
   int64_t GetCurrentThreadId() override { return 0; }
 
   tsl::Thread* StartThread(const tsl::ThreadOptions& thread_options,
-                           const tsl::string& name,
+                           const std::string& name,
                            absl::AnyInvocable<void()> fn) override {
     return nullptr;
   }
 
-  bool GetCurrentThreadName(tsl::string* name) override { return false; }
+  bool GetCurrentThreadName(std::string* name) override { return false; }
 
   void SchedClosure(absl::AnyInvocable<void()> closure) override {}
 
@@ -83,9 +80,9 @@ class TestEnvBrokenFileSystem : public tsl::Env {
     return absl::OkStatus();
   }
 
-  tsl::string FormatLibraryFileName(const tsl::string& name,
-                                    const tsl::string& version) override {
-    return tsl::string("dummy_path");
+  std::string FormatLibraryFileName(const std::string& name,
+                                    const std::string& version) override {
+    return std::string("dummy_path");
   }
 
   // This is the part that would break the `CreateTmpDir` function because it
@@ -96,7 +93,7 @@ class TestEnvBrokenFileSystem : public tsl::Env {
   }
 
  private:
-  void GetLocalTempDirectories(std::vector<tsl::string>* list) override {
+  void GetLocalTempDirectories(std::vector<std::string>* list) override {
     list->push_back("/tmp");
   }
 };
@@ -108,7 +105,7 @@ class TestEnvBrokenFileSystemAndNoLocalTempDirs
  private:
   // This is the part that essentially breaks the `GetLocalTmpFileName` function
   // because it doesn't provide any available temp dirs.
-  void GetLocalTempDirectories(std::vector<tsl::string>* list) override {}
+  void GetLocalTempDirectories(std::vector<std::string>* list) override {}
 };
 
 TEST(IoTest, GetLocalTmpFileNameGivesValidFileName) {

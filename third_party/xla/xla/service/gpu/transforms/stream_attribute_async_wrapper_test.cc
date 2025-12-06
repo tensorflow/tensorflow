@@ -26,7 +26,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/service/gpu/backend_configs.pb.h"
-#include "tsl/platform/statusor.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace xla::gpu {
 namespace {
@@ -40,8 +40,8 @@ TEST_F(StreamAttributeAsyncWrapperTest, NonDefaultOpIsWrapped) {
   ENTRY entry {
     p1_32 = f32[1] parameter(0)
     p2_32 = f32[1] parameter(1)
-    add_32 = f32[1] add(p1_32, p2_32), backend_config={"operation_queue_id":"1", "wait_on_operation_queues":[], "force_earliest_schedule":true}
-    ROOT exp_32 = f32[1] exponential(add_32), backend_config={"operation_queue_id":"0", "wait_on_operation_queues":[1]}
+    add_32 = f32[1] add(p1_32, p2_32), backend_config={"operation_queue_id":"1", "force_earliest_schedule":true}
+    ROOT exp_32 = f32[1] exponential(add_32)
   }
   )";
 

@@ -20,6 +20,7 @@ limitations under the License.
 #include "xla/literal_util.h"
 #include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/tests/literal_test_util.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 
 namespace xla {
@@ -48,7 +49,8 @@ TEST_F(NopCustomCallTest, RunAllocateBufferAndUpdate) {
   })";
   auto module = ParseAndReturnVerifiedModule(hlo_text).value();
 
-  Literal result = ExecuteNoHloPasses(std::move(module), {});
+  TF_ASSERT_OK_AND_ASSIGN(
+      Literal result, Execute(std::move(module), {}, /*run_hlo_passes=*/false));
   Literal expected = LiteralUtil::CreateR1<int32_t>({1});
   EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
 }

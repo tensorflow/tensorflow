@@ -225,18 +225,20 @@ tsl::AsyncValueRef<Thunk::ExecuteEvent> ThunkExecutor::TracedExecute(
   }
 
   // Create a producer traceme to capture the start event.
-  tsl::profiler::TraceMeProducer producer([&] { return thunk.TraceMeEncode(); },
-                                          tsl::profiler::ContextType::kGeneric);
+  tsl::profiler::TraceMeProducer producer(
+      [&] { return thunk.TraceMeEncode(params.run_id, params.device_ordinal); },
+      tsl::profiler::ContextType::kGeneric);
 
   auto execute_event = thunk.Execute(params);
 
   // When thunk execution completes, create a consumer traceme to capture the
   // end event.
-  execute_event.AndThen([context_id = producer.GetContextId(), &thunk] {
-    tsl::profiler::TraceMeConsumer(
-        [&] { return absl::StrFormat("end: %s", thunk.info().op_name); },
-        tsl::profiler::ContextType::kGeneric, context_id);
-  });
+  execute_event.AndThen(
+      [context_id = producer.GetContextId(), op_name = thunk.info().op_name] {
+        tsl::profiler::TraceMeConsumer(
+            [&] { return absl::StrFormat("end: %s", op_name); },
+            tsl::profiler::ContextType::kGeneric, context_id);
+      });
 
   return execute_event;
 }
@@ -643,7 +645,7 @@ void ThunkExecutor::ProcessCompletedOutEdges(
   // We still continue processing the nodes DAG to eventually mark sink nodes
   // completed as it's easier than to add a special abort handling logic.
   if (ABSL_PREDICT_FALSE(node_event.IsError())) {
-    absl::MutexLock lock(&state->abort_mutex);
+    absl::MutexLock lock(state->abort_mutex);
     state->abort = true;
     state->abort_status.Update(node_event.GetError());
   }
@@ -683,7 +685,7 @@ void ThunkExecutor::ProcessCompletedOutEdges(
     // forward it to the caller via the execute event.
     if (ABSL_PREDICT_FALSE(state->abort.load(std::memory_order_relaxed))) {
       auto take_error = [&] {
-        absl::MutexLock lock(&state->abort_mutex);
+        absl::MutexLock lock(state->abort_mutex);
         DCHECK(!state->abort_status.ok())
             << "Abort status must be set if execution is aborted";
         return std::move(state->abort_status);

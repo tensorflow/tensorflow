@@ -20,22 +20,23 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "google/protobuf/text_format.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/gpu/fusion_process_dump.pb.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tools/hlo_module_loader.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
-#include "tsl/platform/env.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/logging.h"
 #include "tsl/platform/path.h"
 #include "tsl/platform/protobuf.h"  // IWYU pragma: keep
-#include "tsl/platform/status.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -58,7 +59,7 @@ HloInstruction* AddFusionInstruction(HloInstruction* producer,
   auto fusion_instruction = computation->AddInstruction(
       HloInstruction::CreateFusion(consumer->shape(), kind, consumer),
       /*new_name=*/fusion_name);
-  TF_CHECK_OK(computation->ReplaceInstruction(consumer, fusion_instruction));
+  CHECK_OK(computation->ReplaceInstruction(consumer, fusion_instruction));
 
   return fusion_instruction;
 }
@@ -75,7 +76,7 @@ HloInstruction* Fuse(HloInstruction* producer, HloInstruction* consumer,
   }
 
   if (producer->user_count() == 0) {
-    TF_CHECK_OK(computation->RemoveInstruction(producer));
+    CHECK_OK(computation->RemoveInstruction(producer));
   }
 
   return fusion_instruction;
@@ -135,8 +136,9 @@ absl::StatusOr<FusionProcessDump> FusionProcessDump::LoadFromProto(
       LoadModuleFromData(fusion_process_dump_proto.hlo_module_before_fusion(),
                          /*format=*/"txt"));
 
-  se::DeviceDescription gpu_device_info(
-      fusion_process_dump_proto.gpu_device_info());
+  TF_ASSIGN_OR_RETURN(se::DeviceDescription gpu_device_info,
+                      se::DeviceDescription::FromProto(
+                          fusion_process_dump_proto.gpu_device_info()));
 
   absl::flat_hash_map<std::string, HloComputation*>
       instruction_name_to_computation_map;

@@ -16,7 +16,6 @@ limitations under the License.
 #include "xla/core/host_offloading/host_offloading_pjrt_executable.h"
 
 #include <cstddef>
-#include <cstdint>
 #include <functional>
 #include <memory>
 #include <optional>
@@ -37,6 +36,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/core/host_offloading/host_offloading_buffer.h"
 #include "xla/core/host_offloading/host_offloading_executable.h"
+#include "xla/core/host_offloading/host_offloading_executable.pb.h"
 #include "xla/core/host_offloading/host_offloading_layout_analysis.h"
 #include "xla/core/host_offloading/host_offloading_transforms.h"
 #include "xla/hlo/builder/xla_computation.h"
@@ -120,7 +120,7 @@ ABSL_CONST_INIT absl::Mutex host_offloading_client_mutex(absl::kConstInit);
 absl::StatusOr<PjRtClient*> GetHostOffloadingPjRtClient() {
   static PjRtClient* client = nullptr;
 
-  absl::MutexLock lock(&host_offloading_client_mutex);
+  absl::MutexLock lock(host_offloading_client_mutex);
   if (client != nullptr) {
     return client;
   }
@@ -258,8 +258,6 @@ HostOffloadingPjRtExecutable::Execute(
 
   // TODO(b/340666998) Add additional context needed to support megascale ops
   ::xla::ExecuteOptions pjrt_execute_options{
-      // By default untuple results.
-      .untuple_result = true,
       // Forward launch id to the host offloading executable because logically
       // it executes as a part of parent device execution.
       .launch_id = execute_options.launch_id,

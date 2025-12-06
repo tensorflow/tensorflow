@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <memory>
 #include <string>
+#include <utility>
 
 #include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
@@ -68,7 +69,7 @@ ENTRY entry {
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
 
   // Compile and execute the computation.
-  auto result = ExecuteAndTransfer(module->Clone(), {});
+  TF_ASSERT_OK_AND_ASSIGN(const Literal result, Execute(std::move(module), {}));
 
   // Check the output correctness.
   LiteralTestUtil::ExpectR0Equal(3, result);
@@ -123,7 +124,8 @@ TEST_F(CpuCodegenTest, WhileSort) {
   Literal input = LiteralUtil::CreateR1<float>({3, 1, 4, 2});
 
   // Compile and execute the computation.
-  auto result = ExecuteAndTransfer(module->Clone(), {&input});
+  TF_ASSERT_OK_AND_ASSIGN(const Literal result,
+                          Execute(std::move(module), {&input}));
 
   // Check the output correctness.
   LiteralTestUtil::ExpectR1Equal(absl::MakeConstSpan({4.0f, 3.0f, 2.0f, 1.0f}),

@@ -21,7 +21,6 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/backends/autotuner/codegen_backend.h"
@@ -30,10 +29,8 @@ limitations under the License.
 #include "xla/service/compiler.h"
 #include "xla/service/executable.h"
 #include "xla/stream_executor/platform_manager.h"
-#include "xla/stream_executor/stream_executor.h"
 #include "xla/tools/hlo_decomposer.h"
 #include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla.pb.h"
 
@@ -66,11 +63,9 @@ class CpuCodegenBackend : public CodegenBackend {
     TF_RETURN_IF_ERROR(ApplyConfig(
         *hlo_module->entry_computation()->root_instruction(), config));
 
-    Compiler::CompileOptions options;
-    options.is_autotuning_compilation = true;
-
     return compiler_->RunBackend(std::move(hlo_module),
-                                 /*executor=*/nullptr, options);
+                                 /*executor=*/nullptr,
+                                 /*device_allocator=*/nullptr);
   }
 
   bool CanProduceWrongResults() const override { return false; }

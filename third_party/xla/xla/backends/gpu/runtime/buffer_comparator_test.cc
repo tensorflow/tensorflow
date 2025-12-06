@@ -22,6 +22,8 @@ limitations under the License.
 #include <vector>
 
 #include <gtest/gtest.h>
+#include "absl/cleanup/cleanup.h"
+#include "absl/log/check.h"
 #include "absl/strings/ascii.h"
 #include "absl/types/span.h"
 #include "xla/primitive_util.h"
@@ -36,7 +38,6 @@ limitations under the License.
 #include "xla/types.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/ml_dtypes.h"
-#include "tsl/platform/test.h"
 
 namespace xla {
 namespace gpu {
@@ -53,7 +54,6 @@ class BufferComparatorTest : public testing::Test {
     stream_exec_ = platform_->ExecutorForDevice(0).value();
   }
 
-  // Take floats only for convenience. Still uses ElementType internally.
   template <typename ElementType>
   bool CompareEqualBuffers(absl::Span<const ElementType> current,
                            absl::Span<const ElementType> expected,
@@ -66,11 +66,11 @@ class BufferComparatorTest : public testing::Test {
         stream_exec_,
         stream_exec_->AllocateArray<ElementType>(expected.size()));
 
-    TF_CHECK_OK(stream->Memcpy(current_buffer.memory_ptr(), current.data(),
-                               current_buffer.memory().size()));
-    TF_CHECK_OK(stream->Memcpy(expected_buffer.memory_ptr(), expected.data(),
-                               expected_buffer.memory().size()));
-    TF_CHECK_OK(stream->BlockHostUntilDone());
+    CHECK_OK(stream->Memcpy(current_buffer.memory_ptr(), current.data(),
+                            current_buffer.memory().size()));
+    CHECK_OK(stream->Memcpy(expected_buffer.memory_ptr(), expected.data(),
+                            expected_buffer.memory().size()));
+    CHECK_OK(stream->BlockHostUntilDone());
 
     BufferComparator comparator(
         ShapeUtil::MakeShape(
@@ -100,6 +100,32 @@ class BufferComparatorTest : public testing::Test {
                                                           kDefaultTolerance);
   }
 
+  template <typename ElementType>
+  bool CompareEqualScalar(const ElementType& current,
+                          const ElementType& expected,
+                          double tolerance = kDefaultTolerance) {
+    auto stream = stream_exec_->CreateStream().value();
+    se::DeviceMemoryHandle current_buffer(
+        stream_exec_, stream_exec_->AllocateScalar<ElementType>());
+    se::DeviceMemoryHandle expected_buffer(
+        stream_exec_, stream_exec_->AllocateScalar<ElementType>());
+
+    CHECK_OK(stream->Memcpy(current_buffer.memory_ptr(), &current,
+                            current_buffer.memory().size()));
+    CHECK_OK(stream->Memcpy(expected_buffer.memory_ptr(), &expected,
+                            expected_buffer.memory().size()));
+    CHECK_OK(stream->BlockHostUntilDone());
+
+    BufferComparator comparator(
+        ShapeUtil::MakeShape(
+            primitive_util::NativeToPrimitiveType<ElementType>(), {}),
+        kDefaultTolerance);
+    return comparator
+        .CompareEqual(stream.get(), current_buffer.memory(),
+                      expected_buffer.memory())
+        .value();
+  }
+
   se::Platform* platform_;
   se::StreamExecutor* stream_exec_;
 };
@@ -124,6 +150,26 @@ TEST_F(BufferComparatorTest, TestComplex) {
                                           {{0.1, 0.2}, {2.2, 3.3}}));
   EXPECT_FALSE(
       CompareEqualComplex<double>({{0.1, 0.2}, {2, 3}}, {{0.1, 0.2}, {2, 7}}));
+}
+
+TEST_F(BufferComparatorTest, TestScalar) {
+  EXPECT_TRUE(CompareEqualScalar<std::complex<double>>({1, 1}, {1, 1}));
+  EXPECT_FALSE(CompareEqualScalar<std::complex<double>>({1, 1}, {1, 2}));
+  EXPECT_FALSE(CompareEqualScalar<std::complex<double>>({1, 1}, {2, 1}));
+  EXPECT_TRUE(CompareEqualScalar<std::complex<float>>({1, 1}, {1, 1}));
+  EXPECT_FALSE(CompareEqualScalar<std::complex<float>>({1, 1}, {1, 2}));
+  EXPECT_FALSE(CompareEqualScalar<std::complex<float>>({1, 1}, {2, 1}));
+  EXPECT_TRUE(CompareEqualScalar<float>(1, 1));
+  EXPECT_FALSE(CompareEqualScalar<float>(1, 2));
+  EXPECT_TRUE(CompareEqualScalar<double>(1, 1));
+  EXPECT_FALSE(CompareEqualScalar<double>(1, 2));
+  EXPECT_TRUE(CompareEqualScalar<bool>(true, true));
+  EXPECT_TRUE(CompareEqualScalar<bool>(false, false));
+  EXPECT_FALSE(CompareEqualScalar<bool>(true, false));
+  EXPECT_TRUE(CompareEqualScalar<int8_t>(1, 1));
+  EXPECT_FALSE(CompareEqualScalar<int8_t>(1, 2));
+  EXPECT_TRUE(CompareEqualScalar<int32_t>(1, 1));
+  EXPECT_FALSE(CompareEqualScalar<int32_t>(1, 2));
 }
 
 TEST_F(BufferComparatorTest, TestPred) {
@@ -401,6 +447,45 @@ TEST_F(BufferComparatorTest, BF16) {
   BufferComparator comparator(ShapeUtil::MakeShape(BF16, {element_count}));
   EXPECT_FALSE(comparator.CompareEqual(stream.get(), lhs.memory(), rhs.memory())
                    .value());
+}
+
+TEST_F(BufferComparatorTest, VeryLargeArray) {
+  constexpr PrimitiveType number_type = U8;
+  using NT = primitive_util::PrimitiveTypeToNative<number_type>::type;
+
+  // Set non-power-of-two element count on purpose, use aligned buffer size.
+  int64_t n_elems = (1LL << 32) - 11,
+          // Buffer size must be 4-bytes aligned for Memset32.
+      buf_size = (((n_elems + 1) * sizeof(NT)) + 3) & ~3;
+  auto stream = stream_exec_->CreateStream().value();
+
+  auto base = stream_exec_->Allocate(buf_size);
+  EXPECT_TRUE(!base.is_null());
+  auto cleanup =
+      absl::MakeCleanup([this, &base] { stream_exec_->Deallocate(&base); });
+
+  // We use overlapping lhs and rhs arrays to reduce memory usage, also this
+  // serves as an extra test for possible pointer aliasing problems.
+  se::DeviceMemoryBase lhs(base.opaque(), n_elems * sizeof(NT)),
+      rhs(static_cast<NT*>(base.opaque()) + 1, lhs.size());
+
+  constexpr uint32_t pattern = 0xABABABAB;
+  TF_CHECK_OK(stream->Memset32(&lhs, pattern, buf_size));
+
+  // First we do "positive" test to make sure lhs and rhs are indeed equal:
+  // disable host comparison here since it could take a while for ~4GB array
+  BufferComparator comparator(ShapeUtil::MakeShape(number_type, {n_elems}),
+                              /*tolerance*/ 0.1, /* verbose */ false,
+                              /*run_host_compare*/ false);
+  EXPECT_TRUE(comparator.CompareEqual(stream.get(), lhs, rhs).value());
+
+  se::DeviceMemoryBase last_word(
+      static_cast<uint8_t*>(base.opaque()) + (n_elems & ~3), sizeof(uint32_t));
+  // Change only the very last entry of rhs to verify that the whole arrays are
+  // compared (if the grid dimensions are not computed correctly, this might
+  // not be the case).
+  TF_CHECK_OK(stream->Memset32(&last_word, 0x11223344, last_word.size()));
+  EXPECT_FALSE(comparator.CompareEqual(stream.get(), lhs, rhs).value());
 }
 
 }  // namespace

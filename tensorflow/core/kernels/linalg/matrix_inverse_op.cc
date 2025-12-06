@@ -292,7 +292,7 @@ class MatrixInverseOpGpu : public AsyncOpKernel {
     auto info_checker = [context, done](
                             const Status& status,
                             const std::vector<HostLapackInfo>& host_infos) {
-      if (!status.ok() && errors::IsInvalidArgument(status)) {
+      if (!status.ok() && absl::IsInvalidArgument(status)) {
         for (const auto& host_info : host_infos) {
           for (int i = 0; i < host_info.size(); ++i) {
             // Match the CPU error message for singular matrices. Otherwise

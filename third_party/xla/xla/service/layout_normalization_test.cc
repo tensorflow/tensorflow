@@ -18,12 +18,13 @@ limitations under the License.
 #include <functional>
 #include <optional>
 
+#include <gtest/gtest.h>
+#include "absl/log/check.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/service/scatter_simplifier.h"
-#include "tsl/platform/status.h"
-#include "tsl/platform/test.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -601,6 +602,17 @@ ENTRY main {
   )");
 }
 
+TEST_F(LayoutNormalizationTest, ZeroSizedConstant) {
+  const char* hlo = R"(
+  HloModule zero_sized_constant, entry_computation_layout={()->s32[0,179]{0,1}}
+  ENTRY main() -> s32[0,179] {
+    ROOT %constant = s32[0,179]{1,0} constant({  })
+  })";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  TF_ASSERT_OK_AND_ASSIGN(auto status, LayoutNormalization().Run(module.get()));
+  EXPECT_FALSE(status);
+}
+
 TEST_F(LayoutNormalizationTest, ConstantAvoidRevisitOfUser) {
   const char* hlo = R"(
 HloModule module
@@ -801,35 +813,49 @@ ENTRY main {
 )");
 }
 
-TEST_F(LayoutNormalizationTest, BitcastConvertToBiggerType) {
-  const char* hlo = R"(
-HloModule m
-
-ENTRY main {
-  p0 = u32[4,2]{0,1} parameter(0)
-  ROOT out = u64[4]{0} bitcast-convert(u32[4,2]{0,1} p0), metadata={op_name="test"}
-}
-)";
-
-  CheckLayoutNormalization(hlo, R"(
-// CHECK: bitcast-convert({{.*}}), metadata={op_name="test"}
+TEST_F(LayoutNormalizationTest,
+       BitcastConvertToWiderTypeGetsDefaultOutputLayout) {
+  CheckLayoutNormalization(R"(
+e {
+  a = u32[3,5,2]{2,0,1} parameter(0)
+  b = u64[3,5]{0,1} bitcast-convert(a)
+})",
+                           R"(
+CHECK: u32[3,5,2]{2,0,1} parameter(0)
+CHECK-NEXT: u32[5,3,2]{2,1,0} bitcast
+CHECK-NEXT: u64[5,3]{1,0} bitcast-convert
+CHECK-NEXT: u64[3,5]{0,1} bitcast
 )");
 }
 
-TEST_F(LayoutNormalizationTest, BitcastConvertToSmallerType) {
-  const char* hlo = R"(
-HloModule m
-
-ENTRY main {
-  p0 = u64[3,4]{0,1} parameter(0)
-  bc_convert = u32[3,4,2]{1,0,2} bitcast-convert(p0), metadata={op_name="test"}
-  ROOT out = u32[3,4,2]{1,0,2} reverse(bc_convert), dimensions={0}
+TEST_F(LayoutNormalizationTest,
+       BitcastConvertToNarrowerTypeGetsDefaultOutputLayout) {
+  CheckLayoutNormalization(R"(
+e {
+  a = u64[3,5]{0,1} parameter(0)
+  b = u32[3,5,2]{2,0,1} bitcast-convert(a)
+})",
+                           R"(
+CHECK: u64[3,5]{0,1} parameter(0)
+CHECK-NEXT: u64[5,3]{1,0} bitcast
+CHECK-NEXT: u32[5,3,2]{2,1,0} bitcast-convert
+CHECK-NEXT: u32[3,5,2]{2,0,1} bitcast
+)");
 }
-)";
 
-  CheckLayoutNormalization(hlo, R"(
-// CHECK: bitcast-convert({{.*}}), metadata={op_name="test"}
-  )");
+TEST_F(LayoutNormalizationTest,
+       BitcastConvertFromNonContiguousDimensionIsNotNormalized) {
+  CheckLayoutNormalization(R"(
+e {
+a = u32[3,5,2]{0,2,1} parameter(0)
+b = u64[3,5]{0,1} bitcast-convert(a)
+})",
+                           R"(
+CHECK: u32[3,5,2]{0,2,1} parameter(0)
+CHECK-NEXT: u32[5,2,3]{2,1,0} bitcast
+CHECK-NEXT: u32[3,5,2]{0,2,1} bitcast
+CHECK-NEXT: u64[3,5]{0,1} bitcast-convert
+)");
 }
 
 TEST_F(LayoutNormalizationTest, Scatter) {
@@ -850,16 +876,15 @@ ENTRY main.17 {
 }
 )";
 
-  CheckLayoutNormalization(
-      hlo, R"(
+  CheckLayoutNormalization(hlo, R"(
 // CHECK: scatter({{.*}}),
 // CHECK-SAME: update_window_dims={2,0}, inserted_window_dims={0,1,3}, scatter_dims_to_operand_dims={2,4}, index_vector_dim=1, to_apply=%region_0.10
 )",
-      // Run the ScatterSimplifier afterwards, otherwise the verifier will
-      // complain!
-      [](HloModule* module) {
-        TF_CHECK_OK(ScatterSimplifier().Run(module).status());
-      });
+                           // Run the ScatterSimplifier afterwards, otherwise
+                           // the verifier will complain!
+                           [](HloModule* module) {
+                             CHECK_OK(ScatterSimplifier().Run(module).status());
+                           });
 }
 
 TEST_F(LayoutNormalizationTest, SimplifiedScatter) {
@@ -880,16 +905,15 @@ ENTRY main.17 {
 }
 )";
 
-  CheckLayoutNormalization(
-      hlo, R"(
+  CheckLayoutNormalization(hlo, R"(
 // CHECK: scatter({{.*}}),
 // CHECK-SAME: update_window_dims={4,0,1,2,5}, inserted_window_dims={}, scatter_dims_to_operand_dims={4,0}, index_vector_dim=1, to_apply=%region_0.10
 )",
-      // Run the ScatterSimplifier afterwards, otherwise the verifier will
-      // complain!
-      [](HloModule* module) {
-        TF_CHECK_OK(ScatterSimplifier().Run(module).status());
-      });
+                           // Run the ScatterSimplifier afterwards, otherwise
+                           // the verifier will complain!
+                           [](HloModule* module) {
+                             CHECK_OK(ScatterSimplifier().Run(module).status());
+                           });
 }
 
 TEST_F(LayoutNormalizationTest, VariadicScatter) {
@@ -916,16 +940,15 @@ ENTRY main.17 {
 }
 )";
 
-  CheckLayoutNormalization(
-      hlo, R"(
+  CheckLayoutNormalization(hlo, R"(
 // CHECK: scatter({{.*}}),
 // CHECK-SAME: update_window_dims={4,0,1,2,5}, inserted_window_dims={}, scatter_dims_to_operand_dims={4,0}, index_vector_dim=1, to_apply=%region_0.10
 )",
-      // Run the ScatterSimplifier afterwards, otherwise the verifier will
-      // complain!
-      [](HloModule* module) {
-        TF_CHECK_OK(ScatterSimplifier().Run(module).status());
-      });
+                           // Run the ScatterSimplifier afterwards, otherwise
+                           // the verifier will complain!
+                           [](HloModule* module) {
+                             CHECK_OK(ScatterSimplifier().Run(module).status());
+                           });
 }
 
 TEST_F(LayoutNormalizationTest, CompareInt4) {

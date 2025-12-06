@@ -29,7 +29,6 @@ cc_library(
     hdrs = ["xla_gpu_client_options.h"],
     deps = [
         ":xla_gpu_allocator_config",
-        "//xla/pjrt/distributed:client",
         "//xla/pjrt/distributed:key_value_store_interface",
     ],
 )
@@ -39,6 +38,7 @@ cc_library(
     srcs = [],
     hdrs = ["xla_gpu_allocator_config.h"],
     deps = [
+        "//xla/tsl/framework:allocator",
     ],
 )
 
@@ -66,6 +66,7 @@ cc_library(
         "//xla/pjrt/c:pjrt_c_api_gpu_internal",
         "//xla/pjrt/plugin:plugin_names",
         "//xla/pjrt/plugin:static_registration",
+        "//xla/service:gpu_plugin",
     ],
     alwayslink = True,
 )

@@ -28,6 +28,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/status/status_matchers.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -49,7 +50,6 @@ namespace xla {
 namespace {
 
 namespace op = xla::testing::opcode_matchers;
-using ::tsl::testing::IsOkAndHolds;
 using TopkRewriterTest = HloTestBase;
 
 std::string getComparator() {

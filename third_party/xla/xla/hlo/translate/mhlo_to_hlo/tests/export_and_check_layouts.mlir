@@ -27,3 +27,31 @@ module @jit_f {
     return %4 : tensor<0xi1>
   }
 }
+
+// -----
+
+// Testing custom-call ops with buffer types and layouts.
+// CHECK: HloModule
+// CHECK: ENTRY
+func.func @main(%arg0: tensor<2x4xf32>) -> tensor<2x4xf32> {
+  // CHECK: %{{.*}} = b(f32[2,4]{0,1}) custom-call(%{{.*}}), custom_call_target="Pin"
+  %0 = "mhlo.custom_call"(%arg0) {
+    call_target_name = "Pin",
+    api_version = 4 : i32
+  } : (tensor<2x4xf32>) -> memref<2x4xf32, strided<[1, 2], offset:0>>
+  // CHECK: %{{.*}} = b(f32[2,4]{0,1}) custom-call(%{{.*}}), custom_call_target="foo"
+  %1 = "mhlo.custom_call"(%0) {
+    call_target_name = "foo",
+    api_version = 4 : i32,
+    output_operand_aliases = [
+      #mhlo.output_operand_alias<output_tuple_indices = [],
+        operand_index = 0,
+        operand_tuple_indices = []>]
+  } : (memref<2x4xf32, strided<[1, 2], offset:0>>) -> memref<2x4xf32, strided<[1, 2], offset:0>>
+  // CHECK: %{{.*}} = f32[2,4]{1,0} custom-call(%{{.*}}), custom_call_target="Unpin"
+  %2 = "mhlo.custom_call"(%1) {
+    call_target_name = "Unpin",
+    api_version = 4 : i32
+  } : (memref<2x4xf32, strided<[1, 2], offset:0>>) -> tensor<2x4xf32>
+  func.return %2 : tensor<2x4xf32>
+}

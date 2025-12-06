@@ -62,6 +62,7 @@ cc_library(
         ":profiler_c_api_hdrs",
         ":profiler_error",
         "//xla/tsl/platform:logging",
+        "@com_google_absl//absl/strings:string_view",
         "@local_tsl//tsl/profiler/lib:profiler_collection",
         "@local_tsl//tsl/profiler/lib:profiler_factory",
         "@local_tsl//tsl/profiler/lib:profiler_factory_impl",

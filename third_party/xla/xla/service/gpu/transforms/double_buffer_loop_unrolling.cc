@@ -43,11 +43,10 @@ limitations under the License.
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/status_macros.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/status.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -407,7 +406,7 @@ absl::Status PeelInstructionsForOddTripCount(HloModule* module,
             old_instr->shape(), new_operands, suffix));
 
     SetChannelIdForNewCollective(new_instr, module);
-    TF_CHECK_OK(SetSendRecvValidationForPeeledInstr(new_instr, old_instr));
+    CHECK_OK(SetSendRecvValidationForPeeledInstr(new_instr, old_instr));
     old_to_new_map[old_instr] = new_instr;
     VLOG(2) << "Added instruction " << new_instr->ToString()
             << " to parent computation.";
@@ -499,8 +498,8 @@ absl::StatusOr<bool> DoubleBufferingUnroll(HloInstruction* while_instr,
       skip_control_dep_injection.insert(old_instr);
     }
     SetChannelIdForNewCollective(new_instr, module);
-    TF_CHECK_OK(SetSendRecvValidation(old_instr, new_instr,
-                                      /*is_peeled=*/peel_one_iteration));
+    CHECK_OK(SetSendRecvValidation(old_instr, new_instr,
+                                   /*is_peeled=*/peel_one_iteration));
     old_to_new_map[old_instr] = new_instr;
     VLOG(2) << "Added instruction " << new_instr->ToString();
   }
@@ -555,7 +554,7 @@ absl::StatusOr<bool> AutoUnroll(HloInstruction* while_instr,
 
 }  // namespace
 
-absl::StatusOr<bool> DoubleBufferLoopUnrolling::Run(
+absl::StatusOr<bool> DoubleBufferLoopUnrolling::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;

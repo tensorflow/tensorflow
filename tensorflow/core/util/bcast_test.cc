@@ -23,55 +23,56 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-string BCast(const tensorflow::BCast::Vec& x, const tensorflow::BCast::Vec& y,
-             const bool fewer_dims_optimization = true) {
+std::string BCast(const tensorflow::BCast::Vec& x,
+                  const tensorflow::BCast::Vec& y,
+                  const bool fewer_dims_optimization = true) {
   tensorflow::BCast b(x, y, fewer_dims_optimization);
   if (!b.IsValid()) {
     return "invalid";
   }
-  string ret;
-  strings::StrAppend(&ret, "[", absl::StrJoin(b.x_reshape(), ","), "]");
-  strings::StrAppend(&ret, "[", absl::StrJoin(b.x_bcast(), ","), "]");
-  strings::StrAppend(&ret, "[", absl::StrJoin(b.y_reshape(), ","), "]");
-  strings::StrAppend(&ret, "[", absl::StrJoin(b.y_bcast(), ","), "]");
-  strings::StrAppend(&ret, "[", absl::StrJoin(b.result_shape(), ","), "]");
-  strings::StrAppend(&ret, "[", absl::StrJoin(b.output_shape(), ","), "]");
-  strings::StrAppend(&ret, "[", absl::StrJoin(b.grad_x_reduce_idx(), ","), "]");
-  strings::StrAppend(&ret, "[", absl::StrJoin(b.grad_y_reduce_idx(), ","), "]");
+  std::string ret;
+  absl::StrAppend(&ret, "[", absl::StrJoin(b.x_reshape(), ","), "]");
+  absl::StrAppend(&ret, "[", absl::StrJoin(b.x_bcast(), ","), "]");
+  absl::StrAppend(&ret, "[", absl::StrJoin(b.y_reshape(), ","), "]");
+  absl::StrAppend(&ret, "[", absl::StrJoin(b.y_bcast(), ","), "]");
+  absl::StrAppend(&ret, "[", absl::StrJoin(b.result_shape(), ","), "]");
+  absl::StrAppend(&ret, "[", absl::StrJoin(b.output_shape(), ","), "]");
+  absl::StrAppend(&ret, "[", absl::StrJoin(b.grad_x_reduce_idx(), ","), "]");
+  absl::StrAppend(&ret, "[", absl::StrJoin(b.grad_y_reduce_idx(), ","), "]");
   return ret;
 }
 
-string BCastBatchIndices(const tensorflow::BCast::Vec& x,
-                         const tensorflow::BCast::Vec& y,
-                         const bool fewer_dims_optimization = true) {
+std::string BCastBatchIndices(const tensorflow::BCast::Vec& x,
+                              const tensorflow::BCast::Vec& y,
+                              const bool fewer_dims_optimization = true) {
   tensorflow::BCast b(x, y, fewer_dims_optimization,
                       /*return_flattened_batch_indices=*/true);
-  string ret;
-  strings::StrAppend(&ret, "[", absl::StrJoin(b.x_batch_indices(), ","), "]");
-  strings::StrAppend(&ret, "[", absl::StrJoin(b.y_batch_indices(), ","), "]");
+  std::string ret;
+  absl::StrAppend(&ret, "[", absl::StrJoin(b.x_batch_indices(), ","), "]");
+  absl::StrAppend(&ret, "[", absl::StrJoin(b.y_batch_indices(), ","), "]");
   return ret;
 }
 
-string BCastList3(const tensorflow::BCast::Vec& x,
-                  const tensorflow::BCast::Vec& y,
-                  const tensorflow::BCast::Vec& z,
-                  const bool fewer_dims_optimization = true) {
+std::string BCastList3(const tensorflow::BCast::Vec& x,
+                       const tensorflow::BCast::Vec& y,
+                       const tensorflow::BCast::Vec& z,
+                       const bool fewer_dims_optimization = true) {
   tensorflow::BCastList<3> b({x, y, z}, fewer_dims_optimization);
   if (!b.IsValid()) {
     return "invalid";
   }
-  string ret;
-  strings::StrAppend(&ret, "[", absl::StrJoin(b.reshape(0), ","), "]");
-  strings::StrAppend(&ret, "[", absl::StrJoin(b.bcast(0), ","), "]");
-  strings::StrAppend(&ret, "[", absl::StrJoin(b.reshape(1), ","), "]");
-  strings::StrAppend(&ret, "[", absl::StrJoin(b.bcast(1), ","), "]");
-  strings::StrAppend(&ret, "[", absl::StrJoin(b.reshape(2), ","), "]");
-  strings::StrAppend(&ret, "[", absl::StrJoin(b.bcast(2), ","), "]");
-  strings::StrAppend(&ret, "[", absl::StrJoin(b.result_shape(), ","), "]");
-  strings::StrAppend(&ret, "[", absl::StrJoin(b.output_shape(), ","), "]");
-  strings::StrAppend(&ret, "[", absl::StrJoin(b.grad_reduce_idx(0), ","), "]");
-  strings::StrAppend(&ret, "[", absl::StrJoin(b.grad_reduce_idx(1), ","), "]");
-  strings::StrAppend(&ret, "[", absl::StrJoin(b.grad_reduce_idx(2), ","), "]");
+  std::string ret;
+  absl::StrAppend(&ret, "[", absl::StrJoin(b.reshape(0), ","), "]");
+  absl::StrAppend(&ret, "[", absl::StrJoin(b.bcast(0), ","), "]");
+  absl::StrAppend(&ret, "[", absl::StrJoin(b.reshape(1), ","), "]");
+  absl::StrAppend(&ret, "[", absl::StrJoin(b.bcast(1), ","), "]");
+  absl::StrAppend(&ret, "[", absl::StrJoin(b.reshape(2), ","), "]");
+  absl::StrAppend(&ret, "[", absl::StrJoin(b.bcast(2), ","), "]");
+  absl::StrAppend(&ret, "[", absl::StrJoin(b.result_shape(), ","), "]");
+  absl::StrAppend(&ret, "[", absl::StrJoin(b.output_shape(), ","), "]");
+  absl::StrAppend(&ret, "[", absl::StrJoin(b.grad_reduce_idx(0), ","), "]");
+  absl::StrAppend(&ret, "[", absl::StrJoin(b.grad_reduce_idx(1), ","), "]");
+  absl::StrAppend(&ret, "[", absl::StrJoin(b.grad_reduce_idx(2), ","), "]");
   return ret;
 }
 
@@ -571,7 +572,7 @@ TEST(BCastTest, Complex_BCast_To_Each_Other) {
   //   y = np.arange(0,21).reshape([7,1,3,1])
   //   np.shape(x + y)
   //   Out[.]: (11, 7, 5, 3, 2)
-  string truth =
+  std::string truth =
       "[11,1,5,1,2][1,7,1,3,1][1,7,1,3,1][11,1,5,1,2]"
       "[11,7,5,3,2]"
       "[11,7,5,3,2]"
@@ -592,7 +593,7 @@ TEST(BCastListTest, Complex_BCast_To_Each_Other) {
   //   np.shape(x + y + z)
   //   Out[.]: (11, 7, 5, 3, 2)
   //
-  string truth =
+  std::string truth =
       "[11,1,1,1,2][1,7,5,3,1]"
       "[1,7,1,3,1][11,1,5,1,2]"
       "[1,1,5,1,1][11,7,1,3,2]"

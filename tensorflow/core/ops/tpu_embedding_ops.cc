@@ -137,7 +137,7 @@ REGISTER_OP("EnqueueTPUEmbeddingSparseBatch")
     .Attr("combiners: list(string) = []")
     .SetIsStateful()
     .SetShapeFn([](shape_inference::InferenceContext* c) -> absl::Status {
-      std::vector<string> combiners;
+      std::vector<std::string> combiners;
       TF_RETURN_IF_ERROR(c->GetAttr("combiners", &combiners));
       int n;
       TF_RETURN_IF_ERROR(c->GetAttr("N", &n));

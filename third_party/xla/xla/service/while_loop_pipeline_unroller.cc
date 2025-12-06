@@ -108,7 +108,7 @@ int64_t WhileLoopPipelineUnroller::ComputeWhileLoopPipelineDepth(
   return pipeline_depth;
 }
 
-absl::StatusOr<bool> WhileLoopPipelineUnroller::Run(
+absl::StatusOr<bool> WhileLoopPipelineUnroller::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   std::vector<std::pair<HloInstruction*, int64_t>> while_instructions;

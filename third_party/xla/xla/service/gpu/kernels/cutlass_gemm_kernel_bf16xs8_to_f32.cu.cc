@@ -13,10 +13,16 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "cute/numeric/int.hpp"
 #include "cutlass/arch/arch.h"
 #include "cutlass/arch/mma.h"
+#include "cutlass/bfloat16.h"
+#include "cutlass/epilogue/thread/linear_combination.h"
 #include "cutlass/gemm/device/gemm_universal.h"
-#include "cutlass/gemm/kernel/default_gemm_universal.h"
+#include "cutlass/gemm/threadblock/threadblock_swizzle.h"
+#include "cutlass/gemm_coord.h"
+#include "cutlass/layout/matrix.h"
+#include "xla/service/gpu/kernels/cutlass_gemm.h"
 #include "xla/service/gpu/kernels/cutlass_gemm_adaptor.cu.h"
 
 namespace xla::gpu::kernel::gemm_universal {

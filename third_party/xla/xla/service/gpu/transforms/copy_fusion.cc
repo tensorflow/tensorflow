@@ -26,12 +26,12 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/codegen/ir_emission_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/service/call_graph.h"
 #include "xla/service/gpu/gpu_fusible.h"
-#include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/reduction_utils.h"
 #include "xla/tsl/platform/errors.h"
 
@@ -204,7 +204,7 @@ absl::StatusOr<bool> CopyFusion::DoCopyFusion(
   return changed;
 }
 
-absl::StatusOr<bool> CopyFusion::Run(
+absl::StatusOr<bool> CopyFusion::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   // Only for the entry computation we can be sure that the copies do not share

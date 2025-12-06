@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/threadpool_device.h"
 
+#include "absl/synchronization/notification.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/public/session_options.h"
@@ -56,7 +57,7 @@ TEST(ThreadPoolDeviceTest, CopyTensor) {
   ThreadPoolDevice device(SessionOptions(), "/device:CPU:0", Bytes(256),
                           DeviceLocality(), cpu_allocator());
   DeviceContext* device_context = new DeviceContext;
-  Notification note;
+  absl::Notification note;
   device.CopyTensorInSameDevice(&input, &output, device_context,
                                 [&note](const absl::Status& s) {
                                   TF_ASSERT_OK(s);

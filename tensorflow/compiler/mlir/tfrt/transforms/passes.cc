@@ -94,6 +94,9 @@ void CreateTFExecutorToTFPreInvariantOptimizationPipelineHelper(
   // as TFRT-specific optimization may create more opportunities.
   pm.addNestedPass<mlir::func::FuncOp>(
       tfrt_compiler::CreateOptimizeTfForTfrtPass());
+
+  pm.addNestedPass<mlir::func::FuncOp>(
+      mlir::CreateExecutorDialectToFunctionalConversionPass());
   pm.addNestedPass<mlir::func::FuncOp>(mlir::createCanonicalizerPass());
   // Guarantee all functions have one use, which enables more exact shape
   // inference.
@@ -149,7 +152,6 @@ void CreateTFExecutorToTFPreInvariantOptimizationPipelineHelper(
   pm.addPass(mlir::createInlinerPass());
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::TF::CreateRemoveUnusedWhileResultsPass());
-  pm.addPass(mlir::TF::CreateTFRegionControlFlowToFunctional());
 
   // Apply standard optimization after optimizing control flow ops.
   pm.addPass(mlir::createInlinerPass());
@@ -160,6 +162,7 @@ void CreateTFExecutorToTFPreInvariantOptimizationPipelineHelper(
   // by performing shape inference again after reference variable to resource
   // variable conversion. We should remove this after b/187876545 is fixed.
   pm.addPass(mlir::TF::CreateTFShapeInferencePass());
+  pm.addPass(mlir::TF::CreateTFRegionControlFlowToFunctional());
 
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::TFDevice::CreateLaunchToDeviceAttributePass());
@@ -219,8 +222,8 @@ void CreateTFExecutorToTFPreInvariantOptimizationPipelineHelper(
   AddTfDeviceAssignmentPasses(pm, options);
 }
 
-void CreateTFExecutorToTFInvariantOptimizationPipelineHelper(
-    mlir::OpPassManager &pm, const TfrtPipelineOptions &options) {
+void CreateTFInvariantOptimizationPipelineHelper(
+    mlir::OpPassManager& pm, const TfrtPipelineOptions& options) {
   if (options.sink_in_invariant_ops) {
     pm.addPass(CreateSinkInInvariantOpsPass());
   }

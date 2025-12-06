@@ -33,6 +33,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "unsupported/Eigen/CXX11/Tensor"
 #include "xla/executable_run_options.h"
+#include "xla/future.h"
 #include "xla/literal.h"
 #include "xla/pjrt/gpu/tfrt/gpu_event.h"
 #include "xla/pjrt/gpu/tfrt/tfrt_gpu_buffer.h"
@@ -41,7 +42,6 @@ limitations under the License.
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_executable.h"
-#include "xla/pjrt/pjrt_future.h"
 #include "xla/pjrt/pjrt_stream_executor_device_description.h"
 #include "xla/pjrt/semaphore.h"
 #include "xla/service/hlo.pb.h"
@@ -134,6 +134,8 @@ class TfrtGpuDevice final : public PjRtDevice {
 
   se::Stream* stream() const { return stream_.get(); }
 
+  se::Stream* d2h_stream() const { return d2h_stream_.get(); }
+
   se::StreamExecutor* executor() const { return executor_; }
 
   tsl::AsyncValueRef<GpuEvent> SetLastCollectiveLaunchEvent(
@@ -152,6 +154,7 @@ class TfrtGpuDevice final : public PjRtDevice {
   const PjRtLocalHardwareId local_hardware_id_;
   se::StreamExecutor* executor_;
   std::unique_ptr<se::Stream> stream_;
+  std::unique_ptr<se::Stream> d2h_stream_;
   absl::InlinedVector<PjRtMemorySpace*, 1> memory_spaces_;
   absl::flat_hash_map<int, PjRtMemorySpace*> memory_spaces_by_kind_id_;
 

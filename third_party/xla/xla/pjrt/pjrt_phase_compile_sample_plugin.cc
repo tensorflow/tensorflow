@@ -15,13 +15,12 @@ limitations under the License.
 
 #include "xla/pjrt/pjrt_phase_compile_sample_plugin.h"
 
-#include <cstdio>
-#include <cstdlib>
 #include <memory>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
@@ -46,6 +45,8 @@ limitations under the License.
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_executable.h"
+#include "xla/pjrt/plugin/xla_cpu/cpu_client_options.h"
+#include "xla/pjrt/plugin/xla_cpu/xla_cpu_pjrt_client.h"
 #include "xla/pjrt/proto/pjrt_partial_program.pb.h"
 #include "xla/tsl/framework/mlir/status_scoped_diagnostic_handler.h"
 
@@ -88,7 +89,7 @@ absl::StatusOr<std::string> StablehloTypeSerialization::Serialize(
 
 namespace {
 
-enum SamplePartialProgramFormat { kStablehloBytecode = 0, kUnknown = -1 };
+constexpr absl::string_view kStablehloBytecodeFormat = "bytecode";
 
 constexpr absl::string_view kNextPhaseName = "some_next_phase";
 
@@ -99,8 +100,7 @@ absl::Status PhaseValidator(
   }
 
   for (const auto& input_program : input_programs) {
-    if (input_program.program_format() !=
-        SamplePartialProgramFormat::kStablehloBytecode) {
+    if (input_program.program_format() != kStablehloBytecodeFormat) {
       return absl::InvalidArgumentError(
           "Input programs are not in expected format.");
     }
@@ -151,10 +151,9 @@ absl::StatusOr<std::vector<xla::PjRtPartialProgramProto>> PhaseCompiler(
 
     xla::PjRtPartialProgramProto serialized_output_object;
     serialized_output_object.set_program(serialized_output_status.value());
-    serialized_output_object.set_program_format(
-        static_cast<size_t>(SamplePartialProgramFormat::kStablehloBytecode));
-    serialized_output_object.set_generating_phase(kPhaseName);
-    serialized_output_object.add_next_phases({std::string(kNextPhaseName)});
+    serialized_output_object.set_program_format(kStablehloBytecodeFormat);
+    serialized_output_object.set_producer_phase(kPhaseName);
+    serialized_output_object.add_consumer_phases({std::string(kNextPhaseName)});
     serialized_output_object.set_version("1.0");
 
     serialized_output_objects.push_back(std::move(serialized_output_object));
@@ -216,6 +215,38 @@ PJRT_PhaseCompile_Extension CreateSamplePhaseCompileExtension() {
   return pjrt::CreatePhaseCompileExtension(nullptr,
                                            PJRT_PhaseCompile_Get_Compiler,
                                            PJRT_PhaseCompile_Destroy_Compiler);
+}
+
+PJRT_Error* PJRT_Client_Create(PJRT_Client_Create_Args* args) {
+  PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
+      "PJRT_Client_Create_Args", PJRT_Client_Create_Args_STRUCT_SIZE,
+      args->struct_size));
+
+  xla::CpuClientOptions options;
+  options.cpu_device_count = 4;
+
+  PJRT_ASSIGN_OR_RETURN(std::unique_ptr<xla::PjRtClient> client,
+                        xla::GetXlaPjrtCpuClient(std::move(options)));
+  args->client = pjrt::CreateWrapperClient(std::move(client));
+  return nullptr;
+}
+
+PJRT_Error* PJRT_CpuDeviceTopology_Create(
+    PJRT_TopologyDescription_Create_Args* args) {
+  return new PJRT_Error{
+      absl::UnimplementedError("Topology not supported for CPU compilation.")};
+}
+
+const PJRT_Api* GetSamplePhaseCompilePjrtApi() {
+  static PJRT_PhaseCompile_Extension phase_compile_extension =
+      pjrt::phase_compile_sample_plugin::CreateSamplePhaseCompileExtension();
+
+  static const PJRT_Api pjrt_api = pjrt::CreatePjrtApi(
+      PJRT_Client_Create, nullptr, PJRT_CpuDeviceTopology_Create,
+      pjrt::PJRT_Plugin_Initialize_NoOp, &phase_compile_extension.base,
+      pjrt::PJRT_Plugin_Attributes_Xla);
+
+  return &pjrt_api;
 }
 
 }  // namespace phase_compile_sample_plugin

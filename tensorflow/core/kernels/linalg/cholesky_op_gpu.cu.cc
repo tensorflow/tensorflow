@@ -195,7 +195,7 @@ class CholeskyOpGpu : public AsyncOpKernel {
     auto info_checker = [context, done, n](
                             const Status& status,
                             const std::vector<HostLapackInfo>& host_infos) {
-      if (!status.ok() && errors::IsInvalidArgument(status) &&
+      if (!status.ok() && absl::IsInvalidArgument(status) &&
           !host_infos.empty()) {
         Tensor* output = context->mutable_output(0);
         auto output_reshaped = output->template flat_inner_dims<Scalar, 3>();

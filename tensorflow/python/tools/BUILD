@@ -3,7 +3,7 @@
 
 load("@rules_shell//shell:sh_test.bzl", "sh_test")
 load("//tensorflow:strict.default.bzl", "py_strict_binary", "py_strict_library", "py_strict_test")
-load("//tensorflow:tensorflow.bzl", "if_google", "if_xla_available", "tf_cc_test")
+load("//tensorflow:tensorflow.bzl", "if_google", "if_xla_available", "tf_cc_test", "tf_py_test")
 load("//tensorflow/core/platform:build_config_root.bzl", "if_pywrap")
 load("//tensorflow/python/tools:tools.bzl", "saved_model_compile_aot")
 
@@ -399,6 +399,7 @@ py_strict_test(
     ],
     tags = [
         "noasan",  # TODO(b/222716501)
+        "notap",  # b/456542868
     ],
     deps = [
         ":saved_model_cli_lib",
@@ -583,11 +584,23 @@ tf_cc_test(
         ":aot_compiled_x_matmul_y_small",
         ":aot_compiled_x_plus_y",
         # LINT.ThenChange(//tensorflow/tools/pip_package/xla_build/pip_test/run_xla_aot_test.sh)
-        "@local_xla//xla/service/cpu:runtime_matmul_acl",
         "//tensorflow/core:test",
         "//tensorflow/core/platform:logging",
         "@eigen_archive//:eigen3",
     ]),
+)
+
+tf_py_test(
+    name = "saved_model_cli_sanitize_list_test",
+    size = "small",
+    srcs = ["saved_model_cli_sanitize_list_test.py"],
+    python_version = "PY3",
+    tags = ["notap"],  # b/456542868
+    deps = [
+        ":saved_model_cli",
+        "//tensorflow/python/platform:client_testlib",
+        "@absl_py//absl/testing:parameterized",  # testte kullanılmıyorsa kaldırabilirsin
+    ],
 )
 
 # copybara:uncomment_begin(google-only)

@@ -32,7 +32,7 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "xla/stream_executor/cuda/cuda_event.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/event_based_timer.h"
 #include "xla/stream_executor/launch_dim.h"
@@ -49,15 +49,15 @@ class CudaStream : public StreamCommon {
   absl::Status RecordEvent(Event* event) override;
   absl::Status WaitFor(Event* event) override;
 
-  absl::Status Memset32(DeviceMemoryBase* location, uint32_t pattern,
+  absl::Status Memset32(DeviceAddressBase* location, uint32_t pattern,
                         uint64_t size) override;
-  absl::Status MemZero(DeviceMemoryBase* location, uint64_t size) override;
-  absl::Status Memcpy(DeviceMemoryBase* gpu_dst, const void* host_src,
+  absl::Status MemZero(DeviceAddressBase* location, uint64_t size) override;
+  absl::Status Memcpy(DeviceAddressBase* gpu_dst, const void* host_src,
                       uint64_t size) override;
-  absl::Status Memcpy(void* host_dst, const DeviceMemoryBase& gpu_src,
+  absl::Status Memcpy(void* host_dst, const DeviceAddressBase& gpu_src,
                       uint64_t size) override;
-  absl::Status Memcpy(DeviceMemoryBase* gpu_dst,
-                      const DeviceMemoryBase& gpu_src, uint64_t size) override;
+  absl::Status Memcpy(DeviceAddressBase* gpu_dst,
+                      const DeviceAddressBase& gpu_src, uint64_t size) override;
   absl::Status DoHostCallbackWithStatus(
       absl::AnyInvocable<absl::Status() &&> callback) override;
   absl::Status BlockHostUntilDone() override;

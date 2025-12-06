@@ -29,7 +29,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tfrt/transforms/ifrt/ifrt_types.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/client.h"
-#include "xla/python/ifrt/future.h"
+#include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
@@ -37,6 +37,7 @@ limitations under the License.
 #include "tensorflow/core/framework/resource_handle.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/platform/context.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_loaded_variable_registry.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_restore_tensor_registry.h"
 #include "tensorflow/core/tfrt/ifrt/sharding_utils.h"
@@ -103,16 +104,14 @@ absl::Status AsyncLoadRestoredTensorAsIfrtLoadedVariable(
     return absl::OkStatus();
   }
 
-  xla::ifrt::Future<tensorflow::Tensor> restored_tensor_future =
+  tsl::Future<tensorflow::Tensor> restored_tensor_future =
       restore_tensor_registry.GetRestoredTensor(tensor_name);
   if (!restored_tensor_future.IsValid()) {
     return absl::InternalError(absl::StrCat(
         "LoadVariableOp: failed to fetch variable tensor: ", tensor_name));
   }
-  auto loaded_variable_promise =
-      xla::ifrt::Future<xla::ifrt::ArrayRef>::CreatePromise();
-  auto loaded_variable_future =
-      xla::ifrt::Future<xla::ifrt::ArrayRef>(loaded_variable_promise);
+  auto [loaded_variable_promise, loaded_variable_future] =
+      tsl::Future<xla::ifrt::ArrayRef>::MakePromise();
   TF_ASSIGN_OR_RETURN(
       absl::StatusOr<ifrt_serving::DtypeAndShape> dtype_and_shape,
       restore_tensor_registry.GetDtypeAndShape(tensor_name));
@@ -124,11 +123,13 @@ absl::Status AsyncLoadRestoredTensorAsIfrtLoadedVariable(
             {.array = loaded_variable_future});
       }));
 
+  tensorflow::Context bg_context(tensorflow::ContextKind::kThread);
   restored_tensor_future.OnReady(
       [ifrt_client = std::move(ifrt_client), &thread_pool = thread_pool,
        checkpoint_loader_queue = checkpoint_loader_queue,
        sharding_config = sharding_config,
-       loaded_variable_promise = std::move(loaded_variable_promise)](
+       loaded_variable_promise = std::move(loaded_variable_promise),
+       bg_context = std::move(bg_context)](
           absl::StatusOr<tensorflow::Tensor> restored_tensor) mutable {
         if (!restored_tensor.ok()) {
           loaded_variable_promise.Set(restored_tensor.status());
@@ -140,8 +141,9 @@ absl::Status AsyncLoadRestoredTensorAsIfrtLoadedVariable(
             [ifrt_client = ifrt_client, &thread_pool = thread_pool,
              sharding_config = std::move(sharding_config),
              restored_tensor = std::move(*restored_tensor),
-             loaded_variable_promise =
-                 std::move(loaded_variable_promise)]() mutable {
+             loaded_variable_promise = std::move(loaded_variable_promise),
+             bg_context = std::move(bg_context)]() mutable {
+              tensorflow::WithContext wc(bg_context);
               absl::StatusOr<xla::ifrt::ArrayRef> variable_array =
                   LoadIfrtVariable(ifrt_client, thread_pool, restored_tensor,
                                    sharding_config);

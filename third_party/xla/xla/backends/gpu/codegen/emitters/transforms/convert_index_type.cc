@@ -24,13 +24,11 @@ limitations under the License.
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/AffineExpr.h"
-#include "mlir/IR/BuiltinAttributes.h"
+#include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/BuiltinTypes.h"
-#include "mlir/IR/ImplicitLocOpBuilder.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/Types.h"
-#include "mlir/IR/Value.h"
 #include "mlir/Interfaces/DataLayoutInterfaces.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Support/LLVM.h"
@@ -87,13 +85,13 @@ class RewriteIndexBinaryElementwiseOp
 
     Type index_type = IndexType::get(op->getContext());
     Type dst_type = b.getIntegerType(index_bitwidth_);
-    auto lhs = b.create<arith::IndexCastUIOp>(dst_type, op->getOperand(0));
-    auto rhs = b.create<arith::IndexCastUIOp>(dst_type, op->getOperand(1));
-    auto new_op = b.create<BinaryElementwiseOp>(lhs, rhs);
+    auto lhs = arith::IndexCastOp::create(b, dst_type, op->getOperand(0));
+    auto rhs = arith::IndexCastOp::create(b, dst_type, op->getOperand(1));
+    auto new_op = BinaryElementwiseOp::create(b, lhs, rhs);
 
     rewriter.replaceAllUsesWith(
         op.getResult(),
-        b.create<arith::IndexCastUIOp>(index_type, new_op.getResult()));
+        arith::IndexCastOp::create(b, index_type, new_op.getResult()));
 
     return mlir::success();
   }
@@ -117,9 +115,10 @@ struct ConvertIndexTypePass
                  RewriteIndexBinaryElementwiseOp<arith::DivSIOp>,
                  RewriteIndexBinaryElementwiseOp<arith::MulIOp>,
                  RewriteIndexBinaryElementwiseOp<arith::RemUIOp>,
+                 RewriteIndexBinaryElementwiseOp<arith::RemSIOp>,
                  RewriteIndexBinaryElementwiseOp<arith::SubIOp>>(
         ctx, *index_bitwidth);
-    arith::IndexCastUIOp::getCanonicalizationPatterns(patterns, ctx);
+    arith::IndexCastOp::getCanonicalizationPatterns(patterns, ctx);
 
     if (mlir::failed(
             mlir::applyPatternsGreedily(getOperation(), std::move(patterns)))) {

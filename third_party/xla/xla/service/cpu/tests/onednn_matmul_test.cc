@@ -13,24 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#if defined(INTEL_MKL)
-
 #include <string>
-#include <utility>
 
 #include "absl/strings/str_replace.h"
-#include "xla/hlo/testlib/filecheck.h"
+#include "xla/error_spec.h"
 #include "xla/hlo/testlib/test.h"
-#include "xla/hlo/testlib/test_helpers.h"
-#include "xla/hlo/utils/hlo_matchers.h"
-#include "xla/literal.h"
-#include "xla/service/cpu/onednn_contraction_rewriter.h"
 #include "xla/service/cpu/onednn_util.h"
-#include "xla/shape_util.h"
 #include "xla/tests/hlo_test_base.h"
-#include "tsl/platform/cpu_info.h"
-
-namespace op = xla::testing::opcode_matchers;
 
 namespace xla {
 namespace cpu {
@@ -39,6 +28,7 @@ class MatmulTest : public HloTestBase {
  protected:
   DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options = HloTestBase::GetDebugOptionsForTest();
+    debug_options.set_xla_cpu_experimental_onednn_custom_call(true);
     return debug_options;
   }
 
@@ -1630,7 +1620,7 @@ TEST_F(MatmulTest, SimpleTestNoTransposeFusion2) {
   MatchOptimizedHlo(matmul_module_str,
                     R"(
     ; CHECK:     custom_call_target="__onednn$matmul",
-    ; CHECK:     call(%{{[a-z,A-Z,0-9,_,-]*}})
+    ; CHECK:     fusion(%{{[a-z,A-Z,0-9,_,-]*}})
     )");
 }
 
@@ -1655,6 +1645,32 @@ TEST_F(MatmulTest, WeightsPrepackAndScratch) {
   ; CHECK-SAME:               "weights_prepacked":true,"user_scratchpad":true
   ; CHECK-SAME:           }
   ; CHECK-SAME:       }
+  )");
+}
+
+TEST_F(MatmulTest, PrepackLarge2DWeights) {
+  const char* matmul_module_str = R"(
+  HloModule matmul.weights_prepack_large.f32
+
+  ENTRY matmul.weights_prepack_large.f32 {
+    lhs = f32[2,4096] parameter(0), parameter_replication={false}
+    c = f32[] constant(1)
+    rhs = f32[4096,4096] broadcast(c), dimensions={}
+    ROOT dot = f32[2,4096] dot(lhs, rhs), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  })";
+
+  MatchOptimizedHlo(matmul_module_str,
+                    R"(
+  ; CHECK: %matmul.weights_prepack_large.f32
+  ; CHECK:     custom_call_target="__onednn$matmul",
+  ; CHECK:       backend_config={
+  ; CHECK-DAG:     "onednn_matmul_config":{
+  ; CHECK-DAG:       "optimization_config":{
+  ; CHECK-DAG:         "weights_prepacked":true,
+  ; CHECK-DAG:         "user_scratchpad":true
+  ; CHECK-DAG:       }
+  ; CHECK-DAG:     }
+  ; CHECK:       }
   )");
 }
 
@@ -1892,5 +1908,3 @@ TEST_F(MatmulTest, MulTanhMul) {
 
 }  // namespace cpu
 }  // namespace xla
-
-#endif  // INTEL_MKL

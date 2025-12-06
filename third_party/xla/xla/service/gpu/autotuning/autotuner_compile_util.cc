@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
+#include "xla/backends/gpu/autotuner/gpu_codegen_backend.h"
 #include "xla/executable_run_options.h"
 #include "xla/hlo/ir/hlo_clone_context.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -79,21 +80,9 @@ AutotunerCompileUtil::AutotunerCompileUtil(std::unique_ptr<Compiler> compiler,
       stream_(stream),
       allocator_(allocator),
       opts_(opts) {
-  // Avoid dumping compilation steps.
-  opts_.set_xla_enable_dumping(false);
-  opts_.set_xla_gpu_dump_autotune_results_to("");
-  opts_.set_xla_gpu_load_autotune_results_from("");
-  opts_.set_xla_gpu_dump_llvmir(false);
-  opts_.set_xla_gpu_dump_autotune_logs_to("");
-  // Avoid using another thread pool.
-  opts_.set_xla_gpu_force_compilation_parallelism(1);
-  opts_.set_xla_gpu_enable_llvm_module_compilation_parallelism(false);
-  // Avoid using GPU graphs as we don't want to measure graph construction time.
-  opts_.clear_xla_gpu_enable_command_buffer();
-  // Avoid using async dot as we don't want to measure event overheads.
-  opts_.set_xla_gpu_async_dot(false);
-  opts_.set_xla_embed_ir_in_executable(false);
-  opts_.set_xla_gpu_kernel_cache_file("");
+  GpuCodegenBackend::AdjustDebugOptionsForAutotuning(
+      opts_,
+      /*force_allow_register_spills=*/false);
 }
 
 absl::StatusOr<AutotunerCompileUtil::ProfilingOutput>
@@ -137,15 +126,13 @@ absl::StatusOr<std::unique_ptr<Executable>> AutotunerCompileUtil::Compile(
   if (!new_hlo_module.status().ok()) {
     return new_hlo_module.status();
   }
-
+  Compiler::CompileOptions compile_options;
+  compile_options.device_allocator = &allocator_;
+  compile_options.embed_hlo_module = false;
   absl::StatusOr<std::unique_ptr<Executable>> out = compiler_->RunBackend(
-      std::move(*new_hlo_module), &stream_executor_,
-      Compiler::CompileOptions{&allocator_, /*thread_pool=*/nullptr,
-                               /*layout_canonicalization_callback=*/{},
-                               /*is_autotuning_compilation=*/true});
+      std::move(*new_hlo_module), &stream_executor_, compile_options);
   if (out.status().code() == absl::StatusCode::kResourceExhausted ||
-      out.status().code() == absl::StatusCode::kCancelled ||
-      out.status().code() == absl::StatusCode::kInvalidArgument) {
+      out.status().code() == absl::StatusCode::kCancelled) {
     // Being out of shared memory budget or registers is an expected failure.
     // Cancelling upon register spilling is also an expected failure.
     VLOG(5) << "Compilation failed with status " << out.status()

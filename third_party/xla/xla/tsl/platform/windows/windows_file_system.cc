@@ -27,10 +27,17 @@ limitations under the License.
 #include <sys/types.h>
 #include <time.h>
 
+#include "absl/status/status.h"
+#include "absl/strings/cord.h"
+#include "absl/strings/string_view.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/file_statistics.h"
+#include "xla/tsl/platform/file_system.h"
 #include "xla/tsl/platform/file_system_helper.h"
 #include "xla/tsl/platform/logging.h"
+#include "xla/tsl/platform/status.h"
+#include "xla/tsl/platform/types.h"
 #include "xla/tsl/platform/windows/error_windows.h"
 #include "xla/tsl/platform/windows/wide_char.h"
 #include "xla/tsl/protobuf/error_codes.pb.h"
@@ -117,12 +124,12 @@ class WindowsRandomAccessFile : public RandomAccessFile {
     }
   }
 
-  Status Name(StringPiece* result) const override {
+  Status Name(absl::string_view* result) const override {
     *result = filename_;
-    return OkStatus();
+    return absl::OkStatus();
   }
 
-  Status Read(uint64 offset, size_t n, StringPiece* result,
+  Status Read(uint64 offset, size_t n, absl::string_view* result,
               char* scratch) const override {
     Status s;
     char* dst = scratch;
@@ -147,28 +154,28 @@ class WindowsRandomAccessFile : public RandomAccessFile {
         s = IOError(filename_, errno);
       }
     }
-    *result = StringPiece(scratch, dst - scratch);
+    *result = absl::string_view(scratch, dst - scratch);
     return s;
   }
 
 #if defined(TF_CORD_SUPPORT)
   Status Read(uint64 offset, size_t n, absl::Cord* cord) const override {
     if (n == 0) {
-      return OkStatus();
+      return absl::OkStatus();
     }
     if (n < 0) {
-      return errors::InvalidArgument(
-          "Attempting to read ", n,
-          " bytes. You cannot read a negative number of bytes.");
+      return absl::InvalidArgumentError(
+          absl::StrCat("Attempting to read ", n,
+                       " bytes. You cannot read a negative number of bytes."));
     }
 
     char* scratch = new char[n];
     if (scratch == nullptr) {
-      return errors::ResourceExhausted("Unable to allocate ", n,
-                                       " bytes for file reading.");
+      return absl::ResourceExhaustedError(
+          absl::StrCat("Unable to allocate ", n, " bytes for file reading."));
     }
 
-    StringPiece tmp;
+    absl::string_view tmp;
     Status s = Read(offset, n, &tmp, scratch);
 
     absl::Cord tmp_cord = absl::MakeCordFromExternal(
@@ -195,7 +202,7 @@ class WindowsWritableFile : public WritableFile {
     }
   }
 
-  Status Append(StringPiece data) override {
+  Status Append(absl::string_view data) override {
     DWORD bytes_written = 0;
     DWORD data_size = static_cast<DWORD>(data.size());
     BOOL write_result =
@@ -205,7 +212,7 @@ class WindowsWritableFile : public WritableFile {
     }
 
     assert(size_t(bytes_written) == data.size());
-    return OkStatus();
+    return absl::OkStatus();
   }
 
 #if defined(TF_CORD_SUPPORT)
@@ -222,7 +229,7 @@ class WindowsWritableFile : public WritableFile {
 
       assert(size_t(bytes_written) == chunk.size());
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 #endif
 
@@ -239,7 +246,7 @@ class WindowsWritableFile : public WritableFile {
                                      filename_);
     }
 
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   Status Close() override {
@@ -255,7 +262,7 @@ class WindowsWritableFile : public WritableFile {
     }
 
     hfile_ = INVALID_HANDLE_VALUE;
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   Status Flush() override {
@@ -263,12 +270,12 @@ class WindowsWritableFile : public WritableFile {
       return IOErrorFromWindowsError("FlushFileBuffers failed for: " +
                                      filename_);
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
-  Status Name(StringPiece* result) const override {
+  Status Name(absl::string_view* result) const override {
     *result = filename_;
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   Status Sync() override { return Flush(); }
@@ -393,7 +400,7 @@ Status WindowsFileSystem::NewRandomAccessFile(
   }
 
   result->reset(new WindowsRandomAccessFile(translated_fname, hfile));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status WindowsFileSystem::NewWritableFile(
@@ -413,7 +420,7 @@ Status WindowsFileSystem::NewWritableFile(
   }
 
   result->reset(new WindowsWritableFile(WideCharToUtf8(ws_final_fname), hfile));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status WindowsFileSystem::NewAppendableFile(
@@ -444,7 +451,7 @@ Status WindowsFileSystem::NewAppendableFile(
   result->reset(new WindowsWritableFile(translated_fname, hfile));
   file_guard.release();
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status WindowsFileSystem::NewReadOnlyMemoryRegionFromFile(
@@ -453,7 +460,7 @@ Status WindowsFileSystem::NewReadOnlyMemoryRegionFromFile(
   string translated_fname = TranslateName(fname);
   std::wstring ws_translated_fname = Utf8ToWideChar(translated_fname);
   result->reset();
-  Status s = OkStatus();
+  Status s = absl::OkStatus();
 
   // Open the file for read-only
   DWORD file_flags = FILE_ATTRIBUTE_READONLY;
@@ -530,9 +537,9 @@ Status WindowsFileSystem::FileExists(const string& fname,
   constexpr int kOk = 0;
   std::wstring ws_translated_fname = Utf8ToWideChar(TranslateName(fname));
   if (_waccess(ws_translated_fname.c_str(), kOk) == 0) {
-    return OkStatus();
+    return absl::OkStatus();
   }
-  return errors::NotFound(fname, " not found");
+  return absl::NotFoundError(absl::StrCat(fname, " not found"));
 }
 
 Status WindowsFileSystem::GetChildren(const string& dir,
@@ -558,7 +565,7 @@ Status WindowsFileSystem::GetChildren(const string& dir,
 
   do {
     string file_name = WideCharToUtf8(find_data.cFileName);
-    const StringPiece basename = file_name;
+    const absl::string_view basename = file_name;
     if (basename != "." && basename != "..") {
       result->push_back(file_name);
     }
@@ -569,7 +576,7 @@ Status WindowsFileSystem::GetChildren(const string& dir,
     return IOErrorFromWindowsError(context);
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status WindowsFileSystem::DeleteFile(const string& fname,
@@ -587,7 +594,7 @@ Status WindowsFileSystem::CreateDir(const string& name,
   Status result;
   std::wstring ws_name = Utf8ToWideChar(name);
   if (ws_name.empty()) {
-    return errors::AlreadyExists(name);
+    return absl::AlreadyExistsError(name);
   }
   if (_wmkdir(ws_name.c_str()) != 0) {
     result = IOError("Failed to create a directory: " + name, errno);
@@ -646,7 +653,7 @@ Status WindowsFileSystem::IsDirectory(const string& fname,
   std::string str_final_fname(ws_final_fname.begin(), ws_final_fname.end());
   TF_RETURN_IF_ERROR(FileExists(str_final_fname));
   if (PathIsDirectoryW(ws_final_fname.c_str())) {
-    return OkStatus();
+    return absl::OkStatus();
   }
   return Status(absl::StatusCode::kFailedPrecondition, "Not a directory");
 }
@@ -681,7 +688,7 @@ Status WindowsFileSystem::RenameFile(const string& src, const string& target,
         strings::StrCat("Failed to rename: ", src, " to: ", target));
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status WindowsFileSystem::GetMatchingPaths(const string& pattern,
@@ -700,7 +707,7 @@ Status WindowsFileSystem::GetMatchingPaths(const string& pattern,
   for (string& result : *results) {
     std::replace(result.begin(), result.end(), '/', '\\');
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 bool WindowsFileSystem::Match(const string& filename, const string& pattern) {

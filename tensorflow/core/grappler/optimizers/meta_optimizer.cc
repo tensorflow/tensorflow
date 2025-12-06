@@ -91,10 +91,10 @@ int64_t NumEdges(const GraphDef& graph) {
 }
 
 string PrintSizesBeforeAfter(const GraphDef& before, const GraphDef& after) {
-  return strings::StrCat("Graph size after: ", after.node_size(), " nodes (",
-                         after.node_size() - before.node_size(), "), ",
-                         NumEdges(after), " edges (",
-                         NumEdges(after) - NumEdges(before), ")");
+  return absl::StrCat("Graph size after: ", after.node_size(), " nodes (",
+                      after.node_size() - before.node_size(), "), ",
+                      NumEdges(after), " edges (",
+                      NumEdges(after) - NumEdges(before), ")");
 }
 
 int NumIterations(const RewriterConfig& cfg) {
@@ -720,10 +720,10 @@ void MetaOptimizer::PrintUserAndPluginConfigs(
   string logs =
       "\nConfig of optimizers\t\tUser's config\tPlugin's config\tFinal "
       "config(User & Plugin)\n";
-  strings::StrAppend(&logs, "disable_model_pruning\t\t",
-                     user_cfg.disable_model_pruning, "\t\t",
-                     plugin_cfg.disable_model_pruning, "\t\t",
-                     final_cfg.disable_model_pruning, "\n");
+  absl::StrAppend(&logs, "disable_model_pruning\t\t",
+                  user_cfg.disable_model_pruning, "\t\t",
+                  plugin_cfg.disable_model_pruning, "\t\t",
+                  final_cfg.disable_model_pruning, "\n");
   for (auto& pair : user_cfg.toggle_config) {
     if (pair.first == "debug_stripper" ||
         pair.first == "auto_mixed_precision" ||
@@ -735,7 +735,7 @@ void MetaOptimizer::PrintUserAndPluginConfigs(
       // These optimizers are turned off by default.
       // TODO(penporn): Remove the hard-coded length and change it to max length
       // of all option strings.
-      strings::StrAppend(
+      absl::StrAppend(
           &logs, pair.first, string(40 - pair.first.size(), ' '),
           (pair.second == RewriterConfig::ON), "\t\t",
           (plugin_cfg.toggle_config[pair.first] == RewriterConfig::ON), "\t\t",
@@ -744,7 +744,7 @@ void MetaOptimizer::PrintUserAndPluginConfigs(
       // These optimizers are turned on by default.
       // TODO(penporn): Remove the hard-coded length and change it to max length
       // of all option strings.
-      strings::StrAppend(
+      absl::StrAppend(
           &logs, pair.first, string(40 - pair.first.size(), ' '),
           (pair.second != RewriterConfig::OFF), "\t\t",
           (plugin_cfg.toggle_config[pair.first] != RewriterConfig::OFF), "\t\t",
@@ -826,8 +826,8 @@ absl::Status MetaOptimizer::OptimizeGraph(
     VLOG(4) << "Starting optimization iteration " << iteration;
     if (VLOG_IS_ON(4)) {
       DumpGraphDefToFile(
-          strings::StrCat("before_MetaOptimizer_iteration_", iteration, "_",
-                          reinterpret_cast<uintptr_t>(optimized_graph)),
+          absl::StrCat("before_MetaOptimizer_iteration_", iteration, "_",
+                       reinterpret_cast<uintptr_t>(optimized_graph)),
           *optimized_graph);
     }
 
@@ -852,9 +852,9 @@ absl::Status MetaOptimizer::OptimizeGraph(
 
       if (VLOG_IS_ON(4)) {
         DumpGraphDefToFile(
-            strings::StrCat("after_MetaOptimizer_iteration_", iteration, "_",
-                            optimizer->name(), "_",
-                            reinterpret_cast<uintptr_t>(optimized_graph)),
+            absl::StrCat("after_MetaOptimizer_iteration_", iteration, "_",
+                         optimizer->name(), "_",
+                         reinterpret_cast<uintptr_t>(optimized_graph)),
             *optimized_graph);
       }
       for (const auto& verifier : inter_optimizer_verifiers) {
@@ -864,8 +864,8 @@ absl::Status MetaOptimizer::OptimizeGraph(
     }
     if (VLOG_IS_ON(4)) {
       DumpGraphDefToFile(
-          strings::StrCat("after_MetaOptimizer_iteration_", iteration, "_",
-                          reinterpret_cast<uintptr_t>(optimized_graph)),
+          absl::StrCat("after_MetaOptimizer_iteration_", iteration, "_",
+                       reinterpret_cast<uintptr_t>(optimized_graph)),
           *optimized_graph);
     }
     // TODO(ashwinm): Need to enforce verification_deadline.
@@ -953,13 +953,13 @@ absl::Status MetaOptimizer::RunOptimizer(
     if (absl::IsAborted(status)) {
       // By convention we (ab-)use the Aborted error code to signal that the
       // optimizer returned without performing any changes to the graph.
-      message = strings::StrCat(optimizer->name(),
-                                " did nothing. time = ", duration_ms, "ms.");
+      message = absl::StrCat(optimizer->name(),
+                             " did nothing. time = ", duration_ms, "ms.");
       // Swallow the non-critical error.
       status = absl::OkStatus();
     } else if (absl::IsDeadlineExceeded(status)) {
       message =
-          strings::StrCat(status.ToString(), ", time = ", duration_ms, "ms.");
+          absl::StrCat(status.ToString(), ", time = ", duration_ms, "ms.");
       LOG_EVERY_N_SEC(WARNING, 60)
           << optimizer->name() << " failed: " << message;
     } else {
@@ -967,7 +967,7 @@ absl::Status MetaOptimizer::RunOptimizer(
       LOG_EVERY_N_SEC(ERROR, 60) << optimizer->name() << " failed: " << message;
     }
   } else {
-    message = strings::StrCat(
+    message = absl::StrCat(
         PrintSizesBeforeAfter(optimized_item->graph, *optimized_graph),
         ", time = ", duration_ms, "ms.");
     VLOG(1) << optimizer->name() << ": " << message;
@@ -1313,8 +1313,8 @@ absl::Status MetaOptimizer::OptimizeConsumeItem(Cluster* cluster,
   VLOG(3) << "Optimized graph =\n" << optimized_graph->DebugString();
   if (VLOG_IS_ON(1)) {
     DumpGraphDefToFile(
-        strings::StrCat("after_MetaOptimizer_",
-                        reinterpret_cast<uintptr_t>(optimized_graph)),
+        absl::StrCat("after_MetaOptimizer_",
+                     reinterpret_cast<uintptr_t>(optimized_graph)),
         *optimized_graph);
   }
 

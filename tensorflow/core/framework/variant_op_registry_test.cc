@@ -38,7 +38,7 @@ typedef Eigen::GpuDevice GPUDevice;
 namespace {
 
 struct VariantValue {
-  string TypeName() const { return "TEST VariantValue"; }
+  std::string TypeName() const { return "TEST VariantValue"; }
   static absl::Status CPUZerosLikeFn(OpKernelContext* ctx,
                                      const VariantValue& v,
                                      VariantValue* v_out) {
@@ -147,7 +147,7 @@ TEST(VariantOpDecodeRegistryTest, TestEmpty) {
 TEST(VariantOpDecodeRegistryTest, TestDuplicate) {
   UnaryVariantOpRegistry registry;
   UnaryVariantOpRegistry::VariantDecodeFn f;
-  string kTypeName = "fjfjfj";
+  std::string kTypeName = "fjfjfj";
   registry.RegisterDecodeFn(kTypeName, f);
   EXPECT_DEATH(registry.RegisterDecodeFn(kTypeName, f),
                "fjfjfj already registered");

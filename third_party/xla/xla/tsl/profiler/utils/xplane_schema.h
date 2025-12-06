@@ -38,6 +38,8 @@ TF_CONST_INIT extern const absl::string_view kHostThreadsPlaneName;
 TF_CONST_INIT extern const absl::string_view kGpuPlanePrefix;
 // Name prefix of XPlane that contains TPU events.
 TF_CONST_INIT extern const absl::string_view kTpuPlanePrefix;
+// Name prefix for XPlane that contain virtual device events.
+TF_CONST_INIT extern const absl::string_view kVirtualDevicePlanePrefix;
 // Regex for XPlanes that contain TensorCore planes.
 TF_CONST_INIT extern const char kTpuPlaneRegex[];
 // Regex for XPlanes that contain TPU Core planes.
@@ -66,6 +68,8 @@ TF_CONST_INIT extern const absl::string_view kHostCpusPlaneName;
 TF_CONST_INIT extern const absl::string_view kSyscallsPlaneName;
 // Name of XPlane that contains namescope stack tree.
 TF_CONST_INIT extern const absl::string_view kScopeRangeIdTreePlaneName;
+// Name prefix of XPlane that contains GPU on-device events.
+TF_CONST_INIT extern const absl::string_view kCustomGpuOnDeviceTracePlanePrefix;
 
 // Names of XLines that contain ML-level events.
 TF_CONST_INIT extern const absl::string_view kStepLineName;
@@ -229,7 +233,9 @@ enum StatType {
   kElementId,
   kParentId,
   kCoreType,
+  kInputPipelineStageId,
   kInputPipelineStageName,
+  kInputPipelineStageCategory,
   // XPlane semantics related.
   kProducerType,
   kConsumerType,
@@ -284,6 +290,9 @@ enum StatType {
   kScaledValue,
   kThreadId,
   kMatrixUnitUtilizationPercent,
+  kHbmUtilizationPercent,
+  // Cost analysis related.
+  kTimeScaleMultiplier,
   // XLA metadata map related.
   kHloProto,
   // Device capability related.
@@ -340,6 +349,7 @@ enum StatType {
   kEdgeTpuModelProfileInfo,
   kEdgeTpuMlir,
   kDroppedTraces,
+  kNanCounterEvents,
   kCudaGraphId,
   // Many events have kCudaGraphId, such as graph sub events when tracing is in
   // node level. Yet kCudaGraphExecId is used only for CudaGraphExecution events
@@ -363,7 +373,11 @@ enum StatType {
   kCudaGraphMapValueId,
   kCudaGraphNodeMapId,
   kGraphMetadataLineId,
-  kLastStatType = kGraphMetadataLineId,
+  kOffloadCoreId,
+  kTcOffloadStartId,
+  kOffloadExecutionIndex,
+  kMarkerPayloadString,
+  kLastStatType = kMarkerPayloadString,
 };
 
 enum MegaScaleStatType : uint8_t {
@@ -425,6 +439,10 @@ inline std::string TpuPlaneName(int32_t device_ordinal) {
 
 inline std::string GpuPlaneName(int32_t device_ordinal) {
   return absl::StrCat(kGpuPlanePrefix, device_ordinal);
+}
+
+inline std::string GpuOnDeviceTracePlaneName(int32_t instance_id) {
+  return absl::StrCat(kCustomGpuOnDeviceTracePlanePrefix, instance_id);
 }
 
 absl::string_view GetHostEventTypeStr(HostEventType event_type);
@@ -490,7 +508,7 @@ class XFlow {
   }
 
   // Encoding
-  uint64 ToStatValue() const { return encoded_.whole; }
+  uint64_t ToStatValue() const { return encoded_.whole; }
 
   // Decoding
   static XFlow FromStatValue(uint64_t encoded) { return XFlow(encoded); }

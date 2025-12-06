@@ -827,6 +827,10 @@ class ShapeUtil {
   // Drops any degenerate dimensions (i.e. dimensions of size 1)
   static Shape DropDegenerateDimensions(const Shape& shape);
 
+  // Permutes the dimensions of `shape` without changing the layout, if present.
+  static Shape PermuteDimensionsIgnoringLayout(
+      absl::Span<const int64_t> permutation, const Shape& shape);
+
   // Permutes the dimensions by the given permutation, so
   // return_value.dimensions[i] = argument.dimensions[permutation[i]].
   //
@@ -925,6 +929,9 @@ class ShapeUtil {
   DeduceTransposeDimensionsForBitcast(const Shape& input_shape,
                                       const Shape& output_shape);
 
+  static bool IsDecomposableBitcast(const Shape& input_shape,
+                                    const Shape& output_shape);
+
   // This means that the bitcast can be decomposed to a single reshape.
   struct BitcastDecompositionReshape {};
 
@@ -933,7 +940,8 @@ class ShapeUtil {
     std::vector<int64_t> transpose_dims;
   };
 
-  // Every bitcast from A to B can be represented as a sequence of:
+  // Every bitcast from A to B of same bitwidth can be represented as a sequence
+  // of:
   // 1) Transpose to a normalized layout of A
   // 2) Reshape to a normalized layout of B
   // 3) Transpose from (2) to B
@@ -956,14 +964,14 @@ class ShapeUtil {
   };
 
   // A variant type holding one of the possible bitcast decompositions.
-  using BitcastDecomposition =
+  using BitcastDecomposition = std::optional<
       std::variant<BitcastDecompositionReshape, BitcastDecompositionTranspose,
-                   BitcastDecompositionTrt>;
+                   BitcastDecompositionTrt>>;
 
   // Decomposes a bitcast to a sequence of transpose, reshape, transpose.
   //
   // See the comment on BitcastDecompositionTrt.
-  static BitcastDecompositionTrt DecomposeBitcastToTrt(
+  static std::optional<BitcastDecompositionTrt> DecomposeBitcastToTrt(
       const Shape& input_shape, const Shape& output_shape);
 
   // Decomposes a bitcast to one of the possible decompositions.
@@ -1128,10 +1136,17 @@ class ShapeUtil {
 
   // Computes byte strides of an array shape `shape`. `shape` must have a
   // layout. Ignores tiling. `strides` must have size equal to the number of
-  // dimensions of `shape`.
+  // dimensions of `shape`. Ignores element_size_in_bits - uses its default
+  // value, ByteSizeOfPrimitiveType - therefore `unpacked`.
+  static absl::Status UnpackedByteStrides(const Shape& shape,
+                                          absl::Span<int64_t> strides);
+  ABSL_DEPRECATE_AND_INLINE()
   static absl::Status ByteStrides(const Shape& shape,
                                   absl::Span<int64_t> strides);
   // Same as above but returns the stride array, or std::nullopt if error.
+  static std::optional<absl::InlinedVector<int64_t, 4>> UnpackedByteStrides(
+      const Shape& shape);
+  // Same as above but returns std::nullopt if elements are not byte-aligned.
   static std::optional<absl::InlinedVector<int64_t, 4>> ByteStrides(
       const Shape& shape);
 
@@ -1158,6 +1173,14 @@ class ShapeUtil {
   static void FlattenTupleShape(const Shape& shape,
                                 std::vector<const Shape*>& flattened);
   static std::vector<const Shape*> FlattenTupleShape(const Shape& shape);
+
+  static inline bool LastDimIsMinorMost(const Shape& shape) {
+    if (!shape.has_layout()) {
+      return true;
+    }
+    return LayoutUtil::Minor(shape.layout(), 0) ==
+           shape.dimensions().size() - 1;
+  };
 
  private:
   // Helper for ForEachSubshape which visits the subshapes of the given shape in

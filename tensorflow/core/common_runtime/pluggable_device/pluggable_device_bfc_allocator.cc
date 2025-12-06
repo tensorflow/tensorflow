@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstdlib>
 #include <cstring>
+#include <string>
 
 #include "absl/log/log.h"
 #include "absl/memory/memory.h"
@@ -94,14 +95,14 @@ bool PluggableDeviceBFCAllocator::GetGarbageCollectionValue() {
 }
 
 PluggableDeviceBFCAllocator::PluggableDeviceBFCAllocator(
-    tsl::SubAllocator* sub_allocator, size_t total_memory, const string& name,
-    bool force_memory_growth_requested)
+    tsl::SubAllocator* sub_allocator, size_t total_memory,
+    const std::string& name, bool force_memory_growth_requested)
     : PluggableDeviceBFCAllocator(sub_allocator, total_memory, GPUOptions(),
                                   name, force_memory_growth_requested) {}
 
 PluggableDeviceBFCAllocator::PluggableDeviceBFCAllocator(
     tsl::SubAllocator* sub_allocator, size_t total_memory,
-    const GPUOptions& gpu_options, const string& name,
+    const GPUOptions& gpu_options, const std::string& name,
     bool force_memory_growth_requested)
     : BFCAllocator(absl::WrapUnique(sub_allocator), total_memory, name, [&] {
         BFCAllocator::Options o;

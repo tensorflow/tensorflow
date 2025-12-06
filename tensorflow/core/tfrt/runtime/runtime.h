@@ -218,12 +218,12 @@ class Runtime {
 
   // Creates a work queue for a request.
   absl::StatusOr<std::unique_ptr<WorkQueueInterface>> CreateRequestQueue(
-      int64_t request_id) const {
+      int64_t request_id, int priority) const {
     if (create_request_queue_fn_) {
       return create_request_queue_fn_(request_id);
     }
 
-    return work_queue_->InitializeRequest(request_id);
+    return work_queue_->InitializeRequest(request_id, priority);
   }
 
  private:

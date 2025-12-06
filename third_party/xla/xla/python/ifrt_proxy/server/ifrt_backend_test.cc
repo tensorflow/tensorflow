@@ -40,6 +40,7 @@
 #include "absl/types/span.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/ExtensibleRTTI.h"
+#include "google/protobuf/text_format.h"
 #include "xla/hlo/testlib/test.h"
 #include "xla/layout_util.h"
 #include "xla/literal.h"
@@ -54,7 +55,6 @@
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/executable.h"
-#include "xla/python/ifrt/future.h"
 #include "xla/python/ifrt/host_callback.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/mock.h"
@@ -75,16 +75,17 @@
 #include "xla/service/computation_placer.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
+#include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/status_to_from_proto.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/tsl/protobuf/error_codes.pb.h"
 #include "xla/tsl/protobuf/status.pb.h"
+#include "xla/tsl/util/proto/proto_matchers.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/protobuf.h"  // IWYU pragma: keep
 
@@ -109,14 +110,9 @@ using ::testing::ReturnRef;
 using ::testing::SizeIs;
 using ::testing::StrEq;
 using ::tsl::protobuf::TextFormat;
-using ::tsl::testing::IsOk;
-using ::tsl::testing::IsOkAndHolds;
-using ::tsl::testing::StatusIs;
 
-#if defined(PLATFORM_GOOGLE)
-using ::testing::EquivToProto;
-using ::testing::proto::Partially;
-#endif
+using ::tsl::proto_testing::EquivToProto;
+using ::tsl::proto_testing::Partially;
 
 constexpr uint64_t kSessionId = 12345;
 
@@ -288,13 +284,13 @@ class IfrtBackendHandlerTest : public IfrtBackendTest {
         .WillByDefault(Return(raw_device_ptrs));
     ON_CALL(*mock_client, LookupDevice(_))
         .WillByDefault(
-            Invoke([this](DeviceId id) -> absl::StatusOr<xla::ifrt::Device*> {
+            [this](DeviceId id) -> absl::StatusOr<xla::ifrt::Device*> {
               if (id.value() < 0 || id.value() >= mock_devices_.size()) {
                 return absl::NotFoundError(
                     absl::StrCat("Unknown device id: ", id.value()));
               }
               return mock_devices_[id.value()].get();
-            }));
+            });
     ON_CALL(*mock_client, MakeDeviceList(_))
         .WillByDefault([](absl::Span<xla::ifrt::Device* const> devices) {
           return xla::ifrt::BasicDeviceList::Create(devices);
@@ -323,7 +319,7 @@ class IfrtBackendHandlerTest : public IfrtBackendTest {
   }
 
   uint64_t NewOpId() {
-    absl::MutexLock lock(&mu_);
+    absl::MutexLock lock(mu_);
     return current_op_id_++;
   }
 
@@ -350,9 +346,9 @@ class IfrtBackendHandlerTest : public IfrtBackendTest {
 
       TF_ASSIGN_OR_RETURN(auto* device,
                           mock_client_->LookupDevice(DeviceId(1)));
-      TF_ASSIGN_OR_RETURN(*make_array->mutable_sharding(),
-                          SingleDeviceSharding::Create(device, MemoryKind())
-                              ->ToProto(ifrt_serdes_version()));
+      TF_RETURN_IF_ERROR(SingleDeviceSharding::Create(device, MemoryKind())
+                             ->ToProto(*make_array->mutable_sharding(),
+                                       ifrt_serdes_version()));
     }
     TF_ASSIGN_OR_RETURN(auto make_array_response,
                         CallBackend(std::move(ifrt_request)));
@@ -604,9 +600,9 @@ TEST_P(IfrtBackendHandlerTest, MakeArrayFromHostBufferSuccess) {
     make_array->set_host_buffer_handle(kHostBufferHandle);
     TF_ASSERT_OK_AND_ASSIGN(auto* device,
                             mock_client_->LookupDevice(DeviceId(1)));
-    TF_ASSERT_OK_AND_ASSIGN(*make_array->mutable_sharding(),
-                            SingleDeviceSharding::Create(device, MemoryKind())
-                                ->ToProto(ifrt_serdes_version()));
+    TF_ASSERT_OK(
+        SingleDeviceSharding::Create(device, MemoryKind())
+            ->ToProto(*make_array->mutable_sharding(), ifrt_serdes_version()));
   }
 
   const Shape expected_shape({5, 3, 4});
@@ -649,9 +645,9 @@ TEST_P(IfrtBackendHandlerTest, MakeStringArrayFromHostBufferSuccess) {
   make_array->set_host_buffer_handle(kHostBufferHandle);
   TF_ASSERT_OK_AND_ASSIGN(auto* device,
                           mock_client_->LookupDevice(DeviceId(1)));
-  TF_ASSERT_OK_AND_ASSIGN(*make_array->mutable_sharding(),
-                          SingleDeviceSharding::Create(device, MemoryKind())
-                              ->ToProto(ifrt_serdes_version()));
+  TF_ASSERT_OK(
+      SingleDeviceSharding::Create(device, MemoryKind())
+          ->ToProto(*make_array->mutable_sharding(), ifrt_serdes_version()));
 
   const DType expected_dtype = DType(DType::kString);
   const Shape expected_shape({2});
@@ -691,13 +687,13 @@ TEST_P(IfrtBackendHandlerTest, AssembleArrayFromSingleDeviceArrays) {
     }
     if (Version().protocol_version() >=
         protocol_version::kAssembleArrayFromSingleDeviceArraysWithDType) {
-      *req->mutable_dtype() = dtype.ToProto(ifrt_serdes_version());
+      dtype.ToProto(*req->mutable_dtype(), ifrt_serdes_version());
     }
     TF_ASSERT_OK_AND_ASSIGN(auto* device,
                             mock_client_->LookupDevice(DeviceId(1)));
-    TF_ASSERT_OK_AND_ASSIGN(*req->mutable_sharding(),
-                            SingleDeviceSharding::Create(device, MemoryKind())
-                                ->ToProto(ifrt_serdes_version()));
+    TF_ASSERT_OK(
+        SingleDeviceSharding::Create(device, MemoryKind())
+            ->ToProto(*req->mutable_sharding(), ifrt_serdes_version()));
   }
 
   std::vector<tsl::RCReference<xla::ifrt::MockArray>> single_device_arrays;
@@ -720,8 +716,8 @@ TEST_P(IfrtBackendHandlerTest, AssembleArrayFromSingleDeviceArrays) {
     }
     if (Version().protocol_version() >=
         protocol_version::kAssembleArrayFromSingleDeviceArraysWithDType) {
-      *assemble_array_from_single_device_arrays->mutable_dtype() =
-          dtype.ToProto(ifrt_serdes_version());
+      dtype.ToProto(*assemble_array_from_single_device_arrays->mutable_dtype(),
+                    ifrt_serdes_version());
     }
   }
 
@@ -764,7 +760,7 @@ TEST_P(IfrtBackendHandlerTest, CopyToHostSuccess) {
   const std::optional<absl::Span<const int64_t>> expected_byte_strides =
       absl::Span<const int64_t>(expected_byte_strides_vec);
   EXPECT_CALL(*array, CopyToHostBuffer(_, expected_byte_strides, _))
-      .WillOnce(Return(Future<>(absl::OkStatus())));
+      .WillOnce(Return(tsl::Future<>(absl::OkStatus())));
 
   TF_ASSERT_OK_AND_ASSIGN(auto response, CallBackend(std::move(ifrt_request)));
   // Given the above shape, dtype, and compact byte_strides, the size of the
@@ -796,9 +792,9 @@ TEST_P(IfrtBackendHandlerTest, CopyToHostSuccessWithStringArray) {
   make_array->set_host_buffer_handle(kHostBufferHandle);
   TF_ASSERT_OK_AND_ASSIGN(auto* device,
                           mock_client_->LookupDevice(DeviceId(1)));
-  TF_ASSERT_OK_AND_ASSIGN(*make_array->mutable_sharding(),
-                          SingleDeviceSharding::Create(device, MemoryKind())
-                              ->ToProto(ifrt_serdes_version()));
+  TF_ASSERT_OK(
+      SingleDeviceSharding::Create(device, MemoryKind())
+          ->ToProto(*make_array->mutable_sharding(), ifrt_serdes_version()));
 
   const DType expected_dtype = DType(DType::kString);
   const Shape expected_shape({2});
@@ -811,16 +807,16 @@ TEST_P(IfrtBackendHandlerTest, CopyToHostSuccessWithStringArray) {
   ON_CALL(*mock_array, dtype()).WillByDefault(Return(expected_dtype));
 
   ON_CALL(*mock_array, CopyToHostBuffer(_, _, _))
-      .WillByDefault(Invoke(
-          [input_strings = input_strings](
-              void* data, std::optional<absl::Span<const int64_t>> byte_strides,
-              xla::ifrt::ArrayCopySemantics semantics) {
-            auto dst = static_cast<absl::Cord*>(data);
-            for (int i = 0; i < input_strings.size(); ++i) {
-              dst[i] = input_strings[i];
-            }
-            return Future<>(absl::OkStatus());
-          }));
+      .WillByDefault([input_strings = input_strings](
+                         void* data,
+                         std::optional<absl::Span<const int64_t>> byte_strides,
+                         xla::ifrt::ArrayCopySemantics semantics) {
+        auto dst = static_cast<absl::Cord*>(data);
+        for (int i = 0; i < input_strings.size(); ++i) {
+          dst[i] = input_strings[i];
+        }
+        return tsl::Future<>(absl::OkStatus());
+      });
 
   EXPECT_CALL(*mock_client_,
               MakeArrayFromHostBuffer(_, expected_dtype, expected_shape,
@@ -1009,8 +1005,8 @@ TEST_P(IfrtBackendHandlerTest,
   TF_ASSERT_OK_AND_ASSIGN(auto array_handle,
                           MakeTestArray(std::move(mock_array)));
   EXPECT_CALL(*mock_client_, GetReadyFuture(_))
-      .WillOnce(Return(Future<>(absl::OkStatus())))
-      .WillOnce(Return(Future<>(absl::UnknownError("injected error"))));
+      .WillOnce(Return(tsl::Future<>(absl::OkStatus())))
+      .WillOnce(Return(tsl::Future<>(absl::UnknownError("injected error"))));
 
   {
     auto ifrt_request = NewIfrtRequest(NewOpId());
@@ -1045,10 +1041,10 @@ TEST_P(IfrtBackendHandlerTest,
 TEST_P(IfrtBackendHandlerTest, DeleteArraySuccess) {
   auto mock_array1 = tsl::MakeRef<xla::ifrt::MockArray>();
   EXPECT_CALL(*mock_array1, Delete())
-      .WillOnce(Return(Future<>(absl::OkStatus())));
+      .WillOnce(Return(tsl::Future<>(absl::OkStatus())));
   auto mock_array2 = tsl::MakeRef<xla::ifrt::MockArray>();
   EXPECT_CALL(*mock_array2, Delete())
-      .WillOnce(Return(Future<>(absl::OkStatus())));
+      .WillOnce(Return(tsl::Future<>(absl::OkStatus())));
 
   TF_ASSERT_OK_AND_ASSIGN(auto array_handle1,
                           MakeTestArray(std::move(mock_array1)));
@@ -1071,7 +1067,7 @@ TEST_P(IfrtBackendHandlerTest,
   // Create one existing array.
   auto mock_array1 = tsl::MakeRef<xla::ifrt::MockArray>();
   EXPECT_CALL(*mock_array1, Delete())
-      .WillOnce(Return(Future<>(absl::OkStatus())));
+      .WillOnce(Return(tsl::Future<>(absl::OkStatus())));
   TF_ASSERT_OK_AND_ASSIGN(auto real_handle,
                           MakeTestArray(std::move(mock_array1)));
 
@@ -1146,8 +1142,6 @@ TEST_P(IfrtBackendHandlerTest, DestructArrayTest) {
               absl_testing::StatusIs(absl::StatusCode::kNotFound));
 }
 
-// TODO(b/315809436): Test needs rewrite because protobuf matchers are not OSS
-#if defined(PLATFORM_GOOGLE)
 TEST_P(IfrtBackendHandlerTest, CompileSuccess) {
   std::vector<MockDevice> devices(4);
   for (int i = 0; i < 4; ++i) {
@@ -1164,15 +1158,16 @@ TEST_P(IfrtBackendHandlerTest, CompileSuccess) {
   auto executable = std::make_unique<MockLoadedExecutable>();
   EXPECT_CALL(*executable, name()).WillOnce(Return("executable_name"));
   EXPECT_CALL(*executable, num_devices()).WillOnce(Return(4));
-  EXPECT_CALL(*executable, devices()).WillOnce(ReturnRef(device_list));
+  EXPECT_CALL(*executable, devices())
+      .WillOnce(Return(std::make_optional(device_list)));
   EXPECT_CALL(*executable, addressable_devices())
       .WillOnce(Return(absl::MakeSpan(addressable_devices)));
   EXPECT_CALL(*executable, Fingerprint()).WillOnce(Return("fingerprint"));
   EXPECT_CALL(*executable, GetReadyFuture())
-      .WillOnce(Return(Future<>(absl::OkStatus())));
+      .WillOnce(Return(tsl::Future<>(absl::OkStatus())));
 
-  ASSERT_OK_AND_ASSIGN(CompileResponse response,
-                       CompileTestLoadedExecutable(std::move(executable)));
+  TF_ASSERT_OK_AND_ASSIGN(CompileResponse response,
+                          CompileTestLoadedExecutable(std::move(executable)));
   EXPECT_THAT(response, Partially(EquivToProto(R"pb(
                 name: "executable_name"
                 num_devices: 4
@@ -1182,7 +1177,6 @@ TEST_P(IfrtBackendHandlerTest, CompileSuccess) {
               )pb")));
   TF_EXPECT_OK(CheckFuture(response.ready_future_handle()));
 }
-#endif
 
 TEST_P(IfrtBackendHandlerTest, CompileFailure) {
   ASSERT_THAT(
@@ -1191,8 +1185,6 @@ TEST_P(IfrtBackendHandlerTest, CompileFailure) {
                              StrEq("injected error")));
 }
 
-// TODO(b/315809436): Test needs rewrite because protobuf matchers are not OSS
-#if defined(PLATFORM_GOOGLE)
 TEST_P(IfrtBackendHandlerTest, LoadedExecutableMetadata) {
   MockLoadedExecutable* executable;
   uint64_t handle;
@@ -1300,10 +1292,7 @@ TEST_P(IfrtBackendHandlerTest, LoadedExecutableMetadata) {
     EXPECT_TRUE(metadata_response.has_output_layouts_error());
   }
 }
-#endif
 
-// TODO(b/315809436): Test needs rewrite because protobuf matchers are not OSS
-#if defined(PLATFORM_GOOGLE)
 TEST_P(IfrtBackendHandlerTest, LoadedExecutableExecute) {
   TF_ASSERT_OK_AND_ASSIGN(xla::ifrt::Device* const device,
                           mock_client_->LookupDevice(DeviceId(0)));
@@ -1339,16 +1328,15 @@ TEST_P(IfrtBackendHandlerTest, LoadedExecutableExecute) {
   }
 
   EXPECT_CALL(*executable, Execute(SizeIs(kNumArgs), _, _))
-      .WillOnce(
-          Invoke([&](absl::Span<ArrayRef> args,
-                     const xla::ifrt::LoadedExecutable::ExecuteOptions& options,
-                     std::optional<DeviceListRef> devices)
-                     -> absl::StatusOr<LoadedExecutable::ExecuteResult> {
-            return LoadedExecutable::ExecuteResult{
-                .status = Future<>(absl::InternalError("injected error")),
-                .outputs = outputs,
-            };
-          }));
+      .WillOnce([&](absl::Span<ArrayRef> args,
+                    const xla::ifrt::LoadedExecutable::ExecuteOptions& options,
+                    std::optional<DeviceListRef> devices)
+                    -> absl::StatusOr<LoadedExecutable::ExecuteResult> {
+        return LoadedExecutable::ExecuteResult{
+            .status = tsl::Future<>(absl::InternalError("injected error")),
+            .outputs = outputs,
+        };
+      });
 
   auto request = NewIfrtRequest(NewOpId());
   LoadedExecutableExecuteRequest* execute_request =
@@ -1360,8 +1348,8 @@ TEST_P(IfrtBackendHandlerTest, LoadedExecutableExecute) {
   execute_request->set_loaded_executable_handle(handle);
   xla::ifrt::LoadedExecutable::ExecuteOptions execute_options;
   execute_options.fill_status = true;
-  TF_ASSERT_OK_AND_ASSIGN(*execute_request->mutable_execute_options(),
-                          execute_options.ToProto(ifrt_serdes_version()));
+  TF_ASSERT_OK(execute_options.ToProto(
+      *execute_request->mutable_execute_options(), ifrt_serdes_version()));
 
   TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<IfrtResponse> response,
                           CallBackend(std::move(request)));
@@ -1400,7 +1388,6 @@ TEST_P(IfrtBackendHandlerTest, LoadedExecutableExecute) {
       absl_testing::StatusIs(absl::StatusCode::kNotFound,
                              HasSubstr("Unknown future handle")));
 }
-#endif
 
 TEST_P(IfrtBackendHandlerTest, LoadedExecutableExecuteErrorWithClientHandles) {
   TF_ASSERT_OK_AND_ASSIGN(xla::ifrt::Device* const device,
@@ -1431,13 +1418,12 @@ TEST_P(IfrtBackendHandlerTest, LoadedExecutableExecuteErrorWithClientHandles) {
   };
 
   EXPECT_CALL(*executable, Execute(SizeIs(kNumArgs), _, _))
-      .WillOnce(
-          Invoke([&](absl::Span<ArrayRef> args,
-                     const xla::ifrt::LoadedExecutable::ExecuteOptions& options,
-                     std::optional<DeviceListRef> devices)
-                     -> absl::StatusOr<LoadedExecutable::ExecuteResult> {
-            return absl::InternalError("injected error");
-          }));
+      .WillOnce([&](absl::Span<ArrayRef> args,
+                    const xla::ifrt::LoadedExecutable::ExecuteOptions& options,
+                    std::optional<DeviceListRef> devices)
+                    -> absl::StatusOr<LoadedExecutable::ExecuteResult> {
+        return absl::InternalError("injected error");
+      });
 
   auto request = NewIfrtRequest(NewOpId());
   LoadedExecutableExecuteRequest* execute_request =
@@ -1455,8 +1441,8 @@ TEST_P(IfrtBackendHandlerTest, LoadedExecutableExecuteErrorWithClientHandles) {
 
   xla::ifrt::LoadedExecutable::ExecuteOptions execute_options;
   execute_options.fill_status = true;
-  TF_ASSERT_OK_AND_ASSIGN(*execute_request->mutable_execute_options(),
-                          execute_options.ToProto(ifrt_serdes_version()));
+  TF_ASSERT_OK(execute_options.ToProto(
+      *execute_request->mutable_execute_options(), ifrt_serdes_version()));
 
   auto status_is_err = absl_testing::StatusIs(absl::StatusCode::kInternal,
                                               StrEq("injected error"));
@@ -1560,16 +1546,15 @@ TEST_P(IfrtBackendHandlerTest, LoadedHostCallbackExecute) {
 
     EXPECT_CALL(mock_compiler_, CompileAndLoad(_, _))
         .WillOnce(DoAll(
-            Invoke(
-                [&](const std::unique_ptr<xla::ifrt::Program>& program,
-                    const std::unique_ptr<xla::ifrt::CompileOptions>& options) {
-                  auto* xla_compile_options =
-                      llvm::cast<xla::ifrt::XlaCompileOptions>(options.get());
-                  auto& loaded_host_callbacks =
-                      xla_compile_options->loaded_host_callbacks;
-                  ASSERT_EQ(loaded_host_callbacks.size(), 1);
-                  loaded_host_callback = loaded_host_callbacks.front();
-                }),
+            [&](const std::unique_ptr<xla::ifrt::Program>& program,
+                const std::unique_ptr<xla::ifrt::CompileOptions>& options) {
+              auto* xla_compile_options =
+                  llvm::cast<xla::ifrt::XlaCompileOptions>(options.get());
+              auto& loaded_host_callbacks =
+                  xla_compile_options->loaded_host_callbacks;
+              ASSERT_EQ(loaded_host_callbacks.size(), 1);
+              loaded_host_callback = loaded_host_callbacks.front();
+            },
             Return(ByMove(std::move(e)))));
 
     TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<IfrtResponse> response,
@@ -1627,7 +1612,7 @@ TEST_P(IfrtBackendHandlerTest, LoadedHostCallbackExecute) {
         poll_response.host_callback_execution_handle();
 
     TF_ASSERT_OK_AND_ASSIGN(
-        const std::shared_ptr<const std::string> operands,
+        const HostBufferStore::MemRegion operands,
         host_buffer_store_->Lookup(operand_host_buffer_handle));
     EXPECT_EQ(xla::BorrowingLiteral(operands->data(),
                                     xla::ShapeUtil::MakeShape(xla::F32, {})),
@@ -1722,8 +1707,8 @@ TEST_P(IfrtBackendHandlerTest, GetDefaultPjRtLayoutSuccess) {
 
   auto request = NewIfrtRequest(NewOpId());
   auto* default_layout_request = request->mutable_get_default_layout_request();
-  *default_layout_request->mutable_dtype() =
-      kDType.ToProto(ifrt_serdes_version());
+  kDType.ToProto(*default_layout_request->mutable_dtype(),
+                 ifrt_serdes_version());
   default_layout_request->mutable_dims()->Reserve(kDims.size());
   for (int64_t dim : kDims) {
     default_layout_request->add_dims(dim);

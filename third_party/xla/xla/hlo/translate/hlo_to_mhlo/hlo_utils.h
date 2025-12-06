@@ -13,12 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// This file defines helpers useful when creating or manipulating lhlo/hlo.
+// This file defines helpers useful when creating or manipulating hlo.
 
 #ifndef XLA_HLO_TRANSLATE_HLO_TO_MHLO_HLO_UTILS_H_
 #define XLA_HLO_TRANSLATE_HLO_TO_MHLO_HLO_UTILS_H_
 
-#include <cstddef>
 #include <cstdint>
 #include <optional>
 #include <utility>
@@ -27,7 +26,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
-#include "mlir/Dialect/SparseTensor/IR/Enums.h"
+#include "llvm/ADT/StringRef.h"
 #include "mlir/Dialect/SparseTensor/IR/SparseTensor.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
@@ -54,7 +53,7 @@ absl::StatusOr<mlir::DenseElementsAttr> CreateDenseElementsAttrFromLiteral(
 // Creates an DenseIntElementsAttr using the elements of the vector and the
 // optional shape.
 mlir::DenseIntElementsAttr CreateDenseIntElementsAttrFromVector(
-    const llvm::ArrayRef<int64_t> vector, mlir::Builder builder,
+    llvm::ArrayRef<int64_t> vector, mlir::Builder builder,
     llvm::ArrayRef<int64_t> shape = {});
 
 // Converts the given XLA shape for tensors to the template MLIR type.
@@ -63,7 +62,9 @@ static absl::StatusOr<TypeT> ConvertTensorShapeToType(const Shape& xla_ty,
                                                       mlir::Builder builder) {
   auto element_type_or =
       ConvertPrimitiveTypeToMlirType(xla_ty.element_type(), builder);
-  if (!element_type_or.ok()) return element_type_or.status();
+  if (!element_type_or.ok()) {
+    return element_type_or.status();
+  }
 
   bool is_bounded_dynamic = false;
   int64_t rank = xla_ty.dimensions().size();
@@ -127,6 +128,11 @@ static absl::StatusOr<mlir::Type> ConvertShapeToType(const Shape& shape,
   if (shape.IsToken()) {
     return mlir::stablehlo::TokenType::get(builder.getContext());
   }
+  if (shape.IsBuffer()) {
+    return ConvertTensorShapeToType<mlir::MemRefType>(shape.buffer_shape(),
+                                                      builder);
+  }
+
   return ConvertTensorShapeToType<TypeT>(shape, builder);
 }
 
@@ -211,6 +217,10 @@ static bool HasCustomLayout(const Shape& shape) {
 
 inline llvm::StringRef ToStringRef(absl::string_view str) {
   return llvm::StringRef(str.data(), str.size());
+}
+
+inline absl::string_view ToStringView(llvm::StringRef str) {
+  return absl::string_view(str.data(), str.size());
 }
 
 }  // namespace xla

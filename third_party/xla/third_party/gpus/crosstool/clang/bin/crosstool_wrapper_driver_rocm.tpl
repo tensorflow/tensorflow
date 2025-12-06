@@ -26,13 +26,13 @@ import shlex
 CPU_COMPILER = ('%{cpu_compiler}')
 HOST_COMPILER_PATH = ('%{host_compiler_path}')
 
-HIPCC_PATH = '%{hipcc_path}'
-PREFIX_DIR = os.path.dirname(HOST_COMPILER_PATH)
+HIPCC_PATH = '%{rocm_root}/bin/hipcc'
 HIPCC_ENV = '%{hipcc_env}'
-HIP_RUNTIME_PATH = '%{hip_runtime_path}'
-HIP_RUNTIME_LIBRARY = '%{hip_runtime_library}'
-ROCR_RUNTIME_PATH = '%{rocr_runtime_path}'
+HIP_RUNTIME_PATH = '%{rocm_root}/lib'
+HIP_RUNTIME_LIBRARY = '%{rocm_root}/lib'
+ROCR_RUNTIME_PATH = '%{rocm_root}/lib'
 ROCR_RUNTIME_LIBRARY = '%{rocr_runtime_library}'
+TMPDIR= '%{tmpdir}'
 VERBOSE = '%{crosstool_verbose}'=='1'
 
 def Log(s):
@@ -206,7 +206,7 @@ def InvokeHipcc(argv, log=False):
   hipccopts += defines
   hipccopts += std_options
   hipccopts += m_options
-  hipccopts += ' --rocm-path="%{rocm_path}" '
+  hipccopts += ' --rocm-path="%{rocm_root}" '
 
   if depfiles:
     # Generate the dependency file
@@ -233,6 +233,8 @@ def InvokeHipcc(argv, log=False):
 
 
 def main():
+  if TMPDIR:
+    os.environ['TMPDIR'] = TMPDIR
   # ignore PWD env var
   os.environ['PWD']=''
 

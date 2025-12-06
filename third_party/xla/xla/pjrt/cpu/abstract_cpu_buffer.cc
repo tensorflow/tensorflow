@@ -34,7 +34,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
-#include "xla/cpu_function_runtime.h"
+#include "xla/backends/cpu/alignment.h"
 #include "xla/layout_util.h"
 #include "xla/literal.h"
 #include "xla/pjrt/abstract_tracked_device_buffer.h"
@@ -44,7 +44,6 @@ limitations under the License.
 #include "xla/pjrt/cpu/raw_buffer.h"
 #include "xla/pjrt/cpu/tracked_cpu_device_buffer.h"
 #include "xla/pjrt/pjrt_client.h"
-#include "xla/pjrt/pjrt_future.h"
 #include "xla/pjrt/transpose.h"
 #include "xla/pjrt/utils.h"
 #include "xla/primitive_util.h"
@@ -99,37 +98,6 @@ void PackOrCopy(PrimitiveType element_type, const LiteralSlice& literal,
   } else {
     CHECK_EQ(literal.size_bytes(), size);
     std::memcpy(data, literal.untyped_data(), size);
-  }
-}
-
-/*static*/ absl::StatusOr<std::unique_ptr<TrackedCpuDeviceBuffer>>
-AbstractCpuBuffer::AllocateTrackedDeviceBuffer(
-    const Shape& on_device_shape,
-    absl::InlinedVector<tsl::AsyncValueRef<CpuEvent>, 4> definition_events) {
-  if (on_device_shape.IsTuple()) {
-    return absl::InvalidArgumentError(
-        absl::StrCat("Tuples are not supported for cpu-buffers: ",
-                     on_device_shape.ToString()));
-  }
-  size_t byte_size = ShapeUtil::ByteSizeOf(on_device_shape);
-  TF_ASSIGN_OR_RETURN(tsl::AsyncValueRef<CpuDeviceMemory> device_buffer,
-                      CpuDeviceMemory::Allocate(byte_size));
-  return std::make_unique<TrackedCpuDeviceBuffer>(
-      /*owns_buffers=*/true, std::move(device_buffer),
-      std::move(definition_events));
-}
-
-/*static*/ void AbstractCpuBuffer::AllocateAvsAndEvents(
-    const Shape& shape,
-    absl::InlinedVector<tsl::RCReference<tsl::AsyncValue>, 4>* avs,
-    absl::InlinedVector<tsl::AsyncValueRef<CpuEvent>, 4>* definition_events) {
-  // Nested tuple shapes are not supported here.
-  int num_leaf_buffers = shape.IsTuple() ? shape.tuple_shapes().size() : 1;
-  for (int i = 0; i < num_leaf_buffers; ++i) {
-    tsl::AsyncValueRef<CpuEvent> definition_event =
-        tsl::MakeConstructedAsyncValueRef<CpuEvent>();
-    definition_events->push_back(definition_event.CopyRef());
-    avs->push_back(std::move(definition_event));
   }
 }
 

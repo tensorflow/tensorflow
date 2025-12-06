@@ -21,7 +21,6 @@ limitations under the License.
 #include <functional>
 #include <memory>
 #include <optional>
-#include <random>
 #include <string>
 #include <utility>
 #include <vector>
@@ -29,7 +28,6 @@ limitations under the License.
 #include "absl/base/thread_annotations.h"
 #include "absl/container/btree_map.h"
 #include "absl/container/flat_hash_map.h"
-#include "absl/container/inlined_vector.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
@@ -50,7 +48,6 @@ limitations under the License.
 #include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/pjrt/gpu/gpu_topology.h"
 #include "xla/pjrt/gpu/se_gpu_topology_description.h"
-#include "xla/pjrt/gpu/tfrt/gpu_event.h"
 #include "xla/pjrt/gpu/tfrt/host_memory_allocator.h"
 #include "xla/pjrt/gpu/tfrt/tfrt_gpu_buffer.h"
 #include "xla/pjrt/gpu/tfrt/tfrt_gpu_device.h"
@@ -59,25 +56,16 @@ limitations under the License.
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_executable.h"
-#include "xla/pjrt/pjrt_future.h"
-#include "xla/pjrt/pjrt_stream_executor_device_description.h"
 #include "xla/pjrt/plugin/xla_gpu/xla_gpu_client_options.h"
-#include "xla/pjrt/semaphore.h"
 #include "xla/pjrt/transpose.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/gpu/gpu_executable_run_options.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_cost_analysis.h"
-#include "xla/service/transfer_manager.h"
 #include "xla/shape.h"
 #include "xla/stream_executor/device_memory_allocator.h"
-#include "xla/stream_executor/platform.h"
-#include "xla/stream_executor/stream.h"
-#include "xla/stream_executor/stream_executor.h"
-#include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/framework/allocator.h"
 #include "xla/tsl/platform/threadpool.h"
-#include "xla/util.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/fingerprint.h"
@@ -130,6 +118,7 @@ class TfrtGpuClient final : public PjRtClient {
                 xla::LocalClient* xla_client,
                 std::vector<std::unique_ptr<TfrtGpuDevice>> devices,
                 bool should_stage_host_to_device_transfers,
+                bool abort_collectives_on_failure,
                 MaybeOwning<se::DeviceMemoryAllocator> allocator,
                 std::unique_ptr<tsl::Allocator> host_memory_allocator,
                 std::unique_ptr<gpu::GpuExecutableRunOptions> gpu_run_options,
@@ -159,6 +148,9 @@ class TfrtGpuClient final : public PjRtClient {
 
   absl::StatusOr<PjRtDevice*> LookupAddressableDevice(
       PjRtLocalDeviceId local_device_id) const override;
+
+  void UpdateGlobalProcessInfo(
+      absl::Span<tensorflow::CoordinatedTaskStateInfo> infos) override;
 
   absl::Span<PjRtMemorySpace* const> memory_spaces() const override;
 
@@ -211,6 +203,10 @@ class TfrtGpuClient final : public PjRtClient {
 
   absl::StatusOr<std::unique_ptr<PjRtBuffer>> CreateUninitializedBuffer(
       const Shape& shape, PjRtMemorySpace* memory_space) override;
+
+  absl::StatusOr<
+      std::pair<std::unique_ptr<PjRtBuffer>, PjRtFulfillAliasBufferCallback>>
+  CreateAliasBuffer(const Shape& shape, PjRtMemorySpace* memory_space) override;
 
   absl::StatusOr<std::unique_ptr<PjRtExecutable>> DeserializeExecutable(
       absl::string_view serialized,
@@ -336,6 +332,7 @@ class TfrtGpuClient final : public PjRtClient {
   xla::LocalClient* xla_client_;
 
   bool should_stage_host_to_device_transfers_;
+  const bool abort_collectives_on_failure_ = false;
 
   // Device memory allocator. If owned, the allocator must outlive the devices,
   // because it is the device destructor that waits for any outstanding work to

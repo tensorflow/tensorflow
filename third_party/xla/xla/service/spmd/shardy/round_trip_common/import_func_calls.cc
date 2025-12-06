@@ -15,15 +15,16 @@ limitations under the License.
 
 #include "xla/service/spmd/shardy/round_trip_common/import_func_calls.h"
 
+#include <cstdint>
 #include <iterator>
 #include <memory>
+#include <optional>
 
 #include "absl/log/check.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/PostOrderIterator.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringRef.h"
-#include "llvm/Support/CommandLine.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/Threading.h"
 #include "mlir/Analysis/CallGraph.h"
@@ -44,7 +45,6 @@ limitations under the License.
 #include "shardy/dialect/sdy/ir/constants.h"
 #include "shardy/dialect/sdy/ir/dialect.h"
 #include "shardy/dialect/sdy/ir/utils.h"
-#include "xla/service/spmd/shardy/constants.h"
 #include "xla/service/spmd/shardy/utils.h"
 
 namespace xla {
@@ -57,16 +57,48 @@ using ::mlir::StringRef;
 using ::mlir::SymbolTable;
 using ::mlir::func::CallOp;
 using ::mlir::func::FuncOp;
+using ::mlir::sdy::getTensorRank;
 using ::mlir::sdy::kShardingAttr;
 using ::mlir::sdy::NamedComputationOp;
+using ::mlir::sdy::TensorShardingAttr;
+using ::mlir::sdy::TensorShardingPerValueAttr;
 
-bool isInlineableCallOp(CallOp callOp) {
-  if (hasFrontendAttr(callOp, kXlaBackendConfigAttr)) {
-    return false;
+// Returns the first non-maximal mesh on the argument shardings, if there is
+// one. Otherwise returns `std::nullopt`.
+// TODO(enver): Move to utils and potentially with a common helper that takes an
+// std::function to get the sharding given an index.
+std::optional<mlir::Attribute> getMeshOrRefOnArguments(
+    FuncOp funcOp, const SymbolTable& symbolTable) {
+  for (int64_t argNum = 0; argNum < funcOp.getNumArguments(); ++argNum) {
+    if (TensorShardingAttr sdySharding =
+            funcOp.getArgAttrOfType<TensorShardingAttr>(argNum, kShardingAttr);
+        sdySharding && !sdySharding.getMesh(symbolTable).isMaximal()) {
+      return std::make_optional(sdySharding.getMeshOrRef());
+    }
   }
-  auto inlineableAttr =
-      tryGetFrontendAttr<mlir::BoolAttr>(callOp, kXlaInlineableAttr);
-  return !inlineableAttr || inlineableAttr->getValue();
+  return std::nullopt;
+}
+
+TensorShardingPerValueAttr getFuncArgShardings(CallOp callOp, FuncOp funcOp,
+                                               const SymbolTable& symbolTable) {
+  std::optional<mlir::Attribute> meshOrRef =
+      getMeshOrRefOnArguments(funcOp, symbolTable);
+  if (!meshOrRef) {
+    return nullptr;
+  }
+  mlir::SmallVector<TensorShardingAttr> argShardings;
+  argShardings.reserve(funcOp.getNumArguments());
+  for (int64_t argNum = 0; argNum < funcOp.getNumArguments(); ++argNum) {
+    TensorShardingAttr sdySharding =
+        funcOp.getArgAttrOfType<TensorShardingAttr>(argNum, kShardingAttr);
+    argShardings.push_back(sdySharding
+                               ? sdySharding
+                               : TensorShardingAttr::getFullyOpen(
+                                     funcOp.getContext(),
+                                     getTensorRank(callOp.getOperand(argNum)),
+                                     *meshOrRef));
+  }
+  return TensorShardingPerValueAttr::get(funcOp.getContext(), argShardings);
 }
 
 void importCallOp(
@@ -81,12 +113,22 @@ void importCallOp(
                 });
 
   StringRef calleeName = callOp.getCallee();
+  FuncOp funcOp = symbolTable.lookup<FuncOp>(calleeName);
+  CHECK(funcOp) << "Failed to lookup function: " << calleeName.str();
+
   rewriter.setInsertionPoint(callOp);
-  auto namedCompOp = rewriter.create<NamedComputationOp>(
-      callOp->getLoc(), callOp->getResultTypes(), calleeName,
+  TensorShardingPerValueAttr callOpResultShardings =
+      mlir::sdy::getShardingPerValue(callOp);
+  auto namedCompOp = NamedComputationOp::create(
+      rewriter, callOp->getLoc(), callOp->getResultTypes(), calleeName,
       callOp.getOperands(),
-      /*inShardings=*/nullptr,
-      /*outShardings=*/mlir::sdy::getShardingPerValue(callOp));
+      /*inShardings=*/getFuncArgShardings(callOp, funcOp, symbolTable),
+      // TODO(b/439018088): Take func result shardings if call op result
+      // shardings are empty.
+      /*outShardings=*/
+      callOpResultShardings
+          ? callOpResultShardings
+          : getFuncResultShardings(callOp, funcOp, symbolTable));
   namedCompOp->setAttrs(namedCompAttrs);
 
   mlir::Region& namedCompRegion = namedCompOp.getRegion();
@@ -102,8 +144,6 @@ void importCallOp(
     rewriter.cloneRegionBefore(*movedRegionIt->second, namedCompRegion,
                                namedCompRegion.begin());
   } else {
-    FuncOp funcOp = symbolTable.lookup<FuncOp>(calleeName);
-    CHECK(funcOp) << "Failed to lookup function: " << calleeName.str();
     mlir::sdy::inlineRegionAndConvertTerminatorOp<mlir::sdy::ReturnOp>(
         funcOp.getBody(), namedCompRegion);
     calleeNameToMovedRegion[calleeName] = &namedCompRegion;
@@ -135,11 +175,10 @@ class ImportFuncCallsPass
     mlir::CallGraph callGraph(moduleOp);
     llvm::ReversePostOrderTraversal<const mlir::CallGraph*> rpo(&callGraph);
     for (mlir::CallGraphNode* node : llvm::reverse(rpo)) {
-      if (node->isExternal()) continue;
+      if (node->isExternal()) {
+        continue;
+      }
       node->getCallableRegion()->walk([&](CallOp op) {
-        if (onlyUninlineable && isInlineableCallOp(op)) {
-          return;
-        }
         importCallOp(op, calleeNameToMovedRegion, rewriter, symbolTable);
       });
     }
@@ -154,10 +193,8 @@ class ImportFuncCallsPass
 
   StringRef getDescription() const override {
     return "Creates a pass to convert a CallOp to a NamedComputationOp with "
-           "the function body inlined and the name of the callee. If "
-           "onlyUninlineable is true, handle only CallOps with a "
-           "backend_config or inlineable=false frontend attr. Otherwise, "
-           "handle call CallOps.";
+           "the function body inlined and the name of the callee. Note that "
+           "the func bodies are cloned if the func is used by multiple calls.";
   }
 
   void getDependentDialects(mlir::DialectRegistry& registry) const final {
@@ -170,28 +207,16 @@ class ImportFuncCallsPass
   ImportFuncCallsPass(ImportFuncCallsPass&&) = delete;
   ImportFuncCallsPass& operator=(ImportFuncCallsPass&&) = delete;
   ~ImportFuncCallsPass() override = default;
-  ImportFuncCallsPass(bool onlyUninlineable) : ImportFuncCallsPass() {
-    this->onlyUninlineable = onlyUninlineable;
-  }
-
- protected:
-  ::mlir::Pass::Option<bool> onlyUninlineable{
-      *this, "only-uninlineable",
-      ::llvm::cl::desc(
-          "Whether to convert only unlineable func calls, that is, the ones "
-          "with a `backend_config` or `inlineable=false` frontend attr."),
-      ::llvm::cl::init(true)};
 };
 
 }  // namespace
 
-std::unique_ptr<mlir::Pass> createImportFuncCallsPass(bool onlyUninlineable) {
-  return std::make_unique<ImportFuncCallsPass>(onlyUninlineable);
+std::unique_ptr<mlir::Pass> createImportFuncCallsPass() {
+  return std::make_unique<ImportFuncCallsPass>();
 }
 
 void registerImportFuncCallsPass() {
-  mlir::registerPass(
-      [] { return createImportFuncCallsPass(/*onlyUninlineable=*/true); });
+  mlir::registerPass([] { return createImportFuncCallsPass(); });
 }
 
 }  // namespace sdy

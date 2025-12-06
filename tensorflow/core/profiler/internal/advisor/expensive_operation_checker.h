@@ -27,7 +27,7 @@ namespace tfprof {
 
 class ExpensiveOperationChecker : public Checker {
  public:
-  string name() const override { return kCheckers[2]; }
+  std::string name() const override { return kCheckers[2]; }
 
  private:
   AdviceProto::Checker Check(const AdvisorOptionsProto::CheckerOption& options,
@@ -58,7 +58,7 @@ class ExpensiveOperationChecker : public Checker {
       return;
     }
     const MultiGraphNodeProto* node = &root;
-    std::vector<string> outputs;
+    std::vector<std::string> outputs;
     for (int i = 0; i < 3 && node->children_size() > 0; ++i) {
       node = &node->children(0);
       outputs.push_back(absl::StrFormat(
@@ -90,7 +90,7 @@ class ExpensiveOperationChecker : public Checker {
       return;
     }
 
-    std::vector<string> outputs;
+    std::vector<std::string> outputs;
     CodeViewHelper(node, 0, &outputs);
     reports_.add_reports(absl::StrJoin(outputs, "\n"));
   }
@@ -102,7 +102,7 @@ class ExpensiveOperationChecker : public Checker {
     if (root.children_size() == 0) {
       return;
     }
-    std::vector<string> outputs;
+    std::vector<std::string> outputs;
     for (int i = 0; i < 3 && i < root.children_size(); ++i) {
       const GraphNodeProto& node = root.children(i);
       outputs.push_back(absl::StrFormat(
@@ -115,7 +115,7 @@ class ExpensiveOperationChecker : public Checker {
   }
 
   void CodeViewHelper(const MultiGraphNodeProto* node, int depth,
-                      std::vector<string>* outputs) {
+                      std::vector<std::string>* outputs) {
     if (node->children_size() <= 1 || depth > 3) {
       return;
     }

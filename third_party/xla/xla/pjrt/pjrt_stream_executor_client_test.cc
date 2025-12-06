@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "xla/client/client_library.h"
 #include "xla/client/local_client.h"
+#include "xla/future.h"
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/hlo/testlib/test.h"
 #include "xla/literal.h"
@@ -37,7 +38,6 @@ limitations under the License.
 #include "xla/pjrt/local_device_state.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_executable.h"
-#include "xla/pjrt/pjrt_future.h"
 #include "xla/service/platform_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -45,8 +45,10 @@ limitations under the License.
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/path.h"
 
 namespace xla {
 namespace {
@@ -83,8 +85,8 @@ absl::StatusOr<std::unique_ptr<PjRtStreamExecutorClient>> GetClient() {
 
 absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> ToyExecutable(
     PjRtStreamExecutorClient& client, Shape shape,
-    absl::AnyInvocable<void(XlaBuilder&)> set_up_aliases) {
-  CompileOptions compile_options;
+    absl::AnyInvocable<void(XlaBuilder&)> set_up_aliases,
+    CompileOptions compile_options = {}) {
   XlaBuilder builder("Add");
   auto a = Parameter(&builder, 0, shape, "a");
   auto b = Parameter(&builder, 1, shape, "b");
@@ -111,7 +113,6 @@ absl::Status ExecuteWithSameInputBuffer(
   TF_ASSIGN_OR_RETURN(auto executable,
                       ToyExecutable(*client, shape, std::move(set_up_aliases)));
   xla::ExecuteOptions options;
-  options.untuple_result = true;
   return executable->Execute({{buffer.get(), buffer.get()}}, options).status();
 }
 
@@ -147,10 +148,10 @@ TEST(PjRtStreamExecutorClientTest, DonateWithControlDependency) {
   auto literal = LiteralUtil::CreateR2({{1, 2, 3}, {4, 5, 6}});
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<PjRtBuffer> buffer,
-      client->BufferFromHostLiteral(literal, client->memory_spaces()[0]));
+      client->BufferFromHostLiteral(literal, client->memory_spaces()[0],
+                                    /*device_layout=*/nullptr));
 
-  PjRtFuture<>::Promise promise = PjRtFuture<>::CreatePromise();
-  PjRtFuture<> future(promise);
+  auto [promise, future] = Future<>::MakePromise();
   auto blocked_buffer =
       std::move(*(buffer->DonateWithControlDependency(future)));
   EXPECT_TRUE(buffer->IsDeleted());
@@ -161,7 +162,7 @@ TEST(PjRtStreamExecutorClientTest, DonateWithControlDependency) {
       ShapeUtil::DeviceShapeToHostShape(blocked_buffer->on_device_shape()));
   bool got_literal = false;
   blocked_buffer->ToLiteral(result_literal.get()).OnReady([&](absl::Status s) {
-    absl::MutexLock l(&mu);
+    absl::MutexLock l(mu);
     TF_ASSERT_OK(s);
     got_literal = true;
   });
@@ -173,7 +174,7 @@ TEST(PjRtStreamExecutorClientTest, DonateWithControlDependency) {
   EXPECT_TRUE(future.IsReady());
 
   {
-    absl::MutexLock l(&mu);
+    absl::MutexLock l(mu);
     mu.Await(absl::Condition(&got_literal));
   }
 
@@ -208,6 +209,59 @@ TEST(PjRtStreamExecutorClientTest, ExecuteWithInputError) {
                 absl_testing::StatusIs(absl::StatusCode::kInternal,
                                        HasSubstr("test error")));
   }
+}
+
+TEST(PjRtStreamExecutorClientTest, DeserializeAndDump) {
+  tsl::Env* env = tsl::Env::Default();
+  EXPECT_TRUE(env);
+  Shape shape = xla::ShapeUtil::MakeScalarShape(F32);
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtStreamExecutorClient> client,
+                          GetClient());
+  std::string compile_dump_dir;
+  EXPECT_TRUE(env->LocalTempFilename(&compile_dump_dir));
+  CompileOptions compile_options;
+  compile_options.executable_build_options.mutable_debug_options()
+      ->set_xla_dump_to(compile_dump_dir);
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtLoadedExecutable> executable,
+      ToyExecutable(
+          *client, shape, [](XlaBuilder& builder) {}, compile_options));
+  std::string compile_dump_name, compile_dump_contents;
+  {
+    std::vector<std::string> matches;
+    TF_ASSERT_OK(env->GetMatchingPaths(
+        tsl::io::JoinPath(compile_dump_dir, "*after_optimizations.txt"),
+        &matches));
+    EXPECT_THAT(matches, testing::SizeIs(1));
+    compile_dump_name = std::move(matches.front());
+    TF_ASSERT_OK(
+        tsl::ReadFileToString(env, compile_dump_name, &compile_dump_contents));
+  }
+  TF_ASSERT_OK_AND_ASSIGN(std::string serialized,
+                          client->SerializeExecutable(*executable));
+  std::string deserialize_dump_dir;
+  EXPECT_TRUE(env->LocalTempFilename(&deserialize_dump_dir));
+  EXPECT_NE(compile_dump_dir, deserialize_dump_dir);
+  CompileOptions deserialize_options;
+  deserialize_options.executable_build_options.mutable_debug_options()
+      ->set_xla_dump_to(deserialize_dump_dir);
+  LoadOptions load_options;
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtLoadedExecutable> reloaded_executable,
+      client->LoadSerializedExecutable(serialized, deserialize_options,
+                                       load_options));
+  std::string deserialize_dump_name, deserialize_dump_contents;
+  {
+    std::vector<std::string> matches;
+    TF_ASSERT_OK(env->GetMatchingPaths(
+        tsl::io::JoinPath(deserialize_dump_dir, "*after_optimizations.txt"),
+        &matches));
+    EXPECT_THAT(matches, testing::SizeIs(1));
+    deserialize_dump_name = std::move(matches.front());
+    TF_ASSERT_OK(tsl::ReadFileToString(env, deserialize_dump_name,
+                                       &deserialize_dump_contents));
+  }
+  EXPECT_EQ(compile_dump_contents, deserialize_dump_contents);
 }
 
 }  // namespace

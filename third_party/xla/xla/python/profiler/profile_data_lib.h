@@ -25,6 +25,7 @@ limitations under the License.
 
 #include "absl/log/check.h"
 #include "nanobind/nanobind.h"
+#include "google/protobuf/repeated_ptr_field.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/protobuf.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
@@ -164,7 +165,7 @@ class ProfileData {
 
   ProfileData() = delete;
 
-  ProfileData(const char* serialized_xspace_ptr, size_t serialized_xspace_size);
+  ProfileData(const void* serialized_xspace_ptr, size_t serialized_xspace_size);
 
   explicit ProfileData(std::shared_ptr<XSpace> xspace_ptr);
 

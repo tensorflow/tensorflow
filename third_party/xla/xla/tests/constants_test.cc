@@ -36,6 +36,7 @@ limitations under the License.
 #include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/types.h"
 #include "tsl/platform/ml_dtypes.h"
@@ -205,17 +206,25 @@ TEST_F(ConstantsTest, Small_3x2x1x1) {
   input_array.FillWithPZ(pz);
   Literal input_literal = LiteralUtil::CreateR4FromArray4D(input_array);
 
-  {
-    XlaBuilder builder(TestName());
-    ConstantLiteral(&builder, input_literal);
-    ComputeAndCompareR4<float>(&builder, input_array, {}, kErrorSpec);
-  }
+  XlaBuilder builder(TestName());
+  ConstantLiteral(&builder, input_literal);
+  ComputeAndCompareR4<float>(&builder, input_array, {}, kErrorSpec);
+}
 
-  {
-    XlaBuilder builder(TestName());
-    ConstantR4FromArray4D<float>(&builder, input_array);
-    ComputeAndCompareR4<float>(&builder, input_array, {}, kErrorSpec);
-  }
+TEST_F(ConstantsTest, Small_3x2x1x1_array4d) {
+  Array4D<float> input_array(3, 2, 1, 1);
+  Array2D<float> pz({
+      // z0 z1
+      {-1.0f, 4.1f},  // p0
+      {2.0f, 4.1f},   // p1
+      {5.0f, 4.4f},   // p2
+  });
+  input_array.FillWithPZ(pz);
+  Literal input_literal = LiteralUtil::CreateR4FromArray4D(input_array);
+
+  XlaBuilder builder(TestName());
+  ConstantR4FromArray4D<float>(&builder, input_array);
+  ComputeAndCompareR4<float>(&builder, input_array, {}, kErrorSpec);
 }
 
 // TODO(b/29263943): Support tuple constants.
@@ -289,7 +298,8 @@ TEST_F(ConstantsHloTest, BitcastOfConstant) {
   )";
   auto module = ParseAndReturnVerifiedModule(testcase).value();
   auto param = LiteralUtil::CreateR0<int32_t>(1);
-  auto result = ExecuteNoHloPasses(std::move(module), {&param});
+  TF_ASSERT_OK_AND_ASSIGN(Literal result, Execute(std::move(module), {&param},
+                                                  /*run_hlo_passes=*/false));
   EXPECT_TRUE(LiteralTestUtil::Equal(param, result));
 }
 

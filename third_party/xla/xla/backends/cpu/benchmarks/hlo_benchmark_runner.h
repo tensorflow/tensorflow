@@ -40,7 +40,6 @@ using StrToStrMapping =
 struct HloBenchmarkOptions {
   int32_t num_executions = 1;
   bool disable_parallel_task_assigner = false;
-  bool use_thunk_runtime = true;
   // If not null, AOT compilation will be used.
   std::unique_ptr<AotCompilationOptions> aot_options;
 };
@@ -89,6 +88,12 @@ absl::Status CompileHloBenchmark(benchmark::State& state,
 absl::StatusOr<std::pair<std::unique_ptr<HloModule>,
                          std::unique_ptr<RunHloModuleIterationLiterals>>>
 LoadHloModuleAndMaybeIterationLiterals(absl::string_view hlo_path);
+
+// Loads an HLO module. If the user provides an HloSnapshot or a
+// HloUnoptimizedSnapshot the iteration literals will be loaded as well.
+absl::StatusOr<std::pair<std::unique_ptr<HloModule>,
+                         std::unique_ptr<RunHloModuleIterationLiterals>>>
+LoadHloModuleAndMaybeIterationLiteralsFromString(absl::string_view hlo_data);
 
 }  // namespace xla::cpu
 

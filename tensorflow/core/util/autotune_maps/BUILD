@@ -2,7 +2,7 @@
 # The autotuning results can be serialized as a string, allowing you to save
 # and later restore them.
 
-# Placeholder: load py_proto_library
+load("@rules_python//python:proto.bzl", "py_proto_library")
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_test",
@@ -123,8 +123,10 @@ tf_cuda_library(
         "//tensorflow/core/platform:hash",
         "//tensorflow/core/platform:protobuf",
         "//tensorflow/core/platform:stream_executor",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:optional",
+        "@local_tsl//tsl/platform:regexp",
     ],
 )
 
@@ -201,5 +203,18 @@ tf_cuda_only_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/core/platform:status_matchers",
         "@local_xla//xla/stream_executor/gpu:gpu_init",
+    ],
+)
+
+tf_cuda_only_cc_test(
+    name = "conv_parameters_test",
+    size = "small",
+    srcs = ["conv_parameters_test.cc"],
+    features = ["-layering_check"],
+    tags = ["no_rocm"],
+    deps = [
+        ":conv_parameters",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
     ],
 )

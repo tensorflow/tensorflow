@@ -20,6 +20,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/log/check.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
@@ -28,7 +29,6 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/device_memory_allocator.h"
-#include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/statusor.h"
 
 namespace xla {
@@ -181,7 +181,7 @@ void ScopedShapedBuffer::Deallocate() {
     se::DeviceMemoryBase& memory_base = pair.second;
     if (!memory_base.is_null() &&
         deallocated_ptrs.insert(memory_base.opaque()).second) {
-      TF_CHECK_OK(allocator_->Deallocate(device_ordinal(), memory_base));
+      CHECK_OK(allocator_->Deallocate(device_ordinal(), memory_base));
     }
   }
 }

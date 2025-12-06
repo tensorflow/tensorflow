@@ -46,9 +46,9 @@ limitations under the License.
 #include "absl/strings/strip.h"
 #include "absl/types/span.h"
 #include "Eigen/Core"
+#include "google/protobuf/descriptor.h"
 #include "xla/array.h"
 #include "xla/comparison_util.h"
-#include "xla/hlo/ir/collective_device_list.h"
 #include "xla/hlo/ir/collective_op_group_mode.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_domain_metadata.h"
@@ -61,6 +61,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/ir/hlo_sharding_metadata.h"
+#include "xla/hlo/ir/replica_group.h"
 #include "xla/hlo/ir/tile_assignment.h"
 #include "xla/hlo/parser/hlo_lexer.h"
 #include "xla/layout.h"
@@ -79,11 +80,10 @@ limitations under the License.
 #include "xla/tsl/lib/gtl/map_util.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"
-#include "xla/tsl/platform/status.h"
+#include "xla/tuple_tree.h"
 #include "xla/types.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/protobuf.h"
 
 namespace xla {
 
@@ -117,10 +117,15 @@ HloSchedule ScheduleFromInstructionOrder(HloModule* module) {
 bool CanInferShape(HloOpcode code) {
   switch (code) {
     case HloOpcode::kAbs:
+    case HloOpcode::kAcos:
+    case HloOpcode::kAcosh:
+    case HloOpcode::kAsin:
+    case HloOpcode::kAsinh:
     case HloOpcode::kAdd:
     case HloOpcode::kAddDependency:
     case HloOpcode::kAfterAll:
     case HloOpcode::kAtan2:
+    case HloOpcode::kAtanh:
     case HloOpcode::kBatchNormGrad:
     case HloOpcode::kBatchNormInference:
     case HloOpcode::kBatchNormTraining:
@@ -137,6 +142,7 @@ bool CanInferShape(HloOpcode code) {
     case HloOpcode::kConvolution:
     case HloOpcode::kCopy:
     case HloOpcode::kCos:
+    case HloOpcode::kCosh:
     case HloOpcode::kOptimizationBarrier:
     case HloOpcode::kDivide:
     case HloOpcode::kDomain:
@@ -185,6 +191,7 @@ bool CanInferShape(HloOpcode code) {
     case HloOpcode::kShiftRightLogical:
     case HloOpcode::kSign:
     case HloOpcode::kSin:
+    case HloOpcode::kSinh:
     case HloOpcode::kSqrt:
     case HloOpcode::kCbrt:
     case HloOpcode::kReduceWindow:
@@ -267,10 +274,10 @@ class HloParserImpl : public HloParser {
 
   // Stand alone parsing utils for various aggregate data types.
   absl::StatusOr<Shape> ParseShapeOnly();
+  absl::StatusOr<std::vector<Shape>> ParseShapeListOnly();
   absl::StatusOr<Layout> ParseLayoutOnly();
   absl::StatusOr<HloSharding> ParseShardingOnly();
-  absl::StatusOr<std::shared_ptr<OriginalValue>> ParseOriginalValueOnly(
-      Shape shape);
+  absl::StatusOr<std::shared_ptr<OriginalValue>> ParseOriginalValueOnly();
   absl::StatusOr<FrontendAttributes> ParseFrontendAttributesOnly();
   absl::StatusOr<StatisticsViz> ParseStatisticsVizOnly();
   absl::StatusOr<std::vector<bool>> ParseParameterReplicationOnly();
@@ -370,6 +377,7 @@ class HloParserImpl : public HloParser {
   bool ParseHloModule(HloModule* module,
                       bool parse_module_without_header = false);
 
+  bool ParseStackFrameIndex(HloModule* module);
   bool ParseComputations(HloModule* module);
   bool ParseComputation(HloComputation** entry_computation);
   bool ParseInstructionList(HloComputation** computation,
@@ -591,10 +599,15 @@ class HloParserImpl : public HloParser {
                   uint64_t lexer_skip_mask = kNoneMask);
   bool ParseUnsignedIntegerType(PrimitiveType* primitive_type);
   bool ParseOriginalArray(OriginalArray& original_array);
-  bool ParseOriginalValue(std::shared_ptr<OriginalValue>& original_value);
+  bool ParseAndAddOriginalArray(
+      const ShapeIndex& leaf_shape_index,
+      std::vector<std::pair<ShapeIndex, std::optional<OriginalArray>>>*);
+  bool ParseOriginalValueImpl(std::optional<OriginalValue>& original_value);
   bool ParseOriginalValueRecoveryTable(
       OriginalValueRecoveryTable& original_value_recovery_table);
   bool ParseCollectiveOpGroupMode(CollectiveOpGroupMode* result);
+  bool ParseFileLocationList(StackFrameIndexProto* stack_frame_index);
+  bool ParseStackFramesList(StackFrameIndexProto* stack_frame_index);
 
   using AliasingData =
       absl::flat_hash_map<ShapeIndex, HloInputOutputAliasConfig::Alias>;
@@ -1123,7 +1136,7 @@ bool HloParserImpl::ParseHloModule(HloModule* module,
     module->set_name(name);
   }
 
-  if (!ParseComputations(module)) {
+  if (!ParseStackFrameIndex(module) || !ParseComputations(module)) {
     return false;
   }
 
@@ -1134,7 +1147,7 @@ bool HloParserImpl::ParseHloModule(HloModule* module,
   module->set_name(name);
 
   if (is_scheduled.value_or(false)) {
-    TF_CHECK_OK(module->set_schedule(ScheduleFromInstructionOrder(module)));
+    CHECK_OK(module->set_schedule(ScheduleFromInstructionOrder(module)));
   }
   HloModuleConfig config = module->config();
   bool default_config = true;
@@ -1161,14 +1174,14 @@ bool HloParserImpl::ParseHloModule(HloModule* module,
     for (int64_t p = 0; p < entry_computation->num_parameters(); p++) {
       const Shape& param_shape =
           entry_computation->parameter_instruction(p)->shape();
-      TF_CHECK_OK(module->mutable_entry_computation_layout()
-                      ->mutable_parameter_layout(p)
-                      ->CopyLayoutFromShape(param_shape));
+      CHECK_OK(module->mutable_entry_computation_layout()
+                   ->mutable_parameter_layout(p)
+                   ->CopyLayoutFromShape(param_shape));
     }
     const Shape& result_shape = entry_computation->root_instruction()->shape();
-    TF_CHECK_OK(module->mutable_entry_computation_layout()
-                    ->mutable_result_layout()
-                    ->CopyLayoutFromShape(result_shape));
+    CHECK_OK(module->mutable_entry_computation_layout()
+                 ->mutable_result_layout()
+                 ->CopyLayoutFromShape(result_shape));
   }
   if (frontend_attributes) {
     module->set_frontend_attributes(frontend_attributes.value());
@@ -1210,10 +1223,95 @@ bool HloParserImpl::ParseHloModule(HloModule* module,
     module->buffer_donor_config() = buffer_donor_config;
   }
   if (original_value_recovery_table) {
-    module->set_original_value_recovery_table(*original_value_recovery_table);
+    module->set_original_value_recovery_table(
+        std::move(*original_value_recovery_table));
   }
   DeduplicateOriginalValues(module);
 
+  return true;
+}
+
+// Parses a list of `int {file_name_id=int function_name_id=int line=int
+// end_line=int column=int end_column=int}` into
+// StackFrameIndexProto::file_locations.
+bool HloParserImpl::ParseFileLocationList(
+    StackFrameIndexProto* stack_frame_index) {
+  optional<int32_t> file_name_id, function_name_id, line, end_line, column,
+      end_column;
+  absl::flat_hash_map<std::string, AttrConfig> attrs = {
+      {"file_name_id", {/*required=*/true, AttrTy::kInt32, &file_name_id}},
+      {"function_name_id",
+       {/*required=*/true, AttrTy::kInt32, &function_name_id}},
+      {"line", {/*required=*/true, AttrTy::kInt32, &line}},
+      {"end_line", {/*required=*/true, AttrTy::kInt32, &end_line}},
+      {"column", {/*required=*/true, AttrTy::kInt32, &column}},
+      {"end_column", {/*required=*/true, AttrTy::kInt32, &end_column}}};
+  while (EatIfPresent(TokKind::kInt)) {
+    if (!ParseSubAttributes(attrs)) {
+      return false;
+    }
+    StackFrameIndexProto::FileLocation* file_location =
+        stack_frame_index->add_file_locations();
+    file_location->set_file_name_id(*file_name_id);
+    file_location->set_function_name_id(*function_name_id);
+    file_location->set_line(*line);
+    file_location->set_end_line(*end_line);
+    file_location->set_column(*column);
+    file_location->set_end_column(*end_column);
+  }
+  return true;
+}
+
+// Parses a list of `int {function_location_id=int parent_frame_id=int}` into
+// StackFrameIndexProto::stack_frames.
+bool HloParserImpl::ParseStackFramesList(
+    StackFrameIndexProto* stack_frame_index) {
+  optional<int32_t> file_location_id, parent_frame_id;
+  absl::flat_hash_map<std::string, AttrConfig> attrs = {
+      {"file_location_id",
+       {/*required=*/true, AttrTy::kInt32, &file_location_id}},
+      {"parent_frame_id",
+       {/*required=*/true, AttrTy::kInt32, &parent_frame_id}}};
+  while (lexer_.GetKind() == TokKind::kInt) {
+    lexer_.Lex();
+    if (!ParseSubAttributes(attrs)) {
+      return false;
+    }
+    StackFrameIndexProto::StackFrame* stack_frame =
+        stack_frame_index->add_stack_frames();
+    stack_frame->set_file_location_id(*file_location_id);
+    stack_frame->set_parent_frame_id(*parent_frame_id - 1);
+  }
+  return true;
+}
+
+bool HloParserImpl::ParseStackFrameIndex(HloModule* module) {
+  if (!EatIfPresent(TokKind::kw_FileNames)) {
+    return true;
+  }
+  StackFrameIndexProto stack_frame_index;
+
+  // Parse file names.
+  while (EatIfPresent(TokKind::kInt)) {
+    ParseString(stack_frame_index.add_file_names());
+  }
+
+  // Parse function names.
+  if (!ParseToken(TokKind::kw_FunctionNames, "expects 'FunctionNames'")) {
+    return false;
+  }
+  while (EatIfPresent(TokKind::kInt)) {
+    ParseString(stack_frame_index.add_function_names());
+  }
+
+  // Parse file locations and stack frames.
+  if (!ParseToken(TokKind::kw_FileLocations, "expects 'FileLocations'") ||
+      !ParseFileLocationList(&stack_frame_index) ||
+      !ParseToken(TokKind::kw_StackFrames, "expects 'StackFrames'") ||
+      !ParseStackFramesList(&stack_frame_index)) {
+    return false;
+  }
+  module->set_stack_frame_index(std::move(stack_frame_index));
   return true;
 }
 
@@ -1637,6 +1735,11 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
           *shape, operands[0], *k, (largest.has_value() ? *largest : true)));
     }
     // Unary ops with result accuracy.
+    case HloOpcode::kAcos:
+    case HloOpcode::kAcosh:
+    case HloOpcode::kAsin:
+    case HloOpcode::kAsinh:
+    case HloOpcode::kAtanh:
     case HloOpcode::kExpm1:
     case HloOpcode::kLog:
     case HloOpcode::kLog1p:
@@ -1647,7 +1750,9 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
     case HloOpcode::kTanh:
     case HloOpcode::kErf:
     case HloOpcode::kSin:
+    case HloOpcode::kSinh:
     case HloOpcode::kCos:
+    case HloOpcode::kCosh:
     case HloOpcode::kTan:
     case HloOpcode::kExp: {
       return create_unary_instruction_with_result_accuracy();
@@ -2277,7 +2382,7 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
         return nullptr;
       }
 
-      if (dynamic_cast<const HloChannelInstruction*>(operands[0]) != nullptr) {
+      if (HloChannelInstruction::ClassOf(operands[0])) {
         if (channel_id != operands[0]->channel_id()) {
           return nullptr;
         }
@@ -2314,7 +2419,7 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
         return nullptr;
       }
 
-      if (dynamic_cast<const HloChannelInstruction*>(operands[0]) != nullptr) {
+      if (DynCast<const HloChannelInstruction>(operands[0]) != nullptr) {
         if (channel_id != operands[0]->channel_id()) {
           return nullptr;
         }
@@ -5236,18 +5341,12 @@ bool HloParserImpl::ParseAttributeHelper(
         return true;
       }
       case AttrTy::kOriginalValue: {
-        // By the time this attribute is added, the instruction shape should
-        // have been inferred.
-        if (!shape) {
-          return TokenError("expects instruction shape");
-        }
-        std::shared_ptr<OriginalValue> result =
-            std::make_shared<OriginalValue>(*shape);
-        if (!ParseOriginalValue(result)) {
+        std::optional<OriginalValue> result;
+        if (!ParseOriginalValueImpl(result)) {
           return false;
         }
         static_cast<optional<std::shared_ptr<OriginalValue>>*>(attr_out_ptr)
-            ->emplace(std::move(result));
+            ->emplace(std::make_shared<OriginalValue>(std::move(*result)));
         return true;
       }
       case AttrTy::kOriginalValueRecoveryTable: {
@@ -6625,45 +6724,89 @@ bool HloParserImpl::ParseOriginalArray(OriginalArray& original_array) {
   return true;
 }
 
-// original_value ::= '{' '('* original_array [','] ')'* | original_value '}'
-bool HloParserImpl::ParseOriginalValue(
-    std::shared_ptr<OriginalValue>& original_value) {
+bool HloParserImpl::ParseAndAddOriginalArray(
+    const ShapeIndex& leaf_shape_index,
+    std::vector<std::pair<ShapeIndex, std::optional<OriginalArray>>>*
+        original_value_arrays) {
+  OriginalArray original_array;
+  if (!ParseOriginalArray(original_array)) {
+    return false;
+  }
+  if (original_array.instruction_name.empty()) {
+    // The original value is not expected to have any leaf without values.
+    // However we should not fail the execution here. This should
+    // be done in HloVerifier instead.
+    LOG(WARNING) << "Found an empty leaf node in an original value";
+    original_value_arrays->emplace_back(leaf_shape_index, std::nullopt);
+  } else {
+    original_value_arrays->emplace_back(leaf_shape_index,
+                                        std::move(original_array));
+  }
+  return true;
+}
+
+// original_value ::= '{' '<synthetic_call>' | ( '('* original_array [','] ')'*
+// | original_value ) '}'
+bool HloParserImpl::ParseOriginalValueImpl(
+    std::optional<OriginalValue>& original_value) {
   VLOG(kDebugLevel) << "ParseOriginalValue";
 
-  if (!ParseToken(TokKind::kLbrace, "Expects '{'")) {
+  if (!ParseToken(TokKind::kLbrace, "Expects '{' to start original value")) {
     return false;
   }
 
+  if (EatIfPresent(TokKind::kLsquare)) {
+    if (lexer_.GetKind() != TokKind::kIdent ||
+        lexer_.GetStrVal() != "synthetic_call") {
+      return TokenError(
+          "Expects 'synthetic_call' after '[' for a synthetic_call value.");
+    }
+    lexer_.Lex();  // Eat 'synthetic_call'.
+    if (!ParseToken(TokKind::kRsquare,
+                    "Expects ']' to end '[synthetic_call]'")) {
+      return false;
+    }
+    if (!ParseToken(TokKind::kRbrace, "Expects '}' to end original value")) {
+      return false;
+    }
+    original_value.emplace(OriginalValue::SyntheticCall());
+    return true;
+  }
+
+  std::vector<std::pair<ShapeIndex, std::optional<OriginalArray>>>
+      original_value_arrays;
+
   ShapeIndex leaf_shape_index;
   while (lexer_.GetKind() != TokKind::kRbrace) {
-    if (lexer_.GetKind() == TokKind::kLparen) {
-      lexer_.Lex();
-      leaf_shape_index.push_back(0);
-    } else if (lexer_.GetKind() == TokKind::kRparen) {
-      lexer_.Lex();
-      leaf_shape_index.pop_back();
-    } else if (lexer_.GetKind() == TokKind::kComma) {
-      lexer_.Lex();
-      ++leaf_shape_index.back();
-    } else if (lexer_.GetKind() == TokKind::kLbrace) {
-      OriginalArray original_array;
-      if (!ParseOriginalArray(original_array)) {
-        return false;
-      }
-      if (!original_array.instruction_name.empty()) {
-        *original_value->mutable_element(leaf_shape_index) = original_array;
-      } else {
-        // The original value is not expected to have any leaf without values.
-        // However we should not fail the execution here. This should
-        // be done in HloVerifier instead.
-        LOG(WARNING) << "Found an empty leaf node in an original value";
-      }
-    } else {
-      return false;
+    switch (lexer_.GetKind()) {
+      case TokKind::kLparen:
+        lexer_.Lex();
+        leaf_shape_index.push_back(0);
+        break;
+      case TokKind::kRparen:
+        lexer_.Lex();
+        leaf_shape_index.pop_back();
+        break;
+      case TokKind::kComma:
+        lexer_.Lex();
+        ++leaf_shape_index.back();
+        break;
+      case TokKind::kLbrace:
+        if (!ParseAndAddOriginalArray(leaf_shape_index,
+                                      &original_value_arrays)) {
+          return false;
+        }
+        break;
+      default:
+        return TokenError(
+            "Expects '[synthetic]' or a tuple tree of original arrays in "
+            "original_value field.");
     }
   }
 
   lexer_.Lex();
+  original_value.emplace(TupleTree<std::optional<OriginalArray>>(
+      absl::MakeSpan(original_value_arrays)));
   return true;
 }
 
@@ -6707,8 +6850,9 @@ bool HloParserImpl::ParseOriginalValueRecoveryTable(
       }
       recovery_module = std::move(status_or_recovery_module.value());
     }
-    original_value_recovery_table[replaced_original_array] =
-        std::make_pair(replacing_original_array, std::move(recovery_module));
+    original_value_recovery_table.emplace(
+        replaced_original_array,
+        std::make_pair(replacing_original_array, std::move(recovery_module)));
   }
 
   lexer_.Lex();
@@ -6726,6 +6870,7 @@ bool HloParserImpl::ParseMetadata(OpMetadata& metadata) {
   optional<int32_t> source_end_line;
   optional<int32_t> source_column;
   optional<int32_t> source_end_column;
+  optional<int32_t> stack_frame_id;
   optional<std::vector<int64_t>> profile_type;
   optional<std::string> deduplicated_name;
   optional<std::string> scheduling_name;
@@ -6744,6 +6889,8 @@ bool HloParserImpl::ParseMetadata(OpMetadata& metadata) {
                                 &deduplicated_name};
   attrs["scheduling_name"] = {/*required=*/false, AttrTy::kString,
                               &scheduling_name};
+  attrs["stack_frame_id"] = {/*required=*/false, AttrTy::kInt32,
+                             &stack_frame_id};
   if (!ParseSubAttributes(attrs)) {
     return false;
   }
@@ -6781,6 +6928,9 @@ bool HloParserImpl::ParseMetadata(OpMetadata& metadata) {
   }
   if (scheduling_name) {
     metadata.set_scheduling_name(*scheduling_name);
+  }
+  if (stack_frame_id) {
+    metadata.set_stack_frame_id(*stack_frame_id);
   }
   return true;
 }
@@ -7281,6 +7431,18 @@ absl::StatusOr<Shape> HloParserImpl::ParseShapeOnly() {
   return shape;
 }
 
+absl::StatusOr<std::vector<Shape>> HloParserImpl::ParseShapeListOnly() {
+  lexer_.Lex();
+  std::vector<Shape> shapes;
+  if (!ParseShapeList(&shapes)) {
+    return InvalidArgument("Syntax error:\n%s", GetError());
+  }
+  if (lexer_.GetKind() != TokKind::kEof) {
+    return InvalidArgument("Syntax error:\nExtra content after shape");
+  }
+  return shapes;
+}
+
 absl::StatusOr<Layout> HloParserImpl::ParseLayoutOnly() {
   lexer_.Lex();
   Layout layout;
@@ -7306,17 +7468,16 @@ absl::StatusOr<HloSharding> HloParserImpl::ParseShardingOnly() {
 }
 
 absl::StatusOr<std::shared_ptr<OriginalValue>>
-HloParserImpl::ParseOriginalValueOnly(Shape shape) {
+HloParserImpl::ParseOriginalValueOnly() {
   lexer_.Lex();
-  std::shared_ptr<OriginalValue> original_value =
-      std::make_shared<OriginalValue>(shape);
-  if (!ParseOriginalValue(original_value)) {
+  std::optional<OriginalValue> original_value;
+  if (!ParseOriginalValueImpl(original_value)) {
     return InvalidArgument("Syntax error:\n%s", GetError());
   }
   if (lexer_.GetKind() != TokKind::kEof) {
     return InvalidArgument("Syntax error:\nExtra content after original value");
   }
-  return original_value;
+  return std::make_shared<OriginalValue>(std::move(*original_value));
 }
 
 absl::StatusOr<FrontendAttributes>
@@ -7492,7 +7653,7 @@ bool HloParserImpl::ParseSingleInstruction(HloModule* module) {
   for (auto& comp : computations_) {
     module->AddEmbeddedComputation(std::move(comp));
   }
-  TF_CHECK_OK(module->set_schedule(ScheduleFromInstructionOrder(module)));
+  CHECK_OK(module->set_schedule(ScheduleFromInstructionOrder(module)));
   return true;
 }
 
@@ -7513,9 +7674,9 @@ absl::StatusOr<HloSharding> ParseSharding(absl::string_view str) {
 }
 
 absl::StatusOr<std::shared_ptr<OriginalValue>> ParseOriginalValue(
-    absl::string_view str, const Shape& shape) {
+    absl::string_view str) {
   HloParserImpl parser(str);
-  return parser.ParseOriginalValueOnly(shape);
+  return parser.ParseOriginalValueOnly();
 }
 
 absl::StatusOr<FrontendAttributes> ParseFrontendAttributes(
@@ -7572,6 +7733,11 @@ absl::StatusOr<PaddingConfig> ParsePaddingConfig(absl::string_view str) {
 absl::StatusOr<Shape> ParseShape(absl::string_view str) {
   HloParserImpl parser(str);
   return parser.ParseShapeOnly();
+}
+
+absl::StatusOr<std::vector<Shape>> ParseShapeList(absl::string_view str) {
+  HloParserImpl parser(str);
+  return parser.ParseShapeListOnly();
 }
 
 absl::StatusOr<Layout> ParseLayout(absl::string_view str) {

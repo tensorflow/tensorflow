@@ -1,4 +1,5 @@
 load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
+load("@bazel_skylib//lib:selects.bzl", "selects")
 load("@bazel_skylib//rules:common_settings.bzl", "bool_flag")
 load("//xla/tsl:tsl.default.bzl", "get_compatible_with_portable")
 load(
@@ -50,8 +51,17 @@ bool_flag(
 )
 
 config_setting(
-    name = "disable_onednn_contraction_kernel_config",
+    name = "disable_onednn_contraction_kernel_flag_set",
     flag_values = {":disable_onednn_contraction_kernel": "True"},
+)
+
+selects.config_setting_group(
+    name = "disable_onednn_contraction_kernel_config",
+    match_any = [
+        ":disable_onednn_contraction_kernel_flag_set",
+        # copybara:uncomment "//xla/tsl/onednn:no_onednn",
+    ],
+    visibility = ["//visibility:public"],
 )
 
 # Depending on a build configuration this target provides custom kernel for Eigen
@@ -83,6 +93,7 @@ cc_library(
     name = "eigen_contraction_kernel",
     hdrs = ["eigen_contraction_kernel.h"],
     compatible_with = get_compatible_with_portable(),
+    tags = ["nofixdeps"],
     deps = select({
         ":no_mkldnn_contraction_kernel": [":eigen_contraction_kernel_no_mkl"],
         ":disable_onednn_contraction_kernel_config": [":eigen_contraction_kernel_no_mkl"],
@@ -103,6 +114,7 @@ cc_library(
         "//xla/tsl:fuchsia_x86_64": [],
         "//xla/tsl:ios": [],
         "//xla/tsl:linux_ppc64le": [],
+        "//xla/tsl:linux_riscv64": [],
         "//xla/tsl:linux_s390x": [],
         "//xla/tsl:macos_arm64": [],
         "//conditions:default": [
@@ -122,6 +134,7 @@ cc_library(
         "//xla/tsl:fuchsia_x86_64": [],
         "//xla/tsl:ios": [],
         "//xla/tsl:linux_ppc64le": [],
+        "//xla/tsl:linux_riscv64": [],
         "//xla/tsl:linux_s390x": [],
         "//xla/tsl:macos_arm64": [],
         "//conditions:default": ["//xla/tsl/mkl:onednn"],
@@ -142,6 +155,7 @@ cc_library(
     srcs = ["eigen_contraction_kernel.cc"],
     hdrs = ["eigen_contraction_kernel.h"],
     compatible_with = get_compatible_with_portable(),
+    tags = ["nofixdeps"],
     # Somehow the following code works with fixedpoint, but not here.
     # visibility = [
     #     "//tensorflow:__subpackages__",

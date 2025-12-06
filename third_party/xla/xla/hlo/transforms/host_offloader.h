@@ -62,14 +62,13 @@ class HostOffloader : public HloModulePass {
 
   absl::string_view name() const override { return "host-offloader"; }
 
-  using HloPassInterface::Run;
-  absl::StatusOr<bool> Run(
-      HloModule* module,
-      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
-
  protected:
   virtual absl::StatusOr<std::vector<int64_t>>
   GetPallasCustomCallOutputMemorySpaces(HloInstruction* instruction) const;
+
+  absl::StatusOr<bool> RunImpl(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
  private:
   // Process the next "MoveToHost" instruction that resides at the beginning of

@@ -147,7 +147,7 @@ static absl::StatusOr<ifrt::ArrayRef> MakeArrayFromLiteral(
       ifrt::Shape(literal.shape().dimensions()),
       /*byte_strides=*/std::nullopt, std::move(sharding),
       ifrt::Client::HostBufferSemantics::kImmutableZeroCopy,
-      /*on_done_with_host_buffer=*/{});
+      /*on_done_with_host_buffer=*/nullptr);
 }
 
 static void BM_IfRtAddScalars(benchmark::State& state) {
@@ -319,8 +319,28 @@ int main(int argc, char** argv) {
       "ArrayImplTest.MakeArrayFromHostBufferAndCopyToHostBufferWithString:"
       "ArrayImplTest."
       "MakeArraysFromHostBufferShardsAndCopyToHostBufferWithString:"
+      // Custom layouts are not supported in NanoIfrtClient.
+      "ArrayImplTest.MakeArraysFromHostBufferShardsWithLayout:"
       // `MakeErrorArrays` is not supported in NanoIfrtClient.
-      "ArrayImplTest.MakeErrorArrays";
+      "ArrayImplTest.MakeErrorArrays:"
+      "ArrayImplTest.CopyPoisonedArray:"
+      // Sub-byte types are not supported in NanoIfrtClient.
+      "ArrayImplTest.HostBufferInt4:"
+      "ArrayImplTest.CopyArraysSubByteDType:"
+      // NanoRT does not handle zero-sized buffers correctly.
+      "ArrayImplTest.MakeAndCopyZeroSizedBuffers:"
+      // Executable returns a wrong number of devices.
+      "*LoadedExecutableImplTest.Properties*:"
+      // Incorrect deleted state of donated inputs.
+      "*LoadedExecutableImplTest.Donation*:"
+      // GetHloModules, ProgramText, and Analysis methods are not implemented.
+      "*LoadedExecutableImplTest.GetHloModules*:"
+      "*LoadedExecutableImplTest.ProgramText*:"
+      "*LoadedExecutableImplTest.Analysis*:"
+      // NanoRT does not support portable execution.
+      "*LoadedExecutableImplTest.CompileAndExecutePortable*:"
+      // Serialization is not implemented.
+      "*SerializeAndLoad*";
   xla::ifrt::test_util::SetTestFilterIfNotUserSpecified(kFilter);
 
   for (int i = 1; i < argc; i++) {

@@ -447,6 +447,10 @@ LocalClient::Compile(const XlaComputation& computation,
   local_executables.reserve(executables.size());
 
   for (auto& executable : executables) {
+    if (executable->has_module()) {
+      TF_RETURN_IF_ERROR(executable->DumpExecutableIfEnabled(
+          updated_options, executable->module().config().debug_options()));
+    }
     local_executables.push_back(std::make_unique<LocalExecutable>(
         std::move(executable), local_service_->mutable_backend(),
         updated_options));

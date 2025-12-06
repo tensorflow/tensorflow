@@ -81,7 +81,7 @@ class Barrier : public ResourceBase {
 
     ready_queue_ = new PriorityQueue(
         QueueBase::kUnbounded /* capacity */, queue_component_types,
-        queue_component_shapes, strings::StrCat(name_, "_queue"));
+        queue_component_shapes, absl::StrCat(name_, "_queue"));
   }
 
   absl::Status Initialize() { return ready_queue_->Initialize(); }

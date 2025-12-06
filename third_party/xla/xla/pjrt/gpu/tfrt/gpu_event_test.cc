@@ -20,12 +20,9 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
-#include "xla/tsl/platform/status_matchers.h"
 
 namespace xla {
 namespace {
-
-using ::tsl::testing::StatusIs;
 
 TEST(GpuEventTest, AfterAllEmpty) { EXPECT_TRUE(AfterAll({}).IsAvailable()); }
 

@@ -30,7 +30,8 @@ namespace sdy {
 using ::mlir::func::FuncOp;
 
 void addCommonPreImportPasses(mlir::OpPassManager& pm,
-                              bool enableConstantImport) {
+                              bool enableConstantImport,
+                              bool enableStablehloCanonicalizeFromHloImport) {
   pm.addPass(mlir::createSymbolDCEPass());
   // TODO(b/333505182): remove when partitioning is done in SDY.
   // We call prepare-for-export pass before SDY propagation, so that all IR
@@ -47,15 +48,18 @@ void addCommonPreImportPasses(mlir::OpPassManager& pm,
   if (enableConstantImport) {
     pm.addNestedPass<FuncOp>(createImportConstantsPass());
   }
-  pm.addNestedPass<FuncOp>(
-      mlir::stablehlo_ext::createStablehloCanonicalizeFromHloImportPass());
+  if (enableStablehloCanonicalizeFromHloImport) {
+    pm.addNestedPass<FuncOp>(
+        mlir::stablehlo_ext::createStablehloCanonicalizeFromHloImportPass());
+  }
 }
 
-void addCommonPostImportPasses(mlir::OpPassManager& pm,
-                               bool importOnlyUninlineableFuncCalls) {
+void addCommonPostImportPasses(mlir::OpPassManager& pm, bool importFuncCalls) {
   pm.addPass(createImportSdyCustomCallsPass());
   pm.addNestedPass<FuncOp>(createOpenWhileFreeVarsShardingPass());
-  pm.addPass(createImportFuncCallsPass(importOnlyUninlineableFuncCalls));
+  if (importFuncCalls) {
+    pm.addPass(createImportFuncCallsPass());
+  }
 }
 
 }  // namespace sdy

@@ -934,6 +934,27 @@ func.func @ReturnQuantizedResult(%arg0: tensor<1x224x224x3xf32>, %arg1: tensor<3
 
 // -----
 
+// QDQ-LABEL: BroadcastToPerTensorQuantizationPropagation
+func.func @BroadcastToPerTensorQuantizationPropagation() -> tensor<2x5xf32> {
+  %shape = arith.constant dense<[2, 5]> : tensor<2xi32>
+  %cst = arith.constant dense<1.0> : tensor<5xf32>
+  %q = "tfl.quantize"(%cst) {qtype = tensor<5x!quant.uniform<i8<-127:127>:f32, 1.113490e-03>>} : (tensor<5xf32>) -> tensor<5x!quant.uniform<i8<-127:127>:f32, 1.113490e-03>>
+  %dq = "tfl.dequantize"(%q) : (tensor<5x!quant.uniform<i8<-127:127>:f32, 1.113490e-03>>) -> tensor<5xf32>
+  %t = "tfl.broadcast_to"(%dq, %shape) : (tensor<5xf32>, tensor<2xi32>) -> tensor<2x5xf32>
+  func.return %t : tensor<2x5xf32>
+
+  // QDQ: %[[shape:.*]] = arith.constant dense<[2, 5]> : tensor<2xi32>
+  // QDQ-NEXT: %[[w:.*]] = arith.constant dense<1.000000e+00> : tensor<5xf32>
+  // QDQ-NEXT: %[[qw:.*]] = "tfl.quantize"(%[[w]]) <{qtype = tensor<5x!quant.uniform<i8<-127:127>:f32, 1.113490e-03>>}> : (tensor<5xf32>) -> tensor<5x!quant.uniform<i8<-127:127>:f32, 1.113490e-03>>
+  // QDQ-NEXT: %[[dqw:.*]] = "tfl.dequantize"(%[[qw]]) : (tensor<5x!quant.uniform<i8<-127:127>:f32, 1.113490e-03>>) -> tensor<5xf32>
+  // QDQ-NEXT: %[[bt:.*]] = "tfl.broadcast_to"(%[[dqw]], %[[shape]]) : (tensor<5xf32>, tensor<2xi32>) -> tensor<2x5xf32>
+  // QDQ-NEXT: %[[qtw:.*]] = "tfl.quantize"(%[[bt]]) <{qtype = tensor<2x5x!quant.uniform<i8<-127:127>:f32, 1.113490e-03>>}> {volatile} : (tensor<2x5xf32>) -> tensor<2x5x!quant.uniform<i8<-127:127>:f32, 1.113490e-03>>
+  // QDQ-NEXT: %[[dqtw:.*]] = "tfl.dequantize"(%[[qtw]]) : (tensor<2x5x!quant.uniform<i8<-127:127>:f32, 1.113490e-03>>) -> tensor<2x5xf32>
+  // QDQ-NEXT: return %[[dqtw]] : tensor<2x5xf32>
+}
+
+// -----
+
 // QDQ-LABEL: TransposePerTensorQuantizationPropagation
 func.func @TransposePerTensorQuantizationPropagation() -> tensor<2x5xf32> {
   %perm = arith.constant dense<[1, 0]> : tensor<2xi32>

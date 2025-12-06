@@ -441,9 +441,10 @@ REGISTER_OP("TensorListReserve")
 REGISTER_OP("TensorListGetItem")
     .Input("input_handle: variant")
     .Input("index: int32")
-    .Input("element_shape: int32")
+    .Input("element_shape: Tshape")
     .Output("item: element_dtype")
     .Attr("element_dtype: type")
+    .Attr("Tshape: {int32, int64} = DT_INT32")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       DataType element_dtype;
       TF_RETURN_IF_ERROR(c->GetAttr("element_dtype", &element_dtype));

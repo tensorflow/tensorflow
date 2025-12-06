@@ -110,7 +110,7 @@ class GraphTest : public ::testing::Test {
                     int num_inputs) {
     auto builder = NodeDefBuilder(name, node_type);
     for (int i = 0; i < num_inputs; ++i) {
-      builder = builder.Input(strings::StrCat("node_", i), i, DT_FLOAT);
+      builder = builder.Input(absl::StrCat("node_", i), i, DT_FLOAT);
     }
 
     NodeDef node_def;
@@ -144,7 +144,7 @@ class GraphTest : public ::testing::Test {
         return true;
       }
     }
-    std::string control_edge_name = strings::StrCat("^", src->name());
+    std::string control_edge_name = absl::StrCat("^", src->name());
     for (int i = 0; i < dst->def().input_size(); ++i) {
       if (dst->def().input(i) == control_edge_name) {
         return true;
@@ -397,7 +397,7 @@ static string EdgeIter(const Graph& g) {
   std::sort(edges.begin(), edges.end());
   string result;
   for (auto& p : edges) {
-    strings::StrAppend(&result, p.first, "->", p.second, ";");
+    absl::StrAppend(&result, p.first, "->", p.second, ";");
   }
   return result;
 }

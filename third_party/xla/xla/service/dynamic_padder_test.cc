@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_replace.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/error_spec.h"
 #include "xla/hlo/builder/xla_builder.h"
@@ -45,18 +46,18 @@ limitations under the License.
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/service/dynamic_dimension_inference.h"
+#include "xla/service/hlo_module_config.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tests/llvm_irgen_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/protobuf/error_codes.pb.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/status.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -765,9 +766,9 @@ class ExecutionTest : public HloTestBase {
     DynamicPadderOptions options;
     options.slice_dynamic_output = slice_dynamic_output;
     DynamicPadder padder(options);
-    TF_CHECK_OK(padder.Run(module.get()).status());
+    CHECK_OK(padder.Run(module.get()).status());
     HloDCE dce;
-    TF_CHECK_OK(dce.Run(module.get()).status());
+    CHECK_OK(dce.Run(module.get()).status());
     return Execute(std::move(module), {arguments});
   }
 };
@@ -810,9 +811,10 @@ ENTRY main {
       LiteralUtil::CreateR2<int32_t>({{10, 20, 30}, {70, 80, 90}});
   Literal dynamic_size = LiteralUtil::CreateR0<int32_t>(2);
 
-  Literal not_padded =
-      ExecuteAndTransfer(std::move(module_not_padded),
-                         {&operand, &scatter_indices, &updates, &dynamic_size});
+  TF_ASSERT_OK_AND_ASSIGN(
+      Literal not_padded,
+      Execute(std::move(module_not_padded),
+              {&operand, &scatter_indices, &updates, &dynamic_size}));
 
   // Pad input to 4.
   const std::string hlo_text_padded =
@@ -823,7 +825,7 @@ ENTRY main {
   Literal updates_padded = LiteralUtil::CreateR2<int32_t>(
       {{10, 20, 30}, {70, 80, 90}, {30, 22, 11}, {-1, 20, -1}});
   DynamicPadder padder;
-  TF_CHECK_OK(padder.Run(module_padded.get()).status());
+  CHECK_OK(padder.Run(module_padded.get()).status());
   TF_ASSERT_OK_AND_ASSIGN(Literal padded,
                           PadAndExecute(std::move(module_padded),
                                         {&operand, &scatter_indices_padded,
@@ -915,7 +917,7 @@ ENTRY main {
 
   auto module_padded = GetHloModule(hlo_text);
   DynamicPadder padder;
-  TF_CHECK_OK(padder.Run(module_padded.get()).status());
+  CHECK_OK(padder.Run(module_padded.get()).status());
   TF_ASSERT_OK_AND_ASSIGN(
       Literal not_padded,
       PadAndExecute(std::move(module_padded),
@@ -971,7 +973,7 @@ ENTRY main {
       LiteralUtil::CreateR3<int32_t>({{{1}, {2}}, {{3}, {4}}, {{5}, {6}}});
   auto module = GetHloModule(hlo_text);
   DynamicPadder padder;
-  TF_CHECK_OK(padder.Run(module.get()).status());
+  CHECK_OK(padder.Run(module.get()).status());
   TF_ASSERT_OK_AND_ASSIGN(Literal result,
                           PadAndExecute(std::move(module), {&operand}));
 
@@ -1011,8 +1013,9 @@ ENTRY main {
   Literal operand = LiteralUtil::CreateR2<int32_t>({{1, 2}, {4, 5}});
   Literal dynamic_size = LiteralUtil::CreateR0<int32_t>(2);
 
-  Literal not_padded = ExecuteAndTransfer(std::move(module_not_padded),
-                                          {&operand, &dynamic_size});
+  TF_ASSERT_OK_AND_ASSIGN(
+      Literal not_padded,
+      Execute(std::move(module_not_padded), {&operand, &dynamic_size}));
 
   // Pad input to 4.
   const std::string hlo_text_padded =
@@ -1022,7 +1025,7 @@ ENTRY main {
   Literal operand_padded = LiteralUtil::CreateR2<int32_t>(
       {{1, 2, 3, 4}, {4, 5, 6, 7}, {1, 2, 3, 4}, {4, 5, 6, 7}});
   DynamicPadder padder;
-  TF_CHECK_OK(padder.Run(module_padded.get()).status());
+  CHECK_OK(padder.Run(module_padded.get()).status());
   TF_ASSERT_OK_AND_ASSIGN(Literal padded,
                           PadAndExecute(std::move(module_padded),
                                         {&operand_padded, &dynamic_size}));
@@ -1444,8 +1447,13 @@ ENTRY main {
   ROOT out = reduce(param, zero), to_apply=add, dimensions={0,1,2,3,4,5,6,7}
 }
 )";
-
-  CompileAndVerifyIr(hlo_text, R"(
+  HloModuleConfig config;
+  auto debug_options = GetDebugOptionsForTest();
+  debug_options.set_xla_gpu_autotune_level(0);
+  config.set_debug_options(debug_options);
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_text, config));
+  CompileAndVerifyIr(std::move(module), R"(
 CHECK: ret void
 )",
                      /*match_optimized_ir=*/true);

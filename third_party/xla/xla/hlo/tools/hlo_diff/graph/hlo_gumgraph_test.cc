@@ -235,25 +235,25 @@ ENTRY entry {
                   /*generation=*/1,
                   /*height=*/3, /*subgraph_fingerprint=*/10174981490612213786U,
                   /*fingerprint=*/7968662072287666665U,
-                  /*canonical_fingerprint=*/962574172336760684U));
+                  /*canonical_fingerprint=*/7968662072287666665U));
   EXPECT_THAT(entry->children[0]->props,
               FieldsAre(
                   /*generation=*/2,
                   /*height=*/2, /*subgraph_fingerprint=*/12866517545790127195U,
                   /*fingerprint=*/7968662072287666665U,
-                  /*canonical_fingerprint=*/962574172336760684U));
+                  /*canonical_fingerprint=*/7968662072287666665U));
   EXPECT_THAT(entry->children[1]->props,
               FieldsAre(
                   /*generation=*/3,
                   /*height=*/1, /*subgraph_fingerprint=*/3741348072536313129U,
                   /*fingerprint=*/3741348072536313129U,
-                  /*canonical_fingerprint=*/12841472793063608770U));
+                  /*canonical_fingerprint=*/3741348072536313129U));
   EXPECT_THAT(entry->children[0]->children[0]->props,
               FieldsAre(
                   /*generation=*/3,
                   /*height=*/1, /*subgraph_fingerprint=*/856105463456541506U,
                   /*fingerprint=*/856105463456541506U,
-                  /*canonical_fingerprint=*/1668459129586447343U));
+                  /*canonical_fingerprint=*/856105463456541506U));
 
   EXPECT_THAT(
       graph->AllComputationProps(),

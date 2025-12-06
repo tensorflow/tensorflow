@@ -23,7 +23,6 @@ load(
     _tf_google_mobile_srcs_only_runtime = "tf_google_mobile_srcs_only_runtime",
     _tf_jspb_proto_library = "tf_jspb_proto_library",
     _tf_lib_proto_parsing_deps = "tf_lib_proto_parsing_deps",
-    _tf_logging_deps = "tf_logging_deps",
     _tf_platform_alias = "tf_platform_alias",
     _tf_platform_deps = "tf_platform_deps",
     _tf_portable_deps_no_runtime = "tf_portable_deps_no_runtime",
@@ -62,7 +61,6 @@ tf_google_mobile_srcs_no_runtime = _tf_google_mobile_srcs_no_runtime
 tf_google_mobile_srcs_only_runtime = _tf_google_mobile_srcs_only_runtime
 tf_jspb_proto_library = _tf_jspb_proto_library
 tf_lib_proto_parsing_deps = _tf_lib_proto_parsing_deps
-tf_logging_deps = _tf_logging_deps
 tf_platform_alias = _tf_platform_alias
 tf_platform_deps = _tf_platform_deps
 tf_portable_proto_lib = _tf_portable_proto_lib

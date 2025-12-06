@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 
@@ -312,6 +313,24 @@ TEST_F(CopyFusionTest, BuildUpdateSliceDescriptor) {
   EXPECT_EQ(offset.offset->name(), "p2");
   EXPECT_EQ(offset.dimension_size, 4);
   EXPECT_EQ(offset.byte_stride, 8 * 8 * sizeof(float));
+}
+
+TEST_F(CopyFusionTest, PackedSubByteTypesAreNotSupported) {
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+    dynamic_slice {
+      a = s4[20]{0:E(4)} parameter(0)
+      c = s32[] constant(10)
+      s = s4[10] dynamic-slice(a, c), dynamic_slice_sizes={10}
+    }
+
+    entry {
+      a = s4[20]{0:E(4)} parameter(0)
+      f = s4[10] fusion(a), kind=kLoop, calls=dynamic_slice
+    }
+  )"));
+  EXPECT_FALSE(
+      DynamicMemcpyFusion::GetMemcpyDescriptorForFusion(GetFusion(module.get()))
+          .has_value());
 }
 
 }  // namespace

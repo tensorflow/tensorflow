@@ -63,7 +63,7 @@ absl::Status AutotuneBufferSizes::OptimizeAndCollectStats(
   NodeDef* autotune_value =
       graph_utils::AddScalarConstNode(data::model::kAutotune, &graph);
 
-  absl::flat_hash_set<string> already_prefetched;
+  absl::flat_hash_set<std::string> already_prefetched;
 
   // 1) Collect about all existing `PrefetchDataset` nodes, replacing
   // `prefetch(N)` with `prefetch(AUTOTUNE, buffer_size_min=N)` for all N !=-1.
@@ -114,7 +114,7 @@ absl::Status AutotuneBufferSizes::OptimizeAndCollectStats(
   for (const NodeDef* async_dataset_node : async_datasets) {
     NodeDef prefetch_node;
     graph_utils::SetUniqueGraphNodeName(
-        strings::StrCat("inject/prefetch_", async_dataset_node->name()),
+        absl::StrCat("inject/prefetch_", async_dataset_node->name()),
         graph.graph(), &prefetch_node);
     prefetch_node.set_op(kPrefetchDataset);
     // `input_dataset` input

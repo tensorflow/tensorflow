@@ -16,13 +16,14 @@ limitations under the License.
 #ifndef XLA_HLO_TRANSFORMS_MEMORY_SPACE_PROPAGATION_H_
 #define XLA_HLO_TRANSFORMS_MEMORY_SPACE_PROPAGATION_H_
 
-#include <cstdint>
 #include <memory>
+#include <utility>
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/analysis/hlo_dataflow_analysis.h"
+#include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
 #include "xla/shape.h"
@@ -33,10 +34,18 @@ namespace xla {
 // split config) in the layout to the fusion computations.
 class MemorySpacePropagation : public HloModulePass {
  public:
+  explicit MemorySpacePropagation(
+      std::unique_ptr<HloDataflowAnalysis> dataflow_analysis = nullptr)
+      : dataflow_analysis_(std::move(dataflow_analysis)) {}
   ~MemorySpacePropagation() override = default;
   absl::string_view name() const override { return "memory-space-propagation"; }
-  using HloPassInterface::Run;
-  absl::StatusOr<bool> Run(
+
+  // Propagates the memory space (and associated split config) in the layout to
+  // a given fusion computation. Returns true if the computation is modified.
+  bool RunOnComputation(HloComputation* computation);
+
+ protected:
+  absl::StatusOr<bool> RunImpl(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 

@@ -33,28 +33,64 @@ limitations under the License.
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/instruction_fusion.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/tsl/platform/threadpool.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/threadpool.h"
 
 namespace xla {
 namespace gpu {
 
+// PriorityFusion is the main fusion pass for XLA:GPU. It is an HLO pass that
+// assigns a priority to each producer instruction based on the estimated
+// performance benefit of fusing it into its consumers. The benefit is
+// calculated using a performance cost model:
+//
+//   priority = time_unfused - time_fused
+//
+// Note: If fusing a producer into its consumers requires duplicating the
+// producer, the cost model accounts for this duplication.
+//
+// The algorithm can be summarized in the following steps:
+// 1. For each producer, call the cost model to estimate the potential benefit
+//    of fusing it with all its consumers.
+// 2. Put all producers with a positive benefit into a priority queue, ordered
+//    by benefit.
+// 3. Pop the producer with the highest priority from the queue.
+// 4. Fuse the producer with its consumers. This may result in a new fusion
+//    instruction, or merging into an existing fusion.
+// 5. Update the priorities of the operands of the fused instructions and
+//    of instructions whose consumers have changed, and update them in the
+//    priority queue.
+// 6. If the queue is not empty, go to step 3.
+//
+// Example:
+// Consider A -> B -> C, where A, B, and C are fusible operations.
+// The fusible producers are A and B.
+//
+// Priorities are computed:
+//  - P(A) = benefit of fusing A into B.
+//  - P(B) = benefit of fusing B into C.
+//
+// Assuming P(A)=10 and P(B)=5, the queue is [(A,10), (B,5)].
+//  - A is popped and fused into B, creating fusion(A+B).
+//  - The graph becomes fusion(A+B) -> C.
+//  - Priority of fusion(A+B) is computed, P(fusion(A+B))=8.
+//  - The queue becomes [(fusion(A+B),8)].
+//  - fusion(A+B) is popped and fused into C, creating fusion(A+B+C).
+//  - The queue becomes empty, and fusion terminates.
+//
 class PriorityFusion : public HloModulePass {
  public:
   PriorityFusion(tsl::thread::ThreadPool* thread_pool,
                  const se::DeviceDescription& device,
-                 GpuHloCostAnalysis::Options cost_analysis_options)
+                 GpuHloCostAnalysis::Options cost_analysis_options,
+                 mlir::MLIRContext* mlir_context)
       : thread_pool_(thread_pool),
         device_info_(device),
         cost_analysis_options_(std::move(cost_analysis_options)),
-        fusion_analysis_cache_(device_info_) {}
+        fusion_analysis_cache_(device_info_),
+        mlir_context_(mlir_context) {}
 
   absl::string_view name() const override { return "priority-fusion"; }
-
-  using HloPassInterface::Run;
-  absl::StatusOr<bool> Run(
-      HloModule* module,
-      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
  protected:
   HloInstruction::FusionKind ChooseKind(const HloInstruction* producer,
@@ -62,6 +98,10 @@ class PriorityFusion : public HloModulePass {
 
   HloInstruction* Fuse(HloInstruction* producer, HloInstruction* consumer,
                        bool use_multi_output_fusion = false);
+
+  absl::StatusOr<bool> RunImpl(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
  private:
   // Consumes a unit of compiler fuel and returns true if we should
@@ -84,7 +124,7 @@ class PriorityFusion : public HloModulePass {
 
   HloFusionAnalysisCache fusion_analysis_cache_;
 
-  mlir::MLIRContext mlir_context_;
+  mlir::MLIRContext* mlir_context_;
 };
 
 }  // namespace gpu

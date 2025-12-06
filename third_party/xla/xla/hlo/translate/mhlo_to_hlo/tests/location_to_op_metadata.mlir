@@ -1,4 +1,4 @@
-// RUN: xla-translate -split-input-file -mlir-hlo-to-hlo-text %s | FileCheck %s --dump-input=always --check-prefixes=CHECK
+// RUN: xla-translate -split-input-file -mlir-hlo-to-hlo-text %s | FileCheck %s --check-prefixes=CHECK
 
 // CHECK-LABEL: %main
 func.func @main(%arg0: !mhlo.token) -> !mhlo.token {
@@ -62,7 +62,7 @@ func.func @main(%arg0: !mhlo.token) -> !mhlo.token {
 }
 
 // CHECK: after-all
-// CHECK-SAME: metadata={op_name="name(anothername)" source_file="file_name" source_line=2 source_end_line=2 source_column=8 source_end_column=8}
+// CHECK-SAME: metadata={op_name="name(anothername)" stack_frame_id=1}
 
 // -----
 
@@ -138,3 +138,33 @@ module @m {
 }
 
 // CHECK: call({{.*}}), to_apply=%foo.{{[0-9.]+}}, metadata={op_name="x"}
+
+// -----
+
+// CHECK-LABEL: %main
+func.func @main(%arg0: tensor<1x2xf32>, %arg1: tensor<1x2xf32>) -> tensor<1x2xf32> {
+  %0 = "mhlo.add"(%arg0, %arg1) : (tensor<1x2xf32>, tensor<1x2xf32>) -> tensor<1x2xf32> loc("my_add")
+  func.return %0 : tensor<1x2xf32>
+}
+
+// CHECK: my_add{{.*}}, metadata={op_name="my_add"}
+
+// -----
+
+// CHECK-LABEL: %main
+func.func @main(%arg0: tensor<2xf32> loc("inputs.x"), %arg1: tensor<2xf32> loc("inputs.y")) -> tensor<2xf32> {
+  %0 = "mhlo.add"(%arg0, %arg1) : (tensor<2xf32>, tensor<2xf32>) -> tensor<2xf32> loc("my_add")
+  func.return %0 : tensor<2xf32>
+}
+
+// CHECK: inputs_x{{.*}}, metadata={op_name="inputs.x"}
+
+// -----
+
+// CHECK-LABEL: %main
+func.func @main(%arg0: tensor<2xf32> loc("Arg_0.1"), %arg1: tensor<2xf32> loc("Arg_1.1")) -> tensor<2xf32> {
+  %0 = "mhlo.add"(%arg0, %arg1) : (tensor<2xf32>, tensor<2xf32>) -> tensor<2xf32> loc("my_add")
+  func.return %0 : tensor<2xf32>
+}
+
+// CHECK: Arg_0{{.*}}, metadata={op_name="Arg_0.1"}

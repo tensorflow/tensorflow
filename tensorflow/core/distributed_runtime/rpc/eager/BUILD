@@ -41,6 +41,7 @@ cc_library(
         "//tensorflow/core/protobuf:for_core_protos_cc",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/synchronization",
         "@local_xla//xla/tsl/distributed_runtime:call_options",
     ] + tf_grpc_cc_dependencies(),
 )

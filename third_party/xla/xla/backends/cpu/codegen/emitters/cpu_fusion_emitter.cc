@@ -45,7 +45,6 @@ limitations under the License.
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/Location.h"
-#include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
 #include "mlir/IR/Types.h"
 #include "mlir/Interfaces/DataLayoutInterfaces.h"
@@ -65,6 +64,7 @@ limitations under the License.
 #include "xla/codegen/emitters/type_util.h"
 #include "xla/hlo/analysis/indexing_analysis.h"
 #include "xla/hlo/analysis/indexing_map.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -131,9 +131,11 @@ bool Needs64BitIndices(const HloComputation* computation) {
 
 using mlir::AffineExpr;
 
-IndexingMap GetDefaultIndexingMap(absl::Span<const int64_t> thread_tile_sizes,
-                                  absl::Span<const int64_t> shape,
-                                  mlir::MLIRContext* mlir_context) {
+IndexingMap GetDefaultIndexingMap(
+    absl::Span<const int64_t> thread_tile_sizes,
+    absl::Span<const int64_t> shape,
+    // TODO: b/451959933 - Use reference or absl_nullable pointer.
+    mlir::MLIRContext* mlir_context) {
   CHECK_EQ(thread_tile_sizes.size(), shape.size())
       << "thread_tile_sizes and shape must have the same size";
   SmallVector<int64_t> thread_tile_counts;
@@ -272,7 +274,8 @@ absl::StatusOr<emitters::CallTargetProvider> EmitCallTargets(
     for (const auto& subgraph : comp.subgraphs()) {
       if (subgraph_to_mlir_fn.contains(&subgraph)) {
         TF_RETURN_IF_ERROR(emitters::SubgraphToMlirFunction(
-            comp, subgraph, subgraph_to_mlir_fn[&subgraph], call_targets));
+            comp, subgraph, subgraph_to_mlir_fn[&subgraph], call_targets,
+            computations.mlir_context()));
       }
     }
   }
@@ -281,7 +284,8 @@ absl::StatusOr<emitters::CallTargetProvider> EmitCallTargets(
     TF_RETURN_IF_ERROR(emitters::SubgraphToMlirFunction(
         computations.FindPartitionedComputation(
             fusion.fused_instructions_computation()),
-        epilogue, subgraph_to_mlir_fn[&epilogue], call_targets));
+        epilogue, subgraph_to_mlir_fn[&epilogue], call_targets,
+        computations.mlir_context()));
   }
 
   return call_targets;

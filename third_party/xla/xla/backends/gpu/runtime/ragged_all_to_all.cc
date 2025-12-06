@@ -13,10 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "xla/backends/gpu/runtime/ragged_all_to_all.h"
+
 #include <algorithm>
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <type_traits>
 
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -37,7 +40,7 @@ namespace xla::gpu {
 
 namespace {
 
-template <typename T>
+template <int64_t kVectorSize>
 absl::Status LaunchTypedKernel(
     se::Stream* stream, se::StreamExecutor* executor,
     const se::ThreadDim& thread_dims, const se::BlockDim& block_dims,
@@ -50,8 +53,9 @@ absl::Status LaunchTypedKernel(
     se::DeviceMemoryBase output_offsets_buffer, int64_t num_updates_per_output,
     int64_t num_row_elements) {
   TF_ASSIGN_OR_RETURN(
-      auto kernel, se::gpu::GpuKernelRegistry::GetGlobalRegistry()
-                       .LoadKernel<se::gpu::RaggedAllToAllKernel<T>>(executor));
+      auto kernel,
+      se::gpu::GpuKernelRegistry::GetGlobalRegistry()
+          .LoadKernel<se::gpu::RaggedAllToAllKernel<kVectorSize>>(executor));
 
   return kernel.Launch(thread_dims, block_dims, stream, input_buffer,
                        output_ptrs, input_offsets_buffer, send_sizes_buffer,
@@ -63,11 +67,10 @@ absl::Status LaunchTypedKernel(
 
 bool IsRaggedAllToAllKernelSupported(int64_t num_outputs,
                                      PrimitiveType element_type) {
-  int bit_width = primitive_util::BitWidth(element_type);
-
   return num_outputs <= stream_executor::gpu::kMaxNumRaggedAllToAllOutputPtrs &&
-         (bit_width == 8 || bit_width == 16 || bit_width == 32 ||
-          bit_width == 64);
+         // Currently, the kernel doesn't support data types that are smaller
+         // than 1 byte.
+         primitive_util::BitWidth(element_type) % 8 == 0;
 }
 
 absl::Status RunRaggedAllToAllKernel(
@@ -88,22 +91,34 @@ absl::Status RunRaggedAllToAllKernel(
 
   se::StreamExecutor* executor = stream->parent();
   static constexpr size_t kThreads = 128;
-  static constexpr size_t kMaxBlocksPerUpdate = 1024;
 
-  // blockIdx.x is the index of the update.
-  int64_t num_blocks_x = num_updates_per_output * num_outputs;
+  int64_t num_vectorized_row_elements = num_row_elements;
+  int64_t vector_size_bytes = xla::primitive_util::BitWidth(element_type) / 8;
 
-  // blockIdx.y and threadIdx.x are used to iterate over the elements of the
-  // update. Since the size of each update is not known at compile time, the
-  // kernel assumes the worst case of `num_input_rows * num_row_elements`
-  // elements per update and uses a loop up to `send_size * num_row_elements` to
-  // terminate early.
-  size_t num_blocks_y =
-      std::min(CeilOfRatio<size_t>(num_input_rows * num_row_elements, kThreads),
-               kMaxBlocksPerUpdate);
+  while (num_vectorized_row_elements % 2 == 0 && vector_size_bytes < 8) {
+    num_vectorized_row_elements /= 2;
+    vector_size_bytes *= 2;
+  }
+
+  int64_t num_updates_per_block = 1;
+  int64_t num_block_clusters = num_updates_per_output;
+
+  // Decide how many updates should each block process. In the kernel, N blocks
+  // process N updates. This is done to reduce imbalance in data transfer per
+  // block if updates happen to be unevenly distributed. The numbers were
+  // chosen empirically in Sep 2025 and can change in the future.
+  const int64_t max_num_updates_per_block =
+      std::min<int64_t>(CeilOfRatio<int64_t>(num_input_rows, 16), 64);
+
+  while (num_updates_per_block < max_num_updates_per_block &&
+         num_block_clusters % 2 == 0) {
+    num_block_clusters /= 2;
+    num_updates_per_block *= 2;
+  }
 
   se::ThreadDim thread_dims(kThreads, 1, 1);
-  se::BlockDim block_dims(num_blocks_x, num_blocks_y, 1);
+  se::BlockDim block_dims(num_outputs, num_block_clusters,
+                          num_updates_per_block);
 
   std::array<void*, stream_executor::gpu::kMaxNumRaggedAllToAllOutputPtrs>
       output_ptrs;
@@ -113,21 +128,21 @@ absl::Status RunRaggedAllToAllKernel(
 
   auto launch_kernel = [&](auto type) -> absl::Status {
     using T = decltype(type);
-    return LaunchTypedKernel<T>(stream, executor, thread_dims, block_dims,
-                                input_buffer, output_ptrs, input_offsets_buffer,
-                                send_sizes_buffer, output_offsets_buffer,
-                                num_updates_per_output, num_row_elements);
+    return LaunchTypedKernel<T::value>(
+        stream, executor, thread_dims, block_dims, input_buffer, output_ptrs,
+        input_offsets_buffer, send_sizes_buffer, output_offsets_buffer,
+        num_updates_per_output, num_vectorized_row_elements);
   };
 
-  switch (xla::primitive_util::BitWidth(element_type)) {
+  switch (vector_size_bytes) {
+    case 1:
+      return launch_kernel(std::integral_constant<int64_t, 1>{});
+    case 2:
+      return launch_kernel(std::integral_constant<int64_t, 2>{});
+    case 4:
+      return launch_kernel(std::integral_constant<int64_t, 4>{});
     case 8:
-      return launch_kernel(uint8_t{});
-    case 16:
-      return launch_kernel(uint16_t{});
-    case 32:
-      return launch_kernel(uint32_t{});
-    case 64:
-      return launch_kernel(uint64_t{});
+      return launch_kernel(std::integral_constant<int64_t, 8>{});
     default:
       return absl::InvalidArgumentError(absl::StrCat(
           "Unsupported element type: ",

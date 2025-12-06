@@ -33,6 +33,9 @@ limitations under the License.
 #include "absl/functional/function_ref.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/log/log_entry.h"
+#include "absl/log/log_sink.h"
+#include "absl/log/log_sink_registry.h"
 #include "absl/status/status.h"
 #include "absl/strings/cord.h"
 #include "absl/strings/numbers.h"
@@ -56,7 +59,7 @@ namespace {
 
 // Log sink is used to collect recent warning and error log messages to be
 // attached to the error status.
-class StatusLogSink : public TFLogSink {
+class StatusLogSink : public absl::LogSink {
  public:
   static StatusLogSink* GetInstance() {
     static StatusLogSink* const sink = new StatusLogSink();
@@ -78,23 +81,23 @@ class StatusLogSink : public TFLogSink {
       }
 
       if (num_messages_ > 0) {
-        TFAddLogSink(this);
+        absl::AddLogSink(this);
       }
     });
   }
 
   void GetMessages(std::vector<std::string>* logs) TF_LOCKS_EXCLUDED(mu_) {
-    absl::MutexLock lock(&mu_);
+    absl::MutexLock lock(mu_);
 
     for (auto& msg : messages_) {
       logs->push_back(msg);
     }
   }
 
-  void Send(const TFLogEntry& entry) override TF_LOCKS_EXCLUDED(mu_) {
+  void Send(const absl::LogEntry& entry) override TF_LOCKS_EXCLUDED(mu_) {
     if (entry.log_severity() < absl::LogSeverity::kWarning) return;
 
-    absl::MutexLock lock(&mu_);
+    absl::MutexLock lock(mu_);
     messages_.emplace_back(entry.text_message_with_prefix());
     if (messages_.size() > static_cast<size_t>(num_messages_)) {
       messages_.pop_front();
@@ -158,22 +161,6 @@ std::vector<StackFrame> GetStackTrace(const absl::Status& status) {
 }
 
 }  // namespace errors
-
-// NB: This Windows-only implementation is exists only to avoid a linker error.
-// Remove if this is resolved.
-#ifdef _WIN32
-const char* NullTerminatedMessage(const absl::Status& status) {
-  return absl::StatusMessageAsCStr(status);
-}
-#endif
-
-std::string* TfCheckOpHelperOutOfLine(const absl::Status& v, const char* msg) {
-  std::stringstream ss;
-  ss << "Non-OK-status: " << msg << "\nStatus: " << v;
-
-  // Leaks string but this is only to be used in a fatal error message
-  return new std::string(ss.str());
-}
 
 StatusGroup::StatusGroup() {}
 

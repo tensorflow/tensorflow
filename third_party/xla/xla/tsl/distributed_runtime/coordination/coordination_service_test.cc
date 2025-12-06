@@ -95,7 +95,7 @@ class TestCoordinationClient : public CoordinationClient {
   TestCoordinationClient() = default;
 
   absl::Status GetStatus() {
-    absl::MutexLock l(&mu_);
+    absl::MutexLock l(mu_);
     return status_;
   }
 
@@ -109,7 +109,7 @@ class TestCoordinationClient : public CoordinationClient {
                               const ReportErrorToTaskRequest* request,
                               ReportErrorToTaskResponse* response,
                               StatusCallback done) override {
-    absl::MutexLock l(&mu_);
+    absl::MutexLock l(mu_);
     status_ = absl::Status(static_cast<absl::StatusCode>(request->error_code()),
                            request->error_message());
     done(absl::OkStatus());
@@ -128,6 +128,7 @@ class TestCoordinationClient : public CoordinationClient {
   UNIMPLEMENTED(GetTaskState);
   UNIMPLEMENTED(InsertKeyValue);
   UNIMPLEMENTED(TryGetKeyValue);
+  UNIMPLEMENTED(IncrementKeyValue);
   UNIMPLEMENTED(GetKeyValueDir);
   UNIMPLEMENTED(DeleteKeyValue);
   UNIMPLEMENTED(CancelBarrier);
@@ -160,14 +161,14 @@ class TestCoordinationClientCache : public CoordinationClientCache {
     clients_.emplace(target, client);
   }
 
-  CoordinationClient* GetClient(const string& target) override {
+  CoordinationClient* GetClient(const std::string& target) override {
     auto it = clients_.find(target);
     if (it == clients_.end()) return nullptr;
     return it->second;
   }
 
   std::unique_ptr<CoordinationClient> GetOwnedClient(
-      const string& target) override {
+      const std::string& target) override {
     LOG(ERROR) << "GetOwnedClient is not supported.";
     return nullptr;
   }
@@ -926,6 +927,27 @@ TEST(CoordinationServiceTest, TryGetKeyValue) {
   ASSERT_OK(coord_service->DeleteKeyValue("test_key"));
   result = coord_service->TryGetKeyValue("test_key");
   EXPECT_THAT(result.status(), StatusIs(absl::StatusCode::kNotFound));
+}
+
+TEST(CoordinationServiceTest, IncrementKeyValue) {
+  const CoordinationServiceConfig config =
+      GetCoordinationServiceConfig(/*num_tasks=*/1);
+  auto client_cache = std::make_unique<TestCoordinationClientCache>();
+  std::unique_ptr<CoordinationService> coord_service =
+      CoordinationService::Create(Env::Default(), config,
+                                  std::move(client_cache));
+  ASSERT_OK(coord_service->InsertKeyValue("test_key", "1"));
+  ASSERT_OK(coord_service->IncrementKeyValue("test_key", 3));
+  ASSERT_OK_AND_ASSIGN(std::string result_0,
+                       coord_service->TryGetKeyValue("test_key"));
+  EXPECT_EQ(result_0, "4");
+  ASSERT_OK(coord_service->IncrementKeyValue("test_key_2", 10));
+  ASSERT_OK_AND_ASSIGN(std::string result_1,
+                       coord_service->TryGetKeyValue("test_key_2"));
+  EXPECT_EQ(result_1, "10");
+  ASSERT_OK(coord_service->InsertKeyValue("test_key_3", "bad_value"));
+  EXPECT_THAT(coord_service->IncrementKeyValue("test_key_3", 10),
+              StatusIs(absl::StatusCode::kFailedPrecondition));
 }
 
 TEST_F(CoordinateTwoTasksTest, GetKeyValueDir_SingleValueInDirectory) {
@@ -2540,9 +2562,9 @@ TEST_F(GetAliveTasksTest, SuccessfulGetAliveTasks) {
                   const std::vector<IncarnationId>& incarnations) {
     EXPECT_OK(status);
     EXPECT_THAT(alive_tasks, UnorderedElementsAreArray(GetTaskMatchers()));
-    EXPECT_EQ(incarnations,
-              (std::vector<IncarnationId>{IncarnationId(0), IncarnationId(1),
-                                          IncarnationId(2)}));
+    EXPECT_THAT(incarnations,
+                UnorderedElementsAre(IncarnationId(0), IncarnationId(1),
+                                     IncarnationId(2)));
     finished.DecrementCount();
   };
   GetCoordinationService()->GetAliveTasksAsync(GetTask(0), GetTasks(), done);
@@ -2561,8 +2583,8 @@ TEST_F(GetAliveTasksTest, FailedTaskBeforeCallingGetAliveTasks) {
     EXPECT_OK(status);
     EXPECT_THAT(alive_tasks, UnorderedElementsAre(EqualsProto(GetTask(0)),
                                                   EqualsProto(GetTask(1))));
-    EXPECT_EQ(incarnations,
-              (std::vector<IncarnationId>{IncarnationId(0), IncarnationId(1)}));
+    EXPECT_THAT(incarnations,
+                UnorderedElementsAre(IncarnationId(0), IncarnationId(1)));
     finished.DecrementCount();
   };
   ASSERT_OK(GetCoordinationService()->ReportTaskError(
@@ -2583,8 +2605,8 @@ TEST_F(GetAliveTasksTest, FailedTaskAfterCallingGetAliveTasks) {
     EXPECT_OK(status);
     EXPECT_THAT(alive_tasks, UnorderedElementsAre(EqualsProto(GetTask(0)),
                                                   EqualsProto(GetTask(1))));
-    EXPECT_EQ(incarnations,
-              (std::vector<IncarnationId>{IncarnationId(0), IncarnationId(1)}));
+    EXPECT_THAT(incarnations,
+                UnorderedElementsAre(IncarnationId(0), IncarnationId(1)));
     finished.DecrementCount();
   };
   GetCoordinationService()->GetAliveTasksAsync(GetTask(0), GetTasks(), done);
@@ -2608,8 +2630,8 @@ TEST_F(GetAliveTasksTest, ConcurrentGetAliveTasks) {
     EXPECT_OK(status);
     EXPECT_THAT(alive_tasks, UnorderedElementsAre(EqualsProto(tasks_01[0]),
                                                   EqualsProto(tasks_01[1])));
-    EXPECT_EQ(incarnations,
-              (std::vector<IncarnationId>{IncarnationId(0), IncarnationId(1)}));
+    EXPECT_THAT(incarnations,
+                UnorderedElementsAre(IncarnationId(0), IncarnationId(1)));
     finished_01.DecrementCount();
   };
 
@@ -2622,8 +2644,8 @@ TEST_F(GetAliveTasksTest, ConcurrentGetAliveTasks) {
     EXPECT_OK(status);
     EXPECT_THAT(alive_tasks, UnorderedElementsAre(EqualsProto(tasks_12[0]),
                                                   EqualsProto(tasks_12[1])));
-    EXPECT_EQ(incarnations,
-              (std::vector<IncarnationId>{IncarnationId(1), IncarnationId(2)}));
+    EXPECT_THAT(incarnations,
+                UnorderedElementsAre(IncarnationId(1), IncarnationId(2)));
     finished_12.DecrementCount();
   };
 

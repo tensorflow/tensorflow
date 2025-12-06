@@ -53,16 +53,17 @@ enum EinsumDimensionType {
 
 // Parses and validates an einsum equation in explicit form.
 absl::Status ValidateEinsumEquation(
-    const string& equation, absl::InlinedVector<string, 2UL>* input_subscripts,
-    string* output_subscript);
+    const std::string& equation,
+    absl::InlinedVector<std::string, 2UL>* input_subscripts,
+    std::string* output_subscript);
 
 // Parses and validates the equation and the input shapes. Single character
 // labels are integerized and we populate input and output label subscripts
 // and corresponding counts. Also create the mapping from (named) labels to
 // their EinsumDimensionType.
 absl::Status ParseEinsumEquation(
-    const string& equation, OperandLabels* input_labels, Labels* output_labels,
-    std::vector<EinsumDimensionType>* label_types,
+    const std::string& equation, OperandLabels* input_labels,
+    Labels* output_labels, std::vector<EinsumDimensionType>* label_types,
     OperandLabelCounts* input_label_counts, LabelCounts* output_label_counts,
     absl::InlinedVector<bool, 2UL>* input_has_ellipsis,
     bool* output_has_ellipsis);

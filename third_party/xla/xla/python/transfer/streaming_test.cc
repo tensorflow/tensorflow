@@ -49,7 +49,7 @@ class LocalConnectionState : public ConnectionState {
             bool is_largest, absl::AnyInvocable<void() &&> on_done) override {
     tsl::RCReference<ChunkDestination> dest;
     {
-      absl::MutexLock l(&mu_);
+      absl::MutexLock l(mu_);
       auto it = dests_.find(req_id);
       CHECK(it != dests_.end());
       if (is_largest) {
@@ -71,7 +71,7 @@ class LocalConnectionState : public ConnectionState {
             tsl::RCReference<ChunkDestination> dest) {
     size_t req_id;
     {
-      absl::MutexLock l(&mu_);
+      absl::MutexLock l(mu_);
       dests_[next_req_id_].dest = std::move(dest);
       req_id = next_req_id_;
       ++next_req_id_;
@@ -213,7 +213,7 @@ TEST(SlabAllocator, BasicSubAllocations) {
     auto thread = std::unique_ptr<tsl::Thread>(
         tsl::Env::Default()->StartThread({}, "test-thread", [&] {
           for (size_t i = 0; i < 200; ++i) {
-            absl::MutexLock l(&mu);
+            absl::MutexLock l(mu);
             auto cond = [&]() {
               return allocs.size() >= std::min(static_cast<size_t>(200 - i),
                                                static_cast<size_t>(4));
@@ -226,7 +226,7 @@ TEST(SlabAllocator, BasicSubAllocations) {
     SlabAllocator allocator(alloc, 4096);
     for (size_t i = 0; i < 200; ++i) {
       auto alloc = allocator.Allocate(allocator.max_allocation_size());
-      absl::MutexLock l(&mu);
+      absl::MutexLock l(mu);
       allocs.push_back(std::move(alloc));
     }
   }
@@ -240,6 +240,30 @@ TEST(InvalidAllocator, InvalidPinnedAlloc) {
 TEST(InvalidAllocator, InvalidAlignedAlloc) {
   auto alloc2_or = AllocateAlignedMemory(1l << 49);
   ASSERT_FALSE(alloc2_or.ok());
+}
+
+class SelfResettingPullTableEntry : public PullTable::Entry {
+ public:
+  explicit SelfResettingPullTableEntry(std::shared_ptr<PullTable> table)
+      : table_(std::move(table)) {}
+
+  bool Handle(tsl::RCReference<ConnectionState> state,
+              const SocketTransferPullRequest& req,
+              size_t base_req_id) override {
+    table_->Reset();
+    return true;
+  }
+
+ private:
+  std::shared_ptr<PullTable> table_;
+};
+
+TEST(PullTable, PullTableRace) {
+  auto table = std::make_shared<PullTable>();
+  table->AwaitPull(6, tsl::MakeRef<SelfResettingPullTableEntry>(table));
+  SocketTransferPullRequest req;
+  req.set_uuid(6);
+  table->Handle({}, req, 0);
 }
 
 }  // namespace

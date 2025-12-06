@@ -235,7 +235,7 @@ class Gauge {
             &metric_def_, [&](MetricCollectorGetter getter) {
               auto metric_collector = getter.Get(&metric_def_);
 
-              absl::MutexLock l(&mu_);
+              absl::MutexLock l(mu_);
               for (const auto& cell : cells_) {
                 metric_collector.CollectValue(cell.first, cell.second.value());
               }
@@ -253,7 +253,7 @@ class Gauge {
 
   absl::Status status_;
 
-  using LabelArray = std::array<string, NumLabels>;
+  using LabelArray = std::array<std::string, NumLabels>;
   std::map<LabelArray, GaugeCell<ValueType> > cells_ TF_GUARDED_BY(mu_);
 
   // The metric definition. This will be used to identify the metric when we
@@ -271,13 +271,13 @@ class Gauge {
 ////
 template <typename T>
 void GaugeCell<T>::Set(const T& value) {
-  absl::MutexLock l(&mu_);
+  absl::MutexLock l(mu_);
   value_ = value;
 }
 
 template <typename T>
 T GaugeCell<T>::value() const {
-  absl::MutexLock l(&mu_);
+  absl::MutexLock l(mu_);
   return value_;
 }
 
@@ -320,7 +320,7 @@ GaugeCell<ValueType>* Gauge<ValueType, NumLabels>::GetCell(
       "provided in GetCell(...).");
 
   const LabelArray& label_array = {{labels...}};
-  absl::MutexLock l(&mu_);
+  absl::MutexLock l(mu_);
   const auto found_it = cells_.find(label_array);
   if (found_it != cells_.end()) {
     return &(found_it->second);

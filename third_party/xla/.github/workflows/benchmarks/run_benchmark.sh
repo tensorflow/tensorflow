@@ -128,49 +128,57 @@ if [ -f "$XSPACE_FILE_PATH" ] && [ $RUNNER_EXIT_CODE -eq 0 ]; then
         key=$(echo "$key" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
         value=$(echo "$value" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
 
-        # Expecting lines like "Metric Name: 123.45 us"
-        if [[ "$value" == *us ]]; then
-            num_value=$(echo "$value" | sed 's/ us$//')
-            # Convert microseconds to milliseconds using awk
-            ms_value=$(LC_ALL=C awk -v num="$num_value" 'BEGIN { printf "%.3f", num / 1000 }')
+        # Sanitize base metric key (e.g., "Device Time" -> "DEVICE_TIME")
+        base_metric_key=$(echo "$key" | tr ' ' '_' | tr '[:lower:]' '[:upper:]')
+        final_metric_key=""
 
-            # Sanitize base metric key (e.g., "Device Time" -> "DEVICE_TIME")
-            base_metric_key=$(echo "$key" | tr ' ' '_' | tr '[:lower:]' '[:upper:]')
-            final_metric_key=""
-
-            # Determine the final metric key based on HARDWARE_CATEGORY for baseline matching
-            if [[ "$HARDWARE_CATEGORY" == GPU* ]]; then
-                if [[ "$base_metric_key" == "DEVICE_TIME" ]]; then
-                    final_metric_key="GPU_DEVICE_TIME"
-                elif [[ "$base_metric_key" == "DEVICE_MEMCPY_TIME" ]]; then
-                    final_metric_key="GPU_DEVICE_MEMCPY_TIME"
-                # Add other specific GPU mappings here if needed
-                # else
-                #    final_metric_key="GPU_${base_metric_key}" # Generic prefix
-                else
-                    final_metric_key="$base_metric_key" # If no specific GPU mapping, use base
-                fi
-            elif [[ "$HARDWARE_CATEGORY" == CPU* ]]; then
-                if [[ "$base_metric_key" == "CPU_TIME" ]] || [[ "$base_metric_key" == "TIME" ]]; then # Handle "CPU Time" or just "Time"
-                    final_metric_key="CPU_TIME"
-                elif [[ "$base_metric_key" == "WALL_TIME" ]]; then
-                    final_metric_key="WALL_TIME" # Wall time is generic
-                # Add other specific CPU mappings here if needed
-                # else
-                #    final_metric_key="CPU_${base_metric_key}" # Generic prefix
-                else
-                    final_metric_key="$base_metric_key" # If no specific CPU mapping, use base
-                fi
+        # Determine the final metric key based on HARDWARE_CATEGORY for baseline matching
+        if [[ "$HARDWARE_CATEGORY" == GPU* ]]; then
+            if [[ "$base_metric_key" == "DEVICE_TIME" ]]; then
+                final_metric_key="GPU_DEVICE_TIME"
+            elif [[ "$base_metric_key" == "DEVICE_MEMCPY_TIME" ]]; then
+                final_metric_key="GPU_DEVICE_MEMCPY_TIME"
+            elif  [[ "$base_metric_key" == "PEAK_MEMORY" ]]; then
+                final_metric_key="PEAK_GPU_MEMORY"
+            # Add other specific GPU mappings here if needed
+            # else
+            #    final_metric_key="GPU_${base_metric_key}" # Generic prefix
             else
-                final_metric_key="$base_metric_key" # For unknown/other categories
+                final_metric_key="$base_metric_key" # If no specific GPU mapping, use base
             fi
-
-            echo "INFO: Parsed metric: OriginalKey='$key', BaseKey='$base_metric_key', FinalKey='$final_metric_key', ValueMs='$ms_value'"
-
-            if ! $first_metric; then metrics_obj_str+=","; fi
-            metrics_obj_str+="\"$final_metric_key\": {\"value_ms\": $ms_value, \"unit\": \"ms\"}"
-            first_metric=false
+        elif [[ "$HARDWARE_CATEGORY" == CPU* ]]; then
+            if [[ "$base_metric_key" == "CPU_TIME" ]] || [[ "$base_metric_key" == "TIME" ]]; then # Handle "CPU Time" or just "Time"
+                final_metric_key="CPU_TIME"
+            elif [[ "$base_metric_key" == "WALL_TIME" ]]; then
+                final_metric_key="WALL_TIME" # Wall time is generic
+            # Add other specific CPU mappings here if needed
+            # else
+            #    final_metric_key="CPU_${base_metric_key}" # Generic prefix
+            else
+                final_metric_key="$base_metric_key" # If no specific CPU mapping, use base
+            fi
+        else
+            final_metric_key="$base_metric_key" # For unknown/other categories
         fi
+
+        # Expecting lines like "Metric Name: 123.45 us" or "Metric Name: 12345 bytes"
+        read number unit <<< $(echo "$value" | sed -E 's/([0-9]+\.?[0-9]*)\s*([a-zA-Z]+).*/\1 \2/')
+        # Convert microseconds to milliseconds
+        if [[ "$unit" == "us" ]]; then
+            final_metric_value=$(LC_ALL=C awk -v num="$number" 'BEGIN { printf "%.3f", num / 1000 }')
+            final_unit="ms"
+        elif [[ "$unit" == "bytes" ]]; then
+            # Convert bytes to GB
+            final_metric_value=$(echo "$number" | awk '{printf "%.2f", $1/1024^3}')
+            final_unit="GB"
+        else
+          echo "::warning::Skipping unsupported unit: $unit"
+          continue
+        fi
+        if ! $first_metric; then metrics_obj_str+=","; fi
+        metrics_obj_str+="\"$final_metric_key\": {\"value\": $final_metric_value, \"unit\": \"$final_unit\"}"
+        first_metric=false
+        echo "INFO: Parsed metric: OriginalKey='$key', BaseKey='$base_metric_key', FinalKey='$final_metric_key', Value='$final_metric_value $final_unit'"
     done <<< "$STATS_OUTPUT"
     metrics_obj_str+="}"
 

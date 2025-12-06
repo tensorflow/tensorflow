@@ -57,10 +57,13 @@ absl::StatusOr<std::unique_ptr<HloModule>> CreateModuleFromProto(
     bool is_module_post_optimizations = false);
 
 // Reads the proto file in xla.HloProto format, creates and returns the
-// HloModule.
+// HloModule. If remap_instruction_ids is true, remaps instruction ids to start
+// from 0 and increment sequentially. If false, the instruction ids are kept as
+// they are in the proto.
 absl::StatusOr<std::unique_ptr<HloModule>> ReadModuleFromBinaryProtoFile(
     absl::string_view filename,
-    const DebugOptions& debug_options = DebugOptions::default_instance());
+    const DebugOptions& debug_options = DebugOptions::default_instance(),
+    bool remap_instruction_ids = true);
 
 // Reads the proto file in xla.HloModule format, creates and returns the
 // HloModule.
@@ -77,6 +80,12 @@ absl::StatusOr<std::unique_ptr<HloModule>> ReadModuleFromHloTextFile(
 // Reads the proto file in xla.HloProto format, creates and returns the
 // HloModule.
 absl::StatusOr<std::unique_ptr<HloModule>> ReadModuleFromTextProtoFile(
+    absl::string_view hlo_file,
+    const DebugOptions& debug_options = DebugOptions::default_instance());
+
+// Reads the proto file in xla.HloModuleProto format, creates and returns the
+// HloModule.
+absl::StatusOr<std::unique_ptr<HloModule>> ReadModuleFromModuleTextProtoFile(
     absl::string_view hlo_file,
     const DebugOptions& debug_options = DebugOptions::default_instance());
 

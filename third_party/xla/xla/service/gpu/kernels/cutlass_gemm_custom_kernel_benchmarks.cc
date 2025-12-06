@@ -17,15 +17,16 @@ limitations under the License.
 #include <cstring>
 #include <vector>
 
+#include "absl/log/check.h"
 #include "xla/service/gpu/kernels/cutlass_gemm_custom_kernel.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/kernel.h"
+#include "xla/stream_executor/kernel_args.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/tsl/platform/test_benchmark.h"
@@ -67,18 +68,18 @@ static void BM_RowMajorGemm(benchmark::State& state) {
   se::DeviceMemory<float> b = executor->AllocateArray<float>(k * n, 0);
   se::DeviceMemory<float> c = executor->AllocateArray<float>(m * n, 0);
 
-  TF_CHECK_OK(stream->Memset32(&a, BitPattern(1.1f), a.size()));
-  TF_CHECK_OK(stream->Memset32(&b, BitPattern(1.2f), b.size()));
-  TF_CHECK_OK(stream->MemZero(&c, c.size()));
+  CHECK_OK(stream->Memset32(&a, BitPattern(1.1f), a.size()));
+  CHECK_OK(stream->Memset32(&b, BitPattern(1.2f), b.size()));
+  CHECK_OK(stream->MemZero(&c, c.size()));
 
   se::KernelArgsDeviceMemoryArray args(
       std::vector<se::DeviceMemoryBase>({a, b, c}),
       custom_kernel.shared_memory_bytes());
 
   for (auto s : state) {
-    TF_CHECK_OK(gemm->Launch(custom_kernel.thread_dims(),
-                             custom_kernel.block_dims(), stream.get(), args));
-    TF_CHECK_OK(stream->BlockHostUntilDone());
+    CHECK_OK(gemm->Launch(custom_kernel.thread_dims(),
+                          custom_kernel.block_dims(), stream.get(), args));
+    CHECK_OK(stream->BlockHostUntilDone());
   }
 }
 

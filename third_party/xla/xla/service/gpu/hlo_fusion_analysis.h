@@ -32,6 +32,10 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
+// Returns true if the instruction's fusion backend config kind matches the
+// given one.
+bool IsGpuFusionKind(const HloInstruction& hlo, absl::string_view kind);
+
 class HloFusionAnalysis {
  public:
   // The type of emitted fusion.

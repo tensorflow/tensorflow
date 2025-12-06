@@ -30,6 +30,7 @@ limitations under the License.
 #include "xla/literal.h"
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/nb_numpy.h"
+#include "xla/python/strides.h"  // IWYU pragma: keep
 #include "xla/python/version.h"
 #include "xla/shape.h"
 #include "xla/xla_data.pb.h"
@@ -96,15 +97,6 @@ struct NumpyScalarTypes {
 };
 const NumpyScalarTypes& GetNumpyScalarTypes();
 
-// Returns the strides for `shape`.
-std::vector<int64_t> ByteStridesForShape(const Shape& shape);
-std::vector<int64_t> ByteStridesForShape(PrimitiveType element_type,
-                                         absl::Span<const int64_t> dimensions,
-                                         const xla::Layout& layout);
-std::vector<int64_t> StridesForShape(PrimitiveType element_type,
-                                     absl::Span<const int64_t> dimensions,
-                                     const xla::Layout& layout);
-
 // Converts a literal to (possibly-nested tuples of) NumPy arrays.
 // The literal's leaf arrays are not copied; instead the NumPy arrays share
 // buffers with the literals. Takes ownership of `literal` and keeps the
@@ -114,7 +106,8 @@ absl::StatusOr<nanobind::object> LiteralToPython(
     std::shared_ptr<Literal> literal);
 
 template <typename T>
-nanobind::tuple SpanToNbTuple(absl::Span<T const> xs) {
+nanobind::typed<nanobind::tuple, T, nanobind::ellipsis> SpanToNbTuple(
+    absl::Span<T const> xs) {
   nanobind::tuple out =
       nanobind::steal<nanobind::tuple>(PyTuple_New(xs.size()));
   for (int i = 0; i < xs.size(); ++i) {

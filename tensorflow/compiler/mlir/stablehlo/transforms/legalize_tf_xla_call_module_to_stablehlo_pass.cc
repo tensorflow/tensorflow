@@ -177,8 +177,8 @@ class ConvertTFXlaCallModuleOp : public OpRewritePattern<TF::XlaCallModuleOp> {
 
     SmallVector<Value, 4> call_op_operands(op.getOperands());
     if (ContainsPlatformIndexArg(op)) {
-      Value dummy_const = rewriter.create<TF::ConstOp>(
-          op.getLoc(),
+      Value dummy_const = TF::ConstOp::create(
+          rewriter, op.getLoc(),
           DenseIntElementsAttr::get(
               RankedTensorType::get({}, rewriter.getIntegerType(32)), {0}));
       call_op_operands.insert(call_op_operands.begin(), dummy_const);
@@ -196,16 +196,16 @@ class ConvertTFXlaCallModuleOp : public OpRewritePattern<TF::XlaCallModuleOp> {
       Value operand = std::get<0>(operand_and_type);
       Type expected_type = std::get<1>(operand_and_type);
       if (operand.getType() != expected_type) {
-        operand = rewriter.create<TF::CastOp>(
-            op.getLoc(), expected_type, operand,
-            /*Truncate=*/rewriter.getBoolAttr(false));
+        operand =
+            TF::CastOp::create(rewriter, op.getLoc(), expected_type, operand,
+                               /*Truncate=*/rewriter.getBoolAttr(false));
       }
       casted_operands.push_back(operand);
     }
 
-    auto call = rewriter.create<func::CallOp>(
-        op->getLoc(), main_fn.getSymName(), main_fn.getResultTypes(),
-        casted_operands);
+    auto call =
+        func::CallOp::create(rewriter, op->getLoc(), main_fn.getSymName(),
+                             main_fn.getResultTypes(), casted_operands);
     rewriter.replaceOp(op, call->getResults());
 
     return success();

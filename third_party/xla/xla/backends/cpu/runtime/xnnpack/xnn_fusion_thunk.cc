@@ -25,7 +25,7 @@ limitations under the License.
 #include "experimental.h"  // xnnpack
 #include "xnnpack.h"
 #include "absl/algorithm/container.h"
-#include "absl/base/optimization.h"
+#include "absl/base/no_destructor.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/bind_front.h"
 #include "absl/functional/function_ref.h"
@@ -44,7 +44,6 @@ limitations under the License.
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/statusor.h"
-#include "xla/util.h"
 
 namespace xla::cpu {
 
@@ -108,7 +107,7 @@ XnnFusionThunk::XnnExecutable::Invoke(
     external_values.push_back(value);
   }
 
-  DCHECK_NE(runtime, nullptr) << "XNNPACK runtime is not initialized";
+  DCHECK_NE(runtime.get(), nullptr) << "XNNPACK runtime is not initialized";
   XNN_RETURN_IF_ERROR(xnn_setup_runtime_v2(
       runtime.get(), external_values.size(), external_values.data()));
 
@@ -150,10 +149,8 @@ XnnFusionThunk::CreateXnnExecutable(
         capturing_builder_(arguments_, results_, arguments_buffers));
   }
 
-  uint32_t flags = XNN_FLAG_SLINKY_ENABLED | XNN_FLAG_SLINKY_STATIC_BOUNDS;
-#ifdef NDEBUG
-  flags |= XNN_FLAG_SLINKY_NO_CHECKS;
-#endif
+  uint32_t flags = XNN_FLAG_SLINKY_ENABLED | XNN_FLAG_SLINKY_STATIC_BOUNDS |
+                   XNN_FLAG_DONT_SPIN_WORKERS;
 
   TF_ASSIGN_OR_RETURN(
       executable.runtime, CreateXnnRuntime([&](xnn_runtime_t* runtime) {
@@ -195,10 +192,8 @@ absl::Status XnnFusionThunk::UpdateXnnExecutable(
       executable.subgraph,
       capturing_builder_(arguments_, results_, arguments_buffers));
 
-  uint32_t flags = XNN_FLAG_SLINKY_ENABLED | XNN_FLAG_SLINKY_STATIC_BOUNDS;
-#ifdef NDEBUG
-  flags |= XNN_FLAG_SLINKY_NO_CHECKS;
-#endif
+  uint32_t flags = XNN_FLAG_SLINKY_ENABLED | XNN_FLAG_SLINKY_STATIC_BOUNDS |
+                   XNN_FLAG_DONT_SPIN_WORKERS;
 
   TF_ASSIGN_OR_RETURN(
       executable.runtime, CreateXnnRuntime([&](xnn_runtime_t* runtime) {
@@ -277,13 +272,18 @@ XnnFusionThunk::~XnnFusionThunk() = default;
 XnnFusionThunk::BufferUses XnnFusionThunk::buffer_uses() const {
   BufferUses buffer_uses;
   for (const Argument& argument : arguments_) {
-    buffer_uses.push_back(BufferUse::Read(argument.slice));
+    buffer_uses.push_back(BufferUse::Read(argument.slice, argument.shape));
   }
   for (const Result& result : results_) {
-    buffer_uses.push_back(BufferUse::Write(result.slice));
+    buffer_uses.push_back(BufferUse::Write(result.slice, result.shape));
   }
 
   return buffer_uses;
+}
+
+const XnnThreadpool& GetXnnThreadpool(const Thunk::ExecuteParams& params) {
+  static absl::NoDestructor<XnnThreadpool> no_threadpool(nullptr);
+  return params.xnn_params ? params.xnn_params->threadpool : *no_threadpool;
 }
 
 tsl::AsyncValueRef<XnnFusionThunk::ExecuteEvent> XnnFusionThunk::Execute(
@@ -329,15 +329,11 @@ tsl::AsyncValueRef<XnnFusionThunk::ExecuteEvent> XnnFusionThunk::Execute(
                                   results_buffers[i].opaque());
   }
 
-  if (ABSL_PREDICT_FALSE(params.xnn_params == nullptr)) {
-    return Internal("XNN params are not set");
-  }
-
   DCHECK(builder_ || capturing_builder_) << "One of the builders must be set.";
 
   auto invoke = [&](typename XnnExecutablePool::BorrowedObject executable) {
     auto executed = executable->Invoke(
-        params.xnn_params->threadpool, absl::MakeSpan(arguments_buffers),
+        GetXnnThreadpool(params), absl::MakeSpan(arguments_buffers),
         absl::MakeSpan(results_buffers), [&](size_t id) {
           return absl::c_linear_search(captured_arguments_ids_, id);
         });
@@ -349,8 +345,8 @@ tsl::AsyncValueRef<XnnFusionThunk::ExecuteEvent> XnnFusionThunk::Execute(
 
   // Borrow XnnExecutable from the pool.
   TF_ASSIGN_OR_RETURN(auto executable,
-                      xnn_executable_pool_.GetOrCreate(
-                          params.xnn_params->threadpool, arguments_buffers));
+                      xnn_executable_pool_.GetOrCreate(GetXnnThreadpool(params),
+                                                       arguments_buffers));
 
   // If XNN graph doesn't capture any of the arguments by value, we can execute
   // XnnExecutable immediately.
@@ -359,8 +355,8 @@ tsl::AsyncValueRef<XnnFusionThunk::ExecuteEvent> XnnFusionThunk::Execute(
   }
 
   // Otherwise reset XnnExecutable to capture new arguments buffers.
-  TF_RETURN_IF_ERROR(UpdateXnnExecutable(params.xnn_params->threadpool,
-                                         *executable, arguments_buffers));
+  TF_RETURN_IF_ERROR(UpdateXnnExecutable(GetXnnThreadpool(params), *executable,
+                                         arguments_buffers));
   return invoke(std::move(executable));
 }
 

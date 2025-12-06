@@ -18,6 +18,7 @@ limitations under the License.
 #define EIGEN_USE_GPU
 #endif
 
+#include <limits>
 #include <numeric>
 
 #include "Eigen/Core"  // from @eigen_archive
@@ -66,8 +67,9 @@ class MatrixSolveOp : public LinearAlgebraOp<Scalar> {
     double rows = static_cast<double>(input_matrix_shapes[0].dim_size(0));
     double num_rhss = static_cast<double>(input_matrix_shapes[1].dim_size(1));
     double cost = rows * rows * (rows + num_rhss);
-    return cost >= static_cast<double>(kint64max) ? kint64max
-                                                  : static_cast<int64_t>(cost);
+    return cost >= static_cast<double>(std::numeric_limits<int64_t>::max())
+               ? std::numeric_limits<int64_t>::max()
+               : static_cast<int64_t>(cost);
   }
 
   bool EnableInputForwarding() const final { return false; }
@@ -367,7 +369,7 @@ class MatrixSolveOpGpu : public AsyncOpKernel {
     auto info_checker = [context, done, dev_info](
                             const Status& status,
                             const std::vector<HostLapackInfo>& host_infos) {
-      if (!status.ok() && errors::IsInvalidArgument(status) &&
+      if (!status.ok() && absl::IsInvalidArgument(status) &&
           !host_infos.empty()) {
         for (int i = 0; i < host_infos[0].size(); ++i) {
           // Match the CPU error message for singular matrices. Otherwise

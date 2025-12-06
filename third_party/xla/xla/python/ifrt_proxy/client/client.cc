@@ -45,7 +45,6 @@
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/dtype.h"
-#include "xla/python/ifrt/future.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/remap_plan.h"
 #include "xla/python/ifrt/shape.h"
@@ -59,6 +58,7 @@
 #include "xla/python/ifrt_proxy/common/types.h"
 #include "xla/python/ifrt_proxy/common/versions.h"
 #include "xla/python/pjrt_ifrt/pjrt_attribute_map_util.h"
+#include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
@@ -72,12 +72,11 @@ namespace proxy {
 namespace {
 
 std::string device_summary(Device* device) {
-  auto it = device->Attributes().map().find("slice_index");
-  int slice_index =
-      (it != device->Attributes().map().end() &&
-       std::holds_alternative<AttributeMap::Int64Value>(it->second))
-          ? std::get<AttributeMap::Int64Value>(it->second).value
-          : 0;
+  int64_t slice_index = 0;
+  auto slice_index_attr = device->Attributes().Get<int64_t>("slice_index");
+  if (slice_index_attr.ok()) {
+    slice_index = *slice_index_attr;
+  }
   return absl::StrCat(device->Kind(), "s", slice_index);
 }
 
@@ -361,10 +360,12 @@ absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> Client::CopyArrays(
         arrays[i]->sharding().WithDeviceAssignment(devices, memory_kind));
     auto* proxy_array = llvm::cast<xla::ifrt::proxy::Array>(arrays[i].get());
     CHECK(proxy_array != nullptr);
-    new_arrays.push_back(tsl::MakeRef<Array>(
-        this, rpc_helper_, arrays[i]->dtype(), arrays[i]->shape(),
-        std::move(new_sharding), ArrayHandle{result_handles[i]},
-        /*layout=*/proxy_array->custom_layout()));
+    TF_ASSIGN_OR_RETURN(std::shared_ptr<const xla::PjRtLayout> layout,
+                        proxy_array->pjrt_layout());
+    new_arrays.push_back(
+        tsl::MakeRef<Array>(this, rpc_helper_, arrays[i]->dtype(),
+                            arrays[i]->shape(), std::move(new_sharding),
+                            ArrayHandle{result_handles[i]}, std::move(layout)));
   }
   return new_arrays;
 }
@@ -375,13 +376,13 @@ absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> Client::RemapArrays(
   return Array::RemapArrays(this, rpc_helper_, plan, arrays, semantics);
 }
 
-xla::ifrt::Future<> Client::GetReadyFuture(
+tsl::Future<> Client::GetReadyFuture(
     absl::Span<const xla::ifrt::ValueRef> values) {
   tsl::profiler::TraceMe traceme_ifrt_entrypoint([n_values = values.size()]() {
     return tsl::profiler::TraceMeEncode("IfrtProxyEntrypointGetReadyFuture",
                                         {{"n_values", n_values}});
   });
-  absl::InlinedVector<Future<>, 1> futures;
+  absl::InlinedVector<tsl::Future<>, 1> futures;
 
   auto req = std::make_unique<CheckValueReadyRequest>();
   for (const auto& value : values) {
@@ -392,7 +393,7 @@ xla::ifrt::Future<> Client::GetReadyFuture(
       absl::StatusOr<ArrayHandle> handle =
           proxy_array->GetHandle(ArrayCopySemantics::kAlwaysCopy);
       if (!handle.ok()) {
-        futures.push_back(Future<>(handle.status()));
+        futures.push_back(tsl::Future<>(handle.status()));
       } else {
         req->add_value_handles(handle->handle);
       }
@@ -401,12 +402,12 @@ xla::ifrt::Future<> Client::GetReadyFuture(
     }
   }
 
-  auto promise = Future<>::CreatePromise();
+  auto [promise, future] = tsl::Future<>::MakePromise();
   rpc_helper_->CheckValueReady(std::move(req))
-      .OnReady(
-          [promise](absl::StatusOr<std::shared_ptr<CheckValueReadyResponse>>
-                        resp) mutable { promise.Set(resp.status()); });
-  futures.push_back(Future<>(std::move(promise)));
+      .OnReady([promise = std::move(promise)](
+                   absl::StatusOr<std::shared_ptr<CheckValueReadyResponse>>
+                       resp) mutable { promise.Set(resp.status()); });
+  futures.push_back(std::move(future));
 
   return JoinFutures(futures);
 }
@@ -454,13 +455,13 @@ Client::GetDefaultPjRtLayout(xla::ifrt::DType dtype,
       /*device_summary=*/device_summary(llvm::dyn_cast<Device>(device))};
 
   {
-    absl::MutexLock l(&mu_);
+    absl::MutexLock l(mu_);
     if (auto it = layout_cache_.find(key); it != layout_cache_.end()) {
       return it->second;
     }
   }
 
-  *req->mutable_dtype() = dtype.ToProto(rpc_helper_->ifrt_serdes_version());
+  dtype.ToProto(*req->mutable_dtype(), rpc_helper_->ifrt_serdes_version());
   req->mutable_dims()->Reserve(dims.size());
   for (int64_t dim : dims) {
     req->add_dims(dim);
@@ -476,7 +477,7 @@ Client::GetDefaultPjRtLayout(xla::ifrt::DType dtype,
   TF_ASSIGN_OR_RETURN(auto layout, xla::PjRtLayout::Deserialize(
                                        response->serialized_pjrt_layout()));
   {
-    absl::MutexLock l(&mu_);
+    absl::MutexLock l(mu_);
     layout_cache_.insert({key, layout});
   }
   return layout;

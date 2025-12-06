@@ -618,20 +618,41 @@ void ApplySignbitToVector(const float* __restrict__ vector, int v_size,
 void UnpackDenseInt4IntoInt8(const int8_t* src_buffer, int num_elements,
                              int8_t* dst_buffer);
 
-// Pack `src_buffer` into a densely packed buffer of int4 values.
+// Unpack or inflate `src_buffer` by taking each byte and splitting it into
+// multiple elements into `dst_buffer`. Supports 2-bit and 4-bit packed integers
 // Parameters:
-//   src_buffer   : Buffer containing int4 values stored in int8 memory.
+//   src_buffer   : Densely packed buffer containing int2 or int4 values.
+//   num_elements : Number of unpacked elements to be read from the buffer.
+//                  This should be equal to the size of `dst_buffer`.
+//   bit_width    : The bit width of the packed elements (either 2 or 4).
+//   dst_buffer   : Buffer to unpack into. Should be allocated by the caller.
+//                  Size should be at least `num_elements`.
+// Notes:
+//   For 4-bit unpacking: e.g., `src_buffer = {0x12, 0x34};` (num_elements = 4)
+//   will return `dst_buffer = {0x02, 0x01, 0x04, 0x03}`.
+//   For 2-bit unpacking: e.g., `src_buffer = {0x12};` (num_elements = 4)
+//   will return `dst_buffer = {0x02, 0x00, 0x01, 0x00}` (sign extended).
+void UnpackPackedIntToInt8(const int8_t* src_buffer, int num_elements,
+                           int bit_width, int8_t* dst_buffer);
+
+// Pack `src_buffer` into a densely packed buffer of int2 or int4 values.
+// Parameters:
+//   src_buffer   : Buffer containing int2 or int4 values stored in int8
+//                  memory.
 //   num_elements : Number of elements stored in the buffer. Note that this can
 //                  be smaller than the size of `src_buffer` by 1 if it's odd,
 //                  in which case the last nibble in `src_buffer` is ignored.
 //                  This should be equal to the size of `dst_buffer`.
+//   bit_width    : The bit width of the packed elements (either 2 or 4).
 //   dst_buffer   : Buffer to pack into. Should be allocated by the caller.
 //                  Size should be at least `num_elements`.
 // Notes:
-//   For example, given `src_buffer = {0x02, 0x01, 0x04, 0x03}`, calling this
-//   function will return `dst_buffer = {0x12, 0x34}`.
-void PackInt8IntoDenseInt4(const int8_t* src_buffer, int num_elements,
-                           int8_t* dst_buffer);
+//   For 4-bit packing: e.g., given `src_buffer = {0x02, 0x01, 0x04, 0x03}`,
+//   calling this function will return `dst_buffer = {0x12, 0x34}`.
+//   For 2-bit packing: e.g., given `src_buffer = {0x00, 0x01, 0x00, 0x02}`,
+//   calling this function will return `dst_buffer = {0x84}`.
+void PackInt8IntoDenseInt(const int8_t* src_buffer, int num_elements,
+                          int bit_width, int8_t* dst_buffer);
 }  // namespace tensor_utils
 
 }  // namespace tflite

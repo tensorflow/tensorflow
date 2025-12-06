@@ -23,7 +23,6 @@
 #include "absl/status/status.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
-#include "xla/python/ifrt/future.h"
 #include "xla/python/ifrt/serdes_version.h"
 #include "xla/python/ifrt_proxy/client/client_session.h"
 #include "xla/python/ifrt_proxy/client/mock_client_session.h"
@@ -32,6 +31,7 @@
 #include "xla/python/ifrt_proxy/common/test_utils.h"
 #include "xla/python/ifrt_proxy/common/types.h"
 #include "xla/python/ifrt_proxy/common/types.pb.h"
+#include "xla/tsl/concurrency/future.h"
 #include "tsl/platform/test.h"
 
 using ::testing::_;
@@ -57,13 +57,13 @@ void PausePeriodicFlushes() {
   auto called_at_least_once = std::make_shared<AtomicBool>();
   auto periodic_flusher_pause_hook = [called_at_least_once](bool* paused) {
     *paused = true;
-    absl::MutexLock l(&called_at_least_once->mu);
+    absl::MutexLock l(called_at_least_once->mu);
     called_at_least_once->b = true;
   };
   TestHookSet(TestHookName::kRpcBatcherPausePeriodicFlush,
               std::move(periodic_flusher_pause_hook));
 
-  absl::MutexLock l(&called_at_least_once->mu);
+  absl::MutexLock l(called_at_least_once->mu);
   CHECK(called_at_least_once->mu.AwaitWithTimeout(
       absl::Condition(&called_at_least_once->b), kMaxFlushTimeout));
 }
@@ -85,7 +85,7 @@ class RpcHelperTest : public ::testing::Test {
     ON_CALL(*session_, Enqueue)
         .WillByDefault([this](std::unique_ptr<IfrtRequest> req) {
           requests_.Push(std::move(req));
-          return Future<ClientSession::Response>(
+          return tsl::Future<ClientSession::Response>(
               absl::InternalError("Fake error response"));
         });
   }

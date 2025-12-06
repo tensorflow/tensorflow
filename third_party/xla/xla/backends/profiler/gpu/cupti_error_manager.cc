@@ -58,13 +58,16 @@ CuptiErrorManager::CuptiErrorManager(std::unique_ptr<CuptiInterface> interface)
 
 void CuptiErrorManager::RegisterUndoFunction(
     const CuptiErrorManager::UndoFunction& func) {
-  absl::MutexLock lock(&undo_stack_mu_);
+  absl::MutexLock lock(undo_stack_mu_);
   undo_stack_.push_back(func);
 }
 
 CUptiResult CuptiErrorManager::ActivityDisable(CUpti_ActivityKind kind) {
   IGNORE_CALL_IF_DISABLED;
   CUptiResult error = interface_->ActivityDisable(kind);
+  if (error != CUPTI_SUCCESS) {
+    LOG(ERROR) << "ActivityDisable() error on activity kind: " << kind;
+  }
   LOG_AND_DISABLE_IF_ERROR(error);
   return error;
 }
@@ -75,6 +78,8 @@ CUptiResult CuptiErrorManager::ActivityEnable(CUpti_ActivityKind kind) {
   if (error == CUPTI_SUCCESS) {
     auto f = std::bind(&CuptiErrorManager::ActivityDisable, this, kind);
     RegisterUndoFunction(f);
+  } else {
+    LOG(ERROR) << "ActivityEnable() error on activity kind: " << kind;
   }
   LOG_AND_DISABLE_IF_ERROR(error);
   return error;
@@ -234,7 +239,7 @@ void CuptiErrorManager::UndoAndDisable() {
     return;
   }
   // Iterates undo log and call undo APIs one by one.
-  absl::MutexLock lock(&undo_stack_mu_);
+  absl::MutexLock lock(undo_stack_mu_);
   undo_disabled_ = true;
   while (!undo_stack_.empty()) {
     LOG(ERROR) << "CuptiErrorManager is disabling profiling automatically.";
@@ -301,6 +306,14 @@ CUptiResult CuptiErrorManager::SetThreadIdType(
   IGNORE_CALL_IF_DISABLED;
   CUptiResult error = interface_->SetThreadIdType(type);
   LOG_AND_DISABLE_IF_ERROR(error);
+  return error;
+}
+
+CUptiResult CuptiErrorManager::ActivityEnableHWTrace(bool enable) {
+  IGNORE_CALL_IF_DISABLED;
+  CUptiResult error = interface_->ActivityEnableHWTrace(enable);
+  // Don't disable cupti just because the gpu hardware or cuda don't support
+  // hardware event system.
   return error;
 }
 
@@ -679,7 +692,7 @@ void CuptiErrorManager::CleanUp() {
   if (undo_disabled_) {  // prevent deadlock
     return;
   }
-  absl::MutexLock lock(&undo_stack_mu_);
+  absl::MutexLock lock(undo_stack_mu_);
   undo_disabled_ = true;
   while (!undo_stack_.empty()) {
     undo_stack_.pop_back();

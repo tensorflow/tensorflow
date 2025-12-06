@@ -56,9 +56,6 @@ extern const char* const kEigenConv2DF16SymbolName;
 extern const char* const kEigenConv2DF32SymbolName;
 extern const char* const kEigenConv3DF16SymbolName;
 extern const char* const kEigenConv3DF32SymbolName;
-extern const char* const kLegacyDuccFftSymbolName;
-extern const char* const kDuccFftSymbolName;
-extern const char* const kDuccSingleThreadedFftSymbolName;
 extern const char* const kEigenSingleThreadedMatMulF16SymbolName;
 extern const char* const kEigenSingleThreadedMatMulF32SymbolName;
 extern const char* const kEigenSingleThreadedMatMulF64SymbolName;
@@ -91,17 +88,12 @@ extern const char* const kAllToAllSymbolName;
 extern const char* const kAllGatherSymbolName;
 extern const char* const kReduceScatterSymbolName;
 extern const char* const kOneDnnMatMulSymbolName;
-extern const char* const kOneDnnSoftmaxSymbolName;
-extern const char* const kOneDnnLayerNormSymbolName;
-extern const char* const kOneDnnConvolutionSymbolName;
 extern const char* const kOneDnnMatMulReorderSymbolName;
 extern const char* const kHandleFfiCallSymbolName;
 
 // All symbol names for XLA CPU runtime functions need to start with this
 // prefix.
 extern const char* const kXlaCpuRuntimeSymbolNamePrefix;
-
-int GetDeviceOrdinal(const xla::ExecutableRunOptions* run_options);
 
 }  // namespace runtime
 }  // namespace cpu

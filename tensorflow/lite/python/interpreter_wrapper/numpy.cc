@@ -13,10 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstddef>
+#include <cstdint>
 #include <memory>
 
 #define TFLITE_IMPORT_NUMPY  // See numpy.h for explanation.
 #include "tensorflow/lite/core/c/c_api_types.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/python/interpreter_wrapper/numpy.h"
 
 namespace tflite {
@@ -54,6 +57,9 @@ int TfLiteTypeToPyArrayType(TfLiteType tf_lite_type) {
       return NPY_INT16;
     case kTfLiteInt4:
       // TODO(b/246806634): NPY_INT4 currently doesn't exist
+      return NPY_BYTE;
+    case kTfLiteInt2:
+      // TODO(b/246806634): NPY_INT2 currently doesn't exist
       return NPY_BYTE;
     case kTfLiteUInt8:
       return NPY_UINT8;
@@ -215,6 +221,68 @@ bool FillStringBufferWithPyArray(PyObject* value,
                "Cannot use numpy array of type %d for string tensor.",
                PyArray_TYPE(array));
   return false;
+}
+
+// Helper function to pack int8 numpy array data into an INT4 tensor.
+PyObject* SetInt4Tensor(TfLiteTensor* tensor, PyArrayObject* array,
+                        int tensor_index) {
+  TfLiteType incoming_type = TfLiteTypeFromPyArray(array);
+  if (incoming_type != kTfLiteInt8) {
+    PyErr_Format(PyExc_ValueError,
+                 "Cannot set tensor:"
+                 " Expected a numpy array of int8 for INT4 input "
+                 "%d, name: %s, but got %s",
+                 tensor_index, tensor->name, TfLiteTypeGetName(incoming_type));
+    return nullptr;
+  }
+
+  size_t num_elements = 1;
+  for (int i = 0; i < tensor->dims->size; ++i) {
+    num_elements *= tensor->dims->data[i];
+  }
+  size_t expected_packed_bytes = (num_elements + 1) / 2;
+  size_t actual_numpy_bytes = PyArray_NBYTES(array);
+
+  if (actual_numpy_bytes != num_elements) {
+    PyErr_Format(PyExc_ValueError,
+                 "Cannot set tensor:"
+                 " Numpy array for INT4 input %d, name: %s, has %zu bytes, "
+                 "but expected %zu bytes for %zu elements",
+                 tensor_index, tensor->name, actual_numpy_bytes, num_elements,
+                 num_elements);
+    return nullptr;
+  }
+
+  if (tensor->data.raw == nullptr && tensor->bytes) {
+    PyErr_Format(PyExc_ValueError,
+                 "Cannot set tensor:"
+                 " Tensor is unallocated. Try calling allocate_tensors()"
+                 " first for input %d, name: %s",
+                 tensor_index, tensor->name);
+    return nullptr;
+  }
+
+  // Pack the int8 array into int4
+  uint8_t* packed_data = reinterpret_cast<uint8_t*>(tensor->data.raw);
+  int8_t* numpy_data = reinterpret_cast<int8_t*>(PyArray_DATA(array));
+  for (size_t i = 0; i < expected_packed_bytes; ++i) {
+    int8_t first_nibble = numpy_data[2 * i];
+    int8_t second_nibble =
+        (2 * i + 1 < num_elements) ? numpy_data[2 * i + 1] : 0;
+    if ((first_nibble < -8 || first_nibble > 7) ||
+        (second_nibble < -8 || second_nibble > 7)) {
+      PyErr_Format(PyExc_ValueError,
+                   "Cannot set tensor:"
+                   " Values for INT4 input must be between -8 and 7.");
+      return nullptr;
+    }
+    // Pack the two int8 values into a single byte. The first nibble
+    // occupies the lower 4 bits and the second nibble occupies the upper 4
+    // bits. We mask the first nibble with 0x0F to ensure only the lower 4
+    // bits are used, handling potential sign extension in the int8 value.
+    packed_data[i] = (first_nibble & 0x0F) | (second_nibble << 4);
+  }
+  Py_RETURN_NONE;
 }
 
 }  // namespace python_utils

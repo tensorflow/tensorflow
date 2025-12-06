@@ -17,12 +17,14 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <string>
 #include <unordered_set>
 #include <utility>
 #include <vector>
 
 #include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.pb.h"
@@ -47,9 +49,9 @@ class UniqueDatasetOp::Dataset : public DatasetBase {
   ~Dataset() override { input_->Unref(); }
 
   std::unique_ptr<IteratorBase> MakeIteratorInternal(
-      const string& prefix) const override {
+      const std::string& prefix) const override {
     return std::make_unique<Iterator>(
-        Iterator::Params{this, strings::StrCat(prefix, "::Unique")});
+        Iterator::Params{this, absl::StrCat(prefix, "::Unique")});
   }
 
   const DataTypeVector& output_dtypes() const override {
@@ -60,8 +62,8 @@ class UniqueDatasetOp::Dataset : public DatasetBase {
     return input_->output_shapes();
   }
 
-  string DebugString() const override {
-    return strings::StrCat("UniqueDatasetOp::Dataset");
+  std::string DebugString() const override {
+    return absl::StrCat("UniqueDatasetOp::Dataset");
   }
 
   absl::Status InputDatasets(
@@ -133,7 +135,7 @@ class UniqueDatasetOp::Dataset : public DatasetBase {
       size_t i = 0;
       for (const Tensor& t : unique_elements_) {
         TF_RETURN_IF_ERROR(writer->WriteTensor(
-            full_name(strings::StrCat("unique_elements[", i++, "]")), t));
+            full_name(absl::StrCat("unique_elements[", i++, "]")), t));
       }
       return absl::OkStatus();
     }
@@ -153,7 +155,7 @@ class UniqueDatasetOp::Dataset : public DatasetBase {
       for (int64_t i = 0; i < num_unique_elements; ++i) {
         Tensor unique_element;
         TF_RETURN_IF_ERROR(reader->ReadTensor(
-            ctx->flr(), full_name(strings::StrCat("unique_elements[", i, "]")),
+            ctx->flr(), full_name(absl::StrCat("unique_elements[", i, "]")),
             &unique_element));
         auto insert_result = unique_elements_.insert(unique_element);
         if (!insert_result.second) {
@@ -173,7 +175,7 @@ class UniqueDatasetOp::Dataset : public DatasetBase {
         } else {
           DCHECK_EQ(DT_STRING, t.dtype());
           auto flat_t = t.flat<tstring>();
-          uint64 hash = 0;
+          uint64_t hash = 0;
           for (int64_t i = 0; i < t.NumElements(); ++i) {
             hash = Hash64Combine(hash, Hash64(flat_t(i)));
           }

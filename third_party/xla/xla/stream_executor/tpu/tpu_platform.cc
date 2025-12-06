@@ -34,10 +34,8 @@ limitations under the License.
 #include "xla/stream_executor/tpu/tpu_executor.h"
 #include "xla/stream_executor/tpu/tpu_executor_api.h"
 #include "xla/stream_executor/tpu/tpu_platform_id.h"
-#include "xla/stream_executor/tpu/tpu_platform_interface.h"
 #include "xla/stream_executor/tpu/tpu_topology.h"
 #include "tsl/platform/logging.h"  // IWYU pragma: keep
-#include "tsl/platform/status.h"
 
 namespace tensorflow {
 namespace tpu {
@@ -123,17 +121,17 @@ TpuRuntimeVersion TpuPlatform::version() const {
 }
 
 void TpuPlatform::InsertEvent(stream_executor::Event* key, SE_Event* val) {
-  absl::MutexLock lock(&event_map_mu_);
+  absl::MutexLock lock(event_map_mu_);
   event_map_[key] = val;
 }
 
 SE_Event* TpuPlatform::LookupEvent(stream_executor::Event* key) {
-  absl::ReaderMutexLock lock(&event_map_mu_);
+  absl::ReaderMutexLock lock(event_map_mu_);
   return event_map_.at(key);
 }
 
 void TpuPlatform::EraseEvent(stream_executor::Event* key) {
-  absl::MutexLock lock(&event_map_mu_);
+  absl::MutexLock lock(event_map_mu_);
   event_map_.erase(key);
 }
 
@@ -176,7 +174,7 @@ bool RegisterTpuPlatform() {
     tpu_registered_platform = new TpuPlatform();
     std::unique_ptr<stream_executor::Platform> platform(
         tpu_registered_platform);
-    TF_CHECK_OK(stream_executor::PlatformManager::RegisterPlatform(
+    CHECK_OK(stream_executor::PlatformManager::RegisterPlatform(
         std::move(platform)));
     tpu_platform_registered = true;
   }

@@ -16,12 +16,21 @@ limitations under the License.
 #ifndef XLA_HLO_IR_HLO_ORIGINAL_VALUE_H_
 #define XLA_HLO_IR_HLO_ORIGINAL_VALUE_H_
 
+#include <algorithm>
+#include <iterator>
+#include <memory>
 #include <optional>
 #include <string>
 #include <utility>
+#include <variant>
 
-#include "xla/shape_tree.h"
+#include "absl/algorithm/container.h"
+#include "absl/log/check.h"
+#include "absl/strings/string_view.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/tuple_tree.h"
+#include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -38,14 +47,8 @@ struct OriginalArray {
   static OriginalArray FromProto(
       const xla::OriginalArrayProto& original_array_proto);
 
-  friend bool operator==(const OriginalArray& lhs, const OriginalArray& rhs) {
-    return lhs.instruction_name == rhs.instruction_name &&
-           lhs.shape_index == rhs.shape_index;
-  }
-
-  friend bool operator!=(const OriginalArray& lhs, const OriginalArray& rhs) {
-    return !(lhs == rhs);
-  }
+  friend bool operator==(const OriginalArray& lhs, const OriginalArray& rhs);
+  friend bool operator!=(const OriginalArray& lhs, const OriginalArray& rhs);
 
   template <typename H>
   friend H AbslHashValue(H h, const OriginalArray& original_array) {
@@ -56,78 +59,121 @@ struct OriginalArray {
 
 // The information of an HLO value produced by an instruction in an unoptimized
 // HLO module.
-class OriginalValue : public ShapeTree<std::optional<OriginalArray>> {
+class OriginalValue {
  public:
-  explicit OriginalValue(Shape shape) : ShapeTree(std::move(shape)) {}
+  // Constructor for a normal value with array information.
+  explicit OriginalValue(
+      TupleTree<std::optional<OriginalArray>>::Node&& root_node);
+  explicit OriginalValue(TupleTree<std::optional<OriginalArray>>&& tree);
+  explicit OriginalValue(const TupleTree<std::optional<OriginalArray>>& tree);
+  explicit OriginalValue(const Shape& shape)
+      : data_(TupleTree<std::optional<OriginalArray>>(shape)) {}
+
+  static OriginalValue SyntheticCall();
+
+  bool is_synthetic_call() const {
+    return std::holds_alternative<SyntheticCallType>(data_);
+  }
+
   std::string ToString() const;
   OriginalValueProto ToProto() const;
   static std::shared_ptr<OriginalValue> FromProto(
       const xla::OriginalValueProto& original_value_proto);
   static std::shared_ptr<OriginalValue> CreateFromInstruction(
       const HloInstruction* instruction, absl::string_view prefix = "");
-};
 
-struct OriginalValuePointer {
-  OriginalValuePointer() = default;
-  explicit OriginalValuePointer(
-      std::shared_ptr<xla::OriginalValue> original_value) {
-    this->original_value = std::move(original_value);
+  const TupleTree<std::optional<OriginalArray>>& tree() const {
+    CHECK(!is_synthetic_call())
+        << "Cannot get tree from a synthetic OriginalValue";
+    return std::get<TupleTree<std::optional<OriginalArray>>>(data_);
+  }
+  TupleTree<std::optional<OriginalArray>>* mutable_tree() {
+    CHECK(!is_synthetic_call())
+        << "Cannot get tree from a synthetic OriginalValue";
+    return &std::get<TupleTree<std::optional<OriginalArray>>>(data_);
   }
 
-  friend bool operator==(const OriginalValuePointer& lhs,
-                         const OriginalValuePointer& rhs) {
-    // Returns if any original value is empty.
-    if (!lhs.original_value || !rhs.original_value) {
-      return !lhs.original_value == !rhs.original_value;
-    }
-    // Returns if the original values have different shapes.
-    if (!xla::ShapeUtil::Compatible(lhs.original_value->shape(),
-                                    rhs.original_value->shape())) {
-      return false;
-    }
-    // Compares nodes.
-    for (auto& leaf : lhs.original_value->leaves()) {
-      xla::ShapeIndex index = leaf.first;
-      std::optional<const xla::OriginalArray> lhs_original_array = leaf.second;
-      std::optional<const xla::OriginalArray> rhs_original_array =
-          rhs.original_value->element(index);
-      if (!lhs_original_array.has_value() || !rhs_original_array.has_value() ||
-          *lhs_original_array != *rhs_original_array) {
-        return false;
-      }
-    }
-    return true;
+  const std::optional<OriginalArray>& original_array(
+      ShapeIndexView index) const {
+    return tree().element(index);
   }
+  std::optional<OriginalArray>* mutable_original_array(ShapeIndexView index) {
+    return mutable_tree()->mutable_element(index);
+  }
+
+  // Returns a const iterator over the pairs of ShapeIndex and
+  // std::optional<OriginalArray>.
+  auto original_arrays() const {
+    if (is_synthetic_call()) {
+      return std::as_const(EmptyOriginalValueTupleTree()).leaves();
+    }
+    return tree().leaves();
+  }
+  // Returns a non-const iterator over the pairs of ShapeIndex and
+  // std::optional<OriginalArray>.
+  auto mutable_original_arrays() {
+    if (is_synthetic_call()) {
+      return EmptyOriginalValueTupleTree().leaves();
+    }
+    return mutable_tree()->leaves();
+  }
+
+  bool IsEmpty() const {
+    if (is_synthetic_call()) {
+      return true;
+    }
+    return std::all_of(
+        tree().leaves().begin(), tree().leaves().end(),
+        [](const auto& pair) { return !pair.second.has_value(); });
+  }
+
+  bool IsCompatibleWith(const Shape& shape) const;
+
+  bool IsTuple() const { return tree().IsTuple(); }
+
+  bool operator==(const OriginalValue& other) const;
+
+  bool operator!=(const OriginalValue& other) const {
+    return !(*this == other);
+  }
+
+  // Gets the (partial) call hierarchy string of the original call instructions
+  // that this OriginalValue is associated with. Returns std::nullopt if this
+  // OriginalValue is not associated with a call instruction or the call
+  // hierarchy is lost (e.g., after complicated optimizations).
+  std::optional<std::string> GetOriginalCallLikeInstructions() const;
 
   template <typename H>
-  friend H AbslHashValue(H h, const OriginalValuePointer& value) {
-    // Ignore layout information, which is added to shapes during the HLO
-    // transformation.
-    h = xla::Shape::template Hash<H, false /*kIsLayoutSensitive*/>(
-        std::move(h), value.original_value->shape());
-    value.original_value->ForEachElement(
-        [&h, &value](const xla::ShapeIndex& shape_index,
-                     const std::optional<xla::OriginalArray>& original_array) {
-          if (!value.original_value->IsLeaf(shape_index)) {
-            return;
-          }
-          if (!original_array) {
-            return;
-          }
-          h = H::combine(std::move(h), original_array->instruction_name,
-                         original_array->shape_index);
-        });
-    return std::move(h);
+  friend H AbslHashValue(H h, const OriginalValue& value) {
+    h = H::combine(std::move(h), value.is_synthetic_call());
+    auto original_arrays = value.original_arrays();
+    h = H::combine(std::move(h), std::distance(original_arrays.begin(),
+                                               original_arrays.end()));
+    for (const auto& original_array : original_arrays) {
+      h = H::combine(std::move(h), original_array);
+    }
+    return h;
   }
 
-  std::shared_ptr<xla::OriginalValue> original_value = nullptr;
+ private:
+  // Represents a synthetic value, e.g., from a call instruction that doesn't
+  // have a direct mapping to original arrays and should be removed by inlining.
+  struct SyntheticCallType {};
+  explicit OriginalValue(SyntheticCallType synthetic);
+  static TupleTree<std::optional<OriginalArray>>& EmptyOriginalValueTupleTree();
+
+  void ClearInternalNodeValues();
+  std::variant<SyntheticCallType, TupleTree<std::optional<OriginalArray>>>
+      data_;
 };
 
-// Copies the original value of the source to the destination instruction. This
-// performs a deep copy if clone is set to true. Otherwise, it performs a
-// shallow copy.
+// Copies the original value of the source to the destination instruction if the
+// shapes of the source and destination are compatible. This performs a deep
+// copy if clone is set to true. Otherwise, it performs a shallow copy. Print a
+// warning if the shapes are not compatible and issue_warning is set to true.
 void CopyOriginalValue(const HloInstruction* src_instruction,
-                       HloInstruction* dest_instruction, bool clone);
+                       HloInstruction* dest_instruction, bool clone,
+                       bool issue_warning);
 
 // Removes duplicates of original value objects referenced in the module to save
 // memory storage.

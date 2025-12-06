@@ -1,5 +1,7 @@
 """Provides build configuration for TSL"""
 
+load("@rules_cc//cc/common:cc_info.bzl", "CcInfo")
+load("@rules_cc//cc/common:cc_common.bzl", "cc_common")
 load("@rules_python//python:py_library.bzl", "py_library")
 load("@bazel_skylib//lib:new_sets.bzl", "sets")
 load(
@@ -9,10 +11,9 @@ load(
 load(
     "//xla/tsl/mkl:build_defs.bzl",
     "if_enable_mkl",
-    "if_mkl",
     "if_mkldnn_aarch64_acl",
-    "if_mkldnn_aarch64_acl_openmp",
     "if_mkldnn_openmp",
+    "if_onednn",
     "if_onednn_async",
     "onednn_v3_define",
 )
@@ -337,7 +338,7 @@ def tsl_copts(
         if_tensorrt(["-DGOOGLE_TENSORRT=1"]) +
         if_rocm(["-DTENSORFLOW_USE_ROCM=1"]) +
         # Compile in oneDNN based ops when building for x86 platforms
-        if_mkl(["-DINTEL_MKL"]) +
+        if_onednn(["-DXLA_ONEDNN"]) +
         # Enable additional ops (e.g., ops with non-NHWC data layout) and
         # optimizations for Intel builds using oneDNN if configured
         if_enable_mkl(["-DENABLE_MKL"]) +
@@ -345,7 +346,6 @@ def tsl_copts(
         if_onednn_async(["-DENABLE_ONEDNN_ASYNC"]) +
         onednn_v3_define() +
         if_mkldnn_aarch64_acl(["-DDNNL_AARCH64_USE_ACL=1"]) +
-        if_mkldnn_aarch64_acl_openmp(["-DENABLE_ONEDNN_OPENMP"]) +
         if_enable_acl(["-DXLA_CPU_USE_ACL=1", "-fexceptions"]) +
         if_android_arm(["-mfpu=neon", "-fomit-frame-pointer"]) +
         if_linux_x86_64(["-msse3"]) +
@@ -411,7 +411,7 @@ def tsl_gpu_library(deps = None, cuda_deps = None, copts = tsl_copts(), **kwargs
             "@local_config_rocm//rocm:hip",
             "@local_config_rocm//rocm:rocm_headers",
         ]),
-        copts = (copts + if_cuda(["-DGOOGLE_CUDA=1", "-DNV_CUDNN_DISABLE_EXCEPTION"]) + if_rocm(["-DTENSORFLOW_USE_ROCM=1"]) + if_xla_available(["-DTENSORFLOW_USE_XLA=1"]) + if_mkl(["-DINTEL_MKL=1"]) + if_enable_mkl(["-DENABLE_MKL"]) + if_tensorrt(["-DGOOGLE_TENSORRT=1"])),
+        copts = (copts + if_cuda(["-DGOOGLE_CUDA=1", "-DNV_CUDNN_DISABLE_EXCEPTION"]) + if_rocm(["-DTENSORFLOW_USE_ROCM=1"]) + if_xla_available(["-DTENSORFLOW_USE_XLA=1"]) + if_onednn(["-DXLA_ONEDNN"]) + if_enable_mkl(["-DENABLE_MKL"]) + if_tensorrt(["-DGOOGLE_TENSORRT=1"])),
         **kwargs
     )
 
@@ -500,9 +500,6 @@ def get_compatible_with_libtpu_portable():
 def filegroup(**kwargs):
     native.filegroup(**kwargs)
 
-def internal_hlo_deps():
-    return []
-
 # Config setting selector used when building for products
 # which requires restricted licenses to be avoided.
 def if_not_mobile_or_arm_or_macos_or_lgpl_restricted(a):
@@ -510,9 +507,6 @@ def if_not_mobile_or_arm_or_macos_or_lgpl_restricted(a):
     return select({
         "//conditions:default": [],
     })
-
-def tsl_grpc_cc_dependencies():
-    return [clean_dep("//xla/tsl:grpc++")]
 
 # Bazel rule for collecting the header files that a target depends on.
 def _transitive_hdrs_impl(ctx):
@@ -845,7 +839,7 @@ def tsl_pybind_extension_opensource(
     )
 
 def nvtx_headers():
-    return if_oss(["@nvtx_archive//:headers"], ["@local_config_cuda//cuda:cuda_headers"])
+    return if_oss(["@nvtx_archive//:headers"]) + ["@local_config_cuda//cuda:cuda_headers"]
 
 def tsl_google_bzl_deps():
     return []

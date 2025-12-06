@@ -15,8 +15,8 @@ limitations under the License.
 
 #include "xla/tsl/lib/io/inputstream_interface.h"
 
+#include "absl/status/status.h"
 #include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/test.h"
 
 namespace tsl {
@@ -25,12 +25,12 @@ namespace {
 
 class TestStringStream : public InputStreamInterface {
  public:
-  explicit TestStringStream(const string& content) : content_(content) {}
+  explicit TestStringStream(const std::string& content) : content_(content) {}
 
   absl::Status ReadNBytes(int64_t bytes_to_read, tstring* result) override {
     result->clear();
     if (pos_ + bytes_to_read > content_.size()) {
-      return errors::OutOfRange("limit reached");
+      return absl::OutOfRangeError("limit reached");
     }
     *result = content_.substr(pos_, bytes_to_read);
     pos_ += bytes_to_read;
@@ -45,7 +45,7 @@ class TestStringStream : public InputStreamInterface {
   }
 
  private:
-  string content_;
+  std::string content_;
   int64_t pos_ = 0;
 };
 

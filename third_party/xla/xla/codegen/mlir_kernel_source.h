@@ -20,6 +20,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/log/check.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "mlir/IR/BuiltinOps.h"
@@ -27,6 +28,7 @@ limitations under the License.
 #include "mlir/IR/OwningOpRef.h"
 #include "mlir/Support/DebugStringHelper.h"
 #include "xla/codegen/kernel_source.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
 
 namespace xla {
 
@@ -39,21 +41,17 @@ namespace xla {
 // compiler.
 class MlirKernelSource final : public KernelSource {
  public:
-  struct Storage {
-    std::unique_ptr<mlir::MLIRContext> context;
-    mlir::OwningOpRef<mlir::ModuleOp> module;
-  };
-
   // Construct a MLIR kernel source from a module and take ownership of its MLIR
   // context.
-  MlirKernelSource(std::unique_ptr<mlir::MLIRContext> context,
+  MlirKernelSource(std::unique_ptr<mlir::MLIRContext> mlir_context,
                    mlir::OwningOpRef<mlir::ModuleOp> module)
-      : storage_{std::move(context), std::move(module)} {}
+      : mlir_context_(std::move(mlir_context)),
+        module_(std::move(module)) {}
 
   // Construct a MLIR kernel source from a module but don't take any ownership
   // of the MLIR context.
   explicit MlirKernelSource(mlir::OwningOpRef<mlir::ModuleOp> module)
-      : storage_{nullptr, std::move(module)} {}
+      : MlirKernelSource(nullptr, std::move(module)) {}
 
   MlirKernelSource(MlirKernelSource&& other) noexcept = default;
   MlirKernelSource& operator=(MlirKernelSource&& other) noexcept = default;
@@ -61,16 +59,22 @@ class MlirKernelSource final : public KernelSource {
   static absl::StatusOr<MlirKernelSource> ParseFromString(
       absl::string_view ir, std::unique_ptr<mlir::MLIRContext> context);
 
-  mlir::ModuleOp module() { return *storage_.module; }
+  mlir::ModuleOp module() { return *module_; }
 
-  Storage ReleaseStorage() && { return std::move(storage_); }
+  mlir::MLIRContext* mlir_context() { return mlir_context_.get(); }
 
-  std::string ToString() const final {
-    return mlir::debugString(*storage_.module);
+  // Moves ownership of the module to the caller.
+  mlir::OwningOpRef<mlir::ModuleOp> TakeModule() && {
+    DCHECK(mlir_context_ == nullptr && mlir_context_ == nullptr)
+        << "Can't move ownership of the module owned by the MlirKernelSource";
+    return std::move(module_);
   }
 
+  std::string ToString() const final { return mlir::debugString(*module_); }
+
  private:
-  Storage storage_;
+  std::unique_ptr<mlir::MLIRContext> mlir_context_;
+  mlir::OwningOpRef<mlir::ModuleOp> module_;
 };
 
 }  // namespace xla

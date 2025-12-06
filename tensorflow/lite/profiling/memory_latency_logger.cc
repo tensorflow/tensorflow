@@ -80,10 +80,16 @@ void MemoryLatencyLogger::Stop(absl::string_view log_message) {
                    << " MB,";
   }
   if (mem_monitor_->GetCurrentInUseMemoryInMB() < 0) {
-    message_stream << " current in-use: unknown";
+    message_stream << " current in-use: unknown,";
   } else {
     message_stream << " current in-use: "
-                   << mem_monitor_->GetCurrentInUseMemoryInMB() << " MB";
+                   << mem_monitor_->GetCurrentInUseMemoryInMB() << " MB,";
+  }
+  if (mem_monitor_->GetPeakPrivateFootprintInMB() < 0) {
+    message_stream << " peak private: unknown";
+  } else {
+    message_stream << " peak private: "
+                   << mem_monitor_->GetPeakPrivateFootprintInMB() << " MB";
   }
   TFLITE_LOG(INFO) << message_stream.str();
 }

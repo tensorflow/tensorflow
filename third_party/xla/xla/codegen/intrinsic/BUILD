@@ -3,6 +3,7 @@ load(
     "//xla/tsl/platform:build_config_root.bzl",
     "if_llvm_aarch64_available",
     "if_llvm_powerpc_available",
+    "if_llvm_riscv_available",
     "if_llvm_system_z_available",
     "if_llvm_x86_available",
 )
@@ -23,25 +24,17 @@ package_group(
 
 cc_library(
     name = "intrinsic",
-    srcs = ["intrinsic.cc"],
     hdrs = ["intrinsic.h"],
     deps = [
-        "//xla:shape_util",
-        "//xla:util",
+        ":type",
+        ":vec_name_mangler",
         "//xla:xla_data_proto_cc",
-        "//xla/mlir/utils:type_util",
-        "//xla/service/llvm_ir:llvm_util",
-        "@com_google_absl//absl/log",
-        "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
-        "@llvm-project//llvm:Support",
         "@llvm-project//llvm:Target",
         "@llvm-project//llvm:ir_headers",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Support",
     ],
 )
 
@@ -49,10 +42,10 @@ xla_cc_test(
     name = "intrinsic_test",
     srcs = ["intrinsic_test.cc"],
     deps = [
-        ":intrinsic",
+        ":type",
         "//xla:xla_data_proto_cc",
         "//xla/tsl/lib/core:status_test_util",
-        "//xla/tsl/platform:status_matchers",
+        "@com_google_absl//absl/status:status_matchers",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -63,10 +56,16 @@ cc_library(
     hdrs = ["fptrunc.h"],
     deps = [
         ":intrinsic",
+        ":type",
+        "//xla:shape_util",
         "//xla:util",
         "//xla:xla_data_proto_cc",
+        "//xla/service/llvm_ir:llvm_util",
         "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
@@ -80,8 +79,12 @@ xla_cc_test(
     deps = [
         ":fptrunc",
         ":intrinsic",
+        ":simple_jit_runner",
         "//xla:xla_data_proto_cc",
         "@com_google_googletest//:gtest_main",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//llvm:Target",
+        "@llvm-project//llvm:ir_headers",
     ],
 )
 
@@ -124,8 +127,6 @@ cc_library(
     deps = [
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
-        "//xla/backends/cpu/codegen:contiguous_section_memory_manager",
-        "//xla/service/cpu:orc_jit_memory_mapper",
         "//xla/service/llvm_ir:llvm_util",
         "//xla/tsl/util:safe_reinterpret_cast",
         "@com_google_absl//absl/base",
@@ -147,6 +148,9 @@ cc_library(
     ]) + if_llvm_powerpc_available([
         "@llvm-project//llvm:PowerPCAsmParser",  # fixdeps: keep
         "@llvm-project//llvm:PowerPCCodeGen",  # fixdeps: keep
+    ]) + if_llvm_riscv_available([
+        "@llvm-project//llvm:RISCVAsmParser",  # fixdeps: keep
+        "@llvm-project//llvm:RISCVCodeGen",  # fixdeps: keep
     ]) + if_llvm_system_z_available([
         "@llvm-project//llvm:SystemZAsmParser",  # fixdeps: keep
         "@llvm-project//llvm:SystemZCodeGen",  # fixdeps: keep
@@ -182,8 +186,13 @@ cc_library(
     name = "vec_name_mangler",
     hdrs = ["vec_name_mangler.h"],
     deps = [
+        ":type",
+        "//xla:util",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -208,6 +217,7 @@ cc_library(
     hdrs = ["intrinsic_compiler_lib.h"],
     deps = [
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/functional:function_ref",
         "@com_google_absl//absl/strings:string_view",
         "@llvm-project//llvm:Analysis",
         "@llvm-project//llvm:IPO",
@@ -215,6 +225,7 @@ cc_library(
         "@llvm-project//llvm:Passes",
         "@llvm-project//llvm:Scalar",
         "@llvm-project//llvm:Support",
+        "@llvm-project//llvm:TransformUtils",
         "@llvm-project//llvm:ir_headers",
     ],
 )
@@ -347,6 +358,7 @@ xla_cc_test(
         ":intrinsic",
         ":simple_jit_runner",
         ":test_matchers",
+        "//xla:xla_data_proto_cc",
         "@com_google_googletest//:gtest_main",
         "@llvm-project//llvm:JITLink",
         "@llvm-project//llvm:ir_headers",
@@ -363,6 +375,7 @@ xla_cc_test(
         ":test_matchers",
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
+        "@com_google_absl//absl/base:no_destructor",
         "@com_google_absl//absl/log",
         "@com_google_googletest//:gtest_main",
         "@llvm-project//llvm:JITLink",
@@ -385,6 +398,7 @@ xla_cc_test(
         "//xla:xla_data_proto_cc",
         "//xla/tsl/platform:test_benchmark",
         "//xla/tsl/platform:test_main",
+        "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Target",
         "@llvm-project//llvm:ir_headers",
     ],
@@ -417,6 +431,40 @@ xla_cc_test(
         "//xla:xla_data_proto_cc",
         "@com_google_googletest//:gtest_main",
         "@llvm-project//llvm:JITLink",
+        "@llvm-project//llvm:ir_headers",
+    ],
+)
+
+cc_library(
+    name = "type",
+    srcs = ["type.cc"],
+    hdrs = ["type.h"],
+    deps = [
+        "//xla:shape_util",
+        "//xla:util",
+        "//xla:xla_data_proto_cc",
+        "//xla/mlir/utils:type_util",
+        "//xla/service/llvm_ir:llvm_util",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//llvm:ir_headers",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
+    ],
+)
+
+xla_cc_test(
+    name = "type_test",
+    srcs = ["type_test.cc"],
+    deps = [
+        ":type",
+        "//xla:xla_data_proto_cc",
+        "//xla/tsl/lib/core:status_test_util",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//llvm:Support",
         "@llvm-project//llvm:ir_headers",
     ],
 )

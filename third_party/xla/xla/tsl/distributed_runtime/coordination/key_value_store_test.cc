@@ -24,9 +24,6 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/tsl/platform/status.h"
-#include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/test.h"
 
 namespace tsl {
@@ -200,6 +197,35 @@ TEST(KeyValueStore, CallbacksCalledOnDestruction) {
         });
   }
   EXPECT_TRUE(callback_called);
+}
+
+TEST(KeyValueStore, IncrementByPositiveValueSucceeds) {
+  KeyValueStore store;
+  ASSERT_OK(store.Put("foo", "3",
+                      /*allow_overwrite=*/true));
+  EXPECT_THAT(store.IncrementBy("foo", 2), IsOkAndHolds("5"));
+}
+
+TEST(KeyValueStore, IncrementByNegativeValueSucceeds) {
+  KeyValueStore store;
+  ASSERT_OK(store.Put("foo", "3",
+                      /*allow_overwrite=*/true));
+  // Result will be the two's complement of the positive value.
+  EXPECT_THAT(store.IncrementBy("foo", -5), IsOkAndHolds("-2"));
+}
+
+TEST(KeyValueStore, IncrementByWithoutExistingValueSucceeds) {
+  // Result will be the increment value. This behavior is consistent with
+  // other KV store implementations.
+  KeyValueStore store;
+  EXPECT_THAT(store.IncrementBy("foo", 2), IsOkAndHolds("2"));
+}
+
+TEST(KeyValueStore, IncrementByWithInvalidValueFails) {
+  KeyValueStore store;
+  ASSERT_OK(store.Put("foo", "invalid", /*allow_overwrite=*/true));
+  EXPECT_THAT(store.IncrementBy("foo", 2),
+              StatusIs(absl::StatusCode::kFailedPrecondition));
 }
 
 }  // namespace

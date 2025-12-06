@@ -20,6 +20,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/memory/memory.h"
+#include "absl/synchronization/notification.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/lib/core/notification.h"
 #include "tensorflow/core/platform/env.h"
@@ -37,7 +38,7 @@ namespace data {
 // same `UnboundedThreadPool`.
 class UnboundedThreadPool::LogicalThreadWrapper : public Thread {
  public:
-  explicit LogicalThreadWrapper(std::shared_ptr<Notification> done)
+  explicit LogicalThreadWrapper(std::shared_ptr<absl::Notification> done)
       : done_(std::move(done)) {}
 
   ~LogicalThreadWrapper() override {
@@ -49,7 +50,7 @@ class UnboundedThreadPool::LogicalThreadWrapper : public Thread {
   }
 
  private:
-  std::shared_ptr<Notification> done_;
+  std::shared_ptr<absl::Notification> done_;
 };
 
 // A lightweight wrapper for creating logical threads in a `UnboundedThreadPool`
@@ -58,9 +59,9 @@ class UnboundedThreadPool::LogicalThreadFactory : public ThreadFactory {
  public:
   explicit LogicalThreadFactory(UnboundedThreadPool* pool) : pool_(pool) {}
 
-  std::unique_ptr<Thread> StartThread(const string& name,
+  std::unique_ptr<Thread> StartThread(const std::string& name,
                                       std::function<void()> fn) override {
-    auto done = std::make_shared<Notification>();
+    auto done = std::make_shared<absl::Notification>();
     pool_->ScheduleOnWorkQueue(std::move(fn), done);
     return std::make_unique<LogicalThreadWrapper>(std::move(done));
   }
@@ -87,7 +88,7 @@ int UnboundedThreadPool::CurrentThreadId() const { return -1; }
 
 namespace {
 void WorkQueueFunc(const std::function<void()>& fn,
-                   std::shared_ptr<Notification> done) {
+                   std::shared_ptr<absl::Notification> done) {
   fn();
   if (done) {
     done->Notify();
@@ -96,7 +97,7 @@ void WorkQueueFunc(const std::function<void()>& fn,
 }  // namespace
 
 void UnboundedThreadPool::ScheduleOnWorkQueue(
-    std::function<void()> fn, std::shared_ptr<Notification> done) {
+    std::function<void()> fn, std::shared_ptr<absl::Notification> done) {
   unbounded_work_queue_.Schedule(
       std::bind(&WorkQueueFunc, std::move(fn), std::move(done)));
 }
