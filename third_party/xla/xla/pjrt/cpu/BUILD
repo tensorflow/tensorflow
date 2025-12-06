@@ -354,6 +354,8 @@ xla_cc_test(
         "//xla/pjrt:pjrt_executable",
         "//xla/pjrt/plugin/xla_cpu:cpu_topology",
         "//xla/pjrt/plugin/xla_cpu:cpu_topology_description",
+        "//xla/pjrt/proto:compile_options_proto_cc",
+        "//xla/service/cpu:executable_proto_cc",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test_main",
         "@com_google_absl//absl/strings:string_view",
