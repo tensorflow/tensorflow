@@ -37,7 +37,7 @@ class TestGraphOptimizer : public CustomGraphOptimizer {
       const tensorflow::RewriterConfig_CustomGraphOptimizer* config) override {
     return absl::OkStatus();
   }
-  string name() const override { return kTestOptimizerName; }
+  std::string name() const override { return kTestOptimizerName; }
   bool UsesFunctionLibrary() const override { return false; }
   absl::Status Optimize(Cluster* cluster, const GrapplerItem& item,
                         GraphDef* optimized_graph) override {
@@ -48,7 +48,7 @@ class TestGraphOptimizer : public CustomGraphOptimizer {
 REGISTER_GRAPH_OPTIMIZER_AS(TestGraphOptimizer, "StaticRegister");
 
 TEST(CustomGraphOptimizerRegistryTest, DynamicRegistration) {
-  std::vector<string> optimizers =
+  std::vector<std::string> optimizers =
       CustomGraphOptimizerRegistry::GetRegisteredOptimizers();
   std::unique_ptr<const CustomGraphOptimizer> test_optimizer;
   ASSERT_EQ(
@@ -68,7 +68,7 @@ TEST(CustomGraphOptimizerRegistryTest, DynamicRegistration) {
 }
 
 TEST(CustomGraphOptimizerRegistryTest, StaticRegistration) {
-  const std::vector<string> optimizers =
+  const std::vector<std::string> optimizers =
       CustomGraphOptimizerRegistry::GetRegisteredOptimizers();
   EXPECT_EQ(1,
             std::count(optimizers.begin(), optimizers.end(), "StaticRegister"));
@@ -91,7 +91,7 @@ class TestPluginGraphOptimizer : public CustomGraphOptimizer {
       const tensorflow::RewriterConfig_CustomGraphOptimizer* config) override {
     return absl::OkStatus();
   }
-  string name() const override { return kTestPluginOptimizerName; }
+  std::string name() const override { return kTestPluginOptimizerName; }
   bool UsesFunctionLibrary() const override { return false; }
   absl::Status Optimize(Cluster* cluster, const GrapplerItem& item,
                         GraphDef* optimized_graph) override {
