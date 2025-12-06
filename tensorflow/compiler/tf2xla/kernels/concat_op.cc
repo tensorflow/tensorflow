@@ -115,9 +115,19 @@ class ConcatV2Op : public ConcatBaseOp {
       : ConcatBaseOp(c, /* axis_index */ c->num_inputs() - 1) {}
 };
 
-REGISTER_XLA_OP(Name("Concat").CompileTimeConstantInput("concat_dim"),
+// Define comprehensive type list for concat operations including float8 types
+constexpr std::array<DataType, 20> kConcatTypes = {
+    {DT_UINT8, DT_UINT16, DT_UINT32, DT_UINT64, DT_INT8, DT_INT16, DT_INT32,
+     DT_INT64, DT_HALF, DT_FLOAT, DT_DOUBLE, DT_COMPLEX64, DT_COMPLEX128,
+     DT_BFLOAT16, DT_BOOL, DT_FLOAT8_E5M2, DT_FLOAT8_E4M3FN, DT_FLOAT8_E4M3FNUZ,
+     DT_FLOAT8_E4M3B11FNUZ, DT_FLOAT8_E5M2FNUZ}};
+
+REGISTER_XLA_OP(Name("Concat")
+                    .TypeConstraint("T", kConcatTypes)
+                    .CompileTimeConstantInput("concat_dim"),
                 ConcatOp);
 REGISTER_XLA_OP(Name("ConcatV2")
+                    .TypeConstraint("T", kConcatTypes)
                     .TypeConstraint("Tidx", {DT_INT32, DT_INT64})
                     .CompileTimeConstantInput("axis"),
                 ConcatV2Op);
