@@ -130,9 +130,9 @@ std::unique_ptr<tsl::profiler::ProfilerInterface> CreateHostTracer(
   if (options.trace_level == 0) return nullptr;
   std::vector<std::unique_ptr<tsl::profiler::ProfilerInterface>> profilers;
   profilers.push_back(
-      std::make_unique<HostTracer>(options.trace_level, options.filter_mask));
-  profilers.push_back(
       std::make_unique<tsl::profiler::ThreadpoolProfilerInterface>());
+  profilers.push_back(
+      std::make_unique<HostTracer>(options.trace_level, options.filter_mask));
   return std::make_unique<tsl::profiler::ProfilerCollection>(
       std::move(profilers));
 }
