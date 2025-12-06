@@ -473,18 +473,12 @@ DiffSummaryProto DiffSummary::ToProto() const {
         ComputationDetailsProto* details_proto =
             group_proto->add_left_computations();
         details_proto->set_name(computation->name());
-        for (const HloInstruction* instruction : computation->instructions()) {
-          details_proto->add_instructions(instruction->name());
-        }
       }
       for (const HloComputation* computation :
            computation_group.right_computations) {
         ComputationDetailsProto* details_proto =
             group_proto->add_right_computations();
         details_proto->set_name(computation->name());
-        for (const HloInstruction* instruction : computation->instructions()) {
-          details_proto->add_instructions(instruction->name());
-        }
       }
     }
   }
