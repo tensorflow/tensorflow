@@ -24,6 +24,7 @@ limitations under the License.
 
 #include "xla/backends/profiler/plugin/profiler_c_api.h"
 #include "tsl/profiler/lib/profiler_interface.h"
+#include "tsl/profiler/protobuf/profiler_options.pb.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
 
 struct PLUGIN_Profiler {
@@ -31,6 +32,7 @@ struct PLUGIN_Profiler {
   std::unique_ptr<std::vector<uint8_t>> buffer;
   size_t byte_size;
   std::unique_ptr<tsl::profiler::ProfilerInterface> impl;
+  tensorflow::ProfileOptions options;
   bool stopped;
 };
 

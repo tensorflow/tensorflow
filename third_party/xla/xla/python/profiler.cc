@@ -38,6 +38,7 @@ limitations under the License.
 #include "xla/tsl/platform/macros.h"
 #include "xla/tsl/profiler/rpc/client/capture_profile.h"
 #include "xla/tsl/profiler/rpc/profiler_server.h"
+#include "xla/tsl/profiler/utils/xplane_schema.h"
 #include "tsl/platform/protobuf.h"  // IWYU pragma: keep
 #include "tsl/profiler/lib/profiler_session.h"
 #include "tsl/profiler/lib/traceme.h"
@@ -289,7 +290,17 @@ NB_MODULE(_profiler, m) {
           })
       .def_prop_rw("session_id", &tensorflow::ProfileOptions::session_id,
                    [](tensorflow::ProfileOptions* options,
-                      const std::string& id) { options->set_session_id(id); });
+                      const std::string& id) { options->set_session_id(id); })
+      .def_prop_rw(
+          "jax_version", &tensorflow::ProfileOptions::jax_version,
+          [](tensorflow::ProfileOptions* options, const std::string& version) {
+            options->set_jax_version(version);
+          })
+      .def_prop_rw(
+          "jaxlib_version", &tensorflow::ProfileOptions::jaxlib_version,
+          [](tensorflow::ProfileOptions* options, const std::string& version) {
+            options->set_jaxlib_version(version);
+          });
 
   nb::class_<TraceMeWrapper> traceme_class(m, "TraceMe");
   traceme_class.def(nb::init<nb::str, nb::kwargs>())
@@ -367,6 +378,24 @@ NB_MODULE(_profiler, m) {
         return nb::bytes(result.data(), result.size());
       },
       nb::arg("profiles") = nb::list(), nb::arg("percentile"));
+
+  m.attr("KMetadataPlaneName") = tsl::profiler::kMetadataPlaneName;
+  nb::enum_<tsl::profiler::StatType>(m, "StatType")
+      .value("kMetadataJaxVersion",
+             tsl::profiler::StatType::kMetadataJaxVersion)
+      .value("kMetadataJaxlibVersion",
+             tsl::profiler::StatType::kMetadataJaxlibVersion)
+      .value("kMetadataLibtpuVersion",
+             tsl::profiler::StatType::kMetadataLibtpuVersion)
+      .value("kMetadataCudaVersion",
+             tsl::profiler::StatType::kMetadataCudaVersion)
+      .value("kMetadataCudaRuntimeVersion",
+             tsl::profiler::StatType::kMetadataCudaRuntimeVersion)
+      .value("kMetadataCudaDriverVersion",
+             tsl::profiler::StatType::kMetadataCudaDriverVersion);
+  m.def("get_metadata_plane_name",
+        []() { return std::string(tsl::profiler::kMetadataPlaneName); });
+  m.def("get_stat_type_str", &tsl::profiler::GetStatTypeStr);
 }
 
 }  // namespace xla
