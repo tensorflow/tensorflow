@@ -21,13 +21,13 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/types/span.h"
 #include "xla/service/buffer_assignment.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 
 namespace xla {
 namespace gpu {
 
 absl::Status BufferAllocations::TearDown(
-    const std::set<se::DeviceMemoryBase>& live_addresses,
+    const std::set<se::DeviceAddressBase>& live_addresses,
     absl::Span<const BufferAllocation* const> allocations) {
   // Deallocate temporary buffers, taking care to try to deallocate all of them
   // even if one of the deallocations fails.
@@ -35,7 +35,7 @@ absl::Status BufferAllocations::TearDown(
   const int64_t num_buffers = allocations.size();
   for (BufferAllocation::Index i = 0; i < num_buffers; ++i) {
     const BufferAllocation& allocation = *allocations[i];
-    se::DeviceMemoryBase buffer_address = GetDeviceAddress(allocation.index());
+    se::DeviceAddressBase buffer_address = GetDeviceAddress(allocation.index());
     // Deallocate buffers marked "maybe_live_out" but aren't actually live out,
     // and temp buffers.
     if ((allocation.maybe_live_out() &&
@@ -51,24 +51,24 @@ absl::Status BufferAllocations::TearDown(
   return status;
 }
 
-se::DeviceMemoryBase BufferAllocations::GetDeviceAddress(
+se::DeviceAddressBase BufferAllocations::GetDeviceAddress(
     BufferAllocation::Index buffer_index) const {
   CHECK_GE(buffer_index, 0);
   CHECK_LT(buffer_index, buffers_.size());
   return buffers_[buffer_index];
 }
 
-se::DeviceMemoryBase& BufferAllocations::GetMutableDeviceAddress(
+se::DeviceAddressBase& BufferAllocations::GetMutableDeviceAddress(
     BufferAllocation::Index buffer_index) {
   CHECK_GE(buffer_index, 0);
   CHECK_LT(buffer_index, buffers_.size());
   return buffers_[buffer_index];
 }
 
-se::DeviceMemoryBase BufferAllocations::GetDeviceAddress(
+se::DeviceAddressBase BufferAllocations::GetDeviceAddress(
     const BufferAllocation::Slice& buffer_slice) const {
   int64_t index = buffer_slice.index();
-  se::DeviceMemoryBase base = GetDeviceAddress(index);
+  se::DeviceAddressBase base = GetDeviceAddress(index);
 
   int64_t offset = buffer_slice.offset();
   CHECK_LE(buffer_slice.offset(), base.size())

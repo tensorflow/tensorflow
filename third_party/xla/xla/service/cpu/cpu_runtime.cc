@@ -56,7 +56,7 @@ limitations under the License.
 #include "xla/service/computation_placer.h"
 #include "xla/service/cpu/cpu_executable_run_options.h"
 #include "xla/shape_util.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/platform/errors.h"

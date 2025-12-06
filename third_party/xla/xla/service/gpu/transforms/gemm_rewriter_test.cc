@@ -43,8 +43,8 @@ limitations under the License.
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
+#include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/semantic_version.h"
 #include "xla/stream_executor/stream_executor_memory_allocator.h"
 #include "xla/tsl/lib/core/status_test_util.h"
@@ -1498,7 +1498,7 @@ class GemmRewriteAllocationTest : public GpuCodegenTest {
   }
 
  private:
-  std::unique_ptr<se::DeviceMemoryAllocator> allocator_;
+  std::unique_ptr<se::DeviceAddressAllocator> allocator_;
 };
 
 TEST_F(GemmRewriteAllocationTest, SharedBufferAssignment) {

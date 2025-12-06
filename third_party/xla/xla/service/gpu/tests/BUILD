@@ -94,7 +94,7 @@ xla_test(
             "@local_tsl//tsl/platform:test",
         ],
     ) + [
-        "//xla/stream_executor:device_memory",
+        "//xla/stream_executor:device_address",
         "//xla/stream_executor:stream",
         "//xla/tests:hlo_pjrt_test_base",
         "//xla/tests:xla_internal_test_main",
@@ -168,7 +168,7 @@ xla_test(
         "//xla/service:hlo_module_config",
         "//xla/service:hlo_runner_interface",
         "//xla/service:platform_util",
-        "//xla/stream_executor:device_memory",
+        "//xla/stream_executor:device_address",
         "//xla/stream_executor:platform_manager",
         "//xla/stream_executor:semantic_version",
         "//xla/stream_executor:stream",
@@ -801,7 +801,7 @@ xla_test(
         "@local_tsl//tsl/platform:test",
     ] + if_cuda_is_configured([
         "//xla/service/gpu:stream_executor_util",
-        "//xla/stream_executor:device_memory",
+        "//xla/stream_executor:device_address",
     ]),
 )
 
